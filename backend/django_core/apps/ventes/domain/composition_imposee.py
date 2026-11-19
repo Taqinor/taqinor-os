@@ -127,8 +127,11 @@ def batterie_de_resynchro(devis, batterie, avertissements):
 
 def abstention_onduleur(devis, ligne, avertissements):
     """Un onduleur IMPOSÉ n'est jamais permuté : rend ``True`` (abstention
-    DITE) quand le devis porte le marqueur, ``False`` sinon."""
-    if marqueur(devis) is None:
+    DITE) quand le marqueur porte un ONDULEUR imposé, ``False`` sinon — un
+    marqueur sans onduleur (panneaux seuls imposés) laisse la permutation
+    du catalogue jouer, sans quoi la batterie ajoutée resterait derrière un
+    onduleur réseau (batterie fantôme)."""
+    if not ((marqueur(devis) or {}).get('produits') or {}).get('onduleur'):
         return False
     avertissements.append(
         'L\'onduleur « %s » a été imposé à la création du devis : '
@@ -375,6 +378,31 @@ def _panneau(imposes, entrees, *, company, alertes):
     return resolution.candidats[0]
 
 
+#: Les rôles dont la marque épinglée ne s'applique pas en composition imposée :
+#: le panneau (fiche désignée), les onduleurs (imposé, ou contrôlé par
+#: ``verifier`` sur la famille vendue — l'autre famille n'est pas vendue).
+ROLES_HORS_EPINGLE = frozenset({'panneau', 'onduleur_reseau',
+                                'onduleur_hybride', 'onduleur_offgrid'})
+
+
+def _refuser_marques_manquantes(lignes, imposition):
+    """Même refus que le devis automatique ordinaire (``marques``) pour une
+    marque épinglée absente sur un rôle NON imposé (structure, câbles,
+    forfaits…, batterie quand elle n'est pas imposée) : jamais un devis qui
+    perd une ligne en silence."""
+    from apps.ventes.domain.catalogue import _libelle_role
+    hors = ROLES_HORS_EPINGLE | (
+        {'batterie'} if imposition.batterie_imposee is not None else set())
+    manquantes = [m for m in (getattr(lignes, 'marques_manquantes', ()) or ())
+                  if m.get('role') not in hors]
+    if manquantes:
+        raise AutoDevisError(
+            'Marque épinglée introuvable au stock : %s. Ajoutez le produit ou '
+            'changez la marque dans Paramètres → Gammes.' % ', '.join(
+                '%s (%s)' % (m.get('marque'), _libelle_role(m.get('role')))
+                for m in manquantes), field='marques')
+
+
 def _controle_a_blanc(company, *, lead, imposition, hors_reseau, phase_lead,
                       alertes):
     """La composition À BLANC (sans écriture) de l'imposition : le couple
@@ -422,6 +450,7 @@ def _controle_a_blanc(company, *, lead, imposition, hors_reseau, phase_lead,
             '« %s » est hors de la fenêtre de tension batterie de « %s » : '
             'choisissez une batterie compatible.' % (batterie.nom, onduleur.nom),
             field='batterie_kwh')
+    _refuser_marques_manquantes(lignes, imposition)
     for message in getattr(lignes, 'avertissements_composition', ()) or ():
         _alerter(alertes, 'composition', str(message))
     if onduleur is not None:

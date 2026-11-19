@@ -20,7 +20,7 @@ Run:
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -609,6 +609,31 @@ class CompositionImposeeTest(TestCase):
             'composition_imposee' in (d.etude_params or {})
             for d in Devis.objects.filter(company=self.company)))
 
+    def test_marque_epinglee_absente_sur_un_role_non_impose_refuse(self):
+        """Revue E — une marque épinglée (Gammes) sans produit sur un rôle NON
+        imposé (structure) refuse comme le devis automatique ordinaire :
+        jamais un devis qui perd sa ligne en silence."""
+        from apps.ventes.models import ParametresGammes
+        ParametresGammes.objects.create(
+            company=self.company,
+            marques={'Essentielle': {'structure_acier': 'Inexistante'}})
+        resp = self._post(self._lead())
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['field'], 'marques')
+        self.assertFalse(Devis.objects.filter(company=self.company).exists())
+
+    def test_regenerer_sans_configuration_garde_le_marqueur(self):
+        """Revue D — « régénérer » une taille qui n'a rien de stocké ne fait
+        rien : le marqueur de composition imposée reste."""
+        cree = self._post(self._lead())
+        self.assertEqual(cree.status_code, 201, cree.data)
+        resp = self.api.post(
+            '/api/django/ventes/devis/%s/offres-tailles/regenerer/'
+            % cree.data['id'], {'cle': 'eco'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        devis = Devis.objects.get(pk=cree.data['id'])
+        self.assertIn('composition_imposee', devis.etude_params)
+
     def test_sans_imposition_la_reponse_porte_aussi_la_composition(self):
         resp = self.api.post(AUTO_URL, {
             'lead': self._lead(facture_hiver=Decimal('1800')).id},
@@ -618,6 +643,36 @@ class CompositionImposeeTest(TestCase):
         self.assertTrue(resp.data['composition'])
         devis = Devis.objects.get(pk=resp.data['id'])
         self.assertNotIn('composition_imposee', devis.etude_params or {})
+
+
+class MarqueurCompositionImposeeTest(SimpleTestCase):
+    """Revue B / C — le marqueur ``composition_imposee`` (sans base)."""
+
+    def test_permutation_abstenue_seulement_si_un_onduleur_est_impose(self):
+        from types import SimpleNamespace
+        from apps.ventes.domain.composition_imposee import abstention_onduleur
+        ligne = SimpleNamespace(designation='Onduleur réseau Huawei 5kW')
+        impose = SimpleNamespace(etude_params={'composition_imposee': {
+            'produits': {'onduleur': 88, 'panneau': 12}}})
+        panneaux_seuls = SimpleNamespace(etude_params={'composition_imposee': {
+            'produits': {'onduleur': None, 'panneau': 12}}})
+        avertissements = []
+        self.assertTrue(abstention_onduleur(impose, ligne, avertissements))
+        self.assertEqual(len(avertissements), 1)
+        avertissements = []
+        self.assertFalse(abstention_onduleur(panneaux_seuls, ligne,
+                                             avertissements))
+        self.assertFalse(abstention_onduleur(
+            SimpleNamespace(etude_params={}), ligne, avertissements))
+        self.assertEqual(avertissements, [])
+
+    def test_le_marqueur_ne_passe_jamais_a_une_copie(self):
+        from apps.ventes.domain.etudes import etude_params_pour_copie
+        copie = etude_params_pour_copie({
+            'composition_imposee': {'produits': {'onduleur': 88}},
+            'scenario': 'Avec batterie'})
+        self.assertNotIn('composition_imposee', copie)
+        self.assertEqual(copie.get('scenario'), 'Avec batterie')
 
 
 class GuardrailTest(TestCase):

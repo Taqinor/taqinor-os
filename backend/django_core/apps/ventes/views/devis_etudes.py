@@ -463,7 +463,7 @@ class DevisEtudesActionsMixin:
         marqueur « ajustée ») : la dérivation moteur reprend la main. Les deux
         autres tailles restent intouchées, y compris leur propre marqueur.
         """
-        from ..offres_tailles import regenerer_taille
+        from ..offres_tailles import lire_config_stockee, regenerer_taille
         from ..serializers import OffreTailleRegenerationSerializer
 
         devis = self.get_object()
@@ -477,10 +477,14 @@ class DevisEtudesActionsMixin:
         serializer = OffreTailleRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         # COP2-V3 — geste commercial EXPLICITE : rend la main au
-        # dimensionnement (marqueur de composition imposée retiré).
-        from ..domain.composition_imposee import effacer_marqueur
-        effacer_marqueur(devis)
-        regenerer_taille(devis, serializer.validated_data['cle'])
+        # dimensionnement (marqueur de composition imposée retiré) — SEULEMENT
+        # quand la régénération a lieu (une configuration est stockée pour
+        # cette taille ; sinon ``regenerer_taille`` ne fait rien).
+        cle = serializer.validated_data['cle']
+        if cle in lire_config_stockee(devis):
+            from ..domain.composition_imposee import effacer_marqueur
+            effacer_marqueur(devis)
+        regenerer_taille(devis, cle)
         from ..domain.verrou_devis import toucher
         toucher(devis)
         reponse = self._offres_tailles_reponse(devis)
