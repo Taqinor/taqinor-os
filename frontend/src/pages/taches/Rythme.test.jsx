@@ -108,6 +108,19 @@ describe('TCH107 — Mon rythme', () => {
     expect(within(await screen.findByRole('group', { name: 'Geste effectué' })).getByText(/Garder ce rythme : environ 5 tâches par jour \(4 à 6\)/)).toBeInTheDocument()
   })
 
+  it('R2-131 — sans objectif, « 1 faite aujourd\'hui » au singulier (0 aussi), « 3 faites » au pluriel', async () => {
+    const libre = { ...rythme(), mode: 'libre', objectif: { nb: null, source: 'libre', mode: 'libre', zone: null } }
+    lireRythme.mockImplementation(() => reponse(libre))
+    for (const [faites, attendu] of [[1, "1 faite aujourd'hui"], [0, "0 faite aujourd'hui"], [3, "3 faites aujourd'hui"]]) {
+      const progression = { ...journee().progression, faites }
+      lireAujourdhui.mockImplementation(() => reponse({ ...journee(), progression }))
+      const { unmount } = monter()
+      expect(await screen.findByText(/faites? aujourd'hui/)).toBeInTheDocument()
+      expect(document.querySelector('.ep-jour-chiffre')).toHaveTextContent(attendu)
+      unmount()
+    }
+  })
+
   it('R2-121 — « Garder ce rythme » tant que R n\'est pas fixée le dit : provisoire, à confirmer sur 14 jours (page et toast)', async () => {
     const provisoire = {
       ...rythme(), mode: 'tenir', objectif: { nb: 6, source: 'calcule', mode: 'tenir', zone: [5, 7] }, geste_id: 92,

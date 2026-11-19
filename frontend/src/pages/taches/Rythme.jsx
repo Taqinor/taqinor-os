@@ -114,7 +114,7 @@ function Aujourdhui({ rythme, progression }) {
       <div className="ep-jour-ligne">
         <span className="ep-jour-chiffre chiffres">
           {objectif.nb == null
-            ? <>{jour.faites} <small>faites aujourd'hui</small></>
+            ? <>{jour.faites} <small>{`${jour.faites >= 2 ? 'faites' : 'faite'} aujourd'hui`}</small></>
             : <>{jour.faites} <small>{`sur ${objectif.nb} aujourd'hui`}</small></>}
         </span>
         {jour.essentiel_prevues > 0 ? (
