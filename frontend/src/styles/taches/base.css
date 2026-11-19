@@ -113,7 +113,9 @@
   font-size: 0.6875rem; font-weight: 700; line-height: 18px; text-align: center;
 }
 /* Sur-titre (date, état hors ligne, envois en attente) : une ligne, réservée même vide au bureau (R2-085). */
-.tch .entete-surtitre { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; min-height: 1.25rem; }
+.tch .entete-surtitre {
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; min-height: 1.25rem; line-height: 1.25rem;
+}
 /* R2-093 — « ‹ Projets » d'un écran enfant, au-dessus du titre */
 .tch .entete-retour {
   position: relative; display: inline-flex; align-items: center; gap: 2px; flex: none; min-height: 0;
