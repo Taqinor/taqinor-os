@@ -452,11 +452,15 @@ def digest_matin(request):
     from core.permissions import _user_has_or_legacy
 
     from apps.agent import selectors as agent
+    from apps.agent.registry import copilote_allume_pour
+
+    from .assistant_brief import blocs_du_matin, borner_taille
 
     user = request.user
     aujourdhui = aujourd_hui_local()
     reponse = {'visites': _bloc_visites_du_jour(user, aujourdhui)}
-    if _user_has_or_legacy(user, 'crm_voir'):
+    voit_les_leads = _user_has_or_legacy(user, 'crm_voir')
+    if voit_les_leads:
         total, lignes = lignes_a_relancer(user, 'all', LIMITE_DIGEST)
         reponse['relances'] = {'total': total, 'lignes': lignes}
         reponse['devis_sans_reponse'] = _bloc_devis_sans_reponse(
@@ -464,6 +468,11 @@ def digest_matin(request):
         reponse['manques_signales_hier'] = {
             'total': agent.manques_signales_hier(
                 user.company, user, aujourdhui)}
+    if copilote_allume_pour(user):
+        # Vague 2 : blocs de plus (chacun derrière son droit), jamais pour un
+        # compte copilote éteint — sa réponse reste celle d'avant.
+        reponse.update(blocs_du_matin(user, aujourdhui, voit_les_leads))
+        borner_taille(reponse)
     return Response(reponse)
 
 
