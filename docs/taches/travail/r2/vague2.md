@@ -134,3 +134,18 @@ Demandes de L2 :
 - À rejouer : carte C7 « Oui » → déplie « À revoir » ; pause d'un projet + tâche à 16:00 aujourd'hui.
 - Vu : au bureau le panneau (fiche, bilan, Alléger) RECOUVRE la colonne Agenda (une lettre du titre « Agenda » dépasse
   à gauche du panneau) ; le toast reste figé tant que la souris le survole.
+
+## Après le pli de V2-A (`9b3306fb3`)
+- Serveur : servir `prevues_aujourdhui_nb` (entier) sur chaque carte de `revue_projets`
+  (`selectors/projets.py::cartes_de_revue`, `contract_samples/revue_projets.json`, `api.md`) : la phrase « 1 tâche
+  prévue aujourd'hui reste dans ta journée. » de la Revue ne s'affiche pas sans elle.
+- Specs d'acceptation `e2e/acceptation/tch.spec.js` (≈ l. 394, 400, 411, 784) et `tch3.spec.js` (l. 212) :
+  `aller(p, '/taches/projets', 'projets')` puis clic d'une ligne ; au bureau `/taches/projets` ouvre maintenant le
+  premier projet (`data-ecran="projet"`) : accepter les deux écrans ou lire `[data-projet]` dans la colonne.
+- `ProjetsArchive.jsx` et `ProjetsModeles.jsx` dessinent encore `BarreRetourProjets` : leur passer
+  `retour={{ libelle: 'Projets', vers: '/taches/projets' }}` puis supprimer le composant orphelin.
+- Tableau d'un projet : dans une colonne de 264 px l'heure d'une carte est coupée (« 09: »), titres tronqués ; à 1280
+  et 1440 le Tableau défile sans barre visible (la 3e colonne est coupée : rien n'indique qu'on peut défiler).
+- `.ep-rang` défini deux fois dans `projets.css` (poignée et rang de la revue).
+- iPhone : la barre compacte collante (L6) laisse transparaître le texte qui défile dessous.
+- Fiche ouverte à côté du maître-détail à 1280 px : le panneau se superpose à la droite du projet (non capturé).
