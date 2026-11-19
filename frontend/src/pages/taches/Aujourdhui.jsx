@@ -55,6 +55,9 @@ const MEDIA_BUREAU = '(min-width: 1024px)'
 const cleDe = (item) => `${item.type}:${item.id}`
 const heureDe = (iso) => String(iso ?? '').slice(11, 16)
 
+/** R3-024 — les champs d'une TACHE écrite par la fiche qu'une ligne de la journée reprend telle quelle. */
+const CHAMPS_FICHE = ['titre', 'jour_prevu', 'moment', 'heure_debut', 'quelque_jour', 'estimation_minutes', 'echeance', 'lock_version']
+
 /** Les listes d'items du contrat (hors `propose`), dans l'ordre vertical. */
 const LISTES_ITEMS = ['essentiel', 'journee', 'ce_soir', 'a_decider', 'en_attente', 'faites']
 
@@ -788,6 +791,9 @@ export default function Aujourdhui() {
       setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, avant, 1) } : d))
       return
     }
+    // R3-024 — une écriture de la fiche (Quand, heure, titre…) se pose SUR PLACE, à l'instant (la ligne et le bloc de
+    // l'Agenda suivent sans attendre) ; la relecture qui suit range la ligne là où le serveur la met
+    if (avant) patcher(cle, (it) => ({ ...it, ...Object.fromEntries(CHAMPS_FICHE.filter((c) => c in ecrite).map((c) => [c, ecrite[c]])) }))
     charger()
     setBrouillon(lireBrouillon(societe, userId))
   }, [charger, societe, userId, donnees, patcher, setDonnees]))
@@ -856,6 +862,8 @@ export default function Aujourdhui() {
     poserProgression(data?.progression)
   }, [patcher, poserProgression])
   const replacee = useCallback((item) => patcher(cleDe(item), () => item), [patcher])
+  // R3-024 — la colonne Agenda tire ses blocs des MÊMES items que la liste : un geste ici se voit là-bas à l'instant
+  const itemsDuJour = useMemo(() => (donnees ? LISTES_ITEMS.flatMap((cle) => donnees[cle] ?? []) : []), [donnees])
 
   const contexte = useMemo(() => ({
     donnees,
@@ -1102,7 +1110,7 @@ export default function Aujourdhui() {
         <div className="tch-bureau">
           <ColonneProjets ecarts={ecartsProjets} />
           <div className="tch-bureau-liste">{contenu}</div>
-          {donnees ? <ColonneBureau jour={donnees.jour} maintenant={donnees.maintenant} glisse={glisse} onPlacee={placee} onRetiree={replacee} /> : null}
+          {donnees ? <ColonneBureau jour={donnees.jour} maintenant={donnees.maintenant} items={itemsDuJour} glisse={glisse} onPlacee={placee} onRetiree={replacee} /> : null}
         </div>
       ) : contenu}
     </CoquilleTaches>

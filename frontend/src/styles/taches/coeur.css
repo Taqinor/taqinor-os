@@ -256,3 +256,7 @@
 }
 .tch .tch-bureau-agenda .agenda-libre { margin: 14px 0 0 56px; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .tch-bureau-agenda .agenda-journee .bloc.erp { display: block; text-decoration: none; }
+/* R3-024 — l'agenda n'a pas pu être lu : la phrase et « Réessayer » sur une ligne, jamais l'invite à glisser */
+.tch .tch-bureau-agenda .agenda-echec { display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; margin: 8px 0 4px;
+  font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .tch-bureau-agenda .agenda-echec .bouton.lien { min-height: 44px; font-weight: 600; color: var(--tch-accent); }
