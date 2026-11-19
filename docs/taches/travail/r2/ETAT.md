@@ -28,15 +28,19 @@ simplicité et la beauté. Règle en vigueur : AUCUNE question à Reda (décider
    trois tests du rythme : corrigés et pliés (tête `74f52651b`). Reste à confirmer par le prochain run.
 3. Tour 2 : 5 relecteurs neufs → sur 191 contre-vérifications : 143 réglées, 37 à moitié, 5 pas réglées, 3 régressions ;
    78 constats neufs → 84 corrections `R3-NNN`, 7 lanes (`tour2/consolidation.md`), choix C-13 à C-24.
-4. Vague 3 EN COURS (lancée le 19/11) : L1 serveur (contrat d'abord → `tour2/contrat-L1.md`), L2 Aujourd'hui (attend le
-   contrat de L1 pour R3-020/021/023 et le pli de L3 pour R3-030), L3 saisie, L4 fiche, L5 enveloppe (attend L1 pour
-   R3-090, R3-093 3e partie), L6 agenda et projets (attend L1 pour R3-125, L5 pour R3-140), L7 lexique EN DERNIER, seule.
-   À chaque pli : `git merge --no-ff <sha>` dans `taches-r2-ci`, pousser, prévenir les lanes qui attendent.
-5. Ensuite : suite front entière + gardes (`python scripts/ci_guards.py stage-names`, lent sur ce poste) + OpenAPI et
-   empreinte CODEMAP + plan (TCH190+) ; mettre à jour la pile ; tour 3 (3 relecteurs neufs : fonctions, simplicité,
-   beauté) ; corrections finales ; critique finale (un passage Fable permis) ; README du module (« Ce que la
-   construction a choisi seule » : C-1 à C-24) ; CI verte ; sortir la PR du brouillon ; `gh pr merge 1481 --auto --merge`
-   (ne plus toucher la PR une fois en file) ; relâcher les claims ; mémoire partagée ; rapport à Reda (deploy = lui).
+4. Vague 3 PLIÉE (19/11) : L1 serveur, L2 Aujourd'hui, L3 saisie, L4 fiche, L5 enveloppe, L6 agenda et projets, L7
+   lexique + couture, plus quatre passes de CI (api-fuzz entièrement vert, refus d'état en 409). Tête d'intégration
+   `4422ae885` ; plan : TCH190 à TCH197 ; restes : `vague3-restes.md` ; budget du bundle posé à 3 905 Ko.
+   Suite front du module : 1 198 verts ; specs `taches-*.spec.js` : 92 / 92 contre le build assemblé.
+5. Tour 3 EN COURS : quatre relecteurs neufs (T3-F fonctions, T3-S simplicité, T3-B1 beauté iPhone, T3-B2 beauté
+   bureau), rapports `tour3/` ; chaque constat neuf est marqué « avant le merge » ou « peut attendre ».
+6. Ensuite : trier le tour 3 (ne corriger que les « avant le merge » + les régressions), une dernière lane de
+   correction, CI verte sur la PR #1481 (dernier run connu : rouge seulement sur le budget du bundle, la garde
+   anti-jargon et À trier — corrigés par L7, à confirmer), critique finale (un passage Fable permis), sortir la PR du
+   brouillon, `gh pr merge 1481 --auto --merge` (ne plus toucher la PR une fois en file), relâcher les claims
+   (`python scripts/plan_claims.py release file:docs/plans/PLAN_TACHES.md app:taches --owner Reda_Laptop/dev-taches-r2`),
+   arrêter la pile privée (`docker rm -f taches-r2-django taches-r2-redis`, tuer le `vite preview` du port 5180,
+   `DROP DATABASE erp_taches_r2`), mémoire partagée, rapport à Reda (deploy = lui).
 
 ## À dire à Reda dans le rapport final
 - Rien n'a été vu sur un vrai iPhone (tout en Chromium émulé) ; notifications, Siri, tuile, calendrier abonné : ses
