@@ -134,11 +134,66 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     expect(await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches · 1 h 15/ })).toBeInTheDocument()
   })
 
-  it('Passe visuelle n° 37 — un mode (agenda-semaine-planifier.html) : ni navigation qui répète la semaine, ni barre d\'ajout', async () => {
+  const monterLe = (url, aujourdhui, maintenant) => render(
+    <MemoryRouter initialEntries={[url]}>
+      <Routes>
+        <Route path="/taches/agenda"
+          element={<><Agenda aujourdhui={aujourdhui} maintenant={maintenant} /><Adresse /></>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  const appel = () => lireAgenda.mock.calls.at(-1)[0]
+
+  it('R2-103 — le vendredi, le mode s\'ouvre sur la semaine SUIVANTE (23 – 29 novembre), jamais la semaine qui finit', async () => {
+    monterLe('/taches/agenda?vue=semaine&placer=1', '2026-11-20', new Date(2026, 10, 20, 10, 0))
+    await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
+    expect(appel()).toEqual({ du: '2026-11-23', au: '2026-11-29', vue: 'semaine' })
+    expect(await screen.findByText('23 – 29 novembre')).toBeInTheDocument()
+    // les sept jours sont à venir : aucun « passé », tous posables
+    expect(await screen.findByRole('button', { name: /^lun\. 23 · / })).toBeEnabled()
+    expect(screen.queryByText(/passé/)).toBeNull()
+  })
+
+  it('R2-103 — le jeudi à partir de 15 h la semaine suivante, avant 15 h et du lundi au mercredi la semaine en cours', async () => {
+    const cas = [['2026-11-19', new Date(2026, 10, 19, 15, 0), '2026-11-23'], ['2026-11-19', new Date(2026, 10, 19, 14, 59), '2026-11-16'],
+      ['2026-11-16', new Date(2026, 10, 16, 18, 0), '2026-11-16'], ['2026-11-22', new Date(2026, 10, 22, 9, 0), '2026-11-23']]
+    for (const [iso, horloge, du] of cas) {
+      lireAgenda.mockClear()
+      const { unmount } = monterLe('/taches/agenda?placer=1', iso, horloge)
+      await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
+      expect(appel().du).toBe(du)
+      unmount()
+    }
+  })
+
+  it('R2-103 — ‹ › changent de semaine dans le mode ; un jour donné dans l\'adresse est respecté', async () => {
+    monterLe('/taches/agenda?placer=1', '2026-11-20', new Date(2026, 10, 20, 10, 0))
+    fireEvent.click(await screen.findByRole('button', { name: 'Semaine précédente' }))
+    await waitFor(() => expect(appel().du).toBe('2026-11-16'))
+    expect(await screen.findByRole('button', { name: /^lun\. 16 · passé/ })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Semaine suivante' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Semaine suivante' }))
+    await waitFor(() => expect(appel().du).toBe('2026-11-30'))
+    lireAgenda.mockClear()
+    monterLe('/taches/agenda?placer=1&jour=2026-11-18', '2026-11-20', new Date(2026, 10, 20, 10, 0))
+    await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
+    expect(appel().du).toBe('2026-11-16')
+  })
+
+  it('R2-103 — « Planifier ma semaine » est dans le ⋯ de l\'Agenda', async () => {
+    monterLe('/taches/agenda', AUJOURDHUI, new Date(2026, 10, 17, 9, 41))
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    fireEvent.pointerDown(screen.getByRole('button', { name: "Plus d'actions" }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Planifier ma semaine' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
+    expect(screen.getByTestId('adresse').textContent).toContain('placer=1')
+  })
+
+  it('Passe visuelle n° 37 — un mode (agenda-semaine-planifier.html) : pas de bande « Jour · Semaine · Mois », ni barre d\'ajout (R2-103 : seules les flèches ‹ › changent de semaine)', async () => {
     const { container } = monter()
     expect(await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Semaine précédente' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Semaine suivante' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Semaine précédente' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Semaine suivante' })).toBeInTheDocument()
     expect(container.querySelector('.ag-nav')).toBeNull()
     expect(container.querySelector('.saisie-bureau')).toBeNull()
     expect(container.querySelector('.ag-planifier-tete')).toContainElement(screen.getByRole('button', { name: 'Terminer' }))

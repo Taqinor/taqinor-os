@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { ABR_JOURS, duree as dureeTexte } from '../lib/textes'
 import VoletAPlacer from '../ui/VoletAPlacer'
 
@@ -145,7 +146,7 @@ function useFlechesJours(actif, boutons) {
  */
 export default function PlanifierSemaine({
   jours, aujourdhui, capacite = null, aPlacer = [], mesProjets = [], choisie = null, posees = {},
-  onChoisir, onPoser, onOuvrirJour, onTerminer,
+  onChoisir, onPoser, onOuvrirJour, onTerminer, onSemaine = null,
 }) {
   const boutons = useRef([])
   useFlechesJours(Boolean(choisie), boutons)
@@ -157,6 +158,17 @@ export default function PlanifierSemaine({
         </span>
         <button type="button" className="bouton plein ag-terminer" onClick={onTerminer}>Terminer</button>
       </div>
+      {onSemaine ? (
+        // R2-103 — de semaine en semaine sans quitter le mode (la semaine elle-même est dite par le sous-titre)
+        <div className="ag-plan-nav">
+          <button type="button" className="bouton-icone" aria-label="Semaine précédente" onClick={() => onSemaine(-1)}>
+            <ChevronLeft className="i" aria-hidden="true" />
+          </button>
+          <button type="button" className="bouton-icone" aria-label="Semaine suivante" onClick={() => onSemaine(1)}>
+            <ChevronRight className="i" aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
       <div className="ag-corps">
         <div className="ag-jours chiffres" role="list" aria-label="Jours de la semaine">
           {jours.map((j, rang) => (

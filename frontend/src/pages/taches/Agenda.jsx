@@ -84,6 +84,16 @@ function pas(vue, jour, sens) {
   return decaler(jour, JOURS_A_VENIR * sens)
 }
 
+/** R2-103 — la semaine que « Planifier ma semaine » ouvre quand l'adresse ne dit pas de jour : à partir du jeudi 15 h
+ *  (et le week-end) on planifie la semaine SUIVANTE — celle qui finit n'a plus rien à planifier — sinon la semaine en cours. */
+const HEURE_BASCULE_PLAN = 15
+function jourDePlanification(aujourdhui, horloge) {
+  const jourSemaine = (new Date(versUtc(aujourdhui)).getUTCDay() + 6) % 7 // lundi = 0
+  const heures = horloge instanceof Date ? horloge.getHours() : 0
+  const finDeSemaine = jourSemaine >= 4 || (jourSemaine === 3 && heures >= HEURE_BASCULE_PLAN)
+  return finDeSemaine ? decaler(lundiDe(aujourdhui), 7) : aujourdhui
+}
+
 function titrePeriode(vue, jour, { du, au }) {
   if (vue === 'jour') return jourLong(jour)
   if (vue === 'mois') { // maquette agenda-mois.html : « Novembre 2026 »
@@ -679,9 +689,12 @@ function DureePosee({ posee, onDuree, onAnnuler }) {
 export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null }) {
   const [params, setParams] = useSearchParams()
   const vue = VUES.some(([cle]) => cle === params.get('vue')) ? params.get('vue') : 'jour'
-  const jour = estIso(params.get('jour')) ? params.get('jour') : aujourdhui
-  const projet = params.get('projet')
+  const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
   const planifier = params.get('placer') === '1'
+  // R2-103 — Planifier ma semaine, sans jour dans l'adresse : la semaine à planifier (suivante dès le jeudi 15 h)
+  const jourDefaut = planifier ? jourDePlanification(aujourdhui, horloge) : aujourdhui
+  const jour = estIso(params.get('jour')) ? params.get('jour') : jourDefaut
+  const projet = params.get('projet')
   const vueLue = planifier ? 'semaine' : vue
   const periode = useMemo(() => periodeDe(vueLue, jour, aujourdhui), [vueLue, jour, aujourdhui])
   const [donnees, setDonnees] = useState(null)
@@ -692,7 +705,6 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const derniere = useRef(0)
   const gestes = useGestes(setDonnees)
   const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
-  const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
   const navigate = useNavigate()
   // Mes agendas (§2.20) : vivent dans Réglages → Mon iPhone, étape « calendrier » (`?etape=calendrier`) ; lus une fois
   const [agendas, setAgendas] = useState(null)
@@ -781,7 +793,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   )
 
   if (planifier) {
-    const terminer = () => changer({ placer: null, vue: 'semaine' })
+    const terminer = () => changer({ placer: null, vue: 'semaine', jour: jour === aujourdhui ? null : jour })
+    const changerSemaine = (sens) => changer({ jour: pas('semaine', jour, sens) })
     return (
       // Passe visuelle n° 37 — un MODE (agenda-semaine-planifier.html) : la semaine est dite par le sous-titre, sans
       // navigation qui la répète ni barre « Ajouter une tâche » ; Terminer rejoint la ligne du titre (agenda.css).
@@ -796,7 +809,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
             onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
             onPoser={(item, iso) => placement.poser(item, iso, null)}
             onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
-            onTerminer={terminer}
+            onTerminer={terminer} onSemaine={changerSemaine}
           />
         ) : (
           // relecture adverse F4 n° 7 — rien de lu (hors ligne sans cache, erreur) : le mode garde sa sortie, au même endroit
@@ -812,7 +825,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
 
   return (
     <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}
-      actionsEcran={[{ libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
+      actionsEcran={[{ libelle: 'Planifier ma semaine', onSelect: planifierSemaine },
+        { libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}
       contexteSaisie={vue === 'jour' ? { jour_prevu: jour } : null}>
       <div className="ag-vues">
