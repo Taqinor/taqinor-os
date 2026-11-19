@@ -29,6 +29,77 @@ function messageRefus(err) {
 
 const pluriel = (n) => `${formatNumber(n)} batterie${n > 1 ? 's' : ''}`
 
+const CONFIRMER_RELECTURE = 'Les modifications non enregistrées des lignes seront perdues.'
+
+/**
+ * Fondateur 19/11/2026 — la case « démarrer avec une seule batterie » : l'entrée
+ * `etude_params.options.phrase_une_batterie` (PATCH fusionnant `etude-params`, objet
+ * `options` complet). Le PRIX et les PANNEAUX viennent du serveur
+ * (`etude_ci.depart_une_batterie`, contrat `devis_depart_une_batterie.json`) ; s'il ne
+ * peut pas les calculer, son refus (`depart_une_batterie_refus`) est dit ici, jamais au
+ * client. Aucun chiffre calculé à l'écran.
+ */
+function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer, recomposer }) {
+  const { editDevis, recharger } = ecran || {}
+  const [refus, setRefus] = useState(null)
+  const options = editDevis?.etude_params?.options || {}
+  const cochee = options.phrase_une_batterie === true
+  const etudeCi = editDevis?.etude_params?.etude_ci || {}
+  const depart = etudeCi.depart_une_batterie || null
+  const refusServeur = etudeCi.depart_une_batterie_refus?.message || null
+  // Lignes retouchées : le vendeur remet l'option au calcul d'un clic (le sélecteur
+  // ignore le nombre déjà choisi).
+  const aRecomposer = etudeCi.depart_une_batterie_refus?.code === 'lignes_modifiees' && recomposer
+
+  async function basculer(coche) {
+    setRefus(null)
+    if (!(await confirmer('Enregistrer ce choix tout de suite ?'))) return
+    const suivantes = { ...options }
+    if (coche) suivantes.phrase_une_batterie = true
+    else delete suivantes.phrase_une_batterie
+    setOccupe(true)
+    try {
+      await ventesApi.patchEtudeParams(editDevis.id, { options: suivantes })
+      recharger?.()
+    } catch (err) {
+      setRefus(messageRefus(err))
+    } finally {
+      setOccupe(false)
+    }
+  }
+
+  return (
+    <div className="grid gap-1" data-testid="gen-phrase-une-batterie-bloc">
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" data-testid="gen-phrase-une-batterie" checked={cochee}
+               disabled={occupe || raison != null}
+               onChange={(e) => basculer(e.target.checked)} />
+        Indiquer au client le prix pour démarrer avec une seule batterie
+      </label>
+      {cochee && depart && (
+        <p className="text-xs text-muted-foreground" data-testid="gen-phrase-une-batterie-apercu">
+          Phrase imprimée : 1 batterie, {formatNumber(depart.nb_panneaux)} panneaux
+          ({formatNumber(depart.kwc, { decimals: 2 })} kWc) — {formatNumber(depart.total_ttc)} MAD TTC
+          ({formatNumber(depart.total_ht)} MAD HT)
+        </p>
+      )}
+      {cochee && !depart && (
+        <p className="text-xs text-destructive" role="alert" data-testid="gen-phrase-une-batterie-non-imprimee">
+          {refusServeur || 'Phrase non imprimée : le prix à une batterie n’est pas encore calculé (il se calcule avec l’étude du devis).'}
+        </p>
+      )}
+      {cochee && !depart && aRecomposer && (
+        <button type="button" className="text-xs underline text-left w-fit"
+                data-testid="gen-phrase-une-batterie-recomposer"
+                disabled={occupe || raison != null} onClick={recomposer}>
+          Recomposer l’option avec batterie
+        </button>
+      )}
+      {refus && <p className="text-xs text-destructive" role="alert" data-testid="gen-phrase-une-batterie-refus">{refus}</p>}
+    </div>
+  )
+}
+
 export default function ControleBatteriesDepart({ lines, produits, ecran }) {
   const { editDevis, dirty, recharger, optionAvec } = ecran || {}
   const { confirm } = useConfirmDialog()
@@ -52,10 +123,18 @@ export default function ControleBatteriesDepart({ lines, produits, ecran }) {
   let raison = null
   if (!editDevis?.id) raison = 'Enregistrez le devis pour choisir le nombre de batteries'
   else if (!peutEditerDevis(editDevis)) raison = 'Devis envoyé : utilisez Réviser'
+  // Brouillon local modifié : la relecture qui suit l'écriture serveur le perdrait.
+  const confirmerRelecture = async (title) => !dirty || confirm({
+    title, description: CONFIRMER_RELECTURE, confirmLabel: 'Enregistrer',
+  })
+  const phraseCochee = editDevis?.etude_params?.options?.phrase_une_batterie === true
 
-  async function choisir(valeur) {
+  const choisir = (valeur) => {
     const nb = Number(valeur)
-    if (!nb || nb === courant) return
+    return !nb || nb === courant ? undefined : recomposer(nb)
+  }
+
+  async function recomposer(nb) {
     setRefus(null)
     if (dirty) {
       const ok = await confirm({
@@ -117,6 +196,11 @@ export default function ControleBatteriesDepart({ lines, produits, ecran }) {
       {refus && <p className="text-xs text-destructive" role="alert" data-testid="gen-batteries-depart-refus">{refus}</p>}
       {phraseExt && (
         <p className="text-xs text-muted-foreground" data-testid="gen-onduleur-extension">{phraseExt}</p>
+      )}
+      {((courant != null && courant >= 2) || phraseCochee) && (
+        <CasePhraseUneBatterie ecran={ecran} raison={raison} occupe={occupe} setOccupe={setOccupe}
+                               confirmer={confirmerRelecture}
+                               recomposer={courant != null ? () => recomposer(courant) : null} />
       )}
     </div>
   )

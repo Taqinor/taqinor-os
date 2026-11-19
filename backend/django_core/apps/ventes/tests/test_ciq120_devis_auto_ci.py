@@ -1746,6 +1746,101 @@ class RecomposerBatteriesTests(_Base):
         r = self._post(devis.pk, 1)
         self.assertEqual((r.status_code, r.data.get('field')), (409, 'scenario'), r.data)
 
+    # ── Fondateur 19/11/2026 — « démarrer avec une seule batterie » ─────────
+    # Contrat ``devis_depart_une_batterie.json`` ; le bloc est calculé par
+    # ``domain/depart_une_batterie_ci.py`` au rafraîchissement de l'étude.
+
+    def _cocher(self, devis, coche=True):
+        options = dict((Devis.objects.get(pk=devis.pk).etude_params or {}).get('options') or {})
+        if coche:
+            options['phrase_une_batterie'] = True
+        else:
+            options.pop('phrase_une_batterie', None)
+        api = APIClient()
+        api.force_authenticate(self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            return api.patch('/api/django/ventes/devis/%d/etude-params/' % devis.pk,
+                             {'options': options}, format='json')
+
+    def test_phrase_une_batterie_egale_la_recomposition_a_une_batterie(self):
+        """Invariant d'exactitude : le Total TTC (et HT) du bloc est, au
+        centime, celui de l'option « avec » APRÈS « Batteries au départ » = 1,
+        arrondi commercial compris ; ses panneaux sont ceux de CES lignes."""
+        from apps.ventes.utils.options import AVEC_BATTERIE, option_totaux
+        devis, reco = self._devis()
+        lignes_avant, cles_avant = self._option(devis, None), set(devis.etude_params['etude_ci'])
+        panneaux_banque = self._panneaux_avec(devis)
+        r = self._cocher(devis)
+        self.assertEqual(r.status_code, 200, r.data)
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertEqual(self._option(relu, None), lignes_avant)        # simulation annulée
+        self.assertEqual(relu.statut, Devis.Statut.BROUILLON)          # règle #4
+        etude = relu.etude_params['etude_ci']
+        self.assertNotIn('depart_une_batterie_refus', etude, etude.get('depart_une_batterie_refus'))
+        bloc = etude['depart_une_batterie']
+        self.assertEqual((bloc['nb_batteries'], bloc['batteries_ensuite']), (1, reco['quantite'] - 1))
+        self.assertNotIn('prix_achat', str(bloc))
+        self.assertEqual(self._post(devis.pk, 1).status_code, 200)     # le vrai geste du vendeur
+        apres = Devis.objects.get(pk=devis.pk)
+        totaux = option_totaux(apres, AVEC_BATTERIE)
+        self.assertEqual(Decimal(str(bloc['total_ttc'])), totaux['ttc'])
+        self.assertEqual(Decimal(str(bloc['total_ht'])), totaux['ht'])
+        self.assertEqual(totaux['ttc'] % 100, 0)                       # arrondi commercial
+        self.assertEqual(bloc['nb_panneaux'], self._panneaux_avec(apres))
+        self.assertLess(bloc['nb_panneaux'], panneaux_banque)           # pas ceux de la banque
+        # Recomposé à 1 batterie, case toujours cochée : refus nommé, aucun bloc.
+        etude = apres.etude_params['etude_ci']
+        self.assertNotIn('depart_une_batterie', etude)
+        self.assertEqual(etude['depart_une_batterie_refus']['code'], 'une_batterie')
+        # Décochée : plus aucune clé ajoutée (rendu d'hier).
+        self._post(devis.pk, reco['quantite'])
+        self.assertEqual(self._cocher(devis, coche=False).status_code, 200)
+        self.assertEqual(set(Devis.objects.get(pk=devis.pk).etude_params['etude_ci']), cles_avant)
+
+    def test_phrase_une_batterie_lignes_retouchees_ou_devis_envoye(self):
+        from apps.ventes.domain.etude_ci import rafraichir_etude_ci_devis
+        from apps.ventes.models import LigneDevis
+        devis, reco = self._devis()
+        self.assertEqual(self._cocher(devis).status_code, 200)
+        bloc = Devis.objects.get(pk=devis.pk).etude_params['etude_ci']['depart_une_batterie']
+        # Envoyé : le bloc du brouillon est REPRIS tel quel ; la case ne bascule plus (409).
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            rafraichir_etude_ci_devis(Devis.objects.get(pk=devis.pk), force=True)
+        self.assertEqual(Devis.objects.get(pk=devis.pk).etude_params['etude_ci']['depart_une_batterie'], bloc)
+        r = self._cocher(devis, coche=False)
+        self.assertEqual((r.status_code, r.data.get('field')), (409, 'options.phrase_une_batterie'), r.data)
+        self.assertIn('Réviser', r.data['detail'])
+        # Brouillon dont une ligne « avec » est retouchée à la main : jamais un prix inventé.
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.BROUILLON)
+        batterie = LigneDevis.objects.filter(devis=devis, produit_id=reco['produit']).first()
+        LigneDevis.objects.filter(pk=batterie.pk).update(prix_unitaire=batterie.prix_unitaire + 1000)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            rafraichir_etude_ci_devis(Devis.objects.get(pk=devis.pk))
+        etude = Devis.objects.get(pk=devis.pk).etude_params['etude_ci']
+        self.assertNotIn('depart_une_batterie', etude)
+        self.assertEqual(etude['depart_une_batterie_refus']['code'], 'lignes_modifiees')
+        self.assertIn('Recomposer l’option avec batterie', etude['depart_une_batterie_refus']['message'])
+
+    def test_phrase_une_batterie_imprimee_page_2_avec_ses_ancres(self):
+        """Le PDF LIT le bloc : la phrase est sous les totaux « Option 2 »,
+        chiffres du bloc, ancres ``data-figure`` de l'option « avec »."""
+        from apps.ventes.quote_engine.figures import extract_figures
+        from apps.ventes.tests.test_figures_parite import rendre_html
+        devis, reco = self._devis()
+        _marche, sans_case = rendre_html(devis, {'pdf_mode': 'full'})
+        self.assertNotIn('data-depart-une-batterie', sans_case)
+        self.assertEqual(self._cocher(devis).status_code, 200)
+        relu = Devis.objects.get(pk=devis.pk)
+        bloc = relu.etude_params['etude_ci']['depart_une_batterie']
+        _marche, html = rendre_html(relu, {'pdf_mode': 'full'})
+        self.assertEqual(html.count('data-depart-une-batterie'), 1)
+        self.assertIn('Pour démarrer avec une seule batterie : %d<span' % bloc['nb_panneaux'], html)
+        figures = extract_figures(html)
+        self.assertEqual(figures['depart_une_batterie_panneaux@avec'][0].valeur, bloc['nb_panneaux'])
+        prix = figures['depart_une_batterie_prix@avec'][0].valeur
+        self.assertIn(prix, (Decimal(str(bloc['total_ttc'])), Decimal(str(bloc['total_ht']))))
+
 
 class BrouillonsMultiplesCorc7Tests(_Base):
     """CORC7 (27/10/2026) — un 2ᵉ devis automatique C&I sur le même lead

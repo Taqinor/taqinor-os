@@ -224,7 +224,13 @@ export function etatCorpsDepuisProfil(profil, ctx = {}) {
       besoin_cellule_mt: sContraintes.besoin_cellule_mt ?? null,
     },
     tva_recuperable: ctx.tvaRecuperable ?? null,
-    options: { batterie_souhaitee: sOptions.batterie_souhaitee ?? null, om: sOptions.om ?? null },
+    options: {
+      batterie_souhaitee: sOptions.batterie_souhaitee ?? null, om: sOptions.om ?? null,
+      // Fondateur 19/11/2026 — la case « démarrer avec une seule batterie »
+      // (posée par `ControleBatteriesDepart`) repart telle quelle ; absente ⇒ absente.
+      ...(typeof sOptions.phrase_une_batterie === 'boolean'
+        ? { phrase_une_batterie: sOptions.phrase_une_batterie } : {}),
+    },
     taille_explicite_kwc: p.tailleExplicite,
   }
 }

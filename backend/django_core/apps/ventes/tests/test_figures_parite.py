@@ -651,7 +651,28 @@ def _corpus():
                        'etude_ci': copy.deepcopy(ETUDE_CI_MT['etude_ci'])})))),
         'commercial_full': c_render.build_html(
             c_renderer._augment(c_sample.build())),
+        # Fondateur 19/11/2026 — « démarrer avec une seule batterie » sous les
+        # totaux de l'option « avec » (bloc du contrat, deux options).
+        'commercial_depart_une_batterie': c_render.build_html(
+            c_renderer._augment(_avec_depart_une_batterie(c_sample.build()))),
     }
+
+
+def _avec_depart_une_batterie(data):
+    """Un C&I à deux options (panier « avec » = les lignes du décor) dont
+    l'étude sert ``depart_une_batterie`` — le bloc du contrat
+    ``devis_depart_une_batterie.json`` (aucun chiffre inventé ici)."""
+    chemin = (Path(__file__).resolve().parent.parent / 'contract_samples'
+              / 'devis_depart_une_batterie.json')
+    bloc = json.loads(chemin.read_text(encoding='utf-8'))['etude_ci_depart_une_batterie']
+    data['option_servie'] = 'sans'
+    data['option_batterie'] = {
+        'lignes': [dict(it) for it in data['all_items']],
+        'totaux': dict(data.get('totaux_all') or {}), 'valeur_chiffree': None,
+        'motif': 'valeur non chiffrée'}
+    etude = data.setdefault('etude', {})
+    etude['etude_ci'] = dict(etude.get('etude_ci') or {}, depart_une_batterie=bloc)
+    return data
 
 
 class FiguresVocabulaireTests(SimpleTestCase):

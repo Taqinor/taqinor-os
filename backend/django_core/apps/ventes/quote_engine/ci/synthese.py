@@ -638,13 +638,19 @@ def _option_batterie(data):
             pct = _pct(bilan.get(cle))
             if pct is not None:
                 valeur.setdefault(f"{cle}_pct", pct)
-    from .mentions import extension_option_avec
-    return {"totaux": bloc.get("totaux"),
-            "valeur_chiffree": valeur,
-            "motif": None if valeur else bloc.get("motif"),
-            # D-HYB-5 (17/11/2026) — l'onduleur gardé pour l'extension : null
-            # quand rien n'est à dire (la page web la lit, le PDF l'imprime).
-            "extension": extension_option_avec(data)}
+    from .mentions import depart_une_batterie_option_avec, extension_option_avec
+    sortie = {"totaux": bloc.get("totaux"),
+              "valeur_chiffree": valeur,
+              "motif": None if valeur else bloc.get("motif"),
+              # D-HYB-5 (17/11/2026) — l'onduleur gardé pour l'extension : null
+              # quand rien n'est à dire (la page web la lit, le PDF l'imprime).
+              "extension": extension_option_avec(data)}
+    # Fondateur 19/11/2026 — « démarrer avec une seule batterie » : clé
+    # ADDITIVE, absente sans bloc servi (charge utile d'hier inchangée).
+    depart = depart_une_batterie_option_avec(data)
+    if depart is not None:
+        sortie["depart_une_batterie"] = depart
+    return sortie
 
 
 #: CIQ331 — jalon CIQ212 (``data['jalons_paiement']``) → (jalon, libellé)

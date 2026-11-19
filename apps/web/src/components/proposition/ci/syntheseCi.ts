@@ -166,6 +166,11 @@ export interface SyntheseCiOptionBatterie {
    * retenu pour l'extension, un plus petit suffirait au départ. `null` = absente/vide/malformée. Jamais recomposée ici.
    */
   extension: TextesCi | null;
+  /**
+   * Fondateur 19/11/2026 — « Pour démarrer avec une seule batterie : … » : phrase SERVIE trilingue
+   * (`option_batterie.depart_une_batterie.textes`, chiffres du calculateur). `null` = absente/malformée.
+   */
+  departUneBatterie: TextesCi | null;
 }
 
 /**
@@ -458,6 +463,9 @@ export function syntheseCi(
             : null,
           nonRentable: lireNonRentableCi(brut.option_batterie.valeur_chiffree),
           extension: estRecord(brut.option_batterie.extension) ? lireTextesCi(brut.option_batterie.extension.textes) : null,
+          departUneBatterie: estRecord(brut.option_batterie.depart_une_batterie)
+            ? lireTextesCi(brut.option_batterie.depart_une_batterie.textes)
+            : null,
         }
       : null,
     services: estRecord(brut.services)
