@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import {
   MemoryRouter, useLocation, useNavigationType, useSearchParams,
 } from 'react-router-dom'
+import { useLayoutEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
@@ -131,6 +132,33 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus()
     rerender(page(false))
     expect(ouvreur).toHaveFocus()
+  })
+
+  it('R3-066 — iPhone, ouverte depuis le menu ⋯ (Radix) : le menu reprend le focus au champ `autoFocus` dès le montage, puis le rend à son bouton ; le champ le récupère, jamais la poignée', () => {
+    function MenuQuiReprend() {
+      // ce que fait le FocusScope du menu Radix encore ouvert : il ramène le focus chez lui, au montage même
+      useLayoutEffect(() => { document.getElementById('item-renommer')?.focus() }, [])
+      return null
+    }
+    const page = (ouverte, menu) => (
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        {menu ? <div role="menu"><button type="button" id="item-renommer">Renommer</button></div> : null}
+        {ouverte ? (
+          <FeuilleACrans ouverte titre="Renommer" onFermer={() => {}}>
+            <input aria-label="Nom" autoFocus defaultValue="Site web" />
+            <MenuQuiReprend />
+          </FeuilleACrans>
+        ) : null}
+      </div>
+    )
+    const { rerender } = render(page(false, true))
+    const bouton = screen.getByRole('button', { name: "Plus d'actions" })
+    rerender(page(true, true))
+    expect(screen.getByRole('button', { name: 'Renommer' })).toHaveFocus() // le menu le tient encore
+    rerender(page(true, false)) // le menu se referme…
+    act(() => { bouton.focus() }) // … et rend le focus à son bouton
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus()
   })
 
   it('peut s\'ouvrir directement à 85 %', () => {

@@ -66,14 +66,30 @@ const HORS_PIEGE = '[role="dialog"], [role="alertdialog"], [role="menu"], [role=
 /** R2-049 — le dernier geste était-il au clavier ? (lu à l'ouverture d'une feuille) Au doigt ou à la souris, le focus
  *  rendu à la fermeture ne dessine pas d'anneau épais sur le bouton touché (« ⋯ » après Alléger). */
 let derniereModalite = 'pointeur'
-/** R3-066 — l'élément qui avait le focus AVANT le dernier déplacement : un champ `autoFocus` de la feuille prend le focus
- *  avant que la feuille ne lise son ouvreur (React le pose au montage) ; l'ouvreur est alors celui d'avant. */
-let focusCourant = null
-let focusPrecedent = null
+/** R3-066 — les derniers éléments qui ont reçu le focus (le plus récent en dernier). Un champ `autoFocus` de la feuille
+ *  le prend AU MONTAGE, avant que la feuille ne lise son ouvreur — et, ouverte depuis un menu ⋯ (Radix), le menu le lui
+ *  reprend aussitôt : la feuille retrouve ici le champ qui l'a demandé, et l'élément focalisé juste avant lui. */
+const focusRecents = []
 if (typeof document !== 'undefined') {
   document.addEventListener('keydown', () => { derniereModalite = 'clavier' }, true)
   document.addEventListener('pointerdown', () => { derniereModalite = 'pointeur' }, true)
-  document.addEventListener('focusin', (e) => { focusPrecedent = focusCourant; focusCourant = e.target }, true)
+  document.addEventListener('focusin', (e) => {
+    focusRecents.push(e.target)
+    if (focusRecents.length > 6) focusRecents.shift()
+  }, true)
+}
+
+/** Le champ de la feuille qui a demandé le focus à son montage (`autoFocus`), et l'élément focalisé avant lui. */
+function champAutoFocus(racine) {
+  if (!racine) return { champ: null, avant: null }
+  for (let i = focusRecents.length - 1; i >= 0; i -= 1) {
+    const el = focusRecents[i]
+    if (el !== racine && el?.isConnected && racine.contains(el)) {
+      const avant = focusRecents.slice(0, i).reverse().find((x) => x?.isConnected && !racine.contains(x)) ?? null
+      return { champ: el, avant }
+    }
+  }
+  return { champ: null, avant: null }
 }
 
 /** R2-050 — seuil du panneau à droite (bureau large) : en dessous, la variante `panneau` reste un dialogue/feuille. */
@@ -317,15 +333,20 @@ export default function FeuilleACrans({
   const seulPanneau = useRef(panneau)
   useEffect(() => { seulPanneau.current = panneau })
   const laisserFocus = useRef(false) // panneau ouvert depuis une ligne : le focus y reste
+  const focusDedans = useRef(null) // R3-066 : le dernier élément focalisé DANS la feuille
 
   useEffect(() => {
     if (!ouverte) return undefined
     const racine = feuille.current
     // R3-066 — un champ `autoFocus` de la feuille (Renommer, Nouveau projet) a déjà le curseur : on le lui laisse (la
     // poignée le lui reprenait), et l'ouvreur est l'élément focalisé juste avant lui
-    const ici = document.activeElement
-    const champDejaPris = Boolean(racine && ici && ici !== racine && racine.contains(ici))
-    origine.current = champDejaPris ? (focusPrecedent && !racine.contains(focusPrecedent) ? focusPrecedent : null) : ici
+    const { champ, avant } = champAutoFocus(racine)
+    const champDejaPris = Boolean(champ)
+    origine.current = champDejaPris ? avant : document.activeElement
+    focusDedans.current = champ
+    // le menu qui a ouvert la feuille a pu reprendre le focus au champ : il lui revient (s'il le rend encore à son
+    // bouton ensuite, le rattrapage ci-dessous le ramène au même champ)
+    if (champ && document.activeElement !== champ && !document.activeElement?.closest?.(HORS_PIEGE)) champ.focus({ focusVisible: false })
     // R2-050 — le panneau ne vole pas le focus à la LIGNE qui l'a ouvert (`j`/`k` puis Entrée continuent dans la
     // liste) ; ouvert d'ailleurs (un menu, le bilan), il le prend comme une feuille. Fermé, il ne rend le focus que
     // s'il l'avait (ou si plus rien ne l'a) : on ne ramène jamais la personne en arrière dans la liste.
@@ -351,13 +372,12 @@ export default function FeuilleACrans({
     let geste = false
     // R3-066 — le dernier élément focalisé DANS la feuille (le champ `autoFocus` de « Renommer ») : c'est lui qui reprend
     // le focus quand le menu qui a ouvert la feuille le rend à son bouton — jamais la poignée à sa place
-    const ici = document.activeElement
-    let dedans = ici && feuille.current?.contains(ici) && ici !== feuille.current ? ici : null
     const surGeste = () => { geste = true }
     const surFocus = (e) => {
       const cible = e.target
       const racine = feuille.current // lue au moment : la feuille peut être rendue ailleurs (saisie en place → dialogue)
-      if (cible instanceof Element && racine?.contains(cible) && cible !== racine) dedans = cible
+      if (cible instanceof Element && racine?.contains(cible) && cible !== racine) focusDedans.current = cible
+      const dedans = focusDedans.current
       if (laisserFocus.current || (enPanneau.current && geste)) return
       if (!racine?.isConnected || pileOuvertes[pileOuvertes.length - 1] !== moiRef.current) return // fermée : on rend
       if (!(cible instanceof Element) || racine.contains(cible) || cible.closest?.(HORS_PIEGE)) return
