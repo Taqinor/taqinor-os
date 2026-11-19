@@ -55,6 +55,11 @@ MOTEUR_POMPAGE = 'moteur_pompage'
 #: calcule rien : la seule clé dont il est propriétaire est l'ESTAMPILLE de
 #: provenance, c'est-à-dire la trace de CE QU'IL A REPRIS du lead.
 PIPELINE = 'pipeline'
+#: COP2-V3 — la COMPOSITION IMPOSÉE du devis automatique
+#: (``domain/composition_imposee``) : seul écrivain (et seul effaceur) du
+#: marqueur ``composition_imposee``. Un corps de requête ne le forge ni ne
+#: l'efface jamais (clé DÉRIVÉE d'un propriétaire qui n'est pas l'écran).
+COMPOSITION_IMPOSEE = 'composition_imposee'
 #: Personne : clé HISTORIQUE que plus aucun chemin ne pose (voir les notes).
 ORPHELINE = 'orpheline'
 
@@ -185,6 +190,15 @@ SCHEMA = {
     'ville_calcul': _cle((dict,), PIPELINE, DERIVEE,
                          'QJR591 — ville de calcul figée au recalcul des '
                          'études ; lue par `quote_engine/builder.py`.'),
+    # COP2-V3 — le MARQUEUR de composition imposée : ``{'demande': {…},
+    # 'produits': {…}, 'par': <id utilisateur>, 'le': <iso>}``. Lu par les
+    # chemins qui déferaient l'imposition (reprise du lead, permutation
+    # d'onduleur, ajout de batterie, cartes Éco/Max) ; effacé par les gestes
+    # commerciaux explicites (appliquer / régénérer une taille). ``par`` est
+    # interne : jamais servi au client.
+    'composition_imposee': _cle((dict,), COMPOSITION_IMPOSEE, DERIVEE,
+                                'COP2-V3 — ce qui a été imposé, et par qui ; '
+                                'lu par `domain/composition_imposee`.'),
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),

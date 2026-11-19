@@ -1,5 +1,6 @@
 {
   "endpoint": "GET /api/django/ventes/devis/<int:pk>/lignes-assistant/",
+  "forme_serveur": "complete",
   "pourquoi": "COP2-V (PACT10, 18/11/2026) — « aucune action ne liste les lignes d'un devis » : modifier ou retirer une ligne demande son identifiant, que l'assistant ne pouvait pas lire. Lecture des lignes d'UN devis dans la portée de l'utilisateur (société + visibilité de son rôle, celle de la liste des devis). Chaque ligne porte `ligne_id` (pour `ventes.devis.ligne_modifier` / `ligne_supprimer`) et `produit_id`. Prix TTC seulement ; jamais de prix d'achat ni de marge.",
   "exemple": {
     "devis_id": 451,
