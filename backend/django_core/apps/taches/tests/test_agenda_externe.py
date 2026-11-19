@@ -362,6 +362,60 @@ class MessagesDAjoutTests(SimpleTestCase):
                                  ['Adresse injoignable : vérifie le lien.'])
 
 
+class LiensReelsTests(SimpleTestCase):
+    """Critique serveur n° 6 — le motif publié et validé accepte ce qu'un vrai lien de calendrier porte (schéma en
+    majuscules, `user@hôte`, requête `?x=1` ou `#…` juste après l'hôte, `_` dans l'hôte, IDN écrit en punycode, espace
+    collé autour) ; les refus de sécurité restent : autre schéma que https / webcal, hôte privé ou interne
+    (`verifier_adresse`, non simulé ici). Un hôte hors ASCII ou une IPv6 littérale reste refusé au motif (aucun lien
+    Google, iCloud ou Outlook n'en porte ; `urlsplit` lèverait sur certains, et le schéma publié doit dire vrai)."""
+
+    LIENS = (
+        'WEBCAL://p01-caldav.icloud.com/published/2/MTY0NTc4',
+        'HTTPS://calendar.google.com/calendar/ical/x%40group.calendar.google.com/private-ab/basic.ics',
+        'https://reda@outlook.office365.com/owa/calendar/a@taqinor.ma/b/calendar.ics',
+        'https://outlook.live.com/owa/calendar/abc/reachcalendar.ics?x=1',
+        'https://cal_serveur.exemple.ma/a.ics',
+        'https://agenda.exemple.ma:8443/a.ics#semaine',
+        'https://calendrier.xn--socit-esab.ma/a.ics',
+        'https://agenda.exemple.ma?x=1',
+        ' https://calendar.google.com/a.ics\n',
+    )
+
+    def erreurs(self, url):
+        from apps.taches.views.agenda_externe import AgendaCorps
+        corps = AgendaCorps(data={'url': url})
+        return [] if corps.is_valid() else [str(m) for m in corps.errors['url']]
+
+    def test_liens_reels_acceptes_par_le_corps_et_la_garde(self):
+        from apps.taches.views import agenda_externe as vue
+        for url in self.LIENS:
+            with self.subTest(url=url):
+                self.assertEqual(self.erreurs(url), [])
+                with mock.patch.object(lecteur, 'verifier_adresse', return_value=None):
+                    acceptee = vue._url_acceptee(object(), url)
+                self.assertTrue(acceptee.startswith('https://'), acceptee)
+
+    def test_les_refus_de_securite_restent(self):
+        for url, message in (('http://agenda.example/a.ics', "L'adresse doit commencer par https."),
+                             ('HTTP://agenda.example/a.ics', "L'adresse doit commencer par https."),
+                             ('ftp://agenda.example/a.ics', "L'adresse doit commencer par https."),
+                             ('javascript:alert(1)', "Ce n'est pas une adresse : colle le lien de ton agenda."),
+                             ('https://', "Ce n'est pas une adresse : colle le lien de ton agenda."),
+                             ('https://a b/c.ics', "Ce n'est pas une adresse : colle le lien de ton agenda."),
+                             ('https://[::1]/a.ics', "Ce n'est pas une adresse : colle le lien de ton agenda.")):
+            with self.subTest(url=url):
+                self.assertEqual(self.erreurs(url), [message])
+        from apps.taches.views import agenda_externe as vue
+        from core.conflit_etat import ConflitEtat
+        for url in ('https://reda@127.0.0.1/a.ics', 'https://reda:secret@localhost/a.ics', 'WEBCAL://10.0.0.5/a.ics'):
+            with self.subTest(url=url):
+                self.assertEqual(self.erreurs(url), [])
+                with self.assertRaises(ConflitEtat) as refus:
+                    vue._url_acceptee(object(), url)
+                self.assertEqual([str(m) for m in refus.exception.detail['url']],
+                                 ['Adresse injoignable : vérifie le lien.'])
+
+
 class RoutesAgendasExternesTests(TestCase):
     """Les 5 routes `agendas-externes/` : ≤ 3 par compte, URL jamais rendue, état lisible."""
 

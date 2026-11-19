@@ -67,10 +67,13 @@ class Echec(Exception):
 # --- Adresse ---------------------------------------------------------------------------------------
 
 def normaliser_url(url):
-    """`webcal://…` → `https://…` (même hôte, même chemin : l'iPhone donne ses liens ainsi)."""
+    """`webcal://…` → `https://…` (même hôte, même chemin : l'iPhone donne ses liens ainsi) ; `HTTPS://` → `https://`
+    (un même agenda collé en majuscules n'est pas un second agenda)."""
     url = (url or '').strip()
     if url.lower().startswith(PREFIXE_WEBCAL):
         return f'{SCHEMA}://{url[len(PREFIXE_WEBCAL):]}'
+    if url.lower().startswith(f'{SCHEMA}://'):
+        return f'{SCHEMA}://{url[len(SCHEMA) + 3:]}'
     return url
 
 
