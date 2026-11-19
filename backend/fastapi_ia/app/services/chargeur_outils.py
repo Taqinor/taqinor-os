@@ -43,9 +43,12 @@ LIBELLES = {
                "factures, impayés, paiements"),
     "calepinage": ("calepinages à traiter, état d'un calepinage, nombre de panneaux qui "
                    "tiennent, simulation, variantes, publication au devis"),
-    "visites": "agenda et charge des visites techniques, compte rendu, validation",
-    "installations": "chantiers (état, blocages, liste), planning de pose, interventions, approvisionnement",
-    "sav": "parc installé d'un client, tickets, garanties",
+    "visites": ("agenda et charge des visites techniques, compte rendu ; replanifier, annuler, "
+                "valider une visite"),
+    "installations": ("chantiers (état, blocages, liste), créneaux et planification de la pose, "
+                      "interventions, approvisionnement"),
+    "sav": ("parc installé d'un client, garanties, tickets : ouvrir, planifier, démarrer, "
+            "résoudre, clôturer, noter"),
     "stock": "niveaux de stock, mouvements, commandes fournisseur",
     "reporting": ("chiffre d'affaires d'un mois ou d'une période (signé, facturé, encaissé) — "
                   "toujours par ce domaine, jamais par une requête de données ni une métrique "

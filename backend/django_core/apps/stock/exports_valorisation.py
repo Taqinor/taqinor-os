@@ -18,6 +18,9 @@ ENTETES_SANS_ACHAT = ('Produit', 'SKU', 'Emplacement', 'Quantité')
 def export_valorisation_selon_droit(request):
     """Réponse XLSX de la valorisation de la société de ``request.user`` :
     complète pour un porteur de ``prix_achat_voir``, quantités seules sinon."""
+    from django.http import JsonResponse
+
+    from apps.records.storage import should_async_export
     from apps.records.xlsx import build_xlsx_response
 
     from .services import export_valorisation_xlsx, stock_valuation_by_location
@@ -26,6 +29,9 @@ def export_valorisation_selon_droit(request):
     if not cache_montants_achat(request):
         return export_valorisation_xlsx(company)
     lignes = stock_valuation_by_location(company)['lignes']
+    if should_async_export(len(lignes)):  # APRF28 — plafond des exports, à la source
+        return JsonResponse({'detail': 'Export trop volumineux pour être servi en une '
+                                       'fois (plafond des exports).'}, status=413)
     rows = [[ligne['designation'], ligne['sku'], ligne['emplacement_nom'], ligne['quantite']]
             for ligne in lignes]
     return build_xlsx_response('valorisation.xlsx', list(ENTETES_SANS_ACHAT), rows,
