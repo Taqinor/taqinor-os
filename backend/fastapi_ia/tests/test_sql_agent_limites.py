@@ -857,5 +857,65 @@ class JeuxDesMoteursFnd6Tests(unittest.TestCase):
         reprendre.assert_not_called()
 
 
+class InvariantEteintFnd13Tests(unittest.TestCase):
+    """Vague 2 (FND13) — copilote ÉTEINT pour le compte = identique, sur tous
+    les canaux, même quand le catalogue porte les champs neufs (`noyau`,
+    `lecture`, `natif_seul`) et que le moteur natif est réglé : bloc système,
+    historique et question remis au modèle, liste des outils, descriptions et
+    schémas, jeu de Groq. Aucun outil différé, aucun chargeur, aucun index,
+    aucun indice d'écran. Seule exception nommée de la vague : le retrait de
+    `ged.docqa.retrieve` (FND11, côté Django : lot copilote + roles_gerer).
+    Le test d'origine (`test_sql_agent_endpoint.py::
+    test_copilote_eteint_texte_identique_a_main`) reste tel quel."""
+
+    CHAMPS_NEUFS = {"noyau": False, "lecture": False, "natif_seul": False}
+
+    def _catalogues(self):
+        from tests.test_sql_agent_endpoint import _CAT_LEAD_LIST, _CAT_PROPOSAL_PDF
+        avant = [dict(_CAT_LEAD_LIST, lot="herite"), dict(_CAT_PROPOSAL_PDF)]
+        return avant, [dict(a, **self.CHAMPS_NEUFS) for a in avant]
+
+    def test_messages_et_outils_identiques_moteur_natif_jamais_appele(self):
+        from langchain_core.messages import AIMessage
+        from app.core import config
+        from app.services import moteur_natif
+        from tests.test_sql_agent_endpoint import _ctx, _tour
+        historique = [{"role": "user", "content": "q0"}, {"role": "agent", "content": "r0"}]
+        vus = []
+        for catalogue in self._catalogues():
+            with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+                    mock.patch.object(moteur_natif, "executer", side_effect=AssertionError("natif")):
+                _, _, llm = _tour([AIMessage(content="Noté.")], catalogue=catalogue, ctx=_ctx(),
+                                  fournisseur="claude", historique=historique,
+                                  contexte={"ecran": "/crm/leads/12", "lead_id": 12})
+            vus.append(([[m.content for m in recu] for genre, recu in llm.recus if genre == "messages"],
+                        [n for genre, n in llm.recus if genre == "outils"]))
+        self.assertEqual(vus[0], vus[1])
+        textes = vus[0][0][0]
+        self.assertTrue(textes[-1].startswith("Prépare ma relance"))
+        self.assertFalse(any("OUTILS PAR DOMAINE" in t or "outils_charger" in t for t in textes))
+
+    def test_descriptions_schemas_et_jeu_de_groq_identiques(self):
+        from app.services import action_tools as at, relais_copilote as relais
+        avant, apres = self._catalogues()
+
+        def outils(catalogue):
+            ctx = at.ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+            ctx.catalogue_tour = catalogue
+            return [(t.name, t.description, t.args_schema) for t in at.build_action_tools(ctx)]
+        self.assertEqual(outils(avant), outils(apres))
+        for contexte in (None, {"ecran": "/taches"}, {"ecran": "/crm"}):
+            with self.subTest(contexte=contexte):
+                self.assertEqual([a["key"] for a in relais._jeu_du_fournisseur(avant, "groq", contexte)],
+                                 [a["key"] for a in relais._jeu_du_fournisseur(apres, "groq", contexte)])
+        self.assertEqual(relais.pour_langchain(apres), apres)
+
+    def test_question_eteinte_ignore_l_indice_d_ecran(self):
+        from app.services import relais_copilote as relais
+        contexte = {"ecran": "/visites/3", "lead_id": 12}
+        self.assertEqual(relais.question_du_tour("Q", contexte, copilote=False, domaine="visites"),
+                         relais.question_du_tour("Q", contexte, copilote=False))
+
+
 if __name__ == "__main__":
     unittest.main()
