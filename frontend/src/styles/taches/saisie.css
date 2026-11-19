@@ -388,6 +388,21 @@
   }
   .tch .ligne.tri .geste { font-size: 0.875rem; }
 }
+/* R3-065 — au bureau large, à la souris : les gestes d'À trier n'occupent plus une colonne fixe de 280 px (titres sur 2
+   lignes, « Projet… » tronqué à 1920) ; le titre prend toute la largeur, les gestes apparaissent au survol ou au focus
+   de la ligne (comme ⋯ sur les autres lignes), posés à droite sur le fond de la ligne. Au toucher, rien ne change. */
+@media (min-width: 1024px) and (hover: hover) {
+  .tch .ligne.tri .ligne-corps { display: block; }
+  .tch .ligne.tri .tri-gestes {
+    position: absolute; right: 8px; top: 50%; translate: 0 -50%; width: auto; margin: 0; padding: 0 6px 0 24px;
+    border-radius: 10px; background: var(--tch-survol); box-shadow: -12px 0 12px -6px var(--tch-survol);
+    opacity: 0; pointer-events: none;
+  }
+  .tch .ligne.tri:hover .tri-gestes, .tch .ligne.tri:focus-within .tri-gestes,
+  .tch .ligne.tri .tri-gestes:has([data-state="open"]) { opacity: 1; pointer-events: auto; }
+  .tch .ligne.tri:focus-within:not(:hover) .tri-gestes { background: var(--tch-surface); box-shadow: -12px 0 12px -6px var(--tch-surface); }
+}
+
 .tch .atrier-carte {
   display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-top: 12px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
