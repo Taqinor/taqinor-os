@@ -33,6 +33,9 @@
 .tch .ep-remarque { list-style: none; margin: 4px 0 0; padding: 0; }
 .tch .ep-remarque li { display: grid; grid-template-columns: 8px 1fr; padding: 8px var(--tch-gouttiere); font-size: 0.9375rem; line-height: 1.45; }
 .tch .ep-remarque .action-lien { display: inline-flex; align-items: center; min-height: 44px; margin: -6px 0 -12px; font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); text-align: left; }
+/* R3-088 — les réponses servies d'un constat, sur une ligne sous sa phrase : « Oui » en accent, « Pas maintenant » doux */
+.tch .ep-remarque-reponses { display: flex; flex-wrap: wrap; column-gap: 20px; }
+.tch .ep-remarque-reponses .action-lien + .action-lien { color: var(--tch-texte-doux); font-weight: 500; }
 .tch .ep-modes { margin: 4px var(--tch-gouttiere) 0; }
 .tch .ep-mode { display: grid; grid-template-columns: 32px 1fr; align-items: start; width: 100%; min-height: 56px; padding: 10px 0; text-align: left; box-shadow: inset 0 -1px 0 var(--tch-trait); }
 .tch .ep-mode:last-child { box-shadow: none; }
