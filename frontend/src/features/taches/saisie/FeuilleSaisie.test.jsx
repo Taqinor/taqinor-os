@@ -655,7 +655,8 @@ describe('TCH82 — feuille de saisie', () => {
       await user.type(champ(), 'Stand #')
       await waitFor(() => expect(liste()).not.toBeNull())
       expect(options()).toEqual(['Salon Solaire Expo', 'Chantier Bénali 9 kWc', 'Site web'])
-      expect(champ()).toHaveAttribute('aria-expanded', 'true')
+      expect(champ()).toHaveAttribute('aria-controls', liste().id) // jamais aria-expanded sur un champ texte (axe)
+      expect(champ()).not.toHaveAttribute('aria-expanded')
       await user.type(champ(), 'Sal')
       expect(options()).toEqual(['Salon Solaire Expo'])
       await user.keyboard('{Enter}')
@@ -680,6 +681,16 @@ describe('TCH82 — feuille de saisie', () => {
       await user.type(champ(), 'et #cha')
       await user.click(await screen.findByRole('option', { name: 'Chantier Bénali 9 kWc' }))
       expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc ')
+    })
+
+    it('couture r2 — « #Nom » déjà tapé EN ENTIER : Entrée envoie la phrase (la liste ne mange pas la touche)', async () => {
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Stand #Salon_Solaire_Expo')
+      await waitFor(() => expect(liste()).not.toBeNull())
+      await user.keyboard('{Enter}')
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      expect(champ()).toHaveValue('')
     })
 
     it('la puce « Projet » ouvre le sélecteur ; le projet choisi part avec la ligne et se retire', async () => {

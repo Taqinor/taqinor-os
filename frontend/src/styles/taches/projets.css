@@ -72,7 +72,8 @@
 /* le point se pose dans la ligne du titre (inline) : sur iPhone, le nom passe dessous au lieu d'être repoussé de 22 px */
 .tch .entete-titre .ep-projet-nom > .point { display: inline-block; width: 12px; height: 12px; margin-right: 10px; vertical-align: 0.18em; }
 /* R2-061 — le nom du projet se renomme au toucher (le bouton reprend la typographie du titre) */
-.tch .entete-titre .ep-titre-nom { display: inline; min-height: 0; padding: 0; font: inherit; color: inherit; text-align: left; background: none; border: 0; cursor: text; }
+.tch .entete-titre .ep-titre-nom { position: relative; display: inline; min-height: 0; padding: 0; font: inherit; color: inherit; text-align: left; background: none; border: 0; cursor: text; }
+.tch .entete-titre .ep-titre-nom::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--tch-cible); transform: translateY(-50%); }
 .tch .entete-titre .ep-titre-champ { width: calc(100% - 24px); max-width: 100%; min-height: 0; padding: 2px 8px; font: inherit; color: inherit;
   border: 0; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
 .tch .entete-titre .ep-titre-erreur { display: block; margin-top: 4px; font-family: var(--tch-font-texte); font-size: 0.875rem; line-height: 1.35; font-weight: 600; letter-spacing: 0; }
@@ -132,7 +133,7 @@
 /* sous « Réorganiser » : la poignée passe à DROITE, après ▲▼ (au bord gauche d'un iPhone, le geste « retour » du système la prendrait) */
 .tch .ep-rang.reorg .ep-rang-ligne { order: 1; }
 .tch .ep-rang.reorg .reorg-controles { order: 2; }
-.tch .ep-rang.reorg .ep-poignee-ordre { display: flex; position: relative; left: auto; top: auto; bottom: auto; order: 3; flex: none; width: 36px; }
+.tch .ep-rang.reorg .ep-poignee-ordre { display: flex; position: relative; left: auto; top: auto; bottom: auto; order: 3; flex: none; width: var(--tch-cible); }
 .tch .ep-rang.reorg .ep-poignee-ordre::after { inset: 0; }
 .tch .ep-rang.reorg .reorg-controles .bouton-icone:disabled { opacity: 0.35; }
 @media (hover: hover) {

@@ -429,7 +429,7 @@ export default function CoquilleTaches({
                 <ChevronLeft className="i" aria-hidden="true" />{retour.libelle}
               </button>
             ) : <BoutonMenuErp />}
-            <div className="entete-compact" aria-hidden="true">{titre}</div>
+            <div className="entete-compact" aria-hidden="true" inert>{titre}</div>
             <div className="entete-actions">
               <ClocheErp />
               {retour || surRecherche ? null : (

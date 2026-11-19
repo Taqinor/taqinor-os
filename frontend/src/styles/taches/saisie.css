@@ -294,7 +294,7 @@
 .tch .ligne.tri { padding-bottom: 10px; }
 .tch .tri-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: 0 22px; margin-top: 0; margin-bottom: -10px; }
 .tch .geste {
-  position: relative; display: inline-flex; align-items: center; min-height: 44px;
+  position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px;
   font-size: 0.9375rem; font-weight: 500; color: var(--tch-texte-doux);
 }
 @media (hover: hover) { .tch .geste:hover { color: var(--tch-accent); } }
