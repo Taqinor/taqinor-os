@@ -9,7 +9,7 @@
 // tests sont indépendants de l'ordre et rejouables.
 import { test, expect } from '@playwright/test'
 import {
-  annonce, attendreAujourdhui, boutonGarder, creerProjet, creerTaches, etatJournee, garderParApi, jourServeur, ligne, lireTache, ouvrirActions,
+  API, annonce, attendreAujourdhui, boutonGarder, creerProjet, creerTaches, etatJournee, garderParApi, jourServeur, ligne, lireTache, ouvrirActions,
   progression, reinitialiser, section, titreUnique, toast,
 } from './taches-aides'
 
@@ -18,6 +18,10 @@ import {
  *  ce jour, que « Tout effacer » ne touche pas : on lit l'état du serveur, on ne le suppose pas). */
 async function journeeDeQuatre(page, { gardees = false } = {}) {
   await reinitialiser(page)
+  // R3-029 — un objectif DIT (5) : la progression lit « {faites} sur 5 » ; à la valeur par défaut d'avant tout usage,
+  // elle ne dirait que « {faites} faite(s) » (C-24). Posé par la vraie route de Mon rythme.
+  const objectif = await page.request.post(`${API}/rythme/`, { data: { mode: 'pousser', objectif: 5 } })
+  expect(objectif.ok(), `objectif dit → HTTP ${objectif.status()}`).toBeTruthy()
   const projet = await creerProjet(page, titreUnique('Chantier'))
   const titres = ['Appeler le fournisseur', 'Commander les rails', 'Relire le contrat', 'Envoyer le devis']
     .map((t) => titreUnique(t))

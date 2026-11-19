@@ -195,6 +195,23 @@ describe('TCH79 — Réorganiser et Sélectionner', () => {
       const titres = [...document.querySelectorAll('[data-ligne^="tache:4"] .titre')].map((n) => n.textContent)
       expect(titres).toEqual(['Timbres', 'Appeler Lydec'])
     })
+    // R3-026 — le refus se VOIT, en mots humains (jamais « Avant id : Valeur inconnue. »)
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Impossible de déplacer cette tâche ici.')
+    expect(document.body.textContent).not.toContain('Refusé.')
+  })
+
+  it('R3-026 — Réorganiser : une tâche FAITE n\'est jamais une voisine (ni sautée sur place, ni envoyée)', async () => {
+    const d = deuxTaches()
+    d.journee = [d.journee[0], { ...d.journee[0], id: 44, titre: 'Déjà faite', statut: 'fait' }, d.journee[1]]
+    servir(d)
+    monter()
+    await screen.findByText('Timbres')
+    await ouvrirMenu('Réorganiser')
+    await userEvent.click(screen.getByRole('button', { name: 'Descendre « Timbres »' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/reordonner/', { liste: 'jour', avant_id: 43, apres_id: null }))
+    const titres = [...document.querySelectorAll('[data-ligne^="tache:4"] .titre')].map((n) => n.textContent)
+    expect(titres.indexOf('Appeler Lydec')).toBeGreaterThanOrEqual(0)
+    expect(titres.indexOf('Appeler Lydec')).toBeLessThan(titres.indexOf('Timbres'))
   })
 
   it('Sélectionner : on coche deux tâches, « 2 sélectionnées », Terminer poste lot/', async () => {

@@ -8,7 +8,7 @@ import { duree } from '../lib/textes'
    (« faites » et l'objectif lus dans `aujourdhui.json` ; « essentiel » compté sur la section affichée, R2-019),
    « Reprise » le jour d'un retour.
    Trois modes (textes.md §2.2) : `pousser` « 1 sur 5 · essentiel 0/1 » ; `tenir` « 1 sur 5 · ton
-   rythme : 3 à 5 » ; `libre` « 1 faite ». Au toucher : « 1 faite sur 5 visées · 6 tâches gardées » (R2-035),
+   rythme : 3 à 5 » ; `libre` « 1 faite » (R3-029 : aussi tant que l'objectif est la valeur par défaut). Au toucher : « 1 faite sur 5 visées · 6 tâches gardées » (R2-035),
    la source de l'objectif s'il est par défaut, le temps, le temps libre, puis « Mon rythme › ».
    Maquettes : ecran-aujourdhui-matin.html, ecran-aujourdhui-retour.html, ecran-aujourdhui-15h.html.
    ========================================================================== */
@@ -57,11 +57,15 @@ function comptesAffiches(donnees) {
   }
 }
 
+/** R3-029 (C-24) — un objectif CHIFFRÉ à lire : ni le mode libre, ni la valeur par défaut d'avant tout usage (« 0 sur 5 »
+ *  au premier jour ne dit rien de Reda) ; le chiffre vient au premier objectif calculé ou choisi. */
+const objectifChiffre = (objectif) => objectif.mode !== 'libre' && Boolean(objectif.nb) && objectif.source !== 'defaut'
+
 /** Les deux morceaux du texte : le compte (gras) et son détail (doux). */
 function textesProgression(objectif, progression) {
   const { faites = 0, essentiel_faites: ef = 0, essentiel_prevues: ep = 0, reprise = false } = progression
-  if (reprise) return { compte: 'Reprise', detail: objectif.nb ? ` · objectif ${objectif.nb}` : '', parole: 'Reprise' }
-  if (objectif.mode === 'libre' || !objectif.nb) {
+  if (reprise) return { compte: 'Reprise', detail: objectifChiffre(objectif) ? ` · objectif ${objectif.nb}` : '', parole: 'Reprise' }
+  if (!objectifChiffre(objectif)) {
     const compte = `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
     return { compte, detail: '', parole: compte }
   }
@@ -80,7 +84,7 @@ function textesProgression(objectif, progression) {
 function phraseDuJour(objectif, progression, gardees) {
   const { faites = 0 } = progression
   const fait = `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
-  const vise = objectif.mode !== 'libre' && objectif.nb ? ` sur ${objectif.nb} ${objectif.nb >= 2 ? 'visées' : 'visée'}` : ''
+  const vise = objectifChiffre(objectif) ? ` sur ${objectif.nb} ${objectif.nb >= 2 ? 'visées' : 'visée'}` : ''
   const garde = gardees > 0 ? ` · ${gardees} ${gardees >= 2 ? 'tâches gardées' : 'tâche gardée'}` : ''
   return `${fait}${vise}${garde}`
 }
@@ -120,7 +124,7 @@ export default function Progression({ donnees, onRythme }) {
         aria-label={`${parole}. Détail de la journée`}
         onClick={() => setOuverte((v) => !v)}
       >
-        <AnneauProgression faites={progression.faites} objectif={objectif.mode === 'libre' ? 0 : objectif.nb} />
+        <AnneauProgression faites={progression.faites} objectif={objectifChiffre(objectif) ? objectif.nb : 0} />
         <span>
           <span className="progression-compte chiffres">{compte}</span>
           {detail ? <span className="progression-detail chiffres">{detail}</span> : null}

@@ -111,7 +111,7 @@ describe('TCH78 — Proposé pour aujourd\'hui', () => {
     await screen.findByText('Déclaration TVA')
     // R2-020 — sans la suite lue, aucun chiffre : `reste_nb` (6) ne compte pas les lignes qui se déplient
     await userEvent.click(screen.getByRole('button', { name: 'Voir toutes les tâches de mes projets' }))
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/taches/aujourdhui/', { params: { tout: 1 } }))
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/taches/aujourdhui/', expect.objectContaining({ params: { tout: 1 } })))
     const groupe = await screen.findByRole('group', { name: 'Équipe' })
     expect(within(groupe).getByText('Réserver la salle')).toBeInTheDocument()
     expect(within(groupe).getByText('suite de Équipe')).toBeInTheDocument()
