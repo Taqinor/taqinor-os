@@ -47,7 +47,9 @@ LIBELLES = {
     "installations": "chantiers (état, blocages, liste), planning de pose, interventions, approvisionnement",
     "sav": "parc installé d'un client, tickets, garanties",
     "stock": "niveaux de stock, mouvements, commandes fournisseur",
-    "reporting": "chiffre d'affaires signé, facturé, encaissé ; créances ; diagnostic",
+    "reporting": ("chiffre d'affaires d'un mois ou d'une période (signé, facturé, encaissé) — "
+                  "toujours par ce domaine, jamais par une requête de données ni une métrique "
+                  "sans période ; créances ; diagnostic"),
     "taches": "journée, tâches, projets, rythme",
     "adsengine": "publicité : dépense, annonces, campagnes",
 }

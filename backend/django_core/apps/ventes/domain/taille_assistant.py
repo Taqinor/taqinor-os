@@ -81,9 +81,10 @@ def _appliquer(devis, nb_panneaux, modules, utilisateur, ttc_avant):
     """Le corps de ``offres_tailles_appliquer`` (configuration comprise)."""
     from apps.ventes.offres_tailles import (
         ApplicationImpossible, appliquer_au_devis, enregistrer_config)
-    from .composition_imposee import effacer_marqueur
+    from .composition_imposee import effacer_marqueur, marqueur
     from .modifiabilite import rebaser_echeancier_ou_409
 
+    compose_sur_demande = marqueur(devis) is not None  # lu AVANT de l'effacer
     config = {'nb_panneaux': int(nb_panneaux)}
     if modules:
         config['batterie_nb_modules'] = int(modules)
@@ -95,6 +96,16 @@ def _appliquer(devis, nb_panneaux, modules, utilisateur, ttc_avant):
         if erreur.revision_possible:
             raise TailleRefusee(erreur.detail, field='statut',
                                 code='revision_possible') from erreur
+        if compose_sur_demande:
+            # Essai du 19/11 : un devis composé sur demande n'a pas d'étude de
+            # consommation — le refus dit le geste qui marche, pas seulement non.
+            raise TailleRefusee(
+                'Ce devis a été composé sur demande (composition imposée, sans '
+                'étude de consommation) : sa taille ne se recalcule pas en place. '
+                f'Pour {int(nb_panneaux)} panneaux, composez un nouveau devis avec '
+                'la même demande et ce nombre de panneaux ; l\'ancien brouillon se '
+                'supprime à l\'écran.',
+                field='nb_panneaux', code='composition_imposee') from erreur
         raise TailleRefusee(erreur.detail, field='nb_panneaux',
                             code='taille_impossible') from erreur
     rebaser_echeancier_ou_409(devis, ttc_avant=ttc_avant)

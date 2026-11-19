@@ -1053,6 +1053,26 @@ class TailleAssistantTest(_BaseVenteAssistant):
         self.assertEqual(resp.data['composition'][0]['total_ttc'], '16800.00')
         self.assertNotIn('555.55', str(resp.data))
 
+    def test_devis_compose_sur_demande_le_refus_dit_de_recomposer(self):
+        """Essai vraie clé du 19/11 — un devis né d'une composition imposée n'a
+        pas d'étude : le refus nomme le geste qui marche (un nouveau devis)."""
+        from unittest import mock
+
+        from apps.ventes import offres_tailles
+        from apps.ventes.domain.composition_imposee import poser_marqueur
+        poser_marqueur(self.devis, {'demande': {'nb_panneaux': 10}})
+        with mock.patch.object(offres_tailles, 'enregistrer_config'), \
+                mock.patch.object(
+                    offres_tailles, 'appliquer_au_devis',
+                    side_effect=offres_tailles.ApplicationImpossible('sans profil')):
+            apercu = auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12})
+        self.assertEqual(apercu.status_code, 409, apercu.data)
+        self.assertEqual(apercu.data['code'], 'composition_imposee')
+        self.assertIn('composez un nouveau devis', apercu.data['detail'])
+        self.assertIn('12 panneaux', apercu.data['detail'])
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.quantite, Decimal('10'))
+
     def test_accepte_refuse_avec_la_phrase_de_revision_sans_rien_ecrire(self):
         Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
         for reponse in (
