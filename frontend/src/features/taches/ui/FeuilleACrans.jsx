@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
@@ -42,9 +42,22 @@ const premierVisible = (racine, selecteur) => [...(racine?.querySelectorAll(sele
 function focusInitial(racine) {
   const voulu = premierVisible(racine, '[data-focus-initial]')
   const poignee = premierVisible(racine, '.poignee')
-  if (voulu) voulu.focus()
+  // R3-064 — ouverte à la souris ou au doigt, le focus posé d'office ne dessine aucun anneau (le × entouré de bleu du
+  // bilan et d'Alléger) ; ouverte au clavier, il le dessine (Entrée valide l'action désignée, Tab montre où l'on est)
+  const poser = (el) => { if (derniereModalite === 'clavier') el.focus(); else el.focus({ focusVisible: false }) }
+  const champ = premierVisible(racine, CHAMPS) ?? premierVisible(racine, FOCALISABLES)
+  if (voulu) poser(voulu)
   else if (poignee) poignee.focus({ focusVisible: false })
-  else (premierVisible(racine, CHAMPS) ?? premierVisible(racine, FOCALISABLES))?.focus()
+  else if (champ) poser(champ)
+}
+
+/** R3-060 — fermer ne perd jamais une frappe : le champ où l'on tape est QUITTÉ avant la fermeture, son `onBlur` (qui
+ *  enregistre : heure, échéance, titre, notes, « De qui ou de quoi ? »…) part pendant que la feuille est encore montée.
+ *  Échap, la croix, le voile et le retour arrière passent tous par là ; sur l'iPhone, toucher la croix ne retire PAS le
+ *  focus du champ (un bouton touché ne le prend pas) : sans ce détour, la valeur partait avec la feuille, sans un mot. */
+function quitterLeChamp(racine) {
+  const ici = typeof document !== 'undefined' ? document.activeElement : null
+  if (ici && ici !== document.body && racine?.contains(ici) && typeof ici.blur === 'function') ici.blur()
 }
 
 /** Ce qui garde son focus même hors d'une feuille modale : menus et listes (portails Radix), autres dialogues, toast. */
@@ -53,9 +66,35 @@ const HORS_PIEGE = '[role="dialog"], [role="alertdialog"], [role="menu"], [role=
 /** R2-049 — le dernier geste était-il au clavier ? (lu à l'ouverture d'une feuille) Au doigt ou à la souris, le focus
  *  rendu à la fermeture ne dessine pas d'anneau épais sur le bouton touché (« ⋯ » après Alléger). */
 let derniereModalite = 'pointeur'
+/** R3-066 — les derniers éléments qui ont reçu le focus (le plus récent en dernier). Un champ `autoFocus` de la feuille
+ *  le prend AU MONTAGE, avant que la feuille ne lise son ouvreur — et, ouverte depuis un menu ⋯ (Radix), le menu le lui
+ *  reprend aussitôt : la feuille retrouve ici le champ qui l'a demandé, et l'élément focalisé juste avant lui. */
+const focusRecents = []
+const retenirFocus = (el) => {
+  if (!el) return
+  focusRecents.push(el)
+  if (focusRecents.length > 6) focusRecents.shift()
+}
 if (typeof document !== 'undefined') {
   document.addEventListener('keydown', () => { derniereModalite = 'clavier' }, true)
   document.addEventListener('pointerdown', () => { derniereModalite = 'pointeur' }, true)
+  document.addEventListener('focusin', (e) => { retenirFocus(e.target) }, true)
+  // le focus DEMANDÉ et refusé : Chrome annonce la sortie vers le champ (`relatedTarget`), le FocusScope du menu la
+  // refuse dans ce même `focusout`, et le champ ne reçoit jamais `focusin`
+  document.addEventListener('focusout', (e) => { retenirFocus(e.relatedTarget) }, true)
+}
+
+/** Le champ de la feuille qui a demandé le focus à son montage (`autoFocus`), et l'élément focalisé avant lui. */
+function champAutoFocus(racine) {
+  if (!racine) return { champ: null, avant: null }
+  for (let i = focusRecents.length - 1; i >= 0; i -= 1) {
+    const el = focusRecents[i]
+    if (el !== racine && el?.isConnected && racine.contains(el)) {
+      const avant = focusRecents.slice(0, i).reverse().find((x) => x?.isConnected && !racine.contains(x)) ?? null
+      return { champ: el, avant }
+    }
+  }
+  return { champ: null, avant: null }
 }
 
 /** R2-050 — seuil du panneau à droite (bureau large) : en dessous, la variante `panneau` reste un dialogue/feuille. */
@@ -211,11 +250,16 @@ export function naviguerApresFeuille(navigate, vers, options = {}) {
  * la feuille ; une fermeture par la croix, Échap ou le voile retire l'entrée. La pose est différée d'un tour pour
  * que le double montage du mode strict (développement) n'en laisse aucune.
  */
-function useRetourFerme(actif, onFermer) {
+function useRetourFerme(ouverte, historique, onFermer, apres) {
   const fermer = useRef(onFermer)
   useEffect(() => { fermer.current = onFermer })
   useEffect(() => {
-    if (!actif || typeof window === 'undefined' || typeof window.history?.pushState !== 'function') return undefined
+    if (!ouverte) return undefined
+    if (!historique || typeof window === 'undefined' || typeof window.history?.pushState !== 'function') {
+      // sans entrée d'historique (la fiche, déjà dans l'adresse) : la suite part dès la fermeture — la DERNIÈRE suite
+      // posée (lue à la fermeture, voulue : le geste est choisi après l'ouverture)
+      return () => apres.current?.()
+    }
     const marque = `tch-feuille-${Math.random().toString(36).slice(2)}`
     let posee = false
     let parRetour = false
@@ -233,9 +277,22 @@ function useRetourFerme(actif, onFermer) {
       const voulue = navigationVoulue
       navigationVoulue = false
       // une navigation demandée en fermant remplace l'entrée marquée : surtout pas de retour arrière qui l'annulerait
-      if (posee && !parRetour && !voulue && window.history.state?.tchFeuille === marque) window.history.back()
+      // la DERNIÈRE suite posée, lue à la fermeture (voulu : le geste est choisi après l'ouverture)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const suite = apres.current
+      if (posee && !parRetour && !voulue && window.history.state?.tchFeuille === marque) {
+        // R3-063 — la suite (un geste qui ouvre SA feuille) attend que ce retour soit fait : lancée avant, la feuille
+        // suivante posait son entrée, puis ce retour asynchrone la retirait — et la fermait aussitôt
+        if (suite) {
+          const unefois = () => { window.removeEventListener('popstate', unefois); suite() }
+          window.addEventListener('popstate', unefois)
+        }
+        window.history.back()
+      } else {
+        suite?.()
+      }
     }
-  }, [actif])
+  }, [ouverte, historique, apres])
 }
 
 export default function FeuilleACrans({
@@ -246,6 +303,7 @@ export default function FeuilleACrans({
   variante = 'dialogue',
   ancre = null,
   historique = true,
+  apresFermeture = null,
   children,
 }) {
   const [cran, setCran] = useState(cranInitial)
@@ -253,9 +311,18 @@ export default function FeuilleACrans({
   const voile = useRef(null)
   const origine = useRef(null)
   const clavier = useClavier(Boolean(ouverte))
-  useRetourFerme(Boolean(ouverte) && historique, onFermer)
   const fermer = useRef(onFermer)
   useEffect(() => { fermer.current = onFermer })
+  // R3-060 — toute fermeture voulue (Échap, croix, voile, retour arrière) quitte d'abord le champ en cours
+  const fermerSansPerte = useCallback(() => {
+    quitterLeChamp(feuille.current)
+    fermer.current?.()
+  }, [])
+  // R3-063 — `apresFermeture` : ce qui suit la fermeture (le geste choisi dans la feuille), une fois son entrée
+  // d'historique retirée
+  const apres = useRef(apresFermeture)
+  useEffect(() => { apres.current = apresFermeture })
+  useRetourFerme(Boolean(ouverte), historique, fermerSansPerte, apres)
   const moiRef = useRef(null) // l'entrée de cette feuille dans `pileOuvertes`
   // R2-050 — `variante="panneau"` au bureau large : panneau fixe à droite, NON modal (ni voile, ni piège de Tab) ; la
   // liste reste lisible et cliquable, toucher une autre ligne change la fiche. iPhone et tablette : feuille / dialogue.
@@ -271,16 +338,25 @@ export default function FeuilleACrans({
   const seulPanneau = useRef(panneau)
   useEffect(() => { seulPanneau.current = panneau })
   const laisserFocus = useRef(false) // panneau ouvert depuis une ligne : le focus y reste
+  const focusDedans = useRef(null) // R3-066 : le dernier élément focalisé DANS la feuille
 
   useEffect(() => {
     if (!ouverte) return undefined
-    origine.current = document.activeElement
     const racine = feuille.current
+    // R3-066 — un champ `autoFocus` de la feuille (Renommer, Nouveau projet) a déjà le curseur : on le lui laisse (la
+    // poignée le lui reprenait), et l'ouvreur est l'élément focalisé juste avant lui
+    const { champ, avant } = champAutoFocus(racine)
+    const champDejaPris = Boolean(champ)
+    origine.current = champDejaPris ? avant : document.activeElement
+    focusDedans.current = champ
+    // le menu qui a ouvert la feuille a pu reprendre le focus au champ : il lui revient (s'il le rend encore à son
+    // bouton ensuite, le rattrapage ci-dessous le ramène au même champ)
+    if (champ && document.activeElement !== champ && !document.activeElement?.closest?.(HORS_PIEGE)) champ.focus({ focusVisible: false })
     // R2-050 — le panneau ne vole pas le focus à la LIGNE qui l'a ouvert (`j`/`k` puis Entrée continuent dans la
     // liste) ; ouvert d'ailleurs (un menu, le bilan), il le prend comme une feuille. Fermé, il ne rend le focus que
     // s'il l'avait (ou si plus rien ne l'a) : on ne ramène jamais la personne en arrière dans la liste.
     laisserFocus.current = seulPanneau.current && Boolean(origine.current?.closest?.('[data-ligne]'))
-    if (!laisserFocus.current) focusInitial(racine)
+    if (!laisserFocus.current && !champDejaPris) focusInitial(racine)
     const parClavier = derniereModalite === 'clavier'
     return () => {
       const ici = document.activeElement
@@ -299,15 +375,20 @@ export default function FeuilleACrans({
   useEffect(() => {
     if (!ouverte) return undefined
     let geste = false
+    // R3-066 — le dernier élément focalisé DANS la feuille (le champ `autoFocus` de « Renommer ») : c'est lui qui reprend
+    // le focus quand le menu qui a ouvert la feuille le rend à son bouton — jamais la poignée à sa place
     const surGeste = () => { geste = true }
     const surFocus = (e) => {
       const cible = e.target
       const racine = feuille.current // lue au moment : la feuille peut être rendue ailleurs (saisie en place → dialogue)
+      if (cible instanceof Element && racine?.contains(cible) && cible !== racine) focusDedans.current = cible
+      const dedans = focusDedans.current
       if (laisserFocus.current || (enPanneau.current && geste)) return
       if (!racine?.isConnected || pileOuvertes[pileOuvertes.length - 1] !== moiRef.current) return // fermée : on rend
       if (!(cible instanceof Element) || racine.contains(cible) || cible.closest?.(HORS_PIEGE)) return
       origine.current = cible
-      focusInitial(racine)
+      if (dedans?.isConnected && racine.contains(dedans)) dedans.focus({ focusVisible: false })
+      else focusInitial(racine)
     }
     document.addEventListener('focusin', surFocus)
     document.addEventListener('pointerdown', surGeste, true)
@@ -330,7 +411,7 @@ export default function FeuilleACrans({
     const surEchap = (e) => {
       if (e.key !== 'Escape' || e.defaultPrevented || pileOuvertes[pileOuvertes.length - 1] !== moi) return
       e.preventDefault() // un seul Échap = une seule fermeture (la saisie a aussi son écouteur, il voit `defaultPrevented`)
-      fermer.current?.()
+      fermerSansPerte()
     }
     document.addEventListener('keydown', surEchap)
     return () => {
@@ -338,7 +419,7 @@ export default function FeuilleACrans({
       const rang = pileOuvertes.indexOf(moi)
       if (rang >= 0) pileOuvertes.splice(rang, 1)
     }
-  }, [ouverte])
+  }, [ouverte, fermerSansPerte])
 
   // R2-048 — contenu plus court que le cran : la feuille épouse son contenu (`cran-auto`, plafond 85 %) — plus de
   // « 300 px de blanc sous les boutons ». Mesuré avant peinture, puis à chaque changement de taille du contenu.
@@ -412,7 +493,7 @@ export default function FeuilleACrans({
         />
       )}
       <div className="feuille-entete">
-        <button type="button" className="bouton-icone" aria-label="Fermer" onClick={onFermer}>
+        <button type="button" className="bouton-icone" aria-label="Fermer" onClick={fermerSansPerte}>
           <X className="i" aria-hidden="true" />
         </button>
         <div className="feuille-titre">{titre}</div>
@@ -424,7 +505,7 @@ export default function FeuilleACrans({
   if (enPlace) return createPortal(corps, ancre)
   return (
     <>
-      {nonModale ? null : <div ref={voile} className="voile" onClick={onFermer} aria-hidden="true" />}
+      {nonModale ? null : <div ref={voile} className="voile" onClick={fermerSansPerte} aria-hidden="true" />}
       {corps}
     </>
   )
