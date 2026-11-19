@@ -280,10 +280,10 @@ def noter_deux_appels_sans_reponse(etape, user):
     réponse dit pourquoi le dossier ne revient plus au vivier. ``etape`` vient
     d'être close par ``marquer_etape_relance`` (qui l'appelle, hors ``suite=False``).
 
-    Seule une étape ``CLE_LISTE_FROIDE`` close sur une issue qui renvoie au vivier
-    (``ISSUES_RETOUR_AU_VIVIER`` : pas de réponse, ou étape sautée) compte, et
-    seulement quand le dossier en totalise ``TENTATIVES_MAX`` : une réponse
-    obtenue (joint, refus, rappel) n'est jamais une tentative sans réponse.
+    Déclenchée par une étape ``CLE_LISTE_FROIDE`` close sur une issue qui renvoie
+    au vivier ; la raison n'est écrite que si le dossier totalise ``TENTATIVES_MAX``
+    APPELS passés sans réponse (étape faite, issue « pas de réponse ») : une étape
+    sautée n'est pas un appel, une réponse obtenue (joint, refus, rappel) non plus.
 
       * dossier SANS raison de parcage : ``parquer_lead`` la pose
         (``liste_froide_sans_reponse``, Nurture) — les deux appels EN SONT la
@@ -305,10 +305,11 @@ def noter_deux_appels_sans_reponse(etape, user):
     lead = etape.lead
     try:
         with transaction.atomic():
+            # La raison dit « deux APPELS » : seuls comptent les appels passés
+            # (étape faite, issue « pas de réponse ») — une étape sautée n'en est pas un.
             sans_reponse = RelanceEtape.objects.filter(
                 company=etape.company, lead=lead, cle=CLE_LISTE_FROIDE,
-                statut__in=(RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE),
-                outcome__in=ISSUES_RETOUR_AU_VIVIER).count()
+                statut=RelanceEtape.Statut.FAIT, outcome='non_joint').count()
             if sans_reponse < TENTATIVES_MAX:
                 return False
             lead.refresh_from_db(fields=[
