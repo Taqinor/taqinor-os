@@ -42,8 +42,13 @@ LIBELLES = {
 
 #: Dessin de la courbe (unités du ``viewBox``) : largeur, hauteurs (pleine,
 #: puis compacte quand la page est longue — libellés arabes), marges.
-LARGEUR, HAUTEUR, HAUTEUR_COMPACTE = 1000, 225, 132
+LARGEUR, HAUTEUR, HAUTEUR_COMPACTE = 1000, 200, 132
 MARGE_G, MARGE_D, MARGE_H, MARGE_B = 118, 172, 18, 26
+
+
+def _tout_cede(d):
+    """Dernier recours du rendu adaptatif : tous les blocs optionnels cèdent."""
+    return d.get("_sans_graphiques") is True
 
 
 def _texte_svg(texte):
@@ -401,18 +406,17 @@ def _legende(d, opts, L, noms):
 
 
 def _courbe(d, opts, fmt, L, police, teintes, noms, base_txt):
-    """Le bloc de la courbe, cédable par paliers (``commercial.equip``) :
-    pleine hauteur ; la page déborde (``courbe_cumul`` cédé) ⇒ la courbe
-    COMPACTE, sans sa note ; elle déborde encore (``courbe_compacte`` cédé
-    avec les autres blocs) ⇒ rien — le tableau porte déjà le cumul. Quand une
-    AUTRE page force le retrait d'un coup de la courbe et des bases
-    (troncature des conditions), la page garde la courbe compacte : sans ses
-    bases, elle est plus courte que la page qui tenait avec elles."""
+    """Le bloc de la courbe. La page cède par PALIERS (``commercial.equip``) :
+    pleine hauteur (seul bloc cédable « courbe_cumul ») ; la page déborde ⇒ la
+    courbe COMPACTE, sans sa note — contenu de la page, plus un bloc cédable ;
+    elle déborde encore ⇒ ce sont les bases du calcul (« hypotheses ») qui
+    cèdent, la courbe compacte et les sensibilités restent ; dernier recours
+    (tout cède) ⇒ rien : le tableau porte déjà le cumul."""
     from ..ci.graphiques import cede
-    if cede(d, "courbe_compacte"):
+    if _tout_cede(d):
         return ""
     if cede(d, "courbe_cumul"):
-        return ('<div data-graphique="courbe_compacte">' + _svg_cumul(
+        return ('<div class="i2d-compacte">' + _svg_cumul(
             d, opts, fmt, police, teintes, noms, HAUTEUR_COMPACTE)
             + _legende(d, opts, L, noms) + "</div>")
     note = L("ci_gr_retour_note",
@@ -543,6 +547,83 @@ def _rangees_indicateurs(d, opts, fmt_mad, L, base_txt):
     return rangees
 
 
+def _retour_scenario(d, scenario):
+    """Le délai de retour d'un scénario, lu comme la page à une option
+    (``finance._retour_scenario`` : au dixième servi dès le niveau 14, sinon
+    l'année servie)."""
+    from . import finance as F
+    return _num(F._retour_scenario(d, scenario))
+
+
+def _cellules_scenario(d, valeurs, fmt_mad):
+    """Les trois cellules d'une option pour un scénario : délai de retour, TRI,
+    cumul net — un tiret pour une valeur non servie, jamais un nombre de repli."""
+    retour, tri, cumul = valeurs
+    textes = []
+    if retour is None:
+        textes.append("—")
+    else:
+        txt = ci_couverture.ans(retour)
+        textes.append(txt + ci_couverture.unite_ans(d, txt))
+    textes.append("—" if tri is None else decimale(f"{tri:.1f}") + "&#160;%")
+    textes.append("—" if cumul is None else fmt_mad(cumul) + "&#160;MAD")
+    return "".join(f'<td class="i2-n{" i2d-g" if rang == 0 else ""}">{t}</td>'
+                   for rang, t in enumerate(textes))
+
+
+def _rangees_sensibilites(d, opts, L):
+    """``[(nom du scénario, [(retour, TRI, cumul) par option])]`` — le central
+    (les chiffres des cartes) puis chaque scénario de l'offre réseau avec celui
+    de l'option batterie de même clé et même variation ; ``None`` dès qu'une
+    option ne sert aucun scénario (le rendu par option reste)."""
+    from . import finance as F
+    listes = [[sc for sc in o["argent"].get("sensibilites") or []
+               if isinstance(sc, dict)] for o in opts]
+    if not all(listes):
+        return None
+    avec = {(sc.get("cle"), sc.get("variation_pct")): sc for sc in listes[1]}
+    rangees = [(L("ci_sens_central", "Scénario central"), [
+        (_retour(d, o), _num(o["indicateurs"].get("tri_pct")),
+         _num(o["flux"][-1].get("cumul_mad"))) for o in opts])]
+    for sc in listes[0]:
+        paire = (sc, avec.get((sc.get("cle"), sc.get("variation_pct"))))
+        rangees.append((F._nom_scenario(sc, L), [
+            (None, None, None) if x is None else
+            (_retour_scenario(d, x), _num(x.get("tri_pct")),
+             _num(x.get("cumul_25_ans_mad"))) for x in paire]))
+    return rangees
+
+
+def _sensibilites_deux(d, opts, fmt_mad, L, noms):
+    """AMOT97 — UN tableau des sensibilités pour les deux options (fondateur
+    19/11/2026) : chaque scénario saisi par la société, ses trois chiffres
+    SERVIS par option. '' quand une option n'en sert pas, ou en dernier recours
+    du rendu adaptatif (les bases du calcul cèdent avant lui)."""
+    rangees = None if _tout_cede(d) else _rangees_sensibilites(d, opts, L)
+    if not rangees:
+        return ""
+    horizon = f'{opts[0]["horizon"]:g}'
+    titres = (L("ci_ind_delai_retour", "Délai de retour"),
+              L("ci_ind_tri_sur", "TRI sur {n} ans", n=horizon),
+              L("ci_sens_cumul", "Cumul net sur {n} ans", n=horizon))
+    groupes = "".join(
+        f'<th colspan="3" class="i2d-gt i2d-gt-{o["cle"]}">{noms[o["cle"]]}</th>'
+        for o in opts)
+    entete = "".join(f'<th class="i2-r{" i2d-g" if rang == 0 else ""}">{t}</th>'
+                     for _o in opts for rang, t in enumerate(titres))
+    lignes = "".join(
+        f"<tr><td>{nom}</td>"
+        + "".join(_cellules_scenario(d, v, fmt_mad) for v in valeurs) + "</tr>"
+        for nom, valeurs in rangees)
+    base = L("ci_ind_sens_base", "Sensibilités saisies par la société ; "
+             "base : 0 % d'indexation du tarif.")
+    return (f'<div class="i2d-st">{_t(d, "sensibilites")}'
+            f'<span class="i2d-stn"> — {base}</span></div>'
+            f'<table class="i2-tbl i2-fx i2d-fx i2d-sens"><tr><th></th>{groupes}</tr>'
+            f'<tr><th>{L("ci_sens_scenario", "Scénario")}</th>{entete}</tr>'
+            f'{lignes}</table>')
+
+
 def _indicateurs(d, opts, fmt, fmt_mad, L, noms, base_txt, teintes_cfo):
     """CIQ343 — « Indicateurs pour votre direction financière », les deux
     options en colonnes ; puis les sensibilités de chaque option qui en sert
@@ -558,8 +639,11 @@ def _indicateurs(d, opts, fmt, fmt_mad, L, noms, base_txt, teintes_cfo):
                 f"<tr><td>{libelle}</td>"
                 + "".join(f'<td class="i2-n">{v}</td>' for v in valeurs)
                 + "</tr>" for libelle, valeurs in rangees) + "</table>")
+    # Les deux options servent leurs scénarios : UN tableau, sous les
+    # indicateurs ; sinon celui de chaque option qui en sert, nommée.
+    communes = _sensibilites_deux(d, opts, fmt_mad, L, noms)
     sensibilites = ""
-    for o in opts:
+    for o in () if communes else opts:
         bloc = F._tableau_sensibilites(d, o["argent"], fmt_mad, L)
         if bloc:
             sensibilites += (f'<div class="i2d-st">{_t(d, "sensibilites")} — '
@@ -571,13 +655,21 @@ def _indicateurs(d, opts, fmt, fmt_mad, L, noms, base_txt, teintes_cfo):
         if p90 is not None else ""
     financement = ci_blocs.bloc_financement(
         d.get("ind_synthese") or {}, "i2", *teintes_cfo, doc=d)
-    if not (tableau or sensibilites or p90_html or financement):
+    if not (tableau or sensibilites or communes or p90_html or financement):
         return ""
     titre = L("ci_ind_indicateurs", "Indicateurs pour votre direction financière")
     gauche, droite = tableau + p90_html, sensibilites
     cote_a_cote = (f'<table class="i2d-cfo"><tr><td class="i2d-cg">{gauche}</td>'
                    f'<td class="i2d-cgap"></td><td>{droite}</td></tr></table>'
                    if gauche and droite else gauche + droite)
+    if communes:
+        # Les indicateurs en lignes (le tableau des sensibilités porte déjà
+        # les deux colonnes d'options) : la courbe garde sa pleine hauteur.
+        lignes = "".join(
+            f'<div class="i2-cfo-i">{libelle}&#160;: ' + " · ".join(
+                f'{noms[o["cle"]]} {v}' for o, v in zip(opts, valeurs)) + "</div>"
+            for libelle, valeurs in rangees)
+        cote_a_cote = lignes + p90_html + communes
     return (f'<div class="i2-cfo i2d-cfob"><div class="i2-hyp-t">{titre}</div>'
             f'{cote_a_cote}{financement}</div>')
 
@@ -698,7 +790,7 @@ def css(ctx, argent):
 .i2d-im{{text-align:right;white-space:nowrap;}}
 .i2d-sys{{font-size:6.8pt;color:{muted};margin-top:1px;}}
 .i2d-note{{font-size:6.8pt;color:{muted};line-height:1.35;margin-top:3px;}}
-.i2d-fx{{margin-top:8px;}}
+.i2d-fx{{margin-top:7px;}}
 .i2d-fx td.i2-n,.i2d-fx td.i2-c{{direction:ltr;}}
 .i2d-fx td:first-child{{color:{muted};}}
 .i2d-gt{{text-align:center !important;color:#fff !important;font-size:6.5pt !important;
@@ -720,6 +812,13 @@ def css(ctx, argent):
 [dir="rtl"] .i2-hyp-i:before{{left:auto;right:0;}}
 .i2d-cfo .i2-cfo-i{{font-size:6.6pt;}}
 .i2d-st{{margin-top:4px;font-size:6.5pt;font-weight:700;color:{navy};}}
+.i2d-sens{{margin-top:2px;}}
+.i2d-sens td.i2-n{{direction:inherit;}}
+.i2-cfo{{margin-top:6px;}}
+.i2-hyp{{margin-top:6px;padding:6px 12px;}}
+.i2-foot{{margin-top:5px;}}
+.i2d-stn{{font-weight:400;color:{muted};}}
+.i2d-cfob .i2d-sens td{{padding-top:1.2px;padding-bottom:1.2px;}}
 .i2d-hp{{font-size:6.6pt;color:{muted};line-height:1.3;margin-top:3px;}}
 .i2d-hp b{{color:{ink};}}
 """
