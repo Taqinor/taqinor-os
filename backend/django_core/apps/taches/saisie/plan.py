@@ -46,12 +46,53 @@ def _ajouter_ligne(sections, ligne):
         taches.append({'titre': titre, 'jalon': jalon, 'sous_taches': []})
 
 
-def decouper_plan(texte):
+def _retrait(brute):
+    """Largeur du retrait de la ligne (une tabulation = 4 espaces)."""
+    large = brute.expandtabs(4)
+    return len(large) - len(large.lstrip())
+
+
+def decouper_etapes(texte):
+    """Le champ « Étapes » de « Planifier le projet » (R2-062) : une ligne NON indentée, sans puce ni jalon, EST une
+    étape (un « : » final est toléré et retiré) ; ses lignes indentées ou à tiret en sont les tâches ; une puce plus
+    en retrait que la tâche qui la précède en est la sous-tâche ; « ◆ » ou « jalon: » marque un jalon. Même forme que
+    `decouper_plan`. Une étape sans tâche est gardée (« 3 étapes · 0 tâche »)."""
+    sections = [{'nom': None, 'taches': []}]
+    retrait_tache = None
+    for brute in texte.splitlines():
+        ligne = brute.strip()
+        if not ligne:
+            continue
+        retrait = _retrait(brute)
+        puce = _SOUS_TACHE.match(ligne)
+        titre, jalon = _est_jalon(ligne[puce.end():].strip() if puce else ligne)
+        if retrait == 0 and not puce and not jalon:
+            nom = ligne.rstrip(':：').strip()
+            if nom:
+                sections.append({'nom': nom, 'taches': []})
+                retrait_tache = None
+            continue
+        if not titre:
+            continue
+        taches = sections[-1]['taches']
+        if puce and taches and retrait_tache is not None and retrait > retrait_tache:
+            taches[-1]['sous_taches'].append(titre)
+        else:
+            taches.append({'titre': titre, 'jalon': jalon, 'sous_taches': []})
+            retrait_tache = retrait
+    if not sections[0]['taches']:
+        sections = sections[1:]
+    return {'sections': sections}
+
+
+def decouper_plan(texte, mode='plan'):
     """`{'sections': [{'nom', 'taches': [{'titre', 'jalon', 'sous_taches'}]}]}`.
 
     Les tâches écrites avant toute étape vont dans une section de `nom` None.
-    Une étape sans tâche est gardée (vide).
+    Une étape sans tâche est gardée (vide). `mode='etapes'` : la grammaire du champ « Étapes » (`decouper_etapes`).
     """
+    if mode == 'etapes':
+        return decouper_etapes(texte)
     sections = [{'nom': None, 'taches': []}]
     for brute in texte.splitlines():
         ligne = brute.strip()

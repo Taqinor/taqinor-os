@@ -236,7 +236,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Planifier — étape 1 | « Priorité : Haute · Moyenne · Basse » ; « Ce sera fini quand… » |
 | Planifier — étape 2 | « Échéance : 1 semaine · 2 semaines · 1 mois · 6 semaines · 3 mois · Choisir » |
 | Planifier — étape 3 | « Premières actions » ; par action « Aujourd'hui · Demain · Sans jour » ; « Planifier avec le Copilote » |
-| Planifier — Plus | Étapes · Jalons · « Si ça échoue, ce sera sans doute parce que… » (« En faire une tâche ») |
+| Planifier — Plus | Étapes (aide : « Une ligne par étape ; ses tâches dessous, en retrait ou avec un tiret. » ; aperçu : « 3 étapes · 0 tâche ») · Jalons · « Si ça échoue, ce sera sans doute parce que… » (« En faire une tâche ») |
 | Boutons du rituel | Suivant · Passer · **Terminer** |
 | Décaler | « +1 semaine · −1 semaine · Choisir » ; « {n} dates changent. » ; **Appliquer** |
 | Pause | « Mettre en pause « {nom} » ? Ses {k} tâches datées sortent d'Aujourd'hui jusqu'à la reprise. » |

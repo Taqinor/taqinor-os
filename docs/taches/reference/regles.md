@@ -194,6 +194,11 @@ Réponse de la capture : `dans` = `journee` si un jour est posé (quel qu'il soi
 **Liste collée de « Planifier le projet »** (`planification/apercu/`, spec-4 §B) — autre grammaire, même module :
 ligne finissant par « : » = étape ; lignes suivantes = tâches ; « - » ou « * » sous une tâche = sous-tâche ; « ◆ »
 ou « jalon: » en tête = jalon ; vides ignorées ; 200 lignes au plus. Rien n'est analysé en dates.
+**Champ « Étapes »** de l'écran (R2-062, `mode: "etapes"`) — le « : » n'est plus exigé : une ligne NON indentée, sans
+puce ni jalon, EST une étape (un « : » final est toléré et retiré) ; ses lignes en retrait (tabulation = 4 espaces) ou à
+tiret sont ses tâches ; une puce plus en retrait que la tâche qui la précède en est la sous-tâche ; « ◆ » ou « jalon: »
+= jalon. « Transport / Hébergement / Sur place » = 3 étapes, 0 tâche. Sans `mode` (ou `mode: "plan"`), la grammaire
+ci-dessus ne change pas. La réponse a la même forme dans les deux modes.
 
 ### 1.11 Table de test (critère : `analyser` rend exactement ces champs ; vide = nul, 0 ou absent)
 

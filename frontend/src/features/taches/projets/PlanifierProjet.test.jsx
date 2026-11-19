@@ -108,12 +108,29 @@ describe('TCH91 — Planifier le projet : liste collée, risque, Copilote', () =
     await user.click(screen.getByText('Plus'))
     await user.type(screen.getByLabelText('Étapes'), 'Études :{Enter}Visite')
     await user.click(screen.getByRole('button', { name: 'Lire la liste' }))
-    expect(api.apercuPlanification).toHaveBeenCalledWith(3, { texte: 'Études :\nVisite' })
+    // R2-062 — ce champ lit des ÉTAPES (une ligne non indentée = une étape), pas une liste de tâches
+    expect(api.apercuPlanification).toHaveBeenCalledWith(3, { texte: 'Études :\nVisite', mode: 'etapes' })
     const lues = await screen.findByRole('list', { name: 'Étapes lues' })
     expect(within(lues).getByText('Études')).toBeInTheDocument()
     expect(within(lues).getByText('Visite')).toBeInTheDocument()
     expect(screen.getByText('Jalons').parentElement).toHaveTextContent('Mise en service')
     expect(api.planifierProjet).not.toHaveBeenCalled()
+  })
+
+  it('R2-062 — « Transport / Hébergement / Sur place » : l\'aperçu dit « 3 étapes · 0 tâche » et Terminer envoie ces 3 étapes', async () => {
+    api.apercuPlanification.mockResolvedValue({ data: { projet: { id: 3, lock_version: 4 }, sections: [
+      { nom: 'Transport', taches: [] }, { nom: 'Hébergement', taches: [] }, { nom: 'Sur place', taches: [] }] } })
+    monter()
+    const user = utilisateur()
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    await user.click(screen.getByText('Plus'))
+    expect(screen.getByText(/Une ligne par étape/)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Étapes'), 'Transport{Enter}Hébergement{Enter}Sur place')
+    await user.click(screen.getByRole('button', { name: 'Lire la liste' }))
+    expect(await screen.findByText('3 étapes · 0 tâche')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(api.planifierProjet).toHaveBeenCalledTimes(1)
+    expect(api.planifierProjet.mock.calls[0][1].sections.map((s) => s.nom)).toEqual(['Transport', 'Hébergement', 'Sur place'])
   })
 
   it('« En faire une tâche » ajoute le risque aux premières actions', async () => {

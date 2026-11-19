@@ -3,7 +3,7 @@ import { Sparkles } from 'lucide-react'
 import { apercuPlanification, planifierProjet } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
-import { aujourdhuiIso } from '../lib/textes'
+import { accord, aujourdhuiIso } from '../lib/textes'
 import { PRIORITES } from './LigneProjet'
 
 /* ============================================================================
@@ -104,6 +104,13 @@ function PasUn({ etat, maj, erreurs, aujourdhui }) {
   )
 }
 
+/** « 3 étapes · 0 tâche » : ce que l'aperçu a lu (une section sans nom = des tâches sans étape, non comptée comme étape). */
+function resumeDuPlan(sections) {
+  const etapes = sections.filter((s) => s.nom != null).length
+  const taches = sections.reduce((n, s) => n + s.taches.length, 0)
+  return `${accord(etapes, 'étape')} · ${accord(taches, 'tâche')}`
+}
+
 function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
   const jalons = (apercu?.sections ?? []).flatMap((s) => s.taches.filter((t) => t.jalon))
   return (
@@ -111,20 +118,25 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
       <summary>Plus</summary>
       <div className="ep-groupe">
         <label className="ep-etiquette" htmlFor="pp-etapes">Étapes</label>
+        <p className="es-aide" id="pp-etapes-aide">Une ligne par étape ; ses tâches dessous, en retrait ou avec un tiret.</p>
         <textarea id="pp-etapes" className="champ ep-zone" value={etat.texte} rows={4}
           onChange={(e) => maj({ texte: e.target.value })}
-          aria-invalid={erreurs.sections ? 'true' : undefined} aria-describedby={erreurs.sections ? 'pp-etapes-err' : undefined} />
+          aria-invalid={erreurs.sections ? 'true' : undefined}
+          aria-describedby={erreurs.sections ? 'pp-etapes-aide pp-etapes-err' : 'pp-etapes-aide'} />
         <Erreur id="pp-etapes-err" texte={erreurs.sections} />
         <button type="button" className="bouton second" disabled={occupe || !etat.texte.trim()} onClick={onApercu}>Lire la liste</button>
         {apercu ? (
-          <ul className="ep-apercu" aria-label="Étapes lues">
-            {apercu.sections.map((s) => (
-              <li key={s.nom}>
-                <b>{s.nom}</b>
-                <ul>{s.taches.map((t) => <li key={t.titre}>{t.titre}</li>)}</ul>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="ep-resume chiffres" role="status">{resumeDuPlan(apercu.sections)}</p>
+            <ul className="ep-apercu" aria-label="Étapes lues">
+              {apercu.sections.map((s, i) => (
+                <li key={`${s.nom}:${i}`}>
+                  <b>{s.nom ?? 'Sans étape'}</b>
+                  {s.taches.length > 0 ? <ul>{s.taches.map((t, j) => <li key={`${t.titre}:${j}`}>{t.titre}</li>)}</ul> : null}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
         {jalons.length > 0 ? (
           <div className="ep-jalons">
@@ -223,7 +235,8 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
   const lireListe = async () => {
     setOccupe(true)
     try {
-      const { data } = await apercuPlanification(projet.id, { texte: etat.texte })
+      // ce champ lit des ÉTAPES (R2-062) : une ligne non indentée = une étape, sans « : » à taper
+      const { data } = await apercuPlanification(projet.id, { texte: etat.texte, mode: 'etapes' })
       setApercu(data)
       setErreurs((e) => ({ ...e, sections: '' }))
       return data
