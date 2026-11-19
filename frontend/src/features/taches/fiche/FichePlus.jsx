@@ -303,7 +303,7 @@ function SousTaches({ tache, charger, erreur }) {
 }
 
 /** `demande` > 0 : « Supprimer » choisi dans le ⋯ de l'en-tête — la question s'ouvre d'elle-même et se montre. */
-function Supprimer({ tache, onFermer, erreur, demande = 0 }) {
+function Supprimer({ tache, onFermer, erreur, demande = 0, avant = null }) {
   const [confirmation, setConfirmation] = useState(demande > 0)
   const question = useRef(null)
   useEffect(() => { if (demande > 0) question.current?.scrollIntoView?.({ block: 'center' }) }, [demande])
@@ -326,18 +326,25 @@ function Supprimer({ tache, onFermer, erreur, demande = 0 }) {
       erreur('general', frenchError(err))
     }
   }
-  if (!confirmation) {
-    return <button type="button" className="bouton discret destructif" onClick={() => setConfirmation(true)}>Supprimer</button>
-  }
+  // R2-047 — la question se pose SOUS la rangée « Abandonner · Supprimer », sur sa propre ligne et pleine largeur :
+  // posée dans la rangée, elle débordait de l'écran de l'iPhone (« Annuler » hors d'atteinte)
   return (
-    <div ref={question} className="fiche-question" role="alertdialog" aria-label={`Supprimer « ${tache.titre} »`}>
-      <p>{`Supprimer « ${tache.titre} » ?`}</p>
-      {nb > 0 ? <p className="aide-champ">{nb === 1 ? '1 sous-tâche sera supprimée aussi.' : `${nb} sous-tâches seront supprimées aussi.`}</p> : null}
-      <div className="carte-actions">
-        <button type="button" className="bouton second destructif" onClick={supprimer}>{`Supprimer « ${tache.titre} »`}</button>
-        <button type="button" className="bouton second" onClick={() => setConfirmation(false)}>Annuler</button>
+    <>
+      <div className="carte-actions fiche-plus-pied">
+        {avant}
+        {confirmation ? null : <button type="button" className="bouton discret destructif" onClick={() => setConfirmation(true)}>Supprimer</button>}
       </div>
-    </div>
+      {confirmation ? (
+        <div ref={question} className="fiche-question fiche-supprimer" role="alertdialog" aria-label={`Supprimer « ${tache.titre} »`}>
+          <p>{`Supprimer « ${tache.titre} » ?`}</p>
+          {nb > 0 ? <p className="aide-champ">{nb === 1 ? '1 sous-tâche sera supprimée aussi.' : `${nb} sous-tâches seront supprimées aussi.`}</p> : null}
+          <div className="carte-actions">
+            <button type="button" className="bouton second destructif" onClick={supprimer}>{`Supprimer « ${tache.titre} »`}</button>
+            <button type="button" className="bouton second" onClick={() => setConfirmation(false)}>Annuler</button>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -419,10 +426,14 @@ export default function FichePlus({
       <SousTaches tache={tache} charger={charger} erreur={erreur} />
       {erreurs.sous_taches ? <p className="erreur-champ" role="alert">{erreurs.sous_taches}</p> : null}
 
-      <div className="carte-actions">
-        <button type="button" className="bouton discret" onClick={abandonner}>Abandonner</button>
-        <Supprimer key={supprimerDemande} demande={supprimerDemande} tache={tache} onFermer={onFermer} erreur={erreur} />
-      </div>
+      <Supprimer
+        key={supprimerDemande}
+        demande={supprimerDemande}
+        tache={tache}
+        onFermer={onFermer}
+        erreur={erreur}
+        avant={<button type="button" className="bouton discret" onClick={abandonner}>Abandonner</button>}
+      />
     </div>
   )
 }

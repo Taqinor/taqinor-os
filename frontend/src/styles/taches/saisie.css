@@ -201,6 +201,12 @@
 .tch .fiche-lien { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; }
 .tch .fiche-lien a { color: var(--tch-accent); }
 .tch .bouton.destructif { color: var(--destructive); }
+/* R2-047 — « Supprimer « {titre} » ? » : sa propre ligne, pleine largeur ; les deux boutons l'un sous l'autre, le titre
+   long se replie dans son bouton au lieu de pousser « Annuler » hors de l'écran */
+.tch .fiche-supprimer { margin: 8px 0 0; min-width: 0; }
+.tch .fiche-supprimer p { overflow-wrap: anywhere; }
+.tch .fiche-supprimer .carte-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.tch .fiche-supprimer .bouton { width: 100%; min-width: 0; height: auto; min-height: 44px; padding-block: 10px; white-space: normal; overflow-wrap: anywhere; }
 
 /* TCH86 — écran À trier (ecran-a-trier.html, port de ecrans-coeur.css « À trier » + tour 2) : la ligne commune
    (case ronde, titre, méta), les gestes en LIENS sous la méta — jamais de pilules, jamais de filet entre lignes */

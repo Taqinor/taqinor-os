@@ -248,6 +248,18 @@ describe('TCH85 — fiche → Plus', () => {
     await waitFor(() => expect(api.restaurerTache).toHaveBeenCalledWith(20))
   })
 
+  it('R2-047 — la confirmation « Supprimer » est sur SA ligne (hors de la rangée Abandonner · Supprimer), Annuler dedans', async () => {
+    const user = userEvent.setup()
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }))
+    const dialogue = screen.getByRole('alertdialog', { name: 'Supprimer « Devis Settat »' })
+    const rangee = screen.getByRole('button', { name: 'Abandonner' }).parentElement
+    expect(rangee.contains(dialogue)).toBe(false)
+    expect(dialogue).toHaveClass('fiche-supprimer')
+    expect(within(dialogue).getAllByRole('button').map((b) => b.textContent)).toEqual(['Supprimer « Devis Settat »', 'Annuler'])
+  })
+
   it('Supprimer puis Annuler : le geste rendu par le serveur est défait (A7), jamais `restaurer/`', async () => {
     const user = userEvent.setup()
     api.supprimerTache.mockResolvedValue({ data: { geste_id: 77 } })
