@@ -244,6 +244,8 @@ export default function CoquilleTaches({
   const avecFab = ECRANS_AVEC_FAB.has(ecran)
     && !(ecran === 'agenda' && params.get('placer') === '1')
     && !(ecran === 'projet' && params.get('planifier') === '1')
+  // R2-086 — sur la Recherche, son champ EST l'en-tête : ni loupe (qui ouvrait… la recherche) ni « Ajouter une tâche »
+  const surRecherche = ecran === 'recherche'
   const barre = useRef(null)
   const titreH1 = useRef(null)
   const replie = useTitreReplie(barre, titreH1)
@@ -337,7 +339,7 @@ export default function CoquilleTaches({
             <div className="entete-compact" aria-hidden="true">{titre}</div>
             <div className="entete-actions">
               <ClocheErp />
-              {retour ? null : (
+              {retour || surRecherche ? null : (
                 <button
                   type="button"
                   className="bouton-icone"
@@ -372,7 +374,7 @@ export default function CoquilleTaches({
           </div>
         </header>
 
-        {saisieBureau ? <SaisieBureau onClick={demanderSaisie} /> : null}
+        {saisieBureau && !surRecherche ? <SaisieBureau onClick={demanderSaisie} /> : null}
 
         {conflit ?? conflitFile ? <BandeauConflit {...(conflit ?? conflitFile)} /> : null}
 

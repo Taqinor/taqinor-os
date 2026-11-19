@@ -145,6 +145,22 @@ describe('TCH43 — routes du module', () => {
     expect(container.querySelectorAll('.fab')).toHaveLength(0)
   })
 
+  it('R2-086 — Recherche : un seul champ, pas de loupe vers… la recherche, pas d\'« Ajouter une tâche »', async () => {
+    const { container } = monter('/taches/recherche')
+    await screen.findByRole('heading', { level: 1, name: 'Recherche' }, { timeout: 5000 })
+    const coquille = container.querySelector('.tch')
+    expect(within(coquille).queryByRole('button', { name: 'Chercher dans mes tâches' })).toBeNull()
+    expect(coquille.querySelector('.saisie-bureau')).toBeNull()
+  })
+
+  it('R2-086 — hors de la Recherche, la loupe et « Ajouter une tâche » restent', async () => {
+    const { container } = monter('/taches/a-trier')
+    await screen.findByRole('heading', { level: 1, name: 'À trier' }, { timeout: 5000 })
+    const coquille = container.querySelector('.tch')
+    expect(within(coquille).getByRole('button', { name: 'Chercher dans mes tâches' })).toBeInTheDocument()
+    expect(coquille.querySelector('.saisie-bureau')).not.toBeNull()
+  })
+
   it('/taches mène à /taches/aujourdhui', async () => {
     const { router } = monter('/taches')
     expect(await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })).toBeInTheDocument()
