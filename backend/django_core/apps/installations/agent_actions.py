@@ -267,12 +267,57 @@ LISTE_CHANTIERS = AgentAction(
 )
 
 
+# CHTA4 — POST interventions/suggerer-creneau/ (XFSM2) : une route de LECTURE
+# (LectureDuModule ; « NE MUTE RIEN ») servie en POST — `lecture=True` : ni
+# proposition, ni décompte dans le plafond des écritures silencieuses.
+SUGGERER_CRENEAU = AgentAction(
+    key='installations.planning.suggerer',
+    label='Créneaux proposés (technicien, jour) pour une intervention',
+    description=(
+        "Sert à : proposer 3 créneaux (technicien, jour) pour une "
+        "intervention d'un chantier — jour sans autre intervention ni "
+        "indisponibilité, charge la plus faible, puis distance. Seuls les "
+        "comptes déjà affectés à une intervention sont proposés ; les "
+        "visites techniques ne comptent pas ; rien n'est réservé. Ne pas "
+        "utiliser pour : planifier (c'est une proposition à confirmer, à "
+        "part) ni une visite de lead. Exemple : « quand poser le chantier "
+        "12 ? » → chantier=12, type_intervention=pose. Résultat : "
+        "{chantier_id, propositions[]}."
+    ),
+    endpoint='/api/django/installations/interventions/suggerer-creneau/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'chantier': {'type': 'integer', 'title': 'Chantier (id)'},
+            'type_intervention': {
+                'type': 'string', 'title': "Type d'intervention",
+                'enum': ['pose', 'raccordement', 'mise_en_service',
+                         'controle', 'depannage']},
+            'duree_jours': {'type': 'integer', 'title': 'Durée (jours)',
+                            'minimum': 1, 'maximum': 30,
+                            'description': 'Défaut 1.'},
+            'date_cible': {'type': 'string', 'format': 'date',
+                           'title': 'À partir du',
+                           'description': "Défaut aujourd'hui."},
+        },
+        'required': ['chantier'],
+    },
+    required_permission=_PERM_LIRE,
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    lecture=True,
+    objets={'chantier': 'chantier'},
+)
+
+
 # Catalogue déclaré par cette app (ordre stable).
 INSTALLATIONS_ACTIONS = (
     PLANIFIER_VISITE_MAINTENANCE,
     BROUILLON_COMMANDE_CHANTIER,
     ETAT_CHANTIER,
     LISTE_CHANTIERS,
+    SUGGERER_CRENEAU,
 )
 
 

@@ -13,6 +13,7 @@ from apps.installations.agent_actions import (
     ETAT_CHANTIER,
     LISTE_CHANTIERS,
     PLANIFIER_VISITE_MAINTENANCE,
+    SUGGERER_CRENEAU,
     BROUILLON_COMMANDE_CHANTIER,
     INSTALLATIONS_ACTIONS,
     register_installation_actions,
@@ -136,6 +137,26 @@ class InstallationsAgentActionsTest(TestCase):
         self.assertEqual(tuple(props['statut']['enum']), STATUTS_LISTE)
         self.assertEqual(props['limite']['maximum'], 25)
         self.assertEqual(a.inputs['required'], [])
+        self.assertEqual(a.required_permission, 'installation_voir')
+
+    def test_suggerer_creneau_est_une_lecture(self):
+        """CHTA4 — POST qui ne fait que lire (XFSM2, « NE MUTE RIEN ») :
+        ``lecture=True``, jamais une proposition ; code de lecture du module
+        (la route est dans les lectures d'InterventionViewSet)."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        from apps.installations.models import Intervention
+        a = self._by_key('installations.planning.suggerer')
+        self.assertEqual(a, SUGGERER_CRENEAU)
+        self.assertEqual((a.method, a.risk, a.lot, a.lecture),
+                         ('POST', 'internal', 'copilote', True))
+        self.assertEqual(a.endpoint,
+                         '/api/django/installations/interventions/suggerer-creneau/')
+        self.assertEqual(a.inputs['required'], ['chantier'])
+        self.assertEqual(a.objets, {'chantier': 'chantier'})
+        valeurs = {c for c, _l in Intervention.Type.choices}
+        self.assertLessEqual(set(a.inputs['properties']['type_intervention']['enum']), valeurs)
+        _codes, _admin, modules = _gardes_de_la_route(a)
+        self.assertIn('installations', modules)
         self.assertEqual(a.required_permission, 'installation_voir')
 
     def test_company_never_in_inputs(self):
