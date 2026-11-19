@@ -23,7 +23,7 @@ import CaseRonde from '../ui/CaseRonde'
 import Etoile from '../ui/Etoile'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurProjet from '../ui/SelecteurProjet'
-import SelecteurQuand, { ajouterJours } from '../ui/SelecteurQuand'
+import SelecteurQuand, { ajouterJours, dateComplete } from '../ui/SelecteurQuand'
 
 /* ============================================================================
    TCH84 — Fiche d'une tâche (`?tache=<id>`, ouverte par un clic sur une ligne ou par un rappel).
@@ -50,14 +50,79 @@ const PRIORITES = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]] // ordre de texte
 /** `{champ: [messages]}` d'un 400 → `{ champDeLaFiche: premier message }` (le reste : `general`). */
 const CLES_HORS_CHAMP = new Set(['error', 'code', 'detail'])
 
+/** R2-042 — le message de format de date de l'API (« Date has wrong format. Use … YYYY-MM-DD. ») n'est jamais montré
+ *  tel quel : il devient « Date incomplète. ». */
+const MESSAGE_FORMAT_DATE = /YYYY|AAAA-MM-JJ|wrong format|format de date/i
+const DATE_INCOMPLETE = 'Date incomplète.'
+
 function erreursParChamp(champs) {
   const sortie = {}
   Object.entries(champs ?? {}).forEach(([cle, liste]) => {
     if (CLES_HORS_CHAMP.has(cle)) return // le 400 porte aussi `error` (et `code`) à la racine : jamais un champ
     const message = Array.isArray(liste) && typeof liste[0] === 'string' ? liste[0] : ''
-    if (message) sortie[CHAMP_DE_ERREUR[cle] ?? 'general'] = message
+    if (message) sortie[CHAMP_DE_ERREUR[cle] ?? 'general'] = MESSAGE_FORMAT_DATE.test(message) ? DATE_INCOMPLETE : message
   })
   return sortie
+}
+
+/** R2-042 — les raccourcis d'échéance, comme ceux de « Quand » : Demain · Vendredi (le prochain, jamais aujourd'hui) ·
+ *  Fin de mois ; calculés en UTC à partir du jour de la fiche (jamais décalés par l'heure d'été). */
+function raccourcisEcheance(aujourdhui) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(aujourdhui ?? ''))
+  if (!m) return []
+  const jour = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  const versVendredi = ((5 - jour.getUTCDay() + 7) % 7) || 7
+  const finDeMois = new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).toISOString().split('T')[0]
+  return [
+    { cle: 'demain', titre: 'Demain', jour: ajouterJours(aujourdhui, 1) },
+    { cle: 'vendredi', titre: 'Vendredi', jour: ajouterJours(aujourdhui, versVendredi) },
+    { cle: 'mois', titre: 'Fin de mois', jour: finDeMois },
+  ]
+}
+
+/** R2-042 — l'échéance : raccourcis + un champ date qui n'écrit qu'à la SORTIE (ou Entrée) et seulement une date
+ *  entière — le champ rendait « 0002-11-27 » au 1er chiffre de l'année, envoyé au serveur (400, « YYYY-MM-DD »). */
+function EditeurEcheance({ echeance, aujourdhui, onPoser, onIncomplete }) {
+  const [frappe, setFrappe] = useState(null) // { pour: échéance reçue, valeur tapée }
+  const valeur = frappe && frappe.pour === (echeance ?? '') ? frappe.valeur : echeance ?? ''
+  const ecrire = () => {
+    if (!frappe || frappe.pour !== (echeance ?? '') || frappe.valeur === (echeance ?? '')) return
+    if (frappe.valeur && !dateComplete(frappe.valeur)) { onIncomplete(); return } // la frappe reste, à corriger
+    setFrappe(null)
+    if (!frappe.valeur) return // champ vidé : « Aucune » retire l'échéance, un champ vide ne l'efface pas en silence
+    onPoser(frappe.valeur)
+  }
+  const raccourcis = raccourcisEcheance(aujourdhui)
+  return (
+    <>
+      <div className="quand-tuiles" role="radiogroup" aria-label="Choisir l'échéance">
+        {raccourcis.map((r) => (
+          <button key={r.cle} type="button" role="radio" className="quand-tuile" aria-checked={echeance === r.jour} onClick={() => onPoser(r.jour)}>
+            <b>{r.titre}</b>
+            <span className="chiffres">{jourNomme(r.jour, aujourdhui)}</span>
+          </button>
+        ))}
+        {echeance ? (
+          <button type="button" role="radio" className="quand-tuile" aria-checked={false} onClick={() => onPoser(null)}>
+            <b>Aucune</b>
+          </button>
+        ) : null}
+      </div>
+      <label className="champ-etiquette" htmlFor="fiche-echeance">
+        <span>Choisir un jour</span>
+        <input
+          id="fiche-echeance"
+          type="date"
+          className="champ chiffres"
+          aria-label="Échéance"
+          value={valeur}
+          onChange={(e) => setFrappe({ pour: echeance ?? '', valeur: e.target.value })}
+          onBlur={ecrire}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ecrire() } }}
+        />
+      </label>
+    </>
+  )
 }
 
 const sansCle = (objet, cle) => Object.fromEntries(Object.entries(objet).filter(([k]) => k !== cle))
@@ -419,16 +484,12 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
 
             {ouvert === 'echeance' ? (
               <div className="fiche-editeur">
-                <label className="fiche-ligne" htmlFor="fiche-echeance">
-                  <span className="fiche-etiquette">Échéance</span>
-                  <input
-                    id="fiche-echeance"
-                    type="date"
-                    className="champ-discret chiffres"
-                    value={tache.echeance ?? ''}
-                    onChange={(e) => patcher({ echeance: e.target.value || null }, 'echeance')}
-                  />
-                </label>
+                <EditeurEcheance
+                  echeance={tache.echeance}
+                  aujourdhui={aujourdhui}
+                  onPoser={(jour) => { erreur('echeance', ''); patcher({ echeance: jour }, 'echeance') }}
+                  onIncomplete={() => erreur('echeance', DATE_INCOMPLETE)}
+                />
               </div>
             ) : null}
             <Erreur id="fiche-err-echeance" message={erreurs.echeance} />

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -234,6 +234,50 @@ describe('TCH84 — fiche d\'une tâche', () => {
     monter()
     await screen.findByRole('textbox', { name: 'Titre' })
     expect(screen.queryByRole('button', { name: 'Encore 10 min' })).toBeNull()
+  })
+
+  it('R2-042 — taper une échéance : rien ne part pendant la frappe, la date entière part à la sortie du champ', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    await user.click(screen.getByRole('button', { name: 'Échéance : jeu. 19' }))
+    const champ = screen.getByLabelText('Échéance')
+    // le champ date rend une date « valide » dès le 1er chiffre de l'année : 0002-11-27, 0020-…, 0202-…, 2026-11-27
+    for (const v of ['0002-11-27', '0020-11-27', '0202-11-27', '2026-11-27']) fireEvent.change(champ, { target: { value: v } })
+    expect(api.modifierTache).not.toHaveBeenCalled()
+    fireEvent.blur(champ)
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(1))
+    expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 })
+  })
+
+  it('R2-042 — une année partielle n\'est jamais envoyée : « Date incomplète. » sous le champ', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    await user.click(screen.getByRole('button', { name: 'Échéance : jeu. 19' }))
+    const champ = screen.getByLabelText('Échéance')
+    fireEvent.change(champ, { target: { value: '0202-11-27' } })
+    fireEvent.blur(champ)
+    expect(await screen.findByText('Date incomplète.')).toBeInTheDocument()
+    expect(api.modifierTache).not.toHaveBeenCalled()
+  })
+
+  it('R2-042 — raccourcis Demain · Vendredi · Fin de mois · Aucune ; le message du serveur est traduit, jamais « YYYY-MM-DD »', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    await user.click(screen.getByRole('button', { name: 'Échéance : jeu. 19' }))
+    const raccourcis = screen.getByRole('radiogroup', { name: "Choisir l'échéance" })
+    expect(within(raccourcis).getAllByRole('radio').map((r) => r.querySelector('b').textContent))
+      .toEqual(['Demain', 'Vendredi', 'Fin de mois', 'Aucune'])
+    await user.click(within(raccourcis).getByRole('radio', { name: /^Vendredi/ }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-20', lock_version: 4 }))
+    await user.click(within(raccourcis).getByRole('radio', { name: /^Fin de mois/ }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { echeance: '2026-11-30', lock_version: 4 }))
+    api.modifierTache.mockRejectedValueOnce(erreurHttp({ echeance: ['Date has wrong format. Use one of these formats instead: YYYY-MM-DD.'] }, 400))
+    await user.click(within(raccourcis).getByRole('radio', { name: /^Demain/ }))
+    expect(await screen.findByText('Date incomplète.')).toBeInTheDocument()
+    expect(screen.queryByText(/YYYY/)).toBeNull()
   })
 
   it('R2-040 — chaque écriture réussie (Fait, Quand) et la fermeture préviennent les écrans : `taqinor:taches:ecrite`', async () => {
