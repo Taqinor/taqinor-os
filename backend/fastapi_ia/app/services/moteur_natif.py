@@ -344,7 +344,10 @@ def _executer_outils(contenu: list, tour: _Tour) -> list[dict]:
                                        "seulement les outils déclarés."
                                        % str(bloc.get("name"))[:64], True))
             continue
-        tour.appeles.append(outil.nom)
+        if not outil.hors_budget:
+            # Le chargeur n'écrit rien : un tour où lui seul a tourné reste
+            # rejouable ailleurs, et « Déjà fait » ne le nomme jamais.
+            tour.appeles.append(outil.nom)
         entrees = bloc.get("input") if isinstance(bloc.get("input"), dict) else {}
         try:
             texte, erreur = _sortie(outil, dict(entrees), apres)

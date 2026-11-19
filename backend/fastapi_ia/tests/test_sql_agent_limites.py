@@ -857,6 +857,57 @@ class JeuxDesMoteursFnd6Tests(unittest.TestCase):
         reprendre.assert_not_called()
 
 
+class ValidationImbriqueeRevue2ATests(unittest.TestCase):
+    """Revue 2A (S3) — les entrées imbriquées (lignes d'un BCF…) sont validées
+    contre le schéma déclaré : types, required, enum, additionalProperties
+    false, minimum/maximum, minItems/maxItems ; refus en français nommant le
+    chemin ; mot-clé inconnu ignoré (jamais un tour cassé)."""
+
+    LIGNE = {"type": "object", "properties": {
+        "produit": {"type": "integer"}, "designation": {"type": "string"},
+        "quantite": {"type": "integer", "minimum": 1}},
+        "required": ["quantite"], "additionalProperties": False, "oneOf": [{"required": ["produit"]}]}
+    SCHEMA = {"type": "object", "properties": {
+        "fournisseur": {"type": "integer"},
+        "lignes": {"type": "array", "minItems": 1, "maxItems": 3, "items": LIGNE},
+        "limite": {"type": "integer", "minimum": 1, "maximum": 25}},
+        "required": ["fournisseur", "lignes"]}
+
+    def _refus(self, entrees):
+        from app.services import action_tools as at
+        with self.assertRaises(at.ActionValidationError) as erreur:
+            at.validate_inputs(self.SCHEMA, entrees)
+        return str(erreur.exception)
+
+    def test_prix_choisi_par_le_modele_refuse_en_nommant_le_chemin(self):
+        texte = self._refus({"fournisseur": 4, "lignes": [
+            {"produit": 3, "quantite": 20, "prix_achat_unitaire": 1}]})
+        self.assertIn("lignes[0].prix_achat_unitaire", texte)
+        self.assertTrue(texte.startswith("Entrees non autorisees"))
+
+    def test_types_requis_et_bornes_imbriques(self):
+        for entrees, chemin in (
+                ({"fournisseur": 4, "lignes": [{"produit": 3, "quantite": 0}]}, "lignes[0].quantite"),
+                ({"fournisseur": 4, "lignes": [{"produit": 3}]}, "lignes[0].quantite"),
+                ({"fournisseur": 4, "lignes": [{"produit": "trois", "quantite": 2}]}, "lignes[0].produit"),
+                ({"fournisseur": 4, "lignes": []}, "lignes"),
+                ({"fournisseur": 4, "lignes": [{"quantite": 1}] * 4}, "lignes"),
+                ({"fournisseur": 4, "lignes": [{"quantite": 1}], "limite": 50}, "limite")):
+            with self.subTest(chemin=chemin, entrees=entrees):
+                self.assertIn(chemin, self._refus(entrees))
+
+    def test_entree_conforme_normalisee_et_mot_cle_inconnu_ignore(self):
+        from app.services import action_tools as at
+        sortie = at.validate_inputs(self.SCHEMA, {"fournisseur": 4, "lignes": [
+            {"produit": "3", "quantite": "2"}, {"designation": "Câble", "quantite": 1}]})
+        self.assertEqual(sortie["lignes"], [{"produit": 3, "quantite": 2},
+                                            {"designation": "Câble", "quantite": 1}])
+        libre = {"type": "object", "properties": {"x": {"type": "object", "properties": {
+            "a": {"type": "integer"}}, "patternProperties": {"^z": {}}}}}
+        self.assertEqual(at.validate_inputs(libre, {"x": {"a": 1, "autre": "gardé"}}),
+                         {"x": {"a": 1, "autre": "gardé"}})
+
+
 class InvariantEteintFnd13Tests(unittest.TestCase):
     """Vague 2 (FND13) — copilote ÉTEINT pour le compte = identique, sur tous
     les canaux, même quand le catalogue porte les champs neufs (`noyau`,

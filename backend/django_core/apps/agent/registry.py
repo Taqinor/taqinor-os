@@ -407,9 +407,20 @@ def _action_ouvrir() -> AgentAction:
     (dessin, photos, signature, envoi) se fait sur l'écran ; l'action rend un
     BOUTON (carte ``lien_ecran``), jamais un chemin écrit par le modèle — la
     vue le construit depuis ``contract_samples/assistant_ecrans.json``. Lecture,
-    noyau (jamais différée), lot ``copilote``."""
+    noyau (jamais différée), lot ``copilote``. Revue 2A : l'énumération ne
+    porte que les écrans OFFERTS (``ecrans.cles_offertes`` : objet résoluble,
+    sinon 404 garanti) et ``onglet`` n'existe que si le calepinage est offert."""
     from . import ecrans
 
+    offerts = ecrans.cles_offertes()
+    proprietes = {
+        'ecran': {'type': 'string', 'enum': offerts},
+        'id': {'type': 'integer', 'minimum': 1, 'description': (
+            "Identifiant de l'objet, obligatoire pour un écran à objet.")},
+    }
+    if 'calepinage' in offerts:
+        proprietes['onglet'] = {'type': 'string', 'enum': ecrans.onglets_calepinage(),
+                                'description': 'Onglet du calepinage seulement.'}
     return AgentAction(
         key='erp.ouvrir',
         label="Ouvrir un écran de l'ERP",
@@ -418,21 +429,14 @@ def _action_ouvrir() -> AgentAction:
             "faire un geste qui reste humain (dessiner, prendre des photos, "
             "signer, envoyer) ou voir une fiche en entier. Ne pas utiliser "
             "pour : lire une donnée (utilise l'outil de lecture du domaine). "
-            "Exemple : « ouvre le calepinage 12 sur la production » → "
-            "ecran=calepinage, id=12, onglet=production. Résultat : un bouton "
-            "« Ouvrir » ; n'écrit rien."
+            "Exemple : « ouvre la fiche du lead 1489 » → ecran=lead, id=1489. "
+            "Résultat : un bouton « Ouvrir » ; n'écrit rien."
         ),
         endpoint='/api/django/agent/ouvrir/',
         method='GET',
         inputs={
             'type': 'object',
-            'properties': {
-                'ecran': {'type': 'string', 'enum': ecrans.cles()},
-                'id': {'type': 'integer', 'minimum': 1, 'description': (
-                    "Identifiant de l'objet, obligatoire pour un écran à objet.")},
-                'onglet': {'type': 'string', 'enum': ecrans.onglets_calepinage(),
-                           'description': 'Onglet du calepinage seulement.'},
-            },
+            'properties': proprietes,
             'required': ['ecran'],
             'additionalProperties': False,
         },

@@ -503,11 +503,53 @@ def _valider_valeur(name: str, spec: dict[str, Any], value: Any) -> Any:
             f"Champ '{name}' : valeur {value!r} non permise (valeurs "
             "permises : " + ", ".join(str(v) for v in permises) + ")."
         )
+    _valider_bornes(name, spec, value)
     items = spec.get("items")
     if expected == "array" and isinstance(items, dict):
         value = [_valider_valeur(f"{name}[{i}]", items, v)
                  for i, v in enumerate(value)]
+    if expected == "object" and isinstance(spec.get("properties"), dict):
+        value = _valider_objet(name, spec, value)
     return value
+
+
+def _valider_bornes(name: str, spec: dict[str, Any], value: Any) -> None:
+    """Revue 2A — `minimum` / `maximum` d'un nombre, `minItems` / `maxItems`
+    d'un tableau. Un mot-cle absent, ou d'une forme inattendue, est ignore."""
+    est_nombre = isinstance(value, (int, float)) and not isinstance(value, bool)
+    for cle, viole, texte in (("minimum", lambda b: value < b, "au moins"),
+                              ("maximum", lambda b: value > b, "au plus")):
+        borne = spec.get(cle)
+        if est_nombre and isinstance(borne, (int, float)) and not isinstance(borne, bool) and viole(borne):
+            raise ActionValidationError(f"Champ '{name}' : {texte} {borne} attendu.")
+    for cle, viole, texte in (("minItems", lambda b: len(value) < b, "au moins"),
+                              ("maxItems", lambda b: len(value) > b, "au plus")):
+        borne = spec.get(cle)
+        if isinstance(value, list) and isinstance(borne, int) and not isinstance(borne, bool) and viole(borne):
+            raise ActionValidationError(f"Champ '{name}' : {texte} {borne} élément(s) attendu(s).")
+
+
+def _valider_objet(name: str, spec: dict[str, Any], value: dict[str, Any]) -> dict[str, Any]:
+    """Revue 2A — un objet IMBRIQUE (ligne de commande…) contre ses
+    `properties` : types, `enum`, bornes (recursif), `required`, et
+    `additionalProperties: false` (une cle non declaree, ex. un prix choisi
+    par le modele, est REFUSEE en nommant son chemin). Sans
+    `additionalProperties: false`, les cles non declarees passent comme avant."""
+    proprietes = spec["properties"]
+    if spec.get("additionalProperties") is False:
+        en_trop = sorted(k for k in value if k not in proprietes)
+        if en_trop:
+            raise ActionValidationError(
+                "Entrees non autorisees : " + ", ".join(f"{name}.{k}" for k in en_trop))
+    sortie = dict(value)
+    for cle, sous_spec in proprietes.items():
+        if sortie.get(cle) is not None and isinstance(sous_spec, dict):
+            sortie[cle] = _valider_valeur(f"{name}.{cle}", sous_spec, sortie[cle])
+    requis = spec.get("required") if isinstance(spec.get("required"), list) else []
+    manquants = [f"{name}.{r}" for r in requis if sortie.get(r) in (None, "")]
+    if manquants:
+        raise ActionValidationError("Champs requis manquants : " + ", ".join(manquants))
+    return sortie
 
 
 _ENTIER_RE = re.compile(r"-?\d+")

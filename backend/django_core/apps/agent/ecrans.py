@@ -31,6 +31,19 @@ def cles() -> list:
     return sorted(_table()['ecrans'])
 
 
+def cles_offertes() -> list:
+    """Clés OFFERTES au modèle (énumération de ``erp.ouvrir``) : les écrans
+    sans objet, et ceux dont le type d'objet a un résolveur de libellés qui
+    existe — sinon la vue répondrait toujours 404 (revue 2A : calepinage,
+    visite tant que leurs lanes n'ont pas livré ``selectors_libelles.py``).
+    Calculé : l'écran apparaît dès que le résolveur arrive. La table du contrat
+    reste complète ; seul ce qui est offert est filtré."""
+    from .libelles import type_resolu
+
+    return [cle for cle in cles()
+            if not _table()['ecrans'][cle].get('objet') or type_resolu(_table()['ecrans'][cle]['objet'])]
+
+
 def onglets_calepinage() -> list:
     """Onglets du calepinage que l'assistant peut ouvrir (liste fermée)."""
     return list(_table()['onglets_calepinage'])
