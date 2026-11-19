@@ -454,6 +454,26 @@ class SchemaTests(SimpleTestCase):
                 self.assertIn('409', self._operation(methode, chemin)['responses'])
         self.assertIn('201', self._operation('POST', 'projets/{id}/planification/')['responses'])
 
+    def test_une_forme_tache_embarquee_est_publiee_par_son_serialiseur(self):
+        """Constats r2 (planification, lier-activite) : une TACHE / ITEM / PROJET embarquée dans une réponse est
+        la forme de son sérialiseur (ses nuls compris), jamais redéduite d'un seul exemple."""
+        composants = self.schema['components']['schemas']
+
+        def ref(schema):
+            return (schema.get('items') or schema).get('$ref', '').rsplit('/', 1)[-1]
+        self.assertEqual(ref(composants['TachesEchPlanification']['properties']['creees']), 'TachesTache')
+        self.assertEqual(ref(composants['TachesEchLierActivite']['properties']['tache']), 'TachesTache')
+        self.assertFalse([nom for nom in composants
+                          if nom.startswith(('TachesEchPlanification_Creees', 'TachesEchLierActivite_Tache'))])
+
+    def test_les_champs_d_une_ligne_d_apercu_ne_sont_jamais_exiges(self):
+        champs = self.schema['components']['schemas']['TachesEchSaisieApercu_Lignes_Element_Champs']
+        self.assertTrue(champs['properties'])
+        self.assertNotIn('required', champs)
+
+    def test_le_rejeu_d_une_creation_est_documente_200(self):
+        self.assertEqual({'200', '201'} & set(self._operation('POST', 'taches/')['responses']), {'200', '201'})
+
     def test_les_corps_conformes_des_constats_r2_passent_la_validation(self):
         """Les corps des constats r2, rendus conformes au schéma publié, passent le sérialiseur de la route ;
         leur version d'origine (hors schéma désormais) est refusée par le même sérialiseur."""

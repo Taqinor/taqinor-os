@@ -184,8 +184,33 @@ def _champ(noeud, nom, requis=True):
     if isinstance(valeur, list):
         enfant = _champ(valeur[0], f'{nom}_Element') if valeur else serializers.JSONField()
         return serializers.ListField(child=enfant, **options)
-    champs = {cle: _champ(sous, f'{nom}_{_camel(cle)}') for cle, sous in valeur.items()}
+    connue = _forme_connue(valeur)
+    if connue is not None:
+        return connue(**options)
+    partiel = isinstance(valeur, _Partiel)
+    champs = {cle: _champ(sous, f'{nom}_{_camel(cle)}', requis=not partiel) for cle, sous in valeur.items()}
     return inline_serializer(nom, champs, **options)
+
+
+class _Partiel(dict):
+    """Objet dont chaque clé ne paraît que si elle a été LUE (les `champs` d'une ligne d'aperçu) : aucune exigée."""
+
+
+def _formes_connues():
+    from apps.taches.serializers.formes import ItemSerializer, ProjetSerializer, TacheSerializer
+    return (TacheSerializer, ItemSerializer, ProjetSerializer)
+
+
+def _forme_connue(valeur):
+    """Le sérialiseur de forme (TACHE, ITEM, PROJET) dont l'objet de l'exemple a EXACTEMENT les clés : une forme
+    embarquée (`creees`, `tache`, `projet`…) est alors publiée par SON sérialiseur — ses nuls (`rappel`, `lien`,
+    `checklist`, `projet` d'une tâche À trier…) compris — au lieu d'être redéduite d'un seul exemple (api-fuzz
+    r2 : `null` servi, objet exigé)."""
+    cles = set(valeur)
+    for classe in _formes_connues():
+        if cles == set(classe().fields):
+            return classe
+    return None
 
 
 @lru_cache(maxsize=None)
@@ -217,6 +242,9 @@ COLONNES_NULLABLES = (
 #: Objets dont les clés dépendent du `type` / `code` / `cle` de leur porteur (cartes C1-C8, santé d'un projet,
 #: révélations…) : publiés comme objets LIBRES (aucune clé exigée).
 OBJETS_LIBRES = ('donnees',)
+#: Objets dont chaque clé ne paraît que si elle a été lue (les `champs` d'une ligne d'aperçu de la saisie : seulement
+#: ce que la phrase a dit) : leurs clés sont publiées, aucune n'est exigée.
+OBJETS_PARTIELS = ('champs',)
 #: Valeurs JSON quelconques (une préférence vaut une heure, un nombre, une liste… selon sa clé).
 VALEURS_QUELCONQUES = ('valeur',)
 #: Chemins nuls servis hors des règles par nom, par échantillon.
@@ -263,6 +291,8 @@ def _nullables(valeur, chemins):
             for cle, (sous, nul) in list(noeud.items()):
                 if cle in OBJETS_LIBRES and isinstance(sous, (dict, _Carte)):
                     sous = _Carte((None, True))
+                elif cle in OBJETS_PARTIELS and isinstance(sous, dict):
+                    sous = _Partiel(sous)
                 elif cle in VALEURS_QUELCONQUES:
                     sous, nul = None, True
                 scalaire = not isinstance(sous, (dict, list, _Carte))
