@@ -12,6 +12,7 @@ import { buildInstalledApps } from '../../lib/apps/useInstalledApps'
 import { estAutoriseEntree } from '../../router/moduleGating'
 import { moduleConfigs, moduleNavSections } from '../../router/moduleRoutes'
 import config from './module.config'
+import CoquilleTaches from './coquille/CoquilleTaches'
 import { useEnLigne } from './lib/enLigne'
 
 /* TCH43 — les 13 routes de api.md §7 rendent leur page DANS la coquille ; `/taches` mène
@@ -200,6 +201,37 @@ describe('R2-080 — sur iPhone, la rangée du haut de Tâches remplace la barre
     const compact = container.querySelector('.entete-barre .entete-compact')
     expect(compact?.textContent).toBe('À trier')
     expect(compact.getAttribute('aria-hidden')).toBe('true')
+  })
+})
+
+describe('R2-093 — écran enfant : « ‹ parent » au-dessus du titre, ni loupe ni Copilote', () => {
+  function monterEnfant(props) {
+    const router = createMemoryRouter([
+      { path: '/taches/projets/:id', element: <CoquilleTaches ecran="projet" titre="Chantier Benali 9 kWc" {...props}><p>contenu</p></CoquilleTaches> },
+      { path: '/taches/projets', element: <p>liste des projets</p> },
+    ], { initialEntries: ['/taches/projets/7'] })
+    return { router, ...render(<RouterProvider router={router} />) }
+  }
+
+  it('rend le retour AVANT le titre et mène au parent', async () => {
+    const { router, container } = monterEnfant({ retour: { libelle: 'Projets', vers: '/taches/projets' } })
+    const titre = screen.getByRole('heading', { level: 1, name: 'Chantier Benali 9 kWc' })
+    const retour = screen.getByRole('button', { name: 'Projets' })
+    expect(retour.compareDocumentPosition(titre) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // écran enfant : pas de loupe, pas de Copilote ; le ⋯ reste ; ☰ cède sa place au retour
+    expect(screen.queryByRole('button', { name: 'Chercher dans mes tâches' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copilote' })).toBeNull()
+    expect(screen.getByRole('button', { name: "Plus d'actions" })).toBeInTheDocument()
+    expect(within(container.querySelector('.tch')).queryByRole('button', { name: 'Ouvrir le menu' })).toBeNull()
+    await act(async () => { retour.click() })
+    expect(router.state.location.pathname).toBe('/taches/projets')
+  })
+
+  it('sans `retour`, l\'écran garde loupe, Copilote et ☰', () => {
+    monterEnfant({})
+    expect(screen.getByRole('button', { name: 'Chercher dans mes tâches' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copilote' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ouvrir le menu' })).toBeInTheDocument()
   })
 })
 

@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ReactReduxContext } from 'react-redux'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Bell, CloudOff, Ellipsis, Menu, Plus, Search, X } from 'lucide-react'
+import { Bell, ChevronLeft, CloudOff, Ellipsis, Menu, Plus, Search, X } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
@@ -214,10 +214,15 @@ export function SaisieBureau({ onClick }) {
   )
 }
 
+/**
+ * `retour` (R2-093, écrans enfants) : `{ libelle, vers }` — `libelle` est le nom de l'écran parent (« Projets »,
+ * « Réglages »), `vers` son chemin (`/taches/projets`). Exemple : `retour={{ libelle: 'Projets', vers: '/taches/projets' }}`.
+ * Rendu « ‹ {libelle} » au-dessus du titre ; l'écran enfant n'a alors ni loupe ni Copilote (le ⋯ reste).
+ */
 export default function CoquilleTaches({
   ecran, titre, sousTitre = null, actionsEcran = [], derniereSynchro = null,
   feuille = null, selecteurProjet = null, selection = null, copilote = {}, conflit = null, contexteSaisie = null,
-  saisieBureau = true, children,
+  saisieBureau = true, retour = null, children,
 }) {
   const navigate = useNavigate()
   const { pathname, state: etatLieu } = useLocation()
@@ -313,36 +318,48 @@ export default function CoquilleTaches({
             n'a pas de boîte (`display: contents`) et ses actions se posent à droite du titre, comme avant. */}
         <header className="entete">
           <div className={`entete-barre${replie ? ' replie' : ''}`} ref={barre}>
-            <BoutonMenuErp />
+            {/* R2-093 — un écran ENFANT (projet, sous-page de Réglages) passe `retour` : « ‹ {libelle} » se pose
+                AU-DESSUS du titre (iPhone : à la place de ☰ ; bureau : sur la ligne du sur-titre), et l'écran
+                enfant ne répète ni la loupe ni le Copilote. */}
+            {retour ? (
+              <button type="button" className="entete-retour" onClick={() => navigate(retour.vers)}>
+                <ChevronLeft className="i" aria-hidden="true" />{retour.libelle}
+              </button>
+            ) : <BoutonMenuErp />}
             <div className="entete-compact" aria-hidden="true">{titre}</div>
             <div className="entete-actions">
               <ClocheErp />
-              <button
-                type="button"
-                className="bouton-icone"
-                aria-label="Chercher dans mes tâches"
-                onClick={() => navigate('/taches/recherche')}
-              >
-                <Search className="i" aria-hidden="true" />
-              </button>
-              <BoutonCopilote ecran={pathname} {...copilote} />
+              {retour ? null : (
+                <button
+                  type="button"
+                  className="bouton-icone"
+                  aria-label="Chercher dans mes tâches"
+                  onClick={() => navigate('/taches/recherche')}
+                >
+                  <Search className="i" aria-hidden="true" />
+                </button>
+              )}
+              {retour ? null : <BoutonCopilote ecran={pathname} {...copilote} />}
               <MenuPlus actionsEcran={actionsEcran} navigate={navigate} enLigne={enLigne} />
             </div>
           </div>
           <div className="entete-titres">
-            {enLigne ? (
-              sousTitre ? <div className="entete-date">{sousTitre}</div> : null
-            ) : (
-              <div className="entete-date" role="status">
-                <CloudOff className="i i-14" aria-hidden="true" />
-                <span className="chiffres">
-                  {synchro ? ` Hors ligne · dernière synchro à ${synchro}` : ' Hors ligne'}
-                </span>
-              </div>
-            )}
-            {file.enAttente > 0 ? (
-              <div className="entete-date" role="status"><span className="chiffres">{`En attente d'envoi (${file.enAttente})`}</span></div>
-            ) : null}
+            {/* le sur-titre garde sa ligne même vide : le grand titre est au même endroit sur tous les écrans */}
+            <div className="entete-surtitre">
+              {enLigne ? (
+                sousTitre ? <div className="entete-date">{sousTitre}</div> : null
+              ) : (
+                <div className="entete-date" role="status">
+                  <CloudOff className="i i-14" aria-hidden="true" />
+                  <span className="chiffres">
+                    {synchro ? ` Hors ligne · dernière synchro à ${synchro}` : ' Hors ligne'}
+                  </span>
+                </div>
+              )}
+              {file.enAttente > 0 ? (
+                <div className="entete-date" role="status"><span className="chiffres">{`En attente d'envoi (${file.enAttente})`}</span></div>
+              ) : null}
+            </div>
             <h1 className="entete-titre" ref={titreH1}>{titre}</h1>
           </div>
         </header>

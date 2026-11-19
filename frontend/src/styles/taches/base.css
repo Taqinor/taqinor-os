@@ -103,6 +103,13 @@
   background: var(--destructive); color: var(--destructive-foreground); box-shadow: 0 0 0 2px var(--tch-surface);
   font-size: 0.6875rem; font-weight: 700; line-height: 18px; text-align: center;
 }
+/* Sur-titre (date, état hors ligne, envois en attente) : une ligne, réservée même vide au bureau (R2-085). */
+.tch .entete-surtitre { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; min-height: 1.25rem; }
+/* R2-093 — « ‹ Projets » d'un écran enfant, au-dessus du titre */
+.tch .entete-retour {
+  position: relative; display: inline-flex; align-items: center; gap: 2px; flex: none; min-height: 0;
+  color: var(--tch-accent); font-weight: 500; white-space: nowrap;
+}
 @media (min-width: 769px) {
   .tch .entete {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "titres actions";
@@ -111,6 +118,15 @@
   .tch .entete-barre { display: contents; }
   .tch .entete-titres { grid-area: titres; min-width: 0; }
   .tch .entete-actions { grid-area: actions; }
+  /* le retour prend la ligne du sur-titre (vide sur un écran enfant) : le titre reste à sa place */
+  .tch .entete-retour {
+    grid-area: titres; align-self: start; justify-self: start; height: 1.25rem; margin-left: -4px;
+    font-size: 0.9375rem;
+  }
+  .tch .entete-retour svg { width: 18px; height: 18px; }
+  .tch .entete-retour::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%);
+  }
 }
 /* Même seuil que la coque de l'ERP (768 px), écrit `screen and (…)` (voir la note du bloc `.layout-content` plus bas). */
 @media screen and (max-width: 768px) {
@@ -136,6 +152,9 @@
   /* replié, le Copilote garde son étoile et cède son libellé au titre compact (son nom accessible reste « Copilote ») */
   .tch .entete-barre.replie .copilote { width: 44px; height: 44px; margin: 0; padding: 0; gap: 0; justify-content: center; font-size: 0; }
   .tch .entete-titres { grid-column: 1 / -1; padding: 0 var(--tch-gouttiere); }
+  .tch .entete-surtitre:empty { display: none; }
+  .tch .entete-retour { height: 44px; padding: 0 8px 0 4px; font-size: 1.0625rem; }
+  .tch .entete-retour svg { width: 24px; height: 24px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .tch .entete-compact { transition: opacity var(--motion-fast) var(--ease-standard); }
