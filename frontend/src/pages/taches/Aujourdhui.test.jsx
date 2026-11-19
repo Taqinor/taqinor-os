@@ -952,6 +952,16 @@ describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `sect
     await waitFor(() => expect(screen.getByTestId('chemin')).toHaveTextContent('/crm/leads?lead=1637'))
   })
 
+  it('R3-023 — `?ouvrir=alleger` (carte « Ta journée déborde » du Copilote) ouvre « Alléger ma journée » ; la fermer ôte le paramètre', async () => {
+    servir(donnees())
+    render(<MemoryRouter initialEntries={['/taches/aujourdhui?ouvrir=alleger']}><Aujourdhui /><Adresse /></MemoryRouter>)
+    const feuille = await screen.findByRole('dialog', { name: 'Alléger ma journée' })
+    expect(feuille).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(adresse().get('ouvrir')).toBeNull())
+    expect(screen.queryByRole('dialog', { name: 'Alléger ma journée' })).toBeNull()
+  })
+
   it('R3-028 — Entrée sur une activité ERP SANS adresse le dit aussi (jamais rien sans un mot)', async () => {
     const d = donnees()
     d.journee = d.journee.map((it) => (it.type === 'activite' ? { ...it, lien: null } : it))

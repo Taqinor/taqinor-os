@@ -782,6 +782,7 @@ export default function Aujourdhui() {
       const { data } = await client.alleger({ jour: donnees.jour, garder: ids })
       setDonnees(data.aujourdhui)
       setFeuille(null)
+      setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.delete('ouvrir'); return suite }, { replace: true })
       const n = data.renvoyees?.length ?? 0
       proposerAnnuler({
         message: `${n} ${n >= 2 ? 'retournées' : 'retournée'} aux projets`,
@@ -790,7 +791,7 @@ export default function Aujourdhui() {
     } catch (err) {
       annoncer(frenchError(err))
     }
-  }, [garde, donnees, setDonnees, charger])
+  }, [garde, donnees, setDonnees, charger, setParams])
 
   const modes = useModesJournee({ donnees, setDonnees, garde, setEstampilles })
   const revoir = useARevoir({ donnees, setDonnees, garde, charger })
@@ -992,13 +993,17 @@ export default function Aujourdhui() {
         />
       ),
     }
-  } else if (feuille?.type === 'alleger' && donnees) {
+  } else if ((feuille?.type === 'alleger' || (!feuille && params.get('ouvrir') === 'alleger')) && donnees) {
+    // R3-023 — `?ouvrir=alleger` : « Alléger ma journée » de la carte du Copilote (journée qui déborde) ouvre la feuille
     laFeuille = {
       ouverte: true,
       titre: 'Alléger ma journée',
       cranInitial: '85',
       variante: 'panneau', // ≥ 1024 px : panneau fixe à droite, non modal ; en dessous, la feuille (R2-050)
-      onFermer: () => setFeuille(null),
+      onFermer: () => {
+        setFeuille(null)
+        setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.delete('ouvrir'); return suite }, { replace: true })
+      },
       children: <FeuilleAlleger donnees={donnees} enLigne={enLigne} onGarder={alleger} />,
     }
   } else if (feuille?.type === 'lier') {

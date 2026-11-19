@@ -236,7 +236,7 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
   })
 
   it('priorites : objectif atteint et mode libre ont leur phrase', () => {
-    const atteint = { ...contrat('priorites'), garder_n: 0 }
+    const atteint = { ...contrat('priorites'), garder_n: 0, faites: 5 }
     const { unmount } = monter('priorites', atteint)
     expect(screen.getByText('Objectif atteint : le reste peut attendre.')).toBeInTheDocument()
     unmount()
@@ -246,6 +246,31 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     expect(screen.getByText("Dans l'ordre où l'ERP les prendrait")).toBeInTheDocument()
   })
 
+  it('R3-023 — `garder_n` 0 à 1 faite sur 9 : JAMAIS « Objectif atteint », mais « couvert par tes tâches du jour (1 sur 9 faites) »', () => {
+    const d = { ...contrat('priorites'), garder_n: 0, faites: 1, objectif: { ...contrat('priorites').objectif, nb: 9 } }
+    monter('priorites', d)
+    expect(screen.queryByText(/Objectif atteint/)).toBeNull()
+    expect(screen.getByText('Ton objectif est couvert par tes tâches du jour (1 sur 9 faites)')).toBeInTheDocument()
+  })
+
+  it('R3-023 — journée qui déborde (`geste_propose: "alleger"`) : « Ta journée déborde de 4 h 45 », les gardées avec « Reporter à », et Alléger — jamais « Aujourd\'hui »', async () => {
+    const d = { ...contrat('priorites'), garder_n: 0, faites: 1, minutes_restantes: 525, deborde_minutes: 285, geste_propose: 'alleger' }
+    d.lignes = d.lignes.map((l) => ({ ...l, item: { ...l.item, jour_prevu: d.jour, prevue_au_plan: true, raison: null } }))
+    monter('priorites', d)
+    const carte = screen.getByRole('group', { name: 'Tes priorités' })
+    expect(within(carte).getByText('Ta journée déborde de 4 h 45')).toBeInTheDocument()
+    expect(within(carte).queryByText(/Objectif atteint/)).toBeNull()
+    expect(within(carte).queryByRole('button', { name: "Aujourd'hui" })).toBeNull()
+    expect(within(carte).queryByRole('button', { name: /^Garder/ })).toBeNull()
+    expect(within(carte).getAllByRole('listitem')).toHaveLength(d.lignes.length) // toutes, dans l'ordre servi
+    const reporter = within(carte).getAllByRole('button', { name: `Reporter à ${'jeu. 19'}` })
+    expect(reporter).toHaveLength(d.lignes.length)
+    await userEvent.click(reporter[0])
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/taches/taches/${d.lignes[0].item.id}/planifier/`,
+      expect.objectContaining({ jour_prevu: d.plus_tard, lock_version: d.lignes[0].item.lock_version })))
+    expect(within(carte).getByRole('link', { name: 'Alléger ma journée' })).toHaveAttribute('href', '/taches/aujourdhui?ouvrir=alleger')
+  })
+
   it('point : les constats calculés par le serveur, rien d’autre', () => {
     monter('point', contrat('point'))
     const carte = screen.getByRole('group', { name: 'Où tu en es' })
@@ -253,7 +278,9 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     expect(within(carte).getByText('Essentiel restant : Devis Settat')).toBeInTheDocument()
     expect(within(carte).getByText('Prochaine : Timbres')).toBeInTheDocument()
     expect(within(carte).getByText('Encore 3 gardées')).toBeInTheDocument()
-    expect(within(carte).getByText('Temps libre : 3 h')).toBeInTheDocument()
+    // R3-023 — le temps se dit contre ce qui reste à faire, jamais un « Temps libre » qui ignore le travail prévu
+    expect(within(carte).getByText('Reste : 1 h 15 pour 3 h disponibles')).toBeInTheDocument()
+    expect(within(carte).queryByText(/Temps libre/)).toBeNull()
     expect(within(carte).getByRole('link', { name: "Ouvrir Aujourd'hui" })).toHaveAttribute('href', '/taches/aujourdhui')
   })
 
