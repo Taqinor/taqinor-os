@@ -180,6 +180,27 @@ describe('TCH82 — feuille de saisie', () => {
     expect(champ()).toHaveValue('Relancer l\'imprimeur jeudi')
   })
 
+  it('R3-040 — un brouillon repris : le curseur est APRÈS la phrase, la frappe s\'y ajoute (jamais « DeuxBrouillon un »)', async () => {
+    const user = userEvent.setup()
+    const { rouvrir, unmount } = monter()
+    await user.type(champ(), 'Brouillon un')
+    rouvrir(false)
+    rouvrir(true)
+    await waitFor(() => expect(champ()).toHaveFocus())
+    expect(champ().selectionStart).toBe('Brouillon un'.length)
+    expect(champ().selectionEnd).toBe('Brouillon un'.length)
+    // `keyboard` (pas `type`, qui clique d'abord et poserait lui-même le curseur) : la frappe va où le champ l'a mis
+    await user.keyboard(' Deux')
+    expect(champ()).toHaveValue('Brouillon un Deux')
+    // une nouvelle feuille qui relit le brouillon du stockage : même règle
+    unmount()
+    monter()
+    await waitFor(() => expect(champ()).toHaveFocus())
+    expect(champ().selectionStart).toBe('Brouillon un Deux'.length)
+    await user.keyboard(' trois')
+    expect(champ()).toHaveValue('Brouillon un Deux trois')
+  })
+
   it('couture r2 — `n` sur un projet avant sa lecture (projet_id seul) : la puce nomme le projet, lu dans la liste', async () => {
     mocks.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', couleur: 'vert', priorite: 3, statut: 'actif' }])
     monter()
@@ -681,6 +702,34 @@ describe('TCH82 — feuille de saisie', () => {
       await user.type(champ(), 'et #cha')
       await user.click(await screen.findByRole('option', { name: 'Chantier Bénali 9 kWc' }))
       expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc ')
+    })
+
+    it('vague 3 — la lettre tapée juste après le choix d\'un projet n\'est jamais avalée (frappes enchaînées, une image passe entre deux)', async () => {
+      // `delay: null` : aucune attente entre les touches, comme une frappe rapide sous charge
+      const user = userEvent.setup({ delay: null })
+      monter()
+      await user.type(champ(), 'Photos #s')
+      await waitFor(() => expect(options()).toEqual(['Salon Solaire Expo', 'Site web']))
+      await user.keyboard('{ArrowDown}{Enter}e')
+      // une image passe (rAF) entre la 1re lettre et la suite : rien de ce qui suit le choix ne doit bouger le curseur
+      await act(() => new Promise((r) => { requestAnimationFrame(() => r()) }))
+      await user.keyboard('t #cha')
+      await waitFor(() => expect(options()).toEqual(['Chantier Bénali 9 kWc']))
+      await user.keyboard('{Enter}suite')
+      expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc suite')
+      expect(champ().selectionStart).toBe(champ().value.length)
+    })
+
+    it('vague 3 — choix au MILIEU de la phrase : le curseur se pose juste après le jeton, la suite reste derrière', async () => {
+      const user = userEvent.setup({ delay: null })
+      monter()
+      await user.type(champ(), 'Photos  demain')
+      // le curseur revient entre les deux espaces, on tape « #sit »
+      act(() => { champ().setSelectionRange(7, 7) })
+      await user.keyboard('#sit')
+      await waitFor(() => expect(options()).toEqual(['Site web']))
+      await user.keyboard('{Enter}x ')
+      expect(champ()).toHaveValue('Photos #Site_web x demain')
     })
 
     it('couture r2 — « #Nom » déjà tapé EN ENTIER : Entrée envoie la phrase (la liste ne mange pas la touche)', async () => {

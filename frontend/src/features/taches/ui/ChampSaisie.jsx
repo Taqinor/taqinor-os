@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
 /* ============================================================================
@@ -189,12 +189,34 @@ export default function ChampSaisie({
   const [curseur, setCurseur] = useState(null)
   const [actif, setActif] = useState(0)
   const [fermeePour, setFermeePour] = useState(null)
-  // la feuille qui l'accueille met son focus sur sa poignée à l'ouverture : on reprend la main juste après
+  // la feuille qui l'accueille met son focus sur sa poignée à l'ouverture : on reprend la main juste après.
+  // R3-040 — un brouillon repris : le curseur va APRÈS la phrase (un texte posé par le navigateur le laisse au début :
+  // « Deux » tapé donnait « DeuxBrouillon un »). Posé AU MONTAGE, dans la même image que le texte : une frappe faite
+  // avant l'image suivante n'est jamais déplacée ; le focus, lui, attend l'image (il ne bouge pas le curseur)
+  useLayoutEffect(() => {
+    const el = champ.current
+    if (!el) return
+    const fin = el.value.length
+    el.setSelectionRange?.(fin, fin)
+  }, [])
   useEffect(() => {
     if (!autoFocus) return undefined
-    const id = requestAnimationFrame(() => champ.current?.focus())
+    const id = requestAnimationFrame(() => {
+      if (champ.current && champ.current !== document.activeElement) champ.current.focus()
+    })
     return () => cancelAnimationFrame(id)
   }, [autoFocus])
+  // vague 3 — curseur à poser après une écriture du champ par le CODE (choix d'un projet dans la liste `#`) : posé
+  // dans la même image que la valeur, AVANT toute frappe suivante (jamais dans un `requestAnimationFrame`, qui passait
+  // après la lettre suivante sous charge et la faisait avaler par le jeton suivant)
+  const curseurVoulu = useRef(null)
+  useLayoutEffect(() => {
+    const voulu = curseurVoulu.current
+    const el = champ.current
+    if (!voulu || !el || el.value !== voulu.valeur) return
+    curseurVoulu.current = null
+    el.setSelectionRange?.(voulu.pos, voulu.pos)
+  })
   const phrases = alertes.map(phraseAlerte).filter(Boolean)
 
   const mot = projets ? motDiese(valeur, curseur) : null
@@ -202,18 +224,22 @@ export default function ChampSaisie({
   const listeOuverte = proposes.length > 0 && fermeePour !== valeur
   const courant = Math.min(actif, Math.max(proposes.length - 1, 0))
   const lireCurseur = (e) => setCurseur(e.target.selectionStart ?? null)
+  /** Le choix réécrit le champ à partir de sa valeur COURANTE (celle du champ à l'instant du choix, jamais une copie
+   *  d'un rendu plus ancien) ; la valeur et le curseur sont posés dans la même image, sans rien d'asynchrone entre. */
   const choisirProjet = (projet) => {
     const jeton = jetonProjet(projet.nom)
-    if (!mot || !jeton) return
-    const avant = `${valeur.slice(0, mot.debut)}#${jeton} `
-    const apres = valeur.slice(mot.fin).replace(/^\s+/u, '')
-    onChange?.(avant + apres)
+    const el = champ.current
+    const courante = el ? el.value : String(valeur ?? '')
+    const motCourant = motDiese(courante, el ? el.selectionStart : curseur)
+    if (!motCourant || !jeton) return
+    const avant = `${courante.slice(0, motCourant.debut)}#${jeton} `
+    const apres = courante.slice(motCourant.fin).replace(/^\s+/u, '')
+    const nouvelle = avant + apres
+    curseurVoulu.current = { valeur: nouvelle, pos: avant.length }
+    onChange?.(nouvelle)
     setActif(0)
     setCurseur(avant.length)
-    requestAnimationFrame(() => {
-      champ.current?.focus()
-      champ.current?.setSelectionRange?.(avant.length, avant.length)
-    })
+    if (el && el !== document.activeElement) el.focus()
   }
 
   const surTouche = (e) => {
