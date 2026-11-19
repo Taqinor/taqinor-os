@@ -510,7 +510,8 @@
 .tch .ag-pj.nouveau { background: var(--tch-choisi-fond); box-shadow: var(--tch-choisi-trait); }
 .tch .ag-pj:focus-visible { outline: 2px solid var(--tch-accent); outline-offset: 2px; }
 @media (hover: hover) {
-  .tch .ag-pj:not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--tch-accent); }
+  /* R4-44 — le survol est un fond, jamais l'anneau d'accent (c'est le dessin de « sélectionné » : « jeu. 26 » paraissait choisi) */
+  .tch .ag-pj:not(:disabled):hover { background: var(--tch-survol); }
 }
 .tch .ag-pj-ajout {
   grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 2px 0 0; font-size: var(--tch-taille-texte); font-weight: 600;
@@ -546,7 +547,7 @@
   .tch .ag-planifier .ag-pj-ajout { display: none; }
   .tch .ag-pj-cartes { display: flex; flex-direction: column; gap: 6px; }
   .tch .ag-carte {
-    display: flex; flex-direction: column; gap: 2px; padding: 7px 10px 8px; border-radius: 10px;
+    display: flex; flex-direction: column; gap: 2px; padding: 7px 10px 8px; border-radius: var(--tch-rayon-carte);
     background: var(--tch-panneau); font-size: var(--tch-taille-meta); line-height: 1.125rem; text-align: left;
   }
   .tch .ag-carte { min-width: 0; overflow: hidden; }

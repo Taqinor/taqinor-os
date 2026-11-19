@@ -17,7 +17,6 @@
   font-feature-settings: 'ss01' 0;
   /* R2-092 — quatre tailles au plus : titre de page, tâche, section (15 px), méta (les chiffres prennent sa taille) */
   --tch-section: 0.9375rem;
-  --tch-chiffre: var(--tch-meta);
   /* R3-092 — UN langage, en jetons (base.css et reglages.css les appliquent ; agenda.css et projets.css aussi, lane L6) :
      · « sélectionné » : fond d'accent léger, texte d'accent, filet d'accent de 1,5 px — le DISQUE plein est réservé à
        « aujourd'hui » (calendriers) ;
@@ -33,6 +32,10 @@
   --tch-taille-texte: 0.9375rem;
   --tch-taille-meta: 0.8125rem;
   --tch-trait-icone: 1.75;
+  /* R4-44 — UN seul jeton de méta : 13 px partout (iPhone compris : design/tokens.css le posait à 14 px, `--tch-taille-meta`
+     à 13 — deux méta sur un même écran) ; les chiffres prennent sa taille */
+  --tch-meta: var(--tch-taille-meta);
+  --tch-chiffre: var(--tch-taille-meta);
 }
 .tch *, .tch *::before, .tch *::after { box-sizing: border-box; }
 /* :where() = spécificité nulle : ne bat jamais une classe utilitaire de l'ERP */
@@ -71,9 +74,8 @@
 @media (min-width: 768px) {
   .tch {
     --tch-section: 0.9375rem;
-    --tch-tache: 1rem;
+    --tch-tache: var(--tch-taille-tache);
     --tch-tache-lh: 1.375rem;
-    --tch-meta: 0.8125rem;
     --tch-meta-lh: 1.125rem;
     --tch-gouttiere: 24px;
     --tch-ligne-h: 44px;
@@ -140,7 +142,7 @@
 .tch .entete-cloche-compte {
   position: absolute; top: 5px; right: 3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
   background: var(--destructive); color: var(--destructive-foreground); box-shadow: 0 0 0 2px var(--tch-surface);
-  font-size: 0.6875rem; font-weight: 700; line-height: 18px; text-align: center;
+  font-size: var(--tch-taille-meta); font-weight: 700; line-height: 18px; text-align: center;
 }
 /* Sur-titre (date, état hors ligne, envois en attente) : une ligne, réservée même vide au bureau (R2-085). */
 .tch .entete-surtitre {
@@ -213,7 +215,7 @@
   .tch .entete-compact { transition: opacity var(--motion-fast) var(--ease-standard); }
 }
 .tch .entete-date {
-  font-size: 0.875rem; font-weight: 500; color: var(--tch-texte-doux);
+  font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-texte-doux);
 }
 .tch .entete-titre {
   margin: 0; font-family: var(--tch-font-titre); font-size: var(--tch-titre-page);
@@ -458,7 +460,7 @@
   width: 20px; height: 20px; stroke-width: var(--tch-trait-icone);
 }
 .tch .action small {
-  font-size: 0.75rem; font-weight: 500; opacity: 0.92;
+  font-size: var(--tch-taille-meta); font-weight: 500; opacity: 0.92;
 }
 .tch .action.reporter {
   background: var(--tch-accent); color: var(--tch-accent-texte);
@@ -490,7 +492,7 @@
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px;
   min-width: var(--tch-cible); padding: 0 12px; /* couture r2 — la puce « × » seule (Retirer le jour) faisait 38 px */
   border-radius: var(--tch-rayon-puce); background: var(--tch-panneau); color: var(--tch-texte);
-  font-size: 0.875rem; font-weight: 500; white-space: nowrap;
+  font-size: var(--tch-taille-meta); font-weight: 600; white-space: nowrap;
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .tch .puce::after {
@@ -611,10 +613,10 @@
   flex: 1; min-width: 0;
 }
 .tch .bandeau-titre {
-  font-size: 1rem; font-weight: 600; line-height: 1.35;
+  font-size: var(--tch-taille-texte); font-weight: 600; line-height: 1.35;
 }
 .tch .bandeau-detail {
-  font-size: 0.875rem; color: var(--tch-texte-doux); line-height: 1.35;
+  font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); line-height: 1.35;
 }
 .tch .bandeau .chevron {
   width: 44px; height: 44px; display: grid; place-items: center; color: var(--tch-texte-doux);
@@ -623,7 +625,7 @@
   margin: 12px var(--tch-gouttiere) 0; padding: 16px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
 }
 .tch .carte-texte {
-  font-size: 1rem; line-height: 1.45; font-weight: 500; margin: 0 0 12px;
+  font-size: var(--tch-taille-texte); line-height: 1.45; font-weight: 400; margin: 0 0 12px;
 }
 .tch .carte-source {
   font-size: 0.8125rem; color: var(--tch-texte-doux); margin: -6px 0 12px;
@@ -680,7 +682,7 @@
 .tch .pas-a-jour {
   display: flex; align-items: center; gap: 10px; margin: 8px var(--tch-gouttiere) 0; padding: 0 4px 0 12px;
   min-height: 44px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
-  font-size: 0.875rem; color: var(--tch-texte-doux);
+  font-size: var(--tch-taille-meta); color: var(--tch-texte-doux);
 }
 .tch .pas-a-jour span {
   flex: 1;
@@ -817,7 +819,7 @@
   font-size: 0.8125rem; color: var(--tch-texte-doux);
 }
 .tch .quand-tuile small {
-  font-size: 0.75rem; color: var(--tch-texte-doux);
+  font-size: var(--tch-taille-meta); color: var(--tch-texte-doux);
 }
 .tch .quand-tuile[aria-checked="true"] {
   background: var(--tch-accent-doux); box-shadow: inset 0 0 0 2px var(--tch-accent);
@@ -830,7 +832,7 @@
 }
 .tch .reglage {
   display: flex; align-items: center; justify-content: space-between; min-height: 52px;
-  font-size: 1rem; box-shadow: inset 0 -1px 0 var(--tch-trait);
+  font-size: var(--tch-taille-texte); box-shadow: inset 0 -1px 0 var(--tch-trait);
 }
 .tch .reglage:last-child {
   box-shadow: none;
@@ -848,7 +850,7 @@
   display: flex; align-items: center; justify-content: space-between; height: 44px;
 }
 .tch .mois-nom {
-  font-size: 1rem; font-weight: 600;
+  font-size: var(--tch-taille-texte); font-weight: 600;
 }
 .tch .mois-sous {
   font-weight: 400; color: var(--tch-texte-doux);
@@ -857,7 +859,7 @@
   display: grid; grid-template-columns: repeat(7, 1fr); text-align: center;
 }
 .tch .mois-grille .jsem {
-  font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); height: 24px; line-height: 24px;
+  font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-texte-doux); height: 24px; line-height: 24px;
 }
 .tch .jour {
   height: 44px; display: grid; place-items: center; font-size: 0.9375rem;
@@ -888,7 +890,7 @@
   position: relative;
 }
 .tch .agenda-heures div {
-  height: var(--tch-heure-h); font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux);
+  height: var(--tch-heure-h); font-size: var(--tch-taille-meta); font-weight: 500; color: var(--tch-texte-doux);
   text-align: right; padding-right: 8px; transform: translateY(-0.5em);
 }
 .tch .agenda-grille {
@@ -903,7 +905,7 @@
   display: block; font-size: 0.8125rem; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tch .bloc small {
-  display: block; font-size: 0.75rem; line-height: 1.3; font-weight: 500;
+  display: block; font-size: var(--tch-taille-meta); line-height: 1.3; font-weight: 500;
 }
 .tch .bloc.court {
   display: flex; gap: 6px; align-items: center; padding-block: 0;
@@ -924,7 +926,7 @@
   content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 999px; background: var(--tch-accent);
 }
 .tch .maintenant-heure {
-  position: absolute; right: 100%; margin-right: 8px; top: -9px; font-size: 0.75rem; font-weight: 700;
+  position: absolute; right: 100%; margin-right: 8px; top: -9px; font-size: var(--tch-taille-meta); font-weight: 700;
   color: var(--tch-accent); background: var(--tch-surface); padding: 0 2px;
 }
 @media (max-width: 767px) {
@@ -956,14 +958,14 @@
     border-radius: var(--tch-rayon-champ); box-shadow: inset 0 0 0 1px var(--tch-trait); color: var(--tch-texte-doux); font-size: 0.9375rem;
   }
   .tch .saisie-bureau kbd {
-    margin-left: auto; font: inherit; font-size: 0.75rem; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: var(--tch-panneau); color: var(--tch-texte-doux);
+    margin-left: auto; font: inherit; font-size: var(--tch-taille-meta); font-weight: 600; padding: 2px 6px; border-radius: 6px; background: var(--tch-panneau); color: var(--tch-texte-doux);
   }
 }
 .tch .agenda-tete {
   display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px;
 }
 .tch .agenda-tete b {
-  font-size: 1rem; font-weight: 600;
+  font-size: var(--tch-taille-texte); font-weight: 600;
 }
 .tch .agenda-tete span {
   font-size: 0.8125rem; color: var(--tch-texte-doux);
@@ -1018,7 +1020,7 @@
   border-radius: 10px; background: var(--tch-panneau);
 }
 .tch .segmente button {
-  height: 40px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; color: var(--tch-texte-doux);
+  height: 40px; border-radius: 8px; font-size: var(--tch-taille-texte); font-weight: 600; color: var(--tch-texte-doux);
 }
 .tch .segmente button[aria-checked="true"] {
   background: var(--tch-segment-actif); color: var(--tch-texte); font-weight: 600; box-shadow: var(--shadow-xs);
@@ -1030,7 +1032,7 @@
   display: flex; flex-direction: column; align-items: center; gap: 2px; height: 56px; justify-content: center;
 }
 .tch .bande-jours small {
-  font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux);
+  font-size: var(--tch-taille-meta); font-weight: 500; color: var(--tch-texte-doux);
 }
 .tch .bande-jours b {
   width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; font-size: 0.9375rem; font-weight: 600;
@@ -1062,7 +1064,7 @@
   font-size: 0.8125rem; color: var(--tch-texte-doux); box-shadow: inset 0 -1px 0 var(--tch-trait);
 }
 .tch .semaine-tete b {
-  font-size: 1.125rem; font-weight: 600; color: var(--tch-texte);
+  font-size: var(--tch-taille-tache); font-weight: 600; color: var(--tch-texte);
 }
 .tch .semaine-tete .repos b {
   color: var(--tch-texte-doux); font-weight: 500;
@@ -1286,7 +1288,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
   display: grid; grid-template-columns: 48px 1fr; align-items: center; margin-bottom: 10px;
 }
 .tch .agenda-journee small {
-  font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux); text-align: right; padding-right: 8px; line-height: 1.2;
+  font-size: var(--tch-taille-meta); font-weight: 500; color: var(--tch-texte-doux); text-align: right; padding-right: 8px; line-height: 1.2;
 }
 .tch .agenda-journee .bloc {
   position: static; margin: 0 4px; padding: 6px 8px 6px 10px;
@@ -1329,7 +1331,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
   flex: 1; min-width: 0; font-size: 0.9375rem; line-height: 1.35;
 }
 .tch .moment-texte b {
-  display: block; font-size: 1rem; font-weight: 600;
+  display: block; font-size: var(--tch-taille-texte); font-weight: 600;
 }
 .tch .moment-texte span {
   color: var(--tch-texte-doux);
@@ -1443,7 +1445,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 .tch .copilote-groupe { position: relative; display: inline-flex; }
 .tch .copilote-phrase { position: absolute; top: 100%; right: 0; z-index: calc(var(--z-base) + 3); width: min(320px, 80vw); padding: 12px 14px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); color: var(--tch-texte);
-  font-size: 0.875rem; line-height: 1.35; box-shadow: var(--shadow-md); }
+  font-size: var(--tch-taille-meta); line-height: 1.35; box-shadow: var(--shadow-md); }
 .tch .copilote[aria-disabled="true"] { opacity: 0.6; }
 
 /* « Ajouter une tâche · n » du bureau : un vrai bouton pleine largeur de la liste */
@@ -1492,7 +1494,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 .tch .selecteur-projet { display: block; }
 .tch .selecteur-projet-liste { list-style: none; margin: 8px 0 0; padding: 0; max-height: 40vh; overflow-y: auto; }
 .tch .selecteur-projet-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 12px;
-  border-radius: 10px; font-size: 1rem; text-align: left; }
+  border-radius: 10px; font-size: var(--tch-taille-texte); text-align: left; }
 @media (hover: hover) {
   .tch .selecteur-projet-item:hover { background: var(--tch-survol); }
 }
@@ -1518,7 +1520,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 .tch .conflit p { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.9375rem; font-weight: 600; }
 .tch .conflit p svg { color: var(--tch-accent); }
 .tch .conflit .carte-actions { margin-top: 10px; }
-.tch .conflit .bouton { height: 40px; padding: 0 14px; font-size: 0.9375rem; position: relative; }
+.tch .conflit .bouton { height: var(--tch-bouton-h); padding: 0 14px; font-size: var(--tch-taille-texte); position: relative; }
 .tch .conflit .bouton::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 
 /* ── R2-092 — un seul langage ─────────────────────────────────────────────────────────────────────────────────

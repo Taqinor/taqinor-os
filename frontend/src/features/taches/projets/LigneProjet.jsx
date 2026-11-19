@@ -37,18 +37,18 @@ export function avancementDe(projet) {
 /**
  * Passe visuelle n° 40 — la date d'un projet, UNE forme pour la liste, la vue d'un projet et la revue
  * (projets-liste.html, projet-liste.html, revue-semaine.html) : « aujourd'hui » · « demain » · « ven. 4 déc. »
- * (jour, quantième ET mois, même à moins de 13 jours) ; au-delà de 12 mois, l'année : « ven. 15 janv. 2028 » ;
- * passé : la forme de `jourCourt` (« jeu. 12/11 »).
+ * (jour, quantième ET mois, même à moins de 13 jours) ; à 12 mois ou plus, l'année : « ven. 15 janv. 2028 ». R4-44 — le
+ * passé a la MÊME forme (« jeu. 12 nov. ») : « jeu. 12/11 » était une 4e façon d'écrire une date à l'écran.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- idem
 export function jourProjet(iso, aujourdhui = aujourdhuiIso()) {
   const ecart = ecartJours(iso, aujourdhui)
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''))
   if (ecart === null || !m) return ''
-  if (ecart <= 1) return jourCourt(iso, aujourdhui)
+  if (ecart === 0 || ecart === 1) return jourCourt(iso, aujourdhui)
   const [annee, mois, jour] = [Number(m[1]), Number(m[2]), Number(m[3])]
   const texte = `${ABR_JOURS[new Date(Date.UTC(annee, mois - 1, jour)).getUTCDay()]} ${jour} ${ABR_MOIS[mois - 1]}`
-  return ecart >= 365 ? `${texte} ${annee}` : texte
+  return Math.abs(ecart) >= 365 ? `${texte} ${annee}` : texte
 }
 
 /** « échéance ven. 4 déc. » (`ton` fort) ; aujourd'hui et dépassée gardent la forme d'`echeanceTexte` (`ton` alerte). */
