@@ -140,6 +140,40 @@ describe('TCH87 — Recherche', () => {
     expect(await screen.findByRole('button', { name: 'Projet' })).toBeInTheDocument()
   })
 
+  it('R2-124 — « Faites cette semaine » (puce visible) : les faites depuis lundi, par jour, le plus récent en haut, compte par jour', async () => {
+    const user = userEvent.setup()
+    const faite = (id, titre, faitLe) => item(id, titre, { statut: 'fait', fait_le: faitLe, jour_prevu: null, heure_debut: null })
+    // le serveur sert la plus récemment faite d'abord (`tri` fait_le par défaut sous `periode=faites_semaine`)
+    const semaine = [
+      faite(40, 'Rappeler Lydec', '2026-11-19T16:10:00Z'), faite(41, 'Devis Settat', '2026-11-19T09:05:00Z'),
+      faite(42, 'Timbres', '2026-11-18T11:00:00Z'), faite(43, 'Dossier subvention', '2026-11-17T08:30:00Z'),
+    ]
+    api.listerTaches.mockResolvedValue({ data: { results: semaine, count: 4, next: null } })
+    render(<MemoryRouter initialEntries={['/taches/recherche']}><Recherche aujourdhui="2026-11-19" /></MemoryRouter>)
+    // visible sans déplier « Plus de filtres » : Aujourd'hui → loupe → cette puce
+    const puce = within(screen.getByLabelText('Filtres')).getByRole('checkbox', { name: 'Faites cette semaine' })
+    await user.click(puce)
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'faites_semaine' })))
+    expect(puce).toHaveAttribute('aria-checked', 'true')
+    const regions = await screen.findAllByRole('region')
+    expect(regions.map((r) => r.getAttribute('aria-label'))).toEqual(["Aujourd'hui (2)", 'Hier (1)', 'mar. 17 (1)'])
+    expect(within(regions[0]).getAllByRole('listitem').map((l) => l.textContent)).toEqual([
+      expect.stringContaining('Rappeler Lydec'), expect.stringContaining('Devis Settat')])
+    expect(screen.getByText('4 faites depuis lundi')).toHaveClass('es-sous')
+    expect(screen.queryByRole('region', { name: /Ouvertes/ })).toBeNull()
+    // un 2e toucher la retire : retour à la recherche ordinaire, rien demandé sans mot
+    await user.click(puce)
+    expect(puce).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('R2-124 — l\'adresse garde la vue (`?periode=faites_semaine`) ; rien de fait : la phrase le dit', async () => {
+    api.listerTaches.mockResolvedValue({ data: { results: [], count: 0, next: null } })
+    monter('/taches/recherche?periode=faites_semaine')
+    expect(await screen.findByText('Rien de fait depuis lundi')).toBeInTheDocument()
+    expect(api.listerTaches).toHaveBeenCalledWith(expect.objectContaining({ periode: 'faites_semaine' }))
+    expect(screen.getByRole('checkbox', { name: 'Faites cette semaine' })).toHaveAttribute('aria-checked', 'true')
+  })
+
   it('R2-129 — le curseur est dans le champ à l\'ouverture : on tape directement', async () => {
     monter('/taches/recherche')
     const champ = await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })

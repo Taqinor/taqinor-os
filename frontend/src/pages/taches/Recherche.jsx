@@ -10,7 +10,7 @@ import {
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
 import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
-import { aujourdhuiIso } from '../../features/taches/lib/textes'
+import { ABR_JOURS, accord, aujourdhuiIso, ecartJours } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { useOuvrirFiche } from '../../features/taches/lib/fiche'
@@ -18,7 +18,8 @@ import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
 
 /* ============================================================================
    TCH87 — Recherche (`/taches/recherche?q=`) : un champ « Chercher dans mes tâches », deux groupes
-   « Ouvertes ({n}) » puis « Faites ({n}) ». Filtres visibles : Faites aussi · Projet ▾ · Priorité haute ;
+   « Ouvertes ({n}) » puis « Faites ({n}) ». Filtres visibles : Faites cette semaine (R2-124 : groupes par jour,
+   « Aujourd'hui (n) », « Hier (n) », « mar. 17 (n) ») · Faites aussi · Projet ▾ · Priorité haute ;
    repliés : Aujourd'hui · À revoir · 7 prochains jours · Sans date · En attente · En réserve · Avec échéance ·
    Étiquette ▾, le tri, « Enregistrer cette vue » (« Nom de la vue ») et les vues déjà enregistrées (TCH166 : un
    appui les rouvre, mêmes filtres). Vide : « Rien pour « {q} » ».
@@ -40,6 +41,34 @@ const PUCES_JOUR = [
 // StatutTache : a_faire · en_attente · fait · annule (« abandonnée » à l'écran)
 const ouverte = (t) => t.statut !== 'fait' && t.statut !== 'annule'
 
+/* R2-124 — « Faites cette semaine » (le Journal de Things) : `GET taches/?periode=faites_semaine` sert les faites depuis
+   lundi, la plus récente d'abord ; l'écran les groupe par jour de `fait_le` (heure murale servie : la date est la
+   partie avant « T »). Le filtre vit dans l'adresse (`?periode=faites_semaine`) : retour arrière et lien gardent la vue. */
+const FAITES_SEMAINE = 'faites_semaine'
+
+/** « Aujourd'hui » · « Hier » · « mar. 17 » : le titre du groupe d'un jour de la semaine. */
+function titreDuJourFait(jour, aujourdhui) {
+  const ecart = ecartJours(jour, aujourdhui)
+  if (ecart === 0) return "Aujourd'hui"
+  if (ecart === -1) return 'Hier'
+  const [annee, mois, quantieme] = jour.split('-').map(Number)
+  return `${ABR_JOURS[new Date(Date.UTC(annee, mois - 1, quantieme)).getUTCDay()]} ${quantieme}`
+}
+
+/** Les lignes groupées par jour où elles ont été faites, le plus récent en haut (ordre du serveur gardé dans un jour). */
+function parJourFait(lignes, aujourdhui) {
+  const groupes = new Map()
+  lignes.forEach((t) => {
+    const jour = String(t.fait_le ?? '').split('T')[0]
+    if (!jour) return
+    if (!groupes.has(jour)) groupes.set(jour, [])
+    groupes.get(jour).push(t)
+  })
+  return [...groupes.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([jour, taches]) => ({ jour, titre: titreDuJourFait(jour, aujourdhui), taches }))
+}
+
 /** Puces servies par `GET taches/?periode=` (aujourdhui : jour prévu = J ; semaine : J à J+6) ; ET entre les deux = J. */
 function periodeServie(puces) {
   if (puces.includes('aujourdhui')) return 'aujourdhui'
@@ -53,7 +82,7 @@ const TRI_SERVI = { priorite: 'priorite', echeance: 'echeance' }
 /** Ce que l'écran garde d'une vue (clés FERMÉES du serveur, donnees.md §2.16). `null` quand un filtre n'a pas de
  *  clé (En réserve, À revoir, Sans date, tris Jour et Création) : l'enregistrer perdrait ce filtre à la
  *  réouverture, donc on ne l'enregistre pas. */
-function filtresDeLEcran({ q, faites, haute, reserve, projetId, etiquetteId, puces, tri }) {
+function filtresDeLEcran({ q, faites, haute, reserve, projetId, etiquetteId, puces, tri, semaine }) {
   if (reserve || puces.includes('a_revoir') || puces.includes('sans_date') || tri === 'jour' || tri === 'creation') return null
   const filtres = { inclure_faites: Boolean(faites) }
   if (q.trim()) filtres.q = q.trim()
@@ -61,7 +90,7 @@ function filtresDeLEcran({ q, faites, haute, reserve, projetId, etiquetteId, puc
   if (etiquetteId != null) filtres.etiquettes = [etiquetteId]
   if (haute) filtres.priorite_min = 3
   if (puces.includes('en_attente')) filtres.statuts = ['en_attente']
-  const periode = periodeServie(puces)
+  const periode = semaine ? FAITES_SEMAINE : periodeServie(puces)
   if (periode) filtres.periode = periode
   if (puces.includes('avec_echeance')) filtres.echeance = true
   if (TRI_SERVI[tri]) filtres.tri = TRI_SERVI[tri]
@@ -83,6 +112,7 @@ function ecranDeLaVue(filtres) {
     etiquetteId: filtres.etiquettes?.[0] ?? null,
     puces,
     tri: TRI_SERVI[filtres.tri] ? filtres.tri : 'manuel',
+    semaine: filtres.periode === FAITES_SEMAINE,
   }
 }
 
@@ -202,7 +232,14 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     return () => clearTimeout(minuteur)
   }, [saisie, q, setParams])
 
-  const periode = periodeServie(puces)
+  const semaine = params.get('periode') === FAITES_SEMAINE
+  const poserSemaine = useCallback((actif) => setParams((actuels) => {
+    const suite = new URLSearchParams(actuels)
+    if (actif) suite.set('periode', FAITES_SEMAINE)
+    else suite.delete('periode')
+    return suite
+  }, { replace: true }), [setParams])
+  const periode = semaine ? FAITES_SEMAINE : periodeServie(puces)
   const triServi = TRI_SERVI[tri]
   const serveur = faites || haute || reserve || projetId != null || etiquetteId != null || periode != null
   const mots = q.trim()
@@ -217,7 +254,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       priorite_min: haute ? 3 : undefined,
       inclure_faites: faites ? true : undefined,
       vue: reserve ? 'quelque_jour' : undefined,
-      periode: periode ?? undefined, // Raccord F2 : « Aujourd'hui » / « 7 jours » servis
+      periode: periode ?? undefined, // Raccord F2 : « Aujourd'hui » / « 7 jours » servis ; R2-124 « Faites cette semaine »
       tri: triServi,
     }
     // Liste paginée (50) : la page 1 suffit tant que `next` est vide, sinon on lit tout (api.md §0).
@@ -269,11 +306,12 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       .finally(() => setVuesLues(true))
   }, [replie, vuesLues])
 
-  const filtresAEnregistrer = filtresDeLEcran({ q: saisie, faites, haute, reserve, projetId, etiquetteId, puces, tri })
+  const filtresAEnregistrer = filtresDeLEcran({ q: saisie, faites, haute, reserve, projetId, etiquetteId, puces, tri, semaine })
   const rouvrirVue = (vue) => {
     const suite = ecranDeLaVue(vue.filtres ?? {})
     setSaisie(suite.q); setFaites(suite.faites); setHaute(suite.haute); setReserve(false)
     setProjetId(suite.projetId); setEtiquetteId(suite.etiquetteId); setPuces(suite.puces); setTri(suite.tri)
+    poserSemaine(suite.semaine)
     if (suite.projetId != null) chargerProjets()
     setErreurVue('')
   }
@@ -300,6 +338,8 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     .sort(TRI[tri]), [actif, source, puces, tri, aujourdhui])
   const ouvertes = lignes.filter(ouverte)
   const faitesLignes = lignes.filter((t) => !ouverte(t))
+  // une tâche rouverte ici reste dans son jour, case vide : on la recoche sans la chercher (geste réversible sur place)
+  const joursFaits = semaine ? parJourFait(lignes, aujourdhui) : []
   const projetsTrouves = serveur || !actif ? [] : resultat.projets
 
   const ouvrirLaFiche = useOuvrirFiche()
@@ -383,6 +423,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       </div>
 
       <div className="puces es-filtres" aria-label="Filtres">
+        <button type="button" className="puce" role="checkbox" aria-checked={semaine} onClick={() => poserSemaine(!semaine)}>Faites cette semaine</button>
         <button type="button" className="puce" role="checkbox" aria-checked={faites} onClick={() => setFaites((v) => !v)}>Faites aussi</button>
         <button
           type="button"
@@ -456,15 +497,22 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
 
       {/* passe visuelle n° 46 (recherche.html) : le mot cherché surligné, la méta de statut de chaque résultat */}
       {approches ? <p className="es-sous es-approche" role="status">{`Rien de tel pour « ${mots} » : voici ce qui s'en approche.`}</p> : null}
+      {semaine && lignes.length > 0 ? <p className="es-sous" role="status">{`${accord(lignes.length, 'faite')} depuis lundi`}</p> : null}
       <div ref={racine} className="es-resultats">
-        <Groupe titre="Ouvertes" lignes={ouvertes} aujourdhui={aujourdhui} surligne={approches ? '' : mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
-        <Groupe titre="Faites" lignes={faitesLignes} aujourdhui={aujourdhui} surligne={approches ? '' : mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+        {semaine ? joursFaits.map((groupe) => (
+          <Groupe key={groupe.jour} titre={groupe.titre} lignes={groupe.taches} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+        )) : (
+          <>
+            <Groupe titre="Ouvertes" lignes={ouvertes} aujourdhui={aujourdhui} surligne={approches ? '' : mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+            <Groupe titre="Faites" lignes={faitesLignes} aujourdhui={aujourdhui} surligne={approches ? '' : mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+          </>
+        )}
       </div>
 
       {rien ? (
         <div className="vide-etat">
           <span className="vide-picto"><Search className="i" aria-hidden="true" /></span>
-          <p className="vide-phrase">{mots ? `Rien pour « ${mots} »` : 'Rien pour ces filtres'}</p>
+          <p className="vide-phrase">{mots ? `Rien pour « ${mots} »` : (semaine ? 'Rien de fait depuis lundi' : 'Rien pour ces filtres')}</p>
         </div>
       ) : null}
     </CoquilleTaches>

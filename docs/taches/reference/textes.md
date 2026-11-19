@@ -334,7 +334,7 @@ compter de report ; Proposé revient demain. Les tâches à échéance aujourd'h
 
 ### 2.12 Recherche
 
-Champ « Chercher dans mes tâches » ; résultats en deux groupes « Ouvertes ({n}) » puis « Faites ({n}) » ; visibles « Faites aussi · Projet ▾ · Priorité haute » ; repliés « Aujourd'hui · À
+Champ « Chercher dans mes tâches » ; résultats en deux groupes « Ouvertes ({n}) » puis « Faites ({n}) » ; visibles « Faites cette semaine · Faites aussi · Projet ▾ · Priorité haute » ; « Faites cette semaine » (R2-124, `?periode=faites_semaine`, deux touchers depuis Aujourd'hui : la loupe puis la puce) remplace les deux groupes par un groupe par jour où la tâche a été faite, le plus récent en haut : « Aujourd'hui ({n}) », « Hier ({n}) », « mar. 17 ({n}) », précédés de « {n} faite(s) depuis lundi » ; rien : « Rien de fait depuis lundi » ; repliés « Aujourd'hui · À
 revoir · 7 prochains jours · Sans date · En attente · En réserve · Avec échéance · Étiquette ▾ », tri, « Enregistrer cette vue »
 (« Nom de la vue ») ; vide « Rien pour « {q} » » (picto loupe au-dessus) ; si les mots seuls ne trouvent rien, une seconde lecture tolère les accents et UNE faute de frappe (mots de 4 lettres au moins) : « Rien de tel pour « {q} » : voici ce qui s'en approche. » (R2-129) ; le curseur est dans le champ à l'ouverture, une croix « Effacer la recherche » à nous, `j`/`k` sur les résultats (R2-036) ; hors ligne : la dernière liste. Bouton des repliés « Plus de
 filtres » ; filtres sans mot et rien trouvé : « Rien pour ces filtres » ; le filtre « Étiquette » n'apparaît que si des
