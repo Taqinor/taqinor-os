@@ -4164,6 +4164,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   let aimantationActive = true;
   function basculerAimantation() {
     aimantationActive = !aimantationActive;
+    ctx.aimantationActive = aimantationActive; // ACAL425 — le glissé libre lit le même état
     if (aimantationActive && layoutEditor.isFreeMode()) {
       const poses = layoutEditor.freePanels();
       if (poses.length) {
