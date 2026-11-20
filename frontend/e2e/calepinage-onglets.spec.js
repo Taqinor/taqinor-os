@@ -54,6 +54,20 @@ function clesDuRegistre() {
 
 const CLES = clesDuRegistre()
 
+// ACAL393 — le rail guidé ne montre que les essentiels de l'étape active : un
+// onglet expert s'ouvre par son lien `?onglet=<cle>` (il reste visible dans son
+// étape), un essentiel par son bouton. Jamais de test qui suppose 36 boutons.
+async function ouvrirOngletRail(page, cle) {
+  const onglet = page.getByTestId(`cal-onglet-${cle}`)
+  if (!(await onglet.isVisible())) {
+    const url = new URL(page.url())
+    url.searchParams.set('onglet', cle)
+    await page.goto(url.toString())
+    await expect(onglet, `onglet absent du rail pour la clé « ${cle} »`).toBeVisible()
+  }
+  await onglet.click()
+}
+
 test('CALX387: le registre atelier/onglets.js publie au moins un onglet', () => {
   expect(CLES.length, 'aucune clé lue dans atelier/onglets.js — le format a-t-il changé ?')
     .toBeGreaterThan(0)
@@ -84,8 +98,7 @@ test('CALX387: chaque onglet du rail s’ouvre, un titre nommé apparaît, aucun
 
   for (const cle of CLES) {
     const onglet = page.getByTestId(`cal-onglet-${cle}`)
-    await expect(onglet, `onglet absent du rail pour la clé « ${cle} »`).toBeVisible()
-    await onglet.click()
+    await ouvrirOngletRail(page, cle)
 
     // 1. l'onglet devient l'onglet actif ; 2. l'URL porte la clé (lien
     // partageable) ; 3. un panneau (contenu OU erreur NOMMÉE) est visible —
@@ -154,7 +167,7 @@ test('CALX387: le lien profond /calepinage/:id/<cle> ouvre le MÊME panneau que 
   // Puis l'onglet, cliqué depuis le rail, mène au MÊME panneau — même clé
   // dans l'URL, même contenu, un seul chemin de vérité.
   await page.goto(`/calepinage/${calepinageId}`)
-  await page.getByTestId(`cal-onglet-${cle}`).click()
+  await ouvrirOngletRail(page, cle)
   await expect(page).toHaveURL(new RegExp(`/calepinage/${calepinageId}\\?onglet=${cle}`))
   await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
   await expect(page.getByTestId('cal-pente')).toBeVisible()

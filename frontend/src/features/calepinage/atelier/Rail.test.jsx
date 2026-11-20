@@ -25,14 +25,16 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
    oubliée.
    ========================================================================== */
 
-vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif())
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif({
+  calepinages: new Proxy({}, { get: (_c, prop) => (prop === 'parcours' ? (...a) => mocks.parcours(...a) : () => Promise.resolve({ data: {} })) }),
+}))
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 /* CALX349 — l'onglet « Approbation » lit `useHasPermission`, qui va chercher
    le store redux : aucun rendu de ce fichier n'en monte un (même double que
    `AtelierPanneaux.test.jsx`). Sans lui, le panneau lève et le rail affiche
    son bandeau d'échec au lieu du contenu. */
-const mocks = vi.hoisted(() => ({ hasPermission: vi.fn(() => false) }))
+const mocks = vi.hoisted(() => ({ hasPermission: vi.fn(() => false), parcours: vi.fn() }))
 vi.mock('../../../hooks/useHasPermission', () => ({
   useHasPermission: (code) => mocks.hasPermission(code),
 }))
@@ -40,6 +42,8 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 import AtelierPanneaux from '../AtelierPanneaux'
 import config from '../module.config.jsx'
 import Rail from './Rail'
+import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { ETAPES, ESSENTIELS } from './parcoursGuide'
 import { ONGLETS, PARAM_ONGLET, ongletParCle, ongletsTries, resoudreOnglet } from './onglets'
 
 const ID = '7'
@@ -116,18 +120,44 @@ describe('CALX1 — le registre `atelier/onglets.js`', () => {
 })
 
 describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
-  it('sans `?onglet=`, le rail est là, tous les onglets aussi, aucun panneau ouvert', () => {
+  it('sans `?onglet=`, le rail guidé montre 5 étapes et les seuls essentiels de l’étape active', () => {
     rendreRail()
 
     expect(screen.getByTestId('cal-rail-onglets')).toBeTruthy()
-    for (const onglet of ONGLETS) {
-      expect(
-        screen.getByTestId(`cal-onglet-${onglet.cle}`),
-        `onglet absent du rail : ${onglet.cle}`,
-      ).toHaveTextContent(onglet.libelle)
+    for (const cle of ['toit', 'panneaux', 'electrique', 'resultats', 'documents']) {
+      expect(screen.getByTestId(`cal-etape-${cle}`), `étape absente : ${cle}`).toBeTruthy()
     }
+    // ACAL393 — étape active par défaut = toit : ses seuls essentiels.
+    expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getAllByRole('tab').map((t) => t.getAttribute('data-testid')))
+      .toEqual(['cal-onglet-pente', 'cal-onglet-terrain', 'cal-onglet-ombriere'])
     expect(screen.queryByTestId('cal-onglet-panneau')).toBeNull()
   })
+
+  it('chaque clé de ONGLETS est dans la table du parcours, une seule fois', () => {
+    const dans = ETAPES.flatMap((e) => e.onglets)
+    expect([...dans].sort()).toEqual(ONGLETS.map((o) => o.cle).sort())
+    for (const cle of ESSENTIELS) expect(dans, `essentiel inconnu : ${cle}`).toContain(cle)
+    expect(ESSENTIELS).toHaveLength(13)
+  })
+
+  it('la pastille d’état vient du parcours (contrat) et l’étape active est la première non faite', async () => {
+    mocks.parcours.mockResolvedValueOnce(reponseContrat('calepinage', 'calepinage_parcours_guide'))
+    rendreRail()
+    // contrat : toit fait, panneaux en_cours => étape active « panneaux ».
+    await waitFor(() => expect(screen.getByTestId('cal-etape-panneaux'))
+      .toHaveAttribute('aria-current', 'step'))
+    expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('data-etat', 'fait')
+    expect(screen.getByTestId('cal-etape-resultats-etat')).toHaveTextContent('bloqué')
+    expect(screen.getByTestId('cal-onglet-fiches')).toBeTruthy()
+  })
+
+  it('un `?onglet=` expert l’ouvre quand même, dans son étape', async () => {
+    rendreRail(`?${PARAM_ONGLET}=releve`)
+    expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByTestId('cal-onglet-releve')).toHaveAttribute('aria-selected', 'true')
+    await panneauOuvert()
+  }, 30_000)
 
   /* ITÉRATION sur le registre : chaque entrée, sans exception, rend SON
      composant. Deux garde-fous plutôt qu'un texte attendu par onglet (qui
@@ -178,7 +208,8 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
       </MemoryRouter>,
     )
 
-    await utilisateur.click(screen.getByTestId(`cal-onglet-${cible.cle}`))
+    // production est le premier essentiel de l'étape Résultats.
+    await utilisateur.click(screen.getByTestId('cal-etape-resultats'))
 
     await waitFor(() => expect(screen.getByTestId('temoin-url'))
       .toHaveTextContent(`onglet=${cible.cle}`))
