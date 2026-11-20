@@ -147,6 +147,7 @@ export const GESTES_SOURIS: readonly GesteSouris[] = [
     ecriture: 'Alt + molette sur le fond',
     libelle: 'Faire pivoter le calque de fond, d’un degré par cran',
   },
+  { ecriture: 'Alt + clic sur un panneau', libelle: 'Le retirer (Ctrl + Z le rend)' },
 ];
 
 /** CALX108 — l'aide des gestes souris, DÉRIVÉE de la table (jamais recopiée). */

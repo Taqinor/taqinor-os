@@ -432,3 +432,80 @@ describe('ACAL412 — Ctrl+Z hors mode disposition restaure le sommet et redessi
     expect(a.annuler()).toBe(true); // la photo est restée intacte
   });
 });
+
+// ACAL418 — « Retirer la sélection » : le geste caché Alt + clic reçoit un bouton visible.
+describe('ACAL418 — barre de sélection : Retirer la sélection', () => {
+  function monterRetrait(mode: 'free' | 'lattice', n: number) {
+    const { map } = makeMap();
+    const centres = Array.from({ length: n }, (_, i) => ({ cx: -4 * i, cy: 0 }));
+    const ctx = makeFreeCtx(makePlan(40), mode === 'free' ? centres : []);
+    ctx.layoutState = createLayoutState(centres, n); // le pavage existe aussi avant le placement libre
+    if (mode === 'lattice') {
+      ctx.freeMode = false;
+      ctx.layoutState = createLayoutState(centres, n);
+    }
+    let barre: { rafraichir: () => void } | undefined;
+    const editor = createLayoutEditor(ctx, { ...makeDeps(map), onSelectionChange: () => barre?.rafraichir() });
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    const statuts: string[] = [];
+    barre = creerBarreSelection({
+      hote: () => hote, editeur: editor, setStatus: (m) => void statuts.push(m),
+      photographier: () => ctx.pushWorkshopHistory?.(),
+    });
+    const clic = (txt: string) =>
+      [...hote.querySelectorAll('button')].find((b) => b.textContent === txt)!.click();
+    const nombre = () => (mode === 'free' ? editor.freePanels().length : ctx.layoutState!.occupied.size);
+    return { editor, hote, statuts, clic, nombre };
+  }
+
+  it('placement libre : 3 panneaux se retirent en UN pas, Ctrl + Z les rend', () => {
+    const { editor, statuts, clic, nombre } = monterRetrait('free', 5);
+    editor.setSelection([0, 2, 4]);
+    clic('Retirer la sélection');
+    expect(nombre()).toBe(2);
+    expect(statuts.at(-1)).toContain('3 panneau(x) retiré(s)');
+    expect(editor.undo()).toBe(true);
+    expect(nombre()).toBe(5);
+  });
+
+  it('emplacements validés : retrait annulable ; le pan entier est refusé', () => {
+    const { editor, hote, statuts, clic, nombre } = monterRetrait('lattice', 4);
+    editor.setSelection([0, 1, 2]);
+    const barre = hote.firstElementChild as HTMLElement; // (ids dupliqués entre tests : pas de `#id`)
+    expect(barre.style.display).toBe('flex');
+    const aligner = [...hote.querySelectorAll('button')].find((b) => b.textContent === 'Aligner en rangée')!;
+    expect(aligner.style.display).toBe('none'); // geste libre : masqué ici
+    clic('Retirer la sélection');
+    expect(nombre()).toBe(1);
+    expect(editor.undo()).toBe(true);
+    expect(nombre()).toBe(4);
+    editor.setSelection([0, 1, 2, 3]);
+    clic('Retirer la sélection');
+    expect(nombre()).toBe(4);
+    expect(statuts.at(-1)).toContain('gardez au moins un panneau');
+  });
+
+  it('placement libre : tout retirer est refusé aussi, sans rien toucher', () => {
+    const { editor, statuts, clic, nombre } = monterRetrait('free', 2);
+    editor.setSelection([0, 1]);
+    clic('Retirer la sélection');
+    expect(nombre()).toBe(2);
+    expect(statuts.at(-1)).toContain('gardez au moins un panneau');
+  });
+
+  it('mutant : sans photo d’historique, Ctrl + Z ne rend rien (le test le sait)', () => {
+    const { map } = makeMap();
+    const ctx = makeFreeCtx(makePlan(40), [{ cx: 0, cy: 0 }, { cx: -4, cy: 0 }, { cx: -8, cy: 0 }]);
+    ctx.layoutState = createLayoutState([{ cx: 0, cy: 0 }, { cx: -4, cy: 0 }, { cx: -8, cy: 0 }], 3);
+    const editor = createLayoutEditor(ctx, makeDeps(map));
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    creerBarreSelection({ hote: () => hote, editeur: editor, setStatus: () => {} }); // pas de `photographier`
+    editor.setSelection([0]);
+    [...hote.querySelectorAll('button')].find((b) => b.textContent === 'Retirer la sélection')!.click();
+    expect(editor.freePanels()).toHaveLength(2);
+    expect(editor.undo()).toBe(false);
+    expect(editor.freePanels()).toHaveLength(2);
+  });
+});
