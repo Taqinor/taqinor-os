@@ -74,9 +74,9 @@ const ECRANS = [
     pret: (page) => expect(page.locator('.header-title')).toBeVisible() },
   { nom: 'atelier-rail-toit', carte: true, chemin: (id) => `/calepinage/${id}`,
     pret: (page) => expect(page.getByTestId('cal-rail-onglets')).toBeVisible() },
-  { nom: 'production', carte: true, chemin: (id) => `/calepinage/${id}?onglet=production`,
+  { nom: 'production', carte: true, panneau: true, chemin: (id) => `/calepinage/${id}?onglet=production`,
     pret: (page) => expect(page.getByTestId('cal-onglet-panneau')).toBeVisible() },
-  { nom: 'documents', carte: true, chemin: (id) => `/calepinage/${id}?onglet=documents`,
+  { nom: 'documents', carte: true, panneau: true, chemin: (id) => `/calepinage/${id}?onglet=documents`,
     pret: (page) => expect(page.getByTestId('cal-onglet-panneau')).toBeVisible() },
 ]
 
@@ -101,10 +101,19 @@ for (const theme of THEMES) {
       }
       await page.waitForLoadState('networkidle').catch(() => {})
       // Noms/dates dérivent d'uniq() et de l'horloge : masqués (inerte si rien ne matche).
-      const masques = ecran.nom === 'liste'
-        ? [page.locator('tbody'), page.locator('[role=row]')]
-        : [page.locator('#rp9-map')] // fond de repli / canvas : non stable au pixel près
-      await expect(page).toHaveScreenshot(`calepinage-${ecran.nom}-${theme}.png`, { ...SHOT, mask: masques })
+      const nomUniq = page.getByText(/ACAL384/) // noms issus de uniq() : masqués
+      const nom = `calepinage-${ecran.nom}-${theme}.png`
+      if (ecran.nom === 'liste') {
+        await expect(page).toHaveScreenshot(nom, { ...SHOT, mask: [page.locator('tbody'), page.locator('[role=row]')] })
+      } else if (ecran.panneau) {
+        // Le contenu de l'onglet vit sous la carte, dans un conteneur qui défile : la capture
+        // « page entière » ne le verrait pas (run 44828700657 : 3 PNG identiques). On capture le panneau.
+        const panneau = page.getByTestId('cal-onglet-panneau')
+        await panneau.scrollIntoViewIfNeeded()
+        await expect(panneau).toHaveScreenshot(nom, { animations: 'disabled', maxDiffPixelRatio: 0.02, mask: [nomUniq] })
+      } else {
+        await expect(page).toHaveScreenshot(nom, { ...SHOT, mask: [page.locator('#rp9-map'), nomUniq] })
+      }
     })
   }
 }
