@@ -419,6 +419,9 @@ SANS_PRODUCTEUR_PUR = {
         'FRAGMENT du document roof_layout (zones[].geometry.shadeTable et '
         'skyViewFactor, ACAL389), pas une réponse serveur : écrit par '
         "l'atelier (ACAL459/460), lu par ACAL461",
+    'calepinage_detection_toit.json':
+        'détection du toit par IA (ACAL391) : appelle un fournisseur externe '
+        'sur une image reçue ; route livrée par ACAL485',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -466,6 +469,8 @@ POSES_AVANT_LEUR_ROUTE = {
     'calepinage_profil_depart.json': 'ACAL403',
     # ACAL468 livrera ``POST calepinages/<pk>/balayage/`` : retirer.
     'calepinage_balayage.json': 'ACAL468',
+    # ACAL485 livrera ``GET``/``POST calepinages/<pk>/detection-toit/`` : retirer.
+    'calepinage_detection_toit.json': 'ACAL485',
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -636,6 +641,26 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertIsInstance(ciel['methode']['horizon'], bool)
         for bloc in (table, ciel):
             self.assertTrue(bloc['signature'])
+
+    def test_forme_de_la_detection_du_toit(self):
+        # ACAL391 — une PROPOSITION : toujours « à confirmer », jamais écrite.
+        donnees = _charger('calepinage_detection_toit.json')
+        self.assertIn(donnees['exemple_corps']['origine'],
+                      ('importee', 'carte'))
+        dispo = donnees['exemple_disponibilite']
+        self.assertEqual(sorted(dispo),
+                         ['disponible', 'motif', 'origines_acceptees'])
+        self.assertTrue(set(dispo['origines_acceptees'])
+                        <= {'importee', 'carte'})
+        propositions = donnees['exemple']['propositions']
+        self.assertEqual(sorted(propositions), ['contour_lnglat', 'pans'])
+        self.assertEqual(donnees['exemple']['provenance'], 'ia')
+        self.assertIs(donnees['exemple']['a_confirmer'], True)
+        for pan in propositions['pans']:
+            self.assertEqual(sorted(pan),
+                             ['azimut_deg', 'confiance', 'contour_lnglat'])
+            self.assertTrue(all(len(p) == 2 for p in pan['contour_lnglat']))
+        self.assertTrue(donnees['exemple_indisponible_503']['detail'])
 
 
 class CheminDeclareTest(unittest.TestCase):
