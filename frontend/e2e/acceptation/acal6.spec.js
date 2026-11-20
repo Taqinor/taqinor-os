@@ -24,9 +24,10 @@ import { API_DJANGO, assurerSessionPage, lireJson } from '../helpers.js'
 // PA2.5 (ACAL356 « l'écart atelier ↔ simulation se resserre ») : rejoué le 19/11 (enregistrement FAIL
 // docs/audits/acceptation/ACAL/2026-11-19-95fcef78b.md) — horizon 25° : atelier −18,5 %, simulation −8 %, écart
 // 26,5 % → 34,9 %. Clause non tenue : ACAL356 reste ouverte ; l'étape ne se joue qu'avec ACAL6_PA25=1.
+// ACAL378 (20/11) rapproche le dérate d'horizon de l'atelier de la simulation : l'étape PA2.5 le couvre aussi.
 const AVEC_PA25 = process.env.ACAL6_PA25 === '1'
 const etape = groupe('ACAL', AVEC_PA25
-  ? ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367']
+  ? ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367', 'ACAL378']
   : ['ACAL355', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367'])
 fermerDjangoApresTout()
 test.describe.configure({ timeout: 900_000 })
@@ -458,7 +459,7 @@ if p is not None:
 sortie(1)`)
 }
 
-if (AVEC_PA25) etape('PA2.5-ACAL356-ACAL367-ecart-simulation', ['ACAL356', 'ACAL367'], async ({ page, context, suivi }) => {
+if (AVEC_PA25) etape('PA2.5-ACAL356-ACAL367-ecart-simulation', ['ACAL356', 'ACAL367', 'ACAL378'], async ({ page, context, suivi }) => {
   const meteo = await reglerMeteo()
   try {
     await ecartSimulation({ page, context, suivi })
