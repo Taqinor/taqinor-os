@@ -1,0 +1,2 @@
+[PA2.5] matériel désigné : {"module":{"id":31,"nom":"Panneau Canadien Solar 710W","pmax_wc":"710.00","ac_kw":null},"onduleur":{"id":27,"nom":"Onduleur hybride Deye 10kW Monophasé","pmax_wc":null,"ac_kw":"10.00"}}
+[PA2.5] atelier 8846.288372093024 → 7208.993860757677 ; simulation 12032.1 → 11066.6 ; écart 26.5 % → 34.9 %

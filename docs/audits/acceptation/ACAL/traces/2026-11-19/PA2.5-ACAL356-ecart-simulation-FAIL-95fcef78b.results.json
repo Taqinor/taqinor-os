@@ -1,0 +1,203 @@
+{
+  "sha": "95fcef78be811339bd4a89dffaa9fa6303fcc676",
+  "date": "2026-11-19",
+  "groupe": "ACAL",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACAL355",
+    "ACAL356",
+    "ACAL367",
+    "ACAL357",
+    "ACAL364",
+    "ACAL366"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.3-ACAL355-production-par-pan",
+      "taches": [
+        "ACAL355"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-ACAL-PA2.3-ACAL355-production-par-pan.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL356-ACAL367-horizon",
+      "taches": [
+        "ACAL356",
+        "ACAL367"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-ACAL-PA2.3-ACAL356-ACAL367-horizon.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL356-matrice",
+      "taches": [
+        "ACAL356"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-ACAL-PA2.3-ACAL356-matrice.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL367-signature",
+      "taches": [
+        "ACAL367"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-ACAL-PA2.3-ACAL367-signature.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL356-ACAL367-ecart-simulation",
+      "taches": [
+        "ACAL356",
+        "ACAL367"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "corps": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-ACAL-PA2.5-ACAL356-ACAL367-ecart-simulation.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : l’écart atelier ↔ simulation ne s’ouvre plus avec l’horizon"
+    },
+    {
+      "id": "PA2.3-ACAL357-ombres-ajout-zone",
+      "taches": [
+        "ACAL357"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-ACAL-PA2.3-ACAL357-ombres-ajout-zone.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL364-allee-section",
+      "taches": [
+        "ACAL364"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-ACAL-PA2.3-ACAL364-allee-section.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL366-pente-section",
+      "taches": [
+        "ACAL366"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-ACAL-PA2.3-ACAL366-pente-section.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

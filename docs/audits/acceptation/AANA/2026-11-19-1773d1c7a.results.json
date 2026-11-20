@@ -1,0 +1,118 @@
+{
+  "sha": "1773d1c7aa1009cddf365c71c80ef657e0e471d0",
+  "date": "2026-11-19",
+  "groupe": "AANA",
+  "verdict": "PASS",
+  "couvre": [
+    "AANA65",
+    "AANA68",
+    "AANA70",
+    "AANA71",
+    "AANA75",
+    "AANA76",
+    "AANA61",
+    "AANA90"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.tarif_et_migration",
+      "taches": [
+        "AANA71",
+        "AANA70",
+        "AANA90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-AANA-P1.tarif_et_migration.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P2.taux_de_gain",
+      "taches": [
+        "AANA65",
+        "AANA90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-AANA-P2.taux_de_gain.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P3.une_vente_par_revision",
+      "taches": [
+        "AANA68",
+        "AANA75",
+        "AANA76",
+        "AANA90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-AANA-P3.une_vente_par_revision.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P4.widget_ca_ht_brouillon",
+      "taches": [
+        "AANA61",
+        "AANA90"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-AANA-P4.widget_ca_ht_brouillon.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

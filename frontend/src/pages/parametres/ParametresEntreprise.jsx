@@ -906,7 +906,9 @@ export default function ParametresEntreprise() {
   const showSave = ['societe', 'leads', 'devis', 'avance'].includes(tab)
   const lectureSeule = !canModifier && TABS_ECRITURE_PARAMETRES.includes(tab)
 
-  if (loading) return (
+  // AERR169 — écran d'attente seulement tant qu'AUCUN profil n'est là : une relecture
+  // (revisite, 409) ne démonte plus les sections (sinon chaque panneau relit et alerte deux fois).
+  if (!profile && (loading || !error)) return (
     <div className="flex min-h-[200px] items-center justify-center gap-3 text-sm text-muted-foreground">
       <Spinner className="size-5 text-primary" />
       Chargement…
