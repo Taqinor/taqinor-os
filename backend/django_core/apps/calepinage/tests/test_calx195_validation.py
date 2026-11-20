@@ -37,11 +37,27 @@ Run :
 """
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
+import sys
 from unittest import mock
 
+if __name__ == '__main__':  # pragma: no cover — chemin « --write » seulement
+    import os
+
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE',
+                          'erp_agentique.settings.dev')
+    import django
+
+    django.setup()
+
+import pandas as pd
+import pvlib
 from django.test import SimpleTestCase
+from pvlib.location import Location
+from pvlib.modelchain import ModelChain
+from pvlib.pvsystem import Array, FixedMount, PVSystem
 
 from apps.calepinage.services import chaine_pertes
 from apps.calepinage.services import validation as v
@@ -411,3 +427,218 @@ class RefusNommesTest(SimpleTestCase):
         self.assertEqual(resultat[v.CLE_VALIDATION]['motif'],
                          v.MOTIF_SANS_ECART)
         self.assertNotIn('avertissements', resultat)
+
+
+# --- ACAL474 : le BANC des quatre sites marocains ----------------------------
+#
+# Pour chaque site, DEUX réponses PVGIS réelles enregistrées (production
+# calculée par PVGIS, irradiance seule) rejouées contre notre chaîne ET contre
+# pvlib ``ModelChain`` (PVWatts). L'écart MESURÉ est gelé dans
+# ``donnees/banc_validation.json`` ; le test échoue si un écart s'éloigne du
+# gel de plus d'un pas d'arrondi PUBLIÉ (10^-DECIMALES_ECART point) — ce n'est
+# pas un seuil choisi. Mettre le gel à jour exige de nommer le changement de
+# modèle voulu : ``python -m apps.calepinage.tests.test_calx195_validation
+# --write "<changement de modèle>"``. PVsyst publie ± 5 % annuel et HelioScope
+# < 1 % contre PVsyst : cités, jamais employés comme seuil.
+BANC = pathlib.Path(__file__).resolve().parents[1] / 'donnees' / 'banc_validation.json'
+SITES_BANC = ('casablanca', 'marrakech', 'oujda', 'agadir')
+PAS_ARRONDI = 10.0 ** -v.DECIMALES_ECART
+
+
+def _reponses_du_site(site):
+    return (_charge('seriescalc_%s_sud.json' % site),
+            _charge('seriescalc_%s_sud_irradiance.json' % site))
+
+
+def _serie_du_site(irradiance):
+    points = []
+    for ligne in irradiance['outputs']['hourly']:
+        moment = ligne['time']
+        points.append({
+            'annee': int(moment[0:4]), 'mois': int(moment[4:6]),
+            'jour': int(moment[6:8]), 'heure': int(moment[9:11]),
+            'gi_w_m2': ligne['G(i)'], 't2m_c': ligne['T2m'],
+            'ws10m': ligne['WS10m'], 'h_sun_deg': ligne['H_sun'],
+            'p_w': KWC * ligne['G(i)'],
+        })
+    return {'pas_minutes': 60, 'colonne_energie': 'p_w', 'points': points}
+
+
+def _fiche_du_scenario():
+    """La fiche module du scénario : celle des tests de l'étape thermique."""
+    from apps.calepinage.tests.test_calx163_etape_thermique import (
+        FICHE_COMPLETE)
+    return dict(FICHE_COMPLETE)
+
+
+def _mesure_moteur(site, *, fiche, thermique=True):
+    produit, irradiance = _reponses_du_site(site)
+    ctx = contexte()
+    ctx['fiche_module'] = dict(fiche)
+    ordre = ('thermique', POSTE_COMPARABLE) if thermique else (
+        POSTE_COMPARABLE,)
+    with mock.patch.object(chaine_pertes, 'ORDRE_ETAPES', ordre):
+        return v.ecart_vs_pvcalc(_serie_du_site(irradiance), ctx, produit,
+                                 maintenant=FAITE_LE)
+
+
+def _mesure_pvlib(site, fiche):
+    """Total pvlib (kWh) sur la MÊME série ; ``(None, motif)`` si la fiche se tait."""
+    manquants = [cle for cle in ('temp_coeff_pmax_pct_c', 'uc_w_m2k')
+                 if fiche.get(cle) is None]
+    if manquants:
+        return None, ('comparaison pvlib OMISE : la fiche module du scénario '
+                      'ne porte pas %s' % ', '.join(manquants))
+    produit, irradiance = _reponses_du_site(site)
+    lignes = irradiance['outputs']['hourly']
+    index = pd.to_datetime([ligne['time'] for ligne in lignes],
+                           format='%Y%m%d:%H%M', utc=True)
+    meteo = pd.DataFrame({
+        'poa_global': [ligne['G(i)'] for ligne in lignes],
+        'poa_direct': [ligne['G(i)'] for ligne in lignes],
+        'poa_diffuse': 0.0,
+        'temp_air': [ligne['T2m'] for ligne in lignes],
+        'wind_speed': [ligne['WS10m'] for ligne in lignes]}, index=index)
+    position = irradiance['inputs']['location']
+    systeme = PVSystem(
+        arrays=[Array(
+            FixedMount(surface_tilt=15, surface_azimuth=180),
+            module_parameters={'pdc0': KWC * 1000.0,
+                               'gamma_pdc': fiche['temp_coeff_pmax_pct_c']
+                               / 100.0},
+            temperature_model_parameters={
+                'u0': fiche['uc_w_m2k'],
+                'u1': fiche.get('uv_w_m3sk') or 0.0})],
+        inverter_parameters={'pdc0': KWC * 1000.0})
+    chaine = ModelChain(
+        systeme, Location(position['latitude'], position['longitude']),
+        dc_model='pvwatts', ac_model='pvwatts', aoi_model='no_loss',
+        spectral_model='no_loss', temperature_model='faiman',
+        losses_model='no_loss')
+    chaine.run_model_from_poa(meteo)
+    perte = produit['inputs']['pv_module']['system_loss']
+    return float(chaine.results.dc.sum()) / 1000.0 * (1 - perte / 100.0), ''
+
+
+def mesurer_le_banc(fiche=None):
+    """Le relevé complet des quatre sites (ce que ``--write`` fige)."""
+    fiche = _fiche_du_scenario() if fiche is None else fiche
+    sites = {}
+    for site in SITES_BANC:
+        bloc = _mesure_moteur(site, fiche=fiche)
+        pvlib_kwh, motif = _mesure_pvlib(site, fiche)
+        total_moteur = bloc['total_chaine_locale_kwh']
+        sites[site] = {
+            'total_moteur_kwh': total_moteur,
+            'total_pvcalc_kwh': bloc['total_pvcalc_kwh'],
+            'ecart_pvcalc_annuel_pct': bloc['ecart_pct'],
+            'ecart_pvcalc_mensuel_pct': {
+                str(ligne['mois']): ligne['ecart_pct']
+                for ligne in bloc['mensuel']},
+            'total_pvlib_kwh': (None if pvlib_kwh is None
+                                else round(pvlib_kwh, 1)),
+            'ecart_pvlib_annuel_pct': (
+                None if pvlib_kwh is None
+                else v._ecart_pct(total_moteur, pvlib_kwh)),
+            'motif_pvlib': motif,
+        }
+    return sites
+
+
+class BancQuatreSitesTest(SimpleTestCase):
+    """Les écarts MESURÉS sont gelés au pas d'arrondi publié."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.gel = json.loads(BANC.read_text(encoding='utf-8'))
+        cls.mesure = mesurer_le_banc()
+
+    def test_les_deux_reponses_de_chaque_site_decrivent_la_meme_meteo(self):
+        for site in SITES_BANC:
+            produit, irradiance = _reponses_du_site(site)
+            gauche = produit['outputs']['hourly']
+            droite = irradiance['outputs']['hourly']
+            self.assertEqual([x['time'] for x in gauche],
+                             [x['time'] for x in droite], site)
+            self.assertEqual(max(abs(x['G(i)'] - y['G(i)'])
+                                 for x, y in zip(gauche, droite)), 0.0, site)
+            for charge in (produit, irradiance):
+                self.assertEqual(charge['inputs']['meteo_data']['year_min'],
+                                 2020, site)
+
+    def test_les_quatre_sites_sont_au_gel(self):
+        self.assertEqual(sorted(self.gel['sites']), sorted(SITES_BANC))
+
+    def test_l_ecart_annuel_et_mensuel_contre_pvcalc_reste_au_gel(self):
+        for site in SITES_BANC:
+            gele, mesure = self.gel['sites'][site], self.mesure[site]
+            self.assertAlmostEqual(mesure['ecart_pvcalc_annuel_pct'],
+                                   gele['ecart_pvcalc_annuel_pct'],
+                                   delta=PAS_ARRONDI, msg=site)
+            for mois, ecart in gele['ecart_pvcalc_mensuel_pct'].items():
+                self.assertAlmostEqual(
+                    mesure['ecart_pvcalc_mensuel_pct'][mois], ecart,
+                    delta=PAS_ARRONDI, msg='%s mois %s' % (site, mois))
+
+    def test_l_ecart_annuel_contre_pvlib_reste_au_gel(self):
+        for site in SITES_BANC:
+            self.assertAlmostEqual(
+                self.mesure[site]['ecart_pvlib_annuel_pct'],
+                self.gel['sites'][site]['ecart_pvlib_annuel_pct'],
+                delta=PAS_ARRONDI, msg=site)
+
+    def test_sans_l_effet_thermique_plusieurs_sites_sortent_du_gel(self):
+        """Le mutant : retirer ``thermique`` de la chaîne fait échouer le banc."""
+        sortis = 0
+        for site in SITES_BANC:
+            sans = _mesure_moteur(site, fiche=_fiche_du_scenario(),
+                                  thermique=False)['ecart_pct']
+            gele = self.gel['sites'][site]['ecart_pvcalc_annuel_pct']
+            sortis += abs(sans - gele) > PAS_ARRONDI
+        self.assertGreaterEqual(sortis, 2)
+
+    def test_une_fiche_sans_gamma_omet_pvlib_et_le_dit(self):
+        fiche = {cle: valeur for cle, valeur in _fiche_du_scenario().items()
+                 if cle != 'temp_coeff_pmax_pct_c'}
+        total, motif = _mesure_pvlib('marrakech', fiche)
+        self.assertIsNone(total)
+        self.assertIn('temp_coeff_pmax_pct_c', motif)
+
+    def test_le_gel_nomme_son_modele_et_sa_version_pvlib(self):
+        self.assertEqual(self.gel['pvlib_version'], pvlib.__version__)
+        self.assertTrue(self.gel['changement_de_modele'])
+
+
+def ecrire_le_banc(arguments):  # pragma: no cover — chemin « --write » seulement
+    """``--write "<changement de modèle voulu>"`` : régénère le gel."""
+    if '--write' not in arguments or len(arguments) < 2:
+        raise SystemExit('usage : --write "<changement de modèle voulu>" '
+                         '(nommer le changement est obligatoire)')
+    nom = [a for a in arguments if a != '--write'][0]
+    import hashlib
+
+    services = pathlib.Path(v.__file__).resolve().parent
+    empreinte = hashlib.sha256()
+    for fichier in sorted(services.glob('*.py')) + sorted(
+            (services / 'etapes').glob('*.py')):
+        empreinte.update(fichier.read_bytes())
+    gel = {
+        'mesure_le': datetime.date.today().isoformat(),
+        'changement_de_modele': nom,
+        'pvlib_version': pvlib.__version__,
+        'moteur_empreinte_services': empreinte.hexdigest(),
+        'pas_arrondi_pct': PAS_ARRONDI,
+        'chaine_mesuree': ['thermique', POSTE_COMPARABLE],
+        'fiche_module_scenario': _fiche_du_scenario(),
+        'reponses': 'tests/fixtures_pvgis/seriescalc_<site>_sud[_irradiance].json',
+        'sites': mesurer_le_banc(),
+    }
+    BANC.parent.mkdir(exist_ok=True)
+    BANC.write_text(json.dumps(gel, ensure_ascii=False, indent=1) + '\n',
+                    encoding='utf-8')
+    return 'écrit : %s' % BANC
+
+
+if __name__ == '__main__':  # pragma: no cover — chemin « --write » seulement
+    print(ecrire_le_banc(sys.argv[1:]))

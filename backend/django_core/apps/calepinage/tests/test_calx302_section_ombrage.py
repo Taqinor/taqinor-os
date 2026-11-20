@@ -241,6 +241,53 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
         for mot in ('prix', 'cout', 'coût', 'marge'):
             self.assertNotIn(mot, bas)
 
+    # ACAL462 — les deux bornes d'ombrage électrique des chaînes.
+    def _contexte_bornes(self, etape, *, pans=1):
+        resultat = _resultat(ombrage_par_pan=[
+            {'pan': 'PAN-%d' % rang, 'acces_solaire_moyen_pct': 90.0,
+             'motif_omission': ''} for rang in range(pans)])
+        resultat['cascade'] = {'etapes': [dict(etape, etape='mismatch_ombrage')]}
+        return {'resultat': resultat}
+
+    def _html(self, contexte):
+        with mock.patch.object(section_ombrage, '_calepinage_et_roof_layout',
+                               return_value=None):
+            return section_ombrage.html_de_section(contexte)
+
+    def _etape_reelle(self):
+        """L'étape CALX168 sur trois modules à 1,0 / 1,0 / 0,5, seuil 0,6."""
+        from apps.calepinage.tests.test_calx168_mismatch_ombrage import (
+            SEUIL, SERIE, contexte_de)
+        from apps.calepinage.services.etapes import mismatch_ombrage
+
+        contexte = contexte_de([1.0, 1.0, 0.5], seuil=dict(SEUIL, valeur=0.6))
+        return mismatch_ombrage.appliquer(SERIE, contexte)[1]
+
+    def test_bornes_imprimees_pour_un_pan(self):
+        html = self._html(self._contexte_bornes(self._etape_reelle()))
+        self.assertIn('Ombrage électrique des chaînes', html)
+        self.assertIn('33,333', html)   # borne basse, retenue
+        self.assertIn('50,0', html)     # borne haute (servie 50.0)
+        self.assertIn('20,0', html)     # écart des deux excédents
+        self.assertIn('module', html)
+        self.assertIn('0,6', html)      # seuil de dérivation
+        self.assertIn('Réglage société d', html)  # sa source
+
+    def test_etape_omise_dit_non_calcule_sans_chiffre(self):
+        etape = {'motif_omission': 'Aucun seuil saisi.', 'entree': None}
+        html = self._html(self._contexte_bornes(etape))
+        self.assertIn('non calculé : Aucun seuil saisi.', html)
+        self.assertNotIn('33,333', html)
+
+    def test_plusieurs_pans_ne_publient_aucun_chiffre(self):
+        html = self._html(self._contexte_bornes(self._etape_reelle(), pans=2))
+        self.assertIn('bornes par pan non publiées', html)
+        self.assertNotIn('33,333', html)
+
+    def test_la_borne_retenue_est_la_basse_pas_la_haute(self):
+        html = self._html(self._contexte_bornes(self._etape_reelle()))
+        self.assertLess(html.index('33,333'), html.index('50,0'))
+
 
 # ── ORM/DB/MinIO/HTTP — exécutés par le job backend-tests (MinIO présent) ──
 
