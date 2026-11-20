@@ -97,6 +97,7 @@ MODULES_DE_SECTION = {
     'electrique': 'electrique',
     'nomenclature': 'nomenclature',
     'preuve': 'preuve',
+    'validation': 'validation',
     'hypotheses': 'annexe_hypotheses',
 }
 

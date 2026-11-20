@@ -147,6 +147,39 @@ class AssemblageTest(unittest.TestCase):
         self.assertEqual(codes, ['garde', 'pertes'])
 
 
+class NoteDeValidationTest(unittest.TestCase):
+    """ACAL475 — les écarts du banc, tels que figés, dans le rapport."""
+
+    def html(self, **modif):
+        res = resultat()
+        res.update(modif)
+        return html_du_rapport(NU, resultat=res, site=SITE,
+                               identite=IDENTITE, styles=STYLES)
+
+    def test_la_note_de_validation_imprime_les_ecarts_du_banc(self):
+        from apps.calepinage.services.rapport import nombre_tel_que_servi
+        banc = json.loads((RACINE_APP / 'donnees' / 'banc_validation.json')
+                          .read_text(encoding='utf-8'))
+        page = self.html()
+        self.assertIn('Note de validation', page)
+        for nom, site in banc['sites'].items():
+            self.assertIn(nom.capitalize(), page)
+            self.assertIn(nombre_tel_que_servi(
+                site['ecart_pvcalc_annuel_pct']), page)
+            for valeur in site['ecart_pvcalc_mensuel_pct'].values():
+                self.assertIn('>%s<' % nombre_tel_que_servi(valeur), page)
+
+    def test_la_ligne_de_cette_etude_et_aucun_mot_valide(self):
+        page = self.html(validation={
+            'ecart_pct': -1.96, 'tolerance_pct': 5.0,
+            'tolerance_source': 'réglage société'})
+        self.assertIn('-1,96', page)
+        self.assertIn('réglage société', page)
+        sans = self.html(validation=None)
+        self.assertIn('non calculé — lancez la simulation', sans)
+        self.assertNotRegex(page + sans, r'(?i)\bvalidée?s?\b')
+
+
 class MiseEnPageTest(unittest.TestCase):
     def setUp(self):
         self.html = html_de_rapport(rapport())
