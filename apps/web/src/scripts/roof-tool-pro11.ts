@@ -189,7 +189,8 @@ import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
-import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
+import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
   deltaMetresFond,
@@ -1297,8 +1298,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W69 — « Personnaliser la disposition ». `renderScene`/`renderActive`/`obstacleMode`
   // sont déclarés plus bas : injectés en wrappers paresseux (hoistés, référencés à
   // l'exécution). Le module câble lui-même +/−/reset/grille tactile/glissé 3D.
+  let barreSelection: { rafraichir: () => void } | undefined; // ACAL411
   const layoutEditor = createLayoutEditor(ctx, {
     map,
+    onSelectionChange: () => barreSelection?.rafraichir(), // ACAL411
     renderScene: (pack, grid, tiltDeg, family, maxCount, flush, occupiedSet) =>
       renderScene(pack, grid, tiltDeg, family, maxCount, flush, occupiedSet),
     prodConfigFromState,
@@ -1321,6 +1324,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W79 — `occupiedCenters`/`reenterCustomLayout` permettent à recalc() de re-entrer la
   // disposition personnalisée (re-snap sur la nouvelle lattice) après une édition d'obstacle
   // ou d'axe pendant que l'éditeur est ouvert. Les autres méthodes pilotent le câblage interne.
+  barreSelection = creerBarreSelection({ hote: () => map.getContainer?.() ?? null, editeur: layoutEditor, setStatus: (m) => setStatus(m) }); // ACAL411
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
   const occupiedCenters = layoutEditor.occupiedCenters;
   const reenterCustomLayout = layoutEditor.reenterCustomLayout;

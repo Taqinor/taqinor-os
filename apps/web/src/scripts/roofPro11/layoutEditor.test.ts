@@ -14,6 +14,7 @@
 // « posé à l'abscisse u » a donc son centre ENU en `cx = -u, cy = v`.
 import { describe, expect, it, vi } from 'vitest';
 import { createLayoutEditor } from './layoutEditor';
+import { creerBarreSelection } from './barreSelection';
 import { type Ctx } from './context';
 import { type LayoutPlan } from './types';
 import { createLayoutState } from '../../lib/layoutVariability';
@@ -292,5 +293,53 @@ describe('ACAL28 — hydrateLayout free conserve face E/W', () => {
     expect(editor.hydrateLayout(enregistres, [-7.6, 33.5], 'free')).toBe(true);
     const reposes = editor.freePanels();
     expect(reposes.map((p) => p.face)).toEqual(['E', 'W', undefined]);
+  });
+});
+
+// ACAL411 — la barre Pivoter / Aligner / Répartir pilote les fonctions de sélection libre.
+describe('ACAL411 — barre de sélection : aligner, répartir, pivoter', () => {
+  function monterBarre(panels: FreePanel[]) {
+    const { map } = makeMap();
+    const ctx = makeFreeCtx(makePlan(40), panels);
+    let barre: { rafraichir: () => void } | undefined;
+    const editor = createLayoutEditor(ctx, { ...makeDeps(map), onSelectionChange: () => barre?.rafraichir() });
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    const statuts: string[] = [];
+    barre = creerBarreSelection({ hote: () => hote, editeur: editor, setStatus: (m) => void statuts.push(m) });
+    const clic = (txt: string) =>
+      [...hote.querySelectorAll('button')].find((b) => b.textContent === txt)!.click();
+    return { editor, hote, statuts, clic };
+  }
+
+  it('« Aligner en rangée » met 3 centres sur la même coordonnée v, « Répartir » refuse à 2 panneaux', () => {
+    const { editor, hote, statuts, clic } = monterBarre([
+      { cx: 0, cy: 0 },
+      { cx: -4, cy: 1.5 },
+      { cx: -8, cy: -1 },
+    ]);
+    const barre = hote.querySelector('#rp9-barre-selection') as HTMLElement;
+    expect(barre.style.display).toBe('none');
+    editor.setSelection([0, 1, 2]);
+    expect(barre.style.display).toBe('flex');
+    clic('Aligner en rangée');
+    const cys = editor.freePanels().map((p) => p.cy);
+    expect(cys[1]).toBeCloseTo(cys[0], 9);
+    expect(cys[2]).toBeCloseTo(cys[0], 9);
+    expect(document.getElementById('rp9-layout-note')?.textContent).toContain('Aligné — 3 panneaux');
+    editor.setSelection([0, 1]);
+    clic('Répartir');
+    expect(statuts.at(-1)).toContain('au moins 3 panneaux');
+  });
+
+  it('« Pivoter » lit un angle libre ; un angle illisible est refusé en nommant le champ', () => {
+    const { editor, hote, statuts, clic } = monterBarre([{ cx: 0, cy: 0 }]);
+    editor.setSelection([0]);
+    (hote.querySelector('input') as HTMLInputElement).value = 'abc';
+    clic('Pivoter');
+    expect(statuts.at(-1)).toContain('angle');
+    (hote.querySelector('input') as HTMLInputElement).value = '12,5';
+    clic('Pivoter');
+    expect(editor.freePanels()[0].angleDeg).toBeCloseTo(12.5, 9);
   });
 });

@@ -123,6 +123,8 @@ export interface LayoutEditorDeps {
    *  disposition personnalisée (capture des centres → re-snap). C'est le `recalc()` de
    *  l'entrée. Optionnel : absent → le nudge d'azimut retombe sur `renderActive`. */
   recalcWithReenter?: () => void;
+  /** ACAL411 — appelé à chaque synchro des contrôles de sélection (la barre Pivoter/Aligner s'y recale). */
+  onSelectionChange?: () => void;
 }
 
 export interface LayoutEditor {
@@ -1488,6 +1490,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     selection = [...new Set(indices)];
     pruneSelection();
     paintScene(); // PV29 — la sélection est VISIBLE sur la 3D, pas seulement dans le mini-plan
+    deps.onSelectionChange?.(); // ACAL411
   }
 
   /** PV29 — SÉLECTION D'UNE RANGÉE ENTIÈRE en un seul geste (double-clic sur un panneau).
@@ -1556,6 +1559,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
     if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
     if (layoutAzValueEl) layoutAzValueEl.textContent = `${Math.round(ctx.facingAzimuthDeg)}°`;
+    deps.onSelectionChange?.(); // ACAL411
   }
 
   // ── PV30 — BASCULE DE MODE ────────────────────────────────────────────────────
