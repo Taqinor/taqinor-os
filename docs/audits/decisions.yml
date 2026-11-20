@@ -13,7 +13,7 @@
 # préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
-date_maj: "2026-11-19"
+date_maj: "2026-11-20"
 
 decisions:
 
@@ -1458,6 +1458,56 @@ decisions:
     date: "2026-10-07"
     source: "docs/claude-memory/calepinage-decisions-fondateur.md (note du 07/10/2026, auto-approbation)"
     taches: []
+
+  - id: D-ACAL-31
+    question: "La simulation du calepinage affiche « non calculée » tant que ~37 réglages techniques ne sont pas saisis avec leur source : prévoir un profil de départ qui remplit les réglages VIDES en un geste ?"
+    options:
+      - cle: a
+        texte: "Oui : profil de départ sourcé — un administrateur l'applique une fois ; seules des valeurs à source publiée vérifiable, chacune montrée avec sa source et marquée « valeur publiée, non mesurée » ; les autres restent vides et nommées ; rien n'est écrasé ; rien ne change sur les PDF client"
+      - cle: b
+        texte: "Non : garder la règle actuelle (rien de prérempli), simplification limitée à une liste guidée"
+    reponse: a
+    date: "2026-11-20"
+    source: "lot AskUserQuestion du 20/11/2026 (campagne go-deep L5 calepinage, dossier docs/audits/2026-11-20-calepinage-l5.md)"
+    taches: [ACAL387, ACAL403, ACAL404, ACAL405]
+
+  - id: D-ACAL-32
+    question: "L'atelier de calepinage a 36 onglets : qui voit par défaut le parcours guidé en 5 étapes (Toit → Panneaux → Électrique → Résultats → Documents) ?"
+    options:
+      - cle: a
+        texte: "Guidé pour tous ; un interrupteur « Mode expert », mémorisé par utilisateur, rend tous les onglets rangés sous les étapes"
+      - cle: b
+        texte: "Guidé pour les commerciaux seulement ; Administrateur et Technicien ouvrent en mode expert"
+      - cle: c
+        texte: "Garder les onglets, seulement regroupés"
+    reponse: a
+    date: "2026-11-20"
+    source: "lot AskUserQuestion du 20/11/2026 (campagne go-deep L5 calepinage)"
+    taches: [ACAL393, ACAL394]
+
+  - id: D-ACAL-33
+    question: "La détection automatique du toit par IA sur l'image satellite consomme des appels API payants : la planifier maintenant ou la parquer ?"
+    options:
+      - cle: a
+        texte: "La parquer (chemin gratuit d'abord : emprise OpenStreetMap, formes prêtes, cotes saisies, photo de drone)"
+      - cle: b
+        texte: "La planifier maintenant (crédits API mensuels inclus) ; la détection reste une proposition que l'utilisateur confirme"
+    reponse: b
+    date: "2026-11-20"
+    source: "lot AskUserQuestion du 20/11/2026 (campagne go-deep L5 calepinage)"
+    taches: [ACAL391, ACAL485, ACAL488, ACAL489]
+
+  - id: D-ACAL-34
+    question: "Publier le P99 (et un Pxx au choix) en plus de P50/P75/P90/P95 dans l'étude du calepinage ? (question Q3 de CALX186, jamais tranchée)"
+    options:
+      - cle: a
+        texte: "Oui, publier P99 sous la même règle que P90 (caché tant que les pertes sont incomplètes)"
+      - cle: b
+        texte: "Non, garder P50/P75/P90/P95"
+    reponse: ouverte
+    date: "2026-11-20"
+    source: "docs/audits/2026-11-20-calepinage-l5.md (question non posée le 20/11 : tâche ACAL457 GATED)"
+    taches: [ACAL457]
 
   - id: D-APAR-1
     question: "Source du taux de TVA par defaut ?"
