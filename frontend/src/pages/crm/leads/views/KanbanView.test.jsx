@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import LeadCard from './LeadCard'
+import CallLogPopover from '../../../../features/crm/CallLogPopover'
 import KanbanView from './KanbanView'
 import { PIPELINE_STAGES, NEW_STAGE, COLD_STAGE } from '../../../../features/crm/stages'
 import { refusEtape } from '../../../../features/crm/raisonsFroid'
@@ -237,5 +239,50 @@ describe('AERR135 — réassignation refusée', () => {
     expect(toasts.withUndo).not.toHaveBeenCalled()
     expect(screen.queryByText('Responsable modifié.')).toBeNull()
     expect(screen.getByTitle('Responsable : sami')).toBeInTheDocument()
+  })
+})
+
+// AERR189 (rejeu en direct, run 44731105916) — « ⋯ » → « Planifier une relance »
+// montait la fenêtre de relance puis la refermait ~0,4 s plus tard : à sa
+// fermeture, le menu rendait le focus à son bouton « Actions du lead », hors de
+// la fenêtre, qui le lisait comme un « focus dehors » → onOpenChange(false).
+// Câblage identique à LeadsPage (fenêtre contrôlée, gardée montée).
+describe('AERR189 — la fenêtre de relance ouverte depuis le menu ⋯ reste ouverte', () => {
+  function Harnais() {
+    const [relanceLead, setRelanceLead] = useState(null)
+    const [ouverte, setOuverte] = useState(false)
+    return (
+      <>
+        <LeadCard
+          lead={lead({ nom: 'Relance' })}
+          users={[]}
+          onPlanifierRelance={(l) => { setRelanceLead(l); setOuverte(true) }}
+        />
+        {relanceLead && (
+          <CallLogPopover
+            leadId={relanceLead.id}
+            mode="planification"
+            open={ouverte}
+            onOpenChange={setOuverte}
+            trigger={<span aria-hidden="true" />}
+          />
+        )}
+      </>
+    )
+  }
+
+  it('le retour de focus du menu ne referme pas la fenêtre ; Échap la referme', async () => {
+    render(<Harnais />)
+    const bouton = screen.getByRole('button', { name: /Actions du lead/ })
+    fireEvent.pointerDown(bouton, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(bouton)
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Planifier une relance' }))
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    // Laisse passer le retour de focus différé du menu (FocusScope : setTimeout 0).
+    await new Promise((r) => setTimeout(r, 50))
+    expect(document.querySelector('[data-call-log-popover]')).toBeInTheDocument()
+    expect(document.activeElement).not.toBe(bouton)
+    fireEvent.keyDown(document.activeElement, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('[data-call-log-popover]')).not.toBeInTheDocument())
   })
 })

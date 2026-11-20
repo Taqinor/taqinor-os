@@ -3,6 +3,8 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 
@@ -264,5 +266,46 @@ describe('AERR177 — toast de mise à jour', () => {
     enregistrer()
     await waitFor(() => expect(succes).toHaveBeenCalledWith('Produit mis à jour.'))
     succes.mockRestore()
+  })
+})
+
+describe('AERR187 — « Annuler » de la fiche produit modifiée demande avant de perdre la saisie', () => {
+  const rendre = (onClose) => render(
+    <ConfirmProvider>
+      <ProduitForm produit={BATTERIE} onClose={onClose} onSaved={() => {}} />
+    </ConfirmProvider>,
+    { wrapper: wrapperProduitForm },
+  )
+  const annuler = () => screen.getByRole('button', { name: 'Annuler' })
+
+  it('Annuler demande avant de perdre la saisie : Rester garde la valeur', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    rendre(onClose)
+    await screen.findByText('Données maîtres')
+    fireEvent.change(screen.getByLabelText(/Prix de vente HT/), { target: { value: '7300' } })
+    await user.click(annuler())
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/Prix de vente HT/)).toHaveValue(7300)
+  })
+
+  it('Quitter ferme une seule fois ; sans saisie Annuler ferme sans demande', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    const { unmount } = rendre(onClose)
+    await screen.findByText('Données maîtres')
+    fireEvent.click(annuler())
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    unmount()
+    onClose.mockClear()
+    rendre(onClose)
+    await screen.findByText('Données maîtres')
+    fireEvent.change(screen.getByLabelText(/Prix de vente HT/), { target: { value: '7300' } })
+    await user.click(annuler())
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Quitter' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 })

@@ -1,0 +1,106 @@
+{
+  "sha": "66a28e594e2ee83c7997facbe0a9e4e4112de4e3",
+  "date": "2026-11-20",
+  "groupe": "AERR",
+  "verdict": "PASS",
+  "couvre": [
+    "AERR187",
+    "AERR188",
+    "AERR189"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "S2-AERR187-produit-annuler",
+      "taches": [
+        "AERR187"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR187-produit-annuler.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S2-AERR187-reception-annuler",
+      "taches": [
+        "AERR187"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR187-reception-annuler.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S2-AERR188-facture-annuler",
+      "taches": [
+        "AERR188"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR188-facture-annuler.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S2-AERR189-relance-saisie-gardee",
+      "taches": [
+        "AERR189"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR189-relance-saisie-gardee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

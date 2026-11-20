@@ -776,6 +776,39 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(relu).toBe(docDerate.result.annualKwh); // toBe = Object.is
   }, 120000);
 
+  // ACAL381 — même piège pour l'OMBRAGE PROCHE : le facteur annuel de l'atelier lit la matrice
+  // à la latitude du toit ; rouvert, il ne doit pas garder celle de la latitude par défaut (33,5°).
+  it('ombrage proche enregistré, rouvert puis recalculé sans changement : production IDENTIQUE', async () => {
+    // Curseur d'heure de prise de vue (absent du banc) : son `input` recalcule l'ombrage
+    // EN SESSION, une fois le toit tracé (centroïde connu).
+    const enCours = boot(); // setupDom() a déjà tourné (partie synchrone) : on ajoute le curseur
+    const heure = document.createElement('input');
+    heure.id = 'rp9-shade-hour';
+    document.body.appendChild(heure);
+    const api = await enCours;
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    // Un immeuble à l'EST qui masque le soleil bas du matin (un immeuble au sud qui masque
+    // midi ferait tout perdre aux heures masquées, quelle que soit la latitude).
+    api().appliquerSection('environment', [{ id: 'env-1', kind: 'batiment', centerLng: -7.6195, centerLat: 33.59, heightM: 20, lengthM: 40, widthM: 10 }]);
+    heure.value = '10.5';
+    heure.dispatchEvent(new Event('input'));
+    const docDerate = copie(api().serializeLayout() as Doc) as Doc & { shading12x24?: number[][] | null };
+    expect(docDerate.shading12x24?.flat().some((f) => f < 1)).toBe(true);
+    expect(docDerate.result.annualKwh).toBeGreaterThan(0);
+    // Production stockée retirée (sinon ACAL31 réémet celle relue) : le dérate est RECALCULÉ
+    // depuis la matrice ENREGISTRÉE.
+    const { result: _stocke, ...sansProduction } = docDerate;
+    const a = await rouvrir(sansProduction, 9);
+    // Rouvert puis enregistré SANS geste (le piège du runner d'ACAL378), puis après un recalcul.
+    expect((a().serializeLayout() as Doc).result.annualKwh).toBe(docDerate.result.annualKwh); // Object.is
+    vi.useFakeTimers();
+    setBill('3000'); // même facture : recalcul, rien ne change
+    vi.advanceTimersByTime(321);
+    vi.useRealTimers();
+    expect((a().serializeLayout() as Doc).result.annualKwh).toBe(docDerate.result.annualKwh); // Object.is
+  }, 120000);
+
   // ACAL367 — rouvert AVEC sa production enregistrée (document NON dépouillé de `result`) puis
   // ombré : le document baisse du facteur de la carte ; D-ACAL-VER2-1 : un document stocké
   // déjà ombré sans signature de dérate est dératé au prochain enregistrement.
@@ -899,6 +932,65 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     // Persistance : rouvert sans geste, la production recalculée sur 35° est relue telle quelle.
     const relu = copie(api().serializeLayout() as Doc);
     expect(lecture((await rouvrir(relu, 12))()).doc).toBe(relu.result.annualKwh);
+  }, 120000);
+
+  // ACAL379 — la section « zones » rend TOUS les pans à leurs valeurs ENREGISTRÉES (« Saisie de la
+  // pente », décision IGN) : seul ce qui diffère du document relu est écrit, la saisie en cours reste.
+  it('section « zones » ne défait pas la saisie non enregistrée des pans', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    traceRoof(fakeMaps[0], 16, -7.6195);
+    const base = copie(neuf().serializeLayout() as Doc) as Doc & { zones: Array<Record<string, unknown>> };
+    const stockees = base.zones.map((z, i) => ({ ...z, roofType: 'pitched', pitchDeg: i ? 20 : 15 }));
+    const [z1, z2] = stockees.map((z) => String(z.id));
+    const api = await rouvrir({ ...base, activeAreaId: z1, zones: stockees }, 15);
+    const curseur = document.getElementById('rp9-pitch-range') as HTMLInputElement;
+    const pente = (id: string, v: number) => {
+      document.querySelector<HTMLElement>(`#rp9-areas-list [data-area-select="${id}"]`)?.click();
+      curseur.value = String(v);
+      curseur.dispatchEvent(new Event('input'));
+    };
+    pente(z2, 40);
+    pente(z1, 30);
+    const pentes = (doc: Doc) => (doc.zones as Array<Record<string, unknown>>).map((z) => z.pitchDeg);
+    expect(pentes(api().serializeLayout() as Doc)).toEqual([30, 40]); // la saisie, avant toute section
+    // Décision IGN sur z1 (zones stockées + la décision), puis pente d'un 3e pan enregistrée.
+    api().appliquerSection('zones', stockees.map((z) => (z.id === z1 ? { ...z, pitchSuggestion: { degres: 34, decision: 'refusee' } } : z)));
+    api().appliquerSection('zones', [...stockees, { id: 'z-autre', pitchDeg: 25 }]);
+    const enregistre = copie(api().serializeLayout() as Doc);
+    expect(pentes(enregistre)).toEqual([30, 40]);
+    expect(curseur.value).toBe('30');
+    expect(document.getElementById('rp9-pitch-value')!.textContent).toBe('30°');
+    // Une pente réellement changée par le serveur (z2 → 35°) est écrite ; rendue à nouveau, rien ne bouge.
+    for (let i = 0; i < 2; i++) api().appliquerSection('zones', stockees.map((z) => (z.id === z2 ? { ...z, pitchDeg: 35 } : z)));
+    expect(pentes(api().serializeLayout() as Doc)).toEqual([30, 35]);
+    // Persistance : rouvert depuis l'enregistrement, 30° et 40° relus.
+    expect(pentes((await rouvrir(enregistre, 15))().serializeLayout() as Doc)).toEqual([30, 40]);
+  }, 120000);
+
+  // ACAL380 — un pan dessiné pendant la séance (absent du document relu) : la provenance que lui
+  // donne une section « zones » vit sur sa fiche (`ctx.areas`), est émise puis relue.
+  it('pan dessiné en séance garde sa provenance', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const base = copie(neuf().serializeLayout() as Doc);
+    const api = await rouvrir(base, 16);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    traceRoof(fakeMaps[0], 16, -7.6195);
+    const dessine = (copie(api().serializeLayout() as Doc).zones as Array<Record<string, unknown>>)[1];
+    const provenance = { facingAzimuthSource: 'releve', facingAzimuthPrecisionDeg: 5, pitchSuggestion: { degres: 34, decision: 'refusee' } };
+    api().appliquerSection('zones', [{ ...dessine, facingAzimuthDeg: 200, ...provenance }]);
+    const attendus = (doc: Doc) => {
+      const z = (doc.zones as Array<Record<string, unknown>>).find((x) => x.id === dessine.id)!;
+      expect({ ...z, ...provenance, facingAzimuthDeg: 200 }).toEqual(z);
+    };
+    const enregistre = copie(api().serializeLayout() as Doc);
+    attendus(enregistre);
+    // Persistance : rouvert depuis l'enregistrement complet, les trois champs relus.
+    attendus((await rouvrir(enregistre, 16))().serializeLayout() as Doc);
   }, 120000);
 
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {

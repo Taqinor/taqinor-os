@@ -870,7 +870,7 @@ export default function FactureForm({ facture = null, onClose, onSaved, scopeRef
           )}
 
           <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="ghost" onClick={() => confirmLeaveIfDirty(dirty).then((ok) => ok && onClose())}>Annuler</Button>
             <Button type="submit" loading={saving} disabled={modeBcDevis}
                     title={modeBcDevis ? 'Utilisez « Créer la facture depuis ce BC »' : undefined}>
               {isEdit ? 'Mettre à jour' : 'Créer la facture'}
