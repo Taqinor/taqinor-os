@@ -26,8 +26,8 @@
   {
     "fichier": "Liste_froide_mode_d_emploi.pdf",
     "titre": "Guide — La liste froide : mode d'emploi",
-    "version": "1.1",
-    "description": "Reprendre les dossiers au Froid depuis le Cockpit CRM : la carte « Liste froide », le bouton qui pose jusqu'à dix appels, deux essais par dossier, la réponse à choisir sur chaque étape et ce qu'on ne dit jamais ; remplace le plan papier du 17/11/2026.",
+    "version": "1.2",
+    "description": "Reprendre les dossiers au Froid depuis le Cockpit CRM : la carte « Liste froide », les dossiers repris d'Odoo servis en premier, le nombre de dossiers qu'on choisit de prendre, deux essais par dossier, la réponse à choisir sur chaque étape et ce qu'on ne dit jamais ; remplace le plan papier du 17/11/2026.",
     "cabinet": "Documentation",
     "dossier": "Guides"
   },

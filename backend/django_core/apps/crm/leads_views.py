@@ -689,14 +689,14 @@ class LeadIntakeActionsMixin:
         montre ; POST ``{nombre: 1..5}`` = prendre ces dossiers (un appel posé
         au prochain créneau sur chacun). Seuls ses propres leads ; société et
         acteur viennent du serveur ; droit ``crm_modifier`` (get_permissions)."""
-        from .liste_froide import PRISE_MAX, PriseRefusee, etat_liste_froide, prendre_dossiers
+        from .liste_froide import PRISE_PROPOSEE, PriseRefusee, etat_liste_froide, prendre_dossiers
         company = request.user.company
         if request.method != 'POST':
             return Response(etat_liste_froide(company, request.user))
         corps = corps_objet(request)
         try:
             resultat = prendre_dossiers(
-                company, request.user, corps.get('nombre', PRISE_MAX))
+                company, request.user, corps.get('nombre', PRISE_PROPOSEE))
         except PriseRefusee as refus:
             return Response({refus.champ: [refus.message],
                              'detail': refus.message}, status=refus.statut)
