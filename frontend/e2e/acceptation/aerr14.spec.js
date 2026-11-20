@@ -34,15 +34,17 @@ etape('PF12.1-AERR169-une-lecture', ['AERR169'], async ({ page, suivi }) => {
   })
   const toasts = page.locator('[data-sonner-toast]')
   const ouvrir = async () => {
+    const lu = page.waitForResponse((x) => REGLES.test(x.url()) && x.request().method() === 'GET', { timeout: 60_000 })
     await page.goto('/parametres?onglet=notifications')
-    await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 60_000 })
-    await page.waitForTimeout(3_000)
+    await lu
     await page.waitForLoadState('networkidle').catch(() => undefined)
   }
 
   // 1) 500 : une lecture, un toast — celui du serveur (global), pas de toast local en plus.
   const c500 = await panne(page, suivi, REGLES, 500, { detail: 'Panne simulée AERR169 (règles).' })
   await ouvrir()
+  await expect(toasts.first(), 'un message est affiché').toBeVisible({ timeout: 30_000 })
+  await page.waitForLoadState('networkidle').catch(() => undefined)
   const t500 = await toasts.allInnerTexts()
   console.log(`[AERR169] 500 : lectures ${c500.hits.n}, toasts ${J(t500)}`)
   expect(c500.hits.n, '500 : les règles ne sont lues qu’UNE fois à l’ouverture').toBe(1)
@@ -53,6 +55,8 @@ etape('PF12.1-AERR169-une-lecture', ['AERR169'], async ({ page, suivi }) => {
   // 2) 404 : une lecture, un toast (local, le global se tait).
   const c404 = await panne(page, suivi, REGLES, 404, { detail: 'Pas trouvé.' })
   await ouvrir()
+  await expect(toasts.first(), 'un message est affiché').toBeVisible({ timeout: 30_000 })
+  await page.waitForLoadState('networkidle').catch(() => undefined)
   const t404 = await toasts.allInnerTexts()
   console.log(`[AERR169] 404 : lectures ${c404.hits.n}, toasts ${J(t404)}`)
   expect(c404.hits.n, '404 : une seule lecture').toBe(1)
