@@ -48,6 +48,22 @@ test('EZ1 : LeadsPage pointe le popover de planification sur le lead choisi, rel
   assert.match(PAGE_SRC, /relanceActuelle=\{relanceLead\.relance_date \?\? null\}/)
 })
 
+// AERR189 — la fenêtre reste MONTÉE à la fermeture (clic extérieur / Échap) :
+// seule son ouverture bascule ; le démontage ne vient qu'après l'enregistrement.
+// Démonter à `onOpenChange(false)` efface la date et l'objet tapés.
+test('AERR189 : la fenêtre de relance reste montée, son ouverture est pilotée par un état', () => {
+  const start = PAGE_SRC.search(/<CallLogPopover\s+key=\{relanceLead\.id\}/)
+  assert.ok(start > 0, 'montage de la fenêtre de relance introuvable')
+  const bloc = PAGE_SRC.slice(start, PAGE_SRC.indexOf('/>', start))
+  assert.doesNotMatch(bloc, /\s+open\s+onOpenChange/)
+  assert.match(bloc, /open=\{relanceOuverte\}/)
+  assert.match(bloc, /onOpenChange=\{\(o\) => setRelanceOuverte\(o\)\}/)
+  assert.doesNotMatch(bloc, /onOpenChange=[^\n]*setRelanceLead\(null\)/)
+  // L'enregistrement, lui, ferme et relit la liste (onLogged).
+  assert.match(bloc, /onLogged=\{\(\) => \{ setRelanceLead\(null\); setRelanceOuverte\(false\); refetch\(\) \}\}/)
+  assert.match(PAGE_SRC, /const \[relanceOuverte, setRelanceOuverte\] = useState\(false\)/)
+})
+
 test('QX25 : viewProps transmet désormais onPlanifierRelance (c\'était le trou verifié)', () => {
   // LB6 — viewProps est désormais useMemo (bug #4) : `const viewProps = {`
   // est devenu `const viewProps = useMemo(() => ({`.

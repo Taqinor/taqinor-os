@@ -663,8 +663,11 @@ export default function LeadsPage() {
   // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps ; les
   // setters `useState` sont stables par définition, `[]` suffit (bug #4).
   const [relanceLead, setRelanceLead] = useState(null)
+  // AERR189 — fenêtre gardée montée : seule son ouverture bascule (saisie gardée).
+  const [relanceOuverte, setRelanceOuverte] = useState(false)
   const onPlanifierRelance = useCallback((lead) => {
     setRelanceLead(lead)
+    setRelanceOuverte(true)
   }, [])
 
   // (Ré)assignation rapide du responsable depuis la carte / la liste. Le PATCH
@@ -1292,9 +1295,9 @@ export default function LeadsPage() {
           leadId={relanceLead.id}
           mode="planification"
           relanceActuelle={relanceLead.relance_date ?? null}
-          open
-          onOpenChange={(o) => { if (!o) setRelanceLead(null) }}
-          onLogged={() => { setRelanceLead(null); refetch() }}
+          open={relanceOuverte}
+          onOpenChange={(o) => setRelanceOuverte(o)}
+          onLogged={() => { setRelanceLead(null); setRelanceOuverte(false); refetch() }}
           trigger={<span className="lp-relance-anchor" aria-hidden="true" />}
         />
       )}
