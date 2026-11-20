@@ -117,3 +117,122 @@ class ActionLayoutTest(BaseApiCalepinage):
                 self.assertEqual(reponse.status_code, 409, reponse.data)
         self.calepinage.refresh_from_db()
         self.assertIsNone(self.calepinage.roof_layout)
+
+
+def url_brouillon(pk):
+    return f'{url_detail(pk)}brouillon/'
+
+
+class BrouillonServeurTest(BaseApiCalepinage):
+    """ACAL400 — le brouillon d'atelier côté serveur, privé à l'auteur.
+
+    Écrire un brouillon ne crée AUCUNE version et ne change ni
+    ``layout_hash``, ni l'empreinte « document », ni ``updated_at``, ni le
+    journal (D-ACAL-4/21) ; il est périmé dès que le document change.
+    Mutant : ``save()`` au lieu de ``update()`` ⇒ ``updated_at`` bouge, rouge.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa')
+        self.etranger = Calepinage.objects.create(
+            company=self.autre, lead_id=42, titre='Chez la voisine')
+
+    _poster = ActionLayoutTest._poster
+    _versions = ActionLayoutTest._versions
+
+    def _corps(self, base, layout=LAYOUT_2):
+        return {'layout': layout, 'horodatage': '2026-11-20T09:15:00.000Z',
+                'base_empreinte': base}
+
+    def _base(self):
+        reponse = self.api.get(url_layout(self.calepinage.pk))
+        return reponse.data['empreinte_document'] or ''
+
+    def _etat(self):
+        from apps.records.models import Activity
+
+        self.calepinage.refresh_from_db()
+        return (self._versions(), self.calepinage.layout_hash, self._base(),
+                self.calepinage.updated_at,
+                Activity.objects.filter(object_id=self.calepinage.pk).count())
+
+    def test_put_ne_cree_ni_version_ni_empreinte_ni_journal(self):
+        self._poster(self.calepinage.pk, LAYOUT)
+        avant = self._etat()
+        reponse = self.api.put(url_brouillon(self.calepinage.pk),
+                               self._corps(avant[2]), format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(self._etat(), avant)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.roof_layout, LAYOUT)
+
+    def test_get_rend_la_forme_du_contrat_puis_null_apres_delete(self):
+        import json
+        from pathlib import Path
+
+        contrat = json.loads(
+            (Path(__file__).resolve().parent.parent / 'contract_samples'
+             / 'calepinage_brouillon.json').read_text(encoding='utf-8'))
+        url = url_brouillon(self.calepinage.pk)
+        self.assertIsNone(contrat['exemple_vide'])
+        self.assertIsNone(self.api.get(url).data)
+        self.api.put(url, self._corps(self._base()), format='json')
+        lu = self.api.get(url).data
+        self.assertEqual(set(lu), set(contrat['exemple']))
+        self.assertEqual(lu['layout'], LAYOUT_2)
+        self.assertEqual(self.api.delete(url).status_code, 200)
+        self.assertIsNone(self.api.get(url).data)
+
+    def test_base_perimee_get_null(self):
+        url = url_brouillon(self.calepinage.pk)
+        self.api.put(url, self._corps(self._base()), format='json')
+        self.assertIsNotNone(self.api.get(url).data)
+        self._poster(self.calepinage.pk, LAYOUT)  # le document change
+        self.assertIsNone(self.api.get(url).data)
+
+    def test_un_autre_utilisateur_ne_lit_pas_le_brouillon(self):
+        from django.contrib.auth import get_user_model
+
+        url = url_brouillon(self.calepinage.pk)
+        self.api.put(url, self._corps(self._base()), format='json')
+        collegue = get_user_model().objects.create_user(
+            username='cal_api_collegue', password='x', company=self.company,
+            role=self.role)
+        reponse = self._client(collegue).get(url)
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIsNone(reponse.data)
+        self.assertIsNotNone(self.api.get(url).data)
+
+    def test_autre_societe_404(self):
+        url = url_brouillon(self.etranger.pk)
+        self.assertEqual(self.api.get(url).status_code, 404)
+        reponse = self.api.put(url, self._corps(''), format='json')
+        self.assertEqual(reponse.status_code, 404)
+
+    def test_corps_refuses_en_nommant_le_champ(self):
+        url = url_brouillon(self.calepinage.pk)
+        reponse = self.api.put(url, {'layout': 3, 'horodatage': 'x',
+                                     'base_empreinte': ''}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('layout', reponse.data)
+        reponse = self.api.put(url, self._corps(
+            '', layout={'zones': [{'nom': 'a\x00b'}]}), format='json')
+        self.assertEqual(reponse.status_code, 409)
+        self.assertIn('layout', reponse.data)
+        self.assertIsNone(self.api.get(url).data)
+
+    def test_brouillons_absents_du_detail_et_de_l_export(self):
+        from .acal_livrables_helpers import patch_materiel
+
+        self.api.put(url_brouillon(self.calepinage.pk),
+                     self._corps(self._base()), format='json')
+        detail = self.api.get(url_detail(self.calepinage.pk))
+        self.assertEqual(detail.status_code, 200)
+        self.assertNotIn('brouillons_atelier', detail.data)
+        with patch_materiel():
+            export = self.api.get(
+                f'{url_detail(self.calepinage.pk)}export-projet.json/')
+        self.assertEqual(export.status_code, 200)
+        self.assertNotIn(b'brouillons_atelier', export.content)

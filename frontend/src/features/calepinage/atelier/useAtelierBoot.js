@@ -7,6 +7,7 @@ import { urlFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
 import { refusServeur } from '../commun/refusServeur'
 import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
+import { lireBrouillonServeur } from '../brouillonServeur.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
   repereDuLead, leadToBuilderPayload,
@@ -477,6 +478,14 @@ export function useAtelierBoot(ctx) {
         ...idsBrouillon,
         hashBase: hashServeur,
       })
+      // ACAL400 — sans brouillon LOCAL, le brouillon SERVEUR de l'utilisateur
+      // (écrit sur un autre poste) est proposé par le MÊME bandeau, sans
+      // retarder le boot.
+      if (!brouillon) {
+        lireBrouillonServeur({
+          lire: calepinageApi.calepinages.brouillon, calepinageId, hashBase: hashServeur,
+        }).then((serveur) => { if (!cancelled && serveur) setBrouillonPropose(serveur) })
+      }
       // ACAL84 — le bandeau ne BLOQUE plus le chargement (ANON-08) : l'atelier
       // boote sur la conception serveur ; « rien n'est réhydraté sans le
       // geste » reste vrai (Reprendre recharge sur le brouillon, Ignorer ne

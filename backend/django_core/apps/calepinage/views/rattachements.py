@@ -142,6 +142,9 @@ from . import fond_plan as _fond_plan_action  # noqa: F401 — import d'enregist
 # CALA2 — même patron : rattache les routes MINCES de l'assistant (résumé,
 # du-lead, a-traiter, contenance, preparer, publier-devis), ``views/assistant.py``.
 from . import assistant as _assistant_actions  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL400 — même patron : rattache ``brouillon`` (GET/PUT/DELETE du brouillon
+# d'atelier de l'appelant, côté serveur, ``services/brouillon.py``).
+from . import brouillon as _brouillon_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -181,6 +184,7 @@ MODULES_RATTACHES = (
     'consommation',  # ACAL310
     'fond_plan',  # ACAL72
     'assistant',  # CALA2
+    'brouillon',  # ACAL400
 )
 
 __all__ = ['MODULES_RATTACHES']
