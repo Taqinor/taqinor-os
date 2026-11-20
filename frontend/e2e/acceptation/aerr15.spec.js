@@ -157,8 +157,9 @@ except Exception as exc: print('nettoyage client', exc)`))
   const di = await compteRole('aerr181di', 'Directeur')
   const { p, boite } = await ecran(page, suivi, testInfo, di.nom)
   const ecritures = compter(p, null, new RegExp(`/api/django/installations/chantiers/${ids.inst}/(\\?.*)?$`))
+  // Rôle lu en CSS : la boîte « Quitter sans enregistrer ? » pose aria-hidden sur la fiche, que getByRole(dialog) ignorerait.
   const horaires = p.locator('#ch-horaires')
-  const fiche = p.getByRole('dialog').filter({ has: horaires })
+  const fiche = p.locator('[role="dialog"]').filter({ has: horaires })
   await scenarioFermer(p, boite, 'S2-AERR181', {
     ouvrir: async () => {
       await p.goto(`/chantiers?id=${ids.inst}`)
@@ -195,10 +196,10 @@ Client.objects.filter(pk=${ids.client}).delete()`))
   const di = await compteRole('aerr182di', 'Directeur')
   const { p, boite } = await ecran(page, suivi, testInfo, di.nom)
   const ecritures = compter(p, null, /\/api\/django\/sav\/equipements\//)
-  const fiche = p.getByRole('dialog').filter({ hasText: 'Équipement —' })
+  const fiche = p.locator('[role="dialog"]').filter({ hasText: 'Équipement —' })
   await scenarioFermer(p, boite, 'S2-AERR182', {
     ouvrir: async () => {
-      await p.goto('/sav/equipements')
+      await p.goto('/equipements')
       await p.getByPlaceholder('Rechercher (série, produit, chantier, client)…').fill(`AERR182 ${m}`, { timeout: 60_000 })
       const ligne = p.getByRole('row').filter({ hasText: serie })
       await expect(ligne, 'équipement listé').toBeVisible({ timeout: 60_000 })
@@ -240,10 +241,10 @@ sortie(n)`)
   // Fenêtre à 1 000 px : sous 1 280 px la fiche du ticket est le panneau étroit (Sheet), pas la vue scindée.
   const { p, boite } = await ecran(page, suivi, testInfo, di.nom, { width: 1000, height: 800 })
   const ecritures = compter(p, null, /\/api\/django\/sav\/tickets\//)
-  const panneau = p.getByRole('dialog').filter({ has: p.getByPlaceholder('Écrire une note…') })
+  const panneau = p.locator('[role="dialog"]').filter({ has: p.getByPlaceholder('Écrire une note…') })
   const note = panneau.getByPlaceholder('Écrire une note…')
   const ouvrir = async () => {
-    await p.goto('/sav/tickets')
+    await p.goto('/sav')
     await p.getByPlaceholder('Rechercher (référence, client, chantier, description)…').fill(`AERR Client ${m}`, { timeout: 60_000 })
     await expect(p.getByText(S2).first(), 'SAV-184B listé').toBeVisible({ timeout: 60_000 })
     await p.getByText(S1).first().click()
@@ -305,7 +306,7 @@ for qs in (BonCommandeFournisseur.objects.filter(pk=${ids.bcf}), Produit.objects
   const { p, boite } = await ecran(page, suivi, testInfo, di.nom)
   const ecritures = compter(p, null, /\/api\/django\/[^?]*(bons-commande|commande-fournisseur)[^?]*(\?.*)?$/i)
   const noteChamp = p.locator('#bcf-note')
-  const fiche = p.getByRole('dialog').filter({ has: noteChamp })
+  const fiche = p.locator('[role="dialog"]').filter({ has: noteChamp })
   await scenarioFermer(p, boite, 'S2-AERR183', {
     ouvrir: async () => {
       await p.goto('/stock/bons-commande-fournisseur')

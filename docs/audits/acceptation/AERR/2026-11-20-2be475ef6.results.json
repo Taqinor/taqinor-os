@@ -1,0 +1,155 @@
+{
+  "sha": "2be475ef643a346756668beaf5bd5bfb674f824d",
+  "date": "2026-11-20",
+  "groupe": "AERR",
+  "verdict": "PASS",
+  "couvre": [
+    "AERR181",
+    "AERR182",
+    "AERR183",
+    "AERR184",
+    "AERR185",
+    "AERR186"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "S2-AERR181-chantier-fermer",
+      "taches": [
+        "AERR181"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR181-chantier-fermer.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S2-AERR182-equipement-fermer",
+      "taches": [
+        "AERR182"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR182-equipement-fermer.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S2-AERR184-ticket-panneau-etroit",
+      "taches": [
+        "AERR184"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR184-ticket-panneau-etroit.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S2-AERR183-bcf-fermer",
+      "taches": [
+        "AERR183"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR183-bcf-fermer.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S2-AERR185-ged-revoquer-retirer",
+      "taches": [
+        "AERR185"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR185-ged-revoquer-retirer.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "S2-AERR186-appel-saisie-gardee",
+      "taches": [
+        "AERR186"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-20/ACCEPTATION-AERR-S2-AERR186-appel-saisie-gardee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
