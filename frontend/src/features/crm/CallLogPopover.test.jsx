@@ -347,4 +347,16 @@ describe('AERR156 — reprise bornée à la même saisie', () => {
     await journaliser()
     expect(crmApi.logInteraction).toHaveBeenLastCalledWith(43, expect.objectContaining({ outcome: 'interesse' }))
   })
+
+  it('AERR186 — fermeture accidentelle avant journalisation garde la saisie ; autre lead : vide', async () => {
+    const { rerender } = render(<CallLogPopover leadId={42} open onOpenChange={() => {}} />)
+    fireEvent.click(screen.getByText('À rappeler'))
+    fireEvent.change(screen.getByPlaceholderText('Note (facultative)…'), { target: { value: 'rappeler le soir' } })
+    rerender(<CallLogPopover leadId={42} open={false} onOpenChange={() => {}} />)
+    rerender(<CallLogPopover leadId={42} open onOpenChange={() => {}} />)
+    expect(screen.getByPlaceholderText('Note (facultative)…')).toHaveValue('rappeler le soir')
+    expect(screen.getByText('À rappeler').closest('button')).toHaveClass('clp-outcome-btn-active')
+    rerender(<CallLogPopover leadId={43} open onOpenChange={() => {}} />)
+    expect(screen.getByPlaceholderText('Note (facultative)…')).toHaveValue('')
+  })
 })
