@@ -1,0 +1,66 @@
+{
+  "sha": "d2a47e0719cd839b2b8e87935b7edf9eaa6aa145",
+  "date": "2026-11-20",
+  "groupe": "ADRG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADRG105",
+    "ADRG61",
+    "ADRG62",
+    "ADRG96",
+    "ADRG97"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF4-ADRG105-sonde-C-ADRG-001",
+      "taches": [
+        "ADRG105",
+        "ADRG61",
+        "ADRG62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/ADRG/traces/2026-11-20/C-ADRG-001.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ADRG-001 sur la tete (repro false) : Technicien dry-run et commit 403 « Droit ventes_creer manquant », aucune facture ; Commercial : ligne « payee » refusee (reservee a l'administrateur), 0 facture ; base inchangee. Base non rejouee (schema d'avant le correctif)."
+    },
+    {
+      "id": "PF4-ADRG105-sonde-C-ADRG-053",
+      "taches": [
+        "ADRG105",
+        "ADRG96",
+        "ADRG97"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/ADRG/traces/2026-11-20/C-ADRG-053.json",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Sonde C-ADRG-053 sur la tete (repro false) : PATCH client d'un compte portail par un Commercial 409 « Le client d'un compte portail ne se modifie pas », compte relu inchange (meme client, meme jeton) ; reactivation 403 reservee a l'administrateur ; base inchangee. Base non rejouee."
+    }
+  ]
+}
