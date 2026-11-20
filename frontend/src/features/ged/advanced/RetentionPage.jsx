@@ -233,6 +233,7 @@ export default function RetentionPage() {
     {
       id: 'revoquer', label: 'Révoquer', icon: XCircle, destructive: true,
       onClick: async () => {
+        if (!await confirmDelete({ title: `Révoquer le partage de « ${r.document_nom || `#${r.document}`} » ?`, description: 'Le lien public cessera de fonctionner.', confirmLabel: 'Révoquer' })) return
         try { await gedApi.revoquerPartage(r.id); toast.success('Partage révoqué.'); load() }
         catch (err) { toastSiMuet(err) }
       },

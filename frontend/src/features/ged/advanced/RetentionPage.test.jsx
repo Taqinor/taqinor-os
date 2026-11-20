@@ -24,6 +24,7 @@ vi.mock('../../../api/gedApi', () => ({
     getArchivagesLegaux: vi.fn(() => Promise.resolve({ data: [] })),
     getLegalHolds: vi.fn(() => Promise.resolve({ data: [] })),
     leverLegalHold: vi.fn(() => Promise.resolve({ data: { leves: 1 } })),
+    revoquerPartage: vi.fn(() => Promise.resolve({ data: {} })),
     getPartages: vi.fn(() => Promise.resolve({ data: [] })),
     getJournalAcces: vi.fn(() => Promise.resolve({ data: [] })),
     getDocumentsList: vi.fn(() => Promise.resolve({ data: [] })),
@@ -197,5 +198,31 @@ describe('PACT134 RetentionPage — Dispositions', () => {
     expect(within(boite).getByText(/Lever le gel « Litige client X » \?/)).toBeInTheDocument()
     await userEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
     expect(gedApi.leverLegalHold).not.toHaveBeenCalled()
+  })
+
+  it('AERR185 — Révoquer un partage demande (destinataire nommé), Annuler n’envoie rien', async () => {
+    gedApi.getPartages.mockResolvedValue({ data: [{
+      id: 9, document: 3, document_nom: 'Contrat.pdf', public_url: 'https://exemple.ma/p/abc',
+      actif: true, is_accessible: true,
+    }] })
+    renderAvecAuth(<ConfirmProvider><RetentionPage /></ConfirmProvider>, AUTH_DIRECTEUR, { theme: true })
+    await userEvent.click(await screen.findByRole('tab', { name: /Partages/ }))
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Révoquer' }))[0])
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText(/Contrat\.pdf/)).toBeInTheDocument()
+    await userEvent.click(within(boite).getByRole('button', { name: 'Annuler' }))
+    expect(gedApi.revoquerPartage).not.toHaveBeenCalled()
+  })
+
+  it('AERR185 — Confirmer la révocation du partage fait un appel', async () => {
+    gedApi.getPartages.mockResolvedValue({ data: [{
+      id: 9, document: 3, document_nom: 'Contrat.pdf', public_url: 'https://exemple.ma/p/abc',
+      actif: true, is_accessible: true,
+    }] })
+    renderAvecAuth(<ConfirmProvider><RetentionPage /></ConfirmProvider>, AUTH_DIRECTEUR, { theme: true })
+    await userEvent.click(await screen.findByRole('tab', { name: /Partages/ }))
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Révoquer' }))[0])
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Révoquer' }))
+    await waitFor(() => expect(gedApi.revoquerPartage).toHaveBeenCalledTimes(1))
   })
 })

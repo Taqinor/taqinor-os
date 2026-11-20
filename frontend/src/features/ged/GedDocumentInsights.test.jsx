@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 
 /* WIR70 — le panneau Détails charge la timeline et le rapport ACL d'un
    document, et exporte l'ACL en CSV. */
@@ -62,7 +63,9 @@ const renderPanel = (auth = AUTH_ADMIN) => {
   return render(
     <Provider store={store}>
       <ThemeProvider>
-        <GedDocumentInsights document={doc} onClose={() => {}} />
+        <ConfirmProvider>
+          <GedDocumentInsights document={doc} onClose={() => {}} />
+        </ConfirmProvider>
       </ThemeProvider>
     </Provider>,
   )
@@ -114,8 +117,22 @@ describe('WIR70 GedDocumentInsights', () => {
     await user.click(screen.getByRole('tab', { name: /Accès/ }))
     expect(await screen.findByText('sami')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Retirer ce droit/ }))
+    // AERR185 — confirmation nommée ; Confirmer ⇒ un appel.
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText(/sami/)).toBeInTheDocument()
+    await user.click(within(boite).getByRole('button', { name: 'Retirer' }))
     await waitFor(() => expect(H.deleteAcl).toHaveBeenCalledWith(7))
     await waitFor(() => expect(H.getAcls).toHaveBeenCalledTimes(2))
+  })
+
+  it('AERR185 — Annuler le retrait d’un droit n’appelle pas deleteAcl', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
+    await screen.findByText('sami')
+    await user.click(screen.getByRole('button', { name: /Retirer ce droit/ }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Annuler' }))
+    expect(H.deleteAcl).not.toHaveBeenCalled()
   })
 
   it('accorde un nouveau droit depuis le formulaire de gestion (WIR163)', async () => {
