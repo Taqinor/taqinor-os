@@ -402,6 +402,9 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_consommation_proposee.json':
         'consommation proposée par le serveur (ACAL21) : lit les factures '
         'et le profil du lead en base',
+    'calepinage_parcours_guide.json':
+        'état du parcours guidé (ACAL386) calculé à chaque lecture sur le '
+        'calepinage et ses réglages en base ; route livrée par ACAL392',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -443,6 +446,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL310 a livré ``POST calepinages/<pk>/consommation/proposer/``
     # (``views/consommation.py``) : calepinage_consommation_proposee.json en
     # est SORTI.
+    # ACAL392 livrera ``GET calepinages/<pk>/parcours/`` : retirer l'entrée.
+    'calepinage_parcours_guide.json': 'ACAL392',
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -516,6 +521,33 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
             "sa raison) — un échantillon non décidé dérive en silence.")
         self.assertEqual(sorted(connus - trouves), [],
                          "Échantillon déclaré mais absent du dossier.")
+
+    def test_forme_du_parcours_guide(self):
+        # ACAL386 — le parcours guidé : cinq étapes ordonnées, « manque »
+        # dédupliqué sur (code, cible), jamais une gravité inventée.
+        donnees = _charger('calepinage_parcours_guide.json')
+        cles = ['toit', 'panneaux', 'electrique', 'resultats', 'documents']
+        etats = {'a_faire', 'en_cours', 'fait', 'bloque'}
+        for nom in ('exemple', 'exemple_vide'):
+            etapes = donnees[nom]['etapes']
+            self.assertEqual([e['cle'] for e in etapes], cles, nom)
+            self.assertTrue(all(e['etat'] in etats for e in etapes), nom)
+            vus = set()
+            for ligne in donnees[nom]['manque']:
+                self.assertEqual(
+                    sorted(ligne), ['cible', 'code', 'etape', 'gravite',
+                                    'message', 'nombre'], nom)
+                self.assertIn(ligne['etape'], cles)
+                self.assertIn(ligne['gravite'],
+                              ('bloquant', 'a_regler', 'info'))
+                self.assertEqual(sorted(ligne['cible']), ['champ', 'onglet'])
+                identite = (ligne['code'], ligne['cible']['onglet'],
+                            ligne['cible']['champ'])
+                self.assertNotIn(identite, vus, 'ligne en double')
+                vus.add(identite)
+        self.assertEqual(donnees['exemple_vide']['manque'], [])
+        self.assertTrue(all(e['etat'] == 'a_faire'
+                            for e in donnees['exemple_vide']['etapes']))
 
 
 class CheminDeclareTest(unittest.TestCase):
