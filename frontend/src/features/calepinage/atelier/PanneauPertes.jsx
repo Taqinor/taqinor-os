@@ -406,7 +406,7 @@ function LignePoste({
   )
 }
 
-export default function PanneauPertes({ calepinageId: idPropose, lectureSeule = false }) {
+export default function PanneauPertes({ calepinageId: idPropose, lectureSeule = false, onEnregistre = null }) {
   /* Montable en panneau de l'atelier (le rail passe `calepinageId`) ou en
      écran à part entière — même repli que les autres panneaux du module. */
   const { id: idUrl } = useParams()
@@ -470,6 +470,7 @@ export default function PanneauPertes({ calepinageId: idPropose, lectureSeule = 
     Promise.resolve(calepinageApi.calepinages.enregistrerPertes(calepinageId, { postes: aEnvoyer }))
       .then((res) => {
         setMessage('Postes de pertes enregistrés.')
+        onEnregistre?.() // ACAL396 : le diagramme voisin se relit
         const data = res?.data ?? {}
         // Relecture des statuts servis après l'écriture.
         if (Array.isArray(data.postes) || Array.isArray(data.pertes)) {

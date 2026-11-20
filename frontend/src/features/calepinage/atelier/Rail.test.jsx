@@ -177,7 +177,7 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
       const ecran = ecranGuideDeOnglet(onglet.cle)
       expect(screen.getByTestId(`cal-onglet-${ecran ? ecran.ouverture : onglet.cle}`))
         .toHaveAttribute('aria-selected', 'true')
-      if (ecran) {
+      if (ecran?.ouverture === 'verdict-electrique') {
         expect(screen.getByTestId(`cal-electrique-section-${onglet.cle}`))
           .toHaveAttribute('data-state', 'open')
       }

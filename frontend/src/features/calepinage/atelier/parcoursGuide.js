@@ -65,6 +65,14 @@ export const ECRANS_ETAPE = {
       'materiel-electrique', 'saisies-electriques', 'decisions-electriques'],
     composant: lazy(() => import('../electrique/EtapeElectrique')),
   },
+  // ACAL396 — Résultats : le diagramme ET l'édition d'un poste dans un seul
+  // panneau ; `postes-pertes` y devient un alias expert de `pertes`.
+  resultats: {
+    ouverture: 'pertes',
+    libelle: 'Pertes',
+    onglets: ['pertes', 'postes-pertes'],
+    composant: lazy(() => import('./PanneauPertesUnifie')),
+  },
 }
 
 /** L'écran guidé qui porte l'onglet `cleOnglet` (ou `null`). */
