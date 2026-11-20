@@ -415,6 +415,10 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_balayage.json':
         'balayage paramétrique (ACAL388) : le résultat vit dans un job lu '
         'en base par moteur/resultat/<job_id>/ ; route livrée par ACAL468',
+    'calepinage_table_ombrage.json':
+        'FRAGMENT du document roof_layout (zones[].geometry.shadeTable et '
+        'skyViewFactor, ACAL389), pas une réponse serveur : écrit par '
+        "l'atelier (ACAL459/460), lu par ACAL461",
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -613,6 +617,25 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
                              'ecretage_pct' in ligne)
         for cle in ('appels_pvgis', 'complete', 'socle_manquant', 'etat'):
             self.assertIn(cle, resultat)
+
+    def test_forme_de_la_table_d_ombrage(self):
+        # ACAL389 — dimensions cohérentes, valeurs dans [0, 1].
+        geometrie = _charger(
+            'calepinage_table_ombrage.json')['exemple']['zones'][0]['geometry']
+        table = geometrie['shadeTable']
+        self.assertEqual(len(table['facteurs']), len(table['hauteursDeg']))
+        for ligne in table['facteurs']:
+            self.assertEqual(len(ligne), len(table['azimutsDeg']))
+            self.assertTrue(all(0 <= v <= 1 for v in ligne))
+        self.assertEqual(table['methode'], 'centres_de_modules')
+        ciel = geometrie['skyViewFactor']
+        self.assertTrue(0 <= ciel['facteur'] <= 1)
+        self.assertEqual(sorted(ciel['methode']),
+                         ['diffus', 'horizon', 'resolution'])
+        self.assertEqual(ciel['methode']['diffus'], 'isotrope')
+        self.assertIsInstance(ciel['methode']['horizon'], bool)
+        for bloc in (table, ciel):
+            self.assertTrue(bloc['signature'])
 
 
 class CheminDeclareTest(unittest.TestCase):
