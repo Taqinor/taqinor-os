@@ -59,3 +59,13 @@ futur) → puis écrire `.claude/skills/go-deep/SKILL.md` + le crochet dans `.cl
 `claude/go-deep-l4-l5`, PR docs / config seule, CI rapide, merge par la file ; mémoire partagée
 (`docs/claude-memory/`) ; rapport à Reda en langage simple (ce que sont L4 et L5, quand les employer, ce qu'ils
 coûtent, ce qui n'est pas couvert).
+
+## Journal
+- 20/11 : rétro et plan écrits ; brief commun `brief-recherche.md` ; R1 LANCÉ : six lanes sonnet (A-anthropic,
+  B-agents-de-code, C-qualite-logiciel, D-neuf-ou-existant, E-fiabilite-llm, F-maison), rapports attendus dans
+  `recherche/`. À leur retour : lire les messages finaux (15 lignes chacun), PAS les rapports entiers ; lancer R2 (un
+  concepteur opus qui lit les six rapports + la rétro et écrit `projet-skill.md`) ; puis R3 (trois vérificateurs neufs),
+  R4 (critique + PR `claude/go-deep-l4-l5` : `.claude/skills/go-deep/SKILL.md` + crochet de `.claude/settings.json`).
+- Quota hebdomadaire au lancement : 80 %. Contexte de l'orchestrateur : 90 % (une compaction est probable : tout ce
+  qu'il faut pour reprendre est dans ce fichier, dans `../RETRO-METHODE.md` et dans `../ETAT.md`).
+
