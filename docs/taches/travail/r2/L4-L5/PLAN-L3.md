@@ -68,4 +68,26 @@ coûtent, ce qui n'est pas couvert).
   R4 (critique + PR `claude/go-deep-l4-l5` : `.claude/skills/go-deep/SKILL.md` + crochet de `.claude/settings.json`).
 - Quota hebdomadaire au lancement : 80 %. Contexte de l'orchestrateur : 90 % (une compaction est probable : tout ce
   qu'il faut pour reprendre est dans ce fichier, dans `../RETRO-METHODE.md` et dans `../ETAT.md`).
+- 20/11 : R1 FAIT — six rapports dans `recherche/` (A 168 l., B 120, C 115, D 150, E, F 140). Points forts retenus par
+  l'orchestrateur pour R2 : (1) L4 et L5 sont des NIVEAUX de la skill `go-deep` existante, gabarits généralisés à côté ;
+  le niveau automatique ne choisit jamais L4 / L5 seul : il les PROPOSE avec leur coût ; (2) régime NEUF / EXISTANT /
+  MIXTE lu sur `origin/main` (jamais le worktree), par promesses déjà servies, annoncé en une ligne, imposable par
+  Reda, bascule si R1 le contredit ; (3) contrat de sortie CHIFFRÉ au tour 0 + arrêt mécanique (plafond de tours,
+  disjoncteur par constat, plafond de quota) ; (4) registre MACHINE des constats (verdicts fermés, taux d'écartés par
+  relecteur et par axe) à la place de la prose ; (5) le correcteur a une sortie « contesté / impossible », et la preuve
+  d'une correction n'est pas écrite par lui seul ; (6) une CLASSE de défaut = une fiche d'invariant + une garde
+  permanente (« le système l'attraperait-il seul la prochaine fois ? ») ; (7) beauté jugée par PAIRES (avant / après,
+  nous / référence) + mesures dans le DOM, jamais une note absolue seule ; (8) « sec » = deux relecteurs différents
+  sans constat, pas un ; estimation du reste par recouvrement de deux relecteurs sur les écrans centraux, ou par
+  défauts semés (L5) ; (9) EXISTANT : figer le comportement (tests de caractérisation, captures de référence) AVANT de
+  toucher (L5 ; en L4 pour les chiffres servis) ; (10) réutiliser : oracles et règles de `qa-explorer`, verdicts de
+  `vérifie` (audit v3), `plan_lanes.py` pour les lanes, les 7 leçons QJR5 ; (11) changement de contrat transversal :
+  SEUL, avant la vague ; couture seule sur l'arbre après ; (12) pile privée = instrument de revue (statut de l'exception
+  3-bis), code déjà poussé seulement, envoi de mails forcé en console, aucune clé réelle ; (13) étage « vraie vie » en
+  L5 (appareil réel 30 min, 5 jours d'usage, 3 questions) ; (14) dimensionner au modèle : un évaluateur ne vaut son
+  coût que si la tâche dépasse ce que le modèle fait seul ; revalider le harnais à chaque nouveau modèle.
+  Tensions à trancher dans le projet : WOW23 « aucun gate local » contre les tests voisins des lanes ; plafond de
+  ~100 tâches non mergées contre une PR de 210 corrections ; coût (≈ 74 points) contre tout plafond écrit ; crochet qui
+  ne reconnaît pas « go L3 » (seulement les formes en mots).
+- R2 LANCÉ : un concepteur opus → `projet-skill.md`.
 
