@@ -72,6 +72,7 @@ import { type PerimeterSetbacks } from '../../lib/roofPro2';
 import { construireMaillagesPose } from './poseSurfaces'; // CALX124
 
 import { teinterAllees } from './teinteAllees'; // CALX403
+import { appliquerCiel } from './ciel'; // ACAL431
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -2584,6 +2585,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // une heure proche du lever/coucher (ombres longues mais lisibles, jamais noir).
     const lat = pack.origin[1];
     const realSun = sunDirection(lat, ctx.sunDay, ctx.sunHour);
+    if (!readOnly) appliquerCiel(map, realSun.elevationDeg, lowEnd); // ACAL431 — ciel selon le soleil ; visionneuse client et bas de gamme : inchangés
     const dispElevDeg = Math.max(6, realSun.elevationDeg);
     // Azimut RÉEL du soleil, ramené dans le repère ENU de la scène (0 = Nord, sens
     // horaire vers l'Est) — même convention que pack.azimuthDeg.
