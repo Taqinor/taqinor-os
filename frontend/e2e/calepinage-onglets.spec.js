@@ -147,6 +147,8 @@ test('CALX387: le lien profond /calepinage/:id/<cle> ouvre le MÊME panneau que 
   // même sous la route profonde et sous l'onglet — jamais le bouton du rail,
   // absent d'une route profonde.
   await page.goto(`/calepinage/${calepinageId}/${cle}`)
+  // ACAL407 — la route profonde REDIRIGE (remplacement) vers `?onglet=<cle>`.
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${calepinageId}\\?onglet=${cle}`))
   await expect(page.getByTestId('cal-pente')).toBeVisible()
 
   // Puis l'onglet, cliqué depuis le rail, mène au MÊME panneau — même clé
