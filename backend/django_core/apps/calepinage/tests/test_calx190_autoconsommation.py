@@ -268,3 +268,52 @@ class OmissionsTest(SimpleTestCase):
 
         self.assertIsNone(resultat['energie'])
         self.assertTrue(resultat['motif_absence'])
+
+
+class ParMoisTest(SimpleTestCase):
+    """ACAL445 — le découpage mensuel de l'autoconsommation est servi."""
+
+    COLONNES = ('mois', 'consommation_kwh', 'production_kwh',
+                'autoconsomme_kwh', 'import_reseau_kwh', 'export_reseau_kwh')
+
+    def test_la_somme_des_mois_egale_l_annuel(self):
+        _suite, resultat = bloc.bloc_autoconsommation(serie_de_test(),
+                                                      contexte_de_test())
+        par_mois = resultat['par_mois']
+        energie = resultat['energie']
+
+        self.assertEqual([ligne['mois'] for ligne in par_mois],
+                         list(range(1, 13)))
+        for ligne in par_mois:
+            self.assertEqual(sorted(ligne), sorted(self.COLONNES))
+        for colonne in ('consommation_kwh', 'production_kwh',
+                        'autoconsomme_kwh', 'import_reseau_kwh',
+                        'export_reseau_kwh'):
+            self.assertAlmostEqual(
+                sum(ligne[colonne] for ligne in par_mois),
+                energie[colonne], delta=0.02)
+        # Janvier = 31 jours x 24 h x 1 kWh (la consommation est plate).
+        self.assertAlmostEqual(par_mois[0]['consommation_kwh'], 744.0,
+                               delta=0.01)
+        self.assertAlmostEqual(par_mois[1]['consommation_kwh'], 672.0,
+                               delta=0.01)
+
+    def test_un_mois_sans_point_vaut_null_jamais_zero(self):
+        _suite, resultat = bloc.bloc_autoconsommation(
+            serie_de_test(heures=48), contexte_de_test(heures=48))
+        par_mois = resultat['par_mois']
+
+        self.assertEqual(len(par_mois), 12)
+        self.assertIsNotNone(par_mois[0]['consommation_kwh'])
+        for ligne in par_mois[1:]:
+            for colonne in self.COLONNES[1:]:
+                self.assertIsNone(ligne[colonne])
+
+    def test_bloc_omis_la_cle_est_presente_et_nulle(self):
+        contexte = contexte_de_test(heures=72)
+        contexte[bloc.CLE_HORS_RESEAU] = {'actif': True}
+        _suite, resultat = bloc.bloc_autoconsommation(
+            serie_de_test(heures=72), contexte)
+
+        self.assertIn('par_mois', resultat)
+        self.assertIsNone(resultat['par_mois'])

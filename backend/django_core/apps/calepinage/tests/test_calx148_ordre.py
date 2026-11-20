@@ -171,13 +171,24 @@ class ToujoursOmisesTest(unittest.TestCase):
                           'une étape absente se lirait « oubliée ».')
 
     def test_elles_sont_omises_avec_leur_motif_et_perte_pct_null(self):
-        for nom in ('spectral', 'diodes', 'neige'):
+        for nom in ('spectral', 'diodes'):
             etape = self.par_nom[nom]
             self.assertEqual(etape['motif_omission'], TOUJOURS_OMISES[nom])
             self.assertIsNone(etape['perte_pct'],
                               f'{nom} : 0 % se lirait « gratuite ».')
             self.assertIsNone(etape['perte_kwh'])
             self.assertIsNone(etape['kwh_apres'])
+
+    def test_la_neige_sort_de_la_table_mais_reste_omise_sans_saisie(self):
+        # ACAL463 — la neige est CALCULÉE quand douze valeurs sourcées sont
+        # saisies ; sans saisie elle reste omise en nommant la clé, à null.
+        self.assertNotIn('neige', TOUJOURS_OMISES)
+        etape = self.par_nom['neige']
+        self.assertIn('simulation.neige_mensuelle_pct',
+                      etape['motif_omission'])
+        self.assertIsNone(etape['perte_pct'])
+        self.assertIsNone(etape['perte_kwh'])
+        self.assertIsNone(etape['kwh_apres'])
 
     def test_leur_motif_ne_forfaitise_jamais_le_chiffre_du_concurrent(self):
         self.assertIn('0,5 %', TOUJOURS_OMISES['diodes'])

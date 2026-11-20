@@ -336,5 +336,77 @@ class BalayageAppelsPvgisTest(unittest.TestCase):
                          _contrat_balayage('exemple'))
 
 
+class ClientHorizontal:
+    """ACAL465 — un client double : compte les lectures d'irradiance."""
+
+    def __init__(self, *, depuis_cache=False, erreur=None):
+        self.demandes = []
+        self.depuis_cache = depuis_cache
+        self.erreur = erreur
+
+    def serie_irradiance(self, **parametres):
+        self.demandes.append(parametres)
+        if self.erreur is not None:
+            raise self.erreur
+        return {'points': [{'annee': 2020, 'mois': 6, 'jour': 15,
+                            'heure': 12, 'gi_w_m2': 900.0,
+                            'gd_i_w_m2': 150.0}],
+                'serie_horaire': {'pas_minutes': 60},
+                'depuis_cache': self.depuis_cache}
+
+
+class SerieHorizontaleBifacialeTest(unittest.TestCase):
+    """ACAL465 — UN appel de plus par site, seulement si la fiche est
+    bifaciale, et compté dans ``appels_pvgis``."""
+
+    def _poser(self, fiche, client, *, fichier=None):
+        from apps.calepinage.services.simulation import _poser_horizontale
+
+        contexte = {'fiche_module': fiche, 'meteo': {'heure': {'base': 'utc'}},
+                    'site': dict(SITE)}
+        compteur = {'appels': 0}
+        _poser_horizontale(
+            contexte, client=client, decision={'fenetre_annees': (2020, 2020)},
+            fichier=fichier, compteur=compteur,
+            plan={'lat': 33.5, 'lon': -7.6})
+        return contexte, compteur
+
+    def test_fiche_bifaciale_un_appel_horizontal_compte(self):
+        client = ClientHorizontal()
+        contexte, compteur = self._poser({'bifacialite_pct': 70.0}, client)
+
+        self.assertEqual(compteur['appels'], 1)
+        demande = client.demandes[0]
+        self.assertEqual(demande['inclinaison_deg'], 0.0)
+        self.assertTrue(demande['composantes'])
+        self.assertTrue(demande['masque_dans_la_geometrie'])
+        self.assertEqual(
+            len(contexte['serie_horizontale_legale']['points']), 1)
+
+    def test_fiche_monofaciale_ou_fichier_depose_aucun_appel(self):
+        for fiche, fichier in (({'puissance_wc': 500.0}, None),
+                               ({'bifacialite_pct': 70.0}, {'points': []})):
+            with self.subTest(fiche=fiche):
+                client = ClientHorizontal()
+                contexte, compteur = self._poser(fiche, client,
+                                                 fichier=fichier)
+                self.assertEqual(client.demandes, [])
+                self.assertEqual(compteur['appels'], 0)
+                self.assertNotIn('serie_horizontale_legale', contexte)
+
+    def test_reponse_du_cache_non_comptee_et_refus_replie(self):
+        _, compteur = self._poser({'bifacialite_pct': 70.0},
+                                  ClientHorizontal(depuis_cache=True))
+        self.assertEqual(compteur['appels'], 0)
+
+        from apps.calepinage.services.pvgis_serie import PvgisIndisponible
+
+        contexte, compteur = self._poser(
+            {'bifacialite_pct': 70.0},
+            ClientHorizontal(erreur=PvgisIndisponible('hors ligne')))
+        self.assertEqual(compteur['appels'], 0)
+        self.assertNotIn('serie_horizontale_legale', contexte)
+
+
 if __name__ == '__main__':
     unittest.main()
