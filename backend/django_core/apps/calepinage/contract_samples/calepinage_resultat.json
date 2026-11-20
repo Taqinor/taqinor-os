@@ -277,6 +277,56 @@
           "p50_kwh": 830.0
         }
       ],
+      "irradiation_mensuelle": [
+        {
+          "mois": 1,
+          "irradiation_plan_kwh_m2": 78.956
+        },
+        {
+          "mois": 2,
+          "irradiation_plan_kwh_m2": 74.57
+        },
+        {
+          "mois": 3,
+          "irradiation_plan_kwh_m2": 83.343
+        },
+        {
+          "mois": 4,
+          "irradiation_plan_kwh_m2": 87.729
+        },
+        {
+          "mois": 5,
+          "irradiation_plan_kwh_m2": 96.502
+        },
+        {
+          "mois": 6,
+          "irradiation_plan_kwh_m2": 100.889
+        },
+        {
+          "mois": 7,
+          "irradiation_plan_kwh_m2": 105.275
+        },
+        {
+          "mois": 8,
+          "irradiation_plan_kwh_m2": 105.275
+        },
+        {
+          "mois": 9,
+          "irradiation_plan_kwh_m2": 92.116
+        },
+        {
+          "mois": 10,
+          "irradiation_plan_kwh_m2": 87.729
+        },
+        {
+          "mois": 11,
+          "irradiation_plan_kwh_m2": 74.57
+        },
+        {
+          "mois": 12,
+          "irradiation_plan_kwh_m2": 65.796
+        }
+      ],
       "par_pan": [
         {
           "pan": "PAN-A",
@@ -1212,6 +1262,7 @@
         "p95_kwh_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
       },
       "mensuel": [],
+      "irradiation_mensuelle": [],
       "par_pan": [
         {
           "pan": "PAN-A",
@@ -1544,6 +1595,56 @@
         {
           "mois": 12,
           "p50_kwh": 830.0
+        }
+      ],
+      "irradiation_mensuelle": [
+        {
+          "mois": 1,
+          "irradiation_plan_kwh_m2": 78.956
+        },
+        {
+          "mois": 2,
+          "irradiation_plan_kwh_m2": 74.57
+        },
+        {
+          "mois": 3,
+          "irradiation_plan_kwh_m2": 83.343
+        },
+        {
+          "mois": 4,
+          "irradiation_plan_kwh_m2": 87.729
+        },
+        {
+          "mois": 5,
+          "irradiation_plan_kwh_m2": 96.502
+        },
+        {
+          "mois": 6,
+          "irradiation_plan_kwh_m2": 100.889
+        },
+        {
+          "mois": 7,
+          "irradiation_plan_kwh_m2": 105.275
+        },
+        {
+          "mois": 8,
+          "irradiation_plan_kwh_m2": 105.275
+        },
+        {
+          "mois": 9,
+          "irradiation_plan_kwh_m2": 92.116
+        },
+        {
+          "mois": 10,
+          "irradiation_plan_kwh_m2": 87.729
+        },
+        {
+          "mois": 11,
+          "irradiation_plan_kwh_m2": 74.57
+        },
+        {
+          "mois": 12,
+          "irradiation_plan_kwh_m2": 65.796
         }
       ],
       "par_pan": [

@@ -79,6 +79,7 @@ from apps.calepinage.services.p50p90 import bankable
 from apps.calepinage.services.site import (
     decalage_utc_minutes, fuseau_du_site,
 )
+from . import irradiation_mensuelle as _irr
 from .valeurs import nombre as _flottant
 
 #: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare (CALX148).
@@ -509,6 +510,8 @@ def appliquer_chaine(serie, contexte=None, resultat=None, *, phase=None,
         # module, IAM, salissure) réécrivent ``gi_w_m2``, et un PR divisé par
         # l'irradiation de la série FINALE vaudrait 1,0 quoi qu'il arrive.
         irradiation_incidente = irradiation_kwh_m2(serie)
+        # ACAL451 — la même lecture, mois par mois (publiée par la production).
+        contexte[_irr.CLE_IRRADIATION_MENSUELLE] = _irr.par_mois(serie)
     else:
         _installer_meteo_partagee(contexte)
         irradiation_incidente = None
@@ -1261,6 +1264,10 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
              if isinstance(plan, dict)]
     series = _series_par_pan(serie, contexte, plans)
     incidentes = _irradiations_incidentes(cascade, contexte, plans)
+    # ACAL451 — l'irradiation mensuelle, pondérée comme l'annuelle (kWc).
+    mensuelles = _irr.mensuelles_des_pans(
+        contexte, [_cle_de_pan(plan) for plan in plans if _est_equipe(plan)])
+    irr_mensuelles, irr_kwc = [], []
 
     mensuel = {mois: None for mois in range(1, 13)}
     annuel = {}
@@ -1295,6 +1302,8 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         if irradiation is not None and kwc:
             irradiation_ponderee = _ajouter(irradiation_ponderee,
                                             irradiation * kwc)
+            irr_mensuelles.append(mensuelles.get(_cle_de_pan(plan)))
+            irr_kwc.append(kwc)
         a_remplir.append((ligne, kwh, annuel_pan, kwc, irradiation))
         lignes.append(ligne)
 
@@ -1306,6 +1315,8 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
             'irradiation_incidente_kwh_m2'))
         if irradiation is not None and total_kwc:
             irradiation_ponderee = irradiation * total_kwc
+            irr_mensuelles = [contexte.get(_irr.CLE_IRRADIATION_MENSUELLE)]
+            irr_kwc = [total_kwc]
         if plans:
             avertissements.append(MOTIF_PAN_SANS_SERIE)
 
@@ -1394,6 +1405,8 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         {'mois': mois, 'p50_kwh': mois_publies[mois - 1]}
         for mois in range(1, 13)
     ]
+    production['irradiation_mensuelle'] = _irr.publier(
+        _irr.ponderer(irr_mensuelles, irr_kwc), annees_fenetre)
     for ligne, publie in zip(lignes, _repartir(
             bruts_par_pan, production['total']['p50_kwh'])):
         ligne['p50_kwh'] = publie

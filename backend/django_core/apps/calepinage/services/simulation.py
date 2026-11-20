@@ -63,6 +63,7 @@ from .pvgis_serie import (
     AVERTISSEMENT_EST_OUEST_SUPPOSE, BASE_PAR_DEFAUT, ClientPvgis,
     EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
+from . import irradiation_mensuelle as _irr
 from .horizon import profil_depuis_document
 from .simulation_modules import production_module_par_module
 from .validation import ecart_vs_pvcalc
@@ -1664,6 +1665,7 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit,
     provenance = contexte.get('meteo')
     series_jambes = {}
     cascades_jambes = {}
+    mensuelles_jambes = {}
     premier_contexte = None
     plans_chaine = plans_chaine or plans_equipes
     for plan in plans_chaine:
@@ -1676,15 +1678,25 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit,
             fournisseur(avec_site), contexte_plan, phase='pan')
         series_jambes[plan['cle']] = serie_dc
         cascades_jambes[plan['cle']] = cascade_pan
+        mensuelles_jambes[plan['cle']] = contexte_plan.get(
+            _irr.CLE_IRRADIATION_MENSUELLE)
         if premier_contexte is None:
             premier_contexte = contexte_plan
     # ACAL139 — les jambes d'un pan est-ouest se REJOIGNENT en UN pan : le
     # rapport, les sorties et les cascades restent pan par pan.
     series_dc = {}
     cascades_pan = {}
+    mensuelles_pan = {}
     for plan in plans_equipes:
         jambes = [jambe for jambe in plans_chaine
                   if jambe.get('parent') == plan['cle']]
+        # ACAL451 — l'irradiation mensuelle du pan : celle de sa jambe, ou la
+        # moyenne de ses jambes pondérée par leur kWc (comme l'annuelle).
+        mensuelles_pan[plan['cle']] = (
+            _irr.ponderer([mensuelles_jambes[jambe['cle']]
+                           for jambe in jambes],
+                          [jambe.get('kwc') or 0.0 for jambe in jambes])
+            if jambes else mensuelles_jambes[plan['cle']])
         if not jambes:
             series_dc[plan['cle']] = series_jambes[plan['cle']]
             cascades_pan[plan['cle']] = cascades_jambes[plan['cle']]
@@ -1735,6 +1747,7 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit,
     sorties = _sorties_par_pan(series_dc, somme_dc, sortie)
     contexte[CLE_SORTIES_PAR_PAN] = sorties
     contexte[CLE_CASCADES_PAR_PAN] = cascades_pan
+    contexte[_irr.CLE_IRRADIATIONS_MENSUELLES_PAR_PAN] = mensuelles_pan
     publier_resultat_de_chaine(ecrit, sortie, contexte, cascade)
     return sortie, cascade, sorties
 

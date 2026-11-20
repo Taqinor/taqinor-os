@@ -22,8 +22,13 @@ from __future__ import annotations
 
 import unittest
 
+from apps.calepinage.services import irradiation_mensuelle
 from apps.calepinage.services.chaine_pertes import (
-    CLE_SORTIES_PAR_PAN, MOTIF_PAN_SANS_SERIE, appliquer_chaine,
+    CLE_CASCADES_PAR_PAN, CLE_SORTIES_PAR_PAN, MOTIF_PAN_SANS_SERIE,
+    appliquer_chaine, irradiation_kwh_m2,
+)
+from apps.calepinage.services.irradiation_mensuelle import (
+    CLE_IRRADIATIONS_MENSUELLES_PAR_PAN,
 )
 from apps.calepinage.services.comparaison import CLES_PRODUCTION
 from apps.calepinage.services.export_csv import export_csv
@@ -220,6 +225,81 @@ class ModeTmyTest(unittest.TestCase):
         production = simuler()['production']
         self.assertEqual([annee['annee'] for annee in production['annees']],
                          [2020])
+
+
+class IrradiationMensuelleTest(unittest.TestCase):
+    """ACAL451 — l'irradiation incidente mensuelle somme l'annuelle servie."""
+
+    @staticmethod
+    def _serie_gi(facteur):
+        """La série du fixture dont l'irradiance est mise à l'échelle."""
+        copie = serie(1.0)
+        for point in copie['points']:
+            if point['gi_w_m2'] is not None:
+                point['gi_w_m2'] = point['gi_w_m2'] * facteur
+        return copie
+
+    def _contexte(self, plans, sorties=None):
+        contexte = {
+            'site': {'lat': 33.5, 'lon': -7.6, 'fuseau': 'Africa/Casablanca'},
+            'meteo': {'heure': {'base': 'utc'}},
+            'plans': plans,
+            'reglages_simulation': reglages(),
+        }
+        if sorties:
+            contexte[CLE_SORTIES_PAR_PAN] = sorties
+        return contexte
+
+    def test_un_pan_les_douze_mois_somment_l_irradiation_de_la_cascade(self):
+        resultat = {}
+        _serie, cascade = appliquer_chaine(
+            serie(1.0), self._contexte([dict(PLANS[0], kwc=1.0, modules=1)]),
+            resultat=resultat)
+        lignes = resultat['production']['irradiation_mensuelle']
+
+        self.assertEqual([ligne['mois'] for ligne in lignes],
+                         list(range(1, 13)))
+        self.assertAlmostEqual(
+            sum(ligne['irradiation_plan_kwh_m2'] for ligne in lignes),
+            cascade['irradiation_incidente_kwh_m2'], delta=0.0065)
+        self.assertGreater(lignes[6]['irradiation_plan_kwh_m2'], 0.0)
+
+    def test_deux_pans_de_kwc_differents_sont_ponderes_par_le_kwc(self):
+        serie_a, serie_b = self._serie_gi(1.0), self._serie_gi(0.5)
+        irr_a = irradiation_kwh_m2(serie_a)
+        irr_b = irradiation_kwh_m2(serie_b)
+        contexte = self._contexte(
+            PLANS[:2], {'A': serie(4.0), 'B': serie(3.0)})
+        contexte[CLE_CASCADES_PAR_PAN] = {
+            'A': {'irradiation_incidente_kwh_m2': irr_a},
+            'B': {'irradiation_incidente_kwh_m2': irr_b}}
+        contexte[CLE_IRRADIATIONS_MENSUELLES_PAR_PAN] = {
+            'A': irradiation_mensuelle.par_mois(serie_a),
+            'B': irradiation_mensuelle.par_mois(serie_b)}
+        resultat = {}
+        appliquer_chaine(serie(1.0), contexte, resultat=resultat)
+        somme = sum(ligne['irradiation_plan_kwh_m2'] for ligne
+                    in resultat['production']['irradiation_mensuelle'])
+
+        # (4 x irr_a + 3 x irr_b) / 7 : le même poids que l'annuelle.
+        attendue = (4.0 * irr_a + 3.0 * irr_b) / 7.0
+        self.assertAlmostEqual(somme, attendue, delta=0.0065)
+        self.assertGreater(abs(somme - (irr_a + irr_b) / 2.0), 1.0)
+
+    def test_un_mois_sans_point_vaut_null_jamais_zero(self):
+        mensuelle = irradiation_mensuelle.par_mois(
+            {'pas_minutes': 60, 'points': [
+                {'mois': 3, 'gi_w_m2': 1000.0}]})
+
+        self.assertEqual(mensuelle[3], 1.0)
+        self.assertIsNone(mensuelle[1])
+        lignes = irradiation_mensuelle.publier(
+            irradiation_mensuelle.ponderer([mensuelle], [2.0]), 1)
+        self.assertIsNone(lignes[0]['irradiation_plan_kwh_m2'])
+        self.assertEqual(lignes[2]['irradiation_plan_kwh_m2'], 1.0)
+
+    def test_sans_simulation_la_liste_est_vide(self):
+        self.assertEqual(irradiation_mensuelle.publier(None, 1), [])
 
 
 if __name__ == '__main__':
