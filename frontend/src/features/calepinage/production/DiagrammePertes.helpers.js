@@ -55,6 +55,8 @@ export function construireCascadeDetaillee(etapes, totalPct = null) {
       pertePct: etape.perte_pct,
       kwhAvant: etape.kwh_avant ?? null,
       kwhApres: etape.kwh_apres ?? null,
+      entree: etape.entree ?? null,
+      reference: etape.reference ?? null,
       gain: Boolean(etape.gain) || bas > haut,
     })
     courant = bas
