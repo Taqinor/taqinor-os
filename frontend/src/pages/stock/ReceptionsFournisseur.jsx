@@ -290,7 +290,7 @@ export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
         <AlerteErreur error={error} />
 
         <DialogFooter className="flex-wrap">
-          <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button type="button" variant="ghost" onClick={() => confirmLeaveIfDirty(dirty).then((ok) => ok && onClose())}>Annuler</Button>
           <Button type="button" variant="outline" loading={busy} onClick={() => submit(false)}>
             {busy ? '…' : 'Enregistrer en brouillon'}
           </Button>

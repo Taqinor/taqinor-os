@@ -98,6 +98,44 @@ describe('Réception — fermeture d’une saisie modifiée (AERR37)', () => {
     natif.mockRestore()
   })
 
+  it('AERR187 — Annuler demande avant de perdre la saisie : Rester garde, Quitter ferme une fois', async () => {
+    const onClose = vi.fn()
+    render(<ConfirmProvider><ThemeProvider>
+      <NouvelleReception bonsRecevables={[{ id: 5, reference: 'BCF-5' }]} onClose={onClose} onSaved={() => {}} />
+    </ThemeProvider></ConfirmProvider>)
+    fireEvent.click(screen.getByText('choisir-bon'))
+    fireEvent.click(await screen.findByRole('button', { name: /N° de série \/ lot/ }))
+    fireEvent.change(screen.getByLabelText(/N° de série \(un par ligne/), { target: { value: 'S1\nS2\nS3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/N° de série \(un par ligne/)).toHaveValue('S1\nS2\nS3')
+  })
+
+  it('AERR187 — Annuler puis Quitter ferme une seule fois', async () => {
+    const onClose = vi.fn()
+    render(<ConfirmProvider><ThemeProvider>
+      <NouvelleReception bonsRecevables={[{ id: 5, reference: 'BCF-5' }]} onClose={onClose} onSaved={() => {}} />
+    </ThemeProvider></ConfirmProvider>)
+    fireEvent.click(screen.getByText('choisir-bon'))
+    fireEvent.click(await screen.findByRole('button', { name: /N° de série \/ lot/ }))
+    fireEvent.change(screen.getByLabelText(/N° de série \(un par ligne/), { target: { value: 'S1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Quitter' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+  })
+
+  it('AERR187 — sans saisie, Annuler ferme sans demande', () => {
+    const onClose = vi.fn()
+    render(<ConfirmProvider><ThemeProvider>
+      <NouvelleReception bonsRecevables={[{ id: 5, reference: 'BCF-5' }]} onClose={onClose} onSaved={() => {}} />
+    </ThemeProvider></ConfirmProvider>)
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('formulaire non modifié : Échap ferme sans demander', () => {
     const onClose = vi.fn()
     const confirm = vi.spyOn(window, 'confirm')

@@ -2302,7 +2302,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                                     className="flex items-center gap-2 text-sm text-muted-foreground" />
               )}
             </div>
-            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="button" variant="ghost" onClick={() => confirmLeaveIfDirty(dirty).then((ok) => ok && onClose())}>Annuler</Button>
             <Button type="submit" loading={saving}>
               {saving ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer le produit')}
             </Button>
