@@ -227,6 +227,31 @@ class Agr310HtmlTests(SimpleTestCase):
         self.assertFalse(renderer.is_agricole(_D(), {'pdf_mode': 'full'}))
 
 
+class DevisFinalAgricole(SimpleTestCase):
+    """Fondateur 19/11/2026 — « Devis final » (visite faite) : le document
+    agricole ne dit plus « à confirmer par la visite » ni l'étape visite."""
+
+    MOTS = ("confirmer par la visite", "Visite du point d")
+
+    def _html(self, final):
+        d = data_complete()
+        d['etude']['hmt_composantes'] = None
+        d['etude'].pop('provenance_pompage', None)
+        if final:
+            d['devis_final'] = True
+        return html_de(d)
+
+    def test_sans_la_case_le_document_d_hier(self):
+        html = self._html(False)
+        for mot in self.MOTS:
+            self.assertIn(mot, html, mot)
+
+    def test_devis_final_plus_de_visite(self):
+        html = self._html(True)
+        for mot in self.MOTS:
+            self.assertNotIn(mot, html, mot)
+
+
 class Renderer(SimpleTestCase):
     """AGQ30 (C-AGQ-028, D-AGQ-11, D-AGR-10) — « Étapes suivantes » sans
     délai chiffré, mise en service mesurée, entretien, acompte après FDA."""

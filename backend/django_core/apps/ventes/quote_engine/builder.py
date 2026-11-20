@@ -53,7 +53,9 @@ from .conditions_commerciales import (  # noqa: F401
 )
 # SPL165 — la liste blanche des options PDF vit dans ``options_pdf`` (move
 # only) ; builder n'importe ici que ce qu'il utilise lui-même.
-from .options_pdf import LANGUES_SORTIE_PDF, VARIANTES_PDF, clean_pdf_options
+from .options_pdf import (
+    LANGUES_SORTIE_PDF, VARIANTES_PDF, clean_pdf_options,
+    devis_final_enregistre)
 # SPL165 — ré-export (noqa: F401) pour d'autres propriétaires : tests
 # facturation test_pdf et devis test_agr303_options_agricoles_mortes,
 # test_amot68_note_calcul_proposal, test_apdf_options_relayees
@@ -1805,7 +1807,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "nb_options": nb_options,
         "pdf_mode": pdf_mode,
         "show_monthly": opts['show_monthly'],
-        "devis_final": opts['devis_final'],
+        "devis_final": opts['devis_final'] or devis_final_enregistre(devis),
         "include_etude": include_etude,
         # CAD122 — marqueur « signé au domicile », lu SUR LE BON DE COMMANDE
         # (jamais une option du corps client : c'est un fait juridique, pas

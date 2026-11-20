@@ -235,6 +235,22 @@ class Agr304OmissionsTests(SimpleTestCase):
         data['etude']['production']['etiquettes'] = []
         self.assertFalse(synthese_agricole(data)['eau']['estimation'])
 
+    def test_devis_final_visite_faite(self):
+        """Fondateur 19/11/2026 — « Devis final » : plus rien « à confirmer
+        par la visite », plus d'étape « Visite du point d'eau »."""
+        data = _data_complete()
+        data['etude']['hmt_composantes'] = None
+        avant = synthese_agricole(data)
+        self.assertTrue(avant['a_confirmer_par_visite'])
+        self.assertNotIn('devis_final', avant)
+        data['devis_final'] = True
+        s = synthese_agricole(data)
+        self.assertIs(s['devis_final'], True)
+        self.assertEqual(s['a_confirmer_par_visite'], [])
+        cles = [e['cle'] for e in s['etapes_suivantes']]
+        self.assertNotIn('visite_point_eau', cles)
+        self.assertEqual(len(cles), len(avant['etapes_suivantes']) - 1)
+
     def test_hmt_declaree_reste_a_confirmer_par_visite(self):
         data = _data_complete()
         etude = data['etude']

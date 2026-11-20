@@ -175,3 +175,13 @@ def clean_pdf_options(raw) -> dict:
     # de rendu : l'acompte personnalisé est écrit dans ``Devis.echeancier``
     # (dialogue PDF → PATCH) et le PDF lit l'échéancier, comme la facture.
     return opts
+
+
+def devis_final_enregistre(devis):
+    """Fondateur 19/11/2026 (« where is final quote button, the visit was
+    done for this guy ») — la case « Devis final » ENREGISTRÉE sur le devis
+    (``etude_params.devis_final is True``, contrat ``devis_final.json``) :
+    tout rendu de ce devis est final (PDF, pièce jointe, page client), sans
+    option de rendu à repasser. Absente ⇒ rendu d'hier, octet pour octet."""
+    etude = getattr(devis, "etude_params", None)
+    return isinstance(etude, dict) and etude.get("devis_final") is True

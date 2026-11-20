@@ -19,6 +19,7 @@ Principes (règles fondatrices) :
   Texte utilisateur en FRANÇAIS ; code/identifiants en anglais.
 """
 import logging
+from types import SimpleNamespace
 
 from celery import shared_task
 
@@ -302,8 +303,27 @@ JEU_DU_GENRE = {'stock': 'stock_produits'}  # ADRG158 / D-ADRG-15 — genre fig�
 MOTIF_SANS_EXPORT_STOCK = "Le propriétaire n'a pas le droit d'export du stock : envoi suspendu."
 
 
+MODULE_DU_GENRE = {'sales': 'ventes', 'service': 'installations'}  # ADRG159 — module LU (``lecture_source``)
+
+
+def lecture_du_genre_refusee(kind, user):  # ``LectureDuModule`` au nom de ``user``
+    from .gardes_lecture import lecture_source
+    module = MODULE_DU_GENRE.get(kind)
+    return bool(module and user is not None
+                and not lecture_source(module)().has_permission(SimpleNamespace(user=user), None))
+
+
+def _motif_du_genre(report):
+    if lecture_du_genre_refusee(report.target_kind, report.owner):
+        return (f"Le propriétaire n'a pas le droit de lecture du module "
+                f"{MODULE_DU_GENRE[report.target_kind]} : envoi suspendu.")
+    return MOTIF_SANS_EXPORT_STOCK if _export_du_genre_refuse(report) else ''
+
+
 def _export_du_genre_refuse(report):
     from core.data_explorer import DatasetNonAutorise, exiger_export_dataset
+    if lecture_du_genre_refusee(report.target_kind, report.owner):
+        return True
     try:
         if report.target_kind in JEU_DU_GENRE:
             exiger_export_dataset(JEU_DU_GENRE[report.target_kind], report.owner)
@@ -532,8 +552,8 @@ def email_saved_reports():
             if not _rapport_est_du(report, now):
                 continue
             cause = (CAUSE_PROPRIETAIRE_INACTIF if _proprietaire_inactif(report)
-                     else MOTIF_SANS_EXPORT_STOCK if _export_du_genre_refuse(report) else '')
-            if cause:  # ADRG156 / ADRG158 — avant tout canal
+                     else _motif_du_genre(report))
+            if cause:  # ADRG156 / ADRG158 / ADRG159 — avant tout canal
                 canal = getattr(report, 'canal', 'email')
                 journaliser_envoi(report, canal, report.whatsapp_list() if canal == 'whatsapp'
                                   else report.recipient_list(), 'echec', cause)

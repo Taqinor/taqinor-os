@@ -334,7 +334,7 @@ def _economie_et_retour(economie, lg):
     return lignes
 
 
-def _mois_declares(eco, lg):
+def _mois_declares(eco, lg, final=False):
     """AGQ18 — « Mois d'irrigation : déclarés par vous le JJ/MM/AAAA. » lu
     sur l'entrée ``mois_irrigation`` du bloc (des mois du calendrier non
     confirmés rendent le bloc non publiable : ils n'arrivent jamais ici)."""
@@ -345,6 +345,8 @@ def _mois_declares(eco, lg):
         return ""
     jour = _date_fr(entree.get("saisi_le")
                     or (entree.get("provenance") or {}).get("date"))
+    if not jour and final:
+        return ""   # devis final : plus de « à confirmer par la visite »
     phrase = (_t(lg, "agr_declares_par_vous_le", date=jour) if jour
               else mentions.phrase_provenance("a_confirmer", lg))
     return " " + _t(lg, "agr_mois_irrigation_phrase", phrase=phrase)
@@ -410,7 +412,7 @@ def _argent(synthese, lg):
                    if isinstance(e, dict) and _date_fr(e.get("saisi_le")))
     declare = _t(lg, "agr_conso_prix_paye", phrase=mentions.phrase_provenance(
         "declare", lg, date=dates[-1] if dates else None))
-    declare += _mois_declares(eco, lg)
+    declare += _mois_declares(eco, lg, synthese.get("devis_final") is True)
     notes = (f'{declare} {_t(lg, "agr_indexation")} '
              f'{_t(lg, "agr_fda_non_comptee")} '
              f'{CONDITION_ECONOMIES.get(lg) or CONDITION_ECONOMIES["fr"]}')
@@ -458,6 +460,14 @@ def _provenance(synthese, lg, nom_societe):
             mentions.cle_provenance(p) or "a_confirmer", lg,
             date=p.get("date"), nom_societe=nom_societe)
         valeur = _valeur_provenance(lg, cle, p.get("valeur"))
+        if (synthese.get("devis_final") is True
+                and phrase == mentions.phrase_provenance("a_confirmer", lg)):
+            # Fondateur 19/11/2026 — devis final (visite faite) : la valeur
+            # seule, plus de « à confirmer par la visite ».
+            if valeur:
+                lignes.append(f'<div class="ag-li"><b>{_entree(lg, cle)}</b>'
+                              f' : {valeur}</div>')
+            continue
         lignes.append(f'<div class="ag-li"><b>{_entree(lg, cle)}</b> : '
                       + (f'{valeur} — ' if valeur else "")
                       + f'{phrase}</div>')

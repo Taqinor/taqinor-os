@@ -301,7 +301,9 @@ def page_onepage(items, tronquees=0):
                     # Décision fondateur 26/10/2026 — « Devis préliminaire »
                     # sur TOUT une-page C&I ; la méthode, seulement sous
                     # réserve (inchangé).
-                    [f"<b>{_g._L('op_reserve_visite')}</b>"]
+                    # Fondateur 19/11/2026 — « Devis final » : plus dit.
+                    ([] if _g.DEVIS_FINAL
+                     else [f"<b>{_g._L('op_reserve_visite')}</b>"])
                     + ([_g._L(f"ci_methode_{_g.CHIFFRES_CI['methode']}")
                         if f"ci_methode_{_g.CHIFFRES_CI['methode']}"
                         in _g.i18n_labels.LIBELLES

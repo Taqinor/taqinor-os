@@ -10,7 +10,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ProduitPicker from '../../../components/ProduitPicker'
 import {
-  preparerApisPanneau, rendrePanneau, ouvrirEdition as ouvrirEditionPanneau,
+  preparerApisPanneau, rendrePanneau, ouvrirEdition as ouvrirEditionPanneau, envoye,
 } from '../../../test/panneauDevis'
 
 // jsdom n'implémente pas scrollIntoView (utilisé par le picker).
@@ -342,6 +342,30 @@ describe('ALEA51 — devis automatique créé : bannière de succès', () => {
     expect(document.querySelector('.form-error-box')).toBeNull()
   })
 
+  it('les informations au-dessus du devis se replient (dépliées par défaut) et disent ce qu’elles cachent', async () => {
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: REPONSE })
+    rendrePanneau({
+      lead: { id: 91, nom: 'Usine', type_installation: 'industriel' },
+      mode: 'auto', existingDevisId: undefined,
+    })
+    await screen.findByTestId('ldp-succes-auto')
+    const bascule = screen.getByTestId('ldp-infos-bascule')
+    // Dépliées par défaut : succès et alertes visibles, l’en-tête propose « Replier ».
+    expect(bascule).toHaveAttribute('aria-expanded', 'true')
+    expect(bascule).toHaveTextContent('Informations du devis — 1 alerte')
+    expect(bascule).toHaveTextContent('Replier')
+    expect(screen.getByTestId('ldp-alertes-auto')).toBeInTheDocument()
+    await userEvent.click(bascule)
+    // Repliées : plus rien ne prend de hauteur, mais le nombre d’alertes reste dit.
+    expect(bascule).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('ldp-succes-auto')).toBeNull()
+    expect(screen.queryByTestId('ldp-alertes-auto')).toBeNull()
+    expect(bascule).toHaveTextContent('Informations du devis — 1 alerte')
+    expect(bascule).toHaveTextContent('Afficher')
+    await userEvent.click(bascule)
+    expect(screen.getByTestId('ldp-alertes-auto')).toHaveTextContent('À chiffrer après la visite.')
+  })
+
   it('le libellé omet ce que le serveur ne sert pas et garde le retour chiffré', () => {
     expect(libelleSuccesDevisAuto(null)).toBe('')
     const texte = normaliser(libelleSuccesDevisAuto({
@@ -424,5 +448,88 @@ describe('ALEA55 — devis automatique : pas de préchargement, étapes, format 
     rendrePanneau({ mode: 'onepage', existingDevisId: 413 })
     await screen.findByRole('button', { name: /Télécharger le PDF/ })
     expect(ventesApi.creerDevisAuto).not.toHaveBeenCalled()
+  })
+})
+
+describe('Devis final C&I — choix enregistré sur le devis (etude_params.devis_final)', () => {
+  // Le devis tel que le panneau le garde : la réponse brute de `getDevisById`
+  // (exemple « envoyé » du contrat) + les champs de marché servis par le détail.
+  const devisServi = (marche, etudeParams) => ({
+    data: { ...envoye().data, mode_installation: marche, etude_params: etudeParams },
+  })
+  const boite = () => screen.findByTestId('ldp-devis-final')
+  const ouvrirApercu = async (marche, etudeParams) => {
+    ventesApi.getDevisById.mockResolvedValue(devisServi(marche, etudeParams))
+    rendrePanneau({ mode: 'view', existingDevisId: 413 })
+    await screen.findByRole('button', { name: /Télécharger le PDF/ })
+  }
+
+  it('commercial : coché quand le devis servi porte devis_final: true, dans les deux formats', async () => {
+    await ouvrirApercu('commercial', { devis_final: true })
+    expect(await boite()).toHaveAttribute('aria-checked', 'true')
+    await userEvent.click(screen.getByRole('radio', { name: '1 page' }))
+    expect(await boite()).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('industriel : décoché sans la clé ; cocher envoie { devis_final: true } puis relit et relance l’aperçu', async () => {
+    await ouvrirApercu('industriel', {})
+    expect(await boite()).toHaveAttribute('aria-checked', 'false')
+    ventesApi.patchEtudeParams.mockResolvedValueOnce({ data: {} })
+    ventesApi.getDevisById.mockResolvedValue(devisServi('industriel', { devis_final: true }))
+    const appelsApercu = ventesApi.getProposalPdf.mock.calls.length
+    await userEvent.click(await boite())
+    await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalledWith(413, { devis_final: true }))
+    await waitFor(() => expect(screen.getByTestId('ldp-devis-final')).toHaveAttribute('aria-checked', 'true'))
+    await waitFor(() => expect(ventesApi.getProposalPdf.mock.calls.length).toBeGreaterThan(appelsApercu))
+  })
+
+  it('décocher envoie { devis_final: null }', async () => {
+    await ouvrirApercu('commercial', { devis_final: true })
+    ventesApi.patchEtudeParams.mockResolvedValueOnce({ data: {} })
+    ventesApi.getDevisById.mockResolvedValue(devisServi('commercial', {}))
+    await userEvent.click(await boite())
+    await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalledWith(413, { devis_final: null }))
+    await waitFor(() => expect(screen.getByTestId('ldp-devis-final')).toHaveAttribute('aria-checked', 'false'))
+  })
+
+  it('un refus du serveur affiche son message sous la case, qui garde son état', async () => {
+    await ouvrirApercu('commercial', {})
+    ventesApi.patchEtudeParams.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: 'Ce devis est figé : révisez-le d’abord.' } },
+    })
+    await userEvent.click(await boite())
+    expect(await screen.findByTestId('ldp-devis-final-erreur'))
+      .toHaveTextContent('Ce devis est figé : révisez-le d’abord.')
+    expect(screen.getByTestId('ldp-devis-final')).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('résidentiel : la même case enregistre (Premium seulement), indice « paiement + RIB »', async () => {
+    await ouvrirApercu('residentiel', { devis_final: true })
+    const c = await boite()
+    expect(c).toHaveAttribute('aria-checked', 'true')
+    expect(c.closest('label')).toHaveTextContent('(paiement + RIB)')
+    ventesApi.patchEtudeParams.mockResolvedValueOnce({ data: {} })
+    ventesApi.getDevisById.mockResolvedValue(devisServi('residentiel', {}))
+    await userEvent.click(c)
+    await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalledWith(413, { devis_final: null }))
+    await userEvent.click(screen.getByRole('radio', { name: '1 page' }))
+    expect(screen.queryByTestId('ldp-devis-final')).toBeNull()
+  })
+
+  it('agricole : case enregistrée en Premium, indice « à confirmer par la visite », absente en 1 page', async () => {
+    await ouvrirApercu('agricole', {})
+    const c = await boite()
+    expect(c.closest('label')).toHaveTextContent('sans « à confirmer par la visite »')
+    await userEvent.click(screen.getByRole('radio', { name: '1 page' }))
+    expect(screen.queryByTestId('ldp-devis-final')).toBeNull()
+  })
+
+  it('« PDF ▾ → Devis final » de la carte reste un rendu seul : aucune écriture', async () => {
+    ventesApi.getDevisById.mockResolvedValue(devisServi('residentiel', {}))
+    rendrePanneau({ mode: 'view', existingDevisId: 413, pdfInitial: 'final' })
+    await screen.findByRole('button', { name: /Télécharger le PDF/ })
+    await waitFor(() => expect(ventesApi.getProposalPdf).toHaveBeenCalled())
+    expect(ventesApi.getProposalPdf.mock.calls[0][1]).toMatchObject({ devis_final: 1 })
+    expect(ventesApi.patchEtudeParams).not.toHaveBeenCalled()
   })
 })

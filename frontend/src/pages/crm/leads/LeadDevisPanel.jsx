@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Download, ExternalLink, Pencil, Send, Zap,
+  ChevronDown, ChevronRight, Download, ExternalLink, Pencil, Send, Zap,
 } from 'lucide-react'
 import ventesApi from '../../../api/ventesApi'
 import { createAutoQuote, libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
@@ -132,6 +132,10 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
   // (agricole : étude pompage, articles « prix à renseigner » omis).
   const [alertes, setAlertes] = useState([])
+  // Fondateur 19/11/2026 — les informations au-dessus du devis (succès + alertes)
+  // se replient : dépliées par défaut, repliées elles laissent la place au PDF.
+  const [infosRepliees, setInfosRepliees] = useState(false)
+  const nbAlertes = Array.isArray(alertes) ? alertes.length : 0
   // ALEA51 — le retour du serveur après le devis automatique (réf., kWc, TTC,
   // économie, retour, postes à chiffrer) : bannière de SUCCÈS, pas d'erreur.
   const [resume, setResume] = useState(null)
@@ -170,6 +174,38 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // « Inclure l'étude » (sans effet en commercial / industriel / agricole).
   const marcheDevis = devisRecord?.mode_installation ?? lead.type_installation ?? null
   const marcheHorsResidentiel = !!marcheDevis && marcheDevis !== 'residentiel'
+  // « Devis final » (fondateur, 19/11/2026, tous marchés) — la visite technique est faite :
+  // le choix est ENREGISTRÉ sur le devis (`etude_params.devis_final`), le client
+  // ne voit plus « Devis préliminaire » (PDF et page en ligne). Lu du devis servi.
+  const marcheCi = marcheDevis === 'commercial' || marcheDevis === 'industriel'
+  const devisFinalCiEnregistre = devisRecord?.etude_params?.devis_final === true
+  const conseilDevisFinal = marcheCi
+    ? '(visite faite — sans « Devis préliminaire »)'
+    : marcheDevis === 'agricole'
+      ? '(visite faite — sans « à confirmer par la visite »)'
+      : '(paiement + RIB)'
+  const [devisFinalCiEnCours, setDevisFinalCiEnCours] = useState(false)
+  const [devisFinalCiErreur, setDevisFinalCiErreur] = useState(null)
+  const changerDevisFinalCi = async (coche) => {
+    setDevisFinalCiEnCours(true)
+    setDevisFinalCiErreur(null)
+    try {
+      await ventesApi.patchEtudeParams(devisId, { devis_final: coche ? true : null })
+    } catch (err) {
+      setDevisFinalCiErreur(err?.response?.data?.detail
+        || "Le choix « Devis final » n'a pas pu être enregistré : vérifiez votre connexion puis réessayez.")
+      setDevisFinalCiEnCours(false)
+      return
+    }
+    try {
+      const { data } = await ventesApi.getDevisById(devisId)
+      setDevisRecord(data)
+    } catch {
+      setDevisFinalCiErreur("Le choix a été enregistré, mais le devis n'a pas pu être relu : rechargez le panneau.")
+    }
+    preview.reload()
+    setDevisFinalCiEnCours(false)
+  }
   const devisPourEnvoi = {
     id: devisId,
     reference: devisRef || devisRecord?.reference || `Devis_${devisId}`,
@@ -190,7 +226,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // solde, montants au centime de `builder.repartition_paiement`) + ligne RIB
   // sur la page 3 du Premium. `pdfInitial === 'final'` : choix fait sur la
   // carte du lead (menu « PDF ▾ »). Rendu seul — aucun statut touché.
-  const [devisFinal, setDevisFinal] = useState(pdfInitial === 'final')
+  const [devisFinal] = useState(pdfInitial === 'final')
   const [downloading, setDownloading] = useState(false)
   const startedRef = useRef(false)
   const cleIdempotenceRef = useRef(null) // AGQ23 — une clé par ouverture
@@ -597,17 +633,41 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
               {/* ALEA51 — SUCCÈS : une phrase qui dit ce qui vient d'être créé
                   (référence · kWc · TTC · économie · retour · postes à chiffrer
                   après la visite), jamais la boîte rouge des erreurs. */}
-              {resume && (
-                <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm"
-                     role="status" data-testid="ldp-succes-auto">
-                  <strong>Devis créé :</strong> {libelleSuccesDevisAuto(resume)}
+              {/* Fondateur 19/11/2026 — « the information that appear on top of the
+                  quote should be foldable » : succès + alertes dans UN bloc
+                  repliable, DÉPLIÉ par défaut ; replié, l'en-tête dit ce qu'il
+                  cache (nombre d'alertes) et le PDF reprend la hauteur. */}
+              {(resume || nbAlertes > 0) && (
+                <div className="grid gap-2" data-testid="ldp-infos">
+                  <button type="button" data-testid="ldp-infos-bascule"
+                          className="flex w-fit items-center gap-1.5 text-sm font-medium text-left"
+                          aria-expanded={!infosRepliees} aria-controls="ldp-infos-corps"
+                          onClick={() => setInfosRepliees(v => !v)}>
+                    {infosRepliees ? <ChevronRight className="size-4" aria-hidden="true" />
+                      : <ChevronDown className="size-4" aria-hidden="true" />}
+                    <span>Informations du devis{nbAlertes > 0
+                      ? ` — ${nbAlertes} alerte${nbAlertes > 1 ? 's' : ''}` : ''}</span>
+                    <span className="font-normal text-muted-foreground underline">
+                      {infosRepliees ? 'Afficher' : 'Replier'}
+                    </span>
+                  </button>
+                  {!infosRepliees && (
+                    <div id="ldp-infos-corps" className="grid gap-2">
+                    {resume && (
+                      <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm"
+                           role="status" data-testid="ldp-succes-auto">
+                        <strong>Devis créé :</strong> {libelleSuccesDevisAuto(resume)}
+                    </div>
+                  )}
+                  {/* AGR126 — ce que le devis automatique serveur signale (jamais
+                      un chiffre inventé : le message du serveur, tel quel), en
+                      AVERTISSEMENT sous le succès (ALEA51). AGQ25 — rendu UNIQUE,
+                      partagé avec le générateur. */}
+                  <AlertesDevisAuto alertes={alertes} onAllerAuChamp={completerChamp} />
+                    </div>
+                  )}
                 </div>
               )}
-              {/* AGR126 — ce que le devis automatique serveur signale (jamais
-                  un chiffre inventé : le message du serveur, tel quel), en
-                  AVERTISSEMENT sous le succès (ALEA51). AGQ25 — rendu UNIQUE,
-                  partagé avec le générateur. */}
-              <AlertesDevisAuto alertes={alertes} onAllerAuChamp={completerChamp} />
               {/* QJR589 — dérive lead → devis : reprendre / garder, sur place
                   (envoyé : le client verra la version corrigée) ; figé →
                   « Réviser ». Le détail est déjà lu (getDevisById). */}
@@ -643,18 +703,25 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                         />
                         <span>Inclure l'étude</span>
                       </label>
-                      {/* Devis final — paiement + RIB, page 3 du Premium
-                          résidentiel (le C&I et l'agricole impriment toujours
-                          leur échéancier ; le 1 page n'a pas ce bloc). */}
+                    </>
+                  )}
+                  {devisId && (pdfMode === 'full' || marcheCi) && (
+                    <div className="flex flex-col">
                       <label className="ldp-etude-toggle">
                         <Checkbox
-                          checked={devisFinal}
-                          onCheckedChange={v => setDevisFinal(v === true)}
-                          aria-label="Devis final (modalités de paiement + RIB)"
+                          checked={devisFinalCiEnregistre}
+                          disabled={devisFinalCiEnCours || !devisRecord}
+                          onCheckedChange={v => changerDevisFinalCi(v === true)}
+                          aria-label="Devis final"
+                          data-testid="ldp-devis-final"
                         />
-                        <span>Devis final <span className="text-muted-foreground">(paiement + RIB)</span></span>
+                        <span>Devis final <span className="text-muted-foreground">{conseilDevisFinal}</span></span>
                       </label>
-                    </>
+                      {devisFinalCiErreur && (
+                        <p className="text-xs text-destructive" role="alert"
+                           data-testid="ldp-devis-final-erreur">{devisFinalCiErreur}</p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="ldp-toolbar-actions">

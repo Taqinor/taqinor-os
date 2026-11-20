@@ -762,7 +762,7 @@ def mentions_ci(data, *, sous_reserve=False):
     estimee = _mention_consommation_estimee(data)
     if estimee is not None:
         sortie.append(estimee)
-    if sous_reserve:
+    if sous_reserve and not data.get("devis_final"):
         sortie.append(_entree("visite", TEXTES_VISITE, SOURCE_VISITE))
     return sortie
 

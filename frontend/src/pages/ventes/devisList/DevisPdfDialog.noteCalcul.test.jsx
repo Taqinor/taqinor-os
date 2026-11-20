@@ -120,6 +120,17 @@ describe('AMOT68 — note de calcul FDA demandable', () => {
     expect(recus[2].corps).not.toHaveProperty('include_note_calcul')
   })
 
+  it('Devis final : l’indice dépend du marché', () => {
+    const { unmount } = dialogue({ targetIsAgricole: false, targetIsCi: true, targetMode: 'industriel' })
+    expect(screen.getByText('(visite faite — retire la mention « Devis préliminaire »)')).toBeInTheDocument()
+    unmount()
+    const r2 = dialogue({ targetIsAgricole: true, targetMode: 'agricole' })
+    expect(screen.getByText('(visite faite — retire « à confirmer par la visite »)')).toBeInTheDocument()
+    r2.unmount()
+    dialogue({ targetIsAgricole: false, targetMode: 'residentiel' })
+    expect(screen.getByText('(ajoute modalités de paiement + RIB)')).toBeInTheDocument()
+  })
+
   it('aucune case hors agricole', () => {
     dialogue({ targetIsAgricole: false, targetMode: 'residentiel' })
     expect(screen.queryByRole('checkbox', { name: /note de calcul/i })).toBeNull()

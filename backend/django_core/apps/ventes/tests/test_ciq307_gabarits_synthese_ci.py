@@ -141,6 +141,44 @@ class GabaritsLisentSyntheseCi(_ReglesCourantes):
                 self.assertTrue(BANDEAU_RESERVE.startswith(
                     "Devis préliminaire — les prix pourront être ajustés"))
 
+    def test_devis_final_ni_bandeau_ni_etape_visite(self):
+        """Fondateur 19/11/2026 — « Devis final » (visite faite) : plus de
+        « Devis préliminaire », plus d'étape « Visite technique » ; la
+        synthèse servie le dit (clé additive), sans la case rien ne bouge."""
+        from html import unescape
+        for nom, sample, renderer, render, _pages in GABARITS:
+            with self.subTest(gabarit=nom):
+                d = _data(sample, reserve=True)
+                self.assertNotIn("devis_final", synthese_ci(d))
+                hier = unescape(render.build_html(renderer._augment(
+                    _data(sample, reserve=True))))
+                d["devis_final"] = True
+                html = unescape(render.build_html(renderer._augment(d)))
+                self.assertNotIn("Devis préliminaire", html)
+                self.assertNotIn("Visite technique de votre site", html)
+                # Les étapes restantes, là où le gabarit imprime le bloc.
+                for etape in ("Validation de l'offre définitive",
+                              "Pose et mise en service"):
+                    self.assertEqual(etape in html, etape in hier, etape)
+                servie = synthese_ci(d)
+                self.assertIs(servie["devis_final"], True)
+                self.assertNotIn("visite", [
+                    h.get("cle") for h in servie.get("hypotheses") or []])
+
+    def test_devis_final_garde_les_postes_hors_total(self):
+        """Les postes « à chiffrer » ne sont pas dans le total : leur ligne
+        reste, seule ; sans poste, plus de bandeau du tout."""
+        from unittest import mock
+
+        from apps.ventes.quote_engine.ci import couverture
+        d = {"devis_final": True}
+        self.assertEqual(couverture.bandeau_reserve(d, "com", "c1c"), "")
+        with mock.patch.object(couverture, "ligne_postes_hors_total",
+                               return_value="À chiffrer : câble DC"):
+            bandeau = couverture.bandeau_reserve(d, "com", "c1c")
+        self.assertIn("À chiffrer : câble DC", bandeau)
+        self.assertNotIn("Devis préliminaire", bandeau)
+
     def test_sans_argent_tuiles_omises_jamais_zero(self):
         for nom, sample, renderer, render, _pages in GABARITS:
             with self.subTest(gabarit=nom):

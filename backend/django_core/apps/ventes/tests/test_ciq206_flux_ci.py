@@ -1153,6 +1153,46 @@ class DepartUneBatterieRemiseTests(ciq120.RecomposerBatteriesTests):
         self.assertEqual(Decimal(str(remise['total_ht'])), totaux['ht'])
 
 
+class DevisFinalEnregistreTests(ciq120.RecomposerBatteriesTests):
+    """Fondateur 19/11/2026 (« where is final quote button ») — la case
+    « Devis final » s'enregistre par le PATCH fusionnant ``etude-params`` et
+    tout rendu du devis la suit (jeux de ``RecomposerBatteriesTests``)."""
+
+    def _patch(self, devis, valeur):
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(self.user)
+        url = '/api/django/ventes/devis/%s/etude-params/' % devis.pk
+        return api.patch(url, {'devis_final': valeur}, format='json')
+
+    def test_la_case_s_enregistre_et_le_document_suit(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis, _reco = self._devis()
+        self.assertFalse(build_quote_data(devis, {})['devis_final'])
+        etude_avant = dict(
+            ciq120.Devis.objects.get(pk=devis.pk).etude_params)
+        self.assertEqual(self._patch(devis, True).status_code, 200)
+        apres = ciq120.Devis.objects.get(pk=devis.pk)
+        self.assertIs(apres.etude_params['devis_final'], True)
+        # Rien d'autre ne bouge : ni l'étude, ni les options de l'écran.
+        reste = {k: v for k, v in apres.etude_params.items()
+                 if k != 'devis_final'}
+        self.assertEqual(reste, etude_avant)
+        data = build_quote_data(apres, {})
+        self.assertTrue(data['devis_final'])
+        # Décochée (null) : la clé est retirée, le document d'hier revient.
+        self.assertEqual(self._patch(devis, None).status_code, 200)
+        retire = ciq120.Devis.objects.get(pk=devis.pk)
+        self.assertNotIn('devis_final', retire.etude_params)
+        self.assertFalse(build_quote_data(retire, {})['devis_final'])
+
+    def test_une_valeur_non_booleenne_est_refusee(self):
+        devis, _reco = self._devis()
+        self.assertEqual(self._patch(devis, 'oui').status_code, 400)
+        self.assertNotIn(
+            'devis_final', ciq120.Devis.objects.get(pk=devis.pk).etude_params)
+
+
 def _sans_tests_herites(classe):
     """Ces classes n'héritent que des JEUX DE DONNÉES : les tests du parent ne
     sont pas rejoués ici."""
@@ -1166,3 +1206,4 @@ _sans_tests_herites(RemplacementCyclesNiveau13FluxTests)
 _sans_tests_herites(RemplacementCyclesNiveau13DevisTests)
 _sans_tests_herites(SensibilitesNiveau14DevisTests)
 _sans_tests_herites(DepartUneBatterieRemiseTests)
+_sans_tests_herites(DevisFinalEnregistreTests)
