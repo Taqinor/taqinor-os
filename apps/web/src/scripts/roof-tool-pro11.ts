@@ -192,6 +192,7 @@ import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
 import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
 import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
+import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
 import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
@@ -2988,10 +2989,17 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
 
   finishBtn?.addEventListener('click', close);
-  clearBtn?.addEventListener('click', reset);
-  creerAnnulerAtelier({ // ACAL412 — ↶ ↷ + Ctrl+Z / Ctrl+Y hors du panneau de disposition
+  const annulerAtelier = creerAnnulerAtelier({ // ACAL412 — ↶ ↷ + Ctrl+Z / Ctrl+Y hors du panneau de disposition
     ancre: clearBtn, editeur: layoutEditor, modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState),
     apres: () => { redrawTrace(); redrawObstacles(); recalc(); }, setStatus: (m) => setStatus(m),
+  });
+  const bandeau = creerBandeauAnnuler(clearBtn, annulerAtelier.annuler); // ACAL413
+  ctx.bandeauAnnuler = bandeau.montrer;
+  fermerAuProchainGeste(ctx, bandeau);
+  clearBtn?.addEventListener('click', () => {
+    const pans = areas.filter((a) => (a.id === activeAreaId ? closed : a.vertices.length >= 3)).length;
+    const obstacles = areas.reduce((n, a) => n + (a.id === activeAreaId ? ctx.obstacles.length : a.obstacles.length), 0);
+    if (confirmerEffacer({ pans, obstacles, consommation: consHandEdited || consAppliances.length > 0 || ctx.consSource != null, ombres: ctx.shadeObstructions.length > 0 })) reset();
   });
 
   // — « Plusieurs zones » : ajouter une zone + sélection/suppression dans la liste —

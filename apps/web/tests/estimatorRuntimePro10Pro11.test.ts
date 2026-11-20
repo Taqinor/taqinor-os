@@ -1931,6 +1931,23 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     expect(fakeMarkers.filter((m) => m.added && !m.removed).length).toBe(0);
   });
 
+  it('ACAL413 — « Effacer » avec un contour nomme ce qui sera perdu et ne fait rien sur refus ; « Tout effacer » ouvre un bandeau Annuler', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_outline: squareCorners(16).map(([lng, lat]) => [lat, lng] as [number, number]) } },
+    });
+    fireLoad();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => false);
+    (document.getElementById('rp9-clear') as HTMLButtonElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect((confirmSpy.mock.calls[0] as unknown as string[])[0]).toMatch(/^Effacer 1 pan/);
+    expect(document.getElementById('rp9-bandeau-annuler')).toBeNull();
+    confirmSpy.mockRestore();
+  });
+
   // Boot normal (pro-11 sans hydrate) et capture : aucun marqueur planté → non-régression
   // du builder public preview/capture (le marqueur ne fire QUE dans le flux d'hydratation).
   it('boot pro-11 SANS hydrate ne plante aucun marqueur (preview public intact)', async () => {
