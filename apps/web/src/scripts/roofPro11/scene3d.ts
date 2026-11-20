@@ -1316,6 +1316,15 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   let sun: THREE.DirectionalLight | null = null;
   let modelMatrix: THREE.Matrix4 | null = null;
   const panelTex = makeCanadianPanelTexture();
+  // ACAL433 — une texture de verre par rapport de panneau (arrondi 0,01), partagée ; lowEnd : l'unique d'avant.
+  const panelTexParRapport = new Map<number, THREE.Texture>();
+  const panelTexOf = (rapport: number): THREE.Texture => {
+    const k = Math.round(rapport * 100) / 100;
+    if (lowEnd || !(k > 0) || k === 1.83) return panelTex;
+    let t = panelTexParRapport.get(k);
+    if (!t) panelTexParRapport.set(k, (t = makeCanadianPanelTexture(k)));
+    return t;
+  };
   // Texture du profilé galvanisé PERFORÉ, PARTAGÉE par toutes les pièces de structure et
   // bakée une seule fois (patron W71 : jamais dans le chemin de rendu). En mode bas de
   // gamme on ne la fabrique PAS — le profilé garde une couleur galva unie : zéro canvas,
@@ -1398,8 +1407,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     /** Plot béton carré préfabriqué (le socle discontinu sous chaque pied). */
     socleMat: THREE.MeshStandardMaterial;
   }
-  const buildPanelMatSet = (dim: boolean): PanelMatSet => {
-    const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTex, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
+  const buildPanelMatSet = (dim: boolean, rapport: number): PanelMatSet => {
+    const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTexOf(rapport), color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
     const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
     if (dim) {
@@ -1422,11 +1431,14 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     for (const m of [glassMat, frameMat, backMat, jboxMat, rackMat, socleMat]) sharedResources.add(m);
     return { glassMat, frameMat, backMat, panelMats: [frameMat, frameMat, frameMat, frameMat, glassMat, backMat], jboxMat, rackMat, socleMat };
   };
-  let panelMatsActive: PanelMatSet | null = null;
-  let panelMatsDim: PanelMatSet | null = null;
-  const panelMatSet = (dim: boolean): PanelMatSet => {
-    if (dim) return (panelMatsDim ??= buildPanelMatSet(true));
-    return (panelMatsActive ??= buildPanelMatSet(false));
+  const panelMatsActive = new Map<number, PanelMatSet>();
+  const panelMatsDim = new Map<number, PanelMatSet>();
+  const panelMatSet = (dim: boolean, rapport: number): PanelMatSet => {
+    const cache = dim ? panelMatsDim : panelMatsActive;
+    const k = Math.round(rapport * 100) / 100;
+    let set = cache.get(k);
+    if (!set) cache.set(k, (set = buildPanelMatSet(dim, k)));
+    return set;
   };
 
   // Géométries STATIQUES (arêtes constantes) du système panneau : boîtier de jonction,
@@ -1456,8 +1468,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   /** Libère le cache W71 (matériaux + géométries statiques partagés). Appelé UNIQUEMENT
    *  à onRemove — jamais par disposeScene (sinon le rendu suivant perdrait son cache). */
   function disposeSharedCache() {
-    for (const set of [panelMatsActive, panelMatsDim]) {
-      if (!set) continue;
+    for (const set of [...panelMatsActive.values(), ...panelMatsDim.values()]) {
       set.glassMat.dispose();
       set.frameMat.dispose();
       set.backMat.dispose();
@@ -1465,8 +1476,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       set.rackMat.dispose();
       set.socleMat.dispose();
     }
-    panelMatsActive = null;
-    panelMatsDim = null;
+    for (const t of panelTexParRapport.values()) t.dispose();
+    panelTexParRapport.clear();
+    panelMatsActive.clear();
+    panelMatsDim.clear();
     jboxGeoCache?.dispose();
     plateGeoCache?.dispose();
     socleGeoCache?.dispose();
@@ -1976,7 +1989,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // W71 — matériaux du système panneau réutilisés depuis le cache (variante active ou
     // `dim`) au lieu d'être ré-alloués à chaque rendu (plus de recompilation de shader
     // MeshPhysicalMaterial sur un simple glissé). Rendu visuel identique.
-    const { glassMat, frameMat, backMat, panelMats, jboxMat, rackMat, socleMat } = panelMatSet(dim);
+    const { glassMat, frameMat, backMat, panelMats, jboxMat, rackMat, socleMat } = panelMatSet(dim, alongRow / slope);
     const panelGeo = new THREE.BoxGeometry(alongRow, slope, PANEL2_THICK_M);
     const jboxGeo = jboxGeoOf();
 
