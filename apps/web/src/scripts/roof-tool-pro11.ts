@@ -189,7 +189,7 @@ import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
-import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
   deltaMetresFond,
@@ -1131,6 +1131,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     redrawObstacles: () => redrawObstacles(), // CALX97 câblage
     recalc: () => recalc(), // CALX97 câblage
     setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
+    apresRendu: () => formesToit.rafraichir(), // ACAL410
+  });
+  // ACAL410 — « Forme du toit » : un clic remplace le pan actif par les pans de la forme.
+  const formesToit = monterFormesToit({
+    ancre: addAreaBtn, contour: () => (closed ? vertices : []), pente: () => pitchDeg, existants: () => areas,
+    obstacles: () => obstacles.length, setStatus: (m) => setStatus(m),
+    appliquer: (pans) => {
+      areas.splice(Math.max(0, areas.findIndex((a) => a.id === activeAreaId)), 1, ...pans);
+      activeAreaId = pans[0].id;
+      loadArea(pans[0]);
+      renderAreasPanel();
+    },
   });
   const liveActiveResult = zones.liveActiveResult;
   const snapshotActiveAreaResult = zones.snapshotActiveAreaResult;
