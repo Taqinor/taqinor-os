@@ -296,8 +296,8 @@ class BalayageAppelsPvgisTest(unittest.TestCase):
              'axes[0].pas'),
             ({'pan': 9, 'axes': [axe]}, 'pan'),
             ({'pan': 1, 'axes': []}, 'axes'),
-            ({'pan': 1, 'axes': [dict(axe, nom='ratio_dc_ac')]},
-             'axes[0].nom'),
+            ({'pan': 1, 'axes': [dict(axe, nom='ratio_dc_ac', min=0)]},
+             'axes[0].min'),
             ({'pan': 1, 'axes': [
                 {'nom': 'inclinaison_deg', 'min': 0, 'max': 90, 'pas': 1},
                 {'nom': 'azimut_deg', 'min': 0, 'max': 360, 'pas': 5}]},
