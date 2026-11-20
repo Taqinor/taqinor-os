@@ -82,6 +82,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.brouillon": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/brouillon/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.calerPhoto": [
     {
       "config": null,
@@ -333,6 +341,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.effacerBrouillon": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/brouillon/",
+      "verbe": "delete"
+    }
+  ],
   "calepinages.enregistrerChampsDossier": [
     {
       "config": null,
@@ -417,6 +433,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/entree-electrique/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.envoyerBrouillon": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/brouillon/",
+      "verbe": "put"
     }
   ],
   "calepinages.envoyerFondPlan": [

@@ -65,6 +65,7 @@ import BandeauProvenanceProduction from '../../features/calepinage/production/Ba
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { hacherLayout, creerGestionnaireBrouillon, memoriserReprise } from '../../features/calepinage/brouillon'
+import { creerStockageMiroir } from '../../features/calepinage/brouillonServeur' // ACAL400
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis.
@@ -389,6 +390,8 @@ function AtelierToiture({
   }
   const ignorerBrouillon = () => {
     setBrouillonPropose(null)
+    // ACAL400 — « Ignorer » efface la copie SERVEUR (le local reste, CALX68).
+    Promise.resolve(calepinageApi.calepinages.effacerBrouillon?.(calepinageId)).catch(() => {})
   }
 
   // ACAL84 — en lecture seule, aucun brouillon n'est écrit : il n'y aurait
@@ -408,7 +411,12 @@ function AtelierToiture({
     if (!estCalepinage || !builderReady || !sceneHydratee || !hashBaseBrouillon
       || lectureSeuleContexte) return undefined
     const gestionnaire = creerGestionnaireBrouillon({
-      storage: stockageBrouillonLocal(),
+      // ACAL400 — miroir : localStorage d'abord, copie serveur (autre poste).
+      storage: creerStockageMiroir({
+        base: stockageBrouillonLocal(), calepinageId,
+        envoyer: calepinageApi.calepinages.envoyerBrouillon,
+        effacer: calepinageApi.calepinages.effacerBrouillon,
+      }),
       calepinageId,
       utilisateurId: utilisateurCourantId,
       hashBase: hashBaseBrouillon,
@@ -1117,7 +1125,9 @@ function AtelierToiture({
         {estCalepinage && brouillonPropose && (
           <div className="cine-card mt-4 border border-brass-400/40 p-4"
             data-testid="cal-brouillon-bandeau">
-            <p className="tech-label text-brass-300">Brouillon local</p>
+            <p className="tech-label text-brass-300">
+              {brouillonPropose.serveur ? 'Brouillon d’un autre poste' : 'Brouillon local'}
+            </p>
             <p className="mt-1 text-sm text-lune-soft" role="status">
               Un brouillon non enregistré du{' '}
               {formaterHeureBrouillon(brouillonPropose.horodatage)} a été
