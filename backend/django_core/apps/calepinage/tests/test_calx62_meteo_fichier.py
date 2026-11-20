@@ -39,7 +39,11 @@ import json
 import math
 import pathlib
 
+import os
+import tempfile
+
 from django.test import SimpleTestCase
+from pvlib.iotools import read_epw
 
 from apps.calepinage.services.meteo_fichier import (
     COLONNE_HORODATAGE,
@@ -48,6 +52,7 @@ from apps.calepinage.services.meteo_fichier import (
     MeteoFichierRefuse,
     lire_serie_meteo,
 )
+from apps.calepinage.services.meteo_horizontale import lire_serie_horizontale
 from apps.calepinage.services.p50p90 import variabilite_interannuelle
 from apps.calepinage.services.pvgis_serie import (
     COLONNES_COMPOSANTES, MOTIF_COMPOSANTES_ABSENTES, ClientPvgis, _Cache,
@@ -505,3 +510,147 @@ class ContratCommitteTest(SimpleTestCase):
         from apps.calepinage.views.meteo_fichier import MESSAGE_DEPOSE
 
         self.assertEqual(CONTRAT['exemple']['message'], MESSAGE_DEPOSE)
+
+
+# --- ACAL454 : le fichier météo HORIZONTAL (EPW / CSV) -----------------------
+TMY_CASABLANCA = (pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
+                  / 'tmy_casablanca.json')
+
+
+def _lignes_reelles():
+    """Les 288 heures RÉELLES de ``tmy_casablanca.json`` (G(h), Gb(n), Gd(h))."""
+    donnees = json.loads(TMY_CASABLANCA.read_text(encoding='utf-8'))
+    return donnees['outputs']['tmy_hourly']
+
+
+def _epw(lignes, *, fuseau='0.0', manquant=None, decaler_ghi=False):
+    """Un EPW minimal (8 lignes d'en-tête, 35 colonnes) à partir de valeurs réelles.
+
+    ``lignes`` : ``[(annee, mois, jour, heure_epw, réel)]``. ``manquant`` =
+    ``(index, colonne EPW)`` écrit le code 9999 ; ``decaler_ghi`` fabrique le
+    mutant « GHI décalée d'un rang ».
+    """
+    entete = [
+        'LOCATION,Casablanca,,MAR,PVGIS,000000,33.5,-7.6,%s,139.0' % fuseau,
+        'DESIGN CONDITIONS,0', 'TYPICAL/EXTREME PERIODS,0',
+        'GROUND TEMPERATURES,0', 'HOLIDAYS/DAYLIGHT SAVINGS,No,0,0,0',
+        'COMMENTS 1,essai', 'COMMENTS 2,essai',
+        'DATA PERIODS,1,1,Data,Sunday,1/1,12/31']
+    corps = []
+    for index, (annee, mois, jour, heure, reel) in enumerate(lignes):
+        cases = ['0'] * 35
+        cases[0:5] = [str(annee), str(mois), str(jour), str(heure), '60']
+        cases[6] = str(reel['T2m'])
+        cases[13] = str(lignes[index - 1][4]['G(h)'] if decaler_ghi
+                        else reel['G(h)'])
+        cases[14] = str(reel['Gb(n)'])
+        cases[15] = str(reel['Gd(h)'])
+        cases[21] = str(reel['WS10m'])
+        if manquant and manquant[0] == index:
+            cases[manquant[1]] = '9999'
+        corps.append(','.join(cases))
+    return '\n'.join(entete + corps) + '\n'
+
+
+def _csv_horizontal(lignes):
+    sortie = ['horodatage,ghi_w_m2,dni_w_m2,dhi_w_m2,t2m_c,ws10m']
+    for annee, mois, jour, heure, reel in lignes:
+        sortie.append('%04d-%02d-%02dT%02d:00:00+00:00,%s,%s,%s,%s,%s' % (
+            annee, mois, jour, heure - 1, reel['G(h)'], reel['Gb(n)'],
+            reel['Gd(h)'], reel['T2m'], reel['WS10m']))
+    return '\n'.join(sortie) + '\n'
+
+
+def _quarante_huit_heures():
+    """48 h consécutives (15 et 16 janvier 2020) : dates posées, valeurs réelles."""
+    reelles = _lignes_reelles()[:48]
+    return [(2020, 1, 15 + rang // 24, rang % 24 + 1, reel)
+            for rang, reel in enumerate(reelles)]
+
+
+def _tmy_complet():
+    lignes = []
+    for reel in _lignes_reelles():
+        temps = reel['time(UTC)']
+        lignes.append((int(temps[:4]), int(temps[4:6]), int(temps[6:8]),
+                       int(temps[9:11]) + 1, reel))
+    return lignes
+
+
+def _pvlib(texte):
+    """La référence : ``pvlib.iotools.read_epw`` sur le même texte."""
+    descripteur, chemin = tempfile.mkstemp(suffix='.epw')
+    try:
+        with os.fdopen(descripteur, 'w', encoding='utf-8') as sortie:
+            sortie.write(texte)
+        donnees, _meta = read_epw(chemin)
+    finally:
+        os.remove(chemin)
+    return donnees
+
+
+class SerieHorizontaleTest(SimpleTestCase):
+
+    def _verifier_contre_pvlib(self, serie, texte):
+        reference = _pvlib(texte)
+        self.assertEqual(len(serie['points']), len(reference))
+        for point, (instant, ligne) in zip(serie['points'], reference.iterrows()):
+            self.assertEqual(
+                (point['annee'], point['mois'], point['jour'], point['heure']),
+                (instant.year, instant.month, instant.day, instant.hour))
+            self.assertAlmostEqual(point['ghi_w_m2'], ligne['ghi'])
+            self.assertAlmostEqual(point['dni_w_m2'], ligne['dni'])
+            self.assertAlmostEqual(point['dhi_w_m2'], ligne['dhi'])
+            self.assertAlmostEqual(point['t2m_c'], ligne['temp_air'])
+            self.assertAlmostEqual(point['ws10m'], ligne['wind_speed'])
+
+    def test_epw_et_csv_equivalents_rendent_les_instants_et_valeurs_de_pvlib(self):
+        lignes = _quarante_huit_heures()
+        texte = _epw(lignes)
+        epw = lire_serie_horizontale(texte, format='epw', fournisseur='PVGIS',
+                                     obtenue_le=OBTENUE_LE)
+        csv = lire_serie_horizontale(_csv_horizontal(lignes), format='csv',
+                                     fournisseur='PVGIS', obtenue_le=OBTENUE_LE)
+        self._verifier_contre_pvlib(epw, texte)
+        self.assertEqual(epw['points'], csv['points'])
+        self.assertEqual(epw['plan_des_donnees'], 'horizontal')
+        self.assertEqual(epw['meteo']['service'], 'fichier')
+        self.assertEqual(epw['meteo']['fournisseur'], 'PVGIS')
+        self.assertEqual(len(epw['meteo']['fichier']['empreinte_sha256']), 64)
+        self.assertGreater(max(p['ghi_w_m2'] for p in epw['points']), 0)
+
+    def test_un_ghi_decale_d_un_rang_sort_de_pvlib(self):
+        lignes = _quarante_huit_heures()
+        serie = lire_serie_horizontale(_epw(lignes), format='epw')
+        decalee = _pvlib(_epw(lignes, decaler_ghi=True))
+        self.assertNotEqual([p['ghi_w_m2'] for p in serie['points']],
+                            list(decalee['ghi']))
+
+    def test_une_annee_type_est_publiee_tmy_sans_annees(self):
+        texte = _epw(_tmy_complet())
+        serie = lire_serie_horizontale(texte, format='epw')
+        self.assertEqual(serie['mode'], 'tmy')
+        self.assertEqual(serie['annees'], [])
+        self.assertEqual(serie['meteo']['mode'], 'tmy')
+        self._verifier_contre_pvlib(serie, texte)
+
+    def test_une_valeur_manquante_refuse_en_nommant_ligne_et_colonne(self):
+        texte = _epw(_quarante_huit_heures(), manquant=(20, 13))
+        with self.assertRaises(MeteoFichierRefuse) as refus:
+            lire_serie_horizontale(texte, format='epw')
+        self.assertEqual(refus.exception.champ, 'ghi_w_m2')
+        self.assertEqual(refus.exception.ligne, 8 + 20 + 1)
+
+    def test_un_csv_sans_colonne_dni_est_refuse_en_la_nommant(self):
+        texte = '\n'.join(['horodatage,ghi_w_m2,dhi_w_m2',
+                           '2020-01-15T00:00:00+00:00,0,0']) + '\n'
+        with self.assertRaises(MeteoFichierRefuse) as refus:
+            lire_serie_horizontale(texte, format='csv')
+        self.assertEqual(refus.exception.champ, 'dni_w_m2')
+
+    def test_un_epw_sans_fuseau_est_refuse_en_nommant_la_ligne_1(self):
+        texte = _epw(_quarante_huit_heures()).replace(
+            'MAR,PVGIS,000000,33.5,-7.6,0.0,139.0', 'MAR,PVGIS,000000,33.5,-7.6', 1)
+        with self.assertRaises(MeteoFichierRefuse) as refus:
+            lire_serie_horizontale(texte, format='epw')
+        self.assertEqual(refus.exception.ligne, 1)
