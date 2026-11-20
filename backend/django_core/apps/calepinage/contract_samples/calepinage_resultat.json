@@ -487,6 +487,104 @@
         "surplus_kwh": 4940.0,
         "import_reseau_kwh": 1540.0
       },
+      "par_mois": [
+        {
+          "mois": 1,
+          "consommation_kwh": 720.0,
+          "production_kwh": 975.0,
+          "autoconsomme_kwh": 604.5,
+          "import_reseau_kwh": 115.5,
+          "export_reseau_kwh": 370.5
+        },
+        {
+          "mois": 2,
+          "consommation_kwh": 680.0,
+          "production_kwh": 920.833,
+          "autoconsomme_kwh": 570.917,
+          "import_reseau_kwh": 109.083,
+          "export_reseau_kwh": 349.917
+        },
+        {
+          "mois": 3,
+          "consommation_kwh": 760.0,
+          "production_kwh": 1029.167,
+          "autoconsomme_kwh": 638.083,
+          "import_reseau_kwh": 121.917,
+          "export_reseau_kwh": 391.083
+        },
+        {
+          "mois": 4,
+          "consommation_kwh": 800.0,
+          "production_kwh": 1083.333,
+          "autoconsomme_kwh": 671.667,
+          "import_reseau_kwh": 128.333,
+          "export_reseau_kwh": 411.667
+        },
+        {
+          "mois": 5,
+          "consommation_kwh": 880.0,
+          "production_kwh": 1191.667,
+          "autoconsomme_kwh": 738.833,
+          "import_reseau_kwh": 141.167,
+          "export_reseau_kwh": 452.833
+        },
+        {
+          "mois": 6,
+          "consommation_kwh": 920.0,
+          "production_kwh": 1245.833,
+          "autoconsomme_kwh": 772.417,
+          "import_reseau_kwh": 147.583,
+          "export_reseau_kwh": 473.417
+        },
+        {
+          "mois": 7,
+          "consommation_kwh": 960.0,
+          "production_kwh": 1300.0,
+          "autoconsomme_kwh": 806.0,
+          "import_reseau_kwh": 154.0,
+          "export_reseau_kwh": 494.0
+        },
+        {
+          "mois": 8,
+          "consommation_kwh": 960.0,
+          "production_kwh": 1300.0,
+          "autoconsomme_kwh": 806.0,
+          "import_reseau_kwh": 154.0,
+          "export_reseau_kwh": 494.0
+        },
+        {
+          "mois": 9,
+          "consommation_kwh": 840.0,
+          "production_kwh": 1137.5,
+          "autoconsomme_kwh": 705.25,
+          "import_reseau_kwh": 134.75,
+          "export_reseau_kwh": 432.25
+        },
+        {
+          "mois": 10,
+          "consommation_kwh": 800.0,
+          "production_kwh": 1083.333,
+          "autoconsomme_kwh": 671.667,
+          "import_reseau_kwh": 128.333,
+          "export_reseau_kwh": 411.667
+        },
+        {
+          "mois": 11,
+          "consommation_kwh": 680.0,
+          "production_kwh": 920.833,
+          "autoconsomme_kwh": 570.917,
+          "import_reseau_kwh": 109.083,
+          "export_reseau_kwh": 349.917
+        },
+        {
+          "mois": 12,
+          "consommation_kwh": 600.0,
+          "production_kwh": 812.501,
+          "autoconsomme_kwh": 503.749,
+          "import_reseau_kwh": 96.251,
+          "export_reseau_kwh": 308.749
+        }
+      ],
       "plafond": {
         "applique": true,
         "plafond_kw": 6.0,
@@ -1658,6 +1756,104 @@
         "surplus_kwh": 4940.0,
         "import_reseau_kwh": 1540.0
       },
+      "par_mois": [
+        {
+          "mois": 1,
+          "consommation_kwh": 720.0,
+          "production_kwh": 975.0,
+          "autoconsomme_kwh": 604.5,
+          "import_reseau_kwh": 115.5,
+          "export_reseau_kwh": 370.5
+        },
+        {
+          "mois": 2,
+          "consommation_kwh": 680.0,
+          "production_kwh": 920.833,
+          "autoconsomme_kwh": 570.917,
+          "import_reseau_kwh": 109.083,
+          "export_reseau_kwh": 349.917
+        },
+        {
+          "mois": 3,
+          "consommation_kwh": 760.0,
+          "production_kwh": 1029.167,
+          "autoconsomme_kwh": 638.083,
+          "import_reseau_kwh": 121.917,
+          "export_reseau_kwh": 391.083
+        },
+        {
+          "mois": 4,
+          "consommation_kwh": 800.0,
+          "production_kwh": 1083.333,
+          "autoconsomme_kwh": 671.667,
+          "import_reseau_kwh": 128.333,
+          "export_reseau_kwh": 411.667
+        },
+        {
+          "mois": 5,
+          "consommation_kwh": 880.0,
+          "production_kwh": 1191.667,
+          "autoconsomme_kwh": 738.833,
+          "import_reseau_kwh": 141.167,
+          "export_reseau_kwh": 452.833
+        },
+        {
+          "mois": 6,
+          "consommation_kwh": 920.0,
+          "production_kwh": 1245.833,
+          "autoconsomme_kwh": 772.417,
+          "import_reseau_kwh": 147.583,
+          "export_reseau_kwh": 473.417
+        },
+        {
+          "mois": 7,
+          "consommation_kwh": 960.0,
+          "production_kwh": 1300.0,
+          "autoconsomme_kwh": 806.0,
+          "import_reseau_kwh": 154.0,
+          "export_reseau_kwh": 494.0
+        },
+        {
+          "mois": 8,
+          "consommation_kwh": 960.0,
+          "production_kwh": 1300.0,
+          "autoconsomme_kwh": 806.0,
+          "import_reseau_kwh": 154.0,
+          "export_reseau_kwh": 494.0
+        },
+        {
+          "mois": 9,
+          "consommation_kwh": 840.0,
+          "production_kwh": 1137.5,
+          "autoconsomme_kwh": 705.25,
+          "import_reseau_kwh": 134.75,
+          "export_reseau_kwh": 432.25
+        },
+        {
+          "mois": 10,
+          "consommation_kwh": 800.0,
+          "production_kwh": 1083.333,
+          "autoconsomme_kwh": 671.667,
+          "import_reseau_kwh": 128.333,
+          "export_reseau_kwh": 411.667
+        },
+        {
+          "mois": 11,
+          "consommation_kwh": 680.0,
+          "production_kwh": 920.833,
+          "autoconsomme_kwh": 570.917,
+          "import_reseau_kwh": 109.083,
+          "export_reseau_kwh": 349.917
+        },
+        {
+          "mois": 12,
+          "consommation_kwh": 600.0,
+          "production_kwh": 812.501,
+          "autoconsomme_kwh": 503.749,
+          "import_reseau_kwh": 96.251,
+          "export_reseau_kwh": 308.749
+        }
+      ],
       "plafond": {
         "applique": true,
         "plafond_kw": 6.0,
