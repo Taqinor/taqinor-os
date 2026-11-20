@@ -1,2 +1,0 @@
-# specs jouées par zz-scratch-acceptation-1911 (une par ligne, sans .spec.js)
-acal6
