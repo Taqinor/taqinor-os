@@ -901,6 +901,42 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(lecture((await rouvrir(relu, 12))()).doc).toBe(relu.result.annualKwh);
   }, 120000);
 
+  // ACAL379 — la section « zones » rend TOUS les pans à leurs valeurs ENREGISTRÉES (« Saisie de la
+  // pente », décision IGN) : seul ce qui diffère du document relu est écrit, la saisie en cours reste.
+  it('section « zones » ne défait pas la saisie non enregistrée des pans', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    traceRoof(fakeMaps[0], 16, -7.6195);
+    const base = copie(neuf().serializeLayout() as Doc) as Doc & { zones: Array<Record<string, unknown>> };
+    const stockees = base.zones.map((z, i) => ({ ...z, roofType: 'pitched', pitchDeg: i ? 20 : 15 }));
+    const [z1, z2] = stockees.map((z) => String(z.id));
+    const api = await rouvrir({ ...base, activeAreaId: z1, zones: stockees }, 15);
+    const curseur = document.getElementById('rp9-pitch-range') as HTMLInputElement;
+    const pente = (id: string, v: number) => {
+      document.querySelector<HTMLElement>(`#rp9-areas-list [data-area-select="${id}"]`)?.click();
+      curseur.value = String(v);
+      curseur.dispatchEvent(new Event('input'));
+    };
+    pente(z2, 40);
+    pente(z1, 30);
+    const pentes = (doc: Doc) => (doc.zones as Array<Record<string, unknown>>).map((z) => z.pitchDeg);
+    expect(pentes(api().serializeLayout() as Doc)).toEqual([30, 40]); // la saisie, avant toute section
+    // Décision IGN sur z1 (zones stockées + la décision), puis pente d'un 3e pan enregistrée.
+    api().appliquerSection('zones', stockees.map((z) => (z.id === z1 ? { ...z, pitchSuggestion: { degres: 34, decision: 'refusee' } } : z)));
+    api().appliquerSection('zones', [...stockees, { id: 'z-autre', pitchDeg: 25 }]);
+    const enregistre = copie(api().serializeLayout() as Doc);
+    expect(pentes(enregistre)).toEqual([30, 40]);
+    expect(curseur.value).toBe('30');
+    expect(document.getElementById('rp9-pitch-value')!.textContent).toBe('30°');
+    // Une pente réellement changée par le serveur (z2 → 35°) est écrite ; rendue à nouveau, rien ne bouge.
+    for (let i = 0; i < 2; i++) api().appliquerSection('zones', stockees.map((z) => (z.id === z2 ? { ...z, pitchDeg: 35 } : z)));
+    expect(pentes(api().serializeLayout() as Doc)).toEqual([30, 35]);
+    // Persistance : rouvert depuis l'enregistrement, 30° et 40° relus.
+    expect(pentes((await rouvrir(enregistre, 15))().serializeLayout() as Doc)).toEqual([30, 40]);
+  }, 120000);
+
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
