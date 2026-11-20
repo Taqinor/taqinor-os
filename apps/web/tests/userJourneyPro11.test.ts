@@ -1049,6 +1049,21 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(txt('rp9-pitch-note')).toBe('');
   }, 120000);
 
+  // ACAL413 — « Effacer » avec un contour nomme ce qui sera perdu et ne fait rien sur refus.
+  it('« Effacer » avec un contour demande en nommant le pan, et ne fait rien sur refus', async () => {
+    await boot();
+    traceRoof(fakeMaps[0]);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => false);
+    (document.getElementById('rp9-clear') as HTMLButtonElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect((confirmSpy.mock.calls[0] as unknown as string[])[0]).toMatch(/^Effacer 1 pan/);
+    expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(true); // refus : le contour reste fermé
+    confirmSpy.mockImplementation(() => true);
+    (document.getElementById('rp9-clear') as HTMLButtonElement).click();
+    expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(false); // accepté : site vierge, la carte d'aide revient
+    confirmSpy.mockRestore();
+  }, 60000);
+
   // ACAL420 — l'état vide dit le prochain geste sur la carte, puis s'efface à la fermeture du contour.
   it('l’état vide dit le prochain geste, puis s’efface à la fermeture du contour', async () => {
     await boot();
