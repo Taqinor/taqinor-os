@@ -4,7 +4,8 @@
 // Réponse 400 à la forme produite par le test d'AFAC69 : {"remise": ["…"]}.
 // Run : npx vitest run src/pages/ventes/FactureForm.erreursLignes.test.jsx
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -161,5 +162,44 @@ describe('AFAC70 — FactureForm : motif serveur sous la ligne refusée', () => 
     enregistrer()
     await waitFor(() => expect(ventesApi.updateFacture).toHaveBeenCalled())
     expect(ventesApi.updateFacture.mock.calls[0][1].lock_version).toBe(4)
+  })
+})
+
+describe('AERR188 — « Annuler » de la facture modifiée demande avant de perdre la saisie', () => {
+  const rendreAvecDemande = (onClose) => render(
+    <ConfirmProvider>
+      <Provider store={configureStore({ reducer: { auth: authReducer, ventes: ventesReducer }, preloadedState: { auth: AUTH } })}>
+        <FactureForm facture={facture([ligne(1, { id: 1 })])} onClose={onClose} onSaved={() => {}} />
+      </Provider>
+    </ConfirmProvider>,
+  )
+  const annuler = () => screen.getByRole('button', { name: 'Annuler' })
+
+  it('Annuler demande avant de perdre la saisie : Rester garde la ligne', async () => {
+    const onClose = vi.fn()
+    rendreAvecDemande(onClose)
+    fireEvent.change(champRemise(0), { target: { value: '12' } })
+    fireEvent.click(annuler())
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(onClose).not.toHaveBeenCalled()
+    expect(champRemise(0).value).toBe('12')
+  })
+
+  it('Annuler puis Quitter ferme une seule fois', async () => {
+    const onClose = vi.fn()
+    rendreAvecDemande(onClose)
+    fireEvent.change(champRemise(0), { target: { value: '12' } })
+    fireEvent.click(annuler())
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Quitter' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+  })
+
+  it('sans saisie, Annuler ferme sans demande', () => {
+    const onClose = vi.fn()
+    rendreAvecDemande(onClose)
+    fireEvent.click(annuler())
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
