@@ -818,7 +818,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     horizonNoteEl.textContent =
       s.maskedHours > 0
         ? `Horizon PVGIS : ${s.maskedHours} heure(s) sur 288 (12 mois × 24 h) masquée(s) par le relief lointain — ` +
-          `−${lossPct} % de production annuelle (part diffuse conservée ~25 %). Poste séparé de l’ombrage proche.`
+          `−${lossPct} % de production annuelle (part diffuse et réfléchie conservée, selon la hauteur du soleil). Poste séparé de l’ombrage proche.`
         : 'Horizon PVGIS renseigné : aucune heure masquée pour ce champ.';
   }
 
