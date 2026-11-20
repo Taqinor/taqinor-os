@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft } from 'lucide-react'
 import { lireReglages, modifierReglages } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
@@ -115,17 +114,17 @@ export default function Reglages() {
   // Passe visuelle n° 47 — sur iPhone, une rubrique est une SOUS-PAGE (reglages-donnees.html) : son nom en titre,
   // « ‹ Réglages » pour revenir, la liste des rubriques cachée (CSS, `.es-ouverte`). Au bureau : maître-détail, la
   // liste reste à gauche et le panneau porte le nom de la rubrique.
-  const nom = titreRubrique(rubrique)
+  // R2-128 — au bureau, « Notifications » est ouvert d'office (le panneau n'est plus vide) ; sur iPhone la sous-page
+  // porte « ‹ Réglages » par la coquille (`retour`), jamais un retour dessiné ici.
+  const courante = rubrique ?? (etroit ? undefined : 'notifications')
+  const nom = titreRubrique(courante)
   const sousPage = Boolean(nom) && etroit
   return (
-    <CoquilleTaches ecran="reglages" titre={sousPage ? nom : 'Réglages'}>
-      {sousPage ? (
-        <div className="ep-barre es-barre-sous-page">
-          <button type="button" className="ep-retour" onClick={() => navigate('/taches/reglages')}>
-            <ChevronLeft className="i" aria-hidden="true" />Réglages
-          </button>
-        </div>
-      ) : null}
+    <CoquilleTaches
+      ecran="reglages"
+      titre={sousPage ? nom : 'Réglages'}
+      retour={sousPage ? { libelle: 'Réglages', vers: '/taches/reglages' } : null}
+    >
       {echec ? (
         <div className="bandeau" role="status">
           <span className="bandeau-texte"><span className="bandeau-titre">Pas à jour</span></span>
@@ -134,13 +133,13 @@ export default function Reglages() {
       ) : null}
       <div className={`es-reglages-grille${nom ? ' es-ouverte' : ''}`}>
         <ListeRubriques
-          courante={rubrique}
+          courante={courante}
           onOuvrir={(cle) => navigate(`/taches/reglages/${cle}`)}
           resumes={reglages ? { suggestions: `${accord(reglages.familles_suggestions?.length ?? 0, 'suggestion')} sur ${FAMILLES_SUGGESTIONS.length}` } : undefined}
         />
         <div className="es-panneau">
           {nom && !sousPage ? <h2 className="es-panneau-titre">{nom}</h2> : null}
-          <Contenu rubrique={rubrique} reglages={reglages} erreur={erreur} basculer={basculer} navigate={navigate} etape={params.get('etape')} />
+          <Contenu rubrique={courante} reglages={reglages} erreur={erreur} basculer={basculer} navigate={navigate} etape={params.get('etape')} />
         </div>
       </div>
     </CoquilleTaches>

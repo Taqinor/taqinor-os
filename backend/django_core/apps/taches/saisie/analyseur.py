@@ -54,7 +54,7 @@ def _heure_murale(maintenant):
 # ------------------------------------------------- convertisseurs (§1.3, §1.9)
 
 def conv_quelque_jour(m, ctx, texte):
-    return Lu(True, 'En réserve')
+    return Lu(True, 'Plus tard')
 
 
 def _nom_du_mot(m, texte):
@@ -62,11 +62,36 @@ def _nom_du_mot(m, texte):
     return texte[m.start() + 1:m.end()].replace('_', ' ')
 
 
-def resoudre_projet(nom, ctx):
-    """`Lu` du projet nommé `nom` : connu, archivé ou nouveau ; None si la porte l'interdit."""
+_SEPARATEURS_NOM = re.compile(r'[\s\-_]+')
+
+
+def _debute_un_mot(cle, nom):
+    """`cle` est le DÉBUT d'un mot du nom, lu jusqu'au bout du nom (« sal » → « Salon Solaire Expo », « salonsol »
+    aussi, « solaire » aussi ; « alon » non) — par `cle_nom`, donc sans accents, casse, espaces ni `_`."""
+    mots = [m for m in _SEPARATEURS_NOM.split(nom) if m]
+    return any(cle_nom(''.join(mots[i:])).startswith(cle) for i in range(len(mots)))
+
+
+def _ouverts_par_debut(cle, ctx):
+    """R2-003 — sans égalité : les projets OUVERTS dont un mot commence par `cle`, par rang."""
+    if not cle:
+        return []
+    return sorted((p for p in ctx.projets if p.statut in STATUTS_OUVERTS and _debute_un_mot(cle, p.nom)),
+                  key=lambda p: p.rang)
+
+
+def resoudre_projet(nom, ctx, *, par_debut=False):
+    """`Lu` du projet nommé `nom` : connu, archivé ou nouveau ; None si la porte l'interdit.
+
+    `par_debut` (le `#mot` de la saisie, R2-003) : sans projet de ce nom exact, un projet OUVERT dont un mot
+    commence par `nom` le prend (« #Salon » → « Salon Solaire Expo ») au lieu d'en créer un en double ; plusieurs →
+    le premier par rang + `plusieurs_projets`. L'égalité reste prioritaire ; la porte `capture` ne lit jamais par début.
+    """
     cle = cle_nom(nom)
     trouves = sorted((p for p in ctx.projets if cle_nom(p.nom) == cle), key=lambda p: p.rang)
     ouverts = [p for p in trouves if p.statut in STATUTS_OUVERTS]
+    if not trouves and par_debut and ctx.porte != 'capture':
+        ouverts = _ouverts_par_debut(cle, ctx)
     if ouverts:
         p = ouverts[0]
         alertes = (AlerteSaisie.PLUSIEURS_PROJETS.value,) if len(ouverts) > 1 else ()
@@ -82,7 +107,7 @@ def resoudre_projet(nom, ctx):
 
 
 def conv_projet(m, ctx, texte):
-    return resoudre_projet(_nom_du_mot(m, texte), ctx)
+    return resoudre_projet(_nom_du_mot(m, texte), ctx, par_debut=True)
 
 
 def conv_section(m, ctx, texte):
@@ -299,6 +324,48 @@ def projet_en_tete(masque, texte, ctx):
     return None
 
 
+# ------------------------------------------------- « #Nom avec espaces » (R3-047)
+
+_DIESE = re.compile(r'(?<!\S)#(?=[^\W\d_])')
+_MOT = re.compile(r'\S+')
+_PONCTUATION_FINALE = '.,;:!?)»"'
+
+
+def _fins_possibles(segment, mots, k):
+    """Fin (dans `segment`) du k-ième mot, brute puis sans sa ponctuation finale (« expo, » → « expo »)."""
+    dernier = mots[k - 1]
+    nette = dernier.start() + len(dernier.group().rstrip(_PONCTUATION_FINALE))
+    return (dernier.end(), nette) if nette != dernier.end() else (dernier.end(),)
+
+
+def projets_nommes_en_entier(masque, texte, ctx):
+    """R3-047 — après `#`, le plus long nom de projet EXISTANT de deux mots ou plus, écrit avec ses espaces (le choix
+    de la liste `#` l'insère ainsi : « #Chantier Benali 9 kWc »), comparé par `cle_nom`. Un nom inconnu n'est jamais
+    lu au-delà de son premier mot (motif `#mot`, qui reste le seul pour un mot seul ou un nouveau projet)."""
+    longueur_max = max((len(p.nom.split()) for p in ctx.projets), default=0)
+    if longueur_max < 2:
+        return []
+    cles = {cle_nom(p.nom) for p in ctx.projets if len(p.nom.split()) >= 2}
+    trouves = []
+    for diese in _DIESE.finditer(masque):
+        segment = masque[diese.end():]
+        mots = []
+        for mot in _MOT.finditer(segment):
+            if mot.group()[0] in '#/%!':
+                break
+            mots.append(mot)
+        for k in range(min(len(mots), longueur_max), 1, -1):
+            fin = next((diese.end() + f for f in _fins_possibles(segment, mots, k)
+                        if cle_nom(texte[diese.end():diese.end() + f]) in cles), None)
+            if fin is None:
+                continue
+            lu = resoudre_projet(texte[diese.end():fin], ctx)
+            if lu is not None and not lu.valeur['nouveau']:
+                trouves.append(Candidat(diese.start(), fin, 'projet', lu.valeur, lu.libelle, tuple(lu.alertes)))
+            break
+    return trouves
+
+
 # --------------------------------------------------------------------- lecture
 
 def types_permis(porte):
@@ -330,6 +397,7 @@ def lire(texte, ctx):
     if ctx.porte == 'capture':
         en_tete = projet_en_tete(masque, texte, ctx)
         bases += [en_tete] if en_tete is not None else []
+    bases += projets_nommes_en_entier(masque, texte, ctx)
     bases = filtrer_contexte(retirer_ignores(bases, ctx.ignorer, texte), masque)
     retenus, doubles = choisir(bases + _composes(masque, texte, bases, ctx))
     alertes = list(rejets) + doubles

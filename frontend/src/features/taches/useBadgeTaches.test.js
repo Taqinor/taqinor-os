@@ -8,7 +8,9 @@ vi.mock('../../api/axios', () => ({
 }))
 
 const api = (await import('../../api/axios')).default
-const { useBadgeTaches, poserBadgeApp, reinitialiserBadgeTaches } = await import('./useBadgeTaches')
+const {
+  useBadgeTaches, poserBadgeApp, reinitialiserBadgeTaches, chargerBadgeTaches, ajusterBadgeATrier,
+} = await import('./useBadgeTaches')
 
 /* NOUVEAU FICHIER DE TEST : premier test de ce domaine dans le nouveau module (pastille). Le
    serveur est mocké sur `badge.json` et `aujourdhui.json` ; la pastille de l'icône se pose par
@@ -106,5 +108,48 @@ describe('TCH101 — useBadgeTaches', () => {
     const inactif = renderHook(() => useBadgeTaches({ actif: false }))
     expect(inactif.result.current).toMatchObject({ n: 0, aTrier: 0 })
     expect(api.get).not.toHaveBeenCalled()
+  })
+})
+
+describe('R2-024 — la pastille d\'À trier suit les gestes tout de suite', () => {
+  it('ajusterBadgeATrier corrige la pastille aussitôt, la relecture forcée confirme', async () => {
+    servir({ badge: { n: 2, jour: '2026-11-17', a_trier: 4 } })
+    const { result } = renderHook(() => useBadgeTaches())
+    await waitFor(() => expect(result.current.aTrier).toBe(4))
+    act(() => { ajusterBadgeATrier(-2) })
+    expect(result.current.aTrier).toBe(2) // avant tout aller-retour
+    servir({ badge: { n: 2, jour: '2026-11-17', a_trier: 2 } })
+    await act(async () => { await chargerBadgeTaches({ force: true }) })
+    expect(result.current.aTrier).toBe(2)
+    act(() => { ajusterBadgeATrier(-5) })
+    expect(result.current.aTrier).toBe(0) // jamais négative
+  })
+
+  it('une relecture forcée demandée pendant une lecture en vol relit APRÈS elle (jamais le nombre d\'avant le geste)', async () => {
+    let rendre
+    api.get.mockImplementationOnce(() => new Promise((resolve) => { rendre = () => resolve({ data: { n: 0, jour: '2026-11-17', a_trier: 4 } }) }))
+    api.get.mockImplementation(() => Promise.resolve({ data: { n: 0, jour: '2026-11-17', a_trier: 2 } }))
+    const enVol = chargerBadgeTaches()
+    const forcee = chargerBadgeTaches({ force: true })
+    rendre()
+    await enVol
+    const apres = await forcee
+    expect(apres.aTrier).toBe(2)
+    expect(api.get.mock.calls.filter(([url]) => url === '/taches/badge/')).toHaveLength(2)
+  })
+
+  it('une création (saisie, collage, file rejouée) relit la pastille, sur tous les écrans', async () => {
+    servir({ badge: { n: 0, jour: '2026-11-17', a_trier: 3 } })
+    const { result } = renderHook(() => useBadgeTaches())
+    await waitFor(() => expect(result.current.aTrier).toBe(3))
+    servir({ badge: { n: 0, jour: '2026-11-17', a_trier: 4 } })
+    await act(async () => { window.dispatchEvent(new CustomEvent('taqinor:taches:creees', { detail: {} })) })
+    await waitFor(() => expect(result.current.aTrier).toBe(4))
+  })
+
+  it('sans lecture préalable, ajusterBadgeATrier ne fabrique aucun nombre', () => {
+    expect(() => ajusterBadgeATrier(-1)).not.toThrow()
+    const { result } = renderHook(() => useBadgeTaches({ actif: false }))
+    expect(result.current.aTrier).toBe(0)
   })
 })

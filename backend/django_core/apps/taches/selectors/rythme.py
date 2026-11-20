@@ -8,10 +8,11 @@ import datetime
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.taches.choix import CanalIncitation, StatutTache, TypeIncitationEcran
+from apps.notifications.calendar_utils import _load_working_days
+from apps.taches.choix import CanalIncitation, ClePreference, StatutTache, TypeIncitationEcran
 from apps.taches.models.journee import PlanJour
 from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
-from apps.taches.selectors.base import _du_compte, taches_de
+from apps.taches.selectors.base import TOUS_LES_JOURS, _du_compte, _preferences, taches_de
 
 #: Jours calendaires lus au plus pour le rythme (regles.md §6.5 point 8, §6.6 : « ≤ 42 jours »).
 FENETRE_JOURS = 42
@@ -41,6 +42,20 @@ def preference_de(user, cle, *, verrou=False):
     if verrou:
         qs = qs.select_for_update()
     return qs.first()
+
+
+def masque_travaille(user, prefs=None):
+    """Les jours de la semaine RÉELLEMENT travaillés de `user`, lun→dim (`'1111100'`) : les jours qu'il a dits
+    (`jours_travailles`, tous par défaut) ∩ les jours ouvrés du calendrier de sa société (R2-123). Les congés
+    et les fériés sont des jours isolés : ils ne changent pas la semaine type. `prefs` (`{clé: valeur}`) : les
+    préférences que l'appelant a DÉJÀ lues — une seule requête alors (le calendrier de la société)."""
+    if prefs is None:
+        prefs = _preferences(user, ClePreference.JOURS_TRAVAILLES)
+    dit = prefs.get(ClePreference.JOURS_TRAVAILLES)
+    if not (isinstance(dit, str) and len(dit) == 7):
+        dit = TOUS_LES_JOURS
+    ouvres = _load_working_days(user.company) if getattr(user, 'company_id', None) is not None else 0
+    return ''.join('1' if dit[i] == '1' and ouvres & (1 << i) else '0' for i in range(7))
 
 
 def plans_de(user, du, au):

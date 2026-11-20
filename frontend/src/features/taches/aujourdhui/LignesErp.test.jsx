@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { reinitialiserGestes } from '../lib/gestes'
+import { fermerToast, reinitialiserGestes } from '../lib/gestes'
 
 vi.mock('../../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -15,8 +15,8 @@ const { default: Aujourdhui } = await import('../../../pages/taches/Aujourdhui')
 
 /* TCH81 — les lignes de l'ERP sur Aujourd'hui, sur aujourdhui.json, ailleurs.json et lier_activite.json :
    activité (badge ERP, case seulement si `peut_cloturer`, sans Annuler), Ailleurs dans l'ERP lu à
-   l'ouverture seulement, « Lier une tâche » (l'activité reste ouverte), À revoir (Tout en réserve,
-   Aujourd'hui · Choisir un jour · En réserve · Abandonner · Découper). */
+   l'ouverture seulement, « Lier une tâche » (l'activité reste ouverte), À revoir (Tout pour plus tard,
+   Aujourd'hui · Choisir un jour · Plus tard · Abandonner · Découper en sous-tâches). */
 
 const contrat = (nom) => structuredClone(exempleContrat('taches', nom))
 const journee = () => {
@@ -67,16 +67,19 @@ describe('TCH81 — activités ERP', () => {
     expect(within(ligne).queryByRole('checkbox')).toBeNull()
   })
 
-  it('une activité qui peut se clore a sa case : close dans l\'ERP, sans Annuler', async () => {
+  it('une activité qui peut se clore a sa case : « Close dans l\'ERP · Annuler », close au départ du toast (R2-010)', async () => {
     const d = journee()
     d.journee.find((i) => i.type === 'activite').peut_cloturer = true
     servir({ aujourdhui: d })
     monter()
     await screen.findByText('Rappeler Benali')
     fireEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Rappeler Benali » comme faite' }))
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(toast).toHaveTextContent("Close dans l'ERP")
+    expect(within(toast).getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalledWith('/records/activities/101/done/', {})
+    act(() => { fermerToast() }) // le toast part (échéance, ×) : la clôture part alors
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/records/activities/101/done/', {}))
-    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Close dans l'ERP")
-    expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
   })
 })
 
@@ -168,21 +171,21 @@ describe('TCH81 — À revoir', () => {
     return (await screen.findByText('Site web')).closest('[data-ligne]')
   }
 
-  it('Tout en réserve : lot planifier quelque_jour ; la ligne part, « 1 en réserve · Annuler »', async () => {
+  it('Tout pour plus tard : lot planifier quelque_jour ; la ligne part, « 1 pour plus tard · Annuler »', async () => {
     await ouvrirARevoir()
-    await userEvent.click(screen.getByRole('button', { name: 'Tout en réserve' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tout pour plus tard' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/taches/taches/lot/', { ids: [50], action: 'planifier', valeurs: { quelque_jour: true } }, expect.anything(),
     ))
     await waitFor(() => expect(screen.queryByText('Site web')).toBeNull())
-    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('1 en réserve')
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('1 pour plus tard')
   })
 
-  it('par ligne : Aujourd\'hui · Choisir un jour · En réserve · Abandonner · Découper (reportée 3 fois)', async () => {
+  it('par ligne : Aujourd\'hui · Choisir un jour · Plus tard · Abandonner · Découper en sous-tâches (reportée 3 fois)', async () => {
     const ligne = await ouvrirARevoir()
     const actions = within(ligne.parentElement).getByRole('group', { name: 'Que faire de « Site web » ?' })
     expect(within(actions).getAllByRole('button').map((b) => b.textContent)).toEqual([
-      "Aujourd'hui", 'Choisir un jour', 'En réserve', 'Abandonner', 'Découper',
+      "Aujourd'hui", 'Choisir un jour', 'Plus tard', 'Abandonner', 'Découper en sous-tâches',
     ])
   })
 
@@ -212,12 +215,12 @@ describe('TCH81 — À revoir', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/50/trancher/', { choix: 'jour', jour: '2026-11-23' }))
   })
 
-  it('hors ligne : Tout en réserve est grisé', async () => {
+  it('hors ligne : Tout pour plus tard est grisé', async () => {
     await ouvrirARevoir()
     api.post.mockClear()
     Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
     act(() => { window.dispatchEvent(new Event('offline')) })
-    const bouton = screen.getByRole('button', { name: 'Tout en réserve' })
+    const bouton = screen.getByRole('button', { name: 'Tout pour plus tard' })
     expect(bouton).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(bouton)
     expect(api.post).not.toHaveBeenCalled()

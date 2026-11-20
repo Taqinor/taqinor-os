@@ -71,12 +71,40 @@ class PrefiltreTests(_Base):
         prerequis = self.tache()
         bloquee = self.tache(jour_prevu=J, bloquee_par=prerequis)
         reserve = self.tache(quelque_jour=True)
-        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
+        # en pause depuis HIER : rien de ce projet n'est plus dans la journée, même prévu aujourd'hui (C-5)
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(jours(-1), 18))
         dans_la_pause = self.tache(projet=en_pause, jour_prevu=J)
         ids = set(sel.taches_de_la_journee(self.u, J).values_list('pk', flat=True))
         self.assertIn(parent.pk, ids)
         for absente in (enfant, bloquee, reserve, dans_la_pause):
             self.assertNotIn(absente.pk, ids, absente.titre)
+
+    def test_pause_du_jour_garde_ce_qui_est_pose_ce_jour(self):
+        """R2-031 (choix C-5) — mis en pause aujourd'hui à 15:00 : la tâche posée aujourd'hui à 16:00 reste
+        dans la journée (Prévu) ; ses tâches sans jour, pour plus tard ou prévues un autre jour n'y sont pas ;
+        le lendemain, plus rien du projet."""
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(J, 15))
+        a_16h = self.tache(projet=en_pause, jour_prevu=J, heure_debut=datetime.time(16, 0))
+        sans_jour = self.tache(projet=en_pause)
+        demain = self.tache(projet=en_pause, jour_prevu=jours(1))
+        reservee = self.tache(projet=en_pause, quelque_jour=True)
+        ids = set(sel.taches_de_la_journee(self.u, J).values_list('pk', flat=True))
+        self.assertIn(a_16h.pk, ids)
+        for absente in (sans_jour, demain, reservee):
+            self.assertNotIn(absente.pk, ids, absente.titre)
+        self.assertEqual(self.section_de(self.journee(), a_16h), S.JOURNEE)
+        self.assertNotIn(demain.pk, set(sel.taches_de_la_journee(self.u, jours(1)).values_list('pk', flat=True)))
+
+    def test_pause_du_jour_absente_de_propose(self):
+        """R2-031 — la pause retire toujours de Proposé : une tâche sans jour du projet en pause n'est jamais
+        proposée, celle posée aujourd'hui est dans Prévu (gardée), pas dans Proposé."""
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(J, 15))
+        posee = self.tache(projet=en_pause, jour_prevu=J)
+        sans_jour = self.tache(projet=en_pause)
+        journee = self.journee()
+        self.assertEqual(self.section_de(journee, posee), S.JOURNEE)
+        self.assertIsNone(self.section_de(journee, sans_jour))
+        self.assertNotIn(('tache', sans_jour.pk), journee.items)
 
     def test_prerequis_clos_ne_bloque_plus(self):
         prerequis = self.tache(statut=StatutTache.FAIT, fait_le=a(jours(-2)))
@@ -238,7 +266,10 @@ class ProgressionTests(_Base):
         self.assertEqual(p['prevues'], 1 + 2)
         self.assertEqual((p['plan_tenues'], p['plan_lignes']), (1, 2))
         self.assertEqual((p['essentiel_faites'], p['essentiel_prevues']), (0, 1))
-        self.assertEqual((p['minutes_prevues'], p['sans_estimation']), (75, 1))
+        # R4-01 : la charge = ce qui RESTE (la faite de 30 min ne compte plus) : 45 min, 1 sans durée, 2 tâches
+        self.assertEqual(p['charge'], {'taches': 2, 'restantes_minutes': 45, 'sans_duree': 1, 'capacite_minutes': 240,
+                                       'rendez_vous_minutes': 60, 'disponible_minutes': 180, 'deborde_minutes': 0})
+        self.assertEqual(sel.minutes_prevues_du_jour(self.journee()), 75)  # la statistique de la nuit, jamais montrée
         self.assertEqual((p['capacite_minutes'], p['rendez_vous_minutes'], p['disponible_minutes']),
                          (240, 60, 180))
 
@@ -249,7 +280,7 @@ class ProgressionTests(_Base):
 
     def test_forme_complete(self):
         cles = {'faites', 'detail', 'prevues', 'essentiel_faites', 'essentiel_prevues', 'plan_tenues',
-                'plan_lignes', 'minutes_prevues', 'sans_estimation', 'capacite_minutes', 'capacite_source',
+                'plan_lignes', 'charge', 'capacite_minutes', 'capacite_source',
                 'rendez_vous_minutes', 'disponible_minutes', 'activites_closes', 'activites', 'reprise'}
         self.assertEqual(set(self._progression()), cles)
 
@@ -534,10 +565,73 @@ class CarteDuMomentTests(_Base):
         self.assertIsNone(self.carte(12, 5))
 
     def test_alleger_l_apres_midi(self):
+        fabriques.reglages(self.u, palier=5, palier_source='accepte')
         self.tache(jour_prevu=J)
         fabriques.plan(self.u, J, planifie_le=a(J, 8))
         self.assertEqual(self.carte(15, 30), {'type': 'alleger', 'proposition': None,
                                               'donnees': {'faites': 0, 'prevues': 1}})
+
+    # --- R4-02 / R4-04 : la carte du moment selon l'heure (regles.md §4.10), horloge figée ----------------------------
+
+    def journee_en_retard(self):
+        """Objectif DIT 5, plan gardé à 8 h, 1 faite, 3 prévues ouvertes aujourd'hui (rien qui déborde : 0 min)."""
+        fabriques.reglages(self.u, palier=5, palier_source='dit')
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        for _ in range(3):
+            self.tache(jour_prevu=J)
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
+
+    def test_le_matin_pas_d_alleger(self):
+        self.journee_en_retard()
+        self.assertIsNone(self.carte(9, 12))
+
+    def test_a_15_h_alleger(self):
+        self.journee_en_retard()
+        self.assertEqual(self.carte(15, 0)['type'], 'alleger')
+
+    def test_le_soir_en_retard_le_bilan_gagne(self):
+        """R4-02 — 18:30, 1 faite sur 5 : « Faire le bilan », jamais « Alléger » (qui n'avait pas de fin)."""
+        self.journee_en_retard()
+        self.assertEqual(self.carte(18, 30)['type'], 'faire_bilan')
+
+    def test_le_soir_le_bilan_passe_avant_garder(self):
+        """R4-02 — rien gardé, une faite, une candidate à proposer : à 18:30 le bilan, pas « Garder ces N »."""
+        fabriques.reglages(self.u, palier=5, palier_source='dit')
+        self.tache()
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
+        self.assertEqual(self.carte(10, 0)['type'], 'garder')
+        self.assertEqual(self.carte(18, 30)['type'], 'faire_bilan')
+
+    def test_premier_jour_jamais_alleger(self):
+        """R4-04 — compte neuf (objectif par défaut, jamais dit) : une tâche à 17 h ne fait pas lire « 0 sur 5 ·
+        Alléger »."""
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.tache(jour_prevu=J, estimation_minutes=600)  # même une journée qui déborde
+        self.assertIsNone(self.carte(17, 0))
+
+    def test_apres_le_bilan_plus_d_alleger(self):
+        """R4-04 — « Bilan enregistré » (`cloture_le`) : ni Alléger, ni Faire le bilan, rechargé ou non."""
+        self.journee_en_retard()
+        from apps.taches.models.journee import PlanJour
+        PlanJour.objects.filter(proprietaire=self.u, jour=J).update(cloture_le=a(J, 16, 30))
+        self.assertIsNone(self.carte(17, 0))
+        self.assertIsNone(self.carte(18, 30))
+
+    def test_rien_a_alleger_pas_de_carte(self):
+        """R4-04 — la seule tâche ouverte est due aujourd'hui (Alléger la garderait) : rien à alléger, pas de carte."""
+        fabriques.reglages(self.u, palier=5, palier_source='dit')
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.tache(jour_prevu=J, echeance=J)
+        self.assertIsNone(self.carte(15, 30))
+
+    def test_une_journee_qui_deborde_s_allege_meme_a_moitie_faite(self):
+        """R4-04 — 3 faites sur 5 (plus de la moitié) mais 6 h restent pour 4 h : la charge déborde, « Alléger »."""
+        fabriques.reglages(self.u, palier=5, palier_source='dit')
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        for _ in range(3):
+            self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
+        self.tache(jour_prevu=J, estimation_minutes=360)
+        self.assertEqual(self.carte(15, 30)['type'], 'alleger')
 
     def test_revelation_en_dernier_rendue_par_ses_textes(self):
         from apps.taches.models.rythme import IncitationCoach
@@ -559,6 +653,43 @@ class CarteDuMomentTests(_Base):
                                        cle='monter', canal='ecran', donnees={'N': 5, 'N1': 6, 'tenus': 7},
                                        expire_le=jours(7))
         self.assertEqual(self.carte()['type'], 'rythme')
+
+    def incitation(self, type_, cle='', jour=J, **champs):
+        from apps.taches.models.rythme import IncitationCoach
+        champs.setdefault('donnees', {})
+        return IncitationCoach.objects.create(company=self.societe, proprietaire=self.u, jour=jour, type=type_,
+                                              cle=cle, canal='ecran', expire_le=jours(7), **champs)
+
+    def test_un_constat_sans_question_n_est_jamais_la_carte_du_matin(self):
+        """R3-005 (choix C-17) — C5 (« 57 % de tes tâches… », une information sans geste) ouvert : aucune carte le
+        matin ; il reste au bilan du soir (et dans Mon rythme). C7, qui pose une question, peut l'être."""
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.incitation('constat', 'C5', donnees={'p': 57, 'n': 51, 'h1': 10, 'h2': 12})
+        self.assertIsNone(self.carte())
+        self.incitation('constat', 'C7', donnees={'n': 2})
+        carte = self.carte()
+        self.assertEqual((carte['type'], carte['proposition']['cle']), ('rythme', 'C7'))
+
+    def test_une_carte_de_conseil_par_jour(self):
+        """R3-005 — C7 répondu ce matin : ni la pause ni la révélation ouvertes ne prennent sa place, rechargé autant
+        de fois qu'on veut ; le lendemain, la révélation vient ; les cartes liées à l'heure restent (bilan du soir)."""
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.incitation('constat', 'C7', donnees={'n': 2}, reponse='pas_maintenant', repondu_le=a(J, 9, 10))
+        self.incitation('pause', 'plan_matin', donnees={'type_pause': 'plan_matin', 'ignorees': 3})
+        self.incitation('revelation', 'mon_iphone')
+        for _ in range(3):
+            self.assertIsNone(self.carte(9, 30))
+        # R4-10 (T3-F n° 9) — le serveur le DIT : un autre appareil n'y ajoute pas son astuce
+        from apps.taches.services import journee as services_
+        self.assertIs(services_.aujourdhui(self.u, J, maintenant_a(9, 30))['conseil_donne'], True)
+        self.assertIs(services_.aujourdhui(self.u, jours(1), timezone.localtime(a(jours(1), 9, 12)))['conseil_donne'],
+                      False)
+        self.assertEqual(self.carte(18, 30)['type'], 'faire_bilan')
+        from apps.taches.services import journee as services
+        demain = services.aujourdhui(self.u, jours(1), timezone.localtime(a(jours(1), 9, 12)))['carte_du_moment']
+        self.assertEqual(demain['type'], 'pause')
 
 
 class BadgeEtVuTests(_Base):
@@ -860,11 +991,12 @@ class EssentielTests(_Base):
         self.etoile(t, essentielle=False)
         self.assertFalse(self.ligne_de(t).essentielle)
 
-    def test_4e_etoile_400(self):
+    def test_4e_etoile_409(self):
+        """Trois ★ DÉJÀ posées : refus d'état, 409 au même corps (api-fuzz r2)."""
         for _ in range(3):
             self.etoile(self.tache(jour_prevu=self.jour))
-        rendu = self.etoile(self.tache(jour_prevu=self.jour), statut=400)
-        self.assertEqual(champs(rendu), {'essentielle': ['3 au plus.']})
+        rendu = self.etoile(self.tache(jour_prevu=self.jour), statut=409)
+        self.assertEqual(rendu['essentielle'], ['3 au plus.'])
 
     def test_tache_d_un_autre_404(self):
         autre = fabriques.compte(self.societe, nom='u2')
@@ -960,7 +1092,7 @@ class BilanTests(_Base):
         self.assertEqual([i['id'] for i in rendu['a_trancher']], [self.a_trancher.pk])
         self.assertEqual([i['id'] for i in rendu['activites_a_clore']], [self.activite.pk])
         self.assertEqual(rendu['bilan']['texte'], '1 sur 5 · essentiel 0 sur 1')
-        self.assertEqual(rendu['bilan']['texte_gardees'], '1 des 2 gardées')
+        self.assertEqual(rendu['bilan']['texte_gardees'], '')  # R3-001 : plus de « x des y gardées »
         self.assertFalse(rendu['bilan']['objectif_atteint'])
         from apps.taches.services.journee import _possible_jusqua
         self.assertEqual(rendu['possible_jusqua'], _possible_jusqua(J).isoformat())
@@ -1035,7 +1167,7 @@ class BilanTests(_Base):
         self.assertIsNotNone(ecrit.json()['geste_id'])
         trop_vieux = client.get('/api/django/taches/journee/cloture/',
                                 {'jour': (aujourdhui - datetime.timedelta(days=3)).isoformat()})
-        self.assertEqual(trop_vieux.status_code, 400)
+        self.assertEqual(trop_vieux.status_code, 409)  # bilan fermé : refus d'ÉTAT, même corps (api-fuzz r2)
 
 
 class PassageAMinuitTests(_Base):
@@ -1067,7 +1199,10 @@ URL_POINT = '/api/django/taches/journee/point/'
 
 #: Plafonds de requêtes mesurés horloge figée sur J (le Maroc est à UTC+0) : (moment -> plafond).
 MATIN_J, APRES_MIDI_J = '2026-11-17 09:00:00', '2026-11-17 15:00:00'
-PLAFONDS_PRIORITES = {MATIN_J: 16, APRES_MIDI_J: 16}
+#: `priorites/` : 16 + 1 (R3-006) — `selectors.journee._minutes_historiques`, l'historique de la capacité (les
+#: `PlanJour.minutes_faites` des 28 jours) qui donne `disponible_minutes`, donc `deborde_minutes` ; aucune autre
+#: lecture ne le porte (le plan du jour seul est lu). Le même +1 que `test_plafonds.PLAFONDS_FIGES` (22 → 23).
+PLAFONDS_PRIORITES = {MATIN_J: 17, APRES_MIDI_J: 17}
 PLAFONDS_POINT = {MATIN_J: 20, APRES_MIDI_J: 18}
 
 
@@ -1114,6 +1249,35 @@ class PrioritesTests(_Base):
         reponse = client_de(self.u).get(URL_PRIORITES, params)
         self.assertEqual(reponse.status_code, 200, reponse.content[:300])
         return reponse.json()
+
+    def test_une_journee_qui_deborde_sert_les_gardees_a_alleger(self):
+        """R3-006 — objectif 9, 1 faite, 10 gardées pour 8 h 45 sur une capacité de 4 h (défaut, aucun rendez-vous).
+        Calcul à la main : minutes restantes = 9 × 50 + 75 = 525 ; débordement = 525 − 240 = 285 (4 h 45). La carte ne
+        pousse pas à en ajouter : les lignes sont les 10 GARDÉES (jamais la candidate), `geste_propose` « alleger » ;
+        `faites` 1 ≠ objectif 9 (garder_n 0 n'est pas « objectif atteint »). « Où j'en suis ? » dit le même temps."""
+        from apps.taches.views import journee as vues
+        fabriques.reglages(self.u, palier=9, palier_source='dit')
+        gardees = [self.tache(jour_prevu=J, estimation_minutes=50) for _ in range(9)]
+        gardees.append(self.tache(jour_prevu=J, estimation_minutes=75))
+        candidate = self.tache()
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9), estimation_minutes=30)
+        rendu = self.get()
+        self.assertEqual((rendu['faites'], rendu['objectif']['nb'], rendu['charge']['restantes_minutes'],
+                          rendu['charge']['deborde_minutes'], rendu['geste_propose']), (1, 9, 525, 285, 'alleger'))
+        ids = [ligne_['item']['id'] for ligne_ in rendu['lignes']]
+        self.assertEqual(sorted(ids), sorted(t.pk for t in gardees))
+        self.assertNotIn(candidate.pk, ids)
+        self.assertTrue(all(ligne_['item']['raison'] is None for ligne_ in rendu['lignes']))
+        point = vues.point(self.u, maintenant_a(15))
+        charge = point['progression']['charge']
+        self.assertEqual((point['faites'], charge['restantes_minutes'], charge['deborde_minutes']), (1, 525, 285))
+        self.assertEqual(point['progression']['disponible_minutes'], 240)
+
+    def test_sans_debordement_rien_ne_change(self):
+        self.scenario()
+        rendu = self.get()
+        self.assertEqual((rendu['charge']['deborde_minutes'], rendu['geste_propose']), (0, None))
+        self.assertIn(self.premiere.pk, [ligne_['item']['id'] for ligne_ in rendu['lignes']])
 
     def test_forme_de_l_echantillon(self):
         self.scenario()
@@ -1186,6 +1350,55 @@ class PrioritesTests(_Base):
         self.assertIn('Canari-titre-tour', ecran)  # le canari est vivant
 
 
+class UneChargeTests(_Base):
+    """R4-01 (M1, « un chiffre, une source » — la garde `UneSourceTests` étendue à la charge) : la charge du jour est
+    LA MÊME dans toutes les lectures qui la disent : Aujourd'hui (`progression.charge`), toute écriture, l'Agenda du
+    jour, la Semaine (donc Planifier ma semaine), « Aide-moi à prioriser » et « Où j'en suis ? ». Avant : Aujourd'hui
+    comptait la faite (« 6 h prévues »), le Copilote non (« déborde de 1 h 30 ») et l'Agenda Ce soir en plus
+    (« 6 h 15 ») — quatre chiffres à la même minute (T3-F n° 1)."""
+
+    def jeu(self):
+        """Mardi 17/11, 15:00, capacité par défaut 240 min, aucun rendez-vous. Calcul à la main :
+        restent 120 + 90 + 60 (prévues) + 30 (prévue demain, échéance aujourd'hui) = 300 min ; 1 sans durée ; 5 tâches ;
+        la faite (30 min) et Ce soir (20 min) ne comptent pas ; disponible 240 ; déborde 300 − 240 = 60 min.
+        Demain : 0 — la tâche à échéance aujourd'hui, prévue demain, pèse sur UN jour, aujourd'hui (Aujourd'hui la
+        garde ; critique serveur n° 4, `classement.jour_de_charge`)."""
+        for minutes in (120, 90, 60):
+            self.tache(jour_prevu=J, estimation_minutes=minutes)
+        self.tache(jour_prevu=J)
+        self.tache(jour_prevu=jours(1), echeance=J, estimation_minutes=30)
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9), estimation_minutes=30)
+        self.tache(jour_prevu=J, moment='soir', estimation_minutes=20)
+
+    def test_les_cinq_lectures_disent_la_meme_charge(self):
+        from apps.taches.services import journee as services
+        from apps.taches.views import agenda as vues_agenda
+        from apps.taches.views import journee as vues
+        self.jeu()
+        attendu = {'taches': 5, 'restantes_minutes': 300, 'sans_duree': 1, 'capacite_minutes': 240,
+                   'rendez_vous_minutes': 0, 'disponible_minutes': 240, 'deborde_minutes': 60}
+        heure = maintenant_a(15)
+        aujourdhui = services.aujourdhui(self.u, J, heure)
+        jour = vues_agenda.lire_agenda(self.u, J, J, 'jour', heure)['jours'][0]
+        lue = vues_agenda.lire_agenda(self.u, jours(-1), jours(5), 'semaine', heure)
+        semaine = {j['jour']: j for j in lue['jours']}
+        lectures = {
+            'aujourdhui': aujourdhui['progression']['charge'],
+            'ecriture': sel.progression_courante(self.u, J)['charge'],  # toute TACHE_ECRITE recale la page avec elle
+            'agenda_jour': jour['charge'],
+            'semaine': semaine[J.isoformat()]['charge'],
+            'priorites': vues.priorites(self.u, J)['charge'],
+            'point': vues.point(self.u, heure)['progression']['charge'],
+        }
+        for lecture, charge in lectures.items():
+            with self.subTest(lecture=lecture):
+                self.assertEqual(charge, attendu)
+        self.assertEqual(semaine[jours(1).isoformat()]['charge']['restantes_minutes'], 0)
+        self.assertIsNone(semaine[jours(-1).isoformat()]['charge'])  # un jour passé dit ses faites, pas une charge
+        # la charge de « Garder ces N » part de la même base (aucune proposée ici)
+        self.assertEqual(aujourdhui['propose']['charge']['minutes_estimees'], 300)
+
+
 class PointTests(_Base):
     """GET journee/point/ (« Où j'en suis ? ») à 15 h : essentielles restantes, prochaine ligne, restes."""
 
@@ -1212,7 +1425,10 @@ class PointTests(_Base):
         self.assertEqual(set(rendu['prochaine']), CLES_ITEM)
         for item in rendu['essentiel_restant']:
             self.assertEqual(set(item), CLES_ITEM)
-        self.assertEqual(set(rendu['carte_du_moment']), set(modele['carte_du_moment']))
+        # R4-04 : « Alléger » n'est servi que s'il a un sens (objectif dit, pas le premier jour, de quoi alléger) ;
+        # ce scénario n'en réunit pas les conditions : la carte est nulle, sinon elle a la forme de l'échantillon
+        if rendu['carte_du_moment'] is not None:
+            self.assertEqual(set(rendu['carte_du_moment']), set(modele['carte_du_moment']))
         self.assertEqual(rendu['jour'], J.isoformat())
         self.assertEqual(rendu['maintenant'], maintenant_a(15).isoformat())
 
@@ -1303,7 +1519,7 @@ class ChiffresDuJourTests(_Base):
         from apps.taches.services.projets import terminer_projet
         self.garder_et_faire()
         avant = self.chiffres()
-        self.assertEqual(avant, ((3, 3, 3, 3, 1, 1), ('3 sur 5 · essentiel 1 sur 1', '3 des 3 gardées')))
+        self.assertEqual(avant, ((3, 3, 3, 3, 1, 1), ('3 sur 5 · essentiel 1 sur 1', '')))
         terminer_projet(self.u, self.pr.pk, issue='atteint')
         self.assertEqual(self.chiffres(), avant)
         self.assertEqual(self.nuit(), (3, 3, 3, 1, 1))
@@ -1312,7 +1528,7 @@ class ChiffresDuJourTests(_Base):
         from apps.taches.services.projets import modifier_projet
         self.garder_et_faire(n=2, essentielles=0)
         avant = self.chiffres()
-        self.assertEqual(avant, ((2, 2, 2, 2, 0, 0), ('2 sur 5', '2 des 2 gardées')))
+        self.assertEqual(avant, ((2, 2, 2, 2, 0, 0), ('2 sur 5', '')))
         self.pr.refresh_from_db()
         modifier_projet(self.u, self.pr.pk, {'statut': StatutProjet.EN_PAUSE}, version=self.pr.lock_version)
         self.assertEqual(self.chiffres(), avant)
@@ -1332,7 +1548,7 @@ class ChiffresDuJourTests(_Base):
         terminer_tache(self.u, t.pk, maintenant=a(J, 11), aujourdhui=J)
         activite.done, activite.done_by, activite.done_at = True, self.u, a(J, 12)
         activite.save(update_fields=['done', 'done_by', 'done_at'])
-        self.assertEqual(self.chiffres(), ((1, 2, 2, 2, 0, 0), ('2 sur 5', '2 des 2 gardées')))
+        self.assertEqual(self.chiffres(), ((1, 2, 2, 2, 0, 0), ('2 sur 5', '')))
         self.assertEqual(sel.progression_courante(self.u, J)['plan_tenues'], 2)
         self.assertEqual(self.nuit(), (2, 2, 2, 0, 0))
 
@@ -1433,9 +1649,132 @@ class ChiffresDuJourTests(_Base):
         self.assertEqual(self.nuit()[3:], (0, 3))
 
     def test_1_ouverte_d_un_projet_en_pause_reste_absente(self):
-        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
+        # mis en pause AVANT ce jour (R2-031, choix C-5 : seule la pause du jour même garde ce qui y était posé)
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(jours(-1), 18))
         ouverte = self.tache(projet=en_pause, jour_prevu=J)
         faite = self.tache(projet=en_pause, jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
         ids = set(sel.taches_de_la_journee(self.u, J).values_list('pk', flat=True))
         self.assertNotIn(ouverte.pk, ids)
         self.assertIn(faite.pk, ids)
+
+
+class UneSourceTests(_Base):
+    """M1 (vague 3) — un chiffre, UNE source, et toutes ses lectures rendent le même nombre sur le même jeu."""
+
+    def trois_etoiles(self):
+        """3 ★ du jour ; une REPORTÉE à demain sans échéance, une COCHÉE à 11:00 (R3-001)."""
+        from apps.taches.services import journee as services
+        from apps.taches.services.planification import planifier
+        from apps.taches.services.taches import terminer_tache
+        fabriques.reglages(self.u)
+        faite, reportee, ouverte = (self.tache(jour_prevu=J, titre=f'Étoile {n}') for n in range(3))
+        for t in (faite, reportee, ouverte):
+            services.marquer_essentielle(self.u, t.pk, True, maintenant_a(8))
+        planifier(reportee, acteur=self.u, jour_prevu=jours(1))
+        terminer_tache(self.u, faite.pk, maintenant=a(J, 11), aujourdhui=J)
+        return faite, reportee, ouverte
+
+    def test_essentiel_le_meme_couple_sur_la_page_le_bilan_l_ecriture_et_la_nuit(self):
+        """Calcul à la main : 3 ★ posées ; la reportée sans échéance quitte la section Essentiel (prévues 3 → 2) ;
+        la cochée y reste, barrée (faites 1) : « essentiel 1/2 » partout — page (`aujourdhui/`), bilan du soir
+        (`journee/cloture/`), toute TACHE_ECRITE (`progression_courante`, ce que Mon rythme et la page
+        recalent), et la nuit (`PlanJour.essentiels_*`, lue par la revue)."""
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services import journee as services
+        from apps.taches.services.journee import clore_jour_precedent
+        faite, reportee, ouverte = self.trois_etoiles()
+        page = services.aujourdhui(self.u, J, maintenant_a(18, 30))
+        self.assertEqual([i['id'] for i in page['essentiel']], [faite.pk, ouverte.pk])
+        bilan = services.cloture(self.u, J, maintenant_a(18, 30))['bilan']
+        ecriture = sel.progression_courante(self.u, J)
+        lectures = {
+            'page': (page['progression']['essentiel_faites'], page['progression']['essentiel_prevues']),
+            'bilan': (bilan['essentiel_faites'], bilan['essentiel_prevues']),
+            'ecriture': (ecriture['essentiel_faites'], ecriture['essentiel_prevues']),
+        }
+        self.assertEqual(lectures, {nom: (1, 2) for nom in lectures})
+        self.assertEqual(bilan['texte'], '1 sur 5 · essentiel 1 sur 2')
+        self.assertEqual(bilan['texte_gardees'], '')
+        clore_jour_precedent(self.societe.pk, jours(1))
+        nuit = PlanJour.objects.get(proprietaire=self.u, jour=J)
+        self.assertEqual((nuit.essentiels_faits, nuit.essentiels_choisis), (1, 2))
+
+    def test_faites_du_jour_le_meme_nombre_sur_la_page_le_bilan_et_la_nuit(self):
+        """Calcul à la main : 1 ★ cochée + 2 tâches faites (dont une sous-tâche = 0, `compte_du_jour`) + 1 tâche
+        faite d'un projet mis en pause = 3 ; page, bilan, écriture et nuit disent 3."""
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services import journee as services
+        from apps.taches.services.journee import clore_jour_precedent
+        faite, _reportee, _ouverte = self.trois_etoiles()
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 12))
+        self.tache(parent=faite, statut=StatutTache.FAIT, fait_le=a(J, 12))
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
+        self.tache(projet=en_pause, statut=StatutTache.FAIT, fait_le=a(J, 13))
+        page = services.aujourdhui(self.u, J, maintenant_a(18, 30))['progression']['faites']
+        bilan = services.cloture(self.u, J, maintenant_a(18, 30))['bilan']['faites']
+        ecriture = sel.progression_courante(self.u, J)['faites']
+        clore_jour_precedent(self.societe.pk, jours(1))
+        nuit = PlanJour.objects.get(proprietaire=self.u, jour=J).compte_rythme
+        self.assertEqual((page, bilan, ecriture, nuit), (3, 3, 3, 3))
+
+    #: La semaine lue le jeudi 19/11/2026 à 15 h (lundi 16).
+    JEUDI = datetime.date(2026, 11, 19)
+    MAINTENANT = '2026-11-19 15:00:00'
+
+    def semaine_faite(self):
+        """Lun. 16 : 2 tâches + 1 routine (0) ; mar. 17 : 1 tâche, 1 tâche et sa sous-tâche (0), 1 activité ERP close ;
+        jeu. 19 (aujourd'hui) : 1 tâche ; ven. 13 : 2 tâches ; sam. 14 (non travaillé) : 3 tâches. Rien le mer. 18
+        (férié ou non selon le calendrier de la société : le test n'en dépend pas)."""
+        from apps.taches.models.taches import RegleRecurrence
+        regle = RegleRecurrence.objects.create(company=self.societe, proprietaire=self.u, frequence='quotidien',
+                                               date_debut=datetime.date(2026, 11, 1))
+        for jour, n in ((16, 2), (17, 1), (19, 1), (13, 2), (14, 3)):
+            for rang in range(n):
+                self.tache(statut=StatutTache.FAIT, fait_le=a(datetime.date(2026, 11, jour), 9 + rang))
+        self.tache(statut=StatutTache.FAIT, fait_le=a(datetime.date(2026, 11, 16), 12), recurrence=regle)
+        parent = self.tache(statut=StatutTache.FAIT, fait_le=a(datetime.date(2026, 11, 17), 15))
+        self.tache(parent=parent, statut=StatutTache.FAIT, fait_le=a(datetime.date(2026, 11, 17), 14))
+        activite = fabriques.activite(self.u, due_date=datetime.date(2026, 11, 17))
+        activite.done, activite.done_by, activite.done_at = True, self.u, a(datetime.date(2026, 11, 17), 12)
+        activite.save(update_fields=['done', 'done_by', 'done_at'])
+
+    def test_la_semaine_le_meme_total_dans_la_revue_la_recherche_et_l_agenda(self):
+        """C-16 — calcul à la main : cette semaine = lun. 2 (la routine vaut 0) + mar. 3 (2 tâches, la sous-tâche
+        vaut 0, + l'activité close) + jeu. 1 = 6 ; la semaine d'avant = ven. 13 : 2 + sam. 14 : 3 = 5 (week-end
+        compris) ; jours = 3 (lun., mar., jeu.). Revue (tête), Recherche (`total` de « Faites cette semaine »)
+        et Agenda (Σ `faites_nb` du lun. 16 au dim. 22) disent 6."""
+        from testkit.time import frozen
+        self.semaine_faite()
+        client = client_de(self.u)
+        with frozen(self.MAINTENANT):
+            revue = client.get('/api/django/taches/revue/projets/').json()['bilan_semaine']
+            recherche = client.get('/api/django/taches/taches/', {'periode': 'faites_semaine'}).json()
+            agenda = client.get('/api/django/taches/agenda/', {'du': '2026-11-16', 'au': '2026-11-22',
+                                                               'vue': 'semaine'}).json()
+        lectures = {'revue': revue['donnees']['faites'], 'recherche': recherche['total'],
+                    'agenda': sum(j['faites_nb'] for j in agenda['jours'])}
+        self.assertEqual(lectures, {nom: 6 for nom in lectures})
+        self.assertEqual((revue['donnees']['prec'], revue['donnees']['jours']), (5, 3))
+        self.assertEqual(revue['texte'], 'Cette semaine : 6 faites (5 la précédente).')
+        self.assertEqual(len(recherche['results']) + len(recherche['activites_closes']), recherche['total'])
+
+    def test_mon_rythme_et_l_agenda_disent_le_meme_nombre_chaque_jour(self):
+        """C-21 — la nuit clôt du ven. 13 au mer. 18 ; la série de Mon rythme (ven. 13 : 2, sam. 14 HORS OBJECTIF : 3,
+        lun. 16 : 2, mar. 17 : 3) et l'Agenda (`faites_nb`) disent le même nombre, jour par jour ; le samedi ne compte
+        jamais contre l'objectif."""
+        from apps.taches.services.journee import clore_jour_precedent
+        from testkit.time import frozen
+        fabriques.reglages(self.u)
+        self.semaine_faite()
+        client = client_de(self.u)
+        with frozen(self.MAINTENANT):
+            for jour in range(14, 20):
+                clore_jour_precedent(self.societe.pk, datetime.date(2026, 11, jour))
+            serie = client.get('/api/django/taches/rythme/').json()['serie']
+            agenda = client.get('/api/django/taches/agenda/', {'du': '2026-11-13', 'au': '2026-11-18',
+                                                               'vue': 'semaine'}).json()
+        rythme = {barre['jour']: (barre['faites'], barre['hors_objectif']) for barre in serie if barre['faites']}
+        self.assertEqual(rythme, {'2026-11-13': (2, False), '2026-11-14': (3, True), '2026-11-16': (2, False),
+                                  '2026-11-17': (3, False)})
+        faites_agenda = {j['jour']: j['faites_nb'] for j in agenda['jours'] if j['jour'] in rythme}
+        self.assertEqual({jour: faites for jour, (faites, _hors) in rythme.items()}, faites_agenda)

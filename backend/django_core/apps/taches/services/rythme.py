@@ -37,7 +37,7 @@ from apps.taches.choix import (
     TypeIncitationEcran,
     TypeIncitationPush,
 )
-from apps.taches.entrees import sans_nul
+from apps.taches.entrees import refus_etat, sans_nul
 from apps.taches.models.journee import LignePlanJour, PlanJour
 from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.moteur import rythme as moteur
@@ -215,12 +215,10 @@ def _abandons(user, jour, etat, neuf, sauf=None):
 # --- POST rythme/ ----------------------------------------------------------------------------
 
 def _entier(valeur):
-    if isinstance(valeur, bool):
+    """Un entier JSON réel (le schéma publie `integer`) : `"5"`, `5.0` ou `true` → 400 (api-fuzz r2)."""
+    if isinstance(valeur, bool) or not isinstance(valeur, int):
         raise ErreursRythme({'objectif': [moteur.OBJECTIF_INVALIDE]})
-    try:
-        return int(valeur)
-    except (TypeError, ValueError, OverflowError):  # OverflowError : `1e400` lu comme l'infini (#12)
-        raise ErreursRythme({'objectif': [moteur.OBJECTIF_INVALIDE]})
+    return valeur
 
 
 def _lire_corps(donnees):
@@ -244,7 +242,11 @@ def _cle_confirmation(etat, neuf, objectif, sens):
     if neuf.mode == etat.mode:
         return None
     if neuf.mode == ModeRythme.TENIR:
-        return 'garder_ce_rythme' if neuf.tenir_fixee_le else 'garder_ce_rythme.provisoire'
+        if neuf.tenir_fixee_le:
+            return 'garder_ce_rythme'
+        # R3-004 (C-15) : provisoire sur le pas réel dès 5 jours évalués ; en dessous, le palier, dit franchement
+        mesure = moteur.reference_provisoire(neuf.comptes_recents) is not None
+        return 'garder_ce_rythme.provisoire' if mesure else 'garder_ce_rythme.palier'
     return 'en_faire_plus' if neuf.mode == ModeRythme.POUSSER else 'sans_objectif'
 
 
@@ -333,6 +335,8 @@ REFUS_AVANT_GARDER = 3
 #: Réponses permises par carte (reference/donnees.md §1 « Réponses permises ») ; `ignoree` et
 #: `expiree` sont posées par la nuit seule, jamais par cette route.
 _R = ReponseIncitation
+#: Les réponses qu'un écran peut donner (publiées) ; `ignoree` et `expiree` sont posées par la nuit seule.
+REPONSES_ECRAN = tuple(r for r in _R.values if r not in ('', _R.IGNOREE, _R.EXPIREE))
 REPONSES_PALIER = {
     'monter': {_R.OUI, _R.PAS_MAINTENANT},
     'baisser': {_R.OUI, _R.GARDER},
@@ -459,8 +463,10 @@ def _carte_a_repondre(user, carte_id, reponse, jour):
     carte = cartes_de(user).select_for_update().filter(pk=carte_id, canal=CanalIncitation.ECRAN).first()
     if carte is None:
         raise Introuvable()
-    if not isinstance(reponse, str) or reponse not in _reponses_permises(carte):
+    if not isinstance(reponse, str) or reponse not in REPONSES_ECRAN:  # forme : 400
         raise ErreursRythme({'reponse': [REPONSE_INCONNUE]})
+    if reponse not in _reponses_permises(carte):  # réponse de l'écran, pas permise À CETTE carte : état (409)
+        raise refus_etat({'reponse': [REPONSE_INCONNUE]})
     if carte.reponse or carte.repondu_le is not None or (carte.expire_le is not None and carte.expire_le < jour):
         raise PropositionExpiree()
     return carte

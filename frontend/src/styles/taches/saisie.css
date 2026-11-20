@@ -9,7 +9,33 @@
   background: transparent; color: var(--tch-texte); font: inherit; font-size: 1.0625rem; line-height: 1.6;
   caret-color: var(--tch-accent); outline: none;
 }
+/* R3-068 — le champ grandit avec ce qu'on tape (jusqu'à 6 lignes, puis il défile) : une saisie de 3 lignes ou un collage
+   ne montre plus sa 1re ligne coupée à mi-hauteur. Le miroir des jetons suit (même boîte, `inset: 0`). */
+/* couture L7 — plafond = 6 lignes + la marge du BAS seulement : arrivé au bout (ChampSaisie y ramène le champ quand le
+   curseur est en fin de texte), la 1re ligne visible commence pile en haut, jamais coupée à mi-hauteur */
+.tch .saisie-champ { field-sizing: content; max-height: calc(6lh + 4px); }
 .tch .saisie-champ::placeholder { color: var(--tch-texte-doux); }
+/* R2-051 — le grand champ de saisie n'a pas de cadre (ecran-saisie.html) : l'anneau de focus commun le dessinait en
+   deux filets pleine largeur, dont celui du haut coupait la 1re ligne d'une liste collée. Le curseur montre le focus. */
+.tch .saisie-champ:focus-visible { box-shadow: none; }
+.tch .feuille-saisie .saisie-champ { scroll-padding-top: 8px; }
+/* R2-051 — dans une feuille, un contrôle segmenté (Priorité, Rappel, En attente de…) suit la gouttière de la feuille,
+   prend toute la largeur (autant de colonnes que de choix) et garde chaque libellé sur une ligne */
+.tch .feuille .segmente { margin-inline: 0; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.tch .feuille .segmente button { min-width: 0; padding-inline: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* « Quelqu'un ou quelque chose » ne tient pas sur une demi-largeur d'iPhone : il se replie plutôt que d'être coupé */
+.tch .fiche-bloc[aria-label="En attente de"] .segmente button { height: auto; min-height: 40px; padding-block: 6px; white-space: normal; line-height: 1.2; }
+/* R2-051 — « Nouveau projet : {nom} » : une puce comme les autres (fond et bord neutres + point), même sans couleur
+   de projet (un projet nouveau n'en a pas encore : `--tch-point` / `--tch-bloc-fond` y étaient vides) */
+.tch .feuille-saisie .puce.nouveau {
+  gap: 6px; background: var(--tch-panneau); color: var(--tch-texte); box-shadow: inset 0 0 0 1.5px var(--tch-trait);
+}
+.tch .feuille-saisie .puce.nouveau::before {
+  content: ""; flex: none; width: 8px; height: 8px; border-radius: 999px; background: var(--tch-texte-doux);
+}
+/* R2-051 — l'aperçu d'une liste collée ne fait jamais défiler la feuille de travers */
+.tch .apercu-liste { overflow-x: hidden; }
+.tch .feuille .feuille-corps:has(.apercu-liste) { overflow-x: hidden; }
 /* Passe visuelle n° 32 (ecran-saisie.html, taches.css « .saisie-texte .jeton ») — les jetons lus surlignés DANS le
    texte : un calque derrière le textarea (même police, même retour à la ligne), texte transparent */
 .tch .saisie-zone { position: relative; }
@@ -49,7 +75,7 @@
 .tch .es-filtres + .section, .tch .es-filtres ~ .section:first-of-type { margin-top: 18px; }
 @media (min-width: 768px) { .tch .es-recherche .es-champ { height: 48px; } }
 /* le mot cherché, surligné dans le titre d'un résultat (`LigneTache` prop `surligne`) */
-.tch .titre .es-trouve { font-weight: 650; }
+.tch .titre .es-trouve { font-weight: 600; }
 /* TCH166 — Recherche, filtres repliés : vues enregistrées et « Enregistrer cette vue » */
 .tch .recherche-replies { display: grid; gap: 10px; }
 .tch .recherche-vue { display: flex; align-items: center; gap: 8px; }
@@ -61,6 +87,9 @@
 .tch .apercu-liste { display: flex; flex-direction: column; }
 .tch .apercu-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 2px; }
 .tch .apercu-entete .feuille-titre { text-align: left; font-size: 1.25rem; margin: 0; }
+/* R4-28 — saisie EN PLACE au bureau : le × de fermeture (44 px, posé en haut à droite, base.css) couvrait le compteur
+   « 6 tâches · 3 projets » (« proj×ts ») ; l'en-tête de l'aperçu s'arrête avant lui */
+.tch .feuille.popover-bureau .apercu-entete { padding-inline-end: 48px; }
 .tch .apercu-source { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
 .tch .apercu-groupe { margin-top: 18px; }
 .tch .apercu-projet {
@@ -72,16 +101,20 @@
 .tch .apercu-projet .nom small { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--tch-texte-doux); }
 /* Passe visuelle n° 33 (premier-usage-1-apercu.html) — l'en-tête d'un projet tient sur une ligne : point de
    couleur, nom, « {n} tâches · En faire une tâche », puis la puce de priorité « Moyenne ⌄ » */
-.tch .apercu-projet { flex-wrap: nowrap; padding-right: 6px; font-size: 1rem; font-weight: 650; }
+.tch .apercu-projet { flex-wrap: nowrap; padding-right: 6px; font-size: 1rem; font-weight: 600; }
 .tch .apercu-projet > .point { flex: none; }
 .tch .apercu-projet .nom-projet { display: block; overflow-wrap: anywhere; }
 .tch .apercu-bascule { position: relative; color: var(--tch-accent); font-weight: 500; }
 .tch .apercu-bascule::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); }
 .tch .apercu-bascule[aria-pressed="true"] { text-decoration: underline; }
+/* R4-26 — « Ressemble à « … » · Utiliser » : une 2e ligne discrète sous le nom du nouveau projet */
+.tch .apercu-projet .nom .apercu-ressemble { margin-top: 2px; overflow-wrap: anywhere; }
 .tch .puce.prio { flex: none; height: 34px; gap: 4px; background: var(--tch-surface); color: var(--tch-texte); }
 .tch .puce.prio svg { color: var(--tch-texte-doux); }
 /* une liste collée : la feuille s'ouvre en grand (cran 85, comme la maquette), quel que soit son cran de départ */
 .tch .feuille.cran-50:has(.apercu-liste) { height: 85vh; }
+/* R2-048 — … mais jamais plus haute que l'aperçu : une liste de quelques lignes n'a pas de blanc sous ses boutons */
+.tch .feuille.cran-50:has(.apercu-liste) { height: auto; min-height: 50vh; max-height: 85vh; }
 .tch .apercu-ligne { display: grid; grid-template-columns: 44px 1fr; align-items: start; min-height: 48px; margin-left: -11px; }
 .tch .apercu-ligne.retrait { padding-left: 28px; }
 .tch .apercu-ligne .coche-carree { margin-top: 2px; }
@@ -106,7 +139,7 @@
 .tch .fiche-corps { display: flex; flex-direction: column; gap: 4px; }
 .tch .fiche-titre-champ {
   display: block; width: 100%; min-height: 44px; margin: 4px 0 0; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
-  font: inherit; font-size: 1.375rem; line-height: 1.75rem; font-weight: 650; letter-spacing: -0.01em; outline: none;
+  font: inherit; font-size: 1.375rem; line-height: 1.75rem; font-weight: 600; letter-spacing: -0.01em; outline: none;
 }
 /* Passe visuelle (ecran-fiche.html, ecrans-coeur.css « Fiche ») — UN seul titre : la barre de la feuille n'en
    répète aucun (l'en-tête garde ✕ à gauche, ☆ et ⋯ à droite) ; le nom du dialogue reste lu */
@@ -121,6 +154,8 @@
 .tch .fiche-editeur { margin-top: 12px; }
 .tch .fiche-section { display: flex; flex-direction: column; margin-top: 22px; }
 .tch .fiche-section .fiche-notes { min-height: 0; padding: 0; font-size: 1rem; line-height: 1.5; }
+/* R2-045 — Notes vide = une ligne d'invite ; le champ épouse ensuite son texte (lignes repliées comprises) */
+.tch .fiche-section .fiche-notes { min-height: 44px; field-sizing: content; max-height: 18lh; }
 .tch .points { list-style: none; margin: 0; padding: 0; }
 .tch .point-liste { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; min-height: 44px; margin-left: -12px; }
 .tch .point-liste .case { margin: 0; }
@@ -151,7 +186,117 @@
 @media (min-width: 768px) {
   .tch .fiche .dialogue-bureau .fiche-entete-actions { top: 20px; right: 10px; }
 }
+/* R2-048 — feuille au contenu court (FeuilleACrans `cran-auto`) : sa hauteur est celle du contenu, plafonnée à 85 % */
+.tch .feuille.cran-auto { height: auto; max-height: 85vh; }
+/* R2-048 (spec-8 §2 : 260 ms d'entrée) — la feuille MONTE du bas, le voile se fond ; au bureau le dialogue glisse de
+   quelques pixels, le panneau arrive de la droite. `translate` (pas `transform`) : le dialogue centré garde son
+   `transform: translateX(-50%)`. Jamais quand la personne a demandé de réduire les animations. */
+@media (prefers-reduced-motion: no-preference) {
+  .tch .feuille { transition: translate var(--motion-slow) var(--tch-ease-entree), opacity var(--motion-slow) var(--ease-standard); }
+  .tch .voile { transition: opacity var(--motion-slow) var(--ease-standard); }
+  @starting-style {
+    .tch .feuille { translate: 0 100%; }
+    .tch .voile { opacity: 0; }
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 768px) {
+  @starting-style {
+    .tch .feuille.dialogue-bureau, .tch .feuille.popover-bureau { translate: 0 12px; opacity: 0; }
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+  @starting-style {
+    .tch .feuille.panneau-bureau { translate: 100% 0; opacity: 1; }
+  }
+}
+/* Vague 2 (spec-8 §2 : 180 ms de sortie) — la SORTIE : FeuilleACrans laisse une copie inerte `.sortante` le temps de
+   l'animation (la vraie feuille est déjà partie, le focus déjà rendu). La feuille du bas redescend, le dialogue glisse
+   et s'efface, le panneau repart à droite, le voile se fond. Sans transition : l'entrée (`@starting-style`) ne doit
+   pas se rejouer sur la copie. */
+.tch .feuille.sortante, .tch .voile.sortante { pointer-events: none; transition: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .tch .feuille.sortante, .tch .voile.sortante { animation: var(--motion-base) var(--ease-standard) both; }
+  .tch .feuille.sortante { animation-name: tch-feuille-sortie; }
+  .tch .voile.sortante { animation-name: tch-voile-sortie; }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 768px) {
+  .tch .feuille.dialogue-bureau.sortante { animation-name: tch-dialogue-sortie; }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+  .tch .feuille.panneau-bureau.sortante { animation-name: tch-panneau-sortie; }
+}
+@keyframes tch-feuille-sortie { from { translate: 0 0; } to { translate: 0 100%; } }
+@keyframes tch-dialogue-sortie { from { translate: 0 0; opacity: 1; } to { translate: 0 12px; opacity: 0; } }
+@keyframes tch-panneau-sortie { from { translate: 0 0; } to { translate: 100% 0; } }
+/* R4-20 — sans `from` : une feuille TIRÉE vers le bas a éclairci son voile, il part de là (jamais un éclair sombre) */
+@keyframes tch-voile-sortie { to { opacity: 0; } }
+/* R4-20 — la poignée et l'en-tête d'une feuille ne défilent rien : le doigt qui s'y pose tire la feuille (FeuilleACrans) */
+.tch .feuille .poignee, .tch .feuille .feuille-entete { touch-action: none; }
+/* R2-050 (choix C-2, ecran-fiche.html « col-fiche ») — au bureau large, la fiche, le bilan et Alléger sont un PANNEAU
+   fixe à droite, pleine hauteur sous la barre de l'ERP (`.header` collante, 52 px), sans voile : la liste reste
+   lisible et cliquable, la ligne ouverte surlignée (Fiche.jsx) ; toucher une autre ligne change la fiche. */
+@media (min-width: 1024px) {
+  .tch .feuille.panneau-bureau {
+    --tch-panneau-haut: 52px;
+    left: auto; right: 0; top: var(--tch-panneau-haut); bottom: 0; width: 420px; height: auto; max-height: none;
+    border-radius: 0; padding: 14px 24px 0; transform: none;
+    background: var(--tch-surface-haute); box-shadow: var(--shadow-lg), inset 1px 0 0 var(--tch-trait);
+  }
+  .tch .feuille.panneau-bureau .poignee { display: none; }
+  .tch .feuille.panneau-bureau .feuille-corps { margin: 0 -24px; padding: 4px 24px 0; }
+  .tch .feuille.panneau-bureau .feuille-pied { margin: auto -24px 0; padding: 14px 24px 20px; }
+  .tch .fiche .panneau-bureau .fiche-entete-actions { top: 14px; right: 14px; }
+  .tch .fiche .panneau-bureau .fiche-titre-champ { font-size: 1.5rem; line-height: 2rem; }
+  /* Couture r2 — le panneau POUSSE la page au lieu de la recouvrir (même règle sur tous les écrans) : la page s'arrête à
+     son bord gauche (420 px moins le rembourrage de 2 rem du scrolleur de l'ERP). Aujourd'hui rend la place de son
+     Agenda (que le panneau cachait) ; un projet en maître-détail rend celle de sa liste de projets : sinon, à 1280 px,
+     le panneau coupait le titre du projet en deux. La copie `.sortante` (animation de sortie) ne pousse plus rien. */
+  /* R3-064 — la copie `.sortante` (le panneau qui repart, 180 ms) pousse ENCORE : l'Agenda ne réapparaît plus d'un coup
+     SOUS le panneau qui s'en va, il revient une fois le panneau parti (et se fond, plus bas) */
+  .route-fade > .tch:has(.feuille.panneau-bureau) { padding-right: calc(420px - 2rem); }
+  .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau { grid-template-columns: minmax(0, 1fr); }
+  .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau-agenda { display: none; }
+  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-page:has(> .ep-md-liste) { padding-left: 0; }
+  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .ep-md-liste { display: none; }
+  /* R3-064 — la place que l'Agenda rend reste une marge : la liste garde sa largeur de lecture (à 1920 elle s'étalait sur
+     960 px, l'étoile à 800 px de son titre) */
+  .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau-liste { max-width: 720px; }
+  /* R3-064 — UN en-tête de panneau (fiche, bilan, Alléger) : × à gauche, titre à gauche en 17 px / 600 (le titre de la
+     fiche reste masqué : son titre est le grand champ) */
+  .tch .feuille.panneau-bureau .feuille-entete { grid-template-columns: 44px minmax(0, 1fr); column-gap: 6px; }
+  .tch .feuille.panneau-bureau .feuille-entete > span { display: none; }
+  .tch .feuille.panneau-bureau .feuille-titre {
+    text-align: left; font-size: 1.0625rem; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* R3-064 — le pied est toujours en BAS du panneau (Alléger : « Tout renvoyer aux projets » flottait à mi-hauteur) : le
+     bloc qui le porte (`.alleger`, `.bilan`) remplit le corps, le pied y prend `margin-top: auto` (règle ci-dessus) */
+  .tch .feuille.panneau-bureau .feuille-corps { display: flex; flex-direction: column; }
+  .tch .feuille.panneau-bureau .feuille-corps > :has(> .feuille-pied) { display: flex; flex-direction: column; flex: 1 0 auto; }
+}
+@media (min-width: 1360px) {
+  .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau { grid-template-columns: 216px minmax(0, 1fr); }
+}
+/* R3-064 — le panneau POUSSE au rythme où il glisse (260 ms), et l'Agenda revient en fondu après son départ ; rien de
+   tout cela quand la personne a demandé moins d'animations */
+@media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+  .route-fade > .tch { transition: padding-right var(--motion-slow) var(--tch-ease-entree); }
+  .tch .tch-bureau-agenda { transition: opacity var(--motion-slow) var(--ease-standard); }
+  @starting-style { .tch .tch-bureau-agenda { opacity: 0; } }
+}
 .tch .fiche-titre-champ:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
+/* R3-061 — les blocs que la lecture complète apporte (notes, check-list, Plus) gardent leur place dès la 1re image :
+   même hauteur que le bloc qui arrive (rangées de 44 px), aucun saut quand il remplace la place réservée */
+.tch .squelette {
+  height: calc(var(--tch-squelette-lignes, 1) * 44px); border-radius: var(--tch-rayon-champ);
+  background: var(--tch-panneau); opacity: 0.7;
+}
+.tch .squelette[data-squelette="titre"] { height: 44px; margin-top: 4px; width: 70%; }
+.tch .squelette[data-squelette="puces"] { height: 36px; margin-top: 14px; width: 85%; border-radius: 999px; }
+.tch .squelette[data-squelette="plus"] { margin-top: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .tch .squelette { animation: tch-squelette 1.4s var(--ease-standard) infinite alternate; }
+}
+@keyframes tch-squelette { from { opacity: 0.45; } to { opacity: 0.8; } }
 .tch .fiche-champ { display: flex; flex-direction: column; box-shadow: inset 0 -1px 0 var(--tch-trait); padding-bottom: 4px; }
 .tch .fiche-ligne {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; width: 100%; text-align: left;
@@ -169,11 +314,28 @@
 .tch .fiche-point .titre.faite { color: var(--tch-texte-doux); text-decoration: line-through; }
 .tch .fiche-ajout { display: flex; align-items: center; gap: 8px; min-height: 48px; color: var(--tch-texte-doux); }
 .tch .fiche-ajout input { flex: 1; }
+/* couture r2 — « après fait » (Répéter) : la case garde sa taille, collée à son libellé (`flex: 1` la centrait seule) */
+.tch .fiche-ajout input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--tch-accent); }
+.tch .fiche-ajout:has(input[type="checkbox"]) { color: var(--tch-texte); cursor: pointer; }
 .tch .fiche-rappel { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .tch .fiche-question {
   padding: 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); margin-bottom: 8px;
 }
 .tch .fiche-question p { margin: 0 0 8px; }
+
+/* R3-063 (choix C-23) — l'appui long au doigt : une feuille du bas titrée de la tâche, des rangées pleine largeur de
+   48 px (jamais le menu déroulant de 32 px du bureau) ; la ligne d'où elle vient reste surlignée tant qu'elle est ouverte */
+.tch .ligne.en-actions { background: var(--tch-selection); }
+.tch .actions-ligne-feuille { display: flex; flex-direction: column; margin: 0 calc(-1 * var(--tch-gouttiere)); padding-bottom: 4px; }
+.tch .action-ligne {
+  display: flex; align-items: center; min-height: 48px; padding: 0 var(--tch-gouttiere); width: 100%;
+  font-size: 1.0625rem; color: var(--tch-texte); text-align: left;
+}
+.tch .action-ligne.separee { margin-top: 6px; box-shadow: inset 0 1px 0 var(--tch-trait); }
+.tch .action-ligne.destructif { color: var(--tch-alerte); }
+.tch .action-ligne:active { background: var(--tch-survol); }
+@media (hover: hover) { .tch .action-ligne:hover { background: var(--tch-survol); } }
+.tch .feuille:has(.actions-ligne-feuille) .feuille-titre { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* TCH85 — fiche → Plus (ecran-fiche-plus.html) */
 .tch .fiche-plus { display: flex; flex-direction: column; gap: 4px; }
@@ -183,13 +345,19 @@
 .tch .fiche-lien { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; }
 .tch .fiche-lien a { color: var(--tch-accent); }
 .tch .bouton.destructif { color: var(--destructive); }
+/* R2-047 — « Supprimer « {titre} » ? » : sa propre ligne, pleine largeur ; les deux boutons l'un sous l'autre, le titre
+   long se replie dans son bouton au lieu de pousser « Annuler » hors de l'écran */
+.tch .fiche-supprimer { margin: 8px 0 0; min-width: 0; }
+.tch .fiche-supprimer p { overflow-wrap: anywhere; }
+.tch .fiche-supprimer .carte-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.tch .fiche-supprimer .bouton { width: 100%; min-width: 0; height: auto; min-height: 44px; padding-block: 10px; white-space: normal; overflow-wrap: anywhere; }
 
 /* TCH86 — écran À trier (ecran-a-trier.html, port de ecrans-coeur.css « À trier » + tour 2) : la ligne commune
    (case ronde, titre, méta), les gestes en LIENS sous la méta — jamais de pilules, jamais de filet entre lignes */
 .tch .ligne.tri { padding-bottom: 10px; }
 .tch .tri-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: 0 22px; margin-top: 0; margin-bottom: -10px; }
 .tch .geste {
-  position: relative; display: inline-flex; align-items: center; min-height: 44px;
+  position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px;
   font-size: 0.9375rem; font-weight: 500; color: var(--tch-texte-doux);
 }
 @media (hover: hover) { .tch .geste:hover { color: var(--tch-accent); } }
@@ -231,13 +399,31 @@
     grid-column: 2; grid-row: 1 / span 2; align-self: center; width: 280px; justify-content: flex-start;
     margin: 0; flex-wrap: nowrap; gap: 0 18px;
   }
-  .tch .ligne.tri .geste { font-size: 0.875rem; }
+  .tch .ligne.tri .geste { font-size: var(--tch-taille-meta); }
 }
+/* R3-065 — au bureau large, à la souris : les gestes d'À trier n'occupent plus une colonne fixe de 280 px (titres sur 2
+   lignes, « Projet… » tronqué à 1920) ; le titre prend toute la largeur, les gestes apparaissent au survol ou au focus
+   de la ligne (comme ⋯ sur les autres lignes), posés à droite sur le fond de la ligne. Au toucher, rien ne change.
+   Couture L7 — invisibles au repos mais JAMAIS traversés par le pointeur : avec `pointer-events: none`, le bouton étiré
+   du titre (`.ligne-corps-bouton::after`) recevait le clic posé sur « Aujourd'hui » (CI 1280 × 720 : « intercepts
+   pointer events ») ; la souris qui arrive sur un geste survole d'abord la ligne, il est donc visible au clic. */
+@media (min-width: 1024px) and (hover: hover) {
+  .tch .ligne.tri .ligne-corps { display: block; }
+  .tch .ligne.tri .tri-gestes {
+    position: absolute; right: 8px; top: 50%; translate: 0 -50%; width: auto; margin: 0; padding: 0 6px 0 24px;
+    border-radius: 10px; background: var(--tch-survol); box-shadow: -12px 0 12px -6px var(--tch-survol);
+    opacity: 0;
+  }
+  .tch .ligne.tri:hover .tri-gestes, .tch .ligne.tri:focus-within .tri-gestes,
+  .tch .ligne.tri .tri-gestes:has([data-state="open"]) { opacity: 1; }
+  .tch .ligne.tri:focus-within:not(:hover) .tri-gestes { background: var(--tch-surface); box-shadow: -12px 0 12px -6px var(--tch-surface); }
+}
+
 .tch .atrier-carte {
   display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-top: 12px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
 }
-.tch .atrier-carte-titre { margin: 0; font-size: 1.25rem; font-weight: 650; }
+.tch .atrier-carte-titre { margin: 0; font-size: 1.25rem; font-weight: 600; }
 .tch .atrier-compteur { margin: 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .bandeau .bouton.discret { height: 44px; }
 /* À trier : « 1 à-faire personnel dans Activités » sur une ligne, Tout convertir · Voir en liens dessous */

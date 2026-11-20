@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
 /* ============================================================================
@@ -21,10 +21,12 @@ export const INDICATION = 'Ajouter une tâche… demain, 10 h, #projet, !!'
 // eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export const PRIORITES_PROJET = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]]
 
+/** R3-042 — `deux_<type>` : le type lu au PLURIEL et son genre (f = féminin), pour accorder « lus/lues » et
+ *  « le second / la seconde » (« Deux jours lus », « Deux échéances lues »). */
 const TYPES_LUS = {
-  jour: 'jour', heure: 'heure', moment: 'moment', echeance: 'échéance', quelque_jour: 'jour',
-  projet: 'projet', section: 'étape', priorite: 'priorité', etiquette: 'étiquette', duree: 'durée',
-  recurrence: 'répétition', rappel: 'rappel',
+  jour: ['jours'], heure: ['heures', 'f'], moment: ['moments'], echeance: ['échéances', 'f'],
+  quelque_jour: ['« un jour »'], projet: ['projets'], section: ['étapes', 'f'], priorite: ['priorités', 'f'],
+  etiquette: ['étiquettes', 'f'], duree: ['durées', 'f'], recurrence: ['répétitions', 'f'], rappel: ['rappels'],
 }
 
 /** Phrase d'une alerte (textes.md §2.3) ; `alerte` = `{ code, ...variables }` ou le code seul. */
@@ -34,13 +36,16 @@ export function phraseAlerte(alerte) {
   const nom = a.nom ?? a.projet ?? a.texte ?? ''
   const cite = `« ${nom} »`
   if (a.code?.startsWith('deux_')) {
-    const type = TYPES_LUS[a.code.slice(5)] ?? a.code.slice(5)
-    return `Deux ${type} lus : le second reste dans le titre.`
+    const [type, genre] = TYPES_LUS[a.code.slice(5)] ?? [a.code.slice(5)]
+    return genre === 'f'
+      ? `Deux ${type} lues : la seconde reste dans le titre.`
+      : `Deux ${type} lus : le second reste dans le titre.`
   }
   switch (a.code) {
     case 'date_passee': return a.date ? `Date passée : ${a.date}.` : 'Date passée.'
     case 'heure_passee': return a.heure ? `${a.heure} est passée${a.jour ? ` : prévue ${a.jour}` : ''}.` : 'Cette heure est passée.'
-    case 'plusieurs_projets': return `Plusieurs projets s'appellent ${cite} : le premier est choisi.`
+    // R3-042 — le serveur n'envoie que le code (`analyseur.resoudre_projet`) : une phrase sans nom, jamais « «  » »
+    case 'plusieurs_projets': return 'Plusieurs projets commencent ainsi : le premier est choisi.'
     case 'projet_archive': return `${nom ? cite : 'Ce projet'} est archivé : la tâche ira dans À trier.`
     case 'date_invalide': return `${nom ? cite : 'Ce texte'} n'est pas une date : laissé dans le titre.`
     case 'duree_hors_bornes': return `Une durée va de 5 min à 16 h : ${nom ? cite : 'le texte'} reste dans le titre.`
@@ -78,25 +83,38 @@ function classeJeton(jeton) {
 
 /** Le calque des surlignages, DERRIÈRE le `<textarea>` natif (même police, même retour à la ligne) : le champ reste
  *  un vrai champ iPhone, le texte n'est jamais réécrit. */
-function Surlignage({ valeur, jetons }) {
+function Surlignage({ valeur, jetons, projets }) {
   const morceaux = morceauxSurlignes(valeur, jetons)
   if (!morceaux.some((m) => m.jeton)) return null
   return (
     <div className="saisie-miroir" aria-hidden="true">
       {morceaux.map((m, i) => (m.jeton
-        ? <span key={i} className={classeJeton(m.jeton)} data-p={m.jeton.valeur?.couleur}>{m.texte}</span>
+        ? <span key={i} className={classeJeton(m.jeton)} data-p={couleurDuJeton(m.jeton, projets) || undefined}>{m.texte}</span>
         : <span key={i}>{m.texte}</span>))}
       {'​'}
     </div>
   )
 }
 
-function PuceJeton({ jeton, onIgnorer }) {
+/** R3-045 — la couleur d'un projet EXISTANT lu par `#` : servie avec le jeton, sinon celle de la liste des projets du
+ *  compte (le serveur ne la sert pas dans `jetons[].valeur`) ; jamais pour un nouveau projet. */
+function couleurDuJeton(jeton, projets) {
+  if (jeton.type !== 'projet' || jeton.valeur?.nouveau) return null
+  return jeton.valeur?.couleur ?? (projets ?? []).find((p) => p.id === jeton.valeur?.id)?.couleur ?? null
+}
+
+function PuceJeton({ jeton, couleur, onIgnorer }) {
   const nouveau = jeton.type === 'projet' && jeton.valeur?.nouveau
-  const classe = nouveau ? 'puce nouveau' : jeton.type === 'projet' ? 'puce projet-lu' : 'puce lue'
+  // couture r2 — la puce d'un projet lu prend SA teinte (`data-p`, comme le surlignage du champ) ; sans couleur servie,
+  // elle garde le fond des autres puces lues (jamais une puce nue à côté de puces pleines)
+  const classe = nouveau ? 'puce nouveau' : couleur ? 'puce projet-lu' : 'puce lue'
+  // R3-045 — un projet existant : un POINT de sa couleur, jamais le « ● » de texte du libellé servi (noir)
+  const existant = jeton.type === 'projet' && !nouveau
+  const texte = existant ? String(jeton.libelle ?? '').replace(/^●\s*/u, '') : jeton.libelle
   return (
-    <span className={classe} data-jeton={jeton.type}>
-      <span className="chiffres">{jeton.libelle}</span>
+    <span className={classe} data-jeton={jeton.type} data-p={couleur || undefined}>
+      {existant && couleur ? <i className="point" aria-hidden="true" /> : null}
+      <span className="chiffres">{texte}</span>
       <button
         type="button"
         className="retirer"
@@ -107,6 +125,52 @@ function PuceJeton({ jeton, onIgnorer }) {
       </button>
     </span>
   )
+}
+
+/* R2-003 — dès `#`, la liste des projets OUVERTS : filtrée sans accents ni casse par le DÉBUT d'un mot du nom (la
+   même règle que le serveur, `analyseur.resoudre_projet`), flèches + Entrée ou le doigt ; le choix insère
+   `#Nom_Avec_Soulignés` (lu par la grammaire : `_` = espace). Échap ferme la liste, pas la feuille. */
+
+const sansAccents = (texte) => String(texte ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+const cle = (texte) => sansAccents(texte).replace(/[\s_-]+/g, '')
+const MAX_PROPOSES = 6
+const OUVERTS = new Set(['actif', 'en_pause'])
+
+/** Le `#mot` que le curseur est en train d'écrire (`{ debut, fin, q }`), ou `null`. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé par la feuille (D-ENF22)
+export function motDiese(valeur, curseur) {
+  const texte = String(valeur ?? '')
+  const pos = Number.isInteger(curseur) ? curseur : texte.length
+  const m = /(^|\s)#([^\s#]*)$/u.exec(texte.slice(0, pos))
+  if (!m) return null
+  const suite = /^[^\s]*/u.exec(texte.slice(pos))[0]
+  return { debut: m.index + m[1].length, fin: pos + suite.length, q: m[2] }
+}
+
+/** Les projets ouverts dont un mot COMMENCE par `q` (« sal », « salon_sol », « benal »), dans l'ordre reçu. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function projetsPour(projets, q) {
+  const cherche = cle(q)
+  return (projets ?? []).filter((p) => !p.statut || OUVERTS.has(p.statut)).filter((p) => {
+    if (!cherche) return true
+    const mots = String(p.nom ?? '').split(/[\s_-]+/u).filter(Boolean)
+    return mots.some((_, i) => cle(mots.slice(i).join('')).startsWith(cherche))
+  }).slice(0, MAX_PROPOSES)
+}
+
+/** `#Nom_Avec_Soulignés` : espaces → `_`, coupé au premier signe que la grammaire ne lit pas dans un nom. Sert un
+ *  NOUVEAU projet (« Créer « nom » ») : un nom inconnu n'est lu par le serveur que d'un seul mot. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function jetonProjet(nom) {
+  const souligne = String(nom ?? '').trim().replace(/\s+/gu, '_')
+  return souligne.split(/[^\p{L}\p{N}_-]/u)[0]
+}
+
+/** R3-047 — le jeton d'un projet EXISTANT, tel qu'il s'écrit (« Chantier Bénali 9 kWc », espaces gardés) : le serveur
+ *  lit en entier, après `#`, le nom d'un projet existant (`analyseur.projets_nommes_en_entier`). */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function jetonProjetExistant(nom) {
+  return String(nom ?? '').trim().replace(/\s+/gu, ' ')
 }
 
 export function PrioriteProjet({ nom, valeur, onChoisir }) {
@@ -140,17 +204,104 @@ export default function ChampSaisie({
   onSoumettre,
   autoFocus = true,
   indication = INDICATION,
+  projets = null,
+  typesAuPied = [],
 }) {
   const idErreur = useId()
+  const idListe = useId()
   const champ = useRef(null)
-  // la feuille qui l'accueille met son focus sur sa poignée à l'ouverture : on reprend la main juste après
+  const [curseur, setCurseur] = useState(null)
+  const [actif, setActif] = useState(0)
+  const [fermeePour, setFermeePour] = useState(null)
+  // la feuille qui l'accueille met son focus sur sa poignée à l'ouverture : on reprend la main juste après.
+  // R3-040 — un brouillon repris : le curseur va APRÈS la phrase (un texte posé par le navigateur le laisse au début :
+  // « Deux » tapé donnait « DeuxBrouillon un »). Posé AU MONTAGE, dans la même image que le texte : une frappe faite
+  // avant l'image suivante n'est jamais déplacée ; le focus, lui, attend l'image (il ne bouge pas le curseur)
+  useLayoutEffect(() => {
+    const el = champ.current
+    if (!el) return
+    const fin = el.value.length
+    el.setSelectionRange?.(fin, fin)
+  }, [])
   useEffect(() => {
     if (!autoFocus) return undefined
-    const id = requestAnimationFrame(() => champ.current?.focus())
+    const id = requestAnimationFrame(() => {
+      if (champ.current && champ.current !== document.activeElement) champ.current.focus()
+    })
     return () => cancelAnimationFrame(id)
   }, [autoFocus])
-  const phrases = alertes.map(phraseAlerte).filter(Boolean)
+  // vague 3 — curseur à poser après une écriture du champ par le CODE (choix d'un projet dans la liste `#`) : posé
+  // dans la même image que la valeur, AVANT toute frappe suivante (jamais dans un `requestAnimationFrame`, qui passait
+  // après la lettre suivante sous charge et la faisait avaler par le jeton suivant)
+  const curseurVoulu = useRef(null)
+  useLayoutEffect(() => {
+    const voulu = curseurVoulu.current
+    const el = champ.current
+    if (!voulu || !el || el.value !== voulu.valeur) return
+    curseurVoulu.current = null
+    el.setSelectionRange?.(voulu.pos, voulu.pos)
+  })
+  // couture L7 — le champ plafonné à 6 lignes (saisie.css) défile : le navigateur ne ramène le curseur que juste assez
+  // pour le voir, et la 1re ligne visible restait coupée à mi-hauteur. Curseur en fin de texte : le champ va au bout, et
+  // le plafond (6 lignes + la marge du bas) aligne alors la 1re ligne visible sur son haut.
+  useLayoutEffect(() => {
+    const el = champ.current
+    if (!el || el.scrollHeight <= el.clientHeight || el.selectionEnd !== el.value.length) return
+    el.scrollTop = el.scrollHeight
+  }, [valeur])
+  const mot = projets ? motDiese(valeur, curseur) : null
+  const proposes = mot ? projetsPour(projets, mot.q) : []
+  // R4-29 — le `#mot` en cours est DÉJÀ lu comme un projet existant (l'analyse de CE texte, à cette place) et la liste
+  // ne proposerait que lui : elle se tait — la puce du pied le dit (jamais la suggestion ET la puce l'une sous l'autre)
+  const dejaLu = Boolean(mot) && proposes.length === 1 && jetons.some((j) => j.type === 'projet' && !j.valeur?.nouveau
+    && j.debut === mot.debut && String(valeur ?? '').slice(j.debut, j.fin) === j.source && j.valeur?.id === proposes[0].id)
+  const listeOuverte = proposes.length > 0 && fermeePour !== valeur && !dejaLu
+  // R3-042 — « plusieurs projets » se tait tant que la liste `#` est ouverte : elle montre déjà les projets candidats
+  const codeAlerte = (a) => (typeof a === 'string' ? a : a?.code)
+  const phrases = alertes
+    .filter((a) => !(listeOuverte && codeAlerte(a) === 'plusieurs_projets'))
+    .map(phraseAlerte).filter(Boolean)
+  const courant = Math.min(actif, Math.max(proposes.length - 1, 0))
+  const lireCurseur = (e) => setCurseur(e.target.selectionStart ?? null)
+  /** Le choix réécrit le champ à partir de sa valeur COURANTE (celle du champ à l'instant du choix, jamais une copie
+   *  d'un rendu plus ancien) ; la valeur et le curseur sont posés dans la même image, sans rien d'asynchrone entre. */
+  const choisirProjet = (projet) => {
+    // R3-047 — le nom avec ses espaces (« #Chantier Bénali 9 kWc »), plus « #Chantier_Bénali_9_kWc »
+    const jeton = jetonProjetExistant(projet.nom)
+    const el = champ.current
+    const courante = el ? el.value : String(valeur ?? '')
+    const motCourant = motDiese(courante, el ? el.selectionStart : curseur)
+    if (!motCourant || !jeton) return
+    const avant = `${courante.slice(0, motCourant.debut)}#${jeton} `
+    const apres = courante.slice(motCourant.fin).replace(/^\s+/u, '')
+    const nouvelle = avant + apres
+    curseurVoulu.current = { valeur: nouvelle, pos: avant.length }
+    onChange?.(nouvelle)
+    setActif(0)
+    setCurseur(avant.length)
+    if (el && el !== document.activeElement) el.focus()
+  }
+
   const surTouche = (e) => {
+    if (listeOuverte && !e.nativeEvent?.isComposing) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActif(e.key === 'ArrowDown' ? Math.min(courant + 1, proposes.length - 1) : Math.max(courant - 1, 0))
+        return
+      }
+      // couture r2 — « #Nom » déjà tapé en entier (le choix ne changerait rien) : Entrée envoie la phrase, Tab complète
+      const complet = Boolean(mot) && cle(mot.q) === cle(jetonProjet(proposes[courant]?.nom))
+      if ((e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !complet) || e.key === 'Tab') {
+        e.preventDefault()
+        choisirProjet(proposes[courant])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault() // la liste se ferme ; la feuille, elle, reste ouverte
+        setFermeePour(valeur)
+        return
+      }
+    }
     if (e.key !== 'Enter' || e.nativeEvent?.isComposing) return
     const seule = !String(valeur ?? '').includes('\n')
     if ((seule && !e.shiftKey) || e.metaKey || e.ctrlKey) {
@@ -162,12 +313,17 @@ export default function ChampSaisie({
   return (
     <div className="champ-saisie">
       <div className="saisie-zone">
-        <Surlignage valeur={valeur} jetons={jetons} />
+        <Surlignage valeur={valeur} jetons={jetons} projets={projets} />
         <textarea
           className="saisie-champ"
           aria-label="Ajouter une tâche"
           aria-invalid={erreur ? true : undefined}
           aria-describedby={erreur ? idErreur : undefined}
+          // couture r2 — `aria-expanded` n'est pas permis sur un champ texte (axe : aria-allowed-attr, critique) : la liste
+          // ouverte se dit par `aria-controls` et `aria-activedescendant`
+          aria-autocomplete={projets ? 'list' : undefined}
+          aria-controls={listeOuverte ? idListe : undefined}
+          aria-activedescendant={listeOuverte ? `${idListe}-${proposes[courant].id}` : undefined}
           placeholder={indication}
           rows={2}
           enterKeyHint="send"
@@ -176,16 +332,39 @@ export default function ChampSaisie({
           spellCheck="true"
           ref={champ}
           value={valeur}
-          onChange={(e) => onChange?.(e.target.value)}
+          onChange={(e) => { lireCurseur(e); setActif(0); onChange?.(e.target.value) }}
+          onSelect={lireCurseur}
           onPaste={(e) => onColle?.(e.clipboardData?.getData('text') ?? '')}
           onKeyDown={surTouche}
         />
       </div>
+      {listeOuverte ? (
+        <div id={idListe} className="selecteur-projet-liste" role="listbox" aria-label="Projets">
+          {proposes.map((projet, i) => (
+            <button
+              key={projet.id}
+              id={`${idListe}-${projet.id}`}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              aria-selected={i === courant}
+              className="selecteur-projet-item"
+              data-p={projet.couleur}
+              // le doigt choisit sans voler le focus au champ (le clavier de l'iPhone reste ouvert)
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => choisirProjet(projet)}
+            >
+              <i className="point" aria-hidden="true" />{projet.nom}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {erreur ? <p id={idErreur} className="erreur-champ" role="alert">{erreur}</p> : null}
-      {jetons.length > 0 ? (
+      {/* R3-047 — un type que la feuille montre dans son pied (le projet lu) n'a pas une 2e puce ici */}
+      {jetons.some((j) => !typesAuPied.includes(j.type)) ? (
         <div className="puces saisie" aria-label="Ce que j'ai lu">
-          {jetons.map((jeton) => (
-            <PuceJeton key={`${jeton.type}:${jeton.debut}:${jeton.source}`} jeton={jeton} onIgnorer={onIgnorer} />
+          {jetons.filter((j) => !typesAuPied.includes(j.type)).map((jeton) => (
+            <PuceJeton key={`${jeton.type}:${jeton.debut}:${jeton.source}`} jeton={jeton} couleur={couleurDuJeton(jeton, projets)} onIgnorer={onIgnorer} />
           ))}
         </div>
       ) : null}

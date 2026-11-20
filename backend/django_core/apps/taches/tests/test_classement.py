@@ -227,7 +227,7 @@ def jeu_propose():
         dans(MAISON, 202, 2048, jour_prevu=date(2026, 11, 20)),  # M1
         dans(MAISON, 203, 3072), dans(MAISON, 204, 4096),  # M2, M3
         dans(POLY, 301, 1024, echeance=date(2026, 11, 12)),  # R2
-        dans(POLY, 302, 2048, quelque_jour=True),  # D1 en réserve
+        dans(POLY, 302, 2048, quelque_jour=True),  # D1 pour plus tard
         dans(POLY, 303, 3072, bloquee_par=304),  # D2 bloquée
         dans(POLY, 304, 4096), dans(POLY, 305, 5120),  # D3, D4
         dans(ADMIN, 401, 1024, echeance=date(2026, 11, 19)),  # A1
@@ -511,6 +511,62 @@ class CapaciteTests(unittest.TestCase):
         # Table de §3.6 : (rendez-vous en minutes, disponible) pour une capacité de 240.
         for rdv, dispo in ((60, 180), (120, 120), (30, 210), (0, 240), (300, 0), (30, 210)):
             self.assertEqual(temps_disponible(240, rdv), dispo)
+
+    def test_charge_du_jour_une_seule_regle(self):
+        """R4-01 (M1) — la charge d'un jour : ce qui RESTE à faire ce jour-là, durées dites seulement. Jeu du 17/11 :
+        prévue 30 min + prévue sans durée + échéance du jour sans jour prévu 60 min + ★ reportée demain gardée par
+        son échéance du jour 45 min comptent ; la faite (90), Ce soir (20), en attente (15), plus tard (10), reportée
+        3 fois (25), prévue demain (40) ne comptent pas. Calcul à la main : 30 + 60 + 45 = 135 restantes, 1 sans
+        durée, 4 tâches ; disponible = 240 − 60 = 180 ; déborde 0. Demain : la prévue demain (40) et la ★ (45, prévue
+        demain) — 85 ; l'échéance d'après-demain prévue demain ne compte qu'une fois (demain)."""
+        from apps.taches.moteur.classement import charge_du_jour
+        demain, apres = J + timedelta(days=1), J + timedelta(days=2)
+        items = [
+            tache(1, jour_prevu=J, estimation_minutes=30), tache(2, jour_prevu=J),
+            tache(3, echeance=J, estimation_minutes=60),
+            tache(4, jour_prevu=demain, echeance=J, estimation_minutes=45),
+            tache(5, jour_prevu=J, statut='fait', fait_le=datetime(2026, 11, 17, 9, 0), estimation_minutes=90),
+            tache(6, jour_prevu=J, moment='soir', estimation_minutes=20),
+            tache(7, jour_prevu=J, statut='en_attente', estimation_minutes=15),
+            tache(8, quelque_jour=True, echeance=J, estimation_minutes=10),
+            tache(9, jour_prevu=J, reports=3, estimation_minutes=25),
+            tache(10, jour_prevu=demain, echeance=apres, estimation_minutes=40),
+        ]
+        self.assertEqual(charge_du_jour(items, J, J, 240, 60), {
+            'taches': 4, 'restantes_minutes': 135, 'sans_duree': 1, 'capacite_minutes': 240,
+            'rendez_vous_minutes': 60, 'disponible_minutes': 180, 'deborde_minutes': 0})
+        # critique serveur n° 4 : la ★ (prévue demain, échéance aujourd'hui) pèse AUJOURD'HUI seulement — demain = 40
+        self.assertEqual(charge_du_jour(items, demain, J, 240, 0)['restantes_minutes'], 40)
+        self.assertEqual(charge_du_jour(items, apres, J, 240, 0)['restantes_minutes'], 0)
+        # 4 h 30 restantes pour 4 h : 30 min de trop
+        longue = [tache(1, jour_prevu=J, estimation_minutes=270)]
+        self.assertEqual(charge_du_jour(longue, J, J, 240, 0)['deborde_minutes'], 30)
+
+    def test_une_tache_pese_sur_un_seul_jour(self):
+        """Critique serveur n° 4 — une tâche pèse sur UN jour de la semaine : aujourd'hui si Aujourd'hui la garde
+        (prévue ou à échéance aujourd'hui) ; sinon le jour où elle est prévue (encore à venir) ; sinon son échéance.
+        Jeu, mardi 17/11 = J, semaine du 17 au 23 :
+          1. prévue jeu. 19, échéance mer. 18 (prévue APRÈS son échéance), 60 min → jeu. 19 seul (avant : mer. ET jeu.)
+          2. prévue mer. 18, échéance J, 45 min → J seulement (Aujourd'hui la garde par son échéance)
+          3. prévue ven. 20, 30 min → ven. 20
+          4. échéance sam. 21 sans jour prévu, 20 min → sam. 21
+          5. prévue lun. 16 (passé), échéance jeu. 19, 15 min → jeu. 19 (aucun jour prévu encore à venir)
+          6. prévue J, échéance ven. 20, 10 min → J seulement
+        Σ des durées = 60 + 45 + 30 + 20 + 15 + 10 = 180 ; par jour : J 45 + 10 = 55, mer. 0, jeu. 60 + 15 = 75,
+        ven. 30, sam. 20, dim. 0, lun. 23 0 → Σ = 55 + 75 + 30 + 20 = 180."""
+        from apps.taches.moteur.classement import charge_du_jour
+        d = {n: date(2026, 11, n) for n in range(16, 24)}
+        items = [
+            tache(1, jour_prevu=d[19], echeance=d[18], estimation_minutes=60),
+            tache(2, jour_prevu=d[18], echeance=J, estimation_minutes=45),
+            tache(3, jour_prevu=d[20], estimation_minutes=30),
+            tache(4, echeance=d[21], estimation_minutes=20),
+            tache(5, jour_prevu=d[16], echeance=d[19], estimation_minutes=15),
+            tache(6, jour_prevu=J, echeance=d[20], estimation_minutes=10),
+        ]
+        par_jour = {n: charge_du_jour(items, d[n], J, 240, 0)['restantes_minutes'] for n in range(17, 24)}
+        self.assertEqual(par_jour, {17: 55, 18: 0, 19: 75, 20: 30, 21: 20, 22: 0, 23: 0})
+        self.assertEqual(sum(par_jour.values()), sum(i.estimation_minutes for i in items))
 
 
 class ExplicationTests(unittest.TestCase):

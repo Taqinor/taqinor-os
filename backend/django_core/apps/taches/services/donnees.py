@@ -15,7 +15,7 @@ from collections import Counter
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
-from django.db import transaction
+from django.db import OperationalError, connection, transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
@@ -168,22 +168,54 @@ def exporter(user, *, maintenant=None):
 
 # --- Tout effacer -------------------------------------------------------------------------------
 
+#: Attente maximale d'un verrou pendant l'effacement (ms) : une ligne tenue par une autre écriture du même
+#: compte (un autre appareil, la nuit, un semis) fait échouer vite et proprement, au lieu d'attendre les 30 s du
+#: `statement_timeout` puis de répondre 500 (vu sur la pile chargée : « while deleting tuple … taches_planjour »).
+VERROU_MAX_MS = 5000
+#: SQLSTATE d'un effacement empêché : 55P03 `lock_not_available` (lock_timeout), 57014 `query_canceled`
+#: (statement_timeout). Toute autre erreur de base reste une panne (jamais déguisée).
+SQLSTATES_OCCUPE = frozenset({'55P03', '57014'})
+
+
+class EffacementOccupe(Exception):
+    """L'effacement n'a pas pu se faire : la transaction est défaite en entier, rien n'est effacé."""
+
+
+def _sqlstate(erreur):
+    cause = erreur.__cause__
+    return getattr(cause, 'sqlstate', None) or getattr(cause, 'pgcode', None)
+
+
 def tout_effacer(user):
     """Suppression DURE de toutes les lignes `taches` de `user` dans sa société (une transaction) →
     `{"effacees": {clé: nombre}}` (`tout_effacer.json`, clés à zéro omises ; `notification` : les
     lignes de la cloche de Tâches). Le réglage de la société garde sa valeur ; seule la trace
-    « modifié par » de `user` est retirée."""
+    « modifié par » de `user` est retirée. Verrou tenu ailleurs plus de `VERROU_MAX_MS`, ou délai de requête
+    dépassé : `EffacementOccupe`, et RIEN n'est effacé (la transaction est défaite)."""
+    try:
+        with transaction.atomic():
+            with connection.cursor() as curseur:
+                # entier lié en paramètre (interpolé côté client, comme core.db_guards.statement_timeout)
+                curseur.execute('SET LOCAL lock_timeout = %s', [VERROU_MAX_MS])
+            return {'effacees': _effacer_tout(user)}
+    except OperationalError as erreur:
+        if _sqlstate(erreur) in SQLSTATES_OCCUPE:
+            raise EffacementOccupe() from erreur
+        raise
+
+
+def _effacer_tout(user):
+    """Les suppressions elles-mêmes (appelées DANS la transaction de `tout_effacer`) → `{clé: nombre}`."""
     effacees = Counter()
-    with transaction.atomic():
-        for cle in ORDRE_EFFACEMENT:
-            _total, par_modele = _lignes_du_compte(cle, user).delete()
-            for label, nombre in par_modele.items():
-                if nombre and label in _CLE_DU_MODELE:
-                    effacees[_CLE_DU_MODELE[label]] += nombre
-        traces = _lignes_du_compte('reglages_societe', user).update(modifie_par=None)
-        if traces:
-            effacees['reglages_societe'] += traces
-        notifications = supprimer_notifications_du_compte(user, user.company_id, TYPES_NOTIFICATION)
-        if notifications:
-            effacees['notification'] += notifications
-    return {'effacees': dict(effacees)}
+    for cle in ORDRE_EFFACEMENT:
+        _total, par_modele = _lignes_du_compte(cle, user).delete()
+        for label, nombre in par_modele.items():
+            if nombre and label in _CLE_DU_MODELE:
+                effacees[_CLE_DU_MODELE[label]] += nombre
+    traces = _lignes_du_compte('reglages_societe', user).update(modifie_par=None)
+    if traces:
+        effacees['reglages_societe'] += traces
+    notifications = supprimer_notifications_du_compte(user, user.company_id, TYPES_NOTIFICATION)
+    if notifications:
+        effacees['notification'] += notifications
+    return dict(effacees)

@@ -1,6 +1,6 @@
 """Lire, éditer et supprimer une tâche (reference/api.md §3.2, §4 ; donnees.md invariants 1, 6, 7, 9, 15, 27).
 
-- `liste_taches` : la requête des listes paginées (À trier, En réserve, filtres, ✓+ d'une fiche ERP) ;
+- `liste_taches` : la requête des listes paginées (À trier, Plus tard, filtres, ✓+ d'une fiche ERP) ;
 - `reverifier_lien` : la fiche revérifie son lien ERP (invariant 23) sans toucher à `lock_version` ;
 - `modifier_tache` : le PATCH à verrou. Il REFUSE `jour_prevu`, `heure_debut`, `moment` et
   `quelque_jour` (invariant 15 : seul `planifier()` les écrit) ; chaque identifiant reçu est revérifié
@@ -25,7 +25,7 @@ from apps.taches.choix import (
     CibleLiable, Frequence, LienEtat, ModeRecurrence, Priorite, Source, StatutRappel, StatutTache,
 )
 from apps.taches.confidentialite import ECRAN, est_confidentielle, nom_pour
-from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.entrees import MESSAGE_DATE, introuvable, jour_dans_bornes, refus_etat
 from apps.taches.models.projets import Projet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, EtiquetteTache, RegleRecurrence, Tache
@@ -36,6 +36,7 @@ from apps.taches.selectors.base import (
     sections_de, taches_de,
 )
 from apps.taches.selectors.base import normalise_sql
+from apps.taches.selectors.journee import ROUTINE, faites_de_la_semaine
 from apps.taches.selectors.liens import cible_visible, libelle_de_cible
 from apps.taches.serializers.formes import charger_items
 from apps.taches.services.creation import creer_taches
@@ -55,7 +56,10 @@ PAS_RANG = 1024
 MAX_MAILLONS = 50
 HORIZON_OUVRES = 400
 VUES = ('boite', 'quelque_jour')
-PERIODES = ('aujourdhui', 'semaine', 'retard')
+#: `faites_semaine` (R2-124, « Faites cette semaine » de la Recherche) : les FAITES depuis lundi 0 h de la semaine du
+#: jour, la plus récente d'abord (statut et tri par défaut imposés par la période).
+FAITES_SEMAINE = 'faites_semaine'
+PERIODES = ('aujourdhui', 'semaine', 'retard', FAITES_SEMAINE)
 #: `fait_le` : la plus récemment faite d'abord (« Faites (n) » d'un projet : `?projet=&statut=fait&tri=fait_le`).
 TRIS = ('rang', 'echeance', 'priorite', 'fait_le')
 GROUPES = ('projet',)
@@ -142,7 +146,23 @@ def _filtrer_periode(qs, periode, aujourdhui):
         return qs.filter(jour_prevu__gte=aujourdhui, jour_prevu__lte=aujourdhui + datetime.timedelta(days=6))
     if periode == 'retard':
         return qs.filter(Q(jour_prevu__lt=aujourdhui) | Q(echeance__lt=aujourdhui))
+    if periode == FAITES_SEMAINE:
+        # R3-003 : la liste ne porte que ce que `total` compte (`compte_du_jour` : une routine et une sous-tâche
+        # valent 0 — la sous-tâche est exclue ICI, même quand `cible=` garde les sous-tâches des autres listes)
+        lundi = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
+        return (qs.filter(fait_le__gte=timezone.make_aware(datetime.datetime.combine(lundi, datetime.time.min)),
+                          parent__isnull=True)
+                .exclude(ROUTINE))
     return qs
+
+
+def entete_de_liste(user, params, *, aujourdhui=None):
+    """Les clés que `GET taches/` ajoute à sa page : pour `periode=faites_semaine` seulement, `total` (LA somme des
+    faites de la semaine, celle de la Revue et de l'Agenda) et `activites_closes` `[{jour, titre}]` (comptées dans
+    `total`, absentes de `results`) — R3-003, choix C-16 ; `{}` sinon (aucune requête)."""
+    if _choix(params, 'periode', PERIODES) != FAITES_SEMAINE:
+        return {}
+    return faites_de_la_semaine(user, aujourdhui or timezone.localdate())
 
 
 def _filtrer_lien(qs, params):
@@ -155,8 +175,8 @@ def _filtrer_lien(qs, params):
     return qs.filter(object_id=identifiant) if identifiant is not None else qs
 
 
-def _ordre(qs, params):
-    tri = _choix(params, 'tri', TRIS) or 'rang'
+def _ordre(qs, params, defaut='rang'):
+    tri = _choix(params, 'tri', TRIS) or defaut
     groupe = _choix(params, 'groupe', GROUPES)
     ordre = {'rang': ('rang_projet', 'id'), 'priorite': ('-priorite', 'id'),
              'echeance': (F('echeance').asc(nulls_last=True), 'id'),
@@ -167,12 +187,14 @@ def _ordre(qs, params):
 def liste_taches(user, params, *, assistant=False, aujourdhui=None):
     """Le queryset des listes (`GET taches/`) ; 400 nommé sur un paramètre inconnu ou illisible.
 
-    `vue=boite` : À trier ; `vue=quelque_jour` : En réserve ; `cible` + `cible_id` + `ouvertes` : les
+    `vue=boite` : À trier ; `vue=quelque_jour` : Plus tard ; `cible` + `cible_id` + `ouvertes` : les
     tâches liées à une fiche ERP (✓+). Un compte ne lit jamais que SES tâches."""
     aujourdhui = aujourdhui or timezone.localdate()
-    qs = taches_de(user).filter(statut__in=_statuts(params))
+    periode = _choix(params, 'periode', PERIODES)
+    faites_semaine = periode == FAITES_SEMAINE
+    qs = taches_de(user).filter(statut__in=(StatutTache.FAIT,) if faites_semaine else _statuts(params))
     qs = _filtrer_lien(_filtrer_vue(qs, _choix(params, 'vue', VUES)), params)
-    qs = _filtrer_periode(qs, _choix(params, 'periode', PERIODES), aujourdhui)
+    qs = _filtrer_periode(qs, periode, aujourdhui)
     for nom, champ in (('projet', 'projet_id'), ('section', 'section_id')):
         valeur = _entier(params, nom)
         if valeur is not None:
@@ -186,7 +208,7 @@ def liste_taches(user, params, *, assistant=False, aujourdhui=None):
     qs = filtrer_q(qs, params.get('q'), assistant=assistant)
     if assistant:
         qs = qs.exclude(TACHE_CONFIDENTIELLE)
-    return _ordre(qs, params)
+    return _ordre(qs, params, defaut='fait_le' if faites_semaine else 'rang')
 
 
 def reverifier_lien(user, tache):
@@ -289,7 +311,7 @@ def _echeance(edition, donnees):
             edition.poser('echeance_heure', None)
     if 'echeance_heure' in donnees and donnees['echeance_heure'] is not None:
         if tache.echeance is None:
-            raise serializers.ValidationError({'echeance_heure': [MESSAGE_HEURE_SANS_ECHEANCE]})
+            raise refus_etat({'echeance_heure': [MESSAGE_HEURE_SANS_ECHEANCE]})
         edition.poser('echeance_heure', donnees['echeance_heure'])
     elif 'echeance_heure' in donnees:
         edition.poser('echeance_heure', None)
@@ -324,7 +346,7 @@ def _projet_et_section(edition, donnees):
         return
     for champ in ('projet_id', 'section_id'):
         if champ in donnees and tache.parent_id is not None:
-            raise serializers.ValidationError({champ: [MESSAGE_NON_MODIFIABLE]})
+            raise refus_etat({champ: [MESSAGE_NON_MODIFIABLE]})  # une sous-tâche : état
     if 'projet_id' in donnees:
         projet = _projet(user, donnees['projet_id']) if donnees['projet_id'] is not None else None
         if edition.poser('projet', projet.pk if projet else None):
@@ -361,7 +383,7 @@ def _prerequis(edition, donnees, usage):
     candidat_id = donnees['bloquee_par_id']
     candidat = tache_du_compte(edition.user, candidat_id) if candidat_id is not None else None
     if candidat is not None and _boucle(edition.user, edition.tache, candidat):
-        raise serializers.ValidationError({'bloquee_par_id': [
+        raise refus_etat({'bloquee_par_id': [
             f'Boucle : « {nom_pour(candidat, usage)} » attend déjà « {nom_pour(edition.tache, usage)} ».']})
     edition.poser('bloquee_par', candidat.pk if candidat else None)
 
@@ -392,11 +414,13 @@ def _lien_courant(tache):
 
 
 def verifier_lien(user, lien):
-    """400 sur `lien` si la cible n'est pas liable ou pas visible (refus = introuvable)."""
+    """400 sur `lien` si la cible n'est pas liable ; 404 (même corps) si elle n'est pas visible."""
     if lien.get('cible') not in CibleLiable.values:
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_TYPE]})
+    # Un id bien formé qui ne désigne rien de visible : la ressource liée manque — 404 au corps inchangé (règle
+    # d'`IdInconnu404Mixin`, api-fuzz r2 : le schéma ne peut pas dire quelles fiches existent).
     if not cible_visible(user, lien['cible'], lien.get('id')):
-        raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
+        raise introuvable({'lien': [MESSAGE_LIEN_INTROUVABLE]})
 
 
 def _lien(edition, lien):
@@ -544,6 +568,10 @@ def _occurrence_suivante(user, t, maintenant, aujourdhui, *, apres_fait):
     regle = t.recurrence if t.recurrence_id else None
     if regle is None or not regle.actif:
         return None
+    if taches_de(user).filter(recurrence=regle, statut__in=OUVERTES).exclude(pk=t.pk).exists():
+        # La série a DÉJÀ son occurrence ouverte (invariant 5 tenu) : rien ne naît — cocher ou sauter cette
+        # occurrence-ci ne doit jamais échouer sur le refus d'état de `creation._regle_existante` (409).
+        return None
     jour = prochaine_occurrence(
         regle, t.occurrence_du, aujourdhui, fait_le=timezone.localtime(maintenant) if apres_fait else None,
         est_ouvre=est_ouvre_de(user, aujourdhui))
@@ -606,7 +634,7 @@ def sauter_occurrence(user, pk, *, maintenant=None, aujourdhui=None):
     with transaction.atomic():
         t = tache_du_compte(user, pk, verrou=True)
         if t.recurrence_id is None:
-            raise serializers.ValidationError({'recurrence': [MESSAGE_PAS_RECURRENTE]})
+            raise refus_etat({'recurrence': [MESSAGE_PAS_RECURRENTE]})
         if t.statut not in OUVERTES:
             return ResultatEcriture(t)
         ops = []
@@ -660,7 +688,7 @@ def attendre_tache(user, pk, texte):
     with transaction.atomic():
         t = tache_du_compte(user, pk, verrou=True)
         if t.statut not in OUVERTES:
-            raise serializers.ValidationError({'statut': [MESSAGE_VALEUR_INCONNUE]})
+            raise refus_etat({'statut': [MESSAGE_VALEUR_INCONNUE]})  # tâche close : état
         avant = {'statut': t.statut, 'en_attente_de': t.en_attente_de}
         t.statut, t.en_attente_de = StatutTache.EN_ATTENTE, texte
         t.save(update_fields=['statut', 'en_attente_de', 'updated_at'])
@@ -701,12 +729,12 @@ def _message_tranche(choix, t, aujourdhui):
     if choix == 'aujourdhui':
         return "Mise à aujourd'hui"
     if choix == 'un_jour':
-        return 'En réserve'
+        return 'Plus tard'
     return f'Prévue {format_jour(t.jour_prevu, aujourdhui)}'
 
 
 def trancher_tache(user, pk, choix, jour=None, *, maintenant=None, aujourdhui=None):
-    """« À revoir » : `aujourdhui`, `garder`, `jour` (une date), `un_jour` (En réserve) ou `abandonner`.
+    """« À revoir » : `aujourdhui`, `garder`, `jour` (une date), `un_jour` (Plus tard) ou `abandonner`.
     `aujourdhui`, `garder` et `jour` posent `reports_tranches = reports` : la question ne revient que
     3 reports plus tard (invariant 4). Un seul geste."""
     if choix not in CHOIX_TRANCHER:
@@ -767,9 +795,15 @@ def _liste_a_ordonner(user, t, liste):
     étape et du même parent (`rang_projet`, puis `id` : invariant 32)."""
     ouvertes = taches_de(user).filter(statut__in=OUVERTES)
     if liste == 'jour':
-        if t.jour_prevu is None:
-            raise serializers.ValidationError({'liste': [MESSAGE_VALEUR_INCONNUE]})
-        qs = ouvertes.filter(parent__isnull=True, jour_prevu=t.jour_prevu)
+        aujourdhui = timezone.localdate()
+        if aujourdhui in (t.jour_prevu, t.echeance):
+            # R3-007 : la liste d'AUJOURD'HUI est celle de la journée — `classement.gardee_aujourdhui` (jour prévu OU
+            # échéance aujourd'hui) : une ★ gardée par son échéance (prévue demain) est une voisine comme une autre
+            qs = ouvertes.filter(parent__isnull=True).filter(Q(jour_prevu=aujourdhui) | Q(echeance=aujourdhui))
+        elif t.jour_prevu is None:  # « jour » d'une tâche sans jour : refus d'ÉTAT de la tâche (409, api-fuzz r2)
+            raise refus_etat({'liste': [MESSAGE_VALEUR_INCONNUE]})
+        else:
+            qs = ouvertes.filter(parent__isnull=True, jour_prevu=t.jour_prevu)
         return qs, 'rang_jour', lambda x: (x.rang_jour is None, x.rang_jour or 0,
                                            x.heure_debut or datetime.time.max, -x.priorite, x.pk)
     qs = ouvertes.filter(projet_id=t.projet_id, section_id=t.section_id, parent_id=t.parent_id)
@@ -777,12 +811,12 @@ def _liste_a_ordonner(user, t, liste):
 
 
 def _voisin(user, pk, ids, nom):
-    """Le voisin `pk` (du compte, sinon 404) qui doit figurer dans la liste ordonnée (sinon 400)."""
+    """Le voisin `pk` (du compte, sinon 404) qui doit figurer dans la liste ordonnée (sinon 409, refus d'état)."""
     if pk is None:
         return None
     voisin = tache_du_compte(user, pk)
-    if voisin.pk not in ids:
-        raise serializers.ValidationError({nom: [MESSAGE_VALEUR_INCONNUE]})
+    if voisin.pk not in ids:  # voisin d'une autre liste : état (409)
+        raise refus_etat({nom: [MESSAGE_VALEUR_INCONNUE]})
     return voisin
 
 
@@ -895,7 +929,7 @@ def _appliquer_regle(regle, valeurs, enveloppe=None):
         setattr(regle, champ, valeur)
     if regle.date_fin is not None and regle.date_fin < regle.date_debut:
         erreur = {'date_fin': [MESSAGE_FIN_AVANT_DEBUT]}
-        raise serializers.ValidationError({enveloppe: erreur} if enveloppe else erreur)
+        raise refus_etat({enveloppe: erreur} if enveloppe else erreur)  # fin avant le début DE LA RÈGLE : état
 
 
 def _premiere_date_de(user, regle, aujourdhui):
@@ -965,7 +999,7 @@ def _regle_de_la_tache(edition, spec, aujourdhui):
         regle.save()
         return
     if 'frequence' not in valeurs:
-        raise serializers.ValidationError({'recurrence': {'frequence': [MESSAGE_REQUIS]}})
+        raise refus_etat({'recurrence': {'frequence': [MESSAGE_REQUIS]}})  # tâche sans règle : état
     debut = valeurs.get('date_debut') or t.jour_prevu or aujourdhui
     regle = RegleRecurrence(company_id=user.company_id, proprietaire=user, date_debut=debut)
     _appliquer_regle(regle, valeurs, 'recurrence')
@@ -1009,7 +1043,9 @@ def _cible_de_deplacement(user, valeurs):
         for projet_id in {c['projet_id'] for c in (commun, *par_tache.values()) if c.get('projet_id') is not None}:
             _projet(user, projet_id)
     except serializers.ValidationError as exc:
-        raise serializers.ValidationError({'valeurs': exc.detail})
+        # Un projet cible qui n'est pas au compte : la ressource manque (404, corps inchangé — règle
+        # d'`IdInconnu404Mixin`) ; le schéma ne peut pas dire quels projets existent (api-fuzz r2).
+        raise introuvable({'valeurs': exc.detail})
     return {'commun': commun, 'par_tache': par_tache}
 
 
@@ -1119,7 +1155,7 @@ TRAITEMENTS_LOT = {
 def _message_lot(action, n, valeurs, aujourdhui):
     if action == 'planifier':
         if valeurs['quelque_jour']:
-            return f'{n} en réserve'
+            return f'{n} pour plus tard'
         return f'{n} prévue{"s" if n > 1 else ""} {format_jour(valeurs["jour_prevu"], aujourdhui)}'
     singulier, pluriel = MOTS_LOT[action]
     return f'{n} {pluriel if n > 1 else singulier}'
@@ -1250,8 +1286,8 @@ def reordonner_element(user, pk, avant_id=None, apres_id=None):
         for nom, voisin in (('avant_id', avant_id), ('apres_id', apres_id)):
             if voisin is not None:
                 _element_du_compte(user, voisin)  # d'un autre compte : 404
-                if voisin not in ids:
-                    raise serializers.ValidationError({nom: [MESSAGE_VALEUR_INCONNUE]})
+                if voisin not in ids:  # point d'une autre check-list : état (409)
+                    raise refus_etat({nom: [MESSAGE_VALEUR_INCONNUE]})
         ids.insert(ids.index(avant_id) + 1 if avant_id is not None else ids.index(apres_id), element.pk)
         for rang, identifiant in enumerate(ids, start=1):
             par_id[identifiant].rang = rang * PAS_RANG
@@ -1338,10 +1374,20 @@ def supprimees_recentes(user, *, maintenant=None):
     return projets, _compteurs_par_projet(user, projets), charger_items(taches)[:PLAFOND_LISTE]
 
 
+#: R3-008 : « Derniers gestes » ne liste que les gestes sur des tâches ou des projets — jamais un réglage du rythme
+#: ni une préférence dite (« Noté : … ») ; une réponse à une carte (« OK », « Pas maintenant ») non plus : elle reste
+#: annulable par son toast.
+TYPES_HORS_DERNIERS_GESTES = ('preference', 'rythme')
+REPONSE_DE_CARTE = Q(type='decision', operations__contains=[{'objet': 'incitation_coach'}])
+
+
 def derniers_gestes(user, *, maintenant=None):
-    """`GET gestes/` : les gestes annulables des 7 derniers jours, le plus récent d'abord (200 au plus)."""
+    """`GET gestes/` : les gestes annulables des 7 derniers jours sur des tâches ou des projets, le plus récent
+    d'abord (200 au plus) ; ni réglage du rythme, ni préférence, ni réponse à une carte (R3-008)."""
     depuis = (maintenant or timezone.now()) - FENETRE_GESTES
-    return list(gestes_de(user).filter(created_at__gte=depuis).order_by('-created_at', '-pk')[:PLAFOND_LISTE])
+    gestes = (gestes_de(user).filter(created_at__gte=depuis).exclude(type__in=TYPES_HORS_DERNIERS_GESTES)
+              .exclude(REPONSE_DE_CARTE))
+    return list(gestes.order_by('-created_at', '-pk')[:PLAFOND_LISTE])
 
 
 def gestes_confidentiels(user, gestes):

@@ -33,6 +33,7 @@ const { DialogueEnregistrerModele } = await import('./Dialogues')
    « Dupliquer » dans le ⋯ d'un projet. Les réponses viennent des échantillons committés (`exempleContrat`). */
 
 const AUJOURDHUI = '2026-11-17'
+const LUNDI_PROCHAIN = '2026-11-23' // R3-137 : « Dupliquer » part du lundi qui suit aujourd'hui (mar. 17), « Utiliser un modèle » d'aujourd'hui
 const modeleServi = () => structuredClone(exempleContrat('taches', 'modele'))
 const apercuServi = () => structuredClone(exempleContrat('taches', 'modele_instancier'))
 const projetEcrit = () => structuredClone(exempleContrat('taches', 'projet_ecrit'))
@@ -66,6 +67,13 @@ describe('TCH157 — la liste des modèles', () => {
     expect(api.listerTousLesModeles).toHaveBeenCalledTimes(1)
   })
 
+  it('couture r2 — UN seul « ‹ Projets », celui de la coquille (plus de barre de retour dans la page)', async () => {
+    monter()
+    await screen.findByText('Salon')
+    expect(screen.getAllByRole('button', { name: 'Projets' })).toHaveLength(1)
+    expect(document.querySelector('.ep-barre')).toBeNull()
+  })
+
   it('« Aucun modèle » quand le serveur n\'en sert aucun', async () => {
     api.listerTousLesModeles.mockResolvedValue([])
     monter()
@@ -92,15 +100,20 @@ describe('TCH157 — Utiliser ce modèle (aperçu des dates avant d\'écrire)', 
     const dialogue = await ouvrir(user)
     expect(await within(dialogue).findByText('Préparation')).toBeInTheDocument() // étapes lues du contenu figé
     expect(within(dialogue).getByLabelText('Date de lancement')).toHaveValue(AUJOURDHUI)
-
-    await user.type(within(dialogue).getByLabelText('Nom du projet'), 'Salon 2027')
-    await user.tab() // l'aperçu se lit quand le nom est posé
-    await waitFor(() => expect(api.instancierModele).toHaveBeenCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: true }))
+    // R2-065 — le nom est prérempli et l'aperçu est lu DÈS L'OUVERTURE (rien n'est écrit)
+    expect(within(dialogue).getByLabelText('Nom du projet')).toHaveValue('Salon')
+    await waitFor(() => expect(api.instancierModele).toHaveBeenCalledWith(2, { nom: 'Salon', date_lancement: AUJOURDHUI, apercu: true }, { erreurSousLeChamp: true }))
     expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument()
-    expect(api.instancierModele).toHaveBeenCalledTimes(1) // rien d'écrit à ce stade
+
+    const champ = within(dialogue).getByLabelText('Nom du projet')
+    await user.clear(champ)
+    await user.type(champ, 'Salon 2027')
+    await user.tab() // l'aperçu se relit quand le nom est posé
+    await waitFor(() => expect(api.instancierModele).toHaveBeenCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: true }, { erreurSousLeChamp: true }))
+    expect(api.instancierModele.mock.calls.every(([, corps]) => corps.apercu === true)).toBe(true) // rien d'écrit à ce stade
 
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: false }))
+    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: false }, { erreurSousLeChamp: true }))
     expect(await screen.findByText('Écran du projet créé')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Annuler' })).toBeInTheDocument() // « Projet créé · Annuler »
   })
@@ -111,25 +124,24 @@ describe('TCH157 — Utiliser ce modèle (aperçu des dates avant d\'écrire)', 
     const user = utilisateur()
     monter()
     const dialogue = await ouvrir(user)
-    await user.type(within(dialogue).getByLabelText('Nom du projet'), 'Salon 2027')
-    await user.click(within(dialogue).getByRole('button', { name: 'Créer' })) // 1er clic : l'aperçu seul
-    expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument()
-    await user.click(within(dialogue).getByRole('button', { name: 'Créer' })) // 2e clic : l'écriture
+    expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument() // l'aperçu est déjà là
+    await user.click(within(dialogue).getByRole('button', { name: 'Créer' })) // UN seul Créer : l'écriture
     await screen.findByText('Écran du projet créé')
     await user.click(screen.getByRole('button', { name: 'Annuler' }))
     expect(api.annulerGeste).toHaveBeenCalledWith(projetEcrit().geste_id)
   })
 
-  it('Créer sans aperçu à jour lit l\'aperçu SEULEMENT : aucune écriture avant de l\'avoir vu', async () => {
+  it('R2-065 — taper un nom puis toucher Créer tout de suite écrit AU PREMIER TOUCHER (plus de « premier Créer qui ne crée rien »)', async () => {
     api.instancierModele.mockImplementation(async (id, corps) => ({ data: corps.apercu ? apercuServi() : projetEcrit() }))
     const user = utilisateur()
     monter()
     const dialogue = await ouvrir(user)
-    await user.type(within(dialogue).getByLabelText('Nom du projet'), 'Salon 2027')
-    await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    await within(dialogue).findByText(/première le/)
-    expect(api.instancierModele.mock.calls.every(([, corps]) => corps.apercu === true)).toBe(true)
-    expect(screen.queryByText('Écran du projet créé')).toBeNull()
+    const champ = within(dialogue).getByLabelText('Nom du projet')
+    await user.clear(champ)
+    await user.type(champ, 'Salon 2027')
+    await user.click(within(dialogue).getByRole('button', { name: 'Créer' })) // sans quitter le champ avant
+    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: false }, { erreurSousLeChamp: true }))
+    expect(await screen.findByText('Écran du projet créé')).toBeInTheDocument()
   })
 
   it('changer la date relit l\'aperçu avec la nouvelle date', async () => {
@@ -137,21 +149,20 @@ describe('TCH157 — Utiliser ce modèle (aperçu des dates avant d\'écrire)', 
     const user = utilisateur()
     monter()
     const dialogue = await ouvrir(user)
-    await user.type(within(dialogue).getByLabelText('Nom du projet'), 'Salon 2027')
-    await user.tab()
     await within(dialogue).findByText(/première le/)
     const champ = within(dialogue).getByLabelText('Date de lancement')
     await user.clear(champ)
     await user.type(champ, '2026-12-01')
-    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon 2027', date_lancement: '2026-12-01', apercu: true }))
+    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon', date_lancement: '2026-12-01', apercu: true }, { erreurSousLeChamp: true }))
   })
 
   it('un nom de projet déjà pris est dit sous le champ, rien n\'est créé', async () => {
-    api.instancierModele.mockRejectedValue({ response: { status: 400, data: { nom: ['Un projet « Ventes » existe déjà.'] } } })
+    api.instancierModele.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un projet « Ventes » existe déjà.'], detail: 'Un projet « Ventes » existe déjà.', code: 'state_conflict' } } })
     const user = utilisateur()
     monter()
     const dialogue = await ouvrir(user)
     const champ = within(dialogue).getByLabelText('Nom du projet')
+    await user.clear(champ)
     await user.type(champ, 'Ventes')
     await user.tab()
     expect(await within(dialogue).findByText('Un projet « Ventes » existe déjà.')).toBeInTheDocument()
@@ -159,12 +170,13 @@ describe('TCH157 — Utiliser ce modèle (aperçu des dates avant d\'écrire)', 
     expect(screen.queryByText('Écran du projet créé')).toBeNull()
   })
 
-  it('Créer reste éteint sans nom', async () => {
+  it('Créer reste éteint sans nom (le nom effacé)', async () => {
+    api.instancierModele.mockImplementation(async () => ({ data: apercuServi() }))
     const user = utilisateur()
     monter()
     const dialogue = await ouvrir(user)
+    await user.clear(within(dialogue).getByLabelText('Nom du projet'))
     expect(within(dialogue).getByRole('button', { name: 'Créer' })).toBeDisabled()
-    expect(api.instancierModele).not.toHaveBeenCalled()
   })
 })
 
@@ -184,14 +196,14 @@ describe('TCH157 — Renommer et Supprimer un modèle', () => {
     await user.clear(champ)
     await user.type(champ, 'Foire')
     await user.click(within(dialogue).getByRole('button', { name: 'Renommer' }))
-    expect(api.renommerModele).toHaveBeenCalledWith(2, { nom: 'Foire' })
+    expect(api.renommerModele).toHaveBeenCalledWith(2, { nom: 'Foire' }, { erreurSousLeChamp: true })
     expect(await screen.findByText('Foire')).toBeInTheDocument()
     expect(screen.queryByText('Salon')).toBeNull()
     expect(api.listerTousLesModeles).toHaveBeenCalledTimes(1)
   })
 
   it('un nom de modèle déjà pris est dit sous le champ et la ligne garde son nom', async () => {
-    api.renommerModele.mockRejectedValue({ response: { status: 400, data: { nom: ['Un modèle « Foire » existe déjà.'] } } })
+    api.renommerModele.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un modèle « Foire » existe déjà.'], detail: 'Un modèle « Foire » existe déjà.', code: 'state_conflict' } } })
     const user = utilisateur()
     monter()
     await menu(user, 'Renommer')
@@ -242,7 +254,7 @@ describe('TCH157 — Enregistrer comme modèle', () => {
     expect(notes).toHaveAttribute('aria-checked', 'false')
     await user.click(notes)
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    expect(api.enregistrerModele).toHaveBeenCalledWith(3, { nom: 'Ventes', inclure_notes: true })
+    expect(api.enregistrerModele).toHaveBeenCalledWith(3, { nom: 'Ventes', inclure_notes: true }, { erreurSousLeChamp: true })
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(modeleServi()))
   })
 
@@ -254,7 +266,7 @@ describe('TCH157 — Enregistrer comme modèle', () => {
   })
 
   it('F4 revue #11 — sans aperçu lisible (nom pris, réseau), aucun nombre du projet n\'est montré à la place', async () => {
-    api.dupliquerProjet.mockRejectedValue({ response: { status: 400, data: { nom: ['Un projet existe déjà.'] } } })
+    api.dupliquerProjet.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un projet existe déjà.'], detail: 'Un projet existe déjà.', code: 'state_conflict' } } })
     render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
     const dialogue = screen.getByRole('dialog', { name: 'Enregistrer comme modèle' })
     await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalled())
@@ -263,7 +275,7 @@ describe('TCH157 — Enregistrer comme modèle', () => {
   })
 
   it('un nom de modèle déjà pris est dit sous le champ', async () => {
-    api.enregistrerModele.mockRejectedValue({ response: { status: 400, data: { nom: ['Un modèle « Ventes » existe déjà.'] } } })
+    api.enregistrerModele.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un modèle « Ventes » existe déjà.'], detail: 'Un modèle « Ventes » existe déjà.', code: 'state_conflict' } } })
     const user = utilisateur()
     render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
     await user.click(screen.getByRole('button', { name: 'Créer' }))
@@ -323,13 +335,33 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
     const dialogue = await screen.findByRole('dialog', { name: 'Dupliquer' })
     expect(within(dialogue).getByText('Études')).toBeInTheDocument()
     expect(within(dialogue).queryByText('5 tâches')).toBeNull() // F4 revue #11 : le compte du projet n'est pas celui de la copie
-    await user.type(within(dialogue).getByLabelText('Nom du projet'), 'Ventes 2027')
+    // R2-065 — nom prérempli « {nom} (copie) », aperçu lu à l'ouverture
+    const champ = within(dialogue).getByLabelText('Nom du projet')
+    expect(champ).toHaveValue('Ventes (copie)')
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes (copie)', date_debut: LUNDI_PROCHAIN, apercu: true }, { erreurSousLeChamp: true }))
+    await user.clear(champ)
+    await user.type(champ, 'Ventes 2027')
     await user.tab()
-    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: true }))
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes 2027', date_debut: LUNDI_PROCHAIN, apercu: true }, { erreurSousLeChamp: true }))
     expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument()
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: false }))
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', date_debut: LUNDI_PROCHAIN, apercu: false }, { erreurSousLeChamp: true }))
     expect(await screen.findByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+    // R3-137 — le toast dit où les premières tâches sont posées
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Projet créé · 1 tâche posée le lun. 23')
+  })
+
+  it('R3-137 — Dupliquer part du lundi PROCHAIN (un lundi : celui d\'après), Utiliser un modèle d\'aujourd\'hui', async () => {
+    api.dupliquerProjet.mockImplementation(async (id, corps) => ({ data: corps.apercu ? apercuServi() : projetEcrit() }))
+    const user = utilisateur()
+    monterProjet()
+    await ouvrirMenu(user, 'Dupliquer')
+    const dialogue = await screen.findByRole('dialog', { name: 'Dupliquer' })
+    expect(within(dialogue).getByLabelText('Date de lancement')).toHaveValue(LUNDI_PROCHAIN)
+    const { lundiProchain } = await import('./Dialogues')
+    expect(lundiProchain('2026-11-16')).toBe('2026-11-23') // un lundi → le lundi d'après
+    expect(lundiProchain('2026-11-22')).toBe('2026-11-23') // un dimanche → le lendemain
+    expect(lundiProchain('2026-11-19')).toBe('2026-11-23')
   })
 
   it('F4 revue #11 — Dupliquer dit les tâches confidentielles non reprises quand l\'aperçu du serveur en compte', async () => {
@@ -338,8 +370,6 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
     monterProjet()
     await ouvrirMenu(user, 'Dupliquer')
     const dialogue = await screen.findByRole('dialog', { name: 'Dupliquer' })
-    await user.type(within(dialogue).getByLabelText('Nom du projet'), 'Ventes 2027')
-    await user.tab()
     expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument()
     expect(within(dialogue).getByText('1 tâche confidentielle non reprise')).toBeInTheDocument()
   })
@@ -351,7 +381,7 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
     await ouvrirMenu(user, 'Modèle…')
     const dialogue = await screen.findByRole('dialog', { name: 'Enregistrer comme modèle' })
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    await waitFor(() => expect(api.enregistrerModele).toHaveBeenCalledWith(3, { nom: 'Ventes', inclure_notes: false }))
+    await waitFor(() => expect(api.enregistrerModele).toHaveBeenCalledWith(3, { nom: 'Ventes', inclure_notes: false }, { erreurSousLeChamp: true }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Enregistrer comme modèle' })).toBeNull())
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Ventes')
   })

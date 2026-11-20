@@ -12,6 +12,7 @@ from django.http import Http404
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from apps.taches.choix import Couleur, StatutProjet, StatutRappel, StatutTache
 from apps.taches.models.projets import Projet
@@ -92,9 +93,18 @@ class CreationTests(TestCase):
         regle = RegleRecurrence.objects.create(company=self.a, proprietaire=self.u1, frequence='quotidien',
                                                date_debut=_j(0))
         fabriques.tache(self.u1, recurrence=regle, occurrence_du=_j(0), jour_prevu=_j(0))
-        with self.assertRaises(serializers.ValidationError):
+        # refus d'ÉTAT (la série a déjà son occurrence ouverte) : 409, même champ — plus une erreur de forme
+        with self.assertRaises(ConflitEtat) as refus:
             self._creer(_ligne(recurrence=regle.pk, occurrence_du=_j(1).isoformat()),
                         porte='recurrence', source='recurrence')
+        self.assertEqual([str(m) for m in refus.exception.detail['recurrence']],
+                         ['Une occurrence de cette série est déjà ouverte.'])
+        # par la saisie (par lignes) : le même 409, qui nomme SA ligne comme un 400 (erreurs.json), jamais un 500
+        with self.assertRaises(ConflitEtat) as par_ligne:
+            self._creer(_ligne(index=3, recurrence=regle.pk, occurrence_du=_j(1).isoformat()))
+        self.assertEqual([str(m) for m in par_ligne.exception.detail['lignes']['3']['recurrence']],
+                         ['Une occurrence de cette série est déjà ouverte.'])
+        self.assertEqual(par_ligne.exception.status_code, 409)
         Tache.objects.filter(recurrence=regle).update(statut=StatutTache.FAIT, fait_le=timezone.now())
         suivante = self._creer(_ligne(recurrence=regle.pk, occurrence_du=_j(1).isoformat()),
                                porte='recurrence', source='recurrence')
@@ -161,9 +171,10 @@ class CreationTests(TestCase):
 
     def test_lien_introuvable_refuse(self):
         # Porte unique de visibilité : selectors/liens.cible_visible (TCH13, même fusion F1).
-        with self.assertRaises(serializers.ValidationError) as ctx:
+        # 404 au corps inchangé : la fiche liée manque (api-fuzz r2, règle d'IdInconnu404Mixin).
+        with self.assertRaises(NotFound) as ctx:
             self._creer(_ligne(), lien={'cible': 'crm.lead', 'id': 987654321}, porte='ecran', source='manuel')
-        self.assertEqual(ctx.exception.detail, {'lien': ['Élément introuvable ou hors de ta portée.']})
+        self.assertEqual(ctx.exception.detail['lien'], ['Élément introuvable ou hors de ta portée.'])
         self.assertFalse(Tache.objects.exists())
 
     # --- Invariant 29 : réglages du rythme nés à la première tâche ----------------------------

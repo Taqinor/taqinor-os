@@ -6,7 +6,7 @@
    est toujours un argument (ISO `AAAA-MM-JJ`), défaut = le jour local de l'appareil.
 
    Jours : « aujourd'hui », « demain », sinon « jeu. 19 » dans les 13 jours, « mar. 1 déc. »
-   au-delà, « 12/11/2027 » hors de l'année, et au passé « jeu. 12/11 ».
+   au-delà, « 12/11/2027 » hors de l'année, et au passé « jeu. 12 nov. » (UNE forme de date à l'écran).
    Heures : « 10:00 » sur une puce ou une ligne ; « 10 h », « 10 h 30 » dans une phrase lue.
    Durées : « 45 min », « 1 h », « 3 h 10 ». Accord : 0 et 1 au singulier, ≥ 2 au pluriel.
    ========================================================================== */
@@ -40,7 +40,7 @@ export function ecartJours(iso, reference = aujourdhuiIso()) {
   return Math.round((a.utc - b.utc) / 86400000)
 }
 
-/** « aujourd'hui » · « demain » · « jeu. 19 » · « mar. 1 déc. » · « 12/11/2027 » · passé « jeu. 12/11 ». */
+/** « aujourd'hui » · « demain » · « jeu. 19 » · « mar. 1 déc. » · « 12/11/2027 » · passé « jeu. 12 nov. ». */
 export function jourCourt(iso, aujourdhui = aujourdhuiIso()) {
   const c = composants(iso)
   const ref = composants(aujourdhui)
@@ -49,8 +49,7 @@ export function jourCourt(iso, aujourdhui = aujourdhuiIso()) {
   if (ecart === 0) return "aujourd'hui"
   if (ecart === 1) return 'demain'
   if (c.annee !== ref.annee) return `${deux(c.jour)}/${deux(c.mois)}/${c.annee}`
-  if (ecart < 0) return `${ABR_JOURS[c.joursem]} ${deux(c.jour)}/${deux(c.mois)}`
-  if (ecart <= 13) return `${ABR_JOURS[c.joursem]} ${c.jour}`
+  if (ecart > 0 && ecart <= 13) return `${ABR_JOURS[c.joursem]} ${c.jour}`
   return `${ABR_JOURS[c.joursem]} ${c.jour} ${ABR_MOIS[c.mois - 1]}`
 }
 

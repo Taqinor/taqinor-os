@@ -26,8 +26,15 @@
         "essentiel_prevues": 1,
         "plan_tenues": 1,
         "plan_lignes": 4,
-        "minutes_prevues": 75,
-        "sans_estimation": 1,
+        "charge": {
+          "taches": 3,
+          "restantes_minutes": 75,
+          "sans_duree": 1,
+          "capacite_minutes": 240,
+          "rendez_vous_minutes": 60,
+          "disponible_minutes": 180,
+          "deborde_minutes": 0
+        },
         "capacite_minutes": 240,
         "capacite_source": "defaut",
         "rendez_vous_minutes": 60,
@@ -67,6 +74,7 @@
         },
         "donnees": {}
       },
+      "conseil_donne": false,
       "essentiel": [
         {
           "type": "tache",
@@ -109,6 +117,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": true,
+          "fait_le": null,
           "lock_version": 4
         }
       ],
@@ -185,6 +195,8 @@
           "confidentielle": false,
           "source": "manuel",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 1
         },
         {
@@ -229,6 +241,8 @@
           "confidentielle": false,
           "source": null,
           "peut_cloturer": false,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": null
         }
       ],
@@ -274,6 +288,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 0
         }
       ],
@@ -324,6 +340,8 @@
             "confidentielle": false,
             "source": "rapide",
             "peut_cloturer": true,
+            "a_notes": false,
+            "fait_le": null,
             "lock_version": 2
           },
           {
@@ -365,6 +383,8 @@
             "confidentielle": false,
             "source": "manuel",
             "peut_cloturer": true,
+            "a_notes": false,
+            "fait_le": null,
             "lock_version": 3
           },
           {
@@ -411,6 +431,8 @@
             "confidentielle": false,
             "source": "manuel",
             "peut_cloturer": true,
+            "a_notes": false,
+            "fait_le": null,
             "lock_version": 2
           }
         ],
@@ -464,6 +486,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 6
         }
       ],
@@ -504,6 +528,8 @@
           "confidentielle": false,
           "source": "manuel",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 3
         }
       ],
@@ -549,6 +575,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": "2026-11-17T09:20:00+01:00",
           "lock_version": 5
         }
       ],
@@ -562,5 +590,9 @@
     },
     "renvoyees": [],
     "geste_id": 81
-  }
+  },
+  "nuls": [
+    "aujourdhui.carte_du_moment.proposition",
+    "aujourdhui.carte_du_moment.proposition.expire_le"
+  ]
 }

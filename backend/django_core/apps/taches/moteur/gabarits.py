@@ -65,7 +65,7 @@ def format_duree(minutes):
 def format_jour(d, aujourdhui, phrase=False):
     """`{jour}` de textes.md §0 : relatif, puis « jeu. 19 », « mar. 1 déc. », « 05/11/2027 ».
 
-    Passé : « jeu. 12/11 ». `phrase=True` : le premier du mois s'écrit « 1er décembre ».
+    Passé : « jeu. 12 nov. » (une seule forme de date). `phrase=True` : le premier du mois s'écrit « 1er décembre ».
     """
     ecart = (d - aujourdhui).days
     if ecart == 0:
@@ -73,12 +73,10 @@ def format_jour(d, aujourdhui, phrase=False):
     if ecart == 1:
         return 'demain'
     abr = JOURS_ABR[d.weekday()]
-    if ecart < 0:
-        return f'{abr} {d.day:02d}/{d.month:02d}'
-    if ecart <= 13:
-        return f'{abr} {d.day}'
     if d.year != aujourdhui.year:
         return f'{d.day:02d}/{d.month:02d}/{d.year}'
+    if 0 < ecart <= 13:
+        return f'{abr} {d.day}'
     if phrase and d.day == 1:
         return f'{abr} 1er {MOIS_NOM[d.month - 1]}'
     return f'{abr} {d.day} {MOIS_ABR[d.month - 1]}'
@@ -141,7 +139,7 @@ _ECHEANCE = "{n} tâche{n?|s} {n?a son|ont leur} échéance aujourd'hui."
 _NOTIFICATIONS = {
     'matin.pousser_gardees': (
         'Ta journée : {prevues} prévue{prevues?|s} · objectif {objectif}.',
-        'Bonjour. {prevues} tâche{prevues?|s} gardée{prevues?|s} ; objectif du jour : {objectif}.',
+        'Bonjour. {prevues} tâche{prevues?|s} prévue{prevues?|s} ; objectif du jour : {objectif}.',
         'Plan du jour : choisis ton essentiel (objectif {objectif}).'),
     'matin.pousser_proposees': (
         '{proposees} proposée{proposees?|s} pour ton objectif de {objectif}.',
@@ -341,7 +339,10 @@ _CONFIRMATIONS = {
     'garder_ce_rythme.provisoire': 'Garder ce rythme : environ {R} tâche{R?|s} par jour ({bas} à {haut}). '
                                    "Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. "
                                    'À confirmer sur {fenetre_derive} jours travaillés.',
-    'sans_objectif': 'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées '
+    # R3-004 (choix C-15) : moins de 5 jours évalués, le rythme ne se mesure pas encore — dit franchement
+    'garder_ce_rythme.palier': "Pas encore assez de jours pour mesurer ton rythme : je garde {R} pour l'instant.",
+    # R4-07 (M6) : « gardées » n'est plus un mot de l'écran
+    'sans_objectif': 'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes tâches prévues '
                      'restent affichés.',
     'comprendre_eteint': "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme.",
 }
@@ -380,23 +381,17 @@ def _ligne_bilan(v):
     return ' · '.join(parties)
 
 
-def _gardees(v):
-    """« {pt} des {pl} gardées » ; vide quand rien n'était gardé."""
-    if not v.get('pl'):
-        return ''
-    return _rendre('{pt} des {pl} gardée{pl?|s}', v)
-
-
 def _bilan(cle, v, var, nom_pour):
-    lignes = (_ligne_bilan(v), _gardees(v))
-    return '\n'.join(ligne for ligne in lignes if ligne)
+    """Une seule ligne (R3-001, choix C-14) : « x des y gardées », second chiffre de la même journée, n'est plus
+    jamais rendu — ni au bilan ni à la revue."""
+    return _ligne_bilan(v)
 
 
 # --- Constats (textes.md §4.4) --------------------------------------------------------
 
 _CONSTATS = {
     'C1': 'Tu finis plus souvent ton essentiel quand il est placé avant midi.',
-    'C1.detail': 'Fini : {p1} % de tes gardées du matin, {p2} % de celles d\'après {apres_h} h '
+    'C1.detail': 'Fini : {p1} % de tes tâches prévues le matin, {p2} % de celles d\'après {apres_h} h '
                  '({n1} et {n2} ligne{n2?|s}).',
     'C1.question': "Mettre l'essentiel le matin ?",
     'C2': 'Essentiel fait {a} fois sur {na} quand il est en tête de ta journée, {b} sur {nb} sinon.',
@@ -417,12 +412,18 @@ _CONSTATS = {
 
 
 def _constat(cle, v, var, nom_pour):
+    """La phrase du constat, SUIVIE de sa question quand il en a une (R2-014) : « 2 tâches reportées 3 fois ou plus.
+    Les revoir maintenant ? » — les boutons « Oui · Pas maintenant » répondent à une question posée à l'écran.
+    `C1.detail` et `Cn.question` se rendent seuls ; C5, information, n'a pas de question."""
     if cle == 'C3':
         jour = v['jour']
         v['Jour'] = JOURS_NOM[jour] if isinstance(jour, int) else jour[:1].upper() + jour[1:]
     if cle in ('C6', 'C8.ecran'):
         v['nom'] = _nom(v, 'projet', nom_pour, 'ecran') or 'un projet'
-    return _rendre(_CONSTATS[cle], v)
+    phrase = _rendre(_CONSTATS[cle], v)
+    base, _, suite = cle.partition('.')
+    question = None if suite in ('detail', 'question') else _CONSTATS.get(f'{base}.question')
+    return f'{phrase} {_rendre(question, v)}' if question else phrase
 
 
 # --- Revue de la semaine (textes.md §4.6) ---------------------------------------------
@@ -432,25 +433,22 @@ def _jour_court(d):
 
 
 def _debut_revue(v):
-    phrase = 'Du {debut} au {fin} : {faites} tâche{faites?|s} en {jours} jour{jours?|s}'
+    """« Cette semaine : 4 faites (9 la précédente). » (R2-034) ; une revue demandée pour une AUTRE semaine
+    (`courante` faux) garde ses dates : « Du lun. 9 au ven. 13 : 4 faites (9 la précédente). »"""
+    tete = 'Cette semaine' if v.get('courante', True) else 'Du {debut} au {fin}'
+    phrase = tete + ' : {faites} faite{faites?|s}'
     v = dict(v, debut=_jour_court(v['debut']), fin=_jour_court(v['fin']))
     if v.get('prec') is not None:
-        phrase += ' (précédente : {prec})'
+        phrase += ' ({prec} la précédente)'
     return _rendre(phrase, v) + '.'
 
 
 def _chiffres_revue(v):
-    parties = []
-    if v.get('mode') != 'libre' and v.get('oa') is not None:
-        parties.append(_rendre('Objectif atteint {oa} jour{oa?|s} sur {jours}', v))
-    if v.get('je'):
-        parties.append(_rendre('essentiel {e} sur {je}', v))
-    gardees = _gardees(v)
-    if gardees:
-        parties.append(gardees)
-    if not parties:
+    """« Essentiel {e} sur {je}. » ; rien sans essentiel choisi. R3-003 (choix C-16) : « Objectif atteint X jours
+    sur N » quitte la tête (illisible un jeudi, « 0 sur 1 ») — Mon rythme garde « 5 faites ou plus X jours sur 10 »."""
+    if not v.get('je'):
         return ''
-    return ' · '.join(parties) + '.'
+    return _rendre('Essentiel {e} sur {je}.', v)
 
 
 def _revue(cle, v, var, nom_pour):

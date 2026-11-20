@@ -64,7 +64,7 @@ Règles transverses (chaque modèle) :
 | Sections de la journée | `essentiel` « Essentiel » · `journee` « Prévu » · `ce_soir` · `propose` « Proposé pour aujourd'hui » · `a_decider` « À revoir » · `en_attente` · `faites` | spec-7 r3 §4 |
 | `MotifRevoir` (« À revoir » ne garde que ce qui demande une vraie décision) | `reportee_3_fois` · `retard_ancien` (jour prévu ou échéance passés depuis plus de 7 jours) · `activite_passee` (activité ERP due avant J) | A18-M2, A17 |
 | `RaisonPropose` (raison de chaque ligne de Proposé, dans cet ordre) | `retard` (jour prévu passé depuis 7 jours au plus : « prévue hier ») · `echeance_passee` (7 jours au plus) · `echeance_proche` (dans les 2 jours travaillés : « échéance jeudi ») · `prochaine_action` (« prochaine action de {projet} ») · `action_suivante` (2e, 3e… action d'un projet) | A18-M1, M2 |
-| `Decision` (sous-ensembles par route, api.md) | `aujourdhui` · `garder` (sa date si ≥ J, sinon J) · `prochain_jour_ouvre` « Reporter à lun. 23 » · `jour` (+ date) · `un_jour` « En réserve » · `abandonner` | s3, A17 (MAJ-5), spec-7 r3 |
+| `Decision` (sous-ensembles par route, api.md) | `aujourdhui` · `garder` (sa date si ≥ J, sinon J) · `prochain_jour_ouvre` « Reporter à lun. 23 » · `jour` (+ date) · `un_jour` « Plus tard » · `abandonner` | s3, A17 (MAJ-5), spec-7 r3 |
 | `FamilleObligation` | `visite` · `pose` · `intervention` (date seule, bande « Toute la journée », N4) · `touches` (« Suivi des relances ») | s6a, A16-N4, min-21 |
 | `CarteDuMoment` (ordre de priorité) | `retour` · `bilan_hier` · `garder` · `alleger` · `faire_bilan` · `rythme` · `pause` (sollicitation mise en pause) · `revelation` (le brouillon et l'astuce de geste sont posés par le navigateur, spec-7 r3 §4) | spec-7 r3 §4, A17-M1 |
 | `CodeSante` | `sans_prochaine_action` · `a_l_arret` · `echeance_menacee` · `neglige` · `tout_fait` | s4 §E-F |
@@ -171,7 +171,7 @@ Suppression dure ; ses tâches passent « Sans étape ». Propriétaire = `proje
 | `heure_debut` | `TimeField` | `null` | heure murale · C10 |
 | `echeance` | `DateField` | `null` | socle |
 | `echeance_heure` | `TimeField` | `null` | socle |
-| `quelque_jour` | `BooleanField` | `False` | « En réserve » |
+| `quelque_jour` | `BooleanField` | `False` | « Plus tard » |
 | `estimation_minutes` | `PositiveSmallIntegerField` | `null` | 5-960, pas 15 au redimensionnement |
 | `duree_reelle_minutes` | `PositiveIntegerField` | `null` | socle |
 | `rang_projet` | `IntegerField` | `null` | pas 1 024 |
@@ -515,7 +515,7 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
 ## 3. Invariants (chacun testable)
 
 1. **À trier** = vivante, `parent` nul, `projet` nul, `triee_le` nul, `statut ∈ {a_faire, en_attente}`.
-   `creer_taches()` pose `triee_le = now` dès que la saisie a reconnu un projet, un jour ou « En réserve », par TOUTE
+   `creer_taches()` pose `triee_le = now` dès que la saisie a reconnu un projet, un jour ou « Plus tard », par TOUTE
    porte, capture comprise (A1, A14-M6) ; un rappel tapé sans jour pose `jour_prevu` = jour du rappel. Une échéance
    seule ne sort pas d'À trier. `triee_le` est aussi posé par `planifier()`, un déplacement vers un projet, « Garder
    sans projet », terminer, abandonner, supprimer. Projet terminé avec `taches_ouvertes='boite'` : `projet` ET
@@ -525,7 +525,7 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
    `jour_prevu ≤ J`), les retards de plus de 7 jours (`jour_prevu` ou `echeance` < J − 7) → `retard_ancien`, et les
    activités ERP dues avant J → `activite_passee`. Les retards de 7 jours au plus et les échéances dans les 2 jours
    travaillés vont EN TÊTE de Proposé (invariant 34). Règle exacte : `regles.md` §4.2.
-4. **Report** : `reports += 1` ssi l'ancien `jour_prevu ≤ J` ET le nouveau est plus tard ou En réserve. Ne comptent
+4. **Report** : `reports += 1` ssi l'ancien `jour_prevu ≤ J` ET le nouveau est plus tard ou Plus tard. Ne comptent
    JAMAIS : futur → futur, avancer, premier jour posé, `decaler`, `instancier`, Alléger (A14-M7), « Les remettre dans
    Proposé » (A14-B1), minuit. `trancher` `aujourdhui`, `garder` ou `jour` pose `reports_tranches = reports`.
 5. **Récurrence** : au plus une occurrence ouverte par règle ; la suivante naît à la clôture (terminer, sauter) ;
@@ -549,7 +549,7 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
     local = J). Le même préfiltre sert l'écran, la pastille, le flux, la tuile.
 11. **Pastille** `n` = éléments OUVERTS et GARDÉS d'`essentiel` + `journee` + `ce_soir` (tâches et activités ERP),
     plafonné à 99 ; JAMAIS Proposé (A16-N5), ni À revoir, En attente, À trier, obligations. Peut valoir 0.
-12. **Flux et tuile** : tâches `a_faire` du préfiltre ; jamais faites, À revoir, en attente, À trier, En réserve ;
+12. **Flux et tuile** : tâches `a_faire` du préfiltre ; jamais faites, À revoir, en attente, À trier, Plus tard ;
     jamais de notes ; activités ERP comptées sans titre (IR15).
 13. **`progression.faites` = `compte_du_jour`** (C8) ; `progression.prevues` = `faites` + éléments ouverts gardés
     (Essentiel, Prévu, Ce soir).
@@ -604,7 +604,7 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
     lecture côté serveur seulement, jamais par le navigateur.
 34. **Proposé** (A18-M1/M2, règle exacte `regles.md` §3.4) : d'abord ce qui presse (`retard`, `echeance_passee`,
     `echeance_proche`), puis la PROCHAINE ACTION de chaque projet actif (sa première tâche `a_faire`, non bloquée,
-    hors En réserve, `parent` nul, dans l'ordre `rang_projet`, `id`), projets pris par priorité décroissante puis
+    hors Plus tard, `parent` nul, dans l'ordre `rang_projet`, `id`), projets pris par priorité décroissante puis
     `rang`, puis la 2e action de chaque projet, et ainsi de suite, jusqu'à N = objectif − faites − gardées ouvertes ; ce qui presse s'affiche EN ENTIER, même au-delà de N ; le temps
     disponible ne filtre pas Proposé (un dépassement s'affiche en surcharge).
     Aucun projet ne prend deux places tant qu'un autre projet a une action non proposée. Chaque ligne porte sa
@@ -802,7 +802,7 @@ privée (A9) est dans `textes.md` §6.
   facture, chantier, ticket et les 9 autres (A3).
 - `LignePlanJour.titre_fige` (I6) ; `taches_tache_cible_idx`.
 - Seuil 6/10 et « arrondi inférieur » → 5/10 et demie vers le bas (A2) ; journée type à chaque baisse (verif-5a c. 7).
-- Capture « sans analyse, toujours dans la Boîte » → A1, A14-M6 ; « En réserve » non lu par la capture (A15).
+- Capture « sans analyse, toujours dans la Boîte » → A1, A14-M6 ; « Plus tard » non lu par la capture (A15).
 - Valeurs `corbeille` (s2 : type de geste, action de lot) → `suppression` / `supprimer` ; décision `demain` (I18).
 - Pastille « + Proposé » (spec-7 r2, ma rév. 1) → gardées seules (A16-N5).
 - Visites et poses « à leur heure » (A14-M8) → bande « Toute la journée », date seule (A16-N4).

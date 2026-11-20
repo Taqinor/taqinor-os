@@ -15,27 +15,68 @@
   color: var(--tch-texte);
   -webkit-font-smoothing: antialiased;
   font-feature-settings: 'ss01' 0;
+  /* R2-092 — quatre tailles au plus : titre de page, tâche, section (15 px), méta (les chiffres prennent sa taille) */
+  --tch-section: 0.9375rem;
+  /* R3-092 — UN langage, en jetons (base.css et reglages.css les appliquent ; agenda.css et projets.css aussi, lane L6) :
+     · « sélectionné » : fond d'accent léger, texte d'accent, filet d'accent de 1,5 px — le DISQUE plein est réservé à
+       « aujourd'hui » (calendriers) ;
+     · boutons : 44 px, rayon 12, graisse 600 (principal or, secondaire blanc à filet) ;
+     · tailles 28 / 17 / 15 / 13, graisses 400 / 600 / 700, un seul trait d'icône (1,75). */
+  --tch-choisi-fond: var(--tch-selection);
+  --tch-choisi-texte: var(--tch-accent);
+  --tch-choisi-trait: inset 0 0 0 1.5px var(--tch-accent);
+  --tch-bouton-h: 44px;
+  --tch-bouton-rayon: 12px;
+  --tch-taille-titre: 1.75rem;
+  --tch-taille-tache: 1.0625rem;
+  --tch-taille-texte: 0.9375rem;
+  --tch-taille-meta: 0.8125rem;
+  --tch-trait-icone: 1.75;
+  /* R4-44 — UN seul jeton de méta : 13 px partout (iPhone compris : design/tokens.css le posait à 14 px, `--tch-taille-meta`
+     à 13 — deux méta sur un même écran) ; les chiffres prennent sa taille */
+  --tch-meta: var(--tch-taille-meta);
+  --tch-chiffre: var(--tch-taille-meta);
 }
 .tch *, .tch *::before, .tch *::after { box-sizing: border-box; }
 /* :where() = spécificité nulle : ne bat jamais une classe utilitaire de l'ERP */
 :where(.tch) button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
 /* Mise en page de la page (l'ERP fournit barre latérale, barre d'onglets et en-tête) */
-.tch .tch-page { max-width: 760px; margin-inline: auto; padding-bottom: 112px; background: var(--tch-surface); }
+/* R2-084 — bas de page : le scrolleur de l'ERP réserve déjà ~78 px (barre d'onglets + zone sûre) ; 24 px de plus et
+   le dernier élément remonte au-dessus du bouton + (72 px au-dessus du bas du scrolleur), sans 112 px de vide. */
+.tch .tch-page { max-width: 760px; margin-inline: auto; padding-bottom: 24px; background: var(--tch-surface); }
+/* R3-080 — la journée vide GARDE son + : c'est le geste de tous les jours, et l'écran vide le désigne (« ou touche +
+   pour une tâche ») ; « Coller mes listes » reste son seul bouton plein DANS la page. */
 @media (min-width: 768px) {
-  .tch .tch-page { padding: 20px 16px 56px; }
+  /* R2-085 — une seule grille au bureau : la page part toujours du bord gauche du contenu (le titre est au même x
+     d'un écran à l'autre) ; la hauteur de l'en-tête est fixe : le sur-titre garde sa ligne même vide.
+     R3-082 (M3, choix C-18) — la PAGE fait 1 320 px sur TOUS les écrans : l'en-tête (titre à gauche ; loupe · Copilote ·
+     ⋯ à droite) occupe cette bande, ses actions sont donc au même pixel d'un écran à l'autre (elles sautaient de 600 px
+     entre Aujourd'hui et Réglages). Sous l'en-tête :
+       · les écrans de LECTURE (À trier, Recherche, Revue, Mon rythme, Réglages, Supprimées, Modèles, Archive) gardent
+         une colonne de 720 px, qui ne s'élargit jamais ;
+       · Aujourd'hui garde sa grille (coeur.css), Projets son maître-détail (projets.css) ;
+       · un écran PLEINE LARGEUR (agenda, tableau, chronologie, Planifier ma semaine) pose `data-largeur="pleine"` sur
+         `.tch` — prop `largeur="pleine"` de CoquilleTaches — : son contenu prend toute la largeur utile, 1 760 px dès
+         1 800 px d'écran ; l'en-tête, lui, reste sur sa bande de 1 320. */
+  .tch .tch-page { max-width: 1320px; margin-inline: 0; padding: 20px 16px 56px; }
+  .tch .tch-page > .entete { max-width: calc(1320px - 32px); }
   .tch .entete { padding-inline: 24px; }
+  .tch:is([data-ecran="a-trier"], [data-ecran="recherche"], [data-ecran="revue"], [data-ecran="rythme"],
+    [data-ecran="reglages"], [data-ecran="supprimees"], [data-ecran="projets-modeles"], [data-ecran="projets-archive"])
+    .tch-page > :not(.entete, .voile, .feuille) { max-width: 720px; }
+}
+@media (min-width: 1800px) {
+  .tch[data-largeur="pleine"] .tch-page { max-width: 1760px; }
 }
 
 /* Desktop 768 px : mêmes valeurs que les maquettes (--tch-section, --tch-tache… ajustés) */
 @media (min-width: 768px) {
   .tch {
-    --tch-section: 1rem;
-    --tch-tache: 1rem;
+    --tch-section: 0.9375rem;
+    --tch-tache: var(--tch-taille-tache);
     --tch-tache-lh: 1.375rem;
-    --tch-meta: 0.8125rem;
     --tch-meta-lh: 1.125rem;
-    --tch-chiffre: 0.75rem;
     --tch-gouttiere: 24px;
     --tch-ligne-h: 44px;
   }
@@ -67,7 +108,7 @@
   stroke-linecap: round; stroke-linejoin: round; flex: none;
 }
 .tch svg.i-14 {
-  width: 14px; height: 14px; stroke-width: 2;
+  width: 14px; height: 14px; stroke-width: var(--tch-trait-icone);
 }
 .tch svg.i-16 {
   width: 16px; height: 16px;
@@ -92,11 +133,89 @@
 .tch .entete {
   padding: 6px var(--tch-gouttiere) 0;
 }
-.tch .entete-haut {
-  display: flex; align-items: center; justify-content: space-between; min-height: 44px;
+/* R2-080 — l'en-tête = une rangée du haut (`.entete-barre` : ☰ · titre compact · actions) puis les titres
+   (`.entete-titres` : sur-titre, grand titre). Bureau : la rangée n'a pas de boîte, ses actions se posent à droite du
+   titre ; ☰, la cloche et le titre compact n'existent que sur iPhone, où l'en-tête de l'ERP est masqué. */
+/* (sélecteurs à trois classes : ils passent devant `.tch .bouton-icone`, défini plus bas, qui pose `display`) */
+.tch .entete-barre .entete-menu, .tch .entete-barre .entete-cloche, .tch .entete-barre .entete-compact { display: none; }
+.tch .entete-cloche { position: relative; }
+.tch .entete-cloche-compte {
+  position: absolute; top: 5px; right: 3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--destructive); color: var(--destructive-foreground); box-shadow: 0 0 0 2px var(--tch-surface);
+  font-size: var(--tch-taille-meta); font-weight: 700; line-height: 18px; text-align: center;
+}
+/* Sur-titre (date, état hors ligne, envois en attente) : une ligne, réservée même vide au bureau (R2-085). */
+.tch .entete-surtitre {
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; min-height: 1.25rem; line-height: 1.25rem;
+}
+/* R2-093 — « ‹ Projets » d'un écran enfant, au-dessus du titre */
+.tch .entete-retour {
+  position: relative; display: inline-flex; align-items: center; gap: 2px; flex: none; min-height: 0;
+  color: var(--tch-accent); font-weight: 500; white-space: nowrap;
+}
+@media (min-width: 769px) {
+  .tch .entete {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "titres actions";
+    align-items: center; column-gap: 12px;
+  }
+  .tch .entete-barre { display: contents; }
+  .tch .entete-titres { grid-area: titres; min-width: 0; }
+  .tch .entete-actions { grid-area: actions; }
+  /* le retour prend la ligne du sur-titre (vide sur un écran enfant) : le titre reste à sa place */
+  .tch .entete-retour {
+    grid-area: titres; align-self: start; justify-self: start; height: 1.25rem; margin-left: -4px;
+    font-size: 0.9375rem;
+  }
+  .tch .entete-retour svg { width: 18px; height: 18px; }
+  .tch .entete-retour::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%);
+  }
+}
+/* Même seuil que la coque de l'ERP (768 px), écrit `screen and (…)` (voir la note du bloc `.layout-content` plus bas). */
+@media screen and (max-width: 768px) {
+  /* `contents` : la rangée colle sur toute la hauteur de la page (sa boîte englobante devient `.tch-page`) */
+  .tch .entete { display: contents; }
+  .tch .entete-barre {
+    position: sticky; top: 0; z-index: var(--z-sticky); grid-column: 1;
+    display: flex; align-items: center; min-height: calc(44px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left));
+    background: var(--tch-surface);
+  }
+  /* couture r2 — repliée, la rangée reste OPAQUE (le fond translucide laissait lire le texte qui défile dessous) */
+  .tch .entete-barre.entete-repliee { background: var(--tch-surface); box-shadow: inset 0 -0.5px 0 var(--tch-trait); }
+  .tch .entete-barre .entete-menu, .tch .entete-barre .entete-cloche { display: inline-grid; flex: none; }
+  /* R3-083 — le titre compact est centré sur l'ÉCRAN (barre iOS), entre les deux groupes d'icônes : ☰ · cloche à gauche
+     (88 + 6), loupe · Copilote · ⋯ à droite (132) ; sa largeur laisse 132 px de chaque côté, « … » au-delà. Sur un écran
+     enfant (« ‹ Projets », de largeur variable), il reste dans l'espace entre le retour et les actions. */
+  .tch .entete-barre .entete-compact {
+    display: block; flex: 1; min-width: 0; padding: 0 4px; text-align: center; opacity: 0; pointer-events: none;
+    font-size: 1.0625rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tch .entete-barre:not(:has(> .entete-retour)) .entete-compact {
+    position: absolute; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 2 * 132px);
+  }
+  .tch .entete-barre.entete-repliee .entete-compact { opacity: 1; }
+  /* R3-083 — cinq commandes de 44 × 44, toutes en icône et sans fond : la pilule « Copilote » (104 × 36, fond)
+     dominait l'écran et changeait de forme au défilement, ce qui faisait glisser la cloche et la loupe. Le ⋯ touche le
+     bord droit de l'écran (cible de 44) sans en sortir (il en débordait de 4 pt) ; son dessin est à 12 pt du bord. */
+  .tch .entete-barre .entete-actions { flex: none; margin: 0 -6px 0 auto; }
+  .tch .entete-barre .copilote {
+    width: 44px; height: 44px; margin: 0; padding: 0; gap: 0; justify-content: center; font-size: 0;
+    border-radius: 999px; background: transparent;
+  }
+  .tch .entete-barre .copilote svg { width: 20px; height: 20px; stroke-width: 1.75; }
+  .tch .entete-titres { grid-column: 1 / -1; padding: 0 var(--tch-gouttiere); }
+  /* R3-084 — le sur-titre garde sa ligne même vide, comme au bureau : le grand titre est au même y sur chaque onglet
+     (il sautait de 20 pt entre Aujourd'hui et Projets) */
+  .tch .entete-surtitre:empty { display: block; min-height: 1.25rem; }
+  .tch .entete-retour { height: 44px; padding: 0 8px 0 4px; font-size: 1.0625rem; }
+  .tch .entete-retour svg { width: 24px; height: 24px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tch .entete-compact { transition: opacity var(--motion-fast) var(--ease-standard); }
 }
 .tch .entete-date {
-  font-size: 0.875rem; font-weight: 500; color: var(--tch-texte-doux);
+  font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-texte-doux);
 }
 .tch .entete-titre {
   margin: 0; font-family: var(--tch-font-titre); font-size: var(--tch-titre-page);
@@ -139,7 +258,8 @@
 }
 .tch .section-titre {
   display: flex; align-items: baseline; justify-content: space-between;
-  margin: 0; padding: 0 var(--tch-gouttiere) 4px; font-size: var(--tch-section); font-weight: 650; line-height: 1.4;
+  margin: 0; padding: 0 var(--tch-gouttiere) 4px; font-size: var(--tch-section); font-weight: 600; line-height: 1.4;
+  color: var(--tch-texte-doux); /* R2-092 : la section se détache du titre de tâche par la taille ET la couleur */
 }
 .tch .section-titre .compte {
   font-size: var(--tch-chiffre); font-weight: 500; color: var(--tch-texte-doux);
@@ -222,7 +342,7 @@
   font-size: var(--tch-chiffre); font-weight: 600; color: var(--tch-texte);
 }
 .tch svg.i.etoile {
-  color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-width: 1.5;
+  color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-width: var(--tch-trait-icone);
 }
 .tch .drapeau {
   color: var(--tch-texte);
@@ -236,6 +356,18 @@
 .tch .estampille {
   font-size: var(--tch-chiffre); font-weight: 600; color: var(--tch-accent);
   background: var(--tch-accent-doux); border-radius: var(--tch-rayon-puce); padding: 2px 10px; line-height: 1.25rem;
+}
+/* R3-086 — la pastille « → ven. 20 » d'une tâche qu'on vient de reporter se POSE sur la fin de la ligne au lieu
+   d'entrer dans le flux : plus large que l'étoile, elle poussait le titre et la méta sur deux lignes chacun (la ligne
+   passait de 63 à 110 px). Elle recouvre la fin du titre, un fondu de la surface de la ligne derrière elle. */
+.tch .ligne .ligne-fin { position: relative; }
+/* couture L7 — l'heure, le drapeau et l'étoile restent DANS la colonne sous la pastille, cachés : la colonne garde sa
+   largeur, le titre ne se reflue pas et la ligne garde sa hauteur (bureau : 80 → 58 quand ils étaient retirés) */
+.tch .ligne-fin-masque { display: contents; }
+.tch .ligne-fin-masque.masquee { visibility: hidden; }
+.tch .ligne .ligne-fin > .estampille {
+  position: absolute; inset-inline-end: 0; top: 50%; translate: 0 -50%; white-space: nowrap;
+  box-shadow: -8px 0 8px var(--tch-surface);
 }
 .tch .case {
   width: var(--tch-cible); height: var(--tch-cible); display: grid; place-items: center;
@@ -293,7 +425,7 @@
   background: var(--tch-panneau); color: var(--tch-texte);
 }
 .tch .pastille-erp svg {
-  width: 14px; height: 14px; stroke-width: 2;
+  width: 14px; height: 14px; stroke-width: var(--tch-trait-icone);
 }
 .tch .case.vide {
   cursor: default;
@@ -325,10 +457,10 @@
   width: 96px; font-size: 0.8125rem; font-weight: 600; line-height: 1.1; text-align: center;
 }
 .tch .action svg {
-  width: 20px; height: 20px; stroke-width: 2;
+  width: 20px; height: 20px; stroke-width: var(--tch-trait-icone);
 }
 .tch .action small {
-  font-size: 0.75rem; font-weight: 500; opacity: 0.92;
+  font-size: var(--tch-taille-meta); font-weight: 500; opacity: 0.92;
 }
 .tch .action.reporter {
   background: var(--tch-accent); color: var(--tch-accent-texte);
@@ -357,9 +489,10 @@
   display: flex; flex-wrap: wrap; gap: 8px;
 }
 .tch .puce {
-  position: relative; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px;
+  min-width: var(--tch-cible); padding: 0 12px; /* couture r2 — la puce « × » seule (Retirer le jour) faisait 38 px */
   border-radius: var(--tch-rayon-puce); background: var(--tch-panneau); color: var(--tch-texte);
-  font-size: 0.875rem; font-weight: 500; white-space: nowrap;
+  font-size: var(--tch-taille-meta); font-weight: 600; white-space: nowrap;
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .tch .puce::after {
@@ -395,7 +528,7 @@
   width: 20px; height: 20px; margin-right: -6px; border-radius: 999px; display: grid; place-items: center; color: var(--tch-texte-doux);
 }
 .tch .puce .retirer svg {
-  width: 14px; height: 14px; stroke-width: 2.25;
+  width: 14px; height: 14px; stroke-width: var(--tch-trait-icone);
 }
 .tch .puce.active {
   background: var(--tch-accent); color: var(--tch-accent-texte);
@@ -419,8 +552,8 @@
   display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px;
 }
 .tch .bouton {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 18px;
-  border-radius: calc(var(--radius) + 2px); font-size: 0.9375rem; font-weight: 600; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--tch-bouton-h); padding: 0 18px;
+  border-radius: var(--tch-bouton-rayon); font-size: var(--tch-taille-texte); font-weight: 600; white-space: nowrap;
   transition: background-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
 }
 .tch .bouton.plein {
@@ -459,13 +592,14 @@
 }
 /* Passe visuelle n° 64 (etat-hors-ligne.html, `.entete-date.es-hors-ligne`) : « Hors ligne · dernière synchro à
    {HH:MM} » tient sur UNE ligne au-dessus du titre, icône et texte côte à côte ; sur iPhone le Copilote, qui a besoin
-   du réseau, lui cède sa place. La ligne d'état est l'`entete-date` qui porte l'icône (« En attente d'envoi » n'en a pas). */
+   du réseau, s'efface (sa place reste, R3-083). La ligne d'état est l'`entete-date` qui porte l'icône (« En attente d'envoi » n'en a pas). */
 .tch[data-hors-ligne] .entete-date[role="status"]:has(> svg) {
   display: flex; align-items: center; gap: 6px; color: var(--tch-texte);
 }
 .tch[data-hors-ligne] .entete-date[role="status"]:has(> svg) > span { white-space: nowrap; }
 @media (max-width: 767px) {
-  .tch[data-hors-ligne] .entete-actions .copilote-groupe { display: none; }
+  /* R3-083 — hors ligne, le Copilote garde sa place (invisible) : la cloche et la loupe ne glissent plus de 150 pt */
+  .tch[data-hors-ligne] .entete-actions .copilote-groupe { visibility: hidden; }
 }
 .tch .bandeau {
   display: flex; align-items: center; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 12px 8px 12px 14px;
@@ -479,10 +613,10 @@
   flex: 1; min-width: 0;
 }
 .tch .bandeau-titre {
-  font-size: 1rem; font-weight: 600; line-height: 1.35;
+  font-size: var(--tch-taille-texte); font-weight: 600; line-height: 1.35;
 }
 .tch .bandeau-detail {
-  font-size: 0.875rem; color: var(--tch-texte-doux); line-height: 1.35;
+  font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); line-height: 1.35;
 }
 .tch .bandeau .chevron {
   width: 44px; height: 44px; display: grid; place-items: center; color: var(--tch-texte-doux);
@@ -491,7 +625,7 @@
   margin: 12px var(--tch-gouttiere) 0; padding: 16px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
 }
 .tch .carte-texte {
-  font-size: 1rem; line-height: 1.45; font-weight: 500; margin: 0 0 12px;
+  font-size: var(--tch-taille-texte); line-height: 1.45; font-weight: 400; margin: 0 0 12px;
 }
 .tch .carte-source {
   font-size: 0.8125rem; color: var(--tch-texte-doux); margin: -6px 0 12px;
@@ -499,10 +633,49 @@
 .tch .carte-actions {
   display: flex; gap: 8px;
 }
+/* R3-085 (M2) — une carte de CONSEIL (rythme, pause, astuce, révélation) tient en une rangée de 48 à 56 pt : la phrase
+   (15 px) puis ses réponses en texte d'accent (« OK », « Oui · Pas maintenant »), 32 px dessinés, 44 px de cible par
+   `::after`. Elle prenait 136 pt pour une phrase et poussait la première tâche à y = 335 sur iPhone. Trop longue, la
+   phrase garde sa largeur et les réponses passent dessous, à droite. (`.tch-page` en tête : ces règles passent devant
+   celles, plus anciennes, de coeur.css — importée après base.css — qui dessinaient la carte haute.) */
+.tch .tch-page .carte.rythme {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 12px;
+  padding: 10px 12px 10px 16px; min-height: 48px;
+}
+.tch .tch-page .carte.rythme .carte-texte {
+  flex: 1 1 200px; min-width: 0; margin: 0; font-size: 0.9375rem; line-height: 1.4; font-weight: 500;
+}
+.tch .tch-page .moment.revelation { align-items: center; padding: 10px 12px 10px 16px; min-height: 48px; }
+.tch .tch-page .moment.revelation .moment-texte {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding-top: 0;
+}
+.tch .tch-page .moment.revelation .moment-texte b { font-size: 0.9375rem; font-weight: 500; line-height: 1.4; }
+.tch .tch-page .moment.revelation .carte-actions { grid-column: 2; grid-row: 1; margin: 0; }
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions { flex: none; flex-wrap: nowrap; gap: 4px; }
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton {
+  position: relative; height: 32px; min-height: 0; padding: 0 8px; background: transparent; box-shadow: none;
+  color: var(--tch-accent);
+}
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton.discret { color: var(--tch-texte-doux); font-weight: 500; }
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton[aria-disabled="true"] { opacity: 0.5; }
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%);
+}
+@media (hover: hover) {
+  .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton:hover { background: var(--tch-survol); }
+}
+/* couture L7 (M2) — sur iPhone, une question de conseil sur deux lignes et ses réponses dessous prenaient 98 pt + 32 pt
+   d'air : la première tâche tombait à y = 297. Carte resserrée (marges, réponses dessinées à 28 px, cible de 44 px
+   gardée par `::after`) et la première section qui la suit à 12 px au lieu de 20. */
+@media screen and (max-width: 768px) {
+  .tch .tch-page .carte.rythme { margin-top: 8px; padding: 8px 10px 8px 14px; row-gap: 0; }
+  .tch .tch-page .carte.rythme .carte-actions .bouton { height: 28px; }
+  .tch .tch-page .carte.rythme + div > .section:first-child { margin-top: 12px; }
+}
 .tch .pas-a-jour {
   display: flex; align-items: center; gap: 10px; margin: 8px var(--tch-gouttiere) 0; padding: 0 4px 0 12px;
   min-height: 44px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
-  font-size: 0.875rem; color: var(--tch-texte-doux);
+  font-size: var(--tch-taille-meta); color: var(--tch-texte-doux);
 }
 .tch .pas-a-jour span {
   flex: 1;
@@ -518,7 +691,7 @@
 .tch .toast button {
   height: 44px; padding: 0 12px; font-weight: 700; color: var(--tch-inverse-accent);
 }
-.tch .squelette .ligne {
+.tch :is(.squelette, .squelette-liste) .ligne {
   pointer-events: none;
 }
 .tch .os {
@@ -533,6 +706,16 @@
 .tch .os.l2 {
   height: 10px; margin-top: 9px;
 }
+/* R2-089 — le squelette commun : des sections (titre « os » + lignes), comme etat-chargement.html */
+.tch .squelette-section { margin-top: 22px; }
+.tch .squelette-section > .os.titre-section { width: 96px; height: 12px; margin: 0 var(--tch-gouttiere) 8px; }
+.tch .squelette-section + .squelette-section > .os.titre-section { width: 150px; }
+/* R4-41 — le repli de chargement d'un écran (module.config.jsx) : le grand titre est connu (texte, même pixel que le vrai)
+   ou, pour la page d'un projet dont le nom ne l'est pas encore, une barre de la hauteur d'une ligne de titre. */
+.tch.tch-chargement .entete-titre .os.titre-os { width: 9rem; max-width: 60%; height: 1.75rem; margin-block: 0.2rem; }@media (prefers-reduced-motion: no-preference) {
+  .tch :is(.squelette, .squelette-liste) .os { animation: tch-os-respire 1.4s var(--ease-standard) infinite alternate; }
+}
+@keyframes tch-os-respire { from { opacity: 0.45; } to { opacity: 0.8; } }
 .tch .ligne.projet .titre {
   font-weight: 600;
 }
@@ -551,7 +734,7 @@
   background: var(--tch-accent-doux); color: var(--tch-accent); margin-bottom: 16px;
 }
 .tch .vide-picto svg {
-  width: 34px; height: 34px; stroke-width: 1.5;
+  width: 34px; height: 34px; stroke-width: var(--tch-trait-icone);
 }
 .tch .vide-phrase {
   margin: 0 0 16px; max-width: 26ch; font-size: 1.0625rem; line-height: 1.45; font-weight: 500;
@@ -563,7 +746,7 @@
   background: var(--primary); color: var(--primary-foreground); box-shadow: var(--shadow-md);
 }
 .tch .fab svg {
-  width: 26px; height: 26px; stroke-width: 2.25;
+  width: 26px; height: 26px; stroke-width: 2;
 }
 .tch .toast-place {
   position: fixed; left: 16px; right: 16px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 12px);
@@ -572,6 +755,12 @@
 @media (max-width: 767px) {
   .tch .toast-place {
     right: 84px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 20px);
+  }
+  /* vague 2 — une feuille du bas ouverte (saisie, Quand, Projet…) : le toast monte en haut de l'écran, sur le voile,
+     au-dessus d'elle — il couvrait la liste `#` des projets et le sélecteur de projet. Une feuille fait au plus 85 % de
+     la hauteur : le haut de l'écran, voilé, ne porte rien d'utile. */
+  .tch:has(.feuille[aria-modal="true"]) .toast-place {
+    top: calc(env(safe-area-inset-top) + 8px); bottom: auto; right: 16px;
   }
 }
 .tch .voile {
@@ -607,7 +796,7 @@
   display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; margin: 0 -10px 4px;
 }
 .tch .feuille-titre {
-  text-align: center; font-size: 1.0625rem; font-weight: 650;
+  text-align: center; font-size: 1.0625rem; font-weight: 600;
 }
 .tch .quand-tuiles {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
@@ -623,7 +812,7 @@
   font-size: 0.8125rem; color: var(--tch-texte-doux);
 }
 .tch .quand-tuile small {
-  font-size: 0.75rem; color: var(--tch-texte-doux);
+  font-size: var(--tch-taille-meta); color: var(--tch-texte-doux);
 }
 .tch .quand-tuile[aria-checked="true"] {
   background: var(--tch-accent-doux); box-shadow: inset 0 0 0 2px var(--tch-accent);
@@ -636,7 +825,7 @@
 }
 .tch .reglage {
   display: flex; align-items: center; justify-content: space-between; min-height: 52px;
-  font-size: 1rem; box-shadow: inset 0 -1px 0 var(--tch-trait);
+  font-size: var(--tch-taille-texte); box-shadow: inset 0 -1px 0 var(--tch-trait);
 }
 .tch .reglage:last-child {
   box-shadow: none;
@@ -654,7 +843,7 @@
   display: flex; align-items: center; justify-content: space-between; height: 44px;
 }
 .tch .mois-nom {
-  font-size: 1rem; font-weight: 600;
+  font-size: var(--tch-taille-texte); font-weight: 600;
 }
 .tch .mois-sous {
   font-weight: 400; color: var(--tch-texte-doux);
@@ -663,7 +852,7 @@
   display: grid; grid-template-columns: repeat(7, 1fr); text-align: center;
 }
 .tch .mois-grille .jsem {
-  font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); height: 24px; line-height: 24px;
+  font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-texte-doux); height: 24px; line-height: 24px;
 }
 .tch .jour {
   height: 44px; display: grid; place-items: center; font-size: 0.9375rem;
@@ -677,11 +866,12 @@
 .tch .jour.repos {
   color: var(--tch-texte-doux);
 }
-.tch .jour.auj span {
-  box-shadow: inset 0 0 0 1.5px var(--tch-accent); color: var(--tch-accent); font-weight: 700;
-}
+/* R3-092 — le jour choisi a le dessin « sélectionné » ; le disque plein est réservé à aujourd'hui (choisi ou non) */
 .tch .jour.choisi span {
-  background: var(--tch-accent); color: var(--tch-accent-texte); font-weight: 700;
+  background: var(--tch-choisi-fond); color: var(--tch-choisi-texte); box-shadow: var(--tch-choisi-trait); font-weight: 700;
+}
+.tch .jour.auj span {
+  background: var(--tch-accent); color: var(--tch-accent-texte); box-shadow: none; font-weight: 700;
 }
 .tch .jour.hors {
   visibility: hidden;
@@ -693,7 +883,7 @@
   position: relative;
 }
 .tch .agenda-heures div {
-  height: var(--tch-heure-h); font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux);
+  height: var(--tch-heure-h); font-size: var(--tch-taille-meta); font-weight: 500; color: var(--tch-texte-doux);
   text-align: right; padding-right: 8px; transform: translateY(-0.5em);
 }
 .tch .agenda-grille {
@@ -708,7 +898,7 @@
   display: block; font-size: 0.8125rem; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tch .bloc small {
-  display: block; font-size: 0.75rem; line-height: 1.3; font-weight: 500;
+  display: block; font-size: var(--tch-taille-meta); line-height: 1.3; font-weight: 500;
 }
 .tch .bloc.court {
   display: flex; gap: 6px; align-items: center; padding-block: 0;
@@ -729,7 +919,7 @@
   content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 999px; background: var(--tch-accent);
 }
 .tch .maintenant-heure {
-  position: absolute; right: 100%; margin-right: 8px; top: -9px; font-size: 0.75rem; font-weight: 700;
+  position: absolute; right: 100%; margin-right: 8px; top: -9px; font-size: var(--tch-taille-meta); font-weight: 700;
   color: var(--tch-accent); background: var(--tch-surface); padding: 0 2px;
 }
 @media (max-width: 767px) {
@@ -739,7 +929,7 @@
 }
 .tch .replie {
   display: flex; align-items: center; gap: 8px; min-height: 48px; margin-top: 8px; padding: 0 var(--tch-gouttiere);
-  font-size: var(--tch-section); font-weight: 650; color: var(--tch-texte-doux);
+  font-size: var(--tch-section); font-weight: 600; color: var(--tch-texte-doux);
 }
 .tch .replie .compte {
   font-size: var(--tch-chiffre); font-weight: 500;
@@ -754,19 +944,21 @@
   .tch .toast-place {
     left: auto; right: 32px; bottom: 32px; width: 360px;
   }
+  /* R3-094 — la ligne « Ajouter une tâche » a le même bord que la carte et la saisie en place (gouttière) : le champ et
+     la carte « 57 % » empilés étaient décalés de 16 px de chaque côté */
   .tch .saisie-bureau {
-    display: flex; align-items: center; gap: 12px; margin: 16px 8px 0; padding: 0 16px; min-height: 48px;
+    display: flex; align-items: center; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 0 16px; min-height: 48px;
     border-radius: var(--tch-rayon-champ); box-shadow: inset 0 0 0 1px var(--tch-trait); color: var(--tch-texte-doux); font-size: 0.9375rem;
   }
   .tch .saisie-bureau kbd {
-    margin-left: auto; font: inherit; font-size: 0.75rem; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: var(--tch-panneau); color: var(--tch-texte-doux);
+    margin-left: auto; font: inherit; font-size: var(--tch-taille-meta); font-weight: 600; padding: 2px 6px; border-radius: 6px; background: var(--tch-panneau); color: var(--tch-texte-doux);
   }
 }
 .tch .agenda-tete {
   display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px;
 }
 .tch .agenda-tete b {
-  font-size: 1rem; font-weight: 650;
+  font-size: var(--tch-taille-texte); font-weight: 600;
 }
 .tch .agenda-tete span {
   font-size: 0.8125rem; color: var(--tch-texte-doux);
@@ -782,14 +974,33 @@
   .tch .feuille.dialogue-bureau .poignee {
     display: none;
   }
+  /* R2-009 (choix C-3, ecran-saisie.html / ecrans-coeur.css « .saisie-place ») — la saisie EN PLACE : rendue dans
+     `.saisie-ancre`, à la place de la ligne « Ajouter une tâche », DANS le flux de la page (la liste reste lisible et
+     vivante dessous, comme Things et Todoist). Ni voile, ni crans, ni position fixe : elle défile avec la liste et ne
+     passe jamais au-dessus de la barre de l'ERP (aucun z-index : la règle des calques `.tch .feuille` plus bas
+     l'exclut, garde MB3). Le ✕ seul reste de l'en-tête (Échap ferme aussi). */
   .tch .feuille.popover-bureau {
-    right: auto; bottom: auto; top: 136px; left: calc(50% - 520px); width: 380px; height: auto;
-    border-radius: var(--tch-rayon-carte); padding: 8px 16px 12px; box-shadow: var(--shadow-lg), 0 0 0 1px var(--tch-trait);
-    max-height: calc(100vh - 136px - 16px);
+    position: relative; inset: auto; width: auto; height: auto; max-height: none;
+    margin: 16px 8px 0; padding: 12px 16px; border-radius: var(--tch-rayon-champ);
+    background: var(--tch-surface); box-shadow: inset 0 0 0 1.5px var(--tch-accent), var(--shadow-sm);
   }
-  .tch .feuille.popover-bureau .poignee {
-    display: none;
-  }
+  /* R3-094 — la saisie en place : même bord que la ligne qu'elle remplace (gouttière) ; une liste collée y reste
+     (R3-044, L3) et défile dans 70 % de la hauteur au lieu de pousser la page. Règle à part : la règle ci-dessus est
+     aussi changée par la lane de CI (pas de z-index en dur, garde MB3) — le pli prend la sienne telle quelle. */
+  .tch .feuille.popover-bureau.popover-bureau { max-height: 70vh; overflow: auto; margin: 16px var(--tch-gouttiere) 0; }
+  .tch .feuille.popover-bureau .feuille-entete { position: absolute; top: 4px; right: 4px; display: block; margin: 0; }
+  /* le titre de la FEUILLE (« Ajouter une tâche ») seulement : celui de l'aperçu d'une liste collée (« Aperçu de ta
+     liste », `.apercu-entete .feuille-titre`) reste (demande L3) */
+  .tch .feuille.popover-bureau .feuille-entete .feuille-titre,
+  .tch .feuille.popover-bureau .feuille-entete > span { display: none; }
+  .tch .feuille.popover-bureau .feuille-corps { overflow: visible; padding-top: 0; }
+  .tch .feuille.popover-bureau .saisie-zone { margin-right: 40px; }
+  /* une ligne tant qu'on tape une ligne (le textarea a 2 rangées d'office) ; elle grandit avec le texte */
+  .tch .feuille.popover-bureau .saisie-champ { min-height: var(--tch-cible); font-size: 1rem; field-sizing: content; }
+  .tch .feuille.popover-bureau .saisie-miroir { font-size: 1rem; }
+  .tch .feuille.popover-bureau .saisie-pied { margin-top: 0; padding-top: 0; }
+  /* la ligne « Ajouter une tâche » s'efface tant que la saisie est à sa place */
+  .tch .saisie-bureau:has(+ .saisie-ancre > .feuille.popover-bureau) { display: none; }
 }
 .tch .raccourci {
   display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--tch-texte-doux);
@@ -802,7 +1013,7 @@
   border-radius: 10px; background: var(--tch-panneau);
 }
 .tch .segmente button {
-  height: 40px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; color: var(--tch-texte-doux);
+  height: 40px; border-radius: 8px; font-size: var(--tch-taille-texte); font-weight: 600; color: var(--tch-texte-doux);
 }
 .tch .segmente button[aria-checked="true"] {
   background: var(--tch-segment-actif); color: var(--tch-texte); font-weight: 600; box-shadow: var(--shadow-xs);
@@ -814,7 +1025,7 @@
   display: flex; flex-direction: column; align-items: center; gap: 2px; height: 56px; justify-content: center;
 }
 .tch .bande-jours small {
-  font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux);
+  font-size: var(--tch-taille-meta); font-weight: 500; color: var(--tch-texte-doux);
 }
 .tch .bande-jours b {
   width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; font-size: 0.9375rem; font-weight: 600;
@@ -846,7 +1057,7 @@
   font-size: 0.8125rem; color: var(--tch-texte-doux); box-shadow: inset 0 -1px 0 var(--tch-trait);
 }
 .tch .semaine-tete b {
-  font-size: 1.125rem; font-weight: 600; color: var(--tch-texte);
+  font-size: var(--tch-taille-tache); font-weight: 600; color: var(--tch-texte);
 }
 .tch .semaine-tete .repos b {
   color: var(--tch-texte-doux); font-weight: 500;
@@ -916,7 +1127,9 @@
 .tch .voile {
   z-index: var(--z-modal);
 }
-.tch .feuille,
+/* La saisie EN PLACE (`.popover-bureau`, R2-009) reste dans le flux, sans calque : exclue ici plutôt qu'un
+   `z-index: auto` en dur (garde MB3 de mobile-foundation.test.mjs). */
+.tch .feuille:not(.popover-bureau),
 .tch .menu {
   z-index: calc(var(--z-modal) + 1);
 }
@@ -944,6 +1157,93 @@
     padding-right: env(safe-area-inset-right);
   }
 }
+/* R2-080 (choix C-6) — sur iPhone, la barre de l'ERP (53 pt : ☰, logo, fil d'Ariane coupé, second Copilote) ne
+   surmonte plus Tâches : la rangée du haut de la coquille porte ☰ et la cloche. Le sélecteur ne vise QUE la coque dont
+   la page affichée est le module (`.route-fade > .tch`) : jamais l'hôte global de Tâches ni le bouton ✓+ (eux aussi
+   `.tch`, montés sur toutes les apps). L'en-tête reste MONTÉ (ses boutons servent à ☰ et à la cloche) mais n'a plus
+   de boîte visible ; seul le panneau de la cloche (`.nb-panel`, feuille du bas fixe sous 768 px) redevient visible,
+   au-dessus de la barre d'onglets. */
+@media screen and (max-width: 768px) {
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header {
+    position: fixed; top: 0; left: 0; width: 0; height: 0; min-height: 0; padding: 0; border: 0; overflow: visible;
+    visibility: hidden; z-index: var(--z-popover);
+  }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel {
+    visibility: visible;
+  }
+  /* R2-091 — barre d'onglets dans Tâches : l'onglet actif en accent du module (8,6:1 en clair, 6,8:1 en sombre ; l'or
+     #b8860b de l'ERP tombait à 3,25:1) et des libellés de 12 px (9,9 px dans l'ERP), comme la maquette coque.js. */
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab { color: var(--tch-texte-doux); }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab.active { color: var(--tch-accent); }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab.active::after { background: currentColor; }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab-label { font-size: 0.75rem; }
+  /* R3-096 — en sombre, l'onglet actif est le plus lumineux : les inactifs passent de 9:1 à environ 5,5:1 (le texte doux
+     mêlé au fond), l'actif garde l'accent (≥ 7:1) — il était MOINS contrasté que les autres */
+  .dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab:not(.active) {
+    color: color-mix(in oklch, var(--tch-texte-doux) 75%, var(--tch-surface));
+  }
+  /* R2-083 — le tiroir FERMÉ (translateX(-105 %)) gardait son ombre de 28 px, qui débordait en bande grise sur le bord
+     gauche de chaque écran. Ouvert, il la retrouve. */
+  .layout:not(.drawer-open):has(> .layout-main > .layout-content > .route-fade > .tch) > .sidebar { box-shadow: none; }
+  /* R3-081 — le panneau de la cloche, ouvert depuis Tâches, est une FEUILLE du module : un voile derrière lui (le
+     toucher ferme le panneau sans rien toucher dessous : la cible est l'en-tête, hors de `.nb-wrap`) et une poignée. Le
+     voile est le `::after` de l'en-tête (contexte d'empilement de la coque) : `.nb-wrap` (z-index de l'ERP) passe au-dessus. */
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header:has(.nb-panel)::after {
+    content: ""; position: fixed; inset: 0; background: var(--tch-voile); visibility: visible;
+  }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel {
+    border-radius: var(--tch-rayon-feuille) var(--tch-rayon-feuille) 0 0; border-bottom: 0; box-shadow: var(--shadow-lg);
+  }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel::before {
+    content: ""; display: block; width: 36px; height: 5px; margin: 2px auto 6px; border-radius: 999px; background: var(--tch-trait);
+  }
+}
+@media screen and (max-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header:has(.nb-panel)::after {
+    animation: fade-in var(--motion-base) var(--ease-standard);
+  }
+}
+/* R3-081 — en sombre, le panneau de la cloche ouvert depuis Tâches prend le thème du module (iPhone ET bureau) : il était
+   BLANC sur l'écran bleu nuit, ses textes clairs devenus illisibles. Les couleurs littérales du panneau de l'ERP
+   (16-p67-composants.css) sont remplacées ici par les jetons, SEULEMENT dans les pages de Tâches : ailleurs, rien ne bouge. */
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel {
+  background: var(--tch-surface-haute); color: var(--tch-texte); border-color: var(--tch-trait); box-shadow: var(--shadow-lg);
+}
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+  :is(.nb-header, .nb-item, .nb-annonce-titre, .nb-push-title) { color: var(--tch-texte); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+  :is(.nb-tab, .nb-empty, .nb-group-title, .nb-group-title svg, .nb-item-date, .nb-item-mark, .nb-annonce-corps, .nb-push-text, .nb-push-close) {
+  color: var(--tch-texte-doux);
+}
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+  :is(.nb-link-btn, .nb-tab-active) { color: var(--tch-accent); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .nb-tab-active { background: var(--tch-selection); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .nb-dot { background: var(--tch-accent); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+  :is(.nb-tabs, .nb-annonce) { border-color: var(--tch-trait); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .nb-push-prompt {
+  background: var(--tch-selection); border-color: var(--tch-trait);
+}
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .attention-peek {
+  background: var(--tch-surface-haute); color: var(--tch-texte); border-color: var(--tch-trait);
+}
+@media (hover: hover) {
+  .dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+    :is(.nb-item, .nb-tab, .nb-link-btn, .nb-item-mark):hover { background: var(--tch-survol); color: var(--tch-texte); }
+  .dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+    :is(.nb-tab-active, .nb-item-unread):hover { background: var(--tch-selection); }
+  .dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .nb-tab-active:hover { color: var(--tch-accent); }
+}
+/* R2-090 — hors ligne, UN signal : la ligne « Hors ligne · dernière synchro à {HH:MM} » de la coquille. Le bandeau
+   orange de l'ERP (OfflineBanner, seul bandeau `role=status` en `bg-warning` de la coque) ne s'empile plus dessus. */
+.layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > [role="status"].bg-warning { display: none; }
+/* …ni les toasts de l'ERP : chaque requête du module qui échoue hors ligne en posait un (« Connexion perdue… »),
+   mesuré : quatre empilés sur la barre d'onglets et le +. Seulement tant que la page de Tâches est hors ligne. */
+body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toaster] { display: none; }
+/* R2-081 — UNE surface jusqu'en bas de l'écran : le scrolleur de l'ERP prend la surface du module (sur iPhone, plus de
+   cassure grise sous une page courte ; au bureau, plus de « carte » blanche à angles vifs posée sur le gris : le
+   contenu est sur le fond, comme Things). */
+.layout-content:has(> .route-fade > .tch) { background: var(--tch-surface); }
 /* …et le « filet noir de 1 px » autour du module était l'anneau de focus du scrolleur `main#contenu` (tabIndex −1,
    focalisé par l'ERP à chaque navigation) : un conteneur non interactif ne montre pas d'anneau ; le focus y reste. */
 .layout-content:has(> .route-fade > .tch):focus { outline: none; }
@@ -971,17 +1271,17 @@
 .tch .maintenant-heure {
   background: var(--tch-fond-colonne); border-radius: 4px; padding: 3px 4px; top: -12px; margin-right: 6px;
 }
-.tch .bande-jours [aria-current="date"] b {
-  background: transparent; color: var(--tch-accent); box-shadow: inset 0 0 0 1.5px var(--tch-accent);
-}
 .tch .bande-jours [aria-selected="true"] b {
+  background: var(--tch-choisi-fond); color: var(--tch-choisi-texte); box-shadow: var(--tch-choisi-trait);
+}
+.tch .bande-jours [aria-current="date"] b {
   background: var(--tch-accent); color: var(--tch-accent-texte); box-shadow: none;
 }
 .tch .agenda-journee {
   display: grid; grid-template-columns: 48px 1fr; align-items: center; margin-bottom: 10px;
 }
 .tch .agenda-journee small {
-  font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux); text-align: right; padding-right: 8px; line-height: 1.2;
+  font-size: var(--tch-taille-meta); font-weight: 500; color: var(--tch-texte-doux); text-align: right; padding-right: 8px; line-height: 1.2;
 }
 .tch .agenda-journee .bloc {
   position: static; margin: 0 4px; padding: 6px 8px 6px 10px;
@@ -1011,7 +1311,7 @@
   padding: 0 var(--tch-gouttiere); text-align: left; font-size: 0.9375rem; line-height: 1.3;
 }
 .tch .progression-compte {
-  font-weight: 650;
+  font-weight: 600;
 }
 .tch .progression-detail {
   color: var(--tch-texte-doux);
@@ -1024,7 +1324,7 @@
   flex: 1; min-width: 0; font-size: 0.9375rem; line-height: 1.35;
 }
 .tch .moment-texte b {
-  display: block; font-size: 1rem; font-weight: 650;
+  display: block; font-size: var(--tch-taille-texte); font-weight: 600;
 }
 .tch .moment-texte span {
   color: var(--tch-texte-doux);
@@ -1038,7 +1338,7 @@
   background: var(--tch-bloc-erp); font-size: 0.9375rem;
 }
 .tch .bande-journee b {
-  min-width: 0; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tch .bande-journee small {
   font-size: var(--tch-meta); color: var(--tch-texte-doux); white-space: nowrap;
@@ -1060,7 +1360,7 @@
 }
 .tch .garder {
   position: relative; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: var(--tch-rayon-puce);
-  background: var(--tch-accent-doux); color: var(--tch-accent); font-size: 0.8125rem; font-weight: 650;
+  background: var(--tch-accent-doux); color: var(--tch-accent); font-size: 0.8125rem; font-weight: 600;
 }
 .tch .garder::after {
   content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%);
@@ -1111,6 +1411,10 @@
    le titre, centré dans 44 px, tombait sous la case et l'heure, et la puce Garder grossissait. Leur cible tactile
    est déjà ≥ 44 px par leur ::after (la ligne entière ; 44 px autour de la puce). */
 .tch .ligne-corps-bouton, .tch .ligne .garder { min-height: 0; }
+/* R2-082 — même règle tactile : l'interrupteur (51 × 31) devenait une « goutte » de 51 × 44, pastille collée en haut ;
+   les puces (34), leur croix (20), le Copilote (36), les segments (40) et les boutons du bandeau de conflit (40)
+   grossissaient de même. Tous ont déjà leur cible de 44 px par un `::after` : leur dessin reste celui des maquettes. */
+.tch .interrupteur, .tch .puce, .tch .puce .retirer, .tch .copilote, .tch .segmente button, .tch .conflit .bouton { min-height: 0; }
 .tch .ligne .case, .tch .ligne .garder, .tch .ligne-fin button { position: relative; z-index: 1; }
 .tch .ligne-actions { z-index: calc(var(--z-base) + 2); }
 /* Étoile interactive : cible de 44 px, alignée sur la première ligne du titre */
@@ -1134,11 +1438,11 @@
 .tch .copilote-groupe { position: relative; display: inline-flex; }
 .tch .copilote-phrase { position: absolute; top: 100%; right: 0; z-index: calc(var(--z-base) + 3); width: min(320px, 80vw); padding: 12px 14px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); color: var(--tch-texte);
-  font-size: 0.875rem; line-height: 1.35; box-shadow: var(--shadow-md); }
+  font-size: var(--tch-taille-meta); line-height: 1.35; box-shadow: var(--shadow-md); }
 .tch .copilote[aria-disabled="true"] { opacity: 0.6; }
 
 /* « Ajouter une tâche · n » du bureau : un vrai bouton pleine largeur de la liste */
-.tch button.saisie-bureau { width: calc(100% - 16px); text-align: left; background: none; }
+.tch button.saisie-bureau { width: calc(100% - 2 * var(--tch-gouttiere)); text-align: left; background: none; }
 @media (hover: hover) {
   .tch .saisie-bureau:hover { background: var(--tch-survol); }
 }
@@ -1183,7 +1487,7 @@
 .tch .selecteur-projet { display: block; }
 .tch .selecteur-projet-liste { list-style: none; margin: 8px 0 0; padding: 0; max-height: 40vh; overflow-y: auto; }
 .tch .selecteur-projet-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 12px;
-  border-radius: 10px; font-size: 1rem; text-align: left; }
+  border-radius: 10px; font-size: var(--tch-taille-texte); text-align: left; }
 @media (hover: hover) {
   .tch .selecteur-projet-item:hover { background: var(--tch-survol); }
 }
@@ -1194,11 +1498,52 @@
   background: var(--tch-surface-haute); color: var(--tch-texte); font-size: 1rem; box-shadow: inset 0 0 0 1px var(--tch-trait); border: 0; }
 .tch .champ::placeholder { color: var(--tch-texte-doux); }
 .tch .champ:focus-visible { box-shadow: inset 0 0 0 2px var(--tch-accent); }
+/* R2-087 — feuille « Touches de Tâches » (`?`) */
+.tch .touches { margin: 0 0 8px; }
+.tch .touches:focus-visible { box-shadow: none; }
+.tch .touches-ligne { display: grid; grid-template-columns: 104px 1fr; align-items: center; min-height: 40px;
+  box-shadow: inset 0 -1px 0 var(--tch-trait); font-size: 0.9375rem; }
+.tch .touches-ligne:last-child { box-shadow: none; }
+.tch .touches dt, .tch .touches dd { margin: 0; }
+.tch .touches kbd { font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+  background: var(--tch-panneau); color: var(--tch-texte); white-space: nowrap; }
 /* Bandeau de conflit (A16-N8) */
 .tch .conflit { margin: 10px var(--tch-gouttiere) 16px; padding: 12px 12px 10px 14px; border-radius: var(--tch-rayon-champ);
   background: var(--tch-accent-doux); }
 .tch .conflit p { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.9375rem; font-weight: 600; }
 .tch .conflit p svg { color: var(--tch-accent); }
 .tch .conflit .carte-actions { margin-top: 10px; }
-.tch .conflit .bouton { height: 40px; padding: 0 14px; font-size: 0.9375rem; position: relative; }
+.tch .conflit .bouton { height: var(--tch-bouton-h); padding: 0 14px; font-size: var(--tch-taille-texte); position: relative; }
 .tch .conflit .bouton::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+
+/* ── R2-092 — un seul langage ─────────────────────────────────────────────────────────────────────────────────
+   « Sélectionné » = un fond d'accent léger et le texte en accent, partout (tuiles de « Quand », segments, puces
+   cochées, sélecteur de projet) : plus de cadre bleu de 2 px, de pilule blanche sur gris ni de pilule pleine. Le
+   disque plein reste réservé au jour choisi d'un calendrier. L'anneau de focus n'est jamais retiré. */
+.tch .quand-tuile[aria-checked="true"],
+.tch .segmente button[aria-checked="true"],
+.tch .puce[aria-checked="true"],
+.tch .puce.active,
+.tch .selecteur-projet-item[aria-checked="true"] {
+  background: var(--tch-choisi-fond); color: var(--tch-choisi-texte);
+}
+/* R3-092 — …et un filet d'accent de 1,5 px (le survol, lui, reste un simple fond neutre) ; l'anneau de focus passe devant */
+.tch .quand-tuile[aria-checked="true"]:not(:focus-visible),
+.tch .segmente button[aria-checked="true"]:not(:focus-visible),
+.tch .puce[aria-checked="true"]:not(:focus-visible),
+.tch .puce.active:not(:focus-visible),
+.tch .selecteur-projet-item[aria-checked="true"]:not(:focus-visible) { box-shadow: var(--tch-choisi-trait); }
+.tch .quand-tuile[aria-checked="true"] b { color: var(--tch-accent); }
+/* R2-018b — méta sur la ligne du titre quand elle est courte (`LigneTache` pose `meta-courte` sur `.ligne-corps`, R2-018 L3) : le titre
+   et sa méta partagent une ligne ; trop longs, la méta repasse dessous d'elle-même (retour à la ligne du flex). */
+.tch .ligne-corps.meta-courte { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
+.tch .ligne-corps.meta-courte .ligne-corps-bouton { width: auto; flex: 0 1 auto; min-width: 0; }
+.tch .ligne-corps.meta-courte .meta { margin-top: 0; }
+
+/* R2-094 — au clavier, c'est la LIGNE qui est encadrée (anneau arrondi dedans, fond de survol), plus un rectangle
+   collé aux lettres du titre qui mordait sur l'heure. Anneau intérieur : le cadre de balayage (`overflow: hidden`)
+   ne le coupe pas. */
+.tch .ligne-corps-bouton:focus-visible { box-shadow: none; }
+.tch .ligne:has(.ligne-corps-bouton:focus-visible) {
+  border-radius: 10px; background: var(--tch-survol); box-shadow: inset 0 0 0 var(--ring-width) var(--ring);
+}

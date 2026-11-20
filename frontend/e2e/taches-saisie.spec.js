@@ -8,6 +8,7 @@
 // Chaque test repart d'un compte effacé et crée ses propres données (titres uniques) : rejouable, indépendant de
 // l'ordre. « Le deuxième appareil » du conflit est joué par l'API (`page.request`), qui écrit exactement ce
 // qu'écrirait l'autre navigateur.
+import { readFileSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
 import {
   API, attendreAujourdhui, boutonGarder, chercherTaches, creerProjet, creerTaches, etatJournee, jourServeur, ligne, listerProjets,
@@ -60,6 +61,71 @@ test.describe('Tâches — saisie', () => {
     expect(lue.jour_prevu > jour, 'prévue demain').toBeTruthy()
   })
 
+  test('R2-001 — taper vite après Entrée : le serveur retenu, aucune phrase n\'est perdue ni tronquée', async ({ page }) => {
+    await reinitialiser(page)
+    // chaque création est RETENUE sur une porte que le test lâche après la saisie des trois phrases (le réseau
+    // d'un iPhone dans la rue) ; l'aperçu, lui, passe tout de suite
+    let lacher
+    const porte = new Promise((r) => { lacher = r })
+    await page.route('**/api/django/taches/saisie-rapide/', async (route) => {
+      if (route.request().postDataJSON()?.apercu === false) await porte
+      await route.continue()
+    })
+    const titres = [titreUnique('Test un'), titreUnique('Rappeler Karim'), titreUnique('Meryem sur les leads')]
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await boutonAjouter(page).click()
+    for (const titre of titres) {
+      await champSaisie(page).pressSequentially(titre, { delay: 10 })
+      await champSaisie(page).press('Enter')
+      // le champ se vide AU TOUCHER, avant le retour du serveur
+      await expect(champSaisie(page)).toHaveValue('')
+    }
+    lacher() // seulement maintenant le serveur reçoit les trois créations
+    for (const titre of titres) {
+      await expect.poll(async () => (await chercherTaches(page, titre)).filter((t) => t.titre === titre).length,
+        `« ${titre} » créée entière, une fois`).toBe(1)
+    }
+  })
+
+  test('R2-009 — au bureau, `n` ouvre la saisie EN PLACE sous « Ajouter une tâche » : sans voile, la liste reste dessous', async ({ page }) => {
+    await journeeNonVide(page)
+    await attendreAujourdhui(page)
+    await page.keyboard.press('n')
+    const feuille = feuilleSaisie(page)
+    await expect(feuille).toBeVisible()
+    await expect(feuille).toHaveAttribute('aria-modal', 'false')
+    expect(await feuille.evaluate((f) => Boolean(f.closest('.saisie-ancre'))), 'rendue à la place de la ligne').toBe(true)
+    await expect(page.locator('.tch .voile')).toHaveCount(0)
+    await expect(champSaisie(page)).toBeFocused()
+    const titre = titreUnique('Relancer le transporteur')
+    await champSaisie(page).fill(titre)
+    await champSaisie(page).press('Enter')
+    await expect(champSaisie(page)).toHaveValue('')
+    await expect(champSaisie(page)).toBeFocused()
+    await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
+    await page.keyboard.press('Escape')
+    await expect(feuille).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Ajouter une tâche', exact: true }).first()).toBeVisible()
+  })
+
+  test('R2-003 — « #Sal » propose « Salon Solaire Expo » : la tâche y va, aucun projet en double', async ({ page }) => {
+    await reinitialiser(page)
+    const nom = `Salon Solaire Expo ${suffixe()}`
+    const projet = await creerProjet(page, nom)
+    const titre = titreUnique('Réserver le stand')
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await boutonAjouter(page).click()
+    await champSaisie(page).pressSequentially(`${titre} #Sal`, { delay: 10 })
+    // R4-29 — « #Sal » est déjà lu comme CE projet (le seul qui commence ainsi) : la puce du pied le dit, la suggestion
+    // sous le champ se tait (jamais la suggestion ET la puce, l'une sous l'autre) ; Entrée envoie la phrase, rien à choisir
+    await expect(feuilleSaisie(page).locator('[data-jeton="projet"]')).toContainText(nom)
+    await expect(feuilleSaisie(page).getByRole('listbox', { name: 'Projets' })).toHaveCount(0)
+    await champSaisie(page).press('Enter')
+    await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
+    expect((await lireTache(page, (await chercherTaches(page, titre))[0].id)).projet?.id).toBe(projet.id)
+    expect((await listerProjets(page)).map((p) => p.nom), 'aucun « Nouveau projet : Sal »').toEqual([nom])
+  })
+
   test('retirer une puce : le mot reste dans le titre, rien n\'est corrigé', async ({ page }) => {
     await reinitialiser(page)
     const titre = titreUnique('Appeler le fournisseur')
@@ -78,7 +144,27 @@ test.describe('Tâches — saisie', () => {
     const [creee] = await chercherTaches(page, titre)
     const lue = await lireTache(page, creee.id)
     expect(lue.titre).toBe(`${titre} demain`)
-    expect(lue.jour_prevu, 'aucun jour posé : la puce a été retirée').toBeNull()
+    // R2-002 — la puce « demain » retirée, c'est le jour de l'écran (Aujourd'hui) qui reste
+    expect(lue.jour_prevu, 'le jour lu a été retiré : la tâche part sur le jour de l\'écran').toBe(await jourServeur(page))
+  })
+
+  test('R2-002 — ajoutée depuis Aujourd\'hui, elle arrive dans Aujourd\'hui (et la puce du jour se retire)', async ({ page }) => {
+    await reinitialiser(page)
+    const [titre, sansJour] = [titreUnique('Rappeler M. Benjelloun'), titreUnique('Idée à trier')]
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await boutonAjouter(page).click()
+    await expect(feuilleSaisie(page).getByRole('button', { name: 'Retirer le jour choisi' })).toBeVisible()
+    await champSaisie(page).fill(titre)
+    await champSaisie(page).press('Enter')
+    await expect(toast(page)).toContainText("Ajoutée à Aujourd'hui")
+    await feuilleSaisie(page).getByRole('button', { name: 'Retirer le jour choisi' }).click()
+    await champSaisie(page).fill(sansJour)
+    await champSaisie(page).press('Enter')
+    const jour = await jourServeur(page)
+    await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
+    await expect.poll(async () => (await chercherTaches(page, sansJour)).length).toBe(1)
+    expect((await lireTache(page, (await chercherTaches(page, titre))[0].id)).jour_prevu).toBe(jour)
+    expect((await lireTache(page, (await chercherTaches(page, sansJour))[0].id)).jour_prevu, 'jour retiré : À trier').toBeNull()
   })
 
   test('Coller mes listes : 4 collages deviennent 4 « Nouveau projet » (Moyenne) et 12 tâches', async ({ page }) => {
@@ -127,6 +213,20 @@ test.describe('Tâches — saisie', () => {
     const etat = await etatJournee(page)
     expect(etat.lignes, 'le serveur propose au moins une tâche').toBeGreaterThan(0)
     await expect(boutonGarder(page, etat.lignes)).toBeVisible()
+  })
+
+  test('R2-004 — coller une liste « comme dans Notes » (titres sans « : ») : 7 groupes nommés AVANT « Créer »', async ({ page }) => {
+    await reinitialiser(page)
+    const liste = readFileSync(new URL('../../backend/django_core/apps/taches/tests/donnees/liste30.txt', import.meta.url), 'utf8')
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await page.getByRole('button', { name: 'Coller mes listes' }).click()
+    await champSaisie(page).fill(liste.trim())
+    for (const nom of ['Villa Benjelloun Dar Bouazza', 'Hôtel Atlas Marrakech', 'Pompage Ferme Berrechid',
+      'Boulangerie Ain Sebaa', 'Admin', 'Recrutement', 'Divers']) {
+      await expect(feuilleSaisie(page).getByText(`Nouveau projet : ${nom}`, { exact: true })).toBeVisible()
+    }
+    await expect(feuilleSaisie(page).getByText('28 tâches · 7 projets', { exact: true })).toBeVisible()
+    await expect(feuilleSaisie(page).getByRole('button', { name: 'Créer 28 tâches' })).toBeVisible()
   })
 
   test('brouillon : fermer la saisie en cours de frappe, la rouvrir, tout est repris', async ({ page }) => {
@@ -299,7 +399,8 @@ test.describe('Tâches — iPhone : le pied des feuilles passe au-dessus de la b
     await expect.poll(() => recoitLeDoigt(creer), '« Créer 3 tâches » sous le doigt').toBe(true)
     await creer.tap()
     await expect(feuilleSaisie(page)).toHaveCount(0)
-    expect((await listerProjets(page)).map((p) => p.nom)).toEqual([nom])
+    // R2-001 : l'envoi part EN ARRIÈRE-PLAN (la feuille se ferme au toucher) — on attend que le serveur l'ait écrit
+    await expect.poll(async () => (await listerProjets(page)).map((p) => p.nom)).toEqual([nom])
   })
 
   test('fiche : « Fait » reçoit le doigt', async ({ page }) => {

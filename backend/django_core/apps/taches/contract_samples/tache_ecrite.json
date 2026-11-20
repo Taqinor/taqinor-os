@@ -58,6 +58,8 @@
       "confidentielle": false,
       "source": "rapide",
       "peut_cloturer": true,
+      "a_notes": true,
+      "fait_le": null,
       "lock_version": 4,
       "notes": "Appeler avant 11 h.",
       "etiquettes": [
@@ -117,6 +119,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 0
         }
       ],
@@ -135,7 +139,6 @@
       "premier_jour_prevu": "2026-11-17",
       "reports_tranches": 0,
       "duree_reelle_minutes": null,
-      "fait_le": null,
       "annule_le": null,
       "occurrence_du": null,
       "activite_origine_id": null,
@@ -166,8 +169,15 @@
       "essentiel_prevues": 1,
       "plan_tenues": 1,
       "plan_lignes": 4,
-      "minutes_prevues": 75,
-      "sans_estimation": 1,
+      "charge": {
+        "taches": 3,
+        "restantes_minutes": 75,
+        "sans_duree": 1,
+        "capacite_minutes": 240,
+        "rendez_vous_minutes": 60,
+        "disponible_minutes": 180,
+        "deborde_minutes": 0
+      },
       "capacite_minutes": 240,
       "capacite_source": "defaut",
       "rendez_vous_minutes": 60,
@@ -177,5 +187,10 @@
       "reprise": false
     },
     "geste_id": 77
+  },
+  "avertissements_possibles": {
+    "prevue_apres_echeance": "Prévue après l'échéance.",
+    "jour_non_travaille": "{Jour} n'est pas un jour travaillé.",
+    "echeance_aujourdhui": "L'échéance reste aujourd'hui. — R3-002 : servi par `taches/{id}/planifier/` quand la tâche quitte aujourd'hui (jour posé plus tard, ou sans jour) alors que son `echeance` est aujourd'hui : elle RESTE dans la journée (gardée par son échéance, regles.md §4.2 cas 4) ; `tache.echeance` de la même réponse dit le jour. Jamais pour « Plus tard » (elle quitte alors la journée)."
   }
 }

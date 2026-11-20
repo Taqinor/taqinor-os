@@ -8,7 +8,7 @@ Le module expose la TABLE des motifs (`MOTIFS`), la recherche des candidats
 (`candidats`), les règles de contexte (`filtrer_contexte`), les échéances
 composées (`composer_echeances`), le choix sans chevauchement (`choisir`) et les
 convertisseurs de `jour`, `heure`, `moment`, `echeance` et `duree`. Les autres
-types (projet, étape, étiquette, priorité, récurrence, rappel, « en réserve »)
+types (projet, étape, étiquette, priorité, récurrence, rappel, « pour plus tard »)
 sont convertis par `analyseur.py`, qui complète `CONVERTISSEURS`.
 
 Un convertisseur reçoit `(m, ctx, texte)` — `m` est le résultat de la recherche
@@ -176,8 +176,42 @@ def conv_jour_periode(m, ctx, texte):
     return Lu(d, libelle_jour(d))
 
 
+# R3-047 — « dans quinze jours » : un nombre de un à trente écrit en lettres (forme normalisée : minuscules, sans
+# accents ; trait d'union ou espace entre les mots) vaut le même nombre en chiffres.
+_UNITES_LETTRES = ('un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf')
+NOMBRES_EN_LETTRES = {
+    **{mot: i for i, mot in enumerate(_UNITES_LETTRES, start=1)}, 'une': 1,
+    **{mot: i for i, mot in enumerate(
+        ('dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize'), start=10)},
+    'dix-sept': 17, 'dix-huit': 18, 'dix-neuf': 19, 'vingt': 20, 'vingt et un': 21, 'vingt et une': 21,
+    **{f'vingt-{mot}': 20 + i for i, mot in enumerate(_UNITES_LETTRES[1:], start=2)},
+    'trente': 30}
+_SEPARATEUR_NOMBRE = re.compile(r'[\s-]+')
+
+
+def _cle_nombre(texte):
+    """« vingt-et-un », « vingt et un » et « vingt et-un » ont la même clé (mots séparés par une espace)."""
+    return _SEPARATEUR_NOMBRE.sub(' ', texte.strip())
+
+
+_NOMBRES_PAR_CLE = {_cle_nombre(mot): n for mot, n in NOMBRES_EN_LETTRES.items()}
+# les plus longs d'abord : « dix-sept » avant « dix », « vingt et un » avant « vingt », « une » avant « un »
+_ALT_NOMBRES_LETTRES = '|'.join(
+    r'[\s-]+'.join(cle.split(' ')) for cle in sorted(_NOMBRES_PAR_CLE, key=len, reverse=True))
+
+
+def _nombre_ecrit(texte):
+    """Le nombre d'un décalage : en chiffres, « a/an/one » (R2-006), ou en lettres de un à trente (R3-047)."""
+    if texte.isdigit():
+        return int(texte)
+    if texte in ('a', 'an', 'one'):
+        return 1
+    return _NOMBRES_PAR_CLE[_cle_nombre(texte)]
+
+
 def conv_jour_decalage(m, ctx, texte):
-    n, unite = int(m.group('n')), m.group('u')
+    n = _nombre_ecrit(m.group('n'))
+    unite = m.group('u')
     if n < 1:
         return None
     try:
@@ -226,6 +260,23 @@ def conv_jour_fin_mois(m, ctx, texte):
     return Lu(d, libelle_jour(d))
 
 
+def conv_jour_quantieme(m, ctx, texte):
+    """R2-006 — « le 25 » : le prochain 25 à partir d'aujourd'hui (ce mois-ci s'il n'est pas passé), sinon rien."""
+    jj = int(m.group('d'))
+    if not 1 <= jj <= 31:
+        return None
+    j = ctx.aujourdhui
+    for decalage in range(13):
+        mois0 = j.month - 1 + decalage
+        try:
+            d = date(j.year + mois0 // 12, mois0 % 12 + 1, jj)
+        except ValueError:
+            continue
+        if d >= j:
+            return Lu(d, libelle_jour(d))
+    return None
+
+
 # ----------------------------------------------------- convertisseurs : heure
 
 _RE_HM = re.compile(r'(\d{1,2})\s*(?:h|heures?|hours?|hrs?)(?:\s*(\d{2}))?')
@@ -269,13 +320,18 @@ def conv_heure_midi(m, ctx, texte):
     return Lu(HeureLue(12, 0, midi=True), '12:00')
 
 
+def conv_heure_ce_midi(m, ctx, texte):
+    """R2-006 — « ce midi » : le « ce » lève l'ambiguïté du « midi » nu (§1.4) : 12:00 aujourd'hui."""
+    return Lu(HeureLue(12, 0), '12:00')
+
+
 # ---------------------------------------------------- convertisseurs : moment
 
 def conv_moment_ce(m, ctx, texte):
     """« ce matin », « this evening », « tonight » : posent aussi le jour J."""
     mot = m.group('m')
     cle = 'soir' if ('soir' in mot or 'evening' in mot or 'tonight' in mot) else (
-        'apres_midi' if ('apres' in mot or 'afternoon' in mot) else 'matin')
+        'apres_midi' if ('apre' in mot or 'afternoon' in mot) else 'matin')
     return Lu((cle, True), _MOMENTS_LIBELLES[cle])
 
 
@@ -283,7 +339,7 @@ def conv_moment_nu(m, ctx, texte):
     """« matin », « soir »… nus : lus seulement selon `filtrer_contexte` (§1.4)."""
     mot = m.group('m')
     cle = 'soir' if ('soir' in mot or 'evening' in mot) else (
-        'apres_midi' if ('apres' in mot or 'afternoon' in mot) else 'matin')
+        'apres_midi' if ('apre' in mot or 'afternoon' in mot) else 'matin')  # « aprem » compris (R2-006)
     return Lu((cle, False), _MOMENTS_LIBELLES[cle])
 
 
@@ -334,6 +390,15 @@ def conv_priorite_excl(m, ctx, texte):
     return Lu(valeur, _LIBELLES_PRIORITE[valeur])
 
 
+_PRIORITE_PAR_MOT = {'haute': 3, 'high': 3, 'moyenne': 2, 'medium': 2, 'basse': 1, 'low': 1}
+
+
+def conv_priorite_mot(m, ctx, texte):
+    """R2-006 — `!haute` = 3, `!moyenne` = 2, `!basse` = 1 (et `!high/!medium/!low`)."""
+    valeur = _PRIORITE_PAR_MOT[m.group('mot')]
+    return Lu(valeur, _LIBELLES_PRIORITE[valeur])
+
+
 def conv_priorite_p(m, ctx, texte):
     """`p1` = 3, `p2` = 2, `p3` = 1."""
     valeur = _PRIORITE_PAR_P[m.group('n')]
@@ -349,10 +414,12 @@ CONVERTISSEURS = {
     'jour_date_texte': conv_jour_date_texte,
     'jour_date_iso': conv_jour_date_iso,
     'jour_fin_mois': conv_jour_fin_mois,
+    'jour_quantieme': conv_jour_quantieme,
     'heure_hm': conv_heure_hm,
     'heure_colon': conv_heure_colon,
     'heure_ampm': conv_heure_ampm,
     'heure_midi': conv_heure_midi,
+    'heure_ce_midi': conv_heure_ce_midi,
     'moment_ce': conv_moment_ce,
     'moment_nu': conv_moment_nu,
     'duree_prefixee': conv_duree_prefixee,
@@ -361,6 +428,7 @@ CONVERTISSEURS = {
     'duree_nu': conv_duree_nu,
     'priorite_excl': conv_priorite_excl,
     'priorite_p': conv_priorite_p,
+    'priorite_mot': conv_priorite_mot,
 }
 
 
@@ -388,8 +456,8 @@ MOTIFS = (
     _m('jour', r'(?<!\w)(?P<p>(?:la\s+)?semaine\s+prochaine|next\s+week|ce\s+week[- ]?end'
        r'|this\s+week[- ]?end|fin\s+de\s+semaine|end\s+of\s+(?:the\s+)?week)(?!\w)',
        'jour_periode'),
-    _m('jour', r'(?<!\w)(?:dans|in)\s+(?P<n>\d+)\s+(?P<u>jours?|semaines?|mois|days?|weeks?|months?)(?!\w)',
-       'jour_decalage'),
+    _m('jour', rf'(?<!\w)(?:dans|in)\s+(?P<n>\d+|{_ALT_NOMBRES_LETTRES}|an?|one)\s+'
+       r'(?P<u>jours?|semaines?|mois|days?|weeks?|months?)(?!\w)', 'jour_decalage'),
     _m('jour', _JOUR_DEBUT + r'(?P<d>\d{1,2})/(?P<m>\d{1,2})(?:/(?P<y>\d{4}|\d{2}))?(?![\w/])',
        'jour_date_slash'),
     _m('jour', _JOUR_DEBUT + rf'(?P<d>\d{{1,2}})(?:er|st|nd|rd|th)?\s+(?P<mois>{_ALT_MOIS})'
@@ -399,7 +467,10 @@ MOTIFS = (
        r'(?:,?\s+(?P<y>\d{4}))?(?![\w/:])',
        'jour_date_texte'),
     _m('jour', r'(?<![\w-])(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})(?![\w-])', 'jour_date_iso'),
-    _m('jour', r'(?<!\w)(?:fin\s+de\s+mois|end\s+of\s+(?:the\s+)?month)(?!\w)', 'jour_fin_mois'),
+    _m('jour', r'(?<!\w)(?:fin\s+d(?:e|u)\s+mois|end\s+of\s+(?:the\s+)?month)(?!\w)', 'jour_fin_mois'),
+    # R2-006 — « le 25 » seul : le prochain 25, quand rien ne suit (fin, ponctuation) ou qu'une heure suit
+    _m('jour', r'(?<!\w)le\s+(?P<d>\d{1,2})(?:er)?(?=\s*(?:$|[.,;!?)]|(?:a|at)\s|\d{1,2}\s*h|\d{1,2}:))',
+       'jour_quantieme'),
     # heure
     _m('heure', _ANCRE_HEURE + rf'(?<![\w:.,])(?P<hm>{_HM})(?![\w:])',
        'heure_hm'),
@@ -408,10 +479,11 @@ MOTIFS = (
     _m('heure', _ANCRE_HEURE + r'(?<![\w:.,])(?P<h>\d{1,2})(?::(?P<m>\d{2}))?\s*(?P<ap>am|pm)(?!\w)',
        'heure_ampm'),
     _m('heure', _ANCRE_HEURE + r'(?<!\w)(?:midi|noon)(?!\w)', 'heure_midi'),
+    _m('heure', r'(?<!\w)(?:ce|this)\s+(?:midi|noon)(?!\w)', 'heure_ce_midi'),
     # moment
-    _m('moment', r'(?<!\w)(?P<m>ce\s+matin|cet\s+apres[- ]midi|ce\s+soir|this\s+morning'
+    _m('moment', r'(?<!\w)(?P<m>ce\s+matin|cet\s+apres[- ]midi|cet\s+aprem|ce\s+soir|this\s+morning'
        r'|this\s+afternoon|this\s+evening|tonight)(?!\w)', 'moment_ce'),
-    _m('moment', r'(?<!\w)(?:in\s+the\s+)?(?P<m>matin|apres[- ]midi|soir|morning|afternoon|evening)(?!\w)',
+    _m('moment', r'(?<!\w)(?:in\s+the\s+)?(?P<m>matin|apres[- ]midi|aprem|soir|morning|afternoon|evening)(?!\w)',
        'moment_nu'),
     # durée
     _m('duree', _PREFIXE_DUREE + rf'(?<![\w:.,])(?P<hm>{_HM})(?![\w:])', 'duree_prefixee'),
@@ -422,6 +494,7 @@ MOTIFS = (
     # priorité
     _m('priorite', r'(?<!\S)(?P<x>!{2,3})(?!!)', 'priorite_excl'),
     _m('priorite', r'(?<!\S)p(?P<n>[123])(?!\w)', 'priorite_p'),
+    _m('priorite', r'(?<!\S)!(?P<mot>haute|moyenne|basse|high|medium|low)(?!\w)', 'priorite_mot'),
 )
 
 

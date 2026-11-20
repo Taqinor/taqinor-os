@@ -372,6 +372,7 @@ def repondre_premier(etat, journee_type, choix, jour=None):
 # --- TCH27 : « Garder ce rythme » et bascules (TENIR, §6.6-§6.7) ------------
 
 JOURS_REFERENCE = 14  # R = moyenne des 14 derniers jours évalués
+JOURS_REFERENCE_PROVISOIRE = 5  # R provisoire = pas réel dès 5 jours évalués (R3-004, C-15)
 JOURS_TYPE = 10  # journée type = les 10 derniers jours évalués
 SILENCE_TENIR_JOURS = 28  # silence après une dérive, quelle que soit la réponse
 DECIMALES_REFERENCE = 2  # `tenir_reference` est un DecimalField(4,2)
@@ -417,10 +418,21 @@ def derive_tenir(reference, comptes, jour, silence):
     return None
 
 
+def reference_provisoire(comptes):
+    """R PROVISOIRE de « Garder ce rythme » (R3-004, choix C-15) : la moyenne plafonnée des jours évalués disponibles
+    (≤ 14 derniers, eux-mêmes ≤ 42 jours) dès qu'il y en a 5 — le pas RÉEL, jamais le palier qu'on vient de taper ;
+    `None` en dessous de 5 jours (le palier est alors gardé, et le geste le dit)."""
+    derniers = list(comptes)[-JOURS_REFERENCE:]
+    if len(derniers) < JOURS_REFERENCE_PROVISOIRE:
+        return None
+    return round(moyenne_plafonnee(derniers), DECIMALES_REFERENCE)
+
+
 def _vers_tenir(etat, jour):
     reference = reference_tenir(etat.comptes_recents)
-    if reference is None:  # R provisoire = palier courant (ou 5), fixée après 14 jours
-        return {'tenir_reference': _palier(etat), 'tenir_fixee_le': None}
+    if reference is None:  # R provisoire : le pas réel dès 5 jours évalués, sinon le palier (ou 5) ; fixée à 14
+        provisoire = reference_provisoire(etat.comptes_recents)
+        return {'tenir_reference': provisoire if provisoire is not None else _palier(etat), 'tenir_fixee_le': None}
     return {'tenir_reference': reference, 'tenir_fixee_le': jour}
 
 
@@ -430,7 +442,10 @@ def _vers_pousser(etat, jour):
         palier = max(PALIER_MIN, arrondir(float(reference)))
         return {'palier': palier, 'palier_source': SourceObjectif.CALCULE,
                 'bloc_debut': jour + timedelta(days=1)}
-    recents = list(etat.comptes_recents)[-JOURS_TYPE:]  # LIBRE -> POUSSER : journée type
+    if etat.palier is not None:
+        # LIBRE -> POUSSER (R2-122, C-7) : « Sans objectif » garde le dernier palier, on le rend.
+        return {'bloc_debut': jour + timedelta(days=1)}
+    recents = list(etat.comptes_recents)[-JOURS_TYPE:]  # sans palier : journée type
     if len(recents) < JOURS_TYPE:
         return {'palier': None, 'palier_source': '', 'bloc_debut': None}  # démarrage à froid
     palier = palier_initial(recents, None)[1]

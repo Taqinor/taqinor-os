@@ -5,10 +5,10 @@
     "semaine": "2026-11-16",
     "semaine_courte": false,
     "bilan_semaine": {
-      "texte": "Du lun. 16 au ven. 20 : 26 tâches en 5 jours (précédente : 23). Objectif atteint 4 jours sur 5 · essentiel 4 sur 5 · 20 des 24 gardées.",
+      "texte": "Cette semaine : 26 faites (23 la précédente). Essentiel 4 sur 5.",
       "donnees": {
         "faites": 26,
-        "jours": 5,
+        "jours": 6,
         "prec": 23
       }
     },
@@ -65,6 +65,7 @@
           }
         ],
         "faites_nb": 4,
+        "prevues_aujourdhui_nb": 1,
         "bloquees": [
           {
             "id": 44,
@@ -116,6 +117,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": true,
+          "fait_le": null,
           "lock_version": 4
         },
         "revue": {
@@ -123,7 +126,57 @@
           "decision": "",
           "focus": false
         }
+      },
+      {
+        "projet": {
+          "id": 7,
+          "nom": "Équipe",
+          "objectif": "Fini quand la formation est donnée",
+          "icone": "",
+          "couleur": "bleu",
+          "priorite": 2,
+          "statut": "en_pause",
+          "statut_depuis": "2026-11-17T09:20:00+01:00",
+          "domaine": "",
+          "date_debut": null,
+          "echeance": null,
+          "termine_le": null,
+          "issue": "",
+          "bilan": "",
+          "planification_le": "2026-10-05T10:00:00+01:00",
+          "rang": 3072,
+          "confidentiel": false,
+          "affichage": {
+            "vue": "liste",
+            "tri": "manuel",
+            "groupe": "section",
+            "montrer_faites": false
+          },
+          "a_planifier": false,
+          "compteurs": {
+            "ouvertes": 3,
+            "faites": 2
+          },
+          "sante": [],
+          "focus_semaine": false,
+          "updated_at": "2026-11-17T09:20:00+01:00",
+          "lock_version": 2
+        },
+        "faites_semaine": [],
+        "faites_nb": 0,
+        "prevues_aujourdhui_nb": 0,
+        "bloquees": [],
+        "prochaine_action": null,
+        "revue": {
+          "intention": "",
+          "decision": "pause",
+          "focus": false
+        }
       }
     ]
-  }
+  },
+  "nuls": [
+    "focus_projet_id",
+    "bilan_semaine"
+  ]
 }

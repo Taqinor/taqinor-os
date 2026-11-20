@@ -6,7 +6,6 @@ import { frenchError } from '../../lib/frenchError'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '../../ui/DropdownMenu'
-import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
@@ -79,8 +78,7 @@ export default function ProjetsModeles() {
 
   const vide = modeles !== null && modeles.length === 0
   return (
-    <CoquilleTaches ecran="projets-modeles" titre="Modèles">
-      <BarreRetourProjets />
+    <CoquilleTaches ecran="projets-modeles" titre="Modèles" retour={{ libelle: 'Projets', vers: '/taches/projets' }}>
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
       <ChargementTardif actif={modeles === null && !erreur} />
       {vide && !erreur ? <div className="ep-vide"><p>Aucun modèle</p></div> : null}

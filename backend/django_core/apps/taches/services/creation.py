@@ -8,7 +8,7 @@ LIGNE (`api.md` §4, déjà validée par la vue) :
   va dans `deja_creees`, jamais en double ;
 - tout identifiant reçu (projet, étape, parent, étiquette, récurrence, activité, lien ERP) est revérifié
   « même société ET même propriétaire » (invariant 9) ;
-- `triee_le` = maintenant dès qu'un projet, un jour ou « En réserve » est reconnu (invariant 1) ; un
+- `triee_le` = maintenant dès qu'un projet, un jour ou « Plus tard » est reconnu (invariant 1) ; un
   rappel posé sans jour donne son jour à la tâche ;
 - `rang_projet` = dernier du projet (ou des tâches sans projet) + 1 024 (invariant 32) ;
 - le jour passe par `planifier()` (jamais écrit ici), sans report ;
@@ -40,7 +40,7 @@ from apps.taches.choix import (
     StatutProjet,
     StatutTache,
 )
-from apps.taches.entrees import MESSAGE_DATE, MESSAGE_VALEUR, jour_dans_bornes, sans_nul
+from apps.taches.entrees import MESSAGE_DATE, MESSAGE_VALEUR, introuvable, jour_dans_bornes, refus_etat, sans_nul
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache
@@ -237,8 +237,10 @@ def _lien_verifie(user, lien):
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
     from apps.taches.selectors.liens import libelle_de_cible
     libelle = libelle_de_cible(user, lien['cible'], objet_id)
+    # Un id bien formé qui ne désigne rien de visible : la ressource liée manque — 404 au corps inchangé (règle
+    # d'`IdInconnu404Mixin`, api-fuzz r2 : le schéma ne peut pas dire quelles fiches existent).
     if libelle is None:
-        raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
+        raise introuvable({'lien': [MESSAGE_LIEN_INTROUVABLE]})
     app_label, modele = lien['cible'].split('.', 1)
     return ContentType.objects.get_by_natural_key(app_label, modele), objet_id, libelle
 
@@ -329,7 +331,7 @@ def _regle_existante(user, regle_id):
     if regle is None:
         raise Http404('Introuvable.')
     if taches_de(user).filter(recurrence=regle, statut__in=OUVERTS).exists():
-        raise serializers.ValidationError({'recurrence': ['Une occurrence de cette série est déjà ouverte.']})
+        raise refus_etat({'recurrence': ['Une occurrence de cette série est déjà ouverte.']})
     return regle
 
 
@@ -496,6 +498,12 @@ def _par_ligne(ctx, rang, ligne, cid):
         if ctx.porte != 'saisie' and not ctx.par_ligne:
             raise
         raise serializers.ValidationError({'lignes': {str(ligne.get('index', rang)): exc.detail}})
+    except ConflitEtat as exc:
+        # Un refus d'ÉTAT d'une ligne (série déjà ouverte…) reste un 409, mais dit SA ligne, comme un 400 (erreurs.json)
+        if ctx.porte != 'saisie' and not ctx.par_ligne:
+            raise
+        champs = {cle: valeur for cle, valeur in exc.detail.items() if cle not in ('detail', 'code')}
+        raise refus_etat({'lignes': {str(ligne.get('index', rang)): champs}})
 
 
 def _message(ctx):

@@ -325,6 +325,97 @@ class EcheanceAbsolueTests(SimpleTestCase):
         self.assertEqual(self.etats, [(1, Etat.DELAI)])
 
 
+class MessagesDAjoutTests(SimpleTestCase):
+    """R2-127 sans base : la garde d'AJOUT refuse AVANT toute lecture en base, avec le message du vrai motif."""
+
+    def refus(self, brute, *, leve=None):
+        from rest_framework.exceptions import ValidationError
+
+        from apps.taches.views import agenda_externe as vue
+        from core.conflit_etat import ConflitEtat
+        with mock.patch.object(lecteur, 'verifier_adresse', side_effect=leve):
+            # « injoignable » (DNS, hôte interne) est un refus d'ÉTAT : 409 (api-fuzz r2) ; les autres, 400.
+            with self.assertRaises((ValidationError, ConflitEtat)) as contexte:
+                vue._url_acceptee(object(), brute)
+        return [str(m) for m in contexte.exception.detail['url']]
+
+    def test_ce_n_est_pas_une_adresse(self):
+        for brute in ('mon agenda du bureau', '', 'agenda.example/a.ics', 'https://'):
+            with self.subTest(brute=brute):
+                self.assertEqual(self.refus(brute), ["Ce n'est pas une adresse : colle le lien de ton agenda."])
+
+    def test_il_faut_https(self):
+        for brute in ('http://agenda.example/a.ics', 'ftp://agenda.example/a.ics'):
+            with self.subTest(brute=brute):
+                self.assertEqual(self.refus(brute), ["L'adresse doit commencer par https."])
+
+    def test_webcal_est_lu_comme_https(self):
+        self.assertEqual(self.refus('webcal://agenda.example/a.ics', leve=UnsafeWebhookURL('interne')),
+                         ['Adresse injoignable : vérifie le lien.'])
+
+    def test_hote_introuvable_ou_interne_est_injoignable(self):
+        motifs = ("L'hôte du webhook est introuvable (DNS).",
+                  "L'URL du webhook pointe vers une adresse interne interdite.")
+        for motif in motifs:
+            with self.subTest(motif=motif):
+                self.assertEqual(self.refus('https://agenda.example/a.ics', leve=UnsafeWebhookURL(motif)),
+                                 ['Adresse injoignable : vérifie le lien.'])
+
+
+class LiensReelsTests(SimpleTestCase):
+    """Critique serveur n° 6 — le motif publié et validé accepte ce qu'un vrai lien de calendrier porte (schéma en
+    majuscules, `user@hôte`, requête `?x=1` ou `#…` juste après l'hôte, `_` dans l'hôte, IDN écrit en punycode, espace
+    collé autour) ; les refus de sécurité restent : autre schéma que https / webcal, hôte privé ou interne
+    (`verifier_adresse`, non simulé ici). Un hôte hors ASCII ou une IPv6 littérale reste refusé au motif (aucun lien
+    Google, iCloud ou Outlook n'en porte ; `urlsplit` lèverait sur certains, et le schéma publié doit dire vrai)."""
+
+    LIENS = (
+        'WEBCAL://p01-caldav.icloud.com/published/2/MTY0NTc4',
+        'HTTPS://calendar.google.com/calendar/ical/x%40group.calendar.google.com/private-ab/basic.ics',
+        'https://reda@outlook.office365.com/owa/calendar/a@taqinor.ma/b/calendar.ics',
+        'https://outlook.live.com/owa/calendar/abc/reachcalendar.ics?x=1',
+        'https://cal_serveur.exemple.ma/a.ics',
+        'https://agenda.exemple.ma:8443/a.ics#semaine',
+        'https://calendrier.xn--socit-esab.ma/a.ics',
+        'https://agenda.exemple.ma?x=1',
+        ' https://calendar.google.com/a.ics\n',
+    )
+
+    def erreurs(self, url):
+        from apps.taches.views.agenda_externe import AgendaCorps
+        corps = AgendaCorps(data={'url': url})
+        return [] if corps.is_valid() else [str(m) for m in corps.errors['url']]
+
+    def test_liens_reels_acceptes_par_le_corps_et_la_garde(self):
+        from apps.taches.views import agenda_externe as vue
+        for url in self.LIENS:
+            with self.subTest(url=url):
+                self.assertEqual(self.erreurs(url), [])
+                with mock.patch.object(lecteur, 'verifier_adresse', return_value=None):
+                    acceptee = vue._url_acceptee(object(), url)
+                self.assertTrue(acceptee.startswith('https://'), acceptee)
+
+    def test_les_refus_de_securite_restent(self):
+        for url, message in (('http://agenda.example/a.ics', "L'adresse doit commencer par https."),
+                             ('HTTP://agenda.example/a.ics', "L'adresse doit commencer par https."),
+                             ('ftp://agenda.example/a.ics', "L'adresse doit commencer par https."),
+                             ('javascript:alert(1)', "Ce n'est pas une adresse : colle le lien de ton agenda."),
+                             ('https://', "Ce n'est pas une adresse : colle le lien de ton agenda."),
+                             ('https://a b/c.ics', "Ce n'est pas une adresse : colle le lien de ton agenda."),
+                             ('https://[::1]/a.ics', "Ce n'est pas une adresse : colle le lien de ton agenda.")):
+            with self.subTest(url=url):
+                self.assertEqual(self.erreurs(url), [message])
+        from apps.taches.views import agenda_externe as vue
+        from core.conflit_etat import ConflitEtat
+        for url in ('https://reda@127.0.0.1/a.ics', 'https://reda:secret@localhost/a.ics', 'WEBCAL://10.0.0.5/a.ics'):
+            with self.subTest(url=url):
+                self.assertEqual(self.erreurs(url), [])
+                with self.assertRaises(ConflitEtat) as refus:
+                    vue._url_acceptee(object(), url)
+                self.assertEqual([str(m) for m in refus.exception.detail['url']],
+                                 ['Adresse injoignable : vérifie le lien.'])
+
+
 class RoutesAgendasExternesTests(TestCase):
     """Les 5 routes `agendas-externes/` : ≤ 3 par compte, URL jamais rendue, état lisible."""
 
@@ -362,21 +453,32 @@ class RoutesAgendasExternesTests(TestCase):
         stocke = AgendaExterne.objects.get(proprietaire=self.u)
         self.assertTrue(stocke.url.startswith('https://'))
 
-    def test_4e_adresse_400_au_champ_url(self):
+    # Refus d'ÉTAT (3 déjà posés, doublon, hôte injoignable) : 409 au même corps `{"url": […]}` (api-fuzz r2).
+    def test_4e_adresse_409_au_champ_url(self):
         for n in range(3):
             fabriques.agenda_externe(self.u, url=f'https://agenda.example/{n}.ics')
-        rendu = self.ajouter('https://agenda.example/4.ics', statut=400).json()
-        self.assertEqual(champs(rendu), {'url': ['3 agendas au plus.']})
+        rendu = self.ajouter('https://agenda.example/4.ics', statut=409).json()
+        self.assertEqual(rendu['url'], ['3 agendas au plus.'])
 
-    def test_doublon_400(self):
+    def test_doublon_409(self):
         fabriques.agenda_externe(self.u, url='https://agenda.example/a.ics')
-        self.assertEqual(champs(self.ajouter('https://agenda.example/a.ics', statut=400).json()),
-                         {'url': ['Cet agenda est déjà ajouté.']})
+        self.assertEqual(self.ajouter('https://agenda.example/a.ics', statut=409).json()['url'],
+                         ['Cet agenda est déjà ajouté.'])
 
-    def test_adresse_non_publique_400(self):
+    def test_adresse_non_publique_409(self):
         self.verifier.side_effect = UnsafeWebhookURL('interne')
-        self.assertEqual(champs(self.ajouter('https://intranet.local/a.ics', statut=400).json()),
-                         {'url': ['Adresse https publique attendue.']})
+        self.assertEqual(self.ajouter('https://intranet.local/a.ics', statut=409).json()['url'],
+                         ['Adresse injoignable : vérifie le lien.'])
+
+    def test_r2_127_trois_refus_trois_messages(self):
+        """F2 n°18 : « pas une adresse », « il faut https », « injoignable » ne se disent plus d'une seule phrase."""
+        self.assertEqual(champs(self.ajouter('mon agenda du bureau', statut=400).json()),
+                         {'url': ["Ce n'est pas une adresse : colle le lien de ton agenda."]})
+        self.assertEqual(champs(self.ajouter('http://agenda.example/a.ics', statut=400).json()),
+                         {'url': ["L'adresse doit commencer par https."]})
+        self.verifier.side_effect = UnsafeWebhookURL("L'hôte du webhook est introuvable (DNS).")
+        self.assertEqual(self.ajouter('https://agenda-introuvable.example/a.ics', statut=409).json()['url'],
+                         ['Adresse injoignable : vérifie le lien.'])
 
     def test_liste(self):
         fabriques.agenda_externe(self.u, libelle='Bureau')

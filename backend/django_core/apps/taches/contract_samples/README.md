@@ -1,4 +1,4 @@
-# `apps/taches/contract_samples/` — les 60 contrats PACT10 de l'app `taches`
+# `apps/taches/contract_samples/` — les 61 contrats PACT10 de l'app `taches`
 
 Même doctrine que `apps/agent/contract_samples/README.md` : chaque fichier porte `endpoint`, `pourquoi` et `exemple` (un objet). L'`exemple` est recopié mot pour mot de l'annexe A de `docs/taches/reference/api.md` (révision 3) ; aucun export dans `contractSamples.js` (lecteur générique `exempleContrat`). Posés AVANT leurs vues (TCH2 puis TCH3) : la garde `check_api_shapes.py` s'abstient tant que la route n'est pas lisible.
 
@@ -11,6 +11,10 @@ Pour les formes qui ne sont pas une route (`carte_du_moment`, `item`, `propositi
 ## 2/2 — planification_apercu → vues (TCH3)
 
 `planification_apercu`, `point`, `priorites`, `projet`, `projet_ecrit`, `projet_vue`, `projets_liste`, `proposition`, `proposition_repondue`, `rappel_repeter`, `recherche`, `reglages`, `reglages_societe`, `rendez_vous`, `revue_decision`, `revue_projets`, `rythme`, `saisie_apercu`, `saisie_rapide`, `suggestion_refusee`, `suggestions`, `supprimees`, `tache`, `tache_changement`, `tache_ecrite`, `tache_recurrente_ecrite`, `tout_effacer`, `tuile`, `vu`, `vues`.
+
+## Vague 3 (R3-003) — l'enveloppe de « Faites cette semaine »
+
+`faites_semaine` : `GET taches/?periode=faites_semaine` — la page paginée (`item.json` par ligne) plus `total` et `activites_closes`, posé seul avant son code (contrat d'abord).
 
 ## Hors route Django — carte du Copilote (A5)
 

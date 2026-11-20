@@ -12,7 +12,6 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.taches.tests import fabriques
-from apps.taches.tests.test_api_saisie import champs
 
 URL = '/api/django/taches/agenda/'
 
@@ -90,9 +89,10 @@ class AgendaTests(TestCase):
         self.assertEqual(self.periode()['capacite']['minutes'], 300)
 
     def test_42_jours_au_plus(self):
+        """Règle croisée `du`/`au` (chaque date seule est valide au schéma) : 409, même corps (api-fuzz r2)."""
         self.periode(au=self.jour(41).isoformat())
-        rendu = self.periode(statut=400, au=self.jour(42).isoformat())
-        self.assertEqual(champs(rendu), {'au': ['42 jours au plus.']})
+        rendu = self.periode(statut=409, au=self.jour(42).isoformat())
+        self.assertEqual(rendu['au'], ['42 jours au plus.'])
 
     def test_vue_inconnue_400(self):
         self.assertIn('vue', self.get(statut=400, vue='annee'))
@@ -130,6 +130,104 @@ class AgendaTests(TestCase):
 
     def test_rendez_vous_externes_vides_sans_agenda(self):
         self.assertTrue(all(j['externes'] == [] for j in self.periode()['jours']))
+
+    def test_rendez_vous_minutes_par_jour(self):
+        """R2-100 — chaque jour sert `rendez_vous_minutes` (durée des rendez-vous horodatés, invariant 35) : le
+        front retranche cette durée de la capacité, il ne la devine pas. La journée entière vaut 0."""
+        from unittest import mock
+
+        from apps.taches.moteur.ics import RendezVousPur
+        from apps.taches.selectors import journee as sel
+        jour_t = datetime.datetime.combine(self.T, datetime.time(0, 0))
+        rdv = RendezVousPur('2-x', 2, 'Réunion banque', jour_t.replace(hour=11), jour_t.replace(hour=12), False)
+        entiere = RendezVousPur('2-y', 2, 'Congé', jour_t + datetime.timedelta(days=2),
+                                jour_t + datetime.timedelta(days=3), True)
+        with mock.patch.object(sel, 'rendez_vous_pour', return_value=((rdv, entiere), {2: 'Microsoft 365'})):
+            rendu = self.periode()
+        self.assertEqual(self.le_jour(rendu, self.T)['rendez_vous_minutes'], 60)
+        self.assertEqual(self.le_jour(rendu, self.jour(2))['rendez_vous_minutes'], 0)
+        self.assertEqual(self.le_jour(rendu, self.jour(1))['rendez_vous_minutes'], 0)
+
+    def test_faites_nb_finies_ce_jour_la(self):
+        """R2-102 (règle C-12) — « faites » un jour = les tâches PASSÉES à `fait` CE jour-là (prévues ce jour-là ou
+        non), comptées comme Mon rythme : une sous-tâche vaut 0, une ouverte ne compte pas, un jour à venir dit 0."""
+        from apps.taches.choix import StatutTache
+
+        def a(jour, heure=10):
+            return timezone.make_aware(datetime.datetime.combine(jour, datetime.time(heure, 0)))
+
+        hier, avant, demain = self.jour(-1), self.jour(-2), self.jour(1)
+        self.tache(jour_prevu=avant, statut=StatutTache.FAIT, fait_le=a(hier))  # prévue avant-hier, finie hier
+        self.tache(jour_prevu=hier, statut=StatutTache.FAIT, fait_le=a(hier, 15))
+        parent = self.tache(jour_prevu=hier)
+        self.tache(parent=parent, statut=StatutTache.FAIT, fait_le=a(hier, 16))  # sous-tâche : 0
+        self.tache(jour_prevu=self.T, statut=StatutTache.FAIT, fait_le=a(self.T, 9))
+        rendu = self.get(du=avant.isoformat(), au=demain.isoformat())
+        faites = {j['jour']: j['faites_nb'] for j in rendu['jours']}
+        self.assertEqual(faites, {avant.isoformat(): 0, hier.isoformat(): 2, self.T.isoformat(): 1,
+                                  demain.isoformat(): 0})
+
+    def test_faites_par_jour_vit_dans_les_selecteurs(self):
+        """R3-003 (choix C-16) — « faites d'une période » a UNE source, `selectors.journee.faites_par_jour`, que
+        l'Agenda importe (la Revue et la Recherche la lisent aussi) : plus de copie dans la vue."""
+        from apps.taches.selectors import journee as sel
+        from apps.taches.views import agenda
+        self.assertIs(agenda.faites_par_jour, sel.faites_par_jour)
+
+    def test_pause_la_tache_posee_aujourdhui_reste_dans_l_agenda(self):
+        """R2-031b (règle C-5, « ce que j'ai posé reste posé ») — une tâche OUVERTE d'un projet en pause prévue
+        AUJOURD'HUI (à 16:00) reste dans l'agenda du jour ; la pause continue de retirer les jours à venir."""
+        from apps.taches.choix import StatutProjet
+        en_pause = fabriques.projet(self.u, nom='Salon', statut=StatutProjet.EN_PAUSE)
+        posee = self.tache(projet=en_pause, jour_prevu=self.T, heure_debut=datetime.time(16, 0))
+        self.tache(projet=en_pause, jour_prevu=self.jour(2))
+        rendu = self.periode()
+        self.assertEqual([i['id'] for i in self.le_jour(rendu, self.T)['blocs']], [posee.pk])
+        self.assertEqual(self.le_jour(rendu, self.jour(2))['sans_heure'], [])
+
+    def test_pause_une_seule_regle_pour_aujourdhui_et_l_agenda(self):
+        """Critique serveur n° 2 (C-5) — Aujourd'hui et l'Agenda lisent LA même règle
+        (`selectors.journee.gardee_malgre_la_pause`) : projet en pause depuis 14 jours, tâche prévue aujourd'hui →
+        absente des deux ; projet mis en pause aujourd'hui → présente dans les deux."""
+        from apps.taches.choix import StatutProjet
+        from apps.taches.selectors import journee as sel
+        from apps.taches.views import agenda
+        maintenant_ = timezone.now()
+        ancienne = fabriques.projet(self.u, nom='Ancienne pause', statut=StatutProjet.EN_PAUSE,
+                                    statut_depuis=maintenant_ - datetime.timedelta(days=14))
+        minuit = timezone.make_aware(datetime.datetime.combine(self.T, datetime.time.min))
+        du_jour = fabriques.projet(self.u, nom='Pause du jour', statut=StatutProjet.EN_PAUSE, statut_depuis=minuit)
+        oubliee = self.tache(projet=ancienne, jour_prevu=self.T)
+        gardee = self.tache(projet=du_jour, jour_prevu=self.T)
+        journee = set(sel.taches_de_la_journee(self.u, self.T).values_list('pk', flat=True))
+        periode = set(agenda.taches_de_la_periode(self.u, self.T, self.jour(6), J=self.T).values_list('pk', flat=True))
+        self.assertEqual(({oubliee.pk, gardee.pk} & journee, {oubliee.pk, gardee.pk} & periode),
+                         ({gardee.pk}, {gardee.pk}))
+        self.assertEqual([i['id'] for i in self.le_jour(self.periode(), self.T)['sans_heure']], [gardee.pk])
+
+    def test_un_jour_non_travaille_n_a_aucune_capacite(self):
+        """Critique serveur n° 5 — chaque jour a SA capacité : celle d'un jour travaillé (la capacité du compte, 240
+        par défaut) moins ses rendez-vous ; 0 un jour non travaillé (calendrier de la société, jours dits du compte,
+        congés : les `travailles` de la période, déjà lus — aucune requête de plus). Avant : la capacité d'aujourd'hui
+        pour tous les jours, un samedi chargé de 60 min ne débordait jamais. Aujourd'hui garde la capacité d'Aujourd'hui
+        (une source, R4-01)."""
+        from unittest import mock
+
+        from apps.taches.views import agenda
+        self.tache(jour_prevu=self.jour(1), estimation_minutes=60)
+        self.tache(jour_prevu=self.jour(2), estimation_minutes=60)
+        with mock.patch.object(agenda, '_travailles_de', return_value={self.T, self.jour(1)}):
+            rendu = self.periode()
+        travaille, repos = self.le_jour(rendu, self.jour(1)), self.le_jour(rendu, self.jour(2))
+        self.assertEqual((travaille['ouvre'], repos['ouvre']), (True, False))
+        cles = ('restantes_minutes', 'capacite_minutes', 'disponible_minutes', 'deborde_minutes')
+        capacite = rendu['capacite']['minutes']
+        self.assertEqual({cle: travaille['charge'][cle] for cle in cles},
+                         {'restantes_minutes': 60, 'capacite_minutes': capacite, 'disponible_minutes': capacite,
+                          'deborde_minutes': max(0, 60 - capacite)})
+        self.assertEqual({cle: repos['charge'][cle] for cle in cles},
+                         {'restantes_minutes': 60, 'capacite_minutes': 0, 'disponible_minutes': 0,
+                          'deborde_minutes': 60})
 
     def test_toute_la_journee_sans_la_ligne_des_relances(self):
         """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des

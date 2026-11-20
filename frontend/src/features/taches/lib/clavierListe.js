@@ -58,14 +58,24 @@ export function actionDeTouche(evenement) {
 const lignesDe = (racine) => [...racine.querySelectorAll('[data-ligne]')].filter((el) => !el.closest('[hidden], [inert]'))
 const focalisable = (ligne) => ligne.querySelector('.ligne-corps-bouton') ?? ligne.querySelector('button')
 
-/** Focalise la ligne suivante (`1`) ou précédente (`-1`) ; la première si aucune n'est focalisée. */
+/** R3-062 — la fiche ouverte à côté de la liste (panneau du bureau, non modal : `[data-fiche]`), ou `null`. */
+const ficheOuverte = (doc = document) => doc.querySelector('[data-fiche]')?.getAttribute('data-fiche') ?? null
+
+/** Focalise la ligne suivante (`1`) ou précédente (`-1`) ; la première si aucune n'est focalisée.
+ *  R3-062 — une fiche est ouverte : elle SUIT la ligne focalisée (comme Linear) — la ligne d'une tâche s'ouvre par son
+ *  propre geste (le titre : l'écran ouvre la fiche en REMPLAÇANT l'entrée d'historique, `useOuvrirFiche`) ; la ligne
+ *  d'une activité de l'ERP n'a pas de fiche de tâche : la fiche reste. Sans fiche ouverte, rien ne s'ouvre. */
 export function parcourir(racine, sens) {
   const lignes = lignesDe(racine)
   if (lignes.length === 0) return null
   const courante = document.activeElement?.closest?.('[data-ligne]')
   const i = courante ? lignes.indexOf(courante) : -1
   const cible = i < 0 ? lignes[sens > 0 ? 0 : lignes.length - 1] : lignes[Math.min(Math.max(i + sens, 0), lignes.length - 1)]
-  focalisable(cible)?.focus()
+  const bouton = focalisable(cible)
+  bouton?.focus()
+  const ouverte = ficheOuverte()
+  const [genre, id] = (cible.dataset.ligne ?? '').split(':')
+  if (ouverte && genre === 'tache' && id !== ouverte && bouton?.classList.contains('ligne-corps-bouton')) bouton.click()
   return cible
 }
 

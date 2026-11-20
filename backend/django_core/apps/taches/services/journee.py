@@ -18,8 +18,8 @@ from django.http import Http404
 from django.utils import timezone
 
 from apps.taches.choix import (
-    CanalIncitation, CarteDuMoment, ClePreference, Decision, MotifRevoir, SectionJournee, StatutSuggestion,
-    StatutTache, TypeIncitationEcran)
+    CanalIncitation, CarteDuMoment, ClePreference, Decision, MotifRevoir, SectionJournee, SourceObjectif,
+    StatutSuggestion, StatutTache, TypeIncitationEcran)
 from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.journee import PlanJour
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
@@ -44,8 +44,16 @@ MIDI = datetime.time(12, 0)
 DUREE_CARTE_RETOUR = datetime.timedelta(days=7)
 #: Suggestions visibles 7 jours (spec-6a §3.7).
 DUREE_SUGGESTION = datetime.timedelta(days=7)
+#: Propositions du rythme servies le matin (carte `rythme`) ; un constat ne l'est que s'il pose une QUESTION
+#: (`_rythme_du_matin`, R3-005, choix C-17 : une statistique sans geste — C5 — n'apparaît jamais le matin, elle
+#: vit dans Mon rythme et, une fois, au bilan du soir, regles.md §6.9).
 TYPES_RYTHME = (TypeIncitationEcran.PROPOSITION_PALIER, TypeIncitationEcran.DERIVE_TENIR,
-                TypeIncitationEcran.GARDE_TAILLE, TypeIncitationEcran.CONSTAT)
+                TypeIncitationEcran.GARDE_TAILLE)
+#: Cartes « de conseil » (C-17) : au plus UNE par jour — répondue (écartée, suivie) aujourd'hui, plus aucune
+#: jusqu'au lendemain, ni au rechargement ni sur un autre appareil. Les cartes liées à l'heure (`retour`,
+#: `bilan_hier`, `garder`, `alleger`, `faire_bilan`) n'en sont pas.
+TYPES_CONSEIL = TYPES_RYTHME + (TypeIncitationEcran.CONSTAT, TypeIncitationEcran.PAUSE,
+                                TypeIncitationEcran.REVELATION)
 #: Compteurs « Ailleurs dans l'ERP » : clé du contrat → `kind` des files publiques (spec-6a §3.5).
 KINDS_AILLEURS = {
     'chantiers': 'chantier_assigne', 'tickets': 'ticket_transfere', 'da_a_commander': 'da_approuvee_a_commander',
@@ -90,13 +98,23 @@ class Contexte:
 
 
 def _cartes_ouvertes(user, jour):
-    """Cartes à réponse d'écran encore ouvertes au jour `jour` (et la carte `retour` du jour, même
-    répondue : elle dit la « Reprise ») — une requête."""
+    """Cartes à réponse d'écran encore ouvertes au jour `jour`, la carte `retour` du jour même répondue (elle dit
+    la « Reprise ») et les cartes de conseil RÉPONDUES ce jour (`TYPES_CONSEIL`, R3-005 : elles éteignent le conseil
+    du jour) — une requête. Seules les non répondues sont jamais servies."""
+    debut, fin = sel.bornes_du_jour(jour)
     vivantes = Q(expire_le__isnull=True) | Q(expire_le__gte=jour)
+    repondue_ce_jour = Q(type__in=TYPES_CONSEIL, repondu_le__gte=debut, repondu_le__lt=fin)
     return list(IncitationCoach.objects.filter(
         company_id=user.company_id, proprietaire=user, canal=CanalIncitation.ECRAN, jour__lte=jour)
-        .filter(vivantes).filter(Q(reponse='') | Q(jour=jour, type=TypeIncitationEcran.RETOUR))
+        .filter(vivantes).filter(Q(reponse='') | Q(jour=jour, type=TypeIncitationEcran.RETOUR) | repondue_ce_jour)
         .order_by('jour', 'pk'))
+
+
+def _conseil_deja_donne(ctx):
+    """Une carte de conseil (`TYPES_CONSEIL`) a-t-elle été répondue AUJOURD'HUI ? (R3-005, choix C-17)."""
+    debut, fin = sel.bornes_du_jour(ctx.jour)
+    return any(c.type in TYPES_CONSEIL and c.repondu_le is not None and debut <= c.repondu_le < fin
+               for c in ctx.cartes)
 
 
 def _jour_court(preferences, jour):
@@ -212,9 +230,20 @@ def _carte(type_, *, proposition_=None, donnees=None):
     return {'type': str(type_), 'proposition': proposition_, 'donnees': dict(donnees or {})}
 
 
-def _carte_proposition(ctx, type_carte, types):
+def _rythme_du_matin(incitation):
+    """Une proposition du rythme (`TYPES_RYTHME`), ou un constat qui pose une QUESTION (C7 « Les revoir
+    maintenant ? ») ; jamais un constat d'information (C5) — R3-005, choix C-17."""
+    if incitation.type in TYPES_RYTHME:
+        return True
+    return (incitation.type == TypeIncitationEcran.CONSTAT
+            and incitation.cle not in service_rythme.CONSTATS_INFORMATION)
+
+
+def _carte_proposition(ctx, type_carte, types=None, *, garder=None):
+    """La première carte ouverte dont le type est dans `types` (ou que `garder` retient), rendue en PROPOSITION."""
     for incitation in ctx.cartes:
-        if incitation.type in types and incitation.reponse == '':
+        retenue = garder(incitation) if garder is not None else incitation.type in types
+        if retenue and incitation.reponse == '':
             forme = proposition(incitation)
             if forme is not None:
                 return _carte(type_carte, proposition_=forme)
@@ -253,21 +282,43 @@ def _carte_garder(ctx, propose):
     return _carte(CarteDuMoment.GARDER, donnees={'n': len(propose.pour_objectif), 'objectif': ctx.objectif['nb']})
 
 
+def _soir(ctx):
+    """L'heure du bilan du soir de `ctx` (préférence dite, sinon 18:00) : à partir d'elle, le bilan gagne (R4-02)."""
+    return _heure_pref(ctx.preferences, ClePreference.HEURE_SOIR, HEURE_SOIR_DEFAUT)
+
+
+def _a_alleger(ctx):
+    """Une tâche que « Alléger ma journée » peut renvoyer à son projet (`_a_renvoyer` : ouverte, prévue aujourd'hui,
+    sans échéance ≤ aujourd'hui), parmi les gardées ouvertes servies."""
+    jour = ctx.jour
+    return any(cle[0] == TACHE and (item := ctx.journee.items[cle]).jour_prevu == jour
+               and (item.echeance is None or item.echeance > jour) for cle in sel.gardes_ouverts(ctx.journee))
+
+
 def _carte_alleger(ctx, propose):
+    """R4-04 (regles.md §4.10) — « Alléger » seulement quand il a un sens : entre la relance et l'heure du bilan, jamais
+    sans objectif DIT (le premier jour ou l'objectif par défaut : on ne lit pas « 0 sur 5 »), jamais après le bilan ni
+    une journée déjà allégée, jamais sans rien à alléger ; et la journée est en retard (moins de la moitié de l'objectif
+    faite, le seuil de la dérive, §7) ou trop pleine (LA charge du jour déborde, R4-01)."""
     relance = _heure_pref(ctx.preferences, ClePreference.RELANCE_JOUR, HEURE_RELANCE_DEFAUT)
     nb = ctx.objectif['nb']
-    if nb is None or ctx.maintenant.time() < relance:
+    if nb is None or ctx.objectif['source'] == SourceObjectif.DEFAUT:
         return None
-    if ctx.plan is not None and ctx.plan.allege_le is not None:
+    if not relance <= ctx.maintenant.time() < _soir(ctx):
         return None
-    if _gardees_ouvertes(ctx) < 1 or 2 * ctx.compte >= nb:
+    plan = ctx.plan
+    if plan is not None and (plan.allege_le is not None or plan.cloture_le is not None):
         return None
-    return _carte(CarteDuMoment.ALLEGER, donnees={'faites': ctx.compte, 'prevues': progression(ctx)['prevues']})
+    if not _a_alleger(ctx):
+        return None
+    prog = progression(ctx)
+    if 2 * ctx.compte >= nb and prog['charge']['deborde_minutes'] == 0:
+        return None
+    return _carte(CarteDuMoment.ALLEGER, donnees={'faites': ctx.compte, 'prevues': prog['prevues']})
 
 
 def _carte_faire_bilan(ctx, propose):
-    soir = _heure_pref(ctx.preferences, ClePreference.HEURE_SOIR, HEURE_SOIR_DEFAUT)
-    if ctx.maintenant.time() < soir:
+    if ctx.maintenant.time() < _soir(ctx):
         return None
     plan = ctx.plan
     if plan is not None and plan.cloture_le is not None:
@@ -277,18 +328,24 @@ def _carte_faire_bilan(ctx, propose):
 
 
 def _carte_rythme(ctx, propose):
-    return _carte_proposition(ctx, CarteDuMoment.RYTHME, TYPES_RYTHME)
+    if _conseil_deja_donne(ctx):
+        return None
+    return _carte_proposition(ctx, CarteDuMoment.RYTHME, garder=_rythme_du_matin)
 
 
 def _carte_pause(ctx, propose):
+    if _conseil_deja_donne(ctx):
+        return None
     return _carte_proposition(ctx, CarteDuMoment.PAUSE, (TypeIncitationEcran.PAUSE,))
 
 
 def _carte_revelation(ctx, propose):
     """La révélation ouverte la plus récente (I14), rendue par les textes de `serializers/rythme.py`
     (`TEXTES_REVELATION`, un seul bouton « OK ») ; dernière de l'ordre : elle ne passe jamais devant
-    une autre carte (regles.md §4.10)."""
+    une autre carte (regles.md §4.10) ; rien quand un conseil a déjà été répondu aujourd'hui (R3-005)."""
     from apps.taches.serializers.rythme import TEXTES_REVELATION, forme_proposition  # la forme lit le rythme
+    if _conseil_deja_donne(ctx):
+        return None
     ouvertes = [c for c in ctx.cartes if c.type == TypeIncitationEcran.REVELATION and c.reponse == ''
                 and c.cle in TEXTES_REVELATION]
     if not ouvertes:
@@ -296,8 +353,9 @@ def _carte_revelation(ctx, propose):
     return _carte(CarteDuMoment.REVELATION, proposition_=forme_proposition(ouvertes[-1], assistant=ctx.assistant))
 
 
-#: Ordre de `CarteDuMoment` (regles.md §4.10).
-TESTS_CARTES = (_carte_retour, _carte_bilan_hier, _carte_garder, _carte_alleger, _carte_faire_bilan,
+#: Ordre de `CarteDuMoment` (regles.md §4.10) — R4-02 : à partir de l'heure du soir, le bilan passe AVANT « Garder » et
+#: « Alléger » (le jour en retard est celui où il sert le plus).
+TESTS_CARTES = (_carte_retour, _carte_bilan_hier, _carte_faire_bilan, _carte_garder, _carte_alleger,
                 _carte_rythme, _carte_pause, _carte_revelation)
 
 
@@ -389,6 +447,9 @@ def _forme_aujourdhui(ctx, *, tout=False):
         [journee.sections.get(s, []) for s in ordre] + [propose] + [journee.sections.get(s, []) for s in replies])
     forme = _entete(ctx)
     forme['carte_du_moment'] = _carte_du_moment(ctx, plan_propose)
+    # R4-10 (R3-022, T3-F n° 9) — un conseil répondu aujourd'hui sur UN appareil éteint aussi l'astuce locale des
+    # autres (au plus une carte de conseil par jour, C-17) : le serveur le dit, l'écran ne le devine pas
+    forme['conseil_donne'] = _conseil_deja_donne(ctx)
     forme['essentiel'] = rendu.items(listes[0])
     forme['obligations'] = list(ctx.obligations.lignes)
     forme['rendez_vous'] = _rendez_vous(ctx, rendu)
@@ -553,7 +614,7 @@ def proposition_du_jour(user, jour, maintenant, *, exclure=(), inclure=(), tout=
     cles = [(TACHE, item.id) for item, _ in plan_propose.pour_objectif]
     lignes = [{'item': forme, 'deja_prevue': ctx.journee.items[cle].jour_prevu is not None, 'cochee': True}
               for cle, forme in zip(cles, rendu.items(cles, raisons))]
-    rythme = _carte_proposition(ctx, CarteDuMoment.RYTHME, TYPES_RYTHME)
+    rythme = _carte_proposition(ctx, CarteDuMoment.RYTHME, garder=_rythme_du_matin)
     capacite, source = ctx.capacite
     return {
         'jour': jour.isoformat(), 'objectif': dict(ctx.objectif),
@@ -579,6 +640,11 @@ class Refus(Exception):
     def __init__(self, erreurs):
         super().__init__(erreurs)
         self.erreurs = erreurs
+
+
+class RefusEtat(Refus):
+    """Refus d'ÉTAT : le corps est bien formé, c'est l'état (l'heure, les ★ déjà posées) qui s'y oppose — la vue
+    répond 409, même corps `{champ: [message]}` (api-fuzz r2 : un 400 sur un corps conforme au schéma)."""
 
 
 def _plan_verrouille(user, jour, ops):
@@ -653,7 +719,7 @@ def _verifier_essentiels(plan, essentielles, champ='essentielles'):
     """« 3 au plus. » sur les ★ qui comptent (`sel.ESSENTIELLE_VIVANTE` : tâche vivante, non abandonnée)."""
     deja = set(plan.ligneplanjour_set.filter(sel.ESSENTIELLE_VIVANTE).values_list('tache_id', flat=True))
     if len(deja | set(essentielles)) > classement.ESSENTIELS_MAX:
-        raise Refus({champ: [MESSAGE_ESSENTIELS]})
+        raise RefusEtat({champ: [MESSAGE_ESSENTIELS]})
 
 
 def planifier_express(user, jour, maintenant, *, lignes, essentielles=(), mode=MODE_EXPRESS, assistant=False):
@@ -676,7 +742,9 @@ def planifier_express(user, jour, maintenant, *, lignes, essentielles=(), mode=M
                                   + [(ACTIVITE, pk) for pk in ids_activites]
                                   + [(TACHE, pk) for pk in essentielles]))
         _lignes_du_plan(user, plan, cles, set(essentielles), ops)
-        geste = enregistrer_geste(user, 'plan_du_jour', f'{len(lignes)} gardées', ops)
+        # R4-07 (M6) — « gardées » n'est plus un mot de l'écran : ce qu'on garde est PRÉVU aujourd'hui (accordé)
+        n = len(lignes)
+        geste = enregistrer_geste(user, 'plan_du_jour', f"{n} {'prévues' if n >= 2 else 'prévue'} aujourd'hui", ops)
     return {'aujourdhui': aujourdhui(user, jour, maintenant, assistant=assistant), 'renvoyees': [],
             'geste_id': geste.pk}
 
@@ -696,7 +764,10 @@ def marquer_essentielle(user, tache_id, essentielle, maintenant):
             remplacer_ligne(ligne, ops, essentielle=essentielle)
         elif ligne is None and essentielle:
             creer_ligne(plan, ops, tache_id=tache.pk, essentielle=True, prevue_au_plan=plan.planifie_le is None)
-        geste = enregistrer_geste(user, 'essentiel', 'Essentielle', ops) if ops else None
+        # R3-008 : le message dit le sens du geste (comme le toast de l'écran) ; le titre est servi à côté (`titre` de
+        # `gestes/`, jamais à l'assistant), pas recopié dans le message
+        message = 'Essentielle' if essentielle else 'Plus essentielle'
+        geste = enregistrer_geste(user, 'essentiel', message, ops) if ops else None
     tache = charger_taches(taches_de(user).filter(pk=tache.pk)).get()
     return tache_ecrite(tache, progression=sel.progression_courante(user, jour),
                         geste_id=geste.pk if geste else None)
@@ -750,23 +821,22 @@ def _possible_jusqua(jour):
 def _verifier_jour_du_bilan(jour, maintenant):
     """J, ou J − 1 jusqu'à midi ; sinon 400 au champ `jour`."""
     if jour > maintenant.date() or maintenant >= _possible_jusqua(jour):
-        raise Refus({'jour': [MESSAGE_BILAN_FERME]})
+        raise RefusEtat({'jour': [MESSAGE_BILAN_FERME]})
 
 
 def _bilan_chiffres(ctx, prog):
     objectif = ctx.plan.objectif_du_jour if ctx.plan and ctx.plan.objectif_du_jour else ctx.objectif['nb']
     mode = ctx.objectif['mode']
     variables = {'mode': mode, 'faites': ctx.compte, 'objectif': objectif, 'ef': prog['essentiel_faites'],
-                 'ep': prog['essentiel_prevues'], 'pt': prog['plan_tenues'], 'pl': prog['plan_lignes'],
-                 'jour_court': ctx.jour_court and objectif is not None}
+                 'ep': prog['essentiel_prevues'], 'jour_court': ctx.jour_court and objectif is not None}
     if ctx.objectif['zone']:
         variables['bas'], variables['haut'] = ctx.objectif['zone']
-    lignes = gabarits.texte('bilan', 'texte', variables).split('\n')
+    # R3-001 : `texte_gardees` reste une clé du contrat, toujours vide (plus de « x des y gardées »)
     return {'faites': ctx.compte, 'objectif': objectif,
             'objectif_atteint': bool(sel.objectif_atteint(ctx.compte, objectif)),
             'essentiel_faites': prog['essentiel_faites'], 'essentiel_prevues': prog['essentiel_prevues'],
             'plan_tenues': prog['plan_tenues'], 'plan_lignes': prog['plan_lignes'],
-            'texte': lignes[0], 'texte_gardees': lignes[1] if len(lignes) > 1 else ''}
+            'texte': gabarits.texte('bilan', 'texte', variables), 'texte_gardees': ''}
 
 
 def _restes_et_a_trancher(journee):
@@ -911,7 +981,7 @@ def _clore_pour(user, hier):
         plan.objectif_du_jour = objectif_du_jour(journee.reglages, hier, preferences)['nb']
     plan.essentiels_choisis, plan.essentiels_faits = prog['essentiel_prevues'], prog['essentiel_faites']
     plan.plan_prevues, plan.plan_faites = prog['plan_lignes'], prog['plan_tenues']
-    plan.minutes_prevues, plan.minutes_faites = prog['minutes_prevues'], _minutes_faites(user, hier)
+    plan.minutes_prevues, plan.minutes_faites = sel.minutes_prevues_du_jour(journee), _minutes_faites(user, hier)
     plan.capacite_minutes, plan.capacite_source = capacite
     plan.save()
 

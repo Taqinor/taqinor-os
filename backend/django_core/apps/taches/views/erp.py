@@ -5,7 +5,7 @@ Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche d
 schéma OpenAPI est celui de leur échantillon de `contract_samples/`.
 """
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_serializer
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,8 +20,10 @@ from apps.taches.services.erp import (
     PLAFOND_CONVERSION, accepter_suggestion, convertir_activites, lier_activite, refuser_suggestion,
     suggestions_de,
 )
+from apps.taches.serializers.corps import CorpsTaches, parmi, present
+from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict
 from apps.taches.views.base import (
-    ERREUR_CODE, PERMISSIONS, est_assistant, forme_echantillon, reponses,
+    PARSEURS, ERREUR_CODE, PERMISSIONS, est_assistant, forme_echantillon, reponses,
 )
 from apps.taches.views.journee import par_compte
 from core.idempotency import IdempotentCreateMixin
@@ -29,21 +31,26 @@ from core.idempotency import IdempotentCreateMixin
 MESSAGE_REQUIS = 'Requis.'
 
 
-class _CorpsLier(serializers.Serializer):
+# Les corps reçus SONT les schémas publiés (api-fuzz r2) : types stricts, bornes, règle croisée.
+@extend_schema_serializer(component_name='TachesCorpsLierActivite')
+class _CorpsLier(CorpsTaches):
     """Corps de `taches/lier-activite/` (api.md §4)."""
 
-    activite_id = serializers.IntegerField(min_value=1)
-    titre = serializers.CharField(required=False, allow_blank=True, max_length=280)
+    activite_id = EntierStrict(min_value=1)
+    titre = ChaineStricte(required=False, allow_blank=True, max_length=280)
     jour_prevu = DateBornee(required=False, allow_null=True)
 
 
-class _CorpsConvertir(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsConvertirActivite')
+class _CorpsConvertir(CorpsTaches):
     """Corps de `convertir-activite/` : `{"activite_ids":[…]}` ou `{"toutes":true}` (api.md §4)."""
 
     activite_ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), required=False, allow_empty=False,
+        child=EntierStrict(min_value=1), required=False, allow_empty=False, min_length=1,
         max_length=PLAFOND_CONVERSION)
-    toutes = serializers.BooleanField(required=False, default=False)
+    toutes = BooleenStrict(required=False, default=False)
+
+    regles_croisees = ((present('toutes', parmi(True)), present('activite_ids', {'type': 'array', 'minItems': 1})),)
 
     def validate(self, attrs):
         if not attrs.get('toutes') and not attrs.get('activite_ids'):
@@ -51,10 +58,11 @@ class _CorpsConvertir(serializers.Serializer):
         return attrs
 
 
-class _CorpsAccepter(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsSuggestionAccepter')
+class _CorpsAccepter(CorpsTaches):
     """Corps de `suggestions/{id}/accepter/` : `{"titre","jour_prevu"}`, champs facultatifs (api.md §4)."""
 
-    titre = serializers.CharField(required=False, allow_blank=True, max_length=280)
+    titre = ChaineStricte(required=False, allow_blank=True, max_length=280)
     jour_prevu = DateBornee(required=False, allow_null=True, error_messages={'invalid': MESSAGE_DATE})
 
 
@@ -73,6 +81,7 @@ class AilleursVue(APIView):
     """GET aujourdhui/ailleurs/ — compteurs « Ailleurs dans l'ERP » (repli paresseux)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('ailleurs')))
     def get(self, request):
@@ -88,13 +97,10 @@ class LierActiviteVue(IdempotentCreateMixin, APIView):
     """POST taches/lier-activite/ — une tâche liée à une activité ERP non close."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsLierActivite', {
-        'activite_id': serializers.IntegerField(),
-        'titre': serializers.CharField(required=False, max_length=280),
-        'jour_prevu': serializers.DateField(required=False, allow_null=True),
-    }), responses=reponses(forme_echantillon('lier_activite'), statut=201, erreurs=(400, 404),
-                           conflit=ERREUR_CODE))
+    @extend_schema(request=_CorpsLier, responses=reponses(forme_echantillon('lier_activite'), statut=201,
+                                                          erreurs=(400, 404), conflit=ERREUR_CODE))
     def post(self, request):
         # Revue F2 #7 : clés par compte, comme toute écriture du module (jamais la réponse d'un collègue rejouée).
         return self._avec_idempotence(request, lambda: self._lier(request), suffixe=par_compte(request))
@@ -113,11 +119,9 @@ class ConvertirActiviteVue(APIView):
     """POST convertir-activite/ — à-faire personnels convertis en tâches (200 partiel)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsConvertirActivite', {
-        'activite_ids': serializers.ListField(required=False, child=serializers.IntegerField()),
-        'toutes': serializers.BooleanField(required=False),
-    }), responses=reponses(forme_echantillon('convertir_activite'), erreurs=(400,)))
+    @extend_schema(request=_CorpsConvertir, responses=reponses(forme_echantillon('convertir_activite'), erreurs=(400,)))
     def post(self, request):
         corps = _CorpsConvertir(data=request.data)
         corps.is_valid(raise_exception=True)
@@ -130,6 +134,7 @@ class SuggestionsVue(APIView):
     """GET suggestions/ — au plus 20 suggestions de l'ERP (moins de 7 jours)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('suggestions')))
     def get(self, request):
@@ -142,11 +147,9 @@ class SuggestionAccepterVue(APIView):
     """POST suggestions/{id}/accepter/ — « Ajouter »."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsSuggestionAccepter', {
-        'titre': serializers.CharField(required=False, max_length=280),
-        'jour_prevu': serializers.DateField(required=False, allow_null=True),
-    }), responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404)))
+    @extend_schema(request=_CorpsAccepter, responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404)))
     def post(self, request, id):
         corps = _CorpsAccepter(data=request.data)
         corps.is_valid(raise_exception=True)
@@ -160,6 +163,7 @@ class SuggestionRefuserVue(APIView):
     """POST suggestions/{id}/refuser/ — « Pas utile »."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=reponses(forme_echantillon('suggestion_refusee'), erreurs=(404,)))
     def post(self, request, id):

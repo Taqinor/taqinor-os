@@ -88,7 +88,9 @@ const ECRANS = [
   {
     nom: 'projets',
     ouvrir: async (page, d) => {
-      await ouvrirEcran(page, '/taches/projets', 'projets')
+      // bureau (≥ 1024 px) : `/taches/projets` ouvre le premier projet, la liste est sa colonne de gauche (R2-067)
+      await page.goto('/taches/projets')
+      await expect(page.locator('.tch[data-ecran="projets"], .tch[data-ecran="projet"]')).toBeVisible()
       await expect(page.locator(`[data-projet="${d.projet.id}"]`)).toBeVisible()
     },
   },
@@ -155,7 +157,8 @@ const ECRANS = [
     nom: 'supprimees',
     ouvrir: async (page, d) => {
       await ouvrirEcran(page, '/taches/supprimees', 'supprimees')
-      await expect(page.getByText(d.supprimee.titre, { exact: true })).toBeVisible()
+      // R2-125 : « Derniers gestes » nomme aussi la tâche — on lit la section des supprimées
+      await expect(page.getByRole('region', { name: 'Supprimées récemment' }).getByText(d.supprimee.titre, { exact: true })).toBeVisible()
     },
   },
   {
@@ -169,7 +172,7 @@ const ECRANS = [
     nom: 'reglages-donnees',
     ouvrir: async (page) => {
       await ouvrirEcran(page, '/taches/reglages/donnees', 'reglages')
-      await expect(page.getByRole('button', { name: /^Exporter mes données/ })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Télécharger mes données/ })).toBeVisible()
     },
   },
   {
@@ -221,6 +224,181 @@ function ciblesTropPetites() {
   }
   return fautives
 }
+
+/* r2, lane L6 — l'enveloppe du module (coquille + base.css), mesurée dans le navigateur. Les règles qui atteignent la
+   coque de l'ERP (en-tête, tiroir, barre d'onglets, bandeau hors ligne) ne valent que dans les pages de Tâches. */
+const fondDe = (page, selecteur) => page.locator(selecteur).first().evaluate((el) => getComputedStyle(el).backgroundColor)
+
+test.describe('Tâches — enveloppe sur iPhone (390 × 844, tactile)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+  test('R2-080/083/091 — pas de barre de l\'ERP ; ☰ et cloche dans la rangée du haut ; bord gauche net ; onglet actif lisible', async ({ page }) => {
+    await semer(page)
+    await attendreAujourdhui(page)
+    // R2-080 : l'en-tête de l'ERP n'a plus de boîte visible ; un seul Copilote ; le titre est en haut de l'écran
+    await expect(page.locator('.layout-main > .header')).toBeHidden()
+    // (le Copilote de l'ERP s'appelle « Ouvrir le Copilote », celui du module « Copilote »)
+    await expect(page.getByRole('button', { name: /^(Ouvrir le )?Copilote$/ })).toHaveCount(1)
+    expect((await page.locator('h1.entete-titre').boundingBox()).y, 'le titre commence en haut de l\'écran').toBeLessThan(120)
+    await page.locator('.tch').getByRole('button', { name: 'Ouvrir le menu' }).click()
+    await expect(page.locator('.layout.drawer-open')).toHaveCount(1)
+    await page.locator('.drawer-overlay').click({ position: { x: 370, y: 400 } })
+    await expect(page.locator('.layout.drawer-open')).toHaveCount(0)
+    await page.locator('.tch').getByRole('button', { name: /^Notifications/ }).click()
+    await expect(page.locator('.nb-panel')).toBeVisible()
+    // R2-083 : le tiroir fermé ne projette plus d'ombre sur le bord gauche
+    await page.keyboard.press('Escape')
+    expect(await page.locator('.sidebar').evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none')
+    // R2-091 : onglet actif ≥ 4,5:1 sur la barre, libellé ≥ 11 px
+    const onglet = await page.locator('.bottom-tabbar--app .bottom-tab.active').evaluate((el) => {
+      const rgb = (s) => s.match(/[\d.]+/g).slice(0, 3).map(Number)
+      const lum = ([r, g, b]) => {
+        const c = [r, g, b].map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4 })
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+      }
+      const fond = getComputedStyle(el.closest('.bottom-tabbar')).backgroundColor
+      const [l1, l2] = [lum(rgb(getComputedStyle(el).color)), lum(rgb(fond))].sort((a, b) => b - a)
+      return { contraste: (l1 + 0.05) / (l2 + 0.05), taille: parseFloat(getComputedStyle(el.querySelector('.bottom-tab-label')).fontSize) }
+    })
+    expect(onglet.contraste, 'contraste de l\'onglet actif').toBeGreaterThanOrEqual(4.5)
+    expect(onglet.taille, 'taille du libellé de l\'onglet').toBeGreaterThanOrEqual(11)
+  })
+
+  test('R2-081/082 — une surface jusqu\'en bas ; interrupteurs de 51 × 31 au toucher', async ({ page }) => {
+    await semer(page)
+    await ouvrirEcran(page, '/taches/supprimees', 'supprimees')
+    expect(await fondDe(page, 'main.layout-content'), 'le bas de l\'écran a la surface du module').toBe(await fondDe(page, '.tch-page'))
+    await ouvrirEcran(page, '/taches/reglages/notifications', 'reglages')
+    const boite = await page.locator('.tch .interrupteur').first().boundingBox()
+    expect([Math.round(boite.width), Math.round(boite.height)]).toEqual([51, 31])
+  })
+
+  test('R2-090 — hors ligne : un seul signal, celui du module', async ({ page, context }) => {
+    await semer(page)
+    await attendreAujourdhui(page)
+    await context.setOffline(true)
+    await expect(page.locator('.tch [role="status"]').filter({ hasText: 'Hors ligne' })).toBeVisible()
+    await expect(page.locator('.layout-main > [role="status"].bg-warning')).toBeHidden()
+    await context.setOffline(false)
+  })
+
+  test('R3-083/084 — en-tête : cinq icônes de 44 × 44 dans l\'écran, au même x au défilement et hors ligne ; titre au même y partout', async ({ page, context }) => {
+    await semer(page)
+    const barre = () => page.locator('.tch .entete-barre button').evaluateAll((els) => els
+      .filter((el) => el.getBoundingClientRect().width > 0)
+      .map((el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), l: Math.round(r.width), h: Math.round(r.height), droite: Math.round(r.right), cache: getComputedStyle(el).visibility === 'hidden' } }))
+    const titres = {}
+    for (const [chemin, ecran] of [['/taches/aujourdhui', 'aujourdhui'], ['/taches/a-trier', 'a-trier'], ['/taches/projets', 'projets'],
+      ['/taches/agenda', 'agenda'], ['/taches/revue', 'revue'], ['/taches/rythme', 'rythme'], ['/taches/reglages', 'reglages']]) {
+      await ouvrirEcran(page, chemin, ecran)
+      titres[ecran] = Math.round((await page.locator('h1.entete-titre').boundingBox()).y)
+    }
+    expect(new Set(Object.values(titres)).size, `y du grand titre : ${JSON.stringify(titres)}`).toBe(1)
+    await attendreAujourdhui(page)
+    const auRepos = await barre()
+    expect(auRepos, 'cinq commandes').toHaveLength(5)
+    for (const b of auRepos) {
+      expect(Math.min(b.l, b.h), `cible ${JSON.stringify(b)}`).toBeGreaterThanOrEqual(44)
+      expect(b.droite, 'dans l\'écran').toBeLessThanOrEqual(390)
+    }
+    // la journée du compte (semis de CI ou autre) peut tenir dans l'écran : on donne à la page de quoi défiler, pour ne
+    // dépendre ni du nombre de tâches ni de celui des notifications
+    await page.locator('.tch .tch-page').evaluate((el) => {
+      const cale = document.createElement('div')
+      cale.style.height = '2000px'
+      cale.setAttribute('data-cale-test', '')
+      el.append(cale)
+    })
+    // le défileur est celui de la coque (main#contenu) ou, à défaut, la fenêtre : on défile le premier qui défile
+    const defiler = (y) => page.locator('.tch .tch-page').evaluate((el, haut) => {
+      let e = el.parentElement
+      while (e && !(/(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight)) e = e.parentElement
+      if (e) e.scrollTo(0, haut)
+      else window.scrollTo(0, haut)
+    }, y)
+    await defiler(600)
+    await expect(page.locator('.tch .entete-barre.entete-repliee')).toHaveCount(1)
+    expect((await barre()).map((b) => b.x), 'au défilement, rien ne glisse').toEqual(auRepos.map((b) => b.x))
+    await defiler(0)
+    await context.setOffline(true)
+    await expect(page.locator('.tch[data-hors-ligne]')).toHaveCount(1)
+    expect((await barre()).map((b) => b.x), 'hors ligne, rien ne glisse (le Copilote garde sa place)').toEqual(auRepos.map((b) => b.x))
+    await context.setOffline(false)
+  })
+
+  test('R3-080 — journée vide : « ou touche + » désigne un + VISIBLE, de 44 px au moins, qui ouvre la saisie au premier toucher', async ({ page }) => {
+    await reinitialiser(page)
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await expect(page.getByText('ou touche + pour une tâche')).toBeVisible()
+    const plus = page.locator('.tch .fab')
+    await expect(plus).toBeVisible()
+    const boite = await plus.boundingBox()
+    expect(Math.min(boite.width, boite.height), 'taille du +').toBeGreaterThanOrEqual(44)
+    await plus.tap()
+    await expect(page.getByRole('dialog', { name: 'Ajouter une tâche' })).toBeVisible()
+  })
+
+  test('R3-081 — en sombre, la cloche ouvre un panneau du thème du module, voile et poignée ; hors de Tâches rien ne change', async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem('taqinor-theme', 'dark') } catch { /* privé */ } })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await semer(page)
+    await attendreAujourdhui(page)
+    await page.locator('.tch').getByRole('button', { name: /^Notifications/ }).click()
+    const panneau = page.locator('.nb-panel')
+    await expect(panneau).toBeVisible()
+    const mesure = await panneau.evaluate((el) => {
+      const sonde = document.createElement('div')
+      sonde.style.background = 'var(--tch-surface-haute)'
+      document.body.appendChild(sonde)
+      const attendu = getComputedStyle(sonde).backgroundColor
+      sonde.remove()
+      const entete = el.closest('.header')
+      return {
+        fond: getComputedStyle(el).backgroundColor, attendu,
+        voile: getComputedStyle(entete, '::after').content !== 'none' && getComputedStyle(entete, '::after').position === 'fixed',
+        poignee: getComputedStyle(el, '::before').width,
+      }
+    })
+    expect(mesure.fond, 'le panneau a la surface haute du module, pas le blanc de l\'ERP').toBe(mesure.attendu)
+    expect(mesure.voile, 'un voile derrière le panneau').toBe(true)
+    expect(mesure.poignee, 'la poignée de 36 px').toBe('36px')
+    // toucher le voile ferme le panneau
+    await page.mouse.click(195, 120)
+    await expect(panneau).toBeHidden()
+    // hors de Tâches : l'en-tête de l'ERP n'a pas de voile
+    await page.goto('/apps')
+    await expect(page.locator('.layout-main > .header')).toBeVisible()
+    expect(await page.locator('.layout-main > .header').evaluate((el) => getComputedStyle(el, '::after').content)).toBe('none')
+  })
+})
+
+test.describe('Tâches — enveloppe au bureau (1440 × 900)', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test('R2-085 — le titre est au même pixel sur chaque écran', async ({ page }) => {
+    await semer(page)
+    const positions = {}
+    // R2-067 — « Projets » est, au bureau, la liste à gauche et le projet à droite : son titre est celui du projet, décalé de la
+    // colonne ; il n'est donc pas dans cette grille (la colonne est vérifiée à part, dans le parcours « projets » ci-dessus).
+    for (const [chemin, ecran] of [['/taches/aujourdhui', 'aujourdhui'], ['/taches/a-trier', 'a-trier'],
+      ['/taches/revue', 'revue'], ['/taches/recherche', 'recherche'], ['/taches/supprimees', 'supprimees']]) {
+      await ouvrirEcran(page, chemin, ecran)
+      const b = await page.locator('h1.entete-titre').boundingBox()
+      positions[ecran] = `${Math.round(b.x)},${Math.round(b.y)}`
+    }
+    expect(new Set(Object.values(positions)).size, JSON.stringify(positions)).toBe(1)
+  })
+
+  test('R2-094 — au clavier, la ligne entière est encadrée', async ({ page }) => {
+    await semer(page)
+    await attendreAujourdhui(page)
+    await page.locator('[data-ligne^="tache:"] .case').first().focus()
+    await page.keyboard.press('Tab')
+    const encadree = page.locator('.tch .ligne:has(.ligne-corps-bouton:focus-visible)')
+    await expect(encadree).toHaveCount(1)
+    expect(await encadree.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('inset')
+  })
+})
 
 for (const vp of VIEWPORTS) {
   test.describe(`Tâches — accessibilité mesurée à ${vp.nom}`, () => {

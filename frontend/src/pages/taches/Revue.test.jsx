@@ -16,8 +16,10 @@ vi.mock('../../api/tachesApi', async (original) => ({
 const api = await import('../../api/tachesApi')
 const { default: Revue } = await import('./Revue')
 
-/* TCH93 — la Revue rend `revue_projets.json` : bilan (ou « Semaine courte »), une carte par projet, les quatre
-   décisions écrivent `revue_decision.json`, la fin mène à « Planifier ma semaine ». */
+/* TCH93 — la Revue rend `revue_projets.json` : bilan (ou « Semaine courte »), une carte par projet, les décisions
+   écrivent `revue_decision.json`, la fin mène à « Planifier ma semaine ».
+   R2-068 — UNE intention en tête ; Garder · Pause · Terminer en segmenté puis « Suivant → » ; reprise à la première
+   carte non décidée ; revue déjà décidée = résumé. */
 
 function Lieu() {
   const l = useLocation()
@@ -44,6 +46,7 @@ const seconde = () => {
   r.cartes.push(deux)
   return r
 }
+const suivant = (carte) => within(carte).getByRole('button', { name: 'Suivant →' })
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -58,18 +61,28 @@ afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); reinitialiserGestes() 
 describe('TCH93 — Revue : en tête et carte', () => {
   it('le bilan du serveur, puis la carte du projet avec faites, attente, prochaine action et santé', async () => {
     monter()
-    expect(await screen.findByText('Du lun. 16 au ven. 20 : 26 tâches en 5 jours (précédente : 23). Objectif atteint 4 jours sur 5 · essentiel 4 sur 5 · 20 des 24 gardées.')).toBeInTheDocument()
+    // R3-090 / L1 — la tête est le texte servi (« Cette semaine : 26 faites (23 la précédente). Essentiel 4 sur 5. »)
+    expect(await screen.findByText(revue().bilan_semaine.texte)).toBeInTheDocument()
+    expect(screen.queryByText(/Objectif atteint|gardées/)).toBeNull()
     const carte = screen.getByRole('region', { name: 'Ventes' })
     expect(within(carte).getByText('Faites cette semaine : Dossier subvention')).toBeInTheDocument()
     expect(within(carte).getByText('« Pose » attend « Livraison »')).toBeInTheDocument()
     expect(within(carte).getByText('Prochaine action : Devis Settat')).toBeInTheDocument()
     expect(within(carte).getByText('Rien de fait depuis 10 jours travaillés.')).toBeInTheDocument()
     expect(within(carte).getByText('à surveiller')).toBeInTheDocument()
-    expect(within(carte).getByText('1/1')).toBeInTheDocument()
-    expect(within(carte).getByLabelText('Intention de la semaine (facultatif)')).toHaveValue('')
+    expect(within(carte).getByText('Projet 1 sur 2')).toBeInTheDocument()
+    // R4-46 — l'avancement dit ce qu'il compte (plus « 1/2 · 13 sur 18 » : deux fractions sans étiquette)
+    expect(within(carte).getByText(/^\d+ tâches? faites? sur \d+$/)).toBeInTheDocument()
+    // R2-068 — UNE seule intention, en tête (plus un champ par carte)
+    expect(screen.getAllByLabelText('Intention de la semaine (facultatif)')).toHaveLength(1)
+    expect(screen.getByLabelText('Intention de la semaine (facultatif)')).toHaveValue('')
     expect(within(carte).getByRole('checkbox', { name: 'Projet de la semaine' })).toBeChecked() // focus_projet_id = 3
-    const boutons = within(carte).getAllByRole('button').map((b) => b.textContent)
-    expect(boutons).toEqual(expect.arrayContaining(['Garder', 'Pause', 'Terminer', 'Suivant', 'Changer']))
+    // R2-068 — Garder · Pause · Terminer en segmenté (Garder d'office), puis « Suivant → »
+    const choix = within(carte).getByRole('radiogroup', { name: 'Décision' })
+    expect(within(choix).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Continuer', 'Pause', 'Terminer'])
+    expect(within(choix).getByRole('radio', { name: 'Continuer' })).toBeChecked()
+    expect(suivant(carte)).toBeInTheDocument()
+    expect(within(carte).getByRole('button', { name: 'Changer' })).toBeInTheDocument()
   })
 
   it('passe visuelle n° 45 — « Projet de la semaine » est l\'étoile de la maquette (la case native reste lisible) ; échéance avec son mois', async () => {
@@ -108,49 +121,97 @@ describe('TCH93 — Revue : en tête et carte', () => {
 })
 
 describe('TCH93 — Revue : décisions', () => {
-  it('Garder écrit la décision avec intention, prochaine action et focus, puis passe à la carte suivante', async () => {
+  it('Suivant → écrit la décision (Garder d\'office) avec l\'intention d\'en tête, la prochaine action et le focus, puis passe à la carte suivante', async () => {
     api.lireRevue.mockResolvedValue({ data: seconde() })
     monter()
     const user = userEvent.setup()
     const carte = await screen.findByRole('region', { name: 'Ventes' })
-    await user.type(within(carte).getByLabelText('Intention de la semaine (facultatif)'), 'Signer Settat')
-    await user.click(within(carte).getByRole('button', { name: 'Garder' }))
+    await user.type(screen.getByLabelText('Intention de la semaine (facultatif)'), 'Signer Settat')
+    await user.click(suivant(carte))
     expect(api.deciderRevue).toHaveBeenCalledWith(3, {
       semaine: '2026-11-16', intention: 'Signer Settat', prochaine_action_id: 20, decision: 'garder', focus: true, issue: null,
-    })
+    }, { erreurSousLeChamp: true })
     expect(await screen.findByRole('region', { name: 'Site web' })).toBeInTheDocument()
-    expect(screen.getByText('2/2')).toBeInTheDocument()
+    expect(screen.getByText('Projet 3 sur 3')).toBeInTheDocument()
+    // l'intention n'est PAS redemandée : le même champ, déjà rempli
+    expect(screen.getAllByLabelText('Intention de la semaine (facultatif)')).toHaveLength(1)
+    expect(screen.getByLabelText('Intention de la semaine (facultatif)')).toHaveValue('Signer Settat')
   })
 
-  it('Pause et Suivant écrivent leur décision', async () => {
+  it('Pause (segmenté) et Passer écrivent leur décision', async () => {
     api.lireRevue.mockResolvedValue({ data: seconde() })
     monter()
     const user = userEvent.setup()
-    await user.click(within(await screen.findByRole('region', { name: 'Ventes' })).getByRole('button', { name: 'Pause' }))
-    expect(api.deciderRevue).toHaveBeenLastCalledWith(3, expect.objectContaining({ decision: 'pause' }))
-    await user.click(within(await screen.findByRole('region', { name: 'Site web' })).getByRole('button', { name: 'Suivant' }))
-    expect(api.deciderRevue).toHaveBeenLastCalledWith(5, expect.objectContaining({ decision: 'passe', prochaine_action_id: null, focus: false }))
+    const premiere = await screen.findByRole('region', { name: 'Ventes' })
+    await user.click(within(premiere).getByRole('radio', { name: 'Pause' }))
+    await user.click(suivant(premiere))
+    expect(api.deciderRevue).toHaveBeenLastCalledWith(3, expect.objectContaining({ decision: 'pause' }), { erreurSousLeChamp: true })
+    await user.click(within(await screen.findByRole('region', { name: 'Site web' })).getByRole('button', { name: 'Passer' }))
+    expect(api.deciderRevue).toHaveBeenLastCalledWith(5, expect.objectContaining({ decision: 'passe', prochaine_action_id: null, focus: false }), { erreurSousLeChamp: true })
   })
 
-  it('Terminer demande « Atteint ou abandonné ? » et envoie l\'issue choisie', async () => {
+  it("C-5 — « Pause » dit, en une phrase, ce qui reste prévu aujourd'hui (nombre SERVI) ; sans nombre servi, rien", async () => {
+    const un = revue()
+    un.cartes[0].prevues_aujourdhui_nb = 1
+    api.lireRevue.mockResolvedValue({ data: un })
+    const { unmount } = monter()
+    const user = userEvent.setup()
+    let carte = await screen.findByRole('region', { name: 'Ventes' })
+    expect(within(carte).queryByText(/dans ta journée/)).toBeNull() // Garder : rien
+    await user.click(within(carte).getByRole('radio', { name: 'Pause' }))
+    expect(within(carte).getByText("1 tâche prévue aujourd'hui reste dans ta journée.")).toBeInTheDocument()
+    await user.click(within(carte).getByRole('radio', { name: 'Continuer' }))
+    expect(within(carte).queryByText(/dans ta journée/)).toBeNull()
+    unmount()
+
+    const deux = revue()
+    deux.cartes[0].prevues_aujourdhui_nb = 2
+    api.lireRevue.mockResolvedValue({ data: deux })
+    const second = monter()
+    carte = await screen.findByRole('region', { name: 'Ventes' })
+    await user.click(within(carte).getByRole('radio', { name: 'Pause' }))
+    expect(within(carte).getByText("2 tâches prévues aujourd'hui restent dans ta journée.")).toBeInTheDocument()
+    second.unmount()
+
+    // le serveur sert 0, ou ne sert pas le nombre : aucune phrase, aucun chiffre inventé
+    for (const valeur of [0, undefined]) {
+      const sans = revue()
+      if (valeur === undefined) delete sans.cartes[0].prevues_aujourdhui_nb
+      else sans.cartes[0].prevues_aujourdhui_nb = valeur
+      api.lireRevue.mockResolvedValue({ data: sans })
+      const rendu = monter()
+      carte = await screen.findByRole('region', { name: 'Ventes' })
+      await user.click(within(carte).getByRole('radio', { name: 'Pause' }))
+      expect(within(carte).queryByText(/dans ta journée/)).toBeNull()
+      rendu.unmount()
+    }
+  })
+
+  it('Terminer demande « Atteint ou abandonné ? » : Suivant → reste éteint jusqu\'au choix, puis envoie l\'issue', async () => {
     monter()
     const user = userEvent.setup()
     const carte = await screen.findByRole('region', { name: 'Ventes' })
-    await user.click(within(carte).getByRole('button', { name: 'Terminer' }))
+    await user.click(within(carte).getByRole('radio', { name: 'Terminer' }))
+    expect(suivant(carte)).toBeDisabled()
     expect(api.deciderRevue).not.toHaveBeenCalled()
     await user.click(within(carte).getByRole('radio', { name: 'Atteint' }))
-    expect(api.deciderRevue).toHaveBeenCalledWith(3, expect.objectContaining({ decision: 'terminer', issue: 'atteint' }))
+    await user.click(suivant(carte))
+    expect(api.deciderRevue).toHaveBeenCalledWith(3, expect.objectContaining({ decision: 'terminer', issue: 'atteint' }), { erreurSousLeChamp: true })
   })
 
-  it('« Déjà « A » cette semaine. » reste sur la carte, sous la case, et la carte ne bouge pas', async () => {
-    api.deciderRevue.mockRejectedValue({ response: { status: 400, data: { focus: ['Déjà « A » cette semaine.'] } } })
+  it('« Déjà « A » cette semaine. » (409 state_conflict) reste sur la carte, sous la case, et la carte ne bouge pas', async () => {
+    // le vrai code : 409 `state_conflict`, rendu par `tachesApi` en 400 de champ (`statutServeur` 409) car l'écran
+    // demande `erreurSousLeChamp` (couture L7) — sinon le pont le toastait ET l'écran le redisait en tête
+    api.deciderRevue.mockRejectedValue({ response: { status: 400, statutServeur: 409,
+      data: { focus: ['Déjà « A » cette semaine.'], detail: 'Déjà « A » cette semaine.', code: 'state_conflict' } } })
     monter()
     const user = userEvent.setup()
     const carte = await screen.findByRole('region', { name: 'Ventes' })
-    await user.click(within(carte).getByRole('button', { name: 'Garder' }))
+    await user.click(suivant(carte))
     expect(await within(carte).findByRole('alert')).toHaveTextContent('Déjà « A » cette semaine.')
     expect(within(carte).getByRole('checkbox', { name: 'Projet de la semaine' })).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByRole('region', { name: 'Ventes' })).toBeInTheDocument()
+    expect(api.deciderRevue).toHaveBeenCalledWith(expect.anything(), expect.anything(), { erreurSousLeChamp: true })
   })
 
   it('Changer propose les tâches ouvertes du projet et retient le choix pour la décision', async () => {
@@ -160,8 +221,74 @@ describe('TCH93 — Revue : décisions', () => {
     await user.click(within(carte).getByRole('button', { name: 'Changer' }))
     await user.selectOptions(await within(carte).findByLabelText('Prochaine action'), 'Timbres')
     expect(within(carte).getByText('Prochaine action : Timbres')).toBeInTheDocument()
-    await user.click(within(carte).getByRole('button', { name: 'Garder' }))
-    expect(api.deciderRevue).toHaveBeenCalledWith(3, expect.objectContaining({ prochaine_action_id: 42 }))
+    await user.click(suivant(carte))
+    expect(api.deciderRevue).toHaveBeenCalledWith(3, expect.objectContaining({ prochaine_action_id: 42 }), { erreurSousLeChamp: true })
+  })
+})
+
+describe('R2-068 — Revue : reprise et résumé', () => {
+  const decide = (carte, decision, intention = '') => { carte.revue = { intention, decision, focus: false } }
+
+  it('une revue interrompue reprend à la PREMIÈRE carte non décidée (plus de retour à 1/N)', async () => {
+    const r = seconde()
+    decide(r.cartes[0], 'garder', 'Signer Settat')
+    api.lireRevue.mockResolvedValue({ data: r })
+    monter()
+    expect(await screen.findByRole('region', { name: 'Site web' })).toBeInTheDocument()
+    expect(screen.getByText('Projet 3 sur 3')).toBeInTheDocument()
+    expect(screen.getByLabelText('Intention de la semaine (facultatif)')).toHaveValue('Signer Settat') // l'intention déjà posée revient
+  })
+
+  it('revue déjà décidée cette semaine : le RÉSUMÉ et « Planifier ma semaine », aucune carte', async () => {
+    const r = seconde()
+    decide(r.cartes[0], 'garder')
+    decide(r.cartes[2], 'pause')
+    api.lireRevue.mockResolvedValue({ data: r })
+    monter()
+    const user = userEvent.setup()
+    const resume = await screen.findByRole('list', { name: 'Résumé de la revue' })
+    expect(within(resume).getByText('Ventes').closest('li')).toHaveTextContent('Continue')
+    expect(within(resume).getByText('Site web').closest('li')).toHaveTextContent('En pause')
+    expect(screen.queryByRole('region', { name: 'Ventes' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Planifier ma semaine' }))
+    await waitFor(() => expect(screen.getByTestId('lieu')).toHaveTextContent('/taches/agenda?vue=semaine&placer=1'))
+  })
+
+  it('R3-090 — un projet déjà mis en pause cette semaine (servi avec sa décision) n\'est pas redemandé, il est dans le résumé', async () => {
+    monter()
+    const user = userEvent.setup()
+    await user.type(await screen.findByPlaceholderText('Ce que tu veux finir cette semaine…'), 'Signer Settat')
+    await user.click(suivant(screen.getByRole('region', { name: 'Ventes' })))
+    expect(api.deciderRevue).toHaveBeenCalledTimes(1)
+    const resume = await screen.findByRole('list', { name: 'Résumé de la revue' })
+    expect(within(resume).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['VentesContinue', 'ÉquipeEn pause'])
+    expect(screen.getByText(/Intention de la semaine/).closest('p')).toHaveTextContent('Intention de la semaine · Signer Settat')
+  })
+
+  it('R3-090 — toucher une ligne du résumé rouvre sa carte ; la décision écrite ramène au résumé', async () => {
+    const r = revue()
+    decide(r.cartes[0], 'garder', 'Signer Settat')
+    api.lireRevue.mockResolvedValue({ data: r })
+    monter()
+    const user = userEvent.setup()
+    const resume = await screen.findByRole('list', { name: 'Résumé de la revue' })
+    await user.click(within(resume).getByRole('button', { name: /Équipe/ }))
+    const carte = await screen.findByRole('region', { name: 'Équipe' })
+    expect(within(carte).getByRole('radio', { name: 'Pause' })).toBeChecked()
+    await user.click(within(carte).getByRole('radio', { name: 'Continuer' }))
+    await user.click(suivant(carte))
+    expect(api.deciderRevue).toHaveBeenLastCalledWith(r.cartes[1].projet.id, expect.objectContaining({ decision: 'garder', intention: 'Signer Settat' }), { erreurSousLeChamp: true })
+    const apres = await screen.findByRole('list', { name: 'Résumé de la revue' })
+    expect(within(apres).getByText('Équipe').closest('li')).toHaveTextContent('Continue')
+  })
+
+  it('la dernière décision du parcours mène au même résumé', async () => {
+    monter()
+    const user = userEvent.setup()
+    await user.click(suivant(await screen.findByRole('region', { name: 'Ventes' })))
+    const resume = await screen.findByRole('list', { name: 'Résumé de la revue' })
+    expect(within(resume).getByText('Ventes').closest('li')).toHaveTextContent('Continue')
+    expect(screen.getByRole('button', { name: 'Planifier ma semaine' })).toBeInTheDocument()
   })
 })
 
@@ -169,8 +296,22 @@ describe('TCH93 — Revue : la fin', () => {
   it('après la dernière carte, « Planifier ma semaine » ouvre l\'agenda de la semaine en mode placer', async () => {
     monter()
     const user = userEvent.setup()
-    await user.click(within(await screen.findByRole('region', { name: 'Ventes' })).getByRole('button', { name: 'Suivant' }))
+    await user.click(within(await screen.findByRole('region', { name: 'Ventes' })).getByRole('button', { name: 'Passer' }))
     await user.click(await screen.findByRole('button', { name: 'Planifier ma semaine' }))
     await waitFor(() => expect(screen.getByTestId('lieu')).toHaveTextContent('/taches/agenda?vue=semaine&placer=1'))
+  })
+
+  it.each([
+    ['mardi', '2026-11-17T09:00:00', '/taches/agenda?vue=semaine&placer=1'],
+    ['jeudi', '2026-11-19T09:00:00', '/taches/agenda?vue=semaine&placer=1&jour=2026-11-23'],
+    ['dimanche', '2026-11-22T18:00:00', '/taches/agenda?vue=semaine&placer=1&jour=2026-11-23'],
+    ['jeudi de fin de mois', '2026-12-31T09:00:00', '/taches/agenda?vue=semaine&placer=1&jour=2027-01-04'],
+  ])('R3-099 — un %s (%s), « Planifier ma semaine » ouvre %s', async (_jour, maintenant, attendu) => {
+    vi.setSystemTime(new Date(maintenant))
+    monter()
+    const user = userEvent.setup()
+    await user.click(within(await screen.findByRole('region', { name: 'Ventes' })).getByRole('button', { name: 'Passer' }))
+    await user.click(await screen.findByRole('button', { name: 'Planifier ma semaine' }))
+    await waitFor(() => expect(screen.getByTestId('lieu').textContent).toBe(attendu))
   })
 })

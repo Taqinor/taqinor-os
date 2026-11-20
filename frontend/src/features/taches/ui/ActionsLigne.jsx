@@ -14,7 +14,7 @@ import SelecteurQuand, { QUAND_VIDE } from './SelecteurQuand'
 
 /* ============================================================================
    Raccord F2 — LE gestionnaire des actions d'une ligne de tâche (menu ⋯ et gestes de `LigneTache`), partagé par
-   Aujourd'hui, Un projet, Recherche et l'Agenda : Choisir un jour · Reporter · En réserve · Déplacer vers un
+   Aujourd'hui, Un projet, Recherche et l'Agenda : Choisir un jour · Reporter · Plus tard · Changer de projet (vers un
    projet · En attente de… · Priorité · ★ · Supprimer. Chaque geste est OPTIMISTE (la ligne change au toucher),
    réconcilié par la réponse, défait par le toast « Annuler » (`gestes/{id}/annuler/`) — jamais une relecture de
    toute la liste. Un refus remet la ligne comme avant et le DIT.
@@ -41,11 +41,24 @@ const pris = (item, champs) => Object.fromEntries(champs.map((c) => [c, item[c] 
 
 export function FeuilleAttente({ item, onValider }) {
   const [texte, setTexte] = useState(item.en_attente_de ?? '')
+  // R3-060 — la feuille fermée (Échap, croix, voile, retour arrière) avec un nom tapé et pas validé : il est enregistré
+  // quand même (le toast « En attente de : … · Annuler » le dit) — jamais perdu en silence
+  const etat = useRef({ texte: item.en_attente_de ?? '', envoye: false })
+  const valider = (t) => { etat.current.envoye = true; onValider(t) }
+  const auDemontage = useRef(null)
+  useEffect(() => {
+    auDemontage.current = () => {
+      const tape = etat.current.texte.trim()
+      if (!etat.current.envoye && tape && tape !== (item.en_attente_de ?? '').trim()) valider(tape)
+    }
+  })
+  useEffect(() => () => auDemontage.current?.(), [])
   return (
-    <form className="choisir-jour" noValidate onSubmit={(e) => { e.preventDefault(); if (texte.trim()) onValider(texte.trim()) }}>
+    <form className="choisir-jour" noValidate onSubmit={(e) => { e.preventDefault(); if (texte.trim()) valider(texte.trim()) }}>
       <p className="carte-source">{item.titre}</p>
       <label className="fiche-label" htmlFor="tch-attente-qui">De qui ou de quoi ?</label>
-      <input id="tch-attente-qui" type="text" className="champ" maxLength={200} value={texte} onChange={(e) => setTexte(e.target.value)} />
+      <input id="tch-attente-qui" type="text" className="champ" maxLength={200} value={texte}
+        onChange={(e) => { etat.current.texte = e.target.value; setTexte(e.target.value) }} />
       <button type="submit" className="bouton plein large" disabled={!texte.trim()}>En attente</button>
     </form>
   )
@@ -179,7 +192,7 @@ export function useActionsLigne({
   const nouveauProjet = useCallback(async (item, nom) => {
     setFeuille(null)
     try {
-      const { data } = await creerProjet({ nom })
+      const { data } = await creerProjet({ nom }, { erreurSousLeChamp: true })
       const cree = data?.projet ?? data
       setProjets((liste) => (liste ? [...liste, cree] : liste))
       deplacer(item, cree)
@@ -275,7 +288,7 @@ export function useActionsLigne({
     if (reseau && !estEnLigne()) { annoncer(PHRASE_HORS_LIGNE); return }
     if (code === 'choisir_jour') setFeuille({ type: 'quand', item })
     else if (code === 'reporter') reporter(item)
-    else if (code === 'reserve') planifier(item, { quelque_jour: true }, 'En réserve')
+    else if (code === 'reserve') planifier(item, { quelque_jour: true }, 'Plus tard')
     else if (code === 'deplacer') ouvrirProjets(item, options)
     else if (code === 'attente') setFeuille({ type: 'attente', item })
     else if (code === 'priorite') setFeuille({ type: 'priorite', item })
@@ -287,13 +300,13 @@ export function useActionsLigne({
   let feuilleProps = null
   if (feuille?.type === 'quand') {
     feuilleProps = {
-      ouverte: true, onFermer: fermer, titre: 'Choisir un jour',
+      ouverte: true, onFermer: fermer, titre: 'Quand ?', // R3-067 : la feuille du sélecteur Quand
       children: (
         <SelecteurQuand
           valeur={pris(item, CHAMPS_QUAND)} aujourdhui={aujourdhui} reporterA={prochainJourOuvre}
           onChoisir={(quand) => {
             setFeuille(null)
-            const message = quand.quelque_jour ? 'En réserve'
+            const message = quand.quelque_jour ? 'Plus tard'
               : quand.jour_prevu ? `Prévue ${jourCourt(quand.jour_prevu, aujourdhui)}` : 'Sans jour'
             planifier(item, quand, message)
           }}
@@ -319,7 +332,7 @@ export function useActionsLigne({
   const selecteurProjet = feuille?.type === 'projet' ? {
     ouverte: true,
     onFermer: fermer,
-    titre: 'Déplacer vers…',
+    titre: 'Changer de projet',
     projets: projets ?? [],
     chargement: projets === null,
     focusChamp: Boolean(feuille.clavier),

@@ -77,7 +77,7 @@ COMPTABLE = 'Rappeler le comptable'
 RYTHME = ((9, 5), (10, 5), (11, 4), (12, 6), (13, 3), (16, 5), (17, 4), (19, 7), (20, 5), (23, 4))
 #: Jours de la revue de la semaine du 16 au 20 : (jour, essentiels choisis, essentiels faits) (§5).
 ESSENTIELS_PASSES = {16: (1, 1), 17: (1, 0), 19: (1, 1), 20: (1, 1)}
-TAILLE_RESERVE = 7  # « En réserve : 7 tâches » (§1)
+TAILLE_RESERVE = 7  # « Plus tard : 7 tâches » (§1)
 
 # --- Les projets (§1) : nom, couleur, priorité, échéance, étapes dans l'ordre -----------------------------------
 PROJETS = (
@@ -180,7 +180,7 @@ GESTES_DU_JOUR = (
     ('08:20', 'ouvrir'), ('08:20', 'essentielles'), ('08:31', 'garder'), ('08:52', 'rails'), ('09:10', 'contrat'),
     ('10:20', 'fournisseur'), ('10:30', 'lier_rappel'), ('10:40', 'fermer_rappel'), ('10:50', 'devis'),
     ('14:10', 'fiche'), ('16:30', 'stand'))
-#: Les 6 autres tâches « En réserve » : le scénario n'en dit que le nombre (§1) ; titres plausibles, sans nom propre.
+#: Les 6 autres tâches « Plus tard » : le scénario n'en dit que le nombre (§1) ; titres plausibles, sans nom propre.
 RESERVE_ANONYME = (
     'Étudier une assurance pour la flotte de véhicules', "Tester un logiciel de devis concurrent",
     "Rédiger un guide d'entretien pour les clients", "Visiter le showroom d'un fournisseur d'onduleurs",
@@ -318,7 +318,7 @@ class Scenario:
                 heure = '16:30' if nom == COMPTABLE else None
                 self._terminer(tache, self._instant_fait(jour, heure))
 
-    # --- À trier, à revoir, en réserve (§1) -----------------------------------------------------------------------
+    # --- À trier, à revoir, pour plus tard (§1) -----------------------------------------------------------------------
     def a_trier(self):
         """4 tâches À TRIER nées par leur porte réelle (suggestion, capture, saisie), et l'à-faire d'Activités
         que le bandeau d'À trier propose de convertir (ERR-PLAN 3)."""

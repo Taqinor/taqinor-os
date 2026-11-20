@@ -11,7 +11,7 @@ Toute lecture passe par les sélecteurs de `selectors/base.py` : société ET pr
 import datetime
 from dataclasses import dataclass, field
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.taches.choix import StatutJour, StatutProjet, StatutTache
@@ -26,7 +26,7 @@ from apps.taches.moteur.decalage import nb_figees
 from apps.taches.moteur.gabarits import texte as gabarit_texte
 from apps.taches.moteur.rythme import semaine_courte
 from apps.taches.selectors.base import _du_compte, jours_travailles_de, projets_de, sections_de, taches_de
-from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT, objectif_atteint
+from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT, faites_par_jour, taches_de_la_journee
 
 OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
@@ -213,7 +213,12 @@ def _calcul_projet(projet, etat, travailles, negliges, focus, usage):
 
 
 def _constat(etat):
-    actifs = [p.pk for p in etat.projets if p.statut == StatutProjet.ACTIF]
+    """« {actifs} projets actifs, {k} ont avancé ces 7 jours » sur les seuls projets actifs nés il y a 7 jours ou plus
+    (R3-010 : « 0 a avancé » une minute après leur création était faux) ; aucun → `None` (la phrase est omise)."""
+    limite = etat.jour - datetime.timedelta(days=sante.CONSTAT_JOURS)
+    actifs = [p.pk for p in etat.projets if p.statut == StatutProjet.ACTIF and _local(p.created_at) <= limite]
+    if not actifs:
+        return None
     faites = {i: _faites_depuis(etat.taches_de(i), etat.jour, sante.CONSTAT_JOURS) for i in actifs}
     rendu = sante.constat_projets(actifs, faites)
     return {'actifs': rendu['actifs'], 'avances_7j': rendu['k']}
@@ -373,6 +378,7 @@ class CarteRevue:
     bloquees: list = field(default_factory=list)
     prochaine_id: int | None = None
     revue: object = None
+    prevues_aujourdhui: int = 0
 
 
 def _par_projet(taches):
@@ -407,16 +413,29 @@ def _prochaine_choisie(etat, projet, revue):
     return prochaine_action_id(taches)
 
 
-def cartes_de_revue(user, etat, lundi):
-    """Une `CarteRevue` par projet ACTIF (priorité décroissante, puis rang) pour la semaine de `lundi`."""
-    actifs = sorted((p for p in etat.projets if p.statut == StatutProjet.ACTIF),
-                    key=lambda p: (-p.priorite, p.rang, p.pk))
-    faites, bloquees = _faites_de_la_semaine(user, actifs, lundi), _bloquees_ouvertes(user, actifs)
+def _prevues_aujourdhui(user, projets, aujourdhui):
+    """`{projet_id: n}` : tâches ouvertes de la journée d'`aujourdhui` (le préfiltre UNIQUE) prévues ce jour-là,
+    celles qu'une pause posée maintenant laisse dans la journée (C-5, R2-031). Une seule requête."""
+    lignes = (taches_de_la_journee(user, aujourdhui)
+              .filter(projet__in=projets, statut__in=OUVERTS, jour_prevu=aujourdhui)
+              .order_by().values('projet_id').annotate(n=Count('id')))
+    return {ligne['projet_id']: ligne['n'] for ligne in lignes}
+
+
+def cartes_de_revue(user, etat, lundi, *, aujourdhui=None):
+    """Une `CarteRevue` par projet ACTIF, et par projet NON actif (en pause, terminé) qui a sa `RevueProjet` de la
+    semaine de `lundi` — la revue rechargée garde le projet qu'on vient de mettre en pause, avec sa décision (R3-009) ;
+    un seul ordre : priorité décroissante, puis rang."""
     revues = {r.projet_id: r for r in RevueProjet.objects.filter(
-        company_id=user.company_id, proprietaire=user, semaine=lundi, projet__in=actifs)}
+        company_id=user.company_id, proprietaire=user, semaine=lundi)}
+    servis = sorted((p for p in etat.projets if p.statut == StatutProjet.ACTIF or p.pk in revues),
+                    key=lambda p: (-p.priorite, p.rang, p.pk))
+    faites, bloquees = _faites_de_la_semaine(user, servis, lundi), _bloquees_ouvertes(user, servis)
+    prevues = _prevues_aujourdhui(user, servis, aujourdhui or timezone.localdate())
     return [CarteRevue(projet=p, faites=faites.get(p.pk, []), bloquees=bloquees.get(p.pk, []),
-                       prochaine_id=_prochaine_choisie(etat, p, revues.get(p.pk)), revue=revues.get(p.pk))
-            for p in actifs]
+                       prochaine_id=_prochaine_choisie(etat, p, revues.get(p.pk)), revue=revues.get(p.pk),
+                       prevues_aujourdhui=prevues.get(p.pk, 0))
+            for p in servis]
 
 
 def _semaine_de_plans(plans, lundi):
@@ -425,20 +444,6 @@ def _semaine_de_plans(plans, lundi):
 
 def _jours_evalues(plans):
     return [p for p in plans if p.statut_jour == StatutJour.EVALUE]
-
-
-def _faites_et_jours(plans):
-    evalues = _jours_evalues(plans)
-    return sum(p.compte_rythme for p in evalues), len(evalues)
-
-
-def _jours_objectif_atteint(evalues):
-    """X de « Objectif atteint X jours sur N » : jours jugés où le compte a atteint l'objectif du jour
-    (`objectif_atteint`, la définition du bilan du soir du même jour ; la nuit pose l'objectif de chaque
-    jour jugé) ; `None` si aucun jour jugé n'avait d'objectif (`libre`). Revue F2 tour 2 #4."""
-    verdicts = [objectif_atteint(p.compte_rythme, p.objectif_du_jour) for p in evalues]
-    verdicts = [v for v in verdicts if v is not None]
-    return sum(1 for v in verdicts if v) if verdicts else None
 
 
 def _jours_de_semaine_travailles(user, lundi):
@@ -460,25 +465,33 @@ def _non_travailles(user, lundi, semaine):
     return sum(1 for p in repos if p.jour.weekday() in habituels)
 
 
-def bilan_de_semaine(user, lundi, mode):
-    """`(semaine_courte, bilan)` de la semaine de `lundi`, lus dans les `PlanJour` clos (jamais un titre).
-    `bilan` = `{texte, donnees:{faites, jours, prec}}` ou `None` (semaine courte, ou aucun jour évalué)."""
-    plans = list(PlanJour.objects.filter(
-        company_id=user.company_id, proprietaire=user,
-        jour__range=(lundi - datetime.timedelta(days=7), lundi + datetime.timedelta(days=6))))
+def bilan_de_semaine(user, lundi, mode, *, aujourdhui=None):
+    """`(semaine_courte, bilan)` de la semaine de `lundi` (jamais un titre). `bilan` = `{texte, donnees:{faites,
+    jours, prec}}` ou `None` (semaine courte, ou rien de fait ni de jugé). R3-003 (choix C-16) : `faites` = LA somme
+    `faites_par_jour` du lundi à aujourd'hui, week-end et aujourd'hui compris — celle de l'Agenda et de « Faites
+    cette semaine » —, `prec` la même sur la semaine d'avant (`None` sans faite ni jour jugé), `jours` = jours où il a
+    fait au moins une chose ; l'essentiel et la semaine courte viennent des `PlanJour` clos. Plus d'« Objectif
+    atteint X jours sur N » ni de « gardées ». La tête dit « Cette semaine » seulement si `lundi` est celui de la
+    semaine d'`aujourdhui` (défaut : le jour local) ; une semaine passée garde ses dates « Du lun. 9 au ven. 13 »."""
+    aujourdhui = aujourdhui or timezone.localdate()
+    precedent, dimanche = lundi - datetime.timedelta(days=7), lundi + datetime.timedelta(days=6)
+    plans = list(PlanJour.objects.filter(company_id=user.company_id, proprietaire=user,
+                                         jour__range=(precedent, dimanche)))
     semaine = _semaine_de_plans(plans, lundi)
     if semaine_courte([p.statut_jour for p in semaine]):
         return True, None
-    faites, jours = _faites_et_jours(semaine)
-    if jours == 0:
-        return False, None
-    prec_faites, prec_jours = _faites_et_jours(_semaine_de_plans(plans, lundi - datetime.timedelta(days=7)))
-    prec = prec_faites if prec_jours else None
+    par_jour = faites_par_jour(user, precedent, dimanche, aujourdhui)
+    cette_semaine = [n for jour, n in par_jour.items() if jour >= lundi]
+    faites, jours = sum(cette_semaine), sum(1 for n in cette_semaine if n > 0)
     evalues = _jours_evalues(semaine)
+    if faites == 0 and not evalues:
+        return False, None
+    prec = sum(n for jour, n in par_jour.items() if jour < lundi)
+    if prec == 0 and not _jours_evalues(_semaine_de_plans(plans, precedent)):
+        prec = None
     texte = gabarit_texte('revue', 'entete', {
         'debut': lundi, 'fin': lundi + datetime.timedelta(days=4), 'faites': faites, 'jours': jours,
-        'prec': prec, 'oa': _jours_objectif_atteint(evalues), 'mode': mode,
+        'prec': prec, 'mode': mode, 'courante': lundi == lundi_de(aujourdhui),
         'e': sum(p.essentiels_faits for p in evalues), 'je': sum(p.essentiels_choisis for p in evalues),
-        'pt': sum(p.plan_faites for p in evalues), 'pl': sum(p.plan_prevues for p in evalues),
         'non_travailles': _non_travailles(user, lundi, semaine)})
     return False, {'texte': texte, 'donnees': {'faites': faites, 'jours': jours, 'prec': prec}}

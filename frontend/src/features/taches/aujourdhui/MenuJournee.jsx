@@ -10,7 +10,7 @@ import { PHRASE_HORS_LIGNE } from './Sections'
 /* ============================================================================
    TCH79 — Le menu ⋯ d'Aujourd'hui (reference/textes.md §2.1) : « Alléger ma journée »,
    « Réorganiser », « Sélectionner », « En faire mon accueil » ; la coquille y ajoute Revue,
-   Mon rythme, Supprimées récemment et Réglages (spec-7 §2 « Plus »).
+   Mon rythme, Supprimées (avec ses derniers gestes) et Réglages (spec-7 §2 « Plus »).
    · Alléger : ouvre la feuille (FeuilleAlleger) — grisé hors ligne ;
    · Réorganiser : bascule le mode ▲▼ des lignes de la journée (Alt+↑/↓ au clavier) ;
    · Sélectionner : bascule la sélection multiple (barre d'actions en lot) ;
@@ -37,26 +37,67 @@ async function faireMonAccueil() {
 /**
  * Les actions de l'écran pour la coquille (`actionsEcran`). Hors ligne : Alléger et l'accueil sont
  * grisés (« Possible une fois connecté »), Réorganiser et Sélectionner restent possibles à vide.
+ * R2-026 — « Alléger ma journée » n'est offert que s'il y a de quoi alléger (`peutAlleger` : bilan pas fait, une tâche
+ * ouverte au moins que la feuille peut renvoyer).
+ * R4-02 — « Faire le bilan » tant que la journée n'est pas close (`peutBilan`) : un jour en retard, le soir, il reste à
+ * portée même si la carte du moment dit autre chose.
  */
-export function actionsJournee({ enLigne, onAlleger, onReorganiser, onSelectionner }) {
+export function actionsJournee({
+  enLigne, peutAlleger = true, onAlleger, peutBilan = false, onBilan, onReorganiser, onSelectionner,
+}) {
   const garde = (action) => () => (enLigne ? action() : annoncer(PHRASE_HORS_LIGNE))
   return [
-    { libelle: 'Alléger ma journée', onSelect: garde(onAlleger) },
+    ...(peutAlleger ? [{ libelle: 'Alléger ma journée', onSelect: garde(onAlleger) }] : []),
+    ...(peutBilan && onBilan ? [{ libelle: 'Faire le bilan', onSelect: garde(onBilan) }] : []),
     { libelle: 'Réorganiser', onSelect: onReorganiser },
     { libelle: 'Sélectionner', onSelect: onSelectionner },
     { libelle: 'En faire mon accueil', onSelect: garde(faireMonAccueil) },
   ]
 }
 
-/** Remplace, dans `liste`, les TÂCHES par `taches` (dans cet ordre) en laissant chaque activité ERP à sa place. */
-function recomposer(liste, taches) {
-  const suite = [...taches]
-  return liste.map((item) => (item.type === 'tache' ? suite.shift() : item))
+/**
+ * R3-020 (M1) — LA progression dans l'instant d'un geste, avant que la réponse du serveur ne la remplace (la
+ * `progression` d'une TACHE_ECRITE) ; même règle que le serveur (`selectors/journee.py`) : « essentiel » = les ★ de la
+ * section Essentiel servie, ouvertes ou faites aujourd'hui. `fait` (vrai/faux) : cochée / décochée ; `quitte`
+ * (vrai/faux) : une ★ OUVERTE quitte la journée (reportée sans échéance aujourd'hui) / y revient (Annuler).
+ */
+export function progressionApres(progression, item, { fait, quitte } = {}) {
+  if (!progression || typeof progression.faites !== 'number' || !item) return progression
+  const borne = (n) => Math.max(0, n)
+  const suite = { ...progression }
+  const etoile = item.type === 'tache' && Boolean(item.essentielle)
+  const ajouter = (cle, delta) => { if (typeof suite[cle] === 'number') suite[cle] = borne(suite[cle] + delta) }
+  if (fait !== undefined) {
+    const delta = fait ? 1 : -1
+    suite.faites = borne(suite.faites + delta)
+    if (etoile) ajouter('essentiel_faites', delta)
+    if (item.prevue_au_plan) ajouter('plan_tenues', delta)
+    if (item.type === 'activite') ajouter('activites_closes', delta)
+  }
+  if (quitte !== undefined && etoile && item.statut !== 'fait') ajouter('essentiel_prevues', quitte ? -1 : 1)
+  return suite
 }
 
-function mapStatut(donnees, ids, statut, versions = null) {
+/** R3-026 — une ligne qui se réordonne : une tâche OUVERTE (une faite, servie aussi dans Essentiel, n'est la voisine de
+ *  personne : le serveur ne l'ordonne pas). R4-10 (R3-007/R3-026) — et SANS heure : le serveur range les lignes à
+ *  heure par leur heure, avant les autres (`classement.cle_section`) ; leur rang n'y change rien. */
+const aHeure = (item) => Boolean(item.heure_debut)
+const ordonnable = (item) => item.type === 'tache' && item.statut !== 'fait' && !aHeure(item)
+const PHRASE_DEPLACEMENT_REFUSE = 'Impossible de déplacer cette tâche ici.'
+/** R4-10 — une ligne à heure ne bouge pas au rang : l'écran le DIT (le geste réussissait puis se défaisait en silence). */
+const PHRASE_RANGEE_PAR_HEURE = "Rangée par son heure : change l'heure pour la déplacer."
+
+/** Remplace, dans `liste`, les tâches ouvertes sans heure par `taches` (dans cet ordre) en laissant chaque activité
+ *  ERP, chaque tâche faite et chaque tâche à heure à sa place. */
+function recomposer(liste, taches) {
+  const suite = [...taches]
+  return liste.map((item) => (ordonnable(item) ? suite.shift() : item))
+}
+
+/** Pose `champs` (statut, jour…) sur les tâches `ids` de toutes les listes ; `versions` : leur `lock_version` rendu. */
+function mapChamps(donnees, ids, champs, versions = null) {
   const fn = (item) => (item.type === 'tache' && ids.has(item.id)
-    ? { ...item, statut, ...(versions?.[item.id] != null ? { lock_version: versions[item.id] } : {}) }
+    ? { ...item, ...(typeof champs === 'function' ? champs(item) : champs), ...(versions?.[item.id] != null ? { lock_version: versions[item.id] } : {}) }
     : item)
   const propose = donnees.propose
     ? { ...donnees.propose, pour_objectif: (donnees.propose.pour_objectif ?? []).map(fn) }
@@ -88,20 +129,26 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     try { garde() } catch { return }
     const liste = LISTES_JOUR.find((cle) => donnees[cle]?.some((it) => cleDe(it) === cleDe(item)))
     if (!liste) return
-    const taches = donnees[liste].filter((it) => it.type === 'tache')
+    if (item.type === 'tache' && aHeure(item)) { proposerAnnuler({ message: PHRASE_RANGEE_PAR_HEURE }); return }
+    const taches = donnees[liste].filter(ordonnable)
     const i = taches.findIndex((it) => it.id === item.id)
     const j = i + sens
-    if (i < 0 || j < 0 || j >= taches.length) return
+    if (i < 0) return
+    // au bout de la liste, le geste ne fait rien : le lecteur d'écran l'entend (jamais un silence)
+    if (j < 0 || j >= taches.length) { annoncer(`${item.titre} : ${j < 0 ? 'déjà en tête' : 'déjà en dernier'}`); return }
     const suite = [...taches]
     suite[i] = taches[j]
     suite[j] = taches[i]
     setDonnees((d) => ({ ...d, [liste]: recomposer(d[liste], suite) }))
     try {
-      await client.reordonnerTache(item.id, { liste: 'jour', avant_id: suite[j - 1]?.id ?? null, apres_id: suite[j + 1]?.id ?? null })
+      // couture L7 — un refus d'état (409) est dit UNE fois, ici, en mots humains : jamais aussi le toast « Valeur inconnue. »
+      await client.reordonnerTache(item.id, { liste: 'jour', avant_id: suite[j - 1]?.id ?? null, apres_id: suite[j + 1]?.id ?? null },
+        { erreurSousLeChamp: true })
       annoncer(`${item.titre} : position ${j + 1} sur ${suite.length}`)
-    } catch (err) {
+    } catch {
+      // R3-026 — le refus se VOIT, en mots humains : la ligne revient à sa place (le détail serveur n'aide pas Reda)
       setDonnees((d) => ({ ...d, [liste]: recomposer(d[liste], taches) }))
-      annoncer(frenchError(err))
+      proposerAnnuler({ message: PHRASE_DEPLACEMENT_REFUSE })
     }
   }, [donnees, garde, setDonnees])
 
@@ -112,11 +159,25 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     try {
       const { data } = await client.traiterLot({ ids, action: code, ...(valeurs ? { valeurs } : {}) })
       const appliquees = new Set(data.appliquees ?? [])
+      // R3-020 — `lot/` ne rend pas de progression : chaque tâche appliquée la fait suivre (même règle que le serveur),
+      // et la relecture suivante la recale
+      const touchees = TOUTES_LES_LISTES.flatMap((cle) => donnees[cle] ?? [])
+        .filter((it, i, liste) => it.type === 'tache' && appliquees.has(it.id) && liste.findIndex((x) => x.type === 'tache' && x.id === it.id) === i)
+      const ouvertes = touchees.filter((it) => it.statut !== 'fait')
+      // une ★ ouverte reportée hors d'aujourd'hui quitte Essentiel, sauf si son échéance l'y garde (C-13)
+      const partantes = code === 'planifier' && valeurs?.jour_prevu && valeurs.jour_prevu !== donnees.jour
+        ? ouvertes.filter((it) => it.echeance !== donnees.jour) : []
+      const suivre = (d, liste, changement) => ({ ...d, progression: liste.reduce((p, it) => progressionApres(p, it, changement), d.progression) })
+      let joursAvant = {}
       if (code === 'terminer') {
-        setDonnees((d) => mapStatut(d, appliquees, 'fait'))
+        setDonnees((d) => suivre(mapChamps(d, appliquees, { statut: 'fait' }), ouvertes, { fait: true }))
       } else if (code === 'planifier' && valeurs?.jour_prevu) {
         const estampille = `→ ${jourNomme(valeurs.jour_prevu, donnees.jour)}`
         setEstampilles((e) => ({ ...e, ...Object.fromEntries([...appliquees].map((id) => [`tache:${id}`, estampille])) }))
+        // leur nouveau jour : elles ne comptent plus dans la journée affichée (R2-019)
+        joursAvant = Object.fromEntries(TOUTES_LES_LISTES.flatMap((cle) => donnees[cle] ?? [])
+          .filter((it) => it.type === 'tache' && appliquees.has(it.id)).map((it) => [it.id, it.jour_prevu ?? null]))
+        setDonnees((d) => suivre(mapChamps(d, appliquees, { jour_prevu: valeurs.jour_prevu }), partantes, { quitte: true }))
       }
       quitterSelection()
       proposerAnnuler({
@@ -125,8 +186,11 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
           // « Annuler » change la version de chaque tâche remise : on garde celle que le serveur rend
           const retour = await annulerEtRecaler(data.geste_id, [...appliquees])
           const versions = Object.fromEntries(Object.entries(retour.taches).map(([id, t]) => [id, t.lock_version]))
-          if (code === 'terminer') setDonnees((d) => mapStatut(d, appliquees, 'a_faire', versions))
-          else setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([cle]) => !appliquees.has(Number(cle.slice(6))))))
+          if (code === 'terminer') setDonnees((d) => suivre(mapChamps(d, appliquees, { statut: 'a_faire' }, versions), ouvertes, { fait: false }))
+          else {
+            setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([cle]) => !appliquees.has(Number(cle.slice(6))))))
+            setDonnees((d) => suivre(mapChamps(d, appliquees, (it) => ({ jour_prevu: joursAvant[it.id] ?? it.jour_prevu }), versions), partantes, { quitte: false }))
+          }
         },
       })
       if ((data.refusees ?? []).length > 0) annoncer(accord(data.refusees.length, 'tâche refusée', 'tâches refusées'))

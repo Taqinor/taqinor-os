@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/taches/rythme/",
-  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET rythme/ (et réponses de rythme/, preferences/) · consommateurs : Mon rythme, carte `rythme` ». Source : docs/taches/reference/api.md annexe A (`rythme.json`), recopié mot pour mot.",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET rythme/ (et réponses de rythme/, preferences/) · consommateurs : Mon rythme, carte `rythme` ». Source : docs/taches/reference/api.md annexe A (`rythme.json`), recopié mot pour mot. R2-120 : `serie` = les 10 derniers jours TRAVAILLÉS (calendrier de la société ∩ masque ∩ hors congés), un jour sans évaluation y est servi `sans_donnees` (barre vide nommée, `faites` 0, `objectif` nul) ; R2-123 : `jours_travailles` = masque lun→dim des jours RÉELLEMENT travaillés (les jours dits ∩ les jours ouvrés de la société), ce que « Mes jours » allume.",
   "exemple": {
     "mode": "pousser",
     "comprendre_mon_rythme": true,
@@ -41,6 +41,116 @@
     },
     "serie": [
       {
+        "jour": "2026-11-03",
+        "statut_jour": "evalue",
+        "faites": 5,
+        "objectif": 5,
+        "essentiel_faites": 1,
+        "essentiel_prevues": 1,
+        "plan_tenues": 4,
+        "plan_lignes": 5,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-04",
+        "statut_jour": "evalue",
+        "faites": 6,
+        "objectif": 5,
+        "essentiel_faites": 0,
+        "essentiel_prevues": 0,
+        "plan_tenues": 0,
+        "plan_lignes": 0,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-05",
+        "statut_jour": "evalue",
+        "faites": 4,
+        "objectif": 5,
+        "essentiel_faites": 0,
+        "essentiel_prevues": 1,
+        "plan_tenues": 2,
+        "plan_lignes": 4,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-06",
+        "statut_jour": "evalue",
+        "faites": 5,
+        "objectif": 5,
+        "essentiel_faites": 1,
+        "essentiel_prevues": 1,
+        "plan_tenues": 3,
+        "plan_lignes": 3,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-09",
+        "statut_jour": "evalue",
+        "faites": 7,
+        "objectif": 5,
+        "essentiel_faites": 1,
+        "essentiel_prevues": 1,
+        "plan_tenues": 5,
+        "plan_lignes": 6,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-10",
+        "statut_jour": "sans_donnees",
+        "faites": 0,
+        "objectif": null,
+        "essentiel_faites": 0,
+        "essentiel_prevues": 0,
+        "plan_tenues": 0,
+        "plan_lignes": 0,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-11",
+        "statut_jour": "evalue",
+        "faites": 5,
+        "objectif": 5,
+        "essentiel_faites": 0,
+        "essentiel_prevues": 0,
+        "plan_tenues": 0,
+        "plan_lignes": 0,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-12",
+        "statut_jour": "evalue",
+        "faites": 3,
+        "objectif": 5,
+        "essentiel_faites": 0,
+        "essentiel_prevues": 1,
+        "plan_tenues": 1,
+        "plan_lignes": 3,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-13",
+        "statut_jour": "evalue",
+        "faites": 6,
+        "objectif": 5,
+        "essentiel_faites": 1,
+        "essentiel_prevues": 1,
+        "plan_tenues": 4,
+        "plan_lignes": 4,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-14",
+        "statut_jour": "non_ouvre",
+        "faites": 3,
+        "objectif": null,
+        "essentiel_faites": 0,
+        "essentiel_prevues": 0,
+        "plan_tenues": 0,
+        "plan_lignes": 0,
+        "hors_objectif": true
+      },
+      {
         "jour": "2026-11-16",
         "statut_jour": "evalue",
         "faites": 5,
@@ -48,7 +158,8 @@
         "essentiel_faites": 1,
         "essentiel_prevues": 1,
         "plan_tenues": 4,
-        "plan_lignes": 5
+        "plan_lignes": 5,
+        "hors_objectif": false
       }
     ],
     "constats": [
@@ -87,6 +198,12 @@
         "dite_le": "2026-11-17T09:00:00+01:00"
       }
     ],
+    "jours_travailles": "1111100",
     "geste_id": 91
-  }
+  },
+  "nuls": [
+    "trace",
+    "proposition",
+    "repere"
+  ]
 }

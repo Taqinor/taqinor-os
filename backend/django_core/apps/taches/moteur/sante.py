@@ -7,6 +7,8 @@ textes.md (« Santé »).
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from apps.taches.moteur.gabarits import format_jour
+
 A_FAIRE = 'a_faire'
 EN_ATTENTE = 'en_attente'
 FAIT = 'fait'
@@ -146,14 +148,14 @@ def burnup(taches, J):
 
 
 _PHRASES_SANS_ACTION = {
-    'reserve': 'Rien à faire maintenant : tout est en réserve.',
+    'reserve': 'Rien à faire maintenant : tout est pour plus tard.',
     'attend': 'Tout attend quelqu\'un ou une autre tâche.',
     'mixte': 'Rien à faire maintenant : ajoute la prochaine tâche.',
 }
 
 
 def sans_prochaine_action(taches):
-    """≥ 1 ouverte et 0 actionnable ; la cause : tout en réserve, tout attend, ou un mélange."""
+    """≥ 1 ouverte et 0 actionnable ; la cause : tout pour plus tard, tout attend, ou un mélange."""
     ouvertes = _ouvertes(taches)
     if not ouvertes or any(_actionnable(t) for t in ouvertes):
         return None
@@ -228,9 +230,14 @@ def echeance_menacee(taches, projet, J, travailles, rythme=False):
     if calcul is None:
         return None
     besoin, reste, f28, j28 = calcul
-    phrase = (f'Au rythme des 4 dernières semaines ({f28} faites en {j28} jours travaillés), '
-              f'il faudrait {besoin} jours travaillés ; il en reste {reste}.')
-    return _signal_menace('d', phrase, {'besoin': besoin, 'reste': reste, 'f28': f28, 'j28': j28})
+    # R2-034 — la conséquence d'abord ; R3-011 — UN chiffre à lire, déjà soustrait (« il manque environ 2 jours »),
+    # jamais un calcul à refaire de tête ; le détail (besoin, reste, F28, J28) reste dans `donnees`
+    jour = format_jour(ech, J)
+    quand = jour if jour in ("aujourd'hui", 'demain') else f'le {jour}'
+    manque = besoin - reste
+    phrase = f"À ce rythme, pas prêt pour {quand} : il manque environ {manque} jour{'s' if manque > 1 else ''}."
+    return _signal_menace('d', phrase, {'besoin': besoin, 'reste': reste, 'f28': f28, 'j28': j28,
+                                        'echeance': ech.isoformat()})
 
 
 def _autre_de_reference(projet, faites_14j, projets):

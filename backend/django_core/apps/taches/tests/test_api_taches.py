@@ -72,6 +72,79 @@ class ListeTests(BaseApi):
         self.assertEqual(self._ids(self._liste('inclure_faites=1&ouvertes=1')), {ouverte.pk})
         self.assertEqual(self._ids(self._liste('statut=fait')), {faite.pk})
 
+    def test_faites_cette_semaine_depuis_lundi_la_plus_recente_d_abord(self):
+        """R2-124 — « Qu'ai-je fini cette semaine ? » : `periode=faites_semaine` = les faites depuis lundi 0 h (jour
+        de l'appareil), de ce compte seulement, la plus récemment faite d'abord ; jamais une ouverte."""
+        from apps.taches.services.taches import liste_taches
+        jeudi = datetime.date(2026, 11, 19)
+
+        def a_l_heure(jour, heure):
+            return timezone.make_aware(datetime.datetime(2026, 11, jour, heure, 0))
+        mardi = fabriques.tache(self.u1, titre='Mardi', statut=StatutTache.FAIT, fait_le=a_l_heure(17, 10))
+        ce_jeudi = fabriques.tache(self.u1, titre='Jeudi', statut=StatutTache.FAIT, fait_le=a_l_heure(19, 9))
+        lundi_tot = fabriques.tache(self.u1, titre='Lundi', statut=StatutTache.FAIT, fait_le=a_l_heure(16, 0))
+        fabriques.tache(self.u1, titre='Dimanche', statut=StatutTache.FAIT, fait_le=a_l_heure(15, 23))
+        fabriques.tache(self.u1, titre='Ouverte')
+        fabriques.tache(self.u2, titre='Collègue', statut=StatutTache.FAIT, fait_le=a_l_heure(18, 9))
+        lues = list(liste_taches(self.u1, {'periode': 'faites_semaine'}, aujourdhui=jeudi))
+        self.assertEqual([t.pk for t in lues], [ce_jeudi.pk, mardi.pk, lundi_tot.pk])
+
+    def test_faites_cette_semaine_servies_avec_fait_le(self):
+        faite = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=timezone.now())
+        fabriques.tache(self.u1)
+        reponse = self._liste('periode=faites_semaine')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(self._ids(reponse), {faite.pk})
+        ligne = reponse.json()['results'][0]
+        self.assertEqual(list(ligne), list(exemple('item')))
+        self.assertIsNotNone(ligne['fait_le'])
+
+    def test_faites_cette_semaine_dit_son_total_et_ses_activites_closes(self):
+        """R3-003 (choix C-16, `faites_semaine.json`) — calcul à la main, jeudi 19/11/2026 : 2 tâches lundi + 1 activité
+        ERP close mercredi + 1 tâche aujourd'hui = `total` 4 ; une routine (0) et une sous-tâche (0) faites ne sont ni
+        comptées ni listées ; le dimanche 15 est la semaine d'avant. `results` (3) + `activites_closes`
+        (1) = `total`."""
+        from testkit.time import frozen
+
+        def a_l_heure(jour, heure=10):
+            return timezone.make_aware(datetime.datetime(2026, 11, jour, heure, 0))
+        projet = fabriques.projet(self.u1)
+        lundis = [fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=a_l_heure(16, h))
+                  for h in (9, 10)]
+        jeudi = fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=a_l_heure(19))
+        regle = RegleRecurrence.objects.create(company=self.u1.company, proprietaire=self.u1, frequence='quotidien',
+                                               date_debut=datetime.date(2026, 11, 16))
+        fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=a_l_heure(17), recurrence=regle)
+        fabriques.tache(self.u1, projet=projet, parent=jeudi, statut=StatutTache.FAIT, fait_le=a_l_heure(19, 11))
+        fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=a_l_heure(15))
+        activite = fabriques.activite(self.u1, summary='Rappeler M. Alami', due_date=datetime.date(2026, 11, 18))
+        activite.done, activite.done_by, activite.done_at = True, self.u1, a_l_heure(18, 12)
+        activite.save(update_fields=['done', 'done_by', 'done_at'])
+        with frozen('2026-11-19 15:00:00'):
+            corps = self._liste('periode=faites_semaine').json()
+            simple = self._liste('vue=boite').json()
+        self.assertEqual(list(corps), list(exemple('faites_semaine')))
+        self.assertEqual([ligne['id'] for ligne in corps['results']], [jeudi.pk, lundis[1].pk, lundis[0].pk])
+        self.assertEqual(corps['activites_closes'], [{'jour': '2026-11-18', 'titre': 'Rappeler M. Alami'}])
+        self.assertEqual(corps['total'], 4)
+        self.assertEqual(len(corps['results']) + len(corps['activites_closes']), corps['total'])
+        self.assertEqual(list(simple), ['count', 'next', 'previous', 'results'])  # les autres listes : inchangées
+
+    def test_faites_cette_semaine_jamais_une_sous_tache_meme_filtree_par_fiche(self):
+        """Critique serveur n° 3 — `results` ne porte que ce que `total` compte (`compte_du_jour` : une sous-tâche vaut
+        0) : la règle vit dans le filtre de la période, pas seulement dans celui des fiches ERP — avec `cible=` (qui
+        garde les sous-tâches des listes ouvertes ✓+), une sous-tâche faite cette semaine n'est toujours pas listée."""
+        from apps.taches.services.taches import liste_taches
+        jeudi = datetime.date(2026, 11, 19)
+        fait_le = timezone.make_aware(datetime.datetime(2026, 11, 18, 10, 0))
+        lead = ContentType.objects.get_by_natural_key('crm', 'lead')
+        parent = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=fait_le, content_type=lead, object_id=1637)
+        fabriques.tache(self.u1, parent=parent, statut=StatutTache.FAIT, fait_le=fait_le, content_type=lead,
+                        object_id=1637)
+        for params in ({'periode': 'faites_semaine'}, {'periode': 'faites_semaine', 'cible': 'crm.lead'}):
+            with self.subTest(params=params):
+                self.assertEqual([t.pk for t in liste_taches(self.u1, params, aujourdhui=jeudi)], [parent.pk])
+
     def test_filtres_projet_priorite_et_mots(self):
         projet = fabriques.projet(self.u1)
         voulue = fabriques.tache(self.u1, projet=projet, titre='Devis Settat', priorite=3)
@@ -248,6 +321,23 @@ class FicheTests(BaseApi):
         corps = self._get(f'taches/{tache.pk}/', **ASSISTANT).json()
         self.assertEqual((corps['notes'], corps['titre']), ('', 'Tâche confidentielle'))
 
+    def test_l_etoile_de_la_fiche_et_de_l_ecriture_est_celle_de_la_journee(self):
+        """Couture L7 (vague 3) — la ★ ne change pas d'avis entre la liste et la fiche : GET taches/{id}/ et la
+        TACHE_ECRITE d'un PATCH lisent `essentielle` / `prevue_au_plan` du plan du jour, comme la journée et la
+        vue d'un projet ; une tâche hors du plan reste à `False`."""
+        from apps.taches.models.journee import LignePlanJour
+        etoilee = fabriques.tache(self.u1, jour_prevu=_j())
+        simple = fabriques.tache(self.u1, jour_prevu=_j())
+        plan = fabriques.plan(self.u1, _j())
+        LignePlanJour.objects.create(company=self.a, plan=plan, tache=etoilee, prevue_au_plan=True, essentielle=True)
+        fiche = self._get(f'taches/{etoilee.pk}/').json()
+        self.assertEqual((fiche['essentielle'], fiche['prevue_au_plan']), (True, True))
+        autre = self._get(f'taches/{simple.pk}/').json()
+        self.assertEqual((autre['essentielle'], autre['prevue_au_plan']), (False, False))
+        ecrite = self._api().patch(f'{URL}taches/{etoilee.pk}/', {'lock_version': _relue(etoilee).lock_version,
+                                                                  'titre': 'Relancer'}, format='json').json()
+        self.assertEqual((ecrite['tache']['essentielle'], ecrite['tache']['prevue_au_plan']), (True, True))
+
 
 class ModifierTests(BaseApi):
     def _patch(self, tache, corps, compte=None, **entetes):
@@ -317,11 +407,13 @@ class ModifierTests(BaseApi):
         for corps, attendu in (({'estimation_minutes': 3}, {'estimation_minutes': ['Entre 5 et 960 minutes.']}),
                                ({'titre': ' '}, {'titre': [TITRE_VIDE]}),
                                ({'titre': 'x' * 281}, {'titre': ['280 caractères au plus.']}),
-                               ({'priorite': 9}, {'priorite': ['Valeur inconnue.']}),
-                               ({'echeance_heure': '10:00'}, {'echeance_heure': ['Une heure demande une échéance.']})):
+                               ({'priorite': 9}, {'priorite': ['Valeur inconnue.']})):
             with self.subTest(corps=corps):
                 reponse = self._patch(tache, corps)
                 self.assertEqual((reponse.status_code, champs(reponse.json())), (400, attendu))
+        sans_echeance = self._patch(tache, {'echeance_heure': '10:00'})  # la tâche n'a pas d'échéance : état
+        self.assertEqual((sans_echeance.status_code, sans_echeance.json()['echeance_heure']),
+                         (409, ['Une heure demande une échéance.']))
 
     def test_une_echeance_et_son_heure(self):
         tache = fabriques.tache(self.u1)
@@ -357,12 +449,15 @@ class ModifierTests(BaseApi):
         visite = fabriques.tache(self.u1, titre='Visite')
         devis = fabriques.tache(self.u1, titre='Devis', bloquee_par=visite)
         reponse = self._patch(visite, {'bloquee_par_id': devis.pk})
-        self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(champs(reponse.json()), {'bloquee_par_id': ['Boucle : « Devis » attend déjà « Visite ».']})
+        self.assertEqual(reponse.status_code, 409)  # état : 409
+        self.assertEqual(reponse.json()['bloquee_par_id'], ['Boucle : « Devis » attend déjà « Visite ».'])
 
     def test_jamais_soi_meme(self):
         tache = fabriques.tache(self.u1)
-        self.assertEqual(self._patch(tache, {'bloquee_par_id': tache.pk}).status_code, 400)
+        # se bloquer soi-même : règle croisée chemin ↔ corps que le schéma ne peut dire → refus d'état, 409
+        reponse = self._patch(tache, {'bloquee_par_id': tache.pk})
+        self.assertEqual(reponse.status_code, 409)
+        self.assertIn('bloquee_par_id', reponse.json())
 
     def test_une_chaine_de_plus_de_50_maillons_est_refusee(self):
         precedente = None
@@ -370,7 +465,7 @@ class ModifierTests(BaseApi):
             precedente = fabriques.tache(self.u1, titre=f'maillon {rang}', bloquee_par=precedente)
         neuve = fabriques.tache(self.u1, titre='neuve')
         reponse = self._patch(neuve, {'bloquee_par_id': precedente.pk})
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # la chaîne lue en base : état, 409
         self.assertIn('bloquee_par_id', reponse.json())
 
     def test_le_prerequis_d_un_collegue_repond_comme_inconnu(self):
@@ -414,7 +509,7 @@ class ModifierTests(BaseApi):
         parent = fabriques.tache(self.u1, projet=fabriques.projet(self.u1))
         enfant = fabriques.tache(self.u1, parent=parent, projet=parent.projet)
         reponse = self._patch(enfant, {'projet_id': None})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'projet_id': ['Non modifiable ici.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['projet_id']), (409, ['Non modifiable ici.']))
 
     def test_les_etiquettes_sont_remplacees(self):
         tache = fabriques.tache(self.u1)
@@ -784,8 +879,8 @@ class SauterTests(BaseApi):
     def test_sauter_une_tache_qui_ne_se_repete_pas_est_refuse(self):
         tache = fabriques.tache(self.u1)
         reponse = self._post(f'taches/{tache.pk}/sauter/')
-        self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(list(champs(reponse.json())), ['recurrence'])
+        self.assertEqual(reponse.status_code, 409)  # état : 409
+        self.assertIn('recurrence', reponse.json())
         self.assertEqual(_relue(tache).statut, StatutTache.A_FAIRE)
 
 
@@ -996,11 +1091,29 @@ class ReordonnerTests(BaseApi):
         self.assertEqual(classes, [c.pk, a.pk, b.pk])
         self.assertEqual(_relue(c).rang_jour, 1024)
 
+    def test_la_liste_d_aujourdhui_est_celle_de_la_journee(self):
+        """R3-007 — Alt+↓ entre une tâche du jour et une ★ GARDÉE par son échéance (prévue demain, échéance aujourd'hui)
+        : les deux sont des voisines d'Aujourd'hui (`gardee_aujourdhui`), 200 — plus « Avant id : Valeur inconnue. »."""
+        from testkit.time import frozen
+        J = datetime.date(2026, 11, 17)
+        with frozen('2026-11-17 10:00:00'):
+            du_jour = fabriques.tache(self.u1, jour_prevu=J)
+            par_echeance = fabriques.tache(self.u1, jour_prevu=J + datetime.timedelta(days=1), echeance=J)
+            demain = fabriques.tache(self.u1, jour_prevu=J + datetime.timedelta(days=1))
+            reponse = self._reordonner(du_jour, {'liste': 'jour', 'avant_id': par_echeance.pk})
+            self.assertEqual(reponse.status_code, 204, reponse.content[:300])  # réordonner ne rend aucun corps
+            self.assertEqual([_relue(par_echeance).rang_jour, _relue(du_jour).rang_jour], [1024, 2048])
+            self.assertIsNone(_relue(demain).rang_jour)  # une tâche de demain n'est pas de la liste d'aujourd'hui
+            refus = self._reordonner(du_jour, {'liste': 'jour', 'avant_id': demain.pk})
+            # voisin pris dans une AUTRE liste (demain) : refus d'état, 409 au même champ
+            self.assertEqual((refus.status_code, refus.json()['avant_id']), (409, ['Valeur inconnue.']))
+
     def test_la_liste_du_jour_demande_un_jour(self):
         tache = fabriques.tache(self.u1)
         voisin = fabriques.tache(self.u1)
         reponse = self._reordonner(tache, {'liste': 'jour', 'apres_id': voisin.pk})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'liste': ['Valeur inconnue.']}))
+        # refus d'ÉTAT de la tâche (elle n'a pas de jour) : 409, même champ (api-fuzz r2)
+        self.assertEqual((reponse.status_code, reponse.json()['liste']), (409, ['Valeur inconnue.']))
 
     def test_un_voisin_d_un_collegue_repond_comme_inconnu(self):
         projet, (a, b, c) = self._trois()
@@ -1012,7 +1125,7 @@ class ReordonnerTests(BaseApi):
         projet, (a, b, c) = self._trois()
         ailleurs = fabriques.tache(self.u1, projet=fabriques.projet(self.u1))
         reponse = self._reordonner(c, {'liste': 'projet', 'avant_id': ailleurs.pk})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Valeur inconnue.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['avant_id']), (409, ['Valeur inconnue.']))  # état : 409
 
     def test_liste_inconnue_ou_sans_voisin_refusees(self):
         projet, (a, b, c) = self._trois()
@@ -1098,7 +1211,8 @@ class RappelsTests(BaseApi):
     def test_une_ancre_sans_date_est_refusee(self):
         tache = fabriques.tache(self.u1)
         reponse = self._poser(tache, {'ancre': 'echeance', 'decalage_jours': -1, 'heure': '18:00'})
-        self.assertEqual((reponse.status_code, list(champs(reponse.json()))), (400, ['ancre']))
+        # la date n'est pas posée sur la tâche : état, 409 (même champ, + detail/code des 409 du module)
+        self.assertEqual((reponse.status_code, list(champs(reponse.json()))), (409, ['ancre', 'detail', 'code']))
 
     def test_cinq_rappels_au_plus_par_tache(self):
         tache = fabriques.tache(self.u1, jour_prevu=_j(1))
@@ -1106,8 +1220,8 @@ class RappelsTests(BaseApi):
             reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': f'{heure:02d}:00'})
             self.assertEqual(reponse.status_code, 200)
         reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': '14:00'})
-        self.assertEqual((reponse.status_code, champs(reponse.json())),
-                         (400, {'rappel': ['5 rappels au plus par tâche.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['rappel']),
+                         (409, ['5 rappels au plus par tâche.']))  # état : 409
 
     def test_heure_requise_et_lisible(self):
         tache = fabriques.tache(self.u1, jour_prevu=_j(1))
@@ -1117,7 +1231,7 @@ class RappelsTests(BaseApi):
 
     def test_une_tache_close_ou_d_un_collegue_est_refusee(self):
         close = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=timezone.now())
-        self.assertEqual(self._poser(close, {'jour': _j(1).isoformat(), 'heure': '09:00'}).status_code, 400)
+        self.assertEqual(self._poser(close, {'jour': _j(1).isoformat(), 'heure': '09:00'}).status_code, 409)  # close
         autre = fabriques.tache(self.u2)
         self.assertEqual(self._poser(autre, {'jour': _j(1).isoformat(), 'heure': '09:00'}).status_code, 404)
         self.assertEqual(Rappel.objects.count(), 0)
@@ -1211,6 +1325,19 @@ class RegleDeRecurrenceTests(BaseApi):
         corps = self._post(f'taches/{tache.pk}/terminer/').json()
         self.assertIsNone(corps['suivante'])
 
+    def test_cocher_une_occurrence_quand_la_serie_en_a_deja_une_autre_ouverte(self):
+        """La série porte DEUX occurrences ouvertes (donnée d'avant l'invariant 5, ou née ailleurs) : cocher l'une
+        réussit (200, faite) sans faire naître une 3e — `creation._regle_existante` refuserait (409 d'état) et la
+        coche entière tomberait ; l'autre occurrence reste la seule ouverte de la série."""
+        regle, tache = self._regle()
+        autre = _occurrence(self.u1, regle, _j(8))
+        reponse = self._post(f'taches/{tache.pk}/terminer/')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        self.assertIsNone(reponse.json()['suivante'])
+        self.assertEqual(_relue(tache).statut, StatutTache.FAIT)
+        ouvertes = Tache.objects.filter(recurrence=regle, statut__in=('a_faire', 'en_attente'))
+        self.assertEqual(list(ouvertes.values_list('pk', flat=True)), [autre.pk])
+
     def test_appliquer_a_l_ouverte_recale_sans_report(self):
         regle = _serie_hebdo(self.u1)
         retard = _occurrence(self.u1, regle, _j(-3))
@@ -1241,8 +1368,8 @@ class RegleDeRecurrenceTests(BaseApi):
     def test_la_fin_ne_precede_pas_le_debut(self):
         regle, _tache = self._regle()
         reponse = self._patch(regle, {'date_fin': (regle.date_debut - datetime.timedelta(days=1)).isoformat()})
-        self.assertEqual((reponse.status_code, champs(reponse.json())),
-                         (400, {'date_fin': ['La date de fin précède la date de début.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['date_fin']),
+                         (409, ['La date de fin précède la date de début.']))  # état : 409
 
     def test_la_regle_d_un_collegue_repond_comme_inconnue(self):
         regle = _serie_hebdo(self.u2)
@@ -1273,8 +1400,8 @@ class RegleDeRecurrenceTests(BaseApi):
         tache = fabriques.tache(self.u1, jour_prevu=_j(2))
         corps = {'recurrence': {'intervalle': 2}, 'lock_version': _relue(tache).lock_version}
         reponse = self._api().patch(f'{URL}taches/{tache.pk}/', corps, format='json')
-        self.assertEqual((reponse.status_code, champs(reponse.json())),
-                         (400, {'recurrence': {'frequence': ['Requis.']}}))
+        self.assertEqual((reponse.status_code, reponse.json()['recurrence']),
+                         (409, {'frequence': ['Requis.']}))  # état : 409
         regle, serie = self._regle()
         self._api().patch(f'{URL}taches/{serie.pk}/', {'recurrence': None, 'lock_version': _relue(serie).lock_version},
                           format='json')

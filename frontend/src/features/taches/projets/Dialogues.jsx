@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, CalendarCheck, CalendarClock } from 'lucide-react'
+import { ArrowRight, CalendarCheck, CalendarClock, Check } from 'lucide-react'
 import {
   decalerProjet, dupliquerProjet, enregistrerModele, instancierModele, listerTousLesProjets, renommerModele,
   supprimerModele, supprimerProjet, terminerProjet,
@@ -7,7 +7,8 @@ import {
 import { frenchError } from '../../../lib/frenchError'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import { premiereDate } from '../lib/projets'
-import { accord, aujourdhuiIso, jourCourt, jourNomme } from '../lib/textes'
+import { accord, aujourdhuiIso, jourNomme } from '../lib/textes'
+import { jourProjet } from './LigneProjet'
 
 /* ============================================================================
    TCH92 — Les trois dialogues d'un projet : Supprimer (« … et ses N tâches ? »), Décaler les dates (aperçu
@@ -19,6 +20,14 @@ import { accord, aujourdhuiIso, jourCourt, jourNomme } from '../lib/textes'
    ========================================================================== */
 
 const premiere = (valeur) => (Array.isArray(valeur) ? valeur[0] : valeur)
+
+/** Le lundi qui SUIT `iso` (si `iso` est un lundi : celui de la semaine d'après) — calcul en UTC, aucune horloge cachée. */
+// eslint-disable-next-line react-refresh/only-export-components -- calcul pur co-localisé, testé à part (D-ENF22)
+export function lundiProchain(iso) {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + (7 - ((d.getUTCDay() + 6) % 7)))
+  return d.toISOString().split('T')[0]
+}
 
 function Pied({ onFermer, principal, occupe, danger = false, desactive = false }) {
   return (
@@ -67,6 +76,100 @@ export function DialogueSupprimer({ projet, onFait, onFermer }) {
   )
 }
 
+/* R2-061 — Couleur et échéance d'un projet, sans repasser par la planification. Les dix couleurs sont celles du
+   serveur (`choix.Couleur`) ; un choix écrit tout de suite et ferme la feuille. */
+// eslint-disable-next-line react-refresh/only-export-components -- table des couleurs, co-localisée avec sa feuille (D-ENF22)
+export const COULEURS = [
+  ['terre', 'Terre'], ['ambre', 'Ambre'], ['olive', 'Olive'], ['vert', 'Vert'], ['menthe', 'Menthe'],
+  ['ciel', 'Ciel'], ['bleu', 'Bleu'], ['indigo', 'Indigo'], ['prune', 'Prune'], ['rose', 'Rose'],
+]
+
+export function DialogueRenommerProjet({ projet, onEnregistrer, onFermer }) {
+  const [nom, setNom] = useState(projet.nom)
+  const [erreur, setErreur] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const enregistrer = async () => {
+    if (nom.trim() === projet.nom) { onFermer(); return }
+    setOccupe(true)
+    setErreur('')
+    try {
+      await onEnregistrer(nom.trim())
+    } catch (err) {
+      const champs = err?.response?.status === 400 ? err.response.data : null
+      setErreur(premiere(champs?.nom) ?? frenchError(err, 'Le projet n\'a pas été renommé. Réessaie.'))
+      setOccupe(false)
+    }
+  }
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Renommer">
+      <form className="ep-formulaire" data-p={projet.couleur} noValidate onSubmit={(e) => { e.preventDefault(); enregistrer() }}>
+        <div className="ep-groupe">
+          <label className="ep-etiquette" htmlFor="ep-renommer-projet">Nom du projet</label>
+          <input id="ep-renommer-projet" className="champ" type="text" value={nom} maxLength={120} autoFocus
+            onChange={(e) => setNom(e.target.value)} onFocus={(e) => e.target.select()}
+            aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-renommer-projet-erreur' : undefined} />
+          <Erreur id="ep-renommer-projet-erreur" texte={erreur} />
+        </div>
+        <Pied onFermer={onFermer} principal={{ libelle: 'Enregistrer', onClick: enregistrer }} occupe={occupe} desactive={!nom.trim()} />
+      </form>
+    </FeuilleACrans>
+  )
+}
+
+export function DialogueCouleur({ projet, onChoisir, onFermer }) {
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Couleur">
+      <div className="ep-formulaire">
+        <p className="ep-dialogue-sous" data-p={projet.couleur}><i className="point" aria-hidden="true" />{projet.nom}</p>
+        <div className="ep-couleurs" role="radiogroup" aria-label="Couleur du projet">
+          {COULEURS.map(([code, nom]) => (
+            <button key={code} type="button" className="ep-couleur" role="radio" aria-checked={projet.couleur === code}
+              aria-label={nom} data-p={code} onClick={() => onChoisir(code)}>
+              <i className="point" aria-hidden="true">{projet.couleur === code ? <Check className="i i-14" aria-hidden="true" /> : null}</i>
+              <span>{nom}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </FeuilleACrans>
+  )
+}
+
+export function DialogueEcheance({ projet, aujourdhui = aujourdhuiIso(), onEnregistrer, onFermer }) {
+  const [date, setDate] = useState(projet.echeance ?? '')
+  const [erreur, setErreur] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const enregistrer = async (valeur) => {
+    setOccupe(true)
+    setErreur('')
+    try {
+      await onEnregistrer(valeur || null)
+    } catch (err) {
+      const champs = err?.response?.status === 400 ? err.response.data : null
+      setErreur(premiere(champs?.echeance) ?? frenchError(err, "L'échéance n'a pas été changée. Réessaie."))
+      setOccupe(false)
+    }
+  }
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Échéance">
+      <form className="ep-formulaire" data-p={projet.couleur} noValidate onSubmit={(e) => { e.preventDefault(); enregistrer(date) }}>
+        <p className="ep-dialogue-sous"><i className="point" aria-hidden="true" />{projet.nom}</p>
+        <div className="ep-groupe">
+          <label className="ep-etiquette" htmlFor="ep-echeance-projet">Échéance du projet</label>
+          <input id="ep-echeance-projet" className="champ" type="date" value={date} onChange={(e) => setDate(e.target.value)}
+            aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-echeance-projet-erreur' : undefined} />
+          {date ? <p className="ep-dialogue-sous chiffres">{jourProjet(date, aujourdhui)}</p> : null}
+          <Erreur id="ep-echeance-projet-erreur" texte={erreur} />
+        </div>
+        <div className="carte-actions ep-dialogue-pied">
+          {projet.echeance ? <button type="button" className="bouton second" disabled={occupe} onClick={() => enregistrer('')}>Retirer l'échéance</button> : null}
+          <button type="submit" className="bouton plein" disabled={occupe || !date || date === projet.echeance}>Enregistrer</button>
+        </div>
+      </form>
+    </FeuilleACrans>
+  )
+}
+
 /** Un changement du décalage, en une ligne : « Envoyer le devis · mar. 24 → mar. 1 déc. ». */
 function nomDuChangement(c, noms) {
   if (c.objet === 'projet') return c.champ === 'echeance' ? 'Échéance du projet' : 'Date de début du projet'
@@ -90,7 +193,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
     setErreur('')
     if (!Number.isInteger(valeur) || valeur === 0) return
     try {
-      const { data } = await decalerProjet(projet.id, { delta_jours: valeur, apercu: true })
+      const { data } = await decalerProjet(projet.id, { delta_jours: valeur, apercu: true }, { erreurSousLeChamp: true })
       if (mien === rang.current) setApercu(data)
     } catch (err) {
       if (mien !== rang.current) return
@@ -104,7 +207,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
   const appliquer = async () => {
     setOccupe(true)
     try {
-      const { data } = await decalerProjet(projet.id, { delta_jours: delta, apercu: false })
+      const { data } = await decalerProjet(projet.id, { delta_jours: delta, apercu: false }, { erreurSousLeChamp: true })
       onFait?.(data)
     } catch (err) {
       setErreur(premiere(err?.response?.data?.delta_jours) ?? frenchError(err, 'Les dates n\'ont pas été décalées. Réessaie.'))
@@ -143,7 +246,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
                 <li key={`${c.objet}:${c.id}:${c.champ}`}>
                   <span>{nomDuChangement(c, noms)}</span>
                   <span className="chiffres">
-                    {jourCourt(c.avant, aujourdhui)}<ArrowRight className="i i-14" aria-hidden="true" /><b>{jourCourt(c.apres, aujourdhui)}</b>
+                    {jourProjet(c.avant, aujourdhui)}<ArrowRight className="i i-14" aria-hidden="true" /><b>{jourProjet(c.apres, aujourdhui)}</b>
                   </span>
                 </li>
               ))}
@@ -188,7 +291,7 @@ export function DialogueTerminer({ projet, onFait, onFermer }) {
     setErreurs({})
     const corps = { issue, bilan, taches_ouvertes: ouvertes, projet_cible_id: ouvertes === 'deplacer' && cible ? Number(cible) : null }
     try {
-      const { data } = await terminerProjet(projet.id, corps)
+      const { data } = await terminerProjet(projet.id, corps, { erreurSousLeChamp: true })
       onFait?.(data)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
@@ -310,7 +413,7 @@ export function DialogueEnregistrerModele({ projet, onFait, onFermer }) {
     setOccupe(true)
     setErreur('')
     try {
-      const { data } = await enregistrerModele(projet.id, { nom: nom.trim(), inclure_notes: notes })
+      const { data } = await enregistrerModele(projet.id, { nom: nom.trim(), inclure_notes: notes }, { erreurSousLeChamp: true })
       onFait?.(data)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
@@ -355,8 +458,11 @@ export function DialogueEnregistrerModele({ projet, onFait, onFermer }) {
  */
 export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhuiIso(), onFait, onFermer }) {
   const modele = source.type === 'modele'
-  const [nom, setNom] = useState('')
-  const [date, setDate] = useState(aujourdhui)
+  // R2-065 — le nom est prérempli (« {nom} (copie) » pour un double) : un seul « Créer » qui écrit
+  const [nom, setNom] = useState(modele ? source.nom : `${source.nom} (copie)`)
+  // R3-137 — Dupliquer part du lundi PROCHAIN (ses premières tâches ne tombent plus, sans qu'on le dise, aujourd'hui) ; « Utiliser un
+  // modèle » garde aujourd'hui
+  const [date, setDate] = useState(modele ? aujourdhui : lundiProchain(aujourdhui))
   const [apercu, setApercu] = useState(null)
   const [erreur, setErreur] = useState('')
   const [occupe, setOccupe] = useState(false)
@@ -365,8 +471,8 @@ export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhu
   const corps = (n, d, sansApercu) => (modele
     ? { nom: n, date_lancement: d || null, apercu: !sansApercu }
     : { nom: n, date_debut: d || null, apercu: !sansApercu })
-  const appeler = (n, d, sansApercu) => (modele ? instancierModele(source.id, corps(n, d, sansApercu))
-    : dupliquerProjet(source.id, corps(n, d, sansApercu)))
+  const appeler = (n, d, sansApercu) => (modele ? instancierModele(source.id, corps(n, d, sansApercu), { erreurSousLeChamp: true })
+    : dupliquerProjet(source.id, corps(n, d, sansApercu), { erreurSousLeChamp: true }))
 
   const lireApercu = async (n, d) => {
     rang.current += 1
@@ -390,12 +496,17 @@ export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhu
   }
 
   const aJour = apercu && apercu.pour.nom === nom.trim() && apercu.pour.date === date
+  // l'aperçu (rien n'est écrit) est lu dès l'OUVERTURE, puis à chaque changement de date ou de nom posé
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- lecture à l'ouverture, une fois (D-ENF22)
+  useEffect(() => { lireApercu(nom, date) }, [])
   const creer = async () => {
-    if (!aJour) { await lireApercu(nom, date); return } // l'aperçu d'abord : rien n'est écrit avant de l'avoir vu
+    // UN seul « Créer » qui écrit : l'aperçu est déjà à l'écran ; un nom refusé (déjà pris) s'affiche sous le champ
+    rang.current += 1 // un aperçu encore en route ne doit plus rien afficher
     setOccupe(true)
     try {
       const { data } = await appeler(nom.trim(), date, true)
-      onFait?.(data)
+      // R3-137 — ce que l'aperçu avait annoncé (nombre de tâches, premier jour) : l'écran le redit dans son toast
+      onFait?.(data, aJour ? { nombre: apercu.taches?.length ?? 0, premier: premiereDate(apercu) } : null)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
       setErreur(premiere(champs?.nom) ?? frenchError(err, 'Le projet n\'a pas été créé. Réessaie.'))
@@ -444,7 +555,7 @@ export function DialogueRenommerModele({ modele, onFait, onFermer }) {
     setOccupe(true)
     setErreur('')
     try {
-      const { data } = await renommerModele(modele.id, { nom: nom.trim() })
+      const { data } = await renommerModele(modele.id, { nom: nom.trim() }, { erreurSousLeChamp: true })
       onFait?.(data)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null

@@ -10,6 +10,7 @@ import { PucesLues, noteDeLigne } from '../ui/ApercuListe'
 import { phraseAlerte } from '../ui/ChampSaisie'
 import { lignesACreer } from '../saisie/ColleListes'
 import { accord, duree, heure, jourCourt, jourNomme } from '../lib/textes'
+import { tempsTexte } from '../aujourdhui/Progression'
 
 /* ============================================================================
    TCH117 + TCH165 — Les cartes « Tâches » du Copilote, rendues DIRECTEMENT (sans passer par
@@ -179,7 +180,7 @@ function BoutonGarder({ lignes, jour, geste }) {
   return (
     <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null}
       onClick={() => geste.lancer(() => client.garderJournee({ jour, mode: 'express', lignes: lignesDe(lignes), essentielles: [], triage: [] }),
-        accord(n, 'gardée'))}>
+        accord(n, "prévue aujourd'hui", "prévues aujourd'hui"))}>
       {n >= 2 ? `Garder ces ${n}` : 'Garder celle-ci'}
     </button>
   )
@@ -300,6 +301,10 @@ function CarteEcho({ tache, proposition }) {
   )
 }
 
+// Critique serveur n° 7 — un refus au champ (5 rappels au plus, heure sans échéance…) est dit SOUS la carte (`Retour`),
+// le message du serveur, sans le toast du pont par-dessus.
+const SOUS_LA_CARTE = { erreurSousLeChamp: true }
+
 // A5 — une écriture du Copilote arrivée dans un tour où un texte tiers est entré : le relais n'a RIEN
 // écrit, la carte porte le corps de la requête (`proposition.corps`, contrat `ecriture_a_valider`) et le
 // doigt la valide. « Modifier » / « Laisser » : textes.md §5.5. Les autres écritures gardent le libellé
@@ -308,14 +313,15 @@ function CarteEcho({ tache, proposition }) {
 // envoie ce corps-là, le même objet ; un champ qu'elle ne sait pas dire se montre tel quel (clé : valeur).
 // eslint-disable-next-line react-refresh/only-export-components -- table parcourue par la garde du test (revue F3 n° 2)
 export const ECRITURES_A_VALIDER = {
-  'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c) },
+  'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c, SOUS_LA_CARTE) },
   'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c, DEPUIS_LA_CARTE) },
   'taches.tache.terminer': { fait: () => 'Faite', appel: (t, c) => client.terminerTache(t.id, c) },
   'taches.tache.planifier': {
     fait: (c) => (c.jour_prevu ? `Prévue ${jourNomme(c.jour_prevu)}` : ''), appel: (t, c) => client.planifierTache(t.id, c),
   },
   'taches.rappel.poser': {
-    fait: (c) => (c.jour ? `Rappel posé ${jourNomme(c.jour)} à ${heure(c.heure)}` : ''), appel: (t, c) => client.poserRappel(t.id, c),
+    fait: (c) => (c.jour ? `Rappel posé ${jourNomme(c.jour)} à ${heure(c.heure)}` : ''),
+    appel: (t, c) => client.poserRappel(t.id, c, SOUS_LA_CARTE),
   },
   'taches.projet.creer': { fait: () => '', appel: (t, c) => client.creerProjet(c, DEPUIS_LA_CARTE) },
   'taches.rythme.regler': { fait: () => '', appel: (t, c) => client.poserMode(c) },
@@ -330,7 +336,7 @@ function ligneDuChangement({ champ, avant, apres }, titre) {
 }
 
 // Les mots de chaque champ : puces de la saisie (textes.md §2.3 : « Matin » / « Après-midi » / « Ce soir »,
-// « échéance {jour} [· {HH:MM}] », « En réserve », « Nouveau projet : {nom} », « Priorité haute »,
+// « échéance {jour} [· {HH:MM}] », « Plus tard », « Nouveau projet : {nom} », « Priorité haute »,
 // « Rappel {jour} {HH:MM} »), champs de la fiche (§2.4 : Quand, Heure, Durée, « Lié à : »), Mon rythme
 // (§2.11 : modes, « Objectif du jour : {n} », « Plus » / « Moins »). Une valeur qui n'a pas la forme
 // attendue n'est jamais « arrangée » : elle tombe dans le rendu tel quel.
@@ -373,7 +379,7 @@ const DIRE_CHAMPS = [
   [['estimation_minutes'], (c) => (Number.isInteger(c.estimation_minutes) && duree(c.estimation_minutes)
     ? `Durée : ${duree(c.estimation_minutes)}` : '')],
   [['priorite'], (c) => prioriteDite(c.priorite)],
-  [['quelque_jour'], (c) => (c.quelque_jour === true ? 'En réserve' : '')],
+  [['quelque_jour'], (c) => (c.quelque_jour === true ? 'Plus tard' : '')],
   [['nom'], (c) => (estTexte(c.nom) ? `Nouveau projet : ${c.nom}` : '')],
   [['nouveau_projet'], (c) => nouveauProjetDit(c.nouveau_projet)],
   [['lien'], (c) => lienDit(c.lien)],
@@ -743,10 +749,50 @@ function CarteRythme({ donnees }) {
 
 // ── priorites ─────────────────────────────────────────────────────────────────
 
+/** R3-023 — `garder_n === 0` veut dire « rien à ajouter », pas « objectif atteint » : seul `faites` ≥ l'objectif
+ *  l'est ; sinon l'objectif est COUVERT par ce qui est déjà gardé (« 1 sur 9 faites »). */
 function sousTitrePriorites(d) {
   if (d.objectif?.mode === LIBRE || !d.objectif?.nb) return "Dans l'ordre où l'ERP les prendrait"
-  if (d.garder_n === 0) return 'Objectif atteint : le reste peut attendre.'
+  if (d.garder_n === 0) {
+    const faites = Number(d.faites) || 0
+    if (faites >= d.objectif.nb) return 'Objectif atteint : le reste peut attendre.'
+    return `Ton objectif est couvert par tes tâches du jour (${faites} sur ${d.objectif.nb} faites)`
+  }
   return `${d.garder_n} pour atteindre ton objectif de ${d.objectif.nb}`
+}
+
+/** R3-023 — la journée déborde (`priorites/` sert alors les GARDÉES ouvertes, `geste_propose: "alleger"`) : rien
+ *  à ajouter, chaque ligne se reporte, et « Alléger ma journée » ouvre la feuille d'Aujourd'hui. */
+function ReporterPriorite({ item, jour, plusTard }) {
+  const geste = useGeste()
+  if (!plusTard) return null
+  return (
+    <div className="actions-priorite">
+      <button type="button" className="bouton lien" disabled={geste.occupe}
+        onClick={() => geste.lancer(() => client.planifierTache(item.id, { jour_prevu: plusTard, lock_version: item.lock_version }), `Reportée à ${jourNomme(plusTard, jour)}`)}>
+        {`Reporter à ${jourNomme(plusTard, jour)}`}
+      </button>
+      <Retour geste={geste} />
+    </div>
+  )
+}
+
+function CarteDebordement({ donnees }) {
+  const lignes = donnees.lignes ?? []
+  return (
+    <div role="group" aria-label="Tes priorités">
+      <Tete titre={`Ta journée déborde de ${duree(donnees.charge?.deborde_minutes)}`} />
+      <div className="liste" role="list">
+        {lignes.map((l) => (
+          <LigneCarte key={cleItem(l.item)} item={l.item} rang={l.rang}
+            bas={<ReporterPriorite item={l.item} jour={donnees.jour} plusTard={donnees.plus_tard} />} />
+        ))}
+      </div>
+      <div className="propose-actions ep-carte-ia-pied">
+        <Link className="bouton second" to="/taches/aujourdhui?ouvrir=alleger">Alléger ma journée</Link>
+      </div>
+    </div>
+  )
 }
 
 function GestesPriorite({ item, jour, plusTard }) {
@@ -765,8 +811,8 @@ function GestesPriorite({ item, jour, plusTard }) {
       </button>
       {plusTard ? (
         <button type="button" className="bouton lien" disabled={geste.occupe}
-          onClick={() => ecrire(() => client.planifierTache(item.id, { jour_prevu: plusTard, lock_version: item.lock_version }), `Prévue ${jourNomme(plusTard, jour)}`)}>
-          {`Plus tard dans la semaine (→ ${jourNomme(plusTard, jour)})`}
+          onClick={() => ecrire(() => client.planifierTache(item.id, { jour_prevu: plusTard, lock_version: item.lock_version }), `Reportée à ${jourNomme(plusTard, jour)}`)}>
+          {`Reporter à ${jourNomme(plusTard, jour)}`}
         </button>
       ) : null}
       <Retour geste={geste} />
@@ -778,6 +824,8 @@ function CartePriorites({ donnees }) {
   const geste = useGeste(null, { principal: true })
   const [toutes, setToutes] = useState(false)
   const lignes = donnees.lignes ?? []
+  // R4-01 — LA charge du jour (`charge`, la même que la page Aujourd'hui) : un seul verdict « trop plein » partout
+  if (donnees.geste_propose === 'alleger' && donnees.charge?.deborde_minutes > 0 && lignes.length > 0) return <CarteDebordement donnees={donnees} />
   if (lignes.length === 0) {
     return <div role="group" aria-label="Tes priorités"><Tete titre="Tes priorités" /><p className="section-sous">Rien à prioriser : tout est gardé ou fait.</p></div>
   }
@@ -813,10 +861,13 @@ function lignesDuPoint(d) {
   if (essentiel.length > 0) lignes.push(`Essentiel restant : ${essentiel.map((t) => t.titre).join(', ')}`)
   else if (p.essentiel_prevues > 0) lignes.push('Essentiel fait')
   if (d.prochaine) lignes.push(`Prochaine : ${d.prochaine.titre}${d.prochaine.heure_debut ? ` · ${heure(d.prochaine.heure_debut)}` : ''}`)
-  if (d.restes_nb > 0) lignes.push(`Encore ${accord(d.restes_nb, 'gardée')}`)
+  // R4-07 (M6) — plus de « gardées » : ce qui reste prévu aujourd'hui
+  if (d.restes_nb > 0) lignes.push(`Encore ${accord(d.restes_nb, "prévue aujourd'hui", "prévues aujourd'hui")}`)
   const rdv = d.rendez_vous_restants ?? []
   if (rdv.length > 0) lignes.push(`Rendez-vous restants : ${rdv.map((r) => `${heure(r.debut?.slice(11, 16))} ${r.titre}`).join(' · ')}`)
-  if (p.disponible_minutes > 0) lignes.push(`Temps libre : ${duree(p.disponible_minutes)}`)
+  // R4-01 — LA phrase du temps d'Aujourd'hui, sur LA charge servie (`progression.charge`) : mêmes mots, même chiffre
+  const temps = tempsTexte(p.charge)
+  if (temps) lignes.push(temps)
   return lignes
 }
 
@@ -838,7 +889,7 @@ function attendLeDoigt(cle, d) {
   if (!d) return false
   if (d.proposition?.geste === 'ecrire') return true
   if (cle === 'plan_propose') return (d.proposition ?? []).length > 0
-  if (cle === 'priorites') return (d.garder_n ?? 0) > 0 && (d.lignes ?? []).length > 0
+  if (cle === 'priorites') return ((d.garder_n ?? 0) > 0 || d.geste_propose === 'alleger') && (d.lignes ?? []).length > 0
   if (cle === 'capture_apercu') return (d.lignes ?? []).length > 0
   if (cle === 'plan_projet') return projetPlanifiable(d.projet)
   if (cle === 'tache') return Boolean(d.proposition && ECHOS[d.proposition.geste])

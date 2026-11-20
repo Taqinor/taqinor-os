@@ -79,16 +79,32 @@ def _du_compte(modele, user):
 
 # --- Le préfiltre (invariant 10) -----------------------------------------------------------------
 
+def gardee_malgre_la_pause(jour):
+    """R2-031 (choix C-5, « ce que j'ai posé reste posé ») — LA règle, lue par Aujourd'hui (`taches_de_la_journee`)
+    et par l'Agenda (`views.agenda.taches_de_la_periode`) : une tâche OUVERTE d'un projet en pause reste visible
+    le jour `jour` si elle y est prévue ET que son projet a été mis en pause ce jour-là (ou plus tard). Une pause
+    plus ancienne la retire, comme de tous les autres jours."""
+    debut, _fin = bornes_du_jour(jour)
+    return Q(projet__isnull=False, projet__statut=StatutProjet.EN_PAUSE, projet__is_deleted=False,
+             projet__statut_depuis__gte=debut, jour_prevu=jour, statut__in=OUVERTS, quelque_jour=False)
+
+
 def taches_de_la_journee(user, jour):
     """Tâches du préfiltre de la journée de `user` au jour `jour` : vivantes, `parent` nul, non
-    bloquées, et soit ouvertes hors « En réserve » d'un projet actif (ou sans projet et triées), soit
+    bloquées, et soit ouvertes hors « Plus tard » d'un projet actif (ou sans projet et triées), soit
     faites ce jour-là (heure locale) QUEL QUE SOIT l'état de leur projet : une faite du jour reste dans
     « Faites », l'essentiel et les gardées faites même si son projet est terminé ou mis en pause le
     jour même — comme `compte_faites` la compte (revue F2 tour 2 #1). Une faite est toujours triée
-    (clore pose `triee_le`)."""
+    (clore pose `triee_le`).
+
+    R2-031 (choix C-5, « ce que j'ai posé reste posé ») : une tâche ouverte d'un projet mis en pause CE
+    jour-là (ou plus tard) reste dans la journée si elle est prévue ce jour-là (jour, et donc heure,
+    posés) ; la pause la retire de Proposé (elle n'est pas candidate : elle est déjà posée), d'À trier
+    et des jours suivants (`statut_depuis` antérieur à ces jours)."""
     debut, fin = bornes_du_jour(jour)
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
-                 | Q(projet__isnull=True, triee_le__isnull=False))
+                 | Q(projet__isnull=True, triee_le__isnull=False)
+                 | gardee_malgre_la_pause(jour))
     ouverte = Q(statut__in=OUVERTS, quelque_jour=False)
     faite = Q(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
     return (taches_de(user).filter(parent__isnull=True).filter((rattachee & ouverte) | faite)
@@ -407,6 +423,60 @@ def activites_closes_du_jour(user, jour):
     return list(activites_closes_par(user, debut, fin).exclude(pk__in=portees).values_list('pk', flat=True))
 
 
+#: Une tâche ROUTINE (`_routine` : quotidienne, hebdo… d'intervalle 1) : `compte_du_jour` la compte 0.
+ROUTINE = Q(recurrence__isnull=False, recurrence__frequence__in=FREQUENCES_ROUTINE, recurrence__intervalle=1)
+
+
+def _faites_de_la_periode(user, du, au, J):
+    """`({jour: [ItemPur]}, [(jour, titre)])` des faites de [du, min(au, J)] : les tâches PASSÉES à `fait` ce jour
+    local, et les activités ERP closes par lui moins celles qui portent une tâche (comptées déjà :
+    `activites_closes_du_jour`). Une lecture de tâches et une d'activités pour toute la période."""
+    dernier = min(au, J)
+    if dernier < du or getattr(user, 'company_id', None) is None or getattr(user, 'pk', None) is None:
+        return {}, []
+    from apps.records.selectors import activites_closes_par
+    debut, _ = bornes_du_jour(du)
+    _, fin = bornes_du_jour(dernier)
+    taches = (taches_de(user).filter(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
+              .select_related('recurrence'))
+    par_jour = {}
+    for tache in taches:
+        par_jour.setdefault(timezone.localtime(tache.fait_le).date(), []).append(classement.ItemPur(
+            id=tache.pk, statut=tache.statut, parent_id=tache.parent_id, routine=_routine(tache),
+            estimation_minutes=tache.estimation_minutes))
+    portees = (Tache.all_objects.filter(company_id=user.company_id, activite_origine_id__isnull=False)
+               .values('activite_origine_id'))
+    closes = (activites_closes_par(user, debut, fin).exclude(pk__in=portees)
+              .order_by('-done_at', '-pk').values_list('done_at', 'summary'))
+    return par_jour, [(timezone.localtime(fait_a).date(), titre or '') for fait_a, titre in closes]
+
+
+def faites_par_jour(user, du, au, J):
+    """{jour: nombre de « faites » ce jour-là} pour les jours de [du, au] jusqu'à aujourd'hui `J` (R2-102, C-12 ;
+    R3-003, C-16) : LA définition des faites d'une période — la somme de ses jours. Chaque jour vaut `compte_du_jour`
+    (sous-tâche et routine = 0, plafond des micro-tâches, activités ERP closes) : le MÊME nombre que la PROGRESSION
+    du jour, l'Agenda (`faites_nb`), la tête de la Revue et « Faites cette semaine » de la Recherche. Deux requêtes
+    pour toute la période (jamais une par jour) ; aucune pour une période à venir."""
+    return _comptes_par_jour(*_faites_de_la_periode(user, du, au, J))
+
+
+def _comptes_par_jour(par_jour, closes):
+    activites = {}
+    for jour, titre in closes:
+        activites.setdefault(jour, []).append(titre)
+    return {jour: compte_du_jour(par_jour.get(jour, []), activites.get(jour, []))[0]
+            for jour in sorted({*par_jour, *activites})}
+
+
+def faites_de_la_semaine(user, J):
+    """`{total, activites_closes}` de la semaine de `J`, du lundi à aujourd'hui (week-end compris) : `total` =
+    Σ `faites_par_jour` (la somme de la Revue et de l'Agenda) ; `activites_closes` = `[{jour, titre}]` des activités
+    ERP closes comptées dans `total`, la plus récente d'abord (R3-003). Deux requêtes."""
+    par_jour, closes = _faites_de_la_periode(user, lundi_de(J), J, J)
+    return {'total': sum(_comptes_par_jour(par_jour, closes).values()),
+            'activites_closes': [{'jour': jour.isoformat(), 'titre': titre} for jour, titre in closes]}
+
+
 def compte_faites(user, jour, closes=None):
     """(`compte`, `detail`) de `compte_du_jour` : tâches faites ce jour et activités ERP closes par
     lui ce jour (regles.md §6.1). `closes` : `activites_closes_du_jour` déjà lu par l'appelant (il
@@ -432,30 +502,51 @@ def _prevue_au_jour(item, J):
     return (item.type == TACHE and classement.gardee_aujourdhui(item, J) and item.moment != Moment.SOIR)
 
 
-def _minutes_prevues(journee):
+def minutes_prevues_du_jour(journee):
+    """Σ estimations des tâches (ouvertes ET faites aujourd'hui) d'Essentiel et de Prévu, hors Ce soir : le
+    `PlanJour.minutes_prevues` qu'écrit la nuit (statistique du rythme). Jamais montré : la charge du jour à l'écran est
+    `charge_du_jour` (R4-01)."""
     taches = [i for i in journee.items.values() if _prevue_au_jour(i, journee.jour)
               and (i.statut == StatutTache.A_FAIRE
                    or journee.placements.get((TACHE, i.id), classement.Placement('')).section
                    == SectionJournee.FAITES)]
-    return sum(i.estimation_minutes or 0 for i in taches), sum(1 for i in taches if i.estimation_minutes is None)
+    return sum(i.estimation_minutes or 0 for i in taches)
+
+
+def essentiel_servi(journee):
+    """(faites, prévues) de l'essentiel : LES ★ de la section Essentiel SERVIE (ouvertes, ou faites aujourd'hui),
+    chacune comptée une fois — ce que l'écran montre est ce qui est compté (R3-001, choix C-14) : une ★ reportée
+    sans échéance quitte la section et le compte ; une ★ gardée par son échéance y reste et compte. La SEULE
+    définition : `aujourdhui/`, toute TACHE_ECRITE, le bilan du soir, la nuit (donc la revue) la lisent ici."""
+    cles = list(dict.fromkeys(journee.sections.get(SectionJournee.ESSENTIEL, ())))
+    return sum(1 for cle in cles if journee.items[cle].statut == StatutTache.FAIT), len(cles)
+
+
+def charge_du_jour(journee, jour, capacite_minutes, rendez_vous_minutes, items=None):
+    """R4-01 (M1) — LA charge du jour `jour` (forme CHARGE : `classement.charge_du_jour`), lue des éléments DÉJÀ chargés
+    de la journée (`items` : ceux d'une période de l'agenda) : aucune requête. Seule source de « … de trop » : la
+    PROGRESSION d'`aujourdhui/` et de toute écriture, chaque jour d'`agenda/` (donc Planifier ma semaine), `priorites/`
+    et `point/` (le Copilote) la servent ; aucun écran ne recalcule."""
+    elements = journee.items.values() if items is None else items
+    return classement.charge_du_jour(elements, jour, journee.jour, capacite_minutes, rendez_vous_minutes)
 
 
 def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minutes=0, reprise=False, closes=()):
     """Forme PROGRESSION (api.md §1) : `faites` = `compte_du_jour` ; `prevues` = faites + éléments
-    ouverts gardés ; gardées faites sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les
-    activités ERP closes du jour, lues pour `faites`)."""
-    essentielles = [ligne for ligne in journee.lignes if ligne_essentielle(ligne)]
+    ouverts gardés ; essentiel = `essentiel_servi` ; `plan_tenues`/`plan_lignes` (servis pour la nuit, plus
+    jamais montrés) sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les activités ERP closes du jour,
+    lues pour `faites`) ; `charge` = `charge_du_jour` (R4-01 : le temps du jour, ce qui RESTE contre le disponible)."""
+    essentiel_faites, essentiel_prevues = essentiel_servi(journee)
     au_plan = [ligne for ligne in journee.lignes if ligne_gardee(ligne)]
-    minutes, sans = _minutes_prevues(journee)
     capacite_minutes, capacite_source = capacite
     activites = [cle for cle in journee.sections.get(SectionJournee.JOURNEE, ()) if cle[0] == ACTIVITE]
     closes = frozenset(closes)
     return {
         'faites': faites, 'detail': dict(detail), 'prevues': faites + len(gardes_ouverts(journee)),
-        'essentiel_faites': sum(1 for ligne in essentielles if ligne_faite(journee, ligne, closes)),
-        'essentiel_prevues': len(essentielles),
+        'essentiel_faites': essentiel_faites, 'essentiel_prevues': essentiel_prevues,
         'plan_tenues': sum(1 for ligne in au_plan if ligne_faite(journee, ligne, closes)),
-        'plan_lignes': len(au_plan), 'minutes_prevues': minutes, 'sans_estimation': sans,
+        'plan_lignes': len(au_plan),
+        'charge': charge_du_jour(journee, journee.jour, capacite_minutes, rendez_vous_minutes),
         'capacite_minutes': capacite_minutes, 'capacite_source': capacite_source,
         'rendez_vous_minutes': rendez_vous_minutes,
         'disponible_minutes': classement.temps_disponible(capacite_minutes, rendez_vous_minutes),

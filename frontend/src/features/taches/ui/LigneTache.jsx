@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Calendar, Check, Flag, Hourglass, Link as LienIcone, Lock, Repeat, Ellipsis } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import {
+  AlignLeft, ArrowRight, Bell, Calendar, Check, Flag, Hourglass, Link as LienIcone, ListChecks, Lock, Repeat, Ellipsis,
+} from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
 import CaseRonde from './CaseRonde'
 import Etoile from './Etoile'
+import FeuilleACrans from './FeuilleACrans'
+import { retenirApercu } from '../lib/fiche'
 import { aujourdhuiIso, duree, echeanceTexte, heure, jourCourt } from '../lib/textes'
 
 /* ============================================================================
@@ -24,12 +29,30 @@ import { aujourdhuiIso, duree, echeanceTexte, heure, jourCourt } from '../lib/te
    heure de la colonne Agenda ; sans la prop, la ligne ne se glisse pas (iPhone : jamais de glisser, spec-7 §5).
    Passe visuelle n° 46 (recherche.html) — `surligne` (le texte cherché) : ses mots sont surlignés dans le titre ;
    `contexte="recherche"` : la méta commence par le statut du résultat. Sans ces props, la ligne ne change pas.
+   R2-018 — `groupeTitre` : le nom du projet qui TITRE le groupe où la ligne est rendue (omis de sa méta).
    ========================================================================== */
 
 const DUREE_APPUI_LONG_MS = 500
 const SEUIL_OUVERT = 64
 const LARGEUR_GAUCHE = 192
 const LARGEUR_DROITE = 132
+
+/** R2-032 — le toucher qui referme une ligne ouverte n'ouvre rien d'autre : son `click` est avalé, une fois. S'il n'y a
+ *  pas de clic (c'était un défilement), le toucher suivant retire l'avaleur. Hors de React : la ligne, une fois fermée,
+ *  démonte son effet, et l'avaleur doit lui survivre jusqu'au clic. */
+function avalerProchainClic() {
+  const retirer = () => {
+    document.removeEventListener('click', avaler, true)
+    document.removeEventListener('pointerdown', retirer, true)
+  }
+  const avaler = (c) => { c.stopPropagation(); c.preventDefault(); retirer() }
+  document.addEventListener('click', avaler, true)
+  document.addEventListener('pointerdown', retirer, true)
+}
+
+/** R2-032 — pendant le glissement, les actions se partagent exactement la largeur que le doigt a découverte (au repos,
+ *  la feuille de style leur donne leur largeur pleine) : jamais une bande vide ou grise à côté de la ligne. */
+const BOUTON_PROPORTIONNEL = { flexGrow: 1, flexShrink: 1, flexBasis: '0px', width: 'auto', minWidth: 0 }
 
 /** Balayage tactile : révèle des actions sous la ligne ; un balayage complet les déclenche. */
 function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
@@ -38,17 +61,41 @@ function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
   const [glisse, setGlisse] = useState(false)
   const depart = useRef(null)
   const minuteur = useRef(null)
+  // où est le DOIGT (non plafonné) : l'affichage s'arrête à la largeur des actions, le seuil du balayage complet non
+  const doigt = useRef(0)
 
   const annulerAppui = () => { if (minuteur.current) { clearTimeout(minuteur.current); minuteur.current = null } }
   useEffect(() => annulerAppui, [])
 
   const fermer = () => { setOuvert(null); setDx(0) }
 
+  // R2-032 — un toucher AILLEURS referme d'abord la ligne ouverte (et n'ouvre rien d'autre)
+  useEffect(() => {
+    if (!ouvert) return undefined
+    const dehors = (e) => {
+      if (cadre.current?.contains(e.target)) return
+      setOuvert(null)
+      setDx(0)
+      avalerProchainClic()
+    }
+    document.addEventListener('pointerdown', dehors, true)
+    return () => document.removeEventListener('pointerdown', dehors, true)
+  }, [ouvert, cadre])
+
   const surDebut = (e) => {
     if (e.pointerType !== 'touch') return
     depart.current = { x: e.clientX, y: e.clientY, base: ouvert === 'gauche' ? -LARGEUR_GAUCHE : ouvert === 'droite' ? LARGEUR_DROITE : 0, horizontal: false }
     annulerAppui()
-    minuteur.current = setTimeout(() => { minuteur.current = null; depart.current = null; onAppuiLong() }, DUREE_APPUI_LONG_MS)
+    minuteur.current = setTimeout(() => {
+      minuteur.current = null
+      depart.current = null
+      // R4-21 — le doigt est ENCORE posé : son relâcher (pointerup, touchend, puis le click que le navigateur envoie à
+      // ce qui est passé sous lui — « Choisir un jour », « Priorité », le voile —, dans un ordre qui varie, parfois sans
+      // click) ne doit rien déclencher. Le prochain click est avalé ; un NOUVEAU toucher (pointerdown) retire l'avaleur,
+      // et lui seul agit. Aucun minuteur de protection : c'est le geste suivant qui décide.
+      avalerProchainClic()
+      onAppuiLong()
+    }, DUREE_APPUI_LONG_MS)
   }
   const surMouvement = (e) => {
     const d = depart.current
@@ -63,7 +110,8 @@ function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
       setGlisse(true)
       e.currentTarget.setPointerCapture?.(e.pointerId)
     }
-    setDx(Math.max(-LARGEUR_GAUCHE - 40, Math.min(LARGEUR_DROITE + 40, d.base + ex)))
+    doigt.current = d.base + ex
+    setDx(Math.max(-LARGEUR_GAUCHE - 40, Math.min(LARGEUR_DROITE + 40, doigt.current)))
   }
   const surFin = () => {
     annulerAppui()
@@ -72,7 +120,7 @@ function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
     if (!d?.horizontal) return
     setGlisse(false)
     const largeur = cadre.current?.offsetWidth || 360
-    const position = dx
+    const position = doigt.current
     if (position <= -largeur * 0.5) { setOuvert(null); setDx(0); onGauche(); return }
     if (position >= largeur * 0.5) { setOuvert(null); setDx(0); onDroite(); return }
     if (position <= -SEUIL_OUVERT) { setOuvert('gauche'); setDx(0); return }
@@ -143,20 +191,29 @@ function TitreSurligne({ titre, surligne }) {
 }
 
 /** La méta de STATUT d'un résultat de recherche (recherche.html), lue des données servies : son jour, sinon, pour une
- *  tâche ouverte, « En réserve » ou « À trier » (ni jour, ni réserve, ni projet) ; puis « Suggéré par l'ERP ». */
+ *  tâche ouverte, « Plus tard » ou « À trier » (ni jour, ni réserve, ni projet) ; puis « Suggéré par l'ERP ». */
 function statutRecherche(item, aujourdhui) {
   if (item.type !== 'tache') return []
   const puces = []
   const ouverte = item.statut !== 'fait' && item.statut !== 'annule'
   if (item.jour_prevu) puces.push(<span key="statut" className="chiffres">{jourCourt(item.jour_prevu, aujourdhui)}</span>)
-  else if (ouverte && item.quelque_jour) puces.push(<span key="statut">En réserve</span>)
+  else if (ouverte && item.quelque_jour) puces.push(<span key="statut">Plus tard</span>)
   else if (ouverte && !item.projet) puces.push(<span key="statut">À trier</span>)
   if (item.source === 'suggestion') puces.push(<span key="suggestion">Suggéré par l'ERP</span>)
   return puces
 }
 
+/** R2-018 — les puces BRÈVES : une méta qui n'en compte que deux au plus peut tenir sur la ligne du titre
+ *  (`.ligne-corps.meta-courte`, la règle CSS est celle de la coquille) ; un lien, une raison ou une attente, jamais. */
+const PUCES_BREVES = new Set(['statut', 'jour', 'ech', 'duree', 'projet'])
+const INDICES = new Set(['note', 'check', 'rappel']) // R2-028 : de petites icônes, jamais comptées dans la méta brève
+const metaCourte = (meta) => {
+  const puces = meta.filter((p) => !INDICES.has(p.key))
+  return puces.length > 0 && puces.length <= 2 && puces.every((p) => PUCES_BREVES.has(p.key))
+}
+
 /** Les puces de méta d'une ligne, dans l'ordre des maquettes. */
-function metaDe(item, { contexte, aujourdhui, propose }) {
+function metaDe(item, { contexte, aujourdhui, propose, groupeTitre }) {
   const puces = contexte === 'recherche' ? statutRecherche(item, aujourdhui) : []
   if (item.type === 'activite') puces.push(<span key="erp">Activité ERP</span>)
   if (contexte === 'projet' && item.jour_prevu) {
@@ -168,7 +225,32 @@ function metaDe(item, { contexte, aujourdhui, propose }) {
   const ech = item.echeance && !raison ? echeanceTexte(item.echeance, aujourdhui) : null
   if (ech) puces.push(<span key="ech" className={ech.ton === 'alerte' ? 'alerte chiffres' : 'fort chiffres'}>{ech.texte}</span>)
   const d = duree(item.estimation_minutes)
-  if (d && item.heure_debut) puces.push(<span key="duree" className="chiffres">{d}</span>)
+  // R2-018 — « 2 h » nu se lisait « à 2 h » : la durée porte son sablier (et « Durée : » pour la lecture d'écran)
+  if (d && item.heure_debut) {
+    puces.push(
+      <span key="duree" className="chiffres"><Hourglass className="i i-14" aria-hidden="true" /><span className="sr">Durée : </span>{d}</span>,
+    )
+  }
+  // R2-028 — ce que la ligne ne montrait pas : une note, une check-list, un rappel (petites icônes discrètes, comme Things).
+  // Les notes ne sont servies que par la fiche ; une liste peut porter `a_notes` : l'indice n'apparaît que si la donnée le dit.
+  if (item.notes || item.a_notes) {
+    puces.push(<span key="note" className="indice"><AlignLeft className="i i-14" aria-hidden="true" /><span className="sr">Note</span></span>)
+  }
+  if (item.checklist?.total > 0) {
+    puces.push(
+      <span key="check" className="indice chiffres">
+        <ListChecks className="i i-14" aria-hidden="true" /><span className="sr">Check-list : </span>{item.checklist.faits}/{item.checklist.total}
+      </span>,
+    )
+  }
+  if (item.rappel?.heure && item.statut !== 'fait') {
+    const quand = item.rappel.jour && item.rappel.jour !== aujourdhui ? `${jourCourt(item.rappel.jour, aujourdhui)} ` : ''
+    puces.push(
+      <span key="rappel" className="indice chiffres">
+        <Bell className="i i-14" aria-hidden="true" /><span className="sr">{`Rappel ${quand}à ${heure(item.rappel.heure)}`}</span>
+      </span>,
+    )
+  }
   if (item.lien?.libelle) {
     puces.push(
       <span key="lien"><LienIcone className="i i-14" aria-hidden="true" /><span className="sr">Lié à : </span>{item.lien.libelle}</span>,
@@ -181,13 +263,16 @@ function metaDe(item, { contexte, aujourdhui, propose }) {
     puces.push(<span key="att"><Hourglass className="i i-14" aria-hidden="true" />En attente de : {item.en_attente_de}</span>)
   }
   if (item.confidentielle) puces.push(<span key="conf"><Lock className="i i-14" aria-hidden="true" />Confidentielle</span>)
-  if (contexte !== 'projet' && item.projet) puces.push(<MetaProjet key="projet" projet={item.projet} />)
+  // R2-018 — le nom du projet n'est pas répété sous un groupe qui le porte déjà en titre
+  if (contexte !== 'projet' && item.projet && item.projet.nom !== groupeTitre) puces.push(<MetaProjet key="projet" projet={item.projet} />)
   return puces
 }
 
 export default function LigneTache({
   item,
   contexte = 'jour',
+  // couture r2 — `none` quand un parent porte déjà le rôle `listitem` (ligne réordonnable d'une vue Liste)
+  roleCadre = 'listitem',
   aujourdhui = aujourdhuiIso(),
   reporterLibelle = '',
   estampille = '',
@@ -205,9 +290,12 @@ export default function LigneTache({
   onAnnonce,
   glissable = null,
   surligne = '',
+  groupeTitre = '',
 }) {
   const cadre = useRef(null)
   const [menuOuvert, setMenuOuvert] = useState(false)
+  // R3-061 — ce que la ligne sait de sa tâche est l'aperçu de la fiche : elle s'ouvre dessus, sans « Chargement… »
+  useEffect(() => { retenirApercu(item) }, [item])
   const activite = item.type === 'activite'
   const fait = item.statut === 'fait'
   const attente = item.statut === 'en_attente' || Boolean(item.bloquee_par) || Boolean(item.en_attente_de)
@@ -219,12 +307,22 @@ export default function LigneTache({
     await onTerminer?.(item, suivant)
     onAnnonce?.(suivant ? `Fait : ${item.titre}` : `Rouverte : ${item.titre}`)
   }
+  // R3-063 (choix C-23) — l'appui long au doigt ouvre une FEUILLE DU BAS titrée de la tâche (rangées de 48 px, la ligne
+  // surlignée tant qu'elle est ouverte) ; le menu ⋯ du bureau (souris, clic droit, clavier) ne change pas
+  const [feuilleActions, setFeuilleActions] = useState(false)
+  const [hote, setHote] = useState(null) // `.tch` : la feuille est rendue hors de la ligne (ni listitem, ni overflow)
+  const geste = useRef(null) // le geste choisi dans la feuille : il part une fois la feuille fermée
+  const dernierToucher = useRef(false)
+  const ouvrirFeuilleActions = () => {
+    setHote(cadre.current?.closest('.tch') ?? document.body)
+    setFeuilleActions(true)
+  }
   const balayage = useBalayage({
     actif: balayable,
     cadre,
     onGauche: reporter,
     onDroite: () => { terminer(true).catch(() => {}) },
-    onAppuiLong: () => setMenuOuvert(true),
+    onAppuiLong: ouvrirFeuilleActions,
   })
 
   const ouvrir = () => {
@@ -233,22 +331,39 @@ export default function LigneTache({
   }
   const action = (code) => () => onAction?.(code, item)
 
+  /** Les actions de la ligne : les MÊMES dans le menu ⋯ (bureau) et la feuille de l'appui long (doigt). */
+  const actions = activite
+    ? [{ cle: 'lier', libelle: 'Lier une tâche', faire: action('lier') }]
+    : [
+      ...(reporterLibelle ? [{ cle: 'reporter', libelle: `Reporter à ${reporterLibelle}`, faire: reporter }] : []),
+      { cle: 'choisir_jour', libelle: 'Choisir un jour', faire: action('choisir_jour') },
+      ...(item.quelque_jour ? [] : [{ cle: 'reserve', libelle: 'Plus tard', faire: action('reserve') }]),
+      { cle: 'deplacer', libelle: 'Changer de projet…', faire: action('deplacer') },
+      { cle: 'essentiel', libelle: item.essentielle ? 'Plus essentielle' : 'Essentielle', faire: action('essentiel') },
+      { cle: 'attente', libelle: 'En attente de…', faire: action('attente') },
+      { cle: 'priorite', libelle: 'Priorité', faire: action('priorite') },
+      { cle: 'supprimer', libelle: 'Supprimer', faire: action('supprimer'), destructive: true, separe: true },
+    ]
+  const choisirDansLaFeuille = (faire) => { geste.current = faire; setFeuilleActions(false) }
+  const apresFeuilleActions = () => { const faire = geste.current; geste.current = null; faire?.() }
+
   const classes = ['ligne']
   if (fait) classes.push('faite')
   if (estampille) classes.push('estampillee')
   if (selection?.selectionnee) classes.push('selectionnee')
+  if (feuilleActions) classes.push('en-actions')
   if (balayage.ouvert === 'gauche') classes.push('glisse-gauche')
   if (balayage.ouvert === 'droite') classes.push('glisse-droite')
   const style = balayage.glisse ? { transform: `translateX(${balayage.dx}px)`, transition: 'none' } : undefined
 
-  const meta = metaDe(item, { contexte, aujourdhui, propose })
+  const meta = metaDe(item, { contexte, aujourdhui, propose, groupeTitre })
   const aRevelation = balayage.glisse || balayage.ouvert
 
   return (
     <div
       ref={cadre}
       className="ligne-cadre"
-      role="listitem"
+      role={roleCadre}
       aria-selected={selection?.actif ? Boolean(selection.selectionnee) : undefined}
       data-ligne={`${item.type}:${item.id}`}
       draggable={glissable && item.type === 'tache' && !fait ? true : undefined}
@@ -260,20 +375,21 @@ export default function LigneTache({
       onDragEnd={glissable ? () => glissable.onFin() : undefined}
     >
       {aRevelation && (balayage.ouvert === 'droite' || balayage.dx > 0) ? (
-        <div className="actions">
-          <button type="button" className="action fait" aria-label={`Fait : ${item.titre}`}
+        <div className="actions" style={balayage.glisse ? { right: 'auto', width: Math.max(0, balayage.dx), overflow: 'hidden' } : undefined}>
+          <button type="button" className="action fait" aria-label={`Fait : ${item.titre}`} style={balayage.glisse ? BOUTON_PROPORTIONNEL : undefined}
             onClick={() => { balayage.fermer(); terminer(true).catch(() => {}) }}>
             <Check className="i" aria-hidden="true" />Fait
           </button>
         </div>
       ) : null}
       {aRevelation && (balayage.ouvert === 'gauche' || balayage.dx < 0) ? (
-        <div className="actions droite">
-          <button type="button" className="action choisir" aria-label="Choisir un jour"
+        <div className="actions droite" style={balayage.glisse ? { left: 'auto', width: Math.max(0, -balayage.dx), overflow: 'hidden' } : undefined}>
+          <button type="button" className="action choisir" aria-label="Choisir un jour" style={balayage.glisse ? BOUTON_PROPORTIONNEL : undefined}
             onClick={() => { balayage.fermer(); onChoisirJour?.(item) }}>
             <Calendar className="i" aria-hidden="true" />Choisir<br />un jour
           </button>
           <button type="button" className="action reporter" aria-label={reporterLibelle ? `Reporter à ${reporterLibelle}` : 'Reporter'}
+            style={balayage.glisse ? BOUTON_PROPORTIONNEL : undefined}
             onClick={() => { balayage.fermer(); reporter() }}>
             <ArrowRight className="i" aria-hidden="true" />Reporter
             {reporterLibelle ? <small className="chiffres">{reporterLibelle}</small> : null}
@@ -285,8 +401,10 @@ export default function LigneTache({
         className={classes.join(' ')}
         style={style}
         aria-live={estampille ? 'polite' : undefined}
-        onContextMenu={(e) => { e.preventDefault(); setMenuOuvert(true) }}
+        // au doigt, Android envoie aussi `contextmenu` à l'appui long : la feuille suffit, jamais le menu en plus
+        onContextMenu={(e) => { e.preventDefault(); if (!dernierToucher.current) setMenuOuvert(true) }}
         {...balayage.gestes}
+        onPointerDown={(e) => { dernierToucher.current = e.pointerType === 'touch'; balayage.gestes.onPointerDown(e) }}
       >
         {selection?.actif ? (
           <CaseRonde coche={Boolean(selection.selectionnee)} selection titre={item.titre} onBasculer={() => selection.onBasculer?.(item)} />
@@ -296,14 +414,15 @@ export default function LigneTache({
           <span className="case vide"><span className="pastille-erp"><LienIcone className="i" aria-hidden="true" /></span></span>
         )}
 
-        <div className="ligne-corps">
+        <div className={!propose && metaCourte(meta) ? 'ligne-corps meta-courte' : 'ligne-corps'}>
           <button type="button" className="ligne-corps-bouton" onClick={ouvrir}>
             <span className="titre">{surligne ? <TitreSurligne titre={item.titre} surligne={surligne} /> : item.titre}</span>
           </button>
           {meta.length > 0 || propose ? (
             <div className="meta">
               {propose ? (
-                <button type="button" className="garder" onClick={() => onGarder?.(item)}>Garder</button>
+                <button type="button" className="garder" aria-label={`Mettre « ${item.titre} » aujourd'hui`}
+                  onClick={() => onGarder?.(item)}>Aujourd&apos;hui</button>
               ) : null}
               {meta}
             </div>
@@ -314,15 +433,21 @@ export default function LigneTache({
           {estampille ? <span className="estampille chiffres">{estampille}</span> : null}
           {/* spec-8 §2 « heure, ★ ou drapeau » : l'étoile d'une essentielle tient lieu du drapeau ; drapeau AVANT l'heure
               (maquettes ecran-aujourdhui-15h.html, ecran-bilan.html) */}
-          {item.priorite === 3 && !item.essentielle ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
-          {item.heure_debut ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
-          <Etoile
-            active={Boolean(item.essentielle)}
-            onBasculer={onEssentiel ? (suivant) => onEssentiel(item, suivant) : undefined}
-            nbEssentielles={nbEssentielles}
-            onRefus={onRefusEssentiel}
-            titre={item.titre}
-          />
+          {/* R2-017 — la pastille « → ven. 20 » se POSE sur la colonne (R3-086) le temps que la ligne s'efface ; couture L7 :
+              l'heure, le drapeau et l'étoile restent à leur place, CACHÉS (`visibility: hidden`, inertes) au lieu d'être
+              retirés — les retirer changeait la largeur de la colonne, donc la hauteur de la ligne (bureau : 80 → 58) */}
+          <span className={estampille ? 'ligne-fin-masque masquee' : 'ligne-fin-masque'}
+            aria-hidden={estampille ? 'true' : undefined} inert={Boolean(estampille)}>
+            {item.priorite === 3 && !item.essentielle ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
+            {item.heure_debut ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
+            <Etoile
+              active={Boolean(item.essentielle)}
+              onBasculer={onEssentiel ? (suivant) => onEssentiel(item, suivant) : undefined}
+              nbEssentielles={nbEssentielles}
+              onRefus={onRefusEssentiel}
+              titre={item.titre}
+            />
+          </span>
         </div>
 
         <DropdownMenu open={menuOuvert} onOpenChange={setMenuOuvert}>
@@ -332,25 +457,31 @@ export default function LigneTache({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {!activite && reporterLibelle ? (
-              <DropdownMenuItem onSelect={reporter}>Reporter à {reporterLibelle}</DropdownMenuItem>
-            ) : null}
-            {!activite ? <DropdownMenuItem onSelect={action('choisir_jour')}>Choisir un jour</DropdownMenuItem> : null}
-            {!activite && !item.quelque_jour ? <DropdownMenuItem onSelect={action('reserve')}>En réserve</DropdownMenuItem> : null}
-            {!activite ? <DropdownMenuItem onSelect={action('deplacer')}>Déplacer…</DropdownMenuItem> : null}
-            {!activite ? (
-              <DropdownMenuItem onSelect={action('essentiel')}>
-                {item.essentielle ? 'Plus essentielle' : 'Essentielle'}
-              </DropdownMenuItem>
-            ) : null}
-            {!activite ? <DropdownMenuItem onSelect={action('attente')}>En attente de…</DropdownMenuItem> : null}
-            {!activite ? <DropdownMenuItem onSelect={action('priorite')}>Priorité</DropdownMenuItem> : null}
-            {activite ? <DropdownMenuItem onSelect={action('lier')}>Lier une tâche</DropdownMenuItem> : null}
-            {!activite ? <DropdownMenuSeparator /> : null}
-            {!activite ? <DropdownMenuItem destructive onSelect={action('supprimer')}>Supprimer</DropdownMenuItem> : null}
+            {actions.map((a) => [
+              a.separe ? <DropdownMenuSeparator key={`${a.cle}-sep`} /> : null,
+              <DropdownMenuItem key={a.cle} destructive={a.destructive} onSelect={a.faire}>{a.libelle}</DropdownMenuItem>,
+            ])}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {hote ? createPortal(
+        // cran 85 : la feuille épouse ses 8 rangées (`cran-auto`) — au cran 50, « Supprimer » restait sous le bord
+        <FeuilleACrans ouverte={feuilleActions} onFermer={() => setFeuilleActions(false)} titre={item.titre} cranInitial="85" apresFermeture={apresFeuilleActions}>
+          <div className="actions-ligne-feuille">
+            {actions.map((a) => (
+              <button
+                key={a.cle}
+                type="button"
+                className={[a.destructive ? 'action-ligne destructif' : 'action-ligne', a.separe ? 'separee' : ''].join(' ').trim()}
+                onClick={() => choisirDansLaFeuille(a.faire)}
+              >
+                {a.libelle}
+              </button>
+            ))}
+          </div>
+        </FeuilleACrans>,
+        hote,
+      ) : null}
     </div>
   )
 }

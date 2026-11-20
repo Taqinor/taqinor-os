@@ -5,7 +5,9 @@ import {
   retirerAgendaExterne, toutEffacer,
 } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
+import { jourCourt } from '../lib/textes'
 import FeuilleACrans from '../ui/FeuilleACrans'
+import { chargerBadgeTaches } from '../useBadgeTaches'
 
 /* ============================================================================
    TCH108 — Réglages (cœur) : la liste des rubriques, « Mes données » (Exporter, Tout effacer
@@ -17,10 +19,10 @@ import FeuilleACrans from '../ui/FeuilleACrans'
 
 const RUBRIQUES = [
   ['notifications', 'Notifications', 'Plan du matin, message de 15 h, bilan du soir'],
-  ['iphone', 'Mon iPhone', 'Cinq étapes, à faire une fois'],
+  ['iphone', 'Mon iPhone', 'Six étapes, à faire une fois'],
   ['vie-privee', 'Vie privée', 'Ce qui part au Copilote, qui peut lire'],
   ['suggestions', "L'ERP me suggère", ''], // le résumé « {k} suggestions sur 4 » vient des réglages lus (`resumes`)
-  ['donnees', 'Mes données', 'Exporter, tout effacer'],
+  ['donnees', 'Mes données', 'Télécharger, tout effacer'],
   ['avance', 'Avancé', 'Messages sans délai'],
 ]
 /** Le titre d'une rubrique (« Mes données ») : celui de la sous-page qu'elle ouvre ; '' si inconnue. */
@@ -48,13 +50,23 @@ const messageDe = (err, champ) => {
   return Array.isArray(brut) && brut.length > 0 ? String(brut[0]) : frenchError(err, 'Réessaie dans un instant.')
 }
 
-/** « À jour à 09:05. » : l'heure est lue dans le texte ISO, tel que le serveur l'a écrit. */
+/** La dernière lecture RÉUSSIE de l'agenda, « jeu. 19 09:05 » (jour et heure lus dans le texte ISO du serveur), ou ''. */
+function derniereLecture(agenda) {
+  const trouve = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(agenda.dernier_chargement_le ?? '')
+  return trouve ? `${jourCourt(trouve[1])} ${trouve[2]}` : ''
+}
+
+/** « À jour à 09:05. » ; sinon l'état dit, suivi de la dernière lecture réussie quand il y en a une
+ *  (« Pas encore lu. » seulement s'il n'y en a aucune : jamais une heure inventée). */
 function texteEtat(agenda) {
   if (agenda.dernier_etat === 'ok') {
     const heure = /T(\d{2}:\d{2})/.exec(agenda.dernier_chargement_le ?? '')
     return heure ? `À jour à ${heure[1]}.` : 'À jour.'
   }
-  return ETATS[agenda.dernier_etat ?? ''] ?? ETATS['']
+  const lecture = derniereLecture(agenda)
+  const etat = agenda.dernier_etat ? (ETATS[agenda.dernier_etat] ?? '') : ''
+  if (!lecture) return etat || ETATS['']
+  return `${etat ? `${etat} ` : ''}Dernière lecture réussie : ${lecture}.`
 }
 
 export default function ListeRubriques({ courante, onOuvrir, resumes = {} }) {
@@ -93,7 +105,13 @@ function DialogueEffacer({ ouvert, onFermer, onEfface }) {
   const confirmer = async () => {
     if (saisie !== CONFIRMATION) { setErreur('Tape EFFACER pour confirmer.'); return }
     setErreur('')
-    try { await toutEffacer({ confirmation: saisie }); onEfface() } catch (err) { setErreur(messageDe(err, 'confirmation')) }
+    try {
+      await toutEffacer({ confirmation: saisie })
+      // R3-097 — la pastille « À trier » (et celle de l'icône) se relit tout de suite : « À trier 4 » restait après
+      // l'effacement, jusqu'à la fin du cache de 60 s
+      chargerBadgeTaches({ force: true })
+      onEfface()
+    } catch (err) { setErreur(messageDe(err, 'confirmation')) }
   }
 
   return (
@@ -132,14 +150,17 @@ export function MesDonnees({ onEfface }) {
 
   return (
     <div>
-      <button type="button" className="es-action-ligne" onClick={exporter}>
-        <Download className="i" aria-hidden="true" />Exporter mes données (fichier JSON)
-      </button>
+      {/* R2-130 : une liste groupée de deux rangées (plus deux liens séparés par 150 pt de vide) */}
+      <div className="es-groupe-actions">
+        <button type="button" className="es-action-ligne" onClick={exporter}>
+          {/* R3-098 (M6) — le geste dit ce qu'il fait pour Reda, pas le format du fichier */}
+          <Download className="i" aria-hidden="true" />Télécharger mes données
+        </button>
+        <button type="button" className="es-action-ligne danger" onClick={() => setDialogue(true)}>
+          <Trash2 className="i" aria-hidden="true" />Tout effacer
+        </button>
+      </div>
       {erreur ? <p className="es-erreur es-aide" role="alert">{erreur}</p> : null}
-      <div className="es-loin" />
-      <button type="button" className="es-action-ligne danger" onClick={() => setDialogue(true)}>
-        <Trash2 className="i" aria-hidden="true" />Tout effacer
-      </button>
       <DialogueEffacer ouvert={dialogue} onFermer={() => setDialogue(false)} onEfface={onEfface} />
     </div>
   )
@@ -178,7 +199,7 @@ function LigneAgenda({ agenda, onChange, onRetirer }) {
       <p className={`es-agenda-etat${refus ? ' refus' : ''}`}>{texteEtat(agenda)}</p>
       {erreur ? <p className="es-erreur" role="alert">{erreur}</p> : null}
       <FeuilleACrans ouverte={confirme} onFermer={() => setConfirme(false)} titre={`Retirer « ${nom} » ?`}>
-        <p className="es-dialogue-texte">{`Retirer « ${nom} » ? Ses rendez-vous disparaissent de Tâches ; ton agenda n'est pas touché.`}</p>
+        <p className="es-dialogue-texte">{`Retirer «\u00A0${nom}\u00A0» ? Ses rendez-vous disparaissent de Tâches ; ton agenda n'est pas touché.`}</p>
         <div className="es-dialogue-pied">
           <button type="button" className="bouton second" onClick={() => setConfirme(false)}>Fermer</button>
           <button type="button" className="bouton danger" onClick={retirer}>Retirer</button>
@@ -192,15 +213,19 @@ function AjoutAgenda({ onAjoute }) {
   const [url, setUrl] = useState('')
   const [libelle, setLibelle] = useState('')
   const [erreur, setErreur] = useState('')
+  const [lecture, setLecture] = useState(false)
 
+  // L'ajout LIT l'adresse côté serveur (parfois plusieurs secondes) : un indicateur, et un seul envoi à la fois.
   const ajouter = async () => {
+    if (lecture) return
     setErreur('')
+    setLecture(true)
     try {
-      const { data } = await ajouterAgendaExterne({ url: url.trim(), libelle: libelle.trim() })
+      const { data } = await ajouterAgendaExterne({ url: url.trim(), libelle: libelle.trim() }, { erreurSousLeChamp: true })
       onAjoute(data)
       setUrl('')
       setLibelle('')
-    } catch (err) { setErreur(messageDe(err, 'url')) }
+    } catch (err) { setErreur(messageDe(err, 'url')) } finally { setLecture(false) }
   }
 
   return (
@@ -211,7 +236,10 @@ function AjoutAgenda({ onAjoute }) {
       <input className="es-champ" type="text" autoComplete="off" aria-label="Nom (facultatif)" placeholder="Nom (facultatif)"
         value={libelle} onChange={(e) => setLibelle(e.target.value)} />
       {erreur ? <p id="err-agenda" className="es-erreur" role="alert">{erreur}</p> : null}
-      <button type="button" className="bouton second" onClick={ajouter}>Ajouter</button>
+      {lecture ? <p className="sr-only" role="status">{"Lecture de l'agenda…"}</p> : null}
+      <button type="button" className="bouton second" disabled={lecture} aria-busy={lecture || undefined} onClick={ajouter}>
+        {lecture ? "Lecture de l'agenda…" : 'Ajouter'}
+      </button>
       <p className="es-sous">Cette adresse vaut une clé : l'ERP la garde sans jamais l'afficher en entier.</p>
     </div>
   )
@@ -259,7 +287,7 @@ export function Avance({ sansDelai, onSansDelai, erreur = '' }) {
         <div className="es-reglage">
           <span className="txt">
             <b>Messages sans délai</b>
-            <small>Le message « Annuler » reste jusqu'à ce que tu le fermes.</small>
+            <small>Le message «&nbsp;Annuler&nbsp;» reste jusqu'à ce que tu le fermes.</small>
           </span>
           <button type="button" className="interrupteur" role="switch" aria-checked={sansDelai}
             aria-label="Messages sans délai" onClick={() => onSansDelai(!sansDelai)} />

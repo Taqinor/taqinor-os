@@ -6,6 +6,7 @@ import {
   annulerGeste, classerErreur, listerGestes, listerSupprimees, restaurerProjet, restaurerTache,
 } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
+import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { ABR_JOURS, accord, aujourdhuiIso, heure, jourCourt } from '../../features/taches/lib/textes'
 
 /* ============================================================================
@@ -13,7 +14,8 @@ import { ABR_JOURS, accord, aujourdhuiIso, heure, jourCourt } from '../../featur
    Un projet = UNE ligne « « {projet} » et ses {n} tâches » + Restaurer (409 `nom_pris` : « Un projet actif
    porte déjà ce nom. », dit sous la ligne) ; une tâche seule = sa ligne + Restaurer (« Restaurée dans À trier ·
    Annuler » si son projet n'est plus là) ; vide : « Rien de supprimé ». Dessous, « Derniers gestes » (7 jours) :
-   le message du geste + Annuler (« Déjà annulé » quand c'est fait ; « Annulé, sauf {n} modifiée(s) depuis. »).
+   le message du geste, le titre de la tâche touchée (R2-125, servi par `gestes/`) + Annuler (« Déjà annulé » quand c'est
+   fait ; « Annulé, sauf {n} modifiée(s) depuis. »). Un squelette tient la place pendant la première lecture.
    La liste ne se vide jamais sur une lecture en échec. Maquettes : supprimees.html, supprimees-gestes.html.
    Passe visuelle n° 63 — les lignes sont des lignes de tâche (`.ligne.es-supprimee`, case vide pour l'alignement) :
    méta « Restaurer » · « {projet ou Sans projet} » · jour de suppression (`deleted_at`, servi à l'heure du Maroc) ;
@@ -23,7 +25,10 @@ import { ABR_JOURS, accord, aujourdhuiIso, heure, jourCourt } from '../../featur
 const sansCle = (objet, cle) => Object.fromEntries(Object.entries(objet).filter(([k]) => k !== cle))
 const PHRASE_NOM_PRIS = 'Un projet actif porte déjà ce nom.'
 
-/** Le jour servi d'un instant ISO (« lun. 16/11 », « aujourd'hui ») : jamais l'horloge ni le fuseau du navigateur. */
+/** « Faite · Appeler le fournisseur » : le message du geste puis la tâche qu'il a touchée (nulle : le message seul). */
+const phraseGeste = (geste) => (geste.titre ? `${geste.message} · ${geste.titre}` : geste.message)
+
+/** Le jour servi d'un instant ISO (« lun. 16 nov. », « aujourd'hui ») : jamais l'horloge ni le fuseau du navigateur. */
 const jourServi = (instant, aujourdhui) => jourCourt(String(instant ?? '').slice(0, 10), aujourdhui)
 
 /** supprimees-gestes.html : « 14:10 » le jour même, sinon « lun. 23 ». */
@@ -95,9 +100,10 @@ export default function Supprimees({ aujourdhui = aujourdhuiIso() }) {
   const vide = charge && projets.length === 0 && taches.length === 0
 
   return (
-    <CoquilleTaches ecran="supprimees" titre="Supprimées récemment">
+    <CoquilleTaches ecran="supprimees" titre="Supprimées">
       <p className="es-sous">Supprimées depuis moins de 30 jours.</p>
       {erreur ? <p className="erreur-champ" role="alert">{erreur}</p> : null}
+      <ChargementTardif actif={!charge && !erreur} />
 
       <section className="section es-supprimees" aria-label="Supprimées récemment">
         <div className="liste" role="list">
@@ -143,11 +149,11 @@ export default function Supprimees({ aujourdhui = aujourdhuiIso() }) {
             {gestes.map((geste) => (
               <li key={geste.id} className="es-geste">
                 <time className="chiffres" dateTime={geste.created_at}>{quandGeste(geste.created_at, aujourdhui)}</time>
-                <span className="msg">{geste.message}</span>
+                <span className="msg">{geste.titre ? <>{geste.message}{' · '}<span className="titre-geste">{geste.titre}</span></> : geste.message}</span>
                 {geste.annule_le || !geste.annulable ? (
                   <span className="deja">Déjà annulé</span>
                 ) : (
-                  <button type="button" className="bouton lien" aria-label={`Annuler : ${geste.message}`} onClick={() => annuler(geste)}>Annuler</button>
+                  <button type="button" className="bouton lien" aria-label={`Annuler : ${phraseGeste(geste)}`} onClick={() => annuler(geste)}>Annuler</button>
                 )}
                 {erreurs[`g${geste.id}`] ? <p className="erreur-champ" role="alert">{erreurs[`g${geste.id}`]}</p> : null}
               </li>

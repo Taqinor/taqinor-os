@@ -45,6 +45,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": "2026-11-17T09:20:00+01:00",
         "lock_version": 5
       }
     ],
@@ -85,6 +87,8 @@
         "confidentielle": false,
         "source": "manuel",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": 1
       }
     ],
@@ -130,6 +134,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": 6
       }
     ],
@@ -143,7 +149,7 @@
       "plan_tenues": 4,
       "plan_lignes": 5,
       "texte": "4 sur 5 · essentiel 1 sur 2",
-      "texte_gardees": "4 des 5 gardées"
+      "texte_gardees": ""
     },
     "constat": {
       "id": 44,
@@ -210,6 +216,8 @@
         "confidentielle": false,
         "source": null,
         "peut_cloturer": false,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": null
       }
     ],

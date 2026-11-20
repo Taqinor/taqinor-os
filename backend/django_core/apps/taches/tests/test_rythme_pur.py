@@ -503,11 +503,27 @@ class BasculerTests(unittest.TestCase):
         self.assertEqual((neuf.mode, neuf.tenir_fixee_le), (ModeRythme.TENIR, jour_n(0)))
 
     def test_pousser_vers_tenir_provisoire(self):
-        # Moins de 14 jours : R provisoire = palier courant (ou 5), non fixée.
-        neuf = rythme.basculer(EtatRythme(palier=4, comptes_recents=(4,) * 5), ModeRythme.TENIR, jour_n(0))
-        self.assertEqual((neuf.tenir_reference, neuf.tenir_fixee_le), (4, None))
+        # Moins de 5 jours évalués : R provisoire = palier courant (ou 5), non fixée.
+        neuf = rythme.basculer(EtatRythme(palier=6, comptes_recents=(4,) * 4), ModeRythme.TENIR, jour_n(0))
+        self.assertEqual((neuf.tenir_reference, neuf.tenir_fixee_le), (6, None))
         froid = rythme.basculer(EtatRythme(), ModeRythme.TENIR, jour_n(0))
         self.assertEqual(froid.tenir_reference, 5)
+
+    def test_garder_ce_rythme_part_du_pas_reel_des_5_jours(self):
+        """R3-004 (choix C-15) — « if i say that is enough it should help me keep the same pace » : palier 6, il en fait
+        4,4. Calcul à la main : 5 jours (5, 4, 5, 4, 4) → moyenne 22 / 5 = 4,4 (plafond 2 × 4 + 1 = 9, rien de
+        coupé) → « environ 4 (3 à 5) », provisoire ; 9 jours (5, 4, 5, 4, 4, 5, 4, 5, 4) → 40 / 9 = 4,44 → 4 (3 à 5) ;
+        14 jours → R FIXÉE (moyenne des 14) ; 4 jours → le palier 6, gardé."""
+        cas = (((5, 4, 5, 4, 4), 4.4, None), ((5, 4, 5, 4, 4, 5, 4, 5, 4), 4.44, None),
+               ((5, 4) * 7, 4.5, jour_n(0)), ((5, 4, 5, 4), 6, None))
+        for comptes, reference, fixee in cas:
+            with self.subTest(jours=len(comptes)):
+                neuf = rythme.basculer(EtatRythme(palier=6, comptes_recents=comptes), ModeRythme.TENIR, jour_n(0))
+                self.assertAlmostEqual(float(neuf.tenir_reference), reference, places=2)
+                self.assertEqual(neuf.tenir_fixee_le, fixee)
+        neuf = rythme.basculer(EtatRythme(palier=6, comptes_recents=(5, 4, 5, 4, 4)), ModeRythme.TENIR, jour_n(0))
+        self.assertEqual(rythme.objectif_affiche(neuf), (4, SourceObjectif.CALCULE, (3, 5)))
+        self.assertEqual(rythme.reference_provisoire((5, 4, 5, 4)), None)
 
     def test_vers_libre_objectif_nul(self):
         neuf = rythme.basculer(EtatRythme(palier=6), ModeRythme.LIBRE, jour_n(0))
@@ -520,9 +536,27 @@ class BasculerTests(unittest.TestCase):
         self.assertEqual((neuf.palier, neuf.bloc_debut), (3, jour_n(1)))
 
     def test_libre_vers_pousser_sans_historique_demarrage_a_froid(self):
-        etat = EtatRythme(mode=ModeRythme.LIBRE, comptes_recents=(3,) * 4, palier=7)
+        etat = EtatRythme(mode=ModeRythme.LIBRE, comptes_recents=(3,) * 4)
         neuf = rythme.basculer(etat, ModeRythme.POUSSER, jour_n(0))
         self.assertEqual((neuf.palier, neuf.bloc_debut, neuf.objectif), (None, None, 5))
+
+    def test_r2_122_libre_vers_pousser_rend_le_dernier_palier(self):
+        # C-7 : « Sans objectif » ne perd pas l'objectif d'avant ; revenir à « En faire plus » le rend, même
+        # avec moins de 10 jours évalués (aucun démarrage à froid) et même avec 10 jours d'une autre allure.
+        for comptes in ((3,) * 4, (2,) * 10):
+            with self.subTest(jours=len(comptes)):
+                etat = EtatRythme(mode=ModeRythme.LIBRE, comptes_recents=comptes, palier=6,
+                                  palier_source=SourceObjectif.DIT)
+                neuf = rythme.basculer(etat, ModeRythme.POUSSER, jour_n(0))
+                self.assertEqual((neuf.palier, neuf.palier_source, neuf.objectif), (6, SourceObjectif.DIT, 6))
+                self.assertEqual(neuf.bloc_debut, jour_n(1))
+
+    def test_r2_122_aller_retour_des_modes_garde_l_objectif(self):
+        # F2 n°5 : Plus (6) -> Garder ce rythme -> Sans objectif -> En faire plus : « 6 », pas la valeur par défaut.
+        etat = EtatRythme(palier=6, palier_source=SourceObjectif.DIT, comptes_recents=(5,) * 6)
+        for mode in (ModeRythme.TENIR, ModeRythme.LIBRE, ModeRythme.POUSSER):
+            etat = rythme.basculer(etat, mode, jour_n(0))
+        self.assertEqual((etat.mode, etat.objectif, etat.palier_source), (ModeRythme.POUSSER, 6, SourceObjectif.DIT))
 
     def test_remet_a_zero_et_garde_les_echecs(self):
         neuf = rythme.basculer(self._tenir(5), ModeRythme.POUSSER, jour_n(0))

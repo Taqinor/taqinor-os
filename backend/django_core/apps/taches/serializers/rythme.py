@@ -17,8 +17,10 @@ from apps.taches.choix import ModeRythme, StatutJour, TypeIncitationEcran
 from apps.taches.confidentialite import nom_pour
 from apps.taches.moteur import rythme as moteur
 from apps.taches.moteur.gabarits import boutons, texte
-from apps.taches.selectors.base import projets_de
-from apps.taches.selectors.rythme import constats_ouverts, plans_du_rythme, preferences_de, proposition_ouverte
+from apps.taches.selectors.base import jours_travailles_de, projets_de
+from apps.taches.selectors.rythme import (
+    constats_ouverts, masque_travaille, plans_du_rythme, preferences_de, proposition_ouverte,
+)
 from apps.taches.serializers.formes import PROPOSITION, PropositionSerializer, contexte
 from apps.taches.services import revelations
 from apps.taches.services.rythme import etat_rythme
@@ -118,12 +120,57 @@ def forme_proposition(carte, *, assistant=False, projets=None):
 
 # --- RYTHME ---------------------------------------------------------------------------------
 
-def _serie(plans):
-    travailles = [p for p in plans if p.statut_jour in STATUTS_TRAVAILLES][-SERIE_JOURS:]
-    return [{'jour': _date(p.jour), 'statut_jour': p.statut_jour, 'faites': p.compte_rythme,
-             'objectif': p.objectif_du_jour, 'essentiel_faites': p.essentiels_faits,
-             'essentiel_prevues': p.essentiels_choisis, 'plan_tenues': p.plan_faites,
-             'plan_lignes': p.plan_prevues} for p in travailles]
+#: Jours NON travaillés (R3-003, choix C-21) : servis `hors_objectif` quand il y a fait quelque chose.
+STATUTS_HORS_OBJECTIF = frozenset({StatutJour.NON_OUVRE, StatutJour.CONGE})
+
+
+def _sans_donnees(jour):
+    """Un jour travaillé que la nuit n'a pas évalué : une barre VIDE (`faites` 0, aucun objectif)."""
+    return {'jour': _date(jour), 'statut_jour': StatutJour.SANS_DONNEES, 'faites': 0, 'objectif': None,
+            'essentiel_faites': 0, 'essentiel_prevues': 0, 'plan_tenues': 0, 'plan_lignes': 0,
+            'hors_objectif': False}
+
+
+def _barre(plan, hors_objectif=False):
+    return {'jour': _date(plan.jour), 'statut_jour': plan.statut_jour, 'faites': plan.compte_rythme,
+            'objectif': None if hors_objectif else plan.objectif_du_jour, 'essentiel_faites': plan.essentiels_faits,
+            'essentiel_prevues': plan.essentiels_choisis, 'plan_tenues': plan.plan_faites,
+            'plan_lignes': plan.plan_prevues, 'hors_objectif': hors_objectif}
+
+
+def _serie(user, plans, jour, prefs=None):
+    """Les 10 derniers jours TRAVAILLÉS (R2-120, regles.md §6.2) : une entrée par jour travaillé (calendrier de
+    la société ∩ ses jours dits − ses congés), du premier jour lu à la veille. Un jour évalué porte ses
+    nombres ; un jour travaillé que la nuit n'a pas évalué (aucune ligne, ou ligne sans statut) est servi
+    `sans_donnees`, barre vide : jamais un jour absent, jamais un nombre inventé. Un jour que sa ligne dit
+    férié (`non_ouvre`) ou en congé n'a pas de barre d'objectif : s'il y a fait quelque chose (`compte_rythme` > 0,
+    le compte de la nuit, `compte_du_jour` comme partout), il est servi À SA DATE avec `hors_objectif: true` dans la
+    fenêtre des 10 jours travaillés (R3-003, choix C-21) — jamais compté dans `trace` ni `bloc`. Aucune requête de
+    plus (les `PlanJour` déjà lus). `prefs` : les préférences déjà lues par `forme_rythme`."""
+    if not plans:
+        return []
+    par_jour = {p.jour: p for p in plans}
+    travailles = set(jours_travailles_de(user, min(par_jour), jour - datetime.timedelta(days=1), prefs=prefs))
+    barres = {}
+    for date in travailles | {p.jour for p in plans if p.statut_jour in STATUTS_TRAVAILLES}:
+        plan = par_jour.get(date)
+        if plan is None or not plan.statut_jour:
+            if date in travailles:
+                barres[date] = _sans_donnees(date)
+        elif plan.statut_jour in STATUTS_TRAVAILLES:
+            barres[date] = _barre(plan)
+    serie = [barres[date] for date in sorted(barres)][-SERIE_JOURS:]
+    if not serie:
+        return serie
+    debut = datetime.date.fromisoformat(serie[0]['jour'])
+    hors = [_barre(p, hors_objectif=True) for p in plans
+            if p.jour >= debut and p.statut_jour in STATUTS_HORS_OBJECTIF and p.compte_rythme > 0]
+    return sorted(serie + hors, key=lambda barre: barre['jour'])
+
+
+def _serie_d_objectif(serie):
+    """Les seuls jours travaillés de la série (les jours `hors_objectif` ne comptent jamais contre l'objectif)."""
+    return [barre for barre in serie if not barre['hors_objectif']]
 
 
 def _trace(nb, serie):
@@ -157,9 +204,9 @@ def _repere(etat, comprendre):
     return None if p60 is None else {'p60': p60, 'jours': moteur.REPERE_JOURS}
 
 
-def _preferences(user):
+def _preferences(dites):
     return [{'cle': p.cle, 'valeur': p.valeur, 'source': p.source,
-             'dite_le': _HORODATAGE.to_representation(p.dite_le)} for p in preferences_de(user)]
+             'dite_le': _HORODATAGE.to_representation(p.dite_le)} for p in dites]
 
 
 def _cartes(user, jour, assistant):
@@ -175,20 +222,25 @@ def forme_rythme(user, reglages, jour, *, assistant=False, geste_id=None):
     plans = plans_du_rythme(user, jour)
     etat = etat_rythme(reglages, plans, jour)
     nb, source, zone = moteur.objectif_affiche(etat)
+    # Les préférences dites sont lues UNE fois (servies dans `preferences`) : la série (jours dits, congés) et
+    # `jours_travailles` (R2-120/R2-123) les reprennent sans relire la base (test_plafonds.test_rythme).
+    dites = preferences_de(user)
+    prefs = {p.cle: p.valeur for p in dites}
     # Revue F2 tour 2 #6 : « Comprendre mon rythme » coupé, ni série ni trace (donc `trace` nulle).
-    serie = _serie(plans) if reglages.comprendre_mon_rythme else []
+    serie = _serie(user, plans, jour, prefs) if reglages.comprendre_mon_rythme else []
     proposition, constats = _cartes(user, jour, assistant)
     return {
         'mode': etat.mode,
         'comprendre_mon_rythme': reglages.comprendre_mon_rythme,
         'objectif': {'nb': nb, 'source': source, 'mode': etat.mode, 'zone': list(zone) if zone else None},
-        'trace': _trace(nb, serie),
+        'trace': _trace(nb, _serie_d_objectif(serie)),
         'bloc': _bloc(etat),
         'tenir': _tenir(etat),
         'proposition': proposition,
         'serie': serie,
         'constats': constats,
         'repere': _repere(etat, reglages.comprendre_mon_rythme),
-        'preferences': _preferences(user),
+        'preferences': _preferences(dites),
+        'jours_travailles': masque_travaille(user, prefs),
         'geste_id': geste_id,
     }

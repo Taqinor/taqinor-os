@@ -11,6 +11,17 @@
     },
     "garder_n": 2,
     "plus_tard": "2026-11-19",
+    "faites": 1,
+    "charge": {
+      "taches": 4,
+      "restantes_minutes": 75,
+      "sans_duree": 0,
+      "capacite_minutes": 240,
+      "rendez_vous_minutes": 60,
+      "disponible_minutes": 180,
+      "deborde_minutes": 0
+    },
+    "geste_propose": null,
     "lignes": [
       {
         "rang": 1,
@@ -58,6 +69,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 2
         }
       },
@@ -107,6 +120,8 @@
           "confidentielle": false,
           "source": "manuel",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 2
         }
       },
@@ -153,6 +168,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 6
         }
       }

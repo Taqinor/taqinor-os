@@ -1,9 +1,14 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
+import { MemoryRouter, useLocation } from 'react-router-dom'
+import {
+  EVENEMENT_CREEES, EVENEMENT_ECRITE, apercu, oublierApercus, retenirApercu, useApresCreation, useOuvrirFiche,
+} from '../lib/fiche'
 import { reinitialiserGestes } from '../lib/gestes'
 import Fiche from './Fiche'
 
@@ -17,6 +22,8 @@ vi.mock('../../../api/tachesApi', async (importOriginal) => ({ ...(await importO
 /* TCH84 — la fiche d'une tâche : champs, enregistrement par champ, erreur sous le champ,
    conflit entre deux appareils SANS perte, rappel ouvert. Réponses = échantillons du contrat. */
 
+/** Critique serveur n° 7 — la fiche écrit ses champs en disant ses refus SOUS le champ (`erreurSousLeChamp`). */
+const SOUS_LE_CHAMP = { erreurSousLeChamp: true }
 const tache = exempleContrat('taches', 'tache')
 const ecrite = exempleContrat('taches', 'tache_ecrite')
 const recurrente = exempleContrat('taches', 'tache_recurrente_ecrite')
@@ -80,7 +87,7 @@ describe('TCH84 — fiche d\'une tâche', () => {
     await user.click(within(puces).getByRole('button', { name: 'Priorité : moyenne' }))
     expect(screen.getByRole('radio', { name: 'Moyenne' })).toHaveAttribute('aria-checked', 'true')
     await user.click(screen.getByRole('radio', { name: 'Haute' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { priorite: 3, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { priorite: 3, lock_version: 4 }, SOUS_LE_CHAMP))
   })
 
   it('passe visuelle n° 27 — sans échéance, sans projet, sans priorité : puces vides, aucun champ date nu', async () => {
@@ -218,6 +225,140 @@ describe('TCH84 — fiche d\'une tâche', () => {
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Conflit entre appareils' })).toBeNull())
   })
 
+  describe('R2-044 — enregistrement continu des notes et du titre', () => {
+    beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
+    afterEach(() => { vi.useRealTimers() })
+
+    it('les notes partent ~1 s après la dernière frappe, sans quitter le champ, une seule fois', async () => {
+      monter()
+      const champ = await screen.findByRole('textbox', { name: 'Notes' })
+      fireEvent.change(champ, { target: { value: 'Appeler' } })
+      await act(async () => { vi.advanceTimersByTime(500) })
+      fireEvent.change(champ, { target: { value: 'Appeler Karim' } })
+      await act(async () => { vi.advanceTimersByTime(900) })
+      expect(api.modifierTache).not.toHaveBeenCalled()
+      await act(async () => { vi.advanceTimersByTime(200) })
+      expect(api.modifierTache).toHaveBeenCalledTimes(1)
+      expect(api.modifierTache).toHaveBeenCalledWith(20, { notes: 'Appeler Karim', lock_version: 4 })
+    })
+
+    it('la frappe continue pendant l\'envoi : rien n\'est perdu, la suite part avec le verrou rendu (jamais un 409 de soi-même)', async () => {
+      let rendre
+      api.modifierTache.mockImplementationOnce(() => new Promise((ok) => { rendre = ok }))
+      api.modifierTache.mockResolvedValueOnce({ data: { ...ecrite, tache: { ...(ecrite.tache ?? ecrite), notes: 'abc def', lock_version: 10 } } })
+      monter()
+      const champ = await screen.findByRole('textbox', { name: 'Notes' })
+      fireEvent.change(champ, { target: { value: 'abc' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      expect(api.modifierTache).toHaveBeenCalledTimes(1)
+      fireEvent.change(champ, { target: { value: 'abc def' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      expect(api.modifierTache).toHaveBeenCalledTimes(1) // la 2e attend la 1re
+      await act(async () => { rendre({ data: { ...ecrite, tache: { ...(ecrite.tache ?? ecrite), notes: 'abc', lock_version: 9 } } }) })
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(2))
+      expect(api.modifierTache).toHaveBeenLastCalledWith(20, { notes: 'abc def', lock_version: 9 })
+      expect(champ).toHaveValue('abc def')
+    })
+
+    it('la page passe en arrière-plan : la frappe part tout de suite, par un envoi qui survit à la page (R4-23)', async () => {
+      const envoi = vi.spyOn(window, 'fetch').mockResolvedValue({
+        ok: true, json: async () => ({ ...ecrite, tache: { ...ecrite.tache, titre: 'Devis Settat signé', lock_version: 5 } }),
+      })
+      monter()
+      const champ = await screen.findByRole('textbox', { name: 'Titre' })
+      fireEvent.change(champ, { target: { value: 'Devis Settat signé' } })
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+      act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+      expect(envoi).toHaveBeenCalledTimes(1)
+      const [adresse, options] = envoi.mock.calls[0]
+      expect(adresse).toBe('/api/django/taches/taches/20/')
+      expect(options).toMatchObject({ method: 'PATCH', keepalive: true, credentials: 'include' })
+      expect(JSON.parse(options.body)).toEqual({ titre: 'Devis Settat signé', lock_version: 4 })
+      // la page revient : la réponse a rendu le verrou, la frappe suivante part avec lui (jamais un 409 de soi-même)
+      await act(async () => {})
+      fireEvent.change(champ, { target: { value: 'Devis Settat signé et envoyé' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { titre: 'Devis Settat signé et envoyé', lock_version: 5 }))
+      expect(api.modifierTache).toHaveBeenCalledTimes(1)
+    })
+
+    describe('R4-23 — une note tapée juste avant que la page s\'en aille n\'est jamais perdue', () => {
+      afterEach(() => { window.localStorage.clear() })
+
+      it('rechargement 200 ms après la frappe (`pagehide`) : notes ET titre partent en UN envoi keepalive, avec le verrou courant', async () => {
+        const envoi = vi.spyOn(window, 'fetch').mockResolvedValue({ ok: true, json: async () => ecrite })
+        monter()
+        const notes = await screen.findByRole('textbox', { name: 'Notes' })
+        fireEvent.change(screen.getByRole('textbox', { name: 'Titre' }), { target: { value: 'Devis Settat v2' } })
+        fireEvent.change(notes, { target: { value: 'Recharge 200' } })
+        await act(async () => { vi.advanceTimersByTime(200) })
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        expect(envoi).toHaveBeenCalledTimes(1)
+        expect(JSON.parse(envoi.mock.calls[0][1].body)).toEqual({ titre: 'Devis Settat v2', notes: 'Recharge 200', lock_version: 4 })
+        // aucun second envoi par le chemin ordinaire (il partirait avec le même verrou : 409)
+        await act(async () => { vi.advanceTimersByTime(1500) })
+        expect(api.modifierTache).not.toHaveBeenCalled()
+      })
+
+      it('l\'envoi n\'a pas pu partir : la note revient à la réouverture de la fiche, « Note non enregistrée reprise », et part', async () => {
+        vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+        const premier = monter()
+        const notes = await screen.findByRole('textbox', { name: 'Notes' })
+        fireEvent.change(notes, { target: { value: 'Note de la dernière seconde' } })
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        await act(async () => {})
+        premier.unmount()
+        api.modifierTache.mockClear()
+        // la page rechargée : la fiche relit la tâche (sans la note) et reprend le brouillon
+        monter()
+        await waitFor(() => expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Note de la dernière seconde'))
+        expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Note non enregistrée reprise')
+        await act(async () => { vi.advanceTimersByTime(1100) })
+        await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { notes: 'Note de la dernière seconde', lock_version: 4 }))
+      })
+
+      it('l\'envoi était arrivé (le serveur a déjà la note) : rien n\'est repris ni dit, le brouillon s\'efface', async () => {
+        vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+        const premier = monter()
+        fireEvent.change(await screen.findByRole('textbox', { name: 'Notes' }), { target: { value: 'Arrivée quand même' } })
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        await act(async () => {})
+        premier.unmount()
+        api.lireTache.mockResolvedValue({ data: { ...tache, notes: 'Arrivée quand même', lock_version: 5 } })
+        monter()
+        await waitFor(() => expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Arrivée quand même'))
+        await act(async () => { vi.advanceTimersByTime(1500) })
+        expect(screen.queryByText('Note non enregistrée reprise')).toBeNull()
+        expect(api.modifierTache).not.toHaveBeenCalled()
+        expect(Object.keys(window.localStorage).filter((c) => c.startsWith('taches:fiche:'))).toEqual([])
+      })
+    })
+
+    it('fiche fermée avant la pause : la frappe part quand même pour cette tâche', async () => {
+      const { unmount } = monter()
+      const champ = await screen.findByRole('textbox', { name: 'Notes' })
+      fireEvent.change(champ, { target: { value: 'Note de dernière seconde' } })
+      unmount()
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { notes: 'Note de dernière seconde', lock_version: 4 }))
+    })
+
+    it('409 pendant l\'enregistrement continu : la frappe reste, plus d\'envoi jusqu\'au choix ; « Garder la mienne » envoie le texte d\'aujourd\'hui', async () => {
+      api.modifierTache.mockRejectedValueOnce(erreurHttp(erreurs.conflit_version, 409))
+      monter()
+      const champ = await screen.findByRole('textbox', { name: 'Notes' })
+      fireEvent.change(champ, { target: { value: 'v1' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      expect(await screen.findByRole('group', { name: 'Conflit entre appareils' })).toBeInTheDocument()
+      fireEvent.change(champ, { target: { value: 'v1 et v2' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      expect(api.modifierTache).toHaveBeenCalledTimes(1)
+      expect(champ).toHaveValue('v1 et v2')
+      fireEvent.click(screen.getByRole('button', { name: 'Garder la mienne' }))
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(2))
+      expect(api.modifierTache).toHaveBeenLastCalledWith(20, { notes: 'v1 et v2', lock_version: erreurs.conflit_version.lock_version })
+    })
+  })
+
   it('ouverte par un rappel envoyé : Encore 10 min · Encore 1 h · Demain 9 h', async () => {
     const user = userEvent.setup()
     api.lireTache.mockResolvedValue({ data: { ...tache, rappels: [{ id: 31, jour: AUJOURDHUI, heure: '09:45', ancre: '', decalage_jours: 0, statut: 'envoye' }] } })
@@ -235,6 +376,156 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(screen.queryByRole('button', { name: 'Encore 10 min' })).toBeNull()
   })
 
+  it('R2-045 — le champ Notes invite : « Ajouter une note… », nommé « Notes », une ligne quand il est vide', async () => {
+    api.lireTache.mockResolvedValue({ data: { ...tache, notes: '' } })
+    monter()
+    const notes = await screen.findByRole('textbox', { name: 'Notes' })
+    expect(notes).toHaveAttribute('placeholder', 'Ajouter une note…')
+    expect(notes).toHaveAttribute('aria-label', 'Notes')
+    expect(notes).toHaveAttribute('rows', '1')
+    fireEvent.change(notes, { target: { value: 'Ligne 1\nLigne 2\nLigne 3' } })
+    expect(notes).toHaveAttribute('rows', '3')
+  })
+
+  it('R2-021b — `section="decouper"` : « Plus » est déplié et le curseur est dans « Découper en sous-tâches »', async () => {
+    monter({ section: 'decouper' })
+    const champ = await screen.findByRole('textbox', { name: 'Découper en sous-tâches' })
+    await waitFor(() => expect(champ).toHaveFocus())
+    expect(screen.getByRole('button', { name: 'Plus' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('R2-025b — `focus="titre"` met le curseur dans le titre ; `focus="heure"` ouvre Quand sur le champ Heure', async () => {
+    const { unmount } = monter({ focus: 'titre' })
+    const titre = await screen.findByRole('textbox', { name: 'Titre' })
+    await waitFor(() => expect(titre).toHaveFocus())
+    unmount()
+    monter({ focus: 'heure' })
+    await screen.findByRole('textbox', { name: 'Titre' })
+    await waitFor(() => expect(screen.getByLabelText('Heure')).toHaveFocus())
+    expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('R2-021b/025b — `useOuvrirFiche()(id, { section, focus })` pose `?tache=…&section=…` ou `&focus=…`', () => {
+    let ouvrir
+    let lieu
+    function Ecran() { ouvrir = useOuvrirFiche(); lieu = useLocation(); return null }
+    render(<MemoryRouter initialEntries={['/taches/aujourdhui']}><Ecran /></MemoryRouter>)
+    act(() => { ouvrir(12, { section: 'decouper' }) })
+    expect(new URLSearchParams(lieu.search).toString()).toBe('tache=12&section=decouper')
+    act(() => { ouvrir(13, { focus: 'heure' }) })
+    expect(new URLSearchParams(lieu.search).toString()).toBe('tache=13&focus=heure')
+    act(() => { ouvrir(14) })
+    expect(new URLSearchParams(lieu.search).toString()).toBe('tache=14')
+  })
+
+  it('R2-042 — taper une échéance : rien ne part pendant la frappe, la date entière part à la sortie du champ', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    await user.click(screen.getByRole('button', { name: 'Échéance : jeu. 19' }))
+    const champ = screen.getByLabelText('Échéance')
+    // le champ date rend une date « valide » dès le 1er chiffre de l'année : 0002-11-27, 0020-…, 0202-…, 2026-11-27
+    for (const v of ['0002-11-27', '0020-11-27', '0202-11-27', '2026-11-27']) fireEvent.change(champ, { target: { value: v } })
+    expect(api.modifierTache).not.toHaveBeenCalled()
+    fireEvent.blur(champ)
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(1))
+    expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 }, SOUS_LE_CHAMP)
+  })
+
+  it('R3-060 — « 16:30 » tapé puis Échap : l\'heure part au serveur, la fiche se ferme ; rien n\'est perdu en silence', async () => {
+    const user = userEvent.setup()
+    function Hote() {
+      const [ouverte, setOuverte] = useState(true)
+      return ouverte ? <Fiche id={20} aujourdhui={AUJOURDHUI} onFermer={() => setOuverte(false)} /> : <p>fiche fermée</p>
+    }
+    render(<div className="tch"><Hote /><ZoneAnnonces /></div>)
+    await user.click(await screen.findByRole('button', { name: /Quand je la fais/ }))
+    const champ = screen.getByLabelText('Heure')
+    act(() => { champ.focus() })
+    fireEvent.change(champ, { target: { value: '16:30' } })
+    await user.keyboard('{Escape}')
+    expect(screen.getByText('fiche fermée')).toBeInTheDocument()
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledTimes(1))
+    expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ jour_prevu: '2026-11-17', heure_debut: '16:30', lock_version: 4 }))
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Prévue')
+  })
+
+  it('R3-060 — fiche démontée sans Échap (retour arrière, autre écran) avec une heure ou une échéance tapées : elles partent', async () => {
+    const user = userEvent.setup()
+    const premier = monter()
+    await user.click(await screen.findByRole('button', { name: /Quand je la fais/ }))
+    fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '16:30' } })
+    premier.unmount()
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ heure_debut: '16:30' })))
+    const second = monter()
+    await user.click(await screen.findByRole('button', { name: 'Échéance : jeu. 19' }))
+    fireEvent.change(screen.getByLabelText('Échéance'), { target: { value: '2026-11-27' } })
+    second.unmount()
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 }))
+    expect(api.modifierTache).toHaveBeenCalledTimes(1)
+  })
+
+  it('R2-042 — une année partielle n\'est jamais envoyée : « Date incomplète. » sous le champ', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    await user.click(screen.getByRole('button', { name: 'Échéance : jeu. 19' }))
+    const champ = screen.getByLabelText('Échéance')
+    fireEvent.change(champ, { target: { value: '0202-11-27' } })
+    fireEvent.blur(champ)
+    expect(await screen.findByText('Date incomplète.')).toBeInTheDocument()
+    expect(api.modifierTache).not.toHaveBeenCalled()
+  })
+
+  it('R2-042 — raccourcis Demain · Vendredi · Fin de mois · Aucune ; le message du serveur est traduit, jamais « YYYY-MM-DD »', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    await user.click(screen.getByRole('button', { name: 'Échéance : jeu. 19' }))
+    const raccourcis = screen.getByRole('radiogroup', { name: "Choisir l'échéance" })
+    expect(within(raccourcis).getAllByRole('radio').map((r) => r.querySelector('b').textContent))
+      .toEqual(['Demain', 'Vendredi', 'Fin de mois', 'Aucune'])
+    await user.click(within(raccourcis).getByRole('radio', { name: /^Vendredi/ }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-20', lock_version: 4 }, SOUS_LE_CHAMP))
+    await user.click(within(raccourcis).getByRole('radio', { name: /^Fin de mois/ }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { echeance: '2026-11-30', lock_version: 4 }, SOUS_LE_CHAMP))
+    api.modifierTache.mockRejectedValueOnce(erreurHttp({ echeance: ['Date has wrong format. Use one of these formats instead: YYYY-MM-DD.'] }, 400))
+    await user.click(within(raccourcis).getByRole('radio', { name: /^Demain/ }))
+    expect(await screen.findByText('Date incomplète.')).toBeInTheDocument()
+    expect(screen.queryByText(/YYYY/)).toBeNull()
+  })
+
+  it('R2-040 — chaque écriture réussie (Fait, Quand) et la fermeture préviennent les écrans : `taqinor:taches:ecrite`', async () => {
+    const user = userEvent.setup()
+    const recu = vi.fn()
+    window.addEventListener('taqinor:taches:ecrite', recu)
+    try {
+      const { unmount } = monter()
+      await screen.findByRole('textbox', { name: 'Titre' })
+      expect(recu).not.toHaveBeenCalled() // une simple lecture ne dérange personne
+      await user.click(screen.getByRole('button', { name: 'Fait' }))
+      await waitFor(() => expect(recu).toHaveBeenCalledTimes(1))
+      expect(recu.mock.calls[0][0].detail.tache).toEqual(recurrente.tache ?? recurrente)
+      await user.click(screen.getByRole('button', { name: /Quand je la fais/ }))
+      await user.click(screen.getByRole('radio', { name: /Demain/ }))
+      await waitFor(() => expect(recu).toHaveBeenCalledTimes(2))
+      unmount()
+      expect(recu).toHaveBeenCalledTimes(3)
+    } finally {
+      window.removeEventListener('taqinor:taches:ecrite', recu)
+    }
+  })
+
+  it('R2-040 — `useApresCreation` relit l\'écran après une création ET après une écriture de la fiche', () => {
+    const rappel = vi.fn()
+    function Ecran() { useApresCreation(rappel); return null }
+    render(<Ecran />)
+    act(() => { window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: [] } })) })
+    act(() => { window.dispatchEvent(new CustomEvent(EVENEMENT_ECRITE, { detail: { tache: { id: 20 } } })) })
+    expect(rappel).toHaveBeenCalledTimes(2)
+    expect(rappel.mock.calls[1][0]).toEqual({ tache: { id: 20 } })
+  })
+
   it('check-list : « Ajouter un point » écrit au serveur, le point apparaît sans relire la tâche', async () => {
     const user = userEvent.setup()
     api.ajouterPoint.mockResolvedValue({ data: { id: 72, libelle: 'Devis signé', fait: false, rang: 2048 } })
@@ -244,5 +535,89 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(await screen.findByText('Devis signé')).toBeInTheDocument()
     expect(api.ajouterPoint).toHaveBeenCalledWith({ tache_id: 20, libelle: 'Devis signé' })
     expect(api.lireTache).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('R3-061 — la fiche s\'ouvre tout de suite sur ce que la ligne sait déjà', () => {
+  const item = exempleContrat('taches', 'item')
+  /** `lireTache` retenue par une PORTE : la réponse n'arrive que quand le test la lâche. */
+  const retenirLecture = (reponse = tache) => {
+    let lacher
+    api.lireTache.mockImplementation(() => new Promise((ok) => { lacher = () => ok({ data: reponse }) }))
+    return () => act(async () => { lacher() })
+  }
+  afterEach(() => { oublierApercus() })
+
+  it('avant la réponse du serveur : titre, Quand, projet, priorité et ★ sont là ; notes et check-list réservent leur place', async () => {
+    retenirApercu(item)
+    const lacher = retenirLecture()
+    const { container } = monter()
+    // à la PREMIÈRE image, sans attendre : rien ne dit « Chargement… »
+    expect(screen.getByRole('textbox', { name: 'Titre' })).toHaveValue('Devis Settat')
+    expect(screen.getByRole('dialog', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(screen.queryByText('Chargement…')).toBeNull()
+    expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveTextContent('Aujourd\'hui · 10:00')
+    expect(screen.getByRole('button', { name: 'Projet : Ventes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Priorité : moyenne' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Essentielle : Devis Settat' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('button', { name: 'Fait' })).toBeInTheDocument()
+    // les blocs qui arrivent ont leur squelette (la hauteur est réservée), aucun champ Notes vide qu'on écraserait
+    expect(screen.queryByRole('textbox', { name: 'Notes' })).toBeNull()
+    expect(container.querySelector('.fiche-section [data-squelette="notes"]')).not.toBeNull()
+    expect(container.querySelector('[data-squelette="checklist"]')).not.toBeNull()
+    await lacher()
+    expect(await screen.findByRole('textbox', { name: 'Notes' })).toHaveValue('Appeler avant 11 h.')
+    expect(container.querySelector('[data-squelette]')).toBeNull()
+    expect(screen.getByText('Prix')).toBeInTheDocument()
+  })
+
+  it('modifiable tout de suite (la version est connue) ; une lecture qui revient APRÈS une écriture ne la défait pas', async () => {
+    const user = userEvent.setup()
+    retenirApercu(item)
+    const lacher = retenirLecture({ ...tache, jour_prevu: '2026-11-17' })
+    api.planifierTache.mockResolvedValue({ data: { ...ecrite, tache: { ...(ecrite.tache ?? ecrite), jour_prevu: '2026-11-18', heure_debut: null, lock_version: 5 } } })
+    monter()
+    await user.click(screen.getByRole('button', { name: /Quand je la fais/ }))
+    await user.click(screen.getByRole('radio', { name: /Demain/ }))
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ jour_prevu: '2026-11-18', lock_version: 4 })))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveTextContent('Demain'))
+    await lacher() // la lecture lancée à l'ouverture (version 4) arrive après l'écriture (version 5)
+    expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveTextContent('Demain')
+  })
+
+  it('sans aperçu (lien direct, rappel) : un squelette de fiche, pas une petite feuille « Chargement… » qui saute', () => {
+    retenirLecture()
+    const { container } = monter()
+    expect(screen.queryByText('Chargement…')).toBeNull()
+    expect(screen.getByText('Chargement de la tâche')).toHaveAttribute('role', 'status')
+    expect(container.querySelector('[data-squelette="titre"]')).not.toBeNull()
+  })
+
+  it('le registre ne sert jamais la tâche d\'un autre compte : vidé à la déconnexion', () => {
+    retenirApercu(item)
+    expect(apercu(20)).toMatchObject({ titre: 'Devis Settat' })
+    act(() => { window.dispatchEvent(new Event('taqinor:auth-logout')) })
+    expect(apercu(20)).toBeNull()
+    retenirLecture()
+    monter()
+    expect(screen.queryByRole('textbox', { name: 'Titre' })).toBeNull()
+  })
+
+  it('une activité de l\'ERP n\'est jamais retenue (même identifiant, autre objet)', () => {
+    retenirApercu({ ...item, type: 'activite', titre: 'Rappeler Karim' })
+    expect(apercu(20)).toBeNull()
+  })
+})
+
+describe('Couture r2 — un nom de projet refusé se dit SOUS le champ Projet, sans toast global en double', () => {
+  it('Créer « … » depuis la fiche : creerProjet porte erreurSousLeChamp, le refus s\'affiche dans la fiche', async () => {
+    api.creerProjet.mockRejectedValue(erreurHttp({ nom: ['Ce nom est trop long.'] }, 400))
+    const user = userEvent.setup()
+    monter()
+    await user.click(await screen.findByRole('button', { name: /Projet/ }))
+    await user.type(await screen.findByRole('combobox', { name: 'Chercher un projet' }), 'Chantier')
+    await user.click(await screen.findByRole('option', { name: 'Créer « Chantier »' }))
+    expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Chantier' }, { erreurSousLeChamp: true })
+    expect(await screen.findByText('Ce nom est trop long.')).toBeInTheDocument()
   })
 })

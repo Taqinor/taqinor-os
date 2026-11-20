@@ -78,12 +78,12 @@ test.describe('Tâches — projets', () => {
     const titres = [titreUnique('Préparer la démo'), titreUnique('Commander les kakémonos'), titreUnique('Réserver lhôtel')]
     const taches = await creerTaches(page, titres, { projet_id: projet.id })
 
-    // Revue : une carte par projet, on décide « Garder », puis le chemin mène à Planifier ma semaine
+    // Revue : une carte par projet, on décide « Continuer », puis le chemin mène à Planifier ma semaine
     await ouvrirEcran(page, '/taches/revue', 'revue')
     const carte = page.getByRole('region', { name: projet.nom })
     await expect(carte).toBeVisible()
-    await carte.getByLabel('Intention de la semaine (facultatif)').fill('Tout commander')
-    await carte.getByRole('button', { name: 'Garder', exact: true }).click()
+    await page.getByLabel('Intention de la semaine (facultatif)').fill('Tout commander') // R2-068 : une seule intention, en tête
+    await carte.getByRole('button', { name: 'Suivant →', exact: true }).click() // « Continuer » est d'office coché
     await expect(annonce(page)).toContainText(`« ${projet.nom} » : décision enregistrée`)
     await page.getByRole('button', { name: 'Planifier ma semaine', exact: true }).click()
 
@@ -182,7 +182,8 @@ test.describe('Tâches — réglages', () => {
     await champ.fill('http://exemple.invalid/mon-agenda.ics')
     await page.getByRole('button', { name: 'Ajouter', exact: true }).click()
     // deux `role=alert` portent la phrase (le message sous le champ + la voix sr-only) : on vise celui du champ
-    await expect(page.locator('p.es-erreur[role="alert"]').filter({ hasText: 'Adresse https publique attendue.' })).toBeVisible()
+    // R2-127 : trois refus, trois phrases (« L'adresse doit commencer par https. » pour un http://)
+    await expect(page.locator('p.es-erreur[role="alert"]').filter({ hasText: "L'adresse doit commencer par https." })).toBeVisible()
     await expect(champ).toHaveAttribute('aria-invalid', 'true')
 
     // une adresse qui mène à ce serveur lui-même : refusée aussi, aucun agenda n'est créé
@@ -202,7 +203,7 @@ test.describe('Tâches — réglages', () => {
 
     const [telechargement] = await Promise.all([
       page.waitForEvent('download'),
-      page.getByRole('button', { name: /^Exporter mes données/ }).click(),
+      page.getByRole('button', { name: /^Télécharger mes données/ }).click(),
     ])
     expect(telechargement.suggestedFilename()).toMatch(/^mes-donnees-taches-.*\.json$/)
     const exporte = JSON.parse(readFileSync(await telechargement.path(), 'utf8'))

@@ -10,7 +10,7 @@ from django.db import transaction
 from django.http import Http404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -23,34 +23,37 @@ from apps.taches.serializers.formes import (
     ItemSerializer, RappelEcritSerializer, TacheEcriteSerializer, TacheSerializer, charger_items, contexte,
 )
 from apps.taches.serializers.saisie import (
-    AttendreEntreeSerializer, ChangementEntreeSerializer, ChecklistEntreeSerializer,
+    CHAMPS_CREATION, AttendreEntreeSerializer, ChangementEntreeSerializer, ChecklistEntreeSerializer,
     ElementChecklistEntreeSerializer, EtiquetteEntreeSerializer, EtiquettePatchSerializer, forme_etiquette,
     forme_vue, lire_corps, LotEntreeSerializer, PlanifierEntreeSerializer,
     ProprietaireEntreeSerializer, RappelEntreeSerializer, RecurrenceEntreeSerializer,
-    ReordonnerElementEntreeSerializer, ReordonnerEntreeSerializer, RepeterEntreeSerializer, reponse_ecrite,
+    ReordonnerElementEntreeSerializer, ReordonnerEntreeSerializer, RepeterEntreeSerializer, calculs_du_plan,
+    reponse_ecrite,
     reponse_etiquette, reponse_gestes, reponse_recherche, reponse_supprimees, reponse_vue, TacheCreationSerializer,
-    taches_chargees, TrancherEntreeSerializer, valider_patch, verifier_proprietaire, VueEntreeSerializer,
-    VuePatchSerializer,
+    TachePatchSerializer, taches_chargees, TrancherEntreeSerializer, valider_patch, verifier_proprietaire,
+    VueEntreeSerializer, VuePatchSerializer,
 )
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.etiquettes import (
     creer_etiquette, creer_vue, liste_vues, modifier_etiquette, modifier_vue, supprimer_etiquette, supprimer_vue,
 )
-from apps.taches.services.gestes import annuler_geste
+from apps.taches.services.gestes import annuler_geste, titres_des_gestes
 from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import poser_rappel, repeter_rappel, retirer_rappel
 from apps.taches.services.taches import (
     ajouter_element, apercu_changement, attendre_tache, avertissement_hors_fenetre, avertissements_du_jour,
-    derniers_gestes, gestes_confidentiels, liste_taches, lot_taches, modifier_element, modifier_regle, modifier_tache,
+    LIMITE_RECHERCHE_MAX, derniers_gestes, entete_de_liste, gestes_confidentiels, liste_taches, lot_taches,
+    modifier_element,
+    modifier_regle, modifier_tache,
     rappel_a_la_creation, recevoir_tache, rechercher, reordonner_element, reordonner_tache, restaurer_tache,
     retirer_element, reverifier_lien, rouvrir_tache, sauter_occurrence, supprimees_recentes, supprimer_tache,
     tache_du_compte, terminer_tache, trancher_tache,
 )
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, carte_assistant, corps, est_assistant, forme_echantillon, page_de,
+    ERREUR_CODE, PAGINATION, PARSEURS, PERMISSIONS, carte_assistant, est_assistant, forme_echantillon,
     parametre, reponses,
 )
-from apps.taches.views.saisie import CHAMPS_LIGNE
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from core.idempotency import IdempotentCreateMixin
 from core.openapi_operations import mots_operation
 from core.pagination import StandardPagination
@@ -65,14 +68,9 @@ CONFLIT_TACHE = inline_serializer('TachesConflitTache', {
     'lock_version': serializers.IntegerField(required=False),
     'actuel': TacheSerializer(required=False),
 })
-#: Corps d'un réordonnancement : la place entre deux voisins (aucun geste rendu : 204).
-REORDONNER = inline_serializer('TachesCorpsReordonner', {
-    'liste': serializers.CharField(required=False),
-    'avant_id': serializers.IntegerField(required=False, allow_null=True),
-    'apres_id': serializers.IntegerField(required=False, allow_null=True),
-})
-PROPRIETAIRE_ATTENDU = corps('ProprietaireAttendu', {'proprietaire_attendu': 7})
 ECRITE = reponses(TacheEcriteSerializer, erreurs=(400, 404))
+#: Action qu'un ÉTAT de la tâche peut refuser (non récurrente, close, date d'ancre absente…) : 409 `refus_etat`.
+ECRITE_OU_ETAT = reponses(TacheEcriteSerializer, erreurs=(400, 404, 409))
 ECRITE_AVEC_COMPTE = reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=ERREUR_CODE)
 #: Toute écriture rend son `geste_id` (api.md §0), une étiquette ou une vue enregistrée comprise.
 VUE_ENREGISTREE = inline_serializer('TachesVueEnregistree', {
@@ -100,14 +98,14 @@ def _conflit_complet(request, exc, pk):
 
 
 FILTRES_LISTE = [
-    parametre('vue', OpenApiTypes.STR, 'boite (À trier), quelque_jour (En réserve)…'),
+    parametre('vue', OpenApiTypes.STR, 'boite (À trier), quelque_jour (Plus tard)…'),
     parametre('q', OpenApiTypes.STR, 'Mots, sans accents.'),
     parametre('projet', OpenApiTypes.INT),
     parametre('section', OpenApiTypes.INT),
     parametre('etiquette', OpenApiTypes.INT),
     parametre('priorite_min', OpenApiTypes.INT),
     parametre('statut', OpenApiTypes.STR),
-    parametre('periode', OpenApiTypes.STR),
+    parametre('periode', OpenApiTypes.STR, 'aujourdhui, semaine, retard, faites_semaine (depuis lundi).'),
     parametre('tri', OpenApiTypes.STR),
     parametre('groupe', OpenApiTypes.STR),
     parametre('inclure_faites', OpenApiTypes.BOOL),
@@ -122,9 +120,14 @@ class RechercheVue(APIView):
     """GET recherche/ — projets et tâches par mots."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(parameters=[parametre('q', OpenApiTypes.STR, 'Mots cherchés (requis).'),
-                               parametre('limite', OpenApiTypes.INT)],
+    @extend_schema(parameters=[OpenApiParameter('q', {'type': 'string', 'minLength': 1,
+                                                      'pattern': MOTIF_NON_BLANC_SANS_NUL},
+                                                OpenApiParameter.QUERY, required=True, description='Mots cherchés.'),
+                               OpenApiParameter('limite', {'type': 'integer', 'minimum': 1,
+                                                           'maximum': LIMITE_RECHERCHE_MAX},
+                                                OpenApiParameter.QUERY, required=False)],
                    responses=reponses(forme_echantillon('recherche'), erreurs=(400,)))
     def get(self, request):
         assistant = est_assistant(request)
@@ -132,13 +135,27 @@ class RechercheVue(APIView):
         return Response(reponse_recherche(projets, taches, assistant=assistant))
 
 
+#: La page de `GET taches/` (StandardPagination) ; `total` et `activites_closes` n'y sont QUE pour
+#: `periode=faites_semaine` (R3-003, `faites_semaine.json`) : déclarés, non requis.
+PAGE_ITEMS = inline_serializer('TachesPageItems', {
+    'count': serializers.IntegerField(),
+    'next': serializers.CharField(allow_null=True),
+    'previous': serializers.CharField(allow_null=True),
+    'results': serializers.ListField(child=ItemSerializer()),
+    'total': serializers.IntegerField(required=False),
+    'activites_closes': serializers.ListField(required=False, child=inline_serializer('TachesActiviteClose', {
+        'jour': serializers.DateField(), 'titre': serializers.CharField(allow_blank=True)})),
+})
+
+
 class TachesVue(IdempotentCreateMixin, APIView):
     """GET taches/ (listes paginées) · POST taches/ (une LIGNE)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
     schema = mots_operation(get='list')  # sinon même operationId que GET taches/{id}/
 
-    @extend_schema(parameters=FILTRES_LISTE, responses=reponses(page_de('Items', ItemSerializer()), erreurs=(400,)))
+    @extend_schema(parameters=FILTRES_LISTE, responses=reponses(PAGE_ITEMS, erreurs=(400,)))
     def get(self, request):
         assistant = est_assistant(request)
         paginateur = StandardPagination()
@@ -146,13 +163,14 @@ class TachesVue(IdempotentCreateMixin, APIView):
             charger_items(liste_taches(request.user, request.query_params, assistant=assistant)),
             request, view=self)
         donnees = ItemSerializer(page, many=True, context=contexte(assistant=assistant)).data
-        return paginateur.get_paginated_response(donnees)
+        reponse = paginateur.get_paginated_response(donnees)
+        reponse.data.update(entete_de_liste(request.user, request.query_params))
+        return reponse
 
-    @extend_schema(request=inline_serializer('TachesCorpsTache', {
-        **CHAMPS_LIGNE,
-        'parent_id': serializers.IntegerField(required=False, allow_null=True),
-        'proprietaire_attendu': serializers.IntegerField(required=False),
-    }), responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400,), conflit=ERREUR_CODE))
+    @extend_schema(request=inline_serializer('TachesCorpsTache', dict(CHAMPS_CREATION)),
+                   # 200 : rejeu d'un `client_id` déjà créé — la tâche existante, même forme (`_creer`).
+                   responses={**reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404), conflit=ERREUR_CODE),
+                              200: TacheEcriteSerializer})
     def post(self, request):
         entree = TacheCreationSerializer(data=request.data)
         entree.is_valid(raise_exception=True)
@@ -190,6 +208,7 @@ class TacheVue(APIView):
     """GET (TACHE, lien revérifié) · PATCH (verrou 409) · DELETE taches/{id}/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(TacheSerializer, erreurs=(404,)))
     def get(self, request, id):
@@ -197,26 +216,13 @@ class TacheVue(APIView):
         if not trouvees:
             raise Http404('Introuvable.')
         tache = reverifier_lien(request.user, trouvees[0])
-        return Response(TacheSerializer(tache, context=contexte(assistant=est_assistant(request))).data)
+        # +1 requête (plafond `test_plafonds.py`) : les lignes du plan du jour, pour la MÊME ★ que la journée
+        calculs = calculs_du_plan(request.user, [tache])
+        contexte_ = contexte(assistant=est_assistant(request), calculs=calculs)
+        return Response(TacheSerializer(tache, context=contexte_).data)
 
-    @extend_schema(request=inline_serializer('TachesCorpsTachePatch', {
-        'titre': serializers.CharField(required=False, max_length=280),
-        'notes': serializers.CharField(required=False, allow_blank=True),
-        'priorite': serializers.IntegerField(required=False),
-        'echeance': serializers.DateField(required=False, allow_null=True),
-        'echeance_heure': serializers.CharField(required=False, allow_null=True),
-        'estimation_minutes': serializers.IntegerField(required=False, allow_null=True),
-        'duree_reelle_minutes': serializers.IntegerField(required=False, allow_null=True),
-        'projet_id': serializers.IntegerField(required=False, allow_null=True),
-        'section_id': serializers.IntegerField(required=False, allow_null=True),
-        'jalon': serializers.BooleanField(required=False),
-        'bloquee_par_id': serializers.IntegerField(required=False, allow_null=True),
-        'confidentiel': serializers.BooleanField(required=False),
-        'etiquettes': serializers.ListField(required=False, child=serializers.IntegerField()),
-        'recurrence': serializers.JSONField(required=False, allow_null=True),
-        'lien': serializers.JSONField(required=False, allow_null=True),
-        'lock_version': serializers.IntegerField(),
-    }), responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))
+    @extend_schema(request=TachePatchSerializer,
+                   responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))
     def patch(self, request, id):
         donnees = valider_patch(request.data)
         assistant = est_assistant(request)
@@ -238,15 +244,10 @@ class TachePlanifierVue(APIView):
     """POST taches/{id}/planifier/ — seul chemin du jour, de l'heure et du moment."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsPlanifier', {
-        'jour_prevu': serializers.DateField(required=False, allow_null=True),
-        'moment': serializers.CharField(required=False, allow_blank=True),
-        'heure_debut': serializers.CharField(required=False, allow_null=True),
-        'quelque_jour': serializers.BooleanField(required=False),
-        'lock_version': serializers.IntegerField(),
-        'proprietaire_attendu': serializers.IntegerField(required=False),
-    }), responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))
+    @extend_schema(request=PlanifierEntreeSerializer,
+                   responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))
     def post(self, request, id):
         donnees = lire_corps(PlanifierEntreeSerializer, request.data)
         verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
@@ -264,8 +265,9 @@ class TacheTerminerVue(APIView):
     """POST taches/{id}/terminer/ — cocher."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=PROPRIETAIRE_ATTENDU, responses=ECRITE_AVEC_COMPTE)
+    @extend_schema(request=ProprietaireEntreeSerializer, responses=ECRITE_AVEC_COMPTE)
     def post(self, request, id):
         donnees = lire_corps(ProprietaireEntreeSerializer, request.data)
         verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
@@ -276,8 +278,9 @@ class TacheRouvrirVue(APIView):
     """POST taches/{id}/rouvrir/ — décocher."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=PROPRIETAIRE_ATTENDU, responses=ECRITE_AVEC_COMPTE)
+    @extend_schema(request=ProprietaireEntreeSerializer, responses=ECRITE_AVEC_COMPTE)
     def post(self, request, id):
         donnees = lire_corps(ProprietaireEntreeSerializer, request.data)
         verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
@@ -288,11 +291,9 @@ class TacheTrancherVue(APIView):
     """POST taches/{id}/trancher/ — aujourdhui, garder, jour, un_jour, abandonner."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsTrancher', {
-        'choix': serializers.CharField(),
-        'jour': serializers.DateField(required=False, allow_null=True),
-    }), responses=ECRITE)
+    @extend_schema(request=TrancherEntreeSerializer, responses=ECRITE)
     def post(self, request, id):
         donnees = lire_corps(TrancherEntreeSerializer, request.data)
         return _reponse(request, trancher_tache(request.user, id, donnees['choix'], donnees.get('jour')))
@@ -302,8 +303,9 @@ class TacheSauterVue(APIView):
     """POST taches/{id}/sauter/ — sauter une occurrence."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=None, responses=ECRITE)
+    @extend_schema(request=None, responses=ECRITE_OU_ETAT)
     def post(self, request, id):
         return _reponse(request, sauter_occurrence(request.user, id))
 
@@ -312,9 +314,10 @@ class TacheAttendreVue(APIView):
     """POST taches/{id}/attendre/ — « En attente de… »."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('TacheAttendre', {'en_attente_de': 'Lydec'}, requis=('en_attente_de',)),
-                   responses=ECRITE)
+    @extend_schema(request=AttendreEntreeSerializer,
+                   responses=ECRITE_OU_ETAT)
     def post(self, request, id):
         donnees = lire_corps(AttendreEntreeSerializer, request.data)
         return _reponse(request, attendre_tache(request.user, id, donnees['en_attente_de']))
@@ -324,6 +327,7 @@ class TacheRecuVue(APIView):
     """POST taches/{id}/recu/ — reçu."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=ECRITE)
     def post(self, request, id):
@@ -334,8 +338,10 @@ class TacheReordonnerVue(APIView):
     """POST taches/{id}/reordonner/ — `{"liste","avant_id","apres_id"}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=REORDONNER, responses=reponses(None, statut=204, erreurs=(400, 404)))
+    @extend_schema(request=ReordonnerEntreeSerializer,
+                   responses=reponses(None, statut=204, erreurs=(400, 404, 409)))
     def post(self, request, id):
         donnees = lire_corps(ReordonnerEntreeSerializer, request.data)
         reordonner_tache(request.user, id, donnees['liste'], donnees.get('avant_id'), donnees.get('apres_id'))
@@ -346,6 +352,7 @@ class TacheRestaurerVue(APIView):
     """POST taches/{id}/restaurer/ — restaurer une tâche supprimée."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=ECRITE)
     def post(self, request, id):
@@ -356,13 +363,9 @@ class TacheRappelsVue(APIView):
     """POST taches/{id}/rappels/ — poser un rappel."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsRappel', {
-        'jour': serializers.DateField(required=False),
-        'heure': serializers.CharField(required=False),
-        'ancre': serializers.CharField(required=False, allow_blank=True),
-        'decalage_jours': serializers.IntegerField(required=False),
-    }), responses=ECRITE)
+    @extend_schema(request=RappelEntreeSerializer, responses=ECRITE_OU_ETAT)
     def post(self, request, id):
         donnees = lire_corps(RappelEntreeSerializer, request.data)
         resultat = poser_rappel(
@@ -379,9 +382,9 @@ class TacheChangementApercuVue(APIView):
     """POST taches/{id}/changement/apercu/ — écho d'un renommage, abandon ou suppression."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('TacheChangementApercu', {'geste': 'renommer', 'titre': 'Devis Settat — relance'},
-                                 requis=('geste',)),
+    @extend_schema(request=ChangementEntreeSerializer,
                    responses=reponses(forme_echantillon('tache_changement'), erreurs=(400, 404)))
     def post(self, request, id):
         donnees = lire_corps(ChangementEntreeSerializer, request.data)
@@ -397,12 +400,9 @@ class LotVue(IdempotentCreateMixin, APIView):
     """POST taches/lot/ — une action sur une sélection (≤ 200)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsLot', {
-        'ids': serializers.ListField(child=serializers.IntegerField()),
-        'action': serializers.CharField(),
-        'valeurs': serializers.DictField(required=False),
-    }), responses=reponses(forme_echantillon('lot'), erreurs=(400,)))
+    @extend_schema(request=LotEntreeSerializer, responses=reponses(forme_echantillon('lot'), erreurs=(400, 404)))
     def post(self, request):
         donnees = lire_corps(LotEntreeSerializer, request.data)
         return self._avec_idempotence(
@@ -415,6 +415,7 @@ class RappelVue(APIView):
     """DELETE rappels/{id}/ — retirer un rappel."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
@@ -426,12 +427,10 @@ class RappelRepeterVue(APIView):
     """POST rappels/{id}/repeter/ — « Encore 10 min · 1 h · Demain 9 h »."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsRepeter', {
-        'dans_minutes': serializers.IntegerField(required=False),
-        'jour': serializers.DateField(required=False),
-        'heure': serializers.CharField(required=False),
-    }), responses=reponses(forme_echantillon('rappel_repeter'), erreurs=(400, 404)))
+    @extend_schema(request=RepeterEntreeSerializer,
+                   responses=reponses(forme_echantillon('rappel_repeter'), erreurs=(400, 404, 409)))
     def post(self, request, id):
         donnees = lire_corps(RepeterEntreeSerializer, request.data)
         resultat = repeter_rappel(request.user, id, dans_minutes=donnees.get('dans_minutes'),
@@ -445,19 +444,9 @@ class RecurrenceVue(APIView):
     """PATCH recurrences/{id}/ — modifier ou arrêter (`actif:false`) une récurrence."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsRecurrence', {
-        'frequence': serializers.CharField(required=False),
-        'intervalle': serializers.IntegerField(required=False),
-        'jours_semaine': serializers.CharField(required=False),
-        'jour_du_mois': serializers.IntegerField(required=False, allow_null=True),
-        'rang_dans_mois': serializers.IntegerField(required=False, allow_null=True),
-        'mode': serializers.CharField(required=False),
-        'date_debut': serializers.DateField(required=False),
-        'date_fin': serializers.DateField(required=False, allow_null=True),
-        'actif': serializers.BooleanField(required=False),
-        'appliquer_a_l_ouverte': serializers.BooleanField(required=False),
-    }), responses=ECRITE)
+    @extend_schema(request=RecurrenceEntreeSerializer, responses=ECRITE_OU_ETAT)
     def patch(self, request, id):
         donnees = lire_corps(RecurrenceEntreeSerializer, request.data)
         return _reponse(request, modifier_regle(request.user, id, donnees))
@@ -467,8 +456,9 @@ class ChecklistVue(APIView):
     """POST checklist/ — ajouter un point `{"tache_id","libelle"}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('Checklist', {'tache_id': 20, 'libelle': 'Prix'}, requis=('tache_id', 'libelle')),
+    @extend_schema(request=ChecklistEntreeSerializer,
                    responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404)))
     def post(self, request):
         donnees = lire_corps(ChecklistEntreeSerializer, request.data)
@@ -482,8 +472,9 @@ class ElementChecklistVue(APIView):
     """PATCH · DELETE checklist/{id}/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('ChecklistElement', {'libelle': 'Prix TTC', 'fait': True}), responses=ECRITE)
+    @extend_schema(request=ElementChecklistEntreeSerializer, responses=ECRITE)
     def patch(self, request, id):
         donnees = lire_corps(ElementChecklistEntreeSerializer, request.data)
         return _reponse(request, modifier_element(request.user, id, donnees))
@@ -497,8 +488,10 @@ class ElementChecklistReordonnerVue(APIView):
     """POST checklist/{id}/reordonner/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=REORDONNER, responses=reponses(None, statut=204, erreurs=(400, 404)))
+    @extend_schema(request=ReordonnerElementEntreeSerializer,
+                   responses=reponses(None, statut=204, erreurs=(400, 404, 409)))
     def post(self, request, id):
         donnees = lire_corps(ReordonnerElementEntreeSerializer, request.data)
         reordonner_element(request.user, id, donnees.get('avant_id'), donnees.get('apres_id'))
@@ -509,6 +502,7 @@ class EtiquettesVue(APIView):
     """GET etiquettes/ (liste paginée) · POST etiquettes/ `{"nom","couleur"}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(parameters=PAGINATION, responses=reponses(forme_echantillon('etiquettes')))
     def get(self, request):
@@ -517,8 +511,8 @@ class EtiquettesVue(APIView):
         page = paginateur.paginate_queryset(etiquettes.order_by('nom_cle', 'id'), request, view=self)
         return paginateur.get_paginated_response([forme_etiquette(e) for e in page])
 
-    @extend_schema(request=corps('Etiquette', {'nom': 'magasin', 'couleur': 'ciel'}, requis=('nom',)),
-                   responses=reponses(ETIQUETTE_ECRITE, statut=201, erreurs=(400,)))
+    @extend_schema(request=EtiquetteEntreeSerializer,
+                   responses=reponses(ETIQUETTE_ECRITE, statut=201, erreurs=(400, 409)))
     def post(self, request):
         donnees = lire_corps(EtiquetteEntreeSerializer, request.data)
         etiquette, geste = creer_etiquette(request.user, nom=donnees['nom'], couleur=donnees.get('couleur'))
@@ -529,9 +523,10 @@ class EtiquetteVue(APIView):
     """PATCH · DELETE etiquettes/{id}/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('EtiquettePatch', {'nom': 'magasin', 'couleur': 'ciel'}),
-                   responses=reponses(ETIQUETTE_ECRITE, erreurs=(400, 404)))
+    @extend_schema(request=EtiquettePatchSerializer,
+                   responses=reponses(ETIQUETTE_ECRITE, erreurs=(400, 404, 409)))
     def patch(self, request, id):
         donnees = lire_corps(EtiquettePatchSerializer, request.data)
         etiquette, geste = modifier_etiquette(request.user, id, donnees)
@@ -546,16 +541,14 @@ class VuesVue(APIView):
     """GET vues/ (≤ 30, non paginé) · POST vues/ `{"nom","filtres","rang"}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('vues')))
     def get(self, request):
         return Response({'results': [forme_vue(v) for v in liste_vues(request.user)]})
 
-    @extend_schema(request=inline_serializer('TachesCorpsVue', {
-        'nom': serializers.CharField(max_length=60),
-        'filtres': serializers.DictField(required=False),
-        'rang': serializers.IntegerField(required=False),
-    }), responses=reponses(VUE_ENREGISTREE, statut=201, erreurs=(400,)))
+    @extend_schema(request=VueEntreeSerializer,
+                   responses=reponses(VUE_ENREGISTREE, statut=201, erreurs=(400, 404, 409)))
     def post(self, request):
         donnees = lire_corps(VueEntreeSerializer, request.data)
         vue, geste = creer_vue(request.user, nom=donnees['nom'], filtres=donnees.get('filtres'),
@@ -567,12 +560,9 @@ class VueEnregistreeVue(APIView):
     """PATCH · DELETE vues/{id}/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsVuePatch', {
-        'nom': serializers.CharField(required=False, max_length=60),
-        'filtres': serializers.DictField(required=False),
-        'rang': serializers.IntegerField(required=False),
-    }), responses=reponses(VUE_ENREGISTREE, erreurs=(400, 404)))
+    @extend_schema(request=VuePatchSerializer, responses=reponses(VUE_ENREGISTREE, erreurs=(400, 404, 409)))
     def patch(self, request, id):
         donnees = lire_corps(VuePatchSerializer, request.data)
         vue, geste = modifier_vue(request.user, id, donnees)
@@ -587,6 +577,7 @@ class SupprimeesVue(APIView):
     """GET supprimees/ — Supprimées récemment (un projet = une ligne)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('supprimees')))
     def get(self, request):
@@ -598,18 +589,22 @@ class GestesVue(APIView):
     """GET gestes/ — derniers gestes (7 jours)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('gestes')))
     def get(self, request):
         gestes = derniers_gestes(request.user)
-        masques = gestes_confidentiels(request.user, gestes) if est_assistant(request) else frozenset()
-        return Response(reponse_gestes(gestes, masques))
+        assistant = est_assistant(request)
+        masques = gestes_confidentiels(request.user, gestes) if assistant else frozenset()
+        titres = {} if assistant else titres_des_gestes(request.user, gestes)  # le Copilote ne reçoit aucun titre
+        return Response(reponse_gestes(gestes, masques, titres))
 
 
 class GesteAnnulerVue(APIView):
     """POST gestes/{id}/annuler/ — Annuler (200 partiel)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=reponses(forme_echantillon('geste_annuler'), erreurs=(404,)))
     def post(self, request, id):

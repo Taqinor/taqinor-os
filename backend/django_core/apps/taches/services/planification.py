@@ -4,7 +4,7 @@
 tâche (le PATCH les refuse ; seul `annuler_geste` restaure l'état d'avant). C'est aussi le seul
 endroit qui compte un REPORT (`reports += 1` par `F()`, sous `select_for_update()`) :
 
-- un report ⇔ l'ancien `jour_prevu` ≤ J ET le nouveau est plus tard ou « En réserve » ;
+- un report ⇔ l'ancien `jour_prevu` ≤ J ET le nouveau est plus tard ou « Plus tard » ;
 - jamais : futur → futur, avancer, premier jour posé, `compter_report=False` (Alléger, retour
   d'absence, décaler, instancier, création).
 
@@ -48,6 +48,8 @@ CHAMPS_LIGNE = ('prevue_au_plan', 'faite', 'reportee', 'essentielle', 'creneau',
 
 AVERTISSEMENT_APRES_ECHEANCE = 'prevue_apres_echeance'
 AVERTISSEMENT_JOUR_NON_TRAVAILLE = 'jour_non_travaille'
+AVERTISSEMENT_ECHEANCE_AUJOURDHUI = 'echeance_aujourdhui'
+MESSAGE_ECHEANCE_AUJOURDHUI = "L'échéance reste aujourd'hui."
 
 
 @dataclass(frozen=True)
@@ -79,7 +81,7 @@ def _en_heure(valeur):
 
 
 def _normaliser(jour_prevu, moment, heure_debut, quelque_jour):
-    """(jour, moment, heure) cohérents : « En réserve » n'a ni jour ni heure ; une heure exige un
+    """(jour, moment, heure) cohérents : « Plus tard » n'a ni jour ni heure ; une heure exige un
     jour et dérive le moment (invariant 15) ; sans jour, pas de moment."""
     jour, heure = _en_date(jour_prevu, 'jour_prevu'), _en_heure(heure_debut)
     if quelque_jour:
@@ -151,7 +153,7 @@ def _ecrire(t, jour, moment, heure, quelque_jour, maintenant, report):
 
 def _message(t, avant, aujourdhui, report):
     if t.quelque_jour:
-        return 'En réserve'
+        return 'Plus tard'
     if t.jour_prevu is None:
         return 'Sans jour'
     if t.heure_debut is not None and t.heure_debut != avant['heure_debut']:
@@ -175,6 +177,16 @@ def avertissements_du_jour(acteur, t, aujourdhui):
     return sortie
 
 
+def _avertissement_echeance(t, ancien_jour, aujourdhui):
+    """R3-002 (choix C-13) : la tâche quitte le jour d'aujourd'hui (jour posé plus tard, ou retiré) alors que son
+    échéance EST aujourd'hui — la règle ne change pas (`classement.gardee_aujourdhui` : l'échéance la garde dans la
+    journée), le geste le DIT au lieu de la laisser revenir en silence. Rien pour « Plus tard » (elle quitte alors
+    la journée, invariant 10) ni quand le jour n'a pas changé."""
+    if t.quelque_jour or t.echeance != aujourdhui or t.jour_prevu == aujourdhui or t.jour_prevu == ancien_jour:
+        return []
+    return [{'code': AVERTISSEMENT_ECHEANCE_AUJOURDHUI, 'message': MESSAGE_ECHEANCE_AUJOURDHUI}]
+
+
 # --- Les lignes du plan (donnees.md §2.9) ----------------------------------------------------
 
 def valeurs_ligne(ligne):
@@ -185,7 +197,10 @@ def valeurs_ligne(ligne):
 def creer_ligne(plan, ops, *, tache_id=None, activite_id=None, **champs):
     ligne = LignePlanJour.objects.create(company_id=plan.company_id, plan=plan, tache_id=tache_id,
                                          activite_id=activite_id, **champs)
-    ops.append(op_creation('ligne_plan_jour', ligne))
+    op = op_creation('ligne_plan_jour', ligne)
+    if tache_id is not None:
+        op['tache'] = tache_id  # R3-008 : « Derniers gestes » dit le titre de la ★ sans relire une ligne disparue
+    ops.append(op)
     return ligne
 
 
@@ -219,7 +234,7 @@ def _suivre_les_lignes_du_plan(t, ancien, ops):
 
 def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque_jour=False,
               compter_report=True, version=None, collecte=None):
-    """Pose le jour, l'heure, le moment ou « En réserve » de `tache` (à `acteur`) → résultat
+    """Pose le jour, l'heure, le moment ou « Plus tard » de `tache` (à `acteur`) → résultat
     (tâche relue, avertissements, geste ou `None` quand `collecte` est fournie)."""
     jour, moment, heure = _normaliser(jour_prevu, moment, heure_debut, quelque_jour)
     quelque_jour = bool(quelque_jour)
@@ -238,4 +253,6 @@ def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque
             collecte.extend(ops)
         elif ops:
             geste = enregistrer_geste(acteur, 'planification', _message(t, avant, aujourdhui, report), ops)
-    return ResultatPlanification(t, avertissements_du_jour(acteur, t, aujourdhui), geste)
+    avertissements = avertissements_du_jour(acteur, t, aujourdhui) + _avertissement_echeance(
+        t, avant['jour_prevu'], aujourdhui)
+    return ResultatPlanification(t, avertissements, geste)

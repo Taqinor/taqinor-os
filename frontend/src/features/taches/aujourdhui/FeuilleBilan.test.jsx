@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ReactReduxContext } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,6 +10,9 @@ import { reinitialiserGestes } from '../lib/gestes'
 vi.mock('../../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }))
+
+const toasts = vi.hoisted(() => ({ toastError: vi.fn() }))
+vi.mock('../../../lib/toast', async (importOriginal) => ({ ...(await importOriginal()), toastError: toasts.toastError }))
 
 const api = (await import('../../../api/axios')).default
 const { default: Aujourdhui } = await import('../../../pages/taches/Aujourdhui')
@@ -56,14 +60,20 @@ describe('TCH80 — contenu du bilan', () => {
     const f = await feuille()
     expect(await within(f).findByText('4 sur 5')).toBeInTheDocument()
     expect(f).toHaveTextContent('essentiel 1 sur 2')
-    expect(f).toHaveTextContent('4 des 5 gardées')
+    // R3-020 — plus de second chiffre « x des y gardées » (le serveur sert `texte_gardees: ""`, et l'écran ne le rend plus)
+    expect(f).not.toHaveTextContent('gardées')
     expect(within(f).getByText('Dossier subvention')).toBeInTheDocument()
     expect(within(f).getByRole('button', { name: 'Tout reporter à jeu. 19' })).toBeInTheDocument()
     const reste = f.querySelector('[data-ligne="tache:42"]')
-    expect(within(reste).getAllByRole('button').map((b) => b.textContent)).toEqual([
-      'Reporter à jeu. 19', 'Choisir un jour', 'En réserve', 'Abandonner',
+    // R2-030 — le rond à gauche, UNE action visible (le choix d'emblée) et « ⋯ » pour les autres
+    expect(within(reste).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).not.toBeChecked()
+    expect(within(reste).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual([
+      'Reporter à jeu. 19', 'Autres choix pour « Timbres »',
     ])
     expect(within(reste).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(reste).getByRole('button', { name: 'Autres choix pour « Timbres »' }))
+    expect(within(within(reste).getByRole('group', { name: 'Autres choix pour « Timbres »' })).getAllByRole('button').map((b) => b.textContent))
+      .toEqual(['Choisir un jour', 'Plus tard', 'Abandonner'])
   })
 
   it('une tâche reportée 3 fois est marquée « À revoir » et reste en place sans choix', async () => {
@@ -74,7 +84,8 @@ describe('TCH80 — contenu du bilan', () => {
     const ligne = tranche.closest('[data-ligne]')
     expect(ligne).toHaveTextContent('À revoir : reportée 3 fois')
     expect(f).toHaveTextContent('Sans choix, elle reste à sa place.')
-    expect(within(ligne).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(ligne).queryByRole('button', { name: 'Reporter à jeu. 19' })).toBeNull()
+    expect(within(ligne).getByRole('button', { name: 'Que faire ?' })).toHaveAttribute('aria-expanded', 'false')
     await userEvent.click(within(f).getByRole('button', { name: 'Valider' }))
     await waitFor(() => expect(cloturer()).toBeTruthy())
     expect(cloturer()[1].choix.find((c) => c.id === 50)).toBeUndefined()
@@ -121,7 +132,7 @@ describe('TCH80 — Valider', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Bilan du soir' })).toBeNull())
   })
 
-  it('un choix par reste : En réserve, un jour choisi, Abandonner ; un mot sur la journée', async () => {
+  it('un choix par reste : Plus tard, un jour choisi, Abandonner ; un mot sur la journée', async () => {
     const cloture = contrat('journee_cloture')
     cloture.restes = [
       cloture.restes[0],
@@ -132,9 +143,14 @@ describe('TCH80 — Valider', () => {
     monter()
     const f = await feuille()
     await within(f).findByText('Appeler Lydec')
-    await userEvent.click(within(f.querySelector('[data-ligne="tache:42"]')).getByRole('button', { name: 'En réserve' }))
-    await userEvent.click(within(f.querySelector('[data-ligne="tache:44"]')).getByRole('button', { name: 'Abandonner' }))
-    await userEvent.click(within(f.querySelector('[data-ligne="tache:43"]')).getByRole('button', { name: 'Choisir un jour' }))
+    const autre = async (id, titre, libelle) => {
+      const ligne = f.querySelector(`[data-ligne="tache:${id}"]`)
+      await userEvent.click(within(ligne).getByRole('button', { name: `Autres choix pour « ${titre} »` }))
+      await userEvent.click(within(ligne).getByRole('button', { name: libelle }))
+    }
+    await autre(42, 'Timbres', 'Plus tard')
+    await autre(44, 'Relire le contrat', 'Abandonner')
+    await autre(43, 'Appeler Lydec', 'Choisir un jour')
     fireEvent.change(within(f).getByLabelText('Choisir un jour'), { target: { value: '2026-11-23' } })
     await userEvent.click(within(f).getByRole('button', { name: /Un mot sur ta journée/ }))
     await userEvent.type(within(f).getByRole('textbox', { name: 'Un mot sur ta journée' }), 'Bonne journée')
@@ -148,6 +164,26 @@ describe('TCH80 — Valider', () => {
     })
   })
 
+  it('R2-030 — cocher le rond d\u2019un reste : terminer/ part, ses choix disparaissent, Valider ne le renvoie plus', async () => {
+    servir()
+    monter()
+    const f = await feuille()
+    const reste = await waitFor(() => {
+      const ligne = f.querySelector('[data-ligne="tache:42"]')
+      expect(ligne).not.toBeNull()
+      return ligne
+    })
+    await userEvent.click(within(reste).getByRole('button', { name: 'Autres choix pour « Timbres »' }))
+    await userEvent.click(within(reste).getByRole('button', { name: 'Plus tard' }))
+    await userEvent.click(within(reste).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+    await waitFor(() => expect(api.post.mock.calls.map(([url]) => url)).toContain('/taches/taches/42/terminer/'))
+    expect(within(reste).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).toBeChecked()
+    expect(within(reste).queryByRole('group', { name: 'Que faire de cette tâche ?' })).toBeNull()
+    await userEvent.click(within(f).getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(cloturer()).toBeTruthy())
+    expect(cloturer()[1].choix.find((c) => c.id === 42)).toBeUndefined()
+  })
+
   it('« Tout reporter » remet tous les choix sur le prochain jour travaillé', async () => {
     servir()
     monter()
@@ -159,8 +195,10 @@ describe('TCH80 — Valider', () => {
       expect(ligne).not.toBeNull()
       return ligne
     })
+    await userEvent.click(within(reste).getByRole('button', { name: 'Autres choix pour « Timbres »' }))
     await userEvent.click(within(reste).getByRole('button', { name: 'Abandonner' }))
-    expect(within(reste).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(reste).getByRole('button', { name: 'Abandonner' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(reste).queryByRole('button', { name: 'Reporter à jeu. 19' })).toBeNull()
     await userEvent.click(within(f).getByRole('button', { name: 'Tout reporter à jeu. 19' }))
     expect(within(reste).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'true')
   })
@@ -200,7 +238,7 @@ describe('TCH80 — le bilan d\'hier', () => {
     monter('/taches/aujourdhui')
     await userEvent.click(await screen.findByRole('button', { name: "Faire le bilan d'hier" }))
     const f = await screen.findByRole('dialog', { name: "Bilan d'hier" })
-    expect(api.get).toHaveBeenCalledWith('/taches/journee/cloture/', { params: { jour: '2026-11-16' } })
+    expect(api.get).toHaveBeenCalledWith('/taches/journee/cloture/', { params: { jour: '2026-11-16' }, erreurSousLeChamp: true })
     await within(f).findByText('Timbres')
     expect(f).not.toHaveTextContent('plus modifiable')
   })
@@ -213,5 +251,94 @@ describe('TCH80 — le bilan d\'hier', () => {
     const f = await feuille()
     expect(await within(f).findByText("Le bilan d'hier n'est plus modifiable après midi.")).toBeInTheDocument()
     expect(within(f).getByRole('button', { name: 'Valider' })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('critique serveur n° 7 — le bilan refusé hors délai (409 `state_conflict` au champ `jour`) : le message du serveur dans la feuille, aucun toast', async () => {
+    servir()
+    const message = "Le bilan d'hier n'est plus modifiable après midi."
+    api.get.mockImplementation((url) => {
+      if (url === '/taches/aujourdhui/') return Promise.resolve({ data: journee() })
+      if (url === '/taches/journee/cloture/') {
+        return Promise.resolve({ status: 409, data: { jour: [message], detail: message, code: 'state_conflict' } })
+      }
+      return Promise.reject(new Error(`GET inattendu ${url}`))
+    })
+    monter()
+    const f = await feuille()
+    expect(await within(f).findByText(message)).toBeInTheDocument()
+    expect(f).not.toHaveTextContent('state_conflict')
+    expect(toasts.toastError).not.toHaveBeenCalled()
+  })
+
+  it('critique serveur n° 7 — Valider refusé (409 au champ `jour`) : le message sous le bouton, aucun toast', async () => {
+    servir()
+    const message = "Le bilan d'hier n'est plus modifiable après midi."
+    api.post.mockImplementation((url) => (url === '/taches/journee/cloturer/'
+      ? Promise.resolve({ status: 409, data: { jour: [message], detail: message, code: 'state_conflict' } })
+      : Promise.resolve({ data: {} })))
+    monter()
+    const f = await feuille()
+    await userEvent.click(await within(f).findByRole('button', { name: 'Valider' }))
+    expect(await within(f).findByRole('alert')).toHaveTextContent(message)
+    expect(toasts.toastError).not.toHaveBeenCalled()
+  })
+})
+
+describe('R3-020 / R3-021 / L4 — le bilan ne redit pas « gardées », dit une échéance du jour, et ne perd jamais « Un mot »', () => {
+  const store = { getState: () => ({ auth: { user: { id: 42, active_company_id: 7 } } }) }
+  const monterConnecte = () => render(
+    <ReactReduxContext.Provider value={{ store }}>
+      <MemoryRouter initialEntries={['/taches/aujourdhui?ouvrir=bilan']}><Aujourdhui /></MemoryRouter>
+    </ReactReduxContext.Provider>,
+  )
+
+  it('un ancien `texte_gardees` servi n\'est plus rendu', async () => {
+    const cloture = contrat('journee_cloture')
+    cloture.bilan.texte_gardees = '4 des 5 gardées'
+    servir({ cloture })
+    monter()
+    const f = await feuille()
+    await within(f).findByText('4 sur 5')
+    expect(f).not.toHaveTextContent('gardées')
+  })
+
+  it('un reste dont l\'échéance est ce jour-là le dit (« échéance aujourd\'hui »)', async () => {
+    const cloture = contrat('journee_cloture')
+    cloture.restes = cloture.restes.map((it) => (it.id === 42 ? { ...it, echeance: cloture.jour } : it))
+    servir({ cloture })
+    monter()
+    const f = await feuille()
+    const reste = await waitFor(() => { const r = f.querySelector('[data-ligne="tache:42"]'); expect(r).not.toBeNull(); return r })
+    expect(reste).toHaveTextContent("échéance aujourd'hui")
+  })
+
+  it('« Un mot » tapé, feuille fermée sans valider, rouverte : le mot est là ; Valider l\'envoie puis l\'oublie', async () => {
+    servir()
+    const premier = monterConnecte()
+    let f = await feuille()
+    await userEvent.click(await within(f).findByRole('button', { name: /Un mot sur ta journée/ }))
+    await userEvent.type(within(f).getByRole('textbox', { name: 'Un mot sur ta journée' }), 'Bonne journée, le devis Settat est parti')
+    await userEvent.click(within(f).getByRole('button', { name: 'Passer' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Bilan du soir' })).toBeNull())
+    premier.unmount()
+    monterConnecte()
+    f = await feuille()
+    expect(await within(f).findByRole('textbox', { name: 'Un mot sur ta journée' })).toHaveValue('Bonne journée, le devis Settat est parti')
+    await userEvent.click(within(f).getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(cloturer()).toBeTruthy())
+    expect(cloturer()[1].reflexion).toBe('Bonne journée, le devis Settat est parti')
+    expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toEqual([])
+  })
+
+  it('couture L7 — un mot gardé en brouillon est effacé à la déconnexion (poste partagé)', async () => {
+    servir()
+    const premier = monterConnecte()
+    const f = await feuille()
+    await userEvent.click(await within(f).findByRole('button', { name: /Un mot sur ta journée/ }))
+    await userEvent.type(within(f).getByRole('textbox', { name: 'Un mot sur ta journée' }), 'Note privée')
+    expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toHaveLength(1)
+    premier.unmount()
+    window.dispatchEvent(new Event('taqinor:auth-logout'))
+    expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toEqual([])
   })
 })

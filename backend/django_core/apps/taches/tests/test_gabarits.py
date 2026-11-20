@@ -46,7 +46,7 @@ class FormatsTests(unittest.TestCase):
         self.assertEqual(format_jour(date(2026, 11, 19), J), 'jeu. 19')
         self.assertEqual(format_jour(date(2026, 11, 30), J), 'lun. 30')  # J + 13
         self.assertEqual(format_jour(date(2026, 12, 1), J), 'mar. 1 déc.')  # J + 14
-        self.assertEqual(format_jour(date(2026, 11, 12), J), 'jeu. 12/11')
+        self.assertEqual(format_jour(date(2026, 11, 12), J), 'jeu. 12 nov.')  # passé : même forme que « mar. 1 déc. »
         self.assertEqual(format_jour(date(2027, 1, 5), J), '05/01/2027')
 
     def test_premier_du_mois_dans_une_phrase(self):
@@ -63,8 +63,8 @@ class NotificationsMatinTests(Tableau):
         self.verifier([
             ('notification', 'matin.pousser_gardees', d3, 0, 'Ta journée : 3 prévues · objectif 5.'),
             ('notification', 'matin.pousser_gardees', d1, 0, 'Ta journée : 1 prévue · objectif 5.'),
-            ('notification', 'matin.pousser_gardees', d3, 1, 'Bonjour. 3 tâches gardées ; objectif du jour : 5.'),
-            ('notification', 'matin.pousser_gardees', d1, 1, 'Bonjour. 1 tâche gardée ; objectif du jour : 5.'),
+            ('notification', 'matin.pousser_gardees', d3, 1, 'Bonjour. 3 tâches prévues ; objectif du jour : 5.'),
+            ('notification', 'matin.pousser_gardees', d1, 1, 'Bonjour. 1 tâche prévue ; objectif du jour : 5.'),
             ('notification', 'matin.pousser_gardees', d3, 2, 'Plan du jour : choisis ton essentiel (objectif 5).'),
         ])
 
@@ -106,7 +106,7 @@ class NotificationsMatinTests(Tableau):
         d = {'prevues': 3, 'objectif': 5, 'avec_titres': True, 'titre': 'Appeler Karim'}
         for var, base in enumerate((
                 'Ta journée : 3 prévues · objectif 5.',
-                'Bonjour. 3 tâches gardées ; objectif du jour : 5.',
+                'Bonjour. 3 tâches prévues ; objectif du jour : 5.',
                 'Plan du jour : choisis ton essentiel (objectif 5).')):
             with self.subTest(variante=var):
                 self.assertEqual(texte('notification', 'matin.pousser_gardees', d, var, nom_pour),
@@ -300,8 +300,11 @@ class ConfirmationsEtCartesTests(Tableau):
             ('confirmation', 'garder_ce_rythme.provisoire', {'R': 5, 'bas': 4, 'haut': 6}, 0,
              "Garder ce rythme : environ 5 tâches par jour (4 à 6). Je ne te pousse plus ; "
              "je te préviens seulement si tu t'en éloignes. À confirmer sur 14 jours travaillés."),
+            # R3-004 (C-15) : moins de 5 jours évalués, le palier est gardé et le geste le dit
+            ('confirmation', 'garder_ce_rythme.palier', {'R': 6, 'bas': 5, 'haut': 7}, 0,
+             "Pas encore assez de jours pour mesurer ton rythme : je garde 6 pour l'instant."),
             ('confirmation', 'sans_objectif', {}, 0,
-             'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées restent affichés.'),
+             'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes tâches prévues restent affichés.'),
             ('confirmation', 'comprendre_eteint', {}, 0,
              "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme."),
         ])
@@ -393,118 +396,160 @@ class BilanTests(Tableau):
     def test_pousser_atteint(self):
         self.verifier([
             ('bilan', 'texte', dict(self.BASE, mode='pousser'), 0,
-             '5 sur 5 · objectif atteint · essentiel fait\n4 des 5 gardées'),
+             '5 sur 5 · objectif atteint · essentiel fait'),
         ])
 
     def test_pousser_non_atteint(self):
         d = dict(self.BASE, mode='pousser', faites=3, ef=1)
-        self.verifier([('bilan', 'texte', d, 0, '3 sur 5 · essentiel 1 sur 2\n4 des 5 gardées')])
+        self.verifier([('bilan', 'texte', d, 0, '3 sur 5 · essentiel 1 sur 2')])
 
     def test_tenir(self):
         d = dict(self.BASE, mode='tenir', faites=5, bas=4, haut=6, ef=1)
         self.verifier([('bilan', 'texte', d, 0,
-                        '5 sur 5 (ton rythme : 4 à 6) · essentiel 1 sur 2\n4 des 5 gardées')])
+                        '5 sur 5 (ton rythme : 4 à 6) · essentiel 1 sur 2')])
 
     def test_libre(self):
         self.verifier([
             ('bilan', 'texte', dict(self.BASE, mode='libre', faites=3, ef=0), 0,
-             '3 faites · essentiel 0 sur 2\n4 des 5 gardées'),
+             '3 faites · essentiel 0 sur 2'),
             ('bilan', 'texte', dict(self.BASE, mode='libre', faites=1, ep=0), 0,
-             '1 faite\n4 des 5 gardées'),
+             '1 faite'),
         ])
 
     def test_parties_sans_objet_omises(self):
         sans_essentiel = dict(self.BASE, mode='pousser', faites=3, ep=0)
-        self.verifier([('bilan', 'texte', sans_essentiel, 0, '3 sur 5\n4 des 5 gardées')])
+        self.verifier([('bilan', 'texte', sans_essentiel, 0, '3 sur 5')])
         rien_garde = dict(self.BASE, mode='pousser', faites=3, pl=0, pt=0)
         self.verifier([('bilan', 'texte', rien_garde, 0, '3 sur 5 · essentiel 2 sur 2')])
 
     def test_jour_court(self):
         d = dict(self.BASE, mode='pousser', faites=3, objectif=4, jour_court=True, ef=1)
         self.verifier([('bilan', 'texte', d, 0,
-                        '3 sur 4 (jour court : objectif 4) · essentiel 1 sur 2\n4 des 5 gardées')])
+                        '3 sur 4 (jour court : objectif 4) · essentiel 1 sur 2')])
 
-    def test_une_gardee_s_accorde(self):
-        d = dict(self.BASE, mode='libre', faites=2, ep=0, pt=1, pl=1)
-        self.verifier([('bilan', 'texte', d, 0, '2 faites\n1 des 1 gardée')])
+    def test_jamais_x_des_y_gardees(self):
+        """R3-001 (choix C-14) — le bilan tient en UNE ligne : « x des y gardées », second chiffre de la même journée,
+        n'est plus rendu, quels que soient `pt`/`pl` (servis pour la nuit, jamais montrés)."""
+        for mode in ('pousser', 'tenir', 'libre'):
+            for pt, pl in ((1, 1), (4, 5), (0, 3)):
+                with self.subTest(mode=mode, pt=pt, pl=pl):
+                    rendu = texte('bilan', 'texte', dict(self.BASE, mode=mode, bas=4, haut=6, pt=pt, pl=pl))
+                    self.assertNotIn('gardée', rendu)
+                    self.assertNotIn('\n', rendu)
 
 
 class ConstatsTests(Tableau):
+    """R2-014 — le texte servi d'une carte de constat est la PHRASE suivie de sa QUESTION (textes.md §4.4) : les boutons
+    « Oui · Pas maintenant » répondent à une question posée à l'écran. `Cn.question` seule reste rendable."""
+
     def test_c1(self):
         self.verifier([
-            ('constat', 'C1', {}, 0, 'Tu finis plus souvent ton essentiel quand il est placé avant midi.'),
+            ('constat', 'C1', {}, 0, "Tu finis plus souvent ton essentiel quand il est placé avant midi. "
+                                     "Mettre l'essentiel le matin ?"),
             ('constat', 'C1.detail', {'p1': 70, 'p2': 40, 'n1': 31, 'n2': 33}, 0,
-             "Fini : 70 % de tes gardées du matin, 40 % de celles d'après 16 h (31 et 33 lignes)."),
+             "Fini : 70 % de tes tâches prévues le matin, 40 % de celles d'après 16 h (31 et 33 lignes)."),
             ('constat', 'C1.question', {}, 0, "Mettre l'essentiel le matin ?"),
         ])
 
     def test_c2_c3_c4(self):
         self.verifier([
             ('constat', 'C2', {'a': 12, 'na': 15, 'b': 6, 'nb': 15}, 0,
-             'Essentiel fait 12 fois sur 15 quand il est en tête de ta journée, 6 sur 15 sinon.'),
+             'Essentiel fait 12 fois sur 15 quand il est en tête de ta journée, 6 sur 15 sinon. '
+             'Le mettre en tête par défaut ?'),
             ('constat', 'C2.question', {}, 0, 'Le mettre en tête par défaut ?'),
             ('constat', 'C3', {'jour': 4, 'm1': 2.5, 'm2': 4.2}, 0,
-             'Vendredi : 2,5 tâches en moyenne, 4,2 les autres jours.'),
+             'Vendredi : 2,5 tâches en moyenne, 4,2 les autres jours. En faire un jour court (un de moins) ?'),
             ('constat', 'C3', {'jour': 'Lundi', 'm1': 1.0, 'm2': 4.2}, 0,
-             'Lundi : 1,0 tâche en moyenne, 4,2 les autres jours.'),
+             'Lundi : 1,0 tâche en moyenne, 4,2 les autres jours. En faire un jour court (un de moins) ?'),
             ('constat', 'C3.question', {}, 0, 'En faire un jour court (un de moins) ?'),
-            ('constat', 'C4', {'p': 6, 'f': 4, 'n': 12}, 0,
-             'Tu gardes 6 tâches, tu en finis 4 (au milieu de tes 12 dernières journées).'),
-            ('constat', 'C4', {'p': 1, 'f': 1, 'n': 12}, 0,
-             'Tu gardes 1 tâche, tu en finis 1 (au milieu de tes 12 dernières journées).'),
+            ('constat', 'C4', {'p': 6, 'f': 4, 'n': 12, 'f1': 5}, 0,
+             'Tu gardes 6 tâches, tu en finis 4 (au milieu de tes 12 dernières journées). Te proposer 5 à garder ?'),
+            ('constat', 'C4', {'p': 1, 'f': 1, 'n': 12, 'f1': 2}, 0,
+             'Tu gardes 1 tâche, tu en finis 1 (au milieu de tes 12 dernières journées). Te proposer 2 à garder ?'),
             ('constat', 'C4.question', {'f1': 5}, 0, 'Te proposer 5 à garder ?'),
         ])
 
-    def test_c5_c6_c7(self):
+    def test_c5_information_sans_question(self):
         self.verifier([
             ('constat', 'C5', {'p': 60, 'n': 40, 'h1': 14, 'h2': 16}, 0,
              '60 % de tes 40 tâches finies entre 14 h et 16 h.'),
+        ])
+
+    def test_c6_c7(self):
+        self.verifier([
             ('constat', 'C6', {'projet': 'Maison', 'ratio': 1.5, 'n': 6}, 0,
-             'Tes tâches « Maison » ont pris 1,5 fois leur durée (6 tâches).'),
+             "Tes tâches « Maison » ont pris 1,5 fois leur durée (6 tâches). Corriger leur durée à l'avenir ?"),
             ('constat', 'C6', {'projet': 'secret', 'ratio': 1.5, 'n': 6}, 0,
-             'Tes tâches « un projet » ont pris 1,5 fois leur durée (6 tâches).'),
+             "Tes tâches « un projet » ont pris 1,5 fois leur durée (6 tâches). Corriger leur durée à l'avenir ?"),
             ('constat', 'C6.question', {}, 0, "Corriger leur durée à l'avenir ?"),
-            ('constat', 'C7', {'n': 4}, 0, '4 tâches reportées 3 fois ou plus.'),
-            ('constat', 'C7', {'n': 1}, 0, '1 tâche reportée 3 fois ou plus.'),
+            ('constat', 'C7', {'n': 4}, 0, '4 tâches reportées 3 fois ou plus. Les revoir maintenant ?'),
+            ('constat', 'C7', {'n': 1}, 0, '1 tâche reportée 3 fois ou plus. Les revoir maintenant ?'),
             ('constat', 'C7.question', {}, 0, 'Les revoir maintenant ?'),
         ])
 
     def test_c8_liste_et_ecran(self):
         self.verifier([
-            ('constat', 'C8', {}, 0, "Ton projet prioritaire n'a pas avancé depuis 14 jours."),
-            ('constat', 'C8.ecran', {'projet': 'Polydesign'}, 0, "« Polydesign » n'a pas avancé depuis 14 jours."),
+            ('constat', 'C8', {}, 0, "Ton projet prioritaire n'a pas avancé depuis 14 jours. "
+                                     "Mettre une de ses tâches dans Proposé demain ?"),
+            ('constat', 'C8.ecran', {'projet': 'Polydesign'}, 0,
+             "« Polydesign » n'a pas avancé depuis 14 jours. Mettre une de ses tâches dans Proposé demain ?"),
             ('constat', 'C8.question', {}, 0, 'Mettre une de ses tâches dans Proposé demain ?'),
         ])
 
+    def test_chaque_constat_a_action_se_termine_par_sa_question(self):
+        """C1-C4 et C6-C8 posent une question (les boutons « Oui » y répondent) ; C5, information, n'en pose aucune."""
+        donnees = {'f1': 5, 'projet': 'P', 'n': 3, 'p': 5, 'f': 3, 'a': 1, 'na': 2, 'b': 1, 'nb': 2, 'jour': 4,
+                   'm1': 2.0, 'm2': 3.0, 'ratio': 1.5, 'h1': 14, 'h2': 16}
+        for code in ('C1', 'C2', 'C3', 'C4', 'C6', 'C7', 'C8'):
+            with self.subTest(code=code):
+                phrase = texte('constat', code, donnees)
+                self.assertTrue(phrase.endswith('?'), phrase)
+                self.assertTrue(phrase.endswith(texte('constat', f'{code}.question', donnees)), phrase)
+        self.assertNotIn('?', texte('constat', 'C5', donnees))
+
 
 class RevueTests(Tableau):
+    """R2-034 — la tête de la Revue se lit d'un coup d'œil : « Cette semaine : 18 faites (15 la précédente). » (plus
+    « 4 tâches en 1 jour (précédente : 9) »)."""
     BASE = {'debut': date(2026, 11, 16), 'fin': date(2026, 11, 20), 'faites': 18, 'jours': 5, 'prec': 15,
             'oa': 3, 'e': 4, 'je': 5, 'pt': 14, 'pl': 18, 'non_travailles': 0, 'mode': 'pousser'}
 
     def test_complete(self):
         self.verifier([('revue', 'entete', self.BASE, 0,
-                        'Du lun. 16 au ven. 20 : 18 tâches en 5 jours (précédente : 15). '
-                        'Objectif atteint 3 jours sur 5 · essentiel 4 sur 5 · 14 des 18 gardées.')])
+                        'Cette semaine : 18 faites (15 la précédente). '
+                        'Essentiel 4 sur 5.')])
 
     def test_sans_semaine_precedente(self):
         d = dict(self.BASE, prec=None)
         self.verifier([('revue', 'entete', d, 0,
-                        'Du lun. 16 au ven. 20 : 18 tâches en 5 jours. '
-                        'Objectif atteint 3 jours sur 5 · essentiel 4 sur 5 · 14 des 18 gardées.')])
+                        'Cette semaine : 18 faites. '
+                        'Essentiel 4 sur 5.')])
 
     def test_libre_sans_objectif_atteint(self):
         d = dict(self.BASE, mode='libre', oa=None)
         self.verifier([('revue', 'entete', d, 0,
-                        'Du lun. 16 au ven. 20 : 18 tâches en 5 jours (précédente : 15). '
-                        'essentiel 4 sur 5 · 14 des 18 gardées.')])
+                        'Cette semaine : 18 faites (15 la précédente). '
+                        'Essentiel 4 sur 5.')])
 
     def test_parties_sans_objet_omises_et_accords(self):
         d = dict(self.BASE, faites=1, jours=1, oa=1, je=0, pl=0, prec=None, non_travailles=1)
         self.verifier([('revue', 'entete', d, 0,
-                        'Du lun. 16 au ven. 20 : 1 tâche en 1 jour. '
-                        'Objectif atteint 1 jour sur 1. Jour non travaillé : 1.')])
+                        'Cette semaine : 1 faite. Jour non travaillé : 1.')])
         d = dict(d, non_travailles=2)
         self.assertTrue(texte('revue', 'entete', d).endswith('Jours non travaillés : 2.'))
+
+    def test_semaine_deja_passee_garde_ses_dates(self):
+        """Une revue demandée pour une AUTRE semaine (`courante` faux) ne se dit jamais « cette semaine »."""
+        d = dict(self.BASE, courante=False)
+        self.verifier([('revue', 'entete', d, 0,
+                        'Du lun. 16 au ven. 20 : 18 faites (15 la précédente). '
+                        'Essentiel 4 sur 5.')])
+
+    def test_jamais_objectif_atteint_ni_gardees(self):
+        """R3-001, R3-003 (choix C-14, C-16) — la tête de la Revue ne dit ni « Objectif atteint X jours sur N » ni
+        « x des y gardées », quels que soient les nombres passés."""
+        rendu = texte('revue', 'entete', dict(self.BASE, oa=0, jours=1, pt=20, pl=24))
+        self.assertEqual(rendu, 'Cette semaine : 18 faites (15 la précédente). Essentiel 4 sur 5.')
 
     def test_semaine_courte(self):
         d = dict(self.BASE, semaine_courte=True)

@@ -39,22 +39,56 @@ import { fetchAllPages } from '../utils/fetchAllPages'
 // (`validateStatus`), donc le pont ne le voit pas ; il est aussitôt rejeté ici avec la même forme d'erreur
 // (`response`, `config`) que lisent `classerErreur`, la file hors ligne et les écrans. Nommé (`CODES_409`) ou
 // `idempotency_en_cours` (que le pont ne toaste pas non plus) : silence ; tout autre 409 : le même toast que le pont.
-// Toute autre erreur (400, 5xx, délai, réseau) suit le pont exactement comme avant. Jamais `suppressErrorToast`.
+// Un refus AU CHAMP que l'écran dit SOUS LE CHAMP (l'appelant passe `{ erreurSousLeChamp: true }` dans ses options)
+// suit la même voie, sans aucun toast : le message ne se dit qu'une fois, là où il faut agir. Trois statuts portent un
+// refus au champ (`apps/taches/entrees.py`) : le 400 (refus de FORME : nom trop long, adresse qui n'est pas https), le
+// 409 `state_conflict` (refus d'ÉTAT, `{champ: […], detail, code: "state_conflict"}` : nom déjà pris, agenda externe
+// injoignable / en doublon / au plafond, ★ déjà posées…) et le 404 `{champ: […], detail}` (un identifiant du corps qui
+// ne désigne rien). Les deux derniers, quand le corps nomme un champ, sont rendus à l'appelant SOUS LA FORME D'UN 400 DE
+// CHAMP (`response.status` 400, même corps ; le statut servi reste lisible dans `response.statutServeur`) : chaque écran
+// qui disait un 400 sous son champ dit aussi ceux-là, sans rien changer chez lui. Sans l'option, rien ne change. Toute
+// autre erreur (409 nommé ou sans champ, 5xx, délai, réseau) suit le pont exactement comme avant. Jamais
+// `suppressErrorToast` sur une écriture (il tairait aussi les 5xx).
 const garde409 = (statut) => (statut >= 200 && statut < 300) || statut === 409
+const garde409Et400 = (statut) => garde409(statut) || statut === 400 || statut === 404
 
-function refus409(reponse) {
-  const erreur = Object.assign(new Error('Request failed with status code 409'), {
+function refusResolu(reponse, { toaster }) {
+  const erreur = Object.assign(new Error(`Request failed with status code ${reponse.status}`), {
     name: 'AxiosError', code: 'ERR_BAD_REQUEST', isAxiosError: true, response: reponse, config: reponse.config,
   })
-  const code = reponse.data?.code
-  if (!CODES_409.includes(code) && code !== 'idempotency_en_cours') toastError(errorMessageFrom(erreur))
+  if (toaster) toastError(errorMessageFrom(erreur))
   return erreur
 }
 
+const nomme409 = (reponse) => CODES_409.includes(reponse.data?.code) || reponse.data?.code === 'idempotency_en_cours'
+
+// Clés que l'enveloppe d'erreur de l'ERP pose à la racine de tout refus (`core/exceptions.py`) : jamais un champ.
+const CLES_ENVELOPPE = new Set(['detail', 'code', 'error', 'lock_version', 'actuel'])
+/** Le `code` racine d'un refus d'ÉTAT au champ (`apps/taches/entrees.py::CODE_REFUS_ETAT`). */
+const CODE_REFUS_ETAT = 'state_conflict'
+
+/** Vrai quand le corps NOMME un champ (une clé hors enveloppe portant ses messages, ou `lignes: {n: {…}}`). */
+const nommeUnChamp = (corps) => Boolean(corps) && typeof corps === 'object'
+  && Object.entries(corps).some(([cle, valeur]) => !CLES_ENVELOPPE.has(cle)
+    && ((Array.isArray(valeur) && valeur.length > 0) || (valeur !== null && typeof valeur === 'object' && !Array.isArray(valeur))))
+
+/** Un refus d'ÉTAT au champ (409 `state_conflict`, ou sans `code`) ou un 404 au champ : jamais un 409 nommé. */
+function refusAuChamp(reponse) {
+  const corps = reponse?.data
+  if (!nommeUnChamp(corps)) return false
+  if (reponse.status === 404) return true
+  return reponse.status === 409 && (corps.code === undefined || corps.code === CODE_REFUS_ETAT)
+}
+
+/** La réponse d'un refus au champ rendue SOUS LA FORME D'UN 400 de champ (même corps, `statutServeur` = le vrai). */
+const commeUn400 = (reponse) => ({ ...reponse, status: 400, statutServeur: reponse.status })
+
 function appeler(verbe, args) {
+  const config = args[verbe === 'get' || verbe === 'delete' ? 1 : 2]
+  const sousLeChamp = Boolean(config?.erreurSousLeChamp)
   const defauts = apiErp.defaults
   const regle = defauts?.validateStatus
-  if (defauts) defauts.validateStatus = garde409
+  if (defauts) defauts.validateStatus = sousLeChamp ? garde409Et400 : garde409
   let promesse
   try {
     promesse = apiErp[verbe](...args)
@@ -62,7 +96,10 @@ function appeler(verbe, args) {
     if (defauts) defauts.validateStatus = regle // l'instance de l'ERP retrouve sa règle dès l'appel parti
   }
   return Promise.resolve(promesse).then((reponse) => {
-    if (reponse?.status === 409) throw refus409(reponse)
+    if (sousLeChamp && refusAuChamp(reponse)) throw refusResolu(commeUn400(reponse), { toaster: false })
+    if (reponse?.status === 409) throw refusResolu(reponse, { toaster: !nomme409(reponse) })
+    // 400 de forme, ou 404 sans champ (le pont ne toaste jamais un 404 non plus) : dits par l'écran
+    if (sousLeChamp && (reponse?.status === 400 || reponse?.status === 404)) throw refusResolu(reponse, { toaster: false })
     return reponse
   })
 }
@@ -86,12 +123,22 @@ export function nouvelleCle() {
  *  le serveur la range `source='assistant'` (A5). Jamais `X-Taqinor-Assistant`, qui masquerait la réponse. */
 export const ENTETE_CARTE_ASSISTANT = 'X-Taqinor-Carte-Assistant'
 
+/** `{ erreurSousLeChamp: true }` de l'appelant : son refus au champ (400, ou 409 au champ) ne passe pas par le toast
+ *  global (voir `appeler`). */
+const sousLeChamp = (options) => (options?.erreurSousLeChamp ? { erreurSousLeChamp: true } : undefined)
+
+/** R3-025 — `{ suppressErrorToast: true }` d'un appelant qui DIT déjà l'échec d'une lecture à l'écran (Aujourd'hui :
+ *  le bandeau « Pas à jour · Réessayer », la liste gardée) : le toast global de l'ERP ne le redit pas. Une lecture
+ *  seulement ; une écriture garde le pont (ou `erreurSousLeChamp` pour un refus au champ). */
+const silencieux = (options) => (options?.suppressErrorToast ? { suppressErrorToast: true } : {})
+
 const avecCle = (options = {}) => {
   const { cle, carteAssistant } = options ?? {}
   const headers = {}
   if (cle !== null) headers['Idempotency-Key'] = cle || nouvelleCle()
   if (carteAssistant) headers[ENTETE_CARTE_ASSISTANT] = '1'
-  return Object.keys(headers).length > 0 ? { headers } : undefined
+  const config = { ...(Object.keys(headers).length > 0 ? { headers } : {}), ...sousLeChamp(options) }
+  return Object.keys(config).length > 0 ? config : undefined
 }
 
 const avecProprietaire = (corps, options = {}) => {
@@ -103,13 +150,14 @@ const avecProprietaire = (corps, options = {}) => {
 const bearer = (jeton) => ({ headers: { Authorization: `Bearer ${jeton}` } })
 
 /** Codes 409 portés par `erreurs.json` : jamais devinés sur le texte. */
-export const CODES_409 = ['conflit_version', 'nom_pris', 'proposition_expiree', 'autre_compte', 'deja_lie']
+export const CODES_409 = ['conflit_version', 'nom_pris', 'proposition_expiree', 'autre_compte', 'deja_lie', 'effacement_occupe']
 
 /**
  * Classe une erreur axios en une forme unique :
  *   { statut, code, message, champs, lockVersion, actuel }
  * `code` ∈ CODES_409 pour un 409 reconnu, `'idempotency_en_cours'` (l'écran
- * réessaie seul avec la même clé), `'validation'` (400), `'introuvable'`,
+ * réessaie seul avec la même clé), `'validation'` (400 — dont, pour un appel
+ * `erreurSousLeChamp`, les 409/404 au champ rendus sous sa forme), `'introuvable'`,
  * `'limite'` (429), `'reseau'` (aucune réponse) ou `'autre'`. `champs` = le corps
  * d'un 400 (`{champ: [messages]}`, ou `{lignes: {n: {champ: […]}}}`).
  */
@@ -142,7 +190,7 @@ export const estAutreCompte = (err) => classerErreur(err).code === 'autre_compte
 
 // ── 3.1 Journée, rituels, agenda ──────────────────────────────────────────────
 
-export const lireAujourdhui = (params) => api.get('/taches/aujourdhui/', { params })
+export const lireAujourdhui = (params, options) => api.get('/taches/aujourdhui/', { params, ...silencieux(options) })
 export const lireAilleurs = () => api.get('/taches/aujourdhui/ailleurs/')
 export const lireBadge = () => api.get('/taches/badge/')
 export const marquerVu = (corps) => api.post('/taches/vu/', corps ?? {})
@@ -150,9 +198,13 @@ export const proposerJournee = (params) => api.get('/taches/journee/proposition/
 export const lirePriorites = (params) => api.get('/taches/journee/priorites/', { params })
 export const lirePoint = () => api.get('/taches/journee/point/')
 export const garderJournee = (corps, options) => api.post('/taches/journee/planifier/', corps, avecCle(options))
-export const marquerEssentiel = (corps) => api.post('/taches/journee/essentiel/', corps)
+export const marquerEssentiel = (corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post('/taches/journee/essentiel/', corps, ...[sousLeChamp(options)].filter(Boolean))
 export const alleger = (corps, options) => api.post('/taches/journee/alleger/', corps, avecCle(options))
-export const lireCloture = (params) => api.get('/taches/journee/cloture/', { params })
+// Critique serveur n° 7 — `{ erreurSousLeChamp: true }` : le bilan hors délai (409 au champ `jour`) se dit DANS la feuille,
+// sans toast ; sans l'option, le pont dit le `detail` du serveur.
+export const lireCloture = (params, options) => api.get('/taches/journee/cloture/', { params, ...sousLeChamp(options) })
 export const cloturerJournee = (corps, options) => api.post('/taches/journee/cloturer/', corps, avecCle(options))
 export const lireAgenda = (params) => api.get('/taches/agenda/', { params })
 export const rechercher = (params) => api.get('/taches/recherche/', { params })
@@ -165,7 +217,9 @@ export const capturer = (corps, jeton) => api.post('/taches/capture/', corps, be
 export const listerTaches = (params) => api.get('/taches/taches/', { params })
 export const creerTache = (corps, options) => api.post('/taches/taches/', corps, avecCle(options))
 export const lireTache = (id) => api.get(`/taches/taches/${id}/`)
-export const modifierTache = (id, corps) => api.patch(`/taches/taches/${id}/`, corps)
+export const modifierTache = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.patch(`/taches/taches/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const supprimerTache = (id) => api.delete(`/taches/taches/${id}/`)
 export const planifierTache = (id, corps, options) =>
   api.post(`/taches/taches/${id}/planifier/`, avecProprietaire(corps, options))
@@ -176,9 +230,13 @@ export const trancherTache = (id, corps) => api.post(`/taches/taches/${id}/tranc
 export const sauterTache = (id) => api.post(`/taches/taches/${id}/sauter/`, {})
 export const attendreTache = (id, corps) => api.post(`/taches/taches/${id}/attendre/`, corps)
 export const recevoirTache = (id) => api.post(`/taches/taches/${id}/recu/`, {})
-export const reordonnerTache = (id, corps) => api.post(`/taches/taches/${id}/reordonner/`, corps)
+export const reordonnerTache = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post(`/taches/taches/${id}/reordonner/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const restaurerTache = (id) => api.post(`/taches/taches/${id}/restaurer/`, {})
-export const poserRappel = (id, corps) => api.post(`/taches/taches/${id}/rappels/`, corps)
+export const poserRappel = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post(`/taches/taches/${id}/rappels/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const apercuChangement = (id, corps) => api.post(`/taches/taches/${id}/changement/apercu/`, corps)
 export const traiterLot = (corps, options) => api.post('/taches/taches/lot/', corps, avecCle(options))
 export const lierActivite = (corps, options) => api.post('/taches/taches/lier-activite/', corps, avecCle(options))
@@ -191,11 +249,15 @@ export const modifierPoint = (id, corps) => api.patch(`/taches/checklist/${id}/`
 export const retirerPoint = (id) => api.delete(`/taches/checklist/${id}/`)
 export const reordonnerPoint = (id, corps) => api.post(`/taches/checklist/${id}/reordonner/`, corps)
 export const listerEtiquettes = (params) => api.get('/taches/etiquettes/', { params })
-export const creerEtiquette = (corps) => api.post('/taches/etiquettes/', corps)
+export const creerEtiquette = (corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post('/taches/etiquettes/', corps, ...[sousLeChamp(options)].filter(Boolean))
 export const modifierEtiquette = (id, corps) => api.patch(`/taches/etiquettes/${id}/`, corps)
 export const supprimerEtiquette = (id) => api.delete(`/taches/etiquettes/${id}/`)
 export const listerVues = () => api.get('/taches/vues/')
-export const creerVue = (corps) => api.post('/taches/vues/', corps)
+export const creerVue = (corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post('/taches/vues/', corps, ...[sousLeChamp(options)].filter(Boolean))
 export const modifierVue = (id, corps) => api.patch(`/taches/vues/${id}/`, corps)
 export const supprimerVue = (id) => api.delete(`/taches/vues/${id}/`)
 export const listerSupprimees = () => api.get('/taches/supprimees/')
@@ -210,7 +272,9 @@ export const refuserSuggestion = (id) => api.post(`/taches/suggestions/${id}/ref
 export const listerProjets = (params) => api.get('/taches/projets/', { params })
 export const creerProjet = (corps, options) => api.post('/taches/projets/', corps, avecCle(options))
 export const lireProjet = (id) => api.get(`/taches/projets/${id}/`)
-export const modifierProjet = (id, corps) => api.patch(`/taches/projets/${id}/`, corps)
+export const modifierProjet = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.patch(`/taches/projets/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const supprimerProjet = (id) => api.delete(`/taches/projets/${id}/`)
 export const reordonnerProjet = (id, corps) => api.post(`/taches/projets/${id}/reordonner/`, corps)
 export const trierProjetsParPriorite = () => api.post('/taches/projets/trier-par-priorite/', {})
@@ -219,7 +283,9 @@ export const apercuPlanification = (id, corps) => api.post(`/taches/projets/${id
 export const planifierProjet = (id, corps, options) =>
   api.post(`/taches/projets/${id}/planification/`, corps, avecCle(options))
 export const decalerProjet = (id, corps, options) => api.post(`/taches/projets/${id}/decaler/`, corps, avecCle(options))
-export const terminerProjet = (id, corps) => api.post(`/taches/projets/${id}/terminer/`, corps)
+export const terminerProjet = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post(`/taches/projets/${id}/terminer/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const rouvrirProjet = (id) => api.post(`/taches/projets/${id}/rouvrir/`, {})
 export const restaurerProjet = (id) => api.post(`/taches/projets/${id}/restaurer/`, {})
 export const dupliquerProjet = (id, corps, options) =>
@@ -232,12 +298,16 @@ export const supprimerSection = (id) => api.delete(`/taches/sections/${id}/`)
 export const reordonnerSection = (id, corps) => api.post(`/taches/sections/${id}/reordonner/`, corps)
 export const listerModeles = (params) => api.get('/taches/modeles/', { params })
 export const lireModele = (id) => api.get(`/taches/modeles/${id}/`)
-export const renommerModele = (id, corps) => api.patch(`/taches/modeles/${id}/`, corps)
+export const renommerModele = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.patch(`/taches/modeles/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const supprimerModele = (id) => api.delete(`/taches/modeles/${id}/`)
 export const instancierModele = (id, corps, options) =>
   api.post(`/taches/modeles/${id}/instancier/`, corps, avecCle(options))
 export const lireRevue = (params) => api.get('/taches/revue/projets/', { params })
-export const deciderRevue = (projetId, corps) => api.put(`/taches/revue/projets/${projetId}/`, corps)
+export const deciderRevue = (projetId, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.put(`/taches/revue/projets/${projetId}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 
 // ── 3.4 Rythme, réglages, iPhone, données ─────────────────────────────────────
 
@@ -261,7 +331,9 @@ export const exporterMesDonnees = () => api.get('/taches/mes-donnees/')
 export const toutEffacer = (corps) => api.post('/taches/tout-effacer/', corps)
 export const listerAgendasExternes = () => api.get('/taches/agendas-externes/')
 export const ajouterAgendaExterne = (corps, options) => api.post('/taches/agendas-externes/', corps, avecCle(options))
-export const modifierAgendaExterne = (id, corps) => api.patch(`/taches/agendas-externes/${id}/`, corps)
+export const modifierAgendaExterne = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.patch(`/taches/agendas-externes/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const retirerAgendaExterne = (id) => api.delete(`/taches/agendas-externes/${id}/`)
 export const rafraichirAgendaExterne = (id) => api.post(`/taches/agendas-externes/${id}/rafraichir/`, {})
 

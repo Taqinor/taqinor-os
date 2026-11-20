@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles } from 'lucide-react'
-import { apercuPlanification, planifierProjet } from '../../../api/tachesApi'
+import { ChevronDown, Sparkles, X } from 'lucide-react'
+import { apercuPlanification, planifierProjet, planifierTache, saisieRapide } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
-import { aujourdhuiIso } from '../lib/textes'
-import { PRIORITES } from './LigneProjet'
+import { proposerAnnuler } from '../lib/gestes'
+import { accord, aujourdhuiIso, jourCourt } from '../lib/textes'
+import { ajouterJours } from '../ui/SelecteurQuand'
+import { PRIORITES, jourProjet } from './LigneProjet'
 
 /* ============================================================================
    TCH91 — « Planifier le projet » : un rituel en deux pas (`?planifier=1` sur l'écran Un projet).
@@ -53,6 +55,32 @@ function ecrireBrouillon(cle, data) {
   }
 }
 
+/**
+ * R4-27 — une première action se lit avec l'ANALYSEUR DE LA SAISIE (`saisie-rapide/` aperçu, rien n'est écrit) : le
+ * jour qu'elle nomme (« demain », « samedi », « dans 15 jours ») quitte le titre et devient son « Quand » — Aujourd'hui,
+ * Demain, ou un autre jour (`jour`, posé après la création : `planification/` ne connaît que ces deux mots). Le reste
+ * de la phrase reste tel quel. Rend `{ titre, quand, jour? }` ou `null` (aucun jour lu, hors ligne : l'action garde son
+ * texte, rien n'est perdu).
+ */
+async function lireAction(texte, aujourdhui) {
+  let ligne = null
+  try {
+    ligne = (await saisieRapide({ texte, apercu: true }, { cle: null, erreurSousLeChamp: true })).data?.lignes?.[0]
+  } catch {
+    return null // pas de lecture (réseau, refus) : l'action garde la phrase tapée
+  }
+  const jeton = (ligne?.jetons ?? []).find((j) => j.type === 'jour' && typeof j.valeur === 'string'
+    && texte.slice(j.debut, j.fin) === j.source)
+  if (!jeton) return null
+  const titre = `${texte.slice(0, jeton.debut)} ${texte.slice(jeton.fin)}`.replace(/\s+/g, ' ').trim()
+  if (!titre) return null // la phrase n'était qu'une date : elle reste le titre
+  const quand = jeton.valeur === aujourdhui ? 'aujourdhui' : jeton.valeur === ajouterJours(aujourdhui, 1) ? 'demain' : ''
+  return quand ? { titre, quand, jour: null } : { titre, quand: '', jour: jeton.valeur }
+}
+
+/** Le corps envoyé d'une action : `{ titre, quand }` (un autre jour lu part « sans jour », posé ensuite). */
+const actionServie = (a) => ({ titre: a.titre, quand: a.jour ? '' : quandServi(a.quand) })
+
 function Erreur({ id, texte }) {
   return texte ? <p id={id} className="ep-erreur" role="alert">{texte}</p> : null
 }
@@ -86,6 +114,7 @@ function PasUn({ etat, maj, erreurs, aujourdhui }) {
           onChange={(e) => maj({ echeance: e.target.value })}
           aria-invalid={erreurs.echeance ? 'true' : undefined} aria-describedby={erreurs.echeance ? 'pp-echeance-err' : undefined}
         />
+        {etat.echeance ? <p className="es-aide chiffres">{jourProjet(etat.echeance, aujourdhui)}</p> : null}
         <Erreur id="pp-echeance-err" texte={erreurs.echeance} />
       </div>
       <div className="ep-groupe">
@@ -104,27 +133,39 @@ function PasUn({ etat, maj, erreurs, aujourdhui }) {
   )
 }
 
+/** « 3 étapes · 0 tâche » : ce que l'aperçu a lu (une section sans nom = des tâches sans étape, non comptée comme étape). */
+function resumeDuPlan(sections) {
+  const etapes = sections.filter((s) => s.nom != null).length
+  const taches = sections.reduce((n, s) => n + s.taches.length, 0)
+  return `${accord(etapes, 'étape')} · ${accord(taches, 'tâche')}`
+}
+
 function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
   const jalons = (apercu?.sections ?? []).flatMap((s) => s.taches.filter((t) => t.jalon))
   return (
     <details className="ep-plus">
-      <summary>Plus</summary>
+      <summary>Plus<ChevronDown className="i i-16" aria-hidden="true" /></summary>
       <div className="ep-groupe">
         <label className="ep-etiquette" htmlFor="pp-etapes">Étapes</label>
+        <p className="es-aide" id="pp-etapes-aide">Une ligne par étape ; ses tâches dessous, en retrait ou avec un tiret.</p>
         <textarea id="pp-etapes" className="champ ep-zone" value={etat.texte} rows={4}
           onChange={(e) => maj({ texte: e.target.value })}
-          aria-invalid={erreurs.sections ? 'true' : undefined} aria-describedby={erreurs.sections ? 'pp-etapes-err' : undefined} />
+          aria-invalid={erreurs.sections ? 'true' : undefined}
+          aria-describedby={erreurs.sections ? 'pp-etapes-aide pp-etapes-err' : 'pp-etapes-aide'} />
         <Erreur id="pp-etapes-err" texte={erreurs.sections} />
         <button type="button" className="bouton second" disabled={occupe || !etat.texte.trim()} onClick={onApercu}>Lire la liste</button>
         {apercu ? (
-          <ul className="ep-apercu" aria-label="Étapes lues">
-            {apercu.sections.map((s) => (
-              <li key={s.nom}>
-                <b>{s.nom}</b>
-                <ul>{s.taches.map((t) => <li key={t.titre}>{t.titre}</li>)}</ul>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="ep-resume chiffres" role="status">{resumeDuPlan(apercu.sections)}</p>
+            <ul className="ep-apercu" aria-label="Étapes lues">
+              {apercu.sections.map((s, i) => (
+                <li key={`${s.nom}:${i}`}>
+                  <b>{s.nom ?? 'Sans étape'}</b>
+                  {s.taches.length > 0 ? <ul>{s.taches.map((t, j) => <li key={`${t.titre}:${j}`}>{t.titre}</li>)}</ul> : null}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
         {jalons.length > 0 ? (
           <div className="ep-jalons">
@@ -139,7 +180,7 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
           aria-invalid={erreurs.risque ? 'true' : undefined} aria-describedby={erreurs.risque ? 'pp-risque-err' : undefined} />
         <Erreur id="pp-risque-err" texte={erreurs.risque} />
         <button type="button" className="bouton second" disabled={!etat.risque.trim()}
-          onClick={() => maj({ actions: [...etat.actions, { titre: etat.risque.trim(), quand: '' }], risque: '' })}>
+          onClick={() => maj({ actions: [...etat.actions, { titre: `Parer : ${etat.risque.trim()}`, quand: '' }], risque: '' })}>
           En faire une tâche
         </button>
       </div>
@@ -147,13 +188,13 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
   )
 }
 
-function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe }) {
-  const [nouvelle, setNouvelle] = useState('')
+function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe, onAjouter, aujourdhui }) {
+  // le champ « Nouvelle action » vit dans la saisie du rituel (`etat.nouvelle`) : Terminer, Précédent et le brouillon le
+  // retrouvent, une frappe laissée sans Entrée ne se perd jamais
+  const nouvelle = etat.nouvelle
   const ajouter = (e) => {
     e.preventDefault()
-    if (!nouvelle.trim()) return
-    maj({ actions: [...etat.actions, { titre: nouvelle.trim(), quand: '' }] })
-    setNouvelle('')
+    onAjouter()
   }
   const ouvrirCopilote = () => window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, {
     detail: { ecran: window.location.pathname, question: QUESTION_COPILOTE, envoyer: true, projet_id: projet.id },
@@ -164,21 +205,31 @@ function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe }) {
         <h3 className="ep-etiquette">Premières actions</h3>
         {etat.actions.map((a, i) => (
           <div key={`${a.titre}:${i}`} className="ep-action">
-            <span className="ep-action-titre">{a.titre}</span>
+            <div className="ep-action-tete">
+              <span className="ep-action-titre">{a.titre}</span>
+              <button type="button" className="ep-action-retirer" aria-label={`Retirer « ${a.titre} »`}
+                onClick={() => maj({ actions: etat.actions.filter((_, j) => j !== i) })}>
+                <X className="i i-16" aria-hidden="true" />
+              </button>
+            </div>
             <div className="puces" role="radiogroup" aria-label={`Quand : ${a.titre}`}>
               {QUAND.map(([code, libelle]) => (
-                <button key={code} type="button" className="puce" role="radio" aria-checked={quandServi(a.quand) === code}
-                  onClick={() => maj({ actions: etat.actions.map((x, j) => (j === i ? { ...x, quand: code } : x)) })}>
+                <button key={code} type="button" className="puce" role="radio" aria-checked={!a.jour && quandServi(a.quand) === code}
+                  onClick={() => maj({ actions: etat.actions.map((x, j) => (j === i ? { ...x, quand: code, jour: null } : x)) })}>
                   {libelle}
                 </button>
               ))}
+              {/* R4-27 — un autre jour lu dans la phrase (« samedi ») : sa puce, choisie */}
+              {a.jour ? (
+                <button type="button" className="puce chiffres" role="radio" aria-checked>{jourCourt(a.jour, aujourdhui)}</button>
+              ) : null}
             </div>
           </div>
         ))}
         <Erreur id="pp-actions-err" texte={erreurs.actions} />
         <form className="ep-ajout-action" onSubmit={ajouter} noValidate>
           <label className="sr" htmlFor="pp-nouvelle">Nouvelle action</label>
-          <input id="pp-nouvelle" className="champ" value={nouvelle} onChange={(e) => setNouvelle(e.target.value)} />
+          <input id="pp-nouvelle" className="champ" value={nouvelle} onChange={(e) => maj({ nouvelle: e.target.value })} />
           <button type="submit" className="bouton second" disabled={!nouvelle.trim()}>Ajouter</button>
         </form>
         {projet.confidentiel ? null : (
@@ -192,7 +243,7 @@ function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe }) {
   )
 }
 
-const VIDE = { pas: 1, priorite: 2, objectif: '', echeance: '', actions: [], texte: '', risque: '' }
+const VIDE = { pas: 1, priorite: 2, objectif: '', echeance: '', actions: [], nouvelle: '', texte: '', risque: '' }
 
 export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhui = aujourdhuiIso() }) {
   const cle = CLE_BROUILLON(projet.id)
@@ -201,18 +252,30 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
   const [erreurs, setErreurs] = useState({})
   const [occupe, setOccupe] = useState(false)
   const modifie = useRef(false)
+  // R4-27 — la DERNIÈRE saisie (lue après une lecture d'action revenue) et les lectures encore en vol
+  const etatRef = useRef(etat)
+  useEffect(() => { etatRef.current = etat })
+  const lectures = useRef(new Set())
+  const numero = useRef(0)
 
-  const maj = (suite) => {
+  /** R4-27 — une écriture de la saisie : la même fonction pure pour l'écran et pour `etatRef` (lu par « Terminer »
+   *  aussitôt une lecture revenue, avant même le rendu suivant). */
+  const poser = (changer) => {
     modifie.current = true
+    etatRef.current = changer(etatRef.current)
+    setEtat(changer)
+  }
+  const maj = (suite) => {
     if (suite.texte !== undefined) setApercu(null)
-    setEtat((e) => ({ ...e, ...suite }))
+    poser((e) => ({ ...e, ...suite }))
   }
 
   // brouillon gardé : écrit peu après la dernière frappe, vidé à la déconnexion
+  const minuteur = useRef(null)
   useEffect(() => {
     if (!modifie.current) return undefined
-    const minuteur = setTimeout(() => ecrireBrouillon(cle, etat), DELAI_ECRITURE_MS)
-    return () => clearTimeout(minuteur)
+    minuteur.current = setTimeout(() => ecrireBrouillon(cle, etat), DELAI_ECRITURE_MS)
+    return () => clearTimeout(minuteur.current)
   }, [cle, etat])
   useEffect(() => {
     const vider = () => ecrireBrouillon(cle, null)
@@ -220,10 +283,51 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
     return () => window.removeEventListener('taqinor:auth-logout', vider)
   }, [cle])
 
+  /** R4-27 — l'action part TOUT DE SUITE avec la phrase tapée ; sa lecture (jour lu, titre sans le jour) la remplace
+   *  au retour, sur la valeur COURANTE (jamais une copie d'avant la lecture). Sans argument : le texte COURANT du
+   *  champ « Nouvelle action » (Entrée, « Ajouter », et tout bouton qui quitte l'étape : une frappe ne se perd jamais). */
+  const ajouterAction = () => {
+    const texte = etatRef.current.nouvelle.trim()
+    if (!texte) return
+    numero.current += 1
+    const cleAction = `a${numero.current}`
+    poser((e) => ({ ...e, actions: [...e.actions, { titre: texte, quand: '', cle: cleAction }], nouvelle: '' }))
+    const lecture = lireAction(texte, aujourdhui).then((lue) => {
+      if (lue) poser((e) => ({ ...e, actions: e.actions.map((a) => (a.cle === cleAction && a.titre === texte ? { ...a, ...lue } : a)) }))
+    })
+    lectures.current.add(lecture)
+    lecture.finally(() => lectures.current.delete(lecture))
+  }
+
+  /** R4-27 — après la création, les actions à un AUTRE jour lu (« samedi ») y sont posées (`planifier/`) ; la tâche
+   *  créée est retrouvée à sa place (les tâches des étapes d'abord, puis les actions, dans l'ordre), sinon par son
+   *  titre. Un jour qui n'a pas pu être posé est DIT ; la tâche, elle, existe. Rend les `creees` à jour. */
+  const poserLesJours = async (data, actions, sections) => {
+    const creees = [...(data?.creees ?? [])]
+    const avant = sections.reduce((n, s) => n + (s.taches?.length ?? 0), 0)
+    for (const [i, action] of actions.entries()) {
+      if (!action.jour) continue
+      let rang = avant + i
+      if (creees[rang]?.titre !== action.titre) rang = creees.findIndex((c) => c?.titre === action.titre)
+      const tache = creees[rang]
+      if (!tache) continue
+      try {
+        const { data: ecrite } = await planifierTache(tache.id, {
+          jour_prevu: action.jour, moment: '', heure_debut: null, quelque_jour: false, lock_version: tache.lock_version,
+        })
+        creees[rang] = { ...tache, ...(ecrite?.tache ?? {}) }
+      } catch (err) {
+        proposerAnnuler({ message: `« ${action.titre} » créée sans jour : ${frenchError(err)}` })
+      }
+    }
+    return creees
+  }
+
   const lireListe = async () => {
     setOccupe(true)
     try {
-      const { data } = await apercuPlanification(projet.id, { texte: etat.texte })
+      // ce champ lit des ÉTAPES (R2-062) : une ligne non indentée = une étape, sans « : » à taper
+      const { data } = await apercuPlanification(projet.id, { texte: etat.texte, mode: 'etapes' })
       setApercu(data)
       setErreurs((e) => ({ ...e, sections: '' }))
       return data
@@ -239,23 +343,31 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
     setOccupe(true)
     setErreurs({})
     try {
+      ajouterAction() // le texte resté dans « Nouvelle action » est une action, comme si Entrée l'avait prise
+      // R4-27 — une action dont la lecture est encore en vol : on l'attend (jamais « … demain » dans un titre)
+      await Promise.all([...lectures.current])
+      const saisi = etatRef.current
       let lue = apercu
-      if (etat.texte.trim() && !lue) {
+      if (saisi.texte.trim() && !lue) {
         lue = await lireListe()
         if (!lue) return
       }
       const corps = {
-        priorite: etat.priorite,
-        objectif: etat.objectif,
-        echeance: etat.echeance || null,
-        risque: etat.risque,
+        priorite: saisi.priorite,
+        objectif: saisi.objectif,
+        echeance: saisi.echeance || null,
+        risque: saisi.risque,
         sections: lue?.sections ?? [],
-        actions: etat.actions.map((a) => ({ ...a, quand: quandServi(a.quand) })),
+        actions: saisi.actions.map(actionServie),
         lock_version: projet.lock_version,
       }
       const { data } = await planifierProjet(projet.id, corps)
+      // le projet est planifié : le brouillon part, et l'écriture différée d'une frappe récente ne le ressuscite pas
+      clearTimeout(minuteur.current)
+      modifie.current = false
       ecrireBrouillon(cle, null)
-      onTermine?.(data)
+      const creees = saisi.actions.some((a) => a.jour) ? await poserLesJours(data, saisi.actions, corps.sections) : null
+      onTermine?.(creees ? { ...data, creees } : data)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
       if (champs && typeof champs === 'object') {
@@ -279,12 +391,18 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
         </div>
         <button type="button" className="bouton discret" onClick={onPasser}>Passer</button>
       </header>
+      <ol className="ep-pas" aria-label="Étapes du rituel">
+        <li className={etat.pas >= 1 ? 'fait' : ''} aria-current={etat.pas === 1 ? 'step' : undefined}><i /></li>
+        <li className={etat.pas >= 2 ? 'fait' : ''} aria-current={etat.pas === 2 ? 'step' : undefined}><i /></li>
+      </ol>
       {erreurs.general ? <p className="ep-erreur" role="alert">{erreurs.general}</p> : null}
       {etat.pas === 1
         ? <PasUn etat={etat} maj={maj} erreurs={erreurs} aujourdhui={aujourdhui} />
-        : <PasDeux etat={etat} maj={maj} erreurs={erreurs} projet={projet} apercu={apercu} onApercu={lireListe} occupe={occupe} />}
-      <div className="carte-actions ep-planifier-pied">
-        {etat.pas === 2 ? <button type="button" className="bouton second" onClick={() => maj({ pas: 1 })}>Précédent</button> : null}
+        : <PasDeux etat={etat} maj={maj} erreurs={erreurs} projet={projet} apercu={apercu} onApercu={lireListe} occupe={occupe}
+          onAjouter={ajouterAction} aujourdhui={aujourdhui} />}
+      {/* R3-128 — au pas 1 le pied suit le contenu (jamais collé au-dessus des trois priorités) ; au pas 2, long, il reste en bas */}
+      <div className={etat.pas === 1 ? 'carte-actions ep-planifier-pied pas-un' : 'carte-actions ep-planifier-pied'}>
+        {etat.pas === 2 ? <button type="button" className="bouton second" onClick={() => { ajouterAction(); maj({ pas: 1 }) }}>Précédent</button> : null}
         {etat.pas === 1
           ? <button type="button" className="bouton plein" onClick={() => maj({ pas: 2 })}>Suivant</button>
           : <button type="button" className="bouton plein" disabled={occupe} onClick={terminer}>Terminer</button>}

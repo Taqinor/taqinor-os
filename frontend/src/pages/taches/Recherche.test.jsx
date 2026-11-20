@@ -1,9 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
 import Recherche from './Recherche'
 import Supprimees from './Supprimees'
@@ -27,7 +27,8 @@ const projetsListe = exempleContrat('taches', 'projets_liste')
 const AUJOURD = '2026-11-17'
 const erreurHttp = (data, status) => Object.assign(new Error('http'), { response: { status, data } })
 
-const item = (id, titre, plus = {}) => ({ ...recherche.taches[0], id, titre, ...plus })
+// une autre tâche que la 20 du contrat (qui porte une note) n'a pas de note : `a_notes` faux par défaut
+const item = (id, titre, plus = {}) => ({ ...recherche.taches[0], a_notes: false, id, titre, ...plus })
 const MIXTE = {
   projets: recherche.projets,
   taches: [
@@ -91,7 +92,7 @@ describe('TCH87 — Recherche', () => {
     const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (2)' })
     expect([...ouvertes.querySelectorAll('.titre b.es-trouve')].map((b) => b.textContent)).toEqual(['devis', 'Devis'])
     const metas = [...ouvertes.querySelectorAll('.meta')].map((m) => [...m.children].map((e) => e.textContent))
-    expect(metas).toEqual([['À trier', "Suggéré par l'ERP"], ['En réserve', 'Ventes']])
+    expect(metas).toEqual([['À trier', "Suggéré par l'ERP"], ['Plus tard', 'Ventes']])
   })
 
   it('rien pour « {q} » : la phrase, sans groupes', async () => {
@@ -127,16 +128,192 @@ describe('TCH87 — Recherche', () => {
     expect(await screen.findByRole('region', { name: 'Faites (1)' })).toBeInTheDocument()
   })
 
-  it('Projet ▾ : le sélecteur choisit le projet, la puce le dit, un 2e toucher l\'enlève', async () => {
+  it('Projet : le sélecteur choisit le projet, la puce le dit, un 2e toucher l\'enlève', async () => {
     const user = userEvent.setup()
     monter()
     await screen.findByRole('region', { name: 'Ouvertes (2)' })
-    await user.click(screen.getByRole('button', { name: 'Projet ▾' }))
+    await user.click(screen.getByRole('button', { name: 'Projet' }))
     await user.click(await screen.findByRole('option', { name: 'Ventes' }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ projet: 3 })))
     expect(await screen.findByRole('button', { name: 'Projet : Ventes ×' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Projet : Ventes ×' }))
-    expect(await screen.findByRole('button', { name: 'Projet ▾' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Projet' })).toBeInTheDocument()
+  })
+
+  it('R2-124 — « Faites cette semaine » (puce visible) : les faites depuis lundi, par jour, le plus récent en haut, compte par jour', async () => {
+    const user = userEvent.setup()
+    const faite = (id, titre, faitLe) => item(id, titre, { statut: 'fait', fait_le: faitLe, jour_prevu: null, heure_debut: null })
+    // le serveur sert la plus récemment faite d'abord (`tri` fait_le par défaut sous `periode=faites_semaine`)
+    const semaine = [
+      faite(40, 'Rappeler Lydec', '2026-11-19T16:10:00Z'), faite(41, 'Devis Settat', '2026-11-19T09:05:00Z'),
+      faite(42, 'Timbres', '2026-11-18T11:00:00Z'), faite(43, 'Dossier subvention', '2026-11-17T08:30:00Z'),
+    ]
+    api.listerTaches.mockResolvedValue({ data: { results: semaine, count: 4, next: null } })
+    render(<MemoryRouter initialEntries={['/taches/recherche']}><Recherche aujourdhui="2026-11-19" /></MemoryRouter>)
+    // visible sans déplier « Plus de filtres » : Aujourd'hui → loupe → cette puce
+    const puce = within(screen.getByLabelText('Filtres')).getByRole('checkbox', { name: 'Faites cette semaine' })
+    await user.click(puce)
+    await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'faites_semaine' })))
+    expect(puce).toHaveAttribute('aria-checked', 'true')
+    const regions = await screen.findAllByRole('region')
+    expect(regions.map((r) => r.getAttribute('aria-label'))).toEqual(["Aujourd'hui (2)", 'Hier (1)', 'mar. 17 (1)'])
+    expect(within(regions[0]).getAllByRole('listitem').map((l) => l.textContent)).toEqual([
+      expect.stringContaining('Rappeler Lydec'), expect.stringContaining('Devis Settat')])
+    expect(screen.getByText('4 faites depuis lundi')).toHaveClass('es-sous')
+    expect(screen.queryByRole('region', { name: /Ouvertes/ })).toBeNull()
+    // un 2e toucher la retire : retour à la recherche ordinaire, rien demandé sans mot
+    await user.click(puce)
+    expect(puce).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('R3-093 — « Faites cette semaine » dit le `total` servi et range les activités ERP closes dans leur jour', async () => {
+    // l'enveloppe du contrat L1 (`faites_semaine.json`) : 1 tâche faite mar. 17, 1 activité close lun. 16, total 2
+    api.listerTaches.mockResolvedValue(reponseContrat('taches', 'faites_semaine'))
+    render(<MemoryRouter initialEntries={['/taches/recherche?periode=faites_semaine']}><Recherche aujourdhui="2026-11-19" /></MemoryRouter>)
+    expect(await screen.findByText('2 faites depuis lundi')).toHaveClass('es-sous')
+    const regions = await screen.findAllByRole('region')
+    expect(regions.map((r) => r.getAttribute('aria-label'))).toEqual(['mar. 17 (1)', 'lun. 16 (1)'])
+    expect(within(regions[1]).getByRole('listitem')).toHaveTextContent('Rappeler M. AlamiActivité ERP')
+    // la liste reste lue en entier : la page suivante est demandée quand `next` existe (le total vient de la page 1)
+    expect(api.listerToutesLesTaches).not.toHaveBeenCalled()
+  })
+
+  it('R3-093 — un mot tapé ne garde que les activités qui le portent ; le total devient ce qui est montré', async () => {
+    // le serveur filtre les tâches par mots (aucune ici) ; l'activité « Rappeler M. Alami » porte « alami »
+    const enveloppe = reponseContrat('taches', 'faites_semaine')
+    api.listerTaches.mockResolvedValue({ data: { ...enveloppe.data, results: [], count: 0 } })
+    const { unmount } = render(<MemoryRouter initialEntries={['/taches/recherche?periode=faites_semaine&q=alami']}><Recherche aujourdhui="2026-11-19" /></MemoryRouter>)
+    expect(await screen.findByRole('region', { name: 'lun. 16 (1)' })).toBeInTheDocument()
+    expect(screen.getByText('1 faite depuis lundi')).toBeInTheDocument()
+    unmount()
+    render(<MemoryRouter initialEntries={['/taches/recherche?periode=faites_semaine&q=zzqxw']}><Recherche aujourdhui="2026-11-19" /></MemoryRouter>)
+    expect(await screen.findByText('Rien pour « zzqxw »')).toBeInTheDocument()
+    expect(screen.queryByText(/Rappeler M\. Alami/)).toBeNull()
+  })
+
+  it('R2-124 — l\'adresse garde la vue (`?periode=faites_semaine`) ; rien de fait : la phrase le dit', async () => {
+    api.listerTaches.mockResolvedValue({ data: { results: [], count: 0, next: null } })
+    monter('/taches/recherche?periode=faites_semaine')
+    expect(await screen.findByText('Rien de fait depuis lundi')).toBeInTheDocument()
+    expect(api.listerTaches).toHaveBeenCalledWith(expect.objectContaining({ periode: 'faites_semaine' }))
+    expect(screen.getByRole('checkbox', { name: 'Faites cette semaine' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('R2-129 — le curseur est dans le champ à l\'ouverture : on tape directement', async () => {
+    monter('/taches/recherche')
+    const champ = await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })
+    await waitFor(() => expect(champ).toHaveFocus()) // pris APRÈS le focus que l'ERP pose sur le contenu à chaque navigation
+  })
+
+  it('R2-129 — si l\'ERP déplace le focus sur la zone de contenu juste après l\'ouverture, le champ le reprend', async () => {
+    const contenu = document.createElement('main')
+    contenu.id = 'contenu'
+    contenu.tabIndex = -1
+    document.body.appendChild(contenu)
+    try {
+      monter('/taches/recherche')
+      const champ = await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })
+      await waitFor(() => expect(champ).toHaveFocus())
+      contenu.focus()
+      expect(champ).toHaveFocus()
+    } finally { contenu.remove() }
+  })
+
+  it('R2-129 — une croix à nous efface la recherche et rend le curseur au champ ; absente quand le champ est vide', async () => {
+    const user = userEvent.setup()
+    monter('/taches/recherche')
+    const champ = await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })
+    expect(screen.queryByRole('button', { name: 'Effacer la recherche' })).toBeNull()
+    await user.type(champ, 'devis')
+    await user.click(screen.getByRole('button', { name: 'Effacer la recherche' }))
+    expect(champ).toHaveValue('')
+    expect(champ).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Effacer la recherche' })).toBeNull()
+  })
+
+  it('R2-129 — une faute de frappe trouve quand même : « fourniseur » rend « Appeler le fournisseur », dit pourquoi', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
+    api.listerToutesLesTaches.mockResolvedValue([
+      item(60, 'Appeler le fournisseur'), item(61, 'Déclaration TVA'), item(62, 'Commander les panneaux', { statut: 'fait' }),
+    ])
+    monter('/taches/recherche?q=fourniseur')
+    const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (1)' })
+    expect(within(ouvertes).getByText('Appeler le fournisseur')).toBeInTheDocument()
+    expect(screen.getByText('Rien de tel pour « fourniseur » : voici ce qui s\'en approche.')).toBeInTheDocument()
+    expect(screen.queryByText('Rien pour « fourniseur »')).toBeNull()
+  })
+
+  it('R2-129 — la tolérance ignore les accents et ne devine pas au hasard : deux fautes ou un mot trop court ne trouvent rien', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
+    api.listerToutesLesTaches.mockResolvedValue([item(70, 'Déclaration TVA'), item(71, 'Appeler le fournisseur')])
+    monter('/taches/recherche?q=declaraton')
+    expect(await screen.findByRole('region', { name: 'Ouvertes (1)' })).toHaveTextContent('Déclaration TVA')
+    cleanup()
+    monter('/taches/recherche?q=fornisseurs')
+    expect(await screen.findByText('Rien pour « fornisseurs »')).toBeInTheDocument()
+    cleanup()
+    monter('/taches/recherche?q=tba')
+    expect(await screen.findByText('Rien pour « tba »')).toBeInTheDocument()
+  })
+
+  it('R2-129 — rien de trouvé : un pictogramme au-dessus de la phrase ; les filtres n\'ont plus de ▾ en texte', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
+    const { container } = monter('/taches/recherche?q=zzz')
+    expect(await screen.findByText('Rien pour « zzz »')).toBeInTheDocument()
+    expect(container.querySelector('.vide-etat .vide-picto svg')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Projet' }).textContent).not.toContain('▾')
+    expect(screen.getByRole('button', { name: 'Projet' }).querySelector('svg')).not.toBeNull()
+  })
+
+  it('R3-093 — ↓ depuis le champ va au premier résultat ; sans résultat il ne bouge pas', async () => {
+    const user = userEvent.setup()
+    monter()
+    const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    const champ = screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' })
+    expect(champ).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(ouvertes.querySelector('[data-ligne] .ligne-corps-bouton')).toHaveFocus()
+    await user.keyboard('j')
+    expect(ouvertes.querySelectorAll('[data-ligne] .ligne-corps-bouton')[1]).toHaveFocus()
+    cleanup()
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
+    monter('/taches/recherche?q=zzqxw')
+    await screen.findByText('Rien pour « zzqxw »')
+    const vide = screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' })
+    vide.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(vide).toHaveFocus()
+  })
+
+  it('R3-093 — « Ajoutées récemment » : les ouvertes, la dernière notée en haut, dix au plus, lues en entier', async () => {
+    const user = userEvent.setup()
+    const notees = Array.from({ length: 12 }, (_, i) => item(100 + i, `Tâche notée ${i + 1}`, { jour_prevu: null }))
+    api.listerToutesLesTaches.mockResolvedValue([...notees, item(200, 'Faite hier', { statut: 'fait' })])
+    monter('/taches/recherche')
+    await user.click(await screen.findByRole('checkbox', { name: 'Ajoutées récemment' }))
+    const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (10)' })
+    const titres = [...ouvertes.querySelectorAll('[data-ligne] .titre')].map((t) => t.textContent)
+    expect(titres[0]).toBe('Tâche notée 12')
+    expect(titres[9]).toBe('Tâche notée 3')
+    expect(screen.queryByText('Faite hier')).toBeNull()
+    expect(api.listerToutesLesTaches).toHaveBeenCalled()
+    expect(api.listerTaches).not.toHaveBeenCalled()
+  })
+
+  it('R2-036 — j et k parcourent les résultats ; dans le champ ce sont des lettres', async () => {
+    const user = userEvent.setup()
+    monter()
+    const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    const titres = () => [...ouvertes.querySelectorAll('[data-ligne] .ligne-corps-bouton')]
+    await user.type(screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' }), 'jk')
+    expect(screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' })).toHaveValue('devisjk')
+    await user.click(document.body)
+    await user.keyboard('j')
+    expect(titres()[0]).toHaveFocus()
+    await user.keyboard('j')
+    expect(titres()[1]).toHaveFocus()
+    await user.keyboard('k')
+    expect(titres()[0]).toHaveFocus()
   })
 
   it('filtres repliés : « Sans date » ne garde que les lignes sans jour ; Étiquette ▾ et le tri sont là', async () => {
@@ -150,17 +327,17 @@ describe('TCH87 — Recherche', () => {
     expect(within(screen.getByRole('region', { name: 'Ouvertes (1)' })).getByText('Déclaration TVA')).toBeInTheDocument()
     expect(await screen.findByRole('option', { name: 'magasin' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Tri' })).toHaveValue('manuel')
-    // « En réserve » est une vue du serveur
-    await user.click(screen.getByRole('checkbox', { name: 'En réserve' }))
+    // « Plus tard » est une vue du serveur
+    await user.click(screen.getByRole('checkbox', { name: 'Plus tard' }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ vue: 'quelque_jour' })))
   })
 
-  it('Raccord F2 — « Aujourd\'hui » et « 7 jours » passent par `periode` du serveur, le tri servi suit', async () => {
+  it('Raccord F2 — « Aujourd\'hui » et « 7 prochains jours » passent par `periode` du serveur, le tri servi suit', async () => {
     const user = userEvent.setup()
     monter()
     await screen.findByRole('region', { name: 'Ouvertes (2)' })
     await user.click(screen.getByRole('button', { name: 'Plus de filtres' }))
-    await user.click(screen.getByRole('checkbox', { name: '7 jours' }))
+    await user.click(screen.getByRole('checkbox', { name: '7 prochains jours' }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'devis', periode: 'semaine' })))
     await user.click(screen.getByRole('checkbox', { name: "Aujourd'hui" }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui' })))
@@ -267,12 +444,13 @@ describe('TCH87 — Supprimées récemment', () => {
     expect(lignes.every((l) => l.matches('.ligne.es-supprimee') && l.firstElementChild.matches('.case'))).toBe(true)
     const metas = lignes.map((l) => [...l.querySelector('.meta').children].map((e) => e.textContent))
     // supprimees.json : le projet le 15/11 à 10:00, « Timbres » (sans projet) le 16/11 à 11:00 — jour servi, heure du Maroc
-    expect(metas).toEqual([['Restaurer', 'dim. 15/11'], ['Restaurer', 'Sans projet', 'lun. 16/11'], ['Restaurer', 'Ventes', 'lun. 16/11']])
+    expect(metas).toEqual([['Restaurer', 'dim. 15 nov.'], ['Restaurer', 'Sans projet', 'lun. 16 nov.'], ['Restaurer', 'Ventes', 'lun. 16 nov.']])
     expect(lignes[1].querySelector('.meta > button')).toHaveClass('es-action')
     // Derniers gestes : l'heure du geste (le jour même) ou son jour, le message, puis « Annuler » en lien
-    const geste = within(screen.getByRole('region', { name: 'Derniers gestes' })).getByRole('listitem')
+    const geste = within(screen.getByRole('region', { name: 'Derniers gestes' })).getAllByRole('listitem')[0]
     expect(geste).toHaveClass('es-geste')
-    expect([...geste.children].map((e) => e.textContent)).toEqual(['09:20', 'Reportée à jeu. 19', 'Annuler'])
+    // R2-125 : la tâche touchée suit le message (`titre`, servi par `gestes/`)
+    expect([...geste.children].map((e) => e.textContent)).toEqual(['09:20', 'Reportée à jeu. 19 · Appeler le fournisseur', 'Annuler'])
   })
 
   it('Restaurer un projet : la ligne part ; 409 nom_pris : « Un projet actif porte déjà ce nom. » sous la ligne', async () => {
@@ -306,7 +484,7 @@ describe('TCH87 — Supprimées récemment', () => {
     monterSupprimees()
     const section = await screen.findByRole('region', { name: 'Derniers gestes' })
     expect(within(section).getByText('Déjà annulé')).toBeInTheDocument()
-    await user.click(within(section).getByRole('button', { name: 'Annuler : Reportée à jeu. 19' }))
+    await user.click(within(section).getByRole('button', { name: 'Annuler : Reportée à jeu. 19 · Appeler le fournisseur' }))
     await waitFor(() => expect(api.annulerGeste).toHaveBeenCalledWith(77))
     expect(await screen.findByRole('status')).toBeDefined()
   })

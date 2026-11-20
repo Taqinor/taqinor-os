@@ -22,7 +22,7 @@ from rest_framework import serializers
 
 from apps.taches.choix import DecisionRevue, Source, StatutProjet, StatutRappel, StatutTache
 from apps.taches.confidentialite import nom_pour
-from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.entrees import MESSAGE_DATE, introuvable, jour_dans_bornes, refus_etat
 from apps.taches.models.projets import ModeleProjet, Projet, RevueProjet, Section
 from apps.taches.models.taches import Tache
 from apps.taches.moteur.decalage import decaler, figer_modele, instancier
@@ -96,11 +96,13 @@ def _verrouiller_projet(user, pk, version=None):
 
 
 def _nom_pris(nom):
-    return serializers.ValidationError({'nom': [f'Un projet « {nom} » existe déjà.']})
+    """Un nom déjà pris est un refus d'ÉTAT (409, le corps garde `{"nom": […]}`) : le schéma ne peut pas dire
+    quels noms existent, et un 400 sur un corps conforme rougissait l'api-fuzz (r2)."""
+    return refus_etat({'nom': [f'Un projet « {nom} » existe déjà.']})
 
 
 def _etape_prise(nom):
-    return serializers.ValidationError({'nom': [f'Une étape « {nom} » existe déjà.']})
+    return refus_etat({'nom': [f'Une étape « {nom} » existe déjà.']})
 
 
 def _geste(user, type_, message, ops):
@@ -213,7 +215,7 @@ def _cible_de_deplacement(user, projet, projet_cible_id):
     cible = projets_de(user).filter(pk=projet_cible_id).exclude(pk=projet.pk).first() \
         if projet_cible_id is not None else None
     if cible is None:
-        raise serializers.ValidationError({'projet_cible_id': ['Projet inexistant.']})
+        raise introuvable({'projet_cible_id': ['Projet inexistant.']})  # id qui ne désigne rien : 404
     return cible
 
 
@@ -264,7 +266,7 @@ def terminer_projet(user, projet_id, *, issue, bilan='', taches_ouvertes='', pro
             return ResultatProjet(projet)
         ouvertes, suivent = _a_traiter(user, projet)
         if ouvertes and not taches_ouvertes:
-            raise serializers.ValidationError({'taches_ouvertes': [MESSAGE_REQUIS]})
+            raise refus_etat({'taches_ouvertes': [MESSAGE_REQUIS]})  # le projet a des ouvertes : état
         ops, deplacees = [], 0
         if ouvertes and taches_ouvertes == 'annuler':
             _abandonner(user, ouvertes, ops)
@@ -358,8 +360,8 @@ def creer_section(user, *, projet_id, nom, date_debut=None, date_fin=None):
     """Ajoute une étape à la fin du projet ; nom repris dans ce projet → 400."""
     with transaction.atomic():
         projet = projets_de(user).select_for_update().filter(pk=projet_id).first()
-        if projet is None:
-            raise serializers.ValidationError({'projet_id': ['Projet inexistant.']})
+        if projet is None:  # la ressource parente manque : 404, corps inchangé (règle d'IdInconnu404Mixin)
+            raise introuvable({'projet_id': ['Projet inexistant.']})
         if Section.objects.filter(projet=projet, nom_cle=cle_nom(nom)).exists():
             raise _etape_prise(nom)
         dernier = Section.objects.filter(projet=projet).aggregate(m=Max('rang'))['m']
@@ -592,7 +594,7 @@ class ResultatInstance:
 
 
 def _modele_pris(nom):
-    return serializers.ValidationError({'nom': [MESSAGE_MODELE_PRIS.format(nom=nom)]})
+    return refus_etat({'nom': [MESSAGE_MODELE_PRIS.format(nom=nom)]})
 
 
 def _decalages(contenu):
@@ -847,6 +849,13 @@ def _enregistrer_revue(user, projet, semaine, donnees, ops):
     return revue
 
 
+def _message_pause(projet):
+    """« Revue : {projet} en pause » (R3-008) — le message d'un geste est aussi servi à l'assistant : le nom passe
+    par `nom_pour(…, 'assistant')` : un projet confidentiel n'y est que son libellé de confidentialité."""
+    nom = nom_pour(projet, 'assistant')
+    return f'Revue : {nom} en pause' if nom else 'Revue : projet en pause'
+
+
 def decider_revue(user, projet_id, donnees):
     """La décision d'une carte de revue : `garder` ne touche à rien, `pause` met le projet en pause,
     `terminer` passe par `terminer_projet` (exige `issue`), `passe` saute. Un seul projet « de la semaine »."""
@@ -855,14 +864,15 @@ def decider_revue(user, projet_id, donnees):
         projet = _verrouiller_projet(user, projet_id)
         autre = _autre_focus(user, projet, semaine) if donnees.get('focus') else None
         if autre is not None:
-            raise serializers.ValidationError({'focus': [f'Déjà « {autre.nom} » cette semaine.']})
+            raise refus_etat({'focus': [f'Déjà « {autre.nom} » cette semaine.']})
         ops = []
         revue = _enregistrer_revue(user, projet, semaine, donnees, ops)
-        geste = None
+        geste, message = None, 'Revue enregistrée'
         if donnees['decision'] == DecisionRevue.PAUSE and projet.statut == StatutProjet.ACTIF:
             _ecrire('projet', projet, {'statut': StatutProjet.EN_PAUSE, 'statut_depuis': timezone.now()}, ops)
+            message = _message_pause(projet)
         elif donnees['decision'] == DecisionRevue.TERMINER:
             geste = terminer_projet(user, projet.pk, issue=donnees['issue'], taches_ouvertes='boite').geste
             projet.refresh_from_db()
-        geste = geste or _geste(user, 'revue', 'Revue enregistrée', ops)
+        geste = geste or _geste(user, 'revue', message, ops)
     return revue, projet, geste

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, ChevronUp, ClipboardPaste, CalendarDays, MapPin, Mic, Phone, RefreshCw } from 'lucide-react'
 import LigneTache from '../ui/LigneTache'
+import { proposerAnnuler } from '../lib/gestes'
 import { LigneOs } from '../ui/ChargementTardif'
 import { accord, heure, jourNomme } from '../lib/textes'
 
@@ -53,6 +54,8 @@ export function Ligne({ item, contexte, geste, extra = {}, reorg = false }) {
       {...extra}
     />
   )
+  // R3-021 — reportée mais gardée par son échéance du jour : la ligne reste (sa pastille le dit), jamais le fondu de départ
+  if (contexte.restes?.has(cle)) return <div className="ligne-reste" role="presentation">{ligne}</div>
   if (!reorganiser || !reorg || item.type !== 'tache') return ligne
   return (
     <div className="ligne-reorg" role="presentation">
@@ -226,7 +229,7 @@ export function Squelette() {
     </div>
   )
   return (
-    <div className="squelette" role="status" aria-label="Chargement">
+    <div className="squelette-liste" role="status" aria-label="Chargement">
       <div className="progression">
         <span className="segments" aria-hidden="true"><i /><i /><i /><i /><i /></span>
         <span className="os" style={{ width: 120, height: 12 }} />
@@ -249,8 +252,28 @@ export function BandeauPasAJour({ derniere, onReessayer }) {
   )
 }
 
+const AIDE_COLLER = 'Appuie longuement dans le champ puis Coller'
+
+/**
+ * R2-033 — « Coller mes listes » colle VRAIMENT : le presse-papiers est lu au toucher et son texte arrive dans la saisie
+ * (l'aperçu des listes s'ouvre aussitôt, par l'événement `taqinor:taches:saisir` et son `texte`). Lecture refusée ou
+ * presse-papiers vide : la saisie s'ouvre quand même, et un message dit le geste (« Appuie longuement… »).
+ */
+async function lirePressePapiers() {
+  const lire = typeof navigator !== 'undefined' ? navigator.clipboard?.readText : null
+  if (typeof lire !== 'function') return ''
+  const texte = await lire.call(navigator.clipboard).then((t) => t, () => '') // refus du navigateur = rien à coller
+  return typeof texte === 'string' ? texte : ''
+}
+
 /** Les deux écrans vides : aucune tâche (« Colle ou dicte tes listes ») ou rien de gardé (des tâches attendent dans À trier). */
 export function EtatVide({ donnees, onColler, onDicter, onTrier }) {
+  const coller = async () => {
+    const texte = await lirePressePapiers()
+    if (texte.trim()) { onColler({ texte }); return }
+    onColler({})
+    proposerAnnuler({ message: AIDE_COLLER })
+  }
   const attente = donnees.a_trier?.boite_reception ?? 0
   if (attente > 0) {
     return (
@@ -268,7 +291,8 @@ export function EtatVide({ donnees, onColler, onDicter, onTrier }) {
       {/* espace insécable avant « : » (maquette ecran-aujourdhui-vide.html) : le deux-points ne commence jamais une ligne */}
       <p className="vide-phrase">{'Colle ou dicte tes listes : je les range par projet.'}</p>
       <p className="vide-aide">Une liste par projet, une tâche par ligne.</p>
-      <button type="button" className="bouton plein" onClick={onColler}>Coller mes listes</button>
+      <button type="button" className="bouton plein" onClick={coller}>Coller mes listes</button>
+      <p className="vide-aide vide-plus">ou touche + pour une tâche</p>
       <button type="button" className="bouton discret" onClick={onDicter}>
         <Mic className="i" aria-hidden="true" />Dicter
       </button>

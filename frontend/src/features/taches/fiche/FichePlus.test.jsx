@@ -18,6 +18,8 @@ vi.mock('../../../api/tachesApi', async (importOriginal) => ({ ...(await importO
    en attente de…, jalon, lié à, confidentielle, sous-tâches, abandonner, supprimer (dialogue nommant).
    Réponses = échantillons du contrat. */
 
+/** Critique serveur n° 7 — la fiche écrit ses champs en disant ses refus SOUS le champ (`erreurSousLeChamp`). */
+const SOUS_LE_CHAMP = { erreurSousLeChamp: true }
 const tache = exempleContrat('taches', 'tache')
 const ecrite = exempleContrat('taches', 'tache_ecrite')
 const AUJOURDHUI = '2026-11-17'
@@ -68,13 +70,33 @@ describe('TCH85 — fiche → Plus', () => {
     expect([...places].sort((x, y) => x - y)).toEqual(places)
   })
 
+  it('R2-046 — un rappel ancré se lit sans « 0 jour avant l\'échéance » : jour prévu, jour même, n jours avant', async () => {
+    const user = userEvent.setup()
+    const rappels = [
+      { id: 1, jour: '2026-11-17', heure: '22:00', ancre: 'jour_prevu', decalage_jours: 0, statut: 'en_attente' },
+      { id: 2, jour: '2026-11-19', heure: '09:00', ancre: 'echeance', decalage_jours: 0, statut: 'en_attente' },
+      { id: 3, jour: '2026-11-18', heure: '18:00', ancre: 'echeance', decalage_jours: -1, statut: 'en_attente' },
+      { id: 4, jour: '2026-11-15', heure: '08:00', ancre: 'jour_prevu', decalage_jours: -2, statut: 'en_attente' },
+    ]
+    api.lireTache.mockResolvedValue({ data: { ...tache, rappels } })
+    monter()
+    await ouvrirPlus(user)
+    const lignes = [...document.querySelectorAll('.fiche-rappel-ligne')].map((p) => p.firstChild.textContent)
+    expect(lignes).toEqual([
+      'Le jour prévu à 22:00',
+      'Le jour même à 09:00',
+      "1 jour avant l'échéance à 18:00",
+      '2 jours avant le jour prévu à 08:00',
+    ])
+  })
+
   it('rappel : posé sur l\'échéance ; la question du titre (1er rappel) écrit PATCH reglages/', async () => {
     const user = userEvent.setup()
     api.poserRappel.mockResolvedValue({ data: { ...ecrite, question_titres: true, rappel: { jour: '2026-11-19', heure: '09:00' } } })
     monter()
     await ouvrirPlus(user)
     await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
-    await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: 0, heure: '09:00' }))
+    await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: 0, heure: '09:00' }, { erreurSousLeChamp: true }))
     const question = await screen.findByRole('group', { name: "Question sur l'écran verrouillé" })
     expect(question).toHaveTextContent('Montrer le titre sur l\'écran verrouillé ?')
     expect(question).toHaveTextContent('Sans réponse, l\'écran verrouillé n\'affiche que des nombres.')
@@ -90,9 +112,74 @@ describe('TCH85 — fiche → Plus', () => {
     await ouvrirPlus(user)
     await user.click(screen.getByRole('radio', { name: 'La veille' }))
     await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
-    await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: -1, heure: '09:00' }))
+    await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: -1, heure: '09:00' }, { erreurSousLeChamp: true }))
     await user.click(await screen.findByRole('button', { name: 'Non' }))
     await waitFor(() => expect(api.modifierReglages).toHaveBeenCalledWith({ titres_notifications: false }))
+  })
+
+  it('R4 couture — un refus du serveur se dit SOUS le champ du rappel, jamais en toast (l\'appel porte erreurSousLeChamp)', async () => {
+    const user = userEvent.setup()
+    api.poserRappel.mockRejectedValueOnce(erreurHttp({ heure: ['Heure attendue (HH:MM).'] }, 400))
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+    const bloc = screen.getByRole('region', { name: 'Rappel' })
+    expect(await within(bloc).findByText('Heure attendue (HH:MM).')).toHaveAttribute('role', 'alert')
+    expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: 0, heure: '09:00' }, { erreurSousLeChamp: true })
+    // un refus d'ÉTAT nommé `rappel` (plafond de 5 par tâche) se dit au même endroit, et se retire à la pose suivante
+    api.poserRappel.mockRejectedValueOnce(erreurHttp({ rappel: ['5 rappels au plus par tâche.'] }, 400))
+    await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+    expect(await within(bloc).findByText('5 rappels au plus par tâche.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+    await waitFor(() => expect(within(bloc).queryByRole('alert')).toBeNull())
+  })
+
+  describe('R4-24 — rappel d\'une tâche SANS jour ni échéance', () => {
+    const sansJour = { ...tache, jour_prevu: null, echeance: null, quelque_jour: false, heure_debut: null, rappels: [] }
+
+    it('« Le jour même » / « La veille » ne sont pas proposés : le jour du rappel se choisit, la fiche le dit et propose de poser le jour', async () => {
+      const user = userEvent.setup()
+      api.lireTache.mockResolvedValue({ data: sansJour })
+      monter()
+      await ouvrirPlus(user)
+      const bloc = screen.getByRole('region', { name: 'Rappel' })
+      expect(within(bloc).queryByRole('radio', { name: 'Le jour même' })).toBeNull()
+      expect(within(bloc).queryByRole('radio', { name: 'La veille' })).toBeNull()
+      expect(bloc).toHaveTextContent("Cette tâche n'a pas de jour : choisis la date du rappel.")
+      expect(within(bloc).getByLabelText('Jour du rappel')).toBeInTheDocument()
+      // « Poser le jour » ouvre « Quand je la fais » de la fiche
+      await user.click(within(bloc).getByRole('button', { name: 'Poser le jour' }))
+      expect(screen.getByRole('button', { name: /^Quand je la fais/ })).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    it('« Poser le rappel » sans jour choisi : rien ne part, « Choisis le jour du rappel. » SOUS le champ (jamais « Jour : Ce champ ne peut être nul. »)', async () => {
+      const user = userEvent.setup()
+      api.lireTache.mockResolvedValue({ data: sansJour })
+      monter()
+      await ouvrirPlus(user)
+      await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+      expect(api.poserRappel).not.toHaveBeenCalled()
+      const message = screen.getByText('Choisis le jour du rappel.')
+      expect(message).toHaveAttribute('role', 'alert')
+      expect(screen.getByLabelText('Jour du rappel')).toHaveAttribute('aria-invalid', 'true')
+      // le jour choisi : le rappel part avec lui
+      await user.type(screen.getByLabelText('Jour du rappel'), '2026-11-20')
+      await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+      await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { jour: '2026-11-20', heure: '09:00' }, { erreurSousLeChamp: true }))
+      expect(screen.queryByText('Choisis le jour du rappel.')).toBeNull()
+    })
+
+    it('un jour prévu sans échéance : « Le jour prévu » et « La veille » (jamais un rappel sur une échéance absente)', async () => {
+      const user = userEvent.setup()
+      api.lireTache.mockResolvedValue({ data: { ...sansJour, jour_prevu: '2026-11-19' } })
+      monter()
+      await ouvrirPlus(user)
+      const bloc = screen.getByRole('region', { name: 'Rappel' })
+      expect(within(bloc).getByRole('radio', { name: 'Le jour même' })).toHaveAttribute('aria-checked', 'true')
+      expect(bloc).not.toHaveTextContent("Cette tâche n'a pas de jour")
+      await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+      await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { jour: '2026-11-19', heure: '09:00' }, { erreurSousLeChamp: true }))
+    })
   })
 
   it('rouvrir le volet montre les mêmes valeurs (durée, jalon, confidentielle, lien, sous-tâches)', async () => {
@@ -121,7 +208,7 @@ describe('TCH85 — fiche → Plus', () => {
     await user.clear(champ)
     await user.type(champ, '90')
     await user.tab()
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { estimation_minutes: 90, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { estimation_minutes: 90, lock_version: 4 }, SOUS_LE_CHAMP))
 
     api.modifierTache.mockRejectedValueOnce(erreurHttp({ estimation_minutes: ['Entre 5 et 960 minutes.'] }, 400))
     await user.clear(champ)
@@ -136,9 +223,9 @@ describe('TCH85 — fiche → Plus', () => {
     monter()
     await ouvrirPlus(user)
     await user.click(screen.getByRole('switch', { name: 'Jalon' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { jalon: true, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { jalon: true, lock_version: 4 }, SOUS_LE_CHAMP))
     await user.click(screen.getByRole('switch', { name: 'Confidentielle' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { confidentiel: true, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { confidentiel: true, lock_version: 4 }, SOUS_LE_CHAMP))
   })
 
   it('répéter : « chaque mardi » (jour de la tâche) crée la règle', async () => {
@@ -150,7 +237,7 @@ describe('TCH85 — fiche → Plus', () => {
     expect(api.modifierTache).toHaveBeenCalledWith(20, expect.objectContaining({
       lock_version: 4,
       recurrence: expect.objectContaining({ frequence: 'hebdo', jours_semaine: '0100000', mode: 'calendrier', date_debut: '2026-11-17' }),
-    }))
+    }), SOUS_LE_CHAMP)
   })
 
   it('répéter, règle existante : libellé du serveur, Sauter cette fois · Arrêter de répéter', async () => {
@@ -186,15 +273,48 @@ describe('TCH85 — fiche → Plus', () => {
     await user.click(screen.getByRole('radio', { name: 'Une autre tâche' }))
     await user.type(screen.getByRole('searchbox', { name: 'Chercher une tâche' }), 'plan')
     await user.click(await screen.findByRole('button', { name: 'Obtenir le plan' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { bloquee_par_id: 43, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { bloquee_par_id: 43, lock_version: 4 }, SOUS_LE_CHAMP))
     expect(screen.queryByRole('button', { name: 'Devis Settat' })).toBeNull()
   })
 
-  it('sous-tâches : « Découper » crée l\'enfant et relit la tâche', async () => {
+  it('critique serveur n° 7 — une boucle de blocage refusée (409 au champ `bloquee_par_id`, rendu en 400 de champ par `tachesApi`) se dit sous « En attente de »', async () => {
+    const user = userEvent.setup()
+    const message = '« Obtenir le plan » attend déjà « Devis Settat ».'
+    const boucle = `Boucle : ${message}`
+    api.modifierTache.mockRejectedValueOnce(Object.assign(new Error('http'), {
+      response: { status: 400, statutServeur: 409, data: { bloquee_par_id: [boucle], detail: boucle, code: 'state_conflict' } },
+    }))
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [{ ...tache, id: 43, titre: 'Obtenir le plan' }] } })
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('radio', { name: 'Une autre tâche' }))
+    await user.type(screen.getByRole('searchbox', { name: 'Chercher une tâche' }), 'plan')
+    await user.click(await screen.findByRole('button', { name: 'Obtenir le plan' }))
+    const alerte = await screen.findByText(boucle)
+    expect(alerte).toHaveClass('erreur-champ')
+    // sous le choix « En attente de » (dans « Plus »), pas en bas de la fiche ; dit une fois
+    expect(alerte.closest('.fiche-plus')).not.toBeNull()
+    expect(screen.getAllByText(boucle)).toHaveLength(1)
+  })
+
+  it('critique serveur n° 7 — une règle refusée sans message de premier niveau (`{recurrence: {frequence: […]}}`) se dit sous « Répéter »', async () => {
+    const user = userEvent.setup()
+    api.modifierTache.mockRejectedValueOnce(Object.assign(new Error('http'), {
+      response: { status: 400, statutServeur: 409, data: { recurrence: { frequence: ['Requis.'] }, detail: 'Requis.', code: 'state_conflict' } },
+    }))
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('radio', { name: 'chaque mardi' }))
+    const alerte = await screen.findByText('Requis.')
+    expect(alerte).toHaveClass('erreur-champ')
+    expect(alerte.closest('.fiche-plus')).not.toBeNull()
+  })
+
+  it('sous-tâches : « Découper en sous-tâches » crée l\'enfant et relit la tâche', async () => {
     const user = userEvent.setup()
     monter()
     await ouvrirPlus(user)
-    await user.type(screen.getByRole('textbox', { name: 'Découper' }), 'Faire le devis{Enter}')
+    await user.type(screen.getByRole('textbox', { name: 'Découper en sous-tâches' }), 'Faire le devis{Enter}')
     await waitFor(() => expect(api.creerTache).toHaveBeenCalledWith(expect.objectContaining({ titre: 'Faire le devis', parent_id: 20 })))
     await waitFor(() => expect(api.lireTache).toHaveBeenCalledTimes(2))
   })
@@ -226,6 +346,18 @@ describe('TCH85 — fiche → Plus', () => {
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
     await user.click(within(toast).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.restaurerTache).toHaveBeenCalledWith(20))
+  })
+
+  it('R2-047 — la confirmation « Supprimer » est sur SA ligne (hors de la rangée Abandonner · Supprimer), Annuler dedans', async () => {
+    const user = userEvent.setup()
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }))
+    const dialogue = screen.getByRole('alertdialog', { name: 'Supprimer « Devis Settat »' })
+    const rangee = screen.getByRole('button', { name: 'Abandonner' }).parentElement
+    expect(rangee.contains(dialogue)).toBe(false)
+    expect(dialogue).toHaveClass('fiche-supprimer')
+    expect(within(dialogue).getAllByRole('button').map((b) => b.textContent)).toEqual(['Supprimer « Devis Settat »', 'Annuler'])
   })
 
   it('Supprimer puis Annuler : le geste rendu par le serveur est défait (A7), jamais `restaurer/`', async () => {

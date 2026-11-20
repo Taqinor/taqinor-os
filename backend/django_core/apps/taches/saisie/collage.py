@@ -7,8 +7,9 @@ par liste) en lignes analysées : puces et cases retirées, titres de groupe
 résultat est l'aperçu que l'écran montre avant « Créer N tâches ».
 """
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from apps.taches.choix import AlerteSaisie
 from apps.taches.saisie.analyseur import analyser, resoudre_projet
 from apps.taches.saisie.grammaire import ContexteSaisie
 from apps.taches.saisie.normalisation import cle_nom, normaliser
@@ -33,6 +34,11 @@ _CASE_FAITE = re.compile(r'(?:\[[xX]\]|✓|✔|☑)\s*')
 _CASE_VIDE = re.compile(r'(?:\[\s?\]|☐|□)\s*')
 
 
+LONGUEUR_MAX_TITRE = 60           # R2-004 : un titre de groupe sans « : » tient sur une ligne courte
+LIGNES_SOUS_TITRE = 2              # … et annonce au moins deux lignes (ligne vide, casse)
+_FIN_DE_PHRASE = ('.', '?', '!', '…')
+
+
 @dataclass(frozen=True)
 class LigneNette:
     """Une ligne collée une fois nettoyée (puces et cases retirées)."""
@@ -41,6 +47,7 @@ class LigneNette:
     deja_faite: bool = False
     avait_puce: bool = False
     titre_groupe: bool = False
+    apres_vide: bool = False
 
 
 # ---------------------------------------------------------------- nettoyage
@@ -84,17 +91,93 @@ def nettoyer_ligne(brute):
 
 
 def _lignes_nettes(texte):
-    return [n for n in (nettoyer_ligne(b) for b in texte.splitlines()) if n is not None]
+    """Les lignes nettes ; `apres_vide` dit qu'une ligne vraiment vide (blancs seuls) les sépare de la précédente."""
+    nettes, vide = [], False
+    for brute in texte.splitlines():
+        nette = nettoyer_ligne(brute)
+        if nette is None:
+            vide = vide or not brute.strip()
+            continue
+        nettes.append(replace(nette, apres_vide=vide and bool(nettes)))
+        vide = False
+    return nettes
 
 
-def _marquer_titres(nettes):
+def _premiere_lettre(texte):
+    return next((c for c in texte if c.isalpha()), '')
+
+
+def _en_minuscule(nette):
+    return _premiere_lettre(nette.texte).islower()
+
+
+def _candidat_titre(nette, base, projets):
+    """Peut nommer un groupe : courte, sans puce ni case, pas une phrase finie, et rien n'y est lu (date, `#`, `!`…)."""
+    texte = nette.texte.rstrip()
+    if nette.avait_puce or nette.deja_faite or len(texte) > LONGUEUR_MAX_TITRE or texte.endswith(_FIN_DE_PHRASE):
+        return False
+    return not analyser(texte, base['aujourdhui'], base['maintenant'], projets=projets).jetons
+
+
+def _lignes_du_bloc(nettes, i):
+    """Les lignes qui suivent `i` jusqu'à la prochaine ligne vide."""
+    n = 0
+    for suivante in nettes[i + 1:]:
+        if suivante.apres_vide:
+            break
+        n += 1
+    return n
+
+
+def _points_qui_suivent(nettes, i):
+    """Les lignes « d'élément » qui suivent `i` : à puce ou commençant par une minuscule, sans ligne vide."""
+    n = 0
+    for suivante in nettes[i + 1:]:
+        if suivante.apres_vide or not (suivante.avait_puce or _en_minuscule(suivante)):
+            break
+        n += 1
+    return n
+
+
+def _titres_sans_deux_points(nettes, base, projets):
+    """R2-004 — indices des titres de groupe écrits « comme dans Notes », sans « : ».
+
+    Une ligne candidate (`_candidat_titre`) suivie d'une ligne à puce au même niveau (une ligne EN RETRAIT reste un
+    point de check-list), ou précédée d'une ligne vide et suivie d'au moins deux lignes. Dès qu'un tel titre (ou un
+    titre « : ») existe, la liste est structurée : une ligne en Majuscule entre des lignes en minuscule (« Admin »
+    entre « envoyer la proforma » et « payer la CNSS ») suivie d'au moins deux points en est un aussi, et la
+    première ligne candidate devient le titre de son groupe (la « première ligne = projet » ne joue plus).
+    """
+    candidats = [_candidat_titre(n, base, projets) for n in nettes]
+    titres = set()
+    for i in range(1, len(nettes) - 1):
+        n, suivante = nettes[i], nettes[i + 1]
+        if not candidats[i]:
+            continue
+        a_puce = suivante.avait_puce and suivante.retrait < n.retrait + RETRAIT_SOUS_TACHE
+        if a_puce or (n.apres_vide and _lignes_du_bloc(nettes, i) >= LIGNES_SOUS_TITRE):
+            titres.add(i)
+    if not titres and not any(n.titre_groupe for n in nettes):
+        return titres
+    for i in range(1, len(nettes) - 1):
+        n, precedente = nettes[i], nettes[i - 1]
+        if (i not in titres and candidats[i] and _premiere_lettre(n.texte).isupper()
+                and (precedente.avait_puce or _en_minuscule(precedente))
+                and _points_qui_suivent(nettes, i) >= LIGNES_SOUS_TITRE):
+            titres.add(i)
+    if len(nettes) > 1 and candidats[0] and 1 not in titres and not nettes[1].titre_groupe:
+        titres.add(0)
+    return titres
+
+
+def _marquer_titres(nettes, base, projets, avec_implicites=True):
     """Un titre de groupe doit être suivi d'au moins une ligne ; sinon c'est une tâche."""
+    implicites = _titres_sans_deux_points(nettes, base, projets) if avec_implicites else set()
     marquees = []
     for i, n in enumerate(nettes):
         suivie = i < len(nettes) - 1
-        if n.titre_groupe and not suivie:
-            n = LigneNette(n.texte, n.retrait, n.deja_faite, n.avait_puce, False)
-        marquees.append(n)
+        titre = (n.titre_groupe or i in implicites) and suivie
+        marquees.append(replace(n, titre_groupe=titre))
     return marquees
 
 
@@ -102,6 +185,20 @@ def _marquer_titres(nettes):
 
 def _contexte(base, projets):
     return ContexteSaisie(base['aujourdhui'], base['maintenant'], projets=tuple(projets))
+
+
+def resoudre_groupe(nom, ctx):
+    """R3-043 — le projet d'un titre de groupe ou d'une première ligne : le nom exact, sinon le projet OUVERT dont un
+    mot commence ainsi (« Recrutement » → « Recrutement technicien », au lieu d'un « Nouveau projet : Recrutement » à
+    côté) — mais seulement s'il est le SEUL (règle de R2-003) : un début partagé par deux projets ne rattache le
+    groupe à aucun, il reste un nouveau projet. Rend la valeur de projet (`resoudre_projet`)."""
+    exact = resoudre_projet(nom, ctx).valeur
+    if exact is None or not exact['nouveau']:
+        return exact
+    par_debut = resoudre_projet(nom, ctx, par_debut=True)
+    if par_debut.valeur['nouveau'] or AlerteSaisie.PLUSIEURS_PROJETS.value in par_debut.alertes:
+        return exact
+    return par_debut.valeur
 
 
 def _champs_projet(valeur):
@@ -128,7 +225,41 @@ def projet_premiere_ligne(nettes, base, projets):
     lecture = analyser(premiere.texte, base['aujourdhui'], base['maintenant'], projets=projets)
     if lecture.jetons:
         return None
-    return resoudre_projet(premiere.texte, _contexte(base, projets)).valeur
+    return resoudre_groupe(premiere.texte, _contexte(base, projets))
+
+
+#: R4-26 — petits mots ignorés quand on compare deux noms de projet (« Ecole Al Manar de Salé » ~ « École Al-Manar »).
+_MOTS_VIDES = frozenset({'a', 'au', 'aux', 'd', 'de', 'des', 'du', 'en', 'et', 'l', 'la', 'le', 'les', 'pour', 'sur',
+                         'un', 'une'})
+_STATUTS_PROPOSES = ('actif', 'en_pause')
+MOTS_COMMUNS_MIN = 2
+
+
+def _mots(nom):
+    return frozenset(m for m in re.findall(r'\w+', normaliser(nom)) if m not in _MOTS_VIDES)
+
+
+def ressemblance(nom, projets):
+    """R4-26 — le projet OUVERT dont le nom ressemble à celui d'un NOUVEAU projet (« Pompage Ouled Saleh » à côté de
+    « Pompage Douar Ouled Saleh ») : tous les mots de l'un sont dans l'autre (accents, casse, ponctuation et petits
+    mots ignorés), au moins deux en commun. Le plus de mots communs l'emporte ; deux candidats à égalité : aucun
+    (jamais un choix au hasard). Rend `{'id', 'nom'}` ou None. Rien n'est fusionné : l'écran PROPOSE « Utiliser »."""
+    mots = _mots(nom)
+    candidats = []
+    for projet in projets:
+        if projet.statut not in _STATUTS_PROPOSES or cle_nom(projet.nom) == cle_nom(nom):
+            continue
+        siens = _mots(projet.nom)
+        communs = len(mots & siens)
+        if communs >= MOTS_COMMUNS_MIN and (mots <= siens or siens <= mots):
+            candidats.append((communs, projet))
+    if not candidats:
+        return None
+    candidats.sort(key=lambda c: -c[0])
+    if len(candidats) > 1 and candidats[1][0] == candidats[0][0]:
+        return None
+    meilleur = candidats[0][1]
+    return {'id': meilleur.id, 'nom': meilleur.nom}
 
 
 def _projet_suggere(titre, projets):
@@ -167,15 +298,17 @@ def _est_sous_tache(nette, base_retrait):
 
 def _analyser_collage(numero, texte, base, projets, depart, projet_impose):
     """Lignes d'un collage et son projet commun : `(lignes, projet_commun | None)`."""
-    nettes = _marquer_titres(_lignes_nettes(texte))
+    # un projet imposé (« Range dans ce projet ») vaut pour tout l'envoi : seuls les titres « : » le changent
+    nettes = _marquer_titres(_lignes_nettes(texte), base, projets, avec_implicites=projet_impose is None)
     commun = projet_impose
     entree = None
-    if commun is None:
+    if commun is None and not any(n.titre_groupe for n in nettes[1:]):
         commun = projet_premiere_ligne(nettes, base, projets)
         if commun is not None:
             entree = {'collage': numero, 'id': commun['id'], 'nom': commun['nom'],
                       'nouveau': commun['nouveau'], 'priorite': commun.get('priorite'),
-                      'source': 'premiere_ligne'}
+                      'source': 'premiere_ligne',
+                      'ressemble_a': ressemblance(commun['nom'], projets) if commun['nouveau'] else None}
             nettes = nettes[1:]
     lignes = _lignes_du_collage(numero, nettes, base, projets, depart, commun)
     return lignes, entree
@@ -186,7 +319,7 @@ def _lignes_du_collage(numero, nettes, base, projets, depart, commun):
     for nette in nettes:
         if nette.titre_groupe:
             nom = nette.texte.rstrip().rstrip(':：').strip()
-            projet = resoudre_projet(nom, _contexte(base, projets)).valeur
+            projet = resoudre_groupe(nom, _contexte(base, projets))
             parent, base_retrait = None, None
             continue
         sous = _est_sous_tache(nette, base_retrait)
@@ -228,8 +361,9 @@ def _a_un_projet(ligne):
     return 'projet_id' in champs or 'nouveau_projet' in champs
 
 
-def _projets_nouveaux(lignes, communs):
-    """Projets nés de l'envoi, sans doublon (par `cle_nom`), `priorite` 2 par défaut."""
+def _projets_nouveaux(lignes, communs, projets=()):
+    """Projets nés de l'envoi, sans doublon (par `cle_nom`), `priorite` 2 par défaut ; R4-26 : `ressemble_a`, le
+    projet existant dont le nom est proche (ou None)."""
     vus, nouveaux = set(), []
     candidats = [{'nom': c['nom'], 'priorite': c['priorite'] or PRIORITE_PROJET_NE}
                  for c in communs if c['nouveau']]
@@ -239,7 +373,8 @@ def _projets_nouveaux(lignes, communs):
         cle = cle_nom(projet['nom'])
         if cle not in vus:
             vus.add(cle)
-            nouveaux.append({'nom': projet['nom'], 'priorite': projet['priorite']})
+            nouveaux.append({'nom': projet['nom'], 'priorite': projet['priorite'],
+                             'ressemble_a': ressemblance(projet['nom'], projets)})
     return nouveaux
 
 
@@ -282,4 +417,4 @@ def decouper_collage(textes, aujourdhui, maintenant, projets=(), sections=(), et
             communs.append(commun)
     marquer_doublons(lignes, taches_ouvertes, projets)
     return {'projets_communs': communs, 'lignes': lignes,
-            'projets_nouveaux': _projets_nouveaux(lignes, communs)}
+            'projets_nouveaux': _projets_nouveaux(lignes, communs, projets)}

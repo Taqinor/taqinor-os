@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { apercu, oublierApercus } from '../lib/fiche'
 import CaseRonde from './CaseRonde'
 import Etoile from './Etoile'
 import LigneTache from './LigneTache'
@@ -58,7 +59,7 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
 
   it('passe visuelle n° 53 — fin de ligne « heure, ★ ou drapeau » : drapeau avant l\'heure, jamais à côté de ★', () => {
     const { container, unmount } = render(<LigneTache item={{ ...item(), priorite: 3, essentielle: false }} aujourdhui={AUJOURDHUI} />)
-    const fin = [...container.querySelector('.ligne-fin').children]
+    const fin = [...container.querySelector('.ligne-fin .ligne-fin-masque').children] // couture L7 : l'enveloppe qui se cache sous la pastille
     expect(fin[0]).toHaveClass('drapeau')
     expect(fin[1]).toHaveClass('heure')
     unmount()
@@ -77,19 +78,30 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
     expect(screen.queryByRole('button', { name: /Essentielle/ })).toBeNull()
   })
 
-  it('en vue Projet la méta montre le Quand ; la puce Garder d\'une ligne proposée appelle onGarder', async () => {
+  it('en vue Projet la méta montre le Quand ; la puce « Aujourd\'hui » d\'une ligne proposée appelle onGarder', async () => {
     const onGarder = vi.fn()
     render(<LigneTache item={item()} aujourdhui={AUJOURDHUI} contexte="projet" propose onGarder={onGarder} />)
     expect(document.querySelector('.meta .fort')).toHaveTextContent("aujourd'hui")
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Garder' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: `Mettre « ${item().titre} » aujourd'hui` }))
     expect(onGarder).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }))
   })
 
-  it('passe visuelle n° 16 — la puce « Garder » est le mot seul, sans « + » (maquettes : `<button class="garder">Garder`)', () => {
+  it('R3-151 (C-20) — la puce de Proposé dit « Aujourd\'hui », le mot seul, sans « + » ; son nom lu nomme la tâche', () => {
     render(<LigneTache item={item()} aujourdhui={AUJOURDHUI} propose onGarder={() => {}} />)
-    const garder = screen.getByRole('button', { name: 'Garder' })
+    const garder = screen.getByRole('button', { name: `Mettre « ${item().titre} » aujourd'hui` })
     expect(garder.querySelector('svg')).toBeNull()
-    expect(garder).toHaveTextContent(/^Garder$/)
+    expect(garder).toHaveTextContent(/^Aujourd'hui$/)
+  })
+})
+
+describe('R3-061 — chaque ligne dépose ce qu\'elle sait de sa tâche : la fiche s\'ouvre dessus sans attendre', () => {
+  afterEach(() => { oublierApercus() })
+
+  it('une ligne de tâche rendue : son item est l\'aperçu de la fiche ; changé, l\'aperçu suit', () => {
+    const { rerender } = monter()
+    expect(apercu(20)).toMatchObject({ id: 20, titre: 'Devis Settat', lock_version: 4 })
+    rerender(<div role="list"><LigneTache item={{ ...item(), titre: 'Devis Settat signé', lock_version: 5 }} aujourdhui={AUJOURDHUI} /></div>)
+    expect(apercu(20)).toMatchObject({ titre: 'Devis Settat signé', lock_version: 5 })
   })
 })
 
@@ -112,7 +124,7 @@ describe('TCH44 — clavier : Tab → Actions → item (sans balayage ni glisser
     const menu = await screen.findByRole('menu')
     const libelles = within(menu).getAllByRole('menuitem').map((el) => el.textContent)
     expect(libelles).toEqual([
-      'Reporter à lun. 23', 'Choisir un jour', 'En réserve', 'Déplacer…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
+      'Reporter à lun. 23', 'Choisir un jour', 'Plus tard', 'Changer de projet…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
     ])
     await user.click(within(menu).getByRole('menuitem', { name: 'Choisir un jour' }))
     expect(onAction).toHaveBeenCalledWith('choisir_jour', expect.objectContaining({ id: 20 }))
@@ -204,9 +216,9 @@ describe('TCH44 — Étoile : 3 au plus', () => {
 })
 
 describe('TCH44 — balayage tactile', () => {
-  const poser = (cible, type, x) => {
+  const poser = (cible, type, x, y = 100) => {
     const e = new Event(type, { bubbles: true })
-    Object.assign(e, { clientX: x, clientY: 100, pointerType: 'touch', pointerId: 1 })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
     fireEvent(cible, e)
   }
 
@@ -236,13 +248,319 @@ describe('TCH44 — balayage tactile', () => {
   })
 })
 
+describe('R3-063 (choix C-23) — l\'appui long au doigt ouvre une feuille du bas TITRÉE de la tâche, pas un menu de bureau', () => {
+  const poser = (cible, type, x, y = 100) => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
+    fireEvent(cible, e)
+  }
+  const appuiLong = async (ligne) => {
+    poser(ligne, 'pointerdown', 200)
+    await act(async () => { vi.advanceTimersByTime(520) })
+  }
+  afterEach(() => { vi.useRealTimers() })
+
+  it('feuille « Devis Settat » : les mêmes actions que ⋯, rangées pleine largeur ; la ligne reste surlignée tant qu\'elle est ouverte', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const onAction = vi.fn()
+    const { container } = render(
+      <div className="tch"><div role="list"><LigneTache item={item()} aujourdhui={AUJOURDHUI} onAction={onAction} onReporter={() => {}} reporterLibelle="lun. 23" /></div></div>,
+    )
+    const ligne = container.querySelector('.ligne')
+    await appuiLong(ligne)
+    const feuille = screen.getByRole('dialog', { name: 'Devis Settat' })
+    expect(screen.queryByRole('menu')).toBeNull() // plus le menu déroulant du bureau
+    expect(within(feuille).getByText('Devis Settat')).toHaveClass('feuille-titre')
+    expect(within(feuille).getAllByRole('button').filter((b) => b.classList.contains('action-ligne')).map((b) => b.textContent)).toEqual([
+      'Reporter à lun. 23', 'Choisir un jour', 'Plus tard', 'Changer de projet…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
+    ])
+    expect(ligne).toHaveClass('en-actions')
+    // un NOUVEAU toucher (le doigt qui a ouvert la feuille a été levé) : pointerdown puis click
+    const choisir = within(feuille).getByRole('button', { name: 'Choisir un jour' })
+    poser(choisir, 'pointerdown', 200, 300)
+    fireEvent.click(choisir)
+    // la feuille se ferme d'abord (son entrée d'historique retirée), PUIS le geste ouvre la sienne
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('choisir_jour', expect.objectContaining({ id: 20 })))
+    expect(screen.queryByRole('dialog', { name: 'Devis Settat' })).toBeNull()
+    expect(ligne).not.toHaveClass('en-actions')
+  })
+
+  it('le clic droit (souris) ouvre toujours le menu ⋯ ; au doigt, Android qui envoie aussi `contextmenu` n\'ouvre pas les deux', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { container } = monter()
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 200)
+    fireEvent.contextMenu(ligne)
+    await act(async () => { vi.advanceTimersByTime(520) })
+    expect(screen.getByRole('dialog', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  /* R4-21 — le relâcher du doigt qui a OUVERT la feuille ne déclenche rien : le navigateur envoie, dans un ordre qui
+     varie (Chromium : pointerup, touchend, puis un click sur ce qui est passé sous le doigt ; Safari : parfois aucun
+     click), un click sur « Choisir un jour », « Priorité » ou le voile. Seul un NOUVEAU toucher agit. */
+  const ordres = {
+    'pointerup, touchend, click': (ligne, cible) => {
+      poser(ligne, 'pointerup', 200)
+      fireEvent.touchEnd(ligne)
+      fireEvent.click(cible)
+    },
+    'click avant pointerup': (ligne, cible) => {
+      fireEvent.click(cible)
+      poser(ligne, 'pointerup', 200)
+    },
+    'click seul (sans pointerup)': (ligne, cible) => { fireEvent.click(cible) },
+  }
+  for (const [ordre, relacher] of Object.entries(ordres)) {
+    for (const nom of ['Choisir un jour', 'Priorité', 'voile']) {
+      it(`R4-21 — relâcher (${ordre}) sur « ${nom} » : rien ne part, la feuille reste ouverte ; un nouveau toucher agit`, async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true })
+        const onAction = vi.fn()
+        const { container } = render(
+          <div className="tch"><div role="list"><LigneTache item={item()} aujourdhui={AUJOURDHUI} onAction={onAction} onReporter={() => {}} reporterLibelle="lun. 23" /></div></div>,
+        )
+        const ligne = container.querySelector('.ligne')
+        await appuiLong(ligne)
+        const feuille = screen.getByRole('dialog', { name: 'Devis Settat' })
+        const cible = nom === 'voile' ? container.querySelector('.voile') : within(feuille).getByRole('button', { name: nom })
+        await act(async () => { relacher(ligne, cible) })
+        expect(onAction).not.toHaveBeenCalled()
+        expect(screen.getByRole('dialog', { name: 'Devis Settat' })).toBeInTheDocument()
+        // un vrai toucher ensuite : le geste part
+        const priorite = within(feuille).getByRole('button', { name: 'Priorité' })
+        poser(priorite, 'pointerdown', 200, 400)
+        fireEvent.click(priorite)
+        await waitFor(() => expect(onAction).toHaveBeenCalledWith('priorite', expect.objectContaining({ id: 20 })))
+        expect(onAction).toHaveBeenCalledTimes(1)
+      })
+    }
+  }
+})
+
+describe('R2-016 — balayer vers la droite coche (le plafond du glissement ne bloque plus le seuil)', () => {
+  const poser = (cible, type, x, y = 100) => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
+    fireEvent(cible, e)
+  }
+
+  it('un balayage droit COMPLET (au-delà de la moitié de la ligne) coche, et la ligne reste en place', async () => {
+    const onTerminer = vi.fn().mockResolvedValue({})
+    const onAnnonce = vi.fn()
+    const { container } = monter({ onTerminer, onAnnonce })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 120)
+    poser(ligne, 'pointermove', 220)
+    poser(ligne, 'pointermove', 300) // 280 px de doigt : le plafond d'affichage (172) ne doit pas compter
+    poser(ligne, 'pointerup', 300)
+    expect(onTerminer).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }), true)
+    expect(ligne).not.toHaveClass('glisse-droite')
+    await waitFor(() => expect(onAnnonce).toHaveBeenCalledWith('Fait : Devis Settat'))
+  })
+
+  it('un balayage droit court révèle « Fait » sans cocher ; un petit mouvement involontaire ne révèle ni ne coche rien', () => {
+    const onTerminer = vi.fn().mockResolvedValue({})
+    const { container } = monter({ onTerminer })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 110)
+    poser(ligne, 'pointerup', 110)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(ligne).toHaveClass('glisse-droite')
+    expect(screen.getByRole('button', { name: 'Fait : Devis Settat' })).toBeInTheDocument()
+    // refermée, puis un décalage de 30 px lâché : rien
+    fireEvent.click(screen.getByRole('button', { name: 'Devis Settat' }))
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 50)
+    poser(ligne, 'pointerup', 50)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(ligne).not.toHaveClass('glisse-droite')
+  })
+
+  it("un mouvement surtout vertical (défilement de la liste) n'est jamais pris pour un balayage", () => {
+    const onTerminer = vi.fn()
+    const onReporter = vi.fn()
+    const { container } = monter({ onTerminer, onReporter })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 100, 100)
+    poser(ligne, 'pointermove', 140, 200) // 40 px de côté, 100 px de haut : c'est du défilement
+    poser(ligne, 'pointermove', 300, 400)
+    poser(ligne, 'pointerup', 300, 400)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(onReporter).not.toHaveBeenCalled()
+    expect(ligne.getAttribute('style')).toBeNull()
+  })
+})
+
+describe("R2-017 — la pastille « → ven. 20 » prend la place de la colonne de fin : la ligne ne change pas de hauteur", () => {
+  it("avec une estampille, la colonne de fin ne MONTRE que la pastille : l'heure, le drapeau et l'étoile restent à leur place, cachés (la ligne ne bouge pas)", () => {
+    const { container } = monter({ item: { ...item(), priorite: 3, essentielle: false }, estampille: '→ ven. 20' })
+    const fin = container.querySelector('.ligne-fin')
+    expect(fin.querySelector('.estampille')).toHaveTextContent('→ ven. 20')
+    // couture L7 : cachés (visibility: hidden, inertes), jamais retirés — au bureau la ligne passait de 80 à 58 px
+    const masque = fin.querySelector('.ligne-fin-masque')
+    expect(masque).toHaveClass('masquee')
+    expect(masque).toHaveAttribute('aria-hidden', 'true')
+    expect(masque).toHaveAttribute('inert')
+    expect(masque.querySelector('.heure')).toHaveTextContent('10:00')
+    expect(screen.queryByRole('img', { name: 'Priorité haute' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /Essentielle/ })).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Essentielle' })).toBeNull()
+  })
+
+  it("sans estampille, l'heure, le drapeau et l'étoile reviennent", () => {
+    const { container } = monter({ item: { ...item(), priorite: 3, essentielle: false } })
+    const fin = container.querySelector('.ligne-fin')
+    expect(fin.querySelector('.estampille')).toBeNull()
+    expect(fin.querySelector('.ligne-fin-masque')).not.toHaveClass('masquee')
+    expect(fin.querySelector('.ligne-fin-masque')).not.toHaveAttribute('inert')
+    expect(fin.querySelector('.heure')).toHaveTextContent('10:00')
+    expect(screen.getByRole('img', { name: 'Priorité haute' })).toBeInTheDocument()
+  })
+})
+
+describe('R2-018 — « 2 h » se lit comme une durée, pas comme « à 2 h »', () => {
+  it('la durée porte un sablier et se lit « Durée : 1 h »', () => {
+    const { container } = monter()
+    const duree = [...container.querySelectorAll('.meta > span')].find((s) => s.textContent.includes('1 h'))
+    expect(duree.querySelector('svg')).not.toBeNull()
+    expect(duree).toHaveTextContent('Durée : 1 h')
+    expect(duree.querySelector('.sr')).toHaveTextContent('Durée :')
+  })
+
+  it('dans un groupe titré du nom du projet, le nom n\'est pas répété sur la ligne ; ailleurs il reste', () => {
+    const { container, unmount } = monter({ groupeTitre: 'Ventes' })
+    expect(container.querySelector('.meta .projet-nom')).toBeNull()
+    expect(container.querySelector('.meta')).toHaveTextContent('échéance jeu. 19')
+    unmount()
+    const { container: autre } = monter({ groupeTitre: 'Salon Solaire Expo' })
+    expect(autre.querySelector('.meta .projet-nom')).toHaveTextContent('Ventes')
+  })
+
+  it('une méta courte (au plus deux puces brèves) pose `meta-courte` : la méta peut tenir sur la ligne du titre', () => {
+    const courte = { ...item(), projet: null }
+    const { container, unmount } = monter({ item: courte })
+    expect(container.querySelector('.ligne-corps')).toHaveClass('meta-courte')
+    unmount()
+    // trois puces (échéance, durée, projet) : trop pour la ligne du titre
+    const { container: longue, unmount: u2 } = monter()
+    expect(longue.querySelector('.ligne-corps')).not.toHaveClass('meta-courte')
+    u2()
+    // un lien ou une raison longue : jamais courte
+    const { container: lien } = monter({ item: { ...courte, lien: { cible: 'ventes.devis', id: 1, libelle: 'DEV-2026-11-0042', url: '/x', etat: 'ok' } } })
+    expect(lien.querySelector('.ligne-corps')).not.toHaveClass('meta-courte')
+  })
+})
+
+describe('R2-032 — balayage : actions dévoilées proportionnellement, ligne ouverte qui se referme', () => {
+  const poser = (cible, type, x, y = 100) => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
+    fireEvent(cible, e)
+  }
+
+  it('à mi-course, les actions se partagent la largeur découverte : plus de bande grise seule à côté de la ligne', () => {
+    const { container } = monter({ reporterLibelle: 'lun. 23' })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 300)
+    poser(ligne, 'pointermove', 200)
+    const actions = container.querySelector('.actions.droite')
+    expect(actions.style.width).toBe('100px')
+    expect(actions.style.left).toBe('auto')
+    const boutons = [...actions.querySelectorAll('.action')]
+    expect(boutons).toHaveLength(2)
+    boutons.forEach((b) => { expect(b.style.flexGrow).toBe('1'); expect(b.style.flexBasis).toBe('0px'); expect(b.style.width).toBe('auto') })
+    poser(ligne, 'pointerup', 200)
+  })
+
+  it('un balayage vers la droite dévoile « Fait » à la largeur du doigt', () => {
+    const { container } = monter()
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 90)
+    const actions = container.querySelector('.actions:not(.droite)')
+    expect(actions.style.width).toBe('70px')
+    expect(actions.style.right).toBe('auto')
+    poser(ligne, 'pointerup', 90)
+  })
+
+  it("une ligne ouverte se referme au premier toucher ailleurs, et ce toucher n'ouvre rien d'autre", async () => {
+    const onOuvrir = vi.fn()
+    render(
+      <div role="list">
+        <LigneTache item={{ ...item(), id: 1, titre: 'Première' }} aujourdhui={AUJOURDHUI} reporterLibelle="lun. 23" onOuvrir={onOuvrir} />
+        <LigneTache item={{ ...item(), id: 2, titre: 'Seconde' }} aujourdhui={AUJOURDHUI} onOuvrir={onOuvrir} />
+      </div>,
+    )
+    const [premiere] = document.querySelectorAll('.ligne')
+    poser(premiere, 'pointerdown', 300)
+    poser(premiere, 'pointermove', 220)
+    poser(premiere, 'pointerup', 220)
+    expect(premiere).toHaveClass('glisse-gauche')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Seconde' }))
+    expect(premiere).not.toHaveClass('glisse-gauche')
+    expect(onOuvrir).not.toHaveBeenCalled() // le toucher a refermé la première, il n'a pas ouvert la seconde
+    // et le toucher d'après, lui, ouvre normalement
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Seconde' }))
+    expect(onOuvrir).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }))
+  })
+
+  it("toucher la ligne ouverte elle-même ne la referme pas par le toucher « ailleurs » (ses boutons restent actifs)", async () => {
+    const onChoisirJour = vi.fn()
+    const { container } = monter({ onChoisirJour, reporterLibelle: 'lun. 23' })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 300)
+    poser(ligne, 'pointermove', 220)
+    poser(ligne, 'pointerup', 220)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Choisir un jour' }))
+    expect(onChoisirJour).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }))
+  })
+})
+
+describe('R2-028 — la ligne dit qu\'il y a une note, une check-list, un rappel (comme Things)', () => {
+  const indices = (container) => [...container.querySelectorAll('.meta .indice')].map((e) => e.textContent)
+
+  it('une tâche avec note, check-list et rappel porte trois indices discrets, dans cet ordre', () => {
+    const riche = { ...item(), notes: 'Appeler avant 11 h.', checklist: { faits: 1, total: 2 }, rappel: { jour: AUJOURDHUI, heure: '09:45' } }
+    const { container } = monter({ item: riche })
+    expect(indices(container)).toEqual(['Note', 'Check-list : 1/2', 'Rappel à 09:45'])
+    // des icônes décoratives : la lecture d'écran n'entend que les libellés
+    container.querySelectorAll('.meta .indice svg').forEach((svg) => expect(svg).toHaveAttribute('aria-hidden', 'true'))
+  })
+
+  it('la note se lit aussi du drapeau `a_notes` d\'une liste (les notes elles-mêmes ne sont servies que par la fiche)', () => {
+    // l'ITEM servi par la liste (item.json) : la tâche 20 porte une note, `notes` absent, `a_notes: true`
+    expect(item()).not.toHaveProperty('notes')
+    expect(item().a_notes).toBe(true)
+    const { container } = monter()
+    expect(indices(container)).toEqual(['Note'])
+  })
+
+  it('rien à dire, rien d\'affiché : ni note vide, ni check-list absente, ni rappel d\'une tâche faite', () => {
+    const { container, unmount } = monter({ item: { ...item(), a_notes: false, notes: '', checklist: null, rappel: null } })
+    expect(indices(container)).toEqual([])
+    unmount()
+    const faite = { ...item(), a_notes: false, statut: 'fait', rappel: { jour: AUJOURDHUI, heure: '09:45' } }
+    expect(indices(monter({ item: faite }).container)).toEqual([])
+  })
+
+  it('un rappel d\'un autre jour dit son jour ; les indices ne comptent pas dans la méta brève', () => {
+    const autre = { ...item(), a_notes: false, projet: null, rappel: { jour: '2026-11-20', heure: '09:45' }, checklist: { faits: 0, total: 3 } }
+    const { container } = monter({ item: autre })
+    expect(indices(container)).toEqual(['Check-list : 0/3', 'Rappel ven. 20 à 09:45'])
+    expect(container.querySelector('.ligne-corps')).toHaveClass('meta-courte') // échéance + durée seulement
+  })
+})
+
 describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, méta de statut)', () => {
   // le balisage d'une ligne SANS les props de la recherche, figé AVANT leur ajout (ids de Radix et tracés des icônes retirés)
-  const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '')
+  // (les alias de classe d'icône changent d'une version de lucide à l'autre : `lucide-more-horizontal` n'est pas comparé)
+  const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '').replace(/ lucide-more-horizontal/g, '')
 
   it('une ligne sans ces props rend exactement comme avant (balisage figé)', () => {
-    const { container } = monter()
-    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres">1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis lucide-more-horizontal i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
+    const { container } = monter({ item: { ...item(), a_notes: false } }) // figé sans l'indice « note » (R2-028)
+    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hourglass i i-14" aria-hidden="true"><path></path><path></path><path></path><path></path></svg><span class="sr">Durée : </span>1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="ligne-fin-masque"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></span></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
   })
 
   it('le mot cherché est surligné dans le titre, sans tenir compte de la casse ni des accents', () => {
@@ -263,14 +581,14 @@ describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, m
     expect([...t.querySelectorAll('b.es-trouve')].map((b) => b.textContent)).toEqual(['devis', 'signé'])
   })
 
-  it('variante « recherche » : méta de statut lue des données (À trier, En réserve, jour) puis « Suggéré par l\'ERP »', () => {
-    const sansRien = { ...item(), jour_prevu: null, quelque_jour: false, projet: null, echeance: null, heure_debut: null }
+  it('variante « recherche » : méta de statut lue des données (À trier, Plus tard, jour) puis « Suggéré par l\'ERP »', () => {
+    const sansRien = { ...item(), a_notes: false, jour_prevu: null, quelque_jour: false, projet: null, echeance: null, heure_debut: null }
     const textes = (container) => [...container.querySelector('.meta').children].map((e) => e.textContent)
     const { container: aTrier } = monter({ item: { ...sansRien, source: 'suggestion' }, contexte: 'recherche' })
     expect(textes(aTrier)).toEqual(['À trier', "Suggéré par l'ERP"])
     const reserve = { ...sansRien, quelque_jour: true, projet: { id: 3, nom: 'Salon Solaire Expo', couleur: 'indigo', priorite: 2 } }
     const { container: enReserve } = monter({ item: reserve, contexte: 'recherche' })
-    expect(textes(enReserve)).toEqual(['En réserve', 'Salon Solaire Expo'])
+    expect(textes(enReserve)).toEqual(['Plus tard', 'Salon Solaire Expo'])
     // une tâche qui a un jour le dit (« aujourd'hui », « lun. 16 ») à la place du statut
     const { container: duJour } = monter({ item: { ...sansRien, statut: 'fait', jour_prevu: AUJOURDHUI }, contexte: 'recherche' })
     expect(textes(duJour)).toEqual(["aujourd'hui"])

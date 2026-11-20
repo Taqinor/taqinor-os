@@ -16,9 +16,11 @@ from rest_framework.test import APIClient
 
 from apps.taches.models.projets import ModeleProjet, Projet, Section
 from apps.taches.models.taches import ElementChecklist, Tache
+from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import projets as lecture_projets
 from apps.taches.selectors.base import jours_travailles_de
 from apps.taches.services.gestes import annuler_geste
+from apps.taches.serializers import projets as formes_projets
 from apps.taches.services.projets import _rangs_apres_insertion
 from apps.taches.tests import fabriques
 from apps.taches.views.base import exemple_de
@@ -66,6 +68,55 @@ class OrdreSansBaseTests(SimpleTestCase):
             _rangs_apres_insertion([], 9, None, 7)
 
 
+class PlanEtapesSansBaseTests(SimpleTestCase):
+    """R2-062 — `decouper_plan(mode='etapes')` : dans le champ « Étapes » de « Planifier le projet », une ligne non
+    indentée sans puce EST une étape (plus de « : » exigé) ; ses lignes en retrait ou à tiret sont ses tâches
+    (pas de base)."""
+
+    def test_trois_lignes_sont_trois_etapes_sans_tache(self):
+        plan = decouper_plan('Transport\nHébergement\nSur place', mode='etapes')
+        self.assertEqual([s['nom'] for s in plan['sections']], ['Transport', 'Hébergement', 'Sur place'])
+        self.assertEqual([s['taches'] for s in plan['sections']], [[], [], []])
+
+    def test_lignes_en_retrait_ou_a_tiret_sont_les_taches_de_l_etape(self):
+        plan = decouper_plan('Transport\n  Réserver le bus\n- Louer un camion\nSur place\n\tInstaller', mode='etapes')
+        self.assertEqual([s['nom'] for s in plan['sections']], ['Transport', 'Sur place'])
+        self.assertEqual([t['titre'] for t in plan['sections'][0]['taches']], ['Réserver le bus', 'Louer un camion'])
+        self.assertEqual([t['titre'] for t in plan['sections'][1]['taches']], ['Installer'])
+
+    def test_les_deux_points_de_fin_restent_acceptes_et_ne_font_pas_partie_du_nom(self):
+        plan = decouper_plan('Études :\n  Visite', mode='etapes')
+        self.assertEqual(plan['sections'][0]['nom'], 'Études')
+        self.assertEqual(plan['sections'][0]['taches'][0]['titre'], 'Visite')
+
+    def test_jalon_et_sous_tache_plus_en_retrait(self):
+        plan = decouper_plan('Pose\n  Câbler\n    - test 1\n    - test 2\n  ◆ Réception', mode='etapes')
+        taches = plan['sections'][0]['taches']
+        self.assertEqual([t['titre'] for t in taches], ['Câbler', 'Réception'])
+        self.assertEqual(taches[0]['sous_taches'], ['test 1', 'test 2'])
+        self.assertEqual([t['jalon'] for t in taches], [False, True])
+
+    def test_ligne_en_retrait_avant_toute_etape_va_dans_une_section_sans_nom(self):
+        plan = decouper_plan('  Réserver\nÉtape', mode='etapes')
+        self.assertEqual([s['nom'] for s in plan['sections']], [None, 'Étape'])
+
+    def test_le_mode_par_defaut_ne_change_pas(self):
+        self.assertEqual(decouper_plan('Transport\nHébergement'), {'sections': [{'nom': None, 'taches': [
+            {'titre': 'Transport', 'jalon': False, 'sous_taches': []},
+            {'titre': 'Hébergement', 'jalon': False, 'sous_taches': []}]}]})
+
+    def test_le_serializer_connait_le_mode_et_refuse_une_valeur_inconnue(self):
+        ok = formes_projets.ApercuPlanSerializer(data={'texte': 'A\nB', 'mode': 'etapes'})
+        self.assertTrue(ok.is_valid(), ok.errors)
+        self.assertEqual(ok.validated_data['mode'], 'etapes')
+        defaut = formes_projets.ApercuPlanSerializer(data={'texte': 'A'})
+        self.assertTrue(defaut.is_valid())
+        self.assertEqual(defaut.validated_data['mode'], 'plan')
+        mauvais = formes_projets.ApercuPlanSerializer(data={'texte': 'A', 'mode': 'x'})
+        self.assertFalse(mauvais.is_valid())
+        self.assertEqual(mauvais.errors['mode'][0], 'Valeur inconnue.')
+
+
 class _Base(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -92,9 +143,15 @@ class _Base(TestCase):
 
 
 class ListeProjetsTests(_Base):
+    def _vieillir(self, *projets, jours=8):
+        """Projets nés il y a `jours` jours (le constat ne compte que ceux de 7 jours ou plus, R3-010)."""
+        Projet.objects.filter(pk__in=[p.pk for p in projets]).update(
+            created_at=timezone.now() - datetime.timedelta(days=jours))
+
     def test_forme_de_l_echantillon_et_constat(self):
         projet = fabriques.projet(self.u1, priorite=3)
         fabriques.tache(self.u1, projet=projet)
+        self._vieillir(projet)
         reponse = self._api(self.u1).get(_url('projets/'))
         self.assertEqual(reponse.status_code, 200)
         corps = reponse.json()
@@ -143,10 +200,20 @@ class ListeProjetsTests(_Base):
 
     def test_constat_compte_les_projets_qui_ont_avance(self):
         avance, immobile = fabriques.projet(self.u1), fabriques.projet(self.u1)
+        self._vieillir(avance, immobile)
         self._fait(self.u1, avance)
         fabriques.tache(self.u1, projet=immobile)
         constat = self._api(self.u1).get(_url('projets/')).json()['constat']
         self.assertEqual(constat, {'actifs': 2, 'avances_7j': 1})
+
+    def test_constat_tait_les_projets_qui_viennent_de_naitre(self):
+        """R3-010 — 6 projets créés il y a une minute : pas de « 6 projets actifs, 0 a avancé ces 7 jours » (constat
+        nul, la phrase est omise) ; un projet de 8 jours à côté de 2 nés de 6 jours : seul le premier est compté."""
+        neufs = [fabriques.projet(self.u1) for _ in range(6)]
+        self.assertIsNone(self._api(self.u1).get(_url('projets/')).json()['constat'])
+        self._vieillir(neufs[0])
+        self._vieillir(*neufs[1:3], jours=6)
+        self.assertEqual(self._api(self.u1).get(_url('projets/')).json()['constat'], {'actifs': 1, 'avances_7j': 0})
 
     def test_sante_a_l_arret_tout_fait_et_sans_prochaine_action(self):
         ancien = fabriques.projet(self.u1)
@@ -202,10 +269,10 @@ class CreerProjetTests(_Base):
         self.assertEqual(reponse.status_code, 400)
         self.assertEqual(reponse.json()['nom'], ['Requis.'])
 
-    def test_nom_deja_pris_400_meme_avec_une_autre_casse(self):
+    def test_nom_deja_pris_409_meme_avec_une_autre_casse(self):
         fabriques.projet(self.u1, nom='Chantier X')
         reponse = self._api(self.u1).post(_url('projets/'), {'nom': 'chantier  x'}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
         self.assertEqual(reponse.json()['nom'], ['Un projet « chantier  x » existe déjà.'])
 
     def test_meme_nom_chez_un_autre_compte_est_permis(self):
@@ -320,7 +387,7 @@ class FicheEtPatchTests(_Base):
         projet = fabriques.projet(self.u1, nom='Libre')
         reponse = self._api(self.u1).patch(_url(f'projets/{projet.pk}/'), {'nom': 'pris', 'lock_version': 0},
                                            format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
         self.assertEqual(reponse.json()['nom'], ['Un projet « pris » existe déjà.'])
 
     def test_patch_d_un_autre_compte_404(self):
@@ -495,7 +562,7 @@ class OrdreEtClotureTests(_Base):
         autre = api.post(_url(f'projets/{projet.pk}/terminer/'),
                          {'issue': 'atteint', 'taches_ouvertes': 'deplacer', 'projet_cible_id': etranger.pk},
                          format='json')
-        self.assertEqual(autre.status_code, 400)
+        self.assertEqual(autre.status_code, 404)  # id de corps qui ne désigne rien : 404 (api-fuzz r2)
         self.assertEqual(autre.json()['projet_cible_id'], ['Projet inexistant.'])
         projet.refresh_from_db()
         self.assertEqual(projet.statut, 'actif')
@@ -505,7 +572,7 @@ class OrdreEtClotureTests(_Base):
         fabriques.tache(self.u1, projet=projet)
         reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), {'issue': 'atteint'},
                                           format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # état : 409
         self.assertEqual(reponse.json()['taches_ouvertes'], ['Requis.'])
 
     def test_annuler_la_cloture_rend_projet_et_taches(self):
@@ -674,13 +741,13 @@ class VueEtEtapesTests(_Base):
         etranger = fabriques.projet(self.voisin)
         api = self._api(self.u1)
         pris = api.post(_url('sections/'), {'projet_id': projet.pk, 'nom': 'études'}, format='json')
-        self.assertEqual(pris.status_code, 400)
+        self.assertEqual(pris.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
         self.assertEqual(pris.json()['nom'], ['Une étape « études » existe déjà.'])
         inversees = api.post(_url('sections/'), {'projet_id': projet.pk, 'nom': 'Pose', 'date_debut': '2026-12-02',
                                                  'date_fin': '2026-12-01'}, format='json')
         self.assertEqual(inversees.json()['date_fin'], ['La date de fin précède la date de début.'])
         autre = api.post(_url('sections/'), {'projet_id': etranger.pk, 'nom': 'Pose'}, format='json')
-        self.assertEqual(autre.status_code, 400)
+        self.assertEqual(autre.status_code, 404)  # la ressource parente manque : 404, corps inchangé
         self.assertEqual(autre.json()['projet_id'], ['Projet inexistant.'])
 
     def test_renommer_une_etape(self):
@@ -737,6 +804,19 @@ class PlanificationTests(_Base):
         # le projet OÙ écrire et son verrou : la carte `plan_projet` du Copilote n'a que cette réponse
         self.assertEqual(reponse.json()['projet'], {'id': projet.pk, 'lock_version': projet.lock_version})
         self.assertEqual(Tache.objects.count(), 0)
+        self.assertEqual(Section.objects.count(), 0)
+
+    def test_apercu_mode_etapes_lit_trois_lignes_comme_trois_etapes(self):
+        projet = fabriques.projet(self.u1)
+        url = _url(f'projets/{projet.pk}/planification/apercu/')
+        reponse = self._api(self.u1).post(url, {'texte': 'Transport\nHébergement\nSur place', 'mode': 'etapes'},
+                                          format='json')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual([s['nom'] for s in reponse.json()['sections']], ['Transport', 'Hébergement', 'Sur place'])
+        self.assertEqual(set(reponse.json()), set(exemple_de('planification_apercu')))
+        sans = self._api(self.u1).post(url, {'texte': 'Transport\nHébergement'}, format='json')
+        # sans `mode` : la grammaire du plan, inchangée
+        self.assertEqual([s['nom'] for s in sans.json()['sections']], [None])
         self.assertEqual(Section.objects.count(), 0)
 
     def test_apercu_limites_et_projet_etranger(self):
@@ -1030,7 +1110,7 @@ class ModelesTests(_Base):
         etranger = fabriques.projet(self.voisin)
         self.assertEqual(self._enregistrer(projet).status_code, 201)
         pris = self._enregistrer(projet, nom='SALON')
-        self.assertEqual(pris.status_code, 400)
+        self.assertEqual(pris.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
         self.assertEqual(pris.json()['nom'], ['Un modèle « SALON » existe déjà.'])
         self.assertEqual(self._api(self.u1).post(_url(f'projets/{projet.pk}/enregistrer-modele/'), {},
                                                  format='json').status_code, 400)
@@ -1079,7 +1159,7 @@ class ModelesTests(_Base):
         ok = api.patch(_url(f'modeles/{premier}/'), {'nom': 'Salon 2027'}, format='json')
         self.assertEqual((ok.status_code, ok.json()['nom']), (200, 'Salon 2027'))
         pris = api.patch(_url(f'modeles/{second}/'), {'nom': 'salon 2027'}, format='json')
-        self.assertEqual((pris.status_code, pris.json()['nom']), (400, ['Un modèle « salon 2027 » existe déjà.']))
+        self.assertEqual((pris.status_code, pris.json()['nom']), (409, ['Un modèle « salon 2027 » existe déjà.']))
         self.assertEqual(api.patch(_url(f'modeles/{second}/'), {}, format='json').status_code, 400)
         self.assertEqual(ModeleProjet.objects.get(pk=second).nom, 'Foire')
 
@@ -1341,7 +1421,7 @@ class ModelesTests(_Base):
         modele = self._modele()
         api = self._api(self.u1)
         pris = api.post(_url(f'modeles/{modele}/instancier/'), {'nom': 'salon 2026', 'apercu': True}, format='json')
-        self.assertEqual((pris.status_code, pris.json()['nom']), (400, ['Un projet « salon 2026 » existe déjà.']))
+        self.assertEqual((pris.status_code, pris.json()['nom']), (409, ['Un projet « salon 2026 » existe déjà.']))
         corps = {'nom': 'Salon 2027', 'apercu': False}
         for _ in range(2):
             api.post(_url(f'modeles/{modele}/instancier/'), corps, format='json', HTTP_IDEMPOTENCY_KEY='inst-1')
@@ -1400,7 +1480,7 @@ class ModelesTests(_Base):
         etranger = fabriques.projet(self.voisin)
         api = self._api(self.u1)
         pris = api.post(_url(f'projets/{projet.pk}/dupliquer/'), {'nom': 'Salon 2026'}, format='json')
-        self.assertEqual((pris.status_code, pris.json()['nom']), (400, ['Un projet « Salon 2026 » existe déjà.']))
+        self.assertEqual((pris.status_code, pris.json()['nom']), (409, ['Un projet « Salon 2026 » existe déjà.']))
         self.assertEqual(api.post(_url(f'projets/{projet.pk}/dupliquer/'), {}, format='json').status_code, 400)
         self.assertEqual(api.post(_url(f'projets/{etranger.pk}/dupliquer/'), {'nom': 'X'},
                                   format='json').status_code, 404)

@@ -1,6 +1,7 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
@@ -166,6 +167,166 @@ describe('TCH88 — Projets : gestes sur place', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Trier par priorité' }))
     expect(api.trierProjetsParPriorite).toHaveBeenCalledTimes(1)
   })
+
+  const ligneDuNom = (nom) => screen.getByRole('button', { name: nom }).closest('.ligne')
+  const melange = () => {
+    // l'ordre MANUEL du serveur : Basse, Haute, Moyenne, Haute 2 — « Haute » est sous « Basse » parce que l'ordre manuel le veut
+    const base = projets().results[0]
+    const liste = projets()
+    liste.results = [
+      { ...base, id: 11, nom: 'Admin', priorite: 1 }, { ...base, id: 12, nom: 'Chantier', priorite: 3 },
+      { ...base, id: 13, nom: 'Site web', priorite: 2 }, { ...base, id: 14, nom: 'Salon', priorite: 3 },
+    ]
+    api.listerProjets.mockImplementation(async (params) => (params?.statut === 'en_pause' ? vide : { data: liste }))
+  }
+
+  it('R3-129 — la liste est GROUPÉE par priorité (Haute, Moyenne, Basse), l\'ordre manuel gardé dans chaque groupe', async () => {
+    melange()
+    const { container } = monter()
+    await screen.findByRole('button', { name: 'Admin' })
+    const groupes = [...container.querySelectorAll('.ep-groupe-prio')].map((e) => e.textContent)
+    expect(groupes).toEqual(['Haute2', 'Moyenne1', 'Basse1'])
+    const ordre = [...container.querySelectorAll('.ligne.projet .ep-ouvrir')].map((e) => e.textContent)
+    expect(ordre).toEqual(['Chantier', 'Salon', 'Site web', 'Admin']) // Haute (Chantier, Salon), Moyenne, Basse
+    expect(screen.getByRole('group', { name: 'Priorité haute' })).toContainElement(ligneDuNom('Salon'))
+  })
+
+  it('R3-129 — changer la priorité d\'un projet le fait passer dans son nouveau groupe, sans relire la liste', async () => {
+    melange()
+    api.modifierProjet.mockResolvedValue({ data: { ...projets().results[0], id: 11, nom: 'Admin', priorite: 3, lock_version: 9 } })
+    const { container } = monter()
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Priorité basse, changer' }))
+    await userEvent.setup().click(await screen.findByRole('menuitem', { name: 'Haute' }))
+    await waitFor(() => expect([...container.querySelectorAll('.ep-groupe-prio')].map((e) => e.textContent)).toEqual(['Haute3', 'Moyenne1']))
+    // l'ordre manuel (Admin, Chantier, Site web, Salon) est gardé dans le groupe Haute : Admin d'abord
+    expect([...container.querySelectorAll('.ligne.projet .ep-ouvrir')].map((e) => e.textContent)).toEqual(['Admin', 'Chantier', 'Salon', 'Site web'])
+  })
+
+  it('R3-129 — une seule priorité : pas d\'intitulé de groupe', async () => {
+    monter()
+    await screen.findByRole('button', { name: 'Ventes' })
+    expect(document.querySelector('.ep-groupe-prio')).toBeNull()
+  })
+})
+
+describe('R2-060 — Projets : « Mettre en haut » atteignable au doigt', () => {
+  it('l\'appui long (500 ms, doigt immobile) sur une ligne ouvre le menu ⋯ ; Mettre en haut y est', async () => {
+    api.reordonnerProjet.mockResolvedValue({ data: {} })
+    const liste = projets()
+    liste.results = [liste.results[0], { ...liste.results[0], id: 8, nom: 'Site web' }]
+    api.listerProjets.mockImplementation(async (params) => (params?.statut === 'en_pause' ? vide : { data: liste }))
+    monter()
+    const titre = await screen.findByRole('button', { name: 'Site web' })
+    const ligne = titre.closest('.ligne')
+    vi.useFakeTimers()
+    fireEvent.pointerDown(ligne, { pointerType: 'touch', clientX: 20, clientY: 20 })
+    act(() => { vi.advanceTimersByTime(520) })
+    vi.useRealTimers()
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Mettre en haut' })).toBeInTheDocument()
+    // l'appui long ne doit pas ouvrir le projet au relâchement
+    fireEvent.pointerUp(ligne, { pointerType: 'touch' })
+    fireEvent.click(titre)
+    expect(screen.queryByTestId('lieu')).toBeNull()
+    await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Mettre en haut' }))
+    expect(api.reordonnerProjet).toHaveBeenCalledWith(8, { avant_id: 3 })
+  })
+
+  it('un appui court ou un doigt qui bouge n\'ouvre pas le menu', async () => {
+    monter()
+    const ligne = (await screen.findByRole('button', { name: 'Ventes' })).closest('.ligne')
+    vi.useFakeTimers()
+    fireEvent.pointerDown(ligne, { pointerType: 'touch', clientX: 20, clientY: 20 })
+    fireEvent.pointerMove(ligne, { pointerType: 'touch', clientX: 20, clientY: 60 })
+    act(() => { vi.advanceTimersByTime(700) })
+    vi.useRealTimers()
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+})
+
+describe('R2-071 — Projets : priorité « Aucune » écrite', () => {
+  it('un projet sans priorité porte la pastille « Aucune » (jamais « — »), et le menu offre Aucune', async () => {
+    const liste = projets()
+    liste.results[0].priorite = 0
+    api.listerProjets.mockImplementation(async (params) => (params?.statut === 'en_pause' ? vide : { data: liste }))
+    monter()
+    const ligne = (await screen.findByRole('button', { name: 'Ventes' })).closest('.ligne')
+    const puce = within(ligne).getByRole('button', { name: 'Priorité aucune, changer' })
+    expect(puce).toHaveTextContent('Aucune')
+    expect(puce).not.toHaveTextContent('—')
+    await userEvent.setup().click(puce)
+    expect(await screen.findByRole('menuitem', { name: 'Aucune' })).toBeInTheDocument()
+  })
+})
+
+describe('R2-070 — Projets : jamais « Aucun projet » sans réponse ; hors ligne, la dernière liste lue', () => {
+  const connecte = (id) => ({ getState: () => ({ auth: { user: { id, active_company_id: 7 } } }) })
+  const monterConnecte = (id = 42) => render(
+    <ReactReduxContext.Provider value={{ store: connecte(id) }}>
+      <MemoryRouter initialEntries={['/taches/projets']}>
+        <Routes><Route path="/taches/projets" element={<Projets />} /><Route path="*" element={<Lieu />} /></Routes>
+      </MemoryRouter>
+    </ReactReduxContext.Provider>,
+  )
+  beforeEach(() => { window.localStorage.clear() })
+  afterEach(() => { window.localStorage.clear() })
+
+  it('lecture échouée et rien de gardé : l\'erreur est dite, jamais un faux « Aucun projet »', async () => {
+    api.listerProjets.mockRejectedValue(new Error('Network Error'))
+    monterConnecte()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Connexion perdue')
+    expect(screen.queryByText('Aucun projet')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Coller mes listes' })).toBeNull()
+  })
+
+  it('relu sans réseau : la dernière liste lue du compte s\'affiche, avec son constat', async () => {
+    const premier = monterConnecte()
+    await screen.findByRole('button', { name: 'Ventes' })
+    premier.unmount()
+    api.listerProjets.mockRejectedValue(new Error('Network Error'))
+    monterConnecte()
+    expect(await screen.findByRole('button', { name: 'Ventes' })).toBeInTheDocument()
+    expect(screen.getByText('7 projets actifs, 3 ont avancé ces 7 jours')).toBeInTheDocument()
+    expect(screen.queryByText('Aucun projet')).toBeNull()
+  })
+
+  it('hors ligne, la dernière liste lue est montrée SANS la phrase rouge « Connexion perdue » (la ligne « Hors ligne » de la coquille suffit)', async () => {
+    const premier = monterConnecte()
+    await screen.findByRole('button', { name: 'Ventes' })
+    premier.unmount()
+    api.listerProjets.mockRejectedValue(new Error('Network Error'))
+    const enLigne = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    try {
+      monterConnecte()
+      expect(await screen.findByRole('button', { name: 'Ventes' })).toBeInTheDocument()
+      expect(document.querySelector('.entete-date[role="status"]')).toHaveTextContent('Hors ligne')
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.queryByText('Aucun projet')).toBeNull()
+    } finally {
+      enLigne.mockRestore()
+    }
+  })
+
+  it('la liste gardée par un AUTRE compte n\'est jamais montrée ; la déconnexion vide le cache', async () => {
+    const premier = monterConnecte(42)
+    await screen.findByRole('button', { name: 'Ventes' })
+    premier.unmount()
+    api.listerProjets.mockRejectedValue(new Error('Network Error'))
+    const autre = monterConnecte(43)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ventes' })).toBeNull()
+    autre.unmount()
+    const { viderCacheProjets } = await import('../../features/taches/horsligne/cacheProjets')
+    expect(viderCacheProjets()).toBeGreaterThan(0)
+    // plus aucune entrée de CACHE DES PROJETS (d'autres clés du module, ex. « messages sans délai », ne sont pas à vider)
+    expect(Object.keys(window.localStorage).filter((c) => c.startsWith('taches:projets:'))).toEqual([])
+  })
+
+  it('R2-085 — la page Projets ne porte plus la date du jour en sous-titre', async () => {
+    monter()
+    await screen.findByRole('button', { name: 'Ventes' })
+    expect(document.querySelector('.entete-date')).toBeNull()
+  })
 })
 
 describe('TCH92 — Projets : Supprimer depuis la ligne', () => {
@@ -194,12 +355,12 @@ describe('TCH88 — Projets : Nouveau projet et navigation', () => {
     const feuille = await screen.findByRole('dialog', { name: 'Nouveau projet' })
     await user.type(within(feuille).getByLabelText('Nom du projet'), 'Salon')
     await user.click(within(feuille).getByRole('button', { name: 'Créer' }))
-    expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Salon' })
+    expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Salon' }, { erreurSousLeChamp: true })
     expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/projets/9?planifier=1')
   })
 
   it('un nom déjà pris s\'affiche sous le champ', async () => {
-    api.creerProjet.mockRejectedValue({ response: { status: 400, data: { nom: ['Un projet « Ventes » existe déjà.'] } } })
+    api.creerProjet.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un projet « Ventes » existe déjà.'], detail: 'Un projet « Ventes » existe déjà.', code: 'state_conflict' } } })
     monter()
     const user = userEvent.setup()
     await screen.findByRole('button', { name: 'Ventes' })
@@ -249,5 +410,41 @@ describe('Raccord F2 — Projets : chargement', () => {
     await act(async () => { finir(reponseContrat('taches', 'projets_liste')); await vi.advanceTimersByTimeAsync(0) })
     expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
     vi.useRealTimers()
+  })
+})
+
+describe('R2-067 — Projets au bureau (≥ 1024 px) : /taches/projets ouvre le premier projet', () => {
+  const ancienne = window.matchMedia
+  const media = (bureau) => vi.fn().mockImplementation((requete) => ({
+    matches: bureau, media: requete, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+  }))
+  afterEach(() => { window.matchMedia = ancienne })
+
+  it('le premier projet actif s\'ouvre à droite (l\'adresse devient /taches/projets/<id>) ; la palette garde sa requête', async () => {
+    window.matchMedia = media(true)
+    render(
+      <MemoryRouter initialEntries={['/taches/projets?nouveau=1']}>
+        <Routes>
+          <Route path="/taches/projets" element={<Projets />} />
+          <Route path="/taches/projets/:id" element={<Lieu />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/projets/3?nouveau=1')
+  })
+
+  it('aucun projet : l\'état vide reste (rien à ouvrir)', async () => {
+    window.matchMedia = media(true)
+    api.listerProjets.mockResolvedValue(vide)
+    monter()
+    expect(await screen.findByText('Aucun projet')).toBeInTheDocument()
+    expect(screen.queryByTestId('lieu')).toBeNull()
+  })
+
+  it('< 1024 px : la liste reste la liste (puis le projet)', async () => {
+    window.matchMedia = media(false)
+    monter()
+    expect(await screen.findByRole('button', { name: 'Ventes' })).toBeInTheDocument()
+    expect(screen.queryByTestId('lieu')).toBeNull()
   })
 })

@@ -222,7 +222,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // 19/11/2026 (copilote, vague 2B : dix-sept cartes d'écran de l'assistant — calepinage, visites, chantiers, après-devis,
 // stock, SAV, pilotage — et le lien profond lu par identifiant) : mesure RÉELLE 3861,5 Ko sur le runner (run 44484022026).
 // Aucune dépendance ajoutée : diff package.json vide. Budget monté au juste-dessus de la mesure : 3855 -> 3870.
-const TOTAL_BUDGET_KB = 3870
+// 19/11/2026 (Tâches, vague 3 de corrections : six lanes pliées + couture L7) : mesure RÉELLE 3890,8 Ko sur le runner
+// (tête 4b031e47d) ; la couture L7 ne bouge pas le total au poste (3852,4 Ko avant et après — le poste mesure ≈ 38 Ko de
+// moins : ses dépendances tierces, react-vendor/radix/pdf.worker, ne sont pas celles du verrou de la CI). Aucun gros
+// module dans un morceau commun : les morceaux Tâches ont grossi de ≈ 3 Ko en tout (Aujourdhui 18,1 → 19,3, Projet
+// 14,0 → 14,6…). Aucune dépendance ajoutée : diff package.json vide. Budget : mesure arrondie aux 5 Ko + 10 : 3870 -> 3905.
+const TOTAL_BUDGET_KB = 3905
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

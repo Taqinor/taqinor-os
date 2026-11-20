@@ -178,9 +178,9 @@ endpoints:
     note: "TCH129 : la proposition du jour."
 
   - path: /api/django/taches/journee/priorites/
-    budget: 22
+    budget: 23
     enforced: true
-    note: "TCH161 : « Aide-moi à prioriser » ; cible api.md §10 = 20, mesuré 22 horloge figée, 09:00 et 15:00 (18/11 : +1, même objectif du jour qu'Aujourd'hui) ; ne grandit pas avec les tâches."
+    note: "TCH161 : « Aide-moi à prioriser » ; cible api.md §10 = 20, mesuré 22 horloge figée, 09:00 et 15:00 (18/11 : +1, même objectif du jour qu'Aujourd'hui ; 19/11 R3-006 : +1, l'historique de la capacité pour le débordement) ; ne grandit pas avec les tâches."
 
   - path: /api/django/taches/journee/point/
     budget: 26
@@ -196,6 +196,11 @@ endpoints:
     budget: 12
     enforced: true
     note: "TCH129 : listes paginées des tâches ; ne grandit pas avec les lignes."
+
+  - path: /api/django/taches/taches/{id}/
+    budget: 16
+    enforced: true
+    note: "Couture L7 (19/11) : la fiche d'une tâche ; +1 requête nommée, les lignes du plan du jour (`calculs_du_plan` → `selectors.journee.lignes_de_taches_du_jour`) pour servir la MÊME ★ que la journée. Plafond estimé (test_plafonds.py::test_fiche_d_une_tache), à ramener à la mesure au premier vert."
 
   - path: /api/django/taches/projets/
     budget: 14

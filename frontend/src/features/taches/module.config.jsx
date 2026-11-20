@@ -1,8 +1,19 @@
-import { createElement, lazy } from 'react'
+import { createElement } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Calendar, Folder, Inbox, ListTodo, Sun } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
-
+import Aujourdhui from './ecrans/Aujourdhui'
+import ATrier from './ecrans/ATrier'
+import Projets from './ecrans/Projets'
+import Projet from './ecrans/Projet'
+import ProjetsArchive from './ecrans/ProjetsArchive'
+import ProjetsModeles from './ecrans/ProjetsModeles'
+import Agenda from './ecrans/Agenda'
+import Revue from './ecrans/Revue'
+import Rythme from './ecrans/Rythme'
+import Recherche from './ecrans/Recherche'
+import Supprimees from './ecrans/Supprimees'
+import Reglages from './ecrans/Reglages'
 /* ============================================================================
    TCH43 — Module frontend « Tâches » (apps.taches) : routes déclarées.
    ----------------------------------------------------------------------------
@@ -19,18 +30,10 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    jamais le repli WIR171 des comptes sans rôle fin, que le serveur refuse aussi.
    ========================================================================== */
 
-const Aujourdhui = lazy(() => import('../../pages/taches/Aujourdhui'))
-const ATrier = lazy(() => import('../../pages/taches/ATrier'))
-const Projets = lazy(() => import('../../pages/taches/Projets'))
-const Projet = lazy(() => import('../../pages/taches/Projet'))
-const ProjetsArchive = lazy(() => import('../../pages/taches/ProjetsArchive'))
-const ProjetsModeles = lazy(() => import('../../pages/taches/ProjetsModeles'))
-const Agenda = lazy(() => import('../../pages/taches/Agenda'))
-const Revue = lazy(() => import('../../pages/taches/Revue'))
-const Rythme = lazy(() => import('../../pages/taches/Rythme'))
-const Recherche = lazy(() => import('../../pages/taches/Recherche'))
-const Supprimees = lazy(() => import('../../pages/taches/Supprimees'))
-const Reglages = lazy(() => import('../../pages/taches/Reglages'))
+/* R4-41 — chaque écran vit dans `ecrans/` : son morceau chargé à la demande, SA frontière de chargement dans le module
+   (`Frontiere`, repli = la coquille et un squelette) et son chargeur de préchargement (`precharger.js`). Les routes
+   ci-dessous nomment ces écrans par un import par défaut, lisible statiquement (garde `check_ecrans_atteignables.py`). */
+export { CHARGEURS, prechargerEcrans, reinitialiserPrechargement } from './ecrans/precharger'
 
 /** `/taches` mène à `/taches/aujourdhui` (api.md §7), en remplaçant l'entrée d'historique. */
 function AllerAAujourdhui() {
@@ -58,7 +61,7 @@ const config = {
   },
   titles: [
     ['/taches/reglages', 'Tâches — Réglages'],
-    ['/taches/supprimees', 'Tâches — Supprimées récemment'],
+    ['/taches/supprimees', 'Tâches — Supprimées'],
     ['/taches/recherche', 'Tâches — Recherche'],
     ['/taches/rythme', 'Tâches — Mon rythme'],
     ['/taches/revue', 'Tâches — Revue de la semaine'],

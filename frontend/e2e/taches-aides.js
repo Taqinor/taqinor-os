@@ -32,6 +32,10 @@ const cle = () => ({ 'Idempotency-Key': randomUUID() })
 /** Efface les tâches du compte connecté (la route que l'écran « Mes données » appelle). */
 export async function reinitialiser(page) {
   await json(await page.request.post(`${API}/tout-effacer/`, { data: { confirmation: 'EFFACER' } }), 'tout-effacer')
+  // couture L7 — `tout-effacer/` ne touche pas aux activités de l'ERP : un compte qui en a pour aujourd'hui (pile locale,
+  // compte de démonstration) voyait sa « journée vide » remplie par elles. La spec ne dépend jamais du contenu de la
+  // journée du compte : les activités ERP quittent Aujourd'hui (réglage « Afficher mes activités ERP dans Aujourd'hui »).
+  await json(await page.request.patch(`${API}/reglages/`, { data: { erp_dans_journee: false } }), 'reglages')
 }
 
 /** Le jour du SERVEUR (`AAAA-MM-JJ`) : celui de `aujourdhui/`, jamais l'horloge du test. */

@@ -1,0 +1,67 @@
+{
+  "endpoint": "GET /api/django/taches/taches/",
+  "pourquoi": "R3-003 (vague 3, lane L1) — l'enveloppe de `GET taches/?periode=faites_semaine` (« Faites cette semaine » de la Recherche) : la page paginée habituelle (`count`, `next`, `previous`, `results` = ITEM, cf. `item.json`) PLUS `total` (le nombre de faites de la semaine, du lundi à maintenant, week-end compris : LA même somme que la tête de la Revue et que les `faites_nb` de l'Agenda — `selectors.journee.faites_par_jour`) et `activites_closes` (les activités ERP closes par lui cette semaine, comptées dans `total` et absentes de `results` : `{jour, titre}`, la plus récente d'abord). Les deux clés n'existent QUE pour `periode=faites_semaine`, sur chaque page. `results` ne porte que ce que `total` compte (routines et sous-tâches exclues). Source : docs/taches/reference/api.md annexe A (`faites_semaine.json`).",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "type": "tache",
+        "id": 20,
+        "titre": "Devis Settat",
+        "statut": "fait",
+        "projet": {
+          "id": 3,
+          "nom": "Ventes",
+          "couleur": "vert",
+          "priorite": 3
+        },
+        "section": null,
+        "parent_id": null,
+        "priorite": 2,
+        "jour_prevu": "2026-11-17",
+        "moment": "matin",
+        "heure_debut": "10:00",
+        "echeance": "2026-11-19",
+        "echeance_heure": null,
+        "quelque_jour": false,
+        "estimation_minutes": 60,
+        "reports": 0,
+        "rang": 1024,
+        "motif": null,
+        "raison": null,
+        "explication": "échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
+        "rappel": null,
+        "lien": null,
+        "checklist": null,
+        "sous_taches": null,
+        "recurrente": false,
+        "routine": false,
+        "jalon": false,
+        "bloquee_par": null,
+        "en_attente_de": "",
+        "essentielle": true,
+        "prevue_au_plan": true,
+        "confidentiel": false,
+        "confidentielle": false,
+        "source": "rapide",
+        "peut_cloturer": true,
+        "a_notes": true,
+        "fait_le": "2026-11-17T11:05:00+01:00",
+        "lock_version": 5
+      }
+    ],
+    "total": 2,
+    "activites_closes": [
+      {
+        "jour": "2026-11-16",
+        "titre": "Rappeler M. Alami"
+      }
+    ]
+  },
+  "nuls": [
+    "next",
+    "previous"
+  ]
+}

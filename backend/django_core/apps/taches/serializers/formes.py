@@ -20,6 +20,7 @@ from rest_framework import serializers
 
 from apps.taches.choix import Frequence, LienEtat, StatutRappel, StatutTache
 from apps.taches.confidentialite import ASSISTANT, ECRAN, est_confidentielle, nom_pour
+from apps.taches.entrees import HeureServie
 from apps.taches.models.taches import Tache
 from apps.taches.moteur.recurrence import libelle_regle
 from apps.taches.selectors.liens import url_de_cible
@@ -173,7 +174,7 @@ class ElementChecklistFormeSerializer(serializers.Serializer):
 class RappelSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     jour = serializers.DateField()
-    heure = serializers.TimeField(format=FORMAT_HEURE)
+    heure = HeureServie(format=FORMAT_HEURE)
     ancre = serializers.CharField(allow_blank=True)
     decalage_jours = serializers.IntegerField()
     statut = serializers.CharField()
@@ -219,9 +220,9 @@ class ItemSerializer(_FormeSerializer):
     priorite = serializers.IntegerField()
     jour_prevu = serializers.DateField(allow_null=True)
     moment = serializers.CharField(allow_blank=True)
-    heure_debut = serializers.TimeField(format=FORMAT_HEURE, allow_null=True)
+    heure_debut = HeureServie(format=FORMAT_HEURE, allow_null=True)
     echeance = serializers.DateField(allow_null=True)
-    echeance_heure = serializers.TimeField(format=FORMAT_HEURE, allow_null=True)
+    echeance_heure = HeureServie(format=FORMAT_HEURE, allow_null=True)
     quelque_jour = serializers.BooleanField()
     estimation_minutes = serializers.IntegerField(allow_null=True)
     reports = serializers.IntegerField()
@@ -244,6 +245,8 @@ class ItemSerializer(_FormeSerializer):
     confidentielle = serializers.SerializerMethodField()
     source = serializers.CharField(allow_null=True)
     peut_cloturer = serializers.SerializerMethodField()
+    a_notes = serializers.SerializerMethodField()
+    fait_le = serializers.DateTimeField(allow_null=True)
     lock_version = serializers.IntegerField(allow_null=True)
 
     def to_representation(self, instance):
@@ -354,6 +357,12 @@ class ItemSerializer(_FormeSerializer):
     def get_peut_cloturer(self, obj):
         return bool(self._du_contexte(obj, 'peut_cloturer', True))
 
+    @extend_schema_field(serializers.BooleanField())
+    def get_a_notes(self, obj):
+        """L'indice « note » de la ligne, lu de la colonne déjà chargée ; jamais vrai sous l'en-tête
+        assistant : les notes ne lui sont jamais servies, leur présence non plus (regles.md §8)."""
+        return not self.context.get('assistant') and bool(obj.notes)
+
     def _lien_activite(self, activite):
         cible = _cible_de(getattr(activite, 'content_type', None))
         if cible is None or activite.object_id is None:
@@ -378,7 +387,9 @@ class ItemSerializer(_FormeSerializer):
             'en_attente_de': '', 'essentielle': bool(calcul.get('essentielle', False)),
             'prevue_au_plan': bool(calcul.get('prevue_au_plan', False)),
             'confidentiel': False, 'confidentielle': False, 'source': None,
-            'peut_cloturer': bool(calcul.get('peut_cloturer', False)), 'lock_version': None,
+            'peut_cloturer': bool(calcul.get('peut_cloturer', False)), 'a_notes': False,
+            'fait_le': self.fields['fait_le'].to_representation(activite.done_at) if activite.done_at else None,
+            'lock_version': None,
         }
 
 
@@ -397,7 +408,6 @@ class TacheSerializer(ItemSerializer):
     premier_jour_prevu = serializers.DateField(allow_null=True)
     reports_tranches = serializers.IntegerField()
     duree_reelle_minutes = serializers.IntegerField(allow_null=True)
-    fait_le = serializers.DateTimeField(allow_null=True)
     annule_le = serializers.DateTimeField(allow_null=True)
     occurrence_du = serializers.DateField(allow_null=True)
     activite_origine_id = serializers.IntegerField(allow_null=True)
@@ -456,6 +466,17 @@ class DetailProgressionSerializer(serializers.Serializer):
     activites_closes = serializers.IntegerField()
 
 
+class ChargeSerializer(serializers.Serializer):
+    """Forme CHARGE (api.md §1, R4-01) : la charge d'un jour (`selectors.journee.charge_du_jour`)."""
+    taches = serializers.IntegerField()
+    restantes_minutes = serializers.IntegerField()
+    sans_duree = serializers.IntegerField()
+    capacite_minutes = serializers.IntegerField()
+    rendez_vous_minutes = serializers.IntegerField()
+    disponible_minutes = serializers.IntegerField()
+    deborde_minutes = serializers.IntegerField()
+
+
 class ProgressionSerializer(serializers.Serializer):
     """Forme PROGRESSION (api.md §1) : un dict calculé par le service du jour."""
     faites = serializers.IntegerField()
@@ -465,8 +486,7 @@ class ProgressionSerializer(serializers.Serializer):
     essentiel_prevues = serializers.IntegerField()
     plan_tenues = serializers.IntegerField()
     plan_lignes = serializers.IntegerField()
-    minutes_prevues = serializers.IntegerField()
-    sans_estimation = serializers.IntegerField()
+    charge = ChargeSerializer()
     capacite_minutes = serializers.IntegerField()
     capacite_source = serializers.CharField()
     rendez_vous_minutes = serializers.IntegerField()

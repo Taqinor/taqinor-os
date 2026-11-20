@@ -53,6 +53,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": true,
+        "fait_le": null,
         "lock_version": 4
       }
     ]

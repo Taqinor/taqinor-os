@@ -1,13 +1,23 @@
 {
   "endpoint": "GET /api/django/taches/gestes/",
-  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes ». Source : docs/taches/reference/api.md annexe A (`gestes.json`), recopié mot pour mot.",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes ». Source : docs/taches/reference/api.md annexe A (`gestes.json`), recopié mot pour mot. R2-125 : `titre` = le titre de la tâche touchée (une seule tâche, ou une terminaison / réouverture) ; R4 couture : le nom du projet ou de l'étiquette qu'un geste touche (un projet prime sur ses tâches), nul sinon et toujours nul sous l'en-tête assistant.",
   "exemple": {
     "results": [
       {
         "id": 77,
         "type": "planification",
         "message": "Reportée à jeu. 19",
+        "titre": "Appeler le fournisseur",
         "created_at": "2026-11-17T09:20:00+01:00",
+        "annule_le": null,
+        "annulable": true
+      },
+      {
+        "id": 76,
+        "type": "rythme",
+        "message": "Garder ce rythme : environ 5 tâches par jour (4 à 6).",
+        "titre": null,
+        "created_at": "2026-11-17T09:12:00+01:00",
         "annule_le": null,
         "annulable": true
       }

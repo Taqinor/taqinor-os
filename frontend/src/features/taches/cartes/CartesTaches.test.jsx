@@ -9,6 +9,9 @@ vi.mock('../../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }))
 
+const toasts = vi.hoisted(() => ({ toastError: vi.fn() }))
+vi.mock('../../../lib/toast', async (importOriginal) => ({ ...(await importOriginal()), toastError: toasts.toastError }))
+
 const api = (await import('../../../api/axios')).default
 const { default: CartesTaches } = await import('./CartesTaches')
 
@@ -30,7 +33,7 @@ beforeEach(() => {
 })
 
 describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
-  it('plan_propose : « Garder ces 2 » poste le mode express puis dit « 2 gardées » avec Annuler', async () => {
+  it('plan_propose : « Garder ces 2 » poste le mode express puis dit « 2 prévues aujourd\'hui » avec Annuler', async () => {
     const donnees = contrat('journee_proposition')
     monter('plan_propose', donnees)
     const carte = screen.getByRole('group', { name: "Proposé pour aujourd'hui" })
@@ -44,7 +47,7 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     expect(corps).toMatchObject({
       jour: '2026-11-17', mode: 'express', lignes: [{ type: 'tache', id: 21 }, { type: 'tache', id: 30 }],
     })
-    expect(await within(carte).findByText(/2 gardées/)).toBeInTheDocument()
+    expect(await within(carte).findByText(/2 prévues aujourd'hui/)).toBeInTheDocument() // R4-07 : plus de « gardées »
     await userEvent.click(within(carte).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.post).toHaveBeenLastCalledWith('/taches/gestes/5/annuler/', {}))
   })
@@ -84,10 +87,13 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
   })
 
   it('plan_propose : une erreur du serveur s’affiche sous le geste, la liste reste', async () => {
-    api.post.mockRejectedValueOnce({ response: { status: 400, data: { error: 'x', essentielles: ['3 au plus.'] } } })
+    // le VRAI refus servi (`services/journee.py::_verifier_essentiels` → `RefusEtat` → 409 au champ, `detail` posé)
+    api.post.mockRejectedValueOnce({ response: { status: 409, data: {
+      essentielles: ['3 au plus.'], detail: '3 au plus.', code: 'state_conflict',
+      error: { code: 'state_conflict', message: '3 au plus.', fields: null } } } })
     monter('plan_propose', contrat('journee_proposition'))
     await userEvent.click(screen.getByRole('button', { name: 'Garder ces 2' }))
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('3 au plus.')
     expect(screen.getByText('Déclaration TVA')).toBeInTheDocument()
   })
 
@@ -206,13 +212,13 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     ))
   })
 
-  it('priorites : Essentiel, Aujourd’hui et Plus tard dans la semaine ont chacun leur route', async () => {
+  it('priorites : Essentiel, Aujourd’hui et « Reporter à {jour} » (R3-150, C-20) ont chacun leur route', async () => {
     monter('priorites', contrat('priorites'))
     const ligne = screen.getByText('Déclaration TVA').closest('.ligne')
     await userEvent.click(within(ligne).getByRole('button', { name: 'Essentiel' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/journee/essentiel/', { tache_id: 21, essentielle: true }))
     expect(await within(ligne).findByText(/Essentielle/)).toBeInTheDocument()
-    await userEvent.click(within(ligne).getByRole('button', { name: /Plus tard dans la semaine/ }))
+    await userEvent.click(within(ligne).getByRole('button', { name: 'Reporter à jeu. 19' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/taches/taches/21/planifier/', expect.objectContaining({ jour_prevu: '2026-11-19', lock_version: 2 }),
     ))
@@ -222,7 +228,7 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     monter('priorites', contrat('priorites'))
     const ligne = screen.getByText('Déclaration TVA').closest('.ligne')
     const gestes = within(ligne.querySelector('.actions-priorite')).getAllByRole('button')
-    expect(gestes.map((b) => b.textContent)).toEqual(['Essentiel', "Aujourd'hui", expect.stringMatching(/^Plus tard dans la semaine/)])
+    expect(gestes.map((b) => b.textContent)).toEqual(['Essentiel', "Aujourd'hui", 'Reporter à jeu. 19'])
     for (const b of gestes) expect(b).toHaveClass('bouton', 'lien')
   })
 
@@ -233,7 +239,7 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
   })
 
   it('priorites : objectif atteint et mode libre ont leur phrase', () => {
-    const atteint = { ...contrat('priorites'), garder_n: 0 }
+    const atteint = { ...contrat('priorites'), garder_n: 0, faites: 5 }
     const { unmount } = monter('priorites', atteint)
     expect(screen.getByText('Objectif atteint : le reste peut attendre.')).toBeInTheDocument()
     unmount()
@@ -243,14 +249,47 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     expect(screen.getByText("Dans l'ordre où l'ERP les prendrait")).toBeInTheDocument()
   })
 
+  it('R3-023 — `garder_n` 0 à 1 faite sur 9 : JAMAIS « Objectif atteint », mais « couvert par tes tâches du jour (1 sur 9 faites) »', () => {
+    const d = { ...contrat('priorites'), garder_n: 0, faites: 1, objectif: { ...contrat('priorites').objectif, nb: 9 } }
+    monter('priorites', d)
+    expect(screen.queryByText(/Objectif atteint/)).toBeNull()
+    expect(screen.getByText('Ton objectif est couvert par tes tâches du jour (1 sur 9 faites)')).toBeInTheDocument()
+  })
+
+  it('R3-023 — journée qui déborde (`geste_propose: "alleger"`) : « Ta journée déborde de 4 h 45 », les gardées avec « Reporter à », et Alléger — jamais « Aujourd\'hui »', async () => {
+    // R4-01 — LA charge servie (`charge`, la même que la page Aujourd'hui)
+    const d = {
+      ...contrat('priorites'), garder_n: 0, faites: 1, geste_propose: 'alleger',
+      charge: { ...contrat('priorites').charge, restantes_minutes: 525, disponible_minutes: 240, deborde_minutes: 285 },
+    }
+    d.lignes = d.lignes.map((l) => ({ ...l, item: { ...l.item, jour_prevu: d.jour, prevue_au_plan: true, raison: null } }))
+    monter('priorites', d)
+    const carte = screen.getByRole('group', { name: 'Tes priorités' })
+    expect(within(carte).getByText('Ta journée déborde de 4 h 45')).toBeInTheDocument()
+    expect(within(carte).queryByText(/Objectif atteint/)).toBeNull()
+    expect(within(carte).queryByRole('button', { name: "Aujourd'hui" })).toBeNull()
+    expect(within(carte).queryByRole('button', { name: /^Garder/ })).toBeNull()
+    expect(within(carte).getAllByRole('listitem')).toHaveLength(d.lignes.length) // toutes, dans l'ordre servi
+    const reporter = within(carte).getAllByRole('button', { name: `Reporter à ${'jeu. 19'}` })
+    expect(reporter).toHaveLength(d.lignes.length)
+    await userEvent.click(reporter[0])
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/taches/taches/${d.lignes[0].item.id}/planifier/`,
+      expect.objectContaining({ jour_prevu: d.plus_tard, lock_version: d.lignes[0].item.lock_version })))
+    expect(within(carte).getByRole('link', { name: 'Alléger ma journée' })).toHaveAttribute('href', '/taches/aujourdhui?ouvrir=alleger')
+  })
+
   it('point : les constats calculés par le serveur, rien d’autre', () => {
     monter('point', contrat('point'))
     const carte = screen.getByRole('group', { name: 'Où tu en es' })
     expect(within(carte).getByText('1 sur 5')).toBeInTheDocument()
     expect(within(carte).getByText('Essentiel restant : Devis Settat')).toBeInTheDocument()
     expect(within(carte).getByText('Prochaine : Timbres')).toBeInTheDocument()
-    expect(within(carte).getByText('Encore 3 gardées')).toBeInTheDocument()
-    expect(within(carte).getByText('Temps libre : 3 h')).toBeInTheDocument()
+    // R4-07 — plus de « gardées » : ce qui reste prévu aujourd'hui
+    expect(within(carte).getByText("Encore 3 prévues aujourd'hui")).toBeInTheDocument()
+    expect(within(carte).queryByText(/gardée/)).toBeNull()
+    // R4-01 — la MÊME phrase qu'Aujourd'hui, sur LA charge servie (`progression.charge`) : ce qui reste, contre le disponible
+    expect(within(carte).getByText('Reste : 1 h 15 pour 3 h disponibles · 1 sans durée')).toBeInTheDocument()
+    expect(within(carte).queryByText(/Temps libre/)).toBeNull()
     expect(within(carte).getByRole('link', { name: "Ouvrir Aujourd'hui" })).toHaveAttribute('href', '/taches/aujourdhui')
   })
 
@@ -443,7 +482,7 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
   it('revue_semaine : le bilan de la semaine et « Ouvrir la revue »', () => {
     monter('revue_semaine', contrat('revue_projets'))
     const carte = screen.getByRole('group', { name: 'Revue de la semaine' })
-    expect(within(carte).getByText(/Du lun. 16 au ven. 20/)).toBeInTheDocument()
+    expect(within(carte).getByText(/^Cette semaine : 26 faites \(23 la précédente\)\./)).toBeInTheDocument()
     expect(within(carte).getByRole('link', { name: 'Ouvrir la revue' })).toHaveAttribute('href', '/taches/revue')
   })
 })
@@ -471,7 +510,8 @@ describe('A5 — écriture du Copilote sous un texte tiers : carte à valider (�
     expect(within(carte).getByText('Projet : Admin → Ventes')).toBeInTheDocument()
     expect(api.patch).not.toHaveBeenCalled() // rien n'est écrit avant le doigt
     await userEvent.click(within(carte).getByRole('button', { name: 'Modifier' }))
-    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/taches/taches/21/', donnees.proposition.corps))
+    // critique serveur n° 7 : un refus au champ se dit sous la carte (`erreurSousLeChamp`), sans toast par-dessus
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/taches/taches/21/', donnees.proposition.corps, { erreurSousLeChamp: true }))
     expect(await within(carte).findByText(/Modifiée/)).toBeInTheDocument()
     await userEvent.click(within(carte).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.post).toHaveBeenLastCalledWith('/taches/gestes/6/annuler/', {}))
@@ -532,7 +572,7 @@ describe('A5 — la carte à valider montre tout ce qu’elle écrit (revue F3 n
     'taches.tache.planifier': {
       tache: true,
       corps: { lock_version: 2, jour_prevu: '2027-03-01', moment: 'soir', heure_debut: '03:00', quelque_jour: true },
-      vus: (j) => ['Déclaration TVA', `Quand : ${j.jourCourt('2027-03-01')}`, 'Ce soir', 'Heure : 03:00', 'En réserve'],
+      vus: (j) => ['Déclaration TVA', `Quand : ${j.jourCourt('2027-03-01')}`, 'Ce soir', 'Heure : 03:00', 'Plus tard'],
     },
     'taches.rappel.poser': {
       tache: true, corps: { jour: '2026-11-19', heure: '03:00' },
@@ -707,6 +747,34 @@ describe('ERR 5 — cadre de la carte et en-tête des créations validées au do
     monter('tache', contrat('ecriture_a_valider'))
     await userEvent.click(screen.getByRole('button', { name: 'Modifier' }))
     await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1))
-    expect(api.patch.mock.calls[0]).toHaveLength(2) // PATCH taches/{id}/ : une modification, pas une création
+    // PATCH taches/{id}/ : une modification, pas une création — aucun en-tête, le refus dit sous la carte (critique n° 7)
+    expect(api.patch.mock.calls[0][2]).toEqual({ erreurSousLeChamp: true })
+  })
+})
+
+/* Critique serveur n° 7 — un refus d'ÉTAT au champ (409 `state_conflict`) d'une écriture validée sur la carte se dit
+   SOUS la carte, le message français du serveur, une fois : jamais aussi en toast, jamais « state_conflict ». */
+describe('critique serveur n° 7 — refus 409 au champ dit sous la carte', () => {
+  const refus409 = (champ, message) => ({ status: 409, data: { [champ]: [message], detail: message, code: 'state_conflict' } })
+
+  it('rappel au plafond (5 rappels) : le message du serveur sous la carte, aucun toast', async () => {
+    api.post.mockResolvedValueOnce(refus409('rappel', '5 rappels au plus par tâche.'))
+    const base = contrat('ecriture_a_valider')
+    monter('tache', {
+      tache: base.tache,
+      proposition: { geste: 'ecrire', action_key: 'taches.rappel.poser', libelle: 'Poser un rappel', corps: { jour: '2026-11-19', heure: '08:30' } },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Poser un rappel' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('5 rappels au plus par tâche.')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('state_conflict')
+    expect(toasts.toastError).not.toHaveBeenCalled()
+  })
+
+  it('modifier : une heure sans échéance refusée (409) se dit sous la carte, aucun toast', async () => {
+    api.patch.mockResolvedValueOnce(refus409('echeance_heure', 'Une heure demande une échéance.'))
+    monter('tache', contrat('ecriture_a_valider'))
+    await userEvent.click(screen.getByRole('button', { name: 'Modifier' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Une heure demande une échéance.')
+    expect(toasts.toastError).not.toHaveBeenCalled()
   })
 })

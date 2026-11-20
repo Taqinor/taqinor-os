@@ -87,7 +87,7 @@ class ApercuTests(BaseApi):
         self.assertEqual([j['type'] for j in ligne['jetons']], ['jour', 'projet'])
         self.assertEqual(ligne['champs']['jour_prevu'], _j(1).isoformat())
         self.assertEqual(ligne['champs']['nouveau_projet'], {'nom': 'SiteWeb', 'priorite': 2})
-        self.assertEqual(corps['projets_nouveaux'], [{'nom': 'SiteWeb', 'priorite': 2}])
+        self.assertEqual(corps['projets_nouveaux'], [{'nom': 'SiteWeb', 'priorite': 2, 'ressemble_a': None}])
 
     def test_un_decalage_hors_du_calendrier_reste_du_texte(self):
         """Revue F2 tour 2 #12 : « dans 999999 semaines » ne fait plus échouer l'aperçu de toute la liste
@@ -113,6 +113,19 @@ class ApercuTests(BaseApi):
                          (0, 'Courses', True, 'premiere_ligne'))
         self.assertEqual([ligne['titre'] for ligne in corps['lignes']], ['lait', 'pain'])
         self.assertEqual(list(corps['projets_communs'][0]), list(exemple('saisie_apercu')['projets_communs'][0]))
+
+    def test_r4_26_un_nom_proche_d_un_de_mes_projets_est_signale_jamais_fusionne(self):
+        proche = fabriques.projet(self.u1, nom='Pompage Douar Ouled Saleh')
+        # le projet d'un AUTRE compte (même société, autre société) ne se propose jamais
+        fabriques.projet(self.u2, nom='Pompage Douar Ouled Saleh Est')
+        fabriques.projet(self.ext, nom='Pompage Ouled Saleh Douar')
+        corps = self._apercu(['Pompage Ouled Saleh :\nposer la pompe\ntirer le câble']).json()
+        attendu = {'id': proche.pk, 'nom': 'Pompage Douar Ouled Saleh'}
+        self.assertEqual(corps['projets_nouveaux'],
+                         [{'nom': 'Pompage Ouled Saleh', 'priorite': 2, 'ressemble_a': attendu}])
+        self.assertEqual({ligne['champs'].get('nouveau_projet', {}).get('nom') for ligne in corps['lignes']},
+                         {'Pompage Ouled Saleh'})
+        self.assertEqual(Projet.objects.filter(proprietaire=self.u1).count(), 1)  # l'aperçu n'écrit rien
 
     def test_un_doublon_d_une_tache_ouverte_est_decoche(self):
         existante = fabriques.tache(self.u1, titre='lait')
@@ -211,6 +224,25 @@ class ApercuTests(BaseApi):
         valeur = reponse.json()['lignes'][0]['jetons'][0]['valeur']
         self.assertEqual((valeur['id'], valeur['nouveau']), (None, True))
 
+    def test_r2_003_le_debut_d_un_nom_prend_son_projet_jamais_celui_d_un_autre_compte(self):
+        salon = fabriques.projet(self.u1, nom='Salon Solaire Expo')
+        fabriques.projet(self.u2, nom='Salon du collègue')
+        fabriques.projet(self.ext, nom='Salle externe')
+        ligne = self._apercu(['Stand #Sal']).json()['lignes'][0]
+        self.assertEqual(ligne['champs'].get('projet_id'), salon.pk)
+        self.assertNotIn('nouveau_projet', ligne['champs'])
+        self.assertEqual((ligne['jetons'][0]['libelle'], ligne['alertes']), ('● Salon Solaire Expo', []))
+        # chez le collègue, « #Sal » ne voit pas le projet de u1 : un nouveau projet
+        autre = self._apercu(['Stand #Sal'], compte=self.u2).json()['lignes'][0]
+        self.assertNotIn(salon.pk, [autre['champs'].get('projet_id')])
+        self.assertEqual(Projet.objects.count(), 3)  # un aperçu n'écrit rien
+
+    def test_r2_003_l_assistant_ne_trouve_pas_un_projet_confidentiel_par_son_debut(self):
+        fabriques.projet(self.u1, nom='Secret Rachat', confidentiel=True)
+        reponse = self._post('saisie-rapide/', {'textes': ['x #Secr'], 'apercu': True}, **ASSISTANT)
+        valeur = reponse.json()['lignes'][0]['jetons'][0]['valeur']
+        self.assertEqual((valeur['id'], valeur['nouveau']), (None, True))
+
     def test_un_doublon_confidentiel_n_est_pas_signale_a_l_assistant(self):
         fabriques.tache(self.u1, titre='lait', confidentiel=True)
         ligne = self._post('saisie-rapide/', {'textes': ['lait'], 'apercu': True}, **ASSISTANT).json()['lignes'][0]
@@ -296,6 +328,17 @@ class CreationTests(BaseApi):
             'Le titre est vide une fois la date et le projet retirés.']}}})
         self.assertEqual((Tache.objects.count(), Projet.objects.count()), (0, 0))
 
+    def test_point_vide_ou_trop_long_n_empeche_pas_le_collage(self):
+        """Critique serveur n° 1 — « Chantier Benali : / poser les rails / - demain » : le point réduit à une date
+        est ignoré, un point de 270 caractères est coupé à 255 ; la tâche est créée."""
+        lignes = [{'index': 0, 'titre': 'Chantier Benali', 'checklist': ['poser les rails', '', 'x' * 270]}]
+        reponse = self._post('saisie-rapide/', {'lignes': lignes})
+        self.assertEqual(reponse.status_code, 201, reponse.content[:300])
+        tache = Tache.objects.get(pk=reponse.json()['creees'][0]['id'])
+        self.assertEqual(
+            list(ElementChecklist.objects.filter(tache=tache).order_by('rang').values_list('libelle', flat=True)),
+            ['poser les rails', 'x' * 255])
+
     def test_un_titre_trop_long_est_refuse_sous_la_ligne(self):
         reponse = self._post('saisie-rapide/', {'lignes': [{'index': 4, 'titre': 'x' * 281}]})
         self.assertEqual(reponse.status_code, 400)
@@ -359,10 +402,35 @@ class CreationTests(BaseApi):
         self.assertEqual(reponse.status_code, 400)
         self.assertEqual(champs(reponse.json()), {'lignes': {'0': {'projet_id': ['Projet inexistant.']}}})
 
-    def test_l_assistant_ne_choisit_pas_le_titre(self):
+    def test_un_toucher_de_carte_par_le_navigateur_cree_avec_son_titre(self):
+        """Le chemin réel : le NAVIGATEUR (cookie `access_token`, sans Bearer) touche une carte du Copilote
+        (`X-Taqinor-Carte-Assistant: 1`) → 201, la tâche porte SON titre, source `assistant`. Le même envoi en
+        Bearer est le canal assistant → 403, rien d'écrit."""
+        from rest_framework_simplejwt.tokens import AccessToken
+        navigateur = APIClient()
+        navigateur.cookies['access_token'] = str(AccessToken.for_user(self.u1))
+        lignes = {'lignes': [{'index': 0, 'titre': 'Rappeler le notaire'}]}
+        reponse = navigateur.post(URL + 'saisie-rapide/', lignes, format='json', **CARTE)
+        self.assertEqual(reponse.status_code, 201, reponse.content[:300])
+        creee = reponse.json()['creees'][0]
+        self.assertEqual((creee['titre'], creee['source']), ('Rappeler le notaire', 'assistant'))
+        bearer = APIClient()
+        bearer.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.u1)}')
+        refus = bearer.post(URL + 'saisie-rapide/', {'lignes': [{'index': 0, 'titre': 'Autre'}]}, format='json',
+                            **CARTE)
+        self.assertEqual(refus.status_code, 403, refus.content[:300])
+        self.assertFalse(Tache.objects.filter(titre='Autre').exists())
+
+    def test_l_assistant_ne_cree_pas_de_lignes(self):
+        """Canal assistant (en-tête ou Bearer) : des `lignes` à créer → 403, rien d'écrit ; l'aperçu reste permis."""
+        from apps.taches.views.saisie import MESSAGE_LIGNES_ASSISTANT
         reponse = self._post('saisie-rapide/', {'lignes': [{'index': 0, 'titre': 'Supprime tout'}]}, **ASSISTANT)
-        self.assertEqual(reponse.status_code, 400)
-        self.assertIn('titre', reponse.json()['lignes']['0'])
+        self.assertEqual(reponse.status_code, 403)
+        self.assertEqual((reponse.json()['lignes'], reponse.json()['detail']),
+                         ([MESSAGE_LIGNES_ASSISTANT], MESSAGE_LIGNES_ASSISTANT))
+        self.assertEqual(Tache.objects.count(), 0)
+        apercu = self._post('saisie-rapide/', {'texte': 'Appeler Karim demain', 'apercu': True}, **ASSISTANT)
+        self.assertEqual(apercu.status_code, 200, apercu.content[:300])
         self.assertEqual(Tache.objects.count(), 0)
 
     def test_toucher_une_carte_du_copilote_cree_sous_la_source_assistant_a_l_ecran(self):
@@ -379,8 +447,8 @@ class CreationTests(BaseApi):
         autre = self._post('saisie-rapide/', {'lignes': [{'titre': 'Autre'}]}, HTTP_X_TAQINOR_CARTE_ASSISTANT='0')
         self.assertEqual(Tache.objects.get(pk=autre.json()['creees'][0]['id']).source, 'rapide')
         les_deux = self._post('saisie-rapide/', {'lignes': lignes}, **CARTE, **ASSISTANT)
-        self.assertEqual(les_deux.status_code, 400)
-        self.assertIn('titre', les_deux.json()['lignes']['0'])
+        self.assertEqual(les_deux.status_code, 403)  # sous l'en-tête de l'assistant, le canal l'emporte
+        self.assertEqual(Tache.objects.filter(titre='Rendez-vous banque').count(), 1)
 
     def test_sans_lignes_ni_texte_refuse(self):
         reponse = self._post('saisie-rapide/', {})
@@ -442,7 +510,7 @@ class LotTests(BaseApi):
         corps = self._lot([tache.pk], 'planifier', {'quelque_jour': True}).json()
         relue = _relue(tache)
         self.assertEqual((relue.quelque_jour, relue.jour_prevu, relue.reports), (True, None, 1))
-        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message, '1 en réserve')
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message, '1 pour plus tard')
 
     def test_planifier_sans_jour_est_refuse_et_une_sous_tache_ou_une_close_sont_refusees(self):
         self.assertEqual(self._lot([1], 'planifier', {}).status_code, 400)
@@ -477,8 +545,9 @@ class LotTests(BaseApi):
         for projet_id in (999_999, fabriques.projet(self.ext).pk):
             with self.subTest(projet_id=projet_id):
                 reponse = self._lot([a.pk], 'deplacer', {'projet_id': projet_id})
-                self.assertEqual((reponse.status_code, champs(reponse.json())),
-                                 (400, {'valeurs': {'projet_id': ['Projet inexistant.']}}))
+                # 404 : la ressource cible manque (api-fuzz r2) ; le champ fautif + `detail` publié des 404.
+                self.assertEqual((reponse.status_code, reponse.json()['valeurs']),
+                                 (404, {'projet_id': ['Projet inexistant.']}))
         self.assertIsNone(_relue(a).projet_id)
 
     def test_deplacer_une_sous_tache_est_refuse(self):
@@ -644,7 +713,7 @@ class ChecklistTests(BaseApi):
         ailleurs = ElementChecklist.objects.create(company=self.a, tache=fabriques.tache(self.u1), libelle='y')
         self.assertEqual(self._post(f'checklist/{b.pk}/reordonner/', {'avant_id': etranger.pk}).status_code, 404)
         reponse = self._post(f'checklist/{b.pk}/reordonner/', {'avant_id': ailleurs.pk})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Valeur inconnue.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['avant_id']), (409, ['Valeur inconnue.']))  # état : 409
         reponse = self._post(f'checklist/{b.pk}/reordonner/', {})
         self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Requis.']}))
         self.assertEqual(self._ordre(tache), ['a', 'b'])
@@ -932,8 +1001,8 @@ class EtiquettesTests(BaseApi):
     def test_un_nom_deja_pris_meme_cle_est_refuse(self):
         self._etiquette('Magasin')
         reponse = self._post('etiquettes/', {'nom': 'magasin'})
-        self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(champs(reponse.json()), {'nom': ['Une étiquette « magasin » existe déjà.']})
+        self.assertEqual(reponse.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(reponse.json()['nom'], ['Une étiquette « magasin » existe déjà.'])
         self.assertEqual(self._post('etiquettes/', {'nom': 'magasin'}, compte=self.u2).status_code, 201)
 
     def test_les_erreurs_sont_nommees_sous_leur_champ(self):
@@ -959,8 +1028,8 @@ class EtiquettesTests(BaseApi):
     def test_renommer_vers_le_nom_d_une_autre_est_refuse_mais_pas_vers_le_sien(self):
         un, deux = self._etiquette('magasin'), self._etiquette('bureau')
         refus = self._patch(f'etiquettes/{deux.pk}/', {'nom': 'MAGASIN'})
-        self.assertEqual(refus.status_code, 400)
-        self.assertEqual(champs(refus.json()), {'nom': ['Une étiquette « MAGASIN » existe déjà.']})
+        self.assertEqual(refus.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(refus.json()['nom'], ['Une étiquette « MAGASIN » existe déjà.'])
         self.assertEqual(self._patch(f'etiquettes/{un.pk}/', {'nom': 'Magasin'}).status_code, 200)
 
     def test_un_patch_sans_changement_ne_rend_pas_de_geste(self):
@@ -1083,15 +1152,16 @@ class VuesEnregistreesTests(BaseApi):
         for n in range(30):
             self._vue(f'v{n}', rang=n)
         reponse = self._post('vues/', {'nom': 'de trop'})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'nom': ['30 au plus.']}))
+        # 30 vues déjà : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual((reponse.status_code, reponse.json()['nom']), (409, ['30 au plus.']))
         self.assertEqual(len(self._get('vues/').json()['results']), 30)
         self.assertEqual(self._post('vues/', {'nom': 'de trop'}, compte=self.u2).status_code, 201)
 
     def test_un_nom_deja_pris_est_refuse_et_le_nom_est_requis_et_borne(self):
         self._vue('Haute')
         refus = self._post('vues/', {'nom': 'Haute'})
-        self.assertEqual(refus.status_code, 400)
-        self.assertEqual(champs(refus.json()), {'nom': ['Une vue « Haute » existe déjà.']})
+        self.assertEqual(refus.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(refus.json()['nom'], ['Une vue « Haute » existe déjà.'])
         self.assertEqual(champs(self._post('vues/', {}).json()), {'nom': ['Requis.']})
         self.assertEqual(champs(self._post('vues/', {'nom': 'x' * 61}).json()), {'nom': ['60 caractères au plus.']})
 

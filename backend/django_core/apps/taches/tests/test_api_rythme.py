@@ -5,16 +5,17 @@ Base requise (`TestCase`) : joué par la CI. Jour injecté (`services.rythme.auj
 d'horloge vivante. Chaque test relit l'état STOCKÉ (réglages, plan du jour, cartes, préférences).
 """
 import datetime
+from types import SimpleNamespace
 from unittest import mock
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.taches.choix import (
     CanalIncitation, ModeRythme, SourceObjectif, StatutJour, StatutTache, TypeIncitationEcran,
 )
-from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
+from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.models.taches import RegleRecurrence
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.tests import fabriques
@@ -37,6 +38,67 @@ def carte(compte, type_, cle, donnees, **champs):
     return IncitationCoach.objects.create(
         company=compte.company, proprietaire=compte, type=type_, cle=cle,
         canal=CanalIncitation.ECRAN, donnees=donnees, **champs)
+
+
+class SerieDesJoursTravaillesTests(SimpleTestCase):
+    """R2-120 sans base : `serializers.rythme._serie` sur des lignes en mémoire (calendrier remplacé)."""
+
+    LUN_A_VEN = [datetime.date(2026, 11, n) for n in (2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16)]
+
+    def ligne(self, jour, statut=StatutJour.EVALUE, faites=4):
+        return SimpleNamespace(jour=datetime.date(2026, 11, jour), statut_jour=statut, compte_rythme=faites,
+                               objectif_du_jour=5, essentiels_faits=0, essentiels_choisis=0, plan_faites=0,
+                               plan_prevues=0)
+
+    def serie(self, plans, travailles=None):
+        from apps.taches.serializers import rythme as forme
+        jours = set(travailles or self.LUN_A_VEN)
+
+        def calendrier(_user, du, au, **_options):  # `prefs` : les préférences déjà lues par forme_rythme
+            return {jour for jour in jours if du <= jour <= au}
+
+        with mock.patch.object(forme, 'jours_travailles_de', side_effect=calendrier):
+            return forme._serie(object(), plans, J)
+
+    def test_les_jours_travailles_sans_ligne_sont_sans_donnees_et_la_serie_en_garde_dix(self):
+        plans = [self.ligne(3, faites=6), self.ligne(5), self.ligne(6), self.ligne(11, faites=5)]
+        serie = self.serie(plans)
+        self.assertEqual(len(serie), 10)
+        self.assertEqual([b['jour'][-2:] for b in serie], ['03', '04', '05', '06', '09', '10', '11', '12', '13', '16'])
+        self.assertEqual([b['statut_jour'] for b in serie],
+                         ['evalue', 'sans_donnees', 'evalue', 'evalue', 'sans_donnees', 'sans_donnees', 'evalue',
+                          'sans_donnees', 'sans_donnees', 'sans_donnees'])
+        self.assertEqual([b['faites'] for b in serie], [6, 0, 4, 4, 0, 0, 5, 0, 0, 0])
+
+    def test_une_ligne_sans_statut_sur_un_jour_travaille_est_sans_donnees(self):
+        serie = self.serie([self.ligne(12, statut='', faites=0), self.ligne(13)])
+        self.assertEqual([(b['jour'][-2:], b['statut_jour']) for b in serie],
+                         [('12', 'sans_donnees'), ('13', 'evalue'), ('16', 'sans_donnees')])
+
+    def test_un_jour_ferie_ou_en_conge_sans_faite_n_a_pas_de_barre(self):
+        serie = self.serie([self.ligne(12), self.ligne(13, statut=StatutJour.NON_OUVRE, faites=0),
+                            self.ligne(16, statut=StatutJour.CONGE, faites=0)])
+        self.assertEqual([b['jour'][-2:] for b in serie], ['12'])
+        self.assertEqual([b['hors_objectif'] for b in serie], [False])
+
+    def test_un_jour_non_travaille_ou_il_a_travaille_est_servi_hors_objectif(self):
+        """R3-003 (choix C-21) — un férié (13), un congé (16) ou un samedi (14) où il a fait quelque chose est servi
+        à sa date, `hors_objectif`, sans objectif ; un jour non travaillé AVANT la fenêtre des 10 jours ne l'est pas ;
+        les 10 jours travaillés restent 10."""
+        lun_a_ven = [datetime.date(2026, 11, n) for n in (3, 4, 5, 6, 9, 10, 11, 12, 16)]
+        plans = [self.ligne(1, statut=StatutJour.NON_OUVRE, faites=2), self.ligne(3), self.ligne(12),
+                 self.ligne(13, statut=StatutJour.NON_OUVRE, faites=4),
+                 self.ligne(14, statut=StatutJour.NON_OUVRE, faites=3),
+                 self.ligne(15, statut=StatutJour.NON_OUVRE, faites=0),
+                 self.ligne(16, statut=StatutJour.CONGE, faites=1)]
+        serie = self.serie(plans, travailles=lun_a_ven)
+        hors = [(b['jour'][-2:], b['faites'], b['objectif']) for b in serie if b['hors_objectif']]
+        self.assertEqual(hors, [('13', 4, None), ('14', 3, None), ('16', 1, None)])
+        self.assertEqual(len([b for b in serie if not b['hors_objectif']]), 8)  # 03..12 : 8 jours travaillés lus
+        self.assertEqual([b['jour'] for b in serie], sorted(b['jour'] for b in serie))
+
+    def test_sans_aucune_ligne_pas_de_serie(self):
+        self.assertEqual(self.serie([]), [])
 
 
 class BaseRythme(TestCase):
@@ -91,6 +153,59 @@ class RythmeLectureTests(BaseRythme):
         self.assertEqual(corps['bloc'], {'jours': 8, 'tenus': 7, 'sur': 10})
         self.assertIsNone(corps['geste_id'])
 
+    def test_la_serie_sert_les_dix_jours_travailles_dont_ceux_sans_donnees(self):
+        """R2-120 : 10 barres, un jour travaillé sans ligne est servi `sans_donnees` (jamais absent) ; un samedi ou
+        un dimanche n'a pas de barre. J = mardi 17/11 ; lignes aux 03, 04, 05, 06, 11 et 12/11 (+ week-ends)."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J - datetime.timedelta(days=14))
+        for jour, faites in ((3, 6), (4, 5), (5, 5), (6, 4), (11, 5), (12, 4)):
+            fabriques.plan(self.u1, datetime.date(2026, 11, jour), statut_jour=StatutJour.EVALUE,
+                           compte_rythme=faites, objectif_du_jour=5)
+        for jour in (7, 8, 14):  # samedi, dimanche, samedi : posés `non_ouvre` par la nuit
+            fabriques.plan(self.u1, datetime.date(2026, 11, jour), statut_jour=StatutJour.NON_OUVRE)
+        corps = self.api.get(URL).json()
+        self.assertEqual([(b['jour'][-2:], b['statut_jour'], b['faites']) for b in corps['serie']], [
+            ('03', 'evalue', 6), ('04', 'evalue', 5), ('05', 'evalue', 5), ('06', 'evalue', 4),
+            ('09', 'sans_donnees', 0), ('10', 'sans_donnees', 0), ('11', 'evalue', 5), ('12', 'evalue', 4),
+            ('13', 'sans_donnees', 0), ('16', 'sans_donnees', 0)])
+        vide = corps['serie'][4]
+        self.assertEqual((vide['objectif'], vide['essentiel_faites'], vide['plan_lignes']), (None, 0, 0))
+        # La trace compte, sur les 10 barres ci-dessus, les jours à 5 faites ou plus : 03 (6), 04 (5), 05 (5),
+        # 11 (5) = 4 ; 06 (4) et 12 (4) sont sous 5, les 4 jours sans données valent 0. Sur 10 = les 10 barres.
+        self.assertEqual(corps['trace'], '5 faites ou plus 4 jours sur 10')
+
+    def test_la_serie_ne_remonte_pas_avant_le_premier_jour_evalue(self):
+        """Un compte récent n'a pas de barres vides pour les jours d'avant son premier jour lu."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE)
+        fabriques.plan(self.u1, datetime.date(2026, 11, 12), statut_jour=StatutJour.EVALUE,
+                       compte_rythme=4, objectif_du_jour=5)
+        serie = self.api.get(URL).json()['serie']
+        self.assertEqual([b['jour'][-2:] for b in serie], ['12', '13', '16'])
+        self.assertEqual([b['statut_jour'] for b in serie], ['evalue', 'sans_donnees', 'sans_donnees'])
+
+    def test_un_jour_de_conge_dit_n_a_pas_de_barre_vide(self):
+        """Un jour en congé (préférence) n'est pas un jour travaillé : pas de barre synthétisée."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE)
+        fabriques.plan(self.u1, datetime.date(2026, 11, 12), statut_jour=StatutJour.EVALUE,
+                       compte_rythme=4, objectif_du_jour=5)
+        Preference.objects.create(company=self.a, proprietaire=self.u1, cle='conges',
+                                  valeur=[{'du': '2026-11-13', 'au': '2026-11-13'}])
+        serie = self.api.get(URL).json()['serie']
+        self.assertEqual([b['jour'][-2:] for b in serie], ['12', '16'])
+
+    def test_r2_123_jours_travailles_sans_preference_suit_le_calendrier_de_la_societe(self):
+        """« Mes jours » allume les jours RÉELLEMENT travaillés : sans préférence, lun.-ven. (le week-end de la
+        société ne compte pas), jamais les sept jours."""
+        self.reglages()
+        self.assertEqual(self.api.get(URL).json()['jours_travailles'], '1111100')
+
+    def test_r2_123_jours_travailles_est_le_masque_dit_inter_le_calendrier(self):
+        from apps.notifications.models import WorkingHoursConfig
+        self.reglages()
+        Preference.objects.create(company=self.a, proprietaire=self.u1, cle='jours_travailles', valeur='1011111')
+        self.assertEqual(self.api.get(URL).json()['jours_travailles'], '1011100')
+        WorkingHoursConfig.objects.create(company=self.a, working_days=0b0111111)  # la société travaille le samedi
+        self.assertEqual(self.api.get(URL).json()['jours_travailles'], '1011110')
+
     def test_moins_de_9_jours_repere_nul(self):
         self.reglages()
         jours_evalues(self.u1, [5, 5, 5])
@@ -117,7 +232,10 @@ class RythmeLectureTests(BaseRythme):
         attendu = exemple_de('proposition')
         self.assertEqual(corps['proposition']['texte'], attendu['texte'])
         self.assertEqual(corps['proposition']['boutons'], attendu['boutons'])
-        self.assertEqual(corps['constats'][0]['texte'], exemple_de('rythme')['constats'][0]['texte'])
+        # R2-014 (textes.md §4.4) : le texte SERVI d'une carte de constat est sa phrase suivie de sa question
+        # (C3 : « En faire un jour court (un de moins) ? ») ; l'échantillon porte la phrase seule.
+        self.assertEqual(corps['constats'][0]['texte'],
+                         f"{exemple_de('rythme')['constats'][0]['texte']} En faire un jour court (un de moins) ?")
 
     def test_tenir_rend_la_zone(self):
         self.reglages(mode=ModeRythme.TENIR, tenir_reference=5, tenir_fixee_le=J - datetime.timedelta(days=3))
@@ -214,6 +332,13 @@ class RythmeEcritureTests(BaseRythme):
         self.assertEqual(reglages.mode, ModeRythme.LIBRE)
         self.assertIsNone(self.api.get(URL).json()['objectif']['nb'])
 
+    def test_r2_122_aller_retour_des_modes_rend_l_objectif_d_avant(self):
+        """F2 n°5 : Garder ce rythme → Sans objectif → En faire plus rend « 6 » (dit), pas la valeur par défaut."""
+        self.reglages(palier=6, palier_source=SourceObjectif.DIT)
+        for mode in ('tenir', 'libre', 'pousser'):
+            corps = self.api.post(URL, {'mode': mode}, format='json').json()
+        self.assertEqual(corps['objectif'], {'nb': 6, 'source': 'dit', 'mode': 'pousser', 'zone': None})
+
     def test_compte_neuf_dit_son_objectif_avant_sa_premiere_tache(self):
         """Parcours « compte neuf → aujourdhui/ → dire son objectif → première tâche » : la lecture ne
         crée rien, le geste crée les réglages, la première tâche les retrouve (une seule ligne)."""
@@ -249,6 +374,35 @@ class RythmeEcritureTests(BaseRythme):
         self.assertEqual((jour['objectif']['nb'], jour['objectif']['zone']), (1, [0, 1]))
         self.assertIn('objectif 1 (calculé) · 0 sur 1',
                       self.api.get('/api/django/taches/coach/entete/').json()['lignes'][0])
+
+    def test_garder_ce_rythme_part_du_pas_reel_avant_14_jours(self):
+        """R3-004 (choix C-15) — il dit « ça suffit » : objectif 6, il en fait 4,4. Calcul à la main : 10 jours évalués
+        (5, 4, 5, 4, 4, 5, 4, 5, 4, 4) → 44 / 10 = 4,4 → « environ 4 tâches (3 à 5) », provisoire (non fixée avant
+        14 jours) ; Aujourd'hui dit « 1 sur 4 », jamais 6. Le toast dit le provisoire."""
+        from apps.taches.models.gestes import GesteAnnulable
+        self.reglages(palier=6, palier_source=SourceObjectif.DIT)
+        jours_evalues(self.u1, [5, 4, 5, 4, 4, 5, 4, 5, 4, 4])
+        fabriques.tache(self.u1, projet=fabriques.projet(self.u1), statut=StatutTache.FAIT,
+                        fait_le=timezone.make_aware(datetime.datetime.combine(J, datetime.time(10, 0))))
+        corps = self.api.post(URL, {'mode': 'tenir'}, format='json').json()
+        self.assertEqual(corps['objectif'], {'nb': 4, 'source': 'calcule', 'mode': 'tenir', 'zone': [3, 5]})
+        self.assertEqual((corps['tenir']['reference'], corps['tenir']['provisoire']), (4.4, True))
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message,
+                         'Garder ce rythme : environ 4 tâches par jour (3 à 5). '
+                         "Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. "
+                         'À confirmer sur 14 jours travaillés.')
+        jour = self.api.get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()
+        self.assertEqual((jour['progression']['faites'], jour['objectif']['nb']), (1, 4))
+
+    def test_garder_ce_rythme_sans_assez_de_jours_garde_le_palier_et_le_dit(self):
+        """R3-004 — 4 jours évalués seulement : le palier (6) est gardé, et le toast le dit franchement."""
+        from apps.taches.models.gestes import GesteAnnulable
+        self.reglages(palier=6, palier_source=SourceObjectif.DIT)
+        jours_evalues(self.u1, [5, 4, 5, 4])
+        corps = self.api.post(URL, {'mode': 'tenir'}, format='json').json()
+        self.assertEqual(corps['objectif']['nb'], 6)
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message,
+                         "Pas encore assez de jours pour mesurer ton rythme : je garde 6 pour l'instant.")
 
     def test_corps_refuse_ne_cree_pas_les_reglages(self):
         reponse = self.api.post(URL, {'mode': 'pousser', 'objectif': 40}, format='json')
@@ -294,7 +448,7 @@ class RepondreTests(BaseRythme):
         reglages = self.reglages(palier=5, refus_montee=2)
         tot = self.monter(refus=1, jour=J - datetime.timedelta(days=1))
         reponse = self.repondre(tot, 'garder_ce_rythme')
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'reponse': ['Réponse inconnue.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['reponse']), (409, ['Réponse inconnue.']))  # état : 409
         self.assertEqual(self.repondre(self.monter(refus=3), 'garder_ce_rythme').status_code, 200)
         reglages.refresh_from_db()
         self.assertEqual(reglages.mode, ModeRythme.TENIR)
@@ -351,7 +505,7 @@ class RepondreTests(BaseRythme):
         carte_ = self.monter()
         for reponse in ('expiree', 'ignoree', 'peut-etre', 'garder'):
             with self.subTest(reponse=reponse):
-                self.assertEqual(self.repondre(carte_, reponse).json(), {'reponse': ['Réponse inconnue.']})
+                self.assertEqual(self.repondre(carte_, reponse).json()['reponse'], ['Réponse inconnue.'])
         carte_.refresh_from_db()
         self.assertEqual(carte_.reponse, '')
 
@@ -396,7 +550,11 @@ class RepondreTests(BaseRythme):
     def test_c5_n_admet_que_ok(self):
         self.reglages()
         c5 = carte(self.u1, TypeIncitationEcran.CONSTAT, 'C5', {'p': 40, 'n': 30, 'h1': 10, 'h2': 12})
-        self.assertEqual(self.repondre(c5, 'oui').status_code, 400)
+        # « oui » est une réponse de l'écran (`REPONSES_ECRAN`), mais pas permise À CETTE carte : refus d'état, 409
+        refus = self.repondre(c5, 'oui')
+        self.assertEqual((refus.status_code, refus.json()['reponse']), (409, ['Réponse inconnue.']))
+        # une réponse HORS de la liste fermée de l'écran est une erreur de forme : 400
+        self.assertEqual(self.repondre(c5, 'turbo').status_code, 400)
         self.assertEqual(self.repondre(c5, 'ok').status_code, 200)
 
     def test_pause_reactiver_retire_le_type(self):
