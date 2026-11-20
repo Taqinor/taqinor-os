@@ -756,7 +756,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       if (enregistre.signature === signature) {
         lastEntryCount = ctx.vertices.length >= 3 ? activeShadeEntries().length : 0;
         ctx.shadeFactors = enregistre.matrice.map((r) => r.slice());
-        ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), ctx.shadeFactors);
+        ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), ctx.shadeFactors, ctx.centroidLat);
         return;
       }
       ctx.ombrageEnregistre = null;
@@ -773,7 +773,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // Facteur annuel pondéré par la vraie saisonnalité : profils PVGIS si présents,
     // sinon le repli interne étiqueté (forme saisonnière plausible, même pondération).
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
-    ctx.shadeAnnualFactor = annualShadeFactor(prod, ctx.shadeFactors);
+    ctx.shadeAnnualFactor = annualShadeFactor(prod, ctx.shadeFactors, ctx.centroidLat); // ACAL381
   }
 
   /**
@@ -1272,6 +1272,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // (sinon un document rouvert garde celle de la latitude par défaut, 33,5°).
     recomputeHorizon: () => {
       recomputeHorizonFactors();
+      // ACAL381 — le facteur annuel de l'ombrage proche lit lui aussi la latitude du toit.
+      if (ctx.shadeFactors) ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), ctx.shadeFactors, ctx.centroidLat);
       renderHorizonNote();
     },
     horizonStatus,

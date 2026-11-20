@@ -28,7 +28,7 @@ import { API_DJANGO, assurerSessionPage, lireJson } from '../helpers.js'
 // joue qu'avec ACAL6_PA25=1.
 const AVEC_PA25 = process.env.ACAL6_PA25 === '1'
 const etape = groupe('ACAL', AVEC_PA25
-  ? ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367', 'ACAL378', 'ACAL379', 'ACAL380']
+  ? ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367', 'ACAL378', 'ACAL379', 'ACAL380', 'ACAL381']
   : ['ACAL355', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367', 'ACAL379', 'ACAL380'])
 fermerDjangoApresTout()
 test.describe.configure({ timeout: 900_000 })
@@ -525,6 +525,68 @@ async function ecartSimulation({ page, context, suivi }) {
   expect(ecart1, 'l’écart atelier ↔ simulation ne s’ouvre plus avec l’horizon').toBeLessThanOrEqual(ecart0 + 0.01)
   await nettoyer(cal)
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// ACAL381 — PA2.5, ombrage PROCHE : le facteur annuel de l'atelier et celui de la simulation serveur s'écartent de
+// moins de 2 points. Les DEUX côtés lisent la MÊME entrée : la matrice `shading12x24` du document (celle qu'écrit
+// l'atelier, `serializeShading`) — l'atelier la relit et en tire son facteur annuel, le serveur la lit
+// (`simulation._ombrage_du_document` → `etapes/ombrage_proche.py`, direct seul dératé heure par heure). Matrice = un
+// anneau d'obstacles à 25° (0,25 quand le soleil est sous 25°), les MÊMES heures que l'horizon 25° × 8 d'ACAL378 ;
+// identique, case pour case, à `shadingEngine.hourlyShadeFactors` de cet anneau (vérifié en vitest le 20/11). Référence =
+// le même toit et le même matériel sans matrice.
+// ════════════════════════════════════════════════════════════════════════════
+const MILIEU_DU_MOIS = [15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349]
+function matriceAnneau25(latDeg) {
+  const rad = Math.PI / 180
+  return MILIEU_DU_MOIS.map((j) => Array.from({ length: 24 }, (_, h) => {
+    const decl = -23.44 * Math.cos((2 * Math.PI * (j + 10)) / 365) * rad
+    const sinE = Math.sin(latDeg * rad) * Math.sin(decl) + Math.cos(latDeg * rad) * Math.cos(decl) * Math.cos(15 * (h + 0.5 - 12) * rad)
+    return sinE > 0 && sinE < Math.sin(25 * rad) ? 0.25 : 1
+  }))
+}
+
+if (AVEC_PA25) etape('PA2.5-ACAL381-ombrage-proche', ['ACAL381'], async ({ page, context, suivi }) => {
+  const meteo = await reglerMeteo()
+  let ref = null
+  let ombre = null
+  try {
+    await carteRefusee(context, suivi)
+    const matrice = matriceAnneau25(PIN.lat)
+    ref = await calepinageAvec('ACAL381 ref', toitPlat())
+    ombre = await calepinageAvec('ACAL381 ombre', { ...toitPlat(), shading12x24: matrice })
+    await designerMateriel(ref.id)
+    await designerMateriel(ombre.id)
+    let bouton = await ouvrirAtelier(page, ref.id)
+    const s0 = (await enregistrer(page, ref.id, bouton))?.result?.annualKwh
+    const sim0 = await simulationServeur(ref.id)
+    bouton = await ouvrirAtelier(page, ombre.id)
+    const doc1 = await enregistrer(page, ombre.id, bouton)
+    const s1 = doc1?.result?.annualKwh
+    expect(doc1.shading12x24, 'la matrice relue est réémise : le serveur lit la même').toEqual(matrice)
+    const accesParModule = (doc1.zones || []).some((z) => z?.geometry?.solarAccess)
+    const sim1 = await simulationServeur(ombre.id)
+    const rAtelier = s1 / s0
+    const rSimulation = sim1.p50 / sim0.p50
+    const ecart0 = Math.abs(s0 - sim0.p50) / sim0.p50
+    const ecart1 = Math.abs(s1 - sim1.p50) / sim1.p50
+    console.log(`[PA2.5 ACAL381] atelier ${s0} → ${s1} (× ${rAtelier.toFixed(4)}) ; simulation ${sim0.p50} → ${sim1.p50} `
+      + `(× ${rSimulation.toFixed(4)}) ; écart ${(ecart0 * 100).toFixed(1)} % → ${(ecart1 * 100).toFixed(1)} % ; `
+      + `cases ombrées ${matrice.flat().filter((f) => f < 1).length} ; accès solaire par module dans le document : ${accesParModule}`)
+    expect(s0, 'référence atelier chiffrée').toBeGreaterThan(0)
+    expect(sim0?.p50, `référence simulation chiffrée (${JSON.stringify(sim0)})`).toBeGreaterThan(0)
+    expect(s1, 'l’atelier applique l’ombrage proche').toBeLessThan(s0)
+    expect(sim1.p50, 'la simulation serveur applique l’ombrage proche (matrice du document)').toBeLessThan(sim0.p50)
+    expect(Math.abs(rAtelier - rSimulation), `facteur atelier × ${rAtelier.toFixed(4)} vs simulation × ${rSimulation.toFixed(4)}`).toBeLessThan(0.02)
+    expect(ecart1, 'l’écart atelier ↔ simulation ne s’ouvre pas avec l’ombrage proche').toBeLessThanOrEqual(ecart0 + 0.01)
+    // Rouvert puis enregistré SANS geste : production identique (le facteur est relu à la latitude du toit).
+    bouton = await ouvrirAtelier(page, ombre.id)
+    const relu = await enregistrer(page, ombre.id, bouton)
+    expect(relu?.result?.annualKwh, 'rouvert sans geste : production identique').toBe(s1)
+  } finally {
+    await nettoyer(ref, ombre)
+    await restaurerMeteo(meteo)
+  }
+})
 
 // ════════════════════════════════════════════════════════════════════════════
 // ACAL357 — PA2.3 : ombres du site (tracée shade-1 + relues sh-1, sh-2) et matrice 0,8 ; « + Ajouter une zone » puis

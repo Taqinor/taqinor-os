@@ -34,6 +34,7 @@ import { DAYS_IN_MONTH, type PerKwcProduction } from './productionEngine';
 
 const DEG2RAD = Math.PI / 180;
 import { WGS84_RADIUS } from './geo';
+import { HORIZON_KEPT_BY_ELEVATION } from './horizonEngine';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 
 /** Hypothèse PAR DÉFAUT du moment de prise de vue de l'imagerie : ~10 h 30 solaire
@@ -307,13 +308,37 @@ export function applyShadeFactors<T extends PerKwcProduction>(prod: T, factors: 
  * par les VRAIS profils PVGIS (les heures d'hiver pèsent moins que celles d'été).
  * Sans production exploitable → 1 (aucun dérate inventé).
  */
-export function annualShadeFactor(prod: PerKwcProduction, factors: number[][] | null | undefined): number {
+export function annualShadeFactor(prod: PerKwcProduction, factors: number[][] | null | undefined, latitudeDeg?: number): number {
   if (!factors) return 1;
   const before = prod.monthlyKwh.reduce((a, b) => a + b, 0);
   if (!(before > 0)) return 1;
-  const after = applyShadeFactors(prod, factors).monthlyKwh.reduce((a, b) => a + b, 0);
+  const eff = Number.isFinite(latitudeDeg) ? keptShareFactors(latitudeDeg as number, factors, prod) : factors;
+  const after = applyShadeFactors(prod, eff).monthlyKwh.reduce((a, b) => a + b, 0);
   const f = after / before;
   return Number.isFinite(f) ? Math.max(0, Math.min(1, f)) : 1;
+}
+
+/** ACAL381 — jumeau d'ACAL378, atelier SEUL (la matrice enregistrée ne change pas) : heure masquée
+ *  = part diffuse + réfléchie de sa tranche ({@link HORIZON_KEPT_BY_ELEVATION}, plancher la case) ;
+ *  jour-type non PVGIS ⇒ perte du mois pesée sur la course du soleil (Meinel), étalée sur ses heures masquées. */
+function keptShareFactors(lat: number, factors: number[][], prod: PerKwcProduction): number[][] {
+  return factors.map((row, m) => {
+    let [sky, skyKept] = [0, 0];
+    const out = row.map((f, h) => {
+      const elev = sunDirection(lat, MID_MONTH_DAY_OF_YEAR[m], h + 0.5).elevationDeg;
+      if (elev <= 0) return f;
+      const kept = f < 1 ? Math.min(1, Math.max(0, f, HORIZON_KEPT_BY_ELEVATION.find(([d]) => elev < d)?.[1] ?? 0)) : 1;
+      const sinE = Math.sin(elev * DEG2RAD);
+      const w = sinE * 0.7 ** ((1 / sinE) ** 0.678);
+      [sky, skyKept] = [sky + w, skyKept + kept * w];
+      return kept;
+    });
+    const day = prod.source === 'pvgis' ? null : prod.typicalDayByMonth[m];
+    const shaded = day ? out.reduce((s, k, h) => s + (k < 1 ? day[h] : 0), 0) : 0;
+    if (!day || !(shaded > 0) || !(sky > 0)) return out;
+    const lost = (1 - skyKept / sky) * day.reduce((s, v) => s + v, 0);
+    return out.map((k) => (k < 1 ? Math.max(0, 1 - lost / shaded) : k));
+  });
 }
 
 // ═══════════ WJ21 — CARTE D'ACCÈS SOLAIRE (heatmap d'irradiance, astronomie pure) ═══════════

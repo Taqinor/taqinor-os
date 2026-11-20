@@ -8,6 +8,7 @@ import {
   rayEntryDistance,
   isSunBlocked,
   hourlyShadeFactors,
+  annualShadeFactor,
   cellsSolarAccess,
   shadeObstructionsENU,
   solarAccessSummary,
@@ -364,5 +365,35 @@ describe('CAL94 — budget de performance du lancer de rayons (coût PUR, sans W
     // Budget volontairement large (machines de CI lentes) : l'important est que le coût
     // reste de l'ordre de la centaine de millisecondes, pas de la dizaine de secondes.
     expect(elapsedMs).toBeLessThan(3000);
+  });
+});
+
+describe('ACAL381 — ombrage proche : écart au moteur sous 2 points (jumeau d’ACAL378)', () => {
+  // Matrice de la mesure d'ACAL378 : un anneau d'obstacles à 25° sur 8 directions masque
+  // EXACTEMENT les heures de l'horizon 25° du rejeu PA2.5 du 19/11/2026 (trace
+  // docs/audits/acceptation/ACAL/traces/2026-11-19/PA2.5-ACAL356-mesure.txt) : simulation
+  // horaire du moteur 12032.1 → 11066.6 (× 0,920) ; atelier, jour-type de repli, × 0,815.
+  const LAT = 33.5731;
+  const RAPPORT_MOTEUR = 11066.6 / 12032.1;
+  const anneau: ShadeObstructionENU[] = [0, 45, 90, 135, 180, 225, 270, 315].map((a) => {
+    const r = (a * Math.PI) / 180;
+    return { x: 20 * Math.sin(r), y: 20 * Math.cos(r), effHeightM: 20 * Math.tan((25 * Math.PI) / 180), halfWidthM: 20 * Math.tan((24 * Math.PI) / 180) };
+  });
+
+  it('jour-type de repli : annualShadeFactor à moins de 2 points de la simulation du moteur', () => {
+    const matrice = hourlyShadeFactors(LAT, anneau);
+    expect(matrice.flat().some((f) => f < 1)).toBe(true);
+    const rapport = annualShadeFactor(fallbackPerKwc(), matrice, LAT);
+    expect(Math.abs(rapport - RAPPORT_MOTEUR)).toBeLessThan(0.02);
+    // Mesuré 0,9204 contre 0,9198 : sous un demi-point. Part fixe 0,25 (× 0,905) ou cloche
+    // sans étalement mensuel (× 0,863) ⇒ échec.
+    expect(Math.abs(rapport - RAPPORT_MOTEUR)).toBeLessThan(0.005);
+    // La matrice ENREGISTRÉE (shading12x24, dératant le direct côté serveur) ne change pas.
+    expect(matrice.flat().every((f) => f === 1 || f === DIFFUSE_FRACTION_WHEN_SHADED)).toBe(true);
+  });
+
+  it('une matrice nulle ou sans ombre rend 1', () => {
+    expect(annualShadeFactor(fallbackPerKwc(), null, LAT)).toBe(1);
+    expect(annualShadeFactor(fallbackPerKwc(), hourlyShadeFactors(LAT, []), LAT)).toBeCloseTo(1, 12);
   });
 });
