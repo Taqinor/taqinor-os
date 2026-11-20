@@ -23,8 +23,9 @@ import { API_DJANGO, assurerSessionPage, lireJson } from '../helpers.js'
 
 // PA2.5 (ACAL356 « l'écart atelier ↔ simulation se resserre ») : rejoué le 19/11 (enregistrement FAIL
 // docs/audits/acceptation/ACAL/2026-11-19-95fcef78b.md) — horizon 25° : atelier −18,5 %, simulation −8 %, écart
-// 26,5 % → 34,9 %. Clause non tenue : ACAL356 reste ouverte ; l'étape ne se joue qu'avec ACAL6_PA25=1.
-// ACAL378 (20/11) rapproche le dérate d'horizon de l'atelier de la simulation : l'étape PA2.5 le couvre aussi.
+// 26,5 % → 34,9 %. ACAL378 (20/11) a rapproché le dérate d'horizon de l'atelier de la simulation : rejoué le 20/11
+// (enregistrement PASS docs/audits/acceptation/ACAL/2026-11-20-b787aa539.md), écart 26,5 % → 26,4 %. L'étape ne se
+// joue qu'avec ACAL6_PA25=1.
 const AVEC_PA25 = process.env.ACAL6_PA25 === '1'
 const etape = groupe('ACAL', AVEC_PA25
   ? ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367', 'ACAL378']
