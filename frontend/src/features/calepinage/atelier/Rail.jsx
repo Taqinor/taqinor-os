@@ -4,6 +4,7 @@ import api from '../../../api/axios'
 import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui'
 import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
 import RailGuide from './RailGuide'
+import { PARAM_MODE, useModeExpert } from './modeExpert'
 import { ETAPES, etapeActive, ongletsVisibles, useEtatsParcours } from './parcoursGuide'
 
 /* ============================================================================
@@ -156,7 +157,8 @@ export default function Rail({
   // (+ l'onglet ouvert s'il est expert). L'étape se déduit de l'URL.
   const etats = useEtatsParcours(calepinageId)
   const cleEtape = etapeActive(cleActive, etats)
-  const visibles = ongletsVisibles(cleEtape, cleActive).map(ongletParCle).filter(Boolean)
+  const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
+  const visibles = ongletsVisibles(cleEtape, cleActive, expert).map(ongletParCle).filter(Boolean)
 
   // CALX392 — le panneau à focaliser, et SI une ouverture le demande.
   const panneauRef = useRef(null)
@@ -190,7 +192,7 @@ export default function Rail({
   }
 
   const choisirEtape = (cle) => {
-    const premier = ongletsVisibles(cle)[0] ?? ETAPES.find((e) => e.cle === cle)?.onglets[0]
+    const premier = ongletsVisibles(cle, null, expert)[0] ?? ETAPES.find((e) => e.cle === cle)?.onglets[0]
     if (premier) ouvrir(premier)
   }
 
@@ -215,7 +217,8 @@ export default function Rail({
           Lexique des termes du solaire
         </Link>
       </p>
-      <RailGuide etapeActive={cleEtape} etats={etats} onChoisir={choisirEtape} />
+      <RailGuide etapeActive={cleEtape} etats={etats} onChoisir={choisirEtape}
+        expert={expert} onBasculerExpert={basculerExpert} />
       <TabsList
         aria-label="Onglets du calepinage"
         className="flex w-full flex-wrap gap-x-1 gap-y-1.5"

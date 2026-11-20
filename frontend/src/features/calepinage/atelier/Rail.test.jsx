@@ -217,6 +217,36 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
   })
 })
 
+describe('ACAL394 — l’interrupteur « Mode expert »', () => {
+  beforeEach(() => { try { window.localStorage.clear() } catch { /* ignoré */ } })
+
+  it('guidé par défaut ; cocher montre les 36 onglets rangés sous leur étape, et survit à un rechargement', async () => {
+    const utilisateur = userEvent.setup()
+    const premier = rendreRail()
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    await utilisateur.click(screen.getByTestId('cal-mode-expert'))
+    expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
+    let total = 0
+    for (const etape of ETAPES) {
+      await utilisateur.click(screen.getByTestId(`cal-etape-${etape.cle}`))
+      total += screen.getAllByRole('tab').length
+    }
+    expect(total).toBe(ONGLETS.length)
+    expect(ONGLETS).toHaveLength(36)
+    premier.unmount()
+    // rechargement : la mémoire du navigateur garde l’expert.
+    rendreRail()
+    expect(screen.getByTestId('cal-mode-expert')).toBeChecked()
+    expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
+  }, 30_000)
+
+  it('`?mode=expert` force le mode expert', () => {
+    rendreRail('?mode=expert')
+    expect(screen.getByTestId('cal-mode-expert')).toBeChecked()
+    expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
+  })
+})
+
 describe('CALX1 — aucune route du module ne reste orpheline', () => {
   /* On ITÈRE sur `config.routes`. Une route est atteignable en deux clics
      quand elle est : (a) un item de nav du module ; (b) l'atelier lui-même ;

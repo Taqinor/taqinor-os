@@ -39,9 +39,10 @@ export function etapeDeOnglet(cleOnglet) {
 }
 
 /** Les clés d'onglets montrées pour l'étape : ses essentiels, + `ouvert` s'il en fait partie. */
-export function ongletsVisibles(cleEtape, ouvert = null) {
+export function ongletsVisibles(cleEtape, ouvert = null, expert = false) {
   const etape = ETAPES.find((e) => e.cle === cleEtape)
   if (!etape) return []
+  if (expert) return [...etape.onglets] // ACAL394 : tout, rangé sous l'étape
   return etape.onglets.filter((c) => ESSENTIELS.includes(c) || c === ouvert)
 }
 
