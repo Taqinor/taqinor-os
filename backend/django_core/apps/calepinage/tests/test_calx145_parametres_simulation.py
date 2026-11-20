@@ -447,6 +447,51 @@ class ProfilDepartFichierTest(SimpleTestCase):
         self.assertEqual(proposees & sans, set())
         self.assertEqual(proposees | sans, tout)
 
+    def test_acal404_chaque_ligne_lisible_sourcee_et_comptee_une_fois(self):
+        # ACAL404 — la valeur passe la validation de TYPE du registre, la
+        # date de lecture n'est pas future, la référence et l'URL existent ;
+        # chaque clé du registre est dans EXACTEMENT une des deux listes.
+        import datetime
+
+        from apps.calepinage.services.parametres import (
+            _normaliser_cles_a_registre)
+        from apps.calepinage.services.parametres_cles import REGISTRES
+        from apps.calepinage.services.profil_depart import (
+            _saisie_du_profil, charger_profil)
+
+        def verifier(profil):
+            for ligne in profil['valeurs']:
+                self.assertIn(ligne['cle'],
+                              {c[0] for c in REGISTRES[ligne['section']]})
+                self.assertEqual(ligne['source'], 'texte')
+                self.assertTrue(ligne.get('url', '').startswith('https://'),
+                                ligne['cle'])
+                self.assertTrue(ligne['reference'].strip())
+                self.assertLessEqual(
+                    datetime.date.fromisoformat(ligne['date_lecture']),
+                    datetime.date.today())
+                _normaliser_cles_a_registre(
+                    ligne['section'],
+                    {ligne['cle']: _saisie_du_profil(ligne)})
+            for ligne in profil['sans_source']:
+                self.assertTrue(ligne['motif'].strip(), ligne['cle'])
+            comptes = {}
+            for ligne in profil['valeurs'] + profil['sans_source']:
+                cle = (ligne['section'], ligne['cle'])
+                comptes[cle] = comptes.get(cle, 0) + 1
+            tout = {(s, c[0]) for s, lignes in REGISTRES.items()
+                    for c in lignes}
+            self.assertEqual(set(comptes), tout)
+            self.assertEqual(set(comptes.values()), {1})
+
+        profil = charger_profil()
+        verifier(profil)
+        # Mutant : une ligne sans URL ⇒ échec.
+        mutant = json.loads(json.dumps(profil))
+        del mutant['valeurs'][0]['url']
+        with self.assertRaises((AssertionError, KeyError)):
+            verifier(mutant)
+
     def test_reference_ecrite_dit_page_date_et_valeur_publiee(self):
         from apps.calepinage.services.profil_depart import reference_ecrite
 
