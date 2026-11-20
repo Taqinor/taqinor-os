@@ -304,6 +304,9 @@ export function applyShadeFactors<T extends PerKwcProduction>(prod: T, factors: 
 }
 
 /**
+ * ACAL389 — contrat `calepinage_table_ombrage.json` (M0) : forme de `shadeTable` /
+ * `skyViewFactor` rangées par pan dans `zones[].geometry` (écrivains ACAL459/460).
+ *
  * Facteur d'ombrage ANNUEL (0–1] = production dératée ÷ production intacte, pondéré
  * par les VRAIS profils PVGIS (les heures d'hiver pèsent moins que celles d'été).
  * Sans production exploitable → 1 (aucun dérate inventé).

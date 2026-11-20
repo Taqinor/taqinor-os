@@ -1,0 +1,49 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/export-layout/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL389 (M0, PACT10) — la TABLE D'OMBRAGE et le FACTEUR DE VUE DU CIEL tels que le constructeur les rangera au document `roof_layout`. Posé SEUL avant leurs écrivains (ACAL459 `shadeTable`, ACAL460 `skyViewFactor`, par `serializeLayout`) et leur lecteur serveur (ACAL461, étape de diffus) ; ACAL449 reprend les mêmes noms. `exemple` est le FRAGMENT `roof_layout` (comme `electrique_equipements.json`), pas l'enveloppe {roof_layout, layout_hash, schema_version} de la route. Les deux clés vivent PAR PAN dans `zones[].geometry` (comme `solarAccess`) : `zoneGeometry` du schéma reste ouvert et ce contrat n'ajoute RIEN au schéma ni aux clés RACINE (`scripts/check_calepinage_cles_document.py`). `shadeTable` = {azimutsDeg[], hauteursDeg[], facteurs[][] (lignes = hauteurs, colonnes = azimuts, valeurs dans [0, 1], 1 = aucun ombrage), methode `centres_de_modules`, signature} ; `skyViewFactor` = {facteur dans [0, 1], methode {diffus `isotrope`, horizon booléen, resolution `centres_de_modules`}, signature}. Une clé non calculée reste ABSENTE du document : jamais une table de 1 ni un facteur 1 écrit pour « vérifié ». Autre grandeur que `shading12x24` (matrice mois × heure), qui reste inchangée. Les valeurs sont ILLUSTRATIVES (placeholders) : aucune n'est une mesure.",
+  "exemple": {
+    "schema_version": 2,
+    "zones": [
+      {
+        "id": "PAN-A",
+        "geometry": {
+          "shadeTable": {
+            "azimutsDeg": [
+              90,
+              180,
+              270
+            ],
+            "hauteursDeg": [
+              15,
+              45
+            ],
+            "facteurs": [
+              [
+                0.8,
+                0.9,
+                0.85
+              ],
+              [
+                0.95,
+                1.0,
+                0.95
+              ]
+            ],
+            "methode": "centres_de_modules",
+            "signature": "abababababababababababababababababababababababababababababababab"
+          },
+          "skyViewFactor": {
+            "facteur": 0.9,
+            "methode": {
+              "diffus": "isotrope",
+              "horizon": false,
+              "resolution": "centres_de_modules"
+            },
+            "signature": "abababababababababababababababababababababababababababababababab"
+          }
+        }
+      }
+    ]
+  }
+}
