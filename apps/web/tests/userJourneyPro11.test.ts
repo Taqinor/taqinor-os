@@ -115,7 +115,7 @@ const ID_GENERIC = [
   'rp9-area-value', 'rp9-need-note', 'rp9-tilt-value', 'rp9-obs-edit', 'rp9-obs-dims',
   'rp9-optimum-note', 'rp9-optimum-card', 'rp9-optimum-label', 'rp9-optimum-source', 'rp9-optimum-kwc',
   'rp9-optimum-panels', 'rp9-optimum-prod', 'rp9-optimum-cover', 'rp9-optimum-why',
-  'rp9-flat-controls', 'rp9-flat-only', 'rp9-pitched-controls', 'rp9-pitch-value', 'rp9-pitched-note',
+  'rp9-flat-controls', 'rp9-flat-only', 'rp9-pitched-controls', 'rp9-pitch-value', 'rp9-pitched-note', 'rp9-facing-note',
   'rp9-reco-title', 'rp9-reco-kwc', 'rp9-reco-panels', 'rp9-reco-prod', 'rp9-reco-cover',
   'rp9-reco-savings', 'rp9-reco-why', 'rp9-reco-bifacial', 'rp9-reco-band', 'rp9-results',
   'rp9-maxline', 'rp9-compare-wrap',
@@ -1023,6 +1023,30 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     attendus(enregistre);
     // Persistance : rouvert depuis l'enregistrement complet, les trois champs relus.
     attendus((await rouvrir(enregistre, 16))().serializeLayout() as Doc);
+  }, 120000);
+
+  // ACAL417 — pente 22° et face Sud de départ : non pressées, nommées « à confirmer », puis source écrite au clic.
+  it('pente et face de départ : mentions à confirmer, puis source écrite au clic', async () => {
+    const api = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    document.querySelector<HTMLButtonElement>('[data-rooftype="pitched"]')!.click();
+    await flush();
+    const presses = () => Array.from(document.querySelectorAll('[data-pitch],[data-facing]')).filter((b) => b.getAttribute('aria-pressed') === 'true');
+    expect(presses()).toEqual([]);
+    expect(txt('rp9-pitch-note')).toBe('Pente : 22° par défaut — à confirmer');
+    expect(txt('rp9-facing-note')).toBe('Face : Sud par défaut — à confirmer');
+    expect((api().serializeLayout() as Doc).zones[0]).not.toHaveProperty('pitchSource');
+    document.querySelector<HTMLButtonElement>('[data-pitch="30"]')!.click();
+    await flush();
+    expect(txt('rp9-pitch-note')).toBe('');
+    expect(document.querySelector('[data-pitch="30"]')!.getAttribute('aria-pressed')).toBe('true');
+    expect(txt('rp9-facing-note')).toMatch(/à confirmer/);
+    const doc = copie(api().serializeLayout() as Doc);
+    expect((doc.zones[0] as Record<string, unknown>).pitchSource).toEqual({ mode: 'degres', degres: 30 });
+    // rouvert : pente confirmée (puce pressée, aucune mention), face encore à confirmer.
+    await rouvrir(doc, 17);
+    expect(txt('rp9-pitch-note')).toBe('');
   }, 120000);
 
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {

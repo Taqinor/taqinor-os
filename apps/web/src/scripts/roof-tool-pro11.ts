@@ -192,6 +192,7 @@ import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
 import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
 import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
+import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypotheses } from './roofPro11/hypotheses'; // ACAL417
 import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
 import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
@@ -3688,15 +3689,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       b.addEventListener('click', () => setRoofType(b.dataset.rooftype as RoofType));
     });
   }
+  function etatHyp(): EtatHypotheses { // ACAL417 — pente et face confirmées ? (source du pan actif)
+    const a = activeArea();
+    return { pitched: roofType === 'pitched', pitchDeg, pitchSource: a?.pitchSource, facingAzimuthDeg, facingManual, facingAzimuthSource: (a as Record<string, unknown> | undefined)?.facingAzimuthSource, facingAutoInferred };
+  }
   function syncPitchChips() {
-    document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
-      b.setAttribute('aria-pressed', String(Number(b.dataset.pitch) === Math.round(pitchDeg)));
-    });
+    syncFacingNote(); // ACAL417 — puces de pente ET de face + mentions « à confirmer »
   }
   function syncFacingChips() {
-    document.querySelectorAll<HTMLButtonElement>('[data-facing]').forEach((b) => {
-      b.setAttribute('aria-pressed', String(Number(b.dataset.facing) === Math.round(facingAzimuthDeg)));
-    });
     syncFacingNote();
   }
   // Boussole 8 points (FR) : nom cardinal de l'azimut courant pour la lecture vivante.
@@ -3716,24 +3716,20 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   /** W106 — note honnête sous « Face du pan » : auto-orientée vers une faîtière voisine,
    *  réglée à la main, ou défaut (sud / pan isolé). Vide en mode plat. */
   function syncFacingNote() {
+    const h = etatHyp();
+    appliquerHypotheses(h, facingNoteEl); // ACAL417 — puces pressées seulement si confirmées + mention de pente
     if (!facingNoteEl) return;
-    if (roofType !== 'pitched') {
-      facingNoteEl.textContent = '';
-      return;
-    }
-    if (facingManual) {
-      facingNoteEl.textContent = 'Face réglée à la main (votre choix est tenu pour cette zone).';
-    } else if (facingAutoInferred) {
-      facingNoteEl.textContent = 'Face auto-orientée vers la faîtière commune avec une zone voisine — cliquez « Face du pan » pour la corriger.';
-    } else {
-      facingNoteEl.textContent = '';
-    }
+    if (!h.pitched) facingNoteEl.textContent = '';
+    else if (facingManual) facingNoteEl.textContent = 'Face réglée à la main (votre choix est tenu pour cette zone).';
+    else facingNoteEl.textContent = etatHypotheses(h).noteFace;
   }
+  const confirmerPente = () => { const a = activeArea(); if (a) a.pitchSource = sourcePenteClic(pitchDeg); };
   document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
     b.addEventListener('click', () => {
       pitchDeg = Number(b.dataset.pitch);
       if (pitchRangeEl) pitchRangeEl.value = String(Math.round(pitchDeg));
       if (pitchValueEl) pitchValueEl.textContent = `${Math.round(pitchDeg)}°`;
+      confirmerPente();
       syncPitchChips();
       if (roofType === 'pitched' && closed) pitchedRecompute();
     });
@@ -3743,6 +3739,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (!Number.isFinite(v)) return;
     pitchDeg = v;
     if (pitchValueEl) pitchValueEl.textContent = `${Math.round(v)}°`;
+    confirmerPente();
     syncPitchChips();
     if (roofType === 'pitched' && closed) pitchedRecompute();
   });
@@ -3772,6 +3769,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (roofType === 'pitched' && closed) pitchedRecompute();
   });
   syncFacingSlider();
+  syncPitchChips(); // ACAL417 — au chargement, aucune puce pressée tant que rien n'est confirmé
 
   // W109 — débord panneaux autorisé (m) : valeur typée NON snappée (step="any"), bornée ≥ 0
   // côté logique seulement. Change la CAPACITÉ géométrique (plus de panneaux aux rives) puis
