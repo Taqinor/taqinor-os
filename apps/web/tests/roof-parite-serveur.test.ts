@@ -3,16 +3,16 @@
 // contractSamplesParite.test.ts). D-ACAL-6 : l'écart est INTERNE, le chiffre
 // client est celui du devis ; aucun moteur n'est aligné ici.
 //
-// MESURE du 2026-11-20 (première exécution, jamais choisie), Casablanca
-// (lat 33.5731), productionKwh(lat, famille, inclinaison, 1, aspect) :
-//   residentiel_pan_sud_15          atelier 1484.67 vs golden 62.5  → 2275.47 %
-//   ci_toit_plat_est_ouest_chassis  atelier 1275.53 vs golden 55.9  → 2181.81 %
-//   champ_sol_sud                   atelier 1510.71 vs golden 62.5  → 2317.13 %
-// L'écart est énorme parce que les fixtures PVGIS du golden ne portent que
-// 288 h (12 jours types, ACAL382) : `specific_yield_kwh_kwc` du golden est une
-// production d'ÉCHANTILLON, pas annuelle, alors que `productionKwh` est annuel.
-// Ce plafond garde donc la dérive des deux moteurs, pas leur exactitude ; il
-// deviendra un vrai écart de modèle quand le golden portera une année pleine.
+// MESURE du 2026-11-20 (première exécution sur le golden en année pleine,
+// jamais choisie), Casablanca (lat 33.5731), productionKwh(lat, famille,
+// inclinaison, 1, aspect) en kWh/kWc/an contre `specific_yield_kwh_kwc` du
+// golden (série PVGIS-SARAH3 2020 pleine, 8 784 h, pertes de TEST 9,6 %) :
+//   residentiel_pan_sud_15          atelier 1484.67 vs serveur 1985.0 → 25.21 %
+//   ci_toit_plat_est_ouest_chassis  atelier 1275.53 vs serveur 1794.2 → 28.91 %
+//   champ_sol_sud                   atelier 1510.71 vs serveur 2021.4 → 25.26 %
+// Ce sont deux moteurs de modèles différents (table de productible vs rejeu
+// PVGIS) : l'écart est interne, le chiffre client est celui du devis. Le
+// plafond garde la DÉRIVE, il n'aligne rien.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { productionKwh, type ConfigFamily } from '../src/lib/estimatorBrainV2';
@@ -28,11 +28,11 @@ const PROJETS: Record<string, [ConfigFamily, number, number]> = {
   ci_toit_plat_est_ouest_chassis: ['eastwest', 10, 0],
   champ_sol_sud: ['south', 20, 0],
 };
-// Mesuré le 2026-11-20, arrondi au point supérieur. Ne baisse que, à la main.
+// Mesuré le 2026-11-20 (année pleine), arrondi au point supérieur. Ne baisse que, à la main.
 const ECART_MESURE_PCT: Record<string, number> = {
-  residentiel_pan_sud_15: 2276,
-  ci_toit_plat_est_ouest_chassis: 2182,
-  champ_sol_sud: 2318,
+  residentiel_pan_sud_15: 26,
+  ci_toit_plat_est_ouest_chassis: 29,
+  champ_sol_sud: 26,
 };
 
 describe('parité atelier ↔ serveur (ACAL480)', () => {
