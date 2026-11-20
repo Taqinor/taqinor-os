@@ -193,6 +193,7 @@ import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
 import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
 import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypotheses } from './roofPro11/hypotheses'; // ACAL417
+import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
 import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
 import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
@@ -384,8 +385,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const areasTotalSavingsEl = $('rp9-areas-total-savings');
   if (!mapEl) return;
 
+  const etatVide = creerEtatVide(mapEl); // ACAL420 — carte d'aide avant tout tracé
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
+    etatVide.maj(vertices.length, closed);
   };
 
   // Readout « surface du toit » : aire BRUTE du tracé (obstacles non déduits),
@@ -3000,7 +3003,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   clearBtn?.addEventListener('click', () => {
     const pans = areas.filter((a) => (a.id === activeAreaId ? closed : a.vertices.length >= 3)).length;
     const obstacles = areas.reduce((n, a) => n + (a.id === activeAreaId ? ctx.obstacles.length : a.obstacles.length), 0);
-    if (confirmerEffacer({ pans, obstacles, consommation: consHandEdited || consAppliances.length > 0 || ctx.consSource != null, ombres: ctx.shadeObstructions.length > 0 })) reset();
+    if (confirmerEffacer({ pans, obstacles, consommation: consHandEdited || consAppliances.length > 0 || ctx.consSource != null, ombres: ctx.shadeObstructions.length > 0 })) { reset(); etatVide.maj(0, false); } // ACAL420 — site vierge : la carte d'aide revient
   });
 
   // — « Plusieurs zones » : ajouter une zone + sélection/suppression dans la liste —

@@ -1049,6 +1049,29 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(txt('rp9-pitch-note')).toBe('');
   }, 120000);
 
+  // ACAL420 — l'état vide dit le prochain geste sur la carte, puis s'efface à la fermeture du contour.
+  it('l’état vide dit le prochain geste, puis s’efface à la fermeture du contour', async () => {
+    await boot();
+    const carte = () => document.getElementById('rp9-etat-vide') as HTMLElement;
+    expect(carte().textContent).toMatch(/^1 · Localisez le toit/);
+    expect(carte().getAttribute('aria-hidden')).toBe('true');
+    expect(carte().style.pointerEvents).toBe('none');
+    vi.useFakeTimers();
+    const [[lng, lat]] = squareCorners(16);
+    fakeMaps[0].fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+    vi.advanceTimersByTime(241);
+    vi.useRealTimers();
+    expect(carte().textContent).toMatch(/^2 · Un clic par coin/);
+    vi.useFakeTimers();
+    for (const [lng2, lat2] of squareCorners(16).slice(1)) {
+      fakeMaps[0].fire('click', { lngLat: { lng: lng2, lat: lat2 }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    expect(carte().hidden).toBe(true);
+  }, 60000);
+
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
