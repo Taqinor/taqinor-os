@@ -193,6 +193,7 @@ import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
 import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
 import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypotheses } from './roofPro11/hypotheses'; // ACAL417
+import { type TableOmbrage } from './roofPro11/tableOmbrage'; // ACAL459
 import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
 import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
 import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
@@ -4049,6 +4050,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     };
   }
 
+  /** ACAL459 — table d'ombrage par direction du pan ACTIF + signature courante des sources (méta par pan). */
+  function activeShadeTableMeta(): { shadeTableByZone: Record<string, TableOmbrage | null>; signatureOmbrage: string } {
+    const points = (geometrieZoneActive(ctx)?.panels ?? []).map((p) => ({ x: p.cx, y: p.cy }));
+    return { shadeTableByZone: { [ctx.activeAreaId]: shadingUi.tableOmbrage(points) }, signatureOmbrage: shadingUi.signatureTable() };
+  }
+
   // ═══════════ CALX3 — L'ENTRÉE MOTEUR, LE PLAN APPLIQUÉ, LES RACCOURCIS ═══════════
   //
   // L'atelier de calepinage poste une `entree` au moteur, lui applique le plan rendu,
@@ -4266,7 +4273,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           // PV19 — l'origine devis (id / puissance panneau / scénario vendus) sert de socle.
           devisOrigin,
           // CAL248 — l'accès solaire par module du pan actif voyage avec le document.
-          solarAccess: activeSolarAccessMeta(),
+          solarAccess: { ...activeSolarAccessMeta(), ...activeShadeTableMeta() }, // ACAL459 — + table d'ombrage par direction
           // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document.
           setbacks,
           // CAL93 — le profil d'horizon lointain RÉGLÉ voyage avec le document.
