@@ -159,12 +159,12 @@ _TABLE_DESCRIPTIONS: dict[str, str] = {
     ),
     "ventes_boncommande": "Bons de commande clients confirmes depuis un devis accepte",
     "ventes_facture": (
-        "Factures clients : numero, date, client, montant HT, TVA, "
-        "montant TTC, statut paiement"
+        "Factures clients : reference, date_emission, client, "
+        "total_ht_stocke, total_ttc_stocke, statut"
     ),
     "ventes_lignefacture": (
-        "Lignes de produits dans les factures : produit, quantite, "
-        "prix unitaire, montant"
+        "Lignes de produits dans les factures : designation, produit, "
+        "quantite, prix_unitaire, remise, taux_tva"
     ),
     "authentication_company": "Entreprises (multi-tenant) : nom, adresse, email, telephone",
     "authentication_customuser": "Utilisateurs du systeme : nom, email, role, entreprise",

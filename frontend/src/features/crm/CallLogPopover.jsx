@@ -126,9 +126,11 @@ export default function CallLogPopover({
     setObjet('')
     setConflit('garder')
   }
-  // AERR156 — la reprise ne vaut que pour la MÊME saisie : fenêtre fermée/rouverte ou autre lead ⇒ reset().
-  const [saisieVue, setSaisieVue] = useState(`${leadId}|${isOpen}`)
-  if (saisieVue !== `${leadId}|${isOpen}`) { setSaisieVue(`${leadId}|${isOpen}`); reset() }
+  // AERR156/186 — autre lead ⇒ reset(); fermeture ⇒ reset() seulement si l'appel est déjà journalisé (sinon la saisie est gardée).
+  const [leadVu, setLeadVu] = useState(leadId)
+  const [ouvertVu, setOuvertVu] = useState(isOpen)
+  if (leadVu !== leadId) { setLeadVu(leadId); setOuvertVu(isOpen); reset() }
+  else if (ouvertVu !== isOpen) { setOuvertVu(isOpen); if (appelJournalise) reset() }
 
   // EZ1 — y a-t-il un conflit à trancher ? Seulement si une relance existe
   // DÉJÀ, qu'une nouvelle date est choisie, et qu'elle est différente.
