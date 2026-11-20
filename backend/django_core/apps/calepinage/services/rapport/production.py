@@ -143,14 +143,30 @@ def _bloc_totaux(total):
         ''.join(lignes)
 
 
-def _table_mensuelle(mensuel):
+def _table_mensuelle(mensuel, irradiation=None):
+    """ACAL452 — ``irradiation`` : ``production.irradiation_mensuelle``
+    (liste ``{mois, irradiation_plan_kwh_m2}``) ou ``None`` : sans elle la
+    colonne est omise. Les valeurs sont imprimées telles que servies."""
+    par_mois = None
+    if irradiation:
+        par_mois = {e.get('mois'): e.get('irradiation_plan_kwh_m2')
+                    for e in irradiation if isinstance(e, dict)}
     lignes = ''.join(
-        '<tr><td>%s</td><td class="valeur">%s</td></tr>'
+        '<tr><td>%s</td><td class="valeur">%s</td>%s</tr>'
         % (escape(_mois_libelle(m.get('mois'))),
-           nombre_tel_que_servi(m.get('p50_kwh')))
+           nombre_tel_que_servi(m.get('p50_kwh')),
+           '' if par_mois is None else '<td class="valeur">%s</td>'
+           % nombre_tel_que_servi(par_mois.get(m.get('mois'))))
         for m in mensuel)
-    return ('<table class="production-mensuelle generique"><tr><th>Mois</th>'
-            '<th>Production P50 (kWh)</th></tr>%s</table>' % lignes)
+    entete = '<th>Mois</th><th>Production P50 (kWh)</th>'
+    if par_mois is not None:
+        entete += '<th>Irradiation dans le plan (kWh/m²)</th>'
+    table = ('<table class="production-mensuelle generique"><tr>%s</tr>%s'
+             '</table>' % (entete, lignes))
+    if par_mois is None:
+        table += ('<p class="note">Irradiation mensuelle non publiée par '
+                  'cette simulation : relancez-la.</p>')
+    return table
 
 
 def _table_par_pan(par_pan):
@@ -253,7 +269,8 @@ def html_de_section(contexte):
 
     blocs = [_bloc_totaux(total)]
     if mensuel:
-        blocs.append(_table_mensuelle(mensuel))
+        blocs.append(_table_mensuelle(
+            mensuel, production.get('irradiation_mensuelle')))
     if par_pan:
         blocs.append(_table_par_pan(par_pan))
     blocs.append(_bloc_quantiles(total, incertitude))
