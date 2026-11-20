@@ -1268,6 +1268,12 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     solarAccess,
     solarAccessAnnuel, // ACAL138
     setHorizonProfile,
+    // ACAL378 — la matrice dépend de la latitude : recalculée quand le centroïde change
+    // (sinon un document rouvert garde celle de la latitude par défaut, 33,5°).
+    recomputeHorizon: () => {
+      recomputeHorizonFactors();
+      renderHorizonNote();
+    },
     horizonStatus,
     moduleShadeReadings,
     moduleShadeTooltip,

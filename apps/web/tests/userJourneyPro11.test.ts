@@ -755,6 +755,27 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     for (const k of ['carte', 'zones', 'doc'] as const) expect(ombre[k] / reference[k]).toBeCloseTo(0.8, 3);
   }, 120000);
 
+  // ACAL378 — la matrice d'horizon dépend de la latitude (perte mensuelle sur la course du
+  // soleil) : rouvert, elle doit être celle du toit, pas celle de la latitude par défaut
+  // (33,5°) posée avant le chargement du pan. Runner 20/11 : 8 142,02 → 8 141,84 sans geste.
+  it('horizon 25° enregistré, rouvert puis recalculé sans changement : production IDENTIQUE', async () => {
+    const api = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    api().appliquerSection('horizonProfile', { source: 'saisie', points: [0, 45, 90, 135, 180, 225, 270, 315].map((azimuthDeg) => ({ azimuthDeg, heightDeg: 25 })) });
+    const docDerate = copie(api().serializeLayout() as Doc);
+    expect(docDerate.result.annualKwh).toBeGreaterThan(0);
+    // Production stockée retirée (sinon ACAL31 réémet celle relue) : le dérate est RECALCULÉ.
+    const { result: _stocke, ...sansProduction } = docDerate;
+    const a = await rouvrir(sansProduction, 8);
+    vi.useFakeTimers();
+    setBill('3000'); // même facture : recalcul, rien ne change
+    vi.advanceTimersByTime(321);
+    vi.useRealTimers();
+    const relu = (a().serializeLayout() as Doc).result.annualKwh;
+    expect(relu).toBe(docDerate.result.annualKwh); // toBe = Object.is
+  }, 120000);
+
   // ACAL367 — rouvert AVEC sa production enregistrée (document NON dépouillé de `result`) puis
   // ombré : le document baisse du facteur de la carte ; D-ACAL-VER2-1 : un document stocké
   // déjà ombré sans signature de dérate est dératé au prochain enregistrement.
