@@ -217,21 +217,25 @@ sortie(Facture.objects.filter(company_id=${SOC}).count())`)
   const { p, boite } = await ecran(page, suivi, testInfo, di.nom)
   const ecritures = compter(p, null, /\/api\/django\/ventes\/factures\//)
   const fiche = p.locator('[role="dialog"]').filter({ hasText: 'Créer la facture' })
-  const remise = fiche.locator('tr[data-line-key] td[data-label="Rem. %"] input')
+  const lignes = fiche.locator('tr[data-line-key]')
+  const remise = lignes.last().locator('td[data-label="Rem. %"] input')
+  let nbLignesOuverture = -1 // le formulaire neuf s'ouvre avec UNE ligne vide par défaut : mesuré à l'ouverture
   await scenarioAnnuler(p, boite, 'S2-AERR188', {
     ouvrir: async () => {
       await p.goto('/ventes/factures')
       await p.getByRole('button', { name: 'Nouvelle facture' }).first().click({ timeout: 60_000 })
       await expect(fiche, 'formulaire « Nouvelle facture » ouvert').toBeVisible({ timeout: 30_000 })
+      await expect(lignes.first()).toBeVisible({ timeout: 15_000 })
+      nbLignesOuverture = await lignes.count()
     },
     fiche,
     saisir: async () => {
       await fiche.getByRole('button', { name: 'Ajouter une ligne' }).click()
-      await expect(remise, 'ligne ajoutée').toBeVisible({ timeout: 15_000 })
+      await expect(lignes, 'ligne ajoutée').toHaveCount(nbLignesOuverture + 1, { timeout: 15_000 })
       await remise.fill('7')
     },
     verifierSaisie: async () => { await expect(remise, 'rester : ligne et remise gardées').toHaveValue('7') },
-    verifierNeuf: async () => { await expect(fiche.locator('tr[data-line-key]'), 'rechargé, formulaire rouvert : aucune ligne tapée').toHaveCount(0) },
+    verifierNeuf: async () => { await expect(lignes, 'rechargé, formulaire rouvert : ligne ajoutée perdue').toHaveCount(nbLignesOuverture); await expect(remise, 'remise tapée perdue').toHaveValue('0') },
     ecritures,
   })
   expect(await nbFactures(), 'base : aucune facture créée').toBe(avant)
@@ -267,6 +271,8 @@ sortie(str(r) if r else None)`)
     await p.getByRole('menuitem', { name: 'Planifier une relance' }).click()
     await expect(pop, 'fenêtre « Planifier une relance » ouverte').toBeVisible({ timeout: 30_000 })
     await expect(date(pk), 'fenêtre du bon lead').toBeVisible()
+    await p.waitForTimeout(1500)
+    await expect(pop, 'la fenêtre reste ouverte (pas fermée par le retour de focus du menu)').toBeVisible()
   }
   // Rouvre par le même menu SANS recharger (la fenêtre reste montée, c'est la clause d'AERR189).
   const rouvrir = async (nomLead) => {
