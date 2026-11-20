@@ -164,27 +164,45 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
   if (h.zonesSection !== undefined) appliquerZonesSection(ctx, h.zonesSection); // ACAL366
 }
 
+/** ACAL379 — par document relu, les dernières valeurs rendues de chaque pan : la référence à
+ *  laquelle une section « zones » est comparée (à défaut, le pan du document relu). */
+const derniersRendus = new WeakMap<object, Map<unknown, Record<string, unknown>>>();
+/** ACAL380 — la provenance d'orientation et la suggestion de pente : portées par la fiche du pan. */
+const CHAMPS_PROVENANCE = ['facingAzimuthSource', 'facingAzimuthPrecisionDeg', 'pitchSuggestion'];
+
 /** ACAL366 — par `id` de pan, les SEULS champs de `CHAMPS_SECTION_ZONE` du serveur : ceux que
- *  l'atelier possède sur le pan vivant (accesseurs du ctx pour le pan actif), les autres —
- *  et la suggestion de pente — dans `documentRelu.zones`, que `reconcilierAvecDocumentRelu`
- *  réémet. Un pan absent de la section n'est pas touché. */
+ *  l'atelier possède sur le pan vivant (accesseurs du ctx pour le pan actif), la provenance
+ *  sur sa fiche (ACAL380) et dans `documentRelu.zones` quand il y figure. Un pan absent de la
+ *  section n'est pas touché. */
 function appliquerZonesSection(ctx: Ctx, zones: ReadonlyArray<Record<string, unknown>>): void {
   const doc = ctx.documentRelu;
   const relues = (Array.isArray(doc?.zones) ? doc!.zones : []) as Array<Record<string, unknown>>;
+  const rendus = derniersRendus.get(doc ?? ctx) ?? new Map<unknown, Record<string, unknown>>();
+  derniersRendus.set(doc ?? ctx, rendus);
   for (const z of zones) {
     const pan = ctx.areas.find((a) => a.id === z?.id);
     if (!pan) continue;
     const actif = pan.id === ctx.activeAreaId;
-    if (typeof z.pitchDeg === 'number' && Number.isFinite(z.pitchDeg)) pan.pitchDeg = z.pitchDeg;
-    if (typeof z.facingAzimuthDeg === 'number' && Number.isFinite(z.facingAzimuthDeg)) pan.facingAzimuthDeg = z.facingAzimuthDeg;
-    if (typeof z.facingManual === 'boolean') pan.facingManual = z.facingManual;
-    if (z.pitchSource && typeof z.pitchSource === 'object') pan.pitchSource = copie(z.pitchSource as Record<string, unknown>);
-    else delete pan.pitchSource;
-    if (actif) Object.assign(ctx, { pitchDeg: pan.pitchDeg, facingAzimuthDeg: pan.facingAzimuthDeg, facingManual: pan.facingManual ?? false });
     const relue = relues.find((r) => r?.id === pan.id);
-    for (const cle of relue ? ['facingAzimuthSource', 'facingAzimuthPrecisionDeg', 'pitchSuggestion'] : []) {
-      if (cle in z) relue![cle] = copie(z[cle]);
-      else delete relue![cle];
+    // ACAL379 — la section rend TOUS les pans à leurs valeurs ENREGISTRÉES : seul un champ rendu
+    // qui diffère de la référence (dernier rendu, sinon le relu) est écrit — la saisie en cours reste.
+    const ref = rendus.get(pan.id) ?? relue;
+    const neuf = (cle: string) => !ref || JSON.stringify(z[cle] ?? null) !== JSON.stringify(ref[cle] ?? null);
+    const poser = (cle: string, v: unknown) => neuf(cle) && [pan, ...(actif ? [ctx] : [])].forEach((o) => Object.assign(o, { [cle]: v }));
+    if (typeof z.pitchDeg === 'number' && Number.isFinite(z.pitchDeg)) poser('pitchDeg', z.pitchDeg);
+    if (typeof z.facingAzimuthDeg === 'number' && Number.isFinite(z.facingAzimuthDeg)) poser('facingAzimuthDeg', z.facingAzimuthDeg);
+    if (typeof z.facingManual === 'boolean') poser('facingManual', z.facingManual);
+    if (neuf('pitchSource') && z.pitchSource && typeof z.pitchSource === 'object') pan.pitchSource = copie(z.pitchSource as Record<string, unknown>);
+    else if (neuf('pitchSource')) delete pan.pitchSource;
+    rendus.set(pan.id, copie(z));
+    const [curseur, libelle] = actif && typeof document !== 'undefined' ? ['rp9-pitch-range', 'rp9-pitch-value'].map((id) => document.getElementById(id)) : [];
+    if (curseur) (curseur as HTMLInputElement).value = String(Math.round(ctx.pitchDeg));
+    if (libelle) libelle.textContent = `${Math.round(ctx.pitchDeg)}°`;
+    for (const cle of CHAMPS_PROVENANCE) {
+      for (const o of [pan as unknown as Record<string, unknown>, ...(relue ? [relue] : [])]) {
+        if (cle in z) o[cle] = copie(z[cle]);
+        else delete o[cle];
+      }
     }
   }
 }
@@ -259,5 +277,10 @@ export function serialiserDocumentAtelier(
   etat: EtatSerialisationAtelier,
   meta?: SerializeMeta,
 ): SerializedLayout {
-  return serializeLayout(ctx, billKwh, composerMetaSerialisation(etat, meta));
+  const doc = serializeLayout(ctx, billKwh, composerMetaSerialisation(etat, meta));
+  for (const zone of doc.zones as unknown as Array<Record<string, unknown>>) { // ACAL380 — émise depuis la fiche du pan
+    const fiche = ctx.areas.find((a) => a.id === zone.id) as unknown as Record<string, unknown> | undefined;
+    for (const cle of CHAMPS_PROVENANCE) if (fiche && cle in fiche) zone[cle] = copie(fiche[cle]);
+  }
+  return doc;
 }
