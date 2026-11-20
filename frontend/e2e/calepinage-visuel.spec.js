@@ -16,7 +16,22 @@ const THEMES = ['clair', 'sombre']
 test.describe.configure({ mode: 'serial' })
 
 let calepinageId = null
-let carteDisponible = false
+let designContextOk = false
+
+// Fond de repli ACAL377 (même montage que acceptation/acal6.spec.js::carteRefusee) : le serveur
+// « publie » une clé factice, le style d'imagerie répond 403 -> l'atelier dessine sur son fond de
+// repli, sans MapTiler, de façon déterministe (le runner n'a aucune clé).
+async function carteRefusee(context) {
+  await context.route(/\/calepinage\/calepinages\/\d+\/design-context\//, async (route) => {
+    const reelle = await route.fetch()
+    const corps = await reelle.json()
+    corps.carte = { ...(corps.carte || {}), available: true, maptilerKey: 'cle-factice-acal384', mapboxToken: null }
+    await route.fulfill({ response: reelle, json: corps })
+  })
+  await context.route(/https:\/\/api\.maptiler\.com\//, (route) => route.fulfill({
+    status: 403, contentType: 'application/json', body: '{"message":"Invalid key"}',
+  }))
+}
 
 test.beforeAll(async ({ browser }, testInfo) => {
   const ctx = await browser.newContext({
@@ -36,7 +51,7 @@ test.beforeAll(async ({ browser }, testInfo) => {
     await page.waitForURL(/\/calepinage\/\d+/)
     calepinageId = /\/calepinage\/(\d+)/.exec(new URL(page.url()).pathname)?.[1] ?? null
     const res = await page.request.get(`${API}/calepinages/${calepinageId}/design-context/`)
-    carteDisponible = res.ok() && !!(await res.json())?.carte?.available
+    designContextOk = res.ok()
   } finally {
     await ctx.close()
   }
@@ -68,20 +83,27 @@ const ECRANS = [
 for (const theme of THEMES) {
   for (const ecran of ECRANS) {
     test(`${ecran.nom} — capture ${theme}`, { tag: '@visual' }, async ({ page }) => {
-      test.skip(ecran.carte && !carteDisponible,
-        'carte indisponible : le serveur ne publie aucune clé MapTiler (design-context.carte.available faux), l’atelier ne boote pas')
+      test.skip(ecran.carte && !designContextOk,
+        'design-context illisible : l’atelier ne peut pas booter même sur le fond de repli (ACAL377)')
       test.skip(calepinageId == null, 'calepinage de départ non créé (beforeAll)')
       if (theme === 'sombre') {
         await page.addInitScript(() => {
           try { localStorage.setItem('taqinor-theme', 'dark') } catch { /* mode privé */ }
         })
       }
+      if (ecran.carte) await carteRefusee(page.context())
       await page.goto(ecran.chemin(calepinageId))
       await ecran.pret(page)
+      if (ecran.carte) {
+        await expect(page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }))
+          .toBeEnabled({ timeout: 240_000 })
+        await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
+      }
       await page.waitForLoadState('networkidle').catch(() => {})
       // Noms/dates dérivent d'uniq() et de l'horloge : masqués (inerte si rien ne matche).
       const masques = ecran.nom === 'liste'
-        ? [page.locator('tbody'), page.locator('[role=row]')] : []
+        ? [page.locator('tbody'), page.locator('[role=row]')]
+        : [page.locator('#rp9-map')] // fond de repli / canvas : non stable au pixel près
       await expect(page).toHaveScreenshot(`calepinage-${ecran.nom}-${theme}.png`, { ...SHOT, mask: masques })
     })
   }

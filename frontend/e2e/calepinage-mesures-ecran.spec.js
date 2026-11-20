@@ -12,11 +12,25 @@ import { uniq, gotoLeads, createLead } from './helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const BASE = join(here, 'calepinage-mesures-ecran.baseline.json')
-const API = '/api/django/calepinage'
 const ECRIRE = process.env.CAL_MESURES_ECRIRE === '1'
 const CLES = ['controles_visibles', 'tailles_texte_distinctes', 'cibles_sous_44px', 'gestes_lead_production']
 
+// Atelier mesuré sur le FOND DE REPLI (ACAL377), comme acceptation/acal6.spec.js::carteRefusee :
+// le runner n'a pas de clé MapTiler, la base est donc `carte_disponible: false`.
+async function carteRefusee(context) {
+  await context.route(/\/calepinage\/calepinages\/\d+\/design-context\//, async (route) => {
+    const reelle = await route.fetch()
+    const corps = await reelle.json()
+    corps.carte = { ...(corps.carte || {}), available: true, maptilerKey: 'cle-factice-acal385', mapboxToken: null }
+    await route.fulfill({ response: reelle, json: corps })
+  })
+  await context.route(/https:\/\/api\.maptiler\.com\//, (route) => route.fulfill({
+    status: 403, contentType: 'application/json', body: '{"message":"Invalid key"}',
+  }))
+}
+
 test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => {
+  await carteRefusee(page.context())
   let gestes = 0
   const geste = async (action) => { gestes += 1; return action() }
 
@@ -32,12 +46,13 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
   await geste(() => page.locator('#cal-nouveau-nom').fill(uniq('ACAL385 Toiture')))
   await geste(() => page.getByRole('button', { name: 'Créer le calepinage' }).click())
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  const id = /\/calepinage\/(\d+)/.exec(new URL(page.url()).pathname)[1]
   await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }))
+    .toBeEnabled({ timeout: 240_000 })
+  await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
   await page.waitForLoadState('networkidle').catch(() => {})
 
-  const ctx = await page.request.get(`${API}/calepinages/${id}/design-context/`)
-  const carte = ctx.ok() && !!(await ctx.json())?.carte?.available
+  const carte = false // fond de repli forcé (cf. carteRefusee)
 
   // ── (a)(b)(c) : premier écran de l'atelier, sans scroll ──
   const mesures = await page.evaluate(() => {
