@@ -966,6 +966,19 @@ def _poser_horizontale(contexte, *, client, decision, fichier, compteur,
     contexte[CLE_HORIZONTALE_LEGALE] = reindexer(serie, copie)
 
 
+def _relayer_fichier_meteo(meteo, fichier):
+    """ACAL146 — ``meteo.fichier`` {nom, fournisseur} quand un fichier déposé
+    est la source (``null`` sinon : PVGIS), et le fournisseur rejoué. Rend
+    l'identité du fichier (``None`` sans fichier) pour la provenance."""
+    identite = (fichier or {}).get('identite') if fichier else None
+    meteo['fichier'] = (
+        {'nom': identite.get('nom'), 'fournisseur': identite.get('fournisseur')}
+        if identite else None)
+    if identite:
+        meteo['fournisseur'] = identite.get('fournisseur')
+    return identite
+
+
 def _plan_avec_le_site(plan, site):
     """Le pan, enrichi des coordonnées du site pour l'appel météo."""
     enrichi = dict(plan)
@@ -1350,14 +1363,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
     # fournisseur compte ce qui est réellement parti sur le réseau.
     blocs['meteo']['appels_pvgis'] = compteur['appels']
-    # ACAL146 — ``meteo.fichier`` {nom, fournisseur} quand un fichier déposé
-    # est la source (``null`` sinon : PVGIS), et le fournisseur rejoué.
-    identite = (fichier or {}).get('identite') if fichier else None
-    blocs['meteo']['fichier'] = (
-        {'nom': identite.get('nom'), 'fournisseur': identite.get('fournisseur')}
-        if identite else None)
-    if identite:
-        blocs['meteo']['fournisseur'] = identite.get('fournisseur')
+    identite = _relayer_fichier_meteo(blocs['meteo'], fichier)
 
     # 3. LA SIMULATION MODULE PAR MODULE (CALX182).
     par_module = production_module_par_module(contexte)
