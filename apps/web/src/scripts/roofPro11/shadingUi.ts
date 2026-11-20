@@ -1272,6 +1272,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // (sinon un document rouvert garde celle de la latitude par défaut, 33,5°).
     recomputeHorizon: () => {
       recomputeHorizonFactors();
+      // ACAL381 — le facteur annuel de l'ombrage proche lit lui aussi la latitude du toit.
+      if (ctx.shadeFactors) ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), ctx.shadeFactors, ctx.centroidLat);
       renderHorizonNote();
     },
     horizonStatus,

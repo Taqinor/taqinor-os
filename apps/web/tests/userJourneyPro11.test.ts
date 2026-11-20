@@ -776,6 +776,39 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(relu).toBe(docDerate.result.annualKwh); // toBe = Object.is
   }, 120000);
 
+  // ACAL381 — même piège pour l'OMBRAGE PROCHE : le facteur annuel de l'atelier lit la matrice
+  // à la latitude du toit ; rouvert, il ne doit pas garder celle de la latitude par défaut (33,5°).
+  it('ombrage proche enregistré, rouvert puis recalculé sans changement : production IDENTIQUE', async () => {
+    // Curseur d'heure de prise de vue (absent du banc) : son `input` recalcule l'ombrage
+    // EN SESSION, une fois le toit tracé (centroïde connu).
+    const enCours = boot(); // setupDom() a déjà tourné (partie synchrone) : on ajoute le curseur
+    const heure = document.createElement('input');
+    heure.id = 'rp9-shade-hour';
+    document.body.appendChild(heure);
+    const api = await enCours;
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    // Un immeuble à l'EST qui masque le soleil bas du matin (un immeuble au sud qui masque
+    // midi ferait tout perdre aux heures masquées, quelle que soit la latitude).
+    api().appliquerSection('environment', [{ id: 'env-1', kind: 'batiment', centerLng: -7.6195, centerLat: 33.59, heightM: 20, lengthM: 40, widthM: 10 }]);
+    heure.value = '10.5';
+    heure.dispatchEvent(new Event('input'));
+    const docDerate = copie(api().serializeLayout() as Doc) as Doc & { shading12x24?: number[][] | null };
+    expect(docDerate.shading12x24?.flat().some((f) => f < 1)).toBe(true);
+    expect(docDerate.result.annualKwh).toBeGreaterThan(0);
+    // Production stockée retirée (sinon ACAL31 réémet celle relue) : le dérate est RECALCULÉ
+    // depuis la matrice ENREGISTRÉE.
+    const { result: _stocke, ...sansProduction } = docDerate;
+    const a = await rouvrir(sansProduction, 9);
+    // Rouvert puis enregistré SANS geste (le piège du runner d'ACAL378), puis après un recalcul.
+    expect((a().serializeLayout() as Doc).result.annualKwh).toBe(docDerate.result.annualKwh); // Object.is
+    vi.useFakeTimers();
+    setBill('3000'); // même facture : recalcul, rien ne change
+    vi.advanceTimersByTime(321);
+    vi.useRealTimers();
+    expect((a().serializeLayout() as Doc).result.annualKwh).toBe(docDerate.result.annualKwh); // Object.is
+  }, 120000);
+
   // ACAL367 — rouvert AVEC sa production enregistrée (document NON dépouillé de `result`) puis
   // ombré : le document baisse du facteur de la carte ; D-ACAL-VER2-1 : un document stocké
   // déjà ombré sans signature de dérate est dératé au prochain enregistrement.
