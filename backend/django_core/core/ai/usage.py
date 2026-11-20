@@ -39,7 +39,7 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 #: Capacités journalisées (miroir des clés du registre).
-USAGE_CAPABILITIES = ('ocr', 'stt', 'vision_qa', 'llm')
+USAGE_CAPABILITIES = ('ocr', 'stt', 'vision_qa', 'llm', 'vision_toit')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

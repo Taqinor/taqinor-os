@@ -19,9 +19,11 @@ from core.ai.providers import (
     NoOpOCRProvider,
     NoOpSTTProvider,
     NoOpVisionQAProvider,
+    NoOpVisionToitProvider,
     OCRProvider,
     STTProvider,
     VisionQAProvider,
+    VisionToitProvider,
 )
 
 # Interface de base attendue par capacité (sert à valider l'enregistrement).
@@ -30,6 +32,7 @@ _CAPABILITY_BASE = {
     'stt': STTProvider,
     'vision_qa': VisionQAProvider,
     'llm': LLMProvider,
+    'vision_toit': VisionToitProvider,
 }
 
 # Fournisseur NO-OP par défaut de chaque capacité.
@@ -38,6 +41,7 @@ _NOOP = {
     'stt': NoOpSTTProvider,
     'vision_qa': NoOpVisionQAProvider,
     'llm': NoOpLLMProvider,
+    'vision_toit': NoOpVisionToitProvider,
 }
 
 # Registre {capacité: {clé: classe}}. Pré-rempli avec les NO-OP.
@@ -106,8 +110,9 @@ def get_provider(capability: str):
     # Garde-fou : un fournisseur sélectionné mais non configuré → NO-OP.
     if key != 'noop' and not instance.is_configured():
         return _NOOP[capability]()
-    if capability == 'llm' and key != 'noop' and _budget_epuise():
-        return BudgetExhaustedLLMProvider()
+    if capability in ('llm', 'vision_toit') and key != 'noop' and _budget_epuise():
+        # ACAL489 — la détection du toit (appel payant) suit le même plafond.
+        return BudgetExhaustedLLMProvider() if capability == 'llm' else _NOOP[capability]()
     return instance
 
 
