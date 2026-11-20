@@ -151,8 +151,8 @@ CLES_TACHES = {
 #: Mots à majuscule des consignes des tâches (mesurés sur le texte exact) :
 #: titres, débuts de phrase et noms de listes de l'écran — aucun prénom.
 MAJUSCULES_TACHES = {
-    "Aide", "Chiffres", "Dis", "Dès", "Données", "En", "Il", "Jamais", "Je", "Liste",
-    "Où", "Parle", "Pas", "Planifie", "Planifier", "Portée", "Pour", "Priorité",
+    "Aide", "Chiffres", "Dis", "Dès", "Données", "Il", "Jamais", "Je", "Liste",
+    "Où", "Parle", "Pas", "Planifie", "Planifier", "Plus", "Portée", "Pour", "Priorité",
     "Proposé", "Puis", "Renommer", "Reportée", "Rythme", "Sans", "Ses", "Sur",
     "Ton", "Tout", "Tu", "Tâche", "Une", "Ça", "Écrire",
 }
