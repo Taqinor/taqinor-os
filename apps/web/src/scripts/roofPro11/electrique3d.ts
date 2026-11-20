@@ -43,6 +43,7 @@
 import * as THREE from 'three';
 import { createValueHistory, type ValueHistory } from './layoutHistory';
 import { type LngLat } from '../../lib/roof';
+import { proposerPointsCheminement, type Pt } from './cheminementAuto'; // ACAL472
 
 /** CALX221 — l'identifiant du calque, DÉCLARÉ ICI ET UNE SEULE FOIS côté
  *  constructeur. Le panneau de calques de l'ERP le relit pour proposer sa
@@ -507,7 +508,14 @@ export interface ContexteCoucheElectrique {
   /** Origine géographique du repère de la scène 3D. */
   sceneOrigin?: LngLat;
   /** Les pans de l'atelier : une extrémité de cheminement peut les désigner. */
-  areas?: ReadonlyArray<{ id: string }>;
+  areas?: ReadonlyArray<{
+    id: string;
+    /** ACAL472 — la pose du pan (rive + rangées de modules) : sans elle, aucun tracé n'est proposé. */
+    renderPlan?: {
+      pack: { origin: LngLat; azimuthDeg: number; ringENU: [number, number][] };
+      grid: { rowWidthM: number; panels: ReadonlyArray<{ cx: number; cy: number }> };
+    } | null;
+  }>;
   activeAreaId?: string;
 }
 
@@ -558,6 +566,8 @@ export interface CoucheElectrique {
   // — CALX223 : tracer un cheminement —
   demarrerCheminement: (depart: { cote: CoteCheminement; de: string }) => true | RefusElectrique;
   ajouterPointCheminement: (lngLat: LngLat, altitudeM?: number | null) => number;
+  /** ACAL472 — propose le tracé de `de` à `vers` le long des rangées et de la rive (plus court chemin), `origine: 'plan'`. */
+  proposerCheminement: (depart: { cote: CoteCheminement; de: string; vers: string }) => CheminementReussi | RefusElectrique;
   pointsEnCours: () => PointCheminement[];
   terminerCheminement: (vers: string) => CheminementReussi | RefusElectrique;
   abandonnerCheminement: () => boolean;
@@ -753,9 +763,11 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     const doc = document();
     const liste = (doc?.equipements ?? []) as EquipementElectrique[];
     const i = liste.findIndex((e) => e.id === cible);
-    if (i < 0) return false;
+    const chemins = (doc?.cheminements ?? []) as CheminementElectrique[];
+    const ic = i < 0 ? chemins.findIndex((c) => c.id === cible) : -1; // ACAL472 — un tracé est supprimable
+    if (i < 0 && ic < 0) return false;
     photographier();
-    liste.splice(i, 1);
+    if (i >= 0) liste.splice(i, 1); else chemins.splice(ic, 1);
     if (selectionne === cible) selectionne = null;
     rafraichir();
     return true;
@@ -844,6 +856,60 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     if (!enCours) return false;
     enCours = null;
     return true;
+  }
+
+  /** ACAL472 — le tracé proposé : points calculés en mètres (ENU du pan) par plus court chemin,
+   *  écrits par les gestes existants ; un tracé `plan` déjà proposé pour la même liaison est remplacé. */
+  function proposerCheminement(depart: { cote: CoteCheminement; de: string; vers: string }): CheminementReussi | RefusElectrique {
+    const pans = (ctx.areas ?? []).filter((a) => a.renderPlan);
+    const pan = pans.find((a) => a.id === depart?.de || a.id === depart?.vers)
+      ?? pans.find((a) => a.id === ctx.activeAreaId) ?? pans[0];
+    const plan = pan?.renderPlan;
+    if (!plan) {
+      return refuser('electrical.cheminements.points', 'Aucun pan posé : la rive et les rangées sont inconnues, le tracé ne peut pas être proposé.');
+    }
+    const o = plan.pack.origin;
+    const enu = (id: string): Pt | null => {
+      if (id === pan!.id) {
+        const r = plan.pack.ringENU;
+        return [r.reduce((t, p) => t + p[0], 0) / r.length, r.reduce((t, p) => t + p[1], 0) / r.length];
+      }
+      const e = (document()?.equipements ?? []).find((x) => x.id === id);
+      return e && nombreFini(e.lng) && nombreFini(e.lat) ? versScene(e.lng, e.lat, o) : null;
+    };
+    const [de, vers] = [enu(texteOuVide(depart?.de).trim()), enu(texteOuVide(depart?.vers).trim())];
+    if (!de || !vers) {
+      return refuser('electrical.cheminements.points', 'Une extrémité du tracé n’a pas de position sur ce pan : posez l’organe ou choisissez le pan.');
+    }
+    const az = plan.pack.azimuthDeg * DEG2RAD;
+    const f: Pt = [Math.sin(az), Math.cos(az)]; // empilement ; l'axe d'une rangée est u = (−f.y, f.x)
+    const rangs = new Map<number, { v: number; u: number[] }>();
+    for (const p of plan.grid.panels) {
+      const v = p.cx * f[0] + p.cy * f[1];
+      const rang = rangs.get(Math.round(v * 20)) ?? { v, u: [] };
+      rang.u.push(-p.cx * f[1] + p.cy * f[0]);
+      rangs.set(Math.round(v * 20), rang);
+    }
+    const hors = ([u, v]: Pt): Pt => [-u * f[1] + v * f[0], u * f[0] + v * f[1]];
+    const rangees = [...rangs.values()].map(({ v, u }) => [
+      hors([Math.min(...u) - plan.grid.rowWidthM / 2, v]), hors([Math.max(...u) + plan.grid.rowWidthM / 2, v]),
+    ] as [Pt, Pt]);
+    const res = proposerPointsCheminement({ de, vers, rangees, rive: plan.pack.ringENU as Pt[] });
+    if (!res.ok) return refuser('electrical.cheminements.points', res.motif);
+    const anciens = ((document()?.cheminements ?? []) as CheminementElectrique[])
+      .filter((c) => c.origine === 'plan' && c.cote === depart.cote && c.de === depart.de && c.vers === depart.vers).map((c) => c.id);
+    const d = demarrerCheminement({ cote: depart.cote, de: depart.de });
+    if (d !== true) return d;
+    const cosLat = Math.cos(o[1] * DEG2RAD);
+    for (const [e, n] of res.points) ajouterPointCheminement([o[0] + e / (DEG2M * cosLat), o[1] + n / DEG2M]);
+    const fin = terminerCheminement(depart.vers);
+    if (!fin.ok) enCours = null; // un tracé refusé ne reste pas à moitié ouvert
+    if (fin.ok && anciens.length) {
+      const liste = document()!.cheminements as CheminementElectrique[];
+      for (const id of anciens) liste.splice(liste.findIndex((c) => c.id === id), 1);
+      rafraichir();
+    }
+    return fin;
   }
 
   function saisirCheminement(saisie: {
@@ -964,6 +1030,7 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     retirer,
     demarrerCheminement,
     ajouterPointCheminement,
+    proposerCheminement,
     pointsEnCours: () => (enCours ? enCours.points.map((p) => ({ ...p })) : []),
     terminerCheminement,
     abandonnerCheminement,

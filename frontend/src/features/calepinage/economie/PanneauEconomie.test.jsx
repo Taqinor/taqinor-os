@@ -10,9 +10,21 @@
    ni un tiret muet ; et ce panneau LECTURE SEULE ne rend aucun champ de
    saisie. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { cloneElement } from 'react'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+
+// jsdom : ResponsiveContainer n'a pas de taille — dimensions fixes (convention BarArrondie.test).
+vi.mock('recharts', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children, height }) => cloneElement(children, {
+      width: 640, height: typeof height === 'number' ? height : 240,
+    }),
+  }
+})
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: { get: vi.fn() } },
@@ -120,5 +132,38 @@ describe('PanneauEconomie (CALX289)', () => {
     expect(within(omissions).getAllByTestId('calx289-omission')).toHaveLength(11)
 
     expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+  })
+
+  it("ACAL448 : le graphique du flux se trace ; une valeur null est un trou ; flux vide = aucun graphique", async () => {
+    const detail = exempleContrat('calepinage', 'calepinage_detail', 'exemple')
+    calepinageApi.calepinages.get.mockResolvedValue({ data: detail })
+    const exemple = reponseContrat('ventes', 'ventes_economie', 'exemple')
+    ventesApi.getEconomieDevis.mockResolvedValue(exemple)
+
+    rendre()
+    const graphique = await screen.findByTestId('acal448-graphique')
+    // Une barre par année de l'exemple (11), la courbe du cumul et le repère du retour servi.
+    expect(graphique.querySelectorAll('.recharts-bar-rectangle path')).toHaveLength(11)
+    expect(graphique.querySelector('.recharts-line')).not.toBeNull()
+    expect(graphique.querySelector('.recharts-reference-line')).not.toBeNull()
+    // La table du flux reste telle quelle.
+    expect(screen.getAllByTestId('calx289-flux-ligne')).toHaveLength(11)
+    cleanup()
+
+    // Une valeur null = pas de barre, jamais 0.
+    const avecTrou = structuredClone(exemple)
+    avecTrou.data.flux[3].flux_mad = null
+    ventesApi.getEconomieDevis.mockResolvedValue(avecTrou)
+    rendre()
+    const g2 = await screen.findByTestId('acal448-graphique')
+    expect(g2.querySelectorAll('.recharts-bar-rectangle path')).toHaveLength(10)
+    cleanup()
+
+    // Flux vide : aucun graphique, les omissions restent lues.
+    ventesApi.getEconomieDevis
+      .mockResolvedValue(reponseContrat('ventes', 'ventes_economie', 'exemple_vide'))
+    rendre()
+    await screen.findByTestId('calx289-bloc')
+    expect(screen.queryByTestId('acal448-graphique')).toBeNull()
   })
 })
