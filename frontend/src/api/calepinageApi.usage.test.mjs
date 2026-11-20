@@ -150,6 +150,7 @@ export const EXCEPTIONS_SANS_APPELANT = {
   // 'calepinages.sorties' / 'calepinages.telechargerSortie' RETIRÉES (fold M5,
   // 24/09/2026) : Fixation.jsx (CALX360, onglet Fixation de l'atelier) les
   // appelle désormais toutes les deux — exceptions périmées.
+  'calepinages.parcours': "20/11/2026 — ACAL392 livre la route GET parcours/ (contrat ACAL386) ; son écran est ACAL393 (rail du parcours guidé), qui retire cette exception",
   'parametres.suggererPentesIGN': "06/10/2026 — la porte société parametres/suggestion-pente/ (POST) est conservée (ACAL66) ; l'onglet Pente passe désormais par calepinages/<id>/suggestions-pente/ (decisionSuggestionPente), qui persiste la suggestion",
 }
 

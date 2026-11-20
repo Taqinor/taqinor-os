@@ -142,6 +142,10 @@ from . import fond_plan as _fond_plan_action  # noqa: F401 — import d'enregist
 # CALA2 — même patron : rattache les routes MINCES de l'assistant (résumé,
 # du-lead, a-traiter, contenance, preparer, publier-devis), ``views/assistant.py``.
 from . import assistant as _assistant_actions  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL392 — même patron : rattache ``parcours`` (GET l'état des 5 étapes du
+# parcours guidé et « ce qui manque » regroupé, ``services/parcours_guide.py``).
+# Lecture PURE : ni statut, ni version, ni écriture.
+from . import parcours_guide as _parcours_guide_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -181,6 +185,7 @@ MODULES_RATTACHES = (
     'consommation',  # ACAL310
     'fond_plan',  # ACAL72
     'assistant',  # CALA2
+    'parcours_guide',  # ACAL392
 )
 
 __all__ = ['MODULES_RATTACHES']
