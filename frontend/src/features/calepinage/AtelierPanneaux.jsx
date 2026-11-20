@@ -68,6 +68,13 @@ function valeur(brut, suffixe = '') {
   return `${brut}${suffixe}`
 }
 
+/** ACAL406 — la source de la cible en mots ; une valeur inconnue reste telle quelle. */
+const LIBELLES_SOURCE_CIBLE = {
+  devis: 'Devis lié',
+  lead: 'Taille souhaitée sur la fiche du lead',
+  factures: 'Factures du lead',
+}
+
 /* ============================================================================
    ACAL42 — LE BANDEAU DE LECTURE SEULE : LE MOTIF DU SERVEUR, AUCUNE PORTE.
    ----------------------------------------------------------------------------
@@ -175,7 +182,7 @@ export default function AtelierPanneaux({
           <dt className="tech-label mt-0.5 text-lune-faint">Cible — puissance</dt>
         </div>
         <div>
-          <dd className="fig text-lg text-white">{valeur(cible?.source)}</dd>
+          <dd className="fig text-lg text-white">{valeur(LIBELLES_SOURCE_CIBLE[cible?.source] ?? cible?.source)}</dd>
           <dt className="tech-label mt-0.5 text-lune-faint">Source de la cible</dt>
         </div>
         <div>

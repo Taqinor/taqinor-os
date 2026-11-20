@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { coinsDepuisFichierMonde } from './commun/fichierCalageMonde'
 
 /* ============================================================================
    ACAL201 — les photos se chargent par leur CHEMIN RELATIF servi (cookie
@@ -49,10 +50,11 @@ vi.mock('leaflet', () => ({
     tileLayer: (...a) => tileLayer(...a),
     polygon: () => ({ addTo: () => {} }),
     marker: (pos) => {
-      const [lat, lng] = Array.isArray(pos) ? pos : [pos.lat, pos.lng]
+      let [lat, lng] = Array.isArray(pos) ? pos : [pos.lat, pos.lng]
       const poignee = {
         gestionnaires: {},
         getLatLng: () => ({ lat, lng }),
+        setLatLng(p) { [lat, lng] = Array.isArray(p) ? p : [p.lat, p.lng]; return poignee },
         on(evt, fn) { poignee.gestionnaires[evt] = fn; return poignee },
         addTo() { (globalThis.__marqueursCalage203 ||= []).push(poignee); return poignee },
       }
@@ -196,5 +198,42 @@ describe('ACAL203 — calage, modification, suppression, carte', () => {
     expect(carte.mock.calls[0][0].zoom).toBe(19)
     const options = tileLayer.mock.calls[0][1]
     expect(options.maxNativeZoom).toBe(19)
+  })
+})
+
+// ACAL424 — l'orthophoto se cale depuis son fichier « monde » (degrés WGS84).
+describe('ACAL424 — fichier de calage monde (.jgw/.pgw/.wld)', () => {
+  // 0,001° par pixel, haut-gauche (lng -7,10 ; lat 33,60), lignes dans l'ordre A D B E C F.
+  const JGW = ['0.001', '0', '0', '-0.001', '-7.10', '33.60'].join('\n')
+
+  it('fichier .jgw en degrés : 4 coins NO, NE, SE, SO (lat, lng) ; mètres refusé', () => {
+    const { coins } = coinsDepuisFichierMonde(JGW, 100, 50)
+    expect(coins[0][0]).toBeCloseTo(33.6005, 6) // NO : lat
+    expect(coins[0][1]).toBeCloseTo(-7.1005, 6) // NO : lng
+    expect(coins[1][1]).toBeCloseTo(-7.1005 + 0.1, 6) // NE : lng
+    expect(coins[2][0]).toBeCloseTo(33.6005 - 0.05, 6) // SE : lat
+    expect(coins[3][1]).toBeCloseTo(-7.1005, 6) // SO : lng
+    const metres = ['0.5', '0', '0', '-0.5', '300000', '3700000'].join('\n')
+    expect(coinsDepuisFichierMonde(metres, 100, 50).erreur).toMatch(/WGS84/)
+    expect(coinsDepuisFichierMonde('1\n2\n3\n', 100, 50).erreur).toMatch(/6 nombres/)
+    expect(coinsDepuisFichierMonde(JGW, 0, 0).erreur).toMatch(/Dimensions/)
+  })
+
+  it('le fichier remplit les poignées ; rien n’est enregistré avant le clic', async () => {
+    photos.mockResolvedValue({ data: { photos: [NON_CALEE] } })
+    const { container } = rendre()
+    await screen.findByTestId('cal-photo-calage-carte')
+    const image = container.querySelector('img[hidden]')
+    Object.defineProperty(image, 'naturalWidth', { value: 100 })
+    Object.defineProperty(image, 'naturalHeight', { value: 50 })
+    const fichier = new File([JGW], 'ortho.jgw', { type: 'text/plain' })
+    Object.defineProperty(fichier, 'text', { value: () => Promise.resolve(JGW) })
+    fireEvent.change(screen.getByTestId('cal-photo-calage-monde'), { target: { files: [fichier] } })
+
+    await waitFor(() => expect(screen.getByTestId('cal-photo-calage-enregistrer')).not.toBeDisabled())
+    expect(calerPhoto).not.toHaveBeenCalled()
+    const poignees = globalThis.__marqueursCalage203.slice(-4)
+    expect(poignees[0].getLatLng().lat).toBeCloseTo(33.6005, 6)
+    expect(poignees[1].getLatLng().lng).toBeCloseTo(-7.0005, 6)
   })
 })

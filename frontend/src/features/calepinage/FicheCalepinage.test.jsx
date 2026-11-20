@@ -740,6 +740,21 @@ describe('FicheCalepinage — rattachement éditable (ACAL181)', () => {
 })
 
 describe('FicheCalepinage — champs personnalisés (ACAL294)', () => {
+  it('ACAL406 : libellé de la définition, objet sans JSON, définition absente ⇒ code', async () => {
+    customFieldsApi.getDefs.mockResolvedValue({ data: [
+      { id: 1, code: 'toit_amiante', libelle: 'Toit en amiante', type: 'bool', actif: true },
+      { id: 2, code: 'ancien', libelle: 'Champ inactif', type: 'text', actif: false },
+    ] })
+    rendre({ ...DETAIL, custom_data: { toit_amiante: true, acces: { grue: 1 }, ancien: 'x' } })
+    const bloc = screen.getByTestId('cal-fiche-custom_data')
+    await waitFor(() => expect(bloc).toHaveTextContent('Toit en amiante : Oui'))
+    expect(bloc).toHaveTextContent('acces :')
+    expect(bloc).toHaveTextContent('grue : 1')
+    expect(bloc.textContent).not.toMatch(/[{}"]/)
+    expect(bloc).toHaveTextContent('ancien : x')
+    expect(bloc).not.toHaveTextContent('Champ inactif')
+  })
+
   it('la fiche affiche et enregistre les champs personnalisés', async () => {
     customFieldsApi.getDefs.mockResolvedValue({ data: [
       { id: 3, code: 'parcelle', libelle: 'N° de parcelle cadastrale',

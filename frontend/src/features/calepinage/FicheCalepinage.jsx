@@ -5,6 +5,7 @@ import calepinageApi from '../../api/calepinageApi'
 import { urlFichierCalepinage } from '../../lib/calage/fichierCalepinage'
 import AssigneePicker from '../../components/AssigneePicker'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+import customFieldsApi from '../../api/customFieldsApi'
 import SelecteurRattachement from './SelecteurRattachement'
 import useUtilisateursAssignables from './useUtilisateursAssignables'
 import { formatDateTime } from '../../lib/format'
@@ -44,6 +45,18 @@ const ASSUREURS = {
 function texte(brut) {
   if (brut === null || brut === undefined || brut === '') return '—'
   return String(brut)
+}
+
+/** ACAL406 — une valeur de champ personnalisé en mots : Oui/Non, jamais de JSON
+ *  (un objet imbriqué devient des lignes « clé : valeur »). */
+function rendreValeurChamp(valeur) {
+  if (typeof valeur === 'boolean') return valeur ? 'Oui' : 'Non'
+  if (valeur !== null && typeof valeur === 'object') {
+    return Object.entries(valeur).map(([k, v]) => (
+      <div key={k} className="ml-3">{k} : {rendreValeurChamp(v)}</div>
+    ))
+  }
+  return texte(valeur)
 }
 
 /** Un horodatage ISO tel que le serveur le sert, en date lisible. */
@@ -164,6 +177,19 @@ export default function FicheCalepinage({ detail, onRelire }) {
   // module « calepinage ») : `null` = rien touché, la valeur servie fait foi.
   const [champsPerso, setChampsPerso] = useState(null)
   const [refusChampsPerso, setRefusChampsPerso] = useState(null)
+  // ACAL406 — libellés des définitions ACTIVES (lecture, même sans droit
+  // d'écriture) ; absente ou inactive ⇒ le code est montré.
+  const [libellesChamps, setLibellesChamps] = useState({})
+  useEffect(() => {
+    let vivant = true
+    customFieldsApi.getDefs('calepinage').then((r) => {
+      if (!vivant) return
+      const defs = r?.data?.results ?? r?.data ?? []
+      setLibellesChamps(Object.fromEntries(
+        defs.filter((d) => d.actif).map((d) => [d.code, d.libelle])))
+    }).catch(() => {})
+    return () => { vivant = false }
+  }, [])
   const identifiant = detail?.id ?? null
   const peutModifier = detail?.permissions?.peut_modifier === true
   const naviguer = useNavigate()
@@ -816,10 +842,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
           {detail.custom_data && Object.keys(detail.custom_data).length > 0
             ? Object.entries(detail.custom_data).map(([cle, valeur]) => (
               <div key={cle}>
-                {cle} : {typeof valeur === 'boolean'
-                  ? (valeur ? 'Oui' : 'Non')
-                  : texte(typeof valeur === 'object' && valeur !== null
-                    ? JSON.stringify(valeur) : valeur)}
+                {libellesChamps[cle] ?? cle} : {rendreValeurChamp(valeur)}
               </div>
             ))
             : '—'}
