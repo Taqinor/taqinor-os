@@ -91,3 +91,9 @@ coûtent, ce qui n'est pas couvert).
   ne reconnaît pas « go L3 » (seulement les formes en mots).
 - R2 LANCÉ : un concepteur opus → `projet-skill.md`.
 
+- 20/11 : R2 FAIT (`981bbfcfc`) — `projet/` : `SKILL.md` (239 l. : régime NEUF / EXISTANT / MIXTE, L4 « ship-grade »,
+  L5 « all the way », garde-fous de coût), `crochet.md`, `notes-de-conception.md`, 9 gabarits.
+- 20/11 : R3 LANCÉ — trois vérificateurs neufs : `rejeu` (opus), `maison` (opus), `faits` (sonnet) ; rapports attendus
+  dans `validation/`. À leur retour : trier (bloquant / important / optionnel), faire corriger le projet par un
+  concepteur NEUF (lui donner les trois rapports + le projet), relancer une vérification ciblée des bloquants ; puis
+  R4. Mémoire du poste : pointeur posé (`01c9c4c` du dépôt mémoire).
