@@ -191,7 +191,8 @@ import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
 import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
-import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
+import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
   deltaMetresFond,
@@ -1133,7 +1134,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     redrawObstacles: () => redrawObstacles(), // CALX97 câblage
     recalc: () => recalc(), // CALX97 câblage
     setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
-    apresRendu: () => formesToit.rafraichir(), // ACAL410
+    apresRendu: () => { formesToit.rafraichir(); toitParCotes.rafraichir(); }, // ACAL410 · ACAL422
+  });
+  // ACAL422 — « Créer le toit » : longueur × largeur × orientation saisies, contour fermé par `close`.
+  const toitParCotes = monterToitParCotes({
+    ancre: addAreaBtn, vide: () => !closed && vertices.length === 0, setStatus: (m) => setStatus(m),
+    centre: () => { const c = map.getCenter?.(); return c ? [c.lng, c.lat] : null; },
+    creer: (anneau) => { vertices = anneau; close(); },
   });
   // ACAL410 — « Forme du toit » : un clic remplace le pan actif par les pans de la forme.
   const formesToit = monterFormesToit({
