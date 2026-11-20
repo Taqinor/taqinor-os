@@ -937,6 +937,29 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(pentes((await rouvrir(enregistre, 15))().serializeLayout() as Doc)).toEqual([30, 40]);
   }, 120000);
 
+  // ACAL380 — un pan dessiné pendant la séance (absent du document relu) : la provenance que lui
+  // donne une section « zones » vit sur sa fiche (`ctx.areas`), est émise puis relue.
+  it('pan dessiné en séance garde sa provenance', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const base = copie(neuf().serializeLayout() as Doc);
+    const api = await rouvrir(base, 16);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    traceRoof(fakeMaps[0], 16, -7.6195);
+    const dessine = (copie(api().serializeLayout() as Doc).zones as Array<Record<string, unknown>>)[1];
+    const provenance = { facingAzimuthSource: 'releve', facingAzimuthPrecisionDeg: 5, pitchSuggestion: { degres: 34, decision: 'refusee' } };
+    api().appliquerSection('zones', [{ ...dessine, facingAzimuthDeg: 200, ...provenance }]);
+    const attendus = (doc: Doc) => {
+      const z = (doc.zones as Array<Record<string, unknown>>).find((x) => x.id === dessine.id)!;
+      expect({ ...z, ...provenance, facingAzimuthDeg: 200 }).toEqual(z);
+    };
+    const enregistre = copie(api().serializeLayout() as Doc);
+    attendus(enregistre);
+    // Persistance : rouvert depuis l'enregistrement complet, les trois champs relus.
+    attendus((await rouvrir(enregistre, 16))().serializeLayout() as Doc);
+  }, 120000);
+
   it('« + Ajouter une zone » garde les ombres et la matrice du document', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
