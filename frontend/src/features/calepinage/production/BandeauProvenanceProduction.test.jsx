@@ -155,3 +155,20 @@ describe('SourceMeteo / IncertitudeSigma (ENF15)', () => {
     expect(screen.queryByTestId('enf15-composante')).toBeNull()
   })
 })
+
+/* ACAL405 — une référence du profil de départ ⇒ « valeur publiée, non mesurée ». */
+describe('ReglagesUtilises — valeur publiée (ACAL405)', () => {
+  const simulation = (reference) => ({
+    reglages_utilises: { b0_iam: { valeur: 0.05, source: 'texte', reference } },
+  })
+
+  it('une référence du profil de départ ajoute la mention', () => {
+    render(<ReglagesUtilises simulation={simulation('Profil de départ — PVsyst : bo = 0.05')} />)
+    expect(screen.getByTestId('acal405-publiee')).toHaveTextContent('valeur publiée, non mesurée')
+  })
+
+  it('une saisie ordinaire n’en porte pas', () => {
+    render(<ReglagesUtilises simulation={simulation('mesuré sur site')} />)
+    expect(screen.queryByTestId('acal405-publiee')).toBeNull()
+  })
+})
