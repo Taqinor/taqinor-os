@@ -96,6 +96,14 @@
         "motif_si_absent": "Aucune empreinte d'entrée publiée : le calepinage n'a pas encore été calculé."
       },
       {
+        "code": "validation",
+        "titre": "Note de validation",
+        "ordre": 95,
+        "obligatoire": false,
+        "entrees_exigees": [],
+        "motif_si_absent": "La note s'imprime toujours : la ligne de cette étude y est « non calculé — lancez la simulation » tant que l'écart n'a pas été mesuré."
+      },
+      {
         "code": "hypotheses",
         "titre": "Hypothèses, sources et omissions",
         "ordre": 100,

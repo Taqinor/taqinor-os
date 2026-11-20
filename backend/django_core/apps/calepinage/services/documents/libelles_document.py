@@ -69,6 +69,7 @@ LIBELLES = {
     'nomenclature': {'fr': 'Nomenclature', 'en': 'Bill of materials'},
     'preuve': {'fr': 'Régime de preuve et empreinte',
                'en': 'Proof regime and fingerprint'},
+    'validation': {'fr': 'Note de validation', 'en': 'Validation note'},
     'hypotheses': {'fr': 'Hypothèses, sources et omissions',
                    'en': 'Assumptions, sources and omissions'},
 
