@@ -264,7 +264,8 @@ sortie(str(r) if r else None)`)
   const date = (pk) => p.locator(`#clp-date-${pk}`)
   const objet = (pk) => p.locator(`#clp-objet-${pk}`)
   const ouvrir = async (nomLead, pk) => {
-    await p.goto(`/crm/leads?view=kanban&q=${encodeURIComponent(nomLead)}`)
+    // Filtre sur la marque commune aux deux leads : la carte de B reste affichée pour la réouverture sans recharger.
+    await p.goto(`/crm/leads?view=kanban&q=${encodeURIComponent(m)}`)
     const carte = p.locator('article.kb-card', { hasText: nomLead }).first()
     await expect(carte, `carte du lead ${nomLead}`).toBeVisible({ timeout: 60_000 })
     await carte.getByRole('button', { name: /^Actions du lead/ }).click()
