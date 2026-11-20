@@ -698,3 +698,66 @@ describe('CALX220 / ACAL26 — l’attache dans le constructeur passe par le sé
     expect('electrical' in sansCouche).toBe(false);
   });
 });
+
+/* ACAL472 — proposer le tracé d'un câble le long des rangées et de la rive. Géométrie en
+   mètres ENU autour de ORIGINE : toit 20 × 10 m, une rangée de modules sur l'axe y = 5
+   (x de 2 à 18), azimut 180° (rangées le long de l'est). */
+describe('ACAL472 — cheminement proposé (plus court chemin rangées + rive)', () => {
+  const COS = Math.cos((ORIGINE[1] * Math.PI) / 180);
+  const M = (Math.PI / 180) * 6378137; // le rayon de lib/geo (WGS84_RADIUS)
+  const lngLat = (e: number, n: number): [number, number] => [ORIGINE[0] + e / (M * COS), ORIGINE[1] + n / M];
+  const RIVE: [number, number][] = [[0, 0], [20, 0], [20, 10], [0, 10]];
+  const plan = (rive = RIVE) => ({
+    pack: { origin: ORIGINE, azimuthDeg: 180, ringENU: rive },
+    grid: { rowWidthM: 2, panels: [3, 5, 7, 9, 11, 13, 15, 17].map((cx) => ({ cx, cy: 5 })) },
+  });
+  const organe = (id: string, e: number, n: number): EquipementElectrique => {
+    const [lng, lat] = lngLat(e, n);
+    return { ...(DOC_HUIT.equipements![0] as EquipementElectrique), id, lng, lat };
+  };
+  const atelier = (a: [number, number], b: [number, number], rive = RIVE) => creerCoucheElectrique({
+    electrical: { equipements: [organe('eqA', ...a), organe('eqB', ...b)] },
+    sceneOrigin: ORIGINE,
+    areas: [{ id: 'z1', renderPlan: plan(rive) }],
+    activeAreaId: 'z1',
+  });
+  const enu = (p: { lng: number; lat: number }): [number, number] => [(p.lng - ORIGINE[0]) * M * COS, (p.lat - ORIGINE[1]) * M];
+  const surRive = ([x, y]: [number, number]) => Math.min(Math.abs(x), Math.abs(x - 20), Math.abs(y), Math.abs(y - 10)) < 1e-6;
+
+  it('suit l\'axe de la rangée plutôt que de contourner : tous les points sont sur la rangée ou la rive', () => {
+    const couche = atelier([1, 5], [19, 5]);
+    const res = couche.proposerCheminement({ cote: 'dc', de: 'eqA', vers: 'eqB' });
+    expect(res.ok).toBe(true);
+    const ch = couche.documentElectrique()!.cheminements![0];
+    expect(ch.origine).toBe('plan');
+    const pts = ch.points!.map(enu);
+    expect(pts.length).toBeGreaterThan(2); // jamais une droite à deux points
+    for (const p of pts) expect(Math.abs(p[1] - 5) < 1e-6 || surRive(p)).toBe(true);
+    expect(pts.some(([x]) => Math.abs(x - 18) < 1e-6)).toBe(true); // passe par le bout de la rangée
+  });
+
+  it('contourne par la rive quand aucune rangée ne passe', () => {
+    const couche = atelier([0.5, 3], [0.5, 7]);
+    expect(couche.proposerCheminement({ cote: 'ac', de: 'eqA', vers: 'eqB' }).ok).toBe(true);
+    const pts = couche.documentElectrique()!.cheminements![0].points!.map(enu);
+    expect(pts.length).toBeGreaterThan(2);
+    expect(pts.slice(1, -1).every(([x]) => Math.abs(x) < 1e-6)).toBe(true); // longe la rive ouest
+  });
+
+  it('re-proposable (un seul tracé par liaison) et supprimable ; chemin impossible nommé', () => {
+    const couche = atelier([1, 5], [19, 5]);
+    couche.proposerCheminement({ cote: 'dc', de: 'eqA', vers: 'eqB' });
+    couche.proposerCheminement({ cote: 'dc', de: 'eqA', vers: 'eqB' });
+    const liste = couche.documentElectrique()!.cheminements!;
+    expect(liste).toHaveLength(1);
+    expect(couche.retirer(liste[0].id)).toBe(true);
+    expect(couche.documentElectrique()!.cheminements).toHaveLength(0);
+
+    const sansRive = atelier([1, 5], [19, 5], []).proposerCheminement({ cote: 'dc', de: 'eqA', vers: 'eqB' });
+    expect(sansRive.ok).toBe(false);
+    expect((sansRive as { message?: string }).message).toMatch(/Aucune rive de toit exploitable/);
+    const sansPan = creerCoucheElectrique({ electrical: { equipements: [] }, sceneOrigin: ORIGINE, areas: [{ id: 'z1' }] })
+      .proposerCheminement({ cote: 'dc', de: 'z1', vers: 'z1' });
+    expect(sansPan.ok).toBe(false);
+  });
+});
