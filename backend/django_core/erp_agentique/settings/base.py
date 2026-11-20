@@ -1979,7 +1979,7 @@ PAYMENT_PROVIDER = os.environ.get('PAYMENT_PROVIDER', '').strip()
 #   AI_PROVIDERS = {'ocr': 'zhipu', 'stt': 'whisper', 'llm': 'groq'}
 # Un fournisseur sélectionné mais non configuré (clé absente) retombe lui-même
 # sur le NO-OP — garantie « aucun appel sans config ». Capacités : 'ocr', 'stt',
-# 'vision_qa', 'llm'. Lue depuis AI_PROVIDERS_JSON (JSON) si présente.
+# 'vision_qa', 'llm', 'vision_toit'. Lue depuis AI_PROVIDERS_JSON (JSON) si présente.
 try:
     AI_PROVIDERS = _json.loads(os.environ.get('AI_PROVIDERS_JSON', '') or '{}')
     if not isinstance(AI_PROVIDERS, dict):
@@ -2147,3 +2147,7 @@ CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()
 
 # taches — lien du raccourci Siri (vide = non proposé).
 TACHES_RACCOURCI_SIRI_URL = os.environ.get('TACHES_RACCOURCI_SIRI_URL', '')
+# ACAL489 (D-ACAL-33) — détection du toit par IA (core.ai.fournisseurs_claude, API Anthropic PAYANTE).
+# Vides = éteinte (NO-OP). Active si AI_PROVIDERS['vision_toit'] = 'claude' ET les deux réglages posés.
+VISION_TOIT_CLE_API, VISION_TOIT_MODELE = (
+    os.environ.get('VISION_TOIT_CLE_API', '').strip(), os.environ.get('VISION_TOIT_MODELE', '').strip())
