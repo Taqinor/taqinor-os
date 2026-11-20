@@ -28,8 +28,8 @@ import { API_DJANGO, assurerSessionPage, lireJson } from '../helpers.js'
 // joue qu'avec ACAL6_PA25=1.
 const AVEC_PA25 = process.env.ACAL6_PA25 === '1'
 const etape = groupe('ACAL', AVEC_PA25
-  ? ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367', 'ACAL378']
-  : ['ACAL355', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367'])
+  ? ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367', 'ACAL378', 'ACAL379', 'ACAL380']
+  : ['ACAL355', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367', 'ACAL379', 'ACAL380'])
 fermerDjangoApresTout()
 test.describe.configure({ timeout: 900_000 })
 test.use({ viewport: { width: 1600, height: 1000 }, actionTimeout: 60_000 })
@@ -705,5 +705,132 @@ etape('PA2.3-ACAL366-pente-section', ['ACAL366'], async ({ page, context, suivi 
   const docBis = await enregistrer(page, cal.id, bouton)
   expect(pan(docBis, 'z1')?.pitchDeg, 'rouvert puis enregistré sans geste : 35° gardé').toBe(35)
   expect(pan(docBis, 'z1')?.pitchSource).toEqual(pitchSource)
+  await nettoyer(cal)
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// ACAL379 — PA2.3 : la pente du pan ACTIF z1 portée à 30° à l'écran SANS enregistrer, puis l'onglet Pente enregistre
+// 40° sur z2 (section « zones » : le serveur rend z1 à sa valeur STOCKÉE, 15°) ⇒ z1 garde 30° (curseur + libellé),
+// « Enregistrer le calepinage » écrit z1 30° / z2 40° ; rouvrir puis enregistrer sans geste ⇒ identique.
+// Limite dite : l'atelier ERP n'a ni liste des pans (`#rp9-areas-list` absent de BuilderDom.jsx) ni changement de pan
+// actif exposé, et `#rp9-pitched-controls` reste masqué pour un pan EN PENTE rouvert (cf. ACAL355) : la saisie non
+// enregistrée porte donc sur le pan actif, posée par l'écouteur `input` RÉEL du curseur `#rp9-pitch-range`
+// (roof-tool-pro11.ts, `pitchRangeEl?.addEventListener('input', …)`), l'élément masqué recevant valeur + événement.
+// ════════════════════════════════════════════════════════════════════════════
+etape('PA2.3-ACAL379-pente-non-defaite', ['ACAL379'], async ({ page, context, suivi }) => {
+  await carteRefusee(context, suivi)
+  const cal = await calepinageAvec('ACAL379', {
+    version: 2, pin: PIN, activeAreaId: 'z1',
+    zones: [zonePentue('z1', 'Pan sud', PAN_A, 15, 180), zonePentue('z2', 'Pan est', PAN_B, 20, 90)],
+  })
+  let bouton = await ouvrirAtelier(page, cal.id)
+  const doc0 = await enregistrer(page, cal.id, bouton)
+  expect([pan(doc0, 'z1')?.pitchDeg, pan(doc0, 'z2')?.pitchDeg], 'Given : z1 15°, z2 20° enregistrés').toEqual([15, 20])
+
+  // When : z1 (actif) porté à 30° à l'écran, sans enregistrer.
+  bouton = await ouvrirAtelier(page, cal.id, 'pente')
+  const curseur = page.locator('#rp9-pitch-range')
+  const libelle = page.locator('#rp9-pitch-value')
+  await curseur.evaluate((el) => {
+    el.value = '30'
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await expect(libelle, 'saisie non enregistrée de z1 : 30°').toHaveText('30°')
+  // … puis l'onglet Pente ENREGISTRE la pente d'un AUTRE pan (z2 → 40°) : section « zones », toutes zones rendues.
+  await expect(page.getByTestId('cal-pente')).toBeVisible({ timeout: 60_000 })
+  await page.getByTestId('cal-pente-pan').selectOption('z2')
+  await page.getByTestId('cal-pente-mode-degres').click()
+  await page.locator('#cal-pente-degres').fill('40')
+  await expect(page.getByTestId('cal-pente-valeur')).toContainText('40.0 °')
+  const section = page.waitForResponse((x) => new URL(x.url()).pathname.endsWith(`/calepinages/${cal.id}/layout/section/`)
+    && x.request().method() === 'POST', T)
+  await page.getByTestId('cal-pente-enregistrer').click()
+  const rs = await section
+  expect(rs.status(), `section zones → ${(await rs.text()).slice(0, 300)}`).toBe(200)
+  const envoye = rs.request().postDataJSON()
+  expect([envoye.cle, envoye.zone_id, envoye.champs?.pitchDeg], 'section : z2 à 40° seulement').toEqual(['zones', 'z2', 40])
+  const rendu = (await rs.json())?.roof_layout
+  expect(pan(rendu, 'z1')?.pitchDeg, 'le serveur rend z1 à sa valeur STOCKÉE (le cas qui écrasait la saisie)').toBe(15)
+  await expect(page.getByTestId('cal-pente-message')).toContainText('Pente enregistrée sur le pan')
+
+  // Then : la saisie de z1 reste — curseur et libellé à 30°.
+  await expect(curseur, 'curseur du pan actif après la section').toHaveValue('30')
+  await expect(libelle, 'libellé de pente du pan actif après la section').toHaveText('30°')
+  const doc1 = await enregistrer(page, cal.id, bouton)
+  expect(pan(doc1, 'z1')?.pitchDeg, 'zones[z1] : la saisie non enregistrée (30°), jamais la valeur relue (15°)').toBe(30)
+  expect(pan(doc1, 'z2')?.pitchDeg, 'zones[z2] : la pente enregistrée par l’onglet (40°)').toBe(40)
+
+  // Persistance : rouvrir puis enregistrer sans geste ⇒ z1 30°, z2 40°.
+  bouton = await ouvrirAtelier(page, cal.id)
+  const doc2 = await enregistrer(page, cal.id, bouton)
+  expect([pan(doc2, 'z1')?.pitchDeg, pan(doc2, 'z2')?.pitchDeg], 'rouvert, enregistré sans geste').toEqual([30, 40])
+  await nettoyer(cal)
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// ACAL380 — PA2.3 : un pan TRACÉ pendant la séance (« + Ajouter une zone », tracé souris, enregistré : absent du
+// document relu au montage), puis « Appliquer l'azimut au pan » (onglet Relevé terrain, relevé boussole 200° ± 5°) ⇒
+// « Enregistrer le calepinage » émet `facingAzimuthSource` et `facingAzimuthPrecisionDeg` sur CE pan ; rouvrir puis
+// enregistrer sans geste ⇒ toujours là. `pitchSuggestion` (suggestion IGN, LiDAR externe) n'est pas jouable sur le
+// runner : elle suit le même chemin, couverte par le test vitest « pan dessiné en séance garde sa provenance ».
+// ════════════════════════════════════════════════════════════════════════════
+etape('PA2.3-ACAL380-provenance-pan-seance', ['ACAL380'], async ({ page, context, suivi }) => {
+  await carteRefusee(context, suivi)
+  const cal = await calepinageAvec('ACAL380', {
+    version: 2, pin: PIN, activeAreaId: 'z1', zones: [zonePentue('z1', 'Pan sud', PAN_A, 15, 180)],
+  })
+  const bouton = await ouvrirAtelier(page, cal.id)
+
+  // Given : un second pan tracé à la souris dans la séance (patron de calepinage-parcours.spec.js), enregistré.
+  const ajouter = page.locator('#rp9-add-area')
+  await expect(ajouter, '« + Ajouter une zone » actif').toBeEnabled(T)
+  await ajouter.click()
+  const box = await page.locator('#rp9-map').boundingBox()
+  expect(box, 'la carte a une taille').toBeTruthy()
+  const coins = [[40, 40], [160, 40], [160, 130], [40, 130]].map(([dx, dy]) => ({ x: box.x + dx, y: box.y + dy }))
+  for (const pt of coins) {
+    await page.mouse.click(pt.x, pt.y)
+    await page.waitForFunction((depuis) => Date.now() - depuis >= 260, Date.now(), { polling: 50 }) // anti double-clic W77
+  }
+  const terminer = page.locator('#rp9-finish')
+  await expect(terminer, '« Terminer le tracé » actif').toBeEnabled({ timeout: 10_000 })
+  await terminer.click()
+  await expect(page.locator('#rp9-config'), 'pan tracé fermé').toBeVisible({ timeout: 10_000 })
+  const doc0 = await enregistrer(page, cal.id, bouton)
+  expect(doc0.zones, 'deux pans enregistrés').toHaveLength(2)
+  const trace = doc0.zones.find((z) => z.id !== 'z1')
+  expect(trace?.vertices?.length, 'le pan de la séance porte son contour').toBeGreaterThanOrEqual(3)
+
+  // When : relevé boussole 200° ± 5° (API du panneau, `releve/`), puis « Appliquer l'azimut au pan » sur le pan tracé.
+  const releve = await page.request.post(`${CAL}/calepinages/${cal.id}/releve/`, {
+    ...T, data: { releve_le: '2026-11-20', chaines: [], azimut_boussole_deg: 200, precision_azimut_deg: 5 },
+  })
+  expect(releve.status(), `relevé → ${(await releve.text()).slice(0, 200)}`).toBeLessThan(300)
+  await page.getByTestId('cal-onglet-releve').click()
+  await expect(page.getByTestId('cal-releve-azimut-mesure')).toContainText('200', T)
+  await page.getByTestId('cal-releve-azimut-pan').selectOption(String(trace.id))
+  const section = page.waitForResponse((x) => new URL(x.url()).pathname.endsWith(`/calepinages/${cal.id}/layout/section/`)
+    && x.request().method() === 'POST', T)
+  await page.getByTestId('cal-releve-azimut-appliquer').click()
+  const rs = await section
+  expect(rs.status(), `section zones → ${(await rs.text()).slice(0, 300)}`).toBe(200)
+  expect(rs.request().postDataJSON().champs, 'champs envoyés').toEqual({
+    facingAzimuthDeg: 200, facingAzimuthSource: 'releve', facingAzimuthPrecisionDeg: 5,
+  })
+  await expect(page.getByTestId('cal-releve-azimut-retour')).toContainText('appliqué au pan')
+
+  // Then : l'enregistrement COMPLET (qui remplace tout le document) garde la provenance du pan de la séance.
+  const attendus = (doc, quand) => {
+    const z = pan(doc, trace.id)
+    expect(z?.facingAzimuthDeg, `${quand} : azimut`).toBe(200)
+    expect(z?.facingAzimuthSource, `${quand} : source de l’orientation`).toBe('releve')
+    expect(z?.facingAzimuthPrecisionDeg, `${quand} : précision de l’orientation`).toBe(5)
+  }
+  attendus(await enregistrer(page, cal.id, bouton), '« Enregistrer le calepinage »')
+
+  // Persistance : rouvrir puis enregistrer sans geste ⇒ les champs relus et réémis.
+  const rouvert = await nouvelOnglet(context, suivi)
+  const boutonBis = await ouvrirAtelier(rouvert, cal.id)
+  attendus(await enregistrer(rouvert, cal.id, boutonBis), 'rouvert, enregistré sans geste')
   await nettoyer(cal)
 })
