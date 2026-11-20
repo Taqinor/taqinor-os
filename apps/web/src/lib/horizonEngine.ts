@@ -23,6 +23,19 @@
  */
 import { sunDirection } from './roofPro2';
 import { MID_MONTH_DAY_OF_YEAR, DIFFUSE_FRACTION_WHEN_SHADED } from './shadingEngine';
+import type { PerKwcProduction } from './productionEngine';
+
+/** ACAL378 — part de l'heure CONSERVÉE quand le soleil passe sous l'horizon : diffus +
+ *  réfléchi ÷ global sur le plan, par tranche de hauteur du soleil `[hauteur max (°),
+ *  part]`, MESURÉE sur la série PVGIS-SARAH3 de Casablanca, plan 15° plein sud
+ *  (`backend/.../tests/fixtures_pvgis/seriescalc_casablanca_sud_composantes.json`,
+ *  (Gd+Gr)/(Gb+Gd+Gr) : 0,569 sous 10°, 0,433 de 10 à 20°, 0,269 de 20 à 25°). Plus le
+ *  soleil est bas, plus le direct est faible et plus le diffus pèse. */
+export const HORIZON_KEPT_BY_ELEVATION: readonly (readonly [number, number])[] = [
+  [10, 0.57],
+  [20, 0.43],
+  [Infinity, 0.27],
+];
 
 /** Un point du profil d'horizon : azimut de FACE (0=Nord, 90=Est, 180=Sud, 270=Ouest —
  *  MÊME repère que le reste du document, jamais la convention PVGIS 0=Sud) et hauteur
@@ -94,28 +107,51 @@ export function horizonMaxHeightDeg(points: readonly HorizonPoint[]): number | n
  * CAL93 — matrice 12×24 du dérate d'HORIZON LOINTAIN : pour chaque (mois, heure), le
  * soleil est positionné (jour représentatif = milieu du mois, heure centrée h+0,5,
  * MÊME convention que `hourlyShadeFactors`) ; si son élévation est SOUS la hauteur
- * d'horizon à son azimut, l'heure ne garde que sa part diffuse. Nuit (élévation ≤ 0) →
- * 1 (la production y est déjà nulle, on ne dérate pas ce qui n'existe pas). Moins de
- * deux points exploitables ⇒ `null` (aucun dérate, chiffres inchangés) plutôt qu'une
- * matrice à moitié fausse. PUR.
+ * d'horizon à son azimut, l'heure ne garde que sa part diffuse + réfléchie (PVGIS et
+ * PVsyst ne coupent que le DIRECT), lue par tranche de hauteur du soleil
+ * ({@link HORIZON_KEPT_BY_ELEVATION}), jamais sous `diffuseFraction`. Nuit (élévation
+ * ≤ 0) → 1. Moins de deux points exploitables ⇒ `null` (chiffres inchangés). PUR.
+ *
+ * ACAL378 — `prod` (facultatif) : un jour-type NON astronomique (`source` ≠ `pvgis` :
+ * la cloche fixe 5 h–20 h du repli, identique en janvier et en juillet) pèse les heures
+ * de soleil bas 2 à 7 fois trop — mesuré : horizon 25° × 8 directions ⇒ atelier × 0,815
+ * contre × 0,920 côté serveur. La perte du MOIS est alors calculée sur la course réelle
+ * du soleil (heure pesée par le global horizontal de ciel clair de Meinel :
+ * sin(é) × 0,7^(AM^0,678), AM = 1/sin(é)) puis répartie sur les heures masquées, pour que
+ * la cloche garde la perte mensuelle vraie. Profil PVGIS ⇒ dérate heure par heure.
  */
 export function hourlyHorizonFactors(
   latitudeDeg: number,
   points: readonly HorizonPoint[] | null | undefined,
   diffuseFraction = DIFFUSE_FRACTION_WHEN_SHADED,
+  prod?: Pick<PerKwcProduction, 'source' | 'typicalDayByMonth'> | null,
 ): number[][] | null {
   const sorted = sortedHorizonPoints(points ?? []);
   if (sorted.length < 2) return null;
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
   const factors: number[][] = [];
   for (let m = 0; m < 12; m++) {
     const row = new Array<number>(24).fill(1);
+    let sunAll = 0;
+    let sunKept = 0;
     for (let h = 0; h < 24; h++) {
       const sun = sunDirection(latitudeDeg, MID_MONTH_DAY_OF_YEAR[m], h + 0.5);
       if (sun.elevationDeg <= 0) continue;
+      const sinE = Math.sin((sun.elevationDeg * Math.PI) / 180);
+      const weight = sinE * 0.7 ** ((1 / sinE) ** 0.678);
       const horizonHeight = horizonHeightAtAzimuth(sorted, sun.azimuthDeg);
       if (horizonHeight != null && sun.elevationDeg < horizonHeight) {
-        row[h] = Math.max(0, Math.min(1, diffuseFraction));
+        const band = HORIZON_KEPT_BY_ELEVATION.find(([maxDeg]) => sun.elevationDeg < maxDeg);
+        row[h] = clamp01(Math.max(diffuseFraction, band ? band[1] : 0));
       }
+      sunAll += weight;
+      sunKept += weight * row[h];
+    }
+    const day = prod && prod.source !== 'pvgis' ? prod.typicalDayByMonth[m] : null;
+    const masked = day ? day.reduce((s, v, h) => s + (row[h] < 1 ? v : 0), 0) : 0;
+    if (day && masked > 0 && sunAll > 0) {
+      const lostKwh = (1 - sunKept / sunAll) * day.reduce((s, v) => s + v, 0);
+      for (let h = 0; h < 24; h++) if (row[h] < 1) row[h] = clamp01(1 - lostKwh / masked);
     }
     factors.push(row);
   }

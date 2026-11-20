@@ -785,13 +785,14 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
    */
   function recomputeHorizonFactors() {
     const points = ctx.horizonProfile?.points ?? null;
-    const factors = hourlyHorizonFactors(ctx.centroidLat, points);
+    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
+    // ACAL378 — le jour-type pondère la matrice : un repli en cloche garde la perte mensuelle vraie.
+    const factors = hourlyHorizonFactors(ctx.centroidLat, points, undefined, prod);
     ctx.horizonFactors = factors;
     if (!factors) {
       ctx.horizonAnnualFactor = 1;
       return;
     }
-    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
     ctx.horizonAnnualFactor = annualShadeFactor(prod, factors);
   }
 

@@ -8,9 +8,11 @@ import {
   horizonMaxHeightDeg,
   hourlyHorizonFactors,
   maskedHourCount,
+  HORIZON_KEPT_BY_ELEVATION,
   type HorizonPoint,
 } from '../src/lib/horizonEngine';
-import { DIFFUSE_FRACTION_WHEN_SHADED } from '../src/lib/shadingEngine';
+import { DIFFUSE_FRACTION_WHEN_SHADED, annualShadeFactor } from '../src/lib/shadingEngine';
+import { fallbackPerKwc } from '../src/lib/productionEngine';
 
 const LAT_CASA = 33.5731;
 
@@ -79,10 +81,12 @@ describe('CAL93 — hourlyHorizonFactors (matrice 12×24)', () => {
     const factors = hourlyHorizonFactors(LAT_CASA, wall);
     expect(factors).not.toBeNull();
     expect(maskedHourCount(factors)).toBeGreaterThan(0);
-    // Chaque heure masquée retombe EXACTEMENT sur la part diffuse (jamais 0, jamais >1).
+    // ACAL378 — chaque heure masquée retombe EXACTEMENT sur une part diffuse + réfléchie
+    // mesurée (tranche de hauteur du soleil), jamais sous la part diffuse plancher, jamais 1.
+    const parts = HORIZON_KEPT_BY_ELEVATION.map(([, v]) => Math.max(DIFFUSE_FRACTION_WHEN_SHADED, v));
     for (const row of factors!) {
       for (const v of row) {
-        expect(v === 1 || Math.abs(v - DIFFUSE_FRACTION_WHEN_SHADED) < 1e-9).toBe(true);
+        expect(v === 1 || parts.some((p) => Math.abs(v - p) < 1e-9)).toBe(true);
       }
     }
   });
@@ -95,6 +99,40 @@ describe('CAL93 — hourlyHorizonFactors (matrice 12×24)', () => {
     ];
     const factors = hourlyHorizonFactors(LAT_CASA, flat);
     expect(maskedHourCount(factors)).toBe(0);
+  });
+});
+
+describe('ACAL378 — horizon lointain : même dérate que la simulation serveur (PVGIS)', () => {
+  // Référence : rejeu PA2.5 du 19/11/2026 sur runner (run 44632020473), même calepinage (toit
+  // plat 15° plein sud, Casablanca), horizon 25° sur 8 directions — trace
+  // docs/audits/acceptation/ACAL/traces/2026-11-19/PA2.5-ACAL356-mesure.txt :
+  // atelier 8846.29 → 7208.99 (× 0,815), simulation serveur PVGIS 12032.1 → 11066.6 (× 0,920).
+  const ATELIER_AVANT = 8846.288372093024;
+  const SIMULATION_AVANT = 12032.1;
+  const SIMULATION_APRES = 11066.6;
+  const RAPPORT_PVGIS = SIMULATION_APRES / SIMULATION_AVANT;
+  const huitDirections: HorizonPoint[] = [0, 45, 90, 135, 180, 225, 270, 315].map((azimuthDeg) => ({
+    azimuthDeg,
+    heightDeg: 25,
+  }));
+
+  it('horizon 25° sur 8 directions : rapport annuel ≈ celui de PVGIS sur le même profil', () => {
+    // Même chaîne que shadingUi.recomputeHorizonFactors sur le runner (jour-type de repli).
+    const prod = fallbackPerKwc();
+    const rapport = annualShadeFactor(prod, hourlyHorizonFactors(LAT_CASA, huitDirections, undefined, prod));
+    expect(Math.abs(rapport - RAPPORT_PVGIS)).toBeLessThan(0.02);
+    // L'écart atelier ↔ simulation après horizon n'est pas plus grand qu'avant.
+    const ecartAvant = (SIMULATION_AVANT - ATELIER_AVANT) / SIMULATION_AVANT;
+    const ecartApres = (SIMULATION_APRES - ATELIER_AVANT * rapport) / SIMULATION_APRES;
+    expect(ecartApres).toBeLessThanOrEqual(ecartAvant);
+  });
+
+  it('la répartition mensuelle ne change pas les heures masquées (compte affiché identique)', () => {
+    const prod = fallbackPerKwc();
+    const sans = hourlyHorizonFactors(LAT_CASA, huitDirections);
+    const avec = hourlyHorizonFactors(LAT_CASA, huitDirections, undefined, prod);
+    expect(maskedHourCount(avec)).toBe(maskedHourCount(sans));
+    expect(maskedHourCount(sans)).toBeGreaterThan(0);
   });
 });
 
