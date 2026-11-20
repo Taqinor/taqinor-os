@@ -562,7 +562,7 @@
 <p class="mb-1.5 text-right text-xs text-lune-faint">
 <a class="underline underline-offset-2" data-testid="cal-rail-lexique" href="/aide/lexique" data-discover="true">Lexique des termes du solaire</a>
 </p>
-<nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes" class="mb-2 flex flex-wrap gap-1.5">
+<nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes" class="mb-2 flex flex-wrap items-center gap-1.5">
 <button type="button" data-testid="cal-etape-toit" data-etat="" aria-current="step" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-primary bg-primary/10 font-medium">
 <span class="tech-label text-lune-faint">1</span>Toit</button>
 <button type="button" data-testid="cal-etape-panneaux" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
@@ -573,6 +573,8 @@
 <span class="tech-label text-lune-faint">4</span>Résultats</button>
 <button type="button" data-testid="cal-etape-documents" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
 <span class="tech-label text-lune-faint">5</span>Documents</button>
+<label class="ml-auto inline-flex items-center gap-1.5 text-xs text-lune-faint" title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
+<input data-testid="cal-mode-expert" type="checkbox">Mode expert</label>
 </nav>
 <div role="tablist" aria-orientation="horizontal" class="items-center gap-1 rounded-lg border border-border bg-muted p-1 flex w-full flex-wrap gap-x-1 gap-y-1.5" aria-label="Onglets du calepinage" tabindex="0" data-orientation="horizontal" style="outline: none;">
 <button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_4_-content-pente" data-state="inactive" id="radix-_r_4_-trigger-pente" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-pente" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Pente</button>

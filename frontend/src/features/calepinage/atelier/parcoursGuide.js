@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 
 /* ============================================================================
@@ -54,9 +54,27 @@ export function etapeActive(cleOnglet, etatsParEtape = {}) {
   return (premiere ?? ETAPES[0]).cle
 }
 
-/** Les états par étape, lus une fois ; `{}` tant que le serveur n'a pas répondu. */
-export function useEtatsParcours(calepinageId) {
-  const [etats, setEtats] = useState({})
+/* ACAL395 — l'ÉCRAN GUIDÉ d'une étape : en mode guidé, les panneaux listés
+   s'ouvrent dans UNE page (sections repliables) au lieu d'autant d'onglets.
+   `ouverture` = l'onglet visible qui porte la page ; `libelle` = son intitulé. */
+export const ECRANS_ETAPE = {
+  electrique: {
+    ouverture: 'verdict-electrique',
+    libelle: 'Électrique — synthèse',
+    onglets: ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
+      'materiel-electrique', 'saisies-electriques', 'decisions-electriques'],
+    composant: lazy(() => import('../electrique/EtapeElectrique')),
+  },
+}
+
+/** L'écran guidé qui porte l'onglet `cleOnglet` (ou `null`). */
+export function ecranGuideDeOnglet(cleOnglet) {
+  return Object.values(ECRANS_ETAPE).find((e) => e.onglets.includes(cleOnglet)) ?? null
+}
+
+/** Les états par étape et « ce qui manque », lus une fois ; vides tant que le serveur n'a pas répondu. */
+export function useParcours(calepinageId) {
+  const [parcours, setParcours] = useState({ etats: {}, manque: [] })
   useEffect(() => {
     if (!calepinageId) return undefined
     let vivant = true
@@ -65,12 +83,22 @@ export function useEtatsParcours(calepinageId) {
       .then((rep) => {
         if (!vivant) return
         const liste = Array.isArray(rep?.data?.etapes) ? rep.data.etapes : []
-        setEtats(Object.fromEntries(
-          liste.filter((e) => ETATS.includes(e?.etat)).map((e) => [e.cle, e.etat]),
-        ))
+        const manque = Array.isArray(rep?.data?.manque)
+          ? rep.data.manque.filter((m) => m && typeof m === 'object') : []
+        setParcours({
+          etats: Object.fromEntries(
+            liste.filter((e) => ETATS.includes(e?.etat)).map((e) => [e.cle, e.etat]),
+          ),
+          manque,
+        })
       })
       .catch(() => {})
     return () => { vivant = false }
   }, [calepinageId])
-  return etats
+  return parcours
+}
+
+/** Les états par étape (ACAL393). */
+export function useEtatsParcours(calepinageId) {
+  return useParcours(calepinageId).etats
 }
