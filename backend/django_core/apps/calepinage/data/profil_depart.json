@@ -259,6 +259,11 @@
       "cle": "neige_mensuelle_pct",
       "section": "simulation",
       "motif": "La page Aurora « System Losses » refuse la lecture automatique (HTTP 403, 20/11/2026) ; la perte de neige dépend du site."
+    },
+    {
+      "cle": "modele_transposition",
+      "section": "simulation",
+      "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
     }
   ]
 }
