@@ -416,6 +416,15 @@
           "reference": "Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389",
           "type": "entier",
           "minimum": 1
+        },
+        {
+          "cle": "neige_mensuelle_pct",
+          "libelle": "Perte de neige, mois par mois (12 valeurs, ou une seule pour les douze)",
+          "unite": "%",
+          "reference": "Aurora — System Losses (neige saisie par an ou par mois, jamais supposée)",
+          "type": "table_mensuelle",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "electrique_societe": [
@@ -778,6 +787,15 @@
           "reference": "Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389",
           "type": "entier",
           "minimum": 1
+        },
+        {
+          "cle": "neige_mensuelle_pct",
+          "libelle": "Perte de neige, mois par mois (12 valeurs, ou une seule pour les douze)",
+          "unite": "%",
+          "reference": "Aurora — System Losses (neige saisie par an ou par mois, jamais supposée)",
+          "type": "table_mensuelle",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "electrique_societe": [

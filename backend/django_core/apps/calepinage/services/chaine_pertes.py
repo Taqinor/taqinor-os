@@ -313,11 +313,13 @@ TOUJOURS_OMISES = {
     'diodes': 'Étape non modélisée en v1 : PV*SOL assume 0,5 % de pertes de '
               'diodes, chiffre de leur logiciel et non du nôtre — aucun '
               'forfait n\'est appliqué à sa place.',
-    'neige': "Aucune valeur mensuelle de neige saisie pour cette société : "
-             "l'étape figure dans la cascade pour être VUE, et reste omise "
-             "tant que les mois ne sont pas renseignés (0 % par défaut "
-             'ferait croire à un calcul).',
 }
+
+#: ACAL463 — les étapes CALCULÉES quand une saisie existe, mais dont l'omission
+#: ne compte PAS comme « perte non renseignée » (comportement conservé de la
+#: neige, quand elle était toujours omise : un site sans neige n'a rien à
+#: saisir, et un 0 % supposé se lirait comme un calcul).
+OMISES_NON_COMPTEES = ('neige',)
 
 #: L'ALBÉDO DE FACE AVANT, déclaré ici pour le bloc ``resultat['meteo']``
 #: (contrat CALX143). PVGIS applique déjà un albédo dans le ``Gr(i)`` qu'il
@@ -387,7 +389,8 @@ _EPSILON = 1e-9
 
 __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'POSTE_PAR_ETAPE', 'ETAPES_HORS_CATALOGUE', 'POSTES_HORS_CHAINE',
-           'EXCLUSIVITES', 'TOUJOURS_OMISES', 'ALBEDO_FACE_AVANT',
+           'EXCLUSIVITES', 'TOUJOURS_OMISES', 'OMISES_NON_COMPTEES',
+           'ALBEDO_FACE_AVANT',
            'CLE_METEO_PARTAGEE', 'CLE_FOURNISSEUR_METEO',
            'MODES_METEO', 'CLE_REGLAGE_MODE_METEO',
            'CLE_REGLAGE_FENETRE_ANNEES', 'PLAFOND_FENETRE_ANNEES',
@@ -1449,8 +1452,9 @@ def completude_de_la_chaine(cascade, contexte=None):
                 continue
             omises.add(nom)
             exclusivite = EXCLUSIVITES.get(nom)
-            if nom in TOUJOURS_OMISES or (exclusivite is not None
-                                          and motif == exclusivite[1]):
+            if (nom in TOUJOURS_OMISES or nom in OMISES_NON_COMPTEES
+                    or (exclusivite is not None
+                        and motif == exclusivite[1])):
                 continue
             non_renseignees.add(nom)
     socle = [nom for nom in SOCLE_PHYSIQUE if nom in omises]
