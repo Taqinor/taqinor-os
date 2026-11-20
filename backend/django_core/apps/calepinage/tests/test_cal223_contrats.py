@@ -469,8 +469,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL392 a livré ``GET calepinages/<pk>/parcours/``
     # (``views/parcours_guide.py``) : ``calepinage_parcours_guide.json`` en est
     # SORTI.
-    # ACAL403 livrera ``GET``/``POST calepinages/profil-depart/`` : retirer.
-    'calepinage_profil_depart.json': 'ACAL403',
+    # ACAL403 a livré ``GET``/``POST``/``DELETE calepinages/profil-depart/``
+    # (``views/profil_depart.py``) : ``calepinage_profil_depart.json`` en est
+    # SORTI.
     # ACAL468 a livré ``POST calepinages/<pk>/balayage/``
     # (``views/balayage.py``) : ``calepinage_balayage.json`` en est SORTI.
     # ACAL485 livrera ``GET``/``POST calepinages/<pk>/detection-toit/`` : retirer.
@@ -748,6 +749,18 @@ class ClesServiesTest(unittest.TestCase):
                                    infos={})
         self._comparer('dossiers_reglementaires.json', servi)
         self._comparer('dossiers_reglementaires.json', servi, 'exemple_vide')
+
+    def test_profil_de_depart(self):
+        # ACAL403 — le GET rend le fichier ``data/profil_depart.json`` : mêmes
+        # clés que l'échantillon d'ACAL387, chaque ligne de valeur aussi.
+        from apps.calepinage.services.profil_depart import charger_profil
+
+        servi = charger_profil()
+        self._comparer('calepinage_profil_depart.json', servi)
+        attendu = _charger('calepinage_profil_depart.json')['exemple']
+        for liste in ('valeurs', 'sans_source'):
+            for ligne in servi[liste]:
+                self.assertEqual(sorted(ligne), sorted(attendu[liste][0]))
 
     def test_parametres_de_societe(self):
         # ``kits`` est une clé DÉRIVÉE (CAL246), publiée par la vue et jamais
