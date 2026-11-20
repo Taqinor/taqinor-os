@@ -190,7 +190,8 @@ import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
 import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
-import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
+import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
   deltaMetresFond,
@@ -2981,6 +2982,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   finishBtn?.addEventListener('click', close);
   clearBtn?.addEventListener('click', reset);
+  creerAnnulerAtelier({ // ACAL412 — ↶ ↷ + Ctrl+Z / Ctrl+Y hors du panneau de disposition
+    ancre: clearBtn, editeur: layoutEditor, modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState),
+    apres: () => { redrawTrace(); redrawObstacles(); recalc(); }, setStatus: (m) => setStatus(m),
+  });
 
   // — « Plusieurs zones » : ajouter une zone + sélection/suppression dans la liste —
   addAreaBtn?.addEventListener('click', addArea);

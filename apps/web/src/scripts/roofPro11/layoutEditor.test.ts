@@ -15,6 +15,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createLayoutEditor } from './layoutEditor';
 import { creerBarreSelection } from './barreSelection';
+import { creerAnnulerAtelier } from './annulerAtelier';
 import { type Ctx } from './context';
 import { type LayoutPlan } from './types';
 import { createLayoutState } from '../../lib/layoutVariability';
@@ -341,5 +342,51 @@ describe('ACAL411 — barre de sélection : aligner, répartir, pivoter', () => 
     (hote.querySelector('input') as HTMLInputElement).value = '12,5';
     clic('Pivoter');
     expect(editor.freePanels()[0].angleDeg).toBeCloseTo(12.5, 9);
+  });
+});
+
+// ACAL412 — Annuler / Rétablir joignables hors du panneau de disposition.
+describe('ACAL412 — Ctrl+Z hors mode disposition restaure le sommet et redessine', () => {
+  function monter() {
+    const { map } = makeMap();
+    const ctx = makeFreeCtx(makePlan(40), []);
+    (ctx as unknown as { layoutMode: boolean }).layoutMode = false;
+    (ctx as unknown as { vertices: [number, number][] }).vertices = [[0, 0], [1, 0], [1, 1]];
+    const editor = createLayoutEditor(ctx, makeDeps(map));
+    const redessins = vi.fn();
+    const statuts: string[] = [];
+    const a = creerAnnulerAtelier({
+      ancre: null,
+      editeur: editor,
+      modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState),
+      apres: redessins,
+      setStatus: (m) => void statuts.push(m),
+    });
+    return { ctx, a, redessins, statuts };
+  }
+
+  it('un sommet déplacé s’annule par Ctrl+Z puis se rétablit, avec redessin', () => {
+    const { ctx, a, redessins } = monter();
+    ctx.pushWorkshopHistory?.(); // photo AVANT le déplacement, comme obstaclesUi
+    (ctx as unknown as { vertices: [number, number][] }).vertices = [[0, 0], [1, 0], [5, 5]];
+    const evt = { key: 'z', ctrlKey: true, target: document.body, preventDefault: vi.fn() };
+    expect(a.surFrappe(evt)).toBe(true);
+    expect(evt.preventDefault).toHaveBeenCalled();
+    expect(ctx.vertices[2]).toEqual([1, 1]);
+    expect(redessins).toHaveBeenCalledTimes(1);
+    expect(a.surFrappe({ key: 'y', ctrlKey: true, target: document.body })).toBe(true);
+    expect(ctx.vertices[2]).toEqual([5, 5]);
+  });
+
+  it('rien à annuler : la touche reste au navigateur ; champ de saisie et mode disposition : intacts', () => {
+    const { ctx, a, statuts } = monter();
+    const evt = { key: 'z', ctrlKey: true, target: document.body, preventDefault: vi.fn() };
+    expect(a.surFrappe(evt)).toBe(false);
+    expect(evt.preventDefault).not.toHaveBeenCalled();
+    expect(statuts.at(-1)).toBe('Rien à annuler.');
+    ctx.pushWorkshopHistory?.();
+    const champ = document.createElement('input');
+    expect(a.surFrappe({ key: 'z', ctrlKey: true, target: champ })).toBe(false); // Ctrl+Z dans un champ
+    expect(a.annuler()).toBe(true); // la photo est restée intacte
   });
 });
