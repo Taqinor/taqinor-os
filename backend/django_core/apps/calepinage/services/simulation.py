@@ -42,6 +42,7 @@ Voir ``contract_samples/calepinage_simulation.json`` pour la forme exacte.
 """
 from __future__ import annotations
 
+import copy
 import datetime
 import logging
 import time
@@ -64,6 +65,7 @@ from .pvgis_serie import (
     EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
 from . import irradiation_mensuelle as _irr
+from .bifacial_sheds import CLE_HORIZONTALE_LEGALE
 from .horizon import profil_depuis_document
 from .simulation_modules import production_module_par_module
 from .validation import ecart_vs_pvcalc
@@ -929,6 +931,41 @@ def _fournisseur_meteo(*, client, decision, document, fichier=None,
     return fournisseur, etat
 
 
+def _poser_horizontale(contexte, *, client, decision, fichier, compteur,
+                       plan):
+    """ACAL465 — la série HORIZONTALE du site, SEULEMENT si la fiche du
+    module est bifaciale : un appel PVGIS de plus (inclinaison 0, composantes,
+    masque dans la géométrie car l'étape « horizon » le retire déjà), borné par
+    le cache du client et compté dans ``appels_pvgis``. Une réponse refusée ou
+    absente laisse le gain bifacial mensuel s'appliquer."""
+    fiche = contexte.get('fiche_module')
+    if (fichier is not None or not isinstance(fiche, dict)
+            or _nombre(fiche.get('bifacialite_pct')) is None):
+        return
+    debut, fin = (decision['fenetre_annees'] or (None, None))
+    try:
+        reponse = client.serie_irradiance(
+            lat=plan.get('lat'), lon=plan.get('lon'), inclinaison_deg=0.0,
+            aspect_deg=0.0, annee_debut=debut, annee_fin=fin,
+            base=BASE_PAR_DEFAUT, composantes=True,
+            masque_dans_la_geometrie=True)
+    except (EntreeInvalide, PvgisIndisponible):
+        return
+    if not reponse.get('depuis_cache'):
+        compteur['appels'] += 1
+    bloc = reponse.get('serie_horaire') or {}
+    serie = {'points': [dict(point) for point in (reponse.get('points') or [])
+                        if isinstance(point, dict)],
+             'pas_minutes': bloc.get('pas_minutes') or 60}
+    # Ré-indexée comme la série du pan, sur une COPIE du contexte : la
+    # ré-indexation écrit le verdict horaire et avance la base de la météo.
+    from .chaine_pertes import _reindexer_sur_l_heure_du_site as reindexer
+
+    copie = dict(contexte)
+    copie['meteo'] = copy.deepcopy(contexte.get('meteo') or {})
+    contexte[CLE_HORIZONTALE_LEGALE] = reindexer(serie, copie)
+
+
 def _plan_avec_le_site(plan, site):
     """Le pan, enrichi des coordonnées du site pour l'appel météo."""
     enrichi = dict(plan)
@@ -1272,6 +1309,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         raise _refus_nomme(refus) from refus
     contexte['meteo'] = dict(provenance['provenance'] or {})
     contexte['plan'] = reference
+    _poser_horizontale(contexte, client=client, decision=decision,
+                       fichier=fichier, compteur=compteur, plan=reference)
 
     ecrit = {}
     sorties = {}
