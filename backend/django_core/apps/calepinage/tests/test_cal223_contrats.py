@@ -43,6 +43,10 @@ from apps.calepinage.selectors import (
 from apps.calepinage.services import site
 from apps.calepinage.services.equipements import equipements_du_calepinage
 from apps.calepinage.services.lestage import masse_et_lestage
+from apps.calepinage.services.parametres_cles import (
+    REGISTRES,
+    SOURCES_ADMISES,
+)
 from apps.calepinage.services.modules_stock import (
     modules_disponibles_du_calepinage,
 )
@@ -405,6 +409,9 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_parcours_guide.json':
         'état du parcours guidé (ACAL386) calculé à chaque lecture sur le '
         'calepinage et ses réglages en base ; route livrée par ACAL392',
+    'calepinage_profil_depart.json':
+        'valeurs de départ sourcées proposées (ACAL387) : compilées depuis '
+        'des pages citées, appliquées aux réglages société en base (ACAL403)',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -448,6 +455,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # est SORTI.
     # ACAL392 livrera ``GET calepinages/<pk>/parcours/`` : retirer l'entrée.
     'calepinage_parcours_guide.json': 'ACAL392',
+    # ACAL403 livrera ``GET``/``POST calepinages/profil-depart/`` : retirer.
+    'calepinage_profil_depart.json': 'ACAL403',
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -548,6 +557,32 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertEqual(donnees['exemple_vide']['manque'], [])
         self.assertTrue(all(e['etat'] == 'a_faire'
                             for e in donnees['exemple_vide']['etapes']))
+
+    def test_forme_du_profil_de_depart(self):
+        # ACAL387 — chaque valeur de départ est SOURCÉE (jamais de mémoire).
+        donnees = _charger('calepinage_profil_depart.json')
+        prefixe = donnees['prefixe_reference']
+        cles = ('cle', 'section', 'valeur', 'unite', 'source', 'reference',
+                'url', 'date_lecture')
+        for ligne in donnees['exemple']['valeurs']:
+            self.assertEqual(sorted(ligne), sorted(cles))
+            declarees = {c[0] for c in REGISTRES[ligne['section']]}
+            self.assertIn(ligne['cle'], declarees)
+            self.assertEqual(ligne['source'], 'texte')
+            self.assertIn(ligne['source'], SOURCES_ADMISES)
+            self.assertTrue(ligne['reference'].startswith(prefixe))
+            self.assertTrue(ligne['url'].startswith('https://'))
+            self.assertRegex(ligne['date_lecture'], r'^\d{4}-\d{2}-\d{2}$')
+        valeurs = {(v['section'], v['cle'])
+                   for v in donnees['exemple']['valeurs']}
+        sans = {(v['section'], v['cle'])
+                for v in donnees['exemple']['sans_source']}
+        tout = {(sec, c[0]) for sec, lignes in REGISTRES.items()
+                for c in lignes}
+        self.assertEqual(valeurs & sans, set())
+        self.assertEqual(valeurs | sans, tout)
+        for ligne in donnees['exemple_application']['ignorees']:
+            self.assertEqual(ligne['motif'], 'deja_saisie')
 
 
 class CheminDeclareTest(unittest.TestCase):

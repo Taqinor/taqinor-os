@@ -78,3 +78,4 @@ export const simulation = {
     sldDxf: (id) =>
       api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob' }),
 }
+// ACAL387 — contrat calepinage_profil_depart.json (M0)
