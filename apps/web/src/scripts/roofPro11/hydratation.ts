@@ -86,7 +86,7 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
       const matrice = copie(h.shading12x24);
       ctx.ombrageEnregistre = { matrice: copie(matrice), signature: null };
       ctx.shadeFactors = matrice;
-      ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), matrice);
+      ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), matrice, ctx.centroidLat);
     } else {
       ctx.ombrageEnregistre = null;
     }
