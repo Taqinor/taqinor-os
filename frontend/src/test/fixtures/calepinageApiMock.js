@@ -24,6 +24,9 @@ export const espions = {
   putParametres: vi.fn(),
   recalculer: vi.fn(),
   hasPermission: vi.fn(),
+  profilDepart: vi.fn(),
+  appliquerProfilDepart: vi.fn(),
+  retirerProfilDepart: vi.fn(),
 }
 
 /* Un relais plutôt que l'espion lui-même : la doublure reste valable si un
@@ -74,7 +77,14 @@ export function apiCalepinages(espionsLocaux, extra = {}) {
 
 /** Les réglages société (`parametres.*`), + `recalculerSimulations` sur demande. */
 export function apiParametres({ recalculer = false } = {}) {
-  const parametres = { get: relais('getParametres'), update: relais('putParametres') }
+  const parametres = {
+    get: relais('getParametres'),
+    update: relais('putParametres'),
+    // ACAL405 — le Démarrage rapide (profil de départ servi par ACAL403).
+    profilDepart: relais('profilDepart'),
+    appliquerProfilDepart: relais('appliquerProfilDepart'),
+    retirerProfilDepart: relais('retirerProfilDepart'),
+  }
   if (recalculer) parametres.recalculerSimulations = relais('recalculer')
   return { default: { parametres } }
 }

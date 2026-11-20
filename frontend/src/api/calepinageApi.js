@@ -394,6 +394,14 @@ const calepinageApi = {
     profilsTypes: () => api.get('/calepinage/parametres/profils-types/'),
     enregistrerProfilsTypes: (profils) =>
       api.put('/calepinage/parametres/profils-types/', { profils }),
+
+    // ACAL405 — le PROFIL DE DÉPART sourcé (D-ACAL-31, ACAL403, contrat
+    // `calepinage_profil_depart.json`). Action de liste de `calepinages` :
+    // GET lit, POST remplit les seules clés vides, DELETE retire ce que le
+    // profil a posé et qui n'a pas été retouché.
+    profilDepart: () => api.get('/calepinage/calepinages/profil-depart/'),
+    appliquerProfilDepart: () => api.post('/calepinage/calepinages/profil-depart/'),
+    retirerProfilDepart: () => api.delete('/calepinage/calepinages/profil-depart/'),
   },
 
   // ACAL — ACAL242 : les GABARITS des dossiers réglementaires de la société

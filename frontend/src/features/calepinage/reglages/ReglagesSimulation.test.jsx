@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
-import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { espions } from '../../../test/fixtures/calepinageApiMock'
 
 /* ============================================================================
@@ -400,5 +400,72 @@ describe('ACAL289 — cartes « Historique » et « Rapport d’étude » (fin d
     fireEvent.click(screen.getByTestId('acal289-enregistrer-historique'))
     expect(await screen.findByTestId('acal289-erreur-historique'))
       .toHaveTextContent('versions_conservees : un entier supérieur à 0 est attendu.')
+  })
+})
+
+/* ACAL405 — « Démarrage rapide » : les valeurs publiées du profil de départ
+   (contrat `calepinage_profil_depart.json`, ACAL403), jamais écrites par l'écran. */
+describe('ACAL405 — Démarrage rapide', () => {
+  const PROFIL = exempleContrat('calepinage', 'calepinage_profil_depart')
+  const APPLICATION = documentContrat('calepinage', 'calepinage_profil_depart').exemple_application
+  const CLE = PROFIL.valeurs[0].cle
+
+  const servirReglages = (simulation) => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage')
+    servi.data.simulation = simulation
+    mocks.getParametres.mockResolvedValue(servi)
+    return servi
+  }
+
+  it('une clé vide est « à appliquer », une clé saisie « déjà saisie »', async () => {
+    mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+    servirReglages({})
+    rendre()
+    expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toHaveTextContent('à appliquer')
+    expect(screen.getByTestId(`acal405-valeur-${CLE}`)).toHaveTextContent(PROFIL.valeurs[0].url)
+    expect(screen.getByTestId('acal405-sans-source')).toHaveTextContent(PROFIL.sans_source[0].motif)
+    cleanup()
+    servirReglages({ [CLE]: { valeur: 0.07, source: 'texte', reference: 'saisie' } })
+    rendre()
+    expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toHaveTextContent('déjà saisie')
+  })
+
+  it('le clic appelle POST puis relit les réglages', async () => {
+    mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+    mocks.appliquerProfilDepart.mockResolvedValue({ data: APPLICATION })
+    servirReglages({})
+    rendre()
+    fireEvent.click(await screen.findByTestId('acal405-appliquer'))
+    expect(await screen.findByTestId('acal405-message'))
+      .toHaveTextContent(`${APPLICATION.appliquees.length} valeurs appliquées`)
+    expect(mocks.appliquerProfilDepart).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(mocks.getParametres).toHaveBeenCalledTimes(2))
+  })
+
+  it('« Retirer le profil » appelle DELETE', async () => {
+    mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+    mocks.retirerProfilDepart.mockResolvedValue({ data: { retirees: [{ cle: CLE }], gardees: [] } })
+    servirReglages({})
+    rendre()
+    fireEvent.click(await screen.findByTestId('acal405-retirer'))
+    expect(await screen.findByTestId('acal405-message')).toHaveTextContent('1 valeurs retirées')
+    expect(mocks.retirerProfilDepart).toHaveBeenCalledTimes(1)
+  })
+
+  it('sans le droit, pas de bouton', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+    servirReglages({})
+    rendre()
+    await screen.findByTestId(`acal405-etat-${CLE}`)
+    expect(screen.queryByTestId('acal405-appliquer')).toBeNull()
+    expect(screen.queryByTestId('acal405-retirer')).toBeNull()
+  })
+
+  it('le préfixe écrit côté écran est celui du contrat, et les références du profil le portent', async () => {
+    const { PREFIXE_PROFIL_DEPART } = await import('./profilDepart')
+    const contrat = documentContrat('calepinage', 'calepinage_profil_depart')
+    expect(PREFIXE_PROFIL_DEPART).toBe(contrat.prefixe_reference)
+    for (const v of PROFIL.valeurs) expect(v.reference.startsWith(PREFIXE_PROFIL_DEPART)).toBe(true)
   })
 })

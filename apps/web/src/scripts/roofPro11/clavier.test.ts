@@ -597,3 +597,12 @@ describe('ACAL414 — UNE table de raccourcis', () => {
     expect(destructifs).toContain('annuler-dernier');
   });
 });
+
+describe('ACAL418 — l’aide nomme Alt + clic sur un panneau', () => {
+  it('la table des gestes souris porte la ligne, et l’aide la reprend', async () => {
+    const { GESTES_SOURIS, aideGestesSouris } = await import('./clavier');
+    expect(GESTES_SOURIS).toHaveLength(3);
+    const ligne = aideGestesSouris().find((l) => l.touches === 'Alt + clic sur un panneau');
+    expect(ligne?.libelle).toContain('retirer');
+  });
+});

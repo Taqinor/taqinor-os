@@ -1098,6 +1098,14 @@
       "verbe": "get"
     }
   ],
+  "parametres.appliquerProfilDepart": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/profil-depart/",
+      "verbe": "post"
+    }
+  ],
   "parametres.enregistrerProfilsTypes": [
     {
       "config": null,
@@ -1116,6 +1124,14 @@
       "verbe": "get"
     }
   ],
+  "parametres.profilDepart": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/profil-depart/",
+      "verbe": "get"
+    }
+  ],
   "parametres.profilsTypes": [
     {
       "config": null,
@@ -1130,6 +1146,14 @@
       "data": null,
       "url": "/calepinage/parametres/recalculer-simulations/",
       "verbe": "post"
+    }
+  ],
+  "parametres.retirerProfilDepart": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/profil-depart/",
+      "verbe": "delete"
     }
   ],
   "parametres.suggererPentesIGN": [
