@@ -53,6 +53,7 @@ import { type Ctx } from './context';
 import { type LngLat, pointInPolygon } from '../../lib/roof';
 import { type ProdConfig, type RenderSceneFn } from './types';
 import { creerCalqueReperes, glisserAimante } from './reperesAlignement'; // ACAL425
+import { actionDisposition } from './raccourcisAtelier';
 import { createLayoutHistory, createValueHistory, createWorkshopHistory, type WorkshopSnapshot } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
 import {
@@ -2146,12 +2147,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!ctx.layoutMode || !ctx.layoutState) return;
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
-    if (mod && key === 'z' && !e.shiftKey) {
-      if (undo()) e.preventDefault();
-      return;
-    }
-    if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
-      if (redo()) e.preventDefault();
+    const geste = mod ? actionDisposition(e) : null; // ACAL414 — Ctrl+Z / Y lus dans la table
+    if (geste) {
+      if (geste === 'annuler' ? undo() : redo()) e.preventDefault();
       return;
     }
     if (mod) return;

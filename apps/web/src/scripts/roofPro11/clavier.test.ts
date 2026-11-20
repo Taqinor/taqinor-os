@@ -35,6 +35,7 @@ import {
   type ModeClavier,
 } from './clavier';
 import { createMapDraw } from './mapDraw';
+import { actionDisposition, lignesDePortee, TABLE_RACCOURCIS } from './raccourcisAtelier';
 import {
   ARRONDI_MESURE,
   createMesureUi,
@@ -567,5 +568,32 @@ describe('CALX128 — les gestes clavier du mode MESURE', () => {
     expect(sortie.texte).toContain('abandonnée');
     expect(mesure.isActive()).toBe(false);
     expect(mesure.list()).toHaveLength(0);
+  });
+});
+
+describe('ACAL414 — UNE table de raccourcis', () => {
+  it('chaque ligne de TABLE_RACCOURCIS est lue par PLAN_CLAVIER, la disposition ou l’atelier', () => {
+    const tracees = lignesDePortee('trace');
+    expect(PLAN_CLAVIER).toHaveLength(tracees.length);
+    tracees.forEach((l, i) => {
+      expect(PLAN_CLAVIER[i].ecriture).toBe(l.ecriture);
+      expect(PLAN_CLAVIER[i].action).toBe(l.action);
+    });
+    const lues = new Set([...tracees, ...lignesDePortee('disposition'), ...lignesDePortee('atelier')]);
+    for (const l of TABLE_RACCOURCIS) expect(lues.has(l)).toBe(true);
+  });
+
+  it('Ctrl+Z / Ctrl+Y / Ctrl+Maj+Z se résolvent par la table, une touche nue non', () => {
+    expect(actionDisposition({ key: 'z', ctrlKey: true })).toBe('annuler');
+    expect(actionDisposition({ key: 'Z', metaKey: true })).toBe('annuler');
+    expect(actionDisposition({ key: 'y', ctrlKey: true })).toBe('refaire');
+    expect(actionDisposition({ key: 'z', ctrlKey: true, shiftKey: true })).toBe('refaire');
+    expect(actionDisposition({ key: 'z' })).toBeNull();
+  });
+
+  it('les gestes destructifs sont marqués', () => {
+    const destructifs = TABLE_RACCOURCIS.filter((l) => l.destructif).map((l) => l.action);
+    expect(destructifs).toContain('supprimer');
+    expect(destructifs).toContain('annuler-dernier');
   });
 });

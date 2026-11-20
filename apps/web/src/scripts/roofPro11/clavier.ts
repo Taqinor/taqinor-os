@@ -30,6 +30,7 @@
  */
 import { type LngLat } from '../../lib/roof';
 import { metresParPixel, pointDepuisCap } from './snap';
+import { lignesDePortee } from './raccourcisAtelier';
 
 // ————————————————————————————————————————————————————————————————————————
 // Le plan déclaratif
@@ -80,97 +81,13 @@ export interface Raccourci {
  * la flèche nue avance d'un pas de pointage, Maj l'accélère. C'est une convention de
  * DESSIN — elle ne change aucune dimension du document.
  */
-export const PLAN_CLAVIER: readonly Raccourci[] = [
-  {
-    touches: ['ArrowUp'],
-    action: 'curseur-nord',
-    libelle: 'Déplacer le curseur de pose vers le nord',
-    ecriture: '↑',
-  },
-  {
-    touches: ['ArrowDown'],
-    action: 'curseur-sud',
-    libelle: 'Déplacer le curseur de pose vers le sud',
-    ecriture: '↓',
-  },
-  {
-    touches: ['ArrowRight'],
-    action: 'curseur-est',
-    libelle: 'Déplacer le curseur de pose vers l’est',
-    ecriture: '→',
-  },
-  {
-    touches: ['ArrowLeft'],
-    action: 'curseur-ouest',
-    libelle: 'Déplacer le curseur de pose vers l’ouest',
-    ecriture: '←',
-  },
-  {
-    touches: ['ArrowUp'],
-    modificateurs: { shift: true },
-    action: 'curseur-nord',
-    libelle: 'Déplacer le curseur vers le nord, d’un pas rapide',
-    ecriture: 'Maj + ↑',
-  },
-  {
-    touches: ['ArrowDown'],
-    modificateurs: { shift: true },
-    action: 'curseur-sud',
-    libelle: 'Déplacer le curseur vers le sud, d’un pas rapide',
-    ecriture: 'Maj + ↓',
-  },
-  {
-    touches: ['ArrowRight'],
-    modificateurs: { shift: true },
-    action: 'curseur-est',
-    libelle: 'Déplacer le curseur vers l’est, d’un pas rapide',
-    ecriture: 'Maj + →',
-  },
-  {
-    touches: ['ArrowLeft'],
-    modificateurs: { shift: true },
-    action: 'curseur-ouest',
-    libelle: 'Déplacer le curseur vers l’ouest, d’un pas rapide',
-    ecriture: 'Maj + ←',
-  },
-  {
-    touches: ['Enter'],
-    action: 'poser',
-    libelle: 'Poser un sommet du contour, ou un point de mesure',
-    ecriture: 'Entrée',
-  },
-  {
-    touches: ['Enter'],
-    modificateurs: { ctrl: true },
-    action: 'terminer',
-    libelle: 'Fermer le contour (ou terminer la mesure en cours)',
-    ecriture: 'Ctrl + Entrée',
-  },
-  {
-    touches: ['Backspace'],
-    action: 'annuler-dernier',
-    libelle: 'Annuler le dernier point posé',
-    ecriture: 'Retour arrière',
-  },
-  {
-    touches: ['Delete'],
-    action: 'supprimer',
-    libelle: 'Retirer l’élément sélectionné',
-    ecriture: 'Suppr',
-  },
-  {
-    touches: ['Escape'],
-    action: 'sortir',
-    libelle: 'Sortir du mode en cours (rien n’est posé)',
-    ecriture: 'Échap',
-  },
-  {
-    touches: ['?', 'F1'],
-    action: 'aide',
-    libelle: 'Afficher ou masquer la liste des raccourcis',
-    ecriture: '? (ou F1)',
-  },
-];
+export const PLAN_CLAVIER: readonly Raccourci[] = lignesDePortee('trace').map((l) => ({
+  touches: l.touches,
+  ...(l.modificateurs ? { modificateurs: l.modificateurs } : {}),
+  action: l.action as ActionClavier,
+  libelle: l.libelle,
+  ecriture: l.ecriture,
+}));
 
 /** Comment les modes s'écrivent dans l'aide. */
 export const LIBELLE_MODE: Readonly<Record<ModeClavier, string>> = {
