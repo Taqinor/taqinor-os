@@ -19,7 +19,7 @@ En-tête
 |---|---|---|---|---|
 | K1 | tous | constats S1-S2 ouverts | 0 | registre : S1-S2 au verdict `retenu` sans contre-vérification `ok` |
 | K2 | tous | constats S3 ouverts par écran | ≤ <n> par écran (fixé ici) | registre |
-| K3 | tous | corrections contre-vérifiées par un NEUF | ≥ <n> % `ok`, 0 `regression` (départ : ≈ 85 % mesuré aux tours 2 et 3 du 19-20/11, rétro § 3) | registre, étape `contre-verification` |
+| K3 | tous | corrections contre-vérifiées par un NEUF | ≥ <n> % `ok`, 0 `regression` (départ : 75 % au tour 2 — 143 / 191 —, ≈ 85 % au tour 3 et à la finale, rétro § 3) | registre, étape `contre-verification` |
 | K4 | tous | rendement du tour par relecteur | ≤ 1/3 de celui du tour 1 (proposition, sans source externe) | registre : constats retenus / relecteur / tour, sur la MÊME définition à chaque tour (tous les retenus, jamais un sous-ensemble comparé à un total) |
 | K5 | fonction | parcours critiques rejoués de bout en bout | 100 % verts ; en L5 : k = 3 essais tous verts | specs e2e contre le build assemblé (CI) ; parcours de la lane de couture sur l'instrument |
 | K6 | simplicité | budget de gestes par tâche courante | <tâche> ≤ <n> gestes | relecteur, gestes comptés dans le constat |
@@ -35,8 +35,8 @@ Un critère sans mesure exécutable n'est pas un critère : le réécrire ou le 
 exige un outil absent se juge par paires tant que l'outil n'existe pas (le dire ici).
 
 ## 2. Plafonds (l'arrêt est mécanique ; formule et réserve : `L4.md` « Cost and stop »)
-- Tours : k = min(3, floor((90 − u − 10) / c)), u = quota hebdomadaire utilisé au départ (<u> %), c = 25 au départ
-  puis le coût mesuré du tour 1 ; k compte TOUS les tours, le dernier (« avant le merge ») compris ; k = 0 → tour 0
+- Tours : k = min(3, floor((90 − u − 10) / c)), u = quota hebdomadaire utilisé au départ (<u> %), c = 21 au départ
+  puis le coût mesuré du tour 1 ; k compte TOUS les tours, le dernier (« avant le merge ») compris ; k ≤ 0 → tour 0
   seulement. Valeurs de départ, non calibrées.
 - Puis la vérification finale (un relecteur ciblé + la critique du diff serveur) : PAS un tour, réserve à part de
   10 points, toujours jouée avant le dernier merge.

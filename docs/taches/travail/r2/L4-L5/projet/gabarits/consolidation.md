@@ -48,7 +48,7 @@ Jamais enregistrés comme décisions de Reda ; redits au rapport final. Une rép
 
 ## § 4. Lanes
 1. **Lane 0 — changement de contrat global** (s'il y en a un : code d'erreur, forme partagée, API d'un composant
-   partagé, ou un rouge / un angle mort lu au tour 0 sur la PR brouillon) : SEULE, pliée et verte avant le départ des
+   partagé, ou un rouge / un angle mort lu au tour 0 sur le dernier run de CI de `main`) : SEULE, pliée et verte avant le départ des
    autres. Elle possède le serveur ET tous ses lecteurs trouvés par grep (client d'API, mocks, specs e2e), même dans
    des fichiers d'autres lanes ; elle livre la table « ce qui change, qui le lit » ; les lanes en vol la reçoivent et
    se rebasent.

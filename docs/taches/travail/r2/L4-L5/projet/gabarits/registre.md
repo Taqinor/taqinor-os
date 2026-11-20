@@ -73,6 +73,9 @@ python - <<'EOF'
 import json, glob, collections as C
 lire = lambda motif: [json.loads(l) for f in sorted(glob.glob(motif)) for l in open(f, encoding='utf-8') if l.strip()]
 cs, ev = lire('constats/*.jsonl'), lire('evenements/*.jsonl')
+V = {'consolidation': {'retenu','doublon','ecarte-artefact','ecarte-hors-perimetre','ecarte-faux','a-reproduire'}, 'test-premier': {'ecrit'}, 'correction': {'corrige','conteste','impossible'}, 'capture-apres': {'vue-ok','vue-ko'}, 'contre-verification': {'ok','partiel','non-fait','faux','regression','deja-present'}, 'demande-croisee': {'ouverte','faite','refusee'}, 'disjoncteur': {'parque-avec-decision','plus-petit-changement'}, 'rejeu': {'confirme','infirme'}}
+bad = [e for e in ev if e.get('verdict') not in V.get(e.get('etape'), ())]
+if bad: raise SystemExit(f'{len(bad)} lignes refusees, ex. {bad[0]}')
 cons = {e['id']: e['verdict'] for e in ev if e['etape'] == 'consolidation'}
 tot, ret = C.Counter(), C.Counter()
 for c in cs:
@@ -86,12 +89,14 @@ n = sum(cv.values()) or 1
 print('contre-verification', dict(cv), 'non-fait+partiel %', round(100 * (cv['non-fait'] + cv['partiel']) / n))
 dem = {}
 for e in ev:
-    if e['etape'] == 'demande-croisee': dem[(e['de'], e['fichier'], e['changement'])] = e['verdict']
+    if e['etape'] == 'demande-croisee':
+        k = (e['de'], e['fichier'], e['changement'])
+        if e['verdict'] != 'ouverte' or k not in dem: dem[k] = e['verdict']
 print('demandes croisees ouvertes', [k for k, v in dem.items() if v == 'ouverte'])
 EOF
 ```
 Lecture : la courbe de découverte se lit PAR RELECTEUR (retenus / relecteur / tour), jamais en total brut (152 → 78 →
-~30 cachait 6, 5 puis 4 relecteurs, et le ~30 ne comptait que les « avant le merge »). Le taux d'écartés par relecteur
+27 cachait 6, 5 puis 4 relecteurs, et le 27 ne comptait que les corrections « avant le merge »). Le taux d'écartés par relecteur
 et par axe dit si un axe produit surtout du bruit. La ligne `non-fait+partiel %` décide de la contre-vérification :
 toutes les corrections tant qu'elle dépasse 10 %, puis tous les S1-S2 + 25 % des autres (10 % : valeur de départ, non
 calibrée ; 25 % : METHODE §C.4.2).

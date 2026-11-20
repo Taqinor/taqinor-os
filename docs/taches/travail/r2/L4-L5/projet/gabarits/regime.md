@@ -51,6 +51,8 @@ revois / corrige / refais / polis / look at what was done / redo » penchent EXI
 
 ## 3. La décision : les promesses servies
 1. Écrire les promesses de la demande, une phrase chacune (5 à 15), dans le fichier d'état.
+   Demande sans promesse propre (« améliore / rends meilleur / polis X ») : les promesses sont celles que X sert
+   déjà (son contrat, ses tests, son écran) ; X trouvé → P sur elles → EXISTANT.
 2. Pour chacune, une preuve sur `origin/main` : la route, l'écran, l'action, le fichier ou le test qui la sert
    (CODEMAP §4 au mot, puis `git ls-tree` / `git grep -n <motif> origin/main -- <chemins>`), sinon « absente » ;
    « partielle » si le geste existe mais pas le cas demandé.

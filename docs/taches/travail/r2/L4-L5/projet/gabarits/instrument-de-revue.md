@@ -69,6 +69,7 @@ Aucun worker Celery : les effets asynchrones sont absents, à dire aux relecteur
 
 ## 2. Le contrôle du tour 0 — il ARRÊTE le tour 0 s'il échoue (rejoué après tout redémarrage de l'instrument)
 ```sh
+RUN=<run>; FPORT=<port front>   # l'état du shell ne survit pas d'un appel Bash à l'autre
 ko=0
 docker exec "$RUN-django" env | grep -E '^[A-Z0-9_]*(KEY|TOKEN|SECRET)[A-Z0-9_]*=.' \
   | grep -vE "^(DJANGO|FASTAPI)_SECRET_KEY=dev-$RUN\$" && { echo "ARRET : variable a cle non vide"; ko=1; }
@@ -80,6 +81,7 @@ docker port "$RUN-django" | grep -v -- '-> 127\.0\.0\.1:' && { echo "ARRET : eco
 for v in ASSISTANT_COPILOTE:aucun FASTAPI_INTERNAL_URL:http://127.0.0.1:9 WHATSAPP_ENABLED:0; do
   [ "$(docker exec "$RUN-django" printenv "${v%%:*}")" = "${v#*:}" ] || { echo "ARRET : ${v%%:*}"; ko=1; }
 done
+netstat -ano | grep LISTENING | grep -E "(0\.0\.0\.0|\[::\]):$FPORT +" && { echo "ARRET : front hors 127.0.0.1"; ko=1; }
 [ $ko = 0 ] && echo "instrument sur" || { echo "ARRET DU TOUR 0"; exit 1; }
 ```
 La sortie complète du contrôle est collée dans le fichier d'état. Un `ARRET` = démonter, corriger le lanceur, rejouer.
@@ -103,7 +105,7 @@ La sortie complète du contrôle est collée dans le fichier d'état. Un `ARRET`
 | Connexions | `DB_CONN_MAX_AGE=0` (dans le lanceur) | Postgres partagé plafonné à 100 connexions : `too many clients` → 500 → écran « Hors ligne » |
 | Cache | le Redis À SOI du lanceur | le cache est codé en dur sur une base Redis ; partagé, on se mélange à l'autre session |
 | Serveur | `<run>-django`, `runserver` | rechargement seul ; un seul processus : 4 captures en parallèle le ralentissent déjà |
-| Front | `npm run build` puis `vite preview` sur `127.0.0.1:<port front>`, relais d'API vers `127.0.0.1:<port>` | le service worker peut garder l'ancien build : vider les données du site |
+| Front | `npm run build` puis `E2E_PROXY=1 E2E_API_TARGET=http://127.0.0.1:$PORT npx vite preview --host 127.0.0.1 --port $FPORT --strictPort` (sans `--host`, preview hérite de `server.host: true`) | le service worker peut garder l'ancien build : vider les données du site |
 | Comptes | un par relecteur, un VIDE, un pour la couture ; même société de démonstration | aucun relecteur ne casse l'état d'un autre |
 | Semis | commande idempotente `--reinitialiser` par compte (exemple Tâches : journée d'exemple datée du jour) | un relecteur qui coche doit pouvoir repartir à neuf en ≈ 1 min |
 | Capture | script qui capture chaque écran listé en 4 vues (iPhone 390×844 tactile, bureau 1440×900, clair et sombre) ; `<dossier>/<écran>-<vue>.png` + `index.md` avec la maquette en regard | une galerie du tour 0 évite que chaque relecteur recapture tout |

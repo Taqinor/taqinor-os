@@ -36,18 +36,18 @@ cette session).
 | Plancher = oracles 1-10 et règles 1-12 de qa-explorer, cités | `.claude/skills/qa-explorer/SKILL.md` STEP 2-3 | maison |
 | Beauté par paires + mesures DOM, jamais une note absolue seule | E § 1.6, E § 2 (résumés) | lu |
 | « Sec » = deux relecteurs différents ; accord 5-65 % | C § 1.2 : Hertzum & Jacobsen 2001, évaluateurs HUMAINS d'utilisabilité ; jamais mesuré pour des relecteurs LLM (E § 6) | lu (hors LLM) |
-| Courbe lue par relecteur ; 152 → 78 → ~30 → 2 bloquants | R § 3 | mesuré |
+| Courbe lue par relecteur ; 152 → 78 → 27 corrections « avant le merge » → 2 bloquants | R § 3 | mesuré |
 | Classe → fiche d'invariant + liste greppée + MATRICE champ × condition ; cible du tour suivant | R § 6.1 ; `rejeu` § 2a et I1 | mesuré (classe revenue 4 fois) |
 | Une garde par CLASSE, jamais par constat | METHODE §E anti-pattern 15 (70 gardes, +79 % en 7 j) | maison |
 | Test premier écrit par un autre, sorties « contesté / impossible » | E § 2 (ImpossibleBench, voir § 4) ; A § 2 [HAR] | lu, avec réserves |
-| Lane 0 seule, propriétaire du serveur ET de ses lecteurs ; PR brouillon au tour 0 lue job par job | R § 6.3 (400 → 409, 5 allers-retours) ; R § 4 (api-fuzz ne lisait pas le module) ; CLAUDE.md PACT10 | mesuré, maison |
+| Lane 0 seule, propriétaire du serveur ET de ses lecteurs ; dernier run complet de la CI de `main` lu job par job au tour 0 (la PR brouillon s'ouvre au premier commit de code) | R § 6.3 (400 → 409, 5 allers-retours) ; R § 4 (api-fuzz ne lisait pas le module) ; CLAUDE.md PACT10 | mesuré, maison |
 | Table des identifiants partagés, greppée par la couture | R § 6.2 ; `rejeu` I3 | mesuré |
 | Lanes : eslint + flake8 / py_compile + le test réparé ; capture « après » par la couture après la poussée | CLAUDE.md WOW23 ; mémoire `ci-avant-docker` ; `maison` I2-I3 | maison |
 | Vagues de ~80 corrections, chacune mergée à sa CI verte | CLAUDE.md WOW23 / MERGE FLOOR ; R § 3 (102 corrections au tour 1) | maison, mesuré |
 | Corrections au plan du propriétaire, AU FORMAT de ce plan | `maison` C2 ; METHODE §C.2, §C.4.5 ; `check_taches_cablage.py` bloquant | maison |
 | Disjoncteur à 3 tentatives | B § 2 (Superpowers `fix-loop.md` : 5 tours) ramené à 3 | départ |
 | Contre-vérification totale tant que non-fait + partiel > 10 %, puis S1-S2 + 25 % | 10 % : F § 3 C6 (proposition ; jamais atteint aux mesures, `faits` 11) ; 25 % : METHODE §C.4.2 | départ ; maison |
-| Formule de quota k = min(3, ⌊(90 − u − 10) / c⌋), réserve finale 10, c = 25 puis mesuré | 74 points pour tour 0 + 3 tours + final, une part d'une autre session (R § 3) ; 74 / 3 ≈ 25 = borne haute ; F § 7 : aucune valeur écrite dans la maison | départ (seul point de données : R § 3) |
+| Formule de quota k = min(3, ⌊(90 − u − 10) / c⌋), réserve finale 10, c = 21 puis mesuré | 74 points pour tour 0 + 3 tours + final, une part d'une autre session (R § 3) ; (74 − 10) / 3 ≈ 21 = borne haute (la finale est déjà dans la réserve ; critique finale I-3 : avec 25 la formule refusait la session de référence) ; F § 7 : aucune valeur écrite dans la maison | départ (seul point de données : R § 3) |
 | Finale (vérification ciblée + critique du diff serveur) hors des tours, toujours jouée | R § 3 : elle a trouvé 2 bloquants et 7 corrections serveur ; `rejeu` B2 | mesuré |
 | Fable : la critique finale seulement si ≥ ~40 tâches pliées ou surface à haut risque | CLAUDE.md « Model selection », cas (a) ; `faits` 5 | maison |
 | Outil de quota `mcp__ccd_session_mgmt__get_usage` | essayé par `rejeu` et `maison` le 20/11 (« Weekly · all models 82 % ») | vérifié par eux, application de bureau seulement |
@@ -64,7 +64,7 @@ cette session).
 
 ## 3. Ce que les trois vérificateurs ont fait changer
 - **rejeu** : registre à un fichier par écrivain (B1) ; plafond de coût qui n'efface plus la finale (B2) ; matrice des
-  fiches d'invariant et classes données en cible (I1) ; PR brouillon et lecture des jobs au tour 0, Lane 0 propriétaire
+  fiches d'invariant et classes données en cible (I1) ; lecture des jobs de CI au tour 0, Lane 0 propriétaire
   des lecteurs (I2) ; table des identifiants partagés (I3) ; outil de quota nommé (I4) ; sonde de régime totale, sur
   tout l'arbre et par synonymes (I5) ; événement `demande-croisee` et restes définis (I6) ; section du rédacteur de
   tests (I7) ; vérité sur les outils absents (I8) ; message de merge sur les corrections non contre-vérifiées (I9) ;
@@ -117,7 +117,8 @@ Fichiers, exactement :
 2. `.claude/skills/go-deep/L4.md`, `.claude/skills/go-deep/L5.md` — nouveaux.
 3. `.claude/skills/go-deep/conception.md` — nouveau (ce fichier).
 4. `.claude/skills/go-deep/gabarits/{regime,contrat-de-sortie,registre,brief-relecteur,consolidation,brief-lane,instrument-de-revue,fiche-invariant,etat}.md` — nouveaux.
-5. `.claude/settings.json` — seule la valeur `hooks.UserPromptSubmit[0].hooks[0].command` (valeur JSON de `crochet.md`).
+5. `.claude/settings.json` — seule la valeur `hooks.UserPromptSubmit[0].hooks[0].command` (valeur JSON de `crochet.md`) ;
+   `.claude/skills/go-deep/crochet.md` — nouveau (la commande lisible et sa table d'essai : à rejouer à toute retouche).
 6. `docs/claude-memory/go-deep-l4-l5.md` (nouveau : ce que sont L4 / L5, quand, coût mesuré, limites) + une ligne dans
    `docs/claude-memory/MEMORY.md`.
 7. `CLAUDE.md` — le seul paragraphe « Go-deep levels », remplacé par ce texte purement descriptif (aucune règle du
@@ -127,3 +128,13 @@ Fichiers, exactement :
    > **`go-deep` skill** (`.claude/skills/go-deep/`), injected by the prompt hook. Without an explicit level, auto-pick L1-L3 per
    > that skill and announce it in one line; L4 / L5 only when Reda names them (Reda's named level always overrides).
 Rien sous `scripts/`, ni `docs/plans/**`, ni `docs/CODEMAP.md`, ni `docs/audits/METHODE.md`, ni les autres skills.
+
+## 9. Ce que la critique finale (R4, critique neuf, 20/11) a fait changer
+Verdict : les cinq bloquants levés, aucun nouveau ; neuf corrections appliquées par l'orchestrateur — registre (une
+demande croisée répondue ne reste plus « ouverte » ; un verdict hors liste fermée est refusé par le script) ; formule
+de coût (c = 21, « k ≤ 0 ») ; crochet (réserves élargies : conseil, advis, next step, prochaine, lane) ; où trouver le
+propriétaire et les autres plans ; front de l'instrument lié à 127.0.0.1 et contrôlé ; modèle de l'orchestrateur (il
+garde le modèle de session) ; lecture de la CI de `main` au tour 0 à la place d'une PR brouillon sans commit ; demande
+sans promesse propre (« rends X meilleur ») → promesses déjà servies par X ; K3 (75 % au tour 2, ≈ 85 % ensuite).
+Rapport : `validation/critique-finale.md` sur la branche de notes. Non exécuté par personne : le lanceur et le contrôle
+de l'instrument contre un vrai conteneur (rejoués à sec seulement) — le premier L4 le fera à son tour 0.

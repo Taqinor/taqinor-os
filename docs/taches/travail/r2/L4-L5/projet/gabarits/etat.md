@@ -18,7 +18,7 @@ Ce fichier vit POUSSÉ : un worktree sans activité git depuis 7 jours est suppr
 ## Valeurs de départ et valeurs mesurées (à recaler à la rétro)
 | Valeur | Départ | Mesuré dans ce run |
 |---|---|---|
-| c (points par tour) | 25 | <tour 1 : …> |
+| c (points par tour) | 21 | <tour 1 : …> |
 | seuil de contre-vérification totale (non-fait + partiel) | 10 % | <…> |
 | disjoncteur (tentatives) | 3 | <…> |
 | seuils de régime | 20 % / 80 % | <régime annoncé tenu ? oui / non> |
@@ -45,7 +45,7 @@ merge. Contexte de l'orchestrateur ≥ 70 % → écrire cet état AVANT de conti
   <#n>) — jamais seulement ici.
 
 ## Déroulé (un point par étape, avec ses chiffres)
-1. Tour 0 : <régime, poste, contrat, instrument et son contrôle, comptes, galerie, PR brouillon, Lane 0>
+1. Tour 0 : <régime, poste, contrat, instrument et son contrôle, comptes, galerie, lecture de la CI de `main`, Lane 0>
 2. Tour 1 : <n> relecteurs → <n> constats (retenus <n>, écartés <n>) → <n> corrections, <n> lanes, <n> vagues, classes <ids>
 3. …
 

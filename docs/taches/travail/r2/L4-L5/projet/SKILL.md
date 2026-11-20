@@ -30,6 +30,8 @@ and the PROOF demanded; the level fixes the volume. Commands: `gabarits/regime.m
   beyond scaffolding. **EXISTING**: P > 80 %.
   **MIXED**: everything else, contradictory signals included — the rule is total. 20 / 80 % are
   starting values, not calibrated: log P and the verdict.
+- A plain question that builds and changes nothing gets the regime line without the promise
+  list.
 - **One line, then proceed**: « Régime : EXISTANT · L2 · origin/main@<sha9> — <n> fichiers,
   promesses servies <s>/<t>. Dis « neuf / mixte / existant » pour imposer. » Reda's word
   overrides; switch mid-run, in one line, the moment R1 contradicts the class.
@@ -99,13 +101,13 @@ numbers, caps and steps are in `L4.md` / `L5.md`.
 - **When**: only when Reda names it. Typical case: a module « done » by plan, CI and acceptance
   that still fails its users on the real screen (152 findings at round 1 on 19-20/11).
 - **Cost**: measured once — tour 0 + 3 rounds + final ≈ 74 points of the weekly quota (6 → 80 %,
-  part of it another session's), 16 reviewers, ≈ 40 fix agents (run retro §3, `conception.md`). Rounds allowed come
-  from the quota formula in `L4.md` (starting values, not calibrated); the final verification
+  part of it another session's), 16 reviewers, ≈ 40 fix agents (run retro §3, `conception.md`).
+  Rounds allowed come from the quota formula in `L4.md` (starting values, not calibrated); the final verification
   and the server-diff critique have their own reserve and always run before the merge.
 - **Needs**: a desktop session (quota readable), a local Docker for the instrument, an owner
   plan for the corrections. No instrument (cloud session) → no L4: L3 plus METHODE §C.4.7
   runner specs, and say so.
-- **Do not expect**: a dry round (the curve went 152 → 78 → ~30 « avant le merge » → 2
+- **Do not expect**: a dry round (the curve went 152 → 78 → 27 fixed « avant le merge » → 2
   blockers, never zero); anything seen on a real device or over a real week (that is L5);
   a deploy (Claude stops at the merge).
 
@@ -133,7 +135,8 @@ numbers, caps and steps are in `L4.md` / `L5.md`.
   models »); unreadable → tour 0 only and the cost line asks Reda for the figure.
 - **State pushed at every checkpoint** (`gabarits/etat.md`): worktrees idle for 7 days are deleted
   by the nightly cleanup, and context ≥ 70 % means write the state before continuing.
-- **Fable** only in CLAUDE.md's cases (a)(b)(c); the orchestrator runs on opus.
+- **Fable** only in CLAUDE.md's cases (a)(b)(c); the orchestrator keeps the session model (never
+  switch `/model` mid-session) — start an L4 in an opus session when you can.
 - Corrections land in the OWNER's plan, in that plan's format (`L4.md` « Where corrections go »).
 
 ## Non-negotiables at every level (CLAUDE.md, restated)
