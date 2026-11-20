@@ -153,6 +153,24 @@ describe('TicketDetail — AERR25 la fiche suit le ticket sélectionné', () => 
     expect(screen.getByDisplayValue('Onduleur HS + fusible')).toBeInTheDocument()
   })
 
+  it('AERR184 — panneau étroit : note tapée puis Échap demande, Rester garde la note', async () => {
+    mockMatchMedia(false)
+    const onClose = vi.fn()
+    render(
+      <Provider store={makeTicketStore()}><ConfirmProvider>
+        <TicketDetail ticket={baseTicket} onClose={onClose} onSaved={() => {}} />
+      </ConfirmProvider></Provider>,
+    )
+    const note = await screen.findByPlaceholderText(/Écrire une note/)
+    fireEvent.change(note, { target: { value: 'Pièce remplacée sur site' } })
+    fireEvent.keyDown(note, { key: 'Escape', code: 'Escape' })
+    const boite = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByDisplayValue('Pièce remplacée sur site')).toBeInTheDocument()
+  })
+
   it('rerender A → B puis Annuler le ticket : la boîte nomme SAV-2', async () => {
     mockMatchMedia(true)
     const store = makeTicketStore()
