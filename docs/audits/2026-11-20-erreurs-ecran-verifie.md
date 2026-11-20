@@ -1,117 +1,96 @@
-<!-- verifie | groupe: AERR | pct: 99 | ecarts_s1_s2: 2 | faits: 161 -->
-# Vérifie AERR — contre-visite des correctifs du parcours PF12 « erreurs, pertes de saisie et gestes dangereux à l'écran », 20/11/2026
+<!-- verifie | groupe: AERR | pct: 99 | ecarts_s1_s2: 1 | faits: 167 -->
+# Vérifie AERR — contre-visite des correctifs du parcours PF12 « erreurs, pertes de saisie et gestes dangereux à l'écran », 20/11/2026 (2e passe)
 
-Commande `loop audit` (20/11). La contre-visite de clôture du 14/11 (`docs/audits/2026-11-14-erreurs-ecran-verifie.md`)
-avait ouvert 5 écarts S2 et 15 tâches S3, toutes cochées depuis : `audit_registre.py --du` la déclare due (161 tâches
-cochées sur 162 constructibles, « écarts S1-S2 du 2026-11-14 tous cochés »). Rien n'a été construit ni déployé ; aucune
-base, aucun conteneur, aucune production n'a été lu.
+Commande `loop audit` (20/11, seconde passe du jour). La passe du matin (même fichier, version de `5a77c93d9^` ; rappel §6)
+avait ouvert 2 écarts S2 et 6 tâches (AERR181 à 186) ; une autre session les a construites et cochées le jour même (PR
+#1503, acceptation en direct 6/6 PASS). `audit_registre.py --du` redemande la contre-visite (167 tâches cochées sur 168,
+« écarts S1-S2 du 2026-11-20 tous cochés »). Rien n'a été construit ni déployé ; aucune base, aucun conteneur, aucune
+production n'a été lu.
 
 ## 0. Préconditions
 
-- **SHA.** `origin/main` = `a923179a4` (PR #1496). Branche de claim : `verifie-aerr-2011`.
-- **Registre.** PF12 `erreurs-ecran`, groupe AERR, 161 tâches cochées sur 162. Reste ouverte la tâche d'acceptation AERR131.
-- **Échantillon : 14 tâches d'écart du 14/11** (METHODE §C.4-6, S2 d'abord, 14 au plus) : S2 AERR156, ACNC71 (porte
-  VER2-201, plan facturation), AERR158, AERR159, AERR160 ; S3 AERR161, AERR164 et AERR167 (anciennes régressions),
-  AERR165, AERR166, AERR170, AERR171, AERR172, AERR173. Hors échantillon : AERR162, 163, 168, 169 (S3) ; AERR174 à 180,
-  déposées après le 14/11 par d'autres vagues, toutes cochées (statut relevé, non vérifiées).
+- **SHA.** `origin/main` = `5a77c93d9` (PR #1503). Branche de claim : `verifie-aerr-2011b`.
+- **Registre.** PF12 `erreurs-ecran`, groupe AERR, 167 tâches cochées sur 168. Reste ouverte la tâche d'acceptation AERR131.
+- **Échantillon : les 6 tâches d'écart du matin** (METHODE §C.4-6), S2 d'abord : AERR181, 182, 183, 184 ; S3 AERR185, 186.
 - **Méthode.** Un vérificateur frais (opus / high, même répertoire) : commits, code servi, corps des tests nommés,
-  enregistrements d'acceptation, jumeaux par grep ; sondes du 14/11 rejouées, deux sondes neuves. `frontend/node_modules`
-  absent : aucun vitest lancé, verdicts sur lecture.
+  spec et enregistrement d'acceptation (`frontend/e2e/acceptation/aerr15.spec.js`,
+  `docs/audits/acceptation/AERR/2026-11-20-2be475ef6.md`, run 44665980498 ; son SHA d'essai n'est pas sur `main`, mais
+  `git diff 2be475ef6 origin/main -- frontend/src` est vide). Recherche exhaustive des jumeaux : une sonde neuve balaie
+  TOUS les composants qui enregistrent une garde de saisie. `frontend/node_modules` absent : aucun vitest lancé.
 
 ## 1. Verdicts
 
-| Verdict | Nombre | Tâches |
-|---|---|---|
-| ok | **12** | ACNC71, AERR156, 158, 161, 164, 165, 166, 167, 170, 171, 172, 173 |
-| partiel | **2** | AERR159 (panneau étroit oublié), AERR160 (jumeaux oubliés) |
-| non-fait / faux / régression / déjà-présent | **0** | — |
+| Tâche | Verdict | Commit | Test nommé (casse si on revient en arrière) | L'acceptation affirme la clause |
+|---|---|---|---|---|
+| AERR181 | ok | `60101da92` | `InstallationDetail.appro.test.jsx`, 3 cas : après « Rester », `onClose` non appelé, « Horaires d'accès » gardé (oui) | oui : valeur gardée, aucune écriture, base inchangée |
+| AERR182 | ok | `bade51046` | `EquipementsPage.test.jsx`, 2 cas (oui) | oui |
+| AERR183 | ok | `4565ae64b` | `BonsCommandeFournisseur.test.jsx`, 2 cas (oui) | oui |
+| AERR184 | ok | `13047c82d` | `TicketDetailSplitView.test.jsx` à `mockMatchMedia(false)` : note puis Échap ⇒ demande (oui ; la croix et le fond, même booléen, non testés) | oui : à 1 000 px, pas de vue scindée, « Rester » garde la note, « Quitter » n'écrit rien (réseau et base) |
+| AERR185 | ok | `30357c078` | 4 cas : « Annuler » sans appel, « Confirmer » un appel, la confirmation nomme la cible (oui) — elle nomme le document : un `PartageGed` est un lien public sans destinataire | oui : base relue après chaque geste |
+| AERR186 | ok | `9cf3a3e6c` | revenir en arrière remet à zéro à la fermeture et vide la note (oui) | oui : saisie gardée sur A, vide sur B, vide après journalisation, un seul appel en base |
 
-| Tâche | Commit | Test nommé (casse si on revient en arrière) |
-|---|---|---|
-| AERR156 | `88c80c964` | `CallLogPopover.test.jsx` › AERR156, 2 cas (oui) |
-| ACNC71 | `706e63f39` | `NoteDebitDialog.test.jsx` « réponse perdue sur A… clé neuve » (oui, compare les deux clés) |
-| AERR158 | `18d1ab07e` | `valeursTapees.test.jsx` AERR158 (oui pour E-mail ; Monitoring et Clients sans test) |
-| AERR159 | `e53e778f2` | `TicketDetailSplitView.test.jsx` AERR159 (note seule, lit `isAnyFormDirty()`, ne clique pas le ticket B) |
-| AERR160 | `f0e5754b8` | recette pompage et `TicketDetailSplitView.test.jsx` AERR160 (oui) |
-| AERR161 | `51ef6d2ef` | `wir183.test.jsx`, 3 cas dont « Indicateurs pas à jour » (oui) |
-| AERR164 | `9e5cad70a` | `LotsEtBoq.test.jsx` (`Lot A{Enter}{Enter}`) (oui) |
-| AERR165 | `feec657aa` | `ControleSuiviPanel.test.jsx` AERR165 (oui) |
-| AERR166 | `cbed8900a` | `LeadWorkspace.test.jsx`, 3 cas (mutants déclarés au commit ; corps non relu) |
-| AERR167 | `b4023cd10` | `mutateWithUndo.test.jsx` AERR167, cas AERR136 réaligné (oui) |
-| AERR170 | `864f22e4f` | `TicketsPage.test.jsx`, 2 cas (oui) |
-| AERR171 | `453de38c4` | `appro.test.jsx` AERR171 (oui) — latent, comme au 14/11 |
-| AERR172 | `3509492ce` | `cht8.test.jsx` AERR172 (probablement ; corps parcouru) |
-| AERR173 | `a1802a85b` | `RetentionPage` et `ApprobationPage` AERR173 (probablement ; corps non relu) |
+**AERR186 ne rouvre pas le succès faux du 14/11 (VER2-200)** : après une relance ratée, `appelJournalise` est vrai, la
+fermeture remet à zéro, l'appel suivant est journalisé ; la sonde VER2-200 rejoue `repro: false`.
 
-Acceptation : `docs/audits/acceptation/AERR/2026-11-15-5a349379e.md` (PASS, `couvre:` 156, 158 à 167, 169, 170, 172, 173) ;
-ACNC71 a son propre enregistrement PASS (groupe ACNC). AERR159 n'a été rejouée qu'en largeur bureau : le panneau étroit
-n'a jamais été joué (L7).
-
-**Les cinq écarts S2 du 14/11, sur `origin/main` :**
-- C-AERR-VER2-200 (AERR156) : **fermé.** `frontend/src/features/crm/CallLogPopover.jsx::CallLogPopover` rappelle `reset()`
-  (drapeau compris) à la fermeture et au changement de lead.
-- C-AERR-VER2-201 (ACNC71) : **fermé.** `frontend/src/pages/ventes/NoteDebitDialog.jsx::NoteDebitDialog` prend une clé
-  neuve, un motif et un montant vides à chaque ouverture ou changement de facture.
-- C-AERR-VER2-202 (AERR158) : **fermé.** `frontend/src/pages/parametres/ParametresEntreprise.jsx::ParametresEntreprise` garde
-  E-mail, Monitoring et Clients montés (`SectionGardee`).
-- C-AERR-VER2-203 (AERR159) : **partiellement.** Changer de ticket, J/K et « Fermer » demandent ; le `<Sheet>` du mode
-  étroit perd encore les brouillons (C-AERR-VER3-301).
-- C-AERR-VER2-204 (AERR160) : **fermé pour ses deux sites** ; le même défaut reste ouvert sur trois composants frères
-  (C-AERR-VER3-300).
+**Les deux écarts S2 du matin, sur `origin/main` :**
+- C-AERR-VER3-300 : **fermé pour ses trois sites** (sa sonde rend une liste vide). Le même défaut subsiste derrière des
+  boutons « Annuler » que cette sonde ne cherchait pas (C-AERR-VER4-401).
+- C-AERR-VER3-301 : **fermé.** `brouillonEnCours` nourrit `useDirtyGuard` et le `<Sheet>` ; le « Fermer » du pied lit
+  `isAnyFormDirty()`, qui l'inclut.
 
 ## 2. Sondes
 
-| Sonde | Tâche | Verdict | Observé (hôte, `a923179a4`) |
-|---|---|---|---|
-| `C-AERR-VER2-200.py` (14/11) | AERR156 | réfutée | `repro: false` (fragile : le motif `.current = false` a disparu) |
-| `C-AERR-VER2-201.py` (14/11) | ACNC71 | réfutée | `repro: false` |
-| `C-AERR-VER2-202.py` (14/11) | AERR158 | réfutée | `repro: false` |
-| `C-AERR-VER2-203.py` (14/11) | AERR159 | **périmée** | `repro: true` faux positif : elle lit le `useMemo` `dirty`, le correctif a mis les brouillons dans l'argument de `useDirtyGuard` ; le vrai reste est VER3-301 |
-| `C-AERR-VER2-204.py` (14/11) | AERR160 | réfutée | `repro: false` (fragile : la garde s'écrit désormais avec `.then`) |
-| `C-AERR-VER3-300.py` (neuve) | AERR160 (jumeaux) | **REPRO** | « Fermer » `onClick={onClose}` dans un composant à `useDirtyGuard` : `InstallationDetail`, `EquipementDetailCorps`, `BcfDetail` ; les deux sites corrigés ne sortent pas (témoin négatif) |
-| `C-AERR-VER3-301.py` (neuve) | AERR159 (jumeau) | **REPRO** | `useDirtyGuard` cite `noteBody`, `dirty` non ; le `<Sheet>` ferme par `confirmLeaveIfDirty(dirty)` |
+| Sonde | Verdict | Observé (hôte, `5a77c93d9`) |
+|---|---|---|
+| `C-AERR-VER3-300.py` (matin) | réfutée | `repro: false`, liste vide |
+| `C-AERR-VER3-301.py` (matin) | réfutée, périmée | `repro: false` ; l'argument de la garde est désormais une variable nommée : la sonde ne prouve plus rien |
+| `C-AERR-VER2-200.py` (14/11) | réfutée | `repro: false` |
+| `C-AERR-VER4-400.py` (neuve) | **REPRO** | 11 composants à garde de saisie ; sorties nues : « Annuler » de `ProduitForm`, `NouvelleReception`, `FactureForm` ; aucun `onOpenChange` sans garde ; un booléen différent (`ToitureDesign.jsx::AtelierToiture`, `confirmLeaveIfDirty(modifiee)`, calcul frais au clic, ACAL85 : juste) ; témoin : les six sites corrigés sont rangés « gardés » |
 
 ## 3. Écarts retenus
 
 | C-id | Tâche d'origine | Grav. | Écart | Sonde | Tâche |
 |---|---|---|---|---|---|
-| C-AERR-VER3-300 | AERR160 (jumeaux) | **S2** | Trois fiches enregistrent `useDirtyGuard` et gardent Échap et le clic extérieur, mais leur bouton « Fermer » est `onClick={onClose}` : une fiche modifiée se ferme sans demande (`frontend/src/pages/installations/InstallationDetail.jsx::InstallationDetail`, `frontend/src/pages/sav/EquipementsPage.jsx::EquipementDetailCorps`, `frontend/src/pages/stock/BonsCommandeFournisseur.jsx::BcfDetail`) | `C-AERR-VER3-300.py` (REPRO) | AERR181 (chantiers), AERR182 (SAV), AERR183 (stock) |
-| C-AERR-VER3-301 | AERR159 (jumeau) | **S2** | Sous 1 280 px, le `<Sheet>` de la fiche ticket ferme par `confirmLeaveIfDirty(dirty)` : note, compte rendu, pièce, retrait et motif tapés perdus sans demande sur Échap, la croix ou le fond (`frontend/src/pages/sav/TicketsPage.jsx::TicketDetailCorps`) | `C-AERR-VER3-301.py` (REPRO) | AERR184 (SAV) |
-| C-AERR-VER3-302 | AERR173 (jumeaux) | S3 | « Révoquer » un partage GED et retirer une entrée de droits partent d'un clic (`frontend/src/features/ged/advanced/RetentionPage.jsx::RetentionPage`, `frontend/src/features/ged/GedDocumentInsights.jsx::GedDocumentInsights`) | STATIQUE | AERR185 (documents) |
-| C-AERR-VER3-303 | AERR156 (effet de bord) | S3 | Une fermeture accidentelle de la fenêtre d'appel (clic extérieur, Échap) efface l'issue, la note et la date avant toute journalisation (`frontend/src/features/crm/CallLogPopover.jsx::CallLogPopover`) | STATIQUE | AERR186 (lead) |
+| C-AERR-VER4-401 | AERR181 à 183 (jumeaux) | **S2** | « Annuler » ferme sans demande un formulaire modifié dont Échap et le fond demandent : `frontend/src/pages/stock/ProduitForm.jsx::ProduitForm`, `frontend/src/pages/stock/ReceptionsFournisseur.jsx::NouvelleReception`, `frontend/src/pages/ventes/FactureForm.jsx::FactureForm` ; le contrat de `frontend/src/ui/useDirtyGuard.js::confirmLeaveIfDirty` range « Annuler » parmi les sorties qui demandent | `C-AERR-VER4-400.py` (REPRO) | AERR187 (stock), AERR188 (facturation) |
+| C-AERR-VER4-402 | AERR186 (appelant oublié) | S3 | La liste des leads démonte la fenêtre de planification de relance au premier `onOpenChange(false)` : un clic extérieur perd la date et l'objet ; la garde d'AERR186 ne peut pas s'y appliquer ; défaut antérieur à AERR156 (`frontend/src/pages/crm/leads/LeadsPage.jsx::LeadsPage`) | STATIQUE | AERR189 (lead) |
 
 **Pourquoi ces gravités.**
-- **VER3-300, VER3-301 (S2).** Même grille que les écarts VER2-202 à 204 du 14/11 : une perte de saisie réelle, sans
-  avertissement, sur un geste ordinaire (« Fermer », Échap sur un téléphone ou un portable étroit). Les fiches enregistrent
-  déjà leur garde : seul le geste nommé y échappe.
-- **VER3-302 (S3).** Retrait irréversible mais rare (gouvernance GED, Directeur), même famille qu'AERR173.
-- **VER3-303 (S3).** La remise à zéro a été demandée par AERR156 contre un succès faux ; elle efface trop large. Perte
-  légère (une issue et une note), refaite en quelques secondes.
+- **VER4-401 (S2).** Même grille que VER2-202 à 204 et VER3-300 : perte de saisie réelle, sans avertissement, sur un geste
+  ordinaire, contre le contrat écrit de la garde. Si le fondateur tient « Annuler » pour un abandon voulu, l'écart tombe
+  en S3 (aucune décision ouverte : le contrat et le formulaire client vont déjà dans ce sens).
+- **VER4-402 (S3).** Perte légère (une date, un objet), refaite en quelques secondes ; pas une régression.
 - **Pas de S1.**
 
-**Routage.** `check_ownership.py --owner-of` : chantiers AERR181 ; SAV AERR182, AERR184 ; stock AERR183 ; documents
-AERR185 ; lead AERR186. VER3-300 est scindé par propriétaire (trois correctifs indépendants, un par fiche).
+**Routage.** `check_ownership.py --owner-of` : stock AERR187 (deux formulaires) ; facturation AERR188 ; lead AERR189.
 
 ## 4. Optionnel (non déposé)
 
-- `NoteDebitDialog` : `erreur` n'est pas effacée à l'ouverture ou au changement de facture (le texte d'erreur de A
-  s'affiche sous B) ; cosmétique.
-- Sondes du 14/11 : VER2-203 périmée (faux positif), VER2-200 et VER2-204 fragiles (elles cherchent l'absence de l'ancien
-  motif) ; à faire détecter le correctif lui-même.
-- `frontend/src/features/ged/GedSearch.jsx` : la suppression d'une vue enregistrée part d'un clic (objet personnel).
-- `TicketDetailCorps` : un motif tapé dans « Annuler ce ticket ? » puis abandonné garde la fiche « modifiée ».
-- Tests plus étroits que le texte : AERR158 (Monitoring et Clients sans test), AERR159 (la note seule, jamais le clic).
+- Révocation d'un lien public d'un clic hors de la GED, même geste qu'AERR185 : `frontend/src/pages/reporting/DashboardSharePage.jsx`
+  (`revoquer`) et `frontend/src/features/adsengine/ConsentScreen.jsx` (`revoke`) ; réversibilité non vérifiée.
+- Sondes VER3-301 et VER2-200 fragiles ; VER4-400 remplace VER3-300.
+- Test d'AERR184 : Échap seulement (la croix et le fond partagent le booléen).
 
 ## 5. Couverture et sortie de cycle
 
-- **Couvert.** 14 tâches d'écart du 14/11 : commits, code servi, tests nommés, enregistrements d'acceptation, jumeaux par
-  grep ; 5 sondes du 14/11 rejouées, 2 neuves.
-- **Non couvert.** Aucun vitest lancé (`node_modules` absent), aucun rejeu navigateur ; AERR162, 163, 168, 169 ; AERR174
-  à 180 ; l'acceptation AERR131 reste ouverte.
-- **Sortie de cycle.** Quatre écarts S2 du 14/11 fermés, un partiellement ; deux écarts S2 nouveaux (AERR181 à 184, sur
-  le même défaut que VER2-203 et VER2-204). Le groupe reste « construit » ; compteur des `vérifie` consécutifs à zéro
-  S1-S2 : **0**. Contre-visite d'AERR181 à 184 une fois cochées.
+- **Couvert.** Les 6 tâches d'écart du matin : commits, code servi, tests nommés, spec et enregistrement d'acceptation ;
+  balayage de tous les composants à garde de saisie (sonde VER4-400) ; sondes du matin et du 14/11 rejouées.
+- **Non couvert.** Aucun vitest, aucun rejeu navigateur ; les crochets de brouillon (`useLeadDraft`, `useBrouillonEcran`)
+  ne sont pas balayés par la sonde ; l'acceptation AERR131 reste ouverte.
+- **Sortie de cycle.** Les deux S2 du matin sont fermés ; un S2 nouveau (VER4-401, AERR187-188). Le groupe reste
+  « construit » ; compteur des `vérifie` consécutifs à zéro S1-S2 : **0**. Contre-visite d'AERR187 et AERR188 une fois cochées.
 
-## 6. Coût
+## 6. Rappel de la passe du matin
 
-H0 S0 O1 F0 · jetons sous-agents ≈ 0,23 M (un vérificateur opus seul). Aucun appel Fable : aucun S1.
+La passe du matin (SHA `a923179a4`, 14 tâches d'écart du 14/11) : 12 ok, AERR159 et AERR160 partielles ; quatre S2 du
+14/11 fermés, un partiellement ; écarts retenus :
+
+| Constat du matin | Grav. | Tâches | État ce soir |
+|---|---|---|---|
+| C-AERR-VER3-300 : « Fermer » sans demande sur trois fiches | S2 | AERR181, 182, 183 | **fermé** (jumeaux « Annuler » : VER4-401) |
+| C-AERR-VER3-301 : panneau étroit de la fiche ticket | S2 | AERR184 | **fermé** |
+| C-AERR-VER3-302 : révoquer un partage, retirer un droit GED d'un clic | S3 | AERR185 | fermé |
+| C-AERR-VER3-303 : fenêtre d'appel vidée à une fermeture accidentelle | S3 | AERR186 | fermé (appelant oublié : VER4-402) |
+
+## 7. Coût
+
+H0 S0 O2 F0 · jetons sous-agents ≈ 0,45 M sur la journée (deux vérificateurs opus, un par passe). Aucun appel Fable : aucun S1.
