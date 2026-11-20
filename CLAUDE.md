@@ -462,11 +462,12 @@ official docs).**
   prompt-cache TTL silently drops 1 h → 5 min (official) — exactly the overnight/credit-cap
   windows where long runs live.
 
-**Go-deep levels.** « go deep » / « go very deep » / « go extremely deep » each map to a calibrated
-investigation depth — full doctrine in the **`go-deep` skill** (`.claude/skills/go-deep/`), injected
-by the prompt hook on those phrases. On any substantive audit/investigation request WITHOUT an
-explicit level, auto-pick the level per that skill's criteria and announce the choice in one line
-(Reda's named level always overrides).
+**Go-deep levels.** « go deep » / « go very deep » / « go extremely deep » (or « go L1 » … « go L3 ») map to
+calibrated investigation depths; « go L4 » / « go L5 » to the ship-grade loop and the multi-session campaign —
+full doctrine in the **`go-deep` skill** (`.claude/skills/go-deep/`), injected by the prompt hook on those
+phrases. On any substantive audit/investigation request WITHOUT an explicit level, auto-pick L1-L3 per that
+skill's criteria and announce the choice in one line; L4 / L5 run only when Reda names them (Reda's named level
+always overrides).
 
 **Token discipline — read the MAP before grepping the territory (founder rule).** `docs/CODEMAP.md`
 is the curated, always-current map (§3 repository map + §4 app-by-app: every app's
