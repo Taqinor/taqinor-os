@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -143,5 +144,47 @@ describe("EquipementDetail — gestes d'écriture sous equipement_gerer", () => 
       permissions: ['equipement_voir', 'equipement_gerer', 'sav_voir'] })
     expect(screen.getByRole('button', { name: /Mettre à jour/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Corriger/ })).toBeInTheDocument()
+  })
+})
+
+describe('EquipementDetail — AERR182 « Fermer » demande avant de perdre la saisie', () => {
+  const equipement = { id: 9, numero_serie: 'SN-4471', statut: 'en_service', nb_tickets_ouverts: 0 }
+  it('Fermer demande avant de perdre la saisie', async () => {
+    const onClose = vi.fn()
+    const auth = { role: 'responsable', role_nom: 'Technicien responsable',
+      permissions: ['equipement_voir', 'equipement_gerer', 'sav_voir'] }
+    render(
+      <Provider store={configureStore({ reducer: { auth: (s = auth) => s } })}>
+        <MemoryRouter><ThemeProvider><ConfirmProvider>
+          <EquipementDetail equipement={equipement} onClose={onClose} onSaved={() => {}} />
+        </ConfirmProvider></ThemeProvider></MemoryRouter>
+      </Provider>)
+    // Sans modification : fermeture directe.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Fermer' }).find((b) => b.closest('form')))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    fireEvent.change(screen.getByDisplayValue('SN-4471'), { target: { value: 'SN-9999' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Fermer' }).find((b) => b.closest('form')))
+    const boite = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(screen.getByDisplayValue('SN-9999')).toBeInTheDocument()
+  })
+
+  it('« Quitter » ferme une seule fois la fiche modifiée', async () => {
+    const onClose = vi.fn()
+    const auth = { role: 'responsable', role_nom: 'Technicien responsable',
+      permissions: ['equipement_voir', 'equipement_gerer', 'sav_voir'] }
+    render(
+      <Provider store={configureStore({ reducer: { auth: (s = auth) => s } })}>
+        <MemoryRouter><ThemeProvider><ConfirmProvider>
+          <EquipementDetail equipement={equipement} onClose={onClose} onSaved={() => {}} />
+        </ConfirmProvider></ThemeProvider></MemoryRouter>
+      </Provider>)
+    fireEvent.change(screen.getByDisplayValue('SN-4471'), { target: { value: 'SN-9999' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Fermer' }).find((b) => b.closest('form')))
+    const boite = await screen.findByRole('alertdialog')
+    fireEvent.click(within(boite).getByRole('button', { name: 'Quitter' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 })

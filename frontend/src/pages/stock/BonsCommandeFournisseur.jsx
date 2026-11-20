@@ -1190,7 +1190,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
               <Receipt /> Facturer (sur commande)
             </Button>
           )}
-          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" variant="ghost" onClick={() => confirmLeaveIfDirty(dirty).then((ok) => ok && onClose())}>Fermer</Button>
           {/* QS4 — envois directs au fournisseur (BCF déjà enregistré, non
               annulé). Grisés + tooltip explicite quand le contact manque. */}
           {peutCommander && !isNew && statut !== 'annule' && (

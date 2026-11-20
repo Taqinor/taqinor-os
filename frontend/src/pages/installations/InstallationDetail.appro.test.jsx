@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render } from '@testing-library/react'
 import { Provider } from 'react-redux'
@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import InstallationDetail from './InstallationDetail'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { polyfillResizeObserver } from '../../test/selectNatif'
 // PACT13 — la réponse mockée est l'exemple COMMITTÉ côté serveur.
 import CONTRAT from '../../../../backend/django_core/apps/installations/contract_samples/chantier_approvisionnement.json'
@@ -201,5 +202,44 @@ describe('InstallationDetail — AERR91 changement de chantier', () => {
     await waitFor(() => expect(screen.getByPlaceholderText('Écrire une note…')).toHaveValue(''))
     fireEvent.click(screen.getByRole('button', { name: /Noter/ }))
     expect(mocks.noter).not.toHaveBeenCalled()
+  })
+
+  const rendreAvecConfirm = (onClose) => render(
+    <Provider store={nouveauStore()}><MemoryRouter><ThemeProvider><ConfirmProvider>
+      <InstallationDetail installation={CHANTIER} onClose={onClose} onSaved={() => {}} />
+    </ConfirmProvider></ThemeProvider></MemoryRouter></Provider>,
+  )
+  const fermer = () => screen.getAllByRole('button', { name: 'Fermer' }).find((b) => b.textContent === 'Fermer')
+  const saisir = async () => fireEvent.change(await screen.findByLabelText("Horaires d'accès"), { target: { value: '8h-17h' } })
+
+  it('AERR181 — Fermer sans saisie ferme sans demande', async () => {
+    const onClose = vi.fn()
+    rendreAvecConfirm(onClose)
+    await screen.findByLabelText("Horaires d'accès")
+    fireEvent.click(fermer())
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('AERR181 — Fermer demande avant de perdre la saisie : Rester garde la valeur', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    rendreAvecConfirm(onClose)
+    await saisir()
+    await user.click(fermer())
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("Horaires d'accès")).toHaveValue('8h-17h')
+  })
+
+  it('AERR181 — Quitter ferme une seule fois', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    rendreAvecConfirm(onClose)
+    await saisir()
+    await user.click(fermer())
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Quitter' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 })

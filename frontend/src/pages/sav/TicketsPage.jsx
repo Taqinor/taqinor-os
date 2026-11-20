@@ -356,7 +356,8 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
     produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
     numero_serie: '', serie_neuve: '',
   })
-  useDirtyGuard(dirty || !!(noteBody.trim() || interv.compte_rendu || pieceForm.produit || retirerForm.produit || motif)) // AERR159
+  const brouillonEnCours = dirty || !!(noteBody.trim() || interv.compte_rendu || pieceForm.produit || retirerForm.produit || motif) // AERR159/AERR184
+  useDirtyGuard(brouillonEnCours)
   const [serieNeuveError, setSerieNeuveError] = useState(null)
   const [equipementNeuf, setEquipementNeuf] = useState(null)
   const [retirerBusy, setRetirerBusy] = useState(false)
@@ -1538,7 +1539,7 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
 
   // ── Mobile/tablette (<1280px) : tiroir Sheet plein-tiroir (fallback inchangé). ──
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) confirmLeaveIfDirty(dirty).then((ok) => ok && onClose()) }}>
+    <Sheet open onOpenChange={(o) => { if (!o) confirmLeaveIfDirty(brouillonEnCours).then((ok) => ok && onClose()) }}>
       <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle className="flex flex-wrap items-center gap-2">

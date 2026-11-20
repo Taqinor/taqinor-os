@@ -12,6 +12,7 @@ import {
 import { formatDate } from '../../lib/format'
 import { toutesLesPages } from './advanced/shared.js'
 import useDroitMetier from '../sav/useDroitMetier'
+import { useConfirmDialog } from '../../ui/confirm'
 
 /* ============================================================================
    WIR70 — Panneau « Détails » d'un document GED : timeline + rapport ACL.
@@ -58,6 +59,7 @@ export default function GedDocumentInsights({ document, onClose }) {
   const [timeline, setTimeline] = useState(null)
   const [acl, setAcl] = useState(null)
   const [entries, setEntries] = useState(null)
+  const { confirmDelete } = useConfirmDialog()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [favori, setFavori] = useState(!!document?.favori)
@@ -121,7 +123,8 @@ export default function GedDocumentInsights({ document, onClose }) {
     } catch { toast.error('Ajout impossible (doublon ?).') }
   }
 
-  const removeAcl = async (id) => {
+  const removeAcl = async (id, porteur) => {
+    if (!await confirmDelete({ title: `Retirer le droit de « ${porteur} » ?`, description: 'Cette entrée de droits sera retirée du document.', confirmLabel: 'Retirer' })) return
     try {
       await gedApi.deleteAcl(id)
       toast.success('Droit d’accès retiré.')
@@ -295,7 +298,7 @@ export default function GedDocumentInsights({ document, onClose }) {
                       </span>
                       {peutGouverner && <Button
                         type="button" variant="ghost" size="sm"
-                        onClick={() => removeAcl(e.id)}
+                        onClick={() => removeAcl(e.id, e.utilisateur_nom || e.role_nom || '—')}
                         aria-label="Retirer ce droit"
                       >
                         <Trash2 size={14} />

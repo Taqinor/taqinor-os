@@ -396,7 +396,7 @@ function EquipementDetailCorps({ equipement, onClose, onSaved }) {
                 <Trash2 /> Mettre au rebut
               </Button>
             )}
-            <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+            <Button type="button" variant="ghost" onClick={() => confirmLeaveIfDirty(dirty).then((ok) => ok && onClose())}>Fermer</Button>
             {codeRebut && <Button type="submit" loading={saving}><Save /> Mettre à jour</Button>}
           </FormActions>
         </Form>
