@@ -46,6 +46,7 @@ import {
   type ModulePose,
 } from './zones';
 import { obstacleRing } from '../../lib/obstacles';
+import { viderObstaclesAnnulable, questionEffacer, confirmerEffacer } from './bandeauAnnuler'; // ACAL413
 import { type LngLat } from '../../lib/roof';
 
 const ETAT = {
@@ -495,5 +496,31 @@ describe('ACAL77 — glisser un sommet vers un papillon', () => {
     // Un déplacement raisonnable reste admis.
     expect(deplacementSommetAdmis(carre, 2, [12, 11])).toBe(true);
     expect(MOTIF_SOMMET_CROISE).toMatch(/nœud papillon/);
+  });
+});
+
+describe('ACAL413 — un filet pour les effacements de masse', () => {
+  it('« Tout effacer » puis Annuler rend les obstacles (photo AVANT de vider)', () => {
+    const obstacles = [1, 2, 3, 4, 5, 6];
+    const piles: number[][] = [];
+    const ctx = { obstacles: [...obstacles] as unknown[], pushWorkshopHistory: () => void piles.push([...(ctx.obstacles as number[])]) };
+    expect(viderObstaclesAnnulable(ctx)).toBe(6);
+    expect(ctx.obstacles).toEqual([]);
+    // annuler = ré-appliquer la dernière photo : les 6 obstacles, identiques
+    expect(piles.at(-1)).toEqual(obstacles);
+  });
+  it('sans obstacle : rien n’est photographié ni vidé', () => {
+    const piles: number[] = [];
+    const ctx = { obstacles: [] as unknown[], pushWorkshopHistory: () => void piles.push(1) };
+    expect(viderObstaclesAnnulable(ctx)).toBe(0);
+    expect(piles).toEqual([]);
+  });
+  it('« Effacer » nomme ce qui sera perdu, et ne demande rien sans rien à perdre', () => {
+    expect(questionEffacer({ pans: 1, obstacles: 2, consommation: true, ombres: true })).toBe(
+      'Effacer 1 pan, 2 obstacles, la consommation saisie et les ombres tracées ?',
+    );
+    expect(questionEffacer({ pans: 0, obstacles: 0, consommation: false, ombres: false })).toBeNull();
+    expect(confirmerEffacer({ pans: 0, obstacles: 0, consommation: false, ombres: false }, () => false)).toBe(true);
+    expect(confirmerEffacer({ pans: 2, obstacles: 0, consommation: false, ombres: false }, () => false)).toBe(false);
   });
 });

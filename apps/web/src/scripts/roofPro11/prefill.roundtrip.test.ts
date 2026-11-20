@@ -345,3 +345,49 @@ describe('ACAL251 — hydrateFromLead ne sème pas un contour inutilisable', () 
     expect(hydrateFromLead({ roof_outline: contour }).vertices).toHaveLength(4);
   });
 });
+
+/* ============================================================================
+   ACAL459 — la table d'ombrage par direction survit à une réédition : enregistrer, rouvrir,
+   enregistrer ⇒ octet-identique tant que les sources n'ont pas bougé ; sinon la clé est retirée.
+   Les noms viennent de l'`exemple` du contrat `calepinage_table_ombrage.json` (ACAL389).
+   ========================================================================== */
+describe('ACAL459 — shadeTable survivante à une réédition', () => {
+  const table = JSON.parse(JSON.stringify(
+    ((contrat('calepinage_table_ombrage.json').exemple as { zones: Array<{ geometry: { shadeTable: unknown } }> }).zones[0].geometry.shadeTable),
+  )) as { signature: string };
+  function docAvecTable(): SerializedLayout {
+    const pan = (id: string) => ({
+      id, label: id, vertices: [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]],
+      obstacles: [], roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180, facingManual: false,
+      neededPanels: 2, neededAuto: false,
+      geometry: {
+        azimuthDeg: 180, tiltDeg: 10, family: 'south', flush: false, kwc: 1.44, count: 2, origin: [-7.6, 33.5],
+        panels: [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }], shadeTable: table,
+      },
+    });
+    return JSON.parse(JSON.stringify({
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'zA', zones: [pan('zA'), pan('zB')],
+      result: { panels: 4, kwc: 2.88, annualKwh: 4000, savings: null },
+    })) as SerializedLayout;
+  }
+  const rouvrir = (doc: SerializedLayout, signature: string | undefined) => {
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    const etat = etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null });
+    return serialiserDocumentAtelier(ctx, null, { ...etat, solarAccess: signature ? { signatureOmbrage: signature } : null });
+  };
+
+  it('sources inchangées (même signature) : enregistrer, rouvrir, enregistrer rend la même table', () => {
+    const doc = docAvecTable();
+    const un = rouvrir(doc, table.signature);
+    expect(un.zones.map((z) => z.geometry?.shadeTable)).toStrictEqual([table, table]);
+    const deux = rouvrir(JSON.parse(JSON.stringify(un)) as SerializedLayout, table.signature);
+    expect(JSON.stringify(deux.zones)).toBe(JSON.stringify(un.zones));
+  });
+
+  it('une obstruction déplacée (autre signature) : la table relue est retirée, jamais gardée périmée', () => {
+    const sortie = rouvrir(docAvecTable(), 'fnv1a-autre');
+    expect(sortie.zones.map((z) => [Boolean(z.geometry), z.geometry && 'shadeTable' in z.geometry])).toEqual([[true, false], [true, false]]);
+  });
+});

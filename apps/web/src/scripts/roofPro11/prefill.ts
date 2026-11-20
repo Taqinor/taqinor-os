@@ -12,6 +12,7 @@
  * webhook, CAPI) reste celle du formulaire existant. Aucune requête réseau (ni
  * route lead, ni route de simulation) n'est émise ici.
  */
+import { ajouterTableOmbrage, garderTableRelue, type TableOmbrage } from './tableOmbrage'; // ACAL459
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
@@ -239,6 +240,8 @@ export interface SerializedZoneGeometry {
    * (`roof_layout_v2.schema.json`, `$defs/solarAccess`).
    */
   solarAccess?: SerializedSolarAccess;
+  /** ACAL459 — table d'ombrage direct par direction du soleil (`calepinage_table_ombrage.json`). */
+  shadeTable?: TableOmbrage;
   /**
    * CALX82/CALX110 — le module physique posé sur CE pan, désigné par son `id` dans le
    * catalogue `modules[]` de la racine. OPTIONNEL et additif : absent = le module par
@@ -400,6 +403,9 @@ export interface SerializeMeta {
    * SANS accès solaire — jamais avec des valeurs par défaut.
    */
   solarAccessByZone?: Record<string, SerializedSolarAccess | null | undefined>;
+  /** ACAL459 — table d'ombrage par direction, PAR ZONE, et la signature courante des sources d'ombrage. */
+  shadeTableByZone?: Record<string, TableOmbrage | null | undefined>;
+  signatureOmbrage?: string;
   /** CAL76 — les quatre retraits de rive RÉGLÉS dans l'atelier (PV63 + le joint CAL76),
    *  à écrire à la racine du document. Fourni par l'appelant (l'outil les tient dans
    *  `setbacks`, cf. roof-tool-pro11.ts) : `prefill.ts` reste pur et n'invente rien. */
@@ -995,6 +1001,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // active sortait une géométrie, et un « Enregistrer » sans geste perdait les autres pans.
     if (!isActive && a.geometrieEnregistree) {
       zone.geometry = JSON.parse(JSON.stringify(a.geometrieEnregistree)) as SerializedZoneGeometry;
+      garderTableRelue(zone.geometry, meta?.signatureOmbrage); // ACAL459 — gardée seulement si les sources n'ont pas bougé
       return zone;
     }
     const rp = a.renderPlan;
@@ -1064,9 +1071,11 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       // de modules posés) ; sinon omis, jamais complété.
       const access = serializeSolarAccess(meta?.solarAccessByZone?.[a.id], posed);
       if (access) zone.geometry.solarAccess = access;
+      ajouterTableOmbrage(zone.geometry, meta?.shadeTableByZone?.[a.id]); // ACAL459 — émise à CHAQUE sérialisation
     } else if (a.geometrieEnregistree) {
       // ACAL28 — pan actif pas (encore) re-pavé : sa géométrie enregistrée, jamais rien.
       zone.geometry = JSON.parse(JSON.stringify(a.geometrieEnregistree)) as SerializedZoneGeometry;
+      garderTableRelue(zone.geometry, meta?.signatureOmbrage); // ACAL459 — idem : seulement si les sources n'ont pas bougé
     }
     return zone;
   });

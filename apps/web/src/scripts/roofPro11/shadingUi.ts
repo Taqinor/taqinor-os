@@ -55,6 +55,7 @@ import {
 } from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
 import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
+import { signerSources, tableOmbrage, type TableOmbrage } from './tableOmbrage'; // ACAL459
 import { type Ctx } from './context';
 
 export interface ShadingUiDeps {
@@ -88,6 +89,10 @@ export interface ShadingUi {
   solarAccess: () => SolarAccessSummary | null;
   /** ACAL138 — accès solaire ANNUEL sur les modules POSÉS donnés (valeur persistée). */
   solarAccessAnnuel: (points: readonly { x: number; y: number }[]) => SolarAccessSummary | null;
+  /** ACAL459 — table d'ombrage direct par direction du soleil, sur les modules POSÉS donnés
+   *  (`null` sans module ni obstruction) ; `signatureTable` = signature des sources qui la porte. */
+  tableOmbrage: (points: readonly { x: number; y: number }[]) => TableOmbrage | null;
+  signatureTable: () => string;
   /** Efface toutes les ombres tracées (« Effacer » / nouveau tracé). */
   reset: () => void;
   /** CAL93 — fixe (ou efface, `null`) le profil d'horizon lointain (CAL92 ou saisi),
@@ -893,6 +898,11 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, null);
   }
 
+  /** ACAL459 — la table d'ombrage par direction du pan actif (même source d'obstructions). */
+  const signatureTable = () => signerSources(signatureSourcesOmbrage(ctx));
+  const tableOmbrageActive = (points: readonly { x: number; y: number }[]): TableOmbrage | null =>
+    ctx.vertices.length < 3 ? null : tableOmbrage(points, activeShadeEntries(), signatureTable());
+
   function solarAccess(): SolarAccessSummary | null {
     const plan = ctx.layoutPlan;
     if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
@@ -1267,6 +1277,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     reset,
     solarAccess,
     solarAccessAnnuel, // ACAL138
+    tableOmbrage: tableOmbrageActive, // ACAL459
+    signatureTable,
     setHorizonProfile,
     // ACAL378 — la matrice dépend de la latitude : recalculée quand le centroïde change
     // (sinon un document rouvert garde celle de la latitude par défaut, 33,5°).

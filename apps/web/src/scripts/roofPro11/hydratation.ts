@@ -235,7 +235,7 @@ export interface OrigineDevis {
 /** Ce que le wrapper `onApiReady.serializeLayout` sait de l'atelier au moment d'écrire. */
 export interface EtatSerialisationAtelier {
   devisOrigin: OrigineDevis | null;
-  solarAccess: Pick<SerializeMeta, 'solarAccessByZone'> | null;
+  solarAccess: Pick<SerializeMeta, 'solarAccessByZone' | 'shadeTableByZone' | 'signatureOmbrage'> | null; // ACAL459
   setbacks: PerimeterSetbacks;
   horizonProfile: SerializeMeta['horizonProfile'] | null | undefined;
   modules: AffectationModules | null;
