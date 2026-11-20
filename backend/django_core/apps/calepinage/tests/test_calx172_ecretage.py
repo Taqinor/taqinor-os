@@ -282,3 +282,85 @@ class SerieServieAuRatioTest(SimpleTestCase):
         self.assertEqual(resultat['ratio_dc_ac']['ecretage_methode'],
                          MOTIF_ECRETAGE_SANS_SERIE)
         self.assertIsNone(resultat['ratio_dc_ac']['ecretage_pct'])
+
+
+def _client_en_cache_classe():
+    from .test_acal_multi_pans import _ClientParOrientation
+
+    class _ClientEnCache(_ClientParOrientation):
+        """Rejoue la série ENREGISTRÉE ; compte seulement les défauts de
+        cache (un appel réseau réel par orientation distincte)."""
+
+        def __init__(self, crete):
+            super().__init__(crete)
+            self.urls_appelees = []
+            self._vues = {}
+
+        def serie_irradiance(self, **parametres):
+            cle = repr(sorted(parametres.items()))
+            if cle not in self._vues:
+                self.urls_appelees.append('/seriescalc?' + cle)
+                self._vues[cle] = super().serie_irradiance(**parametres)
+            return self._vues[cle]
+
+    return _ClientEnCache
+
+
+class BalayageRatioDcAcTest(SimpleTestCase):
+    """ACAL477 — l'axe ``ratio_dc_ac`` du balayage : l'écrêtage CROÎT avec le
+    ratio, sur la MÊME série (aucun appel PVGIS de plus)."""
+
+    CORPS = {'pan': 1, 'axes': [{'nom': 'ratio_dc_ac', 'min': 1.0,
+                                 'max': 1.6, 'pas': 0.3}]}
+
+    def _balayer(self, materiel, corps=None, mutant=False):
+        from apps.calepinage.services.balayage import balayer
+        from apps.calepinage.services.simulation import simuler_calepinage
+
+        from .test_calx5_simulation import REGLAGES, _Calepinage
+
+        pivot = _Calepinage(layout={'version': 2, 'pin': {
+            'lat': 33.5731, 'lng': -7.5898}, 'zones': LAYOUT['zones']})
+        client = _client_en_cache_classe()(1000.0)
+
+        def simuler(cal, *, variante, client, materiel=None):
+            if mutant:  # puissance AC figée : le ratio ne change plus rien
+                materiel = None
+            return simuler_calepinage(
+                cal, forcer=True, client=client, enregistrer=False,
+                variante=variante, materiel=materiel or base,
+                reglages=REGLAGES)
+
+        base = materiel
+        return balayer(pivot, corps or self.CORPS, client=client,
+                       simuler=simuler, materiel=materiel)
+
+    def test_l_ecretage_croit_avec_le_ratio_sans_appel_de_plus(self):
+        sortie = self._balayer(_materiel(ac_kw=5.0))
+        grille = sortie['grille']
+        self.assertEqual([ligne['ratio_dc_ac'] for ligne in grille],
+                         [1.0, 1.3, 1.6])
+        ecretages = [ligne['ecretage_pct'] for ligne in grille]
+        self.assertTrue(all(isinstance(e, float) for e in ecretages))
+        self.assertLess(ecretages[0], ecretages[1])
+        self.assertLess(ecretages[1], ecretages[2])
+        self.assertTrue(all(ligne['mention_ratio'].endswith('hypothèse')
+                            for ligne in grille))
+        # un seul défaut de cache pour trois ratios : la série est partagée
+        self.assertEqual(sortie['appels_pvgis'], 1)
+
+    def test_mutant_puissance_ac_figee_est_detecte(self):
+        sortie = self._balayer(_materiel(ac_kw=5.0), mutant=True)
+        ecretages = [ligne['ecretage_pct'] for ligne in sortie['grille']]
+        self.assertEqual(len(set(ecretages)), 1)
+
+    def test_sans_onduleur_l_axe_est_refuse_en_nommant_le_bloc(self):
+        from apps.calepinage.services.balayage import BalayageInvalide
+
+        materiel = _materiel()
+        materiel['onduleur'] = {cle: valeur
+                                for cle, valeur in materiel['onduleur'].items()
+                                if cle != 'ac_kw'}
+        with self.assertRaises(BalayageInvalide) as capture:
+            self._balayer(materiel)
+        self.assertEqual(capture.exception.champ, 'electrique.onduleurs')

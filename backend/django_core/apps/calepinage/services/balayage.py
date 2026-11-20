@@ -11,8 +11,11 @@ Un pan dont l'orientation est un CHOIX : surface de pose (champ au sol,
 ombrière) ou toit plat à châssis. Un pan à pente imposée par le toit
 (``roofType`` « pitched »), une façade ou une pose est-ouest est refusé.
 Axes pris en charge ici : ``inclinaison_deg`` et ``azimut_deg`` (boussole,
-180 = Sud, comme ``pose.pans[].azimut_deg``) ; ``ratio_dc_ac`` relève d'une
-autre tâche et est refusé en le nommant.
+180 = Sud, comme ``pose.pans[].azimut_deg``) et, depuis ACAL477,
+``ratio_dc_ac`` : la chaîne est rejouée sur la MÊME météo (mêmes appels,
+zéro de plus) avec la puissance AC de l'onduleur remise à l'échelle
+(kWc ÷ ratio ; la fiche réelle reste celle de la courbe de rendement et de
+la fenêtre MPPT). ``ecretage_pct`` est celui de l'étape « écrêtage ».
 """
 from __future__ import annotations
 
@@ -24,8 +27,9 @@ from .pvgis_serie import CACHE_MAX
 __all__ = ['AXES_PRIS_EN_CHARGE', 'BalayageInvalide', 'appliquer_point',
            'balayer', 'points_de_la_grille', 'valider_demande']
 
-AXES_PRIS_EN_CHARGE = ('inclinaison_deg', 'azimut_deg')
+AXES_PRIS_EN_CHARGE = ('inclinaison_deg', 'azimut_deg', 'ratio_dc_ac')
 _BORNES = {'inclinaison_deg': (0.0, 90.0), 'azimut_deg': (0.0, 360.0)}
+MENTION_RATIO = "onduleur de même fiche remis à l'échelle — hypothèse"
 _EPSILON = 1e-9
 
 
@@ -49,10 +53,6 @@ def _valeurs_de_l_axe(axe, indice):
         raise BalayageInvalide("Un axe est un objet {nom, min, max, pas}.",
                                champ=base)
     nom = axe.get('nom')
-    if nom == 'ratio_dc_ac':
-        raise BalayageInvalide(
-            "L'axe « ratio_dc_ac » n'est pas pris en charge par ce balayage "
-            "(inclinaison_deg et azimut_deg seulement).", champ=base + '.nom')
     if nom not in AXES_PRIS_EN_CHARGE:
         raise BalayageInvalide(
             'Axe inconnu : %r (attendu : %s).'
@@ -65,8 +65,12 @@ def _valeurs_de_l_axe(axe, indice):
                                champ=base + '.pas')
     if mini > maxi:
         raise BalayageInvalide('min dépasse max.', champ=base + '.min')
-    bas, haut = _BORNES[nom]
-    if mini < bas or maxi > haut:
+    bas, haut = _BORNES.get(nom, (None, None))
+    if nom == 'ratio_dc_ac':
+        if mini <= 0:
+            raise BalayageInvalide('Le ratio DC/AC doit être positif.',
+                                   champ=base + '.min')
+    elif mini < bas or maxi > haut:
         raise BalayageInvalide('%s doit rester dans [%g ; %g].'
                                % (nom, bas, haut), champ=base + '.min')
     nombre = int((maxi - mini) / pas + _EPSILON) + 1
@@ -192,8 +196,40 @@ def _appels_irradiance(client):
                if url and '/seriescalc?' in url)
 
 
+def _onduleur_au_ratio(calepinage, layout, materiel):
+    """``(materiel de base, kWc, nombre)`` ou refus nommé (ACAL477)."""
+    from .chaines import evaluer_onduleurs
+    from .electrique import conception_du_calepinage
+
+    conception, resolu, _donnees, _doc = conception_du_calepinage(
+        calepinage, layout=layout, materiel=materiel)
+    evaluation = evaluer_onduleurs(conception)
+    if (evaluation is None or not evaluation.nombre
+            or not (evaluation.ac_kw_unitaire or 0) > 0):
+        raise BalayageInvalide(
+            "L'axe « ratio_dc_ac » exige un onduleur désigné avec sa "
+            "puissance AC (« electrique.onduleurs »).",
+            champ='electrique.onduleurs')
+    return resolu, evaluation.puissance_dc_kwc, evaluation.nombre
+
+
+def _ligne_ratio(ratio, kwc, nombre, cascade):
+    """``ecretage_pct`` de l'étape « écrêtage » (jamais recalculé), le
+    marquage hors bornes du noyau et la mention d'hypothèse."""
+    from core.electrique.onduleurs import ratios
+
+    valeur = ratios(kwc, kwc / ratio)[0]
+    etape = next((e for e in (cascade or {}).get('etapes') or ()
+                  if e.get('etape') == 'ecretage'), None)
+    entree = (etape or {}).get('entree') or {}
+    return {'ecretage_pct': entree.get('ecretage_pct'),
+            'ratio_hors_bornes': (valeur.valeur is not None
+                                  and not valeur.dans_bornes),
+            'mention_ratio': MENTION_RATIO}
+
+
 def balayer(calepinage, corps, *, client=None, simuler=None,
-            progression=None):
+            progression=None, materiel=None):
     """Le résultat au contrat : ``{grille, optimum, appels_pvgis, complete,
     socle_manquant, etat}``. Aucune écriture.
 
@@ -209,21 +245,34 @@ def balayer(calepinage, corps, *, client=None, simuler=None,
     if simuler is None:
         from .simulation import simuler_calepinage
 
-        def simuler(cal, *, variante, client):
+        def simuler(cal, *, variante, client, **extra):
             return simuler_calepinage(cal, forcer=True, client=client,
-                                      enregistrer=False, variante=variante)
+                                      enregistrer=False, variante=variante,
+                                      **extra)
 
     grille, complete, socle = [], True, []
     points = points_de_la_grille(axes)
+    avec_ratio = any(nom == 'ratio_dc_ac' for nom, _v in axes)
+    if avec_ratio:
+        base, kwc, nombre = _onduleur_au_ratio(calepinage, layout, materiel)
     for index, point in enumerate(points):
         fantome = types.SimpleNamespace(
             roof_layout=appliquer_point(layout, pan, point), resultat=None,
             pk=None)
-        total = (simuler(calepinage, variante=fantome, client=client)
-                 ['blocs']['production']['total'])
-        grille.append(dict(point, p50_kwh=total.get('p50_kwh'),
-                           rendement_specifique_kwh_kwc=total.get(
-                               'specific_yield_kwh_kwc')))
+        extra = {}
+        if avec_ratio:
+            ratio = point['ratio_dc_ac']
+            extra['materiel'] = dict(base, onduleur=dict(
+                base.get('onduleur') or {}, ac_kw=kwc / ratio / nombre))
+        sortie = simuler(calepinage, variante=fantome, client=client, **extra)
+        total = sortie['blocs']['production']['total']
+        ligne = dict(point, p50_kwh=total.get('p50_kwh'),
+                     rendement_specifique_kwh_kwc=total.get(
+                         'specific_yield_kwh_kwc'))
+        if avec_ratio:
+            ligne.update(_ligne_ratio(point['ratio_dc_ac'], kwc, nombre,
+                                      sortie['blocs'].get('cascade')))
+        grille.append(ligne)
         complete = complete and bool(total.get('complete'))
         for manque in total.get('socle_manquant') or ():
             if manque not in socle:
