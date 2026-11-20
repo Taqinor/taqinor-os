@@ -468,8 +468,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # SORTI.
     # ACAL403 livrera ``GET``/``POST calepinages/profil-depart/`` : retirer.
     'calepinage_profil_depart.json': 'ACAL403',
-    # ACAL468 livrera ``POST calepinages/<pk>/balayage/`` : retirer.
-    'calepinage_balayage.json': 'ACAL468',
+    # ACAL468 a livré ``POST calepinages/<pk>/balayage/``
+    # (``views/balayage.py``) : ``calepinage_balayage.json`` en est SORTI.
     # ACAL485 livrera ``GET``/``POST calepinages/<pk>/detection-toit/`` : retirer.
     'calepinage_detection_toit.json': 'ACAL485',
 }
