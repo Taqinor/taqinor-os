@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import RaccourcisAtelier from '../RaccourcisAtelier'
 import { RACCOURCIS, estSaisieEnCours } from '../RaccourcisAtelier.helpers'
+import { lignesDePortee } from '@roofpro/raccourcisAtelier'
 
 /* ============================================================================
    CAL101 — CHAQUE RACCOURCI EST LISTÉ *ET* TESTÉ, ET AUCUN NE VOLE UNE FRAPPE.
@@ -189,5 +190,15 @@ describe('CAL101 — le panneau de l’atelier le monte', () => {
     )
     expect(await screen.findByTestId('cal-raccourcis-bouton')).toBeInTheDocument()
     vi.doUnmock('../../../api/calepinageApi')
+  })
+})
+
+describe('ACAL414 — RACCOURCIS est lue dans la table unique', () => {
+  it('une ligne de portée atelier = une entrée de l’aide, mêmes touches', () => {
+    const lignes = lignesDePortee('atelier')
+    expect(RACCOURCIS).toHaveLength(lignes.length)
+    expect(RACCOURCIS.map((r) => r.affichage)).toEqual(lignes.map((l) => l.ecriture))
+    expect(RACCOURCIS.map((r) => r.touche)).toEqual(['t', 'o', 'z', 'm', 'a', 'delete', 'd', 'f'])
+    expect(RACCOURCIS.find((r) => r.action === 'dupliquer').ctrl).toBe(true)
   })
 })
