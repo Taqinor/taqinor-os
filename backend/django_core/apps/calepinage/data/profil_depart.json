@@ -191,6 +191,11 @@
       "cle": "seuil_bas_dc_ac",
       "section": "electrique_societe",
       "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+    },
+    {
+      "cle": "neige_mensuelle_pct",
+      "section": "simulation",
+      "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
     }
   ]
 }
