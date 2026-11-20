@@ -1,10 +1,14 @@
-"""Constat C-AERR-005 (devis, S2, C2) : pages/ventes/DevisList.jsx::submitAccept ferme la modale d'acceptation (setAcceptTarget(null)) AVANT la
-réponse du serveur (await ventesApi.accepterDevis) : sur un refus 400 la saisie (signataire, ICE, date) est perdue et le `champ` servi n'est
-jamais lu. Le détecteur compare les positions dans le corps de submitAccept."""
+"""Constat C-AERR-005 (devis, S2, C2 ; tâches AERR5, AERR162, AERR120 ; correctifs dd9fd93542, 2042deebda) :
+pages/ventes/DevisList.jsx::submitAccept. La modale qui se ferme au clic est un choix du fondateur (la fête part au clic) ;
+le défaut est la saisie perdue sur un refus. Le détecteur lit le CORRECTIF dans le `catch` de submitAccept : la branche
+400 rouvre la modale (`setAcceptTarget(d)`) et lit `champ` ; la branche finale (panne / générique) rouvre aussi la modale ;
+et `openAcceptModal` est le SEUL endroit qui remet à zéro `setAcceptNom` / `setAcceptEntreprise` (la saisie survit à la
+réouverture). repro = l'un manque. Réécrite le 20/11/2026 : l'ancienne règle lisait un motif périmé."""
 SONDE = {"constat": "C-AERR-005", "sha": "3acfee471",
-         "attendu": 'setAcceptTarget(null) situé avant `ventesApi.accepterDevis(` dans submitAccept ; `champ` jamais lu'}
-import pathlib, re
-RACINE = pathlib.Path(__file__).resolve().parents[4]
+         "attendu": "catch de submitAccept sans setAcceptTarget(d) sur 400 ou sur la panne, `champ` non lu, ou remise à zéro de la saisie hors openAcceptModal"}
+import os, pathlib, re
+# AUDIT_RACINE (optionnel) : racine d'un autre arbre (témoin négatif sur l'arbre d'avant le correctif).
+RACINE = pathlib.Path(os.environ.get("AUDIT_RACINE") or pathlib.Path(__file__).resolve().parents[4])
 SRC = RACINE / "frontend/src"
 
 
@@ -99,17 +103,65 @@ def confirme(src, nom, portee=None):
 def rendu(repro_, introuvable, **details):
     return {"repro": bool(repro_), "observe": {"introuvable": introuvable, **details}, "methode": "lecture écran"}
 
+
+def bloc_apres(s, j):
+    """(corps, fin) du bloc `{...}` qui suit la position j (espaces sautés), sinon (None, j)."""
+    m = re.match(r"\s*\{", s[j:])
+    if not m:
+        return None, j
+    o = j + m.end() - 1
+    b = apparier(s, o)
+    return (b, o + len(b) + 2) if b is not None else (None, j)
+
+
+def branche_400(capt):
+    """(corps de la branche dont la condition cite 400, fin, corps de la DERNIÈRE branche de la même chaîne)."""
+    for m in re.finditer(r"\bif\s*\(", capt):
+        cond = apparier(capt, m.end() - 1, "(", ")")
+        if cond is None or not re.search(r"===?\s*400\b", cond):
+            continue
+        b, fin = bloc_apres(capt, m.end() + len(cond) + 1)
+        if b is None:
+            continue
+        dernier = None
+        while True:
+            e = re.match(r"\s*else\s*", capt[fin:])
+            if not e:
+                break
+            k = fin + e.end()
+            if re.match(r"if\s*\(", capt[k:]):
+                p = k + capt[k:].index("(")
+                c2 = apparier(capt, p, "(", ")") or ""
+                b2, fin2 = bloc_apres(capt, p + len(c2) + 2)
+            else:
+                b2, fin2 = bloc_apres(capt, k)
+            if b2 is None:
+                break
+            dernier, fin = b2, fin2
+        return b, dernier
+    return None, None
+
+
+ROUVRE = r"setAcceptTarget\(\s*(?!null\b)\w+\s*\)"
+REMISE = r"setAcceptNom\(\s*(?!e\.target)|setAcceptEntreprise\("
+
+
 def sonde(ctx=None):
     t = lire("pages/ventes/DevisList.jsx")
     c = corps(t, "submitAccept") if t else None
-    if c is None:
-        return rendu(False, ["pages/ventes/DevisList.jsx::submitAccept"])
-    i_ferme, i_appel = c.find("setAcceptTarget(null)"), c.find("accepterDevis(")
-    if i_appel < 0:
-        return rendu(False, ["submitAccept::accepterDevis("])
-    repro = 0 <= i_ferme < i_appel
-    return rendu(repro, [], ferme_avant_la_reponse=repro, position_fermeture=i_ferme, position_appel=i_appel,
-                 champ_lu_dans_submitAccept=bool(re.search(r"\bchamp\b", c)))
+    o = corps(t, "openAcceptModal") if t else None
+    if c is None or o is None:
+        return rendu(False, ["pages/ventes/DevisList.jsx::submitAccept/openAcceptModal"])
+    m = re.search(r"\bcatch\s*(?:\(\s*\w*\s*\))?\s*\{", c)
+    capt = apparier(c, m.end() - 1) if m else ""
+    b400, generique = branche_400(capt or "")
+    rouvre_400 = bool(b400 and re.search(ROUVRE, b400))
+    champ_lu = bool(b400 and re.search(r"\bchamp\b", b400))
+    rouvre_panne = bool(generique and re.search(ROUVRE, generique))
+    remises_hors = len(re.findall(REMISE, t)) - len(re.findall(REMISE, o))
+    repro = not (rouvre_400 and champ_lu and rouvre_panne) or remises_hors > 0
+    return rendu(repro, [], branche_400_trouvee=b400 is not None, rouvre_sur_400=rouvre_400, champ_lu_sur_400=champ_lu,
+                 rouvre_sur_panne=rouvre_panne, remises_de_saisie_hors_openAcceptModal=remises_hors)
 
 
 if __name__ == "__main__":

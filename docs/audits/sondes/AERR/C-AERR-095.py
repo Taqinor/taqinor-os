@@ -1,9 +1,14 @@
-"""Constat C-AERR-095 (stock, S2, C2) : pages/parametres/GammesMarquesPage.jsx::GammesMarquesPage, jumeau de C-AERR-027 : chargement raté -> formulaire vide éditable (le .catch ne pose
-qu'un toast) puis « Enregistrer » écrase ; variante AchatsParametresPage.jsx::submit : `if (!id) return` muet. Le détecteur lit le .catch du chargement et le début de submit."""
+"""Constat C-AERR-095 (stock, S2, C2 ; tâche AERR124, correctif ac12380d77) : pages/parametres/GammesMarquesPage.jsx (jumeau
+de C-AERR-027) et AchatsParametresPage.jsx. Chargement raté -> formulaire vide éditable puis « Enregistrer » écrase ou reste
+muet. Le détecteur lit le CORRECTIF : Gammes — le .catch du chargement pose un drapeau d'échec ou submit est gardé ;
+Achats — le .catch pose un drapeau (`setX(true)`), l'avis « Réglages illisibles » avec « Réessayer » est affiché sous ce
+drapeau, et le `disabled` de `<FormulaireReglages>` inclut ce drapeau. `if (!id) return` n'est plus compté.
+Réécrite le 20/11/2026 : l'ancienne règle lisait un motif périmé."""
 SONDE = {"constat": "C-AERR-095", "sha": "3acfee471",
-         "attendu": ".catch du chargement sans drapeau d'échec et submit non conditionné (Gammes) ; `if (!id) return` sans message (Achats)"}
-import pathlib, re
-RACINE = pathlib.Path(__file__).resolve().parents[4]
+         "attendu": ".catch du chargement sans drapeau d'échec et submit non gardé (Gammes) ; drapeau, avis « Réglages illisibles » + « Réessayer » ou disabled du formulaire manquant (Achats)"}
+import os, pathlib, re
+# AUDIT_RACINE (optionnel) : racine d'un autre arbre (témoin négatif sur l'arbre d'avant le correctif).
+RACINE = pathlib.Path(os.environ.get("AUDIT_RACINE") or pathlib.Path(__file__).resolve().parents[4])
 SRC = RACINE / "frontend/src"
 
 
@@ -88,6 +93,7 @@ def catchs(s):
 def rendu(repro_, introuvable, **details):
     return {"repro": bool(repro_), "observe": {"introuvable": introuvable, **details}, "methode": "lecture écran"}
 
+
 FLAG = r"set\w*(?:err|erreur|echec|fail|echoue)\w*|\b\w*(?:erreur|echec|echoue|loadError|loadFailed)\b"
 
 
@@ -107,14 +113,23 @@ def sonde(ctx=None):
         if not drapeau and not garde:
             rest.append("GammesMarquesPage")
     t = lire("pages/parametres/AchatsParametresPage.jsx")
-    sv = corps(t, "submit") if t else None
-    if sv is None:
-        intr.append("pages/parametres/AchatsParametresPage.jsx::submit")
+    sec = section(t, "AchatsParametresPage") if t else None
+    cs = catchs(sec) if sec else []
+    if not cs:
+        intr.append("pages/parametres/AchatsParametresPage.jsx::AchatsParametresPage (chargement .catch)")
     else:
-        m = re.search(r"if\s*\(\s*!\s*\w+\s*\)\s*return\s*(?:;|\n|\})", sv)
-        det["AchatsParametresPage.submit"] = {"retour_muet_sans_message": bool(m)}
-        if m:
-            rest.append("AchatsParametresPage.submit")
+        ms = re.search(r"\b(set\w+)\(\s*true\s*\)", cs[0])
+        mv = re.search(r"const\s*\[\s*(\w+)\s*,\s*" + re.escape(ms.group(1)) + r"\s*\]", sec) if ms else None
+        var = mv.group(1) if mv else None
+        pos = sec.find("Réglages illisibles")
+        avis = bool(var and pos >= 0 and "Réessayer" in sec[pos:pos + 500]
+                    and re.search(r"\{\s*" + re.escape(var) + r"\s*&&", sec[max(0, pos - 300):pos]))
+        md = re.search(r"<FormulaireReglages\b[^>]*?\bdisabled=\{([^}]*)\}", sec, re.S)
+        bloque = bool(var and md and re.search(r"\b" + re.escape(var) + r"\b", md.group(1)))
+        det["AchatsParametresPage"] = {"drapeau_d_echec": var, "avis_illisible_avec_reessayer": avis,
+                                       "formulaire_desactive_par_le_drapeau": bloque}
+        if not (var and avis and bloque):
+            rest.append("AchatsParametresPage")
     return rendu(rest, intr, emplacements_fautifs=rest, **det)
 
 

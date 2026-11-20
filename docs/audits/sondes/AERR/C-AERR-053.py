@@ -1,10 +1,13 @@
-"""Constat C-AERR-053 (lead, S2, C13) : pages/CalendarPage.jsx::load. `.catch(() => setEvents([]))` : une lecture ratée (ou la relecture
-après un glisser) affiche « Aucun évènement ce mois-ci » au lieu d'une erreur. Le détecteur cherche un `.catch` de `load` qui vide les
-évènements."""
+"""Constat C-AERR-053 (lead, S2, C13 ; tâche AERR109, correctif f7b29a80c0) : pages/CalendarPage.jsx::load.
+Une lecture ratée ne doit plus afficher « Aucun évènement ce mois-ci ». Le détecteur lit le CORRECTIF : le `.catch` de
+`load` pose un drapeau d'échec (`setX(true)` / setter d'erreur), ne vide les évènements (`setEvents([])`) que sous une
+condition de plage (`if (… !== plage)`), et l'état vide « Aucun évènement » est conditionné par `!<drapeau>`.
+repro = vidage inconditionnel, pas de drapeau, ou état vide non gardé. Réécrite le 20/11/2026 : l'ancienne règle lisait un motif périmé."""
 SONDE = {"constat": "C-AERR-053", "sha": "3acfee471",
-         "attendu": 'load contient un .catch qui appelle setEvents([])'}
-import pathlib, re
-RACINE = pathlib.Path(__file__).resolve().parents[4]
+         "attendu": "catch de load avec setEvents([]) inconditionnel, sans drapeau d'échec, ou « Aucun évènement » non gardé par ce drapeau"}
+import os, pathlib, re
+# AUDIT_RACINE (optionnel) : racine d'un autre arbre (témoin négatif sur l'arbre d'avant le correctif).
+RACINE = pathlib.Path(os.environ.get("AUDIT_RACINE") or pathlib.Path(__file__).resolve().parents[4])
 SRC = RACINE / "frontend/src"
 
 
@@ -80,14 +83,46 @@ def catchs(s):
 def rendu(repro_, introuvable, **details):
     return {"repro": bool(repro_), "observe": {"introuvable": introuvable, **details}, "methode": "lecture écran"}
 
+
+def inconditionnel(capt, i):
+    """Vrai si l'appel en position i n'est pas sous un `if (… !== …)` (forme ligne ou bloc)."""
+    debut = max(capt.rfind(x, 0, i) + len(x) for x in ("\n", ";", "{", "=>")) if capt[:i] else 0
+    pre = capt[debut:i].strip()
+    m = re.fullmatch(r"if\s*\((.*)\)", pre, re.S)
+    if m:
+        return "!==" not in m.group(1)
+    if not pre and capt.rfind("{", 0, i) + 1 == debut:
+        avant = capt[:debut - 1].rstrip()
+        k = avant.rfind("if")
+        if k >= 0 and re.fullmatch(r"if\s*\(.*!==.*\)", avant[k:], re.S):
+            return False
+    return True
+
+
 def sonde(ctx=None):
     t = lire("pages/CalendarPage.jsx")
     b = corps(t, "load") if t else None
     if b is None:
         return rendu(False, ["pages/CalendarPage.jsx::load"])
-    vide = [c for c in catchs(b) if re.search(r"setEvents\(\s*\[\s*\]\s*\)", c)]
-    return rendu(vide, [], catch_qui_vident_les_evenements=len(vide),
-                 etat_d_erreur=bool(re.search(r"setErr\w*\(", b)))
+    cs = catchs(b)
+    vidages = [inconditionnel(c, m.start()) for c in cs for m in re.finditer(r"setEvents\(\s*\[\s*\]\s*\)", c)]
+    setters = [m.group(1) for c in cs for m in re.finditer(r"\b(set\w+)\(\s*(?:true\b|['\"`])", c)
+               if m.group(1) not in ("setEvents", "setLoading")]
+    var = None
+    for st in setters:
+        mv = re.search(r"const\s*\[\s*(\w+)\s*,\s*" + re.escape(st) + r"\s*\]", t)
+        if mv:
+            var = mv.group(1); break
+    pos = t.find("Aucun évènement ce mois-ci")
+    vide_garde = False
+    if pos >= 0 and var:
+        tag = t.rfind("<", 0, pos)
+        cond = t[t.rfind("{", 0, tag):tag]
+        vide_garde = bool(re.search(r"!\s*" + re.escape(var) + r"\b", cond))
+    repro = any(vidages) or not var or not vide_garde
+    return rendu(repro, [], vidages_inconditionnels=sum(vidages), drapeau_d_echec=var,
+                 etat_vide_garde_par_le_drapeau=vide_garde)
+
 
 if __name__ == "__main__":
     import json

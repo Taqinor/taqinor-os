@@ -1,10 +1,13 @@
-"""Constat C-AERR-002 (devis, S2, C13) : pages/ventes/DevisList.jsx::DevisList (retours anticipés `if (loading)` / `if (error)` sans condition sur
-devis.length) et gestes qui relisent TOUTE la liste (handleDelete, submitVariante, submitGamme, repli de ventesSlice.js::rafraichirDevis).
-Le détecteur liste les emplacements où le motif est encore présent."""
+"""Constat C-AERR-002 (devis, S2, C13 ; tâche AERR2, correctif 2ff2465dee) : pages/ventes/DevisList.jsx::DevisList.
+Une relecture ratée ou en cours ne doit plus démonter la liste. Le détecteur lit le CORRECTIF : les deux retours anticipés
+(`if (loading && …)` / `if (error && …)`) portent la condition `devis.length === 0`, et la liste gardée affiche l'avis
+« Liste pas à jour » (`data-testid="devis-pas-a-jour"`) avec « Réessayer ». repro = l'un des trois manque.
+Réécrite le 20/11/2026 : l'ancienne règle lisait un motif périmé."""
 SONDE = {"constat": "C-AERR-002", "sha": "3acfee471",
-         "attendu": 'DevisList : `if (loading)` / `if (error)` sans devis.length ; dispatch(fetchDevis()) dans handleDelete/submitVariante/submitGamme et dans le catch de rafraichirDevis'}
-import pathlib, re
-RACINE = pathlib.Path(__file__).resolve().parents[4]
+         "attendu": "un retour anticipé `if (loading…)` / `if (error…)` sans `devis.length === 0`, ou pas d'avis devis-pas-a-jour avec « Réessayer »"}
+import os, pathlib, re
+# AUDIT_RACINE (optionnel) : racine d'un autre arbre (témoin négatif sur l'arbre d'avant le correctif).
+RACINE = pathlib.Path(os.environ.get("AUDIT_RACINE") or pathlib.Path(__file__).resolve().parents[4])
 SRC = RACINE / "frontend/src"
 
 
@@ -99,34 +102,29 @@ def confirme(src, nom, portee=None):
 def rendu(repro_, introuvable, **details):
     return {"repro": bool(repro_), "observe": {"introuvable": introuvable, **details}, "methode": "lecture écran"}
 
+
+LIGNES = r"devis\.length\s*===?\s*0|!\s*devis\.length\b"
+
+
 def sonde(ctx=None):
     intr, rest, det = [], [], {}
     dl = lire("pages/ventes/DevisList.jsx")
     sec = section(dl, "DevisList") if dl else None
     if sec is None:
-        intr.append("pages/ventes/DevisList.jsx::DevisList")
-    else:
-        for nom, mot in (("retour_chargement", "loading"), ("retour_erreur", "error")):
-            m = re.search(r"if\s*\(\s*(" + mot + r"[^)]*)\)\s*\{\s*return", sec)
-            if not m:
-                intr.append("DevisList::" + nom); continue
-            det[nom] = {"condition": m.group(1).strip(), "garde_sur_les_lignes": "length" in m.group(1)}
-            if "length" not in m.group(1):
-                rest.append("DevisList::" + nom)
-        for fn in ("handleDelete", "submitVariante", "submitGamme"):
-            c = corps(dl, fn)
-            if c is None:
-                intr.append("DevisList::" + fn); continue
-            if re.search(r"dispatch\(\s*fetchDevis\(\s*\)\s*\)", c):
-                rest.append("DevisList::%s relit toute la liste" % fn)
-    sl = lire("features/ventes/store/ventesSlice.js")
-    c = corps(sl, "rafraichirDevis") if sl else None
-    if c is None:
-        intr.append("ventesSlice.js::rafraichirDevis")
-    else:
-        blocs = [apparier(c, m.start(1)) or "" for m in re.finditer(r"catch\s*(?:\([^)]*\))?\s*(\{)", c)]
-        if any("fetchDevis(" in b for b in blocs):
-            rest.append("ventesSlice::rafraichirDevis (repli du catch) relit toute la liste")
+        return rendu(False, ["pages/ventes/DevisList.jsx::DevisList"])
+    for nom, mot in (("retour_chargement", "loading"), ("retour_erreur", "error")):
+        m = re.search(r"if\s*\(\s*(" + mot + r"\b[^)]*)\)\s*\{\s*return", sec)
+        if not m:
+            intr.append("DevisList::" + nom); continue
+        garde = bool(re.search(LIGNES, m.group(1)))
+        det[nom] = {"condition": m.group(1).strip(), "garde_sur_les_lignes": garde}
+        if not garde:
+            rest.append("DevisList::%s sans devis.length === 0" % nom)
+    i = sec.find('data-testid="devis-pas-a-jour"')
+    avis = i >= 0 and "Réessayer" in sec[i:i + 900]
+    det["avis_pas_a_jour_avec_reessayer"] = avis
+    if not avis:
+        rest.append("DevisList : avis « Liste pas à jour » + « Réessayer » absent")
     return rendu(rest, intr, defaut_encore_present=rest, **det)
 
 
