@@ -50,12 +50,6 @@
           "source": "texte",
           "reference": "PVsyst, U-value (thermal losses) : free-standing (open-rack), « with air circulation all around the collectors » : Uc = 29 W/m²K, Uv = 0"
         },
-        "semi_integre": {
-          "uc_w_m2k": 20,
-          "uv_w_m3sk": 0,
-          "source": "texte",
-          "reference": "PVsyst, U-value (thermal losses) : « semi-integration, air duct below the collectors » — « The default value proposed by PVsyst for any new project » : Uc = 20 W/m²K, Uv = 0"
-        },
         "dos_isole": {
           "uc_w_m2k": 15,
           "uv_w_m3sk": 0,
@@ -65,7 +59,7 @@
       },
       "unite": "W/m²K et W/m³sK",
       "source": "texte",
-      "reference": "Profil de départ — PVsyst, U-value (thermal losses) : trois lignes nommées par les cas de la page (pose libre, semi-intégrée, dos isolé) ; aucune correspondance vers les types de pose du document n'est supposée",
+      "reference": "Profil de départ — PVsyst, U-value (thermal losses) : deux lignes nommées par les cas chiffrés de la page (pose libre, dos isolé) ; la semi-intégration n'y a pas de valeur (« between these 2 limits »), relu le 20/11/2026 ; aucune correspondance vers les types de pose du document n'est supposée",
       "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-thermal-losses/u-value-measurement.html",
       "date_lecture": "2026-11-20"
     },
