@@ -44,6 +44,9 @@ export const simulation = {
     simuler: (id, { forcer = false } = {}) =>
       api.post(`${pivot(id)}simuler/`, { forcer }),
 
+    // ACAL392 — l'état du parcours guidé (contrat `calepinage_parcours_guide.json`).
+    parcours: (id) => api.get(`${pivot(id)}parcours/`),
+
     // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
     // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR
     // À L'ÉCRITURE DE CETTE LIGNE : la route n'existe pas encore — son

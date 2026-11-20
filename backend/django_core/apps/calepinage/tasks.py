@@ -27,9 +27,9 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['KIND_CALEPINAGE', 'NATURE_SIMULATION', 'calculer_calepinage',
-           'cle_resultat', 'cle_job', 'resultat_du_job',
-           'simuler_calepinage']
+__all__ = ['KIND_CALEPINAGE', 'NATURE_BALAYAGE', 'NATURE_SIMULATION',
+           'balayer_calepinage', 'calculer_calepinage', 'cle_resultat',
+           'cle_job', 'resultat_du_job', 'simuler_calepinage']
 
 #: Type logique du job de fond (``BackgroundJob.kind``) — UN SEUL pour tout le
 #: module, y compris les soumissions multiples.
@@ -43,6 +43,9 @@ DUREE_CACHE_S = 24 * 3600
 #: Un second kind rendrait ``GET moteur/resultat/<job_id>/`` 404, puisque cette
 #: vue filtre sur ``kind=KIND_CALEPINAGE`` (``views/moteur.py``).
 NATURE_SIMULATION = 'simulation'
+
+#: ACAL468 / ACAL388 — le BALAYAGE d'orientation d'un pan, même kind.
+NATURE_BALAYAGE = 'balayage'
 
 
 def cle_resultat(hash_entree, version_moteur):
@@ -239,6 +242,64 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
                             'statut': 'done', 'motif': '',
                             'resultat': resume}],
               'resultat': resume}
+    cache_tenant.set(job.company_id, cle_job(job.pk), charge,
+                     timeout=DUREE_CACHE_S)
+    job.marquer_termine(cle_job(job.pk))
+    return {'statut': 'done', 'calepinage': calepinage.pk}
+
+
+@shared_task(name='calepinage.balayer')
+def balayer_calepinage(job_id=None, company_id=None, calepinage_id=None,
+                       corps=None, nature=NATURE_BALAYAGE):
+    """ACAL468 — le BALAYAGE d'orientation hors requête (``nature`` =
+    ``balayage``, même kind que la simulation, D-CALX 12).
+
+    Prend des DONNÉES (``corps`` = ``{pan, axes}``), jamais une instance : le
+    calepinage est relu ICI, borné à la société du job. Rien n'est écrit au
+    calepinage ; le résultat vit dans le cache du job (``cle_job``, 24 h).
+    Un refus est publié comme celui d'une simulation (champ nommé).
+    """
+    from core import cache as cache_tenant
+    from core.models import BackgroundJob
+
+    from .models import Calepinage
+    from .services.balayage import BalayageInvalide, balayer
+    from .services.simulation import SimulationRefusee
+
+    job = BackgroundJob.objects.filter(pk=job_id).first()
+    if job is None:
+        logger.info('calepinage.balayer : job #%s introuvable', job_id)
+        return {'statut': 'inconnu'}
+
+    calepinage = (Calepinage.objects
+                  .filter(pk=calepinage_id, company=job.company)
+                  .first())
+    if calepinage is None:
+        job.marquer_echec('Calepinage introuvable : le balayage est '
+                          'abandonné.')
+        return {'statut': 'failed', 'motif': 'calepinage introuvable'}
+
+    job.marquer_progression(5)
+    try:
+        resultat = balayer(calepinage, corps,
+                           progression=job.marquer_progression)
+    except BalayageInvalide as refus:
+        _publier_echec(job, calepinage, refus.champ or 'balayage', str(refus))
+        return {'statut': 'failed', 'champ': refus.champ}
+    except SimulationRefusee as refus:
+        _publier_echec(job, calepinage, refus.champ or 'simulation',
+                       refus.motif)
+        return {'statut': 'failed', 'champ': refus.champ}
+    except Exception as erreur:  # l'issue est publiée, pas avalée
+        logger.exception('calepinage.balayer : calepinage #%s en échec',
+                         calepinage_id)
+        _publier_echec(job, calepinage, '', str(erreur))
+        return {'statut': 'failed', 'motif': str(erreur)}
+
+    charge = {'elements': [{'index': 0, 'repere': str(calepinage.pk),
+                            'statut': 'done', 'motif': '',
+                            'resultat': resultat}],
+              'resultat': resultat}
     cache_tenant.set(job.company_id, cle_job(job.pk), charge,
                      timeout=DUREE_CACHE_S)
     job.marquer_termine(cle_job(job.pk))

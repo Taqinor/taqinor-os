@@ -145,6 +145,14 @@ from . import assistant as _assistant_actions  # noqa: F401 — import d'enregis
 # ACAL400 — même patron : rattache ``brouillon`` (GET/PUT/DELETE du brouillon
 # d'atelier de l'appelant, côté serveur, ``services/brouillon.py``).
 from . import brouillon as _brouillon_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL392 — même patron : rattache ``parcours`` (GET l'état des 5 étapes du
+# parcours guidé et « ce qui manque » regroupé, ``services/parcours_guide.py``).
+# Lecture PURE : ni statut, ni version, ni écriture.
+from . import parcours_guide as _parcours_guide_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL468 — même patron : rattache ``balayage`` (POST le balayage d'orientation
+# d'un pan libre en tâche de fond, ``services/balayage.py``, nature ``balayage``).
+# N'écrit RIEN au calepinage : il ne simule que des copies du document.
+from . import balayage as _balayage_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -185,6 +193,8 @@ MODULES_RATTACHES = (
     'fond_plan',  # ACAL72
     'assistant',  # CALA2
     'brouillon',  # ACAL400
+    'parcours_guide',  # ACAL392
+    'balayage',  # ACAL468
 )
 
 __all__ = ['MODULES_RATTACHES']

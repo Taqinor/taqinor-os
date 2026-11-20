@@ -717,6 +717,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.parcours": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/parcours/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.pertes": [
     {
       "config": null,
