@@ -1932,7 +1932,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               Marquer réceptionné
             </Button>
           )}
-          <Button variant="outline" onClick={onClose}>Fermer</Button>
+          <Button variant="outline" onClick={() => confirmLeaveIfDirty(dirty).then((ok) => ok && onClose?.())}>Fermer</Button>
           {peutGerer && <Button loading={saving} onClick={handleSave}>
             {saving ? 'Enregistrement…' : 'Mettre à jour'}
           </Button>}
