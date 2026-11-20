@@ -2,7 +2,9 @@ import { Suspense, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../../api/axios'
 import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui'
-import { PARAM_ONGLET, groupesOnglets, resoudreOnglet } from './onglets'
+import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
+import RailGuide from './RailGuide'
+import { ETAPES, etapeActive, ongletsVisibles, useEtatsParcours } from './parcoursGuide'
 
 /* ============================================================================
    CALX1 — LE RAIL D'ONGLETS DE L'ATELIER.
@@ -149,8 +151,12 @@ export default function Rail({
 
   const [parametres, setParametres] = useSearchParams()
   const actif = resoudreOnglet(parametres.get(PARAM_ONGLET))
-  const groupes = groupesOnglets()
   const cleActive = actif?.cle ?? null
+  // ACAL393 — rail guidé : 5 étapes ; pour l'étape active, ses seuls essentiels
+  // (+ l'onglet ouvert s'il est expert). L'étape se déduit de l'URL.
+  const etats = useEtatsParcours(calepinageId)
+  const cleEtape = etapeActive(cleActive, etats)
+  const visibles = ongletsVisibles(cleEtape, cleActive).map(ongletParCle).filter(Boolean)
 
   // CALX392 — le panneau à focaliser, et SI une ouverture le demande.
   const panneauRef = useRef(null)
@@ -183,6 +189,11 @@ export default function Rail({
     setParametres(suivants)
   }
 
+  const choisirEtape = (cle) => {
+    const premier = ongletsVisibles(cle)[0] ?? ETAPES.find((e) => e.cle === cle)?.onglets[0]
+    if (premier) ouvrir(premier)
+  }
+
   const Composant = actif?.composant ?? null
 
   return (
@@ -204,25 +215,19 @@ export default function Rail({
           Lexique des termes du solaire
         </Link>
       </p>
+      <RailGuide etapeActive={cleEtape} etats={etats} onChoisir={choisirEtape} />
       <TabsList
         aria-label="Onglets du calepinage"
         className="flex w-full flex-wrap gap-x-1 gap-y-1.5"
       >
-        {groupes.map(({ groupe, onglets }) => (
-          <span key={groupe} role="none" className="flex flex-wrap items-center gap-1">
-            {/* L'intertitre du groupe : un repère visuel, jamais un élément
-                interactif (il resterait sur le chemin du clavier pour rien). */}
-            <span className="tech-label px-1 text-lune-faint" aria-hidden="true">{groupe}</span>
-            {onglets.map((onglet) => (
-              <TabsTrigger
-                key={onglet.cle}
-                value={onglet.cle}
-                data-testid={`cal-onglet-${onglet.cle}`}
-              >
-                {onglet.libelle}
-              </TabsTrigger>
-            ))}
-          </span>
+        {visibles.map((onglet) => (
+          <TabsTrigger
+            key={onglet.cle}
+            value={onglet.cle}
+            data-testid={`cal-onglet-${onglet.cle}`}
+          >
+            {onglet.libelle}
+          </TabsTrigger>
         ))}
       </TabsList>
 
