@@ -2,6 +2,7 @@
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
 import { describe, expect, it } from 'vitest';
+import { dimensionsTexture } from './panelTexture';
 import {
   generateRoofShapePans,
   computeRidgeLifts,
@@ -681,5 +682,25 @@ describe('ACAL87 — capture de l’aperçu après rendu', () => {
     const carte = { once: () => { throw new Error('carte détachée'); }, triggerRepaint: () => {} };
     await expect(capturerApresRendu(carte, { toDataURL: () => 'x' }, () => OPAQUE, 10))
       .resolves.toBeNull();
+  });
+});
+
+describe('ACAL433 : la grille de texture suit le rapport du panneau', () => {
+  const pas = (r: number) => {
+    const d = dimensionsTexture(r);
+    return { d, h: (d.w - 28) / d.cols, v: (d.h - 34) / 2 / d.rowsHalf };
+  };
+  it('1,83 : rendu identique a aujourd hui (512 x 280, 24 colonnes, 3 demi-rangees)', () => {
+    expect(dimensionsTexture(1.83)).toEqual({ w: 512, h: 280, cols: 24, rowsHalf: 3 });
+  });
+  it.each([1303 / 2384, 1.52, 1 / 1.52])('rapport %f : canevas au rapport, cellules carrées (écart <= 5 %)', (r) => {
+    const { d, h, v } = pas(r);
+    if (Math.round(r * 100) === 183) return; // 1,83 : grille d'origine conservée telle quelle (cas ci-dessus)
+    expect(Math.abs(h / v - 1)).toBeLessThanOrEqual(0.05);
+    expect(Math.abs(d.w / d.h / r - 1)).toBeLessThanOrEqual(0.03);
+  });
+  it('portrait et paysage donnent des grilles différentes (le rapport est lu)', () => {
+    expect(dimensionsTexture(0.55)).not.toEqual(dimensionsTexture(1.83));
+    expect(dimensionsTexture(1.52)).not.toEqual(dimensionsTexture(1.83));
   });
 });
