@@ -189,7 +189,10 @@ import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
-import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
+import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
+import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
+import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
   deltaMetresFond,
@@ -1131,6 +1134,24 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     redrawObstacles: () => redrawObstacles(), // CALX97 câblage
     recalc: () => recalc(), // CALX97 câblage
     setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
+    apresRendu: () => { formesToit.rafraichir(); toitParCotes.rafraichir(); }, // ACAL410 · ACAL422
+  });
+  // ACAL422 — « Créer le toit » : longueur × largeur × orientation saisies, contour fermé par `close`.
+  const toitParCotes = monterToitParCotes({
+    ancre: addAreaBtn, vide: () => !closed && vertices.length === 0, setStatus: (m) => setStatus(m),
+    centre: () => { const c = map.getCenter?.(); return c ? [c.lng, c.lat] : null; },
+    creer: (anneau) => { vertices = anneau; close(); },
+  });
+  // ACAL410 — « Forme du toit » : un clic remplace le pan actif par les pans de la forme.
+  const formesToit = monterFormesToit({
+    ancre: addAreaBtn, contour: () => (closed ? vertices : []), pente: () => pitchDeg, existants: () => areas,
+    obstacles: () => obstacles.length, setStatus: (m) => setStatus(m),
+    appliquer: (pans) => {
+      areas.splice(Math.max(0, areas.findIndex((a) => a.id === activeAreaId)), 1, ...pans);
+      activeAreaId = pans[0].id;
+      loadArea(pans[0]);
+      renderAreasPanel();
+    },
   });
   const liveActiveResult = zones.liveActiveResult;
   const snapshotActiveAreaResult = zones.snapshotActiveAreaResult;
@@ -1285,8 +1306,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W69 — « Personnaliser la disposition ». `renderScene`/`renderActive`/`obstacleMode`
   // sont déclarés plus bas : injectés en wrappers paresseux (hoistés, référencés à
   // l'exécution). Le module câble lui-même +/−/reset/grille tactile/glissé 3D.
+  let barreSelection: { rafraichir: () => void } | undefined; // ACAL411
   const layoutEditor = createLayoutEditor(ctx, {
     map,
+    onSelectionChange: () => barreSelection?.rafraichir(), // ACAL411
     renderScene: (pack, grid, tiltDeg, family, maxCount, flush, occupiedSet) =>
       renderScene(pack, grid, tiltDeg, family, maxCount, flush, occupiedSet),
     prodConfigFromState,
@@ -1309,6 +1332,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W79 — `occupiedCenters`/`reenterCustomLayout` permettent à recalc() de re-entrer la
   // disposition personnalisée (re-snap sur la nouvelle lattice) après une édition d'obstacle
   // ou d'axe pendant que l'éditeur est ouvert. Les autres méthodes pilotent le câblage interne.
+  barreSelection = creerBarreSelection({ hote: () => map.getContainer?.() ?? null, editeur: layoutEditor, setStatus: (m) => setStatus(m) }); // ACAL411
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
   const occupiedCenters = layoutEditor.occupiedCenters;
   const reenterCustomLayout = layoutEditor.reenterCustomLayout;
@@ -2965,6 +2989,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   finishBtn?.addEventListener('click', close);
   clearBtn?.addEventListener('click', reset);
+  creerAnnulerAtelier({ // ACAL412 — ↶ ↷ + Ctrl+Z / Ctrl+Y hors du panneau de disposition
+    ancre: clearBtn, editeur: layoutEditor, modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState),
+    apres: () => { redrawTrace(); redrawObstacles(); recalc(); }, setStatus: (m) => setStatus(m),
+  });
 
   // — « Plusieurs zones » : ajouter une zone + sélection/suppression dans la liste —
   addAreaBtn?.addEventListener('click', addArea);
@@ -4143,6 +4171,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   let aimantationActive = true;
   function basculerAimantation() {
     aimantationActive = !aimantationActive;
+    ctx.aimantationActive = aimantationActive; // ACAL425 — le glissé libre lit le même état
     if (aimantationActive && layoutEditor.isFreeMode()) {
       const poses = layoutEditor.freePanels();
       if (poses.length) {

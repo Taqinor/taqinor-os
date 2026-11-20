@@ -309,6 +309,8 @@ export interface Ctx {
   /** Marges RELÂCHABLES courantes (retrait de rive + écart entre panneaux), en mètres.
    *  Initialisées sur les valeurs de l'étude ; l'utilisateur a le droit de les baisser. */
   freeMargins: FreeMargins;
+  /** ACAL425 — aimantation du glissé libre (touche A) ; absent = allumée. */
+  aimantationActive?: boolean;
 
   // — W68 « Affiner ma consommation » (mutable) —
   /** Le panneau « Affiner » est-il ouvert ? */

@@ -14,6 +14,10 @@
 // « posé à l'abscisse u » a donc son centre ENU en `cx = -u, cy = v`.
 import { describe, expect, it, vi } from 'vitest';
 import { createLayoutEditor } from './layoutEditor';
+import { creerBarreSelection } from './barreSelection';
+import { creerAnnulerAtelier } from './annulerAtelier';
+import { glisserAimante } from './reperesAlignement';
+import { freeGeomFrom } from './freeMode';
 import { type Ctx } from './context';
 import { type LayoutPlan } from './types';
 import { createLayoutState } from '../../lib/layoutVariability';
@@ -292,5 +296,139 @@ describe('ACAL28 — hydrateLayout free conserve face E/W', () => {
     expect(editor.hydrateLayout(enregistres, [-7.6, 33.5], 'free')).toBe(true);
     const reposes = editor.freePanels();
     expect(reposes.map((p) => p.face)).toEqual(['E', 'W', undefined]);
+  });
+});
+
+// ACAL411 — la barre Pivoter / Aligner / Répartir pilote les fonctions de sélection libre.
+describe('ACAL411 — barre de sélection : aligner, répartir, pivoter', () => {
+  function monterBarre(panels: FreePanel[]) {
+    const { map } = makeMap();
+    const ctx = makeFreeCtx(makePlan(40), panels);
+    let barre: { rafraichir: () => void } | undefined;
+    const editor = createLayoutEditor(ctx, { ...makeDeps(map), onSelectionChange: () => barre?.rafraichir() });
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    const statuts: string[] = [];
+    barre = creerBarreSelection({ hote: () => hote, editeur: editor, setStatus: (m) => void statuts.push(m) });
+    const clic = (txt: string) =>
+      [...hote.querySelectorAll('button')].find((b) => b.textContent === txt)!.click();
+    return { editor, hote, statuts, clic };
+  }
+
+  it('« Aligner en rangée » met 3 centres sur la même coordonnée v, « Répartir » refuse à 2 panneaux', () => {
+    const { editor, hote, statuts, clic } = monterBarre([
+      { cx: 0, cy: 0 },
+      { cx: -4, cy: 1.5 },
+      { cx: -8, cy: -1 },
+    ]);
+    const barre = hote.querySelector('#rp9-barre-selection') as HTMLElement;
+    expect(barre.style.display).toBe('none');
+    editor.setSelection([0, 1, 2]);
+    expect(barre.style.display).toBe('flex');
+    clic('Aligner en rangée');
+    const cys = editor.freePanels().map((p) => p.cy);
+    expect(cys[1]).toBeCloseTo(cys[0], 9);
+    expect(cys[2]).toBeCloseTo(cys[0], 9);
+    expect(document.getElementById('rp9-layout-note')?.textContent).toContain('Aligné — 3 panneaux');
+    editor.setSelection([0, 1]);
+    clic('Répartir');
+    expect(statuts.at(-1)).toContain('au moins 3 panneaux');
+  });
+
+  it('« Pivoter » lit un angle libre ; un angle illisible est refusé en nommant le champ', () => {
+    const { editor, hote, statuts, clic } = monterBarre([{ cx: 0, cy: 0 }]);
+    editor.setSelection([0]);
+    (hote.querySelector('input') as HTMLInputElement).value = 'abc';
+    clic('Pivoter');
+    expect(statuts.at(-1)).toContain('angle');
+    (hote.querySelector('input') as HTMLInputElement).value = '12,5';
+    clic('Pivoter');
+    expect(editor.freePanels()[0].angleDeg).toBeCloseTo(12.5, 9);
+  });
+});
+
+// ACAL425 — aimantation et repères pendant le glissé libre.
+describe('ACAL425 — glissé libre : colle au voisin à moins du seuil et publie un repère ; coupé par A', () => {
+  const panels: FreePanel[] = [{ cx: 0, cy: 0 }, { cx: -2.05, cy: 0.03 }]; // u = 0 et 2,05 : 5 cm du collage
+  function essai(actif: boolean, poserOk = true) {
+    const { map } = makeMap();
+    const plan = makePlan(40);
+    const editor = createLayoutEditor(makeFreeCtx(plan, panels.map((p) => ({ ...p }))), makeDeps(map));
+    const g = freeGeomFrom(plan, [])!;
+    const poses: Array<[number, number]> = [];
+    const segs: unknown[][] = [];
+    const res = glisserAimante({
+      actif, idx: 1, g, panels, anchor: { cx: -6, cy: 0 }, dx: 3.95, dy: 0.03,
+      snap: editor.freeSnapCandidate,
+      poser: (dx, dy) => {
+        poses.push([dx, dy]);
+        return { ok: poserOk || poses.length > 1 };
+      },
+      reperes: { afficher: (s) => void segs.push([...s]) },
+    });
+    return { res, poses, segs, g };
+  }
+
+  it('collé : la position vise u = 2 (bord à bord), un repère longe le bord commun', () => {
+    const { poses, segs } = essai(true);
+    expect(poses).toHaveLength(1);
+    expect(poses[0][0]).toBeCloseTo(4, 9); // cx cible -2 depuis -6
+    expect(segs.at(-1)).toHaveLength(1);
+  });
+
+  it('aimantation coupée : ni collage ni repère ; collage refusé par une contrainte dure : ignoré', () => {
+    const coupe = essai(false);
+    expect(coupe.poses).toEqual([[3.95, 0.03]]);
+    expect(coupe.segs.at(-1)).toEqual([]);
+    const dur = essai(true, false);
+    expect(dur.poses).toHaveLength(2);
+    expect(dur.poses[1]).toEqual([3.95, 0.03]);
+    expect(dur.segs.at(-1)).toEqual([]);
+  });
+});
+
+// ACAL412 — Annuler / Rétablir joignables hors du panneau de disposition.
+describe('ACAL412 — Ctrl+Z hors mode disposition restaure le sommet et redessine', () => {
+  function monter() {
+    const { map } = makeMap();
+    const ctx = makeFreeCtx(makePlan(40), []);
+    (ctx as unknown as { layoutMode: boolean }).layoutMode = false;
+    (ctx as unknown as { vertices: [number, number][] }).vertices = [[0, 0], [1, 0], [1, 1]];
+    const editor = createLayoutEditor(ctx, makeDeps(map));
+    const redessins = vi.fn();
+    const statuts: string[] = [];
+    const a = creerAnnulerAtelier({
+      ancre: null,
+      editeur: editor,
+      modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState),
+      apres: redessins,
+      setStatus: (m) => void statuts.push(m),
+    });
+    return { ctx, a, redessins, statuts };
+  }
+
+  it('un sommet déplacé s’annule par Ctrl+Z puis se rétablit, avec redessin', () => {
+    const { ctx, a, redessins } = monter();
+    ctx.pushWorkshopHistory?.(); // photo AVANT le déplacement, comme obstaclesUi
+    (ctx as unknown as { vertices: [number, number][] }).vertices = [[0, 0], [1, 0], [5, 5]];
+    const evt = { key: 'z', ctrlKey: true, target: document.body, preventDefault: vi.fn() };
+    expect(a.surFrappe(evt)).toBe(true);
+    expect(evt.preventDefault).toHaveBeenCalled();
+    expect(ctx.vertices[2]).toEqual([1, 1]);
+    expect(redessins).toHaveBeenCalledTimes(1);
+    expect(a.surFrappe({ key: 'y', ctrlKey: true, target: document.body })).toBe(true);
+    expect(ctx.vertices[2]).toEqual([5, 5]);
+  });
+
+  it('rien à annuler : la touche reste au navigateur ; champ de saisie et mode disposition : intacts', () => {
+    const { ctx, a, statuts } = monter();
+    const evt = { key: 'z', ctrlKey: true, target: document.body, preventDefault: vi.fn() };
+    expect(a.surFrappe(evt)).toBe(false);
+    expect(evt.preventDefault).not.toHaveBeenCalled();
+    expect(statuts.at(-1)).toBe('Rien à annuler.');
+    ctx.pushWorkshopHistory?.();
+    const champ = document.createElement('input');
+    expect(a.surFrappe({ key: 'z', ctrlKey: true, target: champ })).toBe(false); // Ctrl+Z dans un champ
+    expect(a.annuler()).toBe(true); // la photo est restée intacte
   });
 });

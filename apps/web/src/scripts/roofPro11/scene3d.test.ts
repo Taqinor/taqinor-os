@@ -29,6 +29,7 @@ import {
   imageEntierementTransparente,
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
+import { decouperContour, monterFormesToit } from './formesToit';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { rectRing } from './harnaisAtelier';
 
@@ -702,5 +703,48 @@ describe('ACAL433 : la grille de texture suit le rapport du panneau', () => {
   it('portrait et paysage donnent des grilles différentes (le rapport est lu)', () => {
     expect(dimensionsTexture(0.55)).not.toEqual(dimensionsTexture(1.83));
     expect(dimensionsTexture(1.52)).not.toEqual(dimensionsTexture(1.83));
+  });
+});
+
+describe('ACAL410 — puces de forme : 4 pans, L refusé sur contour convexe', () => {
+  it('« 4 pans » sur un contour de 4 sommets : 4 pans à la pente SAISIE, aire conservée, ids neufs', () => {
+    const ring = rectRing(10, 6);
+    const v = decouperContour(ring, 'hip', 30, [{ id: 'area-1' }]);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.pans).toHaveLength(4);
+    for (const p of v.pans) expect(p.pitchDeg).toBe(30);
+    expect(new Set(v.pans.map((p) => p.id)).size).toBe(4);
+    expect(v.pans.map((p) => p.id)).not.toContain('area-1');
+    expect(sumAreaM2(v.pans.map((p) => ({ vertices: p.vertices, facingAzimuthDeg: 0 }))) / geodesicAreaM2(ring)).toBeCloseTo(1, 6);
+  });
+
+  it('« L » et « T » sur un contour CONVEXE : refus nommé, rien de produit', () => {
+    for (const f of ['l_gable', 't_gable'] as const) {
+      const v = decouperContour(rectRing(10, 6), f, 30, []);
+      expect(v.ok).toBe(false);
+      if (!v.ok) expect(v.motif).toMatch(/convexe/i);
+    }
+  });
+
+  it('un clic remplace le pan actif ; un pan à obstacles est refusé sans rien changer', () => {
+    let appels = 0;
+    let statut = '';
+    let nbObstacles = 0;
+    const f = monterFormesToit({
+      ancre: null,
+      contour: () => rectRing(10, 6),
+      pente: () => 30,
+      existants: () => [{ id: 'area-1' }],
+      obstacles: () => nbObstacles,
+      appliquer: (pans) => void (appels += pans.length),
+      setStatus: (m) => void (statut = m),
+    });
+    expect(f.cliquer('hip').ok).toBe(true);
+    expect(appels).toBe(4);
+    nbObstacles = 1;
+    expect(f.cliquer('gable').ok).toBe(false);
+    expect(appels).toBe(4);
+    expect(statut).toMatch(/obstacles/);
   });
 });

@@ -52,6 +52,7 @@ import { $, fmt } from './dom';
 import { type Ctx } from './context';
 import { type LngLat, pointInPolygon } from '../../lib/roof';
 import { type ProdConfig, type RenderSceneFn } from './types';
+import { creerCalqueReperes, glisserAimante } from './reperesAlignement'; // ACAL425
 import { createLayoutHistory, createValueHistory, createWorkshopHistory, type WorkshopSnapshot } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
 import {
@@ -123,6 +124,8 @@ export interface LayoutEditorDeps {
    *  disposition personnalisée (capture des centres → re-snap). C'est le `recalc()` de
    *  l'entrée. Optionnel : absent → le nudge d'azimut retombe sur `renderActive`. */
   recalcWithReenter?: () => void;
+  /** ACAL411 — appelé à chaque synchro des contrôles de sélection (la barre Pivoter/Aligner s'y recale). */
+  onSelectionChange?: () => void;
 }
 
 export interface LayoutEditor {
@@ -1488,6 +1491,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     selection = [...new Set(indices)];
     pruneSelection();
     paintScene(); // PV29 — la sélection est VISIBLE sur la 3D, pas seulement dans le mini-plan
+    deps.onSelectionChange?.(); // ACAL411
   }
 
   /** PV29 — SÉLECTION D'UNE RANGÉE ENTIÈRE en un seul geste (double-clic sur un panneau).
@@ -1556,6 +1560,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
     if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
     if (layoutAzValueEl) layoutAzValueEl.textContent = `${Math.round(ctx.facingAzimuthDeg)}°`;
+    deps.onSelectionChange?.(); // ACAL411
   }
 
   // ── PV30 — BASCULE DE MODE ────────────────────────────────────────────────────
@@ -2410,6 +2415,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    * lot entier est TOUT OU RIEN : si la position visée viole une contrainte, on GARDE le
    * dernier aperçu valide à l'écran et on NOMME ce qui bloque (rive, voisin, obstacle…).
    */
+  const reperesLibres = creerCalqueReperes({ hote: () => (typeof map.getContainer === 'function' ? map.getContainer() : null), project: (ll) => map.project(ll), origine: () => ctx.layoutPlan?.pack.origin ?? null }); // ACAL425
   function previewFreeDrag(point: maplibregl.Point): void {
     const d = layoutDrag;
     const st = freeState();
@@ -2421,12 +2427,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // Le panneau saisi garde le point d'accroche sous le curseur (décalage de saisie).
     const dx = quantizeFree(enu.x + (d.grabDx ?? 0)) - anchor.cx;
     const dy = quantizeFree(enu.y + (d.grabDy ?? 0)) - anchor.cy;
-    const res = placeFreePanels(
-      st,
-      g,
-      d.freeOrigin.map((o) => ({ index: o.index, cx: o.cx + dx, cy: o.cy + dy })),
-      margins(),
-    );
+    const poser = (ex: number, ey: number) =>
+      placeFreePanels(st, g, d.freeOrigin!.map((o) => ({ index: o.index, cx: o.cx + ex, cy: o.cy + ey })), margins());
+    // ACAL425 — collage sur voisin/rive + repère (un seul panneau glissé, aimantation allumée)
+    const res = glisserAimante({ actif: ctx.aimantationActive !== false && d.freeOrigin.length === 1, idx: d.from, g, panels: st.panels, anchor, dx, dy, snap: freeSnapCandidate, poser, reperes: reperesLibres });
     if (!res.ok) {
       d.freeBlocked = res.blocked;
       if (res.blocked) showMeasure(res.blocked);
