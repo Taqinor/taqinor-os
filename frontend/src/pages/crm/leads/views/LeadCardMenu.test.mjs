@@ -38,7 +38,8 @@ test('LB15 : menu ••• (DropdownMenu) avec bouton labellisé « Actions du 
 
 test('LB15 : le menu expose Ouvrir · Planifier · Devis auto · Marquer perdu · Archiver (conditionnels aux callbacks)', () => {
   assert.match(SRC, /<DropdownMenuItem onSelect=\{\(\) => onOpen\(lead\)\}>Ouvrir<\/DropdownMenuItem>/)
-  assert.match(SRC, /onSelect=\{\(\) => onPlanifierRelance\(lead\)\}/)
+  // AERR189 — l'item marque d'abord « relance choisie » (pas de retour de focus).
+  assert.match(SRC, /onSelect=\{\(\) => \{ relanceChoisie\.current = true; onPlanifierRelance\(lead\) \}\}/)
   assert.match(SRC, /\{onAutoQuote && devisAutoOk && \(/)
   assert.match(SRC, /\{!perdu && onMarkPerdu && \(/)
   assert.match(SRC, /destructive/)

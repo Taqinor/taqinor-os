@@ -14,7 +14,7 @@
 // VX187/LB6 — memo() : chaque frappe dans la recherche/un filtre re-rendait
 // TOUTES les cartes visibles. Ne tient que si les callbacks parents sont
 // stables (useCallback sur onOpenLead/onAutoQuote/changeStage/… dans LeadsPage).
-import { useState, memo } from 'react'
+import { useState, useRef, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
 import { Zap, MapPin, Pentagon, FileText, MoreHorizontal, Lock } from 'lucide-react'
 import BadgeParcage from '../../../../features/crm/workspace/BadgeParcage'
@@ -339,6 +339,10 @@ function LeadCard({
   // (partagé LeadCard/ListView). La carte n'en garde QUE l'état d'ouverture,
   // piloté par l'item « ✗ Marquer perdu » du menu •••.
   const [perduOpen, setPerduOpen] = useState(false)
+  // AERR189 — « Planifier une relance » ouvre une fenêtre HORS du menu : à sa
+  // fermeture, le menu ne rend PAS le focus à son bouton (la fenêtre le lirait
+  // comme un focus dehors et se refermerait). Les autres items gardent le retour.
+  const relanceChoisie = useRef(false)
 
   return (
     <>
@@ -394,12 +398,15 @@ function LeadCard({
                 align="end"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
+                onCloseAutoFocus={(e) => {
+                  if (relanceChoisie.current) { relanceChoisie.current = false; e.preventDefault() }
+                }}
               >
                 {onOpen && (
                   <DropdownMenuItem onSelect={() => onOpen(lead)}>Ouvrir</DropdownMenuItem>
                 )}
                 {onPlanifierRelance && (
-                  <DropdownMenuItem onSelect={() => onPlanifierRelance(lead)}>
+                  <DropdownMenuItem onSelect={() => { relanceChoisie.current = true; onPlanifierRelance(lead) }}>
                     Planifier une relance
                   </DropdownMenuItem>
                 )}
