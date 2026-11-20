@@ -201,6 +201,11 @@
         "cle": "neige_mensuelle_pct",
         "section": "simulation",
         "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "modele_transposition",
+        "section": "simulation",
+        "motif": "Choix de modèle propre à la société (Liu et Jordan, Hay et Davies ou Perez) : aucun modèle n'est choisi à sa place, laissé sans valeur (D-CALX 7, ACAL455)."
       }
     ]
   },

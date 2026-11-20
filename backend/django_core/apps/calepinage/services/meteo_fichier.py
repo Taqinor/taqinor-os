@@ -380,6 +380,16 @@ def lire_serie_meteo(fichier, *, fournisseur='', nom_fichier='',
     contenu = _octets(fichier)
     lignes = _lignes_utiles(_texte(contenu))
     separateur, titres, rang_entete = _entete(lignes)
+    if COLONNE_IRRADIANCE_PLAN not in titres and all(
+            colonne in titres for colonne in ('ghi_w_m2', 'dni_w_m2', 'dhi_w_m2')):
+        # ACAL455 — global, direct et diffus horizontaux : lus par ACAL454,
+        # transposés plus tard vers CHAQUE pan (``services/transposition.py``).
+        from .meteo_horizontale import lire_serie_horizontale
+        serie = lire_serie_horizontale(contenu, format='csv', fournisseur=fournisseur,
+                                       nom_fichier=nom_fichier, obtenue_le=obtenue_le)
+        serie.update(composantes_disponibles=True, motif_composantes=None,
+                     serie_horaire=_bloc_serie(serie['points'], serie['annees'], None))
+        return serie
     _verifier_irradiance(titres)
 
     corps = [(rang, ligne) for rang, ligne in lignes if rang > rang_entete]

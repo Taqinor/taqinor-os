@@ -147,6 +147,8 @@ CLES_SIMULATION = (
      'mesuré par CALX389'),  # CALX182
     ('neige_mensuelle_pct', 'Perte de neige, mois par mois (12 valeurs, ou une seule pour les douze)', '%',
      'Aurora — System Losses (neige saisie par an ou par mois, jamais supposée)'),  # ACAL463
+    ('modele_transposition', "Modèle de transposition d'un fichier météo horizontal vers le plan", '',
+     'PVsyst — Transposition model (Hay, Perez ; aucun modèle choisi à la place de la société)'),  # ACAL455
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
@@ -250,6 +252,7 @@ TYPES_CLES = {
         'seuil_derivation_acces': {'type': 'nombre', 'minimum': 0},  # ACAL132
         'plafond_modules_simules': {'type': 'entier', 'minimum': 1},  # ACAL132
         'neige_mensuelle_pct': {'type': 'table_mensuelle', 'minimum': 0, 'maximum': 100},  # ACAL463
+        'modele_transposition': {'type': 'enum', 'valeurs': ('isotropic', 'haydavies', 'perez')},  # ACAL455
     },
     SECTION_ELECTRIQUE_SOCIETE: {
         'tolerance_polystring_acceptable_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132

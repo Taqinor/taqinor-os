@@ -890,7 +890,7 @@ def _serie_de_chaine(reponse, plan):
 
 
 def _fournisseur_meteo(*, client, decision, document, fichier=None,
-                       compteur=None):
+                       compteur=None, contexte=None):
     """``(fournisseur, provenance)`` — UNE requête par couple d'angles.
 
     ``fournisseur(plan)`` rend la série d'entrée de chaîne du pan.
@@ -911,7 +911,11 @@ def _fournisseur_meteo(*, client, decision, document, fichier=None,
     def fournisseur(plan):
         cle = (plan.get('inclinaison_deg'), plan.get('azimut_pvgis_deg'))
         if cle not in memoire:
-            if fichier is not None:
+            if fichier is not None and fichier.get('plan_des_donnees') == 'horizontal':
+                # ACAL455 — chaque pan reçoit SA série, transposée par pvlib.
+                from .transposition import transposer_serie_horizontale
+                reponse = transposer_serie_horizontale(fichier, plan, contexte)
+            elif fichier is not None:
                 reponse = fichier
             else:
                 reponse = client.serie_irradiance(
@@ -1283,7 +1287,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     client = client if client is not None else ClientPvgis()
     fournisseur, provenance = _fournisseur_meteo(
         client=client, decision=decision,
-        document=meta['document'], fichier=fichier, compteur=compteur)
+        document=meta['document'], fichier=fichier, compteur=compteur,
+        contexte=contexte)
     contexte[CLE_FOURNISSEUR_METEO] = fournisseur
     # CALX58 — le MÊME client sert le plan optimal du site (un appel PVcalc
     # « optimalangles », cache et cadence compris). Absent, le TOF est omis
@@ -1321,7 +1326,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
             sortie, cascade, sorties = _chaine_par_phases(
                 contexte, plans_equipes, site, fournisseur, ecrit,
                 plans_chaine=plans_chaine)
-            if fichier is not None and len(plans_equipes) > 1:
+            if (fichier is not None and len(plans_equipes) > 1
+                    and fichier.get('plan_des_donnees') != 'horizontal'):
                 _ajouter_avertissement(
                     blocs, MOTIF_FICHIER_PLUSIEURS_PANS.format(
                         pans=len(plans_equipes)))
@@ -1358,6 +1364,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         if identite else None)
     if identite:
         blocs['meteo']['fournisseur'] = identite.get('fournisseur')
+    # ACAL455 — le modèle et l'albédo de la transposition, NOMMÉS.
+    transposition = (provenance['provenance'] or {}).get('transposition')
+    if transposition:
+        blocs['meteo']['transposition'] = transposition
 
     # 3. LA SIMULATION MODULE PAR MODULE (CALX182).
     par_module = production_module_par_module(contexte)

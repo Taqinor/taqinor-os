@@ -425,6 +425,18 @@
           "type": "table_mensuelle",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "cle": "modele_transposition",
+          "libelle": "Modèle de transposition d'un fichier météo horizontal vers le plan",
+          "unite": "",
+          "reference": "PVsyst — Transposition model (Hay, Perez ; aucun modèle choisi à la place de la société)",
+          "type": "enum",
+          "valeurs": [
+            "isotropic",
+            "haydavies",
+            "perez"
+          ]
         }
       ],
       "electrique_societe": [
@@ -796,6 +808,18 @@
           "type": "table_mensuelle",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "cle": "modele_transposition",
+          "libelle": "Modèle de transposition d'un fichier météo horizontal vers le plan",
+          "unite": "",
+          "reference": "PVsyst — Transposition model (Hay, Perez ; aucun modèle choisi à la place de la société)",
+          "type": "enum",
+          "valeurs": [
+            "isotropic",
+            "haydavies",
+            "perez"
+          ]
         }
       ],
       "electrique_societe": [
