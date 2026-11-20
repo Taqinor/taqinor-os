@@ -1431,9 +1431,10 @@ class ListeFroideTests(TestCase):
         res = self.api.get(LISTE_FROIDE_URL)
         self.assertEqual(res.status_code, 200, res.content)
         self.assertEqual(res.data, {
+            'restes_odoo': 0,
             'dossiers_chiffres': 1, 'demandes_sans_reponse': 3, 'appels_ouverts': 0,
-            'plafond_appels_ouverts': 10, 'prise_max': 4, 'peut_prendre': True,
-            'raison': ''})
+            'plafond_appels_ouverts': 30, 'prise_max': 4, 'prise_proposee': 4,
+            'peut_prendre': True, 'raison': ''})
 
     def test_la_prise_pose_un_appel_par_dossier_dans_l_ordre(self):
         from apps.crm.cadence_reperes import CLE_LISTE_FROIDE, LIBELLE_LISTE_FROIDE
@@ -1460,24 +1461,136 @@ class ListeFroideTests(TestCase):
         b.refresh_from_db()
         self.assertIsNone(b.first_contacted_at)
 
-    def test_plafond_de_dix_appels_ouverts(self):
-        for i in range(12):
+    def test_elle_choisit_le_nombre_sous_un_plafond_de_trente_appels_ouverts(self):
+        # Fondateur 20/11/2026 — « ne pas forcer 10 » : elle choisit combien
+        # (1..30), l'écran propose 10, et jamais plus de 30 appels ouverts.
+        for i in range(32):
             self._froid(f'B{i}', jours=i + 1)
-        self.assertEqual(self._prendre(3)['nombre_places'], 3)
-        self.assertEqual(self._prendre(10)['nombre_places'], 7, 'au plus 10 ouverts au total')
         etat = self.api.get(LISTE_FROIDE_URL).data
-        self.assertEqual((etat['appels_ouverts'], etat['prise_max'], etat['peut_prendre']),
-                         (10, 0, False))
-        self.assertIn('10 appels', etat['raison'])
+        self.assertEqual((etat['prise_max'], etat['prise_proposee']), (30, 10))
+        self.assertEqual(self._prendre(3)['nombre_places'], 3)
+        etat = self.api.get(LISTE_FROIDE_URL).data
+        self.assertEqual((etat['prise_max'], etat['prise_proposee']), (27, 10))
+        self.assertEqual(self._prendre(30)['nombre_places'], 27,
+                         'au plus 30 ouverts au total')
+        etat = self.api.get(LISTE_FROIDE_URL).data
+        self.assertEqual((etat['appels_ouverts'], etat['prise_max'],
+                          etat['prise_proposee'], etat['peut_prendre']),
+                         (30, 0, 0, False))
+        self.assertIn('30 appels', etat['raison'])
         refus = self.api.post(LISTE_FROIDE_URL, {'nombre': 1}, format='json')
         self.assertEqual(refus.status_code, 409, refus.content)
         self.assertEqual(refus.data['nombre'], [etat['raison']])
         self.assertEqual(RelanceEtape.objects.filter(
-            company=self.company, statut=A_FAIRE).count(), 10)
+            company=self.company, statut=A_FAIRE).count(), 30)
+
+    def test_sans_nombre_la_prise_pose_les_dix_proposes(self):
+        for i in range(12):
+            self._froid(f'B{i}', jours=i + 1)
+        res = self.api.post(LISTE_FROIDE_URL, {}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data['nombre_places'], 10)
+
+    def _reste_odoo(self, nom, *, stage=None, jours=200, **kw):
+        """Un reste de l'import Odoo : vivant, SANS responsable, à une étape
+        active (l'état des 108 dossiers de production du 20/11/2026)."""
+        self._n += 1
+        kw.setdefault('owner', None)
+        kw.setdefault('telephone', f'+2126613{self._n:05d}')
+        lead = Lead.objects.create(
+            company=self.company, nom=nom, stage=stage or stages.CONTACTED,
+            source=Lead.Source.ODOO_IMPORT_TEST, **kw)
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation=MARDI_LF - datetime.timedelta(days=jours))
+        lead.refresh_from_db()
+        return lead
+
+    def test_les_restes_d_odoo_passent_d_abord_et_deviennent_ses_dossiers(self):
+        from apps.crm.cadence_reperes import CLE_LISTE_FROIDE
+        from apps.crm.liste_froide import vivier
+
+        ancien = self._reste_odoo('Odoo ancien', jours=300)
+        recent = self._reste_odoo('Odoo recent', jours=90,
+                                  stage=stages.FOLLOW_UP)
+        b = self._froid('B recent', jours=2)
+        exclus = [
+            self._reste_odoo('Odoo signe', stage=stages.SIGNED),
+            self._reste_odoo('Odoo archive', is_archived=True),
+            self._reste_odoo('Odoo perdu', perdu=True),
+            self._reste_odoo('Odoo oppose', ne_plus_contacter=True),
+            self._reste_odoo('Odoo sans numero', telephone=''),
+            self._reste_odoo('Odoo du collegue', owner=self.collegue),
+            # Un import Odoo que je suis déjà, hors de la liste : pas un reste.
+            self._reste_odoo('Odoo que je suis', owner=self.moi),
+        ]
+        sans_resp = Lead.objects.create(
+            company=self.company, nom='Meta sans responsable',
+            stage=stages.CONTACTED, source=Lead.Source.META_LEAD_ADS,
+            telephone='+212661399999')
+        ordre = [(lead.pk, g) for lead, g in vivier(self.company, self.moi)]
+        self.assertEqual(ordre, [(recent.pk, 'O'), (ancien.pk, 'O'), (b.pk, 'B')])
+        for lead in exclus + [sans_resp]:
+            self.assertNotIn(lead.pk, {pk for pk, _g in ordre}, lead.nom)
+        etat = self.api.get(LISTE_FROIDE_URL).data
+        self.assertEqual((etat['restes_odoo'], etat['dossiers_chiffres'],
+                          etat['demandes_sans_reponse'], etat['prise_max']),
+                         (2, 0, 1, 3))
+
+        data = self._prendre(2)
+        self.assertEqual([(pl['lead'], pl['groupe']) for pl in data['places']],
+                         [(recent.pk, 'O'), (ancien.pk, 'O')])
+        self.assertEqual((data['restes_odoo'], data['appels_ouverts']), (0, 2))
+        for lead, etape_avant in ((recent, stages.FOLLOW_UP),
+                                  (ancien, stages.CONTACTED)):
+            lead.refresh_from_db()
+            self.assertEqual(lead.owner_id, self.moi.pk, lead.nom)
+            self.assertEqual(lead.stage, etape_avant,
+                             'la prise ne change pas l’étape')
+            etape = self._ouverte(lead)
+            self.assertEqual((etape.cadence, etape.cle, etape.template_cle),
+                             ('reveil', CLE_LISTE_FROIDE, 'appel_ouverture'))
+            self.assertTrue(lead.activites.filter(field='owner').exists(),
+                            'le changement de responsable est tracé')
+        # Pris par moi : mon collègue ne les voit plus dans sa liste.
+        api = APIClient()
+        api.force_authenticate(self.collegue)
+        self.assertEqual(api.get(LISTE_FROIDE_URL).data['restes_odoo'], 0)
+
+    def test_un_reste_d_odoo_sans_reponse_revient_une_seule_fois(self):
+        lead = self._reste_odoo('Odoo')
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.moi.pk)
+        self.assertEqual(lead.stage, stages.COLD,
+                         'un réveil sans réponse range le dossier au Froid')
+        self.assertFalse(lead.relance_etapes.filter(statut=A_FAIRE).exists())
+        self.assertEqual(self._restant('restes_odoo'), 0,
+                         'jamais deux fois le même jour')
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=1))
+        self.assertEqual(self._restant('restes_odoo'), 1)
+        self.assertEqual(self._prendre(1)['places'][0]['groupe'], 'O')
+        self._repondre(self._ouverte(lead), 'non_joint')
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=7))
+        self.assertEqual(self._restant('restes_odoo'), 0,
+                         'deux tentatives : sorti du vivier')
+
+    def test_un_reste_d_odoo_joint_sort_de_la_liste_avec_une_suite(self):
+        lead = self._reste_odoo('Odoo')
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'joint')
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.moi.pk)
+        self.assertNotEqual(lead.stage, stages.COLD)
+        suite = list(lead.relance_etapes.filter(statut=A_FAIRE))
+        self.assertTrue(suite, 'une suite est posée')
+        self.assertNotIn('liste_froide', [e.cle for e in suite])
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=3))
+        self.assertEqual(self._restant('restes_odoo'), 0)
 
     def test_nombre_invalide_400(self):
         self._froid('B')
-        for nombre in (0, 11, '3', True, None, 2.5):
+        for nombre in (0, 31, '3', True, None, 2.5):
             res = self.api.post(LISTE_FROIDE_URL, {'nombre': nombre}, format='json')
             self.assertEqual(res.status_code, 400, (nombre, res.content))
             self.assertIn('nombre', res.data)

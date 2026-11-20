@@ -6,7 +6,14 @@ le permet (« un bouton pour prendre d'anciens leads, selon sa charge ») — ja
 des étapes datées poussées sur des jours déjà pleins (108 étapes en retard en
 production). Contrat : ``contract_samples/liste_froide.json``.
 
-Le vivier, deux groupes, A avant B :
+Le vivier, trois groupes, O avant A avant B :
+  * O — reste de l'import Odoo (décision du fondateur, 20/11/2026 : « les avoir
+    d'abord sur le bouton des leads froids ») : dossier importé d'Odoo, vivant,
+    non signé, SANS responsable (108 en production ce jour-là, à des étapes
+    actives, que personne ne voyait) — ou déjà à l'appelant par une prise (sa
+    seconde tentative). Le prendre en fait SON dossier (``assigner_lead_a``) ;
+    son étape n'est pas touchée à la prise : un « pas de réponse » le range au
+    Froid par le chemin des réveils (``cloturer_reveils_sans_reponse``) ;
   * A — joint ET chiffré, sans décision : le seau K3 de ``seaux_reactivation`` ;
   * B — lead Meta jamais joint (seaux K5 / K6) au palier 1 du pilote d'appel
     D-CADV-2 (``palier_1_reactivation`` : facture ≥ 2 000 MAD hiver ou été, ou
@@ -14,6 +21,9 @@ Le vivier, deux groupes, A avant B :
 Une seule définition des seaux : ce module ne reclasse rien, il passe à
 ``seaux_reactivation`` son éligibilité d'APPEL (``motif_hors_liste``) puis ne
 garde que les dossiers de l'appelant.
+
+Même décision du 20/11/2026 : la commerciale CHOISIT combien elle prend (corps
+``nombre``, 1..``PRISE_MAX``) ; l'écran propose ``PRISE_PROPOSEE``.
 
 L'étape prise est un réveil HORS gabarit (cadence ``reveil``, clé
 ``CLE_LISTE_FROIDE``, rang ``LISTE_FROIDE_ORDRE``) : chaque réponse suit le
@@ -44,9 +54,12 @@ logger = logging.getLogger(__name__)
 
 #: Plafond d'appels de la liste froide OUVERTS par personne : elle ne prend
 #: que ce qu'elle va appeler.
-PLAFOND_APPELS_OUVERTS = 10
-#: Au plus ce nombre de dossiers par prise (corps ``nombre``, 1..10).
-PRISE_MAX = 10
+PLAFOND_APPELS_OUVERTS = 30
+#: Au plus ce nombre de dossiers par prise (corps ``nombre``, 1..30) : elle
+#: choisit combien (fondateur, 20/11/2026 : « ne pas forcer 10 »).
+PRISE_MAX = 30
+#: Ce que l'écran propose avant qu'elle ne choisisse (et le corps sans ``nombre``).
+PRISE_PROPOSEE = 10
 #: Deux tentatives par dossier, jamais plus ; la seconde un autre jour.
 TENTATIVES_MAX = 2
 #: Les issues après lesquelles le dossier revient dans le vivier : « pas de
@@ -58,11 +71,13 @@ ISSUES_RETOUR_AU_VIVIER = ('', 'non_joint')
 RAISON_DEUX_APPELS_SANS_REPONSE = 'liste_froide_sans_reponse'
 NOTE_DEUX_APPELS_SANS_REPONSE = 'Liste froide : deux appels sans réponse.'
 
+GROUPE_ODOO = 'O'
 GROUPE_CHIFFRE = 'A'
 GROUPE_SANS_REPONSE = 'B'
 #: Le script d'appel de chaque groupe (le rendu route ``appel_ouverture`` selon
 #: l'origine du lead, ``cadence_messages._cle_identite_pour_lead``).
-SCRIPT_PAR_GROUPE = {GROUPE_CHIFFRE: 'appel_reveil_devis',
+SCRIPT_PAR_GROUPE = {GROUPE_ODOO: 'appel_ouverture',
+                     GROUPE_CHIFFRE: 'appel_reveil_devis',
                      GROUPE_SANS_REPONSE: 'appel_ouverture'}
 
 
@@ -75,10 +90,11 @@ class PriseRefusee(Exception):
         self.champ, self.message, self.statut = champ, message, statut
 
 
-def motif_hors_liste(lead):
+def motif_hors_liste(lead, *, restes_odoo=False):
     """Ce qui écarte un dossier au Froid de la liste froide, ou ``None`` :
     archivé, perdu (quel que soit le motif), opposé, à l'état Archive, ancien
-    contact importé d'Odoo, ou sans numéro marocain exploitable."""
+    contact importé d'Odoo, ou sans numéro marocain exploitable.
+    ``restes_odoo`` : l'éligibilité du groupe O, où l'import Odoo n'écarte pas."""
     from apps.ventes.utils.phone import normalize_ma_phone
 
     from .models import Lead
@@ -91,7 +107,7 @@ def motif_hors_liste(lead):
         return 'opposition'
     if (lead.parc_etat or '') == 'archive':
         return 'état Archive'
-    if lead.source == Lead.Source.ODOO_IMPORT_TEST:
+    if not restes_odoo and lead.source == Lead.Source.ODOO_IMPORT_TEST:
         return 'import Odoo'
     if not (normalize_ma_phone(lead.telephone) or normalize_ma_phone(lead.whatsapp)):
         return 'numéro'
@@ -127,9 +143,24 @@ def _ecartes_par_les_etapes(company, ids):
     return ecartes
 
 
+def _q_restes_odoo(user):
+    """Le filtre du groupe O : import Odoo non signé, sans responsable — ou
+    déjà à ``user`` PAR une prise de la liste froide (sa seconde tentative,
+    quelle que soit l'étape où le « pas de réponse » l'a laissé). Un import
+    Odoo que ``user`` suit hors de la liste n'y entre pas."""
+    from django.db.models import Q
+
+    from .models import Lead, RelanceEtape
+
+    deja_pris = RelanceEtape.objects.filter(
+        cle=CLE_LISTE_FROIDE, lead__owner=user).values('lead_id')
+    return (Q(source=Lead.Source.ODOO_IMPORT_TEST) & ~Q(stage=stages.SIGNED)
+            & (Q(owner__isnull=True) | Q(owner=user, pk__in=deja_pris)))
+
+
 def vivier(company, user):
-    """Les dossiers de ``user`` à appeler, dans l'ordre de prise : ``[(lead,
-    groupe)]`` — A puis B, le plus récent d'abord dans chaque groupe."""
+    """Les dossiers à appeler par ``user``, dans l'ordre de prise : ``[(lead,
+    groupe)]`` — O, puis A, puis B, le plus récent d'abord dans chaque groupe."""
     from .cadence_selectors import palier_1_reactivation, seaux_reactivation
     from .models import Lead
 
@@ -138,6 +169,10 @@ def vivier(company, user):
     leads = {lead.pk: lead for lead in Lead.objects.filter(
         company=company, owner=user, stage=stages.COLD,
         pk__in=seaux['K3'] + jamais_joints)}
+    restes = [lead for lead in Lead.objects.filter(_q_restes_odoo(user),
+                                                   company=company)
+              if motif_hors_liste(lead, restes_odoo=True) is None]
+    leads.update({lead.pk: lead for lead in restes})
     ecartes = _ecartes_par_les_etapes(company, list(leads))
 
     def groupe(ids, filtre=None):
@@ -146,9 +181,13 @@ def vivier(company, user):
         return sorted(retenus, key=lambda lead: (lead.date_creation, lead.pk),
                       reverse=True)
 
-    return ([(lead, GROUPE_CHIFFRE) for lead in groupe(seaux['K3'])]
-            + [(lead, GROUPE_SANS_REPONSE)
-               for lead in groupe(jamais_joints, palier_1_reactivation)])
+    odoo = {lead.pk for lead in restes}
+    return ([(lead, GROUPE_ODOO) for lead in groupe(odoo)]
+            + [(lead, GROUPE_CHIFFRE) for lead in groupe(
+                [pk for pk in seaux['K3'] if pk not in odoo])]
+            + [(lead, GROUPE_SANS_REPONSE) for lead in groupe(
+                [pk for pk in jamais_joints if pk not in odoo],
+                palier_1_reactivation)])
 
 
 def _appels_ouverts(company, user):
@@ -164,6 +203,7 @@ def etat_liste_froide(company, user):
     dossiers = vivier(company, user)
     ouverts = _appels_ouverts(company, user)
     chiffres = sum(1 for _lead, g in dossiers if g == GROUPE_CHIFFRE)
+    odoo = sum(1 for _lead, g in dossiers if g == GROUPE_ODOO)
     prise_max = max(0, min(PRISE_MAX, PLAFOND_APPELS_OUVERTS - ouverts,
                            len(dossiers)))
     if ouverts >= PLAFOND_APPELS_OUVERTS:
@@ -174,11 +214,13 @@ def etat_liste_froide(company, user):
     else:
         raison = ''
     return {
+        'restes_odoo': odoo,
         'dossiers_chiffres': chiffres,
-        'demandes_sans_reponse': len(dossiers) - chiffres,
+        'demandes_sans_reponse': len(dossiers) - chiffres - odoo,
         'appels_ouverts': ouverts,
         'plafond_appels_ouverts': PLAFOND_APPELS_OUVERTS,
         'prise_max': prise_max,
+        'prise_proposee': min(PRISE_PROPOSEE, prise_max),
         'peut_prendre': prise_max > 0,
         'raison': raison,
     }
@@ -220,13 +262,17 @@ def _poser_appel(lead, user, groupe, quand):
 
 def prendre_dossiers(company, user, nombre):
     """POST du contrat : pose UN appel, au prochain créneau d'appel, sur chacun
-    des ``nombre`` (1..10) prochains dossiers du vivier de ``user``, sans jamais
-    dépasser ``PLAFOND_APPELS_OUVERTS`` appels ouverts. Une transaction par
-    dossier, relu sous verrou (une course ne pose jamais deux étapes). Lève
-    ``PriseRefusee`` quand rien ne peut être pris."""
+    des ``nombre`` (1..``PRISE_MAX``) prochains dossiers du vivier de ``user``,
+    sans jamais dépasser ``PLAFOND_APPELS_OUVERTS`` appels ouverts. Une
+    transaction par dossier, relu sous verrou (une course ne pose jamais deux
+    étapes, ni ne donne un reste d'Odoo à deux personnes). Un reste d'Odoo sans
+    responsable devient le dossier de ``user``. Lève ``PriseRefusee`` quand rien
+    ne peut être pris."""
     from django.contrib.auth import get_user_model
+    from django.db.models import Q
 
     from . import horaires
+    from .fiche_funnel import assigner_lead_a
     from .models import Lead, RelanceEtape
 
     if isinstance(nombre, bool) or not isinstance(nombre, int) or not 1 <= nombre <= PRISE_MAX:
@@ -246,13 +292,18 @@ def prendre_dossiers(company, user, nombre):
         for lead, groupe in vivier(company, user)[:min(nombre, etat['prise_max'])]:
             try:
                 with transaction.atomic():
-                    verrouille = (Lead.objects.select_for_update()
-                                  .filter(pk=lead.pk, company=company, owner=user,
-                                          stage=stages.COLD).first())
-                    if (verrouille is None or motif_hors_liste(verrouille)
+                    odoo = groupe == GROUPE_ODOO
+                    verrouille = (Lead.objects.select_for_update().filter(
+                        _q_restes_odoo(user) if odoo else
+                        Q(owner=user, stage=stages.COLD),
+                        pk=lead.pk, company=company).first())
+                    if (verrouille is None
+                            or motif_hors_liste(verrouille, restes_odoo=odoo)
                             or verrouille.relance_etapes.filter(
                                 statut=RelanceEtape.Statut.A_FAIRE).exists()):
                         continue
+                    if verrouille.owner_id is None:
+                        assigner_lead_a(verrouille, user, user.pk)
                     etape = _poser_appel(verrouille, user, groupe, quand)
                     if etape is None:
                         continue

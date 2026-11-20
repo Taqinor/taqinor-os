@@ -249,11 +249,42 @@ describe('ListeFroideCard (liste froide, 17/11/2026)', () => {
     crmApi.getListeFroide.mockResolvedValue({ data: etat })
     render(<ListeFroideCard />)
     expect(await screen.findByTestId('liste-froide-vivier')).toHaveTextContent(
-      `${etat.dossiers_chiffres} dossiers déjà chiffrés et ${etat.demandes_sans_reponse} `
-      + 'demandes sans réponse attendent un appel.')
+      `${etat.restes_odoo} dossiers repris d’Odoo, ${etat.dossiers_chiffres} dossiers déjà chiffrés `
+      + `et ${etat.demandes_sans_reponse} demandes sans réponse attendent un appel.`)
+    expect(screen.getByTestId('liste-froide-vivier'))
+      .toHaveTextContent('Les dossiers repris d’Odoo passent en premier')
     expect(screen.getByTestId('liste-froide-ouverts'))
       .toHaveTextContent(`${etat.appels_ouverts} / ${etat.plafond_appels_ouverts}`)
+    // Le champ part du nombre proposé par le serveur, jamais du maximum.
+    expect(screen.getByLabelText('Combien de dossiers')).toHaveValue(etat.prise_proposee)
+    expect(screen.getByRole('button', { name: `Prendre ${etat.prise_proposee} dossiers` })).not.toBeDisabled()
+  })
+
+  it('elle choisit combien elle prend : le nombre saisi part au serveur (20/11/2026)', async () => {
+    const etat = exempleContrat('crm', 'liste_froide', 'exemple_apercu')
+    crmApi.getListeFroide.mockResolvedValue({ data: etat })
+    crmApi.prendreListeFroide.mockResolvedValue({ data: { ...etat, nombre_places: 3, du_jour: true } })
+    render(<ListeFroideCard />)
+    const champ = await screen.findByLabelText('Combien de dossiers')
+    fireEvent.change(champ, { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Prendre 3 dossiers' }))
+    await waitFor(() => expect(crmApi.prendreListeFroide).toHaveBeenCalledWith(3))
+    fireEvent.change(champ, { target: { value: String(etat.prise_max) } })
     expect(screen.getByRole('button', { name: `Prendre ${etat.prise_max} dossiers` })).not.toBeDisabled()
+  })
+
+  it('un nombre hors bornes est dit sous le champ, sans être corrigé à sa place', async () => {
+    const etat = exempleContrat('crm', 'liste_froide', 'exemple_apercu')
+    crmApi.getListeFroide.mockResolvedValue({ data: etat })
+    render(<ListeFroideCard />)
+    const champ = await screen.findByLabelText('Combien de dossiers')
+    for (const valeur of [String(etat.prise_max + 1), '0', '2.5', '']) {
+      fireEvent.change(champ, { target: { value: valeur } })
+      expect(screen.getByRole('button', { name: 'Prendre des dossiers' })).toBeDisabled()
+      expect(screen.getByText(`Choisissez un nombre entier entre 1 et ${etat.prise_max}.`))
+        .toHaveAttribute('id', 'liste-froide-nombre-aide')
+    }
+    expect(crmApi.prendreListeFroide).not.toHaveBeenCalled()
   })
 
   it('bouton désactivé avec la raison du serveur quand la prise est refusée', async () => {
@@ -273,10 +304,10 @@ describe('ListeFroideCard (liste froide, 17/11/2026)', () => {
     crmApi.prendreListeFroide.mockResolvedValue({ data: prise })
     const onPris = vi.fn()
     render(<ListeFroideCard onPris={onPris} />)
-    fireEvent.click(await screen.findByRole('button', { name: `Prendre ${etat.prise_max} dossiers` }))
+    fireEvent.click(await screen.findByRole('button', { name: `Prendre ${etat.prise_proposee} dossiers` }))
     expect(await screen.findByTestId('liste-froide-succes'))
       .toHaveTextContent(`${prise.nombre_places} appels ajoutés à vos étapes du jour.`)
-    expect(crmApi.prendreListeFroide).toHaveBeenCalledWith(etat.prise_max)
+    expect(crmApi.prendreListeFroide).toHaveBeenCalledWith(etat.prise_proposee)
     expect(onPris).toHaveBeenCalledWith(prise)
     // L'état servi par le POST remplace celui du GET (plafond atteint : bouton désactivé).
     expect(screen.getByRole('button', { name: 'Prendre des dossiers' })).toBeDisabled()
@@ -288,11 +319,11 @@ describe('ListeFroideCard (liste froide, 17/11/2026)', () => {
     crmApi.getListeFroide.mockResolvedValue({ data: etat })
     crmApi.prendreListeFroide.mockRejectedValue({ response: { status: 409, data: refus } })
     render(<ListeFroideCard />)
-    fireEvent.click(await screen.findByRole('button', { name: `Prendre ${etat.prise_max} dossiers` }))
+    fireEvent.click(await screen.findByRole('button', { name: `Prendre ${etat.prise_proposee} dossiers` }))
     const alerte = await screen.findByRole('alert')
     expect(alerte).toHaveTextContent(refus.detail)
     expect(alerte).toHaveAttribute('id', 'liste-froide-motif')
-    expect(screen.getByRole('button', { name: `Prendre ${etat.prise_max} dossiers` }))
+    expect(screen.getByRole('button', { name: `Prendre ${etat.prise_proposee} dossiers` }))
       .toHaveAttribute('aria-describedby', 'liste-froide-motif')
   })
 })
