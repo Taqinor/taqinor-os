@@ -2365,6 +2365,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     centroid = [lng / vertices.length, lat / vertices.length];
     centroidLat = centroid[1];
+    shadingUi.recomputeHorizon(); // ACAL378 — matrice d'horizon à la latitude du toit
     pvgisCache.clear(); // W1 : nouvelle localisation → clés PVGIS obsolètes
     v4YieldCache.clear(); // V4 : nouvelle localisation → rendements PVGIS obsolètes
     matrixResult = null;
@@ -2540,6 +2541,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       }
       centroid = [lng / vertices.length, lat / vertices.length];
       centroidLat = centroid[1];
+      shadingUi.recomputeHorizon(); // ACAL378 — matrice d'horizon à la latitude du toit
     }
     pvgisCache.clear();
     v4YieldCache.clear();

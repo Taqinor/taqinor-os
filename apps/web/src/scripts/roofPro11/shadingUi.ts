@@ -785,13 +785,14 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
    */
   function recomputeHorizonFactors() {
     const points = ctx.horizonProfile?.points ?? null;
-    const factors = hourlyHorizonFactors(ctx.centroidLat, points);
+    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
+    // ACAL378 — le jour-type pondère la matrice : un repli en cloche garde la perte mensuelle vraie.
+    const factors = hourlyHorizonFactors(ctx.centroidLat, points, undefined, prod);
     ctx.horizonFactors = factors;
     if (!factors) {
       ctx.horizonAnnualFactor = 1;
       return;
     }
-    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
     ctx.horizonAnnualFactor = annualShadeFactor(prod, factors);
   }
 
@@ -817,7 +818,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     horizonNoteEl.textContent =
       s.maskedHours > 0
         ? `Horizon PVGIS : ${s.maskedHours} heure(s) sur 288 (12 mois × 24 h) masquée(s) par le relief lointain — ` +
-          `−${lossPct} % de production annuelle (part diffuse conservée ~25 %). Poste séparé de l’ombrage proche.`
+          `−${lossPct} % de production annuelle (part diffuse et réfléchie conservée, selon la hauteur du soleil). Poste séparé de l’ombrage proche.`
         : 'Horizon PVGIS renseigné : aucune heure masquée pour ce champ.';
   }
 
@@ -1267,6 +1268,12 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     solarAccess,
     solarAccessAnnuel, // ACAL138
     setHorizonProfile,
+    // ACAL378 — la matrice dépend de la latitude : recalculée quand le centroïde change
+    // (sinon un document rouvert garde celle de la latitude par défaut, 33,5°).
+    recomputeHorizon: () => {
+      recomputeHorizonFactors();
+      renderHorizonNote();
+    },
     horizonStatus,
     moduleShadeReadings,
     moduleShadeTooltip,
