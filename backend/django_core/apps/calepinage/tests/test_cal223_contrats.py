@@ -412,6 +412,9 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_profil_depart.json':
         'valeurs de départ sourcées proposées (ACAL387) : compilées depuis '
         'des pages citées, appliquées aux réglages société en base (ACAL403)',
+    'calepinage_balayage.json':
+        'balayage paramétrique (ACAL388) : le résultat vit dans un job lu '
+        'en base par moteur/resultat/<job_id>/ ; route livrée par ACAL468',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -457,6 +460,8 @@ POSES_AVANT_LEUR_ROUTE = {
     'calepinage_parcours_guide.json': 'ACAL392',
     # ACAL403 livrera ``GET``/``POST calepinages/profil-depart/`` : retirer.
     'calepinage_profil_depart.json': 'ACAL403',
+    # ACAL468 livrera ``POST calepinages/<pk>/balayage/`` : retirer.
+    'calepinage_balayage.json': 'ACAL468',
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -583,6 +588,31 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertEqual(valeurs | sans, tout)
         for ligne in donnees['exemple_application']['ignorees']:
             self.assertEqual(ligne['motif'], 'deja_saisie')
+
+    def test_forme_du_balayage(self):
+        # ACAL388 — même enveloppe que l'accusé de simulation, nature neuve.
+        donnees = _charger('calepinage_balayage.json')
+        axes = ('inclinaison_deg', 'azimut_deg', 'ratio_dc_ac')
+        for axe in donnees['exemple_corps']['axes']:
+            self.assertEqual(sorted(axe),
+                             ['max', 'min', 'nom', 'pas'])
+            self.assertIn(axe['nom'], axes)
+        accuse = donnees['exemple']
+        cles_simulation = set(
+            _charger('calepinage_simulation.json')['exemple_accepte'])
+        self.assertEqual(set(accuse), cles_simulation)
+        self.assertEqual((accuse['kind'], accuse['nature']),
+                         ('calepinage', 'balayage'))
+        resultat = donnees['exemple_resultat']
+        demandes = {a['nom'] for a in donnees['exemple_corps']['axes']}
+        for ligne in resultat['grille'] + [resultat['optimum']]:
+            self.assertTrue(demandes <= set(ligne))
+            self.assertIn('p50_kwh', ligne)
+            self.assertIn('rendement_specifique_kwh_kwc', ligne)
+            self.assertEqual('ratio_dc_ac' in demandes,
+                             'ecretage_pct' in ligne)
+        for cle in ('appels_pvgis', 'complete', 'socle_manquant', 'etat'):
+            self.assertIn(cle, resultat)
 
 
 class CheminDeclareTest(unittest.TestCase):
