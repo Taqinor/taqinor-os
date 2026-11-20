@@ -380,7 +380,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     #: VisiteTerrainViewSet.write_permission`` (VTA10) : une PROPRIÉTÉ, pas un
     #: ``get_permissions()`` réécrit, pour qu'aucune garde déclarée sur une
     #: ``@action`` ne soit jamais écrasée en silence.
-    PERMISSIONS_ECRITURE_PAR_ACTION = {'approbation': CAL_APPROUVER}
+    PERMISSIONS_ECRITURE_PAR_ACTION = {'approbation': CAL_APPROUVER,
+                                       'profil_depart': CAL_APPROUVER}
 
     @property
     def write_permission(self):
