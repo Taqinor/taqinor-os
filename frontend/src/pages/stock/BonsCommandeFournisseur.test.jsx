@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import authReducer from '../../features/auth/store/authSlice'
 
 /* ============================================================================
@@ -421,6 +422,49 @@ describe('WIR191 — réviser un BCF déjà envoyé/reçu', () => {
   it('un BCF en brouillon ne propose pas « Réviser » (seul Enregistrer standard s\'applique)', () => {
     renderDetail({ bcf: { ...bcfEnvoye, statut: 'brouillon' } })
     expect(screen.queryByRole('button', { name: 'Réviser' })).toBeNull()
+  })
+})
+
+describe('AERR181-183 — « Fermer » du BCF modifié demande avant de perdre la saisie', () => {
+  const brouillon = {
+    id: 78, reference: 'BCF-2026-07-0078', statut: 'brouillon', fournisseur: 1,
+    date_commande: '2026-07-01', note: 'note initiale',
+    lignes: [{ id: 502, produit: 7, produit_nom: 'Module test', quantite: 2, prix_achat_unitaire: 100, quantite_recue: 0 }],
+  }
+  const rendre = (onClose) => render(
+    <ConfirmProvider>
+      <BcfDetail bcf={brouillon} fournisseurs={[]} produits={[]} onClose={onClose} onSaved={() => {}} />
+    </ConfirmProvider>,
+    { wrapper: makeWrapper() },
+  )
+  const fermer = () => screen.getAllByRole('button', { name: 'Fermer' }).find((b) => b.textContent === 'Fermer')
+
+  it('AERR183 — Fermer demande avant de perdre la saisie : Rester garde la valeur', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    rendre(onClose)
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'saisie à garder' } })
+    await user.click(fermer())
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rester' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Note')).toHaveValue('saisie à garder')
+  })
+
+  it('AERR183 — Quitter ferme une seule fois ; sans saisie Fermer ferme sans demande', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    const { unmount } = rendre(onClose)
+    fireEvent.click(fermer())
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    unmount()
+    onClose.mockClear()
+    rendre(onClose)
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'x' } })
+    await user.click(fermer())
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Quitter' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 })
 
