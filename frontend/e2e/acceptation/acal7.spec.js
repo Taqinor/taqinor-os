@@ -114,6 +114,11 @@ async function carteRefusee(context, suivi) {
  *  la pile d'essai, déclaré ici. L'étape ACAL398 ne le déclare pas : elle lit le refus à l'écran. */
 const refusSimulationAutoAttendu = (suivi) => suivi.attendre(/\/calepinage\/calepinages\/\d+\/simuler\/$/)
 
+/** Disposition « studio » (ACAL402) : la carte est COLLÉE en haut ; la rangée d'outils du tracé (Terminer, ↶ ↷,
+ *  Effacer, + Ajouter une zone, formes, cotes) est au-dessus d'elle dans le flux et passe SOUS la carte dès que la page
+ *  défile. On revient en haut de la page avant de toucher un outil, comme le ferait l'utilisateur (clic réel). */
+const enHaut = (page) => page.evaluate(() => window.scrollTo(0, 0))
+
 const boutonEnregistrer = (page) => page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ })
 
 /** Ouvre l'atelier (fond de repli) et attend la scène HYDRATÉE (+ la production chiffrée du pan actif). */
@@ -403,6 +408,7 @@ etape('PA2.5-ACAL399-ACAL400-barre-brouillon', ['ACAL399', 'ACAL400'], async ({ 
 
     const brouillon = page.waitForResponse((x) => x.request().method() === 'PUT'
       && new URL(x.url()).pathname.endsWith(`/calepinages/${cal.id}/brouillon/`), { timeout: 90_000 })
+    await enHaut(page)
     await page.locator('#rp9-add-area').click()
     await expect(page.getByTestId('cal-etat-enregistrement')).toHaveText('Modifications non enregistrées', T)
     const rb = await brouillon
@@ -517,6 +523,7 @@ etape('PA2.5-ACAL414-aide-raccourcis', ['ACAL414'], async ({ page, context, suiv
   try {
     await ouvrirAtelier(page, cal.id)
     await expect(page.getByTestId('cal-raccourcis-bouton'), 'aide de l’atelier montée').toBeVisible()
+    await enHaut(page)
     await page.locator('#rp9-status').click()
     await page.keyboard.press('?')
     // La fenêtre que « ? » ouvre réellement (quelle qu'elle soit) : elle doit lister les touches de l'atelier.
@@ -551,6 +558,7 @@ etape('PA2.3-ACAL420-ACAL422-ACAL410-trace-vierge', ['ACAL420', 'ACAL422', 'ACAL
     const boite = await carte.boundingBox()
     await carte.click({ position: { x: boite.width / 2, y: boite.height / 2 + 60 } })
     await expect(aide, 'un clic : « Un clic par coin »').toHaveText(/^2 · Un clic par coin/)
+    await enHaut(page)
     await page.locator('#rp9-undo-point').click()
 
     const cotes = page.locator('#rp9-toit-cotes')
@@ -558,6 +566,7 @@ etape('PA2.3-ACAL420-ACAL422-ACAL410-trace-vierge', ['ACAL420', 'ACAL422', 'ACAL
     await cotes.getByLabel('Longueur (m)').fill('12')
     await cotes.getByLabel('Largeur (m)').fill('8')
     await cotes.getByLabel('Orientation (°)').fill('0')
+    await enHaut(page)
     await cotes.getByRole('button', { name: 'Créer le toit' }).click()
     await expect(page.locator('#rp9-status')).toContainText('Toit créé : 12 × 8 m', T)
     await expect(aide, 'contour fermé : la carte d’aide disparaît').toBeHidden()
@@ -567,6 +576,7 @@ etape('PA2.3-ACAL420-ACAL422-ACAL410-trace-vierge', ['ACAL420', 'ACAL422', 'ACAL
     const formes = page.locator('#rp9-formes-toit')
     await expect(formes, 'puces « Forme du toit » sur contour fermé').toBeVisible()
     const zones = page.locator('#rp9-areas-list > li')
+    await enHaut(page)
     await formes.getByRole('button', { name: '2 pans', exact: true }).click()
     await expect(page.locator('#rp9-status')).toContainText('Toit découpé en 2 pans', T)
     await expect(zones, 'liste des zones : 2 pans').toHaveCount(2)
@@ -582,8 +592,10 @@ etape('PA2.3-ACAL420-ACAL422-ACAL410-trace-vierge', ['ACAL420', 'ACAL422', 'ACAL
     await cotes.getByLabel('Longueur (m)').fill('12')
     await cotes.getByLabel('Largeur (m)').fill('8')
     await cotes.getByLabel('Orientation (°)').fill('0')
+    await enHaut(page)
     await cotes.getByRole('button', { name: 'Créer le toit' }).click()
     await expect(page.locator('#rp9-status')).toContainText('Toit créé : 12 × 8 m', T)
+    await enHaut(page)
     await formes.getByRole('button', { name: '4 pans', exact: true }).click()
     await expect(page.locator('#rp9-status')).toContainText('Toit découpé en 4 pans', T)
     const doc4 = await enregistrer(page, cal4.id)
@@ -602,8 +614,10 @@ async function nouveauPanEnPente(page) {
   await cotes.getByLabel('Longueur (m)').fill('12')
   await cotes.getByLabel('Largeur (m)').fill('8')
   await cotes.getByLabel('Orientation (°)').fill('0')
+  await enHaut(page)
   await cotes.getByRole('button', { name: 'Créer le toit' }).click()
   await expect(page.locator('#rp9-status')).toContainText('Toit créé', T)
+  await enHaut(page)
   await page.locator('[data-rooftype="pitched"]').click()
   await expect(page.locator('#rp9-pitched-controls')).toBeVisible()
 }
@@ -623,6 +637,7 @@ etape('PA2.3-ACAL417-hypotheses-a-confirmer', ['ACAL417'], async ({ page, contex
     await expect(page.locator('#rp9-facing-note'), 'face de départ dite « à confirmer »').toContainText('à confirmer')
     await expect(page.locator('[data-pitch="22"]'), 'puce 22° NON pressée').toHaveAttribute('aria-pressed', 'false')
     await expect(page.locator('[data-facing="180"]'), 'puce Sud NON pressée').toHaveAttribute('aria-pressed', 'false')
+    await enHaut(page)
     await page.locator('[data-pitch="30"]').click()
     await expect(page.locator('[data-pitch="30"]'), '~30° pressée').toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('#rp9-pitch-note'), 'mention de pente levée').toHaveText('')
@@ -699,6 +714,7 @@ etape('PA2.3-ACAL413-ACAL412-annuler-effacements', ['ACAL413', 'ACAL412'], async
     await toutEffacerObstacles(page)
     const bandeau = page.locator('#rp9-bandeau-annuler')
     await expect(bandeau, 'bandeau d’annulation').toBeVisible()
+    await enHaut(page)
     await bandeau.getByRole('button', { name: 'Annuler', exact: true }).click()
     await expect(bandeau).toHaveCount(0)
     expect(nObstacles(await enregistrer(page, cal.id, bouton)), '« Annuler » du bandeau : les 3 obstacles rendus').toBe(3)
@@ -706,12 +722,15 @@ etape('PA2.3-ACAL413-ACAL412-annuler-effacements', ['ACAL413', 'ACAL412'], async
     // ACAL412 — Ctrl+Z hors de la disposition, puis ↷ et ↶ (boutons de la barre du toit).
     bouton = await ouvrirAtelier(page, cal.id)
     await toutEffacerObstacles(page)
+    await enHaut(page)
     await page.locator('#rp9-status').click()
     await page.keyboard.press('Control+z')
     await expect(page.locator('#rp9-status'), 'Ctrl+Z').toContainText('Action annulée.')
+    await enHaut(page)
     await page.locator('button', { hasText: /^↷$/ }).click()
     await expect(page.locator('#rp9-status'), '↷').toContainText('Action rétablie.')
     expect(nObstacles(await enregistrer(page, cal.id, bouton)), '↷ : effacement rétabli').toBe(0)
+    await enHaut(page)
     await page.locator('button', { hasText: /^↶$/ }).click()
     await expect(page.locator('#rp9-status'), '↶').toContainText('Action annulée.')
     expect(nObstacles(await enregistrer(page, cal.id, bouton)), '↶ : obstacles rendus').toBe(3)
@@ -732,6 +751,7 @@ etape('PA2.3-ACAL413-effacer-question-nommee', ['ACAL413'], async ({ page, conte
     const bouton = await ouvrirAtelier(page, cal.id)
     const natives = []
     page.on('dialog', (d) => natives.push(d.message()))
+    await enHaut(page)
     await page.locator('#rp9-clear').click()
     const question = page.locator('#rp9-question-effacer')
     await expect(question, 'question posée DANS l’atelier').toBeVisible()
@@ -740,14 +760,17 @@ etape('PA2.3-ACAL413-effacer-question-nommee', ['ACAL413'], async ({ page, conte
     console.log(`[ACAL413] question : « ${await page.locator('#rp9-question-effacer-texte').innerText()} »`)
     expect(natives, 'aucun dialogue natif').toEqual([])
     // « Garder » : rien n'est effacé.
+    await enHaut(page)
     await question.getByRole('button', { name: 'Garder', exact: true }).click()
     await expect(question).toHaveCount(0)
     const doc = await enregistrer(page, cal.id, bouton)
     expect(doc.zones, '« Garder » : rien n’est effacé').toHaveLength(1)
     expect(nObstacles(doc)).toBe(3)
     // « Effacer » : le tracé part, l'atelier redevient vierge.
+    await enHaut(page)
     await page.locator('#rp9-clear').click()
     await expect(question).toBeVisible()
+    await enHaut(page)
     await question.getByRole('button', { name: 'Effacer', exact: true }).click()
     await expect(question).toHaveCount(0)
     await expect(page.locator('#rp9-etat-vide'), '« Effacer » : contour effacé, atelier vierge').toHaveText(/^1 · Localisez le toit/, T)
@@ -903,6 +926,7 @@ etape('PA2.5-ACAL398-simulation-auto', ['ACAL398'], async ({ page, context, suiv
     let bouton = await ouvrirAtelier(page, cal.id)
     const simuler = page.waitForResponse((x) => x.request().method() === 'POST'
       && new URL(x.url()).pathname.endsWith(`/calepinages/${cal.id}/simuler/`), T)
+    await enHaut(page)
     await page.locator('[data-tilt="10"]').click()
     await expect(page.getByTestId('cal-etat-enregistrement')).toHaveText('Modifications non enregistrées', T)
     await enregistrer(page, cal.id, bouton)
