@@ -674,7 +674,7 @@ modèle** sur un nouveau devis.
 
 ### Calepinage
 
-**Ce que ça fait.** L'atelier Calepinage est le lieu où vous concevez une installation solaire : vous placez le site (toiture, terrain ou ombrière), choisissez les panneaux et l'équipement électrique, puis lancez la simulation de production. Le travail est découpé en cinq étapes, décrites ci-dessous.
+**Ce que ça fait.** L'atelier Calepinage est le lieu où vous concevez une installation solaire : vous placez le site (toiture, terrain ou ombrière), choisissez les panneaux et l'équipement électrique, puis lancez la simulation de production. Le travail est découpé en cinq étapes, décrites ci-dessous. Le calepinage suit le statut du devis lié : tant que le devis est en brouillon ou envoyé, il se corrige sur place (la correction est tracée) ; dès que le devis est accepté, refusé ou expiré, le calepinage passe en lecture seule et seul le geste « Réviser (v2) » du devis rouvre une conception. Un calepinage sans devis lié n'est jamais verrouillé.
 
 **Où le trouver.** Deux portes d'entrée :
 1. Menu **CALEPINAGE** : **Calepinages** (la liste de vos calepinages), **Nouveau calepinage**, **Bibliothèque**, **Sources des paramètres**, **Réglages simulation**, **Gabarits des dossiers** et **Comparer**.
