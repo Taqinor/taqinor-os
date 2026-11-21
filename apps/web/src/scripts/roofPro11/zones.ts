@@ -431,8 +431,10 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     // Résultats agrégés : la zone active prend son résultat LIVE, les autres leur snapshot.
     const results = areas.map((a) => (a.id === activeAreaId ? liveActive : a.result));
     const anyResult = results.some((r) => r != null);
-    areasWindowEl.hidden = !anyResult;
-    if (!anyResult) return;
+    // ACAL410 (acceptation ACAL490) — plusieurs pans sans résultat (« 4 pans » dont le premier
+    // regarde le nord) : la liste est quand même redessinée, jamais la ligne périmée d'avant.
+    areasWindowEl.hidden = !anyResult && areas.length < 2;
+    if (areasWindowEl.hidden) return;
     // WB20 — toutes les zones résolvent contre la MÊME facture globale (pas une part
     // par zone) : chaque `r.savings*` est déjà plafonné à TOUTE la facture, donc les
     // sommer sur-compterait jusqu'à N× sur un toit à N zones. On repasse la cible
@@ -462,7 +464,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
         const r = a.id === activeAreaId ? liveActive : a.result;
         const active = a.id === activeAreaId;
         const panels = r ? fmt(r.panels) : '—';
-        const kwc = r ? `${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc` : 'à tracer';
+        const kwc = r ? `${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc` : a.vertices.length >= 3 ? 'non calculé' : 'à tracer';
         const rowClass = active
           ? 'border-brass-400 bg-brass-400/10'
           : 'border-white/10 bg-nuit-900/40';

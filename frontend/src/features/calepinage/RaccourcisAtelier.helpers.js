@@ -17,6 +17,18 @@ export const RACCOURCIS = lignesDePortee('atelier').map((l) => ({
   affichage: l.ecriture,
 }))
 
+/** ACAL414 (acceptation ACAL490) — les touches du TRACÉ et de la DISPOSITION, lues dans la même
+ *  table, montrées dans la même fenêtre d'aide (la ligne « aide » est déjà dite par la fenêtre). */
+export const SECTIONS_AIDE = [
+  { cle: 'trace', titre: 'Tracé, mesure, obstacle, zone (carte)' },
+  { cle: 'disposition', titre: 'Disposition des panneaux' },
+].map(({ cle, titre }) => ({
+  cle,
+  titre,
+  lignes: lignesDePortee(cle).filter((l) => l.action !== 'aide')
+    .map((l) => ({ ecriture: l.ecriture, libelle: l.libelle })),
+}))
+
 /**
  * CAL101 — vrai quand la frappe appartient à un champ de saisie. Un raccourci
  * qui volerait cette frappe rendrait les formulaires inutilisables : c'est la

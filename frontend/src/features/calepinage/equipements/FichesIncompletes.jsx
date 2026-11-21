@@ -74,13 +74,13 @@ function LigneChamp({ famille, champ, requis }) {
       className="flex flex-wrap items-baseline gap-x-2 text-sm"
       data-testid={`cal-fiche-manquant-${famille}-${champ}`}
     >
-      <code className="text-xs text-brass-300">{champ}</code>
+      <code className="text-xs text-primary-text">{champ}</code>
       {requis && (
-        <span className="tech-label text-lune-faint" data-testid={`cal-fiche-requis-${famille}-${champ}`}>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground" data-testid={`cal-fiche-requis-${famille}-${champ}`}>
           requis
         </span>
       )}
-      <span className="text-lune-soft">
+      <span className="text-foreground">
         {impact ?? `champ servi par la fiche technique, hors du contrat de calcul documenté du calepinage (${champ})`}
       </span>
     </li>
@@ -91,8 +91,8 @@ function Famille({ famille, label, absence, equipement }) {
   if (!equipement) {
     return (
       <section className="mt-4" data-testid={`cal-fiches-${famille}`}>
-        <h4 className="tech-label text-lune-faint">{label}</h4>
-        <p className="mt-1 text-sm text-lune-soft">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h4>
+        <p className="mt-1 text-sm text-foreground">
           {absence} sur le devis lié : rien à compléter ici tant qu’aucune ligne
           de cette famille n’est chiffrée.
         </p>
@@ -106,7 +106,7 @@ function Famille({ famille, label, absence, equipement }) {
   return (
     <section className="mt-4" data-testid={`cal-fiches-${famille}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-        <h4 className="tech-label text-lune-faint">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label} — {equipement.designation ?? '—'}
         </h4>
         {/* Il n'existe aucune route `/stock/produits/:id` dans ce dépôt (la
@@ -114,7 +114,7 @@ function Famille({ famille, label, absence, equipement }) {
             le CATALOGUE, jamais vers un lien profond qui n'existe pas. */}
         <Link
           to="/stock"
-          className="text-sm font-semibold text-brass-300 underline"
+          className="text-sm font-semibold text-primary-text underline"
           data-testid={`cal-fiches-lien-${famille}`}
         >
           Ouvrir la fiche au catalogue
@@ -122,7 +122,7 @@ function Famille({ famille, label, absence, equipement }) {
       </div>
 
       {manquants.length === 0 ? (
-        <p className="mt-1 text-sm text-lune-soft" data-testid={`cal-fiches-complet-${famille}`}>
+        <p className="mt-1 text-sm text-foreground" data-testid={`cal-fiches-complet-${famille}`}>
           Fiche complète : aucun calcul du calepinage n’est bloqué par cette
           famille.
         </p>
@@ -171,14 +171,14 @@ function MaterielDuCalcul({ materiel, panneauDevis }) {
     && String(module.produit_id) !== String(panneauDevis.produit)
   return (
     <section className="mt-4" data-testid="cal-fiches-materiel-calcul">
-      <h4 className="tech-label text-lune-faint">Matériel utilisé par le calcul</h4>
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Matériel utilisé par le calcul</h4>
       <ul className="mt-2 space-y-1.5">
         {ROLES_CALCUL.map(([role, libelle]) => {
           const bloc = materiel[role]
           return (
-            <li key={role} className="text-sm text-lune-soft"
+            <li key={role} className="text-sm text-foreground"
               data-testid={`cal-fiches-materiel-${role}`}>
-              <span className="text-lune">{libelle}</span>
+              <span className="text-foreground">{libelle}</span>
               {' — '}
               {bloc
                 ? (
@@ -200,9 +200,9 @@ function MaterielDuCalcul({ materiel, panneauDevis }) {
       {parPan.length > 0 && (
         <ul className="mt-2 space-y-1" data-testid="cal-fiches-modules-par-pan">
           {parPan.map((ligne) => (
-            <li key={ligne.pan} className="text-sm text-lune-soft"
+            <li key={ligne.pan} className="text-sm text-foreground"
               data-testid={`cal-fiches-module-pan-${ligne.pan}`}>
-              <span className="text-lune">Pan {ligne.pan}</span>
+              <span className="text-foreground">Pan {ligne.pan}</span>
               {' — '}
               {ligne.designation || 'module sans désignation'}
               {!ligne.fiche_resolue && (
@@ -223,7 +223,7 @@ function MaterielDuCalcul({ materiel, panneauDevis }) {
           « {panneauDevis.designation ?? `produit ${panneauDevis.produit}`} ».
         </p>
       )}
-      <p className="mt-2 text-xs text-lune-faint">
+      <p className="mt-2 text-xs text-muted-foreground">
         Un pan qui porte son propre module dans le plan est chiffré et chaîné
         avec CE module ; le module ci-dessus n’est que le défaut des autres pans.
       </p>
@@ -280,8 +280,8 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
     return (
       <>
         <RetourAtelier calepinageId={calepinageId} />
-        <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
-          <p className="tech-label rule-brass text-brass-300">Fiches incomplètes</p>
+        <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-fiches-incompletes">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Fiches incomplètes</p>
           <p className="mt-2 text-sm text-red-300" role="alert" data-testid="cal-fiches-erreur">
             {erreur}
           </p>
@@ -297,16 +297,16 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
-      <p className="tech-label rule-brass text-brass-300">Fiches incomplètes</p>
+      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-fiches-incompletes">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Fiches incomplètes</p>
 
       {agregat.devis == null ? (
-        <p className="mt-2 text-sm text-lune-soft" data-testid="cal-fiches-sans-devis">
+        <p className="mt-2 text-sm text-foreground" data-testid="cal-fiches-sans-devis">
           Aucun devis lié à ce calepinage : les équipements retenus se lisent sur
           le devis, il n’y a donc aucune fiche à vérifier pour l’instant.
         </p>
       ) : (
-        <p className="mt-2 text-sm text-lune-soft">
+        <p className="mt-2 text-sm text-foreground">
           Chaque champ manquant ci-dessous nomme le calcul du calepinage qu’il
           débloque. Complétez-le sur la fiche technique du produit au catalogue.
         </p>

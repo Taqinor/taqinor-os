@@ -406,7 +406,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
                   estFaible(ligne) ? ' — chaîne la plus faible en ombrage' : ''
                 }`}
                 style={{ backgroundColor: couleurs.get(ligne.module) || undefined }}
-                className={`h-7 w-12 rounded text-[10px] text-white ${
+                className={`h-7 w-12 rounded text-xs text-foreground ${
                   selection.has(ligne.module) ? 'ring-2 ring-foreground' : ''
                 } ${estFaible(ligne) ? 'outline outline-2 outline-dashed outline-amber-500' : ''}`}
                 onPointerDown={(e) => {

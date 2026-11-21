@@ -53,6 +53,19 @@ _OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 # propre requête à 5 s : l'atelier retombe sur le dessin manuel bien avant.
 _TIMEOUT_S = 5
 _TIMEOUT_RESEAU = (3, _TIMEOUT_S)
+#: ACAL421 (décision fondateur du 21/11/2026 : tâche de fond) — HORS requête,
+#: la tâche Celery laisse 60 s à Overpass (mesuré 20-34 s depuis le runner) ;
+#: le chemin SYNCHRONE garde ses 5 s (budget api-fuzz < 10 s par endpoint).
+DELAI_TACHE_S = 60
+#: Essais bornés de la tâche (Overpass répond parfois 502 « at capacity »), et
+#: la pause entre deux : 2 × (10 + 60) + 3 s < soft_time_limit de la tâche.
+ESSAIS_TACHE = 2
+PAUSE_ENTRE_ESSAIS_S = 3
+#: ACAL421 — Overpass rejects the default `python-requests/x` User-Agent with
+#: HTTP 406 (measured on the CI runner): every call carries an identified,
+#: generic agent — never a person's name or address.
+#: Neutre (marque blanche, SCA29) — même convention que `geolocalisation.py`.
+_USER_AGENT = "solar-erp-calepinage/1.0 (emprise de batiment OSM)"  # ASCII : en-tête HTTP
 _RADIUS_M = 25  # search radius in metres around the pin
 
 #: CALX106 — the provenance published next to every value read from OSM.
@@ -149,13 +162,13 @@ def _batiment_depuis_tags(tags: dict, osm_way_id) -> dict:
     return batiment
 
 
-def _build_query(lat: float, lng: float) -> str:
+def _build_query(lat: float, lng: float, delai_s: int = _TIMEOUT_S) -> str:
     """Return an Overpass QL query that fetches the nearest building polygon."""
     # `way(around:R,LAT,LNG)["building"]` finds all building ways in radius R.
     # `(._;>;)` recurses to fetch the nodes that form the way.
     # `out geom` returns coordinates inline so we don't need a second request.
     return (
-        f"[out:json][timeout:{_TIMEOUT_S}];"
+        f"[out:json][timeout:{delai_s}];"
         f'way(around:{_RADIUS_M},{lat},{lng})["building"];'
         f"(._;>;);out geom;"
     )
@@ -194,8 +207,12 @@ def _parse_geometry(data: dict) -> dict:
             "batiment": batiment_non_renseigne(MOTIF_AUCUN_BATIMENT)}
 
 
-def fetch_building_footprint(lat: float, lng: float) -> dict | None:
+def fetch_building_footprint(lat: float, lng: float,
+                             delai_s: int = _TIMEOUT_S) -> dict | None:
     """Query Overpass for the building footprint at (lat, lng).
+
+    ``delai_s`` — 5 s on the synchronous path (default) ; the background task
+    (ACAL421) passes ``DELAI_TACHE_S``.
 
     Returns:
         ``{"polygon": [...], "batiment": {...}}`` — the polygon holds at least
@@ -213,30 +230,73 @@ def fetch_building_footprint(lat: float, lng: float) -> dict | None:
         import urllib.parse as _urllib_parse
         import json as _json
 
-        query = _build_query(lat, lng)
+        query = _build_query(lat, lng, delai_s)
         encoded = _urllib_parse.urlencode({"data": query}).encode()
         req = _urllib_request.Request(
             _OVERPASS_URL,
             data=encoded,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "User-Agent": _USER_AGENT},
         )
         try:
-            with _urllib_request.urlopen(req, timeout=_TIMEOUT_S) as resp:
+            with _urllib_request.urlopen(req, timeout=delai_s) as resp:
                 data = _json.loads(resp.read().decode())
             return _parse_geometry(data)
         except Exception as exc:
             logger.info("OSM footprint lookup failed (urllib): %s", exc)
             return None
 
-    query = _build_query(lat, lng)
+    query = _build_query(lat, lng, delai_s)
+    delais = _TIMEOUT_RESEAU if delai_s == _TIMEOUT_S else (10, delai_s)
     try:
         resp = _requests.post(
             _OVERPASS_URL,
             data={"data": query},
-            timeout=_TIMEOUT_RESEAU,
+            headers={"User-Agent": _USER_AGENT},
+            timeout=delais,
         )
         resp.raise_for_status()
         return _parse_geometry(resp.json())
     except Exception as exc:
         logger.info("OSM footprint lookup failed (requests): %s", exc)
         return None
+
+
+# ── ACAL421 — messages et issue d'une recherche, partagés par la vue et la tâche de fond ──
+# (la tâche n'importe jamais la vue : contrat import-linter « ventes ↛ audit » via crm.views)
+
+_MSG_NO_BUILDING = (
+    "Aucun bâtiment trouvé à cet emplacement — "
+    "tracez le contour manuellement."
+)
+#: ACAL421 — Overpass unreachable (HTTP error, timeout) is NAMED, never
+#: presented as « no building » : same response keys, distinct message.
+_MSG_OSM_INJOIGNABLE = (
+    "OpenStreetMap n'a pas répondu : le contour n'a pas pu être cherché — "
+    "réessayez plus tard ou tracez le contour manuellement."
+)
+
+
+def cle_recherche_emprise(job_id):
+    """La clé de cache (par société, ``core.cache``) d'une recherche finie."""
+    return f"crm:emprise_toit:{job_id}"
+
+
+def corps_recherche(empreinte):
+    """L'issue d'une recherche : ``pret`` (polygone) ou ``refus`` NOMMÉ.
+
+    ``None`` (Overpass injoignable) et ``polygon: []`` (aucun bâtiment) sont
+    deux refus DISTINCTS — motif et message propres, jamais confondus.
+    """
+    if empreinte is None:
+        return {"statut": "refus", "motif": "osm_injoignable", "polygon": [],
+                "batiment": batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE),
+                "message": _MSG_OSM_INJOIGNABLE}
+    polygon = empreinte.get("polygon") or []
+    batiment = empreinte.get("batiment") \
+        or batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE)
+    if not polygon:
+        return {"statut": "refus", "motif": "aucun_batiment", "polygon": [],
+                "batiment": batiment, "message": _MSG_NO_BUILDING}
+    return {"statut": "pret", "motif": "", "polygon": polygon,
+            "batiment": batiment, "message": ""}

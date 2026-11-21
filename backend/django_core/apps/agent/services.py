@@ -21,6 +21,7 @@ alimenté par les apps qui en ont besoin, jamais l'inverse).
 from __future__ import annotations
 
 import logging
+from decimal import ROUND_HALF_UP, Decimal
 import hashlib
 import hmac
 import json
@@ -346,3 +347,45 @@ def borner_erreur(erreur):
     if diagnostic is not None:
         sortie['diagnostic'] = diagnostic
     return sortie
+
+
+def enregistrer_usage_ia(*, company_id, capability, provider, feature_key='',
+                         prompt_tokens=0, completion_tokens=0, cost_estimated=None,
+                         cout_tarife=False, latency_ms=0, success=True, **_ignores):
+    """Puits ``core.ai.usage`` (décision fondateur 21/11/2026) : UN appel IA =
+    UNE ligne :class:`~apps.agent.models.UsageIA`.
+
+    Enregistré par ``AgentConfig.ready()``. Ne LÈVE JAMAIS dans l'appelant
+    (journalise et avale) et n'écrit dans une transaction en cours qu'à
+    l'intérieur d'un savepoint — un journal en panne ne casse ni l'appel IA ni
+    la requête qui l'a fait. Seules les métriques sont gardées : ``error`` (et
+    tout autre champ ajouté plus tard au contrat) est ignoré, car un texte
+    d'erreur peut porter une donnée client. Le coût n'est posé que s'il est
+    tarifé (``cout_tarife``) ; sinon ``None`` = coût inconnu."""
+    from django.db import transaction
+
+    from authentication.models import Company
+
+    from .models import UsageIA
+
+    try:
+        # FK différée en Postgres : une société inexistante n'échouerait qu'au
+        # COMMIT de l'appelant — on vérifie donc avant d'écrire.
+        if not Company.objects.filter(pk=company_id).exists():
+            logger.warning('agent.usage_ia: société %s inconnue, ligne ignorée', company_id)
+            return
+        with transaction.atomic():
+            UsageIA.objects.create(
+                company_id=company_id,
+                capability=str(capability)[:20],
+                provider=str(provider)[:40],
+                feature_key=str(feature_key or '')[:120],
+                input_tokens=max(0, int(prompt_tokens or 0)),
+                output_tokens=max(0, int(completion_tokens or 0)),
+                cout=(Decimal(str(cost_estimated)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                      if cout_tarife else None),
+                success=bool(success),
+                duration_ms=max(0, int(latency_ms or 0)),
+            )
+    except Exception:  # noqa: BLE001 — le journal ne casse jamais l'appel IA (D-ENF22-BLE001)
+        logger.warning('agent.usage_ia: ligne d\'usage non écrite', exc_info=True)

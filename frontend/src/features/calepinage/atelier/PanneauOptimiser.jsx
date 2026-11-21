@@ -86,7 +86,7 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
 
   return (
     <Card className="space-y-3 p-4" data-testid="acal469-panneau">
-      <p className="text-sm text-lune-faint">
+      <p className="text-sm text-muted-foreground">
         Balayage d’un pan à orientation libre (champ au sol, ombrière, toit plat à châssis).
         Rien n’est enregistré avant « Enregistrer le calepinage ».
       </p>
@@ -97,7 +97,7 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
         </div>
         {AXES.map((a) => (
           <fieldset key={a.nom} className="flex items-end gap-2">
-            <legend className="text-xs text-lune-faint">{a.libelle}</legend>
+            <legend className="text-xs text-muted-foreground">{a.libelle}</legend>
             {['min', 'max', 'pas'].map((cle) => (
               <div key={cle}>
                 <Label htmlFor={`acal469-${a.nom}-${cle}`}>{cle}</Label>

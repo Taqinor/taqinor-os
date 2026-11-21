@@ -363,14 +363,29 @@ describe('PanneauProduction — geometriePresente (ERR-QAH-CALEPINAGE-EXPORT-CSV
     expect(calepinageApi.calepinages.exportCsv).not.toHaveBeenCalled()
   })
 
-  it('une géométrie posée (les fixtures ordinaires) : le comportement '
-    + "d'aujourd'hui est inchangé — la porte d'export reste ouverte", async () => {
-    servir('exemple_vide')
+  it("une géométrie posée ET simulée : la porte d'export est ouverte une fois", async () => {
+    servir('exemple')
+    calepinageApi.calepinages.exportCsv.mockRejectedValue({ response: { status: 400, data: {} } })
     rendre()
 
     await screen.findByTestId('cal236-panneau')
     await screen.findByTestId('cal-tapis-vide')
     expect(calepinageApi.calepinages.exportCsv).toHaveBeenCalledTimes(1)
+  })
+
+  /* Acceptation ACAL490 (oracle 2 : GET export-csv/?quoi=horaire en erreur pendant
+     « calcul en cours ») — jamais simulé : aucune série, aucune requête ; la
+     simulation terminée (relecture), la série est lue UNE fois. */
+  it("jamais simulé : pas d'export ; simulé ensuite : un seul export", async () => {
+    servir('exemple_vide')
+    calepinageApi.calepinages.exportCsv.mockRejectedValue({ response: { status: 400, data: {} } })
+    const { rerender } = rendre()
+    await screen.findByTestId('cal-tapis-vide')
+    expect(calepinageApi.calepinages.exportCsv).not.toHaveBeenCalled()
+
+    servir('exemple')
+    rerender(<MemoryRouter><PanneauProduction calepinageId={1} key="relu" /></MemoryRouter>)
+    await waitFor(() => expect(calepinageApi.calepinages.exportCsv).toHaveBeenCalledTimes(1))
   })
 })
 

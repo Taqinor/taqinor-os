@@ -155,41 +155,41 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="cine-card mt-6 p-6" data-testid="cal-ombriere">
-        <p className="tech-label rule-brass text-brass-300">Ombrière / carport</p>
-        <p className="mt-2 text-xs text-lune-faint">
+      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-ombriere">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Ombrière / carport</p>
+        <p className="mt-2 text-xs text-muted-foreground">
           Une surface de pose comme une autre : elle pave comme un toit incliné et
           se totalise avec le site. Aucune charge, aucune structure n’est calculée
           ici.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label className="block text-sm text-lune-soft">
-            <span className="tech-label text-lune-faint">Bâtiment (pour les totaux)</span>
+          <label className="block text-sm text-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bâtiment (pour les totaux)</span>
             <input
               type="text"
               value={saisie.buildingId}
               data-testid="cal-ombriere-buildingId"
               onChange={(e) => majChamp('buildingId', e.target.value)}
-              className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
+              className="mt-1 w-full rounded border border-border bg-transparent px-2 py-1 text-foreground"
             />
           </label>
           {CHAMPS.map(([cle, label]) => (
-            <label key={cle} className="block text-sm text-lune-soft">
-              <span className="tech-label text-lune-faint">{label}</span>
+            <label key={cle} className="block text-sm text-foreground">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
               <input
                 type="number"
                 step="any"
                 value={saisie[cle]}
                 data-testid={`cal-ombriere-${cle}`}
                 onChange={(e) => majChamp(cle, e.target.value)}
-                className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
+                className="mt-1 w-full rounded border border-border bg-transparent px-2 py-1 text-foreground"
               />
             </label>
           ))}
         </div>
         {nombre(saisie.alleeM) === null && (
-          <p className="mt-2 text-xs text-lune-faint">
+          <p className="mt-2 text-xs text-muted-foreground">
             Pose jointive (allée 0) — saisissez une allée pour en imposer une.
           </p>
         )}
@@ -210,7 +210,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
         />
 
         {/* LA HAUTEUR LIBRE N'EST JAMAIS SUPPOSÉE. */}
-        <p className="mt-3 text-xs text-lune-faint" data-testid="cal-ombriere-hauteur">
+        <p className="mt-3 text-xs text-muted-foreground" data-testid="cal-ombriere-hauteur">
           {hauteur === null || hauteur <= 0
             ? 'Hauteur libre non renseignée : la couverture n’est pas levée en 3D '
               + '(aucune hauteur par défaut n’est supposée).'
@@ -218,20 +218,20 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
         </p>
 
         {plan && (
-          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/10 pt-4 sm:grid-cols-3">
+          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-3">
             <div data-testid="cal-ombriere-modules">
-              <dd className="fig text-lg text-white">{plan.modules ?? '—'}</dd>
-              <dt className="tech-label text-lune-faint">Modules posés (moteur)</dt>
+              <dd className="fig text-lg text-foreground">{plan.modules ?? '—'}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Modules posés (moteur)</dt>
             </div>
             <div data-testid="cal-ombriere-travees">
-              <dd className="fig text-lg text-white">{(plan.tables ?? []).length}</dd>
-              <dt className="tech-label text-lune-faint">Travées posées</dt>
+              <dd className="fig text-lg text-foreground">{(plan.tables ?? []).length}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Travées posées</dt>
             </div>
             <div data-testid="cal-ombriere-pas">
-              <dd className="fig text-lg text-white">
+              <dd className="fig text-lg text-foreground">
                 {pas === null ? '—' : `${auDixieme(pas)} m`}
               </dd>
-              <dt className="tech-label text-lune-faint">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {pas === null
                   ? 'Pas non mesurable (moins de 2 rangées)'
                   : 'Pas inter-rangées (mesuré sur le plan)'}
@@ -244,16 +244,16 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             est levée à la hauteur libre SAISIE (ou pas levée du tout). */}
         {(plan || placeurAbsent) && (
           <section
-            className="mt-5 border-t border-white/10 pt-4"
+            className="mt-5 border-t border-border pt-4"
             data-testid="cal-ombriere-vue"
             aria-label="Ombrière dessinée"
           >
-            <p className="tech-label text-lune-faint">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Ombrière dessinée — travées posées et couverture levée
             </p>
 
             {placeurAbsent && (
-              <p className="mt-2 text-sm text-alert-300" data-testid="cal-ombriere-vue-indisponible">
+              <p className="mt-2 text-sm text-destructive" data-testid="cal-ombriere-vue-indisponible">
                 Le tracé de l’ombrière n’a pas pu être chargé : les chiffres du
                 moteur restent affichés ci-dessus, et rien n’est dessiné à leur
                 place.
@@ -269,7 +269,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
                 width="100%"
                 role="img"
                 aria-label="Coupe sur la largeur — couverture et hauteur libre"
-                className="mt-3 text-brass-200"
+                className="mt-3 text-primary-text"
               >
                 <line
                   data-testid="cal-ombriere-sol"
@@ -321,7 +321,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
 
             {altitudeCouverture !== null && (
               <p
-                className="mt-2 text-xs text-lune-faint"
+                className="mt-2 text-xs text-muted-foreground"
                 data-testid="cal-ombriere-altitude"
                 data-altitude-m={String(altitudeCouverture)}
               >
@@ -334,7 +334,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             )}
 
             {champ && (
-              <p className="mt-1 text-xs text-lune-faint" data-testid="cal-ombriere-ecoulement">
+              <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-ombriere-ecoulement">
                 {ecoulement === null
                   ? 'Sens d’écoulement non renseigné : les rangées sont empilées '
                     + 'selon l’axe du plan, sans orientation affirmée.'
@@ -345,7 +345,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
 
             {champ && champ.nonMesure.length > 0 && (
               <ul
-                className="mt-2 list-disc pl-5 text-xs text-lune-faint"
+                className="mt-2 list-disc pl-5 text-xs text-muted-foreground"
                 data-testid="cal-ombriere-nonmesure"
               >
                 {champ.nonMesure.map((m) => (
@@ -360,7 +360,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
         {totaux.length > 0 && (
           <table className="mt-5 w-full text-sm" data-testid="cal-ombriere-totaux">
             <thead>
-              <tr className="tech-label text-lune-faint">
+              <tr className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="py-1 text-left">Bâtiment</th>
                 <th className="py-1 text-right">Pans</th>
                 <th className="py-1 text-right">Ombrières</th>
@@ -371,11 +371,11 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             <tbody>
               {totaux.map((t) => (
                 <tr key={t.batiment} data-testid={`cal-ombriere-total-${t.batiment}`}>
-                  <td className="py-1 text-white">{t.batiment}</td>
-                  <td className="py-1 text-right text-lune-soft">{t.pans}</td>
-                  <td className="py-1 text-right text-lune-soft">{t.ombrieres}</td>
-                  <td className="py-1 text-right text-lune-soft">{t.sols}</td>
-                  <td className="fig py-1 text-right text-white">{t.modules ?? '—'}</td>
+                  <td className="py-1 text-foreground">{t.batiment}</td>
+                  <td className="py-1 text-right text-foreground">{t.pans}</td>
+                  <td className="py-1 text-right text-foreground">{t.ombrieres}</td>
+                  <td className="py-1 text-right text-foreground">{t.sols}</td>
+                  <td className="fig py-1 text-right text-foreground">{t.modules ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

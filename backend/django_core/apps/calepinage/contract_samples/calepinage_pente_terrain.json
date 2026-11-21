@@ -1,0 +1,34 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/pente-terrain/",
+  "pourquoi": "ACAL466 (C-ACAL-L5-466) — lecture PURE de la pente et de l'orientation de pente du RELIEF sous un champ au sol (`poseSurfaces[].kind = 'sol'`), sur Copernicus GLO-30 (gratuit, sans compte, hors France compris). Paramètre de requête `surface` = `poseSurfaces[].id`. `pente_deg` et `azimut_pente_deg` (boussole, sens de la plus grande pente descendante ; null si le terrain est plat) valent null avec un `motif` français quand le relief n'a pas pu être lu (réseau coupé, tuile illisible, moins de trois pixels de 30 m distincts, points alignés) — JAMAIS une altitude de repli. `points` = les pixels GLO-30 réellement échantillonnés ([lon, lat] du centre du pixel, altitude en m). `attribution` = le texte de citation de la page du jeu de données, `DATE` remplacée par la date de lecture. `ancrage` = d'où vient l'emplacement lu : `contour_trace` (sommets tracés sur la carte) ou `epingle_du_site` (contour saisi en mètres, sans coordonnées, centré sur `roof_layout.pin` par projection équirectangulaire ; sans épingle ni contour : pente null et motif nommant la donnée manquante). C'est un DSM : valable pour un terrain, jamais pour un toit. Rien n'est enregistré : la pente saisie reste celle de l'utilisateur. L'exemple est une lecture RÉELLE faite le 21/11/2026 sur un carré de 8 × 8 pixels à Casablanca.",
+  "exemple": {
+    "surface": "sol-1",
+    "pente_deg": 1.4,
+    "azimut_pente_deg": 235.7,
+    "source": "Copernicus GLO-30 (modèle numérique de surface, 30 m)",
+    "source_url": "https://registry.opendata.aws/copernicus-dem",
+    "attribution": "Copernicus Digital Elevation Model (DEM) was accessed on 2026-11-21 from https://registry.opendata.aws/copernicus-dem.",
+    "lu_le": "2026-11-21T06:19:11Z",
+    "points": [
+      {"lon": -7.590278, "lat": 33.573611, "altitude_m": 42.09},
+      {"lon": -7.588056, "lat": 33.573611, "altitude_m": 48.97},
+      {"lon": -7.588056, "lat": 33.571389, "altitude_m": 42.83},
+      {"lon": -7.590278, "lat": 33.571389, "altitude_m": 41.53},
+      {"lon": -7.589167, "lat": 33.5725, "altitude_m": 44.0}
+    ],
+    "motif": "",
+    "ancrage": "contour_trace"
+  },
+  "exemple_sans_pente": {
+    "surface": "sol-1",
+    "pente_deg": null,
+    "azimut_pente_deg": null,
+    "source": "Copernicus GLO-30 (modèle numérique de surface, 30 m)",
+    "source_url": "https://registry.opendata.aws/copernicus-dem",
+    "attribution": "Copernicus Digital Elevation Model (DEM) was accessed on 2026-11-21 from https://registry.opendata.aws/copernicus-dem.",
+    "lu_le": "2026-11-21T06:19:11Z",
+    "points": [],
+    "motif": "Le relief Copernicus n'est pas joignable pour le moment : saisissez la pente à la main.",
+    "ancrage": "contour_trace"
+  }
+}

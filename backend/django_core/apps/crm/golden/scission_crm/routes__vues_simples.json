@@ -151,6 +151,18 @@
  },
  {
   "actions_map": null,
+  "motif": "leads/<int:lead_id>/roof-footprint/recherche/",
+  "nom": "lead-roof-footprint-recherche",
+  "vue": "lead_roof_footprint_recherche"
+ },
+ {
+  "actions_map": null,
+  "motif": "leads/roof-footprint/recherche/<int:job_id>/",
+  "nom": "roof-footprint-recherche-statut",
+  "vue": "roof_footprint_recherche_statut"
+ },
+ {
+  "actions_map": null,
   "motif": "public/booking/<str:token>/",
   "nom": "public-booking-status",
   "vue": "public_booking_status"

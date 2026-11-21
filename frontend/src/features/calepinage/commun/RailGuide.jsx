@@ -30,11 +30,11 @@ export default function RailGuide({ etapeActive, etats, onChoisir, expert = fals
             className={`inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm ${
               actif ? 'border-primary bg-primary/10 font-medium' : 'border-border'}`}
           >
-            <span className="tech-label text-lune-faint">{rang + 1}</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{rang + 1}</span>
             {etape.libelle}
             {etat && (
               <span data-testid={`cal-etape-${etape.cle}-etat`}
-                className="text-xs text-lune-faint">
+                className="text-xs text-muted-foreground">
                 {LIBELLE_ETAT[etat]}
               </span>
             )}
@@ -42,7 +42,7 @@ export default function RailGuide({ etapeActive, etats, onChoisir, expert = fals
         )
       })}
       {onBasculerExpert && (
-        <label className="ml-auto inline-flex items-center gap-1.5 text-xs text-lune-faint"
+        <label className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground"
           title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
           <input type="checkbox" data-testid="cal-mode-expert" checked={expert}
             onChange={(e) => onBasculerExpert(e.target.checked)} />

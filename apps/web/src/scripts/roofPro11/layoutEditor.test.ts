@@ -17,11 +17,11 @@ import { createLayoutEditor } from './layoutEditor';
 import { creerBarreSelection } from './barreSelection';
 import { creerAnnulerAtelier } from './annulerAtelier';
 import { glisserAimante } from './reperesAlignement';
-import { freeGeomFrom } from './freeMode';
+import { DEFAULT_FREE_MARGINS, freeGeomFrom } from './freeMode';
 import { type Ctx } from './context';
 import { type LayoutPlan } from './types';
 import { createLayoutState } from '../../lib/layoutVariability';
-import { type FreePanel } from '../../lib/freeLayout';
+import { placeFreePanels, type FreePanel } from '../../lib/freeLayout';
 import { carteEditeurFactice, depsEditeur } from './harnaisAtelier';
 
 /** Un contour CARRÉ centré sur l'origine ENU, de demi-côté `halfWidthM`. */
@@ -384,6 +384,25 @@ describe('ACAL425 — glissé libre : colle au voisin à moins du seuil et publi
     expect(dur.poses).toHaveLength(2);
     expect(dur.poses[1]).toEqual([3.95, 0.03]);
     expect(dur.segs.at(-1)).toEqual([]);
+  });
+
+  it('marges par défaut (écart 2 cm, relâchable) : le collage garde l’écart, il est posé et publie un repère', () => {
+    const { map } = makeMap();
+    const plan = makePlan(40);
+    const ctx = makeFreeCtx(plan, [{ cx: 0, cy: 0 }, { cx: -6, cy: 0 }]);
+    const editor = createLayoutEditor(ctx, makeDeps(map));
+    const g = freeGeomFrom(plan, [])!;
+    const st = (ctx as unknown as { freeState: { panels: FreePanel[] } }).freeState;
+    const segs: unknown[][] = [];
+    const res = glisserAimante({
+      actif: true, idx: 1, g, panels: st.panels, anchor: { cx: -6, cy: 0 }, dx: 3.95, dy: 0,
+      snap: editor.freeSnapCandidate, marges: DEFAULT_FREE_MARGINS,
+      poser: (dx, dy) => placeFreePanels(st, g, [{ index: 1, cx: -6 + dx, cy: dy }], DEFAULT_FREE_MARGINS),
+      reperes: { afficher: (s) => void segs.push([...s]) },
+    });
+    expect(res.ok).toBe(true);
+    expect(st.panels[1].cx).toBeCloseTo(-2.02, 9); // u = 2 + 0,02 : bord à bord + l'écart
+    expect(segs.at(-1)).toHaveLength(1);
   });
 });
 

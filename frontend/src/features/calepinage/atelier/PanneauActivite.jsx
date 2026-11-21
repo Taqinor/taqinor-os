@@ -66,7 +66,7 @@ export default function PanneauActivite({ calepinageId: idPropose } = {}) {
 
   return (
     <div className="mt-6" data-testid="cal-activite">
-      <p className="tech-label rule-brass text-brass-300">Activité</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Activité</p>
 
       <Card className="mt-3 space-y-2 p-4">
         <Textarea
@@ -96,7 +96,7 @@ export default function PanneauActivite({ calepinageId: idPropose } = {}) {
 
       <div className="mt-4">
         {entrees === null ? (
-          <div className="flex items-center gap-2 text-sm text-lune-faint">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Spinner />
             Chargement de l’activité…
           </div>

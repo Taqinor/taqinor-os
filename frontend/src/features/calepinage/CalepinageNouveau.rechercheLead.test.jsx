@@ -105,7 +105,7 @@ async function taperDansLaRecherche(nomChamp, texte) {
 describe('ALEA39 — recherche de lead du calepinage par `search`', () => {
   it('Calepinage → Nouveau : taper « Zzz » propose le lead ancien et rien d’autre', async () => {
     render(<MemoryRouter><CalepinageNouveau /></MemoryRouter>)
-    await taperDansLaRecherche('Lead', 'Zzz')
+    await taperDansLaRecherche('Lead rattaché au calepinage', 'Zzz')
     await waitFor(() => expect(options()).toHaveLength(1))
     expect(options()[0]).toContain('Zzz Ancien')
   })

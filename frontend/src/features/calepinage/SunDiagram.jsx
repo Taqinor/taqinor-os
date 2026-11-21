@@ -2,6 +2,32 @@ import { useMemo } from 'react'
 import { sortedHorizonPoints, horizonHeightAtAzimuth } from '@rooflib/horizonEngine'
 import { sunDirection as sunPosition } from '@rooflib/roofPro2'
 import { COURBES_REPERE } from './SunDiagram.helpers'
+import { CHART_TOKENS } from '../../ui/charts/chart-theme.js'
+
+/** ACAL449 — bornes d'une cellule : à mi-chemin de ses voisines, demi-pas au bord. */
+function bornes(v, i, min, max) {
+  const pas = v.length > 1 ? Math.abs(v[Math.min(i + 1, v.length - 1)] - v[Math.max(i - 1, 0)]) / (i === 0 || i === v.length - 1 ? 1 : 2) : max - min
+  const lo = i === 0 ? v[i] - pas / 2 : (v[i - 1] + v[i]) / 2
+  const hi = i === v.length - 1 ? v[i] + pas / 2 : (v[i] + v[i + 1]) / 2
+  return [Math.max(min, lo), Math.min(max, hi)]
+}
+
+/** Les cellules de la table servie (`shadeTable`), sans interpolation ; facteur hors
+ *  [0, 1] ou non fini → cellule écartée ; table absente ou mal formée → []. */
+function cellulesOmbrage(table) {
+  const az = table?.azimutsDeg
+  const ha = table?.hauteursDeg
+  if (!Array.isArray(az) || !Array.isArray(ha) || !Array.isArray(table?.facteurs) || !az.length || !ha.length) return []
+  const out = []
+  ha.forEach((_, j) => az.forEach((_a, i) => {
+    const facteur = table.facteurs[j]?.[i]
+    if (typeof facteur !== 'number' || !Number.isFinite(facteur) || facteur < 0 || facteur > 1) return
+    const [az0, az1] = bornes(az, i, 0, 360)
+    const [h0, h1] = bornes(ha, j, 0, 90)
+    out.push({ az0, az1, h0, h1, facteur })
+  }))
+  return out
+}
 
 /** La course du soleil d'un jour, points AU-DESSUS de l'horizon seulement, tous les
  *  `stepH` heures — échantillonnée avec `sunDirection` du moteur (jamais une copie). */
@@ -56,7 +82,7 @@ function yDe(elevationDeg) {
  * valeurs. Absentes → aucun repère (comportement historique, byte pour byte) ; sous
  * l'horizon (élévation ≤ 0) → aucun repère non plus, jamais un point inventé sous terre.
  */
-export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructions = [], sunDay, sunHour, ariaLabel, testId }) {
+export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructions = [], sunDay, sunHour, tableOmbrage, ariaLabel, testId }) {
   const sorted = sortedHorizonPoints(horizonPoints)
   const horizonPath = useMemo(() => {
     if (sorted.length < 2) return null
@@ -79,6 +105,9 @@ export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructio
     return pos.elevationDeg > 0 ? pos : null
   }, [latitudeDeg, sunDay, sunHour])
 
+  // ACAL449 — la table d'ombrage SERVIE (ACAL459), cellule par cellule ; absente → rien.
+  const cellules = useMemo(() => cellulesOmbrage(tableOmbrage), [tableOmbrage])
+
   return (
     <svg
       viewBox={`0 0 ${LARGEUR} ${HAUTEUR}`}
@@ -91,6 +120,20 @@ export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructio
         <text key={az} x={xDe(az)} y={HAUTEUR - 6} fontSize="11" fill="#8f9bb8" textAnchor="middle">
           {['N', 'E', 'S', 'O', 'N'][i]}
         </text>
+      ))}
+      {/* ACAL449 — cellules teintées, sans interpolation : opacité = 1 − facteur, SOUS la course. */}
+      {cellules.map((c) => (
+        <rect
+          key={`${c.az0}-${c.h0}`}
+          data-testid="acal449-cellule"
+          data-facteur={c.facteur}
+          x={xDe(c.az0)}
+          y={yDe(c.h1)}
+          width={xDe(c.az1) - xDe(c.az0)}
+          height={yDe(c.h0) - yDe(c.h1)}
+          fill={CHART_TOKENS.danger}
+          fillOpacity={1 - c.facteur}
+        />
       ))}
       <line x1={MARGE_G} y1={yDe(0)} x2={LARGEUR - 10} y2={yDe(0)} stroke="#3a4258" strokeWidth="1" />
 

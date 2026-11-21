@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
-import { RACCOURCIS, estSaisieEnCours, raccourciDe } from './RaccourcisAtelier.helpers'
+import { RACCOURCIS, SECTIONS_AIDE, estSaisieEnCours, raccourciDe } from './RaccourcisAtelier.helpers'
 
 /* ============================================================================
    CAL101 — LES RACCOURCIS DE L'ATELIER, ET LEUR AIDE-MÉMOIRE.
@@ -35,11 +35,6 @@ export default function RaccourcisAtelier({ actions = {} }) {
       // AERR114 — une boîte ouverte par-dessus l'atelier garde ses frappes.
       if (dialogueParDessus(racine.current)) return
 
-      if (evenement.key === TOUCHE_AIDE) {
-        evenement.preventDefault()
-        setAideOuverte((ouverte) => !ouverte)
-        return
-      }
       if (evenement.key === 'Escape') {
         setAideOuverte(false)
         return
@@ -57,6 +52,21 @@ export default function RaccourcisAtelier({ actions = {} }) {
     return () => window.removeEventListener('keydown', surTouche)
   }, [actions])
 
+  // ACAL414 (acceptation ACAL490) — « ? » dans l'atelier ouvre CETTE aide, jamais celle de
+  // l'ERP : écoutée en CAPTURE sur `window`, avant l'écouteur global (`ShortcutsProvider`),
+  // qui ne reçoit plus la touche.
+  useEffect(() => {
+    const surAide = (evenement) => {
+      if (evenement.key !== TOUCHE_AIDE || evenement.ctrlKey || evenement.metaKey || evenement.altKey) return
+      if (estSaisieEnCours(evenement.target) || dialogueParDessus(racine.current)) return
+      evenement.preventDefault()
+      evenement.stopPropagation()
+      setAideOuverte((ouverte) => !ouverte)
+    }
+    window.addEventListener('keydown', surAide, true)
+    return () => window.removeEventListener('keydown', surAide, true)
+  }, [])
+
   return (
     <div data-testid="cal-raccourcis" ref={racine}>
       <button
@@ -64,7 +74,7 @@ export default function RaccourcisAtelier({ actions = {} }) {
         onClick={() => setAideOuverte((ouverte) => !ouverte)}
         data-testid="cal-raccourcis-bouton"
         aria-expanded={aideOuverte}
-        className="text-sm font-semibold text-brass-300 underline"
+        className="text-sm font-semibold text-primary-text underline"
       >
         Raccourcis clavier (?)
       </button>
@@ -74,9 +84,9 @@ export default function RaccourcisAtelier({ actions = {} }) {
           role="dialog"
           aria-label="Aide-mémoire des raccourcis clavier"
           data-testid="cal-raccourcis-aide"
-          className="mt-3 rounded border border-white/15 bg-black/40 p-4"
+          className="mt-3 rounded border border-border bg-black/40 p-4"
         >
-          <p className="tech-label text-lune-faint">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Raccourcis de l’atelier — inactifs pendant la saisie d’un champ
           </p>
           <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
@@ -84,20 +94,33 @@ export default function RaccourcisAtelier({ actions = {} }) {
               <div key={raccourci.action} className="flex items-baseline gap-2"
                 data-testid={`cal-raccourci-${raccourci.action}`}>
                 <dt>
-                  <kbd className="rounded bg-white/10 px-1.5 text-xs text-white">
+                  <kbd className="rounded bg-muted px-1.5 text-xs text-foreground">
                     {raccourci.affichage}
                   </kbd>
                 </dt>
-                <dd className="text-sm text-lune-soft">{raccourci.libelle}</dd>
+                <dd className="text-sm text-foreground">{raccourci.libelle}</dd>
               </div>
             ))}
             <div className="flex items-baseline gap-2" data-testid="cal-raccourci-aide">
               <dt>
-                <kbd className="rounded bg-white/10 px-1.5 text-xs text-white">?</kbd>
+                <kbd className="rounded bg-muted px-1.5 text-xs text-foreground">?</kbd>
               </dt>
-              <dd className="text-sm text-lune-soft">Afficher ou masquer cette aide</dd>
+              <dd className="text-sm text-foreground">Afficher ou masquer cette aide</dd>
             </div>
           </dl>
+          {SECTIONS_AIDE.map((section) => (
+            <div key={section.cle} className="mt-3" data-testid={`cal-raccourcis-section-${section.cle}`}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{section.titre}</p>
+              <dl className="mt-1 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+                {section.lignes.map((l) => (
+                  <div key={`${l.ecriture}-${l.libelle}`} className="flex items-baseline gap-2">
+                    <dt><kbd className="rounded bg-muted px-1.5 text-xs text-foreground">{l.ecriture}</kbd></dt>
+                    <dd className="text-sm text-foreground">{l.libelle}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
         </div>
       )}
     </div>

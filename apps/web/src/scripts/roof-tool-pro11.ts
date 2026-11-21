@@ -197,7 +197,7 @@ import { monterAidePente } from './roofPro11/penteAide'; // ACAL416
 import { type TableOmbrage } from './roofPro11/tableOmbrage'; // ACAL459
 import { type FacteurVueCiel } from './roofPro11/vueCiel'; // ACAL460
 import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
-import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
+import { creerBandeauAnnuler, demanderEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
 import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
@@ -220,6 +220,8 @@ import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout, deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/prefill';
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
+import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
+import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
 
 let booted = false;
 
@@ -2510,9 +2512,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (layoutWindowEl) layoutWindowEl.hidden = true;
     if (layoutNoteEl) layoutNoteEl.textContent = '';
     syncChips();
-    const target = { pitch: 0, bearing: 0 } as const;
-    if (opts.reducedMotion) map.jumpTo(target);
-    else map.easeTo({ ...target, duration: 600 });
+    appliquerVue(map, 'dessus', facingAzimuthDeg, !!opts.reducedMotion); // ACAL435 — même cible (0, 0) et même 600 ms
     updateCompass();
     setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer.');
   }
@@ -2960,6 +2960,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // anticipée MÊME quand aucun point de plan n'attend (le module l'a dit dans la zone
     // d'annonces) : un clic pendant un calage ne doit pas poser un sommet par surprise.
     if (calageFondUi.clicCarte(lngLat)) return; // CALX108 câblage
+    if (coucheElectrique.clicCarte(lngLat)) return map.triggerRepaint(); // CALX222 — « Armer la pose » : le clic pose l'organe armé
     if (closed) {
       // sélection/désélection d'un obstacle existant
       selectObstacle(obstacleAtPoint(e.point));
@@ -3006,7 +3007,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   clearBtn?.addEventListener('click', () => {
     const pans = areas.filter((a) => (a.id === activeAreaId ? closed : a.vertices.length >= 3)).length;
     const obstacles = areas.reduce((n, a) => n + (a.id === activeAreaId ? ctx.obstacles.length : a.obstacles.length), 0);
-    if (confirmerEffacer({ pans, obstacles, consommation: consHandEdited || consAppliances.length > 0 || ctx.consSource != null, ombres: ctx.shadeObstructions.length > 0 })) { reset(); etatVide.maj(0, false); } // ACAL420 — site vierge : la carte d'aide revient
+    demanderEffacer(clearBtn, { pans, obstacles, consommation: consHandEdited || consAppliances.length > 0 || ctx.consSource != null, ombres: ctx.shadeObstructions.length > 0 }, () => { reset(); etatVide.maj(0, false); }); // ACAL420 — site vierge : la carte d'aide revient
   });
 
   // — « Plusieurs zones » : ajouter une zone + sélection/suppression dans la liste —
@@ -3062,6 +3063,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   needInputEl?.addEventListener('input', () => {
     const v = parseInt((needInputEl.value || '').replace(/\D/g, ''), 10);
     if (Number.isFinite(v) && v > 0) setNeeded(v);
+  });
+  $<HTMLInputElement>('rp9-cible-kwh')?.addEventListener('input', (ev) => { // ACAL470
+    const x = parseInt(((ev.target as HTMLInputElement).value || '').replace(/\D/g, ''), 10);
+    const e = optimizer.etatCarte();
+    const r = e && x > 0 ? panneauxPourCible(x, e.kwhParPanneau, e.tiennent, clampNeeded) : null;
+    if (!r) return;
+    setNeeded(r.panneaux);
+    if (needNoteEl) needNoteEl.textContent = phraseCible(r);
   });
   needInputEl?.addEventListener('blur', () => {
     if (needInputEl) needInputEl.value = neededPanels > 0 ? fmt(neededPanels) : '—';
@@ -4344,6 +4353,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),
+    appliquerVue: (nom) => appliquerVue(map, nom, facingAzimuthDeg, !!opts.reducedMotion), // ACAL435
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
     // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les
     // cotes de la 2D sont donc ceux de la 3D, par construction.

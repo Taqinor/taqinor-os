@@ -219,7 +219,6 @@ export default function TapisHoraire({
 
   const charger = useCallback(() => {
     if (perime || fournie || !id || idDejaTente.current === id) return Promise.resolve()
-    idDejaTente.current = id
     // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — `geometriePresente`
     // vient de `PanneauProduction.jsx`, qui le sait déjà SANS requête de
     // plus (`pose.total_modules` de son propre `resultat()`, CAL244 : « la
@@ -239,6 +238,9 @@ export default function TapisHoraire({
         setEnCours(false)
       })
     }
+    // Le garde ne retient l'étude qu'à la VRAIE requête : une série qui devient
+    // disponible (simulation terminée) est alors lue une fois (acceptation ACAL490).
+    idDejaTente.current = id
     return Promise.resolve(calepinageApi.calepinages.exportCsv(id, 'horaire', COLONNES_HORAIRE))
       .then(async (res) => setChargee(lireCsvHoraire(await texteDuFichier(res?.data))))
       .catch(async (erreur) => setRefus(await motifDuRefus(erreur) || SANS_SERIE))

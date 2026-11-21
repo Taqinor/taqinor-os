@@ -94,3 +94,18 @@ test('les réglages de placement libre (retrait de rive / écart) sont bien reli
   assert.match(SRC, /htmlFor="rp9-free-gap"/)
   assert.match(SRC, /id="rp9-free-gap"/)
 })
+
+test('ACAL434 : le bandeau du soleil est monté dans BuilderDom', () => {
+  for (const id of ['rp9-sun-controls', 'rp9-sun-hour', 'rp9-sun-hour-value']) {
+    assert.match(SRC, new RegExp(`id="${id}"`), `id="${id}" absent de BuilderDom.jsx`)
+  }
+  assert.match(SRC, /id="rp9-sun-hour" type="range" min="6" max="18"/)
+  assert.equal((SRC.match(/data-sun-season="/g) || []).length, 2)
+})
+
+test('ACAL436 : la bascule de la carte d\'accès solaire est montée dans BuilderDom', () => {
+  for (const id of ['rp9-heatmap-toggle', 'rp9-heatmap-note']) {
+    assert.match(SRC, new RegExp(`id="${id}"`), `id="${id}" absent de BuilderDom.jsx`)
+  }
+  assert.match(SRC, /id="rp9-heatmap-toggle"[^>]*aria-pressed="false"/)
+})

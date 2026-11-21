@@ -16,6 +16,8 @@ rougit.
 from __future__ import annotations
 
 import copy
+import json
+import pathlib
 from unittest import mock
 
 from apps.calepinage.models import Calepinage
@@ -27,6 +29,8 @@ from apps.calepinage.services.parametres import enregistrer_parametres
 from apps.roles.models import Role
 
 from .test_api_liste import BaseApiCalepinage, User, url_detail
+
+CONTRATS = pathlib.Path(__file__).resolve().parent.parent / 'contract_samples'
 
 #: Un pan carré de ~20 m de côté près de Lyon (pays « fr »).
 LON, LAT = 4.8357, 45.7640
@@ -182,4 +186,33 @@ class SuggestionPenteApiTest(BaseApiCalepinage):
         reponse = self._poster('refuser', base, zone_id='z1')
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('zone_id', reponse.data)
+        self.assertEqual(self._lire()['roof_layout'], avant['roof_layout'])
+
+    def test_pente_terrain_lecture_pure_par_societe(self):
+        """ACAL466 — ``GET pente-terrain/?surface=<id>`` : rend la forme du
+        contrat ``calepinage_pente_terrain.json``, n'écrit rien, refuse un
+        champ inconnu (409) ou un paramètre manquant (400), jamais une autre
+        société (404). Le réseau GLO-30 est simulé à la frontière."""
+        document = copy.deepcopy(DOCUMENT)
+        document['poseSurfaces'] = [{
+            'id': 'sol-1', 'kind': 'sol',
+            'vertices': [[-7.59, 33.5733], [-7.588, 33.5733],
+                         [-7.588, 33.5711]]}]
+        enregistrer_layout(self.calepinage, document, user=self.user)
+        avant = self._lire()
+        url = f'{url_detail(self.calepinage.pk)}pente-terrain/'
+        attendu = json.loads((CONTRATS / 'calepinage_pente_terrain.json')
+                             .read_text(encoding='utf-8'))['exemple']
+        with mock.patch('apps.calepinage.views.suggestion_pente.'
+                        'lire_pente_surface', return_value=attendu) as lit:
+            reponse = self.api.get(url, {'surface': 'sol-1'})
+            self.assertEqual(reponse.status_code, 200, reponse.data)
+            self.assertEqual(sorted(reponse.data), sorted(attendu))
+            self.assertEqual(lit.call_args[0][0], 'sol-1')
+            self.assertEqual(self.api.get(url).status_code, 400)
+            self.assertEqual(
+                self.api.get(url, {'surface': 'absent'}).status_code, 409)
+            self.assertEqual(
+                self.api_autre.get(url, {'surface': 'sol-1'}).status_code,
+                404)
         self.assertEqual(self._lire()['roof_layout'], avant['roof_layout'])

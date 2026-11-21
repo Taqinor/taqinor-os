@@ -53,6 +53,7 @@ import {
   semerOptimisationDepuisDocument,
 } from './optimisationDocument'; // CALX114 câblage
 import { semerFondDepuisDocument } from './fondDocument'; // CALX107 câblage
+import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -1139,7 +1140,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
 
   const layout: SerializedLayout = {
     version: 2,
-    pin: centroidOf(activeVerts),
+    pin: epingleDuSite(centroidOf(activeVerts), ctx.documentRelu, centroidOf(ctx.areas.find((a) => a.vertices.length >= 3)?.vertices ?? [])),
     outline,
     billKwh: Number.isFinite(billKwh as number) ? billKwh : null,
     zones,

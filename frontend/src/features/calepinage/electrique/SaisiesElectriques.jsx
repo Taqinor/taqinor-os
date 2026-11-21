@@ -30,7 +30,7 @@ function Champ({ cle, libelle, unite, genre, valeur, erreur, onChange, id = idCh
             value={valeur}
             onChange={(e) => onChange(e.target.value)}
             aria-invalid={erreur ? 'true' : undefined}
-            className="w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+            className="w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
           >
             <option value="">— non précisé —</option>
             <option value="oui">oui</option>
@@ -153,7 +153,7 @@ export default function SaisiesElectriques({ calepinageId, lectureSeule = false 
         <form className="flex flex-col gap-4" onSubmit={enregistrer} data-testid="acal153-formulaire">
           {groupes.map((groupe) => (
             <fieldset key={groupe} className="flex flex-col gap-3">
-              <legend className="tech-label text-lune-faint">{groupe}</legend>
+              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{groupe}</legend>
               <div className="grid gap-3 sm:grid-cols-2">
                 {CHAMPS.filter((c) => c.groupe === groupe).map((c) => (
                   <Champ
@@ -172,7 +172,7 @@ export default function SaisiesElectriques({ calepinageId, lectureSeule = false 
           ))}
 
           <fieldset className="flex flex-col gap-3" data-testid="acal153-exigence">
-            <legend className="tech-label text-lune-faint">Exigence du marché</legend>
+            <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Exigence du marché</legend>
             <div className="grid gap-3 sm:grid-cols-3">
               {EXIGENCE.map((c) => (
                 <Champ
@@ -190,7 +190,7 @@ export default function SaisiesElectriques({ calepinageId, lectureSeule = false 
           </fieldset>
 
           <fieldset className="flex flex-col gap-3" data-testid="acal153-transformateur">
-            <legend className="tech-label text-lune-faint">Transformateur</legend>
+            <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Transformateur</legend>
             <Champ
               id={idChamp('transformateur-declare')}
               cle="transformateur.declare"

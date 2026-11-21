@@ -20,15 +20,16 @@ import copy
 
 from django.db import transaction
 from rest_framework import status
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..permissions import PeutGererCalepinage
+from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..serializers import corps_obligatoire
 from ..services.layout import (
     DocumentModifie, LayoutRefuse, _relire_sous_verrou, enregistrer_layout,
 )
+from ..services.terrain_glo30 import lire_pente_surface
 from ..services.lidar_ign import (
     CLE_SUGGESTION, PAYS_COUVERT, REFUSEE, SOURCE, SUGGEREE, URL_SOURCE,
     VALIDEE, ServiceIndisponible, accepter_suggestion, refuser_suggestion,
@@ -38,7 +39,7 @@ from .calepinages import (
     _FORME_ECRITURE_LAYOUT, CalepinageViewSet, _reponse_ecriture,
 )
 
-__all__ = ['suggestions_pente']
+__all__ = ['suggestions_pente', 'pente_terrain']
 
 OPERATIONS = ('proposer', 'accepter', 'refuser')
 LIBELLE = 'pente du terrain'
@@ -193,4 +194,42 @@ def suggestions_pente(self, request, pk=None):
     return Response(_reponse_ecriture(calepinage, resultat))
 
 
+@extend_schema(
+    parameters=[OpenApiParameter(
+        name='surface', type={'type': 'string', 'minLength': 1},
+        location=OpenApiParameter.QUERY, required=True,
+        description="Identifiant du champ au sol (poseSurfaces[].id).")],
+    responses={200: {'type': 'object'},
+               400: OpenApiResponse(description="Paramètre « surface » manquant."),
+               409: OpenApiResponse(description="Champ au sol introuvable ou sans contour lisible : refus nommé.")})
+@action(detail=True, methods=['get'], url_path='pente-terrain',
+        permission_classes=[PeutVoirCalepinage])
+def pente_terrain(self, request, pk=None):
+    """ACAL466 — pente et orientation du relief d'un champ au sol (GLO-30).
+
+    ``?surface=<id>`` désigne un ``poseSurfaces[]`` de genre ``sol`` du
+    document STOCKÉ. Lecture pure : rien n'est enregistré ; relief illisible
+    ⇒ ``pente_deg: null`` + ``motif`` (jamais une altitude de repli).
+    """
+    calepinage = self.get_object()
+    surface_id = request.query_params.get('surface')
+    if not surface_id:
+        return Response({'surface': "Paramètre surface manquant : indiquez "
+                                    "le champ au sol à lire."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    document = calepinage.roof_layout if isinstance(
+        calepinage.roof_layout, dict) else {}
+    surface = next(
+        (s for s in document.get('poseSurfaces') or []
+         if isinstance(s, dict) and str(s.get('id')) == str(surface_id)
+         and s.get('kind') == 'sol'), None)
+    if surface is None:
+        return Response(
+            {'surface': "Aucun champ au sol de ce nom dans la conception."},
+            status=status.HTTP_409_CONFLICT)
+    return Response(lire_pente_surface(
+        str(surface_id), surface, document.get('pin')))
+
+
 CalepinageViewSet.suggestions_pente = suggestions_pente
+CalepinageViewSet.pente_terrain = pente_terrain

@@ -27,6 +27,7 @@ import { compressImage, validateFile } from '../../ui/file-utils'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 import ChampsRendementEtPvMaxOnduleur from './ChampsRendementEtPvMaxOnduleur'
+import ImportFichePvsyst from './ImportFichePvsyst'
 // PVOND (fondateur 18/08) — la classification produit reste UNE seule
 // source : la même que le générateur de devis, jamais réimplémentée ici.
 import { classifyProduct, isPompe } from '../../features/ventes/calc/classification.js'
@@ -664,6 +665,16 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
     return () => { active = false }
   }, [isEdit, produit?.id])
 
+  // CALX357 — fiche écrite par l'import PVsyst confirmé : on recharge l'état
+  // local depuis la fiche renvoyée par le serveur (même chemin que le chargement).
+  const appliquerFicheImportee = (f) => {
+    if (!f) return
+    setFicheId(f.id ?? null)
+    setFicheTypeServeur(f.type_fiche ?? '')
+    setFicheFields(champsFicheDepuisServeur(f))
+    setFicheCiInitial(ficheCiDepuisServeur(f))
+    setFicheCi(ficheCiDepuisServeur(f))
+  }
   const setFicheField = (k, v) => setFicheFields((f) => ({ ...f, [k]: v }))
   // CALX355 — courbes : ajout / modification / suppression LIGNE PAR LIGNE.
   const setCelluleCourbe = (cle, i, col, v) => setFicheFields((f) => ({
@@ -1617,6 +1628,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                 ? "Ce que le générateur de devis exige pour chiffrer cet onduleur — les mêmes variables que sa bannière « à renseigner »."
                 : 'Caractéristiques techniques, lues par le dimensionnement et les fiches produits des devis.'}
             >
+              {/* CALX357 — import .PAN/.OND : produit déjà enregistré seulement
+                  (l'action serveur exige son id). */}
+              {isEdit && produit?.id && (estOnduleur || estPanneauFiche) && (
+                <div className="sm:col-span-2">
+                  <ImportFichePvsyst produitId={produit.id} onApplique={appliquerFicheImportee} />
+                </div>
+              )}
               {estOnduleur && (
                 <div className="sm:col-span-2">
                   {manquantesOnduleur.length === 0 ? (

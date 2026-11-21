@@ -26,9 +26,9 @@ on the document that matters most: `facturation.Facture` (the single
 Same reading for `compta.CompteTresorerie` (AUD175): a `devise` column
 with no rate column at all — mono-MAD in practice.
 
-- Money-bearing models scanned: **81**
+- Money-bearing models scanned: **82**
 - Already carry an explicit devise/currency field: **5**
-- Assume mono-devise MAD implicitly (no devise field): **76**
+- Assume mono-devise MAD implicitly (no devise field): **77**
 
 ## Models WITHOUT an explicit devise field (assume MAD)
 
@@ -42,6 +42,7 @@ with no rate column at all — mono-MAD in practice.
 | adminops | FactureLicence | `apps/adminops/models.py:299` | montant_ht, montant_ttc, tva |
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2331` | quota_total |
+| agent | UsageIA | `apps/agent/models.py:170` | cout |
 | crm | Lead | `apps/crm/models.py:224` | montant_estime, tva_recuperable |
 | crm | PointContact | `apps/crm/models.py:2381` | cout |
 | crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:219` | total |

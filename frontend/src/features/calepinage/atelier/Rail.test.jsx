@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
@@ -78,6 +78,18 @@ async function panneauOuvert() {
 
 beforeEach(() => vi.clearAllMocks())
 afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+/* ACAL437 — ce cas DOIT rester le premier à ouvrir un panneau paresseux de ce
+   fichier : `lazy()` garde le composant résolu une fois chargé, et les cas
+   suivants (boucle sur tous les onglets) ne montreraient plus le repli. */
+describe('ACAL437 — le repli du rail est un squelette, pas une roue seule', () => {
+  it('pendant le chargement du panneau : squelette à la forme du contenu, sous role=status « Chargement… »', async () => {
+    rendreRail('?onglet=production')
+    const panneau = await screen.findByTestId('cal-onglet-panneau')
+    const etat = within(panneau).getByRole('status', { name: 'Chargement…' })
+    expect(etat.querySelector('.skeleton-shimmer'), 'la roue seule : aucun squelette').not.toBeNull()
+  })
+})
 
 describe('CALX1 — le registre `atelier/onglets.js`', () => {
   it('chaque entrée porte la forme attendue, avec une clé et un ordre uniques', () => {

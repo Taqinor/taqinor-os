@@ -126,7 +126,7 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false 
                     ...(choix ?? {}),
                     [role.champ]: e.target.value === '' ? null : Number(e.target.value),
                   })}
-                  className="w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
                 >
                   <option value="">{manque ? '— à désigner —' : '— aucun —'}</option>
                   {candidats.map((c) => {

@@ -4,6 +4,8 @@ import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
 import ReglagesSite from './ReglagesSite'
 import DemarrageRapide from './DemarrageRapide'
+import ReglagesNorme from './ReglagesNorme'
+import { useOuvrirChamp } from '../atelier/ouvrirChamp'
 import { refusServeur } from '../commun/refusServeur'
 
 /* ============================================================================
@@ -478,6 +480,8 @@ export default function ReglagesSimulation() {
   // ACAL289 — `presets` et `documents` servis, pour les deux cartes de fin.
   const [presetsServis, setPresetsServis] = useState(null)
   const [documentsServis, setDocumentsServis] = useState(null)
+  // ACAL397 — `norme_electrique` servie ; `#<champ>` (lien de « ce qui manque ») focalisé après chargement.
+  const [normeServie, setNormeServie] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreurChargement, setErreurChargement] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -505,6 +509,7 @@ export default function ReglagesSimulation() {
         setImagerie(data.imagerie && typeof data.imagerie === 'object' ? data.imagerie : null)
         setPresetsServis(data.presets && typeof data.presets === 'object' ? data.presets : {})
         setDocumentsServis(data.documents && typeof data.documents === 'object' ? data.documents : {})
+        setNormeServie(data.norme_electrique && typeof data.norme_electrique === 'object' ? data.norme_electrique : {})
         setServis({ simulation: data.simulation, electrique_societe: data.electrique_societe })
         setLignesParSection({
           simulation: lignesDepuis(simulation, data.simulation),
@@ -519,6 +524,8 @@ export default function ReglagesSimulation() {
       .finally(() => { if (!annule) setChargement(false) })
     return () => { annule = true }
   }, [relecture])
+
+  useOuvrirChamp(chargement ? '' : decodeURIComponent((window.location.hash || '').slice(1)), chargement)
 
   const changer = (section) => (cle, champ, valeur) => setLignesParSection((courant) => ({
     ...courant,
@@ -661,6 +668,7 @@ export default function ReglagesSimulation() {
       />
 
       <ReglagesSite imagerie={imagerie} />
+      <ReglagesNorme normeElectrique={normeServie} />
 
       {Object.keys(registres).map((section) => (
         <Card key={section} className="mt-5 p-4" data-testid={`calx69-section-${section}`}>

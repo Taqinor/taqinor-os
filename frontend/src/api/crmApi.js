@@ -67,6 +67,11 @@ const crmApi = {
   // (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie rien — jamais une
   // erreur bloquante, l'atelier toiture retombe sur le tracé manuel.
   getRoofFootprint: (id) => api.get(`/crm/leads/${id}/roof-footprint/`),
+  // ACAL421 (décision fondateur du 21/11 : tâche de fond) — la même recherche hors requête :
+  // POST → 202 { job_id, statut: 'en_cours' }, puis GET du statut (en_cours | pret | refus nommé).
+  // Contrat : `apps/crm/contract_samples/lead_emprise_recherche.json`.
+  lancerRechercheEmprise: (id) => api.post(`/crm/leads/${id}/roof-footprint/recherche/`, {}),
+  getRechercheEmprise: (jobId) => api.get(`/crm/leads/roof-footprint/recherche/${jobId}/`),
   // VT12/VT13 — texture du toit CALÉE du lead (dernière visite terrain
   // VALIDÉE) : {visite_id, url, texture_calage} — les TROIS clés à null quand
   // il n'y a rien à montrer (jamais un 404). L'atelier 3D et la fiche lead

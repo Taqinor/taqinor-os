@@ -55,6 +55,7 @@ import {
 } from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
 import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
+import { poserLegendeAcces } from './legendeAcces'; // ACAL441
 import { signerSources, tableOmbrage, type TableOmbrage } from './tableOmbrage'; // ACAL459
 import { facteurVueCiel, vueCielDuPan, type FacteurVueCiel } from './vueCiel'; // ACAL460
 import { type Ctx } from './context';
@@ -1055,8 +1056,10 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     if (!heatmapNoteEl) return;
     if (!heatmapOn) {
       heatmapNoteEl.textContent = '';
+      poserLegendeAcces(heatmapNoteEl, null); // ACAL441
       return;
     }
+    poserLegendeAcces(heatmapNoteEl, heatmapMonth == null ? 'année entière' : HEATMAP_MONTH_LABELS[heatmapMonth]); // ACAL441
     const periode = heatmapMonth == null ? 'toute l’année' : `en ${HEATMAP_MONTH_LABELS[heatmapMonth]}`;
     heatmapNoteEl.textContent =
       `Carte d’accès solaire (${heatmapMonth == null ? 'année entière' : HEATMAP_MONTH_LABELS[heatmapMonth]}) : ` +

@@ -16,10 +16,36 @@ const SCHEMA = join(here, '../../backend/django_core/apps/calepinage/contract_sa
 const [INP_BON, INP_MAUVAIS] = /INP:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]/
   .exec(readFileSync(join(here, '../src/lib/vitals.js'), 'utf8')).slice(1).map(Number)
 const PLAFOND = process.env.CI ? INP_MAUVAIS : INP_BON
+// Version mesurée (avant/après ACAL431 et ACAL433 : le runner rejoue la spec sur le code sans leurs deux commits).
+const VERSION = process.env.ACAL440_VERSION || 'code courant'
+// Épingle de l'exemple ; toit de 68 m × 56 m centré dessus, 25 × 20 modules au pas de 2,5 m (sans chevauchement
+// quelle que soit l'orientation du module de 2 384 × 1 134 mm), posés VERBATIM en placement libre (PV30).
+const ORIGINE = [-7.6, 33.5]
+const DEG2M = (Math.PI / 180) * 6378137
+const versLngLat = (cx, cy) => [ORIGINE[0] + cx / (DEG2M * Math.cos((ORIGINE[1] * Math.PI) / 180)), ORIGINE[1] + cy / DEG2M]
+const [O, N] = [versLngLat(-34, -28), versLngLat(34, 28)]
+const centre = (i) => [((i % 25) - 12) * 2.5, (Math.floor(i / 25) - 9.5) * 2.5]
 
 test.describe.configure({ timeout: 600_000 })
 test.use({ viewport: { width: 1600, height: 1000 }, actionTimeout: 60_000 })
-test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
+test.beforeEach(async ({ page, context }) => {
+  await context.addInitScript(sondeCarte)
+  await assurerSessionPage(page)
+})
+
+/** Capte la carte MapLibre de l'atelier (même sonde que `acceptation/acal10.spec.js::sondes`). */
+function sondeCarte() {
+  window.__cartes440 = []
+  Object.defineProperty(Object.prototype, '_maxTileCacheSize', {
+    configurable: true,
+    get() { return undefined },
+    set(v) {
+      Object.defineProperty(this, '_maxTileCacheSize', { value: v, writable: true, configurable: true, enumerable: true })
+      if (typeof this.project === 'function' && typeof this.getContainer === 'function') window.__cartes440.push(this)
+    },
+  })
+  window.__carte440 = () => window.__cartes440.filter((m) => m.getContainer()?.isConnected && m.getContainer().id === 'rp9-map').pop()
+}
 
 function consigner(nom, valeur, cible) {
   const ligne = `${nom} = ${valeur} ms (${cible})`
@@ -27,16 +53,16 @@ function consigner(nom, valeur, cible) {
   console.log(`[ACAL440] ${ligne}`)
 }
 
-/** Document de 500 modules : l'`exemple` du schéma, sommets élargis, `geometry.panels` à 500 entrées. */
+/** Document de 500 modules : l'`exemple` du schéma, sommets élargis (lng/lat autour de l'épingle), `geometry.panels` à 500. */
 function documentA500() {
   const doc = JSON.parse(readFileSync(SCHEMA, 'utf8')).exemple
   const zone = doc.zones[0]
-  zone.vertices = [[0, 0], [30, 0], [30, 40], [0, 40]]
+  zone.vertices = [O, [N[0], O[1]], N, [O[0], N[1]]]
   zone.obstacles = []
-  zone.geometry.panels = Array.from({ length: NB }, (_, i) => ({
-    cx: (i % 25) * 1.2, cy: Math.floor(i / 25) * 2, n: i + 1, rangee: String.fromCharCode(65 + Math.floor(i / 25)),
-  }))
-  zone.geometry.count = NB
+  delete zone.geometry.solarAccess // l'accès solaire de l'exemple ne vaut que pour ses 2 modules
+  zone.geometry = { ...zone.geometry, mode: 'free', origin: ORIGINE, count: NB, panels: Array.from({ length: NB }, (_, i) => ({
+    cx: centre(i)[0], cy: centre(i)[1], n: i + 1, rangee: String.fromCharCode(65 + Math.floor(i / 25)),
+  })) }
   zone.neededPanels = NB
   return doc
 }
@@ -75,21 +101,39 @@ async function mesurerGlisse(page, id) {
   await expect(page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }))
     .toBeEnabled({ timeout: 240_000 })
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
-  const scene = page.locator('#rp9-map')
-  await expect(scene).toBeVisible()
+  await expect(page.locator('#rp9-need-note'), '500 modules posés avant la mesure').toContainText(`${NB} posés`, T)
+  console.log(`[ACAL440-diag] barre de résumé : « ${await page.getByTestId('cal-resume-panneaux').innerText()} »`)
+  // « Déplacer les panneaux » : hors mode disposition, `beginLayoutDrag` refuse et le glissé déplacerait la CARTE.
+  const bascule = page.locator('#rp9-layout-toggle')
+  await bascule.click()
+  await expect(bascule).toHaveAttribute('aria-pressed', 'true')
+  await page.evaluate(() => document.getElementById('rp9-map').scrollIntoView({ block: 'center' }))
+  await expect(page.locator('#rp9-map')).toBeInViewport({ ratio: 0.9 })
+  await expect.poll(() => page.evaluate(() => { const m = window.__carte440(); return !!m && m.getPitch() < 0.5 && !m.isMoving() }),
+    { timeout: 30_000, message: 'vue de dessus, carte immobile' }).toBe(true)
+  // Le dernier module (coin nord-est) : son pixel par la projection de la carte, après cadrage du toit entier.
+  const cible = await page.evaluate(([bornes, ll]) => {
+    const m = window.__carte440()
+    m.fitBounds(bornes, { padding: 60, duration: 0 })
+    const [p, r, c] = [m.project(ll), m.getContainer().getBoundingClientRect(), m.getCenter()]
+    return { x: r.left + p.x, y: r.top + p.y, centre: [c.lng, c.lat], dedans: p.x > 0 && p.y > 0 && p.x < r.width && p.y < r.height }
+  }, [[O, N], versLngLat(...centre(NB - 1))])
+  expect(cible.dedans, 'le module visé est dans la carte').toBe(true)
   await page.evaluate(() => {
     window.__acal440 = []
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__acal440.push(Math.round(e.duration)) })
       .observe({ type: 'event', durationThreshold: 16, buffered: false })
   })
-  const b = await scene.boundingBox()
-  const [x0, y0] = [b.x + b.width / 2, b.y + b.height / 2]
-  await page.mouse.move(x0, y0)
+  await page.mouse.move(cible.x, cible.y)
   await page.mouse.down()
-  for (let i = 1; i <= 20; i += 1) await page.mouse.move(x0 + i * 6, y0 + i * 3)
+  for (let i = 1; i <= 20; i += 1) await page.mouse.move(cible.x + i, cible.y)
+  const note = await page.locator('#rp9-layout-note').innerText()
   await page.mouse.up()
   // Event Timing publie ses entrées au prochain rendu : on attend deux frames, pas un délai fixe.
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+  const apres = await page.evaluate(() => { const c = window.__carte440().getCenter(); return [c.lng, c.lat] })
+  expect(note, 'aperçu du glissé d’un PANNEAU (note du mode disposition)').toMatch(/Relâchez pour poser|Ici :/)
+  expect(apres, 'la carte n’a pas bougé : le geste a glissé un panneau, pas la vue').toEqual(cible.centre)
   const durees = await page.evaluate(() => window.__acal440)
   return durees.length ? Math.max(...durees) : 0
 }
@@ -97,7 +141,7 @@ async function mesurerGlisse(page, id) {
 test('ACAL440: glissé de panneaux sur 500 modules — pire interaction sous le plafond', async ({ page, context }) => {
   await carteRefusee(context)
   const pire = await mesurerGlisse(page, (await calepinageA500(page.request)).id)
-  consigner('Atelier 500 modules — pire interaction', pire,
+  consigner(`Atelier 500 modules (${VERSION}) — pire interaction`, pire,
     `plafond ${PLAFOND} ms, ${process.env.CI ? 'CI = seuil mauvais' : 'local = seuil bon'} de vitals.js`)
   expect(pire, 'la pire interaction du glissé reste sous le plafond').toBeLessThanOrEqual(PLAFOND)
 })
@@ -106,5 +150,5 @@ test('ACAL440: mode bas de gamme (deviceMemory 4) — mesure consignée sans pla
   await context.addInitScript(() => Object.defineProperty(navigator, 'deviceMemory', { get: () => 4 }))
   await carteRefusee(context)
   const pire = await mesurerGlisse(page, (await calepinageA500(page.request)).id)
-  consigner('Atelier 500 modules, deviceMemory 4 — pire interaction', pire, 'sans plafond')
+  consigner(`Atelier 500 modules (${VERSION}), deviceMemory 4 — pire interaction`, pire, 'sans plafond')
 })

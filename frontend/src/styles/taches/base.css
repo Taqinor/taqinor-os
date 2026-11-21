@@ -1465,7 +1465,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 /* Corps cliquable de la ligne (ouvre la fiche) : un vrai bouton, jamais un div muet */
 .tch .ligne-corps-bouton { text-align: left; min-width: 0; display: block; width: 100%; }
 /* Annonce lue (role=status) : hors écran, jamais vide du DOM */
-.tch .annonce { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tch .annonce { position: absolute; left: 0; top: 0; margin: -1px; padding: 0; border: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* Toast : pose dans .toast-place ; texte coupé proprement */
 .tch .toast button:focus-visible { box-shadow: var(--focus-ring); border-radius: 10px; }
 /* Sans mouvement : la ligne revient sans glisser (les durées --motion-* sont déjà à 0) */

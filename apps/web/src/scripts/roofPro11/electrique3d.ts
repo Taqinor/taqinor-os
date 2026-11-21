@@ -559,6 +559,9 @@ export interface CoucheElectrique {
   armerPose: (type: TypeEquipement | null) => boolean;
   typeArme: () => TypeEquipement | null;
   poser: (lngLat: LngLat, options?: { label?: string; altitudeM?: number | null; rotationDeg?: number; produitId?: number | null }) => PoseReussie | RefusElectrique;
+  /** CALX222 — un clic sur la carte pose l'organe armé (« Armer la pose ») puis désarme ;
+   *  rend `true` si le clic est consommé (un type était armé), `false` sinon. */
+  clicCarte: (lngLat: LngLat) => boolean;
   selectionner: (id: string | null) => boolean;
   selection: () => string | null;
   deplacer: (id: string, lngLat: LngLat) => PoseReussie | RefusElectrique;
@@ -1016,6 +1019,11 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     },
     typeArme: () => arme,
     poser,
+    clicCarte: (lngLat) => {
+      if (!arme) return false;
+      if (poser(lngLat).ok) arme = null; // un clic = un organe ; un refus garde l'armement (nommé)
+      return true;
+    },
     selectionner: (id) => {
       if (id === null) {
         selectionne = null;
