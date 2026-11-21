@@ -20,7 +20,7 @@ import copy
 
 from django.db import transaction
 from rest_framework import status
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -194,7 +194,12 @@ def suggestions_pente(self, request, pk=None):
     return Response(_reponse_ecriture(calepinage, resultat))
 
 
-@extend_schema(responses={'application/json': {'type': 'object'}})
+@extend_schema(
+    parameters=[OpenApiParameter(
+        name='surface', type={'type': 'string', 'minLength': 1},
+        location=OpenApiParameter.QUERY, required=True,
+        description="Identifiant du champ au sol (poseSurfaces[].id).")],
+    responses={200: {'type': 'object'}})
 @action(detail=True, methods=['get'], url_path='pente-terrain',
         permission_classes=[PeutVoirCalepinage])
 def pente_terrain(self, request, pk=None):
