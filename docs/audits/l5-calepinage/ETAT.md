@@ -156,3 +156,26 @@ complet = 37 réglages société (128 champs).
 - **Reste** : critique finale de la PR #1517 puis merge et libération des bails ; insertion du bloc calepinage quand le
   bail est libre — trancher alors la porte PACT11 (216 refus contre 23 à la base : 12 tâches backend étendent
   `apps/calepinage/selectors.py`) ; tour 2 de relecteurs après les livraisons de l'autre poste ; démontage de la pile `l5cal`.
+
+## Mise à jour du 21/11/2026 (14 h UTC) — collisions avec l'autre poste, re-vérification
+
+- **L'autre poste n'a pas fini de merger** : sa PR #1515 (branche `dev-all-acal-acc`, « PR 3/3 calepinage L5 ») est
+  ouverte, CI relancée à 13 h 25 UTC. Elle coche une cinquantaine de tâches ACAL392-489, AJOUTE `ACAL491` (cochée) et
+  la décision `D-ACAL-35` (ACAL421 : recherche du contour en tâche de fond). Ses baux tiennent encore
+  `PLAN_AUDIT_CALEPINAGE.md`, `PLAN_AUDIT_SECURITE.md`, `PLAN2.md`, `app:calepinage`, `app:web`, `app:crm`, `app:stock`.
+- **Deux collisions corrigées dans la PR #1517** (commits `c8d5cc35d`, `e3191da77`) :
+  notre `ACAL491` devient **`ACAL1032`** ; nos décisions du 21/11 deviennent **`D-ACAL-36` à `D-ACAL-43`**
+  (36 pose réelle sur les nouveaux devis · 37 cases toit + sol · 38 quatre ajouts visibles du client · 39 kit de
+  fixation seul sur toit incliné · 40 rien sans consommation connue · 41 bilan de réservoir interne · 42 modèles
+  « Exemple » · 43 un dossier distributeur générique). Tout document antérieur qui dit « D-ACAL-35..42 » pour ces
+  huit réponses est décalé d'un cran. Prochain id libre : `ACAL1033`.
+- **Copie de vérification** `C:\dev\taqinor-os\.claude\worktrees\l5-verif` (jamais poussée) = PR #1515 + PR #1517 +
+  bloc calepinage collé avant `## DONE LOG`. Toutes les gardes de plan y passent (ancres : 0 échec sur 1 906 ;
+  câblage, propriété, décisions, tâches mixtes, ordre de vague, dossier d'audit, étapes, registre).
+- **Re-vérification en cours** : 17 vérificateurs neufs (un par lot d'environ 25 tâches, lots de lecture et rapports
+  dans le scratchpad `l5/verif2/`) relisent chaque tâche contre ce code ; un critique final relit le moteur partagé
+  (D8), la fidélité des décisions, la cohérence entre domaines, la question PACT11 (douze tâches backend déclarent
+  `apps/calepinage/selectors.py`, ce qui retient tous les écrans) et ce qui manque.
+- **Ordre de fin** : trier les constats → corriger → merger #1517 (9 autres plans, décisions, dossier) → quand #1515
+  est mergée et le bail libéré, insérer le bloc calepinage sur le `main` du moment, gardes, PR docs seulement, merge.
+  À démonter ensuite : les worktrees `l5-verif` et `l5-vague2-integ`.
