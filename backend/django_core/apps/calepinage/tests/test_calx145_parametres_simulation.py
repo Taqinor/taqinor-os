@@ -591,6 +591,22 @@ class ProfilDepartApplicationTest(TestCase):
         self.assertEqual(self.api_dir.delete(URL_PROFIL).status_code, 200)
         self.assertNotIn('b0_iam', self._simulation())
 
+    def test_get_dit_l_etat_de_chaque_valeur(self):
+        # La référence écrite par « Appliquer » (``reference_ecrite``)
+        # distingue une valeur POSÉE par le profil (« Retirer » la retire)
+        # d'une saisie — le GET le dit, ligne par ligne.
+        def etats():
+            reponse = self.api_resp.get(URL_PROFIL)
+            self.assertEqual(reponse.status_code, 200)
+            return {v['cle']: v['etat'] for v in reponse.data['valeurs']}
+
+        self.assertEqual(set(etats().values()), {'a_appliquer'})
+        self.assertEqual(self.api_dir.post(URL_PROFIL).status_code, 200)
+        self.assertEqual(set(etats().values()), {'posee_par_profil'})
+        enregistrer_parametres(self.company, {SECTION_SIMULATION: {
+            'b0_iam': {'valeur': 0.07, 'source': 'societe'}}})
+        self.assertEqual(etats()['b0_iam'], 'deja_saisie')
+
     def test_autre_societe_ses_reglages_intacts(self):
         enregistrer_parametres(self.autre, {SECTION_SIMULATION: {
             'mode_meteo': {'valeur': 'tmy', 'source': 'societe'}}})

@@ -417,14 +417,27 @@ describe('ACAL405 — Démarrage rapide', () => {
     return servi
   }
 
-  it('une clé vide est « à appliquer », une clé saisie « déjà saisie »', async () => {
+  const profilA = (etat) => ({ ...PROFIL, valeurs: [{ ...PROFIL.valeurs[0], etat }] })
+
+  it('l’état affiché est celui que le serveur sert, ligne par ligne', async () => {
     mocks.profilDepart.mockResolvedValue({ data: PROFIL })
     servirReglages({})
     rendre()
     expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toHaveTextContent('à appliquer')
     expect(screen.getByTestId(`acal405-valeur-${CLE}`)).toHaveTextContent(PROFIL.valeurs[0].url)
     expect(screen.getByTestId('acal405-sans-source')).toHaveTextContent(PROFIL.sans_source[0].motif)
-    cleanup()
+    for (const [etat, libelle] of [['posee_par_profil', 'posée par le profil (retirable)'],
+      ['deja_saisie', 'déjà saisie']]) {
+      cleanup()
+      mocks.profilDepart.mockResolvedValue({ data: profilA(etat) })
+      servirReglages({})
+      rendre()
+      expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toHaveTextContent(libelle)
+    }
+  })
+
+  it('sans `etat` servi, une clé saisie se lit « déjà saisie » sur les réglages', async () => {
+    mocks.profilDepart.mockResolvedValue({ data: profilA(undefined) })
     servirReglages({ [CLE]: { valeur: 0.07, source: 'texte', reference: 'saisie' } })
     rendre()
     expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toHaveTextContent('déjà saisie')
@@ -440,6 +453,7 @@ describe('ACAL405 — Démarrage rapide', () => {
       .toHaveTextContent(`${APPLICATION.appliquees.length} valeurs appliquées`)
     expect(mocks.appliquerProfilDepart).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(mocks.getParametres).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mocks.profilDepart).toHaveBeenCalledTimes(2))
   })
 
   it('« Retirer le profil » appelle DELETE', async () => {
