@@ -493,11 +493,11 @@ class ProfilDepartFichierTest(SimpleTestCase):
             verifier(mutant)
 
     def test_reference_ecrite_dit_page_date_et_valeur_publiee(self):
-        from apps.calepinage.services.profil_depart import reference_ecrite
+        from apps.calepinage.services.profil_depart import _reference_ecrite
 
         ligne = {'reference': 'Profil de départ — X', 'url': 'https://a.b/c',
                  'date_lecture': '2026-11-20'}
-        self.assertEqual(reference_ecrite(ligne),
+        self.assertEqual(_reference_ecrite(ligne),
                          'Profil de départ — X — https://a.b/c — lu le '
                          '2026-11-20 — valeur publiée, non mesurée')
 

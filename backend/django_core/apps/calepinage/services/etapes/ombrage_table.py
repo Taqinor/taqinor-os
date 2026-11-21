@@ -36,10 +36,10 @@ REFERENCE = (
     'project-design/shadings/index.html. Table : ACAL389 / ACAL459, '
     'position du soleil : core.calepinage.soleil.')
 
-__all__ = ['CHAMP', 'REFERENCE', 'table_du_pan', 'appliquer_table']
+__all__ = ['CHAMP', 'REFERENCE', 'appliquer_table']
 
 
-def table_du_pan(contexte):
+def _table_du_pan(contexte):
     """La ``shadeTable`` lue du pan simulé, ou ``None``.
 
     Sans pan nommé, la table n'est rendue que si UN SEUL pan en porte une.
@@ -89,7 +89,7 @@ def appliquer_table(serie, contexte):
 
     ``None`` ⇒ l'appelant retombe sur la matrice 12 × 24, comme avant.
     """
-    table = table_du_pan(contexte)
+    table = _table_du_pan(contexte)
     points = (serie or {}).get('points') or []
     site = contexte.get('site') or {}
     lat, lon = _nombre(site.get('lat')), _nombre(site.get('lon'))

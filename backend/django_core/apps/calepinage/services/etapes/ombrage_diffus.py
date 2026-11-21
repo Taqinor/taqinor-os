@@ -32,10 +32,10 @@ REFERENCE = ('PVsyst — Shadings (ombrage du diffus à part du faisceau) : '
              ' Lecture du document : zones[].geometry.skyViewFactor (ACAL389).')
 
 __all__ = ['POSTE', 'CHAMP', 'MOTIF_SANS_FACTEUR', 'MOTIF_HORIZON_INCLUS',
-           'facteur_du_pan', 'appliquer']
+           'appliquer']
 
 
-def facteur_du_pan(contexte):
+def _facteur_du_pan(contexte):
     """Le bloc ``skyViewFactor`` du pan simulé (dict), ou ``None``.
 
     Sans pan nommé, le bloc n'est rendu que si UN SEUL pan en porte un.
@@ -65,7 +65,7 @@ def appliquer(serie, contexte):
     from apps.calepinage.services.chaine_pertes import LIBELLES
 
     libelle = LIBELLES[POSTE]
-    bloc = facteur_du_pan(contexte if isinstance(contexte, dict) else {})
+    bloc = _facteur_du_pan(contexte if isinstance(contexte, dict) else {})
     facteur = _nombre(bloc.get('facteur')) if bloc else None
     if facteur is None or not 0.0 <= facteur <= 1.0:
         return serie, etapes.etape_omise(libelle, MOTIF_SANS_FACTEUR,

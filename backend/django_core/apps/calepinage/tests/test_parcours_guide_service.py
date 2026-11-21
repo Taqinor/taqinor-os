@@ -14,7 +14,7 @@ import pathlib
 import unittest
 
 from apps.calepinage.services.parcours_guide import (
-    ETAPES, etapes_du_parcours, regrouper_manque,
+    ETAPES, _etapes_du_parcours, _regrouper_manque,
 )
 
 CONTRAT = json.loads((pathlib.Path(__file__).resolve().parents[1]
@@ -30,19 +30,19 @@ def _etats(**faits):
     base = dict(toit_fait=True, modules=10, verdict='indetermine',
                 simule=False, perime=False, devis_lie=False)
     base.update(faits)
-    return {e['cle']: e['etat'] for e in etapes_du_parcours(**base)}
+    return {e['cle']: e['etat'] for e in _etapes_du_parcours(**base)}
 
 
 class ManqueRegroupeTest(unittest.TestCase):
     def test_norme_absente_trois_fois_donne_une_ligne_nombre_3(self):
-        lignes = regrouper_manque([NORME, NORME, NORME])
+        lignes = _regrouper_manque([NORME, NORME, NORME])
         self.assertEqual(len(lignes), 1)
         self.assertEqual(lignes[0]['code'], 'norme_absente')
         self.assertEqual(lignes[0]['nombre'], 3)
         self.assertEqual(lignes[0]['cible']['onglet'], 'reglages')
 
     def test_motif_inconnu_garde_tel_quel(self):
-        lignes = regrouper_manque(['quelque chose de neuf'])
+        lignes = _regrouper_manque(['quelque chose de neuf'])
         self.assertEqual(lignes, [{
             'code': 'divers', 'message': 'quelque chose de neuf',
             'etape': 'resultats', 'cible': {'onglet': 'production',
@@ -52,16 +52,16 @@ class ManqueRegroupeTest(unittest.TestCase):
     def test_rien_ne_se_perd(self):
         brut = [NORME, 'simulation périmée : le document a changé',
                 'autre', NORME, 'autre']
-        lignes = regrouper_manque(brut)
+        lignes = _regrouper_manque(brut)
         self.assertEqual(sum(ligne['nombre'] for ligne in lignes), len(brut))
 
     def test_vide(self):
-        self.assertEqual(regrouper_manque(None), [])
-        self.assertEqual(regrouper_manque(['', None]), [])
+        self.assertEqual(_regrouper_manque(None), [])
+        self.assertEqual(_regrouper_manque(['', None]), [])
 
     def test_forme_des_lignes_egale_celle_du_contrat(self):
         modele = CONTRAT['exemple']['manque'][0]
-        ligne = regrouper_manque([NORME])[0]
+        ligne = _regrouper_manque([NORME])[0]
         self.assertEqual(sorted(ligne), sorted(modele))
         self.assertEqual(sorted(ligne['cible']), sorted(modele['cible']))
         self.assertIn(ligne['gravite'], ('bloquant', 'a_regler', 'info'))
@@ -76,9 +76,9 @@ class EtapesTest(unittest.TestCase):
         self.assertEqual(list(etats), attendu)
 
     def test_ordre_et_cles_du_contrat(self):
-        etapes = etapes_du_parcours(toit_fait=True, modules=1,
-                                    verdict='conforme', simule=True,
-                                    perime=False, devis_lie=True)
+        etapes = _etapes_du_parcours(toit_fait=True, modules=1,
+                                     verdict='conforme', simule=True,
+                                     perime=False, devis_lie=True)
         self.assertEqual([e['cle'] for e in etapes],
                          [e['cle'] for e in CONTRAT['exemple']['etapes']])
 

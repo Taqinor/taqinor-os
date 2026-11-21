@@ -27,7 +27,7 @@ FICHIER_PROFIL = Path(__file__).resolve().parents[1] / 'data' / 'profil_depart.j
 SUFFIXE_REFERENCE = 'valeur publiée, non mesurée'
 
 __all__ = ['FICHIER_PROFIL', 'appliquer_profil', 'charger_profil',
-           'reference_ecrite', 'retirer_profil']
+           'retirer_profil']
 
 
 def charger_profil():
@@ -35,7 +35,7 @@ def charger_profil():
     return json.loads(FICHIER_PROFIL.read_text(encoding='utf-8'))
 
 
-def reference_ecrite(ligne):
+def _reference_ecrite(ligne):
     """``<référence> — <url> — lu le <date> — valeur publiée, non mesurée``
     (la référence du fichier commence déjà par ``Profil de départ — ``)."""
     return (f"{ligne['reference']} — {ligne['url']} — lu le "
@@ -44,7 +44,7 @@ def reference_ecrite(ligne):
 
 def _saisie_du_profil(ligne):
     return {'valeur': ligne['valeur'], 'source': ligne['source'],
-            'reference': reference_ecrite(ligne)}
+            'reference': _reference_ecrite(ligne)}
 
 
 def _sections_verrouillees(company):
