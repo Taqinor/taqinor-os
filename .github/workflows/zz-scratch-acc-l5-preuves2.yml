@@ -5,7 +5,7 @@ name: zz scratch - acceptation ACAL490 preuves L5 tour 2 (acal10 + perf ACAL440 
 # Enregistrements remontés en artefact (pas de push du runner). Jamais la production. Supprimé au dernier commit.
 on:
   push:
-    branches: [claude/scratch-acc-l5-preuves2]
+    branches: [claude/scratch-acc-l5-rejeu]
 
 concurrency:
   group: zz-scratch-acc-l5-preuves2-${{ github.sha }}
