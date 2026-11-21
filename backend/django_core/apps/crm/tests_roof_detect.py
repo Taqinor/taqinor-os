@@ -175,6 +175,20 @@ class FetchBuildingFootprintTests(TestCase):
 
         self.assertIsNone(result)
 
+    def test_user_agent_identifie(self):
+        """ACAL421 — Overpass rend HTTP 406 à l'User-Agent par défaut de
+        python-requests : la requête porte un User-Agent identifié, générique
+        (aucun nom ni adresse de personne)."""
+        fake_requests = _fake_requests_success(_SAMPLE_OVERPASS_EMPTY)
+
+        with patch.dict(sys.modules, {"requests": fake_requests}):
+            fetch_building_footprint(33.5731, -7.5898)
+
+        entetes = fake_requests.post.call_args.kwargs.get("headers") or {}
+        agent = entetes.get("User-Agent", "")
+        self.assertTrue(agent.startswith("TAQINOR-OS/"), agent)
+        self.assertNotIn("@", agent)
+
 
 # ---------------------------------------------------------------------------
 # View tests (company scoping + endpoint behaviour)
@@ -266,6 +280,11 @@ class LeadRoofFootprintViewTests(TestCase):
         # à `null`, avec le motif qui le dit.
         self.assertIsNone(data["batiment"]["height_m"])
         self.assertIn("height_m", data["batiment"]["non_renseignes"])
+        # ACAL421 — un échec réseau n'est jamais présenté comme « aucun
+        # bâtiment » : le message nomme OpenStreetMap injoignable.
+        self.assertNotEqual(data["message"], rv._MSG_NO_BUILDING)
+        self.assertEqual(data["message"], rv._MSG_OSM_INJOIGNABLE)
+        self.assertNotIn("Aucun bâtiment", data["message"])
 
     def _captures(self, lead):
         captured = []

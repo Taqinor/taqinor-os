@@ -1,0 +1,371 @@
+{
+  "sha": "89df2145c8ec8a61d0e3394634c04d59df858693",
+  "date": "2026-11-21",
+  "groupe": "ACAL",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACAL401",
+    "ACAL402",
+    "ACAL411",
+    "ACAL418",
+    "ACAL421",
+    "ACAL424",
+    "ACAL425",
+    "ACAL431",
+    "ACAL433",
+    "ACAL459",
+    "ACAL460",
+    "ACAL472",
+    "ACAL439",
+    "ACAL440",
+    "ACAL482"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.5-ACAL401-resume-vivant",
+      "taches": [
+        "ACAL401"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL401-resume-vivant.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL402-studio-1440",
+      "taches": [
+        "ACAL402"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL402-studio-1440.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL411-aligner-repartir",
+      "taches": [
+        "ACAL411"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL411-aligner-repartir.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL418-retirer-selection",
+      "taches": [
+        "ACAL418"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL418-retirer-selection.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL421-conception-auto",
+      "taches": [
+        "ACAL421"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "corps": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL421-conception-auto.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : contour posé, toit rempli"
+    },
+    {
+      "id": "PA2.5-ACAL424-calage-monde",
+      "taches": [
+        "ACAL424"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL424-calage-monde.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL425-reperes-glisse",
+      "taches": [
+        "ACAL425"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL425-reperes-glisse.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL431-ciel",
+      "taches": [
+        "ACAL431"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL431-ciel.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL433-texture",
+      "taches": [
+        "ACAL433"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL433-texture.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL459-table-ombrage",
+      "taches": [
+        "ACAL459"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL459-table-ombrage.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL460-vue-du-ciel",
+      "taches": [
+        "ACAL460"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL460-vue-du-ciel.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL472-trace-propose",
+      "taches": [
+        "ACAL472"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL472-trace-propose.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.6-ACAL439-a11y-axe",
+      "taches": [
+        "ACAL439"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.6-ACAL439-a11y-axe.txt",
+      "notes": "axe-core sur liste, création, atelier (rail), onglets Production et Documents, clair et sombre, run 44879944783 (sha 89df2145c) : 5 passed (35.8s) (0 violation exigée, aucun test sauté)"
+    },
+    {
+      "id": "PA2.3-ACAL440-perf-500-modules",
+      "taches": [
+        "ACAL440"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL440-perf-avant-apres.txt",
+      "notes": "glissé d'un panneau (mode disposition) sur 500 modules, run 44879944783 (sha 89df2145c) — après ACAL431+433 : Atelier 500 modules (apres ACAL431+433) — pire interaction = 352 ms (plafond 500 ms, CI = seuil mauvais de vitals.js) ; Atelier 500 modules (apres ACAL431+433), deviceMemory 4 — pire interaction = 360 ms (sans plafond) ; avant : Atelier 500 modules (avant ACAL431+433) — pire interaction = 336 ms (plafond 500 ms, CI = seuil mauvais de vitals.js) ; Atelier 500 modules (avant ACAL431+433), deviceMemory 4 — pire interaction = 344 ms (sans plafond)"
+    },
+    {
+      "id": "PA2.6-ACAL482-telephone-webkit",
+      "taches": [
+        "ACAL482"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.6-ACAL482-telephone-webkit.txt",
+      "notes": "spec téléphone sous WebKit réel (iPhone 13, 390 × 844), run 44879944783 (sha 89df2145c) : 4 passed (27.7s) ; liste, fiche et onglet releve sans défilement horizontal ; oracle 3 = pageerror relevé par la spec"
+    }
+  ]
+}

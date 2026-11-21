@@ -10,6 +10,8 @@ Response:
   200 {"polygon": [{lat, lng}, ...], "source": "osm", "batiment": {...}}
   200 {"polygon": [], "source": "osm", "batiment": {...},
        "message": "Aucun bâtiment trouvé — tracez le contour manuellement."}
+  200 same keys when Overpass is unreachable (HTTP error/timeout), with the
+       distinct message « OpenStreetMap n'a pas répondu … » (ACAL421)
   404 lead not found or wrong company
   409 le lead n'a pas de point GPS enregistré (état de la fiche, ERR-ENF11-FUZZ-CRM)
 
@@ -35,6 +37,12 @@ from .roof_detect import (
 _MSG_NO_BUILDING = (
     "Aucun bâtiment trouvé à cet emplacement — "
     "tracez le contour manuellement."
+)
+#: ACAL421 — Overpass unreachable (HTTP error, timeout) is NAMED, never
+#: presented as « no building » : same response keys, distinct message.
+_MSG_OSM_INJOIGNABLE = (
+    "OpenStreetMap n'a pas répondu : le contour n'a pas pu être cherché — "
+    "réessayez plus tard ou tracez le contour manuellement."
 )
 _MSG_NO_PIN = (
     "Ce lead n'a pas de point GPS enregistré. "
@@ -105,10 +113,12 @@ def lead_roof_footprint(request, lead_id):
     # draws manually — and both still carry the `batiment` block (CALX106),
     # whose keys are then all null with the reason named.
     if empreinte is None:
-        empreinte = {
+        return JsonResponse({
             "polygon": [],
+            "source": "osm",
             "batiment": batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE),
-        }
+            "message": _MSG_OSM_INJOIGNABLE,
+        })
 
     polygon = empreinte.get("polygon") or []
     batiment = empreinte.get("batiment") \

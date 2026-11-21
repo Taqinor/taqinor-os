@@ -53,6 +53,10 @@ _OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 # propre requête à 5 s : l'atelier retombe sur le dessin manuel bien avant.
 _TIMEOUT_S = 5
 _TIMEOUT_RESEAU = (3, _TIMEOUT_S)
+#: ACAL421 — Overpass rejects the default `python-requests/x` User-Agent with
+#: HTTP 406 (measured on the CI runner): every call carries an identified,
+#: generic agent — never a person's name or address.
+_USER_AGENT = "TAQINOR-OS/1.0 (calepinage)"
 _RADIUS_M = 25  # search radius in metres around the pin
 
 #: CALX106 — the provenance published next to every value read from OSM.
@@ -218,7 +222,8 @@ def fetch_building_footprint(lat: float, lng: float) -> dict | None:
         req = _urllib_request.Request(
             _OVERPASS_URL,
             data=encoded,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "User-Agent": _USER_AGENT},
         )
         try:
             with _urllib_request.urlopen(req, timeout=_TIMEOUT_S) as resp:
@@ -233,6 +238,7 @@ def fetch_building_footprint(lat: float, lng: float) -> dict | None:
         resp = _requests.post(
             _OVERPASS_URL,
             data={"data": query},
+            headers={"User-Agent": _USER_AGENT},
             timeout=_TIMEOUT_RESEAU,
         )
         resp.raise_for_status()

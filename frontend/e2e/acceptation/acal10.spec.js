@@ -199,6 +199,19 @@ const attendreCarteImmobile = (page) => expect.poll(() => page.evaluate(() => {
   return !!m && !m.isMoving() && !m.isEasing?.()
 }), { timeout: 30_000, message: 'carte immobile' }).toBe(true)
 
+/** ADEP24 — N images rendues (requestAnimationFrame) : on attend le rendu, jamais un délai fixe. */
+const images = (page, n = 20) => page.evaluate((k) => new Promise((r) => {
+  let i = 0
+  const f = () => { i += 1; if (i >= k) r(); else requestAnimationFrame(f) }
+  requestAnimationFrame(f)
+}), n)
+
+/** ADEP24 — attend qu'une valeur lue cesse de changer entre deux relevés (défilement, animation). */
+async function stable(lire, message) {
+  let avant = Symbol('jamais')
+  await expect.poll(async () => { const v = JSON.stringify(await lire()); const ok = v === avant; avant = v; return ok }, { timeout: 15_000, message }).toBe(true)
+}
+
 /** Le document VIVANT (serializeLayout) — lecture seule. */
 const docVivant = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__builderApi()?.serializeLayout?.() ?? null)))
 
@@ -398,12 +411,13 @@ etape('PA2.5-ACAL402-studio-1440', ['ACAL402'], async ({ page, context, suivi })
     console.log(`[ACAL402] contrôle réglé : ${nom} ; inspecteur scrollTop ${scroll.top}/${scroll.max} ; carte y ${carte0.y}→${carte1.y}`)
     // « le reste de la page » défile : les commandes du constructeur (sous la carte, dans la colonne scène) restent
     // atteignables à la molette — sinon « Déplacer les panneaux » ne s'atteint plus qu'au clavier.
-    const carte = page.locator('#rp9-studio-scene > .cine-card')
+    // La racine du BuilderDom (classe `.cine-card` retirée par ACAL427 : l'enfant direct de la colonne scène).
+    const carte = page.locator('#rp9-studio-scene > :first-child')
     const debord = await carte.evaluate((el) => ({ scrollH: el.scrollHeight, clientH: el.clientHeight, overflowY: getComputedStyle(el).overflowY }))
     const cb = await carte.boundingBox()
     await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height - 30)
     await page.mouse.wheel(0, 3000)
-    await page.waitForTimeout(500)
+    await stable(() => carte.evaluate((el) => el.scrollTop), 'défilement de la colonne scène terminé')
     const bascule = page.locator('#rp9-layout-toggle')
     const visible = await bascule.isVisible()
     const bb = visible ? await bascule.boundingBox() : null
@@ -468,7 +482,7 @@ etape('PA2.5-ACAL411-aligner-repartir', ['ACAL411'], async ({ page, context, sui
     pans = await panneauxEcran(page)
     await selectionner(page, pans.slice(0, 3))
     await barre.getByRole('button', { name: 'Répartir' }).click()
-    await page.waitForTimeout(500)
+    await expect(page.locator('#rp9-layout-note'), 'Répartir appliqué').toContainText(/Distribu/, T)
     const rep = (await panneauxEcran(page)).slice(0, 3)
     console.log(`[ACAL411] après Répartir : ${JSON.stringify(rep.map((p) => [p.cx, p.cy]))} ; note « ${await page.locator('#rp9-layout-note').innerText()} »`)
     const note = await page.locator('#rp9-layout-note').innerText()
@@ -627,7 +641,7 @@ etape('PA2.5-ACAL421-conception-auto', ['ACAL421'], async ({ page, context, suiv
       message = await page.getByTestId('cal-conception-auto-message').innerText()
       if (message.includes('Contour posé')) break
       console.log(`[ACAL421] essai ${essai} : « ${message} »`)
-      if (!/indisponible|Aucune emprise|réseau/i.test(message)) break
+      if (!/indisponible|Aucune emprise|réseau|n'a pas répondu/i.test(message)) break // ACAL421 : Overpass injoignable est nommé, on réessaie
     }
     if (!message.includes('Contour posé')) {
       // Le serveur appelle-t-il Overpass avec succès DEPUIS ce runner (même requête que `roof_detect`) ?
@@ -635,10 +649,17 @@ etape('PA2.5-ACAL421-conception-auto', ['ACAL421'], async ({ page, context, suiv
 from apps.crm import roof_detect as rd
 q = rd._build_query(${bat.lat}, ${bat.lng})
 try:
-    r = requests.post(rd._OVERPASS_URL, data={'data': q}, timeout=rd._TIMEOUT_RESEAU)
+    r = requests.post(rd._OVERPASS_URL, data={'data': q}, headers={'User-Agent': getattr(rd, '_USER_AGENT', '')}, timeout=rd._TIMEOUT_RESEAU)
     sortie({'status': r.status_code, 'ua': r.request.headers.get('User-Agent'), 'corps': r.text[:300]})
 except Exception as e:
-    sortie({'erreur': repr(e)[:300]})`)
+    import time
+    t = time.time()
+    try:
+        r2 = requests.post(rd._OVERPASS_URL, data={'data': q}, headers={'User-Agent': getattr(rd, '_USER_AGENT', '')}, timeout=(5, 90))
+        lent = {'status': r2.status_code, 'secondes': round(time.time() - t, 1)}
+    except Exception as e2:
+        lent = {'erreur': repr(e2)[:120], 'secondes': round(time.time() - t, 1)}
+    sortie({'erreur': repr(e)[:300], 'meme_requete_delai_90s': lent})`)
       console.log(`[ACAL421] appel Overpass du serveur (même requête) : ${JSON.stringify(diag)}`)
       test.info().annotations.push({ type: 'diagnostic', description: `Overpass côté serveur : ${JSON.stringify(diag).slice(0, 400)}` })
     }
@@ -730,7 +751,7 @@ etape('PA2.5-ACAL424-calage-monde', ['ACAL424'], async ({ page, context, suivi }
     page.on('request', (r) => { if (r.method() === 'PATCH' && /\/photos\/\d+\/calage\//.test(r.url())) patchs += 1 })
     await champ.setInputFiles({ name: 'ortho-acal424.jgw', mimeType: 'text/plain', buffer: Buffer.from(monde) })
     await expect(page.getByTestId('cal-photo-calage-erreur')).toHaveCount(0)
-    await page.waitForTimeout(800)
+    await page.waitForLoadState('networkidle') // aucune requête en vol : un PATCH parti se compterait
     expect(patchs, 'rien n’est enregistré avant « Enregistrer le calage »').toBe(0)
     await capture(page.getByTestId('cal-photo-calage'), 'PA2.5-ACAL424', 'poignees')
     const req = page.waitForRequest((r) => r.method() === 'PATCH' && /\/photos\/\d+\/calage\//.test(r.url()), T)
@@ -836,6 +857,9 @@ etape('PA2.5-ACAL425-reperes-glisse', ['ACAL425'], async ({ page, context, suivi
     // La clause telle quelle : marges par défaut.
     expect(defaut.premier, `marges par défaut (écart entre panneaux ${ecartDefaut} cm) : ligne repère et collage au voisin`).not.toBeNull()
   } finally {
+    // ACAL400 : le brouillon serveur part au sondage (≤ 4 s) après le dernier geste ; effacer le calepinage avant cet
+    // envoi rendait un PUT brouillon/ → 404 relevé par l'oracle 2 — on laisse partir l'envoi en cours, puis on nettoie.
+    await page.waitForResponse((r) => r.request().method() === 'PUT' && /\/brouillon\/$/.test(r.url()), { timeout: 10_000 }).catch(() => undefined)
     await nettoyer(cal)
   }
 })
@@ -868,7 +892,7 @@ async function cielA(page, id, jour, heure) {
   await ouvrirAtelier(page, id)
   await page.evaluate(() => { const m = window.__carteAtelier(); m.jumpTo({ pitch: m.getMaxPitch() }) })
   await attendreCarteImmobile(page)
-  await page.waitForTimeout(500)
+  await images(page)
   const relu = (await docVivant(page))?.scene
   expect(relu, 'instant de scène hydraté').toEqual({ sunDay: jour, sunHour: heure })
   return page.evaluate(() => ({ n: window.__ciel.length, dernier: window.__ciel[window.__ciel.length - 1] ?? null }))
@@ -955,7 +979,7 @@ etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => 
       const centre = [ll.reduce((t, p) => t + p[0], 0) / ll.length, ll.reduce((t, p) => t + p[1], 0) / ll.length]
       await page.evaluate((c) => window.__carteAtelier().jumpTo({ center: c, zoom: 20.5, pitch: 0, bearing: 0 }), centre)
       await attendreCarteImmobile(page)
-      await page.waitForTimeout(500)
+      await images(page)
     }
     const paysage = page.locator('[data-orient="landscape"]').first()
     const portrait = page.locator('[data-orient="portrait"]').first()
@@ -963,7 +987,8 @@ etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => 
     console.log(`[ACAL433] toiles au démarrage : ${JSON.stringify(await toiles(page))} ; pose ${await page.locator('[data-orient][aria-pressed="true"]').first().getAttribute('data-orient').catch(() => '?')}`)
     await paysage.click()
     await expect(paysage).toHaveAttribute('aria-pressed', 'true')
-    await page.waitForTimeout(1500)
+    await stable(() => toiles(page), 'toiles de texture stables après la bascule')
+    await images(page)
     await vue()
     const t1 = await toiles(page)
     console.log(`[ACAL433] toiles après paysage : ${JSON.stringify(t1)}`)
@@ -972,7 +997,8 @@ etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => 
     await captureToile(page, 512, 280, 'texture-paysage-512x280')
     await portrait.click()
     await expect(portrait).toHaveAttribute('aria-pressed', 'true')
-    await page.waitForTimeout(1500)
+    await stable(() => toiles(page), 'toiles de texture stables après la bascule')
+    await images(page)
     await vue()
     const t2 = await toiles(page)
     console.log(`[ACAL433] toiles après portrait : ${JSON.stringify(t2)}`)
@@ -1072,22 +1098,11 @@ etape('PA2.5-ACAL472-trace-propose', ['ACAL472'], async ({ page, context, suivi 
     await centrerCarte(page)
     const px = await pixel(page, cible)
     await page.mouse.click(px.x, px.y)
-    await page.waitForTimeout(800)
-    let eqs = (await docVivant(page))?.electrical?.equipements || []
-    let parGeste = eqs.some((e) => e.type === 'onduleur')
-    if (!parGeste) {
-      // DÉFAUT (CALX222, pas ACAL472) : « Armer la pose » n'est relié à AUCUN clic de la carte (`typeArme()` n'a aucun
-      // lecteur, `poser` n'est appelé par aucun gestionnaire). L'organe est posé par l'API publique de l'atelier.
-      console.log('[ACAL472] DÉFAUT CALX222 : armer + clic sur la carte ne pose rien ; pose par builderApi.electrique.poser')
-      test.info().annotations.push({ type: 'défaut', description: 'CALX222 : « Armer la pose » + clic sur la carte ne pose aucun organe (typeArme() sans lecteur) — onduleur posé par builderApi.electrique.poser' })
-      const r = await page.evaluate((ll) => {
-        const el = window.__builderApi().electrique
-        el.armerPose('onduleur')
-        return JSON.parse(JSON.stringify(el.poser(ll, { label: 'Onduleur' })))
-      }, cible)
-      expect(r.ok, `pose de l’onduleur (${JSON.stringify(r)})`).toBe(true)
-      eqs = (await docVivant(page))?.electrical?.equipements || []
-    }
+    // CALX222 (corrigé) : le clic sur la carte pose l'organe armé — plus de repli par l'API publique.
+    await expect.poll(async () => ((await docVivant(page))?.electrical?.equipements || []).some((e) => e.type === 'onduleur'),
+      { ...T, message: '« Armer la pose » + clic sur la carte : onduleur posé par le geste' }).toBe(true)
+    const eqs = (await docVivant(page))?.electrical?.equipements || []
+    console.log(`[ACAL472] onduleur posé par le geste (armer + clic) : ${JSON.stringify(eqs.find((e) => e.type === 'onduleur'))}`)
     const ond = eqs.find((e) => e.type === 'onduleur')
     expect(ond, 'onduleur posé').toBeTruthy()
     let doc = await enregistrer(page, cal.id, bouton)

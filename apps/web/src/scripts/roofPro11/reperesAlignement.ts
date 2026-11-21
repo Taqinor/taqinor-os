@@ -6,14 +6,15 @@
  * n'était appelée que par la touche A sur des panneaux DÉJÀ posés. Ici : pendant le glissé
  * d'UN panneau, la position se colle au voisin ou à la rive à moins du seuil existant (aucun
  * seuil neuf) et une ligne repère (SVG, `pointer-events: none`, comme `#rp9-lasso-svg`) montre
- * le bord commun. Aimantation coupée (touche A, `ctx.aimantationActive`) : ni collage ni
+ * le bord commun — la cible garde l'écart entre panneaux / le retrait de rive courants (marges
+ * RELÂCHABLES : sans cela `poser` refusait tout collage aux marges par défaut). Aimantation coupée (touche A, `ctx.aimantationActive`) : ni collage ni
  * repère. Un collage qui violerait une contrainte dure est ignoré : le placement non aimanté
  * (et son refus nommé) reste celui d'avant.
  *
  * Sont dans ce module : le calcul des segments repères (repère u/v puis ENU) et le calque SVG.
  * Le collage lui-même est calculé par `freeSnapCandidate`, injecté.
  */
-import { toENU, toUV, type FreeGeom, type FreePanel, type Vec2 } from '../../lib/freeLayout';
+import { toENU, toUV, type FreeGeom, type FreeMargins, type FreePanel, type Vec2 } from '../../lib/freeLayout';
 import { DEG2M, DEG2RAD } from './constants';
 
 /** Un segment repère en coordonnées ENU. */
@@ -31,7 +32,10 @@ export function calculerReperes(
   idx: number,
   apres: { cx: number; cy: number },
   avant: { cx: number; cy: number },
+  marges: FreeMargins = { setbackM: 0, gapM: 0 },
 ): SegmentRepere[] {
+  const ec = marges.gapM;
+  const re = marges.setbackM;
   const [u, v] = toUV(g, apres.cx, apres.cy);
   const [u0, v0] = toUV(g, avant.cx, avant.cy);
   const hw = g.widthM / 2;
@@ -46,22 +50,22 @@ export function calculerReperes(
     const bords: Array<[number, number, number]> = []; // [bord u, v mini, v maxi]
     for (const { uv: [ou, ov] } of autres) {
       for (const bord of [ou + hw, ou - hw]) {
-        if (Math.abs(bord - (bord > ou ? u - hw : u + hw)) < EPS) bords.push([bord, Math.min(v, ov) - hd, Math.max(v, ov) + hd]);
+        if (Math.abs(bord - (bord > ou ? u - hw - ec : u + hw + ec)) < EPS) bords.push([bord, Math.min(v, ov) - hd, Math.max(v, ov) + hd]);
       }
     }
-    if (Math.abs(u - hw - uMin) < EPS) bords.push([uMin, v - hd, v + hd]);
-    if (Math.abs(u + hw - uMax) < EPS) bords.push([uMax, v - hd, v + hd]);
+    if (Math.abs(u - hw - re - uMin) < EPS) bords.push([uMin, v - hd, v + hd]);
+    if (Math.abs(u + hw + re - uMax) < EPS) bords.push([uMax, v - hd, v + hd]);
     for (const [b, a, z] of bords) segs.push([toENU(g, b, a), toENU(g, b, z)]);
   }
   if (Math.abs(v - v0) > EPS) {
     const bords: Array<[number, number, number]> = []; // [bord v, u mini, u maxi]
     for (const { uv: [ou, ov] } of autres) {
       for (const bord of [ov + hd, ov - hd]) {
-        if (Math.abs(bord - (bord > ov ? v - hd : v + hd)) < EPS) bords.push([bord, Math.min(u, ou) - hw, Math.max(u, ou) + hw]);
+        if (Math.abs(bord - (bord > ov ? v - hd - ec : v + hd + ec)) < EPS) bords.push([bord, Math.min(u, ou) - hw, Math.max(u, ou) + hw]);
       }
     }
-    if (Math.abs(v - hd - vMin) < EPS) bords.push([vMin, u - hw, u + hw]);
-    if (Math.abs(v + hd - vMax) < EPS) bords.push([vMax, u - hw, u + hw]);
+    if (Math.abs(v - hd - re - vMin) < EPS) bords.push([vMin, u - hw, u + hw]);
+    if (Math.abs(v + hd + re - vMax) < EPS) bords.push([vMax, u - hw, u + hw]);
     for (const [b, a, z] of bords) segs.push([toENU(g, a, b), toENU(g, z, b)]);
   }
   return segs;
@@ -82,16 +86,42 @@ export interface AimantationGlisse<R extends { ok: boolean }> {
   /** Pose le déplacement (dx, dy) depuis la position de départ — la contrainte dure s'y vérifie. */
   poser: (dx: number, dy: number) => R;
   reperes: { afficher: (segs: readonly SegmentRepere[]) => void };
+  /** Marges RELÂCHABLES courantes : la cible de collage (bord à bord, rive tangente) les
+   *  respecte — sinon `poser` refuse le collage pour un simple écart et rien ne colle jamais. */
+  marges?: FreeMargins;
+}
+
+/** Recule la cible de collage de l'écart (voisin) ou du retrait (rive) sur chaque axe collé. */
+function respecterMarges(g: FreeGeom, panels: readonly FreePanel[], idx: number, cible: { cx: number; cy: number }, veut: { cx: number; cy: number }, m: FreeMargins): { cx: number; cy: number } {
+  const [u, v] = toUV(g, cible.cx, cible.cy);
+  const [u0, v0] = toUV(g, veut.cx, veut.cy);
+  const ring = g.ringENU.map(([x, y]) => toUV(g, x, y));
+  const autres = panels.filter((_, i) => i !== idx).map((p) => toUV(g, p.cx, p.cy));
+  const axe = (c: number, c0: number, k: 0 | 1, h: number): number => {
+    if (Math.abs(c - c0) <= EPS) return c;
+    const lo = Math.min(...ring.map((p) => p[k]));
+    const hi = Math.max(...ring.map((p) => p[k]));
+    if (Math.abs(c - (lo + h)) < EPS) return c + m.setbackM;
+    if (Math.abs(c - (hi - h)) < EPS) return c - m.setbackM;
+    for (const o of autres) {
+      if (Math.abs(c - (o[k] + 2 * h)) < EPS) return c + m.gapM;
+      if (Math.abs(c - (o[k] - 2 * h)) < EPS) return c - m.gapM;
+    }
+    return c;
+  };
+  const [x, y] = toENU(g, axe(u, u0, 0, g.widthM / 2), axe(v, v0, 1, g.depthM / 2));
+  return { cx: x, cy: y };
 }
 
 /** Pose le glissé collé si possible (et publie les repères), sinon le glissé tel quel. */
 export function glisserAimante<R extends { ok: boolean }>(a: AimantationGlisse<R>): R {
   const veut = { cx: a.anchor.cx + a.dx, cy: a.anchor.cy + a.dy };
-  const cible = a.actif ? a.snap(a.idx, veut.cx, veut.cy) : null;
-  if (cible?.snapped) {
+  const brut = a.actif ? a.snap(a.idx, veut.cx, veut.cy) : null;
+  if (brut?.snapped) {
+    const cible = a.marges ? respecterMarges(a.g, a.panels, a.idx, brut, veut, a.marges) : brut;
     const res = a.poser(cible.cx - a.anchor.cx, cible.cy - a.anchor.cy);
     if (res.ok) {
-      a.reperes.afficher(calculerReperes(a.g, a.panels, a.idx, cible, veut));
+      a.reperes.afficher(calculerReperes(a.g, a.panels, a.idx, cible, veut, a.marges));
       return res;
     }
   }

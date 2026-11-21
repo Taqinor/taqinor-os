@@ -409,7 +409,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(24rem, 30rem);
     gap: 1.5rem;
-    height: calc(100dvh - var(--rp9-studio-haut, 13rem));
+    height: calc(100dvh - var(--rp9-studio-haut, 17rem)); /* calée en direct (ACAL490, 21/11) : grille à 266 px du haut à 1 440 × 900 */
     margin-top: 1.5rem;
   }
   .rp9-host .rp9-studio-scene { position: sticky; top: 0; min-height: 0; }
@@ -417,7 +417,10 @@
      de la scène. La carte ne rétrécit plus sous 360 px (elle débordait alors SUR la rangée d'outils — Effacer,
      + Ajouter une zone, Toit en pente… : canvas au-dessus, aucun clic possible) et la scène défile seule au lieu
      de couper ses réglages. Sans réglages, la carte remplit toujours toute la hauteur. */
-  .rp9-host .rp9-studio-scene > .cine-card { display: flex; flex-direction: column; height: 100%; margin-top: 0; overflow-y: auto; overscroll-behavior: contain; }
+  /* ACAL402 (rejeu ACAL490, 21/11) : la racine du BuilderDom ne porte plus `.cine-card` depuis ACAL427 (jetons ERP,
+     classes utilitaires dont `mt-6 overflow-hidden`) — la règle vise donc l'enfant direct, sans quoi la colonne coupait
+     ses commandes (« Déplacer les panneaux » hors d'atteinte à la molette). */
+  .rp9-host .rp9-studio-scene > :first-child { display: flex; flex-direction: column; height: 100%; margin-top: 0; overflow-y: auto; overscroll-behavior: contain; }
   .rp9-host .rp9-studio-scene .rp9-map-wrap { flex: 1 0 auto; min-height: 360px; }
   .rp9-host .rp9-studio-scene #rp9-map { height: 100%; min-height: 360px; }
   .rp9-host .rp9-studio-inspecteur { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
