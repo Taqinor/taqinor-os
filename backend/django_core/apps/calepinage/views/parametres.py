@@ -145,11 +145,14 @@ def _forme_registre():
     """CALX145/69 — la forme du ``registre`` publié : deux sections, chacune
     une LISTE de lignes ``{cle, libelle, unite, reference}`` (l'ordre du
     registre de ``services/parametres_cles.py``, jamais réordonné). Voir
-    ``selectors.registre_des_reglages``."""
+    ``selectors.registre_des_reglages``. ACAL572 — plus ``lestage`` : les
+    lignes ``{cle, libelle, unite, texte, bloc}`` de l'écran « Lestage »
+    (``selectors._registre_lestage``)."""
     return inline_serializer('CalepinageRegistreReponse', {
         'simulation': serializers.ListField(child=serializers.DictField()),
         'electrique_societe': serializers.ListField(
             child=serializers.DictField()),
+        'lestage': serializers.ListField(child=serializers.DictField()),
     })
 
 

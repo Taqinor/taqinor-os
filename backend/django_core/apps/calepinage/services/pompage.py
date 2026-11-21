@@ -119,7 +119,7 @@ def volumes_mensuels(*, debit_hmt_m3h, pumping_hours=None, courbe_pompe=None,
                      hmt_m=None, kwc=None, p_plaque_kw=None, rendement_mppt=None,
                      salissure_pct=None, profils_horaires=None,
                      source_irradiation=None, jours_par_mois=None,
-                     hmt_m_mois=None):
+                     hmt_m_mois=None, plafond_m3h=None):
     """AGR125 — 12 volumes mensuels : production PHYSIQUE + calcul plat.
 
     ``m3_mois_pvgis`` porte désormais la production PHYSIQUE de
@@ -141,6 +141,7 @@ def volumes_mensuels(*, debit_hmt_m3h, pumping_hours=None, courbe_pompe=None,
     warnings = list(plat['warnings'])
     m3_mois = None
     source = None
+    production = {}  # ACAL1114 — plafond du forage rendu par production_mensuelle
     if profils_horaires is None:
         warnings.append(
             "irradiation PVGIS indisponible pour ce site (ni coordonnées ni "
@@ -151,7 +152,7 @@ def volumes_mensuels(*, debit_hmt_m3h, pumping_hours=None, courbe_pompe=None,
             kwc=kwc, profils_horaires=profils_horaires,
             courbe_pompe=courbe_pompe, hmt_m=hmt_m, p_plaque_kw=p_plaque_kw,
             rendement_mppt=rendement_mppt, salissure_pct=salissure_pct,
-            hmt_m_mois=hmt_m_mois)
+            hmt_m_mois=hmt_m_mois, plafond_m3h=plafond_m3h)
         journaliers = production['m3_jour_mois']
         if journaliers is None or production['source_irradiation'] != 'pvgis':
             warnings.append(production['motif']
@@ -172,4 +173,6 @@ def volumes_mensuels(*, debit_hmt_m3h, pumping_hours=None, courbe_pompe=None,
         'source_irradiation': source,
         'ecart_m3_mois': ecarts,
         'warnings': warnings,
+        'plafond_forage_m3h': production.get('plafond_forage_m3h'),
+        'plafond_atteint': bool(production.get('plafond_atteint')),
     }

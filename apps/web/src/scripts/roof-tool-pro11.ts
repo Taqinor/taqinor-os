@@ -224,6 +224,7 @@ import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
+import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; // ACAL576
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
@@ -496,6 +497,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const obstructionRings = (): LngLat[][] => [
     ...anneauxObstruction(obstacles), // CALX103/104 câblage
     ...exclusionObstructionRings(ctx.exclusionZones),
+    ...anneauxCoupuresDuPanActif(ctx, setbacks), // ACAL576 — bandes INTERDITES « tous les N modules » (EN DERNIER)
   ];
   // PV61 — dégagement (m) de CHAQUE obstacle selon son TYPE (cheminée > antenne), dans le
   // MÊME ordre que `obstructionRings()`. Obstacle sans type → dégagement historique.
@@ -505,6 +507,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const obstructionClearances = (): number[] => [
     ...obstructionClearancesFor(obstacles),
     ...exclusionObstructionRings(ctx.exclusionZones).map(() => 0),
+    ...anneauxCoupuresDuPanActif(ctx, setbacks).map(() => 0), // ACAL576 — même ordre, dégagement NUL (la bande est la coupure)
   ];
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
@@ -3456,16 +3459,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
 
   /** Reflète l'état du sélecteur : choix courant, et « ensoleillement » grisé + motivé. */
-  function syncPrioriteRemplissage() {
+  function syncPrioriteRemplissage() { // ACAL576 — corps sorti dans roofPro11/prioriteRemplissage.ts
     const select = prioriteSelectEl();
-    if (!select) return;
-    select.value = prioriteRemplissage;
-    const motif = motifEnsoleillement();
-    for (const option of Array.from(select.options)) {
-      if (option.value !== 'ensoleillement') continue;
-      option.disabled = Boolean(motif);
-      option.title = motif ?? '';
-    }
+    refleterPrioriteRemplissage(select, prioriteRemplissage, select ? motifEnsoleillement() : null);
   }
 
   function ensurePrioriteRemplissage() {

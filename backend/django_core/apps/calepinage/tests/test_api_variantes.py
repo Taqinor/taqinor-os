@@ -230,20 +230,44 @@ class ComparerTest(BaseVariantes):
         affirmer_non_servies(self, reponse.data, en_attente)
         exemple = sans(CONTRAT['exemple'], en_attente)
         self.assertEqual(set(reponse.data), set(exemple))
-        self.assertEqual(set(reponse.data['lignes'][0]),
-                         set(exemple['lignes'][0]))
-        self.assertEqual(set(reponse.data['lignes'][0]['production']),
-                         set(exemple['lignes'][0]['production']))
+        # ACAL978 — ``lignes[0]`` est la conception COURANTE, la variante
+        # suit : les deux lignes portent la carte complète du contrat.
+        courante, ligne_variante = reponse.data['lignes']
+        self.assertIsNone(courante['id'])
+        self.assertTrue(courante['courante'])
+        self.assertEqual(ligne_variante['id'], variante.pk)
+        self.assertFalse(ligne_variante['courante'])
+        for rang, ligne in enumerate((courante, ligne_variante)):
+            self.assertEqual(set(ligne), set(exemple['lignes'][rang]))
+            self.assertEqual(set(ligne['production']),
+                             set(exemple['lignes'][rang]['production']))
 
     def test_une_seule_variante_les_ecarts_valent_null(self):
+        """ACAL978 — une variante unique se compare à la courante : la
+        courante NON simulée et sans dessin porte des écarts ``null`` (jamais
+        ``0``), la retenue un écart de production MESURÉ, nul contre
+        elle-même."""
         variante = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='A',
             roof_layout=DESSIN, resultat=RESULTAT_SIMULE)
         retenir_variante(variante)
-        ligne = self.api.get(url_comparer(self.calepinage.pk)).data['lignes'][0]
-        self.assertIsNone(ligne['ecart_modules'])
-        self.assertIsNone(ligne['ecart_kwc'])
-        self.assertIsNone(ligne['ecart_p50_kwh'])
+        courante, ligne_variante = self.api.get(
+            url_comparer(self.calepinage.pk)).data['lignes']
+        self.assertTrue(courante['courante'])
+        self.assertIsNone(courante['ecart_modules'])
+        self.assertIsNone(courante['ecart_kwc'])
+        self.assertIsNone(courante['ecart_p50_kwh'])
+        self.assertEqual(ligne_variante['id'], variante.pk)
+        self.assertEqual(ligne_variante['ecart_p50_kwh'], 0.0)
+
+    def test_sans_variante_les_ecarts_valent_null(self):
+        """Rien à quoi se comparer (la courante seule) ⇒ écarts ``null``."""
+        lignes = self.api.get(url_comparer(self.calepinage.pk)).data['lignes']
+        self.assertEqual(len(lignes), 1)
+        self.assertTrue(lignes[0]['courante'])
+        self.assertIsNone(lignes[0]['ecart_modules'])
+        self.assertIsNone(lignes[0]['ecart_kwc'])
+        self.assertIsNone(lignes[0]['ecart_p50_kwh'])
 
     def test_ecarts_relatifs_a_la_retenue(self):
         retenue = CalepinageVariante.objects.create(
