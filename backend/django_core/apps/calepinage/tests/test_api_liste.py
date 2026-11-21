@@ -432,6 +432,22 @@ class ResumeCompactTest(BaseAssistantCalepinage):
         resultat['production']['total'].update(complete=True, mention='')
         self.assertEqual(_bloc_production(resultat)[1]['p90_kwh'], 10100)
 
+    def test_avertissements_regroupes_comme_le_parcours_guide(self):
+        # ACAL392 — la phrase « aucune norme » levée par trois postes
+        # n'occupe plus les deux places : une ligne « (× 3) », puis la
+        # suivante (rouge si le résumé recopie la liste brute).
+        from unittest import mock
+
+        norme = 'Aucune norme électrique sélectionnée : câbles non vérifiés.'
+        resultat = {'avertissements': [norme, norme, norme,
+                                       'Simulation périmée : relancez-la.']}
+        with mock.patch('apps.calepinage.selectors.resultat_servi',
+                        return_value=resultat):
+            avertissements = self.api.get(url_assistant(
+                'resume/', self.cal.pk)).data['avertissements']
+        self.assertEqual(avertissements, [
+            norme + ' (× 3)', 'Simulation périmée : relancez-la.'])
+
     def test_autre_societe_et_vue_restreinte_404(self):
         url = url_assistant('resume/', self.cal.pk)
         self.assertEqual(self.api_autre.get(url).status_code, 404)

@@ -416,6 +416,38 @@
           "reference": "Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389",
           "type": "entier",
           "minimum": 1
+        },
+        {
+          "cle": "neige_mensuelle_pct",
+          "libelle": "Perte de neige, mois par mois (12 valeurs, ou une seule pour les douze)",
+          "unite": "%",
+          "reference": "Aurora — System Losses (neige saisie par an ou par mois, jamais supposée)",
+          "type": "table_mensuelle",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "modele_transposition",
+          "libelle": "Modèle de transposition d'un fichier météo horizontal vers le plan",
+          "unite": "",
+          "reference": "PVsyst — Transposition model (Hay, Perez ; aucun modèle choisi à la place de la société)",
+          "type": "enum",
+          "valeurs": [
+            "isotropic",
+            "haydavies",
+            "perez"
+          ]
+        },
+        {
+          "cle": "modele_decomposition",
+          "libelle": "Modèle de décomposition d'un fichier météo au global seul (direct/diffus)",
+          "unite": "",
+          "reference": "pvlib — irradiance.erbs (Erbs 1982) ou irradiance.disc (Maxwell 1987) ; aucun modèle imposé",
+          "type": "enum",
+          "valeurs": [
+            "erbs",
+            "disc"
+          ]
         }
       ],
       "electrique_societe": [
@@ -778,6 +810,38 @@
           "reference": "Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389",
           "type": "entier",
           "minimum": 1
+        },
+        {
+          "cle": "neige_mensuelle_pct",
+          "libelle": "Perte de neige, mois par mois (12 valeurs, ou une seule pour les douze)",
+          "unite": "%",
+          "reference": "Aurora — System Losses (neige saisie par an ou par mois, jamais supposée)",
+          "type": "table_mensuelle",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "modele_transposition",
+          "libelle": "Modèle de transposition d'un fichier météo horizontal vers le plan",
+          "unite": "",
+          "reference": "PVsyst — Transposition model (Hay, Perez ; aucun modèle choisi à la place de la société)",
+          "type": "enum",
+          "valeurs": [
+            "isotropic",
+            "haydavies",
+            "perez"
+          ]
+        },
+        {
+          "cle": "modele_decomposition",
+          "libelle": "Modèle de décomposition d'un fichier météo au global seul (direct/diffus)",
+          "unite": "",
+          "reference": "pvlib — irradiance.erbs (Erbs 1982) ou irradiance.disc (Maxwell 1987) ; aucun modèle imposé",
+          "type": "enum",
+          "valeurs": [
+            "erbs",
+            "disc"
+          ]
         }
       ],
       "electrique_societe": [

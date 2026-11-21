@@ -34,7 +34,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/automation/models.py::ApprovalDelegation.company` | backend/django_core/apps/automation/models.py:740 | authentication.Company | CASCADE |
 | `backend/django_core/apps/automation/models.py::IncomingWebhookTrigger.company` | backend/django_core/apps/automation/models.py:816 | authentication.Company | CASCADE |
 | `backend/django_core/apps/calepinage/models.py::Calepinage.devis` | backend/django_core/apps/calepinage/models.py:69 | ventes.Devis | SET_NULL |
-| `backend/django_core/apps/calepinage/models.py::CalepinageVariante.devis` | backend/django_core/apps/calepinage/models.py:358 | ventes.Devis | SET_NULL |
+| `backend/django_core/apps/calepinage/models.py::CalepinageVariante.devis` | backend/django_core/apps/calepinage/models.py:364 | ventes.Devis | SET_NULL |
 | `backend/django_core/apps/crm/models.py::Lead.company` | backend/django_core/apps/crm/models.py:737 | authentication.Company | CASCADE |
 | `backend/django_core/apps/crm/models.py::Lead.structure_produit` | backend/django_core/apps/crm/models.py:1275 | stock.Produit | SET_NULL |
 | `backend/django_core/apps/crm/models.py::WebsiteLeadPayload.company` | backend/django_core/apps/crm/models.py:2066 | authentication.Company | CASCADE |

@@ -1,0 +1,30 @@
+import { useEffect } from 'react'
+
+/* ACAL397 — `?champ=<id>` : à l'arrivée sur un onglet, le panneau fait défiler
+   jusqu'à l'élément d'`id` `champ` et lui donne le focus. Un `champ` sans
+   élément n'ouvre que le panneau, sans erreur. Le panneau est chargé en
+   différé : quelques essais brefs avant d'abandonner. */
+export const PARAM_CHAMP = 'champ'
+
+const ESSAIS = 10
+const DELAI_MS = 100
+
+export function useOuvrirChamp(champ, cleOnglet) {
+  useEffect(() => {
+    if (!champ) return undefined
+    let essai = 0
+    let minuteur = null
+    const chercher = () => {
+      const el = document.getElementById(champ)
+      if (el) {
+        el.scrollIntoView?.({ block: 'center' })
+        el.focus?.()
+        return
+      }
+      essai += 1
+      if (essai < ESSAIS) minuteur = setTimeout(chercher, DELAI_MS)
+    }
+    chercher()
+    return () => clearTimeout(minuteur)
+  }, [champ, cleOnglet])
+}

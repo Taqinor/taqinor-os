@@ -227,7 +227,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // moins : ses dépendances tierces, react-vendor/radix/pdf.worker, ne sont pas celles du verrou de la CI). Aucun gros
 // module dans un morceau commun : les morceaux Tâches ont grossi de ≈ 3 Ko en tout (Aujourdhui 18,1 → 19,3, Projet
 // 14,0 → 14,6…). Aucune dépendance ajoutée : diff package.json vide. Budget : mesure arrondie aux 5 Ko + 10 : 3870 -> 3905.
-const TOTAL_BUDGET_KB = 3905
+// 21/11/2026 (calepinage L5, PR 2/3 : ~64 tâches — parcours guidé, Optimiser, Détection du toit, Production, studio) :
+// mesure RÉELLE 3925,6 Ko sur le runner (run 44858463650) ; origin/main mesure déjà 3909,5 Ko (au-dessus de 3905).
+// Apport L5 ≈ +16 Ko de code de fonctions (ToitureDesign +5,5, ComposedChart +3,8 / DevisGenerator −3,5,
+// simulationAuto +2,5, PanneauOptimiser +2,2, PanneauDetectionToit +1,9…). Aucune dépendance ajoutée : diff
+// package.json vide. Budget : mesure arrondie aux 5 Ko + 10 : 3905 -> 3940.
+const TOTAL_BUDGET_KB = 3940
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

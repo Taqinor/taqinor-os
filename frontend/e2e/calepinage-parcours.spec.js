@@ -41,6 +41,20 @@ function idDansUrl(url) {
   return m ? m[1] : null
 }
 
+// ACAL393 — le rail guidé ne montre que les essentiels de l'étape active : un
+// onglet expert s'ouvre par son lien `?onglet=<cle>` (il reste visible dans son
+// étape), un essentiel par son bouton. Jamais de test qui suppose 36 boutons.
+async function ouvrirOngletRail(page, cle) {
+  const onglet = page.getByTestId(`cal-onglet-${cle}`)
+  if (!(await onglet.isVisible())) {
+    const url = new URL(page.url())
+    url.searchParams.set('onglet', cle)
+    await page.goto(url.toString())
+    await expect(onglet, `onglet absent du rail pour la clé « ${cle} »`).toBeVisible()
+  }
+  await onglet.click()
+}
+
 test('CAL221: /calepinage → créer depuis un lead → variante → retenir → devis', async ({ page }) => {
   // ── 0. Un lead FRAIS, jamais un enregistrement partagé qu'on mute ───────
   await gotoLeads(page)
@@ -99,7 +113,7 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
 
   // ── 5. LA RETENIR, PAR L'ÉCRAN (CAL42) ─────────────────────────────────
   await page.getByTestId('cal-lien-variantes').click()
-  await expect(page).toHaveURL(/\/calepinage\/\d+\/variantes/)
+  await expect(page).toHaveURL(/\/calepinage\/\d+\?onglet=variantes/)
   const tableau = page.getByTestId('cal-tableau-variantes')
   await expect(tableau).toBeVisible()
 
@@ -185,7 +199,7 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
   for (const cle of ['pente', 'horizon', 'dossiers']) {
-    await page.getByTestId(`cal-onglet-${cle}`).click()
+    await ouvrirOngletRail(page, cle)
     // 1. l'onglet devient l'onglet actif ; 2. son panneau s'affiche ;
     // 3. l'URL porte la clé — un lien copié ici rouvre le même onglet.
     await expect(page.getByTestId(`cal-onglet-${cle}`)).toHaveAttribute('aria-selected', 'true')
@@ -367,7 +381,7 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
 
   // ── 7. CALX118 — OUVRIR L'ONGLET COURSE DU SOLEIL (même patron que CALX1 :
   // hook DOM `data-testid`, jamais un texte traduit). ─────────────────────
-  await page.getByTestId('cal-onglet-course-soleil').click()
+  await ouvrirOngletRail(page, 'course-soleil')
   await expect(page.getByTestId('cal-onglet-course-soleil')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
   await expect(page.getByTestId('cal-onglet-erreur')).toHaveCount(0)
@@ -514,7 +528,7 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
   // ── 2. SIMULATION (onglet « Production », CALX5/CALX48) ────────────────
-  await page.getByTestId('cal-onglet-production').click()
+  await ouvrirOngletRail(page, 'production')
   await expect(page.getByTestId('cal-onglet-production')).toHaveAttribute('aria-selected', 'true')
   const panneauProduction = page.getByTestId('cal236-panneau')
   await expect(panneauProduction).toBeVisible()
@@ -536,16 +550,25 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
     await expect(page.getByTestId('cal236-non-simule')).toBeVisible()
   }
 
-  // ── 3. ÉLECTRIQUE (onglet « Équipements électriques », CALX222) ────────
-  await page.getByTestId('cal-onglet-equipements-electriques').click()
-  await expect(page.getByTestId('cal-onglet-equipements-electriques'))
+  // ── 3. ÉLECTRIQUE (« Équipements électriques », CALX222) ───────────────
+  // ACAL395 — en mode guidé, « Équipements électriques » n'est plus un onglet :
+  // c'est une section de l'ÉCRAN de l'étape Électrique, porté par l'onglet
+  // `verdict-electrique` (« Électrique — synthèse ») ; le lien
+  // `?onglet=equipements-electriques` ouvre cet écran, section dépliée.
+  await page.goto(`/calepinage/${calepinageId}?onglet=equipements-electriques`)
+  await expect(page.getByTestId('cal-onglet-verdict-electrique'))
     .toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(/onglet=equipements-electriques(&|$)/)
+  await expect(page.getByTestId('cal-etape-electrique-ecran')).toBeVisible()
+  await expect(
+    page.getByTestId('cal-electrique-section-equipements-electriques'),
+  ).toHaveAttribute('data-state', 'open')
   await expect(
     page.getByTestId('calx222-panneau').or(page.getByTestId('calx222-erreur')),
   ).toBeVisible()
 
   // ── 4. DOCUMENTS (onglet « Documents », CALX19/CALX320) ────────────────
-  await page.getByTestId('cal-onglet-documents').click()
+  await ouvrirOngletRail(page, 'documents')
   await expect(page.getByTestId('cal-onglet-documents')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('cal-doc-panneau')).toBeVisible()
 

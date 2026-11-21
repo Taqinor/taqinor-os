@@ -75,6 +75,42 @@ class TableMensuelleTest(unittest.TestCase):
         self.assertIn('Décembre', html)
 
 
+class ColonneIrradiationTest(unittest.TestCase):
+    """ACAL452 — l'irradiation dans le plan, telle que servie."""
+
+    def _table(self, resultat):
+        html = html_de_section(contexte(resultat))
+        return html, re.search(r'<table class="production-mensuelle[^>]*>'
+                               r'(.*?)</table>', html, re.S).group(1)
+
+    def test_colonne_presente_avec_les_valeurs_servies(self):
+        resultat = resultat_de_base()
+        html, table = self._table(resultat)
+        self.assertIn('Irradiation dans le plan (kWh/m²)', table)
+        for e in resultat['production']['irradiation_mensuelle']:
+            self.assertIn('<td class="valeur">%s</td>' % nombre_tel_que_servi(
+                e['irradiation_plan_kwh_m2']), table)
+        self.assertNotIn('non publiée par cette simulation', html)
+
+    def test_un_mois_null_imprime_un_tiret_jamais_zero(self):
+        resultat = resultat_de_base()
+        resultat['production']['irradiation_mensuelle'][0][
+            'irradiation_plan_kwh_m2'] = None
+        _, table = self._table(resultat)
+        premiere = table.split('</tr>')[1]
+        self.assertIn('Janvier', premiere)
+        self.assertIn('<td class="valeur">—</td>', premiere)
+        self.assertNotIn('>0<', premiere)
+
+    def test_sans_la_cle_colonne_omise_et_note_imprimee(self):
+        resultat = resultat_de_base()
+        del resultat['production']['irradiation_mensuelle']
+        html, table = self._table(resultat)
+        self.assertNotIn('Irradiation dans le plan', table)
+        self.assertIn('Irradiation mensuelle non publiée par cette '
+                      'simulation : relancez-la', html)
+
+
 class QuantilesTest(unittest.TestCase):
     def test_un_p90_null_imprime_un_tiret_jamais_zero(self):
         resultat = resultat_de_base()

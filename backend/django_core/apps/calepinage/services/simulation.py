@@ -42,6 +42,7 @@ Voir ``contract_samples/calepinage_simulation.json`` pour la forme exacte.
 """
 from __future__ import annotations
 
+import copy
 import datetime
 import logging
 import time
@@ -63,6 +64,8 @@ from .pvgis_serie import (
     AVERTISSEMENT_EST_OUEST_SUPPOSE, BASE_PAR_DEFAUT, ClientPvgis,
     EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
+from . import irradiation_mensuelle as _irr
+from .bifacial_sheds import CLE_HORIZONTALE_LEGALE
 from .horizon import profil_depuis_document
 from .simulation_modules import production_module_par_module
 from .validation import ecart_vs_pvcalc
@@ -887,7 +890,7 @@ def _serie_de_chaine(reponse, plan):
 
 
 def _fournisseur_meteo(*, client, decision, document, fichier=None,
-                       compteur=None):
+                       compteur=None, contexte=None):
     """``(fournisseur, provenance)`` — UNE requête par couple d'angles.
 
     ``fournisseur(plan)`` rend la série d'entrée de chaîne du pan.
@@ -908,7 +911,11 @@ def _fournisseur_meteo(*, client, decision, document, fichier=None,
     def fournisseur(plan):
         cle = (plan.get('inclinaison_deg'), plan.get('azimut_pvgis_deg'))
         if cle not in memoire:
-            if fichier is not None:
+            if fichier is not None and fichier.get('plan_des_donnees') == 'horizontal':
+                # ACAL455 — chaque pan reçoit SA série, transposée par pvlib.
+                from .transposition import transposer_serie_horizontale
+                reponse = transposer_serie_horizontale(fichier, plan, contexte)
+            elif fichier is not None:
                 reponse = fichier
             else:
                 reponse = client.serie_irradiance(
@@ -926,6 +933,61 @@ def _fournisseur_meteo(*, client, decision, document, fichier=None,
         return _serie_de_chaine(memoire[cle], plan)
 
     return fournisseur, etat
+
+
+def _poser_horizontale(contexte, *, client, decision, fichier, compteur,
+                       plan):
+    """ACAL465 — la série HORIZONTALE du site, SEULEMENT si la fiche du
+    module est bifaciale : un appel PVGIS de plus (inclinaison 0, composantes,
+    masque dans la géométrie car l'étape « horizon » le retire déjà), borné par
+    le cache du client et compté dans ``appels_pvgis``. Une réponse refusée ou
+    absente laisse le gain bifacial mensuel s'appliquer."""
+    fiche = contexte.get('fiche_module')
+    if (fichier is not None or not isinstance(fiche, dict)
+            or _nombre(fiche.get('bifacialite_pct')) is None):
+        return
+    debut, fin = (decision['fenetre_annees'] or (None, None))
+    try:
+        reponse = client.serie_irradiance(
+            lat=plan.get('lat'), lon=plan.get('lon'), inclinaison_deg=0.0,
+            aspect_deg=0.0, annee_debut=debut, annee_fin=fin,
+            base=BASE_PAR_DEFAUT, composantes=True,
+            masque_dans_la_geometrie=True)
+    except (EntreeInvalide, PvgisIndisponible):
+        return
+    if not reponse.get('depuis_cache'):
+        compteur['appels'] += 1
+    bloc = reponse.get('serie_horaire') or {}
+    serie = {'points': [dict(point) for point in (reponse.get('points') or [])
+                        if isinstance(point, dict)],
+             'pas_minutes': bloc.get('pas_minutes') or 60}
+    # Ré-indexée comme la série du pan, sur une COPIE du contexte : la
+    # ré-indexation écrit le verdict horaire et avance la base de la météo.
+    from .chaine_pertes import _reindexer_sur_l_heure_du_site as reindexer
+
+    copie = dict(contexte)
+    copie['meteo'] = copy.deepcopy(contexte.get('meteo') or {})
+    contexte[CLE_HORIZONTALE_LEGALE] = reindexer(serie, copie)
+
+
+def _relayer_fichier_meteo(meteo, fichier, provenance=None):
+    """ACAL146 — ``meteo.fichier`` {nom, fournisseur} quand un fichier déposé
+    est la source (``null`` sinon : PVGIS), et le fournisseur rejoué. Rend
+    l'identité du fichier (``None`` sans fichier) pour la provenance.
+    ACAL455 — publie aussi le modèle et l'albédo de la transposition, NOMMÉS."""
+    identite = (fichier or {}).get('identite') if fichier else None
+    meteo['fichier'] = (
+        {'nom': identite.get('nom'), 'fournisseur': identite.get('fournisseur')}
+        if identite else None)
+    if identite:
+        meteo['fournisseur'] = identite.get('fournisseur')
+    # ACAL455/456 — transposition, décomposition (composantes déduites du
+    # global) et origine des composantes : relayées telles que la chaîne les a nommées.
+    source = (provenance or {}).get('provenance') or {}
+    for cle in ('transposition', 'decomposition', 'composantes_origine'):
+        if source.get(cle):
+            meteo[cle] = source[cle]
+    return identite
 
 
 def _plan_avec_le_site(plan, site):
@@ -1245,7 +1307,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     client = client if client is not None else ClientPvgis()
     fournisseur, provenance = _fournisseur_meteo(
         client=client, decision=decision,
-        document=meta['document'], fichier=fichier, compteur=compteur)
+        document=meta['document'], fichier=fichier, compteur=compteur,
+        contexte=contexte)
     contexte[CLE_FOURNISSEUR_METEO] = fournisseur
     # CALX58 — le MÊME client sert le plan optimal du site (un appel PVcalc
     # « optimalangles », cache et cadence compris). Absent, le TOF est omis
@@ -1271,6 +1334,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         raise _refus_nomme(refus) from refus
     contexte['meteo'] = dict(provenance['provenance'] or {})
     contexte['plan'] = reference
+    _poser_horizontale(contexte, client=client, decision=decision,
+                       fichier=fichier, compteur=compteur, plan=reference)
 
     ecrit = {}
     sorties = {}
@@ -1281,7 +1346,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
             sortie, cascade, sorties = _chaine_par_phases(
                 contexte, plans_equipes, site, fournisseur, ecrit,
                 plans_chaine=plans_chaine)
-            if fichier is not None and len(plans_equipes) > 1:
+            if (fichier is not None and len(plans_equipes) > 1
+                    and fichier.get('plan_des_donnees') != 'horizontal'):
                 _ajouter_avertissement(
                     blocs, MOTIF_FICHIER_PLUSIEURS_PANS.format(
                         pans=len(plans_equipes)))
@@ -1310,14 +1376,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
     # fournisseur compte ce qui est réellement parti sur le réseau.
     blocs['meteo']['appels_pvgis'] = compteur['appels']
-    # ACAL146 — ``meteo.fichier`` {nom, fournisseur} quand un fichier déposé
-    # est la source (``null`` sinon : PVGIS), et le fournisseur rejoué.
-    identite = (fichier or {}).get('identite') if fichier else None
-    blocs['meteo']['fichier'] = (
-        {'nom': identite.get('nom'), 'fournisseur': identite.get('fournisseur')}
-        if identite else None)
-    if identite:
-        blocs['meteo']['fournisseur'] = identite.get('fournisseur')
+    identite = _relayer_fichier_meteo(blocs['meteo'], fichier, provenance)
 
     # 3. LA SIMULATION MODULE PAR MODULE (CALX182).
     par_module = production_module_par_module(contexte)
@@ -1664,6 +1723,7 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit,
     provenance = contexte.get('meteo')
     series_jambes = {}
     cascades_jambes = {}
+    mensuelles_jambes = {}
     premier_contexte = None
     plans_chaine = plans_chaine or plans_equipes
     for plan in plans_chaine:
@@ -1676,15 +1736,25 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit,
             fournisseur(avec_site), contexte_plan, phase='pan')
         series_jambes[plan['cle']] = serie_dc
         cascades_jambes[plan['cle']] = cascade_pan
+        mensuelles_jambes[plan['cle']] = contexte_plan.get(
+            _irr.CLE_IRRADIATION_MENSUELLE)
         if premier_contexte is None:
             premier_contexte = contexte_plan
     # ACAL139 — les jambes d'un pan est-ouest se REJOIGNENT en UN pan : le
     # rapport, les sorties et les cascades restent pan par pan.
     series_dc = {}
     cascades_pan = {}
+    mensuelles_pan = {}
     for plan in plans_equipes:
         jambes = [jambe for jambe in plans_chaine
                   if jambe.get('parent') == plan['cle']]
+        # ACAL451 — l'irradiation mensuelle du pan : celle de sa jambe, ou la
+        # moyenne de ses jambes pondérée par leur kWc (comme l'annuelle).
+        mensuelles_pan[plan['cle']] = (
+            _irr.ponderer([mensuelles_jambes[jambe['cle']]
+                           for jambe in jambes],
+                          [jambe.get('kwc') or 0.0 for jambe in jambes])
+            if jambes else mensuelles_jambes[plan['cle']])
         if not jambes:
             series_dc[plan['cle']] = series_jambes[plan['cle']]
             cascades_pan[plan['cle']] = cascades_jambes[plan['cle']]
@@ -1735,6 +1805,7 @@ def _chaine_par_phases(contexte, plans_equipes, site, fournisseur, ecrit,
     sorties = _sorties_par_pan(series_dc, somme_dc, sortie)
     contexte[CLE_SORTIES_PAR_PAN] = sorties
     contexte[CLE_CASCADES_PAR_PAN] = cascades_pan
+    contexte[_irr.CLE_IRRADIATIONS_MENSUELLES_PAR_PAN] = mensuelles_pan
     publier_resultat_de_chaine(ecrit, sortie, contexte, cascade)
     return sortie, cascade, sorties
 

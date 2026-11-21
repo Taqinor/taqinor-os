@@ -201,6 +201,12 @@ class Calepinage(TenantModel):
     #: ``simulation.lire_piece_meteo``.
     meteo_retirees = models.JSONField('Pièces météo retirées', default=list,
                                       blank=True)
+    #: ACAL400 — brouillons d'atelier PAR UTILISATEUR, privés à l'auteur :
+    #: ``{"<id utilisateur>": {layout, horodatage, base_empreinte}}``. Seul
+    #: écrivain : ``services.brouillon`` par ``update()`` (aucune version, ni
+    #: ``updated_at`` ni journal). Jamais servi par le détail ni l'export.
+    brouillons_atelier = models.JSONField("Brouillons d'atelier",
+                                          default=dict, blank=True)
 
     class Meta:
         verbose_name = 'Calepinage'

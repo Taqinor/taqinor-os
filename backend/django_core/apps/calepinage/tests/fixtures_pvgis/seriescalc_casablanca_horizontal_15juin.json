@@ -1,0 +1,395 @@
+{
+ "inputs": {
+  "location": {
+   "latitude": 33.5,
+   "longitude": -7.6,
+   "elevation": 139.0
+  },
+  "meteo_data": {
+   "radiation_db": "PVGIS-SARAH3",
+   "meteo_db": "ERA5",
+   "year_min": 2020,
+   "year_max": 2020,
+   "use_horizon": true,
+   "horizon_db": null,
+   "horizon_data": "DEM-calculated"
+  },
+  "mounting_system": {
+   "fixed": {
+    "slope": {
+     "value": 0,
+     "optimal": false
+    },
+    "azimuth": {
+     "value": 0,
+     "optimal": false
+    },
+    "type": "free-standing"
+   }
+  },
+  "pv_module": {
+   "technology": null,
+   "peak_power": null,
+   "system_loss": null
+  }
+ },
+ "outputs": {
+  "hourly": [
+   {
+    "time": "20200615:0009",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 16.93,
+    "WS10m": 1.79,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0109",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 16.26,
+    "WS10m": 1.72,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0209",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 15.36,
+    "WS10m": 1.52,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0309",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 14.75,
+    "WS10m": 1.38,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0409",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 14.24,
+    "WS10m": 1.38,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0509",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 13.64,
+    "WS10m": 1.66,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0609",
+    "Gb(i)": 47.0,
+    "Gd(i)": 51.0,
+    "Gr(i)": 0.0,
+    "H_sun": 8.52,
+    "T2m": 13.79,
+    "WS10m": 1.72,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0709",
+    "Gb(i)": 190.0,
+    "Gd(i)": 102.0,
+    "Gr(i)": 0.0,
+    "H_sun": 20.36,
+    "T2m": 17.33,
+    "WS10m": 2.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0809",
+    "Gb(i)": 366.0,
+    "Gd(i)": 134.0,
+    "Gr(i)": 0.0,
+    "H_sun": 32.61,
+    "T2m": 19.82,
+    "WS10m": 2.83,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:0909",
+    "Gb(i)": 533.0,
+    "Gd(i)": 157.0,
+    "Gr(i)": 0.0,
+    "H_sun": 45.07,
+    "T2m": 21.92,
+    "WS10m": 2.9,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1009",
+    "Gb(i)": 679.0,
+    "Gd(i)": 170.0,
+    "Gr(i)": 0.0,
+    "H_sun": 57.54,
+    "T2m": 23.87,
+    "WS10m": 2.97,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1109",
+    "Gb(i)": 755.0,
+    "Gd(i)": 194.0,
+    "Gr(i)": 0.0,
+    "H_sun": 69.53,
+    "T2m": 25.45,
+    "WS10m": 3.24,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1209",
+    "Gb(i)": 843.0,
+    "Gd(i)": 176.0,
+    "Gr(i)": 0.0,
+    "H_sun": 78.81,
+    "T2m": 26.5,
+    "WS10m": 3.59,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1309",
+    "Gb(i)": 809.0,
+    "Gd(i)": 189.0,
+    "Gr(i)": 0.0,
+    "H_sun": 76.7,
+    "T2m": 27.14,
+    "WS10m": 3.86,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1409",
+    "Gb(i)": 675.0,
+    "Gd(i)": 226.0,
+    "Gr(i)": 0.0,
+    "H_sun": 66.05,
+    "T2m": 27.29,
+    "WS10m": 4.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1509",
+    "Gb(i)": 717.0,
+    "Gd(i)": 126.0,
+    "Gr(i)": 0.0,
+    "H_sun": 53.83,
+    "T2m": 26.88,
+    "WS10m": 4.48,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1609",
+    "Gb(i)": 344.0,
+    "Gd(i)": 231.0,
+    "Gr(i)": 0.0,
+    "H_sun": 41.34,
+    "T2m": 26.06,
+    "WS10m": 4.48,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1709",
+    "Gb(i)": 302.0,
+    "Gd(i)": 131.0,
+    "Gr(i)": 0.0,
+    "H_sun": 28.92,
+    "T2m": 24.92,
+    "WS10m": 4.41,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1809",
+    "Gb(i)": 129.0,
+    "Gd(i)": 95.0,
+    "Gr(i)": 0.0,
+    "H_sun": 16.77,
+    "T2m": 23.4,
+    "WS10m": 4.41,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:1909",
+    "Gb(i)": 19.0,
+    "Gd(i)": 24.31,
+    "Gr(i)": 0.0,
+    "H_sun": 5.1,
+    "T2m": 21.4,
+    "WS10m": 3.72,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:2009",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 19.92,
+    "WS10m": 3.17,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:2109",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 19.0,
+    "WS10m": 2.76,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:2209",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 18.31,
+    "WS10m": 2.41,
+    "Int": 0.0
+   },
+   {
+    "time": "20200615:2309",
+    "Gb(i)": 0.0,
+    "Gd(i)": 0.0,
+    "Gr(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 17.71,
+    "WS10m": 2.14,
+    "Int": 0.0
+   }
+  ]
+ },
+ "meta": {
+  "inputs": {
+   "location": {
+    "description": "Selected location",
+    "variables": {
+     "latitude": {
+      "description": "Latitude",
+      "units": "decimal degree"
+     },
+     "longitude": {
+      "description": "Longitude",
+      "units": "decimal degree"
+     },
+     "elevation": {
+      "description": "Elevation",
+      "units": "m"
+     }
+    }
+   },
+   "meteo_data": {
+    "description": "Sources of meteorological data",
+    "variables": {
+     "radiation_db": {
+      "description": "Solar radiation database"
+     },
+     "meteo_db": {
+      "description": "Database used for meteorological variables other than solar radiation"
+     },
+     "year_min": {
+      "description": "First year of the calculations"
+     },
+     "year_max": {
+      "description": "Last year of the calculations"
+     },
+     "use_horizon": {
+      "description": "Include horizon shadows"
+     },
+     "horizon_db": {
+      "description": "Source of horizon data"
+     }
+    }
+   },
+   "mounting_system": {
+    "description": "Mounting system",
+    "choices": "fixed, vertical_axis, inclined_axis, two_axis",
+    "fields": {
+     "slope": {
+      "description": "Inclination angle from the horizontal plane",
+      "units": "degree"
+     },
+     "azimuth": {
+      "description": "Orientation (azimuth) angle of the (fixed) PV system (0 = S, 90 = W, -90 = E)",
+      "units": "degree"
+     }
+    }
+   },
+   "pv_module": {
+    "description": "PV module parameters",
+    "variables": {
+     "technology": {
+      "description": "PV technology"
+     },
+     "peak_power": {
+      "description": "Nominal (peak) power of the PV module",
+      "units": "kW"
+     },
+     "system_loss": {
+      "description": "Sum of system losses",
+      "units": "%"
+     }
+    }
+   }
+  },
+  "outputs": {
+   "hourly": {
+    "type": "time series",
+    "timestamp": "hourly averages",
+    "variables": {
+     "Gb(i)": {
+      "description": "Beam (direct) irradiance on the inclined plane (plane of the array)",
+      "units": "W/m2"
+     },
+     "Gd(i)": {
+      "description": "Diffuse irradiance on the inclined plane (plane of the array)",
+      "units": "W/m2"
+     },
+     "Gr(i)": {
+      "description": "Reflected irradiance on the inclined plane (plane of the array)",
+      "units": "W/m2"
+     },
+     "H_sun": {
+      "description": "Sun height",
+      "units": "degree"
+     },
+     "T2m": {
+      "description": "2-m air temperature",
+      "units": "degree Celsius"
+     },
+     "WS10m": {
+      "description": "10-m total wind speed",
+      "units": "m/s"
+     },
+     "Int": {
+      "description": "1 means solar radiation values are reconstructed"
+     }
+    }
+   }
+  }
+ },
+ "_provenance": {
+  "enregistre_le": "2026-11-20",
+  "url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2020&endyear=2020&pvcalculation=0&components=1&angle=0&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
+  "reponse": "RÉELLE — réponse PVGIS v5_3 telle qu'elle est revenue (ACAL465)",
+  "troncature": "seules les 24 lignes du 15/06/2020 sont gardées (sur 8784) : le fichier reste une réponse RÉELLE. Plan HORIZONTAL (angle=0) : sous components=1, Gb(i) est le direct sur l'horizontale, Gd(i) le diffus horizontal (DHI), Gr(i) vaut 0 ; GHI = Gb(i) + Gd(i)."
+ }
+}

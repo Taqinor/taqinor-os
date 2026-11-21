@@ -1,0 +1,18 @@
+{
+  "id": "msg_representatif_acal489",
+  "type": "message",
+  "role": "assistant",
+  "model": "modele-de-la-fixture",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"pans\": [{\"sommets\": [[0.12, 0.20], [0.55, 0.18], [0.57, 0.52], [0.13, 0.55]], \"confiance\": 0.86}, {\"sommets\": [[0.57, 0.18], [0.88, 0.21], [0.86, 0.50], [0.57, 0.52]], \"confiance\": 0.71}]}"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 1642,
+    "output_tokens": 118
+  }
+}

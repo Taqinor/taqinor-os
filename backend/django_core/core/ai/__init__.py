@@ -18,6 +18,8 @@ Capacités couvertes (toutes NO-OP par défaut) :
   * Transcription audio → texte (FG357 notes terrain) — ``STTProvider``.
   * Contrôle qualité vision sur photos (FG358) — ``VisionQAProvider``.
   * Synthèse de fil (FG353) & brouillon de réponse (FG354) — ``LLMProvider``.
+  * Détection du toit (ACAL489) — ``VisionToitProvider`` ; fournisseur Claude
+    dans ``core.ai.fournisseurs_claude``, éteint sans ``VISION_TOIT_CLE_API``.
 
 Sélection : ``core.ai.registry.get_provider(capability)`` lit le réglage
 ``settings.AI_PROVIDERS`` (dict capacité→clé) et retombe sur ``'noop'``.
@@ -29,9 +31,11 @@ from core.ai.providers import (
     NoOpOCRProvider,
     NoOpSTTProvider,
     NoOpVisionQAProvider,
+    NoOpVisionToitProvider,
     OCRProvider,
     STTProvider,
     VisionQAProvider,
+    VisionToitProvider,
 )
 from core.ai.registry import (
     available_providers,
@@ -39,6 +43,7 @@ from core.ai.registry import (
     is_capability_configured,
     register_provider,
 )
+from core.ai.fournisseurs_claude import ClaudeVisionToitProvider
 from core.ai.schemas import (
     BON_LIVRAISON_SCHEMA,
     CIN_SCHEMA,
@@ -103,6 +108,9 @@ __all__ = [
     'NoOpOCRProvider',
     'NoOpSTTProvider',
     'NoOpVisionQAProvider',
+    'VisionToitProvider',
+    'NoOpVisionToitProvider',
+    'ClaudeVisionToitProvider',
     'get_provider',
     'register_provider',
     'available_providers',

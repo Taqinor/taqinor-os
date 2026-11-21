@@ -321,6 +321,19 @@ describe('ACAL29 — choixConception voyage avec le document', () => {
     expect(sortie.choixConception).toEqual(choix);
   });
 
+  it("ACAL469 — hydratationDeSection('choixConception') épingle inclinaison ET azimut, serializeLayout les relit (mutant : azimut non épinglé ⇒ échec)", () => {
+    const doc = documentRiche();
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxAvecChoix(h.zones!);
+    appliquerHydratationAuCtx(ctx, hydratationDeSection('choixConception', { tilt: 25, azimuth: 180, epingles: ['tilt', 'azimuth'] }));
+    expect(ctx.sel.tilt).toBe(25);
+    expect(ctx.sel.azimuth).toBe('south');
+    expect([...ctx.pinned]).toEqual(['tilt', 'azimuth']);
+    expect(ctx.useRecommended).toBe(false);
+    const sortie = serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null }));
+    expect(sortie.choixConception).toMatchObject({ tilt: 25, azimuth: 180, epingles: ['tilt', 'azimuth'] });
+  });
+
   it('sans choix épinglé, aucune clé choixConception (document identique)', () => {
     const doc = documentRiche();
     const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
@@ -343,5 +356,63 @@ describe('ACAL251 — hydrateFromLead ne sème pas un contour inutilisable', () 
   it('contour utilisable (ou drapeau absent, tunnel public) : le pan est semé comme avant', () => {
     expect(hydrateFromLead({ roof_outline: contour, contour_utilisable: true }).vertices).toHaveLength(4);
     expect(hydrateFromLead({ roof_outline: contour }).vertices).toHaveLength(4);
+  });
+});
+
+/* ============================================================================
+   ACAL459 — la table d'ombrage par direction survit à une réédition : enregistrer, rouvrir,
+   enregistrer ⇒ octet-identique tant que les sources n'ont pas bougé ; sinon la clé est retirée.
+   Les noms viennent de l'`exemple` du contrat `calepinage_table_ombrage.json` (ACAL389).
+   ========================================================================== */
+describe('ACAL459 — shadeTable survivante à une réédition', () => {
+  const table = JSON.parse(JSON.stringify(
+    ((contrat('calepinage_table_ombrage.json').exemple as { zones: Array<{ geometry: { shadeTable: unknown } }> }).zones[0].geometry.shadeTable),
+  )) as { signature: string };
+  // ACAL460 — la vue du ciel, aux noms de l'`exemple` du MÊME contrat (écrite par `vueCiel.ts`).
+  const ciel = JSON.parse(JSON.stringify(
+    ((contrat('calepinage_table_ombrage.json').exemple as { zones: Array<{ geometry: { skyViewFactor: unknown } }> }).zones[0].geometry.skyViewFactor),
+  ));
+  function docAvecTable(): SerializedLayout {
+    const pan = (id: string) => ({
+      id, label: id, vertices: [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]],
+      obstacles: [], roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180, facingManual: false,
+      neededPanels: 2, neededAuto: false,
+      geometry: {
+        azimuthDeg: 180, tiltDeg: 10, family: 'south', flush: false, kwc: 1.44, count: 2, origin: [-7.6, 33.5],
+        panels: [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }], shadeTable: table, skyViewFactor: ciel,
+      },
+    });
+    return JSON.parse(JSON.stringify({
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'zA', zones: [pan('zA'), pan('zB')],
+      result: { panels: 4, kwc: 2.88, annualKwh: 4000, savings: null },
+    })) as SerializedLayout;
+  }
+  const rouvrir = (doc: SerializedLayout, signature: string | undefined) => {
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    const etat = etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null });
+    return serialiserDocumentAtelier(ctx, null, { ...etat, solarAccess: signature ? { signatureOmbrage: signature } : null });
+  };
+
+  it('sources inchangées (même signature) : enregistrer, rouvrir, enregistrer rend la même table', () => {
+    const doc = docAvecTable();
+    const un = rouvrir(doc, table.signature);
+    expect(un.zones.map((z) => z.geometry?.shadeTable)).toStrictEqual([table, table]);
+    const deux = rouvrir(JSON.parse(JSON.stringify(un)) as SerializedLayout, table.signature);
+    expect(JSON.stringify(deux.zones)).toBe(JSON.stringify(un.zones));
+  });
+
+  it('une obstruction déplacée (autre signature) : la table relue est retirée, jamais gardée périmée', () => {
+    const sortie = rouvrir(docAvecTable(), 'fnv1a-autre');
+    expect(sortie.zones.map((z) => [Boolean(z.geometry), z.geometry && 'shadeTable' in z.geometry])).toEqual([[true, false], [true, false]]);
+  });
+
+  it('ACAL460 — skyViewFactor : même signature ⇒ identique après enregistrer, rouvrir, enregistrer ; autre signature ⇒ retiré', () => {
+    const cle = (z: { geometry?: object }) => (z.geometry as { skyViewFactor?: unknown } | undefined)?.skyViewFactor;
+    const un = rouvrir(docAvecTable(), table.signature);
+    expect(un.zones.map(cle)).toStrictEqual([ciel, ciel]);
+    expect(rouvrir(JSON.parse(JSON.stringify(un)) as SerializedLayout, table.signature).zones.map(cle)).toStrictEqual([ciel, ciel]);
+    expect(rouvrir(docAvecTable(), 'fnv1a-autre').zones.map(cle)).toEqual([undefined, undefined]);
   });
 });

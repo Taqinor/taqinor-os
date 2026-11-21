@@ -185,9 +185,45 @@ def _omission(motif, *, champ=''):
     return {
         'taux_autoconsommation': None, 'taux_couverture': None,
         'taux_autonomie': None, 'heures_sans_import': None,
-        'energie': None, 'plafond': None, 'etape_plafond': None,
-        'definition': '', 'motif_absence': texte,
+        'energie': None, 'par_mois': None, 'plafond': None,
+        'etape_plafond': None, 'definition': '', 'motif_absence': texte,
     }
+
+
+COLONNES_PAR_MOIS = ('consommation_kwh', 'production_kwh',
+                     'autoconsomme_kwh', 'import_reseau_kwh',
+                     'export_reseau_kwh')
+
+
+def _par_mois(serie, courbe, au_compteur, imports, exports, annees):
+    """ACAL445 — les 12 lignes mensuelles, sommes des pas du mois.
+
+    Les tableaux sont ceux déjà calculés (courbe, production au compteur,
+    imports, exports) ; ``autoconsomme = consommation − import``, la même
+    identité que le bilan horaire. Un mois sans aucun pas vaut ``None`` (jamais
+    0) ; les énergies sont ramenées à l'année moyenne comme ``_par_an``.
+    """
+    points = (serie or {}).get('points') or []
+    sommes = {mois: None for mois in range(1, 13)}
+    for rang in range(min(len(points), len(courbe), len(au_compteur),
+                          len(imports), len(exports))):
+        mois = _nombre(points[rang].get('mois'))
+        if mois is None or int(mois) not in sommes:
+            continue
+        ligne = sommes[int(mois)] or dict.fromkeys(COLONNES_PAR_MOIS, 0.0)
+        ligne['consommation_kwh'] += courbe[rang]
+        ligne['production_kwh'] += au_compteur[rang]
+        ligne['autoconsomme_kwh'] += courbe[rang] - imports[rang]
+        ligne['import_reseau_kwh'] += imports[rang]
+        ligne['export_reseau_kwh'] += exports[rang]
+        sommes[int(mois)] = ligne
+    lignes = []
+    for mois, ligne in sommes.items():
+        lignes.append({'mois': mois, **{
+            colonne: (None if ligne is None
+                      else _par_an(round(ligne[colonne], 3), annees))
+            for colonne in COLONNES_PAR_MOIS}})
+    return lignes
 
 
 # ── l'entrée unique, appelée par services/simulation.py (CALX5) ──────────
@@ -314,6 +350,8 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
             'import_reseau_kwh': _par_an(round(sum(imports), 3), annees),
             'apres_batterie': apres_batterie,
         },
+        'par_mois': _par_mois(serie, courbe, au_compteur, imports, exports,
+                              annees),
         'plafond': publie_plafond,
         'etape_plafond': etape,
         'definition': DEFINITION_TAUX,

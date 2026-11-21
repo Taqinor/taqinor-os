@@ -162,6 +162,9 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_conception_du_devis.json':
         'sélecteur sur un calepinage et sa variante en base — couvert par '
         'tests/test_acal_reviser_relie.py (second devis actif du lead)',
+    'calepinage_brouillon.json':  # ACAL400
+        'brouillon de l\'appelant lu en base (champ du pivot) — comparé par '
+        'tests/test_api_layout.py (BrouillonServeurTest)',
     # CALX25
     'calepinage_releve.json':
         'enveloppe (`releve_en_ligne`) lue sur un `ReleveTerrain` SAUVÉ en '
@@ -463,14 +466,16 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL310 a livré ``POST calepinages/<pk>/consommation/proposer/``
     # (``views/consommation.py``) : calepinage_consommation_proposee.json en
     # est SORTI.
-    # ACAL392 livrera ``GET calepinages/<pk>/parcours/`` : retirer l'entrée.
-    'calepinage_parcours_guide.json': 'ACAL392',
-    # ACAL403 livrera ``GET``/``POST calepinages/profil-depart/`` : retirer.
-    'calepinage_profil_depart.json': 'ACAL403',
-    # ACAL468 livrera ``POST calepinages/<pk>/balayage/`` : retirer.
-    'calepinage_balayage.json': 'ACAL468',
-    # ACAL485 livrera ``GET``/``POST calepinages/<pk>/detection-toit/`` : retirer.
-    'calepinage_detection_toit.json': 'ACAL485',
+    # ACAL392 a livré ``GET calepinages/<pk>/parcours/``
+    # (``views/parcours_guide.py``) : ``calepinage_parcours_guide.json`` en est
+    # SORTI.
+    # ACAL403 a livré ``GET``/``POST``/``DELETE calepinages/profil-depart/``
+    # (``views/profil_depart.py``) : ``calepinage_profil_depart.json`` en est
+    # SORTI.
+    # ACAL468 a livré ``POST calepinages/<pk>/balayage/``
+    # (``views/balayage.py``) : ``calepinage_balayage.json`` en est SORTI.
+    # ACAL485 a livré ``GET``/``POST calepinages/<pk>/detection-toit/``
+    # (``views/detection_toit.py``) : ``calepinage_detection_toit.json`` en est SORTI.
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -577,9 +582,11 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         donnees = _charger('calepinage_profil_depart.json')
         prefixe = donnees['prefixe_reference']
         cles = ('cle', 'section', 'valeur', 'unite', 'source', 'reference',
-                'url', 'date_lecture')
+                'url', 'date_lecture', 'etat')
         for ligne in donnees['exemple']['valeurs']:
             self.assertEqual(sorted(ligne), sorted(cles))
+            self.assertIn(ligne['etat'], ('a_appliquer', 'posee_par_profil',
+                                          'deja_saisie'))
             declarees = {c[0] for c in REGISTRES[ligne['section']]}
             self.assertIn(ligne['cle'], declarees)
             self.assertEqual(ligne['source'], 'texte')
@@ -744,6 +751,20 @@ class ClesServiesTest(unittest.TestCase):
                                    infos={})
         self._comparer('dossiers_reglementaires.json', servi)
         self._comparer('dossiers_reglementaires.json', servi, 'exemple_vide')
+
+    def test_profil_de_depart(self):
+        # ACAL403 — le GET rend le fichier ``data/profil_depart.json``, chaque
+        # valeur avec son ``etat`` : mêmes clés que l'échantillon d'ACAL387,
+        # chaque ligne de valeur aussi.
+        from apps.calepinage.services.profil_depart import charger_profil
+        from apps.calepinage.views.profil_depart import _avec_etats
+
+        servi = _avec_etats(charger_profil(), None)
+        self._comparer('calepinage_profil_depart.json', servi)
+        attendu = _charger('calepinage_profil_depart.json')['exemple']
+        for liste in ('valeurs', 'sans_source'):
+            for ligne in servi[liste]:
+                self.assertEqual(sorted(ligne), sorted(attendu[liste][0]))
 
     def test_parametres_de_societe(self):
         # ``kits`` est une clé DÉRIVÉE (CAL246), publiée par la vue et jamais

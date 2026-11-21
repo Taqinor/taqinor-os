@@ -3,6 +3,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
 import ReglagesSite from './ReglagesSite'
+import DemarrageRapide from './DemarrageRapide'
 import { refusServeur } from '../commun/refusServeur'
 
 /* ============================================================================
@@ -461,6 +462,11 @@ function CarteRapport({ documents, peutGerer }) {
 
 export default function ReglagesSimulation() {
   const peutGerer = useHasPermission('calepinage_gerer')
+  const peutApprouver = useHasPermission('calepinage_approuver')
+  // ACAL405 — les sections TELLES QUE SERVIES (état « à appliquer » / « déjà
+  // saisie ») et le compteur qui relit les réglages après un geste.
+  const [servis, setServis] = useState(null)
+  const [relecture, setRelecture] = useState(0)
 
   const [lignesParSection, setLignesParSection] = useState({
     simulation: {}, electrique_societe: {},
@@ -499,6 +505,7 @@ export default function ReglagesSimulation() {
         setImagerie(data.imagerie && typeof data.imagerie === 'object' ? data.imagerie : null)
         setPresetsServis(data.presets && typeof data.presets === 'object' ? data.presets : {})
         setDocumentsServis(data.documents && typeof data.documents === 'object' ? data.documents : {})
+        setServis({ simulation: data.simulation, electrique_societe: data.electrique_societe })
         setLignesParSection({
           simulation: lignesDepuis(simulation, data.simulation),
           electrique_societe: lignesDepuis(electrique, data.electrique_societe),
@@ -511,7 +518,7 @@ export default function ReglagesSimulation() {
       })
       .finally(() => { if (!annule) setChargement(false) })
     return () => { annule = true }
-  }, [])
+  }, [relecture])
 
   const changer = (section) => (cle, champ, valeur) => setLignesParSection((courant) => ({
     ...courant,
@@ -646,6 +653,12 @@ export default function ReglagesSimulation() {
           ))}
         </p>
       )}
+
+      <DemarrageRapide
+        reglages={servis}
+        peutApprouver={peutApprouver}
+        onChange={() => setRelecture((n) => n + 1)}
+      />
 
       <ReglagesSite imagerie={imagerie} />
 

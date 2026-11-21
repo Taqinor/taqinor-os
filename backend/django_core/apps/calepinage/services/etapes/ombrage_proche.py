@@ -44,6 +44,7 @@ direct ne puisse pas contourner la règle.
 from __future__ import annotations
 
 from apps.calepinage.services import etapes
+from . import ombrage_table
 from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
 from ..valeurs import nombre as _nombre
 
@@ -94,6 +95,12 @@ def appliquer(serie, contexte):
 
     if _acces_par_module(ombrage):
         return serie, etapes.etape_omise(libelle, MOTIF_ACCES_MODULE)
+
+    lue = ombrage_table.appliquer_table(serie, contexte)  # ACAL467
+    if lue is not None:
+        return lue[0], etapes.etape_appliquee(
+            libelle, source='document', reference=ombrage_table.REFERENCE,
+            entree=lue[1])
 
     brute = _matrice_brute(ombrage)
     if brute is None:

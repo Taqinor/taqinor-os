@@ -1,8 +1,8 @@
 """ACAL382 — le GOLDEN de ``simuler_calepinage`` sur TROIS projets de référence.
 
 Trois projets à Casablanca, bâtis sur les réponses PVGIS-SARAH3 2020
-ENREGISTRÉES (``fixtures_pvgis/seriescalc_casablanca_{sud,est,ouest}.json``,
-aucun appel réseau) :
+ENREGISTRÉES (``fixtures_pvgis/seriescalc_casablanca_annee_2020_*.json``,
+année pleine, aucun appel réseau) :
 
 * ``residentiel_pan_sud_15`` — un pan incliné 15° plein sud, 12 modules ;
 * ``ci_toit_plat_est_ouest_chassis`` — un pan est-ouest posé sur châssis,
@@ -65,10 +65,21 @@ POSTES = [
                      ('onduleur', 3.0), ('indisponibilite', 3.0))
 ]
 
-#: La fixture à rejouer selon l'aspect PVGIS demandé (0 sud, −90 est, +90 ouest).
-FIXTURE_PAR_ASPECT = {-90.0: 'seriescalc_casablanca_est.json',
-                      0.0: 'seriescalc_casablanca_sud.json',
-                      90.0: 'seriescalc_casablanca_ouest.json'}
+#: La fixture ANNÉE PLEINE 2020 (8 784 h, réponse brute de PVGIS-SARAH3) à
+#: rejouer selon (inclinaison, aspect PVGIS : 0 sud, −90 est, +90 ouest).
+FIXTURE_PAR_PLAN = {
+    (15.0, 0.0): 'seriescalc_casablanca_annee_2020_sud_15.json',
+    (10.0, -90.0): 'seriescalc_casablanca_annee_2020_est_10.json',
+    (10.0, 90.0): 'seriescalc_casablanca_annee_2020_ouest_10.json',
+    (20.0, 0.0): 'seriescalc_casablanca_annee_2020_sud_20.json',
+}
+
+
+def _transport(url, timeout_s):
+    requete = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    plan = (float(requete['angle'][0]), float(requete['aspect'][0]))
+    return 200, (FIXTURES / FIXTURE_PAR_PLAN[plan]).read_text(
+        encoding='utf-8')
 
 
 def _reglages():
@@ -77,13 +88,6 @@ def _reglages():
         'valeur': [2020, 2020], 'source': 'note interne',
         'reference': 'base PVGIS enregistrée (2020)'}
     return reglages
-
-
-def _transport(url, timeout_s):
-    aspect = float(urllib.parse.parse_qs(
-        urllib.parse.urlparse(url).query)['aspect'][0])
-    nom = FIXTURE_PAR_ASPECT[aspect]
-    return 200, (FIXTURES / nom).read_text(encoding='utf-8')
 
 
 class _ClientEnregistre:
@@ -208,9 +212,10 @@ def ecrire_le_golden():  # pragma: no cover — chemin « --write » seulement
             'tache': 'ACAL382',
             'produit_par': ('python -m apps.calepinage.tests.'
                             'test_golden_trois_projets --write'),
-            'cas': ('Casablanca, PVGIS-SARAH3 2020 enregistré (sud / est / '
-                    'ouest) ; postes salissure 2 / mismatch 2 / onduleur 3 '
-                    '/ indisponibilité 3 % de TEST ; onduleur 30 kW.'),
+            'cas': ('Casablanca, PVGIS-SARAH3 ANNÉE PLEINE 2020 enregistrée '
+                    '(sud 15° / est 10° / ouest 10° / sud 20°) ; postes '
+                    'salissure 2 / mismatch 2 / onduleur 3 / '
+                    'indisponibilité 3 % de TEST ; onduleur 30 kW.'),
             'comment_regenerer': (
                 'Relancer la commande À LA MAIN, lire le diff, dire dans le '
                 'message de commit POURQUOI les chiffres ont bougé.'),

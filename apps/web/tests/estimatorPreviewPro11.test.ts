@@ -250,7 +250,7 @@ describe('pro-11 — W71 : matériaux + géométries statiques hoistés hors du 
     expect(script).toContain('panelMatsActive');
     expect(script).toContain('panelMatsDim');
     expect(script).toContain('const buildPanelMatSet');
-    expect(script).toContain('panelMatSet(dim)');
+    expect(script).toContain('panelMatSet(dim, ');
     // le verre MeshPhysicalMaterial (recompilation de shader) n'est construit que dans la fabrique
     expect(script.match(/new THREE\.MeshPhysicalMaterial/g)?.length).toBe(1);
   });

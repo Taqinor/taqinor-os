@@ -674,71 +674,32 @@ modèle** sur un nouveau devis.
 
 ### Calepinage
 
-**Ce que ça fait.** L'atelier Calepinage est le lieu où vous concevez une installation solaire : vous saisissez le site (toiture, terrain ou ombrière), choisissez les équipements (panneaux, onduleurs, structure), et vous consultez la simulation (production, pertes, batterie). Le calepinage suit le statut du devis lié : tant que le devis est en brouillon ou envoyé, il se corrige sur place (la correction est tracée) ; dès que le devis est accepté, refusé ou expiré, le calepinage passe en lecture seule (409) et seul le geste « Réviser (v2) » du devis rouvre une conception. Un calepinage sans devis lié n'est jamais verrouillé.
+**Ce que ça fait.** L'atelier Calepinage est le lieu où vous concevez une installation solaire : vous placez le site (toiture, terrain ou ombrière), choisissez les panneaux et l'équipement électrique, puis lancez la simulation de production. Le travail est découpé en cinq étapes, décrites ci-dessous. Le calepinage suit le statut du devis lié : tant que le devis est en brouillon ou envoyé, il se corrige sur place (la correction est tracée) ; dès que le devis est accepté, refusé ou expiré, le calepinage passe en lecture seule et seul le geste « Réviser (v2) » du devis rouvre une conception. Un calepinage sans devis lié n'est jamais verrouillé.
 
 **Où le trouver.** Deux portes d'entrée :
-1. Menu **VENTES** → **Calepinage** pour lister tous vos calepinages ou en créer un nouveau.
-2. Fiche **lead** dans le CRM : le bouton **Calepinage** ouvre ou crée l'atelier pour ce lead.
+1. Menu **CALEPINAGE** : **Calepinages** (la liste de vos calepinages), **Nouveau calepinage**, **Bibliothèque**, **Sources des paramètres**, **Réglages simulation**, **Gabarits des dossiers** et **Comparer**.
+2. Fiche du lead dans le CRM : le bouton **Ouvrir dans le module Calepinage** ouvre le calepinage de ce lead, ou le crée s'il n'en existe pas encore. Une fois le calepinage créé, le bouton affiche « Ouvrir le calepinage CAL-… » avec son statut.
 
-**Le parcours : 10 étapes pour concevoir une installation.**
+**Le parcours en cinq étapes.** Dans l'atelier, une rangée de boutons numérotés : **1 Toit**, **2 Panneaux**, **3 Électrique**, **4 Résultats**, **5 Documents**. Une pastille à côté de chaque étape indique « à faire », « en cours », « fait » ou « bloqué », quand le serveur a répondu. Les onglets de l'étape choisie s'affichent dessous. Sans **Mode expert**, seuls les onglets essentiels sont visibles ; la case **Mode expert**, rangée avec les étapes, les montre tous. Ce choix est gardé dans ce navigateur, pour votre compte.
 
-**Étape 1 — Créer le calepinage (fiche lead ou menu Calepinage).**
-Vous entrez avec un lead ou un client, et l'atelier ouvre avec le site du lead (si saisi : adresse, GPS).
+- **1 Toit** : Plan importé, Pente, Terrain, Ombrière, Horizon lointain, Course du soleil, Coupe, Relevé terrain, Reprise de la visite, Photos du site, Détection du toit. Onglets essentiels : Pente, Terrain, Ombrière.
+- **2 Panneaux** : Fiches équipements, Affectation des chaînes, Masse & lestage, Fixation, Pompage. Essentiel : Fiches équipements.
+- **3 Électrique** : Équipements électriques, Cheminement & câbles, Raccordement réseau, Verdict électrique, Matériel électrique, Saisies électriques, Décisions électriques, Schéma unifilaire. Essentiels : Verdict électrique, Schéma unifilaire.
+- **4 Résultats** : Production, Pertes, Postes de pertes, Séries, Batterie, Économie, Comparer les variantes, Optimiser. Essentiels : Production, Pertes, Batterie, Économie.
+- **5 Documents** : Documents, Dossiers réglementaires, Activité, Versions, Comparer les versions, Approbation, Pose réelle, Projet. Essentiels : Documents, Dossiers réglementaires, Approbation.
 
-**Étape 2 — Saisir ou importer le plan du site (groupe « Site »).**
-L'atelier affiche une vue aérienne avec les clés d'entrée : 
-- **Plan importé** : charger un plan d'architecte et le caler en deux clics (si vous avez les cotes).
-- **Pente** : saisir l'inclinaison et l'orientation du pan (en degrés, pourcentage, ou cotes).
-- **Terrain** : mode champ au sol au lieu d'une toiture (tables ou racks sur le sol, espacement entre rangées).
-- **Ombrière** : surface sans toit (carport, hangar).
-- **Horizon lointain** : si le site a des horizons proches (montagne, bâtiment haut), tracer leur profil — c'est sinon omis sans erreur.
+**Ce qui manque encore.** Dans l'onglet **Production**, la rubrique « Ce qui manque encore : » liste ce qui reste à compléter pour une simulation complète. Chaque ligne est un lien : un clic ouvre le champ concerné, ou l'écran **Réglages simulation** lorsque le point est un réglage de la société.
 
-**Étape 3 — Concevoir la disposition des panneaux (vue 2D/3D du plan).**
-Sur la vue aérienne, vous dessinez les rangées de panneaux en cliquant. L'atelier refuse si :
-- Aucun pan n'est dessiné → message : « Aucun pan défini. ».
-- Un pan n'a pas d'inclinaison → message : « Inclinaison manquante. ».
+**Enregistrer et simulation.** En bas de l'atelier, la barre d'enregistrement porte le bouton **Enregistrer le calepinage** (ou **Enregistrer la conception** lorsque le devis lié est synchronisé). Elle affiche « Modifications non enregistrées » tant que des changements attendent, puis « Enregistré à HH:MM ». Quand l'enregistrement crée une nouvelle version, la simulation repart toute seule.
+Dans l'onglet **Production**, le bouton de simulation s'adapte à l'état du calcul : **Lancer la simulation** (jamais simulé), **Relancer (document modifié)** (résultat périmé) ou **Recalculer** (résultat à jour).
 
-**Étape 4 — Choisir les équipements (groupe « Système »).**
-L'atelier affiche un formulaire où vous saisissez :
-- **Module PV** : panneaux solaires (puissance, dimensions, rendement).
-- **Onduleur** : marque, modèle, puissance.
-- **Batterie** (si stockage envisagé) : capacité, chimie.
-- **Structure** : type de fixation (toiture, sol), nombre de pièces.
-- **Câbles** : diamètres, longueurs (cheminement DC/AC).
+**Générer le devis.** Le bouton **Générer le devis** crée le devis à partir de la conception. Une fois le devis lié, le même emplacement affiche **Resynchroniser le devis**.
 
-L'atelier refuse la simulation si :
-- Aucun module ni onduleur n'est saisi → message : « Aucun équipement. ».
-- La puissance des modules ne correspond pas au pan → message : « Vérifiez la puissance crête. ».
+**Reprendre sur un autre poste.** L'atelier garde votre brouillon sur ce poste et une copie sur le serveur, pour votre compte. Si vous ouvrez le calepinage sur un autre ordinateur ou téléphone, un bandeau « Brouillon d'un autre poste » propose **Reprendre le brouillon** ou **Ignorer**. Rien n'est repris sans votre choix.
 
-**Étape 5 — Affectation électrique et schéma (groupe « Système »).**
-Vous organisez l'installation :
-- **Affectation des chaînes** : combien de strings (chaînes en série) ? Combien d'onduleurs ? Quel MPPT par string ?
-- **Schéma unifilaire** : l'atelier génère automatiquement le schéma DC/AC avec les protections (disjoncteurs, parafoudres).
-- **Raccordement réseau** : pour une injection réseau, précisez les paramètres du point de raccordement (puissance souscrite, fusible, câbles).
+**Démarrage rapide (Réglages simulation).** La carte « Démarrage rapide » propose des valeurs publiées, chacune avec sa référence et sa date de lecture, pour les réglages restés vides. Ces valeurs ne sont pas mesurées sur vos sites et ne remplacent jamais une saisie.
 
-**Étape 6 — Lancer la simulation (groupe « Résultats »).**
-Vous cliquez sur **Simuler** (ou c'est automatique). L'atelier refuse si :
-- Aucun pan équipé de modules → message : « Aucun pan ne porte de panneaux. ».
-- Pas de point GPS du site → message : « Épingle du site manquante. ».
-- Mode météo indécis (et l'atelier demande : série pluriannuelle ou année type) → message : « Mode météo à préciser. ».
-
-**Étape 7 — Consulter les résultats de la simulation (groupe « Résultats »).**
-Une fois simulé, vous consultez :
-- **Production** : total annuel (P50, P75, P90), par pan, par mois, par module, par chaîne.
-- **Pertes** : graphique cascadé (ombrages, température, écrêtage, onduleur, câbles, etc.).
-- **Batterie** : autonomie, dimensionnement, vieillissement (si batterie envisagée).
-- **Économie** : production, économies d'électricité, temps de retour (lire depuis le **Devis**, jamais du calepinage).
-
-**Étape 8 — Générer ou synchroniser le devis (bouton du calepinage).**
-Vous cliquez **Générer le devis** (crée une ligne par équipement). Si vous changez ensuite la composition du calepinage, vous cliquez **Resynchroniser** pour mettre à jour les lignes du devis. Les prix, eux, restent gelés à la génération.
-
-**Étape 9 — Comparer les variantes (lien « Comparer les variantes », page `/calepinage/:id/variantes`).**
-Vous créez plusieurs variantes du calepinage (panneaux différents, orientation alternative, batterie ou non) et comparez-les côte à côte : production, coût, économies. Ce n'est pas l'onglet « Versions », qui garde l'historique gelé des modifications.
-
-**Étape 10 — Compiler les documents et archiver (groupe « Dossiers »).**
-- **Documents** : l'atelier génère une planche d'installation (PDF/SVG), une note de calcul justificative. L'export CSV de la série horaire de production (8 760 heures) est un téléchargement distinct, possible une fois le calepinage simulé.
-- **Dossiers réglementaires** : onglet qui regroupe les fiches produits et schémas (si compilés ; sinon le bouton reste inactif tant que toutes les données n'y sont pas).
-- **Versions** : historique gelé de chaque calepinage modifié.
+**Adresse de chaque onglet.** Chaque onglet a sa propre adresse, de la forme `/calepinage/<numéro>?onglet=<nom>` : un lien ouvre directement le bon onglet. Les anciennes adresses « par panneau » redirigent vers ces adresses.
 
 **Lire la simulation depuis un autre logiciel (API publique).** Une clé d'API
 portant le droit `read:calepinages` (Paramètres → API & Webhooks) permet à votre

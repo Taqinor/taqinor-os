@@ -39,7 +39,11 @@ import json
 import math
 import pathlib
 
+import os
+import tempfile
+
 from django.test import SimpleTestCase
+from pvlib.iotools import read_epw
 
 from apps.calepinage.services.meteo_fichier import (
     COLONNE_HORODATAGE,
@@ -48,6 +52,7 @@ from apps.calepinage.services.meteo_fichier import (
     MeteoFichierRefuse,
     lire_serie_meteo,
 )
+from apps.calepinage.services.meteo_horizontale import lire_serie_horizontale
 from apps.calepinage.services.p50p90 import variabilite_interannuelle
 from apps.calepinage.services.pvgis_serie import (
     COLONNES_COMPOSANTES, MOTIF_COMPOSANTES_ABSENTES, ClientPvgis, _Cache,
@@ -196,15 +201,18 @@ class ComposantesTest(SimpleTestCase):
 class RefusQuiNommentTest(SimpleTestCase):
     """Chaque refus pointe SA colonne — et sa ligne quand elle est connue."""
 
-    def test_un_fichier_seulement_horizontal_est_refuse_en_nommant_la_colonne(self):
+    def test_un_fichier_au_global_seul_est_accepte_et_marque_a_decomposer(self):
+        # ACAL456 : le refus du global seul a disparu du dépôt ; c'est la
+        # simulation qui exige le modèle de décomposition saisi.
         lignes = ['horodatage;ghi_w_m2;t2m_c',
                   '2021-01-15T13:00:00+01:00;780.0;19.8']
-        with self.assertRaises(MeteoFichierRefuse) as leve:
-            _lire('\r\n'.join(lignes))
+        serie = _lire('\r\n'.join(lignes))
 
-        self.assertEqual(leve.exception.champ, 'ghi_w_m2')
-        self.assertIn('CALX198', leve.exception.motif)
-        self.assertIn('gi_w_m2', leve.exception.motif)
+        self.assertEqual(serie['plan_des_donnees'], 'horizontal')
+        self.assertTrue(serie['a_decomposer'])
+        self.assertEqual(serie['meteo']['composantes_origine'], 'deduites')
+        self.assertIsNone(serie['points'][0]['dni_w_m2'])
+        self.assertEqual(serie['points'][0]['ghi_w_m2'], 780.0)
 
     def test_sans_aucune_irradiance_de_plan_le_refus_nomme_la_colonne_attendue(self):
         lignes = ['horodatage;t2m_c', '2021-01-15T13:00:00+01:00;19.8']
@@ -478,12 +486,22 @@ class ContratCommitteTest(SimpleTestCase):
         # Le nombre de points, jamais les points eux-mêmes.
         self.assertIsInstance(exemple['points'], int)
 
-    def test_le_refus_horizontal_committe_est_celui_que_le_service_leve(self):
-        lignes = ['horodatage;ghi_w_m2', '2021-01-15T13:00:00+01:00;780.0']
+    def test_le_refus_committe_dune_composante_seule_est_celui_du_service(self):
+        lignes = ['horodatage,ghi_w_m2,dhi_w_m2',
+                  '2021-01-15T13:00:00+01:00,780.0,100.0']
         with self.assertRaises(MeteoFichierRefuse) as leve:
             _lire('\r\n'.join(lignes))
-        self.assertEqual(CONTRAT['exemple_refus_horizontal']['ghi_w_m2'][0],
+        self.assertEqual(CONTRAT['exemple_refus_composante_seule']['dni_w_m2'][0],
                          leve.exception.motif)
+        self.assertNotIn('exemple_refus_horizontal', CONTRAT)
+
+    def test_lexemple_committe_du_global_seul_est_celui_du_service(self):
+        lignes = ['horodatage;ghi_w_m2', '2021-01-15T13:00:00+01:00;780.0']
+        serie = _lire('\r\n'.join(lignes))
+        exemple = CONTRAT['exemple_global_seul_accepte']
+        self.assertEqual(exemple['meteo']['composantes_origine'],
+                         serie['meteo']['composantes_origine'])
+        self.assertEqual(exemple['message'], CONTRAT['exemple']['message'])
 
     def test_le_refus_sans_fuseau_committe_est_celui_que_le_service_leve(self):
         lignes = ['horodatage;gi_w_m2', '2021-01-15T13:00:00;780.0']
@@ -505,3 +523,476 @@ class ContratCommitteTest(SimpleTestCase):
         from apps.calepinage.views.meteo_fichier import MESSAGE_DEPOSE
 
         self.assertEqual(CONTRAT['exemple']['message'], MESSAGE_DEPOSE)
+
+
+# --- ACAL454 : le fichier météo HORIZONTAL (EPW / CSV) -----------------------
+TMY_CASABLANCA = (pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
+                  / 'tmy_casablanca.json')
+
+
+def _lignes_reelles():
+    """Les 288 heures RÉELLES de ``tmy_casablanca.json`` (G(h), Gb(n), Gd(h))."""
+    donnees = json.loads(TMY_CASABLANCA.read_text(encoding='utf-8'))
+    return donnees['outputs']['tmy_hourly']
+
+
+def _epw(lignes, *, fuseau='0.0', manquant=None, decaler_ghi=False):
+    """Un EPW minimal (8 lignes d'en-tête, 35 colonnes) à partir de valeurs réelles.
+
+    ``lignes`` : ``[(annee, mois, jour, heure_epw, réel)]``. ``manquant`` =
+    ``(index, colonne EPW)`` écrit le code 9999 ; ``decaler_ghi`` fabrique le
+    mutant « GHI décalée d'un rang ».
+    """
+    entete = [
+        'LOCATION,Casablanca,,MAR,PVGIS,000000,33.5,-7.6,%s,139.0' % fuseau,
+        'DESIGN CONDITIONS,0', 'TYPICAL/EXTREME PERIODS,0',
+        'GROUND TEMPERATURES,0', 'HOLIDAYS/DAYLIGHT SAVINGS,No,0,0,0',
+        'COMMENTS 1,essai', 'COMMENTS 2,essai',
+        'DATA PERIODS,1,1,Data,Sunday,1/1,12/31']
+    corps = []
+    for index, (annee, mois, jour, heure, reel) in enumerate(lignes):
+        cases = ['0'] * 35
+        cases[0:5] = [str(annee), str(mois), str(jour), str(heure), '60']
+        cases[6] = str(reel['T2m'])
+        cases[13] = str(lignes[index - 1][4]['G(h)'] if decaler_ghi
+                        else reel['G(h)'])
+        cases[14] = str(reel['Gb(n)'])
+        cases[15] = str(reel['Gd(h)'])
+        cases[21] = str(reel['WS10m'])
+        if manquant and manquant[0] == index:
+            cases[manquant[1]] = '9999'
+        corps.append(','.join(cases))
+    return '\n'.join(entete + corps) + '\n'
+
+
+def _csv_horizontal(lignes):
+    sortie = ['horodatage,ghi_w_m2,dni_w_m2,dhi_w_m2,t2m_c,ws10m']
+    for annee, mois, jour, heure, reel in lignes:
+        sortie.append('%04d-%02d-%02dT%02d:00:00+00:00,%s,%s,%s,%s,%s' % (
+            annee, mois, jour, heure - 1, reel['G(h)'], reel['Gb(n)'],
+            reel['Gd(h)'], reel['T2m'], reel['WS10m']))
+    return '\n'.join(sortie) + '\n'
+
+
+def _quarante_huit_heures():
+    """48 h consécutives (15 et 16 janvier 2020) : dates posées, valeurs réelles."""
+    reelles = _lignes_reelles()[:48]
+    return [(2020, 1, 15 + rang // 24, rang % 24 + 1, reel)
+            for rang, reel in enumerate(reelles)]
+
+
+def _tmy_complet():
+    lignes = []
+    for reel in _lignes_reelles():
+        temps = reel['time(UTC)']
+        lignes.append((int(temps[:4]), int(temps[4:6]), int(temps[6:8]),
+                       int(temps[9:11]) + 1, reel))
+    return lignes
+
+
+def _pvlib(texte):
+    """La référence : ``pvlib.iotools.read_epw`` sur le même texte."""
+    descripteur, chemin = tempfile.mkstemp(suffix='.epw')
+    try:
+        with os.fdopen(descripteur, 'w', encoding='utf-8') as sortie:
+            sortie.write(texte)
+        donnees, _meta = read_epw(chemin)
+    finally:
+        os.remove(chemin)
+    return donnees
+
+
+class SerieHorizontaleTest(SimpleTestCase):
+
+    def _verifier_contre_pvlib(self, serie, texte):
+        reference = _pvlib(texte)
+        self.assertEqual(len(serie['points']), len(reference))
+        for point, (instant, ligne) in zip(serie['points'], reference.iterrows()):
+            self.assertEqual(
+                (point['annee'], point['mois'], point['jour'], point['heure']),
+                (instant.year, instant.month, instant.day, instant.hour))
+            self.assertAlmostEqual(point['ghi_w_m2'], ligne['ghi'])
+            self.assertAlmostEqual(point['dni_w_m2'], ligne['dni'])
+            self.assertAlmostEqual(point['dhi_w_m2'], ligne['dhi'])
+            self.assertAlmostEqual(point['t2m_c'], ligne['temp_air'])
+            self.assertAlmostEqual(point['ws10m'], ligne['wind_speed'])
+
+    def test_epw_et_csv_equivalents_rendent_les_instants_et_valeurs_de_pvlib(self):
+        lignes = _quarante_huit_heures()
+        texte = _epw(lignes)
+        epw = lire_serie_horizontale(texte, format='epw', fournisseur='PVGIS',
+                                     obtenue_le=OBTENUE_LE)
+        csv = lire_serie_horizontale(_csv_horizontal(lignes), format='csv',
+                                     fournisseur='PVGIS', obtenue_le=OBTENUE_LE)
+        self._verifier_contre_pvlib(epw, texte)
+        self.assertEqual(epw['points'], csv['points'])
+        self.assertEqual(epw['plan_des_donnees'], 'horizontal')
+        self.assertEqual(epw['meteo']['service'], 'fichier')
+        self.assertEqual(epw['meteo']['fournisseur'], 'PVGIS')
+        self.assertEqual(len(epw['meteo']['fichier']['empreinte_sha256']), 64)
+        self.assertGreater(max(p['ghi_w_m2'] for p in epw['points']), 0)
+
+    def test_un_ghi_decale_d_un_rang_sort_de_pvlib(self):
+        lignes = _quarante_huit_heures()
+        serie = lire_serie_horizontale(_epw(lignes), format='epw')
+        decalee = _pvlib(_epw(lignes, decaler_ghi=True))
+        self.assertNotEqual([p['ghi_w_m2'] for p in serie['points']],
+                            list(decalee['ghi']))
+
+    def test_une_annee_type_est_publiee_tmy_sans_annees(self):
+        texte = _epw(_tmy_complet())
+        serie = lire_serie_horizontale(texte, format='epw')
+        self.assertEqual(serie['mode'], 'tmy')
+        self.assertEqual(serie['annees'], [])
+        self.assertEqual(serie['meteo']['mode'], 'tmy')
+        self._verifier_contre_pvlib(serie, texte)
+
+    def test_une_valeur_manquante_refuse_en_nommant_ligne_et_colonne(self):
+        texte = _epw(_quarante_huit_heures(), manquant=(20, 13))
+        with self.assertRaises(MeteoFichierRefuse) as refus:
+            lire_serie_horizontale(texte, format='epw')
+        self.assertEqual(refus.exception.champ, 'ghi_w_m2')
+        self.assertEqual(refus.exception.ligne, 8 + 20 + 1)
+
+    def test_un_csv_sans_colonne_dni_est_refuse_en_la_nommant(self):
+        texte = '\n'.join(['horodatage,ghi_w_m2,dhi_w_m2',
+                           '2020-01-15T00:00:00+00:00,0,0']) + '\n'
+        with self.assertRaises(MeteoFichierRefuse) as refus:
+            lire_serie_horizontale(texte, format='csv')
+        self.assertEqual(refus.exception.champ, 'dni_w_m2')
+
+    def test_un_epw_sans_fuseau_est_refuse_en_nommant_la_ligne_1(self):
+        texte = _epw(_quarante_huit_heures()).replace(
+            'MAR,PVGIS,000000,33.5,-7.6,0.0,139.0', 'MAR,PVGIS,000000,33.5,-7.6', 1)
+        with self.assertRaises(MeteoFichierRefuse) as refus:
+            lire_serie_horizontale(texte, format='epw')
+        self.assertEqual(refus.exception.ligne, 1)
+
+
+# --- ACAL455 : la série HORIZONTALE transposée vers le plan de chaque pan -----
+METEO_CONTRAT = json.loads((ECHANTILLONS / 'calepinage_meteo.json')
+                           .read_text(encoding='utf-8'))
+
+#: Le pan de la tâche : inclinaison 20°, azimut de FACE 200° (PVGIS : +20°).
+PAN = {'inclinaison_deg': 20.0, 'azimut_pvgis_deg': 20.0,
+       'lat': 33.5, 'lon': -7.6}
+ALBEDO_ESSAI = 0.2
+
+
+def _reglages(modele='isotropic', albedo=ALBEDO_ESSAI, decomposition=None):
+    valeurs = {}
+    if decomposition is not None:
+        valeurs['modele_decomposition'] = {'valeur': decomposition,
+                                           'source': 'societe'}
+    if modele is not None:
+        valeurs['modele_transposition'] = {'valeur': modele, 'source': 'societe'}
+    if albedo is not None:
+        valeurs['albedo_mensuel'] = {'valeur': albedo, 'source': 'mesure'}
+    return {'reglages_simulation': valeurs}
+
+
+def _serie_horizontale_deposee():
+    """Le CSV horizontal de 48 h RÉELLES, lu par la porte du dépôt."""
+    return lire_serie_meteo(_csv_horizontal(_quarante_huit_heures()).encode(
+        'utf-8'), fournisseur='PVGIS', obtenue_le=OBTENUE_LE)
+
+
+def _pvlib_direct(points, modele, *, dz=0.0, da=0.0):
+    """``get_total_irradiance`` appelé DIRECTEMENT, soleil de pvlib, mi-heure UTC."""
+    import numpy as np
+    import pandas as pd
+    from pvlib import atmosphere, irradiance, solarposition
+
+    instants = pd.DatetimeIndex([datetime.datetime(
+        p['annee'], p['mois'], p['jour'], p['heure']) + datetime.timedelta(
+        minutes=30) for p in points], tz='UTC')
+    soleil = solarposition.get_solarposition(instants, PAN['lat'], PAN['lon'])
+    zenith = soleil['zenith'].to_numpy() + dz
+    rendu = irradiance.get_total_irradiance(
+        PAN['inclinaison_deg'], 200.0, zenith,
+        soleil['azimuth'].to_numpy() + da,
+        np.array([p['dni_w_m2'] for p in points]),
+        np.array([p['ghi_w_m2'] for p in points]),
+        np.array([p['dhi_w_m2'] for p in points]),
+        dni_extra=irradiance.get_extra_radiation(instants).to_numpy(),
+        airmass=atmosphere.get_relative_airmass(zenith),
+        albedo=np.full(len(points), ALBEDO_ESSAI), model=modele)
+    return {cle: np.asarray(valeur, dtype=float) for cle, valeur in rendu.items()}
+
+
+class TranspositionTest(SimpleTestCase):
+    """ACAL455 — chaque pan reçoit SA série, transposée par pvlib, modèle nommé."""
+
+    def setUp(self):
+        from apps.calepinage.services.transposition import (
+            transposer_serie_horizontale)
+        self.transposer = transposer_serie_horizontale
+        self.serie = _serie_horizontale_deposee()
+
+    def test_le_depot_route_un_csv_horizontal_complet_vers_acal454(self):
+        self.assertEqual(self.serie['plan_des_donnees'], 'horizontal')
+        self.assertEqual(len(self.serie['points']), 48)
+        self.assertIn('serie_horaire', self.serie)
+
+    def test_isotrope_valeurs_derivees_a_la_main(self):
+        """Liu et Jordan : diffus = dhi·(1+cos β)/2, réfléchi = ghi·ρ·(1−cos β)/2.
+
+        β = 20° ⇒ (1+cos β)/2 = 0,969846…, (1−cos β)/2 = 0,030153… ; ρ = 0,2.
+        Ni le soleil ni le modèle de pvlib n'entrent dans ces deux colonnes.
+        """
+        rendu = self.transposer(self.serie, PAN, _reglages('isotropic'))
+        cos_b = math.cos(math.radians(20.0))
+        for brut, point in zip(self.serie['points'], rendu['points']):
+            self.assertAlmostEqual(point['gd_i_w_m2'],
+                                   brut['dhi_w_m2'] * (1 + cos_b) / 2, delta=1e-9)
+            self.assertAlmostEqual(point['gr_i_w_m2'],
+                                   brut['ghi_w_m2'] * ALBEDO_ESSAI * (1 - cos_b) / 2,
+                                   delta=1e-9)
+            self.assertAlmostEqual(
+                point['gi_w_m2'], point['gb_i_w_m2'] + point['gd_i_w_m2']
+                + point['gr_i_w_m2'], delta=1e-9)
+        self.assertTrue(rendu['composantes_disponibles'])
+        self.assertGreater(max(p['gi_w_m2'] for p in rendu['points']), 0)
+
+    def test_perez_contre_pvlib_a_la_tolerance_derivee(self):
+        """La tolérance n'est pas posée : c'est l'écart de poa_global que pvlib
+        lui-même produit quand SA position du soleil bouge de 0,02° (au-dessus
+        des 0,017° mesurés entre les deux calculs, mémo calx198 §4)."""
+        rendu = self.transposer(self.serie, PAN, _reglages('perez'))
+        points = self.serie['points']
+        reference = _pvlib_direct(points, 'perez')
+        tolerance = 0.0
+        for dz, da in ((0.02, 0.0), (-0.02, 0.0), (0.0, 0.02), (0.0, -0.02)):
+            perturbe = _pvlib_direct(points, 'perez', dz=dz, da=da)
+            tolerance = max(tolerance, float(max(
+                abs(perturbe['poa_global'] - reference['poa_global']))))
+        self.assertGreater(tolerance, 0.0)
+        colonnes = (('gi_w_m2', 'poa_global'), ('gb_i_w_m2', 'poa_direct'),
+                    ('gd_i_w_m2', 'poa_sky_diffuse'),
+                    ('gr_i_w_m2', 'poa_ground_diffuse'))
+        for rang, point in enumerate(rendu['points']):
+            for nous, eux in colonnes:
+                self.assertAlmostEqual(point[nous], reference[eux][rang],
+                                       delta=tolerance, msg=(rang, nous))
+
+    def test_le_bloc_transposition_nomme_modele_reference_et_albedo(self):
+        rendu = self.transposer(self.serie, PAN, _reglages('perez'))
+        bloc = rendu['meteo']['transposition']
+        self.assertEqual(bloc['modele'], 'perez')
+        self.assertIn('Perez', bloc['reference'])
+        self.assertIn('allsitescomposite1990', bloc['reference'])
+        self.assertEqual(bloc['albedo'], {'valeur': [ALBEDO_ESSAI] * 12,
+                                          'source': 'mesure'})
+        attendu = METEO_CONTRAT['exemple_horizontal']['meteo']['transposition']
+        self.assertEqual(sorted(attendu), sorted(bloc))
+        self.assertEqual(sorted(attendu['albedo']), sorted(bloc['albedo']))
+        self.assertIn(attendu['modele'], ('isotropic', 'haydavies', 'perez'))
+
+    def test_un_reglage_absent_refuse_en_nommant_la_cle(self):
+        from apps.calepinage.services.pvgis_serie import EntreeInvalide
+
+        for reglages, cle in (
+                (_reglages(modele=None), 'parametres.simulation.modele_transposition'),
+                (_reglages(albedo=None), 'parametres.simulation.albedo_mensuel')):
+            with self.assertRaises(EntreeInvalide) as refus:
+                self.transposer(self.serie, PAN, reglages)
+            self.assertEqual(refus.exception.champ, cle)
+            self.assertIn(cle, str(refus.exception))
+        with self.assertRaises(EntreeInvalide) as refus:
+            self.transposer(self.serie, dict(PAN, lat=None), _reglages())
+        self.assertEqual(refus.exception.champ, 'site.pin')
+
+    def test_deux_decalages_refusent_en_nommant_la_cle(self):
+        from apps.calepinage.services.pvgis_serie import EntreeInvalide
+
+        serie = dict(self.serie)
+        serie['meteo'] = json.loads(json.dumps(self.serie['meteo']))
+        serie['meteo']['heure']['decalage_minutes'] = [0, 60]
+        with self.assertRaises(EntreeInvalide) as refus:
+            self.transposer(serie, PAN, _reglages())
+        self.assertEqual(refus.exception.champ, 'meteo.heure.decalage_minutes')
+
+    def test_le_fournisseur_sert_une_serie_par_pan(self):
+        from apps.calepinage.services.simulation import _fournisseur_meteo
+
+        fournisseur, provenance = _fournisseur_meteo(
+            client=None, decision={'fenetre_annees': None}, document=None,
+            fichier=self.serie, contexte=_reglages('haydavies'))
+        sud = fournisseur(dict(PAN, kwc=1.0))
+        est = fournisseur(dict(PAN, azimut_pvgis_deg=-90.0, kwc=1.0))
+        self.assertNotEqual([p['gi_w_m2'] for p in sud['points']],
+                            [p['gi_w_m2'] for p in est['points']])
+        self.assertEqual(
+            provenance['provenance']['transposition']['modele'], 'haydavies')
+
+    def test_un_fichier_de_plan_reste_servi_tel_quel(self):
+        from apps.calepinage.services.simulation import _fournisseur_meteo
+
+        plan = _lire(_csv(_instants(3, decalage_minutes=60)))
+        fournisseur, provenance = _fournisseur_meteo(
+            client=None, decision={'fenetre_annees': None}, document=None,
+            fichier=plan, contexte=_reglages(modele=None, albedo=None))
+        servie = fournisseur(dict(PAN, kwc=1.0))
+        self.assertEqual([p['gi_w_m2'] for p in servie['points']],
+                         [p['gi_w_m2'] for p in plan['points']])
+        self.assertNotIn('transposition', provenance['provenance'])
+
+
+# --- ACAL456 : direct et diffus DÉDUITS d'un global horizontal seul -----------
+def _csv_global_seul(lignes):
+    sortie = ['horodatage,ghi_w_m2,t2m_c,ws10m']
+    for annee, mois, jour, heure, reel in lignes:
+        sortie.append('%04d-%02d-%02dT%02d:00:00+00:00,%s,%s,%s' % (
+            annee, mois, jour, heure - 1, reel['G(h)'], reel['T2m'], reel['WS10m']))
+    return '\n'.join(sortie) + '\n'
+
+
+def _zenith_instants_pvlib(points, dz=0.0):
+    import pandas as pd
+    from pvlib import solarposition
+
+    instants = pd.DatetimeIndex([datetime.datetime(
+        p['annee'], p['mois'], p['jour'], p['heure']) + datetime.timedelta(
+        minutes=30) for p in points], tz='UTC')
+    soleil = solarposition.get_solarposition(instants, PAN['lat'], PAN['lon'])
+    return instants, soleil['zenith'].to_numpy() + dz
+
+
+def _dni_dhi_pvlib(points, modele, dz=0.0):
+    """La référence : ``pvlib.irradiance.erbs`` / ``disc`` appelé dans le test."""
+    import numpy as np
+    from pvlib import irradiance
+
+    instants, zenith = _zenith_instants_pvlib(points, dz)
+    ghi = np.array([p['ghi_w_m2'] for p in points], dtype=float)
+    if modele == 'erbs':
+        rendu = irradiance.erbs(ghi, zenith, instants)
+        dni, dhi = rendu['dni'].to_numpy(), rendu['dhi'].to_numpy()
+    else:
+        dni = irradiance.disc(ghi, zenith, instants)['dni'].to_numpy()
+        dhi = ghi - dni * np.cos(np.radians(zenith))
+    nuit = zenith >= 90.0
+    return np.where(nuit, 0.0, dni), np.where(nuit, 0.0, dhi)
+
+
+class DecompositionTest(SimpleTestCase):
+    """ACAL456 — le global seul, décomposé par un modèle pvlib NOMMÉ."""
+
+    def setUp(self):
+        from apps.calepinage.services.transposition import (
+            transposer_serie_horizontale)
+        self.transposer = transposer_serie_horizontale
+        self.lignes = _quarante_huit_heures()
+        self.serie = lire_serie_meteo(
+            _csv_global_seul(self.lignes).encode('utf-8'),
+            fournisseur='PVGIS', obtenue_le=OBTENUE_LE)
+        self.complete = _serie_horizontale_deposee()
+
+    def test_le_depot_accepte_le_global_seul(self):
+        self.assertTrue(self.serie['a_decomposer'])
+        self.assertEqual(len(self.serie['points']), 48)
+        self.assertEqual([p['ghi_w_m2'] for p in self.serie['points']],
+                         [p['ghi_w_m2'] for p in self.complete['points']])
+        self.assertEqual(self.serie['meteo']['composantes_origine'], 'deduites')
+        self.assertEqual(self.complete['meteo']['composantes_origine'], 'mesurees')
+        self.assertFalse(self.complete['a_decomposer'])
+
+    def test_dni_dhi_sortent_du_meme_modele_pvlib_que_dans_le_test(self):
+        from apps.calepinage.services.decomposition import deduire_direct_diffus
+
+        points = self.serie['points']
+        instants, zenith = _zenith_instants_pvlib(points)
+        naifs = [i.to_pydatetime().replace(tzinfo=None) for i in instants]
+        for modele in ('erbs', 'disc'):
+            ref_dni, ref_dhi = _dni_dhi_pvlib(points, modele)
+            dni, dhi = deduire_direct_diffus(
+                [p['ghi_w_m2'] for p in points], zenith, naifs, modele)
+            for rang in range(len(points)):
+                self.assertAlmostEqual(dni[rang], ref_dni[rang], delta=1e-9)
+                self.assertAlmostEqual(dhi[rang], ref_dhi[rang], delta=1e-9)
+            self.assertGreater(max(dni), 0.0)
+
+    def test_coherence_physique_dni_cos_plus_dhi_egale_ghi(self):
+        import numpy as np
+
+        from apps.calepinage.services.decomposition import deduire_direct_diffus
+
+        points = self.serie['points']
+        instants, zenith = _zenith_instants_pvlib(points)
+        naifs = [i.to_pydatetime().replace(tzinfo=None) for i in instants]
+        ghi = np.array([p['ghi_w_m2'] for p in points])
+        for modele in ('erbs', 'disc'):
+            dni, dhi = deduire_direct_diffus(ghi, zenith, naifs, modele)
+            jour = zenith < 87.0  # borne max_zenith de pvlib
+            bilan = np.array(dni) * np.cos(np.radians(zenith)) + np.array(dhi)
+            self.assertLess(float(max(abs(bilan[jour] - ghi[jour]))), 1e-6, modele)
+
+    def test_la_nuit_dni_et_dhi_sont_nuls_sans_valeur_inventee(self):
+        from apps.calepinage.services.decomposition import deduire_direct_diffus
+
+        instants = [datetime.datetime(2020, 1, 15, 1, 30)] * 2
+        for modele in ('erbs', 'disc'):
+            self.assertEqual(
+                deduire_direct_diffus([0.0, 3.0], [120.0, 95.0], instants, modele),
+                ([0.0, 0.0], [0.0, 0.0]))
+
+    def test_la_serie_transposee_vient_de_la_decomposition_puis_de_la_transposition(self):
+        points = self.serie['points']
+
+        def chaine(dz=0.0, da=0.0):
+            dni, dhi = _dni_dhi_pvlib(points, 'erbs', dz)
+            copies = [dict(p, dni_w_m2=float(a), dhi_w_m2=float(b))
+                      for p, a, b in zip(points, dni, dhi)]
+            return _pvlib_direct(copies, 'isotropic', dz=dz, da=da)
+
+        reference = chaine()
+        tolerance = max(float(max(abs(chaine(dz, da)['poa_global']
+                                      - reference['poa_global'])))
+                        for dz, da in ((0.02, 0.0), (-0.02, 0.0), (0.0, 0.02)))
+        self.assertGreater(tolerance, 0.0)
+        rendu = self.transposer(self.serie, PAN, _reglages(
+            'isotropic', decomposition='erbs'))
+        for rang, point in enumerate(rendu['points']):
+            self.assertAlmostEqual(point['gi_w_m2'], reference['poa_global'][rang],
+                                   delta=tolerance, msg=rang)
+        # La décomposition n'est pas une copie du fichier complet.
+        mesure = self.transposer(self.complete, PAN, _reglages('isotropic'))
+        self.assertNotEqual([p['gi_w_m2'] for p in rendu['points']],
+                            [p['gi_w_m2'] for p in mesure['points']])
+
+    def test_le_bloc_meteo_marque_les_composantes_deduites(self):
+        rendu = self.transposer(self.serie, PAN, _reglages(
+            'perez', decomposition='disc'))
+        meteo = rendu['meteo']
+        self.assertEqual(meteo['composantes_origine'], 'deduites')
+        self.assertEqual(meteo['decomposition']['modele'], 'disc')
+        self.assertIn('Maxwell', meteo['decomposition']['reference'])
+        self.assertEqual(meteo['decomposition']['hypothese'],
+                         'composantes déduites du global, non mesurées')
+        attendu = METEO_CONTRAT['exemple_horizontal_deduit']['meteo']
+        self.assertEqual(sorted(attendu['decomposition']),
+                         sorted(meteo['decomposition']))
+        self.assertEqual(attendu['composantes_origine'],
+                         meteo['composantes_origine'])
+        self.assertIn(attendu['decomposition']['modele'], ('erbs', 'disc'))
+
+    def test_un_fichier_aux_composantes_mesurees_ne_publie_pas_de_decomposition(self):
+        rendu = self.transposer(self.complete, PAN, _reglages('isotropic'))
+        self.assertEqual(rendu['meteo']['composantes_origine'], 'mesurees')
+        self.assertNotIn('decomposition', rendu['meteo'])
+        self.assertEqual(
+            METEO_CONTRAT['exemple_horizontal']['meteo']['composantes_origine'],
+            'mesurees')
+
+    def test_le_reglage_absent_refuse_en_nommant_la_cle_sans_choisir_a_sa_place(self):
+        from apps.calepinage.services.pvgis_serie import EntreeInvalide
+
+        with self.assertRaises(EntreeInvalide) as refus:
+            self.transposer(self.serie, PAN, _reglages('isotropic'))
+        self.assertEqual(refus.exception.champ,
+                         'parametres.simulation.modele_decomposition')
+        self.assertIn('parametres.simulation.modele_decomposition',
+                      str(refus.exception))
+        with self.assertRaises(EntreeInvalide):
+            self.transposer(self.serie, PAN, _reglages(
+                'isotropic', decomposition='perez'))

@@ -1,0 +1,108 @@
+{
+ "mesure_le": "2026-11-20",
+ "changement_de_modele": "Premiere mesure du banc (ACAL474) : thermique Faiman + perte plate, aucune modification du moteur",
+ "pvlib_version": "0.16.1",
+ "moteur_empreinte_services": "b555ebd9b6bec8d69ae43442a89d6f0b2fd96bd0cd0a005bfb6c730f88b257fb",
+ "pas_arrondi_pct": 0.01,
+ "chaine_mesuree": [
+  "thermique",
+  "ohmique_ac"
+ ],
+ "fiche_module_scenario": {
+  "temp_coeff_pmax_pct_c": -0.35,
+  "uc_w_m2k": 29.0,
+  "uv_w_m3sk": 0.0,
+  "noct_c": 45.0
+ },
+ "reponses": "tests/fixtures_pvgis/seriescalc_<site>_sud[_irradiance].json",
+ "sites": {
+  "casablanca": {
+   "total_moteur_kwh": 59.3,
+   "total_pvcalc_kwh": 54.8,
+   "ecart_pvcalc_annuel_pct": 8.19,
+   "ecart_pvcalc_mensuel_pct": {
+    "1": 9.54,
+    "2": 8.16,
+    "3": 11.56,
+    "4": 5.54,
+    "5": 8.45,
+    "6": 7.34,
+    "7": 9.5,
+    "8": 6.98,
+    "9": 7.81,
+    "10": 8.41,
+    "11": 9.03,
+    "12": 8.53
+   },
+   "total_pvlib_kwh": 59.3,
+   "ecart_pvlib_annuel_pct": -0.01,
+   "motif_pvlib": ""
+  },
+  "marrakech": {
+   "total_moteur_kwh": 59.2,
+   "total_pvcalc_kwh": 53.5,
+   "ecart_pvcalc_annuel_pct": 10.63,
+   "ecart_pvcalc_mensuel_pct": {
+    "1": 9.53,
+    "2": 10.79,
+    "3": 18.15,
+    "4": 10.03,
+    "5": 6.38,
+    "6": 11.92,
+    "7": 12.68,
+    "8": 11.93,
+    "9": 11.29,
+    "10": 9.19,
+    "11": 11.01,
+    "12": 8.83
+   },
+   "total_pvlib_kwh": 59.2,
+   "ecart_pvlib_annuel_pct": 0.01,
+   "motif_pvlib": ""
+  },
+  "oujda": {
+   "total_moteur_kwh": 61.8,
+   "total_pvcalc_kwh": 56.5,
+   "ecart_pvcalc_annuel_pct": 9.49,
+   "ecart_pvcalc_mensuel_pct": {
+    "1": 8.79,
+    "2": 9.56,
+    "3": 12.63,
+    "4": 9.67,
+    "5": 9.71,
+    "6": 9.66,
+    "7": 10.19,
+    "8": 10.0,
+    "9": 10.51,
+    "10": 8.11,
+    "11": 7.9,
+    "12": 7.62
+   },
+   "total_pvlib_kwh": 61.8,
+   "ecart_pvlib_annuel_pct": -0.07,
+   "motif_pvlib": ""
+  },
+  "agadir": {
+   "total_moteur_kwh": 66.6,
+   "total_pvcalc_kwh": 61.5,
+   "ecart_pvcalc_annuel_pct": 8.34,
+   "ecart_pvcalc_mensuel_pct": {
+    "1": 8.74,
+    "2": 10.78,
+    "3": 7.23,
+    "4": 8.29,
+    "5": 6.12,
+    "6": 7.59,
+    "7": 9.64,
+    "8": 8.69,
+    "9": 9.34,
+    "10": 7.22,
+    "11": 8.86,
+    "12": 9.35
+   },
+   "total_pvlib_kwh": 66.6,
+   "ecart_pvlib_annuel_pct": -0.06,
+   "motif_pvlib": ""
+  }
+ }
+}

@@ -32,3 +32,10 @@ vi.mock('../api/calepinageApi', async (importOriginal) => {
     ),
   }
 })
+
+/* ACAL398 (base cassée par ACAL406) — `FicheCalepinage` lit les champs
+   personnalisés au montage : sans ce double, `getDefs` rend `undefined` et
+   l'écran entier plante dans les tests de ToitureDesign. */
+vi.mock('../api/customFieldsApi', () => ({
+  default: { getDefs: vi.fn(() => Promise.resolve({ data: [] })) },
+}))

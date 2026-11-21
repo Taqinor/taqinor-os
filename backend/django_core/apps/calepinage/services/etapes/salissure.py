@@ -77,7 +77,7 @@ __all__ = ['CLE_REGLAGE', 'COLONNE_IRRADIANCE', 'MODE_MENSUEL',
            'appliquer', 'appliquer_mensuel']
 
 
-def valeurs_mensuelles(saisie, *, champ):
+def valeurs_mensuelles(saisie, *, champ, poste='la salissure'):
     """``(douze_valeurs, mode, motif)`` — douze mois, ou une seule valeur.
 
     La machinerie de saisie « douze valeurs mensuelles OU une valeur unique »,
@@ -87,6 +87,7 @@ def valeurs_mensuelles(saisie, *, champ):
         saisie: la valeur saisie — un nombre (appliqué aux douze mois) ou une
             liste/tuple de douze nombres.
         champ: le nom du champ, pour que chaque refus le NOMME.
+        poste: le poste nommé dans les refus (ACAL463 : ``'la neige'``).
 
     Returns:
         ``(valeurs, mode, '')`` quand la saisie tient, où ``valeurs`` est
@@ -95,7 +96,7 @@ def valeurs_mensuelles(saisie, *, champ):
         manquants un par un, jamais un « saisie invalide » générique.
     """
     if isinstance(saisie, (list, tuple)):
-        return _douze_valeurs(saisie, champ=champ)
+        return _douze_valeurs(saisie, champ=champ, poste=poste)
     unique = _pourcentage(saisie)
     if unique is None:
         return None, None, (
@@ -151,7 +152,7 @@ def appliquer(serie, contexte):
 
 # ── la saisie, mois par mois ───────────────────────────────────────────
 
-def _douze_valeurs(saisie, *, champ):
+def _douze_valeurs(saisie, *, champ, poste='la salissure'):
     """Douze valeurs exactement, toutes lisibles — ou le motif qui le dit."""
     if len(saisie) != 12:
         return None, None, (
@@ -172,12 +173,12 @@ def _douze_valeurs(saisie, *, champ):
         valeurs.append(nombre)
     if manquants:
         return None, None, (
-            'La saisie mensuelle de la salissure est incomplète : '
+            f'La saisie mensuelle de {poste} est incomplète : '
             f'{_liste(manquants)} sans valeur. Aucun mois n\'est comblé par '
             'la moyenne des autres.')
     if illisibles:
         return None, None, (
-            'La saisie mensuelle de la salissure porte des valeurs '
+            f'La saisie mensuelle de {poste} porte des valeurs '
             f'illisibles ou hors bornes : {_liste(illisibles)}. Un '
             'pourcentage se situe entre 0 et 100.')
     return valeurs, MODE_MENSUEL, ''

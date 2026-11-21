@@ -5,8 +5,8 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import { Button, Card, Stat } from '../../../ui'
-import { PARAM_ONGLET } from '../atelier/onglets'
+import { Button, Card } from '../../../ui'
+import ListeManques from './ListeManques'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
   LIBELLE_BOUTON, etatCalcul, refusDepuisErreur, refusRenvoieAuxReglages,
@@ -16,7 +16,13 @@ import {
 } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
+import GraphiqueMensuel from './GraphiqueMensuel'
+import ResultatHeros from './ResultatHeros'
+import {
+  kwh, kwhParKwc, nonCalculee, nonPublie, pourcentagePerf,
+} from './ResultatHeros.helpers'
 import useSuiviJob from './useSuiviJob'
+import { reprendreSimulationAuto } from './simulationAuto'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 
 /* ============================================================================
@@ -41,22 +47,6 @@ import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
    « non calculée » : `formatNumber` ne confond jamais les deux, il ne rend
    « — » QUE sur `null`/`undefined`.
    ========================================================================== */
-
-/** Une grandeur absente du serveur s'écrit « non calculée », jamais « — » nu
-    ni `0` : c'est le vocabulaire que CAL236 impose (Done, PLAN2.md). */
-function nonCalculee(valeur, rendu) {
-  return valeur === null || valeur === undefined ? 'non calculée' : rendu(valeur)
-}
-
-/** ACAL52 — PR / P75 / P90 / P95 d'un résultat INCOMPLET : « — non publié »,
-    motif du serveur en infobulle, jamais un nombre (jamais 100 %). */
-function nonPublie(motif) {
-  return <span title={motif || undefined} data-testid="acal52-non-publie">— non publié</span>
-}
-
-const kwh = (v) => nonCalculee(v, (x) => `${formatNumber(x, { decimals: 0 })} kWh`)
-const pourcentagePerf = (v) => nonCalculee(v, (x) => formatPercent(x * 100, { decimals: 1 }))
-const kwhParKwc = (v) => nonCalculee(v, (x) => `${formatNumber(x, { decimals: 1 })} kWh/kWc`)
 
 const MOIS = [
   'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -116,7 +106,7 @@ export function BandeauPerime({ motif }) {
    n'en exige aucun.
    ========================================================================== */
 export function BoutonCalculer({
-  calepinageId, data = null, avertissements = [], intervalleMs = 2000, onTermine,
+  calepinageId, data = null, avertissements = [], manque = [], intervalleMs = 2000, onTermine,
   declenchement = 0,
 }) {
   const peutGerer = useHasPermission('calepinage_gerer')
@@ -153,6 +143,19 @@ export function BoutonCalculer({
       surErreur: (e) => setRefus(refusDepuisErreur(e)),
     })
   }
+
+  // ACAL398 — la simulation partie toute seule à l'enregistrement : on reprend
+  // son job (« Simulation en cours… ») ou on dit le refus nommé du serveur.
+  const reprisAuto = useRef(false)
+  useEffect(() => {
+    if (reprisAuto.current || !calepinageId) return
+    reprisAuto.current = true
+    const auto = reprendreSimulationAuto(calepinageId)
+    if (auto?.jobId) suiviJob.reprendre(auto.jobId)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reprise unique d'une issue externe (table mémoire)
+    else if (auto?.refus) setRefus(auto.refus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calepinageId])
 
   // ACAL167 — « Enregistrer et relancer » : le parent incrémente `declenchement`,
   // le bouton lance alors LA MÊME relance forcée (une seule logique de suivi).
@@ -192,19 +195,16 @@ export function BoutonCalculer({
         </p>
       )}
 
-      {avertissements.length > 0 && (
+      {(manque.length > 0 || avertissements.length > 0) && (
         <div data-testid="calx48-manques">
           <p className="text-xs font-medium text-muted-foreground">Ce qui manque encore :</p>
-          <ul className="list-disc pl-5 text-xs text-muted-foreground">
-            {avertissements.map((a) => <li key={a}>{a}</li>)}
-          </ul>
-          <Link
-            to={`/calepinage/${calepinageId}?${PARAM_ONGLET}=pertes`}
-            className="text-xs font-medium text-primary underline"
-            data-testid="calx48-lien-pertes"
-          >
-            Ouvrir l’onglet Pertes
-          </Link>
+          {manque.length > 0
+            ? <ListeManques calepinageId={calepinageId} manque={manque} />
+            : (
+              <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                {avertissements.map((a) => <li key={a}>{a}</li>)}
+              </ul>
+            )}
         </div>
       )}
 
@@ -235,35 +235,6 @@ function BlocBase({ base }) {
         ? ` · pertes passées à PVGIS : ${formatPercent(base.loss_passee_pct, { decimals: 1 })}`
         : ''}
     </p>
-  )
-}
-
-function TotalKpis({ total }) {
-  const incomplet = estIncomplet(total)
-  const kwhPublie = (v, motif) => (incomplet ? nonPublie(motif) : kwh(v))
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="cal236-total">
-      <Stat label="P50 (annuel)" value={kwh(total?.p50_kwh)} />
-      <Stat label="P75 (annuel)" value={kwhPublie(total?.p75_kwh, total?.p75_kwh_motif)} />
-      <Stat label="P90 (annuel)" value={kwhPublie(total?.p90_kwh, total?.p90_kwh_motif)} />
-      <Stat label="P95 (annuel)" value={kwhPublie(total?.p95_kwh, total?.p95_kwh_motif)} />
-      <Stat
-        label="Variabilité annuelle (σ)"
-        value={nonCalculee(total?.annual_variability,
-          (x) => formatPercent(x * 100, { decimals: 1 }))}
-      />
-      <Stat
-        label="Ratio de performance (PR)"
-        value={incomplet ? nonPublie(total?.performance_ratio_motif) : pourcentagePerf(total?.performance_ratio)}
-      />
-      <Stat label="Productible" value={kwhParKwc(total?.specific_yield_kwh_kwc)} />
-      <Stat label="Puissance installée" value={nonCalculee(total?.kwc,
-        (x) => `${formatNumber(x, { decimals: 2 })} kWc`)}
-      />
-      <Stat label="Pertes totales" value={nonCalculee(total?.total_loss_pct,
-        (x) => formatPercent(x, { decimals: 1 }))}
-      />
-    </div>
   )
 }
 
@@ -346,7 +317,7 @@ function TableauParPan({ parPan, total = null }) {
   )
 }
 
-export default function PanneauProduction({ calepinageId, intervalleMs = 2000 }) {
+export default function PanneauProduction({ calepinageId, intervalleMs = 2000, parcours = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -384,12 +355,15 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000 })
         calepinageId={id}
         data={data}
         avertissements={data?.simule ? [] : (data?.avertissements ?? [])}
+        manque={parcours?.manque ?? []}
         intervalleMs={intervalleMs}
         onTermine={refetch}
       />
       <BandeauBorneHaute total={production?.total} />
       <BlocBase base={production?.base} />
-      <TotalKpis total={production?.total} />
+      <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
+        motif={data?.motif} avertissements={data?.avertissements} />
+      {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} />}
       <ReglagesUtilises simulation={data?.simulation} />
       {/* ENF15 — `meteo` / `incertitude` servis par `GET resultat/` (CALX143/144). */}
       {data?.simule && <SourceMeteo meteo={data?.meteo} />}
@@ -414,7 +388,8 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000 })
         geste que personne n'a demandé en ouvrant simplement l'onglet. */}
     <TapisHoraire calepinageId={id} serie={data?.serie_horaire}
       geometriePresente={geometriePresente}
-      perime={perime} motif={data?.motif} />
+      perime={perime} motif={data?.motif}
+      motifConsommation={data?.autoconsommation?.motif_absence} />
     </>
   )
 }

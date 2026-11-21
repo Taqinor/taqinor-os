@@ -1,0 +1,44 @@
+import { Link } from 'react-router-dom'
+import { PARAM_ONGLET } from '../atelier/onglets'
+import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
+
+/* ACAL397 — « Ce qui manque encore » en liste d'ACTIONS. Une ligne par entrée
+   de `parcours.manque` (déjà dédupliquée par code + cible côté serveur,
+   ACAL392 ; contrat `calepinage_parcours_guide.json`), triée par gravité ;
+   chaque ligne mène au champ exact : onglet + `champ`, ou l'écran des
+   réglages (`cible.onglet === 'reglages'`). Rien n'est deviné ici. */
+const ORDRE_GRAVITE = { bloquant: 0, a_regler: 1, info: 2 }
+const rang = (g) => ORDRE_GRAVITE[g] ?? ORDRE_GRAVITE.info
+
+function lienManque(calepinageId, cible) {
+  const onglet = cible?.onglet || ''
+  const champ = cible?.champ || ''
+  if (onglet === 'reglages') {
+    return champ ? `/calepinage/reglages#${champ}` : '/calepinage/reglages'
+  }
+  const p = new URLSearchParams()
+  if (onglet) p.set(PARAM_ONGLET, onglet)
+  if (champ) p.set(PARAM_CHAMP, champ)
+  const q = p.toString()
+  return `/calepinage/${calepinageId}${q ? `?${q}` : ''}`
+}
+
+export default function ListeManques({ calepinageId, manque = [] }) {
+  const lignes = manque
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => rang(a.m.gravite) - rang(b.m.gravite) || a.i - b.i)
+  return (
+    <ul className="list-disc pl-5 text-xs" data-testid="calx48-manques-liste">
+      {lignes.map(({ m, i }) => (
+        <li key={`${m.code}-${m.cible?.onglet}-${m.cible?.champ}-${i}`}
+          data-gravite={m.gravite}>
+          <Link to={lienManque(calepinageId, m.cible)} className="text-primary underline"
+            data-testid="calx48-manque-ligne">
+            {m.message}
+          </Link>
+          {m.nombre > 1 && <span className="ml-1 tabular-nums">{`× ${m.nombre}`}</span>}
+        </li>
+      ))}
+    </ul>
+  )
+}
