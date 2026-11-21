@@ -355,6 +355,10 @@ describe('ACAL459 — shadeTable survivante à une réédition', () => {
   const table = JSON.parse(JSON.stringify(
     ((contrat('calepinage_table_ombrage.json').exemple as { zones: Array<{ geometry: { shadeTable: unknown } }> }).zones[0].geometry.shadeTable),
   )) as { signature: string };
+  // ACAL460 — la vue du ciel, aux noms de l'`exemple` du MÊME contrat (écrite par `vueCiel.ts`).
+  const ciel = JSON.parse(JSON.stringify(
+    ((contrat('calepinage_table_ombrage.json').exemple as { zones: Array<{ geometry: { skyViewFactor: unknown } }> }).zones[0].geometry.skyViewFactor),
+  ));
   function docAvecTable(): SerializedLayout {
     const pan = (id: string) => ({
       id, label: id, vertices: [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]],
@@ -362,7 +366,7 @@ describe('ACAL459 — shadeTable survivante à une réédition', () => {
       neededPanels: 2, neededAuto: false,
       geometry: {
         azimuthDeg: 180, tiltDeg: 10, family: 'south', flush: false, kwc: 1.44, count: 2, origin: [-7.6, 33.5],
-        panels: [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }], shadeTable: table,
+        panels: [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }], shadeTable: table, skyViewFactor: ciel,
       },
     });
     return JSON.parse(JSON.stringify({
@@ -389,5 +393,13 @@ describe('ACAL459 — shadeTable survivante à une réédition', () => {
   it('une obstruction déplacée (autre signature) : la table relue est retirée, jamais gardée périmée', () => {
     const sortie = rouvrir(docAvecTable(), 'fnv1a-autre');
     expect(sortie.zones.map((z) => [Boolean(z.geometry), z.geometry && 'shadeTable' in z.geometry])).toEqual([[true, false], [true, false]]);
+  });
+
+  it('ACAL460 — skyViewFactor : même signature ⇒ identique après enregistrer, rouvrir, enregistrer ; autre signature ⇒ retiré', () => {
+    const cle = (z: { geometry?: object }) => (z.geometry as { skyViewFactor?: unknown } | undefined)?.skyViewFactor;
+    const un = rouvrir(docAvecTable(), table.signature);
+    expect(un.zones.map(cle)).toStrictEqual([ciel, ciel]);
+    expect(rouvrir(JSON.parse(JSON.stringify(un)) as SerializedLayout, table.signature).zones.map(cle)).toStrictEqual([ciel, ciel]);
+    expect(rouvrir(docAvecTable(), 'fnv1a-autre').zones.map(cle)).toEqual([undefined, undefined]);
   });
 });

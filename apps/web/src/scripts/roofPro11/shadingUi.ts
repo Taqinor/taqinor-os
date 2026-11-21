@@ -56,6 +56,7 @@ import {
 import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
 import { signerSources, tableOmbrage, type TableOmbrage } from './tableOmbrage'; // ACAL459
+import { facteurVueCiel, vueCielDuPan, type FacteurVueCiel } from './vueCiel'; // ACAL460
 import { type Ctx } from './context';
 
 export interface ShadingUiDeps {
@@ -93,6 +94,8 @@ export interface ShadingUi {
    *  (`null` sans module ni obstruction) ; `signatureTable` = signature des sources qui la porte. */
   tableOmbrage: (points: readonly { x: number; y: number }[]) => TableOmbrage | null;
   signatureTable: () => string;
+  /** ACAL460 — facteur de vue du ciel (diffus isotrope) du pan, sur les modules POSÉS (`null` sans module ni obstruction). */
+  vueCiel: (points: readonly { x: number; y: number }[], penteDeg: number, azimutDeg: number) => FacteurVueCiel | null;
   /** Efface toutes les ombres tracées (« Effacer » / nouveau tracé). */
   reset: () => void;
   /** CAL93 — fixe (ou efface, `null`) le profil d'horizon lointain (CAL92 ou saisi),
@@ -903,6 +906,9 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const tableOmbrageActive = (points: readonly { x: number; y: number }[]): TableOmbrage | null =>
     ctx.vertices.length < 3 ? null : tableOmbrage(points, activeShadeEntries(), signatureTable());
 
+  const vueCielActive = (points: readonly { x: number; y: number }[], penteDeg: number, azimutDeg: number): FacteurVueCiel | null =>
+    ctx.vertices.length < 3 ? null : vueCielDuPan(facteurVueCiel(points, activeShadeEntries(), penteDeg, azimutDeg), signatureTable());
+
   function solarAccess(): SolarAccessSummary | null {
     const plan = ctx.layoutPlan;
     if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
@@ -1279,6 +1285,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     solarAccessAnnuel, // ACAL138
     tableOmbrage: tableOmbrageActive, // ACAL459
     signatureTable,
+    vueCiel: vueCielActive, // ACAL460
     setHorizonProfile,
     // ACAL378 — la matrice dépend de la latitude : recalculée quand le centroïde change
     // (sinon un document rouvert garde celle de la latitude par défaut, 33,5°).

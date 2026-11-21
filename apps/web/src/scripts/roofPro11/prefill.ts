@@ -13,6 +13,7 @@
  * route lead, ni route de simulation) n'est émise ici.
  */
 import { ajouterTableOmbrage, garderTableRelue, type TableOmbrage } from './tableOmbrage'; // ACAL459
+import { ajouterVueCiel, garderVueCielRelue } from './vueCiel'; // ACAL460
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
@@ -1002,6 +1003,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     if (!isActive && a.geometrieEnregistree) {
       zone.geometry = JSON.parse(JSON.stringify(a.geometrieEnregistree)) as SerializedZoneGeometry;
       garderTableRelue(zone.geometry, meta?.signatureOmbrage); // ACAL459 — gardée seulement si les sources n'ont pas bougé
+      garderVueCielRelue(zone.geometry, meta); // ACAL460
       return zone;
     }
     const rp = a.renderPlan;
@@ -1072,10 +1074,12 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       const access = serializeSolarAccess(meta?.solarAccessByZone?.[a.id], posed);
       if (access) zone.geometry.solarAccess = access;
       ajouterTableOmbrage(zone.geometry, meta?.shadeTableByZone?.[a.id]); // ACAL459 — émise à CHAQUE sérialisation
+      ajouterVueCiel(zone.geometry, meta, a.id); // ACAL460
     } else if (a.geometrieEnregistree) {
       // ACAL28 — pan actif pas (encore) re-pavé : sa géométrie enregistrée, jamais rien.
       zone.geometry = JSON.parse(JSON.stringify(a.geometrieEnregistree)) as SerializedZoneGeometry;
       garderTableRelue(zone.geometry, meta?.signatureOmbrage); // ACAL459 — idem : seulement si les sources n'ont pas bougé
+      garderVueCielRelue(zone.geometry, meta); // ACAL460
     }
     return zone;
   });
