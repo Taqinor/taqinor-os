@@ -49,7 +49,8 @@ const CONTRAT = exempleContrat('calepinage', 'variantes_comparer')
 const CONTRAT_UNE_SEULE = exempleContrat('calepinage', 'variantes_comparer', 'exemple_vide')
 
 const RETENUE = CONTRAT.lignes.find((l) => l.est_retenue)
-const AUTRE = CONTRAT.lignes.find((l) => !l.est_retenue && l.simulee)
+// ACAL978 — la conception courante (`courante: true`) n'est pas une variante.
+const AUTRE = CONTRAT.lignes.find((l) => !l.est_retenue && l.simulee && !l.courante)
 const NON_SIMULEE = CONTRAT.lignes.find((l) => !l.simulee)
 
 const rendre = () => render(
@@ -183,7 +184,7 @@ describe('VariantesCompare (CAL42)', () => {
     expect(shading, 'le contrat ne publie plus de poste `shading`').toBeTruthy()
     rendre()
     const bloc = await screen.findByTestId('cal-cote-a-cote')
-    expect(within(bloc).getByText(new RegExp(shading.source))).toBeInTheDocument()
+    expect(within(bloc).getAllByText(new RegExp(shading.source)).length).toBeGreaterThan(0)
   })
 
   it('ACAL978 — une variante + la courante : deux colonnes, la courante n’offre que « Ouvrir dans l’atelier »', async () => {

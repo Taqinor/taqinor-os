@@ -57,6 +57,7 @@ import {
   withEvergreen,
   withPoleDiameter, // ACAL500
   withEpaisseurLigne, newLigneEnvironment, // ACAL501
+  withFutureHeight, withSupposeCoupe, // ACAL502
   libelleGenreEnvironnement, // ACAL500
   type EnvironmentObject,
   type EnvironmentKind,
@@ -616,7 +617,12 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
             ? `<input type="text" data-env-epaisseur="${o.id}" value="${o.epaisseurM != null ? fmt1(o.epaisseurM) : ''}" placeholder="épaisseur m" class="rp9-input w-24" />`
           : o.kind === 'arbre'
             ? `<input type="text" data-env-crown="${o.id}" value="${o.crownDiameterM != null ? fmt1(o.crownDiameterM) : ''}" placeholder="Ø houppier m" class="rp9-input w-24" />
-               <label class="flex items-center gap-1"><input type="checkbox" data-env-evergreen="${o.id}" ${o.evergreen ? 'checked' : ''} /> persistant</label>`
+               <label class="flex items-center gap-1"><input type="checkbox" data-env-evergreen="${o.id}" ${o.evergreen ? 'checked' : ''} /> persistant</label>
+               <input type="text" data-env-hfut="${o.id}" value="${o.hauteurFutureM != null ? fmt1(o.hauteurFutureM) : ''}" placeholder="hauteur dans N ans m" aria-label="Hauteur dans N ans (m)" class="rp9-input w-24" />
+               <input type="text" data-env-dans="${o.id}" value="${o.dansAns ?? ''}" placeholder="N (ans)" aria-label="N (ans)" class="rp9-input w-16" />
+               ${o.hauteurFutureM != null && o.dansAns != null ? `<span data-env-futur="${o.id}">dans ${o.dansAns} ans : ${fmt1(o.hauteurFutureM)} m</span>` : ''}
+               <span data-env-futur-motif="${o.id}" class="w-full text-alert-300" role="alert" hidden></span>
+               <label class="flex items-center gap-1"><input type="checkbox" data-env-coupe="${o.id}" ${o.supposeCoupe ? 'checked' : ''} /> Supposer coupé</label>`
             : `<input type="text" data-env-length="${o.id}" value="${o.lengthM != null ? fmt1(o.lengthM) : ''}" placeholder="longueur m" class="rp9-input w-24" />
                <input type="text" data-env-width="${o.id}" value="${o.widthM != null ? fmt1(o.widthM) : ''}" placeholder="largeur m" class="rp9-input w-24" />`;
         // CORRECTIF — hauteur saisie mais AUCUNE emprise : l'objet ne porte aucune ombre
@@ -664,6 +670,16 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     else if (widthId) updateEnvironment(widthId, (o) => withFootprintDims(o, o.lengthM ?? null, t.value.trim() ? parseNum(t.value) : null));
     else if (evergreenId) updateEnvironment(evergreenId, (o) => withEvergreen(o, t.checked));
     else if (t.dataset.envPole) updateEnvironment(t.dataset.envPole, (o) => withPoleDiameter(o, t.value.trim() ? parseNum(t.value) : null)); // ACAL500
+    else if (t.dataset.envCoupe) updateEnvironment(t.dataset.envCoupe, (o) => withSupposeCoupe(o, t.checked)); // ACAL502
+    else if (t.dataset.envHfut || t.dataset.envDans) { // ACAL502 — les deux champs ensemble, sinon refus sous le champ
+      const id = (t.dataset.envHfut || t.dataset.envDans) as string;
+      const val = (cle: string) => { const v = envListEl?.querySelector<HTMLInputElement>(`[data-env-${cle}="${id}"]`)?.value.trim() ?? ''; return v ? parseNum(v) : null; };
+      const o = envList().find((x) => x.id === id);
+      const r = o ? withFutureHeight(o, val('hfut'), val('dans')) : null;
+      const motifEl = envListEl?.querySelector<HTMLElement>(`[data-env-futur-motif="${id}"]`);
+      if (r?.motif && motifEl) { motifEl.textContent = r.motif; motifEl.hidden = false; }
+      else if (r) updateEnvironment(id, () => r.objet);
+    }
     else if (t.dataset.envEpaisseur) updateEnvironment(t.dataset.envEpaisseur, (o) => withEpaisseurLigne(o, t.value.trim() ? parseNum(t.value) : null)); // ACAL501
   });
   envListEl?.addEventListener('click', (e) => {

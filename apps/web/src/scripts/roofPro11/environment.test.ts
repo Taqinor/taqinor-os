@@ -16,6 +16,7 @@ import {
   ENV_MAX_HEIGHT_M,
   withPoleDiameter, // ACAL500
   withEpaisseurLigne, newLigneEnvironment, // ACAL501
+  withFutureHeight, withSupposeCoupe, // ACAL502
 } from './environment';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,6 +27,30 @@ import { serializeEnvironment } from './prefill';
 const EXEMPLE_ETENDU = (JSON.parse(readFileSync(join(racineDepot(), 'backend', 'django_core', 'apps', 'calepinage',
   'contract_samples', 'roof_layout_v2.schema.json'), 'utf8')) as { exemple_environnement_etendu: Array<Record<string, unknown>> })
   .exemple_environnement_etendu;
+
+describe('ACAL502 — hauteur future et « Supposer coupé »', () => {
+  const ORIGINE: [number, number] = [-7.6, 33.5];
+  const arbre = () => withCrownDiameter(withEnvHeight(newEnvironmentObject('a1', 'arbre', [-7.6, 33.4998]), 6), 4);
+  it('supposeCoupe : aucune entrée d’ombre ; décocher la rétablit', () => {
+    expect(environmentShadeEntries([arbre()], ORIGINE)).toHaveLength(1);
+    const coupe = withSupposeCoupe(arbre(), true);
+    expect(coupe.supposeCoupe).toBe(true);
+    expect(environmentShadeEntries([coupe], ORIGINE)).toEqual([]);
+    expect(environmentShadeEntries([withSupposeCoupe(coupe, false)], ORIGINE)).toHaveLength(1);
+  });
+  it('« dans 10 ans : 9 m » rangé ; hauteur future sans années : refus nommé', () => {
+    const r = withFutureHeight(arbre(), 9, 10);
+    expect(r.motif).toBeNull();
+    expect(r.objet).toMatchObject({ hauteurFutureM: 9, dansAns: 10 });
+    expect(withFutureHeight(arbre(), 9, null)).toEqual({ objet: arbre(), motif: 'Dites dans combien d’années.' });
+    expect(withFutureHeight(arbre(), null, 10).motif).toContain('hauteur');
+    expect(withFutureHeight(r.objet, null, null).objet).toEqual(arbre());
+  });
+  it('l’arbre de l’exemple du contrat fait l’aller-retour (les trois clés)', () => {
+    const a = EXEMPLE_ETENDU.find((o) => o.kind === 'arbre')!;
+    expect(serializeEnvironment([a as never])).toEqual([a]);
+  });
+});
 
 describe('ACAL501 — ligne (haie, mur)', () => {
   const ORIGINE: [number, number] = [-7.6, 33.5];

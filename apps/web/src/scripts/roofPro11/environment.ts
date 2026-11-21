@@ -43,6 +43,10 @@ export interface EnvironmentObject {
   /** ACAL501 — ligne (haie, mur) : tracé [lng, lat] (≥ 2 points) et épaisseur (m), SAISIS. */
   trace?: LngLat[];
   epaisseurM?: number;
+  /** ACAL502 — arbre : hauteur attendue (m) dans `dansAns` ans, et « supposé coupé » ; tout SAISI. */
+  hauteurFutureM?: number;
+  dansAns?: number;
+  supposeCoupe?: boolean;
 }
 
 /** Diamètre/emprise PLANCHER/PLAFOND (m) d'un objet d'environnement — mêmes ordres de
@@ -112,6 +116,21 @@ export function withEpaisseurLigne(o: EnvironmentObject, epaisseurM: number | nu
   return epaisseurM == null || !Number.isFinite(epaisseurM) || epaisseurM <= 0 ? rest : { ...rest, epaisseurM: Math.min(epaisseurM, ENV_MAX_DIM_M) };
 }
 
+/** ACAL502 — « dans N ans : H m » : les deux ensemble ou aucun (vides ⇒ effacés) ; sinon refus nommé. */
+export function withFutureHeight(o: EnvironmentObject, hauteurM: number | null, ans: number | null): { objet: EnvironmentObject; motif: string | null } {
+  const { hauteurFutureM: _h, dansAns: _n, ...rest } = o;
+  if (hauteurM == null && ans == null) return { objet: rest, motif: null };
+  if (ans == null) return { objet: o, motif: 'Dites dans combien d’années.' };
+  if (!Number.isInteger(ans) || ans < 1) return { objet: o, motif: 'Nombre d’années : un entier, au moins 1.' };
+  if (hauteurM == null || !(hauteurM > 0)) return { objet: o, motif: 'Dites la hauteur attendue (m).' };
+  return { objet: { ...rest, hauteurFutureM: clamp(hauteurM, ENV_MIN_HEIGHT_M, ENV_MAX_HEIGHT_M), dansAns: ans }, motif: null };
+}
+
+export function withSupposeCoupe(o: EnvironmentObject, coupe: boolean): EnvironmentObject {
+  const { supposeCoupe: _drop, ...rest } = o;
+  return coupe ? { ...rest, supposeCoupe: true } : rest;
+}
+
 /** ACAL501 — une haie ou un mur tracé : centre CALCULÉ (milieu de l'emprise), aucune dimension. */
 export function newLigneEnvironment(id: string, trace: LngLat[]): EnvironmentObject {
   return { ...newEnvironmentObject(id, 'ligne', centreDeTrace(trace)), trace: trace.map((p) => [p[0], p[1]] as LngLat) };
@@ -149,6 +168,8 @@ export function nettoyerEnvironment(o: EnvironmentObject | null | undefined): En
   for (const k of ['lengthM', 'widthM', 'diameterM'] as const) if (pos(o[k])) clean[k] = o[k];
   if (traceValide(o.trace)) clean.trace = o.trace.map((p) => [p[0], p[1]] as LngLat); // ACAL501
   if (pos(o.epaisseurM)) clean.epaisseurM = o.epaisseurM;
+  if (pos(o.hauteurFutureM) && Number.isInteger(o.dansAns) && (o.dansAns as number) >= 1) Object.assign(clean, { hauteurFutureM: o.hauteurFutureM, dansAns: o.dansAns }); // ACAL502
+  if (typeof o.supposeCoupe === 'boolean') clean.supposeCoupe = o.supposeCoupe;
   return clean;
 }
 
@@ -229,7 +250,7 @@ export function environmentShadeEntries(
   const roofH = Number.isFinite(roofHeightM) && roofHeightM > 0 ? roofHeightM : 0;
   const out: ShadeObstructionENU[] = [];
   for (const o of list) {
-    if (!Number.isFinite(o.heightM) || (o.heightM as number) <= 0) continue;
+    if (!Number.isFinite(o.heightM) || (o.heightM as number) <= 0 || o.supposeCoupe === true) continue; // ACAL502 — supposé coupé : aucune ombre
     const eff = (o.heightM as number) - roofH;
     if (eff <= 0) continue;
     if (o.kind === 'ligne') {

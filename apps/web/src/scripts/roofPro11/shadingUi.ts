@@ -748,7 +748,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const hasShadeSources = (): boolean =>
     ctx.shadeObstructions.length > 0 ||
     ctx.obstacles.some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
-    (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+    (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0 && o.supposeCoupe !== true); // ACAL502
 
   /** Nombre d'obstructions RETENUES au dernier calcul (après retrait de la hauteur de
    *  toit) — pilote le libellé honnête de la note, cf. `renderList`. */
