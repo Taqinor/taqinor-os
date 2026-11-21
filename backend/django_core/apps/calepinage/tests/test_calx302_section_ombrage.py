@@ -288,6 +288,52 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
         html = self._html(self._contexte_bornes(self._etape_reelle()))
         self.assertLess(html.index('33,333'), html.index('50,0'))
 
+    # ACAL461/ACAL467 — ce que la chaîne lit du document, pan par pan.
+    def _html_layout(self, roof_layout):
+        class FauxCalepinageAvecLayout:
+            pass
+        FauxCalepinageAvecLayout.roof_layout = roof_layout
+        contexte = {'resultat': _resultat(ombrage_par_pan=[
+            {'pan': 'PAN-A', 'acces_solaire_moyen_pct': 90.0,
+             'motif_omission': ''}])}
+        with mock.patch.object(
+                section_ombrage, '_calepinage_et_roof_layout',
+                return_value=FauxCalepinageAvecLayout()):
+            from apps.calepinage.services import rapport_ombrage
+            with mock.patch.object(rapport_ombrage, 'html_carte_de_chaleur',
+                                   return_value=''):
+                return section_ombrage.html_de_section(contexte)
+
+    def test_facteur_de_ciel_et_table_lus_par_pan(self):
+        table = {'azimutsDeg': [90, 180, 270], 'hauteursDeg': [10, 40],
+                 'facteurs': [[1, 0, 1], [1, 1, 1]]}
+        html = self._html_layout({'zones': [
+            {'id': 'z1', 'label': 'Sud', 'geometry': {
+                'skyViewFactor': {'facteur': 0.87,
+                                  'methode': {'horizon': False}},
+                'shadeTable': table}},
+            {'id': 'z2', 'label': 'Est', 'geometry': {
+                'shadeTable': {'azimutsDeg': [90], 'hauteursDeg': [10],
+                               'facteurs': [[2]]}}},
+            {'id': 'z3', 'label': 'Ouest', 'geometry': {}},
+        ]})
+        self.assertIn('Ombrage du diffus et du direct par pan', html)
+        self.assertIn('0,87', html)  # le facteur tel que le document le porte
+        self.assertIn('lue : 2 hauteurs × 3 azimuts', html)
+        self.assertIn('illisible — la matrice 12 × 24 sert', html)  # facteur 2
+        self.assertIn('non relevé', html)
+        self.assertNotIn('Ouest', html)  # pan sans aucun des deux blocs
+
+    def test_horizon_inclus_dit_non_applique(self):
+        html = self._html_layout({'zones': [{'id': 'z1', 'geometry': {
+            'skyViewFactor': {'facteur': 0.9, 'methode': {'horizon': True}}}}]})
+        self.assertIn('0,9 — inclut l’horizon, non appliqué', html)
+        self.assertIn('absente — la matrice 12 × 24 sert', html)
+
+    def test_aucun_bloc_aucun_paragraphe(self):
+        html = self._html_layout({'zones': [{'id': 'z1', 'geometry': {}}]})
+        self.assertNotIn('Ombrage du diffus et du direct par pan', html)
+
 
 # ── ORM/DB/MinIO/HTTP — exécutés par le job backend-tests (MinIO présent) ──
 

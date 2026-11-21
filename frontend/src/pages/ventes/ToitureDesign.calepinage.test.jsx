@@ -180,7 +180,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       { name: /Enregistrer le calepinage/ }))
 
     await waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledTimes(1))
-    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(String(CTX.calepinage.id))
+    // Acceptation ACAL490 : le pont axios toastait le 409 — l'appel part SILENCIEUX.
+    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(String(CTX.calepinage.id), { silencieux: true })
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
@@ -556,6 +557,60 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       await screen.findByTestId('pv20-lecture-seule')
       expect(screen.queryByTestId('cal-enregistrer-calepinage')).toBeNull()
       expect(screen.queryByTestId('cal-etat-enregistrement')).toBeNull()
+    })
+
+    /* ACAL401 — barre de résumé vivante : les trois chiffres sont lus sur le document
+       sérialisé (`result` de l'exemple COMMITTÉ roof_layout_v2), « — » quand absents. */
+    describe('résumé vivant (ACAL401)', () => {
+      const RESULT = exempleContrat('calepinage', 'roof_layout_v2.schema').result
+      const texte = (id) => screen.getByTestId(id).textContent.replace(/\s+/g, ' ')
+
+      it('document sérialisé ⇒ panneaux, kWc et production « estimation »', async () => {
+        calepinageApi.calepinages.designContext.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_design_context'))
+        calepinageApi.calepinages.resultat.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_resultat', 'exemple_perime'))
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: RESULT })
+        bootHydrate()
+        rendreCalepinage(CTX.calepinage.id)
+
+        await waitFor(() => expect(texte('cal-resume-panneaux')).toContain(`${RESULT.panels} panneaux`),
+          { timeout: 3000 })
+        expect(texte('cal-resume-kwc')).toMatch(/14,4 kWc/)
+        expect(texte('cal-resume-production')).toMatch(/≈ 18 771 kWh\/an \(estimation\)/)
+
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: { ...RESULT, panels: 19 } })
+        await waitFor(() => expect(texte('cal-resume-panneaux')).toContain('19 panneaux'),
+          { timeout: 3000 })
+      })
+
+      it('résultat frais ⇒ « P50 … (simulation) »', async () => {
+        const frais = exempleContrat('calepinage', 'calepinage_resultat')
+        calepinageApi.calepinages.designContext.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_design_context'))
+        calepinageApi.calepinages.resultat.mockResolvedValue({ data: frais })
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: RESULT })
+        bootHydrate()
+        rendreCalepinage(CTX.calepinage.id)
+
+        await waitFor(() => expect(texte('cal-resume-production'))
+          .toMatch(/P50 13 000 kWh\/an \(simulation\)/))
+      })
+
+      it('chiffre absent ⇒ « — », jamais 0', async () => {
+        calepinageApi.calepinages.designContext.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_design_context'))
+        calepinageApi.calepinages.resultat.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_resultat', 'exemple_perime'))
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: {} })
+        bootHydrate()
+        rendreCalepinage(CTX.calepinage.id)
+
+        await screen.findByTestId('cal-resume-panneaux')
+        expect(texte('cal-resume-panneaux')).toBe('—')
+        expect(texte('cal-resume-kwc')).toBe('—')
+        expect(texte('cal-resume-production')).toBe('—')
+      })
     })
   })
 

@@ -202,3 +202,37 @@ describe('ACAL414 — RACCOURCIS est lue dans la table unique', () => {
     expect(RACCOURCIS.find((r) => r.action === 'dupliquer').ctrl).toBe(true)
   })
 })
+
+/* Acceptation ACAL490 — « ? » dans l'atelier ouvrait l'aide GLOBALE de l'ERP (écouteur
+   `ShortcutsProvider` sur `window`, posé avant) et la fenêtre ne listait pas le tracé ni la
+   disposition. */
+describe('ACAL414 — « ? » ouvre l’aide de l’atelier, et elle liste tracé et disposition', () => {
+  it('l’écouteur global (window, posé avant) ne reçoit pas « ? » ; la fenêtre de l’atelier s’ouvre', () => {
+    const global = vi.fn()
+    window.addEventListener('keydown', global)
+    try {
+      rendre(actionsEspionnees())
+      fireEvent.keyDown(document.body, { key: '?' })
+      expect(screen.getByTestId('cal-raccourcis-aide')).toBeInTheDocument()
+      expect(global).not.toHaveBeenCalled()
+      fireEvent.keyDown(document.body, { key: 'x' }) // les autres touches passent toujours
+      expect(global).toHaveBeenCalledTimes(1)
+    } finally {
+      window.removeEventListener('keydown', global)
+    }
+  })
+
+  it('la fenêtre liste les touches de l’atelier, du tracé et de la disposition (table unique)', () => {
+    rendre(actionsEspionnees())
+    fireEvent.keyDown(document.body, { key: '?' })
+    const aide = screen.getByTestId('cal-raccourcis-aide')
+    expect(aide).toHaveTextContent('Outil tracé de toit')
+    for (const portee of ['trace', 'disposition']) {
+      for (const l of lignesDePortee(portee).filter((x) => x.action !== 'aide')) {
+        expect(screen.getByTestId(`cal-raccourcis-section-${portee}`)).toHaveTextContent(l.libelle)
+      }
+    }
+    expect(aide).toHaveTextContent('Poser un sommet du contour')
+    expect(aide).toHaveTextContent('Annuler la dernière modification de la disposition')
+  })
+})

@@ -13,7 +13,7 @@ const table = new Map() // calepinageId -> { jobId } | { refus }
 export function lancerSimulationAuto(calepinageId) {
   const id = String(calepinageId)
   table.delete(id)
-  return Promise.resolve(calepinageApi.calepinages.simuler(calepinageId))
+  return Promise.resolve(calepinageApi.calepinages.simuler(calepinageId, { silencieux: true }))
     .then((res) => {
       const jobId = res?.data?.job_id
       if (jobId) table.set(id, { jobId })

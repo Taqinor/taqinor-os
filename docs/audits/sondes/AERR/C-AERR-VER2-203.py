@@ -1,17 +1,14 @@
-"""Contre-visite AERR de clôture (VER2-203, SAV, S2, AERR25 partiel) : pages/sav/TicketsPage.jsx::TicketDetailCorps.
-AERR25 remonte la fiche par `key={ticket.id}` et fait passer toute sélection par `selectionner`, gardée par
-`confirmLeaveIfDirty(isAnyFormDirty())`. Mais le `dirty` enregistré par la fiche (`useDirtyGuard(dirty)`) ne compare que
-les champs de `initialFields` : la note tapée (`noteBody`), le compte rendu d'une intervention à créer (`interv`), la
-pièce à poser (`pieceForm`), le retrait traçable (`retirerForm`) et le motif d'annulation (`motif`) n'y entrent pas. Un
-clic sur un autre ticket, J ou K remonte la fiche et perd ces saisies sans aucune demande, contre la clause « un
-changement de sélection avec saisie modifiée demande d'abord » d'AERR25. Le détecteur vérifie : (1) les cinq états
-déclarés dans TicketDetailCorps, (2) le corps du `useMemo` de `dirty` ne cite que `initialFields`/`fields`, (3) un seul
-`useDirtyGuard` dans la fiche, (4) `selectionner` gardé par `isAnyFormDirty` (le registre que ces saisies ne nourrissent
-pas)."""
+"""Contre-visite AERR de clôture (VER2-203, SAV, S2 ; tâches AERR159 puis AERR184 ; correctifs e53e778f21, 13047c82d1) :
+pages/sav/TicketsPage.jsx::TicketDetailCorps. Les brouillons de la fiche (note `noteBody`, compte rendu `interv`, pièce
+`pieceForm`, retrait `retirerForm`, motif `motif`) doivent nourrir la garde de sortie. Le détecteur lit le CORRECTIF :
+l'argument de `useDirtyGuard(…)` ET celui de la confirmation du `onOpenChange` du `<Sheet>` (un nom comme
+`brouillonEnCours` est résolu par sa déclaration `const`) citent les cinq brouillons. repro = l'une des deux gardes en omet
+un. Réécrite le 20/11/2026 : l'ancienne règle lisait un motif périmé."""
 SONDE = {"constat": "C-AERR-VER2-203", "sha": "d986bb9bc",
-         "attendu": "noteBody, interv, pieceForm, retirerForm, motif déclarés mais absents du dirty + un seul useDirtyGuard + selectionner gardé par isAnyFormDirty"}
-import pathlib, re
-RACINE = pathlib.Path(__file__).resolve().parents[4]
+         "attendu": "useDirtyGuard(…) ou la garde du onOpenChange du <Sheet> n'inclut pas noteBody, interv, pieceForm, retirerForm et motif"}
+import os, pathlib, re
+# AUDIT_RACINE (optionnel) : racine d'un autre arbre (témoin négatif sur l'arbre d'avant le correctif).
+RACINE = pathlib.Path(os.environ.get("AUDIT_RACINE") or pathlib.Path(__file__).resolve().parents[4])
 SRC = RACINE / "frontend/src"
 
 
@@ -74,6 +71,20 @@ def corps_de(s, motif):
 BROUILLONS = ("noteBody", "interv", "pieceForm", "retirerForm", "motif")
 
 
+def resoudre(corps, expr):
+    """Un identifiant seul est remplacé par l'expression de sa déclaration `const nom = …` (jusqu'à la fin de ligne)."""
+    expr = (expr or "").strip()
+    if re.fullmatch(r"\w+", expr):
+        m = re.search(r"const\s+" + expr + r"\s*=\s*([^\n]*)", corps)
+        if m:
+            return m.group(1)
+    return expr
+
+
+def cites(expr):
+    return {b: bool(re.search(r"\b%s\b" % b, expr)) for b in BROUILLONS}
+
+
 def sonde(ctx=None):
     rel = "pages/sav/TicketsPage.jsx"
     s = lire(rel)
@@ -81,20 +92,23 @@ def sonde(ctx=None):
         return {"repro": False, "observe": {"introuvable": [rel]}, "methode": "lecture écran"}
     m = re.search(r"function\s+TicketDetailCorps\s*\([^)]*\)\s*\{", s)
     corps = (apparier(s, m.end() - 1) or "") if m else ""
-    declares = {b: bool(re.search(r"const\s+\[%s,\s*set\w+\]\s*=\s*useState\(" % b, corps)) for b in BROUILLONS}
-    md = re.search(r"const\s+dirty\s*=\s*useMemo\(", corps)
-    memo = (apparier(corps, md.end() - 1, "(", ")") or "") if md else ""
-    dans_dirty = {b: bool(re.search(r"\b%s\b" % b, memo)) for b in BROUILLONS}
-    gardes = len(re.findall(r"\buseDirtyGuard\(", corps))
-    ms = re.search(r"const\s+selectionner\s*=\s*useCallback\(", s)
-    sel = (apparier(s, ms.end() - 1, "(", ")") or "") if ms else ""
-    sel_garde = bool(re.search(r"confirmLeaveIfDirty\(\s*isAnyFormDirty\(\)\s*\)", sel))
-    repro = (bool(corps) and all(declares.values()) and bool(memo) and "initialFields" in memo
-             and not any(dans_dirty.values()) and gardes == 1 and sel_garde)
+    if not corps:
+        return {"repro": False, "observe": {"introuvable": [rel + "::TicketDetailCorps"]}, "methode": "lecture écran"}
+    mg = re.search(r"\buseDirtyGuard\(", corps)
+    garde = resoudre(corps, apparier(corps, mg.end() - 1, "(", ")")) if mg else ""
+    sheet = ""
+    msh = re.search(r"<Sheet\b", corps)
+    if msh:
+        mo = re.search(r"onOpenChange=\{", corps[msh.end():msh.end() + 300])
+        if mo:
+            h = apparier(corps, msh.end() + mo.end() - 1) or ""
+            mc = re.search(r"\bconfirm\w*\(", h)
+            sheet = resoudre(corps, apparier(h, mc.end() - 1, "(", ")")) if mc else ""
+    dg, ds = cites(garde), cites(sheet)
+    repro = not all(dg.values()) or not all(ds.values())
     return {"repro": repro,
-            "observe": {"TicketDetailCorps_trouve": bool(corps), "brouillons_declares": declares,
-                        "brouillons_dans_dirty": dans_dirty, "useDirtyGuard_dans_la_fiche": gardes,
-                        "selectionner_garde_par_isAnyFormDirty": sel_garde},
+            "observe": {"brouillons_dans_useDirtyGuard": dg, "brouillons_dans_la_garde_du_Sheet": ds,
+                        "Sheet_trouve": bool(msh)},
             "methode": "lecture écran"}
 
 

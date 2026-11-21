@@ -86,9 +86,36 @@ export function questionEffacer(a: AEffacer): string | null {
   return `Effacer ${liste} ?`;
 }
 
-/** Demande (confirmation injectable, `window.confirm` par défaut) ; true = on peut effacer. */
-export function confirmerEffacer(a: AEffacer, confirmer?: (m: string) => boolean): boolean {
+/** Pose la question DANS l'atelier (même patron que le bandeau ci-dessus — jamais un dialogue
+ *  natif `window.confirm`, acceptation ACAL490) : « Effacer » appelle `effacer`, « Garder » ne
+ *  change rien. Sans rien à perdre, `effacer` part aussitôt, sans question. */
+export function demanderEffacer(ancre: HTMLElement | null, a: AEffacer, effacer: () => void): void {
   const q = questionEffacer(a);
-  if (!q) return true;
-  return (confirmer ?? ((m: string) => (typeof window === 'undefined' ? true : window.confirm(m))))(q);
+  if (typeof document !== 'undefined') document.getElementById('rp9-question-effacer')?.remove();
+  if (!q) return effacer();
+  const parent = ancre?.parentElement;
+  if (!parent || typeof document === 'undefined') return;
+  const el = document.createElement('div');
+  el.id = 'rp9-question-effacer';
+  el.setAttribute('role', 'alertdialog');
+  el.setAttribute('aria-label', q);
+  el.className = 'text-sm text-lune-faint';
+  const texte = document.createElement('span');
+  texte.id = 'rp9-question-effacer-texte';
+  texte.className = 'mr-2';
+  texte.textContent = q;
+  el.append(texte);
+  for (const [libelle, agir] of [
+    ['Effacer', () => { el.remove(); effacer(); }],
+    ['Garder', () => el.remove()],
+  ] as const) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'underline mr-2';
+    b.textContent = libelle;
+    b.addEventListener('click', agir);
+    el.append(b);
+  }
+  parent.insertAdjacentElement('afterend', el);
+  el.querySelector<HTMLButtonElement>('button:last-of-type')?.focus();
 }

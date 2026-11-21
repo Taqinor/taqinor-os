@@ -382,6 +382,13 @@ def installer() -> None:
     origine = APIView.initial
     if getattr(origine, '_enfp_parametres_requete', False):
         return
+    # Drapeau posé aussi sur la CLASSE : Sentry ré-enveloppe ``initial`` au
+    # premier appel DRF sans ``functools.wraps`` (le drapeau de la fonction
+    # se perd) — sans lui l'installation serait doublée. Notre contrôle est
+    # déjà dans la chaîne : on re-marque l'enveloppe extérieure.
+    if getattr(APIView, '_enfp_parametres_requete_installe', False):
+        origine._enfp_parametres_requete = True
+        return
 
     @functools.wraps(origine)
     def initial(self, request, *args, **kwargs):
@@ -391,6 +398,7 @@ def installer() -> None:
 
     initial._enfp_parametres_requete = True
     APIView.initial = initial
+    APIView._enfp_parametres_requete_installe = True
 
 
 def choix_ou_400(request, nom, choix):

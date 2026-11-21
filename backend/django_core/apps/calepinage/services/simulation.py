@@ -981,9 +981,12 @@ def _relayer_fichier_meteo(meteo, fichier, provenance=None):
         if identite else None)
     if identite:
         meteo['fournisseur'] = identite.get('fournisseur')
-    transposition = ((provenance or {}).get('provenance') or {}).get('transposition')
-    if transposition:
-        meteo['transposition'] = transposition
+    # ACAL455/456 — transposition, décomposition (composantes déduites du
+    # global) et origine des composantes : relayées telles que la chaîne les a nommées.
+    source = (provenance or {}).get('provenance') or {}
+    for cle in ('transposition', 'decomposition', 'composantes_origine'):
+        if source.get(cle):
+            meteo[cle] = source[cle]
     return identite
 
 

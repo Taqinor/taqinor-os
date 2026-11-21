@@ -525,6 +525,7 @@ etape('PA2.5-ACAL414-aide-raccourcis', ['ACAL414'], async ({ page, context, suiv
     console.log(`[ACAL414] « ? » ouvre : ${(await aide.innerText()).replace(/\s+/g, ' ').slice(0, 1500)}`)
     console.log(`[ACAL414] #rp9-status : ${await page.locator('#rp9-status').innerText()}`)
     console.log(`[ACAL414] fenêtre de l'atelier (cal-raccourcis-aide) ouverte : ${await page.getByTestId('cal-raccourcis-aide').count()}`)
+    await expect(page.getByTestId('cal-raccourcis-aide'), '« ? » ouvre la fenêtre de l’atelier').toBeVisible()
     await expect(aide, 'touche d’outil de l’atelier (T)').toContainText('Outil tracé de toit')
     await expect(aide, 'touches du TRACÉ (table unique)').toContainText('Poser un sommet du contour')
     await expect(aide, 'touches de la DISPOSITION (table unique)').toContainText('Annuler la dernière modification de la disposition')
@@ -721,7 +722,7 @@ etape('PA2.3-ACAL413-ACAL412-annuler-effacements', ['ACAL413', 'ACAL412'], async
 
 // ════════════════════════════════════════════════════════════════════════════
 // ACAL413 — atelier, « Effacer » avec un contour et 3 obstacles : la question NOMME ce qui sera perdu ; refusée,
-// rien n'est effacé. (La question est un `window.confirm` : l'oracle 4 « dialogue natif » la relève.)
+// rien n'est effacé (« Garder ») ; « Effacer » efface. Jamais un dialogue natif (oracle 4).
 // ════════════════════════════════════════════════════════════════════════════
 etape('PA2.3-ACAL413-effacer-question-nommee', ['ACAL413'], async ({ page, context, suivi }) => {
   refusSimulationAutoAttendu(suivi)
@@ -729,15 +730,28 @@ etape('PA2.3-ACAL413-effacer-question-nommee', ['ACAL413'], async ({ page, conte
   const cal = await calepinageAvec('ACAL413 q', toitPlat({ obstacles: OBSTACLES }))
   try {
     const bouton = await ouvrirAtelier(page, cal.id)
-    const questions = []
-    page.on('dialog', (d) => questions.push(d.message()))
+    const natives = []
+    page.on('dialog', (d) => natives.push(d.message()))
     await page.locator('#rp9-clear').click()
-    await expect.poll(() => questions.length, { message: 'une question est posée' }).toBeGreaterThan(0)
-    console.log(`[ACAL413] question : « ${questions[0]} »`)
-    expect(questions[0], 'la question nomme le pan et les obstacles').toBe('Effacer 1 pan et 3 obstacles ?')
+    const question = page.locator('#rp9-question-effacer')
+    await expect(question, 'question posée DANS l’atelier').toBeVisible()
+    await expect(question).toHaveAttribute('role', 'alertdialog')
+    await expect(page.locator('#rp9-question-effacer-texte'), 'la question nomme le pan et les obstacles').toHaveText('Effacer 1 pan et 3 obstacles ?')
+    console.log(`[ACAL413] question : « ${await page.locator('#rp9-question-effacer-texte').innerText()} »`)
+    expect(natives, 'aucun dialogue natif').toEqual([])
+    // « Garder » : rien n'est effacé.
+    await question.getByRole('button', { name: 'Garder', exact: true }).click()
+    await expect(question).toHaveCount(0)
     const doc = await enregistrer(page, cal.id, bouton)
-    expect(doc.zones, 'refusée : rien n’est effacé').toHaveLength(1)
+    expect(doc.zones, '« Garder » : rien n’est effacé').toHaveLength(1)
     expect(nObstacles(doc)).toBe(3)
+    // « Effacer » : le tracé part, l'atelier redevient vierge.
+    await page.locator('#rp9-clear').click()
+    await expect(question).toBeVisible()
+    await question.getByRole('button', { name: 'Effacer', exact: true }).click()
+    await expect(question).toHaveCount(0)
+    await expect(page.locator('#rp9-etat-vide'), '« Effacer » : contour effacé, atelier vierge').toHaveText(/^1 · Localisez le toit/, T)
+    expect(natives, 'aucun dialogue natif').toEqual([])
   } finally {
     await nettoyer(cal)
   }

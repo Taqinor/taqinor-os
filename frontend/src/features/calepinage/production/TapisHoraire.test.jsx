@@ -269,6 +269,15 @@ describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — geometriePresente', (
     expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES)
   })
 
+  it('false puis true (simulation terminée) : la série est lue une fois', async () => {
+    exportCsv.mockRejectedValue(refusServeur('points', MOTIF_SANS_SERIE))
+    const { rerender } = rendre({ geometriePresente: false })
+    await screen.findByTestId('cal-tapis-vide')
+    expect(exportCsv).not.toHaveBeenCalled()
+    rerender(<MemoryRouter><TapisHoraire calepinageId={9} geometriePresente /></MemoryRouter>)
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledTimes(1))
+  })
+
   it('prop absente (autre appelant) : comportement d’aujourd’hui, la porte '
     + 'reste ouverte', async () => {
     exportCsv.mockRejectedValue(refusServeur('points', MOTIF_SANS_SERIE))

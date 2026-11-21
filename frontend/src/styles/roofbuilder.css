@@ -17,18 +17,18 @@
 
 .rp9-host {
   /* Palette de marque (extraite des tokens du site public, en littéral). */
-  --rp-nuit: #070b1d;
-  --rp-nuit-700: #11162e;
-  --rp-nuit-800: #0c1226;
-  --rp-nuit-900: #070b1d;
-  --rp-brass-300: #f3cc66;
-  --rp-brass-400: #e8b54a;
-  --rp-azur-950: #0a1020;
-  --rp-lune-soft: #c7d0e0;
-  --rp-lune-faint: #8a93a8;
-  --rp-alert-300: #f7a8a0;
-  --rp-ok-400: #4ade80;
-  --rp-ok-600: #16a34a;
+  --rp-nuit: var(--card);
+  --rp-nuit-700: var(--muted);
+  --rp-nuit-800: var(--card);
+  --rp-nuit-900: var(--background);
+  --rp-brass-300: var(--primary-text);
+  --rp-brass-400: var(--primary-text);
+  --rp-azur-950: var(--primary-foreground);
+  --rp-lune-soft: var(--foreground);
+  --rp-lune-faint: var(--muted-foreground);
+  --rp-alert-300: var(--destructive);
+  --rp-ok-400: var(--success-text);
+  --rp-ok-600: var(--success);
 
   color: var(--rp-lune-soft);
 }
@@ -38,16 +38,16 @@
   background:
     linear-gradient(
       to bottom,
-      rgb(255 255 255 / 0.07) 0px,
-      rgb(255 255 255 / 0.07) 1px,
+      color-mix(in srgb, var(--foreground) 7%, transparent) 0px,
+      color-mix(in srgb, var(--foreground) 7%, transparent) 1px,
       transparent 1px
     ),
-    rgb(255 255 255 / 0.06);
-  border: 1px solid rgb(255 255 255 / 0.12);
+    color-mix(in srgb, var(--foreground) 6%, transparent);
+  border: 1px solid var(--border);
   border-radius: 2px;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.10),
-    0 24px 60px -30px rgb(0 0 0 / 0.8);
+    inset 0 1px 0 color-mix(in srgb, var(--foreground) 10%, transparent),
+    0 24px 60px -30px color-mix(in srgb, var(--background) 20%, black);
 }
 
 /* ── Typographie signature ──────────────────────────────────────────────── */
@@ -123,9 +123,9 @@
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 9999px;
-  border: 1px solid rgb(255 255 255 / 0.20);
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
   color: var(--rp-lune-soft);
-  background: rgb(7 11 29 / 0.72);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
@@ -231,7 +231,7 @@
 
 /* ── Puces de configuration (rp9-chip) — état actif FONCTIONNEL ──────────── */
 .rp9-host .rp9-chip {
-  border: 1px solid rgb(255 255 255 / 0.20);
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
   padding: 0.5rem 0.875rem;
   font-size: 0.875rem;
   font-weight: 600;
@@ -248,7 +248,7 @@
 .rp9-host .rp9-chip[aria-pressed='true'] {
   border-color: var(--rp-brass-400);
   color: var(--rp-brass-300);
-  background: rgb(232 181 74 / 0.15);
+  background: color-mix(in srgb, var(--primary-text) 15%, transparent);
 }
 .rp9-host .rp9-chip:disabled {
   opacity: 0.4;
@@ -261,7 +261,7 @@
   -webkit-appearance: none;
   height: 4px;
   border-radius: 9999px;
-  background: rgb(255 255 255 / 0.18);
+  background: color-mix(in srgb, var(--foreground) 18%, transparent);
   outline: none;
 }
 .rp9-host .rp9-range::-webkit-slider-thumb {
@@ -296,6 +296,7 @@
    les panneaux du builder ressortent comme sur le site. Scopé au host. ────── */
 .rp9-host {
   background: var(--rp-nuit);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1rem;
 }
@@ -303,7 +304,16 @@
 .rp9-host .bg-nuit-700 { background: var(--rp-nuit-700); }
 .rp9-host .bg-nuit-800 { background: var(--rp-nuit-800); }
 .rp9-host .bg-nuit-900 { background: var(--rp-nuit-900); }
-.rp9-host .bg-nuit-800\/60 { background: rgb(12 18 38 / 0.6); }
+.rp9-host .bg-nuit-800\/60 { background: color-mix(in srgb, var(--card) 60%, transparent); }
+.rp9-host .bg-nuit-900\/40 { background: color-mix(in srgb, var(--background) 40%, transparent); }
+.rp9-host .bg-nuit-900\/60 { background: color-mix(in srgb, var(--background) 60%, transparent); }
+.rp9-host .text-white { color: var(--foreground); }
+.rp9-host .bg-white\/5 { background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+.rp9-host .bg-white\/10 { background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+.rp9-host .border-white\/10 { border-color: color-mix(in srgb, var(--foreground) 10%, transparent); }
+.rp9-host .border-white\/15 { border-color: color-mix(in srgb, var(--foreground) 15%, transparent); }
+.rp9-host .border-white\/20 { border-color: color-mix(in srgb, var(--foreground) 20%, transparent); }
+.rp9-host .border-white\/25 { border-color: color-mix(in srgb, var(--foreground) 25%, transparent); }
 
 /* ══════════════════════════════════════════════════════════════════════════
    AOF82 — Panneau « Reprendre depuis la carte » de l'atelier Toiture (AO).
@@ -363,15 +373,15 @@
 }
 .rp9-host .rp9-layout-cell {
   aspect-ratio: 1.83 / 1; /* panneau ~2,38 × 1,30 m */
-  border: 1px solid rgb(255 255 255 / 0.18);
-  background: rgb(255 255 255 / 0.04);
+  border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
   cursor: pointer;
   transition: background-color 120ms, border-color 120ms;
   padding: 0;
 }
 .rp9-host .rp9-layout-cell[data-occupied='true'] {
-  background: rgb(127 180 232 / 0.55); /* panneau posé (bleu azur) */
-  border-color: rgb(127 180 232 / 0.8);
+  background: color-mix(in srgb, var(--info) 55%, transparent); /* panneau posé */
+  border-color: color-mix(in srgb, var(--info) 80%, transparent);
 }
 .rp9-host .rp9-layout-cell[aria-pressed='true'] {
   outline: 2px solid var(--rp-brass-400);
@@ -380,13 +390,45 @@
 /* Survol : cible VALIDE = vert, cible INVALIDE = rouge (occupée). */
 .rp9-host .rp9-layout-cell[data-occupied='false']:hover,
 .rp9-host .rp9-layout-cell[data-occupied='false']:focus {
-  background: rgb(74 222 128 / 0.45);
-  border-color: rgb(74 222 128 / 0.9);
+  background: color-mix(in srgb, var(--success) 45%, transparent);
+  border-color: color-mix(in srgb, var(--success) 90%, transparent);
 }
 .rp9-host .rp9-layout-cell[data-occupied='true']:hover,
 .rp9-host .rp9-layout-cell[data-occupied='true']:focus {
-  border-color: rgb(248 113 113 / 0.9);
+  border-color: color-mix(in srgb, var(--destructive) 90%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .rp9-host .rp9-layout-cell { transition: none; }
+}
+
+/* ── ACAL402 — disposition « studio » (atelier de calepinage, ≥ 1 280 px) : la carte à
+   gauche, collée et pleine hauteur ; l'inspecteur à droite défile seul. Sous 1 280 px rien
+   ne s'applique : la page reste empilée. Les modes lead et devis n'ont pas ces conteneurs. ── */
+@media (min-width: 1280px) {
+  .rp9-host .rp9-studio {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(24rem, 30rem);
+    gap: 1.5rem;
+    height: calc(100dvh - var(--rp9-studio-haut, 13rem));
+    margin-top: 1.5rem;
+  }
+  .rp9-host .rp9-studio-scene { position: sticky; top: 0; min-height: 0; }
+  .rp9-host .rp9-studio-scene > .cine-card { display: flex; flex-direction: column; height: 100%; margin-top: 0; }
+  .rp9-host .rp9-studio-scene .rp9-map-wrap { flex: 1 1 auto; min-height: 0; }
+  .rp9-host .rp9-studio-scene #rp9-map { height: 100%; min-height: 360px; }
+  .rp9-host .rp9-studio-inspecteur { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .rp9-host .rp9-studio-inspecteur > :first-child { margin-top: 0; }
+}
+
+/* ── ACAL423 — atelier au téléphone (< 640 px, point de rupture `sm` du DOM) : aucune
+   barre qui déborde et des cibles tactiles d'au moins 44 px (même seuil que VNT81). ── */
+@media (max-width: 639px) {
+  .rp9-host { padding: 0.5rem; max-width: 100%; overflow-x: clip; }
+  .rp9-host .rp9-topbar { flex-wrap: wrap; }
+  .rp9-host button,
+  .rp9-host .rp9-chip,
+  .rp9-host .rp9-close { min-height: 44px; min-width: 44px; }
+  .rp9-host .rp9-chip { display: inline-flex; align-items: center; justify-content: center; }
+  .rp9-host .rp9-layout-grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
+  .rp9-host .rp9-layout-cell { min-height: 44px; }
 }
