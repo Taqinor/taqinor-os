@@ -14,8 +14,7 @@ from __future__ import annotations
 
 import re
 
-__all__ = ['ETAPES', 'MOTIFS', 'etat_du_parcours', 'etapes_du_parcours',
-           'regrouper_manque']
+__all__ = ['ETAPES', 'MOTIFS', 'etat_du_parcours', 'regrouper_manque']
 
 ETAPES = ('toit', 'panneaux', 'electrique', 'resultats', 'documents')
 
@@ -72,8 +71,8 @@ def regrouper_manque(avertissements):
     return list(groupes.values())
 
 
-def etapes_du_parcours(*, toit_fait, modules, verdict, simule, perime,
-                       devis_lie):
+def _etapes_du_parcours(*, toit_fait, modules, verdict, simule, perime,
+                        devis_lie):
     """Les cinq états, d'après des faits déjà lus (fonction PURE)."""
     panneaux_faits = bool(modules) and modules > 0
     panneaux = 'fait' if (toit_fait and panneaux_faits) else 'a_faire'
@@ -118,7 +117,7 @@ def etat_du_parcours(calepinage):
                 'verdict', 'indetermine')
         except TemperaturesInvalides:
             verdict = 'indetermine'
-    etapes = etapes_du_parcours(
+    etapes = _etapes_du_parcours(
         toit_fait=layout_decrit_une_geometrie(
             getattr(calepinage, 'roof_layout', None)),
         modules=modules, verdict=verdict, simule=bool(servi.get('simule')),

@@ -113,6 +113,10 @@ ON_DEMAND_ALLOWLIST = {
     # demande par ``POST calepinages/<pk>/simuler/``
     # (``apps/calepinage/views/simulation.py``), jamais par beat.
     'calepinage.simuler',
+    # ACAL468 — balayage inclinaison × azimut d'un pan : soumis à la demande
+    # par ``POST calepinages/<pk>/balayage/`` (``core.jobs.submit`` depuis
+    # ``apps/calepinage/views/balayage.py``), jamais par beat.
+    'calepinage.balayer',
     # NTAI17 — traitement IA d'une pièce GED (classification + extraction) :
     # déclenché À LA DEMANDE au dépôt du document (``.delay()`` depuis le
     # receiver ``ai_governance.receivers``, après commit), jamais périodique —

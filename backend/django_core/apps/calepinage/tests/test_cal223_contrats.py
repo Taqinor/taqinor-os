@@ -582,9 +582,11 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         donnees = _charger('calepinage_profil_depart.json')
         prefixe = donnees['prefixe_reference']
         cles = ('cle', 'section', 'valeur', 'unite', 'source', 'reference',
-                'url', 'date_lecture')
+                'url', 'date_lecture', 'etat')
         for ligne in donnees['exemple']['valeurs']:
             self.assertEqual(sorted(ligne), sorted(cles))
+            self.assertIn(ligne['etat'], ('a_appliquer', 'posee_par_profil',
+                                          'deja_saisie'))
             declarees = {c[0] for c in REGISTRES[ligne['section']]}
             self.assertIn(ligne['cle'], declarees)
             self.assertEqual(ligne['source'], 'texte')
@@ -751,11 +753,13 @@ class ClesServiesTest(unittest.TestCase):
         self._comparer('dossiers_reglementaires.json', servi, 'exemple_vide')
 
     def test_profil_de_depart(self):
-        # ACAL403 — le GET rend le fichier ``data/profil_depart.json`` : mêmes
-        # clés que l'échantillon d'ACAL387, chaque ligne de valeur aussi.
+        # ACAL403 — le GET rend le fichier ``data/profil_depart.json``, chaque
+        # valeur avec son ``etat`` : mêmes clés que l'échantillon d'ACAL387,
+        # chaque ligne de valeur aussi.
         from apps.calepinage.services.profil_depart import charger_profil
+        from apps.calepinage.views.profil_depart import _avec_etats
 
-        servi = charger_profil()
+        servi = _avec_etats(charger_profil(), None)
         self._comparer('calepinage_profil_depart.json', servi)
         attendu = _charger('calepinage_profil_depart.json')['exemple']
         for liste in ('valeurs', 'sans_source'):

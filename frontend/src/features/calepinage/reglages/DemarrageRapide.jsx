@@ -9,9 +9,17 @@ import { Button, Card } from '../../../ui'
    `calepinage_profil_depart.json`) sert `{valeurs, sans_source}`. AUCUNE valeur
    n'est écrite ici : « Appliquer aux réglages vides » appelle `POST` (le
    serveur ne touche que les clés VIDES), puis `onChange` fait relire les
-   réglages. L'état « à appliquer » / « déjà saisie » se lit sur les réglages
-   SERVIS (`reglages[section][cle]`), jamais sur un brouillon.
+   réglages. L'état de chaque valeur est celui que le serveur SERT (`etat` :
+   `a_appliquer`, `posee_par_profil`, `deja_saisie`, lu par la référence écrite
+   du profil) ; à défaut, il se lit sur les réglages SERVIS, jamais sur un
+   brouillon. Le profil est relu après chaque geste.
    ========================================================================== */
+
+const LIBELLE_ETAT = {
+  a_appliquer: 'à appliquer',
+  posee_par_profil: 'posée par le profil (retirable)',
+  deja_saisie: 'déjà saisie',
+}
 
 const saisie = (reglages, { section, cle }) => {
   const ligne = reglages?.[section]?.[cle]
@@ -27,13 +35,15 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange }) {
   const [message, setMessage] = useState(null)
   const [occupe, setOccupe] = useState(false)
 
+  const [lecture, setLecture] = useState(0)
+
   useEffect(() => {
     let annule = false
     Promise.resolve(calepinageApi.parametres.profilDepart())
       .then((res) => { if (!annule) setProfil(res?.data ?? null) })
       .catch(() => { if (!annule) setErreur('Profil de départ indisponible.') })
     return () => { annule = true }
-  }, [])
+  }, [lecture])
 
   const agir = async (appel, phrase) => {
     setOccupe(true)
@@ -42,6 +52,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange }) {
     try {
       const res = await appel()
       setMessage(phrase(res?.data ?? {}))
+      setLecture((n) => n + 1)
       await onChange?.()
     } catch (e) {
       const detail = e?.response?.data?.detail
@@ -76,7 +87,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange }) {
             <span className="tabular-nums">{texte(v.valeur)}{v.unite ? ` ${v.unite}` : ''}</span>
             {' — '}
             <span data-testid={`acal405-etat-${v.cle}`}>
-              {saisie(reglages, v) ? 'déjà saisie' : 'à appliquer'}
+              {LIBELLE_ETAT[v.etat] ?? (saisie(reglages, v) ? 'déjà saisie' : 'à appliquer')}
             </span>
             <span className="block text-xs text-muted-foreground">
               {v.reference}{' — '}

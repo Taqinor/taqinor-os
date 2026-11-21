@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
-import { RACCOURCIS, estSaisieEnCours, raccourciDe } from './RaccourcisAtelier.helpers'
+import { RACCOURCIS, SECTIONS_AIDE, estSaisieEnCours, raccourciDe } from './RaccourcisAtelier.helpers'
 
 /* ============================================================================
    CAL101 — LES RACCOURCIS DE L'ATELIER, ET LEUR AIDE-MÉMOIRE.
@@ -35,11 +35,6 @@ export default function RaccourcisAtelier({ actions = {} }) {
       // AERR114 — une boîte ouverte par-dessus l'atelier garde ses frappes.
       if (dialogueParDessus(racine.current)) return
 
-      if (evenement.key === TOUCHE_AIDE) {
-        evenement.preventDefault()
-        setAideOuverte((ouverte) => !ouverte)
-        return
-      }
       if (evenement.key === 'Escape') {
         setAideOuverte(false)
         return
@@ -56,6 +51,21 @@ export default function RaccourcisAtelier({ actions = {} }) {
     window.addEventListener('keydown', surTouche)
     return () => window.removeEventListener('keydown', surTouche)
   }, [actions])
+
+  // ACAL414 (acceptation ACAL490) — « ? » dans l'atelier ouvre CETTE aide, jamais celle de
+  // l'ERP : écoutée en CAPTURE sur `window`, avant l'écouteur global (`ShortcutsProvider`),
+  // qui ne reçoit plus la touche.
+  useEffect(() => {
+    const surAide = (evenement) => {
+      if (evenement.key !== TOUCHE_AIDE || evenement.ctrlKey || evenement.metaKey || evenement.altKey) return
+      if (estSaisieEnCours(evenement.target) || dialogueParDessus(racine.current)) return
+      evenement.preventDefault()
+      evenement.stopPropagation()
+      setAideOuverte((ouverte) => !ouverte)
+    }
+    window.addEventListener('keydown', surAide, true)
+    return () => window.removeEventListener('keydown', surAide, true)
+  }, [])
 
   return (
     <div data-testid="cal-raccourcis" ref={racine}>
@@ -98,6 +108,19 @@ export default function RaccourcisAtelier({ actions = {} }) {
               <dd className="text-sm text-lune-soft">Afficher ou masquer cette aide</dd>
             </div>
           </dl>
+          {SECTIONS_AIDE.map((section) => (
+            <div key={section.cle} className="mt-3" data-testid={`cal-raccourcis-section-${section.cle}`}>
+              <p className="tech-label text-lune-faint">{section.titre}</p>
+              <dl className="mt-1 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+                {section.lignes.map((l) => (
+                  <div key={`${l.ecriture}-${l.libelle}`} className="flex items-baseline gap-2">
+                    <dt><kbd className="rounded bg-white/10 px-1.5 text-xs text-white">{l.ecriture}</kbd></dt>
+                    <dd className="text-sm text-lune-soft">{l.libelle}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
         </div>
       )}
     </div>

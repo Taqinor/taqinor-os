@@ -745,7 +745,9 @@ _FICHIERS_VALIDES = (
     # CI #997 (w4) — les dépôts de fichier d'UN calepinage : image de rendu,
     # photo de site, fond de plan, carte d'ombrage (PNG), plan importé (DXF) et
     # série météo (CSV). Un part vide ou quelconque y est un refus 400.
-    (re.compile(_CALEPINAGE + r'(roof-image|photos|fond-plan|image-document)/$'),
+    # PR #1512 (ykhYtb) — la capture soumise à la détection du toit
+    # (``detection-toit``, ACAL485) lit aussi les octets magiques PNG/JPEG.
+    (re.compile(_CALEPINAGE + r'(roof-image|photos|fond-plan|image-document|detection-toit)/$'),
      {'POST'}, {'image': _PNG_CAPTURE, 'photo': _PNG_CAPTURE,
                 'fichier': _PNG_CAPTURE}),
     (re.compile(_CALEPINAGE + r'importer-plan/$'), {'POST'},

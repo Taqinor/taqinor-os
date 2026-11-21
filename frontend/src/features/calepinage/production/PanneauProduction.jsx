@@ -341,7 +341,9 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
   // d'export refuse en 400 (`views/export_csv.py`, "Aucune géométrie
   // enregistrée"). On le lit ici, sur la réponse `resultat()` déjà en main
   // (AUCUNE requête de plus), pour que `TapisHoraire` ne l'ouvre même pas.
-  const geometriePresente = (data?.pose?.total_modules ?? 0) > 0
+  // Acceptation ACAL490 — jamais simulé (ou calcul en cours) : aucune série
+  // horaire n'existe, la porte d'export refuserait (400 « points ») : non ouverte.
+  const geometriePresente = (data?.pose?.total_modules ?? 0) > 0 && data?.simule === true
 
   return (
     <>

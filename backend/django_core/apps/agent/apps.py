@@ -25,3 +25,11 @@ class AgentConfig(AppConfig):
         # effet de bord à l'import du module apps).
         from .registry import autodiscover_from_platform_manifests
         autodiscover_from_platform_manifests()
+
+        # Décision fondateur 21/11/2026 — chaque appel IA de ``core.ai`` laisse
+        # sa ligne ``UsageIA`` : on branche le puits ici (``core`` n'importe
+        # jamais d'app ; ``ai_governance`` reste parquée). Idempotent.
+        from core.ai.usage import register_usage_sink
+
+        from .services import enregistrer_usage_ia
+        register_usage_sink(enregistrer_usage_ia)
