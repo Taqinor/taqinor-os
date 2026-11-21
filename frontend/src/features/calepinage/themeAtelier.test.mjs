@@ -61,3 +61,21 @@ test('états des cellules du plan : jetons info / success / destructive', () => 
   const cells = regles(css).filter((r) => r.sel.includes('.rp9-layout-cell')).map((r) => r.corps).join('\n')
   for (const t of ['--info', '--success', '--destructive']) assert.ok(cells.includes(`var(${t})`), t)
 })
+
+// ACAL402 (rejeu ACAL490 du 21/11) — la colonne scène du mode studio vise la RACINE réelle de
+// `atelier/BuilderDom.jsx` : depuis ACAL427 elle ne porte plus `.cine-card`, et la règle
+// `.rp9-studio-scene > .cine-card` (hauteur + défilement de la colonne) ne s'appliquait plus.
+test('studio : la colonne scène défile sur la racine du BuilderDom (aucune règle sur .cine-card)', () => {
+  const dom = readFileSync(new URL('./atelier/BuilderDom.jsx', import.meta.url), 'utf8')
+  const racine = /return \(\s*<>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<div className="([^"]*)"/.exec(dom)
+  assert.ok(racine, 'racine du BuilderDom lue')
+  const studio = regles(css).filter((r) => r.sel.includes('.rp9-studio-scene >'))
+  assert.ok(studio.length > 0, 'règle sur l’enfant direct de la colonne scène')
+  for (const r of studio) {
+    const cible = /\.rp9-studio-scene >\s*(\S+)/.exec(r.sel)[1]
+    const classe = cible.startsWith('.') ? cible.slice(1) : null
+    assert.ok(cible === ':first-child' || (classe && racine[1].split(/\s+/).includes(classe)),
+      `« ${r.sel} » ne vise pas la racine du BuilderDom (classes : ${racine[1]})`)
+    if (r.corps.includes('overflow-y')) assert.match(r.corps, /overflow-y:\s*auto/)
+  }
+})
