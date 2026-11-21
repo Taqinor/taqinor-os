@@ -127,15 +127,21 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
             proposition = parse_pan_ond_bytes(
                 upload.read(), filename=getattr(upload, 'name', '') or '')
         except FichierIllisible as exc:
+            # CALX356 — le refus nomme la ligne fautive quand il y en a une.
             return Response(
-                {'detail': str(exc), 'champ': exc.champ},
+                {'detail': str(exc), 'champ': exc.champ, 'ligne': exc.ligne},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # CALX356 — l'aperçu montre la valeur TELLE QU'ELLE SERA ENREGISTRÉE
+        # (décimales du champ, entier pour un champ entier), jamais un arrondi
+        # fait plus tard en silence par la base.
+        mapping = {champ: _au_format_du_champ(champ, valeur)
+                   for champ, valeur in proposition.mapping.items()}
         fiche = getattr(produit, 'fiche_technique', None)
         if fiche is not None:
-            a_ecrire, deja_saisis = champs_a_ecrire(fiche, proposition.mapping)
+            a_ecrire, deja_saisis = champs_a_ecrire(fiche, mapping)
         else:
-            a_ecrire, deja_saisis = dict(proposition.mapping), []
+            a_ecrire, deja_saisis = dict(mapping), []
 
         # CI #997 fuzz (2) : true/false seulement (``0``/``oui`` -> 400).
         from ..utils.params import booleen_formulaire_ou_400
@@ -146,6 +152,7 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
                 'mapping': {k: str(v) for k, v in a_ecrire.items()},
                 'reconnus': proposition.reconnus,
                 'non_reconnus': proposition.non_reconnus,
+                'champs_attendus_absents': proposition.champs_attendus_absents,
                 'deja_saisis': deja_saisis,
                 'confirme': False,
             })
@@ -162,9 +169,25 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
             'ecrits': sorted(a_ecrire.keys()),
             'deja_saisis': deja_saisis,
             'non_reconnus': proposition.non_reconnus,
+            'champs_attendus_absents': proposition.champs_attendus_absents,
             'confirme': True,
             'fiche': FicheTechniqueSerializer(fiche).data,
         })
+
+
+def _au_format_du_champ(champ, valeur):
+    """CALX356 — ``valeur`` au format de stockage du champ ``FicheTechnique``
+    (décimales du ``DecimalField`` arrondies au demi supérieur, entier pour un
+    champ entier) ; tout autre champ inchangé."""
+    from decimal import ROUND_HALF_UP, Decimal
+    from django.db import models as dj_models
+    modele = FicheTechnique._meta.get_field(champ)
+    if isinstance(modele, dj_models.DecimalField):
+        pas = Decimal(1).scaleb(-modele.decimal_places)
+        return Decimal(valeur).quantize(pas, rounding=ROUND_HALF_UP)
+    if isinstance(modele, dj_models.IntegerField):
+        return int(Decimal(valeur).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    return valeur
 
 
 def _codes(codes):

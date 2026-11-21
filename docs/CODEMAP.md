@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 63b2665ff2b01bfd0ae50d845d9907dd81e26a3baeed483a96b6dfc09d0d5dcc
-Plan fingerprint: 4aa4c7fb6980a3a2b1fd9cc45144a4fec276adb7d2254ec9e5ec721369e5f8f0
+Plan fingerprint: 3bd6111be83011883c33c8db3985454d9b6475bbe2d1517b6792d67d4109a0c4
 
 
 
@@ -620,7 +620,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1337)**
+**Done (1338)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1629,6 +1629,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX351` — Démarrer un calepinage depuis un modèle et un jeu de réglages société
 - `CALX352` — Proposer modèle et jeu de réglages au moment de la création
 - `CALX355` — Rendre les nouveaux champs de fiche saisissables dans le formulaire produit
+- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
 - `CALX358` — Créer le catalogue de systèmes de fixation dans le module
 - `CALX359` — Calculer la nomenclature de fixation d'un calepinage et l'exporter
 - `CALX360` — Monter la fixation en onglet de l'atelier
@@ -1960,7 +1961,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (117)**
+**Open — to build (116)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2052,7 +2053,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX199` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX200` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
-- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
 - `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `CALX373` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX374` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
