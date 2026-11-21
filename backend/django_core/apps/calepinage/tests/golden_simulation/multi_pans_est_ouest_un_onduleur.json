@@ -54,6 +54,13 @@
     "perte_pct": null
    },
    {
+    "etape": "ombrage_diffus",
+    "omise": true,
+    "kwh_avant": 351.128,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
     "etape": "inter_rangees",
     "omise": true,
     "kwh_avant": 351.128,

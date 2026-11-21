@@ -36,8 +36,8 @@ def cascade(contexte):
 class OrdreTest(unittest.TestCase):
     """L'ordre lui-même : sans doublon, et aux rangs que la doctrine fixe."""
 
-    def test_vingt_quatre_etapes_sans_doublon(self):
-        self.assertEqual(len(ORDRE_ETAPES), 24)
+    def test_vingt_cinq_etapes_sans_doublon(self):
+        self.assertEqual(len(ORDRE_ETAPES), 25)
         self.assertEqual(len(set(ORDRE_ETAPES)), len(ORDRE_ETAPES),
                          'une étape est déclarée deux fois : son rang '
                          'deviendrait ambigu.')

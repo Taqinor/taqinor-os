@@ -105,6 +105,7 @@ ORDRE_ETAPES = (
     'horizon',            # masque lointain : avant tout ombrage proche
     'ombrage_proche',     # matrice 12×24 du constructeur
     'acces_module',       # solarAccess module par module (même moteur)
+    'ombrage_diffus',     # diffus × facteur de vue du ciel (ACAL461)
     'inter_rangees',      # auto-ombrage des rangées entre elles
     'bifacial',           # GAIN, juste après l'auto-ombrage (préambule L3)
     # — l'optique et l'irradiance (PVsyst, Array and system losses) —
@@ -161,6 +162,7 @@ LIBELLES = {
     'horizon': "Masque lointain (ligne d'horizon)",
     'ombrage_proche': 'Ombrage proche (matrice 12×24)',
     'acces_module': 'Accès solaire, module par module',
+    'ombrage_diffus': 'Ombrage du diffus (vue du ciel)',
     'inter_rangees': 'Auto-ombrage entre rangées',
     'bifacial': 'Gain bifacial en face arrière',
     'iam': "Incidence (IAM)",
@@ -216,6 +218,7 @@ ETAPES_HORS_CATALOGUE = {
                       'constructeur.',
     'acces_module': "L'accès solaire est une lecture par module du même "
                     "moteur d'ombrage.",
+    'ombrage_diffus': 'Le diffus vient du facteur de vue du ciel du pan.',
     'inter_rangees': "L'auto-ombrage se calcule sur la géométrie des "
                      'rangées.',
     'bifacial': 'Le bifacial est un GAIN : le catalogue ne décrit que des '

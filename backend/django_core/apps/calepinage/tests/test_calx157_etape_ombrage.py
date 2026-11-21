@@ -304,3 +304,58 @@ class ColonneEnergieTest(SimpleTestCase):
         self.assertEqual(point['gi_w_m2'], 600.0)
         self.assertEqual(point['p_w'], 600.0)
         self.assertEqual(etapes.energie_kwh(rendue), 0.6)
+
+
+class OmbrageDiffusTest(SimpleTestCase):
+    """ACAL461 — ``gd`` x facteur de vue du ciel, ``gb``/``gr`` intacts."""
+
+    SERIE = {'pas_minutes': 60, 'points': [
+        {'annee': 2020, 'mois': 6, 'jour': 21, 'heure': 12,
+         'gb_i_w_m2': 800.0, 'gd_i_w_m2': 100.0, 'gr_i_w_m2': 50.0,
+         'gi_w_m2': 950.0, 'p_w': 950.0}]}
+
+    @staticmethod
+    def contexte(facteur=0.9, horizon=False):
+        bloc = {'methode': {'diffus': 'isotrope', 'horizon': horizon,
+                            'resolution': 'centres_de_modules'}}
+        if facteur is not None:
+            bloc['facteur'] = facteur
+        return {'plan': 'PAN-A', 'ombrage': {'layout': {'zones': [
+            {'id': 'PAN-A', 'geometry': {'skyViewFactor': bloc}}]}}}
+
+    def test_le_diffus_est_multiplie_et_gi_recompose(self):
+        from apps.calepinage.services.etapes import ombrage_diffus
+        rendue, etape = ombrage_diffus.appliquer(self.SERIE, self.contexte())
+        point = rendue['points'][0]
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertAlmostEqual(point['gd_i_w_m2'], 90.0)
+        self.assertEqual(point['gb_i_w_m2'], 800.0)
+        self.assertEqual(point['gr_i_w_m2'], 50.0)
+        self.assertAlmostEqual(point['gi_w_m2'], 940.0)
+        self.assertAlmostEqual(point['p_w'], 940.0)
+        self.assertEqual(self.SERIE['points'][0]['gd_i_w_m2'], 100.0)
+
+    def test_les_omissions_sont_nommees(self):
+        from apps.calepinage.services.etapes import ombrage_diffus
+        _s, sans = ombrage_diffus.appliquer(self.SERIE, self.contexte(None))
+        self.assertIn('skyViewFactor', sans['motif_omission'])
+        _s, hor = ombrage_diffus.appliquer(self.SERIE,
+                                           self.contexte(horizon=True))
+        self.assertIn('horizon', hor['motif_omission'])
+        brute = {'points': [{'gb_i_w_m2': 1.0, 'gi_w_m2': 1.0}]}
+        _s, comp = ombrage_diffus.appliquer(brute, self.contexte())
+        self.assertEqual(comp['motif_omission'], MOTIF_COMPOSANTES_ABSENTES)
+        _s, rien = ombrage_diffus.appliquer(self.SERIE, {})
+        self.assertTrue(rien['motif_omission'])
+
+    def test_dans_la_chaine_place_apres_acces_module_hors_ombrage(self):
+        from apps.calepinage.services.chaine_pertes import (
+            ETAPES_OMBRAGE, ORDRE_ETAPES)
+        i = ORDRE_ETAPES.index('ombrage_diffus')
+        self.assertEqual(ORDRE_ETAPES[i - 1], 'acces_module')
+        self.assertEqual(ORDRE_ETAPES[i + 1], 'inter_rangees')
+        self.assertNotIn('ombrage_diffus', ETAPES_OMBRAGE)
+        _r, cascade = appliquer_chaine(self.SERIE, self.contexte())
+        etape = next(e for e in cascade['etapes']
+                     if e['etape'] == 'ombrage_diffus')
+        self.assertEqual(etape['motif_omission'], '')
