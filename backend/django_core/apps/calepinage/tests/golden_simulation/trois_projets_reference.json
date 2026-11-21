@@ -48,6 +48,13 @@
      "perte_pct": null
     },
     {
+     "etape": "ombrage_diffus",
+     "omise": true,
+     "kwh_avant": 18715.941,
+     "kwh_apres": null,
+     "perte_pct": null
+    },
+    {
      "etape": "inter_rangees",
      "omise": true,
      "kwh_avant": 18715.941,
@@ -245,6 +252,13 @@
      "perte_pct": null
     },
     {
+     "etape": "ombrage_diffus",
+     "omise": true,
+     "kwh_avant": 28194.223,
+     "kwh_apres": null,
+     "perte_pct": null
+    },
+    {
      "etape": "inter_rangees",
      "omise": true,
      "kwh_avant": 28194.223,
@@ -436,6 +450,13 @@
     },
     {
      "etape": "acces_module",
+     "omise": true,
+     "kwh_avant": 38117.233,
+     "kwh_apres": null,
+     "perte_pct": null
+    },
+    {
+     "etape": "ombrage_diffus",
      "omise": true,
      "kwh_avant": 38117.233,
      "kwh_apres": null,
