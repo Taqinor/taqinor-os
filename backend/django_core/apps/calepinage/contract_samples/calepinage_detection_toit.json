@@ -1,0 +1,102 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/detection-toit/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL391 (M0, PACT10, D-ACAL-33 du 20/11/2026) — la DÉTECTION du toit par IA : disponibilité, demande d'une capture, PROPOSITION de contour et de pans, refus nommés. Posé SEUL avant le serveur (ACAL485) et l'écran (ACAL488) qui reprennent CETTE forme sans la redire. CORPS : l'image est la pièce jointe multipart `image` ; `exemple_corps` = {emprise, origine} (`origine` = `importee` pour un fichier choisi par l'utilisateur, `carte` pour une capture du fond d'imagerie). `GET` de la même route = `exemple_disponibilite` {disponible, motif, origines_acceptees[] parmi `importee`, `carte`} : `disponible: false` et motif français quand aucune clé n'est configurée ; `carte` n'y figure que si le serveur l'accepte (ACAL485). `exemple` = {propositions: {contour_lnglat[], pans[] {contour_lnglat[], azimut_deg ou null, confiance ou null}}, provenance `ia`, a_confirmer `true`} : le serveur a déjà converti les fractions d'image en longitude/latitude grâce à l'emprise reçue (même forme de contour que `calepinage_import_plan.json::contour_lnglat`). Une proposition n'est JAMAIS enregistrée et reste « à confirmer ». `exemple_indisponible_503` porte un message français invitant à tracer à la main. Aucune clé ne porte le nom d'un client, une adresse ou un identifiant de lead ; coordonnées et valeurs ILLUSTRATIVES (placeholders).",
+  "exemple_corps": {
+    "emprise": {
+      "ouest": -7.6001,
+      "sud": 33.5699,
+      "est": -7.5997,
+      "nord": 33.5703
+    },
+    "origine": "importee"
+  },
+  "exemple_disponibilite": {
+    "disponible": true,
+    "motif": "",
+    "origines_acceptees": [
+      "importee",
+      "carte"
+    ]
+  },
+  "exemple_disponibilite_indisponible": {
+    "disponible": false,
+    "motif": "La détection du toit n'est pas configurée sur ce serveur.",
+    "origines_acceptees": [
+      "importee"
+    ]
+  },
+  "exemple": {
+    "propositions": {
+      "contour_lnglat": [
+        [
+          -7.6,
+          33.57
+        ],
+        [
+          -7.5998,
+          33.57
+        ],
+        [
+          -7.5998,
+          33.5702
+        ],
+        [
+          -7.6,
+          33.5702
+        ]
+      ],
+      "pans": [
+        {
+          "contour_lnglat": [
+            [
+              -7.6,
+              33.57
+            ],
+            [
+              -7.5998,
+              33.57
+            ],
+            [
+              -7.5998,
+              33.5702
+            ],
+            [
+              -7.6,
+              33.5702
+            ]
+          ],
+          "azimut_deg": 180.0,
+          "confiance": 0.8
+        },
+        {
+          "contour_lnglat": [
+            [
+              -7.6,
+              33.57
+            ],
+            [
+              -7.5998,
+              33.57
+            ],
+            [
+              -7.5998,
+              33.5702
+            ],
+            [
+              -7.6,
+              33.5702
+            ]
+          ],
+          "azimut_deg": null,
+          "confiance": null
+        }
+      ]
+    },
+    "provenance": "ia",
+    "a_confirmer": true
+  },
+  "exemple_indisponible_503": {
+    "detail": "La détection du toit est indisponible pour le moment : tracez le toit à la main."
+  }
+}

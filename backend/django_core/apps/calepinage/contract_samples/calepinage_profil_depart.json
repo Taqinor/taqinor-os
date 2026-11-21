@@ -1,0 +1,217 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/profil-depart/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL387 (M0, PACT10, D-ACAL-31 du 20/11/2026 « profil de départ sourcé : oui ») — les valeurs de départ SOURCÉES proposées pour les clés du registre de réglages (`services/parametres_cles.py::REGISTRES`, 37 clés : 28 `simulation`, 9 `electrique_societe`) et la liste des clés laissées sans valeur faute de source. Posé SEUL : le compilateur (ACAL404), la route et son application (ACAL403) et l'écran (ACAL405) reprennent CETTE forme sans la redire. `exemple.valeurs[]` = {cle, section, valeur, unite, source, reference, url, date_lecture} ; `source` vaut TOUJOURS `texte` (membre de `SOURCES_ADMISES` : une valeur publiée est un texte cité), `reference` commence par `prefixe_reference`, `url` est la page lue, `date_lecture` est ISO. AUCUNE valeur tapée de mémoire : b0 = 0,05 est lu sur la page PVsyst « Array incidence loss (IAM) » (citée en tête de `parametres_cles.py`) ; toute autre clé est dans `exemple.sans_source[]` avec son motif tant qu'une page citée n'a pas été lue (ACAL404). Ces valeurs sont PROPOSÉES, jamais saisies : l'application (POST) ne touche que les clés VIDES (D-ACAL-31 lève D-CALX 7 « jamais préremplis » pour ces seules valeurs). `exemple_application` = réponse du POST {appliquees[], ignorees[{cle, section, motif}]}, `motif` = `deja_saisie`. `prefixe_reference` = préfixe commun des références écrites, seule source de ce préfixe pour ACAL403 et ACAL405.",
+  "prefixe_reference": "Profil de départ — ",
+  "exemple": {
+    "valeurs": [
+      {
+        "cle": "b0_iam",
+        "section": "simulation",
+        "valeur": 0.05,
+        "unite": "",
+        "source": "texte",
+        "reference": "Profil de départ — PVsyst, Array incidence loss (IAM) : « measurements on real crystalline modules indicate a value of bo = 0.05 »",
+        "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-incidence-loss-iam.html",
+        "date_lecture": "2026-11-20"
+      }
+    ],
+    "sans_source": [
+      {
+        "cle": "fenetre_annees",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "mode_meteo",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "modele_iam",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "sigma_modele_pct",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "sigma_biais_meteo_pct",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "sigma_meteo_saisi_pct",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "tolerance_validation_pct",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "resolution_minutes",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "albedo_mensuel",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "annees_exploitation",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "regle_qualite_module",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "lid_par_techno",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "mismatch_fabricant_pct",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "modele_degradation",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "thermique_par_pose",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "attenuation_horizon",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "salissure_mensuelle_pct",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "indisponibilite_fenetres",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "auxiliaires_w_constants",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "auxiliaires_w_par_kw",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "auxiliaires_w_nuit",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "bifacial_hauteur_pose_m",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "bifacial_taux_occupation",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "bifacial_pas_rangee_m",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "bifacial_mismatch_arriere_pct",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "seuil_derivation_acces",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "plafond_modules_simules",
+        "section": "simulation",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "tolerance_polystring_acceptable_pct",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "tolerance_polystring_bloquante_pct",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "seuil_desequilibre_pct",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "borne_usuelle_dc_ac",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "seuil_alerte_dc_ac",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "correspondances_nomenclature",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "regle_bom_structure",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "cos_phi_par_defaut",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      },
+      {
+        "cle": "seuil_bas_dc_ac",
+        "section": "electrique_societe",
+        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+      }
+    ]
+  },
+  "exemple_application": {
+    "appliquees": [
+      {
+        "cle": "b0_iam",
+        "section": "simulation"
+      }
+    ],
+    "ignorees": [
+      {
+        "cle": "modele_iam",
+        "section": "simulation",
+        "motif": "deja_saisie"
+      }
+    ]
+  }
+}

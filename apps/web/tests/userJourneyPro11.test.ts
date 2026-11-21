@@ -603,6 +603,38 @@ describe('parcours utilisateur complet pro-11 — session résidentielle toit pl
     assertNoLeadPost();
     expect(urls.some((u) => u.includes('/api/preview-lead') || u.includes('/api/simulate'))).toBe(false);
   }, 90000);
+
+  // ACAL383 — le document ÉMIS par une séance scriptée est figé par un golden JSON. Volatiles
+  // (nommés un à un, jamais en bloc) : `zones[i].id` (id généré) et `consumption.source.saisi_le` (horodatage).
+  // Regénérer À LA MAIN seulement : `ACAL383_REGEN=1 npx vitest run tests/userJourneyPro11.test.ts`.
+  it('document émis par la séance complète = golden (ACAL383)', async () => {
+    type Api = import('../src/scripts/roofPro11/types').RoofToolApi;
+    let api: Api | null = null;
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), onApiReady: (a) => { api = a; } });
+    fakeMaps[0].fire('load', {});
+    setBill('1500'); await flush();
+    traceRoof(fakeMaps[0], 16); await flush();
+    (document.getElementById('rp9-obstacle') as HTMLButtonElement).click();
+    fakeMaps[0].fire('mousedown', { lngLat: { lng: -7.6201, lat: 33.5899 }, point: { x: 180, y: 180 } });
+    fakeMaps[0].fire('mousemove', { lngLat: { lng: -7.6199, lat: 33.5901 }, point: { x: 230, y: 130 } });
+    fakeMaps[0].fire('mouseup', { lngLat: { lng: -7.6199, lat: 33.5901 }, point: { x: 230, y: 130 } });
+    await flush();
+    (document.getElementById('rp9-layout-toggle') as HTMLButtonElement).click(); await flush();
+    const doc = JSON.parse(JSON.stringify(api!.serializeLayout())) as Record<string, unknown>;
+    (doc.zones as Array<Record<string, unknown>>).forEach((z) => { z.id = '<id>'; }); // volatile 1
+    const src = (doc.consumption as { source?: Record<string, unknown> } | undefined)?.source;
+    if (src) src.saisi_le = '<horodatage>'; // volatile 2
+    const fs = await import('node:fs');
+    const golden = (await import('node:path')).resolve(process.cwd(), 'tests/userJourneyPro11.document.json');
+    if (process.env.ACAL383_REGEN === '1') fs.writeFileSync(golden, JSON.stringify(doc, null, 2) + '\n');
+    const attendu = JSON.parse(fs.readFileSync(golden, 'utf-8')) as Record<string, unknown>;
+    const chemins = (v: unknown, p = ''): Record<string, unknown> =>
+      v && typeof v === 'object'
+        ? Object.assign({}, ...Object.entries(v).map(([k, x]) => chemins(x, `${p}/${k}`)))
+        : { [p]: v };
+    expect(chemins(doc), 'clé émise changée : voir le chemin en différence').toEqual(chemins(attendu));
+  }, 60000);
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════

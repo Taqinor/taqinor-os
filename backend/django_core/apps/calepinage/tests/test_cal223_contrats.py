@@ -43,6 +43,10 @@ from apps.calepinage.selectors import (
 from apps.calepinage.services import site
 from apps.calepinage.services.equipements import equipements_du_calepinage
 from apps.calepinage.services.lestage import masse_et_lestage
+from apps.calepinage.services.parametres_cles import (
+    REGISTRES,
+    SOURCES_ADMISES,
+)
 from apps.calepinage.services.modules_stock import (
     modules_disponibles_du_calepinage,
 )
@@ -402,6 +406,22 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_consommation_proposee.json':
         'consommation proposée par le serveur (ACAL21) : lit les factures '
         'et le profil du lead en base',
+    'calepinage_parcours_guide.json':
+        'état du parcours guidé (ACAL386) calculé à chaque lecture sur le '
+        'calepinage et ses réglages en base ; route livrée par ACAL392',
+    'calepinage_profil_depart.json':
+        'valeurs de départ sourcées proposées (ACAL387) : compilées depuis '
+        'des pages citées, appliquées aux réglages société en base (ACAL403)',
+    'calepinage_balayage.json':
+        'balayage paramétrique (ACAL388) : le résultat vit dans un job lu '
+        'en base par moteur/resultat/<job_id>/ ; route livrée par ACAL468',
+    'calepinage_table_ombrage.json':
+        'FRAGMENT du document roof_layout (zones[].geometry.shadeTable et '
+        'skyViewFactor, ACAL389), pas une réponse serveur : écrit par '
+        "l'atelier (ACAL459/460), lu par ACAL461",
+    'calepinage_detection_toit.json':
+        'détection du toit par IA (ACAL391) : appelle un fournisseur externe '
+        'sur une image reçue ; route livrée par ACAL485',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -443,6 +463,14 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL310 a livré ``POST calepinages/<pk>/consommation/proposer/``
     # (``views/consommation.py``) : calepinage_consommation_proposee.json en
     # est SORTI.
+    # ACAL392 livrera ``GET calepinages/<pk>/parcours/`` : retirer l'entrée.
+    'calepinage_parcours_guide.json': 'ACAL392',
+    # ACAL403 livrera ``GET``/``POST calepinages/profil-depart/`` : retirer.
+    'calepinage_profil_depart.json': 'ACAL403',
+    # ACAL468 livrera ``POST calepinages/<pk>/balayage/`` : retirer.
+    'calepinage_balayage.json': 'ACAL468',
+    # ACAL485 livrera ``GET``/``POST calepinages/<pk>/detection-toit/`` : retirer.
+    'calepinage_detection_toit.json': 'ACAL485',
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -516,6 +544,123 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
             "sa raison) — un échantillon non décidé dérive en silence.")
         self.assertEqual(sorted(connus - trouves), [],
                          "Échantillon déclaré mais absent du dossier.")
+
+    def test_forme_du_parcours_guide(self):
+        # ACAL386 — le parcours guidé : cinq étapes ordonnées, « manque »
+        # dédupliqué sur (code, cible), jamais une gravité inventée.
+        donnees = _charger('calepinage_parcours_guide.json')
+        cles = ['toit', 'panneaux', 'electrique', 'resultats', 'documents']
+        etats = {'a_faire', 'en_cours', 'fait', 'bloque'}
+        for nom in ('exemple', 'exemple_vide'):
+            etapes = donnees[nom]['etapes']
+            self.assertEqual([e['cle'] for e in etapes], cles, nom)
+            self.assertTrue(all(e['etat'] in etats for e in etapes), nom)
+            vus = set()
+            for ligne in donnees[nom]['manque']:
+                self.assertEqual(
+                    sorted(ligne), ['cible', 'code', 'etape', 'gravite',
+                                    'message', 'nombre'], nom)
+                self.assertIn(ligne['etape'], cles)
+                self.assertIn(ligne['gravite'],
+                              ('bloquant', 'a_regler', 'info'))
+                self.assertEqual(sorted(ligne['cible']), ['champ', 'onglet'])
+                identite = (ligne['code'], ligne['cible']['onglet'],
+                            ligne['cible']['champ'])
+                self.assertNotIn(identite, vus, 'ligne en double')
+                vus.add(identite)
+        self.assertEqual(donnees['exemple_vide']['manque'], [])
+        self.assertTrue(all(e['etat'] == 'a_faire'
+                            for e in donnees['exemple_vide']['etapes']))
+
+    def test_forme_du_profil_de_depart(self):
+        # ACAL387 — chaque valeur de départ est SOURCÉE (jamais de mémoire).
+        donnees = _charger('calepinage_profil_depart.json')
+        prefixe = donnees['prefixe_reference']
+        cles = ('cle', 'section', 'valeur', 'unite', 'source', 'reference',
+                'url', 'date_lecture')
+        for ligne in donnees['exemple']['valeurs']:
+            self.assertEqual(sorted(ligne), sorted(cles))
+            declarees = {c[0] for c in REGISTRES[ligne['section']]}
+            self.assertIn(ligne['cle'], declarees)
+            self.assertEqual(ligne['source'], 'texte')
+            self.assertIn(ligne['source'], SOURCES_ADMISES)
+            self.assertTrue(ligne['reference'].startswith(prefixe))
+            self.assertTrue(ligne['url'].startswith('https://'))
+            self.assertRegex(ligne['date_lecture'], r'^\d{4}-\d{2}-\d{2}$')
+        valeurs = {(v['section'], v['cle'])
+                   for v in donnees['exemple']['valeurs']}
+        sans = {(v['section'], v['cle'])
+                for v in donnees['exemple']['sans_source']}
+        tout = {(sec, c[0]) for sec, lignes in REGISTRES.items()
+                for c in lignes}
+        self.assertEqual(valeurs & sans, set())
+        self.assertEqual(valeurs | sans, tout)
+        for ligne in donnees['exemple_application']['ignorees']:
+            self.assertEqual(ligne['motif'], 'deja_saisie')
+
+    def test_forme_du_balayage(self):
+        # ACAL388 — même enveloppe que l'accusé de simulation, nature neuve.
+        donnees = _charger('calepinage_balayage.json')
+        axes = ('inclinaison_deg', 'azimut_deg', 'ratio_dc_ac')
+        for axe in donnees['exemple_corps']['axes']:
+            self.assertEqual(sorted(axe),
+                             ['max', 'min', 'nom', 'pas'])
+            self.assertIn(axe['nom'], axes)
+        accuse = donnees['exemple']
+        cles_simulation = set(
+            _charger('calepinage_simulation.json')['exemple_accepte'])
+        self.assertEqual(set(accuse), cles_simulation)
+        self.assertEqual((accuse['kind'], accuse['nature']),
+                         ('calepinage', 'balayage'))
+        resultat = donnees['exemple_resultat']
+        demandes = {a['nom'] for a in donnees['exemple_corps']['axes']}
+        for ligne in resultat['grille'] + [resultat['optimum']]:
+            self.assertTrue(demandes <= set(ligne))
+            self.assertIn('p50_kwh', ligne)
+            self.assertIn('rendement_specifique_kwh_kwc', ligne)
+            self.assertEqual('ratio_dc_ac' in demandes,
+                             'ecretage_pct' in ligne)
+        for cle in ('appels_pvgis', 'complete', 'socle_manquant', 'etat'):
+            self.assertIn(cle, resultat)
+
+    def test_forme_de_la_table_d_ombrage(self):
+        # ACAL389 — dimensions cohérentes, valeurs dans [0, 1].
+        geometrie = _charger(
+            'calepinage_table_ombrage.json')['exemple']['zones'][0]['geometry']
+        table = geometrie['shadeTable']
+        self.assertEqual(len(table['facteurs']), len(table['hauteursDeg']))
+        for ligne in table['facteurs']:
+            self.assertEqual(len(ligne), len(table['azimutsDeg']))
+            self.assertTrue(all(0 <= v <= 1 for v in ligne))
+        self.assertEqual(table['methode'], 'centres_de_modules')
+        ciel = geometrie['skyViewFactor']
+        self.assertTrue(0 <= ciel['facteur'] <= 1)
+        self.assertEqual(sorted(ciel['methode']),
+                         ['diffus', 'horizon', 'resolution'])
+        self.assertEqual(ciel['methode']['diffus'], 'isotrope')
+        self.assertIsInstance(ciel['methode']['horizon'], bool)
+        for bloc in (table, ciel):
+            self.assertTrue(bloc['signature'])
+
+    def test_forme_de_la_detection_du_toit(self):
+        # ACAL391 — une PROPOSITION : toujours « à confirmer », jamais écrite.
+        donnees = _charger('calepinage_detection_toit.json')
+        self.assertIn(donnees['exemple_corps']['origine'],
+                      ('importee', 'carte'))
+        dispo = donnees['exemple_disponibilite']
+        self.assertEqual(sorted(dispo),
+                         ['disponible', 'motif', 'origines_acceptees'])
+        self.assertTrue(set(dispo['origines_acceptees'])
+                        <= {'importee', 'carte'})
+        propositions = donnees['exemple']['propositions']
+        self.assertEqual(sorted(propositions), ['contour_lnglat', 'pans'])
+        self.assertEqual(donnees['exemple']['provenance'], 'ia')
+        self.assertIs(donnees['exemple']['a_confirmer'], True)
+        for pan in propositions['pans']:
+            self.assertEqual(sorted(pan),
+                             ['azimut_deg', 'confiance', 'contour_lnglat'])
+            self.assertTrue(all(len(p) == 2 for p in pan['contour_lnglat']))
+        self.assertTrue(donnees['exemple_indisponible_503']['detail'])
 
 
 class CheminDeclareTest(unittest.TestCase):
