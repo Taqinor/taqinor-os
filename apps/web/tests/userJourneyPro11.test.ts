@@ -1064,6 +1064,31 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     confirmSpy.mockRestore();
   }, 60000);
 
+  // ACAL410 (acceptation ACAL490) — « 2 pans » puis « 4 pans » : la liste des zones suit le document.
+  it('« Forme du toit » : la liste des zones compte les pans découpés (2 puis 4)', async () => {
+    Object.assign(FakeMap.prototype, { getCenter() { return { lng: -7.62, lat: 33.59 }; } });
+    for (const [libelle, n] of [['2 pans', 2], ['4 pans', 4]] as const) {
+      const api = await boot();
+      setBill('3000');
+      // Le geste de l'acceptation : toit 12 × 8 m par cotes, orientation 0°.
+      const cotes = document.getElementById('rp9-toit-cotes')!;
+      const champs = Array.from(cotes.querySelectorAll<HTMLInputElement>('input'));
+      for (const [i, v] of ['12', '8', '0'].entries()) {
+        champs[i].value = v;
+        champs[i].dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      Array.from(cotes.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === 'Créer le toit')!.click();
+      await flush();
+      expect(txt('rp9-status')).toContain('Toit créé : 12 × 8 m');
+      const puce = Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-formes-toit button')).find((b) => b.textContent === libelle)!;
+      puce.click();
+      await flush();
+      expect(txt('rp9-status')).toContain(`Toit découpé en ${n} pans`);
+      expect((api().serializeLayout() as Doc).zones, `${libelle} : document`).toHaveLength(n);
+      expect(document.querySelectorAll('#rp9-areas-list [data-area-row]').length, `${libelle} : liste à jour`).toBe(n);
+    }
+  }, 120000);
+
   // ACAL420 — l'état vide dit le prochain geste sur la carte, puis s'efface à la fermeture du contour.
   it('l’état vide dit le prochain geste, puis s’efface à la fermeture du contour', async () => {
     await boot();
