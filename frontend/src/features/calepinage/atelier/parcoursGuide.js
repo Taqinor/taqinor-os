@@ -19,7 +19,7 @@ export const ETAPES = [
     onglets: ['fiches', 'affectation', 'masse-lestage', 'fixation', 'pompage'] },
   { cle: 'electrique', libelle: 'Électrique',
     onglets: ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
-      'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'schema'] },
+      'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'controle-chaine', 'schema'] },
   { cle: 'resultats', libelle: 'Résultats',
     onglets: ['production', 'pertes', 'postes-pertes', 'series', 'batterie', 'economie', 'variantes', 'optimiser'] },
   { cle: 'documents', libelle: 'Documents',
@@ -62,7 +62,7 @@ export const ECRANS_ETAPE = {
     ouverture: 'verdict-electrique',
     libelle: 'Électrique — synthèse',
     onglets: ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
-      'materiel-electrique', 'saisies-electriques', 'decisions-electriques'],
+      'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'controle-chaine'],
     composant: lazy(() => import('../electrique/EtapeElectrique')),
   },
   // ACAL396 — Résultats : le diagramme ET l'édition d'un poste dans un seul

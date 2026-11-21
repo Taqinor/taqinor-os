@@ -134,13 +134,107 @@ def _ecarts(decisions):
     return ecartes
 
 
-def checklist_protections(conception, *, decisions=None, norme=None):
+#: ACAL675 — la question « coupure d'urgence DC / arrêt rapide exigé ? » : la
+#: réponse est celle du DOSSIER (``protections.exigences.arret_rapide``), jamais
+#: une règle écrite par le logiciel — aucune norme n'est inventée ici.
+LIBELLE_ARRET_RAPIDE = "Coupure d'urgence DC / arrêt rapide exigé ?"
+DESIGNATION_ARRET_RAPIDE = "Coupure d'urgence DC (arrêt rapide)"
+MOTIF_EXIGE_DOSSIER = 'exigé par le dossier'
+_REPONSES = {'oui': True, 'non': False, True: True, False: False}
+
+
+def _question(code, libelle, statut):
+    return {'code': code, 'libelle': libelle, 'statut': statut}
+
+
+def _arret_rapide(decisions, rang):
+    """ACAL675 — ``(organe ajouté ou None, question)`` de la réponse saisie.
+
+    « oui » ajoute l'organe d'origine ``societe`` (repère ``SOC<rang>``) ;
+    « non » n'ajoute rien et le dit ; absent : « non renseigné ».
+    """
+    brut = ((decisions or {}).get('exigences') or {}).get('arret_rapide')
+    if brut in (None, ''):
+        return None, _question(
+            'ARRET_RAPIDE_NON_RENSEIGNE',
+            '%s — non renseigné' % LIBELLE_ARRET_RAPIDE, 'non_renseigne')
+    reponse = _REPONSES.get(brut.strip().lower() if isinstance(brut, str)
+                            else brut)
+    if reponse is None:
+        raise DecisionInvalide(
+            "« arret_rapide » : répondez « oui » ou « non » (reçu : « %s »)."
+            % brut, champ='protections.exigences.arret_rapide')
+    if not reponse:
+        return None, _question(
+            'ARRET_RAPIDE_NON_EXIGE',
+            '%s — non exigé' % LIBELLE_ARRET_RAPIDE, 'non_exige')
+    organe = _ajout({'designation': DESIGNATION_ARRET_RAPIDE,
+                     'motif': MOTIF_EXIGE_DOSSIER, 'cote': 'dc'}, rang)
+    return organe, _question(
+        'ARRET_RAPIDE_EXIGE',
+        '%s — oui (%s)' % (LIBELLE_ARRET_RAPIDE, MOTIF_EXIGE_DOSSIER),
+        'exige')
+
+
+#: ACAL676 — le réglage société de la distance de séparation foudre MINIMALE :
+#: valeur + source, vide par défaut. Le logiciel ne fixe AUCUNE distance (règle
+#: d'étude foudre) : sans valeur saisie, aucun verdict n'est inventé.
+CLE_DISTANCE_FOUDRE = 'distance_separation_foudre_min_m'
+
+
+def _metres(valeur):
+    return ('%g' % valeur).replace('.', ',')
+
+
+def _paratonnerre(decisions, reglages):
+    """ACAL676 — la question de distance de séparation, ou ``None``.
+
+    Posée seulement quand un paratonnerre est DÉCLARÉ
+    (``protections.exigences.paratonnerre = {present, distance_separation_m}``).
+    """
+    from .raccordement import _reglage
+    from .valeurs import nombre
+
+    brut = ((decisions or {}).get('exigences') or {}).get('paratonnerre')
+    if not isinstance(brut, dict) or _REPONSES.get(
+            str(brut.get('present')).strip().lower()
+            if isinstance(brut.get('present'), str)
+            else brut.get('present')) is not True:
+        return None
+    minimum, _source = _reglage(reglages, CLE_DISTANCE_FOUDRE)
+    distance = nombre(brut.get('distance_separation_m'))
+    if minimum is None:
+        return _question(
+            'PARATONNERRE_DISTANCE_NON_CONTROLEE',
+            'Paratonnerre : distance non contrôlée : valeur minimale non '
+            'saisie', 'non_controle')
+    if distance is None:
+        return _question(
+            'PARATONNERRE_DISTANCE_NON_RENSEIGNEE',
+            'Paratonnerre : distance de séparation non saisie',
+            'non_renseigne')
+    if distance < minimum:
+        return _question(
+            'PARATONNERRE_DISTANCE_SOUS_MINIMUM',
+            'Paratonnerre : distance %s m inférieure au minimum %s m saisi '
+            'par la société' % (_metres(distance), _metres(minimum)),
+            'a_surveiller')
+    return _question(
+        'PARATONNERRE_DISTANCE_CONFORME',
+        'Paratonnerre : distance %s m, au moins égale au minimum %s m saisi '
+        'par la société' % (_metres(distance), _metres(minimum)), 'conforme')
+
+
+def checklist_protections(conception, *, decisions=None, norme=None,
+                          reglages=None):
     """CAL132 — la check-list complète, éditable, chaque ligne gardant sa source.
 
     Args:
         conception: la ``Conception`` de CAL124 (chaînes déjà calculées).
         decisions: ``{'ajouts': [...], 'ecartes': [{repere, motif}]}`` — les
             décisions SOCIÉTÉ, enregistrées sur le calepinage.
+        reglages: la section ``electrique_societe`` des réglages société
+            (ACAL676 : distance de séparation foudre minimale).
         norme: le verdict de ``services.norme.norme_applicable``.
 
     Returns:
@@ -159,12 +253,14 @@ def checklist_protections(conception, *, decisions=None, norme=None):
         return {'organes': [], 'justifications': [],
                 'omissions': [norme.get('motif') or
                               "aucune norme électrique sélectionnée : "
-                              "check-list de protections OMISE"]}
+                              "check-list de protections OMISE"],
+                'questions': []}
     if conception.fiche_incomplete or conception.resultat is None \
             or not conception.chaines:
         return {'organes': [], 'justifications': [],
                 'omissions': ["aucune chaîne calculée : il n'y a pas d'organe "
-                              "de protection à décider"]}
+                              "de protection à décider"],
+                'questions': []}
 
     resultat = concevoir_protections(conception.entree, conception.resultat,
                                      evaluer_onduleurs(conception))
@@ -191,10 +287,18 @@ def checklist_protections(conception, *, decisions=None, norme=None):
                                 start=1):
         organes.append(_ajout(brut, rang))
 
+    # ACAL675 — les exigences du dossier : questions posées, organe ajouté.
+    organe, question = _arret_rapide(
+        decisions, len((decisions or {}).get('ajouts') or ()) + 1)
+    if organe is not None:
+        organes.append(organe)
+
     return {
         'organes': organes,
         'justifications': list(resultat.justifications),
         'omissions': [],
+        'questions': [question] + [
+            q for q in (_paratonnerre(decisions, reglages),) if q],
     }
 
 

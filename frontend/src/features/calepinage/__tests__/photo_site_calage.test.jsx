@@ -39,6 +39,7 @@ vi.mock('leaflet/dist/leaflet.css', () => ({}))
 
 const { default: PhotoSiteCalage } = await import('../PhotoSiteCalage')
 const { positionsInitiales, coinsDepuisMarqueurs } = await import('../PhotoSiteCalage.helpers')
+const projectionPhoto = await import('../commun/projectionPhoto')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -276,5 +277,63 @@ describe('CAL53 — l’écran est ATTEIGNABLE', () => {
     )
     expect(await screen.findByTestId('cal-lien-photos-calage'))
       .toHaveAttribute('href', '/calepinage/9?onglet=photos')
+  })
+})
+
+describe('ACAL529 — « Voir sur la photo » : les modules projetés par l’homographie du calage', () => {
+  const { versPixelsPhoto } = projectionPhoto
+  const COINS = PHOTO_CALEE.calage.coins // [lat, lng] : NO, NE, SE, SO
+  const L_IMG = 800
+  const H_IMG = 600
+
+  it('les 4 coins de calage tombent sur les 4 coins de l’image à 1 pixel près ; le centre au centre', () => {
+    const px = versPixelsPhoto(COINS, L_IMG, H_IMG)
+    const attendus = [[0, 0], [L_IMG, 0], [L_IMG, H_IMG], [0, H_IMG]]
+    COINS.forEach(([lat, lng], i) => {
+      const [x, y] = px(lng, lat)
+      expect(Math.abs(x - attendus[i][0])).toBeLessThan(1)
+      expect(Math.abs(y - attendus[i][1])).toBeLessThan(1)
+    })
+    const [cx, cy] = px(-7.15, 33.15)
+    expect(Math.abs(cx - L_IMG / 2)).toBeLessThan(1)
+    expect(Math.abs(cy - H_IMG / 2)).toBeLessThan(1)
+  })
+
+  it('latitude et longitude inversées : le coin NO ne tombe plus sur le pixel (0, 0)', () => {
+    const px = versPixelsPhoto(COINS, L_IMG, H_IMG)
+    const [x, y] = px(33.1, -7.1) // lat/lng permutés
+    expect(Math.hypot(x, y)).toBeGreaterThan(1)
+  })
+
+  it('sans calage : pas de bouton, la page dit de caler d’abord', async () => {
+    photos.mockResolvedValue({ data: { photos: [PHOTO_NON_CALEE] } })
+    get.mockResolvedValue({ data: { contexte_geographique: null } })
+    rendre()
+    await screen.findByTestId('cal-photo-calage-carte')
+    expect(screen.queryByTestId('cal-photo-sur-photo-bouton')).toBeNull()
+    expect(screen.getByTestId('cal-photo-sur-photo-sans-calage')).toHaveTextContent('Calez d’abord la photo sur la carte.')
+  })
+
+  it('calée mais sans module : « Aucun module posé à projeter. », pas de bouton', async () => {
+    photos.mockResolvedValue({ data: { photos: [PHOTO_CALEE] } })
+    get.mockResolvedValue({ data: { contexte_geographique: null } })
+    rendre()
+    expect(await screen.findByTestId('cal-photo-sur-photo-vide')).toHaveTextContent('Aucun module posé à projeter.')
+    expect(screen.queryByTestId('cal-photo-sur-photo-bouton')).toBeNull()
+  })
+
+  it('calée avec des modules : le bouton ouvre la vue et la phrase « toit plat »', async () => {
+    layout.mockResolvedValue({
+      data: {
+        roof_layout: { zones: [{ id: 'z1', geometry: { origin: [-7.15, 33.15], panels: [{ cx: 0, cy: 0 }], moduleId: null, tiltDeg: 0, azimuthDeg: 0 } }] },
+        empreinte_document: 'E0',
+      },
+    })
+    photos.mockResolvedValue({ data: { photos: [PHOTO_CALEE] } })
+    get.mockResolvedValue({ data: { contexte_geographique: null } })
+    rendre()
+    fireEvent.click(await screen.findByTestId('cal-photo-sur-photo-bouton'))
+    expect(screen.getByText('Les modules sont projetés comme si le toit était plat.')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-photo-sur-photo-telecharger')).toBeInTheDocument()
   })
 })

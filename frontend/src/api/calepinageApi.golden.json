@@ -340,6 +340,20 @@
       "verbe": "get"
     }
   ],
+  "calepinages.diagrammeEnergie": [
+    {
+      "config": {
+        "params": {
+          "langue": 3
+        },
+        "responseType": "blob",
+        "suppressErrorToast": true
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/diagramme-energie.svg/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.documents": [
     {
       "config": null,
@@ -540,6 +554,14 @@
       "data": 3,
       "url": "/calepinage/calepinages/7/evaluer-electrique/",
       "verbe": "post"
+    }
+  ],
+  "calepinages.explications": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/explications/",
+      "verbe": "get"
     }
   ],
   "calepinages.exportCsv": [
@@ -840,6 +862,14 @@
       },
       "url": "/calepinage/calepinages/7/etiquettes/",
       "verbe": "post"
+    }
+  ],
+  "calepinages.pretAEnvoyer": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/pret-a-envoyer/",
+      "verbe": "get"
     }
   ],
   "calepinages.proposerConsommation": [

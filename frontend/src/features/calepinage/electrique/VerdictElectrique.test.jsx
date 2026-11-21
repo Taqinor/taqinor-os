@@ -396,6 +396,29 @@ describe('ACAL712 — carte chaîne touchée par l’ombre', () => {
     expect(screen.getByTestId('acal712-modifier')).toHaveAttribute('href', '/calepinage/7?onglet=affectation')
   })
 
+  it('ACAL619 — « Tension par temps froid » : une ligne par chaîne, les nombres servis, mots pour l’état', async () => {
+    const chaines = exempleContrat('calepinage', 'calepinage_evaluation_electrique').chaines
+    servir({ ...REPONSE, chaines })
+
+    rendre()
+
+    const ligne = await screen.findByTestId('acal619-ligne-1')
+    expect(ligne).toHaveTextContent('642 V / 1 000 V — dans la limite')
+    expect(ligne).toHaveTextContent('432 V / 200 V — dans la limite')
+    expect(ligne).toHaveTextContent('-5 °C')
+    expect(screen.getByTestId('acal619-ligne-2')).toHaveTextContent('535 V')
+  })
+
+  it('ACAL619 — une chaîne indéterminée : « tension non calculable », jamais un nombre', async () => {
+    const chaines = [{ ...exempleContrat('calepinage', 'calepinage_evaluation_electrique').chaines[0], voc_froid_v: null, vmp_chaud_v: null, indetermine: ['fiche module : Voc absent'] }]
+    servir({ ...REPONSE, chaines })
+
+    rendre()
+
+    const ligne = await screen.findByTestId('acal619-ligne-1')
+    expect(ligne).toHaveTextContent('tension non calculable : fiche module : Voc absent')
+  })
+
   it('rien sans chaîne touchée, sans cascade, ou en guidé', async () => {
     localStorage.setItem(CLE_EXPERT, '1')
     const sansEcart = ombrage()

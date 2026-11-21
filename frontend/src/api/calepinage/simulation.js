@@ -12,10 +12,13 @@ export const simulation = {
     // affiche ce motif-là sous le bouton, il n'en invente aucun.
     // ACAL446 — `colonnes` OPTIONNEL (CSV de noms, CALX313) : absent ⇒ le
     // serveur sert ses colonnes par défaut, l'appel d'export reste inchangé.
-    exportCsv: (id, quoi, colonnes) =>
+    // ACAL767 — `options.suppressErrorToast` : une lecture que personne n'a
+    // demandée garde son refus local (la carte), sans toast global.
+    exportCsv: (id, quoi, colonnes, options) =>
       api.get(`${pivot(id)}export-csv/`, {
         responseType: 'blob',
         params: colonnes ? { quoi, colonnes } : { quoi },
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
       }),
 
     // CALX62 — le DÉPÔT d'une série météo horaire de la société, à la place
@@ -51,8 +54,14 @@ export const simulation = {
     simuler: (id, { forcer = false, silencieux = false } = {}) =>
       api.post(`${pivot(id)}simuler/`, { forcer }, silencieux ? { suppressErrorToast: true } : undefined),
 
+    // ACAL871 — le registre des explications (contrat `calepinage_explications.json`) :
+    // le même pour tous les calepinages, sans `pk`.
+    explications: () => api.get('/calepinage/calepinages/explications/'),
+
     // ACAL392 — l'état du parcours guidé (contrat `calepinage_parcours_guide.json`).
     parcours: (id) => api.get(`${pivot(id)}parcours/`),
+    // ACAL860 — « prêt à envoyer ? » (contrat `calepinage_pret_a_envoyer.json`).
+    pretAEnvoyer: (id) => api.get(`${pivot(id)}pret-a-envoyer/`),
 
     // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
     // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR

@@ -293,8 +293,8 @@ describe('ACAL394 — l’interrupteur « Mode expert »', () => {
 })
 
 describe('ACAL409 — « Comparer les variantes » et « Photos du site » sont des onglets du rail', () => {
-  it('le registre passe à 40 onglets, la table du parcours couvre `variantes` (Résultats) et `photos` (Toit)', () => {
-    expect(ONGLETS).toHaveLength(40)
+  it('le registre passe à 41 onglets (ACAL628 : +1 « controle-chaine »), la table du parcours couvre `variantes` (Résultats) et `photos` (Toit)', () => {
+    expect(ONGLETS).toHaveLength(41)
     expect(ETAPES.find((e) => e.cle === 'resultats').onglets).toContain('variantes')
     expect(ETAPES.find((e) => e.cle === 'toit').onglets).toContain('photos')
   })
@@ -322,7 +322,7 @@ describe('ACAL409 — « Comparer les variantes » et « Photos du site » sont 
 
 describe('ACAL395 — l’étape Électrique en UNE page', () => {
   const SECTIONS = ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
-    'materiel-electrique', 'saisies-electriques', 'decisions-electriques']
+    'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'controle-chaine']
   const parcoursElectrique = (etat) => {
     const base = reponseContrat('calepinage', 'calepinage_parcours_guide')
     const ligne = (code) => ({ code, message: 'm', etape: 'electrique', cible: { onglet: 'verdict-electrique', champ: '' }, gravite: 'a_regler', nombre: 1 })

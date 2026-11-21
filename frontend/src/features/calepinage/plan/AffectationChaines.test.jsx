@@ -19,7 +19,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { reponseContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
@@ -27,6 +27,7 @@ vi.mock('../../../api/calepinageApi', () => ({
       resultat: vi.fn(),
       evaluerElectrique: vi.fn(),
       enregistrerEntreeElectrique: vi.fn(),
+      importerAffectation: vi.fn(),
     },
   },
 }))
@@ -104,6 +105,65 @@ describe('AffectationChaines (CAL234) — le geste', () => {
       expect(screen.getByTestId(`cal234-module-${ligne.module}`))
         .toHaveAttribute('data-source', ligne.source)
     })
+  })
+})
+
+describe('AffectationChaines (ACAL619) — la tension des chaînes affectées', () => {
+  it('une bulle par chaîne affectée, nombres servis ; la chaîne non touchée n’a pas de bulle', async () => {
+    const chaines = exempleContrat('calepinage', 'calepinage_evaluation_electrique').chaines
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { ...VERDICT_CONFORME, chaines } })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    glisserSur([B1, B2])
+    saisir('chaine', '2')
+    saisir('mppt', '2')
+    saisir('onduleur', '1')
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+
+    const bulle = await screen.findByTestId('acal619-bulle')
+    expect(bulle).toHaveTextContent('Chaîne 2 : 10 modules — Voc à froid 535 V / 1 000 V, Vmp à chaud 360 V ≥ démarrage 180 V')
+    expect(bulle).toHaveAttribute('role', 'status')
+    expect(screen.getAllByTestId('acal619-bulle')).toHaveLength(1)
+  })
+})
+
+describe('AffectationChaines (ACAL631) — importer un plan de chaînes (CSV)', () => {
+  const IMPORT = exempleContrat('calepinage', 'calepinage_import_affectation')
+  const REFUS = exempleContrat('calepinage', 'calepinage_import_affectation', 'exemple_refus')
+  const deposer = (texte) => {
+    const fichier = new File([texte], 'chaines.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByTestId('acal631-fichier'), { target: { files: [fichier] } })
+  }
+
+  it('CSV valide : la proposition est remplie, le verdict relancé, RIEN n’est enregistré', async () => {
+    calepinageApi.calepinages.importerAffectation.mockResolvedValue({
+      data: { ...IMPORT, lignes: [{ module: B1, chaine: 2, mppt: 2, onduleur: 1 }, { module: B2, chaine: 2, mppt: 2, onduleur: 1 }] },
+    })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    deposer('module;chaine;mppt;onduleur')
+
+    await waitFor(() => expect(calepinageApi.calepinages.importerAffectation).toHaveBeenCalledTimes(1))
+    expect(calepinageApi.calepinages.importerAffectation.mock.calls[0][0]).toBe(1)
+    await waitFor(() => expect(calepinageApi.calepinages.evaluerElectrique).toHaveBeenCalled())
+    const [, corps] = calepinageApi.calepinages.evaluerElectrique.mock.calls.at(-1)
+    expect(corps.entree_electrique.affectation_manuelle.filter((l) => l.chaine === 2)).toHaveLength(2)
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
+  })
+
+  it('CSV fautif : « Ligne 4 : … » sous le champ fichier, aucune proposition', async () => {
+    calepinageApi.calepinages.importerAffectation.mockResolvedValue({ data: REFUS })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    deposer('module;chaine;mppt;onduleur')
+
+    expect(await screen.findByTestId('acal631-refus')).toHaveTextContent(`Ligne 4 : ${REFUS.refus[0].message}`)
+    expect(screen.getByTestId('acal631-fichier')).toHaveAttribute('aria-invalid', 'true')
+    expect(calepinageApi.calepinages.evaluerElectrique).not.toHaveBeenCalled()
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
   })
 })
 

@@ -20,6 +20,7 @@ const SECTIONS_ELECTRIQUES = [
   { cle: 'materiel-electrique', libelle: 'Matériel' },
   { cle: 'saisies-electriques', libelle: 'Saisies' },
   { cle: 'decisions-electriques', libelle: 'Décisions' },
+  { cle: 'controle-chaine', libelle: 'Contrôle rapide d’une chaîne' }, // ACAL628
 ]
 
 function syntheseElectrique(parcours) {

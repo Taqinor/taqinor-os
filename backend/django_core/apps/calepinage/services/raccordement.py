@@ -619,6 +619,10 @@ def _verdict_puissance_souscrite(saisie, injectee, source, motif):
 def _verdict_regime_phases(saisie, phases_onduleur):
     """Onduleur TRIPHASÉ sur branchement MONOPHASÉ = BLOQUANT."""
     phases_saisies = _entier(saisie.get('phases'))
+    # ACAL687 — la source CITÉE : l'écran Raccordement, ou « Saisies
+    # électriques » quand c'est elle qui a fourni la valeur (voir
+    # ``electrique._motifs_du_raccordement``).
+    source = saisie.get('phases_source') or 'saisie — phases'
     if phases_saisies not in (1, 3):
         return VerdictElectrique(
             code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
@@ -632,7 +636,7 @@ def _verdict_regime_phases(saisie, phases_onduleur):
                     "onduleur ne publie pas son régime : « phases » manque "
                     "sur la fiche, et aucun régime n'est supposé."
                     % phases_saisies,
-            borne=float(phases_saisies), valeur=None, source='saisie — phases')
+            borne=float(phases_saisies), valeur=None, source=source)
     if phases_onduleur == 3 and phases_saisies == 1:
         return VerdictElectrique(
             code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
@@ -642,7 +646,7 @@ def _verdict_regime_phases(saisie, phases_onduleur):
                     "« phases » si l'abonnement est en réalité triphasé, ou "
                     "retenez un onduleur monophasé.",
             borne=float(phases_saisies), valeur=float(phases_onduleur),
-            source='saisie — phases')
+            source=source)
     if phases_onduleur == phases_saisies:
         return VerdictElectrique(
             code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
@@ -651,7 +655,7 @@ def _verdict_regime_phases(saisie, phases_onduleur):
                     "les deux régimes concordent."
                     % (_mot_regime(phases_onduleur), phases_saisies),
             borne=float(phases_saisies), valeur=float(phases_onduleur),
-            source='saisie — phases')
+            source=source)
     # Onduleur(s) MONOphasé(s) sur un réseau triphasé : configuration normale
     # — c'est la répartition des phases (CALX243) qui la surveille.
     return VerdictElectrique(
@@ -660,7 +664,7 @@ def _verdict_regime_phases(saisie, phases_onduleur):
                 "configuration admise — la répartition des onduleurs entre "
                 "les phases est traitée par le contrôle de déséquilibre.",
         borne=float(phases_saisies), valeur=float(phases_onduleur),
-        source='saisie — phases')
+        source=source)
 
 
 def _verdict_tension_nominale(saisie, tension_employee):
@@ -1273,8 +1277,60 @@ def proposition_du_lead(calepinage):
             'source': SOURCE_PROPOSITION_LEAD}
 
 
+MOTIF_SANS_SIMULATION = "Simulez d'abord pour comparer l'injection"
+
+
+def _injection_publiee(autoconsommation, plafond_legal):
+    """ACAL783 — ``(injection, motif)`` : la part injectée simulée face au
+    plafond légal de 20 %, ou ``(None, motif)`` sans simulation fraîche.
+
+    Le plafond, sa source et la mention BT sont PASSÉS (lus de ``ventes`` par
+    l'appelant) : aucune valeur n'est recopiée ici. Avertissement non
+    bloquant : il ne change aucun verdict.
+    """
+    energie = (autoconsommation or {}).get('energie') or {}
+    surplus = _positif(energie.get('surplus_kwh'))
+    production = _positif(energie.get('production_kwh'))
+    if not plafond_legal or production is None:
+        return None, MOTIF_SANS_SIMULATION
+    part = round(100.0 * (surplus or 0.0) / production, 1)
+    plafond = plafond_legal['pct']
+    depasse = part > plafond
+    texte = ('%g' % part).replace('.', ',')
+    return {
+        'part_injectee_pct': part,
+        'plafond_pct': plafond,
+        'source': plafond_legal['source'],
+        'depasse': depasse,
+        'mention': plafond_legal['mention_bt'],
+        'avertissement': (
+            "La part injectée (%s %%) dépasse le plafond légal de %s %% de "
+            "la production annuelle : en MT/HT, l'excédent de revente n'est "
+            "pas valorisé" % (texte, plafond)) if depasse else None,
+    }, None
+
+
+def puissances_du_site(conception):
+    """ACAL782 — ``(kWc DC, kW AC)`` de la conception, ``None`` si inconnue."""
+    entree = getattr(conception, 'entree', None)
+    evaluation = _evaluation(conception)
+    ac = evaluation.puissance_ac_kw if evaluation is not None else None
+    return getattr(entree, 'puissance_kwc', None), ac or None
+
+
+def _regime_publie(puissance_dc_kwc, puissance_ac_kw, hors_reseau):
+    """ACAL782 — le régime loi 82-21 du site, LU dans le noyau (aucun seuil
+    ici) : puissance retenue = max(DC, AC), base « à confirmer »."""
+    from core.reglementaire.regime_8221 import regime_8221
+
+    return regime_8221(puissance_dc_kwc, puissance_ac_kw,
+                       hors_reseau=bool(hors_reseau))
+
+
 def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
-                      proposition_lead=None):
+                      proposition_lead=None, puissance_dc_kwc=None,
+                      puissance_ac_kw=None, hors_reseau=False,
+                      autoconsommation=None, plafond_legal=None):
     """CALX244 — le document ``{saisie, calcul, verdicts}`` du raccordement.
 
     Args:
@@ -1291,9 +1347,15 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
         proposition_lead: ACAL157 — la proposition de :func:`
             proposition_du_lead`, publiée TELLE QUELLE (jamais fusionnée
             dans la saisie).
+        puissance_dc_kwc, puissance_ac_kw, hors_reseau: ACAL782 — les
+            puissances du site et le mode hors réseau déclaré, lus par
+            l'appelant ; ils nourrissent la clé ``regime``.
+        autoconsommation, plafond_legal: ACAL783 — le bloc simulé FRAIS (ou
+            ``None``) et le plafond lu de ``ventes`` ; clés ``injection`` et
+            ``injection_motif``.
 
     Returns:
-        ``{saisie, calcul, verdicts, proposition_lead}`` — les CINQ verdicts
+        ``{saisie, calcul, verdicts, proposition_lead, regime}`` — les CINQ verdicts
         sont toujours présents, dans l'ordre du contrat, et un contrôle qui
         n'a pas eu lieu vaut ``omis`` avec le motif qui nomme ce qui manque ;
         ``proposition_lead`` est TOUJOURS présente (``null`` sans
@@ -1306,6 +1368,8 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
     Fonction PURE : aucune base, aucun réseau, aucune horloge.
     """
     saisie = _saisie_publiee(saisie)
+    injection, motif_injection = _injection_publiee(autoconsommation,
+                                                    plafond_legal)
     elevation = _elevation_de_tension(_troncons_pour_elevation(troncons),
                                       _injection(saisie))
     branchement = verdicts_raccordement(conception, saisie, reglages)
@@ -1325,4 +1389,8 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
         'verdicts': [_verdict_publie(verdict) for verdict in verdicts],
         'proposition_lead': (dict(proposition_lead)
                              if isinstance(proposition_lead, dict) else None),
+        'regime': _regime_publie(puissance_dc_kwc, puissance_ac_kw,
+                                 hors_reseau),
+        'injection': injection,
+        'injection_motif': motif_injection,
     }

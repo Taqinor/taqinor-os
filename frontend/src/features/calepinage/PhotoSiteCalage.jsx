@@ -13,6 +13,8 @@ import {
 } from '../../ui'
 import { dessinerApercuDrape } from '../../lib/calage/apercuDrape'
 import { coinsDepuisFichierMonde } from './commun/fichierCalageMonde'
+import { dessinerSurPhoto } from './commun/projectionPhoto'
+import { modulesDuDocument } from '@roofpro/modulesGeo'
 import { DEFAULT_CENTER, coinsDepuisMarqueurs, positionsInitiales } from './PhotoSiteCalage.helpers'
 
 /* ============================================================================
@@ -119,6 +121,8 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
   const polygonRef = useRef(null)
   const canvasRef = useRef(null)
   const imageRef = useRef(null)
+  const surPhotoRef = useRef(null) // ACAL529 — la vue « modules sur la photo »
+  const [vueSurPhoto, setVueSurPhoto] = useState(false)
 
   const recharger = useCallback(() => {
     if (!calepinageId) return
@@ -357,6 +361,24 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
     }
   }
 
+  // ACAL529 — carte → photo : les modules du document projetés sur la photo calée (rendu seul, rien n'est écrit).
+  const pansModules = modulesDuDocument(doc.document)
+  const nbModules = pansModules.reduce((n, pan) => n + pan.quads.length, 0)
+  const coinsCalage = photo?.calage?.coins
+  useEffect(() => {
+    const image = imageRef.current
+    if (vueSurPhoto && surPhotoRef.current && image?.complete && image.naturalWidth && coinsCalage) {
+      dessinerSurPhoto(surPhotoRef.current, image, coinsCalage, pansModules)
+    }
+  })
+  const telechargerSurPhoto = () => surPhotoRef.current?.toBlob((blob) => {
+    const lien = document.createElement('a')
+    lien.href = URL.createObjectURL(blob)
+    lien.download = `calepinage-${calepinageId}-sur-photo.png`
+    lien.click()
+    URL.revokeObjectURL(lien.href)
+  }, 'image/png')
+
   const utiliserCommeFond = () => {
     if (!photo?.calage) return
     ecrireFond(
@@ -577,6 +599,36 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
             )}
           </div>
 
+          {!photo.calage && (
+            <p className="mt-2 text-sm text-muted-foreground" data-testid="cal-photo-sur-photo-sans-calage">
+              Calez d’abord la photo sur la carte.
+            </p>
+          )}
+          {photo.calage && nbModules === 0 && (
+            <p className="mt-2 text-sm text-muted-foreground" data-testid="cal-photo-sur-photo-vide">
+              Aucun module posé à projeter.
+            </p>
+          )}
+          {photo.calage && nbModules > 0 && (
+            <div className="mt-2" data-testid="cal-photo-sur-photo">
+              <Button type="button" variant="outline" onClick={() => setVueSurPhoto((v) => !v)}
+                data-testid="cal-photo-sur-photo-bouton">
+                {vueSurPhoto ? 'Masquer la vue sur la photo' : 'Voir sur la photo'}
+              </Button>
+              {vueSurPhoto && (
+                <>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Les modules sont projetés comme si le toit était plat.
+                  </p>
+                  <canvas ref={surPhotoRef} className="mt-2 h-auto max-w-full" data-testid="cal-photo-sur-photo-canvas" />
+                  <Button type="button" variant="outline" onClick={telechargerSurPhoto}
+                    data-testid="cal-photo-sur-photo-telecharger">
+                    Télécharger l’image
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
           {!photo.calage && toucheeId !== photo.id && (
             <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-photo-calage-non-cale">
               Photo non calée : déplacez une poignée pour poser un calage.

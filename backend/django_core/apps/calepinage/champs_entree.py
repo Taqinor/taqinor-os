@@ -70,10 +70,16 @@ def _transformateur():
 
 
 def _batterie():
-    from .services.batterie import COUPLAGES, MOTIVATIONS, STRATEGIES
+    from .services.batterie import (
+        COUPLAGES, FENETRES_MAX, MOTIVATIONS, STRATEGIES)
 
     heures = {'type': 'array', 'items': {
         'type': 'integer', 'minimum': 0, 'maximum': 23}}
+    fenetres = {'type': 'array', 'minItems': 1, 'maxItems': FENETRES_MAX,
+                'items': {'type': 'object', 'additionalProperties': False,
+                          'required': ['heures'], 'properties': {
+                              'heures': dict(heures, minItems=1),
+                              'soc_cible_pct': _positif(100)}}}
     return {'type': 'object', 'additionalProperties': False, 'properties': {
         'strategie': {'type': 'string', 'enum': list(STRATEGIES)},
         'couplage': {'type': 'string', 'enum': list(COUPLAGES)},
@@ -82,7 +88,31 @@ def _batterie():
         'seuil_effacement_kw': _positif(1e6),
         'reserve_backup_kwh': _positif(1e6),
         'etat_initial_kwh': _positif(1e6),
-        'heures_charge': heures, 'heures_decharge': heures}}
+        'heures_charge': heures, 'heures_decharge': heures,
+        # ACAL786 — secours (CALX270) et commande horaire (CALX268).
+        'appareils': {'type': 'array', 'minItems': 1, 'items': {
+            'type': 'object', 'additionalProperties': False,
+            'required': ['puissance_continue_kw', 'puissance_pointe_kw',
+                         'quantite'],
+            'properties': {
+                'nom': {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+                'puissance_continue_kw': _positif(1e4, strict=True),
+                'puissance_pointe_kw': _positif(1e4, strict=True),
+                'quantite': _positif(1e4, strict=True)}}},
+        'duree_secours_h': _positif(1e3, strict=True),
+        'fenetres': {'type': 'object', 'additionalProperties': False,
+                     'required': ['charge', 'decharge'], 'properties': {
+                         sorte: fenetres for sorte in ('charge', 'decharge')}},
+        'part_effacable_pct': _positif(100, strict=True),
+        'plafond_effacable_kw': _positif(1e6, strict=True)},
+        # ACAL786 — appareils ⇒ durée, jamais avec la réserve nue ; fenêtres
+        # OU listes d'heures, jamais les deux (règles de services/batterie.py).
+        'allOf': [
+            {'anyOf': [{'not': {'required': ['appareils']}},
+                       {'required': ['duree_secours_h'],
+                        'not': {'required': ['reserve_backup_kwh']}}]},
+            {'not': {'required': ['fenetres', 'heures_charge']}},
+            {'not': {'required': ['fenetres', 'heures_decharge']}}]}
 
 
 def _hors_reseau():
@@ -112,6 +142,8 @@ def corps_entree_resserre():
         'zone_keraunique': {'type': 'boolean'},
         'inclure_prise_terre': {'type': 'boolean'},
         'plafond_kwc_par_onduleur': _positif(100000, strict=True),
+        'nombre_onduleurs': {'type': 'integer', 'minimum': 1,
+                             'maximum': 1000},  # ACAL633
         'longueur_chaine_forcee': {'type': 'integer', 'minimum': 1,
                                    'maximum': 1000},
         'protections': _VIDE_OBJET, 'terre': _VIDE_OBJET,

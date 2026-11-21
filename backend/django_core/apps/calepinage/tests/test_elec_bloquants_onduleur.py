@@ -309,3 +309,97 @@ class TensionsParChaineTest(SimpleTestCase):
         evaluation = evaluation_electrique(_Calepinage(24), materiel=materiel)
 
         self.assertEqual(evaluation['chaines'], [])
+
+
+class BoucleDeChaineTest(SimpleTestCase):
+    """ACAL677 — ``boucles_dc[]`` par ``evaluation_electrique``."""
+
+    @staticmethod
+    def _calepinage(collecte=None):
+        calepinage = _Calepinage(4)
+        zone = calepinage.roof_layout['zones'][0]
+        zone['id'] = 'z1'
+        zone['geometry']['panels'] = [
+            {'cx': float(n), 'cy': 0.0, 'n': n + 1} for n in range(4)]
+        if collecte is not None:
+            calepinage.resultat['entree_electrique']['cheminement'] = {
+                'pans': {'z1': {'point_collecte': collecte}}}
+        return calepinage
+
+    def test_quatre_modules_alignes_publient_4_5_m2(self):
+        evaluation = evaluation_electrique(
+            self._calepinage({'cx': 1.5, 'cy': 3.0}),
+            materiel=_materiel(isc_max_mppt_a=45.0))
+
+        boucles = evaluation['boucles_dc']
+        self.assertEqual(len(boucles), 1)
+        self.assertEqual(boucles[0]['chaine'], 1)
+        self.assertEqual(boucles[0]['nombre_modules'], 4)
+        self.assertEqual(boucles[0]['surface_m2'], 4.5)
+        self.assertIn('estimation géométrique', boucles[0]['base'])
+
+    def test_sans_point_de_collecte_la_surface_est_null_et_nommee(self):
+        evaluation = evaluation_electrique(
+            self._calepinage(), materiel=_materiel(isc_max_mppt_a=45.0))
+
+        self.assertIsNone(evaluation['boucles_dc'][0]['surface_m2'])
+        self.assertTrue(evaluation['boucles_dc'][0]['indetermine'])
+
+    def test_fiche_muette_rend_une_liste_vide(self):
+        materiel = _materiel()
+        del materiel['onduleur']['v_max_abs']
+
+        evaluation = evaluation_electrique(self._calepinage(),
+                                           materiel=materiel)
+
+        self.assertEqual(evaluation['boucles_dc'], [])
+
+
+class LimiteDeBoucleTest(SimpleTestCase):
+    """ACAL678 — la limite de surface de boucle est un RÉGLAGE société."""
+
+    def _evaluer(self, reglage):
+        from unittest import mock
+
+        calepinage = BoucleDeChaineTest._calepinage({'cx': 1.5, 'cy': 3.0})
+        with mock.patch(
+                'apps.calepinage.services.electrique.'
+                '_reglages_electrique_societe',
+                return_value=({'boucle_dc_max_m2': reglage}
+                              if reglage is not None else {})):
+            return evaluation_electrique(
+                calepinage, materiel=_materiel(isc_max_mppt_a=45.0))
+
+    def test_limite_saisie_avec_source_ajoute_une_alerte_nommee(self):
+        evaluation = self._evaluer(
+            {'valeur': 3, 'source': 'societe', 'reference': 'essai'})
+
+        ligne = evaluation['boucles_dc'][0]
+        self.assertEqual((ligne['limite_m2'], ligne['limite_source'],
+                          ligne['depasse']), (3, 'societe', True))
+        self.assertIn(
+            "Chaîne 1 : boucle de 4,5 m², au-dessus de la limite de 3 m² "
+            "fixée par la société (source : societe) — rapprochez le point "
+            "de collecte du pan.", evaluation['alertes'])
+        self.assertEqual(evaluation['verdict'], 'alerte')
+        self.assertEqual(evaluation['bloquants'], [])
+        self.assertTrue(evaluation['publiable'])
+
+    def test_limite_sans_source_ou_vide_n_ajoute_aucune_alerte(self):
+        for reglage in ({'valeur': 3, 'source': ''}, None):
+            evaluation = self._evaluer(reglage)
+
+            ligne = evaluation['boucles_dc'][0]
+            self.assertIsNone(ligne['limite_m2'])
+            self.assertIsNone(ligne['depasse'])
+            self.assertFalse([a for a in evaluation['alertes']
+                              if 'boucle' in a])
+            self.assertIn('limite non saisie : réglage `boucle_dc_max_m2`',
+                          ligne['indetermine'])
+
+    def test_limite_au_dessus_de_la_surface_ne_depasse_pas(self):
+        evaluation = self._evaluer(
+            {'valeur': 10, 'source': 'societe', 'reference': 'essai'})
+
+        self.assertIs(evaluation['boucles_dc'][0]['depasse'], False)
+        self.assertFalse([a for a in evaluation['alertes'] if 'boucle' in a])

@@ -1,4 +1,5 @@
 // ENF22 — helpers extraits de Raccordement.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
+import { LIBELLE_OMIS } from './VerdictElectrique.helpers'
 
 /* ============================================================================
    CALX244 — L'ONGLET « RACCORDEMENT RÉSEAU » DE L'ATELIER.
@@ -104,7 +105,7 @@ export const LIBELLES_STATUT = {
   ok: 'Conforme',
   alerte: 'À surveiller',
   bloquant: 'Bloquant',
-  omis: 'Non vérifié',
+  omis: LIBELLE_OMIS,
 }
 
 /** Le ton du badge — `omis` est NEUTRE : ce n'est pas un contrôle réussi. */

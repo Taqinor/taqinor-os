@@ -6,6 +6,7 @@ import { Badge, Button, Card, Label, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { refusParChamp } from './entreeElectrique'
 import { ROLES, libelleProvenance } from './MaterielElectrique.helpers'
+import ConfigurationsOnduleur from './ConfigurationsOnduleur'
 
 /* ============================================================================
    ACAL149 — L'ONGLET « MATÉRIEL ÉLECTRIQUE » DE L'ATELIER.
@@ -157,6 +158,14 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false 
                       {erreurs[role.champ]}
                     </p>
                   ) : null}
+                {role.role === 'onduleur' && (
+                  <ConfigurationsOnduleur
+                    calepinageId={id}
+                    designations={Object.fromEntries(ROLES.map((r) => [r.champ, valeur(r)]))}
+                    lectureSeule={lectureSeule}
+                    apresApplication={lire}
+                  />
+                )}
               </div>
             )
           })}

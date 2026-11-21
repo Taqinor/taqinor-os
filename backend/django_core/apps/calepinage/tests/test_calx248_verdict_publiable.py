@@ -230,6 +230,54 @@ class OmisMaisMotiveResteePubliableTest(unittest.TestCase):
             self.assertTrue(motif['libelle'].strip(), motif)
 
 
+class AucunCheminDeCodeAffichéTest(unittest.TestCase):
+    """ACAL879 — un texte affiché ne montre ni ``::``, ni ``[]``, ni ``.py``."""
+
+    ECHANTILLONS = ('calepinage_resultat', 'calepinage_publication_electrique',
+                    'calepinage_raccordement')
+    CLES_AFFICHEES = ('source', 'motif', 'libelle')
+    MOTIFS_DE_CODE = ('::', '[]', '.py')
+
+    def _textes_affiches(self, noeud):
+        if isinstance(noeud, dict):
+            for cle, valeur in noeud.items():
+                if cle in self.CLES_AFFICHEES and isinstance(valeur, str):
+                    yield valeur
+                yield from self._textes_affiches(valeur)
+        elif isinstance(noeud, list):
+            for element in noeud:
+                yield from self._textes_affiches(element)
+
+    def _fautifs(self, textes):
+        return [t for t in textes
+                if any(m in t for m in self.MOTIFS_DE_CODE)]
+
+    def test_les_echantillons_servis_n_affichent_aucun_chemin(self):
+        import json
+        from pathlib import Path
+
+        dossier = Path(electrique.__file__).resolve().parents[1] \
+            / 'contract_samples'
+        for nom in self.ECHANTILLONS:
+            donnees = json.loads(
+                (dossier / f'{nom}.json').read_text(encoding='utf-8'))
+            self.assertEqual(self._fautifs(self._textes_affiches(donnees)),
+                             [], nom)
+
+    def test_le_motif_de_norme_n_affiche_aucun_chemin(self):
+        motif = _par_code(_verdict(), 'NORME_NON_APPLICABLE')
+        self.assertEqual(self._fautifs([motif['source'], motif['libelle']]),
+                         [])
+        self.assertEqual(motif['source'],
+                         'norme électrique choisie pour le pays')
+
+    def test_le_motif_de_troncon_n_affiche_aucun_chemin(self):
+        from apps.calepinage.services import troncons
+
+        texte = troncons._motif_norme_absente({'motif': 'aucune norme'})
+        self.assertEqual(self._fautifs([texte]), [])
+
+
 class ProvenanceTest(unittest.TestCase):
     """Un statut CONCLUSIF sans source devient ``sans_source``."""
 

@@ -11,6 +11,7 @@ import { useHasPermission } from '../../../hooks/useHasPermission'
 import { messageRefus } from '../commun/refusServeur'
 import { formatDateTime } from '../../../lib/format'
 import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
+import { estIndeterminee, phraseChaine, volts } from './tensionsChaines'
 import { grouperMotifs, libelleStatut, motifsRefusants, statutRefuse, tonStatut } from './VerdictElectrique.helpers'
 
 /* ============================================================================
@@ -272,6 +273,41 @@ function BlocDerogations({ calepinageId }) {
   )
 }
 
+/** ACAL619 — « Tension par temps froid » : TOUTES les chaînes servies (`chaines[]`), nombres et mots du serveur. */
+function TableauTensions({ chaines }) {
+  if (!Array.isArray(chaines) || chaines.length === 0) return null
+  const etat = (ok) => (ok === true ? 'dans la limite' : ok === false ? 'hors limite' : 'non vérifié')
+  return (
+    <details className="flex flex-col gap-2" data-testid="acal619-tensions">
+      <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">Tension par temps froid</summary>
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="text-xs text-muted-foreground">
+            <th scope="col">Chaîne</th>
+            <th scope="col">Modules</th>
+            <th scope="col">Voc à froid / limite</th>
+            <th scope="col">Température</th>
+            <th scope="col">Vmp à chaud / démarrage</th>
+            <th scope="col">Isc</th>
+          </tr>
+        </thead>
+        <tbody>
+          {chaines.map((c) => (
+            <tr key={c.chaine} data-testid={`acal619-ligne-${c.chaine}`}>
+              <th scope="row">{c.chaine}</th>
+              <td>{c.nombre_modules}</td>
+              <td>{estIndeterminee(c) ? phraseChaine(c).replace(/^Chaîne \d+ : /, '') : `${volts(c.voc_froid_v)} / ${volts(c.voc_froid_limite_v)} — ${etat(c.voc_froid_conforme)}`}</td>
+              <td>{c.temperature_froide_c} °C</td>
+              <td>{estIndeterminee(c) ? '—' : `${volts(c.vmp_chaud_v)} / ${volts(c.demarrage_v)} — ${etat(c.vmp_chaud_conforme)}`}</td>
+              <td>{c.isc_a == null ? '—' : `${c.isc_a} A`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  )
+}
+
 export default function VerdictElectrique({ calepinageId } = {}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -416,6 +452,7 @@ export default function VerdictElectrique({ calepinageId } = {}) {
                 ))}
             </>
           )}
+        <TableauTensions chaines={data?.chaines} />
         <BlocDerogations calepinageId={id} />
         <CarteChaineOmbragee calepinageId={id} />
         <HistogrammeEcretage calepinageId={id} />

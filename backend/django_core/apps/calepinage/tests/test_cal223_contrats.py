@@ -517,8 +517,10 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/balayage.py``) : ``calepinage_balayage.json`` en est SORTI.
     # ACAL485 a livré ``GET``/``POST calepinages/<pk>/detection-toit/``
     # (``views/detection_toit.py``) : ``calepinage_detection_toit.json`` en est SORTI.
-    'calepinage_pret_a_envoyer.json': 'ACAL860',  # ACAL856
-    'calepinage_explications.json': 'ACAL871',  # ACAL870
+    # ACAL860 a livré ``GET calepinages/<pk>/pret-a-envoyer/``
+    # (``views/pret_a_envoyer.py``) : ``calepinage_pret_a_envoyer.json`` en est SORTI.
+    # ACAL871 a livré ``GET calepinages/explications/``
+    # (``views/explications.py``) : ``calepinage_explications.json`` en est SORTI.
     # ACAL558 a livré ``GET``/``POST calepinages/systemes-fixation/``
     # (``views/systemes_fixation.py``) : ``calepinage_systemes_fixation.json``
     # en est SORTI.
@@ -532,6 +534,8 @@ POSES_AVANT_LEUR_ROUTE = {
 CLES_POSEES_AVANT_LEUR_PRODUCTEUR = {
     'dossiers_reglementaires.json': {'packs_france': 'ACAL238'},
     'site_imagerie.json': {'site_effectif': 'ACAL129'},
+    # ACAL530 — sous-clé de ``exemple.propositions``.
+    'calepinage_detection_toit.json': {'obstacles': 'ACAL1049'},
 }
 
 
@@ -738,7 +742,10 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertTrue(set(dispo['origines_acceptees'])
                         <= {'importee', 'carte'})
         propositions = donnees['exemple']['propositions']
-        self.assertEqual(sorted(propositions), ['contour_lnglat', 'pans'])
+        en_attente = set(CLES_POSEES_AVANT_LEUR_PRODUCTEUR.get(
+            'calepinage_detection_toit.json', {}))
+        self.assertEqual(sorted(set(propositions) - en_attente),
+                         ['contour_lnglat', 'pans'])
         self.assertEqual(donnees['exemple']['provenance'], 'ia')
         self.assertIs(donnees['exemple']['a_confirmer'], True)
         for pan in propositions['pans']:
@@ -746,6 +753,21 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
                              ['azimut_deg', 'confiance', 'contour_lnglat'])
             self.assertTrue(all(len(p) == 2 for p in pan['contour_lnglat']))
         self.assertTrue(donnees['exemple_indisponible_503']['detail'])
+
+    def test_obstacles_proposes_en_attente_d_acal1049(self):
+        # ACAL530 — types : la liste de l'atelier (ACAL498) du schéma du document.
+        self.assertEqual(CLES_POSEES_AVANT_LEUR_PRODUCTEUR.get(
+            'calepinage_detection_toit.json'), {'obstacles': 'ACAL1049'})
+        types = _charger('roof_layout_v2.schema.json')['$defs']['obstacle'][
+            'properties']['type']['enum']
+        obstacles = _charger('calepinage_detection_toit.json')['exemple'][
+            'propositions']['obstacles']
+        self.assertEqual(len(obstacles), 2)
+        for obstacle in obstacles:
+            self.assertEqual(sorted(obstacle), ['confiance', 'contour_lnglat', 'type'])
+            self.assertIn(obstacle['type'], types)
+            self.assertGreaterEqual(len(obstacle['contour_lnglat']), 3)
+            self.assertTrue(0 <= obstacle['confiance'] <= 1)
 
     def test_forme_de_la_pente_terrain(self):
         # ACAL466 — lecture pure ; relief illisible = null + motif, jamais

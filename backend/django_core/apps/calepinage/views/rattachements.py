@@ -175,6 +175,10 @@ from . import soleil_legal as _soleil_legal_action  # noqa: F401 — import d'en
 # ACAL535 — même patron : rattache ``suggestions-pente-relief`` (POST : la pente
 # de chaque pan lue sur un relief GeoTIFF déposé, sans porte du pays ni IGN).
 from . import suggestion_pente_relief as _suggestion_pente_relief_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL871 — même patron : rattache ``explications`` (GET : le registre des phrases).
+from . import explications as _explications_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL860 — même patron : rattache ``pret-a-envoyer`` (GET : les contrôles d'envoi).
+from . import pret_a_envoyer as _pret_a_envoyer_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -224,6 +228,8 @@ MODULES_RATTACHES = (
     'systemes_fixation',  # ACAL558
     'soleil_legal',  # ACAL730
     'suggestion_pente_relief',  # ACAL535
+    'explications',  # ACAL871
+    'pret_a_envoyer',  # ACAL860
 )
 
 __all__ = ['MODULES_RATTACHES']

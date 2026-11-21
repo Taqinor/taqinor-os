@@ -54,9 +54,14 @@ from .chaine_la_plus_faible import (  # noqa: F401 — ré-export (ACAL646)
 from .bordereau_calepinage import (
     bordereau_du_calepinage as _bordereau_du_calepinage,  # ACAL632
 )
+from .validation_transformateur import (  # noqa: F401 — ré-export (ACAL642)
+    valider_transformateur as _valider_transformateur,
+)
 from .validation_batterie import (  # noqa: F401 — ré-export (ACAL633)
     valider_batterie as _valider_batterie,
 )
+from .batterie_declaration import (  # noqa: F401 — ré-export (ACAL786)
+    CLES_BATTERIE, valider_secours)
 from .capacites_coffrets import (  # noqa: F401 — ré-export (ACAL618)
     CLES_CAPACITE_COFFRET, capacites_des_coffrets,
 )
@@ -674,6 +679,16 @@ def _valider_cheminement(calepinage, cheminement, layout=None):
                 "par la clé du pan (%s)." % (
                     libelle, ', '.join(cles_des_pans(document)) or 'aucun pan'),
                 champ='cheminement.pans.%s' % libelle)
+        from .chaines import MOTIFS_AFFECTATION  # ACAL642
+
+        motif = (saisie or {}).get('motif_affectation') if isinstance(
+            saisie, dict) else None
+        if motif not in (None, '') and motif not in MOTIFS_AFFECTATION:
+            raise EntreeInvalide(
+                "Pan « %s » : motif d'affectation « %s » inconnu. Motifs "
+                "admis : %s." % (libelle, motif,
+                                 ', '.join(MOTIFS_AFFECTATION)),
+                champ='cheminement.pans.%s.motif_affectation' % libelle)
         if not isinstance(saisie, dict) or not saisie.get('motif_parcours'):
             continue
         try:
@@ -800,6 +815,7 @@ def _valider_entree(calepinage, fusionnee, postee):
                 % (cle, type(valeur).__name__), champ=cle)
     _valider_transformateur(postee.get('transformateur'))
     _valider_batterie(postee.get('batterie'))  # ACAL166
+    valider_secours(postee.get('batterie'))  # ACAL786
     _valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
@@ -820,9 +836,10 @@ def _valider_entree(calepinage, fusionnee, postee):
     norme = norme_applicable(parametres_societe(calepinage))
     try:
         if postee.get('protections'):
-            checklist_protections(conception,
-                                  decisions=postee.get('protections'),
-                                  norme=norme)
+            checklist_protections(
+                conception, decisions=postee.get('protections'),
+                norme=norme,
+                reglages=_reglages_electrique_societe(calepinage))
         if postee.get('terre'):
             checklist_terre(conception, decisions=postee.get('terre'),
                             norme=norme,
@@ -836,12 +853,6 @@ def _valider_entree(calepinage, fusionnee, postee):
             raise EntreeInvalide(str(refus), champ='%s.%s' % (
                 CLE_POLYSTRING, refus.champ or 'groupes'))
 
-
-#: ACAL166 — les clés d'une déclaration de batterie, et AUCUNE autre : ce sont
-#: celles que lit l'étape ``services/etapes/batterie.py``.
-CLES_BATTERIE = ('produit', 'packs', 'strategie', 'couplage', 'onduleur_ref',
-                 'seuil_effacement_kw', 'heures_charge', 'heures_decharge',
-                 'reserve_backup_kwh', 'motivation', 'etat_initial_kwh')
 
 #: ACAL166 — les clés d'une déclaration hors réseau (``etapes/hors_reseau.py``).
 CLES_HORS_RESEAU = ('actif', 'jours_autonomie', 'etat_initial_kwh', 'seuils')
@@ -884,65 +895,13 @@ def _valider_hors_reseau(saisie):
                          'hors_reseau.etat_initial_kwh')
 
 
-def _valider_transformateur(saisie):
-    """ACAL151 — la FORME du transformateur : ``{declare, 3 grandeurs}``.
-
-    Chaque grandeur est ``{valeur, source, reference}`` : une valeur sans
-    source n'est pas une saisie (D-CALX 7) et le refus NOMME le champ. La
-    lecture de l'étape (``services/etapes/transformateur.py``) reste LA
-    règle de calcul ; ici, on refuse seulement ce qu'elle ignorerait en
-    silence.
-    """
-    from .etapes.transformateur import (
-        CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL, CLE_TRANSFORMATEUR,
-    )
-
-    if saisie is None:
-        return
-    if not isinstance(saisie, dict):
-        raise EntreeInvalide(
-            "« transformateur » doit être un objet {declare, %s, %s, %s} "
-            "(reçu : %s)." % (CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL,
-                              type(saisie).__name__),
-            champ=CLE_TRANSFORMATEUR)
-    grandeurs = (CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL)
-    inconnues = sorted(set(saisie) - {'declare', *grandeurs})
-    if inconnues:
-        raise EntreeInvalide(
-            "Champ du transformateur inconnu : « %s »." % inconnues[0],
-            champ='%s.%s' % (CLE_TRANSFORMATEUR, inconnues[0]))
-    if not isinstance(saisie.get('declare'), bool):
-        raise EntreeInvalide(
-            "Répondez à la question « transformateur » : declare vaut vrai "
-            "(un transformateur est déclaré) ou faux (pas de transformateur).",
-            champ='%s.declare' % CLE_TRANSFORMATEUR)
-    for champ in grandeurs:
-        brut = saisie.get(champ)
-        if brut is None:
-            continue
-        chemin = '%s.%s' % (CLE_TRANSFORMATEUR, champ)
-        if not isinstance(brut, dict):
-            raise EntreeInvalide(
-                "« %s » doit être un objet {valeur, source, reference}."
-                % champ, champ=chemin)
-        valeur = _nombre(brut.get('valeur'))
-        if not _fini(valeur) or valeur < 0:
-            raise EntreeInvalide(
-                "« %s » : valeur illisible ou négative (« %s »)."
-                % (champ, brut.get('valeur')), champ='%s.valeur' % chemin)
-        if not str(brut.get('source') or '').strip():
-            raise EntreeInvalide(
-                "« %s » est saisi sans sa source : une valeur sans source "
-                "n'est pas une saisie (fiche, plaque, procès-verbal…)."
-                % champ, champ='%s.source' % chemin)
-
-
 def _regime_non_precise(donnees):
     """ACAL152 — vrai tant qu'aucun régime de neutre n'est SAISI."""
     return not str((donnees or {}).get('regime') or '').strip()
 
 
-def _checklist_protections_tolerante(conception, decisions, norme):
+def _checklist_protections_tolerante(conception, decisions, norme,
+                                     reglages=None):
     """ACAL150 — la check-list LUE sans jamais lever : ``(checklist, avis)``.
 
     Une décision stockée devenue PÉRIMÉE (organe écarté qui n'existe plus
@@ -954,15 +913,16 @@ def _checklist_protections_tolerante(conception, decisions, norme):
 
     if decisions is not None and not isinstance(decisions, dict):
         return (checklist_protections(conception, decisions=None,
-                                      norme=norme),
+                                      norme=norme, reglages=reglages),
                 ['décision illisible : « protections » enregistrées sous une '
                  'forme inattendue — ignorées'])
     try:
         return checklist_protections(conception, decisions=decisions,
-                                     norme=norme), []
+                                     norme=norme, reglages=reglages), []
     except DecisionInvalide:
         pass
-    base = checklist_protections(conception, decisions=None, norme=norme)
+    base = checklist_protections(conception, decisions=None, norme=norme,
+                                 reglages=reglages)
     connus = {ligne['repere'] for ligne in base['organes']}
     ecartes = [ecart for ecart in (decisions or {}).get('ecartes') or ()
                if isinstance(ecart, dict)]
@@ -972,7 +932,7 @@ def _checklist_protections_tolerante(conception, decisions, norme):
         ecart for ecart in ecartes if ecart.get('repere') in connus])
     try:
         return checklist_protections(conception, decisions=gardees,
-                                     norme=norme), avis
+                                     norme=norme, reglages=reglages), avis
     except DecisionInvalide as refus:
         return base, avis + ['décision illisible : %s' % refus]
 
@@ -1355,6 +1315,13 @@ def _options_entree(entree):
     phases = _nombre((entree or {}).get('phases'))
     if phases is not None:
         options['phases'] = int(phases)
+    pans = ((entree or {}).get('cheminement') or {}).get('pans') if isinstance(
+        (entree or {}).get('cheminement'), dict) else None
+    motifs = {str(cle): saisie['motif_affectation']  # ACAL642
+              for cle, saisie in (pans or {}).items()
+              if isinstance(saisie, dict) and saisie.get('motif_affectation')}
+    if motifs:
+        options['motifs_affectation'] = motifs
     nombre = _nombre((entree or {}).get('nombre_onduleurs'))
     if nombre is not None and nombre >= 1:  # ACAL633
         options['nombre_onduleurs'] = int(nombre)
@@ -1525,11 +1492,11 @@ def resultat_electrique_complet(conception, *, norme=None, noyau=None,
     return resultat
 
 
-def checklist_decidee(conception, donnees, norme):
+def checklist_decidee(conception, donnees, norme, reglages=None):
     """ACAL159 — la check-list de protections DÉCIDÉE, lue sans jamais
     lever : ``(checklist, avertissements)`` (décision périmée nommée)."""
     return _checklist_protections_tolerante(
-        conception, (donnees or {}).get('protections'), norme)
+        conception, (donnees or {}).get('protections'), norme, reglages)
 
 
 def _avec_resultat(conception, resultat):
@@ -1796,7 +1763,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # ACAL150 — lecture TOLÉRANTE : une décision périmée devient un
     # avertissement nommé, jamais un 500.
     protections, avis_decisions = _checklist_protections_tolerante(
-        conception, donnees.get('protections'), norme)
+        conception, donnees.get('protections'), norme,
+        reglages=electrique_societe)
 
     # CALX224-228 — le CHEMINEMENT mesuré, tronçon par tronçon. Calculé UNE
     # fois ici : le bordereau en tire son métré (CALX227) et le résultat le
@@ -2206,8 +2174,9 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     sur ``entree-electrique`` et c'est là, et là seulement, qu'il est
     enregistré.
     """
+    from .boucles_chaines import alertes_de_boucles, boucles_des_chaines
     from .chaines import (
-        AffectationInvalide, normaliser_affectation_imposee,
+        AffectationInvalide, affectation, normaliser_affectation_imposee,
         verdict_affectation,
     )
     from .etat_dossier_electrique import etat_a_chaud
@@ -2247,6 +2216,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
                              if conception.temperatures is not None else None),
             'chaines': [],
             'onduleurs_suggeres': None,
+            'boucles_dc': [],
         }
     bloquants = list(bloquants_nommes(conception))
     try:
@@ -2287,6 +2257,13 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''))['omissions'])
     alertes.extend(regle['bornes_non_verifiables'])
+    # ACAL677/678 — surface de boucle par chaîne ; au-dessus de la limite
+    # société : alerte (jamais un bloquant).
+    boucles = boucles_des_chaines(
+        affectation(conception, imposee=imposee), _document,
+        donnees.get('cheminement'),
+        reglages=_reglages_electrique_societe(calepinage))
+    alertes.extend(alertes_de_boucles(boucles))
     return {
         'verdict': 'bloquant' if bloquants else (
             'alerte' if alertes else 'conforme'),
@@ -2301,6 +2278,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         'onduleurs_suggeres': onduleurs_suggeres(
             calepinage, conception, materiel_resolu, entree=entree,
             layout=layout),
+        'boucles_dc': boucles,
     }
 
 
@@ -2537,10 +2515,29 @@ def _motifs_de_la_norme(norme):
         (norme or {}).get('motif')
         or "aucune norme électrique n'est applicable : sections, chutes de "
            "tension et check-list de terre sont OMISES",
-        'services/norme.py::norme_applicable')]
+        'norme électrique choisie pour le pays')]
 
 
-def _motifs_du_raccordement(conception, saisie, reglages):
+def _phases_du_raccordement(saisie, donnees):
+    """ACAL687 — la saisie de raccordement COMPLÉTÉE des phases de « Saisies
+    électriques » quand l'écran Raccordement ne les porte pas, la source
+    citée ; la saisie de l'écran reste prioritaire (ACAL155). Rien n'est
+    réécrit : une copie."""
+    propre, ailleurs = (saisie or {}).get('phases'), (donnees or {}).get(
+        'phases')
+    if ailleurs in (None, ''):
+        return saisie
+    if propre in (None, ''):
+        return dict(saisie or {}, phases=ailleurs, phases_source=(
+            'saisie — phases (Saisies électriques)'))
+    if _nombre(propre) != _nombre(ailleurs):
+        return dict(saisie, phases_source=(
+            'saisie — phases (Raccordement, prioritaire sur Saisies '
+            'électriques)'))
+    return saisie
+
+
+def _motifs_du_raccordement(conception, saisie, reglages, donnees=None):
     """CALX242 + CALX243 — branchement et équilibrage, LUS, jamais recalculés.
 
     ``services/raccordement.py`` est en LECTURE SEULE ici : ce module ne
@@ -2550,6 +2547,7 @@ def _motifs_du_raccordement(conception, saisie, reglages):
         RaccordementInvalide, repartition_des_phases, verdicts_raccordement,
     )
 
+    saisie = _phases_du_raccordement(saisie, donnees)
     motifs = []
     try:
         # ACAL175 — les réglages société portent le repli cos φ sourcé.
@@ -2754,7 +2752,7 @@ def _rapport_publication(calepinage, *, layout=None):
     from .raccordement import saisie_du_calepinage
 
     motifs.extend(_motifs_du_raccordement(
-        conception, saisie_du_calepinage(calepinage), reglages))
+        conception, saisie_du_calepinage(calepinage), reglages, donnees))
     if _regime_non_precise(donnees) and not getattr(
             conception, 'manquantes', ()) and conception.chaines:
         from core.electrique.protections import MOTIF_REGIME_NON_PRECISE

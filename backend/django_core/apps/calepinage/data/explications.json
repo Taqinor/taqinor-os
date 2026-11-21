@@ -1,0 +1,332 @@
+{
+  "entrees": [
+    {
+      "cle": "batterie.autoconsomme",
+      "famille": "batterie",
+      "phrase": "Sur l'année, {kwh} kWh de votre production sont consommés sur place, directement ou en passant par la batterie.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.autoconsomme_kwh"
+      },
+      "geste": "Décaler des usages vers les heures de soleil augmente cette part.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.capacite_utile",
+      "famille": "batterie",
+      "phrase": "La batterie peut rendre {capacite} kWh par cycle : c'est la part réellement utilisable, pas la capacité écrite sur l'étiquette.",
+      "valeurs": {
+        "capacite": "batterie.total.capacite_utile_kwh"
+      },
+      "geste": "Pour couvrir plus de soirées, ajoutez un module de batterie.",
+      "lexique": "capacité utile",
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.consommation",
+      "famille": "batterie",
+      "phrase": "Le foyer consomme {kwh} kWh sur l'année, d'après le profil de consommation enregistré sur ce dossier.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.consommation_kwh"
+      },
+      "geste": "Si ce total ne ressemble pas aux factures, corrigez le profil de consommation.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.energie_restituee",
+      "famille": "batterie",
+      "phrase": "La batterie rend {kwh} kWh sur l'année, le soir et la nuit : c'est l'énergie stockée moins ce que la charge et la décharge perdent.",
+      "valeurs": {
+        "kwh": "batterie.total.energie_restituee_kwh"
+      },
+      "geste": "Une batterie plus grande ne rend plus que si le surplus de journée suffit à la remplir.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.energie_stockee",
+      "famille": "batterie",
+      "phrase": "Sur l'année, {kwh} kWh de surplus solaire entrent dans la batterie au lieu de partir sur le réseau.",
+      "valeurs": {
+        "kwh": "batterie.total.energie_stockee_kwh"
+      },
+      "geste": "Comparez-la à l'énergie exportée : un gros export restant dit qu'une batterie plus grande servirait.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.export",
+      "famille": "batterie",
+      "phrase": "Ce surplus de {kwh} kWh n'est ni consommé ni stocké : il part sur le réseau.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.export_kwh"
+      },
+      "geste": "Une batterie plus grande ou des usages de journée en récupèrent une partie.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.heures_sans_import",
+      "famille": "batterie",
+      "phrase": "Pendant {heures} heures de l'année, le foyer ne prend rien au réseau : le soleil ou la batterie couvrent tout.",
+      "valeurs": {
+        "heures": "batterie.total.heures_sans_import"
+      },
+      "geste": "Les heures qui restent sont surtout la nuit et l'hiver.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.import_reseau",
+      "famille": "batterie",
+      "phrase": "Il reste {kwh} kWh pris au réseau sur l'année, quand ni le soleil ni la batterie ne suffisent.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.import_reseau_kwh"
+      },
+      "geste": "C'est la part de la facture qui demeure.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.pertes_batterie",
+      "famille": "batterie",
+      "phrase": "Charger puis décharger la batterie perd {kwh} kWh sur l'année : c'est l'écart entre l'énergie stockée et l'énergie rendue.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.pertes_batterie_kwh"
+      },
+      "geste": "Le rendement publié sur la fiche de la batterie fixe cette perte.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.production",
+      "famille": "batterie",
+      "phrase": "Les panneaux produisent {kwh} kWh sur l'année dans ce calcul heure par heure de la batterie.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.production_kwh"
+      },
+      "geste": "Le détail de cette production est dans l'onglet Production.",
+      "lexique": "production annuelle",
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.strategie",
+      "famille": "batterie",
+      "phrase": "La stratégie dit quand la batterie se charge et se décharge : sur le surplus solaire, aux heures creuses, ou pour limiter l'injection.",
+      "valeurs": {},
+      "geste": "Changez-la dans la déclaration de la batterie, puis relancez le calcul.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.taux_autonomie",
+      "famille": "batterie",
+      "phrase": "Le taux d'autonomie est la part de la consommation couverte sans le réseau, par le soleil ou par la batterie. Il ne dit pas la part de la facture : la couverture de la facture se lit ailleurs.",
+      "valeurs": {},
+      "geste": "Pour le monter, il faut plus de batterie ou plus de panneaux, selon ce qui manque le soir.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.capacite_nominale",
+      "famille": "batterie",
+      "phrase": "La capacité nominale, {kwh} kWh, est celle écrite sur la fiche ; seule une partie est utilisable sans abîmer la batterie.",
+      "valeurs": {
+        "kwh": "hors_reseau.banque.capacite_nominale_kwh"
+      },
+      "geste": "Regardez la capacité utile pour savoir ce que la banque rend vraiment.",
+      "lexique": "capacité utile",
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.capacite_utile",
+      "famille": "batterie",
+      "phrase": "La banque peut rendre {kwh} kWh : c'est la capacité de la fiche limitée à la profondeur de décharge publiée, {dod} %.",
+      "valeurs": {
+        "kwh": "hors_reseau.banque.capacite_utile_kwh",
+        "dod": "hors_reseau.banque.dod_pct"
+      },
+      "geste": "Pour tenir plus longtemps sans soleil, ajoutez des modules de batterie.",
+      "lexique": "capacité utile",
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.defaillance",
+      "famille": "batterie",
+      "phrase": "Sans réseau, {kwh} kWh de besoins ne seraient pas servis sur l'année : ce sont des coupures.",
+      "valeurs": {
+        "kwh": "hors_reseau.defaillance_kwh"
+      },
+      "geste": "Plus de batterie ou plus de panneaux réduisent ces coupures ; regardez d'abord le pire mois.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.dod",
+      "famille": "batterie",
+      "phrase": "La profondeur de décharge est la part de la batterie que l'on peut vider sans l'abîmer ; ici {dod} %, lue sur la fiche.",
+      "valeurs": {
+        "dod": "hors_reseau.banque.dod_pct"
+      },
+      "geste": "Si la fiche ne la publie pas, complétez-la dans le catalogue.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.heures_defaillantes",
+      "famille": "batterie",
+      "phrase": "Pendant {heures} heures de l'année, la batterie serait vide et le soleil absent : le foyer serait sans courant.",
+      "valeurs": {
+        "heures": "hors_reseau.heures_defaillantes"
+      },
+      "geste": "Ces heures tombent surtout pendant le pire mois.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.jours_autonomie",
+      "famille": "batterie",
+      "phrase": "Batterie pleine et sans aucun soleil, la banque tiendrait {jours} jours de consommation moyenne.",
+      "valeurs": {
+        "jours": "hors_reseau.banque.jours_autonomie"
+      },
+      "geste": "Pour des journées nuageuses à la suite, visez plus de jours en ajoutant des modules.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.pire_mois",
+      "famille": "batterie",
+      "phrase": "Le pire mois est celui où il manque le plus d'énergie : peu de soleil pour beaucoup de besoins.",
+      "valeurs": {},
+      "geste": "Dimensionner pour ce mois-là évite les coupures du reste de l'année.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.servi",
+      "famille": "batterie",
+      "phrase": "Sur l'année, {kwh} kWh de besoins sont servis par les panneaux et la batterie seuls.",
+      "valeurs": {
+        "kwh": "hors_reseau.servi_kwh"
+      },
+      "geste": "Comparez-le à la consommation : l'écart est la défaillance.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.surplus_perdu",
+      "famille": "batterie",
+      "phrase": "Batterie pleine, {kwh} kWh de production ne trouvent pas d'usage sur l'année : sans réseau, ils sont perdus.",
+      "valeurs": {
+        "kwh": "hors_reseau.surplus_perdu_kwh"
+      },
+      "geste": "Des usages de journée, comme le pompage ou l'eau chaude, peuvent l'utiliser.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.taux_defaillance",
+      "famille": "batterie",
+      "phrase": "Le taux de défaillance est la part des besoins de l'année qui ne serait pas servie sans réseau.",
+      "valeurs": {},
+      "geste": "Plus il est bas, plus le site tient seul.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "economie.flux",
+      "famille": "economie",
+      "phrase": "Chaque ligne est une année : l'économie de l'année, moins les charges et les remplacements saisis, donne le flux ; le cumul additionne les années passées. Les montants viennent du devis.",
+      "valeurs": {},
+      "geste": "Le cumul passe au positif l'année où l'installation est remboursée.",
+      "lexique": null,
+      "ecrans": [
+        "economie"
+      ]
+    },
+    {
+      "cle": "economie.horizon",
+      "famille": "economie",
+      "phrase": "Les économies sont comptées année par année jusqu'à l'horizon retenu sur le devis, écrit ici : au-delà, rien n'est compté.",
+      "valeurs": {},
+      "geste": "Pour changer l'horizon, modifiez-le sur le devis.",
+      "lexique": null,
+      "ecrans": [
+        "economie"
+      ]
+    },
+    {
+      "cle": "electrique.voc_froid",
+      "famille": "electrique",
+      "phrase": "Par grand froid ({temperature} °C, la température la plus basse retenue pour ce site), la tension des panneaux monte : elle doit rester sous la tension maximale de l'onduleur.",
+      "valeurs": {
+        "temperature": "electrique.verdicts[voc_cold_under_vmax].temperature_c"
+      },
+      "geste": "Si la tension dépasse la limite, retirez un panneau par chaîne.",
+      "lexique": "tension à vide",
+      "ecrans": [
+        "schema"
+      ]
+    },
+    {
+      "cle": "production.p50_kwh",
+      "famille": "production",
+      "phrase": "Votre installation de {kwc} kWc produirait environ {p50} kWh par an une année moyenne : une année sur deux fait mieux, une sur deux fait moins bien.",
+      "valeurs": {
+        "kwc": "production.total.kwc",
+        "p50": "production.total.p50_kwh"
+      },
+      "geste": "Pour une valeur prudente, regardez la production atteinte 9 années sur 10.",
+      "lexique": "production annuelle",
+      "ecrans": [
+        "production"
+      ]
+    }
+  ]
+}

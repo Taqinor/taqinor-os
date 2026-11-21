@@ -39,6 +39,7 @@ export const GLOSSAIRE_ONGLETS = {
   'materiel-electrique': 'Choisir le matériel électrique de l’installation.',
   'saisies-electriques': 'Renseigner les données électriques que le calcul exige.',
   'decisions-electriques': 'Voir les choix électriques faits et leurs raisons.',
+  'controle-chaine': 'Savoir combien de modules mettre sur un onduleur, sans rien dessiner.',
   variantes: 'Comparer plusieurs variantes de l’installation côte à côte.',
   photos: 'Ajouter et caler les photos du site.',
   optimiser: 'Comparer des inclinaisons, orientations et ratios DC/AC sur un pan, puis appliquer le meilleur.',

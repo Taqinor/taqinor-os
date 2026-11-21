@@ -147,7 +147,7 @@ import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
 // `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
-import { affectationDesPans, lireModulesDisponibles } from './roofPro11/moduleSelect';
+import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './roofPro11/moduleSelect';
 import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
 import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
 import { creerInfoBulleOmbrage } from './roofPro11/infoBulleOmbrage'; // CALX122 câblage
@@ -156,6 +156,7 @@ import { monterAtelierPose } from './roofPro11/poseSurfaces'; // ACAL26 — list
 import {
   appliquerHydratationAuCtx,
   hydratationDeSection,
+  reporterContact,
   serialiserDocumentAtelier,
   type CleSectionAtelier,
   type HydratationAtelier,
@@ -677,7 +678,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // ACAL64 — l'identifiant vient de LA fabrique (`zones.ts::prochainId`) : max(n)+1 sur les
   // pans EXISTANTS, jamais un compteur de session qui repartait de zéro sur un dossier rouvert.
   const newAreaRecord = (existants?: readonly { id: string }[]): AreaRecord =>
-    panVierge(existants ?? areas);
+    panVierge(existants ?? areas, [], moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles))); // ACAL913
   // PV19 — origine DEVIS mémorisée à l'hydratation (jamais devinée) : elle alimente le
   // meta de sérialisation par défaut. Null tant qu'aucun devis n'a hydraté le builder.
   let devisOrigin: { devisId: string | number | null; panelWatt: number | null; scenario: import('./roofPro11/prefill').LayoutScenario | null } | null = null;
@@ -1943,14 +1944,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     const h = hydrateFromLead(lead);
     appliquerHydratation(h); // ACAL26 — même fonction que le boot devis
-    // Champs contact du diagnostic (handoff, jamais un POST — même garde que prefill).
-    const setIf = (id: string, v?: string) => {
-      const el = $<HTMLInputElement>(id);
-      if (el && v && !el.value.trim()) el.value = v;
-    };
-    setIf('lf-name', h.contact.name);
-    setIf('lf-phone', h.contact.phone);
-    setIf('lf-city', h.contact.city);
+    reporterContact(h.contact); // champs contact du diagnostic (handoff, jamais un POST)
     if (h.vertices.length >= 3) {
       vertices = [...h.vertices];
       // fige la géométrie sur la zone active puis ferme (lance l'optimiseur via close()).
@@ -2023,13 +2017,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // ACAL31 — mesures (CAL102), zones d'exclusion (CAL69), retraits (CAL76), horizon (CAL93),
     // scène (CALX119), bâtiments (CALX100) et fond (CALX107) sont relus par
     // `appliquerHydratationAuCtx` ci-dessus — la MÊME fonction pour les deux boots.
-    const setIf = (id: string, v?: string) => {
-      const el = $<HTMLInputElement>(id);
-      if (el && v && !el.value.trim()) el.value = v;
-    };
-    setIf('lf-name', h.contact.name);
-    setIf('lf-phone', h.contact.phone);
-    setIf('lf-city', h.contact.city);
+    reporterContact(h.contact);
+    // ACAL913 — document SANS aucun module : celui de départ (celui du devis s'il est au catalogue).
+    const depart = moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles), h.panelWatt);
+    const zonesDoc = (layout as { zones?: Array<{ geometry?: { moduleId?: unknown } }> } | null)?.zones ?? [];
+    if (depart && !zonesDoc.some((z) => z?.geometry?.moduleId)) for (const a of areas) a.moduleId = depart.id;
     // Origine du design : reprise telle quelle dans l'export (meta de sérialisation).
     // ACAL31 — seulement quand le payload porte un id de devis : un calepinage sans devis
     // n'écrit jamais `source: 'devis'` ni un `devisId: null` inventé (le document relu fait foi).
@@ -4024,11 +4016,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
 
   /** ACAL459 — table d'ombrage par direction du pan ACTIF + signature courante des sources (méta par pan). */
-  function activeShadeTableMeta(): { shadeTableByZone: Record<string, TableOmbrage | null>; signatureOmbrage: string; skyViewByZone: Record<string, FacteurVueCiel | null> } {
-    const g = geometrieZoneActive(ctx); // ACAL460 — + facteur de vue du ciel (pose réelle du pan)
-    const points = (g?.panels ?? []).map((p) => ({ x: p.cx, y: p.cy }));
-    return { shadeTableByZone: { [ctx.activeAreaId]: shadingUi.tableOmbrage(points) }, signatureOmbrage: shadingUi.signatureTable(), skyViewByZone: { [ctx.activeAreaId]: g ? shadingUi.vueCiel(points, g.tiltDeg, g.azimuthDeg) : null } };
-  }
+  const activeShadeTableMeta = () => shadingUi.metaTableOmbrage(geometrieZoneActive(ctx)); // ACAL460 — + vue du ciel ; corps extrait (ACAL726)
 
   // ═══════════ CALX3 — L'ENTRÉE MOTEUR, LE PLAN APPLIQUÉ, LES RACCOURCIS ═══════════
   //
@@ -4309,6 +4297,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),
+    renderCarteAccesHd: (scale) => shadingUi.avecCarteDAcces(() => scene3d.renderOffscreen(scale)), // ACAL726
     exporterSceneGltf: () => scene3d.exporterSceneGltf(), // ACAL537
     appliquerVue: (nom) => appliquerVue(map, nom, facingAzimuthDeg, !!opts.reducedMotion), // ACAL435
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone

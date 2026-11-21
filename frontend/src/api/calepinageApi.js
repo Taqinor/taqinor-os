@@ -266,9 +266,9 @@ const calepinageApi = {
     // `params` (`{langue}`) n'accompagne que les pièces multilingues de
     // LANGUES_PAR_DOCUMENT (services/documents) — leurs routes, pour la garde
     // check_frontend_query_params.py :
-    // chemins-requete: /calepinage/calepinages/{id}/rapport-etude.pdf/ /calepinage/calepinages/{id}/rapport-ombrage.pdf/ /calepinage/calepinages/{id}/diagramme-pertes.svg/
-    telechargerDocument: (endpoint, params) =>
-      api.get(endpoint, { responseType: 'blob', params }),
+    // chemins-requete: /calepinage/calepinages/{id}/rapport-etude.pdf/ /calepinage/calepinages/{id}/rapport-ombrage.pdf/ /calepinage/calepinages/{id}/diagramme-pertes.svg/ /calepinage/calepinages/{id}/diagramme-energie.svg/
+    telechargerDocument: (endpoint, params, options) =>
+      api.get(endpoint, { responseType: 'blob', params, ...options }),
 
     ...projet,
 
@@ -450,7 +450,8 @@ const calepinageApi = {
   },
   // ACAL559 — le catalogue des systèmes de fixation de la société (contrat
   // `calepinage_systemes_fixation.json`, routes ACAL558) ; un 400 nomme le champ
-  // par son chemin (`provenance`, `composants[1].source`).
+  // par son chemin (`provenance`, `composants[1].source`). ACAL568 : un système
+  // porte `controles_pose` (mm, sourcés) ; `bom-fixation/` rend `alertes`.
   systemesFixation: {
     liste: () => api.get('/calepinage/calepinages/systemes-fixation/'),
     creer: (corps) => api.post('/calepinage/calepinages/systemes-fixation/', corps),
@@ -472,6 +473,8 @@ export default calepinageApi
 // ACAL391 — contrat calepinage_detection_toit.json (M0)
 // ACAL996 — contrat calepinage_productible_pose.json (M0)
 // ACAL611 — contrat calepinage_evaluation_electrique.json (M0)
+// ACAL618 / ACAL632 / ACAL677 — clés servies par ce contrat : `chaines`
+// (tension par chaîne), `onduleurs_suggeres`, `boucles_dc` (boucles de chaîne).
 // ACAL614 — contrat calepinage_configurations_onduleur.json (M0)
 // ACAL626 — contrat calepinage_controle_chaine.json (M0)
 // ACAL629 — contrat calepinage_import_affectation.json (M0)

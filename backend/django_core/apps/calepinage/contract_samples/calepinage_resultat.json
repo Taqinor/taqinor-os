@@ -1114,7 +1114,7 @@
         {
           "troncon": "ch5",
           "champ": "section_mm2",
-          "motif": "aucune norme électrique sélectionnée pour le pays « ma » : la section du conducteur de protection en dépend, elle est donc OMISE. Sélectionnez la norme applicable dans les réglages du module (services/norme.py::norme_applicable)."
+          "motif": "aucune norme électrique sélectionnée pour le pays « ma » : la section du conducteur de protection en dépend, elle est donc OMISE. Sélectionnez la norme applicable dans les réglages du module (norme électrique choisie pour le pays)."
         }
       ],
       "verdicts": [
@@ -2678,7 +2678,7 @@
         {
           "troncon": "ch5",
           "champ": "section_mm2",
-          "motif": "aucune norme électrique sélectionnée pour le pays « ma » : la section du conducteur de protection en dépend, elle est donc OMISE. Sélectionnez la norme applicable dans les réglages du module (services/norme.py::norme_applicable)."
+          "motif": "aucune norme électrique sélectionnée pour le pays « ma » : la section du conducteur de protection en dépend, elle est donc OMISE. Sélectionnez la norme applicable dans les réglages du module (norme électrique choisie pour le pays)."
         }
       ],
       "verdicts": [

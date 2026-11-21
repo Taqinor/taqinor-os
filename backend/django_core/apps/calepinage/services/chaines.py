@@ -133,6 +133,11 @@ class PanPose:
     #: (``label``) n'est plus qu'un affichage. Ajoutés EN FIN.
     cle: Optional[str] = None
     numeros: Tuple[int, ...] = ()
+    #: ACAL642 — les centres ``(cx, cy)`` des modules (mètres, repère du pan),
+    #: dans l'ordre du document (vide quand le document ne les porte pas),
+    #: et le motif d'affectation SAISI pour ce pan (``None`` = ``rangee``).
+    centres: Tuple[Tuple[float, float], ...] = ()
+    motif_affectation: Optional[str] = None
 
     @property
     def cle_stable(self):
@@ -195,6 +200,9 @@ class Conception:
     #: ACAL650 — les clés stables des pans FUSIONNÉS en un groupe électrique
     #: (un tuple par groupe de 2 pans ou plus) ; vide = aucun regroupement.
     fusions: Tuple[Tuple[str, ...], ...] = ()
+    #: ACAL633 — le nombre d'onduleurs ACCEPTÉ dans l'entrée (``None`` = non
+    #: saisi : le plafond de dossier fait foi, comme avant).
+    nombre_onduleurs: Optional[int] = None
 
     @property
     def fiche_incomplete(self):
@@ -286,8 +294,33 @@ def _pans_poses(layout):
             module=_module_du_pan(pan), est_ouest=est_ouest, faces=faces,
             azimut_tables_deg=tables[0], inclinaison_tables_deg=tables[1],
             cle=cle,
-            numeros=numeros if len(numeros) == modules else ()))
+            numeros=numeros if len(numeros) == modules else (),
+            centres=_centres_du_pan(zones_par_cle.get(pan.get('cle')),
+                                    modules)))
     return tuple(pans)
+
+
+def _centres_du_pan(zone, modules):
+    """ACAL642 — ``((cx, cy), …)`` de ``geometry.panels``, ou ``()``.
+
+    Rendu seulement quand CHAQUE module posé porte ses deux centres : un
+    centre manquant ferait ordonner une partie des modules au hasard.
+    """
+    geometrie = (zone or {}).get('geometry')
+    panneaux = (geometrie or {}).get('panels') if isinstance(
+        geometrie, dict) else None
+    if not isinstance(panneaux, list) or len(panneaux) != modules:
+        return ()
+    centres = []
+    for panneau in panneaux:
+        cx = _nombre((panneau or {}).get('cx')) if isinstance(
+            panneau, dict) else None
+        cy = _nombre((panneau or {}).get('cy')) if isinstance(
+            panneau, dict) else None
+        if cx is None or cy is None:
+            return ()
+        centres.append((cx, cy))
+    return tuple(centres)
 
 
 def _faces_du_pan(pan, zones_par_cle, modules):
@@ -954,11 +987,20 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     à plusieurs modèles est dimensionné modèle par modèle
     (``_concevoir_par_module``) ; mono-module, le chemin est inchangé.
     """
+    nombre_onduleurs = options.pop('nombre_onduleurs', None)  # ACAL633
+    motifs = options.pop('motifs_affectation', None) or {}  # ACAL642
     pans, fiches_par_pan = _pans_avec_leur_fiche(
         _pans_poses(layout), fiches_modules, module_specs, module_designation)
+    if motifs:
+        pans = tuple(replace(pan, motif_affectation=motifs.get(
+            pan.cle_stable)) for pan in pans)
     module, manque_module = specs_module(module_specs, module_designation)
     onduleur, manque_onduleur = _specs_onduleur(onduleur_specs,
                                                 onduleur_designation)
+    if nombre_onduleurs and onduleur is not None:
+        # ACAL633 — N onduleurs acceptés : N × les entrées MPPT du modèle.
+        onduleur = replace(
+            onduleur, n_mppt=int(onduleur.n_mppt) * int(nombre_onduleurs))
     # ACAL162 — AUCUN onduleur de chaîne désigné (fiche vide, pas une fiche
     # incomplète) mais un MICRO-onduleur en emplacement optimiseur : le champ
     # est câblé en branches AC. Aucun onduleur fictif n'est construit.
@@ -1014,7 +1056,8 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
         regle_mppt=regle, partage_mppt=partage, temperatures=temperatures,
         coefficients_non_sources=tuple(module.coefficients_non_sources),
         fusions=tuple(tuple(p.cle_stable for p in f) for f in _fusions_de_pans(
-            pans, options.get('tolerance_orientation_deg')) if len(f) > 1))
+            pans, options.get('tolerance_orientation_deg')) if len(f) > 1),
+        nombre_onduleurs=int(nombre_onduleurs) if nombre_onduleurs else None)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1112,6 +1155,11 @@ def affectation(conception, *, imposee=None):
     evaluation = evaluer_onduleurs(conception)
     nombre = evaluation.nombre if evaluation is not None else 0
     numero_onduleur = 1 if nombre == 1 else None
+    # ACAL633 — N onduleurs ACCEPTÉS : la chaîne sur l'entrée globale j va à
+    # l'onduleur ⌈j ÷ entrées par onduleur⌉, sur son entrée locale.
+    accepte = getattr(conception, 'nombre_onduleurs', None)
+    par_onduleur = (max(1, conception.entree.onduleur.n_mppt // accepte)
+                    if accepte and conception.entree is not None else None)
 
     repartitions_par_pan = {}
     for repartition in getattr(conception, 'repartitions', ()) or ():
@@ -1144,8 +1192,10 @@ def affectation(conception, *, imposee=None):
                         'module': sien.cle_module(rang_module),
                         'pan': sien.label,
                         'chaine': _numero_chaine(chaine),
-                        'onduleur': numero_onduleur,
-                        'mppt': chaine.mppt,
+                        'onduleur': (numero_onduleur if not par_onduleur else
+                                     (chaine.mppt - 1) // par_onduleur + 1),
+                        'mppt': (chaine.mppt if not par_onduleur else
+                                 (chaine.mppt - 1) % par_onduleur + 1),
                         'source': SOURCE_AUTO,
                     }
     lignes = []
@@ -1162,7 +1212,53 @@ def affectation(conception, *, imposee=None):
     return tuple(_colorer(_appliquer_imposee(lignes, imposee)))
 
 
+#: ACAL642 — les deux motifs d'affectation d'un pan : ``rangee`` (l'ordre du
+#: document, défaut) et ``u`` (aller-retour : rangées prises du haut vers le
+#: bas, la suivante parcourue en sens inverse). Le serpentin donne la même
+#: suite que le U pour des rangées appariées : deux motifs seulement. Distincts
+#: des motifs de CÂBLE (``cables.MOTIFS_PARCOURS``) : ne pas les fusionner.
+MOTIFS_AFFECTATION = ('rangee', 'u')
+
+#: ACAL642 — deux centres dont l'ordonnée diffère de moins que ceci sont de la
+#: même rangée : tolérance de bruit de calcul flottant (1 mm), pas une règle.
+_TOLERANCE_RANGEE_M = 1e-3
+
+
+def _ordre_du_motif(rangs, centres, motif):
+    """ACAL642 — ``rangs`` réordonnés selon ``motif``.
+
+    ``rangee``, absent, centres absents ou inexploitables ⇒ ``rangs`` tel
+    quel (l'ordre d'aujourd'hui, octet pour octet). ``u`` : rangées
+    regroupées par ordonnée de centre croissante, chaque rangée dans l'ordre
+    du document, une rangée sur deux parcourue en sens inverse.
+    """
+    if motif != 'u' or not centres or any(
+            not 0 < rang <= len(centres) for rang in rangs):
+        return rangs
+    rangees = []
+    for rang in sorted(rangs, key=lambda r: (centres[r - 1][1], r)):
+        ordonnee = centres[rang - 1][1]
+        if (rangees and abs(ordonnee - rangees[-1][0])
+                <= _TOLERANCE_RANGEE_M):
+            rangees[-1][1].append(rang)
+        else:
+            rangees.append((ordonnee, [rang]))
+    ordre = []
+    for index, (_ordonnee, membres) in enumerate(rangees):
+        ordre.extend(sorted(membres)[::-1] if index % 2 else sorted(membres))
+    return ordre
+
+
 def _rangs_par_groupe(pan, chaines, repartitions):
+    """ACAL642 — ``_rangs_par_groupe_brut`` avec le motif d'affectation du pan."""
+    motif = getattr(pan, 'motif_affectation', None)
+    return [(_ordre_du_motif(rangs, getattr(pan, 'centres', ()), motif),
+             chaines_du_groupe)
+            for rangs, chaines_du_groupe in _rangs_par_groupe_brut(
+                pan, chaines, repartitions)]
+
+
+def _rangs_par_groupe_brut(pan, chaines, repartitions):
     """ACAL139 — ``[(rangs des modules du groupe, chaînes du groupe)]``.
 
     Un pan simple : un groupe, ses rangs 1…N dans l'ordre du document (le
@@ -1205,6 +1301,8 @@ def _appliquer_imposee(lignes, imposee):
         ligne['chaine'] = impose['chaine']
         ligne['mppt'] = impose['mppt']
         ligne['onduleur'] = impose['onduleur']
+        if 'optimiseur' in impose:  # ACAL733
+            ligne['optimiseur'] = impose['optimiseur']
         ligne['source'] = SOURCE_MANUELLE
     return lignes
 
@@ -1232,7 +1330,25 @@ def evaluer_onduleurs(conception, *, reglages=None):
         return None
     puissance_dc = (conception.resultat.puissance_kwc
                     if conception.chaines else entree.puissance_kwc)
-    return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    accepte = getattr(conception, 'nombre_onduleurs', None)
+    if not accepte:
+        return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    # ACAL633 — le nombre ACCEPTÉ remplace celui du plafond de dossier : le
+    # noyau ne sait compter que par plafond, on lui donne la puissance par
+    # onduleur qui rend EXACTEMENT ce nombre, puis on rétablit le vrai plafond.
+    if not puissance_dc or puissance_dc <= 0:
+        return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    evaluation = dimensionner_onduleurs(
+        replace(entree, plafond_kwc_par_onduleur=puissance_dc / accepte),
+        puissance_dc, reglages)
+    plafond = entree.plafond_kwc_par_onduleur
+    bloquants = tuple(evaluation.bloquants)
+    if plafond and puissance_dc / accepte > float(plafond) + 1e-9:
+        bloquants += ("%s kWc par onduleur au-dessus du plafond de %s kWc — "
+                      "déport de modules nécessaire"
+                      % (fr(puissance_dc / accepte, 1), fr(plafond, 0)),)
+    return replace(evaluation, plafond_kwc_par_onduleur=plafond,
+                   bloquants=bloquants)
 
 
 def empreinte_entree(layout, *, module_specs, onduleur_specs, temperatures,
@@ -1450,7 +1566,7 @@ SOURCE_AUTO = 'automatique'
 SOURCE_MANUELLE = 'affectation manuelle'
 
 #: Les clés admises dans une ligne d'affectation imposée.
-CLES_IMPOSEE = ('module', 'chaine', 'mppt', 'onduleur')
+CLES_IMPOSEE = ('module', 'chaine', 'mppt', 'onduleur', 'optimiseur')
 
 
 class AffectationInvalide(ValueError):
@@ -1497,13 +1613,24 @@ def normaliser_affectation_imposee(brut):
                 f"Le module « {module} » est affecté deux fois : un panneau "
                 "n'appartient qu'à une seule chaîne.")
         vus.add(module)
-        lignes.append({
+        propre = {
             'module': module,
             'chaine': _numero_impose(ligne.get('chaine'), module, 'chaîne'),
             'mppt': _numero_impose(ligne.get('mppt'), module, 'entrée MPPT'),
             'onduleur': _numero_impose(ligne.get('onduleur'), module,
                                        'onduleur'),
-        })
+        }
+        # ACAL733 — drapeau « optimiseur » PAR MODULE : jamais écrit à None,
+        # absent ⇒ hérité du produit déclaré pour le document.
+        if ligne.get('optimiseur') is not None:
+            if not isinstance(ligne['optimiseur'], bool):
+                raise AffectationInvalide(
+                    f"Le champ « optimiseur » du module « {module} » doit "
+                    "être vrai ou faux (reçu : "
+                    f"{type(ligne['optimiseur']).__name__}).",
+                    champ='optimiseur')
+            propre['optimiseur'] = ligne['optimiseur']
+        lignes.append(propre)
     return tuple(lignes)
 
 

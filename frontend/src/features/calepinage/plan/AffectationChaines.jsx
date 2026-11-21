@@ -5,6 +5,8 @@ import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { couleurParModule, libelleGroupe } from './AffectationChaines.helpers'
+import { phrasesChaines } from '../electrique/tensionsChaines'
+import ImportAffectation from './ImportAffectation'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
 const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
@@ -475,6 +477,15 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
         </Button>
       </div>
 
+      {/* ACAL631 — un CSV valide REMPLIT la proposition (rien n'est enregistré avant « Enregistrer »). */}
+      <ImportAffectation
+        calepinageId={id}
+        onProposer={(lignes) => {
+          setEditions((precedente) => new Map([...precedente, ...lignes.map((l) => [l.module, l])]))
+          setEnregistre(null)
+        }}
+      />
+
       {/* LE VERDICT — RECOPIÉ du serveur, jamais reformulé. */}
       <section className="flex flex-col gap-1" data-testid="cal234-verdict">
         {!aProposition
@@ -492,6 +503,10 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
             </p>
           )
           : null}
+        {/* ACAL619 — la tension de chaque chaîne affectée dans cette session, d'après `chaines[]` servi. */}
+        {phrasesChaines(verdict?.chaines, new Set([...editions.values()].map((e) => e.chaine))).map((phrase) => (
+          <p key={phrase} role="status" className="text-sm text-foreground" data-testid="acal619-bulle">{phrase}</p>
+        ))}
         {bloquants.map((motif) => (
           <p key={motif} className="text-sm text-destructive" data-testid="cal234-bloquant">{motif}</p>
         ))}
