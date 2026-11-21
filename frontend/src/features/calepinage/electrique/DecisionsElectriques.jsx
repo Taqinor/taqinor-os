@@ -36,7 +36,7 @@ const messageErreur = (err, defaut) => {
 
 function Ligne({ children, onRetirer, testid, erreurs }) {
   return (
-    <li className="flex flex-col gap-1 border border-white/10 p-2" data-testid={testid}>
+    <li className="flex flex-col gap-1 border border-border p-2" data-testid={testid}>
       <div className="flex flex-wrap items-end gap-2">
         {children}
         <Button type="button" variant="ghost" onClick={onRetirer}>Retirer</Button>

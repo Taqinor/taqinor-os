@@ -23,12 +23,12 @@ const PLAFOND = {
     'atelier/PanneauSeries.jsx': 11, 'atelier/PanneauVersions.jsx': 8, 'atelier/PoseReelle.jsx': 24,
     'atelier/Projet.jsx': 12, 'atelier/RepriseVisite.jsx': 24, 'atelier/ResumeAtelier.jsx': 1,
     'ActionsSurfacePose.jsx': 11, 'AtelierPanneaux.jsx': 25, 'BoutonDevis.jsx': 28, 'commun/RailGuide.jsx': 4,
-    'CourseSoleil.jsx': 21, 'electrique/DecisionsElectriques.jsx': 1, 'electrique/MaterielElectrique.jsx': 2,
-    'electrique/Raccordement.jsx': 6, 'electrique/SaisiesElectriques.jsx': 8, 'electrique/VerdictElectrique.jsx': 4,
-    'equipements/FichesIncompletes.jsx': 26, 'Etiquettes.jsx': 10, 'FicheCalepinage.jsx': 44, 'HorizonPanel.jsx': 31,
+    'CourseSoleil.jsx': 21,
+   
+    'Etiquettes.jsx': 10, 'FicheCalepinage.jsx': 44, 'HorizonPanel.jsx': 31,
     'LegendeCourbes.jsx': 1, 'ModeTerrain.jsx': 29, 'Ombriere.jsx': 42, 'PanneauAllees.jsx': 74,
-    'PanneauCalques.jsx': 5, 'PhotoSiteCalage.jsx': 11, 'plan/AffectationChaines.jsx': 1, 'PlanImporteCalage.jsx': 49,
-    'pompage/PompagePanel.jsx': 45, 'production/BandeauProvenanceProduction.jsx': 2, 'RaccourcisAtelier.jsx': 15,
+    'PanneauCalques.jsx': 5, 'PhotoSiteCalage.jsx': 11, 'PlanImporteCalage.jsx': 49,
+    'RaccourcisAtelier.jsx': 15,
     'RemplissageProuve.jsx': 12, 'SaisiePente.jsx': 41, 'TracePlanPose.jsx': 2, 'Vue2DPlan.jsx': 7,
   }).map(([k, v]) => [C + k, v])),
 }
@@ -53,6 +53,17 @@ test("les 5 fichiers de l'enveloppe n'ont plus aucune classe de L", () => {
 })
 test('aucun fichier ne dépasse son plafond (absent de la table = 0)', () => {
   for (const f of cibles) assert.ok(compte(f) <= (PLAFOND[f] ?? 0), `${f} : ${compte(f)} classe(s) du site public, plafond ${PLAFOND[f] ?? 0}`)
+})
+const SOUS_DOSSIERS = [
+  'pompage/PompagePanel.jsx', 'equipements/FichesIncompletes.jsx', 'electrique/SaisiesElectriques.jsx',
+  'electrique/Raccordement.jsx', 'electrique/VerdictElectrique.jsx', 'electrique/MaterielElectrique.jsx',
+  'electrique/DecisionsElectriques.jsx', 'production/BandeauProvenanceProduction.jsx', 'plan/AffectationChaines.jsx',
+].map((n) => C + n)
+test("ACAL442 : les 9 fichiers des sous-dossiers n'ont plus de classe de L", () => {
+  for (const f of SOUS_DOSSIERS) {
+    assert.equal(compte(f), 0, `${f} porte encore des classes du site public`)
+    assert.equal(PLAFOND[f], undefined, `${f} doit sortir de PLAFOND`)
+  }
 })
 test("PLAFOND ne nomme que des fichiers existants, jamais ceux de l'enveloppe", () => {
   for (const f of Object.keys(PLAFOND)) {

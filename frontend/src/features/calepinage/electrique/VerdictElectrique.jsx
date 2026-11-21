@@ -72,7 +72,7 @@ function AllerAOnglet({ calepinageId, cleOnglet, cleDomaine }) {
   return (
     <Link
       to={`/calepinage/${calepinageId}?${parametres.toString()}`}
-      className="text-sm font-medium text-brass-300 underline"
+      className="text-sm font-medium text-primary-text underline"
       data-testid={`calx249-aller-${cleDomaine}`}
     >
       {onglet.libelle}
@@ -94,7 +94,7 @@ function Motif({ motif }) {
         >
           {libelleStatut(motif.statut)}
         </Badge>
-        <code className="text-xs text-lune-faint" data-testid={`calx249-code-${motif.code}`}>
+        <code className="text-xs text-muted-foreground" data-testid={`calx249-code-${motif.code}`}>
           {motif.code}
         </code>
         {statutRefuse(motif.statut)
@@ -113,12 +113,12 @@ function Motif({ motif }) {
       </p>
       {motif.source
         ? (
-          <p className="text-xs text-lune-faint" data-testid={`calx249-source-${motif.code}`}>
+          <p className="text-xs text-muted-foreground" data-testid={`calx249-source-${motif.code}`}>
             {motif.source}
           </p>
         )
         : (
-          <p className="text-xs text-lune-faint" data-testid={`calx249-sans-source-${motif.code}`}>
+          <p className="text-xs text-muted-foreground" data-testid={`calx249-sans-source-${motif.code}`}>
             Aucune provenance déclarée.
           </p>
         )}
