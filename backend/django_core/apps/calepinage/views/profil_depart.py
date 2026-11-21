@@ -32,8 +32,10 @@ _LIGNES = serializers.ListField(child=serializers.DictField())
 @extend_schema(methods=['POST'], request=None, responses=forme_du_contrat(
     'CalepinageProfilDepartApplication', 'calepinage_profil_depart.json',
     cle='exemple_application'))
-@extend_schema(methods=['DELETE'], request=None, responses=inline_serializer(
-    'CalepinageProfilDepartRetrait', {'retirees': _LIGNES, 'gardees': _LIGNES}))
+# Le retrait REND son bilan (200 + corps) : un sérialiseur nu serait publié
+# en 204 pour un DELETE (drf-spectacular), contrat menteur (api-fuzz #1512).
+@extend_schema(methods=['DELETE'], request=None, responses={200: inline_serializer(
+    'CalepinageProfilDepartRetrait', {'retirees': _LIGNES, 'gardees': _LIGNES})})
 @action(detail=False, methods=['get', 'post', 'delete'],
         url_path='profil-depart', url_name='profil-depart',
         permission_classes=[PeutLireOuApprouverCalepinage])
