@@ -1,7 +1,7 @@
 """ACAL630 — importer un plan de chaînes CSV (``module;chaine;mppt;onduleur``).
 
 Un plan tiré d'un autre logiciel arrive en tableau : le CSV n'est qu'une
-autre ENTRÉE de l'affectation manuelle. ``lire_csv_affectation`` valide
+autre ENTRÉE de l'affectation manuelle. ``_lire_csv_affectation`` valide
 LUI-MÊME chaque ligne et rend un refus par défaut trouvé, chacun nommant SA
 ligne de fichier (l'en-tête est la ligne 1) et sa colonne — là où
 ``normaliser_affectation_imposee`` s'arrête à la première erreur sans ligne
@@ -14,7 +14,7 @@ contrat ``contract_samples/calepinage_import_affectation.json`` (ACAL629).
 """
 from __future__ import annotations
 
-__all__ = ['COLONNES', 'importer_affectation', 'lire_csv_affectation']
+__all__ = ['COLONNES', 'importer_affectation']
 
 COLONNES = ('module', 'chaine', 'mppt', 'onduleur')
 SEPARATEUR = ';'
@@ -52,7 +52,7 @@ def _entete(premiere):
     return colonnes, None
 
 
-def lire_csv_affectation(texte):
+def _lire_csv_affectation(texte):
     """``(lignes, refus)`` — les lignes valides et un refus par défaut."""
     lignes_fichier = str(texte or '').splitlines()
     if not lignes_fichier or not lignes_fichier[0].strip():
@@ -103,7 +103,7 @@ def importer_affectation(calepinage, texte):
     )
     from .electrique import conception_du_calepinage
 
-    lignes, refus = lire_csv_affectation(texte)
+    lignes, refus = _lire_csv_affectation(texte)
     bloquants = []
     if lignes:
         conception, materiel, _donnees, _doc = conception_du_calepinage(

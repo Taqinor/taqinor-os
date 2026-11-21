@@ -31,7 +31,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.rangees import rangees_du_pan
 from apps.calepinage.services.planche import (
-    CONTENU_POSE, CONTENU_TOITURE, GRIS_MODULE, PlanDePoseRefuse,
+    CONTENU_IMPLANTATION, CONTENU_POSE, CONTENU_TOITURE, GRIS_MODULE, PlanDePoseRefuse,
     geometrie_de_planche,
     _lignes_de_chaines, _rendre_plan_pose_svg, svg_de_planche,
     _verifier_absence_d_argent,
@@ -133,6 +133,62 @@ class ReperesDePoseTest(SimpleTestCase):
         self.assertNotIn('>R1</text>', toiture)
 
 
+MOTIF_Z2 = ("Le retrait de rive laisse 0,9 m utiles : moins qu'un module "
+            "(1,13 m).")
+
+
+def layout_pan_vide(motif=True, modules_z2=False):
+    """ACAL550 - deux pans ; ``z2`` sans module, avec ou sans motif."""
+    layout = layout_pan_existant()
+    layout['zones'][0].pop('existant', None)
+    layout['zones'][0].pop('anneeMiseEnService', None)
+    if not modules_z2:
+        layout['zones'][1]['geometry']['panels'] = []
+    if motif:
+        layout['motifsPansVides'] = {
+            'z2': {'code': 'retrait_rive', 'message': MOTIF_Z2,
+                   'mesures': {'retraitM': 0.5}},
+            'fantome': {'code': 'inconnue', 'message': 'Pan inexistant.',
+                        'mesures': {}}}
+    return layout
+
+
+class MotifDePanVideTest(SimpleTestCase):
+    """ACAL550 - la cause d'un pan sans module, au centre de ce pan."""
+
+    def svg(self, layout, contenu=CONTENU_POSE):
+        return svg_de_planche(geometrie_de_planche(layout), contenu=contenu)
+
+    def test_pan_vide_avec_motif_le_message_est_dans_le_svg_de_pose(self):
+        geometrie = geometrie_de_planche(layout_pan_vide())
+        vide = [p for p in geometrie['pans'] if p['repere'] == 'z2'][0]
+        self.assertEqual(vide['motif_vide'], MOTIF_Z2)
+        self.assertIn('>%s</text>' % html.escape(MOTIF_Z2),
+                      svg_de_planche(geometrie, contenu=CONTENU_POSE))
+
+    def test_pan_garni_avec_motif_perime_n_imprime_rien(self):
+        layout = layout_pan_vide(modules_z2=True)
+        geometrie = geometrie_de_planche(layout)
+        for pan in geometrie['pans']:
+            self.assertIsNone(pan['motif_vide'])
+        self.assertNotIn(MOTIF_Z2.split(' : ')[0], self.svg(layout))
+
+    def test_sans_motif_le_svg_est_celui_d_aujourd_hui(self):
+        avec = self.svg(layout_pan_vide(motif=False))
+        sans_cle = layout_pan_vide(motif=False)
+        self.assertNotIn('motifsPansVides', sans_cle)
+        self.assertEqual(avec, self.svg(sans_cle))
+        self.assertNotIn('retrait de rive', avec)
+
+    def test_un_motif_sans_pan_est_ignore(self):
+        self.assertNotIn('Pan inexistant', self.svg(layout_pan_vide()))
+
+    def test_les_autres_contenus_n_impriment_pas_le_motif(self):
+        for contenu in (CONTENU_TOITURE, CONTENU_IMPLANTATION):
+            self.assertNotIn('retrait de rive',
+                             self.svg(layout_pan_vide(), contenu))
+
+
 def layout_pan_existant(annee=2019):
     """ACAL575 - Pan A existant (10 modules) puis Pan B neuf (6 modules)."""
     layout = copy.deepcopy(LAYOUT)
@@ -229,9 +285,9 @@ class FeuilleDePanTest(SimpleTestCase):
     (meme convention et meme legende que le plan de cablage, ACAL643)."""
 
     def feuilles(self, layout, table):
-        from apps.calepinage.services.planche_pan import svgs_de_pans
+        from apps.calepinage.services.planche_pan import _svgs_de_pans
 
-        return svgs_de_pans(layout, table, pied='calepinage aaaaaaaaaaaa')
+        return _svgs_de_pans(layout, table, pied='calepinage aaaaaaaaaaaa')
 
     def deux_chaines(self):
         return affectation((1, ['z1#1', 'z1#2', 'z1#3']),
@@ -347,6 +403,81 @@ def pan_de_10_sur_6(pose='portrait'):
             'modules': []}
 
 
+#: ACAL1065 - un point [lng, lat] AU CENTRE du pan z1 de LAYOUT, un autre loin.
+DANS_LE_PAN = [-7.59995, 33.50005]
+HORS_PAN = [-7.5, 33.6]
+
+
+def layout_avec_reperes(*reperes):
+    layout = layout_six_modules()
+    layout['reperesChantier'] = [dict(r) for r in reperes]
+    return layout
+
+
+def ancre(rayon, point=None, texte='Ancrage nord'):
+    return {'id': 'r1', 'type': 'ancre_antichute', 'texte': texte,
+            'rayonM': rayon, 'point': point or DANS_LE_PAN}
+
+
+class ReperesDeChantierSurLaFeuilleTest(SimpleTestCase):
+    """ACAL1065 - les repères saisis, sur la feuille A4 de leur pan."""
+
+    def feuilles(self, layout):
+        from apps.calepinage.services.planche_pan import _svgs_de_pans
+
+        return _svgs_de_pans(layout, affectation(
+            (1, ['z1#1', 'z1#2', 'z1#3'])), pied='calepinage aaaaaaaaaaaa')
+
+    def cercles(self, svg):
+        return [float(r) for r in re.findall(
+            r'<circle [^>]*r="([\d.]+)"[^>]*stroke-dasharray', svg)]
+
+    def test_ancre_de_2_m_cercle_a_l_echelle_texte_et_legende(self):
+        layout = layout_avec_reperes(ancre(2.0))
+        svg = self.feuilles(layout)[0]
+        rayons = self.cercles(svg)
+        self.assertEqual(len(rayons), 1)
+        # Même transformation que les modules : r(mm) / 2 m == mm par m.
+        module = modules_dessines(svg)[0]
+        abscisses = [float(p.split(',')[0]) for p in re.search(
+            r'points="([^"]+)"', module).group(1).split()]
+        etendue = max(abscisses) - min(abscisses)
+        cotes = geometrie_de_planche(layout)['pans'][0]['module_m']
+        self.assertTrue(any(abs(rayons[0] / 2.0 - etendue / m) < 0.01
+                            for m in cotes), (rayons, etendue, cotes))
+        texte = texte_de_svg(svg)
+        self.assertIn('Ancrage nord', texte)
+        self.assertIn("Repères saisis par l'équipe d'étude — rayon saisi, "
+                      "non calculé", texte)
+        self.assertIn('Triangle : ancre antichute', texte)
+
+    def test_sans_rayon_saisi_aucun_cercle(self):
+        svg = self.feuilles(layout_avec_reperes(ancre(None)))[0]
+        self.assertEqual(self.cercles(svg), [])
+        self.assertIn('Ancrage nord', texte_de_svg(svg))
+
+    def test_hors_pan_liste_sur_la_derniere_feuille(self):
+        svg = self.feuilles(layout_avec_reperes(
+            ancre(2.0, HORS_PAN, 'Echelle'), ancre(None)))[-1]
+        self.assertIn('Repère hors pan : Echelle', texte_de_svg(svg))
+        self.assertEqual(len(self.cercles(svg)), 0)
+
+    def test_sans_repere_la_feuille_est_celle_d_avant(self):
+        sans = self.feuilles(layout_six_modules())
+        vide = layout_six_modules()
+        vide['reperesChantier'] = []
+        self.assertEqual(self.feuilles(vide), sans)
+        self.assertNotIn('Repères saisis', texte_de_svg(sans[0]))
+
+    def test_un_repere_ne_change_pas_l_empreinte_du_document(self):
+        from apps.calepinage.services.layout import empreinte_document
+
+        seul = layout_six_modules()
+        avec = layout_avec_reperes(ancre(2.0))
+        avec.pop('reperesChantier')
+        self.assertEqual(empreinte_document(seul), empreinte_document(avec))
+
+
 def modules_aux_marges(pan, centres):
     from apps.calepinage.services.planche import coins_du_module
 
@@ -364,9 +495,9 @@ class DistancesAuxRivesTest(SimpleTestCase):
     """ACAL591 - les quatre distances du champ aux rives, MESUREES."""
 
     def mesures(self, pan, modules):
-        from apps.calepinage.services.planche_pan import distances_aux_rives
+        from apps.calepinage.services.planche_pan import _distances_aux_rives
 
-        return distances_aux_rives(pan, modules)
+        return _distances_aux_rives(pan, modules)
 
     def test_quatre_cotes_egales_aux_marges_d_un_module_portrait(self):
         pan = pan_de_10_sur_6('portrait')
@@ -412,7 +543,7 @@ class CotesDesZonesInterditesTest(SimpleTestCase):
     """ACAL591 - une cote d'emprise par zone interdite qui recoupe le pan."""
 
     def cotes(self, zone_points, coins=True):
-        from apps.calepinage.services.planche_pan import cotes_des_zones
+        from apps.calepinage.services.planche_pan import _cotes_des_zones
 
         pan = pan_de_10_sur_6('portrait')
         modules = modules_aux_marges(pan, CENTRES_AUX_MARGES)
@@ -420,7 +551,7 @@ class CotesDesZonesInterditesTest(SimpleTestCase):
             modules[0]['coins'] = None
         zone = {'repere': 'ZONE-1', 'libelle': 'Cheminee', 'nature': '',
                 'points': zone_points}
-        return cotes_des_zones(pan, modules, [zone])
+        return _cotes_des_zones(pan, modules, [zone])
 
     def test_emprise_et_distance_au_module_le_plus_proche(self):
         # x 4..6, y 1..2 : emprise 2 x 1 ; les modules du bas se tiennent a
@@ -479,9 +610,9 @@ class EncartFixationDuPanTest(SimpleTestCase):
     """ACAL592 - l'encart « Fixation de ce pan » de la feuille A4."""
 
     def feuille(self, fixation):
-        from apps.calepinage.services.planche_pan import svgs_de_pans
+        from apps.calepinage.services.planche_pan import _svgs_de_pans
 
-        return texte_de_svg(svgs_de_pans(
+        return texte_de_svg(_svgs_de_pans(
             layout_six_modules(), [], pied='', fixation=fixation)[0])
 
     def ligne(self, composant, quantite, unite, manquant=None):

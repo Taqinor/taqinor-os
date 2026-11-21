@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 /* CALX27 — le droit d'ÉCRITURE métier du module. Même code que la garde
    serveur de l'action (`PeutGererCalepinage`, `services/verrou.py`) : l'écran ne
@@ -41,6 +41,9 @@ import BadgePerime from './BadgePerime'
    panneau = UNE ligne en fin de `atelier/onglets.js` ; ce fichier-ci n'est plus
    rouvert (décision D-CALX 3 et 13). */
 import Rail from './atelier/Rail'
+// ACAL600 — le niveau expert, tenu ICI (un seul état) ; « Comparer d'autres modules ».
+import { PARAM_MODE, useModeExpert } from './atelier/modeExpert'
+import ComparerModules from './ComparerModules'
 // ACAL415 — outils et onglets cherchables dans ⌘K.
 import { useCommandesAtelier } from './atelier/useCommandesAtelier'
 // ACAL421 — « Conception automatique » : l'emprise OSM du lead épinglé devient le pan.
@@ -116,6 +119,8 @@ export default function AtelierPanneaux({
      montage : aucun état local de déverrouillage. */
   const enLectureSeule = lectureSeule
   useCommandesAtelier({ builderApi, lectureSeule: enLectureSeule })
+  const [parametres] = useSearchParams()
+  const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
 
   /* UNE SEULE LECTURE DE L'AGRÉGAT (CAL17), partagée. La fiche et le bouton
      devis parlent de la MÊME vérité : deux lectures, ce serait deux états le
@@ -124,6 +129,9 @@ export default function AtelierPanneaux({
      jamais un `setState` posé dans le corps de l'effet (react-hooks v7). */
   const [detail, setDetail] = useState(null)
   const [relecture, setRelecture] = useState(0)
+  /* ACAL942 — l'empreinte du document change à chaque enregistrement : la fiche
+     (« Conception enregistrée : Oui ») se relit sans F5. */
+  const empreinteDocument = contexte?.geometrie?.empreinte_document ?? null
   useEffect(() => {
     if (!calepinageId) return undefined
     let annule = false
@@ -133,7 +141,7 @@ export default function AtelierPanneaux({
       .then((res) => { if (!annule) setDetail(res?.data ?? null) })
       .catch(() => { if (!annule) setDetail(null) })
     return () => { annule = true }
-  }, [calepinageId, relecture])
+  }, [calepinageId, relecture, empreinteDocument])
   const relire = () => setRelecture((n) => n + 1)
   // ACAL421 — conception automatique : message du serveur ou du builder, jamais un pan sur refus.
   const [messageAuto, setMessageAuto] = useState('')
@@ -178,6 +186,8 @@ export default function AtelierPanneaux({
           Photos du site
         </Link>
       </div>
+      {/* ACAL600 — étape Panneaux, niveau expert seulement ; jamais en lecture seule. */}
+      {expert && !enLectureSeule && calepinageId && <ComparerModules calepinageId={calepinageId} />}
 
       {/* ACAL42 — le bandeau de lecture seule : le motif du serveur. */}
       {enLectureSeule && (
@@ -240,6 +250,8 @@ export default function AtelierPanneaux({
         onRecharger={onRecharger}
         lectureSeule={enLectureSeule}
         documentVivant={documentVivant}
+        expert={expert}
+        onBasculerExpert={basculerExpert}
       />
 
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,

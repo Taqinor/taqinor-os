@@ -44,6 +44,29 @@ def plan_pose_svg_pour_devis(devis_id, company):
     return resultat
 
 
+def valeurs_attendues_par_chaine(devis_id, company, *, temperature_c=None,
+                                 eclairement_w_m2=None):
+    """ACAL665 — par chaîne du calepinage retenu : modules, Voc, Isc, Pmax à STC.
+
+    Rend ``[{chaine, modules, voc_stc_v, isc_stc_a, pmax_stc_w, sources,
+    corrigee, …}]`` ; ``None`` sans calepinage retenu, sans chaîne publiée ou
+    quand la fiche du module est incomplète (voir ``valeurs_attendues``).
+    """
+    if calepinage_retenu_pour_devis(devis_id, company) is None:
+        return None
+    from .services.electrique import entree_stockee, resoudre_materiel
+    from .services.valeurs_attendues import valeurs_attendues
+
+    calepinage = calepinage_du_devis(devis_id, company)
+    materiel = resoudre_materiel(company, entree_stockee(calepinage),
+                                 calepinage=calepinage)
+    electrique = (resultat_servi(calepinage) or {}).get('electrique') or {}
+    return valeurs_attendues(
+        electrique.get('affectation'), materiel.get('module'),
+        (materiel.get('designations') or {}).get('module', ''),
+        temperature_c=temperature_c, eclairement_w_m2=eclairement_w_m2)[0]
+
+
 OMISSION_SANS_SYSTEME = ('Aucun système de fixation retenu : rien à '
                          'contrôler sur la fixation')
 OMISSION_SANS_CHAINE = ('Électrique non chaîné : aucun ordre de chaîne à '

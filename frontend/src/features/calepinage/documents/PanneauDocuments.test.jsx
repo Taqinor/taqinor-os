@@ -69,9 +69,9 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
-  it('le contrat committé porte bien les NEUF documents du lot 6', () => {
+  it('le contrat committé porte bien les DIX documents du lot 6', () => {
     const codes = exempleContrat(APP, NOM, 'exemple').documents.map((d) => d.code)
-    expect(codes).toHaveLength(9)
+    expect(codes).toHaveLength(10)
     expect(codes).toEqual([
       'rapport_etude', 'rapport_ombrage', 'export_projet_json', 'plan_cablage',
       'manuel_proprietaire', 'document_asbuilt', 'dossier_fin_chantier',
@@ -128,6 +128,20 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     for (const code of exempleContrat(APP, NOM, 'exemple_vide').documents.map((d) => d.code)) {
       expect(screen.getByTestId(`cal-doc-bouton-${code}`)).toBeDisabled()
     }
+  })
+
+  it('ACAL942 — conception sans calcul (exemple_sans_calcul) : motif « il manque le calcul », geste nommé', async () => {
+    servirInventaire('exemple_sans_calcul')
+
+    rendre(2)
+
+    const bouton = await screen.findByTestId('cal-doc-bouton-rapport_etude')
+    expect(bouton).toBeDisabled()
+    const attendu = documentDe('exemple_sans_calcul', 'rapport_etude')
+    expect(screen.getByTestId('cal-doc-motif-rapport_etude'))
+      .toHaveTextContent('Conception enregistrée — il manque le calcul')
+    expect(screen.getByTestId('cal-doc-manque-item-rapport_etude-resultat'))
+      .toHaveTextContent(attendu.manque[0].ou_saisir)
   })
 
   it('« ou_saisir » devient un LIEN vers l’onglet que NOMME le serveur (`manque[].onglet`, ACAL14)', async () => {

@@ -276,6 +276,9 @@ def geometrie_de_planche(roof_layout):
 
     module_m = _dimensions_module(roof_layout)
     pans, obstacles = [], []
+    # ACAL550 - la cause d'un pan sans module (ACAL555), lue telle quelle.
+    motifs = (roof_layout or {}).get('motifsPansVides')
+    motifs = motifs if isinstance(motifs, dict) else {}
     for rang, zone in enumerate(_zones(roof_layout), start=1):
         points = [local(lat, lng)
                   for lat, lng in _points_geo(zone.get('vertices'), 'lnglat')]
@@ -314,6 +317,11 @@ def geometrie_de_planche(roof_layout):
             'existant': zone.get('existant') is True,
             'annee_mise_en_service': _annee(zone.get('anneeMiseEnService')),
         }
+        # Un pan garni n'imprime rien, même avec un motif périmé au document.
+        motif = motifs.get(pan['repere'])
+        message = motif.get('message') if isinstance(motif, dict) else None
+        pan['motif_vide'] = (str(message).strip() or None) \
+            if message and not modules else None
         pans.append(pan)
         obstacles.extend(_obstacles_du_pan(zone, local, rang))
 
@@ -1252,6 +1260,7 @@ def _corps_feuille_toit(geometrie, *, titre='', sous_titre='', bandeau=(),
             # centres relevés : l'équipe doit pouvoir se repérer sur le toit.
             for pan in geometrie['pans']:
                 morceaux.extend(_reperes_de_pose(pan, vers_feuille))
+                morceaux.extend(_motif_de_pan_vide(pan, vers_feuille))
         for obstacle in geometrie['obstacles']:
             coins = ((obstacle['x'], obstacle['y']),
                      (obstacle['x'] + obstacle['largeur'], obstacle['y']),
@@ -1501,6 +1510,18 @@ def _verifier_absence_d_argent(document):
             "Plan de pose refusé : une pièce de chantier ne porte aucun "
             "montant. Trouvé — %s." % ', '.join(trouves), champ='pose')
     return document
+
+
+def _motif_de_pan_vide(pan, vers_feuille):
+    """ACAL550 - la cause d'un pan sans module, au barycentre du pan."""
+    points = pan.get('points') or ()
+    if not pan.get('motif_vide') or not points:
+        return []
+    x, y = vers_feuille((sum(p[0] for p in points) / len(points),
+                         sum(p[1] for p in points) / len(points)))
+    return ['<text x="%s" y="%s" font-size="3" text-anchor="middle" '
+            'fill="%s">%s</text>'
+            % (_n(x), _n(y), GRIS_TEXTE, escape(pan['motif_vide']))]
 
 
 def _reperes_de_pose(pan, vers_feuille):

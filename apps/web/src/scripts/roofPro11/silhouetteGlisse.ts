@@ -7,7 +7,7 @@ import {
   type FreeCheck, type FreeGeom, type FreePanel, type FreeViolation,
 } from '../../lib/freeLayout';
 import { enuToLngLat } from './viewerOnly';
-import { GOLD } from './constants';
+import { GOLD, OBSTACLE_RED } from './constants';
 import type { LngLat } from '../../lib/roof';
 
 export type NatureSilhouette = 'dur' | 'relachable';
@@ -19,8 +19,8 @@ export type SilhouetteFeature = {
 
 const SOURCE = 'rp9-glisse-silhouette';
 const COUCHE = 'rp9-glisse-silhouette';
-const ROUGE = '#ff6b6b'; // comme les obstacles
-const AMBRE = GOLD; // jeton de l'atelier (`constants.ts`), plus de couleur en dur
+const ROUGE = OBSTACLE_RED; // comme les obstacles — jetons de l'atelier (`constants.ts`), aucune couleur en dur
+const AMBRE = GOLD;
 
 /** Libellé FR d'une contrainte violée — on NOMME ce qui bloque, jamais « impossible ». */
 export function violationLabel(v: FreeViolation): string {

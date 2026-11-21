@@ -216,9 +216,9 @@ class ImportCsvTest(unittest.TestCase):
 
     def _lire(self, texte):
         from apps.calepinage.services.import_affectation import (
-            lire_csv_affectation,
+            _lire_csv_affectation,
         )
-        return lire_csv_affectation(texte)
+        return _lire_csv_affectation(texte)
 
     def test_ligne_4_fausse_refusee_avec_son_numero(self):
         lignes, refus = self._lire(

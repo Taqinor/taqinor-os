@@ -446,9 +446,10 @@ def _mesures_variante(variante):
                       'kwc': mesures.get('kwc')}
     resultat = getattr(variante, 'resultat', None)
     if isinstance(resultat, dict) and resultat:
-        # Un résultat sans bloc ``production`` (copie qui ne porte que
-        # ``entree_electrique``, ACAL959) n'est pas une simulation.
-        source = 'simulation' if resultat.get('production') else 'conception'
+        # Un résultat sans bloc ``simulation`` ni ``production`` (copie qui ne
+        # porte que ``entree_electrique``, ACAL959) n'est pas une simulation.
+        source = ('simulation' if resultat.get('simulation')
+                  or resultat.get('production') else 'conception')
         return dict(resultat, **conception, source_mesures=source)
     return dict(conception, source_mesures='conception')
 

@@ -237,3 +237,74 @@ class FormeDuResultatTest(SimpleTestCase):
         self.assertIsNone(resultat['electrique']['chainage'])
         self.assertEqual(resultat['electrique']['verdicts'], [])
         self.assertIn('module PV non désigné', resultat['avertissements'])
+
+
+FICHE_665 = {'voc_v': 49.5, 'isc_a': 13.9, 'pmax_wc': 710.0,
+             'temp_coeff_voc_pct_c': -0.25, 'temp_coeff_pmax_pct_c': -0.30}
+
+
+def _table_665(modules=10):
+    return [{'module': 'z1#%d' % k, 'chaine': 1} for k in range(modules)]
+
+
+class ValeursAttenduesParChaineTest(SimpleTestCase):
+    """ACAL665 - modules, Voc, Isc, Pmax attendus par chaine, a STC."""
+
+    def attendues(self, fiche=FICHE_665, table=None, **correction):
+        from apps.calepinage.services.valeurs_attendues import (
+            valeurs_attendues)
+        return valeurs_attendues(table or _table_665(), fiche, 'Module X',
+                                 **correction)
+
+    def test_dix_modules_a_49_5_v_rendent_495_v_et_nomment_la_source(self):
+        lignes, manquants = self.attendues()
+
+        self.assertEqual(manquants, [])
+        self.assertEqual(lignes, [{
+            'chaine': 1, 'modules': 10, 'voc_stc_v': 495.0, 'isc_stc_a': 13.9,
+            'pmax_stc_w': 7100.0, 'sources': ['fiche module Module X'],
+            'corrigee': False}])
+
+    def test_pmax_se_multiplie_par_les_modules_pas_par_les_chaines(self):
+        table = _table_665(10) + [{'module': 'z2#%d' % k, 'chaine': 2}
+                                  for k in range(4)]
+        lignes, _ = self.attendues(table=table)
+
+        self.assertEqual([(c['chaine'], c['modules'], c['pmax_stc_w'])
+                          for c in lignes], [(1, 10, 7100.0), (2, 4, 2840.0)])
+
+    def test_isc_sans_coefficient_est_nomme_et_non_devine(self):
+        lignes, _ = self.attendues(temperature_c=45.0, eclairement_w_m2=800.0)
+
+        self.assertTrue(lignes[0]['corrigee'])
+        self.assertIsNone(lignes[0]['isc_a'])
+        self.assertEqual(lignes[0]['isc_corrige_motif'],
+                         'coefficient de Isc absent de la fiche')
+        # Voc : 495 x (1 - 0,25 % x 20 K) = 470,25 V.
+        self.assertEqual(lignes[0]['voc_v'], 470.25)
+
+    def test_isc_corrige_quand_son_coefficient_existe(self):
+        fiche = dict(FICHE_665, temp_coeff_isc_pct_c=0.05)
+        lignes, _ = self.attendues(fiche, temperature_c=45.0,
+                                   eclairement_w_m2=1000.0)
+
+        self.assertEqual(lignes[0]['isc_a'], 14.039)
+        self.assertNotIn('isc_corrige_motif', lignes[0])
+
+    def test_fiche_incomplete_rend_none_et_nomme_le_champ(self):
+        lignes, manquants = self.attendues({'voc_v': 49.5})
+
+        self.assertIsNone(lignes)
+        self.assertIn('courant de court-circuit (Isc)', manquants)
+
+    def test_sans_chaine_publiee_rien(self):
+        lignes, _ = self.attendues(table=[{'module': 'z1#1', 'chaine': None}])
+        self.assertIsNone(lignes)
+
+    def test_le_selecteur_rend_none_sans_calepinage_retenu(self):
+        from unittest import mock
+        from apps.calepinage import selectors_chantier as sel
+
+        with mock.patch.object(sel, 'calepinage_retenu_pour_devis',
+                               return_value=None):
+            self.assertIsNone(sel.valeurs_attendues_par_chaine(1, None))

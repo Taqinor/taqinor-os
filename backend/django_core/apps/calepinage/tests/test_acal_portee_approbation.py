@@ -226,18 +226,20 @@ class ExportKmlTest(SimpleTestCase):
         return layout
 
     def test_un_polygone_par_pan_zone_et_module(self):
-        from xml.etree import ElementTree
+        import re
 
         from apps.calepinage.services.export_kml import exporter_kml
 
         from .acal_livrables_helpers import PivotSansBase
 
         kml = exporter_kml(PivotSansBase(self._layout()))
-        racine = ElementTree.fromstring(kml)
-        ns = {'k': 'http://www.opengis.net/kml/2.2'}
+        if isinstance(kml, bytes):
+            kml = kml.decode('utf-8')
+        self.assertIn('http://www.opengis.net/kml/2.2', kml)
         # 2 pans + 1 zone + 3 modules (2 + 1 posés)
-        self.assertEqual(len(racine.findall('.//k:Polygon', ns)), 2 + 1 + 3)
-        premiere = racine.find('.//k:coordinates', ns).text.split()[0]
+        self.assertEqual(len(re.findall(r'<Polygon[\s>]', kml)), 2 + 1 + 3)
+        coordonnees = re.search(r'<coordinates>([^<]*)</coordinates>', kml)
+        premiere = coordonnees.group(1).split()[0]
         lng, lat, alt = (float(v) for v in premiere.split(','))
         self.assertAlmostEqual(lng, -7.6, places=3)  # lng d'abord (ordre KML)
         self.assertAlmostEqual(lat, 33.5, places=3)

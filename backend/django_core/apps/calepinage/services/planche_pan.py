@@ -205,7 +205,7 @@ def _portee_jusqu_au_contour(point, sens, contour):
     return meilleure
 
 
-def distances_aux_rives(pan, modules_du_pan):
+def _distances_aux_rives(pan, modules_du_pan):
     """``({'N'|'S'|'E'|'O': {distance, depart, arrivee}}, motif)``.
 
     Pour chaque côté : la PLUS PETITE distance, parallèle à l'axe, entre un
@@ -270,7 +270,7 @@ def _distance_entre_polygones(p, q):
                   for x in q for i in range(len(p))])
 
 
-def cotes_des_zones(pan, modules_du_pan, zones):
+def _cotes_des_zones(pan, modules_du_pan, zones):
     """Une entrée par zone interdite qui recoupe le pan : ``{repere,
     libelle, largeur_m, hauteur_m, distance_m, recouvre, points}``. La
     distance (bord de la zone au module le plus proche) et « recouvre »
@@ -365,6 +365,124 @@ def _encart_fixation(lignes_du_pan):
     return sortie
 
 
+# ── ACAL1065 — les repères de chantier saisis, sur la feuille de leur pan ──
+
+MENTION_REPERES = ("Repères saisis par l'équipe d'étude — rayon saisi, "
+                   "non calculé")
+#: Par type de repère : (nom en clair, forme du symbole).
+SYMBOLES_DE_REPERE = {
+    'ancre_antichute': ('ancre antichute', 'triangle'),
+    'acces': ('accès', 'carré'),
+    'passage_cable': ('passage de câble', 'losange'),
+    'autre': ('autre repère', 'rond'),
+}
+
+
+def _reperes_locaux(roof_layout):
+    """Les repères de chantier du document, en mètres dans le repère de la
+    planche ; ``rayon_m`` vaut ``None`` quand il n'est pas saisi."""
+    from .planche import _projection
+
+    projection = _projection(roof_layout)
+    brut = (roof_layout or {}).get('reperesChantier')
+    sortie = []
+    for repere in brut if projection and isinstance(brut, list) else ():
+        point = repere.get('point') if isinstance(repere, dict) else None
+        if not (isinstance(point, (list, tuple)) and len(point) == 2):
+            continue
+        rayon = repere.get('rayonM')
+        sortie.append({
+            'type': repere.get('type') if repere.get('type')
+            in SYMBOLES_DE_REPERE else 'autre',
+            'texte': str(repere.get('texte') or '').strip(),
+            'rayon_m': float(rayon) if isinstance(rayon, (int, float))
+            and not isinstance(rayon, bool) and rayon > 0 else None,
+            'point': projection.vers_local(point[1], point[0])})
+    return sortie
+
+
+def _etendue_avec_reperes(etendue, reperes):
+    """L'étendue de la feuille, élargie pour que chaque cercle saisi tienne."""
+    x0, y0, x1, y1 = etendue
+    for repere in reperes:
+        x, y = repere['point']
+        marge = repere['rayon_m'] or 0.0
+        x0, y0 = min(x0, x - marge), min(y0, y - marge)
+        x1, y1 = max(x1, x + marge), max(y1, y + marge)
+    return (x0, y0, x1, y1)
+
+
+def _symbole_de_repere(forme, x, y):
+    demi = 1.6
+    if forme == 'triangle':
+        coins = ((x, y - demi), (x + demi, y + demi), (x - demi, y + demi))
+    elif forme == 'carré':
+        coins = ((x - demi, y - demi), (x + demi, y - demi),
+                 (x + demi, y + demi), (x - demi, y + demi))
+    elif forme == 'losange':
+        coins = ((x, y - demi), (x + demi, y), (x, y + demi), (x - demi, y))
+    else:
+        return ('<circle cx="%s" cy="%s" r="%s" fill="%s" stroke="%s" '
+                'stroke-width="0.3" />' % (_n(x), _n(y), _n(demi), ORANGE,
+                                           NOIR))
+    return ('<polygon points="%s" fill="%s" stroke="%s" stroke-width="0.3" />'
+            % (' '.join('%s,%s' % (_n(a), _n(b)) for a, b in coins),
+               ORANGE, NOIR))
+
+
+def _reperes_de_chantier(reperes, vers_feuille, echelle):
+    """Le symbole, le texte et le cercle de chaque repère de cette feuille.
+
+    Le rayon se dessine avec ``echelle`` : la MÊME transformation que les
+    modules. Sans rayon saisi, aucun cercle (jamais un rayon par défaut)."""
+    morceaux = []
+    for repere in reperes:
+        x, y = vers_feuille(repere['point'])
+        if repere['rayon_m']:
+            morceaux.append(
+                '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" '
+                'stroke-width="0.3" stroke-dasharray="1.5 1" />'
+                % (_n(x), _n(y), _n(repere['rayon_m'] * echelle), ORANGE))
+        morceaux.append(_symbole_de_repere(
+            SYMBOLES_DE_REPERE[repere['type']][1], x, y))
+        for rang, ligne in enumerate(textwrap.wrap(repere['texte'], 40)):
+            morceaux.append(
+                '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+                % (_n(x + 3.0), _n(y + 1.0 + 3.4 * rang), NOIR, escape(ligne)))
+    return morceaux
+
+
+def _legende_des_reperes(reperes, hors_pan):
+    """``[(None, texte)]`` : la mention, un symbole par type présent, et les
+    repères hors de tout pan (sur la dernière feuille seulement)."""
+    if not (reperes or hors_pan):
+        return []
+    lignes = [(None, MENTION_REPERES)]
+    for type_ in SYMBOLES_DE_REPERE:
+        if any(r['type'] == type_ for r in list(reperes) + list(hors_pan)):
+            nom, forme = SYMBOLES_DE_REPERE[type_]
+            lignes.append((None, '%s : %s' % (forme.capitalize(), nom)))
+    for repere in hors_pan:
+        lignes.append((None, 'Repère hors pan : %s' % (
+            repere['texte'] or SYMBOLES_DE_REPERE[repere['type']][0])))
+    return lignes
+
+
+def _repartition_des_reperes(reperes, pans):
+    """``({pan: [repères]}, hors_pan)`` — un repère va sur le pan (garni) qui
+    le contient ; sinon il est « hors pan »."""
+    par_pan, hors_pan = {}, []
+    for repere in reperes:
+        for pan in pans:
+            if pan['modules'] and point_dans_polygone(repere['point'],
+                                                      pan['points']):
+                par_pan.setdefault(pan['repere'], []).append(repere)
+                break
+        else:
+            hors_pan.append(repere)
+    return par_pan, hors_pan
+
+
 def _pied_a4(texte):
     lignes = str(texte or '').split('\n')
     return [('<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
@@ -374,16 +492,17 @@ def _pied_a4(texte):
 
 
 def _feuille_de_pan(pan, modules, entrees, pans, pied, zones=(),
-                    fixation=None):
+                    fixation=None, reperes=(), hors_pan=()):
     """Le SVG A4 d'UN pan posé."""
     from .documents.plan_cablage import LEGENDE_SENS
 
     modules_du_pan = [m for m in modules if m['pan'] == pan['repere']]
     chaines = _chaines_du_pan(modules_du_pan, modules, entrees, pans)
-    cotes_de_zones = cotes_des_zones(pan, modules_du_pan, zones)
-    distances, motif = distances_aux_rives(pan, modules_du_pan)
+    cotes_de_zones = _cotes_des_zones(pan, modules_du_pan, zones)
+    distances, motif = _distances_aux_rives(pan, modules_du_pan)
     vers_feuille, echelle = _transformation(
-        _etendue_du_pan(pan, modules_du_pan, cotes_de_zones),
+        _etendue_avec_reperes(
+            _etendue_du_pan(pan, modules_du_pan, cotes_de_zones), reperes),
         CADRE_DESSIN_MM)
     nom = _libelle_de_pan(pan)
     titre = '%s — plan de pose' % (
@@ -401,11 +520,13 @@ def _feuille_de_pan(pan, modules, entrees, pans, pied, zones=(),
     corps += _cotes_dessinees(distances, cotes_de_zones, vers_feuille)
     for chaine in chaines:
         corps += _reperes_de_chaine(chaine, vers_feuille)
+    corps += _reperes_de_chantier(reperes, vers_feuille, echelle)
     lignes = _colonne_de_legende(chaines, not entrees)
     if any(len(chaine['modules']) > 1 for chaine in chaines):
         lignes.append((None, LEGENDE_SENS))
     lignes += _lignes_de_mesures(distances, motif, cotes_de_zones)
     lignes += _encart_fixation(fixation)
+    lignes += _legende_des_reperes(reperes, hors_pan)
     _verifier_absence_d_argent('\n'.join(t for _c, t in lignes))
     legende, _y = _legende_a4(lignes, COLONNE_X_MM, 28.0)
     corps += legende
@@ -419,7 +540,7 @@ def _feuille_de_pan(pan, modules, entrees, pans, pied, zones=(),
                '\n'.join(corps)))
 
 
-def svgs_de_pans(roof_layout, affectation, *, pied='', fixation=None):
+def _svgs_de_pans(roof_layout, affectation, *, pied='', fixation=None):
     """Les SVG A4, un par pan qui porte un module (liste vide sinon)."""
     from .planche import geometrie_de_planche
 
@@ -431,10 +552,15 @@ def svgs_de_pans(roof_layout, affectation, *, pied='', fixation=None):
     if not any(pan['modules'] for pan in pans):
         return []
     modules, entrees = _plan_des_chaines(roof_layout, affectation)
+    garnis = [pan for pan in pans if pan['modules']]
+    par_pan, hors_pan = _repartition_des_reperes(
+        _reperes_locaux(roof_layout), pans)
     return [_feuille_de_pan(pan, modules, entrees, pans, pied,
                             geometrie.get('zones_interdites') or (),
-                            (fixation or {}).get(pan['repere']))
-            for pan in pans if pan['modules']]
+                            (fixation or {}).get(pan['repere']),
+                            par_pan.get(pan['repere'], ()),
+                            hors_pan if pan is garnis[-1] else ())
+            for pan in garnis]
 
 
 def feuilles_de_pans(calepinage, *, moment=None):
@@ -450,9 +576,9 @@ def feuilles_de_pans(calepinage, *, moment=None):
     from .fixation import fixation_par_pan
 
     pied = pied_du_calepinage(calepinage, moment=moment)
-    svgs = svgs_de_pans(getattr(calepinage, 'roof_layout', None),
-                        affectation, pied=pied,
-                        fixation=fixation_par_pan(calepinage))
+    svgs = _svgs_de_pans(getattr(calepinage, 'roof_layout', None),
+                         affectation, pied=pied,
+                         fixation=fixation_par_pan(calepinage))
     if not svgs:
         return '', ''
     return STYLE_FEUILLE_PAN, ''.join(
