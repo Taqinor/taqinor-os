@@ -540,9 +540,9 @@
 <span data-testid="calx65-rapide">Estimation rapide (PVGIS PVcalc, pertes forfaitaires 20 %)</span>
 </p>
 <div class="mt-4" data-testid="cal-panneau-calques">
-<section data-testid="pc-panneau" aria-label="Calques" class="border border-white/10 bg-nuit-800 p-3">
-<h3 class="tech-label mb-2 text-lune-faint">Calques</h3>
-<p class="text-sm text-lune-faint" data-testid="pc-vide">Aucun calque disponible pour le moment.</p>
+<section data-testid="pc-panneau" aria-label="Calques" class="border border-border bg-card p-3">
+<h3 class="text-xs font-semibold uppercase tracking-wide mb-2 text-muted-foreground">Calques</h3>
+<p class="text-sm text-muted-foreground" data-testid="pc-vide">Aucun calque disponible pour le moment.</p>
 </section>
 </div>
 <div class="mt-4" data-testid="cal-onglets-vue">
@@ -563,30 +563,30 @@
 <button type="button" class="rp9-chip" data-testid="cal-export-hd-2">Exporter 2×</button>
 <button type="button" class="rp9-chip" data-testid="cal-export-hd-3">Exporter 3×</button>
 </div>
-<div class="cine-card mt-6 p-6" data-testid="cal-atelier-panneaux">
+<div class="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-atelier-panneaux">
 <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
 <span class="flex items-baseline gap-2">
-<p class="tech-label rule-brass text-brass-300">Calepinage</p>
+<p class="text-xs font-semibold uppercase tracking-wide text-primary-text">Calepinage</p>
 </span>
-<a data-testid="cal-lien-variantes" class="text-sm font-semibold text-brass-300 underline" href="/calepinage/1?onglet=variantes" data-discover="true">Comparer les variantes</a>
-<a data-testid="cal-lien-photos-calage" class="text-sm font-semibold text-brass-300 underline" href="/calepinage/1?onglet=photos" data-discover="true">Photos du site</a>
+<a data-testid="cal-lien-variantes" class="text-sm font-semibold text-primary-text underline" href="/calepinage/1?onglet=variantes" data-discover="true">Comparer les variantes</a>
+<a data-testid="cal-lien-photos-calage" class="text-sm font-semibold text-primary-text underline" href="/calepinage/1?onglet=photos" data-discover="true">Photos du site</a>
 </div>
 <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
 <div>
-<dd class="fig text-lg text-white" data-testid="cal-cible-panneaux">12</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Cible — panneaux</dt>
+<dd class="fig text-lg text-foreground" data-testid="cal-cible-panneaux">12</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — panneaux</dt>
 </div>
 <div>
-<dd class="fig text-lg text-white">8.64 kWc</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Cible — puissance</dt>
+<dd class="fig text-lg text-foreground">8.64 kWc</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — puissance</dt>
 </div>
 <div>
-<dd class="fig text-lg text-white">Devis lié</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Source de la cible</dt>
+<dd class="fig text-lg text-foreground">Devis lié</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Source de la cible</dt>
 </div>
 <div>
-<dd class="fig text-lg text-white" data-testid="cal-atelier-statut">brouillon</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Statut</dt>
+<dd class="fig text-lg text-foreground" data-testid="cal-atelier-statut">brouillon</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Statut</dt>
 </div>
 </dl>
 <div dir="ltr" data-orientation="horizontal" class="mt-5" data-testid="cal-rail-onglets">
@@ -611,7 +611,7 @@
 <span class="inline-flex items-center gap-0.5">
 <button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_0_-content-pente" data-state="inactive" id="radix-_r_0_-trigger-pente" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-pente" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Pente</button>
 <button type="button" tabindex="-1" aria-label="À quoi sert « Pente »" title="À quoi sert « Pente »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
 </circle>
 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
@@ -624,7 +624,7 @@
 <span class="inline-flex items-center gap-0.5">
 <button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_0_-content-terrain" data-state="inactive" id="radix-_r_0_-trigger-terrain" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-terrain" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Terrain</button>
 <button type="button" tabindex="-1" aria-label="À quoi sert « Terrain »" title="À quoi sert « Terrain »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
 </circle>
 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
@@ -637,7 +637,7 @@
 <span class="inline-flex items-center gap-0.5">
 <button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_0_-content-ombriere" data-state="inactive" id="radix-_r_0_-trigger-ombriere" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-ombriere" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Ombrière</button>
 <button type="button" tabindex="-1" aria-label="À quoi sert « Ombrière »" title="À quoi sert « Ombrière »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
 </circle>
 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
@@ -692,7 +692,7 @@
 </div>
 <div class="mt-4">
 <div data-testid="cal-raccourcis">
-<button type="button" data-testid="cal-raccourcis-bouton" aria-expanded="false" class="text-sm font-semibold text-brass-300 underline">Raccourcis clavier (?)</button>
+<button type="button" data-testid="cal-raccourcis-bouton" aria-expanded="false" class="text-sm font-semibold text-primary-text underline">Raccourcis clavier (?)</button>
 </div>
 </div>
 <div class="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
