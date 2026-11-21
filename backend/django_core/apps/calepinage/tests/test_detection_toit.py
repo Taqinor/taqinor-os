@@ -125,13 +125,18 @@ class DetectionToitTest(BaseApiCalepinage):
 
     @ACTIVE
     def test_refus_nommes(self):
-        cas = (({'contenu': None}, 'image'), ({'contenu': b''}, 'image'),
-               ({'contenu': b'%PDF-1.4 plan'}, 'image'),
-               ({'contenu': _png(), 'origine': 'carte'}, 'origine'),
-               ({'contenu': _png(), 'emprise': {'ouest': 1, 'sud': 2, 'est': 0, 'nord': 3}}, 'emprise'))
-        for kwargs, champ in cas:
+        # 400 = la FORME viole le schéma publié ; 409 = refus que le schéma ne
+        # peut pas dire (origine connue mais fermée, ouest >= est) — api-fuzz #1512.
+        cas = (({'contenu': None}, 'image', 400), ({'contenu': b''}, 'image', 400),
+               ({'contenu': b'%PDF-1.4 plan'}, 'image', 400),
+               ({'contenu': _png(), 'origine': 'satellite'}, 'origine', 400),
+               ({'contenu': _png(), 'emprise': {'ouest': 1, 'sud': 2, 'est': 0}}, 'emprise', 400),
+               ({'contenu': _png(), 'emprise': {'ouest': 1, 'sud': 2, 'est': 3, 'nord': 91}}, 'emprise', 400),
+               ({'contenu': _png(), 'origine': 'carte'}, 'origine', 409),
+               ({'contenu': _png(), 'emprise': {'ouest': 1, 'sud': 2, 'est': 0, 'nord': 3}}, 'emprise', 409))
+        for kwargs, champ, code in cas:
             reponse = self._poster(**kwargs)
-            self.assertEqual(reponse.status_code, 400, (kwargs, reponse.data))
+            self.assertEqual(reponse.status_code, code, (kwargs, reponse.data))
             self.assertIn(champ, reponse.data)
         self.assertEqual(ENVOIS, [])
 
