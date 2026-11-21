@@ -13,7 +13,9 @@ from .cadence_views import MessageTemplateViewSet, RelanceEtapeViewSet
 from .experiences_cadence import ExperienceCadenceViewSet
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .webhooks import demande_rdv_webhook
-from .roof_views import lead_roof_footprint
+from .roof_views import (
+    lead_roof_footprint, lead_roof_footprint_recherche, roof_footprint_recherche_statut,
+)
 from .public_chat_views import (
     open_chat_session, post_chat_message, get_chat_session,
 )
@@ -160,6 +162,11 @@ urlpatterns = [
          name='dispatch-reglages'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
+    # ACAL421 — la même recherche en tâche de fond (décision fondateur 21/11)
+    path('leads/<int:lead_id>/roof-footprint/recherche/', lead_roof_footprint_recherche,
+         name='lead-roof-footprint-recherche'),
+    path('leads/roof-footprint/recherche/<int:job_id>/', roof_footprint_recherche_statut,
+         name='roof-footprint-recherche-statut'),
     # VT12 — texture du toit CALÉE du lead (dernière visite validée), lue par
     # l'atelier 3D et la carte de la fiche lead sans connaître le module visite.
     path('leads/<int:lead_id>/photo-toit/', lead_photo_toit,

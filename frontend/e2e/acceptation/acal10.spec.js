@@ -21,8 +21,10 @@ import { py, fermerDjangoApresTout } from './_django.js'
 import { RACINE, aujourdHui } from './_enregistrement.js'
 import { API_DJANGO, assurerSessionPage, lireJson } from '../helpers.js'
 
-const etape = groupe('ACAL', ['ACAL401', 'ACAL402', 'ACAL411', 'ACAL418', 'ACAL421', 'ACAL424', 'ACAL425', 'ACAL431',
-  'ACAL433', 'ACAL459', 'ACAL460', 'ACAL472'])
+// Rejeu ciblé (`--grep`) : `ACAL10_TACHES` (ids séparés par des virgules) restreint ce que l'enregistrement COUVRE aux
+// tâches des étapes rejouées ; chaque id couvert exige toujours son étape PASS (`_enregistrement.js::composer`).
+const etape = groupe('ACAL', process.env.ACAL10_TACHES ? process.env.ACAL10_TACHES.split(',') : ['ACAL401', 'ACAL402',
+  'ACAL411', 'ACAL418', 'ACAL421', 'ACAL424', 'ACAL425', 'ACAL431', 'ACAL433', 'ACAL459', 'ACAL460', 'ACAL472'])
 fermerDjangoApresTout()
 test.describe.configure({ timeout: 900_000 })
 test.use({ viewport: { width: 1440, height: 900 }, actionTimeout: 60_000 })
@@ -631,25 +633,37 @@ etape('PA2.5-ACAL421-conception-auto', ['ACAL421'], async ({ page, context, suiv
     await expect(auto, '« Conception automatique » offert (lead épinglé, aucun pan tracé)').toBeVisible({ timeout: 240_000 })
     const avant = await docVivant(page)
     expect((avant?.zones || []).filter((z) => (z.vertices || []).length >= 3), 'aucun pan tracé au départ').toHaveLength(0)
+    // Décision fondateur du 21/11 : la recherche est une TÂCHE DE FOND — POST (202) puis statut relu par l'atelier.
+    // Chaque statut servi est journalisé ; le contour attendu est celui du dernier statut `pret`.
+    const statuts = []
+    page.on('response', async (x) => {
+      if (!/\/crm\/leads\/(\d+\/)?roof-footprint\/recherche\//.test(x.url())) return
+      const corps = await x.json().catch(() => null)
+      if (corps) statuts.push(corps)
+    })
+    const msg = page.getByTestId('cal-conception-auto-message')
     let message = ''
     for (let essai = 1; essai <= 3; essai += 1) {
-      const emprise = page.waitForResponse((x) => /\/crm\/leads\/\d+\/roof-footprint\//.test(x.url()), T)
+      const lancement = page.waitForResponse((x) => /\/crm\/leads\/\d+\/roof-footprint\/recherche\/$/.test(x.url()), T)
       await auto.click()
-      const corps = await (await emprise).json().catch(() => null)
-      console.log(`[ACAL421] roof-footprint (essai ${essai}) : ${JSON.stringify(corps).slice(0, 500)}`)
-      await expect(page.getByTestId('cal-conception-auto-message')).toBeVisible(T)
-      message = await page.getByTestId('cal-conception-auto-message').innerText()
+      const recu = await lancement
+      console.log(`[ACAL421] POST recherche (essai ${essai}) : HTTP ${recu.status()} ${JSON.stringify(await recu.json().catch(() => null)).slice(0, 300)}`)
+      await expect(msg).toBeVisible(T)
+      // La vraie condition : le message quitte « en cours » (l'atelier borne lui-même son attente à 90 s).
+      await expect(msg).not.toHaveText(/en cours/i, { timeout: 150_000 })
+      message = await msg.innerText()
+      console.log(`[ACAL421] statuts servis (essai ${essai}) : ${statuts.map((s) => s.statut).join(' → ')} ; dernier : ${JSON.stringify(statuts.at(-1)).slice(0, 400)}`)
       if (message.includes('Contour posé')) break
       console.log(`[ACAL421] essai ${essai} : « ${message} »`)
-      if (!/indisponible|Aucune emprise|réseau|n'a pas répondu/i.test(message)) break // ACAL421 : Overpass injoignable est nommé, on réessaie
+      if (!/indisponible|Aucune emprise|réseau|n'a pas répondu|trop de temps|n'a pas abouti/i.test(message)) break // Overpass injoignable est nommé, on réessaie
     }
     if (!message.includes('Contour posé')) {
       // Le serveur appelle-t-il Overpass avec succès DEPUIS ce runner (même requête que `roof_detect`) ?
       const diag = await py(`import requests
 from apps.crm import roof_detect as rd
-q = rd._build_query(${bat.lat}, ${bat.lng})
+q = rd._build_query(${bat.lat}, ${bat.lng}, rd.DELAI_TACHE_S)
 try:
-    r = requests.post(rd._OVERPASS_URL, data={'data': q}, headers={'User-Agent': getattr(rd, '_USER_AGENT', '')}, timeout=rd._TIMEOUT_RESEAU)
+    r = requests.post(rd._OVERPASS_URL, data={'data': q}, headers={'User-Agent': getattr(rd, '_USER_AGENT', '')}, timeout=(10, rd.DELAI_TACHE_S))
     sortie({'status': r.status_code, 'ua': r.request.headers.get('User-Agent'), 'corps': r.text[:300]})
 except Exception as e:
     import time
@@ -664,7 +678,10 @@ except Exception as e:
       test.info().annotations.push({ type: 'diagnostic', description: `Overpass côté serveur : ${JSON.stringify(diag).slice(0, 400)}` })
     }
     expect(message, 'contour posé, toit rempli').toBe('Contour posé : le toit est rempli.')
-    const fp = await lireJson(await page.request.get(`${API_DJANGO}/crm/leads/${cal.lead}/roof-footprint/`, T), 'roof-footprint')
+    // Le contour servi par la tâche de fond (dernier statut `pret`), relu tel que l'atelier l'a reçu.
+    await expect.poll(() => statuts.some((s) => s.statut === 'pret'), T).toBe(true)
+    const fp = statuts.filter((s) => s.statut === 'pret').at(-1)
+    expect(fp?.polygon?.length || 0, 'la tâche de fond a servi un contour (statut pret)').toBeGreaterThanOrEqual(3)
     const doc = await docVivant(page)
     const poses = (doc.zones || []).filter((z) => (z.vertices || []).length >= 3)
     expect(poses, 'un seul pan : le contour du bâtiment (le pan vide de départ n’est pas gardé)').toHaveLength(1)

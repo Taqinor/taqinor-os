@@ -244,6 +244,50 @@ def attribuer_leads_echus_task():
             'paliers_file': escalader_file()}
 
 
+@shared_task(name='crm.chercher_emprise_toit', soft_time_limit=170,
+             time_limit=180)
+def chercher_emprise_toit_task(job_id=None, company_id=None, lat=None,
+                               lng=None):
+    """ACAL421 (décision fondateur du 21/11/2026 : tâche de fond) — cherche
+    l'emprise OSM du bâtiment HORS requête : Overpass a jusqu'à 60 s.
+
+    Dispatchée par ``core.jobs.submit`` (``BackgroundJob`` : société et
+    utilisateur posés côté serveur). Prend des DONNÉES (le point GPS), jamais
+    une instance. Deux issues, jamais une troisième silencieuse : la charge
+    ``pret``/``refus`` (motif nommé : OSM injoignable ≠ aucun bâtiment) rangée
+    dans le cache de la société, ou le job ``failed`` avec son motif.
+    """
+    import time
+
+    from core import cache as cache_tenant
+    from core.models import BackgroundJob
+
+    from apps.crm import roof_detect
+    from apps.crm.roof_views import cle_recherche_emprise, corps_recherche
+
+    job = BackgroundJob.objects.filter(pk=job_id, company_id=company_id).first()
+    if job is None:
+        return {'statut': 'inconnu'}
+    try:
+        job.marquer_progression(10)
+        empreinte = None
+        for essai in range(roof_detect.ESSAIS_TACHE):
+            if essai:
+                time.sleep(roof_detect.PAUSE_ENTRE_ESSAIS_S)
+            empreinte = roof_detect.fetch_building_footprint(
+                lat, lng, delai_s=roof_detect.DELAI_TACHE_S)
+            if empreinte is not None:
+                break
+        charge = corps_recherche(empreinte)
+        cle = cle_recherche_emprise(job.pk)
+        cache_tenant.set(job.company_id, cle, charge, timeout=3600)
+        job.marquer_termine(cle)
+        return {'statut': charge['statut']}
+    except Exception as exc:  # noqa: BLE001 — l'issue est publiée, jamais perdue (D-ENF22-BLE001)
+        job.marquer_echec(f"La recherche du bâtiment a échoué : {exc}")
+        return {'statut': 'failed'}
+
+
 def reancrer_relances_demo(today=None, rng=None):
     """NTDMO29 — ré-ancre les ``relance_date`` PASSÉES des leads des sociétés
     de DÉMONSTRATION sur 1 à 5 jours dans le futur.
