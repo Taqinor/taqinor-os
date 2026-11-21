@@ -188,6 +188,18 @@
 </p>
 <ul id="rp9-mesure-list" class="space-y-1 text-xs text-foreground">
 </ul>
+<div id="rp9-sun-controls" class="space-y-3 border border-border bg-muted p-3">
+<div class="flex items-center gap-3">
+<label for="rp9-sun-hour" class="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0">Heure du soleil</label>
+<input id="rp9-sun-hour" min="6" max="18" step="1" class="rp9-range min-w-0 flex-1" aria-label="Heure solaire (6 h à 18 h, midi solaire = 12 h)" type="range" value="12">
+<span id="rp9-sun-hour-value" class="w-12 shrink-0 text-right text-sm font-semibold text-primary-text">12 h</span>
+</div>
+<div class="flex flex-wrap items-center gap-2">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Saison</span>
+<button type="button" data-sun-season="winter" class="rp9-chip" aria-pressed="true">Hiver (pire cas)</button>
+<button type="button" data-sun-season="summer" class="rp9-chip" aria-pressed="false">Été</button>
+</div>
+</div>
 </div>
 <div id="rp9-layout-window" hidden="" class="border-t border-border bg-card p-4">
 <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
