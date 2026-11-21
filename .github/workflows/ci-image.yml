@@ -91,7 +91,7 @@ jobs:
           done
           exit 0
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
 
       # Contexte = `backend/django_core` (le Dockerfile y prend les deux
