@@ -72,6 +72,7 @@ import { toastInfo } from '../../lib/toast'
 // diverge de la cible vendue du devis.
 import { useConfirmDialog } from '../../ui/confirm'
 import BarreEnregistrement from '../../features/calepinage/atelier/BarreEnregistrement'
+import ResumeAtelier from '../../features/calepinage/atelier/ResumeAtelier'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 // L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
@@ -1534,7 +1535,10 @@ function AtelierToiture({
           enCours={sending} desactive={sending || !sceneHydratee}
           onEnregistrer={enregistrerCalepinage}
           modifiee={sceneModifiee} enregistreLe={enregistreLe}
-          statut={genStatus} erreur={genError} />
+          statut={genStatus} erreur={genError}>
+          <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
+            lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
+        </BarreEnregistrement>
         <div className="cine-card mt-6 p-6">
           <p className="text-xs text-lune-faint">
             La conception est rangée sur le calepinage, avec une nouvelle

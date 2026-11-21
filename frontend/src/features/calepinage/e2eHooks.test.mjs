@@ -509,6 +509,11 @@ export const ALL_HOOKS = [
   'cal-retour-atelier',
   'cal-retour-atelier-lien',
   'cal-retour-atelier-onglet',
+  // ── atelier/ResumeAtelier.jsx ──
+  'cal-resume-atelier',
+  'cal-resume-kwc',
+  'cal-resume-panneaux',
+  'cal-resume-production',
   // ── documents/PanneauDocuments.jsx ──
   'cal-doc-bouton',
   'cal-doc-bouton-export-layout',
