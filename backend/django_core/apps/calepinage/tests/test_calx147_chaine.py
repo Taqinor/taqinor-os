@@ -267,9 +267,10 @@ class ConformiteAuContratTest(unittest.TestCase):
                       if chemin.startswith('cascade.')}
         affirmer_non_servies(self, self.cascade, en_attente)
         # Clés du contrat posées APRÈS la chaîne par la simulation
-        # (``simulation._annoter_cascade`` : ACAL695, ACAL702, ACAL699) :
-        # ``appliquer_chaine`` ne les produit pas, et ne doit pas les produire.
-        poses_par_la_simulation = {'postes_lisibles', 'plages', 'a_renseigner'}
+        # (``simulation._annoter_cascade`` : ACAL695, ACAL702, ACAL699,
+        # ACAL749) : ``appliquer_chaine`` ne les produit pas, et ne doit pas.
+        poses_par_la_simulation = {'postes_lisibles', 'plages', 'a_renseigner',
+                                   'limites_connues'}
         self.assertTrue(poses_par_la_simulation <= set(self.modele))
         self.assertFalse(poses_par_la_simulation & set(self.cascade))
         self.assertEqual(sorted(self.cascade),

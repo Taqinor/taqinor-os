@@ -8,5 +8,26 @@
     "source_url": "https://data.geopf.fr/altimetrie/",
     "suggestions": [],
     "detail": ""
+  },
+  "relief": {
+    "pourquoi": "ACAL535 — « Lire la pente sur un relief de drone » : POST multipart `calepinages/<pk>/suggestions-pente-relief/` (champs `relief` = GeoTIFF WGS84 en degrés, `base_empreinte` = jeton d'écriture, `zone_id` facultatif = un seul pan). Aucune porte pays, AUCUN appel IGN ; le fichier n'est pas conservé. La réponse est celle de `suggestions-pente/` (écriture du document) : le pan porte `pitchSuggestion` au statut `suggeree`, JAMAIS recopiée dans `pitchDeg` (D-ACAL-19). Refus 400 nommant `relief` (fichier absent, illisible, en mètres) ou `base_empreinte` ; 409 `document_modifie` sur jeton périmé.",
+    "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/suggestions-pente-relief/",
+    "champs_requete": ["relief", "base_empreinte", "zone_id"],
+    "cles_reponse": ["roof_layout", "layout_hash", "inchange", "version", "empreinte_document"],
+    "cles_suggestion": ["status", "valeurDeg", "source", "sourceUrl", "suggestedAt", "decidedAt", "libelle", "points"],
+    "source": "relief fourni par l'installateur",
+    "exemple_suggestion": {
+      "status": "suggeree",
+      "valeurDeg": 20.0,
+      "source": "relief fourni par l'installateur",
+      "sourceUrl": null,
+      "suggestedAt": "2026-11-21T08:00:00+00:00",
+      "decidedAt": null,
+      "libelle": "pente du terrain",
+      "points": 5
+    },
+    "exemple_refus": {
+      "relief": "Le relief est en mètres (projection) : exportez-le en WGS84 (degrés)."
+    }
   }
 }

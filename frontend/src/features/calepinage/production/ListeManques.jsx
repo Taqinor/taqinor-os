@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
-import { PARAM_ONGLET } from '../atelier/onglets'
-import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
+import { lienManque } from './lienManque'
 
 /* ACAL397 — « Ce qui manque encore » en liste d'ACTIONS. Une ligne par entrée
    de `parcours.manque` (déjà dédupliquée par code + cible côté serveur,
@@ -9,19 +8,6 @@ import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
    réglages (`cible.onglet === 'reglages'`). Rien n'est deviné ici. */
 const ORDRE_GRAVITE = { bloquant: 0, a_regler: 1, info: 2 }
 const rang = (g) => ORDRE_GRAVITE[g] ?? ORDRE_GRAVITE.info
-
-function lienManque(calepinageId, cible) {
-  const onglet = cible?.onglet || ''
-  const champ = cible?.champ || ''
-  if (onglet === 'reglages') {
-    return champ ? `/calepinage/reglages#${champ}` : '/calepinage/reglages'
-  }
-  const p = new URLSearchParams()
-  if (onglet) p.set(PARAM_ONGLET, onglet)
-  if (champ) p.set(PARAM_CHAMP, champ)
-  const q = p.toString()
-  return `/calepinage/${calepinageId}${q ? `?${q}` : ''}`
-}
 
 export default function ListeManques({ calepinageId, manque = [] }) {
   const lignes = manque

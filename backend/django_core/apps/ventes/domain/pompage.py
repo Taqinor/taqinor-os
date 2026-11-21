@@ -965,7 +965,14 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     # AGQ40 (D-AGQ-9) — la production de chaque heure est plafonnée au
     # plafond RETENU de la passe 1 (forage × part du réglage, ou ABH).
     plafond_m3h = passe1['conception']['plafonds']['plafond_retenu_m3h']
-    commun = dict(profils_horaires=profils, temperatures=temperatures,
+    # ACAL1201 (D-ACAL-46) — l'eau livrée suit le plan RÉEL des panneaux
+    # (niveau 15) ; besoin et conception gardent les profils du site.
+    from .pompage_pose import plan_du_calcul
+    plan_irr, profils_pose = plan_du_calcul(
+        devis, facture=facture, mode_pompe=mode_pompe,
+        coordonnees=coordonnees, profils_site=profils)
+    commun = dict(profils_horaires=profils_pose or profils,
+                  temperatures=temperatures,
                   salissure_pct=_reglage(reglages,
                                          'agricole_salissure_supp_pct'),
                   agricole_pump_hours=heures_repli, coordonnees=coordonnees,
@@ -1094,6 +1101,8 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
 
     production_brute = (champ_complet or {}).get('production') or {}
     production = _forme_production(production_brute or None)
+    if production:
+        production['plan_irradiation'] = plan_irr  # ACAL1201 (contrat ACAL1198)
     if production and production_brute.get('plafond_atteint'):
         alertes_moteur.append(_alerte(
             'debit_limite_forage', 'source.debit_exploitation_m3h',
@@ -1360,11 +1369,12 @@ def facture_du_devis(devis, catalogue):
             'modeles_panneaux': len(modeles_panneaux)}
 
 
-def _empreinte(etude, facture, lead_id):
+def _empreinte(etude, facture, lead_id, plan=None):
     import hashlib
     import json
 
-    charge = {
+    charge = {} if not plan else {'plan_pose': plan.get('pans')}  # ACAL1201
+    charge.update({
         'version': VERSION_DERIVEES,
         'entrees': {cle: etude.get(cle) for cle in CLES_ENTREES_V2},
         'saisies': (etude.get('saisies_economie_pompage') or {}).get(
@@ -1372,7 +1382,7 @@ def _empreinte(etude, facture, lead_id):
         'pvgis_fige': etude.get('pvgis_fige'),
         'lignes': facture.get('lignes'),
         'lead': lead_id,
-    }
+    })
     texte = json.dumps(charge, sort_keys=True, default=str,
                        ensure_ascii=True)
     return hashlib.sha256(texte.encode('utf-8')).hexdigest()
@@ -1412,8 +1422,13 @@ def derivees_de_l_etude(sortie, *, pvgis_fige=None):
     pompe = sortie.get('pompe') or {}
     puissance = sortie.get('puissance_retenue') or {}
     figees = (production or {}).get('coordonnees_figees')
+    plan_irr = (production or {}).get('plan_irradiation') or {}
+    if figees and plan_irr.get('source') == 'pose_calepinage':  # ACAL1201
+        figees = dict(figees, plan={'source': plan_irr['source'],
+                                    'pans': plan_irr['pans']})
     if pvgis_fige and figees and (pvgis_fige.get('lat'), pvgis_fige.get(
-            'lon')) == (figees.get('lat'), figees.get('lon')):
+            'lon'), pvgis_fige.get('plan')) == (
+                figees.get('lat'), figees.get('lon'), figees.get('plan')):
         figees = pvgis_fige
     provenance = {cle: (v or {}).get('provenance')
                   for cle, v in (sortie.get('entrees_resolues') or {}).items()}
@@ -1508,7 +1523,10 @@ def rafraichir_etude_pompage_devis(devis, *, force=False, sortie=None):
         lead = getattr(devis, 'lead', None)
         catalogue = lire_catalogue(company)
         facture = facture_du_devis(devis, catalogue)
-        empreinte = _empreinte(etude, facture, getattr(lead, 'id', None))
+        from .pompage_pose import plan_pose_pompage
+        from .regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+        plan = plan_pose_pompage(devis)  # ACAL1201 — None ⇒ empreinte d'avant
+        empreinte = _empreinte(etude, facture, getattr(lead, 'id', None), plan)
         stockee = (etude.get('provenance_pompage') or {}).get('_empreinte')
         if not force and stockee == empreinte:
             return None
@@ -1528,6 +1546,10 @@ def rafraichir_etude_pompage_devis(devis, *, force=False, sortie=None):
             sortie = etudier_pompage(company, corps, devis=devis, lead=lead,
                                      facture=facture)
         derivees = derivees_de_l_etude(sortie, pvgis_fige=fige or None)
+        if derivees.get('production') and not regles_au_moins(
+                devis, REGLES_POSE_REELLE_2111):  # ACAL1201 — ≤ 14 à l'octet
+            derivees['production'] = {k: v for k, v in derivees['production'].items()
+                                      if k != 'plan_irradiation'}
         # ``pvgis_fige`` est À LA FOIS une entrée de l'empreinte et une dérivée
         # que CE rafraîchisseur écrit (premier appel : None → coordonnées
         # figées). L'empreinte STOCKÉE décrit donc l'état APRÈS écriture —
@@ -1535,7 +1557,7 @@ def rafraichir_etude_pompage_devis(devis, *, force=False, sortie=None):
         # et relancerait le moteur (garde « mêmes entrées ⇒ zéro calcul »).
         empreinte = _empreinte(
             dict(etude, pvgis_fige=derivees.get('pvgis_fige')), facture,
-            getattr(lead, 'id', None))
+            getattr(lead, 'id', None), plan)
         derivees['provenance_pompage']['_empreinte'] = empreinte
         a_ecrire = {cle: valeur for cle, valeur in derivees.items()
                     if etude.get(cle) != valeur}

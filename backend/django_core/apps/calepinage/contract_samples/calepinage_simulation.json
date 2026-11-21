@@ -484,7 +484,29 @@
         "etapes": {},
         "total": null,
         "motif_absence": "aucune bande sourcée"
-      }
+      },
+      "limites_connues": [
+        {
+          "code": "pas_horaire",
+          "texte_fr": "La simulation travaille à l'heure : un passage nuageux de quelques minutes n'est pas vu, et le pas du quart d'heure est refusé à l'export.",
+          "texte_en": "The simulation runs hourly: a cloud passing for a few minutes is not seen, and the quarter-hour step is refused on export."
+        },
+        {
+          "code": "suiveurs",
+          "texte_fr": "Toute pose est fixe : aucun suiveur solaire n'est modélisé.",
+          "texte_en": "Every mounting is fixed: no solar tracker is modelled."
+        },
+        {
+          "code": "courbe_iv",
+          "texte_fr": "Le panneau suit les coefficients de sa fiche, pas une courbe courant-tension cellule par cellule.",
+          "texte_en": "The module follows its datasheet coefficients, not a cell-by-cell current-voltage curve."
+        },
+        {
+          "code": "charges_structure",
+          "texte_fr": "Vent et neige sur la structure : saisis par la société, aucune valeur n'est tirée d'une norme.",
+          "texte_en": "Wind and snow on the structure: entered by the company, no value is taken from a standard."
+        }
+      ]
     },
     "meteo": {
       "service": "seriescalc",
@@ -530,6 +552,90 @@
       "pas_charge_minutes": 60,
       "interpolation": false,
       "note_resolution": "La météo est au pas de 60 min (PVGIS sert une ligne par heure) et aucune interpolation infra-horaire n'est faite : entre deux heures, l'irradiance n'est jamais lissée.",
+      "comparaison_base": {
+        "base_principale": "PVGIS-SARAH3",
+        "base_comparee": "PVGIS-ERA5",
+        "irradiation_kwh_m2": {
+          "principale": 7.8,
+          "comparee": 8.6
+        },
+        "ecart_pct": 9.74,
+        "mensuel": [
+          {
+            "mois": 1,
+            "principale": 0.1,
+            "comparee": 0.1,
+            "ecart_pct": -10.0
+          },
+          {
+            "mois": 2,
+            "principale": 0.2,
+            "comparee": 0.2,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 3,
+            "principale": 0.3,
+            "comparee": 0.3,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 4,
+            "principale": 0.4,
+            "comparee": 0.4,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 5,
+            "principale": 0.5,
+            "comparee": 0.6,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 6,
+            "principale": 0.6,
+            "comparee": 0.7,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 7,
+            "principale": 0.7,
+            "comparee": 0.8,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 8,
+            "principale": 0.8,
+            "comparee": 0.9,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 9,
+            "principale": 0.9,
+            "comparee": 1.0,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 10,
+            "principale": 1.0,
+            "comparee": 1.1,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 11,
+            "principale": 1.1,
+            "comparee": 1.2,
+            "ecart_pct": 10.0
+          },
+          {
+            "mois": 12,
+            "principale": 1.2,
+            "comparee": 1.3,
+            "ecart_pct": 10.0
+          }
+        ],
+        "motif": ""
+      },
       "fichier": null
     },
     "incertitude": {
@@ -1184,7 +1290,8 @@
         "etapes": {},
         "total": null,
         "motif_absence": "aucune bande sourcée"
-      }
+      },
+      "limites_connues": []
     },
     "meteo": {
       "service": null,
@@ -1224,6 +1331,7 @@
       "pas_charge_minutes": null,
       "interpolation": false,
       "note_resolution": "",
+      "comparaison_base": null,
       "fichier": null
     },
     "incertitude": {
@@ -1848,7 +1956,29 @@
         "etapes": {},
         "total": null,
         "motif_absence": "aucune bande sourcée"
-      }
+      },
+      "limites_connues": [
+        {
+          "code": "pas_horaire",
+          "texte_fr": "La simulation travaille à l'heure : un passage nuageux de quelques minutes n'est pas vu, et le pas du quart d'heure est refusé à l'export.",
+          "texte_en": "The simulation runs hourly: a cloud passing for a few minutes is not seen, and the quarter-hour step is refused on export."
+        },
+        {
+          "code": "suiveurs",
+          "texte_fr": "Toute pose est fixe : aucun suiveur solaire n'est modélisé.",
+          "texte_en": "Every mounting is fixed: no solar tracker is modelled."
+        },
+        {
+          "code": "courbe_iv",
+          "texte_fr": "Le panneau suit les coefficients de sa fiche, pas une courbe courant-tension cellule par cellule.",
+          "texte_en": "The module follows its datasheet coefficients, not a cell-by-cell current-voltage curve."
+        },
+        {
+          "code": "charges_structure",
+          "texte_fr": "Vent et neige sur la structure : saisis par la société, aucune valeur n'est tirée d'une norme.",
+          "texte_en": "Wind and snow on the structure: entered by the company, no value is taken from a standard."
+        }
+      ]
     },
     "meteo": {
       "service": "seriescalc",
@@ -1894,6 +2024,7 @@
       "pas_charge_minutes": 60,
       "interpolation": false,
       "note_resolution": "La météo est au pas de 60 min (PVGIS sert une ligne par heure) et aucune interpolation infra-horaire n'est faite : entre deux heures, l'irradiance n'est jamais lissée.",
+      "comparaison_base": null,
       "fichier": null
     },
     "incertitude": {
@@ -2914,7 +3045,29 @@
         "etapes": {},
         "total": null,
         "motif_absence": "aucune bande sourcée"
-      }
+      },
+      "limites_connues": [
+        {
+          "code": "pas_horaire",
+          "texte_fr": "La simulation travaille à l'heure : un passage nuageux de quelques minutes n'est pas vu, et le pas du quart d'heure est refusé à l'export.",
+          "texte_en": "The simulation runs hourly: a cloud passing for a few minutes is not seen, and the quarter-hour step is refused on export."
+        },
+        {
+          "code": "suiveurs",
+          "texte_fr": "Toute pose est fixe : aucun suiveur solaire n'est modélisé.",
+          "texte_en": "Every mounting is fixed: no solar tracker is modelled."
+        },
+        {
+          "code": "courbe_iv",
+          "texte_fr": "Le panneau suit les coefficients de sa fiche, pas une courbe courant-tension cellule par cellule.",
+          "texte_en": "The module follows its datasheet coefficients, not a cell-by-cell current-voltage curve."
+        },
+        {
+          "code": "charges_structure",
+          "texte_fr": "Vent et neige sur la structure : saisis par la société, aucune valeur n'est tirée d'une norme.",
+          "texte_en": "Wind and snow on the structure: entered by the company, no value is taken from a standard."
+        }
+      ]
     },
     "meteo": {
       "service": "seriescalc",
@@ -2960,6 +3113,7 @@
       "pas_charge_minutes": 60,
       "interpolation": false,
       "note_resolution": "La météo est au pas de 60 min (PVGIS sert une ligne par heure) et aucune interpolation infra-horaire n'est faite : entre deux heures, l'irradiance n'est jamais lissée.",
+      "comparaison_base": null,
       "fichier": null
     },
     "incertitude": {

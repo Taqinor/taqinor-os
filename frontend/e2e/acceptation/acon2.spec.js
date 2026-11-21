@@ -119,8 +119,8 @@ except Exception:
   expect(rg.status(), `« Générer le devis » (bouton) : 201 (${J(dg).slice(0, 300)})`).toBe(201)
   const devisId = dg.devis?.id ?? dg.devis ?? dg.id
   expect(devisId, 'devis né').toBeTruthy()
-  // L'écran quitte l'atelier vers le devis ou affiche « Ouvrir le devis ».
-  await expect.poll(async () => page.url().includes(`/ventes/devis/${devisId}`) || (await page.getByText(/Ouvrir le devis/).count()) > 0, { timeout: 60_000 }).toBe(true)
+  // L'écran quitte l'atelier vers le devis ou affiche la carte « Devis … créé » et son bouton « Voir le devis » (ACAL866).
+  await expect.poll(async () => page.url().includes(`/ventes/devis/${devisId}`) || (await page.getByText(/Voir le devis/).count()) > 0, { timeout: 60_000 }).toBe(true)
   // 4. le bloc horaire RANGÉ porte l'ombrage.
   const x = await py(`from apps.ventes.models import Devis
 from apps.calepinage.models import Calepinage

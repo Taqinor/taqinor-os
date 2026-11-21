@@ -4,6 +4,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
 import ReglagesSite from './ReglagesSite'
+import ReglagesGabaritsObstacle from './ReglagesGabaritsObstacle'
 import DemarrageRapide from './DemarrageRapide'
 import ReglagesNorme from './ReglagesNorme'
 import ReglagesLestage from './ReglagesLestage'
@@ -501,6 +502,7 @@ export default function ReglagesSimulation() {
   const [registres, setRegistres] = useState(null)
   // ACAL130 — la section « imagerie » servie, pour « Site & imagerie ».
   const [imagerie, setImagerie] = useState(null)
+  const [zonesTypes, setZonesTypes] = useState(null) // ACAL494
   // ACAL289 — `presets` et `documents` servis, pour les deux cartes de fin.
   const [presetsServis, setPresetsServis] = useState(null)
   const [documentsServis, setDocumentsServis] = useState(null)
@@ -533,6 +535,7 @@ export default function ReglagesSimulation() {
         }
         setRegistres({ simulation, electrique_societe: electrique })
         setImagerie(data.imagerie && typeof data.imagerie === 'object' ? data.imagerie : null)
+        setZonesTypes(data.zones_types && typeof data.zones_types === 'object' ? data.zones_types : {})
         setPresetsServis(data.presets && typeof data.presets === 'object' ? data.presets : {})
         setDocumentsServis(data.documents && typeof data.documents === 'object' ? data.documents : {})
         setNormeServie(data.norme_electrique && typeof data.norme_electrique === 'object' ? data.norme_electrique : {})
@@ -680,6 +683,7 @@ export default function ReglagesSimulation() {
       />
 
       <ReglagesSite imagerie={imagerie} />
+      <ReglagesGabaritsObstacle zonesTypes={zonesTypes} />
       <ReglagesNorme normeElectrique={normeServie} />
 
       {Object.keys(registres).map((section) => (
