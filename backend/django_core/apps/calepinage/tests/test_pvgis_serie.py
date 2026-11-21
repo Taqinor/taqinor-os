@@ -225,5 +225,166 @@ class AzimutTest(unittest.TestCase):
         self.assertEqual(capture.exception.champ, 'facingAzimuthDeg')
 
 
+# ---------------------------------------------------------------------------
+# ACAL466 — lecteur Copernicus GLO-30 sur mini-tuile (DB-free, réseau injecté)
+# ---------------------------------------------------------------------------
+
+#: Neuf altitudes RÉELLES lues le 20/11/2026 sur la tuile
+#: ``Copernicus_DSM_COG_10_N33_00_W008_00_DEM`` (Casablanca, lignes du nord au
+#: sud, colonnes d'ouest en est ; coin nord-ouest = ligne 1535, colonne 1475).
+ALTITUDES_CASABLANCA = (
+    (42.09, 43.44, 47.82),
+    (41.70, 42.40, 45.77),
+    (41.09, 44.19, 46.73),
+)
+
+
+def _mini_geotiff(altitudes, *, predicteur=True):
+    """GeoTIFF tuilé, Deflate, prédicteur 3 — MÊMES tags que la vraie tuile."""
+    import struct
+    import zlib
+    import numpy as np
+
+    tw = th = 16
+    plan = np.zeros((th, tw), dtype='>f4')
+    for i, ligne in enumerate(altitudes):
+        plan[i, :len(ligne)] = ligne
+    lignes = []
+    for ligne in plan:
+        octets = np.frombuffer(ligne.tobytes(), np.uint8).reshape(tw, 4)
+        brut = np.ascontiguousarray(octets.T).reshape(-1)
+        if predicteur:
+            brut = np.concatenate(
+                ([brut[0]], (np.diff(brut.astype(np.int16)) % 256)
+                 .astype(np.uint8))).astype(np.uint8)
+        lignes.append(brut.tobytes())
+    tuile = zlib.compress(b''.join(lignes))
+
+    echelle = struct.pack('<3d', 1 / 3600, 1 / 3600, 0.0)
+    attache = struct.pack('<6d', 0.0, 0.0, 0.0, -8.0 + 1475 / 3600,
+                          34.0 - 1535 / 3600, 0.0)
+    cles = struct.pack('<16H', 1, 1, 0, 3, 1025, 0, 1, 2,
+                       2048, 0, 1, 4326, 2054, 0, 1, 9102)
+    n = 16
+    debut_extra = 8 + 2 + 12 * n + 4
+    o_echelle, o_attache = debut_extra, debut_extra + 24
+    o_cles = o_attache + 48
+    o_tuile = o_cles + len(cles)
+    entrees = [
+        (256, 3, 1, 3), (257, 3, 1, 3), (258, 3, 1, 32), (259, 3, 1, 8),
+        (262, 3, 1, 1), (277, 3, 1, 1), (284, 3, 1, 1),
+        (317, 3, 1, 3 if predicteur else 1), (322, 3, 1, tw), (323, 3, 1, th),
+        (324, 4, 1, o_tuile), (325, 4, 1, len(tuile)), (339, 3, 1, 3),
+        (33550, 12, 3, o_echelle), (33922, 12, 6, o_attache),
+        (34735, 3, 8, o_cles),
+    ]
+    ifd = struct.pack('<H', n)
+    for tag, typ, nb, val in entrees:
+        if typ == 3 and nb == 1:
+            champ = struct.pack('<HH', val, 0)
+        else:
+            champ = struct.pack('<I', val)
+        ifd += struct.pack('<HHI', tag, typ, nb) + champ
+    ifd += struct.pack('<I', 0)
+    return (b'II*\x00' + struct.pack('<I', 8) + ifd + echelle + attache
+            + cles + tuile)
+
+
+def _lecteur_de(octets, appels=None):
+    def lecteur(url, debut, fin):
+        if appels is not None:
+            appels.append(url)
+        return octets[debut:fin + 1]
+    return lecteur
+
+
+class TerrainGlo30Test(unittest.TestCase):
+    """ACAL466 — pente du relief d'un champ au sol (GLO-30), sans réseau."""
+
+    @staticmethod
+    def _sommets():
+        # Centres des pixels (0,0), (2,0), (2,2), (0,2) de la mini-tuile.
+        lon0, lat0, p = -8.0 + 1475 / 3600, 34.0 - 1535 / 3600, 1 / 3600
+        return [[lon0, lat0], [lon0 + 2 * p, lat0],
+                [lon0 + 2 * p, lat0 - 2 * p], [lon0, lat0 - 2 * p]]
+
+    def test_lecteur_glo30_sur_mini_tuile(self):
+        import math
+        import numpy as np
+        from apps.calepinage.services.terrain_glo30 import (
+            ATTRIBUTION_MODELE, lire_pente_terrain,
+        )
+        appels = []
+        r = lire_pente_terrain(
+            'S1', self._sommets(), maintenant='2026-11-21T10:00:00Z',
+            lecteur=_lecteur_de(_mini_geotiff(ALTITUDES_CASABLANCA), appels))
+        self.assertEqual(r['motif'], '')
+        # Les cinq points échantillonnés (4 sommets + centroïde) rendent les
+        # altitudes RÉELLES — le prédicteur est bien inversé.
+        z = sorted(p['altitude_m'] for p in r['points'])
+        self.assertEqual(z, sorted([42.09, 47.82, 46.73, 41.09, 42.40]))
+        self.assertTrue(all('N33_00_W008_00' in u for u in appels))
+        # Oracle indépendant : moindres carrés numpy en mètres locaux.
+        m_lat = 6378137 * math.radians(1 / 3600)
+        m_lon = m_lat * math.cos(math.radians(33.57))
+        pts = [(0, 0, 42.09), (2, 0, 47.82), (2, -2, 46.73), (0, -2, 41.09),
+               (1, -1, 42.40)]
+        A = np.array([[x * m_lon, y * m_lat, 1] for x, y, _ in pts])
+        a, b, _ = np.linalg.lstsq(A, np.array([p[2] for p in pts]),
+                                  rcond=None)[0]
+        self.assertAlmostEqual(r['pente_deg'],
+                               math.degrees(math.atan(math.hypot(a, b))),
+                               delta=0.15)
+        self.assertAlmostEqual(
+            r['azimut_pente_deg'],
+            math.degrees(math.atan2(-a, -b)) % 360, delta=1.0)
+        self.assertIn('2026-11-21', r['attribution'])
+        self.assertTrue(r['attribution'].startswith(
+            ATTRIBUTION_MODELE.split('DATE')[0]))
+
+    def test_predicteur_non_inverse_ne_rend_pas_les_vraies_altitudes(self):
+        # Mutant : fichier écrit SANS prédicteur mais déclaré prédicteur 3 (=
+        # l'inversion appliquée à des octets bruts) : les altitudes lues ne
+        # sont PLUS les vraies — l'assertion du test précédent échouerait.
+        from apps.calepinage.services.terrain_glo30 import lire_pente_terrain
+        octets = _mini_geotiff(ALTITUDES_CASABLANCA, predicteur=False)
+        import struct
+        i = octets.index(struct.pack('<HHI', 317, 3, 1))
+        octets = octets[:i + 8] + b'\x03' + octets[i + 9:]
+        r = lire_pente_terrain('S1', self._sommets(),
+                               lecteur=_lecteur_de(octets))
+        lues = sorted(p['altitude_m'] for p in r['points'])
+        self.assertNotEqual(lues, sorted([42.09, 47.82, 46.73, 41.09, 42.40]))
+
+    def test_reseau_coupe_ou_trop_petit_jamais_une_altitude_de_repli(self):
+        from apps.calepinage.services.terrain_glo30 import (
+            TerrainIndisponible, lire_pente_terrain,
+        )
+
+        def coupe(url, debut, fin):
+            raise TerrainIndisponible("Le relief n'est pas joignable.")
+
+        r = lire_pente_terrain('S1', self._sommets(), lecteur=coupe)
+        self.assertIsNone(r['pente_deg'])
+        self.assertIsNone(r['azimut_pente_deg'])
+        self.assertEqual(r['points'], [])
+        self.assertIn('joignable', r['motif'])
+        # Trois sommets dans le MÊME pixel : moins de trois pixels distincts.
+        s = self._sommets()[0]
+        petit = [s, [s[0] + 1e-6, s[1]], [s[0], s[1] - 1e-6]]
+        r = lire_pente_terrain(
+            'S1', petit,
+            lecteur=_lecteur_de(_mini_geotiff(ALTITUDES_CASABLANCA)))
+        self.assertIsNone(r['pente_deg'])
+        self.assertIn('trois pixels', r['motif'])
+
+    def test_nom_de_tuile_hemispheres(self):
+        from apps.calepinage.services.terrain_glo30 import _nom_tuile
+        self.assertTrue(_nom_tuile(-7.6, 33.57)[0].endswith(
+            'Copernicus_DSM_COG_10_N33_00_W008_00_DEM/'
+            'Copernicus_DSM_COG_10_N33_00_W008_00_DEM.tif'))
+        self.assertIn('S01_00_E002_00', _nom_tuile(2.3, -0.5)[1])
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
