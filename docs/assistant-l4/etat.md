@@ -1,9 +1,8 @@
 # Assistant L4 — état du chantier (à lire EN PREMIER pour reprendre)
 
 Dernière écriture : 21/11/2026 vers 04:45 UTC, session du poste de Reda · branche `claude/assistant-l4-notes`.
-**Prochaine action unique** : après la remise à zéro du quota (21/11 11:00 UTC) et le merge de la PR #1513, relire le
-quota (`mcp__ccd_session_mgmt__get_usage`) ; si k ≥ 1, construire la Lane 0 puis lancer le TOUR 1 sur une branche
-d'intégration partie de `origin/main` à jour.
+**Prochaine action unique** : lire le run 44867791776 (tour 1 sur runner, branche `claude/assistant-l4`), juger les
+transcripts (KC, KD, KE), consolider, corriger.
 
 ## Demande et cadre
 - Demande de Reda (21/11) : voir `contrat-de-sortie.md` (mot pour mot). Niveau L4 · régime EXISTANT.
@@ -42,3 +41,10 @@ d'intégration partie de `origin/main` à jour.
 ## Déroulé
 1. Tour 0 (21/11 vers 04:45 UTC) : régime EXISTANT, poste mesuré, quota 91 % → arrêt après le tour 0 ; contrat KA-KF
   écrit ; inventaire P1-P7 ; lecture de la CI de `main` remise au tour 1.
+2. Reda (21/11 ≈ 04:50 UTC) : « continue untill you hit 100% » — la ligne d'arrêt 90 % est levée par lui (avertissement
+  donné : plus rien pour ses autres sessions jusqu'à la remise à zéro).
+3. Lane 0 (commit a3b728cd0a, branche `claude/assistant-l4` empilée sur la PR #1513) : `scripts/assistant_carte_erp.py`
+  + `assistant/carte_erp.md` (27 762 car.) + garde `--check` dans stage-names + tests (KA, KB verts) ; consigne prix
+  d'achat / marge alignée sur le droit du rôle (P7). Coût ≈ 1 point (91 → 92 %).
+4. Tour 1 : instrument sur runner (`zz-scratch-l4-assistant`, comptes l4_commercial / l4_commercial_resp /
+  l4_directeur, oracle de fuite = prix d'achat du catalogue) : 36 questions + 20 attaques × 3 rôles, run 44867791776.
