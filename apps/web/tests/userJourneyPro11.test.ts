@@ -1053,14 +1053,21 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
   it('« Effacer » avec un contour demande en nommant le pan, et ne fait rien sur refus', async () => {
     await boot();
     traceRoof(fakeMaps[0]);
-    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => false);
+    // Acceptation ACAL490 (oracle 4) : la question est posée DANS l'atelier, jamais par window.confirm.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true);
+    const repondre = (libelle: string) =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-question-effacer button')).find((b) => b.textContent === libelle)!.click();
     (document.getElementById('rp9-clear') as HTMLButtonElement).click();
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect((confirmSpy.mock.calls[0] as unknown as string[])[0]).toMatch(/^Effacer 1 pan/);
+    expect(document.getElementById('rp9-question-effacer')?.getAttribute('role')).toBe('alertdialog');
+    expect(txt('rp9-question-effacer-texte')).toMatch(/^Effacer 1 pan/);
+    expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(true); // posée : rien n'est encore effacé
+    repondre('Garder');
+    expect(document.getElementById('rp9-question-effacer')).toBeNull();
     expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(true); // refus : le contour reste fermé
-    confirmSpy.mockImplementation(() => true);
     (document.getElementById('rp9-clear') as HTMLButtonElement).click();
+    repondre('Effacer');
     expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(false); // accepté : site vierge, la carte d'aide revient
+    expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   }, 60000);
 

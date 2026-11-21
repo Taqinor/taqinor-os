@@ -46,7 +46,7 @@ import {
   type ModulePose,
 } from './zones';
 import { obstacleRing } from '../../lib/obstacles';
-import { viderObstaclesAnnulable, questionEffacer, confirmerEffacer } from './bandeauAnnuler'; // ACAL413
+import { viderObstaclesAnnulable, questionEffacer, demanderEffacer } from './bandeauAnnuler'; // ACAL413
 import { type LngLat } from '../../lib/roof';
 
 const ETAT = {
@@ -520,7 +520,12 @@ describe('ACAL413 — un filet pour les effacements de masse', () => {
       'Effacer 1 pan, 2 obstacles, la consommation saisie et les ombres tracées ?',
     );
     expect(questionEffacer({ pans: 0, obstacles: 0, consommation: false, ombres: false })).toBeNull();
-    expect(confirmerEffacer({ pans: 0, obstacles: 0, consommation: false, ombres: false }, () => false)).toBe(true);
-    expect(confirmerEffacer({ pans: 2, obstacles: 0, consommation: false, ombres: false }, () => false)).toBe(false);
+  });
+  it('« Effacer » sans rien à perdre part aussitôt ; avec quelque chose, rien n’est effacé avant la réponse', () => {
+    let n = 0;
+    demanderEffacer(null, { pans: 0, obstacles: 0, consommation: false, ombres: false }, () => { n += 1; });
+    expect(n).toBe(1);
+    demanderEffacer(null, { pans: 1, obstacles: 3, consommation: false, ombres: false }, () => { n += 1; });
+    expect(n).toBe(1);
   });
 });
