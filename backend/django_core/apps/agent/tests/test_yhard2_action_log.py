@@ -187,8 +187,10 @@ class _FauxLLM(LLMProvider):
         return True
 
     def complete(self, *, prompt, system=None, max_tokens=512):
-        return AIResult(ok=True, configured=True, provider=self.key, text='réponse secrète',
-                        data={'usage': {'prompt_tokens': 120, 'completion_tokens': 30}})
+        return AIResult(ok=True, configured=True, provider=self.key,
+                        data={'text': 'réponse secrète',
+                              'usage': {'prompt_tokens': 120,
+                                        'completion_tokens': 30}})
 
 
 @override_settings(AI_PROVIDERS={'llm': 'faux_usage_ia'}, AI_PII_REDACTION=False)
@@ -244,7 +246,7 @@ class UsageIASinkTests(TestCase):
         with mock.patch.object(UsageIA.objects, 'create', side_effect=RuntimeError('base en panne')):
             res = self._appel()
         self.assertTrue(res.ok)
-        self.assertEqual(res.text, 'réponse secrète')
+        self.assertEqual(res.data['text'], 'réponse secrète')
         # La transaction du test reste utilisable (savepoint).
         self.assertEqual(Company.objects.filter(pk=self.company.pk).count(), 1)
 
