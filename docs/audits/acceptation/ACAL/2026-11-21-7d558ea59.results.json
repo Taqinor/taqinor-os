@@ -1,0 +1,323 @@
+{
+  "sha": "7d558ea598b3e95d01a4c8fb746551ca9560bb81",
+  "date": "2026-11-21",
+  "groupe": "ACAL",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACAL401",
+    "ACAL402",
+    "ACAL411",
+    "ACAL418",
+    "ACAL421",
+    "ACAL424",
+    "ACAL425",
+    "ACAL431",
+    "ACAL433",
+    "ACAL459",
+    "ACAL460",
+    "ACAL472",
+    "ACAL440"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.5-ACAL411-aligner-repartir",
+      "taches": [
+        "ACAL411"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL411-aligner-repartir.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL424-calage-monde",
+      "taches": [
+        "ACAL424"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL424-calage-monde.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL459-table-ombrage",
+      "taches": [
+        "ACAL459"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL459-table-ombrage.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL460-vue-du-ciel",
+      "taches": [
+        "ACAL460"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL460-vue-du-ciel.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL440-perf-500-modules",
+      "taches": [
+        "ACAL440"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "corps": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL440-perf.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "spec calepinage-perf.spec.js jouée sur runner (CI=1), 2/2 tests PASS ; budget consigné : pire interaction 32 ms (plafond CI 500 ms, seuil mauvais de vitals.js), deviceMemory 4 = 112 ms (run 44867743877) ; FAIL de la clause : le glissé mesuré n'est pas un glissé de panneau (mode disposition jamais ouvert, beginLayoutDrag rend false hors layoutMode) et le document de 500 modules a ses sommets à (0..30°, 0..40°) — défaut de la spec livrée, non corrigé (voir la trace)"
+    },
+    {
+      "id": "PA2.5-ACAL401-resume-vivant",
+      "taches": [
+        "ACAL401"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL401-resume-vivant.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "« − » des panneaux nécessaires : 8 → 7 panneaux, 5,8 → 5,0 kWc, ≈ 8 552 → ≈ 7 483 kWh/an (estimation) en 1 378 ms ; après la simulation serveur (service réel, matériel désigné) la barre lit « P50 … kWh/an (simulation) » = P50 servi. Déplacer un panneau ne peut pas changer le NOMBRE de panneaux : le geste chronométré est « − »."
+    },
+    {
+      "id": "PA2.5-ACAL402-studio-1440",
+      "taches": [
+        "ACAL402"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "corps": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL402-studio-1440.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : les commandes sous la carte restent atteignables (colonne scène 1737 px de contenu pour 690 px visibles, overflow-y hidden) ; DÉFAUT PRODUIT (run 44867743877) : à 1 440 × 900 la colonne scène (`#rp9-studio-scene > .cine-card`, overflow-y hidden) porte 1 737 px de contenu pour 690 px visibles et sa base (y 265 + 692) sort de la fenêtre ; les commandes du constructeur sous la carte (orientation, pose, « Déplacer les panneaux » à y 1 818) ne s'atteignent ni à la molette ni au défilement de page (la page ne défile plus) — seulement au clavier, qui fait alors sortir la carte de la vue. La partie « inspecteur » de la clause PASSE (scrollTop 4 910, carte immobile y 373)."
+    },
+    {
+      "id": "PA2.5-ACAL418-retirer-selection",
+      "taches": [
+        "ACAL418"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL418-retirer-selection.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Observation : sur un document au pan SANS pose enregistrée, la fenêtre « Personnaliser la disposition » (`#rp9-layout-window`) reste masquée après le chargement (runs 44863910518 et suivants) — la partie emplacements validés est jouée après un premier enregistrement."
+    },
+    {
+      "id": "PA2.5-ACAL421-conception-auto",
+      "taches": [
+        "ACAL421"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "corps": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL421-conception-auto.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : contour posé, toit rempli ; DÉFAUT PRODUIT (runs 44865072703, 44867743877) : `apps/crm/roof_detect.py::fetch_building_footprint` appelle Overpass avec l'User-Agent par défaut `python-requests/2.34.2` ; Overpass répond HTTP 406 Not Acceptable (même requête rejouée au shell du runner), alors que la même recherche faite depuis la spec avec un User-Agent identifié rend des bâtiments (way 417968795, 419544764). Le serveur sert alors polygon [] avec batiment.non_renseignes « OpenStreetMap n'a pas répondu » mais le MESSAGE dit « Aucun bâtiment trouvé à cet emplacement » (un échec réseau présenté comme une absence de bâtiment). « Conception automatique » ne peut donc jamais poser de contour. Le bouton est bien offert sur un lead épinglé sans pan."
+    },
+    {
+      "id": "PA2.5-ACAL425-reperes-glisse",
+      "taches": [
+        "ACAL425"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "corps": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL425-reperes-glisse.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : marges par défaut (écart entre panneaux 2 cm) : ligne repère et collage au voisin ; DÉFAUT PRODUIT (runs 44866838249, 44867743877) : aux marges PAR DÉFAUT (écart entre panneaux 2 cm) aucun repère ni collage pendant tout le glissé vers le voisin ; avec « Écart entre panneaux » à 0 cm le mécanisme marche (repère SVG pointer-events none, « voisin 0 cm », B collé à −1,697 m ; touche A : aucun repère, B lâché à −1,610 m, écart 8,7 cm ≤ seuil). Cause lue au code : la cible de collage au voisin est le bord JOINTIF (`freeLayout.ts::snapCandidateForPanel`, ou ± 2·hw), et `glisserAimante` n'accepte le collage que si `poser(...).ok` — or `ok` exige zéro violation, y compris l'écart RELÂCHABLE (`gap`) : la clause ne refuse que les contraintes DURES."
+    },
+    {
+      "id": "PA2.3-ACAL431-ciel",
+      "taches": [
+        "ACAL431"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL431-ciel.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "setSky reçu : 12 h hiver sky #5ea6ec / horizon #cfe6fb ; 7 h été sky #62a0e2 / horizon #d7d7d4 (rouge 215 > bleu 212 : teinte chaude faible) ; 20 h hiver #0b1226 (nuit) ; bas de gamme (deviceMemory 4) : 0 appel. L'heure vient de `scene{sunDay,sunHour}` du document (l'atelier ERP n'a pas de curseur d'heure)."
+    },
+    {
+      "id": "PA2.3-ACAL433-texture",
+      "taches": [
+        "ACAL433"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL433-texture.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "Toiles 2D créées par l'atelier : 512 × 280 (paysage, rapport 1,83, inchangé) et 282 × 512 (portrait, cellules carrées ≤ 5 %), exportées en PNG à côté de la capture. Les deux toiles existent dès le chargement (pose recommandée portrait) : la bascule paysage/portrait n'en crée pas de nouvelle."
+    },
+    {
+      "id": "PA2.5-ACAL472-trace-propose",
+      "taches": [
+        "ACAL472"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL472-trace-propose.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "PASS avec réserve : DÉFAUT CALX222 constaté — « Armer la pose » + clic sur la carte ne pose aucun organe (`electrique3d.ts::typeArme()` sans lecteur, `poser` appelé par aucun gestionnaire de clic) : l'onduleur est posé par l'API publique de l'atelier (`builderApi.electrique.poser`). Le sélecteur « De / Vers » ne liste que les organes (pas les pans) : « proposer le tracé depuis le pan » n'est pas offert à l'écran ; tracé proposé coffret DC → onduleur (12 points, origine plan), tronçon ch1 mesuré 39,14 m (longueur_origine plan) par GET troncons/."
+    }
+  ]
+}

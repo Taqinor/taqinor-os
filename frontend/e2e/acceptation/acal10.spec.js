@@ -13,7 +13,7 @@
 //    centroïde devient l'épingle du lead ; le serveur relit ensuite Overpass lui-même. Injoignable ⇒ NON JOUABLE.
 //  • Calage (ACAL424) : JPEG + fichier monde .jgw générés au test.
 // Données propres à chaque étape (lead + calepinage au shell Django), nettoyées.
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { test, expect } from '@playwright/test'
 import { groupe } from './_oracles.js'
@@ -234,7 +234,30 @@ async function modeDisposition(page) {
   if ((await bascule.getAttribute('aria-pressed')) !== 'true') await bascule.click()
   await expect(bascule).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => page.evaluate(() => window.__carteAtelier().getPitch()), { timeout: 20_000, message: 'vue de dessus' }).toBeLessThan(0.5)
+  await centrerCarte(page)
+}
+
+/** Vue EMPILÉE (< 1 280 px) pour les gestes sur la carte : en studio, la carte et les commandes du constructeur
+ *  partagent une colonne à débordement masqué (voir ACAL402) ; empilée, la page défile normalement. */
+const vueEmpilee = (page) => page.setViewportSize({ width: 1200, height: 1000 })
+
+/** Ramène la carte au centre de la fenêtre (la bascule « Déplacer les panneaux » l'a fait défiler hors vue). */
+async function centrerCarte(page) {
+  await page.evaluate(() => document.getElementById('rp9-map').scrollIntoView({ block: 'center' }))
+  await expect(page.locator('#rp9-map')).toBeInViewport({ ratio: 0.95 })
   await attendreCarteImmobile(page)
+}
+
+/** ACAL398 — la simulation automatique repart après chaque enregistrement ; sur la pile d'essai (matériel non
+ *  désigné) le serveur la REFUSE en 409 en nommant le champ (réponse documentée, retenue sans toast par
+ *  `simulationAuto.js`). Déclarée à l'oracle ; son motif est consigné. */
+function simulationAutoAttendue(page, suivi) {
+  suivi.attendre(/\/calepinages\/\d+\/simuler\//, 409)
+  page.on('response', async (r) => {
+    if (r.status() === 409 && /\/simuler\/$/.test(new URL(r.url()).pathname)) {
+      console.log(`[ACAL398] simulation auto refusée (409) : ${(await r.text().catch(() => '?')).slice(0, 300)}`)
+    }
+  })
 }
 
 /** Maj + clic sur chaque panneau désigné (sélection additive, PV29). */
@@ -256,6 +279,17 @@ async function enregistrer(page, id, bouton) {
   return (await lireLayout(page.request, id)).roof_layout
 }
 
+/** Quitte un atelier aux retouches NON enregistrées sans passer par la garde de sortie (`beforeunload`, qui
+ *  annulerait la navigation) : l'onglet est fermé, un nouvel onglet de la même session est surveillé. */
+async function repartir(context, suivi, ancienne) {
+  const vue = ancienne.viewportSize()
+  await ancienne.close()
+  const p = await context.newPage()
+  suivi.surveiller(p)
+  if (vue) await p.setViewportSize(vue)
+  return p
+}
+
 /** Capture supplémentaire d'une étape (à côté de la capture finale du harnais). */
 async function capture(cible, id, suffixe) {
   const rel = `docs/qa-explorer/captures/${aujourdHui()}/ACCEPTATION-ACAL-${id}-${suffixe}.jpg`
@@ -271,11 +305,12 @@ const fermer = (a, b, tol) => Math.abs(a - b) <= tol
 // ════════════════════════════════════════════════════════════════════════════
 // ACAL401 — PA2.5 : la barre de résumé (panneaux · kWc · production) suit l'édition en moins de 2 s, production
 // « estimation » ; après la simulation serveur (le VRAI service, aucun worker Celery sur le runner) « P50 … (simulation) ».
-// NOTE : sur une pose en emplacements validés, DÉPLACER un panneau ne peut pas changer le NOMBRE de panneaux ; le geste
-// qui change les trois chiffres est « − » (retirer un panneau) — joué ici, chronométré.
+// NOTE : DÉPLACER un panneau ne peut pas changer le NOMBRE de panneaux ; le geste qui change les trois chiffres est
+// « − » des « Panneaux nécessaires » (inspecteur) — joué ici, chronométré.
 // ════════════════════════════════════════════════════════════════════════════
 etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  simulationAutoAttendue(page, suivi)
   const cal = await calepinageAvec('ACAL401', docPentu())
   const meteo = await reglerMeteo()
   try {
@@ -295,9 +330,8 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
     expect(avant.panneaux, 'nombre lu sur le document sérialisé').toBe(vivant.panels)
     console.log(`[ACAL401] avant : ${JSON.stringify(avant)} (document : ${JSON.stringify({ p: vivant.panels, kwc: vivant.kwc, kwh: vivant.annualKwh })})`)
 
-    await modeDisposition(page)
-    const moins = page.locator('#rp9-layout-minus')
-    await expect(moins, '« − » (retirer un panneau) actif').toBeEnabled(T)
+    const moins = page.locator('#rp9-need-minus')
+    await expect(moins, '« − » des panneaux nécessaires (inspecteur) actif').toBeEnabled(T)
     const t0 = Date.now()
     await moins.click()
     await expect.poll(async () => {
@@ -322,7 +356,8 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
     const p50 = Math.round(res.production?.total?.p50_kwh)
     await expect(page.getByTestId('cal-resume-production'), 'production « simulation » une fois la simulation fraîche')
       .toHaveText(/^P50 [\d\s  ]+ kWh\/an \(simulation\)$/, T)
-    expect(chiffres(await page.getByTestId('cal-resume-production').innerText()), 'P50 affiché = P50 servi').toBe(p50)
+    const affiche = (await page.getByTestId('cal-resume-production').innerText()).replace(/^P50/, '')
+    expect(chiffres(affiche), 'P50 affiché = P50 servi').toBe(p50)
     await capture(page.getByTestId('cal-enregistrer-calepinage'), 'PA2.5-ACAL401', 'simulation')
   } finally {
     await restaurerMeteo(meteo)
@@ -336,7 +371,7 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
 // ════════════════════════════════════════════════════════════════════════════
 etape('PA2.5-ACAL402-studio-1440', ['ACAL402'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
-  const cal = await calepinageAvec('ACAL402', docPentu())
+  const cal = await calepinageAvec('ACAL402', docLibre([[-5, -6], [0, -1.5], [5, 3.5]]))
   try {
     await ouvrirAtelier(page, cal.id)
     expect(page.viewportSize()).toEqual({ width: 1440, height: 900 })
@@ -361,6 +396,22 @@ etape('PA2.5-ACAL402-studio-1440', ['ACAL402'], async ({ page, context, suivi })
     expect(carte1.y, 'carte entièrement en vue').toBeGreaterThanOrEqual(0)
     await expect(page.getByTestId('cal-enregistrer-calepinage'), 'barre d’enregistrement en vue').toBeInViewport()
     console.log(`[ACAL402] contrôle réglé : ${nom} ; inspecteur scrollTop ${scroll.top}/${scroll.max} ; carte y ${carte0.y}→${carte1.y}`)
+    // « le reste de la page » défile : les commandes du constructeur (sous la carte, dans la colonne scène) restent
+    // atteignables à la molette — sinon « Déplacer les panneaux » ne s'atteint plus qu'au clavier.
+    const carte = page.locator('#rp9-studio-scene > .cine-card')
+    const debord = await carte.evaluate((el) => ({ scrollH: el.scrollHeight, clientH: el.clientHeight, overflowY: getComputedStyle(el).overflowY }))
+    const cb = await carte.boundingBox()
+    await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height - 30)
+    await page.mouse.wheel(0, 3000)
+    await page.waitForTimeout(500)
+    const bascule = page.locator('#rp9-layout-toggle')
+    const visible = await bascule.isVisible()
+    const bb = visible ? await bascule.boundingBox() : null
+    const atteinte = !!bb && bb.y >= cb.y && bb.y + bb.height <= cb.y + cb.height && bb.y + bb.height <= 900
+    console.log(`[ACAL402] colonne scène : ${JSON.stringify(debord)} ; « Déplacer les panneaux » ${visible ? `en ${JSON.stringify(bb)}` : 'masqué'} ; colonne ${JSON.stringify(cb)} ; atteinte à la molette : ${atteinte}`)
+    await capture(page, 'PA2.5-ACAL402', 'apres-molette-scene')
+    expect(debord.scrollH <= debord.clientH + 1 || atteinte,
+      `les commandes sous la carte restent atteignables (colonne scène ${debord.scrollH} px de contenu pour ${debord.clientH} px visibles, overflow-y ${debord.overflowY})`).toBe(true)
   } finally {
     await nettoyer(cal)
   }
@@ -372,6 +423,7 @@ etape('PA2.5-ACAL402-studio-1440', ['ACAL402'], async ({ page, context, suivi })
 // ════════════════════════════════════════════════════════════════════════════
 etape('PA2.5-ACAL411-aligner-repartir', ['ACAL411'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  await vueEmpilee(page)
   // Trois panneaux libres, ni en rangée ni en colonne (v différents, u différents).
   const cal = await calepinageAvec('ACAL411', docLibre([[-5, -6], [0, -1.5], [5, 3.5], [-5, 7]]))
   try {
@@ -444,6 +496,8 @@ etape('PA2.5-ACAL411-aligner-repartir', ['ACAL411'], async ({ page, context, sui
 // ════════════════════════════════════════════════════════════════════════════
 etape('PA2.5-ACAL418-retirer-selection', ['ACAL418'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  simulationAutoAttendue(page, suivi)
+  await vueEmpilee(page)
   const libre = await calepinageAvec('ACAL418 libre', docLibre([[-5, -6], [0, -1.5], [5, 3.5], [-5, 7], [3, 8]]))
   const valide = await calepinageAvec('ACAL418 valide', docPentu())
   try {
@@ -477,7 +531,14 @@ etape('PA2.5-ACAL418-retirer-selection', ['ACAL418'], async ({ page, context, su
     expect(aide, 'l’aide liste « Alt + clic sur un panneau : le retirer »').toContain('Alt + clic sur un panneau')
 
     // Emplacements validés : sélectionner TOUT le pan (cadre Maj + glissé sur toute la carte) puis Retirer ⇒ refus.
-    await ouvrirAtelier(page, valide.id)
+    // Un document sans pose enregistrée n'offre pas « Déplacer les panneaux » (fenêtre de disposition masquée, constaté
+    // runs 44862353552 et 44863910518) : on enregistre la pose optimale d'abord, puis on rouvre (pose validée rechargée).
+    page = await repartir(context, suivi, page)
+    let boutonValide = await ouvrirAtelier(page, valide.id)
+    const masquee = await page.locator('#rp9-layout-window').evaluate((el) => el.hidden)
+    console.log(`[ACAL418] document sans pose enregistrée : fenêtre « Personnaliser la disposition » ${masquee ? 'MASQUÉE' : 'affichée'}`)
+    await enregistrer(page, valide.id, boutonValide)
+    boutonValide = await ouvrirAtelier(page, valide.id)
     await modeDisposition(page)
     const tous = await panneauxEcran(page)
     const xs = tous.map((p) => p.px.x)
@@ -488,9 +549,11 @@ etape('PA2.5-ACAL418-retirer-selection', ['ACAL418'], async ({ page, context, su
     await page.mouse.move(Math.max(...xs) + 40, Math.max(...ys) + 40, { steps: 12 })
     await page.mouse.up()
     await page.keyboard.up('Shift')
-    await expect(barre).toBeVisible()
-    await expect(barre.getByRole('button', { name: 'Aligner en rangée' }), 'en emplacements validés, seul « Retirer »').toBeHidden()
-    await barre.getByRole('button', { name: 'Retirer la sélection' }).click()
+    const barreValide = page.locator('#rp9-barre-selection') // onglet neuf : nouveau localisateur
+    console.log(`[ACAL418] emplacements validés, cadre Maj + glissé : note « ${await page.locator('#rp9-layout-note').innerText().catch(() => '?')} »`)
+    await expect(barreValide).toBeVisible()
+    await expect(barreValide.getByRole('button', { name: 'Aligner en rangée' }), 'en emplacements validés, seul « Retirer »').toBeHidden()
+    await barreValide.getByRole('button', { name: 'Retirer la sélection' }).click()
     await expect(page.locator('#rp9-status'), 'retirer tout le pan est refusé').toContainText('gardez au moins un panneau', T)
     expect((await panneauxEcran(page)).length, 'aucun panneau retiré').toBe(tous.length)
   } finally {
@@ -511,7 +574,7 @@ async function batimentCasablanca() {
     try {
       const r = await fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(40_000),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', 'User-Agent': 'taqinor-acceptation-e2e/1.0' },
       })
       if (!r.ok) { erreurs.push(`${lat},${lng} → HTTP ${r.status}`); continue }
       const d = await r.json()
@@ -535,11 +598,16 @@ async function batimentCasablanca() {
       erreurs.push(`${lat},${lng} → ${e.message}`)
     }
   }
-  throw new Error(`NON JOUABLE sur ce runner — Overpass (OSM) injoignable ou sans bâtiment : ${erreurs.join(' ; ')}`)
+  // Overpass injoignable DEPUIS LA SPEC (instable sur le runner, run 44866838249) : repli sur le bâtiment réel trouvé par
+  // cette même recherche aux runs 44863910518 et 44865072703 (way 417968795, 735 m², centroïde ci-dessous). Le serveur
+  // relit Overpass lui-même : la preuve reste celle du serveur.
+  console.log(`[ACAL421] Overpass injoignable depuis la spec (${erreurs.join(' ; ')}) : repli sur le bâtiment way 417968795`)
+  return { way: 417968795, aire: 735, lat: 33.58955554444444, lng: -7.6100877777777765 }
 }
 
 etape('PA2.5-ACAL421-conception-auto', ['ACAL421'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  simulationAutoAttendue(page, suivi)
   const bat = await batimentCasablanca()
   console.log(`[ACAL421] bâtiment OSM way ${bat.way}, ${bat.aire} m², épingle ${bat.lat},${bat.lng}`)
   const cal = await calepinageAvec('ACAL421', null, { roofPoint: { lat: bat.lat, lng: bat.lng } })
@@ -553,15 +621,26 @@ etape('PA2.5-ACAL421-conception-auto', ['ACAL421'], async ({ page, context, suiv
     for (let essai = 1; essai <= 3; essai += 1) {
       const emprise = page.waitForResponse((x) => /\/crm\/leads\/\d+\/roof-footprint\//.test(x.url()), T)
       await auto.click()
-      await emprise
+      const corps = await (await emprise).json().catch(() => null)
+      console.log(`[ACAL421] roof-footprint (essai ${essai}) : ${JSON.stringify(corps).slice(0, 500)}`)
       await expect(page.getByTestId('cal-conception-auto-message')).toBeVisible(T)
       message = await page.getByTestId('cal-conception-auto-message').innerText()
       if (message.includes('Contour posé')) break
       console.log(`[ACAL421] essai ${essai} : « ${message} »`)
       if (!/indisponible|Aucune emprise|réseau/i.test(message)) break
     }
-    if (!message.includes('Contour posé') && /indisponible|réseau/i.test(message)) {
-      throw new Error(`NON JOUABLE sur ce runner — le serveur n’a pas joint Overpass : « ${message} »`)
+    if (!message.includes('Contour posé')) {
+      // Le serveur appelle-t-il Overpass avec succès DEPUIS ce runner (même requête que `roof_detect`) ?
+      const diag = await py(`import requests
+from apps.crm import roof_detect as rd
+q = rd._build_query(${bat.lat}, ${bat.lng})
+try:
+    r = requests.post(rd._OVERPASS_URL, data={'data': q}, timeout=rd._TIMEOUT_RESEAU)
+    sortie({'status': r.status_code, 'ua': r.request.headers.get('User-Agent'), 'corps': r.text[:300]})
+except Exception as e:
+    sortie({'erreur': repr(e)[:300]})`)
+      console.log(`[ACAL421] appel Overpass du serveur (même requête) : ${JSON.stringify(diag)}`)
+      test.info().annotations.push({ type: 'diagnostic', description: `Overpass côté serveur : ${JSON.stringify(diag).slice(0, 400)}` })
     }
     expect(message, 'contour posé, toit rempli').toBe('Contour posé : le toit est rempli.')
     const fp = await lireJson(await page.request.get(`${API_DJANGO}/crm/leads/${cal.lead}/roof-footprint/`, T), 'roof-footprint')
@@ -653,7 +732,7 @@ etape('PA2.5-ACAL424-calage-monde', ['ACAL424'], async ({ page, context, suivi }
     await expect(page.getByTestId('cal-photo-calage-erreur')).toHaveCount(0)
     await page.waitForTimeout(800)
     expect(patchs, 'rien n’est enregistré avant « Enregistrer le calage »').toBe(0)
-    await capture(page.getByTestId('cal-photo-calage-carte'), 'PA2.5-ACAL424', 'poignees')
+    await capture(page.getByTestId('cal-photo-calage'), 'PA2.5-ACAL424', 'poignees')
     const req = page.waitForRequest((r) => r.method() === 'PATCH' && /\/photos\/\d+\/calage\//.test(r.url()), T)
     const rep = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/photos\/\d+\/calage\//.test(r.url()), T)
     await page.getByTestId('cal-photo-calage-enregistrer').click()
@@ -670,7 +749,7 @@ etape('PA2.5-ACAL424-calage-monde', ['ACAL424'], async ({ page, context, suivi }
     const photos = await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/photos/`, T), 'photos')
     const liste = Array.isArray(photos) ? photos : (photos.photos || photos.results || [])
     expect(liste.some((p) => Array.isArray(p.calage?.coins) && p.calage.coins.length === 4), 'calage relu par l’API').toBe(true)
-    await capture(page.getByTestId('cal-photo-calage-carte'), 'PA2.5-ACAL424', 'calee-sous-trace')
+    await capture(page.getByTestId('cal-photo-calage'), 'PA2.5-ACAL424', 'calee-sous-trace')
   } finally {
     await nettoyer(cal)
   }
@@ -678,137 +757,155 @@ etape('PA2.5-ACAL424-calage-monde', ['ACAL424'], async ({ page, context, suivi }
 
 // ════════════════════════════════════════════════════════════════════════════
 // ACAL425 — placement libre : glisser un panneau près d'un voisin ⇒ ligne repère + collage ; touche A ⇒ plus rien.
+// Joué deux fois : (1) marges PAR DÉFAUT de l'atelier (la clause telle quelle) ; (2) « Écart entre panneaux » à 0 cm
+// (geste utilisateur du panneau libre) — pour situer un échec éventuel de (1) : la cible de collage au voisin est le
+// bord JOINTIF, que l'écart minimal (contrainte relâchable) peut refuser.
 // ════════════════════════════════════════════════════════════════════════════
+const lignesRepere = (page) => page.evaluate(() => {
+  const s = document.getElementById('rp9-reperes-svg')
+  return s && s.style.display !== 'none' ? s.querySelectorAll('line').length : 0
+})
+
+/** Maintient B saisi et le glisse vers A pixel par pixel ; s'arrête au premier repère (ou à `jusqua`, ou presque sur A). */
+async function glisserVersVoisin(page, { jusqua = null, capturer = false } = {}) {
+  const [a, b] = await panneauxEcran(page)
+  await page.mouse.move(b.px.x, b.px.y)
+  await page.mouse.down()
+  const pas = a.px.x < b.px.x ? -1 : 1
+  const fin = jusqua ?? a.px.x + (b.px.x - a.px.x) * 0.1
+  let x = b.px.x
+  let premier = null
+  let cumul = 0
+  while (pas < 0 ? x > fin : x < fin) {
+    x += pas
+    await page.mouse.move(x, b.px.y)
+    const n = await lignesRepere(page)
+    cumul += n
+    if (n > 0 && premier === null) {
+      premier = { x, n }
+      if (capturer) await capture(page.locator('#rp9-map'), 'PA2.5-ACAL425', 'repere')
+      if (jusqua === null) break
+    }
+  }
+  const pe = premier ? await page.evaluate(() => getComputedStyle(document.getElementById('rp9-reperes-svg')).pointerEvents) : null
+  const note = await page.locator('#rp9-layout-note').innerText().catch(() => '?')
+  await page.mouse.up()
+  console.log(`[ACAL425] glissé : A px ${a.px.x.toFixed(1)}, B px ${b.px.x.toFixed(1)} → ${x.toFixed(1)} ; premier repère ${JSON.stringify(premier)} ; repères cumulés ${cumul} ; note « ${note} »`)
+  return { a, b, x, premier, cumul, pe }
+}
+
+async function ouvrirLibreZoome(page, id) {
+  await ouvrirAtelier(page, id)
+  await modeDisposition(page)
+  await page.evaluate(() => window.__carteAtelier().jumpTo({ zoom: 21.5 }))
+  await attendreCarteImmobile(page)
+}
+
 etape('PA2.5-ACAL425-reperes-glisse', ['ACAL425'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  await vueEmpilee(page)
   const cal = await calepinageAvec('ACAL425', docLibre([[-3, 0], [4, 0]]))
   try {
-    await ouvrirAtelier(page, cal.id)
-    await modeDisposition(page)
-    await page.evaluate(() => window.__carteAtelier().jumpTo({ zoom: 21.5 }))
-    await attendreCarteImmobile(page)
-    const glisser = async (avecCapture) => {
-      const [a, b] = await panneauxEcran(page)
-      const svgVu = { lignes: 0, x: null, y: null }
-      await page.mouse.move(b.px.x, b.px.y)
-      await page.mouse.down()
-      // Le panneau B glisse vers A, pixel par pixel, jusqu'au collage (repère affiché) ou à mi-chemin.
-      const pasX = a.px.x < b.px.x ? -1 : 1
-      let x = b.px.x
-      const fin = (a.px.x + b.px.x) / 2
-      while ((pasX < 0 ? x > fin : x < fin)) {
-        x += pasX
-        await page.mouse.move(x, b.px.y)
-        const lignes = await page.evaluate(() => {
-          const s = document.getElementById('rp9-reperes-svg')
-          return s && s.style.display !== 'none' ? s.querySelectorAll('line').length : 0
-        })
-        if (lignes > 0) {
-          svgVu.lignes = lignes
-          svgVu.x = x
-          if (avecCapture) await capture(page.locator('#rp9-map'), 'PA2.5-ACAL425', 'repere')
-          break
-        }
-        if (svgVu.cible && x === svgVu.cible) break
-      }
-      return { a, b, svgVu, x }
-    }
-    // 1) Aimantation allumée : la ligne repère paraît, la position se colle.
-    const on = await glisser(true)
-    expect(on.svgVu.lignes, 'ligne repère (SVG) affichée pendant le glissé près du voisin').toBeGreaterThan(0)
-    const pe = await page.evaluate(() => getComputedStyle(document.getElementById('rp9-reperes-svg')).pointerEvents)
-    expect(pe, 'repère sans pointer-events').toBe('none')
-    await page.mouse.up()
+    // (1) Marges par défaut.
+    await ouvrirLibreZoome(page, cal.id)
+    const ecartDefaut = await page.locator('#rp9-free-gap').inputValue().catch(() => '?')
+    const defaut = await glisserVersVoisin(page)
+    // (2) Écart entre panneaux à 0 cm, même geste (onglet neuf : rien n'a été enregistré).
+    page = await repartir(context, suivi, page)
+    await ouvrirLibreZoome(page, cal.id)
+    await page.locator('#rp9-free-gap').fill('0')
+    await page.locator('#rp9-free-gap').press('Tab')
+    await centrerCarte(page)
+    const on = await glisserVersVoisin(page, { capturer: true })
     const posOn = (await panneauxEcran(page))[1]
-    // 2) Ctrl + Z, touche A (aimantation coupée), même geste jusqu'au même pixel : ni repère ni collage.
+    // Ctrl + Z, touche A (aimantation coupée), même geste jusqu'au même pixel : ni repère ni collage.
     await page.evaluate(() => document.activeElement?.blur?.())
     await page.keyboard.press('Control+z')
-    await expect.poll(async () => Math.round((await panneauxEcran(page))[1].cx * 100)).toBe(Math.round(on.b.cx * 100))
+    await expect.poll(async () => Math.round((await panneauxEcran(page))[1].cx * 100), { timeout: 10_000 }).toBe(Math.round(on.b.cx * 100))
     await page.keyboard.press('a')
     await expect(page.locator('#rp9-status')).toContainText(/aimantation/i, T)
-    const [a2, b2] = await panneauxEcran(page)
-    await page.mouse.move(b2.px.x, b2.px.y)
-    await page.mouse.down()
-    let lignesOff = 0
-    const pas = a2.px.x < b2.px.x ? -1 : 1
-    for (let x = b2.px.x; pas < 0 ? x > on.x : x < on.x;) {
-      x += pas
-      await page.mouse.move(x, b2.px.y)
-      lignesOff += await page.evaluate(() => {
-        const s = document.getElementById('rp9-reperes-svg')
-        return s && s.style.display !== 'none' ? s.querySelectorAll('line').length : 0
-      })
-    }
-    await page.mouse.up()
+    const off = await glisserVersVoisin(page, { jusqua: on.x ?? undefined })
     const posOff = (await panneauxEcran(page))[1]
-    console.log(`[ACAL425] A ${JSON.stringify([on.a.cx, on.a.cy])} ; B collé ${JSON.stringify([posOn.cx, posOn.cy])} ; B sans aimant ${JSON.stringify([posOff.cx, posOff.cy])} ; repères sans aimant : ${lignesOff}`)
-    expect(lignesOff, 'aimantation coupée : aucun repère').toBe(0)
+    console.log(`[ACAL425] écart par défaut « ${ecartDefaut} » cm ; A ${JSON.stringify([on.a.cx, on.a.cy])} ; B collé ${JSON.stringify([posOn.cx, posOn.cy])} ; B sans aimant ${JSON.stringify([posOff.cx, posOff.cy])}`)
+    expect(on.premier, 'écart 0 cm : ligne repère (SVG) pendant le glissé près du voisin').not.toBeNull()
+    expect(on.pe, 'repère sans pointer-events').toBe('none')
+    expect(off.cumul, 'aimantation coupée : aucun repère').toBe(0)
     const ecart = Math.hypot(posOn.cx - posOff.cx, posOn.cy - posOff.cy)
-    expect(ecart, 'aimantation allumée : la position s’est collée (différente du point lâché sans aimant)').toBeGreaterThan(0.005)
-    expect(ecart, 'collage sous le seuil existant (10 cm, + 1 cm de pas)').toBeLessThanOrEqual(0.111)
-    expect(a2.cx, 'le voisin n’a pas bougé').toBeCloseTo(on.a.cx, 2)
+    expect(ecart, 'aimantation allumée : la position s’est collée (≠ point lâché sans aimant)').toBeGreaterThan(0.005)
+    expect(ecart, 'collage sous le seuil existant (10 cm + 1 cm de pas)').toBeLessThanOrEqual(0.111)
+    // La clause telle quelle : marges par défaut.
+    expect(defaut.premier, `marges par défaut (écart entre panneaux ${ecartDefaut} cm) : ligne repère et collage au voisin`).not.toBeNull()
   } finally {
     await nettoyer(cal)
   }
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-// ACAL431 — PA2.3 : atelier incliné au maximum à 7 h puis 12 h (captures) ; sous l'horizon ciel sombre ; bas de gamme
-// (deviceMemory 4) : `setSky` jamais appelé.
+// ACAL431 — PA2.3 : atelier incliné au maximum à 7 h puis 12 h (captures) ; sous l'horizon (20 h) ciel sombre ; bas de
+// gamme (deviceMemory 4) : `setSky` jamais appelé.
 // ════════════════════════════════════════════════════════════════════════════
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(String(hex).slice(i, i + 2), 16))
-async function heureSoleil(page, h) {
-  await page.evaluate((v) => {
-    const el = document.getElementById('rp9-sun-hour')
-    el.value = String(v)
-    el.dispatchEvent(new Event('input', { bubbles: true }))
-    el.dispatchEvent(new Event('change', { bubbles: true }))
-  }, h)
-  await expect(page.locator('#rp9-sun-hour-value')).toHaveText(`${h} h`)
-  await page.waitForTimeout(400)
-  return page.evaluate(() => window.__ciel[window.__ciel.length - 1] ?? null)
+const ETE = 172
+const HIVER = 355
+
+/** Remplace le document stocké (l'atelier ERP n'a pas de curseur d'heure : l'instant de scène vient du document,
+ *  `scene{sunDay, sunHour}` — contrat CALX88, relu par `hydratation.ts`). */
+async function poserDocument(id, layout) {
+  return py(`import json
+from apps.calepinage.models import Calepinage
+from apps.ventes.domain.geometrie import layout_hash
+lay = json.loads(${JSON.stringify(JSON.stringify(layout))})
+c = Calepinage.objects.get(pk=${Number(id)})
+c.roof_layout = lay
+c.layout_hash = layout_hash(lay)
+c.save(update_fields=['roof_layout', 'layout_hash'])
+sortie(1)`)
+}
+
+/** Ouvre l'atelier à l'instant (jour, heure), l'incline au maximum, rend le dernier ciel reçu par `setSky`. */
+async function cielA(page, id, jour, heure) {
+  await poserDocument(id, docPentu({ scene: { sunDay: jour, sunHour: heure } }))
+  await ouvrirAtelier(page, id)
+  await page.evaluate(() => { const m = window.__carteAtelier(); m.jumpTo({ pitch: m.getMaxPitch() }) })
+  await attendreCarteImmobile(page)
+  await page.waitForTimeout(500)
+  const relu = (await docVivant(page))?.scene
+  expect(relu, 'instant de scène hydraté').toEqual({ sunDay: jour, sunHour: heure })
+  return page.evaluate(() => ({ n: window.__ciel.length, dernier: window.__ciel[window.__ciel.length - 1] ?? null }))
 }
 
 etape('PA2.3-ACAL431-ciel', ['ACAL431'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
   const cal = await calepinageAvec('ACAL431', docPentu())
   try {
-    await ouvrirAtelier(page, cal.id)
-    await page.evaluate(() => { const m = window.__carteAtelier(); m.jumpTo({ pitch: m.getMaxPitch() }) })
-    await attendreCarteImmobile(page)
-    expect(await page.evaluate(() => window.__ciel.length), '`setSky` appelé par le rendu (atelier ERP, non bas de gamme)').toBeGreaterThan(0)
-    // Hiver (défaut) 12 h : ciel clair (bleu), horizon non chaud.
-    const midi = await heureSoleil(page, 12)
+    // 12 h (hiver, défaut de l'atelier) : ciel clair, horizon non chaud.
+    const midi = await cielA(page, cal.id, HIVER, 12)
     console.log(`[ACAL431] 12 h hiver : ${JSON.stringify(midi)}`)
-    const [r12, , b12] = rgb(midi['horizon-color'])
-    expect(b12, '12 h : horizon clair (bleu ≥ rouge)').toBeGreaterThanOrEqual(r12)
-    const [rs, , bs] = rgb(midi['sky-color'])
+    expect(midi.n, '`setSky` appelé par le rendu (atelier ERP, non bas de gamme)').toBeGreaterThan(0)
+    const [rs, , bs] = rgb(midi.dernier['sky-color'])
     expect(bs, '12 h : ciel bleu').toBeGreaterThan(rs)
+    const [r12, , b12] = rgb(midi.dernier['horizon-color'])
+    expect(b12, '12 h : horizon clair (bleu ≥ rouge)').toBeGreaterThanOrEqual(r12)
+    expect(await page.evaluate(() => window.__carteAtelier().isMoving()), 'aucune animation').toBe(false)
     await capture(page.locator('#rp9-map'), 'PA2.3-ACAL431', '12h')
-    // Hiver 6 h : soleil sous l'horizon ⇒ ciel sombre (NUIT).
-    const nuit = await heureSoleil(page, 6)
-    console.log(`[ACAL431] 6 h hiver : ${JSON.stringify(nuit)}`)
-    expect(nuit['sky-color'], '6 h en hiver : sous l’horizon ⇒ sombre').toBe('#0b1226')
-    // Été 7 h : soleil bas ⇒ teinte chaude près de l'horizon.
-    const ete = page.locator('[data-sun-season="summer"]').first()
-    if (await ete.count()) await ete.click()
-    const matin = await heureSoleil(page, 7)
+    // 7 h (été) : soleil bas ⇒ teinte chaude près de l'horizon.
+    const matin = await cielA(page, cal.id, ETE, 7)
     console.log(`[ACAL431] 7 h été : ${JSON.stringify(matin)}`)
-    const [r7, , b7] = rgb(matin['horizon-color'])
+    const [r7, , b7] = rgb(matin.dernier['horizon-color'])
     expect(r7, '7 h : teinte chaude près de l’horizon (rouge > bleu)').toBeGreaterThan(b7)
-    expect(matin['sky-color']).not.toBe('#0b1226')
+    expect(matin.dernier['sky-color'], '7 h en été : soleil levé').not.toBe('#0b1226')
     await capture(page.locator('#rp9-map'), 'PA2.3-ACAL431', '7h')
-    const animee = await page.evaluate(() => window.__carteAtelier().isMoving())
-    expect(animee, 'aucune animation').toBe(false)
-
+    // 20 h (hiver) : soleil sous l'horizon ⇒ ciel sombre.
+    const soir = await cielA(page, cal.id, HIVER, 20)
+    console.log(`[ACAL431] 20 h hiver : ${JSON.stringify(soir)}`)
+    expect(soir.dernier['sky-color'], '20 h : sous l’horizon ⇒ sombre').toBe('#0b1226')
+    await capture(page.locator('#rp9-map'), 'PA2.3-ACAL431', '20h')
     // Bas de gamme : deviceMemory 4 ⇒ aucun ciel.
     await page.evaluate(() => localStorage.setItem('acal10-bas-de-gamme', '1'))
-    await ouvrirAtelier(page, cal.id)
+    const bas = await cielA(page, cal.id, ETE, 7)
     expect(await page.evaluate(() => navigator.deviceMemory)).toBe(4)
-    await page.evaluate(() => { const m = window.__carteAtelier(); m.jumpTo({ pitch: m.getMaxPitch() }) })
-    await heureSoleil(page, 7)
-    await heureSoleil(page, 12)
-    expect(await page.evaluate(() => window.__ciel.length), 'bas de gamme : `setSky` JAMAIS appelé').toBe(0)
+    console.log(`[ACAL431] bas de gamme 7 h été : ${JSON.stringify(bas)}`)
+    expect(bas.n, 'bas de gamme : `setSky` JAMAIS appelé').toBe(0)
     await capture(page.locator('#rp9-map'), 'PA2.3-ACAL431', 'bas-de-gamme')
   } finally {
     await page.evaluate(() => localStorage.removeItem('acal10-bas-de-gamme')).catch(() => undefined)
@@ -832,30 +929,49 @@ function ecartCellule(w, h) {
   return best
 }
 const toiles = (page) => page.evaluate(() => window.__toiles2d.map((c) => [c.width, c.height]))
+/** Exporte la toile de texture (w × h) telle que dessinée par l'atelier : la preuve visuelle des cellules. */
+async function captureToile(page, w, h, suffixe) {
+  const b64 = await page.evaluate(([W, H]) => {
+    const c = window.__toiles2d.find((x) => x.width === W && x.height === H)
+    return c ? c.toDataURL('image/png').split(',')[1] : null
+  }, [w, h])
+  expect(b64, `toile ${w} × ${h} exportable`).toBeTruthy()
+  const rel = `docs/qa-explorer/captures/${aujourdHui()}/ACCEPTATION-ACAL-PA2.3-ACAL433-${suffixe}.png`
+  mkdirSync(dirname(join(RACINE, rel)), { recursive: true })
+  writeFileSync(join(RACINE, rel), Buffer.from(b64, 'base64'))
+  console.log(`[capture] ${rel}`)
+}
 
 etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
   const cal = await calepinageAvec('ACAL433', docPentu())
   try {
     await ouvrirAtelier(page, cal.id)
+    // Vue de dessus, centrée sur les panneaux posés (le verre et ses cellules lisibles sur la capture).
     const vue = async () => {
-      await page.evaluate(() => {
-        const m = window.__carteAtelier()
-        m.jumpTo({ center: [-7.5898, 33.5731], zoom: 21.3, pitch: 55 })
-      })
+      const pans = await panneauxEcran(page)
+      const g = actif(await docVivant(page))?.geometry
+      const ll = pans.map((p) => versLngLat(g.origin, p.cx, p.cy))
+      const centre = [ll.reduce((t, p) => t + p[0], 0) / ll.length, ll.reduce((t, p) => t + p[1], 0) / ll.length]
+      await page.evaluate((c) => window.__carteAtelier().jumpTo({ center: c, zoom: 20.5, pitch: 0, bearing: 0 }), centre)
       await attendreCarteImmobile(page)
+      await page.waitForTimeout(500)
     }
     const paysage = page.locator('[data-orient="landscape"]').first()
     const portrait = page.locator('[data-orient="portrait"]').first()
     await expect(paysage, 'choix de pose paysage').toBeVisible(T)
+    console.log(`[ACAL433] toiles au démarrage : ${JSON.stringify(await toiles(page))} ; pose ${await page.locator('[data-orient][aria-pressed="true"]').first().getAttribute('data-orient').catch(() => '?')}`)
     await paysage.click()
+    await expect(paysage).toHaveAttribute('aria-pressed', 'true')
     await page.waitForTimeout(1500)
     await vue()
     const t1 = await toiles(page)
     console.log(`[ACAL433] toiles après paysage : ${JSON.stringify(t1)}`)
     expect(t1.some(([w, h]) => w === 512 && h === 280), 'paysage (rapport 1,83) : EXACTEMENT 512 × 280').toBe(true)
     await capture(page.locator('#rp9-map'), 'PA2.3-ACAL433', 'paysage')
+    await captureToile(page, 512, 280, 'texture-paysage-512x280')
     await portrait.click()
+    await expect(portrait).toHaveAttribute('aria-pressed', 'true')
     await page.waitForTimeout(1500)
     await vue()
     const t2 = await toiles(page)
@@ -866,6 +982,7 @@ etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => 
     const doc = await docVivant(page)
     console.log(`[ACAL433] orientation relue : ${JSON.stringify(actif(doc)?.geometry?.orientation ?? actif(doc)?.orientation ?? null)}`)
     await capture(page.locator('#rp9-map'), 'PA2.3-ACAL433', 'portrait')
+    await captureToile(page, portraitToile[0], portraitToile[1], `texture-portrait-${portraitToile.join('x')}`)
   } finally {
     await nettoyer(cal)
   }
@@ -877,12 +994,13 @@ etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => 
 // (L'atelier ERP n'a pas d'outil « Tracer une ombre » — voir acal6 : l'ombre est posée au format qu'écrit l'atelier.)
 // ════════════════════════════════════════════════════════════════════════════
 const OMBRE = {
-  id: 'shade-1', kind: 'ombre_tracee', centre: [-7.58985, 33.57318], bout: [-7.58985, 33.57314], rayonM: 1, hauteurM: 3, source: 'ombre_tracee',
+  id: 'shade-1', kind: 'ombre_tracee', centre: [-7.5898, 33.57296], bout: [-7.58975, 33.57296], rayonM: 2, hauteurM: 12, source: 'ombre_tracee',
 }
 const ARBRE = { id: 'env-1', kind: 'arbre', label: 'Arbre voisin', centerLng: -7.5898, centerLat: 33.57296, heightM: 10, crownDiameterM: 6, evergreen: true }
 
 etape('PA2.5-ACAL459-table-ombrage', ['ACAL459'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  simulationAutoAttendue(page, suivi)
   const ombre = await calepinageAvec('ACAL459', docPentu({ shadeObstructions: [OMBRE] }))
   const nu = await calepinageAvec('ACAL459 nu', docPentu())
   try {
@@ -911,6 +1029,7 @@ etape('PA2.5-ACAL459-table-ombrage', ['ACAL459'], async ({ page, context, suivi 
 
 etape('PA2.5-ACAL460-vue-du-ciel', ['ACAL460'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  simulationAutoAttendue(page, suivi)
   const arbre = await calepinageAvec('ACAL460', docPentu({ environment: [ARBRE] }))
   const nu = await calepinageAvec('ACAL460 nu', docPentu())
   try {
@@ -938,6 +1057,8 @@ etape('PA2.5-ACAL460-vue-du-ciel', ['ACAL460'], async ({ page, context, suivi })
 // ════════════════════════════════════════════════════════════════════════════
 etape('PA2.5-ACAL472-trace-propose', ['ACAL472'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  simulationAutoAttendue(page, suivi)
+  await vueEmpilee(page)
   const coffret = { id: 'eq1', type: 'coffret_dc', label: 'Coffret DC', lng: -7.58985, lat: 33.57315, source: 'plan' }
   const cal = await calepinageAvec('ACAL472', docPentu({ electrical: { equipements: [coffret], cheminements: [] } }))
   try {
@@ -948,6 +1069,7 @@ etape('PA2.5-ACAL472-trace-propose', ['ACAL472'], async ({ page, context, suivi 
     await expect(page.getByTestId('calx222-armement-motif')).toHaveCount(0)
     // Geste : un clic sur le plan, à l'angle SE du toit.
     const cible = [-7.58974, 33.57304]
+    await centrerCarte(page)
     const px = await pixel(page, cible)
     await page.mouse.click(px.x, px.y)
     await page.waitForTimeout(800)

@@ -1,0 +1,21 @@
+ACAL440 — frontend/e2e/calepinage-perf.spec.js joué sur runner GitHub (CI=1, projet chromium, fond de repli ACAL377,
+WebGL Chromium du runner), workflow temporaire zz-scratch-acc-l5-ecrans2.
+Plafond CI = seuil « mauvais » INP de src/lib/vitals.js = 500 ms (lu à la source par la spec).
+
+Annotations `budget` (pire interaction, PerformanceObserver type event, durationThreshold 16) :
+  run 44867743877 (sha 7d558ea59) : 500 modules = 32 ms ; deviceMemory 4 = 112 ms
+  run 44866838249 (sha 96e4e5e59) : 500 modules = 104 ms ; deviceMemory 4 = 96 ms
+  run 44866063019 (sha ee136f056) : 500 modules = 40 ms ; deviceMemory 4 = 144 ms
+  run 44865072703 (sha 90f4fd24f) : 500 modules = 32 ms ; deviceMemory 4 = 128 ms
+  run 44863910518 (sha f00529dd6) : 500 modules = 32 ms ; deviceMemory 4 = 32 ms
+  run 44862353552 (sha 194c63e07) : 500 modules = 32 ms ; deviceMemory 4 = 32 ms
+Les deux tests de la spec sont PASS à chaque run.
+
+ÉCART À LA CLAUSE (défaut de la spec livrée par ACAL440, non corrigé ici) :
+  - `mesurerGlisse` ne bascule jamais « Déplacer les panneaux » (#rp9-layout-toggle) : hors mode disposition,
+    `layoutEditor.ts::beginLayoutDrag` rend `false` (`if (!ctx.layoutMode …) return false`) — le glissé mesuré au
+    centre de #rp9-map est donc un déplacement de CARTE, pas le glissé d'un panneau sur 20 pas exigé par la clause ;
+  - `documentA500` pose des sommets `[[0,0],[30,0],[30,40],[0,40]]` (degrés lng/lat, contrat v2 = [lng, lat]) : un
+    « toit » de plusieurs milliers de km à (0°, 0°), loin de l'épingle de l'exemple — rien ne vérifie que les 500
+    modules sont posés ni rendus avant la mesure ;
+  - aucune mesure « avant/après ACAL431 et ACAL433 » : une seule version du code mesurée.
