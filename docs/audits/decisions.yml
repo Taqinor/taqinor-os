@@ -1532,7 +1532,7 @@ decisions:
     reponse: a
     date: "2026-11-21"
     source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage) ; précise D-ACAL-6, QJR107 et la ligne INTERDIT « imprimer le P50 du calepinage sur le devis, le PDF ou la page publique » de docs/plans/PLAN_AUDIT_CALEPINAGE.md (ligne non éditée)"
-    taches: [ACAL996, ACAL997, ACAL998, ACAL999, ACAL1000, ACAL1001, ACAL973, ACAL1011]
+    taches: [ACAL973, ACAL996, ACAL997, ACAL999, ACAL1000, ACAL1001, ACAL1011, ACAL1169, ACAL1195]
 
   - id: D-ACAL-37
     question: "Quand un calepinage porte un toit et un champ au sol, le devis prend-il tout, ou la commerciale choisit-elle les surfaces à chiffrer ?"
@@ -1544,7 +1544,7 @@ decisions:
     reponse: a
     date: "2026-11-21"
     source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage) ; précise D-ACAL-5"
-    taches: [ACAL968, ACAL915]
+    taches: [ACAL968]
 
   - id: D-ACAL-38
     question: "Quels éléments visibles du client HORS du PDF du devis sont autorisés (jamais de prix ; chiffres = ceux du devis) : soleil animé sur la page publique, courte vidéo 3D pour WhatsApp, panneaux sur la photo du site, fiche « pertes en mots simples » ?"
@@ -1556,7 +1556,7 @@ decisions:
     reponse: a
     date: "2026-11-21"
     source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
-    taches: [ACAL697, ACAL896, ACAL897, ACAL1026]
+    taches: [ACAL487, ACAL697, ACAL896, ACAL897, ACAL1026]
 
   - id: D-ACAL-39
     question: "Toit en pente, panneaux posés à plat sur le toit (affleurants) : que contient le devis pour la fixation ?"
@@ -1568,7 +1568,7 @@ decisions:
     reponse: a
     date: "2026-11-21"
     source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
-    taches: [ACAL927, ACAL1029, ACAL998]
+    taches: [ACAL927, ACAL1001, ACAL1029, ACAL1172]
 
   - id: D-ACAL-40
     question: "Sans consommation connue (lead sans facture) : le devis et l'atelier affichent-ils une économie, un TRI et un retour ?"
@@ -1580,7 +1580,7 @@ decisions:
     reponse: a
     date: "2026-11-21"
     source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
-    taches: [ACAL976, ACAL852]
+    taches: [ACAL852, ACAL1033]
 
   - id: D-ACAL-41
     question: "Pompage : le bilan du réservoir jour par jour va-t-il au document client agricole ?"
@@ -1592,7 +1592,7 @@ decisions:
     reponse: a
     date: "2026-11-21"
     source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
-    taches: [ACAL804, ACAL807, ACAL814]
+    taches: []
 
   - id: D-ACAL-42
     question: "Données d'exemple en production : qu'est-ce qui est permis ?"
@@ -1616,7 +1616,43 @@ decisions:
     reponse: a
     date: "2026-11-21"
     source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
-    taches: [ACAL822, ACAL824]
+    taches: [ACAL822]
+
+  - id: D-ACAL-44
+    question: "Les NOUVEAUX devis commerciaux et industriels qui ont un calepinage enregistré et simulé complet impriment-ils aussi la production de la pose réelle (au lieu du toit déclaré sur le lead) ?"
+    options:
+      - cle: a
+        texte: "Oui, même règle : devis envoyés inchangés, productions déjà figées inchangées, activation seulement après lecture de la liste des écarts"
+      - cle: b
+        texte: "Résidentiel seulement"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 au soir (campagne L5 calepinage, vérification de la vague 2) ; étend D-ACAL-36 au C&I"
+    taches: [ACAL1195]
+
+  - id: D-ACAL-45
+    question: "Le format une page du devis cesse-t-il d'imprimer « Économies estimées / an » quand la consommation du client est inconnue (nouveaux devis seulement) ?"
+    options:
+      - cle: a
+        texte: "Oui, la retirer, comme le PDF 3 pages et la page publique ; même interrupteur"
+      - cle: b
+        texte: "Garder l'estimation"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 au soir (campagne L5 calepinage, vérification de la vague 2) ; précise D-ACAL-40"
+    taches: [ACAL1033]
+
+  - id: D-ACAL-46
+    question: "Sur un devis agricole (pompage), le volume d'eau journalier imprimé suit-il la pose réelle des panneaux du calepinage ?"
+    options:
+      - cle: a
+        texte: "Laisser tel quel"
+      - cle: b
+        texte: "Oui, suivre la pose réelle (inclinaison et orientation) ; chiffre client des nouveaux devis, donc derrière la liste des écarts"
+    reponse: b
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 au soir (campagne L5 calepinage, vérification de la vague 2) ; option a recommandée, écartée ; tâches du lot POMPAGE à écrire"
+    taches: []
 
   - id: D-APAR-1
     question: "Source du taux de TVA par defaut ?"

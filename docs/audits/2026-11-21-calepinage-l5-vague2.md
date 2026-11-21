@@ -1,27 +1,28 @@
 # Calepinage — vague 2 du complément L5 (21/11/2026) : table des constats et réserve
 
-Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des 20 et 21/11/2026 : « much more functionalities as the big players… extremely simple… the most pretty calpinage module… only add tasks to the plan » ; « do a real work… multiple rounds of L5 »). Rien n'est construit : ce dossier accompagne l'insertion des tâches. Dossier du tour 0 et contrat de sortie K1-K15 : `docs/audits/2026-11-20-calepinage-l5.md`. Notes de travail (étude, maquettes, relecteurs, architecture) : `docs/audits/l5-calepinage/`.
+Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des 20 et 21/11/2026 : « much more functionalities as the big players… extremely simple… the most pretty calpinage module… only add tasks to the plan » ; « do a real work… multiple rounds of L5 »). Rien n'est construit : ce dossier accompagne les tâches entrées aux plans. Dossier du tour 0 et contrat de sortie K1-K15 : `docs/audits/2026-11-20-calepinage-l5.md`. Notes de travail (étude, maquettes, relecteurs, architecture) : `docs/audits/l5-calepinage/`.
 
 ## Où vivent les tâches
 
-- 472 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`).
-- Groupe principal : `docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `## Groupe ACAL — complément du 2026-11-21 (vague 2)`. Si ce groupe n'y est pas encore (fichier tenu par un autre poste au 21/11), le bloc prêt à insérer, tel quel, juste avant `## DONE LOG`, est `docs/audits/l5-calepinage/INSERTION-PLAN_AUDIT_CALEPINAGE.md` (dans ce dépôt).
-- Moitiés des autres propriétaires : même titre de groupe dans `PLAN_AUDIT_DEVIS`, `PLAN_AUDIT_MOTEUR`, `PLAN_AUDIT_LEAD`, `PLAN_AUDIT_CHANTIERS`, `PLAN_AUDIT_STOCK`, `PLAN_AUDIT_SAV`, `PLAN_AUDIT_PARAMETRES`, `PLAN_AUDIT_DEPLOY` et `docs/WEB_PLAN.md`.
-- Décisions de Reda du 21/11 : D-ACAL-36 à D-ACAL-43 (`docs/audits/decisions.yml`, `docs/claude-memory/calepinage-decisions-fondateur.md`).
+- 475 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`), plus ACAL487 du groupe du 20/11, sortie de GATED par D-ACAL-38 et rangée dans ce groupe.
+- Groupe principal : `docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `## Groupe ACAL — complément du 2026-11-21 (vague 2)` (423 tâches de la vague) : en-tête, ordre de construction (dont la « vague 0 »), gestes du fondateur.
+- Moitiés des autres propriétaires : même titre de groupe dans `PLAN_AUDIT_DEVIS`, `PLAN_AUDIT_MOTEUR`, `PLAN_AUDIT_LEAD`, `PLAN_AUDIT_CHANTIERS`, `PLAN_AUDIT_STOCK`, `PLAN_AUDIT_SAV`, `PLAN_AUDIT_PARAMETRES`, `PLAN_AUDIT_DEPLOY`, `PLAN_AUDIT_SECURITE`, `PLAN_AUDIT_TRANSVERSE` (tâches atomiques à deux propriétaires) et `docs/WEB_PLAN.md`.
+- Décisions de Reda du 21/11 : D-ACAL-36 à D-ACAL-46 (D-ACAL-44 à 46 le soir, après la vérification ; `docs/audits/decisions.yml`, `docs/claude-memory/calepinage-decisions-fondateur.md`).
+- Tâches GATED (ne pas auto-construire) : ACAL765 (PLAN_AUDIT_CALEPINAGE) — attend un facteur d'émission du réseau marocain daté et sourcé — recherche documentaire à mener par une session ultérieure, pas une question au fondateur ; ACAL1001 (PLAN_AUDIT_DEVIS) — attend que Reda ait lu la liste des écarts sortie par ACAL1000 sur une copie de ses devis, produite sur un commit qui contient ACAL999, ACAL1195, ACAL1169, ACAL1170, ACAL973, ACAL927, ACAL1033, ACAL1008, ACAL1196 et ACAL1171 — condition écrite de D-ACAL-36 et D-ACAL-39 ; ACAL921 (PLAN_AUDIT_TRANSVERSE) — attend que Reda ait lu la liste sortie par ACAL1194 (`acal_dryrun_azimut_surfaces --dry-run`) sur une copie de ses calepinages — la lecture de chaque surface de pose déjà enregistrée change.
 
-## Comptes
+## Comptes (les tâches de la vague, sans ACAL487)
 
-- Par domaine : D1 43, D2 64, D3 61, D4 82, D5 67, D6 53, D7 79, D8 22, acceptation 1.
-- Par priorité : P0 15, P1 134, P2 189, P3 133, — 1.
-- Par plan : PLAN_AUDIT_CALEPINAGE 431, PLAN_AUDIT_CHANTIERS 7, PLAN_AUDIT_DEPLOY 2, PLAN_AUDIT_DEVIS 17, PLAN_AUDIT_LEAD 2, PLAN_AUDIT_MOTEUR 3, PLAN_AUDIT_PARAMETRES 2, PLAN_AUDIT_SAV 1, PLAN_AUDIT_STOCK 4, WEB_PLAN 3.
-- Par section : Acceptation en direct (orchestrateur, jamais une lane) 1, GATED (ne PAS auto-construire) 2, M1 bloquant-fondateur 148, M2 321.
-- Par gravité : S1 18, S2 137, S3 273, S4 10, — 34.
+- Par domaine : D1 46, D2 64, D3 58, D4 80, D5 69, D6 56, D7 72, D8 29, acceptation 1.
+- Par priorité : P0 17, P1 128, P2 200, P3 129, — 1.
+- Par plan : PLAN_AUDIT_CALEPINAGE 423, PLAN_AUDIT_CHANTIERS 7, PLAN_AUDIT_DEPLOY 2, PLAN_AUDIT_DEVIS 20, PLAN_AUDIT_LEAD 2, PLAN_AUDIT_MOTEUR 6, PLAN_AUDIT_PARAMETRES 2, PLAN_AUDIT_SAV 1, PLAN_AUDIT_SECURITE 1, PLAN_AUDIT_STOCK 3, PLAN_AUDIT_TRANSVERSE 5, WEB_PLAN 3.
+- Par section : Acceptation en direct (orchestrateur, jamais une lane) 1, GATED (ne PAS auto-construire) 3, M1 bloquant-fondateur 147, M2 324.
+- Par gravité : S1 18, S2 140, S3 275, S4 9, — 33.
 
-## Table des constats (générée depuis les fichiers d'insertion)
+## Table des constats (générée depuis les plans)
 
 | Constat | Critère, gravité | Tâche | Plan | Section | Titre abrégé |
 |---|---|---|---|---|---|
-| C-ACAL-L5-1032 | C4, S2 | ACAL1032 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter « Dupliquer » et « Poser en série » dans la carte « Obstacle sélectionné » de l'atelier ERP |
+| C-ACAL-L5-487 | C1, S3 | ACAL487 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter à la visionneuse 3D en lecture seule un soleil animé (heure et mois) sans aucun chiffre calculé |
 | C-ACAL-L5-492 | C3, S3 | ACAL492 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dire dans l'aide des raccourcis ce que fait Ctrl + D (« Dupliquer l'obstacle sélectionné ») et le faire parler |
 | C-ACAL-L5-493 | C4, S2 | ACAL493 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter dans la carte « Obstacle sélectionné » la saisie de HAUTEUR et le bandeau « Compte NON engageable » que |
 | C-ACAL-L5-494 | C4, S2 | ACAL494 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter à Réglages › Calepinage la section « Gabarits d'obstacle » (voir, créer, modifier, supprimer ; rectang |
@@ -31,7 +32,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-498 | C4, S3 | ACAL498 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Étendre le menu « Type d'obstacle » de six types (lanterneau, exutoire de fumée, climatiseur, citerne, garde-c |
 | C-ACAL-L5-499 | C1, S2 | ACAL499 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire lire le dégagement d'un NOUVEAU type d'obstacle dans les réglages de la société, et dire « recul de base |
 | C-ACAL-L5-500 | C4, S3 | ACAL500 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter le genre « poteau » aux objets d'environnement (pose au clic, hauteur et diamètre saisis) |
-| C-ACAL-L5-501 | C4, S3 | ACAL501 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter le genre « ligne » (haie, mur, câble aérien) tracée en polyligne avec hauteur et épaisseur saisies |
+| C-ACAL-L5-501 | C4, S3 | ACAL501 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter le genre « ligne » (haie, mur) tracée en polyligne avec hauteur et épaisseur saisies |
 | C-ACAL-L5-502 | C4, S3 | ACAL502 | PLAN_AUDIT_CALEPINAGE | M2 | Ranger pour chaque arbre une hauteur future saisie (« dans N ans : H m ») et une case « Supposer coupé » |
 | C-ACAL-L5-503 | C3, S3 | ACAL503 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Donner une apparence aux boutons et champs que l'atelier crée à la volée (`rp9-btn`, `rp9-input`) |
 | C-ACAL-L5-504 | C4, S2 | ACAL504 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter la saisie de HAUTEUR du bâtiment et sa note pour que le panneau « Bâtiment » (étages, hauteur d'étage,  |
@@ -40,7 +41,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-507 | C4, S3 | ACAL507 | PLAN_AUDIT_CALEPINAGE | M2 | Proposer « Vouliez-vous dire … ? » quand des coordonnées collées tombent hors du pays du projet et que leur in |
 | C-ACAL-L5-508 | C1, S3 | ACAL508 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher sous la carte d'où vient l'image : fournisseur, puis la résolution PUBLIÉE avec sa source ou « date e |
 | C-ACAL-L5-509 | C4, S3 | ACAL509 | PLAN_AUDIT_CALEPINAGE | M2 | Ranger dans le document une date de prise de vue de l'image saisie (date + source) sous la clé racine `imageCa |
-| C-ACAL-L5-510 | C4, S3 | ACAL510 | PLAN_AUDIT_CALEPINAGE | M2 | Marquer un pan « Modules déjà en place » avec une année de mise en service SAISIE |
+| C-ACAL-L5-510 | C4, S3 | ACAL510 | PLAN_AUDIT_CALEPINAGE | M2 | Marquer un pan « Pan existant » (modules déjà en place) avec une année de mise en service SAISIE |
 | C-ACAL-L5-511 | C4, S3 | ACAL511 | PLAN_AUDIT_CALEPINAGE | M2 | Faire reconnaître un pan « déjà en place » : étiquette « Existant 2019 » dans la liste des pans et plan 2D hac |
 | C-ACAL-L5-512 | C1, S3 | ACAL512 | PLAN_AUDIT_CALEPINAGE | M2 | Servir, avec un calage de plan, la longueur A–B en mètres selon l'unité que le DXF déclare |
 | C-ACAL-L5-513 | C4, S3 | ACAL513 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans l'écran d'import de plan le contrôle d'échelle « selon l'unité du fichier (mm), A–B mesure 9,84  |
@@ -56,9 +57,8 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-527 | C4, S2 | ACAL527 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans l'onglet « Reprise de la visite » un bandeau « n écarts avec la visite » qui ouvre le tableau Vi |
 | C-ACAL-L5-528 | C4, S3 | ACAL528 | PLAN_AUDIT_CALEPINAGE | M2 | Tirer des rectangles de modules en longitude/latitude depuis le seul document enregistré (centres, origine, az |
 | C-ACAL-L5-529 | C4, S3 | ACAL529 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher les modules posés SUR la photo du site calée (« Voir sur la photo ») avec un export PNG interne |
-| C-ACAL-L5-530 | C4, S3 | ACAL530 | PLAN_AUDIT_CALEPINAGE | M2 | Étendre le contrat `calepinage_detection_toit.json` aux obstacles proposés (type, contour, confiance) avec leu |
+| C-ACAL-L5-530 | C4, S3 | ACAL530 | PLAN_AUDIT_CALEPINAGE | M2 | Étendre le contrat `calepinage_detection_toit.json` aux obstacles proposés (type, contour, confiance), la clé  |
 | C-ACAL-L5-531 | C4, S3 | ACAL531 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher et cocher les obstacles proposés sous le contour dans l'onglet « Détection du toit » |
-| C-ACAL-L5-532 | C4, S3 | ACAL532 | PLAN_AUDIT_CALEPINAGE | M2 | Poser des repères de chantier sur le plan (ancrage antichute avec rayon saisi, passage de câble, onduleur, tab |
 | C-ACAL-L5-533 | C4, S3 | ACAL533 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher un tableau replié « Objets du site » (type, cotes, hauteur, provenance, pan) où un clic sélectionne l |
 | C-ACAL-L5-534 | C4, S3 | ACAL534 | PLAN_AUDIT_CALEPINAGE | M2 | Écrire un altimètre qui lit un relief GeoTIFF fourni par l'installateur (projection en degrés seulement) sans  |
 | C-ACAL-L5-535 | C4, S3 | ACAL535 | PLAN_AUDIT_CALEPINAGE | M2 | Offrir « Lire la pente sur un relief de drone » : un dépôt de GeoTIFF produit une suggestion de pente et d'ori |
@@ -66,7 +66,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-537 | C4, S3 | ACAL537 | PLAN_AUDIT_CALEPINAGE | M2 | Exporter la scène 3D de l'atelier en glTF pour un architecte |
 | C-ACAL-L5-546 | C4, S3 | ACAL546 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter dans l'atelier ERP le tableau comparatif des poses du toit plat (configuration, panneaux, kWc, kWh/an,  |
 | C-ACAL-L5-547 | C15, S3 | ACAL547 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter aux cartes de variantes de l'atelier la carte « Couvre le besoin » (le plus petit nombre de panneaux q |
-| C-ACAL-L5-548 | C18, S3 | ACAL548 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter dans l'atelier ERP le champ « Accès solaire minimal (%) » (vide par défaut) qui écrit `optimisation.se |
+| C-ACAL-L5-548 | C18, S3 | ACAL548 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter dans l'atelier ERP le champ « Accès solaire minimal (%) » qui écrit `optimisation.seuilAccesSolaire`,  |
 | C-ACAL-L5-549 | C18, S3 | ACAL549 | PLAN_AUDIT_CALEPINAGE | M2 | Nommer, sous le champ « Panneaux nécessaires », la cause mesurée d'un pan où aucun module ne tient, et la rang |
 | C-ACAL-L5-550 | C15, S3 | ACAL550 | PLAN_AUDIT_CALEPINAGE | M2 | Imprimer sur le plan de pose, sous chaque pan sans module, la cause rangée au document |
 | C-ACAL-L5-551 | C15, S4 | ACAL551 | PLAN_AUDIT_CALEPINAGE | M2 | Peindre à la position visée la silhouette du panneau (ou du lot) glissé, rouge quand une contrainte dure l'int |
@@ -75,7 +75,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-554 | C2, S3 | ACAL554 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter « Appliquer ces réglages à… » sur la ligne d'un pan : le module, le type de toit, la pente et la face  |
 | C-ACAL-L5-555 | C10, S3 | ACAL555 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL le contrat `motifsPansVides` (clé racine du document : par identifiant de pan, la cause mesurée d'u |
 | C-ACAL-L5-557 | C10, S2 | ACAL557 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser le contrat `calepinage_systemes_fixation.json` (liste, création, modification, suppression et refus nomm |
-| C-ACAL-L5-558 | C4, S2 | ACAL558 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir les systèmes de fixation de la société (`GET` et `POST parametres/systemes-fixation/`, `GET`, `PATCH` e |
+| C-ACAL-L5-558 | C4, S2 | ACAL558 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir les systèmes de fixation de la société (`GET` et `POST calepinages/systemes-fixation/`, `GET`, `PATCH`  |
 | C-ACAL-L5-559 | C18, S2 | ACAL559 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter l'écran Réglages « Systèmes de fixation » (liste, création, modification et désactivation d'un système |
 | C-ACAL-L5-560 | C18, S2 | ACAL560 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Remplacer le champ « identifiant » de l'onglet Fixation par la liste des systèmes actifs de la société |
 | C-ACAL-L5-561 | C9, S3 | ACAL561 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter à la section `degagements` la table « retrait supplémentaire par type d'arête » (faîtage, égout, rive, |
@@ -87,9 +87,8 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-567 | C6, S3 | ACAL567 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter à la fiche technique d'un module la zone de serrage fabricant (minimum et maximum en mm, source) et la |
 | C-ACAL-L5-568 | C7, S3 | ACAL568 | PLAN_AUDIT_CALEPINAGE | M2 | Contrôler, sur les valeurs de pose déclarées par le système, la distance rail-bord contre la zone de serrage d |
 | C-ACAL-L5-569 | C7, S3 | ACAL569 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter aux règles de quantité de fixation les bases « rangées en portrait », « rangées en paysage », « module |
-| C-ACAL-L5-570 | C12, S3 | ACAL570 | PLAN_AUDIT_STOCK | M2 | Poser la migration additive des trois champs de zone de serrage de la fiche module (`serrage_min_mm`, `serrage |
 | C-ACAL-L5-571 | C18, S3 | ACAL571 | PLAN_AUDIT_PARAMETRES | M2 | Ajouter à l'écran Fiches techniques les champs de la zone de serrage d'un module (minimum mm, maximum mm, sour |
-| C-ACAL-L5-572 | C18, S2 | ACAL572 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter l'écran Réglages « Lestage » (les dix paramètres de la feuille de lestage et les quatre de zones de po |
+| C-ACAL-L5-572 | C18, S2 | ACAL572 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter l'UNIQUE écran Réglages « Lestage » (les paramètres de la feuille de lestage et les quatre de zones de |
 | C-ACAL-L5-573 | —, — | ACAL573 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL sur main la clé de pan `zones[].existant` (booléen) et `zones[].anneeMiseEnService` (entier ou null |
 | C-ACAL-L5-574 | —, — | ACAL574 | PLAN_AUDIT_CALEPINAGE | M2 | Rendre un pan « existant » intouchable dans l'atelier : pivoter, redimensionner, changer de module, re-paver e |
 | C-ACAL-L5-575 | —, — | ACAL575 | PLAN_AUDIT_CALEPINAGE | M2 | Exclure les modules d'un pan « existant » de la nomenclature de fixation et les marquer « existant » sur la pl |
@@ -110,7 +109,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-590 | C1, S3 | ACAL590 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter au plan de pose une feuille A4 par pan : modules teintés par chaîne, numéro de chaque module et repère |
 | C-ACAL-L5-591 | C1, S3 | ACAL591 | PLAN_AUDIT_CALEPINAGE | M2 | Coter sur la feuille A4 de chaque pan les quatre distances du champ aux rives et chaque zone interdite |
 | C-ACAL-L5-592 | C7, S3 | ACAL592 | PLAN_AUDIT_CALEPINAGE | M2 | Publier la nomenclature de fixation PAR PAN et l'imprimer en encart sur la feuille A4 du pan |
-| C-ACAL-L5-593 | C2, S3 | ACAL593 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter une couche « Repères de chantier » (ancre antichute, accès, passage de câble : type, texte, rayon SAIS |
+| C-ACAL-L5-593 | C2, S3 | ACAL593 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter à l'atelier une couche « Repères de chantier » (ancre antichute, accès, passage de câble : type, texte |
 | C-ACAL-L5-594 | C3, S3 | ACAL594 | PLAN_AUDIT_CALEPINAGE | M2 | Créer une variante par module coché du stock sur la même implantation |
 | C-ACAL-L5-595 | C10, S3 | ACAL595 | PLAN_AUDIT_CALEPINAGE | M2 | Servir le module de chaque variante dans le comparatif (`lignes[].module`) |
 | C-ACAL-L5-596 | C10, S3 | ACAL596 | PLAN_AUDIT_CALEPINAGE | M2 | Servir par un sélecteur les points de contrôle de pose d'un calepinage retenu (système de fixation, chaînes da |
@@ -127,14 +126,14 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-607 | C10, S2 | ACAL607 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Calculer le kWc d'une surface de pose du tableau Site (champ au sol, ombrière) avec la puissance SAISIE `modul |
 | C-ACAL-L5-608 | C10, S1 | ACAL608 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Écrire `geometry.panelOrientation` (et `panels[].orient` en pose mixte) quand l'atelier enregistre un pan posé |
 | C-ACAL-L5-609 | C10, S2 | ACAL609 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Envoyer la latitude de l'épingle avec la pose d'un champ au sol, dire l'entraxe calculé et alerter quand l'all |
-| C-ACAL-L5-610 | C10, S2 | ACAL610 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Afficher le kWc du champ au sol dans l'onglet Terrain (modules posés × puissance saisie, lu de `kwc` de la rép |
+| C-ACAL-L5-610 | C10, S2 | ACAL610 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Afficher le kWc du champ au sol dans l'onglet Terrain (modules posés × puissance saisie : `kwc` de la réponse  |
 | C-ACAL-L5-611 | C6, S3 | ACAL611 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser SEUL le contrat `calepinage_evaluation_electrique.json` (POST `evaluer-electrique` : requête avec `entre |
-| C-ACAL-L5-612 | C6, S3 | ACAL612 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir, sous `publication`, l'état « publiable / publiable avec réserves / non publiable », le nombre de point |
+| C-ACAL-L5-612 | C6, S3 | ACAL612 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Composer côté serveur le `titre` et la `phrase` de `publication` à partir de l'`etat` et des `points` d'ACAL93 |
 | C-ACAL-L5-613 | C6, S3 | ACAL613 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire dire à l'onglet « Verdict électrique » ce que dit le serveur : le titre et la phrase de `publication`, a |
 | C-ACAL-L5-614 | C10, S3 | ACAL614 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser le contrat `calepinage_configurations_onduleur.json` (2 à 3 configurations d'onduleur comparables : nomb |
 | C-ACAL-L5-615 | C6, S3 | ACAL615 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Valider les produits désignés (`module_produit`, `onduleur_produit`, `optimiseur_produit`) de `entree_electriq |
 | C-ACAL-L5-616 | C10, S3 | ACAL616 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir `GET calepinages/<pk>/configurations-onduleur/` : l'onduleur retenu et ses deux voisins de puissance du |
-| C-ACAL-L5-617 | C15, S3 | ACAL617 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter à l'étape Électrique (niveau essentiel) le lien « Comparer avec d'autres onduleurs » sous le champ Ond |
+| C-ACAL-L5-617 | C15, S3 | ACAL617 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter à l'étape Électrique (niveau expert) le lien « Comparer avec d'autres onduleurs » sous le champ Ondule |
 | C-ACAL-L5-618 | C7, S3 | ACAL618 | PLAN_AUDIT_CALEPINAGE | M2 | Servir `chaines[]` dans la réponse de `POST evaluer-electrique` : par chaîne (automatique ou imposée à la main |
 | C-ACAL-L5-619 | C15, S3 | ACAL619 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher la tension de chaque chaîne : une bulle sous « Affecter la sélection » pour les chaînes qui viennent  |
 | C-ACAL-L5-620 | C10, S3 | ACAL620 | PLAN_AUDIT_CALEPINAGE | M2 | Étendre SEUL le contrat `calepinage_evaluation_electrique.json` (posé par ACAL611) d'une clé `chaines[]` : une |
@@ -142,32 +141,29 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-627 | C10, S3 | ACAL627 | PLAN_AUDIT_CALEPINAGE | M2 | Servir `POST calepinages/controle-chaine/` : le verdict d'une chaîne (module, onduleur, N modules, température |
 | C-ACAL-L5-628 | C18, S3 | ACAL628 | PLAN_AUDIT_CALEPINAGE | M2 | Offrir le « Contrôle rapide d'une chaîne » : choisir un module et un onduleur, taper N et la température, lire |
 | C-ACAL-L5-629 | C18, S3 | ACAL629 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL le contrat `calepinage_import_affectation.json` (POST d'un plan de chaînes CSV `module;chaine;mppt; |
-| C-ACAL-L5-630 | C10, S3 | ACAL630 | PLAN_AUDIT_CALEPINAGE | M2 | Lire un plan de chaînes CSV (`module;chaine;mppt;onduleur`) et le passer tel quel au verdict d'affectation exi |
+| C-ACAL-L5-630 | C10, S3 | ACAL630 | PLAN_AUDIT_CALEPINAGE | M2 | Lire un plan de chaînes CSV (`module;chaine;mppt;onduleur`), valider chaque ligne, puis passer les seules lign |
 | C-ACAL-L5-631 | C18, S3 | ACAL631 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter dans « Affectation des chaînes » un bouton « Importer un plan de chaînes (CSV) » qui montre les refus  |
-| C-ACAL-L5-632 | C10, S3 | ACAL632 | PLAN_AUDIT_CALEPINAGE | M2 | Calculer le plus petit nombre d'onduleurs du modèle retenu qui câble tous les modules et le servir comme sugge |
-| C-ACAL-L5-633 | C10, S3 | ACAL633 | PLAN_AUDIT_CALEPINAGE | M2 | Accepter un nombre d'onduleurs dans l'entrée électrique et numéroter l'onduleur de chaque chaîne |
-| C-ACAL-L5-634 | C18, S3 | ACAL634 | PLAN_AUDIT_CALEPINAGE | M2 | Dire à l'utilisateur « 2 onduleurs sont nécessaires pour câbler les 46 modules » et lui laisser l'accepter d'u |
+| C-ACAL-L5-632 | C10, S3 | ACAL632 | PLAN_AUDIT_CALEPINAGE | M2 | Calculer le plus petit nombre d'onduleurs du modèle retenu pour lequel plus aucun pan ne dépasse les entrées M |
+| C-ACAL-L5-633 | C10, S3 | ACAL633 | PLAN_AUDIT_CALEPINAGE | M2 | Accepter un nombre d'onduleurs dans l'entrée électrique, le faire lire par TOUS les calculs (conception des ch |
+| C-ACAL-L5-634 | C18, S3 | ACAL634 | PLAN_AUDIT_CALEPINAGE | M2 | Dire à l'utilisateur « 2 onduleurs sont nécessaires pour câbler les 26 modules » et lui laisser l'accepter d'u |
 | C-ACAL-L5-635 | C10, S3 | ACAL635 | PLAN_AUDIT_CALEPINAGE | M2 | Calculer la chute de tension avec la résistivité du cuivre à une température de service SAISIE par la société  |
 | C-ACAL-L5-636 | C10, S3 | ACAL636 | PLAN_AUDIT_CALEPINAGE | M2 | Appliquer un facteur de regroupement saisi par la société (valeur + source) au courant admissible d'un tronçon |
 | C-ACAL-L5-641 | C18, S3 | ACAL641 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Saisir, pour chaque pan, le motif de parcours du câble et le point de collecte (aujourd'hui aucun écran ne les |
 | C-ACAL-L5-642 | C18, S3 | ACAL642 | PLAN_AUDIT_CALEPINAGE | M2 | Ordonner l'affectation des modules aux chaînes selon un motif par pan (« le long de la rangée » ou « aller-ret |
-| C-ACAL-L5-643 | C18, S3 | ACAL643 | PLAN_AUDIT_CALEPINAGE | M2 | Dessiner sur le plan de câblage le sens de départ de chaque chaîne (flèche du premier au dernier module) |
-| C-ACAL-L5-644 | C18, S3 | ACAL644 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Accepter une clé `optimiseur` par module dans l'affectation imposée et la recopier dans l'affectation publiée |
+| C-ACAL-L5-643 | C18, S3 | ACAL643 | PLAN_AUDIT_CALEPINAGE | M2 | Dessiner sur le plan de câblage le sens de numérotation des modules de chaque chaîne (flèche et légende) |
 | C-ACAL-L5-645 | C18, S3 | ACAL645 | PLAN_AUDIT_CALEPINAGE | M2 | Compter les optimiseurs sur les seuls modules marqués quand le marquage existe |
 | C-ACAL-L5-646 | C10, S3 | ACAL646 | PLAN_AUDIT_CALEPINAGE | M2 | Contrôler l'entrée de l'optimiseur sur la somme de ses modules (modules par optimiseur × valeur de fiche) |
-| C-ACAL-L5-647 | C18, S3 | ACAL647 | PLAN_AUDIT_CALEPINAGE | M2 | Proposer les modules ombrés pour un optimiseur et les marquer d'un clic dans l'affectation des chaînes |
+| C-ACAL-L5-647 | C18, S3 | ACAL647 | PLAN_AUDIT_CALEPINAGE | M2 | Proposer les modules ombrés pour un optimiseur dans l'affectation des chaînes (liste calculée par le serveur d |
 | C-ACAL-L5-648 | C10, S3 | ACAL648 | PLAN_AUDIT_CALEPINAGE | M2 | Écrire les deux tests de comportement des chaînes manuelles (retrait d'un module d'un document non numéroté ;  |
 | C-ACAL-L5-649 | C10, S3 | ACAL649 | PLAN_AUDIT_CALEPINAGE | M2 | Ré-ancrer par la position une affectation manuelle dont le module n'est plus retrouvé par son numéro, et nomme |
 | C-ACAL-L5-650 | C18, S3 | ACAL650 | PLAN_AUDIT_CALEPINAGE | M2 | Autoriser une chaîne sur deux pans de même orientation (azimut et inclinaison égaux à une tolérance saisie par |
-| C-ACAL-L5-656 | C10, S3 | ACAL656 | PLAN_AUDIT_CALEPINAGE | M2 | Convertir EXACTEMENT le coefficient de température de Voc d'un fichier PVsyst (mV/°C) en %/°C avec le Voc du m |
 | C-ACAL-L5-657 | C10, S3 | ACAL657 | PLAN_AUDIT_CALEPINAGE | M2 | Refuser dans l'aperçu d'import une fiche module incohérente (Vmp ≥ Voc, Imp ≥ Isc, Pmax qui s'écarte de Vmp ×  |
 | C-ACAL-L5-658 | C10, S3 | ACAL658 | PLAN_AUDIT_CALEPINAGE | M2 | Reprendre à l'import le nombre de cellules en série (`NCelS`) et le coefficient de température de Isc (`muISC` |
 | C-ACAL-L5-659 | C18, S3 | ACAL659 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter à la fiche technique les champs optionnels que les modèles électriques lisent (cellules en série, coef |
-| C-ACAL-L5-660 | C18, S3 | ACAL660 | PLAN_AUDIT_STOCK | M2 | Migrer, en UNE migration, les champs de fiche technique ajoutés par ACAL659 (cellules en série, coefficient de |
 | C-ACAL-L5-661 | C10, S3 | ACAL661 | PLAN_AUDIT_CALEPINAGE | M2 | Traiter comme UNE seule entrée logique les entrées MPPT d'un onduleur dont la fiche dit qu'elles ne sont pas i |
 | C-ACAL-L5-662 | C10, S3 | ACAL662 | PLAN_AUDIT_CALEPINAGE | M2 | Contrôler que l'onduleur retenu figure dans la liste des onduleurs compatibles de l'optimiseur désigné |
 | C-ACAL-L5-663 | C18, S3 | ACAL663 | PLAN_AUDIT_STOCK | M2 | Saisir dans le formulaire produit les nouveaux champs de fiche (cellules en série, coefficient de Isc, début e |
-| C-ACAL-L5-664 | C10, S3 | ACAL664 | PLAN_AUDIT_CALEPINAGE | M2 | Publier la puissance AC disponible de l'onduleur à la température maximale du site d'après la réduction publié |
+| C-ACAL-L5-664 | C10, S3 | ACAL664 | PLAN_AUDIT_CALEPINAGE | M2 | Publier la puissance AC disponible de l'onduleur à la température d'AIR maximale du site d'après la réduction  |
 | C-ACAL-L5-665 | C18, S3 | ACAL665 | PLAN_AUDIT_CALEPINAGE | M2 | Servir, par chaîne du calepinage retenu d'un chantier, le nombre de modules et les Voc, Isc et Pmax attendus à |
 | C-ACAL-L5-666 | C18, S3 | ACAL666 | PLAN_AUDIT_CHANTIERS | M2 | Poser SEUL le contrat `recette_valeurs_attendues.json` (GET `recettes-commissioning/<id>/valeurs-attendues/` : |
 | C-ACAL-L5-667 | C18, S3 | ACAL667 | PLAN_AUDIT_CHANTIERS | M2 | Servir, sur la fiche de recette d'un chantier, les valeurs attendues par chaîne lues sur le calepinage retenu |
@@ -182,12 +178,8 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-676 | C10, S3 | ACAL676 | PLAN_AUDIT_CALEPINAGE | M2 | Comparer la distance de séparation foudre saisie à la valeur minimale saisie par la société (avec sa source) q |
 | C-ACAL-L5-677 | C18, S3 | ACAL677 | PLAN_AUDIT_CALEPINAGE | M2 | Mesurer la surface de la boucle de chaque chaîne (centres des modules dans l'ordre de l'affectation, puis les  |
 | C-ACAL-L5-678 | C9, S3 | ACAL678 | PLAN_AUDIT_CALEPINAGE | M2 | Avertir, sans bloquer, quand la boucle d'une chaîne dépasse une surface maximale SAISIE par la société (valeur |
-| C-ACAL-L5-681 | C10, S3 | ACAL681 | PLAN_AUDIT_CALEPINAGE | M2 | Écrire la colonne `p_dc_kw` de la série horaire persistée (puissance continue à l'entrée de l'onduleur), que l |
-| C-ACAL-L5-682 | C18, S3 | ACAL682 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL le contrat `calepinage_histogramme_puissance.json` (GET `histogramme-puissance/` : énergie continue |
-| C-ACAL-L5-683 | C18, S3 | ACAL683 | PLAN_AUDIT_CALEPINAGE | M2 | Servir `GET calepinages/<pk>/histogramme-puissance/` : l'énergie continue et l'énergie écrêtée par classe de p |
-| C-ACAL-L5-684 | C18, S3 | ACAL684 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans le verdict électrique (niveau expert) l'histogramme de la puissance continue par classe, avec la |
 | C-ACAL-L5-685 | C18, S3 | ACAL685 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans le verdict électrique (niveau expert) la surface de boucle de chaque chaîne, sa limite société e |
-| C-ACAL-L5-686 | C6, S3 | ACAL686 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dessiner le côté alternatif du schéma unifilaire (disjoncteur AC, compteur de production, TGBT, compteur du ré |
+| C-ACAL-L5-686 | C6, S3 | ACAL686 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire dire au bandeau du schéma unifilaire sans norme ce qui n'est pas dessiné après l'onduleur (disjoncteur A |
 | C-ACAL-L5-687 | C6, S3 | ACAL687 | PLAN_AUDIT_CALEPINAGE | M2 | Faire lire par le verdict de raccordement les phases saisies dans « Saisies électriques » quand le raccordemen |
 | C-ACAL-L5-692 | C10, S2 | ACAL692 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Nommer, dans `validation`, le plus gros poste de pertes de la cascade quand la chaîne perd plus que PVGIS et p |
 | C-ACAL-L5-693 | C10, S2 | ACAL693 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir `production.duree_de_vie` (horizon, motif d'omission du tableau pluriannuel et garantie de production d |
@@ -237,7 +229,6 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-737 | —, — | ACAL737 | PLAN_AUDIT_CALEPINAGE | M2 | Tracer l'histogramme de puissance de l'écrêtage dans l'étape Électrique (carte « Panneaux pour l'onduleur », n |
 | C-ACAL-L5-738 | —, — | ACAL738 | PLAN_AUDIT_CALEPINAGE | M2 | Tracer la puissance des panneaux (P_DC) et la borne de l'onduleur dans la journée type d'un mois, à côté de la |
 | C-ACAL-L5-740 | C03, — | ACAL740 | PLAN_AUDIT_CALEPINAGE | M2 | Appliquer le déclassement thermique de l'onduleur à la borne d'écrêtage heure par heure avec la température d' |
-| C-ACAL-L5-741 | C03, — | ACAL741 | PLAN_AUDIT_CALEPINAGE | M2 | Lire à l'import d'une fiche `.OND` la température de début et la pente de déclassement quand le fichier publie |
 | C-ACAL-L5-742 | —, — | ACAL742 | PLAN_AUDIT_CALEPINAGE | M2 | Déclarer au registre des réglages société deux clés sans valeur, « nettoyages par an » et « inclinaison d'auto |
 | C-ACAL-L5-743 | —, — | ACAL743 | PLAN_AUDIT_CALEPINAGE | M2 | Publier dans l'entrée de l'étape `salissure` la fréquence de nettoyage saisie et un avertissement quand l'incl |
 | C-ACAL-L5-744 | C06, — | ACAL744 | PLAN_AUDIT_CALEPINAGE | M2 | Comparer l'irradiation incidente de la base PVGIS utilisée avec celle de l'AUTRE base (SARAH3 / ERA5) sur le m |
@@ -262,19 +253,18 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-763 | C27, S3 | ACAL763 | PLAN_AUDIT_CALEPINAGE | M2 | Produire à chaque dépôt d'un fichier météo un rapport de qualité en quatre lignes (couverture, décalage horair |
 | C-ACAL-L5-764 | C27, S3 | ACAL764 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher à l'import d'un fichier météo ses quatre lignes de qualité en mots simples, sans verdict |
 | C-ACAL-L5-765 | C19, S3 | ACAL765 | PLAN_AUDIT_CALEPINAGE | GATED (ne PAS auto-construire) | Imprimer en Production, avec sa source, le bilan carbone évité (énergie produite × facteur d'émission du résea |
-| C-ACAL-L5-766 | C6, S4 | ACAL766 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ne plus envoyer l'export horaire à l'ouverture de l'onglet Production tant qu'aucune simulation n'est à jour : |
 | C-ACAL-L5-767 | C6, S4 | ACAL767 | PLAN_AUDIT_CALEPINAGE | M2 | Ne jamais lever de toast pour la lecture AUTOMATIQUE de la série horaire : un refus (409 d'état ou 400) reste  |
 | C-ACAL-L5-768 | C27, S4 | ACAL768 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Laisser jusqu'à 2 minutes au téléchargement d'un document du module (rapport d'étude PDF compris) au lieu de l |
 | C-ACAL-L5-769 | C27, S4 | ACAL769 | PLAN_AUDIT_CALEPINAGE | M2 | Dire quoi faire quand le téléchargement d'un document dépasse son délai : un message sur la carte (plus de toa |
 | C-ACAL-L5-770 | C27, S4 | ACAL770 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ne proposer dans Réglages simulation que les valeurs d'une liste que le serveur sait honorer : le serveur publ |
-| C-ACAL-L5-771 | C27, S4 | ACAL771 | PLAN_AUDIT_CALEPINAGE | M2 | Faire refuser une simulation avec TOUS les refus connus avant tout calcul (météo, pan équipé, épingle du site) |
+| C-ACAL-L5-771 | C27, S4 | ACAL771 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter à la liste `manquants[]` d'ACAL940 le seul refus HORS réglages qu'elle ne porte pas, « aucun pan équip |
 | C-ACAL-L5-772 | C18, S2 | ACAL772 | PLAN_AUDIT_CALEPINAGE | M2 | Imprimer au rapport d'étude, section « pertes », la table IAM de l'étape (angle, facteur) avec le modèle et l' |
 | C-ACAL-L5-773 | C19, S2 | ACAL773 | PLAN_AUDIT_CALEPINAGE | M2 | Imprimer au rapport d'étude, section « pertes », le schéma « où va l'énergie » sous le diagramme de la cascade |
-| C-ACAL-L5-774 | C27, S4 | ACAL774 | PLAN_AUDIT_CALEPINAGE | M2 | Lister dans l'onglet Production tous les refus d'une simulation, chacun renvoyant au champ exact de l'écran de |
+| C-ACAL-L5-774 | C27, S4 | ACAL774 | PLAN_AUDIT_CALEPINAGE | M2 | Faire lier, dans la liste des refus d'une simulation, les lignes SANS champ de réglage (`plans`, épingle `site |
 | C-ACAL-L5-776 | C4, S1 | ACAL776 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir la facture mensuelle moyenne du lead dans le contexte de conception (`consommation_lead`) |
 | C-ACAL-L5-777 | C4, S1 | ACAL777 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire lire la facture du lead par l'atelier en mode calepinage |
-| C-ACAL-L5-778 | C4, S1 | ACAL778 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Nommer l'origine du chiffre « Économies » de la carte Recommandation et renvoyer vers l'onglet Économie |
-| C-ACAL-L5-779 | C4, S3 | ACAL779 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Refuser une charge à venir marquée « déjà dans les factures » en nommant le champ |
+| C-ACAL-L5-778 | C4, S1 | ACAL778 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Nommer l'origine du chiffre « Économies estimées » de la carte Recommandation et renvoyer vers l'onglet Économ |
+| C-ACAL-L5-779 | C4, S3 | ACAL779 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ignorer une charge à venir marquée « déjà dans les factures » et le dire par un avertissement qui la nomme |
 | C-ACAL-L5-780 | C4, S3 | ACAL780 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Écrire `consumption.charges[]` depuis l'atelier : ajouter une charge à venir (voiture électrique, pompe à chal |
 | C-ACAL-L5-781 | C4, S3 | ACAL781 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Afficher « charges ajoutées : X kWh/an » avec le détail par charge sous la courbe journalière de l'onglet Prod |
 | C-ACAL-L5-782 | C4, S3 | ACAL782 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Publier le régime loi 82-21 du site dans le bloc raccordement |
@@ -300,7 +290,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-803 | C18, S3 | ACAL803 | PLAN_AUDIT_CALEPINAGE | M2 | Saisir et lire le groupe d'appoint d'un site hors réseau dans l'onglet Batterie (interrupteur « Il y a un grou |
 | C-ACAL-L5-804 | C7, S3 | ACAL804 | PLAN_AUDIT_DEVIS | M2 | Écrire `bilan_reservoir_journalier` (fonction pure) : le niveau du réservoir jour par jour sur l'année type, a |
 | C-ACAL-L5-805 | C7, S3 | ACAL805 | PLAN_AUDIT_DEVIS | M2 | Faire suivre à la production d'eau de chaque mois la HMT de ce mois : `hmt_mensuelle` (niveau statique de chaq |
-| C-ACAL-L5-806 | C10, S3 | ACAL806 | PLAN_AUDIT_CALEPINAGE | M2 | Brancher sur la porte du pompage le niveau d'eau d'été et d'hiver, le calage, le tubage et le débit d'exploita |
+| C-ACAL-L5-806 | C10, S3 | ACAL806 | PLAN_AUDIT_CALEPINAGE | M2 | Faire suivre la HMT et les volumes du pompage au niveau d'eau de chaque mois : la porte `pompage/` accepte un  |
 | C-ACAL-L5-807 | C18, S3 | ACAL807 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans l'onglet Pompage la carte « Réservoir jour par jour », les saisies du niveau d'eau et les alerte |
 | C-ACAL-L5-808 | C7, S3 | ACAL808 | PLAN_AUDIT_DEVIS | M2 | Avertir dans le kit de pompage quand ni la sonde de niveau n'est cochée ni la protection marche à sec du varia |
 | C-ACAL-L5-809 | C10, S3 | ACAL809 | PLAN_AUDIT_DEVIS | M2 | Exposer `controle_chaine_variateur` (fonction publique du noyau de pompage) : vérifier une longueur de chaîne  |
@@ -331,12 +321,12 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-837 | C15, S3 | ACAL837 | PLAN_AUDIT_CALEPINAGE | M2 | Monter dans « Affiner ma consommation » une grille repliable « Mes factures (1 à 12 mois) » (un mois par ligne |
 | C-ACAL-L5-838 | C15, S3 | ACAL838 | PLAN_AUDIT_LEAD | M2 | Rendre, sans rien écrire sur un lead, une PROPOSITION de kWh lus sur une photo de facture (`lire_photo_facture |
 | C-ACAL-L5-839 | C15, S3 | ACAL839 | PLAN_AUDIT_CALEPINAGE | M2 | Servir `GET`/`POST calepinages/<pk>/consommation/lire-facture/` : le GET dit si la lecture d'une photo est dis |
-| C-ACAL-L5-840 | C15, S3 | ACAL840 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher « Lire une photo de facture » seulement quand le serveur la dit disponible, puis proposer les lignes  |
+| C-ACAL-L5-840 | C15, S3 | ACAL840 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher « Lire une photo de facture » seulement quand le serveur la dit disponible, puis proposer les kWh lus |
 | C-ACAL-L5-842 | C15, S2 | ACAL842 | PLAN_AUDIT_CALEPINAGE | M2 | Décaler le vieillissement de l'âge des pans existants : l'année N d'un pan posé il y a `âge` ans vaut sa produ |
 | C-ACAL-L5-843 | C15, S2 | ACAL843 | PLAN_AUDIT_CALEPINAGE | M2 | Publier `production.parties {existant, ajoute, total}` (kWc, P50 neuf, P50 avec âge) quand au moins un pan est |
 | C-ACAL-L5-845 | C15, S2 | ACAL845 | PLAN_AUDIT_SAV | M2 | Servir les volumes d'eau mensuels mesurés d'un chantier depuis les index m³ du SAV (`volumes_mensuels_mesures` |
 | C-ACAL-L5-846 | C15, S2 | ACAL846 | PLAN_AUDIT_CALEPINAGE | M2 | Servir `POST calepinages/<pk>/ecart-mesures/` : comparer 12 consommations mensuelles mesurées (saisies) à la c |
-| C-ACAL-L5-847 | C15, S2 | ACAL847 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter dans l'onglet « Pose réelle » un bloc « Consommation mesurée / simulée » réservé aux porteurs de `cale |
+| C-ACAL-L5-847 | C15, S2 | ACAL847 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter à l'étape Résultats (niveau expert) un onglet « Consommation mesurée » réservé aux porteurs de `calepi |
 | C-ACAL-L5-848 | C15, S2 | ACAL848 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans l'onglet Production (étape Résultats) un tableau « Existant / Ajouté / Total » quand le serveur  |
 | C-ACAL-L5-851 | C10, S1 | ACAL851 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire dire aux cartes « Recommandation » et « Total — toutes les zones » la puissance du module réellement pos |
 | C-ACAL-L5-852 | C1, S2 | ACAL852 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ne plus afficher « 0 MAD – 0 MAD/an » ni « ≈ 0 % de la facture » quand la facture est inconnue : l'atelier dit |
@@ -345,37 +335,36 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-855 | C5, S2 | ACAL855 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Donner un voyant à l'écart PVGIS : vert « dans la tolérance de la société », orange « hors tolérance », rien d |
 | C-ACAL-L5-856 | C5, S2 | ACAL856 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser le contrat `calepinage_pret_a_envoyer.json` (les contrôles avant l'envoi du devis : code, état ok / info |
 | C-ACAL-L5-857 | C5, S2 | ACAL857 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Calculer les contrôles de PORTE du « prêt à envoyer ? » sans lever d'erreur (visite validée, approbation à jou |
-| C-ACAL-L5-858 | C5, S2 | ACAL858 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Calculer les contrôles ÉLECTRIQUES du « prêt à envoyer ? » depuis l'état à trois valeurs servi par ACAL934 (pr |
+| C-ACAL-L5-858 | C5, S2 | ACAL858 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Calculer les contrôles ÉLECTRIQUES du « prêt à envoyer ? » en LISANT l'état à trois valeurs servi par ACAL934  |
 | C-ACAL-L5-859 | C5, S3 | ACAL859 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Calculer les contrôles de RÉSULTAT et de DOSSIER du « prêt à envoyer ? » (écart PVGIS, ombrage chiffré, pièces |
-| C-ACAL-L5-860 | C15, S2 | ACAL860 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir l'agrégat `GET calepinages/<pk>/pret-a-envoyer/` (les contrôles des trois services, rangés rouge, orang |
-| C-ACAL-L5-861 | C6, S2 | ACAL861 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Avertir avant le devis quand AUCUNE consommation n'est connue : « le toit est rempli : N kWc » (taille sans fa |
+| C-ACAL-L5-860 | C15, S2 | ACAL860 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir l'agrégat `GET calepinages/<pk>/pret-a-envoyer/` (les contrôles des services, plus les pentes jamais co |
+| C-ACAL-L5-861 | C6, S2 | ACAL861 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Avertir avant le devis quand rien ne dimensionne le système (ni facture ni taille souhaitée) : « le toit est r |
 | C-ACAL-L5-862 | C10, S1 | ACAL862 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Contrôler que la puissance annoncée par le document égale « modules × Wc de la fiche » |
-| C-ACAL-L5-863 | C3, S2 | ACAL863 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Signaler un obstacle posé hors de son pan ou à cheval sur la rive avant le devis |
-| C-ACAL-L5-864 | C13, S3 | ACAL864 | PLAN_AUDIT_CALEPINAGE | M2 | Dire pourquoi un pan reste vide ou sous-garni avant le devis |
-| C-ACAL-L5-865 | C15, S2 | ACAL865 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Afficher le panneau « Prêt à envoyer ? » (maquette `Electrique.dc.html`) : une ligne par contrôle avec « ? » e |
+| C-ACAL-L5-863 | C3, S2 | ACAL863 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Signaler avant le devis un obstacle qui dépasse de son pan |
+| C-ACAL-L5-864 | C13, S3 | ACAL864 | PLAN_AUDIT_CALEPINAGE | M2 | Dire avant le devis quel pan reste vide |
+| C-ACAL-L5-865 | C15, S2 | ACAL865 | PLAN_AUDIT_TRANSVERSE | M1 bloquant-fondateur | Monter en tête de l'étape Électrique du parcours guidé le panneau « Prêt à envoyer ? » (maquette `Electrique.d |
 | C-ACAL-L5-866 | C15, S2 | ACAL866 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Remplacer le cadre jaune de 14 lignes techniques de « Générer le devis » par une carte de succès « Devis DEV-… |
-| C-ACAL-L5-867 | C15, S2 | ACAL867 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire de l'étape Documents un écran de FIN de parcours : « Prêt à envoyer ? » en tête, « Créer le devis » en b |
-| C-ACAL-L5-868 | C15, S2 | ACAL868 | PLAN_AUDIT_CALEPINAGE | M2 | Faire porter par la barre fixe l'action principale de l'étape en cours (« Étape suivante », puis « Créer le de |
-| C-ACAL-L5-869 | C15, S3 | ACAL869 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'étape Panneaux du mode guidé (« salon » du vendeur) à ses gestes de base : Remplir, Retirer la sélec |
+| C-ACAL-L5-867 | C15, S2 | ACAL867 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire de l'étape Documents guidée un écran de FIN de parcours (maquette `Documents.dc.html`) : « Prêt à envoye |
+| C-ACAL-L5-868 | C15, S2 | ACAL868 | PLAN_AUDIT_CALEPINAGE | M2 | Faire porter par la barre fixe le bouton de l'étape suivante du parcours guidé (« Poser les panneaux », « Racc |
+| C-ACAL-L5-869 | C15, S3 | ACAL869 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire en mode guidé le panneau « Personnaliser la disposition » à ses gestes de base (Remplir, Sélectionner, |
 | C-ACAL-L5-870 | C18, S3 | ACAL870 | PLAN_AUDIT_CALEPINAGE | M2 | Poser le contrat `calepinage_explications.json` (une entrée par grandeur affichée : clé servie, famille, phras |
 | C-ACAL-L5-871 | C18, S3 | ACAL871 | PLAN_AUDIT_CALEPINAGE | M2 | Tenir UN registre des explications en données (`data/explications.json`, clé = clé servie), le servir par `GET |
-| C-ACAL-L5-872 | C18, S3 | ACAL872 | PLAN_AUDIT_CALEPINAGE | M2 | Écrire le composant « ? » UNIQUE (`Pourquoi`) lu dans le registre, et la garde qui échoue quand un chiffre aff |
+| C-ACAL-L5-872 | C18, S3 | ACAL872 | PLAN_AUDIT_CALEPINAGE | M2 | Écrire le composant « ? » UNIQUE (`Pourquoi`) lu dans le registre, et la garde qui échoue quand un chiffre d'u |
 | C-ACAL-L5-873 | C18, S3 | ACAL873 | PLAN_AUDIT_CALEPINAGE | M2 | Brancher le « ? » sur la famille PRODUCTION : P50, P75/P90/P95, variabilité, productible, puissance, pertes to |
-| C-ACAL-L5-874 | C18, S3 | ACAL874 | PLAN_AUDIT_CALEPINAGE | M2 | Brancher le « ? » sur la famille ÉLECTRIQUE : tension à froid et à chaud, ratio DC/AC, écrêtage, élévation de  |
+| C-ACAL-L5-874 | C18, S3 | ACAL874 | PLAN_AUDIT_CALEPINAGE | M2 | Brancher le « ? » sur les grandeurs ÉLECTRIQUES affichées : élévation de tension, marge à la limite, puissance |
 | C-ACAL-L5-875 | C18, S3 | ACAL875 | PLAN_AUDIT_CALEPINAGE | M2 | Brancher le « ? » sur la famille ÉNERGIE : capacité utile, énergie stockée et restituée, les six flux, hors-ré |
 | C-ACAL-L5-876 | C18, S3 | ACAL876 | PLAN_AUDIT_CALEPINAGE | M2 | Brancher le « ? » sur la famille TOIT et CARTES DE L'ATELIER : inclinaison, pas, hauteur hors-tout, longueur d |
 | C-ACAL-L5-877 | C18, S3 | ACAL877 | PLAN_AUDIT_CALEPINAGE | M2 | Brancher le « ? » sur la famille POMPAGE : débit à la HMT, pompe retenue, variateur, autonomie du réservoir, m |
 | C-ACAL-L5-878 | C18, S3 | ACAL878 | PLAN_AUDIT_CALEPINAGE | M2 | Brancher le « ? » sur la famille COMPARATIF et DOCUMENTS : modules, kWc, P50 et écarts du comparatif des varia |
 | C-ACAL-L5-879 | C18, S3 | ACAL879 | PLAN_AUDIT_CALEPINAGE | M2 | Dire en mots du métier les motifs serveur qui montrent un chemin de code, et un seul vocabulaire pour le statu |
 | C-ACAL-L5-880 | C18, S3 | ACAL880 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter sous le chiffre de production le bouton « Pourquoi ce chiffre ? » (maquette `Resultats.dc.html`) : les |
-| C-ACAL-L5-881 | C13, S3 | ACAL881 | PLAN_AUDIT_CALEPINAGE | M2 | Dire la cause quand « Remplir automatiquement » ne pose aucun panneau (retrait plus grand que le pan, module p |
 | C-ACAL-L5-883 | C10, S3 | ACAL883 | PLAN_AUDIT_CALEPINAGE | M2 | Faire dire au comparatif des variantes « mêmes hypothèses de pertes et de météo » ou NOMMER ce qui diffère |
 | C-ACAL-L5-884 | C10, S3 | ACAL884 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher sous le tableau des variantes la ligne « mêmes hypothèses de pertes et de météo » ou la liste de ce q |
 | C-ACAL-L5-885 | C9, S3 | ACAL885 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter à l'export tableur une feuille « Vérification » qui écrit EN TEXTE les formules de la Voc à froid et d |
 | C-ACAL-L5-886 | C9, S3 | ACAL886 | PLAN_AUDIT_CALEPINAGE | M2 | Poser le contrat `calepinage_production_mesuree.json` (douze valeurs mensuelles mesurées, l'écart au P50 mensu |
 | C-ACAL-L5-887 | C9, S3 | ACAL887 | PLAN_AUDIT_CALEPINAGE | M2 | Enregistrer douze valeurs mensuelles de production MESURÉE par calepinage et servir leur écart au P50 mensuel  |
 | C-ACAL-L5-888 | C9, S3 | ACAL888 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter le panneau « Livré et prévu » (douze valeurs mesurées collées, écart au P50) à l'étape Résultats, en m |
-| C-ACAL-L5-889 | C3, S3 | ACAL889 | PLAN_AUDIT_CALEPINAGE | M2 | Imprimer sur le plan de pose la tension DC maxi à froid de chaque chaîne et la consigne « sous tension dès qu' |
+| C-ACAL-L5-889 | C3, S3 | ACAL889 | PLAN_AUDIT_CALEPINAGE | M2 | Imprimer sur le plan de pose la tension DC maxi à froid de chaque chaîne et, si la société en a saisi une, sa  |
 | C-ACAL-L5-890 | C13, S3 | ACAL890 | PLAN_AUDIT_CALEPINAGE | M2 | Mesurer UNE fois la fluidité de l'atelier à trois tailles (2 000, 5 000, 10 000 modules) et committer la limit |
 | C-ACAL-L5-891 | C13, S3 | ACAL891 | PLAN_AUDIT_CALEPINAGE | M2 | Refuser en le disant un pavage au-delà de la limite mesurée de modules : « Au-delà de N modules l'atelier n'es |
 | C-ACAL-L5-892 | C12, S3 | ACAL892 | PLAN_AUDIT_CALEPINAGE | M2 | Mettre en file hors ligne les photos du site déposées sans réseau et les envoyer à la reconnexion (maquette `T |
@@ -384,42 +373,33 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-895 | C1, S3 | ACAL895 | PLAN_AUDIT_CALEPINAGE | M2 | Semer, de façon IDEMPOTENTE, trois MODÈLES de bibliothèque marqués « Exemple » (villa à toit incliné, toit pla |
 | C-ACAL-L5-896 | C1, S3 | ACAL896 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter le bouton « Vidéo 10 s » à l'atelier : une orbite de la scène enregistrée et téléchargée, que la comme |
 | C-ACAL-L5-897 | C1, S3 | ACAL897 | PLAN_AUDIT_CALEPINAGE | M2 | Offrir, sur la page « Photos du site », « Image pour le client » : la même projection des modules sur la photo |
-| C-ACAL-L5-901 | C5, S3 | ACAL901 | PLAN_AUDIT_CALEPINAGE | M2 | Offrir au calepinage un sélecteur de ventes qui rend la compatibilité du matériel désigné (module, onduleur, b |
+| C-ACAL-L5-901 | C5, S3 | ACAL901 | PLAN_AUDIT_TRANSVERSE | M2 | Offrir au calepinage un sélecteur de ventes qui rend la compatibilité du matériel désigné (module, onduleur, b |
 | C-ACAL-L5-902 | C18, S3 | ACAL902 | PLAN_AUDIT_DEPLOY | M2 | Ajouter au lexique les termes du solaire qu'une commerciale rencontre dans l'atelier : Voc, Vmp, Isc, ratio DC |
-| C-ACAL-L5-903 | C12, S3 | ACAL903 | PLAN_AUDIT_CHANTIERS | M2 | Faire ouvrir au lien « plan de pose » de la fiche chantier le PDF du plan de pose du calepinage retenu, et non |
+| C-ACAL-L5-903 | C12, S3 | ACAL903 | PLAN_AUDIT_CHANTIERS | M2 | Ajouter à la carte « Calepinage retenu » de la fiche chantier un bouton « Plan de pose (PDF) » qui télécharge  |
 | C-ACAL-L5-904 | C15, S2 | ACAL904 | PLAN_AUDIT_LEAD | M1 bloquant-fondateur | Donner à la fiche du lead UNE porte visible « Dessiner le toit » qui ouvre le calepinage, et faire dire à « Co |
-| C-ACAL-L5-906 | C5, S3 | ACAL906 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter au « prêt à envoyer ? » le contrôle de compatibilité optimiseur / onduleur / batterie lu du sélecteur  |
-| C-ACAL-L5-911 | C1, S2 | ACAL911 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Rendre, pour une pose est-ouest, l'inclinaison et l'azimut POSÉS de chaque face dans la géométrie du devis — l |
+| C-ACAL-L5-906 | C5, S3 | ACAL906 | PLAN_AUDIT_CALEPINAGE | M2 | Ajouter au « prêt à envoyer ? » le contrôle de compatibilité panneau ↔ onduleur et batterie ↔ onduleur lu du s |
+| C-ACAL-L5-911 | C1, S2 | ACAL911 | PLAN_AUDIT_TRANSVERSE | M1 bloquant-fondateur | Rendre, pour une pose est-ouest, l'inclinaison et l'azimut POSÉS de chaque face dans la géométrie du devis — l |
 | C-ACAL-L5-912 | C1, S2 | ACAL912 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Ne plus écrire comme production du devis le `result.annualKwh` racine (toit seul) quand le document chiffre au |
 | C-ACAL-L5-913 | C1, S2 | ACAL913 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser comme module de départ de chaque pan le premier module CHOISISSABLE du catalogue (« module de départ — à |
 | C-ACAL-L5-914 | C1, S2 | ACAL914 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Refuser « Générer le devis » quand la composition chiffre un autre module que le dessin (kWc composé ≠ kWc des |
 | C-ACAL-L5-915 | C1, S1 | ACAL915 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dire, avant « Générer le devis », ce que le devis va chiffrer : « Le devis chiffre : Zone 1 (42) + Champ au so |
-| C-ACAL-L5-916 | C1, S1 | ACAL916 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Composer chaque surface de pose à SON module (son `moduleId` s'il en porte un, sinon son `moduleWc`) même sans |
-| C-ACAL-L5-917 | C18, S2 | ACAL917 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Donner au tableau Site le kWc d'un champ au sol dont la puissance est saisie (plus « puissance du module non r |
+| C-ACAL-L5-916 | C1, S1 | ACAL916 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Composer chaque surface de pose à SA puissance (`moduleWc`) même sans `modules[]` |
 | C-ACAL-L5-918 | C6, S2 | ACAL918 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire calculer par le moteur la surface créée par « Enregistrer le contour tracé » (bloc `engine` stocké, modu |
-| C-ACAL-L5-919 | C1, S1 | ACAL919 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Paver le Terrain au pas ANTI-OMBRAGE de la latitude du site (surface `sol` acceptée par le contrat et envoyée) |
-| C-ACAL-L5-920 | C18, S1 | ACAL920 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Quand l'allée entre rangées est IMPOSÉE et qu'une rangée ombre la suivante, l'onglet Terrain le dit avec des c |
-| C-ACAL-L5-921 | C10, S1 | ACAL921 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser UNE convention pour `rowAzimuthDeg` : l'azimut de FACE des tables (180 = sud, comme l'écran), sans + 90° |
+| C-ACAL-L5-921 | C10, S1 | ACAL921 | PLAN_AUDIT_TRANSVERSE | GATED (ne PAS auto-construire) | Poser UNE convention pour `rowAzimuthDeg` : l'azimut de FACE des tables (180 = sud, comme l'écran), sans + 90° |
 | C-ACAL-L5-922 | C1, S2 | ACAL922 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Demander une CONFIRMATION avant de générer un devis que rien ne dimensionne (ni facture ni taille souhaitée) : |
 | C-ACAL-L5-923 | C18, S2 | ACAL923 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser à l'écran la question de confirmation : « Aucune facture : le devis remplit le toit (34,08 kWc, 168 800, |
-| C-ACAL-L5-924 | C6, S1 | ACAL924 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire arriver la consommation du lead jusqu'au calcul de l'atelier calepinage : au démarrage, la consommation  |
 | C-ACAL-L5-925 | C6, S2 | ACAL925 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Garder la cible hydratée quand on clique « Effacer » : après `reset`, le nombre de panneaux voulu redevient ce |
 | C-ACAL-L5-926 | C6, S2 | ACAL926 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser le dernier coin quand on finit un tracé par un double-clic à un NOUVEL endroit (le coin en attente est p |
 | C-ACAL-L5-927 | C1, S2 | ACAL927 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire dépendre de la POSE les quantités « Structures acier » et « Socles » de la composition (D-ACAL-39) |
 | C-ACAL-L5-928 | C3, S2 | ACAL928 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Limiter les inclinaisons essayées en Est-Ouest aux inclinaisons constructibles de V6 (10, 12, 15°) |
 | C-ACAL-L5-929 | C3, S2 | ACAL929 | WEB_PLAN | M1 bloquant-fondateur | Ajouter à `estimatorBrainCommun.ts` un départage par énergie du module supplémentaire (`departageParModule`),  |
-| C-ACAL-L5-933 | C3, S2 | ACAL933 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Imprimer sur la planche A3 l'échelle réellement dessinée (tracé calé sur une échelle normalisée, mention ident |
 | C-ACAL-L5-934 | C3, S2 | ACAL934 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir un état à trois valeurs du dossier électrique (« prêt », « à compléter : N points », « bloquant : N »), |
-| C-ACAL-L5-935 | C3, S2 | ACAL935 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire lire à l'onglet Verdict électrique, au cadre de génération du devis et au résumé de l'affectation le mêm |
-| C-ACAL-L5-936 | C3, S3 | ACAL936 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire lire au verdict de raccordement les phases saisies dans les Saisies électriques quand l'onglet Raccordem |
-| C-ACAL-L5-937 | C15, S2 | ACAL937 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter à Réglages la section « Norme électrique » (la norme que le dépôt sait citer, et « Aucune ») et y fair |
-| C-ACAL-L5-938 | C15, S2 | ACAL938 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter à Réglages la section « Lestage » (vent de référence, terrain, coefficients de pression, frottement, c |
+| C-ACAL-L5-935 | C3, S2 | ACAL935 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire lire au cadre de génération du devis et au résumé de l'affectation le même état et les mêmes mots (« Prê |
+| C-ACAL-L5-937 | C15, S2 | ACAL937 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter à « Sources des paramètres normatifs » le lien « Choisir la norme » vers le champ de norme de Réglages |
+| C-ACAL-L5-938 | C15, S2 | ACAL938 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire atterrir « Aller aux réglages de lestage » du panneau Masse et lestage sur le champ du premier paramètre |
 | C-ACAL-L5-939 | C9, S3 | ACAL939 | PLAN_AUDIT_CALEPINAGE | M2 | Retirer la pesanteur et la masse volumique de l'air des paramètres de lestage à saisir : constantes fixes docu |
 | C-ACAL-L5-940 | C15, S2 | ACAL940 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Refuser la simulation UNE fois en listant TOUTES les clés manquantes (`manquants[]`) et faire ouvrir à chaque  |
-| C-ACAL-L5-941 | C15, S2 | ACAL941 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Désactiver l'option « tmy » du mode météo dans Réglages, avec sa raison, tant que la météo PVGIS n'est pas ram |
 | C-ACAL-L5-942 | C18, S2 | ACAL942 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dire « Conception enregistrée — il manque le calcul » après un enregistrement, pas « Aucune conception enregis |
-| C-ACAL-L5-943 | C13, S2 | ACAL943 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | N'appeler l'export horaire qu'une fois la simulation faite : plus de 409 ni de toast à l'ouverture de Producti |
-| C-ACAL-L5-944 | C13, S2 | ACAL944 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Laisser au PDF d'étude le temps d'être rendu : délai propre au téléchargement d'un document et « Rendu en cour |
 | C-ACAL-L5-945 | C6, S2 | ACAL945 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Enregistrer hors ligne sans mentir : « Pas de réseau — enregistré sur ce téléphone, envoi au retour » ET l'env |
 | C-ACAL-L5-946 | C15, S2 | ACAL946 | PLAN_AUDIT_CALEPINAGE | M2 | Remplacer « Approuver » par « La conception doit être approuvée par un autre relecteur » pour l'auteur, et n'a |
 | C-ACAL-L5-947 | C6, S2 | ACAL947 | PLAN_AUDIT_CALEPINAGE | M2 | Lister d'un coup toutes les erreurs de réglage, près du bouton « Enregistrer les réglages », avec ce que le se |
@@ -428,7 +408,6 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-950 | C15, S2 | ACAL950 | PLAN_AUDIT_CALEPINAGE | M2 | Sortir la puce « Plein écran » de la pile des boutons de zoom : en haut à gauche sous la boussole, fond opaque |
 | C-ACAL-L5-951 | C15, S2 | ACAL951 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire remplir l'écran au plein écran du téléphone : une règle CSS qui l'emporte sur `position: relative` |
 | C-ACAL-L5-952 | C15, S2 | ACAL952 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Au toucher, un doigt fait défiler la page et deux doigts déplacent la carte de l'atelier : `cooperativeGesture |
-| C-ACAL-L5-953 | C10, S2 | ACAL953 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Donner une hauteur à chaque obstacle : le panneau d'un obstacle porte « Hauteur (m) » |
 | C-ACAL-L5-954 | C18, S2 | ACAL954 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser « Terminer le tracé » sur la carte, pas sous la flottaison : bouton `#rp9-finish` remonté dans l'envelop |
 | C-ACAL-L5-955 | C15, S2 | ACAL955 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire passer « Enregistrer » avant « Générer le devis » : la barre d'enregistrement se rend au-dessus du bloc  |
 | C-ACAL-L5-956 | C15, S2 | ACAL956 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Cadrer le toit à la fermeture du contour : la caméra prend le zoom qui montre le contour entier, à 58° comme a |
@@ -448,7 +427,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-970 | C3, S3 | ACAL970 | PLAN_AUDIT_CALEPINAGE | M2 | Aligner le tableau « Par pan » de la production et donner aux listes et à la case de l'onglet Batterie le styl |
 | C-ACAL-L5-971 | C18, S3 | ACAL971 | PLAN_AUDIT_CALEPINAGE | M2 | Proposer le genre et le pays d'un gabarit en mots français et un sélecteur de fichier stylé en français |
 | C-ACAL-L5-972 | C18, S3 | ACAL972 | PLAN_AUDIT_CALEPINAGE | M2 | Masquer l'épingle du lead dessinée par-dessus les panneaux dès que le toit est fermé |
-| C-ACAL-L5-973 | C1, S2 | ACAL973 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Faire imprimer par le PDF, au niveau de règles 15, la production de la pose réelle servie par le calepinage en |
+| C-ACAL-L5-973 | C1, S2 | ACAL973 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Faire imprimer par le PDF, au niveau de règles 15 et SANS bloc horaire rangé, la production de la pose réelle  |
 | C-ACAL-L5-974 | C15, S3 | ACAL974 | PLAN_AUDIT_CALEPINAGE | M2 | Proposer la température minimale et maximale du site tirées de la météo, marquées « proposée — à confirmer » |
 | C-ACAL-L5-975 | C1, S3 | ACAL975 | PLAN_AUDIT_CALEPINAGE | M2 | Ne plus proposer de gain bifacial pour une pose affleurante |
 | C-ACAL-L5-976 | C1, S1 | ACAL976 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Ne publier ni TRI ni retour dans l'onglet Économie quand la consommation du lead est inconnue |
@@ -468,33 +447,93 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-990 | C1, S3 | ACAL990 | PLAN_AUDIT_CALEPINAGE | M2 | Faire échouer la CI dès qu'un texte SERVI en direct contient une clé, un chemin, un code interne ou une valeur |
 | C-ACAL-L5-991 | C10, S2 | ACAL991 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Poser SEUL sur main le contrat `chiffrage_conception.json` de la porte unique de chiffrage d'`apps/ventes` (en |
 | C-ACAL-L5-992 | C1, S2 | ACAL992 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Écrire la porte unique `chiffrer_conception` (module `domain/chiffrage_conception.py`, ré-exportée par `apps.v |
-| C-ACAL-L5-993 | C1, S2 | ACAL993 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir dans le `design-context` du calepinage un bloc `chiffrage` (kWc, production année 1, économie année 1,  |
+| C-ACAL-L5-993 | C1, S2 | ACAL993 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir dans le `design-context` du calepinage un bloc `chiffrage` (kWc, production année 1, économie année 1 e |
 | C-ACAL-L5-994 | C1, S2 | ACAL994 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire afficher par l'atelier ERP la production et l'économie SERVIES par le bloc `chiffrage` (à l'ouverture et |
 | C-ACAL-L5-995 | C1, S2 | ACAL995 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Montrer dans l'onglet Production du calepinage, sous le résultat de la simulation, la ligne « Le devis annonce |
 | C-ACAL-L5-996 | C10, S2 | ACAL996 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser SEUL sur main le contrat `calepinage_productible_pose.json` : le rendement de la pose réelle servi au mo |
-| C-ACAL-L5-997 | C1, S2 | ACAL997 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir `productible_pose_servi(devis_id, company)` dans les sélecteurs du calepinage, à côté d'`ombrage_servi` |
+| C-ACAL-L5-997 | C1, S2 | ACAL997 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Servir le rendement de la pose réelle dans un module frère `apps/calepinage/selectors_devis.py` : `productible |
 | C-ACAL-L5-998 | C1, S2 | ACAL998 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Déclarer le niveau de règles 15 (`REGLES_POSE_REELLE_2111`) qui porte, pour toute la vague, la production de l |
-| C-ACAL-L5-999 | C1, S2 | ACAL999 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire lire au moteur horaire résidentiel, au niveau de règles 15, le productible de la pose réelle servi par l |
-| C-ACAL-L5-1000 | C1, S2 | ACAL1000 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Paramétrer le dry-run des niveaux de règles par `--niveau N` : pour chaque devis de la société de niveau < N ( |
-| C-ACAL-L5-1001 | C1, S2 | ACAL1001 | PLAN_AUDIT_DEVIS | GATED (ne PAS auto-construire) | Rendre courant le niveau de règles 15 : `REGLES_COURANTES` = 15 et migration qui ne passe que les brouillons j |
+| C-ACAL-L5-999 | C1, S2 | ACAL999 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Écrire LE résolveur de la base de production d'un devis, `horaire/productible_pose.py::base_de_production(devi |
+| C-ACAL-L5-1000 | C1, S2 | ACAL1000 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Paramétrer le dry-run des niveaux de règles par `--niveau N` : pour chaque devis de la société de niveau < N,  |
+| C-ACAL-L5-1001 | C1, S2 | ACAL1001 | PLAN_AUDIT_DEVIS | GATED (ne PAS auto-construire) | Rendre courant le niveau de règles 15 : `REGLES_COURANTES` = 15, défaut du modèle `Devis.regles_calcul` = `REG |
 | C-ACAL-L5-1002 | C2, S3 | ACAL1002 | PLAN_AUDIT_CALEPINAGE | M2 | Réunir la lecture des pans POSÉS d'un document `roof_layout` en une fonction pure `pans_poses(document)` du no |
 | C-ACAL-L5-1003 | C2, S3 | ACAL1003 | PLAN_AUDIT_CALEPINAGE | M2 | Faire lire `pans_poses` par la planche A3, le DXF et le plan de câblage au lieu de leur propre lecture du docu |
-| C-ACAL-L5-1004 | C2, S3 | ACAL1004 | PLAN_AUDIT_DEVIS | M2 | Marquer `origine_conception: rapide` le devis créé par le bouton « Devis automatique » de la fiche lead, sans  |
+| C-ACAL-L5-1004 | C2, S3 | ACAL1004 | PLAN_AUDIT_DEVIS | M2 | Marquer `origine_conception: rapide` le devis créé par le bouton « Devis automatique » de la fiche lead, clé d |
 | C-ACAL-L5-1005 | C10, S3 | ACAL1005 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL sur main la clé `etat_conception` (`rapide` / `complet`) au contrat `calepinage_detail.json` |
 | C-ACAL-L5-1006 | C2, S3 | ACAL1006 | PLAN_AUDIT_CALEPINAGE | M2 | Marquer `rapide` le calepinage créé ou adopté à l'ouverture d'un devis automatique jamais dessiné, et le passe |
 | C-ACAL-L5-1007 | C10, S3 | ACAL1007 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans l'atelier, sur un calepinage `rapide`, le bandeau « Conception rapide — à vérifier sur place » a |
-| C-ACAL-L5-1008 | C1, S2 | ACAL1008 | PLAN_AUDIT_CALEPINAGE | M2 | Refuser qu'un calepinage `rapide` sorte côté client : planche A3, vue 3D publique et « paramètres du site » du |
+| C-ACAL-L5-1008 | C1, S2 | ACAL1008 | PLAN_AUDIT_CALEPINAGE | M2 | Refuser qu'un calepinage `rapide` sorte côté client : la planche A3 est refusée, l'annexe « paramètres du site |
 | C-ACAL-L5-1009 | C15, S3 | ACAL1009 | PLAN_AUDIT_CALEPINAGE | M2 | Poser un cliquet des imports croisés entre `apps/ventes` et `apps/calepinage` : un test compte les fichiers no |
 | C-ACAL-L5-1010 | C1, S2 | ACAL1010 | PLAN_AUDIT_CALEPINAGE | M2 | Étendre la garde « une grandeur, une valeur » d'ACAL982 au bloc `chiffrage` : pour un calepinage lié à un devi |
-| C-ACAL-L5-1011 | C1, S2 | ACAL1011 | PLAN_AUDIT_MOTEUR | M2 | Ajouter au correcteur de nuit la règle `CAL_PRODUCTION_DEVIS_VS_CALEPINAGE` : un devis de niveau 15 lié à un c |
+| C-ACAL-L5-1011 | C1, S2 | ACAL1011 | PLAN_AUDIT_MOTEUR | M2 | Ajouter au correcteur de nuit la règle `CAL_PRODUCTION_DEVIS_VS_CALEPINAGE` : un BROUILLON de niveau 15 dont l |
 | C-ACAL-L5-1026 | C1, S3 | ACAL1026 | WEB_PLAN | M2 | Monter sous la visionneuse 3D de la page publique du devis le réglage « Heure et mois » du soleil |
 | C-ACAL-L5-1027 | C13, S4 | ACAL1027 | PLAN_AUDIT_CALEPINAGE | M2 | Masquer le lien « Raccourcis clavier (?) » sur un appareil sans clavier (écran tactile principal) |
 | C-ACAL-L5-1028 | C18, S3 | ACAL1028 | PLAN_AUDIT_CALEPINAGE | M2 | Montrer, sur l'onglet Schéma unifilaire quand la fiche technique est incomplète, un croquis de principe grisé  |
 | C-ACAL-L5-1029 | C1, S2 | ACAL1029 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dire combien de modules du document sont posés à plat sur un toit en pente (affleurants) |
-| C-ACAL-L5-1030 | C15, S3 | ACAL1030 | PLAN_AUDIT_DEVIS | M2 | Ajouter à la surface figée des sélecteurs de ventes la fonction de compatibilité du matériel posée par ACAL901 |
-| C-ACAL-L5-1031 | C19, S3 | ACAL1031 | PLAN_AUDIT_CALEPINAGE | Acceptation en direct (orchestrateur, jamais une lane) | Acceptation live de la vague 2 du complément (ACAL1032, ACAL492-521, ACAL526-537, ACAL546-555, ACAL557-569, ACAL572-582, |
+| C-ACAL-L5-1031 | C19, S3 | ACAL1031 | PLAN_AUDIT_CALEPINAGE | Acceptation en direct (orchestrateur, jamais une lane) | Acceptation live de la vague 2 du complément ( ACAL492-521, ACAL526-531, ACAL533-537, ACAL546-555, ACAL557-569 |
+| C-ACAL-L5-1032 | C4, S2 | ACAL1032 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter « Dupliquer » et « Poser en série » dans la carte « Obstacle sélectionné » de l'atelier ERP |
+| C-ACAL-L5-1033 | C1, S1 | ACAL1033 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Ne plus imprimer la vignette « Économies estimées / an » du format « une page » quand aucune donnée réelle n'a |
+| C-ACAL-L5-1041 | C10, S3 | ACAL1041 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL sur `main` le contrat de la clé racine `imageCapture` (date de prise de vue de l'image + source) et |
+| C-ACAL-L5-1049 | C4, S3 | ACAL1049 | PLAN_AUDIT_CALEPINAGE | M2 | Faire servir par la détection du toit les obstacles rendus par le fournisseur, validés côté calepinage |
+| C-ACAL-L5-1050 | C4, S3 | ACAL1050 | PLAN_AUDIT_SECURITE | M2 | Faire demander les obstacles au fournisseur d'IA de détection du toit et les valider avec `valider_obstacles` |
+| C-ACAL-L5-1065 | C2, S3 | ACAL1065 | PLAN_AUDIT_CALEPINAGE | M2 | Imprimer les repères de chantier saisis sur la feuille A4 du pan qui les contient, avec un symbole par type, l |
+| C-ACAL-L5-1081 | C10, S3 | ACAL1081 | PLAN_AUDIT_TRANSVERSE | M2 | Poser SEUL sur main, dans le contrat de l'import PVsyst, les clés `refus` (chaîne vide) et `conversions` (list |
+| C-ACAL-L5-1113 | C10, S3 | ACAL1113 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Choisir la pompe du calepinage avec `choisir_pompe` du devis, en lui passant le calage et le tubage, et rendre |
+| C-ACAL-L5-1114 | C10, S3 | ACAL1114 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Plafonner le débit du pompage au débit d'exploitation du forage, alerter quand le forage ne suffit pas et rend |
+| C-ACAL-L5-1145 | C1, S2 | ACAL1145 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire dire à `cible_depuis_lead` POURQUOI il ne dimensionne pas : clé additive `motif_code` (le motif du refus |
+| C-ACAL-L5-1169 | C1, S2 | ACAL1169 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Donner au moteur horaire un paramètre `base_production` (`{kwh_kwc_annuel, kwh_kwc_mensuel[12], pertes_incluse |
+| C-ACAL-L5-1170 | C1, S2 | ACAL1170 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Faire lire la base de production (`base_de_production`, ACAL999) par les lecteurs du MOTEUR : le bloc horaire  |
+| C-ACAL-L5-1171 | C1, S2 | ACAL1171 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Calculer le contrôle `un_seul_chiffre` du « prêt à envoyer ? » : dire, pour un calepinage lié à un devis de ni |
+| C-ACAL-L5-1172 | C1, S2 | ACAL1172 | PLAN_AUDIT_STOCK | M1 bloquant-fondateur | Semer au catalogue le produit « Kit de fixation toiture inclinée (crochets, rails, pinces) » SANS prix, grisé  |
+| C-ACAL-L5-1173 | C2, S3 | ACAL1173 | PLAN_AUDIT_DEVIS | M2 | Étendre le dry-run `comparer_compte_moteur_calepinage` par `--calepinages` : pour chaque calepinage actif d'un |
+| C-ACAL-L5-1185 | C4, S3 | ACAL1185 | PLAN_AUDIT_CALEPINAGE | M2 | Dessiner les poignées des coins à la hauteur du toit en vue 3D |
+| C-ACAL-L5-1186 | C2, S2 | ACAL1186 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL sur `main` le contrat du sixième contrôle de raccordement « Limitation de l'injection » et du dixiè |
+| C-ACAL-L5-1187 | C2, S2 | ACAL1187 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Rendre « attention — limite d'injection non garantie » quand un champ à micro-onduleurs porte un plafond d'inj |
+| C-ACAL-L5-1188 | C2, S2 | ACAL1188 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans « Raccordement » le sixième contrôle et le champ « Dispositif qui limite l'injection » |
+| C-ACAL-L5-1189 | C15, S3 | ACAL1189 | PLAN_AUDIT_CALEPINAGE | M2 | Mesurer chaque étape du mode guidé, pas seulement le premier écran |
+| C-ACAL-L5-1190 | C15, S3 | ACAL1190 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'étape Toit du mode guidé au panneau de la maquette |
+| C-ACAL-L5-1191 | C15, S3 | ACAL1191 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'écran guidé de l'étape Électrique à la maquette : Verdict et Équipements ouverts, les cinq autres se |
+| C-ACAL-L5-1192 | C15, S3 | ACAL1192 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'étape Résultats du mode guidé à la production et à ses pertes |
+| C-ACAL-L5-1193 | C15, S3 | ACAL1193 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'étape Documents du mode guidé à l'écran de fin de la maquette |
+| C-ACAL-L5-1194 | C10, S1 | ACAL1194 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Lister en lecture seule les calepinages dont l'orientation lue des surfaces de pose changera avec ACAL921 |
+| C-ACAL-L5-1195 | C1, S1 | ACAL1195 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire calculer l'étude commerciale et industrielle d'un NOUVEAU devis de niveau 15 lié à un calepinage simulé  |
+| C-ACAL-L5-1196 | C1, S2 | ACAL1196 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Ne plus servir la vue 3D publique d'un devis dont le calepinage est une conception « rapide » non vérifiée |
 
-## Tâches retirées à la réconciliation (doublons ou décisions)
+## Vérification du 21/11
+
+Après la première intégration (472 tâches, PR #1517), la vague a été relue en entier contre le code de `main` (worktree de vérification à jour de `main` le 21/11), puis corrigée hors dépôt dans des copies d'édition, et réassemblée ici.
+
+- **17 vérificateurs neufs, un par lot**, ont relu chaque tâche de leur lot contre le code (rapports `rapport-<lot>.md` du dossier de travail) : 449 verdicts. Le lot D8 (moteur partagé, 22 tâches) a été relu en entier par la relecture adverse finale. Verdicts comptés dans les rapports :
+
+| Lot | Tâches relues | OK | À corriger | Doublon | Déjà construit (sans objet) | À scinder |
+|---|---|---|---|---|---|---|
+| AUTRES-PLANS | 32 | 15 | 17 | 0 | 0 | 0 |
+| D1-a | 22 | 10 | 12 | 0 | 0 | 0 |
+| D1-b | 21 | 7 | 12 | 1 | 0 | 1 |
+| D2-a | 30 | 22 | 7 | 1 | 0 | 0 |
+| D2-b | 29 | 12 | 11 | 6 | 0 | 0 |
+| D3-a | 27 | 9 | 16 | 2 | 0 | 0 |
+| D3-b | 27 | 7 | 15 | 4 | 1 | 0 |
+| D4-a | 28 | 15 | 13 | 0 | 0 | 0 |
+| D4-b | 28 | 14 | 13 | 1 | 0 | 0 |
+| D4-c | 26 | 14 | 11 | 0 | 1 | 0 |
+| D5-a | 29 | 24 | 4 | 0 | 0 | 1 |
+| D5-b | 28 | 19 | 9 | 0 | 0 | 0 |
+| D6-a | 24 | 2 | 22 | 0 | 0 | 0 |
+| D6-b | 24 | 10 | 13 | 1 | 0 | 0 |
+| D7-a | 25 | 10 | 5 | 8 | 1 | 1 |
+| D7-b | 25 | 19 | 3 | 2 | 1 | 0 |
+| D7-c | 24 | 16 | 8 | 0 | 0 | 0 |
+| **total** | **449** | **225** | **191** | **26** | **4** | **3** |
+
+- **Deux passes de correction par lot**, puis **une passe de cohérence** de toute la vague (aucun cycle de `@after`, aucun renvoi vers une tâche retirée, aucun id inconnu ; seules les neuf tâches de la vague 0 déclarent `apps/calepinage/selectors.py`).
+- **Deux relectures adverses au modèle le plus fort** : l'architecture du moteur partagé (D8), puis la vague entière — 8 bloquants, dont la chaîne D-ACAL-36 réécrite (production de la pose réelle atteignable au PDF, porte fondateur qui ne se contourne plus, liste des écarts produite après le code qu'elle montre), les migrations rangées avec leur modèle, 32 dépendances entre plans passées en vrais `@after`, et les tâches qui déclaraient `selectors.py` ramenées à la vague 0.
+- **Ce qui a changé** : 23 tâches retirées (doublons, déjà construites ou migrations remises avec leur modèle — liste ci-dessous) ; 26 créées (ACAL1033, ACAL1041, ACAL1049, ACAL1050, ACAL1065, ACAL1081, ACAL1113, ACAL1114, ACAL1145, ACAL1169, ACAL1170, ACAL1171, ACAL1172, ACAL1173, ACAL1185, ACAL1186, ACAL1187, ACAL1188, ACAL1189, ACAL1190, ACAL1191, ACAL1192, ACAL1193, ACAL1194, ACAL1195, ACAL1196), dont les moitiés des trois scissions (ACAL530, ACAL806, ACAL938) et les douze tâches des manques de la relecture finale (ACAL1185 à ACAL1196) ; les autres corrigées clause par clause. Décompte final : 475 tâches.
+- Couverture : 427 des 475 tâches vivantes portent un verdict de vérificateur ; les 22 tâches du lot D8 ont été relues par la relecture adverse ; les 26 tâches créées pendant les corrections n'ont eu que la passe de cohérence.
+
+## Tâches retirées
+
+### À la première réconciliation (doublons ou décisions)
 
 - ACAL679 — D-ACAL-43 : gabarit de schéma choisi par distributeur du lead = profils par distributeur (réserve)
 - ACAL680 — D-ACAL-43 : affichage du gabarit par distributeur, suit ACAL679 (réserve)
@@ -516,6 +555,32 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 - ACAL931 — doublon d'ACAL601 + ACAL605 (emprise orientée des modules à la planche et au plan de câblage)
 - ACAL932 — doublon d'ACAL604 (emprise vraie des modules et tracé unique du toit au DXF)
 
+### À la vérification du 21/11
+
+- ACAL532 — doublon de ACAL593 (et du contrat ACAL599, des types ACAL1065)
+- ACAL570 — la migration est portée par la tâche qui ajoute le champ — ACAL567
+- ACAL644 — doublon de ACAL733
+- ACAL656 — déjà construit — `backend/django_core/apps/stock/importers/fiche_pan_ond.py:90` (`'muVocSpec': ('temp_coeff_voc_pct_c', 'mv_par_c_relatif_voc')`) et `:184-188` (÷ (Voc × 10), refus si Voc ≤ 0), assertions `backend/django_core/apps/stock/test_cal_import_pan_ond.py:100-106` (CALX356 cochée, `docs/PLAN2.md`) ; la seule part restante (nommer la conversion dans l'aperçu) est reprise par ACAL658.
+- ACAL660 — la migration est portée par la tâche qui ajoute le champ — ACAL659 (six colonnes), ACAL720 (`sous_chaines_par_module`), ACAL816 (`var_bus_dc_redresse_v`)
+- ACAL681 — doublon de ACAL752
+- ACAL682 — doublon de ACAL736
+- ACAL683 — doublon de ACAL736
+- ACAL684 — doublon de ACAL737
+- ACAL741 — sans objet — le `.OND` réel du dépôt (`backend/django_core/apps/stock/contract_samples/pvsyst/CPS_SCH275KTL-DO-US-800-250kW_275kVA_1.OND`, lignes 29 et 51-56) publie TROIS points de déclassement (`TPNom=45.0`/`PNomConv=250`, `TPLim1=50.0`/`PLim1=225`, `TPLimAbs=60.0`/`PLimAbs=90`, soit 2 % puis 5,4 % de la puissance nominale par °C) : une paire unique (début, pente) ne s'en déduit pas sans extrapolation, et la fiche d'ACAL659 n'a qu'une pente ; lire la courbe par points exigerait un champ de fiche par segments (ACAL659, avec sa migration) et une étape qui l'interpole (ACAL740) — décision de plan, non d'une tâche d'import ; l'appelant de l'import est d'ailleurs `parse_pan_ond_bytes` (`apps/stock/views/fiche_technique.py`), non `propose_mapping`.
+- ACAL766 — déjà construit — `frontend/src/features/calepinage/production/PanneauProduction.jsx:346` (`geometriePresente = (data?.pose?.total_modules ?? 0) > 0 && data?.simule === true`, transmis à `TapisHoraire`) et `frontend/src/features/calepinage/production/TapisHoraire.jsx:232-239` (si `!geometriePresente`, aucune requête `export-csv`, `setRefus(SANS_SERIE)`)
+- ACAL881 — doublon de ACAL549 (lot D2-a ; contrat ACAL555, impression ACAL550) : même objet (nommer la cause d'un pan où aucun module ne tient, mêmes quatre causes dans le même ordre, source HelioScope N28) ; prémisse fausse : `layoutEditor.ts:1444` désactive « Remplir » quand `free <= 0`, la lattice est celle du plan gagnant (`ensureLayoutState`, l. 1345), `count` 0 ne sort donc pas d'un clic.
+- ACAL917 — doublon de ACAL607
+- ACAL919 — doublon de ACAL606 (pas anti-ombrage du Terrain, contrat `sol` de `pose.json`) et d'ACAL609 (écran)
+- ACAL920 — doublon de ACAL609 (alerte « l'allée imposée ombre la rangée suivante »)
+- ACAL924 — doublon de ACAL776 + ACAL777 (lot D5-a : facture du lead servie par `design-context` puis lue par l'atelier, même exemple 900 MAD ; reprise écrite dans les deux)
+- ACAL933 — doublon de ACAL602 (échelle réelle imprimée) et d'ACAL603 (cotes du toit seul, DXF)
+- ACAL936 — doublon de ACAL687 (phases du raccordement lues de l'entrée électrique)
+- ACAL941 — doublon de ACAL770 (désactiver « tmy » dans Réglages, motif piloté par le serveur)
+- ACAL943 — déjà construit — `frontend/src/features/calepinage/production/PanneauProduction.jsx:346` (`geometriePresente = total_modules > 0 && data?.simule === true`) et `production/TapisHoraire.jsx:232` (`!geometriePresente` ⇒ aucune requête `export-csv`), livré par ACAL490.
+- ACAL944 — doublon de ACAL768
+- ACAL953 — doublon de ACAL493
+- ACAL1030 — fondue dans ACAL901, devenue tâche atomique à deux propriétaires
+
 ## Réserve (capacités non écrites, une ligne chacune)
 
 ### Réserve — cartes du backlog qui n'ont pas donné de tâche (vague 2)
@@ -530,6 +595,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 #### D3 — Électrique
 - CAP-D3-17 — Micro-onduleurs ≠ injection zéro, place et sens de la pince CT — aucune tâche finale ; raison non écrite dans les lots (score 6, rang 10) ; à confirmer.
 - CAP-D3-23 — Réserver une entrée MPPT et des modules pour une extension — preuve mince (2 fils, 1 lane), score 2 (rang 27).
+- CAP-D3-17 (seconde moitié : pince de mesure au schéma et à la nomenclature) — non écrite : `core/electrique/schema.py` ne dessine le limiteur que sur le chemin C&I moyenne tension ; un champ `micro_seul` n'a pas de fiche onduleur : reprendre après ACAL1187.
 
 #### D4 — Simulation, résultats, rapport
 - CAP-D4-25 — Rapport éditable : variables de texte et export DOCX — jumelle de CAP-D6-18, écartée d'office pour D4 ; variables non reprises, DOCX = dépendance neuve (voir ligne fondateur Word).
@@ -592,19 +658,22 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 - Profils par distributeur marocain (pièces, limites, choix du gabarit par distributeur du lead) — D-ACAL-43 : un dossier générique d'abord ; ex-ACAL785, ACAL823, ACAL825, ACAL826, ACAL899.
 - Export Word du rapport interne — preuve mince (deux fils de forum), dépendance gratuite : choix pris seul ; ex-ACAL900.
 
-Total : 53 cartes ou sous-parties en réserve.
 
 - Gabarit de schéma choisi par distributeur du lead (ex-ACAL679, ACAL680) — D-ACAL-43 : profils par distributeur plus tard.
 
+Total : 56 cartes ou sous-parties en réserve.
+
 ## Constats de relecteurs retenus restés sans tâche
 
-- T1-T1-013 (P2, calepinage) — Poser les poignees sur la hauteur du toit extrude
+- aucun : chaque constat retenu du tour 1 est cité par une tâche de cette vague ou couvert par une tâche existante (champ `tache` de `registre/evenements/T1-consolidation.jsonl`) ; T1-T1-013 (poignées des coins à la hauteur du toit) a maintenant sa tâche, ACAL1185.
 
 ## Limites (dites telles quelles)
 
-- Aucun test exécuté : chaque « test rouge d'abord » est attendu, non mesuré ; aucune tâche n'a été construite.
+- Aucun test exécuté : chaque « test rouge d'abord » est attendu, non observé ; aucune tâche n'a été construite.
+- Les extractions proposées pour les fichiers de plus de 2 000 lignes (fonction déplacée dans un fichier voisin) sont des lectures du code, à confirmer à la construction.
+- Le nombre de calepinages touchés par ACAL921 (orientation des surfaces de pose) est inconnu tant qu'ACAL1194 n'a pas tourné sur une copie des données.
+- Le document client agricole : D-ACAL-46 (21/11 au soir) veut que le volume d'eau journalier imprimé suive la pose réelle des panneaux, derrière la liste des écarts ; ses tâches (lot pompage) ne sont pas encore écrites dans cette vague. Le bilan du réservoir jour par jour reste interne (D-ACAL-41).
 - Les chiffres de l'étude (valeurs publiées, forums) sont à relire à leur source par le constructeur avant d'entrer dans le produit (WebFetch rend des résumés).
 - Rien n'a été vu sur une vraie image satellite (fond neutre de la pile de revue).
 - Les résultats de simulation et les PDF lourds n'ont pas été observés sur la pile : pas de worker Celery au tour 1 (ACAL1031 l'exige).
-- Lecture du code sur `207c7a70e` ; les ancres ont été revérifiées sur `origin/main@919b49b7d` (trois ancres réalignées : `TotalKpis` remplacé par `ResultatHeros` par ACAL443) ; une prémisse peut avoir bougé depuis sur l'autre poste : chaque tâche se re-vérifie avant construction.
-- Les dépendances vers une tâche d'un autre plan sont écrites en phrase, le planificateur ne les impose pas.
+- Clauses lues sur `684d77f02` ; une prémisse peut bouger avant la construction : chaque tâche se re-vérifie avant d'être construite.
