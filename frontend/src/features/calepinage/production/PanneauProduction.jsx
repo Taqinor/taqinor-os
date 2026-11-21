@@ -6,7 +6,7 @@ import useResource from '../../../hooks/useResource'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Button, Card, Stat } from '../../../ui'
-import { PARAM_ONGLET } from '../atelier/onglets'
+import ListeManques from './ListeManques'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
   LIBELLE_BOUTON, etatCalcul, refusDepuisErreur, refusRenvoieAuxReglages,
@@ -116,7 +116,7 @@ export function BandeauPerime({ motif }) {
    n'en exige aucun.
    ========================================================================== */
 export function BoutonCalculer({
-  calepinageId, data = null, avertissements = [], intervalleMs = 2000, onTermine,
+  calepinageId, data = null, avertissements = [], manque = [], intervalleMs = 2000, onTermine,
   declenchement = 0,
 }) {
   const peutGerer = useHasPermission('calepinage_gerer')
@@ -192,19 +192,16 @@ export function BoutonCalculer({
         </p>
       )}
 
-      {avertissements.length > 0 && (
+      {(manque.length > 0 || avertissements.length > 0) && (
         <div data-testid="calx48-manques">
           <p className="text-xs font-medium text-muted-foreground">Ce qui manque encore :</p>
-          <ul className="list-disc pl-5 text-xs text-muted-foreground">
-            {avertissements.map((a) => <li key={a}>{a}</li>)}
-          </ul>
-          <Link
-            to={`/calepinage/${calepinageId}?${PARAM_ONGLET}=pertes`}
-            className="text-xs font-medium text-primary underline"
-            data-testid="calx48-lien-pertes"
-          >
-            Ouvrir l’onglet Pertes
-          </Link>
+          {manque.length > 0
+            ? <ListeManques calepinageId={calepinageId} manque={manque} />
+            : (
+              <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                {avertissements.map((a) => <li key={a}>{a}</li>)}
+              </ul>
+            )}
         </div>
       )}
 
@@ -346,7 +343,7 @@ function TableauParPan({ parPan, total = null }) {
   )
 }
 
-export default function PanneauProduction({ calepinageId, intervalleMs = 2000 }) {
+export default function PanneauProduction({ calepinageId, intervalleMs = 2000, parcours = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -384,6 +381,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000 })
         calepinageId={id}
         data={data}
         avertissements={data?.simule ? [] : (data?.avertissements ?? [])}
+        manque={parcours?.manque ?? []}
         intervalleMs={intervalleMs}
         onTermine={refetch}
       />

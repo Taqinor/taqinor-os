@@ -336,6 +336,27 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
   })
 })
 
+describe('ACAL397 — `?champ=` ouvre le champ exact', () => {
+  const rendreAvecChamp = (champ) => render(
+    <MemoryRouter initialEntries={[`/calepinage/${ID}?${PARAM_ONGLET}=pertes&champ=${champ}`]}>
+      <Routes>
+        <Route path="/calepinage/:id" element={<><input id="champ-norme" /><Rail /></>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+  it('fait défiler jusqu’à l’élément d’id `champ` et lui donne le focus', async () => {
+    rendreAvecChamp('champ-norme')
+    await waitFor(() => expect(document.getElementById('champ-norme')).toHaveFocus())
+  })
+
+  it('un `champ` sans élément n’ouvre que le panneau, sans erreur', async () => {
+    rendreAvecChamp('introuvable')
+    await panneauOuvert()
+    expect(screen.queryByTestId('cal-onglet-erreur')).toBeNull()
+  }, 30_000)
+})
+
 describe('CALX1 — aucune route du module ne reste orpheline', () => {
   /* On ITÈRE sur `config.routes`. Une route est atteignable en deux clics
      quand elle est : (a) un item de nav du module ; (b) l'atelier lui-même ;

@@ -5,6 +5,7 @@ import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from
 import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
 import RailGuide from './RailGuide'
 import { PARAM_MODE, useModeExpert } from './modeExpert'
+import { PARAM_CHAMP, useOuvrirChamp } from './ouvrirChamp'
 import {
   ECRANS_ETAPE, ETAPES, ecranGuideDeOnglet, etapeActive, ongletsVisibles, useParcours,
 } from './parcoursGuide'
@@ -168,6 +169,9 @@ export default function Rail({
   const visibles = ongletsVisibles(cleEtape, cleVue, expert).map(ongletParCle).filter(Boolean)
   const libelleOnglet = (o) => (!expert
     && Object.values(ECRANS_ETAPE).find((e) => e.ouverture === o.cle)?.libelle) || o.libelle
+
+  // ACAL397 — `?champ=` : défiler jusqu'au champ et le focaliser.
+  useOuvrirChamp(parametres.get(PARAM_CHAMP), cleActive)
 
   // CALX392 — le panneau à focaliser, et SI une ouverture le demande.
   const panneauRef = useRef(null)
