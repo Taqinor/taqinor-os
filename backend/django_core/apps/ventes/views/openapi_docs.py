@@ -762,6 +762,8 @@ LignesAssistantResponse = _ser('DevisLignesAssistantResponse', {
         'total_ttc': s.CharField(),
         'variante': s.CharField(allow_blank=True),
     })),
+    # D-COP-5 — total de chaque option (même calcul que devis/auto).
+    'options': options_devis_assistant(),
 })
 
 FromLayoutRequest = _ser('DevisFromLayoutRequest', {

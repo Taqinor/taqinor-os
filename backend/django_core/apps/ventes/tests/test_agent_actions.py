@@ -565,7 +565,9 @@ class LignesAssistantTest(TestCase):
         resp = auth(self.user).get(url)
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(set(resp.data), {'devis_id', 'reference', 'statut',
-                                          'total_ttc', 'lignes'})
+                                          'total_ttc', 'lignes', 'options'})
+        # D-COP-5 — le total option par option, lisible en une lecture.
+        self.assertEqual([o['total_ttc'] for o in resp.data['options']], ['24000.00'])
         ligne = resp.data['lignes'][0]
         self.assertEqual(set(ligne), {
             'ligne_id', 'produit_id', 'designation', 'quantite',

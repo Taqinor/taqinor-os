@@ -786,6 +786,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         marge. Contrat : ``contract_samples/assistant_devis_lignes.json``."""
         from decimal import Decimal
         from ..domain.composition_imposee import lignes_ttc
+        from ..selectors_assistant import options_du_devis
         devis = self.get_object()
         total = devis.total_ttc
         return Response({
@@ -795,6 +796,9 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
             'total_ttc': (str(Decimal(total).quantize(Decimal('0.01')))
                           if total is not None else None),
             'lignes': lignes_ttc(devis, avec_ids=True),
+            # D-COP-5 — « le total option par option » : même calcul que les
+            # réponses de devis/auto et des gestes de lignes.
+            'options': options_du_devis(devis),
         })
 
     @extend_schema(methods=['GET'], responses=D.VarianteConfigResponse)
