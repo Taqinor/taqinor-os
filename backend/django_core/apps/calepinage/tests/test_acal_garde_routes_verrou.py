@@ -108,6 +108,16 @@ ROUTES_HORS_VERROU = {
                                "conception d'un calepinage",
     ('DELETE', 'profil-depart'): "réglages de la société (ACAL403), hors "
                                  "conception d'un calepinage",
+    ('POST', 'systemes-fixation'): "catalogue des systèmes de fixation de la "
+                                   "société (ACAL558) : écrit SystemeFixation, "
+                                   "jamais la conception d'un calepinage",
+    ('PATCH', r'systemes-fixation/(?P<systeme_id>[0-9]+)'):
+        "catalogue des systèmes de fixation de la société (ACAL558), hors "
+        "conception d'un calepinage",
+    ('DELETE', r'systemes-fixation/(?P<systeme_id>[0-9]+)'):
+        "catalogue des systèmes de fixation de la société (ACAL558) : les "
+        "calepinages qui le portaient restent sans choix (SET_NULL), leur "
+        "conception n'est pas écrite",
     ('POST', 'balayage'): "balayage (ACAL468) : simule des COPIES du "
                           "document, n'écrit rien au calepinage",
     ('DELETE', 'meteo-fichier'): 'simulation : entrée météo du calcul',
