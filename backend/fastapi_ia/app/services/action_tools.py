@@ -1009,17 +1009,32 @@ def noter_contenu_tiers(ctx: Optional[ActionContext], origine: str) -> None:
         ctx.contenu_tiers = origine or "tiers"
 
 
+def noter_donnees_lues(ctx: Optional[ActionContext]) -> None:
+    """L4 (revue adverse du 21/11, B3) — des DONNÉES de l'ERP (lead, client,
+    ligne SQL, résultat ou erreur d'un outil, historique relu) sont entrées dans
+    le tour : un texte que n'importe qui a pu écrire (note d'un lead Meta). Les
+    gestes directs SENSIBLES redeviennent des cartes (`DIRECTES_SENSIBLES`).
+    Distinct de `contenu_tiers`, posé par TOUT appel d'outil, écriture comprise."""
+    if ctx is not None:
+        ctx.donnees_lues = True
+
+
 def contenu_tiers_du_tour(ctx: Optional[ActionContext]) -> bool:
     return bool(getattr(ctx, "contenu_tiers", None))
 
 
-def noter_message_tiers(ctx: Optional[ActionContext], origine: str) -> None:
+def noter_message_tiers(ctx: Optional[ActionContext], origine: str,
+                        colle: bool = True) -> None:
     """Le MESSAGE de l'utilisateur porte lui-même un texte tiers (texte collé
     ou cité, liste — `relais_copilote.question_porte_un_texte_tiers`) ou une
-    image : marque A5 du tour ET borne serrée des créations de devis."""
+    image : marque A5 du tour ET borne serrée des créations de devis.
+    `colle` (D-COP-5) : texte VRAIMENT collé ou image — les actions directes
+    redeviennent des cartes ; une phrase tapée à virgules n'y suffit pas."""
     noter_contenu_tiers(ctx, origine)
     if ctx is not None:
         ctx.message_tiers = True
+        if colle:
+            ctx.message_colle = True
 
 
 # Revue S2 (copilote v2) — `ventes.devis.composer` / `creer_auto` ÉCRIVENT (un
@@ -1140,6 +1155,8 @@ def garde_ecriture_taches(ctx: ActionContext, action: dict[str, Any],
     cle = str(action.get("key", ""))
     if not est_ecriture_taches(action):
         noter_contenu_tiers(ctx, cle or "action")
+        if str(action.get("method", "GET")).upper() == "GET" or action.get("lecture"):
+            noter_donnees_lues(ctx)
         return None
     if contenu_tiers_du_tour(ctx):
         return _ecriture_en_carte_echo(ctx, action, inputs, collector)
@@ -1180,18 +1197,45 @@ def _sortie_ecriture_sans_texte(result: dict[str, Any]) -> str:
 # Vague 2 (FND5) — plafond des ecritures SILENCIEUSES d'un tour, tous domaines :
 # une action `internal` qui n'est ni un GET, ni une lecture declaree
 # (`lecture`), ni un lien de document, ni une action `taches.*` (qui garde SA
-# garde) s'execute sans carte ; au-dela de cinq dans le meme tour, refus. Le
+# garde) s execute sans carte ; au-dela de dix dans le meme tour (D-COP-5), refus. Le
 # contexte est par requete : une reprise apres confirmation repart a zero
 # (c'est un nouveau tour voulu par un doigt).
-ECRITURES_INTERNES_PAR_TOUR = 5
+ECRITURES_INTERNES_PAR_TOUR = 10
 REFUS_ECRITURES_INTERNES = (
-    "Action refusée : cinq écritures déjà faites dans ce tour ; dis à "
+    "Action refusée : dix écritures déjà faites dans ce tour ; dis à "
     "l'utilisateur ce qui reste et laisse-le relancer.")
 
 
+#: L4 (revue adverse du 21/11, B3) — gestes directs qui changent l'ÉTAT ou le
+#: PROPRIÉTAIRE d'un dossier : une consigne cachée dans une donnée lue (note d'un
+#: lead venu d'un formulaire public) ne doit jamais les déclencher sans un doigt.
+#: Ils restent directs tant que le tour n'a lu aucune donnée de l'ERP.
+DIRECTES_SENSIBLES = frozenset({
+    "ventes.devis.accepter", "ventes.devis.convertir_bc", "ventes.devis.refuser",
+    "crm.lead.perdu", "crm.lead.changer_etape", "crm.lead.reaffecter",
+    "crm.dossiers.deleguer",
+})
+
+
+def action_directe(ctx: Optional[ActionContext], action: dict[str, Any]) -> bool:
+    """D-COP-5 (Reda, 21/11/2026) — une action `outward` marquee `directe` par
+    le catalogue Django s'execute sans carte, SAUF quand le message de
+    l'utilisateur porte un texte VRAIMENT colle ou une image (`message_colle`) : une
+    consigne venue d'un tiers ne s'execute jamais sans son doigt. Jamais une
+    action `irreversible`."""
+    if (not action.get("directe") or action.get("risk") != RISK_OUTWARD
+            or getattr(ctx, "message_colle", False)):
+        return False
+    return not (action.get("key") in DIRECTES_SENSIBLES
+                and getattr(ctx, "donnees_lues", False))
+
+
 def est_ecriture_interne(action: dict[str, Any]) -> bool:
-    """Vraie pour une ecriture qui part SANS carte (voir le bloc ci-dessus)."""
-    return (action.get("risk", RISK_INTERNAL) == RISK_INTERNAL
+    """Vraie pour une ecriture qui part SANS carte (voir le bloc ci-dessus) :
+    une action `internal`, ou `outward` marquee `directe` (D-COP-5)."""
+    sans_carte = (action.get("risk", RISK_INTERNAL) == RISK_INTERNAL
+                  or (action.get("directe") and action.get("risk") == RISK_OUTWARD))
+    return (bool(sans_carte)
             and str(action.get("method", "POST")).upper() != "GET"
             and not action.get("lecture") and action.get("carte") != "document"
             and not str(action.get("key", "")).startswith(PREFIXE_TACHES))
@@ -1274,7 +1318,7 @@ def run_catalogue_action(
         return garde
 
     risk = action.get("risk", RISK_INTERNAL)
-    if risk in _RISK_NEEDS_CONFIRM:
+    if risk in _RISK_NEEDS_CONFIRM and not action_directe(ctx, action):
         preview = _human_preview(
             action, inputs, _libelles_objets(ctx, action, inputs),
             multiligne=copilote_du_tour(ctx))
@@ -1302,7 +1346,7 @@ def run_catalogue_action(
         return json.dumps(proposal, ensure_ascii=False)
 
     # Action interne -> execution immediate (AIC97 : une ecriture porte la cle du tour).
-    # revue S2 — devis bornes par tour ; FND5 — cinq ecritures silencieuses au plus.
+    # revue S2 — devis bornes par tour ; FND5 — dix ecritures silencieuses au plus (D-COP-5).
     refus = garde_creations_devis(ctx, action) or garde_ecritures_internes(ctx, action)
     if refus is not None:
         return refus
@@ -1325,6 +1369,7 @@ def run_catalogue_action(
         if details and copilote_du_tour(ctx):
             texte += " Détails du refus : " + json.dumps(details, ensure_ascii=False)
         return texte
+    noter_donnees_lues(ctx)  # B3 : le résultat d'une écriture porte aussi des données de l'ERP
     result = {
         "type": "result", "action_key": action["key"],
         "libelle": _libelle_action(action), "carte": action.get("carte"),
@@ -1474,15 +1519,18 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
 
     action, inputs, refus = _preparer_confirmation(ctx, record)
     if refus:
-        return {"ok": False, "error": refus + _NON_EXECUTEE}
+        return {"ok": False, "error": refus + _NON_EXECUTEE,
+                "action_key": str(record.get("action_key") or "")}
     action_key = action["key"]
 
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_idempotence(token))
     if not res.get("ok"):
+        # D-COP-5 — clé et libellé : la reprise après échec nomme l'action.
         return {"ok": False, "status": res.get("status"),
                 "error": texte_echec_confirmation(res),
-                "request_id": res.get("request_id")}
+                "request_id": res.get("request_id"),
+                "action_key": action_key, "libelle": _libelle_action(action)}
 
     # AUDV27 (YHARD2) — journalise la confirmation APRES exécution réelle.
     # `log_confirmed_action` existait côté Django, testée, mais aucun appelant
@@ -1612,7 +1660,9 @@ def _journaliser_ecriture_interne(
         logger.warning("Ecriture interne non journalisee (%s) : AGENT_HMAC_SECRET absent.", action["key"])
         return
     res = _django_call(ctx, "/api/django/agent/logs/confirmer/", method="POST", payload={
-        "action_key": action["key"], "risk_level": RISK_INTERNAL, "origine": "interne",
+        "action_key": action["key"], "origine": "interne",
+        # D-COP-5 — une action `directe` garde son niveau declare (`outward`).
+        "risk_level": action.get("risk") or RISK_INTERNAL,
         "inputs": entrees, "object_id": object_id, "proposal_hash": preuve, "preuve": preuve})
     if not res.get("ok"):
         logger.warning("Ecriture interne non journalisee (%s): %s", action["key"], res.get("error"))

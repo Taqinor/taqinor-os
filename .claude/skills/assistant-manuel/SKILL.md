@@ -33,8 +33,11 @@ diverge du code au premier merge suivant. Mode d'emploi, fréquence et planifica
 2. **Aucune donnée personnelle.** Le manuel décrit des PROCÉDURES : aucun nom, téléphone, e-mail,
    adresse, montant ou identifiant d'un client, d'un lead ou d'un employé réel — jamais un prénom codé
    en dur (« le responsable du lead », pas « Meryem »). Les exemples sont génériques.
-3. **Rien de confidentiel côté client.** `prix_achat` / marge n'apparaissent QUE dans `ne_fait_pas`
-   (l'assistant ne les donne jamais). Aucun secret, aucune clé, aucune URL interne d'administration.
+3. **Rien de confidentiel côté client.** `prix_achat` / marge : jamais dans un texte client ; en interne
+   SEULEMENT à un rôle qui a `prix_achat_voir` / `marge_voir` (décision de Reda du 19/11/2026, re-prouvée au
+   L4 du 21/11 : le Directeur se les voyait refuser) — `ne_fait_pas` dit « à un rôle sans le droit », jamais
+   « jamais ». Aucun manuel ne contient un prix d'achat réel. Aucun secret, aucune clé, aucune URL interne
+   d'administration.
 4. **Le contrat du format vient d'AIC5.** Lire `backend/fastapi_ia/assistant/README.md` (format des
    deux fichiers, clés de `capacites.yml`, plafond de taille). **Absent ⇒ ARRÊT** : « BLOQUÉ : attend
    AIC5 (contrat du format `backend/fastapi_ia/assistant/README.md`) » — ne jamais inventer le format

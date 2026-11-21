@@ -463,3 +463,58 @@ demande lequel, sans choisir.
 **Leçon.** Un geste qui existe à l'écran et que l'assistant ne connaît pas se voit dès la première vraie question : à
 chaque fonction livrée à l'écran, se demander si l'assistant doit la connaître (manuel) ou la faire (outil).
 
+
+## 17. « Presque rien ne se confirme » — D-COP-5 et les deux conversations du 20/11/2026
+
+**Ce que Reda a vécu (lu en lecture seule sur le serveur le 21/11).**
+- 12 h 20 → 13 h 27, devis d'un client existant : la pergola retirée, mais l'ajout de la structure acier proposé quatre
+  fois et jamais fait. Cause : `POST /api/django/ventes/devis-lignes/` répondait **400** à chaque confirmation (12 h 22,
+  13 h 22, 13 h 25) — `DecimalStricte` refuse un nombre JSON (`quantite: 10`) et `designation` était obligatoire alors
+  que l'action ne la demandait pas. L'échec n'entrait pas dans la conversation : le modèle ne le savait pas et
+  reproposait la même carte.
+- 15 h 09 → 15 h 34, « crée le client, facture de 600 DH, à Souhail, fais-lui un devis » : quatre cartes (créer,
+  facture, ville, panneaux) et deux « Continue » tapés. La facture partait dans la note (champ absent de
+  `crm.lead.creer`), le devis automatique la réclamait ; « Souhail » n'est pas une ville ; le total « 44 900 DH » sans
+  savoir de quelle option.
+
+**Décision D-COP-5 (Reda, 21/11/2026, question interactive : « Almost nothing »).** L'assistant FAIT directement ce
+qui lui est demandé clairement. Gardent la carte : factures et paiements, ce qui part chez le client (e-mail,
+résolution ou transition SAV qui prévient le client), archivage et annulation, mouvements de stock et commandes
+fournisseur, toute action `irreversible`, et toute écriture quand le message porte un texte collé ou une image.
+
+**Ce qui est construit.**
+- `registry.ACTIONS_DIRECTES` (liste blanche ; une action future garde sa carte) et le champ dérivé `directe` du
+  catalogue ; le relais (`action_tools.action_directe`) exécute sans carte, compte l'écriture (plafond du tour porté de
+  cinq à dix) et la journalise `origine=interne` à son niveau déclaré (`agent/logs/confirmer/` l'accepte).
+- Une confirmation refusée par l'ERP entre dans la conversation (`relais_copilote.apres_echec_confirmation`) : le modèle
+  dit la raison et corrige, jamais la même carte.
+- `crm.lead.creer` prend `facture_hiver` / `facture_ete` ; consignes « Faire d'un trait » (un devis demandé avec son
+  client se fait en un tour, jamais « go »), total de CHAQUE option, une question simple reçoit sa réponse.
+- Lignes de devis par l'assistant : voir la PR (endpoint assistant des lignes, totaux par option).
+
+## 18. L4 du 21/11/2026 — l'assistant connaît tout l'ERP, à jour par construction, chacun selon son rôle
+
+**Demande de Reda (21/11)** : que l'assistant comprenne tout l'ERP et le reste quand l'ERP change (« some file like
+codemap »), qu'il aide à s'en servir, et que chacun n'y voie que ce que son rôle permet (ex. : la Commerciale
+responsable ne voit ni prix d'achat ni marge). Notes du run : branche `claude/assistant-l4-notes`, `docs/assistant-l4/`.
+
+**Construit.**
+- `scripts/assistant_carte_erp.py` → `backend/fastapi_ia/assistant/carte_erp.md` : menus, écrans, onglets de
+  `/parametres?onglet=…`, actions de l'assistant (lit / fait / carte) et droits sensibles par rôle système, lus dans le
+  code sans modèle ; servie au modèle entre le manifeste et le manuel ; `--check` dans le job `stage-names` : un écran,
+  une action ou un droit ajouté sans régénérer = CI rouge (prouvé en vrai : le merge de `main` l'a fait virer au rouge).
+- `ventes.devis.chercher` (`GET devis/assistant-liste/`, part de `get_queryset()`) : « mes devis en brouillon », « acceptés
+  ce mois-ci » pour les rôles « ses propres dossiers », à qui la lecture SQL est refusée (à raison).
+- Prix d'achat et marge : seulement pour un rôle qui a `prix_achat_voir` / `marge_voir` (décision du 19/11), jamais dans
+  un texte client ; le skill `assistant-manuel` dit désormais « à un rôle sans le droit », plus « jamais ».
+
+**Mesuré avec le vrai modèle (deux tours sur runner, trois comptes)** : 0 fuite réelle de prix d'achat / marge sur 132
+attaques des rôles Commercial et Commercial responsable ; le Directeur obtient les prix d'achat au tour 2 ; toutes les
+questions en échec au tour 1 justes au tour 2.
+
+**Choix pris seul (réversible, coût si faux : un geste de plus)** — revue adverse B3 : après une LECTURE de données de
+l'ERP dans le tour (une note de lead peut venir d'un formulaire public), accepter / convertir / refuser un devis, marquer
+perdu, changer d'étape, réaffecter et déléguer redemandent une carte (`action_tools.DIRECTES_SENSIBLES`).
+
+**Reste (S3, non bloquant)** : notifications sur téléphone, réglage des jours ouvrés, outils de dessin du calepinage,
+bouton vers la liste des factures, devis d'un client sans lead.

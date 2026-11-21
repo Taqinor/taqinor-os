@@ -13,6 +13,9 @@
     "ancien_total_ttc": "73000.00",
     "nouveau_total_ttc": "76400.00",
     "alertes": [],
+    "options": [
+      {"variante": "", "libelle": "Option unique", "kwc": 8.52, "nb_panneaux": 12, "total_ttc": "76400.00"}
+    ],
     "a_faire": "proposer",
     "lien": "/ventes/devis?devis=451"
   },

@@ -128,7 +128,10 @@ export const confirmAgentAction = createAsyncThunk(
       const res = await iaApi.confirmAction(token)
       if (res.data && res.data.ok === false) {
         const message = refusNomme(res.data.detail)
-        return rejectWithValue({ message, incertain: message == null })
+        // D-COP-5 — l'assistant reprend aussi après un ÉCHEC (il dit pourquoi
+        // et le geste qui marche, au lieu de reproposer la même carte).
+        const suite = res.data.suite && typeof res.data.suite === 'object' ? res.data.suite : null
+        return rejectWithValue({ message, incertain: message == null, suite, recu_le: Date.now() })
       }
       return { ...res.data, recu_le: Date.now() }
     } catch (err) {
@@ -356,6 +359,7 @@ const iaSlice = createSlice({
           c.etat = ETATS.INCERTAIN
           c.erreur = MESSAGE_INCERTAIN
         }
+        if (p.suite) state.messages.push(messageDeSuite(p.suite, p.recu_le))
       })
 
       .addCase(processOcrStockDocument.pending, (state, action) => {

@@ -306,12 +306,28 @@ def question_porte_un_texte_tiers(question) -> bool:
     return len(segments) >= LISTE_COLLEE_SEGMENTS
 
 
+def question_vraiment_collee(question) -> bool:
+    """D-COP-5 — la garde des actions DIRECTES : un texte réellement collé ou
+    cité (long, passage entre guillemets, liste numérotée, au moins trois
+    lignes), jamais une phrase tapée à virgules. Le 21/11 « … facture de 600
+    dirhams, je veux un devis, il s'appelle … » (deux virgules) faisait
+    revenir la création du lead en carte."""
+    texte = question.strip() if isinstance(question, str) else ""
+    if len(texte) > QUESTION_COLLEE_CARACTERES or _PASSAGE_CITE.search(texte):
+        return True
+    if len(_ENTREE_NUMEROTEE.findall(texte)) >= 2:
+        return True
+    return len([ligne for ligne in texte.splitlines() if ligne.strip()]) >= LISTE_COLLEE_SEGMENTS
+
+
 def noter_question_du_tour(ctx, question) -> None:
     """Une liste ou un texte collé dans la question marque le tour (A5) et
-    borne ses créations de devis à une (revue S2)."""
+    borne ses créations de devis à une (revue S2) ; un texte VRAIMENT collé
+    remet aussi en carte les actions directes (D-COP-5)."""
     if ctx is not None and question_porte_un_texte_tiers(question):
         from app.services.action_tools import noter_message_tiers
-        noter_message_tiers(ctx, "question")
+        noter_message_tiers(ctx, "question",
+                            colle=question_vraiment_collee(question))
 
 
 # ── A5 (revue F3 #3) — la marque suit la CONVERSATION ────────────────────────
@@ -339,8 +355,9 @@ def historique_porte_un_texte_tiers(brut: Optional[list], copilote: bool = True)
 def noter_historique_du_tour(ctx, brut: Optional[list], copilote: bool = True) -> None:
     """Moteur LangChain : marque le tour si l'historique relu l'est (A5)."""
     if ctx is not None and historique_porte_un_texte_tiers(brut, copilote):
-        from app.services.action_tools import noter_contenu_tiers
+        from app.services.action_tools import noter_contenu_tiers, noter_donnees_lues
         noter_contenu_tiers(ctx, "historique")
+        noter_donnees_lues(ctx)
 
 
 def marque_du_tour(ctx) -> bool:
@@ -354,7 +371,12 @@ def _marques_natives(ctx) -> dict[str, Any]:
     """Crochets A5 remis au moteur natif : il dit si le passé qu'il relit est
     marqué, et garde la marque du tour avec la conversation."""
     from app.services.action_tools import noter_contenu_tiers
-    return {"noter_relu_tiers": lambda: noter_contenu_tiers(ctx, "historique"),
+    from app.services.action_tools import noter_donnees_lues
+
+    def _relu():
+        noter_contenu_tiers(ctx, "historique")
+        noter_donnees_lues(ctx)
+    return {"noter_relu_tiers": _relu,
             "marque_du_tour": lambda: marque_du_tour(ctx)}
 
 
@@ -381,7 +403,9 @@ def marquer_lectures_tierces(outils: list, ctx) -> list:
             self.nom = nom
 
         def on_tool_start(self, serialized, input_str, **kwargs):
+            from app.services.action_tools import noter_donnees_lues
             noter_contenu_tiers(ctx, self.nom)
+            noter_donnees_lues(ctx)
 
     for outil in outils:
         nom = getattr(outil, "name", None) or "outil"
@@ -623,6 +647,25 @@ def apres_confirmation(service, ctx, company_id: int, user_id: int,
                                     libelle, resultat)}
 
 
+def apres_echec_confirmation(service, ctx, company_id: int, user_id: int,
+                             resultat: dict) -> Optional[dict]:
+    """D-COP-5 — après une confirmation REFUSÉE par l'ERP : l'échec est écrit
+    dans l'historique et, sous le moteur natif, le modèle reprend avec la
+    raison (il l'explique et corrige au lieu de reproposer la même carte, ce
+    qu'il a fait quatre fois le 20/11). Rend la `suite` ou None."""
+    libelle = str(resultat.get("libelle") or resultat.get("action_key") or "l'action")
+    erreur = str(resultat.get("error") or "refus de l'ERP")[:400]
+    try:
+        service._ajouter_historique(user_id, [{
+            "role": "agent", "content": f"Action NON exécutée ({libelle}) : {erreur}",
+            "cartes": [], "confirmation": True, "contenu_tiers": True}])
+        return reprise_native(service, ctx, company_id, user_id, libelle,
+                              {"echec": erreur})
+    except Exception as exc:  # best-effort : la carte dit déjà l'échec
+        logger.warning("Reprise après échec impossible : %s", exc)
+        return None
+
+
 # ── COP-B6 — aiguillage vers le moteur natif ─────────────────────────────────
 
 MESSAGE_ACTION_INTERROMPUE = (
@@ -660,7 +703,7 @@ def _outil_action(ctx, action: dict, collecteur: list):
 
     entrees = action.get("inputs") if isinstance(action.get("inputs"), dict) else {}
     description = action.get("description") or action.get("label") or action["key"]
-    if action.get("risk") in ("outward", "irreversible"):
+    if action.get("risk") in ("outward", "irreversible") and not action.get("directe"):
         description += _SUFFIXE_SENSIBLE
 
     def executer(args):
@@ -868,6 +911,12 @@ def message_de_reprise(libelle: str, resultat: dict) -> str:
     registre), puis — sous l'enveloppe NON FIABLE, car il porte des noms lus
     chez Django — l'aperçu confirmé (objet nommé, entrées) et le résultat."""
     from app.services import sql_agent_service as svc
+    if "echec" in resultat:
+        return (f"L'utilisateur a confirmé l'action « {libelle} », mais l'ERP l'a "
+                "REFUSÉE : rien n'a été fait. Dis-le en une phrase avec la raison, "
+                "puis corrige toi-même ce qui peut l'être (donnée manquante, autre "
+                "outil) ; ne repropose jamais la même action à l'identique.\n"
+                + svc._etiqueter_non_fiable({"raison": resultat.get("echec")}))
     return (f"L'utilisateur a confirmé l'action « {libelle} ».\n"
             + svc._etiqueter_non_fiable({"apercu": resultat.get("apercu") or "",
                                          "resultat": resultat.get("data")}))
@@ -895,6 +944,12 @@ def reprise_native(service, ctx, company_id: int, user_id: int, libelle: str,
     # A5 — le résultat de l'ERP entre dans le tour de reprise : marqué.
     from app.services.action_tools import noter_contenu_tiers
     noter_contenu_tiers(ctx, "reprise")
+    # L4 (revue adverse du 21/11, B1) — la reprise ne sait pas si le message
+    # d'origine portait un texte collé : par prudence, toute écriture directe
+    # repasse par une carte pendant la reprise.
+    from app.services.action_tools import noter_donnees_lues
+    ctx.message_colle = True
+    noter_donnees_lues(ctx)
     try:
         prep = _preparer(service, libelle, company_id, ctx, catalogue, collecteur)
         rendu = moteur_natif.reprendre(conversation=conversation_de(company_id, user_id),

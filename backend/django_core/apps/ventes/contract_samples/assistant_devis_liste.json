@@ -1,0 +1,34 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/assistant-liste/",
+  "pourquoi": "Test réel du 21/11/2026 — un commercial (portée « mes enregistrements ») demandait « quels devis sont en brouillon ? » et n'avait aucun outil : le lecteur SQL de l'assistant refuse les tables à portée restreinte. Lecture des devis dans la portée EXACTE de l'écran des devis (société + visibilité du rôle + règle du responsable de lead), filtrable par statut, période (création ; acceptation pour statut=accepte), texte (référence, client, lead) ; les plus récents d'abord, `limite` 20 par défaut, 50 au plus. Jamais de prix d'achat, de marge, de téléphone ni d'e-mail.",
+  "exemple": {
+    "total": 2,
+    "limite": 20,
+    "lignes": [
+      {
+        "devis_id": 451,
+        "reference": "DEV-202611-0451",
+        "statut": "brouillon",
+        "client": "Benali Karim",
+        "lead_id": 1637,
+        "total_ttc": "73000.00",
+        "cree_le": "2026-11-19",
+        "envoye_le": null,
+        "accepte_le": null,
+        "lien": "/ventes/devis?devis=451"
+      },
+      {
+        "devis_id": 447,
+        "reference": "DEV-202611-0447",
+        "statut": "brouillon",
+        "client": "Lahlou Sara",
+        "lead_id": null,
+        "total_ttc": "41500.00",
+        "cree_le": "2026-11-12",
+        "envoye_le": null,
+        "accepte_le": null,
+        "lien": "/ventes/devis?devis=447"
+      }
+    ]
+  }
+}

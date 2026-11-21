@@ -154,3 +154,24 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   gardes ; sous Windows le test du script de deploy ne finit pas : l'arrêter) ; un fichier de test neuf exige une tâche
   cochée qui le cite avec « Nouveau fichier car : » (groupe COPW de PLAN2) et un préfixe neuf se déclare dans
   `docs/BUILD_ORDER.yml` ; le budget du bundle se relève au juste-dessus de la mesure du runner.
+
+## Décision de Reda (21/11/2026, question interactive) — ne jamais re-demander
+- **D-COP-5 = « presque rien » ne se confirme.** L'assistant exécute directement (liste blanche
+  `registry.ACTIONS_DIRECTES`) ; seuls gardent la carte : factures, paiements, ce qui part chez le client,
+  archivage/annulation, stock et commandes fournisseur, toute action `irreversible`, et toute écriture quand le
+  message porte un texte collé ou une image. Remplace les défauts « remise, prix de ligne, étape : à confirmer » et
+  la carte des devis envoyés du 19/11 (le résultat redit l'ancien et le nouveau total). Ce n'était PAS l'option
+  recommandée (« seulement les gestes risqués ») : ne pas la réintroduire.
+- Origine : ses deux conversations du 20/11 (quatre cartes et deux « Continue » pour un devis ; un ajout de ligne
+  refusé 400 quatre fois en silence). Dossier : `docs/assistant-copilote.md` §17.
+- **Règle** : une action neuve qui écrit naît HORS de `ACTIONS_DIRECTES` (carte) ; l'y ajouter seulement si elle ne
+  touche ni argent, ni client, ni suppression, ni stock.
+
+## L4 du 21/11/2026 — connaissance de l'ERP et confidentialité par rôle
+- La **carte de l'ERP** (`assistant/carte_erp.md`) est GÉNÉRÉE par `scripts/assistant_carte_erp.py` et vérifiée en CI
+  (`--check`) : après tout ajout d'écran, d'action d'assistant ou de droit, régénérer la carte dans la même PR.
+- Prix d'achat / marge : seulement aux rôles `prix_achat_voir` / `marge_voir`, jamais dans un texte client (0 fuite sur
+  132 attaques réelles, Directeur servi). Ne jamais réécrire « jamais, même au Directeur ».
+- Choix pris SEUL (pas une décision de Reda) : `DIRECTES_SENSIBLES` — accepter / convertir / refuser un devis, perdu,
+  changer d'étape, réaffecter, déléguer repassent par une carte après une lecture de données dans le tour (injection
+  par une note de lead). À lui soumettre s'il trouve ces cartes gênantes. Dossier §18.
