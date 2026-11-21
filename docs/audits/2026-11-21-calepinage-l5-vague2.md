@@ -7,7 +7,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 - 472 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`).
 - Groupe principal : `docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `## Groupe ACAL — complément du 2026-11-21 (vague 2)`. Si ce groupe n'y est pas encore (fichier tenu par un autre poste au 21/11), le bloc prêt à insérer, tel quel, juste avant `## DONE LOG`, est `docs/audits/l5-calepinage/INSERTION-PLAN_AUDIT_CALEPINAGE.md` (dans ce dépôt).
 - Moitiés des autres propriétaires : même titre de groupe dans `PLAN_AUDIT_DEVIS`, `PLAN_AUDIT_MOTEUR`, `PLAN_AUDIT_LEAD`, `PLAN_AUDIT_CHANTIERS`, `PLAN_AUDIT_STOCK`, `PLAN_AUDIT_SAV`, `PLAN_AUDIT_PARAMETRES`, `PLAN_AUDIT_DEPLOY` et `docs/WEB_PLAN.md`.
-- Décisions de Reda du 21/11 : D-ACAL-35 à D-ACAL-42 (`docs/audits/decisions.yml`, `docs/claude-memory/calepinage-decisions-fondateur.md`).
+- Décisions de Reda du 21/11 : D-ACAL-36 à D-ACAL-43 (`docs/audits/decisions.yml`, `docs/claude-memory/calepinage-decisions-fondateur.md`).
 
 ## Comptes
 
@@ -405,7 +405,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-924 | C6, S1 | ACAL924 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Faire arriver la consommation du lead jusqu'au calcul de l'atelier calepinage : au démarrage, la consommation  |
 | C-ACAL-L5-925 | C6, S2 | ACAL925 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Garder la cible hydratée quand on clique « Effacer » : après `reset`, le nombre de panneaux voulu redevient ce |
 | C-ACAL-L5-926 | C6, S2 | ACAL926 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Poser le dernier coin quand on finit un tracé par un double-clic à un NOUVEL endroit (le coin en attente est p |
-| C-ACAL-L5-927 | C1, S2 | ACAL927 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire dépendre de la POSE les quantités « Structures acier » et « Socles » de la composition (D-ACAL-38) |
+| C-ACAL-L5-927 | C1, S2 | ACAL927 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire dépendre de la POSE les quantités « Structures acier » et « Socles » de la composition (D-ACAL-39) |
 | C-ACAL-L5-928 | C3, S2 | ACAL928 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Limiter les inclinaisons essayées en Est-Ouest aux inclinaisons constructibles de V6 (10, 12, 15°) |
 | C-ACAL-L5-929 | C3, S2 | ACAL929 | WEB_PLAN | M1 bloquant-fondateur | Ajouter à `estimatorBrainCommun.ts` un départage par énergie du module supplémentaire (`departageParModule`),  |
 | C-ACAL-L5-933 | C3, S2 | ACAL933 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Imprimer sur la planche A3 l'échelle réellement dessinée (tracé calé sur une échelle normalisée, mention ident |
@@ -496,22 +496,22 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 
 ## Tâches retirées à la réconciliation (doublons ou décisions)
 
-- ACAL679 — D-ACAL-42 : gabarit de schéma choisi par distributeur du lead = profils par distributeur (réserve)
-- ACAL680 — D-ACAL-42 : affichage du gabarit par distributeur, suit ACAL679 (réserve)
+- ACAL679 — D-ACAL-43 : gabarit de schéma choisi par distributeur du lead = profils par distributeur (réserve)
+- ACAL680 — D-ACAL-43 : affichage du gabarit par distributeur, suit ACAL679 (réserve)
 - ACAL691 — doublon d'ACAL854 + ACAL855 (écart PVGIS sous le chiffre de production, avec voyant)
 - ACAL739 — doublon d'ACAL659 (mêmes champs de déclassement thermique de l'onduleur, sous deux noms) ; ACAL740-741 lisent ceux d'ACAL659
-- ACAL785 — D-ACAL-42 : rien de prérempli ni deviné ; semis de gabarits par distributeur en réserve (sortie A)
-- ACAL823 — D-ACAL-42 : choix des gabarits par distributeur du lead = profils par distributeur (réserve)
-- ACAL825 — D-ACAL-42 : saisie d'un distributeur sur un gabarit = profils par distributeur (réserve)
-- ACAL826 — D-ACAL-42 : limite du profil du distributeur (réserve)
+- ACAL785 — D-ACAL-43 : rien de prérempli ni deviné ; semis de gabarits par distributeur en réserve (sortie A)
+- ACAL823 — D-ACAL-43 : choix des gabarits par distributeur du lead = profils par distributeur (réserve)
+- ACAL825 — D-ACAL-43 : saisie d'un distributeur sur un gabarit = profils par distributeur (réserve)
+- ACAL826 — D-ACAL-43 : limite du profil du distributeur (réserve)
 - ACAL841 — second contrat de `zones[].existant` : ACAL573 (D2) est le seul propriétaire de la clé (forme booléen + `anneeMiseEnService`)
 - ACAL844 — doublon d'ACAL510 (case « Modules déjà en place » et année de mise en service à l'atelier)
-- ACAL849 — D-ACAL-40 : le bilan du réservoir reste interne ; ACAL807 le montre déjà à l'écran (sortie A)
+- ACAL849 — D-ACAL-41 : le bilan du réservoir reste interne ; ACAL807 le montre déjà à l'écran (sortie A)
 - ACAL882 — couvert par ACAL719 (heure solaire ET heure légale sur la barre du soleil et la course du soleil)
-- ACAL898 — doublon d'ACAL697 (même fiche « pertes en mots simples ») — D-ACAL-37(d) la rend remettable au client (sortie A)
-- ACAL899 — D-ACAL-42 : profils par distributeur en réserve ; dossier générique déjà servi par `GabaritDossierReglementaire` (sortie A)
+- ACAL898 — doublon d'ACAL697 (même fiche « pertes en mots simples ») — D-ACAL-38(d) la rend remettable au client (sortie A)
+- ACAL899 — D-ACAL-43 : profils par distributeur en réserve ; dossier générique déjà servi par `GabaritDossierReglementaire` (sortie A)
 - ACAL900 — export Word : réserve (preuve mince : deux fils de forum ; dépendance gratuite, donc pas une porte fondateur) — choix pris seul
-- ACAL905 — doublon d'ACAL976 sur `apps/ventes/economie.py` ; D-ACAL-39 tranche (ni économie, ni TRI, ni retour sans consommation)
+- ACAL905 — doublon d'ACAL976 sur `apps/ventes/economie.py` ; D-ACAL-40 tranche (ni économie, ni TRI, ni retour sans consommation)
 - ACAL930 — doublon d'ACAL608 (clé de pose des modules : `geometry.panelOrientation` d'ACAL573/601/608 est la seule clé)
 - ACAL931 — doublon d'ACAL601 + ACAL605 (emprise orientée des modules à la planche et au plan de câblage)
 - ACAL932 — doublon d'ACAL604 (emprise vraie des modules et tracé unique du toit au DXF)
@@ -542,7 +542,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 - CAP-D5-22 — Règles de batterie par saison (une stratégie par mois) — score 1 (rang 22), « à ne construire qu'à la demande » ; dépend de CAP-D5-01.
 
 #### D6 — Parcours, simplicité, explications
-- CAP-D6-11 — Dossier par distributeur (pièces exigées, version du formulaire) — D-ACAL-42 : dossier générique d'abord ; seule la date « vérifié le » reprise (ACAL822, ACAL824) ; liste des distributeurs à fournir.
+- CAP-D6-11 — Dossier par distributeur (pièces exigées, version du formulaire) — D-ACAL-43 : dossier générique d'abord ; seule la date « vérifié le » reprise (ACAL822, ACAL824) ; liste des distributeurs à fournir.
 - CAP-D6-15 — File de demandes « calepinage à faire » commerciale → technicien — preuve d'éditeur seule, score 4 (rang 15) ; moitié bouton fiche lead (PLAN_AUDIT_LEAD) non reprise.
 - CAP-D6-18 — Documents éditables (Word) et textes à variables du modèle société — variables non reprises ; DOCX gated fondateur (nouvelle dépendance), voir ligne fondateur Word ; jumelle de CAP-D4-25.
 - CAP-D6-19 — Pouce haut / bas sur le remplissage automatique, avec un motif — un seul éditeur (OpenSolar), score 2 (rang 17).
@@ -589,12 +589,12 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 - CAP-D8-13 t7 — Retirer les interrupteurs `MOTEUR_CONCEPTION_*` de `settings/base.py` — coupé B4 : ces interrupteurs ne sont plus créés.
 
 #### Décisions fondateur du 21/11/2026
-- Profils par distributeur marocain (pièces, limites, choix du gabarit par distributeur du lead) — D-ACAL-42 : un dossier générique d'abord ; ex-ACAL785, ACAL823, ACAL825, ACAL826, ACAL899.
+- Profils par distributeur marocain (pièces, limites, choix du gabarit par distributeur du lead) — D-ACAL-43 : un dossier générique d'abord ; ex-ACAL785, ACAL823, ACAL825, ACAL826, ACAL899.
 - Export Word du rapport interne — preuve mince (deux fils de forum), dépendance gratuite : choix pris seul ; ex-ACAL900.
 
 Total : 53 cartes ou sous-parties en réserve.
 
-- Gabarit de schéma choisi par distributeur du lead (ex-ACAL679, ACAL680) — D-ACAL-42 : profils par distributeur plus tard.
+- Gabarit de schéma choisi par distributeur du lead (ex-ACAL679, ACAL680) — D-ACAL-43 : profils par distributeur plus tard.
 
 ## Constats de relecteurs retenus restés sans tâche
 

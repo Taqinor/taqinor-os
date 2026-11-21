@@ -360,7 +360,7 @@
 
 ## Groupe ACAL — complément du 2026-11-21 (vague 2) · format v3
 
-> Moitiés de propriétaire parametres de la vague 2 du complément L5 calepinage du 21/11/2026 (groupe principal à insérer dans `docs/plans/PLAN_AUDIT_CALEPINAGE.md` ; décisions D-ACAL-35 à 42 dans `docs/audits/decisions.yml` ; table des constats `docs/audits/2026-11-21-calepinage-l5-vague2.md`) ; une dépendance vers une tâche du plan calepinage est écrite en phrase dans la clause Constat.
+> Moitiés de propriétaire parametres de la vague 2 du complément L5 calepinage du 21/11/2026 (groupe principal à insérer dans `docs/plans/PLAN_AUDIT_CALEPINAGE.md` ; décisions D-ACAL-36 à 43 dans `docs/audits/decisions.yml` ; table des constats `docs/audits/2026-11-21-calepinage-l5-vague2.md`) ; une dépendance vers une tâche du plan calepinage est écrite en phrase dans la clause Constat.
 
 ### ACAL — M2
 
