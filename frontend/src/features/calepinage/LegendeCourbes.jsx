@@ -5,7 +5,7 @@ import { COURBES_REPERE } from './SunDiagram.helpers'
    dit sa nature) et les éventuels marqueurs en plus (`children`). */
 export function LegendeCourbes({ libelleHorizon, children }) {
   return (
-    <div className="mt-1 flex flex-wrap gap-3 text-xs text-lune-faint">
+    <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
       {COURBES_REPERE.map((c) => (
         <span key={c.jour} className="inline-flex items-center gap-1">
           <span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 2, background: c.couleur }} />

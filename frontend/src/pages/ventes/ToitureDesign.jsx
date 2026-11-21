@@ -1373,6 +1373,9 @@ function AtelierToiture({
                 className="fig h-11 w-20 border border-border bg-background text-center text-2xl text-foreground" />
               <button type="button" id="rp9-need-plus" aria-label="Un de plus" className="h-11 w-11 border border-border text-2xl text-foreground">+</button>
             </div>
+            <label htmlFor="rp9-cible-kwh" className="mt-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production visée (kWh/an)</label>
+            <input id="rp9-cible-kwh" type="text" inputMode="numeric" autoComplete="off" aria-label="Production annuelle visée en kWh par an"
+              className="fig mt-1 h-11 w-32 border border-border bg-background text-center text-foreground" />
             <p id="rp9-need-note" className="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6" aria-live="polite">
@@ -1381,10 +1384,12 @@ function AtelierToiture({
             <div><dd id="rp9-reco-prod" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production</dt></div>
             <div><dd id="rp9-reco-cover" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture</dt></div>
           </dl>
-          <div className="mt-5 border-t border-border pt-5">
-            <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
-          </div>
+          <dl className="mt-5 border-t border-border pt-5">
+            <div>
+              <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
+            </div>
+          </dl>
           <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
           <p id="rp9-reco-bifacial" className="mt-2 text-xs text-muted-foreground"></p>
           <p id="rp9-reco-band" className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
@@ -1468,7 +1473,8 @@ function AtelierToiture({
           {!deliver ? (
             <div>
               <button type="button" onClick={generer} disabled={sending}
-                className="inline-flex w-full items-center justify-center gap-3 bg-success px-6 py-4 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
+                className="inline-flex w-full items-center justify-center gap-3 bg-success px-6 py-4 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60"
+>
                 {sending && (
                   <span aria-hidden="true"
                     className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-border border-t-white"></span>
@@ -1578,7 +1584,7 @@ function AtelierToiture({
                     value={motifDerogation}
                     onChange={(e) => { setMotifDerogation(e.target.value); setMotifDerogationErreur(null) }}
                     data-testid="cal-sync-motif"
-                    className="w-full border border-lune-faint/40 bg-transparent p-2 text-sm"
+                    className="w-full border border-border bg-transparent p-2 text-sm"
                   />
                   {motifDerogationErreur && (
                     <p className="text-xs text-destructive" role="alert" data-testid="cal-sync-motif-erreur">

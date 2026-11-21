@@ -541,6 +541,19 @@ const stockApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  // CALX357 — import d'un fichier PVsyst .PAN/.OND (action CAL117/CALX356).
+  // Sans `confirmer` : APERÇU seul, rien n'est écrit ; `confirmer=true` écrit
+  // les seuls champs encore vides. Contrat partagé :
+  // apps/stock/contract_samples/fiche_import_pan_ond.json.
+  deposerFichierPvsyst: (produitId, file, confirmer) => {
+    const fd = new FormData()
+    fd.append('produit', produitId)
+    fd.append('file', file)
+    if (confirmer) fd.append('confirmer', 'true')
+    return api.post('/stock/fiches-techniques/importer-datasheet/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   // ── WIR108 — fiche fournisseur : acomptes, avoirs, contacts, catégories ──
 

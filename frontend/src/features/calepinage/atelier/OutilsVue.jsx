@@ -6,6 +6,13 @@ import PanneauCalques from '../PanneauCalques'
 import Vue2DPlan from '../Vue2DPlan'
 import { FACTEURS_HD } from '../exportImage'
 
+const VUES_CAMERA = [
+  ['dessus', 'Dessus', 'cal-vue-dessus'],
+  ['sud', 'Sud', 'cal-vue-sud'],
+  ['trois-quarts', '3/4', 'cal-vue-trois-quarts'],
+  ['face-panneaux', 'Face aux panneaux', 'cal-vue-face-panneaux'],
+]
+
 export default function OutilsVue({
   builderReady, utilisateurCourantId, builderApiActuel, builderApi, chipClass,
   vue2d, setVue2d, plan2d, panId2d, ouvrirVue2d,
@@ -68,6 +75,23 @@ export default function OutilsVue({
                 Vue 2D — plan
               </button>
             </div>
+            {/* ACAL435 — vues de caméra prêtes (masquées en vue 2D) */}
+            {!vue2d && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vue</span>
+                {VUES_CAMERA.map(([nom, libelle, hook]) => (
+                  <button
+                    key={nom}
+                    type="button"
+                    className={chipClass}
+                    data-testid={hook}
+                    onClick={() => builderApi.current?.appliquerVue?.(nom)}
+                  >
+                    {libelle}
+                  </button>
+                ))}
+              </div>
+            )}
             {vue2d && (
               <div className="mt-2">
                 <Vue2DPlan plan={plan2d} compte3d={plan2d?.panelCount ?? null} panId={panId2d} />

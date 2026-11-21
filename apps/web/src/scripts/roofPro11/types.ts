@@ -205,6 +205,8 @@ export interface RoofToolApi {
   renderImageHd: (
     scale: number,
   ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** ACAL435 — caméra sur l'une des quatre vues prêtes (600 ms, instantané si reduced-motion). */
+  appliquerVue: (nom: 'dessus' | 'sud' | 'trois-quarts' | 'face-panneaux') => void;
   /** CAL104 — projection PLAN orthographique (nord en haut, cotée) de la zone
    *  ACTIVE, pour la vue 2D de l'écran hôte. Elle PROJETTE ce que la 3D a posé :
    *  même contour, mêmes modules, donc même compte et mêmes cotes. `null` tant

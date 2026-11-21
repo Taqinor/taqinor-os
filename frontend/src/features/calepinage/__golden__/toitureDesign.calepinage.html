@@ -197,6 +197,24 @@
 </p>
 <ul id="rp9-mesure-list" class="space-y-1 text-xs text-foreground">
 </ul>
+<div id="rp9-sun-controls" class="space-y-3 border border-border bg-muted p-3">
+<div class="flex items-center gap-3">
+<label for="rp9-sun-hour" class="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0">Heure du soleil</label>
+<input id="rp9-sun-hour" min="6" max="18" step="1" class="rp9-range min-w-0 flex-1" aria-label="Heure solaire (6 h à 18 h, midi solaire = 12 h)" type="range" value="12">
+<span id="rp9-sun-hour-value" class="w-12 shrink-0 text-right text-sm font-semibold text-primary-text">12 h</span>
+</div>
+<div class="flex flex-wrap items-center gap-2">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Saison</span>
+<button type="button" data-sun-season="winter" class="rp9-chip" aria-pressed="true">Hiver (pire cas)</button>
+<button type="button" data-sun-season="summer" class="rp9-chip" aria-pressed="false">Été</button>
+</div>
+<div class="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Accès solaire</span>
+<button type="button" id="rp9-heatmap-toggle" class="rp9-chip" aria-pressed="false">Carte d'accès solaire</button>
+<p id="rp9-heatmap-note" class="w-full text-xs text-muted-foreground">
+</p>
+</div>
+</div>
 </div>
 <div id="rp9-layout-window" hidden="" class="border-t border-border bg-card p-4">
 <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
@@ -294,6 +312,8 @@
 <input id="rp9-need-input" inputmode="numeric" disabled="" class="fig h-11 w-20 border border-border bg-background text-center text-2xl text-foreground" type="text" value="—">
 <button type="button" id="rp9-need-plus" aria-label="Un de plus" class="h-11 w-11 border border-border text-2xl text-foreground">+</button>
 </div>
+<label for="rp9-cible-kwh" class="mt-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production visée (kWh/an)</label>
+<input id="rp9-cible-kwh" inputmode="numeric" autocomplete="off" aria-label="Production annuelle visée en kWh par an" class="fig mt-1 h-11 w-32 border border-border bg-background text-center text-foreground" type="text">
 <p id="rp9-need-note" class="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite">
 </p>
 </div>
@@ -315,10 +335,12 @@
 <dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture</dt>
 </div>
 </dl>
-<div class="mt-5 border-t border-border pt-5">
+<dl class="mt-5 border-t border-border pt-5">
+<div>
 <dd id="rp9-reco-savings" class="fig text-xl text-primary-text">—</dd>
 <dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
 </div>
+</dl>
 <p id="rp9-reco-why" class="mt-5 min-h-[3.5rem] text-xs text-foreground">
 </p>
 <p id="rp9-reco-bifacial" class="mt-2 text-xs text-muted-foreground">
@@ -520,9 +542,9 @@
 <span data-testid="calx65-rapide">Estimation rapide (PVGIS PVcalc, pertes forfaitaires 20 %)</span>
 </p>
 <div class="mt-4" data-testid="cal-panneau-calques">
-<section data-testid="pc-panneau" aria-label="Calques" class="border border-white/10 bg-nuit-800 p-3">
-<h3 class="tech-label mb-2 text-lune-faint">Calques</h3>
-<p class="text-sm text-lune-faint" data-testid="pc-vide">Aucun calque disponible pour le moment.</p>
+<section data-testid="pc-panneau" aria-label="Calques" class="border border-border bg-card p-3">
+<h3 class="text-xs font-semibold uppercase tracking-wide mb-2 text-muted-foreground">Calques</h3>
+<p class="text-sm text-muted-foreground" data-testid="pc-vide">Aucun calque disponible pour le moment.</p>
 </section>
 </div>
 <div class="mt-4" data-testid="cal-onglets-vue">
@@ -530,36 +552,43 @@
 <button type="button" class="rp9-chip" aria-pressed="true" data-testid="cal-onglet-3d">Vue 3D</button>
 <button type="button" class="rp9-chip" aria-pressed="false" data-testid="cal-onglet-2d">Vue 2D — plan</button>
 </div>
+<div class="mt-2 flex flex-wrap items-center gap-2">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vue</span>
+<button type="button" class="rp9-chip" data-testid="cal-vue-dessus">Dessus</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-sud">Sud</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-trois-quarts">3/4</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-face-panneaux">Face aux panneaux</button>
+</div>
 </div>
 <div class="mt-4 flex flex-wrap items-center gap-2" data-testid="cal-export-hd">
 <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Image HD</span>
 <button type="button" class="rp9-chip" data-testid="cal-export-hd-2">Exporter 2×</button>
 <button type="button" class="rp9-chip" data-testid="cal-export-hd-3">Exporter 3×</button>
 </div>
-<div class="cine-card mt-6 p-6" data-testid="cal-atelier-panneaux">
+<div class="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-atelier-panneaux">
 <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
 <span class="flex items-baseline gap-2">
-<p class="tech-label rule-brass text-brass-300">Calepinage</p>
+<p class="text-xs font-semibold uppercase tracking-wide text-primary-text">Calepinage</p>
 </span>
-<a data-testid="cal-lien-variantes" class="text-sm font-semibold text-brass-300 underline" href="/calepinage/1?onglet=variantes" data-discover="true">Comparer les variantes</a>
-<a data-testid="cal-lien-photos-calage" class="text-sm font-semibold text-brass-300 underline" href="/calepinage/1?onglet=photos" data-discover="true">Photos du site</a>
+<a data-testid="cal-lien-variantes" class="text-sm font-semibold text-primary-text underline" href="/calepinage/1?onglet=variantes" data-discover="true">Comparer les variantes</a>
+<a data-testid="cal-lien-photos-calage" class="text-sm font-semibold text-primary-text underline" href="/calepinage/1?onglet=photos" data-discover="true">Photos du site</a>
 </div>
 <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
 <div>
-<dd class="fig text-lg text-white" data-testid="cal-cible-panneaux">12</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Cible — panneaux</dt>
+<dd class="fig text-lg text-foreground" data-testid="cal-cible-panneaux">12</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — panneaux</dt>
 </div>
 <div>
-<dd class="fig text-lg text-white">8.64 kWc</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Cible — puissance</dt>
+<dd class="fig text-lg text-foreground">8.64 kWc</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — puissance</dt>
 </div>
 <div>
-<dd class="fig text-lg text-white">Devis lié</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Source de la cible</dt>
+<dd class="fig text-lg text-foreground">Devis lié</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Source de la cible</dt>
 </div>
 <div>
-<dd class="fig text-lg text-white" data-testid="cal-atelier-statut">brouillon</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Statut</dt>
+<dd class="fig text-lg text-foreground" data-testid="cal-atelier-statut">brouillon</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Statut</dt>
 </div>
 </dl>
 <div dir="ltr" data-orientation="horizontal" class="mt-5" data-testid="cal-rail-onglets">
@@ -568,21 +597,25 @@
 </p>
 <nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes" class="mb-2 flex flex-wrap items-center gap-1.5">
 <button type="button" data-testid="cal-etape-toit" data-etat="" aria-current="step" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-primary bg-primary/10 font-medium">
-<span class="tech-label text-lune-faint">1</span>Toit</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">1</span>Toit</button>
 <button type="button" data-testid="cal-etape-panneaux" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">2</span>Panneaux</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">2</span>Panneaux</button>
 <button type="button" data-testid="cal-etape-electrique" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">3</span>Électrique</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">3</span>Électrique</button>
 <button type="button" data-testid="cal-etape-resultats" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">4</span>Résultats</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">4</span>Résultats</button>
 <button type="button" data-testid="cal-etape-documents" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">5</span>Documents</button>
-<label class="ml-auto inline-flex items-center gap-1.5 text-xs text-lune-faint" title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">5</span>Documents</button>
+<label class="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
 <input data-testid="cal-mode-expert" type="checkbox">Mode expert</label>
 </nav>
-<div role="tablist" aria-orientation="horizontal" class="items-center gap-1 rounded-lg border border-border bg-muted p-1 flex w-full flex-wrap gap-x-1 gap-y-1.5" aria-label="Onglets du calepinage" tabindex="0" data-orientation="horizontal" style="outline: none;">
-<span class="inline-flex items-center gap-0.5">
-<button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_d_-content-pente" data-state="inactive" id="radix-_r_d_-trigger-pente" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-pente" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Pente</button>
+<div class="flex w-full flex-wrap items-center gap-x-1 gap-y-1.5 rounded-lg border border-border bg-muted p-1">
+<div role="tablist" aria-orientation="horizontal" class="items-center gap-1 rounded-lg border border-border bg-muted p-1 contents" aria-label="Onglets du calepinage" tabindex="0" data-orientation="horizontal" style="outline: none;">
+<button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_d_-content-pente" data-state="inactive" id="radix-_r_d_-trigger-pente" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" style="order: 0;" data-testid="cal-onglet-pente" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Pente</button>
+<button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_d_-content-terrain" data-state="inactive" id="radix-_r_d_-trigger-terrain" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" style="order: 2;" data-testid="cal-onglet-terrain" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Terrain</button>
+<button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_d_-content-ombriere" data-state="inactive" id="radix-_r_d_-trigger-ombriere" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" style="order: 4;" data-testid="cal-onglet-ombriere" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Ombrière</button>
+</div>
+<span class="inline-flex" style="order: 1;">
 <button type="button" tabindex="-1" aria-label="À quoi sert « Pente »" title="À quoi sert « Pente »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
@@ -594,8 +627,7 @@
 </svg>
 </button>
 </span>
-<span class="inline-flex items-center gap-0.5">
-<button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_d_-content-terrain" data-state="inactive" id="radix-_r_d_-trigger-terrain" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-terrain" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Terrain</button>
+<span class="inline-flex" style="order: 3;">
 <button type="button" tabindex="-1" aria-label="À quoi sert « Terrain »" title="À quoi sert « Terrain »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
@@ -607,8 +639,7 @@
 </svg>
 </button>
 </span>
-<span class="inline-flex items-center gap-0.5">
-<button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_d_-content-ombriere" data-state="inactive" id="radix-_r_d_-trigger-ombriere" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-ombriere" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Ombrière</button>
+<span class="inline-flex" style="order: 5;">
 <button type="button" tabindex="-1" aria-label="À quoi sert « Ombrière »" title="À quoi sert « Ombrière »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
@@ -622,61 +653,61 @@
 </span>
 </div>
 </div>
-<div class="cine-card mt-6 p-6" data-testid="cal-remplissage">
-<p class="tech-label rule-brass text-brass-300">Remplissage automatique</p>
-<button type="button" data-testid="cal-remplissage-lancer" class="mt-3 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">Remplir automatiquement</button>
+<div class="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-remplissage">
+<p class="text-xs font-semibold uppercase tracking-wide text-primary-text">Remplissage automatique</p>
+<button type="button" data-testid="cal-remplissage-lancer" class="mt-3 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">Remplir automatiquement</button>
 </div>
-<div class="cine-card mt-6 p-6" data-testid="cal-panneau-allees">
-<p class="tech-label rule-brass text-brass-300">Allées et passages de maintenance</p>
+<div class="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-panneau-allees">
+<p class="text-xs font-semibold uppercase tracking-wide text-primary-text">Allées et passages de maintenance</p>
 <dl class="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
 <div data-testid="cal-allees-actuelle">
-<dd class="fig text-lg text-white">—</dd>
-<dt class="tech-label mt-0.5 text-lune-faint">Allée technique — réglage société</dt>
+<dd class="fig text-lg text-foreground">—</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Allée technique — réglage société</dt>
 </div>
 </dl>
-<p class="mt-2 text-xs text-lune-faint" data-testid="cal-allees-non-reglee">Aucune allée technique n’est réglée pour votre société : le moteur applique son allée par défaut — comportement d’aujourd’hui, inchangé.</p>
-<section class="mt-4 border-t border-white/10 pt-4" data-testid="cal-allees-calepinage">
-<p class="tech-label text-lune-faint">Pour ce calepinage</p>
+<p class="mt-2 text-xs text-muted-foreground" data-testid="cal-allees-non-reglee">Aucune allée technique n’est réglée pour votre société : le moteur applique son allée par défaut — comportement d’aujourd’hui, inchangé.</p>
+<section class="mt-4 border-t border-border pt-4" data-testid="cal-allees-calepinage">
+<p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pour ce calepinage</p>
 <label class="mt-2 block max-w-xs">
-<span class="tech-label text-lune-faint">Largeur d’allée de ce calepinage (m)</span>
-<input step="any" min="0" id="cal-allees-largeur-calepinage" class="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white" type="number" value="">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Largeur d’allée de ce calepinage (m)</span>
+<input step="any" min="0" id="cal-allees-largeur-calepinage" class="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground" type="number" value="">
 </label>
 <div class="mt-3 flex flex-wrap gap-3">
-<button type="button" data-testid="cal-allees-enregistrer-calepinage" class="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">Enregistrer pour ce calepinage</button>
-<button type="button" data-testid="cal-allees-rechercher" class="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white">Chercher l’allée gratuite</button>
+<button type="button" data-testid="cal-allees-enregistrer-calepinage" class="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">Enregistrer pour ce calepinage</button>
+<button type="button" data-testid="cal-allees-rechercher" class="rounded border border-border px-4 py-2 text-sm font-semibold text-foreground">Chercher l’allée gratuite</button>
 </div>
 </section>
-<section class="mt-4 border-t border-white/10 pt-4" data-testid="cal-allees-societe">
-<p class="tech-label text-lune-faint">Défaut de la société</p>
+<section class="mt-4 border-t border-border pt-4" data-testid="cal-allees-societe">
+<p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Défaut de la société</p>
 <label class="mt-2 block max-w-xs" data-testid="cal-allees-champ">
-<span class="tech-label text-lune-faint">Largeur d’allée technique par défaut (m)</span>
-<input step="any" min="0" id="cal-allees-largeur" class="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white" type="number" value="">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Largeur d’allée technique par défaut (m)</span>
+<input step="any" min="0" id="cal-allees-largeur" class="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground" type="number" value="">
 </label>
 <div class="mt-3" data-testid="cal-allees-circulation">
-<p class="tech-label text-lune-faint">Allées de circulation par pays</p>
-<button type="button" data-testid="cal-allees-circulation-ajouter" class="mt-2 rounded border border-white/15 px-3 py-1.5 text-xs font-semibold text-white">Ajouter un pays</button>
+<p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Allées de circulation par pays</p>
+<button type="button" data-testid="cal-allees-circulation-ajouter" class="mt-2 rounded border border-border px-3 py-1.5 text-xs font-semibold text-foreground">Ajouter un pays</button>
 </div>
-<label class="mt-3 flex items-center gap-2 text-sm text-lune-soft">
+<label class="mt-3 flex items-center gap-2 text-sm text-foreground">
 <input data-testid="cal-allees-confirmer-societe" type="checkbox">Je confirme : ce défaut s’applique à tous vos calepinages.</label>
 <div class="mt-3">
-<button type="button" disabled="" data-testid="cal-allees-enregistrer" class="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">Enregistrer le défaut de la société</button>
+<button type="button" disabled="" data-testid="cal-allees-enregistrer" class="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">Enregistrer le défaut de la société</button>
 </div>
 </section>
 </div>
 <div class="mt-4">
 <div data-testid="cal-raccourcis">
-<button type="button" data-testid="cal-raccourcis-bouton" aria-expanded="false" class="text-sm font-semibold text-brass-300 underline">Raccourcis clavier (?)</button>
+<button type="button" data-testid="cal-raccourcis-bouton" aria-expanded="false" class="text-sm font-semibold text-primary-text underline">Raccourcis clavier (?)</button>
 </div>
 </div>
 <div class="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
 </div>
 </div>
-<div class="sticky bottom-0 z-30 mt-6 border-t border-lune-faint/40 bg-black/90 p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
+<div class="sticky bottom-0 z-30 mt-6 border-t border-border bg-card p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
 <div class="flex flex-wrap items-center gap-3">
-<button type="button" class="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60" style="background: var(--rp-ok-600);">
+<button type="button" class="inline-flex items-center justify-center gap-3 bg-success px-6 py-3 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
 <span>Enregistrer le calepinage</span>
 </button>
-<p class="text-sm text-lune-soft" data-testid="cal-resume-atelier">
+<p class="text-sm text-muted-foreground" data-testid="cal-resume-atelier">
 <span data-testid="cal-resume-panneaux">—</span> · <span data-testid="cal-resume-kwc">—</span> · <span data-testid="cal-resume-production">—</span>
 </p>
 </div>

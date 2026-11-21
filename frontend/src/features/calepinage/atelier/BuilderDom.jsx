@@ -260,6 +260,28 @@ export default function BuilderDom({
             </div>
             <p id="rp9-mesure-note" className="min-h-[1rem] text-xs text-muted-foreground" aria-live="polite"></p>
             <ul id="rp9-mesure-list" className="space-y-1 text-xs text-foreground"></ul>
+
+            {/* ACAL434 — barre du soleil (ids lus par roof-tool-pro11.ts ; le script y crée
+                lui-même la date rp9-sun-date et les boutons de lecture jour/année). */}
+            <div id="rp9-sun-controls" className="space-y-3 border border-border bg-muted p-3">
+              <div className="flex items-center gap-3">
+                <label htmlFor="rp9-sun-hour" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0">Heure du soleil</label>
+                <input id="rp9-sun-hour" type="range" min="6" max="18" step="1" defaultValue="12" className="rp9-range min-w-0 flex-1"
+                  aria-label="Heure solaire (6 h à 18 h, midi solaire = 12 h)" />
+                <span id="rp9-sun-hour-value" className="w-12 shrink-0 text-right text-sm font-semibold text-primary-text">12 h</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Saison</span>
+                <button type="button" data-sun-season="winter" className={chipClass} aria-pressed="true">Hiver (pire cas)</button>
+                <button type="button" data-sun-season="summer" className={chipClass} aria-pressed="false">Été</button>
+              </div>
+              {/* ACAL436 — carte d'accès solaire (ids lus par shadingUi.ts, qui crée lui-même le mois, le bloc chiffré et les heures masquées dans ce parent). */}
+              <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Accès solaire</span>
+                <button type="button" id="rp9-heatmap-toggle" className={chipClass} aria-pressed="false">Carte d'accès solaire</button>
+                <p id="rp9-heatmap-note" className="w-full text-xs text-muted-foreground" />
+              </div>
+            </div>
           </div>
 
           {/* W69 — « Personnaliser la disposition » : porté de apps/web/toiture-3d-pro-11.astro

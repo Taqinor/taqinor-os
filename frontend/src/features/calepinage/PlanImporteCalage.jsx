@@ -61,7 +61,7 @@ function texte(brut, suffixe = '') {
 function ChampNombre({ cle, label, valeur, erreur, onChange }) {
   return (
     <label className="block" data-testid={`cal-calage-champ-${cle}`}>
-      <span className="tech-label text-lune-faint">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
       <input
         type="number"
         step="any"
@@ -69,7 +69,7 @@ function ChampNombre({ cle, label, valeur, erreur, onChange }) {
         value={valeur ?? ''}
         onChange={(e) => onChange(cle, e.target.value)}
         aria-invalid={erreur ? 'true' : undefined}
-        className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
       />
       {erreur && (
         <span role="alert" data-testid={`cal-calage-erreur-${cle}`}
@@ -256,7 +256,7 @@ export default function PlanImporteCalage({
 
   const blocFond = (
     <div className="mt-4" role="group" aria-label="Image de plan en fond de l’atelier">
-      <p className="tech-label text-lune-faint">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Poser une image de plan (PNG ou JPEG) en fond de l’atelier
       </p>
       <input
@@ -267,17 +267,17 @@ export default function PlanImporteCalage({
           setImageFond(e.target.files?.[0] ?? null)
           setRefusFond(null)
         }}
-        className="mt-1 block w-full text-sm text-lune-soft"
+        className="mt-1 block w-full text-sm text-foreground"
       />
       <button type="button" onClick={poserCommeFond}
-        className="mt-2 rounded border border-white/15 px-3 py-1 text-sm text-white">
+        className="mt-2 rounded border border-border px-3 py-1 text-sm text-foreground">
         Poser comme fond de l’atelier
       </button>
       {refusFond && (
         <span role="alert" className="mt-1 block text-xs text-red-300">{refusFond}</span>
       )}
       {messageFond && (
-        <p className="mt-2 text-sm text-lune-soft" role="status">{messageFond}</p>
+        <p className="mt-2 text-sm text-foreground" role="status">{messageFond}</p>
       )}
     </div>
   )
@@ -287,7 +287,7 @@ export default function PlanImporteCalage({
 
   const blocDepot = (
     <div className="mt-4" data-testid="cal-calage-import">
-      <p className="tech-label text-lune-faint">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Déposer un plan (DXF ou PDF vectoriel)
       </p>
       <input
@@ -300,11 +300,11 @@ export default function PlanImporteCalage({
           setFichierDepose(e.target.files?.[0] ?? null)
           setRefusImport(null)
         }}
-        className="mt-1 block w-full text-sm text-lune-soft"
+        className="mt-1 block w-full text-sm text-foreground"
       />
       <button type="button" onClick={() => envoyerPlan('')}
         data-testid="cal-calage-analyser"
-        className="mt-2 rounded border border-white/15 px-3 py-1 text-sm text-white">
+        className="mt-2 rounded border border-border px-3 py-1 text-sm text-foreground">
         Analyser le plan
       </button>
       {refusImport?.champ === 'fichier' && (
@@ -314,21 +314,21 @@ export default function PlanImporteCalage({
 
       {analyse && (
         <div className="mt-3" data-testid="cal-calage-analyse">
-          <p className="text-xs text-lune-soft" data-testid="cal-calage-unite">
+          <p className="text-xs text-foreground" data-testid="cal-calage-unite">
             Format : {texte(analyse.format)} — unité déclarée par le fichier :{' '}
             {texte(analyse.unite)}
           </p>
-          <p className="text-xs text-lune-faint" data-testid="cal-calage-motif-echelle">
+          <p className="text-xs text-muted-foreground" data-testid="cal-calage-motif-echelle">
             {analyse.motif_echelle}
           </p>
           <label className="mt-2 block" data-testid="cal-calage-champ-calque">
-            <span className="tech-label text-lune-faint">Calque d’enveloppe</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Calque d’enveloppe</span>
             <select
               data-testid="cal-calage-calque"
               value={calqueChoisi}
               aria-invalid={refusImport?.champ === 'calque' ? 'true' : undefined}
               onChange={(e) => { setCalqueChoisi(e.target.value); setEntiteChoisie('') }}
-              className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+              className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
             >
               <option value="">— choisir un calque —</option>
               {(analyse.calques ?? []).map((calque) => (
@@ -340,11 +340,11 @@ export default function PlanImporteCalage({
           </label>
           {entitesDuCalque.length > 0 && (
             <fieldset className="mt-2" data-testid="cal-calage-entites">
-              <legend className="tech-label text-lune-faint">
+              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Entité du calque (le serveur propose la plus grande aire fermée)
               </legend>
               {entitesDuCalque.map((entite) => (
-                <label key={entite.rang} className="mt-1 flex items-center gap-2 text-xs text-lune-soft">
+                <label key={entite.rang} className="mt-1 flex items-center gap-2 text-xs text-foreground">
                   <input
                     type="radio"
                     name="cal-calage-entite"
@@ -363,7 +363,7 @@ export default function PlanImporteCalage({
           )}
           <button type="button" onClick={() => envoyerPlan(calqueChoisi, entiteChoisie)}
             data-testid="cal-calage-proposer"
-            className="mt-2 rounded bg-brass-500/20 px-3 py-1 text-sm font-semibold text-brass-200">
+            className="mt-2 rounded bg-brass-500/20 px-3 py-1 text-sm font-semibold text-primary-text">
             Proposer ce contour
           </button>
           {refusImport?.champ === 'calque' && (
@@ -386,9 +386,9 @@ export default function PlanImporteCalage({
     return (
       <>
         <RetourAtelier calepinageId={calepinageId} />
-        <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
-          <p className="tech-label rule-brass text-brass-300">Plan importé</p>
-          <p className="mt-2 text-sm text-lune-soft" data-testid="cal-calage-sans-plan">
+        <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-calage-plan">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Plan importé</p>
+          <p className="mt-2 text-sm text-foreground" data-testid="cal-calage-sans-plan">
             Aucun plan importé n’est rattaché à ce calepinage : il n’y a donc rien
             à caler. Déposez un plan (DXF ou PDF vectoriel) ci-dessous : le serveur
             l’analyse et propose le contour du calque choisi, sans rien enregistrer.
@@ -403,8 +403,8 @@ export default function PlanImporteCalage({
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
-        <p className="tech-label rule-brass text-brass-300">
+      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-calage-plan">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">
           Caler le plan importé
         </p>
 
@@ -417,7 +417,7 @@ export default function PlanImporteCalage({
       </div>
 
       <fieldset className="mt-4" data-testid="cal-calage-echelle">
-        <legend className="tech-label text-lune-faint">
+        <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           L’échelle — deux points de référence et la distance RÉELLE entre eux
         </legend>
         <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -436,7 +436,7 @@ export default function PlanImporteCalage({
             onChange={majChamp}
           />
         </div>
-        <p className="mt-2 text-sm text-lune-soft" data-testid="cal-calage-facteur">
+        <p className="mt-2 text-sm text-foreground" data-testid="cal-calage-facteur">
           Échelle :{' '}
           {mesure
             ? `${mesure.echelle} m par unité de plan (source : ${mesure.source})`
@@ -446,32 +446,32 @@ export default function PlanImporteCalage({
 
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
         <div data-testid="cal-calage-sommets">
-          <dd className="fig text-lg text-white">{sommets.length}</dd>
-          <dt className="tech-label text-lune-faint">Sommets du plan</dt>
+          <dd className="fig text-lg text-foreground">{sommets.length}</dd>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sommets du plan</dt>
         </div>
         <div data-testid="cal-calage-source">
-          <dd className="text-sm text-white">{texte(mesure?.source)}</dd>
-          <dt className="tech-label text-lune-faint">Source de l’échelle</dt>
+          <dd className="text-sm text-foreground">{texte(mesure?.source)}</dd>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source de l’échelle</dt>
         </div>
         <div data-testid="cal-calage-distance-plan">
-          <dd className="fig text-lg text-white">{texte(mesure?.distancePlan)}</dd>
-          <dt className="tech-label text-lune-faint">Distance A→B sur le plan</dt>
+          <dd className="fig text-lg text-foreground">{texte(mesure?.distancePlan)}</dd>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Distance A→B sur le plan</dt>
         </div>
       </dl>
 
       <div className="mt-4 flex flex-wrap gap-3">
         <button type="button" onClick={poserCommePan}
-          className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
+          className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
           Poser comme pan du toit
         </button>
       </div>
-      <p className="mt-2 text-xs text-lune-faint">
+      <p className="mt-2 text-xs text-muted-foreground">
         Le contour calé devient un vrai pan de l’atelier (posé autour de l’épingle) :
         enregistrez ensuite le calepinage pour le conserver.
       </p>
 
       {message && (
-        <p className="mt-3 text-sm text-lune-soft" role="status"
+        <p className="mt-3 text-sm text-foreground" role="status"
           data-testid="cal-calage-message">{message}</p>
       )}
     </div>

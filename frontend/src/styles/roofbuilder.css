@@ -66,7 +66,7 @@
 }
 .rp9-host .tech-label {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -160,7 +160,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 5px 0;
-  font: 700 0.7rem/1 sans-serif;
+  font: 700 0.75rem/1 sans-serif;
   color: var(--rp-lune-soft);
 }
 
@@ -222,7 +222,7 @@
 }
 .rp9-host .rp9-toit-client-label {
   margin: 0;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   line-height: 1.25;
   text-align: center;
@@ -286,7 +286,7 @@
 /* ── Badge « Recommandé » + résultats ───────────────────────────────────── */
 .rp9-host .rp9-reco-badge {
   margin-left: 0.35rem;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--rp-brass-300);
 }
@@ -439,3 +439,6 @@
   .rp9-host .rp9-layout-grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
   .rp9-host .rp9-layout-cell { min-height: 44px; }
 }
+
+.rp9-host .text-\[11px\],
+.rp9-host .text-\[10px\] { font-size: 0.75rem; }

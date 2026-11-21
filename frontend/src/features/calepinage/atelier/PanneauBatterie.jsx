@@ -9,6 +9,7 @@ import { refusParChamp } from '../electrique/entreeElectrique'
 import { BoutonCalculer } from '../production/PanneauProduction'
 import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree } from './PanneauBatterie.helpers'
 import { MotifAbsence } from '../MotifAbsence'
+import SemaineBatterie from './SemaineBatterie'
 
 /* ============================================================================
    CALX14 — LE PANNEAU « BATTERIE », ET CE QUE LA CHAÎNE CALCULE DEVIENT ENFIN
@@ -531,6 +532,7 @@ export default function PanneauBatterie({ calepinageId, intervalleMs = 2000 }) {
         <>
           <BlocBatterie batterie={data?.batterie} />
           <ComparateurCapacites bloc={data?.batterie?.capacites_candidates} />
+          {data?.batterie?.total && <SemaineBatterie calepinageId={id} />}
           <div className="border-t border-border/60 pt-3">
             <h3 className="mb-2 text-sm font-semibold">Hors réseau</h3>
             <BlocHorsReseau horsReseau={data?.hors_reseau} />

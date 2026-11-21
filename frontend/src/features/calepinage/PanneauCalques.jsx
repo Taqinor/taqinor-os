@@ -121,13 +121,13 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
   )
 
   return (
-    <section data-testid="pc-panneau" aria-label="Calques" className="border border-white/10 bg-nuit-800 p-3">
-      <h3 className="tech-label mb-2 text-lune-faint">Calques</h3>
+    <section data-testid="pc-panneau" aria-label="Calques" className="border border-border bg-card p-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide mb-2 text-muted-foreground">Calques</h3>
       {listes.length === 0 ? (
         // CALX54 — état vide EXPLICITE : le constructeur n'est pas encore prêt,
         // ou aucun calque n'est encore installé sur la scène — jamais une liste
         // statique inventée pour combler le vide.
-        <p className="text-sm text-lune-faint" data-testid="pc-vide">
+        <p className="text-sm text-muted-foreground" data-testid="pc-vide">
           Aucun calque disponible pour le moment.
         </p>
       ) : (

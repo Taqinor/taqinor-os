@@ -108,7 +108,7 @@ export default function TracePlanPose({ vue, champ, ids, nom, titre }) {
         width="100%"
         role="img"
         aria-label={`${titre} — ${vue.tables.length} ${nom}(s) posée(s) par le moteur`}
-        className="mt-2 text-brass-200"
+        className="mt-2 text-primary-text"
       >
         <ContourPlan sommets={vue.contour} testid={ids.contour} />
         {vue.rangees.map((r) => (
@@ -121,7 +121,7 @@ export default function TracePlanPose({ vue, champ, ids, nom, titre }) {
         {ids.traitPas && vue.cotePas && <CotePas cotePas={vue.cotePas} ids={ids} />}
       </svg>
 
-      <p className="mt-2 text-xs text-lune-faint" data-testid={ids.emprise}>
+      <p className="mt-2 text-xs text-muted-foreground" data-testid={ids.emprise}>
         {vue.tables.length} {nom}(s) dessinée(s) — emprise{' '}
         {formatNumber(champ.empriseTablesM2, { decimals: 1 })} m² ;{' '}
         {champ.modules ?? '—'} module(s) posé(s) par le moteur.

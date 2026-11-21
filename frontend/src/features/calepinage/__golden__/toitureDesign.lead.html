@@ -188,6 +188,24 @@
 </p>
 <ul id="rp9-mesure-list" class="space-y-1 text-xs text-foreground">
 </ul>
+<div id="rp9-sun-controls" class="space-y-3 border border-border bg-muted p-3">
+<div class="flex items-center gap-3">
+<label for="rp9-sun-hour" class="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0">Heure du soleil</label>
+<input id="rp9-sun-hour" min="6" max="18" step="1" class="rp9-range min-w-0 flex-1" aria-label="Heure solaire (6 h à 18 h, midi solaire = 12 h)" type="range" value="12">
+<span id="rp9-sun-hour-value" class="w-12 shrink-0 text-right text-sm font-semibold text-primary-text">12 h</span>
+</div>
+<div class="flex flex-wrap items-center gap-2">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Saison</span>
+<button type="button" data-sun-season="winter" class="rp9-chip" aria-pressed="true">Hiver (pire cas)</button>
+<button type="button" data-sun-season="summer" class="rp9-chip" aria-pressed="false">Été</button>
+</div>
+<div class="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Accès solaire</span>
+<button type="button" id="rp9-heatmap-toggle" class="rp9-chip" aria-pressed="false">Carte d'accès solaire</button>
+<p id="rp9-heatmap-note" class="w-full text-xs text-muted-foreground">
+</p>
+</div>
+</div>
 </div>
 <div id="rp9-layout-window" hidden="" class="border-t border-border bg-card p-4">
 <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
@@ -283,6 +301,8 @@
 <input id="rp9-need-input" inputmode="numeric" disabled="" class="fig h-11 w-20 border border-border bg-background text-center text-2xl text-foreground" type="text" value="—">
 <button type="button" id="rp9-need-plus" aria-label="Un de plus" class="h-11 w-11 border border-border text-2xl text-foreground">+</button>
 </div>
+<label for="rp9-cible-kwh" class="mt-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production visée (kWh/an)</label>
+<input id="rp9-cible-kwh" inputmode="numeric" autocomplete="off" aria-label="Production annuelle visée en kWh par an" class="fig mt-1 h-11 w-32 border border-border bg-background text-center text-foreground" type="text">
 <p id="rp9-need-note" class="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite">
 </p>
 </div>
@@ -304,10 +324,12 @@
 <dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture</dt>
 </div>
 </dl>
-<div class="mt-5 border-t border-border pt-5">
+<dl class="mt-5 border-t border-border pt-5">
+<div>
 <dd id="rp9-reco-savings" class="fig text-xl text-primary-text">—</dd>
 <dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
 </div>
+</dl>
 <p id="rp9-reco-why" class="mt-5 min-h-[3.5rem] text-xs text-foreground">
 </p>
 <p id="rp9-reco-bifacial" class="mt-2 text-xs text-muted-foreground">
@@ -514,15 +536,22 @@
 </div>
 </div>
 <div class="mt-4" data-testid="cal-panneau-calques">
-<section data-testid="pc-panneau" aria-label="Calques" class="border border-white/10 bg-nuit-800 p-3">
-<h3 class="tech-label mb-2 text-lune-faint">Calques</h3>
-<p class="text-sm text-lune-faint" data-testid="pc-vide">Aucun calque disponible pour le moment.</p>
+<section data-testid="pc-panneau" aria-label="Calques" class="border border-border bg-card p-3">
+<h3 class="text-xs font-semibold uppercase tracking-wide mb-2 text-muted-foreground">Calques</h3>
+<p class="text-sm text-muted-foreground" data-testid="pc-vide">Aucun calque disponible pour le moment.</p>
 </section>
 </div>
 <div class="mt-4" data-testid="cal-onglets-vue">
 <div class="flex flex-wrap items-center gap-2">
 <button type="button" class="rp9-chip" aria-pressed="true" data-testid="cal-onglet-3d">Vue 3D</button>
 <button type="button" class="rp9-chip" aria-pressed="false" data-testid="cal-onglet-2d">Vue 2D — plan</button>
+</div>
+<div class="mt-2 flex flex-wrap items-center gap-2">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vue</span>
+<button type="button" class="rp9-chip" data-testid="cal-vue-dessus">Dessus</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-sud">Sud</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-trois-quarts">3/4</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-face-panneaux">Face aux panneaux</button>
 </div>
 </div>
 <div class="mt-4 flex flex-wrap items-center gap-2" data-testid="cal-export-hd">
