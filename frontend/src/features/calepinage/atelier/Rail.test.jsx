@@ -227,7 +227,7 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
 describe('ACAL394 — l’interrupteur « Mode expert »', () => {
   beforeEach(() => { try { window.localStorage.clear() } catch { /* ignoré */ } })
 
-  it('guidé par défaut ; cocher montre les 36 onglets rangés sous leur étape, et survit à un rechargement', async () => {
+  it('guidé par défaut ; cocher montre tous les onglets rangés sous leur étape, et survit à un rechargement', async () => {
     const utilisateur = userEvent.setup()
     const premier = rendreRail()
     expect(screen.getAllByRole('tab')).toHaveLength(3)
@@ -239,7 +239,7 @@ describe('ACAL394 — l’interrupteur « Mode expert »', () => {
       total += screen.getAllByRole('tab').length
     }
     expect(total).toBe(ONGLETS.length)
-    expect(ONGLETS).toHaveLength(36)
+
     premier.unmount()
     // rechargement : la mémoire du navigateur garde l’expert.
     rendreRail()
@@ -251,6 +251,34 @@ describe('ACAL394 — l’interrupteur « Mode expert »', () => {
     rendreRail('?mode=expert')
     expect(screen.getByTestId('cal-mode-expert')).toBeChecked()
     expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
+  })
+})
+
+describe('ACAL409 — « Comparer les variantes » et « Photos du site » sont des onglets du rail', () => {
+  it('le registre passe à 38 onglets, la table du parcours couvre `variantes` (Résultats) et `photos` (Toit)', () => {
+    expect(ONGLETS).toHaveLength(38)
+    expect(ETAPES.find((e) => e.cle === 'resultats').onglets).toContain('variantes')
+    expect(ETAPES.find((e) => e.cle === 'toit').onglets).toContain('photos')
+  })
+
+  it('`?onglet=variantes` monte VariantesCompare dans l’étape Résultats, `?onglet=photos` PhotoSiteCalage dans Toit', async () => {
+    const premier = rendreRail(`?${PARAM_ONGLET}=variantes`)
+    expect(screen.getByTestId('cal-etape-resultats')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByTestId('cal-onglet-variantes')).toHaveAttribute('aria-selected', 'true')
+    await panneauOuvert()
+    premier.unmount()
+    rendreRail(`?${PARAM_ONGLET}=photos`)
+    expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByTestId('cal-onglet-photos')).toHaveAttribute('aria-selected', 'true')
+    await panneauOuvert()
+  }, 30_000)
+
+  it('les routes profondes `/variantes` et `/photos` redirigent comme les autres', () => {
+    for (const segment of ['variantes', 'photos']) {
+      const route = config.routes.find((r) => r.path === `/calepinage/:id/${segment}`)
+      const redirection = config.routes.find((r) => r.path === '/calepinage/:id/fiches')
+      expect(route?.component, segment).toBe(redirection.component)
+    }
   })
 })
 

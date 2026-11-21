@@ -72,7 +72,7 @@ describe('AtelierPanneaux (CAL37)', () => {
     expect(screen.getByTestId('cal-cible-panneaux'))
       .toHaveTextContent(String(CTX.cible.panneaux))
     expect(screen.getByTestId('cal-lien-variantes'))
-      .toHaveAttribute('href', `/calepinage/${CTX.calepinage.id}/variantes`)
+      .toHaveAttribute('href', `/calepinage/${CTX.calepinage.id}?onglet=variantes`)
   })
 
   it('cible nulle : « non renseignée », et l’écran le DIT', async () => {

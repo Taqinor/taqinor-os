@@ -14,14 +14,14 @@ import calepinageApi from '../../../api/calepinageApi'
 
 export const ETAPES = [
   { cle: 'toit', libelle: 'Toit',
-    onglets: ['plan', 'pente', 'coupe', 'terrain', 'ombriere', 'horizon', 'course-soleil', 'releve', 'reprise-visite'] },
+    onglets: ['plan', 'pente', 'coupe', 'terrain', 'ombriere', 'horizon', 'course-soleil', 'releve', 'reprise-visite', 'photos'] },
   { cle: 'panneaux', libelle: 'Panneaux',
     onglets: ['fiches', 'affectation', 'masse-lestage', 'fixation', 'pompage'] },
   { cle: 'electrique', libelle: 'Électrique',
     onglets: ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
       'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'schema'] },
   { cle: 'resultats', libelle: 'Résultats',
-    onglets: ['production', 'pertes', 'postes-pertes', 'series', 'batterie', 'economie'] },
+    onglets: ['production', 'pertes', 'postes-pertes', 'series', 'batterie', 'economie', 'variantes'] },
   { cle: 'documents', libelle: 'Documents',
     onglets: ['documents', 'dossiers', 'activite', 'versions', 'diff-versions', 'approbation', 'pose-reelle', 'projet'] },
 ]

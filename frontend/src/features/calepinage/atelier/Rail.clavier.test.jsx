@@ -62,6 +62,9 @@ async function entrerDansLeRail(utilisateur) {
     await utilisateur.tab()
     expect(document.activeElement).toBe(screen.getByTestId(`cal-etape-${cle}`))
   }
+  // ACAL394 — l'interrupteur « Mode expert » suit les boutons d'étape.
+  await utilisateur.tab()
+  expect(document.activeElement).toBe(screen.getByTestId('cal-mode-expert'))
   await utilisateur.tab()
 }
 
