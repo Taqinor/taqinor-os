@@ -192,7 +192,7 @@ describe('CALX62 — déposer une série météo de la société', () => {
       response: {
         status: 400,
         data: {
-          ghi_w_m2: CONTRAT_METEO.exemple_refus_horizontal.ghi_w_m2,
+          dni_w_m2: CONTRAT_METEO.exemple_refus_composante_seule.dni_w_m2,
           ligne: 2,
         },
       },
@@ -201,8 +201,8 @@ describe('CALX62 — déposer une série météo de la société', () => {
     await utilisateur.click(screen.getByTestId('cal-series-depot-envoyer'))
 
     const motif = await screen.findByTestId('cal-series-depot-motif-fichier')
-    expect(motif).toHaveTextContent('ghi_w_m2')
-    expect(motif).toHaveTextContent('CALX198')
+    expect(motif).toHaveTextContent('dni_w_m2')
+    expect(motif).toHaveTextContent('global seul')
     expect(screen.getByTestId('cal-series-depot-bandeau'))
       .toHaveTextContent('ligne 2 du fichier')
     expect(screen.queryByTestId('cal-series-depot-motif-fournisseur')).toBeNull()

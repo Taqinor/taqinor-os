@@ -437,6 +437,17 @@
             "haydavies",
             "perez"
           ]
+        },
+        {
+          "cle": "modele_decomposition",
+          "libelle": "Modèle de décomposition d'un fichier météo au global seul (direct/diffus)",
+          "unite": "",
+          "reference": "pvlib — irradiance.erbs (Erbs 1982) ou irradiance.disc (Maxwell 1987) ; aucun modèle imposé",
+          "type": "enum",
+          "valeurs": [
+            "erbs",
+            "disc"
+          ]
         }
       ],
       "electrique_societe": [
@@ -819,6 +830,17 @@
             "isotropic",
             "haydavies",
             "perez"
+          ]
+        },
+        {
+          "cle": "modele_decomposition",
+          "libelle": "Modèle de décomposition d'un fichier météo au global seul (direct/diffus)",
+          "unite": "",
+          "reference": "pvlib — irradiance.erbs (Erbs 1982) ou irradiance.disc (Maxwell 1987) ; aucun modèle imposé",
+          "type": "enum",
+          "valeurs": [
+            "erbs",
+            "disc"
           ]
         }
       ],

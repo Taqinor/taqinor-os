@@ -115,6 +115,26 @@ def transposer_serie_horizontale(serie, plan, contexte):
         # pvlib compte l'azimut en boussole (0 = Nord, 180 = Sud).
         azimuts.append((soleil.azimut_depuis_sud_deg + 180.0) % 360.0)
 
+    decomposition = None
+    if serie.get('a_decomposer'):
+        # ACAL456 — dni/dhi déduits du global AVANT la transposition, par le
+        # modèle SAISI (jamais choisi à la place de la société).
+        from . import decomposition as _decomp
+        nom = str((_etapes.reglage(contexte, 'modele_decomposition') or {})
+                  .get('valeur') or '').strip().lower()
+        if nom not in _decomp.MODELES_DECOMPOSITION:
+            raise EntreeInvalide(
+                f'Aucun modèle de décomposition saisi avec sa source (« '
+                f'{_decomp.CHAMP_MODELE} » : erbs ou disc) : le fichier ne '
+                "porte que le global horizontal, et aucun modèle n'est choisi "
+                'à la place de la société.', champ=_decomp.CHAMP_MODELE)
+        dni, dhi = _decomp.deduire_direct_diffus(
+            [p['ghi_w_m2'] for p in points], zeniths, instants, nom)
+        points = [dict(p, dni_w_m2=a, dhi_w_m2=b)
+                  for p, a, b in zip(points, dni, dhi)]
+        decomposition = {'modele': nom, 'reference': _decomp.MODELES_DECOMPOSITION[nom],
+                         'hypothese': _decomp.HYPOTHESE}
+
     import numpy as np
     import pandas as pd
     from pvlib import atmosphere, irradiance
@@ -156,6 +176,8 @@ def transposer_serie_horizontale(serie, plan, contexte):
     meteo['transposition'] = {
         'modele': modele, 'reference': MODELES_TRANSPOSITION[modele],
         'albedo': {'valeur': albedos, 'source': source_albedo}}
+    if decomposition:
+        meteo['decomposition'] = decomposition
     annees = list(serie.get('annees') or [])
     return {'service': 'fichier', 'plan_des_donnees': 'plan', 'points': sortie,
             'composantes_disponibles': True, 'motif_composantes': None,
