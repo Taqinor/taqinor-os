@@ -1,0 +1,21 @@
+{
+ "ACAL898": "doublon d'ACAL697 (même fiche « pertes en mots simples ») — D-ACAL-37(d) la rend remettable au client (sortie A)",
+ "ACAL849": "D-ACAL-40 : le bilan du réservoir reste interne ; ACAL807 le montre déjà à l'écran (sortie A)",
+ "ACAL899": "D-ACAL-42 : profils par distributeur en réserve ; dossier générique déjà servi par `GabaritDossierReglementaire` (sortie A)",
+ "ACAL785": "D-ACAL-42 : rien de prérempli ni deviné ; semis de gabarits par distributeur en réserve (sortie A)",
+ "ACAL905": "doublon d'ACAL976 sur `apps/ventes/economie.py` ; D-ACAL-39 tranche (ni économie, ni TRI, ni retour sans consommation)",
+ "ACAL691": "doublon d'ACAL854 + ACAL855 (écart PVGIS sous le chiffre de production, avec voyant)",
+ "ACAL882": "couvert par ACAL719 (heure solaire ET heure légale sur la barre du soleil et la course du soleil)",
+ "ACAL739": "doublon d'ACAL659 (mêmes champs de déclassement thermique de l'onduleur, sous deux noms) ; ACAL740-741 lisent ceux d'ACAL659",
+ "ACAL930": "doublon d'ACAL608 (clé de pose des modules : `geometry.panelOrientation` d'ACAL573/601/608 est la seule clé)",
+ "ACAL931": "doublon d'ACAL601 + ACAL605 (emprise orientée des modules à la planche et au plan de câblage)",
+ "ACAL932": "doublon d'ACAL604 (emprise vraie des modules et tracé unique du toit au DXF)",
+ "ACAL841": "second contrat de `zones[].existant` : ACAL573 (D2) est le seul propriétaire de la clé (forme booléen + `anneeMiseEnService`)",
+ "ACAL844": "doublon d'ACAL510 (case « Modules déjà en place » et année de mise en service à l'atelier)",
+ "ACAL823": "D-ACAL-42 : choix des gabarits par distributeur du lead = profils par distributeur (réserve)",
+ "ACAL825": "D-ACAL-42 : saisie d'un distributeur sur un gabarit = profils par distributeur (réserve)",
+ "ACAL826": "D-ACAL-42 : limite du profil du distributeur (réserve)",
+ "ACAL679": "D-ACAL-42 : gabarit de schéma choisi par distributeur du lead = profils par distributeur (réserve)",
+ "ACAL680": "D-ACAL-42 : affichage du gabarit par distributeur, suit ACAL679 (réserve)",
+ "ACAL900": "export Word : réserve (preuve mince : deux fils de forum ; dépendance gratuite, donc pas une porte fondateur) — choix pris seul"
+}
