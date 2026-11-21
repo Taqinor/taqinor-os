@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5242, operations: 8084, components: 4032}
+counts: {paths: 5252, operations: 8094, components: 4043}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3756,6 +3756,7 @@ operations:
 - get /api/django/ventes/devis/ -> django_ventes_devis_list
 - post /api/django/ventes/devis/ -> django_ventes_devis_create
 - get /api/django/ventes/devis/action-requise/ -> django_ventes_devis_action_requise_retrieve
+- get /api/django/ventes/devis/assistant-liste/ -> django_ventes_devis_assistant_liste_retrieve
 - post /api/django/ventes/devis/atomic/ -> django_ventes_devis_atomic_create
 - post /api/django/ventes/devis/auto/ -> django_ventes_devis_auto_create
 - post /api/django/ventes/devis/composition/ -> django_ventes_devis_composition_create
@@ -3771,6 +3772,10 @@ operations:
 - post /api/django/ventes/devis/{id}/acquitter-derive/ -> django_ventes_devis_acquitter_derive_create
 - post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
+- post /api/django/ventes/devis/{id}/assistant-lignes/ajouter/ -> django_ventes_devis_assistant_lignes_ajouter_create
+- post /api/django/ventes/devis/{id}/assistant-lignes/modifier/ -> django_ventes_devis_assistant_lignes_modifier_create
+- post /api/django/ventes/devis/{id}/assistant-lignes/remplacer/ -> django_ventes_devis_assistant_lignes_remplacer_create
+- post /api/django/ventes/devis/{id}/assistant-lignes/supprimer/ -> django_ventes_devis_assistant_lignes_supprimer_create
 - post /api/django/ventes/devis/{id}/assistant-taille/ -> django_ventes_devis_assistant_taille_create
 - get /api/django/ventes/devis/{id}/assistant-taille/apercu/ -> django_ventes_devis_assistant_taille_apercu_retrieve
 - post /api/django/ventes/devis/{id}/avenant/demander-signature/ -> django_ventes_devis_avenant_demander_signature_create
@@ -7802,6 +7807,7 @@ operations:
 - get /api/v1/ventes/devis/ -> v1_ventes_devis_list
 - post /api/v1/ventes/devis/ -> v1_ventes_devis_create
 - get /api/v1/ventes/devis/action-requise/ -> v1_ventes_devis_action_requise_retrieve
+- get /api/v1/ventes/devis/assistant-liste/ -> v1_ventes_devis_assistant_liste_retrieve
 - post /api/v1/ventes/devis/atomic/ -> v1_ventes_devis_atomic_create
 - post /api/v1/ventes/devis/auto/ -> v1_ventes_devis_auto_create
 - post /api/v1/ventes/devis/composition/ -> v1_ventes_devis_composition_create
@@ -7817,6 +7823,10 @@ operations:
 - post /api/v1/ventes/devis/{id}/acquitter-derive/ -> v1_ventes_devis_acquitter_derive_create
 - post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
+- post /api/v1/ventes/devis/{id}/assistant-lignes/ajouter/ -> v1_ventes_devis_assistant_lignes_ajouter_create
+- post /api/v1/ventes/devis/{id}/assistant-lignes/modifier/ -> v1_ventes_devis_assistant_lignes_modifier_create
+- post /api/v1/ventes/devis/{id}/assistant-lignes/remplacer/ -> v1_ventes_devis_assistant_lignes_remplacer_create
+- post /api/v1/ventes/devis/{id}/assistant-lignes/supprimer/ -> v1_ventes_devis_assistant_lignes_supprimer_create
 - post /api/v1/ventes/devis/{id}/assistant-taille/ -> v1_ventes_devis_assistant_taille_create
 - get /api/v1/ventes/devis/{id}/assistant-taille/apercu/ -> v1_ventes_devis_assistant_taille_apercu_retrieve
 - post /api/v1/ventes/devis/{id}/avenant/demander-signature/ -> v1_ventes_devis_avenant_demander_signature_create
@@ -8881,6 +8891,7 @@ query_params:
   get /api/django/ventes/dashboard/: end mine month start
   get /api/django/ventes/devis-lignes/: ordering page page_size search
   get /api/django/ventes/devis/: concevable entite lead ordering page page_size search statut
+  get /api/django/ventes/devis/assistant-liste/: depuis jusqu_a limite q statut
   get /api/django/ventes/devis/prefill-site/: client
   get /api/django/ventes/devis/{id}/assistant-taille/apercu/: batterie_nb_modules nb_panneaux
   get /api/django/ventes/devis/{id}/declaration-raccordement/: format regime
@@ -9719,6 +9730,7 @@ query_params:
   get /api/v1/ventes/dashboard/: end mine month start
   get /api/v1/ventes/devis-lignes/: ordering page page_size search
   get /api/v1/ventes/devis/: concevable entite lead ordering page page_size search statut
+  get /api/v1/ventes/devis/assistant-liste/: depuis jusqu_a limite q statut
   get /api/v1/ventes/devis/prefill-site/: client
   get /api/v1/ventes/devis/{id}/assistant-taille/apercu/: batterie_nb_modules nb_panneaux
   get /api/v1/ventes/devis/{id}/declaration-raccordement/: format regime
@@ -10801,6 +10813,8 @@ components:
 - DevisLectureClient
 - DevisLigneAssistant
 - DevisLignesAssistantResponse
+- DevisListeAssistantLigne
+- DevisListeAssistantResponse
 - DevisLotCreationRequestRequest
 - DevisLotsResponse
 - DevisMarqueManquante
@@ -10809,6 +10823,8 @@ components:
 - DevisOffreTailleCleRequestCleEnum
 - DevisOffreTailleCleRequestRequest
 - DevisOffresTailles
+- DevisOptionAssistant
+- DevisOptionAssistantAvant
 - DevisOverridesResponse
 - DevisPdfOptionsRequestRequest
 - DevisPdfPartageResponse
@@ -10964,6 +10980,7 @@ components:
 - ErreurApi
 - ErreurAuthentification
 - ErreurCalendrierIcs
+- ErreurLignesAssistant
 - ErreurRelanceWhatsappAssistant
 - ErreurTailleAssistant
 - EtapeApprobationAchat
@@ -11388,6 +11405,7 @@ components:
 - LeverReserveRequeteRequest
 - LicenceStatut
 - LicenceStatutPublic
+- LigneAjouterAssistantRequestRequest
 - LigneAvoir
 - LigneBonCommandeFournisseur
 - LigneBonCommandeFournisseurRequest
@@ -11400,6 +11418,7 @@ components:
 - LigneFactureRequest
 - LigneInventaire
 - LigneInventaireRequest
+- LigneModifierAssistantRequestRequest
 - LigneNoteDebit
 - LignePermanenceRequest
 - LignePicking
@@ -11410,11 +11429,15 @@ components:
 - LigneReceptionFournisseurRequest
 - LigneRemiseEncaissement
 - LigneRemiseEncaissementRequest
+- LigneRemplacerAssistantRequestRequest
 - LigneRetourClient
 - LigneRetourClientRequest
 - LigneRetourFournisseur
 - LigneRetourFournisseurRequest
 - LigneSerieRequeteRequest
+- LigneSupprimerAssistantRequestRequest
+- LignesAssistantLigne
+- LignesAssistantResponse
 - LimModeEnum
 - ListePrix
 - ListePrixLigneSaisieRequest

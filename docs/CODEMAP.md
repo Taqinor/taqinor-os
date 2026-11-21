@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 112dc18eb64416a19be65d9eb73de819d2a2cf828c5dcfe25c7d8d09bf7ff040
-Plan fingerprint: 5bfbddd059b2cec82538b87a76bbea3d563e7aa3c170b6858f172887675e0126
+Structure fingerprint: 28d6829c76ee12776bccbb9618e1e80df09fe27d66789ff84d1bfaa868cfe390
+Plan fingerprint: 6410847be77575f825907851199fa837049d37abc351c7cf3b4c9dcb770adaf2
 
 
 
@@ -621,7 +621,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1339)**
+**Done (1340)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1676,6 +1676,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `COPW1` — Cartes de l'assistant pour l'après-devis, le stock, le SAV et le pilotage
 - `COPW2` — Cartes de l'assistant pour le calepinage, les visites et les chantiers
 - `COPW3` — Point du matin étendu et dossier du lead
+- `COPW4` — Carte de l'ERP de l'assistant, générée depuis le code et gardée en CI
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — Contrat d'abord (PACT10)
 - `CRXB4` — UN round-robin

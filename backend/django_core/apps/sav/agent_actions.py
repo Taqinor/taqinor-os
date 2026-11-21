@@ -46,7 +46,7 @@ OUVRIR_TICKET_SAV = AgentAction(
     key='sav.ticket.create',
     label="Ouvrir un ticket SAV (le client n'est pas prévenu)",
     description=(
-        "Sert à : ouvrir, après confirmation, un ticket SAV (panne, "
+        "Sert à : ouvrir un ticket SAV (panne, "
         "réclamation) pour un client OU pour un équipement du parc (client "
         "et chantier sont alors déduits de l'équipement). Ne pas utiliser "
         "pour : changer le statut d'un ticket ni noter un ticket existant. "
@@ -96,7 +96,7 @@ METTRE_A_JOUR_TICKET = AgentAction(
     key='sav.ticket.update',
     label='Changer la priorité ou la description du ticket SAV (statut inchangé)',
     description=(
-        "Sert à : changer, après confirmation, la priorité ou la description "
+        "Sert à : changer la priorité ou la description "
         "d'un ticket SAV existant. Ne pas utiliser pour : changer le statut "
         "(planifier, démarrer, résoudre, clôturer : gestes de l'écran SAV) "
         "ni réaffecter le ticket. Exemple : « passe le ticket 88 en urgent » "

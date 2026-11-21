@@ -875,3 +875,41 @@ class FondationVague2Tests(SimpleTestCase):
         self.assertIn('ARCHIVE', neuve.description)
         for champ in ('endpoint', 'method', 'required_permission', 'risk', 'inputs'):
             self.assertEqual(getattr(ancienne, champ), getattr(neuve, champ), champ)
+
+
+class ActionsDirectesDcop5Tests(SimpleTestCase):
+    """D-COP-5 (Reda, 21/11/2026, « presque rien » ne se confirme) — la liste
+    blanche des actions exécutées sans carte, et ce qui garde la carte."""
+
+    #: Gardent la carte : argent, ce qui part chez le client, suppression et
+    #: archivage, stock et commandes fournisseur.
+    GARDENT_LA_CARTE = (
+        'ventes.devis.generer_facture', 'ventes.facture.enregistrer_paiement',
+        'ventes.vente.facturer', 'ventes.devis.envoyer_email',
+        'crm.lead.archiver', 'visites.visite.annuler', 'stock.mouvement.create',
+        'stock.bon_commande_fournisseur.create',
+        'installations.chantier.commander_besoin', 'sav.ticket.resoudre',
+        'sav.ticket.transition')
+
+    def test_directes_enregistrees_outward_jamais_irreversibles(self):
+        from apps.agent.registry import ACTIONS_DIRECTES
+        par_cle = {a.key: a for a in all_actions()}
+        self.assertEqual(sorted(ACTIONS_DIRECTES - set(par_cle)), [])
+        self.assertEqual(sorted(k for k in ACTIONS_DIRECTES
+                                if par_cle[k].risk != RISK_OUTWARD), [])
+        for cle in ('crm.lead.creer', 'crm.lead.qualifier', 'ventes.devis.taille',
+                    'ventes.devis.ligne_ajouter'):
+            with self.subTest(cle=cle):
+                self.assertTrue(par_cle[cle].as_dict()['directe'])
+
+    def test_argent_client_suppression_et_stock_gardent_la_carte(self):
+        par_cle = {a.key: a for a in all_actions()}
+        for cle in self.GARDENT_LA_CARTE:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, par_cle)
+                self.assertFalse(par_cle[cle].as_dict()['directe'])
+
+    def test_action_nouvelle_garde_sa_carte_par_defaut(self):
+        neuve = AgentAction(key='demo.ecrit', label='L', description='d',
+                            endpoint='/x/', method='POST', risk=RISK_OUTWARD)
+        self.assertFalse(neuve.as_dict()['directe'])

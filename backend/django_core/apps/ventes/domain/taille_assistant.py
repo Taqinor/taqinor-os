@@ -264,8 +264,10 @@ def mesurer(devis, nb_panneaux, modules=None, *, utilisateur=None,
     ``devis`` : écrite si ``ecrire`` (et seulement si ``attendus`` — les deux
     totaux de l'aperçu — sont toujours ceux du serveur), annulée sinon. Rend
     ``{statut, corrige_apres_envoi, nb_panneaux_avant, nb_panneaux,
-    kwc_avant, kwc, ancien_total_ttc, nouveau_total_ttc, alertes}``. Lève
+    kwc_avant, kwc, ancien_total_ttc, nouveau_total_ttc, alertes, options}``.
+    Lève
     :class:`TailleRefusee` (aucune écriture)."""
+    from apps.ventes.selectors_assistant import options_du_devis
     from .modifiabilite import ttc_du_devis
 
     refus = refus_de_statut(devis) or refus_du_toit(devis, nb_panneaux)
@@ -285,6 +287,9 @@ def mesurer(devis, nb_panneaux, modules=None, *, utilisateur=None,
             'ancien_total_ttc': _texte(ttc_avant),
             'nouveau_total_ttc': _texte(ttc_du_devis(devis)),
             'alertes': _alertes(resume),
+            # 20/11/2026 (DEV-202611-0090) — chaque option avec SES chiffres,
+            # lus AVANT l'annulation de l'aperçu.
+            'options': options_du_devis(devis),
         }
         if not ecrire:
             transaction.set_rollback(True)

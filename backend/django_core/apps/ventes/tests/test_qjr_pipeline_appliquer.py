@@ -385,6 +385,11 @@ CHEMINS_BASCULES = {
     # QJR554 — ``LigneDevisViewSet`` (ajout / modification / retrait d'une
     # ligne) demande le mode « rafraîchir » : études + caches (kWc, marge).
     'views/ligne_devis.py': 1,
+    # D-COP-5 (21/11/2026) — les gestes de lignes de l'ASSISTANT
+    # (``assistant-lignes/<op>/``) rafraîchissent comme ``LigneDevisViewSet``
+    # (mode « rafraîchir », origine écran). Golden : les totaux par option
+    # avant/après de ``test_agent_actions.LignesAssistantEcritureTest``.
+    'domain/lignes_assistant.py': 1,
     # ADEV19 — l'activation d'une option par le CLIENT (``cycle_vie.
     # _geste_option_client``) est un geste de ligne comme ``views/
     # ligne_devis.py`` : même mode « rafraîchir » (études, kWc, marge).

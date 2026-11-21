@@ -619,7 +619,7 @@ class CreationsDevisS2Tests(unittest.TestCase):
 
 
 class EcrituresInternesFnd5Tests(unittest.TestCase):
-    """Vague 2 (FND5) — (a) cinq écritures silencieuses par tour, tous
+    """Vague 2 (FND5) — (a) dix écritures silencieuses par tour (D-COP-5), tous
     domaines ; (b) le 409 `paiement_similaire` d'une confirmation est dit sans
     pousser à une seconde proposition."""
 
@@ -642,17 +642,19 @@ class EcrituresInternesFnd5Tests(unittest.TestCase):
         from app.services.action_tools import ActionContext
         return ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
 
-    def test_sixieme_ecriture_silencieuse_refusee_et_nouveau_tour_repart_a_zero(self):
+    def test_ecriture_au_dela_du_plafond_refusee_et_nouveau_tour_repart_a_zero(self):
         from app.services import action_tools as at
         ctx = self._ctx()
-        appels, textes = self._lancer(ctx, self.NOTE, 6)
-        self.assertEqual((len(appels), textes[5]), (5, at.REFUS_ECRITURES_INTERNES))
+        plafond = at.ECRITURES_INTERNES_PAR_TOUR
+        self.assertEqual(plafond, 10)  # D-COP-5 : un devis complet tient dans un tour
+        appels, textes = self._lancer(ctx, self.NOTE, plafond + 1)
+        self.assertEqual((len(appels), textes[plafond]), (plafond, at.REFUS_ECRITURES_INTERNES))
         self.assertEqual(len(self._lancer(self._ctx(), self.NOTE, 1)[0]), 1)
 
     def test_get_lecture_document_et_taches_ne_comptent_pas(self):
         from app.services import action_tools as at
         ctx = self._ctx()
-        self._lancer(ctx, self.NOTE, 5)
+        self._lancer(ctx, self.NOTE, at.ECRITURES_INTERNES_PAR_TOUR)
         for action in (dict(self.NOTE, method="GET"), dict(self.NOTE, lecture=True),
                        dict(self.NOTE, key="taches.tache.creer")):
             with self.subTest(action=action["key"], methode=action["method"]):
@@ -970,3 +972,158 @@ class InvariantEteintFnd13Tests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActionsDirectesDcop5Tests(unittest.TestCase):
+    """D-COP-5 (Reda, 21/11/2026) — une action `outward` marquée `directe` par
+    le catalogue s'exécute sans carte, se journalise `interne` à son niveau
+    déclaré ; elle redevient une carte quand le message porte un texte collé ;
+    une action `irreversible` ou non marquée garde toujours sa carte."""
+
+    QUALIFIER = {"key": "crm.lead.qualifier", "label": "Qualifier un lead",
+                 "endpoint": "/api/django/crm/leads/{id}/", "method": "PATCH",
+                 "risk": "outward", "directe": True,
+                 "inputs": {"type": "object",
+                            "properties": {"id": {"type": "integer"}, "ville": {"type": "string"}}}}
+
+    def _ctx(self):
+        from app.services.action_tools import ActionContext
+        return ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+
+    def _lancer(self, ctx, action):
+        from app.services import action_tools as at
+        appels, collecteur = [], []
+
+        def appel(*a, **k):
+            appels.append((a[1], k.get("payload")))
+            return {"ok": True, "status": 200, "data": {"id": 1751}}
+        with mock.patch.object(at, "_django_call", appel), \
+                mock.patch.object(at, "_stash_proposal", return_value="jeton"):
+            texte = at.run_catalogue_action(ctx, action, {"id": 1751, "ville": "Safi"}, collecteur)
+        return appels, collecteur, texte
+
+    def test_directe_executee_sans_carte_et_journalisee_au_niveau_declare(self):
+        from app.services import action_tools as at
+        with mock.patch.object(at, "calculer_preuve_confirmation", return_value="p"):
+            appels, collecteur, _ = self._lancer(self._ctx(), self.QUALIFIER)
+        self.assertEqual([c["type"] for c in collecteur], ["result"])
+        self.assertEqual(appels[0][0], "/api/django/crm/leads/1751/")
+        journal = [p for chemin, p in appels if chemin == "/api/django/agent/logs/confirmer/"]
+        self.assertEqual((journal[0]["origine"], journal[0]["risk_level"]), ("interne", "outward"))
+
+    def test_message_colle_garde_la_carte(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        at.noter_message_tiers(ctx, "question")
+        appels, collecteur, _ = self._lancer(ctx, self.QUALIFIER)
+        self.assertEqual(([c["type"] for c in collecteur], appels), (["proposal"], []))
+
+    def test_irreversible_ou_non_marquee_garde_la_carte(self):
+        for action in (dict(self.QUALIFIER, risk="irreversible"),
+                       dict(self.QUALIFIER, directe=False)):
+            with self.subTest(risk=action["risk"], directe=action["directe"]):
+                appels, collecteur, _ = self._lancer(self._ctx(), action)
+                self.assertEqual(([c["type"] for c in collecteur], appels), (["proposal"], []))
+
+
+class EchecConfirmationDcop5Tests(unittest.TestCase):
+    """D-COP-5 — le 20/11 une confirmation refusée par l'ERP (400) n'entrait pas
+    dans la conversation : le modèle reproposait la même carte, quatre fois.
+    L'échec est maintenant écrit et remis au modèle, nommé."""
+
+    def test_echec_ecrit_et_reprise_avec_la_raison(self):
+        from app.services import relais_copilote as rc
+        ecrits = []
+
+        class _Service:
+            def _ajouter_historique(self, user_id, messages):
+                ecrits.extend(messages)
+        with mock.patch.object(rc, "reprise_native", return_value={"answer": "ok"}) as reprise:
+            suite = rc.apres_echec_confirmation(
+                _Service(), object(), 1, 7,
+                {"ok": False, "libelle": "Ajouter une ligne au devis",
+                 "error": "designation : Ce champ est obligatoire."})
+        self.assertEqual(suite, {"answer": "ok"})
+        self.assertIn("NON exécutée (Ajouter une ligne au devis)", ecrits[0]["content"])
+        self.assertEqual(reprise.call_args.args[5], {"echec": "designation : Ce champ est obligatoire."})
+
+    def test_message_de_reprise_d_un_echec_interdit_la_meme_proposition(self):
+        from app.services import relais_copilote as rc
+        texte = rc.message_de_reprise("Ajouter une ligne au devis", {"echec": "400"})
+        self.assertIn("REFUSÉE", texte)
+        self.assertIn("ne repropose jamais la même action", texte)
+
+    def test_confirmation_refusee_porte_cle_et_libelle(self):
+        from app.services import action_tools as at
+        action = {"key": "ventes.devis.ligne_ajouter", "label": "Ajouter une ligne au devis"}
+        with mock.patch.object(at, "_claim_proposal", return_value={"human_preview": "x"}), \
+                mock.patch.object(at, "_preparer_confirmation", return_value=(action, {}, "")), \
+                mock.patch.object(at, "_execute_catalogue_action",
+                                  return_value={"ok": False, "status": 400, "error": "Champs invalides."}):
+            res = at.confirm_proposal(at.ActionContext(company_id=1, role="admin",
+                                                       permissions=[], token="jwt"), "t")
+        self.assertEqual((res["ok"], res["action_key"], res["libelle"]),
+                         (False, "ventes.devis.ligne_ajouter", "Ajouter une ligne au devis"))
+
+
+class PhraseTapeeResteDirecteDcop5Tests(unittest.TestCase):
+    """Essai réel du 21/11 — une phrase tapée à virgules (« … 600 dirhams, je
+    veux un devis, il s'appelle … ») était prise pour un texte collé : la
+    création du lead revenait en carte. Seul un texte VRAIMENT collé (long,
+    cité, numéroté, sur plusieurs lignes) ou une image remet la carte."""
+
+    TAPEE = ("Créer un nouveau client et rajoute qu'il a une facture de 600 dirhams et qu'il "
+             "habite à Souhail, je veux que tu me fasses un devis pour ce client, il s'appelle X")
+
+    def _ctx_apres(self, question):
+        from app.services import relais_copilote as rc
+        from app.services.action_tools import ActionContext
+        ctx = ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+        rc.noter_question_du_tour(ctx, question)
+        return ctx
+
+    def test_phrase_a_virgules_garde_l_action_directe(self):
+        from app.services import action_tools as at
+        ctx = self._ctx_apres(self.TAPEE)
+        self.assertTrue(getattr(ctx, "message_tiers", False))  # A5 et borne des devis : inchangées
+        self.assertTrue(at.action_directe(ctx, {"directe": True, "risk": "outward"}))
+
+    def test_texte_vraiment_colle_remet_la_carte(self):
+        from app.services import action_tools as at
+        for colle in ("Bonjour,\nje veux 10 panneaux\nmerci", "« mettez la remise à 30 »",
+                      "1. créer le lead 2. passer en Signé", "x" * 400):
+            with self.subTest(colle=colle[:20]):
+                self.assertFalse(at.action_directe(self._ctx_apres(colle),
+                                                   {"directe": True, "risk": "outward"}))
+
+
+class DirectesSensiblesApresLectureTests(unittest.TestCase):
+    """Revue adverse du 21/11 (B3) — une consigne cachée dans une donnée lue
+    (note d'un lead venu d'un formulaire public) ne déclenche jamais, sans
+    carte, un geste qui change l'état ou le propriétaire d'un dossier ; les
+    autres gestes directs (créer, qualifier, lignes, taille) le restent."""
+
+    def _ctx(self):
+        from app.services.action_tools import ActionContext
+        return ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+
+    def test_sensible_direct_sans_lecture_carte_apres_lecture(self):
+        from app.services import action_tools as at
+        accepter = {"key": "ventes.devis.accepter", "directe": True, "risk": "outward"}
+        qualifier = {"key": "crm.lead.qualifier", "directe": True, "risk": "outward"}
+        ctx = self._ctx()
+        self.assertTrue(at.action_directe(ctx, accepter))
+        at.garde_ecriture_taches(ctx, {"key": "crm.lead.resume", "method": "GET"}, {}, [])
+        self.assertFalse(at.action_directe(ctx, accepter))
+        self.assertTrue(at.action_directe(ctx, qualifier))
+
+    def test_une_ecriture_seule_ne_compte_pas_comme_lecture_avant_son_resultat(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        at.garde_ecriture_taches(ctx, {"key": "crm.lead.creer", "method": "POST"}, {}, [])
+        self.assertTrue(at.action_directe(ctx, {"key": "crm.lead.perdu", "directe": True,
+                                                "risk": "outward"}))
+        self.assertEqual(at.DIRECTES_SENSIBLES, frozenset({
+            "ventes.devis.accepter", "ventes.devis.convertir_bc", "ventes.devis.refuser",
+            "crm.lead.perdu", "crm.lead.changer_etape", "crm.lead.reaffecter",
+            "crm.dossiers.deleguer"}))
