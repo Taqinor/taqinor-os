@@ -92,11 +92,11 @@ const LIBELLES_SOURCE_CIBLE = {
 function BandeauVerrou({ raison }) {
   return (
     <div className="mt-4 border border-brass-400/40 p-3" data-testid="cal-bandeau-lecture-seule">
-      <p className="tech-label text-brass-300">Conception figée</p>
-      <p className="mt-1 text-sm text-lune-soft" data-testid="cal-bandeau-lecture-seule-raison">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Conception figée</p>
+      <p className="mt-1 text-sm text-foreground" data-testid="cal-bandeau-lecture-seule-raison">
         {raison || 'Cet atelier est en lecture seule : le devis lié ne se modifie plus.'}
       </p>
-      <p className="mt-1 text-sm text-lune-faint">
+      <p className="mt-1 text-sm text-muted-foreground">
         Pour changer cette conception, utilisez « Réviser (v2) » : une nouvelle
         version du devis rouvre l’écriture.
       </p>
@@ -145,10 +145,10 @@ export default function AtelierPanneaux({
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-atelier-panneaux">
+    <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-atelier-panneaux">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <span className="flex items-baseline gap-2">
-          <p className="tech-label rule-brass text-brass-300">Calepinage</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Calepinage</p>
           {/* CAL188 — l'en-tête de l'atelier, lu du MÊME champ serveur que la
               fiche devis et la liste (CAL189), jamais recalculé ici. */}
           <BadgePerime layoutStale={detail?.layout_stale}
@@ -160,7 +160,7 @@ export default function AtelierPanneaux({
         <Link
           to={`/calepinage/${calepinageId}?onglet=variantes`}
           data-testid="cal-lien-variantes"
-          className="text-sm font-semibold text-brass-300 underline"
+          className="text-sm font-semibold text-primary-text underline"
         >
           Comparer les variantes
         </Link>
@@ -169,7 +169,7 @@ export default function AtelierPanneaux({
         <Link
           to={`/calepinage/${calepinageId}?onglet=photos`}
           data-testid="cal-lien-photos-calage"
-          className="text-sm font-semibold text-brass-300 underline"
+          className="text-sm font-semibold text-primary-text underline"
         >
           Photos du site
         </Link>
@@ -185,26 +185,26 @@ export default function AtelierPanneaux({
           le chiffre affiché engage un devis ou n'est qu'une estimation. */}
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <div>
-          <dd className="fig text-lg text-white" data-testid="cal-cible-panneaux">
+          <dd className="fig text-lg text-foreground" data-testid="cal-cible-panneaux">
             {cible ? valeur(cible.panneaux) : 'non renseignée'}
           </dd>
-          <dt className="tech-label mt-0.5 text-lune-faint">Cible — panneaux</dt>
+          <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — panneaux</dt>
         </div>
         <div>
-          <dd className="fig text-lg text-white">{cible ? valeur(cible.kwc, ' kWc') : '—'}</dd>
-          <dt className="tech-label mt-0.5 text-lune-faint">Cible — puissance</dt>
+          <dd className="fig text-lg text-foreground">{cible ? valeur(cible.kwc, ' kWc') : '—'}</dd>
+          <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — puissance</dt>
         </div>
         <div>
-          <dd className="fig text-lg text-white">{valeur(LIBELLES_SOURCE_CIBLE[cible?.source] ?? cible?.source)}</dd>
-          <dt className="tech-label mt-0.5 text-lune-faint">Source de la cible</dt>
+          <dd className="fig text-lg text-foreground">{valeur(LIBELLES_SOURCE_CIBLE[cible?.source] ?? cible?.source)}</dd>
+          <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Source de la cible</dt>
         </div>
         <div>
           {/* ACAL115 — le statut DÉRIVÉ de l'approbation, par son libellé
               servi (agrégat), à défaut le code du contexte. */}
-          <dd className="fig text-lg text-white" data-testid="cal-atelier-statut">
+          <dd className="fig text-lg text-foreground" data-testid="cal-atelier-statut">
             {valeur(detail?.statut_libelle ?? calepinage?.statut)}
           </dd>
-          <dt className="tech-label mt-0.5 text-lune-faint">Statut</dt>
+          <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Statut</dt>
         </div>
       </dl>
 
@@ -214,7 +214,7 @@ export default function AtelierPanneaux({
       <FicheCalepinage detail={detail} onRelire={relire} />
 
       {!cible && (
-        <p className="mt-2 text-xs text-lune-faint" role="status">
+        <p className="mt-2 text-xs text-muted-foreground" role="status">
           Aucune cible de puissance connue pour ce calepinage : rattachez un
           devis, ou dessinez librement — rien n'est deviné à votre place.
         </p>
@@ -294,11 +294,11 @@ export default function AtelierPanneaux({
         {/* ACAL421 — absent en lecture seule, sans lead lié, sans builder, ou si un pan est déjà tracé. */}
         {!enLectureSeule && leadId && builderApi?.ajouterPanDepuisContour && !aDejaUnPan(builderApi) && (
           <button type="button" onClick={lancerConceptionAuto} data-testid="cal-conception-auto"
-            className="text-sm font-semibold text-brass-300 underline">
+            className="text-sm font-semibold text-primary-text underline">
             Conception automatique
           </button>
         )}
-        {messageAuto && <p className="text-sm text-lune-faint" role="status" data-testid="cal-conception-auto-message">{messageAuto}</p>}
+        {messageAuto && <p className="text-sm text-muted-foreground" role="status" data-testid="cal-conception-auto-message">{messageAuto}</p>}
         {typeof children === 'function'
           ? children({ calepinageId, contexte, builderApi, lectureSeule: enLectureSeule, onRecharger })
           : children}

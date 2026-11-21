@@ -57,7 +57,7 @@ export function JetonEtiquette({ etiquette, onRetirer = null, testId }) {
   const couleur = HEX.test(etiquette?.couleur || '') ? etiquette.couleur : null
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full border border-white/20 px-2 py-0.5 text-xs"
+      className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs"
       style={couleur ? { borderColor: couleur, color: couleur } : undefined}
       data-testid={testId}
     >
@@ -140,10 +140,10 @@ export default function Etiquettes({ calepinageId, peutGerer = false }) {
 
   return (
     <div className="mt-4" data-testid="cal-etiquettes">
-      <p className="tech-label text-lune-faint">Étiquettes</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Étiquettes</p>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         {liste.length === 0 && !error ? (
-          <span className="text-sm text-lune-faint">Aucune étiquette</span>
+          <span className="text-sm text-muted-foreground">Aucune étiquette</span>
         ) : null}
         {liste.map((etiquette) => (
           <JetonEtiquette
@@ -156,7 +156,7 @@ export default function Etiquettes({ calepinageId, peutGerer = false }) {
         {peutGerer ? (
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-xs text-brass-300 underline"
+            className="inline-flex items-center gap-1 text-xs text-primary-text underline"
             onClick={() => { setChoix((ouvert) => !ouvert); setRefus(null) }}
             data-testid="cal-etiquettes-ajouter"
           >
@@ -165,14 +165,14 @@ export default function Etiquettes({ calepinageId, peutGerer = false }) {
           </button>
         ) : null}
       </div>
-      {error ? <p className="mt-1 text-xs text-lune-faint">{error}</p> : null}
+      {error ? <p className="mt-1 text-xs text-muted-foreground">{error}</p> : null}
 
       {choix ? (
         <div className="mt-2 flex flex-wrap gap-2" data-testid="cal-etiquettes-choix">
-          {vocabulaire.loading ? <span className="text-xs text-lune-faint">Chargement…</span> : null}
-          {vocabulaire.error ? <span className="text-xs text-lune-faint">{vocabulaire.error}</span> : null}
+          {vocabulaire.loading ? <span className="text-xs text-muted-foreground">Chargement…</span> : null}
+          {vocabulaire.error ? <span className="text-xs text-muted-foreground">{vocabulaire.error}</span> : null}
           {!vocabulaire.loading && !vocabulaire.error && proposables.length === 0 ? (
-            <span className="text-xs text-lune-faint">
+            <span className="text-xs text-muted-foreground">
               Aucune autre étiquette dans le vocabulaire de la société.
             </span>
           ) : null}
@@ -192,7 +192,7 @@ export default function Etiquettes({ calepinageId, peutGerer = false }) {
 
       {/* L'ERREUR SOUS LE GESTE — le motif du serveur, tel quel. */}
       {refus ? (
-        <p className="mt-1 text-xs text-alert-300" role="alert" data-testid="cal-etiquettes-erreur">
+        <p className="mt-1 text-xs text-destructive" role="alert" data-testid="cal-etiquettes-erreur">
           {refus}
         </p>
       ) : null}

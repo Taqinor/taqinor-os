@@ -20,14 +20,15 @@ const PLAFOND = {
     'atelier/PanneauDetectionToit.jsx': 1,
     'atelier/PanneauOptimiser.jsx': 2,
     'atelier/ResumeAtelier.jsx': 1,
-    'ActionsSurfacePose.jsx': 11, 'AtelierPanneaux.jsx': 25, 'BoutonDevis.jsx': 28, 'commun/RailGuide.jsx': 4,
+    'commun/RailGuide.jsx': 4,
     'CourseSoleil.jsx': 21,
-   
-    'Etiquettes.jsx': 10, 'FicheCalepinage.jsx': 44, 'HorizonPanel.jsx': 31,
-    'LegendeCourbes.jsx': 1, 'ModeTerrain.jsx': 29, 'Ombriere.jsx': 42, 'PanneauAllees.jsx': 74,
-    'PanneauCalques.jsx': 5, 'PhotoSiteCalage.jsx': 11, 'PlanImporteCalage.jsx': 49,
-    'RaccourcisAtelier.jsx': 15,
-    'RemplissageProuve.jsx': 12, 'SaisiePente.jsx': 41, 'TracePlanPose.jsx': 2, 'Vue2DPlan.jsx': 7,
+    'HorizonPanel.jsx': 31,
+    'ModeTerrain.jsx': 29,
+    'Ombriere.jsx': 42,
+    'PanneauAllees.jsx': 74,
+    'PlanImporteCalage.jsx': 49,
+    'RemplissageProuve.jsx': 12,
+    'SaisiePente.jsx': 41,
   }).map(([k, v]) => [C + k, v])),
 }
 const ENVELOPPE = [

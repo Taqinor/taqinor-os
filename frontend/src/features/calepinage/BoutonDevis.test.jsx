@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
@@ -443,7 +443,7 @@ describe('Lot 2 critique #32 — champs des portes ACAL116 nommés', () => {
     rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
     await userEvent.click(await screen.findByTestId('cal-generer-devis'))
     const bloc = await screen.findByTestId('cal-devis-refus')
-    expect(bloc.querySelector('.tech-label')).toHaveTextContent(/^Approbation$/)
+    expect(within(bloc).getByText('Approbation')).toBeInTheDocument()
     expect(bloc).toHaveTextContent(MESSAGE)
   })
 })
