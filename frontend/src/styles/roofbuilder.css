@@ -409,7 +409,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(24rem, 30rem);
     gap: 1.5rem;
-    height: calc(100dvh - var(--rp9-studio-haut, 13rem));
+    height: calc(100dvh - var(--rp9-studio-haut, 17rem)); /* calée en direct (ACAL490, 21/11) : grille à 266 px du haut à 1 440 × 900 */
     margin-top: 1.5rem;
   }
   .rp9-host .rp9-studio-scene { position: sticky; top: 0; min-height: 0; }

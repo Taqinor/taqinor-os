@@ -79,3 +79,12 @@ test('studio : la colonne scène défile sur la racine du BuilderDom (aucune rè
     if (r.corps.includes('overflow-y')) assert.match(r.corps, /overflow-y:\s*auto/)
   }
 })
+
+// ACAL402 — hauteur du studio CALÉE EN DIRECT (rejeu runner 44877345993, 1 440 × 900) : la grille commence à 266 px ;
+// avec 13 rem (208 px) retranchés, la colonne scène finissait à 957 px, hors de la fenêtre (ses dernières commandes
+// ne s'atteignaient pas). Le retranchement par défaut couvre au moins ces 266 px.
+test('studio : la hauteur retranche au moins le haut mesuré de la grille (266 px = 16,625 rem)', () => {
+  const m = /\.rp9-studio\s*\{[^}]*height:\s*calc\(100dvh - var\(--rp9-studio-haut,\s*([\d.]+)rem\)\)/.exec(css)
+  assert.ok(m, 'hauteur du studio lue')
+  assert.ok(Number(m[1]) * 16 >= 266, `${m[1]} rem < 266 px mesurés`)
+})
