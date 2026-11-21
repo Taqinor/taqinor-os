@@ -175,6 +175,9 @@ jobs:
           echo "=== ACAL482 : calepinage-atelier-telephone.spec.js (WebKit) ==="
           tel=0
           CI=1 PLAYWRIGHT_HTML_REPORT=playwright-report-tel npx playwright test --project=chromium e2e/calepinage-atelier-telephone.spec.js --reporter=list,html --output=test-results-tel 2>&1 | tee /tmp/tel.log || { tel=1; rc=1; }
+          echo "=== ACAL439 : calepinage-a11y.spec.js (axe-core) ==="
+          axe=0
+          CI=1 PLAYWRIGHT_HTML_REPORT=playwright-report-a11y npx playwright test --project=chromium e2e/calepinage-a11y.spec.js --reporter=list,html --output=test-results-a11y 2>&1 | tee /tmp/a11y.log || { axe=1; rc=1; }
           echo "=== ACAL440 : calepinage-perf.spec.js (CI=1), code courant (apres ACAL431+433) ==="
           apres=0
           CI=1 ACAL440_VERSION="apres ACAL431+433" PLAYWRIGHT_HTML_REPORT=playwright-report-perf npx playwright test --project=chromium e2e/calepinage-perf.spec.js --reporter=list,html --output=test-results-perf 2>&1 | tee /tmp/perf-apres.log || { apres=1; rc=1; }
@@ -187,7 +190,7 @@ jobs:
           CI=1 ACAL440_VERSION="avant ACAL431+433" PLAYWRIGHT_HTML_REPORT=playwright-report-perf-avant npx playwright test --project=chromium e2e/calepinage-perf.spec.js --reporter=list,html --output=test-results-perf-avant 2>&1 | tee /tmp/perf-avant.log || { avant=1; rc=1; }
           git -C .. checkout -- apps/web
           grep -h "ACAL440\]" /tmp/perf-apres.log /tmp/perf-avant.log || true
-          TEL=$tel APRES=$apres AVANT=$avant CAPT="$CAPT" node ../.github/zz-acceptation-etapes.mjs || rc=1
+          AXE=$axe TEL=$tel APRES=$apres AVANT=$avant CAPT="$CAPT" node ../.github/zz-acceptation-etapes.mjs || rc=1
           node e2e/acceptation/_enregistrement.js ACAL --etapes-supplementaires /tmp/etapes-supp.json || rc=1
           exit $rc
       - name: Queue des journaux gunicorn (diagnostic)
@@ -213,6 +216,8 @@ jobs:
             frontend/playwright-report-perf
             frontend/playwright-report-perf-avant
             frontend/playwright-report-tel
+            frontend/playwright-report-a11y
+            frontend/test-results-a11y
             frontend/test-results
             frontend/test-results-perf
             frontend/test-results-perf-avant

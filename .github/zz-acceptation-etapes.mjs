@@ -32,7 +32,20 @@ writeFileSync(`../${t482}`, [
   `Résultat : ${resume(tel)}`, ...lignesTests(tel), '',
 ].join('\n'))
 
+const axe = lire('/tmp/a11y.log')
+const okAxe = env.AXE === '0' && !/\d+ (skipped|failed|did not run)/.test(resume(axe)) && /\d+ passed/.test(resume(axe))
+const t439 = `${rel}/ACCEPTATION-ACAL-PA2.6-ACAL439-a11y-axe.txt`
+writeFileSync(`../${t439}`, [
+  `ACAL439 — frontend/e2e/calepinage-a11y.spec.js (axe-core, WCAG 2.1 A/AA, toute gravité, thèmes clair et sombre) sur runner, ${run}.`,
+  `Résultat : ${resume(axe)}`, ...lignesTests(axe), '',
+].join('\n'))
+
 const etapes = [
+  {
+    id: 'PA2.6-ACAL439-a11y-axe', taches: ['ACAL439'], verdict: okAxe ? 'PASS' : 'FAIL', base_verdict: null,
+    corps: okAxe ? 'PASS' : 'FAIL', oracles: na, trace: t439,
+    notes: `axe-core sur liste, création, atelier (rail), onglets Production et Documents, clair et sombre, ${run} : ${resume(axe) || 'aucun résultat'} (0 violation exigée, aucun test sauté)`,
+  },
   {
     id: 'PA2.3-ACAL440-perf-500-modules', taches: ['ACAL440'], verdict: ok440 ? 'PASS' : 'FAIL', base_verdict: null,
     corps: ok440 ? 'PASS' : 'FAIL', oracles: na, trace: t440,
