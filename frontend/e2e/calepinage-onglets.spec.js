@@ -26,7 +26,7 @@ import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { uniq, gotoLeads, createLead } from './helpers'
+import { uniq, gotoLeads, createLead, ouvertureGuideeCalepinage } from './helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const API = '/api/django/calepinage'
@@ -57,15 +57,25 @@ const CLES = clesDuRegistre()
 // ACAL393 — le rail guidé ne montre que les essentiels de l'étape active : un
 // onglet expert s'ouvre par son lien `?onglet=<cle>` (il reste visible dans son
 // étape), un essentiel par son bouton. Jamais de test qui suppose 36 boutons.
+// ACAL395/396 — un panneau d'un ÉCRAN d'étape (Électrique, Pertes) est porté
+// par l'onglet « ouverture » de cet écran : c'est CET onglet qui est visible et
+// actif, l'URL gardant la clé demandée. Rend l'onglet visible qui porte `cle`.
+// Cliquer l'onglet porteur quand l'écran est DÉJÀ ouvert sur une de ses
+// sections ne réécrit pas l'URL (même écran) : on passe alors par le lien.
 async function ouvrirOngletRail(page, cle) {
-  const onglet = page.getByTestId(`cal-onglet-${cle}`)
-  if (!(await onglet.isVisible())) {
+  const porteur = ouvertureGuideeCalepinage(cle)
+  const onglet = page.getByTestId(`cal-onglet-${porteur}`)
+  const ouvertDansUrl = new URL(page.url()).searchParams.get('onglet')
+  const memeEcranAutreCle = ouvertDansUrl && ouvertDansUrl !== cle
+    && ouvertureGuideeCalepinage(ouvertDansUrl) === porteur
+  if (porteur !== cle || memeEcranAutreCle || !(await onglet.isVisible())) {
     const url = new URL(page.url())
     url.searchParams.set('onglet', cle)
     await page.goto(url.toString())
     await expect(onglet, `onglet absent du rail pour la clé « ${cle} »`).toBeVisible()
   }
   await onglet.click()
+  return onglet
 }
 
 test('CALX387: le registre atelier/onglets.js publie au moins un onglet', () => {
@@ -74,6 +84,12 @@ test('CALX387: le registre atelier/onglets.js publie au moins un onglet', () => 
 })
 
 test('CALX387: chaque onglet du rail s’ouvre, un titre nommé apparaît, aucune erreur de page', async ({ page }) => {
+  // ACAL393 — le rail guidé ne montre que les essentiels : la plupart des 40
+  // onglets s'ouvrent désormais par leur lien `?onglet=`, soit UN rechargement
+  // complet de l'atelier par onglet (~2 s mesurées sur le runner, run
+  // 44858463650 : 23 onglets parcourus en 60 s avant le délai par défaut).
+  // Le budget suit le nombre d'onglets ; aucune assertion n'est relâchée.
+  test.setTimeout(60_000 + CLES.length * 4_000)
   const erreursDePage = []
   page.on('pageerror', (err) => erreursDePage.push(err))
 
@@ -97,8 +113,7 @@ test('CALX387: chaque onglet du rail s’ouvre, un titre nommé apparaît, aucun
   await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
 
   for (const cle of CLES) {
-    const onglet = page.getByTestId(`cal-onglet-${cle}`)
-    await ouvrirOngletRail(page, cle)
+    const onglet = await ouvrirOngletRail(page, cle)
 
     // 1. l'onglet devient l'onglet actif ; 2. l'URL porte la clé (lien
     // partageable) ; 3. un panneau (contenu OU erreur NOMMÉE) est visible —
