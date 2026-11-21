@@ -1,6 +1,6 @@
 ---
 name: essais-prod-neutralises-2111
-description: 21/11/2026 — données d'essai neutralisées en production à la demande de Reda (fausses signatures, 2 factures d'essai, 53 leads d'essai en corbeille) ; ce qui reste ; piège de notification
+description: 21/11/2026 — données d'essai neutralisées en production à la demande de Reda (fausses signatures, 4 factures d'essai, 53 leads d'essai en corbeille) ; ce qui reste ; piège de notification
 metadata:
   type: project
 ---
@@ -18,6 +18,10 @@ avec les fonctions de l'ERP, après un essai à blanc.
 - **2 factures d'essai annulées** par `annuler_facture` : FAC-202606-0002 et FAC-202606-0003 (31 068 MAD de fausses
   créances « en retard »). L'ERP a émis deux avoirs de contre-passation, **AVO-202611-0001 et AVO-202611-0002** : ces
   deux numéros légaux sont des essais, ils ne correspondent à aucune vente.
+- **2 autres factures d'essai annulées le soir même**, sur le « Yes, cancel both » de Reda : FAC-202607-0001 (client
+  « Reda kasri », sans devis, 17 000 MAD) et FAC-202606-0001 (client de démonstration « Tazi Omar », 33 139,44 MAD).
+  Avoirs émis : **AVO-202611-0003 et AVO-202611-0004**, des essais eux aussi. Aucune notification, aucun mouvement de
+  stock. Les 5 factures « en retard » qui restent sont celles de vrais clients d'octobre.
 - **53 leads d'essai en corbeille** (`soft_delete`, restaurables) : noms « test… », noms tapés au hasard, fiches au
   téléphone de Reda. Pour ceux qui portaient des devis, la garde « archivez-le plutôt » de l'ERP a été contournée
   depuis le serveur, sur sa demande explicite.
@@ -29,7 +33,7 @@ avec les fonctions de l'ERP, après un essai à blanc.
   « Mise en service » avec 11 lignes de stock réellement sorties en juin (11 mouvements sous sa référence). La
   dés-acceptation est refusée par l'ERP tant que ce stock est sorti. Toute analyse des signatures doit l'exclure.
 - **Les trois fiches de démonstration** (leads 1, 2, 3) restent, archivées : décision du 30/09
-  ([[demo-accounts-prod-incident]]).
+  ([[demo-accounts-prod-incident]]). Le chantier de démonstration CHT-202606-0001 reste « à planifier », non annulé.
 - **Jamais touchés** : marouane essaid (356), marouane (353), Said Essaidi (1075) — vraies personnes dont le nom
   contient « essai ».
 - Anciennes valeurs, sorties d'exécution et scripts : OneDrive de Reda,
