@@ -193,6 +193,7 @@ import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
 import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
 import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypotheses } from './roofPro11/hypotheses'; // ACAL417
+import { monterAidePente } from './roofPro11/penteAide'; // ACAL416
 import { type TableOmbrage } from './roofPro11/tableOmbrage'; // ACAL459
 import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
 import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
@@ -3744,6 +3745,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     pitchDeg = v;
     if (pitchValueEl) pitchValueEl.textContent = `${Math.round(v)}°`;
     confirmerPente();
+    syncPitchChips();
+    if (roofType === 'pitched' && closed) pitchedRecompute();
+  });
+  monterAidePente(pitchRangeEl?.parentElement ?? null, (deg, source) => { // ACAL416 — pente en %, ou portée + hauteur
+    pitchDeg = deg;
+    if (pitchRangeEl) pitchRangeEl.value = String(Math.round(deg));
+    if (pitchValueEl) pitchValueEl.textContent = `${Math.round(deg)}°`;
+    const a = activeArea(); if (a) a.pitchSource = source;
     syncPitchChips();
     if (roofType === 'pitched' && closed) pitchedRecompute();
   });

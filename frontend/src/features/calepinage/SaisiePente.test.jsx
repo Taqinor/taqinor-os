@@ -28,6 +28,8 @@ vi.mock('../../api/calepinageApi', () => ({
 }))
 
 const { default: SaisiePente } = await import('./SaisiePente')
+const { penteDepuisPourcentage, penteDepuisCotes } = await import('./SaisiePente.helpers')
+const { penteDepuisAide } = await import('@roofpro/penteAide')
 const { mesuresDeVisite } = await import('./SaisiePente.helpers')
 
 const VISITE = exempleContrat('calepinage', 'calepinage_releve_visite')
@@ -156,5 +158,17 @@ describe('Lot 2 critique #32 — lecture seule et verrou', () => {
     await waitFor(() => expect(screen.getByTestId('cal-pente-message'))
       .toHaveTextContent('Devis accepté : révisez-le'))
     expect(screen.getByTestId('cal-pente-message')).not.toHaveTextContent('a changé ailleurs')
+  })
+})
+
+describe('ACAL416 — la carte et l’onglet Pente convertissent pareil', () => {
+  it('pourcentage et cotes : mêmes degrés que SaisiePente.helpers', () => {
+    expect(penteDepuisAide({ pourcentage: '50' }, 'pourcentage').degres).toBeCloseTo(penteDepuisPourcentage(50), 10)
+    expect(penteDepuisAide({ porteeM: '5', hauteurFaitageM: '2' }, 'cotes').degres).toBeCloseTo(penteDepuisCotes(5, 2), 10)
+  })
+
+  it('portée nulle : l’un et l’autre refusent (jamais 0°)', () => {
+    expect(penteDepuisCotes(0, 2)).toBeNull()
+    expect(penteDepuisAide({ porteeM: '0', hauteurFaitageM: '2' }, 'cotes').erreur).toContain('portée')
   })
 })
