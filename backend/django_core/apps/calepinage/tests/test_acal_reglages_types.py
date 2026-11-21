@@ -245,6 +245,37 @@ class RefusMultipleTest(SimpleTestCase):
         self.assertEqual(capture.exception.section, 'simulation')
 
 
+class LibellesEnumTest(SimpleTestCase):
+    """ACAL964 — chaque ligne ``enum`` publie un libellé par valeur."""
+
+    def test_chaque_enum_publie_un_libelle_par_valeur(self):
+        for section, lignes in registre_des_reglages().items():
+            for ligne in lignes:
+                if ligne['type'] != 'enum':
+                    self.assertNotIn('libelles', ligne)
+                    continue
+                with self.subTest(section=section, cle=ligne['cle']):
+                    self.assertEqual(sorted(ligne['libelles']),
+                                     sorted(ligne['valeurs']))
+                    self.assertTrue(all(ligne['libelles'].values()))
+
+    def test_la_regle_de_qualite_reprend_les_libelles_de_regles(self):
+        from apps.calepinage.services.etapes.qualite_module import REGLES
+
+        ligne = next(l for l in registre_des_reglages()['simulation']
+                     if l['cle'] == 'regle_qualite_module')
+        self.assertEqual(
+            ligne['libelles'],
+            {valeur: regle['libelle'] for valeur, regle in REGLES.items()})
+
+    def test_mots_cites_par_la_tache(self):
+        lignes = {l['cle']: l for l in registre_des_reglages()['simulation']}
+        self.assertEqual(lignes['mode_meteo']['libelles']['tmy'],
+                         'Année type (TMY)')
+        self.assertEqual(lignes['modele_iam']['libelles']['martin_ruiz'],
+                         'Martin et Ruiz')
+
+
 class RouteParametresTest(TestCase):
     """La route réelle : 400 nommé, fusion, aller-retour octet-identique."""
 

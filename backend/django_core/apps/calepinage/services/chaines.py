@@ -488,6 +488,9 @@ def _specs_onduleur(specs, designation=''):
         valeur = _nombre(specs.get(cle))
         if valeur is not None:
             optionnels[cle] = valeur
+    # ACAL661 — le drapeau de la fiche (ACAL659), seulement s'il est publié.
+    if isinstance(specs.get('mppt_independants'), bool):
+        optionnels['mppt_independants'] = specs['mppt_independants']
     phases = _entier(specs.get('phases'))
     return (SpecOnduleur(
         n_mppt=int(specs['n_mppt']), mppt_v_min=float(specs['mppt_v_min']),
@@ -653,6 +656,11 @@ def _verdict_mppt(pans, onduleur, specs_onduleur_brut):
     """
     n_mppt = max(1, int(getattr(onduleur, 'n_mppt', 1) or 1))
     nom = getattr(onduleur, 'designation', '') or "l'onduleur retenu"
+    if getattr(onduleur, 'mppt_independants', None) is False and n_mppt > 1:
+        # ACAL661 — une seule entrée LOGIQUE : la fiche le dit, on le nomme.
+        return ("les %d entrées de %s ne sont pas indépendantes selon sa "
+                "fiche : une seule orientation par suiveur (%d pan(s) sur une "
+                "entrée logique)" % (n_mppt, nom, len(pans)), False, ())
     if len(pans) <= n_mppt:
         return ("un pan par entrée MPPT (%d pan(s) pour %d entrée(s)) ; %s"
                 % (len(pans), n_mppt, REGLE_UNE_ORIENTATION_PAR_CHAINE),

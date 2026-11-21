@@ -107,7 +107,8 @@ class RegistreServiTest(SimpleTestCase):
                     self.assertTrue(
                         set(ligne) <= {'cle', 'libelle', 'reference', 'unite',
                                        'type', 'minimum', 'maximum',
-                                       'valeurs', 'valeurs_non_servies'},
+                                       'valeurs', 'valeurs_non_servies',
+                                       'libelles'},
                         ligne)
 
     def test_le_type_servi_est_celui_de_types_cles(self):

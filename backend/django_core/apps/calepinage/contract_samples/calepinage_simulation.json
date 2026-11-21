@@ -294,7 +294,63 @@
           "pr": null,
           "pr_motif": ""
         }
-      ]
+      ],
+      "gain_inclinaison": {
+        "ghi_mensuel": [
+          {
+            "mois": 1,
+            "ghi_kwh_m2": 0.88
+          },
+          {
+            "mois": 2,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 3,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 4,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 5,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 6,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 7,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 8,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 9,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 10,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 11,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 12,
+            "ghi_kwh_m2": 0.0
+          }
+        ],
+        "ghi_annuel_kwh_m2": 0.88,
+        "plan_annuel_kwh_m2": 1052.75,
+        "gain_pct": 119530.68,
+        "motif_omission": ""
+      }
     },
     "pertes": [
       {
@@ -1092,7 +1148,14 @@
           "motif": "Non renseigné : « FicheTechnique.garantie_pct_a_10_ans », « FicheTechnique.garantie_pct_a_25_ans »"
         }
       },
-      "bilan_mensuel": []
+      "bilan_mensuel": [],
+      "gain_inclinaison": {
+        "ghi_mensuel": [],
+        "ghi_annuel_kwh_m2": null,
+        "plan_annuel_kwh_m2": null,
+        "gain_pct": null,
+        "motif_omission": "La série horizontale PVGIS reçue ne porte aucun point."
+      }
     },
     "pertes": [],
     "cascade": {
@@ -1552,7 +1615,63 @@
           "pr": null,
           "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
         }
-      ]
+      ],
+      "gain_inclinaison": {
+        "ghi_mensuel": [
+          {
+            "mois": 1,
+            "ghi_kwh_m2": 0.88
+          },
+          {
+            "mois": 2,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 3,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 4,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 5,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 6,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 7,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 8,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 9,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 10,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 11,
+            "ghi_kwh_m2": 0.0
+          },
+          {
+            "mois": 12,
+            "ghi_kwh_m2": 0.0
+          }
+        ],
+        "ghi_annuel_kwh_m2": 0.88,
+        "plan_annuel_kwh_m2": 1052.75,
+        "gain_pct": 119530.68,
+        "motif_omission": ""
+      }
     },
     "pertes": [
       {

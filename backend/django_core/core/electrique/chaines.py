@@ -685,6 +685,9 @@ def concevoir_chaines(entree):
         )
 
     n_mppt = max(1, _entier(onduleur.n_mppt, 1))
+    # ACAL661 — entrées NON indépendantes selon la fiche : une entrée logique.
+    if getattr(onduleur, 'mppt_independants', None) is False:
+        n_mppt = 1
     blocs = _allouer_mppt(len(groupes), n_mppt)
     if len(groupes) > n_mppt:
         _verdict(

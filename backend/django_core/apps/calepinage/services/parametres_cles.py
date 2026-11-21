@@ -328,6 +328,39 @@ VALEURS_NON_SERVIES = {
 }
 
 
+#: ACAL964 — les LIBELLÉS français des valeurs d'un ``enum`` (noms de modèles,
+#: aucun chiffre) : ``{section: {clé: {valeur: libellé}}}``. La règle de
+#: qualité du module n'est PAS recopiée ici : ``libelles_de_cle`` relit
+#: ``etapes/qualite_module.py::REGLES`` à la source.
+LIBELLES_ENUM = {
+    SECTION_SIMULATION: {
+        'mode_meteo': {'tmy': 'Année type (TMY)',
+                       'pluriannuel': 'Plusieurs années réelles'},
+        'modele_iam': {'fresnel': 'Fresnel', 'ashrae': 'ASHRAE',
+                       'martin_ruiz': 'Martin et Ruiz'},
+        'modele_degradation': {'lineaire': 'Linéaire',
+                               'exponentiel': 'Exponentielle'},
+        'modele_transposition': {'isotropic': 'Isotrope',
+                                 'haydavies': 'Hay-Davies',
+                                 'perez': 'Perez'},
+        'modele_decomposition': {'erbs': 'Erbs', 'disc': 'DISC'},
+    },
+}
+
+
+def libelles_de_cle(section, cle):
+    """ACAL964 — ``{valeur: libellé}`` d'une clé ``enum``, ``{}`` sinon.
+
+    Lecture PURE. Pour la règle de qualité du module, les libellés viennent de
+    ``REGLES`` (une seule source) ; ailleurs, de :data:`LIBELLES_ENUM`.
+    """
+    if (section, cle) == (SECTION_SIMULATION, 'regle_qualite_module'):
+        from .etapes.qualite_module import REGLES
+
+        return {valeur: regle['libelle'] for valeur, regle in REGLES.items()}
+    return dict(LIBELLES_ENUM.get(section, {}).get(cle) or {})
+
+
 def type_de_cle(section, cle):
     """ACAL132 — ``{'type', 'minimum'?, 'maximum'?, 'valeurs'?}`` de ``cle``.
 

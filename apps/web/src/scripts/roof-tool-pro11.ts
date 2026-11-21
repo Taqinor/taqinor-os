@@ -1147,6 +1147,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     recalc: () => recalc(), // CALX97 câblage
     setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
     apresRendu: () => { formesToit.rafraichir(); toitParCotes.rafraichir(); }, // ACAL410 · ACAL422
+    selectArea: (id: string) => selectArea(id), // ACAL554
   });
   // ACAL422 — « Créer le toit » : longueur × largeur × orientation saisies, contour fermé par `close`.
   const toitParCotes = monterToitParCotes({

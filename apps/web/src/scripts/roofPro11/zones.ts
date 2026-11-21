@@ -18,6 +18,7 @@ import { facteurDerateAnnuel } from './optimizer'; // ACAL356 — le dérate UNI
 import { type Obstacle } from '../../lib/obstacles';
 import { pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
+import { appliquerReglagesAuxPans, pansReglesAMain } from './jeuReglages'; // ACAL554
 import {
   centroideAnneau,
   dimensionsRectangleM,
@@ -312,6 +313,12 @@ export function idZoneCopie(existants: readonly { id: string }[]): string {
   return `area-copie-${n}`;
 }
 
+/** ACAL554 — bouton « Appliquer ces réglages à… » d'une ligne de pan : absent s'il n'y a qu'un pan. */
+export function boutonReporterReglages(id: string, nbPans: number): string {
+  if (nbPans < 2) return '';
+  return `<button type="button" data-area-report="${esc(id)}" class="min-h-11 border border-white/25 px-2.5 py-1 text-xs font-semibold text-lune-soft hover:border-brass-400 hover:text-brass-300">Appliquer ces réglages à…</button>`;
+}
+
 export interface Zones {
   liveActiveResult: () => AreaResult | null;
   snapshotActiveAreaResult: () => void;
@@ -353,6 +360,8 @@ export interface ZonesDeps {
   setStatus?: (msg: string) => void;
   /** ACAL410 — appelé à chaque rendu de la liste des pans (les puces « Forme du toit » s'y recalent). */
   apresRendu?: () => void;
+  /** ACAL554 — active un pan (« Voir » : charge et re-pave) ; absent, le report de réglages est indisponible. */
+  selectArea?: (id: string) => void;
 }
 
 /** CAL84 — libellé d'un bâtiment (repli « Bâtiment sans id » pour un groupe sans
@@ -490,7 +499,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
           <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}</span>
           ${buildingInput}
-          <span class="ml-auto flex items-center gap-2">${lockBtn}${viewBtn}${delBtn}</span>
+          <span class="ml-auto flex items-center gap-2">${boutonReporterReglages(a.id, areas.length)}${lockBtn}${viewBtn}${delBtn}</span>
         </li>`;
       };
       if (!multiBuilding) {
@@ -755,6 +764,59 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     if (!pan) return;
     if (pan.verrouille) delete pan.verrouille; else pan.verrouille = true; // absent = modifiable : octet pour octet
     renderAreasPanel();
+  });
+
+  // ACAL554 — « Appliquer ces réglages à… » : cases à cocher, confirmation en deux temps, UNE photo d'historique.
+  function ouvrirReport(sourceId: string) {
+    const source = ctx.areas.find((a) => a.id === sourceId);
+    const hote = ctx.dom.areasWindowEl;
+    if (!source || !hote) return;
+    document.getElementById('rp9-pan-report')?.remove();
+    const nom = (a: AreaRecord) => a.label || a.id;
+    const box = document.createElement('div');
+    box.id = 'rp9-pan-report';
+    box.className = 'mt-2 space-y-1 border border-white/20 p-3 text-xs text-lune-soft';
+    box.innerHTML = `<p>Appliquer le module, le type de toit, la pente et la face de ${esc(nom(source))} à :</p>`
+      + ctx.areas.filter((a) => a.id !== sourceId).map((a) => `<label class="flex min-h-11 items-center gap-2"><input type="checkbox" value="${esc(a.id)}" />${esc(nom(a))}</label>`).join('')
+      + '<p id="rp9-pan-report-note" role="status" class="text-alert-300"></p>'
+      + '<button type="button" class="rp9-btn min-h-11" data-report="ok">Appliquer</button> <button type="button" class="rp9-btn min-h-11" data-report="non">Annuler</button>';
+    const note = box.querySelector<HTMLElement>('#rp9-pan-report-note')!;
+    const ok = box.querySelector<HTMLButtonElement>('[data-report="ok"]')!;
+    let confirme = false;
+    box.addEventListener('change', () => { confirme = false; ok.textContent = 'Appliquer'; note.textContent = ''; });
+    box.querySelector('[data-report="non"]')!.addEventListener('click', () => box.remove());
+    ok.addEventListener('click', () => {
+      const ids = [...box.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
+      const cibles = ctx.areas.filter((a) => ids.includes(a.id));
+      const refus = refusModulePan(source) ?? (cibles.length ? null : 'Cochez au moins un pan.');
+      if (refus || !deps.selectArea) { note.textContent = refus ?? 'Report indisponible ici.'; return; }
+      const mains = pansReglesAMain(cibles);
+      if (!confirme) {
+        confirme = true;
+        ok.textContent = 'Confirmer';
+        note.textContent = `${mains.length ? `Déjà réglés à la main, ils seront écrasés : ${mains.map(nom).join(', ')}. ` : ''}${fmt(cibles.length)} pans seront re-pavés.`;
+        return;
+      }
+      ctx.pushWorkshopHistory?.(); // CAL100 — annuler rend l'état d'avant pour tous les pans
+      const aller = deps.selectArea;
+      if (ctx.activeAreaId !== sourceId) aller(sourceId);
+      snapshotActiveAreaGeometry();
+      appliquerReglagesAuxPans(source, cibles);
+      for (const id of [...cibles.map((c) => c.id), sourceId]) aller(id);
+      deps.setStatus?.(`Réglages de ${nom(source)} appliqués à ${fmt(cibles.length)} pans, re-pavés.`);
+      box.remove();
+    });
+    hote.appendChild(box);
+  }
+  function refusModulePan(source: AreaRecord): string | null {
+    if (!source.moduleId) return null;
+    const m = resoudreModuleDuPan(catalogueAtelier.choisissables, source.moduleId); // même règle que CALX109
+    const c = estRefus(m) ? m : cotesDeModule(m);
+    return estRefus(c) ? `${source.label || source.id} : ${c.message}` : null;
+  }
+  ctx.dom.areasListEl?.addEventListener('click', (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-area-report]')?.dataset.areaReport;
+    if (id) ouvrirReport(id);
   });
 
   // ————————————————————————————————————————————————————————————————————

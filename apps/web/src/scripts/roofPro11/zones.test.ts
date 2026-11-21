@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { CHEMINS_TOURNES, CLES_REFUSEES, pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
+import { boutonReporterReglages } from './zones'; // ACAL554
 import {
   EXCLUSION_NATURES,
   exclusionColor,
@@ -628,5 +629,12 @@ describe('ACAL520 — motifPanVerrouille', () => {
     expect(motifPanVerrouille({ verrouille: false, label: 'Pan 1' })).toBeNull();
     expect(motifPanVerrouille({ label: 'Pan 1' })).toBeNull();
     expect(motifPanVerrouille(undefined)).toBeNull();
+  });
+});
+
+describe('ACAL554 — bouton « Appliquer ces réglages à… »', () => {
+  it('un seul pan ⇒ pas de bouton ; deux pans ⇒ le bouton de la ligne', () => {
+    expect(boutonReporterReglages('area-1', 1)).toBe('');
+    expect(boutonReporterReglages('area-1', 2)).toContain('data-area-report="area-1"');
   });
 });

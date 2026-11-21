@@ -408,5 +408,91 @@ class SerieHorizontaleBifacialeTest(unittest.TestCase):
         self.assertNotIn('serie_horizontale_legale', contexte)
 
 
+def _serie_deux_ans(gi_par_mois):
+    """Une série « enregistrée » de DEUX années : un point de 1 h par mois."""
+    return {'points': [{'annee': annee, 'mois': mois, 'jour': 15, 'heure': 12,
+                        'gi_w_m2': gi_par_mois[mois - 1]}
+                       for annee in (2019, 2020) for mois in range(1, 13)],
+            'serie_horaire': {'pas_minutes': 60}}
+
+
+class ClientDeuxSeries:
+    """Rejoue la série à 0° (horizontale) ou celle du plan selon l'angle."""
+
+    def __init__(self, horizontale, erreur=None):
+        self.horizontale, self.erreur, self.demandes = horizontale, erreur, []
+
+    def serie_irradiance(self, **parametres):
+        self.demandes.append(parametres)
+        if self.erreur is not None:
+            raise self.erreur
+        return dict(self.horizontale, depuis_cache=False)
+
+
+class GainInclinaisonTest(unittest.TestCase):
+    """ACAL706 — gain = rapport de DEUX irradiations servies, à l'année
+    moyenne ; une requête impossible nomme son motif."""
+
+    GHI = [600.0 + 50 * m for m in range(12)]
+    PLAN = [700.0 + 50 * m for m in range(12)]
+
+    def _irradiation_mensuelle(self):
+        # Le plan à l'ANNÉE MOYENNE (deux années / 2), en kWh/m² (1 h).
+        return [{'mois': m + 1, 'irradiation_plan_kwh_m2': self.PLAN[m] / 1000}
+                for m in range(12)]
+
+    def test_gain_egal_au_rapport_des_deux_irradiations(self):
+        from apps.calepinage.services import gain_inclinaison as gi
+
+        client = ClientDeuxSeries(_serie_deux_ans(self.GHI))
+        compteur = {'appels': 0}
+        bloc = gi.demander(client, {'lat': 33.5, 'lon': -7.6},
+                           {'fenetre_annees': (2019, 2020)}, None, compteur,
+                           {'irradiation_mensuelle':
+                            self._irradiation_mensuelle()})
+        # Référence calculée ICI : Σ sur deux ans ÷ 2 ans.
+        ghi_annuel = sum(self.GHI) * 2 / 1000 / 2
+        plan_annuel = sum(self.PLAN) / 1000
+        self.assertAlmostEqual(bloc['ghi_annuel_kwh_m2'], ghi_annuel, places=3)
+        self.assertAlmostEqual(bloc['plan_annuel_kwh_m2'], plan_annuel,
+                               places=3)
+        self.assertAlmostEqual(bloc['gain_pct'],
+                               (plan_annuel / ghi_annuel - 1) * 100, places=2)
+        self.assertGreater(bloc['gain_pct'], 0)
+        self.assertEqual(len(bloc['ghi_mensuel']), 12)
+        self.assertEqual(compteur['appels'], 1)
+        self.assertEqual(client.demandes[0]['inclinaison_deg'], 0.0)
+        self.assertEqual(client.demandes[0]['annee_debut'], 2019)
+
+    def test_lire_le_plan_comme_horizontal_donnerait_un_gain_nul(self):
+        from apps.calepinage.services import gain_inclinaison as gi
+
+        bloc = gi.depuis_serie(_serie_deux_ans(self.PLAN),
+                               self._irradiation_mensuelle())
+        self.assertAlmostEqual(bloc['gain_pct'], 0.0, places=2)
+
+    def test_mois_du_plan_inconnu_et_refus_nommes(self):
+        from apps.calepinage.services import gain_inclinaison as gi
+        from apps.calepinage.services.pvgis_serie import PvgisIndisponible
+
+        irr = self._irradiation_mensuelle()
+        irr[3]['irradiation_plan_kwh_m2'] = None
+        bloc = gi.depuis_serie(_serie_deux_ans(self.GHI), irr)
+        self.assertIsNone(bloc['plan_annuel_kwh_m2'])
+        self.assertIsNone(bloc['gain_pct'])
+        self.assertTrue(bloc['motif_omission'])
+        compteur = {'appels': 0}
+        refuse = gi.demander(
+            ClientDeuxSeries({}, erreur=PvgisIndisponible('hors ligne')),
+            {'lat': 33.5, 'lon': -7.6}, {'fenetre_annees': (2019, 2020)},
+            None, compteur, {})
+        self.assertIsNone(refuse['gain_pct'])
+        self.assertIn('hors ligne', refuse['motif_omission'])
+        self.assertEqual(compteur['appels'], 0)
+        fichier = gi.demander(ClientDeuxSeries({}), {}, {}, {'points': []},
+                              compteur, {})
+        self.assertTrue(fichier['motif_omission'])
+
+
 if __name__ == '__main__':
     unittest.main()

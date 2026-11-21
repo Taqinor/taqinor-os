@@ -245,3 +245,32 @@ class PansDeMemeOrientationTest(SimpleTestCase):
     def test_orientations_differentes_jamais_fusionnees(self):
         groupes = _groupes_electriques(_layout(7, 7), tolerance_deg=1.0)
         self.assertEqual(len(groupes), 2)
+
+
+class MpptNonIndependantsTest(SimpleTestCase):
+    """ACAL661 — des entrées MPPT NON indépendantes selon la fiche forment UNE
+    entrée logique ; drapeau vrai ou absent ⇒ résultat d'avant."""
+
+    def _mppt_par_pan(self, conception):
+        return {c.pan: c.mppt for c in conception.chaines}
+
+    def test_drapeau_faux_une_seule_entree_logique_et_le_dit(self):
+        conception = _concevoir(_layout(12, 8),
+                                dict(ONDULEUR, mppt_independants=False))
+        self.assertEqual(self._mppt_par_pan(conception),
+                         {'PAN-1': 1, 'PAN-2': 1})
+        self.assertIn("les 2 entrées de Onduleur d essai 10 kW ne sont pas "
+                      "indépendantes selon sa fiche : une seule orientation "
+                      "par suiveur", conception.regle_mppt)
+
+    def test_drapeau_vrai_ou_absent_resultat_d_avant(self):
+        avant = _concevoir(_layout(12, 8))
+        for drapeau in (True, None):
+            with self.subTest(drapeau=drapeau):
+                onduleur = dict(ONDULEUR)
+                if drapeau is not None:
+                    onduleur['mppt_independants'] = drapeau
+                apres = _concevoir(_layout(12, 8), onduleur)
+                self.assertEqual(self._mppt_par_pan(apres),
+                                 {'PAN-1': 1, 'PAN-2': 2})
+                self.assertEqual(apres.regle_mppt, avant.regle_mppt)

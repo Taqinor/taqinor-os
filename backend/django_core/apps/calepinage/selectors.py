@@ -1156,7 +1156,7 @@ def registre_des_reglages():
     validera, sans le redéclarer.
     """
     from .services.parametres_cles import (
-        REGISTRES, VALEURS_NON_SERVIES, type_de_cle,
+        REGISTRES, VALEURS_NON_SERVIES, libelles_de_cle, type_de_cle,
     )
 
     def _ligne(section, cle, libelle, unite, reference):
@@ -1169,6 +1169,8 @@ def registre_des_reglages():
                 ligne[borne] = typage[borne]
         if typage.get('valeurs'):
             ligne['valeurs'] = list(typage['valeurs'])
+        if typage.get('type') == 'enum':  # ACAL964 — mots français
+            ligne['libelles'] = libelles_de_cle(section, cle)
         non_servies = VALEURS_NON_SERVIES.get(section, {}).get(cle)
         if non_servies:  # ACAL770
             ligne['valeurs_non_servies'] = dict(non_servies)
