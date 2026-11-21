@@ -84,6 +84,12 @@ test('CALX387: le registre atelier/onglets.js publie au moins un onglet', () => 
 })
 
 test('CALX387: chaque onglet du rail s’ouvre, un titre nommé apparaît, aucune erreur de page', async ({ page }) => {
+  // ACAL393 — le rail guidé ne montre que les essentiels : la plupart des 40
+  // onglets s'ouvrent désormais par leur lien `?onglet=`, soit UN rechargement
+  // complet de l'atelier par onglet (~2 s mesurées sur le runner, run
+  // 44858463650 : 23 onglets parcourus en 60 s avant le délai par défaut).
+  // Le budget suit le nombre d'onglets ; aucune assertion n'est relâchée.
+  test.setTimeout(60_000 + CLES.length * 4_000)
   const erreursDePage = []
   page.on('pageerror', (err) => erreursDePage.push(err))
 
