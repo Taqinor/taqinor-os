@@ -68,6 +68,7 @@ export default function SelecteurRattachement({
       )}
       disabled={disabled}
       invalid={invalid}
+      aria-label={surLead ? 'Lead rattaché au calepinage' : 'Client rattaché au calepinage'}
       placeholder={placeholder
         || (surLead ? 'Rechercher un lead…' : 'Rechercher un client…')}
     />

@@ -244,7 +244,7 @@ export default function Rail({
         className="flex w-full flex-wrap gap-x-1 gap-y-1.5"
       >
         {visibles.map((onglet) => (
-          <span key={onglet.cle} className="inline-flex items-center gap-0.5">
+          <span key={onglet.cle} role="presentation" className="inline-flex items-center gap-0.5">
             <TabsTrigger value={onglet.cle} data-testid={`cal-onglet-${onglet.cle}`}>
               {libelleOnglet(onglet)}
             </TabsTrigger>
