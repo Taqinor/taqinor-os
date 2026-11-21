@@ -66,9 +66,14 @@ def _nom_tuile(lon, lat):
 
 def _lire_plage_http(url, debut, fin):
     """Octets ``[debut, fin]`` (inclus) de ``url`` par requête ``Range``."""
+    if not url.startswith('https://'):
+        raise TerrainIndisponible(
+            "Le relief Copernicus n'est pas joignable pour le moment : "
+            "saisissez la pente à la main.")
     requete = Request(url, headers={'Range': f'bytes={debut}-{fin}'})
     try:
-        with urlopen(requete, timeout=DELAI_RESEAU_S) as reponse:
+        # schéma https vérifié juste au-dessus (D-ENF22).
+        with urlopen(requete, timeout=DELAI_RESEAU_S) as reponse:  # nosec B310
             return reponse.read()
     except Exception as exc:
         logger.warning('terrain glo30 : lecture impossible (%s)', url,
