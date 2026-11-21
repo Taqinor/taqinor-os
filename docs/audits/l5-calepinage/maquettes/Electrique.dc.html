@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier — étape Électrique</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap">
+<style>
+body{margin:0}
+a{color:#2342b5}a:hover{color:#0f1c54}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #f6f8fc; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 14px; overflow: hidden">
+
+  <header style="height: 56px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dde3f0">
+    <a href="#" style="display: flex; align-items: center; gap: 8px; color: #5a6488; text-decoration: none; font-size: 14px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      Calepinages
+    </a>
+    <div style="display: flex; flex-direction: column">
+      <span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px; line-height: 1.2">Villa Bennani — Casablanca</span>
+      <span style="font-size: 12px; color: #5a6488">12 panneaux · 6,96 kWc</span>
+    </div>
+    <div style="flex: 1"></div>
+    <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #256b34">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+      Enregistré à 14:39
+    </span>
+    <div role="group" aria-label="Mode" style="display: flex; padding: 3px; background: #eef1f8; border-radius: 10px">
+      <button type="button" aria-pressed="true" style="height: 30px; padding: 0 14px; border: 0; border-radius: 8px; background: #ffffff; color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,.12)">Guidé</button>
+      <button type="button" aria-pressed="false" style="height: 30px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: #5a6488; font: 500 14px 'Hanken Grotesk', sans-serif">Expert</button>
+    </div>
+    <button type="button" style="height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #e8b54a; color: #1a1505; font: 600 14px 'Hanken Grotesk', sans-serif">Générer le devis</button>
+  </header>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+    <nav aria-label="Étapes" style="width: 96px; flex: none; display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; background: #ffffff; border-right: 1px solid #dde3f0">
+      <a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #0c1335; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/><path d="M9 14l2 2 4-4"/></svg>
+        Toit
+      </a>
+      <a href="Panneaux.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #0c1335; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M8 12l3 3 5-6"/></svg>
+        Panneaux
+      </a>
+      <a href="Electrique.dc.html" aria-current="step" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; background: #fdf6e3; color: #0c1335; text-decoration: none; font-weight: 600; font-size: 12px; box-shadow: inset 0 0 0 1.5px #e8b54a">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8a6410" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>
+        Électrique
+      </a>
+      <a href="Resultats.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #5a6488; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        Résultats
+      </a>
+      <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #5a6488; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 00-1 1v16a1 1 0 001 1h12a1 1 0 001-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+        Documents
+      </a>
+      <div style="flex: 1"></div>
+      <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #5a6488; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+        Avancé
+      </a>
+    </nav>
+
+    <main style="flex: 1; position: relative; min-width: 0; background: #e9ecf2">
+      <svg role="img" aria-label="Vue de dessus : deux chaînes de six panneaux, bleue et violette, reliées à l'onduleur au pignon est" viewBox="0 0 984 844" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%">
+        <rect width="984" height="844" fill="#dfe5d6"/>
+        <rect x="0" y="640" width="984" height="90" fill="#c9ced8"/>
+        <path d="M0 685h984" stroke="#f6f8fc" stroke-width="3" stroke-dasharray="26 22"/>
+        <rect x="120" y="120" width="744" height="470" rx="6" fill="#d3dcc6"/>
+        <rect x="640" y="430" width="170" height="110" rx="8" fill="#9fc7d9"/>
+        <circle cx="205" cy="220" r="46" fill="#7fa56b"/><circle cx="245" cy="500" r="38" fill="#86ac72"/><circle cx="790" cy="190" r="34" fill="#7fa56b"/>
+        <path d="M330 200h330v270H330z" fill="#b9856a"/>
+        <path d="M330 200h330v135H330z" fill="#c59378"/>
+        <path d="M330 335h330" stroke="#8f6450" stroke-width="3"/>
+        <rect x="560" y="232" width="38" height="38" fill="#64748b" stroke="#334155" stroke-width="2"/>
+        <g stroke="#ffffff" stroke-width="2">
+          <rect x="346" y="350" width="46" height="50" fill="#2563eb"/><rect x="396" y="350" width="46" height="50" fill="#2563eb"/><rect x="446" y="350" width="46" height="50" fill="#2563eb"/><rect x="496" y="350" width="46" height="50" fill="#2563eb"/><rect x="546" y="350" width="46" height="50" fill="#2563eb"/><rect x="596" y="350" width="46" height="50" fill="#2563eb"/>
+          <rect x="346" y="404" width="46" height="50" fill="#7c3aed"/><rect x="396" y="404" width="46" height="50" fill="#7c3aed"/><rect x="446" y="404" width="46" height="50" fill="#7c3aed"/><rect x="496" y="404" width="46" height="50" fill="#7c3aed"/><rect x="546" y="404" width="46" height="50" fill="#7c3aed"/><rect x="596" y="404" width="46" height="50" fill="#7c3aed"/>
+        </g>
+        <path d="M369 375H619" stroke="#0c1335" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round"/>
+        <path d="M369 429H619" stroke="#0c1335" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round"/>
+        <path d="M642 375h46v150" fill="none" stroke="#2563eb" stroke-width="3"/>
+        <path d="M642 429h34v96" fill="none" stroke="#7c3aed" stroke-width="3"/>
+        <rect x="660" y="520" width="44" height="52" rx="6" fill="#ffffff" stroke="#0c1335" stroke-width="2"/>
+        <path d="M675 538h14M675 546h14M675 554h8" stroke="#0c1335" stroke-width="2" stroke-linecap="round"/>
+        <g font-family="Hanken Grotesk, sans-serif" font-size="13" font-weight="600" fill="#ffffff">
+          <rect x="300" y="363" width="36" height="24" rx="12" fill="#2563eb"/><text x="318" y="380" text-anchor="middle">C1</text>
+          <rect x="300" y="417" width="36" height="24" rx="12" fill="#7c3aed"/><text x="318" y="434" text-anchor="middle">C2</text>
+        </g>
+        <g font-family="Hanken Grotesk, sans-serif" font-size="13" font-weight="600" fill="#0c1335">
+          <rect x="712" y="534" width="78" height="24" rx="12" fill="#ffffff"/><text x="751" y="551" text-anchor="middle">Onduleur</text>
+          <rect x="696" y="440" width="58" height="22" rx="11" fill="#ffffff"/><text x="725" y="455" text-anchor="middle">14 m</text>
+        </g>
+      </svg>
+
+      <div style="position: absolute; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 20px; padding: 10px 20px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; box-shadow: 0 6px 20px rgba(12,19,53,.10)">
+        <div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #5a6488">Chaînes</span><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 20px">2 × 6 panneaux</span></div>
+        <div style="width: 1px; height: 32px; background: #dde3f0"></div>
+        <div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #5a6488">Onduleur</span><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 20px">6 kW</span></div>
+        <div style="width: 1px; height: 32px; background: #dde3f0"></div>
+        <div style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #5a6488">Câble côté panneaux</span><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 20px">52 m</span></div>
+      </div>
+
+      <div style="position: absolute; left: 16px; bottom: 20px; display: flex; gap: 14px; padding: 10px 14px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 12px; box-shadow: 0 6px 20px rgba(12,19,53,.10); font-size: 12px">
+        <span style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 3px; background: #2563eb"></span>Chaîne 1 · entrée A</span>
+        <span style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 3px; background: #7c3aed"></span>Chaîne 2 · entrée B</span>
+      </div>
+
+      <div role="toolbar" aria-label="Outils du raccordement" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 6px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; box-shadow: 0 8px 24px rgba(12,19,53,.14)">
+        <button type="button" style="height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #0c1335; color: #ffffff; font: 600 14px 'Hanken Grotesk', sans-serif">Raccorder automatiquement</button>
+        <button type="button" style="height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: transparent; color: #0c1335; font: 500 14px 'Hanken Grotesk', sans-serif">Modifier une chaîne</button>
+        <button type="button" style="height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: transparent; color: #0c1335; font: 500 14px 'Hanken Grotesk', sans-serif">Déplacer l'onduleur</button>
+      </div>
+    </main>
+
+    <aside aria-label="Électrique" style="width: 360px; flex: none; display: flex; flex-direction: column; background: #ffffff; border-left: 1px solid #dde3f0">
+      <div style="padding: 20px 20px 12px">
+        <div style="font-size: 12px; color: #5a6488">Étape 3 sur 5</div>
+        <h1 style="margin: 2px 0 0; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 20px">Le raccordement</h1>
+      </div>
+      <div style="flex: 1; overflow: hidden; padding: 0 20px; display: flex; flex-direction: column; gap: 20px">
+
+        <section style="display: flex; flex-direction: column; gap: 8px">
+          <label for="e-ond" style="font-size: 14px; font-weight: 600">Onduleur</label>
+          <button id="e-ond" type="button" style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 12px; border: 1px solid #dde3f0; border-radius: 10px; background: #ffffff; color: #0c1335; text-align: left">
+            <span style="display: flex; flex-direction: column"><span style="font: 600 14px 'Hanken Grotesk', sans-serif">Huawei SUN2000-6KTL</span><span style="font: 400 12px 'Hanken Grotesk', sans-serif; color: #5a6488">En stock · 2 entrées · proposé pour 12 panneaux</span></span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a6488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <button type="button" style="align-self: flex-start; padding: 0; border: 0; background: transparent; color: #2342b5; font: 500 14px 'Hanken Grotesk', sans-serif; text-decoration: underline">Comparer avec 2 autres onduleurs</button>
+        </section>
+
+        <section style="display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; align-items: center; justify-content: space-between">
+            <h2 style="margin: 0; font-size: 14px; font-weight: 600">Prêt à envoyer ?</h2>
+            <span style="padding: 2px 10px; border-radius: 999px; background: #fdf0d2; color: #7a5208; font-weight: 600; font-size: 12px">1 point à régler</span>
+          </div>
+          <div style="display: flex; flex-direction: column; border: 1px solid #dde3f0; border-radius: 10px">
+            <div style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px; border-bottom: 1px solid #dde3f0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M20 6L9 17l-5-5"/></svg>
+              <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Tension par temps froid</span><span style="font-size: 12px; color: #5a6488">343 V, sous la limite de 600 V de l'onduleur</span></span>
+              <button type="button" aria-label="Pourquoi ce chiffre ?" style="width: 32px; height: 32px; border: 1px solid #dde3f0; border-radius: 16px; background: #ffffff; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px; border-bottom: 1px solid #dde3f0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M20 6L9 17l-5-5"/></svg>
+              <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Panneaux pour l'onduleur</span><span style="font-size: 12px; color: #5a6488">6,96 kWc pour 6 kW : rapport 1,16</span></span>
+              <button type="button" aria-label="Pourquoi ce chiffre ?" style="width: 32px; height: 32px; border: 1px solid #dde3f0; border-radius: 16px; background: #ffffff; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px; border-bottom: 1px solid #dde3f0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M20 6L9 17l-5-5"/></svg>
+              <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Câbles</span><span style="font-size: 12px; color: #5a6488">Perte de 0,8 % dans les câbles, section 6 mm²</span></span>
+              <button type="button" aria-label="Pourquoi ce chiffre ?" style="width: 32px; height: 32px; border: 1px solid #dde3f0; border-radius: 16px; background: #ffffff; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px; border-bottom: 1px solid #dde3f0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M20 6L9 17l-5-5"/></svg>
+              <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Protections</span><span style="font-size: 12px; color: #5a6488">Parafoudre, sectionneur et mise à la terre prévus</span></span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px; background: #fdf6e3; border-radius: 0 0 10px 10px">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#96650b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>
+              <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 600">Pente du toit à confirmer</span><span style="font-size: 12px; color: #4a3b12">22° est une valeur de départ</span></span>
+              <a href="Main.dc.html" style="display: flex; align-items: center; height: 36px; padding: 0 12px; border-radius: 8px; background: #0c1335; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none">Régler</a>
+            </div>
+          </div>
+        </section>
+
+        <section style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid #dde3f0; border-radius: 10px">
+          <span style="display: flex; flex-direction: column"><span style="font-weight: 600">Schéma électrique</span><span style="font-size: 12px; color: #5a6488">Dessiné tout seul à partir du raccordement</span></span>
+          <button type="button" style="height: 36px; padding: 0 12px; border: 1px solid #b8c1d9; border-radius: 8px; background: #ffffff; color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif">Voir</button>
+        </section>
+      </div>
+      <div style="padding: 16px 20px; border-top: 1px solid #dde3f0">
+        <a href="Resultats.dc.html" style="display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border-radius: 10px; background: #e8b54a; color: #1a1505; font-weight: 600; font-size: 16px; text-decoration: none">Voir les résultats
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier — étape Documents</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap">
+<style>
+body{margin:0}
+a{color:#2342b5}a:hover{color:#0f1c54}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #f6f8fc; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 14px; overflow: hidden">
+
+  <header style="height: 56px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dde3f0">
+    <a href="Liste.dc.html" style="display: flex; align-items: center; gap: 8px; color: #5a6488; text-decoration: none; font-size: 14px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      Calepinages
+    </a>
+    <div style="display: flex; flex-direction: column">
+      <span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px; line-height: 1.2">Villa Bennani — Casablanca</span>
+      <span style="font-size: 12px; color: #5a6488">12 panneaux · 6,96 kWc · 1 onduleur 6 kW</span>
+    </div>
+    <div style="flex: 1"></div>
+    <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #256b34">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+      Enregistré à 14:41
+    </span>
+    <div role="group" aria-label="Mode" style="display: flex; padding: 3px; background: #eef1f8; border-radius: 10px">
+      <button type="button" aria-pressed="true" style="height: 30px; padding: 0 14px; border: 0; border-radius: 8px; background: #ffffff; color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,.12)">Guidé</button>
+      <button type="button" aria-pressed="false" style="height: 30px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: #5a6488; font: 500 14px 'Hanken Grotesk', sans-serif">Expert</button>
+    </div>
+    <button type="button" style="height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #e8b54a; color: #1a1505; font: 600 14px 'Hanken Grotesk', sans-serif">Générer le devis</button>
+  </header>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+    <nav aria-label="Étapes" style="width: 96px; flex: none; display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; background: #ffffff; border-right: 1px solid #dde3f0">
+      <a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #0c1335; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#96650b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/><path d="M12 12v3M12 17.5v.5"/></svg>
+        Toit
+        <span style="font-size: 12px; font-weight: 600; color: #96650b">1 à régler</span>
+      </a>
+      <a href="Panneaux.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #0c1335; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M8 12l3 3 5-6"/></svg>
+        Panneaux
+      </a>
+      <a href="Electrique.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #0c1335; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>
+        Électrique
+      </a>
+      <a href="Resultats.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #0c1335; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#256b34" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        Résultats
+      </a>
+      <a href="Documents.dc.html" aria-current="step" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; background: #fdf6e3; color: #0c1335; text-decoration: none; font-weight: 600; font-size: 12px; box-shadow: inset 0 0 0 1.5px #e8b54a">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8a6410" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 00-1 1v16a1 1 0 001 1h12a1 1 0 001-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+        Documents
+      </a>
+      <div style="flex: 1"></div>
+      <a href="#" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; border-radius: 10px; color: #5a6488; text-decoration: none; font-weight: 500; font-size: 12px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+        Avancé
+      </a>
+    </nav>
+
+    <main style="flex: 1; min-width: 0; padding: 24px 28px; display: grid; grid-template-columns: 600px minmax(0, 1fr); gap: 20px">
+
+      <!-- Prêt à envoyer ? -->
+      <section aria-labelledby="pret-titre" style="display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 16px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; min-height: 0">
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <h2 id="pret-titre" style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 20px">Prêt à envoyer ?</h2>
+            <span style="font-size: 14px; color: #5a6488">9 contrôles sur 10 sont bons.</span>
+          </div>
+          <span style="display: flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: #fdf0d2; color: #7a5208; font-weight: 600; font-size: 14px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>
+            1 point à régler
+          </span>
+        </div>
+
+        <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px">
+
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <h3 style="margin: 0; font-size: 12px; font-weight: 600; color: #5a6488">Toit</h3>
+            <div style="display: flex; flex-direction: column; border: 1px solid #dde3f0; border-radius: 10px; overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px; background: #fdf6e3; border-bottom: 1px solid #f0d596">
+                <svg role="img" aria-label="À régler" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><path d="M12 2.5l10.5 18.5H1.5z" fill="#fbe7b8" stroke="#96650b" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9v5.5M12 17.6v.4" stroke="#96650b" stroke-width="2.2" stroke-linecap="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 600">Pente du toit à confirmer</span><span style="font-size: 12px; color: #4a3b12">22° est une valeur de départ, pas une mesure faite sur le toit.</span></span>
+                <button type="button" aria-label="Pourquoi : pente du toit" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #e3c77f; border-radius: 14px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #4a3b12; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+                <a href="Main.dc.html" style="display: flex; align-items: center; height: 44px; padding: 0 14px; border-radius: 10px; background: #0c1335; color: #ffffff; font-weight: 600; font-size: 14px; text-decoration: none; white-space: nowrap">Régler dans Toit</a>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Visite technique</span><span style="font-size: 12px; color: #5a6488">Faite et validée : photos, mesures et compteur relevés.</span></span>
+                <button type="button" aria-label="Pourquoi : visite technique" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <h3 style="margin: 0; font-size: 12px; font-weight: 600; color: #5a6488">Panneaux</h3>
+            <div style="display: flex; flex-direction: column; border: 1px solid #dde3f0; border-radius: 10px; overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px; border-bottom: 1px solid #dde3f0">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Puissance annoncée</span><span style="font-size: 12px; color: #5a6488">12 × 580 Wc = 6,96 kWc, le même chiffre sur tous les écrans.</span></span>
+                <button type="button" aria-label="Pourquoi : puissance annoncée" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px; border-bottom: 1px solid #dde3f0">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Taille adaptée à la facture</span><span style="font-size: 12px; color: #5a6488">Pour 900 MAD par mois, l'installation couvre 82 % de la facture.</span></span>
+                <button type="button" aria-label="Pourquoi : taille adaptée à la facture" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Ombres chiffrées</span><span style="font-size: 12px; color: #5a6488">Les ombres proches coûtent 3,0 % de la production, panneau par panneau.</span></span>
+                <button type="button" aria-label="Pourquoi : ombres chiffrées" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <h3 style="margin: 0; font-size: 12px; font-weight: 600; color: #5a6488">Électrique</h3>
+            <div style="display: flex; flex-direction: column; border: 1px solid #dde3f0; border-radius: 10px; overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px; border-bottom: 1px solid #dde3f0">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Tension par temps froid</span><span style="font-size: 12px; color: #5a6488">343 V, sous la limite de 600 V de l'onduleur.</span></span>
+                <button type="button" aria-label="Pourquoi : tension par temps froid" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px; border-bottom: 1px solid #dde3f0">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Panneaux pour l'onduleur</span><span style="font-size: 12px; color: #5a6488">6,96 kWc pour 6 kW : rapport 1,16, dans la plage de votre société.</span></span>
+                <button type="button" aria-label="Pourquoi : panneaux pour l'onduleur" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Câbles et protections</span><span style="font-size: 12px; color: #5a6488">0,8 % de perte en 6 mm² ; parafoudre, sectionneur et terre prévus.</span></span>
+                <button type="button" aria-label="Pourquoi : câbles et protections" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <h3 style="margin: 0; font-size: 12px; font-weight: 600; color: #5a6488">Résultats</h3>
+            <div style="display: flex; flex-direction: column; border: 1px solid #dde3f0; border-radius: 10px; overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px; border-bottom: 1px solid #dde3f0">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Production vérifiée avec PVGIS</span><span style="font-size: 12px; color: #5a6488">− 2,1 % par rapport à PVGIS, au même endroit, avec les mêmes panneaux.</span></span>
+                <button type="button" aria-label="Pourquoi : production vérifiée avec PVGIS" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px">
+                <svg role="img" aria-label="Bon" width="22" height="22" viewBox="0 0 24 24" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Calcul à jour</span><span style="font-size: 12px; color: #5a6488">Refait à 14:41, après le dernier changement du toit.</span></span>
+                <button type="button" aria-label="Pourquoi : calcul à jour" style="width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 28px; height: 28px; box-sizing: border-box; border: 1px solid #dde3f0; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #5a6488; font: 600 14px 'Hanken Grotesk', sans-serif">?</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; padding-top: 12px; border-top: 1px solid #dde3f0">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 12px; color: #5a6488">Le point à régler n'empêche pas le devis : il reste signalé tant qu'il n'est pas réglé.</span>
+            <div aria-label="Légende" style="display: flex; gap: 14px; font-size: 12px; color: #5a6488">
+              <span style="display: flex; align-items: center; gap: 5px"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#e3f1e6" stroke="#256b34" stroke-width="1.6"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#256b34" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Bon</span>
+              <span style="display: flex; align-items: center; gap: 5px"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l10.5 18.5H1.5z" fill="#fbe7b8" stroke="#96650b" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9v5.5M12 17.6v.4" stroke="#96650b" stroke-width="2.2" stroke-linecap="round"/></svg>À régler</span>
+              <span style="display: flex; align-items: center; gap: 5px"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z" fill="#fde2e2" stroke="#b42318" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 9l6 6M15 9l-6 6" stroke="#b42318" stroke-width="2.2" stroke-linecap="round"/></svg>Bloque le devis</span>
+            </div>
+          </div>
+          <button type="button" style="display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 22px; border: 0; border-radius: 10px; background: #e8b54a; color: #1a1505; font: 600 16px 'Hanken Grotesk', sans-serif">Générer le devis
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- Documents -->
+      <section aria-labelledby="docs-titre" style="display: flex; flex-direction: column; gap: 12px; min-height: 0">
+        <div style="display: flex; flex-direction: column; gap: 2px; padding: 4px 4px 0">
+          <h2 id="docs-titre" style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 20px">Documents du projet</h2>
+          <span style="font-size: 14px; color: #5a6488">Faits à partir de la version enregistrée à 14:41.</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 12px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px">
+          <svg role="img" aria-label="Aperçu du plan de pose : toit vu de dessus, 12 panneaux en deux rangées, cotes aux bords" width="112" height="80" viewBox="0 0 112 80" style="flex: none; border-radius: 8px; background: #f6f8fc; border: 1px solid #dde3f0">
+            <rect x="14" y="12" width="84" height="56" fill="#ffffff" stroke="#e8b54a" stroke-width="1.5"/>
+            <path d="M14 40h84" stroke="#c9b06a" stroke-width="1"/>
+            <g fill="#1c2846" stroke="#ffffff" stroke-width=".8"><rect x="19" y="43" width="12" height="10"/><rect x="31" y="43" width="12" height="10"/><rect x="43" y="43" width="12" height="10"/><rect x="55" y="43" width="12" height="10"/><rect x="67" y="43" width="12" height="10"/><rect x="79" y="43" width="12" height="10"/><rect x="19" y="53" width="12" height="10"/><rect x="31" y="53" width="12" height="10"/><rect x="43" y="53" width="12" height="10"/><rect x="55" y="53" width="12" height="10"/><rect x="67" y="53" width="12" height="10"/><rect x="79" y="53" width="12" height="10"/></g>
+            <path d="M14 6h84M14 4v4M98 4v4M104 12v56M102 12h4M102 68h4" stroke="#5a6488" stroke-width="1"/>
+          </svg>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-weight: 600; font-size: 16px">Plan de pose pour l'équipe</span>
+            <span style="font-size: 14px; color: #5a6488">Place de chaque panneau, distances aux bords du toit, chaînes en couleur. PDF.</span>
+          </div>
+          <a href="#" style="display: flex; align-items: center; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none">Aperçu</a>
+          <a href="#" style="display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Télécharger</a>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 12px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px">
+          <svg role="img" aria-label="Aperçu du schéma électrique : panneaux, coffrets, onduleur et compteur reliés par une ligne" width="112" height="80" viewBox="0 0 112 80" style="flex: none; border-radius: 8px; background: #f6f8fc; border: 1px solid #dde3f0">
+            <g fill="#2563eb"><rect x="8" y="18" width="6" height="8"/><rect x="15" y="18" width="6" height="8"/><rect x="22" y="18" width="6" height="8"/></g>
+            <g fill="#7c3aed"><rect x="8" y="32" width="6" height="8"/><rect x="15" y="32" width="6" height="8"/><rect x="22" y="32" width="6" height="8"/></g>
+            <path d="M28 22h12M28 36h12M58 29h12M86 29v20M86 58v6H66M50 64H40" fill="none" stroke="#0c1335" stroke-width="1.2"/>
+            <rect x="40" y="16" width="18" height="26" rx="2" fill="#ffffff" stroke="#0c1335" stroke-width="1.2"/>
+            <rect x="70" y="16" width="22" height="28" rx="2" fill="#ffffff" stroke="#0c1335" stroke-width="1.2"/>
+            <path d="M72 42l18-24" stroke="#0c1335" stroke-width="1"/>
+            <rect x="50" y="54" width="16" height="18" rx="2" fill="#ffffff" stroke="#0c1335" stroke-width="1.2"/>
+            <circle cx="32" cy="64" r="8" fill="#ffffff" stroke="#0c1335" stroke-width="1.2"/>
+          </svg>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-weight: 600; font-size: 16px">Schéma électrique</span>
+            <span style="font-size: 14px; color: #5a6488">Des panneaux au compteur, avec la section de chaque câble. PDF.</span>
+          </div>
+          <a href="Schema.dc.html" style="display: flex; align-items: center; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none">Aperçu</a>
+          <a href="#" style="display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Télécharger</a>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 12px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px">
+          <svg role="img" aria-label="Aperçu de la note de calcul : une page de texte et un tableau" width="112" height="80" viewBox="0 0 112 80" style="flex: none; border-radius: 8px; background: #f6f8fc; border: 1px solid #dde3f0">
+            <rect x="30" y="6" width="52" height="68" rx="2" fill="#ffffff" stroke="#b8c1d9"/>
+            <path d="M36 14h30M36 20h40M36 25h36" stroke="#0c1335" stroke-width="1.6"/>
+            <rect x="36" y="32" width="40" height="26" fill="none" stroke="#b8c1d9"/>
+            <path d="M36 40h40M36 49h40M54 32v26" stroke="#b8c1d9"/>
+            <path d="M36 64h28M36 69h20" stroke="#5a6488" stroke-width="1.4"/>
+          </svg>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-weight: 600; font-size: 16px">Note de calcul</span>
+            <span style="font-size: 14px; color: #5a6488">Tension par temps froid, câbles, protections : chaque chiffre avec sa règle. PDF.</span>
+          </div>
+          <a href="#" style="display: flex; align-items: center; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none">Aperçu</a>
+          <a href="#" style="display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Télécharger</a>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 12px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px">
+          <svg role="img" aria-label="Aperçu du rapport d'étude : une page avec un histogramme mensuel" width="112" height="80" viewBox="0 0 112 80" style="flex: none; border-radius: 8px; background: #f6f8fc; border: 1px solid #dde3f0">
+            <rect x="30" y="6" width="52" height="68" rx="2" fill="#ffffff" stroke="#b8c1d9"/>
+            <rect x="36" y="12" width="40" height="8" rx="1" fill="#0c1335"/>
+            <g fill="#e8b54a"><rect x="37" y="42" width="4" height="10"/><rect x="43" y="38" width="4" height="14"/><rect x="49" y="33" width="4" height="19"/><rect x="55" y="30" width="4" height="22"/><rect x="61" y="34" width="4" height="18"/><rect x="67" y="40" width="4" height="12"/></g>
+            <path d="M36 52h40" stroke="#b8c1d9"/>
+            <path d="M36 60h34M36 66h24" stroke="#5a6488" stroke-width="1.4"/>
+          </svg>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-weight: 600; font-size: 16px">Rapport d'étude</span>
+            <span style="font-size: 14px; color: #5a6488">Production mois par mois, pertes, ombres, et ce que le calcul ne prend pas en compte. PDF.</span>
+          </div>
+          <a href="#" style="display: flex; align-items: center; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none">Aperçu</a>
+          <a href="#" style="display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Télécharger</a>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 12px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px">
+          <svg role="img" aria-label="Aperçu du plan DXF : contour du toit et panneaux en traits fins" width="112" height="80" viewBox="0 0 112 80" style="flex: none; border-radius: 8px; background: #f6f8fc; border: 1px solid #dde3f0">
+            <rect x="14" y="12" width="84" height="56" fill="none" stroke="#2342b5" stroke-width="1.2"/>
+            <path d="M14 40h84" stroke="#2342b5" stroke-width=".8" stroke-dasharray="3 2"/>
+            <g fill="none" stroke="#0c1335" stroke-width=".8"><rect x="19" y="43" width="12" height="10"/><rect x="31" y="43" width="12" height="10"/><rect x="43" y="43" width="12" height="10"/><rect x="55" y="43" width="12" height="10"/><rect x="67" y="43" width="12" height="10"/><rect x="79" y="43" width="12" height="10"/><rect x="19" y="53" width="12" height="10"/><rect x="31" y="53" width="12" height="10"/><rect x="43" y="53" width="12" height="10"/><rect x="55" y="53" width="12" height="10"/><rect x="67" y="53" width="12" height="10"/><rect x="79" y="53" width="12" height="10"/></g>
+            <rect x="74" y="18" width="8" height="8" fill="none" stroke="#5a6488" stroke-width="1"/>
+          </svg>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-weight: 600; font-size: 16px">Plan au format DXF</span>
+            <span style="font-size: 14px; color: #5a6488">Pour AutoCAD ou un autre logiciel de dessin : chaque panneau numéroté, avec son pan et sa chaîne.</span>
+          </div>
+          <a href="#" style="display: flex; align-items: center; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none">Aperçu</a>
+          <a href="#" style="display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border: 1px solid #b8c1d9; border-radius: 10px; color: #0c1335; font-weight: 600; font-size: 14px; text-decoration: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Télécharger</a>
+        </div>
+
+        <div style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: #f1f4fd; border: 1px solid #c9d3f2; border-radius: 10px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2342b5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+          <span style="font-size: 14px; line-height: 1.45; color: #26306b">Le devis remis au client ne se fait pas ici : il est créé à partir du devis, avec ses prix. « Générer le devis » prépare ce devis avec ce calepinage.</span>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
