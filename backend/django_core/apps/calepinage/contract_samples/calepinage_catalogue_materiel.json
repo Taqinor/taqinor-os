@@ -15,7 +15,7 @@
         "id": 418,
         "libelle": "Module 550 Wc (exemple)",
         "marque": "",
-        "favori": false,
+        "favori": true,
         "fiche_complete": false,
         "champs_manquants": [
           "pmax_wc"

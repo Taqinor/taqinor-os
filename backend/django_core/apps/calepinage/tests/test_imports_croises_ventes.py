@@ -18,10 +18,13 @@ import unittest
 APPS = pathlib.Path(__file__).resolve().parents[2]
 
 #: ``(app qui importe, app importée) -> (fichiers qui importent, dont hors
-#: selectors*/services*)`` — valeurs mesurées, à ne faire que BAISSER.
+#: selectors*/services*)`` — valeurs mesurées sur la branche de la vague 1
+#: (origin/main 3cd507aa4 : 18/1 et 38/5), à ne faire que BAISSER.
+#: Hors portes aujourd'hui : ventes/dsr_provider.py ; calepinage/services/
+#: {autoconsommation,batterie,consommation,profils_types}.py, views/pompage.py.
 PLAFONDS = {
-    ('ventes', 'calepinage'): (0, 0),
-    ('calepinage', 'ventes'): (0, 0),
+    ('ventes', 'calepinage'): (18, 1),
+    ('calepinage', 'ventes'): (40, 5),
 }
 
 PORTES = ('selectors', 'services')
@@ -76,6 +79,21 @@ def mesurer(app, cible):
     return importent, hors
 
 
+def depassements(app, cible, importent, hors, plafond, plafond_hors):
+    """Les messages d'échec (vide = sous les plafonds), fichiers nommés."""
+    messages = []
+    for liste, borne, quoi in (
+            (importent, plafond, 'importent'),
+            (hors, plafond_hors,
+             'importent un module hors selectors*/services* de')):
+        if len(liste) > borne:
+            messages.append(
+                f'{len(liste)} fichiers de apps/{app} {quoi} apps.{cible} '
+                f'(plafond {borne}) — passez par les selectors/services de '
+                f'apps/{cible}. Fichiers : {liste}')
+    return messages
+
+
 class LectureDesImportsTest(unittest.TestCase):
     """La lecture compte les IMPORTS, jamais les mentions."""
 
@@ -103,20 +121,28 @@ class CliquetDesImportsCroisesTest(unittest.TestCase):
     def test_aucune_hausse(self):
         for (app, cible), (plafond, plafond_hors) in PLAFONDS.items():
             importent, hors = mesurer(app, cible)
-            for nombre, liste, borne, quoi in (
-                    (len(importent), importent, plafond, 'importent'),
-                    (len(hors), hors, plafond_hors,
-                     'importent un module hors selectors*/services* de')):
-                self.assertLessEqual(
-                    nombre, borne,
-                    f'{nombre} fichiers de apps/{app} {quoi} apps.{cible} '
-                    f'(plafond {borne}) — passez par les selectors/services '
-                    f'de apps/{cible}. Fichiers : {liste}')
-                if nombre < borne:
-                    print(f'ACAL1009 : apps/{app} -> apps.{cible} ({quoi}) '
-                          f'est descendu à {nombre} : baissez le plafond.')
+            self.assertTrue(importent, 'lecture vide : la garde ne garde rien')
+            self.assertEqual(depassements(app, cible, importent, hors,
+                                          plafond, plafond_hors), [])
+            if (len(importent), len(hors)) < (plafond, plafond_hors):
+                print(f'ACAL1009 : apps/{app} -> apps.{cible} est descendu à '
+                      f'{len(importent)}/{len(hors)} : baissez le plafond.')
 
-    def test_un_plafond_trop_bas_echoue(self):
-        importent, _ = mesurer('ventes', 'calepinage')
-        self.assertTrue(importent, 'lecture vide : la garde ne garde rien')
-        self.assertGreater(len(importent), len(importent) - 1)
+    def test_plafond_moins_un_echoue_en_nommant_le_fichier(self):
+        importent, hors = mesurer('ventes', 'calepinage')
+        plafond, plafond_hors = PLAFONDS[('ventes', 'calepinage')]
+        messages = depassements('ventes', 'calepinage', importent, hors,
+                                plafond - 1, plafond_hors)
+        self.assertEqual(len(messages), 1)
+        self.assertIn(importent[0], messages[0])
+
+    def test_import_de_coherence_registre_ajoute_echoue(self):
+        importent, hors = mesurer('calepinage', 'ventes')
+        plafond, plafond_hors = PLAFONDS[('calepinage', 'ventes')]
+        neuf = 'calepinage/services/nouveau.py'
+        source = 'from apps.ventes.coherence.registre import TOLERANCES\n'
+        self.assertTrue(hors_portes(modules_importes(source, 'ventes')))
+        messages = depassements('calepinage', 'ventes', importent + [neuf],
+                                hors + [neuf], plafond, plafond_hors)
+        self.assertEqual(len(messages), 2)
+        self.assertIn(neuf, messages[1])

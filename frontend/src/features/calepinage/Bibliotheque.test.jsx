@@ -20,9 +20,12 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    ========================================================================== */
 
 const REGLAGES = exempleContrat('calepinage', 'parametres_calepinage')
+const CATALOGUE = exempleContrat('calepinage', 'calepinage_catalogue_materiel')
 
 const mocks = vi.hoisted(() => ({
   getParametres: vi.fn(),
+  // ACAL960 — `GET calepinages/catalogue-materiel/` (échantillon committé).
+  getCatalogue: vi.fn(),
   getModeles: vi.fn(),
   hasPermission: vi.fn(),
   // CALX30 — `GET/PUT parametres/profils-types/` (CAL149).
@@ -52,6 +55,7 @@ vi.mock('../../api/calepinageApi', () => ({
     parametres: {
       get: (...a) => mocks.getParametres(...a),
       update: (...a) => mocks.putParametres(...a),
+      catalogueMateriel: (...a) => mocks.getCatalogue(...a),
       profilsTypes: (...a) => mocks.getProfilsTypes(...a),
       enregistrerProfilsTypes: (...a) => mocks.putProfilsTypes(...a),
     },
@@ -101,6 +105,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   // Défaut commun à TOUS les tests : la bibliothèque lit trois endpoints.
   mocks.getProfilsTypes.mockResolvedValue({ data: { profils: PROFILS } })
+  mocks.getCatalogue.mockResolvedValue({ data: CATALOGUE })
 })
 afterEach(() => { cleanup() })
 
@@ -449,30 +454,46 @@ describe('CALX43 — édition des préréglages et des favoris', () => {
       .toHaveTextContent(MOTIF)
   })
 
-  it('un favori dont un identifiant n’en est pas un est refusé, ligne pointée', async () => {
+  it('ACAL960 — les produits du catalogue sont cochés, jamais des identifiants tapés', async () => {
     await rendreAvecDroit()
 
-    await userEvent.clear(screen.getByTestId('cal-biblio-favori-ids-0'))
-    await userEvent.type(screen.getByTestId('cal-biblio-favori-ids-0'), '412, panneau')
-    await userEvent.click(screen.getByTestId('cal-biblio-favoris-enregistrer'))
-
-    expect(screen.getByTestId('cal-biblio-favori-erreur-0'))
-      .toHaveTextContent('n’est pas un identifiant de produit')
-    expect(mocks.putParametres).not.toHaveBeenCalled()
+    expect(await screen.findByTestId('acal960-liste-modules')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-biblio-favori-ids-0')).toBeNull()
+    expect(screen.queryByTestId('cal-biblio-favori-role-0')).toBeNull()
+    // Les favoris du contrat sont déjà cochés ; la fiche incomplète est signalée, cochable.
+    expect(screen.getByTestId('acal960-coche-modules-412')).toBeChecked()
+    expect(screen.getByTestId('acal960-coche-modules-418')).toBeChecked()
+    expect(screen.getByTestId('acal960-incomplete-modules-418')).toBeInTheDocument()
+    expect(screen.getByTestId('acal960-coche-modules-418')).not.toBeDisabled()
   })
 
-  it('les favoris valides partent sous `favoris_materiel`, en entiers', async () => {
+  it('ACAL960 — cocher un module et un onduleur : `modules` et `onduleurs` partent, `panneau` reste', async () => {
     mocks.putParametres.mockResolvedValue({ data: REGLAGES })
-    await rendreAvecDroit()
+    await rendreAvecDroit({
+      ...REGLAGES,
+      favoris_materiel: { panneau: [7], modules: [], onduleurs: [] },
+    })
 
+    await userEvent.click(await screen.findByTestId('acal960-coche-modules-412'))
+    await userEvent.click(screen.getByTestId('acal960-coche-onduleurs-901'))
     await userEvent.click(screen.getByTestId('cal-biblio-favoris-enregistrer'))
 
     await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
     const corps = mocks.putParametres.mock.calls[0][0]
-    const role = Object.keys(REGLAGES.favoris_materiel)[0]
-    expect(corps.favoris_materiel[role])
-      .toEqual(REGLAGES.favoris_materiel[role].map(Number))
+    expect(corps.favoris_materiel).toEqual({ panneau: [7], modules: [412], onduleurs: [901] })
     expect(corps.presets).toBeUndefined()
+  })
+
+  it('ACAL960 — une clé non lue par le serveur reste affichée et se retire', async () => {
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    await rendreAvecDroit({ ...REGLAGES, favoris_materiel: { panneau: [7] } })
+
+    expect(await screen.findByTestId('acal960-autre-panneau')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('cal-biblio-favori-retirer-0'))
+    await userEvent.click(screen.getByTestId('cal-biblio-favoris-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
+    expect(mocks.putParametres.mock.calls[0][0].favoris_materiel).toEqual({})
   })
 })
 

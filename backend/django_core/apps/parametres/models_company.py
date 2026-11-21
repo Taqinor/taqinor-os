@@ -309,6 +309,10 @@ class CompanyProfile(models.Model):
     # jamais affiché au client (D-CIQ-12).
     recette_pr_seuil_interne = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True)
+    # ACAL669 — résistance d'isolement minimale à la recette (MΩ), saisie par
+    # la société ; vide = aucun jugement de l'isolement (jamais un seuil codé).
+    recette_isolement_min_mohm = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
     # Délai d'intervention du suivi de production (heures) — D-CIQ-12.
     delai_intervention_suivi_heures = models.PositiveIntegerField(
         null=True, blank=True)

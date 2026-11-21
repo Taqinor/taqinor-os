@@ -297,13 +297,19 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
             field='type_installation')
 
     # Le corps résidentiel vit dans ``creation_auto_residentiel`` (déplacé tel quel).
-    return _build_devis_auto_residentiel(
+    return marquer_rapide(_build_devis_auto_residentiel(
         lead=lead, user=user, company=company, taux_tva=taux_tva,
         remise_globale=remise_globale, target_kwc=target_kwc,
         scenario=scenario, etude_extra=etude_extra, plafond_toit=plafond_toit,
         journal_auto=journal_auto, origine=origine,
         structure_produit_id=structure_produit_id,
-        structure_type=structure_type)
+        structure_type=structure_type))
+
+
+def marquer_rapide(devis):  # ACAL1004 — « Devis automatique » : marque `rapide`, rien d'autre ne bouge
+    from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
+    ecrire(devis, proprietaire=AUTO_DEVIS, origine_conception='rapide')
+    return devis
 
 
 def auto_devis_tunnel_actif(company):

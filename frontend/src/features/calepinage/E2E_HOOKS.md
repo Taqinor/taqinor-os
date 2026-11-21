@@ -65,6 +65,7 @@ retiré plus un hook ajouté.
 | `cal-biblio-modele-creer` | bibliothèque modèle créer. |
 | `cal-biblio-modele-depart` | bibliothèque modèle point de départ. |
 | `cal-biblio-modele-erreur` | bibliothèque modèle message d'erreur. |
+| `cal-biblio-modele-exemple` | bibliothèque modèle exemple (badge « Exemple », ACAL895). |
 | `cal-biblio-modele-lead` | bibliothèque modèle lead. |
 | `cal-biblio-modele-ouvrir` | bibliothèque modèle ouvrir. |
 | `cal-biblio-modele-partir` | bibliothèque modèle partir. |

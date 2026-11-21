@@ -560,6 +560,7 @@ describe('ACAL514 — pivoterSite', () => {
     exclusionZones: [{ id: 'x1', vertices: [[-7.6200, 33.5800], [-7.6199, 33.5800], [-7.6199, 33.5799]], axe: [[-7.6200, 33.5800], [-7.6199, 33.5799]] }],
     measurements: [{ id: 'm1', points: [[-7.6201, 33.5801], [-7.6197, 33.5800]] }],
     parcelle: { vertices: [[-7.63, 33.59], [-7.61, 33.59]] },
+    reperesChantier: [{ id: 'r1', point: [-7.62008, 33.58008] }], // ACAL599
   });
   const maxEcart = (a: unknown, b: unknown): number => {
     if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b);
@@ -589,6 +590,7 @@ describe('ACAL514 — pivoterSite', () => {
     expect(zs.map((z) => z.facingAzimuthDeg)).toEqual([270, 180]);
     expect(a.site.pin).toEqual(d.pin);
     expect(a.site.parcelle).toEqual(d.parcelle);
+    expect((a.site.reperesChantier as Array<{ point: number[] }>)[0].point).not.toEqual(d.reperesChantier[0].point);
     expect(d.zones[0].facingAzimuthDeg).toBe(180); // l’entrée n’est jamais modifiée
   });
 

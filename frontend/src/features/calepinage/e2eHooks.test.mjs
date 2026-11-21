@@ -60,6 +60,7 @@ export const ALL_HOOKS = [
   'cal-biblio-modele-creer',
   'cal-biblio-modele-depart',
   'cal-biblio-modele-erreur',
+  'cal-biblio-modele-exemple',
   'cal-biblio-modele-lead',
   'cal-biblio-modele-ouvrir',
   'cal-biblio-modele-partir',

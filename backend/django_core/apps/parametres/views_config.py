@@ -66,6 +66,7 @@ PROFILE_CONFIG_FIELDS = [
     'recette_ecart_pmax_pct', 'recette_echantillon_iv_pct',
     'recette_pr_seuil_interne', 'delai_intervention_suivi_heures',
     'delai_reception_definitive_mois',
+    'recette_isolement_min_mohm',  # ACAL669 — isolement minimal, sans défaut.
     'securite_obligatoire_avant_demarrage',
     'garantie_production_autorisee', 'garantie_production_validation',
     # AMOT96 — entretien minimum C&I (MAD HT/kWc/an), sans défaut.

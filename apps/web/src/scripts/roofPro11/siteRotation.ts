@@ -22,6 +22,7 @@ export const CHEMINS_TOURNES: Record<string, ['point' | 'couple' | 'couples' | '
   'exclusionZones[].vertices': ['couples', 'lng_lat'],
   'exclusionZones[].axe': ['couples', 'lng_lat'],
   'measurements[].points': ['couples', 'lng_lat'],
+  'reperesChantier[].point': ['couple', 'lng_lat'], // ACAL599 : repère posé sur le bâtiment, il le suit
 };
 export const CLES_REFUSEES = ['electrical', 'poseSurfaces', 'shadeObstructions', 'underlay'] as const;
 

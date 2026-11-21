@@ -479,6 +479,32 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
         # Référence par `core.numbering` (JAMAIS count()+1) : préfixe DEV.
         self.assertTrue(devis.reference.startswith('DEV-'))
 
+    def test_marque_rapide_posee_valider_muet_lignes_identiques(self):
+        """ACAL1004 — la marque ``origine_conception: 'rapide'`` est posée,
+        ``valider`` ne la reproche pas, et lignes / statut sont ceux d'avant la
+        marque. Mutant : clé absente de ``SCHEMA`` ⇒ ``ecrire`` lève ⇒ rouge."""
+        from apps.ventes.domain import creation_auto
+        from apps.ventes.domain.etude_schema import valider
+        vrai, avant = creation_auto.marquer_rapide, {}
+
+        def _lignes(devis):
+            return list(devis.lignes.order_by('pk').values_list(
+                'designation', 'quantite', 'prix_unitaire', 'remise', 'type_ligne'))
+
+        def espion(devis):
+            avant.update(lignes=_lignes(devis), statut=devis.statut,
+                         etude=dict(devis.etude_params or {}))
+            return vrai(devis)
+        with patch.object(creation_auto, 'marquer_rapide', espion):
+            devis = self._creer(self._lead(roof_outline=CONTOUR_LATLNG))
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params.get('origine_conception'), 'rapide')
+        self.assertEqual(valider(devis.etude_params), [])
+        self.assertEqual(_lignes(devis), avant['lignes'])
+        self.assertEqual(devis.statut, avant['statut'])
+        self.assertEqual({k: v for k, v in devis.etude_params.items() if k != 'origine_conception'},
+                         avant['etude'])
+
     def test_note_dhistorique_a_verifier(self):
         lead = self._lead(roof_outline=CONTOUR_LATLNG)
         devis = self._creer(lead)
