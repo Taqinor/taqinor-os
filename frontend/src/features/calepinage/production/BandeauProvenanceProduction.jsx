@@ -45,7 +45,7 @@ export default function BandeauProvenanceProduction({ calepinageId }) {
   const aSimulation = p50 !== null && p50 !== undefined
 
   return (
-    <p className="mt-2 text-xs text-lune-soft" data-testid="calx65-bandeau">
+    <p className="mt-2 text-xs text-foreground" data-testid="calx65-bandeau">
       <span data-testid="calx65-rapide">{MENTION_RAPIDE}</span>
       {aSimulation && (
         <span data-testid="calx65-simulation">
@@ -56,7 +56,7 @@ export default function BandeauProvenanceProduction({ calepinageId }) {
           {' — '}
           <Link
             to={`/calepinage/${calepinageId}?${PARAM_ONGLET}=production`}
-            className="text-brass-300 underline"
+            className="text-primary-text underline"
             data-testid="calx65-lien-production"
           >
             voir la Production

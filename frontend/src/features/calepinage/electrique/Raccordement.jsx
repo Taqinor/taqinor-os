@@ -43,7 +43,7 @@ function PropositionLead({ proposition, peutReprendre, onReprendre, lectureSeule
           ].filter(Boolean).join(' · ') || '—'}
         </strong>
         {proposition.source
-          ? <span className="text-xs text-lune-faint" data-testid="acal158-source">{` — source : ${proposition.source}`}</span>
+          ? <span className="text-xs text-muted-foreground" data-testid="acal158-source">{` — source : ${proposition.source}`}</span>
           : null}
       </p>
       {peutReprendre
@@ -58,10 +58,10 @@ function PropositionLead({ proposition, peutReprendre, onReprendre, lectureSeule
             >
               Reprendre les valeurs du lead
             </Button>
-            <span className="ml-2 text-xs text-lune-faint">Rien n’est enregistré avant « Enregistrer ».</span>
+            <span className="ml-2 text-xs text-muted-foreground">Rien n’est enregistré avant « Enregistrer ».</span>
           </div>
         )
-        : <p className="text-xs text-lune-faint">Une saisie existe déjà : la proposition n’est pas appliquée.</p>}
+        : <p className="text-xs text-muted-foreground">Une saisie existe déjà : la proposition n’est pas appliquée.</p>}
     </div>
   )
 }
@@ -122,7 +122,7 @@ function Verdict({ verdict }) {
       </p>
       {verdict.source
         ? (
-          <p className="text-xs text-lune-faint" data-testid={`calx244-source-${verdict.code}`}>
+          <p className="text-xs text-muted-foreground" data-testid={`calx244-source-${verdict.code}`}>
             {verdict.source}
           </p>
         )
@@ -228,7 +228,7 @@ export default function Raccordement({ calepinageId, lectureSeule = false } = {}
           lectureSeule={lectureSeule}
         />
 
-        <p className="text-xs text-lune-faint" data-testid="acal156-note-simulation">
+        <p className="text-xs text-muted-foreground" data-testid="acal156-note-simulation">
           {'Le cos φ imposé et le plafond d’injection enregistrés ici sont lus par la simulation '
             + '(autoconsommation et batterie) : après un changement, relancez-la — le panneau '
             + 'Production signale un résultat périmé.'}
@@ -270,7 +270,7 @@ export default function Raccordement({ calepinageId, lectureSeule = false } = {}
                       {erreurs[cle]}
                     </p>
                   )
-                  : <p className="text-xs text-lune-faint">{aide}</p>}
+                  : <p className="text-xs text-muted-foreground">{aide}</p>}
               </div>
             ))}
           </div>

@@ -84,7 +84,7 @@ const LIBELLE_CHAMP = Object.fromEntries(
 function Champ({ cle, label, type = 'number', valeurSaisie, erreur, onChange }) {
   return (
     <label className="block" data-testid={`cal-pompage-champ-${cle}`}>
-      <span className="tech-label text-lune-faint">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
       <input
         type={type}
         /* Règle fondateur : l'écran ne SNAPPE ni ne REFUSE jamais une saisie. */
@@ -95,7 +95,7 @@ function Champ({ cle, label, type = 'number', valeurSaisie, erreur, onChange }) 
         onChange={(e) => onChange(cle, e.target.value)}
         aria-invalid={erreur ? 'true' : undefined}
         aria-describedby={erreur ? `cal-pompage-erreur-${cle}` : undefined}
-        className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+        className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
       />
       {erreur && (
         <span
@@ -122,7 +122,7 @@ function CourbePompe({ pompe }) {
   if (!Array.isArray(debits) || !Array.isArray(hauteurs)
     || debits.length < 2 || debits.length !== hauteurs.length) {
     return (
-      <p className="mt-2 text-sm text-lune-soft" data-testid="cal-pompage-courbe-absente">
+      <p className="mt-2 text-sm text-foreground" data-testid="cal-pompage-courbe-absente">
         Courbe non publiée par la fiche de cette pompe : aucun tracé n’est
         dessiné, et aucun point de fonctionnement n’est deviné.
       </p>
@@ -148,17 +148,17 @@ function CourbePompe({ pompe }) {
       data-testid="cal-pompage-courbe"
     >
       <polyline points={trace} fill="none" stroke="currentColor"
-        className="text-brass-300" strokeWidth="2" />
+        className="text-primary-text" strokeWidth="2" />
       {tracable && (
         <circle
           cx={x(point.debit_m3h)} cy={y(point.hmt_m)} r="5"
-          className="fill-white" data-testid="cal-pompage-point"
+          className="fill-foreground" data-testid="cal-pompage-point"
         />
       )}
-      <text x="30" y={H - 6} className="fill-current text-lune-faint" fontSize="10">
+      <text x="30" y={H - 6} className="fill-current text-muted-foreground" fontSize="10">
         Débit (m³/h)
       </text>
-      <text x="4" y="12" className="fill-current text-lune-faint" fontSize="10">
+      <text x="4" y="12" className="fill-current text-muted-foreground" fontSize="10">
         HMT (m)
       </text>
     </svg>
@@ -169,7 +169,7 @@ function CourbePompe({ pompe }) {
 function VolumesMensuels({ volumes, besoin }) {
   if (!volumes) {
     return (
-      <p className="mt-2 text-sm text-lune-soft" data-testid="cal-pompage-volumes-absents">
+      <p className="mt-2 text-sm text-foreground" data-testid="cal-pompage-volumes-absents">
         non calculé — pompe sans courbe
       </p>
     )
@@ -181,7 +181,7 @@ function VolumesMensuels({ volumes, besoin }) {
   return (
     <table className="mt-2 w-full text-sm" data-testid="cal-pompage-volumes">
       <thead>
-        <tr className="tech-label text-lune-faint">
+        <tr className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <th className="text-left">Mois</th>
           <th className="text-right">m³ (plat)</th>
           <th className="text-right">m³ (PVGIS)</th>
@@ -191,10 +191,10 @@ function VolumesMensuels({ volumes, besoin }) {
       <tbody>
         {MOIS.map((mois, i) => (
           <tr key={mois} data-testid={`cal-pompage-mois-${i}`}>
-            <td className="text-left text-lune-soft">{mois}</td>
-            <td className="fig text-right text-white">{valeur(plat?.[i])}</td>
-            <td className="fig text-right text-white">{valeur(pvgis?.[i])}</td>
-            <td className="fig text-right text-white">
+            <td className="text-left text-foreground">{mois}</td>
+            <td className="fig text-right text-foreground">{valeur(plat?.[i])}</td>
+            <td className="fig text-right text-foreground">{valeur(pvgis?.[i])}</td>
+            <td className="fig text-right text-foreground">
               {couverture?.[i] == null ? '—' : `${couverture[i]} %`}
             </td>
           </tr>
@@ -245,8 +245,8 @@ export default function PompagePanel({ calepinageId: idPropose }) {
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="cine-card mt-6 p-6" data-testid="cal-pompage-panel">
-      <p className="tech-label rule-brass text-brass-300">Pompage solaire</p>
+      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-pompage-panel">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Pompage solaire</p>
 
       {/* LE BANDEAU NOMME LES CHAMPS FAUTIFS — jamais un refus générique. */}
       {champsFautifs.length > 0 && (
@@ -276,7 +276,7 @@ export default function PompagePanel({ calepinageId: idPropose }) {
       <form onSubmit={calculer} noValidate data-testid="cal-pompage-form">
         {CHAMPS.map(([groupe, titre, champs]) => (
           <fieldset key={groupe} className="mt-4" data-testid={`cal-pompage-groupe-${groupe}`}>
-            <legend className="tech-label text-lune-faint">{titre}</legend>
+            <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titre}</legend>
             <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
               {champs.map(([cle, label, type]) => (
                 <Champ
@@ -296,59 +296,59 @@ export default function PompagePanel({ calepinageId: idPropose }) {
           type="submit"
           disabled={enCours}
           data-testid="cal-pompage-calculer"
-          className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
+          className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text"
         >
           {enCours ? 'Calcul en cours…' : 'Calculer le dimensionnement'}
         </button>
       </form>
 
       {resultat && (
-        <div className="mt-6 border-t border-white/10 pt-5">
+        <div className="mt-6 border-t border-border pt-5">
           <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
             <div data-testid="cal-pompage-hmt">
-              <dd className="fig text-lg text-white">
+              <dd className="fig text-lg text-foreground">
                 {valeur(resultat.hmt?.hmt_m, ' m')}
               </dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">
                 HMT — {valeur(resultat.hmt?.source)}
               </dt>
             </div>
             <div data-testid="cal-pompage-debit">
-              <dd className="fig text-lg text-white">
+              <dd className="fig text-lg text-foreground">
                 {valeur(pompe?.debit_hmt_m3h, ' m³/h')}
               </dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">Débit à cette HMT</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Débit à cette HMT</dt>
             </div>
             <div data-testid="cal-pompage-pompe">
-              <dd className="text-sm text-white">{valeur(pompe?.nom)}</dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">
+              <dd className="text-sm text-foreground">{valeur(pompe?.nom)}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">
                 Pompe retenue{pompe?.pompe_kw != null ? ` · ${pompe.pompe_kw} kW` : ''}
               </dt>
             </div>
             <div data-testid="cal-pompage-variateur">
-              <dd className="text-sm text-white">{valeur(variateur?.nom)}</dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">Variateur assorti</dt>
+              <dd className="text-sm text-foreground">{valeur(variateur?.nom)}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Variateur assorti</dt>
             </div>
             <div data-testid="cal-pompage-autonomie">
-              <dd className="fig text-lg text-white">
+              <dd className="fig text-lg text-foreground">
                 {valeur(resultat.besoin?.autonomie_jours, ' j')}
               </dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">
                 Autonomie du réservoir
               </dt>
             </div>
             <div data-testid="cal-pompage-irradiation">
-              <dd className="text-sm text-white">
+              <dd className="text-sm text-foreground">
                 {valeur(resultat.volumes?.source_irradiation)}
               </dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">Source d’irradiation</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Source d’irradiation</dt>
             </div>
           </dl>
 
-          <h3 className="tech-label mt-5 text-lune-faint">Courbe de la pompe</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide mt-5 text-muted-foreground">Courbe de la pompe</h3>
           <CourbePompe pompe={pompe} />
 
-          <h3 className="tech-label mt-5 text-lune-faint">Volumes mensuels</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide mt-5 text-muted-foreground">Volumes mensuels</h3>
           <VolumesMensuels volumes={resultat.volumes} besoin={resultat.besoin} />
 
           {(resultat.avertissements ?? []).length > 0 && (
