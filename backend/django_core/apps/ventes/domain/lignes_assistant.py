@@ -236,10 +236,31 @@ def _touchee(etat, ligne):
     return etat, ligne.pk, ligne
 
 
-def ajouter(devis, *, produit, quantite, variante, deux):
+def options_hors_huawei(devis, produit, deux):
+    """Essai réel du 21/11 — les options dont le panier N'IMPRIME ni ne
+    COMPTE ``produit`` : un accessoire Huawei (Smart Meter, clé Wi-Fi) dans
+    une option à onduleur non-Huawei (règle QF9, ``utils.options``). Écrite
+    là, la ligne restait hors du total et du PDF, en silence."""
+    from ..utils.options import (
+        AVEC_BATTERIE, SANS_BATTERIE, _blob, _blob_marque,
+        _panier_sert_huawei, est_accessoire_huawei, filter_lines_for_option,
+        lignes_avec_produit)
+
+    if not deux or not est_accessoire_huawei(produit.nom or ''):
+        return set()
+    lignes = lignes_avec_produit(devis)
+    hors = set()
+    for variante, option in ((SANS, SANS_BATTERIE), (AVEC, AVEC_BATTERIE)):
+        panier = filter_lines_for_option(lignes, option, devis=devis)
+        if not _panier_sert_huawei(panier, _blob, _blob_marque):
+            hors.add(variante)
+    return hors
+
+
+def ajouter(devis, *, produit, quantite, variante, deux, exclues=()):
     return [_touchee('ajoutee', _nouvelle_ligne(
         devis, produit, quantite or Decimal('1'), v))
-        for v in variantes_a_poser(devis, variante, deux)]
+        for v in variantes_a_poser(devis, variante, deux) if v not in exclues]
 
 
 def _visees_separees(devis, ligne_id, variante, deux):
@@ -387,6 +408,8 @@ def appliquer_operation(devis, operation, corps, *, utilisateur=None):
     if not deux and entrees['variante'] in (SANS, AVEC):
         alertes.append({'code': 'option_unique', 'message': (
             'Ce devis n\'a qu\'une option : la ligne vaut pour tout le devis.')})
+    if operation == 'ajouter':
+        _exclure_options_hors_huawei(devis, entrees, deux, alertes)
     options_avant = options_du_devis(devis)
     avant = {li['ligne_id']: li for li in lignes_ttc(devis, avec_ids=True)}
     avant_geste = debut_de_geste_devis(devis, utilisateur)
@@ -408,6 +431,30 @@ def appliquer_operation(devis, operation, corps, *, utilisateur=None):
         'lignes_touchees': _lignes_rendues(touchees, avant, apres),
         'alertes': alertes,
     }
+
+
+def _exclure_options_hors_huawei(devis, entrees, deux, alertes):
+    """Un accessoire Huawei ne va pas dans une option à onduleur non-Huawei :
+    option demandée -> 409 qui le dit ; les deux options -> seulement celle
+    qui le compte, et l'alerte le dit."""
+    hors = options_hors_huawei(devis, entrees['produit'], deux)
+    if not hors:
+        return
+    nom = entrees['produit'].nom
+    demandee = entrees['variante'] if entrees['variante'] in (SANS, AVEC) else None
+    if demandee in hors or hors == {SANS, AVEC}:
+        cible = _LIBELLES_OPTION[demandee] if demandee else 'aucune option'
+        raise LignesRefusees(
+            f'« {nom} » est un accessoire de l’onduleur Huawei : l’option '
+            f'{cible} n’a pas d’onduleur Huawei, il n’y serait ni compté ni '
+            'imprimé. Ajoutez-le à une option à onduleur Huawei.',
+            field='variante', code='accessoire_huawei')
+    entrees['exclues'] = hors
+    for variante in sorted(hors):
+        alertes.append({'code': 'accessoire_huawei', 'message': (
+            f'« {nom} » n’est pas ajouté à l’option '
+            f'{_LIBELLES_OPTION[variante]} : son onduleur n’est pas Huawei '
+            '(il n’y serait ni compté ni imprimé).')})
 
 
 def _entrees(devis, operation, corps):

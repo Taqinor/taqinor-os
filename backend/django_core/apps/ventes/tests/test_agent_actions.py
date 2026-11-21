@@ -1606,6 +1606,26 @@ class LignesAssistantEcritureTest(_BaseVenteAssistant):
     def _par_option(resp, cle='total_ttc'):
         return {o['variante']: Decimal(o[cle]) for o in resp.data['options']}
 
+    def test_accessoire_huawei_seulement_dans_l_option_huawei(self):
+        """Essai réel du 21/11 — 2 Smart Meter « au devis » : l'option avec
+        batterie (onduleur Deye) ne les compte ni ne les imprime (QF9) ; ils ne
+        vont que dans l'option Huawei et l'alerte le dit ; demandés pour
+        l'option Deye seule : 409 qui le dit, rien d'écrit."""
+        meter = Produit.objects.create(
+            company=self.company, nom='Smart Meter', sku='VADL-SM',
+            prix_vente=Decimal('1500'), prix_achat=Decimal('777.77'))
+        resp = self._post('ajouter', {'produit': meter.pk, 'quantite': 2})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(list(self.devis.lignes.filter(produit=meter)
+                              .values_list('variante', flat=True)), ['sans'])
+        self.assertEqual([a['code'] for a in resp.data['alertes']
+                          if a['code'] == 'accessoire_huawei'], ['accessoire_huawei'])
+        apres, avant = self._par_option(resp), self._par_option(resp, 'ancien_total_ttc')
+        self.assertEqual(apres['sans'] - avant['sans'], Decimal('3600'))
+        refus = self._post('ajouter', {'produit': meter.pk, 'quantite': 1, 'variante': 'avec'})
+        self.assertEqual((refus.status_code, refus.data.get('code')), (409, 'accessoire_huawei'))
+        self.assertEqual(self.devis.lignes.filter(produit=meter).count(), 1)
+
     def test_ajouter_entier_aux_deux_options_depuis_le_catalogue(self):
         resp = self._post('ajouter', {'produit': self.acier.pk, 'quantite': 10})
         self.assertEqual(resp.status_code, 200, resp.data)
