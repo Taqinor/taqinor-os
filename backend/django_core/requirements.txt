@@ -25,11 +25,11 @@ pgvector==0.5.1
 # Cache / Queue
 redis==5.2.1
 django-redis==5.4.0
-celery==5.4.0
+celery==5.7.0
 # ERR-CELERY-KOMBU-REDIS — kombu ÉPINGLÉ : celery 5.4 l'accepte jusqu'à < 6, or kombu 5.7 exige
 # redis-py >= 6.1 (VersionMismatch au démarrage : worker et beat redémarrent en boucle, chaque .delay()
 # bloque le worker gunicorn). 5.5.4 est le dernier à accepter redis 5.2.1 (extra redis <= 5.2.1).
-kombu==5.5.4
+kombu==5.7.0
 
 # PDF generation
 weasyprint==70.0
@@ -42,7 +42,7 @@ Jinja2==3.1.6
 
 # Premium quote-PDF engine (apps.ventes.quote_engine) — ROI/savings charts
 numpy==1.26.4
-matplotlib==3.9.2
+matplotlib==3.11.2
 
 # FG361 — Prévision de ventes / demande (séries temporelles). Holt-Winters /
 # lissage exponentiel. Importé défensivement dans core/forecast.py (repli pur
@@ -59,7 +59,7 @@ dnspython==2.9.2
 
 # File storage MinIO/S3
 django-storages[s3]==1.14.6
-boto3==1.43.126
+boto3==1.44.3
 
 # Excel (.xlsx) export — exports CRM/listes (pré-approuvé, voir docs/PLAN.md)
 openpyxl==3.1.5
@@ -131,7 +131,7 @@ django-prometheus==2.5.0
 # viewsets étaient documentés nulle part de façon machine-lisible ; FG105
 # (apps/publicapi/docs.py) reste une page FR statique pour l'API PUBLIQUE
 # uniquement et n'est pas remplacée.
-drf-spectacular==0.28.0
+drf-spectacular==0.30.0
 
 # PVG1 — import DXF réel du contour de toiture (apps/ao/dxf.py), NOUVELLE
 # DÉPENDANCE approuvée fondateur 2026-08-14. Parse en mémoire (LWPOLYLINE/
@@ -154,7 +154,7 @@ opencv-python-headless==4.10.0.84
 # configuré : sans DSN, ce paquet n'est jamais chargé (aucun coût, aucun appel
 # réseau). Poser SENTRY_DSN (+ SENTRY_ENVIRONMENT, SENTRY_TRACES_SAMPLE_RATE) dans
 # le .env du serveur pour activer (service gratuit à petit volume, payant au-delà).
-sentry-sdk==2.74.0
+sentry-sdk==2.75.0
 # CALX198 — NOUVELLE DÉPENDANCE, TRANCHÉE PAR LE FONDATEUR LE 21/09/2026
 # (décision n° 1 de l'en-tête du groupe CALX : « pvlib ADOPTÉ »). Libre,
 # BSD-3-Clause, gratuite, sans clé d'API, sans donnée payante et sans appel
