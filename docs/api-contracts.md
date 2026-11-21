@@ -496,6 +496,8 @@
     cout_rupture_jour:texte, fournisseurs:inconnu, produit:inconnu
 - frontend/src/api/stockApi.js :: deciderCandidatureFournisseur -> /api/django/stock/fournisseurs/<>/decider-candidature
     detail:texte, id:inconnu, statut_validation:inconnu
+- frontend/src/api/stockApi.js :: deposerFichierPvsyst -> /api/django/stock/fiches-techniques/importer-datasheet
+    champ:inconnu, champs_attendus_absents:inconnu, confirme:booleen, deja_saisis:inconnu, detail:texte, ecrits:inconnu, fiche:inconnu, ligne:inconnu, mapping:inconnu, non_reconnus:inconnu, reconnus:inconnu, type_fiche:inconnu
 - frontend/src/api/stockApi.js :: exploserKit -> /api/django/stock/kits/<>/exploser
     detail:texte, kit_id:inconnu, kit_nom:inconnu, lignes:inconnu, quantite_kit:inconnu
 - frontend/src/api/stockApi.js :: forceDeleteFournisseur -> /api/django/stock/fournisseurs/<>/force-delete

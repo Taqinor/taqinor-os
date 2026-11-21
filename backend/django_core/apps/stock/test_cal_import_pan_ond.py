@@ -268,6 +268,12 @@ CONTRAT = json.loads(
     (DOSSIER_ECHANTILLONS / 'fiche_import_pan_ond.json').read_text(
         encoding='utf-8'))
 URL_IMPORT = '/api/django/stock/fiches-techniques/importer-datasheet/'
+# CALX357 — `exemple` porte à null les clés des AUTRES états de la route
+# (check_api_shapes compare l'exemple à l'union des réponses de la vue) :
+# l'aperçu réel ne les renvoie pas.
+CLES_AUTRES_ETATS = {'ecrits', 'fiche', 'detail', 'champ', 'ligne'}
+APERCU_OND = {k: v for k, v in CONTRAT['exemple'].items()
+              if k not in CLES_AUTRES_ETATS}
 
 
 class FichiersPvsystReelsTests(TestCase):
@@ -346,7 +352,9 @@ class ImportReelContratTests(TestCase):
     def test_apercu_ond_egal_exemple(self):
         resp = self._post(OND_REEL)
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(json.loads(resp.content), CONTRAT['exemple'])
+        self.assertEqual(json.loads(resp.content), APERCU_OND)
+        self.assertTrue(all(CONTRAT['exemple'][k] is None
+                            for k in CLES_AUTRES_ETATS))
         self.assertFalse(
             FicheTechnique.objects.filter(produit=self.produit).exists())
 

@@ -103,8 +103,14 @@
       "ond_i_max_mppt_a"
     ],
     "deja_saisis": [],
-    "confirme": false
+    "confirme": false,
+    "ecrits": null,
+    "fiche": null,
+    "detail": null,
+    "champ": null,
+    "ligne": null
   },
+  "note_exemple": "Les clés à null de 'exemple' (ecrits, fiche, detail, champ, ligne) n'appartiennent pas à l'APERÇU : elles portent les autres états de la même route (confirmé : ecrits + fiche ; refus 400 : detail + champ + ligne) — check_api_shapes compare l'exemple à l'UNION des réponses de la vue. Le serveur ne les renvoie pas dans l'aperçu ; voir exemple_confirme et exemple_refus.",
   "exemple_module": {
     "type_fiche": "module",
     "mapping": {
