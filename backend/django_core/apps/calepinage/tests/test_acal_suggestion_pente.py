@@ -204,7 +204,7 @@ class SuggestionPenteApiTest(BaseApiCalepinage):
         attendu = json.loads((CONTRATS / 'calepinage_pente_terrain.json')
                              .read_text(encoding='utf-8'))['exemple']
         with mock.patch('apps.calepinage.views.suggestion_pente.'
-                        'lire_pente_terrain', return_value=attendu) as lit:
+                        'lire_pente_surface', return_value=attendu) as lit:
             reponse = self.api.get(url, {'surface': 'sol-1'})
             self.assertEqual(reponse.status_code, 200, reponse.data)
             self.assertEqual(sorted(reponse.data), sorted(attendu))

@@ -155,6 +155,11 @@ function PenteRelief({ calepinageId, surface, enregistree, onUtiliser }) {
           <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-terrain-relief-source">
             {lecture.source} — modèle de surface, bâtiments et arbres compris, valable pour un terrain.
           </p>
+          {lecture.ancrage === 'epingle_du_site' && (
+            <p className="text-xs text-muted-foreground" data-testid="cal-terrain-relief-ancrage">
+              Relief lu autour de l’épingle du site (le contour saisi en mètres n’a pas de coordonnées).
+            </p>
+          )}
           <p className="text-xs text-muted-foreground" data-testid="cal-terrain-relief-attribution">{lecture.attribution}</p>
           <button
             type="button"

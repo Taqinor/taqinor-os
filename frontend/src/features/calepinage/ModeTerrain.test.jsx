@@ -71,6 +71,7 @@ describe('ModeTerrain — pente du relief (ACAL466, contrat calepinage_pente_ter
     expect(penteTerrain).toHaveBeenCalledWith(7, 'TERRAIN')
     expect(screen.getByTestId('cal-terrain-relief-source')).toHaveTextContent(contrat('exemple').source)
     expect(screen.getByTestId('cal-terrain-relief-attribution')).toHaveTextContent(contrat('exemple').attribution)
+    expect(screen.queryByTestId('cal-terrain-relief-ancrage')).toBeNull()
     expect(screen.getByTestId('cal-terrain-penteTerrainDeg').value).toBe('')
     fireEvent.click(screen.getByTestId('cal-terrain-relief-utiliser'))
     expect(screen.getByTestId('cal-terrain-penteTerrainDeg').value).toBe(String(contrat('exemple').pente_deg))
@@ -92,5 +93,13 @@ describe('ModeTerrain — pente du relief (ACAL466, contrat calepinage_pente_ter
     await waitFor(() => expect(espions.layout).toHaveBeenCalled())
     expect(screen.getByTestId('cal-terrain-relief-lire')).toBeDisabled()
     expect(screen.getByTestId('cal-terrain-relief-aide')).toBeInTheDocument()
+  })
+
+  it('contour saisi en mètres : le serveur dit que le relief est lu autour de l’épingle', async () => {
+    penteTerrain.mockResolvedValue({ data: { ...contrat('exemple'), ancrage: 'epingle_du_site' } })
+    monter()
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-relief-lire')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('cal-terrain-relief-lire'))
+    expect(await screen.findByTestId('cal-terrain-relief-ancrage')).toHaveTextContent(/épingle du site/)
   })
 })

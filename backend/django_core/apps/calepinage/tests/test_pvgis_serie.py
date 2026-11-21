@@ -312,10 +312,10 @@ class TerrainGlo30Test(unittest.TestCase):
         import math
         import numpy as np
         from apps.calepinage.services.terrain_glo30 import (
-            ATTRIBUTION_MODELE, lire_pente_terrain,
+            ATTRIBUTION_MODELE, _lire_pente_terrain,
         )
         appels = []
-        r = lire_pente_terrain(
+        r = _lire_pente_terrain(
             'S1', self._sommets(), maintenant='2026-11-21T10:00:00Z',
             lecteur=_lecteur_de(_mini_geotiff(ALTITUDES_CASABLANCA), appels))
         self.assertEqual(r['motif'], '')
@@ -346,25 +346,25 @@ class TerrainGlo30Test(unittest.TestCase):
         # Mutant : fichier écrit SANS prédicteur mais déclaré prédicteur 3 (=
         # l'inversion appliquée à des octets bruts) : les altitudes lues ne
         # sont PLUS les vraies — l'assertion du test précédent échouerait.
-        from apps.calepinage.services.terrain_glo30 import lire_pente_terrain
+        from apps.calepinage.services.terrain_glo30 import _lire_pente_terrain
         octets = _mini_geotiff(ALTITUDES_CASABLANCA, predicteur=False)
         import struct
         i = octets.index(struct.pack('<HHI', 317, 3, 1))
         octets = octets[:i + 8] + b'\x03' + octets[i + 9:]
-        r = lire_pente_terrain('S1', self._sommets(),
-                               lecteur=_lecteur_de(octets))
+        r = _lire_pente_terrain('S1', self._sommets(),
+                                lecteur=_lecteur_de(octets))
         lues = sorted(p['altitude_m'] for p in r['points'])
         self.assertNotEqual(lues, sorted([42.09, 47.82, 46.73, 41.09, 42.40]))
 
     def test_reseau_coupe_ou_trop_petit_jamais_une_altitude_de_repli(self):
         from apps.calepinage.services.terrain_glo30 import (
-            TerrainIndisponible, lire_pente_terrain,
+            TerrainIndisponible, _lire_pente_terrain,
         )
 
         def coupe(url, debut, fin):
             raise TerrainIndisponible("Le relief n'est pas joignable.")
 
-        r = lire_pente_terrain('S1', self._sommets(), lecteur=coupe)
+        r = _lire_pente_terrain('S1', self._sommets(), lecteur=coupe)
         self.assertIsNone(r['pente_deg'])
         self.assertIsNone(r['azimut_pente_deg'])
         self.assertEqual(r['points'], [])
@@ -372,11 +372,57 @@ class TerrainGlo30Test(unittest.TestCase):
         # Trois sommets dans le MÊME pixel : moins de trois pixels distincts.
         s = self._sommets()[0]
         petit = [s, [s[0] + 1e-6, s[1]], [s[0], s[1] - 1e-6]]
-        r = lire_pente_terrain(
+        r = _lire_pente_terrain(
             'S1', petit,
             lecteur=_lecteur_de(_mini_geotiff(ALTITUDES_CASABLANCA)))
         self.assertIsNone(r['pente_deg'])
         self.assertIn('trois pixels', r['motif'])
+
+    def test_contour_en_metres_ancre_sur_l_epingle_du_site(self):
+        """ACAL466 — le champ enregistre par l'ecran Terrain n'a que
+        ``contourM`` : il est centre sur ``roof_layout.pin``."""
+        import math
+        from apps.calepinage.services.terrain_glo30 import (
+            _contour_m_vers_lnglat, lire_pente_surface,
+        )
+        pin = {'lat': 33.5725, 'lng': -7.589167}
+        carre = [[0, 0], [60, 0], [60, 60], [0, 60]]
+        v = _contour_m_vers_lnglat(carre, pin)
+        # Centre exact sur l'epingle ; cote est-ouest = 60 m, nord-sud = 60 m.
+        self.assertAlmostEqual(sum(p[0] for p in v) / 4, pin['lng'], 9)
+        self.assertAlmostEqual(sum(p[1] for p in v) / 4, pin['lat'], 9)
+        m_lat = 6378137 * math.radians(1)
+        self.assertAlmostEqual((v[2][1] - v[0][1]) * m_lat, 60, delta=0.01)
+        self.assertAlmostEqual(
+            (v[1][0] - v[0][0]) * m_lat * math.cos(math.radians(33.5725)),
+            60, delta=0.01)
+        self.assertIsNone(_contour_m_vers_lnglat(carre, None))
+        self.assertIsNone(_contour_m_vers_lnglat([[0, 0], [1, 1]], pin))
+        # Le service lit alors la mini-tuile (4 sommets + centroide sur
+        # l'epingle : pixels de la tuile) et dit d'ou vient l'emplacement.
+        octets = _mini_geotiff(ALTITUDES_CASABLANCA)
+        centre = {'lat': 34.0 - 1536 / 3600, 'lng': -8.0 + 1476 / 3600}
+        r = lire_pente_surface(
+            'S1', {'contourM': [[0, 0], [60, 0], [60, 60], [0, 60]]}, centre,
+            lecteur=_lecteur_de(octets))
+        self.assertEqual(r['ancrage'], 'epingle_du_site')
+        self.assertIsNotNone(r['pente_deg'], r['motif'])
+
+    def test_sans_epingle_ni_sommets_le_motif_nomme_la_donnee_manquante(self):
+        from apps.calepinage.services.terrain_glo30 import lire_pente_surface
+
+        def jamais(url, debut, fin):
+            raise AssertionError('aucune lecture reseau attendue')
+
+        r = lire_pente_surface(
+            'S1', {'contourM': [[0, 0], [60, 0], [60, 60]]}, None,
+            lecteur=jamais)
+        self.assertIsNone(r['pente_deg'])
+        self.assertIn('pingle', r['motif'])
+        self.assertNotIn('tracez son contour sur la carte.', r['motif'])
+        r = lire_pente_surface('S1', {}, {'lat': 1, 'lng': 1}, lecteur=jamais)
+        self.assertIsNone(r['pente_deg'])
+        self.assertIn('dimensions', r['motif'])
 
     def test_nom_de_tuile_hemispheres(self):
         from apps.calepinage.services.terrain_glo30 import _nom_tuile

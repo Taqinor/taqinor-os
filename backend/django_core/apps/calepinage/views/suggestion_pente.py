@@ -29,7 +29,7 @@ from ..serializers import corps_obligatoire
 from ..services.layout import (
     DocumentModifie, LayoutRefuse, _relire_sous_verrou, enregistrer_layout,
 )
-from ..services.terrain_glo30 import lire_pente_terrain
+from ..services.terrain_glo30 import lire_pente_surface
 from ..services.lidar_ign import (
     CLE_SUGGESTION, PAYS_COUVERT, REFUSEE, SOURCE, SUGGEREE, URL_SOURCE,
     VALIDEE, ServiceIndisponible, accepter_suggestion, refuser_suggestion,
@@ -220,8 +220,8 @@ def pente_terrain(self, request, pk=None):
         return Response(
             {'surface': "Aucun champ au sol de ce nom dans la conception."},
             status=status.HTTP_409_CONFLICT)
-    return Response(lire_pente_terrain(
-        str(surface_id), surface.get('vertices')))
+    return Response(lire_pente_surface(
+        str(surface_id), surface, document.get('pin')))
 
 
 CalepinageViewSet.suggestions_pente = suggestions_pente

@@ -678,7 +678,7 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         # ACAL466 — lecture pure ; relief illisible = null + motif, jamais
         # une altitude de repli.
         donnees = _charger('calepinage_pente_terrain.json')
-        cles = ['attribution', 'azimut_pente_deg', 'lu_le', 'motif',
+        cles = ['ancrage', 'attribution', 'azimut_pente_deg', 'lu_le', 'motif',
                 'pente_deg', 'points', 'source', 'source_url', 'surface']
         self.assertEqual(sorted(donnees['exemple']), cles)
         self.assertEqual(sorted(donnees['exemple_sans_pente']), cles)

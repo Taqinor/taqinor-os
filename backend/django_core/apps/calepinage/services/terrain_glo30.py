@@ -45,7 +45,7 @@ MAX_CELLULES = 4
 ALTITUDE_MIN_M, ALTITUDE_MAX_M = -500.0, 9000.0
 
 __all__ = ['SOURCE', 'URL_SOURCE', 'ATTRIBUTION_MODELE', 'TerrainIndisponible',
-           'lire_pente_terrain']
+           'lire_pente_surface']
 
 _TAILLE_TYPE = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 12: 8, 16: 8}
 _FORMAT_TYPE = {1: 'B', 2: 'c', 3: 'H', 4: 'I', 12: 'd', 16: 'Q'}
@@ -214,10 +214,11 @@ def _resultat(surface, maintenant, pente=None, azimut=None, points=None,
         'source': SOURCE, 'source_url': URL_SOURCE,
         'attribution': ATTRIBUTION_MODELE.replace('DATE', lu[:10]),
         'lu_le': lu, 'points': points or [], 'motif': motif,
+        'ancrage': 'contour_trace',
     }
 
 
-def lire_pente_terrain(surface, vertices, *, lecteur=None, maintenant=None):
+def _lire_pente_terrain(surface, vertices, *, lecteur=None, maintenant=None):
     """Pente / azimut de pente du relief sous ``vertices`` ([lng, lat]).
 
     ``lecteur(url, debut, fin) -> bytes`` est la SEULE sortie réseau
@@ -267,3 +268,55 @@ def lire_pente_terrain(surface, vertices, *, lecteur=None, maintenant=None):
     points = [{'lon': round(m[0], 6), 'lat': round(m[1], 6),
                'altitude_m': round(m[2], 2)} for m in mesures]
     return _resultat(surface, maintenant, pente, azimut, points)
+
+
+def _contour_m_vers_lnglat(contour_m, epingle):
+    """Contour ``[[x, y], …]`` en MÈTRES -> ``[[lng, lat], …]``, ou ``None``.
+
+    Le contour saisi (``poseSurfaces[].contourM``) est un repère local sans
+    géoréférence ; la seule donnée géographique du document est l'épingle du
+    site (``roof_layout.pin``, ``{lat, lng}``). Le champ est CENTRÉ sur
+    l'épingle (x = est, y = nord) par la projection équirectangulaire unique
+    du module (``core.calepinage.geo.deprojeteur_local``) : à l'échelle d'un
+    champ (< 1 km) l'erreur de projection est négligeable devant le pixel de
+    30 m. Contour ou épingle inutilisable ⇒ ``None``.
+    """
+    from core.calepinage.geo import deprojeteur_local
+
+    try:
+        pts = [(float(p[0]), float(p[1])) for p in contour_m or []]
+        origine = (float(epingle['lng']), float(epingle['lat']))
+    except (TypeError, ValueError, KeyError, IndexError):
+        return None
+    if len(pts) < 3:
+        return None
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    deproj = deprojeteur_local(origine)
+    return [list(deproj((x - cx, y - cy))) for x, y in pts]
+
+
+def lire_pente_surface(surface_id, surface, epingle=None, **kw):
+    """``_lire_pente_terrain`` pour un ``poseSurfaces[]`` du document.
+
+    Contour tracé sur la carte (``vertices``) d'abord ; sinon le contour saisi
+    en mètres centré sur l'épingle du site (``ancrage: 'epingle_du_site'``) ;
+    sinon refus nommant la donnée manquante.
+    """
+    surface = surface if isinstance(surface, dict) else {}
+    if len(_sommets(surface.get('vertices'))) >= 3:
+        return _lire_pente_terrain(surface_id, surface['vertices'], **kw)
+    if len(surface.get('contourM') or []) < 3:
+        return _resultat(surface_id, kw.get('maintenant'), motif=(
+            "Le champ n'a ni contour tracé sur la carte ni dimensions "
+            "saisies : le relief n'a aucun emplacement à lire."))
+    sommets = _contour_m_vers_lnglat(surface.get('contourM'), epingle)
+    if sommets is None:
+        return _resultat(surface_id, kw.get('maintenant'), motif=(
+            "L'emplacement du champ est inconnu : le contour saisi en "
+            "mètres n'a pas de coordonnées et le site n'a pas d'épingle "
+            "(roof_layout.pin). Posez l'épingle du site ou tracez le "
+            "contour sur la carte."))
+    resultat = _lire_pente_terrain(surface_id, sommets, **kw)
+    resultat['ancrage'] = 'epingle_du_site'
+    return resultat
