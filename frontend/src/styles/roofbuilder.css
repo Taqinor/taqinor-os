@@ -409,3 +409,16 @@
   .rp9-host .rp9-studio-inspecteur { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .rp9-host .rp9-studio-inspecteur > :first-child { margin-top: 0; }
 }
+
+/* ── ACAL423 — atelier au téléphone (< 640 px, point de rupture `sm` du DOM) : aucune
+   barre qui déborde et des cibles tactiles d'au moins 44 px (même seuil que VNT81). ── */
+@media (max-width: 639px) {
+  .rp9-host { padding: 0.5rem; max-width: 100%; overflow-x: clip; }
+  .rp9-host .rp9-topbar { flex-wrap: wrap; }
+  .rp9-host button,
+  .rp9-host .rp9-chip,
+  .rp9-host .rp9-close { min-height: 44px; min-width: 44px; }
+  .rp9-host .rp9-chip { display: inline-flex; align-items: center; justify-content: center; }
+  .rp9-host .rp9-layout-grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
+  .rp9-host .rp9-layout-cell { min-height: 44px; }
+}
