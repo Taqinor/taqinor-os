@@ -86,8 +86,8 @@ export default function PanneauVersions({ calepinageId: idPropose, onRecharger =
 
   return (
     <div className="mt-6" data-testid="cal-versions">
-      <p className="tech-label rule-brass text-brass-300">Versions</p>
-      <p className="mt-2 text-xs text-lune-faint" data-testid="cal-versions-rappel">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Versions</p>
+      <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-versions-rappel">
         Restaurer une version CRÉE une version neuve : aucune version n’est
         jamais réécrite ni supprimée.
       </p>
@@ -100,7 +100,7 @@ export default function PanneauVersions({ calepinageId: idPropose, onRecharger =
 
       <div className="mt-3">
         {versions === null ? (
-          <div className="flex items-center gap-2 text-sm text-lune-faint">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Spinner />
             Chargement des versions…
           </div>
@@ -119,7 +119,7 @@ export default function PanneauVersions({ calepinageId: idPropose, onRecharger =
                 <Card key={version.id} className="p-3" data-testid={`cal-versions-ligne-${version.id}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="space-y-0.5">
-                      <div className="flex items-center gap-2 text-sm text-white">
+                      <div className="flex items-center gap-2 text-sm text-foreground">
                         <span>{version.libelle || `Version ${version.id}`}</span>
                         {courante && (
                           <Badge variant="outline" data-testid={`cal-versions-courante-${version.id}`}>
@@ -142,12 +142,12 @@ export default function PanneauVersions({ calepinageId: idPropose, onRecharger =
                           {/* ACAL106 — ce que la restauration REMPLACE et ce
                               qu'elle CONSERVE (sémantique serveur ACAL45). */}
                           <p
-                            className="w-full text-xs text-lune-soft"
+                            className="w-full text-xs text-muted-foreground"
                             data-testid={`cal-versions-confirmation-${version.id}`}
                           >
                             {TEXTE_CONFIRMATION_RESTAURATION}
                           </p>
-                          <span className="text-xs text-lune-soft">Confirmer la restauration ?</span>
+                          <span className="text-xs text-muted-foreground">Confirmer la restauration ?</span>
                           <Button
                             size="sm"
                             onClick={() => confirmerRestauration(version.id)}

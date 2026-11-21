@@ -171,16 +171,16 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
 
   if (chargement) {
     return (
-      <p className="mt-3 text-sm text-lune-faint" data-testid="cal-coupe-chargement">
+      <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-coupe-chargement">
         Chargement de la coupe…
       </p>
     )
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-coupe-panel">
-      <p className="tech-label rule-brass text-brass-300">Coupe</p>
-      <p className="mt-1 text-sm text-lune-faint">
+    <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-coupe-panel">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Coupe</p>
+      <p className="mt-1 text-sm text-muted-foreground">
         Coupe transversale de deux rangées consécutives du pan actif : inclinaison, pas,
         hauteur hors-tout, rayon solaire de conception (soleil de 10 h, solstice d’hiver) et longueur
         d’ombre — toutes valeurs lues de la géométrie déjà posée, aucune recalculée.
@@ -189,13 +189,13 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
       {erreur && <p className="mt-2 text-sm text-red-300" role="alert">{erreur}</p>}
 
       {!erreur && !zone && (
-        <p className="mt-3 text-sm text-lune-faint" data-testid="cal-coupe-vide">
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-coupe-vide">
           Aucun pan tracé dans cette conception.
         </p>
       )}
 
       {!erreur && zone && coupe && !coupe.disponible && (
-        <p className="mt-3 text-sm text-lune-faint" data-testid="cal-coupe-non-calculee">
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-coupe-non-calculee">
           {`Coupe non calculée — ${coupe.motif}`}
         </p>
       )}
@@ -203,30 +203,30 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
       {!erreur && zone && coupe?.disponible && (
         <div className="mt-4">
           <CoupeSvg coupe={coupe} />
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-lune-faint sm:grid-cols-3">
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-3">
             <div data-testid="cal-coupe-inclinaison">
-              <dt className="tech-label">Inclinaison</dt>
-              <dd className="fig text-white">{`${formatNumber(coupe.tiltDeg, { decimals: 1 })}°`}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide">Inclinaison</dt>
+              <dd className="fig text-foreground">{`${formatNumber(coupe.tiltDeg, { decimals: 1 })}°`}</dd>
             </div>
             <div data-testid="cal-coupe-pas">
-              <dt className="tech-label">Pas mesuré</dt>
-              <dd className="fig text-white">{`${formatNumber(coupe.rowPitchM, { decimals: 2 })} m`}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide">Pas mesuré</dt>
+              <dd className="fig text-foreground">{`${formatNumber(coupe.rowPitchM, { decimals: 2 })} m`}</dd>
             </div>
             <div data-testid="cal-coupe-hauteur">
-              <dt className="tech-label">Hauteur hors-tout</dt>
-              <dd className="fig text-white">
+              <dt className="text-xs font-semibold uppercase tracking-wide">Hauteur hors-tout</dt>
+              <dd className="fig text-foreground">
                 {coupe.hauteurHorsToutM === null
                   ? 'non applicable (pose affleurante)'
                   : `${formatNumber(coupe.hauteurHorsToutM, { decimals: 2 })} m`}
               </dd>
             </div>
             <div data-testid="cal-coupe-rayon-solaire-valeur">
-              <dt className="tech-label">{`Rayon solaire (soleil de ${coupe.heureConceptionH} h, solstice d’hiver)`}</dt>
-              <dd className="fig text-white">{`${formatNumber(coupe.rayonSolaireDeg, { decimals: 1 })}°`}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide">{`Rayon solaire (soleil de ${coupe.heureConceptionH} h, solstice d’hiver)`}</dt>
+              <dd className="fig text-foreground">{`${formatNumber(coupe.rayonSolaireDeg, { decimals: 1 })}°`}</dd>
             </div>
             <div data-testid="cal-coupe-longueur-ombre">
-              <dt className="tech-label">Longueur d’ombre</dt>
-              <dd className="fig text-white">{`${formatNumber(coupe.longueurOmbreM, { decimals: 2 })} m`}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide">Longueur d’ombre</dt>
+              <dd className="fig text-foreground">{`${formatNumber(coupe.longueurOmbreM, { decimals: 2 })} m`}</dd>
             </div>
           </dl>
         </div>

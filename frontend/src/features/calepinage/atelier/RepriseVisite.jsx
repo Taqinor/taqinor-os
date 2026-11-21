@@ -77,10 +77,10 @@ function TableauEcarts({ etat }) {
   const mesureDe = (code) => mesures.find((m) => m.code === code) ?? { code }
   return (
     <div className="mt-4" data-testid="cal-reprise-ecart">
-      <p className="tech-label text-lune-faint">Écart entre le relevé repris et la visite</p>
-      <table className="mt-1 w-full text-left text-sm text-white">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Écart entre le relevé repris et la visite</p>
+      <table className="mt-1 w-full text-left text-sm text-foreground">
         <thead>
-          <tr className="text-lune-soft">
+          <tr className="text-muted-foreground">
             <th scope="col">Mesure</th>
             <th scope="col">Reprise</th>
             <th scope="col">Visite actuelle</th>
@@ -166,8 +166,8 @@ export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = 
     <>
     {/* ACAL208 — le fil d'Ariane de retour : ne rend rien dans l'atelier, le lien profond oui. */}
     <RetourAtelier calepinageId={calepinageId} />
-    <div className="cine-card mt-6 p-6" data-testid="cal-reprise-visite">
-      <p className="tech-label rule-brass text-brass-300">Reprise de la visite technique</p>
+    <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-reprise-visite">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Reprise de la visite technique</p>
 
       {champsFautifs.length > 0 && (
         <p
@@ -186,20 +186,20 @@ export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = 
       )}
 
       {etat === null && !erreurLecture && (
-        <p className="mt-3 text-sm text-lune-faint" data-testid="cal-reprise-chargement">
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-reprise-chargement">
           Lecture de la visite technique…
         </p>
       )}
 
       {etat !== null && !aVisite && (
-        <p className="mt-3 text-sm text-lune-soft" data-testid="cal-reprise-vide">
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-reprise-vide">
           {raison}
         </p>
       )}
 
       {aVisite && (
         <>
-          <p className="mt-3 text-sm text-lune-soft" data-testid="cal-reprise-visite-entete">
+          <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-reprise-visite-entete">
             {`Visite technique n° ${etat.visite_id} — `}
             {etat.validee_le
               ? `validée le ${formatDateTime(etat.validee_le)}`
@@ -208,16 +208,16 @@ export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = 
 
           <BandeauReprise releve={etat.releve} />
 
-          <p className="tech-label mt-4 text-lune-faint">Mesures relevées sur le toit</p>
+          <p className="text-xs font-semibold uppercase tracking-wide mt-4 text-muted-foreground">Mesures relevées sur le toit</p>
           {(etat.mesures || []).length === 0 ? (
-            <p className="mt-1 text-sm text-lune-faint" data-testid="cal-reprise-mesures-vide">
+            <p className="mt-1 text-sm text-muted-foreground" data-testid="cal-reprise-mesures-vide">
               Aucune mesure saisie pendant la visite.
             </p>
           ) : (
             <ul className="mt-1 space-y-1" data-testid="cal-reprise-mesures">
               {etat.mesures.map((mesure) => (
-                <li key={mesure.code} className="text-sm text-white" data-testid={`cal-reprise-mesure-${mesure.code}`}>
-                  <span className="text-lune-soft">{mesure.libelle}</span>
+                <li key={mesure.code} className="text-sm text-foreground" data-testid={`cal-reprise-mesure-${mesure.code}`}>
+                  <span className="text-muted-foreground">{mesure.libelle}</span>
                   {' : '}
                   <span>{valeurLisible(mesure)}</span>
                 </li>
@@ -225,9 +225,9 @@ export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = 
             </ul>
           )}
 
-          <p className="tech-label mt-4 text-lune-faint">Photos retenues</p>
+          <p className="text-xs font-semibold uppercase tracking-wide mt-4 text-muted-foreground">Photos retenues</p>
           {(etat.photos || []).length === 0 ? (
-            <p className="mt-1 text-sm text-lune-faint" data-testid="cal-reprise-photos-vide">
+            <p className="mt-1 text-sm text-muted-foreground" data-testid="cal-reprise-photos-vide">
               Aucune photo retenue pendant la visite.
             </p>
           ) : (
@@ -235,7 +235,7 @@ export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = 
               {etat.photos.map((photo) => (
                 <li
                   key={photo.attachment_id}
-                  className="text-sm text-white"
+                  className="text-sm text-foreground"
                   data-testid={`cal-reprise-photo-${photo.attachment_id}`}
                 >
                   {photo.libelle || photo.slot_code}
@@ -253,7 +253,7 @@ export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = 
                 onClick={() => reprendre(true)}
                 disabled={enCours || lectureSeule}
                 data-testid="cal-reprise-maj"
-                className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50"
+                className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text disabled:opacity-50"
               >
                 {enCours ? 'Mise à jour…' : 'Mettre à jour depuis la visite'}
               </button>
@@ -270,18 +270,18 @@ export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = 
               onClick={() => reprendre(false)}
               disabled={Boolean(raison) || enCours || lectureSeule}
               data-testid="cal-reprise-bouton"
-              className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50"
+              className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text disabled:opacity-50"
             >
               {enCours ? 'Reprise en cours…' : 'Reprendre dans ce calepinage'}
             </button>
           )}
           {lectureSeule && (
-            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-reprise-lecture-seule">
+            <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-reprise-lecture-seule">
               {RAISON_LECTURE_SEULE}
             </p>
           )}
           {raison && !aEcart(etat) && (
-            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-reprise-raison">
+            <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-reprise-raison">
               {raison}
             </p>
           )}

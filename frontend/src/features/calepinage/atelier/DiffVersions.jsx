@@ -72,8 +72,8 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
 
   return (
     <div className="mt-6" data-testid="cal-diff-versions">
-      <p className="tech-label rule-brass text-brass-300">Comparer les versions</p>
-      <p className="mt-2 text-xs text-lune-faint" data-testid="cal-diff-versions-rappel">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Comparer les versions</p>
+      <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-diff-versions-rappel">
         Le différentiel est borné aux grandeurs comptables du document (modules,
         kWc, pans, obstacles, orientation et inclinaison par pan, empreinte,
         version du moteur) — jamais un diff de JSON brut. Pour restaurer une
@@ -94,7 +94,7 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
       )}
 
       {versions === null ? (
-        <div className="mt-3 flex items-center gap-2 text-sm text-lune-faint">
+        <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner />
           Chargement des versions…
         </div>
@@ -107,10 +107,10 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
       ) : (
         <>
           <div className="mt-3 flex flex-wrap gap-4">
-            <label className="flex flex-col gap-1 text-xs text-lune-soft">
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Version de gauche
               <select
-                className="rounded border border-border/60 bg-transparent px-2 py-1 text-sm text-white"
+                className="rounded border border-border/60 bg-transparent px-2 py-1 text-sm text-foreground"
                 value={gaucheId}
                 onChange={(e) => setGaucheId(e.target.value)}
                 data-testid="cal-diff-versions-gauche"
@@ -120,10 +120,10 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs text-lune-soft">
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Version de droite
               <select
-                className="rounded border border-border/60 bg-transparent px-2 py-1 text-sm text-white"
+                className="rounded border border-border/60 bg-transparent px-2 py-1 text-sm text-foreground"
                 value={droiteId}
                 onChange={(e) => setDroiteId(e.target.value)}
                 data-testid="cal-diff-versions-droite"
@@ -137,7 +137,7 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
           </div>
 
           {chargement && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-lune-faint">
+            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
               <Spinner />
               Calcul du différentiel…
             </div>
@@ -160,7 +160,7 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
               <TableauNu className="mt-3 w-full text-sm" data-testid="cal-diff-versions-tableau"
                 tete={(
                   <thead>
-                    <tr className="text-left text-xs text-lune-faint">
+                    <tr className="text-left text-xs text-muted-foreground">
                       <th className="pb-1 pr-3">Champ</th>
                       <th className="pb-1 pr-3">Avant</th>
                       <th className="pb-1">Après</th>
@@ -169,7 +169,7 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
                 )}>
                 {diff.ecarts.map((ecart) => (
                   <tr key={ecart.champ} data-testid={`cal-diff-versions-ligne-${ecart.champ}`}>
-                    <td className="py-1 pr-3 text-white">{ecart.libelle}</td>
+                    <td className="py-1 pr-3 text-foreground">{ecart.libelle}</td>
                     <td className="py-1 pr-3 text-muted-foreground">
                       {ecart.avant ?? '—'}
                     </td>

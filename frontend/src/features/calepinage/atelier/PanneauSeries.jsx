@@ -149,8 +149,8 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
 
   return (
     <div className="mt-6" data-testid="cal-series">
-      <p className="tech-label rule-brass text-brass-300">Séries</p>
-      <p className="mt-2 text-xs text-lune-faint" data-testid="cal-series-rappel">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Séries</p>
+      <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-series-rappel">
         Les trois fichiers sont produits par le serveur à partir de la
         simulation enregistrée. Tant qu’elle n’a pas tourné, l’export est
         refusé avec son motif — aucun fichier de zéros n’est livré à la place.
@@ -164,7 +164,7 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
             <Card key={quoi} className="p-3" data-testid={`cal-series-ligne-${quoi}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="space-y-0.5">
-                  <div className="text-sm text-white">{libelle}</div>
+                  <div className="text-sm text-foreground">{libelle}</div>
                   <div className="text-xs text-muted-foreground">{aide}</div>
                 </div>
                 <Button
@@ -190,7 +190,7 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
               )}
               {sortie.etat === 'ok' && (
                 <p
-                  className="mt-2 text-xs text-lune-soft"
+                  className="mt-2 text-xs text-muted-foreground"
                   data-testid={`cal-series-fichier-${quoi}`}
                 >
                   Fichier téléchargé : {sortie.fichier}
@@ -252,7 +252,7 @@ function SourceMeteo({ retenu, calepinageId, onRetire }) {
 
   return (
     <div className="mt-3">
-      <p className="text-sm text-white" data-testid="acal147-source-meteo">
+      <p className="text-sm text-foreground" data-testid="acal147-source-meteo">
         {contenu}
       </p>
 
@@ -298,7 +298,7 @@ function SourceMeteo({ retenu, calepinageId, onRetire }) {
         </p>
       )}
       {retrait && (
-        <p role="status" className="mt-2 text-xs text-lune-soft" data-testid="acal148-retrait">
+        <p role="status" className="mt-2 text-xs text-muted-foreground" data-testid="acal148-retrait">
           {retrait}
         </p>
       )}
@@ -344,7 +344,7 @@ function DepotMeteo({ calepinageId, onDepose }) {
 
   return (
     <Card className="mt-2 p-3" data-testid="cal-series-depot">
-      <p className="text-sm text-white">Série météo de la société</p>
+      <p className="text-sm text-foreground">Série météo de la société</p>
       <p className="mt-1 text-xs text-muted-foreground">
         Un CSV à colonnes nommées : « horodatage » (ISO, avec son fuseau) et
         « gi_w_m2 » (irradiance sur le PLAN) sont obligatoires ;
@@ -420,7 +420,7 @@ function DepotMeteo({ calepinageId, onDepose }) {
 
       {depose?.remplace && (
         <p
-          className="mt-2 text-xs text-lune-soft"
+          className="mt-2 text-xs text-muted-foreground"
           data-testid="acal148-remplace"
         >
           Remplace {depose.remplace.nom || 'le fichier précédent'}
@@ -432,7 +432,7 @@ function DepotMeteo({ calepinageId, onDepose }) {
       )}
       {depose && (
         <p
-          className="mt-2 text-xs text-lune-soft"
+          className="mt-2 text-xs text-muted-foreground"
           data-testid="cal-series-depot-provenance"
         >
           {depose.message}
