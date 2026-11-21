@@ -288,6 +288,7 @@ export const ALL_HOOKS = [
   'cal-raccourcis',
   'cal-raccourcis-aide',
   'cal-raccourcis-bouton',
+  'cal-raccourcis-section',
   // ── RemplissageProuve.jsx ──
   'cal-remplissage',
   'cal-remplissage-appliquer',

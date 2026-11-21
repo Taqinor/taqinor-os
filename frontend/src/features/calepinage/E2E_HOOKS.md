@@ -337,6 +337,7 @@ retiré plus un hook ajouté.
 | `cal-raccourcis` | raccourcis. |
 | `cal-raccourcis-aide` | raccourcis aide. |
 | `cal-raccourcis-bouton` | raccourcis bouton. |
+| `cal-raccourcis-section` | raccourcis section (une par portée, ACAL414). |
 
 ## RemplissageProuve (`RemplissageProuve.jsx`)
 
