@@ -390,7 +390,7 @@ export default function BoutonDevis({
                 value={motif}
                 onChange={(e) => { setMotif(e.target.value); setMotifErreur(null) }}
                 data-testid="cal-devis-motif"
-                className="w-full border border-lune-faint/40 bg-transparent p-2 text-sm"
+                className="w-full border border-border bg-transparent p-2 text-sm"
               />
               {motifErreur && (
                 <p className="text-xs text-destructive" role="alert" data-testid="cal-devis-motif-erreur">

@@ -11,27 +11,27 @@ export default function BarreEnregistrement({
   const etat = modifiee ? 'Modifications non enregistrées'
     : (heure ? `Enregistré à ${heure}` : null)
   return (
-    <div className="sticky bottom-0 z-30 mt-6 border-t border-lune-faint/40 bg-black/90 p-3 backdrop-blur"
+    <div className="sticky bottom-0 z-30 mt-6 border-t border-border bg-card p-3 backdrop-blur"
       data-testid="cal-enregistrer-calepinage">
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={onEnregistrer} disabled={desactive}
-          className="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-          style={{ background: 'var(--rp-ok-600)' }}>
+          className="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold disabled:cursor-not-allowed disabled:opacity-60"
+          style={{ background: 'var(--rp-ok-600)', color: '#fff' }}>
           {enCours && (
             <span aria-hidden="true"
-              className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+              className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
           )}
           <span>{enCours ? 'Enregistrement en cours…' : libelle}</span>
         </button>
         {etat && (
-          <p className={`text-sm ${modifiee ? 'text-brass-300' : 'text-lune-soft'}`}
+          <p className={`text-sm ${modifiee ? 'text-primary' : 'text-muted-foreground'}`}
             role="status" data-testid="cal-etat-enregistrement">{etat}</p>
         )}
         {children}
       </div>
-      {statut && <p className="mt-2 text-sm text-lune-soft" aria-live="polite">{statut}</p>}
+      {statut && <p className="mt-2 text-sm text-muted-foreground" aria-live="polite">{statut}</p>}
       {erreur && (
-        <p className="mt-2 text-sm text-alert-300" role="alert" data-testid="cal-erreur-enregistrement">{erreur}</p>
+        <p className="mt-2 text-sm text-destructive" role="alert" data-testid="cal-erreur-enregistrement">{erreur}</p>
       )}
     </div>
   )

@@ -595,23 +595,23 @@
 </p>
 <nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes" class="mb-2 flex flex-wrap items-center gap-1.5">
 <button type="button" data-testid="cal-etape-toit" data-etat="" aria-current="step" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-primary bg-primary/10 font-medium">
-<span class="tech-label text-lune-faint">1</span>Toit</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">1</span>Toit</button>
 <button type="button" data-testid="cal-etape-panneaux" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">2</span>Panneaux</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">2</span>Panneaux</button>
 <button type="button" data-testid="cal-etape-electrique" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">3</span>Électrique</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">3</span>Électrique</button>
 <button type="button" data-testid="cal-etape-resultats" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">4</span>Résultats</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">4</span>Résultats</button>
 <button type="button" data-testid="cal-etape-documents" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">5</span>Documents</button>
-<label class="ml-auto inline-flex items-center gap-1.5 text-xs text-lune-faint" title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">5</span>Documents</button>
+<label class="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
 <input data-testid="cal-mode-expert" type="checkbox">Mode expert</label>
 </nav>
 <div role="tablist" aria-orientation="horizontal" class="items-center gap-1 rounded-lg border border-border bg-muted p-1 flex w-full flex-wrap gap-x-1 gap-y-1.5" aria-label="Onglets du calepinage" tabindex="0" data-orientation="horizontal" style="outline: none;">
 <span class="inline-flex items-center gap-0.5">
 <button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_0_-content-pente" data-state="inactive" id="radix-_r_0_-trigger-pente" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-pente" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Pente</button>
 <button type="button" tabindex="-1" aria-label="À quoi sert « Pente »" title="À quoi sert « Pente »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark size-[15px]" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
 </circle>
 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
@@ -624,7 +624,7 @@
 <span class="inline-flex items-center gap-0.5">
 <button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_0_-content-terrain" data-state="inactive" id="radix-_r_0_-trigger-terrain" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-terrain" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Terrain</button>
 <button type="button" tabindex="-1" aria-label="À quoi sert « Terrain »" title="À quoi sert « Terrain »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark size-[15px]" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
 </circle>
 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
@@ -637,7 +637,7 @@
 <span class="inline-flex items-center gap-0.5">
 <button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_0_-content-ombriere" data-state="inactive" id="radix-_r_0_-trigger-ombriere" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" data-testid="cal-onglet-ombriere" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Ombrière</button>
 <button type="button" tabindex="-1" aria-label="À quoi sert « Ombrière »" title="À quoi sert « Ombrière »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark size-[15px]" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-[15px]" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
 </circle>
 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
@@ -698,12 +698,12 @@
 <div class="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
 </div>
 </div>
-<div class="sticky bottom-0 z-30 mt-6 border-t border-lune-faint/40 bg-black/90 p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
+<div class="sticky bottom-0 z-30 mt-6 border-t border-border bg-card p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
 <div class="flex flex-wrap items-center gap-3">
-<button type="button" class="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60" style="background: var(--rp-ok-600);">
+<button type="button" class="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold disabled:cursor-not-allowed disabled:opacity-60" style="background: var(--rp-ok-600); color: rgb(255, 255, 255);">
 <span>Enregistrer la conception</span>
 </button>
-<p class="text-sm text-lune-soft" data-testid="cal-resume-atelier">
+<p class="text-sm text-muted-foreground" data-testid="cal-resume-atelier">
 <span data-testid="cal-resume-panneaux">—</span> · <span data-testid="cal-resume-kwc">—</span> · <span data-testid="cal-resume-production">—</span>
 </p>
 </div>

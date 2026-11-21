@@ -1581,7 +1581,7 @@ function AtelierToiture({
                     value={motifDerogation}
                     onChange={(e) => { setMotifDerogation(e.target.value); setMotifDerogationErreur(null) }}
                     data-testid="cal-sync-motif"
-                    className="w-full border border-lune-faint/40 bg-transparent p-2 text-sm"
+                    className="w-full border border-border bg-transparent p-2 text-sm"
                   />
                   {motifDerogationErreur && (
                     <p className="text-xs text-destructive" role="alert" data-testid="cal-sync-motif-erreur">
