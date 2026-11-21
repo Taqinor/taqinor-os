@@ -180,7 +180,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       { name: /Enregistrer le calepinage/ }))
 
     await waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledTimes(1))
-    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(String(CTX.calepinage.id))
+    // Acceptation ACAL490 : le pont axios toastait le 409 — l'appel part SILENCIEUX.
+    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(String(CTX.calepinage.id), { silencieux: true })
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
