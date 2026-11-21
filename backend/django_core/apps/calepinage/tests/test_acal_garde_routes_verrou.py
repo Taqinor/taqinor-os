@@ -95,6 +95,16 @@ ROUTES_HORS_VERROU = {
                           'brouillon refusé, ACAL118)',
     ('POST', 'restaurer-corbeille'): 'restauration depuis la corbeille',
     ('POST', 'meteo-fichier'): 'simulation : entrée météo du calcul',
+    ('PUT', 'brouillon'): "brouillon d'atelier de l'appelant (ACAL400) : "
+                          "update() isolé, n'écrit ni le document ni sa version",
+    ('DELETE', 'brouillon'): "brouillon d'atelier de l'appelant (ACAL400) : "
+                             "n'écrit ni le document ni sa version",
+    ('POST', 'profil-depart'): "réglages de la société (ACAL403), hors "
+                               "conception d'un calepinage",
+    ('DELETE', 'profil-depart'): "réglages de la société (ACAL403), hors "
+                                 "conception d'un calepinage",
+    ('POST', 'balayage'): "balayage (ACAL468) : simule des COPIES du "
+                          "document, n'écrit rien au calepinage",
     ('DELETE', 'meteo-fichier'): 'simulation : entrée météo du calcul',
     ('POST', 'evaluer-electrique'): 'évaluation électrique à la demande '
                                     '(lecture calculée)',
