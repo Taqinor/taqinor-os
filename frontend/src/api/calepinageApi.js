@@ -439,5 +439,6 @@ export default calepinageApi
 // ACAL21 — contrat calepinage_consommation_proposee.json (M0)
 // ACAL386 — contrat calepinage_parcours_guide.json (M0)
 // ACAL391 — contrat calepinage_detection_toit.json (M0)
+// ACAL996 — contrat calepinage_productible_pose.json (M0)
 // ACAL201 — l'URL d'un fichier servi par le proxy Django (chemin relatif + origine d'API).
 export { urlFichierCalepinage } from '../lib/calage/fichierCalepinage'

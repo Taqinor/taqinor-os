@@ -104,6 +104,14 @@
         "motif_si_absent": "Autoconsommation non calculée : elle se lit sur une simulation faite avec une courbe de charge (onglet Production, consommation du site)."
       },
       {
+        "code": "pompage",
+        "titre": "Pompage",
+        "ordre": 56,
+        "obligatoire": false,
+        "entrees_exigees": [],
+        "motif_si_absent": "Aucun dimensionnement de pompage enregistré : la section est omise (il se calcule dans l'onglet Pompage et s'enregistre pour la personne qui gère le calepinage)."
+      },
+      {
         "code": "ombrage",
         "titre": "Ombrage",
         "ordre": 60,

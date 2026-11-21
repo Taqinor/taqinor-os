@@ -183,6 +183,8 @@ export interface SurfacePoseLigne {
   buildingId?: string;
   areaM2?: number | null;
   engine?: { modules?: number | null } | null;
+  /** ACAL607 — puissance unitaire SAISIE (Wc) de la surface ; repli quand `moduleFor` ne donne rien. */
+  moduleWc?: number | null;
 }
 
 /** Genre d'une ligne de la table du site. */
@@ -297,7 +299,9 @@ export function computeSiteStats(
         ? s.engine.modules
         : null;
     const module = moduleFor?.(s) ?? null;
-    const kwc = modules !== null && module ? kwcDuPan(modules, module) : null;
+    const wcSaisi = typeof s.moduleWc === 'number' && Number.isFinite(s.moduleWc) && s.moduleWc > 0 ? s.moduleWc : null;
+    // `moduleFor` garde la priorité ; sans lui, la puissance SAISIE sur la surface (jamais supposée).
+    const kwc = modules === null ? null : module ? kwcDuPan(modules, module) : wcSaisi === null ? null : (modules * wcSaisi) / 1000;
     const aire = typeof s.areaM2 === 'number' && Number.isFinite(s.areaM2) && s.areaM2 > 0 ? s.areaM2 : null;
     const manques: string[] = [];
     if (modules === null) manques.push('plan du moteur non reçu');

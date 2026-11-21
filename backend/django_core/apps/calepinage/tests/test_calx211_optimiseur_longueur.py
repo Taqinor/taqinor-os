@@ -91,7 +91,10 @@ class FicheCompleteTest(SimpleTestCase):
     def test_plus_aucune_borne_non_verifiable(self):
         regle = _regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR_COMPLET)
 
-        self.assertEqual(regle['bornes_non_verifiables'], [])
+        # ACAL662 — seule reste la compatibilité (aucune liste publiée).
+        self.assertEqual(len(regle['bornes_non_verifiables']), 1)
+        self.assertIn('la fiche ne publie pas de liste',
+                      regle['bornes_non_verifiables'][0])
 
     def test_une_fiche_qui_n_est_pas_un_dict_est_lue_par_getattr(self):
         # ``_champ_de_fiche`` lit le champ par ``getattr`` quand la fiche
@@ -111,7 +114,8 @@ class FichePartielleTest(SimpleTestCase):
     def test_sans_les_deux_champs_le_message_est_inchange(self):
         regle = _regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR_ENTREE_SEULE)
 
-        self.assertEqual(len(regle['bornes_non_verifiables']), 1)
+        # ACAL662 — + la compatibilité non vérifiable (aucune liste).
+        self.assertEqual(len(regle['bornes_non_verifiables']), 2)
         for morceau in _MORCEAUX_NON_VERIFIABLE:
             self.assertIn(morceau, regle['bornes_non_verifiables'][0])
         self.assertIsNone(regle['longueur_max_modules'])
@@ -123,7 +127,7 @@ class FichePartielleTest(SimpleTestCase):
                                       **{CLE_OPT_V_OUT: 400.0}))
 
         self.assertIsNone(regle['longueur_max_modules'])
-        self.assertEqual(len(regle['bornes_non_verifiables']), 1)
+        self.assertEqual(len(regle['bornes_non_verifiables']), 2)  # ACAL662
 
     def test_le_nombre_de_modules_seul_ne_ferme_rien(self):
         regle = _regle_de_chaine(MODULE, ONDULEUR,
@@ -131,7 +135,7 @@ class FichePartielleTest(SimpleTestCase):
                                       **{CLE_OPT_MODULES_MAX: 25}))
 
         self.assertIsNone(regle['longueur_max_modules'])
-        self.assertEqual(len(regle['bornes_non_verifiables']), 1)
+        self.assertEqual(len(regle['bornes_non_verifiables']), 2)  # ACAL662
 
     def test_un_nombre_de_modules_nul_ne_ferme_rien(self):
         regle = _regle_de_chaine(MODULE, ONDULEUR,
@@ -181,3 +185,44 @@ class EntreeMultiModulesTest(SimpleTestCase):
         self.assertTrue(puissance['conforme'])
         self.assertIn('220 Wc sous 400 Wc', puissance['detail'])
         self.assertIn('un module comparé', puissance['detail'])
+
+
+class CompatibiliteOnduleurTest(SimpleTestCase):
+    """ACAL662 — l'onduleur retenu doit figurer, par son SKU, dans la liste
+    des onduleurs compatibles publiée par la fiche de l'optimiseur."""
+
+    def _ligne(self, optimiseur, sku):
+        regle = _regle_de_chaine(MODULE, ONDULEUR, optimiseur,
+                                 designation='Optimiseur X', onduleur_sku=sku)
+        lignes = {v['code']: v for v in regle['verdicts_entree']}
+        return lignes['optimiseur_onduleur_compatible'], regle
+
+    def test_onduleur_absent_de_la_liste_bloquant_nomme(self):
+        ligne, _r = self._ligne(dict(OPTIMISEUR_COMPLET,
+                                     onduleurs_compatibles=['SKU-A']), 'SKU-B')
+        self.assertIs(ligne['conforme'], False)
+        self.assertTrue(ligne['bloquant'])
+        self.assertIn("l'optimiseur Optimiseur X n'est pas déclaré compatible "
+                      "avec SKU-B par sa fiche", ligne['detail'])
+
+    def test_onduleur_de_la_liste_conforme_par_sku_jamais_par_nom(self):
+        ligne, _r = self._ligne(dict(OPTIMISEUR_COMPLET,
+                                     onduleurs_compatibles=['SKU-B']), 'SKU-B')
+        self.assertIs(ligne['conforme'], True)
+        ligne, _r = self._ligne(dict(OPTIMISEUR_COMPLET, onduleurs_compatibles=[
+            'Optimiseur X']), 'SKU-B')
+        self.assertIs(ligne['conforme'], False)
+
+    def test_liste_vide_ou_absente_non_verifiable(self):
+        for optimiseur in (dict(OPTIMISEUR_COMPLET, onduleurs_compatibles=[]),
+                           OPTIMISEUR_COMPLET):
+            ligne, regle = self._ligne(optimiseur, 'SKU-B')
+            self.assertIsNone(ligne['conforme'])
+            self.assertIn('la fiche ne publie pas de liste', ligne['detail'])
+            self.assertEqual(len(regle['bornes_non_verifiables']), 1)
+
+    def test_onduleur_sans_sku_non_verifiable(self):
+        ligne, _r = self._ligne(dict(OPTIMISEUR_COMPLET,
+                                     onduleurs_compatibles=['SKU-A']), None)
+        self.assertIsNone(ligne['conforme'])
+        self.assertIn('onduleur non désigné', ligne['detail'])

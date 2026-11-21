@@ -352,6 +352,82 @@ class PlusieursChainesEtPans(SimpleTestCase):
         self.assertEqual(bornes(entree), (0.0, 0.0))
 
 
+class BornesParChaine(SimpleTestCase):
+    """ACAL711 — chaque chaîne porte SES deux bornes et ses modules ombrés ;
+    une cascade de deux pans garde les chaînes des DEUX."""
+
+    SEUIL_06 = {'valeur': 0.6, 'source': 'societe',
+                'reference': 'Réglage société d\'essai'}
+    ACCES_P1 = [1.0, 1.0, 0.5]
+    ACCES_P2 = [1.0, 1.0, 1.0, 1.0]
+
+    def _contexte(self, acces, pan):
+        return contexte_de(acces, seuil=self.SEUIL_06, pan=pan,
+                           plan={'cle': pan},
+                           meteo={'heure': {'base': None}})
+
+    def _attendu(self, acces, seuil):
+        # Recalculé ICI à partir des accès, jamais recopié de la sortie.
+        nominal, lineaire = len(acces), sum(acces)
+        serie = nominal * min(acces)
+        derivation = max(sum(a for a in acces if a >= seuil), serie)
+        return {
+            'basse': round(100 * (lineaire - derivation) / lineaire, 3),
+            'haute': round(100 * (lineaire - serie) / lineaire, 3),
+            'chaine_basse': round(100 * (nominal - derivation) / nominal, 3),
+            'chaine_haute': round(100 * (nominal - serie) / nominal, 3),
+            'ecart': round(100 * (derivation - serie) / lineaire, 3),
+        }
+
+    def test_bornes_de_la_chaine_et_modules_ombres(self):
+        _, etape = mismatch_ombrage.appliquer(
+            SERIE, self._contexte(self.ACCES_P1, 'P1'))
+        chaine = etape['entree']['chaines'][0]
+        attendu = self._attendu(self.ACCES_P1, 0.6)
+        self.assertEqual(chaine['bornes']['basse'],
+                         {'modele': 'derivation',
+                          'excedent_pct': attendu['basse'],
+                          'perte_chaine_pct': attendu['chaine_basse']})
+        self.assertEqual(chaine['bornes']['haute'],
+                         {'modele': 'courant_serie',
+                          'excedent_pct': attendu['haute'],
+                          'perte_chaine_pct': attendu['chaine_haute']})
+        self.assertEqual((attendu['basse'], attendu['haute'],
+                          attendu['chaine_basse'], attendu['chaine_haute']),
+                         (20.0, 40.0, 33.333, 50.0))
+        self.assertEqual(chaine['ecart_bornes_pct'], attendu['ecart'])
+        self.assertEqual(chaine['modules_ombres'],
+                         [{'module': 'P1#3', 'acces': 0.5}])
+        self.assertEqual(chaine['module_le_plus_ombre'],
+                         {'module': 'P1#3', 'acces': 0.5})
+        self.assertEqual(chaine['modules_derives'], ['P1#3'])
+        # un pan unique garde ses bornes agrégées d'aujourd'hui
+        self.assertIsNotNone(etape['entree']['bornes'])
+        self.assertNotIn('pans', etape['entree'])
+
+    def test_deux_pans_les_deux_chaines_survivent(self):
+        from apps.calepinage.services.chaine_pertes import cascade_de_la_somme
+
+        cascades = [appliquer_chaine(SERIE, self._contexte(acces, pan),
+                                     phase='pan')[1]
+                    for acces, pan in ((self.ACCES_P1, 'P1'),
+                                       (self.ACCES_P2, 'P2'))]
+        somme = cascade_de_la_somme(cascades, {'etapes': []},
+                                    {'etapes': []})
+        notre = next(e for e in somme['etapes'] if e['etape'] == POSTE)
+        entree = notre['entree']
+        self.assertEqual(sorted(c['pan'] for c in entree['chaines']),
+                         ['P1', 'P2'])
+        self.assertEqual(entree['pans'], ['P1', 'P2'])
+        self.assertIsNone(entree['bornes'])
+        self.assertIsNone(entree['ecart_bornes_pct'])
+        self.assertEqual(entree['bornes_motif'],
+                         'bornes agrégées non publiées : plusieurs pans')
+        p2 = next(c for c in entree['chaines'] if c['pan'] == 'P2')
+        self.assertEqual(p2['ecart_bornes_pct'], 0.0)
+        self.assertEqual(p2['modules_ombres'], [])
+
+
 class GardeAntiForfait(SimpleTestCase):
     """AUCUN facteur forfaitaire d'atténuation d'ombrage dans le module."""
 

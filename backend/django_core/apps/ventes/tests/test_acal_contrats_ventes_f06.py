@@ -27,7 +27,8 @@ CLES_SOURCE_ENTREE = {'temperatures', 'longueurs', 'regime'}
 # ACAL991 — échantillons de ventes lus ici : couverture_batterie,
 # conception_electrique, chiffrage_conception (porte unique de chiffrage).
 CLES_GRANDEURS_CHIFFRAGE = (
-    'kwc', 'production_annuelle_kwh', 'economie_annee1_mad', 'autoconsommation_pct')
+    'kwc', 'production_annuelle_kwh', 'economie_annee1_mad',
+    'autoconsommation_pct')
 ETATS_CHIFFRAGE = ('servi', 'omis', 'non_servi', 'indisponible')
 
 
@@ -89,8 +90,8 @@ class Contrats(SimpleTestCase):
         for valeur in source.values():
             self.assertIn(valeur, ('calepinage', 'surcharge', 'defaut'))
 
-        # ACAL991 — chiffrage : quatre clés par grandeur, option de l'économie,
-        # trois marchés, chaque grandeur non servie motivée, aucune clé de prix.
+        # ACAL991 — chiffrage : quatre clés par grandeur, option de
+        # l'économie, trois marchés, grandeur non servie motivée, aucun prix.
         chiffrage = _contrat('chiffrage_conception.json')
         exemples = [k for k in chiffrage if k.startswith('exemple')]
         self.assertEqual({chiffrage[k]['marche'] for k in exemples},
@@ -100,9 +101,12 @@ class Contrats(SimpleTestCase):
             self.assertNotIn('prix', json.dumps(ex))
             omises = {o['grandeur'] for o in ex['omissions'] if o['motif']}
             for g in CLES_GRANDEURS_CHIFFRAGE:
-                with self.subTest(contrat='chiffrage', exemple=nom, grandeur=g):
-                    self.assertTrue({'valeur', 'unite', 'source', 'etat'} <= set(ex[g]))
+                with self.subTest(contrat='chiffrage', ex=nom, grandeur=g):
+                    self.assertTrue(
+                        {'valeur', 'unite', 'source', 'etat'} <= set(ex[g]))
                     self.assertIn(ex[g]['etat'], ETATS_CHIFFRAGE)
                     self.assertTrue(ex[g]['etat'] == 'servi' or g in omises)
-            if ex['economie_annee1_mad']['etat'] == 'servi':
-                self.assertIn(ex['economie_annee1_mad']['option'], ('sans_batterie', 'avec_batterie'))
+            eco = ex['economie_annee1_mad']
+            if eco['etat'] == 'servi':
+                self.assertIn(eco['option'],
+                              ('sans_batterie', 'avec_batterie'))

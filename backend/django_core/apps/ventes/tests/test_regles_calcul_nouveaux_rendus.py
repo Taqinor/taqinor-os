@@ -15,7 +15,7 @@ from apps.ventes.domain.regles_calcul import (
     REGLES_CORRIGEES_2710, REGLES_COURANTES, REGLES_CYCLES_BATTERIE_1911, REGLES_ECARTS_0111,
     REGLES_ECARTS_0411, REGLES_ECARTS_3110, REGLES_ORIGINE,
     REGLES_PANIER_UNIQUE_0211, REGLES_RETOURS_3010B, REGLES_SENSIBILITES_1911, REGLES_SENSIBILITES_3010,
-    calcul_corrige, regles_au_moins)
+    REGLES_POSE_REELLE_2111, calcul_corrige, regles_au_moins)
 
 
 class ReglesCalculTests(SimpleTestCase):
@@ -47,6 +47,19 @@ class ReglesCalculTests(SimpleTestCase):
         self.assertGreater(REGLES_CYCLES_BATTERIE_1911, REGLES_ECARTS_0411)
         self.assertGreater(REGLES_SENSIBILITES_1911, REGLES_CYCLES_BATTERIE_1911)
         self.assertTrue(calcul_corrige(SimpleNamespace(regles_calcul=defaut)))
+
+    def test_niveau_15_declare_non_courant(self):
+        # ACAL998 — le niveau 15 existe mais n'est pas courant tant
+        # qu'ACAL1001 ne l'a pas activé : aucun devis, neuf ou existant.
+        from apps.ventes.models import Devis
+        self.assertEqual(REGLES_POSE_REELLE_2111, 15)
+        self.assertEqual(REGLES_COURANTES, 14)
+        self.assertEqual(Devis._meta.get_field('regles_calcul').default, 14)
+        for devis in (Devis(), SimpleNamespace(regles_calcul=14), None,
+                      SimpleNamespace()):
+            self.assertFalse(regles_au_moins(devis, REGLES_POSE_REELLE_2111))
+        self.assertTrue(regles_au_moins(
+            SimpleNamespace(regles_calcul=15), REGLES_POSE_REELLE_2111))
 
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
     def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):

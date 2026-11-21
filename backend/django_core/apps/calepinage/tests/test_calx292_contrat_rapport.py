@@ -41,6 +41,7 @@ CODES_ATTENDUS = ('garde', 'synthese', 'site_meteo', 'photos_site',
                   'systeme', 'pertes',
                   'production', 'consommation', 'hors_reseau',
                   'autoconsommation',
+                  'pompage',
                   'ombrage', 'electrique',
                   'nomenclature', 'hypotheses', 'preuve', 'validation')
 

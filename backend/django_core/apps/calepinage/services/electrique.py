@@ -1097,7 +1097,8 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
             verdicts_publies=lambda: _verdicts_electriques(
                 conception, materiel.get('optimiseur'),
                 (materiel.get('designations') or {}).get('optimiseur', ''),
-                reglages=_reglages_electrique_societe(calepinage)))
+                reglages=_reglages_electrique_societe(calepinage),
+                onduleur_sku=(materiel.get('skus') or {}).get('onduleur')))
 
     avant_saisie = dict(entree_stockee(calepinage))
 
@@ -1203,6 +1204,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     designations = {role: '' for role in ROLES_MATERIEL}
     produits = {role: None for role in ROLES_MATERIEL}
     provenances = {role: None for role in ROLES_MATERIEL}
+    skus = {role: None for role in ROLES_MATERIEL}  # ACAL662
     absents = []
     du_devis = None
     for role in ROLES_MATERIEL:
@@ -1227,6 +1229,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
         blocs[role] = specs_for_produit(produit) or {}
         designations[role] = _designation(produit)
         produits[role] = produit.pk
+        skus[role] = getattr(produit, 'sku', None) or None
         provenances[role] = provenance
     from .micro_onduleurs import est_micro_onduleur
 
@@ -1236,7 +1239,8 @@ def resoudre_materiel(company, entree, *, calepinage=None):
         absents = [texte for texte in absents
                    if not texte.startswith(LIBELLES_ROLES['onduleur'] + ' ')]
     return {**blocs, 'designations': designations, 'produits': produits,
-            'provenances': provenances, 'absents': tuple(absents)}
+            'provenances': provenances, 'absents': tuple(absents),
+            'skus': skus}
 
 
 #: ACAL56 — les clés de l'entrée SERVIE par ``GET entree-electrique/``
@@ -1738,10 +1742,12 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         reglages = societe
     optimiseur = materiel.get('optimiseur')
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
+    sku_onduleur = (materiel.get('skus') or {}).get('onduleur')  # ACAL662
     verdicts = _verdicts_electriques(
         conception, optimiseur, nom_optimiseur,
-        reglages=electrique_societe)
-    regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur)
+        reglages=electrique_societe, onduleur_sku=sku_onduleur)
+    regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur,
+                                  sku_onduleur)
     try:
         # CAL234 — l'affectation MANUELLE enregistrée (si elle existe) écrase
         # l'automatique et est marquée comme telle dans la table CAL125.
@@ -2303,7 +2309,8 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     bloquants.extend(poly['bloquants'])
     regle = _regle_chaine_publiee(
         conception, materiel_resolu.get('optimiseur'),
-        materiel_resolu['designations'].get('optimiseur', ''))
+        materiel_resolu['designations'].get('optimiseur', ''),
+        (materiel_resolu.get('skus') or {}).get('onduleur'))
     alertes = list(_alertes_nommees(conception))
     alertes.extend(obsoletes)
     alertes.extend(poly['alertes'])
@@ -2858,13 +2865,14 @@ def rejouer_apres_layout(calepinage, *, user=None):
     return evaluation
 
 
-def _regle_chaine_publiee(conception, optimiseur_specs, designation):
+def _regle_chaine_publiee(conception, optimiseur_specs, designation,
+                          onduleur_sku=None):
     """La règle de chaîne appliquée — fiche module lue sur la conception."""
     module = getattr(conception.entree, 'module', None)
     specs = ({'voc_v': module.voc_v, 'isc_a': module.isc_a,
               'pmax_wc': module.pmax_wc} if module is not None else {})
     return _regle_de_chaine(specs, None, optimiseur_specs,
-                            designation=designation)
+                            designation=designation, onduleur_sku=onduleur_sku)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3605,7 +3613,7 @@ REFERENCE_SOLAREDGE_DESIGNER = (
 
 
 def _regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
-                     designation=''):
+                     designation='', onduleur_sku=None):
     """Quelle règle de chaîne s'applique ICI, et QUELLE fiche l'autorise.
 
     Rend un dict ``{regle, libelle, source, verdicts_entree,
@@ -3692,6 +3700,10 @@ def _regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                                           CLE_OPT_MODULES_MAX))
     fermee = (v_out is not None and v_out > 0
               and modules_max is not None and modules_max >= 1)
+    from .compatibilite_optimiseur import verdict_compatibilite  # ACAL662
+    ligne, borne_compat = verdict_compatibilite(optimiseur_specs, nom,
+                                                onduleur_sku)
+    verdicts.append({**ligne, **_bloc_temperature(None)})
     return {
         'regle': REGLE_CHAINE_OPTIMISEUR,
         'libelle': "tension de chaîne RÉGULÉE par l'optimiseur : la borne Voc "
@@ -3700,12 +3712,12 @@ def _regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                    "par module",
         'source': "fiche « %s » (type optimiseur)" % nom,
         'verdicts_entree': verdicts,
-        'bornes_non_verifiables': [] if fermee else [
+        'bornes_non_verifiables': ([] if fermee else [
             "longueur de chaîne admissible du système à optimiseurs : la "
             "fiche ne publie ni tension de sortie régulée ni nombre maximal "
             "de modules par chaîne — la longueur retenue reste celle du repli "
             "PRUDENT (fenêtre module/onduleur), aucune borne n'est supposée à "
-            "sa place"],
+            "sa place"]) + ([borne_compat] if borne_compat else []),
         'longueur_max_modules': int(modules_max) if fermee else None,
         'longueur_source': (
             "fiche « %s » : %s modules maximum par chaîne (« %s »), sortie "
@@ -3743,7 +3755,8 @@ VERDICTS_DE_CHAINE = (
 
 
 def _verdicts_electriques(conception, optimiseur_specs=None,
-                          optimiseur_designation='', *, reglages=None):
+                          optimiseur_designation='', *, reglages=None,
+                          onduleur_sku=None):
     """Les verdicts du contrat CAL244, dérivés des chiffres de FICHE.
 
     Les cinq codes sont ceux du contrat (``voc_cold_under_vmax``,
@@ -3794,7 +3807,8 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
     regle = _regle_de_chaine(
         {'voc_v': module.voc_v, 'isc_a': module.isc_a,
          'pmax_wc': module.pmax_wc},
-        None, optimiseur_specs, designation=optimiseur_designation)
+        None, optimiseur_specs, designation=optimiseur_designation,
+        onduleur_sku=onduleur_sku)
     if regle['regle'] == REGLE_CHAINE_OPTIMISEUR:
         verdict_voc = {
             'code': 'voc_cold_under_vmax',

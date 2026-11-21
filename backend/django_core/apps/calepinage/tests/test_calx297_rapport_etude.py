@@ -71,12 +71,20 @@ MOTS_DE_MONTANT = re.compile(
     re.IGNORECASE)
 
 
+#: ACAL834 — un dimensionnement de pompage enregistré (clé ``exemple_enregistre``
+#: de ``calepinage_pompage.json``, posée par ACAL831).
+POMPAGE_STOCKE = {'pompage_dernier': json.loads(
+    (RACINE_APP / 'contract_samples' / 'calepinage_pompage.json')
+    .read_text(encoding='utf-8'))['exemple_enregistre']}
+
+
 def resultat(cle='exemple'):
     return copy.deepcopy(ECHANTILLON[cle])
 
 
 def rapport(**options):
     options.setdefault('resultat', resultat())
+    options.setdefault('resultat_stocke', POMPAGE_STOCKE)  # ACAL834
     options.setdefault('site', SITE)
     options.setdefault('identite', IDENTITE)
     options.setdefault('styles', STYLES)
@@ -215,6 +223,45 @@ class ConsommationEtSectionsOmisesTest(unittest.TestCase):
         res = resultat()
         res['consommation']['total_kwh'] = 9600.123
         self.assertIn('9600,123', self.page(res))
+
+
+class PompageTest(unittest.TestCase):
+    """ACAL834 — le pompage enregistré, imprimé tel que servi."""
+
+    def page(self, stocke):
+        return html_du_rapport(NU, resultat=resultat(), resultat_stocke=stocke,
+                               site=SITE, identite=IDENTITE, styles=STYLES,
+                               paginer=False)
+
+    def test_pompage_enregistre_imprime_tel_que_servi(self):
+        page = self.page(copy.deepcopy(POMPAGE_STOCKE))
+        self.assertIn('data-section="pompage"', page)
+        for attendu in ('62,4', 'calculee', '49,6', '4,8', '8,2', '4,0',
+                        'Variateur VEICHI', '1441,3', '1330,1', 'pvgis_live',
+                        '103,3', '95,3', '1,3', '2026-11-21T10:15:00+00:00'):
+            self.assertIn(attendu, page)
+        self.assertNotIn('1607,2', page)  # février plat : PVGIS prime
+
+    def test_volumes_nuls_aucun_m3_imprime(self):
+        stocke = copy.deepcopy(POMPAGE_STOCKE)
+        stocke['pompage_dernier']['volumes'] = None
+        page = self.page(stocke)
+        self.assertIn('Volumes mensuels : non calculés', page)
+        self.assertNotIn('1441,3', page)
+
+    def test_sans_enregistrement_la_section_est_absente(self):
+        for stocke in ({}, {'pompage_dernier': {}}, None):
+            with self.subTest(stocke=stocke):
+                codes = [s['code'] for s in rapport(
+                    resultat_stocke=stocke)['sections']]
+                self.assertNotIn('pompage', codes)
+                self.assertNotIn('data-section="pompage"',
+                                 self.page(stocke))
+
+    def test_un_volume_arrondi_est_detecte(self):
+        stocke = copy.deepcopy(POMPAGE_STOCKE)
+        stocke['pompage_dernier']['volumes']['m3_mois_pvgis'][0] = 1441.0
+        self.assertNotIn('1441,3', self.page(stocke))
 
 
 class HorsReseauTest(unittest.TestCase):

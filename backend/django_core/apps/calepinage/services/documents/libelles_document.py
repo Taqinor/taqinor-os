@@ -71,6 +71,7 @@ LIBELLES = {
     'hors_reseau': {'fr': 'Hors réseau', 'en': 'Off-grid'},
     'autoconsommation': {'fr': 'Autoconsommation et batterie',
                          'en': 'Self-consumption and battery'},
+    'pompage': {'fr': 'Pompage', 'en': 'Pumping'},
     'ombrage': {'fr': 'Ombrage', 'en': 'Shading'},
     'electrique': {'fr': 'Électrique', 'en': 'Electrical'},
     'nomenclature': {'fr': 'Nomenclature', 'en': 'Bill of materials'},

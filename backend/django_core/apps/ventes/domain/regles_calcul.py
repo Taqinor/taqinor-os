@@ -113,6 +113,13 @@ REGLES_CYCLES_BATTERIE_1911 = 13
 #: ``regles_sensibilites_historique``. La migration 0159 ne passe que les
 #: brouillons jamais envoyés de 13 à 14 : un devis envoyé garde son tableau.
 REGLES_SENSIBILITES_1911 = 14
+#: Niveau 15 (D-ACAL-36 + D-ACAL-39, fondateur 21/11/2026, DÉCLARÉ, PAS
+#: courant) : la production imprimée vient de la pose réelle du calepinage
+#: enregistré (plus du standard de la ville) et un toit en pente à panneaux
+#: affleurants ne vend que le kit de fixation. Un seul niveau pour toute la
+#: vague ACAL ; rendu courant, avec sa migration des seuls brouillons jamais
+#: envoyés, par ACAL1001 après le dry-run des écarts (ACAL1000).
+REGLES_POSE_REELLE_2111 = 15
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
 

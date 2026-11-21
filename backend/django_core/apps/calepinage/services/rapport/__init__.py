@@ -76,7 +76,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     'CODE_DOCUMENT', 'CHEMIN_CONTRAT', 'MODULES_DE_SECTION', 'RapportRefuse',
-    'SECTIONS_OMISES_SANS_DONNEES',
+    'SECTIONS_OMISES_SANS_DONNEES', 'SOURCE_STOCKEE',
     'sections_declarees', 'valeur_au_chemin', 'entrees_manquantes',
     'verifier_etancheite', 'resultat_du_rapport', 'redacteur_de_section',
     'feuille_de_section',
@@ -97,6 +97,7 @@ MODULES_DE_SECTION = {
     'pertes': 'pertes',
     'production': 'production',
     'autoconsommation': 'autoconsommation',
+    'pompage': 'pompage',
     'hors_reseau': 'hors_reseau',
     'consommation': 'consommation',
     'ombrage': 'ombrage',
@@ -111,7 +112,13 @@ MODULES_DE_SECTION = {
 #: ni imprimées, ni listées « non calculé » à l'annexe (« pas de donnée » n'est
 #: pas « pas calculé » : une installation raccordée n'a pas de bloc hors
 #: réseau). Les autres sections, elles, disent leur motif.
-SECTIONS_OMISES_SANS_DONNEES = frozenset({'consommation', 'hors_reseau'})
+SECTIONS_OMISES_SANS_DONNEES = frozenset({'consommation', 'hors_reseau',
+                                          'pompage'})
+
+#: ACAL834 — les sections dont la donnée vit sur le résultat STOCKÉ (pas sur
+#: le résultat servi) : ``code -> clé du stocké``. Disponible si la clé est
+#: présente et non vide ; absente, la section est omise.
+SOURCE_STOCKEE = {'pompage': 'pompage_dernier'}
 
 #: Motif servi quand le calepinage n'a jamais été calculé.
 SANS_RESULTAT = ("Aucun résultat de moteur enregistré pour ce calepinage : le "
@@ -415,6 +422,9 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
         if section['code'] not in retenus:
             continue
         manque = entrees_manquantes(resultat, section)
+        cle_stockee = SOURCE_STOCKEE.get(section['code'])
+        if cle_stockee and not (resultat_stocke or {}).get(cle_stockee):
+            manque = manque + [cle_stockee]
         if manque and section['code'] in SECTIONS_OMISES_SANS_DONNEES:
             continue  # ACAL832 — omise : ni imprimée, ni « non calculé »
         lignes.append(dict(

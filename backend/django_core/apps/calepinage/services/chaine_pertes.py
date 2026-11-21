@@ -361,11 +361,10 @@ CLE_REGLAGE_FENETRE_ANNEES = 'parametres.simulation.fenetre_annees'
 #: troncature est DITE.
 PLAFOND_FENETRE_ANNEES = 10
 
-#: CALX59 — LE MOTIF, mot pour mot, quand le fuseau du site n'est pas saisi
-#: (D-CALX 15). La simulation TOURNE quand même : c'est la production qui est
-#: publiée, pas le croisement horaire.
-MOTIF_FUSEAU_ABSENT = (
-    "fuseau du site non renseigné : aucun croisement horaire n'est possible")
+#: CALX59/192 — les motifs horaires (ACAL711 : sortis vers motifs_horaires).
+from .motifs_horaires import (  # noqa: E402
+    MOTIF_BASE_HORAIRE_INCONNUE, MOTIF_FUSEAU_ABSENT,
+    MOTIF_RESOLUTION_DIVERGENTE)
 
 #: Les blocs du résultat qui CROISENT la série météo avec une courbe de
 #: charge saisie en heure locale. Sans fuseau, ils sont OMIS en nommant le
@@ -378,13 +377,6 @@ BLOCS_HORAIRES_OMIS = ('autoconsommation', 'batterie', 'hors_reseau')
 #: s'il peut construire les blocs ci-dessus, et une étape horaire de charge la
 #: lit pour s'omettre avec le même motif — une seule formulation partout.
 CLE_CROISEMENT_HORAIRE = 'croisement_horaire'
-
-#: Le motif publié quand la série ne DIT PAS dans quelle base elle est
-#: indexée : la ré-indexer reviendrait à deviner de quoi on part.
-MOTIF_BASE_HORAIRE_INCONNUE = (
-    "la base horaire de la série météo n'est pas déclarée "
-    '(« meteo.heure.base ») : sans elle, ré-indexer reviendrait à deviner '
-    'de quelle heure on part')
 
 #: Tolérance de COMPARAISON de flottants — un epsilon d'arithmétique, pas un
 #: seuil métier : aucun chiffre publié n'en dépend.
@@ -785,6 +777,10 @@ def _etape_sommee(nom, lignes):
     perte_kwh, perte_pct = _perte(nom, modele, avant, apres)
     modele.update(kwh_avant=avant, kwh_apres=apres, perte_kwh=perte_kwh,
                   perte_pct=perte_pct, motif_omission='')
+    if nom == 'mismatch_ombrage' and len(appliquees) > 1:
+        # ACAL711 — les chaînes de TOUS les pans, jamais le seul premier.
+        from .etapes.mismatch_ombrage import fusionner_entrees
+        modele['entree'] = fusionner_entrees(appliquees)
     return modele
 
 
@@ -1072,12 +1068,6 @@ CLE_METEO_AU_PAS = 'meteo_au_pas'
 #: ``services/pvgis_serie.py`` lit une ligne par heure et ``production.py``
 #: compte « 1 point = 1 heure ⇒ W = Wh ».
 PAS_METEO_ATTENDU_MINUTES = 60
-
-MOTIF_RESOLUTION_DIVERGENTE = (
-    'Le réglage « parametres.simulation.resolution_minutes » annonce {reglage} '
-    'min, mais la série météo servie est au pas de {mesure} min : c\'est le '
-    'pas MESURÉ qui fait foi, et aucune interpolation n\'est faite pour '
-    'atteindre le pas réglé.')
 
 
 def _publier_la_resolution(resultat, serie, contexte):

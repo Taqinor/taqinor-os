@@ -440,6 +440,9 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_explications.json':  # ACAL870
         'registre des explications (ACAL871) : ses valeurs sont lues dans le '
         'résultat servi du calepinage en base ; route livrée par ACAL871',
+    'calepinage_productible_pose.json':  # ACAL996
+        'rendement de la pose réelle lu sur le résultat servi du calepinage '
+        'en base par selectors_devis.py (ACAL997) pour le devis (ACAL999)',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -704,6 +707,30 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertTrue(sans['motif'])
         for charge in (lu, sans):
             self.assertNotIn('DATE', charge['attribution'])
+
+    def test_forme_du_productible_pose(self):
+        # ACAL996 — un résultat incomplet n'est jamais servi comme production.
+        donnees = _charger('calepinage_productible_pose.json')
+        cles = sorted([
+            'perime', 'motif', 'source', 'calcule_le', 'kwc_simule',
+            'kwc_document', 'p50_kwh', 'kwh_kwc_annuel', 'kwh_kwc_mensuel',
+            'complete', 'etapes_omises', 'pertes_et_ombrage_inclus',
+            'couvre_toutes_les_surfaces', 'pans'])
+        for nom in ('exemple', 'exemple_perime', 'exemple_incomplet'):
+            charge = donnees[nom]
+            self.assertEqual(sorted(charge), cles, nom)
+            self.assertEqual(charge['pertes_et_ombrage_inclus'],
+                             charge['complete'], nom)
+            if charge['kwh_kwc_annuel'] is not None:
+                self.assertEqual(len(charge['kwh_kwc_mensuel']), 12, nom)
+                self.assertAlmostEqual(sum(charge['kwh_kwc_mensuel']),
+                                       charge['kwh_kwc_annuel'], delta=0.5)
+            for pan in charge['pans']:
+                self.assertEqual(sorted(pan), [
+                    'azimut_deg', 'inclinaison_deg', 'kwc', 'pan',
+                    'specific_yield_kwh_kwc'], nom)
+        self.assertTrue(donnees['exemple_incomplet']['etapes_omises'])
+        self.assertIn('180 = Sud', donnees['pourquoi'])
 
 
 class CheminDeclareTest(unittest.TestCase):
