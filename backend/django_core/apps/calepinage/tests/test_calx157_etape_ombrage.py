@@ -359,3 +359,60 @@ class OmbrageDiffusTest(SimpleTestCase):
         etape = next(e for e in cascade['etapes']
                      if e['etape'] == 'ombrage_diffus')
         self.assertEqual(etape['motif_omission'], '')
+
+
+class TableOmbrageDirectTest(SimpleTestCase):
+    """ACAL467 — la table par direction du soleil coupe le direct, rien d'autre."""
+
+    CONTRAT = (pathlib.Path(__file__).resolve().parent.parent
+               / 'contract_samples' / 'calepinage_table_ombrage.json')
+    SERIE = {'pas_minutes': 60, 'points': [
+        {'annee': 2020, 'mois': 6, 'jour': 21, 'heure': 12,
+         'gb_i_w_m2': 100.0, 'gd_i_w_m2': 30.0, 'gr_i_w_m2': 5.0,
+         'gi_w_m2': 135.0}]}
+
+    def contexte(self, facteur=0.0, matrice_12x24=None, acces=None):
+        # Les noms de la table sont LUS au contrat partagé (ACAL389).
+        table = json.loads(self.CONTRAT.read_text(encoding='utf-8'))[
+            'exemple']['zones'][0]['geometry']['shadeTable']
+        table['facteurs'] = [[facteur] * len(table['azimutsDeg'])
+                             for _h in table['hauteursDeg']]
+        ombrage = {'layout': {'zones': [
+            {'id': 'PAN-A', 'geometry': {'shadeTable': table}}]}}
+        if matrice_12x24 is not None:
+            ombrage['shading12x24'] = matrice_12x24
+        if acces:
+            ombrage['solarAccess'] = acces
+        return {'plan': 'PAN-A', 'ombrage': ombrage,
+                'site': {'lat': 33.5, 'lon': -7.6},
+                'meteo': {'heure': {'base': 'utc', 'decalage_minutes': 0}}}
+
+    def test_une_direction_coupee_retire_tout_le_direct(self):
+        rendue, etape = ombrage_proche.appliquer(self.SERIE, self.contexte(0.0))
+        point = rendue['points'][0]
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertEqual(etape['entree']['source_ombrage'], 'table')
+        self.assertEqual(point['gb_i_w_m2'], 0.0)
+        self.assertEqual(point['gd_i_w_m2'], 30.0)
+        self.assertEqual(point['gr_i_w_m2'], 5.0)
+        self.assertAlmostEqual(point['gi_w_m2'], 35.0)
+
+    def test_table_absente_la_matrice_s_applique(self):
+        contexte = self.contexte(0.0, matrice_12x24=matrice(0.25))
+        del contexte['ombrage']['layout']
+        rendue, etape = ombrage_proche.appliquer(self.SERIE, contexte)
+        self.assertNotIn('source_ombrage', etape['entree'])
+        self.assertAlmostEqual(rendue['points'][0]['gb_i_w_m2'], 25.0)
+        self.assertAlmostEqual(rendue['points'][0]['gi_w_m2'], 60.0)
+
+    def test_site_sans_coordonnees_la_matrice_s_applique(self):
+        contexte = self.contexte(0.0, matrice_12x24=matrice(0.25))
+        contexte['site'] = {}
+        rendue, _etape = ombrage_proche.appliquer(self.SERIE, contexte)
+        self.assertAlmostEqual(rendue['points'][0]['gb_i_w_m2'], 25.0)
+
+    def test_l_acces_par_module_ecarte_la_table(self):
+        _rendue, etape = ombrage_proche.appliquer(
+            self.SERIE, self.contexte(0.0, acces={'PAN-A': {'m1': 0.9}}))
+        self.assertEqual(etape['motif_omission'],
+                         ombrage_proche.MOTIF_ACCES_MODULE)
