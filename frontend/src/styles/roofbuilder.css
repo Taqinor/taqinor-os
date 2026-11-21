@@ -413,8 +413,12 @@
     margin-top: 1.5rem;
   }
   .rp9-host .rp9-studio-scene { position: sticky; top: 0; min-height: 0; }
-  .rp9-host .rp9-studio-scene > .cine-card { display: flex; flex-direction: column; height: 100%; margin-top: 0; }
-  .rp9-host .rp9-studio-scene .rp9-map-wrap { flex: 1 1 auto; min-height: 0; }
+  /* ACAL490 (rejeu runner, 1440 × 900) : une fois un pan tracé, les réglages (#rp9-config) remplissent la carte
+     de la scène. La carte ne rétrécit plus sous 360 px (elle débordait alors SUR la rangée d'outils — Effacer,
+     + Ajouter une zone, Toit en pente… : canvas au-dessus, aucun clic possible) et la scène défile seule au lieu
+     de couper ses réglages. Sans réglages, la carte remplit toujours toute la hauteur. */
+  .rp9-host .rp9-studio-scene > .cine-card { display: flex; flex-direction: column; height: 100%; margin-top: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .rp9-host .rp9-studio-scene .rp9-map-wrap { flex: 1 0 auto; min-height: 360px; }
   .rp9-host .rp9-studio-scene #rp9-map { height: 100%; min-height: 360px; }
   .rp9-host .rp9-studio-inspecteur { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .rp9-host .rp9-studio-inspecteur > :first-child { margin-top: 0; }
