@@ -39,7 +39,7 @@ DROITS_SENSIBLES = ("prix_achat_voir", "marge_voir", "encaisser", "client_pii_vo
 #: Rôles portail : servis par un autre écran, jamais par l'assistant interne.
 ROLES_EXCLUS_PREFIXE = ("Portail",)
 #: Écrans hors application (publics, techniques).
-CHEMINS_EXCLUS = re.compile(r"^/(landing|login|register|ui|mot-de-passe|reset|public|p/|proposition|$)")
+CHEMINS_EXCLUS = re.compile(r"^/(landing|login|register|ui|reset|public|p/|proposition|$)")
 
 _NAV_SECTION = re.compile(r"nav:\s*\{\s*label:\s*'([^']+)'")
 _NAV_ITEM = re.compile(r"\{\s*to:\s*'([^']+)',\s*label:\s*'([^']+)'[^}]*?(?:roles:\s*\[([^\]]*)\])?[^}]*\}")
@@ -67,6 +67,18 @@ def menus() -> list[tuple[str, list[tuple[str, str, str]]]]:
         if items:
             sections.append((section.group(1), items))
     return sections
+
+
+_ONGLET = re.compile(r"\{\s*key:\s*'([a-z_]+)',\s*label:\s*'([^']+)'")
+
+
+def onglets_parametres() -> list[tuple[str, str]]:
+    """Onglets de `/parametres` (« où je change X ? ») : `peConstants.js` et `ParametresEntreprise.jsx`."""
+    vus = {}
+    for nom in ("peConstants.js", "ParametresEntreprise.jsx"):
+        for cle, libelle in _ONGLET.findall(_lire(FRONT / "pages/parametres" / nom)):
+            vus.setdefault(cle, libelle)
+    return sorted(vus.items(), key=lambda kv: kv[1].lower())
 
 
 def titres() -> dict[str, str]:
@@ -164,6 +176,8 @@ def carte() -> str:
     lignes += ["", "## 2. Tous les écrans de l'application (chemin — titre)"]
     titres_ = titres()
     lignes.append(" ; ".join(f"`{c}`" + (f" {titres_[c]}" if c in titres_ else "") for c in chemins()))
+    lignes += ["", "## 2 bis. Onglets de `/parametres` (« où je change … ? » ; chaque onglet suit les droits du rôle)"]
+    lignes.append(" ; ".join(f"{libelle} (`/parametres?onglet={cle}`)" for cle, libelle in onglets_parametres()))
     lignes += ["", "## 3. Actions de l'assistant par domaine (clé — libellé — geste — droit requis)"]
     par_domaine: dict[str, list[dict]] = {}
     for a in actions():

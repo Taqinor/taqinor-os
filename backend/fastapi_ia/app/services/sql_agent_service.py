@@ -1146,7 +1146,13 @@ def _verifier_module_et_portee(sql: str, permissions) -> None:
     if (any(c.startswith("records_scope_") for c in codes)
             and noms & _TABLES_A_PROPRIETAIRE):
         raise RefusDeDroit(
-            "Portee restreinte : lecture refusee (utilisez l'ecran).")
+            "Portee restreinte : lecture refusee (utilisez l'ecran). "
+            # L4 (21/11/2026) — un rôle « ses propres dossiers » lit ces données
+            # par les outils, qui appliquent sa portée : jamais un « accès refusé » sec.
+            "Ces donnees se lisent par les outils, qui appliquent sa portee : "
+            "ventes.devis.chercher (devis), crm.lead.chercher (leads), "
+            "ventes.facture.chercher / ventes.impayes.lister (factures), "
+            "sav.tickets.chercher (tickets).")
 
 
 def _validate_and_secure(sql: str, company_id: int,
