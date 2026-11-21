@@ -156,6 +156,10 @@ from . import balayage as _balayage_action  # noqa: F401 — import d'enregistre
 # ACAL403 — même patron : rattache ``profil-depart`` (action de LISTE : GET le
 # profil sourcé, POST/DELETE l'appliquer/retirer, ``services/profil_depart.py``).
 from . import profil_depart as _profil_depart_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL485 — même patron : rattache ``detection-toit`` (GET la disponibilité,
+# POST une PROPOSITION de toit par IA à confirmer, ``services/detection_toit.py``).
+# N'écrit RIEN au calepinage ; l'image n'est jamais stockée.
+from . import detection_toit as _detection_toit_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -199,6 +203,7 @@ MODULES_RATTACHES = (
     'parcours_guide',  # ACAL392
     'balayage',  # ACAL468
     'profil_depart',  # ACAL403
+    'detection_toit',  # ACAL485
 )
 
 __all__ = ['MODULES_RATTACHES']

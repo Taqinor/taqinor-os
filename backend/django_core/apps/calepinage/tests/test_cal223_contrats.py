@@ -474,8 +474,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # SORTI.
     # ACAL468 a livré ``POST calepinages/<pk>/balayage/``
     # (``views/balayage.py``) : ``calepinage_balayage.json`` en est SORTI.
-    # ACAL485 livrera ``GET``/``POST calepinages/<pk>/detection-toit/`` : retirer.
-    'calepinage_detection_toit.json': 'ACAL485',
+    # ACAL485 a livré ``GET``/``POST calepinages/<pk>/detection-toit/``
+    # (``views/detection_toit.py``) : ``calepinage_detection_toit.json`` en est SORTI.
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne

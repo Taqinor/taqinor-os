@@ -1,0 +1,17 @@
+{
+  "id": "msg_acal485_enregistre",
+  "type": "message",
+  "role": "assistant",
+  "model": "modele-de-test",
+  "stop_reason": "end_turn",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"pans\": [{\"sommets\": [[0.1, 0.2], [0.6, 0.2], [0.6, 0.8], [0.1, 0.8]], \"confiance\": 0.8}, {\"sommets\": [[0.6, 0.2], [0.9, 0.2], [0.9, 0.8], [0.6, 0.8]]}]}"
+    }
+  ],
+  "usage": {
+    "input_tokens": 1520,
+    "output_tokens": 96
+  }
+}

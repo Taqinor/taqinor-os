@@ -138,6 +138,8 @@ ROUTES_HORS_VERROU = {
     ('POST', 'consommation/proposer'): 'proposition de consommation '
                                        '(lecture calculée)',
     ('POST', 'pompage'): 'proposition de pompage (lecture calculée)',
+    ('POST', 'detection-toit'): 'proposition de toit par IA à confirmer '
+                                "(rien d'écrit, ACAL485)",
 }
 
 
