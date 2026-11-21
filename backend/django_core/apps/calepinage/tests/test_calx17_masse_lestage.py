@@ -235,3 +235,70 @@ class PorteMasseLestageTest(SimpleTestCase):
                       "Le refus doit NOMMER le champ fautif : un « non "
                       "enregistré » générique n'est pas actionnable.")
         self.assertIn('panneau-550', reponse.data['module'])
+
+
+# ── ACAL564 — centre, rive, coin : le lest ADDITIONNEL par module ──────────
+
+def _zones_saisies(**valeurs):
+    """Les quatre paramètres ``zones_de_pose`` saisis avec leur source."""
+    defaut = {'largeur_bande_rive_m': 1.0, 'largeur_coin_m': 0.8,
+              'lest_rive_kg_par_module': 12.5,
+              'lest_coin_kg_par_module': 25.0}
+    defaut.update(valeurs)
+    return {cle: {'valeur': v, 'source': 'notice K2 (essai)'}
+            for cle, v in defaut.items() if v is not None}
+
+
+def _pan_4x6():
+    return {'repere': 'PAN-1',
+            'points': [(0.0, 0.0), (4.0, 0.0), (4.0, 6.0), (0.0, 6.0)],
+            'modules': [(0.5 + i, 0.5 + j)
+                        for i in range(4) for j in range(6)]}
+
+
+class RepartitionDuLestageTest(SimpleTestCase):
+
+    def test_4x6_donne_4_coins_12_rives_8_centres(self):
+        from apps.calepinage.services.lestage_zones import repartir_modules
+
+        sortie = repartir_modules([_pan_4x6()], _zones_saisies())
+        self.assertTrue(sortie['disponible'])
+        self.assertEqual(sortie['manquants'], [])
+        pan = sortie['pans'][0]
+        self.assertEqual((pan['coins'], pan['rives'], pan['centres']),
+                         (4, 12, 8))
+        self.assertEqual(pan['lest_kg'], 4 * 25.0 + 12 * 12.5)
+        self.assertEqual(sortie['total_lest_kg'], pan['lest_kg'])
+        par_centre = {tuple(m['centre']): m for m in pan['modules']}
+        self.assertEqual(par_centre[(0.5, 0.5)]['zone'], 'coin')
+        self.assertEqual(par_centre[(1.5, 0.5)]['zone'], 'rive')
+        self.assertEqual(par_centre[(1.5, 1.5)],
+                         {'centre': [1.5, 1.5], 'zone': 'centre',
+                          'lest_kg': 0.0})
+
+    def test_la_bande_est_inclusive(self):
+        from apps.calepinage.services.lestage_zones import repartir_modules
+
+        # (1.5, 1.5) est à 1,5 m de la rive : une bande de 1,5 m l'y range.
+        pan = repartir_modules([_pan_4x6()], _zones_saisies(
+            largeur_bande_rive_m=1.5))['pans'][0]
+        self.assertEqual(pan['centres'], 0)
+
+    def test_un_parametre_manquant_rend_indisponible_en_le_nommant(self):
+        from apps.calepinage.services.lestage_zones import repartir_modules
+
+        sortie = repartir_modules([_pan_4x6()],
+                                  _zones_saisies(largeur_coin_m=None))
+        self.assertFalse(sortie['disponible'])
+        self.assertEqual([m['cle'] for m in sortie['manquants']],
+                         ['largeur_coin_m'])
+        self.assertEqual(sortie['pans'], [])
+        self.assertIsNone(sortie['total_lest_kg'])
+
+    def test_aucun_module_rend_vide(self):
+        from apps.calepinage.services.lestage_zones import repartir_modules
+
+        pan = dict(_pan_4x6(), modules=[])
+        sortie = repartir_modules([pan], _zones_saisies())
+        self.assertEqual(sortie['pans'], [])
+        self.assertEqual(sortie['total_lest_kg'], 0.0)

@@ -185,6 +185,69 @@ class ElectriqueActionsMixin:
                             status=(status.HTTP_404_NOT_FOUND if introuvable
                                     else status.HTTP_400_BAD_REQUEST))
 
+    @extend_schema(responses=forme_du_contrat(
+        'CalepinageConfigurationsOnduleur',
+        'calepinage_configurations_onduleur.json'))
+    @action(detail=True, methods=['get'], url_path='configurations-onduleur',
+            permission_classes=[PeutVoirCalepinage])
+    def configurations_onduleur(self, request, pk=None):
+        """ACAL616 — l'onduleur retenu et ses deux voisins, évalués à chaud.
+
+        Lecture PURE, catalogue borné société, aucun prix (ACAL614)."""
+        from ..services.configurations_onduleur import configurations_onduleur
+        return Response(configurations_onduleur(self.get_object()))
+
+    @extend_schema(request=inline_serializer(
+        'CalepinageControleChaineCorps', {
+            'module_produit': drf_serializers.IntegerField(),
+            'onduleur_produit': drf_serializers.IntegerField(),
+            'nombre_modules': drf_serializers.IntegerField(min_value=1),
+            'temperature_min_c': drf_serializers.FloatField(),
+            'temperature_max_c': drf_serializers.FloatField(),
+        }), responses=forme_du_contrat(
+            'CalepinageControleChaine', 'calepinage_controle_chaine.json'))
+    @action(detail=False, methods=['post'], url_path='controle-chaine',
+            permission_classes=[PeutVoirCalepinage])
+    def controle_chaine(self, request):
+        """ACAL627 — le verdict d'UNE chaîne sans dessin ; rien n'est écrit.
+
+        Fiches lues dans le stock de la société de l'utilisateur ; un produit
+        d'une autre société répond comme un produit absent (404 nommé)."""
+        from ..services.controle_chaine import ControleInvalide, controle_chaine
+        try:
+            return Response(controle_chaine(
+                getattr(request.user, 'company', None), request.data))
+        except ControleInvalide as refus:
+            return Response({refus.champ: str(refus)}, status=(
+                status.HTTP_404_NOT_FOUND if refus.introuvable
+                else status.HTTP_400_BAD_REQUEST))
+
+    @extend_schema(request=inline_serializer(
+        'CalepinageImportAffectationCorps', {
+            'csv': drf_serializers.CharField()}),
+        responses=forme_du_contrat('CalepinageImportAffectation',
+                                   'calepinage_import_affectation.json'))
+    @action(detail=True, methods=['post'], url_path='importer-affectation',
+            permission_classes=[PeutVoirCalepinage])
+    def importer_affectation(self, request, pk=None):
+        """ACAL630 — un plan de chaînes CSV VERDICTÉ, jamais enregistré.
+
+        Chaque refus nomme sa ligne de fichier ; la validation reste
+        l'enregistrement de l'entrée électrique (garde en LECTURE)."""
+        from ..services.import_affectation import importer_affectation
+        calepinage = self.get_object()
+        texte = request.data.get('csv') if isinstance(
+            request.data, dict) else None
+        if not isinstance(texte, str):
+            return Response({'csv': "« csv » attend le texte du fichier "
+                                    "(séparateur « ; »)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            return Response(importer_affectation(calepinage, texte))
+        except _REFUS_DE_LECTURE as refus:
+            return Response({refus.champ or 'temperatures': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
     @extend_schema(request=inline_serializer(
         'CalepinageEvaluerElectriqueRequete', {
             'layout': drf_serializers.DictField(required=False),
@@ -193,7 +256,7 @@ class ElectriqueActionsMixin:
         responses=forme_reponse(
             'CalepinageEvaluationElectrique', 'verdict', 'publiable',
             'bloquants', 'alertes', 'manquantes', 'regle_mppt',
-            'regle_chaine', 'temperatures', 'publication'))
+            'regle_chaine', 'temperatures', 'chaines', 'onduleurs_suggeres', 'publication'))
     @action(detail=True, methods=['post'], url_path='evaluer-electrique',
             permission_classes=[PeutVoirCalepinage])
     def evaluer_electrique(self, request, pk=None):

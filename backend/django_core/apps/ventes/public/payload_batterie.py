@@ -500,6 +500,7 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
     try:
         from ..horaire.batterie_lignes import banque_batterie_du_devis
         from ..horaire.ombrage import perte_ombrage_du_devis
+        from ..horaire.productible_pose import base_de_production
         from ..horaire.public import couverture_batterie_publique
         # QJR167 — cette surface ne rend le curseur « N batteries » que quand
         # ``avec_ok`` (garde ci-dessus) : l'option effective est donc TOUJOURS
@@ -527,7 +528,8 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
             # QJR406 — les mêmes douze jours types que l'étude persistée :
             # la date vient du DEVIS, jamais de l'horloge du rendu.
             jour_reference=_jour_reference_publique(devis),
-            perte_ombrage_pct=perte_ombrage_du_devis(devis))
+            perte_ombrage_pct=perte_ombrage_du_devis(devis),
+            base_production=base_de_production(devis))  # ACAL999
     except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques (D-ENF22-BLE001)
         logger.warning('couverture_batterie indisponible', exc_info=True)
         return None

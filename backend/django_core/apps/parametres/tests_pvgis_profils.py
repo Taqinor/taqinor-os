@@ -400,3 +400,30 @@ class CacheTests(SimpleTestCase):
                     saison=saison, lat=33.5, lon=-7.6, ville='Casablanca')
                 self.assertEqual(resolu[1], 'pvgis_ville:casablanca')
         self.assertEqual(urlopen.call_count, 1)
+
+    def test_acal1197_plan_des_panneaux_dans_l_url_et_la_cle(self):
+        """ACAL1197 — 15° face est : ``angle=15&aspect=-90`` et clé au plan ;
+        sans plan (ou plan de référence) : URL et clé d'aujourd'hui.
+        Mutant : ignorer ``aspect_deg`` dans ``_url_pvcalc`` ⇒ rouge."""
+        from core import cache as tenant_cache
+        with mock.patch.object(pp, '_appel_pvgis',
+                               return_value=_payload_pvcalc([100.0] * 12)) as r:
+            pp.productible_mensuel_live(33.5, -7.6, angle_deg=15, aspect_deg=-90)
+        url = r.call_args.args[0]
+        self.assertIn('angle=15&aspect=-90', url)
+        self.assertIn('loss=%s' % pp.PVGIS_LOSS_PCT, url)
+        self.assertIn('mountingplace=%s' % pp.PVGIS_MOUNTING, url)
+        self.assertIsNotNone(tenant_cache.get(None, 'pvgis:emens:33.500:-7.600:15:-90'))
+        with mock.patch.object(pp, '_appel_pvgis',
+                               return_value=_payload_drcalc(11)) as r:
+            pp.profil_horaire_live(33.5, -7.6, 7, angle_deg=15.0, aspect_deg=-90.0)
+        self.assertIn('angle=15&aspect=-90', r.call_args.args[0])
+        self.assertIsNotNone(tenant_cache.get(None, 'pvgis:drprofil:33.500:-7.600:7:15:-90'))
+        # Sans plan / plan de référence : l'URL et la clé d'aujourd'hui.
+        self.assertEqual(pp._url_pvcalc(33.5, -7.6),
+                         pp._url_pvcalc(33.5, -7.6, pp.PVGIS_ANGLE_DEG, pp.PVGIS_ASPECT_DEG))
+        self.assertIn('angle=30&aspect=0', pp._url_pvcalc(33.5, -7.6))
+        with mock.patch.object(pp, '_appel_pvgis',
+                               return_value=_payload_pvcalc([100.0] * 12)):
+            pp.productible_mensuel_live(33.5, -7.6, angle_deg=30, aspect_deg=0)
+        self.assertIsNotNone(tenant_cache.get(None, 'pvgis:emens:33.500:-7.600'))

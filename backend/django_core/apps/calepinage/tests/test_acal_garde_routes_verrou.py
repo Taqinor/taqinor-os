@@ -59,6 +59,8 @@ ROUTES_SOUS_VERROU = {
     ('POST', 'recentrer-sur-lead'): '_sonde_recentrer',
     ('POST', 'garder-repere'): '_sonde_garder_repere',
     ('POST', 'suggestions-pente'): '_sonde_suggestion',
+    # ACAL535 — même écrivain unique que ``suggestions-pente`` (relief déposé).
+    ('POST', 'suggestions-pente-relief'): PAR_ENREGISTRER_LAYOUT,
     ('POST', 'roof-image'): '_sonde_roof_image',
     ('POST', 'variantes'): '_sonde_creer_variante',
     # ACAL594 — crée des variantes depuis la conception courante : même

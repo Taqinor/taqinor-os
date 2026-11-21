@@ -173,6 +173,12 @@ def _examiner(serie, colonne, tension_stc, coefficient, borne_basse,
     par_mois = {}
     tension_min = None
     tension_max = None
+    # ACAL734 — l'énergie des heures sous le démarrage : publiée, JAMAIS
+    # retirée pour cela (la fenêtre MPPT seule commande le retrait).
+    kwh_par_unite = (etapes.FACTEURS_KW.get(colonne, 1.0)
+                     * float(serie.get('pas_minutes')
+                             or etapes.PAS_MINUTES_PVGIS) / 60.0)
+    sous_demarrage_kwh = deja_retiree_kwh = 0.0
 
     for point in serie.get('points') or []:
         valeur = point.get(colonne)
@@ -188,11 +194,12 @@ def _examiner(serie, colonne, tension_stc, coefficient, borne_basse,
                                                               tension)
         tension_max = tension if tension_max is None else max(tension_max,
                                                               tension)
-        if demarrage > 0.0 and tension < demarrage:
-            heures_sous_demarrage += 1
-
         hors = ((borne_basse > 0.0 and tension < borne_basse)
                 or (borne_haute > 0.0 and tension > borne_haute))
+        if demarrage > 0.0 and tension < demarrage:
+            heures_sous_demarrage += 1
+            sous_demarrage_kwh += energie * kwh_par_unite
+            deja_retiree_kwh += energie * kwh_par_unite if hors else 0.0
         if not hors:
             points.append(point)
             continue
@@ -212,6 +219,11 @@ def _examiner(serie, colonne, tension_stc, coefficient, borne_basse,
         'heures_examinees': heures_examinees,
         'heures_hors_plage': heures_hors_plage,
         'heures_sous_demarrage': heures_sous_demarrage,
+        # Sans tension de démarrage en fiche : ``null``, jamais 0.
+        'energie_sous_demarrage_kwh': (round(sous_demarrage_kwh, 3)
+                                       if demarrage > 0.0 else None),
+        'energie_sous_demarrage_deja_retiree_kwh': (
+            round(deja_retiree_kwh, 3) if demarrage > 0.0 else None),
         'mois_le_plus_concerne': mois_concerne,
         'tension_min_v': (round(tension_min, 2)
                           if tension_min is not None else None),

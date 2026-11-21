@@ -166,6 +166,15 @@ from . import variantes_modules as _variantes_modules_action  # noqa: F401 — i
 # ACAL960 — même patron : rattache ``catalogue-materiel`` (GET : produits actifs
 # de la société à cocher comme favoris, sans prix).
 from . import catalogue_materiel as _catalogue_materiel_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL558 — même patron : rattache ``systemes-fixation`` (liste/création) et
+# ``systemes-fixation/<id>`` (lecture/modification/suppression) du catalogue société.
+from . import systemes_fixation as _systemes_fixation_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL730 — même patron : rattache ``soleil-legal`` (GET : heure solaire vraie ↔
+# heure légale d'un jour au site, fuseau SAISI, rien n'est écrit).
+from . import soleil_legal as _soleil_legal_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL535 — même patron : rattache ``suggestions-pente-relief`` (POST : la pente
+# de chaque pan lue sur un relief GeoTIFF déposé, sans porte du pays ni IGN).
+from . import suggestion_pente_relief as _suggestion_pente_relief_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -212,6 +221,9 @@ MODULES_RATTACHES = (
     'detection_toit',  # ACAL485
     'variantes_modules',  # ACAL594
     'catalogue_materiel',  # ACAL960
+    'systemes_fixation',  # ACAL558
+    'soleil_legal',  # ACAL730
+    'suggestion_pente_relief',  # ACAL535
 )
 
 __all__ = ['MODULES_RATTACHES']

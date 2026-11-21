@@ -301,10 +301,16 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         # QJR18 — la valeur vient de ``_prod_net_kwc`` (production rendue ÷
         # puissance rendue), plus d'un second derate appliqué au productible.
         from .pricing import SYSTEM_LOSS_TOTAL as _LOSS
-        hypotheses.append(
-            f"Production estimée : ≈ {_fr_int(_prod_net_kwc)} "
-            f"kWh par kWc et par an, pertes système de "
-            f"{int(round(_LOSS * 100))} % déduites.")
+        if roi.get("productible_source") == "calepinage_enregistre":  # ACAL973
+            hypotheses.append(
+                f"Production estimée : ≈ {_fr_int(_prod_net_kwc)} kWh par kWc "
+                "et par an, calepinage enregistré (pertes et ombrage de la "
+                "pose réelle inclus).")
+        else:
+            hypotheses.append(
+                f"Production estimée : ≈ {_fr_int(_prod_net_kwc)} "
+                f"kWh par kWc et par an, pertes système de "
+                f"{int(round(_LOSS * 100))} % déduites.")
     # Q6 — le productible PVGIS de la ville du client, prêt à imprimer, ou None.
     # Deux conditions STRICTES : la ville doit être dans la table PVGIS (le
     # calcul, lui, retombe silencieusement sur Casablanca — pas l'affichage),

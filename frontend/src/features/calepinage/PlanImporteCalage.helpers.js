@@ -25,3 +25,24 @@ export function echelleDepuisDeuxPoints(a, b, distanceReelleM) {
     source: 'saisie',
   }
 }
+
+const nombreFr = (n) => String(Math.round(Number(n) * 100) / 100).replace('.', ',')
+
+/**
+ * ACAL513 — la phrase du contrôle d'échelle rendu par le serveur (`controle_echelle`,
+ * ACAL512) : la distance A–B selon l'unité DÉCLARÉE du fichier face à la distance tapée.
+ * Rien n'est corrigé ni bloqué ; unité inconnue ⇒ aucun contrôle ; réponse sans la clé ⇒ `null`.
+ */
+export function phraseControleEchelle(controle) {
+  if (!controle || typeof controle !== 'object') return null
+  const selon = Number(controle.distance_selon_unite_m)
+  const rapport = Number(controle.rapport)
+  if (controle.distance_selon_unite_m == null || controle.rapport == null
+    || !Number.isFinite(selon) || !Number.isFinite(rapport)) {
+    return controle.motif || 'Le fichier ne déclare pas son unité : aucun contrôle possible.'
+  }
+  const debut = `Selon l’unité du fichier (${controle.unite}), A–B mesure ${nombreFr(selon)} m`
+  const saisi = `${nombreFr(controle.distance_saisie_m)} m`
+  if (nombreFr(rapport) === '1') return `${debut} — vous avez tapé ${saisi} : les deux concordent.`
+  return `${debut} — vous avez tapé ${saisi} (×${nombreFr(rapport)}).`
+}

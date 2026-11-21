@@ -900,6 +900,13 @@ class FicheTechnique(models.Model):
         null=True, blank=True,
         help_text='Optimiseur — SKU des onduleurs compatibles (liste). '
                   'Vide = non publié.')
+    # ACAL720 — brins protégés chacun par une diode de dérivation ; lu sur la
+    # fiche constructeur, jamais d'un défaut (vide = non publié).
+    sous_chaines_par_module = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text='Module — sous-chaînes par module (brins protégés par une '
+                  'diode de dérivation), lu sur la fiche constructeur. '
+                  'Vide = non publié.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #

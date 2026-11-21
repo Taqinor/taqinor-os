@@ -26,7 +26,8 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
    ========================================================================== */
 
 vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif({
-  calepinages: new Proxy({}, { get: (_c, prop) => (prop === 'parcours' ? (...a) => mocks.parcours(...a) : () => Promise.resolve({ data: {} })) }),
+  calepinages: new Proxy({}, { get: (_c, prop) => (prop === 'parcours' ? (...a) => mocks.parcours(...a)
+    : prop === 'modulesDisponibles' ? (...a) => mocks.modulesDisponibles(...a) : () => Promise.resolve({ data: {} })) }),
 }))
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
@@ -34,7 +35,9 @@ vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } })
    le store redux : aucun rendu de ce fichier n'en monte un (même double que
    `AtelierPanneaux.test.jsx`). Sans lui, le panneau lève et le rail affiche
    son bandeau d'échec au lieu du contenu. */
-const mocks = vi.hoisted(() => ({ hasPermission: vi.fn(() => false), parcours: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  hasPermission: vi.fn(() => false), parcours: vi.fn(), modulesDisponibles: vi.fn(),
+}))
 vi.mock('../../../hooks/useHasPermission', () => ({
   useHasPermission: (code) => mocks.hasPermission(code),
 }))
@@ -43,7 +46,7 @@ import AtelierPanneaux from '../AtelierPanneaux'
 import config from '../module.config.jsx'
 import Rail from './Rail'
 import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
-import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import { ETAPES, ESSENTIELS, ecranGuideDeOnglet } from './parcoursGuide'
 import { ONGLETS, PARAM_ONGLET, ongletParCle, ongletsTries, resoudreOnglet } from './onglets'
 
@@ -265,6 +268,28 @@ describe('ACAL394 — l’interrupteur « Mode expert »', () => {
     expect(screen.getByTestId('cal-mode-expert')).toBeChecked()
     expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
   })
+
+  // ACAL600 — le niveau expert est tenu par l'atelier et descend au rail : cocher
+  // « Mode expert » dans le rail fait apparaître « Comparer d'autres modules ».
+  it('cocher « Mode expert » dans le rail fait apparaître le bouton', async () => {
+    const DISPO = exempleContrat('calepinage', 'calepinage_modules_disponibles')
+    const complet = DISPO.modules[0]
+    mocks.modulesDisponibles.mockResolvedValue({ data: { ...DISPO, modules: [
+      complet, { ...complet, module: { ...complet.module, id: 'produit-9001' } }] } })
+    const utilisateur = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}`]}>
+        <Routes>
+          <Route path="/calepinage/:id"
+            element={<AtelierPanneaux calepinageId={ID} contexte={{ cible: null, calepinage: null }} />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.queryByTestId('cal-comparer-modules')).toBeNull()
+    await utilisateur.click(screen.getByTestId('cal-mode-expert'))
+    expect(await screen.findByTestId('cal-comparer-modules')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-mode-expert')).toBeChecked()
+  }, 30_000)
 })
 
 describe('ACAL409 — « Comparer les variantes » et « Photos du site » sont des onglets du rail', () => {

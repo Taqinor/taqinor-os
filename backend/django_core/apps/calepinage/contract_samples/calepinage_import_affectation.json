@@ -1,0 +1,39 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/importer-affectation/",
+  "pourquoi": "ACAL629 (C-ACAL-L5-629, CAP-D3-22, PACT10) — importer un plan de chaînes CSV tiré d'un autre logiciel. Requête {csv: texte} : séparateur « ; », première ligne d'en-tête `module;chaine;mppt;onduleur` (même forme de ligne que `affectation_manuelle` de calepinage_entree_electrique.json ; module = clé `<zone.id>#<rang>`). Réponse {lignes[{module, chaine, mppt, onduleur}], refus[{ligne, colonne, message}], bloquants[], applique}. `ligne` est le numéro de ligne DU FICHIER (l'en-tête est la ligne 1) ; `colonne` nomme la colonne fautive (null quand la ligne entière est en cause) ; seules les lignes sans refus sont normalisées puis passées au verdict d'affectation existant, dont les phrases vont dans `bloquants`. L'import n'écrit RIEN : `applique` vaut toujours false (la validation reste l'enregistrement de l'entrée électrique). Identifiants et textes : exemple de forme. Servi par ACAL630, lu par ACAL631.",
+  "exemple_corps": {
+    "csv": "module;chaine;mppt;onduleur\na#1;1;1;1\na#2;1;1;1\na#3;1;1;1"
+  },
+  "exemple": {
+    "lignes": [
+      {"module": "a#1", "chaine": 1, "mppt": 1, "onduleur": 1},
+      {"module": "a#2", "chaine": 1, "mppt": 1, "onduleur": 1},
+      {"module": "a#3", "chaine": 1, "mppt": 1, "onduleur": 1}
+    ],
+    "refus": [],
+    "bloquants": [],
+    "applique": false
+  },
+  "exemple_corps_refus": {
+    "csv": "module;chaine;mppt;onduleur\na#1;1;1;1\na#2;1;1;1\na#3;abc;1;1"
+  },
+  "exemple_refus": {
+    "lignes": [
+      {"module": "a#1", "chaine": 1, "mppt": 1, "onduleur": 1},
+      {"module": "a#2", "chaine": 1, "mppt": 1, "onduleur": 1}
+    ],
+    "refus": [
+      {"ligne": 4, "colonne": "chaine", "message": "La chaîne doit être un entier strictement positif (reçu : abc)"}
+    ],
+    "bloquants": [],
+    "applique": false
+  },
+  "exemple_entete_absent": {
+    "lignes": [],
+    "refus": [
+      {"ligne": 1, "colonne": null, "message": "En-tête attendu : module;chaine;mppt;onduleur"}
+    ],
+    "bloquants": [],
+    "applique": false
+  }
+}

@@ -3,6 +3,7 @@
  * Extraites de roof-tool-pro11.ts (split modulaire 2026-06-20) — valeurs INCHANGÉES.
  */
 export const GOLD = '#f3cc66';
+export const OBSTACLE_RED = '#ff6b6b'; // rouge des obstacles (couches 2D) — jeton partagé
 export const MOROCCO_CENTER: [number, number] = [-7.09, 31.79];
 export const FLOOR_HEIGHT_M = 3;
 export const PITCH_VIEW = 58;

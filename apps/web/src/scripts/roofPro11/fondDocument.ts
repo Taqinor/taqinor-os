@@ -15,6 +15,8 @@
  * fond du dossier précédent déborderait sur celui-ci.
  */
 import { lireUnderlay, type DocumentUnderlay } from './underlay';
+import { semerImageCapture } from './imageCapture'; // ACAL509
+export * from './imageCapture'; // ACAL509 — ré-export : un seul point d'entrée « fond du document »
 
 /** Ce que le DERNIER document lu demandait comme fond (`null` = aucun, ou refusé). */
 let fondDemande: DocumentUnderlay | null = null;
@@ -30,6 +32,7 @@ let motifRefus: string | null = null;
  */
 export function semerFondDepuisDocument(json: unknown): DocumentUnderlay | null {
   const brut = (json as Record<string, unknown> | null | undefined)?.underlay;
+  semerImageCapture(json); // ACAL509
   fondDemande = null;
   motifRefus = null;
   if (brut == null) return null;

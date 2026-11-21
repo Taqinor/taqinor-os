@@ -176,6 +176,69 @@ class BorneDEcretageTest(SimpleTestCase):
         self.assertEqual(etape['entree']['nombre_onduleurs'], 2)
 
 
+class DistributionTest(SimpleTestCase):
+    """ACAL736 — l'histogramme de l'énergie par classe de puissance DEMANDÉE
+    (avant plafonnement), référence calculée ICI par ``floor(p / 0,25)``."""
+
+    PUISSANCES = (1.0, 4.9, 5.0, 5.2, 7.0)
+
+    def _serie(self, puissances):
+        return {'pas_minutes': 60, 'colonne_energie': 'p_ac_kw',
+                'points': [{'heure': h, 'p_ac_kw': p}
+                           for h, p in enumerate(puissances)]}
+
+    def test_classes_energie_ecretee_et_part(self):
+        import math
+
+        _apres, etape = ecretage.appliquer(self._serie(self.PUISSANCES),
+                                           _contexte(ac_kw=5.0))
+        servie = etape['entree']['distribution']
+        largeur = 5.0 / 20
+        attendues = {}
+        for p in self.PUISSANCES:
+            rang = math.floor(p / largeur)
+            attendues[rang] = attendues.get(rang, 0.0) + p
+        self.assertEqual(servie['borne_kw'], 5.0)
+        self.assertEqual(servie['largeur_kw'], 0.25)
+        self.assertEqual(
+            [(c['de_kw'], c['a_kw'], c['energie_kwh'])
+             for c in servie['classes']],
+            [(round(r * largeur, 3), round((r + 1) * largeur, 3), round(e, 3))
+             for r, e in sorted(attendues.items())])
+        # 5,0 kW (la borne) ouvre la classe [5,0 ; 5,25[.
+        self.assertIn((5.0, 5.25), [(c['de_kw'], c['a_kw'])
+                                    for c in servie['classes']])
+        self.assertEqual(servie['energie_totale_kwh'], 23.1)
+        self.assertEqual(servie['energie_ecretee_kwh'], 2.2)
+        self.assertEqual(servie['part_ecretee_pct'], 9.524)
+        self.assertEqual(servie['part_ecretee_pct'],
+                         etape['entree']['ecretage_pct'])
+
+    def test_les_heures_a_zero_ne_comptent_pas(self):
+        _apres, etape = ecretage.appliquer(
+            self._serie((0.0,) + self.PUISSANCES), _contexte(ac_kw=5.0))
+        self.assertNotIn(0.0, [c['de_kw'] for c in
+                               etape['entree']['distribution']['classes']])
+
+    def test_sans_production_distribution_nulle_avec_motif(self):
+        _apres, etape = ecretage.appliquer(self._serie((0.0, 0.0)),
+                                           _contexte(ac_kw=5.0))
+        self.assertIsNone(etape['entree']['distribution'])
+        self.assertTrue(etape['entree']['motif_distribution'])
+
+    def test_contrat_porte_la_distribution(self):
+        import json
+        import pathlib
+
+        chemin = (pathlib.Path(__file__).resolve().parent.parent
+                  / 'contract_samples' / 'calepinage_pertes_cascade.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))[
+            'exemple_entrees_onduleur']['ecretage']['distribution']
+        _apres, etape = ecretage.appliquer(self._serie(self.PUISSANCES),
+                                           _contexte(ac_kw=5.0))
+        self.assertEqual(exemple, etape['entree']['distribution'])
+
+
 class FicheSansPuissanceAcTest(SimpleTestCase):
     """Pas de plafond publié ⇒ étape OMISE, série intacte, motif EXISTANT."""
 

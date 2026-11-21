@@ -142,6 +142,22 @@ class ContratTests(_Base):
         rep = self.api.post(URL, [None, None], format='json')
         self.assertEqual(rep.status_code, 400, rep.content)
 
+    def test_acal1198_contrat_plan_irradiation(self):
+        """ACAL1198 — la clé ``production.plan_irradiation`` (contrat posé
+        seul) : forme, trois sources, plan de référence null quand la pose
+        sert. Mutant : retirer ``motif`` de l'exemple ⇒ rouge."""
+        plan = CONTRAT['exemple_pose_calepinage']['production']['plan_irradiation']
+        self.assertEqual(set(plan), {'source', 'pans', 'plan_reference', 'motif'})
+        self.assertEqual(plan['source'], 'pose_calepinage')
+        self.assertIsNone(plan['plan_reference'])
+        self.assertIsNone(plan['motif'])
+        for pan in plan['pans']:
+            self.assertEqual(set(pan), {'pan', 'kwc', 'inclinaison_deg', 'azimut_deg'})
+        regle = CONTRAT['regles_sorties']['production.plan_irradiation']
+        for source in ('pose_calepinage', 'site_reference', 'repli'):
+            self.assertIn(source, regle)
+        self.assertNotIn('plan_irradiation', CONTRAT['exemple']['production'])
+
     def test_reponse_conforme_au_contrat(self):
         data = self.post(self.corps())
         exemple = CONTRAT['exemple']

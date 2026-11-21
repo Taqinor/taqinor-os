@@ -5,6 +5,7 @@ import useDocumentCalepinage from './useDocumentCalepinage'
 import RetourAtelier from './atelier/RetourAtelier'
 import { RAISON_LECTURE_SEULE, lireConflit } from './conflitEcriture'
 import { messageRefus } from './commun/refusServeur'
+import { demarrerCapteurs, lireInclinaison, lireVisee, arreter as arreterCapteurs } from './capteursTelephone'
 import { mesuresDeVisite, panParDefaut, penteRetenue, pourcentageDepuisPente, saisieDuPan, sourceDePente, suggestionsEnAttente, zonesDuDocument } from './SaisiePente.helpers'
 
 /* ============================================================================
@@ -29,6 +30,10 @@ import { mesuresDeVisite, panParDefaut, penteRetenue, pourcentageDepuisPente, sa
    rend `null` — jamais 0°, qui se lirait « toiture plate » alors que rien n'a
    été mesuré.
    ========================================================================== */
+
+// ACAL535 — la source d'une suggestion lue sur le relief déposé (celle du serveur,
+// contrat calepinage_suggestion_pente.json › relief › source).
+const SOURCE_RELIEF = "relief fourni par l'installateur"
 
 const LIBELLE_SOURCE = {
   degres: 'saisie en degrés',
@@ -88,6 +93,11 @@ export default function SaisiePente({
   const [visite, setVisite] = useState(null)
   const [deVisite, setDeVisite] = useState(false)
   const [orientationRetenue, setOrientationRetenue] = useState(false)
+  // ACAL519 — mesure au téléphone : proposition « à confirmer », précision de boussole DÉCLARÉE.
+  const [capteurOuvert, setCapteurOuvert] = useState(false)
+  const [mesureTel, setMesureTel] = useState(null)
+  const [precisionTel, setPrecisionTel] = useState('')
+  const [refusTel, setRefusTel] = useState(null)
 
   /* CALX29 — Suggestion de pente LiDAR IGN, FRANCE SEULEMENT.
      `disponible` vient d'une LECTURE LOCALE (`GET .../suggestion-pente/`,
@@ -141,7 +151,7 @@ export default function SaisiePente({
   // JAMAIS recopiée dans la pente du pan (D-ACAL-19).
   const suggestions = suggestionsEnAttente(layout)
 
-  const decider = async (operation, zoneId = undefined) => {
+  const decider = async (operation, zoneId = undefined, relief = null) => {
     if (doc.etat !== 'ok' || lectureSeule) return null
     const base = documentVivant?.empreinte || doc.empreinte
     if (!base) {
@@ -149,9 +159,16 @@ export default function SaisiePente({
       return null
     }
     try {
-      const res = await calepinageApi.calepinages.decisionSuggestionPente(calepinageId, {
-        operation, base_empreinte: base, ...(zoneId ? { zone_id: zoneId } : {}),
-      })
+      // ACAL535 — un relief déposé (GeoTIFF) passe par sa propre porte serveur : même réponse.
+      let corps = { operation, base_empreinte: base, ...(zoneId ? { zone_id: zoneId } : {}) }
+      if (relief) {
+        corps = new FormData()
+        corps.append('relief', relief)
+        corps.append('base_empreinte', base)
+      }
+      const res = await (relief
+        ? calepinageApi.calepinages.suggestionPenteRelief(calepinageId, corps)
+        : calepinageApi.calepinages.decisionSuggestionPente(calepinageId, corps))
       const zones = res?.data?.roof_layout?.zones
       const empreinte = res?.data?.empreinte_document ?? null
       if (Array.isArray(zones)) {
@@ -194,6 +211,17 @@ export default function SaisiePente({
       setMessageSuggestions('Aucun pan ne porte assez de points d’altitude exploitables : '
         + 'aucune pente n’est suggérée (ou chaque pan a déjà une décision).')
     }
+  }
+
+  // ACAL535 — « Lire la pente sur un relief de drone » : le fichier est lu par le serveur
+  // (aucun appel IGN) ; chaque pan couvert reçoit une suggestion à décider ci-dessous.
+  const deposerRelief = async (evenement) => {
+    const fichier = evenement.target.files?.[0]
+    evenement.target.value = ''
+    if (!fichier) return
+    setMessageSuggestions(null)
+    const rendu = await decider('proposer', undefined, fichier)
+    if (rendu) setMessageSuggestions('Pente lue sur votre relief : décidez ci-dessous, rien n’est appliqué d’office.')
   }
 
   const jeterSuggestion = async (suggestion) => {
@@ -290,6 +318,59 @@ export default function SaisiePente({
         // ACAL280 — le motif serveur (400 : son champ) avant tout repli.
         setMessage(messageRefus(e, 'La pente n’a pas pu être enregistrée.'))
       }
+    }
+  }
+
+  const capteursPresents = typeof window !== 'undefined' && typeof window.DeviceOrientationEvent !== 'undefined'
+  const ouvrirTelephone = async () => {
+    const depart = await demarrerCapteurs()
+    if (depart.indisponible) { setRefusTel({ champ: 'capteur', motif: depart.motif }); return }
+    setRefusTel(null)
+    setCapteurOuvert(true)
+  }
+  const prendreMesureTel = () => {
+    const inc = lireInclinaison()
+    const visee = lireVisee()
+    if (inc.indisponible || visee.indisponible) {
+      setRefusTel({ champ: 'capteur', motif: inc.motif || visee.motif })
+      return
+    }
+    const c = Math.cos(inc.betaDeg * Math.PI / 180) * Math.cos(inc.gammaDeg * Math.PI / 180)
+    setRefusTel(null)
+    setMesureTel({
+      penteDeg: Math.acos(Math.max(-1, Math.min(1, c))) * 180 / Math.PI,
+      azimutDeg: (visee.azimutDeg + 180) % 360, // le haut du téléphone vise le faîte : le pan regarde à l'opposé
+    })
+  }
+  const confirmerMesureTel = async () => {
+    if (lectureSeule || !mesureTel || !zone || doc.etat !== 'ok') return
+    const precision = Number(String(precisionTel).replace(',', '.'))
+    const champs = {
+      pitchDeg: mesureTel.penteDeg,
+      pitchSource: { mode: 'degres', degres: mesureTel.penteDeg, provenance: 'telephone' },
+    }
+    const precisionOk = precisionTel.trim() !== '' && Number.isFinite(precision) && precision > 0
+    if (precisionOk) {
+      champs.facingAzimuthDeg = mesureTel.azimutDeg
+      champs.facingAzimuthSource = 'releve'
+      champs.facingAzimuthPrecisionDeg = precision
+    }
+    try {
+      const res = await calepinageApi.calepinages.enregistrerSectionLayout(calepinageId, {
+        cle: 'zones', zone_id: zone.id, champs, base_empreinte: documentVivant?.empreinte || doc.empreinte,
+      })
+      const mises = res?.data?.roof_layout?.zones
+        ?? zones.map((z) => (String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
+      doc.appliquerSection('zones', mises, res?.data?.empreinte_document ?? null)
+      documentVivant?.appliquerSection?.('zones', mises, res?.data?.empreinte_document ?? null)
+      setRefusTel(precisionOk ? null : { champ: 'precision',
+        motif: 'Déclarez la précision de la boussole pour confirmer aussi l’orientation : seule la pente est enregistrée.' })
+      setMesureTel(null)
+      arreterCapteurs()
+      setCapteurOuvert(false)
+      setMessage(`Pente mesurée au téléphone enregistrée sur le pan « ${zone.label || zone.id} ».`)
+    } catch (e) {
+      setRefusTel({ champ: 'capteur', motif: messageRefus(e, 'La mesure n’a pas pu être enregistrée.') })
     }
   }
 
@@ -416,17 +497,75 @@ export default function SaisiePente({
           data-testid="cal-pente-message">{message}</p>
       )}
 
+      {/* ACAL519 — mesure au téléphone : absente sans capteur (donc invisible au bureau). */}
+      {persister && !lectureSeule && capteursPresents && (
+        <details className="mt-4" data-testid="pente-tel">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-primary-text">Mesurer avec le téléphone</summary>
+          <p className="text-xs text-muted-foreground">
+            Posez le téléphone à plat sur le toit, le haut vers le faîte. La boussole peut dévier près du métal.
+          </p>
+          {!capteurOuvert ? (
+            <button type="button" onClick={ouvrirTelephone} data-testid="pente-tel-demarrer"
+              className="mt-2 min-h-11 rounded border border-border px-3 text-sm text-foreground">Activer les capteurs</button>
+          ) : (
+            <button type="button" onClick={prendreMesureTel} data-testid="pente-tel-mesurer"
+              className="mt-2 min-h-11 rounded border border-border px-3 text-sm text-foreground">Prendre la mesure</button>
+          )}
+          {mesureTel && (
+            <div className="mt-2 space-y-2" data-testid="pente-tel-proposition">
+              <p className="text-sm text-foreground">
+                {`Pente proposée : ${auDixieme(mesureTel.penteDeg)}° · orientation proposée : ${auDixieme(mesureTel.azimutDeg)}° (à confirmer)`}
+              </p>
+              <label className="block text-sm text-foreground">
+                Précision de la boussole (°)
+                <input type="text" inputMode="decimal" step="any" value={precisionTel}
+                  data-testid="pente-tel-precision"
+                  onChange={(e) => setPrecisionTel(e.target.value)}
+                  className="fig mt-1 h-11 w-full border border-border bg-background px-2 text-base text-foreground" />
+              </label>
+              <button type="button" onClick={confirmerMesureTel} data-testid="pente-tel-confirmer"
+                className="min-h-11 rounded bg-brass-500/20 px-4 text-sm font-semibold text-primary-text">Confirmer</button>
+            </div>
+          )}
+          {refusTel && (
+            <span role="alert" className="mt-1 block text-xs text-red-300" data-testid={`pente-tel-erreur-${refusTel.champ}`}>
+              {refusTel.motif}
+            </span>
+          )}
+        </details>
+      )}
+
       {/* CALX29 — suggestion LiDAR IGN, visible SEULEMENT si la lecture
           locale dit `disponible: true` (France). */}
-      {ignDisponible && (
+      {/* ACAL535 — « Lire la pente sur un relief de drone » : replié, expert, tous pays ;
+          le fichier est lu par le serveur, aucun appel IGN. */}
+      {persister && !lectureSeule && (
+        <details className="mt-4" data-testid="cal-pente-relief">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-primary-text">
+            Lire la pente sur un relief de drone
+          </summary>
+          <label className="block text-sm text-foreground">
+            Relief GeoTIFF (WGS84, en degrés)
+            <input type="file" accept=".tif,.tiff,image/tiff" onChange={deposerRelief}
+              data-testid="cal-pente-relief-fichier"
+              className="mt-1 block min-h-11 w-full border border-border bg-background px-2 py-2 text-base text-foreground" />
+          </label>
+        </details>
+      )}
+
+      {(ignDisponible || suggestions.length > 0 || messageSuggestions) && (
         <div className="mt-6 border-t border-border pt-4" data-testid="cal-pente-lidar">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pente par pan, depuis l’IGN</p>
-          <button type="button" onClick={suggererDepuisIGN}
-            disabled={chargementSuggestions || lectureSeule}
-            data-testid="cal-pente-lidar-suggerer"
-            className="mt-2 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
-            {chargementSuggestions ? 'Interrogation de l’IGN…' : 'Suggérer depuis l’IGN'}
-          </button>
+          {ignDisponible && (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pente par pan, depuis l’IGN</p>
+              <button type="button" onClick={suggererDepuisIGN}
+                disabled={chargementSuggestions || lectureSeule}
+                data-testid="cal-pente-lidar-suggerer"
+                className="mt-2 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
+                {chargementSuggestions ? 'Interrogation de l’IGN…' : 'Suggérer depuis l’IGN'}
+              </button>
+            </>
+          )}
 
           {suggestions.length > 0 && (
             <>
@@ -443,7 +582,7 @@ export default function SaisiePente({
                       Pan {suggestion.zoneId} — {auDixieme(suggestion.valeurDeg)} °
                     </p>
                     <p className="text-xs text-foreground">
-                      Pente du terrain (LiDAR IGN) — n’est jamais recopiée dans la pente du pan.
+                      Pente du terrain ({suggestion.source === SOURCE_RELIEF ? SOURCE_RELIEF : 'LiDAR IGN'}) — n’est jamais recopiée dans la pente du pan.
                     </p>
                     <p className="text-xs text-muted-foreground" data-testid={`cal-pente-lidar-source-${suggestion.zoneId}`}>
                       {suggestion.source} · {suggestion.suggestedAt}

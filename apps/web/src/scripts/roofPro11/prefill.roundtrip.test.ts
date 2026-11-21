@@ -29,6 +29,7 @@ import { type Ctx } from './context';
 import { ctxDeBase, racineDepot } from './harnaisAtelier';
 import { enregistrerAtelier, ouvrirAtelier } from './harnaisDocument';
 import { type AreaRecord } from './types';
+import { lireImageCapture } from './imageCapture'; // ACAL509
 
 
 function contrat(nom: string): Record<string, unknown> {
@@ -475,6 +476,28 @@ describe('ACAL579 — la portée entre pieds fait l’aller-retour', () => {
     const p = { valeurM: 2.4, source: 'notice du système, p. 4' };
     expect(aller({ porteeEntrePieds: p }).zones[0]).toMatchObject({ porteeEntrePieds: p });
     expect('porteeEntrePieds' in aller({ porteeEntrePieds: p }, true).zones[0]).toBe(false);
+  });
+});
+
+describe('ACAL509 — imageCapture fait l’aller-retour', () => {
+  const aller = (capture?: unknown) => {
+    const doc = documentRiche() as unknown as Record<string, unknown>;
+    if (capture) doc.imageCapture = capture;
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc as unknown as SerializedLayout }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) as unknown as Record<string, unknown>;
+  };
+  it('l’échantillon du contrat revient avec la même date et la même source', () => {
+    const exemple = contrat('roof_layout_v2.schema.json').exemple_image_capture;
+    expect(aller(exemple).imageCapture).toEqual(exemple);
+  });
+  it('une date future est refusée, une source vide aussi ; un document sans clé n’émet rien', () => {
+    expect(lireImageCapture('2999-01-01', 'x')).toMatchObject({ ok: false, champ: 'date' });
+    expect(lireImageCapture('2025-02-30', 'x')).toMatchObject({ ok: false, champ: 'date' });
+    expect(lireImageCapture('2025-03-21', ' ')).toMatchObject({ ok: false, champ: 'source' });
+    expect(lireImageCapture('2025-03-21', 'x').ok).toBe(true);
+    expect('imageCapture' in aller()).toBe(false);
   });
 });
 

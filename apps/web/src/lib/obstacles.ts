@@ -34,7 +34,11 @@ export const OBSTACLE_STEP_FACTOR = 1.2;
  * `scripts/roofPro11/types.ts` (OBSTACLE_TYPES / CLEARANCE_BY_TYPE) — ici on ne
  * déclare que l'union, pour que la lib pure reste sans dépendance vers les scripts.
  */
-export type ObstacleType = 'cheminee' | 'ventilation' | 'chien_assis' | 'edicule' | 'antenne' | 'autre';
+export type ObstacleType =
+  | 'cheminee' | 'ventilation' | 'chien_assis' | 'edicule' | 'antenne'
+  // ACAL498 — objets courants d'un toit-terrasse (recul de base, voir ACAL499).
+  | 'lanterneau' | 'exutoire' | 'climatiseur' | 'citerne' | 'garde_corps' | 'joint_dilatation'
+  | 'autre';
 
 /**
  * CAL72 — d'où vient cet obstacle. DEUX vocabulaires coexistent dans le dépôt et les DEUX

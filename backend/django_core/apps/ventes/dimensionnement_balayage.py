@@ -21,6 +21,11 @@ from apps.ventes.balayage_adaptatif import monter_champ_ve, tableau_adaptatif
 
 logger = logging.getLogger("apps.ventes.dimensionnement")
 
+#: ACAL1170 — dit sur chaque taille quand la base de la pose réelle sert.
+AVERTISSEMENT_BASE_AUTRES_TAILLES = (
+    'production par kWc de la pose réelle du calepinage, supposée valoir pour '
+    'cette taille (seule la taille du calepinage a été simulée)')
+
 
 def _tranche_du_residuel(residuel_kwh_mois, tranches):
     """La tranche du barème où retombe un résiduel — LUE, jamais réécrite ici."""
@@ -191,6 +196,13 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         'perte_ombrage_pct': perte_ombrage_pct,
         'productible_kwh_kwc': _productible_balayage(company, regles_2710),
     })
+    # ACAL1170 — la base de la pose réelle (kWc du devis), posée APRÈS
+    # ``kwargs_moteur_ombre`` (qui ne recopie que des clés nommées) ; jamais
+    # sous ``productible_kwh_kwc`` (pertes réappliquées).
+    from apps.ventes.horaire.productible_pose import base_de_production
+    base_pose = base_de_production(devis) if devis is not None else None
+    if base_pose:
+        etude_kwargs['base_production'] = base_pose
 
     # QJR612 — CAD170 RÉELLEMENT APPLIQUÉ (décision fondateur 30/09/2026 :
     # « add more panels so battery is always charged »). Une recharge VE
@@ -305,6 +317,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         ratio = _ratio_onduleur(onduleur, kwc)
 
         avertissements = list(avert_sans)
+        if base_pose:  # ACAL1170 — la supposition DITE (règle du 17/11)
+            avertissements.append(AVERTISSEMENT_BASE_AUTRES_TAILLES)
         for message in list(avert_avec) + list(avert_stockage):
             if message not in avertissements:
                 avertissements.append(message)

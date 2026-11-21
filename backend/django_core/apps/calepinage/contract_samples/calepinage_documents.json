@@ -497,6 +497,263 @@
     ],
     "images": []
   },
+  "exemple_sans_calcul": {
+    "calepinage": 2,
+    "layout_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "version_moteur": "calepinage-1.0.0",
+    "langue": "fr",
+    "documents": [
+      {
+        "code": "rapport_etude",
+        "libelle": "Rapport d'étude (site, système, pertes, production, électrique)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/rapport-etude.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr",
+          "en"
+        ],
+        "apercu": true,
+        "autres_formats": []
+      },
+      {
+        "code": "rapport_ombrage",
+        "libelle": "Rapport d'ombrage (cartes de chaleur et TOF/TSRF)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/rapport-ombrage.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr",
+          "en"
+        ],
+        "apercu": false,
+        "autres_formats": []
+      },
+      {
+        "code": "export_projet_json",
+        "libelle": "Export JSON projet + résultats",
+        "format": "json",
+        "endpoint": "/api/django/calepinage/calepinages/2/export-projet.json/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr"
+        ],
+        "apercu": false,
+        "autres_formats": []
+      },
+      {
+        "code": "plan_cablage",
+        "libelle": "Plan de câblage (schéma unifilaire + cheminements)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/plan-cablage.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr"
+        ],
+        "apercu": true,
+        "autres_formats": [
+          {
+            "format": "dxf",
+            "endpoint": "/api/django/calepinage/calepinages/2/plan-cablage.dxf/"
+          }
+        ]
+      },
+      {
+        "code": "manuel_proprietaire",
+        "libelle": "Manuel propriétaire (mise en service et entretien)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/manuel-proprietaire.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr"
+        ],
+        "apercu": true,
+        "autres_formats": []
+      },
+      {
+        "code": "document_asbuilt",
+        "libelle": "Document as-built (conforme à l'exécution)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/document-asbuilt.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr"
+        ],
+        "apercu": true,
+        "autres_formats": []
+      },
+      {
+        "code": "dossier_fin_chantier",
+        "libelle": "Dossier de fin de chantier (pièces techniques fusionnées)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/dossier-fin-chantier/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "POST",
+        "langues": [
+          "fr"
+        ],
+        "apercu": false,
+        "autres_formats": []
+      },
+      {
+        "code": "diagramme_pertes",
+        "libelle": "Diagramme de pertes (cascade des pertes)",
+        "format": "svg",
+        "endpoint": "/api/django/calepinage/calepinages/2/diagramme-pertes.svg/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr",
+          "en"
+        ],
+        "apercu": false,
+        "autres_formats": []
+      },
+      {
+        "code": "presentation_compacte",
+        "libelle": "Présentation compacte (synthèse une page)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/presentation-compacte.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr"
+        ],
+        "apercu": true,
+        "autres_formats": []
+      },
+      {
+        "code": "pertes_en_postes",
+        "libelle": "Pertes expliquées en 5 postes (une page)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/pertes-en-postes.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "manque": [
+          {
+            "champ": "resultat",
+            "libelle": "Résultat de calcul enregistré (simulation)",
+            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "onglet": "production"
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr"
+        ],
+        "apercu": true,
+        "autres_formats": []
+      }
+    ],
+    "images": []
+  },
   "publication_image": {
     "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/image-document/",
     "notes": {

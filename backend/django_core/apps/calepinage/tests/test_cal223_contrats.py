@@ -446,6 +446,23 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_productible_pose.json':  # ACAL996
         'rendement de la pose réelle lu sur le résultat servi du calepinage '
         'en base par selectors_devis.py (ACAL997) pour le devis (ACAL999)',
+    'calepinage_evaluation_electrique.json':  # ACAL611
+        'lit le verdict du calepinage en base (verdict_publiable)',
+    'calepinage_configurations_onduleur.json':  # ACAL614
+        'GET : onduleurs du catalogue de la société lus en base et évalués '
+        'sur le calepinage en base ; route livrée par ACAL616',
+    'calepinage_systemes_fixation.json':  # ACAL557
+        'catalogue des systèmes de fixation de la société lu en base '
+        '(SystemeFixation + ComposantFixation) ; route livrée par ACAL558',
+    'calepinage_controle_chaine.json':  # ACAL626
+        'POST : fiches module et onduleur lues dans le stock de la société '
+        'en base ; route livrée par ACAL627',
+    'calepinage_import_affectation.json':  # ACAL629
+        'POST : verdict d’affectation sur le calepinage en base ; route '
+        'livrée par ACAL630',
+    'calepinage_soleil_legal.json':  # ACAL730
+        'GET : fuseau lu au profil de la société en base (repli de '
+        "l'imagerie) ; forme affirmée par test_forme_du_soleil_legal",
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -499,6 +516,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/detection_toit.py``) : ``calepinage_detection_toit.json`` en est SORTI.
     'calepinage_pret_a_envoyer.json': 'ACAL860',  # ACAL856
     'calepinage_explications.json': 'ACAL871',  # ACAL870
+    # ACAL558 a livré ``GET``/``POST calepinages/systemes-fixation/``
+    # (``views/systemes_fixation.py``) : ``calepinage_systemes_fixation.json``
+    # en est SORTI.
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -572,6 +592,37 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
             "sa raison) — un échantillon non décidé dérive en silence.")
         self.assertEqual(sorted(connus - trouves), [],
                          "Échantillon déclaré mais absent du dossier.")
+
+    def test_forme_des_systemes_de_fixation(self):
+        # ACAL557 — chaque système et chaque composant aux clés du contrat,
+        # vocabulaires lus sur les modèles, jamais `company`, aucun prix.
+        from apps.calepinage.models import ComposantFixation, SystemeFixation
+
+        donnees = _charger('calepinage_systemes_fixation.json')
+        cles_systeme = {'id', 'code', 'libelle', 'fabricant', 'mode_pose',
+                        'actif', 'provenance', 'composants'}
+        cles_composant = {'id', 'role', 'libelle', 'unite', 'produit_id',
+                          'regle', 'source', 'ordre'}
+        cles_regle = {'base', 'facteur', 'diviseur', 'libelle_facteur',
+                      'libelle_diviseur'}
+        systemes = (donnees['exemple']['systemes']
+                    + [donnees['exemple_creation']['reponse']['systeme']])
+        for systeme in systemes:
+            self.assertEqual(set(systeme), cles_systeme)
+            self.assertIn(systeme['mode_pose'], SystemeFixation.ModePose.values)
+            for composant in systeme['composants']:
+                self.assertEqual(set(composant), cles_composant)
+                self.assertIn(composant['role'], ComposantFixation.Role.values)
+                self.assertEqual(set(composant['regle']), cles_regle)
+        self.assertEqual(donnees['exemple_vide'], {'systemes': []})
+        corps = donnees['exemple_creation']['corps']
+        self.assertNotIn('company', corps)
+        self.assertEqual(len(corps['composants']), 2)
+        self.assertEqual(
+            sorted(donnees['exemple_refus']['corps']),
+            ['code', 'composants[0].regle', 'composants[1].source',
+             'provenance'])
+        self.assertNotIn('prix', json.dumps(systemes + [corps]))
 
     def test_forme_du_parcours_guide(self):
         # ACAL386 — le parcours guidé : cinq étapes ordonnées, « manque »
@@ -734,6 +785,173 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
                     'specific_yield_kwh_kwc'], nom)
         self.assertTrue(donnees['exemple_incomplet']['etapes_omises'])
         self.assertIn('180 = Sud', donnees['pourquoi'])
+
+    def test_forme_de_la_publication_electrique(self):
+        # ACAL611 — `etat` dit ce que `publiable` tait (D-ACAL-9 inchangé) ;
+        # `points` = motifs d'abstention ; titre et phrase servis.
+        donnees = _charger('calepinage_evaluation_electrique.json')
+        self.assertIn('exemple de forme', donnees['pourquoi'].lower())
+        entree = donnees['exemple_corps_a_chaud']['entree_electrique']
+        self.assertEqual(sorted(entree), ['module_produit', 'onduleur_produit',
+                                          'optimiseur_produit'])
+        self.assertNotIn('materiel', entree)
+        abstentions = ('non_verifiable', 'omis', 'sans_source')
+        attendus = {'exemple': (True, 'pret'),
+                    'exemple_a_completer': (True, 'a_completer'),
+                    'exemple_bloque': (False, 'bloquant')}
+        for nom, (publiable, etat) in attendus.items():
+            pub = donnees[nom]['publication']
+            self.assertEqual(sorted(pub), ['etat', 'motifs', 'phrase',
+                                           'points', 'publiable', 'titre'])
+            self.assertEqual((pub['publiable'], pub['etat']),
+                             (publiable, etat), nom)
+            for motif in pub['motifs']:
+                self.assertEqual(sorted(motif),
+                                 ['code', 'libelle', 'source', 'statut'])
+            self.assertEqual(pub['points'], sum(
+                m['statut'] in abstentions for m in pub['motifs']), nom)
+            self.assertTrue(pub['titre'] and pub['phrase'], nom)
+        self.assertGreater(
+            donnees['exemple_a_completer']['publication']['points'], 0)
+        self.assertIsNone(donnees['exemple_a_chaud']['publication'])
+
+    def test_forme_des_tensions_par_chaine(self):
+        # ACAL620 — une ligne par chaîne ; null jamais 0, cause nommée.
+        donnees = _charger('calepinage_evaluation_electrique.json')
+        cles = sorted([
+            'chaine', 'pan', 'mppt', 'nombre_modules', 'source',
+            'voc_froid_v', 'voc_froid_limite_v', 'voc_froid_conforme',
+            'temperature_froide_c', 'vmp_chaud_v', 'temperature_chaude_c',
+            'demarrage_v', 'demarrage_source', 'vmp_chaud_conforme', 'isc_a',
+            'temperature_source', 'indetermine'])
+        lignes = []
+        for nom in ('exemple', 'exemple_a_completer', 'exemple_bloque',
+                    'exemple_a_chaud', 'exemple_vide', 'exemple_indetermine'):
+            self.assertIn('chaines', donnees[nom], nom)
+            lignes += donnees[nom]['chaines']
+        self.assertEqual(donnees['exemple_vide']['chaines'], [])
+        for ligne in lignes:
+            self.assertEqual(sorted(ligne), cles)
+            self.assertIn(ligne['demarrage_source'],
+                          ('fiche', 'bas_de_plage_mppt', None))
+            self.assertIn(ligne['temperature_source'], ('saisie', 'tmy', None))
+            for cle in ('voc_froid_v', 'vmp_chaud_v', 'isc_a', 'demarrage_v'):
+                self.assertNotEqual(ligne[cle], 0, cle)
+                if ligne[cle] is None:
+                    self.assertTrue(ligne['indetermine'], cle)
+        sans_chaine = [ligne for ligne in
+                       donnees['exemple_indetermine']['chaines']
+                       if ligne['chaine'] is None]
+        self.assertTrue(sans_chaine and sans_chaine[0]['pan'])
+
+    def test_forme_du_controle_de_chaine(self):
+        # ACAL626 — chaque contrôle NOMME sa borne ; jamais un faux vert.
+        donnees = _charger('calepinage_controle_chaine.json')
+        for corps in ('exemple_corps', 'exemple_corps_rouge'):
+            self.assertEqual(sorted(donnees[corps]), [
+                'module_produit', 'nombre_modules', 'onduleur_produit',
+                'temperature_max_c', 'temperature_min_c'])
+        for nom in ('exemple', 'exemple_rouge', 'exemple_indetermine'):
+            charge = donnees[nom]
+            self.assertEqual(sorted(charge), ['controles', 'longueur_max',
+                                              'longueur_min', 'manquantes',
+                                              'verdict'], nom)
+            for controle in charge['controles']:
+                self.assertEqual(sorted(controle), [
+                    'bloquant', 'borne', 'code', 'conforme', 'libelle',
+                    'source', 'valeur'], nom)
+                self.assertTrue(controle['borne'], nom)
+        rouge = [c for c in donnees['exemple_rouge']['controles']
+                 if c['conforme'] is False and c['bloquant']]
+        self.assertIn("tension maximale absolue de l'onduleur",
+                      rouge[0]['borne'])
+        self.assertEqual(donnees['exemple_rouge']['verdict'], 'bloquant')
+        indetermine = donnees['exemple_indetermine']
+        self.assertEqual(indetermine['verdict'], 'indetermine')
+        self.assertTrue(indetermine['manquantes'])
+
+    def test_forme_de_l_import_d_affectation(self):
+        # ACAL629 — chaque refus nomme SA ligne de fichier ; jamais appliqué.
+        donnees = _charger('calepinage_import_affectation.json')
+        self.assertTrue(donnees['exemple_corps']['csv'].startswith(
+            'module;chaine;mppt;onduleur\n'))
+        for nom in ('exemple', 'exemple_refus', 'exemple_entete_absent'):
+            charge = donnees[nom]
+            self.assertEqual(sorted(charge), ['applique', 'bloquants',
+                                              'lignes', 'refus'], nom)
+            self.assertIs(charge['applique'], False, nom)
+            for ligne in charge['lignes']:
+                self.assertEqual(sorted(ligne),
+                                 ['chaine', 'module', 'mppt', 'onduleur'])
+            for refus in charge['refus']:
+                self.assertEqual(sorted(refus),
+                                 ['colonne', 'ligne', 'message'])
+                self.assertIsInstance(refus['ligne'], int)
+        self.assertEqual(
+            {k: v for k, v in donnees['exemple_refus']['refus'][0].items()
+             if k != 'message'}, {'ligne': 4, 'colonne': 'chaine'})
+        self.assertEqual(
+            donnees['exemple_entete_absent']['refus'][0]['ligne'], 1)
+
+    def test_forme_du_soleil_legal(self):
+        # ACAL730 — les clés servies par ``correspondance_du_jour`` (double
+        # sans base, fuseau des réglages d'imagerie) sont celles du contrat.
+        import datetime
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.soleil_legal import (
+            MOTIF_SANS_FUSEAU, correspondance_du_jour)
+
+        donnees = _charger('calepinage_soleil_legal.json')
+        servi = correspondance_du_jour(
+            SimpleNamespace(roof_layout={'pin': {'lat': 33.57, 'lng': -7.59}},
+                            company=None),
+            datetime.date(2026, 2, 11),
+            reglages={'imagerie': {'fuseau': 'Africa/Casablanca'}})
+        self.assertEqual(sorted(servi), sorted(donnees['exemple']))
+        for cle in ('decalage_utc_min', 'equation_du_temps_min',
+                    'ecart_legal_moins_solaire_min', 'midi_solaire_legal_h'):
+            self.assertEqual(servi[cle], donnees['exemple'][cle], cle)
+        self.assertEqual(donnees['exemple_sans_fuseau'],
+                         {'site.fuseau': [MOTIF_SANS_FUSEAU]})
+
+    def test_forme_des_configurations_d_onduleur(self):
+        # ACAL614 — 1 à 3 lignes comparables, null jamais 0, AUCUN prix.
+        donnees = _charger('calepinage_configurations_onduleur.json')
+        cles = sorted([
+            'produit_id', 'libelle', 'marque', 'role', 'nombre_onduleurs',
+            'puissance_ac_totale_kw', 'puissance_dc_kwc', 'ratio_dc_ac',
+            'mppt_utilises', 'mppt_disponibles', 'verdict', 'bloquants',
+            'alertes', 'manquantes'])
+        for nom in ('exemple', 'exemple_vide', 'exemple_indetermine'):
+            charge = donnees[nom]
+            self.assertEqual(sorted(charge), ['configurations',
+                                              'fiches_incompletes',
+                                              'motif_vide', 'retenue'], nom)
+            self.assertLessEqual(len(charge['configurations']), 3, nom)
+            self.assertNotRegex(json.dumps(charge), r'"(prix|cout|marge)_')
+            for ligne in charge['configurations']:
+                self.assertEqual(sorted(ligne), cles, nom)
+                self.assertIn(ligne['role'], ('retenue', 'plus_puissant',
+                                              'moins_puissant'))
+                self.assertIn(ligne['verdict'], ('conforme', 'alerte',
+                                                 'bloquant', 'indetermine'))
+                if ligne['ratio_dc_ac'] is None:
+                    self.assertTrue(ligne['manquantes'], nom)
+                else:
+                    self.assertEqual(ligne['ratio_dc_ac'], round(
+                        ligne['puissance_dc_kwc']
+                        / ligne['puissance_ac_totale_kw'], 2), nom)
+            for fiche in charge['fiches_incompletes']:
+                self.assertEqual(sorted(fiche), ['champs_manquants', 'libelle',
+                                                 'produit_id'])
+        vide = donnees['exemple_vide']
+        self.assertEqual((vide['retenue'], vide['configurations']),
+                         (None, []))
+        self.assertTrue(vide['motif_vide'])
+        self.assertEqual(
+            donnees['exemple_indetermine']['configurations'][0]['verdict'],
+            'indetermine')
 
 
 class CheminDeclareTest(unittest.TestCase):

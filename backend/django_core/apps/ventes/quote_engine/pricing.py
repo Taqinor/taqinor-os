@@ -1554,6 +1554,9 @@ def calculate_savings_roi(
     # ERR-RHOR8 — niveau 5, résidentiel : conso connue sans distributeur ni
     # barème société ⇒ grille nationale (Q7), comme l'écran. Faux ⇒ inchangé.
     bareme_national_defaut: bool = False,
+    # ACAL973 — ``productible`` = base de la pose réelle, pertes et ombrage
+    # INCLUS : ``PRODUCTION_DERATE`` n'est pas réappliqué. Faux ⇒ inchangé.
+    productible_pertes_incluses: bool = False,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1605,6 +1608,8 @@ def calculate_savings_roi(
         else _DEFAULT_PRODUCTIBLE
     production_annuelle = round(
         puissance_kwc * prod_factor * PRODUCTION_DERATE)
+    if productible_pertes_incluses and productible:  # ACAL973
+        production_annuelle = round(puissance_kwc * prod_factor)
 
     bareme_national, tranches_override = _grille_nationale_par_defaut(
         bareme_national_defaut, conso_annuelle_kwh, utility,

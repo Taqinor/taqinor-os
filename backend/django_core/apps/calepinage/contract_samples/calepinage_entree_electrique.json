@@ -16,6 +16,7 @@
       "zone_keraunique": "faible",
       "inclure_prise_terre": true,
       "plafond_kwc_par_onduleur": null,
+      "nombre_onduleurs": null,
       "longueur_chaine_forcee": null,
       "protections": {
         "parafoudre_dc": true
@@ -153,6 +154,7 @@
       "zone_keraunique": null,
       "inclure_prise_terre": null,
       "plafond_kwc_par_onduleur": null,
+      "nombre_onduleurs": null,
       "longueur_chaine_forcee": null,
       "protections": null,
       "terre": null,
@@ -188,5 +190,18 @@
   },
   "exemple_refus_400": {
     "temperature_min_c": "La température minimale (-80 °C) est hors de la plage admise : saisissez une valeur entre -60 et 60 °C."
+  },
+  "exemple_corps_cheminement_pans": {
+    "cheminement": {
+      "pans": {
+        "z1": {
+          "motif_parcours": "aller_retour",
+          "point_collecte": {"cx": 2.4, "cy": 1.1}
+        }
+      }
+    }
+  },
+  "exemple_refus_motif_parcours": {
+    "cheminement.pans.z1.motif_parcours": "Pan « z1 » : motif de parcours inconnu."
   }
 }

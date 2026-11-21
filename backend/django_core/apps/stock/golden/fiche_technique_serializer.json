@@ -1,6 +1,6 @@
 {
   "ast": {
-    "FicheTechniqueSerializer": "3b2790f7ec8075e529468c6785cc5823899c7ebe"
+    "FicheTechniqueSerializer": "d4d94b7e49814c3b8aa047137901a6589996930d"
   },
   "champs": [
     "id",
@@ -120,6 +120,7 @@
     "ond_pnom_pente_pct_c",
     "ond_mppt_independants",
     "opt_onduleurs_compatibles",
+    "sous_chaines_par_module",
     "pdf",
     "pdf_url",
     "pdf_filename",
@@ -233,6 +234,7 @@
       "serrage_max_mm": null,
       "serrage_min_mm": null,
       "serrage_source": "",
+      "sous_chaines_par_module": null,
       "struct_masse_kg_m2": null,
       "struct_notice": {
         "date": null,
@@ -362,6 +364,7 @@
       "serrage_max_mm": null,
       "serrage_min_mm": null,
       "serrage_source": "",
+      "sous_chaines_par_module": null,
       "struct_masse_kg_m2": null,
       "struct_notice": {
         "date": null,
@@ -493,6 +496,7 @@
       "serrage_max_mm": null,
       "serrage_min_mm": null,
       "serrage_source": "",
+      "sous_chaines_par_module": null,
       "struct_masse_kg_m2": null,
       "struct_notice": {
         "date": null,
@@ -622,6 +626,7 @@
       "serrage_max_mm": null,
       "serrage_min_mm": null,
       "serrage_source": "",
+      "sous_chaines_par_module": null,
       "struct_masse_kg_m2": null,
       "struct_notice": {
         "date": null,
@@ -751,6 +756,7 @@
       "serrage_max_mm": null,
       "serrage_min_mm": null,
       "serrage_source": "",
+      "sous_chaines_par_module": null,
       "struct_masse_kg_m2": null,
       "struct_notice": {
         "date": null,
@@ -889,6 +895,7 @@
       "serrage_max_mm": null,
       "serrage_min_mm": null,
       "serrage_source": "",
+      "sous_chaines_par_module": null,
       "struct_masse_kg_m2": null,
       "struct_notice": {
         "date": null,
@@ -1027,6 +1034,7 @@
       "serrage_max_mm": null,
       "serrage_min_mm": null,
       "serrage_source": "",
+      "sous_chaines_par_module": null,
       "struct_masse_kg_m2": null,
       "struct_notice": {
         "date": null,
@@ -1156,6 +1164,7 @@
       "serrage_max_mm": null,
       "serrage_min_mm": null,
       "serrage_source": "",
+      "sous_chaines_par_module": null,
       "struct_masse_kg_m2": null,
       "struct_notice": {
         "date": null,

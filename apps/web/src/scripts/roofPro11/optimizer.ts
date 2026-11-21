@@ -96,7 +96,7 @@ import {
   unifiedShadeEntries,
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
-import { $, fmt, fmtMad } from './dom';
+import { $, celluleEconomies, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -1412,7 +1412,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         `<td class="num">${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
         `<td class="num">${fmt(Math.round(r.annualKwh))}</td>` +
         `<td class="num">${Math.round(r.pctOfTarget)} %</td>` +
-        `<td class="num">${fmtMad(r.savingsLow)} – ${fmtMad(r.savingsHigh)}</td>`;
+        celluleEconomies(wrap, r.savingsLow, r.savingsHigh);
       tr.addEventListener('click', () => {
         ctx.pitchedLocks.layout = r.layout;
         ctx.pitchedLocks.margin = r.margin;

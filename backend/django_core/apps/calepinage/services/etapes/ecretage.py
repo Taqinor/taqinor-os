@@ -96,6 +96,9 @@ __all__ = ['appliquer', 'LIBELLE', 'COLONNE_ECRETAGE', 'CHAMP_PUISSANCE_AC',
 
 def appliquer(serie, contexte):
     """``(serie, etape)`` — la série plafonnée, l'énergie écrêtée retirée."""
+    from apps.calepinage.services.distribution import (
+        MOTIF_SANS_PRODUCTION, histogramme_puissance,
+    )
     from apps.calepinage.services.electrique import (
         MOTIF_ECRETAGE_SANS_SERIE, ecretage_depuis_serie,
     )
@@ -139,6 +142,8 @@ def appliquer(serie, contexte):
     suite = dict(serie)
     suite['points'] = points
     suite['colonne_energie'] = colonne
+    distribution = histogramme_puissance(
+        puissances_kw, borne_kw, serie.get('pas_minutes') or etapes.PAS_MINUTES_PVGIS)
     return suite, etapes.etape_appliquee(
         LIBELLE, source='fiche',
         entree={
@@ -154,6 +159,9 @@ def appliquer(serie, contexte):
             'ecretage_pct': ecretage_depuis_serie(puissances_kw, borne_kw),
             'heures_ecretees': sum(1 for valeur in puissances_kw
                                    if valeur > borne_kw + 1e-9),
+            # ACAL736 — l'énergie par classe de puissance DEMANDÉE.
+            'distribution': distribution,
+            'motif_distribution': '' if distribution else MOTIF_SANS_PRODUCTION,
         },
         reference=REFERENCE_ECRETAGE)
 

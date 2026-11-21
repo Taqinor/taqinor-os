@@ -244,7 +244,18 @@ export default function BuilderDom({
                   className="h-11 w-11 border border-border text-xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">+</button>
                 <span id="rp9-obs-dims" className="fig text-sm text-foreground">—</span>
               </div>
+              {/* ACAL493 — hauteur saisie (obstaclesUi.ts : `rp9-obs-height`, au `change`, vide = retirée). */}
+              <label className="mt-3 block text-sm text-foreground">
+                Hauteur (m)
+                <input id="rp9-obs-height" type="text" inputMode="decimal" step="any"
+                  className="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" />
+              </label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Laissez vide si vous ne la connaissez pas : l'obstacle ne fera alors aucune ombre.
+              </p>
             </div>
+            {/* ACAL493 — bandeau « Compte NON engageable » (CAL72), visible même sans sélection. */}
+            <p id="rp9-obs-engage" role="status" hidden className="border border-alert-300/60 bg-background/40 p-3 text-sm text-foreground"></p>
 
             {/* CAL102 — outil de MESURE (distance/surface/angle), annotation persistée avec
                 le calepinage (roofPro11/mesureUi.ts). Un genre choisi, des taps posent les

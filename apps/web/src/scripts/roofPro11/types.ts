@@ -205,6 +205,8 @@ export interface RoofToolApi {
   renderImageHd: (
     scale: number,
   ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** ACAL537 — la scène 3D en glTF binaire (repère local), ou `null` si non rendable. */
+  exporterSceneGltf: () => Promise<{ blob: Blob } | null>;
   /** ACAL435 — caméra sur l'une des quatre vues prêtes (600 ms, instantané si reduced-motion). */
   appliquerVue: (nom: 'dessus' | 'sud' | 'trois-quarts' | 'face-panneaux') => void;
   /** CAL104 — projection PLAN orthographique (nord en haut, cotée) de la zone
@@ -320,10 +322,41 @@ export const CLEARANCE_BY_TYPE: Partial<Record<ObstacleType, number>> = {
   autre: OBSTACLE_CLEARANCE_M,
 };
 
+/** ACAL499 — les types SANS valeur d'atelier (miroir de `TYPES_SANS_VALEUR_ATELIER` du serveur) :
+ *  leur dégagement ne vient QUE de la société, sinon le recul de base. `CLEARANCE_BY_TYPE`
+ *  n'en gagne jamais (aucune valeur publiée). */
+const TYPES_SANS_VALEUR_ATELIER: readonly string[] = [
+  'lanterneau', 'exutoire', 'climatiseur', 'citerne', 'garde_corps', 'joint_dilatation',
+];
+let degagementsSociete: Record<string, number> = {};
+let sourceDegagementsSociete = '';
+
+/** ACAL499 — retient la section `degagements` de la société (valeurs des seuls types neufs ;
+ *  tout le reste est ignoré). Appelée à l'initialisation ; une section absente efface. */
+export function poserDegagementsSociete(section: unknown): void {
+  degagementsSociete = {};
+  sourceDegagementsSociete = '';
+  if (!section || typeof section !== 'object') return;
+  const s = section as Record<string, unknown>;
+  for (const t of TYPES_SANS_VALEUR_ATELIER) {
+    const v = s[t];
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) degagementsSociete[t] = v;
+  }
+  if (typeof s.source === 'string') sourceDegagementsSociete = s.source.trim();
+}
+
+/** ACAL499 — d'où vient le dégagement d'un type neuf : « réglage de votre société — … » ou
+ *  « recul de base, aucun dégagement société pour ce type » ; `null` pour les types historiques. */
+export function motifDegagementType(type?: ObstacleType | null): string | null {
+  if (!type || !TYPES_SANS_VALEUR_ATELIER.includes(type)) return null;
+  if (degagementsSociete[type] == null) return 'recul de base, aucun dégagement société pour ce type';
+  return `réglage de votre société${sourceDegagementsSociete ? ` — ${sourceDegagementsSociete}` : ''}`;
+}
+
 /** Dégagement (m) d'un type d'obstacle. Type absent/inconnu → `OBSTACLE_CLEARANCE_M`. */
 export function clearanceForType(type?: ObstacleType | null): number {
   if (!type) return OBSTACLE_CLEARANCE_M;
-  return CLEARANCE_BY_TYPE[type] ?? OBSTACLE_CLEARANCE_M;
+  return degagementsSociete[type] ?? CLEARANCE_BY_TYPE[type] ?? OBSTACLE_CLEARANCE_M;
 }
 
 /** Dégagements (m) PARALLÈLES à une liste d'obstacles (même ordre que leurs anneaux).

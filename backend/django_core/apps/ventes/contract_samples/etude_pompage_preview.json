@@ -1262,7 +1262,23 @@
     "hypotheses": [],
     "methode": "PVGIS indisponible : production = débit à la HMT × heures du réglage société (`agricole_pump_hours`), étiquetée « repli » ; coordonnées non figées."
   },
+  "exemple_pose_calepinage": {
+    "pourquoi": "ACAL1198 (D-ACAL-46, contrat posé SEUL) — devis agricole de niveau 15 dont le volume d'eau suit le plan RÉEL des panneaux servi par le calepinage. Seule la clé `production.plan_irradiation` est décrite ici ; elle n'entre dans `exemple` qu'avec la moitié serveur (ACAL1201). Exemple de forme : un pan à 15° face est, un à 15° face ouest, kWc d'essai.",
+    "production": {
+      "source_irradiation": "pvgis",
+      "plan_irradiation": {
+        "source": "pose_calepinage",
+        "pans": [
+          {"pan": "PAN-E", "kwc": 2.0, "inclinaison_deg": 15.0, "azimut_deg": 90.0},
+          {"pan": "PAN-O", "kwc": 1.0, "inclinaison_deg": 15.0, "azimut_deg": 270.0}
+        ],
+        "plan_reference": null,
+        "motif": null
+      }
+    }
+  },
   "regles_sorties": {
+    "production.plan_irradiation": "plan sur lequel le volume d'eau a été calculé (ACAL1198, D-ACAL-46) : `source` pose_calepinage | site_reference | repli. `pose_calepinage` = PVGIS lu pan par pan au plan servi par le calepinage, `pans[]` = {pan, kwc, inclinaison_deg, azimut_deg}, `plan_reference` null, `motif` null. `site_reference` = PVGIS du site au plan de référence, `plan_reference` = {inclinaison_deg: 30, aspect_deg: 0} (les constantes `PVGIS_ANGLE_DEG` / `PVGIS_ASPECT_DEG` de `apps/parametres/pvgis_profils.py`), `pans` vide, `motif` = pourquoi le calepinage n'est pas retenu. `repli` = repli plat sans PVGIS. `azimut_deg` en boussole (180 = Sud, 90 = Est, 270 = Ouest), même convention que `calepinage_productible_pose.json`. `source_irradiation` reste `pvgis` sur les deux premiers chemins.",
     "entrees_resolues": "objet : <entrée> → {valeur, provenance} — provenance = la forme UNIQUE ci-dessus",
     "hmt.source": "saisie | calculee",
     "besoin.nature": "declare | debit_souhaite | agronomique_plein (D-AGR-3 ; `debit_souhaite` = dérivé du débit souhaité × heures-pic du mois, AGQ1/D-AGQ-1) ; `source_et0` = {station, url, releve_le} ou « EST. » en mode agronomique, null sinon ; `autre_besoin` = l'autre besoin connu et son écart, servi SANS seuil (jamais le maximum des deux)",

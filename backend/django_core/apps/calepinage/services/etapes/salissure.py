@@ -49,6 +49,7 @@ from __future__ import annotations
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.pertes import MOIS_LIBELLES
 from apps.calepinage.services.pvgis_serie import COLONNES_COMPOSANTES
+from ..valeurs import nombre as _nombre
 
 #: La clé de réglage société lue ici (registre CALX145).
 CLE_REGLAGE = 'salissure_mensuelle_pct'
@@ -145,9 +146,29 @@ def appliquer(serie, contexte):
         'reference_saisie': saisie.get('reference') or '',
         'colonnes_appliquees': _colonnes_touchees(serie),
     }
+    entree.update(_nettoyage_et_inclinaison(contexte))  # ACAL743
     return rendue, _etapes.etape_appliquee(
         LIBELLE, source=saisie.get('source'), entree=entree,
         reference=REFERENCE)
+
+
+def _nettoyage_et_inclinaison(contexte):
+    """ACAL743 — nettoyages saisis ; sous le seuil SAISI, un avertissement."""
+    from .bifacial import CHEMINS_INCLINAISON, _valeur
+    from .iam import _plan
+
+    nettoyages = _etapes.reglage(contexte, 'nettoyages_par_an') or {}
+    seuil = _nombre((_etapes.reglage(contexte, 'inclinaison_autonettoyage_deg') or {}).get('valeur'))
+    plan, _refus = _plan(contexte)
+    pente = _valeur(plan, CHEMINS_INCLINAISON) if plan else None
+    texte = ''
+    if seuil is not None and pente is not None and pente < seuil:
+        pente_fr, seuil_fr = (('%g' % x).replace('.', ',') for x in (pente, seuil))
+        texte = (f"Pan à {pente_fr}° : sous l'inclinaison de {seuil_fr}° à partir de laquelle la pluie "
+                 'lave les panneaux (réglage de la société). La poussière peut y rester.')
+    return {'nettoyages_par_an': nettoyages.get('valeur'),
+            'source_nettoyages': nettoyages.get('source'),
+            'avertissement_inclinaison': texte}
 
 
 # ── la saisie, mois par mois ───────────────────────────────────────────

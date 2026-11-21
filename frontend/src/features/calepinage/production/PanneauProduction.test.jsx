@@ -754,3 +754,99 @@ describe('PanneauProduction — tableau mensuel complet (ACAL707)', () => {
     expect(within(table).getByText('Production')).toBeInTheDocument()
   })
 })
+
+/* ACAL709 — la tuile « De la consommation » (niveau expert). */
+describe('PanneauProduction — tuile couverture (ACAL709)', () => {
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+  const servirAutoconso = (modifier) => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    modifier?.(reponse.data)
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+  }
+
+  it('expert : 71 % (batterie comprise) ; en guidé : aucune tuile', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirAutoconso()
+    rendre()
+    const tuile = await screen.findByTestId('acal709-couverture')
+    expect(tuile).toHaveTextContent('De la consommation')
+    expect(tuile).toHaveTextContent('71 %')
+    expect(tuile).toHaveTextContent('Part de la consommation couverte par le solaire')
+    expect(tuile).toHaveTextContent('(batterie comprise)')
+    expect(tuile).not.toHaveTextContent('62 %') // jamais le taux d'autoconsommation
+    cleanup()
+    localStorage.removeItem(CLE_EXPERT)
+    servirAutoconso()
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal709-couverture')).toBeNull()
+  })
+
+  it('taux null : « non calculée » et le motif servi ; bloc absent : repli', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirAutoconso((d) => {
+      d.autoconsommation.taux_couverture = null
+      d.autoconsommation.motif_absence = 'Aucune courbe de charge saisie.'
+    })
+    rendre()
+    const tuile = await screen.findByTestId('acal709-couverture')
+    expect(tuile).toHaveTextContent('non calculée')
+    expect(tuile).toHaveTextContent('Aucune courbe de charge saisie.')
+    expect(tuile).not.toHaveTextContent('0 %')
+    cleanup()
+    servirAutoconso((d) => { d.autoconsommation = null })
+    rendre()
+    expect(await screen.findByTestId('acal709-couverture')).toHaveTextContent('Aucune consommation connue.')
+  })
+})
+
+/* ACAL710 — la ligne « sur la durée » (niveau expert). */
+describe('PanneauProduction — sur la durée (ACAL710)', () => {
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+  const servirDuree = (modifier) => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    modifier?.(reponse.data.production)
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+  }
+  const projectionSur = (n) => Array.from({ length: n }, (_, i) => ({
+    annee: i + 1, facteur: i ? 0.99 : null, p50_kwh: 13000 - i * 100, source: 'x',
+  }))
+
+  it('N lu dans la dernière année (2, 20, 25), garantie seulement à 10 ou 25 ans', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirDuree()
+    rendre()
+    expect(await screen.findByTestId('acal710-basse')).toHaveTextContent('Année basse (9 fois sur 10 au-dessus) : 11 900 kWh')
+    expect(screen.getByTestId('acal710-derniere')).toHaveTextContent('Dans 2 ans : 12 929 kWh')
+    expect(screen.getByTestId('acal710-derniere')).not.toHaveTextContent('garantie fabricant')
+    cleanup()
+    servirDuree((p) => { p.projection = projectionSur(20) })
+    rendre()
+    expect(await screen.findByTestId('acal710-derniere')).toHaveTextContent('Dans 20 ans : 11 100 kWh')
+    expect(screen.getByTestId('acal710-derniere')).not.toHaveTextContent('garantie fabricant')
+    expect(screen.getByTestId('acal710-annee-10')).toHaveTextContent('90 %')
+    cleanup()
+    servirDuree((p) => { p.projection = projectionSur(25) })
+    rendre()
+    expect(await screen.findByTestId('acal710-derniere')).toHaveTextContent('(garantie fabricant : 80 %)')
+    expect(screen.getByTestId('acal710-tableau').tagName).toBe('DETAILS')
+    expect(screen.getByTestId('acal710-tableau')).toHaveTextContent('Sur 25 ans')
+    expect(screen.getByTestId('acal710-annee-25')).toHaveTextContent('80 %')
+    expect(screen.getByTestId('acal710-annee-1')).toHaveTextContent('non calculée')
+  })
+
+  it('omission : le motif servi remplace le tableau ; guidé : rien', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirDuree((p) => { p.duree_de_vie.motif_omission = 'Dégradation absente de la fiche produit.'; p.projection = projectionSur(1) })
+    rendre()
+    expect(await screen.findByTestId('acal710-motif')).toHaveTextContent('Dégradation absente de la fiche produit.')
+    expect(screen.queryByTestId('acal710-tableau')).toBeNull()
+    expect(screen.queryByTestId('acal710-derniere')).toBeNull()
+    cleanup()
+    localStorage.removeItem(CLE_EXPERT)
+    servirDuree()
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal710-ligne')).toBeNull()
+  })
+})

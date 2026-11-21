@@ -22,7 +22,7 @@ from apps.ventes.etude_horaire import (
     simuler_batterie_jour,
     simuler_batterie_pas_fins,
 )
-from apps.ventes.horaire.base import _num, saison_du_mois
+from apps.ventes.horaire.base import _num, saison_du_mois, serie_de_base_production
 from apps.ventes.horaire.ombrage import facteur_ombrage
 from apps.ventes.horaire.batterie_lignes import (
     RENDEMENT_SOURCE_FICHE,
@@ -190,7 +190,8 @@ JOURS_TYPES_PUBLICS_MOIS = (1, 4, 7, 11)
 
 def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
                         lon=None, occupation=None, equipements=None,
-                        jour_reference=None, perte_ombrage_pct=None):
+                        jour_reference=None, perte_ombrage_pct=None,
+                        base_production=None):
     """T4 (24/08/2026) — les 4 mois « jour type » du payload public
     ``jours_types`` (contrat ``apps/web/src/lib/proposition.ts
     ProposalResponse.jours_types``) : ``{"1"|"4"|"7"|"11": {prod_kw[24],
@@ -224,7 +225,8 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
             kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
             ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements,
-            jour_reference=jour_reference, perte_ombrage_pct=perte_ombrage_pct)
+            jour_reference=jour_reference, perte_ombrage_pct=perte_ombrage_pct,
+            base_production=base_production)  # ACAL999
         if not jours_types:
             return None
         par_mois = {j['mois']: j for j in jours_types}
@@ -365,7 +367,8 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
                                  puissances_par_pack=None,
                                  batterie_rendement=None,
                                  batterie_rendement_source=None,
-                                 jour_reference=None, perte_ombrage_pct=None):
+                                 jour_reference=None, perte_ombrage_pct=None,
+                                 base_production=None):
     """COUVBAT (ordre fondateur, 26/08/2026) — CE QUE LE CURSEUR « N BATTERIES »
     DOIT MONTRER : la part de la consommation du client réellement COUVERTE
     (solaire direct + batterie) pour chaque N, heure par heure ET sur l'année,
@@ -448,7 +451,8 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
             kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
             ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements,
-            jour_reference=jour_reference, perte_ombrage_pct=perte_ombrage_pct)
+            jour_reference=jour_reference, perte_ombrage_pct=perte_ombrage_pct,
+            base_production=base_production)  # ACAL999
         if not jours_types or len(jours_types) != 12:
             return None
 
@@ -619,7 +623,7 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
 
 
 def production_annuelle_pour_kwc(kwc, *, ville=None, lat=None, lon=None,
-                                 perte_ombrage_pct=None):
+                                 perte_ombrage_pct=None, base_production=None):
     """PACT10 (« deux optimiseurs ») — production ANNUELLE (kWh) pour un
     ``kwc`` DONNÉ, lecture pure, aucune persistance.
 
@@ -638,12 +642,16 @@ def production_annuelle_pour_kwc(kwc, *, ville=None, lat=None, lon=None,
         kwc_f = _num(kwc, 0.0)
         if kwc_f <= 0:
             return None
-        mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
+        mensuel, incluses = serie_de_base_production(  # ACAL999 : série servie
+            base_production, productible_mensuel(ville=ville, lat=lat, lon=lon))
         if not mensuel:
             return None
         valeurs, _source = mensuel
-        total = (sum(_num(v) for v in valeurs) * kwc_f * PRODUCTION_DERATE
-                 * facteur_ombrage(perte_ombrage_pct))
+        if incluses:  # pertes et ombrage déjà dans la base : facteur 1,0
+            total = sum(_num(v) for v in valeurs) * kwc_f
+        else:
+            total = (sum(_num(v) for v in valeurs) * kwc_f * PRODUCTION_DERATE
+                     * facteur_ombrage(perte_ombrage_pct))
         return round(total) if total > 0 else None
     except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais (D-ENF22-BLE001)
         logger.warning('production_annuelle_pour_kwc indisponible', exc_info=True)
@@ -651,7 +659,7 @@ def production_annuelle_pour_kwc(kwc, *, ville=None, lat=None, lon=None,
 
 
 def production_journaliere_par_saison(kwc, *, ville=None, lat=None, lon=None,
-                                      facteur=1.0):
+                                      facteur=1.0, base_production=None):
     """PACT10 (« deux optimiseurs ») — bloc production PAR SAISON pour un
     ``kwc`` DONNÉ, MÊME FORME que ``courbes_journalieres.production_par_saison`` (celle
     déjà servie sous ``payload.courbes_journalieres.production``) : chaque
@@ -671,12 +679,13 @@ def production_journaliere_par_saison(kwc, *, ville=None, lat=None, lon=None,
         kwc_f = _num(kwc, 0.0)
         if kwc_f <= 0:
             return {}
-        mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
+        mensuel, incluses = serie_de_base_production(  # ACAL999 : série servie
+            base_production, productible_mensuel(ville=ville, lat=lat, lon=lon))
         if not mensuel:
             return {}
         # QJR611 — une seule boucle : on délègue à courbes_journalieres.
         return production_par_saison(kwc_f, mensuel, ville, lat, lon,
-                                     facteur=facteur)
+                                     facteur=1.0 if incluses else facteur)
     except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais (D-ENF22-BLE001)
         logger.warning(
             'production_journaliere_par_saison indisponible', exc_info=True)

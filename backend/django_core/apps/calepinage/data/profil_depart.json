@@ -296,6 +296,16 @@
       "motif": "Borne de lecture propre à la société : aucune page publiée relue ne chiffre une perte d'ombrage « importante », laissée sans valeur (D-CALX 7, ACAL716)."
     },
     {
+      "cle": "nettoyages_par_an",
+      "section": "simulation",
+      "motif": "Fréquence de nettoyage propre à la société : la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss), aucune valeur publiée trouvée, laissée sans valeur (D-CALX 7, ACAL742)."
+    },
+    {
+      "cle": "inclinaison_autonettoyage_deg",
+      "section": "simulation",
+      "motif": "Seuil d'autonettoyage propre à la société : la salissure dépend de la pluie et de l'inclinaison (PVsyst, Soiling loss), aucune valeur publiée trouvée, laissé sans valeur (D-CALX 7, ACAL742)."
+    },
+    {
       "cle": "facteur_regroupement",
       "section": "electrique_societe",
       "motif": "Facteur de regroupement des câbles : réglage société, aucune valeur publiée relue sur une page citée, laissé sans valeur (D-CALX 7, ACAL636)."

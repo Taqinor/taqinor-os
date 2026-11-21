@@ -157,6 +157,18 @@ export interface Scene3d {
   renderOffscreen: (
     scale: number,
   ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** ACAL537 — la scène (repère LOCAL du site, mètres) en glTF binaire pour un architecte ;
+   *  `null` si rien n'est rendable. Aucun prix ni donnée client : la scène n'en porte pas. */
+  exporterSceneGltf: () => Promise<{ blob: Blob } | null>;
+}
+
+/** ACAL537 — sérialise un groupe three en `.glb` (chargé à la demande : le lot de l'atelier ne
+ *  grossit pas). Les `InstancedMesh` sortent en `EXT_mesh_gpu_instancing`, un par type de pièce. */
+export async function groupeVersGlb(groupe: THREE.Object3D): Promise<Blob> {
+  // @ts-ignore — `three` n'a pas de types ici (src/types/three-shim.d.ts ne couvre que `three`).
+  const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
+  const glb = await new GLTFExporter().parseAsync(groupe, { binary: true, onlyVisible: true });
+  return new Blob([glb as ArrayBuffer], { type: 'model/gltf-binary' });
 }
 
 // ════════════════════════ W107 — faîtière commune (pans connectés) ════════════════════════
@@ -2749,6 +2761,16 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
+  /** ACAL537 — exporte la racine de la scène (repère local, jamais Mercator) ; `null` si vide. */
+  async function exporterSceneGltf(): Promise<{ blob: Blob } | null> {
+    if (glLost || !sceneRoot || !sceneRoot.children.length) return null;
+    try {
+      return { blob: await groupeVersGlb(sceneRoot) };
+    } catch {
+      return null; // export refusé : pas de fichier, jamais une exception qui casse l'atelier
+    }
+  }
+
   // CALX219 câblage — l'atelier donne sa couche électrique à la scène ; la scène l'attache
   // tout de suite si elle existe déjà, et la ré-attache après chaque `renderScene`.
   function setCoucheElectrique(groupe: THREE.Object3D | null) {
@@ -2759,7 +2781,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     attacherCoucheElectrique();
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen };
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

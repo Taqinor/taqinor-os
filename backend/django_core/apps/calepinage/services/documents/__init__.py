@@ -113,6 +113,12 @@ MOTIF_SANS_CONCEPTION_DOCUMENT = (
     "conception et du résultat enregistrés, jamais d'un calcul "
     "reconstitué.")
 
+#: ACAL942 - le motif quand la conception est enregistrée mais qu'aucun
+#: résultat n'est calculé — MOT POUR MOT ``exemple_sans_calcul`` du contrat.
+MOTIF_SANS_SIMULATION_DOCUMENT = (
+    "Conception enregistrée — il manque le calcul : lancez la simulation "
+    "dans l'onglet Production.")
+
 #: Le champ manquant quand ``resultat_du_rapport`` refuse sans donner de
 #: ``champ`` reconnu ici (défensif — un service qui gagnerait un nouveau
 #: refus n'a pas besoin de revenir modifier cette table).
@@ -395,8 +401,12 @@ def inventaire_des_documents(calepinage):
         if not base_ok:
             manque_base = MANQUE_ROOF_LAYOUT if not a_conception \
                 else MANQUE_RESULTAT
-            etats[code] = (False, MOTIF_SANS_CONCEPTION_DOCUMENT,
-                           [manque_base])
+            # ACAL942 - conception enregistree sans calcul : etat NORMAL
+            # apres « Enregistrer », dit comme tel (jamais « aucune
+            # conception »).
+            motif_base = MOTIF_SANS_CONCEPTION_DOCUMENT if not a_conception \
+                else MOTIF_SANS_SIMULATION_DOCUMENT
+            etats[code] = (False, motif_base, [manque_base])
         elif code != 'dossier_fin_chantier':
             etats[code] = _etat_du_document(code, calepinage, resultat,
                                             refus_rapport)

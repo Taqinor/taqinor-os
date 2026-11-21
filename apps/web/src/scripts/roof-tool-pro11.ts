@@ -228,6 +228,8 @@ import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; i
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
+import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
+import { poserRetraitsSurPanActif } from './roofPro11/retraitsSociete'; // ACAL562
 
 let booted = false;
 
@@ -2427,6 +2429,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     autoInferFacing();
     syncFacingChips();
     recalc();
+    const infoRetraits = poserRetraitsSurPanActif(ctx); // ACAL562 — retraits de la société sur les arêtes typées
+    if (infoRetraits) setStatus(infoRetraits);
   }
 
   function go3DView() {
@@ -3133,37 +3137,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    * courante) : l'utilisateur voit « vous avez choisi X mais Y est recommandé ».
    */
   function updateRecoBadges() {
-    const show = (b: Element | null, on: boolean) => {
-      const badge = b?.querySelector<HTMLElement>('.rp9-reco-badge');
-      if (badge) badge.hidden = !on;
-    };
-    const ro = rec?.recommendedOptions;
-    // Famille
-    document.querySelectorAll<HTMLButtonElement>('[data-family]').forEach((b) => {
-      show(b, !!ro && b.dataset.family === ro.family);
-    });
-    // Inclinaison : badge le chip numérique == tilt arrondi, sinon le chip « reco ».
-    const tiltRounded = ro ? Math.round(ro.tiltDeg) : null;
-    const tiltChips = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-tilt]'));
-    const numericMatch = tiltChips.find((b) => b.dataset.tilt !== 'reco' && Number(b.dataset.tilt) === tiltRounded);
-    tiltChips.forEach((b) => {
-      if (!ro) return show(b, false);
-      if (numericMatch) show(b, b === numericMatch);
-      else show(b, b.dataset.tilt === 'reco'); // aucun chip numérique ne colle → badge « Recommandé »
-    });
-    // Portrait / paysage (« Auto » jamais badgé)
-    document.querySelectorAll<HTMLButtonElement>('[data-orient]').forEach((b) => {
-      show(b, !!ro && b.dataset.orient !== 'auto' && b.dataset.orient === ro.panelOrientation);
-    });
-    // Azimut : 'south' si l'azimut recommandé est plein sud, sinon 'aligned'.
-    const azReco = ro ? (ro.azimuthDeg === 180 ? 'south' : 'aligned') : null;
-    document.querySelectorAll<HTMLButtonElement>('[data-azimuth]').forEach((b) => {
-      show(b, b.dataset.azimuth === azReco);
-    });
-    // Marge ('keep' / 'remove')
-    document.querySelectorAll<HTMLButtonElement>('[data-margin]').forEach((b) => {
-      show(b, !!ro && b.dataset.margin === ro.margin);
-    });
+    majBadgesReco(rec?.recommendedOptions); // ACAL562 : corps déplacé dans roofPro11/recoBadges.ts
   }
 
   // W34 — Chaque groupe d'options est un AXE. Un clic VERROUILLE cet axe puis re-résout
@@ -4335,6 +4309,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),
+    exporterSceneGltf: () => scene3d.exporterSceneGltf(), // ACAL537
     appliquerVue: (nom) => appliquerVue(map, nom, facingAzimuthDeg, !!opts.reducedMotion), // ACAL435
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
     // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les

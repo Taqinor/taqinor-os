@@ -20,7 +20,7 @@ function setupDom() {
     e.id = id;
     document.body.appendChild(e);
   }
-  for (const id of ['rp9-obs-length', 'rp9-obs-width']) {
+  for (const id of ['rp9-obs-length', 'rp9-obs-width', 'rp9-obs-height']) {
     const i = document.createElement('input');
     i.id = id;
     document.body.appendChild(i);
@@ -91,5 +91,21 @@ describe('W81 — l\'obstacle est borné au commit, pas à chaque frappe', () =>
     lengthEl().dispatchEvent(new Event('change', { bubbles: true }));
 
     expect(ctx.obstacles[0].lengthM).toBe(3.5);
+  });
+
+  // ACAL493 — hauteur saisie : « 1,2 » + change ⇒ heightM 1,2 ; champ vidé ⇒ propriété ABSENTE (jamais 0).
+  it('la hauteur saisie est rangée au `change` ; vidée, elle est retirée', () => {
+    const ctx = makeCtx();
+    const ui = createObstaclesUi(ctx, { map: makeMap(), recalc: () => {}, setStatus: () => {} });
+    ui.addObstacle(defaultObstacle('obs-1', [-7.5, 33.5]));
+    const h = document.getElementById('rp9-obs-height') as HTMLInputElement;
+
+    h.value = '1,2';
+    h.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(ctx.obstacles[0].heightM).toBe(1.2);
+
+    h.value = '';
+    h.dispatchEvent(new Event('change', { bubbles: true }));
+    expect('heightM' in ctx.obstacles[0]).toBe(false);
   });
 });

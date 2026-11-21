@@ -338,5 +338,27 @@
         }
       ]
     }
+  },
+  "exemple_entrees_onduleur": {
+    "mppt": {
+      "heures_sous_demarrage": 2,
+      "energie_sous_demarrage_kwh": 2.0,
+      "energie_sous_demarrage_deja_retiree_kwh": 0.0
+    },
+    "ecretage": {
+      "distribution": {
+        "borne_kw": 5.0,
+        "largeur_kw": 0.25,
+        "classes": [
+          {"de_kw": 1.0, "a_kw": 1.25, "energie_kwh": 1.0},
+          {"de_kw": 4.75, "a_kw": 5.0, "energie_kwh": 4.9},
+          {"de_kw": 5.0, "a_kw": 5.25, "energie_kwh": 10.2},
+          {"de_kw": 7.0, "a_kw": 7.25, "energie_kwh": 7.0}
+        ],
+        "energie_totale_kwh": 23.1,
+        "energie_ecretee_kwh": 2.2,
+        "part_ecretee_pct": 9.524
+      }
+    }
   }
 }

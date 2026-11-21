@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import CarteDevisCree from './CarteDevisCree'
 import calepinageApi from '../../api/calepinageApi'
 import { toastWarning } from '../../lib/toast'
 import { reviserEtOuvrir } from '../ventes/reviserDevis'
@@ -196,20 +197,17 @@ export default function BoutonDevis({
     if (!nouveau) return
     setBloquage(null)
     setMotif('')
-    // ACAL95 — ce que la composition n'a pas pu faire se lit AVANT de partir :
-    // pas de navigation immédiate, un lien « Ouvrir le devis » à la place.
-    // ACAL171 — un verdict INDÉTERMINÉ (manquantes) se lit de même.
-    const messages = messagesDuServeur(res.data)
-    const manquantes = manquantesElectriques(res.data)
-    if (messages.length > 0 || manquantes.length > 0) {
-      setRetour({
-        messages, manquantes, lignes: null, inchange: false, devisId: nouveau, suite: 'ouvrir',
-      })
-      return
-    }
-    // On rouvre la conception SUR le devis : c'est là que le commercial
-    // continue son geste, exactement comme depuis la fiche lead.
-    navigate(`/ventes/devis/${nouveau}/design`)
+    // ACAL866 — AVEC ou SANS message : la carte « Devis … créé » (jamais de navigation immédiate),
+    // les lignes techniques (ACAL95, ACAL171) repliées dessous ; la référence est celle du serveur.
+    setRetour({
+      messages: messagesDuServeur(res.data),
+      manquantes: manquantesElectriques(res.data),
+      lignes: null,
+      inchange: false,
+      devisId: nouveau,
+      reference: res.data?.reference ?? null,
+      suite: 'ouvrir',
+    })
   })
 
   const relireEtRecharger = async () => {
@@ -423,7 +421,33 @@ export default function BoutonDevis({
       )}
 
       {/* ACAL95 — le retour du serveur, LU avant de poursuivre. */}
-      {retour && (
+      {retour && retour.suite === 'ouvrir' && retour.devisId && (
+        <CarteDevisCree
+          devisId={retour.devisId}
+          reference={retour.reference}
+          onRevenir={() => setRetour(null)}
+          aDetails={retour.messages.length > 0 || retour.manquantes?.length > 0}
+        >
+          <div data-testid="cal-devis-avertissements">
+            {retour.manquantes?.length > 0 && (
+              <div data-testid="cal-devis-indetermine">
+                <p className="text-sm text-foreground" role="status">
+                  Verdict électrique indéterminé — à compléter :
+                </p>
+                <ul className="mt-1 space-y-1 text-sm text-primary-text">
+                  {retour.manquantes.map((m) => <li key={m}>{m}</li>)}
+                </ul>
+              </div>
+            )}
+            {retour.messages.length > 0 && (
+              <ul className="mt-1 space-y-1 text-sm text-primary-text">
+                {retour.messages.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            )}
+          </div>
+        </CarteDevisCree>
+      )}
+      {retour && !(retour.suite === 'ouvrir' && retour.devisId) && (
         <div className="border border-brass-400/40 p-3" data-testid="cal-devis-avertissements">
           {retour.inchange && (
             <p className="text-sm text-foreground" role="status">Aucun changement</p>
@@ -455,15 +479,6 @@ export default function BoutonDevis({
             >
               J’ai lu
             </button>
-          )}
-          {retour.suite === 'ouvrir' && retour.devisId && (
-            <Link
-              to={`/ventes/devis/${retour.devisId}/design`}
-              data-testid="cal-devis-ouvrir"
-              className="mt-3 inline-block text-sm font-semibold text-primary-text underline"
-            >
-              Ouvrir le devis
-            </Link>
           )}
         </div>
       )}

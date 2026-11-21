@@ -142,3 +142,30 @@ describe('CAL93 — maskedHourCount', () => {
     expect(maskedHourCount([[1, 1, 0.25], [1, 1, 1]])).toBe(1);
   });
 });
+
+// ACAL517 — la provenance « relevé téléphone » survit à l'aller-retour du document.
+import { serializeHorizonProfile, deserializeHorizonProfileFromLayout } from '../src/lib/horizonEngine';
+
+describe('ACAL517 — releve : serializeHorizonProfile ↔ deserializeHorizonProfileFromLayout', () => {
+  const points: HorizonPoint[] = [
+    { azimuthDeg: 0, heightDeg: 3 },
+    { azimuthDeg: 120, heightDeg: 8 },
+    { azimuthDeg: 240, heightDeg: 5 },
+  ];
+  const releve = { mode: 'telephone' as const, date: '2026-11-21', precisionDeg: 5 };
+
+  it('`releve` survit à l’aller-retour', () => {
+    const emis = serializeHorizonProfile({ source: 'saisie', points, hauteurMaxDeg: 8, releve });
+    const relu = deserializeHorizonProfileFromLayout({ horizonProfile: JSON.parse(JSON.stringify(emis)) });
+    expect(relu?.releve).toEqual(releve);
+    expect(relu?.source).toBe('saisie');
+  });
+
+  it('sans `releve` : aucune clé ; un `releve` non conforme est écarté', () => {
+    expect('releve' in serializeHorizonProfile({ source: 'saisie', points, hauteurMaxDeg: 8 })).toBe(false);
+    for (const faux of [{ ...releve, mode: 'gps' }, { ...releve, date: 'hier' }, { ...releve, precisionDeg: 0 }]) {
+      const relu = deserializeHorizonProfileFromLayout({ horizonProfile: { source: 'saisie', points, releve: faux } });
+      expect(relu && 'releve' in relu).toBe(false);
+    }
+  });
+});

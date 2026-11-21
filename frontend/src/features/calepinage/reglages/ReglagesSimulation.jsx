@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ChoixSurfaceAlbedo from './ChoixSurfaceAlbedo'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
@@ -6,6 +7,7 @@ import ReglagesSite from './ReglagesSite'
 import DemarrageRapide from './DemarrageRapide'
 import ReglagesNorme from './ReglagesNorme'
 import ReglagesLestage from './ReglagesLestage'
+import ReglagesRetraitsAretes from './ReglagesRetraitsAretes'
 import { useOuvrirChamp } from '../atelier/ouvrirChamp'
 import { refusServeur } from '../commun/refusServeur'
 
@@ -253,6 +255,7 @@ function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
           {aide}
         </p>
       )}
+      {r.cle === 'albedo_mensuel' && <ChoixSurfaceAlbedo cle={r.cle} disabled={disabled} onChoisir={majer} />}
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block" data-testid={`calx69-valeur-${r.cle}`}>
           <span className="text-xs text-muted-foreground">Valeur</span>
@@ -504,6 +507,7 @@ export default function ReglagesSimulation() {
   // ACAL397 — `norme_electrique` servie ; `#<champ>` (lien de « ce qui manque ») focalisé après chargement.
   const [normeServie, setNormeServie] = useState(null)
   const [lestage, setLestage] = useState({ registre: null, servi: null }) // ACAL572
+  const [degagements, setDegagements] = useState(null) // ACAL561 — la section servie, renvoyée entière
   const [chargement, setChargement] = useState(true)
   const [erreurChargement, setErreurChargement] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -533,6 +537,7 @@ export default function ReglagesSimulation() {
         setDocumentsServis(data.documents && typeof data.documents === 'object' ? data.documents : {})
         setNormeServie(data.norme_electrique && typeof data.norme_electrique === 'object' ? data.norme_electrique : {})
         setLestage({ registre: servi.lestage ?? null, servi: data.lestage ?? {} })
+        setDegagements(data.degagements && typeof data.degagements === 'object' ? data.degagements : {})
         setServis({ simulation: data.simulation, electrique_societe: data.electrique_societe })
         setLignesParSection({
           simulation: lignesDepuis(simulation, data.simulation),
@@ -754,6 +759,7 @@ export default function ReglagesSimulation() {
       )}
 
       <ReglagesLestage registre={lestage.registre} servi={lestage.servi} peutGerer={peutGerer} />
+      {degagements && <ReglagesRetraitsAretes servi={degagements} peutGerer={peutGerer} />}
       <CarteHistorique servi={presetsServis?.versions_conservees ?? null} peutGerer={peutGerer} />
       <CarteRapport documents={documentsServis} peutGerer={peutGerer} />
     </div>

@@ -233,6 +233,41 @@ const PROFIL_PVGIS_9 = {
   hauteurMaxDeg: 6,
 }
 
+describe('ACAL517 — la provenance « relevé téléphone » de l’onglet Horizon', () => {
+  const RELEVE = { mode: 'telephone', date: '2026-11-21', precisionDeg: 5 }
+  const profilReleve = () => ({ ...PROFIL_PVGIS_9, source: 'saisie', releve: RELEVE })
+  const ouvrir = async () => {
+    layout.mockResolvedValue({
+      data: { roof_layout: { pin: { lat: 33.5731, lng: -7.5898 }, horizonProfile: profilReleve() }, empreinte_document: 'E0' },
+    })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(9))
+  }
+
+  it('enregistrer sans geste garde `releve`', async () => {
+    await ouvrir()
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].valeur.releve).toEqual(RELEVE)
+  })
+
+  it('ajouter un point efface `releve`', async () => {
+    await ouvrir()
+    ajouter(350, 4)
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect('releve' in enregistrerSectionLayout.mock.calls[0][1].valeur).toBe(false)
+  })
+
+  it('retirer un point efface `releve`', async () => {
+    await ouvrir()
+    fireEvent.click(screen.getAllByLabelText(/Retirer le point/)[0])
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect('releve' in enregistrerSectionLayout.mock.calls[0][1].valeur).toBe(false)
+  })
+})
+
 describe('ACAL124 — onglet Horizon : tour complet et provenance', () => {
   it('retirer un point d’un profil PVGIS l’enregistre en saisie', async () => {
     layout.mockResolvedValue({

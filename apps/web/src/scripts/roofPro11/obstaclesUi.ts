@@ -43,6 +43,8 @@ import {
   obstacleCercle,
   obstacleDepuisGabarit,
   obstaclePolygone,
+  motifDegagementType,
+  poserDegagementsSociete,
   type GabaritObstacle,
   type GabaritZone,
   type ObstacleEtendu,
@@ -381,7 +383,9 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   const clearanceLabel = (obs: Obstacle): string => {
     const o = obs as ObstacleEtendu;
     const base = `Dégagement autour : ${fmt1(degagementObstacle(o))} m`;
-    if (o.degagementM == null) return base;
+    // ACAL499 — type neuf : la source du chiffre (société ou recul de base).
+    const motif = motifDegagementType(o.type);
+    if (o.degagementM == null) return motif ? `${base} (${motif})` : base;
     return `${base} (gabarit de votre société — ${o.sourceDegagement ?? 'source non renseignée'})`;
   };
 
@@ -882,6 +886,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     parseFloat((s ?? '').replace(/\s/g, '').replace(',', '.'));
 
   const reglages = ctx.opts?.reglagesAtelier ?? null;
+  poserDegagementsSociete(reglages?.degagements); // ACAL499
   /** CALX403 — le pays du site vient de la section `imagerie` déjà transmise (CAL47) :
    *  on ne le redemande pas, et on n'en suppose aucun. */
   const paysDuSite = ctx.opts?.imagery?.pays ?? null;

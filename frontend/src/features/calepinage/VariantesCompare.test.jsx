@@ -437,3 +437,33 @@ describe('VariantesCompare (ACAL113)', () => {
     expect(screen.queryByTestId(`cal-badge-perimee-${RETENUE.id}`)).toBeNull()
   })
 })
+
+/* ============================================================================
+   ACAL600 — la ligne « Module » (ACAL595 : `lignes[].module`), et « à re-poser ».
+   ========================================================================== */
+describe('VariantesCompare (ACAL600) — ligne Module', () => {
+  it('ligne Module : B, mixte, —', async () => {
+    const B = CONTRAT.lignes.find((l) => l.module && !l.module.mixte
+      && l !== AUTRE && l !== NON_SIMULEE)
+    expect(B, 'le contrat sert un module complet sur une ligne').toBeTruthy()
+    const lignes = CONTRAT.lignes.map((l) => {
+      if (l.id === AUTRE.id) return { ...l, module: { mixte: true } }
+      if (l.id === NON_SIMULEE.id) {
+        return { ...l, module: null, nom: `${l.nom} — à re-poser` }
+      }
+      return l
+    })
+    mocks.comparer.mockResolvedValue({ data: { ...CONTRAT, lignes } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    const cellule = (l) => screen.getByTestId(`cal-module-${l.courante ? 'courante' : l.id}`)
+    expect(cellule(B)).toHaveTextContent(B.module.libelle)
+    expect(cellule(B)).toHaveTextContent('580 Wc')
+    expect(cellule(AUTRE)).toHaveTextContent('mixte')
+    expect(cellule(NON_SIMULEE)).toHaveTextContent('—')
+    expect(cellule(NON_SIMULEE))
+      .toHaveTextContent('À re-poser dans l’atelier : les cotes du module diffèrent')
+    expect(cellule(B)).not.toHaveTextContent('re-poser')
+  })
+})

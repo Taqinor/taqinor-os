@@ -10,7 +10,15 @@
     "degagements": {
       "retrait_rive_m": 0.5,
       "allee_technique_m": 0.9,
-      "source": "valeur atelier actuelle, non sourcée"
+      "source": "valeur atelier actuelle, non sourcée",
+      "retraits_par_arete": [
+        {
+          "type": "egout",
+          "retrait_m": 0.4,
+          "source": "notice X",
+          "reference": ""
+        }
+      ]
     },
     "zones_types": {
       "coupe_feu": {
@@ -525,6 +533,23 @@
           "type": "pourcentage",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "cle": "nettoyages_par_an",
+          "libelle": "Nettoyages des panneaux par an",
+          "unite": "par an",
+          "reference": "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss)",
+          "type": "entier",
+          "minimum": 0
+        },
+        {
+          "cle": "inclinaison_autonettoyage_deg",
+          "libelle": "Inclinaison à partir de laquelle la pluie lave les panneaux",
+          "unite": "°",
+          "reference": "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss)",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 90
         }
       ],
       "electrique_societe": [
@@ -1216,6 +1241,23 @@
           "type": "pourcentage",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "cle": "nettoyages_par_an",
+          "libelle": "Nettoyages des panneaux par an",
+          "unite": "par an",
+          "reference": "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss)",
+          "type": "entier",
+          "minimum": 0
+        },
+        {
+          "cle": "inclinaison_autonettoyage_deg",
+          "libelle": "Inclinaison à partir de laquelle la pluie lave les panneaux",
+          "unite": "°",
+          "reference": "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss)",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 90
         }
       ],
       "electrique_societe": [
@@ -1526,6 +1568,12 @@
       }
     },
     "effet": "FUSION par clé : sigma_modele_pct est posée, tolerance_validation_pct est RETIRÉE (null), les autres clés de `simulation` sont conservées."
+  },
+  "exemple_degagement_type_neuf": {
+    "degagements": {
+      "lanterneau": 1.8,
+      "source": "Préréglage FM Global DS 1-15 §2.1.1.4 (exemple du contrat)"
+    }
   },
   "exemple_refus_type": {
     "simulation": {

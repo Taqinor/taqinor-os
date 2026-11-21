@@ -1,0 +1,163 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/systemes-fixation/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL557 (C-ACAL-L5-557) — CATALOGUE des systèmes de fixation de la société (SystemeFixation + ComposantFixation existaient sans route ni écran). GET calepinages/systemes-fixation/ → {systemes: [...]} ; POST même chemin → 201 {systeme} ; GET / PATCH / DELETE calepinages/systemes-fixation/<int:pk>/ → {systeme} (DELETE 204). Chaque système : {id, code, libelle, fabricant, mode_pose (SystemeFixation.ModePose), actif, provenance, composants[] {id, role (ComposantFixation.Role), libelle, unite, produit_id | null, regle {base, facteur, diviseur, libelle_facteur, libelle_diviseur}, source, ordre}}. Refus 400 nommant le champ par son chemin (provenance, code, composants[i].source, composants[i].regle). La société vient du SERVEUR, jamais du corps ; aucun prix. Catalogue vide = liste vide, rien de pré-rempli (D12). PACT10 : le contrat part SEUL avant ACAL558 (serveur), ACAL559 et ACAL560 (écrans).",
+  "exemple": {
+    "systemes": [
+      {
+        "id": 4,
+        "code": "incline-rails-crochets",
+        "libelle": "Système sur toiture inclinée à rails et crochets (exemple)",
+        "fabricant": "Fabricant d'exemple",
+        "mode_pose": "toiture_inclinee",
+        "actif": true,
+        "provenance": "Notice de montage du fabricant, édition d'exemple",
+        "composants": [
+          {
+            "id": 31,
+            "role": "rail",
+            "libelle": "Rail aluminium",
+            "unite": "m",
+            "produit_id": 812,
+            "regle": {
+              "base": "longueur_rangees_m",
+              "facteur": 2,
+              "diviseur": null,
+              "libelle_facteur": "rails par rangée",
+              "libelle_diviseur": ""
+            },
+            "source": "Notice de montage du fabricant, tableau des rails",
+            "ordre": 0
+          },
+          {
+            "id": 32,
+            "role": "crochet",
+            "libelle": "Crochet de toit",
+            "unite": "u",
+            "produit_id": null,
+            "regle": {
+              "base": "role:rail",
+              "facteur": null,
+              "diviseur": null,
+              "libelle_facteur": "",
+              "libelle_diviseur": "entraxe des crochets (m)"
+            },
+            "source": "Notice de montage du fabricant, entraxes admissibles",
+            "ordre": 1
+          }
+        ]
+      }
+    ]
+  },
+  "exemple_vide": {
+    "systemes": []
+  },
+  "exemple_creation": {
+    "methode": "POST",
+    "statut": 201,
+    "corps": {
+      "code": "plat-leste",
+      "libelle": "Système toit plat lesté (exemple)",
+      "fabricant": "Fabricant d'exemple",
+      "mode_pose": "toit_plat_leste",
+      "actif": true,
+      "provenance": "Notice de montage du fabricant, édition d'exemple",
+      "composants": [
+        {
+          "role": "rail",
+          "libelle": "Rail de lestage",
+          "unite": "m",
+          "produit_id": null,
+          "regle": {
+            "base": "longueur_rangees_m",
+            "facteur": 2,
+            "diviseur": null,
+            "libelle_facteur": "rails par rangée",
+            "libelle_diviseur": ""
+          },
+          "source": "Notice de montage du fabricant, tableau des rails"
+        },
+        {
+          "role": "lest",
+          "libelle": "Plaque de lest",
+          "unite": "u",
+          "produit_id": null,
+          "regle": {
+            "base": "modules",
+            "facteur": null,
+            "diviseur": null,
+            "libelle_facteur": "plaques par module",
+            "libelle_diviseur": ""
+          },
+          "source": "Notice de montage du fabricant, plan de lestage"
+        }
+      ]
+    },
+    "reponse": {
+      "systeme": {
+        "id": 5,
+        "code": "plat-leste",
+        "libelle": "Système toit plat lesté (exemple)",
+        "fabricant": "Fabricant d'exemple",
+        "mode_pose": "toit_plat_leste",
+        "actif": true,
+        "provenance": "Notice de montage du fabricant, édition d'exemple",
+        "composants": [
+          {
+            "id": 41,
+            "role": "rail",
+            "libelle": "Rail de lestage",
+            "unite": "m",
+            "produit_id": null,
+            "regle": {
+              "base": "longueur_rangees_m",
+              "facteur": 2,
+              "diviseur": null,
+              "libelle_facteur": "rails par rangée",
+              "libelle_diviseur": ""
+            },
+            "source": "Notice de montage du fabricant, tableau des rails",
+            "ordre": 0
+          },
+          {
+            "id": 42,
+            "role": "lest",
+            "libelle": "Plaque de lest",
+            "unite": "u",
+            "produit_id": null,
+            "regle": {
+              "base": "modules",
+              "facteur": null,
+              "diviseur": null,
+              "libelle_facteur": "plaques par module",
+              "libelle_diviseur": ""
+            },
+            "source": "Notice de montage du fabricant, plan de lestage",
+            "ordre": 1
+          }
+        ]
+      }
+    }
+  },
+  "exemple_refus": {
+    "statut": 400,
+    "corps": {
+      "provenance": [
+        "La provenance du système est obligatoire (notice du fabricant, référence du document) : un catalogue qu'on ne sait pas sourcer ne produit aucune nomenclature défendable."
+      ],
+      "code": [
+        "Un système de fixation porte déjà ce code dans la société."
+      ],
+      "composants[0].regle": [
+        "Grandeur de base inconnue : « surface ». Bases admises : modules, rangees, pans, jonctions, extremites, longueur_rangees_m, ou « role:<rôle> »."
+      ],
+      "composants[1].source": [
+        "La source du composant est obligatoire (notice du fabricant, référence du document) : aucun composant n'entre au catalogue sans elle."
+      ]
+    }
+  },
+  "detail": {
+    "endpoint": "GET/PATCH/DELETE /api/django/calepinage/calepinages/systemes-fixation/<int:pk>/",
+    "reponse": "{systeme} de la même forme que exemple_creation.reponse ; DELETE → 204 sans corps ; autre société → 404."
+  }
+}

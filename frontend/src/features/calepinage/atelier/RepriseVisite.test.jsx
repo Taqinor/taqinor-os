@@ -228,3 +228,46 @@ describe('Lot 2 critique #32 — lecture seule', () => {
     expect(calepinageApi.calepinages.reprendreVisite).not.toHaveBeenCalled()
   })
 })
+
+describe('ACAL527 — bandeau « n écarts avec la visite »', () => {
+  const avecEcarts = () => {
+    const base = echantillon('exemple_avant_reprise')
+    calepinageApi.calepinages.releveVisite.mockResolvedValue({ data: { ...base, ecart_dessin: [
+      { pan: 'z1', mesure: 'pente', visite: 22, dessin: 15, ecart: 7, source_dessin: 'valeur de départ' },
+      { pan: 'z1', mesure: 'longueur', visite: 12.5, dessin: 12.1, ecart: 0.4, source_dessin: 'contour tracé' },
+      { pan: 'z1', mesure: 'largeur', visite: 8, dessin: null, ecart: null, source_dessin: null },
+      { pan: 'z1', mesure: 'orientation', visite: 'sud', dessin: 180, ecart: null, source_dessin: 'face du pan' },
+    ] } })
+  }
+
+  it('sans ecart_dessin : aucun bandeau', async () => {
+    const { ecart_dessin: _retire, ...sansEcart } = echantillon('exemple_avant_reprise')
+    calepinageApi.calepinages.releveVisite.mockResolvedValue({ data: sansEcart })
+    rendre()
+    await screen.findByTestId('cal-reprise-mesures')
+    expect(screen.queryByTestId('cal-reprise-ecarts')).toBeNull()
+  })
+
+  it('2 écarts : bandeau, puis tableau Visite / Dessin / Écart, sans coloriage d’erreur', async () => {
+    avecEcarts()
+    rendre()
+    const bandeau = await screen.findByTestId('cal-reprise-ecarts')
+    expect(bandeau).toHaveAttribute('role', 'status')
+    expect(bandeau).toHaveTextContent('2 écarts avec la visite')
+    fireEvent.click(within(bandeau).getByRole('button'))
+    const tableau = within(bandeau).getByRole('table')
+    for (const t of ['Visite', 'Dessin', 'Écart']) expect(within(tableau).getByText(t)).toBeInTheDocument()
+    expect(within(tableau).getByText('7°')).toBeInTheDocument()
+    expect(within(tableau).getByText('non relevé')).toBeInTheDocument()
+    expect(within(tableau).getByText('sud')).toBeInTheDocument()
+    expect(bandeau).toHaveTextContent('Pente : valeur de départ')
+    expect(bandeau.innerHTML).not.toMatch(/red|destructive|alert/)
+  })
+
+  it('aucun écart mesurable', async () => {
+    const base = echantillon('exemple_avant_reprise')
+    calepinageApi.calepinages.releveVisite.mockResolvedValue({ data: { ...base, ecart_dessin: [] } })
+    rendre()
+    expect(await screen.findByTestId('cal-reprise-ecarts')).toHaveTextContent('Aucun écart mesurable avec la visite')
+  })
+})
