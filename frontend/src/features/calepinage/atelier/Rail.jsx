@@ -1,7 +1,9 @@
 import { Suspense, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../../api/axios'
-import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui'
+import {
+  ErrorBoundary, SkeletonCard, SkeletonText, Tabs, TabsContent, TabsList, TabsTrigger,
+} from '../../../ui'
 import { HelpTip } from '../../../ui/HelpTip'
 import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
@@ -264,10 +266,10 @@ export default function Rail({
           >
             <Suspense
               fallback={(
-                <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                  <Spinner />
-                  {`Ouverture de l'onglet « ${libelleActif} »…`}
-                </p>
+                <div role="status" aria-label="Chargement…" className="mt-3 space-y-3">
+                  <SkeletonCard />
+                  <SkeletonText lines={2} />
+                </div>
               )}
             >
               {/* CALX222 — `builderApi` est relayée à TOUS les panneaux :
