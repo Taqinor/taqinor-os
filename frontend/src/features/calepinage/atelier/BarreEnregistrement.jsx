@@ -15,8 +15,7 @@ export default function BarreEnregistrement({
       data-testid="cal-enregistrer-calepinage">
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={onEnregistrer} disabled={desactive}
-          className="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold disabled:cursor-not-allowed disabled:opacity-60"
-          style={{ background: 'var(--rp-ok-600)', color: '#fff' }}>
+          className="inline-flex items-center justify-center gap-3 bg-success px-6 py-3 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
           {enCours && (
             <span aria-hidden="true"
               className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
