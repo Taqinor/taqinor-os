@@ -1504,9 +1504,9 @@ decisions:
         texte: "Oui, publier P99 sous la même règle que P90 (caché tant que les pertes sont incomplètes)"
       - cle: b
         texte: "Non, garder P50/P75/P90/P95"
-    reponse: ouverte
+    reponse: b
     date: "2026-11-20"
-    source: "docs/audits/2026-11-20-calepinage-l5.md (question non posée le 20/11 : tâche ACAL457 GATED)"
+    source: "docs/audits/2026-11-20-calepinage-l5.md (question non posée le 20/11) ; répondue par Reda le 20/11/2026 (AskUserQuestion, loop audit) : « No, keep it as today » — ACAL457 passée en [SKIP]"
     taches: [ACAL457]
 
   - id: D-APAR-1

@@ -619,6 +619,15 @@ retiré plus un hook ajouté.
 | `cal-retour-atelier-lien` | retour atelier lien. |
 | `cal-retour-atelier-onglet` | retour atelier onglet. |
 
+## ResumeAtelier (`atelier/ResumeAtelier.jsx`) — ACAL401
+
+| Hook | Sémantique |
+|---|---|
+| `cal-resume-atelier` | résumé vivant de la barre d'enregistrement (panneaux · kWc · production). |
+| `cal-resume-panneaux` | nombre de panneaux du document sérialisé, « — » si absent. |
+| `cal-resume-kwc` | puissance crête du document sérialisé, « — » si absente. |
+| `cal-resume-production` | « ≈ N kWh/an (estimation) » ou « P50 N kWh/an (simulation) » ; « — » si absente. |
+
 ## PanneauDocuments (`documents/PanneauDocuments.jsx`)
 
 | Hook | Sémantique |

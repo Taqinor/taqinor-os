@@ -1,0 +1,35 @@
+{
+  "sha": "d2a47e0719cd839b2b8e87935b7edf9eaa6aa145",
+  "date": "2026-11-20",
+  "groupe": "AERR",
+  "verdict": "PASS",
+  "couvre": [
+    "AERR131"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF12-AERR131-sondes-du-groupe",
+      "taches": [
+        "AERR131"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/AERR/traces/2026-11-20/sondes-tete.txt",
+      "oracles": {
+        "1": "PASS",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "59 sondes hôte du groupe jouées sur la tête (python -I) : 59 « repro: false ». Sept sondes périmées (002, 005, 047, 050, 053, 095, VER2-203) réécrites le 20/11 pour détecter le correctif lui-même ; chacune rend « repro: true » sur l'arbre d'avant son correctif (contre-épreuve, AUDIT_RACINE)."
+    }
+  ]
+}
