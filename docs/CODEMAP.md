@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 02b8b816d1c45a0cea6080191baa96812ea069a7b7280f424f26c10f6f5edfe1
+Structure fingerprint: 4976715d79830ac7785eb266437444574cc05dbf77e61a9509d81b3a25c19088
 Plan fingerprint: 45ba315e05042d7214985e15f518bd562d3dce0bc6fe1723345598ee57ba0cad
 
 
@@ -458,7 +458,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 |---|---|
 | `crm` | `/crm/cockpit`, `/crm`, `/crm/leads`, `/crm/leads/:id`, `/activites`, `/calendrier`, `/carte`, `/crm/parrainage`, `/crm/profils-site`, `/crm/payloads-site-web`, `/crm/forecast`, `/crm/concurrents-perte`, `/crm/defis`, `/crm/relances`, `/crm/visiteurs` |
 | `visites` | `/visites`, `/visites/toutes`, `/visites/planifier`, `/visites/revue`, `/visites/:id`, `/visites/:id/calage` |
-| `calepinage` | `/calepinage`, `/calepinage/nouveau`, `/calepinage/bibliotheque`, `/calepinage/sources`, `/calepinage/:id` + 39 onglets du rail `atelier/onglets.js` (`?onglet=<clé>`) + 15 routes profondes `/calepinage/:id/<segment>` de `module.config.jsx` (variantes, fiches, pompage, plan, photos, pente, terrain, ombriere, schema, production, pertes, horizon, course-soleil, dossiers, affectation) |
+| `calepinage` | `/calepinage`, `/calepinage/nouveau`, `/calepinage/bibliotheque`, `/calepinage/sources`, `/calepinage/:id` + 40 onglets du rail `atelier/onglets.js` (`?onglet=<clé>`) + 16 routes profondes `/calepinage/:id/<segment>` de `module.config.jsx` (variantes, fiches, pompage, plan, photos, pente, terrain, ombriere, schema, production, pertes, horizon, course-soleil, dossiers, affectation, detection-toit) |
 | `ventes` | `/ventes/cockpit`, `/ventes/devis`, `/ventes/devis/action-requise`, `/ventes/devis/nouveau`, `/ventes/conception-3d`, `/ventes/bons-commande`, `/ventes/factures`, `/ventes/avoirs`, `/ventes/relances`, `/ventes/paiements`, `/ventes/paiements/import-releve`, `/ventes/listes-prix`, `/ventes/dossiers-reglementaires`, `/ventes/mandats-paiement`, `/ventes/remises-encaissement` |
 | `stock` | `/stock`, `/stock/mouvements`, `/stock/categories`, `/stock/fournisseurs` (+`/:id/360`, +`/conformite` ENF15), `/stock/bons-commande-fournisseur`, `/stock/modeles-bcf`, `/stock/receptions-fournisseur`, `/stock/factures-fournisseur`, `/stock/retours-fournisseur`, `/stock/paiements-fournisseur`, `/stock/ocr-import`, `/stock/lots-entrepot`, `/stock/inventaires-annuels`, `/stock/revalorisations`, `/stock/conditionnements`, `/stock/entrepot` |
 | `installations` | `/chantiers`, `/chantiers/demandes-achat`, `/chantiers/approvisionnement`, `/chantiers/import`, `/interventions`, `/planification`, `/planification/suivi-gps`, `/ma-journee`, `/parc`, `/atelier`, `/atelier/kits`, `/production` (+`/parc`, `/analytique`, `/garanties`, `/co2`, `/nettoyages`, `/rapports`, `/portail-client`), `/outillage` |

@@ -217,6 +217,8 @@ const config = {
     { path: '/calepinage/:id/dossiers', component: RedirectionOnglet, roles: ROLES },
     // contextuelle: l'affectation des chaînes d'UN calepinage, corrigée à la main depuis son atelier (CAL234) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/affectation', component: RedirectionOnglet, roles: ROLES },
+    // contextuelle: la détection IA du toit de CE calepinage (ACAL488) — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/detection-toit', component: RedirectionOnglet, roles: ROLES },
   ],
 }
 

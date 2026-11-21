@@ -14,7 +14,7 @@ import calepinageApi from '../../../api/calepinageApi'
 
 export const ETAPES = [
   { cle: 'toit', libelle: 'Toit',
-    onglets: ['plan', 'pente', 'coupe', 'terrain', 'ombriere', 'horizon', 'course-soleil', 'releve', 'reprise-visite', 'photos'] },
+    onglets: ['plan', 'pente', 'coupe', 'terrain', 'ombriere', 'horizon', 'course-soleil', 'releve', 'reprise-visite', 'photos', 'detection-toit'] },
   { cle: 'panneaux', libelle: 'Panneaux',
     onglets: ['fiches', 'affectation', 'masse-lestage', 'fixation', 'pompage'] },
   { cle: 'electrique', libelle: 'Électrique',

@@ -96,6 +96,7 @@ export const ONGLETS = [
   { cle: 'variantes', libelle: 'Comparer les variantes', groupe: 'Résultats', ordre: 205, composant: lazy(() => import('../VariantesCompare')) }, // ACAL409
   { cle: 'photos', libelle: 'Photos du site', groupe: 'Site', ordre: 167, composant: lazy(() => import('../PhotoSiteCalage')) }, // ACAL409
   { cle: 'optimiser', libelle: 'Optimiser', groupe: 'Résultats', ordre: 265, composant: lazy(() => import('./PanneauOptimiser')) }, // ACAL469
+  { cle: 'detection-toit', libelle: 'Détection du toit', groupe: 'Site', ordre: 66, composant: lazy(() => import('./PanneauDetectionToit')) }, // ACAL488
 ]
 
 /**

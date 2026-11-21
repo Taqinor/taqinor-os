@@ -346,6 +346,11 @@ const calepinageApi = {
     // ACAL469 — le BALAYAGE d'un pan libre (contrat calepinage_balayage.json) : 202 + job,
     // suivi par `moteur.resultat(jobId)` ; rien n'est écrit au calepinage.
     balayer: (id, corps) => api.post(`${pivot(id)}balayage/`, corps), // ACAL
+    // ACAL488 (contrat calepinage_detection_toit.json) — la détection du toit : GET = disponibilité,
+    // POST multipart (`image`, `emprise` JSON, `origine`) = PROPOSITION « à confirmer », jamais écrite ;
+    // `config.signal` (AbortController) coupe l'attente.
+    detectionToitDisponible: (id) => api.get(`${pivot(id)}detection-toit/`), // ACAL
+    detectionToit: (id, corps, config) => api.post(`${pivot(id)}detection-toit/`, corps, config), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

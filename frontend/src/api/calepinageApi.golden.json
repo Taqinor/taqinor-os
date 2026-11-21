@@ -306,6 +306,24 @@
       "verbe": "get"
     }
   ],
+  "calepinages.detectionToit": [
+    {
+      "config": {
+        "k": 1
+      },
+      "data": 3,
+      "url": "/calepinage/calepinages/7/detection-toit/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.detectionToitDisponible": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/detection-toit/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.documents": [
     {
       "config": null,
