@@ -550,10 +550,19 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
     await expect(page.getByTestId('cal236-non-simule')).toBeVisible()
   }
 
-  // ── 3. ÉLECTRIQUE (onglet « Équipements électriques », CALX222) ────────
-  await ouvrirOngletRail(page, 'equipements-electriques')
-  await expect(page.getByTestId('cal-onglet-equipements-electriques'))
+  // ── 3. ÉLECTRIQUE (« Équipements électriques », CALX222) ───────────────
+  // ACAL395 — en mode guidé, « Équipements électriques » n'est plus un onglet :
+  // c'est une section de l'ÉCRAN de l'étape Électrique, porté par l'onglet
+  // `verdict-electrique` (« Électrique — synthèse ») ; le lien
+  // `?onglet=equipements-electriques` ouvre cet écran, section dépliée.
+  await page.goto(`/calepinage/${calepinageId}?onglet=equipements-electriques`)
+  await expect(page.getByTestId('cal-onglet-verdict-electrique'))
     .toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(/onglet=equipements-electriques(&|$)/)
+  await expect(page.getByTestId('cal-etape-electrique-ecran')).toBeVisible()
+  await expect(
+    page.getByTestId('cal-electrique-section-equipements-electriques'),
+  ).toHaveAttribute('data-state', 'open')
   await expect(
     page.getByTestId('calx222-panneau').or(page.getByTestId('calx222-erreur')),
   ).toBeVisible()

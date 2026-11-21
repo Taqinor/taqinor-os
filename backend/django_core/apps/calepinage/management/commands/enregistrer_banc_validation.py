@@ -27,7 +27,8 @@ import datetime
 import json
 import pathlib
 import urllib.parse
-import urllib.request
+
+import httpx
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -40,15 +41,23 @@ URL = 'https://re.jrc.ec.europa.eu/api/v5_3/seriescalc'
 #: Les sites enregistrés par cette commande (Casablanca l'est déjà).
 SITES = ('marrakech', 'oujda', 'agadir')
 
-#: Le plan et la perte du banc : ceux des fixtures de Casablanca (CALX195).
+#: Le plan du banc : celui des fixtures de Casablanca (CALX195).
 ANGLE = 15
 AZIMUT = 0
-PERTE_PCT = 7.25
 JOUR_GARDE = 15
+#: La réponse de Casablanca (CALX195) d'où la perte du banc est LUE (CAL238).
+REFERENCE_CASABLANCA = DOSSIER / 'seriescalc_casablanca_sud.json'
 
 TRONCATURE = ("seules les lignes du 15 de chaque mois sont gardées (288 "
               "lignes réelles sur 8784) : le fichier reste une réponse RÉELLE, "
               "jamais une série fabriquée.")
+
+
+def _perte_du_banc():
+    """La somme des postes que PVGIS a reçue pour Casablanca (CALX195),
+    lue dans sa réponse enregistrée — jamais recopiée (CAL238)."""
+    reponse = json.loads(REFERENCE_CASABLANCA.read_text(encoding='utf-8'))
+    return reponse['inputs']['pv_module']['system_loss']
 
 
 def _requete(lat, lon, annee, *, production):
@@ -59,7 +68,7 @@ def _requete(lat, lon, annee, *, production):
         'outputformat': 'json',
     }
     if production:
-        parametres.update(peakpower=1, loss=PERTE_PCT, pvtechchoice='crystSi',
+        parametres.update(peakpower=1, loss=_perte_du_banc(), pvtechchoice='crystSi',
                           mountingplace='building')
     return '%s?%s' % (URL, urllib.parse.urlencode(parametres))
 
@@ -92,8 +101,9 @@ class Command(BaseCommand):
             for production, suffixe in ((True, ''), (False, '_irradiance')):
                 url = _requete(lat, lon, options['annee'],
                                production=production)
-                with urllib.request.urlopen(url, timeout=120) as flux:
-                    reponse = json.loads(flux.read().decode('utf-8'))
+                flux = httpx.get(url, timeout=120)
+                flux.raise_for_status()
+                reponse = flux.json()
                 reponse = _tronquer(reponse)
                 reponse['_provenance'] = {
                     'enregistre_le': aujourd_hui, 'url': url,
