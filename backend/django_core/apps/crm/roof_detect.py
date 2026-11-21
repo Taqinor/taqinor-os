@@ -247,15 +247,56 @@ def fetch_building_footprint(lat: float, lng: float,
             return None
 
     query = _build_query(lat, lng, delai_s)
+    delais = _TIMEOUT_RESEAU if delai_s == _TIMEOUT_S else (10, delai_s)
     try:
         resp = _requests.post(
             _OVERPASS_URL,
             data={"data": query},
             headers={"User-Agent": _USER_AGENT},
-            timeout=_TIMEOUT_RESEAU if delai_s == _TIMEOUT_S else (10, delai_s),
+            timeout=delais,
         )
         resp.raise_for_status()
         return _parse_geometry(resp.json())
     except Exception as exc:
         logger.info("OSM footprint lookup failed (requests): %s", exc)
         return None
+
+
+# ── ACAL421 — messages et issue d'une recherche, partagés par la vue et la tâche de fond ──
+# (la tâche n'importe jamais la vue : contrat import-linter « ventes ↛ audit » via crm.views)
+
+_MSG_NO_BUILDING = (
+    "Aucun bâtiment trouvé à cet emplacement — "
+    "tracez le contour manuellement."
+)
+#: ACAL421 — Overpass unreachable (HTTP error, timeout) is NAMED, never
+#: presented as « no building » : same response keys, distinct message.
+_MSG_OSM_INJOIGNABLE = (
+    "OpenStreetMap n'a pas répondu : le contour n'a pas pu être cherché — "
+    "réessayez plus tard ou tracez le contour manuellement."
+)
+
+
+def cle_recherche_emprise(job_id):
+    """La clé de cache (par société, ``core.cache``) d'une recherche finie."""
+    return f"crm:emprise_toit:{job_id}"
+
+
+def corps_recherche(empreinte):
+    """L'issue d'une recherche : ``pret`` (polygone) ou ``refus`` NOMMÉ.
+
+    ``None`` (Overpass injoignable) et ``polygon: []`` (aucun bâtiment) sont
+    deux refus DISTINCTS — motif et message propres, jamais confondus.
+    """
+    if empreinte is None:
+        return {"statut": "refus", "motif": "osm_injoignable", "polygon": [],
+                "batiment": batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE),
+                "message": _MSG_OSM_INJOIGNABLE}
+    polygon = empreinte.get("polygon") or []
+    batiment = empreinte.get("batiment") \
+        or batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE)
+    if not polygon:
+        return {"statut": "refus", "motif": "aucun_batiment", "polygon": [],
+                "batiment": batiment, "message": _MSG_NO_BUILDING}
+    return {"statut": "pret", "motif": "", "polygon": polygon,
+            "batiment": batiment, "message": ""}

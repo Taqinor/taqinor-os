@@ -263,7 +263,9 @@ def chercher_emprise_toit_task(job_id=None, company_id=None, lat=None,
     from core.models import BackgroundJob
 
     from apps.crm import roof_detect
-    from apps.crm.roof_views import cle_recherche_emprise, corps_recherche
+
+    import logging
+    logger = logging.getLogger(__name__)
 
     job = BackgroundJob.objects.filter(pk=job_id, company_id=company_id).first()
     if job is None:
@@ -278,12 +280,13 @@ def chercher_emprise_toit_task(job_id=None, company_id=None, lat=None,
                 lat, lng, delai_s=roof_detect.DELAI_TACHE_S)
             if empreinte is not None:
                 break
-        charge = corps_recherche(empreinte)
-        cle = cle_recherche_emprise(job.pk)
+        charge = roof_detect.corps_recherche(empreinte)
+        cle = roof_detect.cle_recherche_emprise(job.pk)
         cache_tenant.set(job.company_id, cle, charge, timeout=3600)
         job.marquer_termine(cle)
         return {'statut': charge['statut']}
     except Exception as exc:  # noqa: BLE001 — l'issue est publiée, jamais perdue (D-ENF22-BLE001)
+        logger.warning('crm.chercher_emprise_toit : échec du job %s', job.pk, exc_info=True)
         job.marquer_echec(f"La recherche du bâtiment a échoué : {exc}")
         return {'statut': 'failed'}
 

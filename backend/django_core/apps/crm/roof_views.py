@@ -30,6 +30,8 @@ French, why. Frozen by
 `apps/calepinage/contract_samples/calepinage_empreinte_osm.json`.
 """
 
+import logging
+
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -38,20 +40,13 @@ from rest_framework.parsers import JSONParser
 
 from authentication.permissions import HasPermissionOrLegacy, IsAnyRole
 
-from .roof_detect import (
-    MOTIF_OSM_INJOIGNABLE, batiment_non_renseigne, fetch_building_footprint,
+from .roof_detect import (  # ACAL421 : messages et issue d'une recherche vivent au service
+    _MSG_NO_BUILDING, _MSG_OSM_INJOIGNABLE, MOTIF_OSM_INJOIGNABLE,
+    batiment_non_renseigne, fetch_building_footprint,
 )
 
-_MSG_NO_BUILDING = (
-    "Aucun bâtiment trouvé à cet emplacement — "
-    "tracez le contour manuellement."
-)
-#: ACAL421 — Overpass unreachable (HTTP error, timeout) is NAMED, never
-#: presented as « no building » : same response keys, distinct message.
-_MSG_OSM_INJOIGNABLE = (
-    "OpenStreetMap n'a pas répondu : le contour n'a pas pu être cherché — "
-    "réessayez plus tard ou tracez le contour manuellement."
-)
+logger = logging.getLogger(__name__)
+
 _MSG_NO_PIN = (
     "Ce lead n'a pas de point GPS enregistré. "
     "Épinglez d'abord la localisation sur la carte."
@@ -163,31 +158,6 @@ _MSG_FILE_INJOIGNABLE = (
 )
 
 
-def cle_recherche_emprise(job_id):
-    """La clé de cache (par société, ``core.cache``) d'une recherche finie."""
-    return f"crm:emprise_toit:{job_id}"
-
-
-def corps_recherche(empreinte):
-    """L'issue d'une recherche : ``pret`` (polygone) ou ``refus`` NOMMÉ.
-
-    ``None`` (Overpass injoignable) et ``polygon: []`` (aucun bâtiment) sont
-    deux refus DISTINCTS — motif et message propres, jamais confondus.
-    """
-    if empreinte is None:
-        return {"statut": "refus", "motif": "osm_injoignable", "polygon": [],
-                "batiment": batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE),
-                "message": _MSG_OSM_INJOIGNABLE}
-    polygon = empreinte.get("polygon") or []
-    batiment = empreinte.get("batiment") \
-        or batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE)
-    if not polygon:
-        return {"statut": "refus", "motif": "aucun_batiment", "polygon": [],
-                "batiment": batiment, "message": _MSG_NO_BUILDING}
-    return {"statut": "pret", "motif": "", "polygon": polygon,
-            "batiment": batiment, "message": ""}
-
-
 _FORME_RECHERCHE = inline_serializer("LeadEmpriseRecherche", {
     "job_id": serializers.IntegerField(),
     "statut": serializers.CharField(help_text="en_cours | pret | refus"),
@@ -235,6 +205,7 @@ def lead_roof_footprint_recherche(request, lead_id):
                      company=request.user.company, user=request.user,
                      lat=float(pin["lat"]), lng=float(pin["lng"]))
     except Exception:  # noqa: BLE001 — broker injoignable : nommé, jamais un 500 (D-ENF22-BLE001)
+        logger.warning("crm.roof_footprint_recherche : file de tâches injoignable", exc_info=True)
         return JsonResponse({"detail": _MSG_FILE_INJOIGNABLE}, status=503)
     return JsonResponse({
         "job_id": job.pk,
