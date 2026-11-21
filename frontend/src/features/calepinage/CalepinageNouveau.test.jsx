@@ -142,7 +142,7 @@ describe('CalepinageNouveau (CAL36)', () => {
 
   it('la recherche de LEADS part au SERVEUR (seul bornage société possible)', async () => {
     rendre()
-    fireEvent.click(screen.getByRole('combobox', { name: 'Lead' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Lead rattaché au calepinage' }))
     await waitFor(() => expect(mocks.getLeads).toHaveBeenCalled())
     // Aucun filtrage local : l'écran n'a jamais de liste complète en main.
     // ALEA39 — /crm/leads/ lit search (SearchFilter DRF), jamais q.
@@ -152,7 +152,7 @@ describe('CalepinageNouveau (CAL36)', () => {
   it('la recherche de CLIENTS part au SERVEUR', async () => {
     rendre()
     allerSurOnglet('Client')
-    fireEvent.click(screen.getByRole('combobox', { name: 'Client' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Client rattaché au calepinage' }))
     await waitFor(() => expect(mocks.searchClients).toHaveBeenCalled())
   })
 
@@ -176,28 +176,28 @@ describe('CalepinageNouveau (CAL36)', () => {
 
   it('un LEAD choisi affiche sa ville et la SOURCE de son repère', async () => {
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     expect(await screen.findByText('Casablanca')).toBeInTheDocument()
     expect(screen.getByText(/Épingle posée par le client/)).toBeInTheDocument()
   })
 
   it('un LEAD sans repère affiche « non renseigné » — aucune coordonnée inventée', async () => {
     rendre()
-    await choisirDansCombobox('Lead', 'Lead sans repère')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead sans repère')
     expect(await screen.findByText('non renseigné')).toBeInTheDocument()
   })
 
   it('source du repère GPS corrigé : celle SERVIE, même quand le lead porte une épingle', async () => {
     // ACAL251 — réintroduire « roof_point prime » afficherait l'épingle : échec.
     rendre()
-    await choisirDansCombobox('Lead', 'Lead GPS saisi')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead GPS saisi')
     expect(await screen.findByText('Coordonnées GPS corrigées')).toBeInTheDocument()
     expect(screen.queryByText(/Épingle posée par le client/)).not.toBeInTheDocument()
   })
 
   it('une LATITUDE SEULE n’est pas une position : rien n’est complété', async () => {
     rendre()
-    await choisirDansCombobox('Lead', 'Lead latitude seule')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead latitude seule')
     expect(await screen.findByText('non renseigné')).toBeInTheDocument()
     expect(screen.queryByText(/Coordonnées GPS/)).not.toBeInTheDocument()
   })
@@ -207,7 +207,7 @@ describe('CalepinageNouveau (CAL36)', () => {
     // de l'atelier, c'est l'utilisateur qui place le bâtiment.
     rendre()
     allerSurOnglet('Client')
-    await choisirDansCombobox('Client', 'Client d’essai')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
     expect(await screen.findByText('12 rue d’essai')).toBeInTheDocument()
     expect(screen.getByTestId('cal-nouveau-client-repere')).toHaveTextContent(
       'Un client ne porte pas d’épingle de toiture : son adresse préremplit la recherche de l’atelier, placez le bâtiment sur la carte',
@@ -221,7 +221,7 @@ describe('CalepinageNouveau (CAL36)', () => {
   it('un CLIENT sans adresse : « non renseigné », rien n’est deviné', async () => {
     rendre()
     allerSurOnglet('Client')
-    await choisirDansCombobox('Client', 'Client sans adresse')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client sans adresse')
     await waitFor(() => expect(screen.getAllByText('non renseigné').length).toBeGreaterThan(0))
     expect(screen.queryByText(/Géocodage de l’adresse du client/)).not.toBeInTheDocument()
     // ACAL336 — sans adresse, rien de faux : la phrase « son adresse
@@ -231,7 +231,7 @@ describe('CalepinageNouveau (CAL36)', () => {
 
   it('créer depuis un LEAD envoie `{lead_id}` par depuisModele et redirige vers `/calepinage/:id`', async () => {
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1' }))
     expect(mocks.navigate).toHaveBeenCalledWith(`/calepinage/${DETAIL.id}`)
@@ -240,7 +240,7 @@ describe('CalepinageNouveau (CAL36)', () => {
   it('créer depuis un CLIENT envoie `{client_id}` — jamais les deux à la fois', async () => {
     rendre()
     allerSurOnglet('Client')
-    await choisirDansCombobox('Client', 'Client d’essai')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ client_id: '3' }))
     expect(mocks.depuisModele.mock.calls[0][0]).not.toHaveProperty('lead_id')
@@ -248,7 +248,7 @@ describe('CalepinageNouveau (CAL36)', () => {
 
   it('le nom facultatif ne part QUE s’il est saisi', async () => {
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.change(screen.getByLabelText(/Nom du calepinage/), { target: { value: '  Hangar 2  ' } })
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     // ERR-QAH-CALEPINAGE-NOM-CREATION-PERDU — le champ RÉEL (modèle ET
@@ -263,7 +263,7 @@ describe('CalepinageNouveau (CAL36)', () => {
       response: { data: { lead: ['Indiquez un lead ou un client, jamais les deux.'] } },
     })
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     expect(await screen.findByTestId('erreur-lead'))
       .toHaveTextContent('Indiquez un lead ou un client, jamais les deux.')
@@ -273,7 +273,7 @@ describe('CalepinageNouveau (CAL36)', () => {
   it('un refus GLOBAL (`detail`) s’affiche dans le bandeau, sans texte fabriqué', async () => {
     mocks.depuisModele.mockRejectedValue({ response: { data: { detail: 'Module désactivé pour votre société.' } } })
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('Module désactivé pour votre société.')
@@ -284,7 +284,7 @@ describe('CalepinageNouveau (CAL36)', () => {
     rendre()
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     expect(await screen.findByTestId('erreur-lead')).toBeInTheDocument()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     await waitFor(() => expect(screen.queryByTestId('erreur-lead')).not.toBeInTheDocument())
   })
 })
@@ -304,7 +304,7 @@ describe('CalepinageNouveau — modèle et jeu de réglages (CALX352)', () => {
   it('aucun choix fait : UNE seule porte (depuisModele), sans modèle ni jeu envoyés', async () => {
     rendre()
     await attendreChoix()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1' }))
     expect(mocks.create).not.toHaveBeenCalled()
@@ -333,7 +333,7 @@ describe('CalepinageNouveau — modèle et jeu de réglages (CALX352)', () => {
   it('créer depuis un modèle part par `depuis-modele` et ouvre le calepinage servi', async () => {
     rendre()
     await attendreChoix()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.change(screen.getByLabelText(/Partir d’un modèle/), { target: { value: '5' } })
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     await waitFor(() => expect(mocks.depuisModele)
@@ -346,7 +346,7 @@ describe('CalepinageNouveau — modèle et jeu de réglages (CALX352)', () => {
     rendre()
     await attendreChoix()
     allerSurOnglet('Client')
-    await choisirDansCombobox('Client', 'Client d’essai')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
     fireEvent.change(screen.getByLabelText(/Jeu de réglages société/), {
       target: { value: 'villa_standard' },
     })
@@ -392,7 +392,7 @@ describe('CalepinageNouveau — modèle et jeu de réglages (CALX352)', () => {
     })
     rendre()
     await attendreChoix()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.change(screen.getByLabelText(/Jeu de réglages société/), {
       target: { value: 'villa_standard' },
     })
@@ -409,7 +409,7 @@ describe('CalepinageNouveau — modèle et jeu de réglages (CALX352)', () => {
     mocks.getParametres.mockRejectedValue(new Error('réseau'))
     rendre()
     await attendreChoix()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1' }))
   })
@@ -424,7 +424,7 @@ describe('CalepinageNouveau — une seule porte et « Ouvrir l’existant » (AC
     mocks.list.mockResolvedValue({ data: LISTE })
     const ligne = LISTE.results[0]
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     expect(await screen.findByTestId('cal-nouveau-existant')).toBeInTheDocument()
     expect(mocks.list).toHaveBeenCalledWith({ lead: '1' })
     // Créer est REMPLACÉ par l'encart.
@@ -435,7 +435,7 @@ describe('CalepinageNouveau — une seule porte et « Ouvrir l’existant » (AC
 
   it('crée par depuisModele pour le cas sans modèle', async () => {
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ lead_id: '1' }))
     expect(mocks.create).not.toHaveBeenCalled()
@@ -443,7 +443,7 @@ describe('CalepinageNouveau — une seule porte et « Ouvrir l’existant » (AC
 
   it('le responsable choisi est écrit puis le calepinage s’ouvre', async () => {
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     const zone = screen.getByTestId('cal-nouveau-responsable')
     fireEvent.click(zone.querySelector('button'))
     fireEvent.click(await screen.findByText('sami'))
@@ -458,7 +458,7 @@ describe('CalepinageNouveau — une seule porte et « Ouvrir l’existant » (AC
     // le jeu fera : il est mémorisé et s'applique à chaque pan dessiné.
     rendre()
     await attendreChoix()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     const champ = screen.getByLabelText(/Jeu de réglages société/)
     expect(champ).not.toBeDisabled()
     expect(screen.getByLabelText(/Partir d’un modèle/)).toHaveValue('')
@@ -474,7 +474,7 @@ describe('CalepinageNouveau — une seule porte et « Ouvrir l’existant » (AC
   it('affiche l’encart sur un 409 calepinage_existant', async () => {
     mocks.depuisModele.mockRejectedValue({ response: { status: 409, data: CONFLIT } })
     rendre()
-    await choisirDansCombobox('Lead', 'Lead d’essai')
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     expect(await screen.findByTestId('cal-nouveau-existant')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('cal-nouveau-ouvrir-existant'))
