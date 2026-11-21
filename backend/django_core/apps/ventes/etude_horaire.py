@@ -89,7 +89,8 @@ from apps.ventes.courbes_journalieres import (
     profil_suppose,
 )
 from apps.ventes.domain.etude_schema import factures_hiver_ete_saisies
-from apps.ventes.horaire.base import _num, saison_du_mois
+from apps.ventes.horaire.base import (
+    AVERTISSEMENT_FORME_HORAIRE, _num, bloc_base_production, saison_du_mois, serie_de_base_production)
 from apps.ventes.horaire.ombrage import bloc_ombrage, facteur_ombrage, perte_ombrage_du_devis
 from apps.ventes.horaire.productible_societe import mettre_a_l_echelle, productible_du_devis
 from apps.ventes.horaire.batterie_lignes import (
@@ -864,7 +865,7 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
 
 def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
                       lon=None, occupation=None, equipements=None,
-                      jour_reference=None, perte_ombrage_pct=None, productible_kwh_kwc=None):
+                      jour_reference=None, perte_ombrage_pct=None, productible_kwh_kwc=None, base_production=None):
     """Les DOUZE JOURS TYPES d'une installation : consommation et production 24 h.
 
     SOURCE UNIQUE des courbes horaires du moteur. :func:`calculer_etude_horaire`
@@ -897,6 +898,7 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         return None, [], {}
 
     mensuel = mettre_a_l_echelle(productible_mensuel(ville=ville, lat=lat, lon=lon), productible_kwh_kwc)  # CE2E6
+    mensuel, pertes_incluses = serie_de_base_production(base_production, mensuel)  # ACAL1169 (D-ACAL-36)
     if not mensuel:
         return None, [], {}
     productibles, source_productible = mensuel
@@ -925,7 +927,7 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
     # ``None`` hors calepinage ⇒ facteur 1,0, chiffre d'avant à l'octet.
     production_mois = production_jours_types(
         puissance, productible_mensuel=productibles, formes_saison=formes,
-        derate=PRODUCTION_DERATE * facteur_ombrage(perte_ombrage_pct))
+        derate=1.0 if pertes_incluses else PRODUCTION_DERATE * facteur_ombrage(perte_ombrage_pct))
 
     for index in range(12):
         numero = index + 1
@@ -1132,7 +1134,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            tranches, charges_fixes_mad,
                            tppan=True, millesime=bareme.MILLESIME_COURANT,
                            source_conso=None, detail_conso=None,
-                           jour_reference=None, perte_ombrage_pct=None, productible_kwh_kwc=None):
+                           jour_reference=None, perte_ombrage_pct=None, productible_kwh_kwc=None,
+                           base_production=None):
     """LE calcul canonique. Renvoie le bloc ``etude_horaire``, ou ``None``.
 
     AMOT30 (C-AMOT-031) — ``tranches`` et ``charges_fixes_mad`` sont
@@ -1205,7 +1208,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         kwc=puissance, conso_kwh_mensuelles=conso_kwh_mensuelles,
         ville=ville, lat=lat, lon=lon,
         occupation=occupation, equipements=equipements,
-        jour_reference=jour_reference, perte_ombrage_pct=perte_ombrage_pct, productible_kwh_kwc=productible_kwh_kwc)
+        jour_reference=jour_reference, perte_ombrage_pct=perte_ombrage_pct, productible_kwh_kwc=productible_kwh_kwc,
+        base_production=base_production)
     if jours_types is None:
         return None
     source_prod = sources.get('production')
@@ -1400,6 +1404,9 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         'annuel': _finaliser(annuel_cumul),
         'avertissements': avertissements,
     }
+    if base_production:  # ACAL1169 — la base de la pose réelle et la supposition de forme, DITES
+        resultat['base_production'] = bloc_base_production(base_production)
+        avertissements.append(AVERTISSEMENT_FORME_HORAIRE)
 
     # ── QJR137 : le rendement aller-retour PROUVÉ, et seulement s'il l'est ──
     # MÊME DISCIPLINE QUE L-GLITCH ci-dessous : aucune fiche batterie ne
@@ -1498,7 +1505,8 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                              batterie_rendement_source=None,
                              tranches=None, charges_fixes_mad=None,
                              tppan=True, millesime=bareme.MILLESIME_COURANT,
-                             jour_reference=None, productible_kwh_kwc=None, perte_ombrage_pct=None):
+                             jour_reference=None, productible_kwh_kwc=None, perte_ombrage_pct=None,
+                             base_production=None):
     """DIM2 — plusieurs capacités de stockage évaluées sur UNE taille de champ.
 
     UN SEUL parcours des douze jours types (:func:`jours_types_annee`) sert
@@ -1560,7 +1568,8 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
         kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
         ville=ville, lat=lat, lon=lon,
         occupation=occupation, equipements=equipements,
-        jour_reference=jour_reference, productible_kwh_kwc=productible_kwh_kwc, perte_ombrage_pct=perte_ombrage_pct)
+        jour_reference=jour_reference, productible_kwh_kwc=productible_kwh_kwc, perte_ombrage_pct=perte_ombrage_pct,
+        base_production=base_production)
     if not jours_types or len(jours_types) != 12:
         return None
 

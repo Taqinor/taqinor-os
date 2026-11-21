@@ -349,6 +349,36 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
             self.assertLessEqual(etude['annuel'][cle], 1.0)
             self.assertGreaterEqual(etude['annuel'][cle], 0.0)
 
+    #: ACAL1169 — base de l'exemple (71 kWc, 1 388,4 kWh/kWc, pertes incluses).
+    BASE_POSE = {'kwh_kwc_annuel': 1388.4, 'pertes_incluses': True, 'source': 'calepinage_enregistre',
+                 'kwh_kwc_mensuel': [80, 90, 110, 125, 140, 145, 150, 145, 125, 105, 88, 85.4]}
+
+    def _etude_base(self, base=None, **extra):
+        return EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None, kwc=71.0, conso_kwh_mensuelles=self._conso(),
+            ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE, base_production=base, **extra)
+
+    def test_base_pertes_incluses_remplace_la_ville_sans_derate(self):
+        """ACAL1169 — 71 × 1 388,4 = 98 576 kWh à 1 kWh, ombrage ignoré, source
+        et supposition de forme dites. Mutant : garder le derate ⇒ ≈ 91 699."""
+        etude = self._etude_base(self.BASE_POSE, perte_ombrage_pct=12)
+        self.assertAlmostEqual(etude['annuel']['production_kwh'], 98576, delta=1)
+        self.assertEqual(etude['source_productible'], 'calepinage_enregistre')
+        self.assertEqual(etude['base_production']['forme_horaire'], horaire_base.FORME_HORAIRE_BASE)
+        self.assertEqual(set(etude['base_production']) - {'forme_horaire'},
+                         {'kwh_kwc_annuel', 'kwh_kwc_mensuel', 'pertes_incluses', 'source'})
+        self.assertIn(horaire_base.AVERTISSEMENT_FORME_HORAIRE, etude['avertissements'])
+
+    def test_base_absente_bloc_identique(self):
+        self.assertEqual(self._etude_base(None), EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None, kwc=71.0, conso_kwh_mensuelles=self._conso(),
+            ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE))
+
+    def test_base_sans_pertes_lue_comme_productible(self):
+        base = dict(self.BASE_POSE, pertes_incluses=False)
+        self.assertEqual(self._etude_base(base)['annuel'], self._etude_base(
+            None, productible_kwh_kwc=1388.4)['annuel'])
+
     def test_batterie_restitue_au_plus_90_pct_de_ce_qu_elle_charge(self):
         """L'invariant physique : le rendement aller-retour ne se contourne
         pas — en RÉGIME ÉTABLI (ordre fondateur 24/08/2026 : le reliquat du

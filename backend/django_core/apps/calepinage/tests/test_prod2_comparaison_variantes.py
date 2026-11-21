@@ -245,5 +245,68 @@ class HypothesesComparees(unittest.TestCase):
             {'identiques': None, 'comparees': 0, 'differences': []})
 
 
+class ConceptionCouranteTest(unittest.TestCase):
+    """ACAL978 — la conception courante est comparée d'office, en tête."""
+
+    @staticmethod
+    def _comparer(variantes_servies):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage import selectors
+
+        calepinage = SimpleNamespace(
+            pk=1, roof_layout=None,
+            resultat={'total_modules': 12, 'kwc': 8.64})
+        for v in variantes_servies:
+            v.calepinage = calepinage
+        with mock.patch.object(selectors, 'variantes',
+                               return_value=variantes_servies):
+            return selectors.comparer_variantes(calepinage)
+
+    @staticmethod
+    def _variante(pk, nom, modules, kwc, retenue=False):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            pk=pk, nom=nom, retenue=retenue, roof_layout=None,
+            resultat={'total_modules': modules, 'kwc': kwc})
+
+    def test_une_variante_plus_la_courante_donne_deux_lignes(self):
+        servi = self._comparer([self._variante(11, 'B', 14, 10.08)])
+        lignes = servi['lignes']
+        self.assertEqual(len(lignes), 2)
+        courante, variante = lignes
+        self.assertIsNone(courante['id'])
+        self.assertTrue(courante['courante'])
+        self.assertEqual(courante['nom'], 'Conception courante')
+        self.assertFalse(courante['est_retenue'])
+        self.assertEqual(courante['total_modules'], 12)
+        self.assertFalse(variante['courante'])
+        # Sans retenue, les écarts se lisent contre la courante.
+        self.assertEqual(courante['ecart_modules'], 0)
+        self.assertEqual(variante['ecart_modules'], 2)
+        self.assertIsNone(servi['retenue_id'])
+
+    def test_avec_une_retenue_les_ecarts_se_lisent_contre_elle(self):
+        servi = self._comparer([
+            self._variante(11, 'A', 10, 7.2, retenue=True),
+            self._variante(12, 'B', 14, 10.08)])
+        par_nom = {ligne['nom']: ligne for ligne in servi['lignes']}
+        self.assertEqual(servi['lignes'][0]['nom'], 'Conception courante')
+        self.assertEqual(servi['retenue_id'], 11)
+        self.assertEqual(par_nom['A']['ecart_modules'], 0)
+        self.assertEqual(par_nom['Conception courante']['ecart_modules'], 2)
+        self.assertEqual(par_nom['B']['ecart_modules'], 4)
+
+    def test_la_lecture_ne_cree_aucune_variante(self):
+        from apps.calepinage.selectors import _courante_comme_variante
+        from types import SimpleNamespace
+
+        self.assertIsNone(_courante_comme_variante(None))
+        self.assertIsNone(_courante_comme_variante(
+            SimpleNamespace(pk=None, roof_layout=None, resultat=None)))
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

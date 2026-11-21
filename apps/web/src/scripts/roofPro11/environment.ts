@@ -9,12 +9,17 @@
  */
 import { type LngLat } from '../../lib/roof';
 import { type ShadeObstructionENU } from '../../lib/shadingEngine';
+import { centreDeTrace, entreesOmbreLigne, traceValide } from './environnementLigne'; // ACAL501
 
 const DEG2RAD = Math.PI / 180;
 import { WGS84_RADIUS } from '../../lib/geo';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 
-export type EnvironmentKind = 'arbre' | 'batiment';
+export type EnvironmentKind = 'arbre' | 'batiment' | 'poteau' | 'ligne';
+/** Les genres que l'atelier pose et relit (ACAL500 : déplacé de `prefill.ts` ; ACAL501 : ligne). */
+export const ENV_KINDS: readonly EnvironmentKind[] = ['arbre', 'batiment', 'poteau', 'ligne'];
+const LIBELLES_GENRE: Record<EnvironmentKind, string> = { arbre: 'Arbre', batiment: 'Bâtiment voisin', poteau: 'Poteau', ligne: 'Haie ou mur' };
+export const libelleGenreEnvironnement = (kind: EnvironmentKind): string => LIBELLES_GENRE[kind] ?? kind;
 
 export interface EnvironmentObject {
   id: string;
@@ -33,6 +38,11 @@ export interface EnvironmentObject {
   footprint?: LngLat[];
   lengthM?: number;
   widthM?: number;
+  /** ACAL500 — poteau : diamètre (m), SAISI ; aucune valeur par défaut. */
+  diameterM?: number;
+  /** ACAL501 — ligne (haie, mur) : tracé [lng, lat] (≥ 2 points) et épaisseur (m), SAISIS. */
+  trace?: LngLat[];
+  epaisseurM?: number;
 }
 
 /** Diamètre/emprise PLANCHER/PLAFOND (m) d'un objet d'environnement — mêmes ordres de
@@ -90,6 +100,23 @@ export function withCrownDiameter(o: EnvironmentObject, diameterM: number | null
   return { ...o, crownDiameterM: clamp(diameterM, ENV_MIN_DIM_M, ENV_MAX_DIM_M) };
 }
 
+/** ACAL500 — diamètre d'un poteau : > 0 et ≤ ENV_MAX_DIM_M, SANS plancher ENV_MIN_DIM_M (0,3 m reste 0,3 m). */
+export function withPoleDiameter(o: EnvironmentObject, diameterM: number | null | undefined): EnvironmentObject {
+  const { diameterM: _drop, ...rest } = o;
+  return diameterM == null || !Number.isFinite(diameterM) || diameterM <= 0 ? rest : { ...rest, diameterM: Math.min(diameterM, ENV_MAX_DIM_M) };
+}
+
+/** ACAL501 — épaisseur d'une ligne : même règle que le poteau (0,05 m reste 0,05 m). */
+export function withEpaisseurLigne(o: EnvironmentObject, epaisseurM: number | null | undefined): EnvironmentObject {
+  const { epaisseurM: _drop, ...rest } = o;
+  return epaisseurM == null || !Number.isFinite(epaisseurM) || epaisseurM <= 0 ? rest : { ...rest, epaisseurM: Math.min(epaisseurM, ENV_MAX_DIM_M) };
+}
+
+/** ACAL501 — une haie ou un mur tracé : centre CALCULÉ (milieu de l'emprise), aucune dimension. */
+export function newLigneEnvironment(id: string, trace: LngLat[]): EnvironmentObject {
+  return { ...newEnvironmentObject(id, 'ligne', centreDeTrace(trace)), trace: trace.map((p) => [p[0], p[1]] as LngLat) };
+}
+
 export function withFootprintDims(o: EnvironmentObject, lengthM: number | null | undefined, widthM: number | null | undefined): EnvironmentObject {
   const out: EnvironmentObject = { ...o };
   if (lengthM == null || !Number.isFinite(lengthM) || lengthM <= 0) delete out.lengthM;
@@ -107,13 +134,31 @@ export function withEvergreen(o: EnvironmentObject, evergreen: boolean | null | 
   return { ...o, evergreen };
 }
 
+const pos = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
+/** ACAL500 — copie propre d'un objet pour le document (sorti de `prefill.ts::serializeEnvironment`) ; `null` = écarté. */
+export function nettoyerEnvironment(o: EnvironmentObject | null | undefined): EnvironmentObject | null {
+  if (!o || typeof o.id !== 'string' || !o.id || !ENV_KINDS.includes(o.kind)) return null;
+  // ACAL501 — le centre d'une ligne se CALCULE depuis sa trace (l'exemple du contrat n'en porte pas).
+  const [cLng, cLat] = o.kind === 'ligne' && traceValide(o.trace) && !Number.isFinite(o.centerLng) ? centreDeTrace(o.trace) : [o.centerLng, o.centerLat];
+  if (!Number.isFinite(cLng) || !Number.isFinite(cLat)) return null;
+  const clean: EnvironmentObject = { id: o.id, kind: o.kind, centerLng: cLng, centerLat: cLat };
+  if (o.label) clean.label = o.label;
+  for (const k of ['heightM', 'crownDiameterM'] as const) if (pos(o[k])) clean[k] = o[k];
+  if (typeof o.evergreen === 'boolean') clean.evergreen = o.evergreen;
+  if (Array.isArray(o.footprint) && o.footprint.length >= 3) clean.footprint = o.footprint.map((p) => [p[0], p[1]] as LngLat);
+  for (const k of ['lengthM', 'widthM', 'diameterM'] as const) if (pos(o[k])) clean[k] = o[k];
+  if (traceValide(o.trace)) clean.trace = o.trace.map((p) => [p[0], p[1]] as LngLat); // ACAL501
+  if (pos(o.epaisseurM)) clean.epaisseurM = o.epaisseurM;
+  return clean;
+}
+
 /** Anneau lng/lat pour l'affichage : un footprint explicite (bâtiment) prime, sinon un
  *  polygone régulier (16 côtés, cercle approché) de rayon `crownDiameterM/2` (arbre) ou
  *  `max(lengthM,widthM)/2` (bâtiment sans emprise saisie). null si aucune dimension
  *  n'est connue (rien à dessiner — jamais un cercle de taille inventée). */
 export function environmentRing(o: EnvironmentObject): LngLat[] | null {
   if (o.footprint && o.footprint.length >= 3) return o.footprint;
-  const diameterM = o.kind === 'arbre' ? o.crownDiameterM : (o.lengthM ?? o.widthM);
+  const diameterM = o.kind === 'arbre' ? o.crownDiameterM : o.kind === 'poteau' ? o.diameterM : (o.lengthM ?? o.widthM);
   if (!diameterM || diameterM <= 0) return null;
   const r = diameterM / 2;
   const cosLat = Math.max(1e-6, Math.cos(o.centerLat * DEG2RAD));
@@ -137,6 +182,7 @@ export function environmentRing(o: EnvironmentObject): LngLat[] | null {
  * « emprise à saisir ».
  */
 export function environmentFootprintHalfWidthM(o: EnvironmentObject): number | null {
+  if (o.kind === 'ligne') return traceValide(o.trace) && pos(o.epaisseurM) ? o.epaisseurM / 2 : null; // ACAL501
   if (o.footprint && o.footprint.length >= 3) {
     const cosLat = Math.max(1e-6, Math.cos(o.centerLat * DEG2RAD));
     let maxR = 0;
@@ -148,7 +194,7 @@ export function environmentFootprintHalfWidthM(o: EnvironmentObject): number | n
     }
     if (maxR > 0) return maxR;
   }
-  const diameterM = o.kind === 'arbre' ? o.crownDiameterM : (o.lengthM ?? o.widthM ?? o.crownDiameterM);
+  const diameterM = o.kind === 'arbre' ? o.crownDiameterM : o.kind === 'poteau' ? o.diameterM : (o.lengthM ?? o.widthM ?? o.crownDiameterM);
   return diameterM && diameterM > 0 ? diameterM / 2 : null;
 }
 
@@ -186,6 +232,10 @@ export function environmentShadeEntries(
     if (!Number.isFinite(o.heightM) || (o.heightM as number) <= 0) continue;
     const eff = (o.heightM as number) - roofH;
     if (eff <= 0) continue;
+    if (o.kind === 'ligne') {
+      out.push(...entreesOmbreLigne(o.trace, o.epaisseurM, eff, origin)); // ACAL501 — une entrée par segment
+      continue;
+    }
     // CORRECTIF — aucune emprise saisie ⇒ aucune ombre (jamais une demi-largeur inventée).
     const halfWidthM = environmentFootprintHalfWidthM(o);
     if (halfWidthM == null) continue;

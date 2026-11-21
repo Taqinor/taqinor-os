@@ -55,6 +55,9 @@ import {
   withCrownDiameter,
   withFootprintDims,
   withEvergreen,
+  withPoleDiameter, // ACAL500
+  withEpaisseurLigne, newLigneEnvironment, // ACAL501
+  libelleGenreEnvironnement, // ACAL500
   type EnvironmentObject,
   type EnvironmentKind,
 } from './environment';
@@ -287,7 +290,7 @@ export function deplacementSommetAdmis(vertices: readonly LngLat[], idx: number,
 }
 
 /** CALX103/CALX104/CALX403 — les tracés « à la volée » que l'atelier sait armer. */
-export type ModeTrace = 'polygone' | 'cercle' | 'gabarit' | 'allee';
+export type ModeTrace = 'polygone' | 'cercle' | 'gabarit' | 'allee' | 'ligne';
 
 export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi {
   const { map, recalc, setStatus, redrawTrace } = deps;
@@ -429,13 +432,16 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     panel.innerHTML =
       `<div class="flex gap-2">` +
       `<button type="button" id="rp9-env-add-tree" class="rp9-btn" aria-pressed="false">🌳 Poser un arbre</button>` +
+      `<button type="button" id="rp9-env-add-ligne" class="rp9-btn" aria-pressed="false">Tracer une haie ou un mur</button>` + // ACAL501
       `<button type="button" id="rp9-env-add-building" class="rp9-btn" aria-pressed="false">🏢 Poser un bâtiment voisin</button>` +
+      `<button type="button" id="rp9-env-add-pole" class="rp9-btn" aria-pressed="false">Poser un poteau</button>` + // ACAL500
       `</div><ul id="rp9-env-list" class="mt-2 flex flex-col gap-1 text-xs"></ul>`;
     anchor.appendChild(panel);
     return panel;
   }
   const envAddTreeBtn = $<HTMLButtonElement>('rp9-env-add-tree');
   const envAddBuildingBtn = $<HTMLButtonElement>('rp9-env-add-building');
+  const envAddPoleBtn = $<HTMLButtonElement>('rp9-env-add-pole'); // ACAL500
   const envListEl = $('rp9-env-list');
 
   function envList(): EnvironmentObject[] {
@@ -447,13 +453,14 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   let poseArmee: EnvironmentKind | null = null;
   let glisseEnv: GlisseEnvironnement | null = null;
 
-  const envKindLabel = (kind: EnvironmentKind) => (kind === 'arbre' ? 'Arbre' : 'Bâtiment voisin');
+  const envKindLabel = libelleGenreEnvironnement; // ACAL500 — une seule table des libellés
 
   /** Arme/désarme la pose d'un objet : le clic suivant sur la carte donnera son centre. */
   function armerPose(kind: EnvironmentKind | null) {
     poseArmee = kind;
     envAddTreeBtn?.setAttribute('aria-pressed', String(kind === 'arbre'));
     envAddBuildingBtn?.setAttribute('aria-pressed', String(kind === 'batiment'));
+    envAddPoleBtn?.setAttribute('aria-pressed', String(kind === 'poteau'));
     if (typeof map.getCanvas === 'function') {
       const canvas = map.getCanvas();
       if (canvas) canvas.style.cursor = kind ? 'crosshair' : '';
@@ -602,9 +609,12 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     }
     envListEl.innerHTML = list
       .map((o) => {
-        const kindLabel = o.kind === 'arbre' ? 'Arbre' : 'Bâtiment voisin';
-        const dimsInputs =
-          o.kind === 'arbre'
+        const kindLabel = libelleGenreEnvironnement(o.kind);
+        const dimsInputs = o.kind === 'poteau' // ACAL500 — diamètre SAISI
+          ? `<input type="text" data-env-pole="${o.id}" value="${o.diameterM != null ? fmt1(o.diameterM) : ''}" placeholder="diamètre m" class="rp9-input w-24" />`
+          : o.kind === 'ligne' // ACAL501 — épaisseur SAISIE
+            ? `<input type="text" data-env-epaisseur="${o.id}" value="${o.epaisseurM != null ? fmt1(o.epaisseurM) : ''}" placeholder="épaisseur m" class="rp9-input w-24" />`
+          : o.kind === 'arbre'
             ? `<input type="text" data-env-crown="${o.id}" value="${o.crownDiameterM != null ? fmt1(o.crownDiameterM) : ''}" placeholder="Ø houppier m" class="rp9-input w-24" />
                <label class="flex items-center gap-1"><input type="checkbox" data-env-evergreen="${o.id}" ${o.evergreen ? 'checked' : ''} /> persistant</label>`
             : `<input type="text" data-env-length="${o.id}" value="${o.lengthM != null ? fmt1(o.lengthM) : ''}" placeholder="longueur m" class="rp9-input w-24" />
@@ -612,7 +622,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
         // CORRECTIF — hauteur saisie mais AUCUNE emprise : l'objet ne porte aucune ombre
         // (aucune demi-largeur de repli n'est inventée) et l'écran le dit explicitement.
         const emprise = environmentNeedsFootprint(o)
-          ? `<span data-env-emprise="${o.id}" class="text-alert-300">emprise à saisir — aucune ombre calculée</span>`
+          ? `<span data-env-emprise="${o.id}" class="text-alert-300">${o.kind === 'poteau' ? 'diamètre' : o.kind === 'ligne' ? 'épaisseur' : 'emprise'} à saisir — aucune ombre calculée</span>`
           : '';
         return `<li data-env-row="${o.id}" class="flex flex-wrap items-center gap-2 border border-white/10 p-2">
           <span class="font-semibold">${esc(kindLabel)}</span>
@@ -636,6 +646,11 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     armerPose(on ? null : 'batiment');
     setStatus(on ? 'Pose annulée.' : 'Cliquez sur la carte à l’endroit du bâtiment voisin.');
   });
+  envAddPoleBtn?.addEventListener('click', () => { // ACAL500
+    const on = poseArmee === 'poteau';
+    armerPose(on ? null : 'poteau');
+    setStatus(on ? 'Pose annulée.' : 'Cliquez sur la carte à l’endroit du poteau.');
+  });
   envListEl?.addEventListener('change', (e) => {
     const t = e.target as HTMLInputElement;
     const heightId = t.dataset.envHeight;
@@ -648,6 +663,8 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     else if (lengthId) updateEnvironment(lengthId, (o) => withFootprintDims(o, t.value.trim() ? parseNum(t.value) : null, o.widthM ?? null));
     else if (widthId) updateEnvironment(widthId, (o) => withFootprintDims(o, o.lengthM ?? null, t.value.trim() ? parseNum(t.value) : null));
     else if (evergreenId) updateEnvironment(evergreenId, (o) => withEvergreen(o, t.checked));
+    else if (t.dataset.envPole) updateEnvironment(t.dataset.envPole, (o) => withPoleDiameter(o, t.value.trim() ? parseNum(t.value) : null)); // ACAL500
+    else if (t.dataset.envEpaisseur) updateEnvironment(t.dataset.envEpaisseur, (o) => withEpaisseurLigne(o, t.value.trim() ? parseNum(t.value) : null)); // ACAL501
   });
   envListEl?.addEventListener('click', (e) => {
     const del = (e.target as HTMLElement).closest<HTMLElement>('[data-env-del]');
@@ -1012,6 +1029,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     cercle: 'Cliquez le centre de l’obstacle circulaire (son rayon est celui que vous avez saisi).',
     gabarit: 'Cliquez l’endroit où poser ce gabarit.',
     allee: 'Cliquez les points de l’allée, double-clic pour finir.',
+    ligne: 'Cliquez les points de la haie ou du mur, double-clic pour finir.', // ACAL501
   };
 
   /** Arme (ou désarme) un tracé à la volée. Un seul mode à la fois ; réarmer le même le
@@ -1026,6 +1044,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     obsCercleBtn?.setAttribute('aria-pressed', String(mode === 'cercle'));
     obsGabaritPoserBtn?.setAttribute('aria-pressed', String(mode === 'gabarit'));
     alleeTracerBtn?.setAttribute('aria-pressed', String(mode === 'allee'));
+    $('rp9-env-add-ligne')?.setAttribute('aria-pressed', String(mode === 'ligne')); // ACAL501
     if (typeof map.getCanvas === 'function') {
       const canvas = map.getCanvas();
       if (canvas) canvas.style.cursor = mode ? 'crosshair' : '';
@@ -1149,6 +1168,22 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   obsCercleBtn?.addEventListener('click', () => armerTrace(modeTrace === 'cercle' ? null : 'cercle'));
   obsGabaritPoserBtn?.addEventListener('click', () => armerTrace(modeTrace === 'gabarit' ? null : 'gabarit'));
   alleeTracerBtn?.addEventListener('click', () => armerTrace(modeTrace === 'allee' ? null : 'allee'));
+  $('rp9-env-add-ligne')?.addEventListener('click', () => armerTrace(modeTrace === 'ligne' ? null : 'ligne')); // ACAL501
+  /** ACAL501 — ferme la haie / le mur tracé ; moins de deux points : le tracé est abandonné, et dit. */
+  function fermerLigne() {
+    const pts = pointsPropres();
+    armerTrace(null);
+    if (pts.length < 2) {
+      setStatus('Haie ou mur abandonné : posez au moins deux points avant le double-clic.');
+      return;
+    }
+    ctx.pushWorkshopHistory?.();
+    envList().push(newLigneEnvironment(prochainId('env', ctx.environment ?? []), pts));
+    renderEnvList();
+    redrawEnvironment();
+    recalcWithShading();
+    setStatus('Haie ou mur tracé — saisissez sa hauteur et son épaisseur (sans elles, il ne porte aucune ombre).');
+  }
   alleeLargeurEl?.addEventListener('input', apercuTrace);
 
   map.on?.('click', (e: maplibregl.MapMouseEvent) => {
@@ -1167,9 +1202,10 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   });
 
   map.on?.('dblclick', (e: maplibregl.MapMouseEvent) => {
-    if (modeTrace !== 'polygone' && modeTrace !== 'allee') return;
+    if (modeTrace !== 'polygone' && modeTrace !== 'allee' && modeTrace !== 'ligne') return;
     e.preventDefault?.();
     if (modeTrace === 'polygone') fermerObstaclePolygone();
+    else if (modeTrace === 'ligne') fermerLigne(); // ACAL501
     else fermerAllee();
   });
 

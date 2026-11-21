@@ -26,7 +26,7 @@ import { ROOF_TYPES } from '../../lib/lead';
 import { emptyCurve, type Appliance, type HourlyCurve } from '../../lib/applianceConsumption'; // CALX253/CALX254
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
-import { type EnvironmentObject } from './environment';
+import { nettoyerEnvironment, type EnvironmentObject } from './environment';
 import { type ShadeObstruction } from '../../lib/shadingEngine'; // ACAL27
 import { serializeExclusionZones, deserializeExclusionZones, idPanEnDouble, type ExclusionZone } from './zones';
 import { resolveSetbacks, PERIMETER_SETBACK_M, type PerimeterSetbacks } from '../../lib/roofPro2';
@@ -54,6 +54,7 @@ import {
 } from './optimisationDocument'; // CALX114 câblage
 import { semerFondDepuisDocument } from './fondDocument'; // CALX107 câblage
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
+import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; // ACAL193 (sorti), ACAL593
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -665,27 +666,9 @@ export function deserializeMeasurements(json: unknown): Measurement[] {
 // ═══════════ CAL67 — ENVIRONNEMENT (arbres/bâtiments voisins, sérialisation) ═══════════
 // Même garantie que `measurements` : une entrée géométriquement invalide (id vide, genre
 // inconnu) est ÉCARTÉE individuellement — jamais silencieusement corrigée ni inventée.
-const ENV_KINDS = ['arbre', 'batiment'] as const;
-
-/** Normalise la liste d'objets d'environnement pour la sérialisation. */
+/** Normalise la liste d'objets d'environnement pour la sérialisation (ACAL500 : la copie vit dans `environment.ts`). */
 export function serializeEnvironment(list: readonly EnvironmentObject[] | null | undefined): EnvironmentObject[] {
-  if (!Array.isArray(list)) return [];
-  const out: EnvironmentObject[] = [];
-  for (const o of list) {
-    if (!o || typeof o.id !== 'string' || !o.id) continue;
-    if (!(ENV_KINDS as readonly string[]).includes(o.kind)) continue;
-    if (!Number.isFinite(o.centerLng) || !Number.isFinite(o.centerLat)) continue;
-    const clean: EnvironmentObject = { id: o.id, kind: o.kind, centerLng: o.centerLng, centerLat: o.centerLat };
-    if (o.label) clean.label = o.label;
-    if (typeof o.heightM === 'number' && Number.isFinite(o.heightM) && o.heightM > 0) clean.heightM = o.heightM;
-    if (typeof o.crownDiameterM === 'number' && Number.isFinite(o.crownDiameterM) && o.crownDiameterM > 0) clean.crownDiameterM = o.crownDiameterM;
-    if (typeof o.evergreen === 'boolean') clean.evergreen = o.evergreen;
-    if (Array.isArray(o.footprint) && o.footprint.length >= 3) clean.footprint = o.footprint.map((p) => [p[0], p[1]] as LngLat);
-    if (typeof o.lengthM === 'number' && Number.isFinite(o.lengthM) && o.lengthM > 0) clean.lengthM = o.lengthM;
-    if (typeof o.widthM === 'number' && Number.isFinite(o.widthM) && o.widthM > 0) clean.widthM = o.widthM;
-    out.push(clean);
-  }
-  return out;
+  return Array.isArray(list) ? list.map(nettoyerEnvironment).filter((o): o is EnvironmentObject => o != null) : [];
 }
 
 /** Relit une liste d'environnement sérialisée — mêmes garde-fous que l'écriture. Accepte
@@ -1975,4 +1958,5 @@ export function referenceContourRing(brut: RawContourPoint[] | null | undefined)
  *  vide, jamais une exception — même esprit que `deserializeMeasurements`. */
 export function deserializeExclusionZonesFromLayout(json: unknown): ExclusionZone[] {
   const raw = (json as { exclusionZones?: unknown } | null | undefined)?.exclusionZones ?? json;
-  return deserializeExclus
+  return deserializeExclusionZones(raw);
+}

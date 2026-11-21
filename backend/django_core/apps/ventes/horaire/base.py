@@ -36,3 +36,28 @@ def _num(valeur, defaut=0.0):
 def saison_du_mois(mois):
     """Saison PVGIS d'un mois 1-12 (``None`` hors bornes)."""
     return _SAISON_DU_MOIS.get(mois)
+
+
+#: ACAL1169 — la supposition DITE (règle du 17/11) : forme horaire des jours types = profil PVGIS du site.
+FORME_HORAIRE_BASE = 'profil PVGIS du site, orientation des pans non prise en compte'
+AVERTISSEMENT_FORME_HORAIRE = 'production de la pose réelle ; forme horaire supposée : ' + FORME_HORAIRE_BASE
+
+
+def serie_de_base_production(base_production, mensuel):
+    """ACAL1169 (D-ACAL-36) — ``(mensuel, pertes_incluses)`` : base pertes incluses (12 valeurs) ⇒ elle
+    REMPLACE la série de la ville, ni derate ni ombrage réappliqués ; pertes non incluses ⇒ lue comme
+    ``productible_kwh_kwc`` (mise à l'échelle) ; sans base ⇒ inchangé."""
+    base = base_production if isinstance(base_production, dict) else {}
+    serie = base.get('kwh_kwc_mensuel')
+    if base and base.get('pertes_incluses') and isinstance(serie, (list, tuple)) and len(serie) == 12:
+        return ([_num(v) for v in serie], str(base.get('source') or 'base_production')), True
+    if base and mensuel:
+        from apps.ventes.horaire.productible_societe import mettre_a_l_echelle
+        return mettre_a_l_echelle(mensuel, base.get('kwh_kwc_annuel')), False
+    return mensuel, False
+
+
+def bloc_base_production(base_production):
+    """ACAL1169 — la base publiée dans le bloc : ses quatre clés + la forme horaire supposée."""
+    cles = ('kwh_kwc_annuel', 'kwh_kwc_mensuel', 'pertes_incluses', 'source')
+    return dict({c: base_production.get(c) for c in cles}, forme_horaire=FORME_HORAIRE_BASE)

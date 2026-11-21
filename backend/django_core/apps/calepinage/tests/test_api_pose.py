@@ -47,6 +47,101 @@ SORTIE_MOTEUR = dict(
     company_id=1, depuis_cache=False, engagement_modules=None,
     rangees=[], suggestions=[])
 SORTIE_MOTEUR.pop('verdict')
+SORTIE_MOTEUR.pop('anti_ombrage')  # ACAL606 : publié par la vue, pas le moteur
+
+
+def _terrain(allee_m=None, kits=1):
+    """T1-F1-027 : terrain 30 × 22 m, 25°, module 2,384 × 1,303 m, 2 par table,
+    tel que ``ModeTerrain.helpers.js::demandeMoteur`` l'envoie."""
+    contour = [[0, 0], [30, 0], [30, 22], [0, 22]]
+    kit = {'code': 'terrain', 'libelle': 'Table terrain',
+           'module_long_m': 2.384, 'module_court_m': 1.303,
+           'puissance_module_wc': 710, 'inclinaison_deg': 25,
+           'orientation': 'PORTRAIT', 'modules_par_table': 2, 'faitage_m': 0}
+    parametres = {'kits': ['terrain'], 'axe_rangee': 'AUTO',
+                  'mode_pose': 'rangees_explicites_dp', 'pas_recherche_m': 0.01}
+    if allee_m is not None:
+        parametres['allee_m'] = allee_m
+    document = {
+        'schema_version': 1, 'repere': 'TERRAIN', 'contour': contour,
+        'surfaces': [{'type': 'polygone', 'repere': 'TERRAIN',
+                      'contour': contour, 'trous': [], 'axe_rangee': 'AUTO',
+                      'niveau': 0, 'pente_deg': 0, 'azimut_deg': 180,
+                      'origine': [0, 0], 'coupures': []}],
+        'kits': [kit] + [dict(kit, code='bis')] * (kits - 1),
+        'parametres': parametres, 'obstacles': [], 'zones': []}
+    if kits > 1:
+        parametres['kits'] = ['terrain', 'bis']
+    from apps.calepinage.moteur_io import deriver_axe_rangee
+    return deriver_axe_rangee(document)
+
+
+class PolitiqueDuSolTest(SimpleTestCase):
+    """ACAL606 — champ au sol : entraxe anti-ombrage CALCULÉ à la latitude."""
+
+    def test_sans_allee_anti_ombrage_a_la_latitude(self):
+        from core.calepinage.politique_pas import (
+            HEURE_SOLAIRE_DIMENSIONNEMENT, AntiOmbrage,
+        )
+
+        from apps.calepinage.moteur_service import politique_du_sol
+        politique, bloc = politique_du_sol(_terrain(), {'latitude_deg': 30.4})
+        self.assertIsInstance(politique, AntiOmbrage)
+        self.assertEqual(politique.latitude_deg, 30.4)
+        # Dimensionné à 10 h solaire au solstice, jamais « à midi ».
+        self.assertEqual(politique.heure_solaire, HEURE_SOLAIRE_DIMENSIONNEMENT)
+        self.assertEqual(HEURE_SOLAIRE_DIMENSIONNEMENT, 10.0)
+        self.assertEqual(bloc, {
+            'politique': 'ANTI_OMBRAGE', 'latitude_deg': 30.4,
+            'entraxe_calcule_m': 5.922, 'vide_calcule_m': 1.601,
+            'entraxe_applique_m': 5.922})
+
+    def test_allee_saisie_garde_sa_pose_et_publie_l_ecart(self):
+        from apps.calepinage.moteur_service import politique_du_sol
+        politique, bloc = politique_du_sol(_terrain(0.6),
+                                           {'latitude_deg': 30.4})
+        self.assertIsNone(politique)
+        self.assertEqual((bloc['politique'], bloc['entraxe_applique_m'],
+                          bloc['entraxe_calcule_m']),
+                         ('ALLEE_SAISIE', 4.921, 5.922))
+
+    def test_contrat_porte_anti_ombrage_partout(self):
+        for nom in ('exemple', 'exemple_vide', 'exemple_sol'):
+            self.assertEqual(set(CONTRAT[nom]), set(CONTRAT['exemple']), nom)
+        self.assertIsNone(CONTRAT['exemple']['anti_ombrage'])
+        self.assertIsNone(CONTRAT['exemple_vide']['anti_ombrage'])
+
+    def test_sans_sol_rien_ne_change(self):
+        from apps.calepinage.moteur_service import politique_du_sol
+        self.assertEqual(politique_du_sol(_terrain(), None), (None, None))
+
+    def test_sol_sans_latitude_ou_deux_kits_refuse(self):
+        from apps.calepinage.moteur_service import (
+            erreurs_moteur_calepinage, politique_du_sol,
+        )
+        entree_invalide, _ = erreurs_moteur_calepinage()
+        for document, sol, champ in ((_terrain(), {}, 'latitude_deg'),
+                                     (_terrain(), {'latitude_deg': '30'},
+                                      'latitude_deg'),
+                                     (_terrain(kits=2), {'latitude_deg': 30.4},
+                                      'kits')):
+            with self.subTest(sol=sol, champ=champ):
+                with self.assertRaises(entree_invalide) as refus:
+                    politique_du_sol(document, sol)
+                self.assertIn(champ, str(refus.exception))
+
+    def test_moteur_reel_132_modules_jamais_176(self):
+        """Sans mock : le terrain pose 3 rangées à 5,922 m, pas 4 à 0,60 m."""
+        from apps.calepinage.moteur_service import (
+            calepinage_json, politique_du_sol,
+        )
+        document = _terrain()
+        politique, _bloc = politique_du_sol(document, {'latitude_deg': 30.4})
+        pose = calepinage_json(document, company=1, suggestions=False,
+                               politique=politique)
+        self.assertEqual(pose['total_modules'], 132)
+        sans_sol = calepinage_json(document, company=1, suggestions=False)
+        self.assertEqual(sans_sol['total_modules'], 176)
 
 
 class PortePoseTest(BaseApiCalepinage):
@@ -111,6 +206,31 @@ class PortePoseTest(BaseApiCalepinage):
         document = self.porte.call_args.args[0]
         self.assertEqual(document['parametres']['axe_rangee'], 'EST_OUEST')
         self.assertEqual(document['surfaces'][0]['axe_rangee'], 'EST_OUEST')
+
+    def test_sol_sans_allee_passe_l_anti_ombrage_au_moteur(self):
+        """ACAL606 — la porte transmet la politique et publie le bloc."""
+        from core.calepinage.politique_pas import AntiOmbrage
+
+        reponse = self._appeler(self.api, {'demande': _terrain(),
+                                           'sol': {'latitude_deg': 30.4}})
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertIsInstance(self.porte.call_args.kwargs['politique'],
+                              AntiOmbrage)
+        self.assertEqual(reponse.data['anti_ombrage'],
+                         CONTRAT['exemple_sol']['anti_ombrage'])
+
+    def test_sans_sol_politique_none_et_bloc_null(self):
+        reponse = self._appeler(self.api, {'demande': CONTRAT['demande']})
+
+        self.assertIsNone(self.porte.call_args.kwargs['politique'])
+        self.assertIsNone(reponse.data['anti_ombrage'])
+
+    def test_sol_sans_latitude_409_nommant_le_champ(self):
+        reponse = self._appeler(self.api, {'demande': _terrain(), 'sol': {}})
+
+        self.assertEqual(reponse.status_code, 409)
+        self.assertIn('latitude_deg', str(reponse.data['demande']))
 
     def test_sans_calepinage_gerer_403(self):
         reponse = self._appeler(self.api_sans, {'demande': CONTRAT['demande']})

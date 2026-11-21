@@ -102,6 +102,38 @@ def _segments(positions, pas):
     return segments
 
 
+def _grandeurs_d_un_pan(pan):
+    """ACAL592 — les grandeurs d'UN pan : ``(rangees, jonctions, extremites,
+    longueur, sans_pas)``. ``sans_pas`` : aucun module n'a de voisin, la
+    longueur n'est pas lisible."""
+    lignes = _rangees_orientees(pan.get('modules') or [],
+                                pan.get('azimut_deg'))
+    pas = _pas_du_pan(lignes)
+    jonctions = extremites = 0
+    longueur = 0.0
+    for positions in lignes:
+        for segment in _segments(positions, pas):
+            jonctions += len(segment) - 1
+            extremites += 2
+            if pas is not None:
+                longueur += (segment[-1] - segment[0]) + pas
+    return len(lignes), jonctions, extremites, longueur, pas is None
+
+
+def _pans_a_commander(geometrie):
+    """Les pans qui portent des modules à poser : un pan « existant » (ACAL575)
+    ne se commande pas."""
+    return [pan for pan in geometrie.get('pans') or ()
+            if pan.get('modules') and not pan.get('existant')]
+
+
+def _motif_sans_pas(noms):
+    return ("Longueur des rangées non publiée : sur le(s) pan(s) « "
+            + '», «'.join(str(nom) for nom in noms)
+            + " », aucun module n'a de voisin dans sa rangée — le pas "
+            "entre modules n'y est pas lisible.")
+
+
 def _grandeurs_du_document(roof_layout):
     """``{'valeurs': {base: nombre|None}, 'manquants': {base: motif}}``.
 
@@ -122,22 +154,16 @@ def _grandeurs_du_document(roof_layout):
 
     modules = rangees = pans = jonctions = extremites = 0
     longueur, pans_sans_pas = 0.0, []
-    for pan in geometrie.get('pans') or ():
-        centres = pan.get('modules') or []
-        if not centres or pan.get('existant'):
-            continue  # ACAL575 : un pan existant ne se commande pas
+    for pan in _pans_a_commander(geometrie):
         pans += 1
-        modules += len(centres)
-        lignes = _rangees_orientees(centres, pan.get('azimut_deg'))
-        rangees += len(lignes)
-        pas = _pas_du_pan(lignes)
-        for positions in lignes:
-            for segment in _segments(positions, pas):
-                jonctions += len(segment) - 1
-                extremites += 2
-                if pas is not None:
-                    longueur += (segment[-1] - segment[0]) + pas
-        if pas is None:
+        modules += len(pan['modules'])
+        (n_rangees, n_jonctions, n_extremites, metres,
+         sans_pas) = _grandeurs_d_un_pan(pan)
+        rangees += n_rangees
+        jonctions += n_jonctions
+        extremites += n_extremites
+        longueur += metres
+        if sans_pas:
             pans_sans_pas.append(pan.get('libelle') or pan.get('repere'))
 
     if not modules:
@@ -152,11 +178,7 @@ def _grandeurs_du_document(roof_layout):
     manquants = {}
     if pans_sans_pas:
         valeurs['longueur_rangees_m'] = None
-        manquants['longueur_rangees_m'] = (
-            "Longueur des rangées non publiée : sur le(s) pan(s) « "
-            + '», «'.join(str(nom) for nom in pans_sans_pas)
-            + " », aucun module n'a de voisin dans sa rangée — le pas "
-            "entre modules n'y est pas lisible.")
+        manquants['longueur_rangees_m'] = _motif_sans_pas(pans_sans_pas)
     return {'valeurs': valeurs, 'manquants': manquants}
 
 
@@ -428,6 +450,48 @@ def bom_de_fixation(calepinage, systeme, refus=(), source=None):
         'refus': [],
         'systeme_source': source,
     }
+
+
+def lignes_par_pan(roof_layout, composants):
+    """ACAL592 — ``{repere de pan: lignes}`` : la MÊME règle et le même
+    arrondi que ``_lignes_de_fixation``, sur les grandeurs de CHAQUE pan à
+    poser (PUR ; ``[]`` sans conception lisible)."""
+    from .planche import PlancheRefusee, geometrie_de_planche
+
+    try:
+        geometrie = geometrie_de_planche(roof_layout)
+    except PlancheRefusee:
+        return {}
+    sortie = {}
+    for pan in _pans_a_commander(geometrie):
+        (rangees, jonctions, extremites, longueur,
+         sans_pas) = _grandeurs_d_un_pan(pan)
+        valeurs = {'modules': len(pan['modules']), 'rangees': rangees,
+                   'pans': 1, 'jonctions': jonctions,
+                   'extremites': extremites,
+                   'longueur_rangees_m': None if sans_pas
+                   else round(longueur, 2)}
+        motifs = ({'longueur_rangees_m': _motif_sans_pas(
+            [pan.get('libelle') or pan.get('repere')])} if sans_pas else {})
+        sortie[pan['repere']] = _lignes_de_fixation(
+            composants, {'valeurs': valeurs, 'manquants': motifs})
+    return sortie
+
+
+def fixation_par_pan(calepinage):
+    """ACAL592 — la nomenclature PAR PAN du système retenu, ou ``None`` sans
+    société, sans système choisi ni actif unique (l'encart est alors
+    ABSENT de la feuille du pan)."""
+    from .catalogue_fixation import composants_du_systeme
+
+    company = getattr(calepinage, 'company', None)
+    if company is None:
+        return None
+    systeme, _refus = resoudre_systeme(company, calepinage=calepinage)
+    if systeme is None:
+        return None
+    return lignes_par_pan(getattr(calepinage, 'roof_layout', None),
+                          composants_du_systeme(systeme))
 
 
 def table_fixation(calepinage):

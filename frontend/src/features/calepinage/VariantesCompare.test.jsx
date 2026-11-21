@@ -186,14 +186,42 @@ describe('VariantesCompare (CAL42)', () => {
     expect(within(bloc).getByText(new RegExp(shading.source))).toBeInTheDocument()
   })
 
-  it('un calepinage à UNE SEULE variante : rien à comparer, et AUCUN écart nul affiché', async () => {
+  it('ACAL978 — une variante + la courante : deux colonnes, la courante n’offre que « Ouvrir dans l’atelier »', async () => {
     mocks.comparer.mockResolvedValue({ data: CONTRAT_UNE_SEULE })
     rendre()
+    const tableau = await screen.findByTestId('cal-tableau-variantes')
+    const courante = CONTRAT_UNE_SEULE.lignes[0]
+    const seule = CONTRAT_UNE_SEULE.lignes[1]
+    expect(courante.courante).toBe(true)
+    expect(courante.id).toBeNull()
+    expect(within(tableau).getAllByText(courante.nom).length).toBeGreaterThan(0)
+    expect(within(tableau).getAllByText(seule.nom).length).toBeGreaterThan(0)
+    // La courante : un seul geste, aucune décision sur une variante.
+    const lien = screen.getByTestId('acal978-ouvrir-atelier')
+    expect(lien).toHaveAttribute('href', '/calepinage/1')
+    expect(lien).toHaveTextContent('Ouvrir dans l’atelier')
+    expect(screen.queryByTestId('cal-variante-renommer-null')).toBeNull()
+    expect(screen.queryByTestId('cal-variante-supprimer-null')).toBeNull()
+    expect(screen.queryByTestId('cal-variante-dupliquer-null')).toBeNull()
+    expect(screen.queryByTestId('cal-variante-simuler-null')).toBeNull()
+    // Côte à côte la propose, et les écarts sont ceux du serveur.
+    expect(screen.getByTestId('cal-cote-a-cote')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-ecart_modules-courante')).toHaveTextContent('0')
+    expect(screen.getByTestId(`cal-ecart_modules-${seule.id}`)).toHaveTextContent('0')
+    // Une variante existe : le bouton ne dit plus « Créer une première ».
+    expect(screen.getByTestId('cal-variante-nouvelle'))
+      .toHaveTextContent('Nouvelle variante depuis la conception courante')
+  })
+
+  it('ACAL978 — la courante seule : rien à comparer côte à côte', async () => {
+    mocks.comparer.mockResolvedValue({
+      data: { ...CONTRAT_UNE_SEULE, retenue_id: null, lignes: [CONTRAT_UNE_SEULE.lignes[0]] },
+    })
+    rendre()
     expect(await screen.findByTestId('cal-cote-a-cote-vide')).toBeInTheDocument()
-    const seule = CONTRAT_UNE_SEULE.lignes[0]
-    expect(seule.ecart_modules).toBeNull()
-    // `null` = il n'y a rien à quoi se comparer. Ce n'est PAS un écart nul.
-    expect(screen.getByTestId(`cal-ecart_modules-${seule.id}`)).toHaveTextContent('—')
+    expect(screen.getByTestId('cal-variantes-vide')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-variante-nouvelle'))
+      .toHaveTextContent('Créer une variante depuis la conception courante')
   })
 
   it('une erreur de chargement s’affiche telle quelle', async () => {

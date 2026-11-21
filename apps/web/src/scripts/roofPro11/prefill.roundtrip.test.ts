@@ -437,3 +437,21 @@ describe('ACAL520 — le cadenas d’un pan survit à l’aller-retour', () => {
     expect('verrouille' in sortie.zones[0]).toBe(false);
   });
 });
+
+describe('ACAL593 — les repères de chantier font l’aller-retour', () => {
+  const aller = (reperes?: unknown[]) => {
+    const doc = documentRiche() as unknown as Record<string, unknown>;
+    if (reperes) doc.reperesChantier = reperes;
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc as unknown as SerializedLayout }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) as unknown as Record<string, unknown>;
+  };
+  it('une ancre de 2 m revient avec son rayon et son texte', () => {
+    const r = { id: 'r1', type: 'ancre_antichute', texte: 'côté rue', rayonM: 2, point: [-7.62, 33.58] };
+    expect(aller([r]).reperesChantier).toEqual([r]);
+  });
+  it('aucun repère ⇒ aucune clé', () => {
+    expect('reperesChantier' in aller()).toBe(false);
+  });
+});

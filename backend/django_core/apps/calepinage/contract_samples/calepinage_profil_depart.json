@@ -237,6 +237,31 @@
         "cle": "ombrage_borne_importante_pct",
         "section": "simulation",
         "motif": "Borne de lecture propre à la société : aucune page publiée relue ne chiffre une perte d'ombrage « importante », laissée sans valeur (D-CALX 7, ACAL716)."
+      },
+      {
+        "cle": "facteur_regroupement",
+        "section": "electrique_societe",
+        "motif": "Facteur de regroupement des câbles : réglage société, aucune valeur publiée relue sur une page citée, laissé sans valeur (D-CALX 7, ACAL636)."
+      },
+      {
+        "cle": "temperature_service_cable_c",
+        "section": "electrique_societe",
+        "motif": "Température de service des câbles : réglage société, aucune valeur publiée relue sur une page citée, laissée sans valeur (D-CALX 7, ACAL635)."
+      },
+      {
+        "cle": "alpha_cuivre_par_c",
+        "section": "electrique_societe",
+        "motif": "Coefficient de température du cuivre : aucune page citée relue, laissé sans valeur (D-CALX 7, jamais tapé de mémoire, ACAL635)."
+      },
+      {
+        "cle": "tolerance_orientation_pans_deg",
+        "section": "electrique_societe",
+        "motif": "Tolérance d'orientation entre pans : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL650)."
+      },
+      {
+        "cle": "consigne_dc_plan_cablage",
+        "section": "electrique_societe",
+        "motif": "Consigne DC du plan de câblage : réglage société, aucune page publiée relue, laissée sans valeur (D-CALX 7, ACAL673)."
       }
     ]
   },

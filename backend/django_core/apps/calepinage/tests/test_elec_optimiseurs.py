@@ -86,6 +86,7 @@ class RegleDeChaineTest(SimpleTestCase):
         codes = {v['code']: v for v in regle['verdicts_entree']}
 
         self.assertEqual(sorted(codes), ['optimiseur_i_in_max_a',
+                                         'optimiseur_onduleur_compatible',
                                          'optimiseur_pmax_in_w',
                                          'optimiseur_v_in_max'])
         # Voc module 49,6 V sous les 60 V d'entrée : conforme.
@@ -114,8 +115,12 @@ class RegleDeChaineTest(SimpleTestCase):
     def test_la_longueur_de_chaine_reste_non_verifiable_et_le_dit(self):
         regle = _regle_de_chaine(MODULE, ONDULEUR, OPTIMISEUR)
 
-        self.assertEqual(len(regle['bornes_non_verifiables']), 1)
+        # ACAL662 : la compatibilité optimiseur ↔ onduleur, sans onduleur
+        # désigné (aucun SKU passé ici), est une 2e borne non vérifiable.
+        self.assertEqual(len(regle['bornes_non_verifiables']), 2)
         self.assertIn('repli PRUDENT', regle['bornes_non_verifiables'][0])
+        self.assertIn('non vérifiable',
+                      regle['bornes_non_verifiables'][1])
 
 
 class ComparatifDansLeVerdictTest(SimpleTestCase):

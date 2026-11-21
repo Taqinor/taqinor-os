@@ -16,13 +16,18 @@ les modules restent neutres et la feuille le dit. Aucun montant.
 """
 from __future__ import annotations
 
+import math
+import textwrap
 from html import escape
+
+from core.calepinage.geometrie import point_dans_polygone
 
 from .chaines import COULEUR_NON_AFFECTE
 from .planche import (
-    GRIS_PAN, GRIS_TEXTE, MENTION_NON_CHAINE, NOIR, TRAIT_MODULE, TRAIT_PAN,
-    PlancheRefusee, _barre_echelle_svg, _fleche_nord_svg, _n, _polygone,
-    _transformation, _verifier_absence_d_argent, pied_du_calepinage,
+    GRIS_PAN, GRIS_TEXTE, MENTION_NON_CHAINE, NOIR, ORANGE, TRAIT_MODULE,
+    TRAIT_PAN, PlancheRefusee, _barre_echelle_svg, _cote_horizontale,
+    _cote_verticale, _fleche_nord_svg, _n, _polygone, _transformation,
+    _verifier_absence_d_argent, pied_du_calepinage, texte_de_longueur,
 )
 
 #: La feuille A4 paysage (mm) : le dessin à gauche, la colonne de légende à
@@ -92,8 +97,10 @@ def _chaines_du_pan(modules_du_pan, modules, entrees, pans):
     return sortie
 
 
-def _etendue_du_pan(pan, modules_du_pan):
+def _etendue_du_pan(pan, modules_du_pan, zones=()):
     points = list(pan['points'])
+    for zone in zones:
+        points.extend(zone['points'])
     for module in modules_du_pan:
         points.extend(module['coins'] or [module['centre']])
     xs, ys = [p[0] for p in points], [p[1] for p in points]
@@ -168,11 +175,204 @@ def _legende_a4(lignes, x, y):
         if couleur:
             morceaux.append('<rect x="%s" y="%s" width="4" height="3" '
                             'fill="%s" />' % (_n(x), _n(y - 2.4), couleur))
-        morceaux.append('<text x="%s" y="%s" font-size="3.2" fill="%s">%s'
-                        '</text>' % (_n(x + (6.0 if couleur else 0.0)),
-                                     _n(y), NOIR, escape(texte)))
-        y += 4.8
+        for ligne in textwrap.wrap(texte, 46, subsequent_indent='  ') or ['']:
+            morceaux.append('<text x="%s" y="%s" font-size="3.2" fill="%s">'
+                            '%s</text>' % (_n(x + (6.0 if couleur else 0.0)),
+                                           _n(y), NOIR, escape(ligne)))
+            y += 4.4
+        y += 0.6
     return morceaux, y
+
+
+# ── ACAL591 — les distances aux rives et les zones interdites ──────────────
+
+MENTION_PROJECTION = ('Distances mesurées en plan, projection horizontale '
+                      'du pan')
+MOTIF_SANS_ORIENTATION = ('orientation du module non enregistrée : '
+                          'distances non calculées')
+#: Les quatre sens de mesure (repère local : le nord est +y, l'est +x).
+SENS_DE_MESURE = (('N', (0.0, 1.0)), ('S', (0.0, -1.0)),
+                  ('E', (1.0, 0.0)), ('O', (-1.0, 0.0)))
+_TOLERANCE = 1e-9
+
+
+def _portee_jusqu_au_contour(point, sens, contour):
+    """La distance de ``point`` au contour, mesurée PARALLÈLEMENT à ``sens``
+    (le premier croisement), ou ``None`` : rien n'est supposé."""
+    meilleure = None
+    for rang, a in enumerate(contour):
+        b = contour[(rang + 1) % len(contour)]
+        ex, ey = b[0] - a[0], b[1] - a[1]
+        denominateur = sens[0] * ey - sens[1] * ex
+        if abs(denominateur) < _TOLERANCE:
+            continue
+        dx, dy = a[0] - point[0], a[1] - point[1]
+        t = (dx * ey - dy * ex) / denominateur
+        u = (dx * sens[1] - dy * sens[0]) / denominateur
+        if t >= -_TOLERANCE and -_TOLERANCE <= u <= 1.0 + _TOLERANCE:
+            t = max(t, 0.0)
+            meilleure = t if meilleure is None else min(meilleure, t)
+    return meilleure
+
+
+def distances_aux_rives(pan, modules_du_pan):
+    """``({'N'|'S'|'E'|'O': {distance, depart, arrivee}}, motif)``.
+
+    Pour chaque côté : la PLUS PETITE distance, parallèle à l'axe, entre un
+    sommet du rectangle rendu d'un module (``coins_du_module``, jamais un
+    rectangle supposé) et le contour du pan. Un module sans emprise (pose ou
+    azimut non enregistrés) : aucune distance, et le motif le dit."""
+    if not modules_du_pan:
+        return {}, ''
+    if any(m['coins'] is None for m in modules_du_pan):
+        return {}, MOTIF_SANS_ORIENTATION
+    sommets = [coin for m in modules_du_pan for coin in m['coins']]
+    sortie = {}
+    for cote, sens in SENS_DE_MESURE:
+        meilleur = None
+        for sommet in sommets:
+            portee = _portee_jusqu_au_contour(sommet, sens, pan['points'])
+            if portee is not None and (meilleur is None
+                                       or portee < meilleur[0]):
+                meilleur = (portee, sommet)
+        if meilleur is not None:
+            portee, sommet = meilleur
+            sortie[cote] = {
+                'distance': portee, 'depart': sommet,
+                'arrivee': (sommet[0] + sens[0] * portee,
+                            sommet[1] + sens[1] * portee)}
+    return sortie, ''
+
+
+def _segments_se_croisent(a, b, c, d):
+    def cote(p, q, r):
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+    return (cote(a, b, c) * cote(a, b, d) < 0
+            and cote(c, d, a) * cote(c, d, b) < 0)
+
+
+def _polygones_se_recoupent(p, q):
+    """Vrai si deux polygones se recouvrent (sommet dans l'autre, ou arêtes
+    qui se croisent) — l'appartenance est ``point_dans_polygone``."""
+    p, q = list(p), list(q)
+    if any(point_dans_polygone(x, q) for x in p) \
+            or any(point_dans_polygone(x, p) for x in q):
+        return True
+    return any(_segments_se_croisent(p[i], p[(i + 1) % len(p)],
+                                     q[j], q[(j + 1) % len(q)])
+               for i in range(len(p)) for j in range(len(q)))
+
+
+def _distance_point_segment(point, a, b):
+    ex, ey = b[0] - a[0], b[1] - a[1]
+    carre = ex * ex + ey * ey
+    t = 0.0 if carre == 0 else max(0.0, min(1.0, (
+        (point[0] - a[0]) * ex + (point[1] - a[1]) * ey) / carre))
+    return math.hypot(point[0] - (a[0] + t * ex), point[1] - (a[1] + t * ey))
+
+
+def _distance_entre_polygones(p, q):
+    p, q = list(p), list(q)
+    return min([_distance_point_segment(x, q[i], q[(i + 1) % len(q)])
+                for x in p for i in range(len(q))]
+               + [_distance_point_segment(x, p[i], p[(i + 1) % len(p)])
+                  for x in q for i in range(len(p))])
+
+
+def cotes_des_zones(pan, modules_du_pan, zones):
+    """Une entrée par zone interdite qui recoupe le pan : ``{repere,
+    libelle, largeur_m, hauteur_m, distance_m, recouvre, points}``. La
+    distance (bord de la zone au module le plus proche) et « recouvre »
+    exigent l'emprise de chaque module ; sans elle : ``None`` / ``False``."""
+    sortie = []
+    emprises = [m['coins'] for m in modules_du_pan]
+    mesurable = bool(emprises) and all(c is not None for c in emprises)
+    for zone in zones or ():
+        points = zone['points']
+        if not _polygones_se_recoupent(pan['points'], points):
+            continue
+        xs, ys = [p[0] for p in points], [p[1] for p in points]
+        recouvre = mesurable and any(_polygones_se_recoupent(points, c)
+                                     for c in emprises)
+        proche = mesurable and not recouvre
+        sortie.append({
+            'repere': zone['repere'], 'libelle': zone.get('libelle') or '',
+            'largeur_m': max(xs) - min(xs), 'hauteur_m': max(ys) - min(ys),
+            'recouvre': recouvre, 'points': points,
+            'distance_m': (min(_distance_entre_polygones(points, c)
+                               for c in emprises) if proche else None)})
+    return sortie
+
+
+def _cotes_dessinees(distances, zones, vers_feuille):
+    """Les cotes de rive (lettre + valeur) et les cotes d'emprise des zones."""
+    morceaux = []
+    for cote, mesure in distances.items():
+        (x0, y0), (x1, y1) = mesure['depart'], mesure['arrivee']
+        trace = (_cote_horizontale(x0, x1, y0, vers_feuille) if cote in 'EO'
+                 else _cote_verticale(y0, y1, x0, vers_feuille))
+        lettre = vers_feuille((x0, y0))
+        morceaux.append('<g data-cote="%s">%s<text x="%s" y="%s" '
+                        'font-size="3.2" font-weight="bold" fill="%s">%s'
+                        '</text></g>' % (cote, trace, _n(lettre[0] - 4.0),
+                                         _n(lettre[1] - 1.5), NOIR, cote))
+    for zone in zones:
+        xs = [p[0] for p in zone['points']]
+        ys = [p[1] for p in zone['points']]
+        morceaux.append(_polygone(zone['points'], vers_feuille,
+                                  contour=ORANGE, tirets='1.5 1'))
+        morceaux.append(_cote_horizontale(min(xs), max(xs), min(ys),
+                                          vers_feuille, couleur=ORANGE))
+        morceaux.append(_cote_verticale(min(ys), max(ys), min(xs),
+                                        vers_feuille, couleur=ORANGE))
+    return morceaux
+
+
+def _lignes_de_mesures(distances, motif, zones):
+    lignes = [(None, MENTION_PROJECTION)]
+    if motif:
+        lignes.append((None, motif))
+    lignes += [(None, '%s : %s' % (cote, texte_de_longueur(m['distance'])))
+               for cote, m in distances.items()]
+    for zone in zones:
+        nom = zone['libelle'] or zone['repere']
+        texte = 'Zone interdite %s : %s × %s' % (
+            nom, texte_de_longueur(zone['largeur_m']),
+            texte_de_longueur(zone['hauteur_m']))
+        if zone['recouvre']:
+            texte += ' — recouvre un module'
+        elif zone['distance_m'] is not None:
+            texte += ' — à %s du module le plus proche' % texte_de_longueur(
+                zone['distance_m'])
+        lignes.append((None, texte))
+    return lignes
+
+
+NOTE_ARRONDI_PAR_PAN = ("Arrondi par pan : la somme peut dépasser la "
+                        "commande du projet")
+
+
+def _encart_fixation(lignes_du_pan):
+    """ACAL592 — l'encart « Fixation de ce pan » : ``[(None, texte)]``, ou
+    ``[]`` (sans nomenclature, la feuille ne dit rien de plus). Une quantité
+    ``None`` imprime son ``manquant``, jamais un 0."""
+    from .fixation import UNITE_A_L_UNITE, _fr
+
+    if not lignes_du_pan:
+        return []
+    sortie = [(None, 'Fixation de ce pan')]
+    for ligne in lignes_du_pan:
+        if ligne['quantite'] is None:
+            sortie.append((None, '%s : %s' % (ligne['composant'],
+                                              ligne['manquant'])))
+        else:
+            sortie.append((None, '%s : %s %s' % (
+                ligne['composant'], _fr(ligne['quantite']), ligne['unite'])))
+    if any(str(ligne['unite']).strip().lower() == UNITE_A_L_UNITE
+           for ligne in lignes_du_pan):
+        sortie.append((None, NOTE_ARRONDI_PAR_PAN))
+    return sortie
 
 
 def _pied_a4(texte):
@@ -183,12 +383,16 @@ def _pied_a4(texte):
             for rang, ligne in enumerate(lignes) if texte]
 
 
-def _feuille_de_pan(pan, modules, entrees, pans, pied):
+def _feuille_de_pan(pan, modules, entrees, pans, pied, zones=(),
+                    fixation=None):
     """Le SVG A4 d'UN pan posé."""
     modules_du_pan = [m for m in modules if m['pan'] == pan['repere']]
     chaines = _chaines_du_pan(modules_du_pan, modules, entrees, pans)
+    cotes_de_zones = cotes_des_zones(pan, modules_du_pan, zones)
+    distances, motif = distances_aux_rives(pan, modules_du_pan)
     vers_feuille, echelle = _transformation(
-        _etendue_du_pan(pan, modules_du_pan), CADRE_DESSIN_MM)
+        _etendue_du_pan(pan, modules_du_pan, cotes_de_zones),
+        CADRE_DESSIN_MM)
     nom = _libelle_de_pan(pan)
     titre = '%s — plan de pose' % (
         nom if nom.lower().startswith('pan') else 'Pan %s' % nom)
@@ -202,16 +406,16 @@ def _feuille_de_pan(pan, modules, entrees, pans, pied):
                   remplissage=GRIS_PAN, trait=TRAIT_PAN),
     ]
     corps += [_dessin_du_module(m, vers_feuille) for m in modules_du_pan]
+    corps += _cotes_dessinees(distances, cotes_de_zones, vers_feuille)
     for chaine in chaines:
         corps += _reperes_de_chaine(chaine, vers_feuille)
     lignes = _colonne_de_legende(chaines, not entrees)
-    _verifier_absence_d_argent('\n'.join(t for _c, t in lignes)
-                               + LEGENDE_REPERES)
-    legende, y = _legende_a4(lignes, COLONNE_X_MM, 28.0)
+    lignes.append((None, LEGENDE_REPERES))
+    lignes += _lignes_de_mesures(distances, motif, cotes_de_zones)
+    lignes += _encart_fixation(fixation)
+    _verifier_absence_d_argent('\n'.join(t for _c, t in lignes))
+    legende, _y = _legende_a4(lignes, COLONNE_X_MM, 28.0)
     corps += legende
-    corps.append('<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
-                 % (_n(COLONNE_X_MM), _n(y + 2.0), GRIS_TEXTE,
-                    escape(LEGENDE_REPERES)))
     corps.append(_fleche_nord_svg(FORMAT_A4_MM[0] - 16.0, 150.0))
     corps.append(_barre_echelle_svg(COLONNE_X_MM, 182.0, echelle))
     corps += _pied_a4(pied)
@@ -222,7 +426,7 @@ def _feuille_de_pan(pan, modules, entrees, pans, pied):
                '\n'.join(corps)))
 
 
-def svgs_de_pans(roof_layout, affectation, *, pied=''):
+def svgs_de_pans(roof_layout, affectation, *, pied='', fixation=None):
     """Les SVG A4, un par pan qui porte un module (liste vide sinon)."""
     from .planche import geometrie_de_planche
 
@@ -234,7 +438,9 @@ def svgs_de_pans(roof_layout, affectation, *, pied=''):
     if not any(pan['modules'] for pan in pans):
         return []
     modules, entrees = _plan_des_chaines(roof_layout, affectation)
-    return [_feuille_de_pan(pan, modules, entrees, pans, pied)
+    return [_feuille_de_pan(pan, modules, entrees, pans, pied,
+                            geometrie.get('zones_interdites') or (),
+                            (fixation or {}).get(pan['repere']))
             for pan in pans if pan['modules']]
 
 
@@ -248,9 +454,12 @@ def feuilles_de_pans(calepinage, *, moment=None):
     electrique = (servi or {}).get('electrique') \
         if isinstance(servi, dict) else None
     affectation = list((electrique or {}).get('affectation') or [])
+    from .fixation import fixation_par_pan
+
     pied = pied_du_calepinage(calepinage, moment=moment)
     svgs = svgs_de_pans(getattr(calepinage, 'roof_layout', None),
-                        affectation, pied=pied)
+                        affectation, pied=pied,
+                        fixation=fixation_par_pan(calepinage))
     if not svgs:
         return '', ''
     return STYLE_FEUILLE_PAN, ''.join(

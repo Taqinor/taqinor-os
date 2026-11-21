@@ -7,7 +7,8 @@
    document vient de l'`exemple` du contrat `roof_layout_v2.schema.json` (lu dans le dépôt).
    ========================================================================== */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { deplacerEpingleALaMain, hydrateFromDevis, oublierEpingleDeplacee } from './prefill';
+import { hydrateFromDevis } from './prefill';
+import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './provenanceEpingle'; // ACAL593 — sorti de prefill.ts
 import { reinitialiserNumerotation } from './numerotation';
 import { type Ctx } from './context';
 import { enregistrerAtelier, exempleRoofLayoutV2, ouvrirAtelier } from './harnaisDocument';

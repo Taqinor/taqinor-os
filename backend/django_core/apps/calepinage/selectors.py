@@ -377,14 +377,20 @@ def comparer_variantes(calepinage):
 
     lignes = list(variantes(calepinage))
     retenue = next((v for v in lignes if v.retenue), None)
-    reference = _mesures_variante(retenue) if retenue is not None else {}
+    # ACAL978 — la CONCEPTION COURANTE est comparée d'office, en tête : un
+    # calepinage à une seule variante montre deux colonnes. Les écarts se
+    # lisent contre la retenue, sinon contre la courante.
+    courante = _courante_comme_variante(calepinage)
+    colonnes = ([courante] if courante is not None else []) + lignes
+    pivot = retenue if retenue is not None else courante
+    reference = _mesures_variante(pivot) if pivot is not None else {}
     # CAL145 — la RÉFÉRENCE de production est calculée par le même chemin de
     # lecture que les autres lignes : une retenue périmée ne sert donc pas de
     # référence, et l'écart des autres vaut ``None`` plutôt qu'un écart
     # mesuré contre un chiffre qui ne décrit plus ce toit.
     reference_p50 = None
-    if retenue is not None:
-        simulee_ref, production_ref, _ = _production_comparee(retenue)
+    if pivot is not None:
+        simulee_ref, production_ref, _ = _production_comparee(pivot)
         if simulee_ref:
             reference_p50 = production_ref.get('p50_kwh')
     return {
@@ -392,14 +398,31 @@ def comparer_variantes(calepinage):
         'retenue_id': retenue.pk if retenue is not None else None,
         'reference_modules': reference.get('total_modules'),
         'introuvables': [],
-        'lignes': [_ligne_comparaison(v, reference, len(lignes),
+        'lignes': [_ligne_comparaison(v, reference, len(colonnes),
                                       reference_p50=reference_p50)
-                   for v in lignes],
+                   for v in colonnes],
         # ACAL883 — mêmes hypothèses de pertes et de météo ? (simulées seules)
         'hypotheses': hypotheses_comparees({
             v.pk: v.resultat for v in lignes
             if _production_comparee(v)[0]}),
     }
+
+
+def _courante_comme_variante(calepinage):
+    """ACAL978 — la conception COURANTE, vue comme une variante.
+
+    Un adaptateur en lecture seule (``pk`` ``None``, ``courante`` vrai) lu sur
+    le document et le résultat du calepinage, comme une variante : aucune
+    variante n'est créée par la lecture. ``None`` sans calepinage enregistré.
+    """
+    from types import SimpleNamespace
+
+    if calepinage is None or not getattr(calepinage, 'pk', None):
+        return None
+    return SimpleNamespace(
+        pk=None, nom='Conception courante', retenue=False, courante=True,
+        roof_layout=getattr(calepinage, 'roof_layout', None),
+        resultat=getattr(calepinage, 'resultat', None), calepinage=calepinage)
 
 
 def _mesures_variante(variante):
@@ -491,6 +514,7 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes,
         'role': mesures.get('role') or '',
         'statut': mesures.get('statut') or '',
         'est_retenue': bool(variante.retenue),
+        'courante': bool(getattr(variante, 'courante', False)),  # ACAL978
         'simulee': simulee,
         'total_modules': mesures.get('total_modules'),
         'kwc': mesures.get('kwc'),

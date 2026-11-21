@@ -21,6 +21,7 @@ Run :
     python manage.py test apps.calepinage.tests.test_cal211_plan_pose -v2
 """
 import copy
+import html
 import json
 import pathlib
 import re
@@ -205,6 +206,11 @@ def affectation(*chaines):
             for chaine, cles in chaines for cle in cles]
 
 
+def texte_de_svg(svg):
+    """Le texte lu d'une feuille : balises retirees, lignes recollees."""
+    return ' '.join(html.unescape(re.sub(r'<[^>]+>', ' ', svg)).split())
+
+
 def modules_dessines(svg):
     """Les polygones de MODULE (trait fin 0,15) d'une feuille de pan."""
     return re.findall(r'<polygon [^>]*stroke-width="0.15"[^>]*>', svg)
@@ -236,8 +242,8 @@ class FeuilleDePanTest(SimpleTestCase):
             self.assertIn('>%d</text>' % numero, svg)
         self.assertEqual(svg.count('>+</text>'), 2)
         self.assertEqual(svg.count('>−</text>'), 2)
-        self.assertIn('+ : début, − : fin, dans l&#x27;ordre de '
-                      'l&#x27;affectation publiée', svg)
+        self.assertIn("+ : début, − : fin, dans l'ordre de "
+                      "l'affectation publiée", texte_de_svg(svg))
         self.assertEqual(svg.count('class="fleche-chaine"'), 2)
         self.assertIn('calepinage aaaaaaaaaaaa', svg)
 
@@ -394,14 +400,15 @@ class CotesDesZonesInterditesTest(SimpleTestCase):
         return cotes_des_zones(pan, modules, [zone])
 
     def test_emprise_et_distance_au_module_le_plus_proche(self):
-        # x 4..6, y 1..2 : emprise 2 x 1 ; le module le plus proche est celui
-        # du bas a gauche (x 0,3..1,4) : 2,6 m en x, y se chevauchant.
+        # x 4..6, y 1..2 : emprise 2 x 1 ; les modules du bas se tiennent a
+        # x 0,3..1,4 et 8,5..9,6 : le plus proche est a droite, 8,5 - 6 =
+        # 2,5 m, les ordonnees se chevauchant.
         (cote,) = self.cotes([(4.0, 1.0), (6.0, 1.0), (6.0, 2.0),
                               (4.0, 2.0)])
         self.assertAlmostEqual(cote['largeur_m'], 2.0, places=6)
         self.assertAlmostEqual(cote['hauteur_m'], 1.0, places=6)
         self.assertFalse(cote['recouvre'])
-        self.assertAlmostEqual(cote['distance_m'], 2.6, places=6)
+        self.assertAlmostEqual(cote['distance_m'], 2.5, places=6)
 
     def test_une_zone_qui_recouvre_un_module_le_dit(self):
         (cote,) = self.cotes([(0.5, 1.0), (2.0, 1.0), (2.0, 2.0),
@@ -440,9 +447,53 @@ class FeuilleCoteeTest(SimpleTestCase):
             self.assertIn('data-cote="%s"' % cote, svg)
             self.assertIn('>%s</text>' % valeur, svg)
         self.assertIn('Distances mesurées en plan, projection horizontale '
-                      'du pan', svg)
+                      'du pan', texte_de_svg(svg))
         self.assertIn('Cheminee', svg)
         self.assertIn('2,00 m', svg)
+
+
+class EncartFixationDuPanTest(SimpleTestCase):
+    """ACAL592 - l'encart « Fixation de ce pan » de la feuille A4."""
+
+    def feuille(self, fixation):
+        from apps.calepinage.services.planche_pan import svgs_de_pans
+
+        return texte_de_svg(svgs_de_pans(
+            layout_six_modules(), [], pied='', fixation=fixation)[0])
+
+    def ligne(self, composant, quantite, unite, manquant=None):
+        return {'composant': composant, 'role': composant,
+                'quantite': quantite, 'unite': unite, 'manquant': manquant}
+
+    def test_l_encart_liste_les_composants_dans_l_ordre(self):
+        texte = self.feuille({'z1': [
+            self.ligne('Rail aluminium', 6.5, 'm'),
+            self.ligne('Pince de milieu', 8, 'u')]})
+        self.assertIn('Fixation de ce pan', texte)
+        self.assertLess(texte.index('Rail aluminium : 6,5 m'),
+                        texte.index('Pince de milieu : 8 u'))
+        self.assertIn("Arrondi par pan : la somme peut dépasser la commande "
+                      "du projet", texte)
+
+    def test_sans_unite_u_pas_de_note_d_arrondi(self):
+        texte = self.feuille({'z1': [self.ligne('Rail aluminium', 6.5, 'm')]})
+        self.assertNotIn('Arrondi par pan', texte)
+
+    def test_une_quantite_absente_imprime_son_manquant_jamais_zero(self):
+        texte = self.feuille({'z1': [self.ligne(
+            'Crochet', None, 'u', "« Entraxe » non saisi : la quantité "
+            "n'est pas calculée.")]})
+        self.assertIn("Crochet : « Entraxe » non saisi", texte)
+        self.assertNotIn('Crochet : 0', texte)
+
+    def test_sans_nomenclature_l_encart_est_absent(self):
+        for fixation in (None, {}, {'z2': []}):
+            self.assertNotIn('Fixation de ce pan', self.feuille(fixation))
+
+    def test_aucune_mention_de_prix(self):
+        texte = self.feuille({'z1': [self.ligne('Rail', 6.5, 'm')]})
+        for interdit in ('prix', 'mad', 'montant'):
+            self.assertNotIn(interdit, texte.lower())
 
 
 class ListeDesChainesTest(SimpleTestCase):
