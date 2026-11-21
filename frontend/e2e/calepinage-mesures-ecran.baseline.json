@@ -1,0 +1,13 @@
+{
+  "carte_disponible": false,
+  "controles_visibles": 53,
+  "tailles_texte_distinctes": 15,
+  "cibles_sous_44px": 47,
+  "gestes_lead_production": 8,
+  "mode_guide": {
+    "mesure_le": "2026-11-21",
+    "commit_mesure": "0bb4a72f796136b39bdae92a058e87210cfd7254",
+    "etapes": 5,
+    "controles_premier_ecran": 53
+  }
+}
