@@ -673,7 +673,6 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
             self.assertTrue(all(len(p) == 2 for p in pan['contour_lnglat']))
         self.assertTrue(donnees['exemple_indisponible_503']['detail'])
 
-
     def test_forme_de_la_pente_terrain(self):
         # ACAL466 — lecture pure ; relief illisible = null + motif, jamais
         # une altitude de repli.
