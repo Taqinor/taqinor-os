@@ -217,6 +217,21 @@ def _bloc_production(resultat):
         signaux)
 
 
+def _avertissements(resultat):
+    """Les avertissements REGROUPÉS comme « ce qui manque » du parcours guidé
+    (ACAL392, ``parcours_guide.regrouper_manque``) : la même phrase répétée
+    par trois postes (« aucune norme électrique… ») n'occupe plus les deux
+    places du résumé — une ligne, suivie de « (× n) »."""
+    from .parcours_guide import regrouper_manque
+
+    lignes = []
+    for manque in regrouper_manque(resultat.get('avertissements')):
+        suffixe = ' (× %d)' % manque['nombre'] if manque['nombre'] > 1 else ''
+        lignes.append(_texte(manque['message'])[:MAX_TEXTE - len(suffixe)]
+                      + suffixe)
+    return lignes[:MAX_AVERTISSEMENTS]
+
+
 def resume_compact(calepinage, *, variante=None):
     """CALA2 — le résumé COMPACT d'un calepinage (ou d'une de ses variantes).
 
@@ -255,8 +270,7 @@ def resume_compact(calepinage, *, variante=None):
         'devis': devis,
         'approbation': approbation,
         'visite': visite,
-        'avertissements': [_texte(a) for a in (resultat.get('avertissements') or ())
-                           ][:MAX_AVERTISSEMENTS],
+        'avertissements': _avertissements(resultat),
         'a_faire': a_faire,
         'lien': _lien_du_geste(calepinage.pk, a_faire),
     }

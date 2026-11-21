@@ -131,6 +131,56 @@ def _paragraphe_ombrage_electrique(resultat, nombre_de_pans):
             escape(str(entree.get('hypothese') or ''))))
 
 
+def _paragraphe_ciel_et_table(roof_layout):
+    """ACAL461/ACAL467 — par pan, ce que la chaîne de pertes LIT du document :
+    le facteur de vue du ciel (étape « ombrage du diffus ») et la table
+    d'ombrage direct par direction du soleil (étape « ombrage proche »).
+
+    Même lecture que les étapes (``facteur_du_pan``, ``table_du_pan``) : le
+    facteur est imprimé tel que le document le porte, une table illisible est
+    DITE (la matrice 12 × 24 sert alors). Aucun pan n'en porte : rien.
+    """
+    from ..etapes.ombrage_diffus import facteur_du_pan
+    from ..etapes.ombrage_table import table_du_pan
+
+    zones = [z for z in ((roof_layout or {}).get('zones') or ())
+             if isinstance(z, dict) and isinstance(z.get('geometry'), dict)
+             and ('skyViewFactor' in z['geometry']
+                  or 'shadeTable' in z['geometry'])]
+    lignes = []
+    for zone in zones:
+        repere = str(zone.get('id') or zone.get('label') or '')
+        if not repere:
+            continue
+        contexte = {'layout': roof_layout, 'plan': {'id': repere}}
+        bloc = facteur_du_pan(contexte)
+        methode = (bloc or {}).get('methode')
+        if not isinstance(bloc, dict) or bloc.get('facteur') is None:
+            ciel = 'non relevé'
+        elif isinstance(methode, dict) and methode.get('horizon') is True:
+            ciel = ('%s — inclut l’horizon, non appliqué (l’horizon a son '
+                    'propre poste)' % nombre_tel_que_servi(bloc['facteur']))
+        else:
+            ciel = nombre_tel_que_servi(bloc['facteur'])
+        table = table_du_pan(contexte)
+        if table is not None:
+            direct = 'lue : %d hauteurs × %d azimuts' % (len(table[1]),
+                                                         len(table[0]))
+        elif 'shadeTable' in zone['geometry']:
+            direct = 'illisible — la matrice 12 × 24 sert'
+        else:
+            direct = 'absente — la matrice 12 × 24 sert'
+        lignes.append('<tr><td>%s</td><td class="valeur">%s</td><td>%s</td>'
+                      '</tr>' % (escape(str(zone.get('label') or repere)),
+                                 ciel, escape(direct)))
+    if not lignes:
+        return ''
+    return ('<p class="grandeur">Ombrage du diffus et du direct par pan</p>'
+            '<table class="ombrage-orientation generique"><tr><th>Pan</th>'
+            '<th>Facteur de vue du ciel</th><th>Table d’ombrage direct</th>'
+            '</tr>%s</table>' % ''.join(lignes))
+
+
 def _calepinage_et_roof_layout(resultat):
     """Le calepinage QUI A PRODUIT ce résultat, relu pour SON
     ``roof_layout`` (``shading12x24`` n'est pas publié par ``resultat``,
@@ -188,6 +238,7 @@ def html_de_section(contexte):
     calepinage = _calepinage_et_roof_layout(resultat)
     roof_layout = getattr(calepinage, 'roof_layout', None) \
         if calepinage is not None else None
+    blocs.append(_paragraphe_ciel_et_table(roof_layout))
     matrice = _matrice_12x24(roof_layout)
     if matrice is not None:
         blocs.append('<p class="grandeur">Matrice d’ombrage horaire '
