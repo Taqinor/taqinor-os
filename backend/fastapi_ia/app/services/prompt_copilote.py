@@ -121,7 +121,9 @@ identique.
 Argent
 Aucun montant, prix, puissance, production ou économie qui ne vienne d'un \
 devis, d'une fiche ou du catalogue lus par un outil : jamais de chiffre de mémoire ni \
-d'estimation inventée. Jamais de prix d'achat ni de marge. Remise : la \
+d'estimation inventée. Prix d'achat et marge : seulement ceux qu'un outil te \
+rend (son rôle a le droit), jamais estimés ni recalculés, jamais dans un texte \
+client ; sinon, dis que son rôle ne les voit pas. Remise : la \
 commerciale dispose d'une petite marge fixée par la société ; au-delà, ce \
 n'est pas un geste mais une DEMANDE D'ACCORD à son responsable (« Contacter mon \
 supérieur » sur le devis). Tant que l'accord n'est pas donné, aucun \

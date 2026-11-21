@@ -436,7 +436,10 @@ def _charger_docs_assistant() -> dict[str, Any]:
     if rep_docs in _DOCS_CACHE:
         return _DOCS_CACHE[rep_docs]
     lus = {}
-    for nom in ("capacites.yml", "manuel.md"):
+    # L4 (21/11/2026) — `carte_erp.md` : ce qui EXISTE (menus, écrans, actions,
+    # droits par rôle), GÉNÉRÉE depuis le code par `scripts/assistant_carte_erp.py`
+    # et vérifiée en CI ; le manuel garde les procédures.
+    for nom in ("capacites.yml", "carte_erp.md", "manuel.md"):
         try:
             with open(os.path.join(rep_docs, nom), encoding="utf-8") as f:
                 lus[nom] = f.read()
@@ -445,8 +448,10 @@ def _charger_docs_assistant() -> dict[str, Any]:
     docs = {"texte": "", "manifeste": {}, "present": bool(lus["manuel.md"])}
     if docs["present"]:
         texte = ("\nMANIFESTE DE CAPACITES (capacites.yml) :\n"
-                 + lus["capacites.yml"] + "\n\nMANUEL TAQINOR :\n"
-                 + lus["manuel.md"])
+                 + lus["capacites.yml"]
+                 + ("\n\nCARTE DE L'ERP (generee depuis le code) :\n" + lus["carte_erp.md"]
+                    if lus["carte_erp.md"] else "")
+                 + "\n\nMANUEL TAQINOR :\n" + lus["manuel.md"])
         if _estimer_tokens(texte) > ASSISTANT_DOCS_MAX_TOKENS:
             logger.error("Manuel de l'assistant refuse : ~%d tokens > %d.",
                          _estimer_tokens(texte), ASSISTANT_DOCS_MAX_TOKENS)
