@@ -48,14 +48,9 @@ from core.electrique.types import (
     NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
     TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C, VerdictElectrique,
 )
-from .chaine_la_plus_faible import (  # noqa: F401 — ré-export (ACAL646)
-    METHODE_CHAINE_FAIBLE, MOTIF_CHAINE_FAIBLE_ABSENTE,
-    REFERENCE_CHAINE_FAIBLE, _chaine_la_plus_faible)
+from .chaine_la_plus_faible import _chaine_la_plus_faible  # ACAL646 — extraite
 from . import bordereau_calepinage as _bordereau_calepinage  # ACAL632
 from . import validation_batterie as _validation_batterie  # ACAL633
-from .capacites_coffrets import (  # noqa: F401 — ré-export (ACAL618)
-    CLES_CAPACITE_COFFRET, capacites_des_coffrets,
-)
 from .valeurs import nombre as _nombre
 
 __all__ = [
@@ -66,8 +61,7 @@ __all__ = [
     'temperatures_site', 'temperatures_pour_calepinage',
     'CLE_ENTREE', 'CHAMPS_ENTREE', 'EntreeInvalide',
     'CLE_SIMULATION', 'BLOCS_SIMULATION', 'BLOCS_LISTE',
-    'CLE_CHAINE_FAIBLE', 'METHODE_CHAINE_FAIBLE', 'REFERENCE_CHAINE_FAIBLE',
-    'MOTIF_CHAINE_FAIBLE_ABSENTE',
+    'CLE_CHAINE_FAIBLE',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'entree_electrique_servie', 'CLES_ENTREE_SERVIE',  # ACAL56
     'PROVENANCE_EXPLICITE', 'PROVENANCE_DEVIS', 'ROLES_MATERIEL',  # ACAL56

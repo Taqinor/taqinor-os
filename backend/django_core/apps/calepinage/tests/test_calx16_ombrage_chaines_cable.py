@@ -31,9 +31,11 @@ import pathlib
 
 from django.test import SimpleTestCase
 
+from apps.calepinage.services.chaine_la_plus_faible import (
+    METHODE_CHAINE_FAIBLE, MOTIF_CHAINE_FAIBLE_ABSENTE, _chaine_la_plus_faible,
+)
 from apps.calepinage.services.electrique import (
-    CLE_CHAINE_FAIBLE, METHODE_CHAINE_FAIBLE, MOTIF_CHAINE_FAIBLE_ABSENTE,
-    _chaine_la_plus_faible, resultat_calepinage,
+    CLE_CHAINE_FAIBLE, resultat_calepinage,
 )
 from apps.calepinage.services.ombrage_chaines import MOTIF_SANS_ACCES
 

@@ -153,7 +153,9 @@ def _bloc_electrique(calepinage, variante=None):
     bloquants = [_texte(b.get('libelle'))
                  for b in (verdict.get('bloquants') or ())][:MAX_BLOQUANTS]
     signaux = ['bloquant_electrique'] if verdict.get('verdict') == 'bloquant' else []
-    return {'verdict': verdict.get('verdict'), 'bloquants': bloquants}, signaux
+    # ACAL934 — l'état à trois valeurs et son nombre de points, tels que servis.
+    return {'verdict': verdict.get('verdict'), 'bloquants': bloquants,
+            'etat': verdict.get('etat'), 'points': verdict.get('points')}, signaux
 
 
 def _pans(resultat):

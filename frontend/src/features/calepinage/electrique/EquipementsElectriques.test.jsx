@@ -16,13 +16,13 @@ import { MemoryRouter } from 'react-router-dom'
 const CONTRAT = documentContrat('calepinage', 'electrique_equipements')
 
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { layout: vi.fn() } },
+  default: { calepinages: { layout: vi.fn(), evaluerElectrique: vi.fn(), entreeElectrique: vi.fn(), enregistrerEntreeElectrique: vi.fn() } },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
 import EquipementsElectriques from './EquipementsElectriques'
 import { TYPES_EQUIPEMENT, libelleType, libelleProduit } from './EquipementsElectriques.helpers'
-import { documentContrat } from '../../../test/fixtures/contractSamples'
+import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 
 const servirLayout = (electrical) => {
   calepinageApi.calepinages.layout.mockResolvedValue({
@@ -112,3 +112,49 @@ describe('EquipementsElectriques (CALX222)', () => {
     await waitFor(() => expect(screen.getByTestId('calx222-vide')).toBeInTheDocument())
   })
 })
+
+describe('EquipementsElectriques (ACAL634) — « n onduleurs sont nécessaires »', () => {
+  const EVAL = exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple_bloque')
+  const ENTREE = exempleContrat('calepinage', 'calepinage_entree_electrique')
+  const servir = (evaluation, accepte = null) => {
+    servirLayout(undefined)
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: evaluation })
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { ...ENTREE, entree: { ...ENTREE.entree, nombre_onduleurs: accepte } } })
+  }
+
+  it('suggestion de 2 : la carte dit le motif servi ; le clic enregistre le nombre puis relit', async () => {
+    servir(EVAL)
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendre()
+
+    expect(await screen.findByTestId('acal634-motif')).toHaveTextContent(EVAL.onduleurs_suggeres.motif)
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
+    servir(EVAL, 2)
+    await userEvent.click(screen.getByTestId('acal634-prendre'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledWith(12, { nombre_onduleurs: 2 }))
+    await waitFor(() => expect(screen.queryByTestId('acal634-carte')).toBeNull())
+  })
+
+  it('nombre 1, ou nombre déjà accepté : aucune carte', async () => {
+    servir(exempleContrat('calepinage', 'calepinage_evaluation_electrique'))
+    rendre()
+    await screen.findByTestId('calx222-panneau')
+    expect(screen.queryByTestId('acal634-carte')).toBeNull()
+    cleanup()
+    servir(EVAL, 2)
+    rendre()
+    await screen.findByTestId('calx222-panneau')
+    await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal634-carte')).toBeNull()
+  })
+
+  it('un refus serveur est affiché tel quel', async () => {
+    servir(EVAL)
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({ response: { status: 400, data: { nombre_onduleurs: 'Nombre refusé.' } } })
+    rendre()
+    await userEvent.click(await screen.findByTestId('acal634-prendre'))
+    expect(await screen.findByTestId('acal634-refus')).toHaveTextContent('Nombre refusé.')
+  })
+})
+

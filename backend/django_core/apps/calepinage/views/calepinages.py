@@ -381,8 +381,12 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     #: VisiteTerrainViewSet.write_permission`` (VTA10) : une PROPRIÉTÉ, pas un
     #: ``get_permissions()`` réécrit, pour qu'aucune garde déclarée sur une
     #: ``@action`` ne soit jamais écrasée en silence.
+    #: ACAL831 — ``pompage`` (POST) est un CALCUL ouvert à ``calepinage_voir``
+    #: (garde déclarée ``PeutVoirCalepinage``) ; seul l'enregistrement du
+    #: dernier rendu exige ``calepinage_gerer`` (``_enregistrer_dernier``).
     PERMISSIONS_ECRITURE_PAR_ACTION = {'approbation': CAL_APPROUVER,
-                                       'profil_depart': CAL_APPROUVER}
+                                       'profil_depart': CAL_APPROUVER,
+                                       'pompage': CAL_VOIR}
 
     @property
     def write_permission(self):

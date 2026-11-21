@@ -54,8 +54,10 @@ class ClesDocumentTests(unittest.TestCase):
     def test_schema_reel_modepose_dans_exemple_et_repere_exempte(self):
         cles, exemple, hors = guard.lire_schema()
         self.assertEqual(exemple.get("modePoseDeclare"), "sol")
-        self.assertEqual(hors, {"repere"})
-        self.assertNotIn("repere", exemple)
+        # ACAL555 (motifsPansVides) et ACAL1041 (imageCapture) : marquées `x-hors-exemple` dans le schéma.
+        self.assertEqual(hors, {"repere", "motifsPansVides", "imageCapture"})
+        for cle in hors:
+            self.assertNotIn(cle, exemple)
 
     def test_cle_sans_ecrivain_est_refusee_hors_liste_blanche(self):
         root = _repo(["parcelle", "pin"], {"parcelle": 1, "pin": 1}, "o = { pin: 2 }")

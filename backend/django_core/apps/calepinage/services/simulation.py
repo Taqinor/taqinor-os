@@ -1272,6 +1272,41 @@ def _horodatage(maintenant=None):
 # LE POINT D'ENTRÉE
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _annoter_cascade(blocs, cascade, contexte):
+    """Pose la cascade et ses lectures dérivées ; rend l'avertissement de
+    complétude (« borne haute », ACAL49) que l'appelant met en tête."""
+    blocs['cascade'] = cascade
+    from .regroupement_pertes import regrouper  # ACAL695 — cinq postes lisibles
+    cascade['postes_lisibles'] = regrouper(cascade)
+    from .plages_usuelles import evaluer  # ACAL702 — pastilles sourcées
+    cascade['plages'] = evaluer(cascade)
+    completude = completude_de_la_chaine(cascade, contexte)
+    # ACAL699 — chaque perte non renseignée : le champ et où LIRE sa valeur.
+    cascade['a_renseigner'] = construire_a_renseigner(
+        cascade, completude['non_renseignees'])
+    return completude['avertissement']
+
+
+def _appels_complementaires_pvgis(blocs, client, reference, decision,
+                                  fichier, compteur):
+    """Les requêtes PVGIS posées APRÈS la chaîne, puis le compteur d'appels
+    RÉELS : l'ordonnanceur compte ses demandes, le fournisseur compte ce qui
+    est réellement parti sur le réseau."""
+    from . import gain_inclinaison as _gain_inclinaison  # ACAL706
+    blocs['production']['gain_inclinaison'] = _gain_inclinaison.demander(
+        client, reference, decision, fichier, compteur, blocs['production'])
+    blocs['meteo']['appels_pvgis'] = compteur['appels']
+
+
+def _annexes_de_production(blocs, serie_reference, projection, contexte):
+    """Bilan mensuel (ACAL705) et durée de vie (ACAL693) à côté du tableau."""
+    from .bilan_mensuel import publier as bilan_mensuel
+    blocs['production']['bilan_mensuel'] = bilan_mensuel(
+        serie_reference, blocs['production'])
+    blocs['production']['duree_de_vie'] = bloc_duree_de_vie(
+        projection, contexte)
+
+
 def simuler_calepinage(calepinage, *, forcer=False, client=None,
                        maintenant=None, enregistrer=True, materiel=None,
                        reglages=None, variante=None):
@@ -1390,11 +1425,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         # ACAL126 — un horizon illisible, PVGIS indisponible pour un pan, un
         # σ saisi illisible : un refus NOMMÉ, jamais une exception brute.
         raise _refus_nomme(refus) from refus
-    blocs['cascade'] = cascade
-    from .regroupement_pertes import regrouper  # ACAL695 — cinq postes lisibles
-    cascade['postes_lisibles'] = regrouper(cascade)
-    from .plages_usuelles import evaluer  # ACAL702 — pastilles sourcées
-    cascade['plages'] = evaluer(cascade)
+    # ACAL49 — la « borne haute » ouvre les avertissements (D-ACAL-7).
+    entete = _annoter_cascade(blocs, cascade, contexte)
     blocs['meteo'] = ecrit['meteo']
     blocs['production'] = ecrit['production']
     blocs['serie_horaire'] = ecrit['serie_horaire']
@@ -1403,21 +1435,11 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['ombrage'] = ecrit['ombrage']
     for texte in (ecrit.get('avertissements') or []):
         _ajouter_avertissement(blocs, texte)
-    # ACAL49 — la « borne haute » ouvre les avertissements (D-ACAL-7).
-    completude = completude_de_la_chaine(cascade, contexte)
-    entete = completude['avertissement']
-    # ACAL699 — chaque perte non renseignée : le champ et où LIRE sa valeur.
-    cascade['a_renseigner'] = construire_a_renseigner(
-        cascade, completude['non_renseignees'])
     if entete and entete in blocs.get('avertissements', ()):
         blocs['avertissements'].remove(entete)
         blocs['avertissements'].insert(0, entete)
-    # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
-    # fournisseur compte ce qui est réellement parti sur le réseau.
-    from . import gain_inclinaison as _gain_inclinaison  # ACAL706
-    blocs['production']['gain_inclinaison'] = _gain_inclinaison.demander(
-        client, reference, decision, fichier, compteur, blocs['production'])
-    blocs['meteo']['appels_pvgis'] = compteur['appels']
+    _appels_complementaires_pvgis(blocs, client, reference, decision,
+                                  fichier, compteur)
     identite = _relayer_fichier_meteo(blocs['meteo'], fichier, provenance)
 
     # 3. LA SIMULATION MODULE PAR MODULE (CALX182).
@@ -1511,12 +1533,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['production']['projection'] = capacite_batterie_par_annee(
         projection['annees'],
         ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
-    from .bilan_mensuel import publier as bilan_mensuel  # ACAL705
-    blocs['production']['bilan_mensuel'] = bilan_mensuel(
-        serie_reference, blocs['production'])
-    # ACAL693 — horizon, motif et garantie du fabricant à côté du tableau.
-    blocs['production']['duree_de_vie'] = bloc_duree_de_vie(
-        projection, contexte)
+    _annexes_de_production(blocs, serie_reference, projection, contexte)
     if projection.get('motif_omission'):
         _ajouter_avertissement(blocs, MOTIF_PROJECTION.format(
             motif=projection['motif_omission']))

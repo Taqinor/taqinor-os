@@ -61,3 +61,12 @@ def bloc_base_production(base_production):
     """ACAL1169 — la base publiée dans le bloc : ses quatre clés + la forme horaire supposée."""
     cles = ('kwh_kwc_annuel', 'kwh_kwc_mensuel', 'pertes_incluses', 'source')
     return dict({c: base_production.get(c) for c in cles}, forme_horaire=FORME_HORAIRE_BASE)
+
+
+def publier_base_production(resultat, base_production):
+    """ACAL1169 — le bloc ``resultat`` de ``calculer_etude_horaire``, rendu tel quel ; avec une base, il
+    porte ``base_production`` et son avertissement de forme horaire (ajouté à ``resultat['avertissements']``)."""
+    if base_production:
+        resultat['base_production'] = bloc_base_production(base_production)
+        resultat['avertissements'].append(AVERTISSEMENT_FORME_HORAIRE)
+    return resultat

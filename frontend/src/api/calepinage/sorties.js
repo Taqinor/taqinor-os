@@ -19,6 +19,10 @@ export const sorties = {
     // `params` porte `?feuille=` pour le tableur CSV (CALX23), vide ailleurs.
     telechargerSortie: (endpoint, params) =>
       api.get(endpoint, { responseType: 'blob', params }),
+    // ACAL536 — le KML (pans, zones, modules posés) pour Google Earth, en
+    // blob ; contrat `contract_samples/calepinage_export_kml.json` (200 =
+    // fichier KML, 409 = conception sans géométrie, refus nommé).
+    exportKml: (id) => api.get(`${pivot(id)}export.kml/`, { responseType: 'blob' }),
 
     // CALX24 — compose le dossier technique (planche + note de calcul
     // fusionnées) et le DÉPOSE dans la GED : en ÉCRITURE (POST), gardée par

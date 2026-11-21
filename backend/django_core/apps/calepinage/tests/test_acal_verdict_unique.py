@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage, ParametresCalepinage
 from apps.calepinage.services.electrique import (
     CLE_ENTREE, CODE_AFFECTATION, CODE_FICHE_INCOMPLETE,
@@ -132,70 +134,77 @@ class VerdictUnique(BaseApiCalepinage):
                     evaluation_electrique(calepinage)['publiable'],
                     verdict_publiable(calepinage)['publiable'])
 
-    # ACAL616 — retenu + voisins de puissance, évalués à chaud, sans écrire.
-    def _onduleur(self, nom, ac_kw):
-        champs = dict(ond_n_mppt=2, ond_mppt_v_min=120.0, ond_mppt_v_max=500.0,
-                      ond_v_max_abs=600.0, ond_i_max_mppt_a=26.0,
-                      ond_phases=3)
-        if ac_kw is not None:
-            champs['ond_ac_kw'] = ac_kw
-        return self._produit(nom=nom, type_fiche='onduleur', **champs)
+    # ACAL934 — l'état à trois valeurs, le MÊME dans les quatre lectures.
+    def _quatre_lectures(self, calepinage):
+        from apps.calepinage.services.assistant import _bloc_electrique
+        from apps.calepinage.services.electrique import verdict_de_conception
 
-    def _servi(self, calepinage):
-        reponse = self.api.get(
-            '/api/django/calepinage/calepinages/%s/configurations-onduleur/'
-            % calepinage.pk)
-        self.assertEqual(reponse.status_code, 200, reponse.content)
-        return reponse.json()
+        lectures = (verdict_publiable(calepinage),
+                    verdict_de_conception(calepinage),
+                    evaluation_electrique(calepinage),
+                    _bloc_electrique(calepinage)[0])
+        return {(lecture['etat'], lecture['points']) for lecture in lectures}
 
-    def test_voisins_dessus_dessous_et_fiche_incomplete(self):
+    def test_sans_module_ni_onduleur_quatre_fois_a_completer(self):
+        calepinage = self._calepinage(module_produit=None,
+                                      onduleur_produit=None)
+        publication = verdict_publiable(calepinage)
+        abstentions = sum(motif['statut'] in ('non_verifiable', 'omis',
+                                              'sans_source')
+                          for motif in publication['motifs'])
+        self.assertGreater(abstentions, 0, publication['motifs'])
+        self.assertEqual(self._quatre_lectures(calepinage),
+                         {('a_completer', abstentions)})
+        self.assertTrue(publication['publiable'])
+        self.assertEqual(evaluation_electrique(calepinage)['verdict'],
+                         'indetermine')
         import json
         import pathlib
 
-        six = self._onduleur('Onduleur 6 kW', 6.0)
-        huit = self._onduleur('Onduleur 8 kW', 8.0)
-        cinq = self._onduleur('Onduleur 5 kW', 5.0)
-        sans = self._onduleur('Onduleur sans AC', None)
-        calepinage = self._calepinage(onduleur_produit=six.pk)
-        avant = Calepinage.objects.get(pk=calepinage.pk).resultat
-        servi = self._servi(calepinage)
-        echantillon = json.loads((pathlib.Path(__file__).resolve().parent.parent
-                                  / 'contract_samples'
-                                  / 'calepinage_configurations_onduleur.json')
-                                 .read_text(encoding='utf-8'))['exemple']
-        self.assertEqual(sorted(servi), sorted(echantillon))
-        lignes = servi['configurations']
-        self.assertEqual([(ligne['role'], ligne['produit_id'])
-                          for ligne in lignes],
-                         [('retenue', six.pk), ('plus_puissant', huit.pk),
-                          ('moins_puissant', cinq.pk)])
-        for ligne in lignes:
-            self.assertEqual(sorted(ligne),
-                             sorted(echantillon['configurations'][0]))
-            attendu = evaluation_electrique(
-                calepinage, entree={'onduleur_produit': ligne['produit_id']})
-            self.assertEqual(ligne['verdict'], attendu['verdict'])
-            self.assertEqual(ligne['alertes'], attendu['alertes'])
-        self.assertEqual(servi['retenue']['produit_id'], six.pk)
-        self.assertIn(sans.pk, [f['produit_id']
-                                for f in servi['fiches_incompletes']])
-        self.assertIsNone(servi['motif_vide'])
-        self.assertNotIn('prix', json.dumps(servi))
-        self.assertEqual(Calepinage.objects.get(pk=calepinage.pk).resultat,
-                         avant)
+        from apps.calepinage.services.electrique import verdict_de_conception
 
-    def test_sans_voisin_au_dessus(self):
-        cinq = self._onduleur('Onduleur 5 kW', 5.0)
-        # Le catalogue porte aussi « Onduleur 10 kW » (setUp) : retenu = 10.
-        calepinage = self._calepinage()
-        servi = self._servi(calepinage)
-        self.assertEqual([ligne['role'] for ligne in servi['configurations']],
-                         ['retenue', 'moins_puissant'])
-        self.assertEqual(servi['configurations'][1]['produit_id'], cinq.pk)
-        self.assertIn('plus puissant', servi['motif_vide'])
+        contrat = json.loads((pathlib.Path(__file__).resolve().parent.parent
+                              / 'contract_samples'
+                              / 'calepinage_publication_electrique.json')
+                             .read_text(encoding='utf-8'))['exemple_evaluation']
+        self.assertEqual(sorted(publication), sorted(contrat['publication']))
+        self.assertEqual(sorted(verdict_de_conception(calepinage)),
+                         sorted(contrat['electrique']))
 
-    def test_aucun_onduleur_designe(self):
-        servi = self._servi(self._calepinage(onduleur_produit=None))
-        self.assertIsNone(servi['retenue'])
-        self.assertEqual(servi['configurations'], [])
-        self.assertIn('Matériel électrique', servi['motif_vide'])
+    def test_bloquant_puis_lectures_identiques(self):
+        imposee = [{'module': 'a#%d' % rang, 'chaine': 2, 'mppt': 1,
+                    'onduleur': 1} for rang in range(1, 21)]
+        calepinage = self._calepinage(affectation_manuelle=imposee)
+        motifs = verdict_publiable(calepinage)['motifs']
+        bloquants = sum(motif['statut'] == 'bloquant' for motif in motifs)
+        self.assertGreater(bloquants, 0, motifs)
+        self.assertEqual(self._quatre_lectures(calepinage),
+                         {('bloquant', bloquants)})
+        self.assertEqual(len(self._quatre_lectures(self._calepinage())), 1)
+
+
+class EtatDePublicationPur(SimpleTestCase):
+    """ACAL934 — la règle de rangement, sans base (mutant : un
+    ``non_verifiable`` rangé en « pret » échoue ici)."""
+
+    def test_rangement(self):
+        from apps.calepinage.services.etat_dossier_electrique import (
+            etat_a_chaud, etat_de_publication,
+        )
+
+        def motifs(*statuts):
+            return [{'statut': statut} for statut in statuts]
+
+        cas = (((), ('pret', 0)), (('ok', 'alerte'), ('pret', 0)),
+               (('non_verifiable',), ('a_completer', 1)),
+               (('omis', 'sans_source', 'ok'), ('a_completer', 2)),
+               (('bloquant', 'omis', 'bloquant'), ('bloquant', 2)))
+        for statuts, attendu in cas:
+            with self.subTest(statuts=statuts):
+                etat = etat_de_publication(motifs(*statuts))
+                self.assertEqual((etat['etat'], etat['points']), attendu)
+        self.assertEqual(etat_a_chaud(['x'], ['y']),
+                         {'etat': 'bloquant', 'points': 1})
+        self.assertEqual(etat_a_chaud([], ['y', 'z']),
+                         {'etat': 'a_completer', 'points': 2})
+        self.assertEqual(etat_a_chaud([], []), {'etat': 'pret', 'points': 0})

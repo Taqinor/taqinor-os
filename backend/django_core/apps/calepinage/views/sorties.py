@@ -406,7 +406,9 @@ class SortiesMixin:
     @action(detail=True, methods=['get'], url_path=r'export\.kml',
             url_name='export-kml', permission_classes=[PeutVoirCalepinage])
     def export_kml(self, request, pk=None):
-        """ACAL536 — le KML (pans, zones, modules) pour Google Earth."""
+        """ACAL536 — le KML (pans, zones, modules) pour Google Earth.
+
+        Contrat : ``contract_samples/calepinage_export_kml.json``."""
         from ..services.export_kml import exporter_kml
         from ..services.planche import PlancheRefusee, nom_de_fichier
 

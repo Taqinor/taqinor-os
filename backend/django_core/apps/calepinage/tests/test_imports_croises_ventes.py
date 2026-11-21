@@ -23,14 +23,14 @@ APPS = pathlib.Path(__file__).resolve().parents[2]
 #: Hors portes aujourd'hui : ventes/dsr_provider.py ; calepinage/services/
 #: {autoconsommation,batterie,consommation,profils_types}.py, views/pompage.py.
 PLAFONDS = {
-    # ACAL999 / ACAL1199 : +2 — ``ventes/horaire/productible_pose.py`` et
-    # ``ventes/domain/pompage_pose.py`` lisent
+    # ACAL999 : +1 — ``ventes/horaire/productible_pose.py`` lit
     # ``calepinage.selectors_devis.productible_pose_servi`` (porte selectors).
-    ('ventes', 'calepinage'): (20, 1),
-    # ACAL997 : +1 — ``selectors_devis.py`` (module frère des sélecteurs lus
-    # par ventes) relit ``ventes.selectors``/``selectors_calepinage`` pour la
-    # fraîcheur de la conception, comme ``selectors.ombrage_servi``.
-    ('calepinage', 'ventes'): (41, 5),
+    ('ventes', 'calepinage'): (19, 1),
+    # ACAL997 — ``selectors_devis.py`` (module frère des sélecteurs lus par
+    # ventes) relit ``ventes.selectors``/``selectors_calepinage`` pour la
+    # fraîcheur de la conception, comme ``selectors.ombrage_servi`` ; compte
+    # mesuré sur l'arbre, selectors_devis.py compris.
+    ('calepinage', 'ventes'): (40, 5),
 }
 
 PORTES = ('selectors', 'services')

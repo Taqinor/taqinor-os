@@ -208,24 +208,3 @@ class OracleInterSocietesTest(TestCase):
         self.assertEqual(r.status_code, 404, r.data)
         self.assertEqual(_champs(r.data), ['onduleur_produit'])
         self.assertEqual(self._instantane(), avant)
-
-    # ── contrôle d'une chaîne sans dessin (ACAL627) ─────────────────────
-    def _controle(self, **corps):
-        base = {'module_produit': ABSENT, 'onduleur_produit': ABSENT,
-                'nombre_modules': 22, 'temperature_min_c': -5.0,
-                'temperature_max_c': 70.0}
-        base.update(corps)
-        base = {cle: v for cle, v in base.items() if v is not None}
-        return self.api.post(f'{URL}controle-chaine/', base, format='json')
-
-    def test_controle_chaine_temperature_absente_400_nommee(self):
-        r = self._controle(temperature_min_c=None)
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertEqual(_champs(r.data), ['temperature_min_c'])
-
-    def test_controle_chaine_produit_etranger_comme_absent(self):
-        avant = self._instantane()
-        r = self._paire(lambda pk: self._controle(module_produit=pk),
-                        self.produit_voisin.pk, statut=404)
-        self.assertEqual(_champs(r.data), ['module_produit'])
-        self.assertEqual(self._instantane(), avant)

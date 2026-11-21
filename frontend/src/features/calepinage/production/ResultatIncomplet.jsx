@@ -1,8 +1,7 @@
 import { Link } from 'react-router-dom'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Stat } from '../../../ui'
-import { PARAM_ONGLET } from '../atelier/onglets'
-import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
+import { lienManque } from './lienManque'
 import { BandeauBorneHaute } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 
@@ -16,19 +15,6 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 const RAISON = {
   reglage_societe: 'Aucune valeur pour votre société',
   fiche_panneau: 'Absent de la fiche du panneau',
-}
-
-function lienRenseigner(calepinageId, cible) {
-  const onglet = cible?.onglet || ''
-  const champ = cible?.champ || ''
-  if (onglet === 'reglages') {
-    return champ ? `/calepinage/reglages#${champ}` : '/calepinage/reglages'
-  }
-  const p = new URLSearchParams()
-  if (onglet) p.set(PARAM_ONGLET, onglet)
-  if (champ) p.set(PARAM_CHAMP, champ)
-  const q = p.toString()
-  return `/calepinage/${calepinageId}${q ? `?${q}` : ''}`
 }
 
 function CeQuiEstSur({ data, parcours }) {
@@ -86,7 +72,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null 
                   )}
                 </span>
                 <Link
-                  to={lienRenseigner(calepinageId, ligne.cible)}
+                  to={lienManque(calepinageId, ligne.cible)}
                   className="inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm font-medium text-primary"
                   data-testid="acal700-renseigner"
                 >
