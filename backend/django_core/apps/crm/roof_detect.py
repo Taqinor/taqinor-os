@@ -56,7 +56,7 @@ _TIMEOUT_RESEAU = (3, _TIMEOUT_S)
 #: ACAL421 — Overpass rejects the default `python-requests/x` User-Agent with
 #: HTTP 406 (measured on the CI runner): every call carries an identified,
 #: generic agent — never a person's name or address.
-_USER_AGENT = "TAQINOR-OS/1.0 (calepinage)"
+_USER_AGENT = "solar-erp-calepinage/1.0 (emprise de batiment OSM)"
 _RADIUS_M = 25  # search radius in metres around the pin
 
 #: CALX106 — the provenance published next to every value read from OSM.
