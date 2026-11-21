@@ -54,7 +54,10 @@ def lead_pre_save(sender, instance, **kwargs):
     old = None
     if instance.pk:
         try:
-            old = sender.objects.filter(pk=instance.pk).values_list(
+            # ERR-NOTIF-LEAD-ASSIGNE-CORBEILLE — ``objects`` exclut les leads en
+            # corbeille (SoftDeleteManager) : ancien responsable lu « aucun ».
+            mgr = getattr(sender, 'all_objects', None) or sender._base_manager
+            old = mgr.filter(pk=instance.pk).values_list(
                 'owner_id', flat=True).first()
         except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("lead pre save : échec ignoré, comportement dégradé", exc_info=True)
@@ -67,6 +70,8 @@ def lead_post_save(sender, instance, created, **kwargs):
     new_owner = instance.owner_id
     if not new_owner or new_owner == old_owner:
         return
+    if getattr(instance, 'is_deleted', False):
+        return  # jamais « Nouveau lead assigné » pour un lead en corbeille
     try:
         ville = getattr(instance, 'ville', '') or ''
         notify(
