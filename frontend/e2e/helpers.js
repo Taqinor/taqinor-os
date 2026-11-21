@@ -346,6 +346,25 @@ export function routesParModule(options) {
 // are not valid as a React child »…). Sa présence EST le défaut.
 export const TITRE_ECRAN_ERREUR = 'Une erreur est survenue'
 
+// ── Rail guidé du calepinage (ACAL395/ACAL396) ──────────────────────────────
+// En mode guidé, certains panneaux ne sont PAS des onglets : ils s'ouvrent dans
+// l'ÉCRAN d'étape porté par un onglet « ouverture » (Électrique → synthèse,
+// Résultats → Pertes unifiées) ; l'URL garde la clé demandée. Lu À LA SOURCE
+// (`atelier/parcoursGuide.js`, `ECRANS_ETAPE`) — jamais énuméré en dur.
+const PARCOURS_GUIDE_PATH = join(DOSSIER_FEATURES, 'calepinage', 'atelier', 'parcoursGuide.js')
+
+/** La clé de l'onglet VISIBLE qui porte `cle` en mode guidé (elle-même sinon). */
+export function ouvertureGuideeCalepinage(cle) {
+  const source = readFileSync(PARCOURS_GUIDE_PATH, 'utf8')
+  const bloc = source.split('export const ECRANS_ETAPE')[1]?.split(/\r?\n\}\r?\n/)[0] ?? ''
+  const motif = /ouverture:\s*'([^']+)'[\s\S]*?onglets:\s*\[([^\]]*)\]/g
+  for (const [, ouverture, liste] of bloc.matchAll(motif)) {
+    const cles = [...liste.matchAll(/'([^']+)'/g)].map((m) => m[1])
+    if (cles.includes(cle)) return ouverture
+  }
+  return cle
+}
+
 // ── Parcours de lead pro / agricole (AGR423, CIQ424, CIQ521) ────────────────
 // Briques PARTAGÉES des specs « aller-retour en direct » : aucune ne simule le
 // réseau, toutes parlent à la vraie pile locale (`seed_demo`).
