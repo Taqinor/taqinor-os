@@ -436,6 +436,10 @@ retiré plus un hook ajouté.
 | `cal-onglet-2d` | outils de vue — onglet « Vue 2D ». |
 | `cal-onglet-3d` | outils de vue — onglet « Vue 3D ». |
 | `cal-onglets-vue` | outils de vue — conteneur des onglets 2D/3D. |
+| `cal-vue-dessus` | outils de vue — caméra « Dessus ». |
+| `cal-vue-face-panneaux` | outils de vue — caméra « Face aux panneaux ». |
+| `cal-vue-sud` | outils de vue — caméra « Sud ». |
+| `cal-vue-trois-quarts` | outils de vue — caméra « 3/4 ». |
 | `cal-panneau-calques` | outils de vue — panneau des calques. |
 
 ## PanneauActivite (`atelier/PanneauActivite.jsx`)

@@ -220,6 +220,7 @@ import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout, deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/prefill';
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
+import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
 
 let booted = false;
 
@@ -2510,9 +2511,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (layoutWindowEl) layoutWindowEl.hidden = true;
     if (layoutNoteEl) layoutNoteEl.textContent = '';
     syncChips();
-    const target = { pitch: 0, bearing: 0 } as const;
-    if (opts.reducedMotion) map.jumpTo(target);
-    else map.easeTo({ ...target, duration: 600 });
+    appliquerVue(map, 'dessus', facingAzimuthDeg, !!opts.reducedMotion); // ACAL435 — même cible (0, 0) et même 600 ms
     updateCompass();
     setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer.');
   }
@@ -4344,6 +4343,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),
+    appliquerVue: (nom) => appliquerVue(map, nom, facingAzimuthDeg, !!opts.reducedMotion), // ACAL435
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
     // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les
     // cotes de la 2D sont donc ceux de la 3D, par construction.

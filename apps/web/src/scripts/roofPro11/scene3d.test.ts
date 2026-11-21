@@ -1,7 +1,8 @@
 // CAL56 — préréts de forme de toiture (2/4 pans, appentis, plat) : géométrie PURE qui
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture } from './panelTexture';
 import {
   generateRoofShapePans,
@@ -746,5 +747,23 @@ describe('ACAL410 — puces de forme : 4 pans, L refusé sur contour convexe', (
     expect(f.cliquer('gable').ok).toBe(false);
     expect(appels).toBe(4);
     expect(statut).toMatch(/obstacles/);
+  });
+});
+
+describe('ACAL435 : cibleVue', () => {
+  it('les quatre cibles, cap = azimut + 180 mod 360, saut sous reduced-motion', () => {
+    expect(cibleVue('dessus', 150)).toEqual({ pitch: 0, bearing: 0 });
+    expect(cibleVue('sud', 150)).toEqual({ pitch: 58, bearing: 0 });
+    expect(cibleVue('trois-quarts', 150)).toEqual({ pitch: 58, bearing: 45 });
+    expect(cibleVue('face-panneaux', 150)).toEqual({ pitch: 58, bearing: 330 });
+    expect(cibleVue('face-panneaux', 0).bearing).toBe(180);
+    expect(cibleVue('face-panneaux', 200).bearing).toBe(20);
+    const jumpTo = vi.fn();
+    const easeTo = vi.fn();
+    appliquerVue({ jumpTo, easeTo }, 'face-panneaux', 150, true);
+    expect(jumpTo).toHaveBeenCalledWith({ pitch: 58, bearing: 330 });
+    expect(easeTo).not.toHaveBeenCalled();
+    appliquerVue({ jumpTo, easeTo }, 'dessus', 150, false);
+    expect(easeTo).toHaveBeenCalledWith({ pitch: 0, bearing: 0, duration: 600, essential: true });
   });
 });
