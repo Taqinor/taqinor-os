@@ -78,19 +78,27 @@ const MODULE_BUDGET_KB = 73
 //: (préfixe de chunk = nom du fichier source, convention Vite/Rollup par
 //: défaut de ce dépôt — vérifié à chaque build).
 const CHUNKS_MODULE_CONFIG = [
-  'CalepinageList', 'CalepinageNouveau', 'VariantesCompare',
-  'FichesIncompletes', 'PompagePanel', 'PlanImporteCalage',
-  'PhotoSiteCalage', 'SaisiePente', 'SchemaUnifilairePanel', 'Bibliotheque',
+  'CalepinageList', 'CalepinageNouveau', 'Bibliotheque',
   'BadgePerime',
+]
+
+//: ACAL407/ACAL409 — les panneaux des routes profondes historiques ne sont
+//: plus importés par `module.config.jsx` (leurs routes redirigent vers
+//: `?onglet=` via `RedirectionOnglet`) : ils sont chargés UNIQUEMENT par le
+//: rail `atelier/onglets.js`, où leur `lazy()` est vérifié ci-dessous.
+const CHUNKS_ROUTES_DEVENUES_ONGLETS = [
+  'VariantesCompare', 'FichesIncompletes', 'PompagePanel', 'PlanImporteCalage',
+  'PhotoSiteCalage', 'SaisiePente', 'SchemaUnifilairePanel',
 ]
 
 //: CALX398 — les onglets NEUFS de `atelier/onglets.js` (CALX1 et suivants) qui
 //: n'ont AUCUN site d'appel dans `module.config.jsx` : leur chunk existe
 //: UNIQUEMENT parce que le rail les charge. Un onglet qui reprend un
-//: composant DÉJÀ dans `CHUNKS_MODULE_CONFIG` (les treize routes profondes
-//: historiques) n'a PAS sa place ici — Rollup déduplique le même module, il
+//: composant DÉJÀ dans `CHUNKS_MODULE_CONFIG` n'a PAS sa place ici — Rollup
+//: déduplique le même module, il
 //: n'ajoute aucun poids neuf.
 const CHUNKS_ATELIER_ONGLETS = [
+  ...CHUNKS_ROUTES_DEVENUES_ONGLETS,
   'PanneauDocuments', 'PanneauPertes', 'PanneauReleve', 'PanneauActivite',
   'PanneauVersions', 'PanneauMasseLestage', 'PanneauSeries', 'PanneauBatterie',
   'EquipementsElectriques', 'CheminementCables', 'Raccordement',
