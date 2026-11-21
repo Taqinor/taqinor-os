@@ -33,35 +33,51 @@ _EPSILON = 1e-9
 
 
 class BalayageInvalide(ValueError):
-    """Une demande refusée : ``champ`` dit où (jamais un refus générique)."""
+    """Une demande refusée : ``champ`` dit où (jamais un refus générique).
 
-    def __init__(self, message, *, champ=''):
+    ``forme`` = la FORME du corps viole le schéma publié (400) ; sinon le
+    refus tient au document ou à une contrainte croisée que le schéma ne peut
+    pas dire (409, comme ``refuser_caractere_interdit``) — api-fuzz #1512.
+    """
+
+    def __init__(self, message, *, champ='', forme=False):
         super().__init__(message)
         self.champ = champ
+        self.forme = forme
 
 
 def _nombre(valeur, champ):
     if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        raise BalayageInvalide('Un nombre est attendu.', champ=champ)
+        raise BalayageInvalide('Un nombre est attendu.', champ=champ,
+                               forme=True)
     return float(valeur)
 
 
-def _valeurs_de_l_axe(axe, indice):
+def _forme_de_l_axe(axe, indice):
+    """``(nom, min, max, pas)`` ou refus de FORME (400) : ce que le schéma
+    publié dit d'un axe (``views/balayage._AXES_RESSERRES``)."""
     base = 'axes[%d]' % indice
     if not isinstance(axe, dict):
         raise BalayageInvalide("Un axe est un objet {nom, min, max, pas}.",
-                               champ=base)
+                               champ=base, forme=True)
     nom = axe.get('nom')
     if nom not in AXES_PRIS_EN_CHARGE:
         raise BalayageInvalide(
             'Axe inconnu : %r (attendu : %s).'
-            % (nom, ', '.join(AXES_PRIS_EN_CHARGE)), champ=base + '.nom')
+            % (nom, ', '.join(AXES_PRIS_EN_CHARGE)), champ=base + '.nom',
+            forme=True)
     mini = _nombre(axe.get('min'), base + '.min')
     maxi = _nombre(axe.get('max'), base + '.max')
     pas = _nombre(axe.get('pas'), base + '.pas')
     if pas <= 0:
         raise BalayageInvalide('Le pas doit être strictement positif.',
-                               champ=base + '.pas')
+                               champ=base + '.pas', forme=True)
+    return nom, mini, maxi, pas
+
+
+def _valeurs_de_l_axe(axe, indice):
+    base = 'axes[%d]' % indice
+    nom, mini, maxi, pas = _forme_de_l_axe(axe, indice)
     if mini > maxi:
         raise BalayageInvalide('min dépasse max.', champ=base + '.min')
     bas, haut = _BORNES.get(nom, (None, None))
@@ -133,14 +149,20 @@ def _cible(layout, pan, *, par_cle=False):
 def valider_demande(layout, corps):
     """``(cle du pan, [(axe, valeurs)])`` ou ``BalayageInvalide`` nommé."""
     if not isinstance(corps, dict):
-        raise BalayageInvalide('Le corps doit être un objet.', champ='')
+        raise BalayageInvalide('Le corps doit être un objet.', champ='',
+                               forme=True)
+    axes = corps.get('axes')
+    if not isinstance(axes, list) or not axes:
+        raise BalayageInvalide('Au moins un axe est attendu.', champ='axes',
+                               forme=True)
+    # La FORME d'abord (400), le document et les contraintes croisées ensuite
+    # (409) : un corps mal formé est nommé comme tel, quel que soit le toit.
+    for indice, axe in enumerate(axes):
+        _forme_de_l_axe(axe, indice)
     if not isinstance(layout, dict):
         raise BalayageInvalide("Le calepinage n'a pas de conception.",
                                champ='pan')
     ligne, _objet = _cible(layout, corps.get('pan'))
-    axes = corps.get('axes')
-    if not isinstance(axes, list) or not axes:
-        raise BalayageInvalide('Au moins un axe est attendu.', champ='axes')
     vus, balayes, total = set(), [], 1
     for indice, axe in enumerate(axes):
         nom, valeurs = _valeurs_de_l_axe(axe, indice)

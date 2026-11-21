@@ -20,6 +20,11 @@ MOTIF_BUDGET = "Le budget IA du mois est épuisé : la détection du toit repren
 DETAIL_INDISPONIBLE = ("La détection du toit est indisponible pour le moment : "
                        "tracez le toit à la main.")
 _COINS = ('ouest', 'sud', 'est', 'nord')
+#: Toutes les origines connues ; ``origines_acceptees`` dit celles OUVERTES.
+ORIGINES = ('importee', 'carte')
+#: Bornes de chaque coin (degrés) : la FORME publiée au schéma.
+BORNES_COINS = {'ouest': (-180, 180), 'est': (-180, 180),
+                'sud': (-90, 90), 'nord': (-90, 90)}
 
 
 class DetectionIndisponible(Exception):
@@ -28,7 +33,7 @@ class DetectionIndisponible(Exception):
 
 def origines_acceptees():
     """``carte`` seulement si Reda l'a ouverte (conditions de l'imagerie lues)."""
-    return ['importee', 'carte'] if getattr(settings, 'DETECTION_TOIT_CAPTURE_CARTE', False) else ['importee']
+    return list(ORIGINES) if getattr(settings, 'DETECTION_TOIT_CAPTURE_CARTE', False) else ['importee']
 
 
 def _fournisseur(company_id):
@@ -52,8 +57,10 @@ def disponibilite(company_id):
     return {'disponible': disponible, 'motif': motif, 'origines_acceptees': origines_acceptees()}
 
 
-def lire_emprise(brut):
-    """``{ouest, sud, est, nord}`` en degrés, ou ``None`` si illisible/incohérente."""
+def coins_emprise(brut):
+    """``{ouest, sud, est, nord}`` en degrés, chacun dans ses bornes, ou
+    ``None`` si la FORME est illisible (texte non JSON, coin absent, non
+    numérique, hors bornes) — ce que le schéma publié dit (400)."""
     if isinstance(brut, str):
         try:
             brut = json.loads(brut)
@@ -65,8 +72,17 @@ def lire_emprise(brut):
         emprise = {coin: float(brut[coin]) for coin in _COINS}
     except (KeyError, TypeError, ValueError):
         return None
-    if not (-180 <= emprise['ouest'] < emprise['est'] <= 180
-            and -90 <= emprise['sud'] < emprise['nord'] <= 90):
+    if not all(bas <= emprise[coin] <= haut
+               for coin, (bas, haut) in BORNES_COINS.items()):
+        return None
+    return emprise
+
+
+def lire_emprise(brut):
+    """``{ouest, sud, est, nord}`` en degrés, ou ``None`` si illisible/incohérente."""
+    emprise = coins_emprise(brut)
+    if emprise is None or not (emprise['ouest'] < emprise['est']
+                               and emprise['sud'] < emprise['nord']):
         return None
     return emprise
 

@@ -41,7 +41,9 @@ _BROUILLON_OU_NULL = {
 @extend_schema(
     methods=['PUT'],
     request=inline_serializer('CalepinageBrouillonCorps', {
-        'layout': serializers.JSONField(),
+        # Un OBJET (le document de conception) — jamais null ni scalaire :
+        # ``services.brouillon._valider`` refuse le reste en 400 (api-fuzz #1512).
+        'layout': serializers.DictField(),
         'horodatage': serializers.CharField(max_length=40),
         'base_empreinte': serializers.CharField(max_length=64,
                                                 allow_blank=True)}),
