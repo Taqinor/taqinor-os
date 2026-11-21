@@ -77,8 +77,8 @@ class EtapesTest(unittest.TestCase):
 
     def test_ordre_et_cles_du_contrat(self):
         etapes = _etapes_du_parcours(toit_fait=True, modules=1,
-                                    verdict='conforme', simule=True,
-                                    perime=False, devis_lie=True)
+                                     verdict='conforme', simule=True,
+                                     perime=False, devis_lie=True)
         self.assertEqual([e['cle'] for e in etapes],
                          [e['cle'] for e in CONTRAT['exemple']['etapes']])
 
