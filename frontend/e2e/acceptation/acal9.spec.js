@@ -92,6 +92,9 @@ sortie({'cle_posee': bool(settings.VISION_TOIT_CLE_API), 'modele': settings.VISI
 etape('E2.proposition_reelle', ['ACAL485', 'ACAL489'], async ({ page }) => {
   const cal = await calepinage()
   const img = await image(page.request)
+  etat.usageAvant = (await py(`from apps.agent.models import UsageIA
+d = UsageIA.objects.order_by('-pk').first()
+sortie({'pk': d.pk if d else 0})`)).pk
   const debut = Date.now()
   const r = await page.request.post(`${CAL}/calepinages/${cal.id}/detection-toit/`, {
     ...T,
@@ -130,7 +133,37 @@ etape('E2.proposition_reelle', ['ACAL485', 'ACAL489'], async ({ page }) => {
     orthophoto USGS (domaine public).</div></body>`)
 })
 
-etape('E3.appel_reel_jetons', ['ACAL489'], async ({ page }) => {
+// Juste après E2 et AVANT l'appel au shell d'E4 : la SEULE ligne nouvelle est celle de l'appel de la VRAIE route.
+etape('E3.journal_usage_persiste', ['ACAL485', 'ACAL489'], async () => {
+  const cal = await calepinage()
+  expect(etat.proposition, 'E2 a rendu une proposition').toBeTruthy()
+  const j = await py(`from django.forms.models import model_to_dict
+from apps.agent.models import UsageIA
+from core.ai.usage import usage_sinks
+rows = list(UsageIA.objects.filter(pk__gt=${etat.usageAvant}).order_by('pk'))
+champs = sorted(f.name for f in UsageIA._meta.concrete_fields)
+texte = ' '.join(str(v) for r in rows for v in model_to_dict(r).values())
+sortie({'puits': [getattr(s, '__qualname__', str(s)) for s in usage_sinks()], 'champs': champs,
+        'lignes': [{k: str(v) for k, v in model_to_dict(r).items()} | {'created_at': str(r.created_at)} for r in rows],
+        'pii': [x for x in (${JSON.stringify(NOM_LEAD)}, ${JSON.stringify(ADRESSE)}, 'Casablanca') if x in texte]})`)
+  console.log(`[acal9] E3 journal : ${JSON.stringify(j)}`)
+  expect(j.lignes.length, 'exactement UNE ligne UsageIA nouvelle pour l’appel de la route').toBe(1)
+  const l = j.lignes[0]
+  expect(Number(l.company)).toBe(cal.company)
+  expect(l.capability).toBe('vision_toit')
+  expect(l.provider).toBe('claude')
+  expect(l.feature_key).toBe('calepinage.detection_toit')
+  expect(Number(l.input_tokens), 'jetons d’entrée').toBeGreaterThan(0)
+  expect(Number(l.output_tokens), 'jetons de sortie').toBeGreaterThan(0)
+  expect(l.success).toBe('True')
+  expect(Number(l.duration_ms)).toBeGreaterThan(0)
+  // Aucun contenu stocké : métriques seulement (aucun champ texte libre, aucune donnée du lead).
+  expect(j.champs).toEqual(['capability', 'company', 'cout', 'created_at', 'duration_ms', 'feature_key', 'id',
+    'input_tokens', 'output_tokens', 'provider', 'success', 'updated_at'])
+  expect(j.pii, 'aucune donnée du lead dans la ligne').toEqual([])
+})
+
+etape('E4.appel_reel_jetons', ['ACAL489'], async ({ page }) => {
   const cal = await calepinage()
   const img = await image(page.request)
   // Second appel RÉEL, au shell, par le service (même chemin que la route) : un puits en mémoire relit la ligne
@@ -176,7 +209,7 @@ finally:
     ClaudeVisionToitProvider.transport = None
     unregister_usage_sink(puits)
 sortie({'resultat': res, 'lignes': [{k: str(v) for k, v in l.items()} for l in lignes], 'requete': vu})`)
-  console.log(`[acal9] E3 : ${JSON.stringify(r)}`)
+  console.log(`[acal9] E4 : ${JSON.stringify(r)}`)
   etat.temoin = r.requete
   expect(r.requete.statut, `API Anthropic : ${JSON.stringify(r.requete.erreur)}`).toBe(200)
   expect(r.resultat.pans, 'proposition validée par le noyau').toBeGreaterThan(0)
@@ -191,22 +224,22 @@ sortie({'resultat': res, 'lignes': [{k: str(v) for k, v in l.items()} for l in l
   expect(Number(l.company_id)).toBe(cal.company)
 })
 
-etape('E4.rien_ecrit_sur_le_calepinage', ['ACAL485'], async () => {
+etape('E5.rien_ecrit_sur_le_calepinage', ['ACAL485'], async () => {
   const cal = await calepinage()
   expect(etat.proposition, 'E2 a rendu une proposition (sinon rien à vérifier)').toBeTruthy()
   const apres = await py(`from apps.calepinage.models import Calepinage
 c = Calepinage.objects.get(pk=${cal.id})
 sortie({'layout_hash': c.layout_hash, 'roof_layout': c.roof_layout})`)
-  console.log(`[acal9] E4 avant ${cal.layout_hash} / après ${apres.layout_hash}`)
+  console.log(`[acal9] E5 avant ${cal.layout_hash} / après ${apres.layout_hash}`)
   expect(cal.layout_hash, 'empreinte de départ non vide').toMatch(/^[0-9a-f]{64}$/)
   expect(apres.layout_hash).toBe(cal.layout_hash)
   expect(apres.roof_layout).toEqual(cal.roof_layout)
 })
 
-etape('E5.aucune_donnee_personnelle_envoyee', ['ACAL485', 'ACAL489'], async () => {
+etape('E6.aucune_donnee_personnelle_envoyee', ['ACAL485', 'ACAL489'], async () => {
   const t = etat.temoin
-  expect(t, 'E3 a capturé la requête partie').toBeTruthy()
-  console.log(`[acal9] E5 requête : ${JSON.stringify(t)}`)
+  expect(t, 'E4 a capturé la requête partie').toBeTruthy()
+  console.log(`[acal9] E6 requête : ${JSON.stringify(t)}`)
   expect(t.cles).toEqual(['max_tokens', 'messages', 'model', 'system'])
   expect(t.blocs, 'un seul bloc : l’image').toEqual(['image'])
   expect(t.source).toEqual(['data', 'media_type', 'type'])
@@ -215,22 +248,4 @@ etape('E5.aucune_donnee_personnelle_envoyee', ['ACAL485', 'ACAL489'], async () =
   expect(t.adresse, 'adresse absente').toBe(false)
   expect(t.casablanca, 'ville absente').toBe(false)
   expect(t.lead_id, 'aucun identifiant de lead').toBe(false)
-})
-
-// Dernière : elle peut échouer sans priver les autres étapes de l'état partagé (redémarrage du worker).
-etape('E6.journal_usage_persiste', ['ACAL485', 'ACAL489'], async () => {
-  expect(etat.proposition, 'E2 a rendu une proposition').toBeTruthy()
-  const j = await py(`from django.db import connection
-from core.ai.usage import usage_sinks
-with connection.cursor() as cur:
-    cur.execute("select to_regclass('ai_governance_llmusagerecord')")
-    table = cur.fetchone()[0]
-    n = None
-    if table:
-        cur.execute("select count(*), coalesce(sum(prompt_tokens), 0), coalesce(sum(completion_tokens), 0) from ai_governance_llmusagerecord where capability = 'vision_toit'")
-        n = cur.fetchone()
-sortie({'puits': [getattr(s, '__qualname__', str(s)) for s in usage_sinks()], 'table': table, 'lignes_vision_toit': n})`)
-  console.log(`[acal9] E6 journal : ${JSON.stringify(j)}`)
-  expect(j.puits.length, 'un puits d’usage enregistré au démarrage (sinon record_usage est un no-op)').toBeGreaterThan(0)
-  expect(j.lignes_vision_toit?.[0] || 0, 'la ligne d’usage de l’appel E2 est en base').toBeGreaterThan(0)
 })
