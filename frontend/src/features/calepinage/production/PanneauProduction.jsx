@@ -5,7 +5,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import { Button, Card, Stat } from '../../../ui'
+import { Button, Card } from '../../../ui'
 import ListeManques from './ListeManques'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
@@ -16,6 +16,10 @@ import {
 } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
+import ResultatHeros from './ResultatHeros'
+import {
+  kwh, kwhParKwc, nonCalculee, nonPublie, pourcentagePerf,
+} from './ResultatHeros.helpers'
 import useSuiviJob from './useSuiviJob'
 import { reprendreSimulationAuto } from './simulationAuto'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
@@ -42,22 +46,6 @@ import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
    « non calculée » : `formatNumber` ne confond jamais les deux, il ne rend
    « — » QUE sur `null`/`undefined`.
    ========================================================================== */
-
-/** Une grandeur absente du serveur s'écrit « non calculée », jamais « — » nu
-    ni `0` : c'est le vocabulaire que CAL236 impose (Done, PLAN2.md). */
-function nonCalculee(valeur, rendu) {
-  return valeur === null || valeur === undefined ? 'non calculée' : rendu(valeur)
-}
-
-/** ACAL52 — PR / P75 / P90 / P95 d'un résultat INCOMPLET : « — non publié »,
-    motif du serveur en infobulle, jamais un nombre (jamais 100 %). */
-function nonPublie(motif) {
-  return <span title={motif || undefined} data-testid="acal52-non-publie">— non publié</span>
-}
-
-const kwh = (v) => nonCalculee(v, (x) => `${formatNumber(x, { decimals: 0 })} kWh`)
-const pourcentagePerf = (v) => nonCalculee(v, (x) => formatPercent(x * 100, { decimals: 1 }))
-const kwhParKwc = (v) => nonCalculee(v, (x) => `${formatNumber(x, { decimals: 1 })} kWh/kWc`)
 
 const MOIS = [
   'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -249,35 +237,6 @@ function BlocBase({ base }) {
   )
 }
 
-function TotalKpis({ total }) {
-  const incomplet = estIncomplet(total)
-  const kwhPublie = (v, motif) => (incomplet ? nonPublie(motif) : kwh(v))
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="cal236-total">
-      <Stat label="P50 (annuel)" value={kwh(total?.p50_kwh)} />
-      <Stat label="P75 (annuel)" value={kwhPublie(total?.p75_kwh, total?.p75_kwh_motif)} />
-      <Stat label="P90 (annuel)" value={kwhPublie(total?.p90_kwh, total?.p90_kwh_motif)} />
-      <Stat label="P95 (annuel)" value={kwhPublie(total?.p95_kwh, total?.p95_kwh_motif)} />
-      <Stat
-        label="Variabilité annuelle (σ)"
-        value={nonCalculee(total?.annual_variability,
-          (x) => formatPercent(x * 100, { decimals: 1 }))}
-      />
-      <Stat
-        label="Ratio de performance (PR)"
-        value={incomplet ? nonPublie(total?.performance_ratio_motif) : pourcentagePerf(total?.performance_ratio)}
-      />
-      <Stat label="Productible" value={kwhParKwc(total?.specific_yield_kwh_kwc)} />
-      <Stat label="Puissance installée" value={nonCalculee(total?.kwc,
-        (x) => `${formatNumber(x, { decimals: 2 })} kWc`)}
-      />
-      <Stat label="Pertes totales" value={nonCalculee(total?.total_loss_pct,
-        (x) => formatPercent(x, { decimals: 1 }))}
-      />
-    </div>
-  )
-}
-
 function TableauMensuel({ mensuel }) {
   if (!mensuel?.length) {
     return (
@@ -401,7 +360,8 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       />
       <BandeauBorneHaute total={production?.total} />
       <BlocBase base={production?.base} />
-      <TotalKpis total={production?.total} />
+      <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
+        motif={data?.motif} avertissements={data?.avertissements} />
       <ReglagesUtilises simulation={data?.simulation} />
       {/* ENF15 — `meteo` / `incertitude` servis par `GET resultat/` (CALX143/144). */}
       {data?.simule && <SourceMeteo meteo={data?.meteo} />}

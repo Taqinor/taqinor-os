@@ -81,10 +81,36 @@ describe('PanneauProduction (CAL236)', () => {
     expect(screen.getByTestId('cal236-non-simule')).toHaveTextContent(
       'Calepinage non simulé : la pose est connue, la production ne l\'est pas.',
     )
-    const total = screen.getByTestId('cal236-total')
-    // Aucune occurrence de « 0 kWh » : la production non lancée n'est jamais un zéro.
-    expect(within(total).queryByText(/^0 kWh$/)).toBeNull()
-    expect(within(total).getAllByText('non calculée').length).toBeGreaterThan(0)
+    // ACAL443 : un seul état, aucune tuile (le conteneur des chiffres n'existe pas).
+    expect(screen.queryByTestId('cal236-total')).toBeNull()
+    const etat = screen.getByTestId('acal443-non-calcule')
+    expect(within(etat).queryByText(/^0 kWh$/)).toBeNull()
+    expect(etat).toHaveTextContent('Production non calculée')
+  })
+
+  it('ACAL443 — héros : P50 en grand, trois secondaires, détails repliés ; non simulé ou périmé : un seul état, zéro tuile', async () => {
+    servir('exemple')
+    const { unmount } = rendre()
+    const total = await screen.findByTestId('cal236-total')
+    const serveur = exempleContrat('calepinage', 'calepinage_resultat', 'exemple').production.total
+    expect(within(screen.getByTestId('acal443-heros')).getByText('Production annuelle (P50)')).toBeInTheDocument()
+    expect(within(screen.getByTestId('acal443-heros')).getByText('13 000 kWh')).toBeInTheDocument()
+    for (const libelle of ['Puissance installée', 'Productible', 'Pertes totales']) {
+      expect(within(total).getByText(libelle)).toBeInTheDocument()
+    }
+    const details = screen.getByTestId('acal443-details')
+    expect(details.tagName).toBe('DETAILS')
+    expect(details).not.toHaveAttribute('open')
+    expect(within(details).getByText('P75 (annuel)')).toBeInTheDocument()
+    expect(within(details).getByText('79,9 %')).toBeInTheDocument()
+    expect(serveur.p50_kwh).toBe(13000)
+    unmount()
+
+    servir('exemple_perime')
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('cal236-total')).toBeNull()
+    expect(screen.getByTestId('acal443-non-calcule')).toHaveTextContent('Production non calculée')
   })
 
   it('un pan sans module affiche un vrai 0 modules, distinct de « non calculée »', async () => {
