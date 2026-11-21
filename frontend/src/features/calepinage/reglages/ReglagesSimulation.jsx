@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ChoixSurfaceAlbedo from './ChoixSurfaceAlbedo'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
@@ -254,6 +255,7 @@ function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
           {aide}
         </p>
       )}
+      {r.cle === 'albedo_mensuel' && <ChoixSurfaceAlbedo cle={r.cle} disabled={disabled} onChoisir={majer} />}
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block" data-testid={`calx69-valeur-${r.cle}`}>
           <span className="text-xs text-muted-foreground">Valeur</span>

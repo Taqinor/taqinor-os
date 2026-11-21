@@ -36,11 +36,14 @@ def signaux(conception):
     return lignes
 
 
-def _avec_entrees(materiel, facteur):
-    """Le matériel résolu dont l'onduleur a ``n_mppt × facteur`` entrées."""
-    onduleur = dict(materiel['onduleur'])
-    onduleur['n_mppt'] = max(1, int(onduleur.get('n_mppt') or 1)) * facteur
-    return {**materiel, 'onduleur': onduleur}
+def _avec_nombre(calepinage, materiel, entree, layout, nombre):
+    """La conception relancée avec ``nombre`` onduleurs ACCEPTÉS (ACAL633 :
+    ``nombre_onduleurs`` multiplie les entrées MPPT et le compte d'onduleurs)."""
+    from .electrique import conception_du_calepinage
+
+    return conception_du_calepinage(
+        calepinage, entree={**(entree or {}), 'nombre_onduleurs': nombre},
+        layout=layout, materiel=materiel)[0]
 
 
 def onduleurs_suggeres(calepinage, conception, materiel, *, entree=None,
@@ -50,21 +53,19 @@ def onduleurs_suggeres(calepinage, conception, materiel, *, entree=None,
     ``nombre`` vaut ``None`` quand aucun nombre d'onduleurs jusqu'au nombre de
     pans ne lève les signaux : le ``motif`` nomme alors l'obstacle.
     """
-    from .electrique import conception_du_calepinage
-
-    avec_un = signaux(conception)
     if (conception.fiche_incomplete or conception.resultat is None
             or not conception.chaines):
         return None
+    base = (conception if conception.nombre_onduleurs in (None, 1)
+            else _avec_nombre(calepinage, materiel, entree, layout, 1))
+    avec_un = signaux(base)
     if not avec_un:
         return {'nombre': 1, 'motif': '', 'signaux_avec_1': []}
     pans = [pan.label for pan in conception.pans]
     reste = avec_un
     for facteur in range(2, len(pans) + 1):
-        essai = conception_du_calepinage(
-            calepinage, entree=entree, layout=layout,
-            materiel=_avec_entrees(materiel, facteur))[0]
-        reste = signaux(essai)
+        reste = signaux(_avec_nombre(calepinage, materiel, entree, layout,
+                                     facteur))
         if not reste:
             entrees = max(1, int(materiel['onduleur'].get('n_mppt') or 1))
             return {

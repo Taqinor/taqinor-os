@@ -397,6 +397,7 @@ CHAMPS_ENTREE = (
     'zone_keraunique',
     'inclure_prise_terre',
     'plafond_kwc_par_onduleur',
+    'nombre_onduleurs',     # ACAL633 — onduleurs ACCEPTÉS (≥ 1, entier)
     'longueur_chaine_forcee',
     'protections',          # CAL132 — décisions société sur la check-list
     'terre',                # CAL134 — check-list de mise à la terre
@@ -727,6 +728,7 @@ NOMBRES_ENTREE = (
     ('plafond_kwc_par_onduleur', 'Plafond de kWc par onduleur', True, False),
     ('longueur_chaine_forcee', 'Longueur de chaîne imposée (modules)', True,
      True),
+    ('nombre_onduleurs', "Nombre d'onduleurs", True, True),  # ACAL633
 )
 
 #: Les phases ADMISES — monophasé ou triphasé, rien d'autre.
@@ -1353,6 +1355,9 @@ def _options_entree(entree):
     phases = _nombre((entree or {}).get('phases'))
     if phases is not None:
         options['phases'] = int(phases)
+    nombre = _nombre((entree or {}).get('nombre_onduleurs'))
+    if nombre is not None and nombre >= 1:  # ACAL633
+        options['nombre_onduleurs'] = int(nombre)
     longueur = _nombre((entree or {}).get('longueur_chaine_forcee'))
     if longueur is not None:
         options['longueur_forcee'] = int(longueur)

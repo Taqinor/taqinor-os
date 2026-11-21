@@ -31,6 +31,10 @@ import { mesuresDeVisite, panParDefaut, penteRetenue, pourcentageDepuisPente, sa
    été mesuré.
    ========================================================================== */
 
+// ACAL535 — la source d'une suggestion lue sur le relief déposé (celle du serveur,
+// contrat calepinage_suggestion_pente.json › relief › source).
+const SOURCE_RELIEF = "relief fourni par l'installateur"
+
 const LIBELLE_SOURCE = {
   degres: 'saisie en degrés',
   pourcentage: 'convertie depuis un pourcentage de pente',
@@ -147,7 +151,7 @@ export default function SaisiePente({
   // JAMAIS recopiée dans la pente du pan (D-ACAL-19).
   const suggestions = suggestionsEnAttente(layout)
 
-  const decider = async (operation, zoneId = undefined) => {
+  const decider = async (operation, zoneId = undefined, relief = null) => {
     if (doc.etat !== 'ok' || lectureSeule) return null
     const base = documentVivant?.empreinte || doc.empreinte
     if (!base) {
@@ -155,9 +159,16 @@ export default function SaisiePente({
       return null
     }
     try {
-      const res = await calepinageApi.calepinages.decisionSuggestionPente(calepinageId, {
-        operation, base_empreinte: base, ...(zoneId ? { zone_id: zoneId } : {}),
-      })
+      // ACAL535 — un relief déposé (GeoTIFF) passe par sa propre porte serveur : même réponse.
+      let corps = { operation, base_empreinte: base, ...(zoneId ? { zone_id: zoneId } : {}) }
+      if (relief) {
+        corps = new FormData()
+        corps.append('relief', relief)
+        corps.append('base_empreinte', base)
+      }
+      const res = await (relief
+        ? calepinageApi.calepinages.suggestionPenteRelief(calepinageId, corps)
+        : calepinageApi.calepinages.decisionSuggestionPente(calepinageId, corps))
       const zones = res?.data?.roof_layout?.zones
       const empreinte = res?.data?.empreinte_document ?? null
       if (Array.isArray(zones)) {
@@ -200,6 +211,17 @@ export default function SaisiePente({
       setMessageSuggestions('Aucun pan ne porte assez de points d’altitude exploitables : '
         + 'aucune pente n’est suggérée (ou chaque pan a déjà une décision).')
     }
+  }
+
+  // ACAL535 — « Lire la pente sur un relief de drone » : le fichier est lu par le serveur
+  // (aucun appel IGN) ; chaque pan couvert reçoit une suggestion à décider ci-dessous.
+  const deposerRelief = async (evenement) => {
+    const fichier = evenement.target.files?.[0]
+    evenement.target.value = ''
+    if (!fichier) return
+    setMessageSuggestions(null)
+    const rendu = await decider('proposer', undefined, fichier)
+    if (rendu) setMessageSuggestions('Pente lue sur votre relief : décidez ci-dessous, rien n’est appliqué d’office.')
   }
 
   const jeterSuggestion = async (suggestion) => {
@@ -515,15 +537,35 @@ export default function SaisiePente({
 
       {/* CALX29 — suggestion LiDAR IGN, visible SEULEMENT si la lecture
           locale dit `disponible: true` (France). */}
-      {ignDisponible && (
+      {/* ACAL535 — « Lire la pente sur un relief de drone » : replié, expert, tous pays ;
+          le fichier est lu par le serveur, aucun appel IGN. */}
+      {persister && !lectureSeule && (
+        <details className="mt-4" data-testid="cal-pente-relief">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-primary-text">
+            Lire la pente sur un relief de drone
+          </summary>
+          <label className="block text-sm text-foreground">
+            Relief GeoTIFF (WGS84, en degrés)
+            <input type="file" accept=".tif,.tiff,image/tiff" onChange={deposerRelief}
+              data-testid="cal-pente-relief-fichier"
+              className="mt-1 block min-h-11 w-full border border-border bg-background px-2 py-2 text-base text-foreground" />
+          </label>
+        </details>
+      )}
+
+      {(ignDisponible || suggestions.length > 0 || messageSuggestions) && (
         <div className="mt-6 border-t border-border pt-4" data-testid="cal-pente-lidar">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pente par pan, depuis l’IGN</p>
-          <button type="button" onClick={suggererDepuisIGN}
-            disabled={chargementSuggestions || lectureSeule}
-            data-testid="cal-pente-lidar-suggerer"
-            className="mt-2 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
-            {chargementSuggestions ? 'Interrogation de l’IGN…' : 'Suggérer depuis l’IGN'}
-          </button>
+          {ignDisponible && (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pente par pan, depuis l’IGN</p>
+              <button type="button" onClick={suggererDepuisIGN}
+                disabled={chargementSuggestions || lectureSeule}
+                data-testid="cal-pente-lidar-suggerer"
+                className="mt-2 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
+                {chargementSuggestions ? 'Interrogation de l’IGN…' : 'Suggérer depuis l’IGN'}
+              </button>
+            </>
+          )}
 
           {suggestions.length > 0 && (
             <>
@@ -540,7 +582,7 @@ export default function SaisiePente({
                       Pan {suggestion.zoneId} — {auDixieme(suggestion.valeurDeg)} °
                     </p>
                     <p className="text-xs text-foreground">
-                      Pente du terrain (LiDAR IGN) — n’est jamais recopiée dans la pente du pan.
+                      Pente du terrain ({suggestion.source === SOURCE_RELIEF ? SOURCE_RELIEF : 'LiDAR IGN'}) — n’est jamais recopiée dans la pente du pan.
                     </p>
                     <p className="text-xs text-muted-foreground" data-testid={`cal-pente-lidar-source-${suggestion.zoneId}`}>
                       {suggestion.source} · {suggestion.suggestedAt}

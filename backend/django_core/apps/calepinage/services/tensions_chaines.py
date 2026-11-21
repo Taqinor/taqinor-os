@@ -91,3 +91,15 @@ def tensions_par_chaine(conception, imposee=()):
     return [_ligne(numero, modules, unitaires, onduleur,
                    conception.temperatures)
             for numero, modules in sorted(par_chaine.items())]
+
+
+def chaines_servies(calepinage):
+    """ACAL672 — ``{n° de chaîne: ligne servie}`` du calepinage ENREGISTRÉ.
+
+    Les lignes sont celles de ``evaluer-electrique`` (``chaines[]``) : un
+    document les LIT, il ne recalcule aucune tension.
+    """
+    from .electrique import evaluation_electrique
+
+    return {ligne['chaine']: ligne
+            for ligne in evaluation_electrique(calepinage)['chaines']}

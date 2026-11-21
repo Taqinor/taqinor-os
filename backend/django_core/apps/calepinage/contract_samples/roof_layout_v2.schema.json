@@ -565,6 +565,11 @@
           "description": "CALX81 — retrait SAISI pour CETTE arête seule, en mètres. OPTIONNEL et additif : absent = seul le retrait de CATÉGORIE s'applique (`setbacksM`, CAL76 : latérale / extrémité / acrotère / joint), soit exactement le comportement d'aujourd'hui, byte pour byte. Présent, il vaut POUR CE SEGMENT PHYSIQUE, que les quatre catégories ne savent pas désigner — un rampant qui longe une limite de propriété n'a pas le même retrait que les autres rampants du même pan. Aucune valeur n'est proposée par le schéma : un retrait non saisi est ABSENT, jamais un zéro (qui se lirait « mesuré à ras »).",
           "type": "number",
           "minimum": 0
+        },
+        "retraitOrigine": {
+          "description": "ACAL562 — `societe` quand `retraitM` a été POSÉ d'office depuis la table « retrait par type d'arête » de la société (`degagements.retraits_par_arete`), jamais saisi à la main. Absent = retrait saisi (ou aucun). Le changement de type de l'arête remplace un retrait marqué `societe`, jamais un retrait saisi.",
+          "type": "string",
+          "enum": ["societe"]
         }
       }
     },

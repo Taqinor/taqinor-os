@@ -331,6 +331,8 @@ export const ALL_HOOKS = [
   'cal-pente-message',
   'cal-pente-lecture-seule',
   'cal-pente-mode',
+  'cal-pente-relief',
+  'cal-pente-relief-fichier',
   'cal-pente-visite-orientation-utiliser',
   'cal-pente-visite-orientation-mesure',
   'cal-pente-visite-orientation',

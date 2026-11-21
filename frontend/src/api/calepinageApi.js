@@ -332,6 +332,12 @@ const calepinageApi = {
     // frontière multipart. Le serveur écrit `underlay` par section et rend `{underlay,
     // empreinte_document}` ; 409 `document_modifie` si le jeton est périmé.
     envoyerFondPlan: (id, corps) => api.post(`${pivot(id)}fond-plan/`, corps), // ACAL
+    // ACAL535 (contrat calepinage_suggestion_pente.json › relief) — « Lire la pente sur un relief
+    // de drone » : `corps` est un FormData (`relief` = GeoTIFF WGS84, `base_empreinte`, `zone_id?`).
+    // Réponse de `suggestions-pente/` (`roof_layout`, `empreinte_document`) ; la suggestion garde
+    // sa source « relief fourni par l'installateur », jamais recopiée dans la pente du pan.
+    // 400 nommant `relief` (illisible, en mètres) ; 409 `document_modifie` si le jeton est périmé.
+    suggestionPenteRelief: (id, corps) => api.post(`${pivot(id)}suggestions-pente-relief/`, corps), // ACAL
     // ACAL109 — renommer (PATCH `{nom}`) et supprimer une variante ; le refus
     // serveur (variante RETENUE) est affiché tel quel par l'écran.
     modifierVariante: (id, varianteId, corps) => api.patch(`${pivot(id)}variantes/${varianteId}/`, corps), // ACAL

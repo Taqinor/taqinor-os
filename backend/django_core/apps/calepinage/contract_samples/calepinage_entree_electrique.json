@@ -16,6 +16,7 @@
       "zone_keraunique": "faible",
       "inclure_prise_terre": true,
       "plafond_kwc_par_onduleur": null,
+      "nombre_onduleurs": null,
       "longueur_chaine_forcee": null,
       "protections": {
         "parafoudre_dc": true
@@ -153,6 +154,7 @@
       "zone_keraunique": null,
       "inclure_prise_terre": null,
       "plafond_kwc_par_onduleur": null,
+      "nombre_onduleurs": null,
       "longueur_chaine_forcee": null,
       "protections": null,
       "terre": null,

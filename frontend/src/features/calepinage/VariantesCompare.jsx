@@ -106,6 +106,14 @@ const cle = (ligne) => (ligne.courante ? 'courante' : String(ligne.id))
 const LIGNES_TABLEAU = [
   { id: 'role', libelle: 'Rôle', rendu: (l) => l.role || '—' },
   { id: 'statut', libelle: 'Statut', rendu: (l) => l.statut || '—' },
+  // ACAL600 — le module servi (ACAL595) ; « à re-poser » vit dans le NOM (ACAL594).
+  { id: 'module', libelle: 'Module', rendu: (l) => {
+    const m = l.module
+    const texte = !m ? '—' : m.mixte ? 'mixte' : `${m.libelle || '—'} · ${nombre(m.pmax_wc)} Wc`
+    return String(l.nom || '').endsWith('— à re-poser')
+      ? <>{texte}<span className="block text-xs text-muted-foreground">À re-poser dans l’atelier : les cotes du module diffèrent</span></>
+      : texte
+  } },
   {
     id: 'modules',
     libelle: 'Modules',

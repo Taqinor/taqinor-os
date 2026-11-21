@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat, reponseContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { espions } from '../../../test/fixtures/calepinageApiMock'
+import albedoSurfaces from './albedoSurfaces.json'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, SAISISSABLES,
@@ -730,5 +731,49 @@ describe('ACAL561 — retraits par type d’arête', () => {
     await screen.findByTestId('acal561-carte')
     fireEvent.click(screen.getByTestId('acal561-enregistrer'))
     expect(await screen.findByTestId('acal561-erreur-egout')).toHaveTextContent('la source manque')
+  })
+})
+
+/* ACAL747 — la table des albédos : seules les valeurs UNIQUES imprimées par la page. */
+describe('albedoSurfaces.json (ACAL747)', () => {
+  it('chaque surface : valeur numérique unique, url https, date ISO ; ecartees ne recoupe pas surfaces', () => {
+    expect(albedoSurfaces.surfaces.length).toBeGreaterThan(0)
+    for (const s of albedoSurfaces.surfaces) {
+      expect(typeof s.valeur, s.surface).toBe('number')
+      expect(s.valeur).toBeGreaterThan(0)
+      expect(s.valeur).toBeLessThanOrEqual(1)
+      expect(s.url).toMatch(/^https:\/\//)
+      expect(s.date_lecture).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    }
+    const retenues = new Set(albedoSurfaces.surfaces.map((s) => s.surface))
+    for (const e of albedoSurfaces.ecartees) {
+      expect(retenues.has(e.surface), e.surface).toBe(false)
+      expect(e.motif).toBeTruthy()
+    }
+  })
+})
+
+/* ACAL748 — « Remplir depuis une surface (valeur publiée) » sur la ligne albédo. */
+describe('ACAL748 — choix d\'une surface pour l\'albédo', () => {
+  it('choisir une surface remplit valeur, source et référence ; aucun PUT avant Enregistrer', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-albedo_mensuel')
+    const surface = albedoSurfaces.surfaces[0]
+    const choix = screen.getByTestId('acal748-choix-albedo_mensuel').querySelector('select')
+    fireEvent.change(choix, { target: { value: surface.surface } })
+
+    expect(champValeur('albedo_mensuel').value).toBe(String(surface.valeur))
+    expect(champSource('albedo_mensuel').value).toBe('texte')
+    expect(champReference('albedo_mensuel').value).toBe(
+      `PVsyst — Albedo usual coefficients — ${surface.surface} — ${surface.url} — lu le ${surface.date_lecture} — valeur publiée, non mesurée`)
+    expect(mocks.putParametres).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const envoye = mocks.putParametres.mock.calls[0][0].simulation.albedo_mensuel
+    expect(envoye.source).toBe('texte')
+    expect(envoye.reference).toContain(surface.url)
   })
 })

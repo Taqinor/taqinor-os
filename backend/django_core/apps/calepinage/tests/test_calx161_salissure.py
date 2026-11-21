@@ -287,5 +287,53 @@ class NeigeTest(unittest.TestCase):
                          completude_de_la_chaine(sans_neige))
 
 
+class InclinaisonEtNettoyageTest(unittest.TestCase):
+    """ACAL743 — fréquence de nettoyage publiée, avertissement sous le seuil
+    d'autonettoyage SAISI ; le pourcentage de salissure ne change jamais."""
+
+    def _contexte(self, inclinaison, seuil=10.0, **pan):
+        contexte = contexte_de(ETE_SALE)
+        reglages = contexte['reglages_simulation']
+        reglages['nettoyages_par_an'] = {'valeur': 4, 'source': 'societe'}
+        if seuil is not None:
+            reglages['inclinaison_autonettoyage_deg'] = {
+                'valeur': seuil, 'source': 'societe'}
+        contexte['plan'] = dict({'inclinaison_deg': inclinaison}, **pan)
+        return contexte
+
+    def _entree(self, contexte):
+        _serie, etape = salissure.appliquer(SERIE, contexte)
+        return etape['entree']
+
+    def test_pan_a_5_sous_un_seuil_de_10(self):
+        entree = self._entree(self._contexte(5.0))
+        self.assertEqual(entree['nettoyages_par_an'], 4)
+        self.assertEqual(entree['source_nettoyages'], 'societe')
+        self.assertEqual(
+            entree['avertissement_inclinaison'],
+            "Pan à 5° : sous l'inclinaison de 10° à partir de laquelle la "
+            'pluie lave les panneaux (réglage de la société). La poussière '
+            'peut y rester.')
+
+    def test_pan_designe_par_son_nom_dans_plans(self):
+        contexte = self._contexte(5.0)
+        pan = dict(contexte.pop('plan'), cle='Toit sud')
+        contexte.update(plan='Toit sud', plans=[pan, {'cle': 'Autre',
+                                                      'inclinaison_deg': 30}])
+        self.assertTrue(self._entree(contexte)['avertissement_inclinaison'])
+
+    def test_aucun_avertissement_au_dessus_sans_seuil_ou_sans_pente(self):
+        reference = self._entree(self._contexte(5.0))['moyenne_pct']
+        for contexte in (self._contexte(15.0), self._contexte(10.0),
+                         self._contexte(5.0, seuil=None)):
+            entree = self._entree(contexte)
+            self.assertEqual(entree['avertissement_inclinaison'], '')
+            self.assertEqual(entree['moyenne_pct'], reference)
+        sans_pente = self._contexte(5.0)
+        sans_pente['plan'] = {}
+        self.assertEqual(self._entree(sans_pente)['avertissement_inclinaison'],
+                         '')
+
+
 if __name__ == '__main__':
     unittest.main()
