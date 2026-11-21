@@ -33,28 +33,41 @@ test('toute déclaration de couleur littérale est dans un des 3 calques sur la 
   assert.deepEqual(fautives, [], `couleurs littérales hors calques : ${fautives.join(' | ')}`)
 })
 
-test('`.rp9-host` lit les jetons de l\'ERP', () => {
-  const host = regles(css).filter((r) => r.sel === '.rp9-host')
-  const corps = host.map((r) => r.corps).join('\n')
-  assert.match(corps, /background:\s*var\(--rp-nuit\)/)
-  assert.match(corps, /--rp-nuit:\s*var\(--card\)/)
-  assert.match(corps, /border:\s*1px solid var\(--border\)/)
-  assert.match(corps, /--rp-lune-soft:\s*var\(--foreground\)/)
-  assert.match(corps, /--rp-lune-faint:\s*var\(--muted-foreground\)/)
-  assert.match(corps, /--rp-brass-300:\s*var\(--primary-text\)/)
-  assert.match(corps, /--rp-brass-400:\s*var\(--primary-text\)/)
-  assert.match(corps, /--rp-alert-300:\s*var\(--destructive\)/)
-  assert.match(corps, /--rp-ok-400:\s*var\(--success-text\)/)
-  assert.match(corps, /--rp-ok-600:\s*var\(--success\)/)
-  assert.match(corps, /--rp-azur-950:\s*var\(--primary-foreground\)/)
+/** Corps d'une règle -> { propriété: valeur } (comparaison de valeurs, pas de motif sur le texte). */
+function declarations(corps) {
+  const out = {}
+  for (const d of corps.split(';')) {
+    const i = d.indexOf(':')
+    if (i > 0) out[d.slice(0, i).trim()] = d.slice(i + 1).trim()
+  }
+  return out
+}
+const valeursDe = (selecteur) => Object.assign(
+  {}, ...regles(css).filter((r) => r.sel === selecteur).map((r) => declarations(r.corps)),
+)
+
+test("`.rp9-host` lit les jetons de l'ERP", () => {
+  const host = valeursDe('.rp9-host')
+  assert.equal(host.background, 'var(--rp-nuit)')
+  assert.equal(host['--rp-nuit'], 'var(--card)')
+  assert.equal(host.border, '1px solid var(--border)')
+  assert.equal(host['--rp-lune-soft'], 'var(--foreground)')
+  assert.equal(host['--rp-lune-faint'], 'var(--muted-foreground)')
+  assert.equal(host['--rp-brass-300'], 'var(--primary-text)')
+  assert.equal(host['--rp-brass-400'], 'var(--primary-text)')
+  assert.equal(host['--rp-alert-300'], 'var(--destructive)')
+  assert.equal(host['--rp-ok-400'], 'var(--success-text)')
+  assert.equal(host['--rp-ok-600'], 'var(--success)')
+  assert.equal(host['--rp-azur-950'], 'var(--primary-foreground)')
 })
 
 test('le markup du script partagé (text-white, bg-white/N, border-white/N) est relié au thème', () => {
-  assert.match(css, /\.rp9-host \.text-white\s*\{\s*color:\s*var\(--foreground\)/)
+  assert.equal(valeursDe('.rp9-host .text-white').color, 'var(--foreground)')
   for (const n of [10, 15, 20, 25]) {
-    assert.match(css, new RegExp(`border-white\\\\/${n}\\s*\\{[^}]*var\\(--foreground\\)`))
+    const v = valeursDe(`.rp9-host .border-white\\/${n}`)['border-color']
+    assert.ok(String(v).includes('var(--foreground)'), `border-white/${n}`)
   }
-  assert.match(css, /bg-white\\\/5\s*\{[^}]*var\(--foreground\)/)
+  assert.ok(String(valeursDe('.rp9-host .bg-white\\/5').background).includes('var(--foreground)'))
 })
 
 test('états des cellules du plan : jetons info / success / destructive', () => {
