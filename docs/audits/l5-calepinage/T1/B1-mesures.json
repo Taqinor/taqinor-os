@@ -1,0 +1,3032 @@
+[
+ {
+  "url": "/calepinage/4",
+  "theme": "",
+  "taillesDistinctes": 17,
+  "tailles": {
+   "10": 1,
+   "11": 107,
+   "12": 84,
+   "14": 121,
+   "16": 30,
+   "18": 5,
+   "20": 9,
+   "24": 8,
+   "13.68": 8,
+   "11.2": 7,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1
+  },
+  "famillesDistinctes": 4,
+  "familles": {
+   "\"Noto Sans Arabic\"": 276,
+   "system-ui": 93,
+   "sans-serif": 2,
+   "ui-monospace": 19
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 13,
+  "couleursFondDistinctes": 9,
+  "cliquablesVisibles": 197,
+  "sous44": 184,
+  "sous32": 90,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "div «Map marker» 27×41"
+  ],
+  "controlesVisibles": 182,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 97,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(199, 208, 224) sur rgb(7, 11, 29)",
+    "n": 66,
+    "contraste": 12.59
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 44,
+    "contraste": 19.54
+   },
+   {
+    "paire": "rgb(199, 208, 224) sur rgb(12, 18, 38)",
+    "n": 41,
+    "contraste": 11.97
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 38,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 24,
+    "contraste": 12.69
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(12, 18, 38)",
+    "n": 19,
+    "contraste": 6.03
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(238, 241, 248)",
+    "n": 12,
+    "contraste": 2.72
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(12, 18, 38)",
+    "n": 10,
+    "contraste": 12.07
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "atelier-clair"
+ },
+ {
+  "url": "/calepinage/4",
+  "theme": "dark",
+  "taillesDistinctes": 17,
+  "tailles": {
+   "10": 1,
+   "11": 107,
+   "12": 84,
+   "14": 121,
+   "16": 30,
+   "18": 5,
+   "20": 9,
+   "24": 8,
+   "13.68": 8,
+   "11.2": 7,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1
+  },
+  "famillesDistinctes": 4,
+  "familles": {
+   "\"Noto Sans Arabic\"": 276,
+   "system-ui": 93,
+   "sans-serif": 2,
+   "ui-monospace": 19
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 13,
+  "couleursFondDistinctes": 8,
+  "cliquablesVisibles": 197,
+  "sous44": 184,
+  "sous32": 90,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "div «Map marker» 27×41"
+  ],
+  "controlesVisibles": 182,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 109,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(199, 208, 224) sur rgb(7, 11, 29)",
+    "n": 66,
+    "contraste": 12.59
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 44,
+    "contraste": 19.54
+   },
+   {
+    "paire": "rgb(199, 208, 224) sur rgb(12, 18, 38)",
+    "n": 41,
+    "contraste": 11.97
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(7, 11, 29)",
+    "n": 37,
+    "contraste": 9.55
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 24,
+    "contraste": 12.69
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(12, 18, 38)",
+    "n": 19,
+    "contraste": 6.03
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(12, 18, 38)",
+    "n": 10,
+    "contraste": 12.07
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "atelier-sombre"
+ },
+ {
+  "url": "/calepinage",
+  "theme": "",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 7,
+   "14": 14,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 41
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 7,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 33,
+  "sous44": 32,
+  "sous32": 7,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "button «Filtrer par étiquette» 121×16"
+  ],
+  "controlesVisibles": 24,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 15,
+    "contraste": 18.1
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 5.81
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 2,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 1.89
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(246, 248, 252)",
+    "n": 1,
+    "contraste": 17.02
+   },
+   {
+    "paire": "rgb(26, 21, 5) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 9.66
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "liste-clair"
+ },
+ {
+  "url": "/calepinage/nouveau",
+  "theme": "",
+  "taillesDistinctes": 13,
+  "tailles": {
+   "10": 1,
+   "12": 9,
+   "14": 18,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 48
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 7,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 33,
+  "sous44": 32,
+  "sous32": 8,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "button «?\nNon assigné» 122×30"
+  ],
+  "controlesVisibles": 23,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 14,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 10,
+    "contraste": 18.1
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 4,
+    "contraste": 5.14
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": 17.02
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 1.89
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(246, 248, 252)",
+    "n": 1,
+    "contraste": 5.47
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "nouveau-clair"
+ },
+ {
+  "url": "/calepinage/bibliotheque",
+  "theme": "",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 18,
+   "14": 22,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 60
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 6,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 33,
+  "sous44": 32,
+  "sous32": 15,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Réglages de simulation et d’él» 237×18"
+  ],
+  "controlesVisibles": 22,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 21,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 17,
+    "contraste": 18.1
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 4,
+    "contraste": 5.14
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(246, 248, 252)",
+    "n": 2,
+    "contraste": 17.02
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 1.89
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(246, 248, 252)",
+    "n": 1,
+    "contraste": 5.47
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "bibliotheque-clair"
+ },
+ {
+  "url": "/calepinage/sources",
+  "theme": "",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 4,
+   "14": 9,
+   "16": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 33
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 6,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 24,
+  "sous44": 23,
+  "sous32": 7,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24"
+  ],
+  "controlesVisibles": 14,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 9,
+    "contraste": 5.81
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 18.1
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 2,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 1.89
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "sources-clair"
+ },
+ {
+  "url": "/calepinage/reglages",
+  "theme": "",
+  "taillesDistinctes": 13,
+  "tailles": {
+   "12": 213,
+   "14": 56,
+   "16": 5,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 294
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 6,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 158,
+  "sous44": 157,
+  "sous32": 138,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Gabarits des dossiers réglemen» 233×18"
+  ],
+  "controlesVisibles": 147,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 207,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 65,
+    "contraste": 18.1
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": 17.02
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 2,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(246, 248, 252)",
+    "n": 2,
+    "contraste": 5.47
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 1.89
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "reglages-clair"
+ },
+ {
+  "url": "/calepinage/reglages/gabarits",
+  "theme": "",
+  "taillesDistinctes": 13,
+  "tailles": {
+   "12": 5,
+   "14": 19,
+   "16": 1,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 45
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 7,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 38,
+  "sous44": 37,
+  "sous32": 18,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «← Réglages simulation» 1136×16"
+  ],
+  "controlesVisibles": 27,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 18,
+    "contraste": 18.1
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 6,
+    "contraste": 5.81
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 2,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(246, 248, 252)",
+    "n": 2,
+    "contraste": 17.02
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 1.89
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(246, 248, 252)",
+    "n": 1,
+    "contraste": 5.47
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "gabarits-clair"
+ },
+ {
+  "url": "/calepinage/comparaison",
+  "theme": "",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 5,
+   "14": 4,
+   "16": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 29
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 7,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 26,
+  "sous44": 25,
+  "sous32": 8,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Retour à la liste» 116×20"
+  ],
+  "controlesVisibles": 14,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 5,
+    "contraste": 5.81
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 18.1
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 2,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(246, 248, 252)",
+    "n": 2,
+    "contraste": 5.47
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 1.89
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(246, 248, 252)",
+    "n": 1,
+    "contraste": 17.02
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "comparaison-clair"
+ },
+ {
+  "url": "/calepinage/4/variantes",
+  "theme": "",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 5,
+   "14": 4,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 29
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 6,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 25,
+  "sous44": 24,
+  "sous32": 7,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24"
+  ],
+  "controlesVisibles": 15,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 6,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 4,
+    "contraste": 18.1
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 2,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 2,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(232, 181, 74)",
+    "n": 1,
+    "contraste": 1.89
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(246, 248, 252)",
+    "n": 1,
+    "contraste": 17.02
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(246, 248, 252)",
+    "n": 1,
+    "contraste": 5.47
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "variantes-clair"
+ },
+ {
+  "url": "/calepinage",
+  "theme": "dark",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 25,
+   "14": 19,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 64
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 7,
+  "couleursFondDistinctes": 2,
+  "cliquablesVisibles": 39,
+  "sous44": 34,
+  "sous32": 7,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "button «Filtrer par étiquette» 121×16"
+  ],
+  "controlesVisibles": 26,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 26,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 22,
+    "contraste": 1.18
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 1
+   },
+   {
+    "paire": "rgb(26, 21, 5) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 18.21
+   }
+  ],
+  "contrasteSousAA": 3,
+  "ecran": "liste-sombre"
+ },
+ {
+  "url": "/calepinage/nouveau",
+  "theme": "dark",
+  "taillesDistinctes": 13,
+  "tailles": {
+   "10": 1,
+   "12": 9,
+   "14": 18,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 48
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 7,
+  "couleursFondDistinctes": 2,
+  "cliquablesVisibles": 33,
+  "sous44": 32,
+  "sous32": 8,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "button «?\nNon assigné» 122×30"
+  ],
+  "controlesVisibles": 23,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 19,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 13,
+    "contraste": 1.18
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 1
+   },
+   {
+    "paire": "rgb(26, 21, 5) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 18.21
+   }
+  ],
+  "contrasteSousAA": 3,
+  "ecran": "nouveau-sombre"
+ },
+ {
+  "url": "/calepinage/bibliotheque",
+  "theme": "dark",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 18,
+   "14": 22,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 60
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 6,
+  "couleursFondDistinctes": 2,
+  "cliquablesVisibles": 33,
+  "sous44": 32,
+  "sous32": 15,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Réglages de simulation et d’él» 237×18"
+  ],
+  "controlesVisibles": 22,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 26,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 19,
+    "contraste": 1.18
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 1
+   }
+  ],
+  "contrasteSousAA": 3,
+  "ecran": "bibliotheque-sombre"
+ },
+ {
+  "url": "/calepinage/sources",
+  "theme": "dark",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 4,
+   "14": 9,
+   "16": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 33
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 6,
+  "couleursFondDistinctes": 2,
+  "cliquablesVisibles": 24,
+  "sous44": 23,
+  "sous32": 7,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24"
+  ],
+  "controlesVisibles": 14,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 11,
+    "contraste": 2.05
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 1.18
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 1
+   }
+  ],
+  "contrasteSousAA": 3,
+  "ecran": "sources-sombre"
+ },
+ {
+  "url": "/calepinage/reglages",
+  "theme": "dark",
+  "taillesDistinctes": 13,
+  "tailles": {
+   "12": 213,
+   "14": 56,
+   "16": 5,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 294
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 6,
+  "couleursFondDistinctes": 2,
+  "cliquablesVisibles": 158,
+  "sous44": 157,
+  "sous32": 138,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Gabarits des dossiers réglemen» 233×18"
+  ],
+  "controlesVisibles": 147,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 211,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 68,
+    "contraste": 1.18
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 1
+   }
+  ],
+  "contrasteSousAA": 3,
+  "ecran": "reglages-sombre"
+ },
+ {
+  "url": "/calepinage/reglages/gabarits",
+  "theme": "dark",
+  "taillesDistinctes": 13,
+  "tailles": {
+   "12": 5,
+   "14": 19,
+   "16": 1,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 45
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 7,
+  "couleursFondDistinctes": 2,
+  "cliquablesVisibles": 38,
+  "sous44": 37,
+  "sous32": 18,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «← Réglages simulation» 1136×16"
+  ],
+  "controlesVisibles": 27,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 20,
+    "contraste": 1.18
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 9,
+    "contraste": 2.05
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 1
+   },
+   {
+    "paire": "rgb(26, 21, 5) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 18.21
+   }
+  ],
+  "contrasteSousAA": 3,
+  "ecran": "gabarits-sombre"
+ },
+ {
+  "url": "/calepinage/comparaison",
+  "theme": "dark",
+  "taillesDistinctes": 12,
+  "tailles": {
+   "12": 5,
+   "14": 4,
+   "16": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 29
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 7,
+  "couleursFondDistinctes": 2,
+  "cliquablesVisibles": 26,
+  "sous44": 25,
+  "sous32": 8,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Retour à la liste» 116×20"
+  ],
+  "controlesVisibles": 14,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 9,
+    "contraste": 2.05
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 4,
+    "contraste": 1.18
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(220, 38, 38)",
+    "n": 1,
+    "contraste": 4.83
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 1
+   },
+   {
+    "paire": "rgb(26, 21, 5) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 18.21
+   }
+  ],
+  "contrasteSousAA": 3,
+  "ecran": "comparaison-sombre"
+ },
+ {
+  "url": "/calepinage/4/variantes",
+  "theme": "dark",
+  "taillesDistinctes": 10,
+  "tailles": {
+   "12": 4,
+   "14": 2,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 1,
+  "familles": {
+   "\"Noto Sans Arabic\"": 24
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 6,
+  "couleursFondDistinctes": 1,
+  "cliquablesVisibles": 24,
+  "sous44": 23,
+  "sous32": 7,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24"
+  ],
+  "controlesVisibles": 14,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 1.18
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 2,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(255, 255, 255)",
+    "n": 1,
+    "contraste": 1
+   }
+  ],
+  "contrasteSousAA": 3,
+  "ecran": "variantes-sombre"
+ },
+ {
+  "url": "/calepinage/4?onglet=production",
+  "theme": "",
+  "taillesDistinctes": 15,
+  "tailles": {
+   "11": 22,
+   "12": 51,
+   "14": 23,
+   "16": 4,
+   "18": 1,
+   "24": 9,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 106,
+   "system-ui": 22,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 12,
+  "couleursFondDistinctes": 7,
+  "cliquablesVisibles": 52,
+  "sous44": 49,
+  "sous32": 24,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Ouvrir l’onglet Pertes» 115×16"
+  ],
+  "controlesVisibles": 41,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 48,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 23,
+    "contraste": 18.1
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 20,
+    "contraste": 6.35
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 5,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 2,
+    "contraste": null
+   }
+  ],
+  "contrasteSousAA": 0,
+  "ecran": "onglet-production-clair"
+ },
+ {
+  "url": "/calepinage/4?onglet=production",
+  "theme": "dark",
+  "taillesDistinctes": 15,
+  "tailles": {
+   "11": 22,
+   "12": 51,
+   "14": 23,
+   "16": 4,
+   "18": 1,
+   "24": 9,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 106,
+   "system-ui": 22,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 12,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 52,
+  "sous44": 49,
+  "sous32": 24,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Ouvrir l’onglet Pertes» 115×16"
+  ],
+  "controlesVisibles": 41,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(7, 11, 29)",
+    "n": 46,
+    "contraste": 9.55
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 22,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(7, 11, 29)",
+    "n": 20,
+    "contraste": 16.5
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 1.18
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   }
+  ],
+  "contrasteSousAA": 2,
+  "ecran": "onglet-production-sombre"
+ },
+ {
+  "url": "/calepinage/4?onglet=pertes",
+  "theme": "",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 9,
+   "14": 20,
+   "16": 4,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 52,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 11,
+  "couleursFondDistinctes": 7,
+  "cliquablesVisibles": 58,
+  "sous44": 55,
+  "sous32": 23,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "input#cal-allees-largeur-calepinage «» 320×30"
+  ],
+  "controlesVisibles": 48,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 20,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 12,
+    "contraste": 5.14
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 6,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 5,
+    "contraste": 18.1
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(238, 241, 248)",
+    "n": 3,
+    "contraste": 2.72
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "onglet-pertes-clair"
+ },
+ {
+  "url": "/calepinage/4?onglet=pertes",
+  "theme": "dark",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 9,
+   "14": 20,
+   "16": 4,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 52,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 11,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 58,
+  "sous44": 55,
+  "sous32": 23,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "input#cal-allees-largeur-calepinage «» 320×30"
+  ],
+  "controlesVisibles": 48,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 23,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(7, 11, 29)",
+    "n": 11,
+    "contraste": 9.55
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 1.18
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 2,
+    "contraste": null
+   }
+  ],
+  "contrasteSousAA": 2,
+  "ecran": "onglet-pertes-sombre"
+ },
+ {
+  "url": "/calepinage/4?onglet=schema",
+  "theme": "",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 8,
+   "14": 31,
+   "16": 3,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 61,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 10,
+  "couleursFondDistinctes": 7,
+  "cliquablesVisibles": 57,
+  "sous44": 54,
+  "sous32": 23,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "input#cal-allees-largeur-calepinage «» 320×30"
+  ],
+  "controlesVisibles": 47,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 20,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 16,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 12,
+    "contraste": 5.14
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 5,
+    "contraste": 18.1
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(238, 241, 248)",
+    "n": 3,
+    "contraste": 2.72
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "onglet-schema-clair"
+ },
+ {
+  "url": "/calepinage/4?onglet=schema",
+  "theme": "dark",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 8,
+   "14": 31,
+   "16": 3,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 61,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 10,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 57,
+  "sous44": 54,
+  "sous32": 23,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "input#cal-allees-largeur-calepinage «» 320×30"
+  ],
+  "controlesVisibles": 47,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 23,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(7, 11, 29)",
+    "n": 21,
+    "contraste": 9.55
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 1.18
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 2,
+    "contraste": null
+   }
+  ],
+  "contrasteSousAA": 2,
+  "ecran": "onglet-schema-sombre"
+ },
+ {
+  "url": "/calepinage/4?onglet=batterie",
+  "theme": "",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 12,
+   "14": 31,
+   "16": 3,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 65,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 11,
+  "couleursFondDistinctes": 7,
+  "cliquablesVisibles": 69,
+  "sous44": 66,
+  "sous32": 26,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "select#acal167-strategie «— non choisi —\nAutoconsommatio» 504×30"
+  ],
+  "controlesVisibles": 59,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 20,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 17,
+    "contraste": 18.1
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 12,
+    "contraste": 5.14
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 6,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(238, 241, 248)",
+    "n": 3,
+    "contraste": 2.72
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "onglet-batterie-clair"
+ },
+ {
+  "url": "/calepinage/4?onglet=batterie",
+  "theme": "dark",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 12,
+   "14": 31,
+   "16": 3,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 65,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 11,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 69,
+  "sous44": 66,
+  "sous32": 26,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "select#acal167-strategie «— non choisi —\nAutoconsommatio» 504×30"
+  ],
+  "controlesVisibles": 59,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 23,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(7, 11, 29)",
+    "n": 14,
+    "contraste": 16.5
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(7, 11, 29)",
+    "n": 11,
+    "contraste": 9.55
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 1.18
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   }
+  ],
+  "contrasteSousAA": 2,
+  "ecran": "onglet-batterie-sombre"
+ },
+ {
+  "url": "/calepinage/4?onglet=economie",
+  "theme": "",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 8,
+   "14": 20,
+   "16": 3,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 50,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 10,
+  "couleursFondDistinctes": 7,
+  "cliquablesVisibles": 57,
+  "sous44": 54,
+  "sous32": 23,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "input#cal-allees-largeur-calepinage «» 320×30"
+  ],
+  "controlesVisibles": 47,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 20,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 11,
+    "contraste": 5.14
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 6,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 5,
+    "contraste": 18.1
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(238, 241, 248)",
+    "n": 3,
+    "contraste": 2.72
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "onglet-economie-clair"
+ },
+ {
+  "url": "/calepinage/4?onglet=economie",
+  "theme": "dark",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 8,
+   "14": 20,
+   "16": 3,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 50,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 10,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 57,
+  "sous44": 54,
+  "sous32": 23,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "input#cal-allees-largeur-calepinage «» 320×30"
+  ],
+  "controlesVisibles": 47,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 23,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(7, 11, 29)",
+    "n": 10,
+    "contraste": 9.55
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 1.18
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 2,
+    "contraste": null
+   }
+  ],
+  "contrasteSousAA": 2,
+  "ecran": "onglet-economie-sombre"
+ },
+ {
+  "url": "/calepinage/4?onglet=documents",
+  "theme": "",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 22,
+   "12": 111,
+   "14": 36,
+   "16": 3,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 168,
+   "system-ui": 22,
+   "ui-monospace": 2
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 10,
+  "couleursFondDistinctes": 8,
+  "cliquablesVisibles": 94,
+  "sous44": 91,
+  "sous32": 35,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "select «FR\nEN» 46×24"
+  ],
+  "controlesVisibles": 75,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 69,
+    "contraste": 18.1
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 67,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 20,
+    "contraste": 6.35
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 5,
+    "contraste": 5.14
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(246, 248, 252)",
+    "n": 2,
+    "contraste": null
+   }
+  ],
+  "contrasteSousAA": 0,
+  "ecran": "onglet-documents-clair"
+ },
+ {
+  "url": "/calepinage/4?onglet=documents",
+  "theme": "dark",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 22,
+   "12": 111,
+   "14": 36,
+   "16": 3,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 168,
+   "system-ui": 22,
+   "ui-monospace": 2
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 10,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 94,
+  "sous44": 91,
+  "sous32": 35,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "select «FR\nEN» 46×24"
+  ],
+  "controlesVisibles": 75,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(7, 11, 29)",
+    "n": 66,
+    "contraste": 16.5
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(7, 11, 29)",
+    "n": 65,
+    "contraste": 9.55
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 22,
+    "contraste": 6.35
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 1.18
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   }
+  ],
+  "contrasteSousAA": 2,
+  "ecran": "onglet-documents-sombre"
+ },
+ {
+  "url": "/calepinage/4?onglet=production",
+  "theme": "",
+  "taillesDistinctes": 15,
+  "tailles": {
+   "11": 23,
+   "12": 51,
+   "14": 31,
+   "16": 4,
+   "18": 1,
+   "24": 9,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 114,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 13,
+  "couleursFondDistinctes": 7,
+  "cliquablesVisibles": 59,
+  "sous44": 56,
+  "sous32": 24,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "a «Ouvrir l’onglet Pertes» 115×16"
+  ],
+  "controlesVisibles": 48,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(255, 255, 255)",
+    "n": 48,
+    "contraste": 5.81
+   },
+   {
+    "paire": "rgb(12, 19, 53) sur rgb(255, 255, 255)",
+    "n": 23,
+    "contraste": 18.1
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 20,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(90, 100, 136) sur rgb(238, 241, 248)",
+    "n": 12,
+    "contraste": 5.14
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(246, 248, 252)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(246, 248, 252)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(238, 241, 248)",
+    "n": 3,
+    "contraste": 2.72
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   }
+  ],
+  "contrasteSousAA": 1,
+  "ecran": "production-apres-simulation-clair"
+ },
+ {
+  "url": "/calepinage/4?onglet=pertes",
+  "theme": "dark",
+  "taillesDistinctes": 14,
+  "tailles": {
+   "11": 23,
+   "12": 9,
+   "14": 20,
+   "16": 4,
+   "18": 1,
+   "13.68": 8,
+   "11.52": 3,
+   "10.88": 2,
+   "9.6": 1,
+   "12.48": 1,
+   "13.12": 1,
+   "16.8": 1,
+   "9.92": 1,
+   "11.2": 1
+  },
+  "famillesDistinctes": 3,
+  "familles": {
+   "\"Noto Sans Arabic\"": 52,
+   "system-ui": 23,
+   "ui-monospace": 1
+  },
+  "plusPetitTexte": 9.6,
+  "couleursTexteDistinctes": 11,
+  "couleursFondDistinctes": 5,
+  "cliquablesVisibles": 58,
+  "sous44": 55,
+  "sous32": 23,
+  "exemples32": [
+   "button «Réduire le menu» 27×27",
+   "button «Accueil — ERP» 30×30",
+   "button#radix-_r_6_ «CALEPINAGE» 120×27",
+   "a «Calepinage» 62×13",
+   "button «Clair» 62×24",
+   "button «Système» 81×24",
+   "button «Sombre» 78×24",
+   "input#cal-allees-largeur-calepinage «» 320×30"
+  ],
+  "controlesVisibles": 48,
+  "hauteurPage": 900,
+  "hauteurVue": 900,
+  "topPaires": [
+   {
+    "paire": "rgb(138, 147, 168) sur rgb(7, 11, 29)",
+    "n": 23,
+    "contraste": 6.35
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(7, 11, 29)",
+    "n": 11,
+    "contraste": 9.55
+   },
+   {
+    "paire": "oklch(0.775 0.0353 270.93) sur rgb(255, 255, 255)",
+    "n": 8,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(173, 181, 205) sur rgb(255, 255, 255)",
+    "n": 7,
+    "contraste": 2.05
+   },
+   {
+    "paire": "rgb(243, 204, 102) sur rgb(7, 11, 29)",
+    "n": 5,
+    "contraste": 12.69
+   },
+   {
+    "paire": "oklch(0.902 0.0958 91.3) sur rgb(7, 11, 29)",
+    "n": 4,
+    "contraste": null
+   },
+   {
+    "paire": "oklch(0.676 0.0456 272.02) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": null
+   },
+   {
+    "paire": "rgb(231, 236, 246) sur rgb(255, 255, 255)",
+    "n": 3,
+    "contraste": 1.18
+   },
+   {
+    "paire": "rgb(255, 255, 255) sur rgb(7, 11, 29)",
+    "n": 3,
+    "contraste": 19.54
+   },
+   {
+    "paire": "oklch(0.892 0.0199 270.19) sur rgb(255, 255, 255)",
+    "n": 2,
+    "contraste": null
+   }
+  ],
+  "contrasteSousAA": 2,
+  "ecran": "pertes-apres-simulation-sombre"
+ }
+]
