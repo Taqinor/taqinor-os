@@ -108,6 +108,7 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
   })
 
   // ── (d) production lue ──
+  await geste(() => page.getByTestId('cal-etape-resultats').click())
   await geste(() => page.getByTestId('cal-onglet-production').click())
   await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
 
