@@ -652,6 +652,30 @@ CORPS_LEAD_OU_CLIENT = corps_resserre({'anyOf': [
     {'required': ['lead'], 'properties': {'lead': {'type': 'integer'}}},
     {'required': ['client'], 'properties': {'client': {'type': 'integer'}}},
 ]})
+
+
+def _champs_option_assistant():
+    return {'variante': s.CharField(allow_blank=True),  # '' | sans | avec
+            'libelle': s.CharField(), 'kwc': s.FloatField(allow_null=True),
+            'nb_panneaux': s.IntegerField(), 'total_ttc': s.CharField()}
+
+
+#: 20/11/2026 — UNE classe par composant publié (drf-spectacular les identifie
+#: par classe) ; une instance NEUVE par usage (un champ enfant ne se lie
+#: qu'une fois).
+_OptionAssistant = type(_ser('DevisOptionAssistant', _champs_option_assistant()))
+_OptionAssistantAvant = type(_ser('DevisOptionAssistantAvant', {
+    **_champs_option_assistant(),
+    'ancien_total_ttc': s.CharField(allow_null=True)}))
+
+
+def options_devis_assistant(avec_ancien=False):
+    """Le bloc ``options`` (``selectors_assistant.options_du_devis``) ;
+    ``avec_ancien`` : chaque option porte aussi son total d'avant le geste."""
+    classe = _OptionAssistantAvant if avec_ancien else _OptionAssistant
+    return s.ListField(child=classe())
+
+
 AutoDevisResponse = _ser('DevisAutoResponse', {
     'id': s.IntegerField(),
     'reference': s.CharField(),
@@ -681,6 +705,7 @@ AutoDevisResponse = _ser('DevisAutoResponse', {
         'total_ttc': s.CharField(),
         'variante': s.CharField(allow_blank=True),
     })),
+    'options': options_devis_assistant(),
 })
 #: COP2-V3 — le 409 « choix » : zéro ou plusieurs produits pour un élément
 #: imposé ; ``choix`` les nomme (jamais un choix silencieux du serveur).
@@ -737,6 +762,8 @@ LignesAssistantResponse = _ser('DevisLignesAssistantResponse', {
         'total_ttc': s.CharField(),
         'variante': s.CharField(allow_blank=True),
     })),
+    # D-COP-5 — total de chaque option (même calcul que devis/auto).
+    'options': options_devis_assistant(),
 })
 
 FromLayoutRequest = _ser('DevisFromLayoutRequest', {

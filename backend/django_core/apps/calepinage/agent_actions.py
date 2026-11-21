@@ -230,7 +230,7 @@ PUBLIER_DEVIS = AgentAction(
         "nouveau_total_ttc=\"86900.00\" (sans ancien_total_ttc quand l'aperçu "
         "le dit null). Résultat : le devis généré ou resynchronisé ; 409 "
         "apercu_perime si les totaux ont bougé : relis l'aperçu et refais "
-        "confirmer."),
+        "la publication."),
     endpoint=BASE + '{id}/publier-devis/',
     method='POST',
     inputs=_schema({

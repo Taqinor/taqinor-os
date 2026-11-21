@@ -436,7 +436,10 @@ def _charger_docs_assistant() -> dict[str, Any]:
     if rep_docs in _DOCS_CACHE:
         return _DOCS_CACHE[rep_docs]
     lus = {}
-    for nom in ("capacites.yml", "manuel.md"):
+    # L4 (21/11/2026) — `carte_erp.md` : ce qui EXISTE (menus, écrans, actions,
+    # droits par rôle), GÉNÉRÉE depuis le code par `scripts/assistant_carte_erp.py`
+    # et vérifiée en CI ; le manuel garde les procédures.
+    for nom in ("capacites.yml", "carte_erp.md", "manuel.md"):
         try:
             with open(os.path.join(rep_docs, nom), encoding="utf-8") as f:
                 lus[nom] = f.read()
@@ -445,8 +448,10 @@ def _charger_docs_assistant() -> dict[str, Any]:
     docs = {"texte": "", "manifeste": {}, "present": bool(lus["manuel.md"])}
     if docs["present"]:
         texte = ("\nMANIFESTE DE CAPACITES (capacites.yml) :\n"
-                 + lus["capacites.yml"] + "\n\nMANUEL TAQINOR :\n"
-                 + lus["manuel.md"])
+                 + lus["capacites.yml"]
+                 + ("\n\nCARTE DE L'ERP (generee depuis le code) :\n" + lus["carte_erp.md"]
+                    if lus["carte_erp.md"] else "")
+                 + "\n\nMANUEL TAQINOR :\n" + lus["manuel.md"])
         if _estimer_tokens(texte) > ASSISTANT_DOCS_MAX_TOKENS:
             logger.error("Manuel de l'assistant refuse : ~%d tokens > %d.",
                          _estimer_tokens(texte), ASSISTANT_DOCS_MAX_TOKENS)
@@ -1141,7 +1146,13 @@ def _verifier_module_et_portee(sql: str, permissions) -> None:
     if (any(c.startswith("records_scope_") for c in codes)
             and noms & _TABLES_A_PROPRIETAIRE):
         raise RefusDeDroit(
-            "Portee restreinte : lecture refusee (utilisez l'ecran).")
+            "Portee restreinte : lecture refusee (utilisez l'ecran). "
+            # L4 (21/11/2026) — un rôle « ses propres dossiers » lit ces données
+            # par les outils, qui appliquent sa portée : jamais un « accès refusé » sec.
+            "Ces donnees se lisent par les outils, qui appliquent sa portee : "
+            "ventes.devis.chercher (devis), crm.lead.chercher (leads), "
+            "ventes.facture.chercher / ventes.impayes.lister (factures), "
+            "sav.tickets.chercher (tickets).")
 
 
 def _validate_and_secure(sql: str, company_id: int,

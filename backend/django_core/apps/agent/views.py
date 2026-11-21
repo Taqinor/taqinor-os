@@ -202,8 +202,11 @@ def _origine_du_journal(brut, action) -> str:
     origine = AgentActionLog.Origine.CONFIRMEE if brut in (None, '') else brut
     if origine not in AgentActionLog.Origine.values:
         raise ParseError('origine : confirmee ou interne.')
+    # D-COP-5 — une action ``directe`` (exécutée sans carte) se journalise
+    # aussi en ``interne``, à son niveau de risque déclaré.
     if (action is not None and origine == AgentActionLog.Origine.INTERNE
-            and action.risk != AgentActionLog.RiskLevel.INTERNAL):
+            and action.risk != AgentActionLog.RiskLevel.INTERNAL
+            and not action.as_dict().get('directe')):
         raise PermissionDenied("Action non autorisée pour ce compte.")
     return origine
 

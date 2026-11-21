@@ -46,6 +46,7 @@ from apps.ventes.agent_actions import (
     ENVOYER_EMAIL_DEVIS,
     EXPLIQUER_DEVIS,
     LIGNES_DEVIS,
+    CHERCHER_DEVIS,
     VENTES_ACTIONS,
     VENTES_ACTIONS_COPILOTE,
     register_ventes_actions,
@@ -166,6 +167,9 @@ class VentesAgentCatalogueTest(TestCase):
             'ventes.devis.taille': {'id': 'devis'},
             'ventes.facture.whatsapp_relance': {'id': 'facture'},
             'ventes.vente.facturer': {'id': 'devis'},
+            'ventes.devis.ligne_remplacer': {'id': 'devis'},
+            # L4 (21/11/2026) — recherche de devis : ne désigne aucun objet.
+            'ventes.devis.chercher': {},
         }
         for action in VENTES_ACTIONS_COPILOTE:
             self.assertIn(action.key, cles)
@@ -321,7 +325,11 @@ class VentesAgentCatalogueTest(TestCase):
         devis n'a pas de type."""
         attendu = {
             'ventes.devis.creer_auto': {'lead': 'lead', 'client': 'client'},
-            'ventes.devis.ligne_ajouter': {'devis': 'devis'},
+            # 20/11/2026 — les trois actions de ligne visent le DEVIS par
+            # ``id`` (route ``devis/{id}/assistant-lignes/...``).
+            'ventes.devis.ligne_ajouter': {'id': 'devis'},
+            'ventes.devis.ligne_modifier': {'id': 'devis'},
+            'ventes.devis.ligne_supprimer': {'id': 'devis'},
             'ventes.devis.remise': {'id': 'devis'},
             'ventes.devis.generer_pdf': {'id': 'devis'},
             'ventes.devis.accepter': {'id': 'devis'},
@@ -362,11 +370,18 @@ class VentesAgentCatalogueTest(TestCase):
         pdf = ventes[GENERER_PDF_DEVIS.key].description
         self.assertIn('/proposal', pdf)
         self.assertIn('règle #4', pdf)
-        for action in (ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE,
-                       GENERER_FACTURE, ENREGISTRER_PAIEMENT):
+        # D-COP-5 — facture et paiement gardent la carte ; accepter et convertir
+        # sont directs (carte seulement après une lecture de données, B3) et ne
+        # se font que sur une demande claire.
+        for action in (GENERER_FACTURE, ENREGISTRER_PAIEMENT):
             self.assertIn(
                 'change un statut : proposition puis confirmation obligatoire',
                 ventes[action.key].description, action.key)
+        for action in (ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE):
+            self.assertIn('change un statut : seulement sur', ventes[action.key].description,
+                          action.key)
+        for action in (ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE,
+                       GENERER_FACTURE, ENREGISTRER_PAIEMENT):
             self.assertTrue(ventes[action.key].confirm_summary, action.key)
 
     def test_register_is_idempotent(self):
@@ -560,7 +575,9 @@ class LignesAssistantTest(TestCase):
         resp = auth(self.user).get(url)
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(set(resp.data), {'devis_id', 'reference', 'statut',
-                                          'total_ttc', 'lignes'})
+                                          'total_ttc', 'lignes', 'options'})
+        # D-COP-5 — le total option par option, lisible en une lecture.
+        self.assertEqual([o['total_ttc'] for o in resp.data['options']], ['24000.00'])
         ligne = resp.data['lignes'][0]
         self.assertEqual(set(ligne), {
             'ligne_id', 'produit_id', 'designation', 'quantite',
@@ -1316,6 +1333,31 @@ class TailleComposeeSurDemandeTest(_BaseVenteAssistant):
         self.assertEqual((refus.data['code'], refus.data['field']),
                          ('batterie_non_imposee', 'batterie_nb_modules'))
 
+    def test_auto_et_taille_disent_chaque_option(self):
+        """20/11/2026 (DEV-202611-0090 : « je ne peux pas dire à quelle
+        option il correspond ») — la réponse de ``devis/auto/`` (composer /
+        creer_auto) et celles de la taille portent ``options`` : une entrée
+        par option, total de ``option_totaux`` (la chaîne du PDF)."""
+        from apps.ventes.utils.options import option_totaux
+        resp = auth(self.user).post('/api/django/ventes/devis/auto/', {
+            'lead': self.lead.id, **self.DEMANDE}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        devis = Devis.objects.get(pk=resp.data['id'])
+        self.assertEqual(len(resp.data['options']), 1, resp.data['options'])
+        option = resp.data['options'][0]
+        self.assertEqual((option['variante'], option['nb_panneaux']), ('', 9))
+        self.assertEqual(option['total_ttc'],
+                         str(option_totaux(devis)['ttc'].quantize(Decimal('0.01'))))
+        apercu = self._apercu(devis)
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertEqual(apercu.data['options'][0]['total_ttc'],
+                         apercu.data['nouveau_total_ttc'])
+        self.assertEqual(apercu.data['options'][0]['nb_panneaux'], 12)
+        ecrit = self._ecrire(devis, apercu)
+        self.assertEqual(ecrit.status_code, 200, ecrit.data)
+        self.assertEqual(ecrit.data['options'], apercu.data['options'])
+        self.assertNotIn('123.45', str(resp.data) + str(ecrit.data))
+
 
 class RelanceWhatsappAssistantTest(_BaseVenteAssistant):
     """VAD8 — le WhatsApp de relance : modèle « relance » validé forcé, lien
@@ -1522,3 +1564,365 @@ class PermissionsVenteAssistantTest(_BaseVenteAssistant):
         self.assertEqual(ecriture.status_code, 403, ecriture.data)
         lecture = auth(lecteur).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
         self.assertEqual(lecture.status_code, 200, lecture.data)
+
+
+class LignesAssistantEcritureTest(_BaseVenteAssistant):
+    """20/11/2026 (incident prod : ``ventes.devis.ligne_ajouter`` répondait
+    400 à chaque appel — quantité en nombre JSON refusée, désignation exigée)
+    — ``POST devis/<pk>/assistant-lignes/<operation>/`` : produit du
+    CATALOGUE (désignation, prix de vente), quantité en nombre JSON, options
+    « sans » / « avec » batterie d'un devis à deux options ; contrat
+    ``assistant_devis_lignes_modifier.json``. Moteur réel, rien de simulé."""
+
+    PRIX = {'Panneau Canadien Solar 710W': '1000',
+            'Onduleur réseau Huawei 5kW Monophasé': '10000',
+            'Onduleur hybride Deye 5kW Monophasé': '15000',
+            'Batterie Dyness 5 kWh': '12000',
+            'Pergola aluminium': '2000',
+            'Structure acier galvanisé': '1500'}
+
+    def setUp(self):
+        from apps.ventes.models import LigneDevis
+        from apps.ventes.utils.options import deux_options_declarees
+        super().setUp()
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.BROUILLON)
+        self.devis.refresh_from_db()
+        self.p = {nom: Produit.objects.create(
+            company=self.company, nom=nom, sku='VADL-%d' % rang,
+            prix_vente=Decimal(prix), prix_achat=Decimal('777.77'))
+            for rang, (nom, prix) in enumerate(self.PRIX.items())}
+        lignes = (('Panneau Canadien Solar 710W', 6, ''),
+                  ('Onduleur réseau Huawei 5kW Monophasé', 1, 'sans'),
+                  ('Onduleur hybride Deye 5kW Monophasé', 1, 'avec'),
+                  ('Batterie Dyness 5 kWh', 1, 'avec'),
+                  ('Pergola aluminium', 1, 'sans'),
+                  ('Pergola aluminium', 1, 'avec'))
+        self.lignes = [LigneDevis.objects.create(
+            devis=self.devis, produit=self.p[nom], designation=nom,
+            quantite=Decimal(qte), prix_unitaire=self.p[nom].prix_vente,
+            variante=variante, ordre=rang)
+            for rang, (nom, qte, variante) in enumerate(lignes)]
+        self.pergola_sans, self.pergola_avec = self.lignes[4], self.lignes[5]
+        self.acier = self.p['Structure acier galvanisé']
+        self.assertTrue(deux_options_declarees(self.devis))
+
+    def _post(self, operation, corps, user=None):
+        return auth(user or self.user).post(
+            f'/api/django/ventes/devis/{self.devis.pk}/assistant-lignes/'
+            f'{operation}/', corps, format='json')
+
+    @staticmethod
+    def _par_option(resp, cle='total_ttc'):
+        return {o['variante']: Decimal(o[cle]) for o in resp.data['options']}
+
+    def test_accessoire_huawei_seulement_dans_l_option_huawei(self):
+        """Essai réel du 21/11 — 2 Smart Meter « au devis » : l'option avec
+        batterie (onduleur Deye) ne les compte ni ne les imprime (QF9) ; ils ne
+        vont que dans l'option Huawei et l'alerte le dit ; demandés pour
+        l'option Deye seule : 409 qui le dit, rien d'écrit."""
+        meter = Produit.objects.create(
+            company=self.company, nom='Smart Meter', sku='VADL-SM',
+            prix_vente=Decimal('1500'), prix_achat=Decimal('777.77'))
+        resp = self._post('ajouter', {'produit': meter.pk, 'quantite': 2})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(list(self.devis.lignes.filter(produit=meter)
+                              .values_list('variante', flat=True)), ['sans'])
+        self.assertEqual([a['code'] for a in resp.data['alertes']
+                          if a['code'] == 'accessoire_huawei'], ['accessoire_huawei'])
+        apres, avant = self._par_option(resp), self._par_option(resp, 'ancien_total_ttc')
+        self.assertEqual(apres['sans'] - avant['sans'], Decimal('3600'))
+        refus = self._post('ajouter', {'produit': meter.pk, 'quantite': 1, 'variante': 'avec'})
+        self.assertEqual((refus.status_code, refus.data.get('code')), (409, 'accessoire_huawei'))
+        self.assertEqual(self.devis.lignes.filter(produit=meter).count(), 1)
+
+    def test_ajouter_entier_aux_deux_options_depuis_le_catalogue(self):
+        resp = self._post('ajouter', {'produit': self.acier.pk, 'quantite': 10})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), set(_exemple_contrat(
+            'assistant_devis_lignes_modifier.json')))
+        ajoutees = self.devis.lignes.filter(produit=self.acier)
+        self.assertEqual(sorted(ajoutees.values_list('variante', flat=True)),
+                         ['avec', 'sans'])
+        for ligne in ajoutees:
+            self.assertEqual((ligne.designation, ligne.quantite,
+                              ligne.prix_unitaire),
+                             (self.acier.nom, Decimal('10'), Decimal('1500')))
+        # 10 × 1 500 HT × 1,2 = 18 000 TTC de plus dans CHAQUE option.
+        apres = self._par_option(resp)
+        avant = self._par_option(resp, 'ancien_total_ttc')
+        self.assertEqual(set(apres), {'sans', 'avec'})
+        for variante in ('sans', 'avec'):
+            self.assertEqual(apres[variante] - avant[variante], Decimal('18000'))
+        self.assertEqual(Decimal(resp.data['nouveau_total_ttc'])
+                         - Decimal(resp.data['ancien_total_ttc']), Decimal('18000'))
+        self.assertEqual({li['etat'] for li in resp.data['lignes_touchees']},
+                         {'ajoutee'})
+        texte = str(resp.data)
+        self.assertNotIn('777.77', texte)
+        self.assertNotIn('prix_achat', texte)
+
+    def test_ajouter_a_une_option_quantite_en_texte(self):
+        resp = self._post('ajouter', {'produit': self.acier.pk,
+                                      'quantite': '2', 'variante': 'avec'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(list(self.devis.lignes.filter(produit=self.acier)
+                              .values_list('variante', flat=True)), ['avec'])
+        avant = self._par_option(resp, 'ancien_total_ttc')
+        apres = self._par_option(resp)
+        self.assertEqual(apres['sans'], avant['sans'])
+        self.assertEqual(apres['avec'] - avant['avec'], Decimal('3600'))
+
+    def test_modifier_quantite_deux_options_puis_une(self):
+        resp = self._post('modifier', {'ligne': self.pergola_sans.pk,
+                                       'quantite': 3})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for ligne in (self.pergola_sans, self.pergola_avec):
+            ligne.refresh_from_db()
+            self.assertEqual(ligne.quantite, Decimal('3'))
+        resp = self._post('modifier', {'ligne': self.pergola_avec.pk,
+                                       'quantite': 5, 'variante': 'sans'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.pergola_sans.refresh_from_db()
+        self.pergola_avec.refresh_from_db()
+        self.assertEqual((self.pergola_sans.quantite, self.pergola_avec.quantite),
+                         (Decimal('5'), Decimal('3')))
+
+    def test_supprimer_des_deux_options_et_ligne_commune_separee(self):
+        resp = self._post('supprimer', {'ligne': self.pergola_sans.pk})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(self.devis.lignes.filter(
+            produit=self.p['Pergola aluminium']).exists())
+        self.assertEqual([li['etat'] for li in resp.data['lignes_touchees']],
+                         ['retiree', 'retiree'])
+        panneau = self.lignes[0]
+        resp = self._post('supprimer', {'ligne': panneau.pk, 'variante': 'sans'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        # La ligne commune reste celle de l'option « avec » seulement.
+        restantes = self.devis.lignes.filter(produit=panneau.produit)
+        self.assertEqual(list(restantes.values_list('variante', 'quantite')),
+                         [('avec', Decimal('6'))])
+
+    def test_remplacer_la_pergola_par_la_structure_acier(self):
+        resp = self._post('remplacer', {'ligne': self.pergola_sans.pk,
+                                        'produit': self.acier.pk})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(self.devis.lignes.filter(
+            produit=self.p['Pergola aluminium']).exists())
+        acier = self.devis.lignes.filter(produit=self.acier).order_by('variante')
+        self.assertEqual(list(acier.values_list('variante', 'quantite', 'ordre',
+                                                'designation')),
+                         [('avec', Decimal('1'), 5, self.acier.nom),
+                          ('sans', Decimal('1'), 4, self.acier.nom)])
+        # 2 000 → 1 500 HT : 600 TTC de moins dans chaque option.
+        avant = self._par_option(resp, 'ancien_total_ttc')
+        apres = self._par_option(resp)
+        for variante in ('sans', 'avec'):
+            self.assertEqual(avant[variante] - apres[variante], Decimal('600'))
+
+    def test_envoye_corrige_en_place_statut_garde(self):
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ENVOYE)
+        resp = self._post('ajouter', {'produit': self.acier.pk, 'quantite': 1})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['corrige_apres_envoi'])
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)  # règle #4
+
+    def test_accepte_409_qui_dit_de_reviser_sans_rien_ecrire(self):
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        avant = list(self.devis.lignes.order_by('pk').values())
+        for operation, corps in (
+                ('ajouter', {'produit': self.acier.pk, 'quantite': 1}),
+                ('remplacer', {'ligne': self.pergola_sans.pk,
+                               'produit': self.acier.pk})):
+            resp = self._post(operation, corps)
+            self.assertEqual(resp.status_code, 409, resp.data)
+            self.assertEqual((resp.data['code'], resp.data['field']),
+                             ('revision_possible', 'statut'))
+            self.assertIn('réviser', resp.data['detail'])
+        self.assertEqual(list(self.devis.lignes.order_by('pk').values()), avant)
+
+    def test_autre_societe_404_et_quantite_invalide_400(self):
+        resp = self._post('ajouter', {'produit': self.acier.pk, 'quantite': 1},
+                          user=self._hors_societe())
+        self.assertEqual(resp.status_code, 404)
+        # api-fuzz #1516 : 10 001 et 10^8 refusés (débordement de la marge figée).
+        for quantite in (0, -1, True, 'abc', 10001, 99999999):
+            with self.subTest(quantite=quantite):
+                resp = self._post('ajouter', {'produit': self.acier.pk,
+                                              'quantite': quantite})
+                self.assertEqual(resp.status_code, 400, resp.data)
+        inconnu = self._post('ajouter', {'produit': 2 ** 31 - 2, 'quantite': 1})
+        self.assertEqual((inconnu.status_code, inconnu.data['code']),
+                         (404, 'produit_inconnu'))
+        self.assertFalse(self.devis.lignes.filter(produit=self.acier).exists())
+
+    def test_actions_de_ligne_pointent_vers_les_routes_de_l_assistant(self):
+        from django.urls import resolve
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import LIGNE_REMPLACER
+        for action, operation in ((LIGNE_AJOUTER, 'ajouter'),
+                                  (LIGNE_MODIFIER, 'modifier'),
+                                  (LIGNE_SUPPRIMER, 'supprimer'),
+                                  (LIGNE_REMPLACER, 'remplacer')):
+            with self.subTest(action=action.key):
+                chemin = action.endpoint.format(id=self.devis.pk)
+                self.assertEqual(resolve(chemin).func.actions.get('post'),
+                                 f'assistant_lignes_{operation}')
+                self.assertEqual((action.method, action.risk,
+                                  action.required_permission),
+                                 ('POST', RISK_OUTWARD, 'ventes_modifier'))
+                self.assertNotIn('confirmation obligatoire', action.description)
+                self.assertNotIn('designation', action.inputs['properties'])
+                self.assertNotIn('prix_unitaire', action.inputs['properties'])
+        self.assertEqual(LIGNE_AJOUTER.inputs['properties']['quantite']['type'],
+                         'number')
+        self.assertEqual(LIGNE_REMPLACER.lot, LOT_COPILOTE)
+
+
+class DevisChercherAssistantTest(TestCase):
+    """21/11/2026 — ``GET devis/assistant-liste/`` (action
+    ``ventes.devis.chercher``) : la portée EXACTE de l'écran des devis (un
+    Commercial « mes enregistrements » ne voit que les siens), filtres statut /
+    période / texte, jamais un prix d'achat ni une marge, plafond de 50."""
+
+    URL = CHERCHER_DEVIS.endpoint
+
+    def setUp(self):
+        import datetime
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        from apps.ventes.models import LigneDevis
+        self.company = Company.objects.create(nom='CHD Co', slug='chd-co')
+        self.autre = Company.objects.create(nom='CHD Autre', slug='chd-autre')
+        role_soi = Role.objects.create(
+            company=self.company, nom='Commercial soi',
+            permissions=COMMERCIAL_PERMISSIONS + ['records_scope_soi'],
+            est_systeme=False)
+        self.moi = User.objects.create_user(
+            username='chd_moi', password='x', role=role_soi,
+            role_legacy='commercial', company=self.company)
+        self.collegue = User.objects.create_user(
+            username='chd_collegue', password='x', role_legacy='responsable',
+            company=self.company)
+        self.client_a = Client.objects.create(
+            company=self.company, nom='Benali', prenom='Karim',
+            email='chd-a@example.com', telephone='+212600000081',
+            adresse='Rabat')
+        self.client_b = Client.objects.create(
+            company=self.company, nom='Lahlou', prenom='Sara',
+            email='chd-b@example.com', telephone='+212600000082',
+            adresse='Fès')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Batterie CHD', sku='CHD-BAT',
+            prix_vente=Decimal('1000'), prix_achat=Decimal('654.32'))
+        self.aujourdhui = timezone.now().date()
+
+        def creer(ref, client, auteur, statut):
+            d = Devis.objects.create(
+                company=self.company, reference=ref, client=client,
+                statut=statut, taux_tva=Decimal('20.00'), created_by=auteur)
+            LigneDevis.objects.create(
+                devis=d, produit=self.produit, designation='Batterie CHD',
+                quantite=Decimal('1'), prix_unitaire=Decimal('1000'), ordre=0)
+            return d
+        self.brouillon = creer('CHD-001', self.client_a, self.moi,
+                               Devis.Statut.BROUILLON)
+        self.accepte = creer('CHD-002', self.client_b, self.moi,
+                             Devis.Statut.ACCEPTE)
+        self.du_collegue = creer('CHD-003', self.client_a, self.collegue,
+                                 Devis.Statut.BROUILLON)
+        # Un devis accepté il y a 60 jours : créé et accepté hors du mois.
+        self.ancien = creer('CHD-004', self.client_b, self.moi,
+                            Devis.Statut.ACCEPTE)
+        ancien = timezone.now() - datetime.timedelta(days=60)
+        Devis.objects.filter(pk=self.ancien.pk).update(
+            date_creation=ancien, date_acceptation=ancien.date())
+        Devis.objects.filter(pk=self.accepte.pk).update(
+            date_acceptation=self.aujourdhui)
+        autre_client = Client.objects.create(
+            company=self.autre, nom='Benali', email='chd-x@example.com',
+            telephone='+212600000083', adresse='Agadir')
+        Devis.objects.create(
+            company=self.autre, reference='CHD-AUTRE', client=autre_client,
+            statut=Devis.Statut.BROUILLON, taux_tva=Decimal('20.00'))
+
+    def _refs(self, user, **params):
+        resp = auth(user).get(self.URL, params)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return {ligne['reference'] for ligne in resp.data['lignes']}, resp
+
+    def test_commercial_portee_soi_ne_voit_que_les_siens(self):
+        refs, resp = self._refs(self.moi)
+        self.assertEqual(refs, {'CHD-001', 'CHD-002', 'CHD-004'})
+        self.assertEqual(resp.data['total'], 3)
+        self.assertEqual(set(resp.data), {'total', 'limite', 'lignes'})
+        # Le responsable (portée « tout ») voit aussi ceux du collègue.
+        refs, _ = self._refs(self.collegue)
+        self.assertIn('CHD-001', refs)
+        self.assertIn('CHD-003', refs)
+
+    def test_filtre_statut_brouillon_et_forme_de_la_ligne(self):
+        refs, resp = self._refs(self.moi, statut='brouillon')
+        self.assertEqual(refs, {'CHD-001'})
+        ligne = resp.data['lignes'][0]
+        self.assertEqual(set(ligne), {
+            'devis_id', 'reference', 'statut', 'client', 'lead_id',
+            'total_ttc', 'cree_le', 'envoye_le', 'accepte_le', 'lien'})
+        self.assertEqual((ligne['client'], ligne['total_ttc'],
+                          ligne['statut']),
+                         ('Benali Karim', '1200.00', 'brouillon'))
+
+    def test_acceptes_ce_mois_ci_suit_la_date_d_acceptation(self):
+        debut = self.aujourdhui.replace(day=1).isoformat()
+        refs, resp = self._refs(self.moi, statut='accepte', depuis=debut)
+        self.assertEqual(refs, {'CHD-002'})
+        self.assertEqual(resp.data['total'], 1)
+        self.assertEqual(resp.data['lignes'][0]['accepte_le'],
+                         self.aujourdhui.isoformat())
+        refs, _ = self._refs(self.moi, statut='accepte', jusqu_a=debut)
+        self.assertEqual(refs, {'CHD-004'})
+
+    def test_recherche_texte_client_et_reference(self):
+        refs, _ = self._refs(self.moi, q='lahlou')
+        self.assertEqual(refs, {'CHD-002', 'CHD-004'})
+        refs, _ = self._refs(self.moi, q='CHD-001')
+        self.assertEqual(refs, {'CHD-001'})
+        # « Benali » : les siens seulement, jamais celui du collègue ni de
+        # l'autre société.
+        refs, _ = self._refs(self.moi, q='Benali')
+        self.assertEqual(refs, {'CHD-001'})
+
+    def test_autre_societe_jamais_listee(self):
+        for user in (self.moi, self.collegue):
+            refs, _ = self._refs(user)
+            self.assertNotIn('CHD-AUTRE', refs)
+
+    def test_aucun_prix_d_achat_ni_marge(self):
+        _, resp = self._refs(self.collegue)
+        texte = str(resp.data).lower()
+        for interdit in ('654.32', 'prix_achat', 'marge', 'telephone',
+                         '+212600000081'):
+            self.assertNotIn(interdit, texte)
+
+    def test_limite_plafonnee_a_50_et_parametres_invalides_400(self):
+        resp = auth(self.moi).get(self.URL, {'limite': 51})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('limite', resp.data)
+        resp = auth(self.moi).get(self.URL, {'limite': 1})
+        self.assertEqual((resp.status_code, resp.data['limite'],
+                          len(resp.data['lignes']), resp.data['total']),
+                         (200, 1, 1, 3))
+        for params in ({'statut': 'inconnu'}, {'depuis': '21/11/2026'},
+                       {'lead': 1}):
+            with self.subTest(params=params):
+                self.assertEqual(
+                    auth(self.moi).get(self.URL, params).status_code, 400)
+
+    def test_action_declaree_comme_la_route(self):
+        from apps.agent.registry import LOT_COPILOTE
+        self.assertEqual((CHERCHER_DEVIS.lot, CHERCHER_DEVIS.risk,
+                          CHERCHER_DEVIS.required_permission,
+                          CHERCHER_DEVIS.method),
+                         (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'GET'))
+        self.assertLessEqual(len(CHERCHER_DEVIS.description), 600)
+        self.assertIn(CHERCHER_DEVIS, VENTES_ACTIONS_COPILOTE)

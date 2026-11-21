@@ -47,6 +47,51 @@
       ]
     },
     {
+      "nom": "assistant_lignes_ajouter",
+      "url_path": "assistant-lignes/ajouter",
+      "url_name": "assistant-lignes-ajouter",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "assistant_lignes_modifier",
+      "url_path": "assistant-lignes/modifier",
+      "url_name": "assistant-lignes-modifier",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "assistant_lignes_remplacer",
+      "url_path": "assistant-lignes/remplacer",
+      "url_name": "assistant-lignes-remplacer",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "assistant_lignes_supprimer",
+      "url_path": "assistant-lignes/supprimer",
+      "url_name": "assistant-lignes-supprimer",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "assistant_liste",
+      "url_path": "assistant-liste",
+      "url_name": "assistant-liste",
+      "detail": false,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "assistant_taille",
       "url_path": "assistant-taille",
       "url_name": "assistant-taille",
@@ -660,6 +705,11 @@
     "allowed_methods",
     "approuver_remise",
     "as_view",
+    "assistant_lignes_ajouter",
+    "assistant_lignes_modifier",
+    "assistant_lignes_remplacer",
+    "assistant_lignes_supprimer",
+    "assistant_liste",
     "assistant_taille",
     "assistant_taille_apercu",
     "atomic",

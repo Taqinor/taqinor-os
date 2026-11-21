@@ -437,6 +437,14 @@ GARDES = {
         ('Check CODEMAP structural fingerprint',
          'python scripts/codemap_fingerprint.py --check',
          '.'),
+        # L4 assistant (21/11/2026) — la carte de l'ERP servie a l'assistant suit
+        # le code : un ecran, une action ou un droit ajoute sans la regenerer = rouge.
+        ('Check carte de l ERP de l assistant a jour (menus, ecrans, actions, droits)',
+         'python scripts/assistant_carte_erp.py --check',
+         '.'),
+        ('Tests de la carte de l ERP de l assistant (couverture, fraicheur)',
+         'python -m unittest scripts.tests.test_assistant_carte_erp -v',
+         '.'),
         ('Tests empreinte CODEMAP : montee de version seule (ADCG65)',
          'python -m unittest scripts.tests.test_codemap_fingerprint -v',
          '.'),

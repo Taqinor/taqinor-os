@@ -646,6 +646,13 @@ _CORPS_LEAD_CREER = sd.inline_serializer(
             Lead.BatterieSouhaitee.values, required=False),
         taille_souhaitee_kwc=serializers.DecimalField(
             max_digits=10, decimal_places=2, min_value=0, required=False),
+        # D-COP-5 (21/11/2026) — la facture dite par la commerciale va sur la
+        # fiche dès la création (le 20/11 elle partait dans la note, et le
+        # devis automatique la réclamait au tour suivant).
+        facture_hiver=serializers.DecimalField(
+            max_digits=10, decimal_places=2, min_value=0, required=False),
+        facture_ete=serializers.DecimalField(
+            max_digits=10, decimal_places=2, min_value=0, required=False),
         note=serializers.CharField(
             max_length=2000, required=False, allow_blank=True),
         creer_quand_meme=serializers.BooleanField(required=False, default=False),
@@ -705,6 +712,12 @@ def lead_creer(request):
     from .leads_creation import DoublonLead, creer_lead_pour_assistant
 
     donnees = corps_valide(request, _CORPS_LEAD_CREER)
+    # Revue adverse du 21/11 (N4) — une facture d'été DIFFÉRENTE n'est lue par
+    # le dimensionnement que si `ete_differente` est posé : sinon le devis
+    # automatique du même tour l'ignorait en silence.
+    if (donnees.get('facture_ete') is not None and donnees.get('facture_hiver') is not None
+            and donnees['facture_ete'] != donnees['facture_hiver']):
+        donnees['ete_differente'] = True
     try:
         lead = creer_lead_pour_assistant(
             request,

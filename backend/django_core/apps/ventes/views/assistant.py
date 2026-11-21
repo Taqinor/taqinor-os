@@ -406,10 +406,118 @@ def _refus_taille(refus):
     return Response(refus.corps, status=status.HTTP_409_CONFLICT)
 
 
+# ── 20/11/2026 — les LIGNES d'un devis changées par l'assistant ─────────────
+
+#: Gardes des quatre routes de lignes : celles des autres écritures du devis
+#: (palier + grille « Modifier », comme ``assistant-taille`` et l'écran).
+GARDES_LIGNES = [IsResponsableOrAdmin, DroitDeLaGrille('ventes_modifier')]
+REPONSES_LIGNES = {200: DA.LignesAssistantResponse, 400: D.ErreurDetail,
+                   404: DA.ErreurLignesAssistant,
+                   409: DA.ErreurLignesAssistant}
+
+
+def _lignes_assistant(vue, request, operation, declare):
+    """Le corps commun des routes ``assistant-lignes/<operation>/`` : portée
+    ``get_object`` (société + rôle : hors portée → 404), corps EXACT de
+    l'opération (400), puis ``domain/lignes_assistant`` (refus nommés en
+    404/409, rien d'écrit). Statut jamais écrit ; aucun PDF (règle #4)."""
+    from ..domain.lignes_assistant import LignesRefusees, appliquer_operation
+    from ..domain.verrou_devis import toucher
+    from ..utils.corps import valider_corps
+    devis = vue.get_object()
+    corps = valider_corps(request, declare)
+    try:
+        rendu = appliquer_operation(devis, operation, corps,
+                                    utilisateur=request.user)
+    except LignesRefusees as refus:
+        return Response(refus.corps, status=refus.statut)
+    toucher(devis)
+    return Response({**rendu, 'lien': SA.lien_devis(devis.pk)})
+
+
+DATE_ISO = r'^\d{4}-\d{2}-\d{2}$'
+PARAMETRES_LISTE_DEVIS = [
+    OpenApiParameter('statut', {'type': 'string',
+                                'enum': ['brouillon', 'envoye', 'accepte',
+                                         'refuse', 'expire']},
+                     OpenApiParameter.QUERY, required=False),
+    OpenApiParameter('depuis', {'type': 'string', 'format': 'date',
+                                'pattern': DATE_ISO},
+                     OpenApiParameter.QUERY, required=False,
+                     description="Date incluse (création ; acceptation pour "
+                                 "statut=accepte)."),
+    OpenApiParameter('jusqu_a', {'type': 'string', 'format': 'date',
+                                 'pattern': DATE_ISO},
+                     OpenApiParameter.QUERY, required=False,
+                     description='Date incluse (mêmes dates que depuis).'),
+    _q_param(),
+    OpenApiParameter('limite', {'type': 'integer', 'minimum': 1,
+                                'maximum': SA.DEVIS_LIMITE_MAX},
+                     OpenApiParameter.QUERY, required=False),
+]
+
+
+def _lire_liste_devis(request):
+    """Paramètres de ``devis/assistant-liste/`` ; 400 nommant chaque fautif."""
+    import datetime
+    import re
+    params, erreurs = request.query_params, {}
+    _non_declares(params, frozenset(p.name for p in PARAMETRES_LISTE_DEVIS)
+                  | {'format'}, erreurs)
+    lus = {'q': _texte_q(params, erreurs), 'statut': '',
+           'depuis': None, 'jusqu_a': None, 'limite': SA.DEVIS_LIMITE_DEFAUT}
+    statut = params.get('statut')
+    if statut is not None:
+        valeurs = ['brouillon', 'envoye', 'accepte', 'refuse', 'expire']
+        if statut not in valeurs:
+            erreurs['statut'] = ['Valeur « %s » invalide : attendu %s.'
+                                 % (statut, ', '.join(valeurs))]
+        else:
+            lus['statut'] = statut
+    for nom in ('depuis', 'jusqu_a'):
+        brut = params.get(nom)
+        if brut is None:
+            continue
+        try:
+            if not re.match(DATE_ISO, brut):
+                raise ValueError
+            lus[nom] = datetime.date.fromisoformat(brut)
+        except ValueError:
+            erreurs[nom] = ['Date attendue au format AAAA-MM-JJ.']
+    brut = params.get('limite')
+    if brut is not None:
+        if not brut.isdigit() or not 1 <= int(brut) <= SA.DEVIS_LIMITE_MAX:
+            erreurs['limite'] = ['Entier attendu entre 1 et %d.'
+                                 % SA.DEVIS_LIMITE_MAX]
+        else:
+            lus['limite'] = int(brut)
+    if erreurs:
+        raise ValidationError(erreurs)
+    return lus
+
+
 class DevisAssistantActionsMixin:
     """Copilote vague 2 (lane VAD) — routes de ``DevisViewSet`` réservées à
     l'assistant (mixin, aucune base). Portée = ``get_object`` (société +
     visibilité du rôle, celle de la liste des devis) : hors portée → 404."""
+
+    # api-only: lue par l'assistant (action `ventes.devis.chercher`), aucun écran ne l'appelle.
+    @extend_schema(request=None, parameters=PARAMETRES_LISTE_DEVIS,
+                   responses={200: DA.DevisListeAssistantResponse,
+                              400: D.ErreurDetail})
+    @action(detail=False, methods=['get'], url_path='assistant-liste',
+            permission_classes=[LectureVentes])
+    def assistant_liste(self, request):
+        """Retrouver des devis (statut, période, texte) dans la portée EXACTE
+        de l'écran des devis : le point de départ est ``get_queryset()``
+        (société + visibilité du rôle + règle du responsable de lead), jamais
+        un queryset brut. Jamais de prix d'achat ni de marge. Contrat :
+        ``contract_samples/assistant_devis_liste.json``."""
+        lus = _lire_liste_devis(request)
+        return Response(SA.devis_cherches(
+            self.get_queryset(), request.user.company_id, statut=lus['statut'],
+            depuis=lus['depuis'], jusqu_a=lus['jusqu_a'], q=lus['q'],
+            limite=lus['limite']))
 
     # api-only: lue par l'assistant (action `ventes.vente.etat`), aucun écran ne l'appelle.
     @extend_schema(request=None,
@@ -480,9 +588,57 @@ class DevisAssistantActionsMixin:
             'ancien_total_ttc': m['ancien_total_ttc'],
             'nouveau_total_ttc': m['nouveau_total_ttc'],
             'alertes': m['alertes'],
+            'options': m['options'],
             'a_faire': 'rien' if inchange else 'proposer',
             'lien': SA.lien_devis(devis.pk),
         })
+
+    # api-only: écrite par l'assistant (action `ventes.devis.ligne_ajouter`), aucun écran.
+    @extend_schema(request=DA.LigneAjouterAssistantRequest,
+                   responses=REPONSES_LIGNES)
+    @action(detail=True, methods=['post'], url_path='assistant-lignes/ajouter',
+            permission_classes=GARDES_LIGNES)
+    def assistant_lignes_ajouter(self, request, pk=None):
+        """Ajoute un produit du catalogue (désignation et prix du catalogue)
+        à une option ou aux deux (contrat
+        ``assistant_devis_lignes_modifier.json``)."""
+        return _lignes_assistant(self, request, 'ajouter',
+                                 DA.LigneAjouterAssistantRequest)
+
+    # api-only: écrite par l'assistant (action `ventes.devis.ligne_modifier`), aucun écran.
+    @extend_schema(request=DA.LigneModifierAssistantRequest,
+                   responses=REPONSES_LIGNES)
+    @action(detail=True, methods=['post'],
+            url_path='assistant-lignes/modifier',
+            permission_classes=GARDES_LIGNES)
+    def assistant_lignes_modifier(self, request, pk=None):
+        """Change la QUANTITÉ d'une ligne (jamais son prix)."""
+        return _lignes_assistant(self, request, 'modifier',
+                                 DA.LigneModifierAssistantRequest)
+
+    # api-only: écrite par l'assistant (action `ventes.devis.ligne_supprimer`), aucun écran.
+    @extend_schema(request=DA.LigneSupprimerAssistantRequest,
+                   responses=REPONSES_LIGNES)
+    @action(detail=True, methods=['post'],
+            url_path='assistant-lignes/supprimer',
+            permission_classes=GARDES_LIGNES)
+    def assistant_lignes_supprimer(self, request, pk=None):
+        """Retire une ligne (d'une option ou des deux)."""
+        return _lignes_assistant(self, request, 'supprimer',
+                                 DA.LigneSupprimerAssistantRequest)
+
+    # api-only: écrite par l'assistant (action `ventes.devis.ligne_remplacer`), aucun écran.
+    @extend_schema(request=DA.LigneRemplacerAssistantRequest,
+                   responses=REPONSES_LIGNES)
+    @action(detail=True, methods=['post'],
+            url_path='assistant-lignes/remplacer',
+            permission_classes=GARDES_LIGNES)
+    def assistant_lignes_remplacer(self, request, pk=None):
+        """Remplace le produit d'une ligne par un autre produit du
+        catalogue, à sa place (« remplace la pergola par la structure
+        acier »)."""
+        return _lignes_assistant(self, request, 'remplacer',
+                                 DA.LigneRemplacerAssistantRequest)
 
     # api-only: écrite par l'assistant (action `ventes.devis.taille`, confirmée), aucun écran.
     @extend_schema(request=DA.TailleAssistantRequest,
@@ -522,5 +678,6 @@ class DevisAssistantActionsMixin:
             'nouveau_total_ttc': m['nouveau_total_ttc'],
             'composition': lignes_ttc(devis),
             'alertes': m['alertes'],
+            'options': m['options'],
             'lien': SA.lien_devis(devis.pk),
         })

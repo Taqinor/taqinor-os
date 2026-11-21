@@ -208,6 +208,86 @@ def factures_cherchees(user, *, q='', client_id=None, statut='', limite=10):
     return {'total': total, 'lignes': [_ligne_facture(f) for f in page]}
 
 
+# ── 21/11/2026 — retrouver des devis (lecture de la portée du rôle) ─────────
+
+#: ``limite`` de ``devis_cherches`` : défaut et plafond.
+DEVIS_LIMITE_DEFAUT = 20
+DEVIS_LIMITE_MAX = 50
+
+
+def _devis_du_texte(qs, company_id, q):
+    """Référence, nom/prénom du client, nom/prénom/téléphone du lead (le
+    téléphone sert à CHERCHER, il n'est jamais rendu)."""
+    from django.db.models import Q
+
+    filtre = (Q(reference__icontains=q) | Q(client__nom__icontains=q)
+              | Q(client__prenom__icontains=q) | Q(lead__nom__icontains=q)
+              | Q(lead__prenom__icontains=q))
+    if sum(c.isdigit() for c in q) >= CHIFFRES_TELEPHONE:
+        filtre |= Q(lead__telephone__icontains=q.strip())
+        par_tel = _clients_par_telephone(company_id, q)
+        if par_tel:
+            filtre |= Q(client_id__in=par_tel)
+    return qs.filter(filtre)
+
+
+def _devis_de_la_periode(qs, statut, depuis, jusqu_a):
+    """``depuis`` / ``jusqu_a`` (dates incluses) sur la date de création ; pour
+    un devis ACCEPTÉ, sur la date d'acceptation (à défaut, la création)."""
+    from django.db.models import Q
+
+    for borne, op in ((depuis, 'gte'), (jusqu_a, 'lte')):
+        if borne is None:
+            continue
+        creation = Q(**{f'date_creation__date__{op}': borne})
+        if statut == 'accepte':
+            qs = qs.filter(Q(**{f'date_acceptation__{op}': borne})
+                           | (Q(date_acceptation__isnull=True) & creation))
+        else:
+            qs = qs.filter(creation)
+    return qs
+
+
+def _ligne_devis(devis):
+    envoi = devis.date_envoi
+    accepte = devis.date_acceptation
+    total = devis.total_ttc
+    return {
+        'devis_id': devis.pk,
+        'reference': devis.reference,
+        'statut': devis.statut,
+        'client': nom_du_client(devis.client if devis.client_id else None),
+        'lead_id': devis.lead_id,
+        'total_ttc': texte_montant(total) if total is not None else None,
+        'cree_le': devis.date_creation.date().isoformat(),
+        'envoye_le': envoi.date().isoformat() if envoi else None,
+        'accepte_le': accepte.isoformat() if accepte else None,
+        'lien': lien_devis(devis.pk),
+    }
+
+
+def devis_cherches(qs, company_id, *, statut='', depuis=None, jusqu_a=None,
+                   q='', limite=DEVIS_LIMITE_DEFAUT):
+    """Les devis de ``qs`` — le queryset DÉJÀ borné par ``DevisViewSet.
+    get_queryset()`` (société + visibilité du rôle + règle du responsable de
+    lead : exactement les lignes de l'écran) — qui répondent aux filtres ; les
+    plus récents d'abord. ``{total, limite, lignes}`` (contrat
+    ``assistant_devis_liste.json``). Jamais de prix d'achat ni de marge."""
+    limite = max(1, min(int(limite or DEVIS_LIMITE_DEFAUT), DEVIS_LIMITE_MAX))
+    qs = qs.prefetch_related(None)
+    if statut:
+        qs = qs.filter(statut=statut)
+    qs = _devis_de_la_periode(qs, statut, depuis, jusqu_a)
+    if q:
+        qs = _devis_du_texte(qs, company_id, q)
+    total = qs.count()
+    page = (qs.select_related('client')
+            .prefetch_related('lignes', 'lignes__produit')
+            .order_by('-date_creation', '-id')[:limite])
+    return {'total': total, 'limite': limite,
+            'lignes': [_ligne_devis(d) for d in page]}
+
+
 # ── VAD10 — le bloc « impayés » du point du matin ───────────────────────────
 
 #: Au plus cinq lignes par liste du point du matin (contrat du digest).
@@ -257,3 +337,53 @@ def panneau_par_defaut_id(company):
     if resolution.statut != STATUT_UNIQUE or resolution.produit is None:
         return None
     return resolution.produit.pk
+
+
+# ── Les OPTIONS d'un devis (incident DEV-202611-0090 du 20/11/2026) ─────────
+#
+# L'assistant disait « le total TTC est de 44 900 DH, je ne peux pas dire à
+# quelle option il correspond » : les réponses ne portaient qu'UN total. Le
+# bloc ``options`` dit chaque option avec SES chiffres, lus par les fonctions
+# canoniques : total = ``utils.options.option_totaux`` (la chaîne HT → remise
+# → TVA → TTC du PDF, filtrage d'option compris) ; panneaux et kWc d'une
+# option = ``domain.lignes.cible_depuis_lignes`` (QJR33, même variante) ; kWc
+# d'un devis à une option = ``domain.scenario.puissance_kwc_du_devis``.
+
+LIBELLES_OPTIONS = {'sans': 'Sans batterie', 'avec': 'Avec batterie',
+                    '': 'Option unique'}
+
+
+def _kwc_arrondi(valeur):
+    try:
+        return round(float(valeur), 3) if valeur is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def options_du_devis(devis):
+    """``[{variante, libelle, kwc, nb_panneaux, total_ttc}]`` — une entrée
+    par option d'un devis à deux options (« sans » puis « avec »), une seule
+    (``variante=''``) sinon. Lecture pure, relue en base ; jamais d'achat."""
+    from .domain.lignes import cible_depuis_lignes
+    from .domain.scenario import puissance_kwc_du_devis
+    from .utils.options import (
+        AVEC_BATTERIE, SANS_BATTERIE, deux_options_declarees, option_totaux)
+
+    frais = type(devis).objects.get(pk=devis.pk)
+    if not deux_options_declarees(frais):
+        cible = cible_depuis_lignes(frais, 'sans')
+        return [{'variante': '', 'libelle': LIBELLES_OPTIONS[''],
+                 'kwc': _kwc_arrondi(puissance_kwc_du_devis(frais)),
+                 'nb_panneaux': int(cible.get('panneaux') or 0),
+                 'total_ttc': texte_montant(option_totaux(frais)['ttc'])}]
+    options = []
+    # Ligne ``variante`` 'sans'/'avec' ; option du noyau 'sans_batterie'/…
+    for variante, option in (('sans', SANS_BATTERIE), ('avec', AVEC_BATTERIE)):
+        cible = cible_depuis_lignes(frais, variante)
+        options.append({
+            'variante': variante, 'libelle': LIBELLES_OPTIONS[variante],
+            'kwc': _kwc_arrondi(cible.get('kwc')),
+            'nb_panneaux': int(cible.get('panneaux') or 0),
+            'total_ttc': texte_montant(
+                option_totaux(frais, option=option)['ttc'])})
+    return options

@@ -26,6 +26,15 @@
         "total_ttc": "14000.00",
         "variante": ""
       }
+    ],
+    "options": [
+      {
+        "variante": "",
+        "libelle": "Option unique",
+        "kwc": 7.1,
+        "nb_panneaux": 10,
+        "total_ttc": "73000.00"
+      }
     ]
   }
 }

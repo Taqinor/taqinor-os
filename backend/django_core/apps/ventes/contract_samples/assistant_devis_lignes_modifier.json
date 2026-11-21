@@ -1,0 +1,29 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<int:pk>/assistant-lignes/ajouter/",
+  "pourquoi": "20/11/2026 (incident prod : les 3 appels de `ventes.devis.ligne_ajouter` du jour ont répondu 400 — corps du relais `{\"devis\":566,\"produit\":56,\"quantite\":10}` refusé par le sérialiseur de l'écran `devis-lignes/` : quantité décimal-CHAÎNE (`DecimalStricte`) et `designation` obligatoire). Quatre routes MINCES réservées à l'assistant, même réponse : `assistant-lignes/ajouter/` (`produit`, `quantite` facultative = 1, `variante`), `assistant-lignes/modifier/` (`ligne`, `quantite` ; la quantité seulement, jamais un prix), `assistant-lignes/supprimer/` (`ligne`, `variante`), `assistant-lignes/remplacer/` (`ligne`, `produit`, `quantite` facultative = celle de la ligne, `variante` — « remplace la pergola par la structure acier »). Actions `ventes.devis.ligne_ajouter` / `ligne_modifier` / `ligne_supprimer` / `ligne_remplacer`. Désignation et prix viennent du CATALOGUE (`prix_vente` HT, barème au panneau d'un forfait ; jamais le prix d'achat) ; quantité en nombre JSON OU en texte. `variante` : devis à deux options → absente ou `les_deux` = les deux options, `sans` / `avec` = cette option (une ligne commune est séparée en deux lignes d'option) ; devis à une option → ligne commune, alerte `option_unique` si une option est demandée. Garde `ventes_modifier` (palier + grille) ; portée du rôle (hors portée → 404). Brouillon ou ENVOYÉ (corrigé en place, tracé « corrigé après envoi », `corrige_apres_envoi` vrai ; statut jamais écrit — règle #4 ; aucun PDF). Refus : accepté / refusé / expiré → 409 `revision_possible` (réviser en V2), version remplacée → 409 `version_remplacee`, produit introuvable → 404 `produit_inconnu`, ligne introuvable → 404 `ligne_inconnue`, produit archivé ou sans prix → 409, ligne absente de l'option demandée → 409 `ligne_hors_option`, échéancier → 409 `echeancier`, remise au-delà du seuil sur un envoyé → 409 `remise_non_approuvee`. `ancien_total_ttc` / `nouveau_total_ttc` = total de l'option affichée ; `options` = chaque option (`selectors_assistant.options_du_devis`) avec son ancien total ; `lignes_touchees.etat` ∈ ajoutee | modifiee | retiree. Montants en texte décimal ; aucun prix d'achat ni marge.",
+  "corps_exemple": {"produit": 56, "quantite": 10},
+  "exemple": {
+    "devis_id": 566,
+    "reference": "DEV-202611-0090",
+    "statut": "brouillon",
+    "operation": "ajouter",
+    "corrige_apres_envoi": false,
+    "ancien_total_ttc": "44900.00",
+    "nouveau_total_ttc": "46100.00",
+    "options": [
+      {"variante": "sans", "libelle": "Sans batterie", "kwc": 4.26, "nb_panneaux": 6, "total_ttc": "32300.00", "ancien_total_ttc": "31100.00"},
+      {"variante": "avec", "libelle": "Avec batterie", "kwc": 4.26, "nb_panneaux": 6, "total_ttc": "46100.00", "ancien_total_ttc": "44900.00"}
+    ],
+    "lignes_touchees": [
+      {"ligne_id": 9012, "etat": "ajoutee", "designation": "Structure acier galvanisé", "quantite": 10, "variante": "sans", "total_ttc": "1200.00"},
+      {"ligne_id": 9013, "etat": "ajoutee", "designation": "Structure acier galvanisé", "quantite": 10, "variante": "avec", "total_ttc": "1200.00"}
+    ],
+    "alertes": [],
+    "lien": "/ventes/devis?devis=566"
+  },
+  "exemple_409_devis_accepte": {
+    "detail": "Devis DEV-202610-0021 accepté : ses lignes ne se modifient plus. Proposez de le réviser (nouvelle version V2 en brouillon), puis changez les lignes sur la V2.",
+    "field": "statut",
+    "code": "revision_possible"
+  }
+}
