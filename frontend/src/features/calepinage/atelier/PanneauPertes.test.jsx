@@ -307,8 +307,11 @@ describe('ACAL396 — `onEnregistre` après un enregistrement réussi, jamais ap
   it('panneau unifié : enregistrer un poste relit le diagramme (bandeau « périmée ») sans changer d’onglet', async () => {
     pertes.mockResolvedValue({ data: REPONSE_VIDE })
     enregistrerPertes.mockResolvedValue({ data: {} })
-    resultat.mockResolvedValueOnce({ data: { pertes: [], simulation_perimee: false } })
-      .mockResolvedValue({ data: { pertes: [], simulation_perimee: true, motif: 'Poste modifié.' } })
+    // Réponses du CONTRAT `calepinage_resultat.json` (jamais un mock à la main) :
+    // à jour, puis périmée après l'enregistrement du poste.
+    const servi = exempleContrat('calepinage', 'calepinage_resultat', 'exemple')
+    resultat.mockResolvedValueOnce({ data: { ...servi, simulation_perimee: false } })
+      .mockResolvedValue({ data: { ...servi, simulation_perimee: true } })
     render(<MemoryRouter><PanneauPertesUnifie calepinageId={1} /></MemoryRouter>)
     await screen.findByTestId('cal143-panneau')
     expect(screen.queryByTestId('calx48-perime')).toBeNull()
