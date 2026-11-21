@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5240, operations: 8082, components: 4032}
+counts: {paths: 5242, operations: 8084, components: 4032}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -612,6 +612,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/note-calcul.pdf/ -> django_calepinage_calepinages_note_calcul.pdf_retrieve
 - post /api/django/calepinage/calepinages/{id}/pack-technique/ -> django_calepinage_calepinages_pack_technique_create
 - get /api/django/calepinage/calepinages/{id}/parcours/ -> django_calepinage_calepinages_parcours_retrieve
+- get /api/django/calepinage/calepinages/{id}/pente-terrain/ -> django_calepinage_calepinages_pente_terrain_retrieve
 - get /api/django/calepinage/calepinages/{id}/pertes/ -> django_calepinage_calepinages_pertes_retrieve
 - get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
 - post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
@@ -4694,6 +4695,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/note-calcul.pdf/ -> v1_calepinage_calepinages_note_calcul.pdf_retrieve
 - post /api/v1/calepinage/calepinages/{id}/pack-technique/ -> v1_calepinage_calepinages_pack_technique_create
 - get /api/v1/calepinage/calepinages/{id}/parcours/ -> v1_calepinage_calepinages_parcours_retrieve
+- get /api/v1/calepinage/calepinages/{id}/pente-terrain/ -> v1_calepinage_calepinages_pente_terrain_retrieve
 - get /api/v1/calepinage/calepinages/{id}/pertes/ -> v1_calepinage_calepinages_pertes_retrieve
 - get /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_retrieve
 - post /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_create
@@ -8227,6 +8229,7 @@ query_params:
   get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/: langue
   delete /api/django/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/django/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
+  get /api/django/calepinage/calepinages/{id}/pente-terrain/: surface
   get /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/resultat/: variante
@@ -9066,6 +9069,7 @@ query_params:
   get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/: langue
   delete /api/v1/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/v1/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
+  get /api/v1/calepinage/calepinages/{id}/pente-terrain/: surface
   get /api/v1/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/resultat/: variante
