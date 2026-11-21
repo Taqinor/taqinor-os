@@ -1,8 +1,8 @@
 {
-  "sha": "215d6cf5f6a64944fb4fbe3231cbb3d433367c78",
+  "sha": "fc1b069a58c11ced4238677b18c044993ff8748f",
   "date": "2026-11-21",
   "groupe": "ACAL",
-  "verdict": "FAIL",
+  "verdict": "PASS",
   "couvre": [
     "ACAL485",
     "ACAL489"
@@ -58,14 +58,15 @@
       "notes": ""
     },
     {
-      "id": "E3.appel_reel_jetons",
+      "id": "E3.journal_usage_persiste",
       "taches": [
+        "ACAL485",
         "ACAL489"
       ],
       "verdict": "PASS",
       "base_verdict": null,
       "corps": "PASS",
-      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-E3.appel_reel_jetons.jpg",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-E3.journal_usage_persiste.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",
@@ -81,14 +82,37 @@
       "notes": ""
     },
     {
-      "id": "E4.rien_ecrit_sur_le_calepinage",
+      "id": "E4.appel_reel_jetons",
+      "taches": [
+        "ACAL489"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-E4.appel_reel_jetons.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "E5.rien_ecrit_sur_le_calepinage",
       "taches": [
         "ACAL485"
       ],
       "verdict": "PASS",
       "base_verdict": null,
       "corps": "PASS",
-      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-E4.rien_ecrit_sur_le_calepinage.jpg",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-E5.rien_ecrit_sur_le_calepinage.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",
@@ -104,7 +128,7 @@
       "notes": ""
     },
     {
-      "id": "E5.aucune_donnee_personnelle_envoyee",
+      "id": "E6.aucune_donnee_personnelle_envoyee",
       "taches": [
         "ACAL485",
         "ACAL489"
@@ -112,7 +136,7 @@
       "verdict": "PASS",
       "base_verdict": null,
       "corps": "PASS",
-      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-E5.aucune_donnee_personnelle_envoyee.jpg",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-E6.aucune_donnee_personnelle_envoyee.jpg",
       "oracles": {
         "1": "PASS",
         "2": "PASS",
@@ -126,30 +150,6 @@
         "10": "NA"
       },
       "notes": ""
-    },
-    {
-      "id": "E6.journal_usage_persiste",
-      "taches": [
-        "ACAL485",
-        "ACAL489"
-      ],
-      "verdict": "FAIL",
-      "base_verdict": null,
-      "corps": "FAIL",
-      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-E6.journal_usage_persiste.jpg",
-      "oracles": {
-        "1": "PASS",
-        "2": "PASS",
-        "3": "PASS",
-        "4": "PASS",
-        "5": "NA",
-        "6": "NA",
-        "7": "NA",
-        "8": "PASS",
-        "9": "NA",
-        "10": "NA"
-      },
-      "notes": "erreur : un puits d’usage enregistré au démarrage (sinon record_usage est un no-op)"
     }
   ]
 }
