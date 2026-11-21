@@ -13,9 +13,15 @@ export const DUREE_MAX_MS = 90000
 
 export function contourLngLat(polygon) {
   if (!Array.isArray(polygon)) return []
-  return polygon
+  const pts = polygon
     .map((p) => [Number(p?.lng), Number(p?.lat)])
     .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat))
+  // Un chemin OSM fermé répète son premier nœud en dernier : sommets consécutifs égaux et
+  // sommet de fermeture écartés, sinon l'atelier voit une arête nulle (« ce contour se croise »).
+  const meme = (a, b) => a[0] === b[0] && a[1] === b[1]
+  const net = pts.filter((p, i) => i === 0 || !meme(p, pts[i - 1]))
+  if (net.length > 1 && meme(net[0], net[net.length - 1])) net.pop()
+  return net
 }
 
 /** Un pan tracé (≥ 3 sommets) existe déjà dans l'atelier : jamais écrasé, bouton absent. */

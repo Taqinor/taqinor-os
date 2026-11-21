@@ -50,7 +50,7 @@ import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
 import { fireEvent } from '@testing-library/react'
 import AtelierPanneaux from './AtelierPanneaux'
-import { conceptionAuto } from './atelier/conceptionAuto'
+import { conceptionAuto, contourLngLat } from './atelier/conceptionAuto'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
 const CTX_VIDE = exempleContrat('calepinage', 'calepinage_design_context',
@@ -171,6 +171,10 @@ describe('ACAL415 — commandes ⌘K de l’atelier', () => {
 
 /* ACAL421 — « Conception automatique » : {lat, lng} servis → [lng, lat] attendus par le builder. */
 describe('ACAL421 — conception automatique', () => {
+  it('le chemin OSM fermé (dernier nœud = premier) donne un contour sans sommet répété (rejeu runner 44905036243)', () => {
+    const p = [{ lat: 33.5, lng: -7.6 }, { lat: 33.5, lng: -7.59 }, { lat: 33.51, lng: -7.59 }, { lat: 33.51, lng: -7.59 }, { lat: 33.5, lng: -7.6 }]
+    expect(contourLngLat(p)).toEqual([[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.51]])
+  })
   const POLYGONE = [{ lat: 33.5, lng: -7.6 }, { lat: 33.5, lng: -7.59 }, { lat: 33.51, lng: -7.59 }]
   const builder = (zones = []) => ({
     serializeLayout: vi.fn(() => ({ zones })),
