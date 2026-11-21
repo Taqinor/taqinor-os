@@ -1,0 +1,91 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/configurations-onduleur/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL614 (C-ACAL-L5-614, CAP-D3-01, PACT10) — 1 à 3 configurations d'onduleur COMPARABLES, évaluées à chaque lecture (rien n'est écrit) : l'onduleur retenu et ses deux voisins de puissance du catalogue de la société (`role` parmi `retenue`, `plus_puissant`, `moins_puissant`). Chaque ligne porte nombre_onduleurs, puissance_ac_totale_kw, puissance_dc_kwc, ratio_dc_ac (DC ÷ AC à 2 décimales), mppt_utilises, mppt_disponibles, le verdict (`conforme`, `alerte`, `bloquant`, `indetermine`) et les textes `bloquants` / `alertes` DU MOTEUR (core/electrique/onduleurs.py::dimensionner_onduleurs), jamais réécrits ; un nombre non calculable vaut null (jamais 0) et sa cause est nommée dans `manquantes`. Une fiche sans les champs utiles va dans `fiches_incompletes` avec ses `champs_manquants` (libellés de services/chaines.py::specs_onduleur). AUCUN prix, coût ni marge : l'argent reste dans apps/ventes. Les nombres sont des PLACEHOLDERS : 12 modules de 580 Wc = 6,96 kWc ; onduleurs d'exemple de 5, 6 et 8 kW ; ratio = DC ÷ AC — jamais un seuil produit ni une valeur de fiche. Servi par ACAL616, lu par ACAL617.",
+  "exemple": {
+    "retenue": {"produit_id": 42, "libelle": "Onduleur d'exemple 6 kW"},
+    "configurations": [
+      {
+        "produit_id": 42,
+        "libelle": "Onduleur d'exemple 6 kW",
+        "marque": "Marque d'exemple",
+        "role": "retenue",
+        "nombre_onduleurs": 1,
+        "puissance_ac_totale_kw": 6.0,
+        "puissance_dc_kwc": 6.96,
+        "ratio_dc_ac": 1.16,
+        "mppt_utilises": 2,
+        "mppt_disponibles": 2,
+        "verdict": "conforme",
+        "bloquants": [],
+        "alertes": [],
+        "manquantes": []
+      },
+      {
+        "produit_id": 43,
+        "libelle": "Onduleur d'exemple 8 kW",
+        "marque": "Marque d'exemple",
+        "role": "plus_puissant",
+        "nombre_onduleurs": 1,
+        "puissance_ac_totale_kw": 8.0,
+        "puissance_dc_kwc": 6.96,
+        "ratio_dc_ac": 0.87,
+        "mppt_utilises": 2,
+        "mppt_disponibles": 2,
+        "verdict": "alerte",
+        "bloquants": [],
+        "alertes": ["ratio DC/AC de 0,87 inférieur à 1,00 — onduleur surdimensionné par rapport au champ PV"],
+        "manquantes": []
+      },
+      {
+        "produit_id": 41,
+        "libelle": "Onduleur d'exemple 5 kW",
+        "marque": "Marque d'exemple",
+        "role": "moins_puissant",
+        "nombre_onduleurs": 1,
+        "puissance_ac_totale_kw": 5.0,
+        "puissance_dc_kwc": 6.96,
+        "ratio_dc_ac": 1.39,
+        "mppt_utilises": 2,
+        "mppt_disponibles": 2,
+        "verdict": "alerte",
+        "bloquants": [],
+        "alertes": ["ratio DC/AC de 1,39 au-dessus de la borne usuelle 1,35 —écrêtage aux heures pleines"],
+        "manquantes": []
+      }
+    ],
+    "fiches_incompletes": [
+      {"produit_id": 44, "libelle": "Onduleur d'exemple sans puissance AC", "champs_manquants": ["puissance AC"]}
+    ],
+    "motif_vide": null
+  },
+  "exemple_vide": {
+    "retenue": null,
+    "configurations": [],
+    "fiches_incompletes": [],
+    "motif_vide": "Aucun onduleur désigné : choisissez un onduleur dans l'entrée électrique pour comparer ses voisins."
+  },
+  "exemple_indetermine": {
+    "retenue": {"produit_id": 42, "libelle": "Onduleur d'exemple 6 kW"},
+    "configurations": [
+      {
+        "produit_id": 42,
+        "libelle": "Onduleur d'exemple 6 kW",
+        "marque": "Marque d'exemple",
+        "role": "retenue",
+        "nombre_onduleurs": null,
+        "puissance_ac_totale_kw": null,
+        "puissance_dc_kwc": null,
+        "ratio_dc_ac": null,
+        "mppt_utilises": null,
+        "mppt_disponibles": null,
+        "verdict": "indetermine",
+        "bloquants": [],
+        "alertes": [],
+        "manquantes": ["Module : aucun module désigné — puissance DC et ratio DC/AC non calculables."]
+      }
+    ],
+    "fiches_incompletes": [],
+    "motif_vide": "Aucun onduleur plus ou moins puissant dans le catalogue de la société."
+  }
+}

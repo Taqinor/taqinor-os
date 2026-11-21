@@ -6,6 +6,7 @@ import { formatNumber, formatPercent } from '../../../lib/format'
 import { Button, Card, EmptyState, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { celluleLongueur, libelleCote } from './CheminementCables.helpers'
+import ParcoursDuPan from './ParcoursDuPan'
 
 /* ============================================================================
    CALX229 — L'ONGLET « CHEMINEMENT & CÂBLES » DE L'ATELIER.
@@ -91,7 +92,7 @@ export default function CheminementCables({ calepinageId, builderApi } = {}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
-  const { data, loading, error } = useResource(
+  const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.troncons(id), id,
     {
       select: (r) => r.data,
@@ -163,6 +164,9 @@ export default function CheminementCables({ calepinageId, builderApi } = {}) {
         </div>
 
         <ProposerTrace builderApi={builderApi} />
+
+        {/* ACAL641 — motif de parcours et point de collecte, par pan (niveau expert). */}
+        <ParcoursDuPan calepinageId={id} troncons={troncons} onEnregistre={refetch} />
 
         {troncons.length === 0
           ? (

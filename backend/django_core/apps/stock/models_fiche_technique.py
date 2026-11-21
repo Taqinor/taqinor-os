@@ -864,6 +864,49 @@ class FicheTechnique(models.Model):
         default=dict, blank=True,
         help_text='Provenance de la masse : {"document": "", "date": null, '
                   '"page": null}.')
+    # ACAL567 — Module : zone de serrage fabricant (mm, depuis l'extrémité du
+    # module). Bornes à saisir ensemble et sourcées (même discipline que la
+    # masse ↔ notice) ; vide = non publiée, jamais 0.
+    serrage_min_mm = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Module — zone de serrage fabricant, minimum (mm).')
+    serrage_max_mm = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Module — zone de serrage fabricant, maximum (mm).')
+    serrage_source = models.TextField(
+        blank=True, default='',
+        help_text='Module — source de la zone de serrage (notice, page).')
+    # ACAL659 — champs que les modèles électriques lisent ; tous optionnels :
+    # vide = non publié, jamais 0 (``specs_for_produit`` omet alors la clé).
+    cellules_serie = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Module — nombre de cellules en série. Vide = non publié.')
+    temp_coeff_isc_pct_c = models.DecimalField(
+        max_digits=5, decimal_places=3, null=True, blank=True,
+        help_text='Module — coefficient de température de Isc (%/°C). '
+                  'Vide = non publié.')
+    ond_pnom_reduite_debut_c = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='Onduleur — température de début de réduction de '
+                  'puissance (°C). Vide = non publié.')
+    ond_pnom_pente_pct_c = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Onduleur — pente de réduction de puissance (%/°C). '
+                  'Vide = non publié.')
+    ond_mppt_independants = models.BooleanField(
+        null=True, blank=True,
+        help_text='Onduleur — entrées MPPT indépendantes. Vide = non publié.')
+    opt_onduleurs_compatibles = models.JSONField(
+        null=True, blank=True,
+        help_text='Optimiseur — SKU des onduleurs compatibles (liste). '
+                  'Vide = non publié.')
+    # ACAL720 — brins protégés chacun par une diode de dérivation ; lu sur la
+    # fiche constructeur, jamais d'un défaut (vide = non publié).
+    sous_chaines_par_module = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text='Module — sous-chaînes par module (brins protégés par une '
+                  'diode de dérivation), lu sur la fiche constructeur. '
+                  'Vide = non publié.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #

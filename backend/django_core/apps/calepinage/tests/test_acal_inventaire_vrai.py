@@ -160,7 +160,8 @@ class CartesVraiesTest(SansBase, SimpleTestCase):
             self.assertEqual(cartes[code]['langues'], ['fr', 'en'], code)
         for code in ('export_projet_json', 'plan_cablage',
                      'manuel_proprietaire', 'document_asbuilt',
-                     'dossier_fin_chantier', 'presentation_compacte'):
+                     'dossier_fin_chantier', 'presentation_compacte',
+                     'pertes_en_postes'):
             self.assertEqual(cartes[code]['langues'], ['fr'], code)
 
     def test_apercu_et_autres_formats_publies(self):
@@ -188,3 +189,30 @@ class CartesVraiesTest(SansBase, SimpleTestCase):
                     self.assertIn('onglet', manque)
                     self.assertTrue(manque['onglet'] is None
                                     or manque['onglet'] in onglets)
+
+
+class FichePertesEnPostesInventaireTest(SansBase, SimpleTestCase):
+    """ACAL697 — la fiche « pertes en 5 postes » est listée, une page, en
+    français seulement, avec sa mise en page (aperçu) ; sur un résultat
+    simulé réel, ses postes non comptés sont NOMMÉS, jamais écrits à 0."""
+
+    def test_carte_listee_disponible_et_apercu(self):
+        carte = _par_code(calepinage_simule_reel())['pertes_en_postes']
+        self.assertTrue(carte['disponible'], carte['manque'])
+        self.assertEqual(carte['langues'], ['fr'])
+        self.assertTrue(carte['apercu'])
+        self.assertTrue(carte['endpoint'].endswith('pertes-en-postes.pdf/'))
+
+    def test_poste_non_compte_nomme_sur_resultat_reel(self):
+        from apps.calepinage.services.documents.pertes_en_postes import (
+            html_de_pertes_en_postes,
+        )
+
+        pivot = calepinage_simule_reel()
+        postes = pivot.resultat['cascade']['postes_lisibles']['postes']
+        with patch_materiel():
+            html = html_de_pertes_en_postes(pivot, styles={}, etat={})
+        for poste in postes:
+            self.assertIn(poste['libelle'], html)
+            if poste['statut'] == 'non_compte':
+                self.assertIn('non compté', html)

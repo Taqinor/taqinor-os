@@ -22,6 +22,7 @@ import json
 import pathlib
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import SimpleTestCase
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.variantes import retenir_variante
 from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
@@ -229,20 +230,44 @@ class ComparerTest(BaseVariantes):
         affirmer_non_servies(self, reponse.data, en_attente)
         exemple = sans(CONTRAT['exemple'], en_attente)
         self.assertEqual(set(reponse.data), set(exemple))
-        self.assertEqual(set(reponse.data['lignes'][0]),
-                         set(exemple['lignes'][0]))
-        self.assertEqual(set(reponse.data['lignes'][0]['production']),
-                         set(exemple['lignes'][0]['production']))
+        # ACAL978 — ``lignes[0]`` est la conception COURANTE, la variante
+        # suit : les deux lignes portent la carte complète du contrat.
+        courante, ligne_variante = reponse.data['lignes']
+        self.assertIsNone(courante['id'])
+        self.assertTrue(courante['courante'])
+        self.assertEqual(ligne_variante['id'], variante.pk)
+        self.assertFalse(ligne_variante['courante'])
+        for rang, ligne in enumerate((courante, ligne_variante)):
+            self.assertEqual(set(ligne), set(exemple['lignes'][rang]))
+            self.assertEqual(set(ligne['production']),
+                             set(exemple['lignes'][rang]['production']))
 
     def test_une_seule_variante_les_ecarts_valent_null(self):
+        """ACAL978 — une variante unique se compare à la courante : la
+        courante NON simulée et sans dessin porte des écarts ``null`` (jamais
+        ``0``), la retenue un écart de production MESURÉ, nul contre
+        elle-même."""
         variante = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='A',
             roof_layout=DESSIN, resultat=RESULTAT_SIMULE)
         retenir_variante(variante)
-        ligne = self.api.get(url_comparer(self.calepinage.pk)).data['lignes'][0]
-        self.assertIsNone(ligne['ecart_modules'])
-        self.assertIsNone(ligne['ecart_kwc'])
-        self.assertIsNone(ligne['ecart_p50_kwh'])
+        courante, ligne_variante = self.api.get(
+            url_comparer(self.calepinage.pk)).data['lignes']
+        self.assertTrue(courante['courante'])
+        self.assertIsNone(courante['ecart_modules'])
+        self.assertIsNone(courante['ecart_kwc'])
+        self.assertIsNone(courante['ecart_p50_kwh'])
+        self.assertEqual(ligne_variante['id'], variante.pk)
+        self.assertEqual(ligne_variante['ecart_p50_kwh'], 0.0)
+
+    def test_sans_variante_les_ecarts_valent_null(self):
+        """Rien à quoi se comparer (la courante seule) ⇒ écarts ``null``."""
+        lignes = self.api.get(url_comparer(self.calepinage.pk)).data['lignes']
+        self.assertEqual(len(lignes), 1)
+        self.assertTrue(lignes[0]['courante'])
+        self.assertIsNone(lignes[0]['ecart_modules'])
+        self.assertIsNone(lignes[0]['ecart_kwc'])
+        self.assertIsNone(lignes[0]['ecart_p50_kwh'])
 
     def test_ecarts_relatifs_a_la_retenue(self):
         retenue = CalepinageVariante.objects.create(
@@ -281,4 +306,175 @@ class ComparerTest(BaseVariantes):
 
     def test_sans_permission_403(self):
         reponse = self.api_sans.get(url_comparer(self.calepinage.pk))
+        self.assertEqual(reponse.status_code, 403)
+
+
+# ── ACAL594 — une variante par module du stock ─────────────────────────────
+
+CONTRAT_PAR_MODULE = json.loads(
+    (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+     / 'calepinage_variantes_par_module.json').read_text(encoding='utf-8'))
+
+
+def _module_a():
+    return {'id': 'produit-1', 'produitId': 1, 'libelle': 'A 460',
+            'longueurMm': 2278.0, 'largeurMm': 1134.0, 'epaisseurMm': None,
+            'poidsKg': None, 'pmaxWc': 460.0, 'source': 'fiche produit'}
+
+
+def _layout_sur_a():
+    return {
+        'modules': [_module_a()], 'panelWatt': 460.0,
+        'zones': [
+            {'id': 'z1', 'geometry': {'count': 10, 'kwc': 4.6,
+                                      'moduleId': 'produit-1'}},
+            {'id': 'z2', 'geometry': {'count': 5, 'kwc': 2.3,
+                                      'moduleId': 'produit-1'}}],
+        'result': {'kwc': 6.9, 'annualKwh': 9999.0},
+    }
+
+
+class VariantePourModuleTest(SimpleTestCase):
+    """La réécriture du document, sans base (service pur)."""
+
+    def test_memes_cotes_valide_telle_quelle_et_kwc_recalcule(self):
+        from apps.calepinage.services.variantes_modules import (
+            _variante_pour_module)
+
+        layout = _layout_sur_a()
+        b = dict(_module_a(), id='produit-2', produitId=2, libelle='B 430',
+                 pmaxWc=430.0)
+        document, a_repaver = _variante_pour_module(layout, b)
+        self.assertFalse(a_repaver)
+        self.assertEqual(
+            [z['geometry']['moduleId'] for z in document['zones']],
+            ['produit-2', 'produit-2'])
+        self.assertAlmostEqual(document['zones'][0]['geometry']['kwc'], 4.3)
+        self.assertEqual(document['panelWatt'], 430.0)
+        self.assertEqual(document['modules'], [b])
+        self.assertAlmostEqual(document['result']['kwc'], 6.45)
+        self.assertNotIn('annualKwh', document['result'])
+        # l'original n'est pas touché
+        self.assertEqual(layout['zones'][0]['geometry']['moduleId'],
+                         'produit-1')
+        self.assertEqual(layout['result']['annualKwh'], 9999.0)
+
+    def test_cotes_differentes_a_repaver(self):
+        from apps.calepinage.services.variantes_modules import (
+            _variante_pour_module)
+
+        c = dict(_module_a(), id='produit-3', longueurMm=2384.0,
+                 largeurMm=1303.0)
+        _document, a_repaver = _variante_pour_module(_layout_sur_a(), c)
+        self.assertTrue(a_repaver)
+
+    def test_un_pan_sans_module_est_a_repaver(self):
+        from apps.calepinage.services.variantes_modules import (
+            _variante_pour_module)
+
+        layout = {'zones': [{'id': 'z1', 'geometry': {'count': 4}}]}
+        document, a_repaver = _variante_pour_module(layout, _module_a())
+        self.assertTrue(a_repaver)
+        self.assertAlmostEqual(document['zones'][0]['geometry']['kwc'], 1.84)
+
+
+class VariantesParModuleTest(BaseVariantes):
+    """``POST variantes-par-module/`` (base de données)."""
+
+    def setUp(self):
+        super().setUp()
+        self.a = self._module('A 460', 460.0, 2278, 1134)
+        self.b = self._module('B 430', 430.0, 2278, 1134)
+        self.c = self._module('C 600', 600.0, 2384, 1303)
+        layout = _layout_sur_a()
+        layout['modules'][0].update(id='produit-%s' % self.a.pk,
+                                    produitId=self.a.pk)
+        for zone in layout['zones']:
+            zone['geometry']['moduleId'] = 'produit-%s' % self.a.pk
+        self.calepinage.roof_layout = layout
+        self.calepinage.save()
+
+    def _module(self, nom, wc, longueur, largeur):
+        from decimal import Decimal
+
+        from apps.stock.models import FicheTechnique, Produit
+
+        produit = Produit.objects.create(
+            company=self.company, nom=nom, sku='ACAL594-%s' % nom,
+            prix_achat=Decimal('999'), prix_vente=Decimal('1500'),
+            quantite_stock=1)
+        FicheTechnique.objects.create(
+            company=self.company, produit=produit, type_fiche='module',
+            vmp_v=41.4, voc_v=49.3, isc_a=18.59, imp_a=17.59, pmax_wc=wc,
+            longueur_mm=longueur, largeur_mm=largeur)
+        return produit
+
+    def _poster(self, modules, api=None):
+        return (api or self.api).post(
+            f'{url_detail(self.calepinage.pk)}variantes-par-module/',
+            {'modules': modules}, format='json')
+
+    def test_deux_modules_deux_variantes_nommees(self):
+        reponse = self._poster(['produit-%s' % self.b.pk,
+                                'produit-%s' % self.c.pk])
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        noms = [v['nom'] for v in reponse.data['variantes']]
+        self.assertEqual(noms, ['Module B 430', 'Module C 600 — à re-poser'])
+        self.assertEqual([v['a_repaver'] for v in reponse.data['variantes']],
+                         [False, True])
+        variante_b = CalepinageVariante.objects.get(
+            pk=reponse.data['variantes'][0]['id'])
+        document = variante_b.roof_layout
+        self.assertEqual(document['panelWatt'], 430.0)
+        self.assertAlmostEqual(document['zones'][0]['geometry']['kwc'], 4.3)
+        self.assertEqual(document['zones'][0]['geometry']['moduleId'],
+                         'produit-%s' % self.b.pk)
+        self.assertIsNone(variante_b.resultat)
+        self.assertEqual(set(reponse.data),
+                         set(CONTRAT_PAR_MODULE['exemple']))
+
+    def test_forme_fausse_400_en_nommant_modules(self):
+        """Hors du schéma publié (1 à 3 chaînes ``produit-<entier>``)."""
+        quatre = ['produit-%s' % n for n in range(1, 5)]
+        for modules in ('produit-1', [], ['module-1'], [1], quatre):
+            with self.subTest(modules=modules):
+                reponse = self._poster(modules)
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertIn('modules', reponse.data)
+        self.assertEqual(CalepinageVariante.objects.count(), 0)
+
+    def test_fiche_inconnue_ou_incomplete_409_en_nommant_modules(self):
+        """Conforme au schéma, refusé par l'état du catalogue (ENF11)."""
+        from apps.stock.models import FicheTechnique
+
+        FicheTechnique.objects.filter(produit=self.c).update(pmax_wc=None)
+        for modules in (['produit-999999'], ['produit-%s' % self.c.pk]):
+            with self.subTest(modules=modules):
+                reponse = self._poster(modules)
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertIn('modules', reponse.data)
+        self.assertEqual(CalepinageVariante.objects.count(), 0)
+
+    def test_schema_publie_dit_la_forme_validee(self):
+        from apps.calepinage.views.variantes_modules import RequeteParModule
+
+        champ = RequeteParModule().fields['modules']
+        self.assertEqual((champ.min_length, champ.max_length), (1, 3))
+
+    def test_calepinage_archive_refuse_en_409(self):
+        from django.utils import timezone
+
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            archive_le=timezone.now())
+        reponse = self._poster(['produit-%s' % self.b.pk])
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(CalepinageVariante.objects.count(), 0)
+
+    def test_autre_societe_404(self):
+        reponse = self._poster(['produit-%s' % self.b.pk],
+                               api=self.api_autre)
+        self.assertEqual(reponse.status_code, 404)
+
+    def test_sans_permission_403(self):
+        reponse = self._poster(['produit-%s' % self.b.pk], api=self.api_sans)
         self.assertEqual(reponse.status_code, 403)

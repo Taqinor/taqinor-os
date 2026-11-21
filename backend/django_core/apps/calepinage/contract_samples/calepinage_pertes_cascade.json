@@ -113,7 +113,85 @@
         "spectral",
         "indisponibilite"
       ],
-      "irradiation_incidente_kwh_m2": 2105.5
+      "irradiation_incidente_kwh_m2": 2105.5,
+      "postes_lisibles": {
+        "depart_kwh": 16800.0,
+        "arrivee_kwh": 15792.3,
+        "arrivee_pct": 94.002,
+        "total_pct": 6.0,
+        "postes": [
+          {
+            "poste": "ombres_proches",
+            "libelle": "Ombres proches",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "poussiere",
+            "libelle": "Poussière",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "chaleur",
+            "libelle": "Chaleur",
+            "perte_kwh": 1344.0,
+            "perte_pct": 8.0,
+            "statut": "compte",
+            "etapes": []
+          },
+          {
+            "poste": "cables_et_onduleur",
+            "libelle": "Câbles et onduleur",
+            "perte_kwh": 127.4,
+            "perte_pct": 0.758,
+            "statut": "compte",
+            "etapes": []
+          },
+          {
+            "poste": "autres",
+            "libelle": "Autres pertes",
+            "perte_kwh": -463.7,
+            "perte_pct": -2.76,
+            "statut": "partiel",
+            "etapes": [
+              {
+                "etape": "spectral",
+                "libelle": "Correction spectrale",
+                "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+              },
+              {
+                "etape": "indisponibilite",
+                "libelle": "Indisponibilité réseau et maintenance",
+                "motif_omission": "Aucun taux d'indisponibilité saisi pour cette société : l'étape est OMISE et la série ressort inchangée. Champ manquant : réglages de simulation, « indisponibilite_pct »."
+              }
+            ]
+          }
+        ],
+        "motif_absence": ""
+      },
+      "a_renseigner": {
+        "etapes_comptees": 4,
+        "etapes_a_compter": 5,
+        "lignes": [],
+        "non_localisables": [
+          {
+            "etape": "indisponibilite",
+            "libelle": "Indisponibilité réseau et maintenance",
+            "champ": "",
+            "motif": "L'étape ne nomme aucun champ manquant."
+          }
+        ]
+      },
+      "plages": {
+        "etapes": {},
+        "total": null,
+        "motif_absence": "aucune bande sourcée"
+      }
     }
   },
   "exemple_vide": {
@@ -124,7 +202,163 @@
       "postes_non_sources": [],
       "hash_entree": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
       "etapes_omises": [],
-      "irradiation_incidente_kwh_m2": 2105.5
+      "irradiation_incidente_kwh_m2": 2105.5,
+      "postes_lisibles": {
+        "depart_kwh": null,
+        "arrivee_kwh": null,
+        "arrivee_pct": null,
+        "total_pct": null,
+        "postes": [],
+        "motif_absence": "Aucune cascade de pertes publiée : les postes lisibles ne peuvent pas être regroupés."
+      },
+      "a_renseigner": {
+        "etapes_comptees": 0,
+        "etapes_a_compter": 0,
+        "lignes": [],
+        "non_localisables": []
+      },
+      "plages": {
+        "etapes": {},
+        "total": null,
+        "motif_absence": "aucune bande sourcée"
+      }
+    }
+  },
+  "exemple_ombrage_chaines": {
+    "pourquoi": "ACAL711/713 — l'étape « mismatch_ombrage » d'une cascade de DEUX pans : entree.chaines porte les chaînes des deux pans (bornes, écart, modules ombrés), entree.bornes est null avec son motif.",
+    "cascade": {
+      "etapes": [
+        {
+          "libelle": "Dispersion d'ombrage (I-V par chaîne)",
+          "gain": false,
+          "source": "societe",
+          "entree": {
+            "modele": "derivation",
+            "seuil_acces_derivation": {
+              "valeur": 0.6,
+              "source": "societe",
+              "reference": "Réglage société d'essai",
+              "cle": "seuil_derivation_acces"
+            },
+            "granularite": "module",
+            "brins_proteges": null,
+            "hypothese": "Le nombre de brins protégés par une diode de dérivation ne figure sur aucune fiche : la contrainte est appliquée au MODULE ENTIER, hypothèse la plus pessimiste pour la borne haute. La fourchette encadre la vérité, elle ne prétend pas la trancher.",
+            "hypothese_orientation": {
+              "orientation": "paysage",
+              "texte": "Hypothèse de lecture, non mesurée : les modules sont posés en paysage (grand côté le long de la rangée, convention de l'atelier). L'ombre qui monte du bas d'un module n'y coupe alors qu'une sous-chaîne ; en portrait, la même ombre les couperait toutes."
+            },
+            "bornes": null,
+            "ecart_bornes_pct": null,
+            "facteur_applique": null,
+            "perte_lineaire_deja_appliquee": true,
+            "pan": null,
+            "chaines_mesurees": 2,
+            "modules_mesures": 7,
+            "modules_sans_acces": [],
+            "chaines": [
+              {
+                "chaine": 1,
+                "pan": "P1",
+                "mppt": 1,
+                "modules_mesures": 3,
+                "acces_min": 0.5,
+                "modules_derives": [
+                  "P1#3"
+                ],
+                "sans_contrainte": false,
+                "excedent_basse_pct": 20.0,
+                "excedent_haute_pct": 40.0,
+                "bornes": {
+                  "basse": {
+                    "modele": "derivation",
+                    "excedent_pct": 20.0,
+                    "perte_chaine_pct": 33.333
+                  },
+                  "haute": {
+                    "modele": "courant_serie",
+                    "excedent_pct": 40.0,
+                    "perte_chaine_pct": 50.0
+                  }
+                },
+                "ecart_bornes_pct": 20.0,
+                "modules_ombres": [
+                  {
+                    "module": "P1#3",
+                    "acces": 0.5
+                  }
+                ],
+                "module_le_plus_ombre": {
+                  "module": "P1#3",
+                  "acces": 0.5
+                }
+              },
+              {
+                "chaine": 1,
+                "pan": "P2",
+                "mppt": 1,
+                "modules_mesures": 4,
+                "acces_min": 1.0,
+                "modules_derives": [],
+                "sans_contrainte": false,
+                "excedent_basse_pct": 0.0,
+                "excedent_haute_pct": 0.0,
+                "bornes": {
+                  "basse": {
+                    "modele": "derivation",
+                    "excedent_pct": 0.0,
+                    "perte_chaine_pct": 0.0
+                  },
+                  "haute": {
+                    "modele": "courant_serie",
+                    "excedent_pct": 0.0,
+                    "perte_chaine_pct": 0.0
+                  }
+                },
+                "ecart_bornes_pct": 0.0,
+                "modules_ombres": [],
+                "module_le_plus_ombre": null
+              }
+            ],
+            "chaines_sans_contrainte": [],
+            "avertissements": [],
+            "pans": [
+              "P1",
+              "P2"
+            ],
+            "bornes_motif": "bornes agrégées non publiées : plusieurs pans"
+          },
+          "reference": "PV*SOL — Shading due to nearby objects : « selon le nombre de brins ombrés, la caractéristique du module s'effondre » — https://help.valentin-software.com/pvsol/en/calculation/pv-modules/shading-due-to-nearby-objects/. HelioScope — Modeling 101 : la variabilité du champ est modélisée par « IV curve mismatch » — https://help-center.helioscope.com/hc/en-us/articles/13804165205395-Modeling-101. Lecture du dépôt : services/ombrage_chaines.py (accès solaire par chaîne) et services/chaines.py (affectation module → chaîne).",
+          "motif_omission": "",
+          "rang": 16,
+          "etape": "mismatch_ombrage",
+          "kwh_avant": 11.2,
+          "kwh_apres": 10.16,
+          "perte_kwh": 1.04,
+          "perte_pct": 9.286
+        }
+      ]
+    }
+  },
+  "exemple_entrees_onduleur": {
+    "mppt": {
+      "heures_sous_demarrage": 2,
+      "energie_sous_demarrage_kwh": 2.0,
+      "energie_sous_demarrage_deja_retiree_kwh": 0.0
+    },
+    "ecretage": {
+      "distribution": {
+        "borne_kw": 5.0,
+        "largeur_kw": 0.25,
+        "classes": [
+          {"de_kw": 1.0, "a_kw": 1.25, "energie_kwh": 1.0},
+          {"de_kw": 4.75, "a_kw": 5.0, "energie_kwh": 4.9},
+          {"de_kw": 5.0, "a_kw": 5.25, "energie_kwh": 10.2},
+          {"de_kw": 7.0, "a_kw": 7.25, "energie_kwh": 7.0}
+        ],
+        "energie_totale_kwh": 23.1,
+        "energie_ecretee_kwh": 2.2,
+        "part_ecretee_pct": 9.524
+      }
     }
   }
 }

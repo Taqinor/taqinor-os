@@ -14,7 +14,12 @@ Run :
 """
 from __future__ import annotations
 
-from django.test import SimpleTestCase
+import io
+
+from django.core.management import CommandError, call_command
+from django.db import connection
+from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 
 from apps.calepinage.services.chaines import _pans_poses
 from apps.calepinage.services.production import _pans_du_layout
@@ -82,3 +87,84 @@ class CompteSurfacesPosePartoutTest(SimpleTestCase):
         self.assertEqual(pan.modules, 8)
         self.assertEqual(pan.azimut_deg, 90.0)
         self.assertEqual(pan.source_orientation, 'saisie')
+
+
+def _surface(kind, azimut, ident='s1'):
+    return {'version': 2, 'zones': [], 'poseSurfaces': [
+        {'id': ident, 'kind': kind, 'rowAzimuthDeg': azimut}]}
+
+
+class EcartsAzimutSurfacesTest(SimpleTestCase):
+    """ACAL1194 — la liste montrée à Reda avant ACAL921, sans base."""
+
+    def _ecarts(self, layout):
+        from apps.calepinage.management.commands.acal_dryrun_azimut_surfaces \
+            import ecarts_azimut_surfaces
+        return ecarts_azimut_surfaces(layout)
+
+    def test_sol_180_lu_270_aujourd_hui_180_apres(self):
+        ligne, = self._ecarts(_surface('sol', 180))
+        self.assertEqual((ligne['saisi'], ligne['face_aujourdhui'],
+                          ligne['face_apres']), (180.0, 270.0, 180.0))
+        self.assertEqual((ligne['surface'], ligne['genre']), ('s1', 'sol'))
+        # La règle recopiée est bien celle du lecteur d'aujourd'hui.
+        layout = _surface('sol', 180)
+        layout['poseSurfaces'][0].update(moduleWc=550, engine={'modules': 2})
+        pan, = pans_du_document(layout)
+        self.assertEqual(pan['azimut_deg'], ligne['face_aujourdhui'])
+
+    def test_facade_90_lue_180_aujourd_hui_90_apres(self):
+        ligne, = self._ecarts(_surface('facade', 90))
+        self.assertEqual((ligne['face_aujourdhui'], ligne['face_apres']),
+                         (180.0, 90.0))
+
+    def test_surface_sans_azimut_numerique_rien(self):
+        for valeur in (None, '180', True):
+            self.assertEqual(self._ecarts(_surface('sol', valeur)), [])
+        self.assertEqual(self._ecarts(PAN_NON_PAVE), [])
+        self.assertEqual(self._ecarts(None), [])
+
+    def test_sans_dry_run_refuse_avant_toute_lecture(self):
+        with self.assertRaises(CommandError) as refus:
+            call_command('acal_dryrun_azimut_surfaces', stdout=io.StringIO())
+        self.assertIn('ajoutez --dry-run', str(refus.exception))
+
+
+class CommandeAzimutSurfacesTest(TestCase):
+    """ACAL1194 — la commande refuse sans --dry-run et n'écrit jamais."""
+
+    def setUp(self):
+        from authentication.models import Company
+
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        self.company = Company.objects.create(nom='Azimut Co',
+                                              slug='azimut-co-1194')
+        client = Client.objects.create(company=self.company, nom='Client')
+        self.devis = Devis.objects.create(company=self.company, client=client,
+                                          reference='DEV-202611-1194')
+        self.oriente = Calepinage.objects.create(
+            company=self.company, client=client, devis=self.devis,
+            titre='Champ', roof_layout=_surface('sol', 180, 'champ-1'))
+        Calepinage.objects.create(company=self.company, client=client,
+                                  titre='Toit', roof_layout=PAN_NON_PAVE)
+
+    def test_dry_run_liste_sans_ecrire(self):
+        sortie = io.StringIO()
+        with CaptureQueriesContext(connection) as requetes:
+            call_command('acal_dryrun_azimut_surfaces', '--dry-run',
+                         '--company', 'azimut-co-1194', stdout=sortie)
+        ecritures = [r['sql'] for r in requetes.captured_queries
+                     if r['sql'].lstrip().upper().startswith(
+                         ('INSERT', 'UPDATE', 'DELETE'))]
+        self.assertEqual(ecritures, [])
+        lignes = sortie.getvalue().splitlines()
+        self.assertEqual(lignes[0],
+                         'DRY-RUN ACAL1194 (lecture seule) — aucune écriture')
+        self.assertIn('%s | champ-1 (sol) | 180 | 270 | 180 | %s (%s)' % (
+            self.oriente.pk, self.devis.pk, self.devis.statut), lignes)
+        self.assertIn('1 surface(s) sur 1 calepinage(s) concernés.', lignes)
+        self.assertIn('Devis liés par statut : %s 1.' % self.devis.statut,
+                      lignes)

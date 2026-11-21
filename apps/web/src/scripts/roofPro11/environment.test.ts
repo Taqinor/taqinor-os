@@ -14,7 +14,104 @@ import {
   environmentNeedsFootprint,
   ENV_MIN_HEIGHT_M,
   ENV_MAX_HEIGHT_M,
+  withPoleDiameter, // ACAL500
+  withEpaisseurLigne, newLigneEnvironment, // ACAL501
+  withFutureHeight, withSupposeCoupe, // ACAL502
 } from './environment';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { racineDepot } from './harnaisAtelier';
+import { serializeEnvironment } from './prefill';
+
+/** ACAL500/501 — l'exemple étendu du contrat (ACAL505), lu dans le dépôt. */
+const EXEMPLE_ETENDU = (JSON.parse(readFileSync(join(racineDepot(), 'backend', 'django_core', 'apps', 'calepinage',
+  'contract_samples', 'roof_layout_v2.schema.json'), 'utf8')) as { exemple_environnement_etendu: Array<Record<string, unknown>> })
+  .exemple_environnement_etendu;
+
+describe('ACAL502 — hauteur future et « Supposer coupé »', () => {
+  const ORIGINE: [number, number] = [-7.6, 33.5];
+  const arbre = () => withCrownDiameter(withEnvHeight(newEnvironmentObject('a1', 'arbre', [-7.6, 33.4998]), 6), 4);
+  it('supposeCoupe : aucune entrée d’ombre ; décocher la rétablit', () => {
+    expect(environmentShadeEntries([arbre()], ORIGINE)).toHaveLength(1);
+    const coupe = withSupposeCoupe(arbre(), true);
+    expect(coupe.supposeCoupe).toBe(true);
+    expect(environmentShadeEntries([coupe], ORIGINE)).toEqual([]);
+    expect(environmentShadeEntries([withSupposeCoupe(coupe, false)], ORIGINE)).toHaveLength(1);
+  });
+  it('« dans 10 ans : 9 m » rangé ; hauteur future sans années : refus nommé', () => {
+    const r = withFutureHeight(arbre(), 9, 10);
+    expect(r.motif).toBeNull();
+    expect(r.objet).toMatchObject({ hauteurFutureM: 9, dansAns: 10 });
+    expect(withFutureHeight(arbre(), 9, null)).toEqual({ objet: arbre(), motif: 'Dites dans combien d’années.' });
+    expect(withFutureHeight(arbre(), null, 10).motif).toContain('hauteur');
+    expect(withFutureHeight(r.objet, null, null).objet).toEqual(arbre());
+  });
+  it('l’arbre de l’exemple du contrat fait l’aller-retour (les trois clés)', () => {
+    const a = EXEMPLE_ETENDU.find((o) => o.kind === 'arbre')!;
+    expect(serializeEnvironment([a as never])).toEqual([a]);
+  });
+});
+
+describe('ACAL501 — ligne (haie, mur)', () => {
+  const ORIGINE: [number, number] = [-7.6, 33.5];
+  const dLng = 20 / (111319.49 * Math.cos((33.5 * Math.PI) / 180)); // ≈ 20 m vers l'est
+  const haie = (ep: number | null = 0.5) =>
+    withEpaisseurLigne(withEnvHeight(newLigneEnvironment('h1', [[-7.6, 33.5001], [-7.6 + dLng, 33.5001]]), 3), ep);
+  it('haie de 20 m : une entrée d’ombre, empreinte 20 × 0,5 m, hauteur 3 − toit', () => {
+    const [e, ...reste] = environmentShadeEntries([haie()], ORIGINE, 1);
+    expect(reste).toEqual([]);
+    expect(e.effHeightM).toBe(2);
+    const f = e.footprint!;
+    expect(Math.hypot(f[1][0] - f[0][0], f[1][1] - f[0][1])).toBeCloseTo(20, 1);
+    expect(Math.hypot(f[3][0] - f[0][0], f[3][1] - f[0][1])).toBeCloseTo(0.5, 6);
+  });
+  it('sans épaisseur : aucune entrée, et l’écran demande l’épaisseur', () => {
+    expect(environmentShadeEntries([haie(null)], ORIGINE)).toEqual([]);
+    expect(environmentNeedsFootprint(haie(null))).toBe(true);
+  });
+  it('une épaisseur de 0,05 m n’est pas ramenée à 0,5 m', () => {
+    expect(haie(0.05).epaisseurM).toBe(0.05);
+  });
+  it('le centre est calculé (milieu de la trace) et fait l’aller-retour ; sans trace ni centre ⇒ écartée', () => {
+    const h = haie();
+    expect(h.centerLng).toBeCloseTo(-7.6 + dLng / 2, 12);
+    expect(serializeEnvironment([h])).toEqual([h]);
+    expect(serializeEnvironment([{ id: 'x', kind: 'ligne', heightM: 2 } as never])).toEqual([]);
+  });
+  it('la ligne de l’exemple du contrat fait l’aller-retour (centre calculé ajouté)', () => {
+    const l = EXEMPLE_ETENDU.find((o) => o.kind === 'ligne')!;
+    const [sortie] = serializeEnvironment([l as never]);
+    expect(sortie).toMatchObject(l);
+    expect(serializeEnvironment([sortie])).toEqual([sortie]);
+    expect(environmentShadeEntries([sortie], ORIGINE)).toHaveLength(1);
+  });
+});
+
+describe('ACAL500 — poteau', () => {
+  const ORIGINE: [number, number] = [-7.6, 33.5];
+  const poteau = () => withPoleDiameter(withEnvHeight(newEnvironmentObject('p1', 'poteau', [-7.6001, 33.5001]), 8), 0.3);
+  it('diamètre 0,3 m saisi ⇒ diameterM === 0.3 (pas ramené à 0,5 par ENV_MIN_DIM_M)', () => {
+    expect(poteau().diameterM).toBe(0.3);
+    expect('diameterM' in withPoleDiameter(poteau(), null)).toBe(false);
+  });
+  it('poteau : une entrée d’ombre de demi-largeur 0,15, hauteur 8 − toit', () => {
+    const [e, ...reste] = environmentShadeEntries([poteau()], ORIGINE, 3);
+    expect(reste).toEqual([]);
+    expect(e.halfWidthM).toBeCloseTo(0.15, 9);
+    expect(e.effHeightM).toBe(5);
+  });
+  it('poteau sans diamètre : aucune entrée et environmentNeedsFootprint vrai (aucun repli de 1,5 m)', () => {
+    const sans = withEnvHeight(newEnvironmentObject('p2', 'poteau', [-7.6001, 33.5001]), 8);
+    expect(environmentShadeEntries([sans], ORIGINE)).toEqual([]);
+    expect(environmentNeedsFootprint(sans)).toBe(true);
+    expect(environmentFootprintHalfWidthM(sans)).toBeNull();
+  });
+  it('le poteau de l’exemple du contrat fait l’aller-retour serializeEnvironment', () => {
+    const p = EXEMPLE_ETENDU.find((o) => o.kind === 'poteau')!;
+    expect(serializeEnvironment([p as never])).toEqual([p]);
+    expect(serializeEnvironment([poteau()])).toEqual([poteau()]);
+  });
+});
 
 describe('CAL67 — newEnvironmentObject : rien n’est inventé à la pose', () => {
   it('un objet fraîchement posé n’a AUCUNE dimension (ni hauteur ni diamètre)', () => {

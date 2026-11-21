@@ -10,7 +10,15 @@
     "degagements": {
       "retrait_rive_m": 0.5,
       "allee_technique_m": 0.9,
-      "source": "valeur atelier actuelle, non sourcée"
+      "source": "valeur atelier actuelle, non sourcée",
+      "retraits_par_arete": [
+        {
+          "type": "egout",
+          "retrait_m": 0.4,
+          "source": "notice X",
+          "reference": ""
+        }
+      ]
     },
     "zones_types": {
       "coupe_feu": {
@@ -54,11 +62,11 @@
       "versions_conservees": 20
     },
     "favoris_materiel": {
-      "panneau": [
+      "modules": [
         412,
         418
       ],
-      "onduleur_hybride": [
+      "onduleurs": [
         901
       ]
     },
@@ -191,7 +199,14 @@
           "valeurs": [
             "tmy",
             "pluriannuel"
-          ]
+          ],
+          "libelles": {
+            "tmy": "Année type (TMY)",
+            "pluriannuel": "Plusieurs années réelles"
+          },
+          "valeurs_non_servies": {
+            "tmy": "Année type : n'aboutit pas sans fichier — la météo PVGIS d'année type est à plat et n'est pas ramenée au plan des modules ; choisissez « pluriannuel », ou déposez un fichier météo d'année type sur le calepinage (onglet Séries)."
+          }
         },
         {
           "cle": "modele_iam",
@@ -203,7 +218,15 @@
             "fresnel",
             "ashrae",
             "martin_ruiz"
-          ]
+          ],
+          "libelles": {
+            "fresnel": "Fresnel",
+            "ashrae": "ASHRAE",
+            "martin_ruiz": "Martin et Ruiz"
+          },
+          "valeurs_non_servies": {
+            "martin_ruiz": "Martin-Ruiz : pas encore pris en charge ; la simulation utilise Fresnel."
+          }
         },
         {
           "cle": "b0_iam",
@@ -284,7 +307,13 @@
             "borne_basse",
             "moyenne",
             "aucune"
-          ]
+          ],
+          "libelles": {
+            "quart_pvsyst": "Un quart de la différence entre les deux bornes (règle proposée par PVsyst)",
+            "borne_basse": "La borne BASSE de la tolérance, retenue telle quelle (pire cas publié par le constructeur)",
+            "moyenne": "La moyenne des deux bornes de la tolérance",
+            "aucune": "Aucune perte de qualité module n'est appliquée (décision de la société)"
+          }
         },
         {
           "cle": "lid_par_techno",
@@ -311,7 +340,11 @@
           "valeurs": [
             "lineaire",
             "exponentiel"
-          ]
+          ],
+          "libelles": {
+            "lineaire": "Linéaire",
+            "exponentiel": "Exponentielle"
+          }
         },
         {
           "cle": "thermique_par_pose",
@@ -436,7 +469,12 @@
             "isotropic",
             "haydavies",
             "perez"
-          ]
+          ],
+          "libelles": {
+            "isotropic": "Isotrope",
+            "haydavies": "Hay-Davies",
+            "perez": "Perez"
+          }
         },
         {
           "cle": "modele_decomposition",
@@ -447,7 +485,44 @@
           "valeurs": [
             "erbs",
             "disc"
-          ]
+          ],
+          "libelles": {
+            "erbs": "Erbs",
+            "disc": "DISC"
+          }
+        },
+        {
+          "cle": "rendement_specifique_min_kwh_kwc",
+          "libelle": "Rendement spécifique vraisemblable, borne basse",
+          "unite": "kWh/kWc",
+          "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "rendement_specifique_max_kwh_kwc",
+          "libelle": "Rendement spécifique vraisemblable, borne haute",
+          "unite": "kWh/kWc",
+          "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "nettoyages_par_an",
+          "libelle": "Nettoyages des panneaux par an",
+          "unite": "par an",
+          "reference": "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss)",
+          "type": "entier",
+          "minimum": 0
+        },
+        {
+          "cle": "inclinaison_autonettoyage_deg",
+          "libelle": "Inclinaison à partir de laquelle la pluie lave les panneaux",
+          "unite": "°",
+          "reference": "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss)",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 90
         }
       ],
       "electrique_societe": [
@@ -524,9 +599,229 @@
           "reference": "OpenSolar — Inverter sizing and stringing recommendations",
           "type": "nombre",
           "minimum": 0
+        },
+        {
+          "cle": "temperature_service_cable_c",
+          "libelle": "Température de service des câbles (résistivité de la chute de tension)",
+          "unite": "°C",
+          "reference": "Réglage société — aucune température de service n'est supposée",
+          "type": "nombre"
+        },
+        {
+          "cle": "alpha_cuivre_par_c",
+          "libelle": "Coefficient de température de la résistivité du cuivre (α)",
+          "unite": "1/°C",
+          "reference": "Réglage société — ρ(θ) = ρ20 × (1 + α × (θ − 20)), α cité de sa source",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "facteur_regroupement",
+          "libelle": "Facteur de regroupement appliqué au courant admissible des câbles",
+          "unite": "",
+          "reference": "Réglage société — facteur de l'installation (IEC 60364-5-52), jamais un défaut",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "cle": "consigne_dc_plan_cablage",
+          "libelle": "Consigne DC imprimée sur le plan de câblage",
+          "unite": "",
+          "reference": "Réglage société — texte saisi une fois, jamais écrit par le logiciel",
+          "type": "table"
+        },
+        {
+          "cle": "tolerance_orientation_pans_deg",
+          "libelle": "Tolérance d'orientation pour câbler une chaîne sur deux pans",
+          "unite": "°",
+          "reference": "PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée",
+          "type": "nombre",
+          "minimum": 0
+        }
+      ],
+      "lestage": [
+        {
+          "cle": "vitesse_vent_reference_m_s",
+          "libelle": "Vitesse de vent de référence",
+          "unite": "m/s",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "categorie_terrain",
+          "libelle": "Catégorie de terrain",
+          "unite": "",
+          "texte": true,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_terrain",
+          "libelle": "Coefficient de terrain",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_pression_soulevement",
+          "libelle": "Coefficient de pression (soulèvement)",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_pression_horizontal",
+          "libelle": "Coefficient de pression (horizontal)",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_frottement",
+          "libelle": "Coefficient de frottement",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "charge_neige_kn_m2",
+          "libelle": "Charge de neige",
+          "unite": "kN/m²",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "masse_structure_kg_par_module",
+          "libelle": "Masse de structure par module (kit)",
+          "unite": "kg",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "largeur_bande_rive_m",
+          "libelle": "Largeur de la bande de rive",
+          "unite": "m",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "largeur_coin_m",
+          "libelle": "Largeur de coin",
+          "unite": "m",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "lest_rive_kg_par_module",
+          "libelle": "Lest additionnel en rive",
+          "unite": "kg par module",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "lest_coin_kg_par_module",
+          "libelle": "Lest additionnel en coin",
+          "unite": "kg par module",
+          "texte": false,
+          "bloc": "zones_de_pose"
         }
       ]
     },
+    "champs_preset": [
+      {
+        "cle": "orientation",
+        "libelle": "Orientation du module",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "portrait",
+          "paysage"
+        ]
+      },
+      {
+        "cle": "famille",
+        "libelle": "Famille de table",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "south",
+          "eastwest"
+        ]
+      },
+      {
+        "cle": "allee_m",
+        "libelle": "Allée",
+        "type": "nombre",
+        "unite": "m",
+        "valeurs": null
+      },
+      {
+        "cle": "roofType",
+        "libelle": "Type de toiture",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "flat",
+          "pitched"
+        ]
+      },
+      {
+        "cle": "pitchDeg",
+        "libelle": "Pente",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "facingAzimuthDeg",
+        "libelle": "Azimut de face",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "facingManual",
+        "libelle": "Azimut saisi à la main",
+        "type": "booleen",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "neededAuto",
+        "libelle": "Dimensionnement automatique",
+        "type": "booleen",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "rangees",
+        "libelle": "Rangées",
+        "type": "entier",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "colonnes",
+        "libelle": "Colonnes",
+        "type": "entier",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "chassis_sous_pente_deg",
+        "libelle": "Seuil châssis incliné",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "chassis_inclinaison_deg",
+        "libelle": "Inclinaison du châssis",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      }
+    ],
     "kits": [
       {
         "id": 12,
@@ -585,7 +880,14 @@
           "valeurs": [
             "tmy",
             "pluriannuel"
-          ]
+          ],
+          "libelles": {
+            "tmy": "Année type (TMY)",
+            "pluriannuel": "Plusieurs années réelles"
+          },
+          "valeurs_non_servies": {
+            "tmy": "Année type : n'aboutit pas sans fichier — la météo PVGIS d'année type est à plat et n'est pas ramenée au plan des modules ; choisissez « pluriannuel », ou déposez un fichier météo d'année type sur le calepinage (onglet Séries)."
+          }
         },
         {
           "cle": "modele_iam",
@@ -597,7 +899,15 @@
             "fresnel",
             "ashrae",
             "martin_ruiz"
-          ]
+          ],
+          "libelles": {
+            "fresnel": "Fresnel",
+            "ashrae": "ASHRAE",
+            "martin_ruiz": "Martin et Ruiz"
+          },
+          "valeurs_non_servies": {
+            "martin_ruiz": "Martin-Ruiz : pas encore pris en charge ; la simulation utilise Fresnel."
+          }
         },
         {
           "cle": "b0_iam",
@@ -678,7 +988,13 @@
             "borne_basse",
             "moyenne",
             "aucune"
-          ]
+          ],
+          "libelles": {
+            "quart_pvsyst": "Un quart de la différence entre les deux bornes (règle proposée par PVsyst)",
+            "borne_basse": "La borne BASSE de la tolérance, retenue telle quelle (pire cas publié par le constructeur)",
+            "moyenne": "La moyenne des deux bornes de la tolérance",
+            "aucune": "Aucune perte de qualité module n'est appliquée (décision de la société)"
+          }
         },
         {
           "cle": "lid_par_techno",
@@ -705,7 +1021,11 @@
           "valeurs": [
             "lineaire",
             "exponentiel"
-          ]
+          ],
+          "libelles": {
+            "lineaire": "Linéaire",
+            "exponentiel": "Exponentielle"
+          }
         },
         {
           "cle": "thermique_par_pose",
@@ -830,7 +1150,12 @@
             "isotropic",
             "haydavies",
             "perez"
-          ]
+          ],
+          "libelles": {
+            "isotropic": "Isotrope",
+            "haydavies": "Hay-Davies",
+            "perez": "Perez"
+          }
         },
         {
           "cle": "modele_decomposition",
@@ -841,7 +1166,44 @@
           "valeurs": [
             "erbs",
             "disc"
-          ]
+          ],
+          "libelles": {
+            "erbs": "Erbs",
+            "disc": "DISC"
+          }
+        },
+        {
+          "cle": "rendement_specifique_min_kwh_kwc",
+          "libelle": "Rendement spécifique vraisemblable, borne basse",
+          "unite": "kWh/kWc",
+          "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "rendement_specifique_max_kwh_kwc",
+          "libelle": "Rendement spécifique vraisemblable, borne haute",
+          "unite": "kWh/kWc",
+          "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "nettoyages_par_an",
+          "libelle": "Nettoyages des panneaux par an",
+          "unite": "par an",
+          "reference": "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss)",
+          "type": "entier",
+          "minimum": 0
+        },
+        {
+          "cle": "inclinaison_autonettoyage_deg",
+          "libelle": "Inclinaison à partir de laquelle la pluie lave les panneaux",
+          "unite": "°",
+          "reference": "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss)",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 90
         }
       ],
       "electrique_societe": [
@@ -918,10 +1280,230 @@
           "reference": "OpenSolar — Inverter sizing and stringing recommendations",
           "type": "nombre",
           "minimum": 0
+        },
+        {
+          "cle": "temperature_service_cable_c",
+          "libelle": "Température de service des câbles (résistivité de la chute de tension)",
+          "unite": "°C",
+          "reference": "Réglage société — aucune température de service n'est supposée",
+          "type": "nombre"
+        },
+        {
+          "cle": "alpha_cuivre_par_c",
+          "libelle": "Coefficient de température de la résistivité du cuivre (α)",
+          "unite": "1/°C",
+          "reference": "Réglage société — ρ(θ) = ρ20 × (1 + α × (θ − 20)), α cité de sa source",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "facteur_regroupement",
+          "libelle": "Facteur de regroupement appliqué au courant admissible des câbles",
+          "unite": "",
+          "reference": "Réglage société — facteur de l'installation (IEC 60364-5-52), jamais un défaut",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "cle": "consigne_dc_plan_cablage",
+          "libelle": "Consigne DC imprimée sur le plan de câblage",
+          "unite": "",
+          "reference": "Réglage société — texte saisi une fois, jamais écrit par le logiciel",
+          "type": "table"
+        },
+        {
+          "cle": "tolerance_orientation_pans_deg",
+          "libelle": "Tolérance d'orientation pour câbler une chaîne sur deux pans",
+          "unite": "°",
+          "reference": "PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée",
+          "type": "nombre",
+          "minimum": 0
+        }
+      ],
+      "lestage": [
+        {
+          "cle": "vitesse_vent_reference_m_s",
+          "libelle": "Vitesse de vent de référence",
+          "unite": "m/s",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "categorie_terrain",
+          "libelle": "Catégorie de terrain",
+          "unite": "",
+          "texte": true,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_terrain",
+          "libelle": "Coefficient de terrain",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_pression_soulevement",
+          "libelle": "Coefficient de pression (soulèvement)",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_pression_horizontal",
+          "libelle": "Coefficient de pression (horizontal)",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_frottement",
+          "libelle": "Coefficient de frottement",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "charge_neige_kn_m2",
+          "libelle": "Charge de neige",
+          "unite": "kN/m²",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "masse_structure_kg_par_module",
+          "libelle": "Masse de structure par module (kit)",
+          "unite": "kg",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "largeur_bande_rive_m",
+          "libelle": "Largeur de la bande de rive",
+          "unite": "m",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "largeur_coin_m",
+          "libelle": "Largeur de coin",
+          "unite": "m",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "lest_rive_kg_par_module",
+          "libelle": "Lest additionnel en rive",
+          "unite": "kg par module",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "lest_coin_kg_par_module",
+          "libelle": "Lest additionnel en coin",
+          "unite": "kg par module",
+          "texte": false,
+          "bloc": "zones_de_pose"
         }
       ]
     },
-    "kits": []
+    "kits": [],
+    "champs_preset": [
+      {
+        "cle": "orientation",
+        "libelle": "Orientation du module",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "portrait",
+          "paysage"
+        ]
+      },
+      {
+        "cle": "famille",
+        "libelle": "Famille de table",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "south",
+          "eastwest"
+        ]
+      },
+      {
+        "cle": "allee_m",
+        "libelle": "Allée",
+        "type": "nombre",
+        "unite": "m",
+        "valeurs": null
+      },
+      {
+        "cle": "roofType",
+        "libelle": "Type de toiture",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "flat",
+          "pitched"
+        ]
+      },
+      {
+        "cle": "pitchDeg",
+        "libelle": "Pente",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "facingAzimuthDeg",
+        "libelle": "Azimut de face",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "facingManual",
+        "libelle": "Azimut saisi à la main",
+        "type": "booleen",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "neededAuto",
+        "libelle": "Dimensionnement automatique",
+        "type": "booleen",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "rangees",
+        "libelle": "Rangées",
+        "type": "entier",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "colonnes",
+        "libelle": "Colonnes",
+        "type": "entier",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "chassis_sous_pente_deg",
+        "libelle": "Seuil châssis incliné",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "chassis_inclinaison_deg",
+        "libelle": "Inclinaison du châssis",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      }
+    ]
   },
   "exemple_put_fusion": {
     "endpoint": "PUT /api/django/calepinage/parametres/",
@@ -933,9 +1515,25 @@
     },
     "effet": "FUSION par clé : sigma_modele_pct est posée, tolerance_validation_pct est RETIRÉE (null), les autres clés de `simulation` sont conservées."
   },
+  "exemple_degagement_type_neuf": {
+    "degagements": {
+      "lanterneau": 1.8,
+      "source": "Préréglage FM Global DS 1-15 §2.1.1.4 (exemple du contrat)"
+    }
+  },
   "exemple_refus_type": {
     "simulation": {
       "sigma_modele_pct": "Valeur de type texte reçue : « sigma_modele_pct » (Incertitude de simulation (σ modèle)) attend un pourcentage (nombre entre 0 et 100)."
+    }
+  },
+  "exemple_refus_multiple": {
+    "simulation": {
+      "sigma_modele_pct": "Valeur de type texte reçue : « sigma_modele_pct » (Incertitude de simulation (σ modèle)) attend un pourcentage (nombre entre 0 et 100).",
+      "sigma_biais_meteo_pct": "Valeur de type texte reçue : « sigma_biais_meteo_pct » (Biais long terme de la source météo (σ)) attend un pourcentage (nombre entre 0 et 100).",
+      "lid_par_techno": "« lid_par_techno » (Perte LID déclarée par technologie de cellule) : « lid_par_techno.mono » doit être un objet (reçu : nombre)."
+    },
+    "electrique_societe": {
+      "facteur_regroupement": "Valeur de type texte reçue : « facteur_regroupement » (Facteur de regroupement appliqué au courant admissible des câbles) attend un nombre (nombre entre 0 et 1)."
     }
   },
   "exemple_refus_catalogue_rapport": {

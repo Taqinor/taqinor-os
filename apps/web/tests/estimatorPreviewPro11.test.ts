@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { poserTrianglesDeRangee } from '../src/scripts/roofPro11/piedsChassis';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
@@ -302,18 +303,21 @@ describe('pro-11 — structures RÉELLES TAQINOR (triangle à chaque jointure, s
     expect(scene).toContain('const CONTIG_GAP_M = 0.25');
     expect(scene).toContain('const invRx =');
     expect(scene).toContain('const rows = new Map<number, PanelFoot[]>()');
-    expect(scene).toContain('row.sort((a, b) => a.la - b.la)');
-    expect(scene).toContain('row[j + 1].la - row[j].la <= row[j].halfA + row[j + 1].halfA + CONTIG_GAP_M');
+    // ACAL579 — la boucle des tronçons vit dans `piedsChassis.ts` ; la scène lui passe le jeu nommé.
+    expect(scene).toContain('poserTrianglesDeRangee(row, CONTIG_GAP_M, portee, addTriangle)');
+    const pieds = read('../src/scripts/roofPro11/piedsChassis.ts');
+    expect(pieds).toContain('row.sort((a, b) => a.la - b.la)');
+    expect(pieds).toContain('row[j + 1].la - row[j].la <= row[j].halfA + row[j + 1].halfA + ecartContigM');
     // Exactement TROIS sites de pose : le bord amont du tronçon, chaque jointure INTERNE
     // (le milieu entre deux voisins), le bord aval. Soit (N−1) + 2 = N+1 triangles.
-    expect(scene).toContain('addTriangle(row[i].la - row[i].halfA, row[i])');
-    expect(scene).toContain('addTriangle((row[k].la + row[k].halfA + row[k + 1].la - row[k + 1].halfA) / 2, row[k])');
-    expect(scene).toContain('addTriangle(row[j].la + row[j].halfA, row[j])');
-    expect(scene.match(/addTriangle\(\(?row\[/g)?.length).toBe(3);
-    // Invariant N+1 re-dérivé ici pour qu'il soit lisible sans relire la boucle.
-    const trianglesFor = (n: number) => (n - 1) + 2;
-    expect(trianglesFor(1)).toBe(2);
-    expect(trianglesFor(12)).toBe(13);
+    expect(pieds).toContain('poser(row[i].la - row[i].halfA, row[i])');
+    expect(pieds).toContain('poser((row[i + n - 1].la + row[i + n - 1].halfA + row[i + n].la - row[i + n].halfA) / 2, row[i + n - 1])');
+    expect(pieds).toContain('poser(row[j].la + row[j].halfA, row[j])');
+    expect(pieds.match(/poser\(\(?row\[/g)?.length).toBe(3);
+    // Invariant N+1 EXÉCUTÉ (sans portée saisie) : N panneaux contigus → N+1 triangles.
+    const poses = (n: number) => { let c = 0; poserTrianglesDeRangee(Array.from({ length: n }, (_, k) => ({ la: k * 1.1, halfA: 0.55 })), 0.25, null, () => { c++; }); return c; };
+    expect(poses(1)).toBe(2);
+    expect(poses(12)).toBe(13);
   });
 
   it('chaque triangle = 3 pièces boulonnées + 2 platines + 2 bordures béton', () => {

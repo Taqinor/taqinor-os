@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
+import ChoixSurfaceAlbedo from './ChoixSurfaceAlbedo'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
 import ReglagesSite from './ReglagesSite'
 import DemarrageRapide from './DemarrageRapide'
 import ReglagesNorme from './ReglagesNorme'
+import ReglagesLestage from './ReglagesLestage'
+import ReglagesRetraitsAretes from './ReglagesRetraitsAretes'
 import { useOuvrirChamp } from '../atelier/ouvrirChamp'
 import { refusServeur } from '../commun/refusServeur'
 
@@ -80,6 +83,11 @@ function registreDepuisServeur(liste) {
       reference: typeof ligne.reference === 'string' ? ligne.reference : '',
       type: typeof ligne.type === 'string' ? ligne.type : '',
       valeurs: Array.isArray(ligne.valeurs) ? ligne.valeurs.map(String) : null,
+      // ACAL964 — {valeur technique: mot français}, `enum` seulement.
+      libelles: ligne.libelles && typeof ligne.libelles === 'object' ? ligne.libelles : null,
+      // ACAL770 — {valeur: motif} : acceptées à l'écriture, jamais honorées.
+      nonServies: ligne.valeurs_non_servies && typeof ligne.valeurs_non_servies === 'object'
+        ? ligne.valeurs_non_servies : null,
       minimum: typeof ligne.minimum === 'number' ? ligne.minimum : null,
       maximum: typeof ligne.maximum === 'number' ? ligne.maximum : null,
     })
@@ -208,7 +216,12 @@ function ChampValeur({ r, ligne, disabled, erreur, onChange }) {
     return (
       <select {...commun}>
         <option value="">— aucune —</option>
-        {options.map((v) => <option key={v} value={v}>{v}</option>)}
+        {options.map((v) => {
+          const mot = r.libelles?.[v] || v
+          return r.nonServies?.[v]
+            ? <option key={v} value={v} disabled>{`${mot} — indisponible`}</option>
+            : <option key={v} value={v}>{mot}</option>
+        })}
       </select>
     )
   }
@@ -242,6 +255,7 @@ function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
           {aide}
         </p>
       )}
+      {r.cle === 'albedo_mensuel' && <ChoixSurfaceAlbedo cle={r.cle} disabled={disabled} onChoisir={majer} />}
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block" data-testid={`calx69-valeur-${r.cle}`}>
           <span className="text-xs text-muted-foreground">Valeur</span>
@@ -270,6 +284,16 @@ function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
           />
         </label>
       </div>
+      {Object.entries(r.nonServies || {}).map(([valeur, motif]) => (
+        <p
+          key={valeur}
+          role="status"
+          data-testid={`acal770-motif-${r.cle}-${valeur}`}
+          className="mt-2 text-sm text-muted-foreground"
+        >
+          {ligne.valeurTexte === valeur ? `Valeur enregistrée — attention. ${motif}` : motif}
+        </p>
+      ))}
       {erreur && (
         <p
           id={`calx69-erreur-${r.cle}`}
@@ -482,6 +506,8 @@ export default function ReglagesSimulation() {
   const [documentsServis, setDocumentsServis] = useState(null)
   // ACAL397 — `norme_electrique` servie ; `#<champ>` (lien de « ce qui manque ») focalisé après chargement.
   const [normeServie, setNormeServie] = useState(null)
+  const [lestage, setLestage] = useState({ registre: null, servi: null }) // ACAL572
+  const [degagements, setDegagements] = useState(null) // ACAL561 — la section servie, renvoyée entière
   const [chargement, setChargement] = useState(true)
   const [erreurChargement, setErreurChargement] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -510,6 +536,8 @@ export default function ReglagesSimulation() {
         setPresetsServis(data.presets && typeof data.presets === 'object' ? data.presets : {})
         setDocumentsServis(data.documents && typeof data.documents === 'object' ? data.documents : {})
         setNormeServie(data.norme_electrique && typeof data.norme_electrique === 'object' ? data.norme_electrique : {})
+        setLestage({ registre: servi.lestage ?? null, servi: data.lestage ?? {} })
+        setDegagements(data.degagements && typeof data.degagements === 'object' ? data.degagements : {})
         setServis({ simulation: data.simulation, electrique_societe: data.electrique_societe })
         setLignesParSection({
           simulation: lignesDepuis(simulation, data.simulation),
@@ -645,22 +673,6 @@ export default function ReglagesSimulation() {
         </a>
       </p>
 
-      {champsFautifs.length > 0 && (
-        <p
-          role="alert"
-          data-testid="calx69-bandeau"
-          className="mt-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          Réglages incomplets — à corriger :{' '}
-          {champsFautifs.map((cle, i) => (
-            <span key={cle}>
-              {i > 0 && ', '}
-              <a href={`#calx69-${cle}`} className="underline">{libelleDe(cle, registres)}</a>
-            </span>
-          ))}
-        </p>
-      )}
-
       <DemarrageRapide
         reglages={servis}
         peutApprouver={peutApprouver}
@@ -715,6 +727,26 @@ export default function ReglagesSimulation() {
         </p>
       )}
 
+      {/* ACAL947 — TOUTES les erreurs d'un coup, sous le bouton : chaque ligne
+          nomme le réglage, dit ce que le serveur attend et mène au champ. */}
+      {champsFautifs.length > 0 && (
+        <div
+          role="alert"
+          data-testid="acal947-erreurs-bouton"
+          className="mt-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          <p className="font-semibold">Réglages incomplets — à corriger :</p>
+          <ul className="mt-1 list-disc pl-5">
+            {champsFautifs.map((cle) => (
+              <li key={cle} data-testid={`acal947-erreur-${cle}`}>
+                <a href={`#calx69-${cle}`} className="underline">{libelleDe(cle, registres)}</a>
+                {' — '}{erreurs[cle]}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {erreurs._general && (
         <p role="alert" className="mt-2 text-xs text-destructive" data-testid="calx69-erreur-generale">
           {erreurs._general}
@@ -726,6 +758,8 @@ export default function ReglagesSimulation() {
         </p>
       )}
 
+      <ReglagesLestage registre={lestage.registre} servi={lestage.servi} peutGerer={peutGerer} />
+      {degagements && <ReglagesRetraitsAretes servi={degagements} peutGerer={peutGerer} />}
       <CarteHistorique servi={presetsServis?.versions_conservees ?? null} peutGerer={peutGerer} />
       <CarteRapport documents={documentsServis} peutGerer={peutGerer} />
     </div>

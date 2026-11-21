@@ -269,6 +269,51 @@
       "cle": "modele_decomposition",
       "section": "simulation",
       "motif": "Choix de modèle propre à la société (Erbs ou DISC) : aucun modèle n'est choisi à sa place, laissé sans valeur (D-CALX 7, ACAL456)."
+    },
+    {
+      "cle": "rendement_specifique_min_kwh_kwc",
+      "section": "simulation",
+      "motif": "Borne propre à la société, avec sa source : aucune page publiée ne donne de borne universelle du rendement spécifique, laissée sans valeur (D-CALX 7, ACAL704)."
+    },
+    {
+      "cle": "rendement_specifique_max_kwh_kwc",
+      "section": "simulation",
+      "motif": "Borne propre à la société, avec sa source : aucune page publiée ne donne de borne universelle du rendement spécifique, laissée sans valeur (D-CALX 7, ACAL704)."
+    },
+    {
+      "cle": "nettoyages_par_an",
+      "section": "simulation",
+      "motif": "Fréquence de nettoyage propre à la société : la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss), aucune valeur publiée trouvée, laissée sans valeur (D-CALX 7, ACAL742)."
+    },
+    {
+      "cle": "inclinaison_autonettoyage_deg",
+      "section": "simulation",
+      "motif": "Seuil d'autonettoyage propre à la société : la salissure dépend de la pluie et de l'inclinaison (PVsyst, Soiling loss), aucune valeur publiée trouvée, laissé sans valeur (D-CALX 7, ACAL742)."
+    },
+    {
+      "cle": "facteur_regroupement",
+      "section": "electrique_societe",
+      "motif": "Facteur de regroupement des câbles : réglage société, aucune valeur publiée relue sur une page citée, laissé sans valeur (D-CALX 7, ACAL636)."
+    },
+    {
+      "cle": "temperature_service_cable_c",
+      "section": "electrique_societe",
+      "motif": "Température de service des câbles : réglage société, aucune valeur publiée relue sur une page citée, laissée sans valeur (D-CALX 7, ACAL635)."
+    },
+    {
+      "cle": "alpha_cuivre_par_c",
+      "section": "electrique_societe",
+      "motif": "Coefficient de température du cuivre : aucune page citée relue, laissé sans valeur (D-CALX 7, jamais tapé de mémoire, ACAL635)."
+    },
+    {
+      "cle": "tolerance_orientation_pans_deg",
+      "section": "electrique_societe",
+      "motif": "Tolérance d'orientation entre pans : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL650)."
+    },
+    {
+      "cle": "consigne_dc_plan_cablage",
+      "section": "electrique_societe",
+      "motif": "Consigne DC du plan de câblage : réglage société, aucune page publiée relue, laissée sans valeur (D-CALX 7, ACAL673)."
     }
   ]
 }

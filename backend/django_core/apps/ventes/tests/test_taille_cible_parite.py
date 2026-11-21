@@ -15,6 +15,10 @@ Lancer :
         apps.ventes.tests.test_taille_cible_parite -v 2
 """
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest import mock
+
+from django.test import SimpleTestCase
 
 from apps.ventes.services import (
     build_devis_auto, creer_devis_automatique_depuis_lead,
@@ -57,3 +61,51 @@ class TailleExpliciteParite(_BaseAuto):
                             email='parite-bouton@example.com'),
             user=self.user, company=self.company, target_kwc=TARGET_KWC_BOUTON)
         self.assertEqual(self._panneaux(devis), PANNEAUX_ATTENDUS)
+
+    def test_cible_dit_le_motif_du_refus(self):
+        """ACAL1145 — lead résidentiel sans facture ni taille ⇒ ``motif_code``
+        'facture_absente' (lu sur l'``AutoDevisError``), taille souhaitée ⇒
+        None ; les cinq clés d'avant restent."""
+        from apps.ventes.selectors import cible_depuis_lead
+        # ``_BaseAuto._lead`` pose par défaut ``taille_souhaitee_kwc`` = 7,1 :
+        # « sans taille » doit l'ôter, sinon la taille du lead est souveraine
+        # (``source: 'lead'``, aucun refus, ``motif_code`` None — le rouge CI).
+        sans = cible_depuis_lead(self._lead(taille_souhaitee_kwc=None,
+                                            email='acal1145-sans@example.com'), self.company)
+        self.assertEqual(sans['motif_code'], 'facture_absente')
+        self.assertIsNone(sans['panneaux'])
+        self.assertIn('facture', sans['refus'])
+        avec = cible_depuis_lead(self._lead(taille_souhaitee_kwc=TAILLE_LEAD_KWC,
+                                            email='acal1145-taille@example.com'), self.company)
+        self.assertEqual(set(avec), {'panneaux', 'panel_watt', 'kwc', 'source', 'refus', 'motif_code'})
+        self.assertIsNone(avec['motif_code'])
+
+
+class MotifDuRefusSansBase(SimpleTestCase):
+    """ACAL1145 — le motif porté par l'erreur, sans base (lectures doublées).
+    Mutant : ne pas passer ``motif`` dans ``_refus_dimensionnement`` ⇒ rouge."""
+
+    def test_le_refus_porte_son_motif(self):
+        from apps.ventes.domain.taille import AutoDevisError, _refus_dimensionnement
+        self.assertEqual(_refus_dimensionnement('facture_absente').motif, 'facture_absente')
+        self.assertEqual(_refus_dimensionnement('facture_absente').field, 'facture_hiver')
+        self.assertIsNone(AutoDevisError('x', field='y').motif)
+
+    def test_cible_motif_code_par_cas(self):
+        from apps.ventes.domain.taille import _refus_dimensionnement
+        from apps.ventes.selectors import cible_depuis_lead
+
+        def lead(**k):
+            return SimpleNamespace(**dict({'type_installation': 'residentiel',
+                                           'taille_souhaitee_kwc': None}, **k))
+        ci = cible_depuis_lead(lead(type_installation='industriel'), None)
+        self.assertIsNone(ci['motif_code'])
+        self.assertEqual(set(ci) - {'motif_code'}, {'panneaux', 'panel_watt', 'kwc', 'source', 'refus'})
+        self.assertIsNone(cible_depuis_lead(lead(taille_souhaitee_kwc=Decimal('6.5')), None)['motif_code'])
+        with mock.patch('apps.ventes.etude_horaire.controle_kwh_declare_du_lead', return_value=None), \
+                mock.patch('apps.ventes.domain.pipeline.decider_taille',
+                           side_effect=_refus_dimensionnement('facture_absente')):
+            self.assertEqual(cible_depuis_lead(lead(), None)['motif_code'], 'facture_absente')
+        with mock.patch('apps.ventes.etude_horaire.controle_kwh_declare_du_lead',
+                        return_value={'coherent': False}):
+            self.assertIsNone(cible_depuis_lead(lead(), None)['motif_code'])

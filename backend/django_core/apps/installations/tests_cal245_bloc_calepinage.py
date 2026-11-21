@@ -12,9 +12,11 @@ Run :
     python manage.py test apps.installations.tests_cal245_bloc_calepinage -v2
 """
 import itertools
+import json
+import pathlib
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.variantes import bascule_autorisee
@@ -163,3 +165,38 @@ class TestBlocChantierKwcVendu(TestCase):
         self.assertEqual(bloc['kwc_source'], 'calepinage')
         self.assertEqual(bloc['kwc'], 8.52)
         self.assertIsNone(bloc['ecart_kwc'])
+
+
+class TestContratRecetteValeursAttendues(SimpleTestCase):
+    """ACAL666 — forme de ``recette_valeurs_attendues.json`` (contrat posé
+    seul, avant le serveur ACAL667 et l'écran ACAL668)."""
+
+    CHAMPS_CHAINE = {'chaine', 'modules', 'voc_attendu_v', 'isc_attendu_a',
+                     'pmax_attendu_w', 'sources', 'corrigee',
+                     'isc_corrige_motif'}
+
+    def setUp(self):
+        chemin = (pathlib.Path(__file__).resolve().parent / 'contract_samples'
+                  / 'recette_valeurs_attendues.json')
+        self.contrat = json.loads(chemin.read_text(encoding='utf-8'))
+
+    def test_forme_de_l_exemple(self):
+        exemple = self.contrat['exemple']
+        self.assertEqual(set(exemple), {'installation', 'chaines',
+                                        'temperature_c', 'eclairement_w_m2'})
+        self.assertTrue(exemple['chaines'])
+        for chaine in exemple['chaines']:
+            self.assertEqual(set(chaine), self.CHAMPS_CHAINE)
+            self.assertIsInstance(chaine['sources'], list)
+            self.assertTrue(chaine['sources'])
+
+    def test_valeurs_derivees_a_la_main_de_la_fiche(self):
+        chaine = self.contrat['exemple']['chaines'][0]
+        self.assertEqual(chaine['voc_attendu_v'], 10 * 49.5)
+        self.assertEqual(chaine['modules'], 10)
+        self.assertIn('10 × 49,5 V = 495 V', self.contrat['pourquoi'])
+
+    def test_sans_calepinage_liste_vide_et_motif_nomme(self):
+        vide = self.contrat['exemple_sans_calepinage']
+        self.assertEqual(vide['chaines'], [])
+        self.assertTrue(vide['motif'])

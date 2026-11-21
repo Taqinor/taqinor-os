@@ -158,7 +158,8 @@ FORME_ACCUSE = inline_serializer('CalepinageMoteurAccuseTravailLong', {
 })
 
 FORME_POSE = inline_serializer('CalepinageMoteurPoseReponse', dict(
-    _POSE_MESUREE, verdict=serializers.CharField()))
+    _POSE_MESUREE, verdict=serializers.CharField(),
+    anti_ombrage=serializers.DictField(allow_null=True)))  # ACAL606
 
 FORME_SUIVI = inline_serializer('CalepinageMoteurResultatReponse', {
     'job_id': serializers.IntegerField(),
@@ -347,16 +348,23 @@ class MoteurPoseView(APIView):
         request=inline_serializer('CalepinageMoteurPoseRequete', {
             'demande': inline_serializer('CalepinageMoteurPoseDemande',
                                          dict(_DOCUMENT_MOTEUR)),
+            # ACAL606 — champ AU SOL : la latitude de l'épingle du lead.
+            'sol': inline_serializer('CalepinageMoteurPoseSol', {
+                'latitude_deg': serializers.FloatField(),
+            }, required=False),
         }),
         responses={200: FORME_POSE})
     def post(self, request, *args, **kwargs):
         from ..moteur_io import deriver_axe_rangee
         from ..moteur_service import (
-            calepinage_json, erreurs_moteur_calepinage,
+            calepinage_json, erreurs_moteur_calepinage, politique_du_sol,
         )
 
         entree_invalide, incoherent = erreurs_moteur_calepinage()
         donnees = request.data
+        # ACAL606 — ``sol`` (champ au sol) voyage À CÔTÉ de ``demande`` : sans
+        # allée saisie, le pas est l'anti-ombrage à cette latitude.
+        sol = donnees.get('sol') if isinstance(donnees, dict) else None
         # La demande voyage sous ``demande`` (la clé que le contrat fige).
         # L'enveloppe ``entree`` et le document NU sont acceptés en plus, par
         # le MÊME lecteur que ``calculer`` : un appelant qui connaît déjà la
@@ -386,9 +394,10 @@ class MoteurPoseView(APIView):
             # ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — ``axe_rangee: "AUTO"`` :
             # l'axe est DÉRIVÉ des kits par le moteur, jamais deviné à l'écran.
             document = deriver_axe_rangee(document)
+            politique, anti_ombrage = politique_du_sol(document, sol)
             resultat = calepinage_json(document, company=company,
                                        user=request.user,
-                                       suggestions=False)
+                                       suggestions=False, politique=politique)
         except entree_invalide as erreur:
             raise RefusDeDocument({'demande': [str(erreur)]}) from erreur
         except incoherent as erreur:
@@ -413,6 +422,7 @@ class MoteurPoseView(APIView):
             'plans': resultat['plans'],
             'preuve': resultat['preuve'],
             'marges': resultat['marges'],
+            'anti_ombrage': anti_ombrage,
         })
 
 

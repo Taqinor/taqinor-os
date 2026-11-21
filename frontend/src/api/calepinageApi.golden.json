@@ -542,6 +542,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.exportKml": [
+    {
+      "config": {
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/export.kml/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.exporterConception": [
     {
       "config": null,
@@ -971,6 +981,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.suggestionPenteRelief": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/suggestions-pente-relief/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.supprimerPhoto": [
     {
       "config": null,
@@ -1051,6 +1069,16 @@
       "data": 3,
       "url": "/calepinage/calepinages/7/",
       "verbe": "patch"
+    }
+  ],
+  "calepinages.variantesParModule": [
+    {
+      "config": null,
+      "data": {
+        "modules": 3
+      },
+      "url": "/calepinage/calepinages/7/variantes-par-module/",
+      "verbe": "post"
     }
   ],
   "calepinages.versions": [
@@ -1147,6 +1175,14 @@
       "verbe": "post"
     }
   ],
+  "parametres.catalogueMateriel": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/catalogue-materiel/",
+      "verbe": "get"
+    }
+  ],
   "parametres.enregistrerProfilsTypes": [
     {
       "config": null,
@@ -1221,6 +1257,38 @@
       "data": 7,
       "url": "/calepinage/parametres/",
       "verbe": "put"
+    }
+  ],
+  "systemesFixation.creer": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/calepinages/systemes-fixation/",
+      "verbe": "post"
+    }
+  ],
+  "systemesFixation.liste": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/systemes-fixation/",
+      "verbe": "get"
+    }
+  ],
+  "systemesFixation.modifier": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/systemes-fixation/7/",
+      "verbe": "patch"
+    }
+  ],
+  "systemesFixation.supprimer": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/systemes-fixation/7/",
+      "verbe": "delete"
     }
   ]
 }

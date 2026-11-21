@@ -17,7 +17,10 @@ Run :
     python manage.py test apps.calepinage.tests.test_acal_retenir_conception -v2
 """
 
+from unittest import mock
+
 from django.contrib.contenttypes.models import ContentType
+from django.test import SimpleTestCase
 
 from apps.calepinage.models import (
     Calepinage, CalepinageVariante, CalepinageVersion,
@@ -186,3 +189,169 @@ class RetenirConceptionTest(BaseApiCalepinage):
         self.assertIsNotNone(entree)
         self.assertEqual(entree.new_value, 'A')
         self.assertEqual(entree.created_by_id, self.user.pk)
+
+
+# ── ACAL588 — le plan de pose (SVG) du calepinage retenu d'un devis ─────────
+
+_CHEMIN = 'apps.calepinage.selectors_chantier'
+
+
+def _calepinage_de_pose():
+    from .acal_livrables_helpers import (
+        LAYOUT_PLANCHE_SIMULABLE, calepinage_simule_reel,
+    )
+    from .test_cal173_empreinte import FauxCalepinage
+
+    simule = calepinage_simule_reel(LAYOUT_PLANCHE_SIMULABLE)
+    faux = FauxCalepinage(layout_hash='b' * 64,
+                          roof_layout=simule.roof_layout)
+    faux.resultat = simule.resultat
+    return faux
+
+
+class PlanDePoseDuDevisTest(SimpleTestCase):
+    """Le sélecteur rend le plan vendu, ou dit pourquoi il ne le rend pas."""
+
+    def _appeler(self, calepinage, *, retenu=True, conception=None):
+        from apps.calepinage import selectors_chantier
+        from apps.calepinage.services.asbuilt import SOURCE_CALEPINAGE
+        from .acal_livrables_helpers import patch_materiel
+
+        conception = conception or (calepinage.roof_layout,
+                                    SOURCE_CALEPINAGE)
+        with mock.patch(f'{_CHEMIN}.calepinage_retenu_pour_devis',
+                        return_value={'id': 41} if retenu else None), \
+                mock.patch(f'{_CHEMIN}.calepinage_du_devis',
+                           return_value=calepinage), \
+                mock.patch('apps.calepinage.services.asbuilt.'
+                           'conception_du_chantier',
+                           return_value=conception), \
+                patch_materiel():
+            return selectors_chantier.plan_pose_svg_pour_devis(7, object())
+
+    def test_un_projet_retenu_rend_le_svg_et_son_empreinte(self):
+        calepinage = _calepinage_de_pose()
+        plan = self._appeler(calepinage)
+        self.assertEqual(plan['calepinage_id'], calepinage.pk)
+        self.assertIn('<svg', plan['svg'])
+        self.assertEqual(plan['empreinte'], 'b' * 64)
+        self.assertEqual(plan['motif'], '')
+        for interdit in ('prix', 'mad', 'montant'):
+            self.assertNotIn(interdit, plan['svg'].lower())
+
+    def test_conception_modifiee_apres_acceptation_ne_rend_pas_de_svg(self):
+        from apps.calepinage.services.asbuilt import SOURCE_DEVIS_ACCEPTE
+        from apps.calepinage.selectors_chantier import (
+            MOTIF_CONCEPTION_CHANGEE,
+        )
+
+        calepinage = _calepinage_de_pose()
+        vendu = {'version': 2, 'zones': []}
+        plan = self._appeler(calepinage,
+                             conception=(vendu, SOURCE_DEVIS_ACCEPTE))
+        self.assertIsNone(plan['svg'])
+        self.assertEqual(plan['motif'], MOTIF_CONCEPTION_CHANGEE)
+        self.assertEqual(plan['empreinte'], 'b' * 64)
+
+    def test_conception_inchangee_depuis_l_acceptation_rend_le_svg(self):
+        from apps.calepinage.services.asbuilt import SOURCE_DEVIS_ACCEPTE
+
+        calepinage = _calepinage_de_pose()
+        plan = self._appeler(
+            calepinage,
+            conception=(calepinage.roof_layout, SOURCE_DEVIS_ACCEPTE))
+        self.assertIsNotNone(plan['svg'])
+        self.assertEqual(plan['motif'], '')
+
+    def test_document_sans_geometrie_nomme_son_motif(self):
+        from apps.calepinage.services.planche import PlancheRefusee
+
+        calepinage = _calepinage_de_pose()
+        calepinage.roof_layout = {'version': 2, 'zones': []}
+        plan = self._appeler(calepinage)
+        self.assertIsNone(plan['svg'])
+        with self.assertRaises(PlancheRefusee) as capture:
+            from apps.calepinage.services.planche import geometrie_de_planche
+            geometrie_de_planche({'version': 2, 'zones': []})
+        self.assertEqual(plan['motif'], str(capture.exception))
+
+    def test_sans_retenue_ou_autre_societe_rien(self):
+        self.assertIsNone(self._appeler(_calepinage_de_pose(),
+                                        retenu=False))
+
+
+# ── ACAL596 — les points de contrôle de pose d'un calepinage retenu ─────────
+
+def _ligne(module, pan, chaine, mppt, onduleur=1):
+    return {'module': module, 'pan': pan, 'chaine': chaine, 'mppt': mppt,
+            'onduleur': onduleur, 'source': 'automatique'}
+
+
+def _deux_chaines():
+    return ([_ligne('z1#%d' % n, 'Sud', 1, 1) for n in range(1, 13)]
+            + [_ligne('z1#%d' % n, 'Sud', 2, 2) for n in range(13, 25)]
+            + [_ligne('z1#25', 'Sud', None, None, None)])
+
+
+class PointsDeControlePoseTest(SimpleTestCase):
+    def _appeler(self, affectation, *, systeme=True, retenu=True):
+        from types import SimpleNamespace
+
+        from apps.calepinage import selectors_chantier
+
+        stub = SimpleNamespace(pk=41)
+        choisi = (SimpleNamespace(libelle='Système A', code='SYS-A')
+                  if systeme else None)
+        with mock.patch(f'{_CHEMIN}.calepinage_retenu_pour_devis',
+                        return_value={'id': 41} if retenu else None), \
+                mock.patch(f'{_CHEMIN}.calepinage_du_devis',
+                           return_value=stub), \
+                mock.patch(f'{_CHEMIN}.resultat_servi',
+                           return_value={'electrique': {
+                               'affectation': affectation}}), \
+                mock.patch('apps.calepinage.services.fixation.'
+                           'resoudre_systeme', return_value=(choisi, [])):
+            return selectors_chantier.points_de_controle_pose(7, object())
+
+    def test_deux_chaines_et_un_systeme_donnent_trois_points_en_ordre(self):
+        rendu = self._appeler(_deux_chaines())
+        self.assertEqual(rendu['calepinage_id'], 41)
+        self.assertEqual(rendu['omissions'], [])
+        self.assertEqual([p['code'] for p in rendu['points']],
+                         ['systeme_fixation', 'chaine', 'chaine'])
+        self.assertEqual(rendu['points'][0]['libelle'],
+                         'Système de fixation : Système A (SYS-A)')
+        self.assertEqual(
+            rendu['points'][1]['libelle'],
+            'Chaîne 1 : 12 modules, du n°1 au n°12 du pan Sud, dans '
+            'l\'ordre de l\'affectation publiée ; entrée MPPT 1 ; '
+            'onduleur 1')
+        self.assertIn('du n°13 au n°24 du pan Sud',
+                      rendu['points'][2]['libelle'])
+        self.assertIn('entrée MPPT 2', rendu['points'][2]['libelle'])
+        self.assertEqual(rendu['points'][1]['source'], 'affectation')
+
+    def test_l_ordre_est_celui_de_l_affectation_pas_un_tri(self):
+        affectation = ([_ligne('z1#13', 'Sud', 2, 2)]
+                       + [_ligne('z1#1', 'Sud', 1, 1)])
+        libelles = [p['libelle'] for p in self._appeler(
+            affectation, systeme=False)['points']]
+        self.assertTrue(libelles[0].startswith('Chaîne 2'))
+        self.assertTrue(libelles[1].startswith('Chaîne 1'))
+
+    def test_sans_systeme_une_omission_nommee(self):
+        rendu = self._appeler(_deux_chaines(), systeme=False)
+        self.assertEqual(rendu['omissions'], [
+            'Aucun système de fixation retenu : rien à contrôler sur la '
+            'fixation'])
+        self.assertEqual(len(rendu['points']), 2)
+
+    def test_sans_chaine_une_omission_nommee(self):
+        rendu = self._appeler([_ligne('z1#1', 'Sud', None, None, None)])
+        self.assertEqual(rendu['omissions'], [
+            'Électrique non chaîné : aucun ordre de chaîne à contrôler'])
+        self.assertEqual([p['code'] for p in rendu['points']],
+                         ['systeme_fixation'])
+
+    def test_sans_retenue_ou_autre_societe_rien(self):
+        self.assertIsNone(self._appeler([], retenu=False))

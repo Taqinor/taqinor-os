@@ -38,6 +38,7 @@ ROUTES = {
     'plan_cablage': ('get', 'plan-cablage.pdf/'),
     'plan_cablage_dxf': ('get', 'plan-cablage.dxf/'),
     'export_dxf': ('get', 'export.dxf/'),
+    'export_kml': ('get', 'export.kml/'),  # ACAL536
     'export_xlsx': ('get', 'export.xlsx/'),
     'export_csv': ('get', 'export.csv/'),
     'pack_technique': ('post', 'pack-technique/'),
@@ -208,6 +209,51 @@ class PorteeApprobationTest(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         self.assertEqual(mentions_d_etat(etat_de_conception(self.calepinage)),
                          [])
+
+
+class ExportKmlTest(SimpleTestCase):
+    """ACAL536 — le KML : un ``Polygon`` par pan, zone d'exclusion et module
+    (essais purs, aucune base) ; ``lng,lat,0`` ; 409 nommant ``roof_layout``
+    sans conception."""
+
+    def _layout(self):
+        from .test_acal_planche_module_document import layout_a_deux_pans
+
+        layout = layout_a_deux_pans()
+        layout['exclusionZones'] = [{
+            'id': 'x1', 'label': 'Zone x1', 'nature': 'cheminee',
+            'vertices': [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]]}]
+        return layout
+
+    def test_un_polygone_par_pan_zone_et_module(self):
+        import re
+
+        from apps.calepinage.services.export_kml import exporter_kml
+
+        from .acal_livrables_helpers import PivotSansBase
+
+        kml = exporter_kml(PivotSansBase(self._layout()))
+        if isinstance(kml, bytes):
+            kml = kml.decode('utf-8')
+        self.assertIn('http://www.opengis.net/kml/2.2', kml)
+        # 2 pans + 1 zone + 3 modules (2 + 1 posés)
+        self.assertEqual(len(re.findall(r'<Polygon[\s>]', kml)), 2 + 1 + 3)
+        coordonnees = re.search(r'<coordinates>([^<]*)</coordinates>', kml)
+        premiere = coordonnees.group(1).split()[0]
+        lng, lat, alt = (float(v) for v in premiere.split(','))
+        self.assertAlmostEqual(lng, -7.6, places=3)  # lng d'abord (ordre KML)
+        self.assertAlmostEqual(lat, 33.5, places=3)
+        self.assertEqual(alt, 0)
+
+    def test_sans_conception_refuse_en_nommant_roof_layout(self):
+        from apps.calepinage.services.export_kml import exporter_kml
+        from apps.calepinage.services.planche import PlancheRefusee
+
+        from .acal_livrables_helpers import PivotSansBase
+
+        with self.assertRaises(PlancheRefusee) as refus:
+            exporter_kml(PivotSansBase({}))
+        self.assertEqual(refus.exception.champ, 'roof_layout')
 
 
 class PorteEtSchemaTest(SimpleTestCase):

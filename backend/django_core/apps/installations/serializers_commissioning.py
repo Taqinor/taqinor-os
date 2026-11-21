@@ -135,6 +135,16 @@ class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, Champs
         demande = attrs.pop('resultat', None)
         fiche = (self.instance if self.instance is not None
                  else CommissioningRecord())
+        # ACAL670 — l'isolement est JUGÉ contre le seuil société quand mesure
+        # et seuil existent (avant le résultat) ; sinon la saisie reste.
+        from .recette_isolement import juger_isolement, seuil_isolement_mohm
+        request = self.context.get('request')
+        seuil = seuil_isolement_mohm(
+            getattr(getattr(request, 'user', None), 'company', None))
+        mesure = attrs.get('isolement_mohm', fiche.isolement_mohm)
+        if seuil is not None and mesure is not None:
+            attrs['isolement_ok'] = juger_isolement(
+                mesure, seuil, attrs.get('isolement_ok', fiche.isolement_ok))
         try:
             attrs['resultat'] = resultat_recette_fiche(
                 fiche, attrs, choix=RESERVES if demande == RESERVES else None)

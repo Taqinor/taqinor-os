@@ -44,6 +44,29 @@ class LegendeTest(SimpleTestCase):
         self.assertIn('Obstacle à confirmer', libelles)
 
 
+class LegendeModuleExistantTest(SimpleTestCase):
+    """ACAL575 - l'entree « existant » n'apparait qu'avec un pan existant,
+    APRES « Module pose »."""
+
+    def libelles(self, layout):
+        return [e[2] for e in
+                entrees_de_legende(geometrie_de_planche(layout))]
+
+    def test_pas_d_entree_sans_pan_existant(self):
+        self.assertFalse([libelle for libelle in self.libelles(LAYOUT)
+                          if 'existant' in libelle])
+
+    def test_l_entree_suit_module_pose(self):
+        layout = dict(LAYOUT)
+        layout['zones'] = [dict(LAYOUT['zones'][0], existant=True,
+                                anneeMiseEnService=2019)]
+        libelles = self.libelles(layout)
+        rang = libelles.index('Module posé')
+        self.assertEqual(
+            libelles[rang + 1],
+            'Module existant (déjà posé) — mis en service en 2019')
+
+
 class OrientationTest(SimpleTestCase):
     def test_les_deux_mesures_connues_sont_ecrites(self):
         pan = geometrie_de_planche(LAYOUT)['pans'][0]

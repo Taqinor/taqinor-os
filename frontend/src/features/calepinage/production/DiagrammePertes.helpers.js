@@ -16,10 +16,13 @@ export const CASCADE_ARRIVEE = 'Énergie livrée'
  * prétendrait qu'elle n'a rien coûté. « Énergie livrée » = 100 − `total_pct`
  * servi (repli : dernier niveau en énergie).
  *
+ * ACAL703 — `plages` (`cascade.plages`) reporte la bande servie de chaque étape
+ * dans sa ligne (`plage`), sans aucun calcul.
+ *
  * Sans énergie servie (aucun `kwh_avant`), repli MULTIPLICATIF sur `perte_pct`
  * (jamais additif).
  */
-export function construireCascadeDetaillee(etapes, totalPct = null) {
+export function construireCascadeDetaillee(etapes, totalPct = null, plages = null) {
   const reference = Number(etapes[0]?.kwh_avant)
   const parKwh = Number.isFinite(reference) && reference > 0
   const niveauKwh = (kwh) => (parKwh && kwh !== null && kwh !== undefined
@@ -58,6 +61,8 @@ export function construireCascadeDetaillee(etapes, totalPct = null) {
       entree: etape.entree ?? null,
       reference: etape.reference ?? null,
       gain: Boolean(etape.gain) || bas > haut,
+      // ACAL703 — la bande publiée de l'étape (`cascade.plages.etapes`), ou null.
+      plage: plages?.etapes?.[etape.etape] ?? null,
     })
     courant = bas
   }

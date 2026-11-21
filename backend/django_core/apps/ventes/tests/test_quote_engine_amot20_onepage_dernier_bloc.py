@@ -111,3 +111,60 @@ class OnepageDernierBlocTests(TestCase):
         self.assertIn('texte int&#233;gral sur la proposition en ligne', html)
         # Garde : l'ajustement ne laisse pas l'état tronqué derrière lui.
         self.assertFalse(G.ONEPAGE_TEXTES_TRONQUES)
+
+
+@tag('pdf')
+class OnepageSansAncrageTests(TestCase):
+    """ACAL1033 (D-ACAL-45, D-ACAL-40) — au niveau 15, sans facture ni
+    consommation, le une-page n'imprime plus la vignette « Économie annuelle »
+    ni son ancre ; avec une consommation, il est inchangé ; au niveau 14 (tout
+    devis existant) il est rendu comme aujourd'hui, sans clé
+    ``regles_pose_reelle`` ; le PDF complet ne bouge pas. Mutants : retirer
+    ``ECONOMIES_SANS_ANCRAGE`` de ``page_onepage`` ⇒ rouge ; ignorer le niveau ⇒
+    le cas « niveau 14 » rougit ; brancher le drapeau dans
+    ``_sans_economies_publiees`` ⇒ le cas « PDF complet » rougit."""
+
+    def setUp(self):
+        self.company = make_company(slug='acal1033-co', nom='ACAL1033')
+        self.user = make_user(self.company)
+        self.devis = make_devis(
+            self.company, self.user, make_client(self.company), [
+                ('Panneau mono 550W', '10', '1100'),
+                ('Onduleur réseau Huawei 5kW', '1', '8000'),
+                ('Installation et mise en service', '1', '4000'),
+            ], reference='DEV-ACAL1033-1')
+
+    def _data(self, niveau, mode='onepage', **sur):
+        Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=niveau)
+        self.devis.refresh_from_db()
+        data = build_quote_data(self.devis, clean_pdf_options({'pdf_mode': mode}))
+        # Le chiffre « sans ancrage » : tarif de repli, aucune donnée réelle.
+        return {**data, 'savings_estimated': True, 'factures_reelles': None, 'conso_annuelle_kwh': None,
+                'onepage_branche': data.get('onepage_branche') or 'sans', 'eco_s_ann': 7420, **sur}
+
+    def _html(self, data, mode='onepage'):
+        with G._RENDER_LOCK:
+            return G.render_html_for({**data, 'pdf_mode': mode})
+
+    def test_niveau_15_sans_ancrage_aucune_economie_annuelle(self):
+        data = self._data(15)
+        self.assertTrue(data.get('regles_pose_reelle'))
+        html = self._html(data)
+        self.assertNotIn('economie_annuelle', html)
+
+    def test_niveau_15_avec_consommation_inchange(self):
+        avec = self._html(self._data(15, conso_annuelle_kwh=6000))
+        hier = self._html({k: v for k, v in self._data(15, conso_annuelle_kwh=6000).items()
+                           if k != 'regles_pose_reelle'})
+        self.assertIn('economie_annuelle', avec)
+        self.assertEqual(avec, hier)
+
+    def test_niveau_14_rendu_comme_aujourd_hui(self):
+        data = self._data(14)
+        self.assertNotIn('regles_pose_reelle', data)
+        self.assertIn('economie_annuelle', self._html(data))
+
+    def test_niveau_15_pdf_complet_identique(self):
+        data = self._data(15, mode='full')
+        sans_niveau = {k: v for k, v in data.items() if k != 'regles_pose_reelle'}
+        self.assertEqual(self._html(data, 'full'), self._html(sans_niveau, 'full'))

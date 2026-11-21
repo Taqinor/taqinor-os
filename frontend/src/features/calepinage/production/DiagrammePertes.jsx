@@ -146,7 +146,7 @@ export default function DiagrammePertes({ calepinageId }) {
       {etapesCascade.length > 0 ? (
         <>
           <MentionSourceCascade cascadeServie />
-          <DiagrammePertesCascadeDetaillee etapes={etapesCascade} totalPct={data?.cascade?.total_pct ?? null} />
+          <DiagrammePertesCascadeDetaillee etapes={etapesCascade} totalPct={data?.cascade?.total_pct ?? null} plages={data?.cascade?.plages ?? null} />
         </>
       ) : pertes.length === 0 ? (
         <ChartEmpty
@@ -265,8 +265,8 @@ function DiagrammePertesCascade({ pertes }) {
  * lisible dans la table (colonne dédiée, jamais fondu dans le libellé) et sa
  * colonne « Perte » reste VIDE (Done CALX48), jamais un zéro trompeur.
  */
-function DiagrammePertesCascadeDetaillee({ etapes, totalPct = null }) {
-  const lignes = construireCascadeDetaillee(etapes, totalPct)
+function DiagrammePertesCascadeDetaillee({ etapes, totalPct = null, plages = null }) {
+  const lignes = construireCascadeDetaillee(etapes, totalPct, plages)
   const colonnes = [
     { key: 'rang', header: 'Rang', format: (v, row) => (row.total ? '—' : v) },
     { key: 'nom', header: 'Étape' },

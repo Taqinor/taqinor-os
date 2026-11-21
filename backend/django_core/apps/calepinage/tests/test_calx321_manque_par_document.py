@@ -179,6 +179,25 @@ class InventaireEtatIntermediaireTest(SansBaseMixin, unittest.TestCase):
             self.assertFalse(document['disponible'])
             self.assertEqual(document['manque'][0]['champ'], 'resultat')
 
+    def test_motif_dit_qu_il_manque_le_calcul_pas_la_conception(self):
+        """ACAL942 - « Conception enregistrée — il manque le calcul »."""
+        servi = inventaire_des_documents(FauxConceptionSansResultat())
+        for document in servi['documents']:
+            self.assertTrue(document['motif_indisponible'].startswith(
+                'Conception enregistrée'), document['code'])
+            self.assertNotIn('Aucune conception',
+                             document['motif_indisponible'])
+
+    def test_correspond_a_l_exemple_sans_calcul_committe(self):
+        servi = inventaire_des_documents(FauxConceptionSansResultat())
+        attendu = CONTRAT['exemple_sans_calcul']['documents']
+        self.assertEqual(len(servi['documents']), len(attendu))
+        for servie, attendue in zip(servi['documents'], attendu):
+            self.assertEqual(servie['code'], attendue['code'])
+            self.assertEqual(servie['motif_indisponible'],
+                             attendue['motif_indisponible'])
+            self.assertEqual(servie['manque'], attendue['manque'])
+
     def test_langue_et_empreintes_publiees_meme_sans_resultat(self):
         """``layout_hash``/``version_moteur``/``langue`` ne dépendent QUE de
         la conception — jamais du résultat (même discipline du null que
@@ -220,6 +239,17 @@ class ChampReellementLeveTest(unittest.TestCase):
         self.assertEqual(
             document['manque'][0]['champ'],
             'roof_layout.zones[].geometry.solarAccess.values')
+
+    def test_consigne_ombrage_sans_bouton_calculer(self):
+        # ACAL732 - aucun bouton « Calculer » n'existe : la consigne dit
+        # de saisir une ombre ou un obstacle avec sa hauteur, puis
+        # d'enregistrer.
+        ligne = self.par_code['rapport_ombrage']['manque'][0]
+        self.assertNotIn('Calculer', ligne['ou_saisir'])
+        self.assertNotIn('bouton', ligne['ou_saisir'])
+        self.assertIn('hauteur', ligne['ou_saisir'])
+        self.assertIn('enregistrer', ligne['ou_saisir'])
+        self.assertIsNone(ligne['onglet'])
 
     def test_plan_cablage_nomme_le_seul_chainage(self):
         # ACAL219 - le rendu ne lit jamais ``troncons`` : seul le chainage

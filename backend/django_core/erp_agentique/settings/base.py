@@ -891,6 +891,10 @@ SPECTACULAR_SETTINGS = {
         # auraient fait renommer. Nommage de schéma uniquement — aucun choix
         # ne change.
         'GenrePhotoSiteEnum': 'apps.calepinage.models.PhotoSite.Genre',
+        # PR #1522 (ACAL558) — le corps publié de `systemes-fixation` énumère
+        # le rôle d'un composant (rail, pince…) : sans nom propre,
+        # drf-spectacular signalait une collision « role ». Nommage seulement.
+        'RoleComposantFixationEnum': 'apps.calepinage.models.ComposantFixation.Role',
         'GenreEnum': 'apps.calepinage.services.images_document.GENRES_IMAGE',
         'ClasseEnum': 'apps.adsengine.models.AssumptionNode.Classe',
         # fr / en / ar — partagé par core.ContentTranslation et

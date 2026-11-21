@@ -21,7 +21,7 @@ __all__ = [
     'DECLENCHEUR_PEREMPTION_JOURS', '_absorber_arrondi', 'acompte_paye_pour_devis',
     'analyse_facturation', 'annotations_engagement_proposition', 'ca_devis_factures_par_clients',
     'calepinage_du_devis', 'carnet_commande_par_mois', 'classer_produit_nom',
-    'comparaison_calepinage_devis', 'compatibilites_du_produit', 'comportement_paiement',
+    'comparaison_calepinage_devis', 'compatibilite_du_materiel', 'compatibilites_du_produit', 'comportement_paiement',
     'compter_factures', 'config_carte', 'contexte_conception_devis', 'date_encaissement_prevue',
     'dates_declencheurs', 'declencheurs_actifs', 'devis_a_facturer',
     'devis_accepted_totals_by_lead', 'devis_action_requise', 'devis_brouillon_pour_layout',
@@ -1620,7 +1620,7 @@ def cible_depuis_lead(lead, company):
     dimensionnement, jamais un repli forfaitaire : un refus du moteur est
     rendu NOMMÉ (``refus``, la phrase de ``AutoDevisError``).
 
-    Rend ``{panneaux, panel_watt, kwc, source, refus}`` ; ``None`` sans lead.
+    Rend ``{panneaux, panel_watt, kwc, source, refus, motif_code}`` (ACAL1145) ; ``None`` sans lead.
     """
     from decimal import Decimal, InvalidOperation
 
@@ -1634,9 +1634,9 @@ def cible_depuis_lead(lead, company):
     if lead is None:
         return None
 
-    def refus(message, source='factures'):
+    def refus(message, source='factures', code=None):
         return {'panneaux': None, 'panel_watt': None, 'kwc': None,
-                'source': source, 'refus': message}
+                'source': source, 'refus': message, 'motif_code': code}
 
     marche = (getattr(lead, 'type_installation', '') or '').lower()
     if marche == 'agricole':
@@ -1655,7 +1655,7 @@ def cible_depuis_lead(lead, company):
         panneaux = _residential_panel_count(taille_kwc=taille)
         return {'panneaux': panneaux, 'panel_watt': _AUTO_PANEL_WATT,
                 'kwc': round(panneaux * _AUTO_PANEL_WATT / 1000, 2),
-                'source': 'lead', 'refus': None}
+                'source': 'lead', 'refus': None, 'motif_code': None}
 
     # Même garde que le devis automatique : un kWh déclaré que les factures
     # contredisent n'est jamais dimensionné en silence.
@@ -1668,14 +1668,14 @@ def cible_depuis_lead(lead, company):
         cible = decider_taille(IntentionDevis(
             origine=ORIGINE_AUTO, company=company, lead=lead))
     except AutoDevisError as erreur:
-        return refus(str(erreur))
+        return refus(str(erreur), code=getattr(erreur, 'motif', None))
     if cible is None or not cible.nb_panneaux:
         return refus("Le devis n'a pas pu être dimensionné depuis la fiche "
                      "du lead.")
     watt = int(float(cible.panel_watt or _AUTO_PANEL_WATT))
     return {'panneaux': int(cible.nb_panneaux), 'panel_watt': watt,
             'kwc': round(int(cible.nb_panneaux) * watt / 1000, 2),
-            'source': 'factures', 'refus': None}
+            'source': 'factures', 'refus': None, 'motif_code': None}
 
 
 def promesse_pompage_devis(devis_id, company):
@@ -1758,7 +1758,7 @@ from .selectors_calepinage import (  # noqa: E402 — ré-export (SPL144) (D-ENF
     comparaison_calepinage_devis,
     devis_concevables,
     contexte_conception_devis,
-    config_carte,
+    config_carte, compatibilite_du_materiel,
 )
 
 

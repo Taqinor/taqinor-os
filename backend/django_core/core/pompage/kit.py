@@ -258,6 +258,19 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
                 "motif": " — ".join(mentions) if mentions else None,
                 "_produit": produit, "_role": role,
             })
+        # ACAL808 — ni sonde cochée ni protection publiée : alerte INTERNE
+        # (hors ``CODES_NOTES_CLIENT``), jamais une sonde cochée d'office.
+        protection = fiche_var.get("var_protection_marche_a_sec")
+        sonde = any(o["cle"] == "sonde_niveau" and o["cochee"] for o in options)
+        if variateur is not None and not sonde and not protection:
+            message = ("Ni sonde de niveau ni protection marche à sec du "
+                       "variateur : la pompe tournerait à sec si le puits se "
+                       "vide" if protection is False else
+                       "Ni sonde de niveau ni protection marche à sec connue : "
+                       "la fiche du variateur ne dit pas s'il protège de la "
+                       "marche à sec : à saisir")
+            alertes.append(_alerte("marche_a_sec_non_protegee",
+                                   "kit.options.sonde_niveau", message))
 
     lignes = [dict(ligne) for ligne in inclus]
     for option in options:

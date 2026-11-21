@@ -38,6 +38,8 @@ import {
 } from '../../lib/estimatorBrainV6';
 import { ringBBox, type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
+import { panelQuadsLngLat, PLAN_DEG2M, PLAN_DEG2RAD, type PlanQuad } from './modulesGeo'; // ACAL528 — déplacés tels quels
+export { panelQuadsLngLat, type PlanQuad }; // ré-export : `roof-tool-pro11.ts`, `perf.test.ts`
 import { roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../../lib/roofConfig';
 // CALX100 — `FLOORS`/`FLOOR_HEIGHT_M` ne sont plus lus ici : la hauteur des murs vient du
 // document (`batiment.ts`), qui garde ces deux constantes comme sa hauteur de DESSIN.
@@ -73,6 +75,7 @@ import { construireMaillagesPose } from './poseSurfaces'; // CALX124
 
 import { teinterAllees } from './teinteAllees'; // CALX403
 import { appliquerCiel } from './ciel'; // ACAL431
+import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579 — boucle des tronçons sortie
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -154,6 +157,18 @@ export interface Scene3d {
   renderOffscreen: (
     scale: number,
   ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** ACAL537 — la scène (repère LOCAL du site, mètres) en glTF binaire pour un architecte ;
+   *  `null` si rien n'est rendable. Aucun prix ni donnée client : la scène n'en porte pas. */
+  exporterSceneGltf: () => Promise<{ blob: Blob } | null>;
+}
+
+/** ACAL537 — sérialise un groupe three en `.glb` (chargé à la demande : le lot de l'atelier ne
+ *  grossit pas). Les `InstancedMesh` sortent en `EXT_mesh_gpu_instancing`, un par type de pièce. */
+export async function groupeVersGlb(groupe: THREE.Object3D): Promise<Blob> {
+  // @ts-ignore — `three` n'a pas de types ici (src/types/three-shim.d.ts ne couvre que `three`).
+  const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
+  const glb = await new GLTFExporter().parseAsync(groupe, { binary: true, onlyVisible: true });
+  return new Blob([glb as ArrayBuffer], { type: 'model/gltf-binary' });
 }
 
 // ════════════════════════ W107 — faîtière commune (pans connectés) ════════════════════════
@@ -1150,9 +1165,6 @@ export function couleurParAffectation(
 // celui de la 3D par construction : c'est la MÊME liste de rectangles.
 // ————————————————————————————————————————————————————————————————————————
 
-/** Un module posé, en lng/lat : les quatre coins tels que la 3D les a placés. */
-export type PlanQuad = LngLat[];
-
 export interface PlanViewOptions {
   /** Zone de dessin (px). */
   widthPx: number;
@@ -1185,9 +1197,6 @@ export interface PlanView {
   panelCount: number;
 }
 
-const PLAN_DEG2RAD = Math.PI / 180;
-const PLAN_DEG2M = PLAN_DEG2RAD * PLAN_WGS84_RADIUS;
-import { WGS84_RADIUS as PLAN_WGS84_RADIUS } from '../../lib/geo';
 
 /**
  * Projette un contour et ses modules en vue PLAN orthographique, nord en haut,
@@ -1261,44 +1270,6 @@ export function projectPlanView(
   };
 }
 
-
-/**
- * CAL104 — quads lng/lat des modules POSÉS, reconstruits depuis la géométrie que la 3D a
- * déjà placée : centres ENU (`cx`, `cy`, repère `origin`), empreinte au sol du module
- * (`slopeLenM × cos β` dans le sens de la pente, `rowWidthM` le long de la rangée) et
- * azimut du pavage. AUCUN pavage n'est refait : on habille des centres existants, donc le
- * COMPTE est exactement celui de la 3D.
- */
-export function panelQuadsLngLat(
-  origin: LngLat,
-  centers: readonly { cx: number; cy: number }[],
-  slopeLenM: number,
-  rowWidthM: number,
-  tiltDeg: number,
-  azimuthDeg: number,
-): PlanQuad[] {
-  const cosLat = Math.max(1e-6, Math.cos(origin[1] * PLAN_DEG2RAD));
-  // Empreinte AU SOL dans le sens de la pente : la longueur du module vue de dessus.
-  const depth = Math.max(1e-6, slopeLenM * Math.cos((tiltDeg || 0) * PLAN_DEG2RAD));
-  const width = Math.max(1e-6, rowWidthM);
-  // L'azimut oriente les rangées : on tourne le rectangle du même angle.
-  const a = (azimuthDeg || 0) * PLAN_DEG2RAD;
-  const ca = Math.cos(a);
-  const sa = Math.sin(a);
-  const half: [number, number][] = [
-    [-width / 2, -depth / 2],
-    [width / 2, -depth / 2],
-    [width / 2, depth / 2],
-    [-width / 2, depth / 2],
-  ];
-  return centers.map((c) =>
-    half.map(([dx, dy]) => {
-      const e = c.cx + dx * ca + dy * sa;
-      const n = c.cy - dx * sa + dy * ca;
-      return [origin[0] + e / (PLAN_DEG2M * cosLat), origin[1] + n / PLAN_DEG2M] as LngLat;
-    }),
-  );
-}
 
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const { map, lowEnd, shadowSize } = deps;
@@ -2126,27 +2097,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         socleMats.push(compose(foot[0], foot[1], socleZ, rowAngleRad, 0));
         socleMats.push(compose(heel[0], heel[1], socleZ, rowAngleRad, 0));
       };
-      for (const row of rows.values()) {
-        row.sort((a, b) => a.la - b.la);
-        let i = 0;
-        while (i < row.length) {
-          // Fin du TRONÇON contigu : deux voisins se touchent tant que l'écart de leurs
-          // centres ne dépasse pas la somme de leurs demi-largeurs + le jeu toléré.
-          let j = i;
-          while (
-            j + 1 < row.length &&
-            row[j + 1].la - row[j].la <= row[j].halfA + row[j + 1].halfA + CONTIG_GAP_M
-          ) j++;
-          // Bord AMONT du tronçon, puis le MILIEU de chaque jointure interne, puis le bord
-          // AVAL : exactement N+1 triangles pour les N panneaux contigus du tronçon.
-          addTriangle(row[i].la - row[i].halfA, row[i]);
-          for (let k = i; k < j; k++) {
-            addTriangle((row[k].la + row[k].halfA + row[k + 1].la - row[k + 1].halfA) / 2, row[k]);
-          }
-          addTriangle(row[j].la + row[j].halfA, row[j]);
-          i = j + 1;
-        }
-      }
+      // Bord AMONT de chaque tronçon contigu, les jointures internes, le bord AVAL : N+1 triangles
+      // pour N panneaux — ACAL579 : seulement les jointures portantes quand une portée est SAISIE
+      // sur le pan actif (jamais dans le visionneur client).
+      const portee = isOtherZone ? null : porteeAppliquee(readOnly, ctx.activeArea?.()?.porteeEntrePieds);
+      for (const row of rows.values()) poserTrianglesDeRangee(row, CONTIG_GAP_M, portee, addTriangle);
     }
 
     const panelIM = makeIM(panelGeo, panelMats, panelMatsArr, true, false);
@@ -2806,6 +2761,16 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
+  /** ACAL537 — exporte la racine de la scène (repère local, jamais Mercator) ; `null` si vide. */
+  async function exporterSceneGltf(): Promise<{ blob: Blob } | null> {
+    if (glLost || !sceneRoot || !sceneRoot.children.length) return null;
+    try {
+      return { blob: await groupeVersGlb(sceneRoot) };
+    } catch {
+      return null; // export refusé : pas de fichier, jamais une exception qui casse l'atelier
+    }
+  }
+
   // CALX219 câblage — l'atelier donne sa couche électrique à la scène ; la scène l'attache
   // tout de suite si elle existe déjà, et la ré-attache après chaque `renderScene`.
   function setCoucheElectrique(groupe: THREE.Object3D | null) {
@@ -2816,7 +2781,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     attacherCoucheElectrique();
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen };
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

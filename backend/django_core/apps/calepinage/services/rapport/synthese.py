@@ -1,0 +1,141 @@
+"""ACAL756 — la section « Synthèse » du rapport d'étude : une page de chiffres.
+
+Placée juste après la page de garde, elle répond d'emblée à « combien
+produit-on, est-ce conforme » avec les grandeurs que le résultat sert déjà :
+puissance crête, modules, onduleurs, P50/P90, productible spécifique, PR,
+pertes, contrôles électriques non conformes, écart PVGIS, couverture et
+autoconsommation.
+
+LU, jamais calculé : la seule conversion est fraction × 100 pour les deux taux
+(``pourcentage``, par ``Decimal`` pour ne pas imprimer 57,99999). Une valeur
+absente s'imprime « non calculée » avec son motif quand le résultat en sert
+un — jamais 0. Aucun graphique, aucun montant : une pièce technique.
+"""
+from __future__ import annotations
+
+from decimal import Decimal
+from html import escape
+
+from . import nombre_tel_que_servi, valeur_au_chemin
+from .production import mention_borne_haute, texte_non_publie
+
+__all__ = ['CSS_SECTION', 'NON_CALCULEE', 'html_de_section', 'pourcentage']
+
+NON_CALCULEE = 'non calculée'
+
+CSS_SECTION = (
+    '.synthese th{width:48%;text-align:left;}'
+    '.synthese td{text-align:right;}'
+    '.synthese .detail{display:block;font-size:7.5pt;color:#555;}'
+)
+
+
+def pourcentage(fraction):
+    """Fraction servie × 100 (seule conversion de la section), ou ``None``."""
+    if fraction is None or isinstance(fraction, bool):
+        return None
+    return float(Decimal(repr(fraction)) * 100)
+
+
+def _present(resultat, chemin):
+    present, valeur = valeur_au_chemin(resultat, chemin)
+    return valeur if present else None
+
+
+def _valeur(valeur, motif=None, *, unite=''):
+    """La cellule : la valeur telle que servie, ou « non calculée » + motif."""
+    if valeur is None:
+        texte = NON_CALCULEE
+        if motif:
+            texte += ' — %s' % escape(str(motif))
+        return texte
+    return nombre_tel_que_servi(valeur) + unite
+
+
+def _ligne(libelle_, cellule):
+    return '<tr><th>%s</th><td>%s</td></tr>' % (escape(libelle_), cellule)
+
+
+def _onduleurs(resultat):
+    liste = [o for o in (resultat.get('electrique') or {}).get('onduleurs')
+             or () if isinstance(o, dict)]
+    if not liste:
+        return _valeur(None)
+    return '<br>'.join(escape('%s × %s (%s kW)' % (
+        o.get('reference') or '—', nombre_tel_que_servi(o.get('nombre')),
+        nombre_tel_que_servi(o.get('taille_kw')))) for o in liste)
+
+
+def _controles(resultat):
+    verdicts = [v for v in (resultat.get('electrique') or {}).get('verdicts')
+                or () if isinstance(v, dict)]
+    if not verdicts:
+        return _valeur(None)
+    faux = [str(v.get('libelle') or v.get('code') or '—') for v in verdicts
+            if v.get('conforme') is False]
+    if not faux:
+        return 'aucun contrôle non conforme'
+    return '<br>'.join(escape(libelle_) for libelle_ in faux)
+
+
+def _p50(total):
+    p50 = _present(total, 'p50_kwh')
+    texte = _valeur(p50, unite=' kWh')
+    mention = mention_borne_haute(total)
+    if p50 is None or not mention:
+        return texte
+    return '%s<span class="detail">%s</span>' % (texte, escape(mention))
+
+
+def _quantile(total, cle, unite):
+    non_publie = texte_non_publie(total, cle)
+    if non_publie is not None:
+        return escape(non_publie)
+    return _valeur(_present(total, cle), total.get('%s_motif' % cle),
+                   unite=unite)
+
+
+def _ecart(resultat):
+    validation = resultat.get('validation') or {}
+    ecart = validation.get('ecart_pct')
+    if ecart is None:
+        return _valeur(None, validation.get('avertissement'))
+    texte = '%s %%' % nombre_tel_que_servi(ecart)
+    verdict = validation.get('verdict')
+    if verdict:
+        texte += '<span class="detail">%s</span>' % escape(
+            str(verdict).replace('_', ' '))
+    return texte
+
+
+def _taux(autoconsommation, cle):
+    bloc = autoconsommation if isinstance(autoconsommation, dict) else {}
+    return _valeur(pourcentage(bloc.get(cle)), bloc.get('motif_absence'),
+                   unite=' %')
+
+
+def html_de_section(contexte):
+    """Le corps de la section ``synthese`` : au plus 12 lignes, une page."""
+    resultat = contexte.get('resultat') or {}
+    pose = resultat.get('pose') or {}
+    total = (resultat.get('production') or {}).get('total') or {}
+    autoconso = resultat.get('autoconsommation')
+    pertes = (resultat.get('cascade') or {}).get('total_pct')
+    lignes = [
+        _ligne('Puissance crête', _valeur(pose.get('kwc'), unite=' kWc')),
+        _ligne('Modules posés', _valeur(pose.get('total_modules'))),
+        _ligne('Onduleurs', _onduleurs(resultat)),
+        _ligne('Production annuelle P50', _p50(total)),
+        _ligne('Production annuelle P90', _quantile(total, 'p90_kwh', ' kWh')),
+        _ligne('Productible spécifique', _valeur(
+            total.get('specific_yield_kwh_kwc'), unite=' kWh/kWc')),
+        _ligne('Ratio de performance (PR)',
+               _quantile(total, 'performance_ratio', '')),
+        _ligne('Pertes totales', _valeur(pertes, unite=' %')),
+        _ligne('Contrôles électriques non conformes', _controles(resultat)),
+        _ligne('Écart avec PVGIS', _ecart(resultat)),
+        _ligne('Couverture des besoins', _taux(autoconso, 'taux_couverture')),
+        _ligne('Autoconsommation',
+               _taux(autoconso, 'taux_autoconsommation')),
+    ]
+    return '<table class="synthese generique">%s</table>' % ''.join(lignes)

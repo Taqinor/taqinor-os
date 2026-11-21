@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
@@ -30,8 +30,11 @@ import { Button, Card, Spinner } from '../../../ui'
    d'écran n'est la source de vérité — au rechargement, le champ reprend
    l'identifiant que le SERVEUR dit persisté. Le classeur ne dépend donc
    plus d'aucun paramètre (export.xlsx lit le même choix persisté).
-   LIMITE CONNUE : aucune route ne LISTE encore les systèmes actifs de la
-   société ; le champ reste un identifiant saisi (jamais une liste inventée).
+   ACAL560 — LE CHOIX SE FAIT DANS UNE LISTE : les systèmes ACTIFS servis par
+   `GET calepinages/systemes-fixation/` (ACAL558, contrat
+   `calepinage_systemes_fixation.json`), libellé et fabricant — jamais
+   l'identifiant à taper. « Aucun » = `systeme_id: null` (l'unique actif
+   s'applique). Liste en erreur : le message, aucun champ texte de repli.
 
    ZÉRO CHIFFRE INVENTÉ (D-CALX 7) : une ligne dont la quantité vaut `null`
    affiche le `manquant` SERVEUR — jamais un tiret muet, jamais un zéro.
@@ -118,12 +121,28 @@ export default function Fixation({ calepinageId: idPropose = null }) {
     { select: (reponse) => reponse?.data ?? null, enabled: Boolean(calepinageId) },
   )
 
+  // ACAL560 — le catalogue de la société, seule source de la liste du choix.
+  const { data: catalogue, error: erreurCatalogue } = useResource(
+    () => calepinageApi.systemesFixation.liste(),
+    calepinageId,
+    {
+      select: (reponse) => reponse?.data?.systemes ?? [],
+      enabled: Boolean(calepinageId),
+      errorMessage: 'La liste des systèmes de fixation n’a pas pu être chargée.',
+    },
+  )
+
   const [telechargementEnCours, setTelechargementEnCours] = useState(false)
   const [erreurTelechargement, setErreurTelechargement] = useState(null)
 
   const systemePersiste = data?.systeme_source === 'calepinage' && data?.systeme
     ? String(data.systeme.id) : ''
   const valeurChamp = systemeSaisi ?? systemePersiste
+  const actifs = (catalogue || []).filter((s) => s.actif)
+  // Un système persisté puis désactivé reste montré : le choix affiché est
+  // toujours celui que le serveur dit persisté.
+  const options = systemePersiste && !actifs.some((s) => String(s.id) === systemePersiste)
+    ? [...actifs, data.systeme] : actifs
 
   const appliquerSysteme = async () => {
     if (!calepinageId) return
@@ -183,17 +202,31 @@ export default function Fixation({ calepinageId: idPropose = null }) {
             Aucun système n’est appliqué.
           </p>
         )}
+        {erreurCatalogue && (
+          <p role="alert" className="mt-2 text-xs text-destructive" data-testid="acal560-erreur-liste">{erreurCatalogue}</p>
+        )}
+        {catalogue && options.length === 0 && (
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="acal560-catalogue-vide">
+            Aucun système de fixation n’est saisi.{' '}
+            <Link to="/calepinage/reglages/fixation" className="underline">Saisir un système</Link>
+          </p>
+        )}
+        {catalogue && options.length > 0 && (
         <label className="mt-2 flex flex-wrap items-end gap-2" data-testid="calx360-champ-systeme">
-          <span className="text-xs text-muted-foreground">
-            Identifiant du système à appliquer (réglages du catalogue de fixation)
-          </span>
-          <input
-            type="text"
+          <span className="text-xs text-muted-foreground">Système à appliquer</span>
+          <select
             value={valeurChamp}
             onChange={(e) => setSystemeSaisi(e.target.value)}
             data-testid="acal82-champ-systeme"
-            className="rounded border border-input bg-card px-2 py-1 text-sm"
-          />
+            className="min-h-11 rounded border border-input bg-card px-2 text-sm"
+          >
+            <option value="">Aucun (le système unique actif s’applique)</option>
+            {options.map((s) => (
+              <option key={s.id} value={String(s.id)}>
+                {[s.libelle || s.code, s.fabricant].filter(Boolean).join(' — ')}
+              </option>
+            ))}
+          </select>
           <Button
             type="button"
             variant="outline"
@@ -204,6 +237,7 @@ export default function Fixation({ calepinageId: idPropose = null }) {
             {application.enCours ? 'Application…' : 'Appliquer'}
           </Button>
         </label>
+        )}
         {application.erreur && (
           <p role="alert" className="mt-2 text-xs text-destructive" data-testid="acal82-erreur-application">
             {application.erreur}

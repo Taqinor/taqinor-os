@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "pin": {"lat": 33.5731, "lng": -7.5898},
+  "outline": [
+    [33.573100, -7.589800],
+    [33.573100, -7.589600],
+    [33.573280, -7.589600],
+    [33.573280, -7.589800]
+  ],
+  "activeAreaId": "z1",
+  "zones": [
+    {
+      "id": "z1",
+      "label": "TOIT-PLAT",
+      "vertices": [[0, 0], [20, 0], [20, 20], [0, 20]],
+      "obstacles": [],
+      "roofType": "flat",
+      "pitchDeg": 10.0,
+      "facingAzimuthDeg": 90.0,
+      "facingManual": true,
+      "neededPanels": 20,
+      "neededAuto": false,
+      "geometry": {
+        "azimuthDeg": 90.0,
+        "tiltDeg": 10.0,
+        "family": "eastwest",
+        "flush": false,
+        "count": 20,
+        "origin": [-7.5898, 33.5731]
+      }
+    }
+  ],
+  "scenario": "reseau"
+}

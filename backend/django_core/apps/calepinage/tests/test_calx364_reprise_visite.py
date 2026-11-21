@@ -92,7 +92,8 @@ class ContratCommitteTest(SimpleTestCase):
     def test_apres_reprise(self):
         etat = SERVI['exemple']
         self.assertEqual(
-            service._composer_reponse(lecture_de(etat), etat['releve']), etat)
+            service._composer_reponse(lecture_de(etat), etat['releve'], None,
+                                      etat['ecart_dessin']), etat)
 
     def test_sans_visite_validee(self):
         etat = SERVI['exemple_vide']
@@ -104,7 +105,16 @@ class ContratCommitteTest(SimpleTestCase):
         etat = CONTRAT['exemple_a_corriger']
         self.assertEqual(
             service._composer_reponse(lecture_de(etat), etat['releve'],
-                                      etat['ecart']), etat)
+                                      etat['ecart'],
+                                      etat['ecart_dessin']), etat)
+
+    def test_ecart_dessin_vide_par_defaut(self):
+        """ACAL526 — sans visite validée la clé est ``[]``."""
+        etat = SERVI['exemple_vide']
+        self.assertEqual(etat['ecart_dessin'], [])
+        self.assertEqual(
+            service._ecarts_visite_dessin(SimpleNamespace(roof_layout={}),
+                                          lecture_de(etat)), [])
 
     def test_le_bloc_releve_construit_depuis_des_objets(self):
         releve, photos = releve_de_l_exemple()
@@ -466,3 +476,83 @@ class RepriseVisiteEnBase(SocleRepriseVisite):
         self.assertEqual(
             api.post(url_reprise(self.calepinage.pk)).status_code, 403)
         self.assertFalse(self._releves().exists())
+
+
+def _toit(pente=15.0, largeur_m=8.0, longueur_m=12.5):
+    """Un pan rectangulaire (longueur vers l'est) autour de Casablanca."""
+    from core.calepinage.geo import deprojeteur_local
+
+    sortir = deprojeteur_local((-7.6, 33.5))
+    coins = [(0, 0), (longueur_m, 0), (longueur_m, largeur_m), (0, largeur_m)]
+    sommets = [list(sortir((x, y))) for x, y in coins]
+    return {'zones': [{'id': 'z1', 'vertices': sommets, 'pitchDeg': pente,
+                       'facingAzimuthDeg': 180.0}]}
+
+
+def _lecture(**mesures):
+    return {'visite_id': 7, 'validee_le': None, 'photos': [],
+            'motif_absence': None,
+            'mesures': [{'code': c, 'valeur': v} for c, v in mesures.items()]}
+
+
+class EcartDessinTest(SimpleTestCase):
+    """ACAL526 — la visite confrontée au toit dessiné (calcul pur)."""
+
+    def calcul(self, document, **mesures):
+        return service._ecarts_visite_dessin(
+            SimpleNamespace(roof_layout=document), _lecture(**mesures))
+
+    def test_pan_a_15_contre_visite_a_22_rend_l_ecart_7(self):
+        lignes = {ligne['mesure']: ligne for ligne in self.calcul(
+            _toit(), pente_deg=22, longueur_m=12.5, largeur_m=8.0,
+            orientation='sud')}
+        pente = lignes['pente']
+        self.assertEqual((pente['pan'], pente['visite'], pente['dessin'],
+                          pente['ecart']), ('z1', 22.0, 15.0, 7.0))
+        self.assertEqual(pente['source_dessin'], 'valeur de départ')
+        self.assertEqual((lignes['longueur']['dessin'],
+                          lignes['longueur']['ecart']), (12.5, 0.0))
+        self.assertEqual((lignes['largeur']['dessin'],
+                          lignes['largeur']['ecart']), (8.0, 0.0))
+
+    def test_l_orientation_est_montree_sans_conversion(self):
+        ligne = [x for x in self.calcul(_toit(), orientation='sud')
+                 if x['mesure'] == 'orientation'][0]
+        self.assertEqual((ligne['visite'], ligne['dessin'], ligne['ecart']),
+                         ('sud', 180.0, None))
+
+    def test_la_source_de_la_pente_est_celle_du_document(self):
+        document = _toit()
+        document['zones'][0]['pitchSource'] = {'mode': 'cotes'}
+        ligne = self.calcul(document, pente_deg=15)[0]
+        self.assertEqual(ligne['source_dessin'], 'cotes')
+
+    def test_les_deux_cotes_se_comparent_grande_a_grande(self):
+        """Visite saisie à l'envers (longueur 8, largeur 12,5) : même écart."""
+        lignes = {x['mesure']: x for x in self.calcul(
+            _toit(), longueur_m=8.0, largeur_m=12.5)}
+        self.assertEqual(lignes['longueur']['dessin'], 8.0)
+        self.assertEqual(lignes['largeur']['dessin'], 12.5)
+        self.assertEqual(lignes['longueur']['ecart'], 0.0)
+
+    def test_mesure_non_relevee(self):
+        ligne = self.calcul(_toit(), pente_deg=22)[1]
+        self.assertEqual((ligne['mesure'], ligne['visite'], ligne['ecart'],
+                          ligne['motif']), ('longueur', None, None,
+                                            'non relevé'))
+
+    def test_plusieurs_pans_sans_ecart(self):
+        document = _toit()
+        document['zones'].append(dict(document['zones'][0], id='z2'))
+        lignes = self.calcul(document, pente_deg=22, longueur_m=12.5)
+        self.assertEqual([x['mesure'] for x in lignes], ['pente', 'longueur'])
+        for ligne in lignes:
+            self.assertIsNone(ligne['ecart'])
+            self.assertEqual(ligne['motif'], 'pans à rapprocher à la main')
+
+    def test_sans_visite_validee_ou_sans_pan(self):
+        self.assertEqual(service._ecarts_visite_dessin(
+            SimpleNamespace(roof_layout=_toit()),
+            dict(_lecture(pente_deg=22), visite_id=None)), [])
+        self.assertEqual(self.calcul({}, pente_deg=22), [])
+        self.assertEqual(self.calcul({'zones': []}, pente_deg=22), [])

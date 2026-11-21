@@ -48,6 +48,9 @@ export interface SerializedEdge {
    *  déduit ni complété — une valeur non saisie reste ABSENTE (jamais un zéro, qui se
    *  lirait « mesuré à ras »). Consommé par `lib/roofSetbackEdge.ts`. */
   retraitM?: number;
+  /** ACAL562 — `'societe'` quand `retraitM` a été POSÉ d'office depuis la table de la société
+   *  (`retraitsSociete.ts`), jamais saisi ; absent = saisi à la main. */
+  retraitOrigine?: 'societe';
 }
 
 /** CALX94 — libellé FRANÇAIS de chaque type d'arête, pour le sélecteur de l'atelier et
@@ -106,6 +109,7 @@ export function fusionnerAretesSaisies(
       type: manuel ? saisie.type : d.type,
       ...(manuel ? { manuel: true as const } : {}),
       ...(retrait !== undefined ? { retraitM: retrait } : {}),
+      ...(retrait !== undefined && saisie.retraitOrigine === 'societe' ? { retraitOrigine: 'societe' as const } : {}), // ACAL562
     };
   });
 }

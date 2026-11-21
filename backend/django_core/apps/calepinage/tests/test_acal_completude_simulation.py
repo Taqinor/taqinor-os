@@ -180,3 +180,69 @@ class CompletudeTest(SimpleTestCase):
         second = _simuler()
         self.assertEqual(premier['production']['total'],
                          second['production']['total'])
+
+
+class ARenseignerTest(SimpleTestCase):
+    """ACAL699 — chaque perte non renseignée : le champ, et où LIRE la valeur."""
+
+    def test_aller_retour_du_motif_d_etape_omise(self):
+        from apps.calepinage.services import a_renseigner as ar
+        from apps.calepinage.services.etapes import etape_omise
+
+        for champ in ('simulation.salissure_mensuelle_pct',
+                      'simulation.lid_par_techno (ligne « mono »)'):
+            motif = etape_omise('X', 'Absent.', champ=champ)['motif_omission']
+            self.assertEqual(ar._champ_du_motif(motif), champ)
+
+    def test_societe_sans_reglages_nomme_salissure_lid_mismatch(self):
+        blocs = _simuler()
+        bloc = blocs['cascade']['a_renseigner']
+        cascade = blocs['cascade']
+        # Référence INDÉPENDANTE : les étapes comptées se relisent sur la
+        # cascade, le nombre à compter sur la mention publiée.
+        comptees = sum(1 for e in cascade['etapes']
+                       if not e['motif_omission'])
+        self.assertEqual(bloc['etapes_comptees'], comptees)
+        self.assertEqual(bloc['etapes_a_compter'],
+                         comptees + _compte(
+                             blocs['production']['total']['mention']))
+        par_etape = {ligne['etape']: ligne for ligne in bloc['lignes']}
+        for etape in ('salissure', 'lid', 'mismatch_fabricant'):
+            ligne = par_etape[etape]
+            self.assertEqual(ligne['nature'], 'reglage_societe')
+            self.assertEqual(ligne['cible'],
+                             {'onglet': 'reglages', 'champ': ligne['cle']})
+            self.assertIn("Aucune valeur n'est proposée ici.",
+                          ligne['ou_trouver'])
+            self.assertFalse(any(c.isdigit() for c in ligne['ou_trouver']),
+                             ligne['ou_trouver'])
+
+    def test_un_champ_de_site_n_est_jamais_un_reglage(self):
+        # Mutant « serie.points traité comme un réglage » : échec ici.
+        from apps.calepinage.services import a_renseigner as ar
+        from apps.calepinage.services.etapes import etape_omise
+
+        etapes = []
+        for nom, champ in (('horizon', 'serie.points'),
+                           ('lid', 'fiche_module.techno_cellule'),
+                           ('salissure', 'simulation.salissure_mensuelle_pct')):
+            etape = etape_omise(nom, 'Absent.', champ=champ)
+            etape['etape'] = nom
+            etapes.append(etape)
+        bloc = ar.construire({'etapes': etapes},
+                             ['horizon', 'lid', 'salissure'])
+        natures = {ligne['etape']: ligne['nature'] for ligne in bloc['lignes']}
+        self.assertEqual(natures, {'lid': 'fiche_panneau',
+                                   'salissure': 'reglage_societe'})
+        self.assertEqual([n['etape'] for n in bloc['non_localisables']],
+                         ['horizon'])
+        self.assertEqual(bloc['etapes_comptees'], 0)
+        self.assertEqual(bloc['etapes_a_compter'], 3)
+
+    def test_resultat_complet_aucune_ligne(self):
+        from apps.calepinage.services import a_renseigner as ar
+
+        bloc = ar.construire({'etapes': [{'etape': 'thermique',
+                                          'motif_omission': ''}]}, [])
+        self.assertEqual(bloc['lignes'], [])
+        self.assertEqual(bloc['etapes_a_compter'], bloc['etapes_comptees'])

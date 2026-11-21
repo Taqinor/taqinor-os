@@ -60,7 +60,10 @@ from __future__ import annotations
 
 from html import escape
 
-from . import entrees_manquantes, nombre_tel_que_servi, sections_declarees
+from . import (
+    SECTIONS_OMISES_SANS_DONNEES, entrees_manquantes, nombre_tel_que_servi,
+    sections_declarees,
+)
 from ..note_calcul import LIBELLE_SOURCE
 
 __all__ = ['CSS_SECTION', 'SOURCE_NON_RENSEIGNEE', 'html_de_section']
@@ -152,7 +155,10 @@ def _non_calcule(resultat):
     for section in sections_declarees():
         if section['code'] in CODES_EXCLUS:
             continue
-        for chemin in entrees_manquantes(resultat, section):
+        manque = entrees_manquantes(resultat, section)
+        if manque and section['code'] in SECTIONS_OMISES_SANS_DONNEES:
+            continue  # ACAL832 — section omise : rien à lister
+        for chemin in manque:
             lignes.append((chemin, section['motif_si_absent']))
     return lignes
 

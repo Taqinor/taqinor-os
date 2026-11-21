@@ -19,7 +19,9 @@ import {
   MAPLIBRE_LAYERS_PAR_CALQUE,
   opacityPropFor,
   createMapDraw, // ACAL68
+  lieuDansLePays, // ACAL507
 } from './mapDraw';
+import { lireCoordonneesCollees, proposerEchange } from './coordonneesCollees'; // ACAL506 / ACAL507
 import { underlayPourDocument } from './underlay'; // ACAL68
 import { type Ctx } from './context'; // ACAL68
 import { UNDERLAY_PHOTO_LAYER_ID, UNDERLAY_PLAN_LAYER_ID } from './underlay';
@@ -344,5 +346,128 @@ describe('ACAL68 — poserFond quand la carte n’est pas prête', () => {
     surLoad[0]();
     expect(sources.size).toBe(1);
     expect(underlayPourDocument(ctx)).toEqual({ underlay: fond });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL506 / ACAL507 — coordonnées collées dans le champ « Adresse ».
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL506 — lecture des coordonnées collées', () => {
+  it('un couple, avec virgule ou espace, est lu latitude puis longitude', () => {
+    expect(lireCoordonneesCollees('33.5731, -7.5898')).toEqual({ latitude: 33.5731, longitude: -7.5898 });
+    expect(lireCoordonneesCollees('33.5731 -7.5898')).toEqual({ latitude: 33.5731, longitude: -7.5898 });
+  });
+  it('un lien de carte (@, q=, ll=) est lu', () => {
+    const attendu = { latitude: 33.5731, longitude: -7.5898 };
+    expect(lireCoordonneesCollees('https://www.google.com/maps/@33.5731,-7.5898,17z')).toEqual(attendu);
+    expect(lireCoordonneesCollees('https://maps.example/?q=33.5731,-7.5898')).toEqual(attendu);
+    expect(lireCoordonneesCollees('https://maps.example/?z=3&ll=33.5731,-7.5898')).toEqual(attendu);
+  });
+  it('un couple hors bornes est refusé en nommant la latitude', () => {
+    // NB : le plan écrit « -7.5898, 133.5 » ; or 133.5 en LONGITUDE est dans les bornes
+    // (|longitude| <= 180) : le cas hors bornes réel est une latitude de 133,5.
+    expect(lireCoordonneesCollees('133.5, -7.5898')).toEqual({
+      refus: 'Latitude hors de -90 à 90 : vérifiez les coordonnées collées.',
+    });
+    expect(lireCoordonneesCollees('33.5, 200.5')).toEqual({
+      refus: 'Longitude hors de -180 à 180 : vérifiez les coordonnées collées.',
+    });
+  });
+  it('une adresse ou un seul nombre garde le comportement du géocodeur', () => {
+    expect(lireCoordonneesCollees('rue de la Paix 12')).toBeNull();
+    expect(lireCoordonneesCollees('33.5731')).toBeNull();
+    expect(lireCoordonneesCollees('')).toBeNull();
+  });
+});
+
+describe('ACAL507 — « Vouliez-vous dire » ne s’applique jamais seul', () => {
+  const c = { latitude: -7.5898, longitude: 33.5731 };
+  it('propose l’échange seulement si le couple tel quel est hors du pays et l’échangé dedans', () => {
+    expect(proposerEchange(c, false, true)).toEqual({ latitude: 33.5731, longitude: -7.5898 });
+    expect(proposerEchange(c, true, true)).toBeNull();
+    expect(proposerEchange(c, false, false)).toBeNull();
+    expect(proposerEchange(c, null, null)).toBeNull();
+    expect(proposerEchange(c, false, null)).toBeNull();
+  });
+  it('lieuDansLePays : un lieu rendu ⇒ true, aucun ⇒ false, réseau en échec ⇒ null', async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ features: [{ place_name: 'Casablanca' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ features: [] }) })
+      .mockRejectedValueOnce(new Error('réseau'));
+    vi.stubGlobal('fetch', f);
+    try {
+      expect(await lieuDansLePays(-7.5898, 33.5731, 'K', 'ma')).toBe(true);
+      expect(await lieuDansLePays(33.5731, -7.5898, 'K', 'ma')).toBe(false);
+      expect(await lieuDansLePays(1, 2, 'K', 'ma')).toBeNull();
+      expect(await lieuDansLePays(1, 133, 'K', 'ma')).toBeNull(); // latitude hors bornes : aucune requête
+      expect(f).toHaveBeenCalledTimes(3);
+      expect(String(f.mock.calls[0][0])).toContain('country=ma');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('ACAL506 / ACAL507 — geocode dans le champ « Adresse »', () => {
+  function monter() {
+    document.body.innerHTML =
+      '<form id="rp9-search"><input id="rp9-address"><ul id="rp9-suggestions" hidden></ul></form>';
+    const flyTo = vi.fn();
+    const map = {
+      getSource: () => undefined, flyTo, jumpTo: vi.fn(), ...methodesCarteInertes(),
+      getZoom: () => 19, getCenter: () => ({ lng: -7.62, lat: 33.58 }),
+      getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),
+    };
+    const ctx = {
+      opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: false },
+      vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.62, 33.58],
+    } as unknown as Ctx;
+    const setStatus = vi.fn();
+    const draw = createMapDraw(ctx, { map: map as never, setStatus, updateAreaReadout: vi.fn() });
+    return { draw, flyTo, setStatus };
+  }
+  const lignes = () => Array.from(document.querySelectorAll('#rp9-suggestions li')).map((l) => l.textContent);
+
+  it('un couple collé ouvre UNE ligne, sans appel réseau avant ACAL507 sur un couple déjà au pays', async () => {
+    const { draw } = monter();
+    const f = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ features: [{ place_name: 'X' }] }) });
+    vi.stubGlobal('fetch', f);
+    try {
+      await draw.geocode('33.5731, -7.5898');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(lignes()).toEqual(['Coordonnées collées : 33.5731, -7.5898']);
+      // aucune recherche d'adresse (`/geocoding/<texte>.json` avec limit=5)
+      expect(f.mock.calls.some((c) => String(c[0]).includes('limit=5'))).toBe(false);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('inversé : seconde ligne proposée, jamais appliquée seule ; la choisir centre la carte', async () => {
+    const { draw, flyTo } = monter();
+    // un lieu n'existe que pour (lng 33.5731, lat -7.5898) inversé = (lng -7.5898, lat 33.5731)
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => ({ features: String(url).includes('/-7.5898,33.5731.json') ? [{ place_name: 'Casablanca' }] : [] }),
+    })));
+    try {
+      await draw.geocode('-7.5898, 33.5731');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(lignes()).toEqual(['Coordonnées collées : -7.5898, 33.5731', 'Vouliez-vous dire 33.5731, -7.5898 ?']);
+      expect(flyTo).not.toHaveBeenCalled();
+      document.querySelectorAll('#rp9-suggestions li')[1].dispatchEvent(new Event('mousedown', { cancelable: true }));
+      expect(flyTo).toHaveBeenCalledTimes(1);
+      expect(flyTo.mock.calls[0][0].center).toEqual([-7.5898, 33.5731]);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('hors bornes : aucune ligne, la barre d’état nomme la latitude, aucun réseau', async () => {
+    const { draw, setStatus } = monter();
+    const f = vi.fn();
+    vi.stubGlobal('fetch', f);
+    try {
+      await draw.geocode('133.5, -7.5898');
+      expect(lignes()).toEqual([]);
+      expect(setStatus).toHaveBeenCalledWith('Latitude hors de -90 à 90 : vérifiez les coordonnées collées.');
+      expect(f).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
   });
 });

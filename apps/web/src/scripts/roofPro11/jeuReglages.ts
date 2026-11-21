@@ -88,3 +88,41 @@ export function mentionJeuReglages(jeu: JeuReglages | null): string {
   const nom = jeu.libelle || 'sans nom';
   return `Jeu de réglages ${nom} appliqué aux nouveaux pans`;
 }
+
+// ═══════════ ACAL554 — « Appliquer ces réglages à… » : d'un pan À D'AUTRES pans existants ═══════════
+// Mêmes champs que le jeu de société (`CLES_JEU`) sauf `neededAuto` (le besoin d'un pan lui est
+// propre), plus `moduleId`. Les retraits et écarts ne sont PAS des réglages de pan : non copiés.
+const CLES_REPORT = CLES_JEU.filter((k) => k !== 'neededAuto');
+
+/** Pan déjà réglé à la main : face fixée, module posé, ou besoin saisi. */
+export const estReglePanAMain = (a: AreaRecord): boolean =>
+  Boolean(a.facingManual) || Boolean(a.moduleId) || a.neededAuto === false;
+
+/** Les pans de `cibles` que le report écraserait alors qu'ils sont réglés à la main. */
+export const pansReglesAMain = (cibles: readonly AreaRecord[]): AreaRecord[] => cibles.filter(estReglePanAMain);
+
+/** Les réglages du pan `source` : `moduleId` + les clés de `CLES_JEU` sauf `neededAuto`. */
+export function reglagesDePan(source: AreaRecord): Partial<AreaRecord> {
+  const r: Partial<AreaRecord> = {};
+  for (const k of CLES_REPORT) if (source[k] !== undefined) (r as Record<string, unknown>)[k] = source[k];
+  if (source.moduleId) r.moduleId = source.moduleId;
+  return r;
+}
+
+/** Pose les réglages de `source` sur `cibles` (mutation), efface leur pose et leur résultat
+ *  périmés ; la géométrie reste, le pan est re-pavé à son activation. Rend les pans réglés à la
+ *  main qui ont été écrasés (listés AVANT par l'appelant, qui demande confirmation). */
+export function appliquerReglagesAuxPans(source: AreaRecord, cibles: readonly AreaRecord[]): AreaRecord[] {
+  const ecrases = pansReglesAMain(cibles);
+  const r = reglagesDePan(source) as Record<string, unknown>;
+  for (const c of cibles) {
+    const cible = c as unknown as Record<string, unknown>;
+    for (const k of [...CLES_REPORT, 'moduleId']) {
+      if (k in r) cible[k] = r[k];
+      else delete cible[k];
+    }
+    c.result = null;
+    c.renderPlan = null;
+  }
+  return ecrases;
+}

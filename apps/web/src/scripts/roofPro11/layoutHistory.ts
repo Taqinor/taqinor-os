@@ -49,6 +49,10 @@ import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { type AreaRecord, type RoofType } from './types';
 import { type FreeLayoutState } from '../../lib/freeLayout';
+import { type Ctx } from './context';
+import { type EnvironmentObject } from './environment';
+import { type ExclusionZone } from './zones';
+import { type Measurement } from './mesureUi';
 
 /**
  * PV30 — MÊME mécanique d'historique, pour un état qui n'est PAS une occupation de
@@ -134,6 +138,41 @@ export interface WorkshopSnapshot {
   layoutOccupied?: LayoutSnapshot;
   /** État du placement libre — absent en mode lattice. */
   freeState?: FreeLayoutState;
+  /** ACAL515 — objets d'environnement, zones d'exclusion et mesures : un geste de site
+   *  (rotation) les déplace, l'annuler doit les rendre. Absents = `ctx` qui ne les porte pas. */
+  environment?: EnvironmentObject[];
+  exclusionZones?: ExclusionZone[];
+  measurements?: Measurement[];
+}
+
+const copieListe = <T>(l: readonly T[] | undefined): T[] | undefined => (l ? (JSON.parse(JSON.stringify(l)) as T[]) : undefined);
+
+/** ACAL515 — photographie `ctx` (corps extrait de `layoutEditor.ts::snapshotWorkshop`). Un `ctx` de test/hôte
+ *  antérieur peut ne PAS porter vertices/obstacles/areas : jamais lu en aveugle. */
+export function photoAtelierDepuisCtx(ctx: Ctx): WorkshopSnapshot {
+  return {
+    vertices: Array.isArray(ctx.vertices) ? ctx.vertices.map((v) => [v[0], v[1]]) : [],
+    obstacles: Array.isArray(ctx.obstacles) ? ctx.obstacles.map((o) => ({ ...o })) : [],
+    areas: Array.isArray(ctx.areas)
+      ? ctx.areas.map((a) => ({ ...a, vertices: a.vertices.map((v) => [v[0], v[1]]), obstacles: a.obstacles.map((o) => ({ ...o })) }))
+      : [],
+    roofType: ctx.roofType,
+    pitchDeg: ctx.pitchDeg,
+    facingAzimuthDeg: ctx.facingAzimuthDeg,
+    layoutOccupied: ctx.layoutState ? [...ctx.layoutState.occupied].sort((a, b) => a - b) : undefined,
+    freeState: ctx.freeState ? { panels: ctx.freeState.panels.map((p) => ({ ...p })) } : undefined,
+    environment: copieListe(ctx.environment),
+    exclusionZones: copieListe(ctx.exclusionZones),
+    measurements: copieListe(ctx.measurements),
+  };
+}
+
+/** ACAL515 — réécrit EN PLACE (références stables) les trois listes que la photo porte. */
+export function restaurerEnvZonesMesures(ctx: Ctx, s: WorkshopSnapshot): void {
+  for (const k of ['environment', 'exclusionZones', 'measurements'] as const) {
+    const cible = ctx[k] as unknown[] | undefined;
+    if (cible && s[k]) cible.splice(0, cible.length, ...(copieListe(s[k] as unknown[]) ?? []));
+  }
 }
 
 /** Copie PROFONDE d'un instantané d'atelier (jamais une référence partagée). */
@@ -151,6 +190,9 @@ export function copyWorkshopSnapshot(s: WorkshopSnapshot): WorkshopSnapshot {
     facingAzimuthDeg: s.facingAzimuthDeg,
     layoutOccupied: s.layoutOccupied ? [...s.layoutOccupied] : undefined,
     freeState: s.freeState ? { panels: s.freeState.panels.map((p) => ({ ...p })) } : undefined,
+    environment: copieListe(s.environment),
+    exclusionZones: copieListe(s.exclusionZones),
+    measurements: copieListe(s.measurements),
   };
 }
 

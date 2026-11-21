@@ -1,0 +1,11 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/export.kml/",
+  "pourquoi": "ENF15 (routes_sous_contrat) — ACAL536 — le KML du calepinage pour Google Earth (`services/export_kml.py::exporter_kml`, même géométrie que la planche et le DXF) : un Placemark par pan, par zone d'exclusion et par module POSÉ, coordonnées `lng,lat,0` ; un module dont l'emprise n'est pas sourcée est écrit en Point. Même porte d'approbation que les autres sorties (`porte_execution`, `export_kml`). 200 = `application/vnd.google-earth.kml+xml` (corps XML, pas du JSON) ; conception sans géométrie = 409 JSON `{<champ>: message}`. Aucun prix, aucune donnée client.",
+  "exemple": {
+    "content_type": "application/vnd.google-earth.kml+xml",
+    "corps": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n<Document>\n…</Document>\n</kml>\n"
+  },
+  "exemple_sans_geometrie": {
+    "roof_layout": "Aucune géométrie enregistrée : la planche se compose du contour et des pans STOCKÉS, jamais d'un tracé reconstitué. Enregistrez la conception avant de demander la planche."
+  }
+}

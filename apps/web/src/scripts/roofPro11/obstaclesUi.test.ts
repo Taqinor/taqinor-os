@@ -48,6 +48,7 @@ import {
 import { obstacleRing } from '../../lib/obstacles';
 import { viderObstaclesAnnulable, questionEffacer, demanderEffacer } from './bandeauAnnuler'; // ACAL413
 import { type LngLat } from '../../lib/roof';
+import { lignesObjetsSite, ouvrirObjet } from './objetsSite'; // ACAL533
 
 const ETAT = {
   sommet: 2 as number | null,
@@ -527,5 +528,51 @@ describe('ACAL413 — un filet pour les effacements de masse', () => {
     expect(n).toBe(1);
     demanderEffacer(null, { pans: 1, obstacles: 3, consommation: false, ombres: false }, () => { n += 1; });
     expect(n).toBe(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL533 — le tableau « Objets du site ».
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL533 — lignesObjetsSite', () => {
+  const obs = (id: string, provenance?: string, type?: string) =>
+    ({ id, centerLng: -7.6, centerLat: 33.5, lengthM: 2, widthM: 1.5, ...(provenance ? { provenance } : {}), ...(type ? { type } : {}) });
+  // 30 obstacles sur 2 pans : tous les 5e « devinés », le reste relevé.
+  const pan1 = Array.from({ length: 15 }, (_, i) => obs(`o${i}`, i % 5 === 0 ? 'DEVINE' : 'RELEVE', 'cheminee'));
+  const pan2 = Array.from({ length: 15 }, (_, i) => obs(`p${i}`, i % 5 === 0 ? 'DEVINE' : 'RELEVE', 'climatiseur'));
+  const ctx = {
+    activeAreaId: 'a1',
+    obstacles: pan1,
+    areas: [
+      { id: 'a1', label: 'Pan 1', obstacles: [] },
+      { id: 'a2', label: 'Pan 2', obstacles: pan2 },
+    ],
+  } as never;
+
+  it('30 obstacles se listent avec le nom de leur pan', () => {
+    const l = lignesObjetsSite(ctx);
+    expect(l).toHaveLength(30);
+    expect(l.filter((x) => x.pan === 'Pan 1')).toHaveLength(15);
+    expect(l.filter((x) => x.pan === 'Pan 2')).toHaveLength(15);
+  });
+
+  it('les provenances non mesurées passent d’abord (pas un tri par id)', () => {
+    const l = lignesObjetsSite(ctx);
+    expect(l.slice(0, 6).every((x) => x.nonMesure)).toBe(true);
+    expect(l.slice(6).some((x) => x.nonMesure)).toBe(false);
+    expect(l[0].provenanceLabel).toBe('Deviné');
+  });
+
+  it('le filtre de provenance et le filtre de type réduisent la liste', () => {
+    expect(lignesObjetsSite(ctx, { provenance: 'DEVINE' })).toHaveLength(6);
+    expect(lignesObjetsSite(ctx, { type: 'climatiseur' }).every((x) => x.pan === 'Pan 2')).toBe(true);
+  });
+
+  it('un clic sur un obstacle d’un autre pan active d’abord ce pan puis sélectionne l’obstacle', () => {
+    const appels: string[] = [];
+    const deps = { selectArea: (id: string) => appels.push(`pan:${id}`), selectObstacle: (id: string) => appels.push(`obs:${id}`) };
+    ouvrirObjet({ id: 'p3', panId: 'a2' }, 'a1', deps);
+    ouvrirObjet({ id: 'o4', panId: 'a1' }, 'a1', deps);
+    expect(appels).toEqual(['pan:a2', 'obs:p3', 'obs:o4']);
   });
 });

@@ -142,6 +142,34 @@ HYPOTHESE_BRIN = (
     "localise pas l'ombre à l'intérieur du module, et aucune répartition "
     "entre brins n'est inventée ici.")
 
+#: ACAL713 — le sens de pose, HYPOTHÈSE NOMMÉE (jamais une mesure, aucun
+#: chiffre) : l'atelier pose en paysage le long de la rangée
+#: (``roofPro2.ts::PANEL2_LONG_M``) ; un panneau à angle propre
+#: (``panels[].angleDeg``, placement libre) ne dit pas son sens.
+HYPOTHESE_PAYSAGE = (
+    'Hypothèse de lecture, non mesurée : les modules sont posés en paysage '
+    "(grand côté le long de la rangée, convention de l'atelier). L'ombre qui "
+    "monte du bas d'un module n'y coupe alors qu'une sous-chaîne ; en "
+    'portrait, la même ombre les couperait toutes.')
+HYPOTHESE_LIBRE = (
+    'Certains modules sont posés en placement libre, avec leur propre '
+    "angle : le document ne dit pas s'ils sont en portrait ou en paysage, "
+    "l'hypothèse n'est pas énoncée.")
+
+
+def _hypothese_orientation(layout, repere):
+    """``{orientation, texte}`` selon les panneaux du pan nommé."""
+    for zone in (layout or {}).get('zones') or ():
+        if not isinstance(zone, dict) or (repere is not None and repere not in (
+                str(zone.get('id')), str(zone.get('label')))):
+            continue
+        panneaux = (zone.get('geometry') or {}).get('panels') or ()
+        if any(isinstance(p, dict) and p.get('angleDeg') is not None
+               for p in panneaux):
+            return {'orientation': 'libre', 'texte': HYPOTHESE_LIBRE}
+    return {'orientation': 'paysage', 'texte': HYPOTHESE_PAYSAGE}
+
+
 #: La raison publiée pour une chaîne qui n'impose plus son courant.
 RAISON_SANS_CONTRAINTE = (
     'Un micro-onduleur ou un optimiseur est déclaré sur cette chaîne : '
@@ -167,7 +195,9 @@ __all__ = ['POSTE', 'CLE_REGLAGE', 'MODELE_DERIVATION',
            'MOTIF_SANS_AFFECTATION', 'MOTIF_SANS_LAYOUT',
            'MOTIF_AUCUNE_CHAINE_MESURABLE', 'MOTIF_CHAINES_A_VIDE',
            'MOTIF_SEUIL_ABSENT', 'HYPOTHESE_MODULE', 'HYPOTHESE_BRIN',
-           'RAISON_SANS_CONTRAINTE', 'REFERENCE', 'appliquer']
+           'RAISON_SANS_CONTRAINTE', 'REFERENCE', 'appliquer',
+           'MOTIF_BORNES_PLUSIEURS_PANS', 'fusionner_entrees',
+           'HYPOTHESE_PAYSAGE', 'HYPOTHESE_LIBRE']
 
 
 def appliquer(serie, contexte):
@@ -235,6 +265,7 @@ def appliquer(serie, contexte):
         'brins_proteges': brins,
         'hypothese': (HYPOTHESE_BRIN.format(brins=brins) if brins
                       else HYPOTHESE_MODULE),
+        'hypothese_orientation': _hypothese_orientation(layout, repere),
         'bornes': {
             'basse': _borne(MODELE_DERIVATION, basse, lineaire, nominal),
             'haute': _borne(MODELE_COURANT_SERIE, haute, lineaire, nominal),
@@ -284,19 +315,21 @@ def _mesurer_chaine(chaine, seuil, sans_contrainte):
             'mppt': chaine['mppt'], 'modules_mesures': mesures,
             'acces_min': chaine['acces_min'], 'lineaire': lineaire,
             'courant_serie': lineaire, 'derivation': lineaire,
-            'modules_derives': [], 'sans_contrainte': True,
+            'modules_derives': [], 'sans_contrainte': True, 'ombres': [],
         }
     courant_serie = mesures * min(acces)
     retenus = [valeur for valeur in acces if valeur >= seuil]
     derivation = max(sum(retenus), courant_serie)
-    derives = [module['module'] for module in chaine['modules']
-               if module['acces'] is not None and module['acces'] < seuil]
+    ombres = [{'module': module['module'], 'acces': module['acces']}
+              for module in chaine['modules']
+              if module['acces'] is not None and module['acces'] < seuil]
     return {
         'chaine': chaine['chaine'], 'pan': chaine['pan'],
         'mppt': chaine['mppt'], 'modules_mesures': mesures,
         'acces_min': chaine['acces_min'], 'lineaire': lineaire,
         'courant_serie': courant_serie, 'derivation': derivation,
-        'modules_derives': derives, 'sans_contrainte': False,
+        'modules_derives': [ombre['module'] for ombre in ombres],
+        'sans_contrainte': False, 'ombres': ombres,
     }
 
 
@@ -316,7 +349,47 @@ def _publier_chaine(mesure):
         'excedent_haute_pct': _pourcentage(mesure['lineaire'],
                                            mesure['courant_serie'],
                                            mesure['lineaire']),
+        # ACAL711 — les deux bornes DE LA CHAÎNE, leur écart, ses modules
+        # sous le seuil de la société (même population que modules_derives).
+        'bornes': {
+            'basse': _borne(MODELE_DERIVATION, mesure['derivation'],
+                            mesure['lineaire'], mesure['modules_mesures']),
+            'haute': _borne(MODELE_COURANT_SERIE, mesure['courant_serie'],
+                            mesure['lineaire'], mesure['modules_mesures']),
+        },
+        'ecart_bornes_pct': _pourcentage(mesure['derivation'],
+                                         mesure['courant_serie'],
+                                         mesure['lineaire']),
+        'modules_ombres': [dict(ombre) for ombre in mesure['ombres']],
+        'module_le_plus_ombre': (dict(min(mesure['ombres'],
+                                          key=lambda o: o['acces']))
+                                 if mesure['ombres'] else None),
     }
+
+
+#: ACAL711 — plusieurs pans : les bornes agrégées d'UN pan ne décrivent pas
+#: le site ; elles ne sont pas publiées, les chaînes de tous les pans le sont.
+MOTIF_BORNES_PLUSIEURS_PANS = 'bornes agrégées non publiées : plusieurs pans'
+
+
+def fusionner_entrees(lignes):
+    """L'``entree`` de l'étape sommée sur plusieurs pans appliqués."""
+    entrees = [ligne.get('entree') or {} for ligne in lignes]
+    fusion = dict(entrees[0])
+    fusion['chaines'] = [chaine for entree in entrees
+                         for chaine in entree.get('chaines') or ()]
+    fusion['pans'] = [entree.get('pan') for entree in entrees]
+    # jamais un chiffre du PREMIER pan présenté comme celui du site
+    fusion['bornes'] = fusion['ecart_bornes_pct'] = None
+    fusion['facteur_applique'] = fusion['pan'] = None
+    fusion['bornes_motif'] = MOTIF_BORNES_PLUSIEURS_PANS
+    for cle in ('chaines_mesurees', 'modules_mesures'):
+        fusion[cle] = sum(entree.get(cle) or 0 for entree in entrees)
+    for cle in ('modules_sans_acces', 'chaines_sans_contrainte',
+                'avertissements'):
+        fusion[cle] = [element for entree in entrees
+                       for element in entree.get(cle) or ()]
+    return fusion
 
 
 def _borne(modele, puissance, lineaire, nominal):

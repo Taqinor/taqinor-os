@@ -375,3 +375,218 @@ class EndpointTest(TestCase):
                 URL, {'roof_layout': {'zones': zones}}, format='json')
             self.assertEqual(reponse.status_code, 400, zones)
             self.assertIn('roof_layout', reponse.data)
+
+
+# ---------------------------------------------------------------------------
+# ACAL534 — l'altimètre d'un relief GeoTIFF fourni par l'installateur.
+# ---------------------------------------------------------------------------
+
+def _geotiff(*, modele=2, pente_deg=20.0, taille=400, pas=1e-5,
+             geo=True, mode='F', sans_donnee=None):
+    """Les octets d'un GeoTIFF float32 en degrés, incliné vers le SUD."""
+    import io
+    import math
+
+    import numpy as np
+    from PIL import Image, TiffImagePlugin, TiffTags
+
+    metres_par_degre = math.pi / 180.0 * 6378137.0
+    lat_haut = LAT + taille * pas / 2.0
+    lignes = np.arange(taille, dtype='float64')[:, None]
+    lat = lat_haut - (lignes + 0.5) * pas
+    relief = np.tan(math.radians(pente_deg)) * (lat - LAT) * metres_par_degre
+    tableau = np.repeat(relief + 200.0, taille, axis=1).astype('float32')
+    image = Image.fromarray(tableau, mode=mode)
+    ifd = TiffImagePlugin.ImageFileDirectory_v2()
+    if geo:
+        ifd[33550] = (pas, pas, 0.0)
+        ifd.tagtype[33550] = TiffTags.DOUBLE
+        ifd[33922] = (0.0, 0.0, 0.0, LON - taille * pas / 2.0, lat_haut, 0.0)
+        ifd.tagtype[33922] = TiffTags.DOUBLE
+        ifd[34735] = (1, 1, 0, 3, 1024, 0, 1, modele, 1025, 0, 1, 1,
+                      2048, 0, 1, 4326)
+        ifd.tagtype[34735] = TiffTags.SHORT
+    tampon = io.BytesIO()
+    image.save(tampon, format='TIFF', tiffinfo=ifd)
+    return tampon.getvalue()
+
+
+class AltimetreFichierTest(SimpleTestCase):
+    """ACAL534 — pente 20° vers le sud retrouvée ; refus nommés."""
+
+    def _suggestion(self, octets):
+        from unittest import mock
+
+        from apps.calepinage.services.altimetre_fichier import (
+            altimetre_depuis_geotiff)
+
+        altimetre = altimetre_depuis_geotiff(octets)
+        with mock.patch(
+                'apps.calepinage.services.lidar_ign.service_disponible',
+                return_value=True):
+            return suggerer_pentes(
+                object(), DOCUMENT, altimetre=altimetre,
+                maintenant='2026-03-12T10:00:00+00:00')
+
+    def test_relief_incline_de_20_degres_vers_le_sud(self):
+        (suggestion,) = self._suggestion(_geotiff())
+        self.assertAlmostEqual(suggestion['pitchDeg'], 20.0, delta=0.1)
+        self.assertAlmostEqual(suggestion['facingAzimuthDeg'], 180.0,
+                               delta=0.1)
+
+    def test_hors_emprise_rend_none_jamais_un_repli(self):
+        from apps.calepinage.services.altimetre_fichier import (
+            altimetre_depuis_geotiff)
+
+        altimetre = altimetre_depuis_geotiff(_geotiff())
+        dedans, dehors = altimetre([(LON, LAT), (LON + 1.0, LAT)])
+        self.assertIsNotNone(dedans)
+        self.assertIsNone(dehors)
+
+    def test_projection_en_metres_refusee_en_la_nommant(self):
+        from apps.calepinage.services.altimetre_fichier import (
+            ReliefIllisible, altimetre_depuis_geotiff)
+
+        with self.assertRaises(ReliefIllisible) as ctx:
+            altimetre_depuis_geotiff(_geotiff(modele=1))
+        self.assertEqual(
+            str(ctx.exception),
+            'Le relief est en mètres (projection) : exportez-le en WGS84 '
+            '(degrés).')
+
+    def test_sans_georeferencement_ou_illisible_refuse(self):
+        from apps.calepinage.services.altimetre_fichier import (
+            ReliefIllisible, altimetre_depuis_geotiff)
+
+        with self.assertRaises(ReliefIllisible) as sans_etiquettes:
+            altimetre_depuis_geotiff(_geotiff(geo=False))
+        self.assertIn('géoréférencement', str(sans_etiquettes.exception))
+        with self.assertRaises(ReliefIllisible) as illisible:
+            altimetre_depuis_geotiff(b'ceci n est pas un tiff')
+        self.assertIn('illisible', str(illisible.exception))
+
+    def test_image_sans_altitudes_lisibles_refusee(self):
+        from apps.calepinage.services.altimetre_fichier import (
+            ReliefIllisible, altimetre_depuis_geotiff)
+        import io
+
+        from PIL import Image
+
+        tampon = io.BytesIO()
+        Image.new('RGB', (4, 4)).save(tampon, format='TIFF')
+        with self.assertRaises(ReliefIllisible) as ctx:
+            altimetre_depuis_geotiff(tampon.getvalue())
+        self.assertIn('altitudes', str(ctx.exception))
+
+
+class ReliefFourniHorsFranceTest(SimpleTestCase):
+    """ACAL535 — société hors France : le relief déposé ouvre la porte, l'IGN jamais."""
+
+    def _hors_france(self):
+        from unittest import mock
+
+        return mock.patch(
+            'apps.calepinage.services.lidar_ign.service_disponible',
+            return_value=False)
+
+    def test_depuis_fichier_saute_la_porte_du_pays_et_cite_le_fichier(self):
+        from unittest import mock
+
+        from apps.calepinage.services.altimetre_fichier import (
+            altimetre_depuis_geotiff)
+        from apps.calepinage.services.lidar_ign import SOURCE_RELIEF
+
+        with self._hors_france(), mock.patch(
+                'apps.calepinage.services.lidar_ign._altimetre_ign') as ign:
+            (suggestion,) = suggerer_pentes(
+                object(), DOCUMENT,
+                altimetre=altimetre_depuis_geotiff(_geotiff()),
+                depuis_fichier=True, maintenant='2026-03-12T10:00:00+00:00')
+        ign.assert_not_called()
+        self.assertEqual(suggestion['source'], SOURCE_RELIEF)
+        self.assertIsNone(suggestion['sourceUrl'])
+        self.assertEqual(suggestion['status'], SUGGEREE)
+        self.assertAlmostEqual(suggestion['pitchDeg'], 20.0, delta=0.1)
+
+    def test_sans_depuis_fichier_la_porte_reste_fermee(self):
+        espion = AltimetreEspion(plan=_plan_descendant_vers('sud'))
+        from unittest import mock
+
+        with self._hors_france(), mock.patch(
+                'apps.calepinage.selectors.imagerie_site',
+                return_value={'pays': 'ma'}),                 self.assertRaises(ServiceIndisponible):
+            suggerer_pentes(object(), DOCUMENT, altimetre=espion)
+        self.assertEqual(espion.appels, 0)
+
+    def test_depuis_fichier_sans_altimetre_ne_part_jamais_vers_l_ign(self):
+        with self._hors_france(), self.assertRaises(ValueError):
+            suggerer_pentes(object(), DOCUMENT, depuis_fichier=True)
+
+    def test_libelle_de_la_source_validee(self):
+        from apps.calepinage.services.lidar_ign import SOURCE_RELIEF
+
+        self.assertEqual(
+            _libelle_source({'status': VALIDEE, 'source': SOURCE_RELIEF,
+                             'decidedAt': '2026-03-12T10:00:00+00:00'}),
+            "source : relief fourni par l'installateur "
+            '(suggestion validée le 12/03/2026)')
+
+
+class SuggestionReliefApiTest(TestCase):
+    """ACAL535 — ``POST suggestions-pente-relief/`` d'une société marocaine."""
+
+    def setUp(self):
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.layout import enregistrer_layout
+        from apps.crm.models import Lead
+
+        self.company = _societe('ma')
+        self.api = EndpointTest._api(self.company, 'acal535_ma')
+        self.user = User.objects.get(username='acal535_ma')
+        # Un calepinage porte un lead ou un client (contrainte
+        # ``calepinage_lead_ou_client``).
+        lead = Lead.objects.create(company=self.company, nom='QA-ACAL535')
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=lead.pk, titre='QA-ACAL535')
+        enregistrer_layout(self.calepinage, {
+            'version': 2, 'zones': [dict(PAN, pitchDeg=18)]}, user=self.user)
+        self.url = ('/api/django/calepinage/calepinages/'
+                    f'{self.calepinage.pk}/suggestions-pente-relief/')
+        self.base = self.api.get(
+            f'/api/django/calepinage/calepinages/{self.calepinage.pk}/layout/'
+        ).data['empreinte_document']
+
+    def _poster(self, octets, base=None, nom='relief.tif'):
+        from unittest import mock
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        corps = {'base_empreinte': self.base if base is None else base}
+        if octets is not None:
+            corps['relief'] = SimpleUploadedFile(nom, octets)
+        with mock.patch('apps.calepinage.services.lidar_ign._altimetre_ign',
+                        side_effect=AssertionError('appel IGN')) as ign:
+            reponse = self.api.post(self.url, corps, format='multipart')
+        ign.assert_not_called()
+        return reponse
+
+    def test_societe_marocaine_obtient_une_suggestion_du_relief(self):
+        reponse = self._poster(_geotiff())
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        pan = reponse.data['roof_layout']['zones'][0]
+        suggestion = pan['pitchSuggestion']
+        self.assertEqual(suggestion['status'], 'suggeree')
+        self.assertEqual(suggestion['source'],
+                         "relief fourni par l'installateur")
+        self.assertAlmostEqual(suggestion['valeurDeg'], 20.0, delta=0.1)
+        self.assertEqual(pan['pitchDeg'], 18)   # jamais recopiée (D-ACAL-19)
+
+    def test_fichier_en_metres_ou_absent_refuse_en_nommant_relief(self):
+        for octets in (_geotiff(modele=1), b'pas un tiff', None):
+            reponse = self._poster(octets)
+            self.assertEqual(reponse.status_code, 400, reponse.data)
+            self.assertIn('relief', reponse.data)
+
+    def test_jeton_perime_409(self):
+        reponse = self._poster(_geotiff(), base='perime')
+        self.assertEqual(reponse.status_code, 409, reponse.data)

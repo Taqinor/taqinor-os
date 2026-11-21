@@ -87,7 +87,32 @@
         -7.60016159,
         33.500080848
       ]
-    ]
+    ],
+    "controle_echelle": {
+      "unite": "m",
+      "distance_selon_unite_m": 30.0,
+      "distance_saisie_m": 30.0,
+      "rapport": 1.0
+    }
+  },
+  "exemple_controle_mm_concorde": {
+    "unite": "mm",
+    "distance_selon_unite_m": 9.84,
+    "distance_saisie_m": 9.84,
+    "rapport": 1.0
+  },
+  "exemple_controle_mm_x10": {
+    "unite": "mm",
+    "distance_selon_unite_m": 9.84,
+    "distance_saisie_m": 98.4,
+    "rapport": 10.0
+  },
+  "exemple_controle_inconnu": {
+    "unite": "inconnu",
+    "distance_selon_unite_m": null,
+    "distance_saisie_m": 98.4,
+    "rapport": null,
+    "motif": "Le fichier ne déclare pas son unité : aucun contrôle possible."
   },
   "exemple_sans_calque": {
     "calepinage": 1,

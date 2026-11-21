@@ -177,3 +177,153 @@ class FicheIncompleteTest(SimpleTestCase):
         self.assertFalse(conception.fiche_incomplete)
         self.assertEqual(conception.bloquants, ())
         self.assertIn("rien à chaîner", '\n'.join(conception.alertes))
+
+
+class PansDeMemeOrientationTest(SimpleTestCase):
+    """ACAL650 — deux pans de même orientation (tolérance SAISIE, orientation
+    connue) forment UN groupe électrique : une chaîne peut les traverser."""
+
+    #: Plage MPPT haute : 7 modules n'atteignent pas le bas de plage à chaud,
+    #: 14 oui — la chaîne optimale est de 14 modules.
+    ONDULEUR_14 = dict(ONDULEUR, mppt_v_min=400.0)
+
+    def _deux_pans(self):
+        layout = _layout(7, 7)
+        layout['zones'][1]['geometry']['azimuthDeg'] = 180.0
+        return layout
+
+    def _concevoir(self, layout, tolerance):
+        options = ({} if tolerance is None
+                   else {'tolerance_orientation_deg': tolerance})
+        return concevoir_par_pan(
+            layout, module_specs=MODULE, onduleur_specs=self.ONDULEUR_14,
+            temperatures=_temperatures(), module_designation='Module d essai',
+            onduleur_designation='Onduleur d essai 10 kW', **options)
+
+    def test_tolerance_saisie_aucun_module_hors_chaine(self):
+        from apps.calepinage.services.chaines import (
+            affectation, bloc_electrique, verdict_affectation)
+
+        conception = self._concevoir(self._deux_pans(), 1.0)
+        bloc, _a = bloc_electrique(conception)
+        self.assertEqual(bloc['chainage']['reste'], 0)
+        # UNE chaîne de 14, dans la fenêtre : plus de repli « chaîne de 7 ».
+        self.assertEqual([c.nb_modules for c in conception.chaines], [14])
+        self.assertFalse(any('aucune découpe' in a for a in conception.alertes))
+        table = affectation(conception)
+        self.assertEqual(len(table), 14)
+        self.assertTrue(all(ligne['chaine'] is not None for ligne in table))
+        # Chaque module garde SON pan d'origine.
+        self.assertEqual([ligne['pan'] for ligne in table],
+                         ['PAN-1'] * 7 + ['PAN-2'] * 7)
+        # Une chaîne manuelle sur les deux pans fusionnés n'est pas refusée.
+        imposee = [dict(ligne, chaine=1) for ligne in table]
+        self.assertFalse(any('traverse les pans' in refus for refus in
+                             verdict_affectation(conception, imposee)))
+
+    def test_sans_tolerance_comportement_d_aujourd_hui(self):
+        conception = self._concevoir(self._deux_pans(), None)
+        self.assertEqual(len(_groupes_electriques(self._deux_pans())), 2)
+        # Aujourd'hui : deux chaînes de 7 HORS fenêtre, repli annoncé.
+        self.assertEqual([c.nb_modules for c in conception.chaines], [7, 7])
+        self.assertTrue(any('aucune découpe' in a for a in conception.alertes))
+
+    def test_le_reglage_se_lit_seulement_source(self):
+        from apps.calepinage.services.chaines import (
+            tolerance_orientation_societe)
+
+        def reglage(saisie):
+            return {'electrique_societe': {
+                'tolerance_orientation_pans_deg': saisie}}
+
+        self.assertEqual(tolerance_orientation_societe(reglage(
+            {'valeur': 2, 'source': 'societe'})), 2.0)
+        self.assertIsNone(tolerance_orientation_societe(reglage(
+            {'valeur': 2})))
+        self.assertIsNone(tolerance_orientation_societe({}))
+
+    def test_orientations_differentes_jamais_fusionnees(self):
+        groupes = _groupes_electriques(_layout(7, 7), tolerance_deg=1.0)
+        self.assertEqual(len(groupes), 2)
+
+
+class MpptNonIndependantsTest(SimpleTestCase):
+    """ACAL661 — des entrées MPPT NON indépendantes selon la fiche forment UNE
+    entrée logique ; drapeau vrai ou absent ⇒ résultat d'avant."""
+
+    def _mppt_par_pan(self, conception):
+        return {c.pan: c.mppt for c in conception.chaines}
+
+    def test_drapeau_faux_une_seule_entree_logique_et_le_dit(self):
+        conception = _concevoir(_layout(12, 8),
+                                dict(ONDULEUR, mppt_independants=False))
+        self.assertEqual(self._mppt_par_pan(conception),
+                         {'PAN-1': 1, 'PAN-2': 1})
+        self.assertIn("les 2 entrées de Onduleur d essai 10 kW ne sont pas "
+                      "indépendantes selon sa fiche : une seule orientation "
+                      "par suiveur", conception.regle_mppt)
+
+    def test_drapeau_vrai_ou_absent_resultat_d_avant(self):
+        avant = _concevoir(_layout(12, 8))
+        for drapeau in (True, None):
+            with self.subTest(drapeau=drapeau):
+                onduleur = dict(ONDULEUR)
+                if drapeau is not None:
+                    onduleur['mppt_independants'] = drapeau
+                apres = _concevoir(_layout(12, 8), onduleur)
+                self.assertEqual(self._mppt_par_pan(apres),
+                                 {'PAN-1': 1, 'PAN-2': 2})
+                self.assertEqual(apres.regle_mppt, avant.regle_mppt)
+
+
+class _CalepinageEssai:
+    """Le strict minimum lu par ``evaluation_electrique`` — aucun ORM."""
+
+    pk = 11
+    statut = 'brouillon'
+    company = None
+
+    def __init__(self, *comptes):
+        self.roof_layout = _layout(*comptes)
+        self.resultat = {'entree_electrique': {
+            'temperature_min_c': -5.0, 'temperature_max_c': 70.0}}
+
+
+def _materiel_essai(**onduleur):
+    return {
+        'module': MODULE, 'onduleur': dict(ONDULEUR, **onduleur),
+        'optimiseur': None,
+        'designations': {'module': 'Module d essai',
+                         'onduleur': 'Onduleur d essai 10 kW',
+                         'optimiseur': ''},
+        'absents': (),
+    }
+
+
+class OnduleursMinimumTest(SimpleTestCase):
+    """ACAL632 — le plus petit nombre d'onduleurs qui tient le champ."""
+
+    def _suggestion(self, *comptes):
+        from apps.calepinage.services.electrique import evaluation_electrique
+
+        return evaluation_electrique(
+            _CalepinageEssai(*comptes), materiel=_materiel_essai(
+                isc_max_mppt_a=45.0))['onduleurs_suggeres']
+
+    def test_trois_pans_sur_deux_entrees_demandent_deux_onduleurs(self):
+        suggestion = self._suggestion(12, 8, 6)
+
+        self.assertEqual(suggestion['nombre'], 2)
+        self.assertIn('2 onduleurs sont nécessaires : 3 pans pour 2 entrées '
+                      'par onduleur', suggestion['motif'])
+        for pan in ('PAN-1', 'PAN-2', 'PAN-3'):
+            self.assertIn(pan, suggestion['motif'])
+        self.assertIn("n'a que 2 entrée(s) MPPT",
+                      '\n'.join(suggestion['signaux_avec_1']))
+
+    def test_deux_pans_tiennent_sur_un_seul_onduleur_sans_motif(self):
+        suggestion = self._suggestion(12, 8)
+
+        self.assertEqual(suggestion['nombre'], 1)
+        self.assertEqual(suggestion['motif'], '')
+        self.assertEqual(suggestion['signaux_avec_1'], [])

@@ -47,9 +47,20 @@ class SchemaTests(SimpleTestCase):
             'autoconso_sans', 'autoconso_avec', 'resync_apres_envoi',
             'economies_annuelles', 'attribution', 'tension_raccordement',
             'origine', 'recommended_option', 'conso_annuelle', 'distributeur',
-            'categorie_commerciale',
+            'categorie_commerciale', 'origine_conception',
         }
         self.assertEqual(attendues - set(S.SCHEMA), set())
+
+    def test_marque_rapide_du_devis_automatique(self):
+        """ACAL1004 — clé DÉRIVÉE du devis automatique, hors empreinte C&I,
+        jamais écrivable par l'écran ; la marque passe le validateur."""
+        from apps.ventes.domain.creation_auto import marquer_rapide
+        from apps.ventes.domain.etude_ci import cles_hors_empreinte
+        devis = marquer_rapide(_DevisEnMemoire({'scenario': 'sans'}))
+        self.assertEqual(devis.etude_params, {'scenario': 'sans', 'origine_conception': 'rapide'})
+        self.assertEqual(S.valider(devis.etude_params), [])
+        self.assertIn('origine_conception', cles_hors_empreinte())
+        self.assertEqual(S.cles_refusees_pour(S.ECRAN, ['origine_conception']), ['origine_conception'])
 
     def test_chaque_cle_declare_type_proprietaire_et_nature(self):
         for cle, regle in S.SCHEMA.items():

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Zap } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, EmptyState, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
+import { refusParChamp } from './entreeElectrique'
 import { TYPES_EQUIPEMENT, libelleProduit, libelleType } from './EquipementsElectriques.helpers'
 
 /* ============================================================================
@@ -66,6 +67,27 @@ export default function EquipementsElectriques({ calepinageId, builderApi } = {}
   const [type, setType] = useState(TYPES_EQUIPEMENT[0])
   const [motifArmement, setMotifArmement] = useState(null)
 
+  // ACAL634 — « n onduleurs sont nécessaires » : la suggestion SERVIE (`onduleurs_suggeres`), tant que l'entrée
+  // ne porte pas encore `nombre_onduleurs` ; « Prendre n onduleurs » l'enregistre puis relit le verdict.
+  const [suggestion, setSuggestion] = useState(null)
+  const [refusOnduleurs, setRefusOnduleurs] = useState(null)
+  const lireSuggestion = useCallback(() => Promise.resolve().then(() => Promise.all([
+    calepinageApi.calepinages.evaluerElectrique(id, {}),
+    calepinageApi.calepinages.entreeElectrique(id),
+  ])).then(([evaluation, entree]) => {
+    const propose = evaluation?.data?.onduleurs_suggeres
+    const accepte = entree?.data?.entree?.nombre_onduleurs
+    setSuggestion(propose?.nombre > 1 && (accepte === null || accepte === undefined) ? propose : null)
+  }).catch(() => setSuggestion(null)), [id])
+  useEffect(() => { lireSuggestion() }, [lireSuggestion])
+  const prendreOnduleurs = () => {
+    setRefusOnduleurs(null)
+    calepinageApi.calepinages.enregistrerEntreeElectrique(id, { nombre_onduleurs: suggestion.nombre })
+      .then(() => lireSuggestion())
+      .catch((err) => setRefusOnduleurs(Object.values(refusParChamp(err?.response?.data))[0]
+        || 'Nombre d’onduleurs non enregistré : le serveur a refusé ce choix.'))
+  }
+
   const equipements = data?.roof_layout?.electrical?.equipements
   const liste = Array.isArray(equipements) ? equipements : []
 
@@ -110,6 +132,18 @@ export default function EquipementsElectriques({ calepinageId, builderApi } = {}
             scène pour que le clic pose l’organe choisi.
           </p>
         </header>
+
+        {suggestion && (
+          <div role="status" className="flex flex-col gap-2 rounded border border-warning/50 bg-warning/10 p-3" data-testid="acal634-carte">
+            <p className="text-sm text-foreground" data-testid="acal634-motif">{suggestion.motif}</p>
+            <div>
+              <Button type="button" onClick={prendreOnduleurs} className="min-h-11" data-testid="acal634-prendre">
+                Prendre {suggestion.nombre} onduleurs
+              </Button>
+            </div>
+            {refusOnduleurs && <p role="alert" className="text-sm text-destructive" data-testid="acal634-refus">{refusOnduleurs}</p>}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">

@@ -135,6 +135,8 @@ export interface Ctx {
    *  calepinage. Optionnel : un `ctx` antérieur à CAL102 n'en porte pas — `createMesureUi`
    *  l'initialise à la première pose (`ensure()`), jamais lu en aveugle. */
   measurements?: Measurement[];
+  /** ACAL593 — repères de chantier (clé racine `reperesChantier`, contrat ACAL599) ; absent/[] ⇒ aucune clé. */
+  reperesChantier?: import('./reperesChantier').RepereChantier[];
   /** CAL100 — photographie TOUT l'atelier (tracé/obstacles/zones/pose) pour l'annuler/
    *  rétablir GÉNÉRALISÉ. `createLayoutEditor` s'auto-enregistre ici à sa construction (le
    *  seul module qui possède l'historique) ; `obstaclesUi.ts`/toute autre mutation l'appelle

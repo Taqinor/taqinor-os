@@ -15,7 +15,7 @@ from apps.ventes.domain.regles_calcul import (
     REGLES_CORRIGEES_2710, REGLES_COURANTES, REGLES_CYCLES_BATTERIE_1911, REGLES_ECARTS_0111,
     REGLES_ECARTS_0411, REGLES_ECARTS_3110, REGLES_ORIGINE,
     REGLES_PANIER_UNIQUE_0211, REGLES_RETOURS_3010B, REGLES_SENSIBILITES_1911, REGLES_SENSIBILITES_3010,
-    calcul_corrige, regles_au_moins)
+    REGLES_POSE_REELLE_2111, calcul_corrige, regles_au_moins)
 
 
 class ReglesCalculTests(SimpleTestCase):
@@ -47,6 +47,19 @@ class ReglesCalculTests(SimpleTestCase):
         self.assertGreater(REGLES_CYCLES_BATTERIE_1911, REGLES_ECARTS_0411)
         self.assertGreater(REGLES_SENSIBILITES_1911, REGLES_CYCLES_BATTERIE_1911)
         self.assertTrue(calcul_corrige(SimpleNamespace(regles_calcul=defaut)))
+
+    def test_niveau_15_declare_non_courant(self):
+        # ACAL998 — le niveau 15 existe mais n'est pas courant tant
+        # qu'ACAL1001 ne l'a pas activé : aucun devis, neuf ou existant.
+        from apps.ventes.models import Devis
+        self.assertEqual(REGLES_POSE_REELLE_2111, 15)
+        self.assertEqual(REGLES_COURANTES, 14)
+        self.assertEqual(Devis._meta.get_field('regles_calcul').default, 14)
+        for devis in (Devis(), SimpleNamespace(regles_calcul=14), None,
+                      SimpleNamespace()):
+            self.assertFalse(regles_au_moins(devis, REGLES_POSE_REELLE_2111))
+        self.assertTrue(regles_au_moins(
+            SimpleNamespace(regles_calcul=15), REGLES_POSE_REELLE_2111))
 
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
     def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):
@@ -430,6 +443,50 @@ class ReglesCalculDryrunCommandeTests(TestCase):
         relus = dict(Devis.objects.filter(pk__in=[a.pk, b.pk, c.pk]).values_list('reference', 'regles_calcul'))
         self.assertEqual(relus, {'DEV-ATST24-A': REGLES_ORIGINE, 'DEV-ATST24-B': REGLES_ORIGINE,
                                  'DEV-ATST24-C': REGLES_COURANTES})
+
+    def test_niveau_15_bloc_recalcule_changera_et_aucune_ecriture(self):
+        """ACAL1000 — ``--niveau 15`` : le bloc horaire est RECALCULÉ (doublure :
+        la pose réelle de l'est-ouest produit moins), « changera » dit oui pour
+        le brouillon jamais envoyé, non pour l'envoyé ; rien n'est écrit.
+        Mutants : ne pas recalculer ⇒ aucun écart ; enregistrer le niveau ⇒ rouge."""
+        from io import StringIO
+        from django.core.management import call_command
+        from apps.ventes.models import Devis
+        from apps.ventes.tests.test_l_niv_niveau import make_client, make_company, make_devis, make_user
+        co = make_company('acal1000')
+        user, client = make_user(co), make_client(co)
+        est_ouest, envoye, sans = (make_devis(co, user, client, f'DEV-ACAL1000-{n}') for n in 'EVS')
+        Devis.objects.filter(pk=est_ouest.pk).update(statut='brouillon', date_envoi=None)
+        for d in (est_ouest, envoye, sans):
+            Devis.objects.filter(pk=d.pk).update(etude_params={'etude_horaire': {'prod': 1000}})
+        Devis.objects.filter(company=co).update(regles_calcul=REGLES_SENSIBILITES_1911)
+        prod_pose = {'DEV-ACAL1000-E': 900, 'DEV-ACAL1000-V': 950, 'DEV-ACAL1000-S': 1000}
+
+        def faux_rafraichir(devis, force=False):
+            self.assertTrue(force)
+            self.assertEqual((devis.regles_calcul, devis.statut), (REGLES_POSE_REELLE_2111, 'brouillon'))
+            devis.etude_params = {'etude_horaire': {'prod': prod_pose[devis.reference]}}
+            devis.save(update_fields=['etude_params'])
+
+        def faux_builder(devis, opts):
+            prod = devis.etude_params['etude_horaire']['prod']
+            return {'prod_kwh': prod, 'eco_s_ann': prod * 2, 'nb_panneaux': 10,
+                    'totaux_all': {'ttc': 50000}}
+        buf = StringIO()
+        with mock.patch('apps.ventes.quote_engine.builder.build_quote_data', faux_builder), \
+                mock.patch('apps.ventes.domain.etudes.rafraichir_etude_horaire_devis', faux_rafraichir):
+            call_command('regles_calcul_ecarts_dryrun', '--niveau', '15', '--company', str(co.pk), stdout=buf)
+        out = buf.getvalue()
+        self.assertIn('DEV-ACAL1000-E, brouillon, oui, prod_kwh, 1000, 900, -100', out)
+        self.assertIn('DEV-ACAL1000-E, brouillon, oui, eco_s_ann, 2000, 1800, -200', out)
+        self.assertIn('DEV-ACAL1000-V, envoye, non, prod_kwh, 1000, 950, -50', out)
+        self.assertNotIn('DEV-ACAL1000-S,', out)
+        self.assertNotIn('nb_panneaux,', out)
+        self.assertIn('TOTAL prod_kwh : -150.0', out)
+        relus = {r: (n, p['etude_horaire']['prod'], s) for r, n, p, s in Devis.objects.filter(company=co)
+                 .values_list('reference', 'regles_calcul', 'etude_params', 'statut')}
+        self.assertEqual(relus, {'DEV-ACAL1000-E': (14, 1000, 'brouillon'), 'DEV-ACAL1000-V': (14, 1000, 'envoye'),
+                                 'DEV-ACAL1000-S': (14, 1000, 'envoye')})
 
 
 class FormateursReglesOrigineTests(SimpleTestCase):

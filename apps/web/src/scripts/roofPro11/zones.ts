@@ -16,6 +16,11 @@ import { geodesicAreaM2, isSimplePolygon, pointInPolygon, type LngLat } from '..
 import { referenceContourRing } from './prefill'; // ACAL71 — le validateur de contour UNIQUE
 import { facteurDerateAnnuel } from './optimizer'; // ACAL356 — le dérate UNIQUE (ombrage × horizon)
 import { type Obstacle } from '../../lib/obstacles';
+import { pivoterSite } from './siteRotation'; // ACAL514
+import { motifPanVerrouille } from './panVerrouille'; // ACAL520
+import { anneeValide, motifPanExistant } from './panExistant'; // ACAL510, ACAL574
+import { appliquerReglagesAuxPans, pansReglesAMain } from './jeuReglages'; // ACAL554
+import { accesMoyenDuPan, mentionAcces, trierPansParAcces } from './triPans'; // ACAL728
 import {
   centroideAnneau,
   dimensionsRectangleM,
@@ -310,6 +315,12 @@ export function idZoneCopie(existants: readonly { id: string }[]): string {
   return `area-copie-${n}`;
 }
 
+/** ACAL554 — bouton « Appliquer ces réglages à… » d'une ligne de pan : absent s'il n'y a qu'un pan. */
+export function boutonReporterReglages(id: string, nbPans: number): string {
+  if (nbPans < 2) return '';
+  return `<button type="button" data-area-report="${esc(id)}" class="min-h-11 border border-white/25 px-2.5 py-1 text-xs font-semibold text-lune-soft hover:border-brass-400 hover:text-brass-300">Appliquer ces réglages à…</button>`;
+}
+
 export interface Zones {
   liveActiveResult: () => AreaResult | null;
   snapshotActiveAreaResult: () => void;
@@ -322,6 +333,8 @@ export interface Zones {
   /** CALX97 — fait pivoter le pan ACTIF (contour + obstacles) de l'angle saisi. Renvoie
    *  false et n'applique RIEN quand c'est refusé ; le motif nomme le pan. */
   pivoterPanActif: (angleDeg: number) => boolean;
+  /** ACAL515 — pivote TOUT le site d'un geste annulable ; false et rien ne bouge si refusé. */
+  pivoterSiteActif: (angleDeg: number) => boolean;
   /** CALX97 — repose le pan ACTIF aux cotes saisies (pan rectangulaire seulement). */
   redimensionnerPanActif: (largeurM: number, longueurM: number) => boolean;
   /** CALX98 — duplique le pan ACTIF (contour, obstacles et réglages) dans une zone neuve
@@ -349,6 +362,10 @@ export interface ZonesDeps {
   setStatus?: (msg: string) => void;
   /** ACAL410 — appelé à chaque rendu de la liste des pans (les puces « Forme du toit » s'y recalent). */
   apresRendu?: () => void;
+  /** ACAL554 — active un pan (« Voir » : charge et re-pave) ; absent, le report de réglages est indisponible. */
+  selectArea?: (id: string) => void;
+  /** ACAL728 — accès solaire moyen (0..1) du calcul VIVANT du pan actif ; absent, l'enregistré sert. */
+  accesVivant?: () => number | null;
 }
 
 /** CAL84 — libellé d'un bâtiment (repli « Bâtiment sans id » pour un groupe sans
@@ -421,8 +438,10 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
 
   /** Rend le panneau « Zones » : total agrégé (zone active = résultat LIVE, pas le snapshot
    *  potentiellement périmé) + une ligne par zone. Masqué tant qu'aucune zone n'a de résultat. */
+  let triParAcces = false; // ACAL728
   function renderAreasPanel() {
     syncAddAreaButton();
+    syncBoutonDisposition(); // ACAL574 — à chaque redessin (changement de pan actif compris)
     const { areasWindowEl, areasListEl, areasTotalPanelsEl, areasTotalKwcEl, areasTotalProdEl, areasTotalSavingsEl } = ctx.dom;
     if (!areasWindowEl) return;
     const areas = ctx.areas;
@@ -460,6 +479,21 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const multiBuilding = hasMultipleBuildings(stats);
 
     if (areasListEl) {
+      // ACAL728 — tri d'AFFICHAGE à la demande (jamais écrit) ; un seul pan ⇒ pas de bouton.
+      const accesDe = (a: AreaRecord) => (a.id === activeAreaId ? deps.accesVivant?.() ?? null : null) ?? accesMoyenDuPan(a);
+      const ordre = triParAcces ? trierPansParAcces(areas, accesDe) : areas;
+      let triBtn = document.getElementById('rp9-areas-tri') as HTMLButtonElement | null;
+      if (!triBtn) {
+        triBtn = document.createElement('button');
+        triBtn.id = 'rp9-areas-tri';
+        triBtn.type = 'button';
+        triBtn.className = 'mb-2 min-h-11 border border-white/25 px-3 py-1 text-xs font-semibold text-lune-soft hover:border-brass-400';
+        triBtn.textContent = 'Trier par ensoleillement';
+        triBtn.addEventListener('click', () => { triParAcces = !triParAcces; renderAreasPanel(); });
+        areasListEl.insertAdjacentElement('beforebegin', triBtn);
+      }
+      triBtn.hidden = areas.length < 2;
+      triBtn.setAttribute('aria-pressed', String(triParAcces));
       const rowHtml = (a: AreaRecord, i: number): string => {
         const r = a.id === activeAreaId ? liveActive : a.result;
         const active = a.id === activeAreaId;
@@ -472,6 +506,8 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           areas.length > 1
             ? `<button type="button" data-area-del="${a.id}" aria-label="Supprimer ${esc(a.label)}" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>`
             : '';
+        // ACAL520 — cadenas du pan (≥ 44 px, `aria-pressed`) : verrouillé, ses gestes refusent.
+        const lockBtn = `<button type="button" data-area-lock="${a.id}" aria-pressed="${a.verrouille ? 'true' : 'false'}" aria-label="Verrouiller ${esc(a.label || areaLabel(i))}" class="min-h-11 min-w-11 border px-2.5 py-1 text-xs font-semibold ${a.verrouille ? 'border-brass-400 text-brass-300' : 'border-white/25 text-lune-soft'}">${a.verrouille ? 'Verrouillé' : 'Verrouiller'}</button>`;
         const viewBtn = active
           ? `<span class="text-xs font-semibold text-brass-300">● active</span>`
           : `<button type="button" data-area-select="${a.id}" class="border border-white/25 px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">Voir</button>`;
@@ -482,22 +518,22 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           class="w-24 border border-white/15 bg-nuit-900/60 px-1.5 py-0.5 text-[11px] text-lune-soft focus:border-brass-400 focus:outline-none" />`;
         return `<li class="flex flex-wrap items-center gap-x-3 gap-y-1 border ${rowClass} p-3 text-sm" data-area-row="${a.id}">
           <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
-          <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}</span>
+          <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}${triParAcces ? ` · ${mentionAcces(accesDe(a))}` : ''}</span>
           ${buildingInput}
-          <span class="ml-auto flex items-center gap-2">${viewBtn}${delBtn}</span>
+          <span class="ml-auto flex items-center gap-2">${boutonReporterReglages(a.id, areas.length)}${lockBtn}${viewBtn}${delBtn}</span>
         </li>`;
       };
       if (!multiBuilding) {
         // CAL59 — aucune zone ne porte de `buildingId` : liste plate, octet pour octet
         // identique au comportement historique (aucun sous-total redondant).
-        areasListEl.innerHTML = areas.map((a, i) => rowHtml(a, i)).join('');
+        areasListEl.innerHTML = ordre.map((a) => rowHtml(a, areas.indexOf(a))).join('');
       } else {
         // CAL59 — un calepinage multi-bâtiments : une ligne d'en-tête de sous-total PAR
         // bâtiment (panneaux/kWc CALCULÉS, jamais saisis), suivie des zones du groupe.
         const indexOf = new Map(areas.map((a, i) => [a.id, i]));
         areasListEl.innerHTML = stats.byBuilding
           .map((b) => {
-            const rows = areas.filter((a) => (a.buildingId ?? null) === b.buildingId);
+            const rows = ordre.filter((a) => (a.buildingId ?? null) === b.buildingId);
             const header = `<li class="border border-white/20 bg-nuit-900/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-lune-faint" data-building-header="${esc(b.buildingId ?? '')}">
               ${esc(buildingLabel(b.buildingId))} — ${fmt(b.panels)} panneaux · ${b.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc
             </li>`;
@@ -581,7 +617,17 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       `<label class="inline-flex items-center gap-1" for="rp9-pan-rotation">Rotation (°)` +
       `<input type="text" id="rp9-pan-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-pan-pivoter" class="rp9-btn">Pivoter le pan</button>` +
-      `<span id="rp9-pan-geometry-erreur" class="text-alert-300" role="alert" hidden></span>`;
+      `<label class="inline-flex items-center gap-1" for="rp9-site-rotation">Rotation du site (°)` +
+      `<input type="text" id="rp9-site-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<button type="button" id="rp9-site-pivoter" class="rp9-btn">Pivoter le site</button>` +
+      `<span id="rp9-pan-geometry-erreur" class="text-alert-300" role="alert" hidden></span>` +
+      `<span id="rp9-site-erreur" class="text-alert-300" role="alert" hidden></span>` +
+      // ACAL510 — case repliée « Pan existant » (modules déjà en place) + année SAISIE.
+      `<details class="w-full"><summary class="min-h-11 cursor-pointer">Pan existant</summary>` +
+      `<label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" id="rp9-pan-existant" /> Modules déjà en place</label>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-pan-annee">Année de mise en service` +
+      `<input type="text" id="rp9-pan-annee" class="rp9-input w-20" inputmode="numeric" /></label>` +
+      `<span id="rp9-pan-annee-erreur" class="block text-alert-300" role="alert" hidden></span></details>`;
     areasWindowEl.appendChild(el);
     return el;
   }
@@ -604,16 +650,34 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   }
 
   /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
-  function direRefusGeometrie(motif: string | null) {
-    if (panErreurEl) {
-      panErreurEl.textContent = motif ?? '';
-      panErreurEl.hidden = !motif;
+  function direRefusGeometrie(motif: string | null, idErreur = 'rp9-pan-geometry-erreur') {
+    const erreurEl = idErreur === 'rp9-pan-geometry-erreur' ? panErreurEl : document.getElementById(idErreur);
+    if (erreurEl) {
+      erreurEl.textContent = motif ?? '';
+      erreurEl.hidden = !motif;
     }
     if (motif) deps.setStatus?.(motif);
   }
 
+  /** ACAL574 — le refus (texte unique d'ACAL510) quand le pan ACTIF est « existant », sinon null. */
+  function motifDuPanExistantActif(): string | null {
+    const i = ctx.areas.findIndex((a) => a.id === ctx.activeAreaId);
+    return motifPanExistant(ctx.areas[i], Math.max(0, i));
+  }
+  /** ACAL574 — « Déplacer les panneaux » grisé, avec sa raison, tant qu'un pan existant est actif. */
+  function syncBoutonDisposition() {
+    const btn = document.getElementById('rp9-layout-toggle') as HTMLButtonElement | null;
+    const motif = motifDuPanExistantActif();
+    if (!btn) return;
+    btn.disabled = !!motif;
+    if (motif) btn.title = motif; else if (btn.dataset.titrePanExistant) btn.removeAttribute('title');
+    if (motif) btn.dataset.titrePanExistant = '1'; else delete btn.dataset.titrePanExistant;
+  }
+
   /** Applique une géométrie transformée au pan ACTIF (contour + obstacles vivants). */
-  function appliquerAuPanActif(geometrie: GeometriePan) {
+  function appliquerAuPanActif(geometrie: GeometriePan): boolean {
+    const verrou = motifPanVerrouille(ctx.activeArea?.(), ctx.areas.findIndex((a) => a.id === ctx.activeAreaId)) ?? motifDuPanExistantActif(); // ACAL520, ACAL574
+    if (verrou) { direRefusGeometrie(verrou); return false; }
     ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
     ctx.vertices.splice(0, ctx.vertices.length, ...geometrie.vertices);
     ctx.obstacles.splice(0, ctx.obstacles.length, ...geometrie.obstacles);
@@ -622,6 +686,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     deps.redrawObstacles?.();
     deps.recalc?.();
     renderAreasPanel();
+    return true;
   }
 
   function pivoterPanActif(angleDeg: number): boolean {
@@ -635,8 +700,50 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       return false;
     }
     direRefusGeometrie(null);
-    appliquerAuPanActif(verdict.geometrie);
+    if (!appliquerAuPanActif(verdict.geometrie)) return false;
     deps.setStatus?.(`${nomDuPanActif()} pivoté de ${angleDeg}° — ses obstacles ont suivi.`);
+    return true;
+  }
+
+  /** ACAL515 — pivote TOUT le site (pans, obstacles, environnement, zones, mesures) d'un seul geste
+   *  annulable. Refus NOMMÉ (panneaux posés, angle illisible…) : rien ne bouge. */
+  function pivoterSiteActif(angleDeg: number): boolean {
+    snapshotActiveAreaResult();
+    snapshotActiveAreaGeometry();
+    const verdict = pivoterSite({
+      zones: ctx.areas.map((a) => ({
+        label: a.label, vertices: a.vertices, obstacles: a.obstacles, facingAzimuthDeg: a.facingAzimuthDeg,
+        geometry: a.geometrieEnregistree, result: a.result,
+      })),
+      environment: ctx.environment ?? [], exclusionZones: ctx.exclusionZones ?? [], measurements: ctx.measurements ?? [],
+    }, angleDeg);
+    if (!verdict.ok) {
+      direRefusGeometrie(verdict.motif, 'rp9-site-erreur');
+      return false;
+    }
+    direRefusGeometrie(null, 'rp9-site-erreur');
+    ctx.pushWorkshopHistory?.(); // UN seul point d'historique pour tout le geste
+    const tournees = verdict.site.zones as Array<Pick<AreaRecord, 'vertices' | 'obstacles' | 'facingAzimuthDeg' | 'geometrieEnregistree'> & { geometry?: AreaRecord['geometrieEnregistree'] }>;
+    ctx.areas.forEach((a, i) => {
+      a.vertices = tournees[i].vertices;
+      a.obstacles = tournees[i].obstacles;
+      a.facingAzimuthDeg = tournees[i].facingAzimuthDeg;
+      if (tournees[i].geometry) a.geometrieEnregistree = tournees[i].geometry;
+    });
+    for (const k of ['environment', 'exclusionZones', 'measurements'] as const) {
+      (ctx[k] as unknown[] | undefined)?.splice(0, Infinity, ...(verdict.site[k] as unknown[]));
+    }
+    const actif = ctx.activeArea();
+    if (actif) {
+      ctx.vertices.splice(0, ctx.vertices.length, ...actif.vertices);
+      ctx.obstacles.splice(0, ctx.obstacles.length, ...actif.obstacles);
+      ctx.facingAzimuthDeg = actif.facingAzimuthDeg;
+    }
+    deps.redrawTrace?.();
+    deps.redrawObstacles?.();
+    deps.recalc?.();
+    renderAreasPanel();
+    deps.setStatus?.(`Site pivoté de ${angleDeg}° — les obstacles gardent leur orientation nord-sud.`);
     return true;
   }
 
@@ -652,7 +759,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       return false;
     }
     direRefusGeometrie(null);
-    appliquerAuPanActif(verdict.geometrie);
+    if (!appliquerAuPanActif(verdict.geometrie)) return false;
     deps.setStatus?.(`${nomDuPanActif()} reposé aux cotes saisies — son centre n’a pas bougé.`);
     return true;
   }
@@ -663,6 +770,11 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     geometryPanelEl.hidden = !ctx.closed || ctx.vertices.length < 3;
     if (geometryPanelEl.hidden) return;
     if (panNomEl) panNomEl.textContent = nomDuPanActif();
+    const actif = ctx.areas.find((a) => a.id === ctx.activeAreaId); // ACAL510
+    const caseEl = document.getElementById('rp9-pan-existant') as HTMLInputElement | null;
+    if (caseEl) caseEl.checked = !!actif?.existant;
+    const anneeEl = document.getElementById('rp9-pan-annee') as HTMLInputElement | null;
+    if (anneeEl && document.activeElement !== anneeEl) anneeEl.value = actif?.anneeMiseEnService != null ? String(actif.anneeMiseEnService) : '';
     const dims = dimensionsRectangleM(ctx.vertices);
     const fmtDim = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
     if (panLargeurEl && document.activeElement !== panLargeurEl) {
@@ -687,7 +799,86 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       redimensionnerPanActif(nombreSaisi(panLargeurEl?.value), nombreSaisi(panLongueurEl?.value));
     } else if (cible?.id === 'rp9-pan-pivoter') {
       pivoterPanActif(nombreSaisi(panRotationEl?.value));
+    } else if (cible?.id === 'rp9-site-pivoter') {
+      pivoterSiteActif(nombreSaisi((document.getElementById('rp9-site-rotation') as HTMLInputElement | null)?.value));
     }
+  });
+
+  // ACAL510 — « Pan existant » : case et année du pan ACTIF ; une année refusée se dit sous le champ.
+  geometryPanelEl?.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    const pan = ctx.areas.find((a) => a.id === ctx.activeAreaId);
+    if (!pan || (t.id !== 'rp9-pan-existant' && t.id !== 'rp9-pan-annee')) return;
+    if (t.id === 'rp9-pan-existant') {
+      if (t.checked) pan.existant = true; else { delete pan.existant; delete pan.anneeMiseEnService; } // absent = pan neuf : octet pour octet
+      syncBoutonDisposition(); // ACAL574
+      return;
+    }
+    const v = anneeValide(t.value);
+    direRefusGeometrie(v.ok ? null : v.motif, 'rp9-pan-annee-erreur');
+    if (v.ok) pan.anneeMiseEnService = v.annee;
+  });
+
+  // ACAL520 — clic sur le cadenas d'un pan : bascule `verrouille` et redessine la liste.
+  ctx.dom.areasListEl?.addEventListener('click', (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-area-lock]')?.dataset.areaLock;
+    const pan = id ? ctx.areas.find((a) => a.id === id) : undefined;
+    if (!pan) return;
+    if (pan.verrouille) delete pan.verrouille; else pan.verrouille = true; // absent = modifiable : octet pour octet
+    renderAreasPanel();
+  });
+
+  // ACAL554 — « Appliquer ces réglages à… » : cases à cocher, confirmation en deux temps, UNE photo d'historique.
+  function ouvrirReport(sourceId: string) {
+    const source = ctx.areas.find((a) => a.id === sourceId);
+    const hote = ctx.dom.areasWindowEl;
+    if (!source || !hote) return;
+    document.getElementById('rp9-pan-report')?.remove();
+    const nom = (a: AreaRecord) => a.label || a.id;
+    const box = document.createElement('div');
+    box.id = 'rp9-pan-report';
+    box.className = 'mt-2 space-y-1 border border-white/20 p-3 text-xs text-lune-soft';
+    box.innerHTML = `<p>Appliquer le module, le type de toit, la pente et la face de ${esc(nom(source))} à :</p>`
+      + ctx.areas.filter((a) => a.id !== sourceId).map((a) => `<label class="flex min-h-11 items-center gap-2"><input type="checkbox" value="${esc(a.id)}" />${esc(nom(a))}</label>`).join('')
+      + '<p id="rp9-pan-report-note" role="status" class="text-alert-300"></p>'
+      + '<button type="button" class="rp9-btn min-h-11" data-report="ok">Appliquer</button> <button type="button" class="rp9-btn min-h-11" data-report="non">Annuler</button>';
+    const note = box.querySelector<HTMLElement>('#rp9-pan-report-note')!;
+    const ok = box.querySelector<HTMLButtonElement>('[data-report="ok"]')!;
+    let confirme = false;
+    box.addEventListener('change', () => { confirme = false; ok.textContent = 'Appliquer'; note.textContent = ''; });
+    box.querySelector('[data-report="non"]')!.addEventListener('click', () => box.remove());
+    ok.addEventListener('click', () => {
+      const ids = [...box.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
+      const cibles = ctx.areas.filter((a) => ids.includes(a.id));
+      const refus = refusModulePan(source) ?? (cibles.length ? null : 'Cochez au moins un pan.');
+      if (refus || !deps.selectArea) { note.textContent = refus ?? 'Report indisponible ici.'; return; }
+      const mains = pansReglesAMain(cibles);
+      if (!confirme) {
+        confirme = true;
+        ok.textContent = 'Confirmer';
+        note.textContent = `${mains.length ? `Déjà réglés à la main, ils seront écrasés : ${mains.map(nom).join(', ')}. ` : ''}${fmt(cibles.length)} pans seront re-pavés.`;
+        return;
+      }
+      ctx.pushWorkshopHistory?.(); // CAL100 — annuler rend l'état d'avant pour tous les pans
+      const aller = deps.selectArea;
+      if (ctx.activeAreaId !== sourceId) aller(sourceId);
+      snapshotActiveAreaGeometry();
+      appliquerReglagesAuxPans(source, cibles);
+      for (const id of [...cibles.map((c) => c.id), sourceId]) aller(id);
+      deps.setStatus?.(`Réglages de ${nom(source)} appliqués à ${fmt(cibles.length)} pans, re-pavés.`);
+      box.remove();
+    });
+    hote.appendChild(box);
+  }
+  function refusModulePan(source: AreaRecord): string | null {
+    if (!source.moduleId) return null;
+    const m = resoudreModuleDuPan(catalogueAtelier.choisissables, source.moduleId); // même règle que CALX109
+    const c = estRefus(m) ? m : cotesDeModule(m);
+    return estRefus(c) ? `${source.label || source.id} : ${c.message}` : null;
+  }
+  ctx.dom.areasListEl?.addEventListener('click', (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-area-report]')?.dataset.areaReport;
+    if (id) ouvrirReport(id);
   });
 
   // ————————————————————————————————————————————————————————————————————
@@ -878,6 +1069,8 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   function choisirModuleDuPanActif(moduleId: string | null | undefined): boolean {
     const a = ctx.activeArea();
     if (!a) return false;
+    const existant = motifDuPanExistantActif(); // ACAL574 — changer le module re-paverait le pan
+    if (existant) { direRefusModule(existant); return false; }
     const id = typeof moduleId === 'string' ? moduleId.trim() : '';
     if (!id) {
       ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
@@ -939,6 +1132,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     renderAreasPanel,
     setAreaBuilding,
     pivoterPanActif,
+    pivoterSiteActif,
     redimensionnerPanActif,
     dupliquerPanActif,
     choisirModuleDuPanActif, // CALX109/CALX110 câblage

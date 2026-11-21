@@ -361,11 +361,10 @@ CLE_REGLAGE_FENETRE_ANNEES = 'parametres.simulation.fenetre_annees'
 #: troncature est DITE.
 PLAFOND_FENETRE_ANNEES = 10
 
-#: CALX59 — LE MOTIF, mot pour mot, quand le fuseau du site n'est pas saisi
-#: (D-CALX 15). La simulation TOURNE quand même : c'est la production qui est
-#: publiée, pas le croisement horaire.
-MOTIF_FUSEAU_ABSENT = (
-    "fuseau du site non renseigné : aucun croisement horaire n'est possible")
+#: CALX59/192 — les motifs horaires (ACAL711 : sortis vers motifs_horaires).
+from .motifs_horaires import (  # noqa: E402
+    MOTIF_BASE_HORAIRE_INCONNUE, MOTIF_FUSEAU_ABSENT,
+    MOTIF_RESOLUTION_DIVERGENTE)
 
 #: Les blocs du résultat qui CROISENT la série météo avec une courbe de
 #: charge saisie en heure locale. Sans fuseau, ils sont OMIS en nommant le
@@ -378,13 +377,6 @@ BLOCS_HORAIRES_OMIS = ('autoconsommation', 'batterie', 'hors_reseau')
 #: s'il peut construire les blocs ci-dessus, et une étape horaire de charge la
 #: lit pour s'omettre avec le même motif — une seule formulation partout.
 CLE_CROISEMENT_HORAIRE = 'croisement_horaire'
-
-#: Le motif publié quand la série ne DIT PAS dans quelle base elle est
-#: indexée : la ré-indexer reviendrait à deviner de quoi on part.
-MOTIF_BASE_HORAIRE_INCONNUE = (
-    "la base horaire de la série météo n'est pas déclarée "
-    '(« meteo.heure.base ») : sans elle, ré-indexer reviendrait à deviner '
-    'de quelle heure on part')
 
 #: Tolérance de COMPARAISON de flottants — un epsilon d'arithmétique, pas un
 #: seuil métier : aucun chiffre publié n'en dépend.
@@ -413,7 +405,6 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'publier_resultat_de_chaine',
            # ACAL54 — l'année moyenne de la fenêtre météo.
            'PORTEE_ANNEE_MOYENNE', 'CLE_ANNEES_FENETRE',
-           'RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC',
            'MOTIF_RENDEMENT_INVRAISEMBLABLE', 'annees_de_la_fenetre',
            # ACAL49 — la complétude (D-ACAL-7).
            'SOCLE_PHYSIQUE', 'MENTION_BORNE_HAUTE', 'MOTIF_SOCLE_MANQUANT',
@@ -786,6 +777,10 @@ def _etape_sommee(nom, lignes):
     perte_kwh, perte_pct = _perte(nom, modele, avant, apres)
     modele.update(kwh_avant=avant, kwh_apres=apres, perte_kwh=perte_kwh,
                   perte_pct=perte_pct, motif_omission='')
+    if nom == 'mismatch_ombrage' and len(appliquees) > 1:
+        # ACAL711 — les chaînes de TOUS les pans, jamais le seul premier.
+        from .etapes.mismatch_ombrage import fusionner_entrees
+        modele['entree'] = fusionner_entrees(appliquees)
     return modele
 
 
@@ -1074,12 +1069,6 @@ CLE_METEO_AU_PAS = 'meteo_au_pas'
 #: compte « 1 point = 1 heure ⇒ W = Wh ».
 PAS_METEO_ATTENDU_MINUTES = 60
 
-MOTIF_RESOLUTION_DIVERGENTE = (
-    'Le réglage « parametres.simulation.resolution_minutes » annonce {reglage} '
-    'min, mais la série météo servie est au pas de {mesure} min : c\'est le '
-    'pas MESURÉ qui fait foi, et aucune interpolation n\'est faite pour '
-    'atteindre le pas réglé.')
-
 
 def _publier_la_resolution(resultat, serie, contexte):
     """Publie les DEUX pas — météo et charge — et dit qu'ils ne se mélangent pas.
@@ -1233,15 +1222,9 @@ AVERTISSEMENT_BORNE_HAUTE = (
     'Production publiée en {mention} : PR, P75, P90 et P95 non publiés tant '
     'que les pertes du socle ne sont pas saisies ({postes}).')
 
-#: ACAL54 — le GARDE-FOU de vraisemblance du rendement spécifique (kWh/kWc
-#: et par an), borne du plan ACAL54 (C-ACAL-079, audit D3 du 04/10/2026) :
-#: hors de cette plage, un AVERTISSEMENT nommé est publié — la valeur n'est
-#: jamais bornée ni corrigée.
-RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC = (600.0, 2400.0)
-MOTIF_RENDEMENT_INVRAISEMBLABLE = (
-    'Rendement spécifique de {valeur} kWh/kWc par an hors de la plage '
-    'vraisemblable [{bas} ; {haut}] : vérifiez la fenêtre météo, la '
-    'puissance posée et la série reçue. La valeur est publiée telle quelle.')
+#: ACAL704 — le garde-fou du rendement spécifique lit les bornes SAISIES.
+from .rendement_plausible import (  # noqa: E402
+    MOTIF_RENDEMENT_INVRAISEMBLABLE, avertissement_de_rendement)
 
 MOTIF_PAN_SANS_SERIE = (
     'Aucune série de sortie de chaîne par pan : les colonnes par pan restent '
@@ -1353,10 +1336,9 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
 
     quantiles = _quantiles(total_kwh, annuel, total_kwc, contexte)
     rendement = _rendement(total_kwh, total_kwc)
-    bas, haut = RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC
-    if rendement is not None and not bas <= rendement <= haut:
-        avertissements.append(MOTIF_RENDEMENT_INVRAISEMBLABLE.format(
-            valeur=rendement, bas=int(bas), haut=int(haut)))
+    hors_plage = avertissement_de_rendement(rendement, contexte)
+    if hors_plage:
+        avertissements.append(hors_plage)
     for avertissement in avertissements:
         _ajouter_avertissement(resultat, avertissement)
     entete = completude_de_la_chaine(cascade, contexte)['avertissement']
@@ -1461,17 +1443,10 @@ def completude_de_la_chaine(cascade, contexte=None):
                 continue
             non_renseignees.add(nom)
     socle = [nom for nom in SOCLE_PHYSIQUE if nom in omises]
-    n = len(non_renseignees)
-    mention = (MENTION_BORNE_HAUTE.format(
-        n=n, pertes='perte' if n == 1 else 'pertes',
-        s='' if n == 1 else 's') if n else '')
-    motif = (MOTIF_SOCLE_MANQUANT.format(postes=', '.join(socle))
-             if socle else '')
-    avertissement = (AVERTISSEMENT_BORNE_HAUTE.format(
-        mention=f'« {mention} »', postes=', '.join(socle)) if socle else '')
+    from .a_renseigner import textes_de_completude  # ACAL699 — extrait
     return {'complete': not socle, 'socle_manquant': socle,
-            'mention': mention, 'motif': motif,
-            'avertissement': avertissement}
+            **textes_de_completude(socle, len(non_renseignees)),
+            'non_renseignees': sorted(non_renseignees)}
 
 
 def irradiation_kwh_m2(serie):

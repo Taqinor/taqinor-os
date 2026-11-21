@@ -140,3 +140,26 @@ describe('CALX114 — la ligne « Recommandé » dit selon quoi', () => {
     expect(document.querySelector('#rp9-compare tr')?.textContent).toContain('le plus de modules posés');
   });
 });
+
+describe('ACAL546 — comparatif sans montant (atelier ERP)', () => {
+  it('rp9-compare-wrap avec data-sans-montant : cinq cellules par ligne, aucune ne dit MAD', () => {
+    document.body.innerHTML =
+      '<div id="rp9-compare-wrap" data-sans-montant="1" hidden><table><tbody id="rp9-compare"></tbody></table></div>';
+    const ctx = makeCtx();
+    matrice(ctx).paintComparison();
+    const lignes = Array.from(document.querySelectorAll('#rp9-compare tr'));
+    expect(lignes.length).toBeGreaterThan(0);
+    for (const tr of lignes) {
+      expect(tr.querySelectorAll('td')).toHaveLength(5);
+      expect(tr.textContent).not.toContain('MAD');
+    }
+  });
+
+  it('sans l’attribut (aperçu public), la sixième cellule en MAD reste', () => {
+    const ctx = makeCtx();
+    matrice(ctx).paintComparison();
+    const tr = document.querySelector('#rp9-compare tr')!;
+    expect(tr.querySelectorAll('td')).toHaveLength(6);
+    expect(tr.textContent).toContain('MAD');
+  });
+});

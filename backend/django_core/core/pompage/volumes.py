@@ -118,6 +118,69 @@ def couverture_besoin_eau(*, besoin_m3_jour=None, besoin_m3_mois=None,
     }
 
 
+#: ACAL804 — ce que le bilan jour par jour ne simule pas (dit à l'écran).
+MENTION_ANNEE_TYPE = ("année type : chaque mois est une journée moyenne, les "
+                      "séries de jours sans soleil ne sont pas simulées")
+
+
+def _douze(valeurs):
+    lues = [_flottant(v) for v in valeurs] if valeurs and len(valeurs) == 12 else None
+    return lues if lues and all(v is not None for v in lues) else None
+
+
+def bilan_reservoir_journalier(*, besoin_m3_jour_mois=None,
+                               production_m3_jour_mois=None,
+                               volume_reservoir_m3=None):
+    """ACAL804 — niveau du réservoir jour par jour sur l'année type.
+
+    Chaque mois = sa journée moyenne répétée ``JOURS_PAR_MOIS`` fois ; niveau
+    = min(V, niveau + production − besoin), borné à 0. Le niveau du 1er
+    janvier est celui du 31 décembre (au plus 5 passes, la dernière rendue).
+    Réservoir 0 = pompage direct (``jours_plein`` None). Entrée absente ⇒
+    ``calcule: False`` et motif nommé, jamais un zéro. Usage INTERNE (D-ACAL-41).
+    """
+    sortie = {"calcule": False, "motif": None, "jours_manque": None,
+              "jours_plein": None, "besoin_couvert_pct": None,
+              "jours_manque_mois": None, "niveau_fin_mois_m3": None,
+              "mention": MENTION_ANNEE_TYPE}
+    volume = _flottant(volume_reservoir_m3)
+    besoin, production = _douze(besoin_m3_jour_mois), _douze(production_m3_jour_mois)
+    if volume is None or volume < 0:
+        sortie["motif"] = "aucun réservoir déclaré"
+    elif besoin is None:
+        sortie["motif"] = "besoin non saisi"
+    elif production is None:
+        sortie["motif"] = "production non calculée"
+    if sortie["motif"]:
+        return sortie
+
+    niveau = 0.0
+    for _passe in range(5):
+        depart = niveau
+        manque_mois, fin_mois, pleins, servi, demande = [], [], 0, 0.0, 0.0
+        for mois in range(12):
+            manque = 0
+            for _jour in range(JOURS_PAR_MOIS[mois]):
+                disponible = niveau + production[mois]
+                if disponible < besoin[mois]:
+                    manque += 1
+                elif volume > 0 and disponible - besoin[mois] >= volume:
+                    pleins += 1
+                servi += min(besoin[mois], disponible)
+                demande += besoin[mois]
+                niveau = max(0.0, min(volume, disponible - besoin[mois]))
+            manque_mois.append(manque)
+            fin_mois.append(round(niveau, 1))
+        if niveau == depart:
+            break
+    sortie.update(
+        calcule=True, jours_manque=sum(manque_mois),
+        jours_plein=pleins if volume > 0 else None,
+        besoin_couvert_pct=round(servi / demande * 100, 1) if demande > 0 else None,
+        jours_manque_mois=manque_mois, niveau_fin_mois_m3=fin_mois)
+    return sortie
+
+
 # ── FG264 — Rendement pompage par cycle de marche (volume d'eau jour/mois) ─────
 # Pour les devis AGRICOLES (pompage solaire) : calcule le VOLUME D'EAU POMPÉ
 # journalier et mensuel en fonction de l'IRRADIATION HORAIRE et de la DURÉE de
@@ -425,8 +488,11 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
                          salissure_pct=None, debit_declare_m3h=None,
                          agricole_pump_hours=None, besoin_m3_jour_mois=None,
                          coordonnees=None, reponse_pvgis=None,
-                         plafond_m3h=None):
+                         plafond_m3h=None, hmt_m_mois=None):
     """AGR114 — m³/jour de chaque mois, intégré HEURE PAR HEURE.
+
+    ACAL805 — ``hmt_m_mois`` (12 HMT ou None) : le mois m lit ``hmt_m_mois[m]``
+    non nul, sinon ``hmt_m`` (inchangé sans ``hmt_m_mois``).
 
     AGQ40 (D-AGQ-9) — ``plafond_m3h`` (débit d'exploitation du forage × part
     du réglage société, plafond retenu de la conception) : le débit de CHAQUE
@@ -549,8 +615,15 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
     if salissure is not None and 0 < salissure < 100:
         facteur *= 1 - salissure / 100.0
 
+    # ACAL805 — HMT du mois (niveau statique mensuel) quand elle est fournie ;
+    # ``debit_nominal_m3h`` reste celui de ``hmt_m``.
+    hmt_mois = list(hmt_m_mois or [])[:12]
+    hmt_mois += [None] * (12 - len(hmt_mois))
     journaliers, heures_eq = [], []
-    for profil in profils_horaires:
+    for index, profil in enumerate(profils_horaires):
+        hmt_du_mois = _flottant(hmt_mois[index])
+        if hmt_du_mois is None:
+            hmt_du_mois = hmt
         volume = 0.0
         for g in profil:
             irradiance = max(0.0, _flottant(g, 0.0) or 0.0)
@@ -558,7 +631,8 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
             rapport = p_kw / plaque
             if courbe_ok:
                 n = min(1.0, rapport ** (1.0 / 3.0)) if rapport > 0 else 0.0
-                debit = _debit_vitesse_relative(courbe_pompe, hmt, n) or 0.0
+                debit = _debit_vitesse_relative(courbe_pompe, hmt_du_mois,
+                                                n) or 0.0
             else:
                 debit = debit_nominal * min(1.0, rapport)
             volume += plafonne(debit)

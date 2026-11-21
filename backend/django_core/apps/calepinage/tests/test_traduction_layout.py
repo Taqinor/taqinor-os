@@ -376,3 +376,32 @@ class LesRefusNommentToujoursLeChamp(SimpleTestCase):
             entree_depuis_layout(document)
         self.assertEqual(refus.exception.champ, 'exclusionZones[0]')
         self.assertIn('Nature de zone inconnue', str(refus.exception))
+
+
+class LesTypesDObstacleDeLAtelierSeTraduisent(SimpleTestCase):
+    """ACAL498 — chaque type du menu de l'atelier rend son type moteur exact."""
+
+    def _type_moteur(self, type_atelier):
+        document = _document_or()
+        document['zones'][0]['obstacles'][0]['type'] = type_atelier
+        return entree_depuis_layout(
+            document).document['obstacles'][0]['type_obstacle']
+
+    def test_climatiseur_garde_corps_et_citerne(self):
+        self.assertEqual(self._type_moteur('climatiseur'), 'CLIMATISEUR')
+        self.assertEqual(self._type_moteur('garde_corps'), 'GARDE_CORPS')
+        # Jamais de correspondance approchée : la citerne reste inconnue.
+        self.assertEqual(self._type_moteur('citerne'), 'NATURE_INCONNUE')
+
+    def test_chaque_valeur_de_l_enum_du_contrat_est_traduisible(self):
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'contract_samples', 'roof_layout_v2.schema.json')
+        with io.open(chemin, encoding='utf-8') as fh:
+            enum = json.load(fh)['$defs']['obstacle']['properties']['type'][
+                'enum']
+        for valeur in ('climatiseur', 'garde_corps', 'citerne', 'lanterneau',
+                       'exutoire', 'joint_dilatation'):
+            self.assertIn(valeur, enum)
+        for valeur in enum:
+            self.assertTrue(self._type_moteur(valeur))

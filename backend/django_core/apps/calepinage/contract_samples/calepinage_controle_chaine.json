@@ -1,0 +1,49 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/controle-chaine/",
+  "pourquoi": "ACAL626 (C-ACAL-L5-626, CAP-D3-10, PACT10) — contrôle d'UNE chaîne SANS dessin : module, onduleur (identifiants de produits du stock de la société), nombre de modules et températures mini et maxi SAISIES (obligatoires, aucune valeur par défaut). Réponse : `verdict` (`conforme` | `alerte` | `bloquant` | `indetermine`), `controles[]` {code, libelle, valeur (V, arrondie à 0,1), borne (texte qui NOMME la borne et sa valeur), conforme, bloquant, source}, `longueur_min` / `longueur_max` (fenêtre de core/electrique/chaines.py::fenetre_admissible), `manquantes[]` (champs de fiche absents : jamais un faux vert). Rien n'est écrit. Nombres DÉRIVÉS À LA MAIN d'une fiche d'exemple, jamais présentés comme une fiche publiée : module Voc 49,5 V et Vmp 41,4 V à 25 °C, β(Voc) −0,27 %/°C, coefficient Vmp −0,35 %/°C ; onduleur tension maximale absolue 1 000 V, plage MPPT 200-850 V, démarrage 250 V. À −5 °C : Voc = 49,5 × (1 + 0,0027 × 30) = 53,51 V, Vmp = 41,4 × (1 + 0,0035 × 30) = 45,75 V ; à 70 °C : Vmp = 41,4 × (1 − 0,0035 × 45) = 34,88 V. 22 modules ⇒ 1 177,2 V (rouge sur 1 000 V), 1 006,4 V, 767,3 V ; 16 modules ⇒ 856,2 V, 732,0 V, 558,1 V. Fenêtre : max = min(⌊1000 / 53,51⌋, ⌊850 / 45,75⌋) = 18 ; min = max(⌈200 / 34,88⌉, ⌈250 / 34,88⌉) = 8. Servi par ACAL627, lu par ACAL628.",
+  "exemple_corps": {
+    "module_produit": 31,
+    "onduleur_produit": 42,
+    "nombre_modules": 16,
+    "temperature_min_c": -5.0,
+    "temperature_max_c": 70.0
+  },
+  "exemple": {
+    "verdict": "conforme",
+    "controles": [
+      {"code": "voc_froid", "libelle": "Tension à vide à froid de la chaîne", "valeur": 856.2, "borne": "tension maximale absolue de l'onduleur (1 000 V)", "conforme": true, "bloquant": true, "source": "fiches module et onduleur"},
+      {"code": "mppt_haut", "libelle": "Tension MPP à froid de la chaîne", "valeur": 732.0, "borne": "haut de plage MPPT de l'onduleur (850 V)", "conforme": true, "bloquant": false, "source": "fiches module et onduleur"},
+      {"code": "mppt_bas", "libelle": "Tension MPP à chaud de la chaîne", "valeur": 558.1, "borne": "bas de plage MPPT de l'onduleur (200 V)", "conforme": true, "bloquant": false, "source": "fiches module et onduleur"},
+      {"code": "demarrage", "libelle": "Tension MPP à chaud face au démarrage", "valeur": 558.1, "borne": "tension de démarrage de l'onduleur (250 V)", "conforme": true, "bloquant": true, "source": "fiches module et onduleur"}
+    ],
+    "longueur_min": 8,
+    "longueur_max": 18,
+    "manquantes": []
+  },
+  "exemple_corps_rouge": {
+    "module_produit": 31,
+    "onduleur_produit": 42,
+    "nombre_modules": 22,
+    "temperature_min_c": -5.0,
+    "temperature_max_c": 70.0
+  },
+  "exemple_rouge": {
+    "verdict": "bloquant",
+    "controles": [
+      {"code": "voc_froid", "libelle": "Tension à vide à froid de la chaîne", "valeur": 1177.2, "borne": "tension maximale absolue de l'onduleur (1 000 V)", "conforme": false, "bloquant": true, "source": "fiches module et onduleur"},
+      {"code": "mppt_haut", "libelle": "Tension MPP à froid de la chaîne", "valeur": 1006.4, "borne": "haut de plage MPPT de l'onduleur (850 V)", "conforme": false, "bloquant": false, "source": "fiches module et onduleur"},
+      {"code": "mppt_bas", "libelle": "Tension MPP à chaud de la chaîne", "valeur": 767.3, "borne": "bas de plage MPPT de l'onduleur (200 V)", "conforme": true, "bloquant": false, "source": "fiches module et onduleur"},
+      {"code": "demarrage", "libelle": "Tension MPP à chaud face au démarrage", "valeur": 767.3, "borne": "tension de démarrage de l'onduleur (250 V)", "conforme": true, "bloquant": true, "source": "fiches module et onduleur"}
+    ],
+    "longueur_min": 8,
+    "longueur_max": 18,
+    "manquantes": []
+  },
+  "exemple_indetermine": {
+    "verdict": "indetermine",
+    "controles": [],
+    "longueur_min": null,
+    "longueur_max": null,
+    "manquantes": ["Onduleur : tension DC maximale absolue"]
+  }
+}

@@ -3,12 +3,16 @@
 // pavage (packConfig, estimatorBrainV2.ts) et re-pave à chaud — la physique testée ici EST le
 // changement : options absentes → calepinage identique au millimètre ; écart agrandi → moins de
 // panneaux tiennent (le compte baisse), jamais l'inverse.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom'; // ACAL574
+import { type Ctx } from './context'; // ACAL574
+import { motifPanExistant } from './panExistant'; // ACAL574
 import { packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
 import { PANEL2_SHORT_M, PERIMETER_SETBACK_M } from '../../lib/roofPro2';
 import {
   cibleOptimisationSaisie,
   choixOptimisationCourant,
+  createOptimizer, // ACAL574
   departagerRemplissage,
   poserCibleOptimisation,
   poserChoixOptimisation,
@@ -17,6 +21,11 @@ import {
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
 import { panneauxPourCible } from './cibleProduction';
+import { cotesDePavage } from '../../lib/roofPro2';
+import {
+  causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, noterMotifPanVide, retraitApplique,
+  semerMotifsDepuisDocument, type MesuresPanVide,
+} from './motifPanVide'; // ACAL549
 
 const ring = rectRing(20, 15);
 const baseOpts: PackOptions = { family: 'south', tiltDeg: 13 };
@@ -424,5 +433,81 @@ describe('ACAL470 : objectif de production tapé', () => {
     expect(panneauxPourCible(50000, 600, 30, clampNeeded)).toEqual({ panneaux: 30, plafonne: true, maxKwhAn: 18000 });
     expect(panneauxPourCible(0, 600, 30, clampNeeded)).toBeNull();
     expect(panneauxPourCible(100, 0, 30, clampNeeded)).toBeNull();
+  });
+});
+
+// ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés.
+describe('ACAL574 — re-résolution refusée sur un pan existant', () => {
+  it('liveResolveFlat / liveResolvePitched : rien n’est re-pavé ni redessiné, le motif nomme le pan', () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body></body>').window.document;
+    try {
+      const pan = { id: 'z1', label: 'Pan A', existant: true, geometrieEnregistree: { count: 4 } };
+      const ctx = { closed: true, vertices: rectRing(10, 8), roofType: 'flat', areas: [pan], activeAreaId: 'z1', opts: {} } as unknown as Ctx;
+      const deps = {
+        renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn(),
+      };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      const geometrieAvant = JSON.stringify(pan);
+      opt.liveResolveFlat();
+      (ctx as unknown as { roofType: string }).roofType = 'pitched';
+      opt.liveResolvePitched();
+      expect(deps.renderScene).not.toHaveBeenCalled();
+      expect(deps.obstructionRings).not.toHaveBeenCalled();
+      expect(deps.setStatus).toHaveBeenCalledWith(motifPanExistant(pan));
+      expect(JSON.stringify(pan)).toBe(geometrieAvant);
+    } finally {
+      g.document = avant;
+    }
+  });
+});
+
+// ACAL549 — la cause MESURÉE d'un pan vide, dans l'ordre retrait → obstacles → seuil → module → inconnue.
+describe('ACAL549 — causeDuPanVide', () => {
+  const MODULE = cotesDePavage(undefined);
+  const mesures = (o: Partial<MesuresPanVide> = {}): MesuresPanVide => ({
+    largeurPanM: 4, retraitM: 0, coteCourtM: MODULE.courtM, coteLongM: MODULE.longM, aireM2: 12,
+    surfacePosableM2: 12, candidats: 3, seuil: null, ecartes: 0, ...o,
+  });
+
+  it('pan de 3 × 1,5 m, retrait 0,80 m ⇒ retrait_rive avec 0,80 et 1,50', () => {
+    const pack = packConfig(rectRing(3, 1.5), 33.5, { family: 'south', tiltDeg: 13, setbackM: 0.8 });
+    expect(pack.best.count).toBe(0);
+    const m = causeDuPanVide(mesurerPanVide(pack, pack.best, retraitApplique(undefined, 0.8), MODULE, null));
+    expect(m.code).toBe('retrait_rive');
+    expect(m.message).toBe('Aucun module : le retrait de rive (0,80 m de chaque côté) ne laisse que 0,00 m sur 1,50 m de large');
+    expect(m.mesures).toMatchObject({ retraitM: 0.8, largeurPanM: 1.5, largeurUtileM: 0 });
+  });
+
+  it('obstacles couvrant tout ⇒ obstacles (et passe AVANT le seuil) ; seuil ⇒ seuil_acces_solaire ; rien ⇒ module_trop_grand / inconnue', () => {
+    expect(causeDuPanVide(mesures({ surfacePosableM2: 0, seuil: 0.8, ecartes: 3 })).code).toBe('obstacles');
+    const s = causeDuPanVide(mesures({ seuil: 0.8, ecartes: 3 }));
+    expect(s.code).toBe('seuil_acces_solaire');
+    expect(s.message).toContain('80 %');
+    expect(causeDuPanVide(mesures({ candidats: 0, surfacePosableM2: 1 })).code).toBe('module_trop_grand');
+    expect(causeDuPanVide(mesures())).toEqual({ code: 'inconnue', message: "Aucun module posé — la cause n'a pas pu être déterminée", mesures: {} });
+  });
+
+  it('le retrait passe AVANT les obstacles (ordre des causes)', () => {
+    expect(causeDuPanVide(mesures({ largeurPanM: 1.5, retraitM: 0.8, surfacePosableM2: 0 })).code).toBe('retrait_rive');
+  });
+
+  it('écrit `motifsPansVides` pour le pan vide, le relit, et le retire dès que le pan porte un module', () => {
+    const motif = causeDuPanVide(mesures({ largeurPanM: 1.5, retraitM: 0.8 }));
+    semerMotifsDepuisDocument({});
+    noterMotifPanVide('z1', motif);
+    const doc: Record<string, unknown> = { zones: [{ id: 'z1', geometry: { count: 0 } }, { id: 'z2', geometry: { count: 4 } }] };
+    expect(ecrireMotifsDansDocument(doc)).toBe(true);
+    expect(doc.motifsPansVides).toEqual({ z1: motif });
+    semerMotifsDepuisDocument({});
+    expect(ecrireMotifsDansDocument(doc)).toBe(false);
+    expect('motifsPansVides' in doc).toBe(false);
+    semerMotifsDepuisDocument({ motifsPansVides: { z1: motif } });
+    expect(ecrireMotifsDansDocument(doc)).toBe(true);
+    (doc.zones as Array<{ geometry: { count: number } }>)[0].geometry.count = 2;
+    expect(ecrireMotifsDansDocument(doc)).toBe(false);
+    semerMotifsDepuisDocument({});
   });
 });

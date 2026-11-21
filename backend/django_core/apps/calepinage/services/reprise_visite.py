@@ -43,6 +43,8 @@ La société et l'auteur viennent TOUJOURS du serveur. Aucun statut ne bouge.
 """
 from __future__ import annotations
 
+from .valeurs import nombre as _nombre
+
 #: Le motif publié quand le calepinage n'a AUCUN lead : il n'y a pas de
 #: visite technique à chercher. Recopié tel quel par l'onglet (CALX365).
 MOTIF_SANS_LEAD = (
@@ -82,7 +84,7 @@ def _lecture_visite(calepinage):
     return releve_pour_calepinage(lead)
 
 
-def _composer_reponse(lecture, bloc_releve, ecart=None):
+def _composer_reponse(lecture, bloc_releve, ecart=None, ecart_dessin=None):
     """La réponse de ``releve-visite/`` — UNE forme, GET comme POST.
 
     Fonction PURE : ``lecture`` est le dictionnaire de la porte ``visites``,
@@ -90,6 +92,7 @@ def _composer_reponse(lecture, bloc_releve, ecart=None):
     ``ecart`` les mesures qui divergent (``_ecart``). ``a_jour`` : le relevé
     repris correspond à la visite validée (un relevé, une visite validée,
     aucun écart) — jamais vrai sans relevé ni sans visite à comparer.
+    ``ecart_dessin`` (ACAL526) : la visite confrontée au toit DESSINÉ.
     """
     ecart = list(ecart or [])
     return {
@@ -103,6 +106,7 @@ def _composer_reponse(lecture, bloc_releve, ecart=None):
         'a_jour': (bloc_releve is not None
                    and lecture.get('visite_id') is not None and not ecart),
         'ecart': ecart,
+        'ecart_dessin': list(ecart_dessin or []),
     }
 
 
@@ -128,6 +132,103 @@ def _ecart(releve, lecture):
     return [{'code': code, 'releve': repris.get(code),
              'visite': courant.get(code)}
             for code in codes if repris.get(code) != courant.get(code)]
+
+
+MOTIF_NON_RELEVE = 'non relevé'
+MOTIF_PANS_A_RAPPROCHER = 'pans à rapprocher à la main'
+
+
+def _cotes_orientees(sommets):
+    """``(grande, petite)`` en mètres : l'emprise ORIENTÉE sur l'arête la
+    plus longue du contour (projection locale UNIQUE de ``services.zones``).
+    ``None`` sans contour exploitable."""
+    from .zones import projeteur_local
+
+    points = [(nombre, autre) for nombre, autre in
+              ((_nombre(v[0]), _nombre(v[1])) for v in sommets
+               if isinstance(v, (list, tuple)) and len(v) >= 2)
+              if nombre is not None and autre is not None]
+    if len(points) < 3:
+        return None
+    projeter = projeteur_local(points[0])
+    plan = [projeter(p) for p in points]
+    arete = max(zip(plan, plan[1:] + plan[:1]),
+                key=lambda ab: (ab[1][0] - ab[0][0]) ** 2
+                + (ab[1][1] - ab[0][1]) ** 2)
+    dx, dy = arete[1][0] - arete[0][0], arete[1][1] - arete[0][1]
+    longueur = (dx * dx + dy * dy) ** 0.5
+    if longueur == 0:
+        return None
+    ux, uy = dx / longueur, dy / longueur
+    le_long = [x * ux + y * uy for x, y in plan]
+    en_travers = [-x * uy + y * ux for x, y in plan]
+    deux = (max(le_long) - min(le_long), max(en_travers) - min(en_travers))
+    return max(deux), min(deux)
+
+
+def _ligne(pan, mesure, visite, dessin, source=None, *, ecart=True):
+    """Une ligne de ``ecart_dessin`` : aucun seuil, aucun jugement."""
+    ligne = {'pan': pan, 'mesure': mesure, 'visite': visite,
+             'dessin': dessin, 'ecart': None, 'source_dessin': source}
+    if visite is None:
+        ligne['motif'] = MOTIF_NON_RELEVE
+    elif ecart and dessin is not None:
+        ligne['ecart'] = round(abs(visite - dessin), 2)
+    return ligne
+
+
+def _ecarts_visite_dessin(calepinage, lecture):
+    """ACAL526 — la visite VALIDÉE confrontée au toit DESSINÉ, côte à côte.
+
+    ``[{pan, mesure, visite, dessin, ecart, source_dessin}]`` pour la pente,
+    la longueur, la largeur (grande à grande, petite à petite) et
+    l'orientation (SANS conversion : « sud » n'est pas un azimut, D7 ; son
+    ``ecart`` reste ``None``). ``[]`` sans visite validée ou sans pan tracé.
+    Plusieurs pans et une visite à UN seul jeu de mesures : les valeurs de
+    visite sont rendues SANS écart (``pans à rapprocher à la main``).
+    Lecture pure ; aucun seuil.
+    """
+    if lecture.get('visite_id') is None:
+        return []
+    document = getattr(calepinage, 'roof_layout', None)
+    zones = document.get('zones') if isinstance(document, dict) else None
+    pans = [z for z in zones or [] if isinstance(z, dict)]
+    if not pans:
+        return []
+    v = _valeurs(lecture.get('mesures'))
+    pente, longueur, largeur = (_nombre(v.get(c)) for c in
+                                ('pente_deg', 'longueur_m', 'largeur_m'))
+    orientation = v.get('orientation')
+    if len(pans) > 1:
+        lignes = (('pente', pente), ('longueur', longueur),
+                  ('largeur', largeur), ('orientation', orientation))
+        return [dict(_ligne(None, mesure, valeur, None),
+                     motif=MOTIF_PANS_A_RAPPROCHER)
+                for mesure, valeur in lignes if valeur is not None]
+    pan = pans[0]
+    pan_id = pan.get('id')
+    source_pente = pan.get('pitchSource')
+    source_pente = (source_pente.get('mode') if isinstance(source_pente, dict)
+                    and source_pente.get('mode') else 'valeur de départ')
+    cotes = _cotes_orientees(pan.get('vertices') or [])
+    # Grande à grande : la cote du dessin suit le rang de la cote relevée.
+    grande, petite = cotes if cotes else (None, None)
+    if longueur is not None and largeur is not None and longueur < largeur:
+        dessin_longueur, dessin_largeur = petite, grande
+    else:
+        dessin_longueur, dessin_largeur = grande, petite
+    arrondi = (lambda x: None if x is None else round(x, 2))
+    return [
+        _ligne(pan_id, 'pente', pente, _nombre(pan.get('pitchDeg')),
+               source_pente),
+        _ligne(pan_id, 'longueur', longueur, arrondi(dessin_longueur),
+               'contour tracé'),
+        _ligne(pan_id, 'largeur', largeur, arrondi(dessin_largeur),
+               'contour tracé'),
+        _ligne(pan_id, 'orientation', orientation,
+               _nombre(pan.get('facingAzimuthDeg')), 'face du pan',
+               ecart=False),
+    ]
 
 
 def _formater(valeur):
@@ -196,7 +297,8 @@ def etat_reprise(calepinage):
     lecture = _lecture_visite(calepinage)
     releve = _releve_repris(calepinage, lecture.get('visite_id'))
     return _composer_reponse(lecture, _bloc(releve),
-                             _ecart(releve, lecture))
+                             _ecart(releve, lecture),
+                             _ecarts_visite_dessin(calepinage, lecture))
 
 
 def _entiers_uniques(photos):
@@ -334,11 +436,14 @@ def reprendre_visite(calepinage, user=None, *, remplacer=False):
              .filter(pk=calepinage.pk).values_list('pk', flat=True))
         existant = _releve_repris(calepinage, visite_id)
         if existant is not None and not remplacer:
-            return _composer_reponse(lecture, _bloc(existant),
-                                     _ecart(existant, lecture)), False
+            return _composer_reponse(
+                lecture, _bloc(existant), _ecart(existant, lecture),
+                _ecarts_visite_dessin(calepinage, lecture)), False
         if existant is not None:
             _mettre_a_jour(calepinage, existant, lecture, user)
-            return _composer_reponse(lecture, _bloc(existant)), False
+            return _composer_reponse(
+                lecture, _bloc(existant), None,
+                _ecarts_visite_dessin(calepinage, lecture)), False
 
         releve = ReleveTerrain(
             company=calepinage.company,
@@ -361,4 +466,5 @@ def reprendre_visite(calepinage, user=None, *, remplacer=False):
             raise RepriseRefusee(messages[0], champ)
         releve.save()
         _rattacher_photos(calepinage, releve, lecture.get('photos'), user)
-    return _composer_reponse(lecture, _bloc(releve)), True
+    return _composer_reponse(lecture, _bloc(releve), None,
+                             _ecarts_visite_dessin(calepinage, lecture)), True

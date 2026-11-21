@@ -90,6 +90,22 @@ describe('AtelierPanneaux (CAL37)', () => {
       .toHaveTextContent('Aucune cible de puissance connue')
   })
 
+  it('ACAL942 — empreinte changée : le détail est relu (fiche « Oui » sans F5)', async () => {
+    const { rerender } = rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.get).toHaveBeenCalledTimes(1))
+
+    const apres = {
+      ...CTX, geometrie: { ...CTX.geometrie, empreinte_document: 'f'.repeat(64) },
+    }
+    rerender(
+      <MemoryRouter>
+        <AtelierPanneaux calepinageId={CTX.calepinage.id} contexte={apres} />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(calepinageApi.calepinages.get).toHaveBeenCalledTimes(2))
+  })
+
   it('lecture seule : aucune écriture proposée', async () => {
     rendre({ lectureSeule: true })
 

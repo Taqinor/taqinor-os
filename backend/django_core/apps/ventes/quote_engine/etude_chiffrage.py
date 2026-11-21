@@ -268,6 +268,51 @@ def _reglages_tarifaires_du_devis(devis):
     return tranches or None, fige.get("redevance_compteur_mad_mois")
 
 
+def _productible_canonique(devis, client_city, co_productible, mode_ci):
+    """QX38 — ``(productible, co_productible, base de la pose réelle)`` de ``chiffrer_etude``.
+
+    Productible PVGIS de la ville, ``co_productible`` (société) en override ;
+    repli sûr sur toute erreur : l'ancien productible du tarif.
+    """
+    try:
+        from .productible import productible_for_city
+        productible = productible_for_city(
+            client_city, override=co_productible)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
+        # QJR158 (d) — MÊME RAISON : sans société pour le surcharger,
+        # ``_co_productible`` vaut ``None`` et c'est le repli de ``pricing``
+        # qui sert. Il vaut désormais le repli CANONIQUE du dépôt (1651), et
+        # cette ligne dit qu'on y est arrivé par une erreur.
+        logger.warning(
+            "productible par ville illisible (devis %s, ville %r) — repli",
+            getattr(devis, "reference", None), client_city, exc_info=True)
+        productible = co_productible
+    # ACAL973 (D-ACAL-36) — niveau 15 : la base de la pose réelle, lue UNE
+    # fois (pertes et ombrage inclus ⇒ aucun derate) ; ``None`` ⇒ inchangé.
+    from apps.ventes.horaire.productible_pose import base_de_production
+    base_pose = None if mode_ci else base_de_production(devis)
+    if base_pose:
+        productible = co_productible = base_pose["kwh_kwc_annuel"]
+    return productible, co_productible, base_pose
+
+
+def _roi_principal(base_pose, puissance_kwc, total_sans, total_avec, roi_kwargs):
+    """L'appel principal de ``calculate_savings_roi`` de ``chiffrer_etude``.
+
+    ACAL973 — base de la pose réelle servie : ``productible`` pertes et
+    ombrage INCLUS (posé dans ``roi_kwargs``, que les appels par option
+    réutilisent) et la source nommée à l'annexe ; ``None`` ⇒ inchangé.
+    """
+    from .pricing import calculate_savings_roi
+    if base_pose:
+        roi_kwargs["productible_pertes_incluses"] = True
+    roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec,
+                                **roi_kwargs)
+    if base_pose:
+        roi["productible_source"] = base_pose["source"]
+    return roi
+
+
 def chiffrer_etude(*, _blob, _corrige, _mode_ci, _totaux_seuls, avec_batterie_differee,
                    avec_items, avec_ok, avertissements_internes, deux_options,
                    devis, devis_etude_override, has_batterie, mode,
@@ -388,19 +433,10 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, _totaux_seuls, avec_batterie_di
     # — AMOT64), il prime. Repli sûr : sur toute
     # erreur, on garde l'ancien productible du tarif (comportement inchangé).
     _co_productible = _tariff.get("productible_kwh_kwc") or None
-    try:
-        from .productible import productible_for_city
-        _productible = productible_for_city(
-            _client_city, override=_co_productible)
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
-        # QJR158 (d) — MÊME RAISON : sans société pour le surcharger,
-        # ``_co_productible`` vaut ``None`` et c'est le repli de ``pricing``
-        # qui sert. Il vaut désormais le repli CANONIQUE du dépôt (1651), et
-        # cette ligne dit qu'on y est arrivé par une erreur.
-        logger.warning(
-            "productible par ville illisible (devis %s, ville %r) — repli",
-            getattr(devis, "reference", None), _client_city, exc_info=True)
-        _productible = _co_productible
+    # (``_productible_canonique`` : productible de la ville, repli, et
+    # ACAL973 — la base de la pose réelle au niveau 15.)
+    _productible, _co_productible, _base_pose = _productible_canonique(
+        devis, _client_city, _co_productible, _mode_ci)
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
 
     def _etude_horaire_pour(kwc):
@@ -473,8 +509,8 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, _totaux_seuls, avec_batterie_di
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
     # drapeau ``puissance_inconnue`` fait OMETTRE ces vignettes au rendu, au
     # lieu d'imprimer « 0 kWh » / « 0 MAD/an » / « Retour en 0 ans ».
-    roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
-                                **roi_kwargs)
+    roi = _roi_principal(_base_pose, puissance_kwc or 0, total_sans, total_avec,
+                         roi_kwargs)  # ACAL973
     # ── F1/L-2OPT (26/08/2026) — LA CHAÎNE ÉCONOMIQUE SE CALCULE PAR OPTION ──
     # ``calculate_savings_roi`` dérive TOUT (production, autoconsommation,
     # économies, payback, cashflow 25 ans) d'UN SEUL kWc. Depuis que les deux

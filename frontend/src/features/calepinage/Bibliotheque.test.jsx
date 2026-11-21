@@ -20,9 +20,12 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    ========================================================================== */
 
 const REGLAGES = exempleContrat('calepinage', 'parametres_calepinage')
+const CATALOGUE = exempleContrat('calepinage', 'calepinage_catalogue_materiel')
 
 const mocks = vi.hoisted(() => ({
   getParametres: vi.fn(),
+  // ACAL960 — `GET calepinages/catalogue-materiel/` (échantillon committé).
+  getCatalogue: vi.fn(),
   getModeles: vi.fn(),
   hasPermission: vi.fn(),
   // CALX30 — `GET/PUT parametres/profils-types/` (CAL149).
@@ -52,6 +55,7 @@ vi.mock('../../api/calepinageApi', () => ({
     parametres: {
       get: (...a) => mocks.getParametres(...a),
       update: (...a) => mocks.putParametres(...a),
+      catalogueMateriel: (...a) => mocks.getCatalogue(...a),
       profilsTypes: (...a) => mocks.getProfilsTypes(...a),
       enregistrerProfilsTypes: (...a) => mocks.putProfilsTypes(...a),
     },
@@ -101,6 +105,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   // Défaut commun à TOUS les tests : la bibliothèque lit trois endpoints.
   mocks.getProfilsTypes.mockResolvedValue({ data: { profils: PROFILS } })
+  mocks.getCatalogue.mockResolvedValue({ data: CATALOGUE })
 })
 afterEach(() => { cleanup() })
 
@@ -148,6 +153,19 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
 
     expect(await screen.findByText(/Aucun kit de pose disponible/))
       .toBeInTheDocument()
+  })
+
+  it('ACAL895 — un modèle d’exemple porte le badge « Exemple », un modèle ordinaire non', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+    mocks.getModeles.mockResolvedValue({
+      data: [{ ...MODELES[0], exemple: true }, { id: 99, titre: 'Mon modèle', exemple: false }],
+    })
+    render(<Bibliotheque />)
+
+    expect(await screen.findByTestId(`cal-biblio-modele-exemple-${MODELES[0].id}`))
+      .toHaveTextContent('Exemple')
+    expect(screen.queryByTestId('cal-biblio-modele-exemple-99')).toBeNull()
   })
 
   it('aucun modèle marqué : le DIT', async () => {
@@ -405,7 +423,8 @@ describe('CALX43 — édition des préréglages et des favoris', () => {
     await userEvent.click(screen.getByTestId('cal-biblio-preset-ajouter'))
 
     expect(screen.getByTestId('cal-biblio-preset-cle-1')).toHaveValue('')
-    expect(screen.getByTestId('cal-biblio-preset-champs-1')).toHaveValue('')
+    // ACAL961 — aucun champ n'est posé d'office : la liste des champs est vide.
+    expect(screen.getByTestId('cal-biblio-preset-champs-1').querySelectorAll('input, [data-testid^="acal961-inconnu"]')).toHaveLength(0)
     expect(screen.getByTestId('cal-biblio-preset-source-1')).toHaveValue('')
   })
 
@@ -436,30 +455,84 @@ describe('CALX43 — édition des préréglages et des favoris', () => {
       .toHaveTextContent(MOTIF)
   })
 
-  it('un favori dont un identifiant n’en est pas un est refusé, ligne pointée', async () => {
+  it('ACAL960 — les produits du catalogue sont cochés, jamais des identifiants tapés', async () => {
     await rendreAvecDroit()
 
-    await userEvent.clear(screen.getByTestId('cal-biblio-favori-ids-0'))
-    await userEvent.type(screen.getByTestId('cal-biblio-favori-ids-0'), '412, panneau')
-    await userEvent.click(screen.getByTestId('cal-biblio-favoris-enregistrer'))
-
-    expect(screen.getByTestId('cal-biblio-favori-erreur-0'))
-      .toHaveTextContent('n’est pas un identifiant de produit')
-    expect(mocks.putParametres).not.toHaveBeenCalled()
+    expect(await screen.findByTestId('acal960-liste-modules')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-biblio-favori-ids-0')).toBeNull()
+    expect(screen.queryByTestId('cal-biblio-favori-role-0')).toBeNull()
+    // Les favoris du contrat sont déjà cochés ; la fiche incomplète est signalée, cochable.
+    expect(screen.getByTestId('acal960-coche-modules-412')).toBeChecked()
+    expect(screen.getByTestId('acal960-coche-modules-418')).toBeChecked()
+    expect(screen.getByTestId('acal960-incomplete-modules-418')).toBeInTheDocument()
+    expect(screen.getByTestId('acal960-coche-modules-418')).not.toBeDisabled()
   })
 
-  it('les favoris valides partent sous `favoris_materiel`, en entiers', async () => {
+  it('ACAL960 — cocher un module et un onduleur : `modules` et `onduleurs` partent, `panneau` reste', async () => {
     mocks.putParametres.mockResolvedValue({ data: REGLAGES })
-    await rendreAvecDroit()
+    await rendreAvecDroit({
+      ...REGLAGES,
+      favoris_materiel: { panneau: [7], modules: [], onduleurs: [] },
+    })
 
+    await userEvent.click(await screen.findByTestId('acal960-coche-modules-412'))
+    await userEvent.click(screen.getByTestId('acal960-coche-onduleurs-901'))
     await userEvent.click(screen.getByTestId('cal-biblio-favoris-enregistrer'))
 
     await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
     const corps = mocks.putParametres.mock.calls[0][0]
-    const role = Object.keys(REGLAGES.favoris_materiel)[0]
-    expect(corps.favoris_materiel[role])
-      .toEqual(REGLAGES.favoris_materiel[role].map(Number))
+    expect(corps.favoris_materiel).toEqual({ panneau: [7], modules: [412], onduleurs: [901] })
     expect(corps.presets).toBeUndefined()
+  })
+
+  it('ACAL960 — une clé non lue par le serveur reste affichée et se retire', async () => {
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    await rendreAvecDroit({ ...REGLAGES, favoris_materiel: { panneau: [7] } })
+
+    expect(await screen.findByTestId('acal960-autre-panneau')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('cal-biblio-favori-retirer-0'))
+    await userEvent.click(screen.getByTestId('cal-biblio-favoris-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
+    expect(mocks.putParametres.mock.calls[0][0].favoris_materiel).toEqual({})
+  })
+
+  it('ACAL961 — le préréglage montre ses champs typés avec unité, le champ inconnu est gardé', async () => {
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    await rendreAvecDroit()
+
+    // `orientation` est reconnu (liste de choix) ; `panneau_w` ne l'est pas.
+    expect(screen.getByTestId('acal961-champ-0-orientation')).toHaveValue('portrait')
+    expect(screen.getByTestId('acal961-inconnu-0-panneau_w')).toHaveTextContent('Champ non reconnu')
+    // Un champ avec unité est proposé, sans valeur inventée.
+    await userEvent.selectOptions(screen.getByTestId('acal961-ajouter-0'), 'allee_m')
+    expect(screen.getByText(/Allée \(m\)/)).toBeInTheDocument()
+    expect(screen.getByTestId('acal961-champ-0-allee_m')).toHaveValue(null)
+    await userEvent.type(screen.getByTestId('acal961-champ-0-allee_m'), '0.4')
+    await userEvent.type(screen.getByTestId('cal-biblio-preset-source-0'), 'Fiche K2')
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
+    const { villa_standard: envoye } = mocks.putParametres.mock.calls[0][0].presets
+    expect(envoye).toEqual({
+      panneau_w: 580, orientation: 'portrait', allee_m: 0.4, source: 'Fiche K2',
+    })
+  })
+
+  it('ACAL961 — un champ reconnu non numérique est refusé sous sa ligne', async () => {
+    await rendreAvecDroit()
+
+    await userEvent.selectOptions(screen.getByTestId('acal961-ajouter-0'), 'pitchDeg')
+    await userEvent.type(screen.getByTestId('cal-biblio-preset-source-0'), 'Fiche K2')
+    // Un nombre invalide ne peut pas être saisi dans un champ numérique : on
+    // force la valeur comme le ferait un collage.
+    const champ = screen.getByTestId('acal961-champ-0-pitchDeg')
+    champ.type = 'text'
+    await userEvent.type(champ, 'abc')
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+
+    expect(screen.getByTestId('cal-biblio-preset-erreur-0')).toHaveTextContent('doit être un nombre')
+    expect(mocks.putParametres).not.toHaveBeenCalled()
   })
 })
 

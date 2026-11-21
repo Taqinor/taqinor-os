@@ -193,6 +193,61 @@ class SiteGeographiqueTest(unittest.TestCase):
         self.assertIn('source non renseignée', html)
 
 
+class ModelesEmployesTest(unittest.TestCase):
+    """ACAL760 — les modèles NOMMÉS tels que servis, jamais supposés."""
+
+    def resultat(self):
+        res = resultat_de_base()
+        res['cascade']['etapes'] += [
+            {'etape': 'iam', 'kwh_avant': 1.0, 'kwh_apres': 0.99,
+             'entree': {'modele': 'fresnel'}, 'reference': 'PVsyst IAM',
+             'motif_omission': ''},
+            {'etape': 'thermique', 'kwh_avant': 1.0, 'kwh_apres': 0.9,
+             'entree': {'modele': 'faiman'}, 'reference': 'Faiman 2008',
+             'motif_omission': ''}]
+        res['meteo']['transposition'] = {
+            'modele': 'haydavies', 'reference': 'Hay et Davies (1980)',
+            'albedo': {'valeur': 0.2, 'source': 'réglage société'}}
+        return res
+
+    def ligne(self, html, titre):
+        return re.search(
+            r'<tr><th>%s</th>.*?</tr>' % re.escape(escape(titre)),
+            html).group(0)
+
+    def test_trois_modeles_aux_noms_servis(self):
+        html = html_de_section(contexte(self.resultat()))
+        iam = self.ligne(html, "Modèle d'incidence (IAM)")
+        self.assertIn('Fresnel', iam)
+        self.assertIn('PVsyst IAM', iam)
+        self.assertIn('Faiman', self.ligne(html, 'Température des cellules'))
+        trans = self.ligne(html, 'Transposition vers le plan des modules')
+        self.assertIn('Hay et Davies', trans)
+        self.assertIn('réglage société', trans)
+
+    def test_sans_transposition_servie_la_ligne_est_non_nommee(self):
+        res = self.resultat()
+        res['meteo'].pop('transposition')
+        html = html_de_section(contexte(res))
+        trans = self.ligne(html, 'Transposition vers le plan des modules')
+        self.assertIn('Non nommée', trans)
+        self.assertNotIn('haydavies', trans.lower())
+
+    def test_etape_omise_dit_non_appliquee_avec_son_motif(self):
+        res = self.resultat()
+        res['cascade']['etapes'][-2].update(
+            kwh_apres=None, entree=None, motif_omission='fiche muette')
+        html = html_de_section(contexte(res))
+        iam = self.ligne(html, "Modèle d'incidence (IAM)")
+        self.assertIn('non appliquée', iam)
+        self.assertIn('fiche muette', iam)
+
+    def test_etape_absente_est_non_nommee(self):
+        html = html_de_section(contexte(resultat_de_base()))
+        self.assertIn('non nommé', self.ligne(
+            html, 'Température des cellules'))
+
+
 class PerteDeclareeTest(unittest.TestCase):
     def test_perte_et_commentaire_sont_imprimes(self):
         html = html_de_section(contexte(resultat_de_base()))

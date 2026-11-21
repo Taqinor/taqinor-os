@@ -60,7 +60,9 @@ class TypesDeclaresTest(SimpleTestCase):
                 with self.subTest(section=section, cle=cle):
                     self.assertIn(cle, TYPES_CLES.get(section, {}))
                     self.assertTrue(TYPES_CLES[section][cle].get('type'))
-        self.assertEqual(total, 40)  # 31 simulation (+ ACAL455/456/463) + 9 electrique_societe
+        # 31 simulation (+ ACAL455/456/463) + 9 electrique_societe
+        # (+5 d'autres lanes ; + 2 ACAL704, + 2 ACAL742).
+        self.assertEqual(total, 49)
 
     def test_aucun_type_pour_une_cle_hors_registre(self):
         for section, types in TYPES_CLES.items():
@@ -186,6 +188,97 @@ class EcritureFusionneeTest(TestCase):
         self.assertEqual(sorted(self._section()), ['sigma_modele_pct'])
 
 
+def _fautive(valeur='abc'):
+    return {'valeur': valeur, 'source': 'societe'}
+
+
+#: ACAL947 : trois cles fautives dans `simulation`, une dans la seconde.
+ENTREE_FAUTIVE = {
+    'simulation': {'sigma_modele_pct': _fautive(),
+                   'sigma_biais_meteo_pct': _fautive(),
+                   'lid_par_techno': _fautive({'mono': 2})},
+    'electrique_societe': {'facteur_regroupement': _fautive()},
+}
+
+
+class RefusMultipleTest(SimpleTestCase):
+    """ACAL947 — UN seul refus qui nomme TOUTES les clés fautives."""
+
+    def _refus(self):
+        from apps.calepinage.services.parametres import (
+            ReglagesInvalides, _normaliser)
+
+        with self.assertRaises(ReglagesInvalides) as capture:
+            _normaliser(ENTREE_FAUTIVE)
+        return capture.exception
+
+    def test_quatre_erreurs_dans_leurs_deux_sections(self):
+        erreurs = self._refus().erreurs
+        self.assertEqual(sorted(erreurs['simulation']),
+                         ['lid_par_techno', 'sigma_biais_meteo_pct',
+                          'sigma_modele_pct'])
+        self.assertEqual(list(erreurs['electrique_societe']),
+                         ['facteur_regroupement'])
+
+    def test_la_forme_est_celle_du_contrat(self):
+        import json
+        import pathlib
+
+        contrat = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'parametres_calepinage.json').read_text(encoding='utf-8'))
+        self.assertEqual(self._refus().erreurs,
+                         contrat['exemple_refus_multiple'])
+
+    def test_motif_de_table_sans_phrase_contradictoire(self):
+        motif = self._refus().erreurs['simulation']['lid_par_techno']
+        self.assertNotIn('Valeur de type objet reçue', motif)
+        self.assertIn('lid_par_techno.mono', motif)
+
+    def test_une_seule_cle_fautive_garde_la_forme_a_une_cle(self):
+        from apps.calepinage.services.parametres import (
+            ReglageInvalide, _normaliser)
+
+        with self.assertRaises(ReglageInvalide) as capture:
+            _normaliser({'simulation': {'sigma_modele_pct': _fautive()}})
+        self.assertEqual(capture.exception.champ, 'sigma_modele_pct')
+        self.assertEqual(capture.exception.section, 'simulation')
+
+
+class LibellesEnumTest(SimpleTestCase):
+    """ACAL964 — chaque ligne ``enum`` publie un libellé par valeur."""
+
+    def test_chaque_enum_publie_un_libelle_par_valeur(self):
+        for section, lignes in registre_des_reglages().items():
+            if section == 'lestage':  # ACAL572 — lignes sans `type`
+                continue
+            for ligne in lignes:
+                if ligne['type'] != 'enum':
+                    self.assertNotIn('libelles', ligne)
+                    continue
+                with self.subTest(section=section, cle=ligne['cle']):
+                    self.assertEqual(sorted(ligne['libelles']),
+                                     sorted(ligne['valeurs']))
+                    self.assertTrue(all(ligne['libelles'].values()))
+
+    def test_la_regle_de_qualite_reprend_les_libelles_de_regles(self):
+        from apps.calepinage.services.etapes.qualite_module import REGLES
+
+        ligne = next(entree for entree in registre_des_reglages()['simulation']
+                     if entree['cle'] == 'regle_qualite_module')
+        self.assertEqual(
+            ligne['libelles'],
+            {valeur: regle['libelle'] for valeur, regle in REGLES.items()})
+
+    def test_mots_cites_par_la_tache(self):
+        lignes = {entree['cle']: entree
+                  for entree in registre_des_reglages()['simulation']}
+        self.assertEqual(lignes['mode_meteo']['libelles']['tmy'],
+                         'Année type (TMY)')
+        self.assertEqual(lignes['modele_iam']['libelles']['martin_ruiz'],
+                         'Martin et Ruiz')
+
+
 class RouteParametresTest(TestCase):
     """La route réelle : 400 nommé, fusion, aller-retour octet-identique."""
 
@@ -214,6 +307,19 @@ class RouteParametresTest(TestCase):
             reponse.data['simulation']['sigma_modele_pct']['valeur'], 2.5)
         self.assertEqual(
             self._ligne()['simulation']['sigma_modele_pct']['valeur'], 2.5)
+
+    def test_plusieurs_cles_fautives_un_seul_400_rien_ecrit(self):
+        """ACAL947 — un 400 qui nomme toutes les clés, l'écriture reste
+        atomique (rien d'écrit)."""
+        reponse = self.api.put(URL, ENTREE_FAUTIVE, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(sorted(reponse.data['simulation']),
+                         ['lid_par_techno', 'sigma_biais_meteo_pct',
+                          'sigma_modele_pct'])
+        self.assertEqual(list(reponse.data['electrique_societe']),
+                         ['facteur_regroupement'])
+        self.assertFalse(
+            ParametresCalepinage.objects.filter(company=self.company).exists())
 
     def test_valeur_illisible_400_nommee(self):
         reponse = self.api.put(URL, {'simulation': {
@@ -297,6 +403,40 @@ class RouteParametresTest(TestCase):
         self.assertEqual(reponse.status_code, 200, reponse.content)
         self.assertEqual(reponse.data['presets']['a'], 'xy')
         self.assertEqual(reponse.data['presets']['b'], ['z', {'c': 'd'}])
+
+
+class ClesNettoyageAcal742Test(SimpleTestCase):
+    """ACAL742 — « nettoyages par an » et « inclinaison d'autonettoyage » :
+    typées, sourcées, en fin de registre, SANS valeur préremplie."""
+
+    CLES = ('nettoyages_par_an', 'inclinaison_autonettoyage_deg')
+
+    def test_en_fin_de_registre_typees_et_sans_valeur(self):
+        self.assertEqual(list(registre('simulation'))[-2:], list(self.CLES))
+        servi = {ligne['cle']: ligne
+                 for ligne in registre_des_reglages()['simulation']}
+        self.assertEqual(servi['nettoyages_par_an']['type'], 'entier')
+        self.assertEqual(servi['nettoyages_par_an']['unite'], 'par an')
+        self.assertEqual(servi['inclinaison_autonettoyage_deg']['type'],
+                         'nombre')
+        self.assertEqual(servi['inclinaison_autonettoyage_deg']['maximum'],
+                         90)
+        for cle in self.CLES:
+            self.assertIn('Soiling loss', servi[cle]['reference'])
+            self.assertNotIn('valeur', servi[cle])
+
+    def test_saisie_normalisee_et_sans_source_refusee(self):
+        rendu = _normaliser_section_simulation({
+            'nettoyages_par_an': _saisie(4, 'societe'),
+            'inclinaison_autonettoyage_deg': _saisie('10,5', 'societe')})
+        self.assertEqual(rendu['nettoyages_par_an']['valeur'], 4)
+        self.assertEqual(rendu['inclinaison_autonettoyage_deg']['valeur'],
+                         10.5)
+        for cle in self.CLES:
+            with self.subTest(cle=cle):
+                with self.assertRaises(ReglageInvalide) as refus:
+                    _normaliser_section_simulation({cle: {'valeur': 4}})
+                self.assertEqual(refus.exception.champ, cle)
 
 
 class CaractereInterditTest(SimpleTestCase):
@@ -446,7 +586,7 @@ class FormeDesTablesTest(SimpleTestCase):
         )
 
         tables = self._tables()
-        self.assertEqual(len(tables), 5)
+        self.assertEqual(len(tables), 6)  # + ACAL673
         champs = _sections_requete_resserrees()
         ecarts = []
         for section, cle in tables:

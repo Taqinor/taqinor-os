@@ -34,6 +34,19 @@ class ReglageInvalide(ValueError):
         self.section = section
 
 
+class ReglagesInvalides(ReglageInvalide):
+    """ACAL947 — PLUSIEURS réglages refusés d'un coup : ``erreurs`` vaut
+    ``{section: {clé: motif}}``. ``champ`` / ``section`` portent la première
+    entrée (les lecteurs d'une seule erreur restent justes) ; la vue répond UN
+    400 qui les nomme toutes, l'écriture restant atomique (rien d'écrit)."""
+
+    def __init__(self, erreurs):
+        section = next(iter(erreurs))
+        champ, message = next(iter(erreurs[section].items()))
+        super().__init__(message, champ=champ, section=section)
+        self.erreurs = erreurs
+
+
 class CaractereInterditEnCle(ReglageInvalide):
     """ENF11 — le caractère interdit (NUL, demi-substitut isolé) est dans une CLÉ
     d'objet : le schéma OpenAPI 3.0 ne borne pas les clés (pas de
@@ -342,8 +355,15 @@ def _normaliser(donnees):
     if not concernees:
         return donnees
     donnees = dict(donnees)
+    erreurs = {}
     for section in concernees:
-        donnees[section] = normaliseurs[section](donnees[section])
+        try:
+            donnees[section] = normaliseurs[section](donnees[section])
+        except ReglagesInvalides as refus:  # ACAL947 — tout dire d'un coup
+            for sec, motifs in refus.erreurs.items():
+                erreurs.setdefault(sec, {}).update(motifs)
+    if erreurs:
+        raise ReglagesInvalides(erreurs)
     return donnees
 
 
@@ -421,32 +441,48 @@ def _normaliser_cles_a_registre(section, valeur):
             champ=inconnues[0])
 
     propre = {}
+    erreurs = {}
     for cle, brut in valeur.items():
-        libelle = declarations[cle][0]
-        if brut is None:
-            # Clé retirée : on revient au « non saisi », donc au comportement
-            # d'aujourd'hui. Rien n'est stocké, rien n'est deviné.
+        try:
+            entree = _cle_a_registre(section, cle, brut, declarations,
+                                     SOURCES_ADMISES)
+        except ReglageInvalide as refus:  # ACAL947 — on continue : tout dire
+            erreurs[cle] = str(refus)
             continue
-        if not isinstance(brut, dict):
-            raise ReglageInvalide(
-                f"« {libelle} » se saisit avec sa provenance : "
-                '{"valeur": …, "source": …, "reference": "…"} '
-                f"(reçu : {type(brut).__name__}).", champ=cle)
-        surplus = sorted(set(brut) - {'valeur', 'source', 'reference'})
-        if surplus:
-            raise ReglageInvalide(
-                f"« {libelle} » n'accepte que « valeur », « source » et "
-                f"« reference » (reçu en plus : {', '.join(surplus)}).",
-                champ=cle)
-        propre[cle] = {
-            'valeur': _valeur_declaree(brut.get('valeur'), cle, libelle,
-                                       section=section),
-            'source': _source_declaree(brut.get('source'), cle, libelle,
-                                       SOURCES_ADMISES),
-            'reference': _reference_declaree(brut.get('reference'), cle,
-                                             libelle),
-        }
+        if entree is not None:
+            propre[cle] = entree
+    if erreurs:
+        raise ReglagesInvalides({section: erreurs})
     return propre
+
+
+def _cle_a_registre(section, cle, brut, declarations, sources_admises):
+    """UNE clé d'une section à registre normalisée, ``None`` si retirée ;
+    refus nommant la clé."""
+    libelle = declarations[cle][0]
+    if brut is None:
+        # Clé retirée : on revient au « non saisi », donc au comportement
+        # d'aujourd'hui. Rien n'est stocké, rien n'est deviné.
+        return None
+    if not isinstance(brut, dict):
+        raise ReglageInvalide(
+            f"« {libelle} » se saisit avec sa provenance : "
+            '{"valeur": …, "source": …, "reference": "…"} '
+            f"(reçu : {type(brut).__name__}).", champ=cle)
+    surplus = sorted(set(brut) - {'valeur', 'source', 'reference'})
+    if surplus:
+        raise ReglageInvalide(
+            f"« {libelle} » n'accepte que « valeur », « source » et "
+            f"« reference » (reçu en plus : {', '.join(surplus)}).",
+            champ=cle)
+    return {
+        'valeur': _valeur_declaree(brut.get('valeur'), cle, libelle,
+                                   section=section),
+        'source': _source_declaree(brut.get('source'), cle, libelle,
+                                   sources_admises),
+        'reference': _reference_declaree(brut.get('reference'), cle,
+                                         libelle),
+    }
 
 
 def _valeur_declaree(valeur, cle, libelle, *, section=''):
@@ -526,7 +562,11 @@ def _refus_de_type(valeur, cle, libelle, section, declaration, precision=''):
         attendu = f"{attendu} : {', '.join(declaration['valeurs'])}"
     message = (f'Valeur de type {_nom_du_type_recu(valeur)} reçue : '
                f'« {cle} » ({libelle}) attend {attendu}.')
-    if precision:
+    if precision and declaration.get('type') == 'table':
+        # ACAL947 — la valeur EST une table (objet ou liste) : ne pas se
+        # contredire, seule la FORME de la table est en cause.
+        message = f'« {cle} » ({libelle}) : {precision}'
+    elif precision:
         message = f'{message} {precision}'
     return ReglageInvalide(message, champ=cle, section=section)
 

@@ -232,7 +232,17 @@ const PER_CHUNK_BUDGET_KB = 350
 // Apport L5 ≈ +16 Ko de code de fonctions (ToitureDesign +5,5, ComposedChart +3,8 / DevisGenerator −3,5,
 // simulationAuto +2,5, PanneauOptimiser +2,2, PanneauDetectionToit +1,9…). Aucune dépendance ajoutée : diff
 // package.json vide. Budget : mesure arrondie aux 5 Ko + 10 : 3905 -> 3940.
-const TOTAL_BUDGET_KB = 3940
+// 21/11/2026 (calepinage L5, vague 1 lane A, tête da22723b4) : mesure RÉELLE 3951,7 Ko sur le runner (job
+// frontend-static) ; roof-tool 615,2 Ko (atelier de toiture : réglages, feuille par pan, pont du mode Expert).
+// Aucune dépendance ajoutée : diff package.json vide. Budget : mesure arrondie aux 5 Ko + 10 : 3940 -> 3965.
+// 21/11/2026 (calepinage L5, PR #1522 gelée et réparée sur place) : mesure RÉELLE 3981,1 Ko sur le runner (job
+// frontend-static du run 44957761544) ; origin/main mesure 3933,8 Ko en local. Écart ≈ +46 Ko de code de fonctions
+// neuves (roof-tool +17,9 : atelier de toiture, alignement des rangées, zones, repères de chantier ; GLTFExporter
+// +10,4, export 3D déjà chargé à la demande ; PanneauProduction +4,0, ReglagesFixation +3,6 (neuf),
+// ReglagesSimulation +2,7, ToitureDesign +2,1, VerdictElectrique +1,7…) ; ce garde somme TOUS les .js, un import()
+// ne le fait pas baisser. Aucune dépendance npm ajoutée, aucun code en double. 659 chunks (plafond 865), aucun
+// autre plafond dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 3965 -> 3995.
+const TOTAL_BUDGET_KB = 3995
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -255,7 +265,9 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   // reste à poser (lot 8 perf), ce palier n'est PAS un blanc-seing.
   // 21/09/2026 (lot 2 CALX « site, toit & atelier 3D » : fond de plan, obstacles à forme, allées, cible
   // d'optimisation, clavier, arêtes, numéros) : mesuré 579,5 Ko gzip après le fold des lanes → 600.
-  'roof-tool': 600,
+  // 21/11/2026 (calepinage L5, vague 1 lane A) : mesuré 615,2 Ko gzip sur le runner (run frontend-static, tête
+  // da22723b4), aucune dépendance ajoutée → 600 -> 630 (mesure arrondie aux 5 Ko + 10).
+  'roof-tool': 630,
   // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
   // géométrie/relevé), isolé par `manualChunks` dans vite.config.js sous le
   // même patron que `roof-tool` (voir son commentaire, ligne au-dessus).

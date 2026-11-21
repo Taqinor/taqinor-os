@@ -135,5 +135,14 @@
       "origine": "atelier",
       "saisi_le": "<horodatage>"
     }
+  },
+  "motifsPansVides": {
+    "area-1": {
+      "code": "obstacles",
+      "message": "Aucun module : les obstacles et zones couvrent les 256,0 m² du pan",
+      "mesures": {
+        "surfacePosableM2": 0
+      }
+    }
   }
 }

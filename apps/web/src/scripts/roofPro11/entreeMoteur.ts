@@ -286,6 +286,16 @@ export function typeObstacleMoteur(type?: ObstacleType | null): string {
       return 'EDICULE';
     case 'antenne':
       return 'ANTENNE';
+    // ACAL498 — alignée sur `traduction.py::TYPES_MOTEUR` (la citerne reste inconnue).
+    case 'lanterneau':
+    case 'exutoire':
+      return 'LANTERNEAU';
+    case 'joint_dilatation':
+      return 'JOINT_DILATATION';
+    case 'climatiseur':
+      return 'CLIMATISEUR';
+    case 'garde_corps':
+      return 'GARDE_CORPS';
     default:
       return 'NATURE_INCONNUE';
   }
@@ -605,6 +615,8 @@ export const ACTIONS_RACCOURCIS = [
   'aimantation',
   'supprimer',
   'dupliquer',
+  'copier',
+  'coller',
   'pleinEcran',
 ] as const;
 

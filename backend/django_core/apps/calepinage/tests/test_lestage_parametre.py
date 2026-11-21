@@ -21,6 +21,7 @@ import pathlib
 import unittest
 
 from apps.calepinage.services.lestage import (
+    CONSTANTES_PHYSIQUES,
     NOMBRES_DE_FORME,
     PARAMETRES,
     _feuille_de_lestage,
@@ -84,6 +85,58 @@ class SectionLestageTest(unittest.TestCase):
         self.assertEqual(section['categorie_terrain']['valeur'],
                          'zone urbaine dense')
 
+    # ── ACAL563 — zones de pose (rive, coin) ────────────────────────────
+    def _zones_de_pose(self, **surcharge):
+        jeu = {
+            'largeur_bande_rive_m': _saisie(1.2, 'notice K2'),
+            'largeur_coin_m': _saisie(2.4),
+            'lest_rive_kg_par_module': _saisie(3.0),
+            'lest_coin_kg_par_module': _saisie(0),
+        }
+        jeu.update(surcharge)
+        return jeu
+
+    def test_zones_de_pose_completes_acceptees(self):
+        section = normaliser_section_lestage(
+            {'zones_de_pose': self._zones_de_pose()})
+        self.assertEqual(
+            section['zones_de_pose']['largeur_bande_rive_m'],
+            {'valeur': 1.2, 'source': 'notice K2'})
+        self.assertEqual(len(section['zones_de_pose']), 4)
+
+    def test_zones_de_pose_valeur_sans_source_nomme_le_champ(self):
+        with self.assertRaises(ReglageInvalide) as capture:
+            normaliser_section_lestage({'zones_de_pose': self._zones_de_pose(
+                largeur_bande_rive_m={'valeur': 1.2})})
+        self.assertEqual(capture.exception.champ,
+                         'zones_de_pose.largeur_bande_rive_m')
+
+    def test_zones_de_pose_largeur_nulle_et_lest_negatif_refuses(self):
+        with self.assertRaises(ReglageInvalide) as capture:
+            normaliser_section_lestage({'zones_de_pose': self._zones_de_pose(
+                largeur_coin_m=_saisie(0))})
+        self.assertEqual(capture.exception.champ,
+                         'zones_de_pose.largeur_coin_m')
+        with self.assertRaises(ReglageInvalide) as capture:
+            normaliser_section_lestage({'zones_de_pose': self._zones_de_pose(
+                lest_rive_kg_par_module=_saisie(-1))})
+        self.assertEqual(capture.exception.champ,
+                         'zones_de_pose.lest_rive_kg_par_module')
+
+    def test_zones_de_pose_cle_inconnue_refusee(self):
+        with self.assertRaises(ReglageInvalide) as capture:
+            normaliser_section_lestage(
+                {'zones_de_pose': {'largeur_magique': _saisie(1)}})
+        self.assertEqual(capture.exception.champ,
+                         'zones_de_pose.largeur_magique')
+
+    def test_section_sans_zones_de_pose_inchangee(self):
+        section = normaliser_section_lestage(
+            {'coefficient_terrain': _saisie(1.0)})
+        self.assertEqual(list(section), ['coefficient_terrain'])
+        self.assertEqual(
+            normaliser_section_lestage({'zones_de_pose': {}}), {})
+
 
 class FeuilleNonCalculeeTest(unittest.TestCase):
     """RIEN de saisi ⇒ RIEN de calculé, et la feuille le dit."""
@@ -96,8 +149,11 @@ class FeuilleNonCalculeeTest(unittest.TestCase):
             self.assertIsNone(ligne['valeur'], ligne['code'])
             self.assertTrue(ligne['manquants'], ligne['code'])
             self.assertIn('à saisir', ligne['mention'])
-        self.assertEqual(sorted(feuille['manquants']),
-                         sorted(PARAMETRES))
+        # ACAL939 — pesanteur et masse volumique de l'air sont des constantes.
+        self.assertEqual(
+            sorted(feuille['manquants']),
+            sorted(set(PARAMETRES) - set(CONSTANTES_PHYSIQUES)))
+        self.assertEqual(len(feuille['manquants']), 8)
         self.assertIn("Aucun paramètre de lestage n'a été saisi",
                       feuille['mention'])
 
@@ -115,6 +171,41 @@ class FeuilleNonCalculeeTest(unittest.TestCase):
                          ['coefficient_pression_soulevement'])
         self.assertIn('Coefficient de pression (soulèvement)',
                       manquante['mention'])
+
+    def test_sans_pesanteur_ni_air_saisis_les_lignes_se_calculent(self):
+        """ACAL939 — les deux constantes physiques ne se saisissent plus."""
+        section = dict(JEU_COMPLET)
+        section.pop('acceleration_pesanteur_m_s2')
+        section.pop('masse_volumique_air_kg_m3')
+        feuille = _feuille_de_lestage(normaliser_section_lestage(section),
+                                      surface_module_m2=2.0,
+                                      masse_module_kg=22.0, societe='Taqinor')
+        for ligne in feuille['lignes']:
+            self.assertIsNotNone(ligne['valeur'], ligne['code'])
+        self.assertEqual(feuille['manquants'], [])
+        publies = {p['cle']: p for p in feuille['parametres']}
+        for cle, (valeur, reference) in CONSTANTES_PHYSIQUES.items():
+            self.assertEqual(publies[cle]['valeur'], valeur)
+            self.assertEqual(publies[cle]['source'], reference)
+        # q = ½ · ρ_air · (c_terrain · v_réf)² avec la masse volumique posée
+        rho = CONSTANTES_PHYSIQUES['masse_volumique_air_kg_m3'][0]
+        self.assertAlmostEqual(
+            _ligne(feuille, 'pression_dynamique')['valeur'],
+            0.5 * rho * (1.0 * 20.0) ** 2)
+
+    def test_une_saisie_de_pesanteur_prime_sur_la_constante(self):
+        section = dict(JEU_COMPLET)
+        section['acceleration_pesanteur_m_s2'] = _saisie(10.0)
+        feuille = _feuille_de_lestage(normaliser_section_lestage(section),
+                                      surface_module_m2=2.0,
+                                      masse_module_kg=22.0)
+        # m = 800 / 10 − 27 = 53 kg (la saisie, pas la pesanteur normale)
+        self.assertAlmostEqual(
+            _ligne(feuille, 'lest_anti_soulevement')['valeur'], 53.0)
+        publiee = next(p for p in feuille['parametres']
+                       if p['cle'] == 'acceleration_pesanteur_m_s2')
+        self.assertEqual(publiee['source'],
+                         'Texte de référence saisi par la société')
 
     def test_sans_surface_de_module_aucun_effort(self):
         feuille = _feuille_de_lestage(normaliser_section_lestage(JEU_COMPLET),
@@ -193,11 +284,15 @@ class AucuneConstanteNormativeTest(unittest.TestCase):
                   / 'services' / 'lestage.py')
         arbre = ast.parse(chemin.read_text(encoding='utf-8'))
         intrus = []
+        # ACAL939 — les seuls littéraux admis en plus : les deux constantes
+        # PHYSIQUES déclarées (pas des coefficients normatifs).
+        constantes = {valeur for valeur, _ in CONSTANTES_PHYSIQUES.values()}
         for noeud in ast.walk(arbre):
             if isinstance(noeud, ast.Constant) and isinstance(
                     noeud.value, (int, float)) and not isinstance(
                     noeud.value, bool):
-                if noeud.value not in NOMBRES_DE_FORME:
+                if (noeud.value not in NOMBRES_DE_FORME
+                        and noeud.value not in constantes):
                     intrus.append((noeud.lineno, noeud.value))
         self.assertEqual(
             intrus, [],

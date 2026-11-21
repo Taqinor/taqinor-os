@@ -247,7 +247,7 @@ def page_onepage(items, tronquees=0):
             # ⇒ vignette OMISE, jamais un maximum arbitraire.
             _eco_branche = {"sans": _g.ECO_S_ANN, "avec": _g.ECO_A_ANN}.get(
                 _g.ONEPAGE_BRANCHE)
-            if not _g.MASQUER_ECONOMIES and _eco_branche:
+            if not _g.MASQUER_ECONOMIES and not _g.ECONOMIES_SANS_ANCRAGE and _eco_branche:  # ACAL1033
                 _sum_cells.append(
                     (_g._L("op_economie_annuelle"),
                      _g._L("rpdf_mad_an").format(n=_g.fnum(_eco_branche))

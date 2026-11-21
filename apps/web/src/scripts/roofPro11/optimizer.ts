@@ -96,10 +96,15 @@ import {
   unifiedShadeEntries,
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
-import { $, fmt, fmtMad } from './dom';
+import { $, celluleEconomies, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
+import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
+import { heatmapAccessValues } from './shadingUi'; // ACAL552
+import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
+import { cotesDePavage } from '../../lib/roofPro2';
+import { motifPanExistant } from './panExistant'; // ACAL574
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -116,7 +121,7 @@ import { besoinAutoRelu } from './cible'; // ACAL367
  *  balayage V6 sont évaluées à 10° et 15°). N'entre dans AUCUN pavage. */
 const EW_DEFAULT_TILT_DEG = 10;
 
-export type VariantCardId = 'south-max' | 'eastwest' | 'aligned';
+export type VariantCardId = 'couvre-besoin' | 'south-max' | 'eastwest' | 'aligned';
 
 export interface VariantCard {
   id: VariantCardId;
@@ -132,6 +137,7 @@ export interface VariantCard {
 }
 
 const VARIANT_TITLES: Record<VariantCardId, string> = {
+  'couvre-besoin': 'Couvre le besoin',
   'south-max': 'Densité maximale (plein sud)',
   eastwest: 'Est-Ouest dos à dos',
   aligned: 'Aligné sur le toit',
@@ -168,6 +174,13 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
   };
   const candidates: { id: VariantCardId; row: MatrixEvalV6 | null; reason: (r: MatrixEvalV6) => string }[] = [
     {
+      // ACAL547 — le plus petit nombre de panneaux qui atteint le besoin du balayage (≥ 100 %) ;
+      // c'est une ESTIMATION du navigateur (production annuelle ÷ besoin), dite telle quelle.
+      id: 'couvre-besoin',
+      row: pick((r) => r.pctOfTarget >= 100, (r) => -r.placedCount),
+      reason: (r) => `${r.placedCount} panneaux suffisent (estimation : ${Math.round(r.pctOfTarget)} % du besoin) à ${r.tiltDeg}°, ${r.layoutLabel}.`,
+    },
+    {
       id: 'south-max',
       // Densité = le plus de panneaux qui TIENNENT (fitCount, pas le nombre posé : celui-ci
       // est plafonné au besoin et ne dirait rien de la densité). À égalité, le plus productif.
@@ -203,6 +216,14 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
     });
   }
   return cards;
+}
+
+/** ACAL547 — aucune ligne du balayage n'atteint le besoin : le maximum MESURÉ, dit en toutes lettres. */
+export function phraseCouvertureMax(result: MatrixV6Result | null | undefined): string | null {
+  const rows = (result?.rows ?? []).filter((r) => Number.isFinite(r.pctOfTarget));
+  if (!rows.length || rows.some((r) => r.pctOfTarget >= 100)) return null;
+  const max = rows.reduce((a, r) => (r.pctOfTarget > a.pctOfTarget ? r : a));
+  return `Aucune pose ne couvre le besoin (estimation) : le toit donne au plus ${Math.round(max.pctOfTarget)} % (${max.placedCount} panneaux).`;
 }
 
 /* ═════════ CALX114 — L'OBJECTIF SAISI DU DOCUMENT, LU PAR LES DEUX BALAYAGES ═════════
@@ -425,20 +446,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   function filtrageSeuil(panels: readonly PackedPanel[]): FiltrageAccesSolaire | null {
     const seuil = choixOptimisationCourant()?.seuilAccesSolaire;
     if (seuil == null || seuil === '') return null;
-    const hauteurM = hauteurToitPourOmbrageM(ctx.batiments, ctx.activeArea()?.buildingId);
-    const obstructions = unifiedShadeEntries(
-      ctx.shadeObstructions,
-      ctx.obstacles,
-      ctx.environment,
-      ctx.centroid,
-      hauteurM,
-    );
-    // Même définition de « une source a été saisie » que l'atelier (`hasShadeSources`) :
-    // sans source, l'accès solaire n'est pas mesuré et le seuil sera REFUSÉ, nommé.
-    const source =
-      ctx.shadeObstructions.length > 0 ||
-      ctx.obstacles.some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
-      (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+    const { obstructions, source } = obstructionsEtSource();
     return filtrerEmplacementsSousSeuil(
       seuil,
       ctx.centroidLat,
@@ -447,6 +455,30 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       panels,
       source,
     );
+  }
+
+  /** ACAL552 — UNE définition des obstructions retenues et de la « source saisie » (`hasShadeSources`). */
+  function obstructionsEtSource() {
+    const hauteurM = hauteurToitPourOmbrageM(ctx.batiments, ctx.activeArea()?.buildingId);
+    const obstructions = unifiedShadeEntries(
+      ctx.shadeObstructions,
+      ctx.obstacles,
+      ctx.environment,
+      ctx.centroid,
+      hauteurM,
+    );
+    const source =
+      ctx.shadeObstructions.length > 0 ||
+      ctx.obstacles.some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
+      (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+    return { obstructions, source };
+  }
+
+  /** ACAL552 — accès (0..1) par emplacement ; `null` sans source saisie. */
+  function accesSolaireDe(panels: readonly { cx: number; cy: number }[]): number[] | null {
+    const { obstructions, source } = obstructionsEtSource();
+    if (!source) return null;
+    return heatmapAccessValues(ctx.centroidLat, obstructions, ctx.prodPerKwc ?? fallbackPerKwc(), panels, null);
   }
 
   /** Dernière phrase de seuil annoncée — pour publier CHAQUE état une fois et ne pas
@@ -536,7 +568,11 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  L2 — en mode devis, les libellés parlent du DEVIS (jamais « votre facture », un
    *  champ qui n'existe même pas dans cet écran) et affichent « X posés / N au devis »
    *  (repère DOM stable `rp9-need-note`, préfixe HUD existant). */
-  function syncNeedControl(fitCount: number, familyLabel: string) {
+  /** ACAL549 — cause mesurée du pan actif vide (besoin > 0, rien posé), notée pour le document. */
+  const motifPanActif = (pack: PackResult, grid: PanelGrid, placed: number, retraitM: number | null, module?: Panel2Module): MotifPanVide | null =>
+    noterMotifPanVide(ctx.activeAreaId, ctx.neededPanels > 0 && placed === 0
+      ? causeDuPanVide(mesurerPanVide(pack, grid, retraitM, cotesDePavage(module), filtrageSeuil(grid.panels))) : null);
+  function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null) {
     dernierFit = fitCount;
     const active = ctx.neededPanels > 0;
     // L2 — en mode devis, le champ reste ACTIONNABLE même à 0 : aucune facture n'existe
@@ -564,11 +600,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
           : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
       return;
     }
-    const placed = Math.min(ctx.neededPanels, fitCount);
+    const placed = motif ? 0 : Math.min(ctx.neededPanels, fitCount); // ACAL549 — un motif = un pan vide mesuré
     if (placed < ctx.neededPanels) {
+      const cause = motif ? ` — ${motif.message}` : ' (toit ou obstacles)'; // ACAL549
       needNoteEl.textContent = ctx.devisMode
-        ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — seuls ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles).`
-        : `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles). On pose ${fmt(placed)}.`;
+        ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — seuls ${fmt(placed)} tiennent en ${familyLabel}${cause}.`
+        : `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel}${cause}. On pose ${fmt(placed)}.`;
     } else if (fitCount > ctx.neededPanels) {
       needNoteEl.textContent = ctx.devisMode
         ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — il reste de la place sur le toit, laissée libre.`
@@ -613,6 +650,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
+    afficherSensDePose(lignesSensDePose(o.pack, accesSolaireDe, placedFor)); // ACAL552
     paintCard(
       {
         title: o.title,
@@ -630,7 +668,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       o.sourceLabel,
     );
-    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud');
+    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud', motifPanActif(o.pack, o.grid, placed, null)); // ACAL549 : retrait non transmis ici
     syncTiltControl(o.tiltDeg, o.isReco);
     if (o.isReco) paintMaxLine();
     highlightRow(o.rowId);
@@ -752,6 +790,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const { placed: placedCount, occupied } = poseSousSeuil(grid);
     const gapScale = w.placedCount > 0 ? placedCount / w.placedCount : placedCount > 0 ? 1 : 0;
     renderScene(pack, grid, w.tiltDeg, w.family, placedCount, false, occupied);
+    afficherSensDePose(lignesSensDePose(pack, accesSolaireDe, placedFor)); // ACAL552
     // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
     // « tente » E-O sur-densifiée est ramenée sous la valeur non écrêtée. On recalcule
@@ -791,7 +830,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS au GPS exact)' : '(production estimée — table par latitude)',
     );
-    syncNeedControl(grid.count, liveOrientationLabel(w));
+    syncNeedControl(grid.count, liveOrientationLabel(w), motifPanActif(pack, grid, placedCount, retraitApplique(setbacksForMargin(w.margin), setbackM)));
     syncTiltControl(w.tiltDeg, isReco);
     paintMaxLine();
     highlightRow(null);
@@ -882,8 +921,15 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   });
 
   /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
+  /** ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés (refus nommé). */
+  function refusPanExistant(): boolean {
+    const i = Array.isArray(ctx.areas) ? ctx.areas.findIndex((a) => a.id === ctx.activeAreaId) : -1;
+    const motif = i >= 0 ? motifPanExistant(ctx.areas[i], i) : null;
+    if (motif) setStatus(motif);
+    return motif != null;
+  }
   function liveResolveFlat() {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat') return;
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant()) return;
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildFlatLocks();
@@ -1090,6 +1136,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       btn.addEventListener('click', () => applyVariant(c));
       host.appendChild(btn);
     }
+    const max = phraseCouvertureMax(ctx.matrixResult); // ACAL547
+    if (max) host.insertAdjacentHTML('beforeend', `<p class="rp9-variant-why" role="note">${max}</p>`);
   }
 
   /**
@@ -1242,7 +1290,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   }
 
   function liveResolvePitched() {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched') return;
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant()) return; // ACAL574
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildPitchedLocks();
@@ -1364,7 +1412,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         `<td class="num">${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
         `<td class="num">${fmt(Math.round(r.annualKwh))}</td>` +
         `<td class="num">${Math.round(r.pctOfTarget)} %</td>` +
-        `<td class="num">${fmtMad(r.savingsLow)} – ${fmtMad(r.savingsHigh)}</td>`;
+        celluleEconomies(wrap, r.savingsLow, r.savingsHigh);
       tr.addEventListener('click', () => {
         ctx.pitchedLocks.layout = r.layout;
         ctx.pitchedLocks.margin = r.margin;

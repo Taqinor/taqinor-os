@@ -53,10 +53,11 @@ class AutoDevisError(Exception):
     marché non géré). L'endpoint la traduit en 422 et l'agent demande la donnée
     (ou oriente vers le générateur) plutôt que de produire un devis vide."""
 
-    def __init__(self, message, *, field=None):
+    def __init__(self, message, *, field=None, motif=None):
         super().__init__(message)
         self.message = message
         self.field = field
+        self.motif = motif  # ACAL1145 — le motif d'abstention (``_REFUS_DIMENSIONNEMENT``), sinon None
 
 
 def phase_et_isolement_du_lead(lead):
@@ -131,7 +132,7 @@ def _refus_dimensionnement(motif):
         motif,
         ("Le devis n'a pas pu être dimensionné (motif « %s »)." % motif,
          'dimensionnement'))
-    return AutoDevisError(message, field=champ)
+    return AutoDevisError(message, field=champ, motif=motif)
 
 
 class ResultatTaille(tuple):

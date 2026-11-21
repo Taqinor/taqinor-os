@@ -160,6 +160,18 @@ from . import profil_depart as _profil_depart_action  # noqa: F401 — import d'
 # POST une PROPOSITION de toit par IA à confirmer, ``services/detection_toit.py``).
 # N'écrit RIEN au calepinage ; l'image n'est jamais stockée.
 from . import detection_toit as _detection_toit_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL594 — même patron : rattache ``variantes-par-module`` (POST : une variante
+# par module du stock sur la même implantation, ``services/variantes_modules.py``).
+from . import variantes_modules as _variantes_modules_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL960 — même patron : rattache ``catalogue-materiel`` (GET : produits actifs
+# de la société à cocher comme favoris, sans prix).
+from . import catalogue_materiel as _catalogue_materiel_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL558 — même patron : rattache ``systemes-fixation`` (liste/création) et
+# ``systemes-fixation/<id>`` (lecture/modification/suppression) du catalogue société.
+from . import systemes_fixation as _systemes_fixation_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL535 — même patron : rattache ``suggestions-pente-relief`` (POST : la pente
+# de chaque pan lue sur un relief GeoTIFF déposé, sans porte du pays ni IGN).
+from . import suggestion_pente_relief as _pente_relief_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -204,6 +216,10 @@ MODULES_RATTACHES = (
     'balayage',  # ACAL468
     'profil_depart',  # ACAL403
     'detection_toit',  # ACAL485
+    'variantes_modules',  # ACAL594
+    'catalogue_materiel',  # ACAL960
+    'systemes_fixation',  # ACAL558
+    'suggestion_pente_relief',  # ACAL535
 )
 
 __all__ = ['MODULES_RATTACHES']

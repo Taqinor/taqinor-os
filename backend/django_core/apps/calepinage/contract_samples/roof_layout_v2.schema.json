@@ -242,6 +242,31 @@
       "$ref": "#/$defs/repere",
       "description": "ACAL2 — repère local (document anonymisé). Absent = géographique. SEULE propriété racine volontairement ABSENTE de l'`exemple` (celui-ci est géographique).",
       "x-hors-exemple": true
+    },
+    "motifsPansVides": {
+      "description": "ACAL555 — par identifiant de pan, la cause MESURÉE d'un pan sans module ; écrite par l'atelier (ACAL549), imprimée par la planche (ACAL550). OPTIONNELLE ; ABSENTE de l'`exemple` (ses deux pans sont garnis : un motif y serait périmé) — cas plein : `exemple_motifs_pans_vides`. Aucune valeur par défaut.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/motifPanVide"
+      },
+      "x-hors-exemple": true
+    },
+    "reperesChantier": {
+      "description": "ACAL599 — couche « Repères de chantier » (sécurité sur le toit : ancre antichute, accès, passage de câble…). OPTIONNELLE ; écrite par l'atelier (ACAL593), imprimée par la planche (ACAL1065). Distincte de `repere` (repère GPS du site). Chaque `point` suit le recentrage sur le GPS du lead.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/repereChantier"
+      }
+    },
+    "imageCapture": {
+      "description": "ACAL1041 — date de prise de vue de l'image satellite du site et sa source. SAISI, aucune valeur par défaut : absent = jamais renseignée. Propre au SITE : jamais recopiée vers un autre lead (`services/variantes.py::CLES_D_UN_AUTRE_SITE`). Lue par l'atelier (ACAL509) et le calcul de hauteur par l'ombre (ACAL496). Forme : `exemple_image_capture`.",
+      "type": "object",
+      "required": ["date", "source"],
+      "properties": {
+        "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "source": {"type": "string", "minLength": 1}
+      },
+      "x-hors-exemple": true
     }
   },
   "$defs": {
@@ -378,6 +403,10 @@
         "facingManual": {
           "type": "boolean"
         },
+        "verrouille": {
+          "description": "ACAL520 — cadenas du pan : verrouillé, l'atelier refuse de déplacer ses sommets, de le supprimer, de le coter ou de le pivoter, en nommant le pan. OPTIONNEL et additif : absent = pan modifiable, un document existant se relit à l'identique. Sans rapport avec le verrou de VERSION (`services/verrou.py`).",
+          "type": "boolean"
+        },
         "neededPanels": {
           "description": "Compte SOUHAITÉ (dimensionnement). À ne pas confondre avec `geometry.count`, le compte POSÉ, qui prime.",
           "type": "number"
@@ -459,6 +488,50 @@
           "items": {
             "$ref": "#/$defs/coteReleve"
           }
+        },
+        "existant": {
+          "description": "ACAL573 — pan d'une installation DÉJÀ POSÉE (extension). Absent = pan neuf. Lu par ACAL574 (atelier) et ACAL575 (serveur).",
+          "type": "boolean"
+        },
+        "anneeMiseEnService": {
+          "description": "ACAL573 — année de mise en service du pan existant. null = année non saisie ; aucune année n'est déduite.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "chassis": {
+          "description": "ACAL581 — châssis N × M sur UN seul plan : `rangs` rangs de `modulesParRang` modules ; `jeuEntreRangsM` = jeu HORIZONTAL au sol entre deux rangs, SAISI, obligatoire dès `rangs` > 1 ; `source` obligatoire. Absent = aucun châssis. Lu par ACAL582, ACAL583, ACAL585.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rangs", "modulesParRang", "source"],
+          "properties": {
+            "rangs": {"type": "integer", "minimum": 1},
+            "modulesParRang": {"type": "integer", "minimum": 1},
+            "jeuEntreRangsM": {"type": ["number", "null"], "minimum": 0},
+            "source": {"type": "string", "minLength": 1, "pattern": "\\S"}
+          },
+          "if": {"properties": {"rangs": {"minimum": 2}}, "required": ["rangs"]},
+          "then": {"required": ["jeuEntreRangsM"], "properties": {"jeuEntreRangsM": {"type": "number"}}}
+        },
+        "coupuresPavage": {
+          "description": "ACAL586 — coupure automatique du pavage du pan, lue À L'IDENTIQUE par l'atelier (ACAL576) et le serveur (ACAL577). LA RÈGLE (écrite une seule fois, ici) : origine = bord gauche du posable du pan (contour moins retrait latéral) ; c = pas de colonne propre à chaque moteur ; n = ⌈largeurCoupureM ÷ c⌉ colonnes ENTIÈRES retirées (jamais moins que saisi) ; la bande k ≥ 1 commence à origine + (k·N + (k−1)·n)·c, N = tousLesNModules, et mesure n·c. Absent = aucune coupure. Valeurs SAISIES, aucune par défaut.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tousLesNModules", "largeurCoupureM", "source"],
+          "properties": {
+            "tousLesNModules": {"type": "integer", "minimum": 1},
+            "largeurCoupureM": {"type": "number", "exclusiveMinimum": 0},
+            "source": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "Pourquoi la coupure : « allée de maintenance », « joint de dilatation »…"}
+          }
+        },
+        "porteeEntrePieds": {
+          "description": "ACAL587 — portée MAXIMALE entre deux pieds de châssis, SAISIE et sourcée (aucune valeur par défaut), lue À L'IDENTIQUE par la nomenclature (ACAL578), le dessin 3D (ACAL579) et le plan de pose (ACAL580). LA RÈGLE (écrite une seule fois, ici) : pour chaque tronçon de m modules contigus de pas p, k = max(1, ⌊valeurM ÷ p⌋) modules entre deux pieds et pieds = ⌈m ÷ k⌉ + 1 (12 modules, p = 1,15 m, valeurM = 2,4 m ⇒ k = 2, 7 pieds). Absente = aucun pied compté.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["valeurM", "source"],
+          "properties": {
+            "valeurM": {"type": "number", "exclusiveMinimum": 0},
+            "source": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "D'où vient la portée : « notice du système, p. … »."}
+          }
         }
       }
     },
@@ -492,6 +565,11 @@
           "description": "CALX81 — retrait SAISI pour CETTE arête seule, en mètres. OPTIONNEL et additif : absent = seul le retrait de CATÉGORIE s'applique (`setbacksM`, CAL76 : latérale / extrémité / acrotère / joint), soit exactement le comportement d'aujourd'hui, byte pour byte. Présent, il vaut POUR CE SEGMENT PHYSIQUE, que les quatre catégories ne savent pas désigner — un rampant qui longe une limite de propriété n'a pas le même retrait que les autres rampants du même pan. Aucune valeur n'est proposée par le schéma : un retrait non saisi est ABSENT, jamais un zéro (qui se lirait « mesuré à ras »).",
           "type": "number",
           "minimum": 0
+        },
+        "retraitOrigine": {
+          "description": "ACAL562 — `societe` quand `retraitM` a été POSÉ d'office depuis la table « retrait par type d'arête » de la société (`degagements.retraits_par_arete`), jamais saisi à la main. Absent = retrait saisi (ou aucun). Le changement de type de l'arête remplace un retrait marqué `societe`, jamais un retrait saisi.",
+          "type": "string",
+          "enum": ["societe"]
         }
       }
     },
@@ -526,6 +604,12 @@
             "chien_assis",
             "edicule",
             "antenne",
+            "lanterneau",
+            "exutoire",
+            "climatiseur",
+            "citerne",
+            "garde_corps",
+            "joint_dilatation",
             "autre"
           ]
         },
@@ -687,6 +771,15 @@
         "numerotation": {
           "description": "CALX83 — la convention de numérotation SAISIE pour ce pan. OPTIONNELLE et additive : absente = l'affichage par index d'aujourd'hui. Elle décrit ce que l'utilisateur a choisi, elle ne renumérote rien.",
           "$ref": "#/$defs/numerotationPan"
+        },
+        "panelOrientation": {
+          "description": "ACAL601 — la pose des modules de CE pan : `portrait` (grand côté dans la pente), `landscape` (grand côté le long de la rangée) ou `mixed` (chaque module porte `panels[].orient`). OPTIONNEL et additif : absent ou hors énumération = le module reste figuré par son CENTRE sur les plans, jamais par une emprise devinée. Écrit par l'atelier (ACAL608), lu par `services/planche.py::coins_du_module`.",
+          "type": "string",
+          "enum": [
+            "portrait",
+            "landscape",
+            "mixed"
+          ]
         }
       }
     },
@@ -717,6 +810,14 @@
           "description": "CALX83 — étiquette de la rangée qui porte ce module, SAISIE ou déduite du pavage (« A », « R3 »…). OPTIONNELLE : absente = le module n'est rattaché à aucune rangée nommée, et l'écran ne lui en invente pas une. C'est une ÉTIQUETTE, pas un rang calculé : deux modules de la même rangée physique portent la même. ACAL2 : attribuée d'office elle aussi.",
           "type": "string",
           "minLength": 1
+        },
+        "orient": {
+          "description": "ACAL601 — la pose de CE module quand le pan est `mixed` (`geometry.panelOrientation`). OPTIONNELLE et additive : absente ou inconnue = le module est figuré par son CENTRE.",
+          "type": "string",
+          "enum": [
+            "portrait",
+            "landscape"
+          ]
         }
       }
     },
@@ -1160,6 +1261,20 @@
               "description": "Date de saisie, POSÉE par le geste de saisie (l'utilisateur affine sa consommation) — jamais par la sérialisation (ACAL2 : un aller-retour du document ne refait pas saisi_le)."
             }
           }
+        },
+        "charges": {
+          "description": "Charges à venir déclarées (véhicule, PAC, clim…), lues par `services/courbe_charge.py::_charges_annuelles`. Forme ouverte : seule la clé ci-dessous est documentée ici.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "deja_dans_les_factures": {
+                "description": "ACAL779 (D-RES-2710) — SAISI : `true` = la charge est déjà comprise dans la consommation des factures ; elle est IGNORÉE (aucune énergie ajoutée) et un avertissement la nomme. Absent ou `false` = comptée. Relu par ACAL780.",
+                "type": "boolean"
+              }
+            }
+          }
         }
       }
     },
@@ -1282,7 +1397,9 @@
           "type": "string",
           "enum": [
             "arbre",
-            "batiment"
+            "batiment",
+            "poteau",
+            "ligne"
           ]
         },
         "centerLng": {
@@ -1319,6 +1436,38 @@
         "widthM": {
           "type": "number",
           "minimum": 0
+        },
+        "diameterM": {
+          "description": "ACAL505 — poteau : diamètre (m). SAISI, aucune valeur par défaut.",
+          "type": "number",
+          "minimum": 0
+        },
+        "trace": {
+          "description": "ACAL505 — ligne (haie, câble, mur bas) : tracé en [[lng, lat], …], au moins 2 points ; translaté par « Recentrer sur le GPS du lead » comme `footprint`. SAISI, aucune valeur par défaut.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/couple"
+          }
+        },
+        "epaisseurM": {
+          "description": "ACAL505 — ligne : épaisseur (m). SAISI, aucune valeur par défaut.",
+          "type": "number",
+          "minimum": 0
+        },
+        "hauteurFutureM": {
+          "description": "ACAL505 — arbre : hauteur attendue dans `dansAns` ans (m). SAISI, aucune valeur par défaut.",
+          "type": "number",
+          "minimum": 0
+        },
+        "dansAns": {
+          "description": "ACAL505 — arbre : horizon de `hauteurFutureM` (années). SAISI, aucune valeur par défaut.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "supposeCoupe": {
+          "description": "ACAL505 — arbre : supposé coupé (n'ombre plus). SAISI, aucune valeur par défaut.",
+          "type": "boolean"
         }
       }
     },
@@ -1813,6 +1962,17 @@
             "number",
             "null"
           ]
+        },
+        "releve": {
+          "description": "ACAL517 — provenance d'un profil relevé au téléphone : `mode` (seule valeur : 'telephone'), `date` du relevé et `precisionDeg` DÉCLARÉE. Facultatif : absent = profil sans provenance de relevé (saisie au bureau, PVGIS, fichier). Effacé dès qu'un point est ajouté, retiré ou importé. `source` ne reçoit aucune troisième valeur.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "date", "precisionDeg"],
+          "properties": {
+            "mode": {"type": "string", "enum": ["telephone"]},
+            "date": {"type": "string", "format": "date"},
+            "precisionDeg": {"type": "number", "exclusiveMinimum": 0}
+          }
         }
       }
     },
@@ -2360,8 +2520,49 @@
           "type": "string"
         }
       }
+    },
+    "repereChantier": {
+      "description": "ACAL599 — un repère de chantier posé sur le plan, en [lng, lat].",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "type", "point"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "pattern": "\\S"},
+        "type": {"type": "string", "enum": ["ancre_antichute", "acces", "passage_cable", "autre"]},
+        "texte": {"type": "string", "maxLength": 200, "description": "Note libre ; 200 caractères = limite de saisie, pas une valeur métier."},
+        "rayonM": {"description": "Rayon d'action SAISI (m) ; null = non saisi, aucun rayon par défaut.", "oneOf": [{"type": "number", "exclusiveMinimum": 0}, {"type": "null"}]},
+        "point": {"$ref": "#/$defs/couple", "description": "Position [lng, lat]."}
+      }
+    },
+    "motifPanVide": {
+      "description": "ACAL555 — cause mesurée d'un pan vide. `code` est une énumération FERMÉE lue par ACAL549 et ACAL550 ; chaque clé de `mesures` porte son unité dans son nom.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "mesures"],
+      "properties": {
+        "code": {"type": "string", "enum": ["retrait_rive", "obstacles", "seuil_acces_solaire", "module_trop_grand", "inconnue"]},
+        "message": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S"},
+        "mesures": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "retraitM": {"type": "number"}, "largeurPanM": {"type": "number"}, "largeurUtileM": {"type": "number"},
+            "surfacePosableM2": {"type": "number"}, "seuil": {"type": "number"}, "ecartes": {"type": "number"},
+            "coteModuleM": {"type": "number"}
+          }
+        }
+      }
     }
   },
+  "exemple_motifs_pans_vides": {
+    "pan-nord": {"code": "retrait_rive", "message": "Le retrait de rive (0,5 m de chaque côté) laisse 0,9 m utiles : moins qu'un module (1,13 m).", "mesures": {"retraitM": 0.5, "largeurPanM": 1.9, "largeurUtileM": 0.9, "coteModuleM": 1.134}}
+  },
+  "exemple_environnement_etendu": [
+    {"id": "env-poteau", "kind": "poteau", "centerLng": -7.6201, "centerLat": 33.5001, "heightM": 9, "diameterM": 0.3},
+    {"id": "env-haie", "kind": "ligne", "trace": [[-7.6203, 33.5002], [-7.6199, 33.5002]], "heightM": 2, "epaisseurM": 0.8},
+    {"id": "env-arbre", "kind": "arbre", "centerLng": -7.6202, "centerLat": 33.4999, "heightM": 4, "crownDiameterM": 3, "hauteurFutureM": 8, "dansAns": 10, "supposeCoupe": false}
+  ],
+  "exemple_image_capture": {"date": "2025-03-21", "source": "page du fournisseur"},
   "exemple": {
     "version": 2,
     "modePoseDeclare": "sol",
@@ -2550,6 +2751,7 @@
         "pitchDeg": 10.0,
         "facingAzimuthDeg": 90.0,
         "facingManual": true,
+        "verrouille": true,
         "neededPanels": 8,
         "neededAuto": false,
         "geometry": {
@@ -2988,6 +3190,15 @@
     "electrical": {
       "equipements": [],
       "cheminements": []
-    }
+    },
+    "reperesChantier": [
+      {
+        "id": "rep-1",
+        "type": "ancre_antichute",
+        "texte": "Ancre (exemple)",
+        "rayonM": 2.5,
+        "point": [-7.62, 33.5]
+      }
+    ]
   }
 }

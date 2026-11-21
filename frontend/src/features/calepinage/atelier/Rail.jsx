@@ -152,10 +152,23 @@ function EchecOnglet({ libelle }) {
    `calepinage_layout_section.json`) et la façon d'appliquer UNE section écrite
    par l'onglet à la scène vivante. Comme `builderApi`, un panneau qui ne les
    déclare pas les ignore. */
-export default function Rail({
+/* ACAL600 — le niveau expert est TENU par `AtelierPanneaux` et reçu en props (un seul
+   état) ; monté seul, le rail le tient lui-même — jamais les deux à la fois. */
+export default function Rail(props = {}) {
+  return props.onBasculerExpert ? <RailCorps {...props} /> : <RailAutonome {...props} />
+}
+
+function RailAutonome(props) {
+  const [parametres] = useSearchParams()
+  const [expert, basculer] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
+  return <RailCorps {...props} expert={expert} onBasculerExpert={basculer} />
+}
+
+function RailCorps({
   calepinageId: idPropose = null, builderApi = null,
   onRecharger = null, lectureSeule = false, documentVivant = null,
-} = {}) {
+  expert, onBasculerExpert: basculerExpert,
+}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
 
@@ -166,7 +179,6 @@ export default function Rail({
   // (+ l'onglet ouvert s'il est expert). L'étape se déduit de l'URL.
   const parcours = useParcours(calepinageId)
   const etats = parcours.etats
-  const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
   // ACAL395 — en guidé, les panneaux d'un écran d'étape (Électrique) s'ouvrent
   // dans UNE page portée par l'onglet `ouverture` ; l'URL garde la clé demandée.
   const ecran = expert ? null : ecranGuideDeOnglet(cleActive)

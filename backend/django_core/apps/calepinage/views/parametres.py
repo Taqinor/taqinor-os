@@ -44,6 +44,7 @@ from ..serializers import _SchemaCorpsObligatoire
 from ..selectors import (
     kits_de_pose_disponibles, parametres_de_societe, registre_des_reglages,
 )
+from ..services.presets import champs_de_preset
 from ..services.parametres import (
     CaractereInterditEnCle, ReglageInterdit, ReglageInvalide,
     enregistrer_parametres,
@@ -144,11 +145,14 @@ def _forme_registre():
     """CALX145/69 — la forme du ``registre`` publié : deux sections, chacune
     une LISTE de lignes ``{cle, libelle, unite, reference}`` (l'ordre du
     registre de ``services/parametres_cles.py``, jamais réordonné). Voir
-    ``selectors.registre_des_reglages``."""
+    ``selectors.registre_des_reglages``. ACAL572 — plus ``lestage`` : les
+    lignes ``{cle, libelle, unite, texte, bloc}`` de l'écran « Lestage »
+    (``selectors._registre_lestage``)."""
     return inline_serializer('CalepinageRegistreReponse', {
         'simulation': serializers.ListField(child=serializers.DictField()),
         'electrique_societe': serializers.ListField(
             child=serializers.DictField()),
+        'lestage': serializers.ListField(child=serializers.DictField()),
     })
 
 
@@ -344,6 +348,8 @@ def _forme_reglages(nom, avec_registre=False, partielle=False):
         champs.update(_sections_requete_resserrees())
     if avec_registre:
         champs['registre'] = _forme_registre()
+        champs['champs_preset'] = serializers.ListField(
+            child=serializers.DictField(), required=False)
     return inline_serializer(nom, champs)
 
 
@@ -373,6 +379,9 @@ class ParametresCalepinageView(APIView):
         # publié en LECTURE SEULE : l'écran n'a plus à le redéclarer,
         # ``services/parametres_cles.py`` reste la seule déclaration.
         reponse['registre'] = registre_des_reglages()
+        # ACAL961 — les champs admis d'un préréglage (lecture seule, dérivés
+        # de ``REGLAGES``) : l'écran les propose au lieu d'un texte libre.
+        reponse['champs_preset'] = champs_de_preset()
         # ACAL288 — le catalogue des sections du rapport d'étude, DÉRIVÉ du
         # contrat ``rapport_etude.json`` (jamais stocké, jamais accepté en
         # écriture) : l'écran coche parmi CES sections, dans CET ordre.
@@ -446,6 +455,9 @@ class ParametresCalepinageView(APIView):
                 # ENF11 — clé d'objet interdite : inexprimable au schéma → 409.
                 return Response({refus.champ or 'detail': str(refus)},
                                 status=status.HTTP_409_CONFLICT)
+            if getattr(refus, 'erreurs', None):  # ACAL947 — toutes, d'un coup
+                return Response(refus.erreurs,
+                                status=status.HTTP_400_BAD_REQUEST)
             if getattr(refus, 'section', ''):
                 return Response({refus.section: {refus.champ: str(refus)}},
                                 status=status.HTTP_400_BAD_REQUEST)

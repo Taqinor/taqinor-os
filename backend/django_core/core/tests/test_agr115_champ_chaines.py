@@ -12,7 +12,8 @@ import math
 import unittest
 
 from core.pompage.champ import (
-    MENTION_TEMPERATURES_REPLI, choisir_variateur, dimensionner_champ,
+    MENTION_TEMPERATURES_REPLI, choisir_variateur, controle_chaine_variateur,
+    dimensionner_champ,
     e_d_depuis_profils, kw_normalise_depuis_cv, kwc_depart,
 )
 from core.pompage.hypotheses import valeur
@@ -414,6 +415,53 @@ class Champ(unittest.TestCase):
             panneau={"pmax_wc": 710}, profils_horaires=PROFILS)
         self.assertIsNone(res["nb_panneaux"])
         self.assertIn("panneau_sans_fiche", [a["code"] for a in res["alertes"]])
+
+
+class ControleChaine(unittest.TestCase):
+    """ACAL809 — contrôle d'une chaîne DONNÉE, sans adapter le champ."""
+
+    VAR = _var(4, 4, 380, fiche=FICHE_250_780)
+
+    def test_fenetre_8_a_15_aux_replis(self):
+        r = controle_chaine_variateur(self.VAR, PANNEAU, 12)
+        self.assertEqual(r["fenetre"], {"longueur_min": 8, "longueur_max": 15})
+        self.assertEqual(r["temperatures"]["mention"], MENTION_TEMPERATURES_REPLI)
+        self.assertIsNone(r["temperatures"]["source"])
+
+    def test_12_conforme_21_hors_fenetre_avec_longueur_maximale(self):
+        self.assertEqual(controle_chaine_variateur(self.VAR, PANNEAU, 12)["verdict"],
+                         "conforme")
+        longue = controle_chaine_variateur(self.VAR, PANNEAU, 21)
+        self.assertEqual(longue["verdict"], "hors_fenetre")
+        self.assertEqual(longue["fenetre"]["longueur_max"], 15)
+        self.assertTrue(longue["motif"].startswith("trop longue : Voc à froid"))
+        self.assertIn("800 V du variateur", longue["motif"])
+        self.assertEqual(controle_chaine_variateur(self.VAR, PANNEAU, 15)["verdict"],
+                         "conforme")
+        self.assertEqual(controle_chaine_variateur(self.VAR, PANNEAU, 16)["verdict"],
+                         "hors_fenetre")
+        courte = controle_chaine_variateur(self.VAR, PANNEAU, 7)
+        self.assertTrue(courte["motif"].startswith("trop courte : Vmp à chaud"))
+
+    def test_courant_mppt_depasse(self):
+        r = controle_chaine_variateur(self.VAR, PANNEAU, 12, paralleles=2)
+        self.assertEqual(r["verdict"], "hors_fenetre")
+        self.assertTrue(r["motif"].startswith("courant"))
+
+    def test_fiche_vide_ou_module_incomplet_non_verifiable(self):
+        r = controle_chaine_variateur(_var(3, 2.2, 380), PANNEAU, 12)
+        self.assertEqual(r["verdict"], "non_verifiable")
+        self.assertEqual(r["motif"], "fiche du variateur non saisie")
+        r = controle_chaine_variateur(self.VAR, dict(PANNEAU, voc_v=None), 12)
+        self.assertEqual(r["verdict"], "non_verifiable")
+        self.assertIn("module incomplet", r["motif"])
+
+    def test_temperatures_tmy_fournies(self):
+        r = controle_chaine_variateur(
+            self.VAR, PANNEAU, 12,
+            temperatures={"froid_c": 0, "chaud_c": 60, "source": "tmy_site"})
+        self.assertEqual(r["temperatures"]["source"], "tmy_site")
+        self.assertIsNone(r["temperatures"]["mention"])
 
 
 if __name__ == "__main__":

@@ -78,6 +78,31 @@ class ContraintesMoteurTests(SimpleTestCase):
         self.assertFalse(any('ALLEE' in z['repere']
                              for z in sans.document['zones']))
 
+    def test_acal582_chassis_2_x_10_porte_par_la_traduction(self):
+        doc = _document('cheminee')
+        doc['zones'][0]['chassis'] = {'rangs': 2, 'modulesParRang': 10,
+                                      'jeuEntreRangsM': 0.03,
+                                      'source': 'fiche fabricant'}
+        kit = entree_depuis_layout(doc).kit
+        self.assertEqual(kit.modules_par_pas, 20)
+        self.assertAlmostEqual(kit.cote_le_long_rangee_m, 10 * 1.134)
+        sans = entree_depuis_layout(_document('cheminee')).kit
+        self.assertEqual(sans.modules_par_pas, 1)
+
+    def test_acal582_deux_pans_a_chassis_differents_refuses(self):
+        from apps.calepinage.services.traduction import TraductionRefusee
+        doc = _document('cheminee')
+        second = dict(doc['zones'][0], id='z2',
+                      vertices=_rectangle(-7.5, 33.5, 20.0, 10.0),
+                      obstacles=[])
+        doc['zones'][0]['chassis'] = {'rangs': 2, 'modulesParRang': 10,
+                                      'jeuEntreRangsM': 0.03, 'source': 'x'}
+        second['chassis'] = {'rangs': 1, 'modulesParRang': 4, 'source': 'x'}
+        doc['zones'].append(second)
+        with self.assertRaises(TraductionRefusee) as refus:
+            entree_depuis_layout(doc)
+        self.assertEqual(refus.exception.champ, 'zones.1.chassis')
+
     def test_effectif_est_le_maximum(self):
         valeur, _ = degagement_effectif('cheminee', None, {
             'degagements_m': {'lanterneau': 1.8}})

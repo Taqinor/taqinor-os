@@ -25,6 +25,7 @@ vi.mock('../../../api/calepinageApi', () => ({
     calepinages: {
       bomFixation: vi.fn(), sorties: vi.fn(), telechargerSortie: vi.fn(), appliquerFixation: vi.fn(),
     },
+    systemesFixation: { liste: vi.fn() },
   },
 }))
 vi.mock('../../../utils/downloadBlob', () => ({
@@ -52,7 +53,13 @@ const rendre = () => render(
   <MemoryRouter><Fixation calepinageId={41} /></MemoryRouter>,
 )
 
-beforeEach(() => { vi.clearAllMocks() })
+// ACAL560 — le catalogue servi (contrat `calepinage_systemes_fixation.json`).
+const servirCatalogue = (variante = 'exemple') => {
+  calepinageApi.systemesFixation.liste
+    .mockResolvedValue(reponseContrat('calepinage', 'calepinage_systemes_fixation', variante))
+}
+
+beforeEach(() => { vi.clearAllMocks(); servirCatalogue() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('Fixation (CALX360) — système et lignes', () => {
@@ -116,7 +123,7 @@ describe('Fixation (ACAL82) — choix du système persisté', () => {
     // Lecture sans paramètre : le serveur décide (jamais `?systeme=`).
     expect(calepinageApi.calepinages.bomFixation).toHaveBeenCalledWith(41)
     // Source « parametre » : rien n'est persisté, le champ est vide.
-    expect(screen.getByTestId('acal82-champ-systeme')).toHaveValue('')
+    expect(await screen.findByTestId('acal82-champ-systeme')).toHaveValue('')
 
     const choisi = String(post.corps.systeme_id)
     fireEvent.change(screen.getByTestId('acal82-champ-systeme'), { target: { value: choisi } })
@@ -140,7 +147,7 @@ describe('Fixation (ACAL82) — choix du système persisté', () => {
 
     const exemple = echantillon('exemple')
     expect(exemple.systeme_source).toBe('calepinage')
-    expect(screen.getByTestId('acal82-champ-systeme')).toHaveValue(String(exemple.systeme.id))
+    expect(await screen.findByTestId('acal82-champ-systeme')).toHaveValue(String(exemple.systeme.id))
   })
 
   it('un refus 400 du serveur est affiché en nommant son motif', async () => {
@@ -151,11 +158,59 @@ describe('Fixation (ACAL82) — choix du système persisté', () => {
     })
     rendre()
     await screen.findByTestId('calx360-panneau')
-    fireEvent.change(screen.getByTestId('acal82-champ-systeme'), { target: { value: '999' } })
+    fireEvent.change(await screen.findByTestId('acal82-champ-systeme'), { target: { value: '4' } })
     fireEvent.click(screen.getByTestId('calx360-appliquer-systeme'))
 
     expect(await screen.findByTestId('acal82-erreur-application'))
       .toHaveTextContent('introuvable')
+  })
+})
+
+describe('Fixation (ACAL560) — le choix se fait dans la liste servie', () => {
+  it('une liste des systèmes actifs (libellé, fabricant), jamais un champ texte', async () => {
+    servir('exemple_parametre')
+    servirSorties('exemple')
+    rendre()
+    const champ = await screen.findByTestId('acal82-champ-systeme')
+    expect(champ.tagName).toBe('SELECT')
+    expect(screen.queryByRole('textbox')).toBeNull()
+    const [systeme] = exempleContrat('calepinage', 'calepinage_systemes_fixation').systemes
+    const libelles = [...champ.options].map((o) => o.textContent)
+    expect(libelles[0]).toBe('Aucun (le système unique actif s’applique)')
+    expect(libelles[1]).toBe(`${systeme.libelle} — ${systeme.fabricant}`)
+    expect(libelles.some((t) => t.includes(String(systeme.id)))).toBe(false)
+  })
+
+  it('« Aucun » envoie systeme_id: null', async () => {
+    servir('exemple')
+    servirSorties('exemple')
+    calepinageApi.calepinages.appliquerFixation.mockResolvedValue({ data: {} })
+    rendre()
+    fireEvent.change(await screen.findByTestId('acal82-champ-systeme'), { target: { value: '' } })
+    fireEvent.click(screen.getByTestId('calx360-appliquer-systeme'))
+    await waitFor(() => expect(calepinageApi.calepinages.appliquerFixation)
+      .toHaveBeenCalledWith(41, { systeme_id: null }))
+  })
+
+  it('catalogue vide : le dit avec un lien vers les réglages, aucun champ', async () => {
+    servir('exemple_vide')
+    servirSorties('exemple')
+    servirCatalogue('exemple_vide')
+    rendre()
+    const vide = await screen.findByTestId('acal560-catalogue-vide')
+    expect(vide).toHaveTextContent('Aucun système de fixation n’est saisi')
+    expect(vide.querySelector('a')).toHaveAttribute('href', '/calepinage/reglages/fixation')
+    expect(screen.queryByTestId('acal82-champ-systeme')).toBeNull()
+  })
+
+  it('liste en erreur : un message, aucun champ texte de repli', async () => {
+    servir('exemple')
+    servirSorties('exemple')
+    calepinageApi.systemesFixation.liste.mockRejectedValue(new Error('réseau'))
+    rendre()
+    expect(await screen.findByTestId('acal560-erreur-liste')).toBeInTheDocument()
+    expect(screen.queryByTestId('acal82-champ-systeme')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 })
 

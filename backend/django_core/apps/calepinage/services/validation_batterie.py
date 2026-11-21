@@ -1,0 +1,61 @@
+"""ACAL633 — la forme de la déclaration de batterie (validation).
+
+Extraite de ``services/electrique.py`` : ``electrique`` ré-importe le module
+(``_validation_batterie.valider_batterie``), jamais un alias de la fonction.
+"""
+from .valeurs import nombre as _nombre
+
+
+def valider_batterie(saisie):
+    """ACAL166 — la FORME de la déclaration de batterie, refusée en NOMMANT
+    le champ (``batterie.<champ>``). Aucune stratégie n'est supposée : une
+    stratégie absente reste absente, et la simulation OMET le bloc en le
+    disant. Les grandeurs de la batterie viennent de la FICHE du produit,
+    jamais de cette saisie."""
+    from .batterie import COUPLAGES, MOTIVATIONS, STRATEGIES
+    from .electrique import CLES_BATTERIE, _fini, _refus_champ
+
+    if saisie is None:
+        return
+    if not isinstance(saisie, dict):
+        _refus_champ("« batterie » doit être un objet {strategie, packs, "
+                     "couplage…} (reçu : %s)." % type(saisie).__name__,
+                     'batterie')
+    inconnues = sorted(set(saisie) - set(CLES_BATTERIE))
+    if inconnues:
+        _refus_champ("Champ de la batterie inconnu : « %s ». Champs admis : "
+                     "%s." % (inconnues[0], ', '.join(CLES_BATTERIE)),
+                     'batterie.%s' % inconnues[0])
+    for cle, admis in (('strategie', STRATEGIES), ('couplage', COUPLAGES),
+                       ('motivation', tuple(MOTIVATIONS))):
+        valeur = saisie.get(cle)
+        if valeur not in (None, '') and valeur not in admis:
+            _refus_champ("« %s » : « %s » n'est pas admis. Valeurs admises : "
+                         "%s." % (cle, valeur, ', '.join(admis)),
+                         'batterie.%s' % cle)
+    packs = saisie.get('packs')
+    if packs not in (None, ''):
+        nombre = _nombre(packs)
+        if (not _fini(nombre) or nombre < 1 or nombre != int(nombre)):
+            _refus_champ("« packs » : saisissez un nombre entier de packs "
+                         "supérieur ou égal à 1 (reçu : « %s »)." % packs,
+                         'batterie.packs')
+    for cle in ('seuil_effacement_kw', 'reserve_backup_kwh',
+                'etat_initial_kwh'):
+        brut = saisie.get(cle)
+        if brut in (None, ''):
+            continue
+        nombre = _nombre(brut)
+        if not _fini(nombre) or nombre < 0:
+            _refus_champ("« %s » : saisissez un nombre positif ou nul, ou "
+                         "laissez le champ vide (reçu : « %s »)."
+                         % (cle, brut), 'batterie.%s' % cle)
+    for cle in ('heures_charge', 'heures_decharge'):
+        heures = saisie.get(cle)
+        if heures in (None, ''):
+            continue
+        if (not isinstance(heures, (list, tuple))
+                or any(isinstance(h, bool) or not isinstance(h, int)
+                       or not 0 <= h <= 23 for h in heures)):
+            _refus_champ("« %s » doit être une liste d'heures entières "
+                         "comprises entre 0 et 23." % cle, 'batterie.%s' % cle)

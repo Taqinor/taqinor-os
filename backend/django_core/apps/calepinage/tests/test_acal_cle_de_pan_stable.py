@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+from unittest import expectedFailure
 
 from django.apps import apps as registre
 from django.contrib.contenttypes.models import ContentType
@@ -147,6 +148,77 @@ class CleDePanStableTest(SimpleTestCase):
             'descente_m': 3.0, 'liaison_coffret_onduleur_m': 2.0})
         self.assertFalse(any('point de collecte non saisi' in m
                              for m in manques), manques)
+
+
+def _pan_pose(positions, numeros=None):
+    """ACAL648 — un pan dont les modules sont POSÉS (``panels``), numérotés
+    ou non ; ``positions`` = les abscisses des modules restants."""
+    panneaux = [dict({'cx': cx, 'cy': 0.0}, **({'n': numeros[i]} if numeros
+                                               else {}))
+                for i, cx in enumerate(positions)]
+    layout = _layout(len(panneaux))
+    layout['zones'][0]['geometry']['panels'] = panneaux
+    return layout
+
+
+#: ACAL648 — chaîne 2 imposée sur les modules 4 à 10.
+CHAINE_2_SUR_4_A_10 = tuple(
+    {'module': 'zA#%d' % n, 'chaine': 2, 'mppt': 1, 'onduleur': 1}
+    for n in range(4, 11))
+
+
+def _manuels(layout, imposee=CHAINE_2_SUR_4_A_10):
+    """Les abscisses des modules qui portent l'affectation manuelle."""
+    table = affectation(_conception(layout), imposee=imposee)
+    panneaux = layout['zones'][0]['geometry']['panels']
+    return [panneaux[rang]['cx'] for rang, ligne in enumerate(table)
+            if ligne['source'] == 'affectation manuelle']
+
+
+class ChainesManuellesComportementTest(SimpleTestCase):
+    """ACAL648 — ce que fait le code AUJOURD'HUI quand le document change
+    sous une affectation manuelle (le nom de chaque test le dit)."""
+
+    POSITIONS = [float(i) for i in range(1, 11)]  # module n° i en x = i
+    SANS_LE_3 = [x for x in POSITIONS if x != 3.0]
+
+    def test_retrait_au_milieu_non_numerote_decale_l_affectation(self):
+        # Mesuré : la clé suit le RANG ; le module physique 4 devient #3 et
+        # perd sa chaîne, le 5 hérite de celle du 4 (décalage silencieux).
+        self.assertEqual(_manuels(_pan_pose(self.SANS_LE_3)),
+                         [5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
+
+    @expectedFailure
+    def test_retrait_au_milieu_non_numerote_garde_les_modules_4_a_10(self):
+        # Attendu (ACAL649 retirera ce marqueur) : les modules physiques 4 à
+        # 10 gardent la chaîne 2 après le retrait du module 3.
+        self.assertEqual(_manuels(_pan_pose(self.SANS_LE_3)),
+                         [4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
+
+    def test_retrait_au_milieu_numerote_garde_les_modules_4_a_10(self):
+        # Le document NUMÉROTÉ avant le retrait : la clé suit n, rien ne
+        # glisse (preuve que les deux cas ci-dessus voient la numérotation).
+        numeros = [int(x) for x in self.SANS_LE_3]
+        self.assertEqual(_manuels(_pan_pose(self.SANS_LE_3, numeros)),
+                         [4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
+
+    def test_pas_change_memes_numeros_garde_l_affectation_par_numero(self):
+        # Pas de pose changé (1,5 au lieu de 1), mêmes numéros 1…10 : la
+        # chaîne 2 reste sur les numéros 4 à 10, à leurs nouvelles places.
+        positions = [1.5 * i for i in range(1, 11)]
+        self.assertEqual(_manuels(_pan_pose(positions, list(range(1, 11)))),
+                         positions[3:])
+
+    def test_pas_change_numeros_neufs_rend_toute_l_affectation_obsolete(self):
+        # Numéros neufs (11…20) : aucune clé imposée ne désigne plus un
+        # module — tout est publié ``affectation_obsolete``, rien n'est
+        # appliqué.
+        layout = _pan_pose([1.5 * i for i in range(1, 11)],
+                           list(range(11, 21)))
+        self.assertEqual(_manuels(layout), [])
+        bloc, _a = bloc_electrique(_conception(layout),
+                                   imposee=CHAINE_2_SUR_4_A_10)
+        self.assertEqual(len(bloc['affectation_obsolete']), 7)
 
 
 class MigrationIdempotenteTest(SimpleTestCase):

@@ -70,3 +70,36 @@ class Favoris(BaseApiCalepinage):
         self.assertEqual([ligne['module']['produitId'] for ligne in lignes],
                          [self.a.pk, self.c.pk])
         self.assertFalse(any(ligne['favori'] for ligne in lignes))
+
+
+class CatalogueMateriel(Favoris):
+    """ACAL960 — ``GET calepinages/catalogue-materiel/`` : produits ACTIFS de
+    la société, favoris marqués, SANS prix."""
+
+    URL = '/api/django/calepinage/calepinages/catalogue-materiel/'
+
+    def test_actifs_de_la_societe_favoris_sans_prix(self):
+        Produit.objects.filter(pk=self.c.pk).update(is_archived=True)
+        voisin = Produit.objects.create(
+            company=self.autre, nom='Z Voisin', sku='ACAL960-Z',
+            prix_achat=Decimal('1'), prix_vente=Decimal('2'),
+            quantite_stock=1)
+        FicheTechnique.objects.create(
+            company=self.autre, produit=voisin, type_fiche='module',
+            pmax_wc=500.0)
+        reponse = self.api.get(self.URL)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(set(reponse.data),
+                         {'modules', 'onduleurs', 'optimiseurs'})
+        modules = reponse.data['modules']
+        self.assertEqual([ligne['id'] for ligne in modules],
+                         [self.a.pk, self.b.pk])
+        self.assertEqual([ligne['favori'] for ligne in modules],
+                         [False, True])
+        for ligne in modules:
+            self.assertEqual(
+                set(ligne), {'id', 'libelle', 'marque', 'favori',
+                             'fiche_complete', 'champs_manquants'})
+
+    def test_sans_droit_voir_refuse(self):
+        self.assertEqual(self.api_sans.get(self.URL).status_code, 403)

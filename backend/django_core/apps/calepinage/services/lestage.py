@@ -12,8 +12,9 @@ LA DÉCISION FONDATEUR GRAVÉE ICI — AUCUN COEFFICIENT DANS LE CODE
 -----------------------------------------------------------------
 Ce module n'écrit AUCUNE valeur normative : ni vitesse de vent de référence,
 ni coefficient de terrain, ni coefficient de pression, ni charge de neige, ni
-coefficient de frottement — et pas même l'accélération de la pesanteur ni la
-masse volumique de l'air. TOUT est SAISI par la société, avec la RÉFÉRENCE du
+coefficient de frottement. SEULES la pesanteur et la masse volumique de l'air
+sont des CONSTANTES PHYSIQUES déclarées avec leur référence (ACAL939) et une
+saisie les PRIME. TOUT le reste est SAISI par la société, avec la RÉFÉRENCE du
 texte d'où elle le tire, et republié à côté de chaque résultat.
 
 Conséquence directe, et c'est la garantie centrale de la tâche :
@@ -44,6 +45,7 @@ d'autre n'entre dans ces lignes.
 """
 from __future__ import annotations
 
+from .lestage_zones import CLE_ZONES_DE_POSE, normaliser_zones_de_pose
 from .parametres import ReglageInvalide
 
 #: La section des réglages que ce module porte (CAL45 — une base, N sections).
@@ -69,6 +71,19 @@ PARAMETRES = {
         'Masse de structure par module (kit)', 'kg'),
 }
 
+#: ACAL939 — les deux CONSTANTES PHYSIQUES (pas des coefficients normatifs :
+#: vent, terrain, pressions, frottement et neige restent saisis, D-CALX 7).
+#: ``clé -> (valeur, référence)`` ; elles s'appliquent quand la société n'a
+#: rien saisi, une saisie (valeur + source) PRIME. Valeurs relues à la source :
+#: valeur normale de la pesanteur (3e CGPM, 1901) ; masse volumique de l'air de
+#: l'atmosphère type au niveau de la mer (ISO 2533).
+CONSTANTES_PHYSIQUES = {
+    'acceleration_pesanteur_m_s2': (
+        9.80665, 'valeur normale de la pesanteur (3e CGPM, 1901)'),
+    'masse_volumique_air_kg_m3': (
+        1.225, "atmosphère type au niveau de la mer (ISO 2533)"),
+}
+
 #: Le SEUL paramètre qui n'est pas un nombre : la catégorie de terrain est un
 #: libellé (« rase campagne », « zone urbaine »…), saisi avec sa référence.
 PARAMETRES_TEXTE = ('categorie_terrain',)
@@ -91,7 +106,8 @@ NOMBRES_DE_FORME = (0, 1, 2, 0.5, 1000)
 #: global d'aujourd'hui, servi tel quel (D12).
 CLE_ZONES = 'zones'
 CLE_ZONE_PAR_DEFAUT = 'zone_par_defaut'
-CLES_DE_STRUCTURE = (CLE_ZONES, CLE_ZONE_PAR_DEFAUT)
+#: ACAL563 — ``zones_de_pose`` (rive, coin) : clé de structure aussi.
+CLES_DE_STRUCTURE = (CLE_ZONES, CLE_ZONE_PAR_DEFAUT, CLE_ZONES_DE_POSE)
 
 #: Les paramètres qui DÉPENDENT du site : eux seuls se saisissent par zone.
 #: Quand une zone s'applique, ils viennent d'ELLE et de nulle part ailleurs —
@@ -106,7 +122,8 @@ PARAMETRES_DE_SITE = ('vitesse_vent_reference_m_s', 'categorie_terrain',
 CLE_ZONE_DOCUMENT = 'zoneLestage'
 
 __all__ = [
-    'SECTION', 'PARAMETRES', 'NOMBRES_DE_FORME', 'CLE_ZONES',
+    'SECTION', 'PARAMETRES', 'CONSTANTES_PHYSIQUES', 'NOMBRES_DE_FORME',
+    'CLE_ZONES',
     'CLE_ZONE_PAR_DEFAUT', 'PARAMETRES_DE_SITE', 'CLE_ZONE_DOCUMENT',
     'normaliser_section_lestage',
     '_surface_module_m2', 'masse_et_lestage',
@@ -159,6 +176,9 @@ def normaliser_section_lestage(valeur):
     zones = _zones_saisies(valeur.get(CLE_ZONES))
     if zones:
         section[CLE_ZONES] = zones
+    zones_de_pose = normaliser_zones_de_pose(valeur.get(CLE_ZONES_DE_POSE))
+    if zones_de_pose:
+        section[CLE_ZONES_DE_POSE] = zones_de_pose
     defaut = valeur.get(CLE_ZONE_PAR_DEFAUT)
     if defaut not in (None, ''):
         codes = [zone['code'] for zone in zones]
@@ -359,6 +379,10 @@ def _feuille_de_lestage(section, *, surface_module_m2=None,
     section = section or {}
     valeurs = {cle: _valeur_societe(section, cle) for cle in PARAMETRES
                if cle not in PARAMETRES_TEXTE}
+    # ACAL939 — une constante physique s'applique SEULEMENT sans saisie.
+    for cle, (constante, _reference) in CONSTANTES_PHYSIQUES.items():
+        if valeurs.get(cle) is None:
+            valeurs[cle] = constante
     valeurs['surface_module_m2'] = (
         float(surface_module_m2) if isinstance(surface_module_m2, (int, float))
         and not isinstance(surface_module_m2, bool) else None)
@@ -447,8 +471,16 @@ def _feuille_de_lestage(section, *, surface_module_m2=None,
                 'cle': cle, 'libelle': libelle, 'unite': unite,
                 'valeur': entree.get('valeur'), 'source': entree['source'],
             })
+        elif cle in CONSTANTES_PHYSIQUES:
+            libelle, unite = PARAMETRES[cle]
+            parametres.append({
+                'cle': cle, 'libelle': libelle, 'unite': unite,
+                'valeur': CONSTANTES_PHYSIQUES[cle][0],
+                'source': CONSTANTES_PHYSIQUES[cle][1],
+            })
     manquants = [cle for cle in PARAMETRES
-                 if not isinstance(section.get(cle), dict)]
+                 if cle not in CONSTANTES_PHYSIQUES
+                 and not isinstance(section.get(cle), dict)]
     return {
         'parametres': parametres,
         'manquants': manquants,

@@ -172,3 +172,20 @@ describe('ReglagesUtilises — valeur publiée (ACAL405)', () => {
     expect(screen.queryByTestId('acal405-publiee')).toBeNull()
   })
 })
+
+/* ACAL698 — la prop facultative `ouvert` pilote le <details>. */
+describe('ReglagesUtilises — prop ouvert (ACAL698)', () => {
+  const simulation = { reglages_utilises: { b0_iam: { valeur: 0.05, source: 'texte', reference: 'x' } } }
+
+  it('sans la prop : comportement d’origine, replié', () => {
+    render(<ReglagesUtilises simulation={simulation} />)
+    expect(screen.getByTestId('acal52-reglages-utilises')).not.toHaveAttribute('open')
+  })
+
+  it('ouvert=true déplie, ouvert=false replie', () => {
+    const { rerender } = render(<ReglagesUtilises simulation={simulation} ouvert />)
+    expect(screen.getByTestId('acal52-reglages-utilises')).toHaveAttribute('open')
+    rerender(<ReglagesUtilises simulation={simulation} ouvert={false} />)
+    expect(screen.getByTestId('acal52-reglages-utilises')).not.toHaveAttribute('open')
+  })
+})

@@ -70,6 +70,49 @@ class KitsDerives(unittest.TestCase):
                 puissance_module_wc=500, inclinaison_deg=95,
                 orientation=OrientationModule.PORTRAIT)
 
+    # ACAL581 — le contrat du châssis N × M (le moteur l'ignore encore).
+    def _chassis(self, **cles):
+        base = dict(code="CH", libelle="Châssis", module_long_m=2.278,
+                    module_court_m=1.134, puissance_module_wc=550,
+                    inclinaison_deg=20, orientation=OrientationModule.PAYSAGE,
+                    modules_par_table=1)
+        base.update(cles)
+        return Kit(**base)
+
+    def test_chassis_2_x_10_fait_l_aller_retour(self):
+        from core.calepinage.serialisation import _kit, _kit_depuis
+        kit = self._chassis(rangs_par_table=2, modules_par_rang=10,
+                            jeu_entre_rangs_m=0.03)
+        document = _kit(kit)
+        self.assertEqual((document["rangs_par_table"],
+                          document["modules_par_rang"],
+                          document["jeu_entre_rangs_m"]), (2, 10, 0.03))
+        self.assertEqual(_kit_depuis(document), kit)
+
+    def test_chassis_a_zero_refuse_en_nommant_le_champ(self):
+        for champ in ("rangs_par_table", "modules_par_rang"):
+            with self.subTest(champ=champ), self.assertRaisesRegex(
+                    ValueError, f"^{champ} : au moins 1$"):
+                self._chassis(**{champ: 0})
+
+    def test_plusieurs_rangs_sans_jeu_refuse(self):
+        with self.assertRaisesRegex(ValueError, "jeu entre rangs du châssis "
+                                                "n'est pas saisi"):
+            self._chassis(rangs_par_table=2, modules_par_rang=10)
+
+    def test_chassis_dos_a_dos_refuse(self):
+        with self.assertRaisesRegex(ValueError, "un seul plan"):
+            self._chassis(modules_par_table=2, rangs_par_table=2,
+                          modules_par_rang=10, jeu_entre_rangs_m=0.03)
+
+    def test_kit_sans_chassis_reste_identique(self):
+        from core.calepinage.serialisation import _kit
+        kit = self._chassis()
+        self.assertNotIn("rangs_par_table", repr(kit))
+        self.assertNotIn("jeu_entre_rangs_m", repr(kit))
+        self.assertEqual(sorted(_kit(kit)), sorted(_kit(KIT_VILLA_720)))
+        self.assertNotIn("modules_par_rang", _kit(KIT_AO_PORTRAIT))
+
 
 class ImmuabiliteDuContrat(unittest.TestCase):
     """Zéro globale mutable : un Parametres se REMPLACE, il ne se mute pas."""

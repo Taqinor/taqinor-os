@@ -55,7 +55,7 @@ from .chaine_pertes import (
 from .etapes.autoconsommation import bloc_autoconsommation
 from .etapes.batterie import bloc_batterie
 from .etapes.hors_reseau import bloc_hors_reseau
-from .etapes.vieillissement import tableau_pluriannuel
+from .etapes.vieillissement import bloc_duree_de_vie, tableau_pluriannuel
 from .incertitude import (
     IncertitudeInvalide, bloc_incertitude, masquer_depassements,
 )
@@ -65,6 +65,7 @@ from .pvgis_serie import (
     EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
 from . import irradiation_mensuelle as _irr
+from .a_renseigner import construire as construire_a_renseigner
 from .bifacial_sheds import CLE_HORIZONTALE_LEGALE
 from .horizon import profil_depuis_document
 from .simulation_modules import production_module_par_module
@@ -230,6 +231,36 @@ def _plans_du_contexte(pose, document):
         }
         plans.append(plan)
     return plans
+
+
+def _parts_vieillies(document, par_pan, maintenant=None):
+    """ACAL842 — ``[{p50_kwh, age_ans}]`` des pans quand l'un est EXISTANT.
+
+    Âge = année du calcul − ``zones[].anneeMiseEnService`` (pans ``existant``) ;
+    une année dans le futur est refusée en nommant le champ ; ``None`` quand
+    aucun pan n'a d'âge (la projection est alors celle d'avant, à l'octet).
+    """
+    moment = maintenant or datetime.datetime.now(datetime.timezone.utc)
+    ages = {}
+    for rang, zone in enumerate((document or {}).get('zones') or []):
+        if not isinstance(zone, dict) or not zone.get('existant'):
+            continue
+        annee = zone.get('anneeMiseEnService')
+        if not isinstance(annee, int) or isinstance(annee, bool):
+            continue
+        if annee > moment.year:
+            raise SimulationRefusee(
+                "L'année de mise en service du pan existant (%d) est dans "
+                "le futur : corrigez-la." % annee,
+                champ='zones[%d].anneeMiseEnService' % rang)
+        for repere in (zone.get('label'), zone.get('id')):
+            if repere:
+                ages[str(repere)] = moment.year - annee
+    if not any(ages.values()):
+        return None
+    return [{'p50_kwh': ligne.get('p50_kwh') or 0.0,
+             'age_ans': ages.get(str(ligne.get('pan')), 0)}
+            for ligne in par_pan or () if isinstance(ligne, dict)]
 
 
 def _ombrage_du_document(document):
@@ -1241,6 +1272,41 @@ def _horodatage(maintenant=None):
 # LE POINT D'ENTRÉE
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _annoter_cascade(blocs, cascade, contexte):
+    """Pose la cascade et ses lectures dérivées ; rend l'avertissement de
+    complétude (« borne haute », ACAL49) que l'appelant met en tête."""
+    blocs['cascade'] = cascade
+    from .regroupement_pertes import regrouper  # ACAL695 — cinq postes lisibles
+    cascade['postes_lisibles'] = regrouper(cascade)
+    from .plages_usuelles import evaluer  # ACAL702 — pastilles sourcées
+    cascade['plages'] = evaluer(cascade)
+    completude = completude_de_la_chaine(cascade, contexte)
+    # ACAL699 — chaque perte non renseignée : le champ et où LIRE sa valeur.
+    cascade['a_renseigner'] = construire_a_renseigner(
+        cascade, completude['non_renseignees'])
+    return completude['avertissement']
+
+
+def _appels_complementaires_pvgis(blocs, client, reference, decision,
+                                  fichier, compteur):
+    """Les requêtes PVGIS posées APRÈS la chaîne, puis le compteur d'appels
+    RÉELS : l'ordonnanceur compte ses demandes, le fournisseur compte ce qui
+    est réellement parti sur le réseau."""
+    from . import gain_inclinaison as _gain_inclinaison  # ACAL706
+    blocs['production']['gain_inclinaison'] = _gain_inclinaison.demander(
+        client, reference, decision, fichier, compteur, blocs['production'])
+    blocs['meteo']['appels_pvgis'] = compteur['appels']
+
+
+def _annexes_de_production(blocs, serie_reference, projection, contexte):
+    """Bilan mensuel (ACAL705) et durée de vie (ACAL693) à côté du tableau."""
+    from .bilan_mensuel import publier as bilan_mensuel
+    blocs['production']['bilan_mensuel'] = bilan_mensuel(
+        serie_reference, blocs['production'])
+    blocs['production']['duree_de_vie'] = bloc_duree_de_vie(
+        projection, contexte)
+
+
 def simuler_calepinage(calepinage, *, forcer=False, client=None,
                        maintenant=None, enregistrer=True, materiel=None,
                        reglages=None, variante=None):
@@ -1359,7 +1425,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         # ACAL126 — un horizon illisible, PVGIS indisponible pour un pan, un
         # σ saisi illisible : un refus NOMMÉ, jamais une exception brute.
         raise _refus_nomme(refus) from refus
-    blocs['cascade'] = cascade
+    # ACAL49 — la « borne haute » ouvre les avertissements (D-ACAL-7).
+    entete = _annoter_cascade(blocs, cascade, contexte)
     blocs['meteo'] = ecrit['meteo']
     blocs['production'] = ecrit['production']
     blocs['serie_horaire'] = ecrit['serie_horaire']
@@ -1368,14 +1435,11 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['ombrage'] = ecrit['ombrage']
     for texte in (ecrit.get('avertissements') or []):
         _ajouter_avertissement(blocs, texte)
-    # ACAL49 — la « borne haute » ouvre les avertissements (D-ACAL-7).
-    entete = completude_de_la_chaine(cascade, contexte)['avertissement']
     if entete and entete in blocs.get('avertissements', ()):
         blocs['avertissements'].remove(entete)
         blocs['avertissements'].insert(0, entete)
-    # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
-    # fournisseur compte ce qui est réellement parti sur le réseau.
-    blocs['meteo']['appels_pvgis'] = compteur['appels']
+    _appels_complementaires_pvgis(blocs, client, reference, decision,
+                                  fichier, compteur)
     identite = _relayer_fichier_meteo(blocs['meteo'], fichier, provenance)
 
     # 3. LA SIMULATION MODULE PAR MODULE (CALX182).
@@ -1458,7 +1522,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         maintenant=maintenant, sortie=serie_production, cascade=cascade)
     _ajouter_avertissement(blocs, blocs['validation'].get('avertissement'))
 
-    projection = tableau_pluriannuel(total.get('p50_kwh'), contexte)
+    projection = tableau_pluriannuel(
+        total.get('p50_kwh'), contexte,
+        parts=_parts_vieillies(meta['document'],
+                               blocs['production'].get('par_pan'), maintenant))
     # CALX63 — chaque année de la projection porte la capacité restante de la
     # batterie quand le vieillissement est publié (fiche cycles/EOL saisie) ;
     # sans lui, les lignes sortent inchangées.
@@ -1466,6 +1533,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['production']['projection'] = capacite_batterie_par_annee(
         projection['annees'],
         ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
+    _annexes_de_production(blocs, serie_reference, projection, contexte)
     if projection.get('motif_omission'):
         _ajouter_avertissement(blocs, MOTIF_PROJECTION.format(
             motif=projection['motif_omission']))

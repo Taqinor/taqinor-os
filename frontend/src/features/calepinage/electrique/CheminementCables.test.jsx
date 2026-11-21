@@ -9,13 +9,13 @@
      4. un 404 de la porte (calepinage inconnu ou d'une autre société)
         affiche « Calepinage introuvable », jamais une erreur générique. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const CONTRAT = documentContrat('calepinage', 'calepinage_troncons')
 
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { troncons: vi.fn() } },
+  default: { calepinages: { troncons: vi.fn(), layout: vi.fn(), entreeElectrique: vi.fn(), enregistrerEntreeElectrique: vi.fn() } },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
@@ -156,5 +156,49 @@ describe('CheminementCables (CALX229)', () => {
 
     fireEvent.click(await screen.findByTestId('acal472-proposer'))
     expect(screen.getByTestId('acal472-resultat')).toHaveTextContent('Outil 3D non prêt')
+  })
+
+  it('ACAL641 : le motif et le point d’un pan partent dans cheminement.pans.<clé> et la longueur est relue', async () => {
+    const corpsContrat = documentContrat('calepinage', 'calepinage_entree_electrique').exemple_corps_cheminement_pans
+    servir(CONTRAT.exemple)
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [
+        { id: 'z1', label: 'Pan Sud', geometry: { panels: [{ n: 1, cx: 0.5, cy: 0.5 }, { n: 2, cx: 2.4, cy: 1.1 }] } },
+        { id: 'z2', label: 'Pan vide', geometry: { panels: [] } },
+      ] },
+      empreinte_document: 'E0',
+    } })
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: { cheminement: { descente_m: 4 } } } })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+
+    rendre()
+    const motif = await screen.findByTestId('acal641-motif-z1')
+    expect(motif).toHaveValue('') // aucun motif présélectionné
+    expect(screen.queryByTestId('acal641-motif-z2')).toBeNull() // pan sans module
+    const avant = calepinageApi.calepinages.troncons.mock.calls.length
+    fireEvent.change(motif, { target: { value: 'aller_retour' } })
+    fireEvent.change(screen.getByTestId('acal641-point-z1'), { target: { value: '1' } })
+    fireEvent.click(screen.getByTestId('acal641-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledTimes(1))
+    const [id, corps] = calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0]
+    expect(id).toBe(12)
+    expect(corps).toEqual({ cheminement: { descente_m: 4, ...corpsContrat.cheminement } }) // clé du pan, fusionnée
+    await waitFor(() => expect(calepinageApi.calepinages.troncons.mock.calls.length).toBeGreaterThan(avant))
+  })
+
+  it('ACAL641 : un refus 400 s’affiche SOUS le champ du pan', async () => {
+    const refus = documentContrat('calepinage', 'calepinage_entree_electrique').exemple_refus_motif_parcours
+    servir(CONTRAT.exemple)
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [{ id: 'z1', label: 'Pan Sud', geometry: { panels: [{ n: 1, cx: 0.5, cy: 0.5 }] } }] },
+      empreinte_document: 'E0',
+    } })
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: {} } })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({ response: { data: refus } })
+    rendre()
+    fireEvent.change(await screen.findByTestId('acal641-motif-z1'), { target: { value: 'aller_retour' } })
+    fireEvent.click(screen.getByTestId('acal641-enregistrer'))
+    expect(await screen.findByTestId('acal641-erreur-z1')).toHaveTextContent('motif de parcours inconnu')
   })
 })

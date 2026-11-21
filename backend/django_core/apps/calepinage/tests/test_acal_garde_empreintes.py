@@ -54,8 +54,10 @@ CLASSEMENT_RACINE = {
     'consumption': DOCUMENT,
     'devisId': DOCUMENT,
     'electrical': DOCUMENT,
+    'imageCapture': DOCUMENT,  # ACAL1041 : date de l'image, non chiffrée
     'jeuReglages': DOCUMENT,
     'measurements': DOCUMENT,
+    'motifsPansVides': DOCUMENT,  # ACAL555 : cause d'un pan vide, non chiffrée
     'optimisation': DOCUMENT,
     'outline': DOCUMENT,
     'parcelle': DOCUMENT,
@@ -63,6 +65,7 @@ CLASSEMENT_RACINE = {
     'pinSource': DOCUMENT,
     'repere': DOCUMENT,
     'repereAcquitte': DOCUMENT,
+    'reperesChantier': DOCUMENT,  # ACAL599 : repères de sécurité, non chiffrés
     'setbacksM': DOCUMENT,
     'source': DOCUMENT,
     'underlay': DOCUMENT,
@@ -76,7 +79,12 @@ CLASSEMENT_PAN = {cle: IMPRIMEE for cle in (
     'facingAzimuthPrecisionDeg', 'facingAzimuthSource', 'facingManual',
     'geometry', 'id', 'label', 'modePose', 'neededAuto', 'neededPanels',
     'obstacles', 'pitchDeg', 'pitchSource', 'pitchSuggestion', 'result',
-    'roofType', 'shading12x24', 'vertices')}
+    'roofType', 'shading12x24', 'vertices',
+    'existant', 'anneeMiseEnService',  # ACAL573
+    'chassis',  # ACAL581
+    'coupuresPavage',  # ACAL586
+    'porteeEntrePieds',  # ACAL587
+    'verrouille')}  # ACAL520 : le pan est imprimé en entier
 
 
 def _schema():

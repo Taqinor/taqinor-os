@@ -55,6 +55,9 @@ export function azimutHauteur(origineLng, origineLat, cibleLng, cibleLat, hauteu
 const LIBELLE_TYPE_OBSTACLE = {
   cheminee: 'Cheminée', ventilation: 'VMC', chien_assis: 'Chien-assis',
   edicule: 'Édicule', antenne: 'Antenne', autre: 'Obstacle',
+  // ACAL498
+  lanterneau: 'Lanterneau', exutoire: 'Exutoire', climatiseur: 'Climatiseur',
+  citerne: 'Citerne', garde_corps: 'Garde-corps', joint_dilatation: 'Joint de dilatation',
 }
 
 /**

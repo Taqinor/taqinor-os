@@ -40,6 +40,7 @@ const TERMES = [
   { mot: 'Horizon lointain', def: "Relief et constructions éloignés (montagnes, immeubles) qui masquent le soleil bas sur l'horizon et réduisent la production." },
   { mot: 'Injection réseau', def: 'Électricité produite en surplus, renvoyée vers le réseau électrique public.' },
   { mot: 'IS (impôt sur les sociétés)', def: "Impôt calculé sur le bénéfice de l'entreprise." },
+  { mot: 'Isc (courant de court-circuit)', def: "Courant maximal qu'un module débite quand ses bornes sont reliées entre elles ; il augmente avec l'ensoleillement." },
   { mot: 'kWc (kilowatt-crête)', def: "Puissance nominale maximale d'une installation photovoltaïque, mesurée dans des conditions standard." },
   { mot: 'Lead', def: 'Prospect intéressé par une offre, avant sa transformation en client signé.' },
   { mot: 'Liasse fiscale', def: "Synthèse annuelle des comptes de la société, transmise au comptable ou à l'administration." },
@@ -53,6 +54,7 @@ const TERMES = [
   { mot: 'Pipeline', def: "Ensemble des affaires commerciales en cours, ni signées ni perdues." },
   { mot: 'PR (ratio de performance)', def: "Rapport entre l'énergie réellement produite et celle qu'aurait donnée l'ensoleillement reçu sans aucune perte : il résume toutes les pertes." },
   { mot: 'PVGIS', def: "Base de données publique de la Commission européenne qui fournit l'ensoleillement et la température heure par heure d'un site." },
+  { mot: 'Ratio DC/AC', def: "Rapport entre la puissance des modules (courant continu) et celle de l'onduleur (courant alternatif) : plus il est élevé, plus l'onduleur peut écrêter aux heures de forte production." },
   { mot: 'RC décennale', def: "Assurance obligatoire couvrant les dommages à l'ouvrage pendant dix ans après la réception des travaux." },
   { mot: 'SAV (service après-vente)', def: 'Suivi des tickets et interventions techniques après la mise en service.' },
   { mot: 'Stage (étape du funnel)', def: "Position d'un lead dans le parcours commercial (nouveau, contacté, devis envoyé, signé…)." },
@@ -60,6 +62,8 @@ const TERMES = [
   { mot: 'TMY (année météorologique type)', def: "Année fictive assemblée à partir de mois réels représentatifs, qui sert à simuler une production typique." },
   { mot: 'TSRF (facteur d’ensoleillement total)', def: "Part du rayonnement disponible qu'un module reçoit réellement, compte tenu de son orientation, de son inclinaison et des ombrages." },
   { mot: 'TVA', def: 'Taxe sur la valeur ajoutée — appliquée sur les ventes, récupérable sur les achats.' },
+  { mot: 'Vmp (tension au point de puissance maximale)', def: "Tension d'un module quand il délivre sa puissance maximale ; elle baisse quand il fait chaud et peut alors sortir de la plage de suivi de l'onduleur." },
+  { mot: 'Voc (tension à vide)', def: "Tension d'un module ou d'une chaîne sans charge ; le froid l'augmente, d'où la vérification de la tension maximale admise par l'onduleur." },
 ]
 
 export default function LexiquePage() {

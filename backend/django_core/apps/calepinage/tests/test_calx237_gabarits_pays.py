@@ -183,6 +183,16 @@ class AucuneNormeTest(SimpleTestCase):
                         'Le bandeau doit être DESSINÉ, pas seulement rendu '
                         'dans la réponse.')
 
+    def test_le_bandeau_nomme_les_quatre_organes_du_cote_alternatif(self):
+        # ACAL686 — sans norme, le côté alternatif n'est pas dessiné ET le
+        # bandeau le dit ; rien n'est ajouté au schéma.
+        for organe in ('disjoncteur AC', 'compteur de production', 'TGBT',
+                       'compteur du réseau'):
+            self.assertIn(organe, self.gabarit['bandeau'])
+        self.assertIn('Norme électrique', self.gabarit['bandeau'])
+        dessine = ' '.join(_textes(self.svg))
+        self.assertIn('Côté alternatif non dessiné', dessine)
+
     def test_le_bandeau_ne_reintroduit_aucun_calibre(self):
         for marqueur in MARQUEURS_DE_CALIBRE:
             self.assertNotIn(marqueur, self.gabarit['bandeau'])

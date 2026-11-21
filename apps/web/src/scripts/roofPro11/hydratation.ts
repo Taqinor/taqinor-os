@@ -38,6 +38,7 @@ import {
   type SerializeMeta,
   type SerializedLayout,
 } from './prefill';
+import { lireReperesChantier } from './reperesChantier'; // ACAL593
 import { type CoucheElectrique } from './electrique3d';
 import { type AffectationModules } from './moduleSelect';
 import { lireBatiments } from './batiment'; // ACAL31
@@ -150,6 +151,7 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
       if (doc.underlay != null) ctx.underlay = copie(doc.underlay);
       ctx.parcelle = lireParcelle(doc); // ACAL233
       ctx.alleeTechnique = lireAlleeTechnique(doc); // ACAL258
+      ctx.reperesChantier = lireReperesChantier(doc); // ACAL593
     }
   }
   if (h.alleeTechnique !== undefined) ctx.alleeTechnique = copie(h.alleeTechnique ?? null); // ACAL258

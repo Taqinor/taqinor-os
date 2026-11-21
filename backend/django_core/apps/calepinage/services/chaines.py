@@ -192,6 +192,12 @@ class Conception:
     #: branches AC — l'UNIQUE indicateur de ce régime.
     micro_seul: bool = False
     _drapeaux: Tuple[str, ...] = field(default=(), repr=False)
+    #: ACAL650 — les clés stables des pans FUSIONNÉS en un groupe électrique
+    #: (un tuple par groupe de 2 pans ou plus) ; vide = aucun regroupement.
+    fusions: Tuple[Tuple[str, ...], ...] = ()
+    #: ACAL633 — le nombre d'onduleurs ACCEPTÉ dans l'entrée (``None`` = non
+    #: saisi : le plafond de dossier fait foi, comme avant).
+    nombre_onduleurs: Optional[int] = None
 
     @property
     def fiche_incomplete(self):
@@ -364,11 +370,63 @@ def _module_du_pan(pan):
                      pmax_wc=pmax)
 
 
-def _groupes_electriques(layout):
-    """Les ``GroupePan`` du noyau — UN groupe par pan, jamais deux mélangés ;
-    DEUX pour un pan est-ouest, un par face (ACAL139)."""
-    return tuple(groupe for pan in _pans_poses(layout)
-                 for groupe in _groupes_du_pan(pan))
+def _meme_orientation(a, b, tolerance_deg):
+    """ACAL650 — deux pans d'orientation CONNUE et égale à la tolérance
+    saisie près (azimut circulaire, inclinaison) ; est-ouest exclu."""
+    valeurs = (a.azimut_deg, b.azimut_deg, a.inclinaison_deg,
+               b.inclinaison_deg)
+    if tolerance_deg is None or a.est_ouest or b.est_ouest \
+            or a.module != b.module \
+            or not (a.source_orientation and b.source_orientation) \
+            or any(v is None for v in valeurs):
+        return False
+    ecart_azimut = abs((a.azimut_deg - b.azimut_deg + 180.0) % 360.0 - 180.0)
+    return (ecart_azimut <= tolerance_deg + 1e-9
+            and abs(a.inclinaison_deg - b.inclinaison_deg)
+            <= tolerance_deg + 1e-9)
+
+
+def tolerance_orientation_societe(parametres):
+    """ACAL650 — la tolérance SAISIE avec sa source (réglage société
+    ``tolerance_orientation_pans_deg``), ou ``None`` : jamais supposée."""
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
+
+    saisie = ((parametres or {}).get(SECTION_ELECTRIQUE_SOCIETE) or {}).get(
+        'tolerance_orientation_pans_deg')
+    if not isinstance(saisie, dict) or not saisie.get('source'):
+        return None
+    valeur = _nombre(saisie.get('valeur'))
+    return valeur if valeur is not None and valeur >= 0 else None
+
+
+def _fusions_de_pans(pans, tolerance_deg=None):
+    """ACAL650 — les pans regroupés par orientation, dans l'ordre du document
+    (sans tolérance saisie : un groupe par pan, comportement d'aujourd'hui)."""
+    groupes = []
+    for pan in pans:
+        tete = next((g for g in groupes
+                     if _meme_orientation(g[0], pan, tolerance_deg)), None)
+        if tete is None:
+            groupes.append([pan])
+        else:
+            tete.append(pan)
+    return groupes
+
+
+def _groupes_electriques(layout, tolerance_deg=None):
+    """Les ``GroupePan`` du noyau — UN groupe par pan ; DEUX pour un pan
+    est-ouest, un par face (ACAL139) ; ACAL650 : des pans de même orientation
+    à la tolérance SAISIE près forment un groupe, libellé du PREMIER pan."""
+    groupes = []
+    for fusion in _fusions_de_pans(_pans_poses(layout), tolerance_deg):
+        tete = fusion[0]
+        if len(fusion) == 1:
+            groupes.extend(_groupes_du_pan(tete))
+            continue
+        groupes.append(GroupePan(
+            label=tete.label, nb_modules=sum(p.modules for p in fusion),
+            azimut_deg=tete.azimut_deg, inclinaison_deg=tete.inclinaison_deg))
+    return tuple(groupes)
 
 
 # ──────────────────────────────────────────────────────── fiches techniques
@@ -433,6 +491,9 @@ def _specs_onduleur(specs, designation=''):
         valeur = _nombre(specs.get(cle))
         if valeur is not None:
             optionnels[cle] = valeur
+    # ACAL661 — le drapeau de la fiche (ACAL659), seulement s'il est publié.
+    if isinstance(specs.get('mppt_independants'), bool):
+        optionnels['mppt_independants'] = specs['mppt_independants']
     phases = _entier(specs.get('phases'))
     return (SpecOnduleur(
         n_mppt=int(specs['n_mppt']), mppt_v_min=float(specs['mppt_v_min']),
@@ -547,7 +608,8 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
                       zone_keraunique=False, inclure_prise_terre=False,
                       plafond_kwc_par_onduleur=None, regime=None,
                       batterie=False, batterie_designation='',
-                      batterie_kwh=None, batterie_v_nominal=None):
+                      batterie_kwh=None, batterie_v_nominal=None,
+                      tolerance_orientation_deg=None):
     """L'``EntreeElectrique`` du noyau, construite depuis le CALEPINAGE.
 
     Les températures viennent de CAL123 (``services.electrique``) : elles sont
@@ -560,7 +622,7 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
     """
     return EntreeElectrique(
         module=module, onduleur=onduleur,
-        groupes=_groupes_electriques(layout),
+        groupes=_groupes_electriques(layout, tolerance_orientation_deg),
         dc_m=float(dc_m or 0.0), ac_m=float(ac_m or 0.0),
         phases=int(phases or getattr(onduleur, 'phases', 1) or 1),
         temp_froid_c=temperatures.froid_c, temp_chaud_c=temperatures.chaud_c,
@@ -597,6 +659,11 @@ def _verdict_mppt(pans, onduleur, specs_onduleur_brut):
     """
     n_mppt = max(1, int(getattr(onduleur, 'n_mppt', 1) or 1))
     nom = getattr(onduleur, 'designation', '') or "l'onduleur retenu"
+    if getattr(onduleur, 'mppt_independants', None) is False and n_mppt > 1:
+        # ACAL661 — une seule entrée LOGIQUE : la fiche le dit, on le nomme.
+        return ("les %d entrées de %s ne sont pas indépendantes selon sa "
+                "fiche : une seule orientation par suiveur (%d pan(s) sur une "
+                "entrée logique)" % (n_mppt, nom, len(pans)), False, ())
     if len(pans) <= n_mppt:
         return ("un pan par entrée MPPT (%d pan(s) pour %d entrée(s)) ; %s"
                 % (len(pans), n_mppt, REGLE_UNE_ORIENTATION_PAR_CHAINE),
@@ -890,11 +957,16 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     à plusieurs modèles est dimensionné modèle par modèle
     (``_concevoir_par_module``) ; mono-module, le chemin est inchangé.
     """
+    nombre_onduleurs = options.pop('nombre_onduleurs', None)  # ACAL633
     pans, fiches_par_pan = _pans_avec_leur_fiche(
         _pans_poses(layout), fiches_modules, module_specs, module_designation)
     module, manque_module = specs_module(module_specs, module_designation)
     onduleur, manque_onduleur = _specs_onduleur(onduleur_specs,
                                                 onduleur_designation)
+    if nombre_onduleurs and onduleur is not None:
+        # ACAL633 — N onduleurs acceptés : N × les entrées MPPT du modèle.
+        onduleur = replace(
+            onduleur, n_mppt=int(onduleur.n_mppt) * int(nombre_onduleurs))
     # ACAL162 — AUCUN onduleur de chaîne désigné (fiche vide, pas une fiche
     # incomplète) mais un MICRO-onduleur en emplacement optimiseur : le champ
     # est câblé en branches AC. Aucun onduleur fictif n'est construit.
@@ -948,7 +1020,10 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
         alertes=(tuple(resultat.alertes) + messages
                  + ((coeffs,) if coeffs else ())),
         regle_mppt=regle, partage_mppt=partage, temperatures=temperatures,
-        coefficients_non_sources=tuple(module.coefficients_non_sources))
+        coefficients_non_sources=tuple(module.coefficients_non_sources),
+        fusions=tuple(tuple(p.cle_stable for p in f) for f in _fusions_de_pans(
+            pans, options.get('tolerance_orientation_deg')) if len(f) > 1),
+        nombre_onduleurs=int(nombre_onduleurs) if nombre_onduleurs else None)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1046,32 +1121,52 @@ def affectation(conception, *, imposee=None):
     evaluation = evaluer_onduleurs(conception)
     nombre = evaluation.nombre if evaluation is not None else 0
     numero_onduleur = 1 if nombre == 1 else None
+    # ACAL633 — N onduleurs ACCEPTÉS : la chaîne sur l'entrée globale j va à
+    # l'onduleur ⌈j ÷ entrées par onduleur⌉, sur son entrée locale.
+    accepte = getattr(conception, 'nombre_onduleurs', None)
+    par_onduleur = (max(1, conception.entree.onduleur.n_mppt // accepte)
+                    if accepte and conception.entree is not None else None)
 
     repartitions_par_pan = {}
     for repartition in getattr(conception, 'repartitions', ()) or ():
         repartitions_par_pan.setdefault(repartition.pan, []).append(
             repartition)
 
-    lignes = []
+    # ACAL650 — un groupe FUSIONNÉ : les chaînes du premier pan parcourent
+    # les modules de tous ses pans, chacun publié avec SON pan d'origine.
+    suite = {cle: [p for p in conception.pans if p.cle_stable in fusion]
+             for fusion in getattr(conception, 'fusions', ()) for cle in fusion}
+    par_pan = {}
     for pan in conception.pans:
-        par_rang = {}
+        groupe = suite.get(pan.cle_stable, [pan])
+        if groupe[0] is not pan:
+            continue
         for rangs, chaines in _rangs_par_groupe(
                 pan, chaines_par_pan.get(pan.label, ()),
                 repartitions_par_pan.get(pan.label, ())):
+            if len(groupe) > 1:
+                rangs = [(p, r) for p in groupe for r in range(1, p.modules + 1)]
             libres = iter(rangs)
             for chaine in chaines:
                 for _ in range(chaine.nb_modules):
                     rang_module = next(libres, None)
                     if rang_module is None:
                         break
-                    par_rang[rang_module] = {
-                        'module': pan.cle_module(rang_module),
-                        'pan': pan.label,
+                    sien, rang_module = (rang_module if len(groupe) > 1
+                                         else (pan, rang_module))
+                    par_pan.setdefault(sien.cle_stable, {})[rang_module] = {
+                        'module': sien.cle_module(rang_module),
+                        'pan': sien.label,
                         'chaine': _numero_chaine(chaine),
-                        'onduleur': numero_onduleur,
-                        'mppt': chaine.mppt,
+                        'onduleur': (numero_onduleur if not par_onduleur else
+                                     (chaine.mppt - 1) // par_onduleur + 1),
+                        'mppt': (chaine.mppt if not par_onduleur else
+                                 (chaine.mppt - 1) % par_onduleur + 1),
                         'source': SOURCE_AUTO,
                     }
+    lignes = []
+    for pan in conception.pans:
+        par_rang = par_pan.get(pan.cle_stable, {})
         for rang_module in range(1, pan.modules + 1):
             lignes.append(par_rang.get(rang_module) or {
                 'module': pan.cle_module(rang_module),
@@ -1153,7 +1248,25 @@ def evaluer_onduleurs(conception, *, reglages=None):
         return None
     puissance_dc = (conception.resultat.puissance_kwc
                     if conception.chaines else entree.puissance_kwc)
-    return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    accepte = getattr(conception, 'nombre_onduleurs', None)
+    if not accepte:
+        return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    # ACAL633 — le nombre ACCEPTÉ remplace celui du plafond de dossier : le
+    # noyau ne sait compter que par plafond, on lui donne la puissance par
+    # onduleur qui rend EXACTEMENT ce nombre, puis on rétablit le vrai plafond.
+    if not puissance_dc or puissance_dc <= 0:
+        return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    evaluation = dimensionner_onduleurs(
+        replace(entree, plafond_kwc_par_onduleur=puissance_dc / accepte),
+        puissance_dc, reglages)
+    plafond = entree.plafond_kwc_par_onduleur
+    bloquants = tuple(evaluation.bloquants)
+    if plafond and puissance_dc / accepte > float(plafond) + 1e-9:
+        bloquants += ("%s kWc par onduleur au-dessus du plafond de %s kWc — "
+                      "déport de modules nécessaire"
+                      % (fr(puissance_dc / accepte, 1), fr(plafond, 0)),)
+    return replace(evaluation, plafond_kwc_par_onduleur=plafond,
+                   bloquants=bloquants)
 
 
 def empreinte_entree(layout, *, module_specs, onduleur_specs, temperatures,
@@ -1498,8 +1611,12 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
             chaines_par_mppt.setdefault(
                 (ligne['onduleur'], ligne['mppt']), set()).add(numero)
 
+    # ACAL650 — deux pans d'un même groupe FUSIONNÉ ne font qu'une surface.
+    groupe_de = {p.label: i for i, fusion in enumerate(
+        getattr(conception, 'fusions', ())) for p in conception.pans
+        if p.cle_stable in fusion}
     for numero, pans in sorted(pans_par_chaine.items()):
-        if len(pans) > 1:
+        if len({groupe_de.get(p, p) for p in pans}) > 1:
             refus.append(
                 "Chaîne %d : elle traverse les pans %s — une chaîne reste sur "
                 "UN pan." % (numero, ', '.join(sorted(pans))))

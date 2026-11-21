@@ -312,6 +312,9 @@ export interface ImageryProvider {
   /** Résolution ANNONCÉE par le fournisseur (m/pixel). `null` = non annoncée —
    *  jamais un chiffre estimé. */
   resolutionM: number | null;
+  /** URL de la page du fournisseur où `resolutionM` a été LUE — obligatoire dès que
+   *  `resolutionM` est posée (ACAL508). */
+  resolutionSource?: string;
   /** Pays (ISO 3166-1 alpha-2, minuscules) où le fournisseur est proposé.
    *  `null` = partout. */
   countries: readonly string[] | null;
@@ -424,6 +427,23 @@ export function imageryAttribution(
   const base = provider?.attribution ?? '';
   if (societe && base && !base.includes(societe)) return `${base} ${societe}`;
   return societe || base;
+}
+
+/** ACAL508 — refus NOMMÉ d'une résolution posée sans la page où elle a été lue ; `null` si conforme. */
+export function resolutionSourceRefus(provider: ImageryProvider): string | null {
+  if (provider.resolutionM == null || provider.resolutionSource) return null;
+  return `Fournisseur « ${provider.id} » : resolutionM sans resolutionSource — indiquez la page du fournisseur où elle est annoncée.`;
+}
+
+/** ACAL508 — ligne « Image : … » sous la carte : fournisseur, puis la résolution PUBLIÉE avec
+ *  sa source, sinon « date et résolution non annoncées par le fournisseur ». Jamais estimée. */
+export function imageryDisclosure(provider: ImageryProvider | null): string {
+  if (!provider) return '';
+  const annoncee = provider.resolutionM != null && !!provider.resolutionSource && provider.resolutionM > 0;
+  const fin = annoncee
+    ? `résolution annoncée : ${String(provider.resolutionM).replace('.', ',')} m par pixel (source : ${provider.resolutionSource})`
+    : 'date et résolution non annoncées par le fournisseur';
+  return `Image : ${provider.label} — ${fin}`;
 }
 
 /** Style MapLibre (ou URL de style) d'un fournisseur du registre, attribution

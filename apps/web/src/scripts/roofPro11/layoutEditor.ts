@@ -53,8 +53,12 @@ import { type Ctx } from './context';
 import { type LngLat, pointInPolygon } from '../../lib/roof';
 import { type ProdConfig, type RenderSceneFn } from './types';
 import { creerCalqueReperes, glisserAimante } from './reperesAlignement'; // ACAL425
-import { actionDisposition } from './raccourcisAtelier';
-import { createLayoutHistory, createValueHistory, createWorkshopHistory, type WorkshopSnapshot } from './layoutHistory';
+import { actionDisposition, actionAtelierCtrl } from './raccourcisAtelier';
+import { copierSelection as memoriserLot, collerAuPoint } from './collage'; // ACAL553
+import {
+  createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures,
+  type WorkshopSnapshot,
+} from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
 import {
   moveFreePanels,
@@ -76,8 +80,10 @@ import {
   // panneau dont le centre ET l'angle propre changent EN MÊME TEMPS (translation, réflexion) —
   // `checkPanelAt`/`checkPanelRotation` de la lib ne couvrent que l'un OU l'autre séparément.
   panelCornersUV,
-  polyOverlap,
-  polySeparation,
+  placerCopiesToutOuRien, // ACAL553
+  panelCornersFor,
+  hardViolationsFor,
+  type CopiePanneau,
   type FreeGeom,
   type FreeCheck,
   type FreeLayoutState,
@@ -86,9 +92,12 @@ import {
   type FreeMargins,
   type RectUV,
   type Vec2,
-  segmentsCross,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
+import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; // ACAL551
+import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
+export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
+import { motifPanExistant } from './panExistant'; // ACAL510
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -193,6 +202,9 @@ export interface LayoutEditor {
   /** CALX112 — duplique la sélection libre, collée au décalage SAISI (m, le long de l'axe
    *  des rangées). Un seul pas d'historique pour tout le geste ; tout ou rien. */
   dupliquerSelection: (members: readonly number[], decalageM: number) => boolean;
+  /** ACAL553 — Ctrl + C / Ctrl + V : copie la sélection libre, la colle au curseur dans le pan actif. */
+  copierSelection: () => boolean;
+  collerSelection: () => boolean;
   /** CALX113 — symétrise la sélection libre par rapport à l'axe donné (droite ENU définie
    *  par deux points). Tout ou rien ; refusée seulement sur une contrainte DURE réelle. */
   symetriserSelection: (members: readonly number[], axis: { a: readonly [number, number]; b: readonly [number, number] }) => boolean;
@@ -310,79 +322,6 @@ function buildFallbackLayoutDom(container: HTMLElement | null): void {
     '</div>',
   ].join('');
   container.appendChild(win);
-}
-
-// ═══════════ CALX112/113 — contrôles DURS d'un panneau CANDIDAT (centre ET angle propre
-// changés EN MÊME TEMPS par une translation ou une réflexion) ═══════════
-// `lib/freeLayout.ts` expose `checkRect` (translation, jamais d'angle) et
-// `checkPanelRotation` (angle, jamais de centre) mais aucune primitive ne couvre les DEUX à
-// la fois — et ce fichier n'est PAS dans le périmètre de cette lane (LOT2_RECIPE.md : fichiers
-// CHAUDS, `rp11/layoutEditor.ts`/`freeMode.ts` seulement). Les fonctions ci-dessous
-// RECOMPOSENT donc les trois contraintes DURES (contour / panneau / obstacle — jamais les
-// deux RELÂCHABLES retrait/écart, hors du texte de CALX112/113) à partir des seules
-// primitives déjà EXPORTÉES (`panelCornersUV`, `polyOverlap`, `polySeparation`) plus
-// `pointInPolygon` (déjà la primitive du lasso CALX116 plus bas) — aucune règle métier
-// neuve, seulement de la géométrie publique assemblée différemment.
-
-/** 4 coins (u, v) d'un rectangle AXÉ — équivalent local du `rectCorners` privé de la lib. */
-function cornersOfRect(r: RectUV): Vec2[] {
-  return [
-    [r.u0, r.v0],
-    [r.u1, r.v0],
-    [r.u1, r.v1],
-    [r.u0, r.v1],
-  ];
-}
-
-/** 4 coins (u, v) d'un panneau EXISTANT, à sa position/angle ACTUELS. */
-function panelCornersFor(g: FreeGeom, p: Pick<FreePanel, 'cx' | 'cy' | 'angleDeg'>): Vec2[] {
-  const [cu, cv] = toUV(g, p.cx, p.cy);
-  return p.angleDeg ? panelCornersUV(g, cu, cv, p.angleDeg) : cornersOfRect(rectAt(g, cu, cv));
-}
-
-/** Deux segments [p1,p2] / [p3,p4] se croisent-ils vraiment ? (copie locale de la primitive
- *  privée `segmentsCross` de la lib — même algèbre, aucune règle neuve). */
-/** Un coin du panneau est hors contour, OU une arête du contour traverse le panneau (le cas
- *  du toit CONCAVE : 4 coins dedans et une encoche qui coupe quand même le rectangle). */
-function panelOutsideOutline(corners: readonly Vec2[], ringUV: readonly Vec2[]): boolean {
-  for (const c of corners) if (!pointInPolygon(c, ringUV as [number, number][])) return true;
-  for (let i = 0; i < corners.length; i++) {
-    const a = corners[i];
-    const b = corners[(i + 1) % corners.length];
-    for (let j = 0, k = ringUV.length - 1; j < ringUV.length; k = j++) {
-      if (segmentsCross(ringUV[k], ringUV[j], a, b)) return true;
-    }
-  }
-  return false;
-}
-
-/** Les trois contraintes DURES d'un panneau candidat (contour / panneaux / obstacles),
- *  renvoyées comme la liste des `FreeViolation` déjà nommées ailleurs dans ce fichier
- *  (`violationLabel`) — jamais un refus muet. `extra` = panneaux du MÊME geste déjà
- *  validés (copies, membres réfléchis) : ils s'excluent aussi entre eux. */
-function hardViolationsFor(
-  g: FreeGeom,
-  ringUV: readonly Vec2[],
-  corners: readonly Vec2[],
-  othersCorners: readonly (readonly Vec2[])[],
-  extra: readonly (readonly Vec2[])[],
-): FreeViolation[] {
-  const violations: FreeViolation[] = [];
-  if (panelOutsideOutline(corners, ringUV)) violations.push('outline');
-  let overlaps = false;
-  for (const oc of othersCorners) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
-  for (const oc of extra) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
-  if (overlaps) violations.push('overlap');
-  for (const o of g.obstacles) {
-    if (o.ring.length < 3) continue;
-    const ringO = o.ring.map(([x, y]) => toUV(g, x, y));
-    const d = polyOverlap(corners as Vec2[], ringO) ? 0 : polySeparation(corners as Vec2[], ringO);
-    if (d <= o.clearanceM) {
-      violations.push('obstacle');
-      break;
-    }
-  }
-  return violations;
 }
 
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
@@ -521,6 +460,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // PV25 — ÉTAT de la sélection multiple. Il vit dans ce module (rien à ajouter au ctx
   // partagé) : c'est une intention d'édition, pas un état de design.
   let selection: number[] = [];
+  let dernierPointSurvol: maplibregl.Point | null = null; // ACAL553
   /** Mode « sélection » (tactile) : le glissé trace un rectangle au lieu de déplacer. */
   let selectMode = false;
   /** Mode « rangée » : le glissé sur un panneau emmène TOUTE sa rangée (axe contraint). */
@@ -774,25 +714,6 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     workshopHistory.drop();
   }
 
-  /** Libellé FR d'une contrainte violée — on NOMME ce qui bloque, jamais « impossible ». */
-  function violationLabel(v: FreeViolation): string {
-    switch (v) {
-      case 'outline':
-        return 'le panneau sortirait du toit';
-      case 'overlap':
-        return 'il chevaucherait un autre panneau';
-      case 'obstacle':
-        return 'il tomberait sur un obstacle (ou son dégagement)';
-      case 'setback':
-        return 'il passerait sous le retrait de rive que vous avez fixé';
-      case 'gap':
-        return 'il passerait sous l’écart entre panneaux que vous avez fixé';
-      default:
-        return 'placement invalide';
-    }
-  }
-  const cm = (m: number): string => `${Math.round(m * 100)} cm`;
-
   /** Affiche les distances MESURÉES (rive / voisin) — c'est ce qui rend une marge réduite
    *  VISIBLE : l'utilisateur voit le chiffre auquel il descend, il ne le devine pas. */
   function showMeasure(chk: FreeCheck | null) {
@@ -801,10 +722,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       freeMeasureEl.textContent = '';
       return;
     }
-    const edge = Number.isFinite(chk.edgeM) ? cm(chk.edgeM) : '—';
-    const near = chk.panelM === null ? '—' : cm(chk.panelM);
-    const verdict = chk.ok ? '' : ` — ${chk.violations.map(violationLabel).join(', ')}`;
-    freeMeasureEl.textContent = `Rive : ${edge} · Voisin : ${near}${verdict}`;
+    freeMeasureEl.textContent = texteDeMesure(chk); // ACAL551 — composeur extrait
   }
 
   /** Panneau libre le plus proche d'un point écran (même seuil de saisie que la lattice). */
@@ -1083,43 +1001,64 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!st || !g) return false;
     const src = [...new Set(members)].filter((i) => Number.isInteger(i) && i >= 0 && i < st.panels.length);
     if (!src.length || !Number.isFinite(decalageM) || decalageM === 0) return false;
+    const copies = src.map((i) => {
+      const [u, v] = toUV(g, st.panels[i].cx, st.panels[i].cy);
+      return { u: u + decalageM, v, angleDeg: st.panels[i].angleDeg, face: st.panels[i].face };
+    });
+    const nom = `Dupliqué — ${fmt(src.length)} panneaux copiés à ${fmt1(Math.abs(decalageM))} m`;
+    return poserCopies(copies, src, 'Duplication refusée', 'copié', nom);
+  }
+
+  /** ACAL553 — UNE fonction de placement tout-ou-rien, partagée par la duplication et le
+   *  collage : un seul pas d'historique, rien de muté si un membre est refusé. */
+  function poserCopies(
+    copies: readonly CopiePanneau[],
+    refuses: readonly number[],
+    titreRefus: string,
+    verbe: string,
+    nomSucces: string,
+  ): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g) return false;
     recordFreeHistory();
-    const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
-    const othersCorners = st.panels.map((p) => panelCornersFor(g, p));
-    const placed: Vec2[][] = [];
-    const startIdx = st.panels.length;
-    const news: FreePanel[] = [];
-    for (const i of src) {
-      const p = st.panels[i];
-      const [u, v] = toUV(g, p.cx, p.cy);
-      const nu = u + decalageM;
-      const angle = p.angleDeg ?? 0;
-      const corners = panelCornersUV(g, nu, v, angle);
-      const violations = hardViolationsFor(g, ringUV, corners, othersCorners, placed);
-      if (violations.length) {
-        dropFreeHistory();
-        flashRefusal(src);
-        if (layoutNoteEl) {
-          layoutNoteEl.textContent = `Duplication refusée : ${violations.map(violationLabel).join(', ')} — rien n’a été copié.`;
-        }
-        renderLayoutPanel();
-        return false;
+    const res = placerCopiesToutOuRien(st, g, copies);
+    if (!res.ok) {
+      dropFreeHistory();
+      flashRefusal(refuses);
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = `${titreRefus} : ${res.violations.map(violationLabel).join(', ')} — rien n’a été ${verbe}.`;
       }
-      placed.push(corners);
-      const [cx, cy] = toENU(g, nu, v);
-      const copy: FreePanel = { cx, cy };
-      if (p.angleDeg) copy.angleDeg = p.angleDeg;
-      if (p.face) copy.face = p.face;
-      news.push(copy);
+      renderLayoutPanel();
+      return false;
     }
-    st.panels.push(...news);
-    setSelection(news.map((_, k) => startIdx + k)); // les COPIES restent sélectionnées
-    if (layoutNoteEl) {
-      layoutNoteEl.textContent = `Dupliqué — ${fmt(news.length)} panneaux copiés à ${fmt1(Math.abs(decalageM))} m (${fmt(st.panels.length)} posés).`;
-    }
+    const startIdx = st.panels.length;
+    st.panels.push(...res.news);
+    setSelection(res.news.map((_, k) => startIdx + k)); // les COPIES restent sélectionnées
+    if (layoutNoteEl) layoutNoteEl.textContent = `${nomSucces} (${fmt(st.panels.length)} posés).`;
     renderCustomLayout();
     renderLayoutPanel();
     return true;
+  }
+
+  /** ACAL553 — Ctrl + C : mémorise la sélection libre (mémoire d'écran, jamais le document). */
+  function copierSelection(): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!freeActive() || !st || !g) return false;
+    const n = memoriserLot(st, g, selection);
+    if (n && layoutNoteEl) layoutNoteEl.textContent = `Copié — ${fmt(n)} panneaux en mémoire.`;
+    return n > 0;
+  }
+
+  /** ACAL553 — Ctrl + V : colle au dernier point survolé (sinon au centre du pan actif). */
+  function collerSelection(): boolean {
+    const g = freeGeom();
+    if (!freeActive() || !g) return false;
+    const enu = dernierPointSurvol ? screenToENU(dernierPointSurvol) : null;
+    const copies = collerAuPoint(g, enu);
+    if (!copies) return false;
+    return poserCopies(copies, [], 'Collage refusé', 'collé', `Collé — ${fmt(copies.length)} panneaux`);
   }
 
   /** CALX113 — axe de symétrie : une droite ENU définie par deux points DISTINCTS (cliqués,
@@ -1283,23 +1222,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // annulable — AUCUN câblage supplémentaire requis côté entrée : `undo()`/`redo()` sont déjà
   // les fonctions branchées sur Ctrl+Z/Ctrl+Y et les boutons ↶/↷ (plus bas dans ce fichier).
   const workshopHistory = createWorkshopHistory();
-  // CAL100 — un `ctx` de test/hôte antérieur peut ne PAS porter vertices/obstacles/areas
-  // (fixtures allégées qui ne peuplent que ce dont le mode libre a besoin) : jamais lu en
-  // aveugle, même garde que `margins()` pour `freeMargins` un peu plus haut dans ce fichier.
-  function snapshotWorkshop(): WorkshopSnapshot {
-    return {
-      vertices: Array.isArray(ctx.vertices) ? ctx.vertices.map((v) => [v[0], v[1]]) : [],
-      obstacles: Array.isArray(ctx.obstacles) ? ctx.obstacles.map((o) => ({ ...o })) : [],
-      areas: Array.isArray(ctx.areas)
-        ? ctx.areas.map((a) => ({ ...a, vertices: a.vertices.map((v) => [v[0], v[1]]), obstacles: a.obstacles.map((o) => ({ ...o })) }))
-        : [],
-      roofType: ctx.roofType,
-      pitchDeg: ctx.pitchDeg,
-      facingAzimuthDeg: ctx.facingAzimuthDeg,
-      layoutOccupied: ctx.layoutState ? [...ctx.layoutState.occupied].sort((a, b) => a - b) : undefined,
-      freeState: ctx.freeState ? { panels: ctx.freeState.panels.map((p) => ({ ...p })) } : undefined,
-    };
-  }
+  // CAL100 — corps extrait vers `layoutHistory.ts::photoAtelierDepuisCtx` (ACAL515).
+  function snapshotWorkshop(): WorkshopSnapshot { return photoAtelierDepuisCtx(ctx); }
   function applyWorkshopSnapshot(s: WorkshopSnapshot) {
     if (Array.isArray(ctx.vertices)) ctx.vertices = s.vertices.map((v) => [v[0], v[1]]);
     if (Array.isArray(ctx.obstacles)) ctx.obstacles = s.obstacles.map((o) => ({ ...o }));
@@ -1312,6 +1236,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     ctx.roofType = s.roofType;
     ctx.pitchDeg = s.pitchDeg;
     ctx.facingAzimuthDeg = s.facingAzimuthDeg;
+    restaurerEnvZonesMesures(ctx, s); // ACAL515
     if (s.layoutOccupied && ctx.layoutState) {
       ctx.layoutState.occupied = new Set(s.layoutOccupied.filter((i) => i >= 0 && i < ctx.layoutState!.cells.length));
     }
@@ -2147,6 +2072,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!ctx.layoutMode || !ctx.layoutState) return;
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
+    // ACAL553 — Ctrl + C / V : jamais dans un champ de saisie ; sans sélection libre, la touche reste au navigateur.
+    const cible = e.target as HTMLElement | null;
+    const saisie = !!cible && (/^(input|textarea|select)$/i.test(cible.tagName) || cible.isContentEditable);
+    const presse = mod && !saisie ? actionAtelierCtrl(e) : null;
+    if (presse === 'copier' || presse === 'coller') {
+      if ((presse === 'copier' ? copierSelection() : collerSelection())) e.preventDefault();
+      return;
+    }
     const geste = mod ? actionDisposition(e) : null; // ACAL414 — Ctrl+Z / Y lus dans la table
     if (geste) {
       if (geste === 'annuler' ? undo() : redo()) e.preventDefault();
@@ -2380,6 +2313,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       return false;
     }
     emptyPress = null;
+    const iPan = (ctx.areas ?? []).findIndex((a) => a.id === ctx.activeAreaId); // ACAL510 — modules d'un pan existant : refus nommé
+    const refus = motifPanExistant(ctx.areas?.[iPan], Math.max(0, iPan));
+    if (refus) { if (layoutNoteEl) layoutNoteEl.textContent = refus; return true; } // consommé : rien ne bouge
     const drag: NonNullable<typeof layoutDrag> = { from, startPoint: point, moved: false, altKey, ctrlKey };
     layoutDrag = drag;
     // PV31 — placement libre : on fige l'ORIGINE du geste (positions de départ des membres
@@ -2432,6 +2368,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!res.ok) {
       d.freeBlocked = res.blocked;
       if (res.blocked) showMeasure(res.blocked);
+      peindreSilhouette(map, silhouetteDuLot(g, st.panels, d.freeOrigin, dx, dy, res.blocked, ctx.layoutPlan?.pack.origin)); // ACAL551
       if (layoutNoteEl) {
         const why = res.blocked ? res.blocked.violations.map(violationLabel).join(', ') : 'placement invalide';
         layoutNoteEl.textContent = `Ici : ${why}.`;
@@ -2440,6 +2377,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     d.freeBlocked = undefined;
     d.freePreviewed = true;
+    peindreSilhouette(map, null); // ACAL551 — position valide : le panneau suit le curseur, aucune silhouette
     // Mesures affichées pour le panneau SAISI, à sa position d'aperçu (rive / voisin) : la
     // marge réduite reste un acte VU et CHOISI, jamais un glissement silencieux.
     const posed = st.panels[d.from];
@@ -2650,6 +2588,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  simple CLIC (souris, `removeOnTap`) sans glissé SUPPRIME le panneau saisi ; un tap tactile
    *  bref ne supprime pas (la suppression tactile passe par l'appui long, géré séparément). */
   function endLayoutDrag(point: maplibregl.Point, removeOnTap = false) {
+    peindreSilhouette(map, null); // ACAL551 — relâchement : la silhouette disparaît, rien d'autre ne change
     // CALX116 — fin d'un LASSO : la sélection devient les panneaux dont le CENTRE tombe
     // dans l'anneau tracé (même logique que le cadre : un simple clic, sans glissé, bascule
     // le panneau visé au lieu de fermer un anneau de surface nulle).
@@ -2876,6 +2815,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (selectRow(hit).length) e.preventDefault();
   });
   map.on('mousemove', (e) => {
+    dernierPointSurvol = e.point; // ACAL553 — centre du collage
     if (layoutDrag || marquee || lasso) {
       moveLayoutDrag(e.point);
       return;
@@ -3022,6 +2962,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     freeAlignSelection,
     freeDistributeSelection,
     dupliquerSelection,
+    copierSelection,
+    collerSelection,
     symetriserSelection,
     panelsInLasso,
     isLassoMode: () => lassoMode,
@@ -3029,197 +2971,3 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   };
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
-   CAL106 — TENIR LA CHARGE DES GRANDS CHAMPS : LE RE-SNAP EN MASSE.
-   ----------------------------------------------------------------------------
-   Constat mesuré : le coût qui explose sur un grand champ n'est pas le rendu,
-   c'est le RE-SNAP EN MASSE. `nearestEmptyCell` balaie TOUTES les cellules de
-   la lattice pour UN centre ; les trois chemins de masse (retour depuis le
-   placement libre, `reenterCustomLayout` après un re-pavage, `hydrateLayout` au
-   rechargement d'un dossier) l'appellent une fois PAR panneau. C'est du
-   N × M : 2 000 panneaux sur une lattice de 2 000 cellules = 4 000 000 de
-   distances par geste, sur le fil d'exécution de l'interface. Dimensionné pour
-   la villa (quelques dizaines), jamais mesuré sur un champ.
-
-   `resnapEnMasse` fait le MÊME travail avec un index par cases : les cellules
-   vides sont rangées dans une grille de cases, et la recherche part de la case
-   du centre puis s'élargit en anneaux jusqu'à ce que l'anneau suivant ne puisse
-   plus contenir mieux. Le coût redevient proportionnel au voisinage, pas à la
-   lattice entière.
-
-   ÉQUIVALENCE STRICTE, PAS « À PEU PRÈS PAREIL » — c'est la condition posée par
-   la tâche (« aucun chiffre de calepinage ne change ») :
-     * même critère : la cellule VIDE la plus proche au carré de la distance ;
-     * même départage : à distance ÉGALE, la cellule qui vient en PREMIER dans
-       l'ordre de la lattice — exactement ce que produit le balayage linéaire,
-       qui n'améliore que sur un `<` strict ;
-     * même effet de bord : chaque centre occupe sa cellule AVANT que le centre
-       suivant ne cherche la sienne (l'ordre des centres compte, et il est
-       préservé).
-   Le test jumeau confronte les deux implémentations sur des cas aléatoires et
-   exige des ensembles d'index IDENTIQUES.
-   ══════════════════════════════════════════════════════════════════════════ */
-
-/** Un centre à re-snapper (repère ENU, mètres). */
-export interface CentreASnapper {
-  cx: number;
-  cy: number;
-}
-
-/**
- * CAL106 — RÉFÉRENCE : le balayage linéaire historique, extrait tel quel pour
- * que le test puisse confronter la version rapide à la sémantique d'origine.
- * Ce n'est pas du code mort : c'est l'étalon de l'équivalence.
- */
-export function resnapNaif(
-  cells: readonly { index: number; cx: number; cy: number }[],
-  centres: readonly CentreASnapper[],
-): number[] {
-  const occupees = new Set<number>();
-  const retenus: number[] = [];
-  for (const p of centres) {
-    let best = -1;
-    let bestD = Infinity;
-    for (const c of cells) {
-      if (occupees.has(c.index)) continue;
-      const dx = c.cx - p.cx;
-      const dy = c.cy - p.cy;
-      const d = dx * dx + dy * dy;
-      if (d < bestD) {
-        bestD = d;
-        best = c.index;
-      }
-    }
-    if (best >= 0) {
-      occupees.add(best);
-      retenus.push(best);
-    }
-  }
-  return retenus;
-}
-
-/** Taille de case de l'index (m). Une case ≈ une travée : assez grande pour que
- *  le voisinage utile tienne en un ou deux anneaux, assez petite pour élaguer. */
-const CASE_RESNAP_M = 4;
-
-/**
- * CAL106 — re-snap en masse INDEXÉ. Rend les index de cellules occupées, dans
- * l'ordre des centres — strictement les mêmes que `resnapNaif`.
- */
-export function resnapEnMasse(
-  cells: readonly { index: number; cx: number; cy: number }[],
-  centres: readonly CentreASnapper[],
-): number[] {
-  if (!cells.length || !centres.length) return [];
-
-  // Rang de chaque cellule dans l'ORDRE DE LA LATTICE : c'est lui qui départage
-  // à distance égale, comme le fait le balayage linéaire.
-  const rang = new Map<number, number>();
-  for (let i = 0; i < cells.length; i++) rang.set(cells[i].index, i);
-
-  /* Clé de case NUMÉRIQUE : une `Map<number, …>` évite de fabriquer une chaîne
-     à chaque sondage d'anneau — mesurable sur un grand champ. */
-  const DECALAGE = 1_000_000;
-  const cle = (ix: number, iy: number) => (ix + DECALAGE) * 4_000_000 + (iy + DECALAGE);
-  const cases = new Map<number, number[]>(); // case → positions dans `cells`
-  const cleDe = new Float64Array(cells.length);
-  for (let i = 0; i < cells.length; i++) {
-    const k = cle(Math.floor(cells[i].cx / CASE_RESNAP_M), Math.floor(cells[i].cy / CASE_RESNAP_M));
-    cleDe[i] = k;
-    const seau = cases.get(k);
-    if (seau) seau.push(i);
-    else cases.set(k, [i]);
-  }
-
-  // Portée maximale utile : les cases EXTRÊMES de la lattice. Elle est calculée
-  // PAR CENTRE, parce qu'un centre peut tomber très loin de la lattice (un
-  // dossier rechargé dans un autre repère) : une portée mesurée sur la seule
-  // emprise de la lattice s'arrêterait avant de l'avoir atteinte, et rendrait
-  // « aucune cellule » là où le balayage linéaire en trouvait une.
-  let ixMin = Infinity; let ixMax = -Infinity; let iyMin = Infinity; let iyMax = -Infinity;
-  for (const c of cells) {
-    const ix = Math.floor(c.cx / CASE_RESNAP_M);
-    const iy = Math.floor(c.cy / CASE_RESNAP_M);
-    if (ix < ixMin) ixMin = ix;
-    if (ix > ixMax) ixMax = ix;
-    if (iy < iyMin) iyMin = iy;
-    if (iy > iyMax) iyMax = iy;
-  }
-
-  const retenus: number[] = [];
-
-  for (const p of centres) {
-    const cx0 = Math.floor(p.cx / CASE_RESNAP_M);
-    const cy0 = Math.floor(p.cy / CASE_RESNAP_M);
-    let best = -1;
-    let bestRang = Infinity;
-    let bestD = Infinity;
-    // Assez d'anneaux pour couvrir TOUTE la lattice depuis CE centre.
-    const anneauMax = Math.max(
-      Math.abs(cx0 - ixMin), Math.abs(cx0 - ixMax),
-      Math.abs(cy0 - iyMin), Math.abs(cy0 - iyMax),
-    ) + 1;
-
-    const examiner = (ix: number, iy: number) => {
-      const seau = cases.get(cle(ix, iy));
-      if (!seau) return;
-      // Un seau ne contient QUE des cellules encore libres (voir le retrait
-      // plus bas) : plus aucun test d'occupation n'est nécessaire ici.
-      for (let j = 0; j < seau.length; j++) {
-        const pos = seau[j];
-        const c = cells[pos];
-        const dx = c.cx - p.cx;
-        const dy = c.cy - p.cy;
-        const d = dx * dx + dy * dy;
-        // `<` strict pour la distance ; à ÉGALITÉ, le rang le plus petit gagne
-        // — le même départage que le balayage linéaire d'origine.
-        if (d < bestD || (d === bestD && pos < bestRang)) {
-          bestD = d;
-          best = c.index;
-          bestRang = pos;
-        }
-      }
-    };
-
-    for (let r = 0; r <= anneauMax; r++) {
-      if (r === 0) examiner(cx0, cy0);
-      else {
-        for (let ix = cx0 - r; ix <= cx0 + r; ix++) {
-          examiner(ix, cy0 - r);
-          examiner(ix, cy0 + r);
-        }
-        for (let iy = cy0 - r + 1; iy <= cy0 + r - 1; iy++) {
-          examiner(cx0 - r, iy);
-          examiner(cx0 + r, iy);
-        }
-      }
-      // Distance minimale garantie de l'anneau SUIVANT : si le meilleur trouvé
-      // est déjà plus proche, aucun anneau plus loin ne peut faire mieux.
-      if (best >= 0) {
-        const plancher = r * CASE_RESNAP_M;
-        if (bestD <= plancher * plancher) break;
-      }
-    }
-
-    if (best >= 0) {
-      /* La cellule prise SORT de son seau : les centres suivants ne la
-         reverront jamais. Sans ce retrait, les derniers centres re-balaient
-         les cellules déjà occupées et le coût remonte au N² qu'on supprime —
-         mesuré sur 2 000 centres / 2 000 cellules (le pire cas : la lattice
-         finit saturée) : 154 ms AVEC re-balayage — donc PLUS LENT que les
-         ~120 ms du balayage linéaire, l'index était devenu un ralentisseur —
-         contre 20-48 ms une fois les cellules prises retirées de l'index. */
-      const seau = cases.get(cleDe[bestRang]);
-      if (seau) {
-        const j = seau.indexOf(bestRang);
-        if (j >= 0) {
-          seau[j] = seau[seau.length - 1];
-          seau.pop();
-          if (!seau.length) cases.delete(cleDe[bestRang]);
-        }
-      }
-      retenus.push(best);
-    }
-  }
-  return retenus;
-}

@@ -29,6 +29,7 @@ import { type Ctx } from './context';
 import { ctxDeBase, racineDepot } from './harnaisAtelier';
 import { enregistrerAtelier, ouvrirAtelier } from './harnaisDocument';
 import { type AreaRecord } from './types';
+import { lireImageCapture } from './imageCapture'; // ACAL509
 
 
 function contrat(nom: string): Record<string, unknown> {
@@ -414,5 +415,106 @@ describe('ACAL459 — shadeTable survivante à une réédition', () => {
     expect(un.zones.map(cle)).toStrictEqual([ciel, ciel]);
     expect(rouvrir(JSON.parse(JSON.stringify(un)) as SerializedLayout, table.signature).zones.map(cle)).toStrictEqual([ciel, ciel]);
     expect(rouvrir(docAvecTable(), 'fnv1a-autre').zones.map(cle)).toEqual([undefined, undefined]);
+  });
+});
+
+describe('ACAL520 — le cadenas d’un pan survit à l’aller-retour', () => {
+  const aller = (verrouille: boolean) => {
+    const doc = documentRiche();
+    if (verrouille) (doc.zones[0] as { verrouille?: boolean }).verrouille = true;
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return { h, sortie: serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) };
+  };
+  it('`verrouille` revient tel quel', () => {
+    const { h, sortie } = aller(true);
+    expect(h.zones![0].verrouille).toBe(true);
+    expect(sortie.zones[0].verrouille).toBe(true);
+  });
+  it('un pan sans drapeau n’en gagne aucun (octet pour octet)', () => {
+    const { h, sortie } = aller(false);
+    expect(h.zones![0].verrouille).toBeUndefined();
+    expect('verrouille' in sortie.zones[0]).toBe(false);
+  });
+});
+
+describe('ACAL510 — `existant` et `anneeMiseEnService` survivent à l’aller-retour', () => {
+  const aller = (zone: Record<string, unknown>) => {
+    const doc = documentRiche();
+    Object.assign(doc.zones[0], zone);
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return { h, sortie: serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) };
+  };
+  it('case et année reviennent', () => {
+    const { h, sortie } = aller({ existant: true, anneeMiseEnService: 2019 });
+    expect(h.zones![0]).toMatchObject({ existant: true, anneeMiseEnService: 2019 });
+    expect(sortie.zones[0]).toMatchObject({ existant: true, anneeMiseEnService: 2019 });
+  });
+  it('année non saisie : null relu, aucune année émise ; pan sans drapeau : aucune clé', () => {
+    const { h, sortie } = aller({ existant: true });
+    expect(h.zones![0].anneeMiseEnService).toBeNull();
+    expect('anneeMiseEnService' in sortie.zones[0]).toBe(false);
+    const neuf = aller({}).sortie.zones[0];
+    expect('existant' in neuf || 'anneeMiseEnService' in neuf).toBe(false);
+  });
+});
+
+describe('ACAL579 — la portée entre pieds fait l’aller-retour', () => {
+  const aller = (zone: Record<string, unknown>, vider = false) => {
+    const doc = documentRiche();
+    Object.assign(doc.zones[0], zone);
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    if (vider) for (const a of ctx.areas) delete a.porteeEntrePieds; // le champ vidé à l'écran
+    return serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null }));
+  };
+  it('saisir, enregistrer, rouvrir ⇒ valeur relue ; vider le champ ⇒ plus aucune clé', () => {
+    const p = { valeurM: 2.4, source: 'notice du système, p. 4' };
+    expect(aller({ porteeEntrePieds: p }).zones[0]).toMatchObject({ porteeEntrePieds: p });
+    expect('porteeEntrePieds' in aller({ porteeEntrePieds: p }, true).zones[0]).toBe(false);
+  });
+});
+
+describe('ACAL509 — imageCapture fait l’aller-retour', () => {
+  const aller = (capture?: unknown) => {
+    const doc = documentRiche() as unknown as Record<string, unknown>;
+    if (capture) doc.imageCapture = capture;
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc as unknown as SerializedLayout }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) as unknown as Record<string, unknown>;
+  };
+  it('l’échantillon du contrat revient avec la même date et la même source', () => {
+    const exemple = contrat('roof_layout_v2.schema.json').exemple_image_capture;
+    expect(aller(exemple).imageCapture).toEqual(exemple);
+  });
+  it('une date future est refusée, une source vide aussi ; un document sans clé n’émet rien', () => {
+    expect(lireImageCapture('2999-01-01', 'x')).toMatchObject({ ok: false, champ: 'date' });
+    expect(lireImageCapture('2025-02-30', 'x')).toMatchObject({ ok: false, champ: 'date' });
+    expect(lireImageCapture('2025-03-21', ' ')).toMatchObject({ ok: false, champ: 'source' });
+    expect(lireImageCapture('2025-03-21', 'x').ok).toBe(true);
+    expect('imageCapture' in aller()).toBe(false);
+  });
+});
+
+describe('ACAL593 — les repères de chantier font l’aller-retour', () => {
+  const aller = (reperes?: unknown[]) => {
+    const doc = documentRiche() as unknown as Record<string, unknown>;
+    if (reperes) doc.reperesChantier = reperes;
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc as unknown as SerializedLayout }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) as unknown as Record<string, unknown>;
+  };
+  it('une ancre de 2 m revient avec son rayon et son texte', () => {
+    const r = { id: 'r1', type: 'ancre_antichute', texte: 'côté rue', rayonM: 2, point: [-7.62, 33.58] };
+    expect(aller([r]).reperesChantier).toEqual([r]);
+  });
+  it('aucun repère ⇒ aucune clé', () => {
+    expect('reperesChantier' in aller()).toBe(false);
   });
 });

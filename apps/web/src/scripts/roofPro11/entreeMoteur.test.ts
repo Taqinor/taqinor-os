@@ -25,10 +25,12 @@ import {
   versRepereRangee,
   versEstNord,
   SCHEMA_VERSION_MOTEUR,
+  typeObstacleMoteur,
   type SceneMoteur,
   type DocumentMoteur,
 } from './entreeMoteur';
 import { ORDRE_RENDU_CALQUES, MAPLIBRE_LAYERS_PAR_CALQUE } from './mapDraw';
+import { OBSTACLE_TYPES } from './types';
 import { type LngLat } from '../../lib/roof';
 
 // ── Le CONTRÔLE DE FORME de la porte moteur ────────────────────────────────
@@ -265,10 +267,10 @@ describe('CALX3 — centresDepuisPlan (le retour du plan)', () => {
 });
 
 describe('CALX3 — raccourcis', () => {
-  it('les huit actions existent et sont des fonctions', () => {
+  it('les dix actions existent et sont des fonctions', () => {
     const raccourcis = construireRaccourcis({});
     expect(Object.keys(raccourcis).sort()).toEqual([...ACTIONS_RACCOURCIS].sort());
-    expect(ACTIONS_RACCOURCIS).toHaveLength(8);
+    expect(ACTIONS_RACCOURCIS).toHaveLength(10); // ACAL553 : + copier, coller
     for (const action of ACTIONS_RACCOURCIS) {
       expect(typeof raccourcis[action]).toBe('function');
       expect(() => raccourcis[action]()).not.toThrow();
@@ -362,6 +364,27 @@ describe('CALX3 — l’API du constructeur', () => {
   it('les quatre clés de CALX3 s’y ajoutent', () => {
     for (const cle of ['entreeMoteur', 'appliquerPlan', 'raccourcis', 'calquesDisponibles']) {
       expect(bloc).toContain(`${cle}:`);
+    }
+  });
+});
+
+describe('ACAL498 — typeObstacleMoteur = TYPES_MOTEUR du serveur', () => {
+  it('chaque type du menu rend le type moteur de la table serveur', () => {
+    const py = readFileSync(
+      fileURLToPath(
+        new URL(
+          '../../../../../backend/django_core/apps/calepinage/services/traduction.py',
+          import.meta.url,
+        ),
+      ),
+      'utf8',
+    );
+    const bloc = py.slice(py.indexOf('TYPES_MOTEUR = {'), py.indexOf('}', py.indexOf('TYPES_MOTEUR = {')));
+    const table: Record<string, string> = {};
+    for (const m of bloc.matchAll(/'([a-z_]+)':\s*'([A-Z_]+)'/g)) table[m[1]] = m[2];
+    expect(table.garde_corps).toBe('GARDE_CORPS');
+    for (const t of OBSTACLE_TYPES) {
+      expect(typeObstacleMoteur(t.id), `type ${t.id}`).toBe(table[t.id] ?? 'NATURE_INCONNUE');
     }
   });
 });

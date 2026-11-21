@@ -66,6 +66,7 @@ CHEMINS_TRANSLATES = {
     'zones[].geometry.origin': ('couple', 'lng_lat'),
     'environment[]': ('centre', 'lng_lat'),
     'environment[].footprint': ('couples', 'lng_lat'),
+    'environment[].trace': ('couples', 'lng_lat'),  # ACAL505
     'exclusionZones[].vertices': ('couples', 'lng_lat'),
     'exclusionZones[].axe': ('couples', 'lng_lat'),
     'measurements[].points': ('couples', 'lng_lat'),
@@ -77,6 +78,7 @@ CHEMINS_TRANSLATES = {
     'shadeObstructions[].centre': ('couple', 'lng_lat'),
     'shadeObstructions[].bout': ('couple', 'lng_lat'),  # ACAL352
     'parcelle.vertices': ('couples', 'lng_lat'),
+    'reperesChantier[].point': ('couple', 'lng_lat'),  # ACAL599
 }
 
 #: Couples / points du schéma qui NE SONT PAS des coordonnées du bâtiment.

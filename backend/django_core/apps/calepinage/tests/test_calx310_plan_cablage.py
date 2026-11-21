@@ -41,7 +41,8 @@ from apps.calepinage.services.documents.plan_cablage import (
     PlanCablageRefuse, _affectation_publiee_du_calepinage,
     exporter_plan_cablage_dxf,
     html_du_plan_cablage, _lignes_de_legende, _modules_du_plan,
-    _plan_de_cablage, rendre_plan_cablage_pdf, _rendre_plan_cablage_svg,
+    _plan_de_cablage, _plan_du_calepinage, rendre_plan_cablage_pdf,
+    _rendre_plan_cablage_svg,
     _svg_de_plan_cablage, _verifier_legende_sans_montant,
 )
 from apps.calepinage.services.export_dxf import (
@@ -78,6 +79,7 @@ LAYOUT = {
         'vertices': [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001],
                      [-7.6, 33.5001]],
         'geometry': {'azimuthDeg': 180.0, 'tiltDeg': 15.0, 'count': 12,
+                     'panelOrientation': 'portrait',
                      'origin': [-7.6, 33.5], 'panels': _panneaux(12)},
     }],
 }
@@ -143,6 +145,43 @@ class PlanDeCablageTest(unittest.TestCase):
         self.assertIn('onduleur 1 · entrée MPPT 2', lignes)
         self.assertIn('Non affectés : 0 module', lignes)
 
+    def test_chaque_chaine_porte_sa_tension_a_froid_et_sa_temperature(self):
+        # ACAL672 — valeurs SERVIES (6 modules x 53,5 V a froid d'exemple de
+        # la fiche = 321,0 V ; la tension a chaud 216,0 V ne doit PAS sortir).
+        servies = {
+            1: {'voc_froid_v': 321.0, 'temperature_froide_c': -5.0,
+                'vmp_chaud_v': 216.0, 'isc_a': 13.9},
+            2: {'voc_froid_v': None, 'temperature_froide_c': -5.0,
+                'vmp_chaud_v': None, 'isc_a': None}}
+        plan = dict(self.plan, chaines=servies)
+        lignes = _lignes_de_legende(plan)
+        self.assertIn('Voc à −5 °C : 321,0 V · Isc : 13,9 A', lignes)
+        self.assertIn('tension non calculée : fiche incomplète', lignes)
+        self.assertFalse([t for t in lignes if '216' in t])
+        for texte in lignes:
+            self.assertIsNone(MOTS_DE_MONTANT.search(texte), texte)
+        self.assertIn('Voc à −5 °C : 321,0 V', svg_de(plan))
+
+    def test_sans_chaines_servies_la_legende_reste_celle_d_avant(self):
+        self.assertNotIn('tension non calculée : fiche incomplète',
+                         _lignes_de_legende(self.plan))
+
+    def test_le_plan_du_calepinage_lit_les_tensions_servies(self):
+        servies = {'chaines': [{'chaine': 1, 'voc_froid_v': 321.0,
+                                'temperature_froide_c': -5.0,
+                                'isc_a': 13.9}]}
+        with mock.patch(
+                'apps.calepinage.services.electrique.resultat_calepinage',
+                return_value={'electrique': {'affectation': AFFECTATION}}),                 mock.patch(
+                    'apps.calepinage.services.electrique.'
+                    'evaluation_electrique', return_value=servies),                 mock.patch(
+                    'apps.calepinage.selectors.parametres_de_societe',
+                    return_value={}):
+            plan = _plan_du_calepinage(NU)
+        self.assertEqual(plan['chaines'][1]['voc_froid_v'], 321.0)
+        self.assertIn('Voc à −5 °C : 321,0 V · Isc : 13,9 A',
+                      _lignes_de_legende(plan))
+
     def test_un_onduleur_non_attribue_est_dit_jamais_numerote(self):
         table = [dict(entree, onduleur=None) for entree in AFFECTATION]
         lignes = _lignes_de_legende(_plan_de_cablage(LAYOUT, table))
@@ -167,6 +206,33 @@ class PlanDeCablageTest(unittest.TestCase):
         for interdit in ('http://', 'https://', '@import', '<image'):
             self.assertNotIn(interdit, sans_espace_de_noms)
 
+    def test_la_consigne_dc_de_la_societe_est_imprimee_telle_quelle(self):
+        # ACAL673 — saisie une fois dans les réglages société, avec sa
+        # source ; vide : aucune ligne, jamais une consigne par défaut.
+        import html as html_
+
+        consigne = ("Les chaînes DC restent sous tension dès qu'elles sont "
+                    "éclairées : couper l'AC avant le DC.")
+        reglages = {'electrique_societe': {'consigne_dc_plan_cablage': {
+            'valeur': {'texte': consigne}, 'source': 'societe'}}}
+        cible = 'apps.calepinage.selectors.parametres_de_societe'
+        with mock.patch(cible, return_value=reglages):
+            plan = _plan_du_calepinage(NU, affectation=AFFECTATION)
+            svg = _rendre_plan_cablage_svg(NU, moment=MOMENT,
+                                           affectation=AFFECTATION)
+        self.assertEqual(_lignes_de_legende(plan)[-1], consigne)
+        visible = html_.unescape(re.sub(
+            r'\s+', ' ', re.sub(r'<[^>]+>', ' ',
+                                svg.split('consigne-dc')[1])))
+        self.assertIn(consigne, visible)
+        with mock.patch(cible, return_value={'electrique_societe': {}}):
+            vide = _plan_du_calepinage(NU, affectation=AFFECTATION)
+            svg_vide = _rendre_plan_cablage_svg(NU, moment=MOMENT,
+                                                affectation=AFFECTATION)
+        self.assertNotIn('consigne-dc', svg_vide)
+        self.assertEqual(vide['consigne_dc'], '')
+        self.assertNotIn(consigne, _lignes_de_legende(vide))
+
     def test_la_toiture_reste_celle_de_la_planche_sans_module_vert(self):
         # Contenu « toiture » : la planche ne dessine pas ses modules verts —
         # la couche de câblage est la SEULE à dessiner les modules.
@@ -175,6 +241,55 @@ class PlanDeCablageTest(unittest.TestCase):
         self.assertNotIn(VERT_MODULE_FOND, self.svg)
         self.assertIn('Plan de câblage — Villa Anfa', self.svg)
         self.assertIn('calepinage abababababab', self.svg)
+
+
+class EmpriseVraieDesModulesTest(unittest.TestCase):
+    """ACAL605 — plan et calque CHAINES dessinent l'emprise VRAIE."""
+
+    def setUp(self):
+        self.plan = _plan_de_cablage(LAYOUT, AFFECTATION)
+
+    @staticmethod
+    def _largeur(points):
+        return max(p[0] for p in points) - min(p[0] for p in points)
+
+    def test_12_modules_portrait_12_polygones_de_1_303_m_sans_recouvrement(
+            self):
+        from .test_cal171_planche import _se_recouvrent
+
+        carres = [m['coins'] for m in self.plan['modules']]
+        self.assertEqual(len(carres), 12)
+        for carre in carres:
+            self.assertAlmostEqual(self._largeur(carre), 1.303, places=3)
+        for i, a in enumerate(carres):
+            for b in carres[i + 1:]:
+                self.assertFalse(_se_recouvrent(a, b))
+        polygones = [e for e in formes(svg_de(self.plan), 'module-chaine')
+                     if e.tag.endswith('polygon')]
+        self.assertEqual(len(polygones), 12)
+
+    def test_le_calque_chaines_reprend_les_memes_sommets(self):
+        import ezdxf
+
+        document = ezdxf.read(io.StringIO(octets_dxf(
+            self.plan['geometrie'],
+            chaines=self.plan['modules']).decode('utf-8')))
+        lus = sorted(tuple(round(c, 6) for p in e.get_points() for c in p[:2])
+                     for e in document.modelspace()
+                     if e.dxf.layer == CALQUE_CHAINES
+                     and e.dxftype() == 'LWPOLYLINE')
+        attendus = sorted(tuple(round(c, 6) for p in m['coins'] for c in p)
+                          for m in self.plan['modules'])
+        self.assertEqual(lus, attendus)
+
+    def test_sans_pose_enregistree_le_module_reste_un_cercle(self):
+        sans = copy.deepcopy(LAYOUT)
+        del sans['zones'][0]['geometry']['panelOrientation']
+        plan = _plan_de_cablage(sans, AFFECTATION)
+        self.assertTrue(all(m['coins'] is None for m in plan['modules']))
+        self.assertEqual(
+            len([e for e in formes(svg_de(plan), 'module-chaine')
+                 if e.tag.endswith('circle')]), 12)
 
 
 class NonAffectesTest(unittest.TestCase):
@@ -450,3 +565,102 @@ class EndpointPlanCablageEnBaseTest(BaseApiCalepinage):
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
+
+
+class SensDeNumerotationTest(unittest.TestCase):
+    """ACAL643 — une flèche par chaîne de plus d'un module, sans polarité."""
+
+    def test_une_fleche_par_chaine_dans_sa_couleur_et_la_legende(self):
+        plan = _plan_de_cablage(LAYOUT, AFFECTATION)
+        svg = svg_de(plan)
+        fleches = formes(svg, 'fleche-chaine')
+        self.assertEqual([e.get('data-chaine') for e in fleches], ['1', '2'])
+        for fleche, couleur in zip(fleches, PALETTE_CHAINES):
+            lignes = [e for e in fleche.iter() if e.tag.endswith('polyline')]
+            self.assertEqual(lignes[0].get('stroke'), couleur)
+        self.assertIn('sens de numérotation — la polarité se vérifie sur '
+                      'site', _lignes_de_legende(plan))
+        self.assertIn('sens de numérotation — la polarité se vérifie sur '
+                      'site', svg)
+        # Aucun repère de polarité n'est inventé.
+        for fleche in fleches:
+            texte = ET.tostring(fleche, encoding='unicode')
+            self.assertNotIn('<text', texte)
+
+    def test_la_fleche_va_du_plus_petit_au_plus_grand_numero(self):
+        # La table est donnée DANS LE DÉSORDRE : le sens suit les numéros.
+        desordre = list(reversed(AFFECTATION[:6])) + AFFECTATION[6:]
+        plan = _plan_de_cablage(LAYOUT, desordre)
+        premiere = formes(svg_de(plan), 'fleche-chaine')[0]
+        ligne = [e for e in premiere.iter() if e.tag.endswith('polyline')][0]
+        points = [tuple(float(c) for c in p.split(','))
+                  for p in ligne.get('points').split()]
+        self.assertEqual(len(points), 6)
+        # z1#1 est à gauche du z1#4 (même rangée) : x croît du n°1 au n°4.
+        self.assertLess(points[0][0], points[3][0])
+
+    def test_une_chaine_d_un_seul_module_n_a_pas_de_fleche(self):
+        table = AFFECTATION[:11] + [ligne(12, 3, mppt=2)]
+        plan = _plan_de_cablage(LAYOUT, table)
+        self.assertEqual(
+            [e.get('data-chaine')
+             for e in formes(svg_de(plan), 'fleche-chaine')], ['1', '2'])
+        plan = _plan_de_cablage(LAYOUT, [ligne(1, 1)] + [
+            ligne(r, None) for r in range(2, 13)])
+        self.assertEqual(formes(svg_de(plan), 'fleche-chaine'), [])
+        self.assertNotIn('sens de numérotation',
+                         '\n'.join(_lignes_de_legende(plan)))
+
+
+class BlocModuleDxfTest(unittest.TestCase):
+    """ACAL674 — un bloc MODULE inséré par module, avec ses attributs."""
+
+    @staticmethod
+    def _inserts(table):
+        import ezdxf
+
+        plan = _plan_de_cablage(LAYOUT, table)
+        document = ezdxf.read(io.StringIO(octets_dxf(
+            plan['geometrie'], chaines=plan['modules']).decode('utf-8')))
+        return document, [e for e in document.modelspace()
+                          if e.dxftype() == 'INSERT']
+
+    @staticmethod
+    def _attributs(insert):
+        return {a.dxf.tag: a.dxf.text for a in insert.attribs}
+
+    def test_un_insert_par_module_avec_chaine_mppt_onduleur_et_rang(self):
+        document, inserts = self._inserts(AFFECTATION)
+        self.assertIn('MODULE', document.blocks)
+        self.assertEqual(len(inserts), 12)
+        lus = sorted((int(self._attributs(i)['CHAINE']),
+                      int(self._attributs(i)['N'])) for i in inserts)
+        self.assertEqual(lus, [(1, n) for n in range(1, 7)]
+                         + [(2, n) for n in range(1, 7)])
+        for insert in inserts:
+            attributs = self._attributs(insert)
+            self.assertEqual(attributs['MPPT'], attributs['CHAINE'])
+            self.assertEqual(attributs['ONDULEUR'], '1')
+            self.assertEqual(insert.dxf.layer, CALQUE_CHAINES)
+
+    def test_le_rang_suit_l_ordre_des_lignes_de_l_affectation(self):
+        desordre = list(reversed(AFFECTATION[:6])) + AFFECTATION[6:]
+        plan = _plan_de_cablage(LAYOUT, desordre)
+        rangs = {m['module']: m['rang'] for m in plan['modules']}
+        # z1#6 est la 1re ligne de la chaîne 1 : son N vaut 1 (pas son n°).
+        self.assertEqual((rangs['z1#6'], rangs['z1#1']), (1, 6))
+        self.assertEqual(rangs['z1#7'], 1)
+        _document, inserts = self._inserts(desordre)
+        self.assertEqual(
+            sorted(int(self._attributs(i)['N']) for i in inserts
+                   if self._attributs(i)['CHAINE'] == '1'),
+            [1, 2, 3, 4, 5, 6])
+
+    def test_un_module_sans_affectation_n_est_pas_insere_et_le_reste_demeure(
+            self):
+        document, inserts = self._inserts(AFFECTATION[:11] + [ligne(12, None)])
+        self.assertEqual(len(inserts), 11)
+        # Les polylignes et textes d'aujourd'hui restent.
+        types = {e.dxftype() for e in document.modelspace()
+                 if e.dxf.layer == CALQUE_CHAINES}
+        self.assertTrue({'LWPOLYLINE', 'TEXT', 'INSERT'} <= types)

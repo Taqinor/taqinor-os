@@ -122,7 +122,9 @@ GABARIT_NEUTRE = 'neutre'
 BANDEAU_NEUTRE = (
     "Calibres et sections OMIS%s : aucune norme électrique n'est choisie — "
     "renseignez « Norme électrique » dans les réglages du module. Cette "
-    "planche ne montre que la topologie : désignations, quantités, repères."
+    "planche ne montre que la topologie : désignations, quantités, repères. "
+    "Côté alternatif non dessiné (disjoncteur AC, compteur de production, "
+    "TGBT, compteur du réseau) : il dépend de la norme."
 )
 
 

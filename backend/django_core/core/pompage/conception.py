@@ -20,7 +20,8 @@ from __future__ import annotations
 
 from core.pompage.hydraulique import _flottant
 from core.pompage.hypotheses import utilisees, valeur
-from core.pompage.volumes import JOURS_PAR_MOIS, couverture_besoin_eau
+from core.pompage.volumes import (JOURS_PAR_MOIS, bilan_reservoir_journalier,
+                                  couverture_besoin_eau)
 from core.pompage.volumes import mois_critique as mois_critique_production
 
 NATURE_DECLARE = "declare"
@@ -394,6 +395,101 @@ def conception(*, besoin, profils_horaires=None, agricole_pump_hours=None,
         "alertes": alertes,
         "hypotheses": utilisees(cles),
     }
+
+
+def _debit_max(besoin, heures):
+    """(débit de conception, mois 1-12) = max besoin ÷ heures sur les mois de
+    besoin, le premier en cas d'égalité ; ``(None, None)`` sans mois calculable."""
+    meilleur, mois = None, None
+    for index in range(12):
+        b, h = _flottant(besoin[index]), _flottant(heures[index])
+        if b is None or b <= 0 or h is None or h <= 0:
+            continue
+        if meilleur is None or b / h > meilleur:
+            meilleur, mois = b / h, index + 1
+    return (round(meilleur, 1) if meilleur is not None else None), mois
+
+
+def comparaison_direct_reservoir(*, besoin_m3_jour_mois=None, heures_pic_mois=None,
+                                 heures_demande_h=None,
+                                 production_m3_jour_mois=None,
+                                 volume_reservoir_m3=None):
+    """ACAL814 — « pompage direct » (l'eau livrée sur la fenêtre de demande
+    SAISIE) contre « avec le réservoir déclaré » (l'eau pompée sur les heures
+    de soleil) : débit de conception, mois critique, jours de manque et part
+    couverte (``bilan_reservoir_journalier``, réservoir 0 pour le direct, à
+    production égale). Aucun prix, aucun kWc. Usage INTERNE (D-ACAL-41)."""
+    besoin = list(besoin_m3_jour_mois or [])
+    if len(besoin) != 12:
+        return {"direct": None, "avec_reservoir": None,
+                "motif": "besoin non saisi"}
+    motifs = []
+
+    def option(heures, volume):
+        debit, mois = _debit_max(besoin, heures)
+        bilan = bilan_reservoir_journalier(
+            besoin_m3_jour_mois=besoin,
+            production_m3_jour_mois=production_m3_jour_mois,
+            volume_reservoir_m3=volume)
+        return {"debit_conception_m3h": debit, "mois_critique": mois,
+                "jours_manque": bilan["jours_manque"],
+                "besoin_couvert_pct": bilan["besoin_couvert_pct"],
+                "motif_bilan": bilan["motif"]}
+
+    demande = _flottant(heures_demande_h)
+    direct = None
+    if demande is None or demande <= 0:
+        motifs.append("fenêtre de demande non saisie")
+    else:
+        direct = option([demande] * 12, 0)
+    volume = _flottant(volume_reservoir_m3)
+    pic = list(heures_pic_mois or [])
+    avec = None
+    if volume is None or volume < 0:
+        motifs.append("aucun réservoir déclaré")
+    elif len(pic) != 12:
+        motifs.append("heures de soleil équivalent non calculées")
+    else:
+        avec = option(pic, volume)
+    return {"direct": direct, "avec_reservoir": avec,
+            "motif": " ; ".join(motifs) or None}
+
+
+#: ACAL819 — les deux façons SAISIES de faire tourner plusieurs pompes.
+MODES_POMPES = ("ensemble", "a_tour_de_role")
+
+
+def controle_pompes_par_variateur(*, pompes=None, variateur=None, mode=None):
+    """ACAL819 — plusieurs pompes sur UN variateur : la SOMME des plaques
+    (``ensemble``) ou la plus grosse (``a_tour_de_role``) contre la plaque du
+    variateur (``pompe_kw``). kW de plaque SAISIS : aucune puissance déduite du
+    CV ni du nom ; une donnée absente ⇒ ``non_verifiable`` et motif nommé."""
+    sortie = {"verdict": "non_verifiable", "motif": None, "kw_demande": None,
+              "kw_variateur": None, "marge_kw": None}
+    kw_variateur = _flottant((variateur or {}).get("pompe_kw"))
+    plaques = [_flottant((p or {}).get("kw")) for p in pompes or ()]
+    if mode not in MODES_POMPES:
+        sortie["motif"] = "mode de marche non saisi (ensemble ou à tour de rôle)"
+    elif not plaques:
+        sortie["motif"] = "aucune pompe saisie"
+    elif any(kw is None or kw <= 0 for kw in plaques):
+        noms = [(p or {}).get("nom") or "pompe %d" % (i + 1)
+                for i, p in enumerate(pompes) if plaques[i] is None or plaques[i] <= 0]
+        sortie["motif"] = "kW de plaque non saisi : " + ", ".join(noms)
+    elif kw_variateur is None or kw_variateur <= 0:
+        sortie["motif"] = "plaque du variateur (kW) non publiée"
+    if sortie["motif"]:
+        return sortie
+    demande = sum(plaques) if mode == "ensemble" else max(plaques)
+    conforme = demande <= kw_variateur + 1e-9
+    sortie.update(
+        verdict="conforme" if conforme else "depasse",
+        kw_demande=round(demande, 2), kw_variateur=round(kw_variateur, 2),
+        marge_kw=round(kw_variateur - demande, 2),
+        motif=None if conforme else (
+            "%s kW de pompes au-dessus des %s kW du variateur"
+            % (round(demande, 2), round(kw_variateur, 2))))
+    return sortie
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -413,3 +413,27 @@ def hmt_composantes(*, hmt_saisie=None, courbe_pompe=None, debit_m3h=None,
         "manquantes": [],
         "alertes": alertes,
     }
+
+
+def hmt_mensuelle(*, niveaux_statiques_m_mois=None, **parametres):
+    """ACAL805 — HMT de CHAQUE mois : :func:`hmt_composantes` au niveau statique
+    du mois (``None`` à un index ⇒ ``niveau_statique_m`` des paramètres).
+
+    Un mois dont la HMT n'est pas ``calculee`` ⇒ ``valeurs_m`` None et
+    ``manquantes`` nomme les composantes : jamais une HMT d'été inventée.
+    Rend ``{valeurs_m: [12]|None, manquantes}``."""
+    niveaux = list(niveaux_statiques_m_mois or [])[:12]
+    niveaux += [None] * (12 - len(niveaux))
+    valeurs, manquantes = [], []
+    for niveau in niveaux:
+        if niveau is None:
+            niveau = parametres.get("niveau_statique_m")
+        resultat = hmt_composantes(**dict(parametres, niveau_statique_m=niveau))
+        if resultat["source"] == "calculee":
+            valeurs.append(resultat["valeur_m"])
+            continue
+        valeurs.append(None)
+        manquantes += [m for m in resultat["manquantes"] if m not in manquantes]
+    if any(v is None for v in valeurs):
+        return {"valeurs_m": None, "manquantes": manquantes}
+    return {"valeurs_m": valeurs, "manquantes": []}

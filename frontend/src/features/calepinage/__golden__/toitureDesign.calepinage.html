@@ -184,7 +184,12 @@
 <button type="button" id="rp9-obs-plus" aria-label="Agrandir l'obstacle" class="h-11 w-11 border border-border text-xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">+</button>
 <span id="rp9-obs-dims" class="fig text-sm text-foreground">—</span>
 </div>
+<label class="mt-3 block text-sm text-foreground">Hauteur (m)<input id="rp9-obs-height" inputmode="decimal" step="any" class="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" type="text">
+</label>
+<p class="mt-1 text-xs text-muted-foreground">Laissez vide si vous ne la connaissez pas : l'obstacle ne fera alors aucune ombre.</p>
 </div>
+<p id="rp9-obs-engage" role="status" hidden="" class="border border-alert-300/60 bg-background/40 p-3 text-sm text-foreground">
+</p>
 <div class="flex flex-wrap items-center gap-2">
 <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Mesurer</span>
 <button type="button" data-mesure-kind="distance" id="rp9-mesure-distance" class="rp9-chip" aria-pressed="false">Distance</button>
@@ -377,6 +382,45 @@
 </ul>
 <p class="mt-3 text-xs leading-relaxed text-muted-foreground">« + Ajouter une zone » fige la zone tracée et démarre un nouveau tracé sur la même facture. La 3D et les graphes détaillés affichent la zone sélectionnée (« Voir ») ; les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.</p>
 </div>
+<details class="mt-6 rounded-xl border border-border bg-card" data-sans-montant-bloc="1">
+<summary class="min-h-11 cursor-pointer px-5 py-3 text-sm font-semibold text-primary-text">Comparer les poses</summary>
+<div id="rp9-compare-wrap" data-sans-montant="1" hidden="" class="p-0">
+<div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-2">
+<p class="text-xs text-muted-foreground">Chaque ligne est une pose possible sur ce toit ; cliquez-en une pour la voir.</p>
+<label class="flex items-center gap-2 text-xs text-muted-foreground">Filtrer<select id="rp9-matrix-filter" class="h-11 border border-border bg-background px-2 text-xs text-foreground">
+<option value="all">Toutes les orientations</option>
+</select>
+</label>
+</div>
+<div class="mt-3 overflow-x-auto">
+<table class="w-full min-w-[560px] text-left text-sm text-foreground">
+<thead class="text-muted-foreground">
+<tr class="border-b border-border">
+<th class="px-5 py-3 font-semibold">Configuration</th>
+<th class="px-5 py-3 text-right font-semibold" aria-sort="none">
+<button type="button" data-rp9-sort="placedCount" class="rp9-sort min-h-11">Panneaux<span class="rp9-sort-arrow">
+</span>
+</button>
+</th>
+<th class="px-5 py-3 text-right font-semibold">kWc</th>
+<th class="px-5 py-3 text-right font-semibold" aria-sort="descending">
+<button type="button" data-rp9-sort="annualKwh" class="rp9-sort min-h-11">kWh/an<span class="rp9-sort-arrow">
+</span>
+</button>
+</th>
+<th class="px-5 py-3 text-right font-semibold" aria-sort="none">
+<button type="button" data-rp9-sort="pctOfTarget" class="rp9-sort min-h-11">% du besoin<span class="rp9-sort-arrow">
+</span>
+</button>
+</th>
+</tr>
+</thead>
+<tbody id="rp9-compare">
+</tbody>
+</table>
+</div>
+</div>
+</details>
 <div>
 <div id="rp9-cons-window" hidden="" class="cine-card mt-6 p-5 sm:p-6">
   <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
@@ -565,6 +609,16 @@
 <button type="button" class="rp9-chip" data-testid="cal-export-hd-2">Exporter 2×</button>
 <button type="button" class="rp9-chip" data-testid="cal-export-hd-3">Exporter 3×</button>
 </div>
+<div class="sticky bottom-0 z-30 mt-6 border-t border-border bg-card p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
+<div class="flex flex-wrap items-center gap-3">
+<button type="button" class="inline-flex items-center justify-center gap-3 bg-success px-6 py-3 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
+<span>Enregistrer le calepinage</span>
+</button>
+<p class="text-sm text-muted-foreground" data-testid="cal-resume-atelier">
+<span data-testid="cal-resume-panneaux">—</span> · <span data-testid="cal-resume-kwc">—</span> · <span data-testid="cal-resume-production">—</span>
+</p>
+</div>
+</div>
 <div class="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-atelier-panneaux">
 <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
 <span class="flex items-baseline gap-2">
@@ -700,16 +754,6 @@
 </div>
 </div>
 <div class="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
-</div>
-</div>
-<div class="sticky bottom-0 z-30 mt-6 border-t border-border bg-card p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
-<div class="flex flex-wrap items-center gap-3">
-<button type="button" class="inline-flex items-center justify-center gap-3 bg-success px-6 py-3 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
-<span>Enregistrer le calepinage</span>
-</button>
-<p class="text-sm text-muted-foreground" data-testid="cal-resume-atelier">
-<span data-testid="cal-resume-panneaux">—</span> · <span data-testid="cal-resume-kwc">—</span> · <span data-testid="cal-resume-production">—</span>
-</p>
 </div>
 </div>
 <div class="rounded-xl border border-border bg-card mt-6 p-6">

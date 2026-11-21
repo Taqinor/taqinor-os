@@ -5,6 +5,8 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Badge, Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
+import CarteChaineOmbragee from './CarteChaineOmbragee'
+import HistogrammeEcretage from '../production/HistogrammeEcretage'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { messageRefus } from '../commun/refusServeur'
 import { formatDateTime } from '../../../lib/format'
@@ -415,6 +417,8 @@ export default function VerdictElectrique({ calepinageId } = {}) {
             </>
           )}
         <BlocDerogations calepinageId={id} />
+        <CarteChaineOmbragee calepinageId={id} />
+        <HistogrammeEcretage calepinageId={id} />
       </Card>
     </>
   )

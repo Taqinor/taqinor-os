@@ -31,7 +31,7 @@ from io import StringIO
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.courbes_journalieres import (
     OCCUPATION_PRESENCE,
@@ -55,6 +55,9 @@ from apps.ventes.etude_horaire import (
     recouvrement_pas_fins,
     simuler_batterie_pas_fins,
 )
+from apps.ventes import courbes_journalieres as CJ
+from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import base as horaire_base
 from apps.ventes.horaire.conso import profil_depuis_factures
 from authentication.models import Company
 
@@ -1115,6 +1118,192 @@ class ExemplesFondateurTest(TestCase):
         print('%s    >>> un port de 3,3 kW coute %.2f kWh face a 2 packs'
               % (TAG, deux_packs['restitue_kwh']
                  - port_etroit['restitue_kwh']))
+
+    # ── ACAL1170 — la base de la pose réelle lue par le moteur ────────────
+    #: Base servie (exemple de forme du contrat ACAL996 : 1 388,4 kWh/kWc).
+    BASE_POSE = {'kwh_kwc_annuel': 1388.4, 'pertes_incluses': True,
+                 'source': 'calepinage_enregistre',
+                 'kwh_kwc_mensuel': [75.2, 85.6, 115.3, 130.4, 148.9, 155.1,
+                                     160.2, 149.6, 122.8, 101.5, 77.4, 66.4]}
+
+    def _devis_1170(self, niveau=15):
+        from apps.crm.models import Client, Lead
+        from apps.ventes.models import Devis
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead', prenom='acal1170',
+            telephone='+212600001170', ville=VILLE, facture_hiver=2500,
+            ete_differente=False)
+        client_obj = Client.objects.get_or_create(
+            company=self.company, nom='Client acal1170', defaults={})[0]
+        return Devis.objects.create(
+            company=self.company, reference='DEV-ACAL1170-%d' % niveau,
+            client=client_obj, lead=lead, statut='brouillon',
+            taux_tva=Decimal('20'), mode_installation='residentiel',
+            regles_calcul=niveau, etude_params={})
+
+    def _bloc_1170(self, devis, base):
+        from unittest import mock
+
+        from apps.ventes.etude_horaire import etude_horaire_pour_devis
+        # Une perte d'ombrage servie À CÔTÉ : la garder avec la base ferait
+        # baisser la production (mutant).
+        with mock.patch('apps.ventes.horaire.productible_pose.'
+                        'base_de_production', return_value=base), \
+                mock.patch('apps.ventes.etude_horaire.perte_ombrage_du_devis',
+                           return_value=10.0):
+            return etude_horaire_pour_devis(
+                devis, kwc=71.0, batterie_kwh_utile=0,
+                data={'client_city': VILLE})
+
+    def test_acal1170_bloc_niveau_15_porte_la_base(self):
+        bloc = self._bloc_1170(self._devis_1170(), self.BASE_POSE)
+        self.assertIsNotNone(bloc)
+        self.assertAlmostEqual(bloc['annuel']['production_kwh'],
+                               71.0 * sum(self.BASE_POSE['kwh_kwc_mensuel']),
+                               delta=1.0)  # ≈ 98 576
+        self.assertEqual(bloc['base_production']['kwh_kwc_annuel'], 1388.4)
+        self.assertNotIn('ombrage', bloc)  # déjà dans la base
+
+    def test_acal1170_niveau_14_meme_bloc(self):
+        """Sans base (niveau ≤ 14) : le bloc d'aujourd'hui, ombrage compris."""
+        devis = self._devis_1170(niveau=14)
+        from apps.ventes.horaire.productible_pose import base_de_production
+        self.assertIsNone(base_de_production(devis))
+        bloc = self._bloc_1170(devis, None)
+        self.assertNotIn('base_production', bloc)
+        self.assertEqual(bloc['ombrage']['perte_pct'], 10.0)
+        # Repère : le MÊME bloc sans perte d'ombrage (productible ville ×
+        # derate, chemin d'aujourd'hui). Les 10 % servis y sont appliqués
+        # (≈ 113 545 → 102 190 à Casablanca) ; la base de la pose réelle
+        # (≈ 98 576) n'est pas un repère : la ville peut produire plus.
+        from unittest import mock
+
+        from apps.ventes.etude_horaire import etude_horaire_pour_devis
+        with mock.patch('apps.ventes.horaire.productible_pose.'
+                        'base_de_production', return_value=None), \
+                mock.patch('apps.ventes.etude_horaire.perte_ombrage_du_devis',
+                           return_value=None):
+            sans_ombre = etude_horaire_pour_devis(
+                devis, kwc=71.0, batterie_kwh_utile=0,
+                data={'client_city': VILLE})
+        self.assertNotIn('ombrage', sans_ombre)
+        self.assertAlmostEqual(bloc['annuel']['production_kwh'],
+                               0.9 * sans_ombre['annuel']['production_kwh'],
+                               delta=1.0)
+
+    def test_acal1170_balayage_et_apercu_lisent_la_meme_base(self):
+        from unittest import mock
+
+        from apps.ventes.dimensionnement_balayage import (
+            AVERTISSEMENT_BASE_AUTRES_TAILLES, balayer_tailles)
+        from apps.ventes.etude_horaire import _reglages_tarifaires
+        conso, source, _detail = profil_depuis_factures(facture_hiver_mad=2500)
+        tranches, charges_fixes = _reglages_tarifaires(self.company)
+        devis = self._devis_1170()
+        with mock.patch('apps.ventes.horaire.productible_pose.'
+                        'base_de_production', return_value=self.BASE_POSE):
+            lignes = balayer_tailles(
+                company=self.company, conso_kwh_mensuelles=conso,
+                tranches=tranches, charges_fixes_mad=charges_fixes,
+                ville=VILLE, min_panneaux=8, max_panneaux=9,
+                source_conso=source, devis=devis)
+        self.assertTrue(lignes)
+        for ligne in lignes:
+            # Base sous ``base_production`` : kWc × base, jamais × derate.
+            self.assertAlmostEqual(
+                ligne['production_annuelle_kwh'],
+                ligne['kwc'] * sum(self.BASE_POSE['kwh_kwc_mensuel']),
+                delta=1.0)
+            self.assertIn(AVERTISSEMENT_BASE_AUTRES_TAILLES,
+                          ligne['avertissements'])
+
+    # ── ACAL973 — le PDF sans bloc horaire imprime la pose réelle ─────────
+    def test_acal973_pdf_sans_bloc_niveau_15_et_niveau_14(self):
+        from apps.ventes.quote_engine.pricing import (
+            PRODUCTION_DERATE, calculate_savings_roi)
+        pose = calculate_savings_roi(71.0, 0, 0, productible=1388.4,
+                                     productible_pertes_incluses=True)
+        self.assertEqual(pose['prod_kwh'], 98576)  # jamais × derate (≈ 91 699)
+        ville = calculate_savings_roi(71.0, 0, 0, productible=1687.0)
+        self.assertEqual(ville['prod_kwh'], round(71.0 * 1687.0 * PRODUCTION_DERATE))
+        self.assertEqual(ville['prod_kwh'], 111420)
+
+    def test_acal973_pdf_egal_page_publique_a_un_kwh_pres(self):
+        from apps.ventes.horaire.public import production_annuelle_pour_kwc
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        pdf = calculate_savings_roi(71.0, 0, 0, productible=1388.4,
+                                    productible_pertes_incluses=True)
+        page = production_annuelle_pour_kwc(71.0, ville=VILLE,
+                                            base_production=self.BASE_POSE)
+        self.assertAlmostEqual(pdf['prod_kwh'], page, delta=1)
+
+    def _hypotheses_973(self, source):
+        from apps.ventes.quote_engine.etude_restitution import restituer_etude
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi = calculate_savings_roi(71.0, 0, 0, productible=1388.4,
+                                    productible_pertes_incluses=bool(source))
+        if source:
+            roi['productible_source'] = source
+        sortie = restituer_etude(
+            _client_city=VILLE, _co_productible=1388.4 if source else None,
+            _corrige=True, _utility=None, etude={}, puissance_kwc=71.0,
+            roi=roi, savings_model='forfait', savings_model_avec='forfait',
+            savings_model_sans='forfait', scenario='sans')
+        return next(b for b in sortie if isinstance(b, dict) and 'items' in b)
+
+    def test_acal973_annexe_nomme_le_calepinage_enregistre(self):
+        bloc = self._hypotheses_973('calepinage_enregistre')
+        production = [h for h in bloc['items'] if h.startswith('Production')]
+        self.assertEqual(len(production), 1)
+        self.assertIn('388 kWh par kWc et par an, calepinage enregistré '
+                      '(pertes et ombrage de la pose réelle inclus).',
+                      production[0])
+        self.assertIsNone(bloc['productible_ville'])  # pas une donnée PVGIS
+        sans = self._hypotheses_973(None)
+        self.assertTrue(any('pertes système' in h for h in sans['items']))
+
+
+class BaseProductionMoteurTest(SimpleTestCase):
+    """ACAL1169 — le moteur horaire avec ``base_production`` (pertes incluses :
+    série servie, ni derate ni ombrage). Déplacé de
+    ``test_etude_horaire.PhysiqueDuMoteurTest`` (fichier au mur, C20)."""
+
+    VILLE = VILLE
+
+    def _conso(self, mad=1200):
+        conso, _source, _detail = profil_depuis_factures(
+            facture_hiver_mad=mad)
+        return conso
+
+    #: ACAL1169 — base de l'exemple (71 kWc, 1 388,4 kWh/kWc, pertes incluses).
+    BASE_POSE = {'kwh_kwc_annuel': 1388.4, 'pertes_incluses': True, 'source': 'calepinage_enregistre',
+                 'kwh_kwc_mensuel': [80, 90, 110, 125, 140, 145, 150, 145, 125, 105, 88, 85.4]}
+
+    def _etude_base(self, base=None, **extra):
+        return EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None, kwc=71.0, conso_kwh_mensuelles=self._conso(),
+            ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE, base_production=base, **extra)
+
+    def test_base_pertes_incluses_remplace_la_ville_sans_derate(self):
+        """ACAL1169 — 71 × 1 388,4 = 98 576 kWh à 1 kWh, ombrage ignoré, source
+        et supposition de forme dites. Mutant : garder le derate ⇒ ≈ 91 699."""
+        etude = self._etude_base(self.BASE_POSE, perte_ombrage_pct=12)
+        self.assertAlmostEqual(etude['annuel']['production_kwh'], 98576, delta=1)
+        self.assertEqual(etude['source_productible'], 'calepinage_enregistre')
+        self.assertEqual(etude['base_production']['forme_horaire'], horaire_base.FORME_HORAIRE_BASE)
+        self.assertEqual(set(etude['base_production']) - {'forme_horaire'},
+                         {'kwh_kwc_annuel', 'kwh_kwc_mensuel', 'pertes_incluses', 'source'})
+        self.assertIn(horaire_base.AVERTISSEMENT_FORME_HORAIRE, etude['avertissements'])
+
+    def test_base_absente_bloc_identique(self):
+        self.assertEqual(self._etude_base(None), EH.calculer_etude_horaire(
+            tranches=None, charges_fixes_mad=None, kwc=71.0, conso_kwh_mensuelles=self._conso(),
+            ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE))
+
+    def test_base_sans_pertes_lue_comme_productible(self):
+        base = dict(self.BASE_POSE, pertes_incluses=False)
+        self.assertEqual(self._etude_base(base)['annuel'], self._etude_base(
+            None, productible_kwh_kwc=1388.4)['annuel'])
 
 
 class BaremeExigeTests(TestCase):

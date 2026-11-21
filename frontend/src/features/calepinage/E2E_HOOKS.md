@@ -49,10 +49,8 @@ retiré plus un hook ajouté.
 | `cal-biblio-favori` | bibliothèque favori. |
 | `cal-biblio-favori-ajouter` | bibliothèque favori ajouter. |
 | `cal-biblio-favori-erreur` | bibliothèque favori message d'erreur. |
-| `cal-biblio-favori-ids` | bibliothèque favori identifiants. |
 | `cal-biblio-favori-ligne` | bibliothèque favori ligne. |
 | `cal-biblio-favori-retirer` | bibliothèque favori retirer. |
-| `cal-biblio-favori-role` | bibliothèque favori rôle. |
 | `cal-biblio-favoris-edition` | bibliothèque favoris édition. |
 | `cal-biblio-favoris-enregistrer` | bibliothèque favoris enregistrer. |
 | `cal-biblio-favoris-erreur` | bibliothèque favoris message d'erreur. |
@@ -67,6 +65,7 @@ retiré plus un hook ajouté.
 | `cal-biblio-modele-creer` | bibliothèque modèle créer. |
 | `cal-biblio-modele-depart` | bibliothèque modèle point de départ. |
 | `cal-biblio-modele-erreur` | bibliothèque modèle message d'erreur. |
+| `cal-biblio-modele-exemple` | bibliothèque modèle exemple (badge « Exemple », ACAL895). |
 | `cal-biblio-modele-lead` | bibliothèque modèle lead. |
 | `cal-biblio-modele-ouvrir` | bibliothèque modèle ouvrir. |
 | `cal-biblio-modele-partir` | bibliothèque modèle partir. |
@@ -111,7 +110,10 @@ retiré plus un hook ajouté.
 | `cal-devis-retouches` | devis retouches non enregistrées / lignes ajoutées (ACAL94/95). |
 | `cal-devis-avertissements` | devis avertissements et marques manquantes (ACAL95). |
 | `cal-devis-j-ai-lu` | devis « J'ai lu » avant rechargement (ACAL95). |
-| `cal-devis-ouvrir` | devis lien « Ouvrir le devis » (ACAL95). |
+| `cal-devis-cree` | devis : carte « Devis … créé » après la génération (ACAL866). |
+| `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |
+| `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
+| `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |
 | `cal-generer-devis` | générer devis. |
 | `cal-resynchroniser-devis` | resynchroniser devis. |
 
@@ -319,6 +321,7 @@ retiré plus un hook ajouté.
 | `cal-calage-calque` | calage calque. |
 | `cal-calage-champ` | calage champ. |
 | `cal-calage-champ-calque` | calage champ calque. |
+| `cal-calage-controle` | calage : contrôle d'échelle selon l'unité du fichier (ACAL513). |
 | `cal-calage-convertir` | calage convertir. |
 | `cal-calage-convertir-motif` | calage : motif de refus de la conversion. |
 | `cal-calage-entite` | calage : une entité détectée (ligne de la liste). |
@@ -385,6 +388,8 @@ retiré plus un hook ajouté.
 | `cal-pente-message` | pente message. |
 | `cal-pente-lecture-seule` | pente : raison de la lecture seule (écritures désactivées). |
 | `cal-pente-mode` | pente mode. |
+| `cal-pente-relief` | pente : bloc replié « Lire la pente sur un relief de drone » (ACAL535). |
+| `cal-pente-relief-fichier` | pente : sélecteur du fichier GeoTIFF du relief (ACAL535). |
 | `cal-pente-visite-orientation-utiliser` | pente : utiliser l’orientation de la visite (ACAL208). |
 | `cal-pente-visite-orientation-mesure` | pente : orientation de la visite (ACAL208). |
 | `cal-pente-visite-orientation` | pente : proposition de l’orientation de la visite (ACAL208). |
@@ -609,6 +614,7 @@ retiré plus un hook ajouté.
 | `cal-reprise-bandeau` | reprise de visite — bandeau date et auteur de la reprise. |
 | `cal-reprise-bouton` | reprise de visite — bouton « Reprendre dans ce calepinage ». |
 | `cal-reprise-chargement` | reprise de visite — lecture en cours. |
+| `cal-reprise-ecarts` | reprise de visite — bandeau « n écarts avec la visite » et son tableau (ACAL527). |
 | `cal-reprise-erreur` | reprise de visite — refus du serveur sous le bouton, par champ. |
 | `cal-reprise-erreur-lecture` | reprise de visite — message d'erreur de lecture. |
 | `cal-reprise-mesure` | reprise de visite — une mesure telle que saisie. |
@@ -655,6 +661,7 @@ retiré plus un hook ajouté.
 | `cal-doc-bouton-import-layout` | document bouton import document. |
 | `cal-doc-bouton-joindre-ombrage` | document bouton joindre ombrage. |
 | `cal-doc-bouton-joindre-pertes` | document bouton joindre pertes. |
+| `cal-doc-bouton-kml` | document bouton export pour Google Earth (ACAL536). |
 | `cal-doc-conception` | document conception. |
 | `cal-doc-conception-confirmation` | document conception confirmation. |
 | `cal-doc-empreinte` | document empreinte. |
@@ -767,6 +774,12 @@ retiré plus un hook ajouté.
 | `cal-comparaison-motif` | motif d’un projet non comparable. |
 | `cal-comparaison-motif-classeur` | motif du classeur indisponible. |
 | `cal-comparaison-refus` | refus serveur de la comparaison. |
+| `cal-comparer-module` | « Comparer d’autres modules » : case d’un module (`-<id>`, ACAL600). |
+| `cal-comparer-modules` | bouton « Comparer d’autres modules » (étape Panneaux, expert). |
+| `cal-comparer-modules-absent` | pourquoi le bouton est absent (motif servi). |
+| `cal-comparer-modules-boite` | boîte de choix des modules. |
+| `cal-comparer-modules-valider` | créer les variantes et comparer. |
+| `cal-comparer-refus` | refus serveur (sous le module nommé : `-<id>`). |
 | `cal-etiquettes` | bloc étiquettes (CALX344). |
 | `cal-etiquettes-ajouter` | ajouter une étiquette. |
 | `cal-etiquettes-choix` | choix d’étiquette. |

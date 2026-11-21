@@ -33,6 +33,12 @@ import { buildAreasFromShape } from './zones';
 import { decouperContour, monterFormesToit } from './formesToit';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { rectRing } from './harnaisAtelier';
+import { modulesDuDocument, panelQuadsLngLat } from './modulesGeo'; // ACAL528
+import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579
+import { readFileSync } from 'node:fs'; // ACAL579
+import { resolve } from 'node:path'; // ACAL579
+import { panelQuadsLngLat as panelQuadsViaScene3d } from './scene3d';
+import { MODULE_ATELIER_PAR_DEFAUT } from '../../lib/roofPro2';
 
 const sumAreaM2 = (pans: RoofShapePan[]): number => pans.reduce((s, p) => s + geodesicAreaM2(p.vertices), 0);
 
@@ -765,5 +771,79 @@ describe('ACAL435 : cibleVue', () => {
     expect(easeTo).not.toHaveBeenCalled();
     appliquerVue({ jumpTo, easeTo }, 'dessus', 150, false);
     expect(easeTo).toHaveBeenCalledWith({ pitch: 0, bearing: 0, duration: 600, essential: true });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL528 — les rectangles de modules depuis le seul document enregistré.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL528 — modulesDuDocument', () => {
+  const centres = [0, 1, 2, 3, 4, 5].map((i) => ({ cx: i * 1.2, cy: (i % 2) * 2.4 }));
+  const document = (module: Record<string, unknown> | null, moduleId?: string) => ({
+    modules: module ? [module] : undefined,
+    zones: [{
+      id: 'z1',
+      geometry: { origin: [-7.6, 33.5], panels: centres, azimuthDeg: 180, tiltDeg: 15, ...(moduleId ? { moduleId } : {}) },
+    }],
+  });
+  const ecartMax = (a: number[][][], b: number[][][]) =>
+    Math.max(...a.flatMap((q, i) => q.flatMap((p, j) => [Math.abs(p[0] - b[i][j][0]), Math.abs(p[1] - b[i][j][1])])));
+
+  it('6 modules d’un module catalogué : les MÊMES quadrilatères que panelQuadsLngLat (à 1e-9 degré)', () => {
+    const doc = document({ id: 'mod-1', libelle: 'Module 720 Wc', longueurMm: 2384, largeurMm: 1303 }, 'mod-1');
+    const [pan] = modulesDuDocument(doc);
+    expect(pan.panId).toBe('z1');
+    expect(pan.quads).toHaveLength(6);
+    const attendu = panelQuadsLngLat([-7.6, 33.5], centres, 1.303, 2.384, 15, 180);
+    expect(ecartMax(pan.quads, attendu)).toBeLessThan(1e-9);
+    // le ré-export de scene3d.ts est la même fonction
+    expect(panelQuadsViaScene3d).toBe(panelQuadsLngLat);
+  });
+
+  it('un module à dimensions inversées dans la fiche donne le même résultat (grand côté le long de la rangée)', () => {
+    const a = modulesDuDocument(document({ id: 'm', longueurMm: 2384, largeurMm: 1303 }, 'm'))[0].quads;
+    const b = modulesDuDocument(document({ id: 'm', longueurMm: 1303, largeurMm: 2384 }, 'm'))[0].quads;
+    expect(ecartMax(a, b)).toBeLessThan(1e-12);
+  });
+
+  it('sans moduleId : le module par défaut de l’atelier, NOMMÉ', () => {
+    const [pan] = modulesDuDocument(document(null));
+    expect(pan.moduleNomme).toBe("module par défaut de l'atelier");
+    const attendu = panelQuadsLngLat([-7.6, 33.5], centres, MODULE_ATELIER_PAR_DEFAUT.courtM, MODULE_ATELIER_PAR_DEFAUT.longM, 15, 180);
+    expect(ecartMax(pan.quads, attendu)).toBeLessThan(1e-12);
+  });
+
+  it('dimensions `null` : aucun quadrilatère et le motif, jamais une dimension supposée', () => {
+    const [pan] = modulesDuDocument(document({ id: 'm', libelle: 'Sans cotes', longueurMm: null, largeurMm: null }, 'm'));
+    expect(pan.quads).toEqual([]);
+    expect(pan.motif).toBe('dimensions du module non saisies');
+  });
+
+  it('un moduleId absent du catalogue est nommé, sans quadrilatère', () => {
+    const [pan] = modulesDuDocument(document({ id: 'autre', longueurMm: 2000, largeurMm: 1000 }, 'm'));
+    expect(pan.quads).toEqual([]);
+    expect(pan.motif).toContain('« m »');
+  });
+
+  it('un pan sans géométrie posée n’a pas de ligne ; un document vide non plus', () => {
+    expect(modulesDuDocument({ zones: [{ id: 'z1' }] })).toEqual([]);
+    expect(modulesDuDocument(null)).toEqual([]);
+  });
+});
+
+// ACAL579 — le visionneur CLIENT (`readOnly`) garde un triangle à chaque jointure malgré la portée.
+describe('ACAL579 — readOnly ⇒ 13 triangles malgré la portée', () => {
+  it('la portée n’est appliquée que dans l’atelier', () => {
+    const p = { valeurM: 2.4, source: 'notice' };
+    const row = () => Array.from({ length: 12 }, (_, i) => ({ la: i * 1.15, halfA: 0.565 }));
+    const compter = (readOnly: boolean) => {
+      let n = 0;
+      poserTrianglesDeRangee(row(), 0.25, porteeAppliquee(readOnly, p), () => { n++; });
+      return n;
+    };
+    expect(compter(true)).toBe(13);
+    expect(compter(false)).toBe(7);
+    const SRC_SCENE = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/scene3d.ts'), 'utf8');
+    expect(SRC_SCENE).toMatch(/porteeAppliquee\(readOnly, ctx\.activeArea\?\.\(\)\?\.porteeEntrePieds\)/);
   });
 });

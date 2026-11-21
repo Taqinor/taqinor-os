@@ -801,3 +801,30 @@ describe('CALX126 — aucune valeur n’est recalculée dans la table', () => {
     expect(ligne.modules).toBeNull();
   });
 });
+
+// ACAL607 — le kWc d'un champ au sol / d'une ombrière vient de la puissance SAISIE `moduleWc`.
+describe('ACAL607 — kWc d’une surface de pose depuis moduleWc', () => {
+  const pans = computePanStats([pan('a', 'bat-A')], () => RESULTAT_PAN);
+  const champ = { kind: 'sol', id: 'sol-1', label: 'Champ', buildingId: 'bat-A', areaM2: 900, engine: { modules: 176 } };
+
+  it('176 modules × 710 Wc sans moduleFor ⇒ 124,96 kWc, sans motif de manque, additionné aux totaux', () => {
+    const stats = computeSiteStats(pans, [{ ...champ, moduleWc: 710 }]);
+    const ligne = stats.lignes.find((l) => l.id === 'sol-1')!;
+    expect(ligne.kwc).toBeCloseTo(124.96, 6);
+    expect(ligne.motif).toBe('');
+    expect(stats.site.kwc).toBeCloseTo(124.96 + (stats.lignes[0].kwc ?? 0), 6);
+  });
+
+  it('moduleWc absent, nul ou négatif ⇒ kwc null et le motif reste', () => {
+    for (const moduleWc of [undefined, null, 0, -5]) {
+      const ligne = computeSiteStats(pans, [{ ...champ, moduleWc }]).lignes.find((l) => l.id === 'sol-1')!;
+      expect(ligne.kwc).toBeNull();
+      expect(ligne.motif).toContain('puissance du module non renseignée');
+    }
+  });
+
+  it('un moduleFor fourni garde la priorité sur moduleWc', () => {
+    const ligne = computeSiteStats(pans, [{ ...champ, moduleWc: 710 }], () => MODULE_550).lignes.find((l) => l.id === 'sol-1')!;
+    expect(ligne.kwc).toBeCloseTo((176 * 550) / 1000, 6);
+  });
+});

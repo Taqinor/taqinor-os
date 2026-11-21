@@ -344,3 +344,98 @@ class SaisonsLuesParLaSimulationTest(SimpleTestCase):
         self.assertAlmostEqual(juillet[0], 0.5 * 1.5)
         self.assertTrue(any('saisonnalité SAISIE' in texte
                             for texte in avec['avertissements']))
+
+
+class FacturesMoisTest(SimpleTestCase):
+    """ACAL836 — de 1 à 12 factures (MAD ou kWh), les mois vides estimés."""
+
+    @staticmethod
+    def proposer(mois, **corps):
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.consommation import (
+            proposer_consommation,
+        )
+
+        return proposer_consommation(
+            SimpleNamespace(lead_id=None, roof_layout={}),
+            dict({'source': 'factures', 'factures': {'mois': mois}}, **corps),
+            company=None)
+
+    def test_trois_factures_kwh_douze_mois_dont_neuf_estimes(self):
+        rendu = self.proposer([{'mois': 1, 'kwh': 300},
+                               {'mois': 7, 'kwh': 500},
+                               {'mois': 10, 'kwh': 400}])
+        mois = rendu['mois']
+        self.assertEqual(len(mois), 12)
+        self.assertEqual([m['source'] for m in mois].count('estime'), 9)
+        self.assertEqual({m['mois'] for m in mois if m['source'] == 'facture'},
+                         {1, 7, 10})
+        attendu = {2: 333.3, 3: 366.7, 4: 400.0, 5: 433.3, 6: 466.7,
+                   8: 466.7, 9: 433.3, 11: 366.7, 12: 333.3}
+        for rang, kwh in attendu.items():
+            self.assertEqual(mois[rang - 1]['kwh'], kwh, rang)
+        self.assertIn('9 mois estimés', ' '.join(rendu['avertissements']))
+        # des kWh seuls ne demandent pas de classe tarifaire.
+        self.assertIsNotNone(rendu['consumption'])
+
+    def test_un_seul_mois_est_recopie(self):
+        rendu = self.proposer([{'mois': 4, 'kwh': 250}])
+        self.assertEqual({m['kwh'] for m in rendu['mois']}, {250.0})
+        self.assertEqual(rendu['kwh_annuel'], 3000.0)
+
+    def test_un_mois_en_mad_non_convertible_laisse_consumption_nul(self):
+        rendu = self.proposer([{'mois': 1, 'mad': 800}], classe='residentiel')
+        self.assertIsNone(rendu['consumption'])
+        self.assertTrue(rendu['avertissements'])
+
+    def test_des_mad_sans_classe_sont_refuses_en_nommant_classe(self):
+        from apps.calepinage.services.consommation import ProfilInvalide
+
+        with self.assertRaises(ProfilInvalide) as capture:
+            self.proposer([{'mois': 1, 'mad': 800}])
+        self.assertEqual(capture.exception.champ, 'classe')
+
+    def test_refus_nommes(self):
+        from apps.calepinage.services.consommation import ProfilInvalide
+
+        cas = (
+            ([{'mois': 1, 'kwh': 300}, {'mois': 2, 'kwh': -5}],
+             'factures.mois[1].kwh'),
+            ([{'mois': 13, 'kwh': 300}], 'factures.mois[0].mois'),
+            ([{'mois': 3, 'kwh': 1}, {'mois': 3, 'kwh': 2}],
+             'factures.mois[1].mois'),
+            ([{'mois': 3}], 'factures.mois[0].mad'),
+            ([{'mois': 3, 'mad': 5, 'kwh': 5}], 'factures.mois[0].kwh'),
+        )
+        for mois, champ in cas:
+            with self.subTest(champ=champ):
+                with self.assertRaises(ProfilInvalide) as capture:
+                    self.proposer(mois, classe='residentiel')
+                self.assertEqual(capture.exception.champ, champ)
+
+    def test_hiver_mad_reste_exige_sans_mois(self):
+        from apps.calepinage.services.consommation import (
+            ProfilInvalide, proposer_consommation,
+        )
+        from types import SimpleNamespace
+
+        with self.assertRaises(ProfilInvalide) as capture:
+            proposer_consommation(
+                SimpleNamespace(lead_id=None, roof_layout={}),
+                {'source': 'factures', 'factures': {}}, company=None)
+        self.assertEqual(capture.exception.champ, 'factures.hiver_mad')
+
+    def test_l_exemple_du_contrat_est_ce_que_le_service_rend(self):
+        import json
+        import pathlib
+
+        contrat = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'calepinage_consommation_proposee.json')
+            .read_text(encoding='utf-8'))
+        rendu = self.proposer(contrat['corps_factures_mois']['factures']
+                              ['mois'])
+        attendu = contrat['exemple_factures_mois']
+        self.assertEqual(rendu['mois'], attendu['mois'])
+        self.assertEqual(rendu['kwh_annuel'], attendu['kwh_annuel'])

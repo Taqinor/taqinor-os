@@ -198,7 +198,7 @@ describe('ACAL414 — RACCOURCIS est lue dans la table unique', () => {
     const lignes = lignesDePortee('atelier')
     expect(RACCOURCIS).toHaveLength(lignes.length)
     expect(RACCOURCIS.map((r) => r.affichage)).toEqual(lignes.map((l) => l.ecriture))
-    expect(RACCOURCIS.map((r) => r.touche)).toEqual(['t', 'o', 'z', 'm', 'a', 'delete', 'd', 'f'])
+    expect(RACCOURCIS.map((r) => r.touche)).toEqual(['t', 'o', 'z', 'm', 'a', 'delete', 'd', 'c', 'v', 'f'])
     expect(RACCOURCIS.find((r) => r.action === 'dupliquer').ctrl).toBe(true)
   })
 })

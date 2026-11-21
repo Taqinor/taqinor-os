@@ -121,7 +121,7 @@ export default function TraceToitClient({ contour, epingle, leadId = null }) {
       {dessin && (
         <p className="lw-trace-toit-note">
           Mesures calculées sur les sommets tracés par le client. Le contour est déjà chargé
-          dans « Concevoir la toiture (3D) ».
+          dans le calepinage du lead (« Dessiner le toit »).
         </p>
       )}
     </div>

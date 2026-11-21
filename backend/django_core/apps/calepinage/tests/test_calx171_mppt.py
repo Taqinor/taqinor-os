@@ -139,6 +139,65 @@ class OmissionsNommeesTest(unittest.TestCase):
         self.assertIn('vmp_v', etape['motif_omission'])
 
 
+class EnergieSousDemarrageTest(unittest.TestCase):
+    """ACAL734 — l'énergie des heures sous le démarrage : publiée, jamais
+    retirée pour cela. Référence recalculée ICI, heure par heure."""
+
+    FENETRE = {'mppt_v_min': 300.0, 'mppt_v_max': 450.0,
+               'v_demarrage_v': 340.0}
+
+    @staticmethod
+    def _reference(demarrage, borne_basse, borne_haute):
+        sous = retiree = 0.0
+        for point in SERIE['points']:
+            tension = 400.0 * (1 + (-0.40 / 100) * (point['t_cell_c'] - 25.0))
+            if tension < demarrage:
+                kwh = point['p_dc_kw'] * 60 / 60.0
+                sous += kwh
+                if tension < borne_basse or tension > borne_haute:
+                    retiree += kwh
+        return sous, retiree
+
+    def test_fenetre_large_publie_sans_retirer(self):
+        serie, etape = mppt.appliquer(SERIE, contexte(fenetre=self.FENETRE))
+        sous, retiree = self._reference(340.0, 300.0, 450.0)
+        self.assertEqual((sous, retiree), (2.0, 0.0))
+        self.assertEqual(etape['entree']['energie_sous_demarrage_kwh'], sous)
+        self.assertEqual(
+            etape['entree']['energie_sous_demarrage_deja_retiree_kwh'],
+            retiree)
+        self.assertEqual(etapes.energie_kwh(serie), 5.0)
+
+    def test_fenetre_etroite_dit_la_part_deja_retiree(self):
+        _, etape = mppt.appliquer(SERIE, contexte())
+        sous, retiree = self._reference(340.0, 350.0, 430.0)
+        self.assertEqual(retiree, 2.0)
+        self.assertEqual(etape['entree']['energie_sous_demarrage_kwh'], sous)
+        self.assertEqual(
+            etape['entree']['energie_sous_demarrage_deja_retiree_kwh'],
+            retiree)
+
+    def test_sans_tension_de_demarrage_null_jamais_zero(self):
+        fenetre = {'mppt_v_min': 300.0, 'mppt_v_max': 450.0}
+        _, etape = mppt.appliquer(SERIE, contexte(fenetre=fenetre))
+        self.assertIsNone(etape['entree']['energie_sous_demarrage_kwh'])
+        self.assertIsNone(
+            etape['entree']['energie_sous_demarrage_deja_retiree_kwh'])
+
+    def test_contrat_porte_les_deux_cles(self):
+        import json
+        import pathlib
+
+        chemin = (pathlib.Path(__file__).resolve().parent.parent
+                  / 'contract_samples' / 'calepinage_pertes_cascade.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))[
+            'exemple_entrees_onduleur']['mppt']
+        _, etape = mppt.appliquer(SERIE, contexte(fenetre=self.FENETRE))
+        for cle in ('energie_sous_demarrage_kwh',
+                    'energie_sous_demarrage_deja_retiree_kwh'):
+            self.assertEqual(exemple[cle], etape['entree'][cle], cle)
+
+
 def _ligne(cascade, nom):
     for etape in cascade['etapes']:
         if etape['etape'] == nom:

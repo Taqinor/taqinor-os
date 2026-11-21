@@ -176,6 +176,25 @@ def _resultat():
     return copy.deepcopy(ECHANTILLON['exemple'])
 
 
+def _resultat_postes():
+    resultat = _resultat()
+    resultat['cascade']['postes_lisibles'] = copy.deepcopy(POSTES_LISIBLES)
+    return resultat
+
+
+#: ACAL697 — cinq postes lisibles dont un compté, un partiel, un non compté :
+#: ceux de l'échantillon de contrat (aucune part de perte écrite en dur ici,
+#: ``test_politique_pertes_pvgis.AucunePerteCacheeTest``).
+POSTES_LISIBLES = json.loads(
+    (RACINE_APP / 'contract_samples' / 'calepinage_pertes_cascade.json')
+    .read_text(encoding='utf-8'))['exemple']['cascade']['postes_lisibles']
+
+
+def _premier_poste(statut):
+    return next(poste for poste in POSTES_LISIBLES['postes']
+                if poste['statut'] == statut)
+
+
 # ── Le pare-feu de TEXTE — jetons entiers, jamais une sous-chaîne ──────────
 #
 # Le jeu de jetons est CELUI du Done= (« MAD, €, DH, prix, coût, montant,
@@ -321,6 +340,17 @@ def _html_presentation_compacte():
         styles=STYLES)
 
 
+def _html_pertes_en_postes():
+    from apps.calepinage.services.documents.pertes_en_postes import (
+        html_de_pertes_en_postes,
+    )
+
+    nu = SimpleNamespace(company=None, pk=None, titre='Villa Anfa',
+                         resultat=None, layout_hash='', version_moteur='')
+    return html_de_pertes_en_postes(nu, resultat=_resultat_postes(),
+                                    styles=STYLES, etat={})
+
+
 def _html_plan_cablage():
     from apps.calepinage.services.documents.plan_cablage import (
         html_du_plan_cablage,
@@ -388,6 +418,7 @@ RENDEURS_HTML_PURS = {
     'document_asbuilt': _html_document_asbuilt,
     'manuel_proprietaire': _html_manuel_proprietaire,
     'presentation_compacte': _html_presentation_compacte,
+    'pertes_en_postes': _html_pertes_en_postes,  # ACAL697
     'plan_cablage': _html_plan_cablage,
     'planche_pdf': _html_planche,
     'plan_pose_pdf': _html_plan_pose,
@@ -457,7 +488,8 @@ class DerivationEtCouvertureTest(unittest.TestCase):
              'plan_masse_pdf', 'note_calcul_pdf', 'pack_technique',
              'rapport_etude', 'rapport_ombrage', 'plan_cablage',
              'manuel_proprietaire', 'document_asbuilt',
-             'dossier_fin_chantier', 'presentation_compacte'})
+             'dossier_fin_chantier', 'presentation_compacte',
+             'pertes_en_postes'})
 
 
 class AucunMontantDansLeHtmlTest(unittest.TestCase):
@@ -489,6 +521,28 @@ class AucunMontantDansLeHtmlTest(unittest.TestCase):
         texte_note = _texte_visible(RENDEURS_HTML_PURS['note_calcul_pdf']())
         self.assertIn(MENTION_PAS_UN_DEVIS, texte_presentation)
         self.assertIn(LIBELLE_MARGE['troncon_min_cm'], texte_note)
+
+
+class FichePertesEnPostesTest(unittest.TestCase):
+    """ACAL697 — la fiche remise au client : aucun montant, aucun kWh."""
+
+    def test_la_fiche_ne_porte_aucun_montant_ni_kwh(self):
+        texte = _texte_visible(_html_pertes_en_postes())
+        self.assertEqual(_mots_de_montant_dans(texte), [])
+        self.assertNotRegex(texte, r'(?i)kwh')
+        self.assertIn('Étude technique', texte)
+
+    def test_un_poste_non_compte_est_nomme_jamais_zero(self):
+        texte = _texte_visible(_html_pertes_en_postes())
+        _premier_poste('non_compte')  # l'échantillon en porte un
+        motif = next(etape['motif_omission']
+                     for poste in POSTES_LISIBLES['postes']
+                     for etape in poste['etapes'])
+        part = str(_premier_poste('compte')['perte_pct']).replace('.', ',')
+        self.assertIn('non compté', texte)
+        self.assertIn(motif, texte.replace('&#x27;', "'"))
+        self.assertNotRegex(texte, r'(?<![\d,])0 %')  # jamais 0 %
+        self.assertIn(part + ' %', texte)  # la part servie, telle quelle
 
 
 class MontantInjecteParUnGabaritEstDetecteTest(unittest.TestCase):
@@ -556,6 +610,9 @@ class AucunMontantDansLePdfReelTest(unittest.TestCase):
             plan_cablage as _cablage,
         )
         from apps.calepinage.services.documents import (
+            pertes_en_postes as _pertes,
+        )
+        from apps.calepinage.services.documents import (
             presentation_compacte as _presentation,
         )
         from apps.calepinage.services.rapport import rendre_rapport
@@ -613,6 +670,9 @@ class AucunMontantDansLePdfReelTest(unittest.TestCase):
                     nu_presentation, resultat=_resultat(),
                     roof_layout=LAYOUT_PLANCHE, svg_planche='',
                     styles=STYLES),
+            'pertes_en_postes': _pertes.rendre_pertes_en_postes(
+                nu_presentation, resultat=_resultat_postes(), styles=STYLES,
+                etat={}),
             'plan_cablage': _cablage.rendre_plan_cablage_pdf(
                 nu_cablage, moment=MOMENT, affectation=AFFECTATION_CABLAGE),
             'planche_pdf': _planche.rendre_planche_pdf(

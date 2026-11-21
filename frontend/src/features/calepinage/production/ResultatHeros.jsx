@@ -1,5 +1,7 @@
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Stat } from '../../../ui'
+import { useModeExpert } from '../atelier/modeExpert'
+import TuileCouverture from './TuileCouverture'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import {
   kwh, kwhParKwc, nonCalculee, nonPublie, pourcentagePerf,
@@ -10,7 +12,8 @@ import {
    celle de `production.total` servie ; `null` s'écrit « non calculée », jamais 0.
    Sans simulation (jamais lancée ou périmée), AUCUNE tuile : un seul état. */
 
-export default function ResultatHeros({ total, simule, motif, avertissements }) {
+export default function ResultatHeros({ total, simule, motif, avertissements, plages = null, autoconsommation = null }) {
+  const [expert] = useModeExpert()
   if (!simule) {
     return (
       <div data-testid="acal443-non-calcule" className="rounded-md border border-border/60 p-4">
@@ -37,8 +40,15 @@ export default function ResultatHeros({ total, simule, motif, avertissements }) 
           (x) => `${formatNumber(x, { decimals: 2 })} kWc`)} />
         <Stat label="Productible" value={kwhParKwc(total?.specific_yield_kwh_kwc)} />
         <Stat label="Pertes totales" value={nonCalculee(total?.total_loss_pct,
-          (x) => formatPercent(x, { decimals: 1 }))} />
+          (x) => formatPercent(x, { decimals: 1 }))}
+        hint={expert && plages?.total ? (
+          <span data-testid="acal703-total-plage">
+            {plages.total.statut === 'dans_la_plage'
+              ? 'Dans la plage habituelle' : 'Hors de la plage habituelle'}
+          </span>
+        ) : undefined} />
       </div>
+      {expert && <TuileCouverture autoconsommation={autoconsommation} />}
       <details data-testid="acal443-details">
         <summary className="cursor-pointer text-sm text-muted-foreground">
           Détails statistiques

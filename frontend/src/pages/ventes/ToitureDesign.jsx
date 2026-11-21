@@ -88,6 +88,7 @@ import {
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
+import TableauComparatif from '../../features/calepinage/atelier/TableauComparatif.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
@@ -1446,6 +1447,9 @@ function AtelierToiture({
           </p>
         </div>
 
+        {/* ACAL546 — « Comparer les poses » (toit plat), sans colonne en MAD ; mode calepinage seulement. */}
+        {estCalepinage && <TableauComparatif />}
+
         {/* ERR-ACAL311-PANNEAU-ABSENT-ERP — « Affiner ma consommation » (`#rp9-cons-window`) :
             balisage UNIQUE partagé avec la preview publique (`@roofpro/consumptionMarkup`),
             sans lequel `consumption.ts monterProposition` ne montait rien ici (« Reprendre du
@@ -1508,6 +1512,20 @@ function AtelierToiture({
           hdBusy={hdBusy} hdMessage={hdMessage} exporterHd={exporterHd}
         />
 
+        {/* ACAL955 — « Enregistrer » AVANT « Générer le devis » (ordre du DOM, du
+            clavier et des lecteurs d'écran) : la barre précède AtelierPanneaux. */}
+        {estCalepinage && !lectureSeule && (
+        <BarreEnregistrement
+          libelle={devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage'}
+          enCours={sending} desactive={sending || !sceneHydratee}
+          onEnregistrer={enregistrerCalepinage}
+          modifiee={sceneModifiee} enregistreLe={enregistreLe}
+          statut={genStatus} erreur={genError}>
+          <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
+            lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
+        </BarreEnregistrement>
+        )}
+
         {estCalepinage && contexte && (
           <AtelierPanneaux
             calepinageId={calepinageId}
@@ -1545,15 +1563,6 @@ function AtelierToiture({
             lecture seule, comme dans les deux autres modes. */}
         {estCalepinage && !lectureSeule && (
         <>
-        <BarreEnregistrement
-          libelle={devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage'}
-          enCours={sending} desactive={sending || !sceneHydratee}
-          onEnregistrer={enregistrerCalepinage}
-          modifiee={sceneModifiee} enregistreLe={enregistreLe}
-          statut={genStatus} erreur={genError}>
-          <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
-            lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
-        </BarreEnregistrement>
         <div className="rounded-xl border border-border bg-card mt-6 p-6">
           <p className="text-xs text-muted-foreground">
             La conception est rangée sur le calepinage, avec une nouvelle

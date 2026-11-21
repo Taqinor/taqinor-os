@@ -224,5 +224,59 @@ class AlbedoTest(unittest.TestCase):
         self.assertIn('non publiée', ALBEDO_FACE_AVANT['motif'])
 
 
+class PostesDePertesTest(unittest.TestCase):
+    """ACAL695 — la table étape → poste couvre EXACTEMENT ``ORDRE_ETAPES``."""
+
+    def test_chaque_etape_a_un_poste_et_aucun_nom_inconnu(self):
+        from apps.calepinage.services.regroupement_pertes import (
+            POSTE_DE_L_ETAPE)
+
+        self.assertEqual(set(POSTE_DE_L_ETAPE), set(ORDRE_ETAPES))
+
+    def test_thermique_est_la_chaleur(self):
+        # Mutant « thermique dans autres » : échec ici.
+        from apps.calepinage.services.regroupement_pertes import (
+            POSTE_DE_L_ETAPE)
+
+        self.assertEqual(POSTE_DE_L_ETAPE['thermique'], 'chaleur')
+
+    def test_les_postes_de_l_echantillon_se_recalculent(self):
+        import json
+        import pathlib
+
+        chemin = (pathlib.Path(__file__).resolve().parents[1]
+                  / 'contract_samples' / 'calepinage_pertes_cascade.json')
+        cascade = json.loads(chemin.read_text(encoding='utf-8'))[
+            'exemple']['cascade']
+        bloc = cascade['postes_lisibles']
+        depart = cascade['etapes'][0]['kwh_avant']
+        self.assertEqual(bloc['depart_kwh'], depart)
+        self.assertEqual(len(bloc['postes']), 5)
+        somme = 0.0
+        for poste in bloc['postes']:
+            if poste['statut'] == 'non_compte':
+                self.assertIsNone(poste['perte_kwh'])
+                self.assertIsNone(poste['perte_pct'])
+                continue
+            # Formule écrite ICI : 100 × perte_kwh ÷ depart_kwh.
+            self.assertAlmostEqual(poste['perte_pct'],
+                                   100.0 * poste['perte_kwh'] / depart,
+                                   places=2)
+            somme += poste['perte_pct']
+        self.assertLessEqual(abs((100.0 - somme) - bloc['arrivee_pct']), 0.1)
+        autres = [p for p in bloc['postes'] if p['poste'] == 'autres'][0]
+        self.assertEqual(autres['statut'], 'partiel')
+        self.assertIn('spectral', [e['etape'] for e in autres['etapes']])
+        for omise in autres['etapes']:
+            self.assertTrue(omise['motif_omission'])
+
+    def test_cascade_vide_motivee(self):
+        from apps.calepinage.services.regroupement_pertes import regrouper
+
+        bloc = regrouper({'etapes': [], 'total_pct': None})
+        self.assertEqual(bloc['postes'], [])
+        self.assertTrue(bloc['motif_absence'])
+
+
 if __name__ == '__main__':
     unittest.main()

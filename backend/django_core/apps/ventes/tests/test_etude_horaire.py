@@ -349,6 +349,9 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
             self.assertLessEqual(etude['annuel'][cle], 1.0)
             self.assertGreaterEqual(etude['annuel'][cle], 0.0)
 
+    # ACAL1169 — les cas « base_production » du moteur vivent dans
+    # ``test_dimensionnement_exemples.BaseProductionMoteurTest`` (fichier au mur).
+
     def test_batterie_restitue_au_plus_90_pct_de_ce_qu_elle_charge(self):
         """L'invariant physique : le rendement aller-retour ne se contourne
         pas — en RÉGIME ÉTABLI (ordre fondateur 24/08/2026 : le reliquat du

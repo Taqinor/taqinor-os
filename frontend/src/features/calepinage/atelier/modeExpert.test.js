@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { cleModeExpert, lireModeExpert, ecrireModeExpert } from './modeExpert'
+import { describe, it, expect, afterEach } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { cleModeExpert, lireModeExpert, ecrireModeExpert, useModeExpert } from './modeExpert'
 
 /* ACAL394 — le « mode expert » est mémorisé PAR UTILISATEUR, dans CE navigateur. */
 function stockageEnMemoire() {
@@ -32,5 +33,30 @@ describe('ACAL394 — mode expert par utilisateur', () => {
     const casse = { getItem() { throw new Error('refusé') }, setItem() { throw new Error('refusé') } }
     expect(lireModeExpert(7, casse)).toBe(false)
     expect(() => ecrireModeExpert(7, true, casse)).not.toThrow()
+  })
+})
+
+/* Le pont vers les scripts de l'atelier (ACAL552, 584, 717) : ils lisent
+   `document.body.dataset.modeExpert === '1'`. */
+describe('mode expert — data-mode-expert sur document.body', () => {
+  afterEach(() => {
+    try { localStorage.clear() } catch { /* stockage indisponible */ }
+    delete document.body.dataset.modeExpert
+  })
+
+  it('guidé : aucun attribut ; basculer en expert le pose, revenir le retire', () => {
+    const { result } = renderHook(() => useModeExpert(false))
+    expect(document.body.dataset.modeExpert).toBeUndefined()
+    act(() => result.current[1](true))
+    expect(document.body.getAttribute('data-mode-expert')).toBe('1')
+    act(() => result.current[1](false))
+    expect(document.body.dataset.modeExpert).toBeUndefined()
+  })
+
+  it('?mode=expert le pose ; le démontage de l’atelier le retire', () => {
+    const { unmount } = renderHook(() => useModeExpert(true))
+    expect(document.body.dataset.modeExpert).toBe('1')
+    unmount()
+    expect(document.body.dataset.modeExpert).toBeUndefined()
   })
 })

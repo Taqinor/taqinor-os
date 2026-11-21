@@ -355,9 +355,33 @@ def retenir_variante(variante, *, user=None, appliquer=True):
 #: :data:`CLES_D_UN_AUTRE_SITE` (``preparer_pour_cible``).
 CHAMPS_COPIES = ('roof_layout', 'layout_hash', 'pertes')
 
+#: ACAL959 (D-ACAL-15 : modèle = réglages + disposition relative) — le
+#: MATÉRIEL de ``resultat['entree_electrique']`` suit la copie ; jamais les
+#: saisies de site ni de géométrie (températures, longueurs, phases…). Une
+#: clé ajoutée plus tard n'est pas copiée sans décision.
+CHAMPS_ENTREE_DU_MODELE = ('module_produit', 'onduleur_produit',
+                           'optimiseur_produit', 'plafond_kwc_par_onduleur',
+                           'protections', 'inclure_prise_terre')
+
+
+def _resultat_du_modele(resultat):
+    """Le ``resultat`` de la copie : ``{'entree_electrique': {matériel}}``,
+    ou ``None`` sans aucune clé blanche (comme avant ACAL959)."""
+    from .electrique import CLE_ENTREE
+
+    entree = (resultat or {}).get(CLE_ENTREE) if isinstance(
+        resultat, dict) else None
+    if not isinstance(entree, dict):
+        return None
+    materiel = {cle: copy.deepcopy(entree[cle])
+                for cle in CHAMPS_ENTREE_DU_MODELE if cle in entree}
+    return {CLE_ENTREE: materiel} if materiel else None
+
+
 #: ACON11 (D-ACAL-15) — les clés du document propres au site et au client
 #: de la SOURCE : jamais recopiées vers un autre lead/client (modèle compris).
-CLES_D_UN_AUTRE_SITE = ('consumption', 'billKwh', 'result', 'underlay')
+CLES_D_UN_AUTRE_SITE = ('consumption', 'billKwh', 'result', 'underlay',
+                        'imageCapture')  # ACAL1041 : date de l'image du site
 
 MESSAGE_CIBLE_SANS_REPERE = ("Le lead n'a pas de repère toit (GPS ou point "
                              "de toit) : placez-le d'abord")
@@ -562,6 +586,8 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     copies['layout_hash'] = copies['layout_hash'] or ''
     copies['pertes'] = (copies['pertes']
                         if isinstance(copies['pertes'], list) else [])
+    copies['resultat'] = _resultat_du_modele(  # ACAL959
+        getattr(calepinage, 'resultat', None))
 
     from .creation import _verrou_creation, responsable_par_defaut
 

@@ -12,8 +12,9 @@ Run :
         apps.stock.tests.test_specs_for_produit -v 2
 """
 from decimal import Decimal
+from types import SimpleNamespace
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.stock.models import FicheTechnique, Produit
 from apps.stock.selectors import specs_for_produit
@@ -42,7 +43,9 @@ class SpecsForProduitBlocModuleTests(TestCase):
                     'techno_cellule', 'noct_c', 'uc_w_m2k', 'uv_w_m3sk',
                     'bifacialite_pct', 'degradation_annuelle_pct',
                     'degradation_annee1_pct', 'garantie_pct_a_10_ans',
-                    'garantie_pct_a_25_ans'):
+                    'garantie_pct_a_25_ans',
+                    # ACAL567 — zone de serrage non saisie : clés absentes.
+                    'serrage_min_mm', 'serrage_max_mm', 'serrage_source'):
             self.assertNotIn(key, specs)
         # bifacial est un booléen jamais NULL (default=False) — présent,
         # comportement inchangé (False = « pas bifacial », pas une absence).
@@ -92,6 +95,19 @@ class SpecsForProduitBlocModuleTests(TestCase):
             quantite_stock=0)
         self.assertEqual(specs_for_produit(autre), {})
 
+    def test_zone_de_serrage_publiee_dans_le_bloc_module(self):
+        """ACAL567 — la zone de serrage saisie est publiée dans le bloc
+        module ; non saisie ⇒ clés absentes (jamais 0)."""
+        FicheTechnique.objects.create(
+            company=self.co, produit=self.produit, type_fiche='module',
+            serrage_min_mm=345, serrage_max_mm=415,
+            serrage_source='notice Aiko, p. 12')
+        self.produit.refresh_from_db()
+        specs = specs_for_produit(self.produit)
+        self.assertEqual(specs['serrage_min_mm'], 345)
+        self.assertEqual(specs['serrage_max_mm'], 415)
+        self.assertEqual(specs['serrage_source'], 'notice Aiko, p. 12')
+
     def test_aucun_import_de_modele_stock_hors_de_lapp(self):
         """Garde-fou de frontière (CLAUDE.md) : ce sélecteur ne dépend que de
         ``apps.stock.models`` — aucun ``import`` réel d'une autre app
@@ -120,3 +136,49 @@ class SpecsForProduitBlocModuleTests(TestCase):
                 or m.startswith('apps.ventes.models.')
                 for m in modules_importes),
             f'import apps.ventes.models détecté : {modules_importes}')
+
+
+class ZoneDeSerrageSansBaseTests(SimpleTestCase):
+    """ACAL567 — règles croisées de la zone de serrage (serializer) et
+    publication par ``specs_for_produit``, sans base de données."""
+
+    def _valider(self, attrs):
+        from apps.stock.serializers_fiche_technique import (
+            FicheTechniqueSerializer)
+        return FicheTechniqueSerializer().validate(dict(attrs))
+
+    def _refus(self, attrs, champ):
+        from rest_framework.exceptions import ValidationError
+        with self.assertRaises(ValidationError) as ctx:
+            self._valider(attrs)
+        self.assertIn(champ, ctx.exception.detail)
+        self.assertIn('refus_etat', str(ctx.exception.get_codes()[champ]))
+
+    def test_zone_sourcee_acceptee(self):
+        attrs = {'serrage_min_mm': 345, 'serrage_max_mm': 415,
+                 'serrage_source': 'notice Aiko, p. 12'}
+        self.assertEqual(self._valider(attrs), attrs)
+
+    def test_sans_source_refusee_en_nommant_serrage_source(self):
+        self._refus({'serrage_min_mm': 345, 'serrage_max_mm': 415},
+                    'serrage_source')
+
+    def test_borne_seule_refusee(self):
+        self._refus({'serrage_min_mm': 345, 'serrage_source': 'notice'},
+                    'serrage_max_mm')
+        self._refus({'serrage_max_mm': 415, 'serrage_source': 'notice'},
+                    'serrage_min_mm')
+
+    def test_min_superieur_au_max_refuse(self):
+        self._refus({'serrage_min_mm': 420, 'serrage_max_mm': 415,
+                     'serrage_source': 'notice'}, 'serrage_min_mm')
+
+    def test_zone_absente_cles_absentes_jamais_zero(self):
+        fiche = SimpleNamespace(
+            type_fiche='module', vmp_v=None, voc_v=None, isc_a=None,
+            imp_a=None, pmax_wc=None, temp_coeff_voc_pct_c=None,
+            temp_coeff_pmax_pct_c=None, longueur_mm=None, largeur_mm=None,
+            serrage_min_mm=None, serrage_max_mm=None, serrage_source='')
+        specs = specs_for_produit(SimpleNamespace(fiche_technique=fiche))
+        for cle in ('serrage_min_mm', 'serrage_max_mm', 'serrage_source'):
+            self.assertNotIn(cle, specs)

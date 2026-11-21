@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat, reponseContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { espions } from '../../../test/fixtures/calepinageApiMock'
+import albedoSurfaces from './albedoSurfaces.json'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, SAISISSABLES,
@@ -171,7 +172,7 @@ describe('ACAL133 — un seul PUT pour les deux sections', () => {
 
     await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
     expect(mocks.putParametres).toHaveBeenCalledWith({ simulation: {}, electrique_societe: {} })
-    expect(screen.queryByTestId('calx69-bandeau')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('acal947-erreurs-bouton')).not.toBeInTheDocument()
   })
 
   it('aller-retour sans geste : les sections renvoyées sont celles servies, à l’octet', async () => {
@@ -244,8 +245,8 @@ describe('CALX69 — une clé entamée sans source est refusée AVANT tout envoi
 
     const erreur = await screen.findByTestId('calx69-erreur-fenetre_annees')
     expect(erreur).toHaveTextContent('source')
-    expect(screen.getByTestId('calx69-bandeau')).toHaveTextContent('années météo')
-    expect(screen.getByTestId('calx69-bandeau').querySelector('a[href="#calx69-fenetre_annees"]'))
+    expect(screen.getByTestId('acal947-erreurs-bouton')).toHaveTextContent('années météo')
+    expect(screen.getByTestId('acal947-erreurs-bouton').querySelector('a[href="#calx69-fenetre_annees"]'))
       .toBeTruthy()
     expect(mocks.putParametres).not.toHaveBeenCalled()
   })
@@ -509,5 +510,270 @@ describe('ACAL397 — « ce qui manque » → /calepinage/reglages#norme : le ch
     expect(Object.keys(corps)).toEqual(['norme_electrique'])
     expect(corps.norme_electrique.norme).toBeNull()
     expect(corps.norme_electrique.coefficients).toEqual(servi.data.norme_electrique.coefficients)
+  })
+})
+
+describe('ACAL770 — les valeurs que le serveur ne sait pas honorer sont grisées avec leur motif', () => {
+  it('« tmy » et « martin_ruiz » : options désactivées « — indisponible », motif visible', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    const optionTmy = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
+      .find((o) => o.value === 'tmy')
+    expect(optionTmy.disabled).toBe(true)
+    expect(optionTmy.textContent).toBe('Année type (TMY) — indisponible')
+    const optionPluri = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
+      .find((o) => o.value === 'pluriannuel')
+    expect(optionPluri.disabled).toBe(false)
+
+    const motif = screen.getByTestId('acal770-motif-mode_meteo-tmy')
+    expect(motif).toHaveAttribute('role', 'status')
+    expect(motif).toHaveTextContent('n\'aboutit pas sans fichier')
+    const optionMartin = Array.from(champValeur('modele_iam').querySelectorAll('option'))
+      .find((o) => o.value === 'martin_ruiz')
+    expect(optionMartin.disabled).toBe(true)
+    expect(screen.getByTestId('acal770-motif-modele_iam-martin_ruiz')).toHaveTextContent('Fresnel')
+    // une ligne sans valeur non servie ne change pas
+    expect(screen.queryByTestId('acal770-motif-attenuation_horizon-true')).toBeNull()
+  })
+
+  it('une valeur déjà enregistrée reste affichée et son motif devient un avertissement', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage')
+    servi.data.simulation.mode_meteo = { valeur: 'tmy', source: 'societe', reference: '' }
+    mocks.getParametres.mockResolvedValue(servi)
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(champValeur('mode_meteo').value).toBe('tmy')
+    expect(screen.getByTestId('acal770-motif-mode_meteo-tmy')).toHaveTextContent('Valeur enregistrée')
+  })
+})
+
+describe('ACAL947 — toutes les erreurs de réglage d’un coup, sous le bouton', () => {
+  it('un 400 à plusieurs clés : une ligne par réglage, sous « Enregistrer », la saisie reste', async () => {
+    const multiple = exempleContrat('calepinage', 'parametres_calepinage', 'exemple_refus_multiple')
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockRejectedValue({ response: { status: 400, data: multiple } })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    fireEvent.change(champValeur('sigma_modele_pct'), { target: { value: 'abc' } })
+    fireEvent.change(champSource('sigma_modele_pct'), { target: { value: 'societe' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+
+    const liste = await screen.findByTestId('acal947-erreurs-bouton')
+    const attendues = Object.values(multiple).flatMap((section) => Object.keys(section))
+    expect(attendues).toHaveLength(4)
+    for (const cle of attendues) {
+      const ligne = within(liste).getByTestId(`acal947-erreur-${cle}`)
+      expect(ligne.querySelector(`a[href="#calx69-${cle}"]`)).toBeTruthy()
+    }
+    // la liste est SOUS le bouton « Enregistrer », la saisie n'est pas perdue
+    const bouton = screen.getByTestId('calx69-enregistrer')
+    expect(bouton.compareDocumentPosition(liste) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(champValeur('sigma_modele_pct').value).toBe('abc')
+  })
+})
+
+describe('ACAL964 — les listes montrent des mots français et envoient la valeur technique', () => {
+  it('« Année type (TMY) » s’affiche pour tmy ; une valeur hors liste reste telle quelle', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage')
+    servi.data.simulation.modele_degradation = { valeur: 'inconnu', source: 'societe', reference: '' }
+    mocks.getParametres.mockResolvedValue(servi)
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    const options = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
+    const tmy = options.find((o) => o.value === 'tmy')
+    expect(tmy.textContent).toContain('Année type (TMY)')
+    expect(options.find((o) => o.value === 'pluriannuel').textContent).toBe('Plusieurs années réelles')
+    // plus aucun mot à tiret bas dans les listes des enums du registre
+    for (const ligne of servi.data.registre.simulation.filter((r) => r.type === 'enum')) {
+      for (const o of champValeur(ligne.cle).querySelectorAll('option')) {
+        if (o.value) expect(o.textContent).not.toMatch(/_/)
+      }
+    }
+    // la valeur stockée hors liste reste affichée telle quelle
+    expect(champValeur('modele_degradation').value).toBe('inconnu')
+  })
+
+  it('l’aller-retour envoie la clé technique, jamais le libellé', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: {} })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    fireEvent.change(champValeur('mode_meteo'), { target: { value: 'pluriannuel' } })
+    fireEvent.change(champSource('mode_meteo'), { target: { value: 'societe' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0].simulation.mode_meteo.valeur).toBe('pluriannuel')
+  })
+})
+
+describe('ACAL572 — l’écran « Lestage »', () => {
+  const lestageServi = () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+  }
+  const champLestage = (cle) => document.getElementById(`lestage-${cle}`)
+
+  it('la carte porte id="lestage" et chaque ligne id="lestage-<cle>" ; aucune constante physique', async () => {
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+    expect(document.getElementById('lestage')).toBe(screen.getByTestId('acal572-lestage'))
+    const lignes = REGISTRE.lestage
+    // Le nombre de lignes est celui servi — jamais un nombre figé ici.
+    expect(lignes.length).toBeGreaterThan(0)
+    for (const r of lignes) expect(champLestage(r.cle)).not.toBeNull()
+    expect(champLestage('acceleration_pesanteur_m_s2')).toBeNull()
+    expect(champLestage('masse_volumique_air_kg_m3')).toBeNull()
+    expect(screen.getAllByTestId(/^acal572-ligne-/)).toHaveLength(lignes.length)
+  })
+
+  it('saisie ⇒ la section lestage ENTIÈRE est renvoyée, zones intactes', async () => {
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+
+    fireEvent.change(champLestage('largeur_bande_rive_m'), { target: { value: '1.2' } })
+    fireEvent.change(screen.getByTestId('acal572-source-largeur_bande_rive_m'), { target: { value: 'notice K2' } })
+    fireEvent.click(screen.getByTestId('acal572-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const corps = mocks.putParametres.mock.calls[0][0]
+    expect(Object.keys(corps)).toEqual(['lestage'])
+    expect(corps.lestage.zones).toEqual(REGLAGES.lestage.zones)
+    expect(corps.lestage.zone_par_defaut).toBe(REGLAGES.lestage.zone_par_defaut)
+    expect(corps.lestage.zones_de_pose).toEqual({ largeur_bande_rive_m: { valeur: 1.2, source: 'notice K2' } })
+    expect(corps.lestage.vitesse_vent_reference_m_s).toEqual(REGLAGES.lestage.vitesse_vent_reference_m_s)
+    expect(await screen.findByTestId('acal572-message')).toBeInTheDocument()
+  })
+
+  it('une ligne vide n’est pas envoyée', async () => {
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+    fireEvent.click(screen.getByTestId('acal572-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const { lestage } = mocks.putParametres.mock.calls[0][0]
+    expect(lestage.zones_de_pose).toBeUndefined()
+    expect(lestage.largeur_coin_m).toBeUndefined()
+  })
+
+  it('une valeur sans source : le message serveur s’affiche sous sa ligne', async () => {
+    const MOTIF = '« Largeur de la bande de rive » doit porter la RÉFÉRENCE du texte d’où elle vient.'
+    lestageServi()
+    mocks.putParametres.mockRejectedValue({
+      response: { status: 400, data: { 'zones_de_pose.largeur_bande_rive_m': MOTIF } },
+    })
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+
+    fireEvent.change(champLestage('largeur_bande_rive_m'), { target: { value: '1.2' } })
+    fireEvent.click(screen.getByTestId('acal572-enregistrer'))
+
+    const erreur = await screen.findByTestId('acal572-erreur-largeur_bande_rive_m')
+    expect(erreur).toHaveTextContent(MOTIF)
+    expect(within(screen.getByTestId('acal572-ligne-largeur_bande_rive_m')).getByRole('alert')).toBe(erreur)
+  })
+
+  it('un nombre illisible est refusé avant tout envoi, sous sa ligne', async () => {
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+    const champ = champLestage('largeur_coin_m')
+    champ.type = 'text'
+    fireEvent.change(champ, { target: { value: 'abc' } })
+    fireEvent.click(screen.getByTestId('acal572-enregistrer'))
+    expect(await screen.findByTestId('acal572-erreur-largeur_coin_m')).toHaveTextContent('doit être un nombre')
+    expect(mocks.putParametres).not.toHaveBeenCalled()
+  })
+
+  it('sans le droit de gérer : lecture seule, aucun bouton', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+    expect(screen.queryByTestId('acal572-enregistrer')).toBeNull()
+    expect(champLestage('largeur_bande_rive_m')).toBeDisabled()
+  })
+})
+
+describe('ACAL561 — retraits par type d’arête', () => {
+  it('la section degagements ENTIÈRE est renvoyée, la ligne égout ajoutée avec sa source', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    await screen.findByTestId('acal561-carte')
+    // Servie par le contrat : « égout 0,40 m — notice X ».
+    expect(screen.getByTestId('acal561-retrait-egout')).toHaveValue(0.4)
+    fireEvent.change(screen.getByTestId('acal561-retrait-rive'), { target: { value: '0.25' } })
+    fireEvent.change(screen.getByTestId('acal561-source-rive'), { target: { value: 'notice Y' } })
+    fireEvent.click(screen.getByTestId('acal561-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const corps = mocks.putParametres.mock.calls[0][0]
+    expect(Object.keys(corps)).toEqual(['degagements'])
+    expect(corps.degagements.retrait_rive_m).toBe(REGLAGES.degagements.retrait_rive_m)
+    expect(corps.degagements.allee_technique_m).toBe(REGLAGES.degagements.allee_technique_m)
+    expect(corps.degagements.retraits_par_arete).toEqual([
+      { type: 'egout', retrait_m: 0.4, source: 'notice X', reference: '' },
+      { type: 'rive', retrait_m: 0.25, source: 'notice Y', reference: '' },
+    ])
+  })
+
+  it('le refus serveur nommé se pose sous la ligne envoyée à ce rang', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockRejectedValue({ response: { status: 400, data: {
+      'degagements.retraits_par_arete[0].source': 'la source manque' } } })
+    rendre()
+    await screen.findByTestId('acal561-carte')
+    fireEvent.click(screen.getByTestId('acal561-enregistrer'))
+    expect(await screen.findByTestId('acal561-erreur-egout')).toHaveTextContent('la source manque')
+  })
+})
+
+/* ACAL747 — la table des albédos : seules les valeurs UNIQUES imprimées par la page. */
+describe('albedoSurfaces.json (ACAL747)', () => {
+  it('chaque surface : valeur numérique unique, url https, date ISO ; ecartees ne recoupe pas surfaces', () => {
+    expect(albedoSurfaces.surfaces.length).toBeGreaterThan(0)
+    for (const s of albedoSurfaces.surfaces) {
+      expect(typeof s.valeur, s.surface).toBe('number')
+      expect(s.valeur).toBeGreaterThan(0)
+      expect(s.valeur).toBeLessThanOrEqual(1)
+      expect(s.url).toMatch(/^https:\/\//)
+      expect(s.date_lecture).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    }
+    const retenues = new Set(albedoSurfaces.surfaces.map((s) => s.surface))
+    for (const e of albedoSurfaces.ecartees) {
+      expect(retenues.has(e.surface), e.surface).toBe(false)
+      expect(e.motif).toBeTruthy()
+    }
+  })
+})
+
+/* ACAL748 — « Remplir depuis une surface (valeur publiée) » sur la ligne albédo. */
+describe('ACAL748 — choix d\'une surface pour l\'albédo', () => {
+  it('choisir une surface remplit valeur, source et référence ; aucun PUT avant Enregistrer', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-albedo_mensuel')
+    const surface = albedoSurfaces.surfaces[0]
+    const choix = screen.getByTestId('acal748-choix-albedo_mensuel').querySelector('select')
+    fireEvent.change(choix, { target: { value: surface.surface } })
+
+    expect(champValeur('albedo_mensuel').value).toBe(String(surface.valeur))
+    expect(champSource('albedo_mensuel').value).toBe('texte')
+    expect(champReference('albedo_mensuel').value).toBe(
+      `PVsyst — Albedo usual coefficients — ${surface.surface} — ${surface.url} — lu le ${surface.date_lecture} — valeur publiée, non mesurée`)
+    expect(mocks.putParametres).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const envoye = mocks.putParametres.mock.calls[0][0].simulation.albedo_mensuel
+    expect(envoye.source).toBe('texte')
+    expect(envoye.reference).toContain(surface.url)
   })
 })

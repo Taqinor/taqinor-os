@@ -276,6 +276,10 @@ class SpecOnduleur:
     #: SPÉCIFICATION de l'appareil, au même titre qu'un Isc cumulé au-dessus
     #: de ``isc_max_mppt_a``. ``None`` = non publiée ⇒ aucun contrôle.
     dc_max_kwc: Optional[float] = None
+    #: ACAL661 — ``False`` = la fiche dit les entrées MPPT NON indépendantes :
+    #: une seule entrée LOGIQUE (un suiveur). ``None`` = non publié ⇒ les
+    #: ``n_mppt`` entrées restent indépendantes (comportement d'avant).
+    mppt_independants: Optional[bool] = None
 
     @property
     def tension_demarrage_v(self):

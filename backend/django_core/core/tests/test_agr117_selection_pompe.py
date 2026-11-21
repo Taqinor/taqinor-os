@@ -199,6 +199,23 @@ class Gardes(unittest.TestCase):
         self.assertIn("diametre_tubage", codes)
         self.assertIn("immersion_minimale", codes)
 
+    def test_alertes_pose_pompe_sans_prefixe_choisir_garde_source(self):
+        """ACAL1113 — la règle extraite rend ``champ`` SANS préfixe, mêmes
+        messages que ``choisir_pompe`` (qui garde ``source.``) ; sans saisie : []."""
+        from core.pompage.selection import alertes_pose_pompe
+        fiche = {"pompe_diametre_ext_mm": 150, "pompe_immersion_min_m": 5}
+        pose = alertes_pose_pompe(fiche, diametre_tubage_mm=150, profondeur_calage_m=42,
+                                  niveau_dynamique_m=40)
+        self.assertEqual([(a["code"], a["champ"]) for a in pose],
+                         [("diametre_tubage", "diametre_tubage_mm"), ("immersion_minimale", "profondeur_calage_m")])
+        res = choisir_pompe([dict(_petite_courbe(), fiche=fiche)], hmt_m=60, debit_conception_m3h=10,
+                            alimentation="tri", diametre_tubage_mm=150, profondeur_calage_m=42,
+                            niveau_dynamique_m=40)
+        devis = [a for a in res["alertes"] if a["code"] in ("diametre_tubage", "immersion_minimale")]
+        self.assertEqual(devis, [dict(a, champ="source." + a["champ"]) for a in pose])
+        self.assertEqual(alertes_pose_pompe(fiche), [])
+        self.assertEqual(alertes_pose_pompe(None, diametre_tubage_mm=100, profondeur_calage_m=3), [])
+
 
 def _liste_seed(nom_liste):
     chemin = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(

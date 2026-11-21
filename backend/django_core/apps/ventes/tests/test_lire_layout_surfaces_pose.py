@@ -84,3 +84,21 @@ class LireLayoutSurfacesDePoseTest(SimpleTestCase):
     def test_layout_muet_reste_a_zero(self):
         self.assertEqual(lire_layout({}).compte, 0)
         self.assertEqual(pans_du_document(None), [])
+
+    def test_modules_affleurants_seuls_comptes(self):
+        """ACAL1029 (D-ACAL-39) — 42 affleurants + 10 sur châssis + 176 au
+        sol ⇒ 42 ; sans clé ``flush`` ⇒ 0, pans inchangés par ailleurs.
+        Mutant : compter toute zone ⇒ 52 ⇒ rouge."""
+        from apps.ventes.domain.geometrie import modules_affleurants
+        layout = _layout_sol(176, moduleWc=550)
+        layout['zones'] = [
+            {'id': 'A', 'geometry': {'count': 42, 'flush': True, 'tiltDeg': 25}},
+            {'id': 'B', 'geometry': {'count': 10, 'flush': False, 'tiltDeg': 25}}]
+        pans = pans_du_document(layout)
+        self.assertEqual([p['affleurant'] for p in pans], [True, False, False])
+        self.assertEqual(modules_affleurants(layout), 42)
+        for zone in layout['zones']:
+            del zone['geometry']['flush']
+        self.assertEqual(modules_affleurants(layout), 0)
+        self.assertEqual([p['modules'] for p in pans_du_document(layout)], [42, 10, 176])
+        self.assertEqual(modules_affleurants(None), 0)

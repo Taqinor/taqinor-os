@@ -53,6 +53,7 @@ REGISTRE_REMISE = {
     'manuel_proprietaire': ('manuel_proprietaire_pdf', 'pdf', MIME_PDF),
     'document_asbuilt': ('document_asbuilt_pdf', 'pdf', MIME_PDF),
     'presentation_compacte': ('presentation_compacte_pdf', 'pdf', MIME_PDF),
+    'pertes_en_postes': ('pertes_en_postes_pdf', 'pdf', MIME_PDF),  # ACAL697
     'diagramme_pertes': ('diagramme_pertes_svg', 'svg', MIME_SVG),
     'planche_pdf': ('planche_pdf', 'pdf', MIME_PDF),
     'plan_pose_pdf': ('plan_pose_pdf', 'pdf', MIME_PDF),

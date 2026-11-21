@@ -51,7 +51,7 @@ describe('BoutonDevis (CAL38)', () => {
     expect(screen.queryByTestId('cal-bouton-devis')).toBeNull()
   })
 
-  it('sans devis lié : génère, puis rouvre la conception SUR le devis créé', async () => {
+  it('sans devis lié : génère, puis la carte « Devis … créé » ouvre le VRAI devis', async () => {
     // `exemple_vide` du contrat : aucun devis, aucune variante.
     calepinageApi.calepinages.genererDevis.mockResolvedValue({
       data: { devis: 42, reference: 'DEV-2609-0042', deduplique: false },
@@ -62,7 +62,9 @@ describe('BoutonDevis (CAL38)', () => {
 
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
       .toHaveBeenCalledWith(DETAIL_VIDE.id, {}))
-    expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/42/design')
+    expect(navigateMock).not.toHaveBeenCalled() // ACAL866 : plus de navigation immédiate
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2609-0042 créé')
+    expect(screen.getByTestId('cal-devis-ouvrir')).toHaveAttribute('href', '/ventes/devis?devis=42')
     // Jamais l'autre geste : un calepinage sans devis ne « resynchronise » rien.
     expect(screen.queryByTestId('cal-resynchroniser-devis')).toBeNull()
   })
@@ -210,7 +212,13 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
     expect(bloc).toHaveTextContent(PUBLICATION.marques_manquantes[0])
     expect(navigateMock).not.toHaveBeenCalled()
     expect(screen.getByTestId('cal-devis-ouvrir'))
-      .toHaveAttribute('href', `/ventes/devis/${PUBLICATION.devis}/design`)
+      .toHaveAttribute('href', `/ventes/devis?devis=${PUBLICATION.devis}`)
+    // ACAL866 — la référence servie, et les lignes techniques REPLIÉES.
+    expect(screen.getByTestId('cal-devis-cree')).toHaveTextContent(`Devis ${PUBLICATION.reference} créé`)
+    const details = screen.getByTestId('cal-devis-details-technicien')
+    expect(details.tagName).toBe('DETAILS')
+    expect(details).not.toHaveAttribute('open')
+    expect(details).toHaveTextContent('Détails pour le technicien')
   })
 
   it('inchangé : Aucun changement', async () => {
@@ -225,7 +233,7 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
     expect(onRecharger).not.toHaveBeenCalled()
   })
 
-  it('génération sans message : navigation comme aujourd’hui', async () => {
+  it('ACAL866 — génération propre : même carte, aucune navigation vers /design, référence absente ⇒ « Devis créé »', async () => {
     calepinageApi.calepinages.genererDevis.mockResolvedValue({
       data: { ...PUBLICATION, avertissements: [], marques_manquantes: [] },
     })
@@ -233,9 +241,21 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
     rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
     await userEvent.click(await screen.findByTestId('cal-generer-devis'))
 
-    await waitFor(() => expect(navigateMock)
-      .toHaveBeenCalledWith(`/ventes/devis/${PUBLICATION.devis}/design`))
-    expect(screen.queryByTestId('cal-devis-avertissements')).toBeNull()
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent(`Devis ${PUBLICATION.reference} créé`)
+    expect(navigateMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('cal-devis-details-technicien')).toBeNull()
+    expect(screen.getByTestId('cal-devis-ouvrir'))
+      .toHaveAttribute('href', `/ventes/devis?devis=${PUBLICATION.devis}`)
+  })
+
+  it('ACAL866 — référence absente : « Devis créé » sans référence inventée', async () => {
+    const { reference: _r, ...sansReference } = PUBLICATION
+    calepinageApi.calepinages.genererDevis.mockResolvedValue({
+      data: { ...sansReference, avertissements: [], marques_manquantes: [] },
+    })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    expect((await screen.findByTestId('cal-devis-cree')).textContent).toMatch(/^Devis créé/)
   })
 })
 
@@ -397,8 +417,8 @@ describe('BoutonDevis — verdict électrique (ACAL171)', () => {
     await userEvent.click(screen.getByTestId('cal-devis-passer-outre'))
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
       .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS))
-    await waitFor(() => expect(navigateMock)
-      .toHaveBeenCalledWith(`/ventes/devis/${DEROGUE.devis}/design`))
+    expect(await screen.findByTestId('cal-devis-ouvrir'))
+      .toHaveAttribute('href', `/ventes/devis?devis=${DEROGUE.devis}`)
     expect(screen.queryByTestId('cal-devis-bloquants')).toBeNull()
   })
 
@@ -410,7 +430,7 @@ describe('BoutonDevis — verdict électrique (ACAL171)', () => {
     for (const m of MANQUANTES.electrique.manquantes) expect(bloc).toHaveTextContent(m)
     // Le devis EST créé : on peut l'ouvrir, rien n'est bloqué.
     expect(screen.getByTestId('cal-devis-ouvrir'))
-      .toHaveAttribute('href', `/ventes/devis/${MANQUANTES.devis}/design`)
+      .toHaveAttribute('href', `/ventes/devis?devis=${MANQUANTES.devis}`)
     expect(screen.queryByTestId('cal-devis-bloquants')).toBeNull()
   })
 

@@ -66,8 +66,11 @@ class RegistreServiTest(SimpleTestCase):
 
     def test_les_deux_sections_sont_publiees(self):
         servi = registre_des_reglages()
-        self.assertEqual(sorted(servi),
-                         [SECTION_ELECTRIQUE_SOCIETE, SECTION_SIMULATION])
+        # ACAL572 — `lestage` : les lignes de l'écran « Lestage », d'une
+        # autre forme (`{cle, libelle, unite, texte, bloc}`), testées à part.
+        self.assertEqual(
+            sorted(servi),
+            [SECTION_ELECTRIQUE_SOCIETE, 'lestage', SECTION_SIMULATION])
 
     def test_chaque_ligne_egale_le_registre_declare_cle_par_cle(self):
         servi = registre_des_reglages()
@@ -99,6 +102,8 @@ class RegistreServiTest(SimpleTestCase):
         type en déclare — jamais une autre clé."""
         servi = registre_des_reglages()
         for section, lignes in servi.items():
+            if section == 'lestage':  # ACAL572 — autre forme
+                continue
             with self.subTest(section=section):
                 for ligne in lignes:
                     self.assertTrue(
@@ -107,7 +112,9 @@ class RegistreServiTest(SimpleTestCase):
                     self.assertTrue(
                         set(ligne) <= {'cle', 'libelle', 'reference', 'unite',
                                        'type', 'minimum', 'maximum',
-                                       'valeurs'}, ligne)
+                                       'valeurs', 'valeurs_non_servies',
+                                       'libelles'},
+                        ligne)
 
     def test_le_type_servi_est_celui_de_types_cles(self):
         """ACAL132 — le type publié est LU dans ``TYPES_CLES``, jamais
@@ -116,6 +123,8 @@ class RegistreServiTest(SimpleTestCase):
 
         servi = registre_des_reglages()
         for section, lignes in servi.items():
+            if section == 'lestage':  # ACAL572 — autre forme
+                continue
             for ligne in lignes:
                 with self.subTest(section=section, cle=ligne['cle']):
                     attendu = type_de_cle(section, ligne['cle'])
@@ -169,3 +178,60 @@ class ContratRegistreTest(SimpleTestCase):
         et un état « rempli » servent le MÊME registre."""
         self.assertEqual(CONTRAT['exemple']['registre'],
                          CONTRAT['exemple_vide']['registre'])
+
+
+class ValeursNonServiesTest(SimpleTestCase):
+    """ACAL770 — chaque valeur déclarée « non servie » l'est VRAIMENT : le vrai
+    comportement est exercé, jamais le seul texte du motif."""
+
+    def test_le_registre_sert_les_deux_declarations(self):
+        lignes = {ligne['cle']: ligne
+                  for ligne in registre_des_reglages()[SECTION_SIMULATION]}
+        self.assertEqual(list(lignes['mode_meteo']['valeurs_non_servies']),
+                         ['tmy'])
+        self.assertEqual(list(lignes['modele_iam']['valeurs_non_servies']),
+                         ['martin_ruiz'])
+        self.assertTrue(all(motif for ligne in lignes.values()
+                            for motif in ligne.get(
+                                'valeurs_non_servies', {}).values()))
+        # une ligne sans valeur non servie ne change pas
+        self.assertNotIn('valeurs_non_servies', lignes['b0_iam'])
+
+    def test_une_valeur_non_servie_reste_admise_a_l_ecriture(self):
+        from apps.calepinage.services.parametres_cles import type_de_cle
+
+        for cle, valeur in (('mode_meteo', 'tmy'),
+                            ('modele_iam', 'martin_ruiz')):
+            self.assertIn(valeur,
+                          type_de_cle(SECTION_SIMULATION, cle)['valeurs'])
+
+    def test_tmy_sans_fichier_est_refuse_par_la_simulation(self):
+        from apps.calepinage.services.simulation import (
+            SimulationRefusee, verifier_simulable)
+
+        contexte = {
+            'site': {'lat': 33.5, 'lon': -7.6},
+            'reglages_simulation': {'mode_meteo': {
+                'valeur': 'tmy', 'source': 'societe'}}}
+        with self.assertRaises(SimulationRefusee) as refus:
+            verifier_simulable(contexte, {'plans_equipes': 1})
+        self.assertEqual(refus.exception.champ,
+                         'parametres.simulation.mode_meteo')
+
+    def test_martin_ruiz_retombe_sur_fresnel(self):
+        from apps.calepinage.services.etapes import iam
+
+        choix = iam._modele({'reglages_simulation': {'modele_iam': {
+            'valeur': 'martin_ruiz', 'source': 'societe'}}})
+        self.assertEqual(choix['modele'], 'fresnel')
+        self.assertTrue(choix['repli'])
+
+    def test_toute_valeur_declaree_est_couverte_par_un_test(self):
+        from apps.calepinage.services.parametres_cles import (
+            VALEURS_NON_SERVIES)
+
+        declarees = {(cle, valeur)
+                     for cles in VALEURS_NON_SERVIES.values()
+                     for cle, valeurs in cles.items() for valeur in valeurs}
+        self.assertEqual(declarees, {('mode_meteo', 'tmy'),
+                                     ('modele_iam', 'martin_ruiz')})

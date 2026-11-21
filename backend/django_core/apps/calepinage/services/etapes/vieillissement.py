@@ -105,10 +105,10 @@ __all__ = ['CLE_HORIZON', 'CLE_MODELE', 'MODELE_LINEAIRE',
            'MODELE_EXPONENTIEL', 'MODELES', 'CHAMP_DEGRADATION',
            'CHAMP_ANNEE1', 'CHAMP_GARANTIE_MOIS', 'SOURCE_REGLAGE',
            'SOURCE_DERIVEE', 'SOURCE_CHAINE', 'REFERENCE',
-           'tableau_pluriannuel']
+           'tableau_pluriannuel', 'bloc_duree_de_vie']
 
 
-def tableau_pluriannuel(p50_annee1_kwh, contexte):
+def tableau_pluriannuel(p50_annee1_kwh, contexte, parts=None):
     """Le bloc ``production.annees`` (CALX4) — ou la seule année 1.
 
     Args:
@@ -117,6 +117,9 @@ def tableau_pluriannuel(p50_annee1_kwh, contexte):
             production inconnue ne se projette pas sur vingt ans.
         contexte: le dict des étapes — ``reglages_simulation``,
             ``fiche_module`` (et, s'il existe, ``fiches_modules``).
+        parts: ACAL842 — ``[{p50_kwh, age_ans}]``, un pan par ligne ; un pan
+            posé il y a ``age_ans`` ans vieillit de ``f(age + N) / f(1)``.
+            ``None`` ou aucun âge > 0 : le bloc est celui d'avant, à l'octet.
 
     Returns:
         ``{annees, modele, horizon_annees, source_horizon, produit_horizon,
@@ -156,22 +159,37 @@ def tableau_pluriannuel(p50_annee1_kwh, contexte):
     if horizon is None:
         return _bloc(annee1, motif=motif)
 
-    facteurs = _facteurs(modele, degradation, premiere, horizon)
+    ages = [int(p['age_ans']) for p in parts or () if p.get('age_ans')]
+    age_max = max(ages, default=0)
+    facteurs = _facteurs(modele, degradation, premiere, horizon + age_max)
     reference_facteur = facteurs[0]
     annees = []
-    for rang, facteur in enumerate(facteurs, start=1):
-        ligne = {
-            'annee': rang,
-            'facteur': round(facteur, 6),
-            'p50_kwh': round(p50 * facteur / reference_facteur, 3),
-            'source': (SOURCE_CHAINE if rang == 1
-                       else f'{modele} — fiche produit'),
-        }
+    for rang in range(1, horizon + 1):
+        facteur = facteurs[rang - 1]
+        if age_max:  # ACAL842 : chaque pan à son âge + le rang
+            valeur = sum(p['p50_kwh'] * facteurs[int(p.get('age_ans') or 0)
+                                                 + rang - 1]
+                         for p in parts) / reference_facteur
+            source = ('chaîne + âge des pans existants' if rang == 1 else
+                      f'{modele} — fiche produit + âge des pans existants')
+        else:
+            valeur = p50 * facteur / reference_facteur
+            source = (SOURCE_CHAINE if rang == 1
+                      else f'{modele} — fiche produit')
+        ligne = {'annee': rang, 'facteur': round(facteur, 6),
+                 'p50_kwh': round(valeur, 3), 'source': source}
         if facteur <= 0.0:
             ligne['plancher'] = True
         annees.append(ligne)
-    return _bloc(annees, modele=modele, horizon=horizon,
+    bloc = _bloc(annees, modele=modele, horizon=horizon,
                  source_horizon=source_horizon, produit=produit)
+    if age_max:
+        nom = _nom_du_produit(fiche)
+        bloc['mention_age'] = (
+            "Âge des pans existants lu sur la saisie de chaque pan (année de "
+            "mise en service) ; dégradation de la fiche du module du système"
+            + (f" ({nom})" if nom else '') + " appliquée à tous les pans.")
+    return bloc
 
 
 # ── le modèle, CHOISI ──────────────────────────────────────────────────
@@ -244,6 +262,52 @@ def _nom_du_produit(fiche):
         if isinstance(valeur, str) and valeur.strip():
             return valeur.strip()
     return ''
+
+
+# ── ACAL693 : durée de vie et garantie du fabricant ─────────────────────
+
+#: Les deux champs de garantie de production de la fiche (CAL113).
+CHAMPS_GARANTIE_PCT = ('garantie_pct_a_10_ans', 'garantie_pct_a_25_ans')
+MOTIF_GARANTIES_DIFFERENTES = ('garanties différentes entre modèles : aucune '
+                               "n'est retenue")
+
+
+def _garantie_fabricant(contexte):
+    """La garantie de production LUE sur la fiche (commune à TOUS les
+    modèles), ou ``null`` motivé — jamais 0, jamais supposée."""
+    fiches = _fiches(contexte)
+    valeurs, manquants, differentes = {}, [], False
+    for champ in CHAMPS_GARANTIE_PCT:
+        lues = [_nombre(fiche.get(champ)) for fiche in fiches]
+        if not lues or None in lues:
+            manquants.append(champ)
+            valeurs[champ] = None
+        elif len(set(lues)) > 1:
+            differentes = True
+        else:
+            valeurs[champ] = lues[0]
+    motifs = []
+    if differentes:
+        valeurs = dict.fromkeys(CHAMPS_GARANTIE_PCT)
+        motifs.append(MOTIF_GARANTIES_DIFFERENTES)
+    if manquants:
+        motifs.append('Non renseigné : ' + _liste('FicheTechnique', manquants))
+    noms = [nom for nom in map(_nom_du_produit, fiches) if nom]
+    return {'pct_a_10_ans': valeurs.get('garantie_pct_a_10_ans'),
+            'pct_a_25_ans': valeurs.get('garantie_pct_a_25_ans'),
+            'produit': ', '.join(dict.fromkeys(noms)),
+            'motif': ' ; '.join(motifs)}
+
+
+def bloc_duree_de_vie(bloc_projection, contexte):
+    """``production.duree_de_vie`` : l'horizon du tableau, son motif
+    d'omission et la garantie du fabricant."""
+    bloc = bloc_projection or {}
+    return {'horizon_annees': bloc.get('horizon_annees'),
+            'source_horizon': bloc.get('source_horizon'),
+            'produit_horizon': bloc.get('produit_horizon') or '',
+            'motif_omission': bloc.get('motif_omission') or '',
+            'garantie': _garantie_fabricant(contexte)}
 
 
 # ── les facteurs ───────────────────────────────────────────────────────

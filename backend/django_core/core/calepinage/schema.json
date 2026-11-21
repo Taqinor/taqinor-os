@@ -77,7 +77,10 @@
         "inclinaison_deg": {"type": "number", "minimum": 0, "exclusiveMaximum": 90},
         "orientation": {"enum": ["PORTRAIT", "PAYSAGE"]},
         "modules_par_table": {"type": "integer", "minimum": 1},
-        "faitage_m": {"type": "number", "minimum": 0}
+        "faitage_m": {"type": "number", "minimum": 0},
+        "rangs_par_table": {"type": "integer", "minimum": 1, "description": "ACAL581 - chassis N x M sur un seul plan : nombre de rangs (1 = aucun chassis)."},
+        "modules_par_rang": {"type": "integer", "minimum": 1, "description": "ACAL581 - modules par rang du chassis."},
+        "jeu_entre_rangs_m": {"type": ["number", "null"], "minimum": 0, "description": "ACAL581 - jeu HORIZONTAL au sol entre deux rangs, SAISI ; obligatoire des que rangs_par_table > 1."}
       }
     },
     "obstacle": {

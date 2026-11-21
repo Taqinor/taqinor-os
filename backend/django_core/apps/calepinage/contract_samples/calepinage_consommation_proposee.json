@@ -161,6 +161,176 @@
       "classe": "domestique"
     }
   },
+  "corps_factures_mois": {
+    "source": "factures",
+    "factures": {
+      "mois": [
+        {
+          "mois": 1,
+          "kwh": 300
+        },
+        {
+          "mois": 7,
+          "kwh": 500
+        },
+        {
+          "mois": 10,
+          "kwh": 400
+        }
+      ]
+    }
+  },
+  "exemple_factures_mois": {
+    "consumption": {
+      "courbe24": [
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479,
+        0.5479
+      ],
+      "appareils": [],
+      "methode": "facture",
+      "source": {
+        "origine": "factures",
+        "saisi_le": "2026-10-04T10:00:00Z",
+        "bareme": "societe"
+      },
+      "saisons": {
+        "ete": 1.163,
+        "hiver": 0.918
+      }
+    },
+    "kwh_annuel": 4800.0,
+    "courbe24": [
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479,
+      0.5479
+    ],
+    "saisons": {
+      "ete": 1.163,
+      "hiver": 0.918
+    },
+    "avertissements": [
+      "9 mois estimés par interpolation entre les mois connus.",
+      "Forme horaire UNIFORME : des factures mensuelles ne disent rien de la journée — affinez la courbe dans l’atelier (appareils ou relevé).",
+      "Saisons lues sur les factures : été (juin–septembre) ×1.163, hiver ×0.918 par rapport au jour moyen de l’année."
+    ],
+    "mois": [
+      {
+        "mois": 1,
+        "facture_mad": null,
+        "kwh": 300.0,
+        "source": "facture"
+      },
+      {
+        "mois": 2,
+        "facture_mad": null,
+        "kwh": 333.3,
+        "source": "estime"
+      },
+      {
+        "mois": 3,
+        "facture_mad": null,
+        "kwh": 366.7,
+        "source": "estime"
+      },
+      {
+        "mois": 4,
+        "facture_mad": null,
+        "kwh": 400.0,
+        "source": "estime"
+      },
+      {
+        "mois": 5,
+        "facture_mad": null,
+        "kwh": 433.3,
+        "source": "estime"
+      },
+      {
+        "mois": 6,
+        "facture_mad": null,
+        "kwh": 466.7,
+        "source": "estime"
+      },
+      {
+        "mois": 7,
+        "facture_mad": null,
+        "kwh": 500.0,
+        "source": "facture"
+      },
+      {
+        "mois": 8,
+        "facture_mad": null,
+        "kwh": 466.7,
+        "source": "estime"
+      },
+      {
+        "mois": 9,
+        "facture_mad": null,
+        "kwh": 433.3,
+        "source": "estime"
+      },
+      {
+        "mois": 10,
+        "facture_mad": null,
+        "kwh": 400.0,
+        "source": "facture"
+      },
+      {
+        "mois": 11,
+        "facture_mad": null,
+        "kwh": 366.7,
+        "source": "estime"
+      },
+      {
+        "mois": 12,
+        "facture_mad": null,
+        "kwh": 333.3,
+        "source": "estime"
+      }
+    ]
+  },
   "exemple_appareils_climatisation": {
     "consumption": {
       "courbe24": [

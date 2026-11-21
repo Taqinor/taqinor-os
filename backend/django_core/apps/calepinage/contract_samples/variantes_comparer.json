@@ -1,19 +1,105 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/comparer/",
   "forme_serveur": "complete",
-  "pourquoi": "Le comparatif des variantes d'UN calepinage du module autonome. La comparaison AO existe déjà (`GET /api/django/ao/variantes/comparer/?ids=`, `apps/ao/calepinage_service.comparer_variantes`) mais elle est bornée aux `VarianteCalepinage` d'une `ToitureAO` et se compare par une liste d'`ids` passée en requête ; le module neutre compare les `CalepinageVariante` d'un calepinage NOMMÉ dans le chemin — une seule forme d'URL, `/api/django/calepinage/calepinages/<pk>/…`, sous-ressource en `@action`. PACT10 : ce contrat part SEUL sur `main` avant la lane du sélecteur (CAL145) et celle de l'écran. POURQUOI LES COLONNES DE PRODUCTION SONT DÉJÀ LÀ : CAL145 publiera le comparatif sur la PRODUCTION (kWc, P50, PR, autoconsommation, pertes dominantes) et non seulement sur le comptage de modules ; les écrire ici évite que le comparatif dérive du contrat le jour où elles arrivent — l'ajout d'une colonne par la lane d'en face est exactement le mode de panne que PACT10 ferme. AUCUNE CLÉ INVENTÉE : le bloc de comptage reprend `comparer_variantes` (`id`, `nom`, `role`, `statut`, `est_retenue`, `total_modules`, `kwc`, `total_optimal`, `optimal`, `methode`, `marge_troncon_min`, `marge_bande_min`, `version_moteur`, `entree_hash`, plus `lignes` / `introuvables` / `reference_modules`) et le bloc de production reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `specific_yield_kwh_kwc`, `loss_breakdown`) et le bloc `self_consumption` (`self_consumption_rate`) ; les postes de pertes cités sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, chacun porteur de sa SOURCE. UNE VARIANTE NON SIMULÉE EST DITE NON SIMULÉE : `simulee` vaut `false` et TOUTES ses grandeurs de production valent `null` — jamais `0`, qui se lirait « zéro kWh » là où personne n'a lancé de simulation. L'ÉCART EST TOUJOURS RELATIF À LA RETENUE : la variante retenue porte donc `ecart_modules` et `ecart_kwc` à `0` (un écart MESURÉ, nul par construction), et une variante non simulée porte `ecart_p50_kwh` à `null`. `exemple_vide` = calepinage à une SEULE variante : la liste garde sa forme, `retenue_id` la désigne, et tous les écarts valent `null` — il n'y a rien à quoi se comparer, ce n'est pas un écart nul. Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix. CAL21 — `forme_serveur: complete` : l'échantillon AFFIRME porter la carte complète de sa route ; `check_api_shapes.py` lit donc `apps/calepinage/selectors.py::comparer_variantes` (dictionnaire littéral) et rougit sur toute clé en trop ou en moins. ACAL7 (C-ACAL-086, D-ACAL-21) — COLONNES DE FRAÎCHEUR de chaque ligne de `lignes[]` : `simulation_perimee` (bool | null — null = variante NON simulée ; true = la simulation date d'avant la dernière modification des entrées de la variante, comparée par empreinte_simulation) et `source_mesures` ('simulation' | 'conception' : d'où viennent les colonnes de production — la simulation quand elle existe et est à jour, sinon la conception). Clés existantes inchangées. Le corps `variante_id` du POST simuler/ est posé par le M0 unique de calepinage_simulation.json (ACAL8). ACAL172 (D-ACAL-9) — chaque ligne porte `verdict_electrique` {verdict, bloquants[] (codes)} : le verdict électrique de LA variante, évalué sur SON roof_layout (contrat calepinage_publication_electrique.json).",
+  "pourquoi": "Le comparatif des variantes d'UN calepinage du module autonome. La comparaison AO existe déjà (`GET /api/django/ao/variantes/comparer/?ids=`, `apps/ao/calepinage_service.comparer_variantes`) mais elle est bornée aux `VarianteCalepinage` d'une `ToitureAO` et se compare par une liste d'`ids` passée en requête ; le module neutre compare les `CalepinageVariante` d'un calepinage NOMMÉ dans le chemin — une seule forme d'URL, `/api/django/calepinage/calepinages/<pk>/…`, sous-ressource en `@action`. PACT10 : ce contrat part SEUL sur `main` avant la lane du sélecteur (CAL145) et celle de l'écran. POURQUOI LES COLONNES DE PRODUCTION SONT DÉJÀ LÀ : CAL145 publiera le comparatif sur la PRODUCTION (kWc, P50, PR, autoconsommation, pertes dominantes) et non seulement sur le comptage de modules ; les écrire ici évite que le comparatif dérive du contrat le jour où elles arrivent — l'ajout d'une colonne par la lane d'en face est exactement le mode de panne que PACT10 ferme. AUCUNE CLÉ INVENTÉE : le bloc de comptage reprend `comparer_variantes` (`id`, `nom`, `role`, `statut`, `est_retenue`, `total_modules`, `kwc`, `total_optimal`, `optimal`, `methode`, `marge_troncon_min`, `marge_bande_min`, `version_moteur`, `entree_hash`, plus `lignes` / `introuvables` / `reference_modules`) et le bloc de production reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `specific_yield_kwh_kwc`, `loss_breakdown`) et le bloc `self_consumption` (`self_consumption_rate`) ; les postes de pertes cités sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, chacun porteur de sa SOURCE. UNE VARIANTE NON SIMULÉE EST DITE NON SIMULÉE : `simulee` vaut `false` et TOUTES ses grandeurs de production valent `null` — jamais `0`, qui se lirait « zéro kWh » là où personne n'a lancé de simulation. L'ÉCART EST TOUJOURS RELATIF À LA RETENUE : la variante retenue porte donc `ecart_modules` et `ecart_kwc` à `0` (un écart MESURÉ, nul par construction), et une variante non simulée porte `ecart_p50_kwh` à `null`. `exemple_vide` = calepinage à une SEULE variante : la liste garde sa forme, `retenue_id` la désigne, et la conception courante la précède (ACAL978). Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix. CAL21 — `forme_serveur: complete` : l'échantillon AFFIRME porter la carte complète de sa route ; `check_api_shapes.py` lit donc `apps/calepinage/selectors.py::comparer_variantes` (dictionnaire littéral) et rougit sur toute clé en trop ou en moins. ACAL7 (C-ACAL-086, D-ACAL-21) — COLONNES DE FRAÎCHEUR de chaque ligne de `lignes[]` : `simulation_perimee` (bool | null — null = variante NON simulée ; true = la simulation date d'avant la dernière modification des entrées de la variante, comparée par empreinte_simulation) et `source_mesures` ('simulation' | 'conception' : d'où viennent les colonnes de production — la simulation quand elle existe et est à jour, sinon la conception). Clés existantes inchangées. Le corps `variante_id` du POST simuler/ est posé par le M0 unique de calepinage_simulation.json (ACAL8). ACAL978 — la CONCEPTION COURANTE est comparée d'office : `lignes[0]` est `{id: null, courante: true, nom: 'Conception courante', est_retenue: false, …}` lue sur le document et le résultat du calepinage comme une variante (aucune variante créée par la lecture) ; chaque variante porte `courante: false` ; les écarts se lisent contre la retenue, sinon contre la courante. ACAL172 (D-ACAL-9) — chaque ligne porte `verdict_electrique` {verdict, bloquants[] (codes)} : le verdict électrique de LA variante, évalué sur SON roof_layout (contrat calepinage_publication_electrique.json).",
   "exemple": {
     "calepinage": 1,
     "retenue_id": 11,
     "reference_modules": 12,
     "introuvables": [],
+    "hypotheses": {
+      "identiques": false,
+      "comparees": 2,
+      "differences": [
+        {
+          "cle": "fenetre_annees",
+          "libelle": "Fenêtre d'années météo",
+          "valeurs": {
+            "11": "2020-2021 (source : societe)",
+            "12": "2015-2020 (source : societe)"
+          }
+        }
+      ]
+    },
     "lignes": [
+    {
+      "id": null,
+      "nom": "Conception courante",
+      "role": "",
+      "statut": "",
+      "est_retenue": false,
+      "courante": true,
+      "simulee": true,
+      "total_modules": 12,
+      "kwc": 8.64,
+      "total_optimal": 12,
+      "optimal": true,
+      "methode": "programmation_dynamique",
+      "orientation": {
+        "axe_rangee": "NORD_SUD",
+        "orientation_module": "PORTRAIT",
+        "azimut_deg": 180.0,
+        "inclinaison_deg": 10.0
+      },
+      "marge_troncon_min": 0.042,
+      "marge_bande_min": null,
+      "marges": {
+        "troncon_min_cm": 4.2,
+        "bande_min_cm": null,
+        "rangee_critique": "R2",
+        "obstacle_critique": ""
+      },
+      "production": {
+        "p50_kwh": 13000.0,
+        "p75_kwh": 12400.0,
+        "p90_kwh": 11900.0,
+        "performance_ratio": 0.8,
+        "specific_yield_kwh_kwc": 1504.6,
+        "self_consumption_rate": 0.62,
+        "pertes_dominantes": [
+          {
+            "poste": "temperature",
+            "pct": 8.0,
+            "source": "hypothese"
+          },
+          {
+            "poste": "shading",
+            "pct": 3.4,
+            "source": "tracé d'ombres"
+          },
+          {
+            "poste": "soiling",
+            "pct": 3.0,
+            "source": "hypothese"
+          }
+        ]
+      },
+      "ecart_modules": 0,
+      "ecart_kwc": 0,
+      "ecart_p50_kwh": 0.0,
+      "version_moteur": "non-publie-dans-cet-exemple",
+      "entree_hash": "abababababababababababababababababababababababababababababababab",
+      "simulation_perimee": false,
+      "source_mesures": "simulation",
+      "module": {
+        "id": "produit-4112",
+        "libelle": "Module monocristallin 580 Wc (exemple)",
+        "pmax_wc": 580.0,
+        "longueur_mm": 2278.0,
+        "largeur_mm": 1134.0
+      },
+      "verdict_electrique": {
+        "verdict": "conforme",
+        "bloquants": []
+      }
+    },
       {
         "id": 11,
         "nom": "Variante retenue — portrait plein sud",
         "role": "reference",
         "statut": "CALCULEE",
         "est_retenue": true,
+        "courante": false,
         "simulee": true,
         "total_modules": 12,
         "kwc": 8.64,
@@ -66,6 +152,7 @@
         "entree_hash": "abababababababababababababababababababababababababababababababab",
         "simulation_perimee": false,
         "source_mesures": "simulation",
+        "module": {"id": "produit-4112", "libelle": "Module monocristallin 580 Wc (exemple)", "pmax_wc": 580.0, "longueur_mm": 2278.0, "largeur_mm": 1134.0},
         "verdict_electrique": {
           "verdict": "conforme",
           "bloquants": []
@@ -77,6 +164,7 @@
         "role": "sensibilite",
         "statut": "CALCULEE",
         "est_retenue": false,
+        "courante": false,
         "simulee": true,
         "total_modules": 10,
         "kwc": 7.2,
@@ -129,6 +217,7 @@
         "entree_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
         "simulation_perimee": true,
         "source_mesures": "simulation",
+        "module": {"mixte": true},
         "verdict_electrique": {
           "verdict": "conforme",
           "bloquants": []
@@ -140,6 +229,7 @@
         "role": "exploration",
         "statut": "CALCULEE",
         "est_retenue": false,
+        "courante": false,
         "simulee": false,
         "total_modules": 13,
         "kwc": 9.36,
@@ -176,6 +266,7 @@
         "entree_hash": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
         "simulation_perimee": null,
         "source_mesures": "conception",
+        "module": null,
         "verdict_electrique": {
           "verdict": "conforme",
           "bloquants": []
@@ -188,13 +279,68 @@
     "retenue_id": 21,
     "reference_modules": 12,
     "introuvables": [],
+    "hypotheses": {
+      "identiques": null,
+      "comparees": 0,
+      "differences": []
+    },
     "lignes": [
+    {
+      "id": null,
+      "nom": "Conception courante",
+      "role": "",
+      "statut": "",
+      "est_retenue": false,
+      "courante": true,
+      "simulee": false,
+      "total_modules": 12,
+      "kwc": 8.64,
+      "total_optimal": 12,
+      "optimal": true,
+      "methode": "programmation_dynamique",
+      "orientation": {
+        "axe_rangee": "NORD_SUD",
+        "orientation_module": "PORTRAIT",
+        "azimut_deg": 180.0,
+        "inclinaison_deg": 10.0
+      },
+      "marge_troncon_min": null,
+      "marge_bande_min": null,
+      "marges": {
+        "troncon_min_cm": null,
+        "bande_min_cm": null,
+        "rangee_critique": "",
+        "obstacle_critique": ""
+      },
+      "production": {
+        "p50_kwh": null,
+        "p75_kwh": null,
+        "p90_kwh": null,
+        "performance_ratio": null,
+        "specific_yield_kwh_kwc": null,
+        "self_consumption_rate": null,
+        "pertes_dominantes": []
+      },
+      "ecart_modules": 0,
+      "ecart_kwc": 0,
+      "ecart_p50_kwh": null,
+      "version_moteur": "non-publie-dans-cet-exemple",
+      "entree_hash": "abababababababababababababababababababababababababababababababab",
+      "simulation_perimee": null,
+      "source_mesures": "conception",
+      "module": null,
+      "verdict_electrique": {
+        "verdict": "conforme",
+        "bloquants": []
+      }
+    },
       {
         "id": 21,
         "nom": "Variante unique",
         "role": "reference",
         "statut": "CALCULEE",
         "est_retenue": true,
+        "courante": false,
         "simulee": false,
         "total_modules": 12,
         "kwc": 8.64,
@@ -224,13 +370,14 @@
           "self_consumption_rate": null,
           "pertes_dominantes": []
         },
-        "ecart_modules": null,
-        "ecart_kwc": null,
+        "ecart_modules": 0,
+        "ecart_kwc": 0,
         "ecart_p50_kwh": null,
         "version_moteur": "non-publie-dans-cet-exemple",
         "entree_hash": "abababababababababababababababababababababababababababababababab",
         "simulation_perimee": null,
         "source_mesures": "conception",
+        "module": null,
         "verdict_electrique": {
           "verdict": "conforme",
           "bloquants": []

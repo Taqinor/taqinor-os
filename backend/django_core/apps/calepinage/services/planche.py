@@ -44,6 +44,7 @@ retourné est plausible à l'œil et faux au mètre près.
 """
 from __future__ import annotations
 
+import math
 from html import escape
 from .valeurs import nombre as _nombre
 
@@ -57,7 +58,7 @@ __all__ = [
     'CONTENU_POSE', 'CONTENUS',
     'rendre_plan_pdf', 'PlanDePoseRefuse',
     'rendre_plan_pose_pdf', 'planche_svg_ou_vide', 'MOTIF_SANS_PARCELLE',
-    'pied_du_calepinage',
+    'pied_du_calepinage', 'coins_du_module',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -83,6 +84,9 @@ VERT_MODULE_FOND = '#c8e6c9'
 GRIS_PAN = '#f4f4f4'
 ORANGE = '#ef6c00'
 GRIS_TEXTE = '#444444'
+#: ACAL575 — la teinte d'un module d'un pan EXISTANT (déjà posé).
+GRIS_MODULE = '#9e9e9e'
+GRIS_MODULE_FOND = '#e0e0e0'
 
 
 # ── CAL194 — trois plans, une seule géométrie ───────────────────────────────
@@ -230,6 +234,13 @@ def _dimensions_module(roof_layout, zone=None):
 
 # ── La GÉOMÉTRIE de planche : une projection en lecture seule ───────────────
 
+def _annee(valeur):
+    """ACAL575 — l'année de mise en service SAISIE, ou ``None``."""
+    if isinstance(valeur, bool) or not isinstance(valeur, int) or valeur < 1:
+        return None
+    return valeur
+
+
 def geometrie_de_planche(roof_layout):
     """``roof_layout`` -> géométrie PLANE en mètres, prête à dessiner.
 
@@ -265,6 +276,9 @@ def geometrie_de_planche(roof_layout):
 
     module_m = _dimensions_module(roof_layout)
     pans, obstacles = [], []
+    # ACAL550 - la cause d'un pan sans module (ACAL555), lue telle quelle.
+    motifs = (roof_layout or {}).get('motifsPansVides')
+    motifs = motifs if isinstance(motifs, dict) else {}
     for rang, zone in enumerate(_zones(roof_layout), start=1):
         points = [local(lat, lng)
                   for lat, lng in _points_geo(zone.get('vertices'), 'lnglat')]
@@ -274,8 +288,8 @@ def geometrie_de_planche(roof_layout):
         # rangée que le document porte, par centre : une structure PARALLÈLE
         # (``pan['modules']`` reste une liste de centres, clé de dict dans
         # les rangées, la fixation et le plan de câblage).
-        reperes = {}
-        modules = _modules_du_pan(geometrie, local, reperes)
+        reperes, orients = {}, {}
+        modules = _modules_du_pan(geometrie, local, reperes, orients)
         pan = {
             'repere': str(zone.get('id') or 'PAN-%d' % rang),
             'libelle': str(zone.get('label') or ''),
@@ -290,10 +304,24 @@ def geometrie_de_planche(roof_layout):
                                  else zone.get('pitchDeg')),
             'modules': modules,
             'reperes_modules': reperes,
+            # ACAL601 — la pose DÉCLARÉE (``None`` si absente ou inconnue :
+            # le module reste alors figuré par son centre).
+            'orientation_modules': geometrie.get('panelOrientation')
+            if geometrie.get('panelOrientation') in MODES_DE_POSE else None,
+            'orientations_par_module': orients,
             # ACAL263 — le module de CE pan (catalogue puis repli kit).
             'module_m': _dimensions_module(roof_layout, zone),
             'batiment': str(zone.get('buildingId') or ''),
+            # ACAL575 — pan d'une installation déjà posée (additif) ; l'année
+            # n'est jamais déduite.
+            'existant': zone.get('existant') is True,
+            'annee_mise_en_service': _annee(zone.get('anneeMiseEnService')),
         }
+        # Un pan garni n'imprime rien, même avec un motif périmé au document.
+        motif = motifs.get(pan['repere'])
+        message = motif.get('message') if isinstance(motif, dict) else None
+        pan['motif_vide'] = (str(message).strip() or None) \
+            if message and not modules else None
         pans.append(pan)
         obstacles.extend(_obstacles_du_pan(zone, local, rang))
 
@@ -330,6 +358,9 @@ def geometrie_de_planche(roof_layout):
         'surfaces_de_pose': surfaces,
     }
     geometrie['etendue'] = _etendue(geometrie)
+    # ACAL603 — l'emprise du TOIT seul (contour + pans) pour les cotes
+    # générales ; ``None`` sans contour ni pan (repli sur ``etendue``).
+    geometrie['etendue_toit'] = _etendue_du_toit(geometrie)
     if geometrie['etendue'] is None and not surfaces:
         raise PlancheRefusee(
             "La conception enregistrée ne porte aucun point exploitable : ni "
@@ -461,13 +492,15 @@ def _repere_du_panneau(panneau):
     return numero, rangee
 
 
-def _modules_du_pan(geometrie, local, reperes=None):
+def _modules_du_pan(geometrie, local, reperes=None, orients=None):
     """Centres des modules POSÉS, en mètres dans le repère de la planche.
 
     ``panels`` porte des centres ENU relatifs à ``origin`` (``[lng, lat]``) :
     on replace donc l'origine dans le repère commun avant d'y ajouter les
     décalages. Ce sont les cellules RÉELLEMENT OCCUPÉES (PV27) — jamais les
     ``count`` premières d'un pavage, qui effaceraient une édition manuelle.
+    ``orients`` (ACAL601), quand il est donné, reçoit ``{centre: orient}``
+    pour les modules qui DÉCLARENT ``portrait`` ou ``landscape``.
     """
     panneaux = geometrie.get('panels')
     if not isinstance(panneaux, (list, tuple)):
@@ -485,6 +518,8 @@ def _modules_du_pan(geometrie, local, reperes=None):
             continue
         centre = (est0 + cx, nord0 + cy)
         centres.append(centre)
+        if orients is not None and panneau.get('orient') in ORIENTATIONS:
+            orients[centre] = panneau['orient']
         if reperes is not None:
             numero, rangee = _repere_du_panneau(panneau)
             if numero is not None or rangee is not None:
@@ -520,6 +555,17 @@ def _obstacles_du_pan(zone, local, rang_pan):
             'provenance': str(obstacle.get('provenance') or ''),
         })
     return obstacles
+
+
+def _etendue_du_toit(geometrie):
+    """``(xmin, ymin, xmax, ymax)`` du contour et des pans seuls, ou ``None``."""
+    points = list(geometrie['contour'])
+    for pan in geometrie['pans']:
+        points.extend(pan['points'])
+    if not points:
+        return None
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    return (min(xs), min(ys), max(xs), max(ys))
 
 
 def _etendue(geometrie):
@@ -638,31 +684,67 @@ def _cote_verticale(y0, y1, x, vers_feuille, *, couleur=NOIR):
          _n(a[0] - 7.2), _n(milieu_y), escape(texte_de_longueur(abs(y1 - y0))))
 
 
+#: Les poses que le document enregistre (``geometry.panelOrientation`` et
+#: ``panels[].orient``) — ACAL601.
+ORIENTATIONS = ('portrait', 'landscape')
+MODES_DE_POSE = ORIENTATIONS + ('mixed',)
+
+
+def coins_du_module(pan, centre):
+    """ACAL601 — les 4 coins ``(x, y)`` en mètres du module de centre
+    ``centre``, ou ``None`` : l'emprise n'est jamais devinée.
+
+    Le long de la rangée : le petit côté en portrait, le grand en paysage ;
+    dans la pente : l'autre côté × cos(pente). Les axes sont ceux de
+    ``rangees._axes`` : f = (sin az, cos az) (vers l'aval), u = (-cos az,
+    sin az) (le long de la rangée). Sans cotes de module, azimut, pente ou
+    pose lisible (``mixed`` lit la pose du module), rien n'est rendu."""
+    cotes = pan.get('module_m')
+    azimut, pente = pan.get('azimut_deg'), pan.get('pente_deg')
+    pose = pan.get('orientation_modules')
+    if pose == 'mixed':
+        pose = (pan.get('orientations_par_module') or {}).get(centre)
+    if cotes is None or azimut is None or pente is None \
+            or pose not in ORIENTATIONS:
+        return None
+    grand, petit = max(cotes), min(cotes)
+    rangee, autre = (petit, grand) if pose == 'portrait' else (grand, petit)
+    demi_r = rangee / 2.0
+    demi_p = autre * math.cos(math.radians(pente)) / 2.0
+    angle = math.radians(azimut)
+    u = (-math.cos(angle), math.sin(angle))
+    f = (math.sin(angle), math.cos(angle))
+    return tuple((centre[0] + sr * demi_r * u[0] + sp * demi_p * f[0],
+                  centre[1] + sr * demi_r * u[1] + sp * demi_p * f[1])
+                 for sr, sp in ((-1, -1), (1, -1), (1, 1), (-1, 1)))
+
+
 def _dessin_des_modules(pan, vers_feuille, module_m=None):
     """Les modules POSÉS : rectangle quand l'emprise est SOURCÉE, sinon croix.
 
     ACAL263 — l'emprise est celle du PAN (``pan['module_m']``) ; le paramètre
-    n'est qu'un repli pour un pan sans cote propre."""
-    module_m = pan['module_m'] if 'module_m' in pan else module_m
+    n'est qu'un repli pour un pan sans cote propre. ACAL601 — le rectangle
+    est celui de :func:`coins_du_module` (pose et azimut du pan)."""
+    if 'module_m' not in pan:
+        pan = dict(pan, module_m=module_m)
     morceaux = []
+    existant = pan.get('existant') is True
     for centre in pan['modules']:
-        if module_m is None:
+        coins = coins_du_module(pan, centre)
+        if coins is None:
             # Emprise inconnue -> le module est figuré par son CENTRE. On ne
             # dessine pas un rectangle de taille plausible : il se lirait comme
             # une emprise mesurée.
             x, y = vers_feuille(centre)
             morceaux.append(
                 '<circle cx="%s" cy="%s" r="0.7" fill="%s" />'
-                % (_n(x), _n(y), VERT_MODULE))
+                % (_n(x), _n(y), GRIS_MODULE if existant else VERT_MODULE))
             continue
-        demi_l, demi_c = module_m[0] / 2.0, module_m[1] / 2.0
-        coins = ((centre[0] - demi_l, centre[1] - demi_c),
-                 (centre[0] + demi_l, centre[1] - demi_c),
-                 (centre[0] + demi_l, centre[1] + demi_c),
-                 (centre[0] - demi_l, centre[1] + demi_c))
-        morceaux.append(_polygone(coins, vers_feuille, contour=VERT_MODULE,
-                                  remplissage=VERT_MODULE_FOND,
-                                  trait=TRAIT_MODULE))
+        morceaux.append(_polygone(
+            coins, vers_feuille,
+            contour=GRIS_MODULE if existant else VERT_MODULE,
+            remplissage=GRIS_MODULE_FOND if existant else VERT_MODULE_FOND,
+            trait=TRAIT_MODULE, tirets='1 0.6' if existant else ''))
     return morceaux
 
 
@@ -705,22 +787,19 @@ def _longueur_de_barre(echelle, largeur_mm=LARGEUR_BARRE_MM):
 
 
 def _echelle_nommee(echelle):
-    """``1/200`` — le DÉNOMINATEUR de l'échelle du tracé, arrondi au rang lisible.
+    """``1/52`` — le DÉNOMINATEUR de l'échelle du tracé, l'entier le plus proche.
 
     L'échelle nommée est CALCULÉE du tracé (millimètres de feuille par mètre de
-    terrain), jamais choisie : ``1 m`` de terrain occupe ``echelle`` mm, donc le
-    rapport vaut ``1000 / echelle``. Elle ne remplace pas la barre graphique —
-    elle la complète, et sa condition de validité est écrite à côté
-    (``mention_d_echelle``), parce qu'un tirage réduit la rend fausse.
+    terrain), jamais choisie ni ramenée à un rang normalisé (ACAL602 : le rang
+    supérieur imprimait « 1/100 » pour un tracé à 1/52) : ``1 m`` de terrain
+    occupe ``echelle`` mm, donc le rapport vaut ``1000 / echelle``. Elle ne
+    remplace pas la barre graphique — elle la complète, et sa condition de
+    validité est écrite à côté (``mention_d_echelle``), parce qu'un tirage
+    réduit la rend fausse.
     """
     if not echelle or echelle <= 0:
         return None
-    denominateur = 1000.0 / float(echelle)
-    for rang in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000,
-                 5000):
-        if denominateur <= rang:
-            return rang
-    return int(round(denominateur / 1000.0) * 1000)
+    return int(round(1000.0 / float(echelle)))
 
 
 def _mention_d_echelle(echelle):
@@ -730,6 +809,25 @@ def _mention_d_echelle(echelle):
         return ''
     return ('Échelle du tracé 1/%d — valable sur un tirage A3 non réduit ; '
             'se reporter à la barre d\'échelle.' % denominateur)
+
+
+#: ACAL601 — la légende d'un module dont l'orientation n'est pas enregistrée.
+LIBELLE_MODULE_SANS_POSE = (
+    'Module posé — orientation non enregistrée (figuré par son centre) ; '
+    'ouvrir et enregistrer le calepinage')
+
+
+#: ACAL575 — la légende d'un module d'un pan existant.
+LIBELLE_MODULE_EXISTANT = 'Module existant (déjà posé)'
+
+
+def _modules_au_centre(geometrie):
+    """Vrai si un module aux cotes connues est figuré par son centre faute
+    de pose, d'azimut ou de pente enregistrés."""
+    return any(pan.get('module_m') is not None
+               and coins_du_module(pan, centre) is None
+               for pan in geometrie.get('pans') or ()
+               for centre in pan['modules'])
 
 
 def _entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
@@ -755,7 +853,21 @@ def _entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
         entrees.append((NOIR, GRIS_PAN, 'Pan de toiture'))
     if contenu == CONTENU_IMPLANTATION \
             and any(pan['modules'] for pan in geometrie.get('pans') or ()):
-        entrees.append((VERT_MODULE, VERT_MODULE_FOND, 'Module posé'))
+        entrees.append((VERT_MODULE, VERT_MODULE_FOND,
+                        LIBELLE_MODULE_SANS_POSE
+                        if _modules_au_centre(geometrie) else 'Module posé'))
+    if contenu in (CONTENU_IMPLANTATION, CONTENU_POSE):
+        # ACAL575 — l'entrée « existant », seulement avec un pan existant.
+        existants = [pan for pan in geometrie.get('pans') or ()
+                     if pan.get('existant') and pan['modules']]
+        if existants:
+            annees = sorted({p['annee_mise_en_service'] for p in existants
+                             if p.get('annee_mise_en_service')})
+            entrees.append((GRIS_MODULE, GRIS_MODULE_FOND,
+                            LIBELLE_MODULE_EXISTANT + (
+                                ' — mis en service en '
+                                + ', '.join(str(a) for a in annees)
+                                if annees else ''), '1 0.6'))
     obstacles = geometrie.get('obstacles') or ()
     if obstacles:
         entrees.append((NOIR, '#ffffff', 'Obstacle relevé'))
@@ -865,12 +977,13 @@ def _legende_svg(x, y, entrees):
     morceaux = ['<text x="%s" y="%s" font-size="3.6" font-weight="bold" '
                 'fill="%s">LÉGENDE</text>' % (_n(x), _n(y), NOIR)]
     courant = y + 5.0
-    for contour, remplissage, libelle in entrees:
+    for contour, remplissage, libelle, *tirets in entrees:
         morceaux.append(
             '<rect x="%s" y="%s" width="4" height="3" fill="%s" stroke="%s" '
-            'stroke-width="0.2" />'
+            'stroke-width="0.2"%s />'
             '<text x="%s" y="%s" font-size="3.2" fill="%s">%s</text>'
             % (_n(x), _n(courant - 2.4), remplissage, contour,
+               ' stroke-dasharray="%s"' % tirets[0] if tirets else '',
                _n(x + 6.0), _n(courant), NOIR, escape(libelle)))
         courant += 4.6
     return morceaux, courant
@@ -1147,6 +1260,7 @@ def _corps_feuille_toit(geometrie, *, titre='', sous_titre='', bandeau=(),
             # centres relevés : l'équipe doit pouvoir se repérer sur le toit.
             for pan in geometrie['pans']:
                 morceaux.extend(_reperes_de_pose(pan, vers_feuille))
+                morceaux.extend(_motif_de_pan_vide(pan, vers_feuille))
         for obstacle in geometrie['obstacles']:
             coins = ((obstacle['x'], obstacle['y']),
                      (obstacle['x'] + obstacle['largeur'], obstacle['y']),
@@ -1160,10 +1274,16 @@ def _corps_feuille_toit(geometrie, *, titre='', sous_titre='', bandeau=(),
                 coins, vers_feuille, contour=NOIR if releve else ORANGE,
                 remplissage='#ffffff', tirets='' if releve else '1.2 0.8'))
 
-    # Les cotes d'ENCOMBREMENT, mesurées sur la géométrie projetée.
+    # Les cotes d'ENCOMBREMENT, mesurées sur la géométrie projetée. ACAL603 —
+    # elles mesurent le TOIT seul (contour et pans), jamais la boîte qui
+    # inclut obstacles et modules ; le plan de masse garde l'étendue avec
+    # parcelle. Les lignes de cote restent au bas / à gauche du dessin entier.
     x0, y0, x1, y1 = etendue
-    morceaux.append(_cote_horizontale(x0, x1, y0, vers_feuille))
-    morceaux.append(_cote_verticale(y0, y1, x0, vers_feuille))
+    tx0, ty0, tx1, ty1 = (
+        (None if contenu == CONTENU_MASSE else geometrie.get('etendue_toit'))
+        or etendue)
+    morceaux.append(_cote_horizontale(tx0, tx1, y0, vers_feuille))
+    morceaux.append(_cote_verticale(ty0, ty1, x0, vers_feuille))
 
     # CAL172 — le nord (haut de la zone de dessin) et l'échelle métrique (bas).
     cadre = _cadre_de_dessin()
@@ -1240,7 +1360,7 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
 
 # ── Les sorties : SVG, puis PDF par la plomberie PARTAGÉE ───────────────────
 
-def html_de_planche(svg):
+def html_de_planche(svg, style_en_plus='', pages_en_plus=''):
     """Encapsule le SVG dans un HTML A3 paysage — le chemin éprouvé du dépôt.
 
     Aucune police distante, aucune image externe : le document est autonome,
@@ -1260,7 +1380,8 @@ def html_de_planche(svg):
         '@page{size:A3 landscape;margin:0;}'
         'html,body{margin:0;padding:0;background:#fff;}'
         'svg{display:block;width:100%;height:auto;}'
-        + style + '</style></head><body>' + svg + '</body></html>'
+        + style + style_en_plus + '</style></head><body>' + svg
+        + pages_en_plus + '</body></html>'
     )
 
 
@@ -1391,6 +1512,18 @@ def _verifier_absence_d_argent(document):
     return document
 
 
+def _motif_de_pan_vide(pan, vers_feuille):
+    """ACAL550 - la cause d'un pan sans module, au barycentre du pan."""
+    points = pan.get('points') or ()
+    if not pan.get('motif_vide') or not points:
+        return []
+    x, y = vers_feuille((sum(p[0] for p in points) / len(points),
+                         sum(p[1] for p in points) / len(points)))
+    return ['<text x="%s" y="%s" font-size="3" text-anchor="middle" '
+            'fill="%s">%s</text>'
+            % (_n(x), _n(y), GRIS_TEXTE, escape(pan['motif_vide']))]
+
+
 def _reperes_de_pose(pan, vers_feuille):
     """Repère de rangée (« R1 ») et flèche de SENS DE POSE, par rangée.
 
@@ -1499,8 +1632,12 @@ def rendre_plan_pose_pdf(calepinage, *, company=None, **options):
     """Octets PDF du plan de pose, par ``core.pdf.render_pdf`` (ARC11)."""
     from core.pdf import render_pdf
 
+    from .planche_pan import feuilles_de_pans
+
     svg = _rendre_plan_pose_svg(calepinage, **options)
-    return render_pdf(html=html_de_planche(svg),
+    # ACAL590 — une feuille A4 par pan, APRÈS les feuilles A3 d'avant.
+    style, pages = feuilles_de_pans(calepinage, moment=options.get('moment'))
+    return render_pdf(html=html_de_planche(svg, style, pages),
                       company=company or getattr(calepinage, 'company', None))
 
 

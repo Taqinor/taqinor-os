@@ -309,3 +309,59 @@ class AucuneEcritureTest(SimpleTestCase):
                 interdit, SOURCE_VUE,
                 f"« {interdit} » dans views/import_plan.py : cette porte est "
                 "une LECTURE, aucun document ne s'y écrit.")
+
+
+def _dxf_unite(insunits, longueur):
+    """Un DXF ``ezdxf`` d'unité ``insunits`` (0 = non déclarée), A–B = longueur."""
+    import ezdxf
+
+    doc = ezdxf.new('R2010')
+    doc.header['$INSUNITS'] = insunits
+    doc.layers.add(CALQUE)
+    doc.modelspace().add_lwpolyline(
+        [(0, 0), (longueur, 0), (longueur, longueur / 2), (0, longueur / 2)],
+        close=True, dxfattribs={'layer': CALQUE})
+    flux = io.StringIO()
+    doc.write(flux)
+    return flux.getvalue().encode('utf-8')
+
+
+class ControleEchelleTest(SimpleTestCase):
+    """ACAL512 — A–B en mètres selon l'unité DÉCLARÉE, affiché, jamais jugé."""
+
+    def _controle(self, insunits, distance):
+        calage = {'pointA': [0, 0], 'pointB': [9840, 0],
+                  'distanceM': distance, 'rotationDeg': 0}
+        reponse = _appeler(_dxf_unite(insunits, 9840.0),
+                           vue=FausseVue(CalepinageEpingle()), calque=CALQUE,
+                           calage=json.dumps(calage))
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIsNone(reponse.data['echelle'],
+                          "L'échelle reste celle de la distance SAISIE.")
+        self.assertIsNotNone(reponse.data['contour_lnglat'])
+        return reponse.data['controle_echelle']
+
+    def test_dxf_en_mm_concorde(self):
+        # 9 840 mm ÷ 1 000 mm/m = 9,84 m (dérivé à la main).
+        self.assertEqual(self._controle(4, 9.84),
+                         _contrat()['exemple_controle_mm_concorde'])
+
+    def test_dxf_en_mm_saisie_dix_fois_trop_grande(self):
+        controle = self._controle(4, 98.4)
+        self.assertEqual(controle, _contrat()['exemple_controle_mm_x10'])
+        self.assertAlmostEqual(controle['rapport'], 98.4 / 9.84, places=6)
+
+    def test_dxf_sans_unite_rend_inconnu(self):
+        self.assertEqual(self._controle(0, 98.4),
+                         _contrat()['exemple_controle_inconnu'])
+
+    def test_pdf_ou_unite_inconnue_idem(self):
+        from apps.calepinage.services.import_plan import controle_echelle
+
+        calage = ((0.0, 0.0), (9840.0, 0.0), 98.4, 0.0)
+        self.assertEqual(controle_echelle({'format': 'pdf',
+                                           'unite': 'inconnu'}, calage),
+                         _contrat()['exemple_controle_inconnu'])
+
+    def test_sans_calage_aucune_cle(self):
+        self.assertNotIn('controle_echelle', _appeler(calque=CALQUE).data)

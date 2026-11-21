@@ -285,3 +285,41 @@ class RefusNommeLeChampTest(SimpleTestCase):
         document['scene']['sunDay'] = 172.5
         refus = self._refus(document)
         self.assertEqual(refus.champ, 'scene.sunDay')
+
+
+class MotifsPansVidesTest(SimpleTestCase):
+    """ACAL555 — `motifsPansVides` : clé ADDITIVE, `code` FERMÉ."""
+
+    def _document(self):
+        document = copy.deepcopy(SCHEMA['exemple'])
+        document['motifsPansVides'] = copy.deepcopy(
+            SCHEMA['exemple_motifs_pans_vides'])
+        return document
+
+    def _refus(self, document):
+        with self.assertRaises(ImportLayoutRefuse) as capture:
+            valider_document(document)
+        return capture.exception
+
+    def test_un_motif_valide_passe_la_porte(self):
+        valider_document(self._document())
+
+    def test_un_code_inconnu_nomme_le_champ(self):
+        document = self._document()
+        document['motifsPansVides']['pan-nord']['code'] = 'xyz'
+        refus = self._refus(document)
+        self.assertEqual(refus.champ, 'motifsPansVides.pan-nord.code')
+
+    def test_un_message_vide_est_refuse(self):
+        document = self._document()
+        document['motifsPansVides']['pan-nord']['message'] = ''
+        refus = self._refus(document)
+        self.assertEqual(refus.champ, 'motifsPansVides.pan-nord.message')
+
+    def test_l_exemple_complet_n_a_pas_bouge(self):
+        self.assertNotIn('motifsPansVides', SCHEMA['exemple'])
+        valider_document(copy.deepcopy(SCHEMA['exemple']))
+
+    def test_la_cle_est_classee_document(self):
+        from .test_acal_garde_empreintes import CLASSEMENT_RACINE, DOCUMENT
+        self.assertEqual(CLASSEMENT_RACINE['motifsPansVides'], DOCUMENT)

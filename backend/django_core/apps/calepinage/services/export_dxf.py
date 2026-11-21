@@ -49,6 +49,8 @@ passe toujours ; sans le paramètre, ``document_dxf`` reste celui de CAL178.
 """
 from __future__ import annotations
 
+import math
+
 __all__ = [
     'CALQUE_TOITURE', 'CALQUE_OBSTACLES', 'CALQUE_MODULES', 'CALQUE_COTES',
     'CALQUES', 'octets_dxf', 'exporter_dxf',
@@ -90,12 +92,9 @@ CALQUE_PROVENANCE = 'PROVENANCE'
 COULEUR_CALQUE_PROVENANCE = 8
 
 
-def _rectangle(centre, longueur, largeur):
-    """Les 4 coins d'un rectangle centré, dans le plan du dessin."""
-    demi_l, demi_c = longueur / 2.0, largeur / 2.0
-    x, y = centre
-    return [(x - demi_l, y - demi_c), (x + demi_l, y - demi_c),
-            (x + demi_l, y + demi_c), (x - demi_l, y + demi_c)]
+def _sommets(points):
+    """L'ensemble des sommets arrondis au dixième de millimètre (m)."""
+    return frozenset((round(x, 4), round(y, 4)) for x, y in points)
 
 
 def _document_dxf(geometrie, *, chaines=None, provenance=None):
@@ -117,6 +116,8 @@ def _document_dxf(geometrie, *, chaines=None, provenance=None):
     import ezdxf
     from ezdxf import units
 
+    from apps.calepinage.services.planche import coins_du_module
+
     document = ezdxf.new(setup=True)
     # L'unité du DESSIN est celle de la géométrie stockée : le mètre. Sans
     # cette déclaration, la moitié des lecteurs ouvre le fichier en pouces.
@@ -127,11 +128,16 @@ def _document_dxf(geometrie, *, chaines=None, provenance=None):
     espace = document.modelspace()
 
     contour = geometrie.get('contour') or ()
+    # ACAL604 — un anneau de pan dont les sommets (arrondis au dixième de
+    # millimètre) sont ceux d'un anneau déjà écrit n'est pas réécrit.
+    anneaux = set()
     if len(contour) >= 3:
+        anneaux.add(_sommets(contour))
         espace.add_lwpolyline(contour, close=True,
                               dxfattribs={'layer': CALQUE_TOITURE})
     for pan in geometrie.get('pans') or ():
-        if len(pan['points']) >= 3:
+        if len(pan['points']) >= 3 and _sommets(pan['points']) not in anneaux:
+            anneaux.add(_sommets(pan['points']))
             espace.add_lwpolyline(pan['points'], close=True,
                                   dxfattribs={'layer': CALQUE_TOITURE})
     for zone in geometrie.get('zones_interdites') or ():
@@ -152,21 +158,25 @@ def _document_dxf(geometrie, *, chaines=None, provenance=None):
     module_m = geometrie.get('module_m')
     for pan in geometrie.get('pans') or ():
         # ACAL263 — chaque pan porte les cotes de SON module.
-        module_m_pan = pan['module_m'] if 'module_m' in pan else module_m
+        # ACAL601/604 — l'emprise VRAIE du module (pose et azimut du pan) ;
+        # sans elle, le module reste un POINT, jamais une emprise devinée.
+        if 'module_m' not in pan:
+            pan = dict(pan, module_m=module_m)
         for centre in pan['modules']:
-            if module_m_pan is None:
+            coins = coins_du_module(pan, centre)
+            if coins is None:
                 espace.add_point(
                     (centre[0], centre[1]),
                     dxfattribs={'layer': CALQUE_MODULES})
             else:
                 espace.add_lwpolyline(
-                    _rectangle(centre, module_m_pan[0], module_m_pan[1]),
-                    close=True, dxfattribs={'layer': CALQUE_MODULES})
+                    list(coins), close=True,
+                    dxfattribs={'layer': CALQUE_MODULES})
 
-    _coter(espace, geometrie.get('etendue'))
+    _coter(espace, geometrie.get('etendue'), geometrie.get('etendue_toit'))
     _surfaces_de_pose(document, espace, geometrie)
     if chaines is not None:
-        _calque_chaines(document, espace, chaines, module_m)
+        _calque_chaines(document, espace, chaines)
     if provenance is not None:
         _calque_provenance(document, espace, provenance,
                            geometrie.get('etendue'))
@@ -246,7 +256,51 @@ def _calque_provenance(document, espace, lignes, etendue):
     }).set_location(position)
 
 
-def _calque_chaines(document, espace, chaines, module_m):
+#: ACAL674 — le bloc d'un module et ses attributs, un INSERT par module
+#: affecté : un CAO filtre et compte les modules par chaîne.
+BLOC_MODULE = 'MODULE'
+ATTRIBUTS_MODULE = ('CHAINE', 'MPPT', 'ONDULEUR', 'N')
+
+
+def _inserer_module(document, espace, module, blocs, attributs):
+    """Insère le bloc ``MODULE`` au centre du module, tourné comme lui, avec
+    CHAINE / MPPT / ONDULEUR (l'affectation publiée) et N (le numéro dans
+    SA chaîne), sur le calque et dans la couleur de la chaîne
+    (``attributs``). Un module sans emprise (``coins`` absent) n'est pas
+    inséré ; une valeur non publiée reste VIDE, jamais devinée."""
+    coins = module.get('coins')
+    if coins is None:
+        return
+    (ax, ay), (bx, by), (cx_, cy_) = coins[0], coins[1], coins[2]
+    largeur = math.hypot(bx - ax, by - ay)
+    profondeur = math.hypot(cx_ - bx, cy_ - by)
+    cle = (round(largeur, 4), round(profondeur, 4))
+    if cle not in blocs:
+        nom = BLOC_MODULE if not blocs else '%s_%d' % (BLOC_MODULE,
+                                                       len(blocs) + 1)
+        bloc = document.blocks.new(name=nom)
+        demi_l, demi_p = largeur / 2.0, profondeur / 2.0
+        bloc.add_lwpolyline(
+            [(-demi_l, -demi_p), (demi_l, -demi_p), (demi_l, demi_p),
+             (-demi_l, demi_p)], close=True)
+        for rang, balise in enumerate(ATTRIBUTS_MODULE):
+            bloc.add_attdef(
+                balise, (0.0, -demi_p - HAUTEUR_REPERE_CHAINE_M * (rang + 1)),
+                dxfattribs={'height': HAUTEUR_REPERE_CHAINE_M, 'flags': 1})
+        blocs[cle] = nom
+    centre = (sum(c[0] for c in coins) / 4.0, sum(c[1] for c in coins) / 4.0)
+    insert = espace.add_blockref(
+        blocs[cle], centre, dxfattribs=dict(
+            attributs,
+            rotation=math.degrees(math.atan2(by - ay, bx - ax))))
+    valeurs = (module.get('chaine'), module.get('mppt'),
+               module.get('onduleur'), module.get('rang'))
+    insert.add_auto_attribs({
+        balise: '' if valeur is None else str(valeur)
+        for balise, valeur in zip(ATTRIBUTS_MODULE, valeurs)})
+
+
+def _calque_chaines(document, espace, chaines):
     """CALX310 — un objet TEINT et un repère ``C<n>`` par module AFFECTÉ.
 
     Rien n'est recalculé : la chaîne et sa couleur viennent du plan de câblage,
@@ -257,6 +311,7 @@ def _calque_chaines(document, espace, chaines, module_m):
     from .documents.plan_cablage import rgb_de
 
     document.layers.add(name=CALQUE_CHAINES, color=COULEUR_CALQUE_CHAINES)
+    blocs = {}
     for module in chaines:
         if not isinstance(module, dict) or module.get('chaine') is None:
             continue
@@ -265,14 +320,14 @@ def _calque_chaines(document, espace, chaines, module_m):
             attributs['true_color'] = colors.rgb2int(
                 rgb_de(module['couleur']))
         centre = module['centre']
-        # ACAL263 — le module du pan de CE module ; repli : l'appel global.
-        cotes = module['module_m'] if 'module_m' in module else module_m
-        if cotes is None:
+        # ACAL605 — l'emprise VRAIE du module (``coins_du_module``, posée par
+        # le plan de câblage) ; sans elle, un point.
+        if module.get('coins') is None:
             espace.add_point((centre[0], centre[1]), dxfattribs=attributs)
         else:
-            espace.add_lwpolyline(
-                _rectangle(centre, cotes[0], cotes[1]), close=True,
-                dxfattribs=attributs)
+            espace.add_lwpolyline(list(module['coins']), close=True,
+                                  dxfattribs=attributs)
+        _inserer_module(document, espace, module, blocs, attributs)
         repere = 'C%s%s' % (module['chaine'], '*' if module.get('manuel')
                             else '')
         espace.add_text(repere, height=HAUTEUR_REPERE_CHAINE_M,
@@ -280,34 +335,39 @@ def _calque_chaines(document, espace, chaines, module_m):
                             (centre[0], centre[1]))
 
 
-def _coter(espace, etendue):
+def _coter(espace, etendue, etendue_toit=None):
     """Les cotes d'encombrement : une ligne et son texte, en MÈTRES.
 
     Des lignes cotées plutôt que des entités ``DIMENSION`` : une DIMENSION doit
     être RENDUE par le lecteur avec un style, et un style absent la fait
     disparaître chez certains. Une ligne et un texte s'affichent partout.
+
+    ACAL603 — ``etendue_toit`` (contour et pans seuls) donne la VALEUR des
+    deux cotes ; les lignes restent posées au bas et à gauche de ``etendue``
+    (le dessin entier). Absente : les cotes mesurent ``etendue``.
     """
     from apps.calepinage.services.planche import texte_de_longueur
 
     if not etendue:
         return
     x0, y0, x1, y1 = etendue
+    tx0, ty0, tx1, ty1 = etendue_toit or etendue
     decalage = max((x1 - x0), (y1 - y0)) * 0.04 + 0.5
     attributs = {'layer': CALQUE_COTES}
 
-    espace.add_line((x0, y0 - decalage), (x1, y0 - decalage),
+    espace.add_line((tx0, y0 - decalage), (tx1, y0 - decalage),
                     dxfattribs=attributs)
     espace.add_text(
-        texte_de_longueur(x1 - x0), height=HAUTEUR_TEXTE_M,
+        texte_de_longueur(tx1 - tx0), height=HAUTEUR_TEXTE_M,
         dxfattribs=attributs).set_placement(
-            ((x0 + x1) / 2.0, y0 - decalage * 1.6))
+            ((tx0 + tx1) / 2.0, y0 - decalage * 1.6))
 
-    espace.add_line((x0 - decalage, y0), (x0 - decalage, y1),
+    espace.add_line((x0 - decalage, ty0), (x0 - decalage, ty1),
                     dxfattribs=attributs)
     espace.add_text(
-        texte_de_longueur(y1 - y0), height=HAUTEUR_TEXTE_M,
+        texte_de_longueur(ty1 - ty0), height=HAUTEUR_TEXTE_M,
         dxfattribs=attributs).set_placement(
-            (x0 - decalage * 1.6, (y0 + y1) / 2.0))
+            (x0 - decalage * 1.6, (ty0 + ty1) / 2.0))
 
 
 def octets_dxf(geometrie, *, chaines=None, provenance=None):

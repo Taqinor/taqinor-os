@@ -437,6 +437,15 @@ class CompanyProfileSerializer(TypageStrictReglages, serializers.ModelSerializer
         return self._validate_pct_strict(
             value, 'Le seuil interne de performance ratio')
 
+    @regle_metier
+    def validate_recette_isolement_min_mohm(self, value):
+        """ACAL669 — ]0 ; 1 000] MΩ (borne de saisie, pas une norme)."""
+        if value is not None and (value <= 0 or value > 1000):
+            raise serializers.ValidationError(
+                "La résistance d'isolement minimale doit être comprise entre "
+                "0 (exclu) et 1 000 MΩ.")
+        return value
+
     # ── CIQ105 — forfaits des prestations C&I et bande interne prix/kWc. Une
     # valeur saisie SANS source est refusée (400 FR nommant le champ) ; une
     # prestation entièrement vide est retirée (= « prix à renseigner »).

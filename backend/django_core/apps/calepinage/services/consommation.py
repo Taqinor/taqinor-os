@@ -185,6 +185,34 @@ def _lire_lead(company, lead_id):
     return get_company_lead(company, lead_id, avec_corbeille=True)
 
 
+MOTIF_SANS_FACTURE_LEAD = (
+    "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à "
+    "ce calepinage) : aucune facture mensuelle moyenne n'est servie.")
+MOTIF_FACTURE_INCOMPLETE = (
+    'Le profil du lead compte moins de 12 mois connus : aucune facture '
+    'mensuelle moyenne n\'est servie.')
+
+
+def facture_mensuelle_du_lead(company, lead_id, *, lire_lead=None):
+    """ACAL776 — la facture mensuelle MOYENNE du lead, servie à l'atelier.
+
+    ``{facture_mensuelle_mad, source, motif}`` : la moyenne est l'``annuel_mad``
+    du profil du lead ÷ 12 (jamais une facture inventée) ; sans lead (ou lead
+    d'une autre société), sans facture ou à moins de 12 mois connus, la
+    valeur et la source sont ``None`` et le motif nomme la donnée manquante.
+    Lecture pure : rien n'est écrit.
+    """
+    profil = _profil_depuis_lead(company, lead_id, lire_lead=lire_lead)
+    annuel = profil['annuel_mad']
+    if annuel is None:
+        motif = (MOTIF_SANS_FACTURE_LEAD if profil['source'] is None
+                 else MOTIF_FACTURE_INCOMPLETE)
+        return {'facture_mensuelle_mad': None, 'source': None,
+                'motif': motif}
+    return {'facture_mensuelle_mad': round(annuel / 12, 2),
+            'source': profil['source'], 'motif': ''}
+
+
 def _profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
     """Le profil pré-rempli depuis le lead d'un calepinage, ou VIDE.
 
@@ -1068,9 +1096,104 @@ def _depuis_profil_mensuel(profil, company, classe):
     return courbe24, annuel, saisons, avertissements
 
 
+def _mois_entres(factures):
+    """ACAL836 — ``{mois: ('mad'|'kwh', montant)}`` des 1 à 12 factures
+    saisies, refus NOMMANT ``factures.mois[i].<champ>``."""
+    entrees = factures.get('mois')
+    if not isinstance(entrees, list) or not 1 <= len(entrees) <= 12:
+        raise ProfilInvalide(
+            'Saisissez de 1 à 12 factures dans « factures.mois » (liste de '
+            '{mois, mad ou kwh}).', champ='factures.mois')
+    connus = {}
+    for rang, ligne in enumerate(entrees):
+        base = f'factures.mois[{rang}]'
+        ligne = ligne if isinstance(ligne, dict) else {}
+        mois = ligne.get('mois')
+        if isinstance(mois, float) and mois.is_integer():
+            mois = int(mois)
+        if isinstance(mois, bool) or not isinstance(mois, int) \
+                or mois not in MOIS or mois in connus:
+            raise ProfilInvalide(
+                f'Le mois de la facture n°{rang + 1} doit être un numéro de '
+                f'1 à 12, sans doublon (reçu : {ligne.get("mois")!r}).',
+                champ=f'{base}.mois')
+        mad = _montant(ligne.get('mad'), champ=f'{base}.mad')
+        kwh = _montant(ligne.get('kwh'), champ=f'{base}.kwh')
+        if mad is None and kwh is None:
+            raise ProfilInvalide(
+                f'La facture du mois {mois} n’a ni montant en dirhams ni '
+                'énergie en kWh : saisissez l’un des deux.',
+                champ=f'{base}.mad')
+        if mad is not None and kwh is not None:
+            raise ProfilInvalide(
+                f'La facture du mois {mois} donne les DEUX (dirhams et kWh) : '
+                'saisissez l’un ou l’autre.', champ=f'{base}.kwh')
+        connus[mois] = ('mad', mad) if mad is not None else ('kwh', kwh)
+    return connus
+
+
+def _interpoler_kwh_circulaire(connus):
+    """Les douze kWh : les mois connus tels quels, les autres par
+    interpolation LINÉAIRE CIRCULAIRE entre le mois connu qui précède et celui
+    qui suit (décembre se prolonge vers janvier) ; un seul mois connu est
+    recopié."""
+    valeurs = []
+    for mois in MOIS:
+        if mois in connus:
+            valeurs.append(connus[mois])
+            continue
+        avant = next(d for d in range(1, 13)
+                     if (mois - d - 1) % 12 + 1 in connus)
+        apres = next(d for d in range(1, 13)
+                     if (mois + d - 1) % 12 + 1 in connus)
+        v_avant = connus[(mois - avant - 1) % 12 + 1]
+        v_apres = connus[(mois + apres - 1) % 12 + 1]
+        valeurs.append(v_avant + (v_apres - v_avant) * avant / (avant + apres))
+    return valeurs
+
+
+def _depuis_factures_mois(corps, company, factures):
+    """ACAL836 — de 1 à 12 factures (MAD ou kWh) ⇒ douze mois, les vides
+    ESTIMÉS par interpolation entre mois connus (jamais une facture inventée :
+    ``source: 'estime'``). Les MAD passent par le barème société d'abord."""
+    saisies = _mois_entres(factures)
+    mad = {m: v for m, (unite, v) in saisies.items() if unite == 'mad'}
+    kwh = {m: v for m, (unite, v) in saisies.items() if unite == 'kwh'}
+    avertissements = []
+    if mad:
+        profil = {'mois': [{'mois': m, 'facture_mad': v, 'kwh': None,
+                            'source': 'facture'} for m, v in mad.items()],
+                  'avertissements': []}
+        _publier_kwh(profil, company, classe=_classe_saisie(corps))
+        avertissements.extend(profil['avertissements'])
+        for ligne in profil['mois']:
+            if ligne['kwh'] is not None:
+                kwh[ligne['mois']] = ligne['kwh']
+    mois = [{'mois': m, 'facture_mad': mad.get(m), 'kwh': kwh.get(m),
+             'source': 'facture' if m in saisies else 'estime'} for m in MOIS]
+    if len(kwh) < len(saisies):  # un MAD non convertible : motif publié
+        return None, None, {}, avertissements, 'facture', mois
+    valeurs = _interpoler_kwh_circulaire(kwh)
+    for ligne, valeur in zip(mois, valeurs):
+        ligne['kwh'] = round(valeur, 1)
+    estimes = 12 - len(saisies)
+    if estimes:
+        avertissements.append(f'{estimes} mois estimés par interpolation '
+                              'entre les mois connus.')
+    annuel = round(sum(valeurs), 1)
+    courbe24 = [round(annuel / sum(JOURS_DU_MOIS) / 24.0, 4)] * 24
+    saisons = _saisons_des_mois(valeurs) or {}
+    avertissements.append(AVIS_FORME_UNIFORME)
+    if saisons:
+        avertissements.append(AVIS_SAISONS_DES_FACTURES.format(**saisons))
+    return courbe24, annuel, saisons, avertissements, 'facture', mois
+
+
 def _depuis_factures(corps, company):
     factures = corps.get('factures') if isinstance(corps.get('factures'),
                                                    dict) else {}
+    if 'mois' in factures:
+        return _depuis_factures_mois(corps, company, factures)
     if factures.get('hiver_mad') in (None, ''):
         raise ProfilInvalide(
             "La facture d'hiver n'est pas finie : saisissez un montant en "
@@ -1207,7 +1330,7 @@ def proposer_consommation(calepinage, corps, *, company, maintenant=None,
         rendu = _depuis_appareils(corps)
     else:
         rendu = _depuis_csv(corps)
-    courbe24, kwh_annuel, saisons, avertissements, methode = rendu
+    courbe24, kwh_annuel, saisons, avertissements, methode, *reste = rendu
 
     ramadan = corps.get('ramadan') if isinstance(corps.get('ramadan'),
                                                  dict) else {}
@@ -1243,6 +1366,9 @@ def proposer_consommation(calepinage, corps, *, company, maintenant=None,
         }
         if saisons:
             consumption['saisons'] = dict(saisons)
-    return {'consumption': consumption, 'kwh_annuel': kwh_annuel,
-            'courbe24': courbe24, 'saisons': dict(saisons or {}),
-            'avertissements': avertissements}
+    rendu_final = {'consumption': consumption, 'kwh_annuel': kwh_annuel,
+                   'courbe24': courbe24, 'saisons': dict(saisons or {}),
+                   'avertissements': avertissements}
+    if reste:  # ACAL836 — les douze mois d'une saisie de 1 à 12 factures
+        rendu_final['mois'] = reste[0]
+    return rendu_final

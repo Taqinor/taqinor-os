@@ -4,7 +4,16 @@
 // id/label/nature/vertices/setbackM/heightM), elles se relisent à l'identique, et — la
 // garantie centrale — INTERDITE et RESERVEE produisent une obstruction (le compte de
 // modules bouge), PREFEREE n'en produit AUCUNE (le compte ne bouge jamais).
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom'; // ACAL574
+import { createZones } from './zones'; // ACAL574
+import { motifPanExistant } from './panExistant'; // ACAL574
+import { ctxDeBase, panDeTest, ptM } from './harnaisAtelier'; // ACAL574
+import { fileURLToPath } from 'node:url';
+import { CHEMINS_TOURNES, CLES_REFUSEES, pivoterSite } from './siteRotation'; // ACAL514
+import { motifPanVerrouille } from './panVerrouille'; // ACAL520
+import { boutonReporterReglages } from './zones'; // ACAL554
 import {
   EXCLUSION_NATURES,
   exclusionColor,
@@ -529,5 +538,149 @@ describe('ACAL291 — une zone posée depuis un gabarit réglementaire porte sa 
     expect(lireGabaritsObstacle(SECTION).gabarits.some((g) => g.cle === 'cheminee')).toBe(true);
     // Section absente / bancale : l'état vide, jamais une zone inventée.
     expect(lireGabaritsZone(undefined)).toEqual({ gabarits: [], refuses: [] });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL514 — pivoterSite : le site entier tourne autour du barycentre de ses pans.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL514 — pivoterSite', () => {
+  const site = () => ({
+    pin: { lat: 33.58, lng: -7.62 },
+    outline: [[33.5801, -7.6201], [33.5801, -7.6199], [33.5799, -7.6199]],
+    zones: [
+      {
+        id: 'z1', label: 'Pan 1', facingAzimuthDeg: 180,
+        vertices: [[-7.6201, 33.5801], [-7.6199, 33.5801], [-7.6199, 33.5799], [-7.6201, 33.5799]],
+        obstacles: [
+          { id: 'o1', centerLng: -7.6200, centerLat: 33.5800 },
+          { id: 'o2', centerLng: -7.62005, centerLat: 33.58005, contour: [[-7.62006, 33.58004], [-7.62004, 33.58004], [-7.62004, 33.58006]] },
+        ],
+        geometry: { origin: [-7.62, 33.58], count: 0 },
+      },
+      { id: 'z2', facingAzimuthDeg: 90, vertices: [[-7.6198, 33.5801], [-7.6196, 33.5801], [-7.6196, 33.5799]], obstacles: [] },
+    ],
+    environment: [{ id: 'e1', centerLng: -7.6195, centerLat: 33.5802, footprint: [[-7.6196, 33.5801], [-7.6194, 33.5803]] }],
+    exclusionZones: [{ id: 'x1', vertices: [[-7.6200, 33.5800], [-7.6199, 33.5800], [-7.6199, 33.5799]], axe: [[-7.6200, 33.5800], [-7.6199, 33.5799]] }],
+    measurements: [{ id: 'm1', points: [[-7.6201, 33.5801], [-7.6197, 33.5800]] }],
+    parcelle: { vertices: [[-7.63, 33.59], [-7.61, 33.59]] },
+    reperesChantier: [{ id: 'r1', point: [-7.62008, 33.58008] }], // ACAL599
+  });
+  const maxEcart = (a: unknown, b: unknown): number => {
+    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b);
+    if (Array.isArray(a) && Array.isArray(b)) return Math.max(0, ...a.map((x, i) => maxEcart(x, b[i])));
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      return Math.max(0, ...Object.keys(a).map((k) => maxEcart((a as never)[k], (b as never)[k])));
+    }
+    return a === b ? 0 : Infinity;
+  };
+
+  it('+90 puis -90 rend le document à 1e-9 près, tout y compris axes, empreintes, contours, mesures', () => {
+    const d = site();
+    const a = pivoterSite(d, 90);
+    expect(a.ok).toBe(true);
+    if (!a.ok) return;
+    expect(maxEcart(a.site, d)).toBeGreaterThan(1e-6); // ça a bien bougé
+    const b = pivoterSite(a.site, -90);
+    expect(b.ok).toBe(true);
+    if (b.ok) expect(maxEcart(b.site, d)).toBeLessThan(1e-9);
+  });
+
+  it('les faces augmentent de 90, l’épingle et la parcelle restent en place', () => {
+    const d = site();
+    const a = pivoterSite(d, 90);
+    if (!a.ok) throw new Error(a.motif);
+    const zs = a.site.zones as Array<{ facingAzimuthDeg: number }>;
+    expect(zs.map((z) => z.facingAzimuthDeg)).toEqual([270, 180]);
+    expect(a.site.pin).toEqual(d.pin);
+    expect(a.site.parcelle).toEqual(d.parcelle);
+    expect((a.site.reperesChantier as Array<{ point: number[] }>)[0].point).not.toEqual(d.reperesChantier[0].point);
+    expect(d.zones[0].facingAzimuthDeg).toBe(180); // l’entrée n’est jamais modifiée
+  });
+
+  it('un pan avec panneaux posés refuse TOUT le site en le nommant', () => {
+    const d = site();
+    (d.zones[1] as Record<string, unknown>).geometry = { count: 4 };
+    const r = pivoterSite(d, 90);
+    expect(r).toEqual({ ok: false, motif: 'Pan 2 : des panneaux sont posés — retirez la pose avant de pivoter le site.' });
+  });
+
+  it('electrical / poseSurfaces / shadeObstructions / underlay refusent en nommant la clé', () => {
+    for (const cle of CLES_REFUSEES) {
+      const r = pivoterSite({ ...site(), [cle]: cle === 'electrical' ? { equipements: [{}] } : [{}] }, 90);
+      expect(r).toEqual({ ok: false, motif: `Le site porte \`${cle}\` : rien à pivoter sans le corrompre.` });
+    }
+  });
+
+  it('un angle illisible est refusé', () => {
+    const r = pivoterSite(site(), Number.NaN);
+    expect(r.ok).toBe(false);
+  });
+
+  it('les chemins tournés + refusés + exemptés couvrent CHEMINS_TRANSLATES du serveur', () => {
+    const py = readFileSync(fileURLToPath(new URL(
+      '../../../../../backend/django_core/apps/calepinage/services/repere.py', import.meta.url)), 'utf8');
+    const bloc = py.slice(py.indexOf('CHEMINS_TRANSLATES = {'), py.indexOf('}', py.indexOf('CHEMINS_TRANSLATES = {')));
+    const serveur = [...bloc.matchAll(/^\s+'([^']+)':/gm)].map((m) => m[1]);
+    const nous = new Set<string>([...Object.keys(CHEMINS_TOURNES), 'pin', 'parcelle.vertices']);
+    const refusees = (c: string) => CLES_REFUSEES.some((k) => c === k || c.startsWith(`${k}[`) || c.startsWith(`${k}.`));
+    for (const c of serveur) expect(nous.has(c) || refusees(c), `chemin non traité : ${c}`).toBe(true);
+  });
+});
+
+describe('ACAL520 — motifPanVerrouille', () => {
+  it('pan verrouillé ⇒ motif nommant le pan ; sinon null', () => {
+    expect(motifPanVerrouille({ verrouille: true, label: 'Pan 1' })).toBe('Pan 1 verrouillé — déverrouillez-le d’abord.');
+    expect(motifPanVerrouille({ verrouille: true, label: '' }, 1)).toContain('verrouillé');
+    expect(motifPanVerrouille({ verrouille: false, label: 'Pan 1' })).toBeNull();
+    expect(motifPanVerrouille({ label: 'Pan 1' })).toBeNull();
+    expect(motifPanVerrouille(undefined)).toBeNull();
+  });
+});
+
+describe('ACAL554 — bouton « Appliquer ces réglages à… »', () => {
+  it('un seul pan ⇒ pas de bouton ; deux pans ⇒ le bouton de la ligne', () => {
+    expect(boutonReporterReglages('area-1', 1)).toBe('');
+    expect(boutonReporterReglages('area-1', 2)).toContain('data-area-report="area-1"');
+  });
+});
+
+// ACAL574 — un pan « existant » est intouchable : pivoter, redimensionner, changer de module.
+describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () => {
+  /** Ce fichier tourne SANS DOM (il lit `import.meta.url`) : un document jsdom n'est posé que le temps du cas. */
+  function avecDom<T>(f: () => T): T {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><button id="rp9-layout-toggle">Déplacer les panneaux</button></body>').window.document;
+    try { return f(); } finally { g.document = avant; }
+  }
+  const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
+  const essai = (existant: boolean) => avecDom(() => {
+    const areas = [{ ...panDeTest('area-1', { vertices: [...CARRE], roofType: 'flat', neededPanels: 10 }), label: 'Pan A', ...(existant ? { existant: true } : {}) }];
+    const ctx = { ...ctxDeBase(areas, 'area-1'), activeArea: () => areas[0], closed: true, dom: {} } as unknown as Ctx;
+    const setStatus = vi.fn();
+    const zones = createZones(ctx, { redrawTrace: vi.fn(), redrawObstacles: vi.fn(), recalc: vi.fn(), setStatus });
+    const avant = JSON.stringify(ctx.vertices);
+    zones.renderAreasPanel();
+    const btn = document.getElementById('rp9-layout-toggle') as HTMLButtonElement;
+    return {
+      pivote: zones.pivoterPanActif(90), redim: zones.redimensionnerPanActif(8, 12), module: zones.choisirModuleDuPanActif(null),
+      intacte: JSON.stringify(ctx.vertices) === avant, setStatus, grise: btn.disabled, titre: btn.title, pan: areas[0],
+    };
+  });
+  it('pivoter, redimensionner et choisir un module sont refusés, motif nommant le pan, géométrie intacte', () => {
+    const r = essai(true);
+    expect([r.pivote, r.redim, r.module]).toEqual([false, false, false]);
+    expect(r.intacte).toBe(true);
+    const motif = motifPanExistant(r.pan)!;
+    expect(motif).toContain('Pan A : pan existant');
+    expect(r.setStatus).toHaveBeenCalledWith(motif);
+    expect(r.grise).toBe(true);
+    expect(r.titre).toBe(motif);
+  });
+  it('pan sans clé : inchangé (le geste passe, le bouton reste actif)', () => {
+    const r = essai(false);
+    expect(r.pivote).toBe(true);
+    expect(r.grise).toBe(false);
   });
 });

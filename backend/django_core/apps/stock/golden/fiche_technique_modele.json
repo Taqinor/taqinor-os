@@ -1,6 +1,6 @@
 {
   "ast": {
-    "FicheTechnique": "1e21e155720b117386d3624468ff64239b4b9f7f",
+    "FicheTechnique": "899e01e5d509a779df4ab4d81d4fc937460a5d3d",
     "_est_nombre": "5d18c0bef90e040ff010a635babf0336bbe24585",
     "_valider_courbe": "bfa8fece7cfe0c8262df1bb3994254992b14c056",
     "valider_courbe_irradiance": "1569e31152555f78800b28b078b5ba0ff5c2a04f",
@@ -1969,6 +1969,164 @@
         "on_delete": null,
         "related_name": null,
         "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "b772c4b0d856f9ed74f4b7e28b5862a56ed00186",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "serrage_min_mm",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "1f4de547a7d9142aa57248f010d79586923d1d4f",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "serrage_max_mm",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "TextField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "95a3b80ba39d4067c70c55357e19bab387c7ae1e",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "serrage_source",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "32852641d67e6f15fc113706df50c30515219b64",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "cellules_serie",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 3,
+        "defaut": null,
+        "help_text_sha1": "7d5e2a41a423107c63dcdad1cb1cc4d4fa6566bd",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "temp_coeff_isc_pct_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "2a6c43c17e3de708925bcac8eb369000f0e3b9a0",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "ond_pnom_reduite_debut_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "dc377cdf704cb81e24d7f0360dae06199b4123d6",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "ond_pnom_pente_pct_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "BooleanField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "17346bb0f9615685823335c05fd2463aafcaf347",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_mppt_independants",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "JSONField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "29a572bcedf4b479a893af8b750228404fc2ec2d",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "opt_onduleurs_compatibles",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "2a336c2f9f757087ad7e6f7bd6983fc0c966d3a1",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "sous_chaines_par_module",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
       },
       {
         "blank": true,

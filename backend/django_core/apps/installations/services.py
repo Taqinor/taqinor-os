@@ -439,22 +439,13 @@ def ensure_checklist_items(installation):
             Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE):
         return []
     template = template_for_installation(installation)
-    existing = set()
     modeles = ChecklistEtapeModele.objects.filter(
         company=company, actif=True)
     if template is not None:
         modeles = modeles.filter(template=template)
-    for m in modeles:
-        if m.cle not in existing:
-            # ENF2 — deux modèles de même clé (orphelins, sans template)
-            # ne créent qu'UN item : unicité (installation, cle).
-            existing.add(m.cle)
-            ChantierChecklistItem.objects.create(
-                company=company, installation=installation, cle=m.cle,
-                libelle=m.libelle, ordre=m.ordre, capture_serie=m.capture_serie,
-                # FG76 — « copié depuis l'étape modèle » (AGR605 : la
-                # checklist pompage exige des photos sur 5 étapes).
-                photo_obligatoire=m.photo_obligatoire)
+    from .checklist_calepinage import creer_items_du_modele, items_de_pose
+    creer_items_du_modele(installation, modeles)
+    items_de_pose(installation)  # ACAL597 — points de pose du calepinage
     # `Meta.ordering = ['ordre', 'id']` — même ordre que le related manager.
     return list(ChantierChecklistItem.objects.filter(
         installation=installation))

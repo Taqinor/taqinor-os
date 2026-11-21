@@ -213,5 +213,129 @@ class HorizonDeriveTest(unittest.TestCase):
         self.assertEqual(bloc['source_horizon'], 'reglage')
 
 
+class DureeDeVieTest(unittest.TestCase):
+    """ACAL693 — horizon, motif et garantie LUE sur la fiche, jamais supposée."""
+
+    #: Garantie de référence écrite ICI (jamais recopiée de la sortie).
+    G10, G25 = 90.0, 84.8
+
+    def _fiche(self, nom, g10=G10, g25=G25):
+        fiche = dict(FICHE, designation=nom)
+        if g10 is not None:
+            fiche['garantie_pct_a_10_ans'] = g10
+        if g25 is not None:
+            fiche['garantie_pct_a_25_ans'] = g25
+        return fiche
+
+    def _bloc(self, contexte):
+        projection = vieillissement.tableau_pluriannuel(P50_ANNEE1, contexte)
+        return vieillissement.bloc_duree_de_vie(projection, contexte)
+
+    def test_paire_commune_a_deux_modeles(self):
+        fiches = [self._fiche('Module A'), self._fiche('Module B')]
+        bloc = self._bloc(contexte_de(fiche=fiches[0], horizon=25,
+                                      modele='lineaire', fiches=fiches))
+        self.assertEqual(bloc['horizon_annees'], 25)
+        self.assertEqual(bloc['source_horizon'], 'reglage')
+        self.assertEqual(bloc['motif_omission'], '')
+        self.assertEqual(bloc['garantie']['pct_a_10_ans'], self.G10)
+        self.assertEqual(bloc['garantie']['pct_a_25_ans'], self.G25)
+        self.assertEqual(bloc['garantie']['motif'], '')
+
+    def test_paires_differentes_aucune_retenue(self):
+        # Mutant « premier modèle seulement » : rendrait 90,0 / 84,8.
+        fiches = [self._fiche('Module A'),
+                  self._fiche('Module B', g10=88.0, g25=80.0)]
+        garantie = self._bloc(contexte_de(fiche=fiches[0], horizon=25,
+                                          fiches=fiches))['garantie']
+        self.assertIsNone(garantie['pct_a_10_ans'])
+        self.assertIsNone(garantie['pct_a_25_ans'])
+        self.assertIn('garanties différentes entre modèles', garantie['motif'])
+
+    def test_champ_absent_nomme_le_champ(self):
+        fiche = self._fiche('Module A', g25=None)
+        garantie = self._bloc(contexte_de(fiche=fiche, horizon=25))['garantie']
+        self.assertEqual(garantie['pct_a_10_ans'], self.G10)
+        self.assertIsNone(garantie['pct_a_25_ans'])
+        self.assertIn('FicheTechnique.garantie_pct_a_25_ans',
+                      garantie['motif'])
+
+    def test_horizon_derive_et_omission(self):
+        fiche = dict(self._fiche('Module A'), garantie_production_mois=360)
+        bloc = self._bloc(contexte_de(fiche=fiche, modele='lineaire'))
+        self.assertEqual(bloc['horizon_annees'], 30)
+        self.assertEqual(bloc['source_horizon'], 'derivee_fiche')
+        self.assertEqual(bloc['produit_horizon'], 'Module A')
+        omis = self._bloc(contexte_de(fiche=FICHE, modele='lineaire'))
+        self.assertIsNone(omis['horizon_annees'])
+        self.assertTrue(omis['motif_omission'])
+        self.assertIsNone(omis['garantie']['pct_a_10_ans'])
+
+
+class AgeDesPansExistantsTest(unittest.TestCase):
+    """ACAL842 — un pan posé il y a 5 ans vieillit de f(âge + N) / f(1)."""
+
+    PARTS = [{'p50_kwh': 4000.0, 'age_ans': 5},
+             {'p50_kwh': 3000.0, 'age_ans': 0}]
+
+    def _bloc(self, parts, **options):
+        options.setdefault('fiche', FICHE)
+        return vieillissement.tableau_pluriannuel(
+            7000.0, contexte_de(horizon=10, modele='lineaire', **options),
+            parts=parts)
+
+    def test_pan_de_5_ans_decale_la_projection(self):
+        bloc = self._bloc(self.PARTS)
+        f = vieillissement._facteurs('lineaire', 0.55, 2.0, 15)
+        for rang in (1, 4, 10):
+            attendu = (3000.0 * f[rang - 1] + 4000.0 * f[5 + rang - 1]) / f[0]
+            self.assertAlmostEqual(bloc['annees'][rang - 1]['p50_kwh'],
+                                   attendu, places=2)
+        neufs = self._bloc([{'p50_kwh': 7000.0, 'age_ans': 0}])
+        self.assertLess(bloc['annees'][0]['p50_kwh'],
+                        neufs['annees'][0]['p50_kwh'])
+        self.assertEqual(bloc['annees'][0]['source'],
+                         'chaîne + âge des pans existants')
+        self.assertIn('JA Solar JAM72D40 580 MB', bloc['mention_age'])
+
+    def test_sans_pan_existant_le_bloc_est_identique(self):
+        sans = vieillissement.tableau_pluriannuel(
+            7000.0, contexte_de(fiche=FICHE, horizon=10, modele='lineaire'))
+        for parts in (None, [], [{'p50_kwh': 7000.0, 'age_ans': 0}]):
+            self.assertEqual(self._bloc(parts), sans)
+        self.assertNotIn('mention_age', sans)
+
+    def test_sans_fiche_de_degradation_l_age_est_omis(self):
+        bloc = self._bloc(self.PARTS, fiche={'designation': 'X'})
+        self.assertEqual(len(bloc['annees']), 1)
+        self.assertNotIn('mention_age', bloc)
+        self.assertIn('dégradation', bloc['motif_omission'])
+
+    def test_annee_future_refusee_en_nommant_le_champ(self):
+        import datetime
+
+        from apps.calepinage.services.simulation import (
+            SimulationRefusee, _parts_vieillies)
+        moment = datetime.datetime(2026, 11, 21, tzinfo=datetime.timezone.utc)
+        document = {'zones': [
+            {'id': 'A', 'label': 'PAN-A', 'existant': True,
+             'anneeMiseEnService': 2021},
+            {'id': 'B', 'label': 'PAN-B'},
+            {'id': 'C', 'label': 'PAN-C', 'existant': True,
+             'anneeMiseEnService': 2027}]}
+        par_pan = [{'pan': 'PAN-A', 'p50_kwh': 4000.0},
+                   {'pan': 'PAN-B', 'p50_kwh': 3000.0}]
+        with self.assertRaises(SimulationRefusee) as capture:
+            _parts_vieillies(document, par_pan, moment)
+        self.assertEqual(capture.exception.champ,
+                         'zones[2].anneeMiseEnService')
+        document['zones'].pop()
+        self.assertEqual(_parts_vieillies(document, par_pan, moment),
+                         [{'p50_kwh': 4000.0, 'age_ans': 5},
+                          {'p50_kwh': 3000.0, 'age_ans': 0}])
+        document['zones'][0]['existant'] = False
+        self.assertIsNone(_parts_vieillies(document, par_pan, moment))
+
+
 if __name__ == '__main__':
     unittest.main()

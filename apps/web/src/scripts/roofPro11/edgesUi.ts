@@ -55,6 +55,7 @@ import {
   type SerializedEdge,
 } from './edges';
 import { azimutNormaleArete } from './snap';
+import { lireTableRetraits } from './retraitsSociete'; // ACAL562
 import { type AreaRecord } from './types';
 
 /** CALX94 — convention de dessin (tolérance de POINTAGE, aucune portée d'ingénierie) :
@@ -232,9 +233,17 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
       // Le retrait saisi de CETTE arête (CALX81/CALX95) n'est pas touché par une correction
       // de TYPE : ce sont deux saisies indépendantes.
       ...(precedent && typeof precedent.retraitM === 'number' && Number.isFinite(precedent.retraitM)
-        ? { retraitM: precedent.retraitM }
+        ? { retraitM: precedent.retraitM, ...(precedent.retraitOrigine ? { retraitOrigine: precedent.retraitOrigine } : {}) }
         : {}),
     };
+    // ACAL562 — un retrait POSÉ par la société suit le TYPE : il est retiré, puis celui du
+    // nouveau type (s'il est à la table) est posé ; un retrait saisi n'est jamais touché.
+    if (entree.retraitOrigine === 'societe') {
+      delete entree.retraitM;
+      delete entree.retraitOrigine;
+      const valeur = lireTableRetraits(ctx.opts?.reglagesAtelier?.degagements)[type];
+      if (valeur !== undefined) Object.assign(entree, { retraitM: valeur, retraitOrigine: 'societe' });
+    }
     if (at >= 0) edges[at] = entree;
     else edges.push(entree);
     edges.sort((a, b) => a.index - b.index);

@@ -1,0 +1,22 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/variantes-par-module/",
+  "pourquoi": "ACAL594 — UNE VARIANTE PAR MODULE DU STOCK, SUR LA MÊME IMPLANTATION.\n\nCorps : `{\"modules\": [\"produit-<id>\", …]}` — les `id` servis par `modules-disponibles/`. Chaque module coché crée une variante (`services/variantes.py::creer_variante`) copiée de la conception courante, dont `modules[]` = l'entrée choisie et `zones[].geometry.moduleId` de chaque pan = son id (positions des panneaux conservées) ; `zones[].geometry.kwc`, `result.kwc` et `panelWatt` sont recalculés à la puissance du module choisi, comme l'atelier le fait pan par pan (`roofPro11/moduleSelect.ts`). Aucune production ni aucun kWc n'est recopié de la conception d'origine ; aucune simulation n'est lancée (le chiffrage de la comparaison est D4).\n\nNOMS. « Module <libellé> » quand les cotes (longueur × largeur) du module choisi sont celles du module de chaque pan : la conception est valide telle quelle. « Module <libellé> — à re-poser » (et `a_repaver: true`) quand elles diffèrent, ou quand un pan ne désigne aucun module : le pavage actuel n'est plus juste et se refait dans l'atelier. Le marqueur vit dans le NOM, aucun champ neuf.\n\nREFUS. Un corps hors du schéma (1 à 3 chaînes `produit-<entier>`) ⇒ 400 nommant `modules` ; une fiche incomplète ou inconnue est refusée en nommant le champ `modules` (409 : l'état du catalogue s'y oppose, ENF11), jamais ignorée ; un devis lié figé ⇒ 409 avant toute écriture ; un calepinage d'une autre société est introuvable (404). Tout ou rien : aucune variante n'est créée si un module est refusé.\n\nLES VALEURS SONT DES PLACEHOLDERS (README, règle 4) : ce sont les CLÉS et leurs natures qui font le contrat.",
+  "exemple": {
+    "calepinage": 1,
+    "variantes": [
+      {
+        "id": 11,
+        "nom": "Module Module monocristallin 580 Wc (exemple)",
+        "a_repaver": false
+      },
+      {
+        "id": 12,
+        "nom": "Module Module 620 Wc grand format (exemple) — à re-poser",
+        "a_repaver": true
+      }
+    ]
+  },
+  "exemple_refus": {
+    "modules": "« Module 550 Wc — fiche à compléter (exemple) » : Fiche incomplète : la puissance crête (Wc) n'est pas renseignée sur la fiche technique de ce produit. Complétez-la pour pouvoir le calepiner."
+  }
+}

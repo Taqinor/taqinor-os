@@ -26,11 +26,12 @@ import { ROOF_TYPES } from '../../lib/lead';
 import { emptyCurve, type Appliance, type HourlyCurve } from '../../lib/applianceConsumption'; // CALX253/CALX254
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
-import { type EnvironmentObject } from './environment';
+import { nettoyerEnvironment, type EnvironmentObject } from './environment';
 import { type ShadeObstruction } from '../../lib/shadingEngine'; // ACAL27
 import { serializeExclusionZones, deserializeExclusionZones, idPanEnDouble, type ExclusionZone } from './zones';
 import { resolveSetbacks, PERIMETER_SETBACK_M, type PerimeterSetbacks } from '../../lib/roofPro2';
-import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
+import { serializeHorizonProfile, type HorizonProfile } from '../../lib/horizonEngine';
+export { serializeHorizonProfile, deserializeHorizonProfileFromLayout } from '../../lib/horizonEngine'; // ACAL517 : déplacées, ré-exportées
 import { lireCoucheElectrique, type CoucheElectrique, type DocumentElectrique } from './electrique3d';
 import { numeroterDocument, registreAtelier } from './numerotation'; // CALX111
 
@@ -52,8 +53,10 @@ import {
   ecrireOptimisationDansDocument,
   semerOptimisationDepuisDocument,
 } from './optimisationDocument'; // CALX114 câblage
-import { semerFondDepuisDocument } from './fondDocument'; // CALX107 câblage
+import { semerFondDepuisDocument, imageCapturePourDocument } from './fondDocument'; // CALX107 câblage ; ACAL509
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
+import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; import { emettreCoupures } from './coupuresPavage'; // ACAL193 (sorti), ACAL593, ACAL576
+import { pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -339,6 +342,7 @@ export interface SerializedZone {
   pitchSource?: Record<string, unknown>;
   facingAzimuthDeg?: number;
   facingManual: boolean;
+  verrouille?: boolean; existant?: boolean; anneeMiseEnService?: number; coupuresPavage?: AreaRecord['coupuresPavage']; porteeEntrePieds?: AreaRecord['porteeEntrePieds']; // ACAL520 cadenas ; ACAL510 pan existant ; ACAL576 ; ACAL579 — émis seulement quand ils sont posés
   neededPanels: number;
   neededAuto: boolean;
   /** WJ24 — géométrie pleine par pan (optionnel, additif). Présent seulement si un plan
@@ -664,27 +668,9 @@ export function deserializeMeasurements(json: unknown): Measurement[] {
 // ═══════════ CAL67 — ENVIRONNEMENT (arbres/bâtiments voisins, sérialisation) ═══════════
 // Même garantie que `measurements` : une entrée géométriquement invalide (id vide, genre
 // inconnu) est ÉCARTÉE individuellement — jamais silencieusement corrigée ni inventée.
-const ENV_KINDS = ['arbre', 'batiment'] as const;
-
-/** Normalise la liste d'objets d'environnement pour la sérialisation. */
+/** Normalise la liste d'objets d'environnement pour la sérialisation (ACAL500 : la copie vit dans `environment.ts`). */
 export function serializeEnvironment(list: readonly EnvironmentObject[] | null | undefined): EnvironmentObject[] {
-  if (!Array.isArray(list)) return [];
-  const out: EnvironmentObject[] = [];
-  for (const o of list) {
-    if (!o || typeof o.id !== 'string' || !o.id) continue;
-    if (!(ENV_KINDS as readonly string[]).includes(o.kind)) continue;
-    if (!Number.isFinite(o.centerLng) || !Number.isFinite(o.centerLat)) continue;
-    const clean: EnvironmentObject = { id: o.id, kind: o.kind, centerLng: o.centerLng, centerLat: o.centerLat };
-    if (o.label) clean.label = o.label;
-    if (typeof o.heightM === 'number' && Number.isFinite(o.heightM) && o.heightM > 0) clean.heightM = o.heightM;
-    if (typeof o.crownDiameterM === 'number' && Number.isFinite(o.crownDiameterM) && o.crownDiameterM > 0) clean.crownDiameterM = o.crownDiameterM;
-    if (typeof o.evergreen === 'boolean') clean.evergreen = o.evergreen;
-    if (Array.isArray(o.footprint) && o.footprint.length >= 3) clean.footprint = o.footprint.map((p) => [p[0], p[1]] as LngLat);
-    if (typeof o.lengthM === 'number' && Number.isFinite(o.lengthM) && o.lengthM > 0) clean.lengthM = o.lengthM;
-    if (typeof o.widthM === 'number' && Number.isFinite(o.widthM) && o.widthM > 0) clean.widthM = o.widthM;
-    out.push(clean);
-  }
-  return out;
+  return Array.isArray(list) ? list.map(nettoyerEnvironment).filter((o): o is EnvironmentObject => o != null) : [];
 }
 
 /** Relit une liste d'environnement sérialisée — mêmes garde-fous que l'écriture. Accepte
@@ -926,34 +912,6 @@ export class ErreurDocumentAtelier extends Error {
   }
 }
 
-/** ACAL252 — la pente (°) que décrit une `pitchSource`, ou `null` quand elle ne la détermine pas. */
-function penteDecrite(source: Record<string, unknown>): number | null {
-  const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-  if (source.mode === 'degres') return n(source.degres);
-  if (source.mode === 'pourcentage') {
-    const p = n(source.pourcentage);
-    return p === null ? null : (Math.atan(p / 100) * 180) / Math.PI;
-  }
-  if (source.mode === 'cotes') {
-    const portee = n(source.porteeM);
-    const hauteur = n(source.hauteurFaitageM);
-    return portee === null || hauteur === null || portee === 0 ? null : (Math.atan(hauteur / portee) * 180) / Math.PI;
-  }
-  return null;
-}
-
-/**
- * ACAL252 — `{ pitchSource }` à réémettre pour un pan, ou rien. La provenance est conservée
- * VERBATIM tant qu'elle décrit la pente émise ; une pente retouchée à la main dans l'atelier
- * (écart > 1e-6°) n'est plus celle que la source décrit : elle est alors omise, jamais mentie.
- */
-function pitchSourceEmise(source: Record<string, unknown> | undefined, pitchDeg: number): { pitchSource?: Record<string, unknown> } {
-  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
-  const decrite = penteDecrite(source);
-  if (decrite !== null && Number.isFinite(pitchDeg) && Math.abs(decrite - pitchDeg) > 1e-6) return {};
-  return { pitchSource: JSON.parse(JSON.stringify(source)) as Record<string, unknown> };
-}
-
 export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: SerializeMeta): SerializedLayout {
   // ACAL64 — deux pans de même identifiant : refus nommé, jamais un document émis (le second
   // pan écraserait le premier côté serveur, et le compte publié serait faux).
@@ -990,6 +948,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       ...pitchSourceEmise(a.pitchSource, isActive ? ctx.pitchDeg : a.pitchDeg),
       facingAzimuthDeg: isActive ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
+      ...(a.verrouille ? { verrouille: true } : {}), ...emettreCoupures(a.coupuresPavage), ...emettrePortee(a.porteeEntrePieds), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
       ...(a.buildingId ? { buildingId: a.buildingId } : {}), // CAL59 — additif
@@ -1170,7 +1129,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...serializeChoixConception(ctx),
     // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
     // perd, comme n'importe quelle autre annotation de l'atelier).
-    ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
+    ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}), ...emettreReperesChantier(ctx.reperesChantier), // ACAL593
     // CAL67 — les objets d'environnement (arbres/bâtiments voisins) voyagent avec le
     // design, comme les mesures et l'ombrage tracé ci-dessus.
     ...(ctx.environment && ctx.environment.length ? { environment: serializeEnvironment(ctx.environment) } : {}),
@@ -1197,7 +1156,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
 
     ...emettrePourDocument(ctx.parcelle), // ACAL233 — la parcelle tracée ; aucune parcelle ⇒ aucune clé
 
-    ...underlayPourDocument(ctx), // CALX107 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
+    ...underlayPourDocument(ctx), ...imageCapturePourDocument(), // CALX107 / ACAL509 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
 
     ...emettreSurfacesPose(ctx.surfacesPose), // CALX123 — les surfaces de pose tracées (contrat `poseSurfaces[]`) ; aucune surface ⇒ aucune clé
 
@@ -1228,43 +1187,6 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // ACAL193 — puis la provenance de l'épingle (après le repère relu : un déplacement à la
   // main l'emporte sur l'épingle du document).
   return emettreProvenanceEpingle(reconcilierAvecDocumentRelu(ecrit, ctx), ctx);
-}
-
-// ═══════════ ACAL193 — PROVENANCE DE L'ÉPINGLE (D-ACAL-13) ═══════════
-/** L'épingle DÉPLACÉE À LA MAIN dans cette session, par scène (le contexte vivant de
- *  l'atelier) — hors du type `Ctx` : c'est un état de geste, pas une couche du document. */
-const epinglesDeplacees = new WeakMap<object, { lat: number; lng: number }>();
-
-/** ACAL193 — le dessinateur a déplacé l'épingle à la main : la scène passe `pinSource` à
- *  'manuel' et le prochain document porte CETTE épingle. Une coordonnée non finie est
- *  ignorée (jamais une épingle inventée). */
-export function deplacerEpingleALaMain(ctx: Ctx, lngLat: LngLat): void {
-  const [lng, lat] = lngLat;
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
-  epinglesDeplacees.set(ctx as object, { lat, lng });
-}
-
-/** ACAL193 — oublie le déplacement (nouveau lead, effacement complet de la scène). */
-export function oublierEpingleDeplacee(ctx: Ctx): void {
-  epinglesDeplacees.delete(ctx as object);
-}
-
-/** ACAL193 — `pinSource` / `repereAcquitte` du document RELU, réémis octet-identiques ;
- *  une épingle déplacée à la main dans la session pose `pin` + `pinSource: 'manuel'`. Un
- *  document qui ne porte aucune des deux clés repart sans elles (rien d'inventé). */
-function emettreProvenanceEpingle<T extends SerializedLayout>(layout: T, ctx: Ctx): T {
-  const relu = ctx.documentRelu ?? null;
-  const sortie = layout as unknown as Record<string, unknown>;
-  if (relu && typeof relu === 'object') {
-    if ('pinSource' in relu) sortie.pinSource = copieJson(relu.pinSource);
-    if ('repereAcquitte' in relu) sortie.repereAcquitte = copieJson(relu.repereAcquitte);
-  }
-  const deplacee = epinglesDeplacees.get(ctx as object);
-  if (deplacee) {
-    sortie.pin = { ...deplacee };
-    sortie.pinSource = 'manuel';
-  }
-  return layout;
 }
 
 // ═══════════ ACAL258 — L'ALLÉE TECHNIQUE DE CE CALEPINAGE ═══════════
@@ -1310,14 +1232,14 @@ function pansPavesDansLaSession(layout: SerializedLayout, ctx: Ctx): Set<string>
 /** Clés RACINE que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_RACINE_ATELIER = new Set([
   'version', 'pin', 'outline', 'billKwh', 'zones', 'activeAreaId', 'result', 'scenario', 'panelWatt',
-  'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements',
-  'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay',
-  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'electrical', 'parcelle', 'alleeTechnique',
+  'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements', 'reperesChantier',
+  'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay', 'imageCapture',
+  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'motifsPansVides', 'electrical', 'parcelle', 'alleeTechnique',
   'pinSource', 'repereAcquitte', // ACAL193 — réémises par `emettreProvenanceEpingle`
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([
-  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual',
+  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille', 'existant', 'anneeMiseEnService', 'coupuresPavage', 'porteeEntrePieds',
   'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges', 'result',
 ]);
 
@@ -1409,37 +1331,6 @@ export function deserializeSetbacksFromLayout(json: unknown): PerimeterSetbacks 
   const raw = (json as { setbacksM?: Partial<PerimeterSetbacks> } | null | undefined)?.setbacksM;
   if (!raw || typeof raw !== 'object') return null;
   return resolveSetbacks(raw);
-}
-
-/** CAL93 — normalise un profil d'horizon avant écriture : points TRIÉS/assainis (aucun
- *  point non fini), `hauteurMaxDeg` RECALCULÉE (jamais recopiée telle quelle — c'est la
- *  seule définition, `horizonMaxHeightDeg`), source repliée sur `'saisie'` si absente. */
-export function serializeHorizonProfile(profile: HorizonProfile): HorizonProfile {
-  const points = sortedHorizonPoints(profile.points);
-  return {
-    source: profile.source === 'pvgis' ? 'pvgis' : 'saisie',
-    points,
-    hauteurMaxDeg: horizonMaxHeightDeg(points),
-  };
-}
-
-/**
- * CAL93 — relit le profil d'horizon d'un layout sérialisé. Mêmes garde-fous que
- * `deserializeSetbacksFromLayout` : un JSON douteux (points manquants/non finis, source
- * inconnue) est assaini plutôt que de casser l'ouverture ; moins de 2 points exploitables
- * (ou clé absente — document antérieur à CAL93) ⇒ `null`, jamais un horizon inventé.
- */
-export function deserializeHorizonProfileFromLayout(json: unknown): HorizonProfile | null {
-  const raw = (json as { horizonProfile?: { source?: unknown; points?: unknown } } | null | undefined)?.horizonProfile;
-  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.points)) return null;
-  const points = sortedHorizonPoints(
-    (raw.points as Array<{ azimuthDeg?: unknown; heightDeg?: unknown }>)
-      .filter((p) => typeof p?.azimuthDeg === 'number' && typeof p?.heightDeg === 'number')
-      .map((p) => ({ azimuthDeg: p.azimuthDeg as number, heightDeg: p.heightDeg as number })),
-  );
-  if (points.length < 2) return null;
-  const source: HorizonSource = raw.source === 'pvgis' ? 'pvgis' : 'saisie';
-  return { source, points, hauteurMaxDeg: horizonMaxHeightDeg(points) };
 }
 
 /**
@@ -1542,6 +1433,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       : {}),
     facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
+    ...(z.verrouille === true ? { verrouille: true } : {}), ...emettreCoupures(z.coupuresPavage), ...emettrePortee(z.porteeEntrePieds), ...(z.existant === true ? { existant: true, anneeMiseEnService: Number.isInteger(z.anneeMiseEnService) ? z.anneeMiseEnService : null } : {}), // ACAL520, ACAL510
     neededPanels: z.neededPanels,
     neededAuto: z.neededAuto,
     result: null,

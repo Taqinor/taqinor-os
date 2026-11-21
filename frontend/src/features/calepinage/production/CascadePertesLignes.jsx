@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { CHART_TOKENS } from '../../../ui/charts/chart-theme.js'
+import { useModeExpert } from '../atelier/modeExpert'
 
 /* ACAL444 — la cascade de pertes en LIGNES horizontales, une par étape, dans
    l'ordre servi (`rang`). Aucun calcul : `niveau`, `base`, `valeur` viennent de
@@ -42,7 +43,34 @@ function Detail({ ligne, id }) {
   )
 }
 
-function Ligne({ ligne, ouverte, onBascule }) {
+/* ACAL703 — la pastille « inhabituel » : TEXTE (jamais la couleur seule), valeur
+   servie hors de la bande publiée, lien vers la page source. Sans entrée dans
+   `cascade.plages`, aucune pastille. Niveau expert. */
+function PastilleInhabituel({ plage, id }) {
+  const bande = `${formatNumber(plage.min, { decimals: 1 })}–${formatNumber(plage.max, { decimals: 1 })} %`
+  return (
+    <span className="flex flex-wrap items-center gap-2 px-2 pb-1" data-testid={`acal703-pastille-${id}`}>
+      <span
+        className="rounded border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs"
+        title={`Hors de la plage publiée (${bande})`}
+      >
+        inhabituel
+      </span>
+      {plage.url && (
+        <a
+          href={plage.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex min-h-11 items-center text-xs text-primary underline"
+        >
+          Voir la page source
+        </a>
+      )}
+    </span>
+  )
+}
+
+function Ligne({ ligne, ouverte, onBascule, expert }) {
   const id = ligne.poste || (ligne.arrivee ? 'arrivee' : 'depart')
   const depliable = !ligne.total
   const largeur = Math.max(0, Math.min(100, ligne.niveau ?? 0))
@@ -99,6 +127,7 @@ function Ligne({ ligne, ouverte, onBascule }) {
       ) : (
         <div className="flex w-full flex-wrap items-center gap-2 px-2 py-1">{corps}</div>
       )}
+      {expert && ligne.plage?.statut === 'inhabituel' && <PastilleInhabituel plage={ligne.plage} id={id} />}
       {depliable && ouverte && <Detail ligne={ligne} id={id} />}
     </li>
   )
@@ -106,6 +135,7 @@ function Ligne({ ligne, ouverte, onBascule }) {
 
 export default function CascadePertesLignes({ lignes }) {
   const [ouvertes, setOuvertes] = useState({})
+  const [expert] = useModeExpert()
   return (
     <ul className="flex w-full flex-col divide-y divide-border" data-testid="acal444-lignes">
       {lignes.map((ligne, i) => {
@@ -115,6 +145,7 @@ export default function CascadePertesLignes({ lignes }) {
             key={`${cle}-${i}`}
             ligne={ligne}
             ouverte={Boolean(ouvertes[cle])}
+            expert={expert}
             onBascule={() => setOuvertes((o) => ({ ...o, [cle]: !o[cle] }))}
           />
         )

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { messageRefus } from './commun/refusServeur'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { AlertCircle, Check } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
@@ -99,9 +99,21 @@ function ombragePublie(ligne) {
   return postes.find((p) => p?.poste === 'shading') || null
 }
 
+/* ACAL978 — la conception COURANTE est une colonne servie (`courante: true`,
+   `id: null`) : sa clé d'affichage ne vient donc jamais de `id`. */
+const cle = (ligne) => (ligne.courante ? 'courante' : String(ligne.id))
+
 const LIGNES_TABLEAU = [
   { id: 'role', libelle: 'Rôle', rendu: (l) => l.role || '—' },
   { id: 'statut', libelle: 'Statut', rendu: (l) => l.statut || '—' },
+  // ACAL600 — le module servi (ACAL595) ; « à re-poser » vit dans le NOM (ACAL594).
+  { id: 'module', libelle: 'Module', rendu: (l) => {
+    const m = l.module
+    const texte = !m ? '—' : m.mixte ? 'mixte' : `${m.libelle || '—'} · ${nombre(m.pmax_wc)} Wc`
+    return String(l.nom || '').endsWith('— à re-poser')
+      ? <>{texte}<span className="block text-xs text-muted-foreground">À re-poser dans l’atelier : les cotes du module diffèrent</span></>
+      : texte
+  } },
   {
     id: 'modules',
     libelle: 'Modules',
@@ -134,12 +146,12 @@ function EtiquetteVariante({ ligne }) {
       {/* ACAL113 — la fraîcheur et la SOURCE des mesures, servies (contrat
           variantes_comparer.json) : jamais déduites à l'écran. */}
       {ligne.simulation_perimee === true ? (
-        <Badge variant="outline" data-testid={`cal-badge-perimee-${ligne.id}`}>
+        <Badge variant="outline" data-testid={`cal-badge-perimee-${cle(ligne)}`}>
           simulation périmée
         </Badge>
       ) : null}
       {!ligne.simulee && ligne.source_mesures === 'conception' ? (
-        <Badge variant="outline" data-testid={`cal-badge-dessin-${ligne.id}`}>
+        <Badge variant="outline" data-testid={`cal-badge-dessin-${cle(ligne)}`}>
           mesures du dessin
         </Badge>
       ) : null}
@@ -189,20 +201,20 @@ function CoteACote({ lignes }) {
   const parDefaut = useMemo(() => {
     if (!lignes.length) return { gauche: '', droite: '' }
     const retenue = lignes.find((l) => l.est_retenue) ?? lignes[0]
-    const autre = lignes.find((l) => l.id !== retenue.id) ?? retenue
-    return { gauche: String(retenue.id), droite: String(autre.id) }
+    const autre = lignes.find((l) => cle(l) !== cle(retenue)) ?? retenue
+    return { gauche: cle(retenue), droite: cle(autre) }
   }, [lignes])
 
   const gauche = gaucheChoisie ?? parDefaut.gauche
   const droite = droiteChoisie ?? parDefaut.droite
 
   const paire = [gauche, droite].map(
-    (id) => lignes.find((l) => String(l.id) === String(id)) || null)
+    (choisie) => lignes.find((l) => cle(l) === String(choisie)) || null)
 
   if (lignes.length < 2) {
     return (
       <Card className="p-4 text-sm text-muted-foreground" data-testid="cal-cote-a-cote-vide">
-        Ce calepinage ne porte qu’une variante : il n’y a rien à comparer côte à côte.
+        Ce calepinage ne porte qu’une conception : il n’y a rien à comparer côte à côte.
       </Card>
     )
   }
@@ -217,7 +229,7 @@ function CoteACote({ lignes }) {
               <SelectTrigger aria-label={libelle}><SelectValue placeholder={libelle} /></SelectTrigger>
               <SelectContent>
                 {lignes.map((l) => (
-                  <SelectItem key={l.id} value={String(l.id)}>{l.nom}</SelectItem>
+                  <SelectItem key={cle(l)} value={cle(l)}>{l.nom}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -295,6 +307,9 @@ export default function VariantesCompare() {
   )
 
   const lignes = useMemo(() => (Array.isArray(data?.lignes) ? data.lignes : []), [data])
+  // ACAL978 — la courante n'est pas une variante : elle ne compte ni pour le
+  // libellé du bouton de création ni pour l'état « aucune variante ».
+  const nombreVariantes = lignes.filter((l) => !l.courante).length
 
   const retenir = async (ligne) => {
     setErreurAction(null)
@@ -377,7 +392,7 @@ export default function VariantesCompare() {
         <h1 className="text-lg font-semibold">Comparer les variantes</h1>
         <Button size="sm" variant="outline" onClick={ouvrirCreation}
           data-testid="cal-variante-nouvelle">
-          {lignes.length
+          {nombreVariantes
             ? 'Nouvelle variante depuis la conception courante'
             : 'Créer une variante depuis la conception courante'}
         </Button>
@@ -431,7 +446,7 @@ export default function VariantesCompare() {
         </Card>
       ) : null}
 
-      {!lignes.length ? (
+      {!nombreVariantes ? (
         <Card className="p-4 text-sm text-muted-foreground" data-testid="cal-variantes-vide">
           Aucune variante à comparer pour ce calepinage : créez-en une depuis la
           conception courante.
@@ -451,7 +466,7 @@ export default function VariantesCompare() {
             <tr className="border-b border-border">
               <th scope="col" className="p-3 text-left font-medium">Variante</th>
               {lignes.map((ligne) => (
-                <th key={ligne.id} scope="col" className="p-3 text-left align-top">
+                <th key={cle(ligne)} scope="col" className="p-3 text-left align-top">
                   <EtiquetteVariante ligne={ligne} />
                 </th>
               ))}
@@ -464,7 +479,7 @@ export default function VariantesCompare() {
                   {rangee.libelle}
                 </th>
                 {lignes.map((ligne) => (
-                  <td key={ligne.id} className="p-3" data-testid={`cal-${rangee.id}-${ligne.id}`}>
+                  <td key={cle(ligne)} className="p-3" data-testid={`cal-${rangee.id}-${cle(ligne)}`}>
                     {rangee.rendu(ligne)}
                   </td>
                 ))}
@@ -475,7 +490,7 @@ export default function VariantesCompare() {
                 Production P50 (kWh)
               </th>
               {lignes.map((ligne) => (
-                <td key={ligne.id} className="p-3" data-testid={`cal-p50-${ligne.id}`}>
+                <td key={cle(ligne)} className="p-3" data-testid={`cal-p50-${cle(ligne)}`}>
                   {ligne.simulee ? nombre(ligne.production?.p50_kwh) : 'non simulée'}
                 </td>
               ))}
@@ -485,7 +500,7 @@ export default function VariantesCompare() {
                 Performance ratio
               </th>
               {lignes.map((ligne) => (
-                <td key={ligne.id} className="p-3" data-testid={`cal-pr-${ligne.id}`}>
+                <td key={cle(ligne)} className="p-3" data-testid={`cal-pr-${cle(ligne)}`}>
                   {ligne.simulee ? pourcentage(ligne.production?.performance_ratio) : 'non simulée'}
                 </td>
               ))}
@@ -494,8 +509,18 @@ export default function VariantesCompare() {
               <th scope="row" className="p-3 text-left font-normal text-muted-foreground">
                 Décision
               </th>
-              {lignes.map((ligne) => (
-                <td key={ligne.id} className="space-y-1 p-3">
+              {lignes.map((ligne) => (ligne.courante ? (
+                <td key={cle(ligne)} className="space-y-1 p-3">
+                  <Link
+                    to={`/calepinage/${id}`}
+                    className="inline-flex min-h-[44px] items-center text-sm font-medium underline"
+                    data-testid="acal978-ouvrir-atelier"
+                  >
+                    Ouvrir dans l’atelier
+                  </Link>
+                </td>
+              ) : (
+                <td key={cle(ligne)} className="space-y-1 p-3">
                   {ligne.est_retenue ? (
                     <span
                       className="inline-flex items-center gap-1 text-sm text-muted-foreground"
@@ -570,7 +595,7 @@ export default function VariantesCompare() {
                     )}
                   </div>
                 </td>
-              ))}
+              )))}
             </tr>
           </tbody>
         </table>

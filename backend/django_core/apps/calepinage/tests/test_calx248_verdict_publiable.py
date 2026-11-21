@@ -119,7 +119,8 @@ class FormeDuRapportTest(unittest.TestCase):
 
     def test_les_deux_cles_sont_toujours_presentes(self):
         rapport = _verdict()
-        self.assertEqual(sorted(rapport), ['motifs', 'publiable'])
+        # ACAL934 y a ajouté ``etat`` et ``points``.
+        self.assertEqual(sorted(rapport), ['etat', 'motifs', 'points', 'publiable'])
         self.assertIsInstance(rapport['publiable'], bool)
 
     def test_chaque_motif_porte_les_quatre_champs(self):

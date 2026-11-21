@@ -653,7 +653,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         <Badge
           tone={roofReady ? 'success' : 'neutral'}
           title={roofOutlineReady
-            ? 'Le client a tracé le contour de son toit — ouvrez « Concevoir la toiture (3D) » : il y est déjà chargé'
+            ? 'Le client a tracé le contour de son toit'
             : roofReady
               ? 'Un repère GPS de toiture a été capturé (site ou 3D)'
               : 'Aucun repère GPS de toiture pour le moment'}
@@ -778,6 +778,19 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         >
           ⚡ Devis auto
         </Button>
+        {/* ACAL904 — l'UNIQUE porte du calepinage, visible sans menu, sans
+            condition de facture (D-ACAL-12 : le même calepinage à chaque fois). */}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!leadId}
+          onClick={ouvrirModuleCalepinage}
+          title={conceptionCalepinage
+            ? `Ouvrir le calepinage CAL-${conceptionCalepinage.id} de ce lead`
+            : 'Ouvrir le calepinage de ce lead pour dessiner son toit'}
+        >
+          Dessiner le toit{hasGps ? ' 📍' : ''}
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <IconButton
@@ -804,22 +817,10 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
             >
               Demander à l'assistant
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => onAction('toiture-3d')}
-              title="Ouvrir l'outil de conception 3D avec ce lead déjà chargé"
-            >
-              Concevoir la toiture (3D){hasGps ? ' 📍' : ''}
-            </DropdownMenuItem>
-            {/* CALX47 — la porte du module Calepinage, À CÔTÉ du geste
-                existant, qui garde exactement sa sémantique (D2). */}
-            <DropdownMenuItem
-              onSelect={ouvrirModuleCalepinage}
-              title="Ouvrir ce lead dans le module Calepinage (le même calepinage à chaque fois)"
-            >
-              {conceptionCalepinage
-                ? `Ouvrir le calepinage CAL-${conceptionCalepinage.id}${conceptionCalepinage.statut ? ` (${conceptionCalepinage.statut})` : ''}`
-                : 'Ouvrir dans le module Calepinage'}
-            </DropdownMenuItem>
+            {/* ACAL904 — plus de portes jumelles ici : « Dessiner le toit »
+                (bouton visible ci-dessus) est l'unique porte du calepinage ;
+                l'ancienne « Concevoir la toiture (3D) » lançait un devis
+                automatique (409 sans facture), elle est retirée. */}
             {/* LANE Q-C (fondateur 25/08/2026) — le commercial choisit quelles
                 informations demander au lead (défaut = ce qui manque),
                 toutes cochables/décochables avant l'envoi. */}

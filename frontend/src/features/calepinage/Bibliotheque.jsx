@@ -171,37 +171,42 @@ const CLE_SOURCE = 'source'
 //: elles ont leur propre chemin d'écriture et traversent intactes.
 const PRESETS_RESERVES = ['jeux', 'kits']
 
-/** Les champs d'un préréglage, un « champ = valeur » par ligne. */
-function texteChamps(valeur) {
-  return Object.entries(valeur ?? {})
-    .filter(([champ]) => champ !== CLE_SOURCE)
-    .map(([champ, brut]) => `${champ} = ${brut}`)
-    .join('\n')
+/** ACAL961 — les champs d'un préréglage, hors provenance, tels qu'enregistrés. */
+function champsDuPreset(valeur) {
+  return Object.fromEntries(Object.entries(valeur ?? {})
+    .filter(([champ]) => champ !== CLE_SOURCE))
 }
 
-/** `{champs, erreur}` — une ligne sans « = » est refusée en la citant. */
-function champsDepuisTexte(texte) {
-  const champs = {}
-  for (const ligne of String(texte || '').split('\n')) {
-    const brut = ligne.trim()
-    if (!brut) continue
-    const coupe = brut.indexOf('=')
-    if (coupe <= 0) {
-      return {
-        champs: null,
-        erreur: `Ligne « ${brut} » : chaque valeur s’écrit « champ = valeur ».`,
-      }
+/** `{champs, erreur}` — chaque champ RECONNU est contrôlé selon son type ; un
+ *  champ inconnu repart inchangé (jamais perdu, jamais réécrit) ; une valeur
+ *  vide n'est pas envoyée. */
+function champsValides(champs, definitions) {
+  const propres = {}
+  for (const [cle, brut] of Object.entries(champs)) {
+    const def = definitions.find((d) => d.cle === cle)
+    if (!def) {
+      propres[cle] = brut
+      continue
     }
-    const champ = brut.slice(0, coupe).trim()
-    const valeur = brut.slice(coupe + 1).trim()
-    const nombre = Number(valeur)
-    champs[champ] = valeur !== '' && Number.isFinite(nombre) ? nombre : valeur
+    if (brut === '' || brut === null || brut === undefined) continue
+    if (def.type === 'nombre' || def.type === 'entier') {
+      const nombre = Number(String(brut).replace(',', '.'))
+      if (!Number.isFinite(nombre) || (def.type === 'entier' && !Number.isInteger(nombre))) {
+        return {
+          champs: null,
+          erreur: `« ${def.libelle} » doit être ${def.type === 'entier' ? 'un nombre entier' : 'un nombre'}.`,
+        }
+      }
+      propres[cle] = nombre
+    } else {
+      propres[cle] = brut
+    }
   }
-  return { champs, erreur: null }
+  return { champs: propres, erreur: null }
 }
 
 /** La section `presets` ENTIÈRE, réservés compris — ou le refus, ligne visée. */
-function sectionPresets(lignes, reserves) {
+function sectionPresets(lignes, reserves, definitions) {
   const section = { ...reserves }
   for (let rang = 0; rang < lignes.length; rang += 1) {
     const ligne = lignes[rang]
@@ -212,7 +217,7 @@ function sectionPresets(lignes, reserves) {
     if (PRESETS_RESERVES.includes(cle)) {
       return { section: null, refus: { rang, message: `« ${cle} » est réservé (il a son propre écran) : choisissez un autre nom.` } }
     }
-    const { champs, erreur } = champsDepuisTexte(ligne.champsTexte)
+    const { champs, erreur } = champsValides(ligne.champs, definitions)
     if (erreur) return { section: null, refus: { rang, message: erreur } }
     if (Object.keys(champs).length === 0) {
       return { section: null, refus: { rang, message: 'Ce préréglage ne porte aucune valeur : ajoutez-en une, ou retirez-le.' } }
@@ -226,32 +231,35 @@ function sectionPresets(lignes, reserves) {
   return { section, refus: null }
 }
 
-/** La section `favoris_materiel` ENTIÈRE — ou le refus, ligne visée. */
-function sectionFavoris(lignes) {
+//: ACAL960 — les trois clés de `favoris_materiel` que le serveur LIT
+//: (`CATEGORIES_CANDIDATS`) ; toute autre clé reste affichée avec « Retirer ».
+const CATEGORIES_FAVORIS = [
+  { cle: 'modules', titre: 'Modules', cochable: true },
+  { cle: 'onduleurs', titre: 'Onduleurs', cochable: true },
+  { cle: 'optimiseurs', titre: 'Optimiseurs', cochable: false },
+]
+
+/** La section `favoris_materiel` ENTIÈRE : les produits cochés sous les clés
+ *  lues par le serveur, plus les autres clés telles quelles. */
+function sectionFavoris(edition) {
   const section = {}
-  for (let rang = 0; rang < lignes.length; rang += 1) {
-    const ligne = lignes[rang]
-    const role = (ligne.role || '').trim()
-    if (!role) {
-      return { section: null, refus: { rang, message: 'Ce favori n’a pas de rôle : nommez-le, ou retirez-le.' } }
-    }
-    const ids = []
-    for (const brut of String(ligne.idsTexte || '').split(',')) {
-      const valeur = brut.trim()
-      if (!valeur) continue
-      // Un favori DÉSIGNE un produit du catalogue par son identifiant : une
-      // valeur qui n'en est pas un ne désigne rien, et n'est pas enregistrée.
-      if (!/^\d+$/.test(valeur)) {
-        return { section: null, refus: { rang, message: `« ${valeur} » n’est pas un identifiant de produit : un favori désigne une fiche du catalogue.` } }
-      }
-      ids.push(Number(valeur))
-    }
-    if (ids.length === 0) {
-      return { section: null, refus: { rang, message: 'Ce favori ne désigne aucun produit : indiquez au moins un identifiant, ou retirez la ligne.' } }
-    }
-    section[role] = ids
+  for (const { role, ids } of edition.autres) section[role] = ids
+  for (const { cle } of CATEGORIES_FAVORIS) {
+    if (edition[cle].length > 0) section[cle] = edition[cle]
   }
-  return { section, refus: null }
+  return section
+}
+
+/** ACAL960 — le brouillon des favoris : les ids des trois clés lues, et les
+ *  autres clés (ex. `panneau`) gardées pour être retirées, jamais perdues. */
+function favorisDepuis(favoris) {
+  const edition = { autres: [] }
+  const connues = CATEGORIES_FAVORIS.map(({ cle }) => cle)
+  for (const cle of connues) edition[cle] = Array.isArray(favoris[cle]) ? favoris[cle] : []
+  for (const [role, ids] of Object.entries(favoris)) {
+    if (!connues.includes(role)) edition.autres.push({ role, ids: Array.isArray(ids) ? ids : [] })
+  }
+  return edition
 }
 
 /** Les BROUILLONS d'édition, dérivés des réglages servis. Fonction PURE (hors
@@ -272,17 +280,14 @@ function brouillonsDepuis(reglages) {
     }
     lignes.push({
       cle,
-      champsTexte: texteChamps(valeur),
+      champs: champsDuPreset(valeur),
       source: typeof valeur[CLE_SOURCE] === 'string' ? valeur[CLE_SOURCE] : '',
     })
   }
   return {
     presets: lignes,
     reserves,
-    favoris: Object.entries(favoris).map(([role, ids]) => ({
-      role,
-      idsTexte: Array.isArray(ids) ? ids.join(', ') : String(ids ?? ''),
-    })),
+    favoris: favorisDepuis(favoris),
   }
 }
 
@@ -317,7 +322,10 @@ export default function Bibliotheque() {
   const [presetsReserves, setPresetsReserves] = useState({})
   const [refusPresets, setRefusPresets] = useState(null)
   const [ecriturePresets, setEcriturePresets] = useState(false)
-  const [favorisEdit, setFavorisEdit] = useState([])
+  const [favorisEdit, setFavorisEdit] = useState(favorisDepuis({}))
+  // ACAL960 — le catalogue du matériel (lu à part : un échec ne bloque pas la page).
+  const [catalogue, setCatalogue] = useState(null)
+  const [catalogueIndisponible, setCatalogueIndisponible] = useState(false)
   const [refusFavoris, setRefusFavoris] = useState(null)
   const [ecritureFavoris, setEcritureFavoris] = useState(false)
   // CALX42 — « Partir de ce modèle » : le modèle ouvert, la saisie du NOUVEAU
@@ -378,6 +386,16 @@ export default function Bibliotheque() {
     return () => { annule = true }
   }, [])
 
+  useEffect(() => {
+    if (!peutGerer) return undefined
+    let annule = false
+    Promise.resolve()
+      .then(() => calepinageApi.parametres.catalogueMateriel())
+      .then((res) => { if (!annule) setCatalogue(res?.data ?? null) })
+      .catch(() => { if (!annule) setCatalogueIndisponible(true) })
+    return () => { annule = true }
+  }, [peutGerer])
+
   if (chargement) {
     return <div className="page" data-testid="cal-bibliotheque"><Spinner /></div>
   }
@@ -395,6 +413,8 @@ export default function Bibliotheque() {
   const kits = Array.isArray(parametres?.kits) ? parametres.kits : []
 
   const clesPresets = Object.keys(presets)
+  // ACAL961 — les champs admis d'un préréglage, servis (lecture seule).
+  const definitionsChamps = Array.isArray(parametres?.champs_preset) ? parametres.champs_preset : []
   const clesFavoris = Object.keys(favoris)
 
   // ── CALX30 — les gestes des profils types ────────────────────────────────
@@ -434,6 +454,19 @@ export default function Bibliotheque() {
     setPresetsEdit((liste) => liste.map(
       (ligne, i) => (i === rang ? { ...ligne, [champ]: valeur } : ligne)))
   }
+  const majChamp = (rang, cle, valeur) => {
+    setPresetsEdit((liste) => liste.map((ligne, i) => (
+      i === rang ? { ...ligne, champs: { ...ligne.champs, [cle]: valeur } } : ligne)))
+  }
+  const retirerChamp = (rang, cle) => {
+    setRefusPresets(null)
+    setPresetsEdit((liste) => liste.map((ligne, i) => {
+      if (i !== rang) return ligne
+      const reste = { ...ligne.champs }
+      delete reste[cle]
+      return { ...ligne, champs: reste }
+    }))
+  }
   const retirerPreset = (rang) => {
     setRefusPresets(null)
     setPresetsEdit((liste) => liste.filter((_, i) => i !== rang))
@@ -442,11 +475,11 @@ export default function Bibliotheque() {
     setRefusPresets(null)
     // Tout vide : aucun préréglage n'est créé avec une valeur inventée.
     setPresetsEdit((liste) => [...liste,
-      { cle: '', champsTexte: '', source: '' }])
+      { cle: '', champs: {}, source: '' }])
   }
 
   const enregistrerPresets = async () => {
-    const { section, refus } = sectionPresets(presetsEdit, presetsReserves)
+    const { section, refus } = sectionPresets(presetsEdit, presetsReserves, definitionsChamps)
     if (refus) {
       setRefusPresets(refus)
       return
@@ -465,30 +498,26 @@ export default function Bibliotheque() {
     }
   }
 
-  const majFavori = (rang, champ, valeur) => {
-    setFavorisEdit((liste) => liste.map(
-      (ligne, i) => (i === rang ? { ...ligne, [champ]: valeur } : ligne)))
+  const cocherFavori = (cle, id) => {
+    setFavorisEdit((edition) => ({
+      ...edition,
+      [cle]: edition[cle].includes(id)
+        ? edition[cle].filter((autre) => autre !== id)
+        : [...edition[cle], id],
+    }))
   }
   const retirerFavori = (rang) => {
     setRefusFavoris(null)
-    setFavorisEdit((liste) => liste.filter((_, i) => i !== rang))
-  }
-  const ajouterFavori = () => {
-    setRefusFavoris(null)
-    setFavorisEdit((liste) => [...liste, { role: '', idsTexte: '' }])
+    setFavorisEdit((edition) => (
+      { ...edition, autres: edition.autres.filter((_, i) => i !== rang) }))
   }
 
   const enregistrerFavoris = async () => {
-    const { section, refus } = sectionFavoris(favorisEdit)
-    if (refus) {
-      setRefusFavoris(refus)
-      return
-    }
     setEcritureFavoris(true)
     setRefusFavoris(null)
     try {
       const res = await calepinageApi.parametres.update(
-        { favoris_materiel: section })
+        { favoris_materiel: sectionFavoris(favorisEdit) })
       if (res?.data) setParametres((avant) => ({ ...(avant ?? {}), ...res.data }))
     } catch (e) {
       setRefusFavoris({ rang: null, message: refusSection(e) })
@@ -637,14 +666,68 @@ export default function Bibliotheque() {
                       onChange={(e) => majPreset(rang, 'cle', e.target.value)}
                       className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
                   </label>
-                  <label className="mt-2 block text-xs text-muted-foreground">
-                    Valeurs — une par ligne, « champ = valeur »
-                    <textarea rows={3} value={ligne.champsTexte}
-                      disabled={ecriturePresets}
-                      data-testid={`cal-biblio-preset-champs-${rang}`}
-                      onChange={(e) => majPreset(rang, 'champsTexte', e.target.value)}
-                      className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
-                  </label>
+                  <div className="mt-2 space-y-1" data-testid={`cal-biblio-preset-champs-${rang}`}>
+                    <p className="text-xs text-muted-foreground">Valeurs du préréglage</p>
+                    {Object.entries(ligne.champs).map(([cle, valeur]) => {
+                      const def = definitionsChamps.find((d) => d.cle === cle)
+                      if (!def) {
+                        return (
+                          <div key={cle} className="flex min-h-[44px] flex-wrap items-center gap-2 text-sm text-foreground"
+                            data-testid={`acal961-inconnu-${rang}-${cle}`}>
+                            <span>{cle} = {String(valeur)}</span>
+                            <span className="text-xs text-muted-foreground">Champ non reconnu</span>
+                            <button type="button" disabled={ecriturePresets}
+                              className="min-h-[44px] text-xs text-destructive underline"
+                              data-testid={`acal961-retirer-${rang}-${cle}`}
+                              onClick={() => retirerChamp(rang, cle)}>
+                              Retirer
+                            </button>
+                          </div>
+                        )
+                      }
+                      const champ = `acal961-champ-${rang}-${cle}`
+                      const classe = 'mt-0.5 block min-h-[44px] w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground'
+                      return (
+                        <div key={cle} className="flex items-end gap-2">
+                          <label className="flex-1 text-xs text-muted-foreground">
+                            {def.libelle}{def.unite ? ` (${def.unite})` : ''}
+                            {def.type === 'choix' ? (
+                              <select value={String(valeur ?? '')} disabled={ecriturePresets}
+                                data-testid={champ} className={classe}
+                                onChange={(e) => majChamp(rang, cle, e.target.value)}>
+                                <option value="">—</option>
+                                {(def.valeurs ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
+                              </select>
+                            ) : def.type === 'booleen' ? (
+                              <input type="checkbox" checked={valeur === true} disabled={ecriturePresets}
+                                data-testid={champ} className="ml-2"
+                                onChange={(e) => majChamp(rang, cle, e.target.checked)} />
+                            ) : (
+                              <input type="number" step="any" value={valeur ?? ''}
+                                disabled={ecriturePresets} data-testid={champ} className={classe}
+                                onChange={(e) => majChamp(rang, cle, e.target.value)} />
+                            )}
+                          </label>
+                          <button type="button" disabled={ecriturePresets}
+                            className="min-h-[44px] text-xs text-destructive underline"
+                            data-testid={`acal961-retirer-${rang}-${cle}`}
+                            onClick={() => retirerChamp(rang, cle)}>
+                            Retirer
+                          </button>
+                        </div>
+                      )
+                    })}
+                    <select value="" disabled={ecriturePresets}
+                      aria-label="Ajouter un champ"
+                      data-testid={`acal961-ajouter-${rang}`}
+                      className="block min-h-[44px] border border-border bg-transparent px-2 py-1 text-sm text-foreground"
+                      onChange={(e) => e.target.value && majChamp(rang, e.target.value, '')}>
+                      <option value="">Ajouter un champ…</option>
+                      {definitionsChamps.filter((d) => !(d.cle in ligne.champs)).map((d) => (
+                        <option key={d.cle} value={d.cle}>{d.libelle}</option>
+                      ))}
+                    </select>
+                  </div>
                   <label className="mt-2 block text-xs text-muted-foreground">
                     Source (obligatoire) — d’où viennent ces valeurs
                     <input type="text" value={ligne.source} disabled={ecriturePresets}
@@ -734,6 +817,13 @@ export default function Bibliotheque() {
                     </span>
                     {modele.statut_libelle && (
                       <span className="text-muted-foreground"> — {modele.statut_libelle}</span>
+                    )}
+                    {/* ACAL895 — un modèle d'exemple porte son badge ; clé servie en
+                        lecture seule, jamais envoyée. */}
+                    {modele.exemple === true && (
+                      <Badge variant="outline" className="ml-2" data-testid={`cal-biblio-modele-exemple-${modele.id}`}>
+                        Exemple
+                      </Badge>
                     )}
 
                     {/* CALX42 — « Partir de ce modèle » : le rattachement est
@@ -880,44 +970,63 @@ export default function Bibliotheque() {
           {/* CALX43 — L'ÉDITION des favoris, même porte `parametres`. */}
           {peutGerer ? (
             <div className="mt-3 space-y-3" data-testid="cal-biblio-favoris-edition">
-              {favorisEdit.map((ligne, rang) => (
+              {catalogueIndisponible && (
+                <p className="text-xs text-destructive" role="alert"
+                  data-testid="acal960-catalogue-erreur">
+                  Le catalogue du matériel n’a pas pu être chargé : les cases ne sont pas proposées.
+                </p>
+              )}
+              {catalogue && CATEGORIES_FAVORIS.map(({ cle, titre, cochable }) => {
+                const lignes = Array.isArray(catalogue[cle]) ? catalogue[cle] : []
+                const connus = new Set(lignes.map((ligne) => ligne.id))
+                // Un favori dont le produit n'est plus au catalogue reste visible.
+                const orphelins = favorisEdit[cle].filter((id) => !connus.has(id))
+                if (lignes.length === 0 && orphelins.length === 0) return null
+                return (
+                  <fieldset key={cle} className="border border-border p-2"
+                    data-testid={`acal960-liste-${cle}`}>
+                    <legend className="px-1 text-sm font-medium">
+                      {titre}{cochable ? '' : ' (non cochables ici)'}
+                    </legend>
+                    {[...lignes.map((ligne) => ({
+                      id: ligne.id,
+                      texte: [ligne.libelle, ligne.marque].filter(Boolean).join(' — '),
+                      incomplete: ligne.fiche_complete === false,
+                    })), ...orphelins.map((id) => ({
+                      id, texte: `Produit #${id} (archivé ou introuvable)`, incomplete: false,
+                    }))].map(({ id, texte, incomplete }) => (
+                      <label key={id} className="flex min-h-[44px] items-center gap-2 text-sm text-foreground">
+                        <input type="checkbox" checked={favorisEdit[cle].includes(id)}
+                          disabled={ecritureFavoris || !cochable}
+                          data-testid={`acal960-coche-${cle}-${id}`}
+                          onChange={() => cocherFavori(cle, id)} />
+                        <span>{texte}</span>
+                        {incomplete && (
+                          <span className="text-xs text-muted-foreground"
+                            data-testid={`acal960-incomplete-${cle}-${id}`}>
+                            fiche incomplète
+                          </span>
+                        )}
+                      </label>
+                    ))}
+                  </fieldset>
+                )
+              })}
+              {favorisEdit.autres.map((ligne, rang) => (
                 <div key={`favori-${rang}`} className="border border-border p-2"
-                  data-testid={`cal-biblio-favori-ligne-${rang}`}>
-                  <label className="text-xs text-muted-foreground">
-                    Rôle (panneau, onduleur_hybride, …)
-                    <input type="text" value={ligne.role} disabled={ecritureFavoris}
-                      data-testid={`cal-biblio-favori-role-${rang}`}
-                      onChange={(e) => majFavori(rang, 'role', e.target.value)}
-                      className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
-                  </label>
-                  <label className="mt-2 block text-xs text-muted-foreground">
-                    Identifiants produits du catalogue, séparés par des virgules
-                    <input type="text" value={ligne.idsTexte}
-                      disabled={ecritureFavoris}
-                      data-testid={`cal-biblio-favori-ids-${rang}`}
-                      onChange={(e) => majFavori(rang, 'idsTexte', e.target.value)}
-                      className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
-                  </label>
+                  data-testid={`acal960-autre-${ligne.role}`}>
+                  <span className="text-sm text-foreground">
+                    {ligne.role} — {ligne.ids.length} produit(s), non lu(s) par le calcul
+                  </span>
                   <button type="button" disabled={ecritureFavoris}
-                    className="mt-2 text-xs text-destructive underline"
+                    className="ml-3 min-h-[44px] text-xs text-destructive underline"
                     data-testid={`cal-biblio-favori-retirer-${rang}`}
                     onClick={() => retirerFavori(rang)}>
-                    Retirer ce favori
+                    Retirer
                   </button>
-                  {refusFavoris?.rang === rang && (
-                    <p className="mt-2 text-xs text-destructive" role="alert"
-                      data-testid={`cal-biblio-favori-erreur-${rang}`}>
-                      {refusFavoris.message}
-                    </p>
-                  )}
                 </div>
               ))}
               <div className="flex flex-wrap items-center gap-3">
-                <button type="button" disabled={ecritureFavoris}
-                  className="text-sm font-semibold underline"
-                  data-testid="cal-biblio-favori-ajouter" onClick={ajouterFavori}>
-                  Ajouter un favori
-                </button>
                 <button type="button" disabled={ecritureFavoris}
                   className="text-sm font-semibold underline"
                   data-testid="cal-biblio-favoris-enregistrer"

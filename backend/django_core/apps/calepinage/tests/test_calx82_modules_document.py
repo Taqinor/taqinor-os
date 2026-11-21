@@ -289,3 +289,25 @@ class RefusNommeLeChampTest(SimpleTestCase):
     def test_un_document_sans_module_pose_passe_la_porte(self):
         """Le cas d'aujourd'hui : aucun catalogue, aucun `moduleId`."""
         valider_document(copy.deepcopy(DEPART))
+
+    def test_une_pose_hors_enumeration_est_refusee(self):
+        """ACAL601 — `panelOrientation` ∈ portrait/landscape/mixed."""
+        for pose in ('portrait', 'landscape', 'mixed'):
+            document = document_avec_modules()
+            document['zones'][0]['geometry']['panelOrientation'] = pose
+            valider_document(document)
+        document = document_avec_modules()
+        document['zones'][0]['geometry']['panelOrientation'] = 'diagonale'
+        refus = self._refus(document)
+        self.assertEqual(refus.champ,
+                         'zones.0.geometry.panelOrientation')
+
+    def test_la_pose_d_un_module_hors_enumeration_est_refusee(self):
+        document = document_avec_modules()
+        geometrie = document['zones'][0]['geometry']
+        geometrie['panels'] = [{'cx': 1.0, 'cy': 1.0, 'orient': 'landscape'}]
+        valider_document(document)
+        geometrie['panels'][0]['orient'] = 'mixed'
+        refus = self._refus(document)
+        self.assertEqual(refus.champ,
+                         'zones.0.geometry.panels.0.orient')

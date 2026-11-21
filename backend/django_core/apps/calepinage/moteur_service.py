@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     'calepiner', 'cout_estime', 'multiplicateur_suggestions',
     'erreurs_moteur_calepinage', 'cout_calepinage', 'calepinage_json',
+    'politique_du_sol',
 ]
 
 #: Suggestions PUBLIÉES par calcul (PV50). Le moteur en cape déjà 12
@@ -185,7 +186,7 @@ def cout_estime(document, *, budget=None, suggestions=False):
 
 # ───────────────────────────────────────────────── AOF60 — calcul STATELESS
 def calepiner(document, *, company, user=None, moteur=None, budget=None,
-              suggestions=True):
+              suggestions=True, politique=None):
     """Calcule un calepinage COMPLET et renvoie du JSON. N'écrit RIEN.
 
     ``company`` est OBLIGATOIRE : le service refuse de tourner hors société,
@@ -231,8 +232,10 @@ def calepiner(document, *, company, user=None, moteur=None, budget=None,
     for surface in entree.surfaces:
         lot = par_surface.get(surface.repere, ())
         try:
+            # ACAL606 — ``politique`` (champ au sol) ; ``None`` = celle des
+            # paramètres. Limite : ``hash_entree`` ne la couvre pas.
             resultat = machine.calculer(surface, entree.parametres, lot,
-                                        entree.zones)
+                                        entree.zones, politique)
         except EntreeMoteurInvalide as erreur:
             # PV30 — le NOYAU refuse déjà en français (rangées imposées vides,
             # phase forcée hors du jeu possible), mais avec SON exception, que
@@ -455,13 +458,69 @@ def cout_calepinage(document, *, budget=None, suggestions=False):
 
 
 def calepinage_json(document, *, company, user=None, suggestions=True,
-                    budget=None):
+                    budget=None, politique=None):
     """Calcule un calepinage et rend le JSON PUBLIÉ du moteur.
 
     ``company`` est OBLIGATOIRE (le service refuse de tourner hors société) et
     sert à estampiller la sortie : aucune ligne n'est lue ni écrite. La forme
     est celle que le contrat fige — une seule sérialisation pour tous les
-    consommateurs.
+    consommateurs. ``politique`` (ACAL606) : voir :func:`politique_du_sol`.
     """
     return calepiner(document, company=company, user=user,
-                     suggestions=suggestions, budget=budget)
+                     suggestions=suggestions, budget=budget,
+                     politique=politique)
+
+
+def _latitude(sol):
+    valeur = sol.get('latitude_deg') if isinstance(sol, dict) else None
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    return float(valeur)
+
+
+def politique_du_sol(document, sol):
+    """ACAL606 — la politique d'espacement d'un CHAMP AU SOL et son bloc publié.
+
+    Rend ``(politique, anti_ombrage)``. Sans ``sol`` : ``(None, None)``, la
+    politique du moteur est inchangée (ombrière comprise). Avec ``sol`` :
+    ``core.calepinage.surfaces.sol.SurfaceSol`` à la latitude de l'épingle
+    calcule l'entraxe anti-ombrage (dimensionné à 10 h solaire au solstice
+    d'hiver, ``politique_pas.HEURE_SOLAIRE_DIMENSIONNEMENT``, jamais « à
+    midi »). Une allée SAISIE (``parametres.allee_m``) garde sa pose
+    (politique ``None`` ⇒ ``AlleeFixe`` de la saisie) : le bloc publie alors
+    l'entraxe appliqué À CÔTÉ du calculé. Le 0,60 m du moteur n'est jamais
+    appliqué à un champ au sol sans avoir été saisi.
+
+    Raises:
+        EntreeInvalide: latitude absente (motif de ``sol.py`` nommant
+            ``latitude_deg``), ou plus d'une surface ou d'un kit.
+    """
+    if sol is None:
+        return None, None
+    entree = _entree(document)
+    kits = entree.parametres.kits
+    if len(kits) != 1 or len(entree.surfaces) != 1:
+        raise EntreeInvalide(
+            'Champ au sol : le pas anti-ombrage se calcule pour UNE surface '
+            'et UN kit (champ `kits`).')
+    from core.calepinage.surfaces.sol import SurfaceSol
+
+    surface, kit = entree.surfaces[0], kits[0]
+    latitude = _latitude(sol)
+    try:
+        terrain = SurfaceSol(repere=surface.repere, contour=surface.contour,
+                             trous=surface.trous, latitude_deg=latitude)
+        politique = terrain.politique_pas(kit)
+        entraxe = terrain.entraxe_m(kit)
+    except ValueError as erreur:
+        raise EntreeInvalide(str(erreur)) from erreur
+    emprise = kit.emprise_transversale_m
+    saisie = 'allee_m' in ((document or {}).get('parametres') or {})
+    applique = emprise + entree.parametres.allee_m if saisie else entraxe
+    return (None if saisie else politique), {
+        'politique': 'ALLEE_SAISIE' if saisie else 'ANTI_OMBRAGE',
+        'latitude_deg': latitude,
+        'entraxe_calcule_m': round(entraxe, 3),
+        'vide_calcule_m': round(entraxe - emprise, 3),
+        'entraxe_applique_m': round(applique, 3),
+    }

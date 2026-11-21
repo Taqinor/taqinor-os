@@ -8,7 +8,7 @@ Q = 30 m³/h → pertes ≈ 5,2 m (Ø int. 100 mm), 15,3 m (80 mm), 94,4 m (55 m
 import unittest
 
 from core.pompage.hydraulique import (
-    CHAMP_C_HAZEN_WILLIAMS, METRES_PAR_BAR, hmt_composantes,
+    CHAMP_C_HAZEN_WILLIAMS, METRES_PAR_BAR, hmt_composantes, hmt_mensuelle,
     pertes_hazen_williams,
 )
 
@@ -109,3 +109,26 @@ class HmtComposantes(unittest.TestCase):
         r = hmt_composantes(**dict(COMPLET,
                                    provenances={"niveau_dynamique_m": prov}))
         self.assertEqual(r["provenance"]["niveau_dynamique_m"], prov)
+
+
+class HmtMensuelle(unittest.TestCase):
+    """ACAL805 — HMT de chaque mois depuis le niveau statique de ce mois."""
+
+    PUITS = dict(COMPLET, niveau_dynamique_m=None,
+                 rabattement_specifique_m_par_m3h=0.2)
+
+    def test_ete_45_hiver_35_dix_metres_d_ecart_au_meme_debit(self):
+        niveaux = [35] * 5 + [45] * 4 + [35] * 3
+        r = hmt_mensuelle(niveaux_statiques_m_mois=niveaux, **self.PUITS)
+        self.assertEqual(r["manquantes"], [])
+        self.assertEqual(len(r["valeurs_m"]), 12)
+        self.assertAlmostEqual(r["valeurs_m"][6] - r["valeurs_m"][0], 10.0,
+                               places=6)
+        self.assertEqual(r["valeurs_m"][0], hmt_composantes(
+            **dict(self.PUITS, niveau_statique_m=35))["valeur_m"])
+
+    def test_composante_manquante_jamais_une_hmt_d_ete_inventee(self):
+        r = hmt_mensuelle(niveaux_statiques_m_mois=[35] * 12,
+                          **dict(self.PUITS, pertes_singulieres_m=None))
+        self.assertIsNone(r["valeurs_m"])
+        self.assertEqual(r["manquantes"], ["pertes_singulieres_m"])

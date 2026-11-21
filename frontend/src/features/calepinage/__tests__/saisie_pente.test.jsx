@@ -22,6 +22,16 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
+const demarrerCapteurs = vi.fn()
+const lireInclinaison = vi.fn()
+const lireVisee = vi.fn()
+vi.mock('../capteursTelephone', () => ({
+  demarrerCapteurs: (...a) => demarrerCapteurs(...a),
+  lireInclinaison: (...a) => lireInclinaison(...a),
+  lireVisee: (...a) => lireVisee(...a),
+  arreter: () => {},
+}))
+
 const { default: SaisiePente } = await import('../SaisiePente')
 const { penteDepuisDegres, penteDepuisPourcentage, penteDepuisCotes, pourcentageDepuisPente, penteRetenue } = await import('../SaisiePente.helpers')
 
@@ -257,5 +267,66 @@ describe('CAL58 — l’écran est ATTEIGNABLE', () => {
     const route = config.routes.find((r) => r.path === '/calepinage/:id/pente')
     expect(route, 'route de saisie de pente absente du module').toBeTruthy()
     expect(Array.isArray(route.roles) && route.roles.length > 0).toBe(true)
+  })
+})
+
+describe('ACAL519 — mesure de la pente au téléphone (« à confirmer »)', () => {
+  const ouvrir = async () => {
+    layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [{ id: 'zA', label: 'Pan A' }] }, empreinte_document: 'E0' } })
+    enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
+    demarrerCapteurs.mockResolvedValue({ ok: true })
+    lireInclinaison.mockReturnValue({ betaDeg: 22, gammaDeg: 0 })
+    lireVisee.mockReturnValue({ azimutDeg: 10, hauteurDeg: -22 })
+    rendre()
+    await screen.findByTestId('cal-pente')
+    fireEvent.click(await screen.findByTestId('pente-tel-demarrer'))
+    fireEvent.click(await screen.findByTestId('pente-tel-mesurer'))
+    return screen.findByTestId('pente-tel-proposition')
+  }
+  afterEach(() => { window.DeviceOrientationEvent = undefined })
+
+  it('sans capteur : le bloc est absent', async () => {
+    window.DeviceOrientationEvent = undefined
+    rendre()
+    await screen.findByTestId('cal-pente')
+    expect(screen.queryByTestId('pente-tel')).toBeNull()
+  })
+
+  it('faux capteur à 22° : propose 22° à confirmer ; confirmer écrit provenance telephone + orientation relevé', async () => {
+    window.DeviceOrientationEvent = function Evt() {}
+    const proposition = await ouvrir()
+    expect(proposition).toHaveTextContent('22.0°')
+    expect(proposition).toHaveTextContent('à confirmer')
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByTestId('pente-tel-precision'), { target: { value: '15' } })
+    fireEvent.click(screen.getByTestId('pente-tel-confirmer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const { champs } = enregistrerSectionLayout.mock.calls[0][1]
+    expect(champs.pitchDeg).toBeCloseTo(22, 5)
+    expect(champs.pitchSource).toEqual({ mode: 'degres', degres: champs.pitchDeg, provenance: 'telephone' })
+    expect(champs.facingAzimuthSource).toBe('releve')
+    expect(champs.facingAzimuthDeg).toBeCloseTo(190, 5)
+    expect(champs.facingAzimuthPrecisionDeg).toBe(15)
+  })
+
+  it('sans précision déclarée : l’orientation est refusée sous le champ, seule la pente est écrite', async () => {
+    window.DeviceOrientationEvent = function Evt() {}
+    await ouvrir()
+    fireEvent.click(screen.getByTestId('pente-tel-confirmer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const { champs } = enregistrerSectionLayout.mock.calls[0][1]
+    expect(Object.keys(champs)).toEqual(['pitchDeg', 'pitchSource'])
+    expect(await screen.findByTestId('pente-tel-erreur-precision')).toHaveTextContent('précision')
+  })
+
+  it('permission refusée : le motif s’affiche, aucune mesure', async () => {
+    window.DeviceOrientationEvent = function Evt() {}
+    demarrerCapteurs.mockResolvedValue({ indisponible: true, motif: 'Capteurs refusés : saisissez l’azimut et la hauteur à la main.' })
+    rendre()
+    fireEvent.click(await screen.findByTestId('pente-tel-demarrer'))
+    expect(await screen.findByTestId('pente-tel-erreur-capteur')).toHaveTextContent('Capteurs refusés')
+    expect(screen.queryByTestId('pente-tel-mesurer')).toBeNull()
   })
 })

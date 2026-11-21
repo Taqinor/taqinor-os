@@ -106,4 +106,15 @@ describe('CIQ639 — seuils 82-21 sourcés et réglages C&I', () => {
     expect(payloadReglagesCi(formReglagesCi({ ...PROFIL_VIERGE, ...vierge })))
       .toEqual(vierge)
   })
+
+  it("ACAL669 — le champ d'isolement minimal est présent, vide par défaut", () => {
+    const form = formReglagesCi(PROFIL_VIERGE)
+    render(<SeuilsEtReglagesCiFields form={form} set={vi.fn()} />)
+    const champ = screen.getByLabelText("Résistance d'isolement minimale à la recette (MΩ)")
+    expect(champ).toHaveValue(null)
+    expect(champ).toHaveAttribute('step', 'any')
+    expect(payloadReglagesCi(form).recette_isolement_min_mohm).toBeNull()
+    expect(payloadReglagesCi({ recette_isolement_min_mohm: '1,5' }).recette_isolement_min_mohm)
+      .toBe('1.5')
+  })
 })

@@ -187,3 +187,9 @@ test('MB3: les overlays legacy conservent des replis alignés sur la vraie valeu
   // --z-modal vaut 1300 (tokens.css) ; aucun repli var(--z-modal, 1200) ne doit subsister.
   assert.doesNotMatch(css, /var\(--z-modal,\s*1200\)/, 'repli --z-modal désaligné (1200 au lieu de 1300)')
 })
+
+test('ACAL977: .header-menu-btn suit le thème (aucune couleur littérale : var(--foreground))', () => {
+  const corps = ruleBody(css, '.header-menu-btn') ?? ''
+  assert.match(corps, /color:\s*var\(--foreground\)/, 'l\'icône ☰ doit suivre le thème (sombre compris)')
+  assert.doesNotMatch(corps, /color:\s*#/, 'aucune couleur en dur sur .header-menu-btn')
+})

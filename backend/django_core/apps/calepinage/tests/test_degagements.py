@@ -22,7 +22,8 @@ Run :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.degagements import (
-    DEGAGEMENT_ATELIER_DEFAUT_M, MENTION_NON_SOURCEE, RETRAIT_ATELIER_M,
+    DEGAGEMENT_ATELIER_DEFAUT_M, DEGAGEMENTS_ATELIER, MENTION_NON_SOURCEE,
+    RETRAIT_ATELIER_M, TYPES_ARETE,
     SECTION, _degagement_du_type, normaliser_section_degagements,
     _retrait_perimetre, _types_admis,
 )
@@ -54,7 +55,7 @@ class SansReglageRienNeChange(SimpleTestCase):
         self.assertEqual(_retrait_perimetre({})[0], RETRAIT_ATELIER_M)
 
     def test_la_phrase_annonce_une_valeur_non_sourcee(self):
-        for nom in _types_admis():
+        for nom, _valeur, _libelle in DEGAGEMENTS_ATELIER:
             self.assertIn(MENTION_NON_SOURCEE, _degagement_du_type(nom, {})[1])
         self.assertIn(MENTION_NON_SOURCEE, _retrait_perimetre({})[1])
 
@@ -203,6 +204,97 @@ class LaSectionRefuseCeQuElleNeSaitPasRanger(SimpleTestCase):
     def test_une_source_vide_n_est_pas_enregistree(self):
         self.assertEqual(normaliser_section_degagements({'source': '   '}),
                          {})
+
+
+class UnNouveauTypeLitLeReglageSociete(SimpleTestCase):
+    """ACAL499 — lanterneau saisi : 1,8 m et la phrase de la société ; citerne
+    non saisie : le recul de base, nommé comme tel."""
+
+    def test_un_lanterneau_saisi_porte_la_valeur_et_la_source(self):
+        section = normaliser_section_degagements(
+            {'lanterneau': 1.8, 'source': 'DS 1-15 §2.1.1.4'})
+        valeur, phrase = _degagement_du_type('lanterneau', section)
+        self.assertEqual(valeur, 1.8)
+        self.assertEqual(
+            phrase, 'Lanterneau : 1.80 m (réglage de votre société — '
+                    'DS 1-15 §2.1.1.4)')
+
+    def test_une_citerne_sans_reglage_porte_le_recul_de_base_nomme(self):
+        valeur, phrase = _degagement_du_type('citerne', {})
+        self.assertEqual(valeur, DEGAGEMENT_ATELIER_DEFAUT_M)
+        self.assertEqual(
+            phrase, 'Citerne : 0.30 m (recul de base, aucun dégagement '
+                    'société pour ce type)')
+
+    def test_l_atelier_garde_six_lignes(self):
+        self.assertEqual(len(DEGAGEMENTS_ATELIER), 6)
+
+    def test_une_valeur_negative_est_refusee_sous_le_type(self):
+        with self.assertRaises(ReglageInvalide) as refus:
+            normaliser_section_degagements({'lanterneau': -1})
+        self.assertEqual(refus.exception.champ, f'{SECTION}.lanterneau')
+
+    def test_un_texte_est_refuse_sous_le_type(self):
+        with self.assertRaises(ReglageInvalide) as refus:
+            normaliser_section_degagements({'citerne': 'large'})
+        self.assertEqual(refus.exception.champ, f'{SECTION}.citerne')
+
+    def test_l_echantillon_du_contrat_est_admis(self):
+        import io
+        import json
+        import pathlib
+
+        chemin = (pathlib.Path(__file__).resolve().parents[1]
+                  / 'contract_samples' / 'parametres_calepinage.json')
+        with io.open(chemin, encoding='utf-8') as fichier:
+            contrat = json.load(fichier)
+        exemple = contrat['exemple_degagement_type_neuf'][SECTION]
+        propre = normaliser_section_degagements(exemple)
+        self.assertEqual(propre['lanterneau'], 1.8)
+
+    def test_un_type_vraiment_inconnu_reste_refuse(self):
+        with self.assertRaises(ReglageInvalide):
+            normaliser_section_degagements({'velux': 0.4})
+
+
+class LesRetraitsParTypeDAreteSontSources(SimpleTestCase):
+    """ACAL561 — ``retraits_par_arete`` : un retrait SUPPLÉMENTAIRE par type
+    d'arête, chacun avec sa source, vide par défaut."""
+
+    def _section(self, *entrees):
+        return {'retraits_par_arete': list(entrees)}
+
+    def test_egout_avec_source_accepte(self):
+        propre = normaliser_section_degagements(self._section(
+            {'type': 'egout', 'retrait_m': 0.4, 'source': 'notice X',
+             'reference': ''}))
+        self.assertEqual(propre['retraits_par_arete'], [
+            {'type': 'egout', 'retrait_m': 0.4, 'source': 'notice X',
+             'reference': ''}])
+
+    def test_sans_source_refuse_en_nommant_le_champ(self):
+        with self.assertRaises(ReglageInvalide) as refus:
+            normaliser_section_degagements(self._section(
+                {'type': 'egout', 'retrait_m': 0.4, 'source': ''}))
+        self.assertEqual(refus.exception.champ,
+                         'degagements.retraits_par_arete[0].source')
+
+    def test_type_inconnue_double_ou_cle_inconnue_refuses(self):
+        for entrees in (
+                [{'type': 'inconnue', 'retrait_m': 0.4, 'source': 's'}],
+                [{'type': 'rive', 'retrait_m': 0.2, 'source': 's'},
+                 {'type': 'rive', 'retrait_m': 0.3, 'source': 's'}],
+                [{'type': 'rive', 'retrait_m': 0.2, 'source': 's', 'x': 1}],
+                [{'type': 'rive', 'retrait_m': -0.2, 'source': 's'}]):
+            with self.subTest(entrees=entrees):
+                with self.assertRaises(ReglageInvalide):
+                    normaliser_section_degagements(self._section(*entrees))
+
+    def test_section_sans_la_cle_inchangee(self):
+        section = {'retrait_rive_m': 0.4, 'source': 'DTU'}
+        self.assertEqual(normaliser_section_degagements(section), section)
+        self.assertEqual(TYPES_ARETE,
+                         ('faitage', 'noue', 'arretier', 'egout', 'rive'))
 
 
 class LaSectionEstBranchee(SimpleTestCase):

@@ -62,6 +62,7 @@ from ..services.import_plan import (
     analyser_plan,
     contour_du_calque,
     contour_lnglat,
+    controle_echelle,
     cotes_hors_tout,
     lire_calage,
 )
@@ -137,6 +138,7 @@ def _forme():
         'cotes_hors_tout': serializers.DictField(allow_null=True),
         'contour_lnglat': serializers.ListField(
             child=serializers.ListField(), allow_null=True),
+        'controle_echelle': serializers.DictField(required=False),
         'enregistre': serializers.BooleanField(),
         'message': serializers.CharField(),
     })
@@ -288,7 +290,11 @@ def importer_plan(self, request, pk=None):
             return _refus(refus.champ, str(refus))
 
     unite = analyse.get('unite') or 'inconnu'
+    # ACAL512 — contrôle affiché, jamais jugé : l'échelle reste la saisie.
+    controle = ({} if calage is None else
+                {'controle_echelle': controle_echelle(analyse, calage)})
     return Response({
+        **controle,
         'calepinage': calepinage.pk,
         'fichier': nom_fichier,
         'format': analyse.get('format') or '',

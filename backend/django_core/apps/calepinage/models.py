@@ -188,6 +188,11 @@ class Calepinage(TenantModel):
     #: ``restaurateur_calepinage``. Lecteur unique : ``selectors.
     #: calepinages_actifs``.
     archive_le = models.DateTimeField('Archivé le', null=True, blank=True)
+    #: ACAL895 (D-ACAL-42) — un MODÈLE D'EXEMPLE de la bibliothèque : attaché à
+    #: aucun lead ni client, sans devis, jamais compté dans la liste, les KPI
+    #: ni l'API publique. Seul écrivain : la commande
+    #: ``semer_exemples_calepinage`` ; lecture seule côté API.
+    exemple = models.BooleanField('Exemple', default=False)
     #: ACAL294 (D-ACAL-20) — les CHAMPS PERSONNALISÉS de la société (patron
     #: ``crm.Lead``) : ``platform.py`` déclare le module cible du registre
     #: ``customfields`` — la colonne manquait (FieldError au contrôle d'un
@@ -217,7 +222,8 @@ class Calepinage(TenantModel):
             # retrouve. La garantie est en BASE, pas dans une vue.
             models.CheckConstraint(
                 condition=(models.Q(lead_id__isnull=False)
-                           | models.Q(client__isnull=False)),
+                           | models.Q(client__isnull=False)
+                           | models.Q(exemple=True)),
                 name='calepinage_lead_ou_client'),
             # ACAL33 — UN calepinage par devis (et par société) : deux
             # conceptions sur un même devis rendaient la péremption et la
@@ -246,7 +252,8 @@ class Calepinage(TenantModel):
     def clean(self):
         """Refuse, EN FRANÇAIS et en NOMMANT le champ, un pivot inexploitable."""
         erreurs = {}
-        if self.lead_id is None and self.client_id is None:
+        if (self.lead_id is None and self.client_id is None
+                and not self.exemple):
             erreurs['client'] = (
                 "Un calepinage doit être rattaché à un lead ou à un client : "
                 "renseignez « Client » ou « Lead (identifiant) »."

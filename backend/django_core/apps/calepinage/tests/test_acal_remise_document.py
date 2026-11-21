@@ -58,6 +58,7 @@ CHEMIN_GET = {
     'manuel_proprietaire': 'manuel-proprietaire.pdf/',
     'document_asbuilt': 'document-asbuilt.pdf/',
     'presentation_compacte': 'presentation-compacte.pdf/',
+    'pertes_en_postes': 'pertes-en-postes.pdf/',  # ACAL697
     'diagramme_pertes': 'diagramme-pertes.svg/',
     'planche_pdf': 'planche.pdf/',
     'plan_pose_pdf': 'plan-pose.pdf/',

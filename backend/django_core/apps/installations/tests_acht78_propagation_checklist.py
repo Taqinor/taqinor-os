@@ -99,3 +99,75 @@ class AmorcageEtapesDefautTests(TestCase):
             ChecklistEtapeModele.amorcer_etapes(co, None, DEFAULT_CHECKLIST_ETAPES)
         self.assertFalse(ChecklistEtapeModele.objects.filter(
             company=co, template__isnull=True).exists())
+
+
+#: ACAL597 — le sélecteur est importé DANS la fonction : on le patche à sa
+#: SOURCE (classe de rouge CI n° 9).
+CIBLE_POSE = 'apps.calepinage.selectors_chantier.points_de_controle_pose'
+POINTS = {'calepinage_id': 1, 'omissions': [], 'points': [
+    {'code': 'systeme_fixation', 'source': 'calepinage',
+     'libelle': 'Système de fixation : Rail alu (RAIL-1)'},
+    {'code': 'chaine', 'source': 'affectation',
+     'libelle': 'Chaîne 1 : ' + 'module ' * 30},
+    {'code': 'chaine', 'source': 'affectation', 'libelle': 'Chaîne 2'},
+]}
+
+
+class PointsDePoseCalepinageTests(TestCase):
+    """ACAL597 — les points de pose du calepinage retenu suivent les étapes
+    du modèle, à la PREMIÈRE matérialisation seulement."""
+
+    def setUp(self):
+        from decimal import Decimal
+
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        self.co = Company.objects.create(nom='ACAL597', slug='acal597-co')
+        tpl = ChecklistTemplate.objects.create(
+            company=self.co, nom='Défaut', protege=True)
+        for i in range(3):
+            ChecklistEtapeModele.objects.create(
+                company=self.co, template=tpl, cle=f'e{i}',
+                libelle=f'Étape {i}', ordre=i)
+        client = Client.objects.create(company=self.co, nom='Pose',
+                                       email='acal597@example.invalid')
+        devis = Devis.objects.create(company=self.co, reference='DEV-ACAL597',
+                                     client=client, taux_tva=Decimal('20'))
+        self.chantier = Installation.objects.create(
+            company=self.co, reference='CH-ACAL597', devis=devis,
+            statut=Installation.Statut.EN_COURS)
+
+    def _items(self, points):
+        from unittest import mock
+
+        with mock.patch(CIBLE_POSE, return_value=points):
+            return [(i.cle, i.libelle, i.ordre, i.capture_serie,
+                     i.photo_obligatoire)
+                    for i in ensure_checklist_items(self.chantier)]
+
+    def test_items_cal_apres_les_etapes_du_modele(self):
+        items = self._items(POINTS)
+        self.assertEqual([i[0] for i in items],
+                         ['e0', 'e1', 'e2', 'cal_systeme_fixation',
+                          'cal_chaine_1', 'cal_chaine_2'])
+        self.assertEqual([i[2] for i in items[3:]], [3, 4, 5])
+        self.assertEqual(len(items[4][1]), 120)
+        self.assertTrue(all(i[3] is False and i[4] is False
+                            for i in items[3:]))
+
+    def test_seconde_materialisation_sans_doublon(self):
+        premiere = self._items(POINTS)
+        self.assertEqual(self._items(POINTS), premiere)
+        self.assertEqual(ChantierChecklistItem.objects.filter(
+            installation=self.chantier).count(), 6)
+
+    def test_calepinage_modifie_ensuite_checklist_inchangee(self):
+        premiere = self._items(POINTS)
+        autres = {'calepinage_id': 1, 'omissions': [], 'points': [
+            {'code': 'chaine', 'source': 'affectation', 'libelle': 'Ch. 9'}]}
+        self.assertEqual(self._items(autres), premiere)
+
+    def test_sans_calepinage_retenu_checklist_d_aujourd_hui(self):
+        self.assertEqual([i[0] for i in self._items(None)],
+                         ['e0', 'e1', 'e2'])

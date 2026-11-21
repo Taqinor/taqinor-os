@@ -209,8 +209,9 @@ class AntiOmbrage(PolitiquePas):
             raise ValueError("champ `passage_chevron_m` : passage négatif")
 
     def hauteur_module_m(self, kit):
-        """Hauteur du haut du module au-dessus du plan (côté pente × sin)."""
-        return kit.cote_dans_la_pente_m * math.sin(
+        """Hauteur du haut de la TABLE au-dessus du plan (rangs × côté pente
+        × sin) — ACAL582 : un châssis de 2 rangs porte l'ombre de 2 modules."""
+        return getattr(kit, 'rangs_par_table', 1) * kit.cote_dans_la_pente_m * math.sin(
             math.radians(kit.inclinaison_deg))
 
     def elevation_effective_deg(self):

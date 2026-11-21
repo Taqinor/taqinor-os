@@ -113,6 +113,12 @@ MOTIF_SANS_CONCEPTION_DOCUMENT = (
     "conception et du résultat enregistrés, jamais d'un calcul "
     "reconstitué.")
 
+#: ACAL942 - le motif quand la conception est enregistrée mais qu'aucun
+#: résultat n'est calculé — MOT POUR MOT ``exemple_sans_calcul`` du contrat.
+MOTIF_SANS_SIMULATION_DOCUMENT = (
+    "Conception enregistrée — il manque le calcul : lancez la simulation "
+    "dans l'onglet Production.")
+
 #: Le champ manquant quand ``resultat_du_rapport`` refuse sans donner de
 #: ``champ`` reconnu ici (défensif — un service qui gagnerait un nouveau
 #: refus n'a pas besoin de revenir modifier cette table).
@@ -131,8 +137,9 @@ _MANQUE_CHAMPS_CONNUS = {
 MANQUE_SOLAR_ACCESS = {
     'champ': 'roof_layout.zones[].geometry.solarAccess.values',
     'libelle': 'Accès solaire par module (matrice d’ombrage)',
-    'ou_saisir': "Calculer l'ombrage dans l'atelier 3D avant d'imprimer ce "
-                 'rapport.',
+    'ou_saisir': "Tracer une ombre, ou saisir un obstacle avec sa hauteur, "
+                 "dans l'atelier 3D, puis enregistrer : l'accès solaire de "
+                 'chaque module se calcule alors tout seul.',
     'onglet': None,
 }
 MOTIF_SANS_OMBRAGE = (
@@ -207,6 +214,9 @@ _DEFINITIONS_DOCUMENTS = (
      'svg', 'diagramme-pertes.svg/', 'serveur'),
     ('presentation_compacte', 'Présentation compacte (synthèse une page)',
      'pdf', 'presentation-compacte.pdf/', 'serveur'),
+    # ACAL697 — la fiche « pertes en 5 postes », remise au client (D-ACAL-38).
+    ('pertes_en_postes', 'Pertes expliquées en 5 postes (une page)',
+     'pdf', 'pertes-en-postes.pdf/', 'serveur'),
 )
 
 
@@ -391,8 +401,12 @@ def inventaire_des_documents(calepinage):
         if not base_ok:
             manque_base = MANQUE_ROOF_LAYOUT if not a_conception \
                 else MANQUE_RESULTAT
-            etats[code] = (False, MOTIF_SANS_CONCEPTION_DOCUMENT,
-                           [manque_base])
+            # ACAL942 - conception enregistree sans calcul : etat NORMAL
+            # apres « Enregistrer », dit comme tel (jamais « aucune
+            # conception »).
+            motif_base = MOTIF_SANS_CONCEPTION_DOCUMENT if not a_conception \
+                else MOTIF_SANS_SIMULATION_DOCUMENT
+            etats[code] = (False, motif_base, [manque_base])
         elif code != 'dossier_fin_chantier':
             etats[code] = _etat_du_document(code, calepinage, resultat,
                                             refus_rapport)
@@ -452,3 +466,8 @@ MISES_EN_PAGE['document_asbuilt'] = (
 # ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
 MISES_EN_PAGE['presentation_compacte'] = (
     lambda: _piece('presentation_compacte').html_de_presentation_compacte)
+
+
+# ── ACAL697 — la fiche « pertes en 5 postes », une page, sans production ───
+MISES_EN_PAGE['pertes_en_postes'] = (
+    lambda: _piece('pertes_en_postes').html_de_pertes_en_postes)

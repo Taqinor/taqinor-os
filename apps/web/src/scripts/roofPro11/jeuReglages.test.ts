@@ -13,6 +13,8 @@ import { panVierge } from './zones';
 import {
   CLES_JEU,
   appliquerJeuAuPan,
+  appliquerReglagesAuxPans,
+  pansReglesAMain,
   lireJeuReglages,
   mentionJeuReglages,
   valeursPourPan,
@@ -145,5 +147,34 @@ describe('ACAL308 — parité avec le serveur et câblage', () => {
     const corps = source.slice(debut, source.indexOf('function poserValeursJeuVives', debut));
     expect(corps).toContain('appliquerJeuAuPan(fresh, jeu)');
     expect(corps).toContain('poserValeursJeuVives(posees)');
+  });
+});
+
+describe('ACAL554 — appliquer les réglages d’un pan à d’autres pans', () => {
+  const pan = (id: string, o: Record<string, unknown> = {}) =>
+    ({ ...panVierge([], [[0, 0], [0.0001, 0], [0.0001, 0.0001]]), id, label: `Pan ${id}`, ...o }) as ReturnType<typeof panVierge>;
+  it('copie moduleId et CLES_JEU sauf neededAuto, garde la géométrie, efface la pose, liste les pans réglés à la main', () => {
+    const a = pan('A', { moduleId: 'M550', roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 200, facingManual: true, neededAuto: false });
+    const b = pan('B', { facingAzimuthDeg: 90, neededAuto: true, result: { panels: 3 }, renderPlan: {} });
+    const c = pan('C', { moduleId: 'AUTRE', label: 'Pan C' });
+    const sommetsB = b.vertices;
+    expect(pansReglesAMain([b, c]).map((x) => x.id)).toEqual(['C']);
+    const ecrases = appliquerReglagesAuxPans(a, [b, c]);
+    expect(ecrases.map((x) => x.id)).toEqual(['C']);
+    for (const x of [b, c]) {
+      expect(x.moduleId).toBe('M550');
+      expect(x.facingAzimuthDeg).toBe(200);
+      expect(x.facingManual).toBe(true);
+      expect(x.result).toBeNull();
+      expect(x.renderPlan).toBeNull();
+    }
+    expect(b.neededAuto).toBe(true); // le besoin du pan cible lui est propre
+    expect(b.vertices).toBe(sommetsB);
+    expect(b.label).toBe('Pan B'); // le libellé n'est pas un réglage
+  });
+  it('une source sans module remet la cible au module par défaut', () => {
+    const b = pan('B', { moduleId: 'X' });
+    appliquerReglagesAuxPans(pan('A'), [b]);
+    expect(b.moduleId).toBeUndefined();
   });
 });

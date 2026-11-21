@@ -513,6 +513,25 @@ class TestReglagesCI(ProfileValidationBase):
                     self.assertIn('doit être compris entre',
                                   resp.data['detail'])
 
+    def test_isolement_minimal_bornes_et_vide(self):
+        """ACAL669 — ]0 ; 1 000] MΩ, vide par défaut, refus nommé."""
+        champ = 'recette_isolement_min_mohm'
+        self.assertIsNone(self.api.get('/api/django/parametres/').data[champ])
+        resp = self.api.patch(self.URL, {champ: 1}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            str(self.api.get('/api/django/parametres/').data[champ]), '1.00')
+        for valeur in (0, 5000, -1):
+            with self.subTest(valeur=valeur):
+                resp = self.api.patch(self.URL, {champ: valeur}, format='json')
+                self.assertEqual(resp.status_code, 409)
+                self.assertIn("La résistance d'isolement minimale doit être "
+                              "comprise entre 0 (exclu) et 1 000 MΩ.",
+                              resp.data['detail'])
+        resp = self.api.patch(self.URL, {champ: None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data[champ])
+
     def test_delais_nuls_ou_negatifs_refuses_en_francais(self):
         for champ in ('delai_intervention_suivi_heures',
                       'delai_reception_definitive_mois'):

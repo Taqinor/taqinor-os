@@ -54,6 +54,7 @@ __all__ = ['SortiesMixin', 'reponse_de_fichier', 'inventaire_des_sorties']
 MIME_PDF = 'application/pdf'
 MIME_SVG = 'image/svg+xml'
 MIME_DXF = 'image/vnd.dxf'
+MIME_KML = 'application/vnd.google-earth.kml+xml'
 MIME_XLSX = ('application/vnd.openxmlformats-officedocument'
              '.spreadsheetml.sheet')
 MIME_CSV = 'text/csv; charset=utf-8'
@@ -399,6 +400,28 @@ class SortiesMixin:
         return reponse_de_fichier(
             octets, mime=MIME_DXF,
             nom_fichier=nom_de_fichier(calepinage, 'dxf'))
+
+    @extend_schema(responses={(200, MIME_KML): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
+    @action(detail=True, methods=['get'], url_path=r'export\.kml',
+            url_name='export-kml', permission_classes=[PeutVoirCalepinage])
+    def export_kml(self, request, pk=None):
+        """ACAL536 — le KML (pans, zones, modules) pour Google Earth.
+
+        Contrat : ``contract_samples/calepinage_export_kml.json``."""
+        from ..services.export_kml import exporter_kml
+        from ..services.planche import PlancheRefusee, nom_de_fichier
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        porte_execution(calepinage, 'export_kml')
+        try:
+            octets = exporter_kml(calepinage)
+        except PlancheRefusee as refus:
+            return Response({refus.champ or 'roof_layout': str(refus)},
+                            status=status.HTTP_409_CONFLICT)
+        return reponse_de_fichier(
+            octets, mime=MIME_KML,
+            nom_fichier=nom_de_fichier(calepinage, 'kml'))
 
     @extend_schema(responses={(200, MIME_XLSX): OpenApiTypes.BINARY,
                               409: REPONSE_REFUS_ETAT})

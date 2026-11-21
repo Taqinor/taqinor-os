@@ -175,10 +175,25 @@ class Kit:
     modules_par_table: int = 2
     #: jeu de faîtage entre les deux plans de modules d'une table dos-à-dos.
     faitage_m: float = 0.0
+    #: ACAL581 — châssis N × M sur UN seul plan : ``rangs_par_table`` rangs de
+    #: ``modules_par_rang`` modules, séparés d'un jeu HORIZONTAL au sol SAISI
+    #: (aucune valeur par défaut). Hors ``repr`` : un kit sans châssis garde
+    #: son ``repr`` (golden stock). ACAL582 : pas, emprise et compte en tiennent.
+    rangs_par_table: int = field(default=1, repr=False)
+    modules_par_rang: int = field(default=1, repr=False)
+    jeu_entre_rangs_m: Optional[float] = field(default=None, repr=False)
 
     def __post_init__(self):
         if self.modules_par_table < 1:
             raise ValueError("une table porte au moins un module")
+        for champ in ("rangs_par_table", "modules_par_rang"):
+            if getattr(self, champ) < 1:
+                raise ValueError(f"{champ} : au moins 1")
+        if self.rangs_par_table > 1 and self.jeu_entre_rangs_m is None:
+            raise ValueError("le jeu entre rangs du châssis n'est pas saisi")
+        if self.est_chassis and self.modules_par_table >= 2:
+            raise ValueError("un châssis N × M se pose sur un seul plan "
+                             "(pas de table dos-à-dos)")
         if self.module_long_m <= 0 or self.module_court_m <= 0:
             raise ValueError("dimensions de module strictement positives")
         if self.module_long_m < self.module_court_m:
@@ -189,9 +204,11 @@ class Kit:
     # ---------------------------------------------------------- géométrie
     @property
     def cote_le_long_rangee_m(self):
-        """Pas de pose LE LONG de la rangée (emprise d'une table sur l'axe)."""
-        return (self.module_court_m if self.orientation is OrientationModule.PORTRAIT
+        """Pas de pose LE LONG de la rangée (emprise d'une table sur l'axe) ;
+        ACAL582 — un châssis aligne ``modules_par_rang`` modules jointifs."""
+        cote = (self.module_court_m if self.orientation is OrientationModule.PORTRAIT
                 else self.module_long_m)
+        return self.modules_par_rang * cote
 
     @property
     def cote_dans_la_pente_m(self):
@@ -207,12 +224,17 @@ class Kit:
         dos-à-dos ; ``côté_pente × cos(inclinaison)`` pour un kit villa.
         """
         projete = self.cote_dans_la_pente_m * math.cos(math.radians(self.inclinaison_deg))
+        if self.rangs_par_table > 1:  # ACAL582 — rangs du châssis + jeux saisis
+            return (self.rangs_par_table * projete
+                    + (self.rangs_par_table - 1) * self.jeu_entre_rangs_m)
         return self.modules_par_table * projete + self.faitage_m
 
     @property
     def modules_par_pas(self):
-        """Nombre de modules gagnés par pas de pose (2 pour une table dos-à-dos)."""
-        return self.modules_par_table
+        """Nombre de modules gagnés par pas de pose (2 pour une table dos-à-dos,
+        ``rangs × modules par rang`` pour un châssis — ACAL582)."""
+        return (self.modules_par_table * self.rangs_par_table
+                * self.modules_par_rang)
 
     @property
     def puissance_table_wc(self):
@@ -233,6 +255,11 @@ class Kit:
     @property
     def dos_a_dos(self):
         return self.modules_par_table >= 2
+
+    @property
+    def est_chassis(self):
+        """ACAL581 — vrai dès qu'un châssis N × M est déclaré."""
+        return self.rangs_par_table > 1 or self.modules_par_rang > 1
 
 
 #: Kit AO — table dos-à-dos 2 × 625 Wc, modules 2,382 × 1,134 à 15°, PORTRAIT :

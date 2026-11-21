@@ -340,8 +340,58 @@ def _courant_du_troncon(troncon, contexte):
             "tension OMISES." % (nom, nom, manque))
 
 
-def _regle_source(cote, triphase, reference_chute, reference_plancher):
-    """La RÉFÉRENCE de la règle appliquée — jamais un nombre recopié."""
+#: ACAL635/636 — les réglages société (section ``electrique_societe``,
+#: registre ``parametres_cles.py``) du câblage. Aucun n'a de défaut.
+CLE_TEMPERATURE_SERVICE = 'temperature_service_cable_c'
+CLE_ALPHA_CUIVRE = 'alpha_cuivre_par_c'
+CLE_FACTEUR_REGROUPEMENT = 'facteur_regroupement'
+
+
+def _fr_g(valeur):
+    return ('%g' % valeur).replace('.', ',')
+
+
+def _reglage_source(reglages, cle):
+    """``(valeur, provenance)`` d'un réglage sourcé, ou ``(None, '')``."""
+    saisie = (reglages or {}).get(cle)
+    if not isinstance(saisie, dict) or not str(saisie.get('source') or '').strip():
+        return (None, '')
+    provenance = str(saisie.get('reference') or saisie.get('source')).strip()
+    return (_nombre(saisie.get('valeur')), provenance)
+
+
+def _cablage_societe(parametres):
+    """ACAL635/636 — ρ de la chute et facteur de regroupement, LUS sur les
+    réglages société sourcés. Un réglage absent ⇒ ρ à 20 °C et aucun facteur :
+    le comportement d'aujourd'hui, jamais une valeur supposée."""
+    from core.electrique import cables as noyau
+
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
+
+    reglages = (parametres or {}).get(SECTION_ELECTRIQUE_SOCIETE) or {}
+    reference = noyau.TEMPERATURE_REFERENCE_RHO_C
+    cablage = {'rho': noyau.RHO_CUIVRE_20C,
+               'mention_rho': 'résistivité à %s °C (UTE C 15-105)'
+                              % _fr_g(reference)}
+    theta, source_theta = _reglage_source(reglages, CLE_TEMPERATURE_SERVICE)
+    alpha, source_alpha = _reglage_source(reglages, CLE_ALPHA_CUIVRE)
+    if theta is not None and alpha is not None:
+        cablage['rho'] = noyau.RHO_CUIVRE_20C * (1 + alpha * (theta - reference))
+        cablage['mention_rho'] = (
+            'résistivité à %s °C (réglage société, source %s ; α %s, source %s)'
+            % (_fr_g(theta), source_theta, _fr_g(alpha), source_alpha))
+    facteur, source_facteur = _reglage_source(reglages, CLE_FACTEUR_REGROUPEMENT)
+    if facteur is not None and 0 < facteur <= 1:
+        cablage['facteur_iz'] = facteur
+        cablage['mention_facteur'] = ('facteur de regroupement %s, source %s'
+                                      % (_fr_g(facteur), source_facteur))
+    return cablage
+
+
+def _regle_source(cote, triphase, reference_chute, reference_plancher,
+                  mention_rho=''):
+    """La RÉFÉRENCE de la règle appliquée — jamais un nombre recopié (ACAL635 :
+    la température de la résistivité est citée, c'est une saisie sourcée)."""
     if cote == COTE_DC:
         morceaux = [
             "EN 50618 — intensité admissible du câble solaire H1Z2Z2-K",
@@ -354,7 +404,7 @@ def _regle_source(cote, triphase, reference_chute, reference_plancher):
             "(%s)" % ('triphasé' if triphase else 'monophasé'),
             "NF C 15-100 §433.1 — Ib ≤ In ≤ Iz",
         ]
-    for reference in (reference_chute, reference_plancher):
+    for reference in (reference_chute, reference_plancher, mention_rho):
         if reference:
             morceaux.append(reference)
     return ' ; '.join(morceaux)
@@ -453,22 +503,32 @@ def _dimensionner_troncon(troncon, contexte):
             "norme applicable : aucune section n'est proposée sans elle."
             % CLE_CIBLE[cote]))
 
+    cablage = norme.get('cablage') or _cablage_societe({})
     proposee = noyau.proposer_section(
         courant_ib_a=courant, longueur_m=troncon['longueur_m'],
         tension_v=tension, cible_pct=cible, bareme=bareme,
         coefficient=coefficient,
         calibre_in_a=_nombre(spec.get('calibre_in_a')),
         courant_service_a=_nombre(spec.get('i_service_a')),
-        section_min_mm2=plancher)
+        section_min_mm2=plancher, rho=cablage['rho'],
+        facteur_iz=cablage.get('facteur_iz', 1.0))
+    critere = proposee.critere
+    if cablage.get('mention_facteur') and critere in (
+            noyau.CRITERE_ECHAUFFEMENT, noyau.CRITERE_LES_DEUX):
+        # ACAL636 — le critère thermique dit le facteur qui l'a corrigé.
+        critere = ('échauffement (%s)' % cablage['mention_facteur']
+                   if critere == noyau.CRITERE_ECHAUFFEMENT
+                   else '%s (%s)' % (critere, cablage['mention_facteur']))
 
     champs.update({
         'section_mm2': proposee.section_mm2,
         'ib_a': round(courant, 2),
         'iz_a': round(proposee.iz_a, 2),
         'chute_pct': round(proposee.chute_pct, 3),
-        'critere_dimensionnant': proposee.critere,
+        'critere_dimensionnant': critere,
         'regle_source': _regle_source(cote, triphase, reference_chute,
-                                      reference_plancher),
+                                      reference_plancher,
+                                      cablage['mention_rho']),
     })
     return (champs, None)
 
@@ -991,7 +1051,8 @@ def troncons_du_calepinage(calepinage, *, layout=None):
         # aucune constante de norme recopiée ici.
         coefficients, _refus = coefficients_publies(
             parametres.get('norme_electrique') or {})
-        norme = dict(norme, coefficients=coefficients)
+        norme = dict(norme, coefficients=coefficients,
+                     cablage=_cablage_societe(parametres))  # ACAL635/636
     conception, materiel, _donnees, document = conception_du_calepinage(
         calepinage, layout=layout)
     return troncons_de_la_conception(

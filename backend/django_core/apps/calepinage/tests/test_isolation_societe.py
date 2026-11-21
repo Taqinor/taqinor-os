@@ -27,7 +27,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from apps.calepinage.models import (
     Calepinage, CalepinageVariante, CalepinageVersion, PhotoSite,
-    ReleveTerrain,
+    ReleveTerrain, SystemeFixation,
 )
 from apps.crm.models import Lead
 from apps.records.models import Attachment
@@ -117,6 +117,11 @@ class BalayageIsolationTest(BaseApiCalepinage):
         self.releve_etranger = ReleveTerrain.objects.create(
             company=self.autre, calepinage=self.cal_etranger,
             releve_le='2026-03-12')
+        # ACAL558 — un système de fixation ÉTRANGER (route
+        # ``systemes-fixation/<systeme_id>/``).
+        self.systeme_etranger = SystemeFixation.objects.create(
+            company=self.autre, code='voisine', libelle='Système voisin',
+            provenance='Notice fabricant (essai)')
         # Un objet À NOUS, pour les questions 2 et 3.
         self.mien = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Le mien')
@@ -187,6 +192,7 @@ class BalayageIsolationTest(BaseApiCalepinage):
             'job_id': (self.job_etranger.pk if etranger else 0),
             'photo_id': (self.photo_etrangere.pk if etranger else 0),
             'releve_id': (self.releve_etranger.pk if etranger else 0),
+            'systeme_id': (self.systeme_etranger.pk if etranger else 0),
             # ACAL267 — DELETE pose-reelle/<zone_id>/ : un identifiant de pan
             # quelconque (le calepinage borne déjà la société).
             'zone_id': 'z1',
@@ -204,6 +210,7 @@ class BalayageIsolationTest(BaseApiCalepinage):
             # les deux gardes ci-dessous ne le voient (``(?P<`` avait disparu).
             chemin = chemin.replace(f'(?P<{nom}>[^/.]+)', str(valeur))
             chemin = chemin.replace(f'(?P<{nom}>.+)', str(valeur))
+            chemin = chemin.replace(f'(?P<{nom}>[0-9]+)', str(valeur))
             chemin = chemin.replace(f'<int:{nom}>', str(valeur))
             chemin = chemin.replace(f'<{nom}>', str(valeur))
         self.assertNotIn('(?P<', chemin,

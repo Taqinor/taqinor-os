@@ -1,0 +1,58 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
+  "pourquoi": "ACAL996 (D-ACAL-36, PACT10 : contrat posé SEUL) — le RENDEMENT DE LA POSE RÉELLE servi au moteur de devis. Aucune route ne le sert : il est lu sur le résultat servi de GET resultat/ (`production.total`, `production.mensuel`, `production.par_pan`, `cascade.etapes_omises` de `calepinage_simulation.json`) par le sélecteur cross-app `apps/calepinage/selectors_devis.py` (ACAL997) et consommé par `apps/ventes/horaire/productible_pose.py` (ACAL999). `kwh_kwc_annuel` = `p50_kwh` ÷ `kwc_simule` ; `kwh_kwc_mensuel` = les 12 `production.mensuel[].p50_kwh` ÷ `kwc_simule` (leur somme égale `kwh_kwc_annuel`). RÈGLE DURE : `pertes_et_ombrage_inclus` vaut TOUJOURS `complete` (`production.total.complete`, `services/chaine_pertes.py::completude_de_la_chaine`) — jamais écrit vrai en dur : un résultat incomplet publie son P50 comme BORNE HAUTE (D-ACAL-7), il n'est jamais servi comme production (`perime: true`, motif qui compte les pertes non renseignées). `couvre_toutes_les_surfaces` est faux quand `kwc_simule` s'écarte de `kwc_document` au-delà de la tolérance passée par l'appelant. CONVENTION de `pans[].azimut_deg` : BOUSSOLE, 180 = Sud (90 = Est, 270 = Ouest), celle de `production.par_pan` de `calepinage_simulation.json`, lue de `apps/ventes/domain/geometrie.py::orientation_du_pan` via `apps/calepinage/services/production.py::_pans_du_layout`. `exemple` : toit est-ouest 15°, 71 kWc.",
+  "exemple": {
+    "perime": false,
+    "motif": "",
+    "source": "calepinage_enregistre",
+    "calcule_le": "2026-11-21T09:30:00+01:00",
+    "kwc_simule": 71.0,
+    "kwc_document": 71.0,
+    "p50_kwh": 98576.0,
+    "kwh_kwc_annuel": 1388.4,
+    "kwh_kwc_mensuel": [75.2, 85.6, 115.3, 130.4, 148.9, 155.1, 160.2, 149.6, 122.8, 101.5, 77.4, 66.4],
+    "complete": true,
+    "etapes_omises": [],
+    "pertes_et_ombrage_inclus": true,
+    "couvre_toutes_les_surfaces": true,
+    "pans": [
+      {"pan": "PAN-E", "kwc": 35.5, "inclinaison_deg": 15.0, "azimut_deg": 90.0, "specific_yield_kwh_kwc": 1391.2},
+      {"pan": "PAN-O", "kwc": 35.5, "inclinaison_deg": 15.0, "azimut_deg": 270.0, "specific_yield_kwh_kwc": 1385.6}
+    ]
+  },
+  "exemple_perime": {
+    "perime": true,
+    "motif": "la conception a changé depuis la simulation",
+    "source": "calepinage_enregistre",
+    "calcule_le": "2026-11-20T16:05:00+01:00",
+    "kwc_simule": null,
+    "kwc_document": 71.0,
+    "p50_kwh": null,
+    "kwh_kwc_annuel": null,
+    "kwh_kwc_mensuel": [],
+    "complete": false,
+    "etapes_omises": [],
+    "pertes_et_ombrage_inclus": false,
+    "couvre_toutes_les_surfaces": false,
+    "pans": []
+  },
+  "exemple_incomplet": {
+    "perime": true,
+    "motif": "résultat incomplet : 3 pertes non renseignées",
+    "source": "calepinage_enregistre",
+    "calcule_le": "2026-11-21T09:30:00+01:00",
+    "kwc_simule": 71.0,
+    "kwc_document": 71.0,
+    "p50_kwh": 98576.0,
+    "kwh_kwc_annuel": 1388.4,
+    "kwh_kwc_mensuel": [75.2, 85.6, 115.3, 130.4, 148.9, 155.1, 160.2, 149.6, 122.8, 101.5, 77.4, 66.4],
+    "complete": false,
+    "etapes_omises": ["salissure", "mismatch_fabricant", "lid"],
+    "pertes_et_ombrage_inclus": false,
+    "couvre_toutes_les_surfaces": true,
+    "pans": [
+      {"pan": "PAN-E", "kwc": 35.5, "inclinaison_deg": 15.0, "azimut_deg": 90.0, "specific_yield_kwh_kwc": 1391.2},
+      {"pan": "PAN-O", "kwc": 35.5, "inclinaison_deg": 15.0, "azimut_deg": 270.0, "specific_yield_kwh_kwc": 1385.6}
+    ]
+  }
+}

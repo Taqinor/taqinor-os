@@ -112,6 +112,8 @@ def corps_entree_resserre():
         'zone_keraunique': {'type': 'boolean'},
         'inclure_prise_terre': {'type': 'boolean'},
         'plafond_kwc_par_onduleur': _positif(100000, strict=True),
+        'nombre_onduleurs': {'type': 'integer', 'minimum': 1,
+                             'maximum': 1000},  # ACAL633
         'longueur_chaine_forcee': {'type': 'integer', 'minimum': 1,
                                    'maximum': 1000},
         'protections': _VIDE_OBJET, 'terre': _VIDE_OBJET,

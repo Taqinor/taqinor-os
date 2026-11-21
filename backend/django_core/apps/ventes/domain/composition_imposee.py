@@ -649,8 +649,9 @@ def build_devis_auto_impose(*, lead, user, company, imposes, taux_tva=None,
         for alerte in alertes:
             _alerter(journal_auto.setdefault('alertes', []), alerte['code'],
                      alerte['message'], alerte.get('champ'))
-    return _build_devis_auto_residentiel(
+    from apps.ventes.domain.creation_auto import marquer_rapide  # ACAL1004
+    return marquer_rapide(_build_devis_auto_residentiel(
         lead=lead, user=user, company=company, taux_tva=taux_tva,
         remise_globale=remise_globale, scenario=imposition.scenario,
         etude_extra=etude_extra, journal_auto=journal_auto,
-        imposition=imposition)
+        imposition=imposition))

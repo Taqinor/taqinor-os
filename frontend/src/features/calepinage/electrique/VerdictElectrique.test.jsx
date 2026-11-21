@@ -364,3 +364,53 @@ describe('ACAL284 — dérogations posées et geste « Passer outre »', () => {
     useHasPermission.mockReturnValue(true)
   })
 })
+
+/* ACAL712 — la carte « chaîne touchée par l'ombre » (niveau expert). */
+describe('ACAL712 — carte chaîne touchée par l’ombre', () => {
+  const CLE_EXPERT = 'calepinage.mode_expert.anonyme'
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+  const servirCascade = (cascade) => {
+    const r = exempleContrat('calepinage', 'calepinage_resultat')
+    r.cascade = cascade
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: r })
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { publication: null, manquantes: [] } })
+    return render(<MemoryRouter><VerdictElectrique calepinageId={7} /></MemoryRouter>)
+  }
+  const ombrage = () => structuredClone(
+    exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple_ombrage_chaines').cascade)
+
+  it('une carte pour la chaîne 1 du pan P1, aucune pour P2 ; parades sans chiffre ; lien Affectation', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirCascade(ombrage())
+    const carte = await screen.findByTestId('acal712-carte-P1-1')
+    expect(screen.getAllByTestId(/^acal712-carte-/)).toHaveLength(1)
+    expect(screen.queryByTestId('acal712-carte-P2-1')).toBeNull()
+    expect(carte).toHaveTextContent('Chaîne 1 touchée par l\'ombre')
+    expect(carte).toHaveTextContent('1 module sous le seuil de votre société ; le module le plus ombré reçoit 50 % du soleil ; perte de la chaîne entre 33,3 % et 50 %')
+    expect(carte).toHaveTextContent('Hypothèse de lecture, non mesurée')
+    const parades = screen.getByTestId('acal712-parades')
+    expect(parades).toHaveTextContent('mettre ces modules sur une chaîne à part')
+    expect(parades).toHaveTextContent('poser un optimiseur sur ces modules')
+    expect(parades).toHaveTextContent('déplacer ou retirer ces modules')
+    expect(parades.textContent).not.toMatch(/%|\d/)
+    expect(screen.getByTestId('acal712-modifier')).toHaveAttribute('href', '/calepinage/7?onglet=affectation')
+  })
+
+  it('rien sans chaîne touchée, sans cascade, ou en guidé', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    const sansEcart = ombrage()
+    sansEcart.etapes[0].entree.chaines[0].ecart_bornes_pct = 0
+    servirCascade(sansEcart)
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal712-cartes')).toBeNull()
+    cleanup()
+    servirCascade(null)
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal712-cartes')).toBeNull()
+    cleanup()
+    localStorage.removeItem(CLE_EXPERT)
+    servirCascade(ombrage())
+    await waitFor(() => expect(calepinageApi.calepinages.evaluerElectrique).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal712-cartes')).toBeNull()
+  })
+})

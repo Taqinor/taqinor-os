@@ -96,6 +96,15 @@ describe('calepinage — module.config (CAL34)', () => {
     expect(route.roles.length).toBeGreaterThan(0)
   })
 
+  it('ACAL559 — `/calepinage/reglages/fixation` : route AVANT `/calepinage/:id` et entrée de nav', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const chemins = config.routes.map((r) => r.path)
+    const iFixation = chemins.indexOf('/calepinage/reglages/fixation')
+    expect(iFixation, 'route des systèmes de fixation absente').toBeGreaterThanOrEqual(0)
+    expect(iFixation).toBeLessThan(chemins.indexOf('/calepinage/:id'))
+    expect(config.nav.items.map((i) => i.to)).toContain('/calepinage/reglages/fixation')
+  })
+
   it('les trois routes du module vivent toutes sous le préfixe `/calepinage`', async () => {
     const { default: config } = await import('./module.config.jsx')
     for (const route of config.routes) {

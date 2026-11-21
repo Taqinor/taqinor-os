@@ -107,6 +107,51 @@ function TableauEcarts({ etat }) {
   )
 }
 
+/* ACAL527 — « n écarts avec la visite » : les mesures de la visite face au toit DESSINÉ
+   (`ecart_dessin`, ACAL526). L'écart est affiché, jamais jugé : aucune ligne n'est coloriée. */
+const LIBELLES_ECART = { pente: 'Pente', longueur: 'Longueur', largeur: 'Largeur', orientation: 'Orientation' }
+const UNITES_ECART = { pente: '°', longueur: ' m', largeur: ' m', orientation: '°' }
+const valeurEcart = (v, mesure) => (v === null || v === undefined ? '—' : `${v}${typeof v === 'number' ? UNITES_ECART[mesure] ?? '' : ''}`)
+
+function EcartsAvecVisite({ etat }) {
+  const [ouvert, setOuvert] = useState(false)
+  if (!Array.isArray(etat?.ecart_dessin)) return null
+  const lignes = etat.ecart_dessin
+  const n = lignes.filter((l) => typeof l.ecart === 'number' && l.ecart !== 0).length
+  const titre = n === 0 ? 'Aucun écart mesurable avec la visite' : `${n} écart${n > 1 ? 's' : ''} avec la visite`
+  const sources = [...new Set(lignes.filter((l) => l.source_dessin).map((l) => `${LIBELLES_ECART[l.mesure] ?? l.mesure} : ${l.source_dessin}`))]
+  return (
+    <div className="mt-3" role="status" data-testid="cal-reprise-ecarts">
+      <button type="button" aria-expanded={ouvert} onClick={() => setOuvert(!ouvert)}
+        className="min-h-11 w-full border border-border bg-muted px-3 text-left text-sm font-semibold text-foreground">
+        {titre}
+      </button>
+      {ouvert && (
+        <>
+          <table className="mt-2 w-full text-left text-sm text-foreground" aria-label="Visite, dessin et écart">
+            <thead><tr className="text-muted-foreground">
+              <th scope="col">Mesure</th><th scope="col">Visite</th><th scope="col">Dessin</th><th scope="col">Écart</th>
+            </tr></thead>
+            <tbody>
+              {lignes.map((l, i) => (
+                <tr key={`${l.pan}-${l.mesure}-${i}`}>
+                  <td>{LIBELLES_ECART[l.mesure] ?? l.mesure}</td>
+                  <td>{valeurEcart(l.visite, l.mesure)}</td>
+                  <td>{valeurEcart(l.dessin, l.mesure)}</td>
+                  <td>{typeof l.ecart === 'number' ? valeurEcart(l.ecart, l.mesure) : (l.mesure === 'orientation' ? '—' : 'non relevé')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {[etat.validee_le ? `visite validée le ${formatDateTime(etat.validee_le)}` : 'visite validée', ...sources].join(' · ')}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
 function BandeauReprise({ releve }) {
   if (!releve) return null
   const auteur = releve.releve_par ? ` par ${releve.releve_par}` : ''
@@ -207,6 +252,7 @@ export default function RepriseVisite({ calepinageId: idPropose, lectureSeule = 
           </p>
 
           <BandeauReprise releve={etat.releve} />
+          <EcartsAvecVisite etat={etat} />
 
           <p className="text-xs font-semibold uppercase tracking-wide mt-4 text-muted-foreground">Mesures relevées sur le toit</p>
           {(etat.mesures || []).length === 0 ? (

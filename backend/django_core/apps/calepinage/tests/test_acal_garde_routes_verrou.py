@@ -59,8 +59,13 @@ ROUTES_SOUS_VERROU = {
     ('POST', 'recentrer-sur-lead'): '_sonde_recentrer',
     ('POST', 'garder-repere'): '_sonde_garder_repere',
     ('POST', 'suggestions-pente'): '_sonde_suggestion',
+    # ACAL535 — même écrivain unique que ``suggestions-pente`` (relief déposé).
+    ('POST', 'suggestions-pente-relief'): PAR_ENREGISTRER_LAYOUT,
     ('POST', 'roof-image'): '_sonde_roof_image',
     ('POST', 'variantes'): '_sonde_creer_variante',
+    # ACAL594 — crée des variantes depuis la conception courante : même
+    # verrou que ``POST variantes/`` (``verifier_ecriture_autorisee``).
+    ('POST', 'variantes-par-module'): '_sonde_variantes_par_module',
     ('PATCH', VARIANTE): '_sonde_modifier_variante',
     ('DELETE', VARIANTE): '_sonde_supprimer_variante',
     ('POST', VARIANTE + '/retenir'): '_sonde_retenir',
@@ -103,6 +108,16 @@ ROUTES_HORS_VERROU = {
                                "conception d'un calepinage",
     ('DELETE', 'profil-depart'): "réglages de la société (ACAL403), hors "
                                  "conception d'un calepinage",
+    ('POST', 'systemes-fixation'): "catalogue des systèmes de fixation de la "
+                                   "société (ACAL558) : écrit SystemeFixation, "
+                                   "jamais la conception d'un calepinage",
+    ('PATCH', r'systemes-fixation/(?P<systeme_id>[0-9]+)'):
+        "catalogue des systèmes de fixation de la société (ACAL558), hors "
+        "conception d'un calepinage",
+    ('DELETE', r'systemes-fixation/(?P<systeme_id>[0-9]+)'):
+        "catalogue des systèmes de fixation de la société (ACAL558) : les "
+        "calepinages qui le portaient restent sans choix (SET_NULL), leur "
+        "conception n'est pas écrite",
     ('POST', 'balayage'): "balayage (ACAL468) : simule des COPIES du "
                           "document, n'écrit rien au calepinage",
     ('DELETE', 'meteo-fichier'): 'simulation : entrée météo du calcul',
@@ -147,7 +162,8 @@ ROUTES_HORS_VERROU = {
                                'rien d\'écrit)',
     ('POST', 'consommation/proposer'): 'proposition de consommation '
                                        '(lecture calculée)',
-    ('POST', 'pompage'): 'proposition de pompage (lecture calculée)',
+    ('POST', 'pompage'): 'calcul + enregistrement du dernier dimensionnement, '
+                         'jamais 409 (verrou lu par la vue : enregistre false)',
     ('POST', 'detection-toit'): 'proposition de toit par IA à confirmer '
                                 "(rien d'écrit, ACAL485)",
 }
@@ -249,6 +265,10 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
 
     def _sonde_creer_variante(self):
         return self._post('variantes/', {'nom': 'C'})
+
+    def _sonde_variantes_par_module(self):
+        # Corps conforme au schéma : le refus observé est bien le verrou.
+        return self._post('variantes-par-module/', {'modules': ['produit-1']})
 
     def _sonde_modifier_variante(self):
         return self.api.patch(f'{self.base}variantes/{self.b.pk}/',

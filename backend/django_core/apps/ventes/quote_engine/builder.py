@@ -480,11 +480,18 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
     return puces or None
 
 
+def _avec_regles_pose_reelle(data, pose_reelle):
+    # ACAL1033 (D-ACAL-45) — clé de rendu ``regles_pose_reelle``, posée au niveau 15 seulement.
+    if pose_reelle:
+        data["regles_pose_reelle"] = True
+    return data
+
+
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
         REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111,
-        REGLES_ECARTS_0411, REGLES_SENSIBILITES_1911, calcul_corrige, regles_au_moins)
+        REGLES_ECARTS_0411, REGLES_POSE_REELLE_2111, REGLES_SENSIBILITES_1911, calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -2296,7 +2303,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                            getattr(devis, "reference", "?"), _msg)
             data.setdefault("avertissements_internes", []).append(_msg)
 
-    return data
+    return _avec_regles_pose_reelle(data, regles_au_moins(devis, REGLES_POSE_REELLE_2111))  # ACAL1033
 
 
 def ecarts_totaux_imprimes(data, ttc_noyau=None, *, tol=0.011):

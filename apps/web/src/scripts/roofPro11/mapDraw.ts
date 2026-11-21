@@ -11,8 +11,14 @@
  */
 import * as maplibregl from 'maplibre-gl';
 import { isSimplePolygon, type LngLat } from '../../lib/roof';
-import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } from '../../lib/roofConfig';
+import {
+  availableOptionalLayers, getOptionalLayer, imageryDisclosure, optionalLayerSourceSpec, resolveImageryProvider,
+} from '../../lib/roofConfig';
 import { $ } from './dom';
+import {
+  lireCoordonneesCollees, libelleCoordonnees, libelleEchange, proposerEchange,
+  type CoordonneesCollees,
+} from './coordonneesCollees'; // ACAL506 / ACAL507
 import { type Ctx } from './context';
 import { aimanterAuxZones, contraindreAngle, metresParPixel, pointDepuisCap, PAS_ANGLE_DEG } from './snap';
 import {
@@ -46,6 +52,7 @@ import {
 import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
 import { monterAtelierPose } from './poseSurfaces'; // CALX123
 import { suivreAlt } from './altTracker';
+import { dateImageCapturee, lireImageCapture, poserImageCapture } from './imageCapture'; // ACAL509
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -128,6 +135,23 @@ export function geocodeReverseUrl(lng: number, lat: number, key: string, pays?: 
     `https://api.maptiler.com/geocoding/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json` +
     `?key=${encodeURIComponent(key)}&language=fr&country=${geocodeCountry(pays)}`
   );
+}
+
+/** ACAL507 — le géocodage inverse rend-il un lieu dans le pays du projet ? `true` / `false`,
+ *  ou `null` (réseau en échec, coordonnées hors bornes) : jamais une réponse inventée.
+ *  Même URL que `reverseGeocode`, SANS son jeton partagé (deux appels de front). */
+export async function lieuDansLePays(
+  lng: number, lat: number, key: string, pays: string | null | undefined, signal?: AbortSignal,
+): Promise<boolean | null> {
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  try {
+    const res = await fetch(geocodeReverseUrl(lng, lat, key, pays), { signal });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { features?: unknown[] };
+    return (data.features ?? []).length > 0; // la requête est bornée au pays (`country=`)
+  } catch {
+    return null;
+  }
 }
 
 /** Mention affichée à côté du champ de recherche : « Recherche limitée au pays : FR ». */
@@ -467,6 +491,56 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       addressEl.parentElement?.appendChild(note);
     }
     note.textContent = geocodeCountryNote(opts.imagery?.pays);
+  }
+  // ACAL508 — d'où vient l'image : fournisseur actif + résolution PUBLIÉE (ou « non annoncées »).
+  ensureImageSourceNote();
+  function ensureImageSourceNote() {
+    if (!addressEl || !opts.imagery || typeof document.createElement !== 'function') return;
+    const provider = resolveImageryProvider(opts.imagery, { maptilerKey: opts.maptilerKey, mapboxToken: opts.mapboxToken });
+    let note = $('rp9-image-source');
+    if (!note) {
+      note = document.createElement('span');
+      note.id = 'rp9-image-source';
+      note.className = 'rp9-image-source text-xs opacity-70';
+      addressEl.parentElement?.appendChild(note);
+    }
+    note.textContent = imageryDisclosure(provider);
+  }
+  // ACAL509 — « Date de la photo » (AAAA-MM-JJ) + source, sous la ligne d'origine de l'image.
+  // Saisie seule, aucune date proposée ; un refus s'affiche sous le champ fautif.
+  ensureImageCaptureFields();
+  function ensureImageCaptureFields() {
+    if (!addressEl || $('rp9-image-date') || typeof document.createElement !== 'function') return;
+    const champ = (id: string, label: string, valeur: string) => {
+      const l = document.createElement('label');
+      l.className = 'rp9-image-capture text-xs block';
+      l.textContent = `${label} `;
+      const i = document.createElement('input');
+      i.id = id;
+      i.type = 'text';
+      i.value = valeur;
+      i.className = 'rp9-image-capture-input';
+      l.appendChild(i);
+      const e = document.createElement('span');
+      e.id = `${id}-erreur`;
+      e.className = 'rp9-image-capture-erreur text-xs block';
+      l.appendChild(e);
+      addressEl.parentElement?.appendChild(l);
+      return { i, e };
+    };
+    const deja = dateImageCapturee();
+    const d = champ('rp9-image-date', 'Date de la photo (AAAA-MM-JJ)', deja?.date ?? '');
+    const s = champ('rp9-image-date-source', 'Source de cette date', deja?.source ?? '');
+    const valider = () => {
+      d.e.textContent = '';
+      s.e.textContent = '';
+      if (!d.i.value.trim() && !s.i.value.trim()) return poserImageCapture(null);
+      const lu = lireImageCapture(d.i.value, s.i.value);
+      if (lu.ok) return poserImageCapture(lu.valeur);
+      (lu.champ === 'date' ? d.e : s.e).textContent = lu.motif;
+    };
+    d.i.addEventListener('change', valider);
+    s.i.addEventListener('change', valider);
   }
 
   // CAL54 — CALQUES OPTIONNELS. Superposition raster PURE : on ajoute une source et une
@@ -1487,6 +1561,20 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   // précédente, et ignore sa réponse si un appel plus récent est parti entre-temps.
   let geoToken = 0;
   let geoAbort: AbortController | null = null;
+  /** ACAL506 — une ligne « Coordonnées collées » ; ACAL507 — puis, si besoin, la proposition
+   *  d'échange (jamais appliquée sans le choix de l'utilisateur). */
+  async function proposerCoordonnees(c: CoordonneesCollees, autoSelect: boolean, myToken: number, signal: AbortSignal) {
+    suggestions = [{ label: libelleCoordonnees(c), center: [c.longitude, c.latitude] }];
+    activeIdx = -1;
+    if (autoSelect) { selectSuggestion(0); return; }
+    renderSuggestions();
+    setStatus(t.chooseFromList);
+    const lieu = (lng: number, lat: number) => lieuDansLePays(lng, lat, opts.maptilerKey, opts.imagery?.pays, signal);
+    const echange = proposerEchange(c, ...(await Promise.all([lieu(c.longitude, c.latitude), lieu(c.latitude, c.longitude)])));
+    if (!echange || myToken !== geoToken || suggestions.length === 0) return;
+    suggestions.push({ label: libelleEchange(echange), center: [echange.longitude, echange.latitude] });
+    renderSuggestions();
+  }
   // W93 — geocode RÉCUPÈRE jusqu'à 5 suggestions et peuple la liste ; il ne VOLE plus de
   // lui-même (sauf `autoSelect`, utilisé pour l'`initialQuery` programmatique). Le vol n'a
   // lieu QUE sur sélection (clic / Entrée), garde anti-course W75 conservée.
@@ -1495,6 +1583,11 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     geoAbort?.abort();
     const ctrl = new AbortController();
     geoAbort = ctrl;
+    const coll = lireCoordonneesCollees(query); // ACAL506 : couple collé, aucun appel au géocodeur
+    if (coll) {
+      if ('refus' in coll) { closeSuggestions(); setStatus(coll.refus); } else void proposerCoordonnees(coll, autoSelect, myToken, ctrl.signal);
+      return;
+    }
     setStatus(t.searchingAddress);
     try {
       // WJ41 — `language=fr` stays fixed regardless of page locale: Moroccan

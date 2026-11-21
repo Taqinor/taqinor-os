@@ -111,6 +111,49 @@ class ColonneIrradiationTest(unittest.TestCase):
                       'simulation : relancez-la', html)
 
 
+class ColonnesBilanMensuelTest(unittest.TestCase):
+    """ACAL708 — irradiation horizontale, température ambiante et PR, telles
+    que servies ; ``null`` -> « — » ; bloc absent -> colonne absente."""
+
+    def _table(self, resultat):
+        html = html_de_section(contexte(resultat))
+        return re.search(r'<table class="production-mensuelle[^>]*>'
+                         r'(.*?)</table>', html, re.S).group(1)
+
+    def test_trois_colonnes_avec_les_valeurs_servies(self):
+        resultat = resultat_de_base()
+        table = self._table(resultat)
+        for titre in ('Irradiation horizontale (kWh/m²)',
+                      'Température ambiante (°C)', 'PR'):
+            self.assertIn('<th>%s</th>' % titre, table)
+        premiere = table.split('</tr>')[1]
+        production = resultat['production']
+        self.assertIn('<td class="valeur">%s</td>' % nombre_tel_que_servi(
+            production['gain_inclinaison']['ghi_mensuel'][0]['ghi_kwh_m2']),
+            premiere)
+        self.assertIn('<td class="valeur">%s</td>' % nombre_tel_que_servi(
+            production['bilan_mensuel'][0]['pr']), premiere)
+        # la température du contrat est null : « — », jamais 0
+        self.assertIn('<td class="valeur">—</td>', premiere)
+        self.assertNotIn('>0<', premiere)
+
+    def test_une_valeur_null_imprime_un_tiret(self):
+        resultat = resultat_de_base()
+        resultat['production']['bilan_mensuel'][0]['pr'] = None
+        premiere = self._table(resultat).split('</tr>')[1]
+        self.assertEqual(premiere.count('—'), 2)  # température + PR
+
+    def test_bloc_absent_colonne_absente(self):
+        resultat = resultat_de_base()
+        del resultat['production']['bilan_mensuel']
+        resultat['production']['gain_inclinaison'] = None
+        table = self._table(resultat)
+        self.assertNotIn('Irradiation horizontale', table)
+        self.assertNotIn('Température ambiante', table)
+        self.assertNotIn('<th>PR</th>', table)
+        self.assertIn('Irradiation dans le plan', table)
+
+
 class QuantilesTest(unittest.TestCase):
     def test_un_p90_null_imprime_un_tiret_jamais_zero(self):
         resultat = resultat_de_base()
@@ -169,6 +212,68 @@ class TotauxTest(unittest.TestCase):
         html = html_de_section(contexte(resultat_de_base()))
         self.assertIn('0,799', html)
         self.assertIn('1504,6', html)
+
+
+class TablePluriannuelleTest(unittest.TestCase):
+    """ACAL694 — « Production année par année » : valeurs TELLES QUE SERVIES,
+    garantie sur les lignes d'année 10 et 25, motif quand omise."""
+
+    def _table(self, resultat):
+        html = html_de_section(contexte(resultat))
+        trouve = re.search(r'<table class="production-pluriannuelle[^>]*>'
+                           r'(.*?)</table>', html, re.S)
+        return html, (trouve.group(1) if trouve else None)
+
+    def _resultat(self):
+        resultat = resultat_de_base()
+        production = resultat['production']
+        production['projection'] = [
+            {'annee': a, 'facteur': 1.0 - 0.005 * a,
+             'p50_kwh': 13000.0 - 70.0 * a, 'source': 'lineaire'}
+            for a in (1, 2, 10, 25)]
+        return resultat
+
+    def test_lignes_imprimees_telles_que_servies(self):
+        resultat = self._resultat()
+        html, table = self._table(resultat)
+        self.assertIn('Production année par année', html)
+        for ligne in resultat['production']['projection']:
+            self.assertIn('<td class="valeur">%s</td>' % nombre_tel_que_servi(
+                ligne['p50_kwh']), table)
+            self.assertIn('<td class="valeur">%s</td>' % nombre_tel_que_servi(
+                ligne['facteur']), table)
+        self.assertEqual(table.count('<tr>'), 5)  # en-tête + 4 années
+        self.assertIn("L'année est un rang, pas un millésime", html)
+
+    def test_garantie_servie_sur_les_lignes_10_et_25_seulement(self):
+        resultat = self._resultat()
+        garantie = resultat['production']['duree_de_vie']['garantie']
+        _, table = self._table(resultat)
+        lignes = table.split('</tr>')
+        par_annee = {int(re.search(r'<td>(\d+)</td>', ligne).group(1)): ligne
+                     for ligne in lignes if re.search(r'<td>\d+</td>', ligne)}
+        self.assertIn('>%s</td>' % nombre_tel_que_servi(
+            garantie['pct_a_10_ans']), par_annee[10])
+        self.assertIn('>%s</td>' % nombre_tel_que_servi(
+            garantie['pct_a_25_ans']), par_annee[25])
+        for annee in (1, 2):
+            self.assertTrue(par_annee[annee].rstrip().endswith('—</td>'))
+
+    def test_motif_d_omission_remplace_la_table(self):
+        resultat = self._resultat()
+        resultat['production']['duree_de_vie']['motif_omission'] = (
+            'Dégradation absente de la fiche du panneau.')
+        html, table = self._table(resultat)
+        self.assertIsNone(table)
+        self.assertIn('Dégradation absente de la fiche du panneau.', html)
+
+    def test_sans_projection_ni_motif_rien_n_est_imprime(self):
+        resultat = resultat_de_base()
+        resultat['production']['projection'] = None
+        resultat['production']['duree_de_vie'] = None
+        html, table = self._table(resultat)
+        self.assertIsNone(table)
+        self.assertNotIn('Production année par année', html)
 
 
 class DansLeRapportTest(unittest.TestCase):

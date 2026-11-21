@@ -6,6 +6,7 @@ import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
+import { useModeExpert } from '../atelier/modeExpert'
 import EntreeFichierJson from '../commun/EntreeFichierJson'
 import { refusServeur } from '../commun/refusServeur'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
@@ -503,7 +504,9 @@ const SORTIES_REMETTABLES = new Set([
 function SectionSorties({
   sorties, enCours, enRemise, erreurs, resultatPack, onTelecharger, onRemettre,
 }) {
+  const [expert] = useModeExpert()
   if (!sorties?.length) return null
+  const dxf = sorties.find((s) => s.code === 'dxf' && s.endpoint?.includes('export.dxf/'))
   return (
     <div className="rounded-md border border-border/60 p-3" data-testid="cal-doc-sorties">
       <p className="text-sm font-medium text-foreground">Plans et exports</p>
@@ -561,6 +564,25 @@ function SectionSorties({
             </div>
           )
         })}
+        {/* ACAL536 — niveau expert : le KML pour Google Earth, par
+            `calepinageApi.calepinages.exportKml` (même porte d'approbation que
+            le DXF côté serveur) ; sans entrée DXF servie, pas de bouton. */}
+        {expert && dxf && (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-foreground">Export pour Google Earth (KML)</p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!dxf.disponible}
+              loading={enCours === 'kml'}
+              onClick={() => onTelecharger({ code: 'kml' })}
+              data-testid="cal-doc-bouton-kml"
+            >
+              Exporter pour Google Earth
+            </Button>
+            <ErreursSortie erreurs={erreurs.kml} />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -714,6 +736,9 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
       if (code === 'pack_technique') {
         const reponse = await calepinageApi.calepinages.composerPackTechnique(id)
         setResultatPack(reponse.data)
+      } else if (code === 'kml') {
+        const reponse = await calepinageApi.calepinages.exportKml(id)
+        downloadBlob(reponse.data, filenameFromResponse(reponse, code))
       } else if (code === 'planche_png') {
         const reponse = await calepinageApi.calepinages.telechargerSortie(sortie.endpoint)
         const png = await svgTexteEnPng(await reponse.data.text())

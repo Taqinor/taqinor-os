@@ -303,6 +303,50 @@ def refus_kwh_declare_du_devis(devis):
     return {'detail': MESSAGE_KWH_INCOHERENT, 'code': CODE_KWH_INCOHERENT}
 
 
+def compatibilite_du_materiel(panneau_id, onduleur_id, company, batterie_id=None):
+    """ACAL901 — la compatibilité du matériel DÉSIGNÉ au calepinage, RELAYÉE
+    telle quelle de ``compatibilites.verdict_panneau_onduleur`` /
+    ``verdict_batterie_onduleur`` (aucun recalcul, aucune correspondance).
+
+    Produits lus bornés société (``get_produit_scoped``) : un id inconnu ou
+    d'une autre société ⇒ ``inconnu`` nommé. Rend ``{panneau_onduleur:
+    {statut, raisons}, batterie_onduleur: {statut, raisons} | None}`` ; aucun
+    verdict optimiseur n'existe dans ventes, il n'est pas servi."""
+    from apps.stock.selectors import get_produit_scoped
+
+    from .compatibilites import (
+        STATUT_INCONNU, verdict_batterie_onduleur, verdict_panneau_onduleur)
+
+    def produit(identifiant):
+        if identifiant in (None, '') or company is None:
+            return None
+        return get_produit_scoped(company, identifiant)
+
+    def introuvable(*paires):
+        manquants = [nom for nom, objet in paires if objet is None]
+        return {'statut': STATUT_INCONNU, 'raisons': [
+            '%s introuvable dans le catalogue de la société' % nom
+            for nom in manquants]}
+
+    def relayer(verdict):
+        return {'statut': verdict.get('statut'),
+                'raisons': list(verdict.get('raisons') or [])}
+
+    panneau, onduleur = produit(panneau_id), produit(onduleur_id)
+    sortie = {'panneau_onduleur': (
+        relayer(verdict_panneau_onduleur(panneau, onduleur))
+        if panneau is not None and onduleur is not None
+        else introuvable(('panneau', panneau), ('onduleur', onduleur))),
+        'batterie_onduleur': None}
+    if batterie_id not in (None, ''):
+        batterie = produit(batterie_id)
+        sortie['batterie_onduleur'] = (
+            relayer(verdict_batterie_onduleur(batterie, onduleur))
+            if batterie is not None and onduleur is not None
+            else introuvable(('batterie', batterie), ('onduleur', onduleur)))
+    return sortie
+
+
 def devis_brouillon_pour_layout(company, lead_id, empreinte):
     """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
 

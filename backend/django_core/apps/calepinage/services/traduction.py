@@ -99,6 +99,9 @@ TYPES_MOTEUR = {
     'lanterneau': 'LANTERNEAU',
     'exutoire': 'LANTERNEAU',
     'joint_dilatation': 'JOINT_DILATATION',
+    # ACAL498 — la citerne n'a pas de type moteur : elle reste inconnue.
+    'climatiseur': 'CLIMATISEUR',
+    'garde_corps': 'GARDE_CORPS',
 }
 
 __all__ = [
@@ -251,8 +254,26 @@ def _cotes_du_produit(produit):
             _nombre(cotes.get('puissance_wc')))
 
 
+def _chassis_commun(pans):
+    """ACAL582 — le châssis N × M commun à TOUS les pans (le kit est unique
+    par document) : ``(rangs, modules par rang, jeu)``, ``(1, 1, None)`` sans."""
+    retenu = None
+    for rang, pan, _sommets in pans:
+        chassis = pan.get('chassis') or {}
+        lu = (int(chassis.get('rangs') or 1),
+              int(chassis.get('modulesParRang') or 1),
+              _nombre(chassis.get('jeuEntreRangsM')))
+        if retenu is not None and lu != retenu:
+            raise TraductionRefusee(
+                f"Le pan n° {rang + 1} ne porte pas le même châssis que le "
+                "pan n° 1 : un document se pose avec un seul type de table.",
+                f'zones.{rang}.chassis')
+        retenu = lu
+    return retenu or (1, 1, None)
+
+
 def _kit(roof_layout, produit, cotes_module, inclinaison_deg, orientation,
-         modules_par_table, faitage_m, code):
+         modules_par_table, faitage_m, code, pans=()):
     """Le kit CHIFFRABLE, ou un refus qui NOMME le champ manquant."""
     from core.calepinage.types import Kit, OrientationModule
 
@@ -285,7 +306,10 @@ def _kit(roof_layout, produit, cotes_module, inclinaison_deg, orientation,
             "du produit) avant de calepiner.", 'panelWatt')
 
     long_m, court_m = max(longueur_m, largeur_m), min(longueur_m, largeur_m)
+    rangs, par_rang, jeu = _chassis_commun(pans)
     return Kit(
+        rangs_par_table=rangs, modules_par_rang=par_rang,
+        jeu_entre_rangs_m=jeu,
         code=code,
         libelle="Panneau %.0f Wc (%.3f × %.3f m) — cotes du document"
                 % (puissance, long_m, court_m),
@@ -614,7 +638,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
     roof_layout = _document(roof_layout)
     pans = _pans(roof_layout)
     kit = _kit(roof_layout, produit, cotes_module, inclinaison_deg,
-               orientation, modules_par_table, faitage_m, code_kit)
+               orientation, modules_par_table, faitage_m, code_kit, pans)
     axe = _axe_unique(pans, kit)
 
     origine = _origine(roof_layout, pans)

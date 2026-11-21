@@ -190,6 +190,115 @@ class GrandeursDuDocumentTest(SimpleTestCase):
                                     in lues['manquants'].values()))
 
 
+def layout_deux_pans(existants, neufs, *, existant=True, annee=2019):
+    """ACAL575 — Pan A (``existant``) puis Pan B neuf, mêmes dimensions."""
+    document = layout(existants)
+    zone_a = document['zones'][0]
+    zone_a['label'] = 'Pan A'
+    if existant is not None:
+        zone_a['existant'] = existant
+    if annee is not None:
+        zone_a['anneeMiseEnService'] = annee
+    zone_b = copy.deepcopy(zone_a)
+    zone_b.update(id='z2', label='Pan B')
+    zone_b.pop('existant', None)
+    zone_b.pop('anneeMiseEnService', None)
+    zone_b['geometry']['panels'] = [{'cx': x, 'cy': y} for x, y in neufs]
+    zone_b['geometry']['count'] = len(neufs)
+    document['zones'].append(zone_b)
+    return document
+
+
+class PanExistantExcluDeLaFixationTest(SimpleTestCase):
+    """ACAL575 — les modules d'un pan « existant » ne se commandent pas."""
+
+    def neufs(self):
+        return [(1.0 + PAS * k, y) for y in (1.0, 3.0) for k in range(3)]
+
+    def test_dix_existants_et_six_neufs_comptent_six(self):
+        valeurs = fixation._grandeurs_du_document(
+            layout_deux_pans(deux_rangees_de_cinq(), self.neufs()))['valeurs']
+        self.assertEqual(valeurs['modules'], 6)
+        self.assertEqual(valeurs['pans'], 1)
+        self.assertEqual(valeurs['rangees'], 2)
+        self.assertEqual(valeurs['jonctions'], 4)
+        self.assertEqual(valeurs['extremites'], 4)
+        self.assertAlmostEqual(valeurs['longueur_rangees_m'], 7.2, places=2)
+
+    def test_un_pan_sans_la_cle_se_compte_comme_avant(self):
+        valeurs = fixation._grandeurs_du_document(
+            layout_deux_pans(deux_rangees_de_cinq(), self.neufs(),
+                             existant=None))['valeurs']
+        self.assertEqual(valeurs['modules'], 16)
+        self.assertEqual(valeurs['pans'], 2)
+
+    def test_tout_existant_n_a_aucun_module_a_commander(self):
+        document = layout_deux_pans(deux_rangees_de_cinq(), self.neufs())
+        document['zones'][1]['existant'] = True
+        lues = fixation._grandeurs_du_document(document)
+        self.assertTrue(all(v is None for v in lues['valeurs'].values()))
+
+
+class FixationParPanTest(SimpleTestCase):
+    """ACAL592 - la nomenclature PAR PAN : memes regles, somme = globale."""
+
+    def deux_pans(self, neufs_b=None, **options):
+        six = [(1.0 + PAS * k, y) for y in (1.0, 3.0) for k in range(3)]
+        quatre = neufs_b if neufs_b is not None else [
+            (1.0 + PAS * k, y) for y in (1.0, 3.0) for k in range(2)]
+        return layout_deux_pans(six, quatre, existant=None, annee=None,
+                                **options)
+
+    def composants(self):
+        return [c for c in composants_du_contrat()
+                if c.role in ('rail', 'pince_milieu')]
+
+    def quantites(self, lignes):
+        return {ligne['role']: ligne['quantite'] for ligne in lignes}
+
+    def test_la_somme_des_rails_des_pans_egale_le_rail_global(self):
+        document = self.deux_pans()
+        par_pan = fixation._lignes_par_pan(document, self.composants())
+        self.assertEqual(sorted(par_pan), ['z1', 'z2'])
+        globales = self.quantites(fixation._lignes_de_fixation(
+            self.composants(), fixation._grandeurs_du_document(document)))
+        somme = sum(self.quantites(lignes)['rail']
+                    for lignes in par_pan.values())
+        self.assertAlmostEqual(somme, globales['rail'], delta=0.01 * 2)
+        # Chaque pan porte SES grandeurs : 6 modules != 4 modules.
+        self.assertNotEqual(self.quantites(par_pan['z1'])['rail'],
+                            self.quantites(par_pan['z2'])['rail'])
+
+    def test_la_pince_en_unite_u_est_arrondie_par_pan(self):
+        par_pan = fixation._lignes_par_pan(self.deux_pans(), self.composants())
+        # 2 rangees de 3 : 4 jonctions x 2 ; 2 rangees de 2 : 2 x 2.
+        self.assertEqual(self.quantites(par_pan['z1'])['pince_milieu'], 8)
+        self.assertEqual(self.quantites(par_pan['z2'])['pince_milieu'], 4)
+
+    def test_un_pas_non_releve_nomme_le_pan_et_ne_met_pas_de_zero(self):
+        document = self.deux_pans(neufs_b=[(1.0, 1.0), (1.0, 3.0)])
+        par_pan = fixation._lignes_par_pan(document, self.composants())
+        rail = next(ligne for ligne in par_pan['z2']
+                    if ligne['role'] == 'rail')
+        self.assertIsNone(rail['quantite'])
+        self.assertIn('Pan B', rail['manquant'])
+        # L'autre pan reste calculable.
+        self.assertIsNotNone(self.quantites(par_pan['z1'])['rail'])
+
+    def test_un_pan_existant_n_a_pas_d_encart(self):
+        document = self.deux_pans()
+        document['zones'][0]['existant'] = True
+        par_pan = fixation._lignes_par_pan(document, self.composants())
+        self.assertEqual(sorted(par_pan), ['z2'])
+
+    def test_sans_conception_aucun_pan(self):
+        self.assertEqual(fixation._lignes_par_pan(None, self.composants()), {})
+
+    def test_sans_societe_pas_de_systeme_donc_pas_d_encart(self):
+        self.assertIsNone(fixation.fixation_par_pan(
+            SimpleNamespace(company=None, roof_layout=self.deux_pans())))
+
+
 class LignesDeFixationTest(SimpleTestCase):
 
     def test_rejoue_exactement_l_exemple_committe(self):

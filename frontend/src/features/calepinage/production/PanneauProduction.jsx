@@ -11,19 +11,22 @@ import RetourAtelier from '../atelier/RetourAtelier'
 import {
   LIBELLE_BOUTON, etatCalcul, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
-import {
-  BandeauBorneHaute, IncertitudeSigma, ReglagesUtilises, SourceMeteo,
-} from './BandeauProvenanceProduction'
+import { IncertitudeSigma, ReglagesUtilises, SourceMeteo } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import GraphiqueMensuel from './GraphiqueMensuel'
 import ResultatHeros from './ResultatHeros'
+import LigneSurLaDuree from './LigneSurLaDuree'
+import CartePostesPertes from './CartePostesPertes'
+import LigneValeursPubliees from './LigneValeursPubliees'
+import ResultatIncomplet from './ResultatIncomplet'
 import {
   kwh, kwhParKwc, nonCalculee, nonPublie, pourcentagePerf,
 } from './ResultatHeros.helpers'
 import useSuiviJob from './useSuiviJob'
 import { reprendreSimulationAuto } from './simulationAuto'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
+import { useModeExpert } from '../atelier/modeExpert'
 
 /* ============================================================================
    CAL236 — LE PANNEAU « PRODUCTION » DU MODULE.
@@ -238,7 +241,64 @@ function BlocBase({ base }) {
   )
 }
 
-function TableauMensuel({ mensuel }) {
+/* ACAL707 — niveau EXPERT : le tableau mensuel complet (irradiation horizontale,
+   irradiation du plan, température, production, PR), chaque colonne lue par mois
+   dans son bloc servi ; `null` = « non calculée » (jamais 0) ; bloc absent =
+   colonne absente. En guidé : « Mois / P50 » d'origine. */
+const parMois = (liste, cle) => (Array.isArray(liste) && liste.length
+  ? Object.fromEntries(liste.map((e) => [e.mois, e[cle]])) : null)
+
+function TableauMensuelComplet({ mensuel, production }) {
+  const pr = parMois(production?.bilan_mensuel, 'pr')
+  const motifsPr = parMois(production?.bilan_mensuel, 'pr_motif')
+  const colonnes = [
+    ['horizontale', 'Irradiation horizontale', parMois(production?.gain_inclinaison?.ghi_mensuel, 'ghi_kwh_m2'),
+      (v) => `${formatNumber(v, { decimals: 1 })} kWh/m²`],
+    ['plan', 'Irradiation du plan', parMois(production?.irradiation_mensuelle, 'irradiation_plan_kwh_m2'),
+      (v) => `${formatNumber(v, { decimals: 1 })} kWh/m²`],
+    ['temperature', 'Température', parMois(production?.bilan_mensuel, 'temperature_ambiante_c'),
+      (v) => `${formatNumber(v, { decimals: 1 })} °C`],
+    ['production', 'Production', Object.fromEntries(mensuel.map((m) => [m.mois, m.p50_kwh])), kwh],
+    ['pr', 'PR', pr, pourcentagePerf],
+  ].filter(([, , valeurs]) => valeurs !== null)
+  const motifOmission = production?.gain_inclinaison?.motif_omission
+  return (
+    <>
+      <table className="w-full text-sm" data-testid="acal707-mensuel">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="py-1 font-normal">Mois</th>
+            {colonnes.map(([cle, titre]) => (
+              <th key={cle} className="py-1 text-right font-normal">{titre}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {mensuel.map((point) => (
+            <tr key={point.mois} className="border-t border-border/60">
+              <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}</td>
+              {colonnes.map(([cle, , valeurs, rendu]) => (
+                <td key={cle} className="py-1 text-right tabular-nums" data-testid={`acal707-${cle}-${point.mois}`}>
+                  {valeurs[point.mois] === null || valeurs[point.mois] === undefined
+                    ? <span title={(cle === 'pr' && motifsPr?.[point.mois]) || undefined}>non calculée</span>
+                    : rendu(valeurs[point.mois])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {motifOmission && (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="acal707-motif-horizontale">
+          {`Irradiation horizontale non publiée : ${motifOmission}`}
+        </p>
+      )}
+    </>
+  )
+}
+
+function TableauMensuel({ mensuel, production = null }) {
+  const [expert] = useModeExpert()
   if (!mensuel?.length) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="cal236-mensuel-vide">
@@ -246,6 +306,7 @@ function TableauMensuel({ mensuel }) {
       </p>
     )
   }
+  if (expert) return <TableauMensuelComplet mensuel={mensuel} production={production} />
   return (
     <table className="w-full text-sm" data-testid="cal236-mensuel">
       <thead>
@@ -325,6 +386,8 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
     () => calepinageApi.calepinages.resultat(id), id,
     { select: (r) => r.data, errorMessage: 'Production indisponible.' },
   )
+  // ACAL698 — « Voir les sources » ouvre le <details> « Réglages utilisés ».
+  const [sourcesOuvertes, setSourcesOuvertes] = useState(false)
 
   if (loading || error) {
     return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" />
@@ -361,25 +424,29 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
         intervalleMs={intervalleMs}
         onTermine={refetch}
       />
-      <BandeauBorneHaute total={production?.total} />
       <BlocBase base={production?.base} />
       <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
-        motif={data?.motif} avertissements={data?.avertissements} />
+        motif={data?.motif} avertissements={data?.avertissements} plages={data?.cascade?.plages}
+        autoconsommation={data?.autoconsommation} />
+      {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}
+      {data?.simule === true && !perime && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
       {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} />}
-      <ReglagesUtilises simulation={data?.simulation} />
+      <ReglagesUtilises simulation={data?.simulation} ouvert={sourcesOuvertes} onBascule={setSourcesOuvertes} />
       {/* ENF15 — `meteo` / `incertitude` servis par `GET resultat/` (CALX143/144). */}
       {data?.simule && <SourceMeteo meteo={data?.meteo} />}
       {data?.simule && <IncertitudeSigma incertitude={data?.incertitude} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <p className="mb-1 text-xs font-medium text-muted-foreground">Production mensuelle</p>
-          <TableauMensuel mensuel={production?.mensuel} />
+          <TableauMensuel mensuel={production?.mensuel} production={production} />
         </div>
         <div>
           <p className="mb-1 text-xs font-medium text-muted-foreground">Par pan</p>
           <TableauParPan parPan={production?.par_pan} total={production?.total} />
         </div>
       </div>
+      <CartePostesPertes cascade={data?.cascade} />
+      <LigneValeursPubliees simulation={data?.simulation} onVoirSources={() => setSourcesOuvertes(true)} />
     </Card>
     {/* CALX64 — le tapis jour × heure de la série persistée (CALX193). La
         série n'est PAS recopiée par `GET resultat/` (D-CALX 14, volume) :

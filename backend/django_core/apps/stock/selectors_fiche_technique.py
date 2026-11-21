@@ -35,7 +35,8 @@ def specs_for_produit(produit):
         degradation_annuelle_pct, degradation_annee1_pct,
         garantie_pct_a_10_ans, garantie_pct_a_25_ans,
         rendement_par_irradiance, tolerance_pmax_min_pct,
-        tolerance_pmax_max_pct}`` (CAL114 : poids, épaisseur, rendement,
+        tolerance_pmax_max_pct, sous_chaines_par_module (ACAL720)}``
+        (CAL114 : poids, épaisseur, rendement,
         technologie de cellule et bifacial étaient déjà sur la fiche mais
         omis de ce bloc — cf. CAL111-113 ; les trois dernières, CALX60) ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
@@ -60,6 +61,12 @@ def specs_for_produit(produit):
         v_out_nominal_v, v_out_min, v_out_max, i_out_max_a, pmax_out_w,
         modules_max_par_chaine}`` (les dix dernières, CALX60 — la SORTIE
         du composant, que CAL116 n'avait pas).
+
+    ACAL567 ajoute au bloc module ``serrage_min_mm``, ``serrage_max_mm``,
+    ``serrage_source`` ; ACAL659 ``cellules_serie``, ``temp_coeff_isc_pct_c``
+    (module), ``pnom_reduite_debut_c``, ``pnom_pente_pct_c``,
+    ``mppt_independants`` (onduleur) et ``onduleurs_compatibles``
+    (optimiseur).
 
     ⚠ LE DICT RENDU EST PLAT — c'est le BLOC du ``type_fiche``, pas un dict de
     blocs : lire ``specs_for_produit(p)['batterie']`` rend toujours ``None``.
@@ -125,6 +132,18 @@ def specs_for_produit(produit):
              getattr(fiche, 'tolerance_pmax_min_pct', None)),
             ('tolerance_pmax_max_pct',
              getattr(fiche, 'tolerance_pmax_max_pct', None)),
+            # ACAL567 — zone de serrage fabricant (clé absente si non saisie).
+            ('serrage_min_mm', getattr(fiche, 'serrage_min_mm', None)),
+            ('serrage_max_mm', getattr(fiche, 'serrage_max_mm', None)),
+            ('serrage_source',
+             getattr(fiche, 'serrage_source', None) or None),
+            # ACAL659 — cellules en série et coefficient de Isc (optionnels).
+            ('cellules_serie', getattr(fiche, 'cellules_serie', None)),
+            ('temp_coeff_isc_pct_c',
+             getattr(fiche, 'temp_coeff_isc_pct_c', None)),
+            # ACAL720 — sous-chaînes (diodes de dérivation) par module.
+            ('sous_chaines_par_module',
+             getattr(fiche, 'sous_chaines_par_module', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'onduleur':
@@ -171,6 +190,12 @@ def specs_for_produit(produit):
             ('rendement_cec_pct',
              getattr(fiche, 'ond_rendement_cec_pct', None)),
             ('conso_nuit_w', getattr(fiche, 'ond_conso_nuit_w', None)),
+            # ACAL659 — réduction de puissance à chaud, MPPT indépendants.
+            ('pnom_reduite_debut_c',
+             getattr(fiche, 'ond_pnom_reduite_debut_c', None)),
+            ('pnom_pente_pct_c', getattr(fiche, 'ond_pnom_pente_pct_c', None)),
+            ('mppt_independants',
+             getattr(fiche, 'ond_mppt_independants', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':
@@ -253,6 +278,9 @@ def specs_for_produit(produit):
             ('pmax_out_w', getattr(fiche, 'opt_pmax_out_w', None)),
             ('modules_max_par_chaine',
              getattr(fiche, 'opt_modules_max_par_chaine', None)),
+            # ACAL659 — onduleurs compatibles (liste de SKU ; vide omise).
+            ('onduleurs_compatibles',
+             getattr(fiche, 'opt_onduleurs_compatibles', None) or None),
         ):
             _put(out, key, value)
     return out

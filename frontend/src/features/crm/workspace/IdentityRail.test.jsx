@@ -37,6 +37,10 @@ vi.mock('../../../api/crmApi', () => ({
     recontacterLead: vi.fn(),
   },
 }))
+// ACAL904 — la porte « Dessiner le toit » (calepinage du lead, idempotente).
+vi.mock('../../../api/calepinageApi', () => ({
+  default: { calepinages: { depuisLead: vi.fn(() => Promise.resolve({ data: { calepinage: 77 } })) } },
+}))
 vi.mock('../../../ui/confirm', async (importOriginal) => {
   const actual = await importOriginal()
   return { ...actual, toast: { ...actual.toast, success: vi.fn() } }
@@ -162,11 +166,17 @@ describe('LW14 — IdentityRail identité + actions', () => {
     expect(onAction).not.toHaveBeenCalled()
   })
 
-  it('Toiture 3D route par onAction depuis le menu « ⋯ »', async () => {
+  it('ACAL904 — « Dessiner le toit » visible sans menu ouvre le calepinage ; plus de porte jumelle', async () => {
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null)
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Dessiner le toit/ }))
+    await waitFor(() => expect(ouvrir).toHaveBeenCalledWith('/calepinage/77', '_blank', 'noopener'))
+    expect(onAction).not.toHaveBeenCalledWith('toiture-3d')
     ouvrirPlus()
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Concevoir la toiture/ }))
-    expect(onAction).toHaveBeenCalledWith('toiture-3d')
+    await screen.findByRole('menuitem', { name: /Convertir en client/ })
+    expect(screen.queryByRole('menuitem', { name: /Concevoir la toiture/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /module Calepinage/ })).toBeNull()
+    ouvrir.mockRestore()
   })
 
   it('Convertir route par onAction depuis le menu « ⋯ »', async () => {
@@ -736,7 +746,7 @@ describe('ADRG20 — droits de la fiche lead', () => {
     droitsRefuses.add('crm_modifier')
     render(<IdentityRail state={makeState()} onAction={vi.fn()} users={[]} />)
     ouvrirPlus()
-    await screen.findByRole('menuitem', { name: /Concevoir la toiture/ })
+    await screen.findByRole('menuitem', { name: /Convertir en client/ })
     for (const nom of [/Convertir en client/, /^Archiver$/, /Relancer la cadence/, /Arrêter la cadence/]) {
       expect(screen.getByRole('menuitem', { name: nom })).toHaveAttribute('aria-disabled', 'true')
     }

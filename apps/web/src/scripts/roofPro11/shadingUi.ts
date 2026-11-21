@@ -17,6 +17,8 @@
  */
 import type * as maplibregl from 'maplibre-gl';
 import { sunDirection } from '../../lib/roofPro2';
+import { directPerduParHeure, moisDuJour, phraseDirectPerdu, svgCourbeDirectPerdu } from './courbeDirectPerdu'; // ACAL717
+import { modeExpertActif } from './orientationOmbre'; // ACAL717
 import {
   IMAGERY_SUN_DEFAULT,
   SHADE_OBSTRUCTION_HALF_WIDTH_M,
@@ -746,7 +748,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const hasShadeSources = (): boolean =>
     ctx.shadeObstructions.length > 0 ||
     ctx.obstacles.some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
-    (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+    (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0 && o.supposeCoupe !== true); // ACAL502
 
   /** Nombre d'obstructions RETENUES au dernier calcul (après retrait de la hauteur de
    *  toit) — pilote le libellé honnête de la note, cf. `renderList`. */
@@ -884,7 +886,30 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     };
   }
 
+  /** ACAL717 — courbe « direct perdu » du mois de la date choisie, sous la barre du soleil (expert). */
+  function rafraichirCourbeDirectPerdu() {
+    const hote = $('rp9-direct-perdu') ?? (() => {
+      const ancre = $('rp9-sun-controls');
+      if (!ancre || typeof document.createElement !== 'function') return null;
+      const d = document.createElement('div');
+      d.id = 'rp9-direct-perdu';
+      d.className = 'mt-2 text-xs text-lune-soft';
+      ancre.insertAdjacentElement('afterend', d);
+      return d;
+    })();
+    if (!hote) return;
+    hote.hidden = !modeExpertActif();
+    const plan = ctx.layoutPlan;
+    if (hote.hidden || !plan || !plan.grid.panels.length) { hote.innerHTML = ''; return; }
+    if (!hasShadeSources()) { hote.textContent = 'Direct perdu : aucune ombre saisie.'; return; }
+    const mois = moisDuJour(ctx.sunDay);
+    const serie = directPerduParHeure(ctx.centroidLat, activeShadeEntries(), plan.grid.panels.map((p) => ({ x: p.cx, y: p.cy })), mois);
+    const phrase = phraseDirectPerdu(serie, HEATMAP_MONTH_LABELS[mois]);
+    hote.innerHTML = `${svgCourbeDirectPerdu(serie, phrase)}<p>${esc(phrase)}</p>`;
+  }
+
   function refreshHeatmap() {
+    rafraichirCourbeDirectPerdu();
     if (!heatmapOn) return;
     applyHeatmap(buildHeatmapColorFn());
   }

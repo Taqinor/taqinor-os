@@ -177,6 +177,48 @@ class Ecriture(BaseValidation):
         self.assertEqual(entree['batterie']['packs'], 2)
 
 
+class EvaluationAChaud(BaseValidation):
+    """ACAL615 — un onduleur désigné À CHAUD (``evaluer-electrique``) est
+    validé comme à l'enregistrement, rend SON verdict et n'écrit rien."""
+
+    def test_onduleur_b_rend_son_verdict_sans_rien_ecrire(self):
+        # B : onduleur de la société dont la fiche est incomplète (pas de
+        # tension maximale absolue) — son verdict ne peut être que
+        # « indéterminé », celui de A non.
+        onduleur_b = self._produit(
+            nom='Onduleur B', type_fiche='onduleur', ond_n_mppt=2,
+            ond_mppt_v_min=160.0, ond_mppt_v_max=950.0, ond_ac_kw=10.0,
+            ond_phases=3)
+        url = f'{url_detail(self.calepinage.pk)}evaluer-electrique/'
+        self.calepinage.refresh_from_db()
+        avant = self.calepinage.resultat
+        avec_a = self.api.post(url, {}, format='json')
+        self.assertEqual(avec_a.status_code, 200, avec_a.data)
+        avec_b = self.api.post(url, {'entree_electrique': {
+            'onduleur_produit': onduleur_b.pk}}, format='json')
+        self.assertEqual(avec_b.status_code, 200, avec_b.data)
+        self.assertNotEqual(avec_a.data['verdict'], 'indetermine')
+        self.assertEqual(avec_b.data['verdict'], 'indetermine')
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.resultat, avant)
+
+    def test_id_illisible_ou_absent_404_nomme_jamais_500(self):
+        url = f'{url_detail(self.calepinage.pk)}evaluer-electrique/'
+        for valeur in ('abc', 999999):
+            with self.subTest(valeur=valeur):
+                r = self.api.post(url, {'entree_electrique': {
+                    'onduleur_produit': valeur}}, format='json')
+                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(
+                    r.data['onduleur_produit'],
+                    'Produit introuvable dans votre catalogue (#%s).' % valeur)
+        for vide in ('', None):
+            with self.subTest(vide=vide):
+                r = self.api.post(url, {'entree_electrique': {
+                    'onduleur_produit': vide}}, format='json')
+                self.assertEqual(r.status_code, 200, r.data)
+
+
 class Lecture(BaseValidation):
 
     def test_decision_perimee_devient_avertissement(self):

@@ -81,6 +81,8 @@ __all__ = [
     "JOUR_JULIEN_J2000",
     "JOURS_PAR_SIECLE_JULIEN",
     "DEGRES_PAR_MINUTE_HORAIRE",
+    "CorrespondanceHeure",
+    "correspondance_heure_legale",
 ]
 
 #: Jour julien de l'époque J2000,0 (1ᵉʳ janvier 2000 à 12 h TT) — Meeus ch. 7.
@@ -271,4 +273,50 @@ def position_solaire(latitude_deg, longitude_deg, *,
         angle_horaire_deg=angle_horaire,
         heure_solaire_vraie_h=minutes_solaires / 60.0,
         sous_le_plancher=elevation < ELEVATION_PLANCHER_DEG,
+    )
+
+
+@dataclass(frozen=True)
+class CorrespondanceHeure:
+    """ACAL718 — heure solaire vraie ↔ heure légale, pour UN jour et UN lieu.
+
+    ``ecart_legal_moins_solaire_min`` = décalage − ET − 4 × longitude : ce qu'il
+    faut AJOUTER à une heure solaire vraie pour lire l'heure du mur.
+    """
+
+    equation_du_temps_min: float
+    ecart_legal_moins_solaire_min: float
+    midi_solaire_legal_h: float
+
+
+def correspondance_heure_legale(longitude_deg, *, annee, mois, jour,
+                                decalage_utc_min):
+    """La correspondance du jour (ET calculée à midi UTC du jour).
+
+    ``decalage_utc_min`` (heure légale − UTC, en minutes) est un ARGUMENT : le
+    noyau n'a ni fuseau ni notion de pays. Lève ``EntreeInvalide`` en nommant
+    le champ — le noyau refuse, il ne replie pas.
+    """
+    import datetime
+
+    if not -180.0 <= longitude_deg <= 180.0:
+        raise EntreeInvalide(
+            "longitude hors domaine : %r (attendu entre −180 et 180)" % (longitude_deg,))
+    try:
+        datetime.date(int(annee), int(mois), int(jour))
+    except (TypeError, ValueError):
+        raise EntreeInvalide("date hors domaine : %r-%r-%r (année, mois, jour)"
+                             % (annee, mois, jour)) from None
+    if decalage_utc_min is None:
+        raise EntreeInvalide("decalage_utc_min absent : le décalage de l'heure "
+                             "légale sur UTC (minutes) doit être fourni")
+    siecles = ((_jour_julien(int(annee), int(mois), int(jour), 12.0)
+                - JOUR_JULIEN_J2000) / JOURS_PAR_SIECLE_JULIEN)
+    _, equation_du_temps = _elements_solaires(siecles)
+    ecart = (float(decalage_utc_min) - equation_du_temps
+             - longitude_deg / DEGRES_PAR_MINUTE_HORAIRE)
+    return CorrespondanceHeure(
+        equation_du_temps_min=equation_du_temps,
+        ecart_legal_moins_solaire_min=ecart,
+        midi_solaire_legal_h=12.0 + ecart / 60.0,
     )

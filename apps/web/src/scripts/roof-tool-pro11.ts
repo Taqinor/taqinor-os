@@ -140,6 +140,9 @@ import {
   nouveauPanDepuisContour, // ACAL71
   panVierge,
 } from './roofPro11/zones';
+import { monterAlignementRangees, pavageCellulesDe, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
+import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
+import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
@@ -218,10 +221,15 @@ import {
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout, deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
+import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts
+import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
+import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; // ACAL576, ACAL579
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
+import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
+import { poserRetraitsSurPanActif } from './roofPro11/retraitsSociete'; // ACAL562
 
 let booted = false;
 
@@ -491,6 +499,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const obstructionRings = (): LngLat[][] => [
     ...anneauxObstruction(obstacles), // CALX103/104 câblage
     ...exclusionObstructionRings(ctx.exclusionZones),
+    ...anneauxCoupuresDuPanActif(ctx, setbacks), // ACAL576 — bandes INTERDITES « tous les N modules » (EN DERNIER)
   ];
   // PV61 — dégagement (m) de CHAQUE obstacle selon son TYPE (cheminée > antenne), dans le
   // MÊME ordre que `obstructionRings()`. Obstacle sans type → dégagement historique.
@@ -500,6 +509,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const obstructionClearances = (): number[] => [
     ...obstructionClearancesFor(obstacles),
     ...exclusionObstructionRings(ctx.exclusionZones).map(() => 0),
+    ...anneauxCoupuresDuPanActif(ctx, setbacks).map(() => 0), // ACAL576 — même ordre, dégagement NUL (la bande est la coupure)
   ];
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
@@ -1145,6 +1155,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     recalc: () => recalc(), // CALX97 câblage
     setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
     apresRendu: () => { formesToit.rafraichir(); toitParCotes.rafraichir(); }, // ACAL410 · ACAL422
+    selectArea: (id: string) => selectArea(id), // ACAL554
+    accesVivant: () => shadingUi.solarAccess()?.average ?? null, // ACAL728
   });
   // ACAL422 — « Créer le toit » : longueur × largeur × orientation saisies, contour fermé par `close`.
   const toitParCotes = monterToitParCotes({
@@ -1343,6 +1355,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // disposition personnalisée (re-snap sur la nouvelle lattice) après une édition d'obstacle
   // ou d'axe pendant que l'éditeur est ouvert. Les autres méthodes pilotent le câblage interne.
   barreSelection = creerBarreSelection({ hote: () => map.getContainer?.() ?? null, editeur: layoutEditor, setStatus: (m) => setStatus(m), photographier: () => ctx.pushWorkshopHistory?.() }); // ACAL411 + ACAL418
+  monterChampsCoupures(ctx, { recalc: () => recalc() }); monterChampPortee(ctx, { recalc: () => recalc() }); // ACAL576, ACAL579 — rubrique « Avancé » de #rp9-layout-panel
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
   const occupiedCenters = layoutEditor.occupiedCenters;
   const reenterCustomLayout = layoutEditor.reenterCustomLayout;
@@ -1373,7 +1386,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // CAL69 — redessine le calque des zones d'exclusion (même cadence que les obstacles).
   const redrawExclusionZones = obstaclesUi.redrawExclusionZones;
   const clearPreview = obstaclesUi.clearPreview;
-  const syncObsEdit = obstaclesUi.syncObsEdit;
+  const objetsSite = monterObjetsSite(ctx, { selectArea: (id) => selectArea(id), selectObstacle: (id) => obstaclesUi.selectObstacle(id) }); // ACAL533
+  const syncObsEdit = () => { obstaclesUi.syncObsEdit(); objetsSite.redessiner(); }; // le tableau suit chaque pose
   const selectObstacle = obstaclesUi.selectObstacle;
   const obstacleAtPoint = obstaclesUi.obstacleAtPoint;
   const setObstacleMode = obstaclesUi.setObstacleMode;
@@ -1402,15 +1416,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const mesureNoteEl = $('rp9-mesure-note');
   const mesureListEl = $('rp9-mesure-list');
   const mesureUi = createMesureUi(ctx, { render: () => renderMeasurements() });
+  const reperesUi = createReperesUi(ctx, map as never, { setStatus: (m) => setStatus(m) }); // ACAL593 — panneau sous #rp9-mesure-list
   function mesureEmptyGeoJSON() {
     return { type: 'FeatureCollection', features: [] } as const;
-  }
-  /** Un point milieu (session ou mesure posée), pour l'étiquette de valeur. */
-  function midOf(points: LngLat[]): LngLat {
-    let lng = 0;
-    let lat = 0;
-    for (const p of points) { lng += p[0]; lat += p[1]; }
-    return [lng / points.length, lat / points.length];
   }
   function renderMeasurements() {
     const src = map.getSource?.('rp9-mesure') as maplibregl.GeoJSONSource | undefined;
@@ -1899,7 +1907,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // CAL93 — l'horizon passe par l'API de `shadingUi` (matrice/facteur/note cohérents).
       shadingUi.setHorizonProfile((ctx.horizonProfile ?? null) as unknown as import('../lib/horizonEngine').HorizonProfile | null);
       redrawExclusionZones();
-      renderParcelle(); // ACAL233
+      renderParcelle(); reperesUi.render(); // ACAL233, ACAL593
       // CALX119 — contrôles du soleil de scène alignés sur l'instant relu.
       if (sunHourEl) sunHourEl.value = String(Math.round(ctx.sunHour));
       if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(ctx.sunHour)} h`;
@@ -2421,6 +2429,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     autoInferFacing();
     syncFacingChips();
     recalc();
+    const infoRetraits = poserRetraitsSurPanActif(ctx); // ACAL562 — retraits de la société sur les arêtes typées
+    if (infoRetraits) setStatus(infoRetraits);
   }
 
   function go3DView() {
@@ -2545,7 +2555,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function capturerGeometrieActive() {
     const a = activeArea();
     if (!a || !closed || vertices.length < 3) return;
-    const geo = geometrieZoneActive(ctx);
+    const geo = geometrieZoneActive(ctx, activeSolarAccessMeta() ?? undefined); // ACAL728 — la géométrie capturée garde l'accès solaire
     if (geo) a.geometrieEnregistree = geo;
   }
 
@@ -2707,6 +2717,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function deleteArea(id: string) {
     const idx = areas.findIndex((a) => a.id === id);
     if (idx < 0) return;
+    const verrou = motifPanVerrouille(areas[idx], idx); // ACAL520
+    if (verrou) { setStatus(verrou); return; }
     const wasActive = id === activeAreaId;
     areas.splice(idx, 1);
     if (areas.length === 0) {
@@ -2940,6 +2952,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       mesureUi.addPoint(lngLat);
       return;
     }
+    if (reperesUi.handleMapClick(lngLat)) return; // ACAL593 — « Poser sur le plan » armé : le tap pose le repère
     // ACAL233 — session de parcelle active : le tap pose un sommet (refusé s'il croise).
     if (parcelleUi.isActive()) {
       parcelleUi.addPoint(lngLat);
@@ -3124,37 +3137,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    * courante) : l'utilisateur voit « vous avez choisi X mais Y est recommandé ».
    */
   function updateRecoBadges() {
-    const show = (b: Element | null, on: boolean) => {
-      const badge = b?.querySelector<HTMLElement>('.rp9-reco-badge');
-      if (badge) badge.hidden = !on;
-    };
-    const ro = rec?.recommendedOptions;
-    // Famille
-    document.querySelectorAll<HTMLButtonElement>('[data-family]').forEach((b) => {
-      show(b, !!ro && b.dataset.family === ro.family);
-    });
-    // Inclinaison : badge le chip numérique == tilt arrondi, sinon le chip « reco ».
-    const tiltRounded = ro ? Math.round(ro.tiltDeg) : null;
-    const tiltChips = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-tilt]'));
-    const numericMatch = tiltChips.find((b) => b.dataset.tilt !== 'reco' && Number(b.dataset.tilt) === tiltRounded);
-    tiltChips.forEach((b) => {
-      if (!ro) return show(b, false);
-      if (numericMatch) show(b, b === numericMatch);
-      else show(b, b.dataset.tilt === 'reco'); // aucun chip numérique ne colle → badge « Recommandé »
-    });
-    // Portrait / paysage (« Auto » jamais badgé)
-    document.querySelectorAll<HTMLButtonElement>('[data-orient]').forEach((b) => {
-      show(b, !!ro && b.dataset.orient !== 'auto' && b.dataset.orient === ro.panelOrientation);
-    });
-    // Azimut : 'south' si l'azimut recommandé est plein sud, sinon 'aligned'.
-    const azReco = ro ? (ro.azimuthDeg === 180 ? 'south' : 'aligned') : null;
-    document.querySelectorAll<HTMLButtonElement>('[data-azimuth]').forEach((b) => {
-      show(b, b.dataset.azimuth === azReco);
-    });
-    // Marge ('keep' / 'remove')
-    document.querySelectorAll<HTMLButtonElement>('[data-margin]').forEach((b) => {
-      show(b, !!ro && b.dataset.margin === ro.margin);
-    });
+    majBadgesReco(rec?.recommendedOptions); // ACAL562 : corps déplacé dans roofPro11/recoBadges.ts
   }
 
   // W34 — Chaque groupe d'options est un AXE. Un clic VERROUILLE cet axe puis re-résout
@@ -3298,21 +3281,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     return null;
   }
 
-  /** Les modules RÉELLEMENT posés, dans le repère ENU du pavage courant. */
-  function pavagePose(): { cx: number; cy: number; face?: 'E' | 'W' }[] {
-    if (layoutEditor.isFreeMode()) return layoutEditor.freePanels().map((p) => ({ ...p }));
-    const grid = ctx.layoutPlan?.grid;
-    if (!grid) return [];
-    const st = ctx.layoutState;
-    if (st && st.cells.length === grid.panels.length && st.occupied.size) {
-      return [...st.occupied]
-        .filter((i) => i >= 0 && i < st.cells.length)
-        .sort((a, b) => a - b)
-        .map((i) => ({ cx: st.cells[i].cx, cy: st.cells[i].cy, face: st.cells[i].face }));
-    }
-    const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
-    return grid.panels.slice(0, n).map((p) => ({ cx: p.cx, cy: p.cy, face: p.face }));
-  }
+  /** Les modules RÉELLEMENT posés, dans le repère ENU du pavage courant (ACAL584 : extrait vers `alignementRangees.ts`). */
+  const pavagePose = () => pavagePoseDe(ctx, layoutEditor);
 
   // ═══════ CALX403 câblage — les modules posés EN TRAVERS d'une allée, nommés et teintés ═══════
   // `obstaclesUi` sait compter les modules qui chevauchent une allée de circulation, mais
@@ -3326,20 +3296,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   /** Les modules posés AVEC leur cellule de lattice (l'index que `scene3d` connaît). */
   function pavagePoseCellules(): { cellule: number; cx: number; cy: number }[] {
-    if (layoutEditor.isFreeMode()) {
-      return layoutEditor.freePanels().map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy }));
-    }
-    const grid = ctx.layoutPlan?.grid;
-    if (!grid) return [];
-    const st = ctx.layoutState;
-    if (st && st.cells.length === grid.panels.length && st.occupied.size) {
-      return [...st.occupied]
-        .filter((i) => i >= 0 && i < st.cells.length)
-        .sort((a, b) => a - b)
-        .map((i) => ({ cellule: i, cx: st.cells[i].cx, cy: st.cells[i].cy }));
-    }
-    const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
-    return grid.panels.slice(0, n).map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy }));
+    return pavageCellulesDe(ctx, layoutEditor).map(({ cellule, cx, cy }) => ({ cellule, cx, cy })); // une seule copie : alignementRangees.ts
   }
 
   /** Le repère AFFICHÉ d'un module posé : celui du document quand il en porte un (CALX111),
@@ -3464,16 +3421,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
 
   /** Reflète l'état du sélecteur : choix courant, et « ensoleillement » grisé + motivé. */
-  function syncPrioriteRemplissage() {
+  function syncPrioriteRemplissage() { // ACAL576 — corps sorti dans roofPro11/prioriteRemplissage.ts
     const select = prioriteSelectEl();
-    if (!select) return;
-    select.value = prioriteRemplissage;
-    const motif = motifEnsoleillement();
-    for (const option of Array.from(select.options)) {
-      if (option.value !== 'ensoleillement') continue;
-      option.disabled = Boolean(motif);
-      option.title = motif ?? '';
-    }
+    refleterPrioriteRemplissage(select, prioriteRemplissage, select ? motifEnsoleillement() : null);
   }
 
   function ensurePrioriteRemplissage() {
@@ -3506,6 +3456,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     syncPrioriteRemplissage();
   }
   ensurePrioriteRemplissage();
+  monterAlignementRangees({ // ACAL584 — « Alignement des rangées » sous la priorité de pose
+    ctx, pose: pavagePose, retraitM: () => setbacks.lateralM, ancre: () => document.querySelector<HTMLElement>('.rp9-priorite'),
+    poser: (p) => layoutEditor.hydrateLayout(p, undefined, 'free'), photo: () => ctx.pushWorkshopHistory?.(),
+  });
 
   // PV63/CAL76 — QUATRE CHAMPS de retrait de rive (latéral / extrémité / acrotère / joint),
   // créés à côté du groupe « marge » si la page ne les fournit pas. Règle de saisie :
@@ -4272,6 +4226,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       if (!ctx.selectedObsId) return;
       $<HTMLButtonElement>('rp9-obs-duplicate')?.click();
     },
+    copier: () => { layoutEditor.copierSelection(); }, // ACAL553
+    coller: () => { layoutEditor.collerSelection(); },
     pleinEcran: basculerPleinEcran,
   });
 
@@ -4353,6 +4309,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),
+    exporterSceneGltf: () => scene3d.exporterSceneGltf(), // ACAL537
     appliquerVue: (nom) => appliquerVue(map, nom, facingAzimuthDeg, !!opts.reducedMotion), // ACAL435
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
     // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les

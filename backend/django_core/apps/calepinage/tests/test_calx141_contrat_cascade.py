@@ -54,12 +54,13 @@ class EnveloppeTest(unittest.TestCase):
         for etat in ('exemple', 'exemple_vide'):
             bloc = CASCADE[etat]['cascade']
             # ACAL8 (contrat v2) : + etapes_omises,
-            # irradiation_incidente_kwh_m2.
+            # irradiation_incidente_kwh_m2. ACAL695 : + postes_lisibles.
+            # ACAL699 : + a_renseigner.
             self.assertEqual(
                 sorted(bloc),
-                ['etapes', 'etapes_omises', 'hash_entree',
-                 'irradiation_incidente_kwh_m2', 'ordre',
-                 'postes_non_sources', 'total_pct'],
+                ['a_renseigner', 'etapes', 'etapes_omises', 'hash_entree',
+                 'irradiation_incidente_kwh_m2', 'ordre', 'plages',
+                 'postes_lisibles', 'postes_non_sources', 'total_pct'],
                 f'{etat} : les clés du bloc « cascade » ont bougé.')
 
     def test_vide_ne_publie_jamais_un_zero(self):
@@ -193,6 +194,83 @@ class PasDeDeriveTest(unittest.TestCase):
                     document[etat]['pertes'], list,
                     f"{nom} ({etat}) : « pertes » doit rester une LISTE "
                     'plate — quatre lecteurs l’itèrent déjà (D-CALX 11).')
+
+
+class OmbrageChainesTest(unittest.TestCase):
+    """ACAL711/713 — la variante `exemple_ombrage_chaines` (deux pans)."""
+
+    def test_les_chaines_des_deux_pans_et_leurs_bornes(self):
+        etape = CASCADE['exemple_ombrage_chaines']['cascade']['etapes'][0]
+        self.assertEqual(set(etape), CLES_ETAPE)
+        self.assertEqual(etape['etape'], 'mismatch_ombrage')
+        entree = etape['entree']
+        self.assertEqual(entree['pans'], ['P1', 'P2'])
+        self.assertIsNone(entree['bornes'])
+        self.assertTrue(entree['bornes_motif'])
+        for chaine in entree['chaines']:
+            for cle in ('bornes', 'ecart_bornes_pct', 'modules_ombres',
+                        'module_le_plus_ombre'):
+                self.assertIn(cle, chaine)
+        self.assertEqual(sorted(entree['hypothese_orientation']),
+                         ['orientation', 'texte'])
+
+
+class PlagesTest(unittest.TestCase):
+    """ACAL702 — la pastille se calcule à partir de bandes écrites ICI
+    (nombres INVENTÉS pour le test, jamais le fichier réel)."""
+
+    BANDES = {'bandes': [
+        {'etape': 'thermique', 'min': 5.0, 'max': 9.0, 'unite': '%',
+         'url': 'https://exemple.invalid/thermique',
+         'date_lecture': '2026-11-21'},
+        {'etape': 'ohmique_dc', 'min': 0.2, 'max': 0.5, 'unite': '%',
+         'url': 'https://exemple.invalid/dc', 'date_lecture': '2026-11-21'},
+        {'etape': 'bifacial', 'min': 0.0, 'max': 1.0, 'unite': '%',
+         'url': 'https://exemple.invalid/bif', 'date_lecture': '2026-11-21'},
+    ], 'total': {'min': 1.0, 'max': 5.0, 'unite': '%',
+                 'url': 'https://exemple.invalid/total',
+                 'date_lecture': '2026-11-21'}}
+
+    def _attendu(self, valeur, bas, haut):
+        return 'dans_la_plage' if bas <= valeur <= haut else 'inhabituel'
+
+    def test_dans_la_plage_au_dessus_et_sans_bande(self):
+        from apps.calepinage.services.plages_usuelles import evaluer
+
+        cascade = CASCADE['exemple']['cascade']
+        plages = evaluer(cascade, self.BANDES)
+        par_nom = {e['etape']: e for e in cascade['etapes']}
+        # thermique 8,0 dans [5 ; 9] ; ohmique_dc 0,8 au-dessus de 0,5.
+        self.assertEqual(plages['etapes']['thermique']['statut'],
+                         self._attendu(par_nom['thermique']['perte_pct'],
+                                       5.0, 9.0))
+        self.assertEqual(plages['etapes']['thermique']['statut'],
+                         'dans_la_plage')
+        self.assertEqual(plages['etapes']['ohmique_dc']['statut'],
+                         'inhabituel')
+        # un gain, une étape omise ou sans bande : ABSENTS.
+        for absente in ('bifacial', 'spectral', 'indisponibilite',
+                        'irradiation_plan'):
+            self.assertNotIn(absente, plages['etapes'])
+        self.assertEqual(plages['total']['statut'], 'inhabituel')
+        self.assertEqual(plages['etapes']['thermique']['url'],
+                         'https://exemple.invalid/thermique')
+
+    def test_fichier_vide_aucune_pastille(self):
+        from apps.calepinage.services.plages_usuelles import evaluer
+
+        plages = evaluer(CASCADE['exemple']['cascade'], {})
+        self.assertEqual(plages['etapes'], {})
+        self.assertIsNone(plages['total'])
+        self.assertEqual(plages['motif_absence'], 'aucune bande sourcée')
+
+    def test_echantillons_portent_les_plages(self):
+        for etat in ('exemple', 'exemple_vide'):
+            bloc = CASCADE[etat]['cascade']['plages']
+            self.assertEqual(sorted(bloc),
+                             ['etapes', 'motif_absence', 'total'])
+            self.assertTrue(set(bloc['etapes']) <= set(
+                e['etape'] for e in CASCADE[etat]['cascade']['etapes']))
 
 
 if __name__ == '__main__':
