@@ -113,6 +113,30 @@ describe('PanneauProduction (CAL236)', () => {
     expect(screen.getByTestId('acal443-non-calcule')).toHaveTextContent('Production non calculée')
   })
 
+  it('ACAL453 — le graphique mensuel se trace depuis par_mois ; mois null sans valeur ; bloc absent = motif nommé', async () => {
+    // Clone du contrat, modifié en place : aucun littéral de réponse écrit à la main.
+    const servi = structuredClone(exempleContrat('calepinage', 'calepinage_resultat', 'exemple'))
+    const mars = servi.autoconsommation.par_mois.find((m) => m.mois === 3)
+    mars.consommation_kwh = null
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: servi })
+    const { unmount } = rendre()
+    const graphique = await screen.findByTestId('acal453-graphique')
+    // Valeurs servies telles quelles (mois 1 : 975 kWh produits, 720 consommés).
+    expect(within(graphique).getByText('975 kWh')).toBeInTheDocument()
+    expect(within(graphique).getByText('720 kWh')).toBeInTheDocument()
+    // Mois 3 : consommation null ⇒ « non calculée », jamais 0 kWh.
+    expect(within(graphique).getByText('non calculée')).toBeInTheDocument()
+    expect(within(within(graphique).getByText('non calculée').closest('tr')).getByText('Mar')).toBeInTheDocument()
+    // Le tableau P50 reste à côté, inchangé.
+    expect(screen.getByTestId('cal236-mensuel')).toBeInTheDocument()
+    unmount()
+
+    servi.autoconsommation.par_mois = null
+    servi.autoconsommation.motif_absence = 'Aucune courbe de charge saisie.'
+    rendre()
+    expect(await screen.findByTestId('acal453-vide')).toHaveTextContent('Aucune courbe de charge saisie.')
+  })
+
   it('un pan sans module affiche un vrai 0 modules, distinct de « non calculée »', async () => {
     servir('exemple_vide')
     rendre()

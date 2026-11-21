@@ -16,6 +16,7 @@ import {
 } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
+import GraphiqueMensuel from './GraphiqueMensuel'
 import ResultatHeros from './ResultatHeros'
 import {
   kwh, kwhParKwc, nonCalculee, nonPublie, pourcentagePerf,
@@ -362,6 +363,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       <BlocBase base={production?.base} />
       <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
         motif={data?.motif} avertissements={data?.avertissements} />
+      {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} />}
       <ReglagesUtilises simulation={data?.simulation} />
       {/* ENF15 — `meteo` / `incertitude` servis par `GET resultat/` (CALX143/144). */}
       {data?.simule && <SourceMeteo meteo={data?.meteo} />}
