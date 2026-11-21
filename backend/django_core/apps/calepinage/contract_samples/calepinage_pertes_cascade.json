@@ -223,5 +223,116 @@
         "motif_absence": "aucune bande sourcée"
       }
     }
+  },
+  "exemple_ombrage_chaines": {
+    "pourquoi": "ACAL711/713 — l'étape « mismatch_ombrage » d'une cascade de DEUX pans : entree.chaines porte les chaînes des deux pans (bornes, écart, modules ombrés), entree.bornes est null avec son motif.",
+    "cascade": {
+      "etapes": [
+        {
+          "libelle": "Dispersion d'ombrage (I-V par chaîne)",
+          "gain": false,
+          "source": "societe",
+          "entree": {
+            "modele": "derivation",
+            "seuil_acces_derivation": {
+              "valeur": 0.6,
+              "source": "societe",
+              "reference": "Réglage société d'essai",
+              "cle": "seuil_derivation_acces"
+            },
+            "granularite": "module",
+            "brins_proteges": null,
+            "hypothese": "Le nombre de brins protégés par une diode de dérivation ne figure sur aucune fiche : la contrainte est appliquée au MODULE ENTIER, hypothèse la plus pessimiste pour la borne haute. La fourchette encadre la vérité, elle ne prétend pas la trancher.",
+            "bornes": null,
+            "ecart_bornes_pct": null,
+            "facteur_applique": 0.8,
+            "perte_lineaire_deja_appliquee": true,
+            "pan": "P1",
+            "chaines_mesurees": 2,
+            "modules_mesures": 7,
+            "modules_sans_acces": [],
+            "chaines": [
+              {
+                "chaine": 1,
+                "pan": "P1",
+                "mppt": 1,
+                "modules_mesures": 3,
+                "acces_min": 0.5,
+                "modules_derives": [
+                  "P1#3"
+                ],
+                "sans_contrainte": false,
+                "excedent_basse_pct": 20.0,
+                "excedent_haute_pct": 40.0,
+                "bornes": {
+                  "basse": {
+                    "modele": "derivation",
+                    "excedent_pct": 20.0,
+                    "perte_chaine_pct": 33.333
+                  },
+                  "haute": {
+                    "modele": "courant_serie",
+                    "excedent_pct": 40.0,
+                    "perte_chaine_pct": 50.0
+                  }
+                },
+                "ecart_bornes_pct": 20.0,
+                "modules_ombres": [
+                  {
+                    "module": "P1#3",
+                    "acces": 0.5
+                  }
+                ],
+                "module_le_plus_ombre": {
+                  "module": "P1#3",
+                  "acces": 0.5
+                }
+              },
+              {
+                "chaine": 1,
+                "pan": "P2",
+                "mppt": 1,
+                "modules_mesures": 4,
+                "acces_min": 1.0,
+                "modules_derives": [],
+                "sans_contrainte": false,
+                "excedent_basse_pct": 0.0,
+                "excedent_haute_pct": 0.0,
+                "bornes": {
+                  "basse": {
+                    "modele": "derivation",
+                    "excedent_pct": 0.0,
+                    "perte_chaine_pct": 0.0
+                  },
+                  "haute": {
+                    "modele": "courant_serie",
+                    "excedent_pct": 0.0,
+                    "perte_chaine_pct": 0.0
+                  }
+                },
+                "ecart_bornes_pct": 0.0,
+                "modules_ombres": [],
+                "module_le_plus_ombre": null
+              }
+            ],
+            "chaines_sans_contrainte": [],
+            "avertissements": [],
+            "pans": [
+              "P1",
+              "P2"
+            ],
+            "bornes_motif": "bornes agrégées non publiées : plusieurs pans"
+          },
+          "reference": "PV*SOL — Shading due to nearby objects : « selon le nombre de brins ombrés, la caractéristique du module s'effondre » — https://help.valentin-software.com/pvsol/en/calculation/pv-modules/shading-due-to-nearby-objects/. HelioScope — Modeling 101 : la variabilité du champ est modélisée par « IV curve mismatch » — https://help-center.helioscope.com/hc/en-us/articles/13804165205395-Modeling-101. Lecture du dépôt : services/ombrage_chaines.py (accès solaire par chaîne) et services/chaines.py (affectation module → chaîne).",
+          "motif_omission": "",
+          "rang": 16,
+          "etape": "mismatch_ombrage",
+          "kwh_avant": 11.2,
+          "kwh_apres": 10.16,
+          "perte_kwh": 1.04,
+          "perte_pct": 9.286
+        }
+      ]
+    }
   }
 }

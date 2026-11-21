@@ -50,3 +50,7 @@ export function svgCourbeDirectPerdu(serie: readonly (number | null)[], titre: s
     + traits.map((t) => `<polyline points="${t}" fill="none" stroke="currentColor" stroke-width="2" />`).join('')
     + '</svg>';
 }
+
+/** Mois (0..11) d'un jour de l'année (1..365). */
+export const moisDuJour = (jour: number): number =>
+  Math.max(0, [31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365].findIndex((fin) => jour <= fin));
