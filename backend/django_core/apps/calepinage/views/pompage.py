@@ -559,8 +559,16 @@ def _enregistrer_dernier(calepinage, request, reponse):
     except VerrouilleRefuse as refus:
         messages = [str(m) for liste in refus.detail.values() for m in liste]
         return False, ' '.join(messages)
-    bloc = {cle: valeur for cle, valeur in reponse.items()
-            if cle not in ('calepinage', 'erreurs')}
+    import json
+
+    from rest_framework.utils.encoders import JSONEncoder
+
+    # Le bloc rangé est EXACTEMENT ce que la réponse sert : l'encodeur de DRF
+    # (celui du rendu JSON) convertit les ``Decimal`` du catalogue comme à
+    # l'écran — la colonne JSON ne sait pas les enregistrer telles quelles.
+    bloc = json.loads(json.dumps(
+        {cle: valeur for cle, valeur in reponse.items()
+         if cle not in ('calepinage', 'erreurs')}, cls=JSONEncoder))
     bloc['enregistre_le'] = timezone.now().isoformat()
 
     def _poser(resultat):

@@ -43,14 +43,16 @@ La société et l'auteur viennent TOUJOURS du serveur. Aucun statut ne bouge.
 """
 from __future__ import annotations
 
+from .valeurs import nombre as _nombre
+
 #: Le motif publié quand le calepinage n'a AUCUN lead : il n'y a pas de
 #: visite technique à chercher. Recopié tel quel par l'onglet (CALX365).
 MOTIF_SANS_LEAD = (
     "Ce calepinage n'est rattaché à aucun lead : il n'y a pas de visite "
     "technique à reprendre.")
 
-__all__ = ['MOTIF_SANS_LEAD', 'RepriseRefusee', 'ecarts_visite_dessin',
-           'etat_reprise', 'reprendre_visite']
+__all__ = ['MOTIF_SANS_LEAD', 'RepriseRefusee', 'etat_reprise',
+           'reprendre_visite']
 
 
 class RepriseRefusee(ValueError):
@@ -136,13 +138,6 @@ MOTIF_NON_RELEVE = 'non relevé'
 MOTIF_PANS_A_RAPPROCHER = 'pans à rapprocher à la main'
 
 
-def _nombre(valeur):
-    """``float`` d'un nombre saisi ; ``None`` sinon (jamais un 0)."""
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return float(valeur)
-
-
 def _cotes_orientees(sommets):
     """``(grande, petite)`` en mètres : l'emprise ORIENTÉE sur l'arête la
     plus longue du contour (projection locale UNIQUE de ``services.zones``).
@@ -182,7 +177,7 @@ def _ligne(pan, mesure, visite, dessin, source=None, *, ecart=True):
     return ligne
 
 
-def ecarts_visite_dessin(calepinage, lecture):
+def _ecarts_visite_dessin(calepinage, lecture):
     """ACAL526 — la visite VALIDÉE confrontée au toit DESSINÉ, côte à côte.
 
     ``[{pan, mesure, visite, dessin, ecart, source_dessin}]`` pour la pente,
@@ -303,7 +298,7 @@ def etat_reprise(calepinage):
     releve = _releve_repris(calepinage, lecture.get('visite_id'))
     return _composer_reponse(lecture, _bloc(releve),
                              _ecart(releve, lecture),
-                             ecarts_visite_dessin(calepinage, lecture))
+                             _ecarts_visite_dessin(calepinage, lecture))
 
 
 def _entiers_uniques(photos):
@@ -443,12 +438,12 @@ def reprendre_visite(calepinage, user=None, *, remplacer=False):
         if existant is not None and not remplacer:
             return _composer_reponse(
                 lecture, _bloc(existant), _ecart(existant, lecture),
-                ecarts_visite_dessin(calepinage, lecture)), False
+                _ecarts_visite_dessin(calepinage, lecture)), False
         if existant is not None:
             _mettre_a_jour(calepinage, existant, lecture, user)
             return _composer_reponse(
                 lecture, _bloc(existant), None,
-                ecarts_visite_dessin(calepinage, lecture)), False
+                _ecarts_visite_dessin(calepinage, lecture)), False
 
         releve = ReleveTerrain(
             company=calepinage.company,
@@ -472,4 +467,4 @@ def reprendre_visite(calepinage, user=None, *, remplacer=False):
         releve.save()
         _rattacher_photos(calepinage, releve, lecture.get('photos'), user)
     return _composer_reponse(lecture, _bloc(releve), None,
-                             ecarts_visite_dessin(calepinage, lecture)), True
+                             _ecarts_visite_dessin(calepinage, lecture)), True

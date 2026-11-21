@@ -211,6 +211,23 @@
         ],
         "apercu": true,
         "autres_formats": []
+      },
+      {
+        "code": "pertes_en_postes",
+        "libelle": "Pertes expliquées en 5 postes (une page)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/1/pertes-en-postes.pdf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null,
+        "manque": [],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr"
+        ],
+        "apercu": true,
+        "autres_formats": []
       }
     ],
     "images": [
@@ -434,6 +451,30 @@
         "libelle": "Présentation compacte (synthèse une page)",
         "format": "pdf",
         "endpoint": "/api/django/calepinage/calepinages/2/presentation-compacte.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
+            "onglet": null
+          }
+        ],
+        "versions": [],
+        "methode": "GET",
+        "langues": [
+          "fr"
+        ],
+        "apercu": true,
+        "autres_formats": []
+      },
+      {
+        "code": "pertes_en_postes",
+        "libelle": "Pertes expliquées en 5 postes (une page)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/pertes-en-postes.pdf/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",

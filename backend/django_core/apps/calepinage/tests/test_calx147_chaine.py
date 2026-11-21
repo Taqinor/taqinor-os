@@ -266,8 +266,15 @@ class ConformiteAuContratTest(unittest.TestCase):
                       for chemin, tache in EN_ATTENTE_SIMULATION.items()
                       if chemin.startswith('cascade.')}
         affirmer_non_servies(self, self.cascade, en_attente)
+        # Clés du contrat posées APRÈS la chaîne par la simulation
+        # (``simulation._annoter_cascade`` : ACAL695, ACAL702, ACAL699) :
+        # ``appliquer_chaine`` ne les produit pas, et ne doit pas les produire.
+        poses_par_la_simulation = {'postes_lisibles', 'plages', 'a_renseigner'}
+        self.assertTrue(poses_par_la_simulation <= set(self.modele))
+        self.assertFalse(poses_par_la_simulation & set(self.cascade))
         self.assertEqual(sorted(self.cascade),
-                         sorted(sans(self.modele, en_attente)))
+                         sorted(set(sans(self.modele, en_attente))
+                                - poses_par_la_simulation))
 
     def test_les_douze_champs_de_chaque_etape(self):
         attendus = set(self.modele['etapes'][0])

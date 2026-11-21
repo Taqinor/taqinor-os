@@ -6,6 +6,7 @@ import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
+import { useModeExpert } from '../atelier/modeExpert'
 import EntreeFichierJson from '../commun/EntreeFichierJson'
 import { refusServeur } from '../commun/refusServeur'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
@@ -503,7 +504,9 @@ const SORTIES_REMETTABLES = new Set([
 function SectionSorties({
   sorties, enCours, enRemise, erreurs, resultatPack, onTelecharger, onRemettre,
 }) {
+  const [expert] = useModeExpert()
   if (!sorties?.length) return null
+  const dxf = sorties.find((s) => s.code === 'dxf' && s.endpoint?.includes('export.dxf/'))
   return (
     <div className="rounded-md border border-border/60 p-3" data-testid="cal-doc-sorties">
       <p className="text-sm font-medium text-foreground">Plans et exports</p>
@@ -561,6 +564,27 @@ function SectionSorties({
             </div>
           )
         })}
+        {/* ACAL536 — niveau expert : le KML pour Google Earth. L'endpoint est
+            celui du DXF servi, `export.dxf/` -> `export.kml/` (même porte
+            d'approbation côté serveur) ; sans entrée DXF, pas de bouton. */}
+        {expert && dxf && (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-foreground">Export pour Google Earth (KML)</p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!dxf.disponible}
+              loading={enCours === 'kml'}
+              onClick={() => onTelecharger({
+                code: 'kml', endpoint: dxf.endpoint.replace('export.dxf/', 'export.kml/'),
+              })}
+              data-testid="cal-doc-bouton-kml"
+            >
+              Exporter pour Google Earth
+            </Button>
+            <ErreursSortie erreurs={erreurs.kml} />
+          </div>
+        )}
       </div>
     </div>
   )

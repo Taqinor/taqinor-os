@@ -258,7 +258,7 @@ class FixationParPanTest(SimpleTestCase):
 
     def test_la_somme_des_rails_des_pans_egale_le_rail_global(self):
         document = self.deux_pans()
-        par_pan = fixation.lignes_par_pan(document, self.composants())
+        par_pan = fixation._lignes_par_pan(document, self.composants())
         self.assertEqual(sorted(par_pan), ['z1', 'z2'])
         globales = self.quantites(fixation._lignes_de_fixation(
             self.composants(), fixation._grandeurs_du_document(document)))
@@ -270,14 +270,14 @@ class FixationParPanTest(SimpleTestCase):
                             self.quantites(par_pan['z2'])['rail'])
 
     def test_la_pince_en_unite_u_est_arrondie_par_pan(self):
-        par_pan = fixation.lignes_par_pan(self.deux_pans(), self.composants())
+        par_pan = fixation._lignes_par_pan(self.deux_pans(), self.composants())
         # 2 rangees de 3 : 4 jonctions x 2 ; 2 rangees de 2 : 2 x 2.
         self.assertEqual(self.quantites(par_pan['z1'])['pince_milieu'], 8)
         self.assertEqual(self.quantites(par_pan['z2'])['pince_milieu'], 4)
 
     def test_un_pas_non_releve_nomme_le_pan_et_ne_met_pas_de_zero(self):
         document = self.deux_pans(neufs_b=[(1.0, 1.0), (1.0, 3.0)])
-        par_pan = fixation.lignes_par_pan(document, self.composants())
+        par_pan = fixation._lignes_par_pan(document, self.composants())
         rail = next(ligne for ligne in par_pan['z2']
                     if ligne['role'] == 'rail')
         self.assertIsNone(rail['quantite'])
@@ -288,11 +288,11 @@ class FixationParPanTest(SimpleTestCase):
     def test_un_pan_existant_n_a_pas_d_encart(self):
         document = self.deux_pans()
         document['zones'][0]['existant'] = True
-        par_pan = fixation.lignes_par_pan(document, self.composants())
+        par_pan = fixation._lignes_par_pan(document, self.composants())
         self.assertEqual(sorted(par_pan), ['z2'])
 
     def test_sans_conception_aucun_pan(self):
-        self.assertEqual(fixation.lignes_par_pan(None, self.composants()), {})
+        self.assertEqual(fixation._lignes_par_pan(None, self.composants()), {})
 
     def test_sans_societe_pas_de_systeme_donc_pas_d_encart(self):
         self.assertIsNone(fixation.fixation_par_pan(

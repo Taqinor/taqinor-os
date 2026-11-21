@@ -420,7 +420,7 @@ def _courante_comme_variante(calepinage):
     if calepinage is None or not getattr(calepinage, 'pk', None):
         return None
     return SimpleNamespace(
-        pk=None, nom='Conception courante', retenue=False, courante=True,
+        pk=None, nom='Conception courante', courante=True,
         roof_layout=getattr(calepinage, 'roof_layout', None),
         resultat=getattr(calepinage, 'resultat', None), calepinage=calepinage)
 
@@ -502,7 +502,7 @@ def _module_de_la_variante(variante):
 def _ligne_comparaison(variante, reference, nombre_de_lignes,
                        reference_p50=None):
     from .services.comparaison import (
-        MOTIF_PERIMEE, verdict_electrique_de_la_variante,
+        MOTIF_NON_SIMULEE, MOTIF_PERIMEE, verdict_electrique_de_la_variante,
     )
 
     mesures = _mesures_variante(variante)
@@ -513,7 +513,9 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes,
         'nom': variante.nom,
         'role': mesures.get('role') or '',
         'statut': mesures.get('statut') or '',
-        'est_retenue': bool(variante.retenue),
+        # La conception courante (ACAL978) n'a pas de champ ``retenue`` : elle
+        # n'est jamais la retenue.
+        'est_retenue': bool(getattr(variante, 'retenue', False)),
         'courante': bool(getattr(variante, 'courante', False)),  # ACAL978
         'simulee': simulee,
         'total_modules': mesures.get('total_modules'),
@@ -546,9 +548,11 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes,
         'version_moteur': mesures.get('version_moteur') or '',
         'entree_hash': mesures.get('entree_hash') or '',
         # ACAL7/ACAL112 — colonnes de fraîcheur (contrat
-        # variantes_comparer.json) : ``None`` = jamais simulée.
+        # variantes_comparer.json) : ``None`` = jamais simulée — un résultat
+        # sans production (seule l'entrée électrique, ACAL978) compris.
         'simulation_perimee': (
-            None if mesures.get('source_mesures') != 'simulation'
+            None if (mesures.get('source_mesures') != 'simulation'
+                     or _motif == MOTIF_NON_SIMULEE)
             else _motif == MOTIF_PERIMEE),
         'source_mesures': ('simulation' if simulee else 'conception'),
         # ACAL172 — le verdict électrique de LA variante (contrat

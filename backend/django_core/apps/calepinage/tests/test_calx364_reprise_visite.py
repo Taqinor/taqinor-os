@@ -113,8 +113,8 @@ class ContratCommitteTest(SimpleTestCase):
         etat = SERVI['exemple_vide']
         self.assertEqual(etat['ecart_dessin'], [])
         self.assertEqual(
-            service.ecarts_visite_dessin(SimpleNamespace(roof_layout={}),
-                                         lecture_de(etat)), [])
+            service._ecarts_visite_dessin(SimpleNamespace(roof_layout={}),
+                                          lecture_de(etat)), [])
 
     def test_le_bloc_releve_construit_depuis_des_objets(self):
         releve, photos = releve_de_l_exemple()
@@ -499,7 +499,7 @@ class EcartDessinTest(SimpleTestCase):
     """ACAL526 — la visite confrontée au toit dessiné (calcul pur)."""
 
     def calcul(self, document, **mesures):
-        return service.ecarts_visite_dessin(
+        return service._ecarts_visite_dessin(
             SimpleNamespace(roof_layout=document), _lecture(**mesures))
 
     def test_pan_a_15_contre_visite_a_22_rend_l_ecart_7(self):
@@ -551,7 +551,7 @@ class EcartDessinTest(SimpleTestCase):
             self.assertEqual(ligne['motif'], 'pans à rapprocher à la main')
 
     def test_sans_visite_validee_ou_sans_pan(self):
-        self.assertEqual(service.ecarts_visite_dessin(
+        self.assertEqual(service._ecarts_visite_dessin(
             SimpleNamespace(roof_layout=_toit()),
             dict(_lecture(pente_deg=22), visite_id=None)), [])
         self.assertEqual(self.calcul({}, pente_deg=22), [])

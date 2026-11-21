@@ -339,12 +339,12 @@ class VariantePourModuleTest(SimpleTestCase):
 
     def test_memes_cotes_valide_telle_quelle_et_kwc_recalcule(self):
         from apps.calepinage.services.variantes_modules import (
-            variante_pour_module)
+            _variante_pour_module)
 
         layout = _layout_sur_a()
         b = dict(_module_a(), id='produit-2', produitId=2, libelle='B 430',
                  pmaxWc=430.0)
-        document, a_repaver = variante_pour_module(layout, b)
+        document, a_repaver = _variante_pour_module(layout, b)
         self.assertFalse(a_repaver)
         self.assertEqual(
             [z['geometry']['moduleId'] for z in document['zones']],
@@ -361,19 +361,19 @@ class VariantePourModuleTest(SimpleTestCase):
 
     def test_cotes_differentes_a_repaver(self):
         from apps.calepinage.services.variantes_modules import (
-            variante_pour_module)
+            _variante_pour_module)
 
         c = dict(_module_a(), id='produit-3', longueurMm=2384.0,
                  largeurMm=1303.0)
-        _document, a_repaver = variante_pour_module(_layout_sur_a(), c)
+        _document, a_repaver = _variante_pour_module(_layout_sur_a(), c)
         self.assertTrue(a_repaver)
 
     def test_un_pan_sans_module_est_a_repaver(self):
         from apps.calepinage.services.variantes_modules import (
-            variante_pour_module)
+            _variante_pour_module)
 
         layout = {'zones': [{'id': 'z1', 'geometry': {'count': 4}}]}
-        document, a_repaver = variante_pour_module(layout, _module_a())
+        document, a_repaver = _variante_pour_module(layout, _module_a())
         self.assertTrue(a_repaver)
         self.assertAlmostEqual(document['zones'][0]['geometry']['kwc'], 1.84)
 
@@ -433,13 +433,33 @@ class VariantesParModuleTest(BaseVariantes):
         self.assertEqual(set(reponse.data),
                          set(CONTRAT_PAR_MODULE['exemple']))
 
-    def test_fiche_incomplete_ou_inconnue_refusee_en_nommant_modules(self):
-        for modules in (['produit-999999'], 'produit-1', []):
+    def test_forme_fausse_400_en_nommant_modules(self):
+        """Hors du schéma publié (1 à 3 chaînes ``produit-<entier>``)."""
+        quatre = ['produit-%s' % n for n in range(1, 5)]
+        for modules in ('produit-1', [], ['module-1'], [1], quatre):
             with self.subTest(modules=modules):
                 reponse = self._poster(modules)
                 self.assertEqual(reponse.status_code, 400, reponse.data)
                 self.assertIn('modules', reponse.data)
         self.assertEqual(CalepinageVariante.objects.count(), 0)
+
+    def test_fiche_inconnue_ou_incomplete_409_en_nommant_modules(self):
+        """Conforme au schéma, refusé par l'état du catalogue (ENF11)."""
+        from apps.stock.models import FicheTechnique
+
+        FicheTechnique.objects.filter(produit=self.c).update(pmax_wc=None)
+        for modules in (['produit-999999'], ['produit-%s' % self.c.pk]):
+            with self.subTest(modules=modules):
+                reponse = self._poster(modules)
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+                self.assertIn('modules', reponse.data)
+        self.assertEqual(CalepinageVariante.objects.count(), 0)
+
+    def test_schema_publie_dit_la_forme_validee(self):
+        from apps.calepinage.views.variantes_modules import RequeteParModule
+
+        champ = RequeteParModule().fields['modules']
+        self.assertEqual((champ.min_length, champ.max_length), (1, 3))
 
     def test_calepinage_archive_refuse_en_409(self):
         from django.utils import timezone

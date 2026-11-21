@@ -61,6 +61,9 @@ ROUTES_SOUS_VERROU = {
     ('POST', 'suggestions-pente'): '_sonde_suggestion',
     ('POST', 'roof-image'): '_sonde_roof_image',
     ('POST', 'variantes'): '_sonde_creer_variante',
+    # ACAL594 — crée des variantes depuis la conception courante : même
+    # verrou que ``POST variantes/`` (``verifier_ecriture_autorisee``).
+    ('POST', 'variantes-par-module'): '_sonde_variantes_par_module',
     ('PATCH', VARIANTE): '_sonde_modifier_variante',
     ('DELETE', VARIANTE): '_sonde_supprimer_variante',
     ('POST', VARIANTE + '/retenir'): '_sonde_retenir',
@@ -250,6 +253,10 @@ class GardeRoutesVerrouTest(BaseApiCalepinage):
 
     def _sonde_creer_variante(self):
         return self._post('variantes/', {'nom': 'C'})
+
+    def _sonde_variantes_par_module(self):
+        # Corps conforme au schéma : le refus observé est bien le verrou.
+        return self._post('variantes-par-module/', {'modules': ['produit-1']})
 
     def _sonde_modifier_variante(self):
         return self.api.patch(f'{self.base}variantes/{self.b.pk}/',

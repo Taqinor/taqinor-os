@@ -502,3 +502,255 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
     expect(lignes[0]).toHaveTextContent('societe')
   })
 })
+
+/* ACAL696 — la carte « Du soleil au réseau » (niveau expert). Le mode expert
+   est mémorisé par ACAL394 : on le pose dans le stockage du navigateur. */
+const CLE_EXPERT = 'calepinage.mode_expert.anonyme'
+
+describe('PanneauProduction — carte Du soleil au réseau (ACAL696)', () => {
+  const servirAvecPostes = (postes, motifAbsence = '') => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    reponse.data.cascade.postes_lisibles = {
+      depart_kwh: 16800, arrivee_kwh: 13400, arrivee_pct: 79.9, total_pct: 20.1,
+      postes, motif_absence: motifAbsence,
+    }
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+    return reponse.data.cascade
+  }
+  const POSTES = [
+    { poste: 'ombres_proches', libelle: 'Ombres proches', perte_kwh: 300, perte_pct: 1.8, statut: 'compte', etapes: [] },
+    { poste: 'poussiere', libelle: 'Poussière', perte_kwh: null, perte_pct: null, statut: 'non_compte', etapes: [{ etape: 'salissure', libelle: 'Salissure', motif_omission: 'Aucune salissure saisie pour cette société.' }] },
+    { poste: 'chaleur', libelle: 'Chaleur', perte_kwh: 900, perte_pct: 5.4, statut: 'compte', etapes: [] },
+    { poste: 'cables_et_onduleur', libelle: 'Câbles et onduleur', perte_kwh: 700, perte_pct: 4.2, statut: 'compte', etapes: [] },
+    { poste: 'autres', libelle: 'Autres pertes', perte_kwh: 500, perte_pct: 3, statut: 'partiel', etapes: [{ etape: 'spectral', libelle: 'Correction spectrale', motif_omission: 'toujours omis' }] },
+  ]
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+
+  it('expert : cinq postes, poste non compté nommé avec son motif, clic déplie les N étapes', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    const cascade = servirAvecPostes(POSTES)
+    rendre()
+    const carte = await screen.findByTestId('acal696-carte')
+    expect(within(carte).getByText('Soleil reçu par les panneaux')).toBeInTheDocument()
+    expect(within(carte).getByText('Électricité produite')).toBeInTheDocument()
+    expect(carte.querySelectorAll('[data-testid^="acal696-poste-"]')).toHaveLength(5)
+    expect(screen.getByTestId('acal696-barre-chaleur')).toHaveStyle({ width: '5.4%' })
+    const poussiere = screen.getByTestId('acal696-poste-poussiere')
+    expect(poussiere).toHaveTextContent('non compté')
+    expect(screen.getByTestId('acal696-motif-poussiere')).toHaveTextContent('Aucune salissure saisie')
+    expect(screen.queryByTestId('acal696-barre-poussiere')).toBeNull() // jamais une barre à zéro
+    expect(screen.getByTestId('acal696-partiel-autres')).toHaveTextContent('+ 1 étape non comptée')
+    expect(screen.queryByTestId('acal696-etapes')).toBeNull()
+    const bouton = screen.getByTestId('acal696-voir-etapes')
+    expect(bouton).toHaveTextContent(`Voir les ${cascade.etapes.length} étapes`)
+    fireEvent.click(bouton)
+    expect(within(screen.getByTestId('acal696-etapes')).getByTestId('acal444-lignes')).toBeInTheDocument()
+  })
+
+  it('guidé : la carte est absente ; postes vides : le motif servi', async () => {
+    servirAvecPostes(POSTES)
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal696-carte')).toBeNull()
+    cleanup()
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirAvecPostes([], 'Aucune cascade de pertes publiée.')
+    rendre()
+    expect(await screen.findByTestId('acal696-absente')).toHaveTextContent('Aucune cascade de pertes publiée.')
+  })
+})
+
+/* ACAL698 — la ligne « n réglages utilisent des valeurs publiées ». */
+describe('PanneauProduction — valeurs publiées (ACAL698)', () => {
+  const PREFIXE = 'Profil de départ — '
+  const servirAvecReglages = (reglages) => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    reponse.data.simulation = {
+      ...reponse.data.simulation, reglages_utilises: reglages,
+    }
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+  }
+  const publie = (valeur) => ({ valeur, source: 'texte', reference: `${PREFIXE}PVsyst` })
+  const saisi = (valeur) => ({ valeur, source: 'societe', reference: 'mesuré sur site' })
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+
+  it('expert : compte et noms des seuls réglages publiés ; « Voir les sources » ouvre Réglages utilisés', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirAvecReglages({
+      salissure_mensuelle_pct: publie(2), lid_par_techno: publie(1.5), mismatch_fabricant_pct: publie(1),
+      mode_meteo: saisi('tmy'), tolerance_validation_pct: saisi(3),
+    })
+    rendre()
+    const texte = await screen.findByTestId('acal698-texte')
+    expect(texte).toHaveTextContent('3 réglages utilisent des valeurs publiées, non mesurées sur ce chantier')
+    expect(texte).toHaveTextContent('salissure_mensuelle_pct, lid_par_techno, mismatch_fabricant_pct') // clé brute : registre absent
+    expect(screen.getByTestId('acal52-reglages-utilises')).not.toHaveAttribute('open')
+    fireEvent.click(screen.getByTestId('acal698-voir-sources'))
+    expect(screen.getByTestId('acal52-reglages-utilises')).toHaveAttribute('open')
+  })
+
+  it('aucun réglage publié (ou mode guidé) : la ligne est absente, jamais « 0 réglage »', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirAvecReglages({ mode_meteo: saisi('tmy') })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal698-ligne')).toBeNull()
+    cleanup()
+    localStorage.removeItem(CLE_EXPERT)
+    servirAvecReglages({ salissure_mensuelle_pct: publie(2) })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal698-ligne')).toBeNull()
+  })
+
+  it('l’exemple du contrat (profil de départ appliqué) annonce son réglage publié', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    reponse.data.simulation = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_profil_publie').simulation
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+    rendre()
+    expect(await screen.findByTestId('acal698-texte')).toHaveTextContent('1 réglage utilise des valeurs publiées')
+  })
+})
+
+/* ACAL700 — l'état « résultat incomplet » de la maquette. */
+describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
+  const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+  const incomplet = () => {
+    const base = exempleContrat('calepinage', 'calepinage_resultat', 'exemple')
+    // postes lisibles : « Ombres proches » compté, pour « Ce qui est déjà sûr ».
+    const postes = JSON.parse(JSON.stringify(borneHaute.cascade.postes_lisibles))
+    postes.postes[0] = { ...postes.postes[0], statut: 'compte', perte_pct: 1.8, perte_kwh: 300 }
+    return {
+      ...base,
+      production: borneHaute.production,
+      simulation: borneHaute.simulation,
+      cascade: { ...borneHaute.cascade, postes_lisibles: postes },
+    }
+  }
+  const rendreAvecParcours = (parcours) => render(
+    <MemoryRouter><PanneauProduction calepinageId={1} parcours={parcours} /></MemoryRouter>,
+  )
+
+  it('incomplet : plafond, n étapes sur N, lignes Renseigner, démarrage rapide, ce qui est sûr', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: incomplet() })
+    rendreAvecParcours({ etapes: [{ cle: 'electrique', etat: 'fait' }], manque: [] })
+    const bloc = await screen.findByTestId('acal700-incomplet')
+    const a = borneHaute.cascade.a_renseigner
+    expect(within(bloc).getByTestId('acal700-etiquette')).toHaveTextContent('Production la première année · au plus')
+    expect(within(bloc).getByTestId('acal700-plafond')).toHaveTextContent(
+      `C'est un plafond : ${a.lignes.length} pertes ne sont pas encore comptées. Le chiffre réel sera plus bas.`)
+    expect(within(bloc).getByTestId('acal700-jauge')).toHaveTextContent(
+      `${a.etapes_comptees} étapes sur ${a.etapes_a_compter}`)
+    const lignes = within(bloc).getAllByTestId('acal700-ligne')
+    expect(lignes).toHaveLength(a.lignes.length)
+    expect(lignes[0]).toHaveTextContent('Aucune valeur pour votre société')
+    const renseigner = within(lignes[0]).getByTestId('acal700-renseigner')
+    expect(renseigner).toHaveAttribute('href', '/calepinage/reglages#salissure_mensuelle_pct')
+    expect(within(bloc).getByTestId('acal700-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages')
+    const sur = within(bloc).getByTestId('acal700-sur')
+    for (const t of ['Panneaux', 'Puissance', 'Raccordement', 'Conforme', 'Ombres proches']) {
+      expect(within(sur).getByText(t)).toBeInTheDocument()
+    }
+    expect(bloc).toHaveTextContent("Les années basses et l'indice de performance s'affichent dès que le résultat est complet")
+    expect(screen.queryByTestId('acal52-borne-haute')).toBeNull() // remplacé
+  })
+
+  it('Raccordement « Conforme » seulement si l’étape électrique est faite', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: incomplet() })
+    rendreAvecParcours({ etapes: [{ cle: 'electrique', etat: 'a_faire' }], manque: [] })
+    const sur = await screen.findByTestId('acal700-sur')
+    expect(within(sur).queryByText('Raccordement')).toBeNull()
+  })
+
+  it('complet : aucun de ces blocs', async () => {
+    servir('exemple')
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal700-incomplet')).toBeNull()
+  })
+})
+
+/* ACAL703 — la phrase sous « Pertes totales » (niveau expert). */
+describe('PanneauProduction — plage habituelle (ACAL703)', () => {
+  const servirAvecTotal = (total) => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    reponse.data.cascade.plages = {
+      etapes: {}, total, motif_absence: total ? '' : 'aucune bande sourcée',
+    }
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+  }
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+
+  it('expert + bande totale servie : « Dans la plage habituelle » / « Hors de la plage habituelle »', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirAvecTotal({ statut: 'dans_la_plage', min: 10, max: 25, unite: '%', url: 'https://exemple.test' })
+    rendre()
+    expect(await screen.findByTestId('acal703-total-plage')).toHaveTextContent('Dans la plage habituelle')
+    cleanup()
+    servirAvecTotal({ statut: 'inhabituel', min: 10, max: 15, unite: '%', url: 'https://exemple.test' })
+    rendre()
+    expect(await screen.findByTestId('acal703-total-plage')).toHaveTextContent('Hors de la plage habituelle')
+  })
+
+  it('sans bande totale servie, ou en guidé : aucune phrase', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirAvecTotal(null)
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal703-total-plage')).toBeNull()
+    cleanup()
+    localStorage.removeItem(CLE_EXPERT)
+    servirAvecTotal({ statut: 'dans_la_plage', min: 10, max: 25, unite: '%', url: 'https://exemple.test' })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal703-total-plage')).toBeNull()
+  })
+})
+
+/* ACAL707 — le tableau mensuel complet (mode expert). */
+describe('PanneauProduction — tableau mensuel complet (ACAL707)', () => {
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+  const servirModifie = (modifier) => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    modifier?.(reponse.data.production)
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+    return reponse.data.production
+  }
+
+  it('expert : douze lignes à cinq colonnes, null = « non calculée » (jamais 0) ; guidé : Mois / P50', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    const production = servirModifie((p) => { p.bilan_mensuel[0].pr = null })
+    rendre()
+    const table = await screen.findByTestId('acal707-mensuel')
+    expect(within(table).getAllByRole('row')).toHaveLength(13)
+    for (const t of ['Mois', 'Irradiation horizontale', 'Irradiation du plan', 'Température', 'Production', 'PR']) {
+      expect(within(table).getByText(t)).toBeInTheDocument()
+    }
+    expect(screen.getByTestId('acal707-horizontale-1')).toHaveTextContent('68,7 kWh/m²')
+    expect(screen.getByTestId('acal707-plan-1')).toHaveTextContent('79,0 kWh/m²')
+    expect(screen.getByTestId('acal707-temperature-1')).toHaveTextContent('non calculée') // null servi
+    expect(screen.getByTestId('acal707-pr-1')).toHaveTextContent('non calculée')
+    expect(screen.getByTestId('acal707-production-1')).toHaveTextContent('880 kWh')
+    expect(production.bilan_mensuel[0].temperature_ambiante_c).toBeNull()
+    expect(screen.queryByTestId('cal236-mensuel')).toBeNull()
+    cleanup()
+    localStorage.removeItem(CLE_EXPERT)
+    servirModifie()
+    rendre()
+    await screen.findByTestId('cal236-mensuel')
+    expect(screen.queryByTestId('acal707-mensuel')).toBeNull()
+  })
+
+  it('un bloc entier absent : sa colonne n’apparaît pas', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirModifie((p) => { delete p.bilan_mensuel; p.gain_inclinaison = null })
+    rendre()
+    const table = await screen.findByTestId('acal707-mensuel')
+    expect(within(table).queryByText('Température')).toBeNull()
+    expect(within(table).queryByText('PR')).toBeNull()
+    expect(within(table).queryByText('Irradiation horizontale')).toBeNull()
+    expect(within(table).getByText('Irradiation du plan')).toBeInTheDocument()
+    expect(within(table).getByText('Production')).toBeInTheDocument()
+  })
+})

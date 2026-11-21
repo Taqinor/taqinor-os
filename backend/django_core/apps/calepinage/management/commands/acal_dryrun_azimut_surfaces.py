@@ -16,17 +16,12 @@ LECTURE SEULE : aucun calepinage, aucun devis n'est réécrit.
 """
 from __future__ import annotations
 
-import math
 from collections import Counter
 
 from django.apps import apps as registre
 from django.core.management.base import BaseCommand, CommandError
 
-
-def _nombre(valeur):
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return float(valeur) if math.isfinite(valeur) else None
+from apps.calepinage.services.valeurs import nombre as _nombre
 
 
 def ecarts_azimut_surfaces(layout):
@@ -40,7 +35,9 @@ def ecarts_azimut_surfaces(layout):
             surfaces if isinstance(surfaces, list) else []):
         if not isinstance(surface, dict):
             continue
-        saisi = _nombre(surface.get('rowAzimuthDeg'))
+        brut = surface.get('rowAzimuthDeg')
+        # Un azimut NUMÉRIQUE seulement : le lecteur recopié ignore un texte.
+        saisi = None if isinstance(brut, str) else _nombre(brut)
         if saisi is None:
             continue
         lignes.append({

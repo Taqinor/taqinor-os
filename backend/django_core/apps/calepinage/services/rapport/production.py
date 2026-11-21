@@ -91,6 +91,7 @@ def _p50_et_mention(total):
 
 CSS_SECTION = (
     '.production-mensuelle td.valeur,.production-par-pan td.valeur,'
+    '.production-pluriannuelle td.valeur,'
     '.production-quantiles td.valeur{text-align:right;}'
     '.production-quantiles .detail,.production-totaux .detail'
     '{display:block;font-size:7.5pt;color:#555;}'
@@ -143,24 +144,43 @@ def _bloc_totaux(total):
         ''.join(lignes)
 
 
-def _table_mensuelle(mensuel, irradiation=None):
+def _par_mois(blocs, cle):
+    """``[{mois, <cle>}]`` -> ``{mois: valeur}``, ou ``None`` si le bloc est
+    absent (la colonne est alors omise)."""
+    if not blocs:
+        return None
+    return {e.get('mois'): e.get(cle) for e in blocs if isinstance(e, dict)}
+
+
+def _table_mensuelle(mensuel, irradiation=None, bilan=None, ghi=None):
     """ACAL452 — ``irradiation`` : ``production.irradiation_mensuelle``
     (liste ``{mois, irradiation_plan_kwh_m2}``) ou ``None`` : sans elle la
-    colonne est omise. Les valeurs sont imprimées telles que servies."""
-    par_mois = None
-    if irradiation:
-        par_mois = {e.get('mois'): e.get('irradiation_plan_kwh_m2')
-                    for e in irradiation if isinstance(e, dict)}
-    lignes = ''.join(
-        '<tr><td>%s</td><td class="valeur">%s</td>%s</tr>'
-        % (escape(_mois_libelle(m.get('mois'))),
-           nombre_tel_que_servi(m.get('p50_kwh')),
-           '' if par_mois is None else '<td class="valeur">%s</td>'
-           % nombre_tel_que_servi(par_mois.get(m.get('mois'))))
-        for m in mensuel)
-    entete = '<th>Mois</th><th>Production P50 (kWh)</th>'
+    colonne est omise. ACAL708 — ``bilan`` (``production.bilan_mensuel`` :
+    ``temperature_ambiante_c``, ``pr``) et ``ghi``
+    (``production.gain_inclinaison.ghi_mensuel`` : ``ghi_kwh_m2``) ajoutent
+    leurs colonnes ; un bloc absent omet sa colonne, une valeur ``null``
+    imprime « — ». Les valeurs sont imprimées telles que servies."""
+    par_mois = _par_mois(irradiation, 'irradiation_plan_kwh_m2')
+    colonnes = [('Production P50 (kWh)', {m.get('mois'): m.get('p50_kwh')
+                                          for m in mensuel})]
     if par_mois is not None:
-        entete += '<th>Irradiation dans le plan (kWh/m²)</th>'
+        colonnes.append(('Irradiation dans le plan (kWh/m²)', par_mois))
+    for titre, blocs, cle in (
+            ('Irradiation horizontale (kWh/m²)', ghi, 'ghi_kwh_m2'),
+            ('Température ambiante (°C)', bilan, 'temperature_ambiante_c'),
+            ('PR', bilan, 'pr')):
+        valeurs = _par_mois(blocs, cle)
+        if valeurs is not None:
+            colonnes.append((titre, valeurs))
+    lignes = ''.join(
+        '<tr><td>%s</td>%s</tr>'
+        % (escape(_mois_libelle(m.get('mois'))),
+           ''.join('<td class="valeur">%s</td>'
+                   % nombre_tel_que_servi(valeurs.get(m.get('mois')))
+                   for _, valeurs in colonnes))
+        for m in mensuel)
+    entete = '<th>Mois</th>' + ''.join(
+        '<th>%s</th>' % escape(titre) for titre, _ in colonnes)
     table = ('<table class="production-mensuelle generique"><tr>%s</tr>%s'
              '</table>' % (entete, lignes))
     if par_mois is None:
@@ -186,6 +206,40 @@ def _table_par_pan(par_pan):
               '<th>Productible spécifique (kWh/kWc)</th>')
     return ('<table class="production-par-pan generique"><tr>%s</tr>%s'
             '</table>' % (entete, lignes))
+
+
+def _table_pluriannuelle(projection, duree):
+    """ACAL694 — « Production année par année » : ``production.projection``
+    et ``production.duree_de_vie`` TELS QUE SERVIS (aucune arithmétique, aucun
+    verdict « garantie tenue »). Un ``motif_omission`` servi remplace la
+    table ; sans table ni motif, rien n'est imprimé."""
+    duree = duree if isinstance(duree, dict) else {}
+    motif = duree.get('motif_omission')
+    titre = '<h3>Production année par année</h3>'
+    if motif:
+        return '%s<p class="note">%s</p>' % (titre, escape(str(motif)))
+    lignes = [p for p in projection or () if isinstance(p, dict)]
+    if not lignes:
+        return ''
+    garantie = duree.get('garantie')
+    garantie = garantie if isinstance(garantie, dict) else {}
+    par_annee = {10: garantie.get('pct_a_10_ans'),
+                 25: garantie.get('pct_a_25_ans')}
+    corps = ''
+    for ligne in lignes:
+        annee = ligne.get('annee')
+        servi = par_annee.get(annee) if annee in par_annee else None
+        corps += ('<tr><td>%s</td><td class="valeur">%s</td>'
+                  '<td class="valeur">%s</td><td class="valeur">%s</td></tr>'
+                  % (nombre_tel_que_servi(annee),
+                     nombre_tel_que_servi(ligne.get('p50_kwh')),
+                     nombre_tel_que_servi(ligne.get('facteur')),
+                     nombre_tel_que_servi(servi)))
+    entete = ('<th>Année</th><th>Production P50 (kWh)</th><th>Facteur</th>'
+              '<th>Garantie du fabricant (%)</th>')
+    return ('%s<table class="production-pluriannuelle generique"><tr>%s</tr>'
+            "%s</table><p class=\"note\">L'année est un rang, pas un "
+            "millésime.</p>" % (titre, entete, corps))
 
 
 def _composante_variabilite(incertitude):
@@ -269,11 +323,18 @@ def html_de_section(contexte):
 
     blocs = [_bloc_totaux(total)]
     if mensuel:
+        gain = production.get('gain_inclinaison')
         blocs.append(_table_mensuelle(
-            mensuel, production.get('irradiation_mensuelle')))
+            mensuel, production.get('irradiation_mensuelle'),
+            production.get('bilan_mensuel'),
+            (gain or {}).get('ghi_mensuel')
+            if isinstance(gain, dict) else None))
     if par_pan:
         blocs.append(_table_par_pan(par_pan))
     blocs.append(_bloc_quantiles(total, incertitude))
     # ACAL104 — l'écart devis / étude, seulement quand il est servi.
     blocs.append(_bloc_ecart_devis(resultat.get('ecart_devis'), total))
+    # ACAL694 — le tableau pluriannuel, en fin de section.
+    blocs.append(_table_pluriannuelle(production.get('projection'),
+                                      production.get('duree_de_vie')))
     return ''.join(blocs)

@@ -127,13 +127,20 @@ function texteReglage(valeur) {
 }
 
 /** Les réglages FIGÉS au calcul (`simulation.reglages_utilises`, D-ACAL-8) :
-    clé, valeur, source — tels que le serveur les a gravés. */
-export function ReglagesUtilises({ simulation }) {
+    clé, valeur, source — tels que le serveur les a gravés. ACAL698 : `ouvert`
+    (facultatif) est piloté par `LigneValeursPubliees` ; absent = comportement
+    d'origine (`<details>` non contrôlé). */
+export function ReglagesUtilises({ simulation, ouvert, onBascule }) {
   const reglages = simulation?.reglages_utilises
   const cles = reglages && typeof reglages === 'object' ? Object.keys(reglages) : []
   if (cles.length === 0) return null
   return (
-    <details className="text-sm" data-testid="acal52-reglages-utilises">
+    <details
+      className="text-sm"
+      data-testid="acal52-reglages-utilises"
+      open={ouvert === undefined ? undefined : ouvert}
+      onToggle={onBascule ? (e) => onBascule(e.currentTarget.open) : undefined}
+    >
       <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
         Réglages utilisés
       </summary>

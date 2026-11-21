@@ -24,7 +24,7 @@ from .variantes import VarianteRefusee, creer_variante
 
 SUFFIXE_A_REPOSER = ' — à re-poser'
 
-__all__ = ['variante_pour_module', 'creer_variantes_par_module']
+__all__ = ['creer_variantes_par_module']
 
 
 def _cotes(entree):
@@ -33,7 +33,7 @@ def _cotes(entree):
     return entree.get('longueurMm'), entree.get('largeurMm')
 
 
-def variante_pour_module(layout, module):
+def _variante_pour_module(layout, module):
     """``(nouveau_layout, a_repaver)`` — ``layout`` copié, jamais modifié.
 
     ``module`` est une entrée ``modules[]`` complète (cotes et puissance).
@@ -99,23 +99,25 @@ def creer_variantes_par_module(calepinage, identifiants, produits, *,
         entree['module']['id']: entree
         for entree in modules_disponibles_du_calepinage(
             calepinage, produits)['modules']}
+    # Un id bien formé mais inconnu, ou une fiche incomplète, tient à l'ÉTAT
+    # du catalogue, pas à la forme du corps : 409 (ENF11), ``modules`` nommé.
     choisis = []
     for identifiant in dict.fromkeys(identifiants):
         entree = servis.get(identifiant)
         if entree is None:
             raise VarianteRefusee(
                 f"« {identifiant} » n'est pas un module du catalogue de la "
-                "société.", champ='modules')
+                "société.", champ='modules', etat=True)
         if not entree['selectionnable']:
             raise VarianteRefusee(
                 f"« {entree['module']['libelle']} » : {entree['motif']}",
-                champ='modules')
+                champ='modules', etat=True)
         choisis.append(entree['module'])
 
     creees = []
     with transaction.atomic():
         for module in choisis:
-            document, a_repaver = variante_pour_module(layout, module)
+            document, a_repaver = _variante_pour_module(layout, module)
             nom = f"Module {module['libelle']}" + (
                 SUFFIXE_A_REPOSER if a_repaver else '')
             variante = creer_variante(

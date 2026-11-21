@@ -364,7 +364,7 @@ CHAMPS_ENTREE_DU_MODELE = ('module_produit', 'onduleur_produit',
                            'protections', 'inclure_prise_terre')
 
 
-def resultat_du_modele(resultat):
+def _resultat_du_modele(resultat):
     """Le ``resultat`` de la copie : ``{'entree_electrique': {matériel}}``,
     ou ``None`` sans aucune clé blanche (comme avant ACAL959)."""
     from .electrique import CLE_ENTREE
@@ -586,7 +586,7 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     copies['layout_hash'] = copies['layout_hash'] or ''
     copies['pertes'] = (copies['pertes']
                         if isinstance(copies['pertes'], list) else [])
-    copies['resultat'] = resultat_du_modele(  # ACAL959
+    copies['resultat'] = _resultat_du_modele(  # ACAL959
         getattr(calepinage, 'resultat', None))
 
     from .creation import _verrou_creation, responsable_par_defaut

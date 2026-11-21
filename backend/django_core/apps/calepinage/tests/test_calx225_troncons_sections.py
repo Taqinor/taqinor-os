@@ -343,7 +343,7 @@ class ResistiviteAChaudTest(SimpleTestCase):
                                places=6)
 
     def test_le_reglage_sourcé_calcule_rho_a_chaud(self):
-        cablage = service.cablage_societe(reglages_cablage(
+        cablage = service._cablage_societe(reglages_cablage(
             temperature_service_cable_c=70, alpha_cuivre_par_c=0.00393))
         self.assertAlmostEqual(cablage['rho'],
                                0.01851 * (1 + 0.00393 * 50), places=9)
@@ -354,7 +354,7 @@ class ResistiviteAChaudTest(SimpleTestCase):
         for saisies in ({'temperature_service_cable_c': 70},
                         {'alpha_cuivre_par_c': 0.00393}, {}):
             with self.subTest(saisies=saisies):
-                cablage = service.cablage_societe(reglages_cablage(**saisies))
+                cablage = service._cablage_societe(reglages_cablage(**saisies))
                 self.assertEqual(cablage['rho'], noyau.RHO_CUIVRE_20C)
                 self.assertIn('résistivité à 20 °C', cablage['mention_rho'])
 
@@ -391,7 +391,7 @@ class FacteurDeRegroupementTest(SimpleTestCase):
         document['electrical']['cheminements'][0]['longueurSaisieM'] = 1.0
         sans = par_id(service._troncons_du_document(
             document, contexte(courants=courants_cascade(60.0))))['ch1']
-        norme = dict(NORME_FR, cablage=service.cablage_societe(
+        norme = dict(NORME_FR, cablage=service._cablage_societe(
             reglages_cablage(facteur_regroupement=0.8)))
         avec = par_id(service._troncons_du_document(
             document, contexte(norme=norme,
@@ -403,5 +403,5 @@ class FacteurDeRegroupementTest(SimpleTestCase):
                          'source notice câble X)')
 
     def test_reglage_vide_facteur_un(self):
-        self.assertNotIn('facteur_iz', service.cablage_societe(
+        self.assertNotIn('facteur_iz', service._cablage_societe(
             reglages_cablage()))

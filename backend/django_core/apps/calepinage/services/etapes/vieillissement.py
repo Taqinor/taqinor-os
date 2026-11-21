@@ -105,7 +105,7 @@ __all__ = ['CLE_HORIZON', 'CLE_MODELE', 'MODELE_LINEAIRE',
            'MODELE_EXPONENTIEL', 'MODELES', 'CHAMP_DEGRADATION',
            'CHAMP_ANNEE1', 'CHAMP_GARANTIE_MOIS', 'SOURCE_REGLAGE',
            'SOURCE_DERIVEE', 'SOURCE_CHAINE', 'REFERENCE',
-           'tableau_pluriannuel', 'garantie_fabricant', 'bloc_duree_de_vie']
+           'tableau_pluriannuel', 'bloc_duree_de_vie']
 
 
 def tableau_pluriannuel(p50_annee1_kwh, contexte, parts=None):
@@ -272,7 +272,7 @@ MOTIF_GARANTIES_DIFFERENTES = ('garanties différentes entre modèles : aucune '
                                "n'est retenue")
 
 
-def garantie_fabricant(contexte):
+def _garantie_fabricant(contexte):
     """La garantie de production LUE sur la fiche (commune à TOUS les
     modèles), ou ``null`` motivé — jamais 0, jamais supposée."""
     fiches = _fiches(contexte)
@@ -307,7 +307,7 @@ def bloc_duree_de_vie(bloc_projection, contexte):
             'source_horizon': bloc.get('source_horizon'),
             'produit_horizon': bloc.get('produit_horizon') or '',
             'motif_omission': bloc.get('motif_omission') or '',
-            'garantie': garantie_fabricant(contexte)}
+            'garantie': _garantie_fabricant(contexte)}
 
 
 # ── les facteurs ───────────────────────────────────────────────────────

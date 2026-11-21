@@ -299,3 +299,46 @@ describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', ()
     expect(lignes[2].niveau).toBeCloseTo(90, 6)
   })
 })
+
+/* ACAL703 — la pastille « inhabituel » sur les lignes de l'onglet Pertes. */
+describe('DiagrammePertes — pastille inhabituel (ACAL703)', () => {
+  const CLE_EXPERT = 'calepinage.mode_expert.anonyme'
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+  const servirAvecPlages = (plages) => {
+    const donnees = exempleContrat('calepinage', 'calepinage_resultat', 'exemple')
+    donnees.cascade.plages = plages
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    return donnees.cascade.etapes
+  }
+  const BANDE = { min: 1, max: 3, unite: '%', url: 'https://exemple.test/source', date_lecture: '2026-11-01' }
+
+  it('expert : pastille texte + infobulle + lien source sur l’étape hors bande ; rien sans entrée', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    const etapes = servirAvecPlages({
+      etapes: { [exempleContrat('calepinage', 'calepinage_resultat', 'exemple').cascade.etapes[0].etape]: { statut: 'inhabituel', ...BANDE } },
+      total: null, motif_absence: '',
+    })
+    rendre()
+    await screen.findByTestId('calx48-cascade-detaillee')
+    const id = etapes[0].etape
+    const pastille = screen.getByTestId(`acal703-pastille-${id}`)
+    expect(pastille).toHaveTextContent('inhabituel')
+    expect(within(pastille).getByText('inhabituel')).toHaveAttribute('title', 'Hors de la plage publiée (1,0–3,0 %)')
+    expect(within(pastille).getByText('Voir la page source')).toHaveAttribute('href', 'https://exemple.test/source')
+    expect(screen.getAllByTestId(/^acal703-pastille-/)).toHaveLength(1)
+  })
+
+  it('guidé ou sans bande servie : aucune pastille', async () => {
+    servirAvecPlages({ etapes: {}, total: null, motif_absence: 'aucune bande sourcée' })
+    rendre()
+    await screen.findByTestId('calx48-cascade-detaillee')
+    expect(screen.queryAllByTestId(/^acal703-pastille-/)).toHaveLength(0)
+  })
+
+  it('« dans_la_plage » ne porte aucune pastille ; la ligne reporte la bande servie', () => {
+    const etapes = [{ rang: 1, etape: 'a', libelle: 'A', kwh_avant: 200, kwh_apres: 190, perte_pct: 5, gain: false, source: 'fiche', motif_omission: '' }]
+    const plage = { statut: 'dans_la_plage', ...BANDE }
+    expect(construireCascadeDetaillee(etapes, null, { etapes: { a: plage } })[1].plage).toEqual(plage)
+    expect(construireCascadeDetaillee(etapes, null, null)[1].plage).toBeNull()
+  })
+})

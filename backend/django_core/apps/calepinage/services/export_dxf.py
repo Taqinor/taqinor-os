@@ -265,8 +265,9 @@ ATTRIBUTS_MODULE = ('CHAINE', 'MPPT', 'ONDULEUR', 'N')
 def _inserer_module(document, espace, module, blocs, attributs):
     """Insère le bloc ``MODULE`` au centre du module, tourné comme lui, avec
     CHAINE / MPPT / ONDULEUR (l'affectation publiée) et N (le numéro dans
-    SA chaîne), sur le calque et dans la couleur de la chaîne (``attributs``). Un module sans emprise (``coins`` absent) n'est pas inséré ;
-    une valeur non publiée reste VIDE, jamais devinée."""
+    SA chaîne), sur le calque et dans la couleur de la chaîne
+    (``attributs``). Un module sans emprise (``coins`` absent) n'est pas
+    inséré ; une valeur non publiée reste VIDE, jamais devinée."""
     coins = module.get('coins')
     if coins is None:
         return
