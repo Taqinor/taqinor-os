@@ -21,8 +21,10 @@ import { py, fermerDjangoApresTout } from './_django.js'
 import { RACINE, aujourdHui } from './_enregistrement.js'
 import { API_DJANGO, assurerSessionPage, lireJson } from '../helpers.js'
 
-const etape = groupe('ACAL', ['ACAL401', 'ACAL402', 'ACAL411', 'ACAL418', 'ACAL421', 'ACAL424', 'ACAL425', 'ACAL431',
-  'ACAL433', 'ACAL459', 'ACAL460', 'ACAL472'])
+// Rejeu ciblé (`--grep`) : `ACAL10_TACHES` (ids séparés par des virgules) restreint ce que l'enregistrement COUVRE aux
+// tâches des étapes rejouées ; chaque id couvert exige toujours son étape PASS (`_enregistrement.js::composer`).
+const etape = groupe('ACAL', process.env.ACAL10_TACHES ? process.env.ACAL10_TACHES.split(',') : ['ACAL401', 'ACAL402',
+  'ACAL411', 'ACAL418', 'ACAL421', 'ACAL424', 'ACAL425', 'ACAL431', 'ACAL433', 'ACAL459', 'ACAL460', 'ACAL472'])
 fermerDjangoApresTout()
 test.describe.configure({ timeout: 900_000 })
 test.use({ viewport: { width: 1440, height: 900 }, actionTimeout: 60_000 })
