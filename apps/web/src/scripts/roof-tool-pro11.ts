@@ -2957,9 +2957,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     // CALX108 câblage — mode « Caler le fond » ouvert : le clic DÉSIGNE l'ancre du point
     // déjà cliqué sur le plan, et n'est jamais un geste de tracé ni une sélection. Sortie
-    // anticipée MÊME quand aucun point de plan n'attend (le module l'a dit dans la zone
-    // d'annonces) : un clic pendant un calage ne doit pas poser un sommet par surprise.
+    // anticipée MÊME quand aucun point de plan n'attend (le module l'a dit dans la zone d'annonces) : un clic pendant un calage ne doit pas poser un sommet par surprise.
     if (calageFondUi.clicCarte(lngLat)) return; // CALX108 câblage
+    if (coucheElectrique.clicCarte(lngLat)) return map.triggerRepaint(); // CALX222 — « Armer la pose » : le clic pose l'organe armé
     if (closed) {
       // sélection/désélection d'un obstacle existant
       selectObstacle(obstacleAtPoint(e.point));
