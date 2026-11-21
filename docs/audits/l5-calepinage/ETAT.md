@@ -115,3 +115,20 @@ complet = 37 réglages société (128 champs).
   maquillé, refusé par le garde-fou de la session ; rien n'en a été retenu.
 - L'imagerie satellite n'a pas été jugée (fond neutre) ; la simulation complète n'a rendu aucun chiffre sur la pile
   (pas de worker Celery) : les résultats chiffrés et les PDF lourds restent à relire sur une pile avec worker.
+
+## Mise à jour du 21/11/2026 (après la remise à zéro du quota)
+- Tour 1 TERMINÉ : 136 constats de 5 relecteurs ; consolidation `T1/consolidation.md` (98 retenus : 7 S1, 42 S2 ;
+  10 classes `T1/classes/K-*.md`) ; rejeu `T1/rejeu.md` (14 confirmés sur 14, six visibles du client par le PDF du
+  devis) ; corrections non couvertes : `backlog/D7-constats-tour1.md` (22 fiches).
+- 13 maquettes publiées (7 nouvelles : Documents / Prêt à envoyer, Démarrage rapide, Toit sombre, Tablette,
+  Téléphone client, Liste, Schéma) ; règle de Reda : les choix de design se tranchent par la preuve, pas par lui.
+- PR #1514 mergée : note de CALX339/356/357 rectifiée (le lecteur PAN/OND existe déjà, sans écran).
+- L'autre poste a mergé le bloc M0 (ACAL382, 383, 386-391 cochées) ; ce worktree est à jour de `origin/main@207c7a70e`
+  (la pile `l5cal` sert donc un code plus récent que sa base : `migrate` + reconstruction du front avant le tour 2).
+- EN COURS à cette écriture : 7 rédacteurs de la VAGUE 2 (lots `lots2/lot-D1…D7.md`, ids ACAL491-990, brief
+  `brief-redacteur-vague2.md`) ; un architecte sur la question de Reda du 21/11 (« in the CRM module i already have a
+  lot of stuff… maybe a hiden module used by both ? search the best and decide ») → `architecture/DECISION-moteur-partage.md`
+  + `backlog/D8-moteur-partage.md`.
+- ENSUITE : assembler les lots, lancer les gardes, une critique finale (modèle de pointe) sur la décision d'architecture
+  et sur le lot, puis insérer dans `PLAN_AUDIT_CALEPINAGE.md` (bail à obtenir) et dans les plans des autres
+  propriétaires ; écrire les tâches du lot D8.
