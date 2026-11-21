@@ -136,9 +136,9 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="cine-card mt-6 p-6" data-testid="cal-terrain">
-        <p className="tech-label rule-brass text-brass-300">Mode terrain — centrale au sol</p>
-        <p className="mt-2 text-xs text-lune-faint">
+      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-terrain">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Mode terrain — centrale au sol</p>
+        <p className="mt-2 text-xs text-muted-foreground">
           Les dimensions sont saisies ; les tables, le compte et le pas
           inter-rangées viennent du moteur. Le mode toiture n’est pas touché.
         </p>
@@ -150,9 +150,9 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             // reste persistée pour le rendu 3D.
             <label
               key={cle}
-              className={`block text-sm text-lune-soft${cle === 'penteTerrainDeg' ? ' opacity-60' : ''}`}
+              className={`block text-sm text-foreground${cle === 'penteTerrainDeg' ? ' opacity-60' : ''}`}
             >
-              <span className="tech-label text-lune-faint">{label}</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
               <input
                 type="number"
                 step="any"
@@ -160,10 +160,10 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
                 data-testid={`cal-terrain-${cle}`}
                 aria-describedby={cle === 'penteTerrainDeg' ? 'cal-terrain-pente-mention' : undefined}
                 onChange={(e) => majChamp(cle, e.target.value)}
-                className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
+                className="mt-1 w-full rounded border border-border bg-transparent px-2 py-1 text-foreground"
               />
               {cle === 'penteTerrainDeg' && (
-                <span id="cal-terrain-pente-mention" className="mt-1 block text-xs text-lune-faint">
+                <span id="cal-terrain-pente-mention" className="mt-1 block text-xs text-muted-foreground">
                   {MENTION_PENTE_NON_PRISE_EN_COMPTE}
                 </span>
               )}
@@ -187,28 +187,28 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
         />
 
         {plan && (
-          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/10 pt-4 sm:grid-cols-4">
+          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-4">
             <div data-testid="cal-terrain-modules">
-              <dd className="fig text-lg text-white">{plan.modules ?? '—'}</dd>
-              <dt className="tech-label text-lune-faint">Modules posés (moteur)</dt>
+              <dd className="fig text-lg text-foreground">{plan.modules ?? '—'}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Modules posés (moteur)</dt>
             </div>
             <div data-testid="cal-terrain-tables">
-              <dd className="fig text-lg text-white">{(plan.tables ?? []).length}</dd>
-              <dt className="tech-label text-lune-faint">Tables posées</dt>
+              <dd className="fig text-lg text-foreground">{(plan.tables ?? []).length}</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tables posées</dt>
             </div>
             <div data-testid="cal-terrain-pas">
-              <dd className="fig text-lg text-white">
+              <dd className="fig text-lg text-foreground">
                 {pas === null ? '—' : `${auDixieme(pas)} m`}
               </dd>
-              <dt className="tech-label text-lune-faint">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {pas === null ? 'Pas non mesurable (moins de 2 rangées)' : 'Pas inter-rangées (mesuré sur le plan)'}
               </dt>
             </div>
             <div data-testid="cal-terrain-taux">
-              <dd className="fig text-lg text-white">
+              <dd className="fig text-lg text-foreground">
                 {taux === null ? '—' : `${Math.round(taux * 1000) / 10} %`}
               </dd>
-              <dt className="tech-label text-lune-faint">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {taux === null
                   ? 'Taux d’occupation non calculable'
                   : 'Taux d’occupation du sol (sortie)'}
@@ -220,16 +220,16 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
         {/* CALX50 — LE CHAMP DESSINÉ : le plan du moteur, mis en page. */}
         {(plan || placeurAbsent) && (
           <section
-            className="mt-5 border-t border-white/10 pt-4"
+            className="mt-5 border-t border-border pt-4"
             data-testid="cal-terrain-vue"
             aria-label="Champ au sol dessiné"
           >
-            <p className="tech-label text-lune-faint">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Champ au sol dessiné — rangées, tables et pas rendus par le moteur
             </p>
 
             {placeurAbsent && (
-              <p className="mt-2 text-sm text-alert-300" data-testid="cal-terrain-vue-indisponible">
+              <p className="mt-2 text-sm text-destructive" data-testid="cal-terrain-vue-indisponible">
                 Le tracé du champ n’a pas pu être chargé : les chiffres du moteur
                 restent affichés ci-dessus, et rien n’est dessiné à leur place.
               </p>
@@ -239,7 +239,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
 
             {champ && champ.nonMesure.length > 0 && (
               <ul
-                className="mt-2 list-disc pl-5 text-xs text-lune-faint"
+                className="mt-2 list-disc pl-5 text-xs text-muted-foreground"
                 data-testid="cal-terrain-nonmesure"
               >
                 {champ.nonMesure.map((m) => (

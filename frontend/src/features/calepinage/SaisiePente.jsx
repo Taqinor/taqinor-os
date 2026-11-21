@@ -44,7 +44,7 @@ function auDixieme(valeur) {
 function Champ({ cle, label, valeur, onChange }) {
   return (
     <label className="block" data-testid={`cal-pente-champ-${cle}`}>
-      <span className="tech-label text-lune-faint">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
       <input
         type="number"
         /* Règle fondateur : aucune borne, aucun pas — jamais de snap. */
@@ -52,7 +52,7 @@ function Champ({ cle, label, valeur, onChange }) {
         id={`cal-pente-${cle}`}
         value={valeur ?? ''}
         onChange={(e) => onChange(cle, e.target.value)}
-        className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
       />
     </label>
   )
@@ -296,15 +296,15 @@ export default function SaisiePente({
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="cine-card mt-6 p-6" data-testid="cal-pente">
-      <p className="tech-label rule-brass text-brass-300">Pente de la toiture</p>
+      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-pente">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Pente de la toiture</p>
 
       {persister && zones.length > 0 && (
-        <label className="mt-3 block text-sm text-lune-soft">
+        <label className="mt-3 block text-sm text-foreground">
           Pan
           <select value={zoneId} data-testid="cal-pente-pan"
             onChange={(e) => setZoneChoisie(e.target.value)}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
             {zones.map((z) => (
               <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>
             ))}
@@ -316,25 +316,25 @@ export default function SaisiePente({
           pan choisi, jamais d'application d'office (D7). */}
       {persister && visite?.penteDeg !== null && visite?.penteDeg !== undefined && (
         <div className="mt-3 flex flex-wrap items-center gap-3" data-testid="cal-pente-visite">
-          <span className="text-sm text-lune-soft" data-testid="cal-pente-visite-mesure">
+          <span className="text-sm text-foreground" data-testid="cal-pente-visite-mesure">
             {`Mesure de la visite : ${visite.penteDeg}°`}
           </span>
           <button type="button" onClick={utiliserPenteVisite}
             data-testid="cal-pente-visite-utiliser"
-            className="rounded border border-brass-400/60 px-3 py-1 text-xs text-brass-200">
+            className="rounded border border-brass-400/60 px-3 py-1 text-xs text-primary-text">
             Utiliser
           </button>
         </div>
       )}
       {persister && visite?.orientation && (
         <div className="mt-2 flex flex-wrap items-center gap-3" data-testid="cal-pente-visite-orientation">
-          <span className="text-sm text-lune-soft" data-testid="cal-pente-visite-orientation-mesure">
+          <span className="text-sm text-foreground" data-testid="cal-pente-visite-orientation-mesure">
             {`Orientation de la visite : ${visite.orientation.libelle}, ${visite.orientation.azimutDeg}° boussole, précision ${String(visite.orientation.precisionDeg).replace('.', ',')}°`}
           </span>
           <button type="button" onClick={() => setOrientationRetenue(true)}
             disabled={orientationRetenue}
             data-testid="cal-pente-visite-orientation-utiliser"
-            className="rounded border border-brass-400/60 px-3 py-1 text-xs text-brass-200 disabled:opacity-50">
+            className="rounded border border-brass-400/60 px-3 py-1 text-xs text-primary-text disabled:opacity-50">
             {orientationRetenue ? 'Orientation retenue (à enregistrer)' : 'Utiliser l’orientation'}
           </button>
         </div>
@@ -351,7 +351,7 @@ export default function SaisiePente({
             data-testid={`cal-pente-mode-${cle}`}
             onClick={() => changerMode(cle)}
             className={`rounded px-3 py-1 text-sm ${mode === cle
-              ? 'bg-brass-500/20 text-brass-200' : 'text-lune-soft'}`}
+              ? 'bg-primary/15 text-primary-text' : 'text-foreground'}`}
           >
             {label}
           </button>
@@ -380,57 +380,57 @@ export default function SaisiePente({
       {/* LA VALEUR RETENUE ET SA PROVENANCE, toujours affichées ensemble. */}
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
         <div data-testid="cal-pente-valeur">
-          <dd className="fig text-lg text-white">
+          <dd className="fig text-lg text-foreground">
             {retenue ? `${auDixieme(retenue.degres)} °` : '—'}
           </dd>
-          <dt className="tech-label text-lune-faint">Pente retenue</dt>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pente retenue</dt>
         </div>
         <div data-testid="cal-pente-source">
-          <dd className="text-sm text-white">
+          <dd className="text-sm text-foreground">
             {retenue ? LIBELLE_SOURCE[retenue.source] : 'aucune pente mesurée'}
           </dd>
-          <dt className="tech-label text-lune-faint">D’où elle vient</dt>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">D’où elle vient</dt>
         </div>
         <div data-testid="cal-pente-equivalent">
-          <dd className="fig text-lg text-white">
+          <dd className="fig text-lg text-foreground">
             {retenue ? `${auDixieme(pourcentageDepuisPente(retenue.degres))} %` : '—'}
           </dd>
-          <dt className="tech-label text-lune-faint">Soit, en pourcentage</dt>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Soit, en pourcentage</dt>
         </div>
       </dl>
 
       {persister && lectureSeule && (
-        <p className="mt-4 text-xs text-lune-faint" data-testid="cal-pente-lecture-seule">
+        <p className="mt-4 text-xs text-muted-foreground" data-testid="cal-pente-lecture-seule">
           {RAISON_LECTURE_SEULE}
         </p>
       )}
       {persister && (
         <button type="button" onClick={enregistrer} disabled={lectureSeule}
           data-testid="cal-pente-enregistrer"
-          className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50">
+          className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text disabled:opacity-50">
           Enregistrer la pente
         </button>
       )}
       {message && (
-        <p className="mt-3 text-sm text-lune-soft" role="status"
+        <p className="mt-3 text-sm text-foreground" role="status"
           data-testid="cal-pente-message">{message}</p>
       )}
 
       {/* CALX29 — suggestion LiDAR IGN, visible SEULEMENT si la lecture
           locale dit `disponible: true` (France). */}
       {ignDisponible && (
-        <div className="mt-6 border-t border-white/10 pt-4" data-testid="cal-pente-lidar">
-          <p className="tech-label text-lune-faint">Pente par pan, depuis l’IGN</p>
+        <div className="mt-6 border-t border-border pt-4" data-testid="cal-pente-lidar">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pente par pan, depuis l’IGN</p>
           <button type="button" onClick={suggererDepuisIGN}
             disabled={chargementSuggestions || lectureSeule}
             data-testid="cal-pente-lidar-suggerer"
-            className="mt-2 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
+            className="mt-2 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
             {chargementSuggestions ? 'Interrogation de l’IGN…' : 'Suggérer depuis l’IGN'}
           </button>
 
           {suggestions.length > 0 && (
             <>
-              <p className="mt-3 text-xs text-lune-soft" data-testid="cal-pente-lidar-mention">
+              <p className="mt-3 text-xs text-foreground" data-testid="cal-pente-lidar-mention">
                 Les obstacles posés sur la toiture ne sont pas dans cette donnée
                 d’élévation : ils restent à saisir à la main.
               </p>
@@ -438,27 +438,27 @@ export default function SaisiePente({
                 {suggestions.map((suggestion) => (
                   <li key={suggestion.zoneId}
                     data-testid={`cal-pente-lidar-suggestion-${suggestion.zoneId}`}
-                    className="rounded border border-white/10 p-3 text-sm text-white">
+                    className="rounded border border-border p-3 text-sm text-foreground">
                     <p>
                       Pan {suggestion.zoneId} — {auDixieme(suggestion.valeurDeg)} °
                     </p>
-                    <p className="text-xs text-lune-soft">
+                    <p className="text-xs text-foreground">
                       Pente du terrain (LiDAR IGN) — n’est jamais recopiée dans la pente du pan.
                     </p>
-                    <p className="text-xs text-lune-faint" data-testid={`cal-pente-lidar-source-${suggestion.zoneId}`}>
+                    <p className="text-xs text-muted-foreground" data-testid={`cal-pente-lidar-source-${suggestion.zoneId}`}>
                       {suggestion.source} · {suggestion.suggestedAt}
                     </p>
                     <div className="mt-2 flex gap-2">
                       <button type="button" onClick={() => accepterSuggestion(suggestion)}
                         disabled={lectureSeule}
                         data-testid={`cal-pente-lidar-accepter-${suggestion.zoneId}`}
-                        className="rounded bg-brass-500/20 px-3 py-1 text-xs font-semibold text-brass-200">
+                        className="rounded bg-brass-500/20 px-3 py-1 text-xs font-semibold text-primary-text">
                         Accepter
                       </button>
                       <button type="button" onClick={() => jeterSuggestion(suggestion)}
                         disabled={lectureSeule}
                         data-testid={`cal-pente-lidar-jeter-${suggestion.zoneId}`}
-                        className="rounded px-3 py-1 text-xs text-lune-soft">
+                        className="rounded px-3 py-1 text-xs text-foreground">
                         Jeter
                       </button>
                     </div>
@@ -468,7 +468,7 @@ export default function SaisiePente({
             </>
           )}
           {messageSuggestions && (
-            <p className="mt-3 text-sm text-lune-soft" role="status"
+            <p className="mt-3 text-sm text-foreground" role="status"
               data-testid="cal-pente-lidar-message">{messageSuggestions}</p>
           )}
         </div>

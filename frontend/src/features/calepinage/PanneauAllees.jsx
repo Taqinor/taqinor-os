@@ -162,15 +162,15 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
 
   const champNombre = (id, etiquette, valeurChamp, onChange, cleErreur, regle) => (
     <label className="block" key={id}>
-      <span className="tech-label text-lune-faint">{etiquette}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{etiquette}</span>
       <input
         type="number" step="any" min="0" id={id} value={valeurChamp}
         disabled={lectureSeule}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
       />
       {regle && (
-        <span className="mt-0.5 block text-xs text-lune-faint"
+        <span className="mt-0.5 block text-xs text-muted-foreground"
           data-testid={`ciq138-regle-${id}`}>{regle}</span>
       )}
       {erreurs[cleErreur] && (
@@ -180,19 +180,19 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
   )
 
   return (
-    <div className="mt-6 border-t border-white/10 pt-4" data-testid="ciq138-contraintes-site">
-      <p className="tech-label rule-brass text-brass-300">Contraintes du site</p>
-      <p className="mt-1 text-xs text-lune-faint">
+    <div className="mt-6 border-t border-border pt-4" data-testid="ciq138-contraintes-site">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Contraintes du site</p>
+      <p className="mt-1 text-xs text-muted-foreground">
         Propres à ce projet (assureur, sécurité incendie) : vides par défaut,
         jamais imposées. Toute valeur exige sa source.
       </p>
 
       <label className="mt-3 block max-w-xs">
-        <span className="tech-label text-lune-faint">Assureur</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assureur</span>
         <select
           id="ciq138-assureur" value={champs.assureur} disabled={lectureSeule}
           onChange={(e) => maj({ assureur: e.target.value })}
-          className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+          className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
         >
           {ASSUREURS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
@@ -200,7 +200,7 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
 
       {champs.assureur === 'fm_global' && !lectureSeule && (
         <button type="button" onClick={chargerPreset} data-testid="ciq138-preset-fm"
-          className="mt-3 rounded border border-white/15 px-3 py-1.5 text-xs font-semibold text-white">
+          className="mt-3 rounded border border-border px-3 py-1.5 text-xs font-semibold text-foreground">
           Charger le préréglage FM Global DS 1-15 (avril 2026)
         </button>
       )}
@@ -219,22 +219,22 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block">
-          <span className="tech-label text-lune-faint">Source — document</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source — document</span>
           <input type="text" id="ciq138-source-document" value={champs.document}
             disabled={lectureSeule} onChange={(e) => maj({ document: e.target.value })}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white" />
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground" />
         </label>
         <label className="block">
-          <span className="tech-label text-lune-faint">Source — date</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source — date</span>
           <input type="text" id="ciq138-source-date" value={champs.date}
             disabled={lectureSeule} onChange={(e) => maj({ date: e.target.value })}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white" />
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground" />
         </label>
         <label className="block">
-          <span className="tech-label text-lune-faint">Source — référence</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source — référence</span>
           <input type="text" id="ciq138-source-reference" value={champs.reference}
             disabled={lectureSeule} onChange={(e) => maj({ reference: e.target.value })}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white" />
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground" />
         </label>
       </div>
       {erreurs.source && (
@@ -250,13 +250,13 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
         <div className="mt-3">
           <button type="button" onClick={enregistrer} disabled={occupe}
             data-testid="ciq138-enregistrer"
-            className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
+            className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
             Enregistrer les contraintes
           </button>
         </div>
       )}
       {message && (
-        <p className="mt-2 text-sm text-lune-soft" role="status">{message}</p>
+        <p className="mt-2 text-sm text-foreground" role="status">{message}</p>
       )}
     </div>
   )
@@ -417,23 +417,23 @@ export default function PanneauAllees({
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-panneau-allees">
-      <p className="tech-label rule-brass text-brass-300">
+    <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-panneau-allees">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">
         Allées et passages de maintenance
       </p>
 
       <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
         <div data-testid="cal-allees-actuelle">
-          <dd className="fig text-lg text-white">
+          <dd className="fig text-lg text-foreground">
             {alleeConnue ? valeur(alleeActuelle, ' m') : '—'}
           </dd>
-          <dt className="tech-label mt-0.5 text-lune-faint">
+          <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">
             Allée technique — réglage société
           </dt>
         </div>
       </dl>
       {!alleeConnue && !chargement && (
-        <p className="mt-2 text-xs text-lune-faint" data-testid="cal-allees-non-reglee">
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-allees-non-reglee">
           Aucune allée technique n’est réglée pour votre société : le moteur
           applique son allée par défaut — comportement d’aujourd’hui, inchangé.
         </p>
@@ -442,10 +442,10 @@ export default function PanneauAllees({
       {!lectureSeule && (
         <>
           {/* ACAL258 — l'allée de CE calepinage : s'écrit dans le DOCUMENT, jamais chez la société. */}
-          <section className="mt-4 border-t border-white/10 pt-4" data-testid="cal-allees-calepinage">
-            <p className="tech-label text-lune-faint">Pour ce calepinage</p>
+          <section className="mt-4 border-t border-border pt-4" data-testid="cal-allees-calepinage">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pour ce calepinage</p>
             <label className="mt-2 block max-w-xs">
-              <span className="tech-label text-lune-faint">Largeur d’allée de ce calepinage (m)</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Largeur d’allée de ce calepinage (m)</span>
               <input
                 type="number"
                 step="any"
@@ -453,32 +453,32 @@ export default function PanneauAllees({
                 id="cal-allees-largeur-calepinage"
                 value={champCalepinage}
                 onChange={(e) => { setChampCalepinage(e.target.value); setSourceCalepinage('saisie') }}
-                className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+                className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
               />
             </label>
             <div className="mt-3 flex flex-wrap gap-3">
               <button type="button" onClick={enregistrerPourCalepinage} disabled={enregistrement}
                 data-testid="cal-allees-enregistrer-calepinage"
-                className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
+                className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
                 Enregistrer pour ce calepinage
               </button>
               <button type="button" onClick={rechercher} disabled={recherche?.enCours}
                 data-testid="cal-allees-rechercher"
-                className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white">
+                className="rounded border border-border px-4 py-2 text-sm font-semibold text-foreground">
                 {recherche?.enCours ? 'Recherche en cours…' : 'Chercher l’allée gratuite'}
               </button>
             </div>
             {messageCalepinage && (
-              <p className="mt-2 text-sm text-lune-soft" role="status"
+              <p className="mt-2 text-sm text-foreground" role="status"
                 data-testid="cal-allees-message-calepinage">{messageCalepinage}</p>
             )}
           </section>
 
           {/* ACAL258 — le DÉFAUT de la société : nommé, et confirmé avant d'écrire. */}
-          <section className="mt-4 border-t border-white/10 pt-4" data-testid="cal-allees-societe">
-            <p className="tech-label text-lune-faint">Défaut de la société</p>
+          <section className="mt-4 border-t border-border pt-4" data-testid="cal-allees-societe">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Défaut de la société</p>
             <label className="mt-2 block max-w-xs" data-testid="cal-allees-champ">
-              <span className="tech-label text-lune-faint">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Largeur d’allée technique par défaut (m)
               </span>
               <input
@@ -488,27 +488,27 @@ export default function PanneauAllees({
                 id="cal-allees-largeur"
                 value={champ}
                 onChange={(e) => setChamp(e.target.value)}
-                className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+                className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
               />
             </label>
 
             <div className="mt-3" data-testid="cal-allees-circulation">
-              <p className="tech-label text-lune-faint">Allées de circulation par pays</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Allées de circulation par pays</p>
               {circulation.map((l, i) => (
                 <div key={i} className="mt-2 flex flex-wrap items-end gap-2" data-testid={`cal-allees-circulation-${i}`}>
                   {[['pays', 'Pays (2 lettres)'], ['largeur_m', 'Largeur (m)'], ['source', 'Source'], ['reference', 'Référence']].map(([cle, libelle]) => (
                     <label key={cle} className="block">
-                      <span className="tech-label text-lune-faint">{libelle}</span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{libelle}</span>
                       <input
                         id={`cal-allees-circulation-${i}-${cle}`}
                         value={l[cle]}
                         onChange={(e) => setCirculation((c) => c.map((x, j) => (j === i ? { ...x, [cle]: e.target.value } : x)))}
-                        className="mt-1 w-32 rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+                        className="mt-1 w-32 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
                       />
                     </label>
                   ))}
                   <button type="button" onClick={() => setCirculation((c) => c.filter((_, j) => j !== i))}
-                    className="rounded border border-white/15 px-3 py-1 text-xs text-white">
+                    className="rounded border border-border px-3 py-1 text-xs text-foreground">
                     Retirer
                   </button>
                 </div>
@@ -516,12 +516,12 @@ export default function PanneauAllees({
               <button type="button"
                 onClick={() => setCirculation((c) => [...c, { pays: '', largeur_m: '', source: '', reference: '' }])}
                 data-testid="cal-allees-circulation-ajouter"
-                className="mt-2 rounded border border-white/15 px-3 py-1.5 text-xs font-semibold text-white">
+                className="mt-2 rounded border border-border px-3 py-1.5 text-xs font-semibold text-foreground">
                 Ajouter un pays
               </button>
             </div>
 
-            <label className="mt-3 flex items-center gap-2 text-sm text-lune-soft">
+            <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
               <input type="checkbox" checked={confirmeSociete} data-testid="cal-allees-confirmer-societe"
                 onChange={(e) => setConfirmeSociete(e.target.checked)} />
               Je confirme : ce défaut s’applique à tous vos calepinages.
@@ -529,7 +529,7 @@ export default function PanneauAllees({
             <div className="mt-3">
               <button type="button" onClick={enregistrer} disabled={enregistrement || !confirmeSociete}
                 data-testid="cal-allees-enregistrer"
-                className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
+                className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
                 Enregistrer le défaut de la société
               </button>
             </div>
@@ -546,11 +546,11 @@ export default function PanneauAllees({
           perd AUCUN module par rapport au relevé actuel — deux comptes
           MESURÉS, jamais une promesse. */}
       {suggestion && (
-        <div className="mt-4 border-t border-white/10 pt-4" data-testid="cal-allees-suggestion">
+        <div className="mt-4 border-t border-border pt-4" data-testid="cal-allees-suggestion">
           <p className="text-sm font-semibold text-emerald-300">
             {suggestion.titre ?? `Allée gratuite jusqu’à ${suggestion.alleeM} m`}
           </p>
-          <p className="mt-1 text-xs text-lune-faint">
+          <p className="mt-1 text-xs text-muted-foreground">
             Élargir l’allée jusqu’à {valeur(suggestion.alleeM, ' m')} ne fait
             perdre aucun module ({valeur(suggestion.gainModules)} module(s) de
             marge{suggestion.gainKwc ? `, ${suggestion.gainKwc} kWc` : ''}
@@ -559,21 +559,21 @@ export default function PanneauAllees({
           {!lectureSeule && (
             <button type="button" onClick={appliquerSuggestion}
               data-testid="cal-allees-appliquer-suggestion"
-              className="mt-2 rounded border border-white/15 px-3 py-1.5 text-xs font-semibold text-white">
+              className="mt-2 rounded border border-border px-3 py-1.5 text-xs font-semibold text-foreground">
               Reprendre {valeur(suggestion.alleeM, ' m')} pour ce calepinage
             </button>
           )}
         </div>
       )}
       {recherche?.resultat && !suggestion && (
-        <p className="mt-3 text-sm text-lune-soft" data-testid="cal-allees-sans-plateau">
+        <p className="mt-3 text-sm text-foreground" data-testid="cal-allees-sans-plateau">
           Le moteur n’a trouvé aucune allée plus large à compte constant pour
           ce relevé : l’allée réglée reste la meilleure connue.
         </p>
       )}
 
       {message && (
-        <p className="mt-3 text-sm text-lune-soft" role="status"
+        <p className="mt-3 text-sm text-foreground" role="status"
           data-testid="cal-allees-message">{message}</p>
       )}
 
