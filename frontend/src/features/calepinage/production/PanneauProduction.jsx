@@ -17,6 +17,7 @@ import {
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import useSuiviJob from './useSuiviJob'
+import { reprendreSimulationAuto } from './simulationAuto'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 
 /* ============================================================================
@@ -153,6 +154,19 @@ export function BoutonCalculer({
       surErreur: (e) => setRefus(refusDepuisErreur(e)),
     })
   }
+
+  // ACAL398 — la simulation partie toute seule à l'enregistrement : on reprend
+  // son job (« Simulation en cours… ») ou on dit le refus nommé du serveur.
+  const reprisAuto = useRef(false)
+  useEffect(() => {
+    if (reprisAuto.current || !calepinageId) return
+    reprisAuto.current = true
+    const auto = reprendreSimulationAuto(calepinageId)
+    if (auto?.jobId) suiviJob.reprendre(auto.jobId)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reprise unique d'une issue externe (table mémoire)
+    else if (auto?.refus) setRefus(auto.refus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calepinageId])
 
   // ACAL167 — « Enregistrer et relancer » : le parent incrémente `declenchement`,
   // le bouton lance alors LA MÊME relance forcée (une seule logique de suivi).

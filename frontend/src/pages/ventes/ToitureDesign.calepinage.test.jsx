@@ -162,6 +162,42 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
   })
 
+  /* ACAL398 — un enregistrement qui crée une version relance la simulation
+     toute seule (UN POST sans `forcer`) ; inchangé → aucun appel ; refus 409
+     → aucun toast (la phrase est reprise par l'onglet Production). */
+  it('ACAL398 — version créée ⇒ UN POST simuler sans forcer ; refus 409 ⇒ aucun toast', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 4 } })
+    calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.simuler.mockRejectedValue(
+      { response: { status: 409, data: { detail: 'Mode météo non choisi.' } } })
+    snapshot.mockReturnValue('data:image/png;base64,aGk=')
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button',
+      { name: /Enregistrer le calepinage/ }))
+
+    await waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledTimes(1))
+    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(String(CTX.calepinage.id))
+    expect(toastInfo).not.toHaveBeenCalled()
+  })
+
+  it('ACAL398 — conception inchangée ⇒ aucun appel simuler', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button',
+      { name: /Enregistrer le calepinage/ }))
+
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
+    expect(calepinageApi.calepinages.simuler).not.toHaveBeenCalled()
+  })
+
   it('refus 400 : le message du SERVEUR s’affiche, jamais un texte fabriqué', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))

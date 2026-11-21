@@ -62,6 +62,7 @@ import AtelierPanneaux from '../../features/calepinage/AtelierPanneaux'
 // rapide du constructeur vs simulation) ; ne modifie AUCUN chiffre de la carte
 // « Recommandation » (`rp9-results` ci-dessous), il se contente de la commenter.
 import BandeauProvenanceProduction from '../../features/calepinage/production/BandeauProvenanceProduction'
+import { lancerSimulationAuto } from '../../features/calepinage/production/simulationAuto' // ACAL398
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { hacherLayout, creerGestionnaireBrouillon, memoriserReprise } from '../../features/calepinage/brouillon'
@@ -815,6 +816,10 @@ function AtelierToiture({
           ? `Conception enregistrée — version ${resultat.version}.`
           : 'Conception enregistrée.'
       )
+      // ACAL398 — nouvelle version du calepinage (pas une variante) : la simulation repart
+      // seule, sans attendre ; son issue est reprise par l'onglet Production.
+      if (!varianteId) lancerSimulationAuto(calepinageId)
+
       marquerSceneEnregistree(layout) // ACAL85
       await rafraichirContexte() // ACAL83
       return resynchroniserDevisLie() // ACAL37
