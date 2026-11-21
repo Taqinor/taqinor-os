@@ -4,19 +4,19 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 
 ## Où vivent les tâches
 
-- 482 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`), plus ACAL487 du groupe du 20/11, sortie de GATED par D-ACAL-38 et rangée dans ce groupe.
+- 481 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`), plus ACAL487 du groupe du 20/11, sortie de GATED par D-ACAL-38 et rangée dans ce groupe.
 - Groupe principal : `docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `## Groupe ACAL — complément du 2026-11-21 (vague 2)` (423 tâches de la vague) : en-tête, ordre de construction (dont la « vague 0 »), gestes du fondateur.
 - Moitiés des autres propriétaires : même titre de groupe dans `PLAN_AUDIT_DEVIS`, `PLAN_AUDIT_MOTEUR`, `PLAN_AUDIT_LEAD`, `PLAN_AUDIT_CHANTIERS`, `PLAN_AUDIT_STOCK`, `PLAN_AUDIT_SAV`, `PLAN_AUDIT_PARAMETRES`, `PLAN_AUDIT_DEPLOY`, `PLAN_AUDIT_SECURITE`, `PLAN_AUDIT_TRANSVERSE` (tâches atomiques à deux propriétaires), `PLAN_AUDIT_GENERATEUR` et `docs/WEB_PLAN.md`.
 - Décisions de Reda du 21/11 : D-ACAL-36 à D-ACAL-46 (D-ACAL-44 à 46 le soir, après la vérification ; `docs/audits/decisions.yml`, `docs/claude-memory/calepinage-decisions-fondateur.md`).
-- Tâches GATED (ne pas auto-construire) : ACAL765 (PLAN_AUDIT_CALEPINAGE) — attend un facteur d'émission du réseau marocain daté et sourcé — recherche documentaire à mener par une session ultérieure, pas une question au fondateur ; ACAL1001 (PLAN_AUDIT_DEVIS) — attend que Reda ait lu la liste des écarts sortie par ACAL1000 sur une copie de ses devis, produite sur un commit qui contient ACAL999, ACAL1195, ACAL1169, ACAL1170, ACAL973, ACAL927, ACAL1033, ACAL1008, ACAL1196, ACAL1171 et ACAL1197 à ACAL1203 (la sortie agricole d'ACAL1203 est collée dans la PR à côté de celle d'ACAL1000) — condition écrite de D-ACAL-36 et D-ACAL-39 ; ACAL921 (PLAN_AUDIT_TRANSVERSE) — attend que Reda ait lu la liste sortie par ACAL1194 (`acal_dryrun_azimut_surfaces --dry-run`) sur une copie de ses calepinages — la lecture de chaque surface de pose déjà enregistrée change.
+- Tâches GATED (ne pas auto-construire) : ACAL765 (PLAN_AUDIT_CALEPINAGE) — attend un facteur d'émission du réseau marocain daté et sourcé — recherche documentaire à mener par une session ultérieure, pas une question au fondateur ; ACAL1001 (PLAN_AUDIT_DEVIS) — attend que Reda ait lu la liste des écarts sortie par ACAL1000 sur une copie de ses devis, produite sur un commit qui contient ACAL999, ACAL1195, ACAL1169, ACAL1170, ACAL973, ACAL927, ACAL1033, ACAL1008, ACAL1196, ACAL1171 et ACAL1197 à ACAL1203 (la sortie agricole d'ACAL1203 est collée dans la PR à côté de celle d'ACAL1000), et ACAL921 construite : le fondateur a donc lu aussi la liste d'ACAL1194 (aucun chiffre client ne part d'une surface au sol, d'ombrière ou de façade lue décalée de 90°) — condition écrite de D-ACAL-36 et D-ACAL-39 ; ACAL921 (PLAN_AUDIT_TRANSVERSE) — attend que Reda ait lu la liste sortie par ACAL1194 (`acal_dryrun_azimut_surfaces --dry-run`) sur une copie de ses calepinages — la lecture de chaque surface de pose déjà enregistrée change.
 
 ## Comptes (les tâches de la vague, sans ACAL487)
 
-- Par domaine : D1 46, D2 64, D3 58, D4 80, D5 76, D6 56, D7 72, D8 29, acceptation 1.
-- Par priorité : P0 17, P1 135, P2 200, P3 129, — 1.
-- Par plan : PLAN_AUDIT_CALEPINAGE 423, PLAN_AUDIT_CHANTIERS 7, PLAN_AUDIT_DEPLOY 2, PLAN_AUDIT_DEVIS 25, PLAN_AUDIT_GENERATEUR 1, PLAN_AUDIT_LEAD 2, PLAN_AUDIT_MOTEUR 6, PLAN_AUDIT_PARAMETRES 3, PLAN_AUDIT_SAV 1, PLAN_AUDIT_SECURITE 1, PLAN_AUDIT_STOCK 3, PLAN_AUDIT_TRANSVERSE 5, WEB_PLAN 3.
-- Par section : Acceptation en direct (orchestrateur, jamais une lane) 1, GATED (ne PAS auto-construire) 3, M1 bloquant-fondateur 154, M2 324.
-- Par gravité : S1 18, S2 147, S3 275, S4 9, — 33.
+- Par domaine : D1 46, D2 64, D3 57, D4 80, D5 76, D6 56, D7 72, D8 29, acceptation 1.
+- Par priorité : P0 17, P1 135, P2 199, P3 129, — 1.
+- Par plan : PLAN_AUDIT_CALEPINAGE 421, PLAN_AUDIT_CHANTIERS 7, PLAN_AUDIT_DEPLOY 2, PLAN_AUDIT_DEVIS 25, PLAN_AUDIT_GENERATEUR 1, PLAN_AUDIT_LEAD 2, PLAN_AUDIT_MOTEUR 6, PLAN_AUDIT_PARAMETRES 3, PLAN_AUDIT_SAV 1, PLAN_AUDIT_SECURITE 1, PLAN_AUDIT_STOCK 3, PLAN_AUDIT_TRANSVERSE 6, WEB_PLAN 3.
+- Par section : Acceptation en direct (orchestrateur, jamais une lane) 1, GATED (ne PAS auto-construire) 3, M1 bloquant-fondateur 153, M2 324.
+- Par gravité : S1 18, S2 146, S3 275, S4 9, — 33.
 
 ## Table des constats (générée depuis les plans)
 
@@ -470,15 +470,15 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-1027 | C13, S4 | ACAL1027 | PLAN_AUDIT_CALEPINAGE | M2 | Masquer le lien « Raccourcis clavier (?) » sur un appareil sans clavier (écran tactile principal) |
 | C-ACAL-L5-1028 | C18, S3 | ACAL1028 | PLAN_AUDIT_CALEPINAGE | M2 | Montrer, sur l'onglet Schéma unifilaire quand la fiche technique est incomplète, un croquis de principe grisé  |
 | C-ACAL-L5-1029 | C1, S2 | ACAL1029 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dire combien de modules du document sont posés à plat sur un toit en pente (affleurants) |
-| C-ACAL-L5-1031 | C19, S3 | ACAL1031 | PLAN_AUDIT_CALEPINAGE | Acceptation en direct (orchestrateur, jamais une lane) | Acceptation live de la vague 2 du complément ( ACAL492-521, ACAL526-531, ACAL533-537, ACAL546-555, ACAL557-569 |
+| C-ACAL-L5-1031 | C19, S3 | ACAL1031 | PLAN_AUDIT_CALEPINAGE | Acceptation en direct (orchestrateur, jamais une lane) | Acceptation live de la vague 2 du complément ( ACAL487 (dé-gatée le 21/11, D-ACAL-38), ACAL492-521, ACAL526-53 |
 | C-ACAL-L5-1032 | C4, S2 | ACAL1032 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter « Dupliquer » et « Poser en série » dans la carte « Obstacle sélectionné » de l'atelier ERP |
-| C-ACAL-L5-1033 | C1, S1 | ACAL1033 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Ne plus imprimer la vignette « Économies estimées / an » du format « une page » quand aucune donnée réelle n'a |
+| C-ACAL-L5-1033 | C1, S1 | ACAL1033 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Ne plus imprimer la vignette « Économie annuelle » du format « une page » quand aucune donnée réelle n'ancre l |
 | C-ACAL-L5-1041 | C10, S3 | ACAL1041 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL sur `main` le contrat de la clé racine `imageCapture` (date de prise de vue de l'image + source) et |
-| C-ACAL-L5-1049 | C4, S3 | ACAL1049 | PLAN_AUDIT_CALEPINAGE | M2 | Faire servir par la détection du toit les obstacles rendus par le fournisseur, validés côté calepinage |
+| C-ACAL-L5-1049 | C4, S3 | ACAL1049 | PLAN_AUDIT_CALEPINAGE | M2 | Faire servir par la détection du toit les obstacles rendus par le fournisseur, filtrés sur les types de l'atel |
 | C-ACAL-L5-1050 | C4, S3 | ACAL1050 | PLAN_AUDIT_SECURITE | M2 | Faire demander les obstacles au fournisseur d'IA de détection du toit et les valider avec `valider_obstacles` |
 | C-ACAL-L5-1065 | C2, S3 | ACAL1065 | PLAN_AUDIT_CALEPINAGE | M2 | Imprimer les repères de chantier saisis sur la feuille A4 du pan qui les contient, avec un symbole par type, l |
-| C-ACAL-L5-1081 | C10, S3 | ACAL1081 | PLAN_AUDIT_TRANSVERSE | M2 | Poser SEUL sur main, dans le contrat de l'import PVsyst, les clés `refus` (chaîne vide) et `conversions` (list |
-| C-ACAL-L5-1113 | C10, S3 | ACAL1113 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Choisir la pompe du calepinage avec `choisir_pompe` du devis, en lui passant le calage et le tubage, et rendre |
+| C-ACAL-L5-1081 | C10, S3 | ACAL1081 | PLAN_AUDIT_TRANSVERSE | M2 | Poser SEUL sur main, dans le contrat de l'import PVsyst ET dans la réponse de la vue, les clés `refus` (chaîne |
+| C-ACAL-L5-1113 | C10, S3 | ACAL1113 | PLAN_AUDIT_TRANSVERSE | M2 | Rendre dans le pompage du calepinage les alertes de pose `immersion_minimale` et `diametre_tubage` du devis, p |
 | C-ACAL-L5-1114 | C10, S3 | ACAL1114 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Plafonner le débit du pompage au débit d'exploitation du forage, alerter quand le forage ne suffit pas et rend |
 | C-ACAL-L5-1145 | C1, S2 | ACAL1145 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire dire à `cible_depuis_lead` POURQUOI il ne dimensionne pas : clé additive `motif_code` (le motif du refus |
 | C-ACAL-L5-1169 | C1, S2 | ACAL1169 | PLAN_AUDIT_MOTEUR | M1 bloquant-fondateur | Donner au moteur horaire un paramètre `base_production` (`{kwh_kwc_annuel, kwh_kwc_mensuel[12], pertes_incluse |
@@ -487,17 +487,16 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-1172 | C1, S2 | ACAL1172 | PLAN_AUDIT_STOCK | M1 bloquant-fondateur | Semer au catalogue le produit « Kit de fixation toiture inclinée (crochets, rails, pinces) » SANS prix, grisé  |
 | C-ACAL-L5-1173 | C2, S3 | ACAL1173 | PLAN_AUDIT_DEVIS | M2 | Étendre le dry-run `comparer_compte_moteur_calepinage` par `--calepinages` : pour chaque calepinage actif d'un |
 | C-ACAL-L5-1185 | C4, S3 | ACAL1185 | PLAN_AUDIT_CALEPINAGE | M2 | Dessiner les poignées des coins à la hauteur du toit en vue 3D |
-| C-ACAL-L5-1186 | C2, S2 | ACAL1186 | PLAN_AUDIT_CALEPINAGE | M2 | Poser SEUL sur `main` le contrat du sixième contrôle de raccordement « Limitation de l'injection » et du dixiè |
-| C-ACAL-L5-1187 | C2, S2 | ACAL1187 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Rendre « attention — limite d'injection non garantie » quand un champ à micro-onduleurs porte un plafond d'inj |
-| C-ACAL-L5-1188 | C2, S2 | ACAL1188 | PLAN_AUDIT_CALEPINAGE | M2 | Afficher dans « Raccordement » le sixième contrôle et le champ « Dispositif qui limite l'injection » |
+| C-ACAL-L5-1187 | C2, S2 | ACAL1187 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter au raccordement le sixième contrôle « Limitation de l'injection » et le dixième champ de saisie `dispo |
+| C-ACAL-L5-1188 | C2, S2 | ACAL1188 | PLAN_AUDIT_CALEPINAGE | M2 | Prouver dans l'écran « Raccordement » le sixième contrôle et le champ « Dispositif qui limite l'injection » |
 | C-ACAL-L5-1189 | C15, S3 | ACAL1189 | PLAN_AUDIT_CALEPINAGE | M2 | Mesurer chaque étape du mode guidé, pas seulement le premier écran |
 | C-ACAL-L5-1190 | C15, S3 | ACAL1190 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'étape Toit du mode guidé au panneau de la maquette |
-| C-ACAL-L5-1191 | C15, S3 | ACAL1191 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'écran guidé de l'étape Électrique à la maquette : Verdict et Équipements ouverts, les cinq autres se |
+| C-ACAL-L5-1191 | C15, S3 | ACAL1191 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'écran guidé de l'étape Électrique : trois déclencheurs (Verdict, Équipements, Réglages avancés), les |
 | C-ACAL-L5-1192 | C15, S3 | ACAL1192 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'étape Résultats du mode guidé à la production et à ses pertes |
 | C-ACAL-L5-1193 | C15, S3 | ACAL1193 | PLAN_AUDIT_CALEPINAGE | M2 | Réduire l'étape Documents du mode guidé à l'écran de fin de la maquette |
 | C-ACAL-L5-1194 | C10, S1 | ACAL1194 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Lister en lecture seule les calepinages dont l'orientation lue des surfaces de pose changera avec ACAL921 |
 | C-ACAL-L5-1195 | C1, S1 | ACAL1195 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire calculer l'étude commerciale et industrielle d'un NOUVEAU devis de niveau 15 lié à un calepinage simulé  |
-| C-ACAL-L5-1196 | C1, S2 | ACAL1196 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Ne plus servir la vue 3D publique d'un devis dont le calepinage est une conception « rapide » non vérifiée |
+| C-ACAL-L5-1196 | C1, S2 | ACAL1196 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Ne plus servir la vue 3D publique d'un devis BROUILLON dont le calepinage est une conception « rapide » non vé |
 | C-ACAL-L5-1197 | C1, S2 | ACAL1197 | PLAN_AUDIT_PARAMETRES | M1 bloquant-fondateur | Permettre de lire PVGIS en direct à un plan donné : `productible_mensuel_live` et `profil_horaire_live` accept |
 | C-ACAL-L5-1198 | C10, S2 | ACAL1198 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Poser SEUL sur main la clé `production.plan_irradiation` du contrat `etude_pompage_preview.json` — `{source: ' |
 | C-ACAL-L5-1199 | C1, S2 | ACAL1199 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Écrire le résolveur du plan des panneaux d'un devis agricole, `domain/pompage_pose.py::plan_pose_pompage(devis |
@@ -535,8 +534,8 @@ Après la première intégration (472 tâches, PR #1517), la vague a été relue
 
 - **Deux passes de correction par lot**, puis **une passe de cohérence** de toute la vague (aucun cycle de `@after`, aucun renvoi vers une tâche retirée, aucun id inconnu ; seules les neuf tâches de la vague 0 déclarent `apps/calepinage/selectors.py`).
 - **Deux relectures adverses au modèle le plus fort** : l'architecture du moteur partagé (D8), puis la vague entière — 8 bloquants, dont la chaîne D-ACAL-36 réécrite (production de la pose réelle atteignable au PDF, porte fondateur qui ne se contourne plus, liste des écarts produite après le code qu'elle montre), les migrations rangées avec leur modèle, 32 dépendances entre plans passées en vrais `@after`, et les tâches qui déclaraient `selectors.py` ramenées à la vague 0.
-- **Ce qui a changé** : 23 tâches retirées (doublons, déjà construites ou migrations remises avec leur modèle — liste ci-dessous) ; 33 créées (ACAL1033, ACAL1041, ACAL1049, ACAL1050, ACAL1065, ACAL1081, ACAL1113, ACAL1114, ACAL1145, ACAL1169, ACAL1170, ACAL1171, ACAL1172, ACAL1173, ACAL1185, ACAL1186, ACAL1187, ACAL1188, ACAL1189, ACAL1190, ACAL1191, ACAL1192, ACAL1193, ACAL1194, ACAL1195, ACAL1196, ACAL1197, ACAL1198, ACAL1199, ACAL1200, ACAL1201, ACAL1202, ACAL1203), dont les moitiés des trois scissions (ACAL530, ACAL806, ACAL938) et les douze tâches des manques de la relecture finale (ACAL1185 à ACAL1196) et les sept du lot pompage (ACAL1197 à ACAL1203, D-ACAL-46, écrites après la vérification) ; les autres corrigées clause par clause. Décompte final : 482 tâches.
-- Couverture : 427 des 482 tâches vivantes portent un verdict de vérificateur ; les 22 tâches du lot D8 ont été relues par la relecture adverse ; les 33 tâches créées pendant les corrections n'ont eu que la passe de cohérence.
+- **Ce qui a changé** : 24 tâches retirées (doublons, déjà construites ou migrations remises avec leur modèle — liste ci-dessous) ; 32 créées (ACAL1033, ACAL1041, ACAL1049, ACAL1050, ACAL1065, ACAL1081, ACAL1113, ACAL1114, ACAL1145, ACAL1169, ACAL1170, ACAL1171, ACAL1172, ACAL1173, ACAL1185, ACAL1187, ACAL1188, ACAL1189, ACAL1190, ACAL1191, ACAL1192, ACAL1193, ACAL1194, ACAL1195, ACAL1196, ACAL1197, ACAL1198, ACAL1199, ACAL1200, ACAL1201, ACAL1202, ACAL1203), dont les moitiés des trois scissions (ACAL530, ACAL806, ACAL938) et les douze tâches des manques de la relecture finale (ACAL1185 à ACAL1196) et les sept du lot pompage (ACAL1197 à ACAL1203, D-ACAL-46, écrites après la vérification) ; les autres corrigées clause par clause. Décompte final : 481 tâches.
+- Couverture : 427 des 481 tâches vivantes portent un verdict de vérificateur ; les 22 tâches du lot D8 ont été relues par la relecture adverse ; les 33 tâches créées pendant les corrections (dont ACAL1186, depuis fondue dans ACAL1187) ont été relues à leur tour par deux vérificateurs neufs : 12 OK, 21 corrigées — dont une base de production qui aurait reçu les pertes une seconde fois au balayage (ACAL1170), la mauvaise cible pour le format une page (ACAL1033) et un contrat posé seul qui aurait cassé un test existant (ACAL1186). L'activation ACAL1001 attend aussi ACAL921 : la simulation lit aujourd'hui les surfaces au sol décalées de 90°, aucun chiffre client ne part d'une surface mal orientée.
 
 ## Tâches retirées
 
@@ -587,6 +586,7 @@ Après la première intégration (472 tâches, PR #1517), la vague a été relue
 - ACAL944 — doublon de ACAL768
 - ACAL953 — doublon de ACAL493
 - ACAL1030 — fondue dans ACAL901, devenue tâche atomique à deux propriétaires
+- ACAL1186 — fondue dans ACAL1187 — un échantillon posé seul rougit `main` : `backend/django_core/apps/calepinage/tests/test_calx205_contrat_raccordement.py::test_les_neuf_champs_de_saisie` exige `set(CHAMPS_SAISIE du service) == CHAMPS_SAISIE` et l'égalité avec l'échantillon, et `test_les_cinq_verdicts_dans_chaque_etat` compare aux codes servis ; aucun mécanisme « en attente » n'existe pour cet échantillon (`CLES_POSEES_AVANT_LEUR_PRODUCTEUR` ne porte que des clés racine d'autres contrats) ; ACAL1187 pose échantillon, service et tests dans le même commit.
 
 ## Réserve (capacités non écrites, une ligne chacune)
 
