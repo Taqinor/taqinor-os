@@ -321,6 +321,19 @@ describe('ACAL29 — choixConception voyage avec le document', () => {
     expect(sortie.choixConception).toEqual(choix);
   });
 
+  it("ACAL469 — hydratationDeSection('choixConception') épingle inclinaison ET azimut, serializeLayout les relit (mutant : azimut non épinglé ⇒ échec)", () => {
+    const doc = documentRiche();
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxAvecChoix(h.zones!);
+    appliquerHydratationAuCtx(ctx, hydratationDeSection('choixConception', { tilt: 25, azimuth: 180, epingles: ['tilt', 'azimuth'] }));
+    expect(ctx.sel.tilt).toBe(25);
+    expect(ctx.sel.azimuth).toBe('south');
+    expect([...ctx.pinned]).toEqual(['tilt', 'azimuth']);
+    expect(ctx.useRecommended).toBe(false);
+    const sortie = serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null }));
+    expect(sortie.choixConception).toMatchObject({ tilt: 25, azimuth: 180, epingles: ['tilt', 'azimuth'] });
+  });
+
   it('sans choix épinglé, aucune clé choixConception (document identique)', () => {
     const doc = documentRiche();
     const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });

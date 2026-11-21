@@ -72,6 +72,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.balayer": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/balayage/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.bomFixation": [
     {
       "config": {

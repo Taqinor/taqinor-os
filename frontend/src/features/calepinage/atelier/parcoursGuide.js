@@ -21,7 +21,7 @@ export const ETAPES = [
     onglets: ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
       'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'schema'] },
   { cle: 'resultats', libelle: 'Résultats',
-    onglets: ['production', 'pertes', 'postes-pertes', 'series', 'batterie', 'economie', 'variantes'] },
+    onglets: ['production', 'pertes', 'postes-pertes', 'series', 'batterie', 'economie', 'variantes', 'optimiser'] },
   { cle: 'documents', libelle: 'Documents',
     onglets: ['documents', 'dossiers', 'activite', 'versions', 'diff-versions', 'approbation', 'pose-reelle', 'projet'] },
 ]

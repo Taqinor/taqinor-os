@@ -343,6 +343,9 @@ const calepinageApi = {
     // calepinage_consommation_proposee.json) : LECTURE PURE, `{consumption, kwh_annuel,
     // courbe24, saisons, avertissements}` ; 400/409 nomment le champ, 404 lead absent.
     proposerConsommation: (id, corps) => api.post(`${pivot(id)}consommation/proposer/`, corps), // ACAL
+    // ACAL469 — le BALAYAGE d'un pan libre (contrat calepinage_balayage.json) : 202 + job,
+    // suivi par `moteur.resultat(jobId)` ; rien n'est écrit au calepinage.
+    balayer: (id, corps) => api.post(`${pivot(id)}balayage/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
