@@ -1507,6 +1507,8 @@ class SystemeFixation(TenantModel):
     #: OBLIGATOIRE — d'où vient la définition du système (notice du
     #: fabricant, référence du document, date). Refusé sans elle.
     provenance = models.TextField('Provenance')
+    #: ACAL566 — les couvertures servies (``catalogue_fixation.COUVERTURES``).
+    couvertures = models.JSONField('Couvertures servies', default=list, blank=True)
 
     class Meta:
         verbose_name = 'Système de fixation'

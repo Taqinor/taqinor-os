@@ -27,6 +27,8 @@ import pathlib
 import re
 from unittest import mock
 
+from html import escape
+
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.rangees import rangees_du_pan
@@ -683,3 +685,56 @@ class ListeDesChainesTest(SimpleTestCase):
         chainage = servi['electrique']['chainage']
         self.assertIn('Chaînes : %s' % chainage['chaines'], svg)
         self.assertIn('Onduleur', svg)
+
+
+class TensionsDesChainesSurLePlanTest(SimpleTestCase):
+    """ACAL889 — une ligne de tension à froid par chaîne + la consigne."""
+
+    SERVIES = {
+        1: {'voc_froid_v': 343.0, 'temperature_froide_c': -5.0,
+            'temperature_source': 'saisie', 'vmp_chaud_v': 216.0},
+        2: {'voc_froid_v': None, 'temperature_froide_c': -5.0,
+            'temperature_source': 'saisie', 'vmp_chaud_v': None}}
+    CONSIGNE = "Couper l'AC avant le DC : les chaînes restent sous tension."
+
+    def _rendre(self, servies, consigne=''):
+        cible = 'apps.calepinage.services.tensions_chaines.chaines_servies'
+        reglage = ('apps.calepinage.services.documents.plan_cablage.'
+                   '_consigne_dc_de_societe')
+        with mock.patch(cible, return_value=servies),                 mock.patch(reglage, return_value=consigne):
+            return plan_de_pose_svg(calepinage_de_pose())
+
+    def test_une_ligne_par_chaine_avec_la_temperature_citee(self):
+        svg = self._rendre(self.SERVIES)
+        self.assertIn('Chaîne 1 : 343 V à vide maxi à froid (−5 °C, saisie)',
+                      svg)
+        self.assertIn('Chaîne 2 : tension non calculée : fiche incomplète',
+                      svg)
+        self.assertNotIn('216', svg)  # jamais la tension à chaud
+
+    def test_la_consigne_de_la_societe_est_imprimee_mot_pour_mot(self):
+        svg = self._rendre(self.SERVIES, self.CONSIGNE)
+        self.assertIn(escape(self.CONSIGNE), svg)
+        self.assertNotIn('Couper', self._rendre(self.SERVIES, ''))
+
+    def test_electrique_non_chaine_garde_la_mention_existante(self):
+        with mock.patch('apps.calepinage.selectors.resultat_servi',
+                        return_value={}):
+            svg = self._rendre(self.SERVIES, self.CONSIGNE)
+        self.assertIn('Électrique non chaîné', svg)
+        self.assertNotIn('à vide maxi à froid', svg)
+
+    def test_les_tensions_sont_celles_du_serveur_pas_un_second_calcul(self):
+        from apps.calepinage.services.electrique import evaluation_electrique
+
+        calepinage = calepinage_de_pose()
+        with patch_materiel():
+            servies = evaluation_electrique(calepinage)['chaines']
+            svg = _rendre_plan_pose_svg(calepinage, moment=MOMENT)
+        for ligne in servies:
+            if ligne['voc_froid_v'] is not None:
+                self.assertIn(
+                    'Chaîne %s : %s V à vide maxi à froid' % (
+                        ligne['chaine'],
+                        ('%g' % ligne['voc_froid_v']).replace('.', ',')),
+                    svg)

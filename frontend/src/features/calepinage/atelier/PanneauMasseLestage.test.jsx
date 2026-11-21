@@ -268,7 +268,10 @@ describe('PanneauMasseLestage (CALX362) — rien de calculable', () => {
 
     expect(echantillon('exemple_vide').lestage.calculable).toBe(false)
     const lien = screen.getByTestId('calx362-lien-reglages-vide')
-    expect(lien).toHaveAttribute('href', '/calepinage/reglages')
+    // ACAL938 — le lien porte l'ancre du PREMIER manquant servi par le contrat.
+    const premier = echantillon('exemple_vide').lestage.manquants[0]
+    expect(premier).toBeTruthy()
+    expect(lien).toHaveAttribute('href', `/calepinage/reglages#lestage-${premier}`)
   })
 
   it('n’affiche PAS le lien quand des résultats sont calculés', async () => {

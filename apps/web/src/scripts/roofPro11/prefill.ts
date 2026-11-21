@@ -53,6 +53,7 @@ import {
   ecrireOptimisationDansDocument,
   semerOptimisationDepuisDocument,
 } from './optimisationDocument'; // CALX114 câblage
+import { emettreAlleeTechnique } from './alleeTechnique'; import { emettreChassis } from './chassisPavage'; // ACAL258 (sorti), ACAL585
 import { semerFondDepuisDocument, imageCapturePourDocument } from './fondDocument'; // CALX107 câblage ; ACAL509
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
 import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; import { emettreCoupures } from './coupuresPavage'; // ACAL193 (sorti), ACAL593, ACAL576
@@ -342,7 +343,7 @@ export interface SerializedZone {
   pitchSource?: Record<string, unknown>;
   facingAzimuthDeg?: number;
   facingManual: boolean;
-  verrouille?: boolean; existant?: boolean; anneeMiseEnService?: number; coupuresPavage?: AreaRecord['coupuresPavage']; porteeEntrePieds?: AreaRecord['porteeEntrePieds']; // ACAL520 cadenas ; ACAL510 pan existant ; ACAL576 ; ACAL579 — émis seulement quand ils sont posés
+  verrouille?: boolean; existant?: boolean; anneeMiseEnService?: number; coupuresPavage?: AreaRecord['coupuresPavage']; porteeEntrePieds?: AreaRecord['porteeEntrePieds']; chassis?: AreaRecord['chassis']; // ACAL585 // ACAL520 cadenas ; ACAL510 pan existant ; ACAL576 ; ACAL579 — émis seulement quand ils sont posés
   neededPanels: number;
   neededAuto: boolean;
   /** WJ24 — géométrie pleine par pan (optionnel, additif). Présent seulement si un plan
@@ -948,7 +949,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       ...pitchSourceEmise(a.pitchSource, isActive ? ctx.pitchDeg : a.pitchDeg),
       facingAzimuthDeg: isActive ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
-      ...(a.verrouille ? { verrouille: true } : {}), ...emettreCoupures(a.coupuresPavage), ...emettrePortee(a.porteeEntrePieds), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
+      ...(a.verrouille ? { verrouille: true } : {}), ...emettreCoupures(a.coupuresPavage), ...emettrePortee(a.porteeEntrePieds), ...emettreChassis(a.chassis), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
       ...(a.buildingId ? { buildingId: a.buildingId } : {}), // CAL59 — additif
@@ -1189,23 +1190,6 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   return emettreProvenanceEpingle(reconcilierAvecDocumentRelu(ecrit, ctx), ctx);
 }
 
-// ═══════════ ACAL258 — L'ALLÉE TECHNIQUE DE CE CALEPINAGE ═══════════
-/** L'allée technique du document relu (`{largeurM > 0, source}`, clés inconnues conservées), ou `null`. */
-export function lireAlleeTechnique(doc: unknown): Ctx['alleeTechnique'] {
-  const brut = (doc as { alleeTechnique?: unknown } | null | undefined)?.alleeTechnique;
-  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return null;
-  const { largeurM, source } = brut as { largeurM?: unknown; source?: unknown };
-  if (typeof largeurM !== 'number' || !Number.isFinite(largeurM) || largeurM <= 0) return null;
-  if (typeof source !== 'string' || !source) return null;
-  return JSON.parse(JSON.stringify(brut)) as NonNullable<Ctx['alleeTechnique']>;
-}
-
-/** Fragment du document : `{ alleeTechnique }` quand elle existe, `{}` sinon (aucune clé inventée). */
-export function emettreAlleeTechnique(allee: Ctx['alleeTechnique']): { alleeTechnique?: NonNullable<Ctx['alleeTechnique']> } {
-  if (!allee || typeof allee.largeurM !== 'number' || !(allee.largeurM > 0)) return {};
-  return { alleeTechnique: JSON.parse(JSON.stringify(allee)) as NonNullable<Ctx['alleeTechnique']> };
-}
-
 /** ACAL307 — positions (et faces) d'une pose, sans les numéros : ce qui définit un pavage. */
 function empreintePose(panels: unknown): string {
   return JSON.stringify(
@@ -1239,7 +1223,7 @@ const CLES_RACINE_ATELIER = new Set([
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([
-  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille', 'existant', 'anneeMiseEnService', 'coupuresPavage', 'porteeEntrePieds',
+  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille', 'existant', 'anneeMiseEnService', 'coupuresPavage', 'porteeEntrePieds', 'chassis',
   'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges', 'result',
 ]);
 
@@ -1433,7 +1417,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       : {}),
     facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
-    ...(z.verrouille === true ? { verrouille: true } : {}), ...emettreCoupures(z.coupuresPavage), ...emettrePortee(z.porteeEntrePieds), ...(z.existant === true ? { existant: true, anneeMiseEnService: Number.isInteger(z.anneeMiseEnService) ? z.anneeMiseEnService : null } : {}), // ACAL520, ACAL510
+    ...(z.verrouille === true ? { verrouille: true } : {}), ...emettreCoupures(z.coupuresPavage), ...emettrePortee(z.porteeEntrePieds), ...emettreChassis(z.chassis), ...(z.existant === true ? { existant: true, anneeMiseEnService: Number.isInteger(z.anneeMiseEnService) ? z.anneeMiseEnService : null } : {}), // ACAL520, ACAL510
     neededPanels: z.neededPanels,
     neededAuto: z.neededAuto,
     result: null,

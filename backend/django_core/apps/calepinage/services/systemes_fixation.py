@@ -24,7 +24,7 @@ __all__ = [
 
 #: Les champs du système que le corps peut porter (jamais ``company``).
 CHAMPS_SYSTEME = ('code', 'libelle', 'fabricant', 'mode_pose', 'actif',
-                  'provenance')
+                  'provenance', 'couvertures')  # couvertures : ACAL566
 #: Les champs d'un composant que le corps peut porter (``ordre`` = son rang).
 CHAMPS_COMPOSANT = ('role', 'libelle', 'unite', 'produit_id', 'regle',
                     'source')
@@ -46,6 +46,7 @@ def systeme_publie(systeme):
         'id': systeme.pk, 'code': systeme.code, 'libelle': systeme.libelle,
         'fabricant': systeme.fabricant, 'mode_pose': systeme.mode_pose,
         'actif': systeme.actif, 'provenance': systeme.provenance,
+        'couvertures': list(systeme.couvertures or []),
         'composants': [{
             'id': c.pk, 'role': c.role, 'libelle': c.libelle,
             'unite': c.unite, 'produit_id': c.produit_id,
@@ -95,7 +96,14 @@ def _valider(instance, exclude):
 def _valider_systeme(systeme, erreurs):
     from ..models import SystemeFixation
 
-    erreurs.update(_valider(systeme, ['company']))
+    from .catalogue_fixation import erreur_de_couvertures
+
+    erreurs.update(_valider(systeme, ['company', 'couvertures']))
+    if systeme.couvertures is None:
+        systeme.couvertures = []
+    message = erreur_de_couvertures(systeme.couvertures)
+    if message:
+        erreurs['couvertures'] = [message]
     code = (systeme.code or '').strip()
     if code and 'code' not in erreurs and SystemeFixation.objects.filter(
             company=systeme.company, code=code).exclude(

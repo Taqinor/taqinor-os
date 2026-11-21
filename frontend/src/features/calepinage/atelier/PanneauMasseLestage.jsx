@@ -52,6 +52,13 @@ import { chargeParPointDeFixation, provenanceEntree } from './PanneauMasseLestag
 /** L'écran de réglages du module (zones de lestage incluses, CALX361). */
 const CHEMIN_REGLAGES = '/calepinage/reglages'
 
+/** ACAL938 — le lien profond : le champ du PREMIER paramètre manquant (l'`id`
+ *  `lestage-<clé>` de la carte « Lestage » des Réglages), sinon la carte. */
+function cheminReglagesLestage(lestage) {
+  const premier = Array.isArray(lestage?.manquants) ? lestage.manquants[0] : null
+  return `${CHEMIN_REGLAGES}#${premier ? `lestage-${premier}` : 'lestage'}`
+}
+
 /** Une mesure servie, mise en forme ; `null` reste « non publiée ». */
 function mesure(valeur, unite, decimals = 2) {
   if (valeur === null || valeur === undefined) return 'non publiée'
@@ -199,7 +206,7 @@ function libelleOrigine(origine) {
  * n'est pas résolue. ÉQUIVALENCE (D12) : sans `zone` (aucune zone saisie
  * par la société), ce bloc ne rend RIEN — pas même une carte vide.
  */
-function BlocZone({ zone, zonesCatalogue }) {
+function BlocZone({ zone, zonesCatalogue, chemin }) {
   if (!zone) return null
   const catalogue = Array.isArray(zonesCatalogue) ? zonesCatalogue : []
   const nonResolue = !zone.code
@@ -246,7 +253,7 @@ function BlocZone({ zone, zonesCatalogue }) {
             {zone.motif}
           </p>
           <Link
-            to={CHEMIN_REGLAGES}
+            to={chemin}
             className="mt-1 inline-block text-xs underline"
             data-testid="calx362-lien-reglages-zone"
           >
@@ -320,7 +327,11 @@ export default function PanneauMasseLestage({ calepinageId: idPropose = null }) 
   return (
     <div className="space-y-4" data-testid="calx17-panneau">
       <BlocMasse masse={data.masse ?? {}} />
-      <BlocZone zone={zoneRetenue} zonesCatalogue={reglagesLestage?.zones} />
+      <BlocZone
+        zone={zoneRetenue}
+        zonesCatalogue={reglagesLestage?.zones}
+        chemin={cheminReglagesLestage(lestage)}
+      />
       <BlocFixation charge={chargeParPointDeFixation(data)} />
       <Card className="p-4" data-testid="calx17-feuille">
         <h3 className="text-sm font-semibold">Feuille de lestage</h3>
@@ -329,7 +340,7 @@ export default function PanneauMasseLestage({ calepinageId: idPropose = null }) 
         </p>
         {lestage.calculable === false && (
           <Link
-            to={CHEMIN_REGLAGES}
+            to={cheminReglagesLestage(lestage)}
             className="mt-1 inline-block text-xs underline"
             data-testid="calx362-lien-reglages-vide"
           >

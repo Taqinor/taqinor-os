@@ -1612,6 +1612,38 @@ TITRE_DE_CONTENU = {
 }
 
 
+#: ACAL889 — la source de la température citée, telle que le serveur la sert
+#: (``tensions_chaines`` : ``saisie`` | ``tmy``).
+_SOURCE_TEMPERATURE = {'saisie': 'saisie', 'tmy': 'météo type du site'}
+
+
+def _lignes_de_tensions(calepinage):
+    """ACAL889 — « Chaîne 1 : 343 V à vide maxi à froid (−5 °C, saisie) » par
+    chaîne, puis la consigne DC de la SOCIÉTÉ mot pour mot (vide : rien).
+
+    Les tensions sont celles SERVIES (``tensions_chaines.chaines_servies``,
+    la même lecture que le plan de câblage) : rien n'est recalculé ici.
+    """
+    from .documents.plan_cablage import _consigne_dc_de_societe
+    from .tensions_chaines import chaines_servies
+
+    lignes = []
+    for numero, servie in sorted(chaines_servies(calepinage).items()):
+        voc, froid = servie.get('voc_froid_v'), servie.get(
+            'temperature_froide_c')
+        if voc is None or froid is None:
+            lignes.append('Chaîne %s : tension non calculée : fiche '
+                          'incomplète' % numero)
+            continue
+        source = _SOURCE_TEMPERATURE.get(servie.get('temperature_source'))
+        lignes.append('Chaîne %s : %s V à vide maxi à froid (%s °C%s)' % (
+            numero, ('%g' % voc).replace('.', ','),
+            ('%g' % froid).replace('-', '−').replace('.', ','),
+            ', %s' % source if source else ''))
+    consigne = _consigne_dc_de_societe(calepinage)
+    return tuple(lignes) + ((consigne,) if consigne else ())
+
+
 def _rendre_plan_pose_svg(calepinage, *, moment=None, **options):
     """CAL211 — le plan de POSE, VÉRIFIÉ sans montant, portant l'empreinte."""
     from .. import selectors
@@ -1621,6 +1653,8 @@ def _rendre_plan_pose_svg(calepinage, *, moment=None, **options):
     # jamais la colonne brute, qui ne porte pas le bloc électrique).
     chaines = _lignes_de_chaines(selectors.resultat_servi(calepinage))
     bandeau += chaines or (MENTION_NON_CHAINE,)
+    if chaines:
+        bandeau += _lignes_de_tensions(calepinage)
     # ACAL231 - la garde ne porte que sur les textes du catalogue / du moteur
     # (le bandeau), jamais sur le titre ou les libellés de pan SAISIS.
     _verifier_absence_d_argent('\n'.join(bandeau))

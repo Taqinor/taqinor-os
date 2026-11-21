@@ -3,6 +3,8 @@
    Réponses tirées de l'échantillon COMMITTÉ
    `contract_samples/gabarits_dossier_reglementaire.json` (liste, 201, refus
    400 nommé, 409) — jamais une charge écrite à la main. */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render as renderBrut, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -63,7 +65,7 @@ describe('ReglagesGabarits (ACAL242)', () => {
     render(<ReglagesGabarits />)
     await screen.findByTestId('acal242-vide')
 
-    await userEvent.type(document.getElementById('acal242-pays'), 'ma')
+    await userEvent.selectOptions(document.getElementById('acal242-pays'), 'ma')
     await userEvent.type(document.getElementById('acal242-code'), 'raccordement_bt')
     await userEvent.type(document.getElementById('acal242-intitule'), 'Dossier de raccordement BT')
     await userEvent.type(document.getElementById('acal242-piece-0-code'), 'plan_masse')
@@ -136,5 +138,61 @@ describe('ReglagesGabarits (ACAL242)', () => {
     await screen.findByTestId(`acal242-gabarit-${LISTE.gabarits[0].id}`)
     expect(screen.queryByTestId('acal242-formulaire')).toBeNull()
     expect(screen.queryByTestId(`acal242-supprimer-${LISTE.gabarits[0].id}`)).toBeNull()
+  })
+})
+
+describe('ReglagesGabarits (ACAL971) — des mots, un bouton en français', () => {
+  const ouvrir = async () => {
+    espions.liste.mockResolvedValue({ data: VIDE })
+    render(<ReglagesGabarits />)
+    await screen.findByTestId('acal242-vide')
+  }
+
+  it('le genre et le pays sont des listes ; plus de champ texte ni de code brut', async () => {
+    await ouvrir()
+    const genre = document.getElementById('acal242-genre')
+    const pays = document.getElementById('acal242-pays')
+    expect(genre.tagName).toBe('SELECT')
+    expect(pays.tagName).toBe('SELECT')
+    expect(screen.queryByText(/dp_mairie, enedis/)).toBeNull()
+    expect(screen.queryByText(/code à deux lettres/)).toBeNull()
+    expect(within(genre).getByRole('option', { name: 'Déclaration préalable en mairie' })).toBeInTheDocument()
+    expect(within(pays).getByRole('option', { name: 'Maroc' })).toBeInTheDocument()
+  })
+
+  it('les genres de la liste sont ceux de GENRES_FRANCE (relus à la source)', async () => {
+    const source = readFileSync(resolve(
+      import.meta.dirname, '../../../../../backend/django_core/apps/calepinage/services/reglementaire.py',
+    ), 'utf8')
+    const bloc = source.split('GENRES_FRANCE = (')[1].split(/\)\r?\n\r?\n/)[0]
+    const cles = [...bloc.matchAll(/\('([a-z_]+)',/g)].map((m) => m[1])
+    await ouvrir()
+    const valeurs = [...document.getElementById('acal242-genre').options]
+      .map((o) => o.value).filter((v) => v && v !== '__autre')
+    expect(valeurs).toEqual(cles)
+  })
+
+  it('le slug du genre part au serveur ; « Autre dossier… » ouvre « Nom du dossier »', async () => {
+    await ouvrir()
+    espions.creer.mockResolvedValue({ data: CREE })
+    await userEvent.selectOptions(document.getElementById('acal242-genre'), 'dp_mairie')
+    await userEvent.click(screen.getByTestId('acal242-deposer'))
+    expect(espions.creer.mock.calls[0][0].get('genre')).toBe('dp_mairie')
+
+    await userEvent.selectOptions(document.getElementById('acal242-genre'), '__autre')
+    await userEvent.type(screen.getByLabelText('Nom du dossier'), 'Dépôt Société Générale')
+    await userEvent.click(screen.getByTestId('acal242-deposer'))
+    expect(espions.creer.mock.calls[1][0].get('genre')).toBe('depot_societe_generale')
+  })
+
+  it('le sélecteur de fichier est un bouton français relié à l’input masqué', async () => {
+    await ouvrir()
+    expect(document.querySelector('input[type="file"]')).toHaveAttribute('data-testid', 'acal242-fichier')
+    expect(screen.queryByText('Choose File')).toBeNull()
+    expect(screen.getByText('Choisir un fichier')).toHaveAttribute('for', 'acal242-fichier')
+    expect(screen.getByText('Aucun fichier choisi')).toBeInTheDocument()
+    await userEvent.upload(screen.getByTestId('acal242-fichier'),
+      new File(['PK'], 'gabarit.pdf', { type: 'application/pdf' }))
+    expect(screen.getByText('gabarit.pdf')).toBeInTheDocument()
   })
 })

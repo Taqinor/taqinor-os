@@ -5,6 +5,7 @@
 import PanneauCalques from '../PanneauCalques'
 import Vue2DPlan from '../Vue2DPlan'
 import { FACTEURS_HD } from '../exportImage'
+import { useModeExpert } from './modeExpert'
 
 const VUES_CAMERA = [
   ['dessus', 'Dessus', 'cal-vue-dessus'],
@@ -16,8 +17,9 @@ const VUES_CAMERA = [
 export default function OutilsVue({
   builderReady, utilisateurCourantId, builderApiActuel, builderApi, chipClass,
   vue2d, setVue2d, plan2d, panId2d, ouvrirVue2d,
-  hdBusy, hdMessage, exporterHd,
+  hdBusy, hdMessage, exporterHd, gltfBusy, gltfMessage, exporterGltf,
 }) {
+  const [expert] = useModeExpert()
   return (
     <>
         {/* CAL103 — PANNEAU DE CALQUES : une seule liste pour imagerie, cadastre,
@@ -119,6 +121,19 @@ export default function OutilsVue({
               </button>
             ))}
             {hdMessage && <span className="text-xs text-muted-foreground" data-testid="cal-export-hd-message">{hdMessage}</span>}
+            {/* ACAL537 — scène 3D en glTF (.glb) pour un architecte : niveau expert. */}
+            {expert && (
+              <button
+                type="button"
+                className={chipClass}
+                disabled={gltfBusy}
+                data-testid="cal-export-gltf"
+                onClick={exporterGltf}
+              >
+                Exporter la 3D (glTF)
+              </button>
+            )}
+            {gltfMessage && <span className="text-xs text-muted-foreground" data-testid="cal-export-gltf-message">{gltfMessage}</span>}
           </div>
         )}
     </>

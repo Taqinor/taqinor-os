@@ -286,6 +286,12 @@ const calepinageApi = {
     // résolu et les candidats (contrat `calepinage_entree_electrique.json`).
     // Le POST reste `enregistrerEntreeElectrique` (au-dessus).
     entreeElectrique: (id) => api.get(`${pivot(id)}entree-electrique/`),
+    // ACAL617 (contrat calepinage_configurations_onduleur.json) — l'onduleur retenu et ses deux voisins, évalués à chaud ; lecture pure.
+    configurationsOnduleur: (id) => api.get(`${pivot(id)}configurations-onduleur/`), // ACAL
+    // ACAL628 (contrat calepinage_controle_chaine.json) — le verdict d'UNE chaîne sans dessin ; rien n'est écrit.
+    controleChaine: (corps) => api.post('/calepinage/calepinages/controle-chaine/', corps), // ACAL
+    // ACAL631 (contrat calepinage_import_affectation.json) — un plan de chaînes CSV verdicté ; rien n'est enregistré.
+    importerAffectation: (id, csv) => api.post(`${pivot(id)}importer-affectation/`, { csv }), // ACAL
 
     // ACAL161 — l'ÉDITION du schéma unifilaire (libellés et repères par clef de bloc ;
     // `null` efface une rubrique). Le serveur fusionne clé par clé (ACAL160) et renvoie le

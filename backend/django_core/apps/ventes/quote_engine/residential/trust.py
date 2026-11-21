@@ -292,7 +292,7 @@ def _methode_traduite(d, sm):
 _CLES_HYPOTHESES = (
     "res_hyp_tarif_estime", "res_hyp_tarif_retenu", "res_hyp_tarif_saisi",
     "res_hyp_bareme", "res_hyp_revente_bt", "res_hyp_production",
-    "res_hyp_autoconso", "res_hyp_degradation", "res_hyp_tarif_constant",
+    "res_hyp_production_calepinage", "res_hyp_autoconso", "res_hyp_degradation", "res_hyp_tarif_constant",
     "res_hyp_tarif_hausse", "res_hyp_stockage_publie", "res_hyp_stockage_ref",
     "res_hyp_batt_omis", "res_hyp_provision", "res_hyp_sans_provision",
     "res_hyp_estimations_nc", "rpdf_hyp_provision_options", "rpdf_hyp_bareme_national")

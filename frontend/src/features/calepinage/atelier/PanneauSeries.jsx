@@ -6,6 +6,8 @@ import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatDate } from '../../../lib/format'
 import { Button, Card, Input, Label } from '../../../ui'
 import { downloadBlob } from '../../../utils/downloadBlob'
+import { SelecteurFichier } from '../reglages/ReglagesGabarits'
+import { COLONNES_CSV, COLONNES_D_OFFICE, colonnesAEnvoyer } from './colonnesCsv'
 
 /* ============================================================================
    CALX6 — LE PANNEAU « SÉRIES » : les trois exports de la simulation.
@@ -34,7 +36,7 @@ import { downloadBlob } from '../../../utils/downloadBlob'
    et le nom du fichier obtenu.
    ========================================================================== */
 
-/** Les trois exports servis, dans l'ordre où le panneau les propose. */
+/** Les exports servis, dans l'ordre où le panneau les propose. */
 const EXPORTS = [
   {
     quoi: 'horaire',
@@ -52,6 +54,12 @@ const EXPORTS = [
     libelle: 'Matrice d’ombrage 12 × 24 (CSV)',
     aide: "Le facteur d'ombrage de chaque mois pour chacune des vingt-quatre "
       + 'heures, tel qu’il est tracé sur le toit.',
+  },
+  {
+    quoi: 'ombrage_modules',
+    libelle: 'Ombrage module par module (CSV)',
+    aide: 'Une ligne par panneau avec son accès solaire sur l’année ; le mois '
+      + 'et l’heure par panneau ne sont pas calculés.',
   },
 ]
 
@@ -111,6 +119,14 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
 
   // Par export : `{ etat: 'encours' | 'refus' | 'ok', champ, motif, fichier }`.
   const [sorties, setSorties] = useState({})
+  // ACAL753 — colonnes cochées de la série horaire (non mémorisées).
+  const [cochees, setCochees] = useState(() => new Set(COLONNES_D_OFFICE))
+  const basculer = (nom) => setCochees((avant) => {
+    const apres = new Set(avant)
+    if (apres.has(nom)) apres.delete(nom)
+    else apres.add(nom)
+    return apres
+  })
 
   // ACAL147 — le fichier météo RETENU par la simulation : `undefined` tant
   // qu'on lit, `null` = PVGIS, sinon l'objet servi par `GET meteo-fichier/`,
@@ -126,7 +142,11 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
 
   const telecharger = useCallback((quoi) => {
     setSorties((precedent) => ({ ...precedent, [quoi]: { etat: 'encours' } }))
-    return Promise.resolve(calepinageApi.calepinages.exportCsv(calepinageId, quoi))
+    const colonnes = quoi === 'horaire' ? colonnesAEnvoyer(cochees) : null
+    const appel = colonnes
+      ? calepinageApi.calepinages.exportCsv(calepinageId, quoi, colonnes)
+      : calepinageApi.calepinages.exportCsv(calepinageId, quoi)
+    return Promise.resolve(appel)
       .then((res) => {
         const fichier = `calepinage-${calepinageId}-${quoi}.csv`
         downloadBlob(res?.data, fichier)
@@ -145,7 +165,7 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
           },
         }))
       })
-  }, [calepinageId])
+  }, [calepinageId, cochees])
 
   return (
     <div className="mt-6" data-testid="cal-series">
@@ -178,6 +198,27 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
                   {sortie.etat === 'encours' ? 'Préparation…' : 'Télécharger'}
                 </Button>
               </div>
+
+              {quoi === 'horaire' && (
+                <fieldset className="mt-2" data-testid="cal-series-colonnes">
+                  <legend className="text-xs text-muted-foreground">
+                    Colonnes du fichier (la date et l'heure sont toujours là)
+                  </legend>
+                  <div className="mt-1 grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+                    {COLONNES_CSV.map(({ nom, libelle }) => (
+                      <label key={nom} className="flex min-h-11 items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={cochees.has(nom)}
+                          onChange={() => basculer(nom)}
+                          data-testid={`cal-series-colonne-${nom}`}
+                        />
+                        {libelle}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
 
               {refuse && (
                 <p
@@ -367,13 +408,12 @@ function DepotMeteo({ calepinageId, onDepose }) {
       <form className="mt-3 flex flex-col gap-2" onSubmit={deposer}>
         <div>
           <Label htmlFor="cal-series-depot-fichier">Fichier CSV</Label>
-          <input
+          <SelecteurFichier
             id="cal-series-depot-fichier"
-            type="file"
+            testId="cal-series-depot-fichier"
             accept=".csv,text/csv"
-            className="mt-1 block w-full text-xs"
-            onChange={(e) => setFichier(e.target.files?.[0] || null)}
-            data-testid="cal-series-depot-fichier"
+            fichier={fichier}
+            onChange={setFichier}
           />
           {refusFichier && (
             <p

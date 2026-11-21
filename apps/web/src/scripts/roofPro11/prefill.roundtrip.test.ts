@@ -501,6 +501,29 @@ describe('ACAL509 — imageCapture fait l’aller-retour', () => {
   });
 });
 
+describe('ACAL585 — le châssis N × M d’un pan fait l’aller-retour', () => {
+  const PAN = { rangs: 2, modulesParRang: 10, jeuEntreRangsM: 0.03, source: 'notice du châssis' };
+  const aller = (chassis?: unknown) => {
+    const doc = documentRiche() as unknown as { zones: Array<Record<string, unknown>> };
+    if (chassis) doc.zones[0].chassis = chassis;
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc as unknown as SerializedLayout }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return { ctx, doc: serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) as unknown as { zones: Array<Record<string, unknown>> } };
+  };
+  it('saisi ⇒ relu sur le pan puis réémis ; vidé ⇒ plus aucune clé `chassis`', () => {
+    const { ctx, doc } = aller(PAN);
+    expect(ctx.areas[0].chassis).toEqual(PAN);
+    expect(doc.zones[0].chassis).toEqual(PAN);
+    delete ctx.areas[0].chassis;
+    const vide = serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) as unknown as { zones: Array<Record<string, unknown>> };
+    expect('chassis' in vide.zones[0]).toBe(false);
+  });
+  it('rien saisi ⇒ aucune clé', () => {
+    expect('chassis' in aller().doc.zones[0]).toBe(false);
+  });
+});
+
 describe('ACAL593 — les repères de chantier font l’aller-retour', () => {
   const aller = (reperes?: unknown[]) => {
     const doc = documentRiche() as unknown as Record<string, unknown>;

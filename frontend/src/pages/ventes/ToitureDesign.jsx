@@ -309,7 +309,7 @@ function AtelierToiture({
 
   const {
     vue2d, setVue2d, plan2d, panId2d, ouvrirVue2d,
-    hdBusy, hdMessage, exporterHd,
+    hdBusy, hdMessage, exporterHd, gltfBusy, gltfMessage, exporterGltf,
     mapWrapRef, pleinEcran3d, basculerPleinEcran3d,
   } = useAtelierVues({ builderApi, calepinageId, devisId })
 
@@ -1510,6 +1510,7 @@ function AtelierToiture({
           vue2d={vue2d} setVue2d={setVue2d} plan2d={plan2d} panId2d={panId2d}
           ouvrirVue2d={ouvrirVue2d}
           hdBusy={hdBusy} hdMessage={hdMessage} exporterHd={exporterHd}
+          gltfBusy={gltfBusy} gltfMessage={gltfMessage} exporterGltf={exporterGltf}
         />
 
         {/* ACAL955 — « Enregistrer » AVANT « Générer le devis » (ordre du DOM, du

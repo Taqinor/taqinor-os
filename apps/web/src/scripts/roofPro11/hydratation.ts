@@ -22,13 +22,13 @@ import { annualShadeFactor, type ShadeObstruction } from '../../lib/shadingEngin
 import { fallbackPerKwc } from '../../lib/productionEngine';
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type Ctx } from './context';
+import { lireAlleeTechnique } from './alleeTechnique'; // ACAL258 (sorti de prefill.ts)
 import {
   deserializeExclusionZonesFromLayout,
   deserializeHorizonProfileFromLayout,
   deserializeMeasurements,
   deserializeSceneFromLayout,
   deserializeSetbacksFromLayout,
-  lireAlleeTechnique, // ACAL258
   lireChoixConception, // ACAL469
   lireCouchesDocument,
   serializeLayout,

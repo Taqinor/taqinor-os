@@ -100,7 +100,9 @@ class BlocPublieTest(unittest.TestCase):
         self.assertIn('meteo', self.resultat)
 
     def test_les_clefs_sont_celles_du_contrat_committe(self):
-        attendues = set(CONTRAT['exemple']['meteo'])
+        # ACAL744 — ``comparaison_base`` est posée APRÈS la chaîne par
+        # ``simuler_calepinage`` (meteo_comparee.comparer_bases), pas par elle.
+        attendues = set(CONTRAT['exemple']['meteo']) - {'comparaison_base'}
         self.assertTrue(
             attendues.issubset(set(self.bloc)),
             'une clé du contrat CALX143 manque au bloc publié : '
@@ -240,6 +242,102 @@ class ProductionBaseIntacteTest(unittest.TestCase):
         appliquer_chaine({'pas_minutes': 60, 'points': rendu['points']},
                          contexte, resultat=resultat)
         self.assertEqual(resultat['production']['base'], base)
+
+
+def _reponse_mensuelle(watts_par_mois, annees=(2019, 2020)):
+    """Une heure par mois et par année, ``gi_w_m2`` connu (jeu d'essai)."""
+    return {'serie_horaire': {'pas_minutes': 60}, 'depuis_cache': False,
+            'points': [{'annee': annee, 'mois': mois, 'jour': 15, 'heure': 12,
+                        'gi_w_m2': watts_par_mois[mois - 1]}
+                       for annee in annees for mois in range(1, 13)]}
+
+
+class ComparaisonDeBasesTest(unittest.TestCase):
+    """ACAL744 — l'irradiation de la base utilisée face à l'AUTRE base."""
+
+    PRINCIPALE = [100.0 * mois for mois in range(1, 13)]
+    COMPAREE = [90.0] + [110.0 * mois for mois in range(2, 13)]
+
+    def _comparer(self, principale, comparee, **options):
+        from apps.calepinage.services.meteo_comparee import _bloc_comparaison
+
+        return _bloc_comparaison(principale, comparee,
+                                 base_principale='PVGIS-SARAH3',
+                                 base_comparee='PVGIS-ERA5', **options)
+
+    def test_ecart_annuel_et_mensuel_calcule_a_la_main(self):
+        bloc = self._comparer(_reponse_mensuelle(self.PRINCIPALE),
+                              _reponse_mensuelle(self.COMPAREE))
+        # Par année : Σ W/m² × 1 h ÷ 1000, moyenne des deux années identiques.
+        principale = sum(self.PRINCIPALE) / 1000.0
+        comparee = sum(self.COMPAREE) / 1000.0
+        self.assertEqual(bloc['ecart_pct'],
+                         round((comparee - principale) / principale * 100, 2))
+        self.assertEqual(bloc['irradiation_kwh_m2'],
+                         {'principale': round(principale, 1),
+                          'comparee': round(comparee, 1)})
+        self.assertEqual(len(bloc['mensuel']), 12)
+        self.assertEqual(bloc['mensuel'][0]['ecart_pct'], -10.0)
+        self.assertEqual(bloc['mensuel'][5]['ecart_pct'], 10.0)
+        self.assertEqual(bloc['motif'], '')
+        self.assertEqual((bloc['base_principale'], bloc['base_comparee']),
+                         ('PVGIS-SARAH3', 'PVGIS-ERA5'))
+
+    def test_annees_differentes_motif_sans_ecart(self):
+        from apps.calepinage.services.meteo_comparee import MOTIF_ANNEES
+
+        bloc = self._comparer(_reponse_mensuelle(self.PRINCIPALE),
+                              _reponse_mensuelle(self.COMPAREE,
+                                                 annees=(2020, 2021)))
+        self.assertIsNone(bloc['ecart_pct'])
+        self.assertEqual(bloc['motif'], MOTIF_ANNEES)
+
+    def test_autre_base_indisponible_motif_et_appel_compte(self):
+        from apps.calepinage.services.meteo_comparee import comparer_bases
+        from apps.calepinage.services.pvgis_serie import PvgisIndisponible
+
+        class Client:
+            def __init__(self, refuse):
+                self.refuse, self.bases = refuse, []
+
+            def serie_irradiance(self, *, base, **_demande):
+                self.bases.append(base)
+                if self.refuse and base == 'PVGIS-ERA5':
+                    raise PvgisIndisponible('PVGIS ne répond pas.')
+                return _reponse_mensuelle(
+                    ComparaisonDeBasesTest.PRINCIPALE if base == 'PVGIS-SARAH3'
+                    else ComparaisonDeBasesTest.COMPAREE)
+
+        plan = {'lat': 33.57, 'lon': -7.59, 'inclinaison_deg': 30,
+                'azimut_pvgis_deg': 0}
+        decision = {'fenetre_annees': (2019, 2020)}
+        compteur = {'appels': 0}
+        refus = comparer_bases(Client(True), plan, decision, {}, None, compteur)
+        self.assertIsNone(refus['ecart_pct'])
+        self.assertIn('PVGIS ne répond pas', refus['motif'])
+        client = Client(False)
+        bloc = comparer_bases(client, plan, decision, {}, None, compteur)
+        self.assertEqual(client.bases, ['PVGIS-SARAH3', 'PVGIS-ERA5'])
+        self.assertIsNotNone(bloc['ecart_pct'])
+        self.assertEqual(compteur['appels'], 2)
+        fichier = comparer_bases(client, plan, decision, {},
+                                 {'identite': {}}, compteur)
+        self.assertIsNone(fichier['ecart_pct'])
+        self.assertTrue(fichier['motif'])
+
+    def test_contrat_porte_le_bloc(self):
+        contrat = json.loads((ECHANTILLONS / 'calepinage_meteo.json')
+                             .read_text(encoding='utf-8'))
+        servi = self._comparer(_reponse_mensuelle(self.PRINCIPALE),
+                               _reponse_mensuelle(self.COMPAREE))
+        self.assertEqual(contrat['exemple']['meteo']['comparaison_base'],
+                         servi)
+        self.assertIsNone(contrat['exemple_vide']['meteo']['comparaison_base'])
+        sans = contrat['exemple_comparaison_sans_ecart']['meteo'][
+            'comparaison_base']
+        self.assertEqual(sorted(sans), sorted(servi))
+        self.assertIsNone(sans['ecart_pct'])
+        self.assertTrue(sans['motif'])
 
 
 if __name__ == '__main__':

@@ -191,7 +191,13 @@
         "etapes": {},
         "total": null,
         "motif_absence": "aucune bande sourcée"
-      }
+      },
+      "limites_connues": [
+        {"code": "pas_horaire", "texte_fr": "La simulation travaille à l'heure : un passage nuageux de quelques minutes n'est pas vu, et le pas du quart d'heure est refusé à l'export.", "texte_en": "The simulation runs hourly: a cloud passing for a few minutes is not seen, and the quarter-hour step is refused on export."},
+        {"code": "suiveurs", "texte_fr": "Toute pose est fixe : aucun suiveur solaire n'est modélisé.", "texte_en": "Every mounting is fixed: no solar tracker is modelled."},
+        {"code": "courbe_iv", "texte_fr": "Le panneau suit les coefficients de sa fiche, pas une courbe courant-tension cellule par cellule.", "texte_en": "The module follows its datasheet coefficients, not a cell-by-cell current-voltage curve."},
+        {"code": "charges_structure", "texte_fr": "Vent et neige sur la structure : saisis par la société, aucune valeur n'est tirée d'une norme.", "texte_en": "Wind and snow on the structure: entered by the company, no value is taken from a standard."}
+      ]
     }
   },
   "exemple_vide": {
@@ -221,7 +227,8 @@
         "etapes": {},
         "total": null,
         "motif_absence": "aucune bande sourcée"
-      }
+      },
+      "limites_connues": []
     }
   },
   "exemple_ombrage_chaines": {

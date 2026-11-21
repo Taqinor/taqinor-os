@@ -321,6 +321,37 @@ def _refus(message, champ='systeme'):
 #: contrat ``calepinage_fixation_bom.json``).
 SOURCE_CALEPINAGE = 'calepinage'
 SOURCE_PARAMETRE = 'parametre'
+#: ACAL566 — retenu d'après le ``type_toiture`` du lead.
+SOURCE_COUVERTURE = 'couverture'
+
+
+def _couverture_du_lead(company, calepinage):
+    """Le ``type_toiture`` du lead du calepinage, par le sélecteur du CRM
+    (jamais ses modèles) ; ``''`` s'il est inconnu."""
+    lead_id = getattr(calepinage, 'lead_id', None)
+    if company is None or not lead_id:
+        return ''
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(company, lead_id)
+    return str(getattr(lead, 'type_toiture', '') or '')
+
+
+def _selon_la_couverture(actifs, couverture):
+    """``(systeme | None, [refus] | None, source)`` d'après la couverture ;
+    ``None`` en refus = aucune décision (la règle d'aujourd'hui s'applique)."""
+    declarants = [s for s in actifs if couverture in (s.couvertures or [])]
+    if len(declarants) == 1:
+        return declarants[0], [], SOURCE_COUVERTURE
+    if len(declarants) > 1:
+        return None, [_refus(
+            "Plusieurs systèmes de fixation sont actifs ("
+            + ', '.join(f'« {s.code} »' for s in declarants)
+            + ") : choisissez celui de ce calepinage.")], None
+    vides = [s for s in actifs if not s.couvertures]
+    if len(vides) == 1 and len(actifs) > 1:
+        return vides[0], [], SOURCE_PARAMETRE
+    return None, None, None
 
 
 def _systeme_persiste(company, calepinage):
@@ -358,6 +389,11 @@ def _resoudre_avec_source(company, demande=None, calepinage=None):
             "société : la nomenclature de fixation n'est pas calculée. "
             "Saisissez un système et ses composants (rôle, unité, règle de "
             "quantité, source) pour l'obtenir.")], None
+    couverture = _couverture_du_lead(company, calepinage)
+    if couverture:
+        systeme, refus, source = _selon_la_couverture(actifs, couverture)
+        if refus is not None:
+            return systeme, refus, source
     if len(actifs) > 1:
         return None, [_refus(
             "Plusieurs systèmes de fixation sont actifs ("
@@ -452,7 +488,7 @@ def bom_de_fixation(calepinage, systeme, refus=(), source=None):
     }
 
 
-def lignes_par_pan(roof_layout, composants):
+def _lignes_par_pan(roof_layout, composants):
     """ACAL592 — ``{repere de pan: lignes}`` : la MÊME règle et le même
     arrondi que ``_lignes_de_fixation``, sur les grandeurs de CHAQUE pan à
     poser (PUR ; ``[]`` sans conception lisible)."""
@@ -490,8 +526,8 @@ def fixation_par_pan(calepinage):
     systeme, _refus = resoudre_systeme(company, calepinage=calepinage)
     if systeme is None:
         return None
-    return lignes_par_pan(getattr(calepinage, 'roof_layout', None),
-                          composants_du_systeme(systeme))
+    return _lignes_par_pan(getattr(calepinage, 'roof_layout', None),
+                           composants_du_systeme(systeme))
 
 
 def table_fixation(calepinage):

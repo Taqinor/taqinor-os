@@ -202,6 +202,10 @@ CLES_ELECTRIQUE_SOCIETE = (
      'Réglage société — texte saisi une fois, jamais écrit par le logiciel'),  # ACAL673
     ('tolerance_orientation_pans_deg', "Tolérance d'orientation pour câbler une chaîne sur deux pans", '°',
      'PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée'),  # ACAL650
+    ('distance_separation_foudre_min_m', 'Distance de séparation foudre minimale (paratonnerre ↔ champ)', 'm',
+     "Réglage société — étude foudre du site, avec sa source ; aucune distance supposée"),  # ACAL676
+    ('boucle_dc_max_m2', "Surface maximale d'une boucle de chaîne", 'm²',
+     "Réglage société — limite saisie avec sa source ; aucune surface admissible supposée"),  # ACAL678
 )
 
 #: ``{section: tuple de déclarations}`` — le SEUL point d'entrée des lecteurs.
@@ -310,6 +314,8 @@ TYPES_CLES = {
         'facteur_regroupement': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL636
         'consigne_dc_plan_cablage': {'type': 'table'},  # ACAL673
         'tolerance_orientation_pans_deg': {'type': 'nombre', 'minimum': 0},  # ACAL650
+        'distance_separation_foudre_min_m': {'type': 'nombre', 'minimum': 0},  # ACAL676
+        'boucle_dc_max_m2': {'type': 'nombre', 'minimum': 0},  # ACAL678
     },
 }
 

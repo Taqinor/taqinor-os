@@ -86,6 +86,9 @@ SANS_PRODUCTEUR_PUR = {
     # chacune a sa route vérifiée par ``CheminDeclareTest``.
     'calepinage_apercu_document.json':
         'HTML du document, mis en page depuis le calepinage en base (CALX323)',
+    'calepinage_export_csv.json':
+        "vocabulaire des colonnes du service d'export, fichier CSV rendu "
+        'par une vue (ACAL753, test_calx313)',
     'calepinage_export_layout.json':
         'roof_layout du calepinage en base, exporté tel quel (CAL216)',
     'calepinage_modeles.json':
@@ -600,7 +603,8 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
 
         donnees = _charger('calepinage_systemes_fixation.json')
         cles_systeme = {'id', 'code', 'libelle', 'fabricant', 'mode_pose',
-                        'actif', 'provenance', 'composants'}
+                        'actif', 'provenance', 'composants',
+                        'couvertures'}  # couvertures : ACAL566
         cles_composant = {'id', 'role', 'libelle', 'unite', 'produit_id',
                           'regle', 'source', 'ordre'}
         cles_regle = {'base', 'facteur', 'diviseur', 'libelle_facteur',

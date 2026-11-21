@@ -114,6 +114,30 @@ describe('Écran « Sources des paramètres normatifs » (CAL165)', () => {
     expect(screen.queryAllByText('non sourcée')).toHaveLength(0)
   })
 
+  it('ACAL937 — sans norme : « Choisir la norme » ouvre le champ de norme ; avec : « Changer la norme »', async () => {
+    servir('exemple_vide')
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const lien = within(screen.getByTestId('cal165-norme')).getByRole('link', { name: 'Choisir la norme' })
+    expect(lien).toHaveAttribute('href', '/calepinage/reglages#norme')
+    expect(screen.getByTestId('cal165-norme')).toHaveTextContent('Aucune norme électrique choisie')
+
+    cleanup()
+    servir('exemple')
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const change = within(screen.getByTestId('cal165-norme')).getByRole('link', { name: 'Changer la norme' })
+    expect(change).toHaveAttribute('href', '/calepinage/reglages#norme')
+  })
+
+  it('ACAL938 — « Saisir le lestage » mène à la carte Lestage des Réglages', async () => {
+    servir('exemple_vide')
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const lien = within(screen.getByTestId('cal165-lestage')).getByRole('link', { name: 'Saisir le lestage' })
+    expect(lien).toHaveAttribute('href', '/calepinage/reglages#lestage')
+  })
+
   it('sections vides : rien n’est inventé, chaque omission est dite', async () => {
     servir('exemple_vide')
     rendreEcran()

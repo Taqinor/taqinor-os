@@ -112,6 +112,7 @@ def inventaire_des_sorties(calepinage):
     a_parcelle = bool((geometrie or {}).get('parcelle'))
     motif_note = _motif_note(calepinage)  # ACAL214 : lecture stricte
     a_resultat = motif_note is None
+    motif_lestage = _motif_plan_lestage(calepinage)  # ACAL565
 
     def entree(code, libelle, extension, chemin, disponible, motif,
                produit_par='serveur'):
@@ -161,6 +162,9 @@ def inventaire_des_sorties(calepinage):
         entree('pack_technique', 'Dossier technique (pièces fusionnées)',
                'pdf', 'pack-technique/', dessinable and a_resultat,
                motif_note or SANS_PIECE),
+        # ACAL565 — listé même indisponible, avec le manque nommé.
+        entree('plan_lestage_pdf', 'Plan de lestage', 'pdf',
+               'plan-lestage.pdf/', motif_lestage is None, motif_lestage),
     ]
     return {
         'calepinage': calepinage.pk,
@@ -555,6 +559,37 @@ class SortiesMixin:
 
         panneau = (equipements_du_calepinage(calepinage) or {}).get('panneau')
         return (panneau or {}).get('produit')
+
+    # ── ACAL565 — le plan de lestage (toit plat lesté) ─────────────────────
+    @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
+    # headless: appelée via l'endpoint servi par sorties/ (CAL175)
+    @action(detail=True, methods=['get'], url_path=r'plan-lestage\.pdf',
+            url_name='plan-lestage-pdf',
+            permission_classes=[PeutVoirCalepinage])
+    def plan_lestage_pdf(self, request, pk=None):
+        """ACAL565 — centre, rive, coin et le lest saisi de chaque module."""
+        from ..services.plan_lestage import rendre_plan_lestage_pdf
+        from ..services.planche import PlancheRefusee, nom_de_fichier
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        porte_execution(calepinage, 'plan_lestage')
+        try:
+            octets = rendre_plan_lestage_pdf(calepinage,
+                                             company=calepinage.company)
+        except PlancheRefusee as refus:
+            return Response({refus.champ or 'roof_layout': str(refus)},
+                            status=status.HTTP_409_CONFLICT)
+        return reponse_de_fichier(
+            octets, mime=MIME_PDF,
+            nom_fichier=nom_de_fichier(calepinage, 'plan-lestage.pdf'))
+
+
+def _motif_plan_lestage(calepinage):
+    """ACAL565 — ``None`` si le plan de lestage se rend, sinon son motif."""
+    from ..services.plan_lestage import motif_plan_lestage
+
+    return motif_plan_lestage(calepinage)
 
 
 def _motif_note(calepinage):

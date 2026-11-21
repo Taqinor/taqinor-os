@@ -196,6 +196,10 @@ export default function Fixation({ calepinageId: idPropose = null }) {
           <p className="mt-1 text-sm" data-testid="calx360-systeme-applique">
             Système appliqué : <strong>{data.systeme.libelle || data.systeme.code}</strong>
             {` (${data.systeme.code})`}
+            {/* ACAL566 — retenu sans geste d'après le type de toit du lead. */}
+            {data.systeme_source === 'couverture' && (
+              <span data-testid="acal566-source-couverture"> (choisi d’après le toit du lead)</span>
+            )}
           </p>
         ) : (
           <p className="mt-1 text-sm text-muted-foreground" data-testid="calx360-systeme-absent">

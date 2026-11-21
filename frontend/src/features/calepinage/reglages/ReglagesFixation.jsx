@@ -37,11 +37,19 @@ const BASES = [
   ...ROLES.map(([role, libelle]) => [`role:${role}`, `quantité du composant « ${libelle} »`]),
 ]
 
+//: ACAL566 — `catalogue_fixation.COUVERTURES` (= `Lead.TypeToiture`), même ordre.
+const COUVERTURES = [
+  ['terrasse_beton', 'Terrasse béton'], ['tole_metal', 'Tôle/Métal'], ['tuiles', 'Tuiles'],
+  ['bac_acier', 'Bac acier'], ['fibrociment', 'Fibrociment'], ['autre', 'Autre'],
+]
+
 const COMPOSANT_NEUF = {
   role: 'rail', libelle: '', unite: '', produit_id: '', source: '',
   base: '', facteur: '', diviseur: '', libelle_facteur: '', libelle_diviseur: '',
 }
-const SYSTEME_NEUF = { code: '', libelle: '', fabricant: '', mode_pose: 'toiture_inclinee', provenance: '' }
+const SYSTEME_NEUF = {
+  code: '', libelle: '', fabricant: '', mode_pose: 'toiture_inclinee', provenance: '', couvertures: [],
+}
 const CHAMP = 'min-h-11 rounded border border-border bg-background px-2 text-sm'
 
 const texte = (v) => (Array.isArray(v) ? v.join(' ') : String(v))
@@ -125,7 +133,7 @@ function Formulaire({ initial, onFini }) {
     }).finally(() => setEnVol(false))
   }
 
-  const rendus = new Set(['code', 'libelle', 'fabricant', 'mode_pose', 'provenance'])
+  const rendus = new Set(['code', 'libelle', 'fabricant', 'mode_pose', 'provenance', 'couvertures'])
   composants.forEach((_c, i) => ['role', 'libelle', 'unite', 'produit_id', 'regle', 'source']
     .forEach((cle) => rendus.add(`composants[${i}].${cle}`)))
   const id = (suffixe) => `acal559-${suffixe}`
@@ -141,6 +149,20 @@ function Formulaire({ initial, onFini }) {
       </div>
       <Saisie id={id('provenance')} libelle="Provenance (notice du fabricant, référence du document)" chemin="provenance"
         erreurs={erreurs} valeur={systeme.provenance} onSaisie={poser('provenance')} />
+      <fieldset className="flex flex-col gap-1" data-testid="acal566-couvertures">
+        <legend className="text-sm">Toitures servies (proposé d’après le toit du lead)</legend>
+        <div className="flex flex-wrap gap-x-4">
+          {COUVERTURES.map(([cle, libelle]) => (
+            <label key={cle} className="flex min-h-11 items-center gap-2 text-sm">
+              <input type="checkbox" checked={systeme.couvertures.includes(cle)} data-testid={`acal566-couverture-${cle}`}
+                onChange={(e) => poser('couvertures')(e.target.checked
+                  ? [...systeme.couvertures, cle] : systeme.couvertures.filter((c) => c !== cle))} />
+              {libelle}
+            </label>
+          ))}
+        </div>
+        <SousLeChamp erreurs={erreurs} chemin="couvertures" />
+      </fieldset>
 
       <fieldset className="flex flex-col gap-3" data-testid="acal559-composants">
         <legend className="text-sm font-medium">Composants et règle de quantité</legend>
@@ -262,7 +284,8 @@ export default function ReglagesFixation() {
     initial: systeme ? {
       id: systeme.id,
       systeme: { code: systeme.code, libelle: systeme.libelle, fabricant: systeme.fabricant,
-        mode_pose: systeme.mode_pose, provenance: systeme.provenance },
+        mode_pose: systeme.mode_pose, provenance: systeme.provenance,
+        couvertures: Array.isArray(systeme.couvertures) ? systeme.couvertures : [] },
       composants: systeme.composants.map(depuisContrat),
     } : null,
   }))

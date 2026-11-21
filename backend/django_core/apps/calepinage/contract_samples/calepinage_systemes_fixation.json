@@ -12,6 +12,7 @@
         "mode_pose": "toiture_inclinee",
         "actif": true,
         "provenance": "Notice de montage du fabricant, édition d'exemple",
+        "couvertures": ["tuiles"],
         "composants": [
           {
             "id": 31,
@@ -62,6 +63,7 @@
       "mode_pose": "toit_plat_leste",
       "actif": true,
       "provenance": "Notice de montage du fabricant, édition d'exemple",
+      "couvertures": ["terrasse_beton"],
       "composants": [
         {
           "role": "rail",
@@ -102,6 +104,7 @@
         "mode_pose": "toit_plat_leste",
         "actif": true,
         "provenance": "Notice de montage du fabricant, édition d'exemple",
+        "couvertures": ["terrasse_beton"],
         "composants": [
           {
             "id": 41,

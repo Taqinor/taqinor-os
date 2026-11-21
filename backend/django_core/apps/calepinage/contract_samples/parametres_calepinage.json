@@ -665,6 +665,22 @@
           "reference": "PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée",
           "type": "nombre",
           "minimum": 0
+        },
+        {
+          "cle": "distance_separation_foudre_min_m",
+          "libelle": "Distance de séparation foudre minimale (paratonnerre ↔ champ)",
+          "unite": "m",
+          "reference": "Réglage société — étude foudre du site, avec sa source ; aucune distance supposée",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "boucle_dc_max_m2",
+          "libelle": "Surface maximale d'une boucle de chaîne",
+          "unite": "m²",
+          "reference": "Réglage société — limite saisie avec sa source ; aucune surface admissible supposée",
+          "type": "nombre",
+          "minimum": 0
         }
       ],
       "lestage": [
@@ -1371,6 +1387,22 @@
           "libelle": "Tolérance d'orientation pour câbler une chaîne sur deux pans",
           "unite": "°",
           "reference": "PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "distance_separation_foudre_min_m",
+          "libelle": "Distance de séparation foudre minimale (paratonnerre ↔ champ)",
+          "unite": "m",
+          "reference": "Réglage société — étude foudre du site, avec sa source ; aucune distance supposée",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "boucle_dc_max_m2",
+          "libelle": "Surface maximale d'une boucle de chaîne",
+          "unite": "m²",
+          "reference": "Réglage société — limite saisie avec sa source ; aucune surface admissible supposée",
           "type": "nombre",
           "minimum": 0
         }

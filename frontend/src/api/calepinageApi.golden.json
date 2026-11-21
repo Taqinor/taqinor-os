@@ -172,6 +172,22 @@
       "verbe": "post"
     }
   ],
+  "calepinages.configurationsOnduleur": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/configurations-onduleur/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.controleChaine": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/calepinages/controle-chaine/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.corrigerReleve": [
     {
       "config": null,
@@ -600,6 +616,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.importerAffectation": [
+    {
+      "config": null,
+      "data": {
+        "csv": 3
+      },
+      "url": "/calepinage/calepinages/7/importer-affectation/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.importerConception": [
     {
       "config": null,
@@ -969,6 +995,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/sorties/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.suggestionPenteRelief": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/suggestions-pente-relief/",
+      "verbe": "post"
     }
   ],
   "calepinages.supprimerPhoto": [

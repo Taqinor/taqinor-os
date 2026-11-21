@@ -746,6 +746,8 @@ export interface AreaRecord {
   coupuresPavage?: import('./coupuresPavage').CoupuresPavage;
   /** ACAL579 — portée maximale entre deux pieds de châssis (contrat ACAL587), SAISIE et sourcée. */
   porteeEntrePieds?: import('./piedsChassis').PorteeEntrePieds;
+  /** ACAL585 — châssis N × M du pan (contrat ACAL581), SAISI ; absent = pavage d'aujourd'hui. */
+  chassis?: import('./chassisPavage').ChassisPan;
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════

@@ -40,6 +40,8 @@ from apps.calepinage.services.lestage import (
     masse_et_lestage,
 )
 
+from .test_api_liste import BaseApiCalepinage
+
 ECHANTILLON = (pathlib.Path(__file__).resolve().parent.parent
                / 'contract_samples' / 'calepinage_masse_lestage.json')
 
@@ -302,3 +304,99 @@ class RepartitionDuLestageTest(SimpleTestCase):
         sortie = repartir_modules([pan], _zones_saisies())
         self.assertEqual(sortie['pans'], [])
         self.assertEqual(sortie['total_lest_kg'], 0.0)
+
+
+# ── ACAL565 — la feuille « Plan de lestage » ───────────────────────────────
+
+class PlanLestagePurTest(SimpleTestCase):
+    """PUR — la mise en page et les motifs, sans base ni WeasyPrint."""
+
+    def _nu(self, layout):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(pk=None, company=None, titre='Villa Anfa',
+                               roof_layout=layout, layout_hash='',
+                               version_moteur='')
+
+    def test_la_feuille_dit_zones_lest_et_sources_sans_montant(self):
+        from apps.calepinage.services.garde_montants import mots_d_argent
+        from apps.calepinage.services.plan_lestage import svg_de_plan_lestage
+        from apps.calepinage.services.planche import geometrie_de_planche
+
+        from .test_cal171_planche import LAYOUT
+
+        svg = svg_de_plan_lestage(self._nu(LAYOUT),
+                                  geometrie_de_planche(LAYOUT),
+                                  _zones_saisies())
+        for attendu in ('Plan de lestage', 'Centre', 'Rive', 'Coin',
+                        '12,5 kg', 'notice K2 (essai)', 'calculées'):
+            self.assertIn(attendu, svg)
+        self.assertEqual(mots_d_argent(svg), [])
+
+    def test_sans_conception_le_motif_le_dit(self):
+        from apps.calepinage.services.plan_lestage import (
+            SANS_CONCEPTION, motif_plan_lestage,
+        )
+
+        self.assertEqual(motif_plan_lestage(self._nu(None)), SANS_CONCEPTION)
+
+    def test_sans_systeme_le_motif_nomme_le_systeme(self):
+        from apps.calepinage.services.plan_lestage import motif_plan_lestage
+
+        from .test_cal171_planche import LAYOUT
+
+        self.assertIn('système de fixation',
+                      motif_plan_lestage(self._nu(LAYOUT)))
+
+    def test_l_inventaire_liste_le_plan_meme_indisponible(self):
+        from apps.calepinage.views.sorties import inventaire_des_sorties
+
+        from types import SimpleNamespace
+
+        nu = SimpleNamespace(pk=7, company=None, titre='', roof_layout=None,
+                             resultat=None, layout_hash='', version_moteur='',
+                             roof_image=None)
+        entree = [s for s in inventaire_des_sorties(nu)['sorties']
+                  if s['code'] == 'plan_lestage_pdf'][0]
+        self.assertFalse(entree['disponible'])
+        self.assertTrue(entree['motif_indisponible'])
+        self.assertTrue(entree['endpoint'].endswith('/7/plan-lestage.pdf/'))
+
+
+class PlanLestageEnBaseTest(BaseApiCalepinage):
+    """CI — la porte réelle : PDF avec un système lesté et les quatre
+    paramètres, 409 nommé sinon."""
+
+    def setUp(self):
+        from apps.calepinage.models import Calepinage, SystemeFixation
+
+        from .test_cal171_planche import LAYOUT
+
+        super().setUp()
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Toit plat',
+            roof_layout=LAYOUT)
+        SystemeFixation.objects.create(
+            company=self.company, code='leste', libelle='Lesté (essai)',
+            mode_pose='toit_plat_leste', provenance='Notice (essai)')
+        self.url = ('/api/django/calepinage/calepinages/%s/plan-lestage.pdf/'
+                    % self.calepinage.pk)
+
+    def _saisir(self, **valeurs):
+        from apps.calepinage.services.parametres import enregistrer_parametres
+
+        enregistrer_parametres(self.company, {'lestage': {
+            'zones_de_pose': _zones_saisies(**valeurs)}})
+
+    def test_pdf_produit_avec_les_quatre_parametres(self):
+        self._saisir()
+        reponse = self.api.get(self.url)
+        self.assertEqual(reponse.status_code, 200,
+                         getattr(reponse, 'data', None))
+        self.assertEqual(reponse['Content-Type'], 'application/pdf')
+
+    def test_parametre_manquant_refuse_409_en_le_nommant(self):
+        self._saisir(largeur_coin_m=None)
+        reponse = self.api.get(self.url)
+        self.assertEqual(reponse.status_code, 409)
+        self.assertIn('largeur_coin_m', reponse.data)

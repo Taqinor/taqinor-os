@@ -167,6 +167,27 @@ class RegleDeQuantiteTest(SimpleTestCase):
                              'libelle_diviseur': 'entraxe (m)'}), '')
 
 
+class CouverturesTest(SimpleTestCase):
+    """ACAL566 — le vocabulaire des couvertures EST celui du lead."""
+
+    def test_parite_avec_le_type_de_toiture_du_lead(self):
+        from apps.calepinage.services.catalogue_fixation import COUVERTURES
+        from apps.crm.models import Lead
+
+        self.assertEqual(COUVERTURES, tuple(Lead.TypeToiture.values))
+
+    def test_refus_nommes(self):
+        from apps.calepinage.services.catalogue_fixation import (
+            erreur_de_couvertures,
+        )
+
+        self.assertEqual(erreur_de_couvertures([]), '')
+        self.assertEqual(erreur_de_couvertures(['tuiles', 'bac_acier']), '')
+        self.assertIn('inconnue', erreur_de_couvertures(['ardoise']))
+        self.assertIn('deux fois', erreur_de_couvertures(['tuiles', 'tuiles']))
+        self.assertIn('liste', erreur_de_couvertures('tuiles'))
+
+
 class DecouplageTest(SimpleTestCase):
     """D-CALX 2 — on PRÉPARE le remplacement de KitCalepinage, rien de plus."""
 
@@ -327,6 +348,16 @@ class CatalogueEnHttp(BaseApiCalepinage):
         self.assertEqual(reponse.data['composants[0].regle'],
                          [erreur_de_regle({'base': 'surface'})])
         self.assertIn('code', reponse.data)
+
+    def test_couvertures_acceptees_et_refusees_en_nommant_le_champ(self):
+        # ACAL566 — clé additive du contrat.
+        systeme = self._creer(couvertures=['tuiles'])
+        self.assertEqual(systeme['couvertures'], ['tuiles'])
+        reponse = self.api.post(URL_SYSTEMES,
+                                _corps(code='autre', couvertures=['ardoise']),
+                                format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('couvertures', reponse.data)
 
     def test_company_du_corps_ignoree(self):
         systeme = self._creer(company=self.autre.pk)

@@ -224,7 +224,7 @@ import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
-import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; // ACAL576, ACAL579
+import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; // ACAL576, ACAL579, ACAL585
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
@@ -1355,7 +1355,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // disposition personnalisée (re-snap sur la nouvelle lattice) après une édition d'obstacle
   // ou d'axe pendant que l'éditeur est ouvert. Les autres méthodes pilotent le câblage interne.
   barreSelection = creerBarreSelection({ hote: () => map.getContainer?.() ?? null, editeur: layoutEditor, setStatus: (m) => setStatus(m), photographier: () => ctx.pushWorkshopHistory?.() }); // ACAL411 + ACAL418
-  monterChampsCoupures(ctx, { recalc: () => recalc() }); monterChampPortee(ctx, { recalc: () => recalc() }); // ACAL576, ACAL579 — rubrique « Avancé » de #rp9-layout-panel
+  monterChampsCoupures(ctx, { recalc: () => recalc() }); monterChampPortee(ctx, { recalc: () => recalc() }); monterChampsChassis(ctx, { recalc: () => recalc() }); // ACAL576, ACAL579, ACAL585 — rubrique « Avancé » de #rp9-layout-panel
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
   const occupiedCenters = layoutEditor.occupiedCenters;
   const reenterCustomLayout = layoutEditor.reenterCustomLayout;
@@ -4332,7 +4332,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
               pack.azimuthDeg,
             )
           : [];
-      return projectPlanView(ring, posed, { widthPx, heightPx, marginPx: 28 });
+      return { ...projectPlanView(ring, posed, { widthPx, heightPx, marginPx: 28 }), existant: Boolean(activeArea()?.existant) }; // ACAL511
     },
     // CAL103 — le panneau de calques de l'écran hôte pilote la carte par ici.
     setLayerState: (id, state) => mapDraw.setLayerState(id, state),

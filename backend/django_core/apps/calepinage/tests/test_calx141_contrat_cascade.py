@@ -55,11 +55,12 @@ class EnveloppeTest(unittest.TestCase):
             bloc = CASCADE[etat]['cascade']
             # ACAL8 (contrat v2) : + etapes_omises,
             # irradiation_incidente_kwh_m2. ACAL695 : + postes_lisibles.
-            # ACAL699 : + a_renseigner.
+            # ACAL699 : + a_renseigner. ACAL749 : + limites_connues.
             self.assertEqual(
                 sorted(bloc),
                 ['a_renseigner', 'etapes', 'etapes_omises', 'hash_entree',
-                 'irradiation_incidente_kwh_m2', 'ordre', 'plages',
+                 'irradiation_incidente_kwh_m2', 'limites_connues', 'ordre',
+                 'plages',
                  'postes_lisibles', 'postes_non_sources', 'total_pct'],
                 f'{etat} : les clés du bloc « cascade » ont bougé.')
 
@@ -194,6 +195,48 @@ class PasDeDeriveTest(unittest.TestCase):
                     document[etat]['pertes'], list,
                     f"{nom} ({etat}) : « pertes » doit rester une LISTE "
                     'plate — quatre lecteurs l’itèrent déjà (D-CALX 11).')
+
+
+class LimitesConnuesTest(unittest.TestCase):
+    """ACAL749 — chaque limite servie est VRAIE contre le code."""
+
+    def test_chaque_limite_est_vraie_contre_le_code(self):
+        import re
+
+        from apps.calepinage.services.chaine_pertes import ORDRE_ETAPES
+        from apps.calepinage.services.export_csv import (
+            PAS_DISPONIBLES, ExportImpossible, _valider_pas)
+        from apps.calepinage.services.limites_connues import limites_connues
+
+        servies = limites_connues(ORDRE_ETAPES)
+        codes = [limite['code'] for limite in servies]
+        self.assertEqual(codes, ['pas_horaire', 'suiveurs', 'courbe_iv',
+                                 'charges_structure'])
+        # pas_horaire ⇔ l'export refuse le pas du quart d'heure.
+        self.assertIn('15min', PAS_DISPONIBLES)
+        with self.assertRaises(ExportImpossible) as refus:
+            _valider_pas('15min')
+        self.assertEqual(refus.exception.champ, 'pas')
+        # suiveurs ⇔ aucune étape « tracker » dans la chaîne.
+        self.assertFalse([nom for nom in ORDRE_ETAPES if 'tracker' in nom
+                          or 'suiveur' in nom])
+        # ombrage_diffus ⇔ absent d'ORDRE_ETAPES (livré par ACAL461).
+        self.assertIn('ombrage_diffus', ORDRE_ETAPES)
+        sans = tuple(nom for nom in ORDRE_ETAPES if nom != 'ombrage_diffus')
+        self.assertEqual(limites_connues(sans)[-1]['code'], 'ombrage_diffus')
+        for limite in servies + limites_connues(sans):
+            self.assertEqual(sorted(limite), ['code', 'texte_en', 'texte_fr'])
+            for texte in (limite['texte_fr'], limite['texte_en']):
+                self.assertIsNone(re.search(r'\d', texte), texte)
+
+    def test_le_contrat_porte_la_liste_servie(self):
+        from apps.calepinage.services.chaine_pertes import ORDRE_ETAPES
+        from apps.calepinage.services.limites_connues import limites_connues
+
+        self.assertEqual(CASCADE['exemple']['cascade']['limites_connues'],
+                         limites_connues(ORDRE_ETAPES))
+        self.assertEqual(CASCADE['exemple_vide']['cascade']['limites_connues'],
+                         [])
 
 
 class OmbrageChainesTest(unittest.TestCase):

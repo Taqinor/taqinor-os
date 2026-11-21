@@ -398,6 +398,26 @@ def _html_plan_pose():
         _rendre_plan_pose_svg(nu, moment=MOMENT, titre='Villa Anfa'))
 
 
+def _html_plan_lestage():
+    """ACAL565 — la feuille de lestage, depuis la géométrie de la planche et
+    quatre paramètres saisis (aucune base)."""
+    from apps.calepinage.services.plan_lestage import svg_de_plan_lestage
+    from apps.calepinage.services.planche import (
+        geometrie_de_planche, html_de_planche,
+    )
+
+    nu = SimpleNamespace(pk=None, company=None, titre='Villa Anfa',
+                         roof_layout=LAYOUT_PLANCHE, layout_hash='',
+                         version_moteur='')
+    zones = {cle: {'valeur': valeur, 'source': 'notice K2 (essai)'}
+             for cle, valeur in (('largeur_bande_rive_m', 1.0),
+                                 ('largeur_coin_m', 0.8),
+                                 ('lest_rive_kg_par_module', 12.5),
+                                 ('lest_coin_kg_par_module', 25.0))}
+    return html_de_planche(svg_de_plan_lestage(
+        nu, geometrie_de_planche(LAYOUT_PLANCHE), zones))
+
+
 def _html_plan_toiture():
     from apps.calepinage.services.planche import (
         CONTENU_TOITURE, html_de_planche, _rendre_plan_svg,
@@ -434,6 +454,7 @@ RENDEURS_HTML_PURS = {
     'plan_cablage': _html_plan_cablage,
     'planche_pdf': _html_planche,
     'plan_pose_pdf': _html_plan_pose,
+    'plan_lestage_pdf': _html_plan_lestage,  # ACAL565
     'plan_toiture_pdf': _html_plan_toiture,
     'plan_masse_pdf': _html_plan_masse,
 }
@@ -501,7 +522,7 @@ class DerivationEtCouvertureTest(unittest.TestCase):
              'rapport_etude', 'rapport_ombrage', 'plan_cablage',
              'manuel_proprietaire', 'document_asbuilt',
              'dossier_fin_chantier', 'presentation_compacte',
-             'pertes_en_postes'})
+             'pertes_en_postes', 'plan_lestage_pdf'})
 
 
 class AucunMontantDansLeHtmlTest(unittest.TestCase):

@@ -52,6 +52,10 @@ import {
   estRefus,
   lireModulesDisponibles,
   catalogueAvecModulesDuDocument,
+  kwcDuPan,
+  MODULE_PAR_DEFAUT_ATELIER,
+  resoudreModuleDuPan,
+  type ModuleDocument,
 } from './moduleSelect';
 import { type Panel2Module } from '../../lib/roofPro2';
 import {
@@ -73,6 +77,7 @@ import {
   type MatrixEvalV6,
   type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
+import { majNoteChassis, optionChassis } from './chassisPavage'; // ACAL585
 import {
   anneauPosableParArete, // CALX95 câblage
   solveLive,
@@ -430,6 +435,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const cotes = cotesPourPan(catalogueAvecModulesDuDocument(catalogueModules, ctx.modulesDuDocument).catalogue, moduleId);
     return estRefus(cotes) ? undefined : cotes;
   };
+  /** ACAL851 — le module CHOISI du pan actif (même résolution que ses cotes), `null` sans choix. */
+  const moduleDuPanActif = (): ModuleDocument | null => {
+    const moduleId = ctx.activeArea()?.moduleId;
+    if (!moduleId) return null;
+    const module = resoudreModuleDuPan(catalogueAvecModulesDuDocument(catalogueModules, ctx.modulesDuDocument).catalogue, moduleId);
+    return estRefus(module) ? null : module;
+  };
 
   /* ═════════ CALX115 — LE SEUIL D'ACCÈS SOLAIRE RETIRE DES EMPLACEMENTS DU POSABLE ═════════
      `optimisation.seuilAccesSolaire` (contrat CALX88) voyage par le DOCUMENT et arrive ici
@@ -650,6 +662,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
+    majNoteChassis(o.pack, o.grid); // ACAL585 — « n châssis de N × M posés » ou le motif
     afficherSensDePose(lignesSensDePose(o.pack, accesSolaireDe, placedFor)); // ACAL552
     paintCard(
       {
@@ -945,6 +958,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       retraitsParAreteM: retraitsParArete(), // CALX95 — retrait propre à chaque arête saisie
       eastWestGeometry: eastWestGeometryInput(), // CAL87 — faîtage + écart inter-chevrons saisis
       module: cotesDuModuleDuPanActif(), // CALX109 — vraies cotes du module posé sur ce pan
+      chassis: optionChassis(ctx.activeArea?.()?.chassis), // ACAL585 — châssis N × M saisi sur ce pan
     });
     ctx.liveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : besoinAutoRelu(ctx.documentRelu, ctx.activeAreaId, monthlyBill());
@@ -1004,8 +1018,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // deux cartes affichées pouvait diverger jusqu'à 0,1 kWc du total agrégé
     // (round(a) + round(b) ≠ round(a+b)) — cf. zones.ts. 2 décimales affichent la
     // valeur exacte (aucune perte), donc la somme affichée == le total affiché.
-    set('rp9-reco-kwc', `${d.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`);
-    set('rp9-reco-panels', `${fmt(d.count)} × 720 W`);
+    // ACAL851 — la puissance du module RÉELLEMENT posé (« 8 × 710 W ») ; sans choix, le défaut.
+    const choisi = moduleDuPanActif();
+    const kwc = choisi ? kwcDuPan(d.count, choisi) : d.kwc;
+    const watt = (choisi ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc;
+    set('rp9-reco-kwc', kwc == null ? '—' : `${kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`);
+    set('rp9-reco-panels', watt ? `${fmt(d.count)} × ${fmt(watt)} W` : `${fmt(d.count)} panneaux`);
     set('rp9-reco-prod', d.annualKwh > 0 ? `${fmt(Math.round(d.annualKwh))} kWh/an` : '—');
     set('rp9-reco-cover', d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
     set('rp9-reco-savings', `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`);

@@ -44,8 +44,14 @@ PREFIXE_ROLE = 'role:'
 CLES_REGLE = ('base', 'facteur', 'diviseur', 'libelle_facteur',
               'libelle_diviseur')
 
+#: ACAL566 — les couvertures qu'un système peut servir : le vocabulaire du
+#: lead (``Lead.TypeToiture``, parité testée), jamais une liste à part.
+COUVERTURES = ('terrasse_beton', 'tole_metal', 'tuiles', 'bac_acier',
+               'fibrociment', 'autre')
+
 __all__ = [
-    'BASES', 'PREFIXE_ROLE', 'CLES_REGLE', 'erreur_de_regle',
+    'BASES', 'PREFIXE_ROLE', 'CLES_REGLE', 'COUVERTURES', 'erreur_de_regle',
+    'erreur_de_couvertures',
     'systemes_actifs', 'systeme_de_societe', 'composants_du_systeme',
 ]
 
@@ -96,6 +102,23 @@ def erreur_de_regle(regle):
     for cle in ('libelle_facteur', 'libelle_diviseur'):
         if cle in regle and not isinstance(regle[cle], str):
             return f"« {cle} » est un texte."
+    return ''
+
+
+def erreur_de_couvertures(couvertures):
+    """ACAL566 — le message qui refuse ``couvertures``, ou ``''`` (liste de
+    clés de :data:`COUVERTURES`, sans doublon ; vide = non déclarée)."""
+    if couvertures in (None, []):
+        return ''
+    if not isinstance(couvertures, list):
+        return ("Les couvertures se saisissent en liste "
+                f"(reçu : {type(couvertures).__name__}).")
+    inconnues = [str(c) for c in couvertures if c not in COUVERTURES]
+    if inconnues:
+        return (f"Couverture inconnue : « {', '.join(inconnues)} ». "
+                f"Couvertures admises : {', '.join(COUVERTURES)}.")
+    if len(set(couvertures)) != len(couvertures):
+        return "Une couverture est déclarée deux fois."
     return ''
 
 

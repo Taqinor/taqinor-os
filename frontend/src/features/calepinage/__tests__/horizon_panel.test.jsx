@@ -19,6 +19,13 @@ import { espions } from '../../../test/fixtures/calepinageApiMock'
 const { layout, enregistrerLayoutCalepinage, enregistrerSectionLayout, horizon } = espions
 vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock')).apiDocument({ horizon: true }))
 
+// ACAL518 — faux capteurs (jsdom n'en a pas) : `DeviceOrientationEvent` absent = bloc absent.
+const capteurs = { demarrerCapteurs: vi.fn(), lireVisee: vi.fn() }
+vi.mock('../capteursTelephone', () => ({
+  demarrerCapteurs: (...a) => capteurs.demarrerCapteurs(...a),
+  lireVisee: (...a) => capteurs.lireVisee(...a),
+}))
+
 const {
   default: HorizonPanel,
 } = await import('../HorizonPanel')
@@ -395,6 +402,57 @@ describe('CAL92 — bouton « Récupérer depuis PVGIS »', () => {
     fireEvent.change(screen.getByLabelText(/Hauteur angulaire/), { target: { value: '20' } })
     fireEvent.click(screen.getByText('Ajouter le point'))
     expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(1)
+  })
+})
+
+describe('ACAL518 — « Relever au téléphone » (faux capteur)', () => {
+  afterEach(() => { window.DeviceOrientationEvent = undefined })
+  const ouvrir = async () => {
+    window.DeviceOrientationEvent = function Evt() {}
+    capteurs.demarrerCapteurs.mockResolvedValue({ ok: true })
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    fireEvent.click(await screen.findByTestId('horizon-tel-demarrer'))
+    return screen.findByTestId('horizon-tel-visees')
+  }
+
+  it('sans capteur : le bloc est absent', async () => {
+    window.DeviceOrientationEvent = undefined
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    expect(screen.queryByTestId('horizon-tel')).toBeNull()
+  })
+
+  it('sans précision déclarée : le bouton de visée est désactivé et le dit', async () => {
+    await ouvrir()
+    expect(screen.getByTestId('horizon-tel-viser')).toBeDisabled()
+    expect(screen.getByTestId('horizon-tel-sans-precision')).toHaveTextContent('Déclarez la précision')
+  })
+
+  it('10 visées : 10 points, relevé téléphone avec la précision déclarée, écrit à l’enregistrement', async () => {
+    await ouvrir()
+    fireEvent.change(screen.getByTestId('horizon-tel-precision'), { target: { value: '10' } })
+    for (let i = 0; i < 10; i += 1) {
+      capteurs.lireVisee.mockReturnValue({ azimutDeg: i * 36, hauteurDeg: 4 + i })
+      fireEvent.click(screen.getByTestId('horizon-tel-viser'))
+    }
+    expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(10)
+    expect(screen.getByTestId('horizon-tel-compte')).toHaveTextContent('Visée 10 sur 8 minimum')
+    fireEvent.click(screen.getByText('Enregistrer le profil'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    const valeur = enregistrerSectionLayout.mock.calls[0][1].valeur
+    expect(valeur.points).toHaveLength(10)
+    expect(valeur.releve).toEqual({ mode: 'telephone', date: new Date().toISOString().slice(0, 10), precisionDeg: 10 })
+  })
+
+  it('un trou dans le tour est nommé avant l’enregistrement', async () => {
+    await ouvrir()
+    fireEvent.change(screen.getByTestId('horizon-tel-precision'), { target: { value: '10' } })
+    for (const az of [0, 20, 40, 60, 80, 100]) {
+      capteurs.lireVisee.mockReturnValue({ azimutDeg: az, hauteurDeg: 5 })
+      fireEvent.click(screen.getByTestId('horizon-tel-viser'))
+    }
+    expect(screen.getByTestId('horizon-tel-compte')).toHaveTextContent('il manque une visée vers 230°')
   })
 })
 
