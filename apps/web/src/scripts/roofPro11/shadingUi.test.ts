@@ -7,6 +7,8 @@ import { annualShadeFactor, MID_MONTH_DAY_OF_YEAR, DIFFUSE_FRACTION_WHEN_SHADED 
 import { tableOmbrage, recomposerMatrice, ajouterTableOmbrage, garderTableRelue, signerSources } from './tableOmbrage'; // ACAL459
 import { facteurVueCiel, vueCielDuPan, ajouterVueCiel, garderVueCielRelue } from './vueCiel'; // ACAL460
 import { describe, expect, it } from 'vitest';
+import { htmlLegendeAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441
+import { solarAccessColorRGB } from '../../lib/shadingEngine'; // ACAL441
 import {
   effectiveBuildingHeightM,
   filtrerEmplacementsSousSeuil,
@@ -511,5 +513,21 @@ describe('ACAL460 — facteur de vue du ciel', () => {
     expect(g.skyViewFactor).toStrictEqual(v);
     garderVueCielRelue(g, { signatureOmbrage: 'b' });
     expect(g.skyViewFactor).toBeUndefined();
+  });
+});
+
+describe('ACAL441 : la légende reprend les couleurs de solarAccessColorRGB', () => {
+  it('trois repères lus de la fonction, extrémités nommées, période affichée', () => {
+    const html = htmlLegendeAcces('décembre');
+    for (const a of [0, 0.5, 1]) {
+      const c = solarAccessColorRGB(a);
+      expect(html).toContain(`rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`);
+    }
+    expect(html).toContain('à l’ombre (0 %)');
+    expect(html).toContain('plein soleil (100 %)');
+    expect(html).toContain('Période évaluée : décembre');
+  });
+  it('sans note dans la page, rien n’est créé', () => {
+    expect(() => poserLegendeAcces(null, 'année entière')).not.toThrow();
   });
 });
