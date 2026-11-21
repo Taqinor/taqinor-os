@@ -1384,10 +1384,12 @@ function AtelierToiture({
             <div><dd id="rp9-reco-prod" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production</dt></div>
             <div><dd id="rp9-reco-cover" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture</dt></div>
           </dl>
-          <div className="mt-5 border-t border-border pt-5">
-            <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
-          </div>
+          <dl className="mt-5 border-t border-border pt-5">
+            <div>
+              <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
+            </div>
+          </dl>
           <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
           <p id="rp9-reco-bifacial" className="mt-2 text-xs text-muted-foreground"></p>
           <p id="rp9-reco-band" className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
@@ -1471,7 +1473,8 @@ function AtelierToiture({
           {!deliver ? (
             <div>
               <button type="button" onClick={generer} disabled={sending}
-                className="inline-flex w-full items-center justify-center gap-3 bg-success px-6 py-4 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
+                className="inline-flex w-full items-center justify-center gap-3 bg-success px-6 py-4 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60"
+>
                 {sending && (
                   <span aria-hidden="true"
                     className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-border border-t-white"></span>

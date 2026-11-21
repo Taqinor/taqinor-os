@@ -239,24 +239,28 @@ export default function Rail({
       </p>
       <RailGuide etapeActive={cleEtape} etats={etats} onChoisir={choisirEtape}
         expert={expert} onBasculerExpert={basculerExpert} />
-      <TabsList
-        aria-label="Onglets du calepinage"
-        className="flex w-full flex-wrap gap-x-1 gap-y-1.5"
-      >
-        {visibles.map((onglet) => (
-          <span key={onglet.cle} className="inline-flex items-center gap-0.5">
-            <TabsTrigger value={onglet.cle} data-testid={`cal-onglet-${onglet.cle}`}>
+      {/* a11y (ACAL439) — un `tablist` ne doit posséder que des `tab` : les bulles d'aide
+          (boutons) en sont SŒURS, pas filles. Le conteneur visuel (bordure, fond, flex-wrap) est
+          ce `div` ; `TabsList` est en `display: contents` et l'`order` CSS remet chaque bulle juste
+          après son onglet (onglet 2i, bulle 2i+1). */}
+      <div className="flex w-full flex-wrap items-center gap-x-1 gap-y-1.5 rounded-lg border border-border bg-muted p-1">
+        <TabsList aria-label="Onglets du calepinage" className="contents">
+          {visibles.map((onglet, i) => (
+            <TabsTrigger key={onglet.cle} value={onglet.cle} style={{ order: 2 * i }}
+              data-testid={`cal-onglet-${onglet.cle}`}>
               {libelleOnglet(onglet)}
             </TabsTrigger>
-            {/* ACAL419 — la bulle est HORS de `TabsTrigger` : hors du trajet des flèches. */}
-            {GLOSSAIRE_ONGLETS[onglet.cle] && (
-              <HelpTip label={`À quoi sert « ${onglet.libelle} »`} tabIndex={-1}>
-                {GLOSSAIRE_ONGLETS[onglet.cle]}
-              </HelpTip>
-            )}
+          ))}
+        </TabsList>
+        {/* ACAL419 — la bulle est HORS de `TabsTrigger` et du tablist : hors du trajet des flèches. */}
+        {visibles.map((onglet, i) => GLOSSAIRE_ONGLETS[onglet.cle] && (
+          <span key={onglet.cle} className="inline-flex" style={{ order: 2 * i + 1 }}>
+            <HelpTip label={`À quoi sert « ${onglet.libelle} »`} tabIndex={-1}>
+              {GLOSSAIRE_ONGLETS[onglet.cle]}
+            </HelpTip>
           </span>
         ))}
-      </TabsList>
+      </div>
 
       {actif && Composant && (
         <TabsContent ref={panneauRef} value={cleVue} data-testid="cal-onglet-panneau">
