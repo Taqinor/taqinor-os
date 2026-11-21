@@ -43,6 +43,8 @@ CODES_NEUFS = frozenset({
     'rapport_etude', 'rapport_ombrage', 'export_projet_json', 'plan_cablage',
     'manuel_proprietaire', 'document_asbuilt', 'dossier_fin_chantier',
     'diagramme_pertes', 'presentation_compacte',
+    # ACAL697 : le dixième document, « pertes en postes ».
+    'pertes_en_postes',
 })
 
 #: Sous-chaînes qui trahissent un chiffre de montant — même vocabulaire que
@@ -109,7 +111,7 @@ class NeufCodesNeufsTest(unittest.TestCase):
 
     def test_exactement_neuf_documents_sans_doublon(self):
         codes = [doc['code'] for doc in CONTRAT['exemple']['documents']]
-        self.assertEqual(len(codes), 9)
+        self.assertEqual(len(codes), 10)
         self.assertEqual(len(codes), len(set(codes)),
                          'un code apparaît deux fois : `check_api_shapes` '
                          "et l'écran qui lira cet inventaire perdraient "

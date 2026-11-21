@@ -209,3 +209,50 @@ class VerdictTest(unittest.TestCase):
 
     def test_aucune_proposition_aucun_verdict(self):
         self.assertEqual(verdict_affectation(_conception(), ()), ())
+
+
+class ImportCsvTest(unittest.TestCase):
+    """ACAL630 — chaque refus nomme SA ligne de fichier (en-tête = 1)."""
+
+    def _lire(self, texte):
+        from apps.calepinage.services.import_affectation import (
+            lire_csv_affectation,
+        )
+        return lire_csv_affectation(texte)
+
+    def test_ligne_4_fausse_refusee_avec_son_numero(self):
+        lignes, refus = self._lire(
+            'module;chaine;mppt;onduleur\nPAN-A#1;1;1;1\nPAN-A#2;1;1;1\n'
+            'PAN-A#3;abc;1;1')
+        self.assertEqual(refus, [{
+            'ligne': 4, 'colonne': 'chaine',
+            'message': 'La chaîne doit être un entier strictement positif '
+                       '(reçu : abc)'}])
+        self.assertEqual([ligne['module'] for ligne in lignes],
+                         ['PAN-A#1', 'PAN-A#2'])
+
+    def test_csv_valide_normalise_et_verdicte(self):
+        from apps.calepinage.services import chaines
+
+        vrai = chaines.evaluer_onduleurs
+        chaines.evaluer_onduleurs = lambda conception: _Evaluation()
+        self.addCleanup(setattr, chaines, 'evaluer_onduleurs', vrai)
+        lignes, refus = self._lire(
+            'module;chaine;mppt;onduleur\nPAN-A#1;1;1;1\nPAN-A#2;1;1;1')
+        self.assertEqual(refus, [])
+        self.assertEqual(verdict_affectation(
+            _conception(), normaliser_affectation_imposee(lignes)), ())
+
+    def test_entete_absent_ou_colonne_inconnue_ligne_1(self):
+        for texte in ('PAN-A#1;1;1;1', 'module;chaine;mppt;inverter\nx;1;1;1',
+                      ''):
+            with self.subTest(texte=texte):
+                lignes, refus = self._lire(texte)
+                self.assertEqual(lignes, [])
+                self.assertEqual([r['ligne'] for r in refus], [1])
+
+    def test_module_en_double_refuse_sur_la_seconde_ligne(self):
+        _lignes, refus = self._lire(
+            'module;chaine;mppt;onduleur\nPAN-A#1;1;1;1\nPAN-A#1;2;1;1')
+        self.assertEqual([(r['ligne'], r['colonne']) for r in refus],
+                         [(3, 'module')])

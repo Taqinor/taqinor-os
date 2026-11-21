@@ -1,0 +1,148 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/evaluer-electrique/",
+  "pourquoi": "ACAL611 (C-ACAL-L5-611, PACT10) — le verdict électrique À CHAUD et, sur la conception ENREGISTRÉE, le verdict PUBLIABLE complet. Corps : `layout` (dessin en cours) et `entree_electrique` (dont `module_produit`, `onduleur_produit`, `optimiseur_produit` : identifiants de produits du stock de la société ; jamais une clé `materiel`, le corps ne fournit pas de fiche). Réponse : verdict, publiable, bloquants, alertes, manquantes, regle_mppt, regle_chaine, temperatures, publication. `publication` (null dès que le corps porte `layout` ou `entree_electrique` : on publie ce qui est enregistré) = {publiable, motifs[{code, statut, libelle, source}], etat, points, titre, phrase}. `publiable` garde D-ACAL-9 (un indéterminé ne bloque pas) ; `etat` est le vocabulaire d'ACAL934 (`pret` / `a_completer` / `bloquant`, jamais un second) ; `points` = nombre de motifs de statut `non_verifiable`, `omis` ou `sans_source` ; `titre` et `phrase` sont COMPOSÉS PAR LE SERVEUR (l'écran ne compose rien). Les nombres, textes et identifiants ci-dessous sont un EXEMPLE DE FORME, jamais des valeurs de fiche ni des seuils produit. ACAL620 — `chaines[]` : une ligne PAR CHAÎNE conçue {chaine, pan, mppt, nombre_modules, source (`automatique` | `affectation manuelle`), voc_froid_v, voc_froid_limite_v, voc_froid_conforme, temperature_froide_c, vmp_chaud_v, temperature_chaude_c, demarrage_v, demarrage_source (`fiche` | `bas_de_plage_mppt` | null), vmp_chaud_conforme, isc_a, temperature_source (`saisie` | `tmy` | null), indetermine[]} ; un nombre non calculable vaut null (jamais 0) et sa cause est une phrase de `indetermine` ; volts arrondis à 0,1 V par le serveur, l'écran ne recalcule rien. PLACEHOLDERS arithmétiquement cohérents (tension = N × tension d'un module) : Voc à froid d'un module 53,5 V et Vmp à chaud 36,0 V d'exemple ⇒ 12 modules = 642,0 V et 432,0 V ; 10 modules = 535,0 V et 360,0 V ; Isc 13,9 A d'exemple — aucun n'est une valeur de fiche. `exemple_vide` (fiche incomplète) porte `chaines: []` ; `exemple_indetermine` nomme un pan sans chaîne conçue.",
+  "exemple_corps": {},
+  "exemple_corps_a_chaud": {
+    "layout": {"version": 2, "zones": []},
+    "entree_electrique": {
+      "module_produit": 31,
+      "onduleur_produit": 42,
+      "optimiseur_produit": null
+    }
+  },
+  "exemple": {
+    "verdict": "conforme",
+    "publiable": true,
+    "bloquants": [],
+    "alertes": [],
+    "manquantes": [],
+    "regle_mppt": "chaînes réparties sur les entrées MPPT de l'onduleur",
+    "regle_chaine": {
+      "regle": "voc_module",
+      "libelle": "longueur de chaîne fermée par le Voc À FROID du module sous la tension maximale absolue de l'onduleur",
+      "source": "fiches module et onduleur",
+      "verdicts_entree": [],
+      "bornes_non_verifiables": [],
+      "longueur_max_modules": null,
+      "longueur_source": "",
+      "longueur_reference": ""
+    },
+    "temperatures": {"froid_c": -5.0, "chaud_c": 70.0, "source": "saisie", "mention": "", "detail": "températures saisies"},
+    "chaines": [
+      {"chaine": 1, "pan": "PAN-A", "mppt": 1, "nombre_modules": 12, "source": "automatique", "voc_froid_v": 642.0, "voc_froid_limite_v": 1000.0, "voc_froid_conforme": true, "temperature_froide_c": -5.0, "vmp_chaud_v": 432.0, "temperature_chaude_c": 70.0, "demarrage_v": 200.0, "demarrage_source": "fiche", "vmp_chaud_conforme": true, "isc_a": 13.9, "temperature_source": "saisie", "indetermine": []},
+      {"chaine": 2, "pan": "PAN-B", "mppt": 2, "nombre_modules": 10, "source": "affectation manuelle", "voc_froid_v": 535.0, "voc_froid_limite_v": 1000.0, "voc_froid_conforme": true, "temperature_froide_c": -5.0, "vmp_chaud_v": 360.0, "temperature_chaude_c": 70.0, "demarrage_v": 180.0, "demarrage_source": "bas_de_plage_mppt", "vmp_chaud_conforme": true, "isc_a": 13.9, "temperature_source": "saisie", "indetermine": []}
+    ],
+    "publication": {
+      "publiable": true,
+      "motifs": [],
+      "etat": "pret",
+      "points": 0,
+      "titre": "Prêt à publier",
+      "phrase": "Aucun motif bloquant, aucun point à compléter."
+    }
+  },
+  "exemple_a_completer": {
+    "verdict": "indetermine",
+    "publiable": true,
+    "bloquants": [],
+    "alertes": [],
+    "manquantes": ["Onduleur : aucun onduleur désigné."],
+    "regle_mppt": "",
+    "regle_chaine": null,
+    "temperatures": null,
+    "chaines": [],
+    "publication": {
+      "publiable": true,
+      "motifs": [
+        {"code": "FICHE_INCOMPLETE", "statut": "non_verifiable", "libelle": "Onduleur : aucun onduleur désigné.", "source": ""},
+        {"code": "NORME_NON_APPLICABLE", "statut": "omis", "libelle": "aucune norme électrique n'est applicable : sections, chutes de tension et check-list de terre sont OMISES", "source": "services/norme.py::norme_applicable"}
+      ],
+      "etat": "a_completer",
+      "points": 2,
+      "titre": "2 points à compléter",
+      "phrase": "Rien ne bloque, mais 2 points ne sont pas vérifiés : désignez le matériel et choisissez la norme."
+    }
+  },
+  "exemple_bloque": {
+    "verdict": "bloquant",
+    "publiable": false,
+    "bloquants": ["Pan 1, chaîne 1 : Voc à froid 1 070 V pour 1 000 V admis par l'onduleur."],
+    "alertes": [],
+    "manquantes": [],
+    "regle_mppt": "chaînes réparties sur les entrées MPPT de l'onduleur",
+    "regle_chaine": {
+      "regle": "voc_module",
+      "libelle": "longueur de chaîne fermée par le Voc À FROID du module sous la tension maximale absolue de l'onduleur",
+      "source": "fiches module et onduleur",
+      "verdicts_entree": [],
+      "bornes_non_verifiables": [],
+      "longueur_max_modules": null,
+      "longueur_source": "",
+      "longueur_reference": ""
+    },
+    "temperatures": {"froid_c": -5.0, "chaud_c": 70.0, "source": "saisie", "mention": "", "detail": "températures saisies"},
+    "chaines": [
+      {"chaine": 1, "pan": "PAN-A", "mppt": 1, "nombre_modules": 20, "source": "affectation manuelle", "voc_froid_v": 1070.0, "voc_froid_limite_v": 1000.0, "voc_froid_conforme": false, "temperature_froide_c": -5.0, "vmp_chaud_v": 720.0, "temperature_chaude_c": 70.0, "demarrage_v": 200.0, "demarrage_source": "fiche", "vmp_chaud_conforme": true, "isc_a": 13.9, "temperature_source": "saisie", "indetermine": []}
+    ],
+    "publication": {
+      "publiable": false,
+      "motifs": [
+        {"code": "voc_cold_under_vmax", "statut": "bloquant", "libelle": "Pan 1, chaîne 1 : Voc à froid 1 070 V pour 1 000 V admis par l'onduleur.", "source": "fiches module et onduleur"}
+      ],
+      "etat": "bloquant",
+      "points": 0,
+      "titre": "1 motif bloquant",
+      "phrase": "La conception ne peut pas être publiée : corrigez le motif bloquant."
+    }
+  },
+  "exemple_a_chaud": {
+    "verdict": "conforme",
+    "publiable": true,
+    "bloquants": [],
+    "alertes": [],
+    "manquantes": [],
+    "regle_mppt": "chaînes réparties sur les entrées MPPT de l'onduleur",
+    "regle_chaine": {
+      "regle": "voc_module",
+      "libelle": "longueur de chaîne fermée par le Voc À FROID du module sous la tension maximale absolue de l'onduleur",
+      "source": "fiches module et onduleur",
+      "verdicts_entree": [],
+      "bornes_non_verifiables": [],
+      "longueur_max_modules": null,
+      "longueur_source": "",
+      "longueur_reference": ""
+    },
+    "temperatures": {"froid_c": -5.0, "chaud_c": 70.0, "source": "saisie", "mention": "", "detail": "températures saisies"},
+    "chaines": [
+      {"chaine": 1, "pan": "PAN-A", "mppt": 1, "nombre_modules": 12, "source": "automatique", "voc_froid_v": 642.0, "voc_froid_limite_v": 1000.0, "voc_froid_conforme": true, "temperature_froide_c": -5.0, "vmp_chaud_v": 432.0, "temperature_chaude_c": 70.0, "demarrage_v": 200.0, "demarrage_source": "fiche", "vmp_chaud_conforme": true, "isc_a": 13.9, "temperature_source": "saisie", "indetermine": []}
+    ],
+    "publication": null
+  },
+  "exemple_vide": {
+    "verdict": "indetermine",
+    "publiable": false,
+    "bloquants": [],
+    "alertes": [],
+    "manquantes": ["Onduleur : fiche technique incomplète (tension DC maximale absolue)."],
+    "regle_mppt": "",
+    "regle_chaine": null,
+    "temperatures": null,
+    "chaines": [],
+    "publication": null
+  },
+  "exemple_indetermine": {
+    "verdict": "alerte",
+    "publiable": true,
+    "bloquants": [],
+    "alertes": ["Pan PAN-C : aucune chaîne conçue."],
+    "manquantes": [],
+    "regle_mppt": "chaînes réparties sur les entrées MPPT de l'onduleur",
+    "regle_chaine": null,
+    "temperatures": {"froid_c": -5.0, "chaud_c": null, "source": null, "mention": "", "detail": "température chaude non saisie"},
+    "chaines": [
+      {"chaine": 1, "pan": "PAN-A", "mppt": 1, "nombre_modules": 12, "source": "automatique", "voc_froid_v": 642.0, "voc_froid_limite_v": 1000.0, "voc_froid_conforme": true, "temperature_froide_c": -5.0, "vmp_chaud_v": null, "temperature_chaude_c": null, "demarrage_v": null, "demarrage_source": null, "vmp_chaud_conforme": null, "isc_a": 13.9, "temperature_source": null, "indetermine": ["Tension à chaud non calculable : température chaude non saisie.", "Tension de démarrage absente de la fiche et bas de plage MPPT non publié."]},
+      {"chaine": null, "pan": "PAN-C", "mppt": null, "nombre_modules": null, "source": null, "voc_froid_v": null, "voc_froid_limite_v": null, "voc_froid_conforme": null, "temperature_froide_c": null, "vmp_chaud_v": null, "temperature_chaude_c": null, "demarrage_v": null, "demarrage_source": null, "vmp_chaud_conforme": null, "isc_a": null, "temperature_source": null, "indetermine": ["Pan PAN-C : aucune chaîne conçue."]}
+    ],
+    "publication": null
+  }
+}

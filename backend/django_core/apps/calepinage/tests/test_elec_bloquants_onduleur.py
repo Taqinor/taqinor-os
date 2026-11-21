@@ -185,3 +185,53 @@ class EvaluationAChaudTest(SimpleTestCase):
         # Le document enregistré n'a pas bougé : c'est une évaluation.
         self.assertEqual(
             calepinage.roof_layout['zones'][0]['geometry']['count'], 12)
+
+
+class ControleChaineSansDessinTest(SimpleTestCase):
+    """ACAL627 — 22 × 49,5 V à −5 °C sur 1 000 V : rouge, borne nommée."""
+
+    MODULE_22 = dict(MODULE, voc_v=49.5)
+
+    def _controle(self, nombre, tmin=-5.0, onduleur=None):
+        from apps.calepinage.services.controle_chaine import (
+            _controler_chaine)
+        return _controler_chaine(self.MODULE_22, onduleur or ONDULEUR,
+                                 nombre, tmin, 70.0)
+
+    def _voc(self, reponse):
+        return next(c for c in reponse['controles']
+                    if c['code'] == 'voc_froid')
+
+    def test_22_modules_rouges_sur_1000_v(self):
+        reponse = self._controle(22)
+        voc = self._voc(reponse)
+        # 22 × 49,5 × (1 + 0,0027 × 30) = 1 177,2 V.
+        self.assertAlmostEqual(voc['valeur'], 1177.2, places=1)
+        self.assertIs(voc['conforme'], False)
+        self.assertTrue(voc['bloquant'])
+        self.assertEqual(voc['borne'],
+                         "tension maximale absolue de l'onduleur (1 000 V)")
+        self.assertEqual(reponse['verdict'], 'bloquant')
+
+    def test_la_temperature_saisie_fait_le_calcul(self):
+        # Mutant « 25 °C au lieu de la saisie » : 22 × 49,5 = 1 089 V.
+        self.assertGreater(self._voc(self._controle(22))['valeur'],
+                           self._voc(self._controle(22, tmin=25.0))['valeur'])
+        self.assertAlmostEqual(
+            self._voc(self._controle(22, tmin=25.0))['valeur'], 1089.0, 1)
+
+    def test_chaine_courte_conforme_et_fenetre(self):
+        reponse = self._controle(16)
+        self.assertIs(self._voc(reponse)['conforme'], True)
+        # min(⌊1000 / 53,51⌋, ⌊800 / (41,5 × 1,105)⌋) = min(18, 17).
+        self.assertEqual(reponse['longueur_max'], 17)
+        self.assertEqual(reponse['manquantes'], [])
+
+    def test_fiche_incomplete_indeterminee(self):
+        onduleur = {cle: v for cle, v in ONDULEUR.items()
+                    if cle != 'v_max_abs'}
+        reponse = self._controle(22, onduleur=onduleur)
+        self.assertEqual(reponse['verdict'], 'indetermine')
+        self.assertEqual(reponse['controles'], [])
+        self.assertTrue(any('tension DC maximale absolue' in m
+                            for m in reponse['manquantes']))
