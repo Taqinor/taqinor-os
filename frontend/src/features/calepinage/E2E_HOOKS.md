@@ -182,6 +182,8 @@ retiré plus un hook ajouté.
 | `cal-horizon-heures-masquees` | horizon heures masquées. |
 | `cal-horizon-loading` | horizon chargement. |
 | `cal-horizon-points` | horizon points. |
+| `cal-horizon-import` | import du fichier d’horizon (ACAL458). |
+| `cal-horizon-fichier` | champ fichier d’horizon (ACAL458). |
 
 ## ModeTerrain (`ModeTerrain.jsx`)
 
@@ -206,6 +208,17 @@ retiré plus un hook ajouté.
 | `cal-terrain-trait-pas` | terrain trait pas. |
 | `cal-terrain-vue` | terrain vue. |
 | `cal-terrain-vue-indisponible` | terrain vue indisponible. |
+| `cal-terrain-relief` | relief du terrain GLO-30 (ACAL466). |
+| `cal-terrain-relief-lire` | relief du terrain GLO-30 lire (ACAL466). |
+| `cal-terrain-relief-aide` | relief du terrain GLO-30 aide (ACAL466). |
+| `cal-terrain-relief-refus` | relief du terrain GLO-30 refus (ACAL466). |
+| `cal-terrain-relief-motif` | relief du terrain GLO-30 motif (ACAL466). |
+| `cal-terrain-relief-resultat` | relief du terrain GLO-30 resultat (ACAL466). |
+| `cal-terrain-relief-pente` | relief du terrain GLO-30 pente (ACAL466). |
+| `cal-terrain-relief-source` | relief du terrain GLO-30 source (ACAL466). |
+| `cal-terrain-relief-ancrage` | relief du terrain GLO-30 ancrage (ACAL466). |
+| `cal-terrain-relief-attribution` | relief du terrain GLO-30 attribution (ACAL466). |
+| `cal-terrain-relief-utiliser` | relief du terrain GLO-30 utiliser (ACAL466). |
 
 ## Ombriere (`Ombriere.jsx`)
 
