@@ -1172,7 +1172,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...serializeChoixConception(ctx),
     // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
     // perd, comme n'importe quelle autre annotation de l'atelier).
-    ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
+    ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}), ...emettreReperesChantier(ctx.reperesChantier), // ACAL593
     // CAL67 — les objets d'environnement (arbres/bâtiments voisins) voyagent avec le
     // design, comme les mesures et l'ombrage tracé ci-dessus.
     ...(ctx.environment && ctx.environment.length ? { environment: serializeEnvironment(ctx.environment) } : {}),
@@ -1232,43 +1232,6 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   return emettreProvenanceEpingle(reconcilierAvecDocumentRelu(ecrit, ctx), ctx);
 }
 
-// ═══════════ ACAL193 — PROVENANCE DE L'ÉPINGLE (D-ACAL-13) ═══════════
-/** L'épingle DÉPLACÉE À LA MAIN dans cette session, par scène (le contexte vivant de
- *  l'atelier) — hors du type `Ctx` : c'est un état de geste, pas une couche du document. */
-const epinglesDeplacees = new WeakMap<object, { lat: number; lng: number }>();
-
-/** ACAL193 — le dessinateur a déplacé l'épingle à la main : la scène passe `pinSource` à
- *  'manuel' et le prochain document porte CETTE épingle. Une coordonnée non finie est
- *  ignorée (jamais une épingle inventée). */
-export function deplacerEpingleALaMain(ctx: Ctx, lngLat: LngLat): void {
-  const [lng, lat] = lngLat;
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
-  epinglesDeplacees.set(ctx as object, { lat, lng });
-}
-
-/** ACAL193 — oublie le déplacement (nouveau lead, effacement complet de la scène). */
-export function oublierEpingleDeplacee(ctx: Ctx): void {
-  epinglesDeplacees.delete(ctx as object);
-}
-
-/** ACAL193 — `pinSource` / `repereAcquitte` du document RELU, réémis octet-identiques ;
- *  une épingle déplacée à la main dans la session pose `pin` + `pinSource: 'manuel'`. Un
- *  document qui ne porte aucune des deux clés repart sans elles (rien d'inventé). */
-function emettreProvenanceEpingle<T extends SerializedLayout>(layout: T, ctx: Ctx): T {
-  const relu = ctx.documentRelu ?? null;
-  const sortie = layout as unknown as Record<string, unknown>;
-  if (relu && typeof relu === 'object') {
-    if ('pinSource' in relu) sortie.pinSource = copieJson(relu.pinSource);
-    if ('repereAcquitte' in relu) sortie.repereAcquitte = copieJson(relu.repereAcquitte);
-  }
-  const deplacee = epinglesDeplacees.get(ctx as object);
-  if (deplacee) {
-    sortie.pin = { ...deplacee };
-    sortie.pinSource = 'manuel';
-  }
-  return layout;
-}
-
 // ═══════════ ACAL258 — L'ALLÉE TECHNIQUE DE CE CALEPINAGE ═══════════
 /** L'allée technique du document relu (`{largeurM > 0, source}`, clés inconnues conservées), ou `null`. */
 export function lireAlleeTechnique(doc: unknown): Ctx['alleeTechnique'] {
@@ -1312,7 +1275,7 @@ function pansPavesDansLaSession(layout: SerializedLayout, ctx: Ctx): Set<string>
 /** Clés RACINE que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_RACINE_ATELIER = new Set([
   'version', 'pin', 'outline', 'billKwh', 'zones', 'activeAreaId', 'result', 'scenario', 'panelWatt',
-  'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements',
+  'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements', 'reperesChantier',
   'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay',
   'poseSurfaces', 'consumption', 'modules', 'optimisation', 'motifsPansVides', 'electrical', 'parcelle', 'alleeTechnique',
   'pinSource', 'repereAcquitte', // ACAL193 — réémises par `emettreProvenanceEpingle`
@@ -2012,5 +1975,4 @@ export function referenceContourRing(brut: RawContourPoint[] | null | undefined)
  *  vide, jamais une exception — même esprit que `deserializeMeasurements`. */
 export function deserializeExclusionZonesFromLayout(json: unknown): ExclusionZone[] {
   const raw = (json as { exclusionZones?: unknown } | null | undefined)?.exclusionZones ?? json;
-  return deserializeExclusionZones(raw);
-}
+  return deserializeExclus

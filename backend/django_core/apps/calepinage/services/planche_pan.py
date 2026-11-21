@@ -22,8 +22,7 @@ from .chaines import COULEUR_NON_AFFECTE
 from .planche import (
     GRIS_PAN, GRIS_TEXTE, MENTION_NON_CHAINE, NOIR, TRAIT_MODULE, TRAIT_PAN,
     PlancheRefusee, _barre_echelle_svg, _fleche_nord_svg, _n, _polygone,
-    _transformation, _verifier_absence_d_argent, coins_du_module,
-    pied_du_calepinage,
+    _transformation, _verifier_absence_d_argent, pied_du_calepinage,
 )
 
 #: La feuille A4 paysage (mm) : le dessin à gauche, la colonne de légende à
@@ -224,7 +223,7 @@ def _feuille_de_pan(pan, modules, entrees, pans, pied):
 
 
 def svgs_de_pans(roof_layout, affectation, *, pied=''):
-    """Les SVG A4, un par pan qui porte au moins un module (liste vide sinon)."""
+    """Les SVG A4, un par pan qui porte un module (liste vide sinon)."""
     from .planche import geometrie_de_planche
 
     try:
@@ -249,10 +248,9 @@ def feuilles_de_pans(calepinage, *, moment=None):
     electrique = (servi or {}).get('electrique') \
         if isinstance(servi, dict) else None
     affectation = list((electrique or {}).get('affectation') or [])
+    pied = pied_du_calepinage(calepinage, moment=moment)
     svgs = svgs_de_pans(getattr(calepinage, 'roof_layout', None),
-                            affectation,
-                            pied=pied_du_calepinage(calepinage,
-                                                    moment=moment))
+                        affectation, pied=pied)
     if not svgs:
         return '', ''
     return STYLE_FEUILLE_PAN, ''.join(

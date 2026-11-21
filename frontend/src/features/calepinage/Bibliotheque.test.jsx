@@ -423,7 +423,8 @@ describe('CALX43 — édition des préréglages et des favoris', () => {
     await userEvent.click(screen.getByTestId('cal-biblio-preset-ajouter'))
 
     expect(screen.getByTestId('cal-biblio-preset-cle-1')).toHaveValue('')
-    expect(screen.getByTestId('cal-biblio-preset-champs-1')).toHaveValue('')
+    // ACAL961 — aucun champ n'est posé d'office : la liste des champs est vide.
+    expect(screen.getByTestId('cal-biblio-preset-champs-1').querySelectorAll('input, [data-testid^="acal961-inconnu"]')).toHaveLength(0)
     expect(screen.getByTestId('cal-biblio-preset-source-1')).toHaveValue('')
   })
 
@@ -494,6 +495,44 @@ describe('CALX43 — édition des préréglages et des favoris', () => {
 
     await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
     expect(mocks.putParametres.mock.calls[0][0].favoris_materiel).toEqual({})
+  })
+
+  it('ACAL961 — le préréglage montre ses champs typés avec unité, le champ inconnu est gardé', async () => {
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    await rendreAvecDroit()
+
+    // `orientation` est reconnu (liste de choix) ; `panneau_w` ne l'est pas.
+    expect(screen.getByTestId('acal961-champ-0-orientation')).toHaveValue('portrait')
+    expect(screen.getByTestId('acal961-inconnu-0-panneau_w')).toHaveTextContent('Champ non reconnu')
+    // Un champ avec unité est proposé, sans valeur inventée.
+    await userEvent.selectOptions(screen.getByTestId('acal961-ajouter-0'), 'allee_m')
+    expect(screen.getByText(/Allée \(m\)/)).toBeInTheDocument()
+    expect(screen.getByTestId('acal961-champ-0-allee_m')).toHaveValue(null)
+    await userEvent.type(screen.getByTestId('acal961-champ-0-allee_m'), '0.4')
+    await userEvent.type(screen.getByTestId('cal-biblio-preset-source-0'), 'Fiche K2')
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
+    const { villa_standard: envoye } = mocks.putParametres.mock.calls[0][0].presets
+    expect(envoye).toEqual({
+      panneau_w: 580, orientation: 'portrait', allee_m: 0.4, source: 'Fiche K2',
+    })
+  })
+
+  it('ACAL961 — un champ reconnu non numérique est refusé sous sa ligne', async () => {
+    await rendreAvecDroit()
+
+    await userEvent.selectOptions(screen.getByTestId('acal961-ajouter-0'), 'pitchDeg')
+    await userEvent.type(screen.getByTestId('cal-biblio-preset-source-0'), 'Fiche K2')
+    // Un nombre invalide ne peut pas être saisi dans un champ numérique : on
+    // force la valeur comme le ferait un collage.
+    const champ = screen.getByTestId('acal961-champ-0-pitchDeg')
+    champ.type = 'text'
+    await userEvent.type(champ, 'abc')
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+
+    expect(screen.getByTestId('cal-biblio-preset-erreur-0')).toHaveTextContent('doit être un nombre')
+    expect(mocks.putParametres).not.toHaveBeenCalled()
   })
 })
 

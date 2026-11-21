@@ -221,7 +221,9 @@ import {
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout, deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
+import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts
+import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
@@ -1408,15 +1410,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const mesureNoteEl = $('rp9-mesure-note');
   const mesureListEl = $('rp9-mesure-list');
   const mesureUi = createMesureUi(ctx, { render: () => renderMeasurements() });
+  const reperesUi = createReperesUi(ctx, map as never, { setStatus: (m) => setStatus(m) }); // ACAL593 — panneau sous #rp9-mesure-list
   function mesureEmptyGeoJSON() {
     return { type: 'FeatureCollection', features: [] } as const;
-  }
-  /** Un point milieu (session ou mesure posée), pour l'étiquette de valeur. */
-  function midOf(points: LngLat[]): LngLat {
-    let lng = 0;
-    let lat = 0;
-    for (const p of points) { lng += p[0]; lat += p[1]; }
-    return [lng / points.length, lat / points.length];
   }
   function renderMeasurements() {
     const src = map.getSource?.('rp9-mesure') as maplibregl.GeoJSONSource | undefined;
@@ -1905,7 +1901,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // CAL93 — l'horizon passe par l'API de `shadingUi` (matrice/facteur/note cohérents).
       shadingUi.setHorizonProfile((ctx.horizonProfile ?? null) as unknown as import('../lib/horizonEngine').HorizonProfile | null);
       redrawExclusionZones();
-      renderParcelle(); // ACAL233
+      renderParcelle(); reperesUi.render(); // ACAL233, ACAL593
       // CALX119 — contrôles du soleil de scène alignés sur l'instant relu.
       if (sunHourEl) sunHourEl.value = String(Math.round(ctx.sunHour));
       if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(ctx.sunHour)} h`;
@@ -2948,6 +2944,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       mesureUi.addPoint(lngLat);
       return;
     }
+    if (reperesUi.handleMapClick(lngLat)) return; // ACAL593 — « Poser sur le plan » armé : le tap pose le repère
     // ACAL233 — session de parcelle active : le tap pose un sommet (refusé s'il croise).
     if (parcelleUi.isActive()) {
       parcelleUi.addPoint(lngLat);

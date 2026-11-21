@@ -171,37 +171,42 @@ const CLE_SOURCE = 'source'
 //: elles ont leur propre chemin d'écriture et traversent intactes.
 const PRESETS_RESERVES = ['jeux', 'kits']
 
-/** Les champs d'un préréglage, un « champ = valeur » par ligne. */
-function texteChamps(valeur) {
-  return Object.entries(valeur ?? {})
-    .filter(([champ]) => champ !== CLE_SOURCE)
-    .map(([champ, brut]) => `${champ} = ${brut}`)
-    .join('\n')
+/** ACAL961 — les champs d'un préréglage, hors provenance, tels qu'enregistrés. */
+function champsDuPreset(valeur) {
+  return Object.fromEntries(Object.entries(valeur ?? {})
+    .filter(([champ]) => champ !== CLE_SOURCE))
 }
 
-/** `{champs, erreur}` — une ligne sans « = » est refusée en la citant. */
-function champsDepuisTexte(texte) {
-  const champs = {}
-  for (const ligne of String(texte || '').split('\n')) {
-    const brut = ligne.trim()
-    if (!brut) continue
-    const coupe = brut.indexOf('=')
-    if (coupe <= 0) {
-      return {
-        champs: null,
-        erreur: `Ligne « ${brut} » : chaque valeur s’écrit « champ = valeur ».`,
-      }
+/** `{champs, erreur}` — chaque champ RECONNU est contrôlé selon son type ; un
+ *  champ inconnu repart inchangé (jamais perdu, jamais réécrit) ; une valeur
+ *  vide n'est pas envoyée. */
+function champsValides(champs, definitions) {
+  const propres = {}
+  for (const [cle, brut] of Object.entries(champs)) {
+    const def = definitions.find((d) => d.cle === cle)
+    if (!def) {
+      propres[cle] = brut
+      continue
     }
-    const champ = brut.slice(0, coupe).trim()
-    const valeur = brut.slice(coupe + 1).trim()
-    const nombre = Number(valeur)
-    champs[champ] = valeur !== '' && Number.isFinite(nombre) ? nombre : valeur
+    if (brut === '' || brut === null || brut === undefined) continue
+    if (def.type === 'nombre' || def.type === 'entier') {
+      const nombre = Number(String(brut).replace(',', '.'))
+      if (!Number.isFinite(nombre) || (def.type === 'entier' && !Number.isInteger(nombre))) {
+        return {
+          champs: null,
+          erreur: `« ${def.libelle} » doit être ${def.type === 'entier' ? 'un nombre entier' : 'un nombre'}.`,
+        }
+      }
+      propres[cle] = nombre
+    } else {
+      propres[cle] = brut
+    }
   }
-  return { champs, erreur: null }
+  return { champs: propres, erreur: null }
 }
 
 /** La section `presets` ENTIÈRE, réservés compris — ou le refus, ligne visée. */
-function sectionPresets(lignes, reserves) {
+function sectionPresets(lignes, reserves, definitions) {
   const section = { ...reserves }
   for (let rang = 0; rang < lignes.length; rang += 1) {
     const ligne = lignes[rang]
@@ -212,7 +217,7 @@ function sectionPresets(lignes, reserves) {
     if (PRESETS_RESERVES.includes(cle)) {
       return { section: null, refus: { rang, message: `« ${cle} » est réservé (il a son propre écran) : choisissez un autre nom.` } }
     }
-    const { champs, erreur } = champsDepuisTexte(ligne.champsTexte)
+    const { champs, erreur } = champsValides(ligne.champs, definitions)
     if (erreur) return { section: null, refus: { rang, message: erreur } }
     if (Object.keys(champs).length === 0) {
       return { section: null, refus: { rang, message: 'Ce préréglage ne porte aucune valeur : ajoutez-en une, ou retirez-le.' } }
@@ -275,7 +280,7 @@ function brouillonsDepuis(reglages) {
     }
     lignes.push({
       cle,
-      champsTexte: texteChamps(valeur),
+      champs: champsDuPreset(valeur),
       source: typeof valeur[CLE_SOURCE] === 'string' ? valeur[CLE_SOURCE] : '',
     })
   }
@@ -408,6 +413,8 @@ export default function Bibliotheque() {
   const kits = Array.isArray(parametres?.kits) ? parametres.kits : []
 
   const clesPresets = Object.keys(presets)
+  // ACAL961 — les champs admis d'un préréglage, servis (lecture seule).
+  const definitionsChamps = Array.isArray(parametres?.champs_preset) ? parametres.champs_preset : []
   const clesFavoris = Object.keys(favoris)
 
   // ── CALX30 — les gestes des profils types ────────────────────────────────
@@ -447,6 +454,19 @@ export default function Bibliotheque() {
     setPresetsEdit((liste) => liste.map(
       (ligne, i) => (i === rang ? { ...ligne, [champ]: valeur } : ligne)))
   }
+  const majChamp = (rang, cle, valeur) => {
+    setPresetsEdit((liste) => liste.map((ligne, i) => (
+      i === rang ? { ...ligne, champs: { ...ligne.champs, [cle]: valeur } } : ligne)))
+  }
+  const retirerChamp = (rang, cle) => {
+    setRefusPresets(null)
+    setPresetsEdit((liste) => liste.map((ligne, i) => {
+      if (i !== rang) return ligne
+      const reste = { ...ligne.champs }
+      delete reste[cle]
+      return { ...ligne, champs: reste }
+    }))
+  }
   const retirerPreset = (rang) => {
     setRefusPresets(null)
     setPresetsEdit((liste) => liste.filter((_, i) => i !== rang))
@@ -455,11 +475,11 @@ export default function Bibliotheque() {
     setRefusPresets(null)
     // Tout vide : aucun préréglage n'est créé avec une valeur inventée.
     setPresetsEdit((liste) => [...liste,
-      { cle: '', champsTexte: '', source: '' }])
+      { cle: '', champs: {}, source: '' }])
   }
 
   const enregistrerPresets = async () => {
-    const { section, refus } = sectionPresets(presetsEdit, presetsReserves)
+    const { section, refus } = sectionPresets(presetsEdit, presetsReserves, definitionsChamps)
     if (refus) {
       setRefusPresets(refus)
       return
@@ -646,14 +666,68 @@ export default function Bibliotheque() {
                       onChange={(e) => majPreset(rang, 'cle', e.target.value)}
                       className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
                   </label>
-                  <label className="mt-2 block text-xs text-muted-foreground">
-                    Valeurs — une par ligne, « champ = valeur »
-                    <textarea rows={3} value={ligne.champsTexte}
-                      disabled={ecriturePresets}
-                      data-testid={`cal-biblio-preset-champs-${rang}`}
-                      onChange={(e) => majPreset(rang, 'champsTexte', e.target.value)}
-                      className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
-                  </label>
+                  <div className="mt-2 space-y-1" data-testid={`cal-biblio-preset-champs-${rang}`}>
+                    <p className="text-xs text-muted-foreground">Valeurs du préréglage</p>
+                    {Object.entries(ligne.champs).map(([cle, valeur]) => {
+                      const def = definitionsChamps.find((d) => d.cle === cle)
+                      if (!def) {
+                        return (
+                          <div key={cle} className="flex min-h-[44px] flex-wrap items-center gap-2 text-sm text-foreground"
+                            data-testid={`acal961-inconnu-${rang}-${cle}`}>
+                            <span>{cle} = {String(valeur)}</span>
+                            <span className="text-xs text-muted-foreground">Champ non reconnu</span>
+                            <button type="button" disabled={ecriturePresets}
+                              className="min-h-[44px] text-xs text-destructive underline"
+                              data-testid={`acal961-retirer-${rang}-${cle}`}
+                              onClick={() => retirerChamp(rang, cle)}>
+                              Retirer
+                            </button>
+                          </div>
+                        )
+                      }
+                      const champ = `acal961-champ-${rang}-${cle}`
+                      const classe = 'mt-0.5 block min-h-[44px] w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground'
+                      return (
+                        <div key={cle} className="flex items-end gap-2">
+                          <label className="flex-1 text-xs text-muted-foreground">
+                            {def.libelle}{def.unite ? ` (${def.unite})` : ''}
+                            {def.type === 'choix' ? (
+                              <select value={String(valeur ?? '')} disabled={ecriturePresets}
+                                data-testid={champ} className={classe}
+                                onChange={(e) => majChamp(rang, cle, e.target.value)}>
+                                <option value="">—</option>
+                                {(def.valeurs ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
+                              </select>
+                            ) : def.type === 'booleen' ? (
+                              <input type="checkbox" checked={valeur === true} disabled={ecriturePresets}
+                                data-testid={champ} className="ml-2"
+                                onChange={(e) => majChamp(rang, cle, e.target.checked)} />
+                            ) : (
+                              <input type="number" step="any" value={valeur ?? ''}
+                                disabled={ecriturePresets} data-testid={champ} className={classe}
+                                onChange={(e) => majChamp(rang, cle, e.target.value)} />
+                            )}
+                          </label>
+                          <button type="button" disabled={ecriturePresets}
+                            className="min-h-[44px] text-xs text-destructive underline"
+                            data-testid={`acal961-retirer-${rang}-${cle}`}
+                            onClick={() => retirerChamp(rang, cle)}>
+                            Retirer
+                          </button>
+                        </div>
+                      )
+                    })}
+                    <select value="" disabled={ecriturePresets}
+                      aria-label="Ajouter un champ"
+                      data-testid={`acal961-ajouter-${rang}`}
+                      className="block min-h-[44px] border border-border bg-transparent px-2 py-1 text-sm text-foreground"
+                      onChange={(e) => e.target.value && majChamp(rang, e.target.value, '')}>
+                      <option value="">Ajouter un champ…</option>
+                      {definitionsChamps.filter((d) => !(d.cle in ligne.champs)).map((d) => (
+                        <option key={d.cle} value={d.cle}>{d.libelle}</option>
+                      ))}
+                    </select>
+                  </div>
                   <label className="mt-2 block text-xs text-muted-foreground">
                     Source (obligatoire) — d’où viennent ces valeurs
                     <input type="text" value={ligne.source} disabled={ecriturePresets}

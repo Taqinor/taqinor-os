@@ -308,6 +308,143 @@ class FeuilleDePanTest(SimpleTestCase):
         self.assertEqual(apres.count('<svg'), avant.count('<svg') + 1)
 
 
+def pan_de_10_sur_6(pose='portrait'):
+    """ACAL591 - un pan rectangulaire de 10 x 6 m (repere local, metres),
+    plein sud, a plat, module 1,7 x 1,1 m dont la pose est ``pose``."""
+    return {'repere': 'z1', 'libelle': 'Pan Sud',
+            'points': [(0.0, 0.0), (10.0, 0.0), (10.0, 6.0), (0.0, 6.0)],
+            'module_m': (1.7, 1.1), 'azimut_deg': 180.0, 'pente_deg': 0.0,
+            'orientation_modules': pose, 'orientations_par_module': {},
+            'modules': []}
+
+
+def modules_aux_marges(pan, centres):
+    from apps.calepinage.services.planche import coins_du_module
+
+    pan['modules'] = list(centres)
+    return [{'centre': c, 'coins': coins_du_module(pan, c)}
+            for c in centres]
+
+
+#: Marges voulues N 0,50 / S 0,60 / E 0,40 / O 0,30 pour un module PORTRAIT
+#: (1,1 le long de la rangee, 1,7 dans la pente) : 4 modules aux quatre coins.
+CENTRES_AUX_MARGES = [(0.85, 1.45), (9.05, 1.45), (0.85, 4.65), (9.05, 4.65)]
+
+
+class DistancesAuxRivesTest(SimpleTestCase):
+    """ACAL591 - les quatre distances du champ aux rives, MESUREES."""
+
+    def mesures(self, pan, modules):
+        from apps.calepinage.services.planche_pan import distances_aux_rives
+
+        return distances_aux_rives(pan, modules)
+
+    def test_quatre_cotes_egales_aux_marges_d_un_module_portrait(self):
+        pan = pan_de_10_sur_6('portrait')
+        distances, motif = self.mesures(
+            pan, modules_aux_marges(pan, CENTRES_AUX_MARGES))
+        self.assertEqual(motif, '')
+        for cote, marge in (('N', 0.50), ('S', 0.60), ('E', 0.40),
+                            ('O', 0.30)):
+            self.assertAlmostEqual(distances[cote]['distance'], marge,
+                                   places=6, msg=cote)
+
+    def test_un_module_paysage_a_les_memes_centres_autres_marges(self):
+        # Meme centres, pose paysage (1,7 le long de la rangee, 1,1 dans la
+        # pente) : les marges se mesurent sur le rectangle ROTATIF, pas sur
+        # un rectangle suppose portrait.
+        pan = pan_de_10_sur_6('landscape')
+        distances, _ = self.mesures(
+            pan, modules_aux_marges(pan, CENTRES_AUX_MARGES))
+        self.assertAlmostEqual(distances['O']['distance'], 0.85 - 0.85,
+                               places=6)
+        self.assertAlmostEqual(distances['S']['distance'], 1.45 - 0.55,
+                               places=6)
+
+    def test_une_marge_est_la_plus_petite_distance_parallele_a_l_axe(self):
+        pan = pan_de_10_sur_6('portrait')
+        centres = CENTRES_AUX_MARGES + [(5.0, 4.15)]
+        distances, _ = self.mesures(pan, modules_aux_marges(pan, centres))
+        # Le module central monte a y = 5,0 : il serre le nord a 1,0 ; la
+        # marge nord reste la plus petite des distances, 0,50.
+        self.assertAlmostEqual(distances['N']['distance'], 0.50, places=6)
+
+    def test_orientation_non_enregistree_aucune_distance_et_motif_nomme(self):
+        pan = pan_de_10_sur_6('portrait')
+        modules = modules_aux_marges(pan, CENTRES_AUX_MARGES)
+        modules[0]['coins'] = None
+        distances, motif = self.mesures(pan, modules)
+        self.assertEqual(distances, {})
+        self.assertIn('orientation du module non enregistrée : distances '
+                      'non calculées', motif)
+
+
+class CotesDesZonesInterditesTest(SimpleTestCase):
+    """ACAL591 - une cote d'emprise par zone interdite qui recoupe le pan."""
+
+    def cotes(self, zone_points, coins=True):
+        from apps.calepinage.services.planche_pan import cotes_des_zones
+
+        pan = pan_de_10_sur_6('portrait')
+        modules = modules_aux_marges(pan, CENTRES_AUX_MARGES)
+        if not coins:
+            modules[0]['coins'] = None
+        zone = {'repere': 'ZONE-1', 'libelle': 'Cheminee', 'nature': '',
+                'points': zone_points}
+        return cotes_des_zones(pan, modules, [zone])
+
+    def test_emprise_et_distance_au_module_le_plus_proche(self):
+        # x 4..6, y 1..2 : emprise 2 x 1 ; le module le plus proche est celui
+        # du bas a gauche (x 0,3..1,4) : 2,6 m en x, y se chevauchant.
+        (cote,) = self.cotes([(4.0, 1.0), (6.0, 1.0), (6.0, 2.0),
+                              (4.0, 2.0)])
+        self.assertAlmostEqual(cote['largeur_m'], 2.0, places=6)
+        self.assertAlmostEqual(cote['hauteur_m'], 1.0, places=6)
+        self.assertFalse(cote['recouvre'])
+        self.assertAlmostEqual(cote['distance_m'], 2.6, places=6)
+
+    def test_une_zone_qui_recouvre_un_module_le_dit(self):
+        (cote,) = self.cotes([(0.5, 1.0), (2.0, 1.0), (2.0, 2.0),
+                              (0.5, 2.0)])
+        self.assertTrue(cote['recouvre'])
+        self.assertIsNone(cote['distance_m'])
+
+    def test_une_zone_hors_du_pan_n_a_pas_de_cote(self):
+        self.assertEqual(self.cotes([(20.0, 1.0), (22.0, 1.0), (22.0, 2.0),
+                                     (20.0, 2.0)]), [])
+
+    def test_sans_emprise_de_module_pas_de_distance_ni_de_recouvrement(self):
+        (cote,) = self.cotes([(4.0, 1.0), (6.0, 1.0), (6.0, 2.0),
+                              (4.0, 2.0)], coins=False)
+        self.assertAlmostEqual(cote['largeur_m'], 2.0, places=6)
+        self.assertIsNone(cote['distance_m'])
+        self.assertFalse(cote['recouvre'])
+
+
+class FeuilleCoteeTest(SimpleTestCase):
+    """ACAL591 - les cotes et la mention sont imprimees sur la feuille."""
+
+    def test_quatre_cotes_nommees_et_mention_de_projection(self):
+        from apps.calepinage.services.planche_pan import _feuille_de_pan
+
+        pan = pan_de_10_sur_6('portrait')
+        modules = [dict(m, pan='z1', chaine=None, couleur=None, rang=None,
+                        module='z1#%d' % (i + 1))
+                   for i, m in enumerate(
+                       modules_aux_marges(pan, CENTRES_AUX_MARGES))]
+        zone = {'repere': 'ZONE-1', 'libelle': 'Cheminee', 'nature': '',
+                'points': [(4.0, 1.0), (6.0, 1.0), (6.0, 2.0), (4.0, 2.0)]}
+        svg = _feuille_de_pan(pan, modules, [], [pan], '', [zone])
+        for cote, valeur in (('N', '0,50 m'), ('S', '0,60 m'),
+                             ('E', '0,40 m'), ('O', '0,30 m')):
+            self.assertIn('data-cote="%s"' % cote, svg)
+            self.assertIn('>%s</text>' % valeur, svg)
+        self.assertIn('Distances mesurées en plan, projection horizontale '
+                      'du pan', svg)
+        self.assertIn('Cheminee', svg)
+        self.assertIn('2,00 m', svg)
+
+
 class ListeDesChainesTest(SimpleTestCase):
     def test_les_chaines_sont_recopiees_du_moteur(self):
         lignes = _lignes_de_chaines(RESULTAT)
