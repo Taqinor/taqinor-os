@@ -135,5 +135,45 @@ class ParcoursPA2Tests(unittest.TestCase):
         self.assertIsNotNone(resoudre('apps/calepinage/absent.py::x'))
 
 
+PROMESSES = RACINE / 'apps' / 'calepinage' / 'parcours' / (
+    'promesses_complement.json')
+# ACAL390 : ne peut que BAISSER, à la main (le diff le montre).
+A_VENIR_MAX = 17
+
+
+class PromessesComplementTests(unittest.TestCase):
+    """Promesses : oracle et statut (ACAL390, C-ACAL-L5-390)."""
+
+    def test_promesses_oracle_et_statut(self):
+        promesses = json.loads(PROMESSES.read_text(encoding='utf-8'))[
+            'promesses']
+        ids = [p['id'] for p in promesses]
+        erreurs = []
+        if len(ids) != len(set(ids)):
+            erreurs.append('identifiant dupliqué')
+        a_venir = 0
+        for p in promesses:
+            oracle = p.get('oracle')
+            if p.get('statut') == 'a_venir':
+                a_venir += 1
+                if oracle is not None:
+                    erreurs.append(f"{p['id']} : a_venir avec un oracle")
+            elif p.get('statut') == 'tenue':
+                if not oracle:
+                    erreurs.append(f"{p['id']} : tenue sans oracle")
+                elif '::' in oracle:
+                    probleme = resoudre(oracle)
+                    if probleme:
+                        erreurs.append(f"{p['id']} : {probleme}")
+                elif not (RACINE.parents[1] / oracle).is_file() and not (
+                        RACINE / oracle).is_file():
+                    erreurs.append(f"{p['id']} : oracle introuvable {oracle}")
+            else:
+                erreurs.append(f"{p['id']} : statut invalide")
+        self.assertEqual(erreurs, [])
+        self.assertEqual(a_venir, A_VENIR_MAX,
+                         'à venir ajouté, ou A_VENIR_MAX à baisser')
+
+
 if __name__ == '__main__':
     unittest.main()

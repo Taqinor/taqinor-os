@@ -1,0 +1,42 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/parcours/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL386 (M0, PACT10) — l'ÉTAT du parcours guidé de l'atelier : les cinq étapes (Toit, Panneaux, Électrique, Résultats, Documents) et la liste « ce qui manque » structurée et dédupliquée. L'état est CALCULÉ à chaque lecture, jamais stocké. Posé SEUL avant ses deux moitiés : le serveur (ACAL392) et l'écran (ACAL393, ACAL397) reprennent CETTE forme sans la redire. `etapes` est ordonnée (`toit`, `panneaux`, `electrique`, `resultats`, `documents`), `etat` parmi a_faire|en_cours|fait|bloque. `manque[]` = {code, message, etape, cible {onglet, champ}, gravite parmi bloquant|a_regler|info, nombre} sans deux lignes de même `code` + `cible` ; `cible.onglet` est la clé d'un onglet du rail OU `reglages` (écran /calepinage/reglages) ; `cible.champ` est l'id d'un élément du panneau ou une chaîne vide ; `code` est un motif connu de la table d'ACAL392 ou `divers` (motif inconnu gardé tel quel : étape `resultats`, gravité `info`). Les valeurs sont illustratives (placeholders), jamais un seuil produit. `exemple_vide` = calepinage neuf : toutes étapes `a_faire`, `manque` vide.",
+  "exemple": {
+    "etapes": [
+      {"cle": "toit", "etat": "fait"},
+      {"cle": "panneaux", "etat": "en_cours"},
+      {"cle": "electrique", "etat": "a_faire"},
+      {"cle": "resultats", "etat": "bloque"},
+      {"cle": "documents", "etat": "a_faire"}
+    ],
+    "manque": [
+      {
+        "code": "reglage_manquant",
+        "message": "Un réglage société nécessaire au calcul n'est pas saisi.",
+        "etape": "resultats",
+        "cible": {"onglet": "reglages", "champ": ""},
+        "gravite": "bloquant",
+        "nombre": 2
+      },
+      {
+        "code": "divers",
+        "message": "Motif inconnu du serveur, gardé tel quel.",
+        "etape": "resultats",
+        "cible": {"onglet": "production", "champ": ""},
+        "gravite": "info",
+        "nombre": 1
+      }
+    ]
+  },
+  "exemple_vide": {
+    "etapes": [
+      {"cle": "toit", "etat": "a_faire"},
+      {"cle": "panneaux", "etat": "a_faire"},
+      {"cle": "electrique", "etat": "a_faire"},
+      {"cle": "resultats", "etat": "a_faire"},
+      {"cle": "documents", "etat": "a_faire"}
+    ],
+    "manque": []
+  }
+}

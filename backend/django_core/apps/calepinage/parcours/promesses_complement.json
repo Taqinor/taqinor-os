@@ -1,0 +1,124 @@
+{
+  "_doc": "ACAL390 : promesses du complément L5 (ACAL382-ACAL489). statut a_venir => oracle null ; tenue => oracle chemin::symbole ou chemin de spec existant. Une promesse a_venir ne peut que disparaître (A_VENIR_MAX du test).",
+  "promesses": [
+    {
+      "id": "PRO1",
+      "promesse": "Le parcours guidé sert l'état des 5 étapes et « ce qui manque »",
+      "tache": "ACAL392",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO2",
+      "promesse": "L'atelier s'ouvre sur un rail guidé à 5 étapes",
+      "tache": "ACAL393",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO3",
+      "promesse": "Le mode expert mémorisé par utilisateur rend les 36 onglets",
+      "tache": "ACAL394",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO4",
+      "promesse": "La simulation se relance seule après un enregistrement qui change la conception",
+      "tache": "ACAL398",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO5",
+      "promesse": "Une barre d'enregistrement toujours visible indique l'état d'enregistrement",
+      "tache": "ACAL399",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO6",
+      "promesse": "Le brouillon de l'atelier est rangé côté serveur par utilisateur",
+      "tache": "ACAL400",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO7",
+      "promesse": "Le geste « Appliquer le profil de départ » remplit les seules clés vides",
+      "tache": "ACAL403",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO8",
+      "promesse": "Chaque valeur du profil de départ est sourcée",
+      "tache": "ACAL404",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO9",
+      "promesse": "L'écran « Démarrage rapide » affiche les valeurs proposées et leur source",
+      "tache": "ACAL405",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO10",
+      "promesse": "La conception automatique pose le contour du bâtiment d'un lead épinglé",
+      "tache": "ACAL421",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO11",
+      "promesse": "L'atelier est utilisable au téléphone (cibles tactiles de 44 px)",
+      "tache": "ACAL423",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO12",
+      "promesse": "L'atelier suit le thème clair/sombre de l'ERP",
+      "tache": "ACAL430",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO13",
+      "promesse": "Une spec d'accessibilité automatique couvre les écrans centraux",
+      "tache": "ACAL439",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO14",
+      "promesse": "Une spec de fluidité mesure l'atelier sur un champ de 500 modules",
+      "tache": "ACAL440",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO15",
+      "promesse": "Le balayage d'orientation tourne en tâche de fond et sert grille et optimum",
+      "tache": "ACAL468",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO16",
+      "promesse": "L'onglet « Optimiser » lance le balayage et applique l'optimum",
+      "tache": "ACAL469",
+      "statut": "a_venir",
+      "oracle": null
+    },
+    {
+      "id": "PRO17",
+      "promesse": "Le banc de validation chiffre l'écart du moteur contre PVGIS et pvlib",
+      "tache": "ACAL474",
+      "statut": "a_venir",
+      "oracle": null
+    }
+  ]
+}
