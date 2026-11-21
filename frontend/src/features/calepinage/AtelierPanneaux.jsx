@@ -44,7 +44,7 @@ import Rail from './atelier/Rail'
 // ACAL415 — outils et onglets cherchables dans ⌘K.
 import { useCommandesAtelier } from './atelier/useCommandesAtelier'
 // ACAL421 — « Conception automatique » : l'emprise OSM du lead épinglé devient le pan.
-import { aDejaUnPan, conceptionAuto } from './atelier/conceptionAuto'
+import { aDejaUnPan, conceptionAuto, MSG_EN_COURS } from './atelier/conceptionAuto'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -137,9 +137,13 @@ export default function AtelierPanneaux({
   const relire = () => setRelecture((n) => n + 1)
   // ACAL421 — conception automatique : message du serveur ou du builder, jamais un pan sur refus.
   const [messageAuto, setMessageAuto] = useState('')
+  const [rechercheAuto, setRechercheAuto] = useState(false)
   const leadId = calepinage?.lead ?? null
   const lancerConceptionAuto = async () => {
+    setRechercheAuto(true)
+    setMessageAuto(MSG_EN_COURS)
     const r = await conceptionAuto(leadId, builderApi)
+    setRechercheAuto(false)
     setMessageAuto(r.message)
     if (r.ok) relire()
   }
@@ -294,6 +298,7 @@ export default function AtelierPanneaux({
         {/* ACAL421 — absent en lecture seule, sans lead lié, sans builder, ou si un pan est déjà tracé. */}
         {!enLectureSeule && leadId && builderApi?.ajouterPanDepuisContour && !aDejaUnPan(builderApi) && (
           <button type="button" onClick={lancerConceptionAuto} data-testid="cal-conception-auto"
+            disabled={rechercheAuto} aria-busy={rechercheAuto}
             className="text-sm font-semibold text-primary-text underline">
             Conception automatique
           </button>

@@ -1,0 +1,60 @@
+{
+  "endpoint": "GET /api/django/crm/leads/roof-footprint/recherche/<int:job_id>/",
+  "pourquoi": "Le 202 de POST /api/django/crm/leads/<int:lead_id>/roof-footprint/recherche/ porte EXACTEMENT les mêmes clés (variante exemple_vide). ACAL421 — décision fondateur du 21/11/2026 : la recherche du bâtiment OSM de « Conception automatique » tourne en TÂCHE DE FOND (Celery, core.jobs.submit / BackgroundJob), Overpass ayant 60 s (mesuré 20-34 s depuis un runner GitHub) au lieu des 5 s du chemin synchrone GET roof-footprint/ (budget api-fuzz < 10 s par endpoint, inchangé). Le POST répond tout de suite (202, statut en_cours, job_id) ; l'atelier relit le GET toutes les 2 s, 90 s au plus. Même forme dans les deux réponses. statut : en_cours | pret (polygon ≥ 3 sommets {lat, lng}) | refus. motif d'un refus : osm_injoignable (Overpass n'a pas répondu après 2 essais) ≠ aucun_batiment (Overpass a répondu, aucun bâtiment à l'épingle) ≠ echec_tache (la tâche n'a pas abouti) — jamais confondus ; message = la phrase française affichée telle quelle. batiment : le bloc CALX106 (voir apps/calepinage/contract_samples/calepinage_empreinte_osm.json), null tant que la recherche est en cours. Société et utilisateur forcés côté serveur ; le job d'un autre utilisateur ou d'une autre société → 404. 404 lead hors portée, 409 lead sans épingle, 503 file de tâches injoignable.",
+  "exemple": {
+    "job_id": 41,
+    "statut": "pret",
+    "motif": "",
+    "polygon": [
+      {"lat": 33.5731, "lng": -7.5898},
+      {"lat": 33.5732, "lng": -7.5897},
+      {"lat": 33.5733, "lng": -7.5898}
+    ],
+    "source": "osm",
+    "batiment": {
+      "osm_way_id": 123456,
+      "levels": 2,
+      "roof_levels": null,
+      "height_m": null,
+      "source": "openstreetmap",
+      "provenance": {"levels": "osm:building:levels"},
+      "non_renseignes": {
+        "roof_levels": "le bâtiment OpenStreetMap ne porte pas le tag « roof:levels ».",
+        "height_m": "le bâtiment OpenStreetMap ne porte pas le tag « height »."
+      }
+    },
+    "message": ""
+  },
+  "exemple_vide": {
+    "pourquoi": "la réponse 202 du POST, et le GET tant que la tâche tourne.",
+    "job_id": 41,
+    "statut": "en_cours",
+    "motif": "",
+    "polygon": [],
+    "source": "osm",
+    "batiment": null,
+    "message": "Recherche du bâtiment en cours…"
+  },
+  "exemple_refus": {
+    "pourquoi": "Overpass n'a pas répondu après les essais bornés de la tâche — nommé, jamais présenté comme « aucun bâtiment ».",
+    "job_id": 41,
+    "statut": "refus",
+    "motif": "osm_injoignable",
+    "polygon": [],
+    "source": "osm",
+    "batiment": {
+      "osm_way_id": null,
+      "levels": null,
+      "roof_levels": null,
+      "height_m": null,
+      "source": null,
+      "provenance": {},
+      "non_renseignes": {
+        "levels": "OpenStreetMap n'a pas répondu : rien n'a pu être lu.",
+        "roof_levels": "OpenStreetMap n'a pas répondu : rien n'a pu être lu.",
+        "height_m": "OpenStreetMap n'a pas répondu : rien n'a pu être lu."
+      }
+    },
+    "message": "OpenStreetMap n'a pas répondu : le contour n'a pas pu être cherché — réessayez plus tard ou tracez le contour manuellement."
+  }
+}

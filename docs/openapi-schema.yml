@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5242, operations: 8084, components: 4032}
+counts: {paths: 5246, operations: 8088, components: 4033}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1027,6 +1027,7 @@ operations:
 - get /api/django/crm/leads/relances/ -> django_crm_leads_relances_retrieve
 - post /api/django/crm/leads/resoudre-gps/ -> django_crm_leads_resoudre_gps_create
 - get /api/django/crm/leads/roi-sources/ -> django_crm_leads_roi_sources_list
+- get /api/django/crm/leads/roof-footprint/recherche/{job_id}/ -> django_crm_leads_roof_footprint_recherche_retrieve
 - post /api/django/crm/leads/scan-carte/ -> django_crm_leads_scan_carte_create
 - get /api/django/crm/leads/sla-breach/ -> django_crm_leads_sla_breach_retrieve
 - post /api/django/crm/leads/ville-statut/ -> django_crm_leads_ville_statut_create
@@ -1072,6 +1073,7 @@ operations:
 - post /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_create
 - get /api/django/crm/leads/{lead_id}/resume/ -> django_crm_leads_resume_retrieve
 - get /api/django/crm/leads/{lead_id}/roof-footprint/ -> django_crm_leads_roof_footprint_retrieve
+- post /api/django/crm/leads/{lead_id}/roof-footprint/recherche/ -> django_crm_leads_roof_footprint_recherche_create
 - get /api/django/crm/message-templates/ -> django_crm_message_templates_list
 - post /api/django/crm/message-templates/ -> django_crm_message_templates_create
 - delete /api/django/crm/message-templates/{id}/ -> django_crm_message_templates_destroy
@@ -5110,6 +5112,7 @@ operations:
 - get /api/v1/crm/leads/relances/ -> v1_crm_leads_relances_retrieve
 - post /api/v1/crm/leads/resoudre-gps/ -> v1_crm_leads_resoudre_gps_create
 - get /api/v1/crm/leads/roi-sources/ -> v1_crm_leads_roi_sources_list
+- get /api/v1/crm/leads/roof-footprint/recherche/{job_id}/ -> v1_crm_leads_roof_footprint_recherche_retrieve
 - post /api/v1/crm/leads/scan-carte/ -> v1_crm_leads_scan_carte_create
 - get /api/v1/crm/leads/sla-breach/ -> v1_crm_leads_sla_breach_retrieve
 - post /api/v1/crm/leads/ville-statut/ -> v1_crm_leads_ville_statut_create
@@ -5155,6 +5158,7 @@ operations:
 - post /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_create
 - get /api/v1/crm/leads/{lead_id}/resume/ -> v1_crm_leads_resume_retrieve
 - get /api/v1/crm/leads/{lead_id}/roof-footprint/ -> v1_crm_leads_roof_footprint_retrieve
+- post /api/v1/crm/leads/{lead_id}/roof-footprint/recherche/ -> v1_crm_leads_roof_footprint_recherche_create
 - get /api/v1/crm/message-templates/ -> v1_crm_message_templates_list
 - post /api/v1/crm/message-templates/ -> v1_crm_message_templates_create
 - delete /api/v1/crm/message-templates/{id}/ -> v1_crm_message_templates_destroy
@@ -11374,6 +11378,7 @@ components:
 - LeadAffinerProResponse
 - LeadApercu
 - LeadEmpreinteToit
+- LeadEmpriseRecherche
 - LeadPhotoToit
 - LeadPlaybookCocherRequeteRequest
 - LeadPlaybookProgress

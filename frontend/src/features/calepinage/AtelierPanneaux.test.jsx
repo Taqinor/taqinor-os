@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
    CAL37 — l'emplacement des panneaux de l'atelier en mode calepinage.
@@ -41,13 +41,16 @@ vi.mock('../../api/calepinageApi', () => ({
     moteur: { calculer: vi.fn() },
   },
 }))
-vi.mock('../../api/crmApi', () => ({ default: { getRoofFootprint: vi.fn() } }))
+vi.mock('../../api/crmApi', () => ({
+  default: { getRoofFootprint: vi.fn(), lancerRechercheEmprise: vi.fn(), getRechercheEmprise: vi.fn() },
+}))
 vi.mock('../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
 import { fireEvent } from '@testing-library/react'
 import AtelierPanneaux from './AtelierPanneaux'
+import { conceptionAuto } from './atelier/conceptionAuto'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
 const CTX_VIDE = exempleContrat('calepinage', 'calepinage_design_context',
@@ -177,18 +180,45 @@ describe('ACAL421 — conception automatique', () => {
   it('emprise convertie en [lng, lat], pan vide remplacé, refus nommé sans emprise', async () => {
     mocks.hasPermission.mockReturnValue(true)
     const builderApi = builder()
-    crmApi.getRoofFootprint.mockResolvedValueOnce({ data: { polygon: POLYGONE } })
+    // Décision fondateur 21/11 : tâche de fond — « en cours » affiché pendant la recherche.
+    let finir
+    crmApi.lancerRechercheEmprise.mockReturnValueOnce(new Promise((r) => { finir = r }))
     rendre({ builderApi })
     fireEvent.click(await screen.findByTestId('cal-conception-auto'))
+    expect(await screen.findByTestId('cal-conception-auto-message')).toHaveTextContent('Recherche du bâtiment en cours…')
+    expect(screen.getByTestId('cal-conception-auto')).toBeDisabled()
+    const pret = exempleContrat('crm', 'lead_emprise_recherche')
+    finir({ data: { ...pret, polygon: POLYGONE } })
     await waitFor(() => expect(builderApi.ajouterPanDepuisContour).toHaveBeenCalledTimes(1))
-    expect(crmApi.getRoofFootprint).toHaveBeenCalledWith(CTX.calepinage.lead)
+    expect(crmApi.lancerRechercheEmprise).toHaveBeenCalledWith(CTX.calepinage.lead)
     expect(builderApi.ajouterPanDepuisContour.mock.calls[0][0])
       .toEqual([[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.51]])
 
-    crmApi.getRoofFootprint.mockResolvedValueOnce({ data: { polygon: null, message: 'Aucun bâtiment trouvé ici.' } })
+    crmApi.lancerRechercheEmprise.mockResolvedValueOnce(reponseContrat('crm', 'lead_emprise_recherche', 'exemple_refus'))
     fireEvent.click(await screen.findByTestId('cal-conception-auto'))
-    expect(await screen.findByTestId('cal-conception-auto-message')).toHaveTextContent('Aucun bâtiment trouvé ici.')
+    expect(await screen.findByTestId('cal-conception-auto-message'))
+      .toHaveTextContent("OpenStreetMap n'a pas répondu")
     expect(builderApi.ajouterPanDepuisContour).toHaveBeenCalledTimes(1)
+  })
+
+  it('suit le statut de la tâche de fond jusqu’au contour, borné à 90 s, sans vraie pause', async () => {
+    const enCours = exempleContrat('crm', 'lead_emprise_recherche', 'exemple_vide')
+    const pret = exempleContrat('crm', 'lead_emprise_recherche')
+    const attendre = vi.fn(() => Promise.resolve())
+    crmApi.lancerRechercheEmprise.mockResolvedValueOnce({ data: enCours })
+    crmApi.getRechercheEmprise.mockResolvedValueOnce({ data: enCours }).mockResolvedValueOnce({ data: pret })
+    const builderApi = builder()
+    const r = await conceptionAuto(7, builderApi, { attendre })
+    expect(r).toEqual({ ok: true, message: 'Contour posé : le toit est rempli.' })
+    expect(crmApi.getRechercheEmprise).toHaveBeenCalledWith(enCours.job_id)
+    expect(attendre).toHaveBeenCalledTimes(2)
+
+    crmApi.lancerRechercheEmprise.mockResolvedValueOnce({ data: enCours })
+    crmApi.getRechercheEmprise.mockResolvedValue({ data: enCours })
+    const borne = await conceptionAuto(7, builder(), { attendre })
+    expect(borne.ok).toBe(false)
+    expect(borne.message).toMatch(/trop de temps/)
+    expect(attendre).toHaveBeenCalledTimes(2 + 45)
   })
 
   it('bouton absent : pan déjà tracé, lecture seule', async () => {
