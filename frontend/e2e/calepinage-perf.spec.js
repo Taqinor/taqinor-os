@@ -59,8 +59,8 @@ function documentA500() {
   const zone = doc.zones[0]
   zone.vertices = [O, [N[0], O[1]], N, [O[0], N[1]]]
   zone.obstacles = []
-  const { solarAccess, ...geometrie } = zone.geometry // l'accès solaire de l'exemple ne vaut que pour ses 2 modules
-  zone.geometry = { ...geometrie, mode: 'free', origin: ORIGINE, count: NB, panels: Array.from({ length: NB }, (_, i) => ({
+  delete zone.geometry.solarAccess // l'accès solaire de l'exemple ne vaut que pour ses 2 modules
+  zone.geometry = { ...zone.geometry, mode: 'free', origin: ORIGINE, count: NB, panels: Array.from({ length: NB }, (_, i) => ({
     cx: centre(i)[0], cy: centre(i)[1], n: i + 1, rangee: String.fromCharCode(65 + Math.floor(i / 25)),
   })) }
   zone.neededPanels = NB
@@ -101,7 +101,8 @@ async function mesurerGlisse(page, id) {
   await expect(page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }))
     .toBeEnabled({ timeout: 240_000 })
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
-  await expect(page.getByTestId('cal-resume-panneaux'), '500 modules posés avant la mesure').toHaveText(`${NB} panneaux`, T)
+  await expect(page.locator('#rp9-need-note'), '500 modules posés avant la mesure').toContainText(`${NB} posés`, T)
+  console.log(`[ACAL440-diag] barre de résumé : « ${await page.getByTestId('cal-resume-panneaux').innerText()} »`)
   // « Déplacer les panneaux » : hors mode disposition, `beginLayoutDrag` refuse et le glissé déplacerait la CARTE.
   const bascule = page.locator('#rp9-layout-toggle')
   await bascule.click()

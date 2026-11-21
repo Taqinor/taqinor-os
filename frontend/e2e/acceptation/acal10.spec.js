@@ -398,7 +398,8 @@ etape('PA2.5-ACAL402-studio-1440', ['ACAL402'], async ({ page, context, suivi })
     console.log(`[ACAL402] contrôle réglé : ${nom} ; inspecteur scrollTop ${scroll.top}/${scroll.max} ; carte y ${carte0.y}→${carte1.y}`)
     // « le reste de la page » défile : les commandes du constructeur (sous la carte, dans la colonne scène) restent
     // atteignables à la molette — sinon « Déplacer les panneaux » ne s'atteint plus qu'au clavier.
-    const carte = page.locator('#rp9-studio-scene > .cine-card')
+    // La racine du BuilderDom (classe `.cine-card` retirée par ACAL427 : l'enfant direct de la colonne scène).
+    const carte = page.locator('#rp9-studio-scene > :first-child')
     const debord = await carte.evaluate((el) => ({ scrollH: el.scrollHeight, clientH: el.clientHeight, overflowY: getComputedStyle(el).overflowY }))
     const cb = await carte.boundingBox()
     await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height - 30)
@@ -627,7 +628,7 @@ etape('PA2.5-ACAL421-conception-auto', ['ACAL421'], async ({ page, context, suiv
       message = await page.getByTestId('cal-conception-auto-message').innerText()
       if (message.includes('Contour posé')) break
       console.log(`[ACAL421] essai ${essai} : « ${message} »`)
-      if (!/indisponible|Aucune emprise|réseau/i.test(message)) break
+      if (!/indisponible|Aucune emprise|réseau|n'a pas répondu/i.test(message)) break // ACAL421 : Overpass injoignable est nommé, on réessaie
     }
     if (!message.includes('Contour posé')) {
       // Le serveur appelle-t-il Overpass avec succès DEPUIS ce runner (même requête que `roof_detect`) ?
@@ -635,10 +636,17 @@ etape('PA2.5-ACAL421-conception-auto', ['ACAL421'], async ({ page, context, suiv
 from apps.crm import roof_detect as rd
 q = rd._build_query(${bat.lat}, ${bat.lng})
 try:
-    r = requests.post(rd._OVERPASS_URL, data={'data': q}, timeout=rd._TIMEOUT_RESEAU)
+    r = requests.post(rd._OVERPASS_URL, data={'data': q}, headers={'User-Agent': getattr(rd, '_USER_AGENT', '')}, timeout=rd._TIMEOUT_RESEAU)
     sortie({'status': r.status_code, 'ua': r.request.headers.get('User-Agent'), 'corps': r.text[:300]})
 except Exception as e:
-    sortie({'erreur': repr(e)[:300]})`)
+    import time
+    t = time.time()
+    try:
+        r2 = requests.post(rd._OVERPASS_URL, data={'data': q}, headers={'User-Agent': getattr(rd, '_USER_AGENT', '')}, timeout=(5, 90))
+        lent = {'status': r2.status_code, 'secondes': round(time.time() - t, 1)}
+    except Exception as e2:
+        lent = {'erreur': repr(e2)[:120], 'secondes': round(time.time() - t, 1)}
+    sortie({'erreur': repr(e)[:300], 'meme_requete_delai_90s': lent})`)
       console.log(`[ACAL421] appel Overpass du serveur (même requête) : ${JSON.stringify(diag)}`)
       test.info().annotations.push({ type: 'diagnostic', description: `Overpass côté serveur : ${JSON.stringify(diag).slice(0, 400)}` })
     }
@@ -836,6 +844,9 @@ etape('PA2.5-ACAL425-reperes-glisse', ['ACAL425'], async ({ page, context, suivi
     // La clause telle quelle : marges par défaut.
     expect(defaut.premier, `marges par défaut (écart entre panneaux ${ecartDefaut} cm) : ligne repère et collage au voisin`).not.toBeNull()
   } finally {
+    // ACAL400 : le brouillon serveur part au sondage (≤ 4 s) après le dernier geste ; effacer le calepinage avant cet
+    // envoi rendait un PUT brouillon/ → 404 relevé par l'oracle 2 — on laisse partir l'envoi en cours, puis on nettoie.
+    await page.waitForResponse((r) => r.request().method() === 'PUT' && /\/brouillon\/$/.test(r.url()), { timeout: 10_000 }).catch(() => undefined)
     await nettoyer(cal)
   }
 })
