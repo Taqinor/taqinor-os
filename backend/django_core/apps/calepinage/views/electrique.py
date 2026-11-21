@@ -305,7 +305,10 @@ class ElectriqueActionsMixin:
             # La clé est TOUJOURS présente : ``None`` quand l'appel porte un
             # dessin ou une entrée à chaud, pour que l'écran n'ait jamais à
             # deviner si elle manque ou si elle est vide.
-            evaluation[CLE_PUBLICATION] = (
+            # ACAL612 — ``titre`` et ``phrase`` composés par le serveur.
+            from ..services.synthese_publication import synthese_de_publication
+
+            evaluation[CLE_PUBLICATION] = synthese_de_publication(
                 None if (layout is not None or entree is not None)
                 else verdict_publiable(calepinage))
             return Response(evaluation)

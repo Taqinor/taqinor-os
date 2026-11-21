@@ -4,7 +4,9 @@
 // gonflée). Le module est PUR : ces tests tournent hors DOM et hors réseau.
 import { describe, expect, it } from 'vitest';
 import {
-  IMAGERY_SUN_DEFAULT,
+  dayOfYearFromIsoDate,
+  declarationSoleilPriseDeVue,
+  MOTIF_SOLEIL_PRISE_DE_VUE_ABSENT,
   DIFFUSE_FRACTION_WHEN_SHADED,
   MID_MONTH_DAY_OF_YEAR,
   shadowVector,
@@ -42,12 +44,32 @@ describe('WJ19 — géométrie de l’ombre tracée', () => {
     expect(obstructionHeightFromShadow(10, 2.9)).toBeNull();
   });
 
-  it('l’hypothèse par défaut de prise de vue est documentée (10 h 30 solaire, mi-saison)', () => {
-    expect(IMAGERY_SUN_DEFAULT.solarHour).toBe(10.5);
-    expect(IMAGERY_SUN_DEFAULT.dayOfYear).toBe(80);
-    // Le soleil de l'hypothèse par défaut est haut et exploitable à Casablanca.
-    const sun = sunDirection(CASA_LAT, IMAGERY_SUN_DEFAULT.dayOfYear, IMAGERY_SUN_DEFAULT.solarHour);
-    expect(sun.elevationDeg).toBeGreaterThan(30);
+  it('ACAL496 — dayOfYearFromIsoDate : 2025-03-21 → 80, date illisible → null', () => {
+    expect(dayOfYearFromIsoDate('2025-03-21')).toBe(80);
+    expect(dayOfYearFromIsoDate('2025-02-30')).toBeNull();
+    expect(dayOfYearFromIsoDate('21/03/2025')).toBeNull();
+    expect(dayOfYearFromIsoDate(undefined)).toBeNull();
+  });
+
+  it('ACAL496 — sans date ni heure : motif français, aucune élévation supposée', () => {
+    for (const [d, h] of [[undefined, 10.5], ['2025-03-21', null], [null, null], ['2025-03-21', '']] as const) {
+      const r = declarationSoleilPriseDeVue(CASA_LAT, d, h);
+      expect(r).toEqual({ ok: false, motif: MOTIF_SOLEIL_PRISE_DE_VUE_ABSENT });
+    }
+    expect(MOTIF_SOLEIL_PRISE_DE_VUE_ABSENT).toBe('Renseignez la date et l’heure solaire de prise de vue de l’image avant de mesurer une ombre.');
+    const hors = declarationSoleilPriseDeVue(CASA_LAT, '2025-03-21', 25);
+    expect(hors.ok).toBe(false);
+    expect(declarationSoleilPriseDeVue(CASA_LAT, '2025-03-21', 'abc').ok).toBe(false);
+  });
+
+  it('ACAL496 — date + heure : élévation = sunDirection, hauteur = ombre × tan(élévation)', () => {
+    const r = declarationSoleilPriseDeVue(CASA_LAT, '2025-03-21', 10.5);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.elevationDeg).toBeCloseTo(sunDirection(CASA_LAT, 80, 10.5).elevationDeg, 9);
+    expect(r.ligne).toMatch(/^soleil à \d+,\d° le 21\/03 à 10,5 h solaire$/);
+    expect(obstructionHeightFromShadow(10, r.elevationDeg)).toBeCloseTo(10 * Math.tan((r.elevationDeg * Math.PI) / 180), 9);
+    expect(obstructionHeightFromShadow(10, 45)).toBeCloseTo(10, 6); // soleil à 45,0° : 10 m d'ombre = 10,0 m
   });
 
   it('shadeObstructionsENU retire la hauteur de toit et écarte ce qui reste sous le plan', () => {

@@ -140,3 +140,52 @@ class AccesDuDocumentTest(SimpleTestCase):
         _c2, meta2 = construire_contexte(
             _Calepinage(layout=autre), materiel=MATERIEL, reglages=REGLAGES)
         self.assertEqual(meta1['hash_entree'], meta2['hash_entree'])
+
+
+class AccesParBandeTest(SimpleTestCase):
+    """ACAL731 — les bandes de module, lues alignées sur ``values``."""
+
+    BANDES = [[1.0, 1.0, 0.75], [1.0, 1.0, 1.0]]
+
+    def _lire(self, **acces):
+        from apps.calepinage.services.ombrage_chaines import acces_par_bande
+
+        return acces_par_bande(document(dict(ACCES, **acces)))
+
+    def test_bandes_alignees_sur_values(self):
+        lues = self._lire(bandes=self.BANDES)
+        self.assertEqual(lues['Pan Sud'], self.BANDES)
+        self.assertEqual(lues['z1'], self.BANDES)  # les deux repères du pan
+
+    def test_longueur_fautive_ou_hors_0_1_rend_none(self):
+        cas = {
+            'longueur': self.BANDES[:1],
+            'hors_borne': [[1.0, 1.0, 1.2], [1.0, 1.0, 1.0]],
+            'negatif': [[1.0, -0.1], [1.0, 1.0]],
+            'bande_unique': [[1.0], [1.0, 1.0]],
+        }
+        for nom, bandes in cas.items():
+            with self.subTest(cas=nom):
+                self.assertIsNone(self._lire(bandes=bandes)['Pan Sud'])
+
+    def test_module_sans_bandes_reste_null_et_pan_sans_bandes_absent(self):
+        self.assertEqual(
+            self._lire(bandes=[None, self.BANDES[1]])['Pan Sud'],
+            [None, self.BANDES[1]])
+        self.assertEqual(self._lire(), {})
+
+    def test_l_exemple_du_contrat_porte_des_bandes_valides(self):
+        from jsonschema import Draft202012Validator
+
+        schema = json.loads(CONTRAT.read_text(encoding='utf-8'))
+        exemple = schema['exemple']
+        self.assertEqual(
+            [(list(e.absolute_path), e.message)
+             for e in Draft202012Validator(schema).iter_errors(exemple)], [])
+        from apps.calepinage.services.ombrage_chaines import acces_par_bande
+
+        lues = acces_par_bande(exemple)
+        self.assertTrue(lues)
+        for bandes in lues.values():
+            self.assertIsNotNone(bandes)
+            self.assertEqual(len(bandes), 2)

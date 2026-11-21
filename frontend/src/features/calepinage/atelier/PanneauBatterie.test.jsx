@@ -11,7 +11,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, fichierContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import userEvent from '@testing-library/user-event'
+import { formatNumber } from '../../../lib/format'
+import { chiffresSansGrandeur } from '../commun/useExplications'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
@@ -20,6 +25,7 @@ vi.mock('../../../api/calepinageApi', () => ({
       entreeElectrique: vi.fn(() => Promise.resolve({ data: { entree: {} } })),
       enregistrerEntreeElectrique: vi.fn(),
       exportCsv: vi.fn(),
+      explications: vi.fn(),
     },
     moteur: { resultat: vi.fn() },
   },
@@ -335,6 +341,32 @@ describe('PanneauBatterie — déclarer la batterie (ACAL167)', () => {
 
 /* ACAL447 — la semaine 8 à 14 de mars, lue dans le CSV horaire. Les états de
    charge viennent du contrat `calepinage_serie_horaire.json` (jamais tapés). */
+describe('PanneauBatterie — le « ? » de chaque tuile (ACAL875)', () => {
+  // Le registre RÉEL (`data/explications.json`, servi tel quel par ACAL871).
+  const registre = JSON.parse(readFileSync(
+    join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8'))
+
+  it('chaque tuile a son « ? » ; la capacité utile cite la profondeur servie', async () => {
+    calepinageApi.calepinages.explications.mockResolvedValue({ data: registre })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesSimulees() })
+    rendre()
+    const panneau = await screen.findByTestId('calx14-panneau')
+    const tuiles = ['calx14-batterie-total', 'calx14-batterie-energie',
+      'calx14-hors-reseau-total', 'calx14-hors-reseau-banque'].map((t) => within(panneau).getByTestId(t))
+    tuiles.forEach((bloc) => expect(chiffresSansGrandeur(bloc)).toEqual([]))
+    const boutons = tuiles.flatMap((bloc) => within(bloc).getAllByRole('button', { name: 'Pourquoi ce chiffre ?' }))
+    expect(boutons).toHaveLength(22)
+    const connues = new Set(registre.entrees.map((e) => e.cle))
+    boutons.forEach((b) => expect(connues.has(b.dataset.grandeur)).toBe(true))
+
+    const banque = within(panneau).getByTestId('calx14-hors-reseau-banque')
+    await userEvent.click(within(banque).getAllByRole('button', { name: 'Pourquoi ce chiffre ?' })[0])
+    const dod = donneesSimulees().hors_reseau.banque.dod_pct
+    expect(await screen.findByText(new RegExp(`profondeur de décharge publiée, ${formatNumber(dod)} %`)))
+      .toBeInTheDocument()
+  })
+})
+
 describe('PanneauBatterie — semaine d’état de charge (ACAL447)', () => {
   const socs = () => exempleContrat('calepinage', 'calepinage_serie_horaire', 'exemple_tronquee').serie_horaire.points
     .map((p) => p.batterie_soc_pct).filter((v) => v !== null)

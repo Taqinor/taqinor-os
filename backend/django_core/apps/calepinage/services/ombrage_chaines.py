@@ -47,7 +47,8 @@ l'avertissement le dit), jamais complétés.
 from __future__ import annotations
 from .valeurs import nombre as _nombre
 
-__all__ = ['MOTIF_SANS_ACCES', 'acces_par_module', 'ombrage_des_chaines']
+__all__ = ['MOTIF_SANS_ACCES', 'acces_des_modules', 'acces_par_bande',
+           'acces_par_module', 'ombrage_des_chaines']
 
 MOTIF_SANS_ACCES = (
     "Le document de toiture ne porte aucun accès solaire par module "
@@ -82,6 +83,51 @@ def acces_par_module(layout):
     return par_pan
 
 
+def _bandes_valides(bandes, valeurs):
+    """Les bandes alignées sur ``valeurs``, ou ``None`` : refus EN BLOC d'une
+    liste de longueur différente, d'une bande de moins de deux valeurs ou
+    d'une valeur hors [0 ; 1] (jamais complétée). Un module sans bandes
+    (``null``) reste ``None`` à sa place."""
+    if not isinstance(bandes, list) or len(bandes) != len(valeurs):
+        return None
+    lues = []
+    for module in bandes:
+        if module is None:
+            lues.append(None)
+            continue
+        if not isinstance(module, list) or len(module) < 2:
+            return None
+        valeurs_bande = [_nombre(valeur) for valeur in module]
+        if any(v is None or not 0 <= v <= 1 for v in valeurs_bande):
+            return None
+        lues.append(valeurs_bande)
+    return lues
+
+
+def acces_par_bande(layout):
+    """ACAL731 — ``{repère du pan: [[accès de la bande, …] | None, …]}`` LU
+    dans ``zones[].geometry.solarAccess.bandes`` (ACAL721 l'écrit), aligné sur
+    ``values`` ; les deux repères du pan (``label`` et ``id``) comme
+    ``acces_par_module``. Un pan sans ``bandes`` n'y figure pas ; des bandes
+    de longueur fautive ou hors [0 ; 1] rendent ``None`` pour le pan."""
+    zones = ((layout or {}).get('zones')
+             if isinstance(layout, dict) else None) or []
+    par_pan = {}
+    for zone in zones:
+        geometrie = zone.get('geometry') if isinstance(zone, dict) else None
+        acces = (geometrie.get('solarAccess')
+                 if isinstance(geometrie, dict) else None)
+        if not isinstance(acces, dict) or acces.get('bandes') is None:
+            continue
+        valeurs = acces.get('values')
+        lues = (_bandes_valides(acces['bandes'], valeurs)
+                if isinstance(valeurs, list) else None)
+        for repere in (zone.get('label'), zone.get('id')):
+            if repere:
+                par_pan[str(repere)] = lues
+    return par_pan
+
+
 def _acces_par_cle_de_module(layout):
     """ACAL265 — ``{'<clé du pan>#<n>': accès}`` : LA clé de
     ``chaines.affectation`` (``zone.id`` + numéro stable du panneau, sinon
@@ -105,6 +151,12 @@ def _acces_par_cle_de_module(layout):
         for rang, valeur in enumerate(valeurs, start=1):
             par_module[cle_de_module(cle, rang, numeros)] = _nombre(valeur)
     return par_module
+
+
+def acces_des_modules(layout):
+    """ACAL754 — ``{'<pan>#<n>': accès}`` dans l'ordre des pans du document,
+    tel que persisté (``None`` = module non calculé) ; ``{}`` sans accès."""
+    return dict(_acces_par_cle_de_module(layout))
 
 
 def ombrage_des_chaines(layout, affectation, *, ecart_signale=None):

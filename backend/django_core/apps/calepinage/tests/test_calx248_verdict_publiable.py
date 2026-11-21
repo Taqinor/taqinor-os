@@ -119,7 +119,8 @@ class FormeDuRapportTest(unittest.TestCase):
 
     def test_les_deux_cles_sont_toujours_presentes(self):
         rapport = _verdict()
-        self.assertEqual(sorted(rapport), ['motifs', 'publiable'])
+        # ACAL934 y a ajouté ``etat`` et ``points`` (titre/phrase : ACAL612, à la vue).
+        self.assertEqual(sorted(rapport), ['etat', 'motifs', 'points', 'publiable'])
         self.assertIsInstance(rapport['publiable'], bool)
 
     def test_chaque_motif_porte_les_quatre_champs(self):
@@ -366,6 +367,104 @@ def _conception():
             saisie={'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
         module_designation='Module d essai',
         onduleur_designation='Onduleur d essai')
+
+
+class SynthesePublicationTest(unittest.TestCase):
+    """ACAL612 — ``titre`` / ``phrase`` composés de ``etat`` et ``points``."""
+
+    @staticmethod
+    def _publication(etat, points, statut, n_motifs):
+        motifs = [{'code': 'X', 'statut': statut, 'source': 's',
+                   'libelle': 'motif %d' % i} for i in range(n_motifs)]
+        return {'publiable': etat != 'bloquant', 'motifs': motifs,
+                'etat': etat, 'points': points}
+
+    def _synthese(self, *args):
+        from apps.calepinage.services.synthese_publication import (
+            synthese_de_publication,
+        )
+        return synthese_de_publication(self._publication(*args))
+
+    def test_a_completer_dit_le_nombre_de_points(self):
+        # Le mutant ``len(motifs)`` (3 ici) au lieu de ``points`` échoue.
+        servie = self._synthese('a_completer', 11, STATUT_NON_VERIFIABLE, 3)
+        self.assertEqual(servie['titre'], 'À compléter : 11 points')
+        self.assertEqual(
+            servie['phrase'], 'Aucun motif bloquant ; 11 points restent à '
+                              'compléter : motif 0 ; motif 1…')
+
+    def test_singulier(self):
+        servie = self._synthese('a_completer', 1, STATUT_MOTIF_OMIS, 1)
+        self.assertEqual(servie['titre'], 'À compléter : 1 point')
+
+    def test_bloquant_et_pret(self):
+        self.assertEqual(
+            self._synthese('bloquant', 2, STATUT_BLOQUANT, 2)['titre'],
+            'Bloquant : 2')
+        self.assertEqual(self._synthese('pret', 0, STATUT_OK, 0)['titre'],
+                         'Prêt')
+
+    def test_publication_nulle_et_cles_d_origine_intactes(self):
+        from apps.calepinage.services.synthese_publication import (
+            synthese_de_publication,
+        )
+        self.assertIsNone(synthese_de_publication(None))
+        avant = self._publication('a_completer', 11, STATUT_NON_VERIFIABLE, 3)
+        servie = synthese_de_publication(avant)
+        for cle in ('publiable', 'motifs', 'etat', 'points'):
+            self.assertEqual(servie[cle], avant[cle])
+
+    def test_un_dossier_sans_materiel_ni_norme_reste_publiable(self):
+        from apps.calepinage.services.synthese_publication import (
+            synthese_de_publication,
+        )
+        absent = dict(MATERIEL, module=None, onduleur=None,
+                      absents=('module', 'onduleur'))
+        servie = synthese_de_publication(_verdict(materiel=absent))
+        self.assertTrue(servie['publiable'])
+        self.assertEqual(servie['etat'], 'a_completer')
+        self.assertIn('%d point' % servie['points'], servie['titre'])
+
+
+class DeclassementThermiqueTest(unittest.TestCase):
+    """ACAL664 — Pnom à la T2m maximale du TMY, d'après la fiche."""
+
+    REDUITE = dict(MATERIEL, onduleur=dict(
+        ONDULEUR, pnom_reduite_debut_c=45.0, pnom_pente_pct_c=2.0))
+
+    @staticmethod
+    def _tmy(maxi):
+        return lambda lat, lon: {'temperature_min_c': -2.0, 'temperature_max_c': maxi}
+
+    def _motif(self, materiel, fournisseur):
+        with mock.patch.object(electrique, '_FOURNISSEUR', fournisseur):
+            return _par_code(_verdict(materiel=materiel), 'DECLASSEMENT_THERMIQUE')
+
+    def test_cinquante_degres_rendent_quatre_vingt_dix_pour_cent(self):
+        # Le mutant « pente dès 0 °C » rendrait 0 kW, pas 9,0 kW.
+        motif = self._motif(self.REDUITE, self._tmy(50.0))
+        self.assertEqual(motif['statut'], STATUT_OK)
+        self.assertEqual(motif['libelle'], "Puissance AC à 50 °C : 9,0 kW "
+                         "(90 % de la nominale, d'après la fiche)")
+        self.assertEqual(motif['source'], "fiche technique de l'onduleur")
+
+    def test_sous_le_debut_pleine_puissance(self):
+        self.assertIn('(100 %', self._motif(self.REDUITE, self._tmy(40.0))['libelle'])
+
+    def test_fiche_muette_non_verifiable(self):
+        motif = self._motif(MATERIEL, self._tmy(50.0))
+        self.assertEqual(motif['statut'], STATUT_NON_VERIFIABLE)
+        self.assertIn('déclassement thermique non modélisé', motif['libelle'])
+
+    def test_air_non_connu_sans_tmy(self):
+        motif = self._motif(self.REDUITE, None)
+        self.assertEqual(motif['libelle'], "température d'air non connue")
+
+    def test_la_fonction_du_noyau(self):
+        from core.electrique.onduleurs import puissance_a_temperature
+
+        self.assertAlmostEqual(puissance_a_temperature(10.0, 45.0, 2.0, 50.0), 9.0)
+        self.assertIsNone(puissance_a_temperature(10.0, None, 2.0, 50.0))
 
 
 if __name__ == '__main__':      # pragma: no cover

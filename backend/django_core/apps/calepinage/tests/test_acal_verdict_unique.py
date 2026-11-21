@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage, ParametresCalepinage
 from apps.calepinage.services.electrique import (
     CLE_ENTREE, CODE_AFFECTATION, CODE_FICHE_INCOMPLETE,
@@ -199,3 +201,78 @@ class VerdictUnique(BaseApiCalepinage):
         self.assertIsNone(servi['retenue'])
         self.assertEqual(servi['configurations'], [])
         self.assertIn('Matériel électrique', servi['motif_vide'])
+
+    # ACAL934 — l'état à trois valeurs, le MÊME dans les quatre lectures.
+    def _quatre_lectures(self, calepinage):
+        from apps.calepinage.services.assistant import _bloc_electrique
+        from apps.calepinage.services.electrique import verdict_de_conception
+
+        lectures = (verdict_publiable(calepinage),
+                    verdict_de_conception(calepinage),
+                    evaluation_electrique(calepinage),
+                    _bloc_electrique(calepinage)[0])
+        return {(lecture['etat'], lecture['points']) for lecture in lectures}
+
+    def test_sans_module_ni_onduleur_quatre_fois_a_completer(self):
+        calepinage = self._calepinage(module_produit=None,
+                                      onduleur_produit=None)
+        publication = verdict_publiable(calepinage)
+        abstentions = sum(motif['statut'] in ('non_verifiable', 'omis',
+                                              'sans_source')
+                          for motif in publication['motifs'])
+        self.assertGreater(abstentions, 0, publication['motifs'])
+        self.assertEqual(self._quatre_lectures(calepinage),
+                         {('a_completer', abstentions)})
+        self.assertTrue(publication['publiable'])
+        self.assertEqual(evaluation_electrique(calepinage)['verdict'],
+                         'indetermine')
+        import json
+        import pathlib
+
+        from apps.calepinage.services.electrique import verdict_de_conception
+
+        contrat = json.loads((pathlib.Path(__file__).resolve().parent.parent
+                              / 'contract_samples'
+                              / 'calepinage_publication_electrique.json')
+                             .read_text(encoding='utf-8'))['exemple_evaluation']
+        self.assertEqual(sorted(publication), sorted(contrat['publication']))
+        self.assertEqual(sorted(verdict_de_conception(calepinage)),
+                         sorted(contrat['electrique']))
+
+    def test_bloquant_puis_lectures_identiques(self):
+        imposee = [{'module': 'a#%d' % rang, 'chaine': 2, 'mppt': 1,
+                    'onduleur': 1} for rang in range(1, 21)]
+        calepinage = self._calepinage(affectation_manuelle=imposee)
+        motifs = verdict_publiable(calepinage)['motifs']
+        bloquants = sum(motif['statut'] == 'bloquant' for motif in motifs)
+        self.assertGreater(bloquants, 0, motifs)
+        self.assertEqual(self._quatre_lectures(calepinage),
+                         {('bloquant', bloquants)})
+        self.assertEqual(len(self._quatre_lectures(self._calepinage())), 1)
+
+
+class EtatDePublicationPur(SimpleTestCase):
+    """ACAL934 — la règle de rangement, sans base (mutant : un
+    ``non_verifiable`` rangé en « pret » échoue ici)."""
+
+    def test_rangement(self):
+        from apps.calepinage.services.etat_dossier_electrique import (
+            etat_a_chaud, etat_de_publication,
+        )
+
+        def motifs(*statuts):
+            return [{'statut': statut} for statut in statuts]
+
+        cas = (((), ('pret', 0)), (('ok', 'alerte'), ('pret', 0)),
+               (('non_verifiable',), ('a_completer', 1)),
+               (('omis', 'sans_source', 'ok'), ('a_completer', 2)),
+               (('bloquant', 'omis', 'bloquant'), ('bloquant', 2)))
+        for statuts, attendu in cas:
+            with self.subTest(statuts=statuts):
+                etat = etat_de_publication(motifs(*statuts))
+                self.assertEqual((etat['etat'], etat['points']), attendu)
+        self.assertEqual(etat_a_chaud(['x'], ['y']),
+                         {'etat': 'bloquant', 'points': 1})
+        self.assertEqual(etat_a_chaud([], ['y', 'z']),
+                         {'etat': 'a_completer', 'points': 2})
+        self.assertEqual(etat_a_chaud([], []), {'etat': 'pret', 'points': 0})

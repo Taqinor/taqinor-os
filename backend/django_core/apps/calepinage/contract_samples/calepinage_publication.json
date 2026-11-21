@@ -41,6 +41,13 @@
   "exemple_409_lead_agricole": {
     "type_installation": "Lead agricole : le pompage se chiffre depuis l'écran devis agricole."
   },
+  "exemple_409_module_substitue": {
+    "detail": "Le dessin porte 72,00 kWc ; le catalogue compose 71,00 kWc (Canadian Solar 710 W). Choisissez le module du catalogue dans l'atelier puis relancez.",
+    "code": "module_substitue",
+    "champ": "zones.0.geometry.moduleId",
+    "kwc_dessine": 72.0,
+    "kwc_compose": 71.0
+  },
   "sync_devis": {
     "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/sync-devis/",
     "exemple": {

@@ -167,6 +167,14 @@ describe('CAL97 — solarAccessSummary : un chiffre reproductible, ou pas de chi
     { x: 40, y: 0 },
   ];
 
+  it('ACAL714 — sans seuil réglé `lowCount` est null ; avec un seuil il compte les modules dessous', () => {
+    const sans = solarAccessSummary(LAT, [cheminee], prod, modules) as SolarAccessSummary;
+    expect(sans.lowCount).toBeNull();
+    const avec = solarAccessSummary(LAT, [cheminee], prod, modules, null, undefined, 0.6) as SolarAccessSummary;
+    expect(avec.lowCount).toBe(avec.perModule.filter((a) => a < 0.6).length);
+    expect(solarAccessSummary(LAT, [cheminee], prod, modules, null, undefined, 0)?.lowCount).toBe(0);
+  });
+
   it('AUCUNE obstruction renseignée → null : le chiffre est ABSENT, pas estimé à 100 %', () => {
     expect(solarAccessSummary(LAT, [], prod, modules)).toBeNull();
   });
@@ -271,6 +279,13 @@ describe('CAL235 — proposeShadedRemoval : une proposition chiffrée, jamais un
     const copie = [...perModule];
     proposeShadedRemoval(perModule, PANEL_KWC, 0.75);
     expect(perModule).toEqual(copie);
+  });
+
+  it('ACAL714 — seuil absent ⇒ aucune proposition ; seuil 0,6 ⇒ les modules de 0,4 et 0,5', () => {
+    const acces = [0.9, 0.4, 0.9, 0.5, 0.9];
+    expect(proposeShadedRemoval(acces, PANEL_KWC, null)).toBeNull();
+    expect(proposeShadedRemoval(acces, PANEL_KWC)).toBeNull();
+    expect(proposeShadedRemoval(acces, PANEL_KWC, 0.6)?.indices).toEqual([1, 3]);
   });
 
   it('le seuil est paramétrable et pilote seul la sélection', () => {

@@ -120,6 +120,53 @@ def _grandeurs_d_un_pan(pan):
     return len(lignes), jonctions, extremites, longueur, pas is None
 
 
+def _orientations_d_un_pan(pan):
+    """ACAL569 — ``(valeurs, rangees_mixtes)`` : les quatre grandeurs
+    d'orientation d'UN pan (clés de ``BASES_ORIENTATION``), ou ``None`` quand
+    la pose d'un module n'est pas enregistrée (jamais un repli). Une rangée
+    MIXTE compte dans ``modules_*`` selon ses modules, dans aucune
+    ``rangees_*``."""
+    from .planche import ORIENTATIONS
+    from .rangees import rangees_du_pan
+
+    pose = pan.get('orientation_modules')
+    par_module = pan.get('orientations_par_module') or {}
+    poses = {centre: par_module.get(centre) if pose == 'mixed' else pose
+             for centre in pan['modules']}
+    if any(valeur not in ORIENTATIONS for valeur in poses.values()):
+        return None
+    rangs = rangees_du_pan(pan['modules'], pan.get('azimut_deg'))
+    par_rangee = {}
+    for centre, valeur in poses.items():
+        par_rangee.setdefault(rangs[centre], set()).add(valeur)
+    ensembles = list(par_rangee.values())
+    modules, rangees = list(poses.values()).count, ensembles.count
+    return {'modules_portrait': modules('portrait'),
+            'modules_paysage': modules('landscape'),
+            'rangees_portrait': rangees({'portrait'}),
+            'rangees_paysage': rangees({'landscape'}),
+            }, sum(len(ensemble) > 1 for ensemble in ensembles)
+
+
+def _motifs_orientation(sans_orientation, mixtes):
+    """ACAL569 — ``{base: motif}`` des bases d'orientation non lisibles
+    (pans sans pose enregistrée) ou approchées (rangées mixtes)."""
+    from .catalogue_fixation import BASES_ORIENTATION
+
+    if sans_orientation:
+        motif = ("Orientation des modules non enregistrée sur le(s) pan(s) « "
+                 + '», «'.join(str(nom) for nom in sans_orientation)
+                 + " » : portrait ou paysage n'y est pas lisible.")
+        return dict.fromkeys(BASES_ORIENTATION, motif)
+    if mixtes:
+        motif = ("Rangée(s) mixte(s) portrait et paysage : leurs modules "
+                 "sont comptés par orientation, aucune des rangées « en "
+                 "portrait » ou « en paysage ».")
+        return {base: motif for base in BASES_ORIENTATION
+                if base.startswith('rangees')}
+    return {}
+
+
 def _pans_a_commander(geometrie):
     """Les pans qui portent des modules à poser : un pan « existant » (ACAL575)
     ne se commande pas."""
@@ -140,7 +187,7 @@ def _grandeurs_du_document(roof_layout):
     Lecture PURE du document. Une grandeur illisible vaut ``None`` et son
     motif est NOMMÉ ; aucune n'est complétée.
     """
-    from .catalogue_fixation import BASES
+    from .catalogue_fixation import BASES, BASES_ORIENTATION
     from .planche import PlancheRefusee, geometrie_de_planche
 
     try:
@@ -154,9 +201,18 @@ def _grandeurs_du_document(roof_layout):
 
     modules = rangees = pans = jonctions = extremites = 0
     longueur, pans_sans_pas = 0.0, []
+    orientation = dict.fromkeys(BASES_ORIENTATION, 0)
+    sans_orientation, mixtes = [], 0
     for pan in _pans_a_commander(geometrie):
         pans += 1
         modules += len(pan['modules'])
+        lue = _orientations_d_un_pan(pan)
+        if lue is None:
+            sans_orientation.append(pan.get('libelle') or pan.get('repere'))
+        else:
+            mixtes += lue[1]
+            for base, nombre in lue[0].items():
+                orientation[base] += nombre
         (n_rangees, n_jonctions, n_extremites, metres,
          sans_pas) = _grandeurs_d_un_pan(pan)
         rangees += n_rangees
@@ -179,6 +235,9 @@ def _grandeurs_du_document(roof_layout):
     if pans_sans_pas:
         valeurs['longueur_rangees_m'] = None
         manquants['longueur_rangees_m'] = _motif_sans_pas(pans_sans_pas)
+    valeurs.update({base: None if sans_orientation else nombre
+                    for base, nombre in orientation.items()})
+    manquants.update(_motifs_orientation(sans_orientation, mixtes))
     return {'valeurs': valeurs, 'manquants': manquants}
 
 
@@ -466,11 +525,12 @@ def bom_de_fixation(calepinage, systeme, refus=(), source=None):
     """
     if systeme is None:
         return {'systeme': None, 'lignes': [], 'refus': list(refus),
-                'systeme_source': None}
+                'systeme_source': None, 'alertes': []}
 
     from apps.stock.selectors import valid_produit_ids
 
     from .catalogue_fixation import composants_du_systeme
+    from .controles_pose import alertes_du_systeme
 
     composants = composants_du_systeme(systeme)
     company = getattr(calepinage, 'company', None)
@@ -485,6 +545,7 @@ def bom_de_fixation(calepinage, systeme, refus=(), source=None):
         'lignes': _lignes_de_fixation(composants, grandeurs, produits),
         'refus': [],
         'systeme_source': source,
+        'alertes': alertes_du_systeme(calepinage, systeme),  # ACAL568
     }
 
 
@@ -492,6 +553,7 @@ def _lignes_par_pan(roof_layout, composants):
     """ACAL592 — ``{repere de pan: lignes}`` : la MÊME règle et le même
     arrondi que ``_lignes_de_fixation``, sur les grandeurs de CHAQUE pan à
     poser (PUR ; ``[]`` sans conception lisible)."""
+    from .catalogue_fixation import BASES_ORIENTATION
     from .planche import PlancheRefusee, geometrie_de_planche
 
     try:
@@ -509,6 +571,11 @@ def _lignes_par_pan(roof_layout, composants):
                    else round(longueur, 2)}
         motifs = ({'longueur_rangees_m': _motif_sans_pas(
             [pan.get('libelle') or pan.get('repere')])} if sans_pas else {})
+        lue = _orientations_d_un_pan(pan)  # ACAL569
+        valeurs.update(lue[0] if lue else dict.fromkeys(BASES_ORIENTATION))
+        motifs.update(_motifs_orientation(
+            [] if lue else [pan.get('libelle') or pan.get('repere')],
+            lue[1] if lue else 0))
         sortie[pan['repere']] = _lignes_de_fixation(
             composants, {'valeurs': valeurs, 'manquants': motifs})
     return sortie

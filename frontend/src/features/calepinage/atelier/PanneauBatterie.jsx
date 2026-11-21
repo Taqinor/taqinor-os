@@ -10,6 +10,7 @@ import { BoutonCalculer } from '../production/PanneauProduction'
 import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree } from './PanneauBatterie.helpers'
 import { MotifAbsence } from '../MotifAbsence'
 import SemaineBatterie from './SemaineBatterie'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CALX14 — LE PANNEAU « BATTERIE », ET CE QUE LA CHAÎNE CALCULE DEVIENT ENFIN
@@ -79,6 +80,8 @@ const heuresFmt = (v) => nonCalculee(v, (x) => `${formatNumber(x, { decimals: 0 
 const pourcent01 = (v) => nonCalculee(v, (x) => formatPercent(x * 100, { decimals: 1 }))
 const pourcentBrut = (v) => nonCalculee(v, (x) => formatPercent(x, { decimals: 1 }))
 const libelleMois = (m) => (m === null || m === undefined ? 'non calculé' : (MOIS[m - 1] || String(m)))
+
+/* ACAL875 — chaque tuile porte son « ? » (`Pourquoi`) ; clé littérale `cle="…"` (garde). */
 
 /* CALX48 — le même bandeau de péremption : `simulation_perimee` (CALX70)
    remplace tous les blocs par `null`, jamais un chiffre trompeur. */
@@ -247,15 +250,22 @@ function BlocBatterie({ batterie }) {
     )
   }
   const { groupes = [], total } = batterie
+  const v = { batterie }
   return (
     <div className="flex flex-col gap-3" data-testid="calx14-batterie">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="calx14-batterie-total">
-        <Stat label="Stratégie retenue" value={libelleStrategie(total?.strategie) || 'non calculée'} />
-        <Stat label="Capacité utile" value={kwh(total?.capacite_utile_kwh)} />
-        <Stat label="Énergie stockée" value={kwh(total?.energie_stockee_kwh)} />
-        <Stat label="Énergie restituée" value={kwh(total?.energie_restituee_kwh)} />
-        <Stat label="Taux d'autonomie" value={pourcent01(total?.taux_autonomie)} />
-        <Stat label="Heures sans import réseau" value={heuresFmt(total?.heures_sans_import)} />
+        <Stat label={<>Stratégie retenue<Pourquoi cle="batterie.strategie" valeurs={v} /></>}
+          value={libelleStrategie(total?.strategie) || 'non calculée'} />
+        <Stat label={<>Capacité utile<Pourquoi cle="batterie.capacite_utile" valeurs={v} /></>}
+          value={kwh(total?.capacite_utile_kwh)} />
+        <Stat label={<>Énergie stockée<Pourquoi cle="batterie.energie_stockee" valeurs={v} /></>}
+          value={kwh(total?.energie_stockee_kwh)} />
+        <Stat label={<>Énergie restituée<Pourquoi cle="batterie.energie_restituee" valeurs={v} /></>}
+          value={kwh(total?.energie_restituee_kwh)} />
+        <Stat label={<>Taux d&apos;autonomie<Pourquoi cle="batterie.taux_autonomie" valeurs={v} /></>}
+          value={pourcent01(total?.taux_autonomie)} />
+        <Stat label={<>Heures sans import réseau<Pourquoi cle="batterie.heures_sans_import" valeurs={v} /></>}
+          value={heuresFmt(total?.heures_sans_import)} />
       </div>
       {total?.definition && (
         <p className="text-xs text-muted-foreground" data-testid="calx14-batterie-definition">
@@ -264,12 +274,18 @@ function BlocBatterie({ batterie }) {
       )}
       {total?.energie && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="calx14-batterie-energie">
-          <Stat label="Production" value={kwh(total.energie.production_kwh)} />
-          <Stat label="Consommation" value={kwh(total.energie.consommation_kwh)} />
-          <Stat label="Autoconsommée" value={kwh(total.energie.autoconsomme_kwh)} />
-          <Stat label="Exportée" value={kwh(total.energie.export_kwh)} />
-          <Stat label="Importée du réseau" value={kwh(total.energie.import_reseau_kwh)} />
-          <Stat label="Pertes de la batterie" value={kwh(total.energie.pertes_batterie_kwh)} />
+          <Stat label={<>Production<Pourquoi cle="batterie.production" valeurs={v} /></>}
+            value={kwh(total.energie.production_kwh)} />
+          <Stat label={<>Consommation<Pourquoi cle="batterie.consommation" valeurs={v} /></>}
+            value={kwh(total.energie.consommation_kwh)} />
+          <Stat label={<>Autoconsommée<Pourquoi cle="batterie.autoconsomme" valeurs={v} /></>}
+            value={kwh(total.energie.autoconsomme_kwh)} />
+          <Stat label={<>Exportée<Pourquoi cle="batterie.export" valeurs={v} /></>}
+            value={kwh(total.energie.export_kwh)} />
+          <Stat label={<>Importée du réseau<Pourquoi cle="batterie.import_reseau" valeurs={v} /></>}
+            value={kwh(total.energie.import_reseau_kwh)} />
+          <Stat label={<>Pertes de la batterie<Pourquoi cle="batterie.pertes_batterie" valeurs={v} /></>}
+            value={kwh(total.energie.pertes_batterie_kwh)} />
         </div>
       )}
       {groupes.length > 0 && (
@@ -466,24 +482,34 @@ function BlocHorsReseau({ horsReseau }) {
       />
     )
   }
+  const v = { hors_reseau: horsReseau }
   return (
     <div className="flex flex-col gap-3" data-testid="calx14-hors-reseau">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="calx14-hors-reseau-total">
-        <Stat label="Défaillance annuelle" value={kwh(horsReseau.defaillance_kwh)} />
-        <Stat label="Heures défaillantes" value={heuresFmt(horsReseau.heures_defaillantes)} />
-        <Stat label="Taux de défaillance" value={pourcent01(horsReseau.taux_defaillance)} />
-        <Stat label="Pire mois" value={libelleMois(horsReseau.mois_le_plus_defavorable)} />
-        <Stat label="Servi" value={kwh(horsReseau.servi_kwh)} />
-        <Stat label="Surplus perdu" value={kwh(horsReseau.surplus_perdu_kwh)} />
+        <Stat label={<>Défaillance annuelle<Pourquoi cle="hors_reseau.defaillance" valeurs={v} /></>}
+          value={kwh(horsReseau.defaillance_kwh)} />
+        <Stat label={<>Heures défaillantes<Pourquoi cle="hors_reseau.heures_defaillantes" valeurs={v} /></>}
+          value={heuresFmt(horsReseau.heures_defaillantes)} />
+        <Stat label={<>Taux de défaillance<Pourquoi cle="hors_reseau.taux_defaillance" valeurs={v} /></>}
+          value={pourcent01(horsReseau.taux_defaillance)} />
+        <Stat label={<>Pire mois<Pourquoi cle="hors_reseau.pire_mois" valeurs={v} /></>}
+          value={libelleMois(horsReseau.mois_le_plus_defavorable)} />
+        <Stat label={<>Servi<Pourquoi cle="hors_reseau.servi" valeurs={v} /></>}
+          value={kwh(horsReseau.servi_kwh)} />
+        <Stat label={<>Surplus perdu<Pourquoi cle="hors_reseau.surplus_perdu" valeurs={v} /></>}
+          value={kwh(horsReseau.surplus_perdu_kwh)} />
       </div>
       {horsReseau.banque && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="calx14-hors-reseau-banque">
-          <Stat label="Capacité utile" value={kwh(horsReseau.banque.capacite_utile_kwh)} />
-          <Stat label="Capacité nominale" value={kwh(horsReseau.banque.capacite_nominale_kwh)} />
-          <Stat label="Jours d'autonomie" value={nonCalculee(horsReseau.banque.jours_autonomie,
-            (x) => `${formatNumber(x, { decimals: 0 })} j`)}
+          <Stat label={<>Capacité utile<Pourquoi cle="hors_reseau.capacite_utile" valeurs={v} /></>}
+            value={kwh(horsReseau.banque.capacite_utile_kwh)} />
+          <Stat label={<>Capacité nominale<Pourquoi cle="hors_reseau.capacite_nominale" valeurs={v} /></>}
+            value={kwh(horsReseau.banque.capacite_nominale_kwh)} />
+          <Stat label={<>Jours d&apos;autonomie<Pourquoi cle="hors_reseau.jours_autonomie" valeurs={v} /></>}
+            value={nonCalculee(horsReseau.banque.jours_autonomie, (x) => `${formatNumber(x, { decimals: 0 })} j`)}
           />
-          <Stat label="Profondeur de décharge (fiche)" value={pourcentBrut(horsReseau.banque.dod_pct)} />
+          <Stat label={<>Profondeur de décharge (fiche)<Pourquoi cle="hors_reseau.dod" valeurs={v} /></>}
+            value={pourcentBrut(horsReseau.banque.dod_pct)} />
         </div>
       )}
       {horsReseau.quantiles_publiables === false && horsReseau.motif_quantiles && (

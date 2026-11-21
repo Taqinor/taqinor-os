@@ -375,6 +375,35 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertTrue(any('la face (180°)' in m
                             for m in reponse.data['avertissements']))
 
+    def test_module_substitue_409_sans_devis(self):
+        """ACAL914 — 100 × 720 W dessinés (72,00 kWc) contre un catalogue à
+        550 W : 409 ``module_substitue`` nommant les deux kWc, aucun devis
+        (mutant : retirer l'appel de la garde ⇒ 201)."""
+        doc = copy.deepcopy(TOIT)
+        doc['zones'] = [{
+            'id': 'A', 'label': 'A', 'roofType': 'flat',
+            'vertices': [[0, 0], [30, 0], [30, 20], [0, 20]],
+            'geometry': {'count': 100, 'kwc': 72.0, 'azimuthDeg': 180.0,
+                         'tiltDeg': 10.0},
+            'result': {'count': 100, 'kwc': 72.0}}]
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL914')
+        enregistrer_layout(calepinage, doc, user=self.user)
+        avant = Devis.objects.filter(company=self.company).count()
+        reponse = self._generer(calepinage)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(sorted(reponse.data),
+                         sorted(CONTRAT['exemple_409_module_substitue']))
+        self.assertEqual(reponse.data['code'], 'module_substitue')
+        self.assertEqual(reponse.data['kwc_dessine'], 72.0)
+        self.assertNotEqual(reponse.data['kwc_compose'], 72.0)
+        self.assertTrue(reponse.data['detail'].startswith(
+            'Le dessin porte 72,00 kWc ; le catalogue compose '))
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+        calepinage.refresh_from_db()
+        self.assertIsNone(calepinage.devis_id)
+
 
 class GenererDevisConcurrentTest(TransactionTestCase):
     """ACON46 — deux « Générer le devis » CONCURRENTS sur le même calepinage :

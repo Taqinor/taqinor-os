@@ -216,6 +216,43 @@ class VisionToitTests(SimpleTestCase):
                 self.assertFalse(res.ok)
                 self.assertEqual(res.error, raison)
 
+    def test_valider_obstacles_acceptes_et_refuses_avec_raison(self):
+        # ACAL1050 — la liste des types n'est PAS ici : un type libre non vide passe.
+        from core.ai.fournisseurs_claude import valider_obstacles
+
+        carre = [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3], [0.1, 0.3]]
+        obstacles, raison = valider_obstacles({'obstacles': [
+            {'type': 'climatiseur', 'sommets': carre, 'confiance': 0.7},
+            {'type': 'lanterneau', 'sommets': carre[:3]}]})
+        self.assertEqual(raison, '')
+        self.assertEqual([(o['type'], o['confiance']) for o in obstacles],
+                         [('climatiseur', 0.7), ('lanterneau', None)])
+        self.assertEqual(valider_obstacles({'pans': []}), ([], ''))  # sans clé : aucun
+        for obstacle, attendu in (
+                ({'type': 'x', 'sommets': [[0.1, 0.1], [1.2, 0.1], [0.5, 0.9]]}, 'coordonnée hors de [0, 1]'),
+                ({'type': 'x', 'sommets': carre, 'confiance': 1.5}, 'confiance hors de [0, 1]'),
+                ({'type': 'x', 'sommets': carre[:2]}, 'obstacle à moins de 3 sommets'),
+                ({'type': '  ', 'sommets': carre}, "type d'obstacle manquant"),
+                ({'type': 7, 'sommets': carre}, "type d'obstacle manquant")):
+            with self.subTest(attendu=attendu):
+                self.assertEqual(valider_obstacles({'obstacles': [obstacle]}), (None, attendu))
+
+    @override_settings(**_AVEC_CLE)
+    def test_obstacles_servis_avec_les_pans_quand_la_reponse_en_contient(self):
+        carre = [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3], [0.1, 0.3]]
+        for obstacles, attendu in (([{'type': 'cheminee', 'sommets': carre, 'confiance': 0.4}], 1),
+                                   ([{'type': 'cheminee', 'sommets': carre, 'confiance': 2}], None)):
+            with self.subTest(attendu=attendu):
+                corps = copy.deepcopy(self.reponse)
+                charge = json.loads(corps['content'][0]['text'])
+                charge['obstacles'] = obstacles
+                corps['content'][0]['text'] = json.dumps(charge)
+                self._transport(corps=corps)
+                res = self._detecter()
+                self.assertTrue(res.ok, res.error)
+                self.assertEqual(len(res.data['pans']), 2)  # les pans restent servis
+                self.assertEqual(len(res.data['obstacles']) if attendu else res.data.get('obstacles'), attendu)
+
     @override_settings(**_AVEC_CLE)
     def test_erreurs_http_delai_reponse_invalide_jamais_d_exception(self):
         cas = ((dict(statut=401), 'HTTP 401'), (dict(statut=529), 'HTTP 529'),

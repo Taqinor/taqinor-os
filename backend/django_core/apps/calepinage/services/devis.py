@@ -226,6 +226,64 @@ def _garde_kwh_declare(devis):
                           statut=409, donnees=refus)
 
 
+def taille_non_dimensionnee(calepinage):
+    """ACAL861/ACAL922 — LA condition « rien ne dimensionne ce devis », écrite
+    UNE fois (le contrôle « prêt à envoyer ? » la lit ; la porte 409 d'ACAL922
+    la lira) : sans lead, ou lead résidentiel sans ``taille_souhaitee_kwc``
+    dont ``cible_depuis_lead`` refuse faute de facture (``motif_code`` =
+    ``MOTIF_FACTURE_ABSENTE``). Rend ``{'refus': texte}`` ou ``None``
+    (dimensionné, ou refusé pour une AUTRE raison : C&I, agricole, kWh
+    incohérent ne posent pas cette question). Lecture seule."""
+    from apps.crm.selectors import get_company_lead
+    from apps.ventes.selectors import cible_depuis_lead
+    from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+    company = getattr(calepinage, 'company', None)
+    if not getattr(calepinage, 'lead_id', None):
+        return {'refus': "Calepinage sans lead : aucune facture ne "
+                         "dimensionne le système."}
+    lead = get_company_lead(company, calepinage.lead_id, avec_corbeille=True)
+    cible = cible_depuis_lead(lead, company) if lead is not None else None
+    if cible and cible.get('motif_code') == MOTIF_FACTURE_ABSENTE:
+        return {'refus': cible.get('refus') or ''}
+    return None
+
+
+#: ACAL914 — l'écart d'ÉGALITÉ entre kWc dessiné et kWc composé : l'arrondi
+#: d'écriture de ``etude_params['puissance_kwc']`` (trois décimales), pas un
+#: seuil métier.
+EPSILON_KWC_COMPOSE = 0.001
+
+
+def _garde_module_substitue(devis, layout):
+    """ACAL914 — 409 ``module_substitue`` quand la composition chiffre un
+    autre module que le dessin (kWc composé ≠ kWc dessiné), sous la
+    transaction de la création (devis annulé)."""
+    from core.electrique.types import fr
+
+    from apps.ventes.selectors_calepinage import lignes_produits_calepinage
+    from apps.ventes.services import pans_du_document
+
+    dessine = sum(p['kwc'] for p in pans_du_document(layout) if p.get('kwc'))
+    compose = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    if not dessine or compose is None:
+        return
+    if abs(float(compose) - dessine) <= EPSILON_KWC_COMPOSE + 1e-9:
+        return
+    panneau = next((ligne['designation'] for ligne in
+                    lignes_produits_calepinage(devis)
+                    if 'panneau' in (ligne['designation'] or '').lower()), '')
+    detail = ("Le dessin porte %s kWc ; le catalogue compose %s kWc%s. "
+              "Choisissez le module du catalogue dans l'atelier puis "
+              "relancez." % (fr(dessine, 2), fr(float(compose), 2),
+                             ' (%s)' % panneau if panneau else ''))
+    raise DevisRefuse(detail, champ='zones.0.geometry.moduleId', statut=409,
+                      donnees={'detail': detail, 'code': 'module_substitue',
+                               'champ': 'zones.0.geometry.moduleId',
+                               'kwc_dessine': round(dessine, 3),
+                               'kwc_compose': round(float(compose), 3)})
+
+
 def _generer(calepinage, layout, company, lead, client, montants, *, user,
              journal):
     """CAL24 — la création (ou la dédup) APRÈS toutes les gardes."""
@@ -303,6 +361,7 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
                 layout=layout, user=user, company=company, lead=lead,
                 client=client, journal=journal_composition, **montants)
             _garde_kwh_declare(devis)
+            _garde_module_substitue(devis, layout)  # ACAL914
     except AutoDevisError as refus:
         # ACAL32 — phase / site isolé du lead déduits par la création ; son
         # refus NOMMÉ (``hors_reseau``) remonte en 422, jamais un 500.

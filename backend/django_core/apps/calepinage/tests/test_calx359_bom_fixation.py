@@ -52,8 +52,21 @@ EXEMPLE_VIDE_SERVI = CONTRAT['exemple_vide']
 PAS = 1.2
 
 
-def layout(panneaux, azimut=180.0):
-    """Un document minimal : un pan, ses centres posés (mètres, ENU)."""
+def layout(panneaux, azimut=180.0, pose=None, orients=None):
+    """Un document minimal : un pan, ses centres posés (mètres, ENU).
+
+    ``pose`` (ACAL601) : ``geometry.panelOrientation`` ; ``orients`` : la
+    liste des ``panels[].orient``, dans l'ordre des centres."""
+    document = _layout(panneaux, azimut)
+    geometrie = document['zones'][0]['geometry']
+    if pose is not None:
+        geometrie['panelOrientation'] = pose
+    for panneau, orient in zip(geometrie['panels'], orients or ()):
+        panneau['orient'] = orient
+    return document
+
+
+def _layout(panneaux, azimut):
     return {
         'version': 2,
         'outline': [[33.5, -7.6], [33.5, -7.5998], [33.5002, -7.5998],
@@ -126,7 +139,8 @@ class SurfaceSansValeurNormativeTest(SimpleTestCase):
 class GrandeursDuDocumentTest(SimpleTestCase):
 
     def test_deux_rangees_de_cinq_plein_sud(self):
-        lues = fixation._grandeurs_du_document(layout(deux_rangees_de_cinq()))
+        lues = fixation._grandeurs_du_document(
+            layout(deux_rangees_de_cinq(), pose='portrait'))
         self.assertEqual(lues['manquants'], {})
         valeurs = lues['valeurs']
         self.assertEqual(valeurs['modules'], 10)
@@ -179,6 +193,64 @@ class GrandeursDuDocumentTest(SimpleTestCase):
         self.assertIn('Pan Sud', lues['manquants']['longueur_rangees_m'])
         self.assertEqual(lues['valeurs']['jonctions'], 0)
         self.assertEqual(lues['valeurs']['extremites'], 4)
+
+    def _rangees_orientees(self, orients, ordonnees=(1.0, 3.0, 5.0, 7.0, 9.0)):
+        """Une rangée de trois modules par ordonnée, ``orients`` par rangée
+        (une liste de trois poses pour une rangée mixte)."""
+        panneaux, poses = [], []
+        for y, pose in zip(ordonnees, orients):
+            for k in range(3):
+                panneaux.append((1.0 + PAS * k, y))
+                poses.append(pose[k] if isinstance(pose, list) else pose)
+        return panneaux, poses
+
+    def test_bases_d_orientation_lues_sur_le_document(self):
+        # ACAL569 — 2 rangées paysage et 3 rangées portrait.
+        panneaux, poses = self._rangees_orientees(
+            ['landscape'] * 2 + ['portrait'] * 3)
+        lues = fixation._grandeurs_du_document(
+            layout(panneaux, pose='mixed', orients=poses))
+        valeurs = lues['valeurs']
+        self.assertEqual(valeurs['rangees_paysage'], 2)
+        self.assertEqual(valeurs['rangees_portrait'], 3)
+        self.assertEqual(valeurs['modules_paysage'], 6)
+        self.assertEqual(valeurs['modules_portrait'], 9)
+        self.assertEqual(lues['manquants'], {})
+
+    def test_regle_rangees_paysage_ne_compte_que_le_paysage(self):
+        panneaux, poses = self._rangees_orientees(
+            ['landscape'] * 2 + ['portrait'] * 3)
+        grandeurs = fixation._grandeurs_du_document(
+            layout(panneaux, pose='mixed', orients=poses))
+        croise = composant('Rail croisé', 'rail', 'u',
+                           {'base': 'rangees_paysage', 'facteur': 4})
+        ligne = fixation._lignes_de_fixation([croise], grandeurs)[0]
+        # 4 × 2 rangées paysage — et non 4 × 5 rangées.
+        self.assertEqual(ligne['quantite'], 8)
+
+    def test_rangee_mixte_compte_ses_modules_et_aucune_rangee(self):
+        panneaux, poses = self._rangees_orientees(
+            [['portrait', 'portrait', 'landscape'], 'portrait'],
+            ordonnees=(1.0, 3.0))
+        lues = fixation._grandeurs_du_document(
+            layout(panneaux, pose='mixed', orients=poses))
+        valeurs = lues['valeurs']
+        self.assertEqual((valeurs['modules_portrait'],
+                          valeurs['modules_paysage']), (5, 1))
+        self.assertEqual((valeurs['rangees_portrait'],
+                          valeurs['rangees_paysage']), (1, 0))
+        self.assertEqual(sorted(lues['manquants']),
+                         ['rangees_paysage', 'rangees_portrait'])
+        self.assertIn('mixte', lues['manquants']['rangees_paysage'])
+
+    def test_orientation_non_enregistree_nomme_le_pan(self):
+        lues = fixation._grandeurs_du_document(layout(deux_rangees_de_cinq()))
+        for base in ('modules_portrait', 'modules_paysage',
+                     'rangees_portrait', 'rangees_paysage'):
+            with self.subTest(base=base):
+                self.assertIsNone(lues['valeurs'][base])
+                self.assertIn('Pan Sud', lues['manquants'][base])
+        self.assertEqual(lues['valeurs']['modules'], 10)  # inchangées
 
     def test_sans_conception_ou_sans_module_tout_est_nomme(self):
         for document in (None, {}, layout([])):
@@ -358,6 +430,68 @@ class LignesDeFixationTest(SimpleTestCase):
             self.assertNotEqual(ligne['quantite'], 0)
 
 
+class AlertesDePoseTest(SimpleTestCase):
+    """ACAL568 — la pose DÉCLARÉE contre la zone de serrage de la fiche."""
+
+    ZONE = {'serrage_min_mm': 345, 'serrage_max_mm': 415}
+
+    def _alertes(self, controles, module=None):
+        from apps.calepinage.services.controles_pose import _alertes
+
+        return _alertes(controles, self.ZONE if module is None else module)
+
+    def test_300_hors_345_415_sort_zone_serrage(self):
+        alertes = self._alertes({'distance_rail_bord_mm': 300})
+        self.assertEqual(
+            [(a['code'], a['gravite']) for a in alertes],
+            [('zone_serrage', 'alerte')])
+        self.assertEqual(
+            alertes[0]['message'],
+            'Rail à 300 mm du bord, hors de la zone de serrage du module '
+            '(345 à 415 mm).')
+
+    def test_dans_la_zone_et_aux_bornes_aucune_alerte(self):
+        for distance in (380, 345, 415):
+            with self.subTest(distance=distance):
+                self.assertEqual(
+                    self._alertes({'distance_rail_bord_mm': distance}), [])
+
+    def test_porte_a_faux_au_dessus_du_maximum(self):
+        alertes = self._alertes({'porte_a_faux_rail_mm': 700,
+                                 'porte_a_faux_max_mm': 400})
+        self.assertEqual(alertes[0]['code'], 'porte_a_faux')
+        self.assertEqual(alertes[0]['message'],
+                         'Porte-à-faux du rail 700 mm, 400 mm admis.')
+        # Au maximum exact : admis (un ``>=`` est un mutant).
+        self.assertEqual(self._alertes({'porte_a_faux_rail_mm': 400,
+                                        'porte_a_faux_max_mm': 400}), [])
+
+    def test_zone_absente_nomme_ce_qui_manque_sans_zone_de_repli(self):
+        alertes = self._alertes({'distance_rail_bord_mm': 300}, module={})
+        self.assertEqual([a['gravite'] for a in alertes], ['info'])
+        self.assertIn('Zone de serrage du module non saisie',
+                      alertes[0]['message'])
+
+    def test_controles_vides_une_ligne_info(self):
+        alertes = self._alertes({})
+        self.assertEqual([a['gravite'] for a in alertes], ['info'])
+        self.assertIn('non saisis', alertes[0]['message'])
+
+    def test_validation_exige_une_source_et_des_nombres(self):
+        from apps.calepinage.services.controles_pose import (
+            erreur_de_controles_pose,
+        )
+
+        self.assertEqual(erreur_de_controles_pose({}), '')
+        self.assertEqual(erreur_de_controles_pose(
+            {'distance_rail_bord_mm': 300, 'source': 'notice X'}), '')
+        self.assertIn('source', erreur_de_controles_pose(
+            {'distance_rail_bord_mm': 300}))
+        self.assertIn('nombre', erreur_de_controles_pose(
+            {'distance_rail_bord_mm': 'trois', 'source': 'notice X'}))
+        self.assertIn('inconnu', erreur_de_controles_pose({'autre': 1}))
+
+
 class CatalogueVideTest(SimpleTestCase):
 
     def test_la_reponse_est_l_exemple_vide(self):
@@ -417,7 +551,8 @@ class BomFixationEnBase(BaseApiCalepinage):
                          [24.0, 16])
         # ACAL81 — la réponse porte aussi ``systeme_source`` (contrat).
         self.assertEqual(sorted(reponse.data),
-                         ['lignes', 'refus', 'systeme', 'systeme_source'])
+                         ['alertes', 'lignes', 'refus', 'systeme',
+                          'systeme_source'])  # alertes : ACAL568
         self.assertEqual(reponse.data['systeme_source'], 'parametre')
 
     def test_plusieurs_systemes_sans_choix_refus_nomme(self):

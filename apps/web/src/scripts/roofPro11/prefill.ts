@@ -57,6 +57,7 @@ import { emettreAlleeTechnique } from './alleeTechnique'; import { emettreChassi
 import { semerFondDepuisDocument, imageCapturePourDocument } from './fondDocument'; // CALX107 câblage ; ACAL509
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
 import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; import { emettreCoupures } from './coupuresPavage'; // ACAL193 (sorti), ACAL593, ACAL576
+import { orientationEmise } from './orientationDocument'; // ACAL608
 import { pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
@@ -228,7 +229,8 @@ export interface SerializedZoneGeometry {
    *  document sans rotation ressort octet pour octet identique. Sans cette clé, une
    *  symétrie appliquée était perdue au rechargement (les centres revenaient, pas
    *  l'orientation). */
-  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W'; angleDeg?: number }>;
+  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W'; angleDeg?: number; orient?: 'portrait' | 'landscape' }>;
+  panelOrientation?: 'portrait' | 'landscape' | 'mixed';
   /**
    * PV30 — MODE de placement de ces panneaux. ADDITIF et OMIS par défaut : un pan calepiné
    * sur les emplacements validés sérialise exactement comme avant (octet pour octet), et
@@ -1001,6 +1003,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
           : null;
       const posedIdx =
         live ?? Array.from({ length: Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count))) }, (_, i) => i);
+      const ori = orientationEmise(g.grid, freePosed ?? posedIdx.map((i) => g.grid.panels[i])); // ACAL608
       const panels = freePosed
         ? freePosed.map((p) => ({
             cx: p.cx,
@@ -1014,7 +1017,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
           }))
         : posedIdx.map((i) => {
             const p = g.grid.panels[i];
-            return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
+            return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}), ...(ori.panelOrientation === 'mixed' ? { orient: p.orient } : {}) };
           });
       const posed = panels.length;
       zone.geometry = {
@@ -1026,6 +1029,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         count: posed,
         origin: [g.pack.origin[0], g.pack.origin[1]] as LngLat,
         panels,
+        ...ori, // ACAL608
         // PV30 — jamais émis hors placement libre (additif, rétro-compatible).
         ...(freePosed ? { mode: 'free' as const } : {}),
       };

@@ -642,6 +642,30 @@ describe('parcours utilisateur complet pro-11 — session résidentielle toit pl
         : { [p]: v };
     expect(chemins(doc), 'clé émise changée : voir le chemin en différence').toEqual(chemins(attendu));
   }, 60000);
+
+  // ACAL913 — catalogue, AUCUN choix : le pan porte le premier module choisissable (jamais
+  // le 720 Wc de l'atelier), et le document émet `geometry.moduleId` + `modules[]` (mutant :
+  // pan sans `moduleId` ⇒ échec).
+  it('catalogue, aucun choix ⇒ le pan porte le module de départ (ACAL913)', async () => {
+    type Api = import('../src/scripts/roofPro11/types').RoofToolApi;
+    let api: Api | null = null;
+    const module = { id: 'cs-710', produitId: 41, libelle: 'Canadian Solar 710 W', longueurMm: 2384,
+      largeurMm: 1303, epaisseurMm: 35, poidsKg: 34, pmaxWc: 710, source: 'fiche produit du stock' };
+    const modulesDisponibles = { calepinage: 1, champs_requis: [], motif_liste_vide: null,
+      modules: [{ module, selectionnable: true, champs_manquants: [], motif: null }] };
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      modulesDisponibles, onApiReady: (a: Api) => { api = a; } } as Parameters<typeof init>[0]);
+    fakeMaps[0].fire('load', {});
+    setBill('1500'); await flush();
+    traceRoof(fakeMaps[0], 16); await flush();
+    // Le pan PORTE le module (sélecteur + mention) ; jsdom ne rend pas `geometry` (aucune scène
+    // Three, cf. golden ACAL383) : l'émission `geometry.moduleId` + `modules[]` d'un pan qui
+    // porte un `moduleId` est prouvée par `cablageModules.test.ts` (CALX110).
+    expect(api).not.toBeNull();
+    expect(document.getElementById('rp9-pan-module-mention')?.textContent)
+      .toBe('Canadian Solar 710 W — module de départ, à confirmer');
+  }, 180000);
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -1155,11 +1179,19 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     const exemple = (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple;
     const matrice = Array.from({ length: 12 }, () => Array(24).fill(0.8));
     const ouvrir = async (doc: unknown) => {
-      const a = await rouvrir(doc, 3);
+      const enCours = rouvrir(doc, 3);
+      const heure = document.createElement('input'); // ACAL496 — l'heure solaire de prise de vue est SAISIE
+      heure.id = 'rp9-shade-hour';
+      document.body.appendChild(heure);
+      const a = await enCours;
       return () => a().serializeLayout() as Doc;
     };
-    const enregistrer = await ouvrir({ ...exemple, shading12x24: matrice });
+    // ACAL496 — la date de prise de vue est celle du document (ACAL509), l'heure celle saisie.
+    const enregistrer = await ouvrir({ ...exemple, shading12x24: matrice, imageCapture: { date: '2025-03-21', source: 'essai' } });
     expect(enregistrer().shading12x24).toEqual(matrice); // la matrice 0,8 relue
+    const heureSaisie = document.getElementById('rp9-shade-hour') as HTMLInputElement;
+    heureSaisie.value = '10.5';
+    heureSaisie.dispatchEvent(new Event('input'));
     // Une ombre tracée sur le pan actif (pied puis bout).
     (document.getElementById('rp9-shade-add') as HTMLButtonElement).click();
     for (const lat of [2.9999, 3.0001]) fakeMaps[0].fire('click', { lngLat: { lng: 5, lat }, point: { x: 0, y: 0 } });
@@ -1174,6 +1206,26 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     const relu = (await ouvrir(apres))();
     expect(relu.shadeObstructions).toEqual(apres.shadeObstructions);
     expect(relu.shading12x24).toEqual(apres.shading12x24);
+  }, 120000);
+
+  // ACAL496 — sans date ni heure déclarées : aucune ombre tracée, aucune hauteur relue touchée.
+  it('sans date de prise de vue : tracer une ombre est refusé en le disant ; les hauteurs relues restent', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const chemin = resolve(process.cwd(), '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json');
+    const exemple = (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple;
+    const enCours = rouvrir({ ...exemple }, 3);
+    const heure = document.createElement('input');
+    heure.id = 'rp9-shade-hour';
+    document.body.appendChild(heure);
+    const api = await enCours;
+    const avant = (api().serializeLayout() as Doc).shadeObstructions;
+    heure.value = '10.5';
+    heure.dispatchEvent(new Event('input')); // recalcul d'ombrage sans date
+    (document.getElementById('rp9-shade-add') as HTMLButtonElement).click();
+    for (const lat of [2.9999, 3.0001]) fakeMaps[0].fire('click', { lngLat: { lng: 5, lat }, point: { x: 0, y: 0 } });
+    const apres = (api().serializeLayout() as Doc).shadeObstructions;
+    expect(apres).toEqual(avant);
   }, 120000);
 });
 

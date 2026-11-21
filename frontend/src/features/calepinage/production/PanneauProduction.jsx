@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
@@ -26,7 +26,10 @@ import {
 import useSuiviJob from './useSuiviJob'
 import { reprendreSimulationAuto } from './simulationAuto'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
-import { useModeExpert } from '../atelier/modeExpert'
+import { PARAM_MODE, useModeExpert } from '../atelier/modeExpert'
+import CarteFluxEnergie from './CarteFluxEnergie'
+import ChargesAjoutees from './ChargesAjoutees'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CAL236 — LE PANNEAU « PRODUCTION » DU MODULE.
@@ -381,6 +384,9 @@ function TableauParPan({ parPan, total = null }) {
 export default function PanneauProduction({ calepinageId, intervalleMs = 2000, parcours = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
+  // ACAL762 — le mode expert, aussi imposé par `?mode=expert`.
+  const [params] = useSearchParams()
+  const [expert] = useModeExpert(params.get(PARAM_MODE) === 'expert')
 
   const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.resultat(id), id,
@@ -412,7 +418,11 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
     <>
       <RetourAtelier calepinageId={id} />
       <Card className="flex flex-col gap-4 p-4" data-testid="cal236-panneau">
-      <h2 className="text-base font-semibold">Production</h2>
+      {/* ACAL872 — le « ? » de la production annuelle, phrase du registre. */}
+      <h2 className="flex items-center gap-1 text-base font-semibold">
+        Production
+        {data?.simule === true && !perime && <Pourquoi cle="production.p50_kwh" valeurs={data} />}
+      </h2>
       {perime
         ? <BandeauPerime motif={data?.motif} />
         : (!data?.simule && <BandeauNonSimule avertissements={data?.avertissements} />)}
@@ -446,6 +456,8 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
         </div>
       </div>
       <CartePostesPertes cascade={data?.cascade} />
+      {expert && <CarteFluxEnergie calepinageId={id} data={data} />}
+      <ChargesAjoutees consommation={data?.consommation} />
       <LigneValeursPubliees simulation={data?.simulation} onVoirSources={() => setSourcesOuvertes(true)} />
     </Card>
     {/* CALX64 — le tapis jour × heure de la série persistée (CALX193). La

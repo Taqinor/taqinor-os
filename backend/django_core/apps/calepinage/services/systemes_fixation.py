@@ -24,7 +24,8 @@ __all__ = [
 
 #: Les champs du système que le corps peut porter (jamais ``company``).
 CHAMPS_SYSTEME = ('code', 'libelle', 'fabricant', 'mode_pose', 'actif',
-                  'provenance', 'couvertures')  # couvertures : ACAL566
+                  'provenance', 'couvertures',  # couvertures : ACAL566
+                  'controles_pose')  # ACAL568
 #: Les champs d'un composant que le corps peut porter (``ordre`` = son rang).
 CHAMPS_COMPOSANT = ('role', 'libelle', 'unite', 'produit_id', 'regle',
                     'source')
@@ -47,6 +48,7 @@ def systeme_publie(systeme):
         'fabricant': systeme.fabricant, 'mode_pose': systeme.mode_pose,
         'actif': systeme.actif, 'provenance': systeme.provenance,
         'couvertures': list(systeme.couvertures or []),
+        'controles_pose': dict(systeme.controles_pose or {}),  # ACAL568
         'composants': [{
             'id': c.pk, 'role': c.role, 'libelle': c.libelle,
             'unite': c.unite, 'produit_id': c.produit_id,
@@ -97,10 +99,17 @@ def _valider_systeme(systeme, erreurs):
     from ..models import SystemeFixation
 
     from .catalogue_fixation import erreur_de_couvertures
+    from .controles_pose import erreur_de_controles_pose
 
-    erreurs.update(_valider(systeme, ['company', 'couvertures']))
+    erreurs.update(_valider(systeme, ['company', 'couvertures',
+                                      'controles_pose']))
     if systeme.couvertures is None:
         systeme.couvertures = []
+    if systeme.controles_pose is None:
+        systeme.controles_pose = {}
+    message_pose = erreur_de_controles_pose(systeme.controles_pose)
+    if message_pose:
+        erreurs['controles_pose'] = [message_pose]
     message = erreur_de_couvertures(systeme.couvertures)
     if message:
         erreurs['couvertures'] = [message]

@@ -622,3 +622,53 @@ describe('ACAL258 — l’allée technique de CE calepinage voyage par la clé r
     }
   });
 });
+
+describe('ACAL608 — la pose du pan (`panelOrientation`, `orient`) écrite à l’enregistrement', () => {
+  type P = { cx: number; cy: number; orient?: string; angleDeg?: number };
+  function plan(panelOrientation: string | undefined, panels: P[]) {
+    return {
+      pack: { origin: [-7.6, 33.59] as [number, number], azimuthDeg: 180 },
+      grid: { panels, kwc: panels.length * 0.72, ...(panelOrientation ? { panelOrientation } : {}) },
+      tiltDeg: 15, family: 'south', flush: false, count: panels.length,
+    } as unknown as AreaRecord['renderPlan'];
+  }
+  const sortie = (pl: AreaRecord['renderPlan'], libre?: P[]) => {
+    const ctx = makeCtx([zone('z1', { renderPlan: pl })]);
+    if (libre) {
+      ctx.activeAreaId = 'z1';
+      ctx.freeMode = true;
+      ctx.freeState = { panels: libre } as unknown as Ctx['freeState'];
+    }
+    return serializeLayout(ctx).zones[0].geometry as unknown as Record<string, unknown> & { panels: P[] };
+  };
+  const trois: P[] = [{ cx: 0, cy: 0 }, { cx: 1, cy: 0 }, { cx: 2, cy: 0 }];
+
+  it('portrait ⇒ `panelOrientation: portrait`, aucun `orient` par module', () => {
+    const g = sortie(plan('portrait', trois));
+    expect(g.panelOrientation).toBe('portrait');
+    expect(g.panels.every((p) => !('orient' in p))).toBe(true);
+  });
+
+  it('mixed ⇒ `orient` sur CHAQUE module', () => {
+    const g = sortie(plan('mixed', [{ cx: 0, cy: 0, orient: 'portrait' }, { cx: 1, cy: 0, orient: 'landscape' }]));
+    expect(g.panelOrientation).toBe('mixed');
+    expect(g.panels.map((p) => p.orient)).toEqual(['portrait', 'landscape']);
+  });
+
+  it('mixed incomplet (un module sans `orient`) ⇒ clé omise, jamais inventée', () => {
+    const g = sortie(plan('mixed', [{ cx: 0, cy: 0, orient: 'portrait' }, { cx: 1, cy: 0 }]));
+    expect('panelOrientation' in g).toBe(false);
+  });
+
+  it('sans pose connue ⇒ aucune clé', () => {
+    const g = sortie(plan(undefined, trois));
+    expect('panelOrientation' in g).toBe(false);
+    expect(g.panels.every((p) => !('orient' in p))).toBe(true);
+  });
+
+  it('placement libre : `angleDeg` non nul ⇒ clé omise ; sans rotation ⇒ écrite', () => {
+    const pl = plan('landscape', trois);
+    expect('panelOrientation' in sortie(pl, [{ cx: 0, cy: 0, angleDeg: 12 }])).toBe(false);
+    expect(sortie(pl, [{ cx: 0, cy: 0 }, { cx: 1, cy: 0, angleDeg: 0 }]).panelOrientation).toBe('landscape');
+  });
+});

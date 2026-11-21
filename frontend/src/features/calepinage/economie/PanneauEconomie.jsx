@@ -6,6 +6,7 @@ import { formatDate, formatMAD, formatNumber, formatPercent } from '../../../lib
 import { Card, Spinner, Stat } from '../../../ui'
 import GraphiqueFlux from './GraphiqueFlux'
 import { MotifAbsence } from '../MotifAbsence'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CALX289 — L'ONGLET « ÉCONOMIE », EN LECTURE SEULE.
@@ -147,7 +148,9 @@ function TableauFlux({ flux }) {
         <tr className="text-left text-xs text-muted-foreground">
           <th className="py-1 font-normal">Année</th>
           <th className="py-1 text-right font-normal">Économie</th>
-          <th className="py-1 text-right font-normal">Flux</th>
+          <th className="py-1 text-right font-normal">
+            Flux<Pourquoi cle="economie.flux" valeurs={null} className="ml-1 align-middle" />
+          </th>
           <th className="py-1 text-right font-normal">Cumul</th>
           <th className="py-1 text-right font-normal">Flux actualisé</th>
         </tr>
@@ -227,6 +230,7 @@ function BlocEconomie({ economie }) {
       {horizonAns !== null && horizonAns !== undefined && (
         <p className="text-xs text-muted-foreground" data-testid="calx289-horizon">
           {`Horizon retenu : ${formatNumber(horizonAns, { decimals: 0 })} ans`}
+          <Pourquoi cle="economie.horizon" valeurs={economie} className="ml-1 align-middle" />
         </p>
       )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5" data-testid="calx289-indicateurs">

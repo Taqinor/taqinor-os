@@ -22,6 +22,7 @@ import { annualShadeFactor, type ShadeObstruction } from '../../lib/shadingEngin
 import { fallbackPerKwc } from '../../lib/productionEngine';
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type Ctx } from './context';
+import { $ } from './dom';
 import { lireAlleeTechnique } from './alleeTechnique'; // ACAL258 (sorti de prefill.ts)
 import {
   deserializeExclusionZonesFromLayout,
@@ -76,6 +77,14 @@ function copie<T>(v: T): T {
  *  - `electrical` → `ctx.electrical` (null = aucune couche) ;
  *  - `choixConception` (ACAL29) → `ctx.sel` / `ctx.pinned` (axes épinglés), AVANT le pavage.
  */
+/** ACAL913 — le contact du lead/devis dans les champs VIDES du diagnostic (handoff, jamais un POST). */
+export function reporterContact(contact: { name?: string; phone?: string; city?: string }): void {
+  for (const [id, v] of [['lf-name', contact.name], ['lf-phone', contact.phone], ['lf-city', contact.city]] as const) {
+    const el = $<HTMLInputElement>(id);
+    if (el && v && !el.value.trim()) el.value = v;
+  }
+}
+
 export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void {
   if (h.surfacesPose !== undefined) ctx.surfacesPose = copie(h.surfacesPose ?? []);
   if (h.environment !== undefined) {

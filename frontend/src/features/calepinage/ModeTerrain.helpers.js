@@ -19,6 +19,24 @@ export function motifChampVide(reponse) {
     + 'agrandissez le terrain.'
 }
 
+const unDecimale = (v) => Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
+/** ACAL609 — « Entraxe calculé contre l'ombre d'hiver : 5,9 m (latitude 30,4°) », ou `null`. */
+export function ligneEntraxeCalcule(anti) {
+  if (anti?.politique !== 'ANTI_OMBRAGE' || !Number.isFinite(anti.entraxe_calcule_m)) return null
+  return `Entraxe calculé contre l’ombre d’hiver : ${unDecimale(anti.entraxe_calcule_m)} m (latitude ${unDecimale(anti.latitude_deg)}°)`
+}
+
+/** ACAL609 — l'alerte « Rangées trop serrées » : allée SAISIE dont l'entraxe est inférieur au calculé, sinon `null`. */
+export function alerteOmbrageMutuel(anti) {
+  if (anti?.politique !== 'ALLEE_SAISIE') return null
+  const { entraxe_applique_m: saisi, entraxe_calcule_m: calcule } = anti
+  if (!Number.isFinite(saisi) || !Number.isFinite(calcule) || !(saisi < calcule)) return null
+  return 'Rangées trop serrées : chaque rangée ombre la suivante à 10 h solaire au solstice d’hiver '
+    + `(heure de dimensionnement du pas). Entraxe saisi ${unDecimale(saisi)} m, entraxe calculé ${unDecimale(calcule)} m `
+    + `(latitude ${unDecimale(anti.latitude_deg)}°).`
+}
+
 /** Motif FRANÇAIS d'un refus du serveur (400 DRF `{champ: [motif]}`), ou `null`. */
 export function motifRefus(data) {
   if (!data || typeof data !== 'object') return null

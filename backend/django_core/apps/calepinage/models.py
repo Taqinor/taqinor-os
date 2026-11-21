@@ -1509,6 +1509,10 @@ class SystemeFixation(TenantModel):
     provenance = models.TextField('Provenance')
     #: ACAL566 — les couvertures servies (``catalogue_fixation.COUVERTURES``).
     couvertures = models.JSONField('Couvertures servies', default=list, blank=True)
+    #: ACAL568 — valeurs de pose DÉCLARÉES par le système (mm) : distance
+    #: rail-bord, porte-à-faux du rail et son maximum, plus la ``source``.
+    #: Vide par défaut ; lu par ``services/controles_pose.py``.
+    controles_pose = models.JSONField('Contrôles de pose', default=dict, blank=True)
 
     class Meta:
         verbose_name = 'Système de fixation'

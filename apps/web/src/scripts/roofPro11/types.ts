@@ -144,6 +144,8 @@ export interface ReglagesAtelier {
   zones_types?: unknown;
   /** Section `degagements` (CAL71/CALX402) — dont `allees_circulation` par pays. */
   degagements?: unknown;
+  /** ACAL714 — `{seuil_acces_retrait, ombrage_borne_courant_pct, ombrage_borne_importante_pct}` (`{valeur, source, reference}` chacun), ou `null`. */
+  simulation?: unknown;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),
@@ -203,6 +205,11 @@ export interface RoofToolApi {
    *  ici, et l'affiche client existante (`roof-image`) reste inchangée. `null`
    *  quand la scène n'est pas rendable. */
   renderImageHd: (
+    scale: number,
+  ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** ACAL726 — comme `renderImageHd`, la carte d'accès solaire allumée pour la capture (année entière) puis
+   *  remise dans son état ; `null` sans source d'ombrage (rien à teinter) ou scène non rendable. */
+  renderCarteAccesHd: (
     scale: number,
   ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
   /** ACAL537 — la scène 3D en glTF binaire (repère local), ou `null` si non rendable. */

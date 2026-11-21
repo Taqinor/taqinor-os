@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
@@ -217,7 +217,8 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
     // ACAL223 : une carte à deux langues transmet `{langue}` (défaut = data.langue).
     expect(calepinageApi.calepinages.telechargerDocument)
-      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint, { langue: 'fr' })
+      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint, { langue: 'fr' },
+        expect.objectContaining({ timeout: 120000 }))
     expect(filenameFromResponse).toHaveBeenCalled()
     expect(downloadBlob.mock.calls[0][1]).toBe('rapport-etude-1.pdf')
   })
@@ -444,23 +445,23 @@ describe('PanneauDocuments — joindre la carte de chaleur (CALX302)', () => {
     expect(screen.getByTestId('cal-doc-images-outil-absent')).toBeInTheDocument()
   })
 
-  it('clic → renderImageHd(2) puis dépôt genre « ombrage », confirmation affichée', async () => {
+  it('clic → renderCarteAccesHd(2) puis dépôt genre « ombrage », confirmation affichée', async () => {
     servirInventaire('exemple')
     const blob = new Blob(['png-simule'], { type: 'image/png' })
-    const renderImageHd = vi.fn().mockResolvedValue({ blob, width: 800, height: 600, scale: 2 })
+    const renderCarteAccesHd = vi.fn().mockResolvedValue({ blob, width: 800, height: 600, scale: 2 })
     calepinageApi.calepinages.deposerImageDocument.mockResolvedValue({
       data: { ok: true, genre: 'ombrage', attachment: 512, depose_le: '2026-09-23T10:00:00Z' },
     })
     const utilisateur = userEvent.setup()
 
-    rendreAvecBuilder({ renderImageHd })
+    rendreAvecBuilder({ renderCarteAccesHd })
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
 
     await waitFor(() => {
       expect(screen.getByTestId('cal-doc-images-confirmation'))
         .toHaveTextContent('2026-09-23T10:00:00Z')
     })
-    expect(renderImageHd).toHaveBeenCalledWith(2)
+    expect(renderCarteAccesHd).toHaveBeenCalledWith(2)
     expect(calepinageApi.calepinages.deposerImageDocument).toHaveBeenCalledWith(
       1, { genre: 'ombrage', fichier: expect.stringContaining('data:') },
     )
@@ -469,19 +470,33 @@ describe('PanneauDocuments — joindre la carte de chaleur (CALX302)', () => {
   it('un refus serveur (champ nommé) s’affiche SOUS la carte, jamais en tête de panneau', async () => {
     servirInventaire('exemple')
     const blob = new Blob(['png-simule'], { type: 'image/png' })
-    const renderImageHd = vi.fn().mockResolvedValue({ blob, width: 800, height: 600, scale: 2 })
+    const renderCarteAccesHd = vi.fn().mockResolvedValue({ blob, width: 800, height: 600, scale: 2 })
     calepinageApi.calepinages.deposerImageDocument.mockRejectedValue({
       response: { status: 400, data: { genre: 'Genre d’image inconnu : « ombrage ».' } },
     })
     const utilisateur = userEvent.setup()
 
-    rendreAvecBuilder({ renderImageHd })
+    rendreAvecBuilder({ renderCarteAccesHd })
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
 
     await waitFor(() => {
       expect(screen.getByTestId('cal-doc-images')).toHaveTextContent('Genre d’image inconnu')
     })
     expect(screen.queryByTestId('cal-doc-images-confirmation')).toBeNull()
+  })
+
+  it('ACAL726 — sans ombre saisie : le motif est servi et rien n’est déposé', async () => {
+    servirInventaire('exemple')
+    const renderCarteAccesHd = vi.fn().mockResolvedValue(null)
+    const utilisateur = userEvent.setup()
+
+    rendreAvecBuilder({ renderCarteAccesHd })
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-doc-images')).toHaveTextContent('Aucune ombre saisie : rien à teinter')
+    })
+    expect(calepinageApi.calepinages.deposerImageDocument).not.toHaveBeenCalled()
   })
 })
 
@@ -496,7 +511,8 @@ describe('PanneauDocuments — contrat documents v2 (ACAL223)', () => {
     await utilisateur.selectOptions(await screen.findByTestId('cal-doc-langue-rapport_etude'), 'en')
     await utilisateur.click(screen.getByTestId('cal-doc-bouton-rapport_etude'))
     await waitFor(() => expect(calepinageApi.calepinages.telechargerDocument)
-      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint, { langue: 'en' }))
+      .toHaveBeenCalledWith(documentDe('exemple', 'rapport_etude').endpoint, { langue: 'en' },
+        expect.objectContaining({ timeout: 120000 })))
     await utilisateur.click(await screen.findByTestId('cal-doc-remettre-rapport_etude'))
     await waitFor(() => expect(calepinageApi.calepinages.remettreDocument)
       .toHaveBeenCalledWith(1, { code: 'rapport_etude', langue: 'en' }))
@@ -598,7 +614,30 @@ describe('PanneauDocuments — contrat documents v2 (ACAL223)', () => {
     await utilisateur.click(await screen.findByTestId('cal-doc-autre-format-plan_cablage-dxf'))
 
     await waitFor(() => expect(calepinageApi.calepinages.telechargerDocument)
-      .toHaveBeenCalledWith(doc.autres_formats[0].endpoint))
+      .toHaveBeenCalledWith(doc.autres_formats[0].endpoint, undefined,
+        expect.objectContaining({ timeout: 120000 })))
+  })
+
+  it("ACAL769 : un dépassement de délai dit quoi faire sur la carte, sans toast ; l'attente est annoncée", async () => {
+    servirInventaire('exemple')
+    let rejeter
+    calepinageApi.calepinages.telechargerDocument.mockReturnValue(
+      new Promise((_ok, ko) => { rejeter = ko }))
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-rapport_etude'))
+    expect(await screen.findByTestId('acal769-attente')).toHaveTextContent("jusqu'à 2 minutes")
+    expect(calepinageApi.calepinages.telechargerDocument.mock.calls[0][2])
+      .toEqual({ timeout: 120000, suppressErrorToast: true })
+    rejeter({ code: 'ECONNABORTED' })
+
+    const carte = await screen.findByTestId('cal-doc-sortie-rapport_etude')
+    await waitFor(() => {
+      expect(within(carte).getByTestId('cal-doc-erreurs'))
+        .toHaveTextContent("Le serveur n'a pas fini de préparer ce document en 2 minutes")
+    })
+    expect(within(carte).getByTestId('cal-doc-erreurs')).not.toHaveTextContent('injoignable')
   })
 
   it('une version perimee est signalee, une version a jour aussi', async () => {
@@ -650,7 +689,7 @@ describe('PanneauDocuments — section Images (ACAL225)', () => {
       data: { ok: true, genre: 'ombrage', attachment: 512, depose_le: '2026-09-23T10:00:00Z' },
     })
     const utilisateur = userEvent.setup()
-    render(<MemoryRouter><PanneauDocuments calepinageId={1} builderApi={{ renderImageHd }} /></MemoryRouter>)
+    render(<MemoryRouter><PanneauDocuments calepinageId={1} builderApi={{ renderCarteAccesHd: renderImageHd }} /></MemoryRouter>)
 
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
 

@@ -187,6 +187,7 @@ export default function Fixation({ calepinageId: idPropose = null }) {
 
   const lignes = Array.isArray(data.lignes) ? data.lignes : []
   const refus = Array.isArray(data.refus) ? data.refus : []
+  const alertes = Array.isArray(data.alertes) ? data.alertes : []
 
   return (
     <div className="space-y-4" data-testid="calx360-panneau">
@@ -256,6 +257,20 @@ export default function Fixation({ calepinageId: idPropose = null }) {
                 data-testid={`calx360-refus-${index}`}
               >
                 {r.message}
+              </li>
+            ))}
+          </ul>
+        )}
+        {/* ACAL568 — pose déclarée par le système contre la zone de serrage du module. */}
+        {alertes.length > 0 && (
+          <ul className="mt-2 space-y-1" data-testid="acal568-alertes">
+            {alertes.map((a, index) => (
+              <li
+                key={a.code || index}
+                className={a.gravite === 'alerte' ? 'text-xs text-warning' : 'text-xs text-muted-foreground'}
+                data-testid={`acal568-alerte-${a.code}`}
+              >
+                {a.message}
               </li>
             ))}
           </ul>

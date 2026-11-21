@@ -65,6 +65,9 @@ from .batterie_declaration import (  # noqa: F401 — ré-export (ACAL786)
 from .capacites_coffrets import (  # noqa: F401 — ré-export (ACAL618)
     CLES_CAPACITE_COFFRET, capacites_des_coffrets,
 )
+from .regle_chaine_publiee import (  # noqa: F401 — extraite (ACAL645)
+    _regle_chaine_publiee,
+)
 from .valeurs import nombre as _nombre
 
 __all__ = [
@@ -993,6 +996,10 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
     saisies = donnees.get(CLE_DEROGATIONS)
     reglages = {cle: valeur for cle, valeur in donnees.items()
                 if cle != CLE_DEROGATIONS}
+    from .chaines import memoriser_centres  # ACAL649
+    reglages = memoriser_centres(
+        reglages, getattr(calepinage, 'roof_layout', None),
+        entree_stockee(calepinage))
     # ACAL150 — TOUTE la saisie est validée AVANT la moindre écriture : un
     # refus laisse ``resultat['entree_electrique']`` intact.
     fusionnee = dict(entree_stockee(calepinage))
@@ -1709,7 +1716,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         electrique[CLE_MICRO_ONDULEURS] = micro['bloc']
     # CALX212 — la carte module → optimiseur, et sa quantité (ou son motif).
     optimiseurs = _optimiseurs_du_calepinage(conception, optimiseur,
-                                             nom_optimiseur)
+                                             nom_optimiseur, imposee)
     if optimiseurs is not None:
         electrique[CLE_OPTIMISEURS] = optimiseurs
     # CALX70 / ACAL48 — l'empreinte de SIMULATION d'AUJOURD'HUI (D-ACAL-21 :
@@ -2772,6 +2779,10 @@ def _rapport_publication(calepinage, *, layout=None):
     motifs.extend(_motifs_de_l_affectation(conception, donnees, materiel))
     motifs.extend(_motifs_du_polystring(calepinage, conception, donnees))
     motifs.extend(_motifs_des_micro_onduleurs(conception, materiel))
+    # ACAL664 — puissance AC à la température d'AIR maximale (fiche + TMY).
+    from .declassement_onduleur import motifs_du_declassement
+
+    motifs.extend(motifs_du_declassement(calepinage, donnees, materiel))
     # ACAL169 — le matériel NON DÉSIGNÉ est INDÉTERMINÉ (D-ACAL-9 : un
     # « indéterminé » ne bloque pas la génération) : publié, jamais bloquant.
     from core.electrique.types import STATUT_NON_VERIFIABLE
@@ -2828,16 +2839,6 @@ def rejouer_apres_layout(calepinage, *, user=None):
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
     return evaluation
-
-
-def _regle_chaine_publiee(conception, optimiseur_specs, designation,
-                          onduleur_sku=None):
-    """La règle de chaîne appliquée — fiche module lue sur la conception."""
-    module = getattr(conception.entree, 'module', None)
-    specs = ({'voc_v': module.voc_v, 'isc_a': module.isc_a,
-              'pmax_wc': module.pmax_wc} if module is not None else {})
-    return _regle_de_chaine(specs, None, optimiseur_specs,
-                            designation=designation, onduleur_sku=onduleur_sku)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3212,7 +3213,7 @@ REFERENCE_OPENSOLAR_RATIO = (
     '4406931180313-Stringing-Micro-Inverters-and-Power-Optimizers)')
 
 
-def _optimiseurs_du_calepinage(conception, specs, designation=''):
+def _optimiseurs_du_calepinage(conception, specs, designation='', imposee=()):
     """CALX212 — combien d'optimiseurs, et lequel porte quel module.
 
     Rend ``{ratio, quantite, affectation, motif, recoupement, reference}``,
@@ -3246,10 +3247,12 @@ def _optimiseurs_du_calepinage(conception, specs, designation=''):
         }
 
     ratio = int(ratio)
-    lignes = []
-    for rang, ligne in enumerate(affectation(conception)):
-        lignes.append({'module': ligne['module'],
-                       'optimiseur': rang // ratio + 1})
+    # ACAL645 — des modules MARQUÉS (ACAL733) : seuls eux portent un optimiseur.
+    table = affectation(conception, imposee=imposee)
+    if any(ligne.get('optimiseur') for ligne in table):
+        table = [ligne for ligne in table if ligne.get('optimiseur')]
+    lignes = [{'module': ligne['module'], 'optimiseur': rang // ratio + 1}
+              for rang, ligne in enumerate(table)]
     quantite = lignes[-1]['optimiseur'] if lignes else 0
     return {
         'ratio': ratio,

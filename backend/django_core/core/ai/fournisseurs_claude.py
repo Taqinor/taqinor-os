@@ -33,7 +33,12 @@ CONSIGNE = (
     '{"pans": [{"sommets": [[x, y], ...], "confiance": c}]} où x et y sont '
     "des fractions de la largeur et de la hauteur de l'image (0 à 1, origine "
     "en haut à gauche), au moins 3 sommets par pan, et c une confiance entre "
-    "0 et 1. Aucun texte hors du JSON.")
+    "0 et 1. Repère aussi les obstacles visibles sur le toit (climatiseur, "
+    "cheminée, lanterneau, etc.) dans la même réponse, sous la clé "
+    '"obstacles" : [{"type": un nom court en minuscules, "sommets": [[x, y], '
+    '...], "confiance": c}], avec les mêmes conventions (au moins 3 '
+    "sommets, fractions de 0 à 1) ; une liste vide si tu n'en vois aucun. "
+    "Aucun texte hors du JSON.")
 
 
 def _reglage(nom):
@@ -62,6 +67,38 @@ def valider_pans(objet):
         confiance = pan.get('confiance')
         propres.append({'sommets': [[float(x), float(y)] for x, y in sommets],
                         'confiance': float(confiance) if _fraction(confiance) else None})
+    return propres, ''
+
+
+def valider_obstacles(objet):
+    """``(obstacles, '')`` ou ``(None, raison)`` ; sans clé ``obstacles`` :
+    ``([], '')``. Conventions de ``valider_pans`` ; ``type`` libre non vide
+    (la liste des types est celle de l'atelier, ACAL1049) ; aucun seuil."""
+    brut = objet.get('obstacles') if isinstance(objet, dict) else None
+    if brut is None:
+        return [], ''
+    if not isinstance(brut, list):
+        return None, 'obstacles : une liste est attendue'
+    propres = []
+    for obstacle in brut:
+        if not isinstance(obstacle, dict):
+            return None, 'obstacle illisible'
+        type_obstacle = obstacle.get('type')
+        if not isinstance(type_obstacle, str) or not type_obstacle.strip():
+            return None, "type d'obstacle manquant"
+        sommets = obstacle.get('sommets')
+        if not isinstance(sommets, list) or len(sommets) < 3:
+            return None, 'obstacle à moins de 3 sommets'
+        for point in sommets:
+            if not (isinstance(point, list) and len(point) == 2
+                    and all(_fraction(v) for v in point)):
+                return None, 'coordonnée hors de [0, 1]'
+        confiance = obstacle.get('confiance')
+        if confiance is not None and not _fraction(confiance):
+            return None, 'confiance hors de [0, 1]'
+        propres.append({'type': type_obstacle.strip(),
+                        'sommets': [[float(x), float(y)] for x, y in sommets],
+                        'confiance': None if confiance is None else float(confiance)})
     return propres, ''
 
 
@@ -128,12 +165,16 @@ class ClaudeVisionToitProvider(VisionToitProvider):
         texte = ''.join(str(b.get('text') or '') for b in donnees.get('content') or []
                         if isinstance(b, dict) and b.get('type') == 'text')
         try:
-            pans, raison = valider_pans(_objet(texte))
+            objet = _objet(texte)
+            pans, raison = valider_pans(objet)
         except (ValueError, TypeError):
-            pans, raison = None, 'réponse invalide'
+            objet, pans, raison = None, None, 'réponse invalide'
         if pans is None:
             return self._echec(raison, usage)
         data = {'pans': pans}
+        obstacles, _raison = valider_obstacles(objet)  # invalides : écartés, pans gardés
+        if obstacles:
+            data['obstacles'] = obstacles
         if usage:
             data['usage'] = usage
         return AIResult(ok=True, configured=True, provider=self.key, data=data)

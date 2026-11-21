@@ -31,7 +31,7 @@ __all__ = [
     "CLES_RATIO_DC_AC", "SOURCE_CONVENTION_ATELIER",
     "BorneRatio", "BornesDcAc", "bornes_dc_ac",
     "EvaluationOnduleurs", "ratios", "nombre_onduleurs",
-    "dimensionner_onduleurs",
+    "dimensionner_onduleurs", "puissance_a_temperature",
 ]
 
 #: Borne USUELLE du ratio DC/AC (convention ``apps/ventes/solar_design.MAX_DC_AC``)
@@ -218,6 +218,21 @@ def nombre_onduleurs(puissance_dc_kwc, plafond_kwc_par_onduleur=None):
     if dc <= 0:
         return 0
     return max(1, int(math.ceil(dc / float(plafond_kwc_par_onduleur) - 1e-9)))
+
+
+def puissance_a_temperature(ac_kw, debut_c, pente_pct_c, temperature_c):
+    """ACAL664 — la puissance AC disponible à ``temperature_c`` (air), en kW.
+
+    Réduction publiée par la FICHE (PVsyst « Output parameters », Pnom(T)) :
+    pleine puissance jusqu'à ``debut_c``, puis ``pente_pct_c`` % de la
+    nominale en moins par °C au-delà. Une entrée absente ⇒ ``None`` : aucune
+    pente ni aucun seuil par défaut. Seule fonction du dépôt pour ce calcul
+    (l'écrêtage heure par heure, ACAL740, la réutilisera).
+    """
+    if None in (ac_kw, debut_c, pente_pct_c, temperature_c):
+        return None
+    exces = max(0.0, float(temperature_c) - float(debut_c))
+    return max(0.0, float(ac_kw) * (1.0 - float(pente_pct_c) * exces / 100.0))
 
 
 def dimensionner_onduleurs(entree, puissance_dc_kwc=None, reglages=None):

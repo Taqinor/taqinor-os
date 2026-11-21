@@ -174,6 +174,7 @@ describe('CALX104/CALX403 câblage — `reglagesAtelier` sur la route DEVIS (ACA
     expect(initRoofToolPro8.mock.calls[0][0].reglagesAtelier).toEqual({
       zones_types: CTX_DEVIS.zones_types,
       degagements: CTX_DEVIS.degagements,
+      simulation: null, // ACAL714
     })
   })
 

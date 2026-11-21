@@ -35,7 +35,7 @@
         {"poste": "shading", "pct": 3.4, "source": "mesure"},
         {"poste": "soiling", "pct": 3.0, "source": "hypothese"}
       ],
-      "electrique": {"verdict": "conforme", "bloquants": []},
+      "electrique": {"verdict": "conforme", "bloquants": [], "etat": "pret", "points": 0},
       "devis": {"id": 45, "reference": "DEV-202611-0045", "statut": "envoye", "a_jour": false, "ecart_pct": -1.9},
       "approbation": {"exigee": false, "etat": ""},
       "visite": {"validee_le": "2026-11-17T16:40:00+01:00", "reprise": true, "a_jour": true},

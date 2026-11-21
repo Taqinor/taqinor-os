@@ -56,9 +56,24 @@ class ContratFixationBomTest(unittest.TestCase):
             with self.subTest(etat=etat):
                 # ACAL1 (contrat v2) : + ``systeme_source`` (provenance du
                 # système appliqué : calepinage, paramètre société, ou null).
+                # ACAL568 : + ``alertes`` (pose déclarée contre la zone de
+                # serrage du module).
                 self.assertEqual(sorted(CONTRAT[etat]),
-                                 ['lignes', 'refus', 'systeme',
+                                 ['alertes', 'lignes', 'refus', 'systeme',
                                   'systeme_source'])
+
+    def test_alertes_code_gravite_message(self):
+        # ACAL568 — chaque alerte porte {code, gravite, message} ; l'exemple
+        # montre la zone de serrage et le porte-à-faux ; sans système : [].
+        alertes = CONTRAT['exemple']['alertes']
+        self.assertEqual([a['code'] for a in alertes],
+                         ['zone_serrage', 'porte_a_faux'])
+        for etat in ('exemple', 'exemple_parametre'):
+            for alerte in CONTRAT[etat]['alertes']:
+                self.assertEqual(sorted(alerte),
+                                 ['code', 'gravite', 'message'])
+                self.assertIn(alerte['gravite'], ('alerte', 'info'))
+        self.assertEqual(CONTRAT['exemple_vide']['alertes'], [])
 
     def test_systeme_applique(self):
         self.assertEqual(sorted(CONTRAT['exemple']['systeme']),

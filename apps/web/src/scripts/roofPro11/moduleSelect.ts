@@ -229,6 +229,19 @@ export function lireModulesDisponibles(reponse: unknown): CatalogueModules {
   };
 }
 
+/** ACAL913 — la mention d'un module posé d'office, jamais confirmé par l'utilisateur. */
+export const MENTION_MODULE_DE_DEPART = 'module de départ, à confirmer';
+
+/**
+ * ACAL913 — le module de DÉPART d'un pan neuf : le premier CHOISISSABLE du catalogue (celui
+ * du devis quand sa puissance y figure — les lignes du devis priment), `null` sans catalogue
+ * (le 720 Wc de l'atelier reste alors NOMMÉ, comme aujourd'hui).
+ */
+export function moduleDeDepart(catalogue: CatalogueModules, wattDuDevis?: number | null): ModuleDocument | null {
+  const duDevis = wattDuDevis ? catalogue.choisissables.find((m) => m.pmaxWc === wattDuDevis) : undefined;
+  return duDevis ?? catalogue.choisissables[0] ?? null;
+}
+
 /**
  * CALX109 — les cotes de pavage d'un module, ou un REFUS qui nomme le champ.
  *

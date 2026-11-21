@@ -541,3 +541,23 @@ describe('ACAL30 — moduleId et modules[] conservés hors catalogue', () => {
     expect(sortie.panelWatt).toBe(PANEL2_WATT);
   });
 });
+
+describe('ACAL913 — le module de DÉPART d’un pan neuf', () => {
+  const m = (id: string, pmaxWc: number) => ({
+    id, produitId: 1, libelle: id, longueurMm: 2384, largeurMm: 1303, epaisseurMm: 35, poidsKg: 30,
+    pmaxWc, source: 'fiche produit du stock',
+  });
+  const catalogue = { choisissables: [m('a-500', 500), m('b-710', 710)], grises: [], motifListeVide: null };
+
+  it('le premier choisissable, ou celui du devis quand sa puissance y figure', async () => {
+    const { moduleDeDepart } = await import('./moduleSelect');
+    expect(moduleDeDepart(catalogue)?.id).toBe('a-500');
+    expect(moduleDeDepart(catalogue, 710)?.id).toBe('b-710');
+    expect(moduleDeDepart(catalogue, 720)?.id).toBe('a-500');
+  });
+
+  it('sans catalogue : aucun module de départ (le 720 Wc de l’atelier reste NOMMÉ)', async () => {
+    const { moduleDeDepart } = await import('./moduleSelect');
+    expect(moduleDeDepart({ choisissables: [], grises: [], motifListeVide: null })).toBeNull();
+  });
+});

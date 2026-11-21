@@ -101,7 +101,18 @@ export function useAtelierBoot(ctx) {
         .then((res) => {
           const p = res?.data
           if (!p || typeof p !== 'object') return null
-          return { zones_types: p.zones_types ?? null, degagements: p.degagements ?? null }
+          // ACAL714 — les 3 réglages d'ombrage société (`{valeur, source, reference}`), `null` si aucun n'est saisi.
+          const sim = p.simulation && typeof p.simulation === 'object' ? p.simulation : {}
+          const simulation = {
+            seuil_acces_retrait: sim.seuil_acces_retrait ?? null,
+            ombrage_borne_courant_pct: sim.ombrage_borne_courant_pct ?? null,
+            ombrage_borne_importante_pct: sim.ombrage_borne_importante_pct ?? null,
+          }
+          return {
+            zones_types: p.zones_types ?? null,
+            degagements: p.degagements ?? null,
+            simulation: Object.values(simulation).some((v) => v !== null) ? simulation : null,
+          }
         })
         .catch(() => null)
     }

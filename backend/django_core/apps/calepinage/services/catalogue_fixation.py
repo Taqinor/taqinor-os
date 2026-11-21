@@ -35,7 +35,15 @@ BASES = {
     'jonctions': 'jonctions entre modules voisins',
     'extremites': 'extrémités de rangées',
     'longueur_rangees_m': 'longueur des rangées (m)',
+    # ACAL569 — l'orientation du module, lue sur le document (ACAL601).
+    'modules_portrait': 'modules en portrait',
+    'modules_paysage': 'modules en paysage',
+    'rangees_portrait': 'rangées en portrait',
+    'rangees_paysage': 'rangées en paysage',
 }
+#: ACAL569 — les quatre bases qui dépendent de l'orientation enregistrée.
+BASES_ORIENTATION = ('modules_portrait', 'modules_paysage',
+                     'rangees_portrait', 'rangees_paysage')
 
 #: Préfixe d'une base qui désigne la quantité d'un autre composant.
 PREFIXE_ROLE = 'role:'
@@ -50,7 +58,7 @@ COUVERTURES = ('terrasse_beton', 'tole_metal', 'tuiles', 'bac_acier',
                'fibrociment', 'autre')
 
 __all__ = [
-    'BASES', 'PREFIXE_ROLE', 'CLES_REGLE', 'COUVERTURES', 'erreur_de_regle',
+    'BASES', 'BASES_ORIENTATION', 'PREFIXE_ROLE', 'CLES_REGLE', 'COUVERTURES', 'erreur_de_regle',
     'erreur_de_couvertures',
     'systemes_actifs', 'systeme_de_societe', 'composants_du_systeme',
 ]

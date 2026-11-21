@@ -141,6 +141,15 @@ class RegleDeQuantiteTest(SimpleTestCase):
             with self.subTest(base=base):
                 self.assertEqual(erreur_de_regle({'base': base}), '')
 
+    def test_bases_d_orientation_admises(self):
+        # ACAL569 — portrait et paysage, par module et par rangée.
+        for base in ('modules_portrait', 'modules_paysage',
+                     'rangees_portrait', 'rangees_paysage'):
+            with self.subTest(base=base):
+                self.assertIn(base, BASES)
+                self.assertEqual(erreur_de_regle({'base': base,
+                                                  'facteur': 4}), '')
+
     def test_refus(self):
         cas = (
             ([], 'objet'),

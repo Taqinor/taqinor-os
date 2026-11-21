@@ -108,14 +108,14 @@ export default function useSurfacePose({
   }
 
   /** Soumet une demande DÉJÀ construite par l'écran ; `null` ⇒ `messageIncomplet`. */
-  const poser = (demande, messageIncomplet) => {
+  const poser = (demande, messageIncomplet, extra) => {
     if (!demande) {
       setMessage(messageIncomplet)
       return
     }
     setMessage(null)
     setEnCours(true)
-    Promise.resolve(calepinageApi.moteur.pose({ demande }))
+    Promise.resolve(calepinageApi.moteur.pose({ demande, ...extra }))
       .then((res) => {
         setEnCours(false)
         setReponse(res?.data ?? null)
