@@ -66,8 +66,11 @@ class RegistreServiTest(SimpleTestCase):
 
     def test_les_deux_sections_sont_publiees(self):
         servi = registre_des_reglages()
-        self.assertEqual(sorted(servi),
-                         [SECTION_ELECTRIQUE_SOCIETE, SECTION_SIMULATION])
+        # ACAL572 — `lestage` : les lignes de l'écran « Lestage », d'une
+        # autre forme (`{cle, libelle, unite, texte, bloc}`), testées à part.
+        self.assertEqual(
+            sorted(servi),
+            [SECTION_ELECTRIQUE_SOCIETE, 'lestage', SECTION_SIMULATION])
 
     def test_chaque_ligne_egale_le_registre_declare_cle_par_cle(self):
         servi = registre_des_reglages()
@@ -99,6 +102,8 @@ class RegistreServiTest(SimpleTestCase):
         type en déclare — jamais une autre clé."""
         servi = registre_des_reglages()
         for section, lignes in servi.items():
+            if section == 'lestage':  # ACAL572 — autre forme
+                continue
             with self.subTest(section=section):
                 for ligne in lignes:
                     self.assertTrue(
@@ -118,6 +123,8 @@ class RegistreServiTest(SimpleTestCase):
 
         servi = registre_des_reglages()
         for section, lignes in servi.items():
+            if section == 'lestage':  # ACAL572 — autre forme
+                continue
             for ligne in lignes:
                 with self.subTest(section=section, cle=ligne['cle']):
                     attendu = type_de_cle(section, ligne['cle'])

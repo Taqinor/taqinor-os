@@ -3,12 +3,16 @@
 // pavage (packConfig, estimatorBrainV2.ts) et re-pave à chaud — la physique testée ici EST le
 // changement : options absentes → calepinage identique au millimètre ; écart agrandi → moins de
 // panneaux tiennent (le compte baisse), jamais l'inverse.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom'; // ACAL574
+import { type Ctx } from './context'; // ACAL574
+import { motifPanExistant } from './panExistant'; // ACAL574
 import { packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
 import { PANEL2_SHORT_M, PERIMETER_SETBACK_M } from '../../lib/roofPro2';
 import {
   cibleOptimisationSaisie,
   choixOptimisationCourant,
+  createOptimizer, // ACAL574
   departagerRemplissage,
   poserCibleOptimisation,
   poserChoixOptimisation,
@@ -429,6 +433,34 @@ describe('ACAL470 : objectif de production tapé', () => {
     expect(panneauxPourCible(50000, 600, 30, clampNeeded)).toEqual({ panneaux: 30, plafonne: true, maxKwhAn: 18000 });
     expect(panneauxPourCible(0, 600, 30, clampNeeded)).toBeNull();
     expect(panneauxPourCible(100, 0, 30, clampNeeded)).toBeNull();
+  });
+});
+
+// ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés.
+describe('ACAL574 — re-résolution refusée sur un pan existant', () => {
+  it('liveResolveFlat / liveResolvePitched : rien n’est re-pavé ni redessiné, le motif nomme le pan', () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body></body>').window.document;
+    try {
+      const pan = { id: 'z1', label: 'Pan A', existant: true, geometrieEnregistree: { count: 4 } };
+      const ctx = { closed: true, vertices: rectRing(10, 8), roofType: 'flat', areas: [pan], activeAreaId: 'z1', opts: {} } as unknown as Ctx;
+      const deps = {
+        renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn(),
+      };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      const geometrieAvant = JSON.stringify(pan);
+      opt.liveResolveFlat();
+      (ctx as unknown as { roofType: string }).roofType = 'pitched';
+      opt.liveResolvePitched();
+      expect(deps.renderScene).not.toHaveBeenCalled();
+      expect(deps.obstructionRings).not.toHaveBeenCalled();
+      expect(deps.setStatus).toHaveBeenCalledWith(motifPanExistant(pan));
+      expect(JSON.stringify(pan)).toBe(geometrieAvant);
+    } finally {
+      g.document = avant;
+    }
   });
 });
 

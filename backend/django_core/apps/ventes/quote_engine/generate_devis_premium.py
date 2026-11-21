@@ -391,6 +391,7 @@ DELAI_INSTALLATION = ""
 # client d'une économie estimée sur un tarif de référence. Défaut False =
 # rendu inchangé pour tout appel sans la clé.
 SAVINGS_ESTIMATED = False
+ECONOMIES_SANS_ANCRAGE = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -3792,6 +3793,9 @@ def apply_quote_data(data: dict) -> None:
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
     global SAVINGS_ESTIMATED  # M10 — économies estimées ?
     SAVINGS_ESTIMATED = bool(data.get("savings_estimated"))
+    global ECONOMIES_SANS_ANCRAGE  # ACAL1033 — lu par le seul format « une page »
+    from .residential.renderer import ancrage_reel_absent as _ancrage_absent
+    ECONOMIES_SANS_ANCRAGE = bool(data.get("regles_pose_reelle")) and _ancrage_absent(data)
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

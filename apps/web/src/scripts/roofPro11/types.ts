@@ -700,6 +700,9 @@ export interface AreaRecord {
    *  recalculé dans la session : part du `result.annualKwh` du document au prorata de son
    *  kWc enregistré (le document ne porte pas de production par pan). Jamais 0 par défaut. */
   annualKwhEnregistre?: number;
+  /** ACAL510 — « Pan existant » (modules déjà en place) et son année de mise en service SAISIE (null = non saisie). */
+  existant?: boolean;
+  anneeMiseEnService?: number | null;
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════

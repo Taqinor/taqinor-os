@@ -18,6 +18,7 @@ import { facteurDerateAnnuel } from './optimizer'; // ACAL356 — le dérate UNI
 import { type Obstacle } from '../../lib/obstacles';
 import { pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
+import { anneeValide, motifPanExistant } from './panExistant'; // ACAL510, ACAL574
 import { appliquerReglagesAuxPans, pansReglesAMain } from './jeuReglages'; // ACAL554
 import { accesMoyenDuPan, mentionAcces, trierPansParAcces } from './triPans'; // ACAL728
 import {
@@ -440,6 +441,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   let triParAcces = false; // ACAL728
   function renderAreasPanel() {
     syncAddAreaButton();
+    syncBoutonDisposition(); // ACAL574 — à chaque redessin (changement de pan actif compris)
     const { areasWindowEl, areasListEl, areasTotalPanelsEl, areasTotalKwcEl, areasTotalProdEl, areasTotalSavingsEl } = ctx.dom;
     if (!areasWindowEl) return;
     const areas = ctx.areas;
@@ -619,7 +621,13 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       `<input type="text" id="rp9-site-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-site-pivoter" class="rp9-btn">Pivoter le site</button>` +
       `<span id="rp9-pan-geometry-erreur" class="text-alert-300" role="alert" hidden></span>` +
-      `<span id="rp9-site-erreur" class="text-alert-300" role="alert" hidden></span>`;
+      `<span id="rp9-site-erreur" class="text-alert-300" role="alert" hidden></span>` +
+      // ACAL510 — case repliée « Pan existant » (modules déjà en place) + année SAISIE.
+      `<details class="w-full"><summary class="min-h-11 cursor-pointer">Pan existant</summary>` +
+      `<label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" id="rp9-pan-existant" /> Modules déjà en place</label>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-pan-annee">Année de mise en service` +
+      `<input type="text" id="rp9-pan-annee" class="rp9-input w-20" inputmode="numeric" /></label>` +
+      `<span id="rp9-pan-annee-erreur" class="block text-alert-300" role="alert" hidden></span></details>`;
     areasWindowEl.appendChild(el);
     return el;
   }
@@ -651,9 +659,24 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     if (motif) deps.setStatus?.(motif);
   }
 
+  /** ACAL574 — le refus (texte unique d'ACAL510) quand le pan ACTIF est « existant », sinon null. */
+  function motifDuPanExistantActif(): string | null {
+    const i = ctx.areas.findIndex((a) => a.id === ctx.activeAreaId);
+    return motifPanExistant(ctx.areas[i], Math.max(0, i));
+  }
+  /** ACAL574 — « Déplacer les panneaux » grisé, avec sa raison, tant qu'un pan existant est actif. */
+  function syncBoutonDisposition() {
+    const btn = document.getElementById('rp9-layout-toggle') as HTMLButtonElement | null;
+    const motif = motifDuPanExistantActif();
+    if (!btn) return;
+    btn.disabled = !!motif;
+    if (motif) btn.title = motif; else if (btn.dataset.titrePanExistant) btn.removeAttribute('title');
+    if (motif) btn.dataset.titrePanExistant = '1'; else delete btn.dataset.titrePanExistant;
+  }
+
   /** Applique une géométrie transformée au pan ACTIF (contour + obstacles vivants). */
   function appliquerAuPanActif(geometrie: GeometriePan): boolean {
-    const verrou = motifPanVerrouille(ctx.activeArea?.(), ctx.areas.findIndex((a) => a.id === ctx.activeAreaId)); // ACAL520
+    const verrou = motifPanVerrouille(ctx.activeArea?.(), ctx.areas.findIndex((a) => a.id === ctx.activeAreaId)) ?? motifDuPanExistantActif(); // ACAL520, ACAL574
     if (verrou) { direRefusGeometrie(verrou); return false; }
     ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
     ctx.vertices.splice(0, ctx.vertices.length, ...geometrie.vertices);
@@ -747,6 +770,11 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     geometryPanelEl.hidden = !ctx.closed || ctx.vertices.length < 3;
     if (geometryPanelEl.hidden) return;
     if (panNomEl) panNomEl.textContent = nomDuPanActif();
+    const actif = ctx.areas.find((a) => a.id === ctx.activeAreaId); // ACAL510
+    const caseEl = document.getElementById('rp9-pan-existant') as HTMLInputElement | null;
+    if (caseEl) caseEl.checked = !!actif?.existant;
+    const anneeEl = document.getElementById('rp9-pan-annee') as HTMLInputElement | null;
+    if (anneeEl && document.activeElement !== anneeEl) anneeEl.value = actif?.anneeMiseEnService != null ? String(actif.anneeMiseEnService) : '';
     const dims = dimensionsRectangleM(ctx.vertices);
     const fmtDim = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
     if (panLargeurEl && document.activeElement !== panLargeurEl) {
@@ -774,6 +802,21 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     } else if (cible?.id === 'rp9-site-pivoter') {
       pivoterSiteActif(nombreSaisi((document.getElementById('rp9-site-rotation') as HTMLInputElement | null)?.value));
     }
+  });
+
+  // ACAL510 — « Pan existant » : case et année du pan ACTIF ; une année refusée se dit sous le champ.
+  geometryPanelEl?.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    const pan = ctx.areas.find((a) => a.id === ctx.activeAreaId);
+    if (!pan || (t.id !== 'rp9-pan-existant' && t.id !== 'rp9-pan-annee')) return;
+    if (t.id === 'rp9-pan-existant') {
+      if (t.checked) pan.existant = true; else { delete pan.existant; delete pan.anneeMiseEnService; } // absent = pan neuf : octet pour octet
+      syncBoutonDisposition(); // ACAL574
+      return;
+    }
+    const v = anneeValide(t.value);
+    direRefusGeometrie(v.ok ? null : v.motif, 'rp9-pan-annee-erreur');
+    if (v.ok) pan.anneeMiseEnService = v.annee;
   });
 
   // ACAL520 — clic sur le cadenas d'un pan : bascule `verrouille` et redessine la liste.
@@ -1026,6 +1069,8 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   function choisirModuleDuPanActif(moduleId: string | null | undefined): boolean {
     const a = ctx.activeArea();
     if (!a) return false;
+    const existant = motifDuPanExistantActif(); // ACAL574 — changer le module re-paverait le pan
+    if (existant) { direRefusModule(existant); return false; }
     const id = typeof moduleId === 'string' ? moduleId.trim() : '';
     if (!id) {
       ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier

@@ -640,3 +640,30 @@ describe('ACAL553 — copier / coller la sélection libre', () => {
     expect(editor.freePanels()).toHaveLength(1);
   });
 });
+
+describe('ACAL510 — pan existant : ses modules ne se glissent pas', () => {
+  function presser(existant: boolean) {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const map = { ...carteEditeurFactice(container), unproject: () => ({ lng: -7.6, lat: 33.5 }) } as unknown as ReturnType<typeof carteEditeurFactice>;
+    const ctx = makeFreeCtx(makePlan(40), [{ cx: 0, cy: 0 }]) as unknown as Record<string, unknown>;
+    Object.assign(ctx, { layoutState: { cells: [], occupied: new Set<number>() }, activeAreaId: 'z1', areas: [{ id: 'z1', label: 'Pan A', vertices: [], obstacles: [], ...(existant ? { existant: true } : {}) }] });
+    createLayoutEditor(ctx as unknown as Ctx, makeDeps(map));
+    const appels = (map.on as unknown as { mock: { calls: [string, (e: unknown) => void][] } }).mock.calls;
+    const preventDefault = vi.fn();
+    appels.find(([ev]) => ev === 'mousedown')![1]({ point: { x: 0, y: 0 }, originalEvent: {}, preventDefault });
+    return { ctx, map, preventDefault };
+  }
+  it('un module d’un pan `existant` : refus nommant le pan, rien n’est saisi', () => {
+    const { ctx, map } = presser(true);
+    expect(ctx.layoutSel ?? null).toBeNull();
+    expect(map.dragPan.disable).not.toHaveBeenCalled();
+    const notes = [...document.querySelectorAll('#rp9-layout-note')].map((n) => n.textContent);
+    expect(notes).toContain('Pan A : pan existant (déjà posé) — ses modules ne se modifient pas ; décochez « Pan existant » pour le modifier');
+  });
+  it('sans le drapeau : le module est saisi comme avant', () => {
+    const { ctx, map } = presser(false);
+    expect(ctx.layoutSel).toBe(0);
+    expect(map.dragPan.disable).toHaveBeenCalled();
+  });
+});

@@ -104,6 +104,7 @@ import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // AC
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
+import { motifPanExistant } from './panExistant'; // ACAL574
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -920,8 +921,15 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   });
 
   /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
+  /** ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés (refus nommé). */
+  function refusPanExistant(): boolean {
+    const i = Array.isArray(ctx.areas) ? ctx.areas.findIndex((a) => a.id === ctx.activeAreaId) : -1;
+    const motif = i >= 0 ? motifPanExistant(ctx.areas[i], i) : null;
+    if (motif) setStatus(motif);
+    return motif != null;
+  }
   function liveResolveFlat() {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat') return;
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant()) return;
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildFlatLocks();
@@ -1282,7 +1290,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   }
 
   function liveResolvePitched() {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched') return;
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant()) return; // ACAL574
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildPitchedLocks();

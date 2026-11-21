@@ -340,7 +340,7 @@ export interface SerializedZone {
   pitchSource?: Record<string, unknown>;
   facingAzimuthDeg?: number;
   facingManual: boolean;
-  verrouille?: boolean; // ACAL520 — cadenas du pan, émis seulement quand il est posé
+  verrouille?: boolean; existant?: boolean; anneeMiseEnService?: number; // ACAL520 cadenas ; ACAL510 pan existant — émis seulement quand ils sont posés
   neededPanels: number;
   neededAuto: boolean;
   /** WJ24 — géométrie pleine par pan (optionnel, additif). Présent seulement si un plan
@@ -974,7 +974,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       ...pitchSourceEmise(a.pitchSource, isActive ? ctx.pitchDeg : a.pitchDeg),
       facingAzimuthDeg: isActive ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
-      ...(a.verrouille ? { verrouille: true } : {}), // ACAL520 — additif
+      ...(a.verrouille ? { verrouille: true } : {}), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
       ...(a.buildingId ? { buildingId: a.buildingId } : {}), // CAL59 — additif
@@ -1265,7 +1265,7 @@ const CLES_RACINE_ATELIER = new Set([
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([
-  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille',
+  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille', 'existant', 'anneeMiseEnService',
   'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges', 'result',
 ]);
 
@@ -1490,7 +1490,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       : {}),
     facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
-    ...(z.verrouille === true ? { verrouille: true } : {}), // ACAL520
+    ...(z.verrouille === true ? { verrouille: true } : {}), ...(z.existant === true ? { existant: true, anneeMiseEnService: Number.isInteger(z.anneeMiseEnService) ? z.anneeMiseEnService : null } : {}), // ACAL520, ACAL510
     neededPanels: z.neededPanels,
     neededAuto: z.neededAuto,
     result: null,

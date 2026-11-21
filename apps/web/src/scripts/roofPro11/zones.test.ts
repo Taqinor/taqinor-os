@@ -4,8 +4,12 @@
 // id/label/nature/vertices/setbackM/heightM), elles se relisent à l'identique, et — la
 // garantie centrale — INTERDITE et RESERVEE produisent une obstruction (le compte de
 // modules bouge), PREFEREE n'en produit AUCUNE (le compte ne bouge jamais).
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom'; // ACAL574
+import { createZones } from './zones'; // ACAL574
+import { motifPanExistant } from './panExistant'; // ACAL574
+import { ctxDeBase, panDeTest, ptM } from './harnaisAtelier'; // ACAL574
 import { fileURLToPath } from 'node:url';
 import { CHEMINS_TOURNES, CLES_REFUSEES, pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
@@ -638,5 +642,45 @@ describe('ACAL554 — bouton « Appliquer ces réglages à… »', () => {
   it('un seul pan ⇒ pas de bouton ; deux pans ⇒ le bouton de la ligne', () => {
     expect(boutonReporterReglages('area-1', 1)).toBe('');
     expect(boutonReporterReglages('area-1', 2)).toContain('data-area-report="area-1"');
+  });
+});
+
+// ACAL574 — un pan « existant » est intouchable : pivoter, redimensionner, changer de module.
+describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () => {
+  /** Ce fichier tourne SANS DOM (il lit `import.meta.url`) : un document jsdom n'est posé que le temps du cas. */
+  function avecDom<T>(f: () => T): T {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><button id="rp9-layout-toggle">Déplacer les panneaux</button></body>').window.document;
+    try { return f(); } finally { g.document = avant; }
+  }
+  const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
+  const essai = (existant: boolean) => avecDom(() => {
+    const areas = [{ ...panDeTest('area-1', { vertices: [...CARRE], roofType: 'flat', neededPanels: 10 }), label: 'Pan A', ...(existant ? { existant: true } : {}) }];
+    const ctx = { ...ctxDeBase(areas, 'area-1'), activeArea: () => areas[0], closed: true, dom: {} } as unknown as Ctx;
+    const setStatus = vi.fn();
+    const zones = createZones(ctx, { redrawTrace: vi.fn(), redrawObstacles: vi.fn(), recalc: vi.fn(), setStatus });
+    const avant = JSON.stringify(ctx.vertices);
+    zones.renderAreasPanel();
+    const btn = document.getElementById('rp9-layout-toggle') as HTMLButtonElement;
+    return {
+      pivote: zones.pivoterPanActif(90), redim: zones.redimensionnerPanActif(8, 12), module: zones.choisirModuleDuPanActif(null),
+      intacte: JSON.stringify(ctx.vertices) === avant, setStatus, grise: btn.disabled, titre: btn.title, pan: areas[0],
+    };
+  });
+  it('pivoter, redimensionner et choisir un module sont refusés, motif nommant le pan, géométrie intacte', () => {
+    const r = essai(true);
+    expect([r.pivote, r.redim, r.module]).toEqual([false, false, false]);
+    expect(r.intacte).toBe(true);
+    const motif = motifPanExistant(r.pan)!;
+    expect(motif).toContain('Pan A : pan existant');
+    expect(r.setStatus).toHaveBeenCalledWith(motif);
+    expect(r.grise).toBe(true);
+    expect(r.titre).toBe(motif);
+  });
+  it('pan sans clé : inchangé (le geste passe, le bouton reste actif)', () => {
+    const r = essai(false);
+    expect(r.pivote).toBe(true);
+    expect(r.grise).toBe(false);
   });
 });

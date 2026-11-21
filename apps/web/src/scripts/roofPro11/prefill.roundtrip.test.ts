@@ -438,6 +438,29 @@ describe('ACAL520 — le cadenas d’un pan survit à l’aller-retour', () => {
   });
 });
 
+describe('ACAL510 — `existant` et `anneeMiseEnService` survivent à l’aller-retour', () => {
+  const aller = (zone: Record<string, unknown>) => {
+    const doc = documentRiche();
+    Object.assign(doc.zones[0], zone);
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return { h, sortie: serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) };
+  };
+  it('case et année reviennent', () => {
+    const { h, sortie } = aller({ existant: true, anneeMiseEnService: 2019 });
+    expect(h.zones![0]).toMatchObject({ existant: true, anneeMiseEnService: 2019 });
+    expect(sortie.zones[0]).toMatchObject({ existant: true, anneeMiseEnService: 2019 });
+  });
+  it('année non saisie : null relu, aucune année émise ; pan sans drapeau : aucune clé', () => {
+    const { h, sortie } = aller({ existant: true });
+    expect(h.zones![0].anneeMiseEnService).toBeNull();
+    expect('anneeMiseEnService' in sortie.zones[0]).toBe(false);
+    const neuf = aller({}).sortie.zones[0];
+    expect('existant' in neuf || 'anneeMiseEnService' in neuf).toBe(false);
+  });
+});
+
 describe('ACAL593 — les repères de chantier font l’aller-retour', () => {
   const aller = (reperes?: unknown[]) => {
     const doc = documentRiche() as unknown as Record<string, unknown>;

@@ -484,7 +484,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
         REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_ECARTS_0111,
-        REGLES_ECARTS_0411, REGLES_SENSIBILITES_1911, calcul_corrige, regles_au_moins)
+        REGLES_ECARTS_0411, REGLES_POSE_REELLE_2111, REGLES_SENSIBILITES_1911, calcul_corrige, regles_au_moins)
 
     # Décision fondateur 08/10/2026 — « nouveaux rendus seulement » : un devis
     # envoyé avant les corrections du moteur (``Devis.regles_calcul = 1``)
@@ -2295,6 +2295,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             logger.warning("Devis %s — AMOT48 %s",
                            getattr(devis, "reference", "?"), _msg)
             data.setdefault("avertissements_internes", []).append(_msg)
+    if regles_au_moins(devis, REGLES_POSE_REELLE_2111):  # ACAL1033 (D-ACAL-45) — clé de rendu, niveau 15 seulement
+        data["regles_pose_reelle"] = True
 
     return data
 

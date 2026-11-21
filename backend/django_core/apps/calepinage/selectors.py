@@ -1201,13 +1201,45 @@ def registre_des_reglages():
             ligne['valeurs_non_servies'] = dict(non_servies)
         return ligne
 
-    return {
+    publie = {
         section: [
             _ligne(section, cle, libelle, unite, reference)
             for cle, libelle, unite, reference in declarations
         ]
         for section, declarations in REGISTRES.items()
     }
+    publie['lestage'] = _registre_lestage()
+    return publie
+
+
+def _registre_lestage():
+    """ACAL572 — les lignes de l'écran « Lestage » : ``{cle, libelle, unite,
+    texte, bloc}``, lues dans ``services/lestage.py::PARAMETRES`` (HORS
+    ``CONSTANTES_PHYSIQUES``, ACAL939) puis dans
+    ``services/lestage_zones.py::PARAMETRES_ZONES_DE_POSE`` (ACAL563) — aucune
+    liste recopiée ici. ``bloc`` = ``global`` ou ``zones_de_pose`` ; ``texte``
+    vrai pour le seul paramètre qui n'est pas un nombre."""
+    import re
+
+    from .services.lestage import (
+        CONSTANTES_PHYSIQUES, PARAMETRES, PARAMETRES_TEXTE,
+    )
+    from .services.lestage_zones import PARAMETRES_ZONES_DE_POSE
+
+    lignes = [
+        {'cle': cle, 'libelle': libelle, 'unite': unite,
+         'texte': cle in PARAMETRES_TEXTE, 'bloc': 'global'}
+        for cle, (libelle, unite) in PARAMETRES.items()
+        if cle not in CONSTANTES_PHYSIQUES]
+    for cle, (libelle, _strict) in PARAMETRES_ZONES_DE_POSE.items():
+        # L'unité est celle du libellé « Largeur de coin (m) ».
+        unite = re.search(r'\(([^)]+)\)\s*$', libelle)
+        lignes.append({
+            'cle': cle,
+            'libelle': re.sub(r'\s*\([^)]+\)\s*$', '', libelle),
+            'unite': unite.group(1) if unite else '',
+            'texte': False, 'bloc': 'zones_de_pose'})
+    return lignes
 
 
 def favoris_materiel_de_societe(company):

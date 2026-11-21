@@ -44,7 +44,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from core.champs_stricts import ChaineStricte
 from core.pompage.hydraulique import hmt_mensuelle
-from core.pompage.selection import selection_pompe, selection_variateur, tension_produit
+from core.pompage.selection import alertes_pose_pompe, selection_pompe, selection_variateur, tension_produit
 from core.pompage.volumes import couverture_besoin_eau
 
 from ..permissions import PeutVoirCalepinage
@@ -211,7 +211,8 @@ _NOMBRES_POMPAGE = (
     'longueur_tuyauterie_m', 'coefficient_frottement',
     'hauteur_refoulement_m', 'denivele_m', 'diametre_interieur_mm',
     'c_hazen_williams', 'pertes_singulieres_m', 'pression_service_bar',
-    'kwc', 'niveau_statique_ete_m', 'niveau_statique_hiver_m')
+    'kwc', 'niveau_statique_ete_m', 'niveau_statique_hiver_m',
+    'profondeur_calage_m', 'diametre_tubage_mm')  # ACAL1113 — contrôles de pose
 
 
 class FlottantFini(serializers.FloatField):
@@ -415,6 +416,15 @@ def pompage(self, request, pk=None):
                 'des pompes conviennent mais n’ont pas de prix renseigné : '
                 + ', '.join(str(n) for n in choix['sans_prix'] if n))
 
+    # ACAL1113 — les contrôles de pose DU DEVIS, sur la seule pompe retenue (aucun défaut).
+    calage, tubage = _nombre(corps.get('profondeur_calage_m')), _nombre(corps.get('diametre_tubage_mm'))
+    alertes = []
+    if pompe_servie is not None and (calage is not None or tubage is not None):
+        alertes = alertes_pose_pompe(
+            (_element_pompage(calepinage.company, pompe_servie['produit']) or {}).get('fiche'),
+            diametre_tubage_mm=tubage, profondeur_calage_m=calage,
+            niveau_dynamique_m=_nombre(corps.get('niveau_dynamique_m')))
+
     # ── 3. Les volumes — JAMAIS sans pompe à courbe retenue ────────────────
     # AGR125 — MÊME calcul que le devis : production heure par heure sur le
     # MÊME profil PVGIS du site (``ventes.domain.pompage.profils_horaires_site``),
@@ -479,6 +489,8 @@ def pompage(self, request, pk=None):
             'niveau_statique_ete_m': niveau_ete,
             'niveau_statique_hiver_m': niveau_hiver,
             'mois_niveau_bas': mois_bas,
+            'profondeur_calage_m': calage,
+            'diametre_tubage_mm': tubage,
         },
         'hmt': hmt,
         'hmt_mensuelle': hmt_par_mois,
@@ -489,6 +501,7 @@ def pompage(self, request, pk=None):
         'besoin': besoin,
         'erreurs': erreurs,
         'avertissements': avertissements,
+        'alertes': alertes,
     })
     reponse['enregistre'], reponse['motif_non_enregistre'] = _enregistrer_dernier(
         calepinage, request, reponse)

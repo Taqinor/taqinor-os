@@ -902,3 +902,45 @@ class ClesServiesTest(unittest.TestCase):
             sorted(set(donnees['exemple_section_declaree_sans_valeur']
                        ['imagerie']) - en_attente),
             sorted(site.CLES))
+
+
+class RegistreLestageTest(unittest.TestCase):
+    """ACAL572 — ``registre.lestage`` : les lignes de l'écran « Lestage »,
+    dérivées des dictionnaires du service, jamais d'une liste figée."""
+
+    def test_lignes_derivees_hors_constantes_physiques(self):
+        from apps.calepinage.selectors import registre_des_reglages
+        from apps.calepinage.services.lestage import (
+            CONSTANTES_PHYSIQUES, PARAMETRES,
+        )
+        from apps.calepinage.services.lestage_zones import (
+            PARAMETRES_ZONES_DE_POSE,
+        )
+
+        lignes = registre_des_reglages()['lestage']
+        cles = [ligne['cle'] for ligne in lignes]
+        self.assertEqual(
+            len(lignes),
+            len(PARAMETRES) - len(CONSTANTES_PHYSIQUES)
+            + len(PARAMETRES_ZONES_DE_POSE))
+        self.assertFalse(set(cles) & set(CONSTANTES_PHYSIQUES))
+        self.assertEqual(len(set(cles)), len(cles))
+        for ligne in lignes:
+            self.assertEqual(
+                set(ligne), {'cle', 'libelle', 'unite', 'texte', 'bloc'})
+            self.assertIn(ligne['bloc'], ('global', 'zones_de_pose'))
+        self.assertEqual(
+            [ligne['cle'] for ligne in lignes
+             if ligne['bloc'] == 'zones_de_pose'],
+            list(PARAMETRES_ZONES_DE_POSE))
+        self.assertEqual(
+            [ligne['cle'] for ligne in lignes if ligne['texte']],
+            ['categorie_terrain'])
+
+    def test_le_contrat_publie_la_meme_liste_dans_les_deux_etats(self):
+        from apps.calepinage.selectors import registre_des_reglages
+
+        contrat = _charger('parametres_calepinage.json')
+        attendu = registre_des_reglages()['lestage']
+        for etat in ('exemple', 'exemple_vide'):
+            self.assertEqual(contrat[etat]['registre']['lestage'], attendu)

@@ -608,3 +608,93 @@ describe('ACAL964 — les listes montrent des mots français et envoient la vale
     expect(mocks.putParametres.mock.calls[0][0].simulation.mode_meteo.valeur).toBe('pluriannuel')
   })
 })
+
+describe('ACAL572 — l’écran « Lestage »', () => {
+  const lestageServi = () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+  }
+  const champLestage = (cle) => document.getElementById(`lestage-${cle}`)
+
+  it('la carte porte id="lestage" et chaque ligne id="lestage-<cle>" ; aucune constante physique', async () => {
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+    expect(document.getElementById('lestage')).toBe(screen.getByTestId('acal572-lestage'))
+    const lignes = REGISTRE.lestage
+    // Le nombre de lignes est celui servi — jamais un nombre figé ici.
+    expect(lignes.length).toBeGreaterThan(0)
+    for (const r of lignes) expect(champLestage(r.cle)).not.toBeNull()
+    expect(champLestage('acceleration_pesanteur_m_s2')).toBeNull()
+    expect(champLestage('masse_volumique_air_kg_m3')).toBeNull()
+    expect(screen.getAllByTestId(/^acal572-ligne-/)).toHaveLength(lignes.length)
+  })
+
+  it('saisie ⇒ la section lestage ENTIÈRE est renvoyée, zones intactes', async () => {
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+
+    fireEvent.change(champLestage('largeur_bande_rive_m'), { target: { value: '1.2' } })
+    fireEvent.change(screen.getByTestId('acal572-source-largeur_bande_rive_m'), { target: { value: 'notice K2' } })
+    fireEvent.click(screen.getByTestId('acal572-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const corps = mocks.putParametres.mock.calls[0][0]
+    expect(Object.keys(corps)).toEqual(['lestage'])
+    expect(corps.lestage.zones).toEqual(REGLAGES.lestage.zones)
+    expect(corps.lestage.zone_par_defaut).toBe(REGLAGES.lestage.zone_par_defaut)
+    expect(corps.lestage.zones_de_pose).toEqual({ largeur_bande_rive_m: { valeur: 1.2, source: 'notice K2' } })
+    expect(corps.lestage.vitesse_vent_reference_m_s).toEqual(REGLAGES.lestage.vitesse_vent_reference_m_s)
+    expect(await screen.findByTestId('acal572-message')).toBeInTheDocument()
+  })
+
+  it('une ligne vide n’est pas envoyée', async () => {
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+    fireEvent.click(screen.getByTestId('acal572-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const { lestage } = mocks.putParametres.mock.calls[0][0]
+    expect(lestage.zones_de_pose).toBeUndefined()
+    expect(lestage.largeur_coin_m).toBeUndefined()
+  })
+
+  it('une valeur sans source : le message serveur s’affiche sous sa ligne', async () => {
+    const MOTIF = '« Largeur de la bande de rive » doit porter la RÉFÉRENCE du texte d’où elle vient.'
+    lestageServi()
+    mocks.putParametres.mockRejectedValue({
+      response: { status: 400, data: { 'zones_de_pose.largeur_bande_rive_m': MOTIF } },
+    })
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+
+    fireEvent.change(champLestage('largeur_bande_rive_m'), { target: { value: '1.2' } })
+    fireEvent.click(screen.getByTestId('acal572-enregistrer'))
+
+    const erreur = await screen.findByTestId('acal572-erreur-largeur_bande_rive_m')
+    expect(erreur).toHaveTextContent(MOTIF)
+    expect(within(screen.getByTestId('acal572-ligne-largeur_bande_rive_m')).getByRole('alert')).toBe(erreur)
+  })
+
+  it('un nombre illisible est refusé avant tout envoi, sous sa ligne', async () => {
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+    const champ = champLestage('largeur_coin_m')
+    champ.type = 'text'
+    fireEvent.change(champ, { target: { value: 'abc' } })
+    fireEvent.click(screen.getByTestId('acal572-enregistrer'))
+    expect(await screen.findByTestId('acal572-erreur-largeur_coin_m')).toHaveTextContent('doit être un nombre')
+    expect(mocks.putParametres).not.toHaveBeenCalled()
+  })
+
+  it('sans le droit de gérer : lecture seule, aucun bouton', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    lestageServi()
+    rendre()
+    await screen.findByTestId('acal572-lestage')
+    expect(screen.queryByTestId('acal572-enregistrer')).toBeNull()
+    expect(champLestage('largeur_bande_rive_m')).toBeDisabled()
+  })
+})

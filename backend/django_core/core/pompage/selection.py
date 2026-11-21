@@ -285,6 +285,32 @@ def _fiche_pompe(produit):
     return fiche if isinstance(fiche, dict) else {}
 
 
+def alertes_pose_pompe(fiche, *, diametre_tubage_mm=None, profondeur_calage_m=None,
+                       niveau_dynamique_m=None):
+    """ACAL1113 — les contrôles de POSE d'une pompe retenue (tubage du forage,
+    immersion minimale) : UNE règle et UN message pour le devis
+    (:func:`choisir_pompe`, qui préfixe ``source.``) et le calepinage. Rend
+    ``[{code, champ, message}]``, ``champ`` SANS préfixe ; ``[]`` sans saisie. Pure."""
+    fiche = fiche if isinstance(fiche, dict) else {}
+    alertes = []
+    diametre = _flottant(fiche.get("pompe_diametre_ext_mm"))
+    tubage = _flottant(diametre_tubage_mm)
+    if diametre and tubage and diametre >= tubage:
+        alertes.append({"code": "diametre_tubage", "champ": "diametre_tubage_mm", "message": (
+            "Diamètre extérieur de la pompe (%s mm) ≥ tubage du forage "
+            "(%s mm)." % (_fr(diametre, 0), _fr(tubage, 0)))})
+    immersion = _flottant(fiche.get("pompe_immersion_min_m"))
+    calage = _flottant(profondeur_calage_m)
+    nd = _flottant(niveau_dynamique_m)
+    disponible = (calage - nd if nd is not None else calage) if calage else None
+    if immersion and calage and immersion > disponible:
+        alertes.append({"code": "immersion_minimale", "champ": "profondeur_calage_m", "message": (
+            "Immersion minimale de la pompe (%s m) > %s (%s m)."
+            % (_fr(immersion, 1), "hauteur d'eau au-dessus de la pompe" if nd is not None
+               else "profondeur de calage", _fr(disponible, 1)))})
+    return alertes
+
+
 def _sortie_pompe(produit, *, kw, debit_hmt, hmt, placeholder_nom=None,
                   type_pompe=None, alimentation=None):
     """La forme ``pompe`` du contrat ``etude_pompage_preview.json``."""
@@ -500,24 +526,10 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
                "kW de plaque de « %s » non saisi : puissance estimée sur le "
                "CV (× 0,7355)." % p.get("nom"))
 
-    fiche = _fiche_pompe(p)
-    diametre = _flottant(fiche.get("pompe_diametre_ext_mm"))
-    tubage = _flottant(diametre_tubage_mm)
-    if diametre and tubage and diametre >= tubage:
-        alerte("diametre_tubage", "source.diametre_tubage_mm",
-               "Diamètre extérieur de la pompe (%s mm) ≥ tubage du forage "
-               "(%s mm)." % (_fr(diametre, 0), _fr(tubage, 0)))
-    immersion = _flottant(fiche.get("pompe_immersion_min_m"))
-    calage = _flottant(profondeur_calage_m)
-    if immersion and calage:
-        nd = _flottant(niveau_dynamique_m)
-        disponible = calage - nd if nd is not None else calage
-        if immersion > disponible:
-            alerte("immersion_minimale", "source.profondeur_calage_m",
-                   "Immersion minimale de la pompe (%s m) > %s (%s m)."
-                   % (_fr(immersion, 1),
-                      "hauteur d'eau au-dessus de la pompe" if nd is not None
-                      else "profondeur de calage", _fr(disponible, 1)))
+    for pose in alertes_pose_pompe(_fiche_pompe(p), diametre_tubage_mm=diametre_tubage_mm,
+                                   profondeur_calage_m=profondeur_calage_m,
+                                   niveau_dynamique_m=niveau_dynamique_m):
+        alerte(pose["code"], "source." + pose["champ"], pose["message"])
 
     index = next((i for i, e in enumerate(paliers) if e is choisie), None)
     return resultat(sortie, etape, prix_a_renseigner=sans_prix_courbe,

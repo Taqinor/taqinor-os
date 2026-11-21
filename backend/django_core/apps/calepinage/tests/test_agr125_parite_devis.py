@@ -295,6 +295,29 @@ class PariteVolumesDevisCalepinageTest(TestCase):
         rep = self.api.post(url, {'kwc': '1'}, format='multipart')
         self.assertEqual(rep.status_code, 415, rep.content[:300])
 
+    def test_acal1113_alertes_de_pose_du_devis_sur_la_pompe_retenue(self):
+        """ACAL1113 — calage sous l'immersion ⇒ alerte sous
+        ``profondeur_calage_m`` ; pompe plus large que le tubage ⇒ alerte sous
+        ``diametre_tubage_mm`` ; mêmes messages que ``choisir_pompe`` (règle
+        UNIQUE ``alertes_pose_pompe``) ; sans saisie ⇒ [] ; pompe servie
+        inchangée. Mutant : préfixe ``source.`` dans la vue ⇒ rouge."""
+        from core.pompage.selection import alertes_pose_pompe
+        avant = self._calepinage(self._complet())
+        self.assertEqual(avant['alertes'], [])
+        FicheTechnique.objects.create(
+            company=self.co, produit=self.pompe, type_fiche='pompe',
+            pompe_immersion_min_m=Decimal('5'), pompe_diametre_ext_mm=Decimal('150'))
+        saisie = {'profondeur_calage_m': 42, 'niveau_dynamique_m': 40, 'diametre_tubage_mm': 150}
+        donnees = self._calepinage(dict(self._complet(), **saisie))
+        self.assertEqual(donnees['pompe'], avant['pompe'])
+        self.assertEqual([(a['code'], a['champ']) for a in donnees['alertes']],
+                         [('diametre_tubage', 'diametre_tubage_mm'),
+                          ('immersion_minimale', 'profondeur_calage_m')])
+        attendues = alertes_pose_pompe({'pompe_immersion_min_m': 5, 'pompe_diametre_ext_mm': 150}, **saisie)
+        self.assertEqual(donnees['alertes'], attendues)
+        self.assertEqual(donnees['entrees']['profondeur_calage_m'], 42.0)
+        self.assertEqual(self._calepinage(self._complet())['alertes'], [])
+
 
 class PariteHmtTest(TestCase):
     """La HMT du calepinage est celle de ``hmt_composantes`` (AGR111)."""

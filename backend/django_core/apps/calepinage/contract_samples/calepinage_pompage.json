@@ -13,7 +13,9 @@
       "besoin_m3_jour": 45.0,
       "niveau_statique_ete_m": 45.0,
       "niveau_statique_hiver_m": 35.0,
-      "mois_niveau_bas": [6, 7, 8, 9]
+      "mois_niveau_bas": [6, 7, 8, 9],
+      "profondeur_calage_m": 50.0,
+      "diametre_tubage_mm": 150.0
     },
     "hmt_mensuelle": {
       "valeurs_m": [52.4, 52.4, 52.4, 52.4, 52.4, 62.4, 62.4, 62.4, 62.4, 52.4, 52.4, 52.4],
@@ -84,6 +86,9 @@
     },
     "erreurs": {},
     "avertissements": [],
+    "alertes": [
+      {"code": "immersion_minimale", "champ": "profondeur_calage_m", "message": "Immersion minimale de la pompe (5,0 m) > hauteur d'eau au-dessus de la pompe (3,0 m)."}
+    ],
     "enregistre": true,
     "motif_non_enregistre": null
   },
@@ -98,7 +103,9 @@
       "besoin_m3_jour": 45.0,
       "niveau_statique_ete_m": null,
       "niveau_statique_hiver_m": null,
-      "mois_niveau_bas": []
+      "mois_niveau_bas": [],
+      "profondeur_calage_m": null,
+      "diametre_tubage_mm": null
     },
     "hmt": {
       "hmt_m": 62.4,
@@ -163,6 +170,7 @@
       "besoin_source": "saisie"
     },
     "avertissements": [],
+    "alertes": [],
     "enregistre_le": "2026-11-21T10:15:00+00:00"
   },
   "exemple_vide": {
@@ -177,7 +185,9 @@
       "besoin_m3_jour": null,
       "niveau_statique_ete_m": null,
       "niveau_statique_hiver_m": null,
-      "mois_niveau_bas": []
+      "mois_niveau_bas": [],
+      "profondeur_calage_m": null,
+      "diametre_tubage_mm": null
     },
     "hmt_mensuelle": null,
     "hmt": {
@@ -216,6 +226,7 @@
     "avertissements": [
       "aucune pompe à courbe ne délivre le débit demandé à cette HMT — aucun m³/jour n'est publié (une pompe sans courbe ne produit jamais de volume chiffré)"
     ],
+    "alertes": [],
     "enregistre": false,
     "motif_non_enregistre": "calcul incomplet : debit_souhaite_m3h, hmt_saisie"
   }

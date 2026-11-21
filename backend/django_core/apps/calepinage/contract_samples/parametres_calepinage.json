@@ -641,6 +641,92 @@
           "type": "nombre",
           "minimum": 0
         }
+      ],
+      "lestage": [
+        {
+          "cle": "vitesse_vent_reference_m_s",
+          "libelle": "Vitesse de vent de référence",
+          "unite": "m/s",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "categorie_terrain",
+          "libelle": "Catégorie de terrain",
+          "unite": "",
+          "texte": true,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_terrain",
+          "libelle": "Coefficient de terrain",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_pression_soulevement",
+          "libelle": "Coefficient de pression (soulèvement)",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_pression_horizontal",
+          "libelle": "Coefficient de pression (horizontal)",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_frottement",
+          "libelle": "Coefficient de frottement",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "charge_neige_kn_m2",
+          "libelle": "Charge de neige",
+          "unite": "kN/m²",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "masse_structure_kg_par_module",
+          "libelle": "Masse de structure par module (kit)",
+          "unite": "kg",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "largeur_bande_rive_m",
+          "libelle": "Largeur de la bande de rive",
+          "unite": "m",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "largeur_coin_m",
+          "libelle": "Largeur de coin",
+          "unite": "m",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "lest_rive_kg_par_module",
+          "libelle": "Lest additionnel en rive",
+          "unite": "kg par module",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "lest_coin_kg_par_module",
+          "libelle": "Lest additionnel en coin",
+          "unite": "kg par module",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        }
       ]
     },
     "champs_preset": [
@@ -1245,6 +1331,92 @@
           "reference": "PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée",
           "type": "nombre",
           "minimum": 0
+        }
+      ],
+      "lestage": [
+        {
+          "cle": "vitesse_vent_reference_m_s",
+          "libelle": "Vitesse de vent de référence",
+          "unite": "m/s",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "categorie_terrain",
+          "libelle": "Catégorie de terrain",
+          "unite": "",
+          "texte": true,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_terrain",
+          "libelle": "Coefficient de terrain",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_pression_soulevement",
+          "libelle": "Coefficient de pression (soulèvement)",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_pression_horizontal",
+          "libelle": "Coefficient de pression (horizontal)",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "coefficient_frottement",
+          "libelle": "Coefficient de frottement",
+          "unite": "",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "charge_neige_kn_m2",
+          "libelle": "Charge de neige",
+          "unite": "kN/m²",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "masse_structure_kg_par_module",
+          "libelle": "Masse de structure par module (kit)",
+          "unite": "kg",
+          "texte": false,
+          "bloc": "global"
+        },
+        {
+          "cle": "largeur_bande_rive_m",
+          "libelle": "Largeur de la bande de rive",
+          "unite": "m",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "largeur_coin_m",
+          "libelle": "Largeur de coin",
+          "unite": "m",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "lest_rive_kg_par_module",
+          "libelle": "Lest additionnel en rive",
+          "unite": "kg par module",
+          "texte": false,
+          "bloc": "zones_de_pose"
+        },
+        {
+          "cle": "lest_coin_kg_par_module",
+          "libelle": "Lest additionnel en coin",
+          "unite": "kg par module",
+          "texte": false,
+          "bloc": "zones_de_pose"
         }
       ]
     },
