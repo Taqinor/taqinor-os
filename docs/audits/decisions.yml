@@ -1522,6 +1522,137 @@ decisions:
     date: "2026-11-21"
     source: "AskUserQuestion du 21/11/2026 (loop work on all plans, PR #1515, preuve en direct ACAL490 run 44879944783)"
     taches: [ACAL421]
+  - id: D-ACAL-36
+    question: "Pour les NOUVEAUX devis qui ont un calepinage enregistré, le PDF imprime-t-il la production de la pose réelle (orientation, pente, ombrage) au lieu du productible standard de la ville ?"
+    options:
+      - cle: a
+        texte: "Oui : nouveaux devis à calepinage enregistré = production de la pose réelle ; devis sans calepinage = standard de la ville ; devis envoyés = ce que le client a reçu ; la liste des écarts est montrée à Reda AVANT tout changement"
+      - cle: b
+        texte: "Non : garder le productible standard de la ville pour tous les devis (D-ACAL-6 / QJR107 tels quels)"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage) ; précise D-ACAL-6, QJR107 et la ligne INTERDIT « imprimer le P50 du calepinage sur le devis, le PDF ou la page publique » de docs/plans/PLAN_AUDIT_CALEPINAGE.md (ligne non éditée)"
+    taches: [ACAL973, ACAL996, ACAL997, ACAL998, ACAL999, ACAL1000, ACAL1001, ACAL1011, ACAL1169, ACAL1170, ACAL1171, ACAL1195, ACAL1196]
+
+  - id: D-ACAL-37
+    question: "Quand un calepinage porte un toit et un champ au sol, le devis prend-il tout, ou la commerciale choisit-elle les surfaces à chiffrer ?"
+    options:
+      - cle: a
+        texte: "L'écran liste les surfaces avant de générer le devis, toutes cochées par défaut ; la commerciale peut en décocher"
+      - cle: b
+        texte: "Le devis prend toujours toutes les surfaces (D-ACAL-5 tel quel)"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage) ; précise D-ACAL-5"
+    taches: [ACAL915, ACAL968]
+
+  - id: D-ACAL-38
+    question: "Quels éléments visibles du client HORS du PDF du devis sont autorisés (jamais de prix ; chiffres = ceux du devis) : soleil animé sur la page publique, courte vidéo 3D pour WhatsApp, panneaux sur la photo du site, fiche « pertes en mots simples » ?"
+    options:
+      - cle: a
+        texte: "Les quatre sont autorisés, chacun hors /proposal (règle #4), sans prix, en réutilisant la page publique de proposition et son suivi"
+      - cle: b
+        texte: "Aucun : rien de visible du client hors du PDF du devis"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
+    taches: [ACAL487, ACAL697, ACAL896, ACAL897, ACAL1026]
+
+  - id: D-ACAL-39
+    question: "Toit en pente, panneaux posés à plat sur le toit (affleurants) : que contient le devis pour la fixation ?"
+    options:
+      - cle: a
+        texte: "Le kit de fixation seulement (crochets, rails, pinces) ; ni structures acier ni socles lestés, qui restent pour le toit plat et le champ au sol ; devis envoyés inchangés"
+      - cle: b
+        texte: "Garder structures acier et socles pour toute pose"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
+    taches: [ACAL927, ACAL998, ACAL1001, ACAL1029, ACAL1172]
+
+  - id: D-ACAL-40
+    question: "Sans consommation connue (lead sans facture) : le devis et l'atelier affichent-ils une économie, un TRI et un retour ?"
+    options:
+      - cle: a
+        texte: "Non : aucune économie, aucun TRI, aucun retour affiché ni imprimé ; l'écran dit « renseignez la facture » et mène au champ ; nouveaux rendus seulement"
+      - cle: b
+        texte: "Oui : publier un TRI valorisé avec la règle écrite et affichée"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
+    taches: [ACAL852, ACAL976, ACAL1033]
+
+  - id: D-ACAL-41
+    question: "Pompage : le bilan du réservoir jour par jour va-t-il au document client agricole ?"
+    options:
+      - cle: a
+        texte: "Non : il reste INTERNE (écran et rapport d'étude) ; le document client agricole de 3 pages ne change pas"
+      - cle: b
+        texte: "Oui : l'imprimer au document client"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
+    taches: [ACAL804, ACAL807, ACAL814]
+
+  - id: D-ACAL-42
+    question: "Données d'exemple en production : qu'est-ce qui est permis ?"
+    options:
+      - cle: a
+        texte: "Uniquement des MODÈLES de la bibliothèque marqués « Exemple », attachés à aucun lead ni client, sans devis, jamais comptés dans les chiffres ; rien d'autre en production"
+      - cle: b
+        texte: "Aucune donnée d'exemple en production"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
+    taches: [ACAL895]
+
+  - id: D-ACAL-43
+    question: "Distributeurs marocains (pièces exigées, limites) : profils par distributeur ou dossier générique ?"
+    options:
+      - cle: a
+        texte: "UN dossier marocain générique que l'équipe remplit une fois (pièces, limites, chacune avec sa source), rien de prérempli ni deviné ; des profils par distributeur viendront plus tard"
+      - cle: b
+        texte: "Des profils par distributeur dès maintenant"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 (campagne L5 calepinage)"
+    taches: [ACAL822, ACAL824]
+
+  - id: D-ACAL-44
+    question: "Les NOUVEAUX devis commerciaux et industriels qui ont un calepinage enregistré et simulé complet impriment-ils aussi la production de la pose réelle (au lieu du toit déclaré sur le lead) ?"
+    options:
+      - cle: a
+        texte: "Oui, même règle : devis envoyés inchangés, productions déjà figées inchangées, activation seulement après lecture de la liste des écarts"
+      - cle: b
+        texte: "Résidentiel seulement"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 au soir (campagne L5 calepinage, vérification de la vague 2) ; étend D-ACAL-36 au C&I"
+    taches: [ACAL1195]
+
+  - id: D-ACAL-45
+    question: "Le format une page du devis cesse-t-il d'imprimer « Économies estimées / an » quand la consommation du client est inconnue (nouveaux devis seulement) ?"
+    options:
+      - cle: a
+        texte: "Oui, la retirer, comme le PDF 3 pages et la page publique ; même interrupteur"
+      - cle: b
+        texte: "Garder l'estimation"
+    reponse: a
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 au soir (campagne L5 calepinage, vérification de la vague 2) ; précise D-ACAL-40"
+    taches: [ACAL1033]
+
+  - id: D-ACAL-46
+    question: "Sur un devis agricole (pompage), le volume d'eau journalier imprimé suit-il la pose réelle des panneaux du calepinage ?"
+    options:
+      - cle: a
+        texte: "Laisser tel quel"
+      - cle: b
+        texte: "Oui, suivre la pose réelle (inclinaison et orientation) ; chiffre client des nouveaux devis, donc derrière la liste des écarts"
+    reponse: b
+    date: "2026-11-21"
+    source: "lot AskUserQuestion du 21/11/2026 au soir (campagne L5 calepinage, vérification de la vague 2) ; option a recommandée, écartée ; tâches du lot POMPAGE à écrire"
+    taches: [ACAL1197, ACAL1198, ACAL1199, ACAL1200, ACAL1201, ACAL1202, ACAL1203]
 
   - id: D-APAR-1
     question: "Source du taux de TVA par defaut ?"
