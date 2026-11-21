@@ -10,6 +10,7 @@
    ========================================================================== */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { deserializeLayout, type SerializedLayout } from './prefill';
+import { penteDepuisAide } from './penteAide';
 import { reinitialiserNumerotation } from './numerotation';
 import { type Ctx } from './context';
 import { enregistrerAtelier, exempleRoofLayoutV2, ouvrirAtelier } from './harnaisDocument';
@@ -80,5 +81,30 @@ describe('ACAL252 — pitchSource, aller-retour', () => {
     // L'autre pan, intact, garde la sienne.
     const autre = sortie.zones.find((z) => z.id !== c.activeAreaId)!;
     expect(autre.pitchSource).toBeTruthy();
+  });
+
+  it('pente en % saisie sur la carte sort avec sa source (ACAL416)', () => {
+    const c = ouvrir(documentADeuxPans());
+    const actif = c.areas.find((a) => a.id === c.activeAreaId)!;
+    const r = penteDepuisAide({ pourcentage: '50' }, 'pourcentage');
+    if ('erreur' in r) throw new Error(r.erreur);
+    expect(r.degres).toBeCloseTo(26.565, 3); // atan(0,5)
+    c.pitchDeg = r.degres; // le point d'appel de la carte pose pente ET source ensemble
+    actif.pitchSource = r.source;
+    const zone = enregistrer(c).zones.find((z) => z.id === c.activeAreaId)!;
+    expect(zone.pitchSource).toEqual({ mode: 'pourcentage', pourcentage: 50 });
+    expect(zone.pitchDeg as number).toBeCloseTo(26.565, 3);
+    // Mutant : la pente change SANS la source ⇒ la source périmée est omise, pas mentie.
+    c.pitchDeg = r.degres + 5;
+    expect('pitchSource' in enregistrer(c).zones.find((z) => z.id === c.activeAreaId)!).toBe(false);
+  });
+
+  it('portée 5 m, hauteur 2 m : source « cotes » ; portée vide ou nulle : rien (ACAL416)', () => {
+    const r = penteDepuisAide({ porteeM: '5', hauteurFaitageM: '2' }, 'cotes');
+    expect(r).toEqual({ degres: expect.closeTo(21.801, 3), source: { mode: 'cotes', porteeM: 5, hauteurFaitageM: 2 } });
+    for (const portee of ['', '0']) {
+      const vide = penteDepuisAide({ porteeM: portee, hauteurFaitageM: '2' }, 'cotes');
+      expect('erreur' in vide && vide.erreur).toContain('portée');
+    }
   });
 });

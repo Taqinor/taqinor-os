@@ -193,7 +193,9 @@ import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
 import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
 import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypotheses } from './roofPro11/hypotheses'; // ACAL417
+import { monterAidePente } from './roofPro11/penteAide'; // ACAL416
 import { type TableOmbrage } from './roofPro11/tableOmbrage'; // ACAL459
+import { type FacteurVueCiel } from './roofPro11/vueCiel'; // ACAL460
 import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
 import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
 import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
@@ -3747,6 +3749,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     syncPitchChips();
     if (roofType === 'pitched' && closed) pitchedRecompute();
   });
+  monterAidePente(pitchRangeEl?.parentElement ?? null, (deg, source) => { // ACAL416 — pente en %, ou portée + hauteur
+    pitchDeg = deg;
+    if (pitchRangeEl) pitchRangeEl.value = String(Math.round(deg));
+    if (pitchValueEl) pitchValueEl.textContent = `${Math.round(deg)}°`;
+    const a = activeArea(); if (a) a.pitchSource = source;
+    syncPitchChips();
+    if (roofType === 'pitched' && closed) pitchedRecompute();
+  });
   document.querySelectorAll<HTMLButtonElement>('[data-facing]').forEach((b) => {
     b.addEventListener('click', () => {
       facingAzimuthDeg = Number(b.dataset.facing);
@@ -4051,9 +4061,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
 
   /** ACAL459 — table d'ombrage par direction du pan ACTIF + signature courante des sources (méta par pan). */
-  function activeShadeTableMeta(): { shadeTableByZone: Record<string, TableOmbrage | null>; signatureOmbrage: string } {
-    const points = (geometrieZoneActive(ctx)?.panels ?? []).map((p) => ({ x: p.cx, y: p.cy }));
-    return { shadeTableByZone: { [ctx.activeAreaId]: shadingUi.tableOmbrage(points) }, signatureOmbrage: shadingUi.signatureTable() };
+  function activeShadeTableMeta(): { shadeTableByZone: Record<string, TableOmbrage | null>; signatureOmbrage: string; skyViewByZone: Record<string, FacteurVueCiel | null> } {
+    const g = geometrieZoneActive(ctx); // ACAL460 — + facteur de vue du ciel (pose réelle du pan)
+    const points = (g?.panels ?? []).map((p) => ({ x: p.cx, y: p.cy }));
+    return { shadeTableByZone: { [ctx.activeAreaId]: shadingUi.tableOmbrage(points) }, signatureOmbrage: shadingUi.signatureTable(), skyViewByZone: { [ctx.activeAreaId]: g ? shadingUi.vueCiel(points, g.tiltDeg, g.azimuthDeg) : null } };
   }
 
   // ═══════════ CALX3 — L'ENTRÉE MOTEUR, LE PLAN APPLIQUÉ, LES RACCOURCIS ═══════════

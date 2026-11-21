@@ -5,6 +5,7 @@
 import { sunDirection } from '../../lib/roofPro2'; // ACAL459
 import { annualShadeFactor, MID_MONTH_DAY_OF_YEAR, DIFFUSE_FRACTION_WHEN_SHADED } from '../../lib/shadingEngine'; // ACAL459
 import { tableOmbrage, recomposerMatrice, ajouterTableOmbrage, garderTableRelue, signerSources } from './tableOmbrage'; // ACAL459
+import { facteurVueCiel, vueCielDuPan, ajouterVueCiel, garderVueCielRelue } from './vueCiel'; // ACAL460
 import { describe, expect, it } from 'vitest';
 import {
   effectiveBuildingHeightM,
@@ -469,5 +470,46 @@ describe('ACAL459 — table par direction', () => {
     expect(g.shadeTable).toBeUndefined();
     expect(signerSources('x')).toBe(signerSources('x'));
     expect(signerSources('x')).not.toBe(signerSources('y'));
+  });
+});
+
+// ═══ ACAL460 — facteur de vue du ciel d'un pan ═══
+describe('ACAL460 — facteur de vue du ciel', () => {
+  // Le prédicat de blocage est injecté. Plan horizontal, ciel coupé sous la hauteur h : poids = sin a · cos a,
+  // ∫ de h à 90° ÷ ∫ de 0 à 90° = cos²h (dérivation à la main) ; cos²20° = 0,8830.
+  const mur: ShadeObstructionENU[] = [{ x: 0, y: -10, effHeightM: 5, halfWidthM: 3 }];
+  const un = [{ x: 0, y: 0 }];
+  const sousHauteur = (h: number) => (_x: number, _y: number, a: number) => a < h;
+
+  it('coupé sous 20° partout ⇒ cos²(20°) à moins de 2 points ; mutant sans pesée par le cosinus ⇒ 0,658', () => {
+    const f = facteurVueCiel(un, mur, 0, 180, sousHauteur(20))!;
+    expect(Math.abs(f - Math.cos((20 * Math.PI) / 180) ** 2)).toBeLessThan(0.02);
+    expect(f).toBeGreaterThan(0.85); // sans la pesée par le cosinus (1 − cos 70° = 0,658) ⇒ échec
+  });
+
+  it('jamais coupé ⇒ 1 (plat et incliné) ; sans obstruction ou sans module ⇒ aucune valeur', () => {
+    expect(facteurVueCiel(un, mur, 0, 180, () => false)).toBe(1);
+    expect(facteurVueCiel(un, mur, 30, 200, () => false)).toBe(1);
+    expect(facteurVueCiel(un, [], 30, 180)).toBeNull();
+    expect(facteurVueCiel([], mur, 30, 180)).toBeNull();
+    expect(vueCielDuPan(null, 's')).toBeNull();
+  });
+
+  it('un mur réel au sud coupe moins que 1 un plan plein sud ; moyenne des modules', () => {
+    const f = facteurVueCiel(un, mur, 30, 180)!;
+    expect(f).toBeLessThan(1);
+    expect(f).toBeGreaterThan(0.9); // un mur de 3 m de demi-largeur ne cache qu'une petite part du dôme
+  });
+
+  it('écriture : méthode isotrope sans horizon ; relue seulement à signature inchangée', () => {
+    const v = vueCielDuPan(0.9, 'a')!;
+    expect(v.methode).toEqual({ diffus: 'isotrope', horizon: false, resolution: 'centres_de_modules' });
+    const g: { skyViewFactor?: typeof v } = {};
+    ajouterVueCiel(g, { skyViewByZone: { z: v } }, 'z');
+    ajouterVueCiel(g, { skyViewByZone: { z: null } }, 'z'); // rien à écrire : jamais un 1
+    garderVueCielRelue(g, { signatureOmbrage: 'a' });
+    expect(g.skyViewFactor).toStrictEqual(v);
+    garderVueCielRelue(g, { signatureOmbrage: 'b' });
+    expect(g.skyViewFactor).toBeUndefined();
   });
 });
