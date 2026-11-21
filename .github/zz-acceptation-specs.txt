@@ -1,2 +1,0 @@
-# specs jouées par zz-scratch-acc-l5-preuves2 (une par ligne, sans .spec.js)
-acal10
