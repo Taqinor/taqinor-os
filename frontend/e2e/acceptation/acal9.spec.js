@@ -28,6 +28,11 @@ const NOM_LEAD = `ACC9 Vision ${Date.now().toString(36).toUpperCase()}`
 const ADRESSE = '12 rue des Essais Vision'
 
 const etat = {}
+const LAYOUT = {
+  version: 2, pin: { lat: 38.8976, lng: -77.0367 }, activeAreaId: 'z1',
+  zones: [{ id: 'z1', label: 'Pan tracé à la main', roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180,
+    vertices: [[-77.0372, 38.8978], [-77.0362, 38.8978], [-77.0362, 38.8975], [-77.0372, 38.8975]] }],
+}
 
 /** Image réelle + emprise RENDUE par le service (domaine public USGS). */
 async function image(request) {
@@ -50,11 +55,15 @@ async function image(request) {
 /** Lead (nom + adresse de contrôle) + calepinage vide de la société demo, posés au shell. */
 async function calepinage() {
   if (etat.cal) return etat.cal
-  etat.cal = await py(`from apps.crm.models import Lead
+  // Conception NON vide (un pan déjà tracé, empreinte calculée) : E4 prouve que la proposition ne l'écrase pas.
+  etat.cal = await py(`import json
+from apps.crm.models import Lead
 from apps.calepinage.models import Calepinage
+from apps.ventes.domain.geometrie import layout_hash
 co = U.objects.get(username='demo_admin').company
 lead = Lead.objects.create(company=co, nom=${JSON.stringify(NOM_LEAD)}, adresse=${JSON.stringify(ADRESSE)}, ville='Casablanca', type_installation='residentiel')
-c = Calepinage.objects.create(company=co, lead_id=lead.pk, titre=${JSON.stringify(NOM_LEAD)})
+lay = json.loads(${JSON.stringify(JSON.stringify(LAYOUT))})
+c = Calepinage.objects.create(company=co, lead_id=lead.pk, titre=${JSON.stringify(NOM_LEAD)}, roof_layout=lay, layout_hash=layout_hash(lay))
 c.refresh_from_db()
 sortie({'id': c.pk, 'lead': lead.pk, 'company': co.pk, 'layout_hash': c.layout_hash, 'roof_layout': c.roof_layout})`)
   return etat.cal
@@ -189,6 +198,7 @@ etape('E4.rien_ecrit_sur_le_calepinage', ['ACAL485'], async () => {
 c = Calepinage.objects.get(pk=${cal.id})
 sortie({'layout_hash': c.layout_hash, 'roof_layout': c.roof_layout})`)
   console.log(`[acal9] E4 avant ${cal.layout_hash} / après ${apres.layout_hash}`)
+  expect(cal.layout_hash, 'empreinte de départ non vide').toMatch(/^[0-9a-f]{64}$/)
   expect(apres.layout_hash).toBe(cal.layout_hash)
   expect(apres.roof_layout).toEqual(cal.roof_layout)
 })
