@@ -817,11 +817,9 @@ CREER_LEAD_ASSISTANT = AgentAction(
     key='crm.lead.creer',
     label='Créer un lead',
     description=(
-        "Sert à : créer le lead d'une demande de client (message collé, "
-        "capture, appel) : nom, téléphone, ville, facture d'électricité "
-        "(facture_hiver, en DH par mois ; facture_ete si elle diffère), besoin "
-        "— tout ce qui est dit, en UN appel. Société, responsable et étape sont "
-        "posés par le serveur. "
+        "Sert à : créer le lead d'une demande de client (message, capture, "
+        "appel) avec tout ce qui est dit, en UN appel : nom, téléphone, ville, "
+        "facture_hiver (DH/mois ; facture_ete si différente), besoin. "
         "Ne pas utiliser pour : un lead déjà connu (cherche-le par son "
         "téléphone avec crm.lead.chercher) ni modifier une fiche. "
         "Exemple : « Karim, 0661007731 : 10 panneaux, onduleur triphasé "
