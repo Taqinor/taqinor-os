@@ -340,7 +340,7 @@ class DelaiTacheTests(SimpleTestCase):
         self.assertIn("[timeout:60]", tache.kwargs["data"]["data"])
 
     def test_corps_recherche_deux_refus_distincts(self):
-        from apps.crm.roof_views import corps_recherche
+        from apps.crm.roof_detect import corps_recherche
 
         injoignable = corps_recherche(None)
         vide = corps_recherche({"polygon": [],
