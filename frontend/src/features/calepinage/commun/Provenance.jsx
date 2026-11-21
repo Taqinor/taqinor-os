@@ -50,7 +50,7 @@ export function Provenance({ origine, reference }) {
     : 'Aucune provenance déclarée : cette valeur n’est pas une norme et n’est pas affichée.'
   return (
     <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] ${
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs ${
         declaree ? 'bg-muted text-muted-foreground' : 'bg-destructive/10 text-destructive'
       }`}
       data-testid="cal165-pastille"
@@ -84,7 +84,7 @@ export function ValeurSourcee({
       <Provenance origine={origine} reference={reference} />
       {declaree && reference
         ? (
-          <span className="text-[11px] text-muted-foreground" data-testid="cal165-reference">
+          <span className="text-xs text-muted-foreground" data-testid="cal165-reference">
             {reference}
           </span>
         )

@@ -182,6 +182,8 @@ retiré plus un hook ajouté.
 | `cal-horizon-heures-masquees` | horizon heures masquées. |
 | `cal-horizon-loading` | horizon chargement. |
 | `cal-horizon-points` | horizon points. |
+| `cal-horizon-import` | import du fichier d’horizon (ACAL458). |
+| `cal-horizon-fichier` | champ fichier d’horizon (ACAL458). |
 
 ## ModeTerrain (`ModeTerrain.jsx`)
 
@@ -206,6 +208,17 @@ retiré plus un hook ajouté.
 | `cal-terrain-trait-pas` | terrain trait pas. |
 | `cal-terrain-vue` | terrain vue. |
 | `cal-terrain-vue-indisponible` | terrain vue indisponible. |
+| `cal-terrain-relief` | relief du terrain GLO-30 (ACAL466). |
+| `cal-terrain-relief-lire` | relief du terrain GLO-30 lire (ACAL466). |
+| `cal-terrain-relief-aide` | relief du terrain GLO-30 aide (ACAL466). |
+| `cal-terrain-relief-refus` | relief du terrain GLO-30 refus (ACAL466). |
+| `cal-terrain-relief-motif` | relief du terrain GLO-30 motif (ACAL466). |
+| `cal-terrain-relief-resultat` | relief du terrain GLO-30 resultat (ACAL466). |
+| `cal-terrain-relief-pente` | relief du terrain GLO-30 pente (ACAL466). |
+| `cal-terrain-relief-source` | relief du terrain GLO-30 source (ACAL466). |
+| `cal-terrain-relief-ancrage` | relief du terrain GLO-30 ancrage (ACAL466). |
+| `cal-terrain-relief-attribution` | relief du terrain GLO-30 attribution (ACAL466). |
+| `cal-terrain-relief-utiliser` | relief du terrain GLO-30 utiliser (ACAL466). |
 
 ## Ombriere (`Ombriere.jsx`)
 
@@ -337,6 +350,7 @@ retiré plus un hook ajouté.
 | `cal-raccourcis` | raccourcis. |
 | `cal-raccourcis-aide` | raccourcis aide. |
 | `cal-raccourcis-bouton` | raccourcis bouton. |
+| `cal-raccourcis-section` | raccourcis section (une par portée, ACAL414). |
 
 ## RemplissageProuve (`RemplissageProuve.jsx`)
 
@@ -436,6 +450,10 @@ retiré plus un hook ajouté.
 | `cal-onglet-2d` | outils de vue — onglet « Vue 2D ». |
 | `cal-onglet-3d` | outils de vue — onglet « Vue 3D ». |
 | `cal-onglets-vue` | outils de vue — conteneur des onglets 2D/3D. |
+| `cal-vue-dessus` | outils de vue — caméra « Dessus ». |
+| `cal-vue-face-panneaux` | outils de vue — caméra « Face aux panneaux ». |
+| `cal-vue-sud` | outils de vue — caméra « Sud ». |
+| `cal-vue-trois-quarts` | outils de vue — caméra « 3/4 ». |
 | `cal-panneau-calques` | outils de vue — panneau des calques. |
 
 ## PanneauActivite (`atelier/PanneauActivite.jsx`)

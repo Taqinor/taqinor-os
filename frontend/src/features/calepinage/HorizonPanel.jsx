@@ -10,6 +10,9 @@ import {
 import SunDiagram from './SunDiagram'
 import { LegendeCourbes } from './LegendeCourbes'
 import RetourAtelier from './atelier/RetourAtelier'
+import {
+  lireFichierHorizon, nombreDeColonnes, CONVENTION_NORD, CONVENTION_SUD,
+} from './horizonFichier'
 
 /* ============================================================================
    CAL93 — L'HORIZON LOINTAIN, tracé en fond de la course du soleil, et appliqué
@@ -75,6 +78,8 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   const [saisie, setSaisie] = useState({ azimut: '', hauteur: '' })
   const [message, setMessage] = useState(null)
   const [recuperation, setRecuperation] = useState(false)
+  const [fichier, setFichier] = useState(null) // { nom, texte }
+  const [convention, setConvention] = useState(null) // ACAL458 : jamais présélectionnée
   const chargement = doc.etat === 'chargement'
   const illisible = doc.etat === 'erreur'
 
@@ -140,6 +145,24 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
       .finally(() => setRecuperation(false))
   }
 
+  function choisirFichier(e) {
+    const f = e.target.files?.[0]
+    if (!f) { setFichier(null); return }
+    const lecteur = new FileReader()
+    lecteur.onload = () => setFichier({ nom: f.name, texte: String(lecteur.result ?? '') })
+    lecteur.readAsText(f)
+  }
+
+  function importerFichier() {
+    const r = lireFichierHorizon(fichier.texte, convention)
+    if (r.erreur) { setMessage(`Import refusé — ${r.erreur}`); return }
+    if (directionsDistinctes(r.points) < DIRECTIONS_MINIMALES) { setMessage(`Import refusé — ${MESSAGE_TOUR_INCOMPLET}.`); return }
+    setPoints(sortedHorizonPoints(r.points))
+    setSource('saisie')
+    const conv = r.format.startsWith('deux') ? `, ${convention === CONVENTION_NORD ? '0° = Nord, sens horaire' : '0° = Sud, + vers l’Ouest'}` : ''
+    setMessage(`Fichier ${fichier.nom} importé (${r.format}${conv}) — à enregistrer pour l’appliquer.`)
+  }
+
   async function enregistrer() {
     if (doc.etat !== 'ok' || tourIncomplet) return
     const propres = sortedHorizonPoints(points)
@@ -169,7 +192,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     return (
       <>
         <RetourAtelier calepinageId={calepinageId} />
-        <div className="cine-card mt-6 p-6" data-testid="cal-horizon-loading">Chargement…</div>
+        <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-horizon-loading">Chargement…</div>
       </>
     )
   }
@@ -177,9 +200,9 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="cine-card mt-6 p-6" data-testid="cal-horizon">
-      <p className="tech-label rule-brass text-brass-300">Horizon lointain</p>
-      <p className="mt-1 text-sm text-lune-faint">
+      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-horizon">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Horizon lointain</p>
+      <p className="mt-1 text-sm text-muted-foreground">
         Le relief à distance (montagne, crête, immeuble éloigné) qui masque le soleil aux
         heures rasantes — un poste de perte SÉPARÉ de l’ombrage proche tracé sur le toit.
         Saisissez au moins 8 directions réparties sur tout le tour (azimut, hauteur
@@ -191,9 +214,32 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
           type="button"
           onClick={recupererDepuisPvgis}
           disabled={recuperation || !calepinageId}
-          className="rounded border border-white/20 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
+          className="rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
         >
           {recuperation ? 'Récupération…' : 'Récupérer depuis PVGIS'}
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-end gap-3" data-testid="cal-horizon-import">
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fichier d’horizon (.txt, .csv)</span>
+          <input type="file" accept=".txt,.csv,text/plain" onChange={choisirFichier} className="mt-1 block text-sm text-foreground" data-testid="cal-horizon-fichier" />
+        </label>
+        <label className="flex items-center gap-1 text-sm text-foreground">
+          <input type="radio" name="cal-horizon-convention" checked={convention === CONVENTION_NORD} onChange={() => setConvention(CONVENTION_NORD)} />
+          0° = Nord, sens horaire
+        </label>
+        <label className="flex items-center gap-1 text-sm text-foreground">
+          <input type="radio" name="cal-horizon-convention" checked={convention === CONVENTION_SUD} onChange={() => setConvention(CONVENTION_SUD)} />
+          0° = Sud, + vers l’Ouest
+        </label>
+        <button
+          type="button"
+          onClick={importerFichier}
+          disabled={!fichier || (convention === null && nombreDeColonnes(fichier.texte) !== 1)}
+          className="rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+        >
+          Importer
         </button>
       </div>
 
@@ -214,21 +260,21 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
 
       <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
         <div>
-          <span className="tech-label text-lune-faint">Hauteur maximale</span>
-          <div className="fig text-white" data-testid="cal-horizon-hauteur-max">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hauteur maximale</span>
+          <div className="fig text-foreground" data-testid="cal-horizon-hauteur-max">
             {hauteurMaxDeg === null ? '—' : `${hauteurMaxDeg.toFixed(1)}°`}
           </div>
         </div>
         <div>
-          <span className="tech-label text-lune-faint">Heures masquées (jour moyen de chaque mois, en heures)</span>
-          <div className="fig text-white" data-testid="cal-horizon-heures-masquees">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Heures masquées (jour moyen de chaque mois, en heures)</span>
+          <div className="fig text-foreground" data-testid="cal-horizon-heures-masquees">
             {exploitable ? heuresMasquees : '—'}
           </div>
         </div>
       </div>
 
       <div className="mt-4">
-        <p className="tech-label text-lune-faint">Points du profil (azimut °, hauteur °)</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Points du profil (azimut °, hauteur °)</p>
         <ul className="mt-2 flex flex-col gap-1" data-testid="cal-horizon-points">
           {sortedHorizonPoints(points).map((p, i) => (
             <li key={`${p.azimuthDeg}-${i}`} className="flex items-center gap-2 text-sm">
@@ -244,34 +290,34 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
               </button>
             </li>
           ))}
-          {!points.length && <li className="text-sm text-lune-faint">Aucun point saisi.</li>}
+          {!points.length && <li className="text-sm text-muted-foreground">Aucun point saisi.</li>}
         </ul>
 
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="block" data-testid="cal-horizon-champ-azimut">
-            <span className="tech-label text-lune-faint">Azimut (°, 0=Nord)</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Azimut (°, 0=Nord)</span>
             <input
               type="number"
               step="any"
               value={saisie.azimut}
               onChange={(e) => setSaisie((s) => ({ ...s, azimut: e.target.value }))}
-              className="mt-1 w-28 rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+              className="mt-1 w-28 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
             />
           </label>
           <label className="block" data-testid="cal-horizon-champ-hauteur">
-            <span className="tech-label text-lune-faint">Hauteur angulaire (°)</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hauteur angulaire (°)</span>
             <input
               type="number"
               step="any"
               value={saisie.hauteur}
               onChange={(e) => setSaisie((s) => ({ ...s, hauteur: e.target.value }))}
-              className="mt-1 w-28 rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+              className="mt-1 w-28 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
             />
           </label>
           <button
             type="button"
             onClick={ajouterPoint}
-            className="rounded border border-white/20 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"
+            className="rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted"
           >
             Ajouter le point
           </button>
@@ -283,7 +329,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
           type="button"
           onClick={enregistrer}
           disabled={doc.etat !== 'ok' || tourIncomplet}
-          className="rounded border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-200 hover:bg-brass-400/10 disabled:opacity-50"
+          className="rounded border border-brass-400/60 px-4 py-2 text-sm font-semibold text-primary-text hover:bg-brass-400/10 disabled:opacity-50"
         >
           Enregistrer le profil
         </button>
@@ -297,7 +343,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
             {MESSAGE_ILLISIBLE}
           </p>
         )}
-        {message && <p className="text-sm text-lune-faint" role="status">{message}</p>}
+        {message && <p className="text-sm text-muted-foreground" role="status">{message}</p>}
       </div>
     </div>
     </>

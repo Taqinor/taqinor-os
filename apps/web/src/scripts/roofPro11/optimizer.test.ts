@@ -16,6 +16,7 @@ import {
   type EntreeDepartage,
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
+import { panneauxPourCible } from './cibleProduction';
 
 const ring = rectRing(20, 15);
 const baseOpts: PackOptions = { family: 'south', tiltDeg: 13 };
@@ -411,5 +412,17 @@ describe('ACAL80 — lireRendement', () => {
     // Avec l'URL par défaut (pages publiques), la requête part et le kWh revient.
     expect(await lireRendement(RENDEMENT_PVGIS_DEFAUT, { legs: [] }, fetcher)).toBe(1700);
     expect(appels).toBe(1);
+  });
+});
+
+describe('ACAL470 : objectif de production tapé', () => {
+  it('plus petit N sans marge ; plafond dit quand l’objectif dépasse le posable', () => {
+    // 600 kWh/panneau/an : 12 000 ⇒ exactement 20 ; 12 001 ⇒ 21 (jamais arrondi à l’inférieur)
+    expect(panneauxPourCible(12000, 600, 40, clampNeeded)).toEqual({ panneaux: 20, plafonne: false, maxKwhAn: 12000 });
+    expect(panneauxPourCible(12001, 600, 40, clampNeeded)?.panneaux).toBe(21);
+    // objectif irréaliste : N = ce qui tient, énergie maximale dite
+    expect(panneauxPourCible(50000, 600, 30, clampNeeded)).toEqual({ panneaux: 30, plafonne: true, maxKwhAn: 18000 });
+    expect(panneauxPourCible(0, 600, 30, clampNeeded)).toBeNull();
+    expect(panneauxPourCible(100, 0, 30, clampNeeded)).toBeNull();
   });
 });

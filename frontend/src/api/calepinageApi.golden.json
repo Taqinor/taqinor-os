@@ -754,6 +754,18 @@
       "verbe": "get"
     }
   ],
+  "calepinages.penteTerrain": [
+    {
+      "config": {
+        "params": {
+          "surface": 3
+        }
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/pente-terrain/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.pertes": [
     {
       "config": null,

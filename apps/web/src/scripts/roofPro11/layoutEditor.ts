@@ -2428,7 +2428,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const poser = (ex: number, ey: number) =>
       placeFreePanels(st, g, d.freeOrigin!.map((o) => ({ index: o.index, cx: o.cx + ex, cy: o.cy + ey })), margins());
     // ACAL425 — collage sur voisin/rive + repère (un seul panneau glissé, aimantation allumée)
-    const res = glisserAimante({ actif: ctx.aimantationActive !== false && d.freeOrigin.length === 1, idx: d.from, g, panels: st.panels, anchor, dx, dy, snap: freeSnapCandidate, poser, reperes: reperesLibres });
+    const res = glisserAimante({ actif: ctx.aimantationActive !== false && d.freeOrigin.length === 1, idx: d.from, g, panels: st.panels, anchor, dx, dy, snap: freeSnapCandidate, poser, reperes: reperesLibres, marges: margins() });
     if (!res.ok) {
       d.freeBlocked = res.blocked;
       if (res.blocked) showMeasure(res.blocked);

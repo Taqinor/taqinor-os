@@ -15,7 +15,7 @@ Test coverage:
 import sys
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.crm.roof_detect import (
     _parse_geometry, batiment_non_renseigne, fetch_building_footprint,
@@ -175,6 +175,21 @@ class FetchBuildingFootprintTests(TestCase):
 
         self.assertIsNone(result)
 
+    def test_user_agent_identifie(self):
+        """ACAL421 — Overpass rend HTTP 406 à l'User-Agent par défaut de
+        python-requests : la requête porte un User-Agent identifié, générique
+        (aucun nom ni adresse de personne)."""
+        fake_requests = _fake_requests_success(_SAMPLE_OVERPASS_EMPTY)
+
+        with patch.dict(sys.modules, {"requests": fake_requests}):
+            fetch_building_footprint(33.5731, -7.5898)
+
+        entetes = fake_requests.post.call_args.kwargs.get("headers") or {}
+        agent = entetes.get("User-Agent", "")
+        self.assertTrue(agent.startswith("solar-erp-calepinage/"), agent)
+        self.assertNotIn("TAQINOR", agent.upper())  # marque blanche (SCA29)
+        self.assertNotIn("@", agent)
+
 
 # ---------------------------------------------------------------------------
 # View tests (company scoping + endpoint behaviour)
@@ -266,6 +281,11 @@ class LeadRoofFootprintViewTests(TestCase):
         # à `null`, avec le motif qui le dit.
         self.assertIsNone(data["batiment"]["height_m"])
         self.assertIn("height_m", data["batiment"]["non_renseignes"])
+        # ACAL421 — un échec réseau n'est jamais présenté comme « aucun
+        # bâtiment » : le message nomme OpenStreetMap injoignable.
+        self.assertNotEqual(data["message"], rv._MSG_NO_BUILDING)
+        self.assertEqual(data["message"], rv._MSG_OSM_INJOIGNABLE)
+        self.assertNotIn("Aucun bâtiment", data["message"])
 
     def _captures(self, lead):
         captured = []
@@ -295,3 +315,145 @@ class LeadRoofFootprintViewTests(TestCase):
         captured = self._captures(lead)
         self.assertAlmostEqual(float(captured[0][0]), 33.1234)
         self.assertAlmostEqual(float(captured[0][1]), -7.4321)
+
+
+# ---------------------------------------------------------------------------
+# ACAL421 — la recherche en TÂCHE DE FOND (décision fondateur du 21/11/2026)
+# ---------------------------------------------------------------------------
+
+
+class DelaiTacheTests(SimpleTestCase):
+    """Le chemin synchrone garde 5 s ; la tâche passe 60 s à Overpass."""
+
+    def test_delai_synchrone_inchange_et_delai_tache(self):
+        from apps.crm import roof_detect as rd
+
+        fake = _fake_requests_success(_SAMPLE_OVERPASS_EMPTY)
+        with patch.dict(sys.modules, {"requests": fake}):
+            fetch_building_footprint(33.5731, -7.5898)
+            fetch_building_footprint(33.5731, -7.5898,
+                                     delai_s=rd.DELAI_TACHE_S)
+        synchrone, tache = fake.post.call_args_list
+        self.assertEqual(synchrone.kwargs["timeout"], (3, 5))
+        self.assertIn("[timeout:5]", synchrone.kwargs["data"]["data"])
+        self.assertEqual(tache.kwargs["timeout"], (10, 60))
+        self.assertIn("[timeout:60]", tache.kwargs["data"]["data"])
+
+    def test_corps_recherche_deux_refus_distincts(self):
+        from apps.crm.roof_detect import corps_recherche
+
+        injoignable = corps_recherche(None)
+        vide = corps_recherche({"polygon": [],
+                                "batiment": batiment_non_renseigne("x")})
+        pret = corps_recherche({"polygon": [{"lat": 1, "lng": 2}] * 3,
+                                "batiment": batiment_non_renseigne("x")})
+        self.assertEqual((injoignable["statut"], injoignable["motif"]),
+                         ("refus", "osm_injoignable"))
+        self.assertEqual((vide["statut"], vide["motif"]),
+                         ("refus", "aucun_batiment"))
+        self.assertNotEqual(injoignable["message"], vide["message"])
+        self.assertEqual((pret["statut"], len(pret["polygon"])), ("pret", 3))
+
+
+class RechercheEmpriseEnFondTests(TestCase):
+    """POST lance le job (202), GET dit en_cours / pret / refus nommé."""
+
+    POLYGONE = [{"lat": 33.5731, "lng": -7.5898},
+                {"lat": 33.5732, "lng": -7.5897},
+                {"lat": 33.5733, "lng": -7.5898}]
+    _lead = LeadRoofFootprintViewTests._lead
+
+    def setUp(self):
+        LeadRoofFootprintViewTests.setUp(self)
+        from erp_agentique.celery import app as celery_app
+
+        prev = celery_app.conf.task_always_eager
+        celery_app.conf.task_always_eager = True
+        self.addCleanup(setattr, celery_app.conf, "task_always_eager", prev)
+        from apps.crm import roof_detect as rd
+
+        pause = patch.object(rd, "PAUSE_ENTRE_ESSAIS_S", 0)
+        pause.start()
+        self.addCleanup(pause.stop)
+
+    def _lancer(self, lead_id, fetch):
+        from apps.crm import roof_detect as rd
+
+        with patch.object(rd, "fetch_building_footprint",
+                          side_effect=fetch) as appel:
+            reponse = self.api.post(
+                f"/api/django/crm/leads/{lead_id}/roof-footprint/recherche/",
+                {}, format="json")
+        return reponse, appel
+
+    def _statut(self, job_id, api=None):
+        return (api or self.api).get(
+            f"/api/django/crm/leads/roof-footprint/recherche/{job_id}/")
+
+    def test_contour_pret_par_la_tache(self):
+        lead = self._lead(roof_point={"lat": 33.5731, "lng": -7.5898})
+        reponse, appel = self._lancer(lead.pk, lambda lat, lng, delai_s: {
+            "polygon": self.POLYGONE, "batiment": batiment_non_renseigne("x")})
+        self.assertEqual(reponse.status_code, 202)
+        corps = reponse.json()
+        self.assertEqual(corps["statut"], "en_cours")
+        self.assertEqual(appel.call_args.kwargs["delai_s"], 60)
+        statut = self._statut(corps["job_id"])
+        self.assertEqual(statut.status_code, 200)
+        self.assertEqual(statut.json()["statut"], "pret")
+        self.assertEqual(statut.json()["polygon"], self.POLYGONE)
+
+    def test_essais_bornes_puis_refus_osm_injoignable(self):
+        lead = self._lead(roof_point={"lat": 33.5731, "lng": -7.5898})
+        reponse, appel = self._lancer(lead.pk,
+                                      lambda lat, lng, delai_s: None)
+        self.assertEqual(appel.call_count, 2)
+        corps = self._statut(reponse.json()["job_id"]).json()
+        self.assertEqual((corps["statut"], corps["motif"]),
+                         ("refus", "osm_injoignable"))
+
+    def test_second_essai_reussit(self):
+        lead = self._lead(roof_point={"lat": 33.5731, "lng": -7.5898})
+        issues = iter([None, {"polygon": self.POLYGONE,
+                              "batiment": batiment_non_renseigne("x")}])
+        reponse, appel = self._lancer(lead.pk,
+                                      lambda lat, lng, delai_s: next(issues))
+        self.assertEqual(appel.call_count, 2)
+        self.assertEqual(
+            self._statut(reponse.json()["job_id"]).json()["statut"], "pret")
+
+    def test_aucun_batiment_nomme(self):
+        lead = self._lead(roof_point={"lat": 33.5731, "lng": -7.5898})
+        reponse, _ = self._lancer(lead.pk, lambda lat, lng, delai_s: {
+            "polygon": [], "batiment": batiment_non_renseigne("x")})
+        corps = self._statut(reponse.json()["job_id"]).json()
+        self.assertEqual((corps["statut"], corps["motif"]),
+                         ("refus", "aucun_batiment"))
+
+    def test_gardes_404_409_et_job_d_un_autre(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        etranger = self._lead(company=self.autre,
+                              roof_point={"lat": 33.5, "lng": -7.5})
+        reponse, appel = self._lancer(etranger.pk, lambda *a, **k: None)
+        self.assertEqual(reponse.status_code, 404)
+        appel.assert_not_called()
+        sans_epingle = self._lancer(self._lead().pk, lambda *a, **k: None)[0]
+        self.assertEqual(sans_epingle.status_code, 409)
+        lead = self._lead(roof_point={"lat": 33.5731, "lng": -7.5898})
+        job_id = self._lancer(lead.pk, lambda *a, **k: None)[0].json()["job_id"]
+        collegue = get_user_model().objects.create_user(
+            username='roof-collegue', password='x', company=self.company,
+            role_legacy='responsable')
+        autre_api = APIClient()
+        autre_api.force_authenticate(collegue)
+        self.assertEqual(self._statut(job_id, autre_api).status_code, 404)
+
+    def test_file_injoignable_503(self):
+        lead = self._lead(roof_point={"lat": 33.5731, "lng": -7.5898})
+        with patch("core.jobs.submit", side_effect=RuntimeError("broker")):
+            reponse = self.api.post(
+                f"/api/django/crm/leads/{lead.pk}/roof-footprint/recherche/",
+                {}, format="json")
+        self.assertEqual(reponse.status_code, 503)

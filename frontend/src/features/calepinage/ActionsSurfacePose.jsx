@@ -25,7 +25,7 @@ export default function ActionsSurfacePose({ pose, persister, prefixe, libelles,
           onClick={onCalculer}
           disabled={enCours}
           data-testid={`${prefixe}-calculer`}
-          className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
+          className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text"
         >
           {enCours ? 'Calcul en cours…' : libelles.calculer}
         </button>
@@ -36,7 +36,7 @@ export default function ActionsSurfacePose({ pose, persister, prefixe, libelles,
             disabled={doc.etat !== 'ok' || !reponse}
             title={reponse ? undefined : 'Calculez le plan avant d’enregistrer'}
             data-testid={`${prefixe}-enregistrer`}
-            className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
+            className="rounded border border-border px-4 py-2 text-sm font-semibold text-foreground"
           >
             {libelles.enregistrer}
           </button>
@@ -45,7 +45,7 @@ export default function ActionsSurfacePose({ pose, persister, prefixe, libelles,
 
       {persister && surfaces.length > 0 && (
         <div className="mt-4" role="group" aria-label={libelles.groupe}>
-          <p className="tech-label text-lune-faint">{libelles.liste}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{libelles.liste}</p>
           <ul className="mt-2 flex flex-wrap gap-2">
             {surfaces.map((surface) => (
               <li key={surface.id}>
@@ -53,7 +53,7 @@ export default function ActionsSurfacePose({ pose, persister, prefixe, libelles,
                   type="button"
                   onClick={() => choisirSurface(surface)}
                   aria-pressed={surface.id === repereCourant}
-                  className="rounded border border-white/15 px-3 py-1 text-sm text-white aria-pressed:bg-white/10"
+                  className="rounded border border-border px-3 py-1 text-sm text-foreground aria-pressed:bg-muted"
                 >
                   {`${surface.label || libelles.defaut} (${surface.id})`}
                 </button>
@@ -63,7 +63,7 @@ export default function ActionsSurfacePose({ pose, persister, prefixe, libelles,
           <button
             type="button"
             onClick={nouvelleSurface}
-            className="mt-2 rounded border border-white/15 px-3 py-1 text-sm text-white"
+            className="mt-2 rounded border border-border px-3 py-1 text-sm text-foreground"
           >
             {libelles.nouvelle}
           </button>
@@ -87,7 +87,7 @@ export default function ActionsSurfacePose({ pose, persister, prefixe, libelles,
       )}
 
       {message && (
-        <p className="mt-3 text-sm text-lune-soft" role="status"
+        <p className="mt-3 text-sm text-foreground" role="status"
           data-testid={`${prefixe}-message`}>{message}</p>
       )}
     </>

@@ -6,6 +6,13 @@ import PanneauCalques from '../PanneauCalques'
 import Vue2DPlan from '../Vue2DPlan'
 import { FACTEURS_HD } from '../exportImage'
 
+const VUES_CAMERA = [
+  ['dessus', 'Dessus', 'cal-vue-dessus'],
+  ['sud', 'Sud', 'cal-vue-sud'],
+  ['trois-quarts', '3/4', 'cal-vue-trois-quarts'],
+  ['face-panneaux', 'Face aux panneaux', 'cal-vue-face-panneaux'],
+]
+
 export default function OutilsVue({
   builderReady, utilisateurCourantId, builderApiActuel, builderApi, chipClass,
   vue2d, setVue2d, plan2d, panId2d, ouvrirVue2d,
@@ -68,6 +75,23 @@ export default function OutilsVue({
                 Vue 2D — plan
               </button>
             </div>
+            {/* ACAL435 — vues de caméra prêtes (masquées en vue 2D) */}
+            {!vue2d && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vue</span>
+                {VUES_CAMERA.map(([nom, libelle, hook]) => (
+                  <button
+                    key={nom}
+                    type="button"
+                    className={chipClass}
+                    data-testid={hook}
+                    onClick={() => builderApi.current?.appliquerVue?.(nom)}
+                  >
+                    {libelle}
+                  </button>
+                ))}
+              </div>
+            )}
             {vue2d && (
               <div className="mt-2">
                 <Vue2DPlan plan={plan2d} compte3d={plan2d?.panelCount ?? null} panId={panId2d} />
@@ -81,7 +105,7 @@ export default function OutilsVue({
             reste strictement inchangée. */}
         {builderReady && (
           <div className="mt-4 flex flex-wrap items-center gap-2" data-testid="cal-export-hd">
-            <span className="tech-label text-lune-faint">Image HD</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Image HD</span>
             {FACTEURS_HD.map((f) => (
               <button
                 key={f}
@@ -94,7 +118,7 @@ export default function OutilsVue({
                 {`Exporter ${f}×`}
               </button>
             ))}
-            {hdMessage && <span className="text-xs text-lune-faint" data-testid="cal-export-hd-message">{hdMessage}</span>}
+            {hdMessage && <span className="text-xs text-muted-foreground" data-testid="cal-export-hd-message">{hdMessage}</span>}
           </div>
         )}
     </>

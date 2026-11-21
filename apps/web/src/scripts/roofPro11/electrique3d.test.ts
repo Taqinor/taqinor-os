@@ -356,6 +356,23 @@ describe('CALX220 — la pose écrit le document, et sa forme est celle du contr
   });
 });
 
+describe('CALX222 — « Armer la pose » puis un clic sur la carte pose l’organe armé', () => {
+  it('clicCarte pose le type armé au point cliqué, puis désarme ; sans type armé le clic n’est pas consommé', () => {
+    const couche = creerCoucheElectrique(ctxAtelier());
+    expect(couche.clicCarte([-7.6002, 33.5001])).toBe(false);
+    expect(couche.documentElectrique()).toBeNull();
+    couche.armerPose('onduleur');
+    expect(couche.clicCarte([-7.6002, 33.5001])).toBe(true);
+    const eq = couche.documentElectrique()?.equipements ?? [];
+    expect(eq).toHaveLength(1);
+    expect(eq[0].type).toBe('onduleur');
+    expect(eq[0].lng).toBe(-7.6002);
+    expect(couche.typeArme()).toBeNull();
+    expect(couche.clicCarte([-7.6003, 33.5002])).toBe(false);
+    expect(couche.documentElectrique()?.equipements).toHaveLength(1);
+  });
+});
+
 describe('CALX220 — déplacer, retirer, annuler', () => {
   function couchePosee() {
     const ctx: { electrical?: DocumentElectrique | null; sceneOrigin: [number, number] } = {

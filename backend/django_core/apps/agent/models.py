@@ -165,3 +165,45 @@ class AssistantEvent(TenantModel):
 
     def __str__(self):
         return f'{self.intention} @ {self.created_at:%Y-%m-%d %H:%M}'
+
+
+class UsageIA(TenantModel):
+    """Décision fondateur du 21/11/2026 — UN appel IA passé par la couche
+    ``core.ai`` = UNE ligne (ACAL485 « journalisé avec son coût », ACAL489
+    « chaque appel écrit sa ligne d'usage »).
+
+    Écrit par le puits ``apps.agent.services.enregistrer_usage_ia``, enregistré
+    au démarrage (``AgentConfig.ready``) auprès de ``core.ai.usage`` — ``core``
+    n'importe jamais cette app. Métriques SEULEMENT : aucun prompt, aucune
+    image, aucun texte d'erreur (il peut porter une donnée client). Distinct
+    d'``AssistantEvent`` (une requête de l'assistant, avec sa question) : une
+    requête peut faire zéro ou plusieurs appels IA.
+
+    ``cout`` n'est posé QUE si un tarif est configuré pour le fournisseur
+    (``settings.AI_TOKEN_COSTS``) ; ``None`` = coût INCONNU, jamais 0 inventé.
+    """
+
+    # ``company`` + ``created_at``/``updated_at`` : hérités de TenantModel.
+    capability = models.CharField('Capacité', max_length=20)
+    provider = models.CharField('Fournisseur', max_length=40)
+    feature_key = models.CharField(
+        'Fonction appelante', max_length=120, blank=True, default='')
+    input_tokens = models.PositiveIntegerField('Jetons en entrée', default=0)
+    output_tokens = models.PositiveIntegerField('Jetons en sortie', default=0)
+    cout = models.DecimalField(
+        'Coût estimé (MAD)', max_digits=14, decimal_places=2,
+        null=True, blank=True)
+    success = models.BooleanField('Succès', default=True)
+    duration_ms = models.PositiveIntegerField('Durée (ms)', default=0)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Usage IA'
+        verbose_name_plural = 'Usages IA'
+        indexes = [
+            models.Index(fields=['company', 'created_at'],
+                         name='agent_uia_company_created'),
+        ]
+
+    def __str__(self):
+        return f'{self.capability}/{self.provider} @ {self.created_at:%Y-%m-%d %H:%M}'

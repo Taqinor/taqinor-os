@@ -1509,6 +1509,19 @@ decisions:
     source: "docs/audits/2026-11-20-calepinage-l5.md (question non posée le 20/11) ; répondue par Reda le 20/11/2026 (AskUserQuestion, loop audit) : « No, keep it as today » — ACAL457 passée en [SKIP]"
     taches: [ACAL457]
 
+  - id: D-ACAL-35
+    question: "ACAL421 : le serveur public Overpass répond en 20 à 34 s depuis le runner alors que la route coupe à 5 s (décision du 24/10, budget du fuzz d'API) ; que faire ?"
+    options:
+      - cle: a
+        texte: "Tâche de fond (Celery) : l'écran affiche « recherche en cours » puis le contour ; la route répond vite, le délai de 5 s du 24/10 reste intact"
+      - cle: b
+        texte: "Porter le délai à 40 s pour cette route (exception au budget du fuzz)"
+      - cle: c
+        texte: "Laisser ACAL421 bloquée avec sa trace FAIL"
+    reponse: a
+    date: "2026-11-21"
+    source: "AskUserQuestion du 21/11/2026 (loop work on all plans, PR #1515, preuve en direct ACAL490 run 44879944783)"
+    taches: [ACAL421]
   - id: D-ACAL-36
     question: "Pour les NOUVEAUX devis qui ont un calepinage enregistré, le PDF imprime-t-il la production de la pose réelle (orientation, pente, ombrage) au lieu du productible standard de la ville ?"
     options:

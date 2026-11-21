@@ -177,8 +177,8 @@ export default function Projet({ calepinageId: idPropose } = {}) {
 
   return (
     <div className="mt-6" data-testid="cal-projet">
-      <p className="tech-label rule-brass text-brass-300">Projet</p>
-      <p className="mt-2 text-xs text-lune-faint" data-testid="cal-projet-rappel">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Projet</p>
+      <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-projet-rappel">
         L’export reprend le projet ET ses résultats. L’import montre d’abord un
         APERÇU de ce qui SERAIT écrit — rien n’est écrit avant confirmation
         explicite.
@@ -186,7 +186,7 @@ export default function Projet({ calepinageId: idPropose } = {}) {
 
       <Card className="mt-3 p-3" data-testid="cal-projet-export">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-white">Exporter ce projet (JSON)</p>
+          <p className="text-sm text-foreground">Exporter ce projet (JSON)</p>
           <Button
             size="sm"
             variant="outline"
@@ -206,7 +206,7 @@ export default function Projet({ calepinageId: idPropose } = {}) {
       </Card>
 
       <Card className="mt-3 p-3" data-testid="cal-projet-import">
-        <p className="text-sm text-white">Importer un projet (JSON)</p>
+        <p className="text-sm text-foreground">Importer un projet (JSON)</p>
         <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-projet-import-rattachement">
           {rattachement === null
             ? 'Rattachement en cours de lecture…'
@@ -241,8 +241,8 @@ export default function Projet({ calepinageId: idPropose } = {}) {
 
         {apercu && (
           <div className="mt-3 border-t border-border/60 pt-3" data-testid="cal-projet-apercu">
-            <p className="text-sm text-white">Aperçu — rien n’est encore écrit</p>
-            <ul className="mt-2 space-y-1 text-xs text-lune-soft">
+            <p className="text-sm text-foreground">Aperçu — rien n’est encore écrit</p>
+            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
               <li data-testid="cal-projet-apercu-modules">Modules : {apercu.modules ?? '—'}</li>
               <li data-testid="cal-projet-apercu-postes">Postes de pertes : {apercu.postes_pertes}</li>
               <li data-testid="cal-projet-apercu-variantes">
@@ -251,21 +251,21 @@ export default function Projet({ calepinageId: idPropose } = {}) {
               </li>
             </ul>
 
-            <p className="mt-2 text-xs text-lune-faint">Blocs repris :</p>
-            <ul className="list-disc pl-4 text-xs text-lune-soft" data-testid="cal-projet-apercu-repris">
+            <p className="mt-2 text-xs text-muted-foreground">Blocs repris :</p>
+            <ul className="list-disc pl-4 text-xs text-muted-foreground" data-testid="cal-projet-apercu-repris">
               {(apercu.repris || []).map((bloc) => (
                 <li key={bloc}>{LIBELLE_BLOC[bloc] || bloc}</li>
               ))}
             </ul>
 
-            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-projet-apercu-clone">
+            <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-projet-apercu-clone">
               Le fichier importé n’est pas un clone identique : le titre et les
               identifiants changent, et la simulation est relancée.
             </p>
 
             {(apercu.ignores || []).length > 0 && (
               <>
-                <p className="mt-2 text-xs text-lune-faint">Blocs ignorés :</p>
+                <p className="mt-2 text-xs text-muted-foreground">Blocs ignorés :</p>
                 <ul className="list-disc pl-4 text-xs text-muted-foreground" data-testid="cal-projet-apercu-ignores">
                   {apercu.ignores.map((item) => (
                     <li key={item.bloc}>{LIBELLE_BLOC[item.bloc] || item.bloc} — {item.motif}</li>

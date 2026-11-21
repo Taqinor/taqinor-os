@@ -1,0 +1,18 @@
+ACAL440 — frontend/e2e/calepinage-perf.spec.js sur runner GitHub (CI=1, projet chromium, fond de repli), run 44900820457 (sha c6b1010de).
+Glissé d'un PANNEAU sur 20 pas souris (mode « Déplacer les panneaux », note du mode disposition relue, centre de
+carte inchangé) ; 500 modules posés verbatim (placement libre) sur un toit de 68 × 56 m autour de l'épingle de
+l'exemple, résumé « 500 panneaux » vérifié avant la mesure. Plafond CI = seuil « mauvais » INP de vitals.js.
+
+Après ACAL431+433 (code courant) — 3 passed (19.1s) :
+  Atelier 500 modules (apres ACAL431+433) — pire interaction = 272 ms (plafond 500 ms, CI = seuil mauvais de vitals.js)
+  Atelier 500 modules (apres ACAL431+433), deviceMemory 4 — pire interaction = 272 ms (sans plafond)
+  ✓  1 [setup] › e2e/auth.setup.js:9:1 › authenticate (2.7s)
+  ✓  2 [chromium] › e2e/calepinage-perf.spec.js:141:1 › ACAL440: glissé de panneaux sur 500 modules — pire interaction sous le plafond (8.6s)
+  ✓  3 [chromium] › e2e/calepinage-perf.spec.js:149:1 › ACAL440: mode bas de gamme (deviceMemory 4) — mesure consignée sans plafond (6.3s)
+
+Avant ACAL431+433 (commits 68e485efd1 et 9abfad83d9 retirés de ciel.ts/scene3d.ts/panelTexture.ts, front reconstruit) — 3 passed (16.8s) :
+  Atelier 500 modules (avant ACAL431+433) — pire interaction = 288 ms (plafond 500 ms, CI = seuil mauvais de vitals.js)
+  Atelier 500 modules (avant ACAL431+433), deviceMemory 4 — pire interaction = 272 ms (sans plafond)
+  ✓  1 [setup] › e2e/auth.setup.js:9:1 › authenticate (2.7s)
+  ✓  2 [chromium] › e2e/calepinage-perf.spec.js:141:1 › ACAL440: glissé de panneaux sur 500 modules — pire interaction sous le plafond (6.5s)
+  ✓  3 [chromium] › e2e/calepinage-perf.spec.js:149:1 › ACAL440: mode bas de gamme (deviceMemory 4) — mesure consignée sans plafond (6.2s)

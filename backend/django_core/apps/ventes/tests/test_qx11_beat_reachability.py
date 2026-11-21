@@ -117,6 +117,10 @@ ON_DEMAND_ALLOWLIST = {
     # par ``POST calepinages/<pk>/balayage/`` (``core.jobs.submit`` depuis
     # ``apps/calepinage/views/balayage.py``), jamais par beat.
     'calepinage.balayer',
+    # ACAL421 (D-ACAL-35, 21/11) — recherche de l'emprise du bâtiment sur
+    # OpenStreetMap : soumise à la demande par ``POST crm/leads/<id>/roof-footprint/recherche/``
+    # (``core.jobs.submit`` depuis ``apps/crm/roof_views.py``), jamais par beat.
+    'crm.chercher_emprise_toit',
     # NTAI17 — traitement IA d'une pièce GED (classification + extraction) :
     # déclenché À LA DEMANDE au dépôt du document (``.delay()`` depuis le
     # receiver ``ai_governance.receivers``, après commit), jamais périodique —

@@ -9,6 +9,7 @@ import { refusParChamp } from '../electrique/entreeElectrique'
 import { BoutonCalculer } from '../production/PanneauProduction'
 import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree } from './PanneauBatterie.helpers'
 import { MotifAbsence } from '../MotifAbsence'
+import SemaineBatterie from './SemaineBatterie'
 
 /* ============================================================================
    CALX14 — LE PANNEAU « BATTERIE », ET CE QUE LA CHAÎNE CALCULE DEVIENT ENFIN
@@ -172,7 +173,7 @@ function DeclarationBatterie({ id, onRelancer }) {
         value={valeur}
         onChange={(e) => poser(cle, e.target.value)}
         aria-invalid={refus ? 'true' : undefined}
-        className="w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+        className="w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
       >
         <option value="">— non choisi —</option>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -531,6 +532,7 @@ export default function PanneauBatterie({ calepinageId, intervalleMs = 2000 }) {
         <>
           <BlocBatterie batterie={data?.batterie} />
           <ComparateurCapacites bloc={data?.batterie?.capacites_candidates} />
+          {data?.batterie?.total && <SemaineBatterie calepinageId={id} />}
           <div className="border-t border-border/60 pt-3">
             <h3 className="mb-2 text-sm font-semibold">Hors réseau</h3>
             <BlocHorsReseau horsReseau={data?.hors_reseau} />

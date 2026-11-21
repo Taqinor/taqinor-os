@@ -1,0 +1,35 @@
+{
+  "sha": "51c1fdb5e9ddad64e6d5e97a1d162c2dab991d4f",
+  "date": "2026-11-21",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL421"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.5-ACAL421-conception-auto",
+      "taches": [
+        "ACAL421"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL421-conception-auto.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

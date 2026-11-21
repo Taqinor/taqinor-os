@@ -483,3 +483,31 @@ describe('ACAL405 — Démarrage rapide', () => {
     for (const v of PROFIL.valeurs) expect(v.reference.startsWith(PREFIXE_PROFIL_DEPART)).toBe(true)
   })
 })
+
+describe('ACAL397 — « ce qui manque » → /calepinage/reglages#norme : le champ de la norme existe et prend le focus', () => {
+  afterEach(() => { window.history.replaceState(null, '', '/') })
+
+  it('#norme : le sélecteur de la norme est montré, rempli de la section servie, et focalisé', async () => {
+    window.history.replaceState(null, '', '/calepinage/reglages#norme')
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    const champ = await screen.findByLabelText('Norme applicable')
+    expect(champ.id).toBe('norme')
+    expect(champ).toHaveValue(REGLAGES.norme_electrique.norme)
+    await waitFor(() => expect(document.activeElement).toBe(champ))
+  })
+
+  it('enregistrer la norme : un PUT `norme_electrique` qui garde les coefficients servis', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage')
+    mocks.getParametres.mockResolvedValue(servi)
+    mocks.putParametres.mockResolvedValue({ data: {} })
+    rendre()
+    fireEvent.change(await screen.findByLabelText('Norme applicable'), { target: { value: '' } })
+    fireEvent.click(screen.getByTestId('acal397-norme-enregistrer'))
+    await screen.findByTestId('acal397-norme-message')
+    const corps = mocks.putParametres.mock.calls[0][0]
+    expect(Object.keys(corps)).toEqual(['norme_electrique'])
+    expect(corps.norme_electrique.norme).toBeNull()
+    expect(corps.norme_electrique.coefficients).toEqual(servi.data.norme_electrique.coefficients)
+  })
+})

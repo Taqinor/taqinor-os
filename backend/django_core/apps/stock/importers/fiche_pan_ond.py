@@ -26,12 +26,13 @@ CE QUE CE MODULE FAIT :
 
 ZÉRO CHIFFRE INVENTÉ : seules les clés dont l'unité PVsyst correspond
 DIRECTEMENT (ou par un facteur d'unité universellement connu — mètres→mm,
-watts→kW) à celle du champ ``FicheTechnique`` sont mappées. Les coefficients
-de température (``muVocSpec``/``muISC``, publiés en mV/°C par PVsyst, alors
-que ``FicheTechnique`` attend un pourcentage) NE SONT PAS mappés
-automatiquement : les convertir exigerait une hypothèse supplémentaire non
-publiée telle quelle — ils repartent donc en ``non_reconnus``, à saisir à la
-main par la personne qui relit la proposition.
+watts→kW, fraction→%) à celle du champ ``FicheTechnique`` sont mappées.
+CALX356 (lu sur les deux vrais fichiers pvlib de
+``contract_samples/pvsyst/``) : ``muVocSpec`` (mV/°C) devient le coefficient
+RELATIF %/°C par sa définition, rapporté à la ``Voc`` du même fichier ;
+``muISC`` (mA/°C) n'a aucun champ de destination et reste en
+``non_reconnus``. ``champs_attendus_absents`` liste les champs que la table
+sait remplir mais que le fichier n'apporte pas — jamais remplis d'un repli.
 """
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -43,9 +44,20 @@ class FichierIllisible(ValueError):
     fautif pour l'API — toujours ``'file'`` ici (c'est le fichier entier qui
     est en cause, jamais un champ précis du formulaire)."""
 
-    def __init__(self, message):
+    def __init__(self, message, ligne=None):
         super().__init__(message)
         self.champ = 'file'
+        #: CALX356 — numéro (1-based) de la ligne fautive, quand il y en a une.
+        self.ligne = ligne
+
+
+def _premiere_ligne(text):
+    """(numéro 1-based, contenu) de la première ligne non vide — c'est elle
+    qui doit porter ``PVObject_=…`` ; (1, '') pour un fichier vide."""
+    for numero, ligne in enumerate(text.splitlines(), start=1):
+        if ligne.strip():
+            return numero, ligne.strip()
+    return 1, ''
 
 
 # ── Table de correspondance — volontairement un sous-ensemble EXPLICITE. ──
@@ -58,26 +70,64 @@ MODULE_FIELD_MAP = {
     'PNom': ('pmax_wc', 'float'),
     'Voc': ('voc_v', 'float'),
     'Isc': ('isc_a', 'float'),
+    # CALX356 — un vrai .PAN (pvlib tests/data/ET-M772BH550GL.PAN, PVsyst
+    # 7.2) écrit ``Vmp``/``Imp`` ; ``Vmpp``/``Impp`` restent lus (CAL117).
+    'Vmp': ('vmp_v', 'float'),
+    'Imp': ('imp_a', 'float'),
     'Vmpp': ('vmp_v', 'float'),
     'Impp': ('imp_a', 'float'),
     'Weight': ('poids_kg', 'float'),
     'Width': ('largeur_mm', 'float_m_to_mm'),
     'Height': ('longueur_mm', 'float_m_to_mm'),
+    'Depth': ('epaisseur_mm', 'float_m_to_mm'),
+    # CALX356 — déjà en %/°C dans PVsyst (``muPmpReq=-0.340``) : direct.
+    'muPmpReq': ('temp_coeff_pmax_pct_c', 'float'),
+    # CALX356 — PVsyst publie ``muVocSpec`` en mV/°C ; la fiche attend le
+    # coefficient RELATIF (%/°C), rapporté à la Voc STC du MÊME fichier :
+    # mV/°C ÷ (Voc × 1000 mV) × 100 = muVocSpec ÷ (Voc × 10). C'est la
+    # définition du coefficient relatif, pas une hypothèse ; sans ``Voc``
+    # lisible dans le fichier, la clé reste dans ``non_reconnus``.
+    'muVocSpec': ('temp_coeff_voc_pct_c', 'mv_par_c_relatif_voc'),
+    # Facteur de bifacialité PVsyst en fraction (0.700) → % de la fiche.
+    'BifacialityFactor': ('bifacialite_pct', 'fraction_to_pct'),
+    # Tolérance haute de Pmax, déjà en % dans PVsyst (``PNomTolUp=0.90``).
+    'PNomTolUp': ('tolerance_pmax_max_pct', 'float'),
 }
+# ``muISC`` (mA/°C) n'a AUCUN champ de destination (la fiche ne porte pas de
+# coefficient Isc) : il reste dans ``non_reconnus``, jamais deviné.
 
 ONDULEUR_FIELD_MAP = {
     'Pnom': ('ond_ac_kw', 'float_w_to_kw'),
+    # CALX356 — un vrai .OND (bloc ``Converter=TConverter``) publie la
+    # puissance AC nominale ``PNomConv`` DÉJÀ en kW (``PNomConv=250.000``).
+    'PNomConv': ('ond_ac_kw', 'float'),
     'NbMPPT': ('ond_n_mppt', 'int'),
     'VMppMin': ('ond_mppt_v_min', 'float'),
     'VMPPMax': ('ond_mppt_v_max', 'float'),
     'VAbsMax': ('ond_v_max_abs', 'float'),
     'IMaxMPP': ('ond_i_max_mppt_a', 'float'),
+    'EfficMax': ('ond_rendement_max_pct', 'float'),
+    'EfficEuro': ('ond_rendement_euro_pct', 'float'),
+    # Pertes de nuit PVsyst en watts — la fiche les attend en watts.
+    'Night_Loss': ('ond_conso_nuit_w', 'float'),
+    'MonoTri': ('ond_phases', 'mono_tri'),
 }
 
 # Clés de structure PVsyst — jamais des données de fiche, jamais listées en
 # « non reconnu » (ce ne sont pas des champs que l'utilisateur attend de
 # voir traduits).
 _CLES_STRUCTURE = {'PVObject_'}
+
+
+def _est_structure(key, value):
+    """CALX356 — en-têtes de sous-objets d'un vrai fichier PVsyst :
+    ``PVObject_Commercial=pvCommercial``, ``PVObject_IAM=pvIAM``,
+    ``Converter=TConverter``, ``ProfilPIO=TCubicProfile`` (nom de classe
+    Delphi ``T…``). Ce ne sont pas des valeurs de fiche."""
+    if key in _CLES_STRUCTURE or key.startswith('PVObject_'):
+        return True
+    return (len(value) > 1 and value[0] == 'T' and value[1].isupper()
+            and value.isalnum())
 
 
 def parse_pan_ond_text(text):
@@ -113,15 +163,38 @@ def detect_type(raw):
     return None
 
 
-def _convertir(valeur_str, conversion):
+_PHASES = {'mono': 1, 'tri': 3}
+
+
+def _convertir(valeur_str, conversion, raw=None):
     if conversion == 'int':
         return int(Decimal(valeur_str))
+    if conversion == 'mono_tri':
+        phases = _PHASES.get(valeur_str.strip().lower())
+        if phases is None:
+            raise ValueError(valeur_str)
+        return phases
     nombre = Decimal(valeur_str)
     if conversion == 'float_m_to_mm':
         return nombre * Decimal('1000')
     if conversion == 'float_w_to_kw':
         return nombre / Decimal('1000')
+    if conversion == 'fraction_to_pct':
+        return nombre * Decimal('100')
+    if conversion == 'mv_par_c_relatif_voc':
+        voc = Decimal((raw or {}).get('Voc', ''))
+        if voc <= 0:
+            raise ValueError('Voc')
+        return nombre / (voc * Decimal('10'))
     return nombre
+
+
+def champs_attendus(type_fiche):
+    """CALX356 — champs de ``FicheTechnique`` que la table sait remplir pour
+    ce type : ceux que le fichier n'apporte pas sont LISTÉS
+    (``champs_attendus_absents``), jamais remplis d'une valeur de repli."""
+    table = MODULE_FIELD_MAP if type_fiche == 'module' else ONDULEUR_FIELD_MAP
+    return sorted({champ for champ, _ in table.values()})
 
 
 @dataclass
@@ -130,6 +203,7 @@ class PropositionImport:
     mapping: dict = field(default_factory=dict)
     reconnus: list = field(default_factory=list)
     non_reconnus: list = field(default_factory=list)
+    champs_attendus_absents: list = field(default_factory=list)
 
 
 def propose_mapping(text, type_fiche_force=None):
@@ -139,14 +213,17 @@ def propose_mapping(text, type_fiche_force=None):
     raw = parse_pan_ond_text(text)
     type_fiche = type_fiche_force or detect_type(raw)
     if type_fiche not in ('module', 'onduleur'):
+        numero, contenu = _premiere_ligne(text)
         raise FichierIllisible(
-            "Type de fiche non reconnu (ni module ni onduleur) — fichier "
-            "vide, tronqué, ou format non-PVsyst.")
+            f"Ligne {numero} : « {contenu[:60]} » — un fichier PVsyst "
+            "commence par « PVObject_=pvModule » (.PAN) ou "
+            "« PVObject_=pvGInverter » (.OND) ; type de fiche non reconnu "
+            "(fichier vide, tronqué, ou format non-PVsyst).", ligne=numero)
 
     champ_map = MODULE_FIELD_MAP if type_fiche == 'module' else ONDULEUR_FIELD_MAP
     proposition = PropositionImport(type_fiche=type_fiche)
     for key, value in raw.items():
-        if key in _CLES_STRUCTURE:
+        if _est_structure(key, value):
             continue
         entree = champ_map.get(key)
         if entree is None:
@@ -154,7 +231,7 @@ def propose_mapping(text, type_fiche_force=None):
             continue
         champ_nom, conversion = entree
         try:
-            proposition.mapping[champ_nom] = _convertir(value, conversion)
+            proposition.mapping[champ_nom] = _convertir(value, conversion, raw)
             proposition.reconnus.append(key)
         except (InvalidOperation, ValueError):
             # Valeur présente mais illisible pour CETTE clé précise — la
@@ -162,6 +239,9 @@ def propose_mapping(text, type_fiche_force=None):
             # l'import sur un seul champ fautif.
             proposition.non_reconnus.append(key)
     proposition.non_reconnus.sort()
+    proposition.champs_attendus_absents = [
+        champ for champ in champs_attendus(type_fiche)
+        if champ not in proposition.mapping]
     return proposition
 
 
@@ -170,7 +250,10 @@ def parse_pan_ond_bytes(data, filename=''):
     PVsyst historiques sont souvent en ANSI/Latin-1), puis délègue à
     ``propose_mapping``. Lève ``FichierIllisible`` si aucun encodage ne
     fonctionne."""
-    for encodage in ('utf-8', 'latin-1'):
+    # CALX356 — ``utf-8-sig`` d'abord : le vrai .OND de pvlib (CPS
+    # SCH275KTL…) commence par un BOM UTF-8 ; décodé en ``utf-8`` nu, la
+    # première clé devenait ``﻿PVObject_`` et le fichier était refusé.
+    for encodage in ('utf-8-sig', 'latin-1'):
         try:
             texte = data.decode(encodage)
             break

@@ -81,7 +81,14 @@ vi.mock('maplibre-gl', () => {
   const MercatorCoordinate = {
     fromLngLat: () => ({ x: 0, y: 0, z: 0, meterInMercatorCoordinateUnits: () => 1e-7 }),
   };
-  const api = { Map: FakeMap, NavigationControl, GeolocateControl, Point, MercatorCoordinate, GeoJSONSource: class {} };
+  // Acceptation ACAL490 — un document rouvert sur un pan actif VIDE porte désormais son épingle :
+  // l'atelier y plante le repère du site (marqueur inerte, comme dans estimatorRuntimePro10Pro11).
+  class Marker {
+    setLngLat() { return this; }
+    addTo() { return this; }
+    remove() { return this; }
+  }
+  const api = { Map: FakeMap, NavigationControl, GeolocateControl, Marker, Point, MercatorCoordinate, GeoJSONSource: class {} };
   return { default: api, ...api };
 });
 
@@ -97,7 +104,7 @@ function squareCorners(side: number, lng0 = -7.62, lat0 = 33.59): [number, numbe
   ];
 }
 
-const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-obs-length', 'rp9-obs-width'];
+const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-cible-kwh', 'rp9-obs-length', 'rp9-obs-width'];
 const ID_RANGES = ['rp9-tilt-range', 'rp9-pitch-range'];
 const ID_BUTTONS = [
   'rp9-finish', 'rp9-clear', 'rp9-undo-point', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',
@@ -1053,16 +1060,70 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
   it('« Effacer » avec un contour demande en nommant le pan, et ne fait rien sur refus', async () => {
     await boot();
     traceRoof(fakeMaps[0]);
-    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => false);
+    // Acceptation ACAL490 (oracle 4) : la question est posée DANS l'atelier, jamais par window.confirm.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true);
+    const repondre = (libelle: string) =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-question-effacer button')).find((b) => b.textContent === libelle)!.click();
     (document.getElementById('rp9-clear') as HTMLButtonElement).click();
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect((confirmSpy.mock.calls[0] as unknown as string[])[0]).toMatch(/^Effacer 1 pan/);
+    expect(document.getElementById('rp9-question-effacer')?.getAttribute('role')).toBe('alertdialog');
+    expect(txt('rp9-question-effacer-texte')).toMatch(/^Effacer 1 pan/);
+    expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(true); // posée : rien n'est encore effacé
+    repondre('Garder');
+    expect(document.getElementById('rp9-question-effacer')).toBeNull();
     expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(true); // refus : le contour reste fermé
-    confirmSpy.mockImplementation(() => true);
     (document.getElementById('rp9-clear') as HTMLButtonElement).click();
+    repondre('Effacer');
     expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(false); // accepté : site vierge, la carte d'aide revient
+    expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   }, 60000);
+
+  // ACAL410 (acceptation ACAL490) — « 2 pans » puis « 4 pans » : la liste des zones suit le document.
+  it('« Forme du toit » : la liste des zones compte les pans découpés (2 puis 4)', async () => {
+    Object.assign(FakeMap.prototype, { getCenter() { return { lng: -7.62, lat: 33.59 }; } });
+    for (const [libelle, n] of [['2 pans', 2], ['4 pans', 4]] as const) {
+      const api = await boot();
+      setBill('3000');
+      // Le geste de l'acceptation : toit 12 × 8 m par cotes, orientation 0°.
+      const cotes = document.getElementById('rp9-toit-cotes')!;
+      const champs = Array.from(cotes.querySelectorAll<HTMLInputElement>('input'));
+      for (const [i, v] of ['12', '8', '0'].entries()) {
+        champs[i].value = v;
+        champs[i].dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      Array.from(cotes.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === 'Créer le toit')!.click();
+      await flush();
+      expect(txt('rp9-status')).toContain('Toit créé : 12 × 8 m');
+      const puce = Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-formes-toit button')).find((b) => b.textContent === libelle)!;
+      puce.click();
+      await flush();
+      expect(txt('rp9-status')).toContain(`Toit découpé en ${n} pans`);
+      expect((api().serializeLayout() as Doc).zones, `${libelle} : document`).toHaveLength(n);
+      expect(document.querySelectorAll('#rp9-areas-list [data-area-row]').length, `${libelle} : liste à jour`).toBe(n);
+    }
+  }, 120000);
+
+  // Acceptation ACAL490 (ACAL399) — « + Ajouter une zone » rend actif un pan VIDE : le document
+  // gardait `pin: null` (centroïde du pan actif vide) ⇒ simulation refusée « site.pin » et
+  // « Pas de position GPS sur la fiche » à la réouverture.
+  it('« + Ajouter une zone » puis enregistrer : l’épingle du site est gardée', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const base = copie(neuf().serializeLayout() as Doc & { pin: unknown });
+    expect(base.pin).not.toBeNull();
+    const api = await rouvrir(base, 18);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    const apres = copie(api().serializeLayout() as Doc & { pin: unknown });
+    expect(apres.zones).toHaveLength(2);
+    expect(apres.pin, 'épingle du document relu').toEqual(base.pin);
+    // Session neuve (sans document relu) : l'épingle suit le pan tracé, jamais null.
+    const session = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    expect((session().serializeLayout() as Doc & { pin: unknown }).pin).not.toBeNull();
+  }, 120000);
 
   // ACAL420 — l'état vide dit le prochain geste sur la carte, puis s'efface à la fermeture du contour.
   it('l’état vide dit le prochain geste, puis s’efface à la fermeture du contour', async () => {

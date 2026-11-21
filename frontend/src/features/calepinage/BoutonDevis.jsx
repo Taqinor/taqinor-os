@@ -293,12 +293,12 @@ export default function BoutonDevis({
           onClick={reviser}
           disabled={enCours}
           data-testid="cal-devis-reviser-lecture-seule"
-          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
         >
           Réviser (v2)
         </button>
         {retouches && (
-          <p className="text-xs text-brass-300" role="status" data-testid="cal-devis-retouches">
+          <p className="text-xs text-primary-text" role="status" data-testid="cal-devis-retouches">
             {MESSAGE_RETOUCHES_NON_ENREGISTREES}
           </p>
         )}
@@ -314,7 +314,7 @@ export default function BoutonDevis({
           onClick={() => resynchroniser()}
           disabled={desactive}
           data-testid="cal-resynchroniser-devis"
-          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
         >
           {enCours ? 'Resynchronisation…' : 'Resynchroniser le devis'}
         </button>
@@ -324,22 +324,22 @@ export default function BoutonDevis({
           onClick={() => generer()}
           disabled={desactive}
           data-testid="cal-generer-devis"
-          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
         >
           {enCours ? 'Génération…' : 'Générer le devis'}
         </button>
       )}
 
       {devisLie?.reference && (
-        <p className="text-xs text-lune-faint">
-          Devis lié : <span className="text-lune-soft">{devisLie.reference}</span>
+        <p className="text-xs text-muted-foreground">
+          Devis lié : <span className="text-foreground">{devisLie.reference}</span>
         </p>
       )}
 
       {/* ACAL109 (D-ACAL-2) — ce que « Générer le devis » chiffre, DIT : la
           conception courante, dont la variante retenue fait partie. */}
       {totalVariantes > 0 && variantes.retenue_id && (
-        <p className="text-xs text-lune-faint" data-testid="cal-devis-ce-qui-est-chiffre">
+        <p className="text-xs text-muted-foreground" data-testid="cal-devis-ce-qui-est-chiffre">
           Générer le devis chiffre la conception courante : la variante retenue en
           fait partie (la retenir l’y a écrite).
         </p>
@@ -348,7 +348,7 @@ export default function BoutonDevis({
       {/* La raison de la désactivation, TOUJOURS dite : un bouton grisé sans
           explication est une impasse silencieuse. */}
       {varianteManquante && (
-        <p className="text-xs text-lune-faint" role="status"
+        <p className="text-xs text-muted-foreground" role="status"
           data-testid="cal-devis-variante-manquante">
           Choisissez d’abord une variante retenue.
         </p>
@@ -358,10 +358,10 @@ export default function BoutonDevis({
           serveur, mot pour mot. */}
       {refus && (
         <div className="border border-alert-300/40 p-3" data-testid="cal-devis-refus">
-          <p className="tech-label text-alert-300">
+          <p className="text-xs font-semibold uppercase tracking-wide text-destructive">
             {LIBELLE_CHAMP[refus.champ] || refus.champ}
           </p>
-          <p className="mt-1 text-sm text-alert-300" role="alert">{refus.message}</p>
+          <p className="mt-1 text-sm text-destructive" role="alert">{refus.message}</p>
         </div>
       )}
 
@@ -370,19 +370,19 @@ export default function BoutonDevis({
       {bloquage?.bloquants && (
         <div className="border border-alert-300/40 p-3" data-testid="cal-devis-bloquants">
           {bloquage.detail && (
-            <p className="text-sm text-alert-300" role="alert">{bloquage.detail}</p>
+            <p className="text-sm text-destructive" role="alert">{bloquage.detail}</p>
           )}
-          <ul className="mt-1 space-y-1 text-sm text-alert-300">
+          <ul className="mt-1 space-y-1 text-sm text-destructive">
             {bloquage.bloquants.map((b, i) => (
               <li key={`${b?.code ?? 'b'}-${i}`} data-testid="cal-devis-bloquant">
                 {texteBloquant(b)}
-                {b?.detail && <span className="block text-xs text-lune-faint">{b.detail}</span>}
+                {b?.detail && <span className="block text-xs text-muted-foreground">{b.detail}</span>}
               </li>
             ))}
           </ul>
           {bloquage.derogationPossible && (peutDeroger ? (
             <div className="mt-3 space-y-2">
-              <label className="block text-xs text-lune-soft" htmlFor="cal-devis-motif">
+              <label className="block text-xs text-foreground" htmlFor="cal-devis-motif">
                 Motif de la dérogation
               </label>
               <textarea
@@ -390,10 +390,10 @@ export default function BoutonDevis({
                 value={motif}
                 onChange={(e) => { setMotif(e.target.value); setMotifErreur(null) }}
                 data-testid="cal-devis-motif"
-                className="w-full border border-lune-faint/40 bg-transparent p-2 text-sm"
+                className="w-full border border-border bg-transparent p-2 text-sm"
               />
               {motifErreur && (
-                <p className="text-xs text-alert-300" role="alert" data-testid="cal-devis-motif-erreur">
+                <p className="text-xs text-destructive" role="alert" data-testid="cal-devis-motif-erreur">
                   {motifErreur}
                 </p>
               )}
@@ -402,13 +402,13 @@ export default function BoutonDevis({
                 onClick={passerOutre}
                 disabled={enCours}
                 data-testid="cal-devis-passer-outre"
-                className="inline-flex items-center gap-2 border border-alert-300 px-4 py-2 text-sm font-bold text-alert-300 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 border border-alert-300 px-4 py-2 text-sm font-bold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {bloquage.geste === 'sync' ? 'Passer outre et resynchroniser' : 'Passer outre et générer'}
               </button>
             </div>
           ) : (
-            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-devis-derogation-reservee">
+            <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-devis-derogation-reservee">
               {MESSAGE_DEROGATION_RESERVEE}
             </p>
           ))}
@@ -417,7 +417,7 @@ export default function BoutonDevis({
 
       {/* ACAL94 — la révision part, mais les retouches non enregistrées sont DITES. */}
       {retouches && (
-        <p className="text-xs text-brass-300" role="status" data-testid="cal-devis-retouches">
+        <p className="text-xs text-primary-text" role="status" data-testid="cal-devis-retouches">
           {MESSAGE_RETOUCHES_NON_ENREGISTREES}
         </p>
       )}
@@ -426,23 +426,23 @@ export default function BoutonDevis({
       {retour && (
         <div className="border border-brass-400/40 p-3" data-testid="cal-devis-avertissements">
           {retour.inchange && (
-            <p className="text-sm text-lune-soft" role="status">Aucun changement</p>
+            <p className="text-sm text-foreground" role="status">Aucun changement</p>
           )}
           {retour.lignes && (
-            <p className="text-sm text-lune-soft" role="status">{retour.lignes}</p>
+            <p className="text-sm text-foreground" role="status">{retour.lignes}</p>
           )}
           {retour.manquantes?.length > 0 && (
             <div data-testid="cal-devis-indetermine">
-              <p className="text-sm text-lune-soft" role="status">
+              <p className="text-sm text-foreground" role="status">
                 Verdict électrique indéterminé — à compléter :
               </p>
-              <ul className="mt-1 space-y-1 text-sm text-brass-300">
+              <ul className="mt-1 space-y-1 text-sm text-primary-text">
                 {retour.manquantes.map((m) => <li key={m}>{m}</li>)}
               </ul>
             </div>
           )}
           {retour.messages.length > 0 && (
-            <ul className="mt-1 space-y-1 text-sm text-brass-300" role="status">
+            <ul className="mt-1 space-y-1 text-sm text-primary-text" role="status">
               {retour.messages.map((m) => <li key={m}>{m}</li>)}
             </ul>
           )}
@@ -451,7 +451,7 @@ export default function BoutonDevis({
               type="button"
               onClick={confirmerLecture}
               data-testid="cal-devis-j-ai-lu"
-              className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-4 py-2 text-sm font-bold text-brass-300"
+              className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-4 py-2 text-sm font-bold text-primary-text"
             >
               J’ai lu
             </button>
@@ -460,7 +460,7 @@ export default function BoutonDevis({
             <Link
               to={`/ventes/devis/${retour.devisId}/design`}
               data-testid="cal-devis-ouvrir"
-              className="mt-3 inline-block text-sm font-semibold text-brass-300 underline"
+              className="mt-3 inline-block text-sm font-semibold text-primary-text underline"
             >
               Ouvrir le devis
             </Link>
@@ -472,14 +472,14 @@ export default function BoutonDevis({
           est celui du serveur ; l'écran choisit seulement d'offrir, ou non, la révision. */}
       {conflit && (
         <div className="border border-brass-400/40 p-3" data-testid="cal-devis-conflit">
-          <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
+          <p className="text-sm text-foreground" role="status">{conflit.detail}</p>
           {conflit.revision_possible && (
             <button
               type="button"
               onClick={reviser}
               disabled={enCours}
               data-testid="cal-devis-reviser"
-              className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
             >
               Réviser (v2)
             </button>

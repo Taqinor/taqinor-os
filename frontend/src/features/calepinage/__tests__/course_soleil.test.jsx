@@ -261,3 +261,36 @@ describe('CAL96 — l’écran est ATTEIGNABLE', () => {
     expect(Array.isArray(route.roles) && route.roles.length > 0).toBe(true)
   })
 })
+
+/* ── ACAL449 — la table d'ombrage servie teinte les cellules ─────────────── */
+
+// Table servie : l'exemple COMMITTÉ d'ACAL389 (fragment roof_layout), jamais un mock à la main.
+const { exempleContrat } = await import('../../../test/fixtures/contractSamples')
+const TABLE_OMBRAGE = exempleContrat('calepinage', 'calepinage_table_ombrage').zones[0].geometry.shadeTable
+
+describe('ACAL449 — la couche d’ombrage de la course du soleil', () => {
+  it('la table d’ombrage servie teinte les cellules ; sans table, la ligne d’absence', async () => {
+    layout.mockResolvedValue(reponseLayoutSite([{ ...ZONE, geometry: { shadeTable: TABLE_OMBRAGE } }]))
+    rendre()
+    await screen.findByTestId('cal-course-soleil')
+    const cellules = screen.getAllByTestId('acal449-cellule')
+    expect(cellules).toHaveLength(TABLE_OMBRAGE.azimutsDeg.length * TABLE_OMBRAGE.hauteursDeg.length)
+    const teinte = (c) => Number(c.getAttribute('fill-opacity'))
+    const libre = cellules.find((c) => c.getAttribute('data-facteur') === '1')
+    const ombre = cellules.find((c) => c.getAttribute('data-facteur') === '0.8')
+    expect(teinte(libre)).toBe(0)
+    expect(teinte(ombre)).toBeGreaterThan(0)
+    expect(screen.getByTestId('acal449-legende')).toHaveTextContent('0,8')
+    expect(screen.queryByTestId('acal449-absente')).not.toBeInTheDocument()
+    // la course, l'horizon et les obstructions restent dessinés dessus
+    expect(screen.getAllByTestId('cal-sundiagram-obstruction')).toHaveLength(1)
+
+    cleanup()
+    layout.mockResolvedValue(reponseLayoutSite([ZONE]))
+    rendre()
+    await screen.findByTestId('cal-course-soleil')
+    expect(screen.queryAllByTestId('acal449-cellule')).toHaveLength(0)
+    expect(screen.getByTestId('acal449-absente'))
+      .toHaveTextContent('table d’ombrage absente : rouvrez et enregistrez l’atelier')
+  })
+})

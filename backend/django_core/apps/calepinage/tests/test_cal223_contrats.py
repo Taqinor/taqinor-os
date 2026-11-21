@@ -425,6 +425,10 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_detection_toit.json':
         'détection du toit par IA (ACAL391) : appelle un fournisseur externe '
         'sur une image reçue ; route livrée par ACAL485',
+    'calepinage_pente_terrain.json':
+        'pente du relief du champ au sol (ACAL466) : lit le relief '
+        'Copernicus GLO-30 sur le réseau (HTTP Range) ; route livrée par '
+        'ACAL466',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -668,6 +672,25 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
                              ['azimut_deg', 'confiance', 'contour_lnglat'])
             self.assertTrue(all(len(p) == 2 for p in pan['contour_lnglat']))
         self.assertTrue(donnees['exemple_indisponible_503']['detail'])
+
+    def test_forme_de_la_pente_terrain(self):
+        # ACAL466 — lecture pure ; relief illisible = null + motif, jamais
+        # une altitude de repli.
+        donnees = _charger('calepinage_pente_terrain.json')
+        cles = ['ancrage', 'attribution', 'azimut_pente_deg', 'lu_le', 'motif',
+                'pente_deg', 'points', 'source', 'source_url', 'surface']
+        self.assertEqual(sorted(donnees['exemple']), cles)
+        self.assertEqual(sorted(donnees['exemple_sans_pente']), cles)
+        lu = donnees['exemple']
+        self.assertGreaterEqual(len(lu['points']), 3)
+        self.assertEqual(lu['motif'], '')
+        sans = donnees['exemple_sans_pente']
+        self.assertIsNone(sans['pente_deg'])
+        self.assertIsNone(sans['azimut_pente_deg'])
+        self.assertEqual(sans['points'], [])
+        self.assertTrue(sans['motif'])
+        for charge in (lu, sans):
+            self.assertNotIn('DATE', charge['attribution'])
 
 
 class CheminDeclareTest(unittest.TestCase):

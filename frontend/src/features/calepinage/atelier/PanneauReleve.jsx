@@ -99,14 +99,14 @@ function champsDuReleve(releve) {
 function ChampTexte({ id, testId, label, valeur, onChange, type = 'text' }) {
   return (
     <label className="block" data-testid={testId}>
-      <span className="tech-label text-lune-faint">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
       <input
         type={type}
         step={type === 'number' ? 'any' : undefined}
         id={id}
         value={valeur ?? ''}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
       />
     </label>
   )
@@ -137,7 +137,7 @@ function BlocCote({ chaineIndex, coteIndex, cote, onChange, onRetirer }) {
         type="button"
         onClick={onRetirer}
         data-testid={`cal-releve-chaine-${chaineIndex}-cote-${coteIndex}-retirer`}
-        className="text-xs text-lune-soft underline"
+        className="text-xs text-muted-foreground underline"
       >
         Retirer la cote
       </button>
@@ -158,10 +158,10 @@ function BlocChaine({ index, chaine, erreur, onChange, onRetirer }) {
 
   return (
     <fieldset
-      className="mt-4 border-t border-white/10 pt-4"
+      className="mt-4 border-t border-border pt-4"
       data-testid={`cal-releve-chaine-${index}`}
     >
-      <legend className="tech-label text-lune-faint">{`Chaîne ${index + 1}`}</legend>
+      <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{`Chaîne ${index + 1}`}</legend>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <ChampTexte
           id={`cal-releve-chaine-${index}-nom`}
@@ -188,7 +188,7 @@ function BlocChaine({ index, chaine, erreur, onChange, onRetirer }) {
         />
       </div>
 
-      <p className="tech-label mt-3 text-lune-faint">Cotes</p>
+      <p className="text-xs font-semibold uppercase tracking-wide mt-3 text-muted-foreground">Cotes</p>
       {chaine.cotes.map((cote, coteIndex) => (
         <BlocCote
           // Une cote n'a pas d'identifiant stable avant enregistrement ;
@@ -205,7 +205,7 @@ function BlocChaine({ index, chaine, erreur, onChange, onRetirer }) {
         type="button"
         onClick={ajouterCote}
         data-testid={`cal-releve-chaine-${index}-ajouter-cote`}
-        className="mt-2 text-xs text-brass-200 underline"
+        className="mt-2 text-xs text-primary-text underline"
       >
         + Ajouter une cote
       </button>
@@ -226,7 +226,7 @@ function BlocChaine({ index, chaine, erreur, onChange, onRetirer }) {
         type="button"
         onClick={onRetirer}
         data-testid={`cal-releve-chaine-${index}-retirer`}
-        className="mt-2 block text-xs text-lune-soft underline"
+        className="mt-2 block text-xs text-muted-foreground underline"
       >
         Retirer la chaîne
       </button>
@@ -241,11 +241,11 @@ function ChaineResolue({ index, resolue }) {
     .map((c) => c.nom)
 
   return (
-    <div className="mt-3 border-t border-white/10 pt-3" data-testid={`cal-releve-resultat-chaine-${index}`}>
-      <p className="text-sm font-semibold text-white">{resolue.nom}</p>
+    <div className="mt-3 border-t border-border pt-3" data-testid={`cal-releve-resultat-chaine-${index}`}>
+      <p className="text-sm font-semibold text-foreground">{resolue.nom}</p>
       {resolue.ok
         ? (
-          <p className="text-sm text-lune-soft" data-testid={`cal-releve-resultat-chaine-${index}-fermee`}>
+          <p className="text-sm text-muted-foreground" data-testid={`cal-releve-resultat-chaine-${index}-fermee`}>
             {`Chaîne fermée — positions : ${(resolue.positions || []).map((p) => p.toFixed(3)).join(' · ')} m`}
           </p>
         )
@@ -410,23 +410,23 @@ function AppliquerCoteAuPan({ calepinageId, releve, documentVivant = null, lectu
   }
 
   return (
-    <div className="mt-5 border-t border-white/10 pt-4" data-testid="cal-releve-appliquer-cote">
-      <p className="tech-label text-lune-faint">Appliquer la cote au pan</p>
+    <div className="mt-5 border-t border-border pt-4" data-testid="cal-releve-appliquer-cote">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Appliquer la cote au pan</p>
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <label className="text-sm text-lune-soft">
+        <label className="text-sm text-muted-foreground">
           Pan
           <select value={zoneId} data-testid="cal-releve-cote-pan"
             onChange={(e) => { setZoneId(e.target.value); setCoteIndex('') }}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
             <option value="">— choisir —</option>
             {zones.map((z) => <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>)}
           </select>
         </label>
-        <label className="text-sm text-lune-soft">
+        <label className="text-sm text-muted-foreground">
           Côté
           <select value={coteIndex} data-testid="cal-releve-cote-cote" disabled={!zone}
             onChange={(e) => setCoteIndex(e.target.value)}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
             <option value="">— choisir —</option>
             {cotes.map((c) => (
               <option key={c.index} value={String(c.index)}>
@@ -435,11 +435,11 @@ function AppliquerCoteAuPan({ calepinageId, releve, documentVivant = null, lectu
             ))}
           </select>
         </label>
-        <label className="text-sm text-lune-soft">
+        <label className="text-sm text-muted-foreground">
           Cote mesurée
           <select value={mesureCle} data-testid="cal-releve-cote-mesure"
             onChange={(e) => setMesureCle(e.target.value)}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
             <option value="">— choisir —</option>
             {mesures.map((m) => (
               <option key={m.cle} value={m.cle} disabled={m.aConfirmer}>
@@ -451,19 +451,19 @@ function AppliquerCoteAuPan({ calepinageId, releve, documentVivant = null, lectu
         </label>
       </div>
       {lectureSeule && (
-        <p className="mt-2 text-xs text-lune-faint" data-testid="cal-releve-cote-lecture-seule">
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-releve-cote-lecture-seule">
           {RAISON_LECTURE_SEULE}
         </p>
       )}
       <button type="button" onClick={appliquer}
         disabled={enCours || !zone || coteIndex === '' || !mesure || lectureSeule}
         data-testid="cal-releve-cote-appliquer"
-        className="mt-3 block rounded border border-brass-400/60 px-4 py-2 text-sm text-brass-200 disabled:opacity-50">
+        className="mt-3 block rounded border border-brass-400/60 px-4 py-2 text-sm text-primary-text disabled:opacity-50">
         Appliquer la cote au pan
       </button>
       {retour && (
         <p role={retour.ok ? 'status' : 'alert'} data-testid="cal-releve-cote-retour"
-          className={`mt-2 text-sm ${retour.ok ? 'text-lune-soft' : 'text-red-300'}`}>
+          className={`mt-2 text-sm ${retour.ok ? 'text-muted-foreground' : 'text-red-300'}`}>
           {retour.texte}
         </p>
       )}
@@ -551,33 +551,33 @@ function AppliquerAzimutAuPan({
   }
 
   return (
-    <div className="mt-5 border-t border-white/10 pt-4" data-testid="cal-releve-appliquer-azimut">
-      <p className="tech-label text-lune-faint">Appliquer l’azimut au pan</p>
-      <p className="mt-1 text-sm text-lune-soft" data-testid="cal-releve-azimut-mesure">
+    <div className="mt-5 border-t border-border pt-4" data-testid="cal-releve-appliquer-azimut">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Appliquer l’azimut au pan</p>
+      <p className="mt-1 text-sm text-muted-foreground" data-testid="cal-releve-azimut-mesure">
         {`Azimut relevé : ${azimut.deg}° ± ${precision}°`}
       </p>
-      <label className="mt-2 block text-sm text-lune-soft">
+      <label className="mt-2 block text-sm text-muted-foreground">
         Pan
         <select value={zoneId} data-testid="cal-releve-azimut-pan"
           onChange={(e) => setZoneId(e.target.value)}
-          className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white">
+          className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
           <option value="">— choisir —</option>
           {zones.map((z) => <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>)}
         </select>
       </label>
       {lectureSeule && (
-        <p className="mt-2 text-xs text-lune-faint" data-testid="cal-releve-azimut-lecture-seule">
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-releve-azimut-lecture-seule">
           {RAISON_LECTURE_SEULE}
         </p>
       )}
       <button type="button" onClick={appliquer} disabled={enCours || !zone || lectureSeule}
         data-testid="cal-releve-azimut-appliquer"
-        className="mt-3 block rounded border border-brass-400/60 px-4 py-2 text-sm text-brass-200 disabled:opacity-50">
+        className="mt-3 block rounded border border-brass-400/60 px-4 py-2 text-sm text-primary-text disabled:opacity-50">
         Appliquer l’azimut au pan
       </button>
       {retour && (
         <p role={retour.ok ? 'status' : 'alert'} data-testid="cal-releve-azimut-retour"
-          className={`mt-2 text-sm ${retour.ok ? 'text-lune-soft' : 'text-red-300'}`}>
+          className={`mt-2 text-sm ${retour.ok ? 'text-muted-foreground' : 'text-red-300'}`}>
           {retour.texte}
         </p>
       )}
@@ -720,8 +720,8 @@ export default function PanneauReleve({
   const geometrieChaines = resultat?.releve?.geometrie?.chaines ?? null
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-releve-panel">
-      <p className="tech-label rule-brass text-brass-300">Relevé terrain</p>
+    <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-releve-panel">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Relevé terrain</p>
 
       {(champsFautifs.length > 0 || erreurs.detail) && (
         <p
@@ -768,12 +768,12 @@ export default function PanneauReleve({
       </div>
 
       <label className="mt-3 block" data-testid="cal-releve-champ-notes">
-        <span className="tech-label text-lune-faint">Notes de terrain</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notes de terrain</span>
         <textarea
           id="cal-releve-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+          className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
         />
       </label>
       <ErreurChamp champ="notes" erreurs={erreurs} />
@@ -793,16 +793,16 @@ export default function PanneauReleve({
         type="button"
         onClick={ajouterChaine}
         data-testid="cal-releve-ajouter-chaine"
-        className="mt-3 text-sm text-brass-200 underline"
+        className="mt-3 text-sm text-primary-text underline"
       >
         + Ajouter une chaîne
       </button>
 
       {photosSite.length > 0 && (
-        <fieldset className="mt-4 border-t border-white/10 pt-3" data-testid="cal-releve-photos">
-          <legend className="tech-label text-lune-faint">Photos du site rattachées à ce relevé</legend>
+        <fieldset className="mt-4 border-t border-border pt-3" data-testid="cal-releve-photos">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Photos du site rattachées à ce relevé</legend>
           {photosSite.map((photo) => (
-            <label key={photo.id} className="mt-1 flex items-center gap-2 text-sm text-lune-soft">
+            <label key={photo.id} className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
               <input
                 type="checkbox"
                 data-testid={`cal-releve-photo-${photo.id}`}
@@ -816,7 +816,7 @@ export default function PanneauReleve({
       )}
 
       {lectureSeule && ( /* ACON10 — aucun bouton d'écriture actif, la raison dite */
-        <p className="mt-4 text-xs text-lune-faint" data-testid="cal-releve-lecture-seule">
+        <p className="mt-4 text-xs text-muted-foreground" data-testid="cal-releve-lecture-seule">
           {RAISON_LECTURE_SEULE}
         </p>
       )}
@@ -826,7 +826,7 @@ export default function PanneauReleve({
           onClick={() => enregistrer(releveAfficheId ? 'corriger' : 'creer')}
           disabled={enCours || lectureSeule}
           data-testid="cal-releve-envoyer"
-          className="block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
+          className="block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text"
         >
           {enCours
             ? 'Envoi au solveur…'
@@ -839,7 +839,7 @@ export default function PanneauReleve({
               onClick={() => enregistrer('creer')}
               disabled={enCours || lectureSeule}
               data-testid="cal-releve-nouveau"
-              className="block rounded border border-white/15 px-4 py-2 text-sm text-lune-soft"
+              className="block rounded border border-border px-4 py-2 text-sm text-muted-foreground"
             >
               Nouveau relevé
             </button>
@@ -857,9 +857,9 @@ export default function PanneauReleve({
       </div>
 
       {historique.length > 0 && (
-        <div className="mt-4 border-t border-white/10 pt-3" data-testid="cal-releve-historique">
-          <p className="tech-label text-lune-faint">{`Historique (${historique.length})`}</p>
-          <ul className="mt-1 text-sm text-lune-soft">
+        <div className="mt-4 border-t border-border pt-3" data-testid="cal-releve-historique">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{`Historique (${historique.length})`}</p>
+          <ul className="mt-1 text-sm text-muted-foreground">
             {historique.map((r) => (
               <li key={r.id} data-testid={`cal-releve-historique-${r.id}`}>
                 {`${r.releve_le || 'date inconnue'}${r.id === releveCourantId ? ' — courant' : ''}`}
@@ -870,14 +870,14 @@ export default function PanneauReleve({
       )}
 
       {message && (
-        <p role="status" data-testid="cal-releve-message" className="mt-3 text-sm text-lune-soft">
+        <p role="status" data-testid="cal-releve-message" className="mt-3 text-sm text-muted-foreground">
           {message}
         </p>
       )}
 
       {geometrieChaines && (
-        <div className="mt-5 border-t border-white/10 pt-4" data-testid="cal-releve-resultat">
-          <p className="tech-label text-lune-faint">Géométrie résolue</p>
+        <div className="mt-5 border-t border-border pt-4" data-testid="cal-releve-resultat">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Géométrie résolue</p>
           {geometrieChaines.map((resolue, index) => (
             <ChaineResolue key={resolue.nom || index} index={index} resolue={resolue} />
           ))}

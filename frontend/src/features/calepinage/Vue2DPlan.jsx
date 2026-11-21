@@ -100,18 +100,18 @@ export default function Vue2DPlan({ plan, compte3d, titre, panId }) {
       ref={boiteRef}
       data-testid="v2d-boite"
       data-plein-ecran={pleinEcran ? '1' : '0'}
-      className={pleinEcran ? 'fixed inset-0 z-[var(--z-overlay)] overflow-auto bg-nuit-900 p-4' : 'border border-white/10 bg-nuit-800 p-3'}
+      className={pleinEcran ? 'fixed inset-0 z-[var(--z-overlay)] overflow-auto bg-background p-4' : 'border border-border bg-card p-3'}
       aria-label="Vue 2D plan"
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className="tech-label text-lune-faint">{titre ?? 'Vue 2D — plan orthographique, nord en haut'}</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titre ?? 'Vue 2D — plan orthographique, nord en haut'}</h3>
         <button type="button" className="rp9-chip ml-auto" data-testid="v2d-plein-ecran" onClick={basculerPleinEcran}>
           {pleinEcran ? 'Quitter le plein écran' : 'Plein écran'}
         </button>
       </div>
 
       {!plan && (
-        <p className="text-sm text-lune-faint" data-testid="v2d-vide">
+        <p className="text-sm text-muted-foreground" data-testid="v2d-vide">
           Aucun contour fermé — tracez le toit dans la vue 3D, le plan suivra.
         </p>
       )}
@@ -123,7 +123,7 @@ export default function Vue2DPlan({ plan, compte3d, titre, panId }) {
             {formatCote(plan.spanEastWestM)} (E-O) × {formatCote(plan.spanNorthSouthM)} (N-S).
           </p>
           {divergence != null && (
-            <p className="mb-2 text-sm text-alert-300" data-testid="v2d-divergence">
+            <p className="mb-2 text-sm text-destructive" data-testid="v2d-divergence">
               La vue 3D affiche {divergence} module(s) : le plan n’a pas été reprojeté depuis le
               dernier calcul — rouvrez la 3D pour resynchroniser.
             </p>

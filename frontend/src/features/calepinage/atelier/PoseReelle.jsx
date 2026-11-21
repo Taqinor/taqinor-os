@@ -185,8 +185,8 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
   const erreurDe = (pan, champ) => (refus && refus.pan === pan ? refus.champs[champ] : undefined)
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-pose-reelle">
-      <p className="tech-label rule-brass text-brass-300">Pose réelle (as-built)</p>
+    <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-pose-reelle">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Pose réelle (as-built)</p>
 
       {refus && champsRefus.length > 0 && (
         <p
@@ -207,13 +207,13 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
       )}
 
       {etat === null && !erreurLecture && (
-        <p className="mt-3 text-sm text-lune-faint" data-testid="cal-pose-chargement">
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-pose-chargement">
           Lecture de la pose réelle…
         </p>
       )}
 
       {etat !== null && lignes.length === 0 && (
-        <p className="mt-3 text-sm text-lune-soft" data-testid="cal-pose-vide">
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-pose-vide">
           Aucun pan prévu dans ce calepinage : dessinez la conception (ou retenez
           une variante) avant de saisir la pose réelle.
         </p>
@@ -221,20 +221,20 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
 
       {lignes.length > 0 && (
         <>
-          <p className="mt-3 text-sm text-lune-soft" data-testid="cal-pose-source">
+          <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-pose-source">
             {`Prévu lu dans : ${etat.source || '—'} · total prévu ${etat.total_prevu ?? '—'} · `}
             {etat.total_pose === null || etat.total_pose === undefined
               ? 'aucun pan relevé'
               : `total posé ${etat.total_pose}`}
           </p>
 
-          <p className="mt-2 text-xs text-lune-faint" data-testid="cal-pose-brouillon-note">
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-pose-brouillon-note">
             Les saisies non enregistrées ne sont pas conservées si vous quittez la page.
           </p>
 
           <table className="mt-4 w-full text-sm" role="grid" data-testid="cal-pose-grille">
             <thead>
-              <tr className="text-left text-lune-faint">
+              <tr className="text-left text-muted-foreground">
                 <th scope="col">Pan</th>
                 <th scope="col">Prévu</th>
                 <th scope="col">Posé</th>
@@ -254,10 +254,10 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                 const erreurModules = erreurDe(cle, 'modules_poses')
                 return (
                   <tr key={cle} data-testid={`cal-pose-ligne-${cle}`} className="align-top">
-                    <td className="py-2 text-white">
+                    <td className="py-2 text-foreground">
                       {libelle}
                       {ligne.orphelin && (
-                        <p className="mt-1 text-xs text-brass-300" data-testid={`cal-pose-orphelin-${cle}`}>
+                        <p className="mt-1 text-xs text-primary-text" data-testid={`cal-pose-orphelin-${cle}`}>
                           Pan supprimé du document — hors totaux
                         </p>
                       )}
@@ -279,7 +279,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                         data-testid={`cal-pose-modules-${cle}`}
                         value={saisie.modules}
                         onChange={(e) => majSaisie(cle, 'modules', e.target.value)}
-                        className="w-20 rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
+                        className="w-20 rounded border border-border bg-black/30 px-2 py-1 text-foreground"
                       />
                       {erreurModules && (
                         <p role="alert" data-testid={`cal-pose-erreur-modules-${cle}`} className="mt-1 text-xs text-red-300">
@@ -290,7 +290,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                     <td className="py-2">
                       <span data-testid={`cal-pose-ecart-${cle}`}>{ecartLisible(ligne.ecart)}</span>
                       {ligne.mention && (
-                        <p className="mt-1 text-xs text-lune-faint" data-testid={`cal-pose-mention-${cle}`}>
+                        <p className="mt-1 text-xs text-muted-foreground" data-testid={`cal-pose-mention-${cle}`}>
                           {ligne.mention}
                         </p>
                       )}
@@ -302,10 +302,10 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                         data-testid={`cal-pose-date-${cle}`}
                         value={saisie.date}
                         onChange={(e) => majSaisie(cle, 'date', e.target.value)}
-                        className="rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
+                        className="rounded border border-border bg-black/30 px-2 py-1 text-foreground"
                       />
                       {ligne.releve_par?.nom_complet && (
-                        <p className="mt-1 text-xs text-lune-faint" data-testid={`cal-pose-auteur-${cle}`}>
+                        <p className="mt-1 text-xs text-muted-foreground" data-testid={`cal-pose-auteur-${cle}`}>
                           {`par ${ligne.releve_par.nom_complet}`}
                         </p>
                       )}
@@ -315,7 +315,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                         </p>
                       )}
                       {saisie.brouillon && (
-                        <p className="mt-1 text-xs text-brass-300" data-testid={`cal-pose-brouillon-${cle}`}>
+                        <p className="mt-1 text-xs text-primary-text" data-testid={`cal-pose-brouillon-${cle}`}>
                           Brouillon non enregistré
                         </p>
                       )}
@@ -326,7 +326,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                         data-testid={`cal-pose-position-${cle}`}
                         value={saisie.position}
                         onChange={(e) => majSaisie(cle, 'position', e.target.value)}
-                        className="w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
+                        className="w-full rounded border border-border bg-black/30 px-2 py-1 text-foreground"
                       />
                     </td>
                     <td className="py-2">
@@ -348,7 +348,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                             onClick={() => enregistrer(ligne)}
                             disabled={enCours !== null}
                             data-testid={`cal-pose-enregistrer-${cle}`}
-                            className="rounded bg-brass-500/20 px-3 py-1 text-xs font-semibold text-brass-200 disabled:opacity-50"
+                            className="rounded bg-brass-500/20 px-3 py-1 text-xs font-semibold text-primary-text disabled:opacity-50"
                           >
                             {enCours === cle ? 'Envoi…' : 'Enregistrer'}
                           </button>
@@ -370,7 +370,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
             onClick={creerVersion}
             disabled={enCours !== null}
             data-testid="cal-pose-creer-version"
-            className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200 disabled:opacity-50"
+            className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text disabled:opacity-50"
           >
             {enCours === 'version' ? 'Gel en cours…' : 'Créer une version depuis les écarts'}
           </button>
@@ -380,7 +380,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
             </p>
           )}
           {etat.version_creee !== null && etat.version_creee !== undefined && (
-            <p className="mt-2 text-xs text-lune-soft" data-testid="cal-pose-version">
+            <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-pose-version">
               {`Dernière version née des écarts : n° ${etat.version_creee}.`}
             </p>
           )}
@@ -394,7 +394,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
       )}
 
       {message && (
-        <p role="status" data-testid="cal-pose-message" className="mt-3 text-sm text-lune-soft">
+        <p role="status" data-testid="cal-pose-message" className="mt-3 text-sm text-muted-foreground">
           {message}
         </p>
       )}
