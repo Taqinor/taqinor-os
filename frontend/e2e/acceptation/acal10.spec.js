@@ -199,6 +199,19 @@ const attendreCarteImmobile = (page) => expect.poll(() => page.evaluate(() => {
   return !!m && !m.isMoving() && !m.isEasing?.()
 }), { timeout: 30_000, message: 'carte immobile' }).toBe(true)
 
+/** ADEP24 — N images rendues (requestAnimationFrame) : on attend le rendu, jamais un délai fixe. */
+const images = (page, n = 20) => page.evaluate((k) => new Promise((r) => {
+  let i = 0
+  const f = () => { i += 1; if (i >= k) r(); else requestAnimationFrame(f) }
+  requestAnimationFrame(f)
+}), n)
+
+/** ADEP24 — attend qu'une valeur lue cesse de changer entre deux relevés (défilement, animation). */
+async function stable(lire, message) {
+  let avant = Symbol('jamais')
+  await expect.poll(async () => { const v = JSON.stringify(await lire()); const ok = v === avant; avant = v; return ok }, { timeout: 15_000, message }).toBe(true)
+}
+
 /** Le document VIVANT (serializeLayout) — lecture seule. */
 const docVivant = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__builderApi()?.serializeLayout?.() ?? null)))
 
@@ -404,7 +417,7 @@ etape('PA2.5-ACAL402-studio-1440', ['ACAL402'], async ({ page, context, suivi })
     const cb = await carte.boundingBox()
     await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height - 30)
     await page.mouse.wheel(0, 3000)
-    await page.waitForTimeout(500)
+    await stable(() => carte.evaluate((el) => el.scrollTop), 'défilement de la colonne scène terminé')
     const bascule = page.locator('#rp9-layout-toggle')
     const visible = await bascule.isVisible()
     const bb = visible ? await bascule.boundingBox() : null
@@ -469,7 +482,7 @@ etape('PA2.5-ACAL411-aligner-repartir', ['ACAL411'], async ({ page, context, sui
     pans = await panneauxEcran(page)
     await selectionner(page, pans.slice(0, 3))
     await barre.getByRole('button', { name: 'Répartir' }).click()
-    await page.waitForTimeout(500)
+    await expect(page.locator('#rp9-layout-note'), 'Répartir appliqué').toContainText(/Distribu/, T)
     const rep = (await panneauxEcran(page)).slice(0, 3)
     console.log(`[ACAL411] après Répartir : ${JSON.stringify(rep.map((p) => [p.cx, p.cy]))} ; note « ${await page.locator('#rp9-layout-note').innerText()} »`)
     const note = await page.locator('#rp9-layout-note').innerText()
@@ -738,7 +751,7 @@ etape('PA2.5-ACAL424-calage-monde', ['ACAL424'], async ({ page, context, suivi }
     page.on('request', (r) => { if (r.method() === 'PATCH' && /\/photos\/\d+\/calage\//.test(r.url())) patchs += 1 })
     await champ.setInputFiles({ name: 'ortho-acal424.jgw', mimeType: 'text/plain', buffer: Buffer.from(monde) })
     await expect(page.getByTestId('cal-photo-calage-erreur')).toHaveCount(0)
-    await page.waitForTimeout(800)
+    await page.waitForLoadState('networkidle') // aucune requête en vol : un PATCH parti se compterait
     expect(patchs, 'rien n’est enregistré avant « Enregistrer le calage »').toBe(0)
     await capture(page.getByTestId('cal-photo-calage'), 'PA2.5-ACAL424', 'poignees')
     const req = page.waitForRequest((r) => r.method() === 'PATCH' && /\/photos\/\d+\/calage\//.test(r.url()), T)
@@ -879,7 +892,7 @@ async function cielA(page, id, jour, heure) {
   await ouvrirAtelier(page, id)
   await page.evaluate(() => { const m = window.__carteAtelier(); m.jumpTo({ pitch: m.getMaxPitch() }) })
   await attendreCarteImmobile(page)
-  await page.waitForTimeout(500)
+  await images(page)
   const relu = (await docVivant(page))?.scene
   expect(relu, 'instant de scène hydraté').toEqual({ sunDay: jour, sunHour: heure })
   return page.evaluate(() => ({ n: window.__ciel.length, dernier: window.__ciel[window.__ciel.length - 1] ?? null }))
@@ -966,7 +979,7 @@ etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => 
       const centre = [ll.reduce((t, p) => t + p[0], 0) / ll.length, ll.reduce((t, p) => t + p[1], 0) / ll.length]
       await page.evaluate((c) => window.__carteAtelier().jumpTo({ center: c, zoom: 20.5, pitch: 0, bearing: 0 }), centre)
       await attendreCarteImmobile(page)
-      await page.waitForTimeout(500)
+      await images(page)
     }
     const paysage = page.locator('[data-orient="landscape"]').first()
     const portrait = page.locator('[data-orient="portrait"]').first()
@@ -974,7 +987,8 @@ etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => 
     console.log(`[ACAL433] toiles au démarrage : ${JSON.stringify(await toiles(page))} ; pose ${await page.locator('[data-orient][aria-pressed="true"]').first().getAttribute('data-orient').catch(() => '?')}`)
     await paysage.click()
     await expect(paysage).toHaveAttribute('aria-pressed', 'true')
-    await page.waitForTimeout(1500)
+    await stable(() => toiles(page), 'toiles de texture stables après la bascule')
+    await images(page)
     await vue()
     const t1 = await toiles(page)
     console.log(`[ACAL433] toiles après paysage : ${JSON.stringify(t1)}`)
@@ -983,7 +997,8 @@ etape('PA2.3-ACAL433-texture', ['ACAL433'], async ({ page, context, suivi }) => 
     await captureToile(page, 512, 280, 'texture-paysage-512x280')
     await portrait.click()
     await expect(portrait).toHaveAttribute('aria-pressed', 'true')
-    await page.waitForTimeout(1500)
+    await stable(() => toiles(page), 'toiles de texture stables après la bascule')
+    await images(page)
     await vue()
     const t2 = await toiles(page)
     console.log(`[ACAL433] toiles après portrait : ${JSON.stringify(t2)}`)
