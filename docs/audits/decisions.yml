@@ -1652,7 +1652,7 @@ decisions:
     reponse: b
     date: "2026-11-21"
     source: "lot AskUserQuestion du 21/11/2026 au soir (campagne L5 calepinage, vérification de la vague 2) ; option a recommandée, écartée ; tâches du lot POMPAGE à écrire"
-    taches: []
+    taches: [ACAL1197, ACAL1198, ACAL1199, ACAL1200, ACAL1201, ACAL1202, ACAL1203]
 
   - id: D-APAR-1
     question: "Source du taux de TVA par defaut ?"

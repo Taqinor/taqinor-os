@@ -4,19 +4,19 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 
 ## Où vivent les tâches
 
-- 475 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`), plus ACAL487 du groupe du 20/11, sortie de GATED par D-ACAL-38 et rangée dans ce groupe.
+- 482 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`), plus ACAL487 du groupe du 20/11, sortie de GATED par D-ACAL-38 et rangée dans ce groupe.
 - Groupe principal : `docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `## Groupe ACAL — complément du 2026-11-21 (vague 2)` (423 tâches de la vague) : en-tête, ordre de construction (dont la « vague 0 »), gestes du fondateur.
-- Moitiés des autres propriétaires : même titre de groupe dans `PLAN_AUDIT_DEVIS`, `PLAN_AUDIT_MOTEUR`, `PLAN_AUDIT_LEAD`, `PLAN_AUDIT_CHANTIERS`, `PLAN_AUDIT_STOCK`, `PLAN_AUDIT_SAV`, `PLAN_AUDIT_PARAMETRES`, `PLAN_AUDIT_DEPLOY`, `PLAN_AUDIT_SECURITE`, `PLAN_AUDIT_TRANSVERSE` (tâches atomiques à deux propriétaires) et `docs/WEB_PLAN.md`.
+- Moitiés des autres propriétaires : même titre de groupe dans `PLAN_AUDIT_DEVIS`, `PLAN_AUDIT_MOTEUR`, `PLAN_AUDIT_LEAD`, `PLAN_AUDIT_CHANTIERS`, `PLAN_AUDIT_STOCK`, `PLAN_AUDIT_SAV`, `PLAN_AUDIT_PARAMETRES`, `PLAN_AUDIT_DEPLOY`, `PLAN_AUDIT_SECURITE`, `PLAN_AUDIT_TRANSVERSE` (tâches atomiques à deux propriétaires), `PLAN_AUDIT_GENERATEUR` et `docs/WEB_PLAN.md`.
 - Décisions de Reda du 21/11 : D-ACAL-36 à D-ACAL-46 (D-ACAL-44 à 46 le soir, après la vérification ; `docs/audits/decisions.yml`, `docs/claude-memory/calepinage-decisions-fondateur.md`).
-- Tâches GATED (ne pas auto-construire) : ACAL765 (PLAN_AUDIT_CALEPINAGE) — attend un facteur d'émission du réseau marocain daté et sourcé — recherche documentaire à mener par une session ultérieure, pas une question au fondateur ; ACAL1001 (PLAN_AUDIT_DEVIS) — attend que Reda ait lu la liste des écarts sortie par ACAL1000 sur une copie de ses devis, produite sur un commit qui contient ACAL999, ACAL1195, ACAL1169, ACAL1170, ACAL973, ACAL927, ACAL1033, ACAL1008, ACAL1196 et ACAL1171 — condition écrite de D-ACAL-36 et D-ACAL-39 ; ACAL921 (PLAN_AUDIT_TRANSVERSE) — attend que Reda ait lu la liste sortie par ACAL1194 (`acal_dryrun_azimut_surfaces --dry-run`) sur une copie de ses calepinages — la lecture de chaque surface de pose déjà enregistrée change.
+- Tâches GATED (ne pas auto-construire) : ACAL765 (PLAN_AUDIT_CALEPINAGE) — attend un facteur d'émission du réseau marocain daté et sourcé — recherche documentaire à mener par une session ultérieure, pas une question au fondateur ; ACAL1001 (PLAN_AUDIT_DEVIS) — attend que Reda ait lu la liste des écarts sortie par ACAL1000 sur une copie de ses devis, produite sur un commit qui contient ACAL999, ACAL1195, ACAL1169, ACAL1170, ACAL973, ACAL927, ACAL1033, ACAL1008, ACAL1196, ACAL1171 et ACAL1197 à ACAL1203 (la sortie agricole d'ACAL1203 est collée dans la PR à côté de celle d'ACAL1000) — condition écrite de D-ACAL-36 et D-ACAL-39 ; ACAL921 (PLAN_AUDIT_TRANSVERSE) — attend que Reda ait lu la liste sortie par ACAL1194 (`acal_dryrun_azimut_surfaces --dry-run`) sur une copie de ses calepinages — la lecture de chaque surface de pose déjà enregistrée change.
 
 ## Comptes (les tâches de la vague, sans ACAL487)
 
-- Par domaine : D1 46, D2 64, D3 58, D4 80, D5 69, D6 56, D7 72, D8 29, acceptation 1.
-- Par priorité : P0 17, P1 128, P2 200, P3 129, — 1.
-- Par plan : PLAN_AUDIT_CALEPINAGE 423, PLAN_AUDIT_CHANTIERS 7, PLAN_AUDIT_DEPLOY 2, PLAN_AUDIT_DEVIS 20, PLAN_AUDIT_LEAD 2, PLAN_AUDIT_MOTEUR 6, PLAN_AUDIT_PARAMETRES 2, PLAN_AUDIT_SAV 1, PLAN_AUDIT_SECURITE 1, PLAN_AUDIT_STOCK 3, PLAN_AUDIT_TRANSVERSE 5, WEB_PLAN 3.
-- Par section : Acceptation en direct (orchestrateur, jamais une lane) 1, GATED (ne PAS auto-construire) 3, M1 bloquant-fondateur 147, M2 324.
-- Par gravité : S1 18, S2 140, S3 275, S4 9, — 33.
+- Par domaine : D1 46, D2 64, D3 58, D4 80, D5 76, D6 56, D7 72, D8 29, acceptation 1.
+- Par priorité : P0 17, P1 135, P2 200, P3 129, — 1.
+- Par plan : PLAN_AUDIT_CALEPINAGE 423, PLAN_AUDIT_CHANTIERS 7, PLAN_AUDIT_DEPLOY 2, PLAN_AUDIT_DEVIS 25, PLAN_AUDIT_GENERATEUR 1, PLAN_AUDIT_LEAD 2, PLAN_AUDIT_MOTEUR 6, PLAN_AUDIT_PARAMETRES 3, PLAN_AUDIT_SAV 1, PLAN_AUDIT_SECURITE 1, PLAN_AUDIT_STOCK 3, PLAN_AUDIT_TRANSVERSE 5, WEB_PLAN 3.
+- Par section : Acceptation en direct (orchestrateur, jamais une lane) 1, GATED (ne PAS auto-construire) 3, M1 bloquant-fondateur 154, M2 324.
+- Par gravité : S1 18, S2 147, S3 275, S4 9, — 33.
 
 ## Table des constats (générée depuis les plans)
 
@@ -498,6 +498,13 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-1194 | C10, S1 | ACAL1194 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Lister en lecture seule les calepinages dont l'orientation lue des surfaces de pose changera avec ACAL921 |
 | C-ACAL-L5-1195 | C1, S1 | ACAL1195 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire calculer l'étude commerciale et industrielle d'un NOUVEAU devis de niveau 15 lié à un calepinage simulé  |
 | C-ACAL-L5-1196 | C1, S2 | ACAL1196 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Ne plus servir la vue 3D publique d'un devis dont le calepinage est une conception « rapide » non vérifiée |
+| C-ACAL-L5-1197 | C1, S2 | ACAL1197 | PLAN_AUDIT_PARAMETRES | M1 bloquant-fondateur | Permettre de lire PVGIS en direct à un plan donné : `productible_mensuel_live` et `profil_horaire_live` accept |
+| C-ACAL-L5-1198 | C10, S2 | ACAL1198 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Poser SEUL sur main la clé `production.plan_irradiation` du contrat `etude_pompage_preview.json` — `{source: ' |
+| C-ACAL-L5-1199 | C1, S2 | ACAL1199 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Écrire le résolveur du plan des panneaux d'un devis agricole, `domain/pompage_pose.py::plan_pose_pompage(devis |
+| C-ACAL-L5-1200 | C1, S2 | ACAL1200 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Construire les 12 journées types d'irradiance du pompage au plan RÉEL des panneaux, `domain/pompage_pose.py::p |
+| C-ACAL-L5-1201 | C1, S2 | ACAL1201 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Faire calculer la production d'eau d'un NOUVEAU devis agricole de niveau 15 sur le plan réel des panneaux : `e |
+| C-ACAL-L5-1202 | C1, S2 | ACAL1202 | PLAN_AUDIT_GENERATEUR | M1 bloquant-fondateur | Dire dans le résultat du pompage du générateur sur quel plan la production d'eau a été calculée : une ligne «  |
+| C-ACAL-L5-1203 | C1, S2 | ACAL1203 | PLAN_AUDIT_DEVIS | M1 bloquant-fondateur | Étendre la liste des écarts `regles_calcul_ecarts_dryrun --niveau 15` aux devis agricoles : pour chacun, recal |
 
 ## Vérification du 21/11
 
@@ -528,8 +535,8 @@ Après la première intégration (472 tâches, PR #1517), la vague a été relue
 
 - **Deux passes de correction par lot**, puis **une passe de cohérence** de toute la vague (aucun cycle de `@after`, aucun renvoi vers une tâche retirée, aucun id inconnu ; seules les neuf tâches de la vague 0 déclarent `apps/calepinage/selectors.py`).
 - **Deux relectures adverses au modèle le plus fort** : l'architecture du moteur partagé (D8), puis la vague entière — 8 bloquants, dont la chaîne D-ACAL-36 réécrite (production de la pose réelle atteignable au PDF, porte fondateur qui ne se contourne plus, liste des écarts produite après le code qu'elle montre), les migrations rangées avec leur modèle, 32 dépendances entre plans passées en vrais `@after`, et les tâches qui déclaraient `selectors.py` ramenées à la vague 0.
-- **Ce qui a changé** : 23 tâches retirées (doublons, déjà construites ou migrations remises avec leur modèle — liste ci-dessous) ; 26 créées (ACAL1033, ACAL1041, ACAL1049, ACAL1050, ACAL1065, ACAL1081, ACAL1113, ACAL1114, ACAL1145, ACAL1169, ACAL1170, ACAL1171, ACAL1172, ACAL1173, ACAL1185, ACAL1186, ACAL1187, ACAL1188, ACAL1189, ACAL1190, ACAL1191, ACAL1192, ACAL1193, ACAL1194, ACAL1195, ACAL1196), dont les moitiés des trois scissions (ACAL530, ACAL806, ACAL938) et les douze tâches des manques de la relecture finale (ACAL1185 à ACAL1196) ; les autres corrigées clause par clause. Décompte final : 475 tâches.
-- Couverture : 427 des 475 tâches vivantes portent un verdict de vérificateur ; les 22 tâches du lot D8 ont été relues par la relecture adverse ; les 26 tâches créées pendant les corrections n'ont eu que la passe de cohérence.
+- **Ce qui a changé** : 23 tâches retirées (doublons, déjà construites ou migrations remises avec leur modèle — liste ci-dessous) ; 33 créées (ACAL1033, ACAL1041, ACAL1049, ACAL1050, ACAL1065, ACAL1081, ACAL1113, ACAL1114, ACAL1145, ACAL1169, ACAL1170, ACAL1171, ACAL1172, ACAL1173, ACAL1185, ACAL1186, ACAL1187, ACAL1188, ACAL1189, ACAL1190, ACAL1191, ACAL1192, ACAL1193, ACAL1194, ACAL1195, ACAL1196, ACAL1197, ACAL1198, ACAL1199, ACAL1200, ACAL1201, ACAL1202, ACAL1203), dont les moitiés des trois scissions (ACAL530, ACAL806, ACAL938) et les douze tâches des manques de la relecture finale (ACAL1185 à ACAL1196) et les sept du lot pompage (ACAL1197 à ACAL1203, D-ACAL-46, écrites après la vérification) ; les autres corrigées clause par clause. Décompte final : 482 tâches.
+- Couverture : 427 des 482 tâches vivantes portent un verdict de vérificateur ; les 22 tâches du lot D8 ont été relues par la relecture adverse ; les 33 tâches créées pendant les corrections n'ont eu que la passe de cohérence.
 
 ## Tâches retirées
 
@@ -672,7 +679,7 @@ Total : 56 cartes ou sous-parties en réserve.
 - Aucun test exécuté : chaque « test rouge d'abord » est attendu, non observé ; aucune tâche n'a été construite.
 - Les extractions proposées pour les fichiers de plus de 2 000 lignes (fonction déplacée dans un fichier voisin) sont des lectures du code, à confirmer à la construction.
 - Le nombre de calepinages touchés par ACAL921 (orientation des surfaces de pose) est inconnu tant qu'ACAL1194 n'a pas tourné sur une copie des données.
-- Le document client agricole : D-ACAL-46 (21/11 au soir) veut que le volume d'eau journalier imprimé suive la pose réelle des panneaux, derrière la liste des écarts ; ses tâches (lot pompage) ne sont pas encore écrites dans cette vague. Le bilan du réservoir jour par jour reste interne (D-ACAL-41).
+- Le document client agricole : D-ACAL-46 (21/11 au soir) veut que le volume d'eau journalier imprimé suive la pose réelle des panneaux, derrière la liste des écarts ; ses tâches sont ACAL1197 à ACAL1203 (lot pompage, écrit le 21/11 au soir, sans vérificateur séparé). Le bilan du réservoir jour par jour reste interne (D-ACAL-41).
 - Les chiffres de l'étude (valeurs publiées, forums) sont à relire à leur source par le constructeur avant d'entrer dans le produit (WebFetch rend des résumés).
 - Rien n'a été vu sur une vraie image satellite (fond neutre de la pile de revue).
 - Les résultats de simulation et les PDF lourds n'ont pas été observés sur la pile : pas de worker Celery au tour 1 (ACAL1031 l'exige).
