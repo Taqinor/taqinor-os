@@ -41,6 +41,8 @@ import BadgePerime from './BadgePerime'
    panneau = UNE ligne en fin de `atelier/onglets.js` ; ce fichier-ci n'est plus
    rouvert (décision D-CALX 3 et 13). */
 import Rail from './atelier/Rail'
+// ACAL415 — outils et onglets cherchables dans ⌘K.
+import { useCommandesAtelier } from './atelier/useCommandesAtelier'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -111,6 +113,7 @@ export default function AtelierPanneaux({
   /* ACAL42 — la lecture seule est relue du SERVEUR (design-context) à chaque
      montage : aucun état local de déverrouillage. */
   const enLectureSeule = lectureSeule
+  useCommandesAtelier({ builderApi, lectureSeule: enLectureSeule })
 
   /* UNE SEULE LECTURE DE L'AGRÉGAT (CAL17), partagée. La fiche et le bouton
      devis parlent de la MÊME vérité : deux lectures, ce serait deux états le
