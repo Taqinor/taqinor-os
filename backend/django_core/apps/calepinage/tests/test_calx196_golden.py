@@ -415,6 +415,64 @@ class GoldenPluriannuelTest(SimpleTestCase):
                          ['p50_kwh', 'p75_kwh', 'p90_kwh', 'p95_kwh'])
 
 
+class BilanMensuelTest(SimpleTestCase):
+    """ACAL705 — température et PR par mois, recalculés ICI d'après
+    ``mensuel`` et le kWc du golden et l'irradiation du plan servie."""
+
+    def setUp(self):
+        from apps.calepinage.services.bilan_mensuel import publier
+
+        self.publier = publier
+        resultat = {}
+        appliquer_chaine(serie_entree(), contexte(), resultat=resultat)
+        self.production = resultat['production']
+        self.attendu = golden()['attendu']['production']
+
+    def test_douze_lignes_et_pr_de_reference(self):
+        bilan = self.publier(serie_entree(), self.production)
+        self.assertEqual([ligne['mois'] for ligne in bilan],
+                         list(range(1, 13)))
+        kwc = self.attendu['total']['kwc']
+        plan = {ligne['mois']: ligne['irradiation_plan_kwh_m2']
+                for ligne in self.production['irradiation_mensuelle']}
+        energie_totale, denominateur = 0.0, 0.0
+        for ligne, mois_golden in zip(bilan, self.attendu['mensuel']):
+            p50, irr = mois_golden['p50_kwh'], plan[ligne['mois']]
+            if p50 is None or not irr:
+                self.assertIsNone(ligne['pr'])
+                continue
+            self.assertAlmostEqual(ligne['pr'], p50 / (irr * kwc), places=3)
+            energie_totale += p50
+            denominateur += irr * kwc
+        # la somme PONDÉRÉE des mois retrouve le PR annuel servi
+        self.assertAlmostEqual(energie_totale / denominateur,
+                               self.attendu['total']['performance_ratio'],
+                               delta=0.005)
+
+    def test_temperature_moyenne_des_points_du_mois(self):
+        bilan = self.publier(serie_entree(), self.production)
+        juillet = [p['t2m_c'] for p in serie_entree()['points']
+                   if p['mois'] == 7]
+        self.assertAlmostEqual(bilan[6]['temperature_ambiante_c'],
+                               sum(juillet) / len(juillet), places=2)
+        self.assertGreater(bilan[6]['temperature_ambiante_c'],
+                           bilan[0]['temperature_ambiante_c'])
+        self.assertIsNone(bilan[1]['temperature_ambiante_c'])
+
+    def test_resultat_incomplet_aucun_pr_mensuel(self):
+        production = json.loads(json.dumps(self.production))
+        production['total']['complete'] = False
+        production['total']['performance_ratio_motif'] = 'socle manquant'
+        bilan = self.publier(serie_entree(), production)
+        self.assertEqual([ligne['pr'] for ligne in bilan], [None] * 12)
+        self.assertTrue(all(ligne['pr_motif'] == 'socle manquant'
+                            for ligne in bilan))
+        self.assertIsNotNone(bilan[0]['temperature_ambiante_c'])
+
+    def test_sans_simulation_liste_vide(self):
+        self.assertEqual(self.publier(None, {}), [])
+
+
 class EnTeteDuGoldenTest(SimpleTestCase):
     """Le fichier porte EN TÊTE de quoi le relire dans un an."""
 

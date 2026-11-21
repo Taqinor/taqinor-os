@@ -10,6 +10,8 @@ Run :
 """
 import copy
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import (
     Calepinage, CalepinageVariante, CalepinageVersion,
 )
@@ -119,6 +121,23 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.assertEqual(copie.roof_image, '')
         self.assertEqual(copie.pertes, POSTES)
 
+    def test_modele_porte_le_materiel_jamais_les_temperatures(self):
+        """ACAL959 — module et onduleur suivent ; températures jamais."""
+        self.source.resultat = {'entree_electrique': {
+            'module_produit': 11, 'onduleur_produit': 22,
+            'temperature_min_c': -10, 'temperature_max_c': 70,
+            'cle_future': 'x'}}
+        self.source.save(update_fields=['resultat'])
+        marquer_modele(self.source, user=self.user)
+        cible = Lead.objects.create(company=self.company, nom='Agadir',
+                                    roof_point=dict(MARRAKECH))
+        copie = Calepinage.objects.get(pk=creer_depuis_modele(
+            self.source, user=self.user, lead_id=cible.pk).pk)
+        self.assertEqual(copie.resultat, {'entree_electrique': {
+            'module_produit': 11, 'onduleur_produit': 22}})
+        version = CalepinageVersion.objects.get(calepinage=copie)
+        self.assertIsNone(version.resultat)
+
     def test_modele_variantes_translatees_sans_consommation(self):
         """Lot 2 critique #6 — chaque VARIANTE du modèle suit la règle de la
         conception (D-ACAL-15) : translatée sur le lead cible, sans la
@@ -185,3 +204,27 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.assertEqual(refus.exception.champ, 'lead')
         self.assertIn("n'a pas de repère toit", str(refus.exception))
         self.assertEqual(Calepinage.objects.count(), avant)
+
+
+class MaterielDuModeleTest(SimpleTestCase):
+    """ACAL959 — la liste blanche, sans base."""
+
+    def test_seules_les_cles_blanches_sont_copiees(self):
+        from apps.calepinage.services.variantes import (
+            CHAMPS_ENTREE_DU_MODELE, resultat_du_modele,
+        )
+        entree = {cle: i for i, cle in enumerate(CHAMPS_ENTREE_DU_MODELE)}
+        entree.update(temperature_min_c=-10, temperature_max_c=70,
+                      longueurs={'dc': 30}, cle_future='x')
+        self.assertEqual(resultat_du_modele({'entree_electrique': entree,
+                                             'production': {'p50': 1}}),
+                         {'entree_electrique': {
+                             cle: i for i, cle in
+                             enumerate(CHAMPS_ENTREE_DU_MODELE)}})
+
+    def test_sans_cle_blanche_aucun_resultat(self):
+        from apps.calepinage.services.variantes import resultat_du_modele
+        for resultat in (None, {}, {'simulation': {'hash_entree': 'x'}},
+                         {'entree_electrique': {'temperature_min_c': -5}}):
+            with self.subTest(resultat=resultat):
+                self.assertIsNone(resultat_du_modele(resultat))

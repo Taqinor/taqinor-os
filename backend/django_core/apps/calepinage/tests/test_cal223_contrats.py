@@ -437,6 +437,9 @@ SANS_PRODUCTEUR_PUR = {
         'contrôles « prêt à envoyer ? » (ACAL857-864) : lisent le lead, le '
         'devis lié, la simulation et les réglages société en base ; route '
         'livrée par ACAL860',
+    'calepinage_explications.json':  # ACAL870
+        'registre des explications (ACAL871) : ses valeurs sont lues dans le '
+        'résultat servi du calepinage en base ; route livrée par ACAL871',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -489,6 +492,7 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL485 a livré ``GET``/``POST calepinages/<pk>/detection-toit/``
     # (``views/detection_toit.py``) : ``calepinage_detection_toit.json`` en est SORTI.
     'calepinage_pret_a_envoyer.json': 'ACAL860',  # ACAL856
+    'calepinage_explications.json': 'ACAL871',  # ACAL870
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne

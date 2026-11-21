@@ -605,6 +605,8 @@ export const ACTIONS_RACCOURCIS = [
   'aimantation',
   'supprimer',
   'dupliquer',
+  'copier',
+  'coller',
   'pleinEcran',
 ] as const;
 

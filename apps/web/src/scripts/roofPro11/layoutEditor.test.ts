@@ -23,6 +23,7 @@ import { type LayoutPlan } from './types';
 import { createLayoutState } from '../../lib/layoutVariability';
 import { placeFreePanels, type FreePanel } from '../../lib/freeLayout';
 import { carteEditeurFactice, depsEditeur } from './harnaisAtelier';
+import { viderCollage } from './collage'; // ACAL553
 import { natureSilhouette, silhouetteDuLot, silhouetteGeoJSON, peindreSilhouette, texteDeMesure } from './silhouetteGlisse'; // ACAL551
 import type { FreeCheck, FreeGeom } from '../../lib/freeLayout'; // ACAL551
 
@@ -600,5 +601,42 @@ describe('ACAL551 — silhouette du glissé', () => {
 
   it('texteDeMesure garde la cause en toutes lettres', () => {
     expect(texteDeMesure(verdict(['obstacle'], true))).toBe('Rive : 20 cm · Voisin : — — il tomberait sur un obstacle (ou son dégagement)');
+  });
+});
+
+describe('ACAL553 — copier / coller la sélection libre', () => {
+  it('3 panneaux copiés d’un pan se collent dans un autre, au même écartement relatif', () => {
+    viderCollage();
+    const src = buildFreeEditor(40, [0, 6, 12].map((u) => ({ cx: -u, cy: 0 })));
+    src.editor.setSelection([0, 1, 2]);
+    expect(src.editor.copierSelection()).toBe(true);
+    const dest = buildFreeEditor(40, []);
+    expect(dest.editor.collerSelection()).toBe(true);
+    const posés = dest.editor.freePanels();
+    expect(posés).toHaveLength(3);
+    expect(posés[1].cx - posés[0].cx).toBeCloseTo(-6, 9);
+    expect(posés[2].cx - posés[1].cx).toBeCloseTo(-6, 9);
+    expect(dest.editor.selection()).toEqual([0, 1, 2]); // les collés restent sélectionnés
+  });
+
+  it('un collage dont un membre sort du pan : rien de collé, refus nommé', () => {
+    viderCollage();
+    const src = buildFreeEditor(40, [0, 6, 12].map((u) => ({ cx: -u, cy: 0 })));
+    src.editor.setSelection([0, 1, 2]);
+    src.editor.copierSelection();
+    const petit = buildFreeEditor(5, []); // lot de 12 m de large : tient pas dans 10 m
+    expect(petit.editor.collerSelection()).toBe(false);
+    expect(petit.editor.freePanels()).toEqual([]);
+    expect(document.getElementById('rp9-layout-note')?.textContent).toContain('Collage refusé');
+    expect(document.getElementById('rp9-layout-note')?.textContent).toContain('rien n’a été collé');
+  });
+
+  it('Ctrl+C sans sélection libre : aucun effet ; rien en mémoire : Ctrl+V sans effet', () => {
+    viderCollage();
+    const { editor } = buildFreeEditor(40, [{ cx: 0, cy: 0 }]);
+    editor.setSelection([]);
+    expect(editor.copierSelection()).toBe(false);
+    expect(editor.collerSelection()).toBe(false);
+    expect(editor.freePanels()).toHaveLength(1);
   });
 });

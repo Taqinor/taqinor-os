@@ -1,0 +1,42 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/explications/",
+  "pourquoi": "ACAL870 (M0, PACT10) — le registre des EXPLICATIONS : une entrée par grandeur ou verdict affiché à l'écran (aujourd'hui 195 grandeurs lues, 96 sans aucune explication). Action de LISTE sans `pk` (comme `calepinage_profil_depart.json`) : le registre est le même pour tous les calepinages, les valeurs viennent du résultat SERVI du calepinage ouvert. Posé SEUL avant son service et sa route (ACAL871) et son composant (ACAL872, lu par `reponseContrat('calepinage', 'calepinage_explications')`) ; les phrases par famille viennent d'ACAL873-878. Chaque entrée : `cle` (la grandeur affichée), `famille`, `phrase` à trous `{nom}`, `valeurs` {nom: chemin dans le résultat servi, ex. `electrique.verdicts[voc_cold_under_vmax].temperature_c` = le verdict de ce code}, `geste` (quoi faire), `lexique` (terme du lexique, ou null) et `ecrans` (onglets où la grandeur s'affiche). RÈGLES : une phrase dit la CAUSE et le GESTE ; elle n'insère QUE des valeurs servies, par leurs trous — aucun chiffre écrit dans la phrase ; elle ne cite ni clé interne, ni chemin de code, ni `::`, `[]`, `.py`. Une valeur absente du résultat servi n'est jamais devinée : la phrase n'est alors pas affichée. Le registre CITE les sources déjà servies (ex. `motif_omission` et `source` par étape de `calepinage_pertes_cascade.json`), il ne les recopie pas.",
+  "exemple": {
+    "entrees": [
+      {
+        "cle": "production.p50_kwh",
+        "famille": "production",
+        "phrase": "Votre installation de {kwc} kWc produirait environ {p50} kWh par an une année moyenne : une année sur deux fait mieux, une sur deux fait moins bien.",
+        "valeurs": {
+          "kwc": "production.total.kwc",
+          "p50": "production.total.p50_kwh"
+        },
+        "geste": "Pour une valeur prudente, regardez la production atteinte 9 années sur 10.",
+        "lexique": "production annuelle",
+        "ecrans": ["production"]
+      },
+      {
+        "cle": "electrique.voc_froid",
+        "famille": "electrique",
+        "phrase": "Par grand froid ({temperature} °C, la température la plus basse retenue pour ce site), la tension des panneaux monte : elle doit rester sous la tension maximale de l'onduleur.",
+        "valeurs": {
+          "temperature": "electrique.verdicts[voc_cold_under_vmax].temperature_c"
+        },
+        "geste": "Si la tension dépasse la limite, retirez un panneau par chaîne.",
+        "lexique": "tension à vide",
+        "ecrans": ["schema"]
+      },
+      {
+        "cle": "batterie.capacite_utile",
+        "famille": "batterie",
+        "phrase": "La batterie peut rendre {capacite} kWh par cycle : c'est la part réellement utilisable, pas la capacité écrite sur l'étiquette.",
+        "valeurs": {
+          "capacite": "batterie.total.capacite_utile_kwh"
+        },
+        "geste": "Pour couvrir plus de soirées, ajoutez un module de batterie.",
+        "lexique": "capacité utile",
+        "ecrans": ["batterie"]
+      }
+    ]
+  }
+}

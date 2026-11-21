@@ -17,7 +17,9 @@
         "longueur_mm": 2278,
         "largeur_mm": 1134,
         "poids_kg": 27.5,
-        "rendement_pct": 21.3
+        "rendement_pct": 21.3,
+        "cellules_serie": 144,
+        "temp_coeff_isc_pct_c": 0.054
       },
       "champs_renseignes": [
         "vmp_v", "voc_v", "isc_a", "imp_a", "pmax_wc", "longueur_mm",
@@ -56,7 +58,10 @@
         "i_max_mppt_a": 13.5,
         "ac_kw": 10,
         "phases": 3,
-        "rendement_euro_pct": 97.5
+        "rendement_euro_pct": 97.5,
+        "pnom_reduite_debut_c": 45.0,
+        "pnom_pente_pct_c": 2.0,
+        "mppt_independants": false
       },
       "champs_renseignes": [
         "n_mppt", "mppt_v_min", "mppt_v_max", "v_max_abs", "i_max_mppt_a",

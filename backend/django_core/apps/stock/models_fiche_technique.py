@@ -876,6 +876,30 @@ class FicheTechnique(models.Model):
     serrage_source = models.TextField(
         blank=True, default='',
         help_text='Module — source de la zone de serrage (notice, page).')
+    # ACAL659 — champs que les modèles électriques lisent ; tous optionnels :
+    # vide = non publié, jamais 0 (``specs_for_produit`` omet alors la clé).
+    cellules_serie = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Module — nombre de cellules en série. Vide = non publié.')
+    temp_coeff_isc_pct_c = models.DecimalField(
+        max_digits=5, decimal_places=3, null=True, blank=True,
+        help_text='Module — coefficient de température de Isc (%/°C). '
+                  'Vide = non publié.')
+    ond_pnom_reduite_debut_c = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='Onduleur — température de début de réduction de '
+                  'puissance (°C). Vide = non publié.')
+    ond_pnom_pente_pct_c = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Onduleur — pente de réduction de puissance (%/°C). '
+                  'Vide = non publié.')
+    ond_mppt_independants = models.BooleanField(
+        null=True, blank=True,
+        help_text='Onduleur — entrées MPPT indépendantes. Vide = non publié.')
+    opt_onduleurs_compatibles = models.JSONField(
+        null=True, blank=True,
+        help_text='Optimiseur — SKU des onduleurs compatibles (liste). '
+                  'Vide = non publié.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #

@@ -93,8 +93,8 @@ class ControlesDePorteTest(SimpleTestCase):
         self.assertEqual(visite['geste'], 'Faire valider la visite')
         approbation = controles['approbation_a_jour']
         self.assertEqual(approbation['etat'], 'info')
-        self.assertIn('non évaluée tant que la visite n’est pas validée',
-                      approbation['valeur_texte'])
+        self.assertEqual(approbation['valeur_texte'],
+                         "Non évaluée tant que la visite n'est pas validée")
 
     def test_feu_vert_sans_approbation_bloquant(self):
         controles = self._controles(_Calepinage(), approuve=False)

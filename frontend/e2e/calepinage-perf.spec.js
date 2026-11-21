@@ -3,15 +3,20 @@
 // 200 ms en local ; sur un runner de CI le seuil « mauvais » de `vitals.js` (INP[1]), lu à la source.
 // Fond de repli (comme acceptation/acal6.spec.js::carteRefusee) ; rien n'est écrit hors du calepinage jetable.
 import { test, expect } from '@playwright/test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execSync } from 'node:child_process'
 import { API_DJANGO, assurerSessionPage, lireJson, uniq, telephoneMobileUnique } from './helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const CAL = `${API_DJANGO}/calepinage`
 const T = { timeout: 120_000 }
 const NB = 500
+// ACAL890 — trois tailles mesurées UNE fois ; `CAL_PERF_ECRIRE=1` écrit la limite (jamais tapée à la main).
+const TAILLES = [2000, 5000, 10000]
+const LIMITE = join(here, 'calepinage-perf.limite.json')
+const ECRIRE = process.env.CAL_PERF_ECRIRE === '1'
 const SCHEMA = join(here, '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json')
 const [INP_BON, INP_MAUVAIS] = /INP:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]/
   .exec(readFileSync(join(here, '../src/lib/vitals.js'), 'utf8')).slice(1).map(Number)
@@ -23,8 +28,15 @@ const VERSION = process.env.ACAL440_VERSION || 'code courant'
 const ORIGINE = [-7.6, 33.5]
 const DEG2M = (Math.PI / 180) * 6378137
 const versLngLat = (cx, cy) => [ORIGINE[0] + cx / (DEG2M * Math.cos((ORIGINE[1] * Math.PI) / 180)), ORIGINE[1] + cy / DEG2M]
-const [O, N] = [versLngLat(-34, -28), versLngLat(34, 28)]
-const centre = (i) => [((i % 25) - 12) * 2.5, (Math.floor(i / 25) - 9.5) * 2.5]
+// ACAL890 — grille paramétrée : à 500 elle redonne EXACTEMENT 25 × 20 et le toit de 68 m × 56 m.
+const grille = (nb) => {
+  const cols = nb === NB ? 25 : Math.ceil(Math.sqrt(nb))
+  const rows = Math.ceil(nb / cols)
+  const [dx, dy] = [cols * 1.25 + 2.75, rows * 1.25 + 3]
+  return { cols, rows, O: versLngLat(-dx, -dy), N: versLngLat(dx, dy),
+    centre: (i) => [((i % cols) - (cols - 1) / 2) * 2.5, (Math.floor(i / cols) - (rows - 1) / 2) * 2.5] }
+}
+const nombreLu = (nb) => new RegExp(`${String(nb).replace(/\B(?=(\d{3})+(?!\d))/g, '[\\s\\u00a0\\u202f]?')} posés`)
 
 test.describe.configure({ timeout: 600_000 })
 test.use({ viewport: { width: 1600, height: 1000 }, actionTimeout: 60_000 })
@@ -54,16 +66,18 @@ function consigner(nom, valeur, cible) {
 }
 
 /** Document de 500 modules : l'`exemple` du schéma, sommets élargis (lng/lat autour de l'épingle), `geometry.panels` à 500. */
-function documentA500() {
+function documentA500(nb = NB) {
+  const g = grille(nb)
   const doc = JSON.parse(readFileSync(SCHEMA, 'utf8')).exemple
   const zone = doc.zones[0]
-  zone.vertices = [O, [N[0], O[1]], N, [O[0], N[1]]]
+  zone.vertices = [g.O, [g.N[0], g.O[1]], g.N, [g.O[0], g.N[1]]]
   zone.obstacles = []
   delete zone.geometry.solarAccess // l'accès solaire de l'exemple ne vaut que pour ses 2 modules
-  zone.geometry = { ...zone.geometry, mode: 'free', origin: ORIGINE, count: NB, panels: Array.from({ length: NB }, (_, i) => ({
-    cx: centre(i)[0], cy: centre(i)[1], n: i + 1, rangee: String.fromCharCode(65 + Math.floor(i / 25)),
+  const rangee = (r) => (r < 26 ? String.fromCharCode(65 + r) : `R${r + 1}`)
+  zone.geometry = { ...zone.geometry, mode: 'free', origin: ORIGINE, count: nb, panels: Array.from({ length: nb }, (_, i) => ({
+    cx: g.centre(i)[0], cy: g.centre(i)[1], n: i + 1, rangee: rangee(Math.floor(i / g.cols)),
   })) }
-  zone.neededPanels = NB
+  zone.neededPanels = nb
   return doc
 }
 
@@ -79,7 +93,7 @@ async function carteRefusee(context) {
   }))
 }
 
-async function calepinageA500(request) {
+async function calepinageA500(request, nb = NB) {
   const lead = await lireJson(await request.post(`${API_DJANGO}/crm/leads/`, {
     ...T,
     data: { nom: uniq('ACAL440 Perf'), ville: 'Casablanca', telephone: telephoneMobileUnique(),
@@ -91,17 +105,18 @@ async function calepinageA500(request) {
   await lireJson(await request.get(`${CAL}/calepinages/${cal.id}/design-context/`, T), 'design-context (amorce)')
   const lu = await lireJson(await request.get(`${CAL}/calepinages/${cal.id}/layout/`, T), 'layout')
   await lireJson(await request.post(`${CAL}/calepinages/${cal.id}/layout/`, {
-    ...T, headers: { 'If-Match': `"${lu.empreinte_document || ''}"` }, data: { roof_layout: documentA500() },
+    ...T, headers: { 'If-Match': `"${lu.empreinte_document || ''}"` }, data: { roof_layout: documentA500(nb) },
   }), 'écriture du layout')
   return cal
 }
 
-async function mesurerGlisse(page, id) {
+async function mesurerGlisse(page, id, nb = NB) {
+  const { O, N, centre } = grille(nb)
   await page.goto(`/calepinage/${id}`)
   await expect(page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }))
     .toBeEnabled({ timeout: 240_000 })
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
-  await expect(page.locator('#rp9-need-note'), '500 modules posés avant la mesure').toContainText(`${NB} posés`, T)
+  await expect(page.locator('#rp9-need-note'), `${nb} modules posés avant la mesure`).toContainText(nombreLu(nb), T)
   console.log(`[ACAL440-diag] barre de résumé : « ${await page.getByTestId('cal-resume-panneaux').innerText()} »`)
   // « Déplacer les panneaux » : hors mode disposition, `beginLayoutDrag` refuse et le glissé déplacerait la CARTE.
   const bascule = page.locator('#rp9-layout-toggle')
@@ -117,7 +132,7 @@ async function mesurerGlisse(page, id) {
     m.fitBounds(bornes, { padding: 60, duration: 0 })
     const [p, r, c] = [m.project(ll), m.getContainer().getBoundingClientRect(), m.getCenter()]
     return { x: r.left + p.x, y: r.top + p.y, centre: [c.lng, c.lat], dedans: p.x > 0 && p.y > 0 && p.x < r.width && p.y < r.height }
-  }, [[O, N], versLngLat(...centre(NB - 1))])
+  }, [[O, N], versLngLat(...centre(nb - 1))])
   expect(cible.dedans, 'le module visé est dans la carte').toBe(true)
   await page.evaluate(() => {
     window.__acal440 = []
@@ -151,4 +166,31 @@ test('ACAL440: mode bas de gamme (deviceMemory 4) — mesure consignée sans pla
   await carteRefusee(context)
   const pire = await mesurerGlisse(page, (await calepinageA500(page.request)).id)
   consigner(`Atelier 500 modules (${VERSION}), deviceMemory 4 — pire interaction`, pire, 'sans plafond')
+})
+
+// ACAL890 — la limite publiée est une MESURE datée : `CAL_PERF_ECRIRE=1` l'écrit, sinon chaque taille déjà
+// tracée ne doit pas devenir plus lente que sa trace committée (le fichier ne baisse qu'à la main).
+test('ACAL890: trois tailles (2 000, 5 000, 10 000 modules) — limite mesurée', async ({ page, context }) => {
+  test.setTimeout(3_600_000)
+  if (!ECRIRE) expect(existsSync(LIMITE), 'limite absente : lancer une fois avec CAL_PERF_ECRIRE=1 puis committer le JSON').toBeTruthy()
+  const trace = ECRIRE ? null : JSON.parse(readFileSync(LIMITE, 'utf8'))
+  await carteRefusee(context)
+  const mesures = []
+  for (const nb of TAILLES) {
+    const pire = await mesurerGlisse(page, (await calepinageA500(page.request, nb)).id, nb)
+    consigner(`Atelier ${nb} modules (${VERSION}) — pire interaction`, pire, `seuil ${PLAFOND} ms`)
+    mesures.push({ modules: nb, inp_ms: pire })
+    const tracee = trace?.mesures.find((m) => m.modules === nb)
+    if (tracee) expect(pire, `${nb} modules : ${pire} ms, plus lent que la trace ${tracee.inp_ms} ms`).toBeLessThanOrEqual(tracee.inp_ms)
+  }
+  if (!ECRIRE) return
+  const sous = mesures.filter((m) => m.inp_ms <= PLAFOND).map((m) => m.modules)
+  writeFileSync(LIMITE, `${JSON.stringify({
+    date: new Date().toISOString().slice(0, 10),
+    commit: execSync('git rev-parse --short HEAD', { cwd: here }).toString().trim(),
+    seuil_ms: PLAFOND,
+    seuil_source: `vitals.js INP[${process.env.CI ? 1 : 0}] (${process.env.CI ? 'CI = seuil mauvais' : 'local = seuil bon'})`,
+    mesures,
+    limite_modules: sous.length ? Math.max(...sous) : null,
+  }, null, 2)}\n`)
 })

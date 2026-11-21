@@ -265,10 +265,10 @@ describe('CALX3 — centresDepuisPlan (le retour du plan)', () => {
 });
 
 describe('CALX3 — raccourcis', () => {
-  it('les huit actions existent et sont des fonctions', () => {
+  it('les dix actions existent et sont des fonctions', () => {
     const raccourcis = construireRaccourcis({});
     expect(Object.keys(raccourcis).sort()).toEqual([...ACTIONS_RACCOURCIS].sort());
-    expect(ACTIONS_RACCOURCIS).toHaveLength(8);
+    expect(ACTIONS_RACCOURCIS).toHaveLength(10); // ACAL553 : + copier, coller
     for (const action of ACTIONS_RACCOURCIS) {
       expect(typeof raccourcis[action]).toBe('function');
       expect(() => raccourcis[action]()).not.toThrow();

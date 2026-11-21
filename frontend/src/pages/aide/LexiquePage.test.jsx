@@ -41,6 +41,27 @@ describe('LexiquePage (VX247)', () => {
   })
 })
 
+/* ACAL902 — les termes électriques qu'une commerciale rencontre dans
+   l'atelier : chacun a une entrée trouvable et définie sans aucun chiffre. */
+describe('LexiquePage — tensions, courant et ratio DC/AC (ACAL902)', () => {
+  it.each([
+    ['Voc', /^Voc \(tension à vide\)$/],
+    ['Vmp', /^Vmp \(/],
+    ['Isc', /^Isc \(/],
+    ['DC/AC', /^Ratio DC\/AC$/],
+  ])('la recherche « %s » rend une entrée définie sans chiffre', async (recherche, motif) => {
+    const user = userEvent.setup()
+    const { container } = renderPage()
+    await user.type(screen.getByLabelText('Rechercher un terme du lexique'), recherche)
+    const dt = Array.from(container.querySelectorAll('dt'))
+      .find((el) => motif.test(el.textContent))
+    expect(dt, `entrée absente : ${recherche}`).toBeTruthy()
+    const definition = dt.nextElementSibling?.textContent ?? ''
+    expect(definition.trim().length).toBeGreaterThan(0)
+    expect(definition).not.toMatch(/\d/)
+  })
+})
+
 /* CALX396 — les mots que les écrans du CALEPINAGE affichent. Chaque terme
    est présent, la liste reste dans l'ordre alphabétique (collation
    française, accents et casse ignorés), et AUCUNE définition neuve ne porte

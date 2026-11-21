@@ -244,10 +244,9 @@ def jambes_du_pan(plan):
     tue). Tout autre pan a UNE jambe (part 1).
 
     L'orientation d'une pose est-ouest est celle des TABLES
-    (``geometry.azimuthDeg`` / ``geometry.tiltDeg``) : le lecteur unique
-    ``ventes.orientation_du_pan`` la laisse expressément à cette fonction
-    (« EXCEPTION ASSUMÉE », C-ACAL-081) et rend la lecture du TOIT, qui ne
-    sert ici qu'à défaut.
+    (``geometry.azimuthDeg`` / ``geometry.tiltDeg``) ; le COMPTE des modules
+    par face est lu sur ``ventes.orientation_du_pan`` (clé ``faces``,
+    ACAL911), jamais recompté ici.
 
     MIROIR documenté de ``apps/web/src/lib/estimatorBrainV2.ts``
     ``aspectForAzimuth`` + ``productionKwh`` (eastwest : aspect = azimut − 90,
@@ -276,13 +275,11 @@ def jambes_du_pan(plan):
         return [{'face': None, 'azimut_face_deg': azimut,
                  'inclinaison_deg': inclinaison, 'part': 1.0,
                  'modules': modules, 'hypothese': False}]
-    est = ouest = 0
-    for panneau in geometrie.get('panels') or ():
-        face = panneau.get('face') if isinstance(panneau, dict) else None
-        if face == 'E':
-            est += 1
-        elif face == 'W':
-            ouest += 1
+    from apps.ventes.services import orientation_du_pan  # ACAL911 : compte unique
+
+    comptes = {f['face']: f['modules'] or 0 for f in orientation_du_pan(
+        {'geometry': geometrie, 'facingAzimuthDeg': azimut}).get('faces') or ()}
+    est, ouest = comptes.get('E', 0), comptes.get('W', 0)
     total = est + ouest
     hypothese = total == 0
     if hypothese:

@@ -686,6 +686,23 @@ describe('ToitureDesign — la route devis ouvre le calepinage lié (ACAL37, D-A
     expect(await screen.findByTestId('cal-atelier-panneaux')).toBeInTheDocument()
     expect(screen.getByTestId('cal-enregistrer-calepinage')).toBeInTheDocument()
   })
+
+  // ACAL955 — « Enregistrer » précède « Générer le devis » (ordre du DOM,
+  // donc du clavier et des lecteurs d'écran) : la barre d'enregistrement
+  // précède le bloc `AtelierPanneaux`, qui porte le bouton « Générer ».
+  it('la barre « Enregistrer » précède le bloc qui porte « Générer le devis »', async () => {
+    calepinageApi.calepinages.depuisModele.mockResolvedValue(
+      { data: { id: CTX.calepinage.id } })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+
+    rendreDevis(CTX.calepinage.devis_lie.id)
+
+    const panneaux = await screen.findByTestId('cal-atelier-panneaux')
+    const barre = screen.getByTestId('cal-enregistrer-calepinage')
+    expect(barre.compareDocumentPosition(panneaux) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
+  })
 })
 
 /* ACAL192 (D-ACAL-13) — GPS du lead corrigé après le tracé. Les contextes viennent du

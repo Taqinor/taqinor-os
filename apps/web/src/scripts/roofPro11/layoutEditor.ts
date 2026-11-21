@@ -53,7 +53,8 @@ import { type Ctx } from './context';
 import { type LngLat, pointInPolygon } from '../../lib/roof';
 import { type ProdConfig, type RenderSceneFn } from './types';
 import { creerCalqueReperes, glisserAimante } from './reperesAlignement'; // ACAL425
-import { actionDisposition } from './raccourcisAtelier';
+import { actionDisposition, actionAtelierCtrl } from './raccourcisAtelier';
+import { copierSelection as memoriserLot, collerAuPoint } from './collage'; // ACAL553
 import {
   createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures,
   type WorkshopSnapshot,
@@ -79,8 +80,10 @@ import {
   // panneau dont le centre ET l'angle propre changent EN MÊME TEMPS (translation, réflexion) —
   // `checkPanelAt`/`checkPanelRotation` de la lib ne couvrent que l'un OU l'autre séparément.
   panelCornersUV,
-  polyOverlap,
-  polySeparation,
+  placerCopiesToutOuRien, // ACAL553
+  panelCornersFor,
+  hardViolationsFor,
+  type CopiePanneau,
   type FreeGeom,
   type FreeCheck,
   type FreeLayoutState,
@@ -89,7 +92,6 @@ import {
   type FreeMargins,
   type RectUV,
   type Vec2,
-  segmentsCross,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
 import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; // ACAL551
@@ -197,6 +199,9 @@ export interface LayoutEditor {
   /** CALX112 — duplique la sélection libre, collée au décalage SAISI (m, le long de l'axe
    *  des rangées). Un seul pas d'historique pour tout le geste ; tout ou rien. */
   dupliquerSelection: (members: readonly number[], decalageM: number) => boolean;
+  /** ACAL553 — Ctrl + C / Ctrl + V : copie la sélection libre, la colle au curseur dans le pan actif. */
+  copierSelection: () => boolean;
+  collerSelection: () => boolean;
   /** CALX113 — symétrise la sélection libre par rapport à l'axe donné (droite ENU définie
    *  par deux points). Tout ou rien ; refusée seulement sur une contrainte DURE réelle. */
   symetriserSelection: (members: readonly number[], axis: { a: readonly [number, number]; b: readonly [number, number] }) => boolean;
@@ -314,79 +319,6 @@ function buildFallbackLayoutDom(container: HTMLElement | null): void {
     '</div>',
   ].join('');
   container.appendChild(win);
-}
-
-// ═══════════ CALX112/113 — contrôles DURS d'un panneau CANDIDAT (centre ET angle propre
-// changés EN MÊME TEMPS par une translation ou une réflexion) ═══════════
-// `lib/freeLayout.ts` expose `checkRect` (translation, jamais d'angle) et
-// `checkPanelRotation` (angle, jamais de centre) mais aucune primitive ne couvre les DEUX à
-// la fois — et ce fichier n'est PAS dans le périmètre de cette lane (LOT2_RECIPE.md : fichiers
-// CHAUDS, `rp11/layoutEditor.ts`/`freeMode.ts` seulement). Les fonctions ci-dessous
-// RECOMPOSENT donc les trois contraintes DURES (contour / panneau / obstacle — jamais les
-// deux RELÂCHABLES retrait/écart, hors du texte de CALX112/113) à partir des seules
-// primitives déjà EXPORTÉES (`panelCornersUV`, `polyOverlap`, `polySeparation`) plus
-// `pointInPolygon` (déjà la primitive du lasso CALX116 plus bas) — aucune règle métier
-// neuve, seulement de la géométrie publique assemblée différemment.
-
-/** 4 coins (u, v) d'un rectangle AXÉ — équivalent local du `rectCorners` privé de la lib. */
-function cornersOfRect(r: RectUV): Vec2[] {
-  return [
-    [r.u0, r.v0],
-    [r.u1, r.v0],
-    [r.u1, r.v1],
-    [r.u0, r.v1],
-  ];
-}
-
-/** 4 coins (u, v) d'un panneau EXISTANT, à sa position/angle ACTUELS. */
-function panelCornersFor(g: FreeGeom, p: Pick<FreePanel, 'cx' | 'cy' | 'angleDeg'>): Vec2[] {
-  const [cu, cv] = toUV(g, p.cx, p.cy);
-  return p.angleDeg ? panelCornersUV(g, cu, cv, p.angleDeg) : cornersOfRect(rectAt(g, cu, cv));
-}
-
-/** Deux segments [p1,p2] / [p3,p4] se croisent-ils vraiment ? (copie locale de la primitive
- *  privée `segmentsCross` de la lib — même algèbre, aucune règle neuve). */
-/** Un coin du panneau est hors contour, OU une arête du contour traverse le panneau (le cas
- *  du toit CONCAVE : 4 coins dedans et une encoche qui coupe quand même le rectangle). */
-function panelOutsideOutline(corners: readonly Vec2[], ringUV: readonly Vec2[]): boolean {
-  for (const c of corners) if (!pointInPolygon(c, ringUV as [number, number][])) return true;
-  for (let i = 0; i < corners.length; i++) {
-    const a = corners[i];
-    const b = corners[(i + 1) % corners.length];
-    for (let j = 0, k = ringUV.length - 1; j < ringUV.length; k = j++) {
-      if (segmentsCross(ringUV[k], ringUV[j], a, b)) return true;
-    }
-  }
-  return false;
-}
-
-/** Les trois contraintes DURES d'un panneau candidat (contour / panneaux / obstacles),
- *  renvoyées comme la liste des `FreeViolation` déjà nommées ailleurs dans ce fichier
- *  (`violationLabel`) — jamais un refus muet. `extra` = panneaux du MÊME geste déjà
- *  validés (copies, membres réfléchis) : ils s'excluent aussi entre eux. */
-function hardViolationsFor(
-  g: FreeGeom,
-  ringUV: readonly Vec2[],
-  corners: readonly Vec2[],
-  othersCorners: readonly (readonly Vec2[])[],
-  extra: readonly (readonly Vec2[])[],
-): FreeViolation[] {
-  const violations: FreeViolation[] = [];
-  if (panelOutsideOutline(corners, ringUV)) violations.push('outline');
-  let overlaps = false;
-  for (const oc of othersCorners) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
-  for (const oc of extra) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
-  if (overlaps) violations.push('overlap');
-  for (const o of g.obstacles) {
-    if (o.ring.length < 3) continue;
-    const ringO = o.ring.map(([x, y]) => toUV(g, x, y));
-    const d = polyOverlap(corners as Vec2[], ringO) ? 0 : polySeparation(corners as Vec2[], ringO);
-    if (d <= o.clearanceM) {
-      violations.push('obstacle');
-      break;
-    }
-  }
-  return violations;
 }
 
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
@@ -525,6 +457,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // PV25 — ÉTAT de la sélection multiple. Il vit dans ce module (rien à ajouter au ctx
   // partagé) : c'est une intention d'édition, pas un état de design.
   let selection: number[] = [];
+  let dernierPointSurvol: maplibregl.Point | null = null; // ACAL553
   /** Mode « sélection » (tactile) : le glissé trace un rectangle au lieu de déplacer. */
   let selectMode = false;
   /** Mode « rangée » : le glissé sur un panneau emmène TOUTE sa rangée (axe contraint). */
@@ -1065,43 +998,64 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!st || !g) return false;
     const src = [...new Set(members)].filter((i) => Number.isInteger(i) && i >= 0 && i < st.panels.length);
     if (!src.length || !Number.isFinite(decalageM) || decalageM === 0) return false;
+    const copies = src.map((i) => {
+      const [u, v] = toUV(g, st.panels[i].cx, st.panels[i].cy);
+      return { u: u + decalageM, v, angleDeg: st.panels[i].angleDeg, face: st.panels[i].face };
+    });
+    const nom = `Dupliqué — ${fmt(src.length)} panneaux copiés à ${fmt1(Math.abs(decalageM))} m`;
+    return poserCopies(copies, src, 'Duplication refusée', 'copié', nom);
+  }
+
+  /** ACAL553 — UNE fonction de placement tout-ou-rien, partagée par la duplication et le
+   *  collage : un seul pas d'historique, rien de muté si un membre est refusé. */
+  function poserCopies(
+    copies: readonly CopiePanneau[],
+    refuses: readonly number[],
+    titreRefus: string,
+    verbe: string,
+    nomSucces: string,
+  ): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g) return false;
     recordFreeHistory();
-    const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
-    const othersCorners = st.panels.map((p) => panelCornersFor(g, p));
-    const placed: Vec2[][] = [];
-    const startIdx = st.panels.length;
-    const news: FreePanel[] = [];
-    for (const i of src) {
-      const p = st.panels[i];
-      const [u, v] = toUV(g, p.cx, p.cy);
-      const nu = u + decalageM;
-      const angle = p.angleDeg ?? 0;
-      const corners = panelCornersUV(g, nu, v, angle);
-      const violations = hardViolationsFor(g, ringUV, corners, othersCorners, placed);
-      if (violations.length) {
-        dropFreeHistory();
-        flashRefusal(src);
-        if (layoutNoteEl) {
-          layoutNoteEl.textContent = `Duplication refusée : ${violations.map(violationLabel).join(', ')} — rien n’a été copié.`;
-        }
-        renderLayoutPanel();
-        return false;
+    const res = placerCopiesToutOuRien(st, g, copies);
+    if (!res.ok) {
+      dropFreeHistory();
+      flashRefusal(refuses);
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = `${titreRefus} : ${res.violations.map(violationLabel).join(', ')} — rien n’a été ${verbe}.`;
       }
-      placed.push(corners);
-      const [cx, cy] = toENU(g, nu, v);
-      const copy: FreePanel = { cx, cy };
-      if (p.angleDeg) copy.angleDeg = p.angleDeg;
-      if (p.face) copy.face = p.face;
-      news.push(copy);
+      renderLayoutPanel();
+      return false;
     }
-    st.panels.push(...news);
-    setSelection(news.map((_, k) => startIdx + k)); // les COPIES restent sélectionnées
-    if (layoutNoteEl) {
-      layoutNoteEl.textContent = `Dupliqué — ${fmt(news.length)} panneaux copiés à ${fmt1(Math.abs(decalageM))} m (${fmt(st.panels.length)} posés).`;
-    }
+    const startIdx = st.panels.length;
+    st.panels.push(...res.news);
+    setSelection(res.news.map((_, k) => startIdx + k)); // les COPIES restent sélectionnées
+    if (layoutNoteEl) layoutNoteEl.textContent = `${nomSucces} (${fmt(st.panels.length)} posés).`;
     renderCustomLayout();
     renderLayoutPanel();
     return true;
+  }
+
+  /** ACAL553 — Ctrl + C : mémorise la sélection libre (mémoire d'écran, jamais le document). */
+  function copierSelection(): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!freeActive() || !st || !g) return false;
+    const n = memoriserLot(st, g, selection);
+    if (n && layoutNoteEl) layoutNoteEl.textContent = `Copié — ${fmt(n)} panneaux en mémoire.`;
+    return n > 0;
+  }
+
+  /** ACAL553 — Ctrl + V : colle au dernier point survolé (sinon au centre du pan actif). */
+  function collerSelection(): boolean {
+    const g = freeGeom();
+    if (!freeActive() || !g) return false;
+    const enu = dernierPointSurvol ? screenToENU(dernierPointSurvol) : null;
+    const copies = collerAuPoint(g, enu);
+    if (!copies) return false;
+    return poserCopies(copies, [], 'Collage refusé', 'collé', `Collé — ${fmt(copies.length)} panneaux`);
   }
 
   /** CALX113 — axe de symétrie : une droite ENU définie par deux points DISTINCTS (cliqués,
@@ -2115,6 +2069,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!ctx.layoutMode || !ctx.layoutState) return;
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
+    // ACAL553 — Ctrl + C / V : jamais dans un champ de saisie ; sans sélection libre, la touche reste au navigateur.
+    const cible = e.target as HTMLElement | null;
+    const saisie = !!cible && (/^(input|textarea|select)$/i.test(cible.tagName) || cible.isContentEditable);
+    const presse = mod && !saisie ? actionAtelierCtrl(e) : null;
+    if (presse === 'copier' || presse === 'coller') {
+      if ((presse === 'copier' ? copierSelection() : collerSelection())) e.preventDefault();
+      return;
+    }
     const geste = mod ? actionDisposition(e) : null; // ACAL414 — Ctrl+Z / Y lus dans la table
     if (geste) {
       if (geste === 'annuler' ? undo() : redo()) e.preventDefault();
@@ -2847,6 +2809,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (selectRow(hit).length) e.preventDefault();
   });
   map.on('mousemove', (e) => {
+    dernierPointSurvol = e.point; // ACAL553 — centre du collage
     if (layoutDrag || marquee || lasso) {
       moveLayoutDrag(e.point);
       return;
@@ -2993,6 +2956,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     freeAlignSelection,
     freeDistributeSelection,
     dupliquerSelection,
+    copierSelection,
+    collerSelection,
     symetriserSelection,
     panelsInLasso,
     isLassoMode: () => lassoMode,

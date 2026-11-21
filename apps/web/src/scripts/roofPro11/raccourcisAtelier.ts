@@ -51,6 +51,8 @@ export const TABLE_RACCOURCIS: readonly LigneRaccourci[] = [
   { portees: ['atelier'], touches: ['a'], action: 'aimantation', libelle: 'Activer ou couper l’aimantation', ecriture: 'A' },
   { portees: ['atelier'], touches: ['delete'], action: 'supprimer', libelle: 'Supprimer la sélection', ecriture: 'Suppr', destructif: true },
   { portees: ['atelier'], touches: ['d'], modificateurs: { ctrl: true }, action: 'dupliquer', libelle: 'Dupliquer la sélection', ecriture: 'Ctrl + D' },
+  { portees: ['atelier'], touches: ['c'], modificateurs: { ctrl: true }, action: 'copier', libelle: 'Copier les panneaux sélectionnés (placement libre)', ecriture: 'Ctrl + C' },
+  { portees: ['atelier'], touches: ['v'], modificateurs: { ctrl: true }, action: 'coller', libelle: 'Coller les panneaux copiés au curseur', ecriture: 'Ctrl + V' },
   { portees: ['atelier'], touches: ['f'], action: 'pleinEcran', libelle: 'Plein écran', ecriture: 'F' },
 ];
 
@@ -66,6 +68,16 @@ export function actionDisposition(e: { key: string; shiftKey?: boolean; ctrlKey?
   const shift = Boolean(e.shiftKey);
   const l = lignesDePortee('disposition').find(
     (r) => r.touches.includes(key) && Boolean(r.modificateurs?.ctrl) === ctrl && Boolean(r.modificateurs?.shift) === shift,
+  );
+  return l ? l.action : null;
+}
+
+/** ACAL553 — le geste d'atelier à Ctrl (`copier` / `coller` / …) que cette frappe désigne, ou null. */
+export function actionAtelierCtrl(e: { key: string; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }): string | null {
+  const key = e.key.toLowerCase();
+  const shift = Boolean(e.shiftKey);
+  const l = lignesDePortee('atelier').find(
+    (r) => r.modificateurs?.ctrl && r.touches.includes(key) && Boolean(r.modificateurs?.shift) === shift,
   );
   return l ? l.action : null;
 }

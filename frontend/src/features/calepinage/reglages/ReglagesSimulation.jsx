@@ -660,22 +660,6 @@ export default function ReglagesSimulation() {
         </a>
       </p>
 
-      {champsFautifs.length > 0 && (
-        <p
-          role="alert"
-          data-testid="calx69-bandeau"
-          className="mt-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          Réglages incomplets — à corriger :{' '}
-          {champsFautifs.map((cle, i) => (
-            <span key={cle}>
-              {i > 0 && ', '}
-              <a href={`#calx69-${cle}`} className="underline">{libelleDe(cle, registres)}</a>
-            </span>
-          ))}
-        </p>
-      )}
-
       <DemarrageRapide
         reglages={servis}
         peutApprouver={peutApprouver}
@@ -728,6 +712,26 @@ export default function ReglagesSimulation() {
           Sans le droit « gérer le calepinage », la saisie n’est pas proposée
           ici.
         </p>
+      )}
+
+      {/* ACAL947 — TOUTES les erreurs d'un coup, sous le bouton : chaque ligne
+          nomme le réglage, dit ce que le serveur attend et mène au champ. */}
+      {champsFautifs.length > 0 && (
+        <div
+          role="alert"
+          data-testid="acal947-erreurs-bouton"
+          className="mt-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          <p className="font-semibold">Réglages incomplets — à corriger :</p>
+          <ul className="mt-1 list-disc pl-5">
+            {champsFautifs.map((cle) => (
+              <li key={cle} data-testid={`acal947-erreur-${cle}`}>
+                <a href={`#calx69-${cle}`} className="underline">{libelleDe(cle, registres)}</a>
+                {' — '}{erreurs[cle]}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {erreurs._general && (

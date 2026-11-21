@@ -228,6 +228,20 @@ class PansDeMemeOrientationTest(SimpleTestCase):
         self.assertEqual([c.nb_modules for c in conception.chaines], [7, 7])
         self.assertTrue(any('aucune découpe' in a for a in conception.alertes))
 
+    def test_le_reglage_se_lit_seulement_source(self):
+        from apps.calepinage.services.chaines import (
+            tolerance_orientation_societe)
+
+        def reglage(saisie):
+            return {'electrique_societe': {
+                'tolerance_orientation_pans_deg': saisie}}
+
+        self.assertEqual(tolerance_orientation_societe(reglage(
+            {'valeur': 2, 'source': 'societe'})), 2.0)
+        self.assertIsNone(tolerance_orientation_societe(reglage(
+            {'valeur': 2})))
+        self.assertIsNone(tolerance_orientation_societe({}))
+
     def test_orientations_differentes_jamais_fusionnees(self):
         groupes = _groupes_electriques(_layout(7, 7), tolerance_deg=1.0)
         self.assertEqual(len(groupes), 2)

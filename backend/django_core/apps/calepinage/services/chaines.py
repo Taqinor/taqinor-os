@@ -383,6 +383,19 @@ def _meme_orientation(a, b, tolerance_deg):
             <= tolerance_deg + 1e-9)
 
 
+def tolerance_orientation_societe(parametres):
+    """ACAL650 — la tolérance SAISIE avec sa source (réglage société
+    ``tolerance_orientation_pans_deg``), ou ``None`` : jamais supposée."""
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
+
+    saisie = ((parametres or {}).get(SECTION_ELECTRIQUE_SOCIETE) or {}).get(
+        'tolerance_orientation_pans_deg')
+    if not isinstance(saisie, dict) or not saisie.get('source'):
+        return None
+    valeur = _nombre(saisie.get('valeur'))
+    return valeur if valeur is not None and valeur >= 0 else None
+
+
 def fusions_de_pans(pans, tolerance_deg=None):
     """ACAL650 — les pans regroupés par orientation, dans l'ordre du document
     (sans tolérance saisie : un groupe par pan, comportement d'aujourd'hui)."""

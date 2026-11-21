@@ -241,6 +241,10 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             'struct_type_pose', 'struct_masse_kg_m2', 'struct_notice',
             # ACAL567 — zone de serrage fabricant du module (sourcée).
             'serrage_min_mm', 'serrage_max_mm', 'serrage_source',
+            # ACAL659 — champs lus par les modèles électriques (optionnels).
+            'cellules_serie', 'temp_coeff_isc_pct_c',
+            'ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c',
+            'ond_mppt_independants', 'opt_onduleurs_compatibles',
             'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
             'date_creation', 'date_mise_a_jour',
         ]

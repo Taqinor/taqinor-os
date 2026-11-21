@@ -92,17 +92,22 @@ def orientation_du_pan(zone):
     ``facingAzimuthDeg``/``aspect``. Sans ``geometry`` (ou sans ses angles),
     la lecture du TOIT reste celle d'avant, au bit près.
 
-    EXCEPTION ASSUMÉE : une pose est-ouest (``geometry.family == 'eastwest'``)
-    porte DEUX faces ; son orientation n'est pas tranchée ici (C-ACAL-081) et
-    garde la lecture du toit.
+    ACAL911 — une pose est-ouest (``geometry.family == 'eastwest'``) suit la
+    même règle (angles des TABLES posées) et porte en plus la clé additive
+    ``faces`` : face E à l'azimut posé, face W à l'opposé, chacune pour la
+    part des modules posés sur elle (``geometry.panels[].face``) ; sans face
+    déclarée, ½ / ½ et ``hypothese: True``. C'est ici, et seulement ici, que
+    les faces sont comptées (``calepinage.pvgis_serie.jambes_du_pan`` lit ce
+    compte). Un pan non est-ouest n'a pas de clé ``faces``.
 
     Renvoie ``{inclinaison_deg, azimut_deg (boussole, 180 = Sud),
-    aspect_pvgis (0 = Sud), source_orientation ('pose' | 'toit')}`` — jamais
-    d'exception ; une valeur illisible reste ``None``.
+    aspect_pvgis (0 = Sud), source_orientation ('pose' | 'toit')}`` (+
+    ``faces`` en est-ouest) — jamais d'exception ; une valeur illisible reste
+    ``None``.
     """
     zone = zone if isinstance(zone, dict) else {}
     geo = zone.get('geometry')
-    if not isinstance(geo, dict) or geo.get('family') == 'eastwest':
+    if not isinstance(geo, dict):
         geo = {}
 
     # Lecture du TOIT (historique, F3 : azimut publié en BOUSSOLE).
@@ -125,12 +130,39 @@ def orientation_du_pan(zone):
         azimut_boussole = geo.get('azimuthDeg')
         aspect_pvgis = _azimut_boussole_vers_aspect(azimut_boussole)
         source = 'pose'
-    return {
+    orientation = {
         'inclinaison_deg': pitch,
         'azimut_deg': azimut_boussole,
         'aspect_pvgis': aspect_pvgis,
         'source_orientation': source,
     }
+    if geo.get('family') == 'eastwest':
+        orientation['faces'] = _faces_est_ouest(geo, azimut_boussole, pitch)
+    return orientation
+
+
+#: ACAL911 — libellé de chaque face dans ``pans`` (« <pan> — face est »).
+LIBELLES_FACES = {'E': 'est', 'W': 'ouest'}
+
+
+def _faces_est_ouest(geo, azimut, inclinaison):
+    """ACAL911 — les deux faces d'une pose est-ouest (``[]`` sans azimut) :
+    ``[{face, azimut_deg, inclinaison_deg, part, modules, hypothese}]``."""
+    try:
+        cap = float(azimut)
+    except (TypeError, ValueError):
+        return []
+    comptes = {'E': 0, 'W': 0}
+    for panneau in geo.get('panels') or ():
+        face = panneau.get('face') if isinstance(panneau, dict) else None
+        if face in comptes:
+            comptes[face] += 1
+    total = comptes['E'] + comptes['W']
+    return [{'face': face, 'azimut_deg': azimut_face, 'inclinaison_deg': inclinaison,
+             'part': round(comptes[face] / total, 4) if total else 0.5,
+             'modules': comptes[face] if total else None, 'hypothese': not total}
+            for face, azimut_face in (('E', cap), ('W', (cap + 180.0) % 360.0))
+            if not total or comptes[face]]
 
 
 def extract_roof_config(layout):
@@ -156,6 +188,7 @@ def extract_roof_config(layout):
         return {}
 
     pans = []
+    nb_pans_dessines = 0
     surface_cumulee_m2 = 0.0
     total_panels = 0
     kwc_cumule = 0.0
@@ -232,7 +265,25 @@ def extract_roof_config(layout):
             # face du toit). Clé interne additive de ``_pans_geometry``.
             'source_orientation': orientation['source_orientation'],
         }
-        pans.append(pan)
+        nb_pans_dessines += 1
+        faces = orientation.get('faces') or []
+        if faces:
+            # ACAL911 — une entrée par FACE posée (libellé, modules, kWc et
+            # orientation de la face) ; le pan dessiné compte une fois.
+            restants = count
+            for rang, face in enumerate(faces):
+                modules = face['modules'] if face['modules'] is not None else (
+                    restants if rang == len(faces) - 1 else count - count // 2)
+                restants -= modules
+                pans.append(dict(
+                    pan, label='%s — face %s' % (pan['label'] or 'Pan', LIBELLES_FACES[face['face']]),
+                    nb_panneaux=modules, kwc=round(kwc * face['part'], 3) if kwc else 0.0,
+                    surface_m2=round(surface * face['part'], 2) if surface else 0.0,
+                    azimut_deg=face['azimut_deg'], inclinaison_deg=face['inclinaison_deg'],
+                    orientation=_aspect_to_orientation(_azimut_boussole_vers_aspect(face['azimut_deg']))))
+            pan = max(pans[-len(faces):], key=lambda p: p['kwc'])
+        else:
+            pans.append(pan)
         surface_cumulee_m2 += surface
         total_panels += count
         kwc_cumule += kwc
@@ -244,7 +295,7 @@ def extract_roof_config(layout):
 
     cfg = {
         'surface_m2': round(surface_cumulee_m2, 2),
-        'nb_pans': len(pans),
+        'nb_pans': nb_pans_dessines,
         'nb_panneaux': total_panels,
         'kwc': round(kwc_cumule, 3),
         'pans': pans,

@@ -60,7 +60,9 @@ class TypesDeclaresTest(SimpleTestCase):
                 with self.subTest(section=section, cle=cle):
                     self.assertIn(cle, TYPES_CLES.get(section, {}))
                     self.assertTrue(TYPES_CLES[section][cle].get('type'))
-        self.assertEqual(total, 40)  # 31 simulation (+ ACAL455/456/463) + 9 electrique_societe
+        # 31 simulation (+ ACAL455/456/463) + 9 electrique_societe
+        # (+5 d'autres lanes ; + 2 ACAL704, + 3 ACAL716).
+        self.assertEqual(total, 50)
 
     def test_aucun_type_pour_une_cle_hors_registre(self):
         for section, types in TYPES_CLES.items():
@@ -186,6 +188,63 @@ class EcritureFusionneeTest(TestCase):
         self.assertEqual(sorted(self._section()), ['sigma_modele_pct'])
 
 
+def _fautive(valeur='abc'):
+    return {'valeur': valeur, 'source': 'societe'}
+
+
+#: ACAL947 : trois cles fautives dans `simulation`, une dans la seconde.
+ENTREE_FAUTIVE = {
+    'simulation': {'sigma_modele_pct': _fautive(),
+                   'sigma_biais_meteo_pct': _fautive(),
+                   'lid_par_techno': _fautive({'mono': 2})},
+    'electrique_societe': {'facteur_regroupement': _fautive()},
+}
+
+
+class RefusMultipleTest(SimpleTestCase):
+    """ACAL947 — UN seul refus qui nomme TOUTES les clés fautives."""
+
+    def _refus(self):
+        from apps.calepinage.services.parametres import (
+            ReglagesInvalides, _normaliser)
+
+        with self.assertRaises(ReglagesInvalides) as capture:
+            _normaliser(ENTREE_FAUTIVE)
+        return capture.exception
+
+    def test_quatre_erreurs_dans_leurs_deux_sections(self):
+        erreurs = self._refus().erreurs
+        self.assertEqual(sorted(erreurs['simulation']),
+                         ['lid_par_techno', 'sigma_biais_meteo_pct',
+                          'sigma_modele_pct'])
+        self.assertEqual(list(erreurs['electrique_societe']),
+                         ['facteur_regroupement'])
+
+    def test_la_forme_est_celle_du_contrat(self):
+        import json
+        import pathlib
+
+        contrat = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'parametres_calepinage.json').read_text(encoding='utf-8'))
+        self.assertEqual(self._refus().erreurs,
+                         contrat['exemple_refus_multiple'])
+
+    def test_motif_de_table_sans_phrase_contradictoire(self):
+        motif = self._refus().erreurs['simulation']['lid_par_techno']
+        self.assertNotIn('Valeur de type objet reçue', motif)
+        self.assertIn('lid_par_techno.mono', motif)
+
+    def test_une_seule_cle_fautive_garde_la_forme_a_une_cle(self):
+        from apps.calepinage.services.parametres import (
+            ReglageInvalide, _normaliser)
+
+        with self.assertRaises(ReglageInvalide) as capture:
+            _normaliser({'simulation': {'sigma_modele_pct': _fautive()}})
+        self.assertEqual(capture.exception.champ, 'sigma_modele_pct')
+        self.assertEqual(capture.exception.section, 'simulation')
+
+
 class RouteParametresTest(TestCase):
     """La route réelle : 400 nommé, fusion, aller-retour octet-identique."""
 
@@ -214,6 +273,19 @@ class RouteParametresTest(TestCase):
             reponse.data['simulation']['sigma_modele_pct']['valeur'], 2.5)
         self.assertEqual(
             self._ligne()['simulation']['sigma_modele_pct']['valeur'], 2.5)
+
+    def test_plusieurs_cles_fautives_un_seul_400_rien_ecrit(self):
+        """ACAL947 — un 400 qui nomme toutes les clés, l'écriture reste
+        atomique (rien d'écrit)."""
+        reponse = self.api.put(URL, ENTREE_FAUTIVE, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(sorted(reponse.data['simulation']),
+                         ['lid_par_techno', 'sigma_biais_meteo_pct',
+                          'sigma_modele_pct'])
+        self.assertEqual(list(reponse.data['electrique_societe']),
+                         ['facteur_regroupement'])
+        self.assertFalse(
+            ParametresCalepinage.objects.filter(company=self.company).exists())
 
     def test_valeur_illisible_400_nommee(self):
         reponse = self.api.put(URL, {'simulation': {
@@ -297,6 +369,39 @@ class RouteParametresTest(TestCase):
         self.assertEqual(reponse.status_code, 200, reponse.content)
         self.assertEqual(reponse.data['presets']['a'], 'xy')
         self.assertEqual(reponse.data['presets']['b'], ['z', {'c': 'd'}])
+
+
+class ClesOmbrageAcal716Test(SimpleTestCase):
+    """ACAL716 — trois clés d'ombrage au registre, typées, SANS valeur."""
+
+    CLES = ('seuil_acces_retrait', 'ombrage_borne_courant_pct',
+            'ombrage_borne_importante_pct')
+
+    def test_au_registre_en_fin_typees_et_sans_valeur(self):
+        cles = list(registre('simulation'))
+        self.assertEqual(cles[-3:], list(self.CLES))
+        servi = {ligne['cle']: ligne
+                 for ligne in registre_des_reglages()['simulation']}
+        self.assertEqual(servi['seuil_acces_retrait']['type'], 'nombre')
+        self.assertEqual(servi['seuil_acces_retrait']['maximum'], 1)
+        for cle in self.CLES[1:]:
+            self.assertEqual(servi[cle]['type'], 'pourcentage')
+            self.assertEqual(servi[cle]['unite'], '%')
+        for cle in self.CLES:
+            self.assertIn('aucune valeur proposée par défaut',
+                          servi[cle]['reference'])
+            self.assertNotIn('valeur', servi[cle])
+
+    def test_saisie_valide_acceptee_et_abc_refuse_en_nommant_la_cle(self):
+        rendu = _normaliser_section_simulation({
+            'ombrage_borne_courant_pct': {'valeur': 12, 'source': 'societe',
+                                          'reference': 'x'}})
+        self.assertEqual(rendu['ombrage_borne_courant_pct']['valeur'], 12)
+        for cle in self.CLES:
+            with self.subTest(cle=cle):
+                with self.assertRaises(ReglageInvalide) as refus:
+                    _normaliser_section_simulation({cle: _saisie('abc')})
+                self.assertEqual(refus.exception.champ, cle)
 
 
 class CaractereInterditTest(SimpleTestCase):

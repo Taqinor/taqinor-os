@@ -573,3 +573,57 @@ class SensDeNumerotationTest(unittest.TestCase):
         self.assertEqual(formes(svg_de(plan), 'fleche-chaine'), [])
         self.assertNotIn('sens de numérotation',
                          '\n'.join(_lignes_de_legende(plan)))
+
+
+class BlocModuleDxfTest(unittest.TestCase):
+    """ACAL674 — un bloc MODULE inséré par module, avec ses attributs."""
+
+    @staticmethod
+    def _inserts(table):
+        import ezdxf
+
+        plan = _plan_de_cablage(LAYOUT, table)
+        document = ezdxf.read(io.StringIO(octets_dxf(
+            plan['geometrie'], chaines=plan['modules']).decode('utf-8')))
+        return document, [e for e in document.modelspace()
+                          if e.dxftype() == 'INSERT']
+
+    @staticmethod
+    def _attributs(insert):
+        return {a.dxf.tag: a.dxf.text for a in insert.attribs}
+
+    def test_un_insert_par_module_avec_chaine_mppt_onduleur_et_rang(self):
+        document, inserts = self._inserts(AFFECTATION)
+        self.assertIn('MODULE', document.blocks)
+        self.assertEqual(len(inserts), 12)
+        lus = sorted((int(self._attributs(i)['CHAINE']),
+                      int(self._attributs(i)['N'])) for i in inserts)
+        self.assertEqual(lus, [(1, n) for n in range(1, 7)]
+                         + [(2, n) for n in range(1, 7)])
+        for insert in inserts:
+            attributs = self._attributs(insert)
+            self.assertEqual(attributs['MPPT'], attributs['CHAINE'])
+            self.assertEqual(attributs['ONDULEUR'], '1')
+            self.assertEqual(insert.dxf.layer, CALQUE_CHAINES)
+
+    def test_le_rang_suit_l_ordre_des_lignes_de_l_affectation(self):
+        desordre = list(reversed(AFFECTATION[:6])) + AFFECTATION[6:]
+        plan = _plan_de_cablage(LAYOUT, desordre)
+        rangs = {m['module']: m['rang'] for m in plan['modules']}
+        # z1#6 est la 1re ligne de la chaîne 1 : son N vaut 1 (pas son n°).
+        self.assertEqual((rangs['z1#6'], rangs['z1#1']), (1, 6))
+        self.assertEqual(rangs['z1#7'], 1)
+        _document, inserts = self._inserts(desordre)
+        self.assertEqual(
+            sorted(int(self._attributs(i)['N']) for i in inserts
+                   if self._attributs(i)['CHAINE'] == '1'),
+            [1, 2, 3, 4, 5, 6])
+
+    def test_un_module_sans_affectation_n_est_pas_insere_et_le_reste_demeure(
+            self):
+        document, inserts = self._inserts(AFFECTATION[:11] + [ligne(12, None)])
+        self.assertEqual(len(inserts), 11)
+        # Les polylignes et textes d'aujourd'hui restent.
+        types = {e.dxftype() for e in document.modelspace()
+                 if e.dxf.layer == CALQUE_CHAINES}
+        self.assertTrue({'LWPOLYLINE', 'TEXT', 'INSERT'} <= types)

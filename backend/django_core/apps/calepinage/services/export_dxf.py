@@ -49,6 +49,8 @@ passe toujours ; sans le paramètre, ``document_dxf`` reste celui de CAL178.
 """
 from __future__ import annotations
 
+import math
+
 __all__ = [
     'CALQUE_TOITURE', 'CALQUE_OBSTACLES', 'CALQUE_MODULES', 'CALQUE_COTES',
     'CALQUES', 'octets_dxf', 'exporter_dxf',
@@ -254,6 +256,49 @@ def _calque_provenance(document, espace, lignes, etendue):
     }).set_location(position)
 
 
+#: ACAL674 — le bloc d'un module et ses attributs, un INSERT par module
+#: affecté : un CAO filtre et compte les modules par chaîne.
+BLOC_MODULE = 'MODULE'
+ATTRIBUTS_MODULE = ('CHAINE', 'MPPT', 'ONDULEUR', 'N')
+
+
+def _inserer_module(document, espace, module, blocs, attributs):
+    """Insère le bloc ``MODULE`` au centre du module, tourné comme lui, avec
+    CHAINE / MPPT / ONDULEUR (l'affectation publiée) et N (le numéro dans
+    SA chaîne), sur le calque et dans la couleur de la chaîne (``attributs``). Un module sans emprise (``coins`` absent) n'est pas inséré ;
+    une valeur non publiée reste VIDE, jamais devinée."""
+    coins = module.get('coins')
+    if coins is None:
+        return
+    (ax, ay), (bx, by), (cx_, cy_) = coins[0], coins[1], coins[2]
+    largeur = math.hypot(bx - ax, by - ay)
+    profondeur = math.hypot(cx_ - bx, cy_ - by)
+    cle = (round(largeur, 4), round(profondeur, 4))
+    if cle not in blocs:
+        nom = BLOC_MODULE if not blocs else '%s_%d' % (BLOC_MODULE,
+                                                       len(blocs) + 1)
+        bloc = document.blocks.new(name=nom)
+        demi_l, demi_p = largeur / 2.0, profondeur / 2.0
+        bloc.add_lwpolyline(
+            [(-demi_l, -demi_p), (demi_l, -demi_p), (demi_l, demi_p),
+             (-demi_l, demi_p)], close=True)
+        for rang, balise in enumerate(ATTRIBUTS_MODULE):
+            bloc.add_attdef(
+                balise, (0.0, -demi_p - HAUTEUR_REPERE_CHAINE_M * (rang + 1)),
+                dxfattribs={'height': HAUTEUR_REPERE_CHAINE_M, 'flags': 1})
+        blocs[cle] = nom
+    centre = (sum(c[0] for c in coins) / 4.0, sum(c[1] for c in coins) / 4.0)
+    insert = espace.add_blockref(
+        blocs[cle], centre, dxfattribs=dict(
+            attributs,
+            rotation=math.degrees(math.atan2(by - ay, bx - ax))))
+    valeurs = (module.get('chaine'), module.get('mppt'),
+               module.get('onduleur'), module.get('rang'))
+    insert.add_auto_attribs({
+        balise: '' if valeur is None else str(valeur)
+        for balise, valeur in zip(ATTRIBUTS_MODULE, valeurs)})
+
+
 def _calque_chaines(document, espace, chaines):
     """CALX310 — un objet TEINT et un repère ``C<n>`` par module AFFECTÉ.
 
@@ -265,6 +310,7 @@ def _calque_chaines(document, espace, chaines):
     from .documents.plan_cablage import rgb_de
 
     document.layers.add(name=CALQUE_CHAINES, color=COULEUR_CALQUE_CHAINES)
+    blocs = {}
     for module in chaines:
         if not isinstance(module, dict) or module.get('chaine') is None:
             continue
@@ -280,6 +326,7 @@ def _calque_chaines(document, espace, chaines):
         else:
             espace.add_lwpolyline(list(module['coins']), close=True,
                                   dxfattribs=attributs)
+        _inserer_module(document, espace, module, blocs, attributs)
         repere = 'C%s%s' % (module['chaine'], '*' if module.get('manuel')
                             else '')
         espace.add_text(repere, height=HAUTEUR_REPERE_CHAINE_M,

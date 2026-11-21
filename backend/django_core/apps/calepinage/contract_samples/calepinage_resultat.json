@@ -390,7 +390,81 @@
           "produit": "JA Solar JAM72D40 580 MB",
           "motif": ""
         }
-      }
+      },
+      "bilan_mensuel": [
+        {
+          "mois": 1,
+          "temperature_ambiante_c": null,
+          "pr": 1.29,
+          "pr_motif": ""
+        },
+        {
+          "mois": 2,
+          "temperature_ambiante_c": null,
+          "pr": 1.4279,
+          "pr_motif": ""
+        },
+        {
+          "mois": 3,
+          "temperature_ambiante_c": null,
+          "pr": 1.5554,
+          "pr_motif": ""
+        },
+        {
+          "mois": 4,
+          "temperature_ambiante_c": null,
+          "pr": 1.57,
+          "pr_motif": ""
+        },
+        {
+          "mois": 5,
+          "temperature_ambiante_c": null,
+          "pr": 1.5112,
+          "pr_motif": ""
+        },
+        {
+          "mois": 6,
+          "temperature_ambiante_c": null,
+          "pr": 1.434,
+          "pr_motif": ""
+        },
+        {
+          "mois": 7,
+          "temperature_ambiante_c": null,
+          "pr": 1.4072,
+          "pr_motif": ""
+        },
+        {
+          "mois": 8,
+          "temperature_ambiante_c": null,
+          "pr": 1.3633,
+          "pr_motif": ""
+        },
+        {
+          "mois": 9,
+          "temperature_ambiante_c": null,
+          "pr": 1.4198,
+          "pr_motif": ""
+        },
+        {
+          "mois": 10,
+          "temperature_ambiante_c": null,
+          "pr": 1.3589,
+          "pr_motif": ""
+        },
+        {
+          "mois": 11,
+          "temperature_ambiante_c": null,
+          "pr": 1.3503,
+          "pr_motif": ""
+        },
+        {
+          "mois": 12,
+          "temperature_ambiante_c": null,
+          "pr": 1.46,
+          "pr_motif": ""
+        }
+      ]
     },
     "pertes": [
       {
@@ -1410,7 +1484,8 @@
           "produit": "",
           "motif": "Non renseigné : « FicheTechnique.garantie_pct_a_10_ans », « FicheTechnique.garantie_pct_a_25_ans »"
         }
-      }
+      },
+      "bilan_mensuel": []
     },
     "pertes": [],
     "cascade": null,
@@ -1831,7 +1906,81 @@
           "produit": "JA Solar JAM72D40 580 MB",
           "motif": ""
         }
-      }
+      },
+      "bilan_mensuel": [
+        {
+          "mois": 1,
+          "temperature_ambiante_c": null,
+          "pr": 1.29,
+          "pr_motif": ""
+        },
+        {
+          "mois": 2,
+          "temperature_ambiante_c": null,
+          "pr": 1.4279,
+          "pr_motif": ""
+        },
+        {
+          "mois": 3,
+          "temperature_ambiante_c": null,
+          "pr": 1.5554,
+          "pr_motif": ""
+        },
+        {
+          "mois": 4,
+          "temperature_ambiante_c": null,
+          "pr": 1.57,
+          "pr_motif": ""
+        },
+        {
+          "mois": 5,
+          "temperature_ambiante_c": null,
+          "pr": 1.5112,
+          "pr_motif": ""
+        },
+        {
+          "mois": 6,
+          "temperature_ambiante_c": null,
+          "pr": 1.434,
+          "pr_motif": ""
+        },
+        {
+          "mois": 7,
+          "temperature_ambiante_c": null,
+          "pr": 1.4072,
+          "pr_motif": ""
+        },
+        {
+          "mois": 8,
+          "temperature_ambiante_c": null,
+          "pr": 1.3633,
+          "pr_motif": ""
+        },
+        {
+          "mois": 9,
+          "temperature_ambiante_c": null,
+          "pr": 1.4198,
+          "pr_motif": ""
+        },
+        {
+          "mois": 10,
+          "temperature_ambiante_c": null,
+          "pr": 1.3589,
+          "pr_motif": ""
+        },
+        {
+          "mois": 11,
+          "temperature_ambiante_c": null,
+          "pr": 1.3503,
+          "pr_motif": ""
+        },
+        {
+          "mois": 12,
+          "temperature_ambiante_c": null,
+          "pr": 1.46,
+          "pr_motif": ""
+        }
+      ]
     },
     "pertes": [
       {

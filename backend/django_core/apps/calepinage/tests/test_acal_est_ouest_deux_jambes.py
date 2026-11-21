@@ -171,3 +171,36 @@ class DeuxGroupesElectriquesTest(unittest.TestCase):
             self.assertEqual(len(faces), 1, faces_par_chaine)
         self.assertEqual({next(iter(f)) for f in faces_par_chaine.values()},
                          {'E', 'W'})
+
+
+class ResumeDevisEstOuestTest(SimpleTestCase):
+    """ACAL911 — le résumé du devis d'un est-ouest 15° sur un toit 22° Sud :
+    deux faces 15° à 90° et 270°, jamais « 22° Sud »."""
+
+    def _zone(self):
+        zone = _zone_est_ouest()
+        zone.update(pitchDeg=22.0, facingAzimuthDeg=180.0)
+        zone['geometry']['tiltDeg'] = 15.0
+        return zone
+
+    def test_deux_faces_15_degres_dans_les_pans_du_devis(self):
+        from apps.ventes.services import extract_roof_config, orientation_du_pan
+
+        faces = orientation_du_pan(self._zone())['faces']
+        self.assertEqual([(f['face'], f['azimut_deg'], f['inclinaison_deg'], f['part'])
+                          for f in faces], [('E', 90.0, 15.0, 0.6), ('W', 270.0, 15.0, 0.4)])
+        cfg = extract_roof_config(_layout(self._zone()))
+        self.assertEqual(cfg['nb_pans'], 1)
+        self.assertEqual([(p['label'], p['nb_panneaux'], p['azimut_deg'], p['inclinaison_deg'])
+                          for p in cfg['pans']],
+                         [('PAN-EO — face est', 12, 90.0, 15.0),
+                          ('PAN-EO — face ouest', 8, 270.0, 15.0)])
+        self.assertNotIn(22.0, [p['inclinaison_deg'] for p in cfg['pans']])
+        self.assertEqual(cfg['nb_panneaux'], 20)
+
+    def test_jambes_lisent_le_meme_compte(self):
+        zone = self._zone()
+        jambes = jambes_du_pan({'azimut_deg': 180.0, 'inclinaison_deg': 22.0,
+                                'modules': 20, 'geometry': zone['geometry']})
+        self.assertEqual([(j['face'], j['modules'], j['azimut_face_deg'], j['inclinaison_deg'])
+                          for j in jambes], [('E', 12, 90.0, 15.0), ('W', 8, 270.0, 15.0)])

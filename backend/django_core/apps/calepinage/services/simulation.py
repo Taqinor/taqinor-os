@@ -1384,6 +1384,9 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         blocs['avertissements'].insert(0, entete)
     # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
     # fournisseur compte ce qui est réellement parti sur le réseau.
+    from .gain_inclinaison import demander as gain_inclinaison  # ACAL706
+    blocs['production']['gain_inclinaison'] = gain_inclinaison(
+        client, reference, decision, fichier, compteur, blocs['production'])
     blocs['meteo']['appels_pvgis'] = compteur['appels']
     identite = _relayer_fichier_meteo(blocs['meteo'], fichier, provenance)
 
@@ -1475,6 +1478,9 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['production']['projection'] = capacite_batterie_par_annee(
         projection['annees'],
         ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
+    from .bilan_mensuel import publier as bilan_mensuel  # ACAL705
+    blocs['production']['bilan_mensuel'] = bilan_mensuel(
+        serie_reference, blocs['production'])
     # ACAL693 — horizon, motif et garantie du fabricant à côté du tableau.
     blocs['production']['duree_de_vie'] = bloc_duree_de_vie(
         projection, contexte)

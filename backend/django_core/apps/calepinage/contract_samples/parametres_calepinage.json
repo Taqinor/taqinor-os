@@ -1114,6 +1114,16 @@
       "sigma_modele_pct": "Valeur de type texte reçue : « sigma_modele_pct » (Incertitude de simulation (σ modèle)) attend un pourcentage (nombre entre 0 et 100)."
     }
   },
+  "exemple_refus_multiple": {
+    "simulation": {
+      "sigma_modele_pct": "Valeur de type texte reçue : « sigma_modele_pct » (Incertitude de simulation (σ modèle)) attend un pourcentage (nombre entre 0 et 100).",
+      "sigma_biais_meteo_pct": "Valeur de type texte reçue : « sigma_biais_meteo_pct » (Biais long terme de la source météo (σ)) attend un pourcentage (nombre entre 0 et 100).",
+      "lid_par_techno": "« lid_par_techno » (Perte LID déclarée par technologie de cellule) : « lid_par_techno.mono » doit être un objet (reçu : nombre)."
+    },
+    "electrique_societe": {
+      "facteur_regroupement": "Valeur de type texte reçue : « facteur_regroupement » (Facteur de regroupement appliqué au courant admissible des câbles) attend un nombre (nombre entre 0 et 1)."
+    }
+  },
   "exemple_refus_catalogue_rapport": {
     "documents": {
       "catalogue_rapport": "Clé dérivée en lecture seule : elle ne s'enregistre pas."

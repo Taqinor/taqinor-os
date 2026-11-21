@@ -203,6 +203,7 @@ def _plan_de_cablage(roof_layout, affectation):
     # Couleurs : ordre de PREMIÈRE APPARITION dans la table, comme l'écran.
     couleurs, legende = {}, []
     par_chaine = {}
+    rangs = {}
     for ligne in lignes:
         chaine = ligne.get('chaine')
         if chaine is None:
@@ -216,6 +217,9 @@ def _plan_de_cablage(roof_layout, affectation):
             legende.append(entree)
         entree = par_chaine[chaine]
         entree['modules'] += 1
+        # ACAL674 — le n° du module DANS SA CHAÎNE : l'ordre des lignes de
+        # l'affectation publiée (1, 2, 3…), jamais un tri.
+        rangs[ligne['module']] = entree['modules']
         couple = {'onduleur': ligne.get('onduleur'), 'mppt': ligne.get('mppt')}
         if couple not in entree['entrees']:
             entree['entrees'].append(couple)
@@ -231,6 +235,9 @@ def _plan_de_cablage(roof_layout, affectation):
         modules.append(dict(
             module,
             chaine=chaine,
+            onduleur=ligne.get('onduleur'),
+            mppt=ligne.get('mppt'),
+            rang=rangs.get(module['module']),
             couleur=couleurs.get(chaine) if chaine is not None else None,
             manuel=ligne.get('source') == SOURCE_MANUELLE))
 

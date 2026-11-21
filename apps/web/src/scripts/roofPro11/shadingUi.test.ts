@@ -3,6 +3,7 @@
 // ce fichier couvre uniquement la résolution PURE de la hauteur (le reste de
 // `createShadingUi` a besoin d'une carte MapLibre + du DOM, hors de portée d'un test pur).
 import { sunDirection } from '../../lib/roofPro2'; // ACAL459
+import { lignesSensDePose } from './orientationOmbre'; // ACAL552
 import { annualShadeFactor, MID_MONTH_DAY_OF_YEAR, DIFFUSE_FRACTION_WHEN_SHADED } from '../../lib/shadingEngine'; // ACAL459
 import { tableOmbrage, recomposerMatrice, ajouterTableOmbrage, garderTableRelue, signerSources } from './tableOmbrage'; // ACAL459
 import { facteurVueCiel, vueCielDuPan, ajouterVueCiel, garderVueCielRelue } from './vueCiel'; // ACAL460
@@ -529,5 +530,23 @@ describe('ACAL441 : la légende reprend les couleurs de solarAccessColorRGB', ()
   });
   it('sans note dans la page, rien n’est créé', () => {
     expect(() => poserLegendeAcces(null, 'année entière')).not.toThrow();
+  });
+});
+
+// ACAL552 — les deux poses chiffrées sous les puces Portrait / Paysage.
+describe('ACAL552 — lignesSensDePose', () => {
+  const pack = {
+    portrait: { panels: [{ cx: 0, cy: 0 }, { cx: 1, cy: 0 }, { cx: 2, cy: 0 }] },
+    landscape: { panels: [{ cx: 0, cy: 0 }, { cx: 1, cy: 0 }] },
+  };
+  it('deux lignes chiffrées, accès injecté moyenné sur les N premiers', () => {
+    const lignes = lignesSensDePose(pack, (p) => p.map((_, i) => (i === 0 ? 1 : 0.5)), (g) => Math.min(2, g.panels.length));
+    expect(lignes).toEqual([
+      { sens: 'portrait', n: 2, acces: 0.75 },
+      { sens: 'landscape', n: 2, acces: 0.75 },
+    ]);
+  });
+  it('sans source (accès null) ⇒ null, jamais 100 %', () => {
+    expect(lignesSensDePose(pack, () => null, (g) => g.panels.length)).toBeNull();
   });
 });

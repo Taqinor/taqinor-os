@@ -171,7 +171,7 @@ describe('ACAL133 — un seul PUT pour les deux sections', () => {
 
     await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
     expect(mocks.putParametres).toHaveBeenCalledWith({ simulation: {}, electrique_societe: {} })
-    expect(screen.queryByTestId('calx69-bandeau')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('acal947-erreurs-bouton')).not.toBeInTheDocument()
   })
 
   it('aller-retour sans geste : les sections renvoyées sont celles servies, à l’octet', async () => {
@@ -244,8 +244,8 @@ describe('CALX69 — une clé entamée sans source est refusée AVANT tout envoi
 
     const erreur = await screen.findByTestId('calx69-erreur-fenetre_annees')
     expect(erreur).toHaveTextContent('source')
-    expect(screen.getByTestId('calx69-bandeau')).toHaveTextContent('années météo')
-    expect(screen.getByTestId('calx69-bandeau').querySelector('a[href="#calx69-fenetre_annees"]'))
+    expect(screen.getByTestId('acal947-erreurs-bouton')).toHaveTextContent('années météo')
+    expect(screen.getByTestId('acal947-erreurs-bouton').querySelector('a[href="#calx69-fenetre_annees"]'))
       .toBeTruthy()
     expect(mocks.putParametres).not.toHaveBeenCalled()
   })
@@ -545,5 +545,31 @@ describe('ACAL770 — les valeurs que le serveur ne sait pas honorer sont grisé
     await screen.findByTestId('calx69-ligne-mode_meteo')
     expect(champValeur('mode_meteo').value).toBe('tmy')
     expect(screen.getByTestId('acal770-motif-mode_meteo-tmy')).toHaveTextContent('Valeur enregistrée')
+  })
+})
+
+describe('ACAL947 — toutes les erreurs de réglage d’un coup, sous le bouton', () => {
+  it('un 400 à plusieurs clés : une ligne par réglage, sous « Enregistrer », la saisie reste', async () => {
+    const multiple = exempleContrat('calepinage', 'parametres_calepinage', 'exemple_refus_multiple')
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockRejectedValue({ response: { status: 400, data: multiple } })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    fireEvent.change(champValeur('sigma_modele_pct'), { target: { value: 'abc' } })
+    fireEvent.change(champSource('sigma_modele_pct'), { target: { value: 'societe' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+
+    const liste = await screen.findByTestId('acal947-erreurs-bouton')
+    const attendues = Object.values(multiple).flatMap((section) => Object.keys(section))
+    expect(attendues).toHaveLength(4)
+    for (const cle of attendues) {
+      const ligne = within(liste).getByTestId(`acal947-erreur-${cle}`)
+      expect(ligne.querySelector(`a[href="#calx69-${cle}"]`)).toBeTruthy()
+    }
+    // la liste est SOUS le bouton « Enregistrer », la saisie n'est pas perdue
+    const bouton = screen.getByTestId('calx69-enregistrer')
+    expect(bouton.compareDocumentPosition(liste) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(champValeur('sigma_modele_pct').value).toBe('abc')
   })
 })

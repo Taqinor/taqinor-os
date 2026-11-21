@@ -75,15 +75,22 @@ class OrientationPoseeTest(SimpleTestCase):
         self.assertEqual((o['inclinaison_deg'], o['azimut_deg'],
                           o['source_orientation']), (5, 170, 'toit'))
 
-    def test_eastwest_garde_la_lecture_actuelle(self):
-        """C-ACAL-081 non tranchée : une pose est-ouest lit le TOIT (figé)."""
+    def test_eastwest_lit_les_deux_faces_posees(self):
+        """ACAL911 (réalignement de C-ACAL-081) : une pose est-ouest lit les
+        TABLES posées et porte ses deux faces ; sans face déclarée ½ / ½."""
         zone = _zone_plate_inclinee(family='eastwest', azimuthDeg=90,
                                     tiltDeg=10)
         zone['facingAzimuthDeg'] = 180
-        pan = extract_roof_config(_layout(zone))['pans'][0]
-        self.assertEqual(pan['inclinaison_deg'], 0)
-        self.assertEqual(pan['azimut_deg'], 180)
-        self.assertEqual(pan['source_orientation'], 'toit')
+        o = orientation_du_pan(zone)
+        self.assertEqual((o['inclinaison_deg'], o['azimut_deg'],
+                          o['source_orientation']), (10, 90, 'pose'))
+        self.assertEqual([(f['face'], f['azimut_deg'], f['part'], f['hypothese'])
+                          for f in o['faces']],
+                         [('E', 90.0, 0.5, True), ('W', 270.0, 0.5, True)])
+        pans = extract_roof_config(_layout(zone))['pans']
+        self.assertEqual([(p['azimut_deg'], p['inclinaison_deg'], p['source_orientation'])
+                          for p in pans], [(90.0, 10, 'pose'), (270.0, 10, 'pose')])
+        self.assertEqual(sum(p['nb_panneaux'] for p in pans), 12)
 
     def test_resynchroniser_deux_fois_meme_geometrie(self):
         layout = _layout(_zone_plate_inclinee())

@@ -4277,6 +4277,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       if (!ctx.selectedObsId) return;
       $<HTMLButtonElement>('rp9-obs-duplicate')?.click();
     },
+    copier: () => { layoutEditor.copierSelection(); }, // ACAL553
+    coller: () => { layoutEditor.collerSelection(); },
     pleinEcran: basculerPleinEcran,
   });
 

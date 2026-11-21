@@ -1448,7 +1448,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     qu'un corps de requête ne puisse jamais fournir des caractéristiques
     électriques inventées à la place d'une fiche technique.
     """
-    from .chaines import concevoir_par_pan
+    from .chaines import concevoir_par_pan, tolerance_orientation_societe
 
     donnees = dict(entree_stockee(calepinage))
     if entree:
@@ -1484,6 +1484,9 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         optimiseur_specs=materiel.get('optimiseur'),
         fiches_modules=materiel.get('fiches_modules'),
         produits_sans_fiche=sans_fiche,
+        # ACAL650 — tolérance d'orientation SAISIE (sourcée) ou None.
+        tolerance_orientation_deg=tolerance_orientation_societe(
+            parametres_societe(calepinage)),
         **_options_entree(donnees), **_options_batterie(
             calepinage, donnees, materiel))
     return (conception, materiel, donnees, document)

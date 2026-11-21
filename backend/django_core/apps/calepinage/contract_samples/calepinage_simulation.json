@@ -220,7 +220,81 @@
           "produit": "JA Solar JAM72D40 580 MB",
           "motif": ""
         }
-      }
+      },
+      "bilan_mensuel": [
+        {
+          "mois": 1,
+          "temperature_ambiante_c": 15.6,
+          "pr": 1.29,
+          "pr_motif": ""
+        },
+        {
+          "mois": 2,
+          "temperature_ambiante_c": null,
+          "pr": 1.4279,
+          "pr_motif": ""
+        },
+        {
+          "mois": 3,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 4,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 5,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 6,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 7,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 8,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 9,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 10,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 11,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        },
+        {
+          "mois": 12,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": ""
+        }
+      ]
     },
     "pertes": [
       {
@@ -1017,7 +1091,8 @@
           "produit": "",
           "motif": "Non renseigné : « FicheTechnique.garantie_pct_a_10_ans », « FicheTechnique.garantie_pct_a_25_ans »"
         }
-      }
+      },
+      "bilan_mensuel": []
     },
     "pertes": [],
     "cascade": {
@@ -1403,7 +1478,81 @@
           "produit": "JA Solar JAM72D40 580 MB",
           "motif": ""
         }
-      }
+      },
+      "bilan_mensuel": [
+        {
+          "mois": 1,
+          "temperature_ambiante_c": 15.6,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 2,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 3,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 4,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 5,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 6,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 7,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 8,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 9,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 10,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 11,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        },
+        {
+          "mois": 12,
+          "temperature_ambiante_c": null,
+          "pr": null,
+          "pr_motif": "Pertes non renseignées (salissure, mismatch_fabricant, lid) : la valeur serait une borne haute fausse — non publiée."
+        }
+      ]
     },
     "pertes": [
       {

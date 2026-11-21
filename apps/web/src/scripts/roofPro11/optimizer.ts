@@ -100,6 +100,8 @@ import { $, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
+import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
+import { heatmapAccessValues } from './shadingUi'; // ACAL552
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -441,20 +443,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   function filtrageSeuil(panels: readonly PackedPanel[]): FiltrageAccesSolaire | null {
     const seuil = choixOptimisationCourant()?.seuilAccesSolaire;
     if (seuil == null || seuil === '') return null;
-    const hauteurM = hauteurToitPourOmbrageM(ctx.batiments, ctx.activeArea()?.buildingId);
-    const obstructions = unifiedShadeEntries(
-      ctx.shadeObstructions,
-      ctx.obstacles,
-      ctx.environment,
-      ctx.centroid,
-      hauteurM,
-    );
-    // Même définition de « une source a été saisie » que l'atelier (`hasShadeSources`) :
-    // sans source, l'accès solaire n'est pas mesuré et le seuil sera REFUSÉ, nommé.
-    const source =
-      ctx.shadeObstructions.length > 0 ||
-      ctx.obstacles.some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
-      (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+    const { obstructions, source } = obstructionsEtSource();
     return filtrerEmplacementsSousSeuil(
       seuil,
       ctx.centroidLat,
@@ -463,6 +452,30 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       panels,
       source,
     );
+  }
+
+  /** ACAL552 — UNE définition des obstructions retenues et de la « source saisie » (`hasShadeSources`). */
+  function obstructionsEtSource() {
+    const hauteurM = hauteurToitPourOmbrageM(ctx.batiments, ctx.activeArea()?.buildingId);
+    const obstructions = unifiedShadeEntries(
+      ctx.shadeObstructions,
+      ctx.obstacles,
+      ctx.environment,
+      ctx.centroid,
+      hauteurM,
+    );
+    const source =
+      ctx.shadeObstructions.length > 0 ||
+      ctx.obstacles.some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
+      (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+    return { obstructions, source };
+  }
+
+  /** ACAL552 — accès (0..1) par emplacement ; `null` sans source saisie. */
+  function accesSolaireDe(panels: readonly { cx: number; cy: number }[]): number[] | null {
+    const { obstructions, source } = obstructionsEtSource();
+    if (!source) return null;
+    return heatmapAccessValues(ctx.centroidLat, obstructions, ctx.prodPerKwc ?? fallbackPerKwc(), panels, null);
   }
 
   /** Dernière phrase de seuil annoncée — pour publier CHAQUE état une fois et ne pas
@@ -629,6 +642,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
+    afficherSensDePose(lignesSensDePose(o.pack, accesSolaireDe, placedFor)); // ACAL552
     paintCard(
       {
         title: o.title,
@@ -768,6 +782,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const { placed: placedCount, occupied } = poseSousSeuil(grid);
     const gapScale = w.placedCount > 0 ? placedCount / w.placedCount : placedCount > 0 ? 1 : 0;
     renderScene(pack, grid, w.tiltDeg, w.family, placedCount, false, occupied);
+    afficherSensDePose(lignesSensDePose(pack, accesSolaireDe, placedFor)); // ACAL552
     // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
     // « tente » E-O sur-densifiée est ramenée sous la valeur non écrêtée. On recalcule

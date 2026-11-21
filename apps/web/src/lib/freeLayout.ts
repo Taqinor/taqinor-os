@@ -837,3 +837,86 @@ export function copyFreeState(state: FreeLayoutState): FreeLayoutState {
 export function freeStateFrom(panels: readonly FreePanel[]): FreeLayoutState {
   return { panels: panels.map((p) => ({ ...p })) };
 }
+
+// ═══════════ ACAL553 — contrôles DURS d'un panneau CANDIDAT + placement tout-ou-rien ═══════════
+// (déplacés depuis `layoutEditor.ts`, sans changement : centre ET angle propre changés ensemble)
+
+/** 4 coins (u, v) d'un panneau EXISTANT, à sa position/angle ACTUELS. */
+export function panelCornersFor(g: FreeGeom, p: Pick<FreePanel, 'cx' | 'cy' | 'angleDeg'>): Vec2[] {
+  const [cu, cv] = toUV(g, p.cx, p.cy);
+  return p.angleDeg ? panelCornersUV(g, cu, cv, p.angleDeg) : rectCorners(rectAt(g, cu, cv));
+}
+
+/** Un coin du panneau est hors contour, OU une arête du contour traverse le panneau (le cas
+ *  du toit CONCAVE : 4 coins dedans et une encoche qui coupe quand même le rectangle). */
+export function panelOutsideOutline(corners: readonly Vec2[], ringUV: readonly Vec2[]): boolean {
+  for (const c of corners) if (!pointInPolygon(c, ringUV as [number, number][])) return true;
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i];
+    const b = corners[(i + 1) % corners.length];
+    for (let j = 0, k = ringUV.length - 1; j < ringUV.length; k = j++) {
+      if (segmentsCross(ringUV[k], ringUV[j], a, b)) return true;
+    }
+  }
+  return false;
+}
+
+/** Les trois contraintes DURES d'un panneau candidat (contour / panneaux / obstacles),
+ *  jamais un refus muet. `extra` = panneaux du MÊME geste déjà validés. */
+export function hardViolationsFor(
+  g: FreeGeom,
+  ringUV: readonly Vec2[],
+  corners: readonly Vec2[],
+  othersCorners: readonly (readonly Vec2[])[],
+  extra: readonly (readonly Vec2[])[],
+): FreeViolation[] {
+  const violations: FreeViolation[] = [];
+  if (panelOutsideOutline(corners, ringUV)) violations.push('outline');
+  let overlaps = false;
+  for (const oc of othersCorners) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
+  for (const oc of extra) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
+  if (overlaps) violations.push('overlap');
+  for (const o of g.obstacles) {
+    if (o.ring.length < 3) continue;
+    const ringO = o.ring.map(([x, y]) => toUV(g, x, y));
+    const d = polyOverlap(corners as Vec2[], ringO) ? 0 : polySeparation(corners as Vec2[], ringO);
+    if (d <= o.clearanceM) {
+      violations.push('obstacle');
+      break;
+    }
+  }
+  return violations;
+}
+
+/** Un panneau à poser : centre (u, v) dans le repère du pan, angle propre et face gardés. */
+export interface CopiePanneau {
+  u: number;
+  v: number;
+  angleDeg?: number;
+  face?: FreePanel['face'];
+}
+
+/** TOUT OU RIEN : valide TOUTES les copies (contour, panneaux existants, copies déjà
+ *  validées, obstacles) AVANT de rendre les panneaux à ajouter ; `state` n'est jamais muté. */
+export function placerCopiesToutOuRien(
+  state: FreeLayoutState,
+  g: FreeGeom,
+  copies: readonly CopiePanneau[],
+): { ok: true; news: FreePanel[] } | { ok: false; violations: FreeViolation[] } {
+  const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+  const others = state.panels.map((p) => panelCornersFor(g, p));
+  const placed: Vec2[][] = [];
+  const news: FreePanel[] = [];
+  for (const c of copies) {
+    const corners = panelCornersUV(g, c.u, c.v, c.angleDeg ?? 0);
+    const violations = hardViolationsFor(g, ringUV, corners, others, placed);
+    if (violations.length) return { ok: false, violations };
+    placed.push(corners);
+    const [cx, cy] = toENU(g, c.u, c.v);
+    const p: FreePanel = { cx, cy };
+    if (c.angleDeg) p.angleDeg = c.angleDeg;
+    if (c.face) p.face = c.face;
+    news.push(p);
+  }
+  return { ok: true, news };
+}
