@@ -81,7 +81,14 @@ vi.mock('maplibre-gl', () => {
   const MercatorCoordinate = {
     fromLngLat: () => ({ x: 0, y: 0, z: 0, meterInMercatorCoordinateUnits: () => 1e-7 }),
   };
-  const api = { Map: FakeMap, NavigationControl, GeolocateControl, Point, MercatorCoordinate, GeoJSONSource: class {} };
+  // Acceptation ACAL490 — un document rouvert sur un pan actif VIDE porte désormais son épingle :
+  // l'atelier y plante le repère du site (marqueur inerte, comme dans estimatorRuntimePro10Pro11).
+  class Marker {
+    setLngLat() { return this; }
+    addTo() { return this; }
+    remove() { return this; }
+  }
+  const api = { Map: FakeMap, NavigationControl, GeolocateControl, Marker, Point, MercatorCoordinate, GeoJSONSource: class {} };
   return { default: api, ...api };
 });
 
@@ -1094,6 +1101,28 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
       expect((api().serializeLayout() as Doc).zones, `${libelle} : document`).toHaveLength(n);
       expect(document.querySelectorAll('#rp9-areas-list [data-area-row]').length, `${libelle} : liste à jour`).toBe(n);
     }
+  }, 120000);
+
+  // Acceptation ACAL490 (ACAL399) — « + Ajouter une zone » rend actif un pan VIDE : le document
+  // gardait `pin: null` (centroïde du pan actif vide) ⇒ simulation refusée « site.pin » et
+  // « Pas de position GPS sur la fiche » à la réouverture.
+  it('« + Ajouter une zone » puis enregistrer : l’épingle du site est gardée', async () => {
+    const neuf = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    const base = copie(neuf().serializeLayout() as Doc & { pin: unknown });
+    expect(base.pin).not.toBeNull();
+    const api = await rouvrir(base, 18);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    const apres = copie(api().serializeLayout() as Doc & { pin: unknown });
+    expect(apres.zones).toHaveLength(2);
+    expect(apres.pin, 'épingle du document relu').toEqual(base.pin);
+    // Session neuve (sans document relu) : l'épingle suit le pan tracé, jamais null.
+    const session = await boot();
+    setBill('3000');
+    traceRoof(fakeMaps[0]);
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    expect((session().serializeLayout() as Doc & { pin: unknown }).pin).not.toBeNull();
   }, 120000);
 
   // ACAL420 — l'état vide dit le prochain geste sur la carte, puis s'efface à la fermeture du contour.
