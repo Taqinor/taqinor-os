@@ -163,7 +163,7 @@ describe('CALX64 — la série lue par la MÊME porte que le panneau Séries', (
     rendre()
 
     await screen.findByTestId('cal-tapis')
-    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES)
+    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES, { suppressErrorToast: true })
     expect(screen.getAllByTestId('cal-tapis-jour')).toHaveLength(2)
     // 6,800 et 7,200 kW sont les bornes RÉELLEMENT publiées par le fichier :
     // rien n'est arrondi vers un chiffre plus flatteur.
@@ -246,7 +246,7 @@ describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — un seul essai', () =>
       <MemoryRouter><TapisHoraire calepinageId={10} /></MemoryRouter>,
     )
     await waitFor(() => expect(exportCsv).toHaveBeenCalledTimes(2))
-    expect(exportCsv).toHaveBeenNthCalledWith(2, 10, 'horaire', COLONNES_DEMANDEES)
+    expect(exportCsv).toHaveBeenNthCalledWith(2, 10, 'horaire', COLONNES_DEMANDEES, { suppressErrorToast: true })
   })
 })
 
@@ -266,7 +266,16 @@ describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — geometriePresente', (
 
     await screen.findByTestId('cal-tapis-vide')
     expect(exportCsv).toHaveBeenCalledTimes(1)
-    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES)
+    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES, { suppressErrorToast: true })
+  })
+
+  it("ACAL767 : la lecture automatique ne lève aucun toast (option passée) et le motif servi reste visible", async () => {
+    exportCsv.mockRejectedValue(refusServeur('points', MOTIF_SANS_SERIE))
+    rendre({ geometriePresente: true })
+
+    const vide = await screen.findByTestId('cal-tapis-vide')
+    expect(exportCsv.mock.calls[0][3]).toEqual({ suppressErrorToast: true })
+    expect(vide).toHaveTextContent('lancez la simulation')
   })
 
   it('false puis true (simulation terminée) : la série est lue une fois', async () => {
@@ -322,7 +331,7 @@ describe('ACAL446 — la consommation servie est tracée', () => {
     rendre()
 
     await screen.findByTestId('cal-tapis')
-    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES)
+    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES, { suppressErrorToast: true })
     expect(await screen.findByText('Consommation (kWh)')).toBeInTheDocument()
     expect(screen.queryByTestId('acal446-sans-charge')).toBeNull()
   })

@@ -48,6 +48,12 @@
     "kwc_dessine": 72.0,
     "kwc_compose": 71.0
   },
+  "corps_surfaces_chiffrees": {
+    "surfaces_chiffrees": ["s1"]
+  },
+  "exemple_400_surfaces_chiffrees": {
+    "surfaces_chiffrees": ["Cochez au moins une surface du calepinage parmi : Zone 1, Champ au sol 1."]
+  },
   "sync_devis": {
     "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/sync-devis/",
     "exemple": {

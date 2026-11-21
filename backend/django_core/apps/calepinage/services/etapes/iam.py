@@ -268,6 +268,7 @@ def appliquer(serie, contexte):
         'inclinaison_deg': inclinaison,
         'azimut_pvgis_deg': azimut,
         'decalage_minutes': decalage,
+        'table_iam': _table_iam(choix, indice),  # ACAL758
     }
     if choix.get('modele_demande'):
         entree['modele_demande'] = choix['modele_demande']
@@ -363,6 +364,18 @@ def _iam(choix, indice, angle_deg):
     if choix['modele'] == 'ashrae':
         return _iam_ashrae(angle_deg, choix['b0'])
     return _iam_fresnel(angle_deg, indice['valeur'])
+
+
+#: ACAL758 — grille d'AFFICHAGE de la table IAM (0 à 90°, pas de 10°, la table
+#: que PVsyst imprime dans ses paramètres) : sans effet sur le calcul.
+ANGLES_TABLE_IAM_DEG = tuple(range(0, 91, 10))
+
+
+def _table_iam(choix, indice):
+    """ACAL758 — la loi RETENUE tabulée : ``[{angle_deg, facteur}]``."""
+    return [{'angle_deg': angle,
+             'facteur': round(_iam(choix, indice, angle), 6)}
+            for angle in ANGLES_TABLE_IAM_DEG]
 
 
 # ── l'application, heure par heure ──────────────────────────────────────

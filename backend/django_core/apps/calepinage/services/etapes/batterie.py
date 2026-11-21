@@ -86,6 +86,8 @@ from apps.calepinage.services.batterie import (CHAMP_JUSTIFICATION_PLAFOND,
                                                simuler_batterie,
                                                simuler_groupes,
                                                vieillissement_batterie)
+from apps.calepinage.services.batterie_verdict import (
+    faits_de_la_serie, plancher_du_dispatch)
 from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Batterie'
@@ -653,7 +655,8 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
                            etat_initial=etat_initial,
                            pas_heures=float(pas) / 60.0,
                            horizon=_horizon(contexte)[0],
-                           annees=annees_de_la_fenetre(contexte))
+                           annees=annees_de_la_fenetre(contexte),
+                           reserve=reserve)
     if isinstance(reserve, dict):
         bloc['avertissements'].append(MENTION_RESERVE_APPAREILS.format(
             nombre=len(reserve['detail']), energie=reserve['energie_kwh'],
@@ -697,8 +700,29 @@ def _vieillissement(groupes, *, total_sortie, capacite, heures_couvertes,
     return resultat
 
 
+def _pointe_et_reserve(dispatch, strategie, reserve, annees):
+    """ACAL787 — la pointe (CALX269, ``peak_shaving``) et la réserve déduite
+    des appareils (CALX270, ``backup``), ``None`` hors de leur stratégie. Les
+    comptes sont ramenés à l'année moyenne (une décimale) ; la liste des
+    dépassements heure par heure n'est PAS publiée (volume)."""
+    pointe = strategie == 'peak_shaving'
+    heures = dispatch.get('heures_au_dessus_du_seuil') if pointe else None
+    residuels = dispatch.get('depassements_residuels') if pointe else None
+    return {
+        'pointe_avant_kw': dispatch.get('pointe_avant_kw') if pointe else None,
+        'pointe_apres_kw': dispatch.get('pointe_apres_kw') if pointe else None,
+        'heures_au_dessus_du_seuil': (None if heures is None
+                                      else round(heures / annees, 1)),
+        'nombre_depassements_residuels': (
+            None if residuels is None else round(len(residuels) / annees, 1)),
+        'reserve_secours': (reserve if strategie == 'backup'
+                            and isinstance(reserve, dict) else None),
+    }
+
+
 def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
-             etat_initial, pas_heures=1.0, horizon=None, annees=1):
+             etat_initial, pas_heures=1.0, horizon=None, annees=1,
+             reserve=None):
     """La série enrichie et le bloc, tirés des MÊMES flux pas par pas.
 
     ACAL54 — ``annees`` : le N de la fenêtre météo. Les énergies du bloc (et
@@ -789,6 +813,11 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
                 groupes, total_sortie=total_sortie, capacite=capacite,
                 heures_couvertes=len(flux) * pas_heures / annees,
                 horizon=horizon),
+            **_pointe_et_reserve(dispatch, strategie, reserve, annees),
+            # ACAL793 — les faits de la série (plancher = réserve en backup).
+            'faits_serie': faits_de_la_serie(
+                flux, capacite=capacite, pas_heures=pas_heures, annees=annees,
+                plancher=plancher_du_dispatch(dispatch, strategie)),
         },
         'avertissements': avertissements,
         'motif_absence': '',

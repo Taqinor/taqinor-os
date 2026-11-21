@@ -898,9 +898,35 @@
           "export_kwh": 4940.0,
           "import_reseau_kwh": 1540.0,
           "pertes_batterie_kwh": 250.0,
-          "variation_stock_kwh": 0.0
+          "variation_stock_kwh": 0.0,
+          "ecretage_recupere_kwh": 0.0,
+          "charge_reseau_kwh": 0.0
         },
-        "definition": "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. Heures sans import = les pas où le réseau n’a rien fourni. Les deux se comptent APRÈS le dispatch de la batterie."
+        "definition": "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. Heures sans import = les pas où le réseau n’a rien fourni. Les deux se comptent APRÈS le dispatch de la batterie.",
+        "vieillissement": {
+          "modele": null,
+          "cycles_annuels": 240.0,
+          "cycles_fiche": 6000.0,
+          "eol_pct_fiche": null,
+          "annee_fin_de_vie": null,
+          "annees": [],
+          "reference": "OpenSolar — dégradation de la batterie par le débit d’énergie ; HelioScope — dégradation par profondeur de décharge et cycles.",
+          "mention": "Seul le vieillissement PAR CYCLES est publié : le vieillissement calendaire n’est pas publié par la fiche, il n’est donc pas supposé.",
+          "champ": "fiche_batterie.eol_pct",
+          "motif_absence": "La fiche de la batterie ne publie pas ce qu’il faut pour son vieillissement par cycles (exemple)."
+        },
+        "pointe_avant_kw": null,
+        "pointe_apres_kw": null,
+        "heures_au_dessus_du_seuil": null,
+        "nombre_depassements_residuels": null,
+        "reserve_secours": null,
+        "faits_serie": {
+          "jours_total": 365.0,
+          "jours_pleine": 212.0,
+          "nuits_au_plancher": 301.0,
+          "part_surplus_injecte": 0.6514,
+          "taux_autoconsommation_sans_batterie": 0.4354
+        }
       },
       "avertissements": [],
       "motif_absence": "",
@@ -2287,9 +2313,35 @@
           "export_kwh": 4940.0,
           "import_reseau_kwh": 1540.0,
           "pertes_batterie_kwh": 250.0,
-          "variation_stock_kwh": 0.0
+          "variation_stock_kwh": 0.0,
+          "ecretage_recupere_kwh": 0.0,
+          "charge_reseau_kwh": 0.0
         },
-        "definition": "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. Heures sans import = les pas où le réseau n’a rien fourni. Les deux se comptent APRÈS le dispatch de la batterie."
+        "definition": "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. Heures sans import = les pas où le réseau n’a rien fourni. Les deux se comptent APRÈS le dispatch de la batterie.",
+        "vieillissement": {
+          "modele": null,
+          "cycles_annuels": 240.0,
+          "cycles_fiche": 6000.0,
+          "eol_pct_fiche": null,
+          "annee_fin_de_vie": null,
+          "annees": [],
+          "reference": "OpenSolar — dégradation de la batterie par le débit d’énergie ; HelioScope — dégradation par profondeur de décharge et cycles.",
+          "mention": "Seul le vieillissement PAR CYCLES est publié : le vieillissement calendaire n’est pas publié par la fiche, il n’est donc pas supposé.",
+          "champ": "fiche_batterie.eol_pct",
+          "motif_absence": "La fiche de la batterie ne publie pas ce qu’il faut pour son vieillissement par cycles (exemple)."
+        },
+        "pointe_avant_kw": null,
+        "pointe_apres_kw": null,
+        "heures_au_dessus_du_seuil": null,
+        "nombre_depassements_residuels": null,
+        "reserve_secours": null,
+        "faits_serie": {
+          "jours_total": 365.0,
+          "jours_pleine": 212.0,
+          "nuits_au_plancher": 301.0,
+          "part_surplus_injecte": 0.6514,
+          "taux_autoconsommation_sans_batterie": 0.4354
+        }
       },
       "avertissements": [],
       "motif_absence": "",
@@ -3376,9 +3428,35 @@
           "export_kwh": 4940.0,
           "import_reseau_kwh": 1540.0,
           "pertes_batterie_kwh": 250.0,
-          "variation_stock_kwh": 0.0
+          "variation_stock_kwh": 0.0,
+          "ecretage_recupere_kwh": 0.0,
+          "charge_reseau_kwh": 0.0
         },
-        "definition": "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. Heures sans import = les pas où le réseau n’a rien fourni. Les deux se comptent APRÈS le dispatch de la batterie."
+        "definition": "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. Heures sans import = les pas où le réseau n’a rien fourni. Les deux se comptent APRÈS le dispatch de la batterie.",
+        "vieillissement": {
+          "modele": null,
+          "cycles_annuels": 240.0,
+          "cycles_fiche": 6000.0,
+          "eol_pct_fiche": null,
+          "annee_fin_de_vie": null,
+          "annees": [],
+          "reference": "OpenSolar — dégradation de la batterie par le débit d’énergie ; HelioScope — dégradation par profondeur de décharge et cycles.",
+          "mention": "Seul le vieillissement PAR CYCLES est publié : le vieillissement calendaire n’est pas publié par la fiche, il n’est donc pas supposé.",
+          "champ": "fiche_batterie.eol_pct",
+          "motif_absence": "La fiche de la batterie ne publie pas ce qu’il faut pour son vieillissement par cycles (exemple)."
+        },
+        "pointe_avant_kw": null,
+        "pointe_apres_kw": null,
+        "heures_au_dessus_du_seuil": null,
+        "nombre_depassements_residuels": null,
+        "reserve_secours": null,
+        "faits_serie": {
+          "jours_total": 365.0,
+          "jours_pleine": 212.0,
+          "nuits_au_plancher": 301.0,
+          "part_surplus_injecte": 0.6514,
+          "taux_autoconsommation_sans_batterie": 0.4354
+        }
       },
       "avertissements": [],
       "motif_absence": "",

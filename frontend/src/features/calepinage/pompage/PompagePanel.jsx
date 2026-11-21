@@ -65,13 +65,28 @@ const CHAMPS = [
     ['pertes_singulieres_m', 'Pertes singulières (m)'],
     ['pression_service_bar', 'Pression de service (bar)'],
   ]],
+  /* ACAL807 — le niveau d'eau saisonnier et la pose (ACAL806, ACAL1113,
+     ACAL1114) ; les mois de niveau bas sont des pastilles sous ce groupe. */
+  ['niveau_eau', 'Le niveau d’eau', [
+    ['niveau_statique_ete_m', 'Profondeur de l’eau au repos en été (m)'],
+    ['niveau_statique_hiver_m', 'Profondeur de l’eau au repos en hiver (m)'],
+    ['profondeur_calage_m', 'Profondeur de pose de la pompe (m)'],
+    ['diametre_tubage_mm', 'Diamètre du tubage (mm)'],
+    ['debit_exploitation_m3h', 'Débit que donne le forage (m³/h)'],
+  ]],
   ['besoin', 'Le besoin', [
     ['debit_souhaite_m3h', 'Débit souhaité (m³/h)'],
     ['besoin_m3_jour', 'Besoin en eau (m³/jour)'],
     ['heures_pompage', 'Heures de pompage par jour'],
+    ['heures_demande_h', 'Heures par jour où l’on tire l’eau'],  // ACAL815
   ]],
   ['reservoir', 'Le réservoir', [
     ['volume_reservoir_m3', 'Volume du réservoir (m³)'],
+  ]],
+  /* ACAL811 — la chaîne du champ solaire, jugée par le serveur (ACAL810). */
+  ['champ_solaire', 'Le champ solaire', [
+    ['modules_en_serie', 'Modules en série'],
+    ['chaines_paralleles', 'Chaînes en parallèle'],
   ]],
 ]
 
@@ -81,7 +96,15 @@ const LIBELLE_CHAMP = Object.fromEntries(
   CHAMPS.flatMap(([, , champs]) => champs),
 )
 
-function Champ({ cle, label, type = 'number', valeurSaisie, erreur, onChange }) {
+/* ACAL807 — une phrase simple par code d'alerte du serveur (ACAL1113,
+   ACAL1114), posée sous le champ que l'alerte nomme ; le texte du serveur suit. */
+const PHRASE_ALERTE = {
+  immersion_minimale: 'La pompe risque de tourner à sec',
+  diametre_tubage: 'La pompe ne passe pas dans le tubage',
+  plafond_forage: 'Le forage ne donne pas assez d\'eau pour ce besoin',
+}
+
+function Champ({ cle, label, type = 'number', valeurSaisie, erreur, alertes = [], onChange }) {
   return (
     <label className="block" data-testid={`cal-pompage-champ-${cle}`}>
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
@@ -95,8 +118,14 @@ function Champ({ cle, label, type = 'number', valeurSaisie, erreur, onChange }) 
         onChange={(e) => onChange(cle, e.target.value)}
         aria-invalid={erreur ? 'true' : undefined}
         aria-describedby={erreur ? `cal-pompage-erreur-${cle}` : undefined}
-        className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+        className="mt-1 min-h-[44px] w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
       />
+      {alertes.map((a) => (
+        <span key={a.code} data-testid={`cal-pompage-alerte-${a.code}`} role="alert"
+          className="mt-1 block text-xs text-amber-200">
+          {PHRASE_ALERTE[a.code] ? `${PHRASE_ALERTE[a.code]}. ` : ''}{a.message}
+        </span>
+      ))}
       {erreur && (
         <span
           id={`cal-pompage-erreur-${cle}`}
@@ -204,6 +233,188 @@ function VolumesMensuels({ volumes, besoin }) {
   )
 }
 
+/* ACAL807 — les 12 pastilles des mois où le niveau d'eau est bas (été). */
+function MoisNiveauBas({ choisis = [], onChange }) {
+  const basculer = (m) => onChange('mois_niveau_bas', choisis.includes(m)
+    ? choisis.filter((x) => x !== m) : [...choisis, m].sort((a, b) => a - b))
+  return (
+    <div className="mt-3" role="group" aria-label="Mois où le niveau d’eau est bas">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Mois où le niveau d’eau est bas
+      </span>
+      <div className="mt-1 flex flex-wrap gap-2">
+        {MOIS.map((nom, i) => (
+          <button key={nom} type="button" data-testid={`cal-pompage-mois-bas-${i + 1}`}
+            aria-pressed={choisis.includes(i + 1) ? 'true' : 'false'} onClick={() => basculer(i + 1)}
+            className={`min-h-[44px] min-w-[44px] rounded border border-border px-2 text-xs ${
+              choisis.includes(i + 1) ? 'bg-brass-500/20 text-primary-text' : 'text-foreground'}`}>
+            {nom}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ACAL807 — la carte « Réservoir jour par jour » (bilan servi par ACAL806),
+   ou la phrase qui dit pourquoi elle est absente. Aucun chiffre recalculé. */
+function BilanReservoir({ bilan }) {
+  if (!bilan?.calcule) {
+    return (
+      <p className="mt-2 text-sm text-foreground" data-testid="cal-pompage-bilan-motif">
+        {`Bilan du réservoir non calculé : ${bilan?.motif ?? 'le serveur n’a rendu aucun bilan'}`}
+      </p>
+    )
+  }
+  const parMois = bilan.jours_manque_mois ?? []
+  return (
+    <div className="mt-2 rounded border border-border p-3 text-sm text-foreground" data-testid="cal-pompage-bilan">
+      <p>{`Jours où l'eau manque : ${valeur(bilan.jours_manque)} sur 365`}</p>
+      <p>{`Jours où le réservoir est plein (la pompe s'arrête) : ${valeur(bilan.jours_plein)}`}</p>
+      <p>{`Besoin couvert : ${valeur(bilan.besoin_couvert_pct, ' %')}`}</p>
+      <div className="mt-2 flex h-16 items-end gap-1" aria-label="Jours où l’eau manque, mois par mois">
+        {MOIS.map((nom, i) => (
+          <div key={nom} className="flex flex-1 flex-col items-center" data-mois-manque={parMois[i] ?? ''}
+            title={`${nom} : ${valeur(parMois[i])} jour(s) de manque`}>
+            <div className="w-full rounded-t bg-red-400/70" style={{ height: `${((parMois[i] ?? 0) / 31) * 48}px` }} />
+            <span className="text-xs text-muted-foreground">{nom}</span>
+          </div>
+        ))}
+      </div>
+      {bilan.mention && <p className="mt-2 text-xs text-muted-foreground">{bilan.mention}</p>}
+    </div>
+  )
+}
+
+/* ACAL815 — deux cartes côte à côte (une sous l'autre sur téléphone) :
+   `comparaison_reservoir` servi tel quel ; carte absente ⇒ le motif du serveur. */
+const OPTIONS_COMPARAISON = [['direct', 'Pompage direct'], ['avec_reservoir', 'Avec le réservoir']]
+const uneDecimale = (x) => (x == null ? '—' : Number(x).toFixed(1).replace('.', ','))
+
+function ComparaisonReservoir({ comparaison }) {
+  if (!comparaison) return null
+  return (
+    <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="cal-pompage-comparaison">
+      {OPTIONS_COMPARAISON.map(([cle, titre]) => {
+        const option = comparaison[cle]
+        return (
+          <div key={cle} data-option={cle} className="rounded border border-border p-3 text-sm text-foreground">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titre}</p>
+            {option ? (
+              <p className="mt-1">
+                {`Débit de conception : ${uneDecimale(option.debit_conception_m3h)} m³/h · Mois critique : `}
+                {`${MOIS[option.mois_critique - 1] ?? '—'} · Jours où l'eau manque : ${valeur(option.jours_manque)}`}
+                {option.motif_bilan && <span className="block text-xs">{option.motif_bilan}</span>}
+              </p>
+            ) : (
+              <p className="mt-1">
+                {`Non calculé : ${comparaison.motif ?? 'motif non servi'}`}
+                {cle === 'direct' && comparaison.motif?.includes('fenêtre de demande') && (
+                  <> — à remplir : <a href="#cal-pompage-heures_demande_h" className="underline">
+                    {LIBELLE_CHAMP.heures_demande_h}</a></>
+                )}
+              </p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ACAL821 — plusieurs pompes sur le variateur retenu : kW de PLAQUE saisis,
+   mode de marche choisi ; le serveur juge (`controle_pompes_par_variateur`). */
+const MODES_POMPES = [['ensemble', 'Ensemble'], ['a_tour_de_role', 'À tour de rôle']]
+const BOUTON = 'min-h-[44px] rounded border border-border px-3 text-sm'
+
+function PompesParVariateur({ pompes = [], mode, onChange }) {
+  const maj = (liste) => onChange('pompes_variateur', liste)
+  return (
+    <fieldset className="mt-4">
+      <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Plusieurs pompes sur ce variateur
+      </legend>
+      {pompes.map((p, i) => (
+        <div key={i /* lignes sans identifiant : l'ordre de saisie fait la clé */} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {[['nom', `Nom de la pompe ${i + 1}`, 'text'], ['kw', `kW de plaque de la pompe ${i + 1}`, 'number']]
+            .map(([cle, libelle, type]) => (
+              <input key={cle} type={type} step="any" aria-label={libelle} placeholder={libelle}
+                value={p[cle] ?? ''} className="min-h-[44px] rounded border border-border bg-background px-2 text-sm"
+                onChange={(e) => maj(pompes.map((x, j) => (j === i ? { ...x, [cle]: e.target.value } : x)))} />
+            ))}
+          <button type="button" className={BOUTON} onClick={() => maj(pompes.filter((_, j) => j !== i))}>
+            Retirer
+          </button>
+        </div>
+      ))}
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button type="button" className={BOUTON} onClick={() => maj([...pompes, {}])}>Ajouter une pompe</button>
+        {MODES_POMPES.map(([cle, libelle]) => (
+          <button key={cle} type="button" aria-pressed={mode === cle ? 'true' : 'false'}
+            className={`${BOUTON} ${mode === cle ? 'bg-brass-500/20 text-primary-text' : ''}`}
+            onClick={() => onChange('mode_pompes', cle)}>{libelle}</button>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function LignePompes({ bloc }) {
+  if (!bloc) return null
+  const demande = `${uneDecimale(bloc.kw_demande)} kW demandés sur ${uneDecimale(bloc.kw_variateur)} kW`
+  const [texte, couleur] = {
+    conforme: [`${demande} : conforme (marge ${uneDecimale(bloc.marge_kw)} kW)`, 'text-emerald-300'],
+    depasse: [`${demande} : le variateur est trop petit`, 'text-red-300'],
+  }[bloc.verdict] ?? ['À vérifier : kW de plaque ou mode non saisi', 'text-amber-200']
+  return (
+    <div className={`mt-2 text-sm ${couleur}`} data-testid="cal-pompage-pompes">
+      <p>{texte}</p>
+      {bloc.motif && <p className="text-xs">{bloc.motif}</p>}
+    </div>
+  )
+}
+
+/* ACAL811 — le verdict de la chaîne servi (`chaines_variateur`) : icône ET
+   mot, jamais un vert par défaut ; le motif chiffré du serveur suit. */
+const ETAT_CHAINE = {
+  conforme: ['✔ Conforme', 'text-emerald-300'],
+  hors_fenetre: ['✖ Hors fenêtre', 'text-red-300'],
+}
+
+function phraseChaine(motif) {
+  if (motif?.startsWith('trop longue')) {
+    return 'Trop de modules en série : la tension à froid dépasse ce que le variateur accepte'
+  }
+  if (motif?.startsWith('trop courte')) {
+    return 'Pas assez de modules en série : le variateur ne démarre pas par temps chaud'
+  }
+  return null
+}
+
+function VerdictChaines({ chaines }) {
+  if (!chaines) return null
+  const [etat, couleur] = ETAT_CHAINE[chaines.verdict] ?? ['⚠ À vérifier', 'text-amber-200']
+  const t = chaines.temperatures ?? {}
+  const fenetre = chaines.fenetre
+  return (
+    <div className={`mt-2 text-sm ${couleur}`} data-testid="cal-pompage-chaines">
+      <p>
+        {`${valeur(chaines.serie)} modules en série : Voc à froid ${valeur(chaines.voc_froid_v, ' V')}, `}
+        {fenetre ? `le variateur accepte ${fenetre.longueur_min} à ${fenetre.longueur_max} modules`
+          : 'fenêtre du variateur inconnue'}
+        {` : ${etat}`}
+      </p>
+      {phraseChaine(chaines.motif) && <p>{phraseChaine(chaines.motif)}</p>}
+      {chaines.motif && <p className="text-xs">{chaines.motif}</p>}
+      <p className="text-xs text-muted-foreground">
+        {`Températures du site : ${valeur(t.froid_c, ' °C')} à froid, ${valeur(t.chaud_c, ' °C')} à chaud — `}
+        {t.source ? `source : ${t.source}` : (t.mention ?? 'source non servie')}
+      </p>
+      {(chaines.alertes ?? []).map((a) => <p key={a.code} className="text-xs">{a.message}</p>)}
+    </div>
+  )
+}
+
 export default function PompagePanel({ calepinageId: idPropose }) {
   /* Montable en panneau (le parent passe `calepinageId`) ou en écran à part
      entière sous `/calepinage/:id/pompage` — le routeur monte le composant
@@ -224,8 +435,12 @@ export default function PompagePanel({ calepinageId: idPropose }) {
     setEnCours(true)
     setRefus(null)
     // Un champ vide n'est JAMAIS envoyé : l'absence reste une absence.
+    // ACAL821 — une pompe ne garde que ses valeurs saisies ; une ligne vide disparaît.
+    const pompes = (saisie.pompes_variateur ?? []).map((p) => Object.fromEntries(
+      Object.entries(p).filter(([, v]) => v !== '' && v != null))).filter((p) => Object.keys(p).length)
     const corps = Object.fromEntries(
-      Object.entries(saisie).filter(([, v]) => v !== '' && v != null),
+      Object.entries({ ...saisie, pompes_variateur: pompes }).filter(([, v]) => v !== '' && v != null
+        && !(Array.isArray(v) && v.length === 0)),
     )
     Promise.resolve(calepinageApi.calepinages.pompage(calepinageId, corps))
       .then((res) => setResultat(res?.data ?? null))
@@ -241,6 +456,12 @@ export default function PompagePanel({ calepinageId: idPropose }) {
   const champsFautifs = Object.keys(erreurs)
   const pompe = resultat?.pompe ?? null
   const variateur = resultat?.variateur ?? null
+  const chaines = resultat?.chaines_variateur ?? null
+  // ACAL811 — `non_verifiable` nomme le champ à saisir : le motif se pose SOUS lui.
+  const alertes = [...(resultat?.alertes ?? []), ...(chaines?.champ ? [{
+    code: 'chaine_a_saisir', champ: chaines.champ,
+    message: `À saisir pour vérifier la chaîne : ${chaines.motif ?? chaines.champ}`,
+  }] : [])]
 
   return (
     <>
@@ -286,12 +507,20 @@ export default function PompagePanel({ calepinageId: idPropose }) {
                   type={type}
                   valeurSaisie={saisie[cle]}
                   erreur={erreurs[cle]}
+                  alertes={alertes.filter((a) => a.champ === cle)}
                   onChange={majChamp}
                 />
               ))}
             </div>
+            {groupe === 'niveau_eau' && (
+              <MoisNiveauBas choisis={saisie.mois_niveau_bas} onChange={majChamp} />
+            )}
+            {groupe === 'champ_solaire' && (
+              <p className="mt-2 text-sm text-foreground">{`Modules posés : ${valeur(chaines?.modules_poses)}`}</p>
+            )}
           </fieldset>
         ))}
+        <PompesParVariateur pompes={saisie.pompes_variateur} mode={saisie.mode_pompes} onChange={majChamp} />
         <button
           type="submit"
           disabled={enCours}
@@ -350,6 +579,18 @@ export default function PompagePanel({ calepinageId: idPropose }) {
 
           <h3 className="text-xs font-semibold uppercase tracking-wide mt-5 text-muted-foreground">Volumes mensuels</h3>
           <VolumesMensuels volumes={resultat.volumes} besoin={resultat.besoin} />
+
+          <h3 className="text-xs font-semibold uppercase tracking-wide mt-5 text-muted-foreground">
+            Réservoir jour par jour
+          </h3>
+          <BilanReservoir bilan={resultat.bilan_reservoir} />
+          <ComparaisonReservoir comparaison={resultat.comparaison_reservoir} />
+
+          <h3 className="text-xs font-semibold uppercase tracking-wide mt-5 text-muted-foreground">
+            Modules en série et variateur
+          </h3>
+          <VerdictChaines chaines={chaines} />
+          <LignePompes bloc={resultat.pompes_variateur} />
 
           {(resultat.avertissements ?? []).length > 0 && (
             <ul className="mt-4 space-y-1" data-testid="cal-pompage-avertissements">

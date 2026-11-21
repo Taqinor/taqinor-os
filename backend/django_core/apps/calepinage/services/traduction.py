@@ -164,6 +164,8 @@ class Traduction:
     propositions_chassis: Tuple[Tuple[str, dict], ...] = ()
     #: CIQ137 — la règle d'îlots du projet publiée avec sa source ('' sans).
     regle_ilots: str = ''
+    #: ACAL577 — la règle des coupures du pavage par pan, avec sa source ('' sans).
+    regle_coupures: str = ''
     avertissements: Tuple[str, ...] = field(default=())
 
 
@@ -563,6 +565,23 @@ def _allee_du_document(roof_layout):
     return largeur if largeur is not None and largeur > 0 else None
 
 
+def _coupures_du_pan(pan, rang):
+    """ACAL577 — ``(N, largeur, source)`` de ``coupuresPavage`` ; ``None`` sans."""
+    brut, champ = pan.get('coupuresPavage'), f'zones.{rang}.coupuresPavage'
+    if brut is None:
+        return None
+    lu = brut if isinstance(brut, dict) else {}
+    tous, largeur = lu.get('tousLesNModules'), _nombre(lu.get('largeurCoupureM'))
+    source = str(lu.get('source') or '').strip()
+    for nom, valide in (('tousLesNModules', type(tous) is int and tous >= 1),
+                        ('largeurCoupureM', largeur is not None and largeur > 0),
+                        ('source', bool(source))):
+        if not valide:
+            raise TraductionRefusee(f"Coupure du pavage du pan n° {rang + 1} illisible : « {nom} » attend un "
+                                    "entier ≥ 1, une largeur > 0 et une source.", f'{champ}.{nom}')
+    return tous, largeur, source
+
+
 def _proposition_chassis(pente_deg, regles_gabarit):
     """La proposition de CHÂSSIS INCLINÉ pour un pan, ou ``None``.
 
@@ -628,6 +647,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         TraductionRefusee: document illisible, kit non chiffrable, deux axes
             de rangée, zone ou obstacle invalide — le champ fautif est NOMMÉ.
     """
+    from core.calepinage.ilots import zones_coupures
     from core.calepinage.obstacles import appliquer_regles, engageable
     from core.calepinage.serialisation import EntreeCalepinage, _zone_depuis
     from core.calepinage.surfaces.polygone import SurfacePolygone
@@ -679,6 +699,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
     surfaces = []
     politiques = []
     propositions_chassis = []
+    coupures, regles_coupures = (), []
     latitude = origine[1]
     for rang, pan, sommets in pans:
         pente, azimut, plat = _pente_et_azimut(pan)
@@ -697,6 +718,14 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         proposition = _proposition_chassis(pente, regles_gabarit)
         if proposition is not None:
             propositions_chassis.append((repere_pan, proposition))
+        coupure = _coupures_du_pan(pan, rang)  # ACAL577 — bandes INTERDITE
+        if coupure is not None:
+            xs, ys = zip(*surfaces[-1].contour)
+            coupures += zones_coupures(repere_pan, (min(xs), max(xs), min(ys), max(ys)), coupure[0], coupure[1],
+                                       kit.cote_le_long_rangee_m, rives.laterale_m)
+            regles_coupures.append(
+                "Coupure du pavage tous les %d modules, %.2f m demandés (%s) ; pas serveur = module jointif de %.3f m, "
+                "l'atelier y ajoute le jeu latéral" % (coupure + (kit.cote_le_long_rangee_m,)))
 
     try:
         # ACAL312 (D-ACAL-20) — les zones d'exclusion du document entrent
@@ -710,6 +739,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         # CAL68 a déjà écrit le refus en français et nommé son champ : le
         # retraduire ici produirait deux formulations de la même règle.
         raise TraductionRefusee(str(refus), refus.champ)
+    zones = zones + coupures
 
     # CIQ137 — îlots bornés : les allées coupe-feu du PROJET deviennent des
     # zones INTERDITE du moteur (pose, comptage et validation les respectent
@@ -756,4 +786,4 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         regle_retrait=regle_retrait,
         regle_allee=regle_allee,
         propositions_chassis=tuple(propositions_chassis),
-        regle_ilots=regle_des_ilots)
+        regle_ilots=regle_des_ilots, regle_coupures=' ; '.join(regles_coupures))

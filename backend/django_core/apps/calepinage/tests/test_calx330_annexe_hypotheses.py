@@ -205,6 +205,41 @@ class AucunMontantTest(unittest.TestCase):
                                   MOTS_DE_MONTANT.search(texte))
 
 
+class LimitesConnuesTest(unittest.TestCase):
+    """ACAL751 — la liste servie par la simulation (ACAL749), jamais recalculée."""
+
+    LIMITES = CASCADE['exemple']['cascade']['limites_connues']
+
+    def _html(self, langue, limites=LIMITES):
+        cascade = {'etapes': [_etape_du_contrat()]}
+        if limites is not None:
+            cascade['limites_connues'] = copy.deepcopy(limites)
+        return html_de_section(contexte({'cascade': cascade}, langue))
+
+    def test_en_francais_la_liste_du_texte_fr(self):
+        html = self._html('fr')
+        self.assertIn('Limites connues de la simulation', html)
+        self.assertEqual(len(self.LIMITES), 4)
+        for limite in self.LIMITES:
+            self.assertIn('<li>%s</li>' % escape(limite['texte_fr']), html)
+            self.assertNotIn(escape(limite['texte_en']), html)
+
+    def test_en_anglais_la_liste_du_texte_en(self):
+        html = self._html('en')
+        self.assertIn('Known limitations of the simulation', html)
+        for limite in self.LIMITES:
+            self.assertIn('<li>%s</li>' % escape(limite['texte_en']), html)
+            self.assertNotIn(escape(limite['texte_fr']), html)
+
+    def test_sans_limites_le_titre_et_la_mention(self):
+        html = self._html('fr', limites=None)
+        self.assertIn('Limites connues de la simulation', html)
+        self.assertIn('aucune limite déclarée par cette version', html)
+        self.assertNotIn('<li>', html)
+        # Les étapes non comptées restent imprimées.
+        self.assertIn('Non calculé', html)
+
+
 class DansLeRapportTest(unittest.TestCase):
     def test_la_section_passe_par_ce_redacteur_et_sa_feuille_est_en_tete(self):
         rapport = construire_rapport(

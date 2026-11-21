@@ -205,7 +205,7 @@
   },
   "exemple_affectation_optimiseur": {
     "affectation_manuelle": [
-      {"module": "P1#3", "chaine": 1, "mppt": 1, "onduleur": 1, "optimiseur": true},
+      {"module": "P1#3", "chaine": 1, "mppt": 1, "onduleur": 1, "optimiseur": true, "cx": 4.2, "cy": 1.1},
       {"module": "P1#4", "chaine": 1, "mppt": 1, "onduleur": 1, "optimiseur": false},
       {"module": "P1#5", "chaine": 1, "mppt": 1, "onduleur": 1}
     ]
@@ -235,6 +235,13 @@
       },
       "part_effacable_pct": 60,
       "plafond_effacable_kw": 5.0
+    }
+  },
+  "exemple_hors_reseau_avance": {
+    "hors_reseau": {
+      "actif": true,
+      "jours_autonomie": 2,
+      "seuils": {"veille_pct": 30, "entretien_pct": 20, "arret_pct": 10}
     }
   }
 }

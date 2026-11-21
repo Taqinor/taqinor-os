@@ -644,9 +644,20 @@ def modeles_des_pans(layout, pans, *, compte, watt):
     (surfaces de pose comprises : leur modèle est leur ``moduleWc``).
 
     Un document SANS ``modules[]`` garde le comportement d'aujourd'hui au bit
-    près : ``[{produit_id: None, watt: <watt lu>, count: <compte>}]``."""
+    près : ``[{produit_id: None, watt: <watt lu>, count: <compte>}]`` — sauf
+    quand ses pans posent au moins DEUX puissances distinctes (ACAL916 : une
+    surface de pose porte SA puissance, ``moduleWc``) : un groupe par watt."""
     if not _catalogue_modules(layout):
-        return [{'produit_id': None, 'watt': watt, 'count': compte}]
+        par_watt = {}
+        for pan in pans or ():
+            if pan.get('modules', 0) > 0:
+                puissance = pan.get('module_wc')
+                cle = int(round(puissance)) if puissance else watt
+                par_watt[cle] = par_watt.get(cle, 0) + int(pan['modules'])
+        if len(par_watt) < 2:
+            return [{'produit_id': None, 'watt': watt, 'count': compte}]
+        return [{'produit_id': None, 'watt': puissance, 'count': nombre}
+                for puissance, nombre in par_watt.items()]
     groupes = {}
     for pan in pans or ():
         if pan.get('modules', 0) <= 0:
@@ -671,7 +682,9 @@ def modeles_designes(layout):
     if not isinstance(layout, dict):
         return []
     modeles = lire_layout(layout).modeles
-    if not any(m.get('produit_id') for m in modeles):
+    # ACAL916 — deux puissances posées distinctes suffisent, même sans fiche.
+    if not any(m.get('produit_id') for m in modeles) and len(
+            {m['watt'] for m in modeles if int(m['count'] or 0) > 0}) < 2:
         return []
     return [dict(m) for m in modeles if int(m['count'] or 0) > 0]
 

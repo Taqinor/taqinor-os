@@ -17,7 +17,7 @@ import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractS
    fichier n'a pas à juger (il a son propre test). */
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
-    calepinages: { resultat: vi.fn(), exportCsv: vi.fn(), simuler: vi.fn() },
+    calepinages: { resultat: vi.fn(), exportCsv: vi.fn(), simuler: vi.fn(), diagrammeEnergie: vi.fn() },
     moteur: { resultat: vi.fn() },
   },
 }))
@@ -561,6 +561,97 @@ describe('PanneauProduction — carte Du soleil au réseau (ACAL696)', () => {
 })
 
 /* ACAL698 — la ligne « n réglages utilisent des valeurs publiées ». */
+describe("PanneauProduction — Où va l'énergie (ACAL762)", () => {
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+  const ouvrir = async () => {
+    fireEvent.click(await screen.findByTestId('acal762-bascule'))
+  }
+
+  it("expert : repliée d'office, dépliée elle appelle le schéma et liste les flux servis", async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    calepinageApi.calepinages.diagrammeEnergie.mockResolvedValue({ data: new Blob(['<svg/>']) })
+    servir('exemple')
+    rendre()
+    const bascule = await screen.findByTestId('acal762-bascule')
+    expect(calepinageApi.calepinages.diagrammeEnergie).not.toHaveBeenCalled()
+    fireEvent.click(bascule)
+    expect(calepinageApi.calepinages.diagrammeEnergie).toHaveBeenCalledWith(1)
+    const energie = reponseContrat('calepinage', 'calepinage_resultat', 'exemple').data.autoconsommation.energie
+    for (const [code, cle] of [['production_brute', 'production_brute_kwh'], ['sur_place', 'autoconsomme_kwh'],
+      ['injectee', 'export_reseau_kwh'], ['importee', 'import_reseau_kwh'], ['consommation', 'consommation_kwh']]) {
+      expect(screen.getByTestId(`acal762-flux-${code}`).textContent)
+        .toContain(String(Math.trunc(energie[cle])).slice(0, 1))
+    }
+    expect(screen.getByTestId('acal762-flux-batterie')).toBeInTheDocument()
+  })
+
+  it('un flux non calculé dit « non calculé » et son motif, jamais 0 ; exemple_vide aussi', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    calepinageApi.calepinages.diagrammeEnergie.mockResolvedValue({ data: new Blob(['<svg/>']) })
+    const vide = reponseContrat('calepinage', 'calepinage_resultat', 'exemple_vide')
+    vide.data.autoconsommation = { energie: null, motif_absence: 'Aucune simulation lancée.' }
+    calepinageApi.calepinages.resultat.mockResolvedValue(vide)
+    rendre()
+    await ouvrir()
+    const flux = screen.getByTestId('acal762-flux-production_brute')
+    expect(flux).toHaveTextContent('non calculé')
+    expect(flux.textContent).not.toContain(' 0 kWh')
+    expect(flux).toHaveTextContent('Aucune simulation lancée')
+  })
+
+  it('un refus 409 du schéma montre son motif et garde la liste', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    calepinageApi.calepinages.diagrammeEnergie.mockRejectedValue({
+      response: { data: { text: () => Promise.resolve(JSON.stringify({ cascade: ['Aucune cascade regroupée.'] })) } },
+    })
+    servir('exemple')
+    rendre()
+    await ouvrir()
+    expect(await screen.findByTestId('acal762-refus')).toHaveTextContent('Aucune cascade regroupée.')
+    expect(screen.getByTestId('acal762-flux-soleil')).toBeInTheDocument()
+  })
+
+  it('guidé : aucune carte', async () => {
+    servir('exemple')
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal762-carte')).toBeNull()
+  })
+})
+
+describe('PanneauProduction — charges ajoutées (ACAL781)', () => {
+  const avecCharges = (adapter) => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    const sim = reponseContrat('calepinage', 'calepinage_simulation', 'exemple').data
+    reponse.data.consommation = JSON.parse(JSON.stringify(sim.consommation))
+    adapter?.(reponse.data.consommation)
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+    return reponse.data.consommation
+  }
+
+  it('ligne et détail lus du contrat : total servi, libellé, méthode, prévue, plafonnée', async () => {
+    const conso = avecCharges((c) => {
+      c.charges[0].planifie = true
+      c.charges[0].plafonnee = true
+    })
+    rendre()
+    const ligne = await screen.findByTestId('calx-charges-ajoutees')
+    expect(ligne.textContent.replace(/\s/g, ' ')).toContain('Charges ajoutées : 1 800 kWh/an')
+    const detail = within(ligne).getByTestId(`calx-charge-${conso.charges[0].code}`)
+    expect(detail).toHaveTextContent(conso.charges[0].libelle)
+    expect(detail).toHaveTextContent('km par jour')
+    expect(detail).toHaveTextContent('prévue')
+    expect(detail).toHaveTextContent('plafonnée par la borne')
+  })
+
+  it('sans charge déclarée : aucune ligne', async () => {
+    avecCharges((c) => { c.charges = []; c.total_charges_kwh = 0 })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('calx-charges-ajoutees')).toBeNull()
+  })
+})
+
 describe('PanneauProduction — valeurs publiées (ACAL698)', () => {
   const PREFIXE = 'Profil de départ — '
   const servirAvecReglages = (reglages) => {

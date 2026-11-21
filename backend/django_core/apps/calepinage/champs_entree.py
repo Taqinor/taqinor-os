@@ -119,7 +119,14 @@ def _hors_reseau():
     return {'type': 'object', 'additionalProperties': False, 'properties': {
         'actif': {'type': 'boolean'},
         'jours_autonomie': _positif(365, strict=True),
-        'etat_initial_kwh': _positif(1e6)}}
+        'etat_initial_kwh': _positif(1e6),
+        # ACAL790 — seuils de protection (CALX272) ; l'ordre arrêt ≤
+        # entretien ≤ veille est jugé par services/hors_reseau.py.
+        'seuils': {'type': 'object', 'nullable': True,
+                   'additionalProperties': False,
+                   'required': ['veille_pct', 'entretien_pct', 'arret_pct'],
+                   'properties': {nom: _positif(100) for nom in (
+                       'veille_pct', 'entretien_pct', 'arret_pct')}}}}
 
 
 def corps_entree_resserre():

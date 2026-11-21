@@ -20,6 +20,12 @@ export const sorties = {
     telechargerSortie: (endpoint, params) =>
       api.get(endpoint, { responseType: 'blob', params }),
 
+    // ACAL761 — le schéma « où va l'énergie » (SVG rendu par le serveur) ;
+    // `langue` optionnelle (fr, en). Lecture pure, en blob.
+    diagrammeEnergie: (id, langue) => api.get(`${pivot(id)}diagramme-energie.svg/`,
+      { responseType: 'blob', params: langue ? { langue } : undefined,
+        suppressErrorToast: true }),
+
     // CALX24 — compose le dossier technique (planche + note de calcul
     // fusionnées) et le DÉPOSE dans la GED : en ÉCRITURE (POST), gardée par
     // `calepinage_gerer` côté serveur. Réponse JSON normale (jamais un blob) :

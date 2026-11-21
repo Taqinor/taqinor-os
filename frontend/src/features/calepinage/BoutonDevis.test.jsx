@@ -467,3 +467,53 @@ describe('Lot 2 critique #32 — champs des portes ACAL116 nommés', () => {
     expect(bloc).toHaveTextContent(MESSAGE)
   })
 })
+
+describe('ACAL915 — ce que le devis chiffre, dit avant « Générer le devis »', () => {
+  it('dès deux surfaces posées, la phrase est lue de l’exemple du contrat', () => {
+    rendre()
+    const surfaces = DETAIL.surfaces_chiffrables
+    expect(surfaces.length).toBeGreaterThanOrEqual(2)
+    const total = surfaces.reduce((t, s) => t + s.modules, 0)
+    const phrase = `Le devis chiffre : ${surfaces.map((s) => `${s.libelle} (${s.modules})`).join(' + ')}`
+      + ` = ${total} modules`
+    expect(screen.getByTestId('cal-bouton-devis')).toHaveTextContent(phrase)
+    expect(total).toBe(DETAIL.layout_nb_panneaux)
+  })
+
+  it('une seule surface (ou aucune) : aucune ligne', () => {
+    rendre({ detail: { ...DETAIL, surfaces_chiffrables: DETAIL.surfaces_chiffrables.slice(0, 1) } })
+    expect(screen.getByTestId('cal-bouton-devis')).not.toHaveTextContent('Le devis chiffre :')
+    cleanup()
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    expect(screen.getByTestId('cal-bouton-devis')).not.toHaveTextContent('Le devis chiffre :')
+  })
+})
+
+describe('ACAL968 — une case par surface (toit ET champ au sol), toutes cochées à l’ouverture', () => {
+  const SANS_DEVIS = { ...DETAIL_VIDE, surfaces_chiffrables: DETAIL.surfaces_chiffrables }
+  const CORPS = exempleContrat('calepinage', 'calepinage_publication', 'corps_surfaces_chiffrees')
+
+  it('tout coché : aucun corps ; la décochée est absente du corps', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValue({
+      data: { devis: 42, reference: 'DEV-2609-0042', deduplique: false },
+    })
+    rendre({ calepinageId: SANS_DEVIS.id, detail: SANS_DEVIS })
+    const cases = screen.getAllByRole('checkbox')
+    expect(cases).toHaveLength(DETAIL.surfaces_chiffrables.length)
+    cases.forEach((c) => expect(c).toBeChecked())
+    const toit = DETAIL.surfaces_chiffrables.find((s) => s.kind === 'toit')
+    await userEvent.click(screen.getByRole('checkbox', { name: new RegExp(toit.libelle) }))
+    await userEvent.click(screen.getByTestId('cal-generer-devis'))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalled())
+    const corps = calepinageApi.calepinages.genererDevis.mock.calls[0][1]
+    expect(corps.surfaces_chiffrees).toEqual(CORPS.surfaces_chiffrees)
+    expect(corps.surfaces_chiffrees).not.toContain(toit.cle)
+  })
+
+  it('plus rien de coché : « Générer le devis » désactivé, et dit pourquoi', async () => {
+    rendre({ calepinageId: SANS_DEVIS.id, detail: SANS_DEVIS })
+    for (const c of screen.getAllByRole('checkbox')) await userEvent.click(c)
+    expect(screen.getByTestId('cal-generer-devis')).toBeDisabled()
+    expect(screen.getByTestId('cal-bouton-devis')).toHaveTextContent('Cochez au moins une surface')
+  })
+})

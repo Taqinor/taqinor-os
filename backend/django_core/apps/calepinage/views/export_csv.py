@@ -70,7 +70,7 @@ __all__ = ['export_csv_simulation']
 #: Les champs dont le refus dit l'ÉTAT du calepinage (rien à exporter tant que
 #: la simulation n'a pas tourné) : 409, et non une entrée mal formée (400).
 CHAMPS_D_ETAT = frozenset({'production', 'points', 'mensuel',
-                           'shading12x24'})
+                           'shading12x24', 'acces_modules'})
 
 
 #: Motif publié de ``colonnes`` : un ou plusieurs noms de ``COLONNES_HORAIRE``
@@ -88,8 +88,8 @@ _MOTIF_COLONNES = '^(?:%s)(?:,(?:%s))*$' % (_ALTERNATIVE_COLONNES,
         OpenApiParameter(
             name='quoi', type=OpenApiTypes.STR, required=False,
             enum=list(EXPORTS),
-            description="Export demandé : horaire (défaut), mensuel ou "
-                        'ombrage.'),
+            description="Export demandé : horaire (défaut), mensuel, "
+                        'ombrage ou ombrage_modules.'),
         OpenApiParameter(
             name='colonnes', required=False,
             # ERR-ENF11-FUZZ-CALEPINAGE — le vocabulaire est PUBLIÉ : une liste

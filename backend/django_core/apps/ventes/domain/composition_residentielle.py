@@ -210,6 +210,13 @@ def _candidats_imposes(imposes, batterie_imposee, candidats, avertir):
              float(_parse_kwh(getattr(produit, 'nom', '')) or 0), produit)]
 
 
+def _kit_de_fixation(tarifes):
+    """ACAL927 — le premier produit TARIFÉ dont le nom contient « kit de
+    fixation » (repérage par mot-clé nommé, aucune classe neuve), ou ``None``."""
+    return next((p for p in tarifes
+                 if 'kit de fixation' in (getattr(p, 'nom', '') or '').lower()), None)
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               structure_produit_id=None,
@@ -220,8 +227,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               batterie_module_kwh=None,
                               hors_reseau=False, modeles=None,
                               regles_2710=True, onduleur_impose=None,
-                              batterie_imposee=None):
+                              batterie_imposee=None, modules_affleurants=0):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
+
+    ``modules_affleurants`` (ACAL927, D-ACAL-39 ; l'appelant ne le passe qu'au
+    niveau de règles 15) — modules posés à plat sur un toit en pente : ni
+    structure ni socle pour eux, UNE ligne « kit de fixation » à la place.
 
     ``onduleur_impose`` / ``batterie_imposee`` (COP2-V3, composition IMPOSÉE
     du devis automatique) — l'id ``stock.Produit`` de l'onduleur VENDU, et
@@ -1092,9 +1103,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # QJR403 — LES QUANTITÉS DÉRIVÉES DU COMPTE DE PANNEAUX PASSENT PAR LEUR
     # DÉFINITION UNIQUE (:func:`quantites_derivees_du_compte`), pour que le
     # chemin MODE_ECRIRE puisse les RE-DÉRIVER sans écrire une seconde formule.
-    _derivees = quantites_derivees_du_compte(nb)
+    _derivees = quantites_derivees_du_compte(nb, modules_affleurants)
     ajouter(role_structure, structure, _derivees['structure'])
     ajouter('socle', premier('socle'), _derivees['socle'])
+    if int(modules_affleurants or 0) > 0:  # ACAL927 — le kit de fixation, sinon NOMMÉ absent
+        kit = _kit_de_fixation(tarifes_par_pk.values())
+        if kit is None:
+            _avertir('Pose affleurante : aucun kit de fixation tarifé au catalogue — ligne non ajoutée.')
+        ajouter(role_structure_du_produit(kit, structure_type), kit, min(int(modules_affleurants), nb))
     # C4/PVCBL — métrage AU MÈTRE : le DC suit les paires de MPPT, la terre
     # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
     # RSIZ5 — paires DÉRIVÉES du champ et des onduleurs vendus (niveau 3).

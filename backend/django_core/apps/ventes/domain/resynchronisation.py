@@ -1076,7 +1076,8 @@ def reconcilier(devis, intention):
                 # l'option la PLUS équipée : celle avec batterie. Le compléter
                 # « sans » laisserait l'option « avec » incomplète au PDF.
                 avec_batterie=True if devis_deux_options else a_batterie,
-                avertissements=avertissements)
+                avertissements=avertissements,
+                modules_affleurants=_affleurants_au_niveau(verrou, layout))  # ACAL927
 
         # ── QJR220 — LES FORFAITS AU PANNEAU SUIVENT LE COMPTE RÉELLEMENT
         # ÉCRIT ──
@@ -1619,6 +1620,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402 — fin de module (anti-cy
 # son étape ``reconcilier`` (import fonction-local, délibéré), donc il est
 # toujours complètement chargé quand cette ligne s'exécute.
 from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    _affleurants_au_niveau,
     MODE_RECONCILIER,
     ORIGINE_RESYNCHRONISATION,
     IntentionDevis,

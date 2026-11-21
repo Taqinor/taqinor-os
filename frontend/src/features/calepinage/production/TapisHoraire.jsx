@@ -241,7 +241,8 @@ export default function TapisHoraire({
     // Le garde ne retient l'étude qu'à la VRAIE requête : une série qui devient
     // disponible (simulation terminée) est alors lue une fois (acceptation ACAL490).
     idDejaTente.current = id
-    return Promise.resolve(calepinageApi.calepinages.exportCsv(id, 'horaire', COLONNES_HORAIRE))
+    return Promise.resolve(calepinageApi.calepinages.exportCsv(
+      id, 'horaire', COLONNES_HORAIRE, { suppressErrorToast: true }))
       .then(async (res) => setChargee(lireCsvHoraire(await texteDuFichier(res?.data))))
       .catch(async (erreur) => setRefus(await motifDuRefus(erreur) || SANS_SERIE))
       .finally(() => setEnCours(false))

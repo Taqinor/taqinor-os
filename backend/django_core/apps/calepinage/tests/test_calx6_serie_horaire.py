@@ -110,8 +110,11 @@ class SerieServieTest(SimpleTestCase):
     """Après une simulation, le fichier horaire sort — et il n'est pas vide."""
 
     def setUp(self):
-        self.calepinage = _Calepinage(resultat=_resultat_simule(),
-                                      roof_layout={'shading12x24': OMBRAGE})
+        self.calepinage = _Calepinage(
+            resultat=_resultat_simule(),
+            roof_layout={'shading12x24': OMBRAGE, 'zones': [
+                {'id': 'P1', 'geometry': {'solarAccess': {
+                    'values': [0.5, 1.0]}}}]})
 
     def test_le_fichier_horaire_est_servi_et_non_vide(self):
         reponse = _appeler(self.calepinage, quoi='horaire')
@@ -226,5 +229,6 @@ class ContratPartageTest(SimpleTestCase):
                          't2m_c'):
             self.assertIn(attendue, colonnes)
 
-    def test_les_trois_exports_offerts_sont_ceux_du_service(self):
-        self.assertEqual(list(EXPORTS), ['horaire', 'mensuel', 'ombrage'])
+    def test_les_exports_offerts_sont_ceux_du_service(self):
+        self.assertEqual(list(EXPORTS), ['horaire', 'mensuel', 'ombrage',
+                                         'ombrage_modules'])

@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import pathlib
 import unittest
 
 from apps.calepinage.services.export_csv import (
-    COLONNES_HORAIRE, DEFAULT_COLONNES_HORAIRE, PAS_DISPONIBLES,
+    COLONNES_HORAIRE, DEFAULT_COLONNES_HORAIRE, EXPORTS, PAS_DISPONIBLES,
     ExportImpossible, export_csv,
 )
 
@@ -175,6 +177,23 @@ class ParametresProprosAlHoraireTest(unittest.TestCase):
                            pas='15min')
         table = lignes(texte)
         self.assertIn(['mois', 'production_kwh'], table)
+
+
+class ContratColonnesTest(unittest.TestCase):
+    """ACAL753 — l'échantillon `calepinage_export_csv.json` affirme le
+    vocabulaire que l'écran (onglet Séries) importe : une seule liste."""
+
+    def test_echantillon_egal_au_service(self):
+        chemin = (pathlib.Path(__file__).resolve().parent.parent
+                  / 'contract_samples' / 'calepinage_export_csv.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))['exemple']
+        self.assertEqual(sorted(exemple['colonnes_horaire']),
+                         sorted(COLONNES_HORAIRE))
+        self.assertEqual(tuple(exemple['par_defaut']),
+                         DEFAULT_COLONNES_HORAIRE)
+        self.assertEqual(tuple(exemple['pas']), PAS_DISPONIBLES)
+        # ACAL754 — les exports offerts, dont « ombrage_modules ».
+        self.assertEqual(tuple(exemple['exports']), EXPORTS)
 
 
 if __name__ == '__main__':  # pragma: no cover

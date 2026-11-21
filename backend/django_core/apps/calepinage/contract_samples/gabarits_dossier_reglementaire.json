@@ -35,7 +35,9 @@
           "id": 1,
           "nom_complet": "Utilisateur d'essai"
         },
-        "depose_le": "2026-10-01T10:00:00Z"
+        "depose_le": "2026-10-01T10:00:00Z",
+        "verifie_le": null,
+        "limites": []
       }
     ]
   },
@@ -75,7 +77,9 @@
         "id": 1,
         "nom_complet": "Utilisateur d'essai"
       },
-      "depose_le": "2026-10-01T10:00:00Z"
+      "depose_le": "2026-10-01T10:00:00Z",
+      "verifie_le": null,
+      "limites": []
     }
   },
   "detail": {
@@ -112,7 +116,9 @@
         "id": 1,
         "nom_complet": "Utilisateur d'essai"
       },
-      "depose_le": "2026-10-01T10:00:00Z"
+      "depose_le": "2026-10-01T10:00:00Z",
+      "verifie_le": null,
+      "limites": []
     }
   },
   "patch": {
@@ -153,7 +159,9 @@
         "id": 1,
         "nom_complet": "Utilisateur d'essai"
       },
-      "depose_le": "2026-10-01T10:00:00Z"
+      "depose_le": "2026-10-01T10:00:00Z",
+      "verifie_le": null,
+      "limites": []
     }
   },
   "delete": {
@@ -165,5 +173,22 @@
   },
   "refus_400": {
     "fichier": "Un gabarit se dépose en PDF : le fichier reçu n'en est pas un."
+  },
+  "exemple_limites_saisies": {
+    "corps": {
+      "pays": "ma",
+      "code": "maroc_generique_bt",
+      "intitule": "Dossier marocain générique",
+      "verifie_le": "2026-11-01",
+      "limites": [
+        {"code": "plafond_injection_kw", "valeur": 5, "unite": "kW", "source": "notice remise par le distributeur"}
+      ]
+    },
+    "refus_limite_sans_source": {
+      "limites[0].source": "La limite « plafond_injection_kw » doit porter sa SOURCE (texte, notice ou contrat qui la fixe) : aucune limite n'est reproduite de mémoire."
+    },
+    "refus_verifie_le_futur": {
+      "verifie_le": "La date de vérification ne peut pas être dans le futur."
+    }
   }
 }

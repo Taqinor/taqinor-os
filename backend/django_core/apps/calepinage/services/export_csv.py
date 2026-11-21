@@ -65,8 +65,8 @@ NON_PUBLIEE = 'non publiée'
 LIBELLE_EMPREINTE_LAYOUT = 'Empreinte du calepinage'
 LIBELLE_EMPREINTE_SIMULATION = "Empreinte d'entrée de la simulation"
 
-#: Les trois exports du module — toute autre valeur est refusée en la nommant.
-EXPORTS = ('horaire', 'mensuel', 'ombrage')
+#: Les exports du module — toute autre valeur est refusée en la nommant.
+EXPORTS = ('horaire', 'mensuel', 'ombrage', 'ombrage_modules')
 
 #: CALX313 — les deux pas de temps ÉNONCÉS. Seul ``horaire`` produit un
 #: fichier aujourd'hui ; ``15min`` est un pas RECONNU mais pas encore
@@ -133,6 +133,7 @@ def document_exportable(calepinage, avec_points=True):
     absent, et l'exporteur refuse en le disant.
     """
     from .. import selectors
+    from .ombrage_chaines import acces_des_modules
 
     stocke = getattr(calepinage, 'resultat', None)
     stocke = stocke if isinstance(stocke, dict) else {}
@@ -157,6 +158,8 @@ def document_exportable(calepinage, avec_points=True):
         'points': ([] if perimee or not avec_points
                    else _points_de_la_serie(stocke.get('serie_horaire'))),
         'shading12x24': layout.get('shading12x24'),
+        # ACAL754 — l'accès solaire annuel PAR MODULE, tel que persisté.
+        'acces_modules': acces_des_modules(layout),
         'version_moteur': getattr(calepinage, 'version_moteur', '') or None,
         'simulation_perimee': perimee,
         'motif_perimee': (servi.get('motif') or '') if perimee else '',
@@ -367,10 +370,27 @@ def _export_ombrage(document):
     return _ecrire(lignes)
 
 
+def _export_ombrage_modules(document):
+    acces = (document or {}).get('acces_modules')
+    if not isinstance(acces, dict) or not acces:
+        raise ExportImpossible(
+            "Aucun accès solaire par module n'est enregistré : calculez "
+            "l'ombrage dans l'atelier.", champ='acces_modules')
+    lignes = _lignes_de_provenance(document)
+    lignes.insert(len(lignes) - 1, [
+        'Résolution', 'accès solaire annuel, une valeur par module — le '
+        "mois et l'heure par module ne sont pas calculés"])
+    lignes.append(['module', 'acces_solaire'])
+    for cle, valeur in acces.items():
+        lignes.append([cle, _decimal(valeur, 3)])
+    return _ecrire(lignes)
+
+
 _FABRIQUES = {
     'horaire': _export_horaire,
     'mensuel': _export_mensuel,
     'ombrage': _export_ombrage,
+    'ombrage_modules': _export_ombrage_modules,
 }
 
 
@@ -382,7 +402,7 @@ def export_csv(document, *, quoi='horaire', colonnes=None, pas='horaire'):
             'shading12x24': [[…]], 'version_moteur': '…'}`` — la sortie de
             ``services.production`` enrichie de la série horaire et de la
             matrice d'ombrage du document de toiture.
-        quoi: ``horaire`` | ``mensuel`` | ``ombrage``.
+        quoi: ``horaire`` | ``mensuel`` | ``ombrage`` | ``ombrage_modules``.
         colonnes: CALX313, ``horaire`` SEULEMENT — sous-ensemble de
             ``COLONNES_HORAIRE`` à servir, dans l'ordre demandé. ``None``
             (défaut) sert ``DEFAULT_COLONNES_HORAIRE`` — le comportement

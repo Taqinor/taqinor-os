@@ -108,7 +108,7 @@ test('SPL292 — dépôt réel : façade + `_base.js`, 125 clés (ACAL960 +1, AC
     assert.ok(corps.length > 0 && texte.includes(corps.join('\n')), `corps de ${nom} spliçé`)
   }
   assert.ok(texte.endsWith(base))
-  assert.equal(extraireCles(texte).length, 125)
+  assert.equal(extraireCles(texte).length, 135)
   assert.match(texte, /const pivot = \(id\) => `\/calepinage\/calepinages\/\$\{id\}\/`/)
   // Aucun jumeau : `pivot` n'est plus DÉFINI dans la façade.
   assert.doesNotMatch(facade, /const pivot =/)

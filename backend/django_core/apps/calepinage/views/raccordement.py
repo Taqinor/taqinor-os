@@ -58,7 +58,7 @@ from ..serializers import forme_du_contrat
 from ..services.raccordement import (  # ACAL155 : clé + lecture uniques
     CLE_SAISIE, PREFIXE_CHAMP, RaccordementInvalide, SAISIE_MAXIMUM,
     bloc_raccordement,
-    proposition_du_lead, saisie_du_calepinage,
+    proposition_du_lead, puissances_du_site, saisie_du_calepinage,
 )
 from .calepinages import CalepinageViewSet
 
@@ -114,10 +114,24 @@ def _bloc_du_calepinage(calepinage, saisie):
     troncons = troncons_du_calepinage(calepinage).get('troncons') or []
     reglages = (parametres_societe(calepinage)
                 .get(SECTION_ELECTRIQUE_SOCIETE) or {})
+    # ACAL782 — le régime 82-21 lit les puissances du site et le mode hors
+    # réseau déclaré ; le seuil vit dans le noyau, jamais ici.
+    dc_kwc, ac_kw = puissances_du_site(conception)
+    # ACAL783 — l'injection simulée FRAÎCHE (``null`` si absente/périmée)
+    # face au plafond légal lu de ventes (selector).
+    from apps.ventes.selectors_calepinage import plafond_injection_loi_8221
+
+    from .. import selectors
+    servi = selectors.resultat_servi(calepinage) or {}
     # ACAL157 — la proposition du LEAD voyage à côté de la saisie, jamais
     # dedans : elle ne devient saisie que par un POST explicite.
-    return bloc_raccordement(conception, saisie, troncons, reglages,
-                             proposition_lead=proposition_du_lead(calepinage))
+    return bloc_raccordement(
+        conception, saisie, troncons, reglages,
+        proposition_lead=proposition_du_lead(calepinage),
+        puissance_dc_kwc=dc_kwc, puissance_ac_kw=ac_kw,
+        autoconsommation=servi.get('autoconsommation'),
+        plafond_legal=plafond_injection_loi_8221(),
+        hors_reseau=((_donnees or {}).get('hors_reseau') or {}).get('actif'))
 
 
 class FlottantPositif(serializers.FloatField):

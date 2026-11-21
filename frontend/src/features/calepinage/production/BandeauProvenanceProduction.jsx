@@ -185,6 +185,43 @@ export function ReglagesUtilises({ simulation, ouvert, onBascule }) {
 const nonPublie = (v) => (v === null || v === undefined || v === '' ? 'non publié' : String(v))
 
 /** Le bloc `meteo` : service, bases, fenêtre, horizon, fuseau, date d'obtention. */
+/** ACAL745 — « Deuxième source météo » : l'écart annuel servi entre deux bases
+    (`meteo.comparaison_base`), son motif quand il est `null`, et le détail
+    mensuel replié. Aucun verdict, aucune couleur : les valeurs telles que
+    servies. Clé absente : rien. */
+export function EcartBases({ comparaison }) {
+  if (!comparaison || typeof comparaison !== 'object') return null
+  const ecart = comparaison.ecart_pct
+  const mois = Array.isArray(comparaison.mensuel) ? comparaison.mensuel : []
+  if (ecart === null || ecart === undefined) {
+    return (
+      <p className="text-sm" data-testid="acal745-ecart">
+        {`Deuxième source météo non comparée : ${comparaison.motif || 'motif non publié'}`}
+      </p>
+    )
+  }
+  return (
+    <div className="text-sm" data-testid="acal745-ecart">
+      <p>
+        {`Deuxième source météo (${comparaison.base_comparee}) : ${formatPercent(ecart, { decimals: 1 })} `
+          + `de rayonnement par an par rapport à ${comparaison.base_principale}`}
+      </p>
+      {mois.length > 0 && (
+        <details data-testid="acal745-mensuel">
+          <summary className="min-h-11 cursor-pointer text-sm">Mois par mois</summary>
+          <ul className="text-sm">
+            {mois.map((m) => (
+              <li key={m.mois} data-testid={`acal745-mois-${m.mois}`}>
+                {`Mois ${m.mois} : ${formatPercent(m.ecart_pct, { decimals: 1 })}`}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  )
+}
+
 export function SourceMeteo({ meteo }) {
   if (!meteo?.service) return null
   const horizon = meteo.horizon?.origine
@@ -204,6 +241,7 @@ export function SourceMeteo({ meteo }) {
     ['Obtenue le', obtenue],
   ]
   return (
+    <>
     <details className="text-sm" data-testid="enf15-source-meteo">
       <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Source météo</summary>
       <dl className="mt-1 grid grid-cols-2 gap-x-3 text-xs">
@@ -215,6 +253,8 @@ export function SourceMeteo({ meteo }) {
         ))}
       </dl>
     </details>
+    <EcartBases comparaison={meteo.comparaison_base} />
+    </>
   )
 }
 

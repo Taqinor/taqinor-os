@@ -282,3 +282,80 @@ class GroupesTest(SimpleTestCase):
         self.assertEqual(ligne['source'], 'fiche')
         self.assertGreater(ligne['energie_restituee_kwh'], 0.0)
         self.assertGreater(ligne['cycles_an'], 0.0)
+
+
+class PointeEtReserveServiesTest(SimpleTestCase):
+    """ACAL787 — ``total`` sert la pointe (peak_shaving) et la réserve
+    déduite des appareils (backup), ``null`` ailleurs."""
+
+    SEUIL_KW = 0.5
+
+    def test_peak_shaving_publie_pointe_et_depassements(self):
+        contexte = contexte_de_test(strategie='peak_shaving',
+                                    seuil_effacement_kw=self.SEUIL_KW)
+        contexte[chaine_pertes.CLE_ANNEES_FENETRE] = 2
+        suite, resultat = bloc.bloc_batterie(serie_de_test(), contexte)
+        total = resultat['total']
+        imports = [p['reseau_import_kwh'] for p in suite['points']]
+        # Soutirage sans batterie : 1 kWh les 14 heures sans production.
+        self.assertEqual(total['pointe_avant_kw'], CONSO_KWH)
+        self.assertEqual(total['pointe_apres_kw'], round(max(imports), 3))
+        nuit = 24 - len(HEURES_DE_PRODUCTION)
+        self.assertEqual(total['heures_au_dessus_du_seuil'],
+                         round(nuit * 365 / 2, 1))
+        residuels = sum(1 for kwh in imports if kwh > self.SEUIL_KW + 1e-9)
+        self.assertEqual(total['nombre_depassements_residuels'],
+                         round(residuels / 2, 1))
+        self.assertIsNone(total['reserve_secours'])
+        self.assertNotIn('depassements_residuels', total)
+
+    def test_backup_avec_appareils_publie_la_reserve_deduite(self):
+        from apps.calepinage.services.batterie import reserve_depuis_appareils
+
+        appareils = [{'nom': 'Réfrigérateur', 'puissance_continue_kw': 0.15,
+                      'puissance_pointe_kw': 0.6, 'quantite': 1}]
+        contexte = contexte_de_test(strategie='backup', heures=48,
+                                    appareils=appareils, duree_secours_h=4)
+        _suite, resultat = bloc.bloc_batterie(serie_de_test(heures=48),
+                                              contexte)
+        self.assertEqual(resultat['total']['reserve_secours'],
+                         reserve_depuis_appareils(appareils, duree_h=4))
+        self.assertIsNone(resultat['total']['pointe_apres_kw'])
+
+    def test_acal793_faits_de_deux_jours_connus(self):
+        # Deux jours : 4 kW de 8 h à 17 h, 1 kWh consommé chaque heure, une
+        # banque de 10 kWh vide au départ. Elle se remplit chaque jour, et la
+        # plus longue nuit (0 h-7 h, 8 pas) se termine batterie vide les deux
+        # jours (14 h de nuit à 1 kWh > 10 kWh).
+        suite, resultat = bloc.bloc_batterie(serie_de_test(heures=48),
+                                             contexte_de_test(heures=48))
+        faits = resultat['total']['faits_serie']
+        self.assertEqual(faits['jours_total'], 2.0)
+        self.assertEqual(faits['jours_pleine'], 2.0)
+        self.assertEqual(faits['nuits_au_plancher'], 2.0)
+        # Sans batterie : 20 kWh autoconsommés sur 80 kWh produits.
+        self.assertEqual(faits['taux_autoconsommation_sans_batterie'], 0.25)
+        export = sum(p['reseau_export_kwh'] for p in suite['points'])
+        self.assertAlmostEqual(faits['part_surplus_injecte'],
+                               export / (80.0 - 20.0), places=3)
+
+    def test_acal793_nuit_ou_la_batterie_ne_se_vide_pas(self):
+        # Mutant « le jour entier au lieu de la nuit » : la fin du jour
+        # (23 h) n'est pas la fin de la plus longue nuit (7 h).
+        contexte = contexte_de_test(heures=48)
+        contexte['consommation']['import_intervalle']['valeurs'] = (
+            [0.1] * 48)
+        _suite, resultat = bloc.bloc_batterie(serie_de_test(heures=48),
+                                              contexte)
+        faits = resultat['total']['faits_serie']
+        # 0 h-7 h du 1er jour : batterie vide au départ ⇒ plancher ; le 2e
+        # jour, 14 h × 0,1 kWh < 10 kWh ⇒ jamais vide.
+        self.assertEqual(faits['nuits_au_plancher'], 1.0)
+
+    def test_autres_strategies_null(self):
+        _suite, resultat = bloc.bloc_batterie(
+            serie_de_test(heures=48), contexte_de_test(heures=48))
+        for cle in ('pointe_avant_kw', 'pointe_apres_kw',
+                    'heures_au_dessus_du_seuil',
+                    'nombre_depassements_residuels', 'reserve_secours'):
+            self.assertIsNone(resultat['total'][cle], cle)

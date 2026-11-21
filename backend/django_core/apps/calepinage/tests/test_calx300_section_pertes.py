@@ -149,6 +149,36 @@ class TableTest(unittest.TestCase):
         self.assertIn('Chain total', html)
 
 
+class SchemaEnergieTest(unittest.TestCase):
+    """ACAL773 — « où va l'énergie » sous le diagramme de la cascade."""
+
+    def test_le_schema_d_energie_est_imprime_apres_la_cascade(self):
+        from apps.calepinage.services.diagramme_energie import svg_d_energie
+        from apps.calepinage.services.diagramme_pertes import (
+            svg_embarquable,
+        )
+        resultat = copy.deepcopy(RESULTAT['exemple'])
+        html = html_de_section(contexte(resultat))
+        attendu = svg_embarquable(svg_d_energie(resultat, langue='fr'))
+        self.assertIn(attendu, html)
+        self.assertIn("Où va l'énergie".replace("'", '&#x27;'), html)
+        self.assertLess(html.index('diagramme-pertes'),
+                        html.index('diagramme-energie'))
+
+    def test_titre_en_anglais(self):
+        html = html_de_section(contexte(
+            copy.deepcopy(RESULTAT['exemple']), langue='en'))
+        self.assertIn('Where the energy goes', html)
+
+    def test_sans_postes_lisibles_le_motif_remplace_le_schema(self):
+        resultat = copy.deepcopy(RESULTAT['exemple'])
+        del resultat['cascade']['postes_lisibles']
+        html = html_de_section(contexte(resultat))
+        self.assertIn('Aucune cascade regroup', html)
+        self.assertNotIn('class="bloc"', html)
+        self.assertIn('pertes-cascade', html)    # la table reste
+
+
 class SansCascadeTest(unittest.TestCase):
     def test_la_liste_plate_est_imprimee_en_le_disant(self):
         pertes = copy.deepcopy(RESULTAT['exemple']['pertes'])

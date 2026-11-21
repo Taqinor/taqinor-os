@@ -128,6 +128,9 @@ class IntentionComposition:
     #: ACAL63 — les modèles DÉSIGNÉS par le calepinage (``[{produit_id, watt,
     #: count}]``). ``None`` (LE DÉFAUT) ⇒ un seul panneau, choisi au wattage.
     modeles: object = None
+    #: ACAL927 (D-ACAL-39) — modules affleurants du calepinage, posé par un
+    #: appelant au niveau de règles 15 seulement. 0 (LE DÉFAUT) ⇒ inchangé.
+    modules_affleurants: int = 0
     #: Corrections résidentielles du 27/10 (RSIZ2 hybride servi par une
     #: batterie du stock, RSIZ3 jamais la forme commune, RSIZ5 paires MPPT
     #: DÉRIVÉES du champ). ``True`` (LE DÉFAUT) = règles courantes, celles
@@ -211,6 +214,7 @@ def composer(intention):
         mppt_paires=intention.mppt_paires,
         phase=intention.phase,
         regles_2710=getattr(intention, 'regles_2710', True),
+        modules_affleurants=getattr(intention, 'modules_affleurants', 0),  # ACAL927
     )
     catalogue = reglages.catalogue
     kwc = float(intention.kwc or 0)

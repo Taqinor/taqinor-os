@@ -416,7 +416,17 @@ def intention_de_composition(intention, cible, *, avertissements=None,
         # RSIZ2/3/5 — un devis recomposé aux règles d'origine (< 3) garde ses
         # règles, comme ses cartes de taille (``contexte_sonde_du_devis``).
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710),
+        modules_affleurants=_affleurants_au_niveau(devis, getattr(intention, 'layout', None)),
     )
+
+
+def _affleurants_au_niveau(devis, layout):
+    """ACAL927 (D-ACAL-39) — modules affleurants du calepinage, au niveau de
+    règles 15 seulement (``None`` = devis neuf, règles courantes) ; sinon 0."""
+    from apps.ventes.domain.geometrie import modules_affleurants
+    from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111
+
+    return modules_affleurants(layout) if regles_au_moins(devis, REGLES_POSE_REELLE_2111) else 0
 
 
 def ecrire_lignes(devis, composition, *, company, avertissements=None):
@@ -545,10 +555,11 @@ def _appliquer_preseance_quantite(devis, lignes_in, *, avertissements=None):
         return
     if quantite != dominante.quantite:
         lignes_in[dominante.index]['quantite'] = str(quantite)
-        _reecrire_quantites_soeurs(lignes_in, quantite)
+        _reecrire_quantites_soeurs(lignes_in, quantite, _affleurants_au_niveau(
+            devis, getattr(devis, 'roof_layout', None)))
 
 
-def _reecrire_quantites_soeurs(lignes_in, nb_panneaux):
+def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0):
     """QJR4-1 — LES QUANTITÉS SŒURS SUIVENT LE COMPTE DE PANNEAUX RÉÉCRIT.
 
     CE QUI ÉTAIT FAUX. ``_appliquer_preseance_quantite`` ne touchait QUE la
@@ -572,7 +583,7 @@ def _reecrire_quantites_soeurs(lignes_in, nb_panneaux):
     from apps.ventes.domain.catalogue import classer_produit
     from apps.ventes.domain.composition import quantites_derivees_du_compte
 
-    derivees = quantites_derivees_du_compte(nb_panneaux)
+    derivees = quantites_derivees_du_compte(nb_panneaux, affleurants)  # ACAL927
     for spec in lignes_in:
         if not isinstance(spec, dict):
             continue

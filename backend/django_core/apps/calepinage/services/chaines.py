@@ -38,6 +38,7 @@ affiche ce qui manque au lieu d'un faux vert.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 from typing import Optional, Tuple
 
@@ -1209,6 +1210,7 @@ def affectation(conception, *, imposee=None):
                 'source': SOURCE_AUTO,
             })
     # ACAL285 — la teinte est attribuée APRÈS l'affectation manuelle.
+    imposee, _reancrees = _reancrer_par_position(conception, imposee)
     return tuple(_colorer(_appliquer_imposee(lignes, imposee)))
 
 
@@ -1494,6 +1496,12 @@ def bloc_electrique(conception, *, verdicts=(), imposee=None):
         getattr(conception.entree, 'module', None))
     if coeffs:
         avertissements.append(coeffs)
+    # ACAL649 — les lignes ré-ancrées par leur centre sont NOMMÉES.
+    imposee, reancrees = _reancrer_par_position(conception, imposee)
+    if reancrees:
+        avertissements.append(
+            "%d module(s) ont changé de chaîne, voir Affectation : %s"
+            % (len(reancrees), ', '.join('%s → %s' % c for c in reancrees)))
     table = list(affectation(conception, imposee=imposee))
     obsoletes = _affectation_obsolete(conception, imposee, table=table)
     for ligne in obsoletes:
@@ -1514,6 +1522,73 @@ def bloc_electrique(conception, *, verdicts=(), imposee=None):
 #: ACAL265 — les motifs d'une affectation manuelle devenue orpheline.
 MOTIF_MODULE_INTROUVABLE = 'module introuvable'
 MOTIF_PAN_INCONNU = 'pan inconnu'
+
+
+def _demi_pas(centres):
+    """La moitié de la plus courte distance entre deux modules, ou ``None``."""
+    ecarts = [math.hypot(a[0] - b[0], a[1] - b[1])
+              for i, a in enumerate(centres) for b in centres[i + 1:]]
+    ecarts = [ecart for ecart in ecarts if ecart > 0]
+    return min(ecarts) / 2 if ecarts else None
+
+
+def _reancrer_par_position(conception, imposee):
+    """ACAL649 — ``(imposee, [(ancienne clé, nouvelle clé)])``.
+
+    Une ligne manuelle qui porte le centre mémorisé de son module est
+    rattachée au module du pan posé à moins d'un demi-pas de ce centre :
+    retirer le module 3 d'un pan non numéroté ne décale plus l'affectation
+    des suivants. Sans centre (ligne d'avant la tâche), sans centres au
+    document ou sans module voisin : la ligne reste telle quelle. Calcul de
+    lecture : l'affectation enregistrée n'est pas réécrite.
+    """
+    pans = {pan.cle_stable: pan for pan in conception.pans if pan.centres}
+    sortie, reancrees = [], []
+    for ligne in tuple(imposee or ()):
+        pan = pans.get(ligne['module'].rsplit('#', 1)[0])
+        demi = _demi_pas(pan.centres) if pan and 'cx' in ligne else None
+        if demi is None:
+            sortie.append(ligne)
+            continue
+        ecart, rang = min(
+            (math.hypot(cx - ligne['cx'], cy - ligne['cy']), rang)
+            for rang, (cx, cy) in enumerate(pan.centres, start=1))
+        module = pan.cle_module(rang)
+        if ecart > demi or module == ligne['module']:
+            sortie.append(ligne)
+            continue
+        reancrees.append((ligne['module'], module))
+        sortie.append(dict(ligne, module=module))
+    return tuple(sortie), reancrees
+
+
+def memoriser_centres(reglages, layout, entree_stockee=None):
+    """ACAL649 — ``reglages`` dont les lignes d'``affectation_manuelle`` portent
+    ``cx`` et ``cy`` : le centre déjà mémorisé pour ce module, sinon celui du
+    module dans le document. Jamais envoyé par l'écran ; une ligne sans module
+    retrouvé reste telle quelle (la validation parle)."""
+    lignes = reglages.get('affectation_manuelle')
+    if not isinstance(lignes, (list, tuple)):
+        return reglages
+    anciens = {a.get('module'): a for a in (
+        (entree_stockee or {}).get('affectation_manuelle') or ())
+        if isinstance(a, dict) and 'cx' in a}
+    pans = {pan.cle_stable: pan for pan in _pans_poses(layout) if pan.centres}
+    sortie = []
+    for ligne in lignes:
+        module = ligne.get('module') if isinstance(ligne, dict) else None
+        if not isinstance(module, str) or 'cx' in ligne:
+            sortie.append(ligne)
+            continue
+        pan = pans.get(module.rsplit('#', 1)[0])
+        rang = next((r for r in range(1, (pan.modules if pan else 0) + 1)
+                     if pan.cle_module(r) == module), None)
+        centre = ((anciens[module]['cx'], anciens[module]['cy'])
+                  if module in anciens else
+                  pan.centres[rang - 1] if rang else None)
+        sortie.append(ligne if centre is None
+                      else dict(ligne, cx=centre[0], cy=centre[1]))
+    return dict(reglages, affectation_manuelle=sortie)
 
 
 def _affectation_obsolete(conception, imposee, *, table=None):
@@ -1566,7 +1641,7 @@ SOURCE_AUTO = 'automatique'
 SOURCE_MANUELLE = 'affectation manuelle'
 
 #: Les clés admises dans une ligne d'affectation imposée.
-CLES_IMPOSEE = ('module', 'chaine', 'mppt', 'onduleur', 'optimiseur')
+CLES_IMPOSEE = ('module', 'chaine', 'mppt', 'onduleur', 'optimiseur', 'cx', 'cy')
 
 
 class AffectationInvalide(ValueError):
@@ -1630,8 +1705,30 @@ def normaliser_affectation_imposee(brut):
                     f"{type(ligne['optimiseur']).__name__}).",
                     champ='optimiseur')
             propre['optimiseur'] = ligne['optimiseur']
+        # ACAL649 — le centre du module à l'enregistrement (rempli par le
+        # SERVEUR : ``memoriser_centres``) ; les deux, ou aucun.
+        centre = [_centre_impose(ligne.get(cle), module, cle)
+                  for cle in ('cx', 'cy')]
+        if None in centre and centre != [None, None]:
+            raise AffectationInvalide(
+                f"Le centre du module « {module} » demande cx ET cy.",
+                champ='cx')
+        if centre[0] is not None:
+            propre['cx'], propre['cy'] = centre
         lignes.append(propre)
     return tuple(lignes)
+
+
+def _centre_impose(valeur, module, cle):
+    """Un nombre fini (mètres), ou ``None`` ; refus nommant le module."""
+    if valeur is None:
+        return None
+    if (isinstance(valeur, bool) or not isinstance(valeur, (int, float))
+            or not math.isfinite(valeur)):
+        raise AffectationInvalide(
+            f"Le champ « {cle} » du module « {module} » doit être un "
+            f"nombre (reçu : {valeur!r}).", champ=cle)
+    return float(valeur)
 
 
 def _numero_impose(valeur, module, quoi):

@@ -60,7 +60,26 @@
       "puissance_souscrite_kva": 12.0,
       "phases": 3,
       "source": "lead — facture d'électricité du 12/03/2026"
-    }
+    },
+    "regime": {
+      "code": "accord_raccordement",
+      "libelle": "Accord de raccordement",
+      "base": "loi 82-21 art. 4 ; décret 2.25.100 art. 5, 11",
+      "guichet": "distributeur",
+      "guichet_statut": "a_confirmer",
+      "puissance_retenue_kw": 12,
+      "base_puissance": "a_confirmer_avec_le_distributeur",
+      "a_qualifier": false
+    },
+    "injection": {
+      "part_injectee_pct": 35.0,
+      "plafond_pct": 20,
+      "source": "loi 82-21 art. 12 (BO 7400) ; ANRE 04/26 art. 7",
+      "depasse": true,
+      "mention": "Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation dimensionnée pour l'autoconsommation",
+      "avertissement": "La part injectée (35 %) dépasse le plafond légal de 20 % de la production annuelle : en MT/HT, l'excédent de revente n'est pas valorisé"
+    },
+    "injection_motif": null
   },
   "exemple_limite_saisie": {
     "saisie": {
@@ -117,7 +136,26 @@
         "source": null
       }
     ],
-    "proposition_lead": null
+    "proposition_lead": null,
+    "regime": {
+      "code": "accord_raccordement",
+      "libelle": "Accord de raccordement",
+      "base": "loi 82-21 art. 4 ; décret 2.25.100 art. 5, 11",
+      "guichet": "distributeur",
+      "guichet_statut": "a_confirmer",
+      "puissance_retenue_kw": 12,
+      "base_puissance": "a_confirmer_avec_le_distributeur",
+      "a_qualifier": false
+    },
+    "injection": {
+      "part_injectee_pct": 35.0,
+      "plafond_pct": 20,
+      "source": "loi 82-21 art. 12 (BO 7400) ; ANRE 04/26 art. 7",
+      "depasse": true,
+      "mention": "Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation dimensionnée pour l'autoconsommation",
+      "avertissement": "La part injectée (35 %) dépasse le plafond légal de 20 % de la production annuelle : en MT/HT, l'excédent de revente n'est pas valorisé"
+    },
+    "injection_motif": null
   },
   "exemple_vide": {
     "saisie": {
@@ -174,7 +212,19 @@
         "source": null
       }
     ],
-    "proposition_lead": null
+    "proposition_lead": null,
+    "regime": {
+      "code": null,
+      "libelle": "À qualifier",
+      "base": "loi 82-21 art. 11 : puissance totale du site requise ; décret 2.25.100 art. 5",
+      "guichet": null,
+      "guichet_statut": "a_confirmer",
+      "puissance_retenue_kw": null,
+      "base_puissance": "a_confirmer_avec_le_distributeur",
+      "a_qualifier": true
+    },
+    "injection": null,
+    "injection_motif": "Simulez d'abord pour comparer l'injection"
   },
   "refus_limite_sans_source": {
     "source_limite": "Une limite d'élévation de tension ne peut pas être enregistrée sans sa source : indiquez le texte réglementaire ou le contrat de raccordement qui la fixe — un seuil sans provenance n'est pas opposable."

@@ -297,6 +297,56 @@ describe('Raccordement — valeurs du lead (ACAL158)', () => {
   })
 })
 
+describe('Raccordement — régime 82-21 et injection (ACAL784)', () => {
+  it('les deux lignes se lisent sur l’exemple du contrat, avec le voyant au-delà du plafond', async () => {
+    servir(CONTRAT.exemple)
+
+    rendre()
+
+    const regime = await screen.findByTestId('acal784-regime')
+    expect(regime.textContent).toBe(
+      'Régime 82-21 : Accord de raccordement — puissance retenue 12 kW, base à confirmer avec le distributeur',
+    )
+    expect(screen.getByTestId('acal784-injection').textContent)
+      .toContain('Injection simulée : 35 % de la production annuelle ; plafond légal 20 %')
+    expect(screen.getByTestId('acal784-voyant')).toBeTruthy()
+    expect(screen.getByTestId('acal784-avertissement').textContent)
+      .toBe(CONTRAT.exemple.injection.avertissement)
+  })
+
+  it('sans dépassement, aucun voyant ni avertissement', async () => {
+    servir({ ...CONTRAT.exemple, injection: { ...CONTRAT.exemple.injection, depasse: false, avertissement: null } })
+
+    rendre()
+
+    await screen.findByTestId('acal784-injection')
+    expect(screen.queryByTestId('acal784-voyant')).toBeNull()
+    expect(screen.queryByTestId('acal784-avertissement')).toBeNull()
+  })
+
+  it('sans simulation : le motif du serveur ; régime à qualifier : puissance inconnue', async () => {
+    servir(CONTRAT.exemple_vide)
+
+    rendre()
+
+    expect((await screen.findByTestId('acal784-regime')).textContent)
+      .toBe('Régime à qualifier : puissance du site inconnue')
+    expect(screen.getByTestId('acal784-injection').textContent)
+      .toBe(CONTRAT.exemple_vide.injection_motif)
+  })
+
+  it('un bloc sans régime ni injection ne rend aucune ligne', async () => {
+    const { regime, injection, injection_motif: motif, ...ancien } = CONTRAT.exemple
+    expect([regime, injection, motif]).not.toContain(undefined)
+    servir(ancien)
+
+    rendre()
+
+    await screen.findByTestId('calx244-panneau')
+    expect(screen.queryByTestId('acal784-regime-injection')).toBeNull()
+  })
+})
+
 describe('Fonctions pures (CALX244)', () => {
   it('erreursParChamp retire le préfixe que le serveur pose', () => {
     expect(erreursParChamp(CONTRAT.refus_limite_sans_source))

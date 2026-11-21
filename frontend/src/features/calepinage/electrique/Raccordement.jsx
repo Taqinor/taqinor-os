@@ -6,6 +6,7 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Badge, Button, Card, Input, Label, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
+import RegimeEtInjection from './RegimeEtInjection'
 import { CHAMPS, TONS_STATUT, corpsDeSaisie, erreursParChamp, libelleStatut, saisieVide } from './Raccordement.helpers'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
@@ -220,6 +221,12 @@ export default function Raccordement({ calepinageId, lectureSeule = false } = {}
         </header>
 
         <BandeauRefus erreurs={erreurs} />
+
+        <RegimeEtInjection
+          regime={bloc?.regime ?? null}
+          injection={bloc?.injection ?? null}
+          injectionMotif={bloc?.injection_motif ?? null}
+        />
 
         <PropositionLead
           proposition={proposition}

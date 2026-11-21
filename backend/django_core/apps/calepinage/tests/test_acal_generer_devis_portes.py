@@ -404,6 +404,45 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         calepinage.refresh_from_db()
         self.assertIsNone(calepinage.devis_id)
 
+    def test_acal968_champ_seul_coche_176_resynchro_comprise(self):
+        """ACAL968 (D-ACAL-37) — zone 42 + champ au sol 176, seul le champ
+        coché ⇒ 176 modules, sélection écrite au devis et relue par la
+        resynchro SANS corps ⇒ 176 ; vide ou clé inconnue ⇒ 400 nommant
+        ``surfaces_chiffrees``. Mutant : composer tout ⇒ 218 ⇒ rouge."""
+        doc = {
+            'scenario': 'reseau',
+            'zones': [{'id': 'z1', 'label': 'Zone 1', 'roofType': 'flat',
+                       'vertices': [[0, 0], [30, 0], [30, 20], [0, 20]],
+                       'geometry': {'count': 42, 'kwc': 23.1, 'azimuthDeg': 180.0, 'tiltDeg': 10.0},
+                       'result': {'count': 42, 'kwc': 23.1}}],
+            'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1', 'moduleWc': 550,
+                              'contourM': [[0, 0], [40, 0], [40, 25], [0, 25]], 'areaM2': 1000,
+                              'rowAzimuthDeg': 90, 'tiltDeg': 25,
+                              'engine': {'modules': 176, 'tables': [], 'rowPitchM': 4.2}}]}
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL968')
+        enregistrer_layout(calepinage, doc, user=self.user)
+        url = url_generer(calepinage.pk)
+        for mauvais in ([], ['inconnue'], 's1'):
+            refus = self.api.post(url, {'surfaces_chiffrees': mauvais}, format='json')
+            self.assertEqual(refus.status_code, 400, refus.data)
+            self.assertEqual(sorted(refus.data), sorted(CONTRAT['exemple_400_surfaces_chiffrees']))
+        reponse = self.api.post(url, CONTRAT['corps_surfaces_chiffrees'], format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        devis = Devis.objects.get(pk=reponse.data['devis'])
+
+        def panneaux(devis):
+            return sum(int(ligne.quantite) for ligne in devis.lignes.all()
+                       if 'panneau' in (ligne.designation or '').lower())
+        self.assertEqual(panneaux(devis), 176)
+        self.assertEqual(devis.roof_layout['choixConception']['surfacesChiffrees'], ['s1'])
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.roof_layout['zones'][0]['geometry']['count'], 42)  # jamais réécrit
+        sync = self.api.post(f'{url_detail(calepinage.pk)}sync-devis/', {}, format='json')
+        self.assertEqual(sync.status_code, 200, sync.data)
+        devis.refresh_from_db()
+        self.assertEqual(panneaux(devis), 176)
+
 
 class GenererDevisConcurrentTest(TransactionTestCase):
     """ACON46 — deux « Générer le devis » CONCURRENTS sur le même calepinage :

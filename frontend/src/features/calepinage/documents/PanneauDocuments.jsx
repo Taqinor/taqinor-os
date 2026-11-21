@@ -92,12 +92,30 @@ function detailsErreur(donnee) {
   return [{ champ: '', message: 'Le serveur a refusé la demande, sans détail lisible.' }]
 }
 
+/* ACAL768 — le délai d'un téléchargement de document : le serveur attend lui-
+   même 120 s (gunicorn `--timeout 120`, docker-compose.yml ; nginx
+   `proxy_read_timeout 120s`, backend/nginx/nginx.conf) ; la coupure générale
+   à 20 s de `api/axios.js` tuait le rapport d'étude PDF avant. */
+export const DELAI_TELECHARGEMENT_MS = 120000
+const MINUTES_DE_DELAI = DELAI_TELECHARGEMENT_MS / 60000
+const OPTIONS_TELECHARGEMENT = { timeout: DELAI_TELECHARGEMENT_MS, suppressErrorToast: true }
+
 /** Le corps JSON d'une erreur axios dont la réponse est un BLOB
     (`responseType: 'blob'` — c'est le cas de tout téléchargement de ce
     panneau) : le corps d'erreur voyage lui aussi en blob, il faut le relire
     en texte avant de le parser. Sans réponse du tout (réseau coupé), un motif
     générique — jamais un plantage muet. */
-async function erreurDeTelechargement(erreur) {
+async function erreurDeTelechargement(erreur, { delai = false } = {}) {
+  // ACAL769 — un dépassement du délai de téléchargement dit quoi faire (la
+  // durée vient de `DELAI_TELECHARGEMENT_MS`) ; aucun toast global (l'appel
+  // porte `suppressErrorToast`).
+  if (delai && erreur?.code === 'ECONNABORTED') {
+    return [{
+      champ: '',
+      message: `Le serveur n'a pas fini de préparer ce document en ${MINUTES_DE_DELAI} minutes. `
+        + "Réessayez dans une minute ; si cela se répète, signalez-le en donnant l'heure.",
+    }]
+  }
   const donnees = erreur?.response?.data
   if (typeof Blob !== 'undefined' && donnees instanceof Blob) {
     try {
@@ -281,6 +299,11 @@ function CarteDocument({
           >
             {estPost ? 'Composer' : 'Télécharger'}
           </Button>
+          {enCours && !estPost && (
+            <p className="w-full text-xs text-muted-foreground" data-testid="acal769-attente">
+              {`Préparation en cours : jusqu'à ${MINUTES_DE_DELAI} minutes.`}
+            </p>
+          )}
           {entree.apercu && (
             <Button
               size="sm"
@@ -667,13 +690,15 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
         setResultatsPost((precedent) => ({ ...precedent, [code]: reponse.data }))
       } else {
         const reponse = params
-          ? await calepinageApi.calepinages.telechargerDocument(entree.endpoint, params)
-          : await calepinageApi.calepinages.telechargerDocument(entree.endpoint)
+          ? await calepinageApi.calepinages.telechargerDocument(
+            entree.endpoint, params, OPTIONS_TELECHARGEMENT)
+          : await calepinageApi.calepinages.telechargerDocument(
+            entree.endpoint, undefined, OPTIONS_TELECHARGEMENT)
         downloadBlob(reponse.data, filenameFromResponse(reponse, code))
       }
       await refetch()
     } catch (erreur) {
-      const details = await erreurDeTelechargement(erreur)
+      const details = await erreurDeTelechargement(erreur, { delai: true })
       setErreurs((precedent) => ({ ...precedent, [code]: details }))
     } finally {
       setEnCours(null)
@@ -685,10 +710,11 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
   async function telechargerAutreFormat(code, format) {
     setErreurs((precedent) => ({ ...precedent, [code]: null }))
     try {
-      const reponse = await calepinageApi.calepinages.telechargerDocument(format.endpoint)
+      const reponse = await calepinageApi.calepinages.telechargerDocument(
+        format.endpoint, undefined, OPTIONS_TELECHARGEMENT)
       downloadBlob(reponse.data, filenameFromResponse(reponse, `${code}.${format.format}`))
     } catch (erreur) {
-      const details = await erreurDeTelechargement(erreur)
+      const details = await erreurDeTelechargement(erreur, { delai: true })
       setErreurs((precedent) => ({ ...precedent, [code]: details }))
     }
   }

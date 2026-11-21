@@ -17,13 +17,21 @@ Run :
 """
 from __future__ import annotations
 
+import json
+import pathlib
 from decimal import Decimal
 from unittest import mock
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage
+from apps.calepinage.services.batterie_declaration import (
+    CLES_BATTERIE, valider_secours,
+)
 from apps.calepinage.services.electrique import (
     CLE_ENTREE, EntreeInvalide, enregistrer_entree, entree_stockee,
 )
+from apps.calepinage.services.validation_batterie import valider_batterie
 from apps.calepinage.services.etapes import batterie as bloc
 from apps.calepinage.services.simulation import (
     _declaration_batterie, _section_de_l_entree,
@@ -36,6 +44,18 @@ from .test_calx188_batterie import contexte_de_test, serie_de_test
 FICHE = dict(bat_kwh_nominal=10.0, bat_kwh_usable=9.0, bat_dod_pct=90.0,
              bat_rendement_ar_pct=94.0, bat_cycles_publies=6000,
              bat_max_charge_kw=5.0, bat_max_decharge_kw=5.0)
+
+CONTRAT_ENTREE = json.loads(
+    (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+     / 'calepinage_entree_electrique.json').read_text(encoding='utf-8'))
+
+#: ACAL786 — un appareil secouru d'essai (valeurs d'essai, OpenSolar « Enter
+#: by Appliance » : continue, pointe au démarrage, quantité).
+APPAREIL = {'nom': 'Réfrigérateur', 'puissance_continue_kw': 0.15,
+            'puissance_pointe_kw': 0.6, 'quantite': 1}
+
+#: ACAL790 — des seuils de protection hors réseau d'essai, ordonnés.
+SEUILS = {'veille_pct': 30, 'entretien_pct': 20, 'arret_pct': 10}
 
 #: La ligne batterie du devis lié, telle que ``equipements_du_calepinage`` la rend.
 CIBLE_EQUIPEMENTS = ('apps.calepinage.services.equipements'
@@ -137,6 +157,59 @@ class Declaration(BaseApiCalepinage):
         self.assertEqual(refus.exception.champ,
                          'hors_reseau.jours_autonomie')
 
+    def test_acal786_appareils_et_duree_enregistres_puis_simules(self):
+        saisie = {'produit': self.produit.pk, 'strategie': 'backup',
+                  'appareils': [dict(APPAREIL)], 'duree_secours_h': 4}
+        enregistrer_entree(self.calepinage, {'batterie': saisie})
+        self.calepinage.refresh_from_db()
+        stockee = entree_stockee(self.calepinage)['batterie']
+        self.assertEqual(stockee, saisie)
+
+        resultat = self._bloc(self._declaration(stockee))
+
+        self.assertIsNotNone(resultat['total'], resultat['motif_absence'])
+        self.assertTrue(any('déduite de 1 appareil' in texte
+                            for texte in resultat['avertissements']))
+
+    def test_acal786_forme_fausse_du_secours_nomme_le_champ(self):
+        sans_pointe = {k: v for k, v in APPAREIL.items()
+                       if k != 'puissance_pointe_kw'}
+        for saisie, champ in (
+                ({'appareils': [sans_pointe], 'duree_secours_h': 4},
+                 'batterie.appareils[0].puissance_pointe_kw'),
+                ({'appareils': [dict(APPAREIL)]}, 'batterie.duree_secours_h'),
+                ({'fenetres': {'charge': [{'heures': [25]}],
+                               'decharge': [{'heures': [20]}]}},
+                 'batterie.fenetres.charge[0].heures'),
+                ({'appareils': [dict(APPAREIL)], 'duree_secours_h': 4,
+                  'reserve_backup_kwh': 2.0}, 'batterie.reserve_backup_kwh'),
+                ({'part_effacable_pct': 120}, 'batterie.part_effacable_pct'),
+                ({'inconnu': 1}, 'batterie.inconnu')):
+            with self.subTest(champ=champ):
+                with self.assertRaises(EntreeInvalide) as refus:
+                    enregistrer_entree(self.calepinage, {'batterie': saisie})
+                self.assertEqual(refus.exception.champ, champ)
+
+    def test_acal790_seuils_hors_reseau_mal_formes_nomment_leur_seuil(self):
+        for seuils, champ in (
+                ({'veille_pct': 10, 'entretien_pct': 15, 'arret_pct': 20},
+                 'hors_reseau.seuils.veille_pct'),
+                ({'veille_pct': 50, 'arret_pct': 10},
+                 'hors_reseau.seuils.entretien_pct'),
+                (dict(SEUILS, arret_pct=-5), 'hors_reseau.seuils.arret_pct'),
+                ('bas', 'hors_reseau.seuils')):
+            with self.subTest(champ=champ):
+                with self.assertRaises(EntreeInvalide) as refus:
+                    enregistrer_entree(self.calepinage, {'hors_reseau': {
+                        'actif': True, 'jours_autonomie': 2,
+                        'seuils': seuils}})
+                self.assertEqual(refus.exception.champ, champ)
+        enregistrer_entree(self.calepinage, {'hors_reseau': {
+            'actif': True, 'jours_autonomie': 2, 'seuils': dict(SEUILS)}})
+        self.calepinage.refresh_from_db()
+        self.assertEqual(entree_stockee(self.calepinage)['hors_reseau'][
+            'seuils'], SEUILS)
+
     def test_declaration_enregistree_et_relue_telle_quelle(self):
         saisie = {'strategie': 'autoconso', 'packs': 2, 'couplage': 'ac'}
 
@@ -151,3 +224,58 @@ class Declaration(BaseApiCalepinage):
         self.assertIn(CLE_ENTREE, self.calepinage.resultat)
         # La déclaration n'entre pas dans le document : layout_hash inchangé.
         self.assertNotIn('battery', self.calepinage.roof_layout)
+
+
+class SecoursEtCommandeAdmisTest(SimpleTestCase):
+    """ACAL786 — sans base : les cinq clés sont admises et jugées par les
+    règles du calcul (``services/batterie.py``), refus nommé."""
+
+    def test_les_cinq_cles_sont_admises(self):
+        for cle in ('appareils', 'duree_secours_h', 'fenetres',
+                    'part_effacable_pct', 'plafond_effacable_kw'):
+            self.assertIn(cle, CLES_BATTERIE)
+        saisie = {'strategie': 'backup', 'appareils': [dict(APPAREIL)],
+                  'duree_secours_h': 4, 'part_effacable_pct': 60,
+                  'plafond_effacable_kw': 5.0}
+        valider_batterie(saisie)
+        valider_secours(saisie)
+        valider_secours({'fenetres': {'charge': [{'heures': [10, 11]}],
+                                      'decharge': [{'heures': [19]}]}})
+
+    def test_les_corps_du_contrat_sont_acceptes(self):
+        for cle in ('exemple_secours', 'exemple_commande_avancee'):
+            saisie = CONTRAT_ENTREE[cle]['batterie']
+            valider_batterie(saisie)
+            valider_secours(saisie)
+
+    def test_refus_traduit_en_batterie_champ(self):
+        with self.assertRaises(EntreeInvalide) as refus:
+            valider_secours({'appareils': [dict(APPAREIL)],
+                             'duree_secours_h': 0})
+        self.assertEqual(refus.exception.champ, 'batterie.duree_secours_h')
+        with self.assertRaises(EntreeInvalide) as refus:
+            valider_secours({'plafond_effacable_kw': -1})
+        self.assertEqual(refus.exception.champ,
+                         'batterie.plafond_effacable_kw')
+
+
+class SeuilsHorsReseauTest(SimpleTestCase):
+    """ACAL790 — sans base : la forme des seuils, règle de
+    ``services/hors_reseau.py::_seuils_de_protection``, refus nommé."""
+
+    def test_veille_sous_l_arret_nomme_la_veille(self):
+        from apps.calepinage.services.hors_reseau_declaration import (
+            CLES_HORS_RESEAU, valider_hors_reseau,
+        )
+
+        self.assertIn('seuils', CLES_HORS_RESEAU)
+        with self.assertRaises(EntreeInvalide) as refus:
+            valider_hors_reseau({'seuils': {'veille_pct': 5,
+                                            'entretien_pct': 5,
+                                            'arret_pct': 10}})
+        self.assertEqual(refus.exception.champ,
+                         'hors_reseau.seuils.veille_pct')
+        valider_hors_reseau({'actif': True, 'seuils': dict(SEUILS)})
+        valider_hors_reseau({'seuils': None})  # null efface
+        valider_hors_reseau(CONTRAT_ENTREE['exemple_hors_reseau_avance'][
+            'hors_reseau'])

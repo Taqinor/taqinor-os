@@ -222,6 +222,72 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     expect(within(detail).getByText('15 456 kWh')).toBeInTheDocument()
   })
 
+  const avecMppt = (entree) => {
+    const d = donneesAvecCascadeDetaillee()
+    d.cascade = { ...d.cascade, etapes: [
+      ...d.cascade.etapes,
+      { ...d.cascade.etapes[2], etape: 'mppt', libelle: 'Fenêtre MPPT', rang: 99, entree },
+    ] }
+    return d
+  }
+
+  it('ACAL735 : la ligne Fenêtre MPPT dépliée dit les heures et l’énergie sous le démarrage ; sans clés, aucune ligne', async () => {
+    const mppt = exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple_entrees_onduleur').mppt
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: avecMppt(mppt) })
+    rendre()
+    const lignes = within(await screen.findByTestId('calx48-cascade-detaillee')).getByTestId('acal444-lignes')
+    fireEvent.click(within(within(lignes).getByTestId('acal444-ligne-mppt')).getByRole('button'))
+    const ligne = within(lignes).getByTestId('acal735-sous-demarrage')
+    expect(ligne.textContent).toContain('2 heures')
+    expect(ligne.textContent).toContain('2,0 kWh')
+    expect(ligne.textContent).toContain("Information : cette énergie n'est pas retirée en plus")
+    cleanup()
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: avecMppt({ modele: 'x' }) })
+    rendre()
+    const lignes2 = within(await screen.findByTestId('calx48-cascade-detaillee')).getByTestId('acal444-lignes')
+    fireEvent.click(within(within(lignes2).getByTestId('acal444-ligne-mppt')).getByRole('button'))
+    expect(within(lignes2).getByTestId('acal444-detail-mppt')).toBeInTheDocument()
+    expect(within(lignes2).queryByTestId('acal735-sous-demarrage')).toBeNull()
+  })
+
+  it('ACAL735 : `entree` en objet : aucun plantage, « Entrée » non rendue', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: avecMppt({ modele: 'x' }) })
+    rendre()
+    const lignes = within(await screen.findByTestId('calx48-cascade-detaillee')).getByTestId('acal444-lignes')
+    fireEvent.click(within(within(lignes).getByTestId('acal444-ligne-mppt')).getByRole('button'))
+    expect(within(lignes).getByTestId('acal444-detail-mppt').textContent).not.toContain('Entrée')
+  })
+
+  it("ACAL750 : en mode expert, l'encadré liste les limites puis les étapes omises ; sans limites, les omises seules", async () => {
+    localStorage.setItem('calepinage.mode_expert.anonyme', '1')
+    try {
+      const d = donneesAvecCascadeDetaillee()
+      const limites = d.cascade.limites_connues
+      expect(limites.length).toBeGreaterThan(0)
+      calepinageApi.calepinages.resultat.mockResolvedValue({ data: d })
+      rendre()
+      const boite = await screen.findByTestId('acal750-limites')
+      expect(boite).not.toHaveAttribute('open')
+      for (const l of limites) expect(within(boite).getByText(l.texte_fr)).toBeInTheDocument()
+      expect(within(boite).getByTestId('acal750-omises')).toHaveTextContent('Correction spectrale')
+      cleanup()
+      const sans = donneesAvecCascadeDetaillee()
+      delete sans.cascade.limites_connues
+      calepinageApi.calepinages.resultat.mockResolvedValue({ data: sans })
+      rendre()
+      const seule = await screen.findByTestId('acal750-limites')
+      expect(within(seule).queryByTestId('acal750-liste')).toBeNull()
+      expect(within(seule).getByTestId('acal750-omises')).toBeInTheDocument()
+    } finally { localStorage.removeItem('calepinage.mode_expert.anonyme') }
+  })
+
+  it('ACAL750 : hors mode expert, aucun encadré', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesAvecCascadeDetaillee() })
+    rendre()
+    await screen.findByTestId('calx48-cascade-detaillee')
+    expect(screen.queryByTestId('acal750-limites')).toBeNull()
+  })
+
   it('cascade absente : la liste plate (D-CALX 11) est affichée, avec la mention « postes saisis, non calculés »', async () => {
     servirSansCascade()
     rendre()

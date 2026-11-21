@@ -224,7 +224,7 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             'pompe_q_nominal_m3h', 'pompe_hmt_nominale_m',
             'var_voc_reco_min_v', 'var_voc_reco_max_v', 'var_v_sortie_v',
             'var_i_sortie_nominal_a', 'var_protection_marche_a_sec',
-            'var_rendement_mppt_pct',
+            'var_rendement_mppt_pct', 'var_bus_dc_redresse_v',
             # CIQ101 — fiches C&I (contrat produit_ci.json ; vide = non
             # publié, jamais un défaut).
             'ond_limitation_export', 'ond_compteurs_compatibles',

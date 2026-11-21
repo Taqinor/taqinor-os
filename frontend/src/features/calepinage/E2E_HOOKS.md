@@ -192,12 +192,16 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-terrain` | terrain. |
+| `cal-terrain-alerte-ombrage` | terrain — alerte « Rangées trop serrées » (allée saisie sous l'entraxe calculé). |
 | `cal-terrain-calculer` | terrain calculer. |
 | `cal-terrain-contour` | terrain contour. |
 | `cal-terrain-cote` | terrain côte à côte. |
 | `cal-terrain-cote-pas` | terrain côte à côte pas. |
 | `cal-terrain-emprise` | terrain emprise. |
 | `cal-terrain-enregistrer` | terrain enregistrer. |
+| `cal-terrain-entraxe-calcule` | terrain — ligne de l'entraxe calculé contre l'ombre d'hiver. |
+| `cal-terrain-epingle-absente` | terrain — note « épingle du site absente ». |
+| `cal-terrain-kwc` | terrain — puissance du champ (kWc). |
 | `cal-terrain-message` | terrain message. |
 | `cal-terrain-modules` | terrain modules. |
 | `cal-terrain-nonmesure` | terrain non mesuré. |
@@ -208,6 +212,7 @@ retiré plus un hook ajouté.
 | `cal-terrain-tables` | terrain tables. |
 | `cal-terrain-taux` | terrain taux. |
 | `cal-terrain-trait-pas` | terrain trait pas. |
+| `cal-terrain-utiliser-entraxe` | terrain — bouton « Utiliser l'entraxe calculé ». |
 | `cal-terrain-vue` | terrain vue. |
 | `cal-terrain-vue-indisponible` | terrain vue indisponible. |
 | `cal-terrain-relief` | relief du terrain GLO-30 (ACAL466). |
@@ -299,6 +304,12 @@ retiré plus un hook ajouté.
 | `cal-photo-depot-genre` | photo dépôt genre. |
 | `cal-photo-depot-legende` | photo dépôt légende. |
 | `cal-photo-modifier` | photo de site — ouvre l'édition de la photo (ACAL203). |
+| `cal-photo-sur-photo` | photo : bloc « Voir sur la photo ». |
+| `cal-photo-sur-photo-bouton` | photo : bouton « Voir sur la photo ». |
+| `cal-photo-sur-photo-canvas` | photo : canevas des modules projetés. |
+| `cal-photo-sur-photo-sans-calage` | photo : message « Calez d'abord la photo ». |
+| `cal-photo-sur-photo-telecharger` | photo : bouton « Télécharger l'image ». |
+| `cal-photo-sur-photo-vide` | photo : message « Aucun module posé à projeter ». |
 | `cal-photo-supprimer` | photo de site — demande de suppression de la photo (ACAL203). |
 | `cal-photo-supprimer-confirmer` | photo de site — confirme la suppression (ACAL203). |
 | `cal-photo-supprimer-annuler` | photo de site — annule la suppression (ACAL203). |
@@ -450,6 +461,8 @@ retiré plus un hook ajouté.
 
 | Hook | Sémantique |
 |---|---|
+| `cal-export-gltf` | outils de vue — bouton « Exporter la 3D (glTF) » (niveau expert seulement). |
+| `cal-export-gltf-message` | outils de vue — message du dernier export glTF. |
 | `cal-export-hd` | outils de vue — rangée des exports HD (2×, 3×…). |
 | `cal-export-hd-message` | outils de vue — message du dernier export HD. |
 | `cal-onglet-2d` | outils de vue — onglet « Vue 2D ». |
@@ -537,6 +550,8 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-series` | séries. |
+| `cal-series-colonne` | séries colonne. |
+| `cal-series-colonnes` | séries colonnes. |
 | `cal-series-depot` | séries dépôt. |
 | `cal-series-depot-bandeau` | séries dépôt bandeau. |
 | `cal-series-depot-envoyer` | séries dépôt envoyer. |
@@ -741,6 +756,13 @@ retiré plus un hook ajouté.
 | `cal-pompage-variateur` | pompage variateur. |
 | `cal-pompage-volumes` | pompage volumes. |
 | `cal-pompage-volumes-absents` | pompage volumes absents. |
+| `cal-pompage-bilan` | pompage carte « Réservoir jour par jour » : jours de manque, jours plein, besoin couvert, 12 barres (ACAL807). |
+| `cal-pompage-bilan-motif` | pompage bilan du réservoir non calculé, avec le motif du serveur (ACAL807). |
+| `cal-pompage-alerte` | pompage alerte sous son champ, suffixée du code : phrase simple puis texte du serveur (ACAL807). |
+| `cal-pompage-mois-bas` | pompage pastille d'un mois de niveau d'eau bas, suffixée du numéro du mois 1-12 (ACAL807). |
+| `cal-pompage-chaines` | pompage verdict des modules en série contre la fenêtre du variateur : icône et mot, Voc à froid, température du site (ACAL811). |
+| `cal-pompage-comparaison` | pompage deux cartes « Pompage direct » / « Avec le réservoir » (`data-option`) : débit de conception, mois critique, jours de manque, ou motif (ACAL815). |
+| `cal-pompage-pompes` | pompage verdict de plusieurs pompes sur le variateur retenu : kW demandés sur kW du variateur, conforme / trop petit / à vérifier (ACAL821). |
 
 ## TapisHoraire (`production/TapisHoraire.jsx`)
 

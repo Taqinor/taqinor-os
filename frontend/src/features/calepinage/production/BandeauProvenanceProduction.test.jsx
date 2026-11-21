@@ -113,6 +113,39 @@ describe('BandeauBorneHaute / ReglagesUtilises (ACAL52)', () => {
 /* ENF15 — les moitiés CLIENTES des contrats `calepinage_meteo.json` (CALX143)
    et `calepinage_incertitude.json` (CALX144) : chaque valeur affichée est celle
    de l'exemple committé, jamais une charge écrite à la main. */
+describe('SourceMeteo — deuxième source météo (ACAL745)', () => {
+  const meteoDe = (variante) => exempleContrat('calepinage', 'calepinage_meteo', variante).meteo
+
+  it("la ligne dit l'écart annuel servi, le détail mensuel est replié (12 mois), sans verdict", () => {
+    const meteo = meteoDe('exemple')
+    render(<SourceMeteo meteo={meteo} />)
+    const c = meteo.comparaison_base
+    const ligne = screen.getByTestId('acal745-ecart')
+    expect(ligne.textContent).toContain(`Deuxième source météo (${c.base_comparee})`)
+    expect(ligne.textContent).toContain(`par rapport à ${c.base_principale}`)
+    expect(ligne.textContent.replace(/\s/g, ' ')).toContain('9,7 %')
+    expect(screen.getByTestId('acal745-mensuel')).not.toHaveAttribute('open')
+    expect(screen.getAllByTestId(/^acal745-mois-/)).toHaveLength(12)
+    expect(ligne.textContent).not.toMatch(/bon|mauvais/i)
+  })
+
+  it('ecart_pct null : « non comparée » et le motif servi', () => {
+    // Cette variante ne porte que `comparaison_base` : posée sur la source complète.
+    const meteo = { ...meteoDe('exemple'), ...meteoDe('exemple_comparaison_sans_ecart') }
+    render(<SourceMeteo meteo={meteo} />)
+    expect(screen.getByTestId('acal745-ecart')).toHaveTextContent('Deuxième source météo non comparée :')
+    expect(screen.getByTestId('acal745-ecart')).toHaveTextContent(meteo.comparaison_base.motif)
+    expect(screen.queryByTestId('acal745-mensuel')).toBeNull()
+  })
+
+  it('comparaison_base absent : rien', () => {
+    const meteo = { ...meteoDe('exemple') }
+    delete meteo.comparaison_base
+    render(<SourceMeteo meteo={meteo} />)
+    expect(screen.queryByTestId('acal745-ecart')).toBeNull()
+  })
+})
+
 describe('SourceMeteo / IncertitudeSigma (ENF15)', () => {
   it('la source météo affiche les clés servies, « non publié » pour un null', () => {
     const { meteo } = exempleContrat('calepinage', 'calepinage_meteo')

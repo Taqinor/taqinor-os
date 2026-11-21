@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
@@ -26,7 +26,8 @@ import {
 import useSuiviJob from './useSuiviJob'
 import { reprendreSimulationAuto } from './simulationAuto'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
-import { PARAM_MODE, useModeExpert } from '../atelier/modeExpert'
+import { useModeExpert } from '../atelier/modeExpert'
+import useExpertParUrl from './useExpertParUrl'
 import CarteFluxEnergie from './CarteFluxEnergie'
 import ChargesAjoutees from './ChargesAjoutees'
 import Pourquoi from '../commun/Pourquoi'
@@ -384,9 +385,7 @@ function TableauParPan({ parPan, total = null }) {
 export default function PanneauProduction({ calepinageId, intervalleMs = 2000, parcours = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
-  // ACAL762 — le mode expert, aussi imposé par `?mode=expert`.
-  const [params] = useSearchParams()
-  const [expert] = useModeExpert(params.get(PARAM_MODE) === 'expert')
+  const expert = useExpertParUrl()
 
   const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.resultat(id), id,

@@ -107,6 +107,7 @@ export default function BoutonDevis({
   // ACAL94 — avertissement (jamais un refus) avant une révision.
   const [retouches, setRetouches] = useState(false)
   const gesteEnCours = useRef(false) // ACON46 — garde ré-entrante (voir unSeulGeste)
+  const [decochees, setDecochees] = useState([]) // ACAL968 — clés des surfaces décochées
 
   // L'ÉTAT VIENT DU SERVEUR, et d'UNE SEULE lecture : l'agrégat de détail
   // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
@@ -117,6 +118,19 @@ export default function BoutonDevis({
   if (!detail || (lectureSeule && !(revisionPossible && detail?.devis?.id))) return null
 
   const devisLie = detail.devis ?? null
+  // ACAL915 (D-ACAL-5) — dès deux surfaces posées, ce que le devis additionne, DIT avant le prix ;
+  // ACAL968 (D-ACAL-37) — toit ET champ au sol : une case par surface, toutes cochées à l'ouverture.
+  const surfaces = Array.isArray(detail.surfaces_chiffrables) ? detail.surfaces_chiffrables : []
+  const choixSurfaces = surfaces.some((s) => s.kind === 'toit') && surfaces.some((s) => s.kind !== 'toit')
+  const cochees = surfaces.filter((s) => !(choixSurfaces && decochees.includes(s.cle)))
+  const aucuneCochee = choixSurfaces && cochees.length === 0
+  // Tout coché ⇒ aucun corps (absent = tout, côté serveur) : seule une sélection part.
+  const selection = choixSurfaces && cochees.length < surfaces.length
+    ? { surfaces_chiffrees: cochees.map((s) => s.cle) } : {}
+  const phraseSurfaces = surfaces.length >= 2 && cochees.length > 0
+    ? `Le devis chiffre : ${cochees.map((s) => `${s.libelle} (${s.modules})`).join(' + ')} = ${
+      cochees.reduce((total, s) => total + Number(s.modules || 0), 0)} modules`
+    : null
   const variantes = detail.variantes ?? {}
   const totalVariantes = Number(variantes.total) || 0
   // GARDE DES VARIANTES (CAL38) : quand ce calepinage porte PLUSIEURS options
@@ -125,7 +139,7 @@ export default function BoutonDevis({
   // elle-même que le serveur chiffre (`services/devis.py::_exiger_layout`) —
   // il n'y a alors rien à choisir, et bloquer là ferait un bouton mort.
   const varianteManquante = totalVariantes > 0 && !variantes.retenue_id
-  const desactive = enCours || varianteManquante || !atelierPret
+  const desactive = enCours || varianteManquante || !atelierPret || aucuneCochee
 
   const executer = async (appel) => {
     if (enCours) return
@@ -192,7 +206,7 @@ export default function BoutonDevis({
     if (!(await enregistrerDabord())) return
     if (!corps.derogation_electrique) setBloquage({ geste: 'generer' })
     const res = await executer(
-      () => calepinageApi.calepinages.genererDevis(calepinageId, corps))
+      () => calepinageApi.calepinages.genererDevis(calepinageId, { ...selection, ...corps }))
     const nouveau = res?.data?.devis
     if (!nouveau) return
     setBloquage(null)
@@ -220,7 +234,7 @@ export default function BoutonDevis({
     if (!(await enregistrerDabord())) return
     if (!corps.derogation_electrique) setBloquage({ geste: 'sync' })
     const res = await executer(
-      () => calepinageApi.calepinages.syncDevis(calepinageId, corps))
+      () => calepinageApi.calepinages.syncDevis(calepinageId, { ...selection, ...corps }))
     if (!res) return
     setBloquage(null)
     setMotif('')
@@ -306,6 +320,21 @@ export default function BoutonDevis({
 
   return (
     <div className="space-y-2" data-testid="cal-bouton-devis">
+      {choixSurfaces && (
+        <fieldset>
+          <legend className="text-xs font-semibold text-muted-foreground">Surfaces chiffrées par le devis</legend>
+          {surfaces.map((s) => (
+            <label key={s.cle} className="flex min-h-[44px] items-center gap-2 text-xs text-foreground">
+              <input type="checkbox" className="h-5 w-5" checked={!decochees.includes(s.cle)}
+                onChange={() => setDecochees((d) => (d.includes(s.cle)
+                  ? d.filter((c) => c !== s.cle) : [...d, s.cle]))} />
+              {`${s.libelle} (${s.modules} modules)`}
+            </label>
+          ))}
+          {aucuneCochee && <p className="text-xs text-destructive" role="status">Cochez au moins une surface</p>}
+        </fieldset>
+      )}
+      {phraseSurfaces && <p className="text-xs text-foreground" role="status">{phraseSurfaces}</p>}
       {devisLie ? (
         <button
           type="button"

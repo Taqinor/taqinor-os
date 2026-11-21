@@ -348,8 +348,11 @@ def _vivier_onduleurs_par_phase(candidats, phase):
 # re-dérive, il ne recalcule pas selon une seconde formule.
 
 
-def quantites_derivees_du_compte(nb_panneaux) -> dict:
-    """``{'structure': N, 'socle': N × 2}`` pour ``N`` panneaux.
+def quantites_derivees_du_compte(nb_panneaux, affleurants=0) -> dict:
+    """``{'structure': N, 'socle': N × 2}`` pour ``N`` panneaux — ACAL927
+    (D-ACAL-39) : ``N`` = panneaux NON affleurants (un module posé à plat sur
+    un toit en pente ne prend que le kit de fixation) ; ``affleurants`` 0 ⇒
+    inchangé.
 
     LA définition de ces rapports — la composition la consomme comme le
     pipeline. Les clés sont celles de ``catalogue.classer_produit`` (le
@@ -361,6 +364,7 @@ def quantites_derivees_du_compte(nb_panneaux) -> dict:
     except (TypeError, ValueError):
         return {'structure': 0, 'socle': 0}
     nb = max(0, nb)
+    nb -= min(max(0, int(affleurants or 0)), nb)
     return {'structure': nb, 'socle': nb * 2}
 
 
@@ -512,7 +516,7 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  marques=None, ordre_lignes=None,
                                  mppt_paires=1, phase=None, modeles=None,
                                  batterie_module_kwh=None,
-                                 regles_2710=True):
+                                 regles_2710=True, modules_affleurants=0):
     """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
 
     Compose DEUX kits complets par ``composition_residentielle`` (la source de
@@ -568,7 +572,7 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
         taux_tva=taux_tva, avertissements=avertissements, marques=marques,
         ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase,
         # RSIZ2/RSIZ5 — les deux kits suivent les mêmes règles (27/10).
-        regles_2710=regles_2710)
+        regles_2710=regles_2710, modules_affleurants=modules_affleurants)  # ACAL927
 
     if not regles_2710:
         # Règles d'origine (< 3) : un devis envoyé garde ses lignes servies.
@@ -878,7 +882,7 @@ def _options_a_reparer(devis, lignes, *, kwc, watt, nb_panneaux,
 
 
 def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
-                               avec_batterie, avertissements):
+                               avec_batterie, avertissements, modules_affleurants=0):
     """Ajoute les lignes du kit résidentiel ABSENTES du devis. N'écrit RIEN
     d'autre : aucune ligne existante n'est touchée (voir le bloc PVHEAL).
 
@@ -992,7 +996,11 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             # RSIZ2/3/5 — un devis aux règles d'origine (< 3) garde ses règles.
             regles_2710=regles_au_moins(
                 devis, REGLES_CORRIGEES_2710),
+            modules_affleurants=modules_affleurants,  # ACAL927
         ))
+        # ACAL927 — une classe attendue à 0 (pose affleurante) n'est ni ajoutée ni dite « absente ».
+        nulles = {c for c, n in quantites_derivees_du_compte(
+            vue['nb_panneaux'], modules_affleurants).items() if modules_affleurants and n == 0}
         roles_attendu = list(getattr(attendu, 'roles', ()) or ())
         par_classe = {}
         for index, spec in enumerate(attendu):
@@ -1030,7 +1038,7 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
                         variante=vue['variante'])
 
         for classe in CLASSES_KIT_COMPLETABLES:
-            if classe in presentes:
+            if classe in presentes or classe in nulles:
                 continue
             if classe in ('smart_meter', 'wifi_dongle') and not huawei:
                 continue

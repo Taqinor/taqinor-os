@@ -92,8 +92,10 @@ class FormeDuDocumentTest(SimpleTestCase):
         bloc = bloc_raccordement(None, SAISIE, [TRONCON_AC], {})
 
         # ACAL157 — la proposition du lead est la quatrième clé racine.
-        self.assertEqual(sorted(bloc), ['calcul', 'proposition_lead',
-                                        'saisie', 'verdicts'],
+        # ACAL782 — + ``regime`` ; ACAL783 — + ``injection`` et son motif.
+        self.assertEqual(sorted(bloc), ['calcul', 'injection',
+                                        'injection_motif', 'proposition_lead',
+                                        'regime', 'saisie', 'verdicts'],
                          "Le contrat CALX205 publie TROIS blocs : une clé "
                          "racine de plus, et l'écran lit un document que "
                          "l'échantillon committé ne décrit pas.")
@@ -157,6 +159,99 @@ class EtatVideTest(SimpleTestCase):
                 self.assertEqual(verdict['statut'], 'omis')
                 self.assertTrue(verdict['detail'].strip())
                 self.assertIsNone(verdict['source'])
+
+
+class RegimeDuSiteTest(SimpleTestCase):
+    """ACAL782 — le régime 82-21 est publié avec sa base, sans seuil local."""
+
+    def _regime(self, dc=None, ac=None, hors_reseau=False):
+        return bloc_raccordement(
+            None, {}, [], {}, puissance_dc_kwc=dc, puissance_ac_kw=ac,
+            hors_reseau=hors_reseau)['regime']
+
+    def test_douze_kwc_publie_l_accord_de_raccordement(self):
+        regime = self._regime(12, 10)
+
+        self.assertEqual(regime['code'], 'accord_raccordement')
+        self.assertEqual(regime['libelle'], 'Accord de raccordement')
+        self.assertEqual(regime['puissance_retenue_kw'], 12)
+        self.assertEqual(regime['base_puissance'],
+                         'a_confirmer_avec_le_distributeur')
+        self.assertEqual(regime['guichet_statut'], 'a_confirmer')
+        self.assertTrue(regime['base'].strip())
+        self.assertFalse(regime['a_qualifier'])
+
+    def test_la_puissance_retenue_est_le_max_de_dc_et_ac(self):
+        self.assertEqual(self._regime(8, 12)['puissance_retenue_kw'], 12)
+
+    def test_hors_reseau_publie_la_declaration_hors_reseau(self):
+        regime = self._regime(12, 10, hors_reseau=True)
+
+        self.assertEqual(regime['libelle'], 'Déclaration hors réseau')
+
+    def test_sans_puissance_le_regime_est_a_qualifier(self):
+        regime = self._regime()
+
+        self.assertTrue(regime['a_qualifier'])
+        self.assertIsNone(regime['code'])
+
+
+class InjectionFaceAuPlafondTest(SimpleTestCase):
+    """ACAL783 — la part injectée simulée face au plafond légal (lu, jamais
+    recopié) ; un avertissement, jamais un blocage."""
+
+    #: Plafond tel que le selector de ``ventes`` le sert (valeur de cas).
+    PLAFOND = {'pct': 20, 'source': 'source du cas',
+               'mention_bt': 'mention BT du cas'}
+
+    def _injection(self, surplus, production=10000.0, plafond=PLAFOND):
+        autoconso = {'energie': {'surplus_kwh': surplus,
+                                 'production_kwh': production}}
+        return bloc_raccordement(None, {}, [], {}, autoconsommation=autoconso,
+                                 plafond_legal=plafond)
+
+    def test_trente_cinq_pour_cent_depasse_et_avertit(self):
+        bloc = self._injection(3500.0)
+
+        injection = bloc['injection']
+        self.assertEqual(injection['part_injectee_pct'], 35.0)
+        self.assertEqual(injection['plafond_pct'], 20)
+        self.assertTrue(injection['depasse'])
+        self.assertEqual(injection['mention'], 'mention BT du cas')
+        self.assertIn('(35 %)', injection['avertissement'])
+        self.assertIn('20 %', injection['avertissement'])
+        self.assertIsNone(bloc['injection_motif'])
+        self.assertEqual([v['statut'] for v in bloc['verdicts']],
+                         [v['statut'] for v in
+                          self._injection(1500.0)['verdicts']],
+                         "Un avertissement ne change aucun verdict.")
+
+    def test_quinze_pour_cent_ne_depasse_pas(self):
+        injection = self._injection(1500.0)['injection']
+
+        self.assertFalse(injection['depasse'])
+        self.assertIsNone(injection['avertissement'])
+
+    def test_exactement_le_plafond_ne_depasse_pas(self):
+        self.assertFalse(self._injection(2000.0)['injection']['depasse'])
+
+    def test_sans_simulation_injection_nulle_et_motif(self):
+        bloc = bloc_raccordement(None, {}, [], {})
+
+        self.assertIsNone(bloc['injection'])
+        self.assertEqual(bloc['injection_motif'],
+                         "Simulez d'abord pour comparer l'injection")
+
+    def test_le_selector_ventes_sert_la_constante(self):
+        from apps.ventes.quote_engine import constants_82_21 as c
+        from apps.ventes.selectors_calepinage import (
+            plafond_injection_loi_8221,
+        )
+
+        plafond = plafond_injection_loi_8221()
+
+        self.assertEqual(plafond['pct'], c.PLAFOND_INJECTION_PCT)
+        self.assertEqual(plafond['mention_bt'], c.MENTION_BT)
 
 
 class OmissionsNommeesTest(SimpleTestCase):

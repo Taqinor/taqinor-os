@@ -140,6 +140,39 @@ class CourbePlateEtRendementEuropeenTest(unittest.TestCase):
         self.assertIn('valeur UNIQUE', etape['entree']['motif'])
 
 
+class PuissanceContinueEcriteTest(unittest.TestCase):
+    """ACAL752 — ``p_dc_kw`` = la puissance ENTRANTE convertie en kW."""
+
+    SERIE_W = {'pas_minutes': 60, 'colonne_energie': 'p_w', 'points': [
+        {'mois': 6, 'heure': h, 'p_w': p}
+        for h, p in ((9, 1000.0), (10, 2000.0), (11, 3000.0), (12, 4000.0),
+                     (13, None))]}
+
+    def _verifier(self, fiche):
+        rendue, _ = onduleur.appliquer(self.SERIE_W, contexte(fiche=fiche))
+        for point, attendu in zip(rendue['points'], (1.0, 2.0, 3.0, 4.0)):
+            self.assertAlmostEqual(point['p_dc_kw'], attendu, places=12)
+        self.assertIsNone(rendue['points'][4]['p_dc_kw'])
+        self.assertAlmostEqual(
+            sum(p['p_dc_kw'] or 0.0 for p in rendue['points']),
+            etapes.energie_kwh(self.SERIE_W), places=9)
+        self.assertEqual(rendue['colonne_energie'], 'p_ac_kw')
+        for point in rendue['points'][:4]:
+            self.assertLess(point['p_ac_kw'], point['p_dc_kw'])
+        self.assertIsNone(rendue['points'][4]['p_ac_kw'])
+
+    def test_a_plat_rendement_europeen_96(self):
+        self._verifier({'ac_kw': 5.0, 'rendement_euro_pct': 96.0})
+
+    def test_par_courbe(self):
+        self._verifier({'ac_kw': 5.0, 'rendement_par_charge': COURBE})
+
+    def test_etape_omise_serie_intacte(self):
+        rendue, etape = onduleur.appliquer(self.SERIE_W, contexte(fiche={}))
+        self.assertTrue(etape['motif_omission'])
+        self.assertIs(rendue, self.SERIE_W)
+
+
 class OmissionsNommeesTest(unittest.TestCase):
 
     def test_fiche_sans_rendement_omet_en_nommant_le_champ_et_le_produit(self):

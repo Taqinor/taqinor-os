@@ -172,6 +172,18 @@ def _table_cascade(contexte, cascade, langue):
 
     blocs.append('<div class="diagramme-pertes">%s</div>' % svg_embarquable(
         svg_de_cascade(cascade, langue=langue)))
+    # ACAL773 — « où va l'énergie » (ACAL761) sous la cascade ; un schéma
+    # refusé imprime son motif, la table reste.
+    from ..diagramme_energie import svg_d_energie
+    from ..diagramme_pertes import DiagrammeRefuse
+
+    try:
+        schema = svg_embarquable(svg_d_energie(
+            contexte.get('resultat') or {}, langue=langue))
+    except DiagrammeRefuse as refus:
+        schema = '<p class="motif">%s</p>' % escape(str(refus))
+    blocs.append('<div class="diagramme-energie"><h4>%s</h4>%s</div>' % (
+        escape(_libelle(contexte, 'energie_titre')), schema))
     return ''.join(blocs)
 
 

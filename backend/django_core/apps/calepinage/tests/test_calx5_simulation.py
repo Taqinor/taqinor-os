@@ -605,6 +605,31 @@ class ContratTest(SimpleTestCase):
         self.assertEqual(sorted(self.blocs['validation']),
                          sorted(CONTRAT['exemple']['validation']))
 
+    def test_acal787_le_total_batterie_servi_a_les_cles_de_l_echantillon(self):
+        # Le cas d'essai omet la batterie (pas de fuseau) : le total est
+        # produit par l'étape réelle sur la série synthétique de CALX188.
+        from apps.calepinage.services.etapes import batterie as etape
+        from apps.calepinage.tests.test_calx188_batterie import (
+            contexte_de_test, serie_de_test,
+        )
+
+        _suite, servi = etape.bloc_batterie(
+            serie_de_test(heures=48),
+            contexte_de_test(strategie='peak_shaving', heures=48,
+                             seuil_effacement_kw=0.5))
+        for nom in ('exemple', 'exemple_borne_haute'):
+            with self.subTest(exemple=nom):
+                attendu = CONTRAT[nom]['batterie']['total']
+                self.assertEqual(sorted(servi['total']), sorted(attendu))
+                self.assertEqual(sorted(servi['total']['energie']),
+                                 sorted(attendu['energie']))
+                self.assertEqual(sorted(servi['total']['vieillissement']),
+                                 sorted(attendu['vieillissement']))
+                # ACAL793 — les faits de la série.
+                self.assertEqual(sorted(servi['total']['faits_serie']),
+                                 sorted(attendu['faits_serie']))
+        self.assertIsNone(CONTRAT['exemple_vide']['batterie']['total'])
+
     def test_les_trois_blocs_horaires_omis_ont_les_cles_de_exemple_vide(self):
         for nom in ('batterie', 'autoconsommation', 'hors_reseau'):
             with self.subTest(bloc=nom):

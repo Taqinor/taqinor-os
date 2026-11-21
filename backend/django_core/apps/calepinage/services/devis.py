@@ -48,6 +48,58 @@ def _exiger_layout(calepinage):
     return layout
 
 
+def _layout_des_surfaces(layout, cles):
+    """ACAL968 (D-ACAL-37) — la COPIE du document limitée aux surfaces
+    COCHÉES (``cles`` de ``surfaces_chiffrables``) ; ``None`` ou tout coché ⇒
+    le document lui-même. Vide, non-liste ou clé inconnue ⇒ 400 nommant
+    ``surfaces_chiffrees``. Une zone retirée retire aussi le ``result``
+    racine ; la sélection est écrite dans ``choixConception.surfacesChiffrees``."""
+    import copy
+
+    from ..serializers import surfaces_chiffrables
+
+    if cles is None:
+        return layout
+    surfaces = surfaces_chiffrables(layout)
+    connues = [s['cle'] for s in surfaces]
+    if (not isinstance(cles, list) or not cles
+            or any(not isinstance(c, str) or c not in connues for c in cles)):
+        message = ("Cochez au moins une surface du calepinage parmi : %s."
+                   % (', '.join(s['libelle'] for s in surfaces) or 'aucune surface posée'))
+        raise DevisRefuse(message, champ='surfaces_chiffrees',
+                          donnees={'surfaces_chiffrees': [message]})
+    if set(cles) == set(connues):
+        return layout
+    copie = copy.deepcopy(layout)
+    cle_zones = next((k for k in ('zones', 'areas', 'pans') if copie.get(k)), None)
+    for cle_liste, prefixe in ((cle_zones, 'zone'), ('poseSurfaces', 'surface')):
+        if not cle_liste or not isinstance(copie.get(cle_liste), list):
+            continue
+        gardees = []
+        for index, element in enumerate(copie[cle_liste]):
+            cle = (str(element.get('id') or '%s-%d' % (prefixe, index + 1))
+                   if isinstance(element, dict) else None)
+            if cle in connues and cle not in cles:
+                if prefixe == 'zone':
+                    copie.pop('result', None)
+                continue
+            if isinstance(element, dict) and not element.get('id'):
+                element['id'] = cle  # la clé reste stable après retrait
+            gardees.append(element)
+        copie[cle_liste] = gardees
+    choix = copie.get('choixConception')
+    copie['choixConception'] = {**(choix if isinstance(choix, dict) else {}),
+                                'surfacesChiffrees': list(cles)}
+    return copie
+
+
+def _selection_du_devis(devis):
+    """ACAL968 — la sélection écrite au devis (``roof_layout``), ou ``None``."""
+    document = getattr(devis, 'roof_layout', None)
+    choix = document.get('choixConception') if isinstance(document, dict) else None
+    return choix.get('surfacesChiffrees') if isinstance(choix, dict) else None
+
+
 def _lead_et_client(calepinage):
     """Le lead ET le client du calepinage, résolus CÔTÉ SERVEUR.
 
@@ -146,8 +198,11 @@ def _brouillon_reutilisable(company, lead, empreinte, calepinage):
 
 def generer_devis(calepinage, *, user=None, taux_tva=None,
                   remise_globale=None, journal=None,
-                  derogation_electrique=None):
+                  derogation_electrique=None, surfaces_chiffrees=None):
     """CAL24 — crée (ou RETROUVE) le devis de ce calepinage.
+
+    ACAL968 — ``surfaces_chiffrees`` : les clés des surfaces COCHÉES
+    (``None`` = toutes) ; le devis compose la copie sans les décochées.
 
     Args:
         journal: ACAL89 — dict facultatif rempli SUR PLACE avec ce que la
@@ -182,7 +237,7 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     from .feu_vert import GESTE_DEVIS, verifier_avant_publication
 
     verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
-    layout = _exiger_layout(calepinage)
+    layout = _layout_des_surfaces(_exiger_layout(calepinage), surfaces_chiffrees)
     company = calepinage.company
     lead, client = _lead_et_client(calepinage)
     _refuser_lead_agricole(lead)
@@ -306,7 +361,9 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
         raise DevisRefuse(erreurs[0], champ='composition', statut=422,
                           donnees={'detail': erreurs[0], 'errors': erreurs})
 
-    empreinte = calepinage.layout_hash or layout_hash(layout)
+    # ACAL968 — une copie limitée aux surfaces cochées se dédoublonne sur SA empreinte.
+    empreinte = (calepinage.layout_hash if layout is calepinage.roof_layout
+                 else None) or layout_hash(layout)
     # ACON46 — UNE transaction sous verrou de ligne du calepinage : deux
     # générations concurrentes se sérialisent ; la seconde relit le lien posé
     # par la première (dédup) au lieu de créer un second devis.
@@ -524,8 +581,12 @@ def _montants(taux_tva, remise_globale, Decimal):
 
 
 def resynchroniser_devis(calepinage, *, user=None,
-                         derogation_electrique=None, devis_id=None):
+                         derogation_electrique=None, devis_id=None,
+                         surfaces_chiffrees=None):
     """CAL25 — resynchronise le devis lié sur la conception COURANTE.
+
+    ACAL968 — ``surfaces_chiffrees`` absent : la sélection ÉCRITE au devis
+    (``choixConception.surfacesChiffrees``) est relue ; aucune ⇒ tout.
 
     ACON6 — ``devis_id`` : le devis à resynchroniser, lu par
     ``selectors.conception_du_devis`` (un devis porté par une VARIANTE suit
@@ -587,6 +648,8 @@ def resynchroniser_devis(calepinage, *, user=None,
     if devis is None or (company is not None
                          and devis.company_id != company.pk):
         raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
+    layout = _layout_des_surfaces(layout, surfaces_chiffrees if surfaces_chiffrees
+                                  is not None else _selection_du_devis(devis))
 
     try:
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études

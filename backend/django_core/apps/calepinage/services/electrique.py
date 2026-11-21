@@ -62,6 +62,8 @@ from .validation_batterie import (  # noqa: F401 — ré-export (ACAL633)
 )
 from .batterie_declaration import (  # noqa: F401 — ré-export (ACAL786)
     CLES_BATTERIE, valider_secours)
+from .hors_reseau_declaration import (  # noqa: F401 — ré-export (ACAL790)
+    CLES_HORS_RESEAU, valider_hors_reseau)
 from .capacites_coffrets import (  # noqa: F401 — ré-export (ACAL618)
     CLES_CAPACITE_COFFRET, capacites_des_coffrets,
 )
@@ -819,7 +821,7 @@ def _valider_entree(calepinage, fusionnee, postee):
     _valider_transformateur(postee.get('transformateur'))
     _valider_batterie(postee.get('batterie'))  # ACAL166
     valider_secours(postee.get('batterie'))  # ACAL786
-    _valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166
+    valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166, ACAL790
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
         raise EntreeInvalide(
@@ -857,45 +859,8 @@ def _valider_entree(calepinage, fusionnee, postee):
                 CLE_POLYSTRING, refus.champ or 'groupes'))
 
 
-#: ACAL166 — les clés d'une déclaration hors réseau (``etapes/hors_reseau.py``).
-CLES_HORS_RESEAU = ('actif', 'jours_autonomie', 'etat_initial_kwh', 'seuils')
-
-
 def _refus_champ(message, champ):
     raise EntreeInvalide(message, champ=champ)
-
-
-def _valider_hors_reseau(saisie):
-    """ACAL166 — la FORME du mode hors réseau : ``actif`` booléen, jours
-    d'autonomie strictement positifs. Refus nommé ``hors_reseau.<champ>``."""
-    if saisie is None:
-        return
-    if not isinstance(saisie, dict):
-        _refus_champ("« hors_reseau » doit être un objet {actif, "
-                     "jours_autonomie…} (reçu : %s)."
-                     % type(saisie).__name__, 'hors_reseau')
-    inconnues = sorted(set(saisie) - set(CLES_HORS_RESEAU))
-    if inconnues:
-        _refus_champ("Champ hors réseau inconnu : « %s ». Champs admis : %s."
-                     % (inconnues[0], ', '.join(CLES_HORS_RESEAU)),
-                     'hors_reseau.%s' % inconnues[0])
-    if 'actif' in saisie and not isinstance(saisie['actif'], bool):
-        _refus_champ("« actif » vaut vrai (hors réseau) ou faux (raccordé).",
-                     'hors_reseau.actif')
-    jours = saisie.get('jours_autonomie')
-    if jours not in (None, ''):
-        nombre = _nombre(jours)
-        if not _fini(nombre) or nombre <= 0:
-            _refus_champ("« jours_autonomie » : saisissez un nombre de jours "
-                         "strictement positif (reçu : « %s »)." % jours,
-                         'hors_reseau.jours_autonomie')
-    etat = saisie.get('etat_initial_kwh')
-    if etat not in (None, ''):
-        nombre = _nombre(etat)
-        if not _fini(nombre) or nombre < 0:
-            _refus_champ("« etat_initial_kwh » : saisissez un nombre positif "
-                         "ou nul (reçu : « %s »)." % etat,
-                         'hors_reseau.etat_initial_kwh')
 
 
 def _regime_non_precise(donnees):

@@ -43,6 +43,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from core.champs_stricts import ChaineStricte
+from core.pompage.conception import comparaison_direct_reservoir, controle_pompes_par_variateur, heures_pic
 from core.pompage.hydraulique import hmt_mensuelle
 from core.pompage.selection import alertes_pose_pompe, selection_pompe, selection_variateur, tension_produit
 from core.pompage.volumes import bilan_reservoir_journalier, couverture_besoin_eau
@@ -218,7 +219,8 @@ _NOMBRES_POMPAGE = (
     'c_hazen_williams', 'pertes_singulieres_m', 'pression_service_bar',
     'kwc', 'niveau_statique_ete_m', 'niveau_statique_hiver_m',
     'profondeur_calage_m', 'diametre_tubage_mm',  # ACAL1113 — contrôles de pose
-    'debit_exploitation_m3h')  # ACAL1114 — plafond du forage
+    'debit_exploitation_m3h',  # ACAL1114 — plafond du forage
+    'heures_demande_h')  # ACAL815 — fenêtre de demande du pompage direct
 
 
 class FlottantFini(serializers.FloatField):
@@ -266,7 +268,12 @@ def _champs_corps():
         'modules_en_serie': serializers.IntegerField(
             min_value=1, required=False, allow_null=True),
         'chaines_paralleles': serializers.IntegerField(
-            min_value=1, required=False, allow_null=True)}
+            min_value=1, required=False, allow_null=True),
+        # ACAL821 — plusieurs pompes sur le variateur retenu (kW de plaque saisis).
+        'pompes_variateur': serializers.ListField(child=type('PompeSurVariateur', (serializers.Serializer,), {
+            'nom': ChaineStricte(required=False, allow_blank=True),
+            'kw': FlottantFini(required=False, allow_null=True)})(), required=False, allow_null=True),
+        'mode_pompes': ChaineStricte(required=False)}
 
 
 @extend_schema(
@@ -444,6 +451,7 @@ def pompage(self, request, pk=None):
     # pour le kWc du champ (saisi, sinon variante retenue) et la plaque de la
     # pompe retenue. Le calcul plat reste publié à côté.
     volumes = None
+    profils = None
     if pompe_servie is not None and choix['debit_hmt_m3h']:
         from apps.parametres.pvgis_profils import productible_mensuel
         from apps.ventes.domain.pompage import profils_horaires_site
@@ -477,9 +485,16 @@ def pompage(self, request, pk=None):
     besoin_jour_mois = [besoin_jour] * 12 if besoin_jour is not None else (
         [b / j if b is not None else None for b, j in zip(besoin_mois, dim.JOURS_PAR_MOIS)] if besoin_mois else None)
     pvgis = (volumes or {}).get('m3_mois_pvgis')
+    production_jour = [m / j for m, j in zip(pvgis, dim.JOURS_PAR_MOIS)] if pvgis else None
     bilan_reservoir = bilan_reservoir_journalier(
         besoin_m3_jour_mois=besoin_jour_mois, volume_reservoir_m3=reservoir,
-        production_m3_jour_mois=[m / j for m, j in zip(pvgis, dim.JOURS_PAR_MOIS)] if pvgis else None)
+        production_m3_jour_mois=production_jour)
+    # ACAL815 — pompage direct (fenêtre de demande saisie) contre réservoir déclaré
+    # (heures-pic de chaque profil PVGIS déjà lu), à production égale.
+    comparaison = comparaison_direct_reservoir(
+        besoin_m3_jour_mois=besoin_jour_mois, production_m3_jour_mois=production_jour,
+        heures_pic_mois=[heures_pic(p) for p in profils] if profils and len(profils) == 12 else None,
+        heures_demande_h=_nombre(corps.get('heures_demande_h')), volume_reservoir_m3=reservoir)
 
     # ── 3 bis. ACAL810 — les chaînes du champ posé contre le variateur ──────
     serie = corps.get('modules_en_serie')
@@ -494,6 +509,15 @@ def pompage(self, request, pk=None):
             '%d chaîne(s) de %d modules ne font pas les %d modules posés de la '
             'variante retenue' % (chaines['paralleles'], chaines['serie'],
                                   chaines['modules_poses']))
+
+    # ACAL821 — plusieurs pompes sur le variateur SERVI (absent sans liste saisie).
+    pompes_variateur = None
+    if corps.get('pompes_variateur'):
+        pompes_variateur = controle_pompes_par_variateur(
+            pompes=corps['pompes_variateur'], variateur=variateur_servi, mode=corps.get('mode_pompes'))
+        if variateur_servi is None and pompes_variateur['verdict'] == 'non_verifiable' \
+                and pompes_variateur['motif'] == 'plaque du variateur (kW) non publiée':
+            pompes_variateur['motif'] = 'aucun variateur retenu'
 
     besoin = couverture_besoin_eau(
         besoin_m3_jour=besoin_jour, besoin_m3_mois=besoin_mois,
@@ -526,6 +550,8 @@ def pompage(self, request, pk=None):
         'chaines_variateur': chaines,
         'besoin': besoin,
         'bilan_reservoir': bilan_reservoir,
+        'comparaison_reservoir': comparaison,
+        'pompes_variateur': pompes_variateur,
         'erreurs': erreurs,
         'avertissements': avertissements,
         'alertes': alertes,

@@ -345,6 +345,49 @@ class PariteVolumesDevisCalepinageTest(TestCase):
         regle = self._calepinage(dict(self._complet(), debit_exploitation_m3h=4))
         self.assertEqual(regle['volumes']['plafond_forage_m3h'], 2.0)
 
+    def test_acal815_comparaison_pompage_direct_contre_reservoir(self):
+        """ACAL815 — 12 mois de besoin, 2 h de demande, réservoir déclaré ⇒
+        débit direct > débit avec réservoir (heures-pic PVGIS) ; sans heures ⇒
+        ``direct: null`` + motif nommé. Mutant : intervertir les options ⇒ rouge."""
+        corps = dict(self._complet(), besoin_m3_mois=[300.0] * 12, volume_reservoir_m3=30)
+        deux = self._calepinage(dict(corps, heures_demande_h=2))['comparaison_reservoir']
+        self.assertEqual(set(deux), set(CONTRAT_CALEPINAGE['exemple']['comparaison_reservoir']))
+        direct, avec = deux['direct'], deux['avec_reservoir']
+        self.assertIsNotNone(direct)
+        self.assertIsNotNone(avec)
+        self.assertGreater(direct['debit_conception_m3h'], avec['debit_conception_m3h'])
+        self.assertEqual(set(direct), set(CONTRAT_CALEPINAGE['exemple']['comparaison_reservoir']['direct']))
+        sans = self._calepinage(corps)['comparaison_reservoir']
+        self.assertIsNone(sans['direct'])
+        self.assertIsNotNone(sans['avec_reservoir'])
+        self.assertEqual(sans['motif'], 'fenêtre de demande non saisie')
+
+    def test_acal821_plusieurs_pompes_sur_le_variateur_retenu(self):
+        """ACAL821 — plaque du variateur SERVI (7,5 kW dans ce catalogue) : 4 ×
+        1,1 kW conformes dans les deux modes ; 7 × 1,1 ensemble ⇒ ``depasse``,
+        à tour de rôle ⇒ conforme ; sans mode ⇒ ``non_verifiable`` ; sans liste ⇒
+        absent. Mutant : toujours sommer ⇒ rouge sur « à tour de rôle »."""
+        def bloc(nb, mode=None):
+            corps = dict(self._complet(), pompes_variateur=[{'nom': f'P{i}', 'kw': 1.1} for i in range(nb)])
+            if mode:
+                corps['mode_pompes'] = mode
+            return self._calepinage(corps)
+        quatre = bloc(4, 'ensemble')
+        self.assertEqual(quatre['variateur']['produit'], self.variateur.pk)
+        self.assertEqual(set(quatre['pompes_variateur']), set(CONTRAT_CALEPINAGE['exemple']['pompes_variateur']))
+        self.assertEqual(quatre['pompes_variateur']['verdict'], 'conforme')
+        self.assertEqual(quatre['pompes_variateur']['kw_demande'], 4.4)
+        self.assertEqual(quatre['pompes_variateur']['kw_variateur'], 7.5)
+        self.assertEqual(bloc(4, 'a_tour_de_role')['pompes_variateur']['verdict'], 'conforme')
+        self.assertEqual(bloc(7, 'ensemble')['pompes_variateur']['verdict'], 'depasse')
+        tour = bloc(7, 'a_tour_de_role')['pompes_variateur']
+        self.assertEqual((tour['verdict'], tour['kw_demande']), ('conforme', 1.1))
+        self.assertEqual(bloc(4)['pompes_variateur']['verdict'], 'non_verifiable')
+        self.assertIsNone(self._calepinage(self._complet())['pompes_variateur'])
+        url = f'/api/django/calepinage/calepinages/{self.calepinage.pk}/pompage/'
+        rep = self.api.post(url, {'mode_pompes': 0}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content[:300])
+
 
 class PariteHmtTest(TestCase):
     """La HMT du calepinage est celle de ``hmt_composantes`` (AGR111)."""

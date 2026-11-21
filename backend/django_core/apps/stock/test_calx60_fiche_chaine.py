@@ -409,3 +409,35 @@ class SourceDesConsommateurs(SimpleTestCase):
                     'noct_c', 'uc_w_m2k', 'uv_w_m3sk'):
             with self.subTest(cle=cle):
                 self.assertIn(cle, publiables)
+
+
+class TensionBusDcRedresseeTest(SimpleTestCase):
+    """ACAL816 — ``var_bus_dc_redresse_v`` : enregistrée, relue, vide = null."""
+
+    def _champ(self):
+        from apps.stock.serializers_fiche_technique import (
+            FicheTechniqueSerializer,
+        )
+
+        return FicheTechniqueSerializer().fields['var_bus_dc_redresse_v']
+
+    def test_la_valeur_est_enregistree_puis_relue(self):
+        champ = self._champ()
+
+        valeur = champ.run_validation('540.0')
+
+        self.assertEqual(valeur, Decimal('540.0'))
+        self.assertEqual(champ.to_representation(valeur), '540.0')
+
+    def test_vide_reste_null(self):
+        champ = self._champ()
+
+        self.assertIsNone(champ.run_validation(None))
+
+    def test_le_champ_du_modele_est_nullable_sans_defaut(self):
+        from apps.stock.models import FicheTechnique
+
+        champ = FicheTechnique._meta.get_field('var_bus_dc_redresse_v')
+
+        self.assertTrue(champ.null and champ.blank)
+        self.assertEqual((champ.max_digits, champ.decimal_places), (6, 1))

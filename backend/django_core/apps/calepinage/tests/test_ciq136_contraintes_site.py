@@ -103,6 +103,56 @@ class ContraintesMoteurTests(SimpleTestCase):
             entree_depuis_layout(doc)
         self.assertEqual(refus.exception.champ, 'zones.1.chassis')
 
+    def _coupures(self, traduction):
+        return [z for z in traduction.document['zones']
+                if '_COUPURE_' in z['repere']]
+
+    def test_acal577_coupure_tous_les_8_modules_aux_positions_de_la_regle(self):
+        # ACAL577 — formule d'ACAL586 (schéma), recalculée ici à la main.
+        doc = _document('cheminee')
+        doc['zones'][0]['coupuresPavage'] = {
+            'tousLesNModules': 8, 'largeurCoupureM': 0.5,
+            'source': 'allée de maintenance'}
+        traduction = entree_depuis_layout(doc)
+        c = traduction.kit.cote_le_long_rangee_m  # 1,134 m (portrait)
+        n = math.ceil(0.5 / c)  # 1 colonne entière
+        xs = [traduction.projection(p)[0]
+              for p in doc['zones'][0]['vertices']]
+        origine = min(xs) + traduction.document['parametres']['rives'][
+            'laterale_m']
+        coupures = self._coupures(traduction)
+        self.assertGreaterEqual(len(coupures), 2)
+        for k, zone in enumerate(coupures, start=1):
+            self.assertEqual(zone['repere'], 'z1_COUPURE_X%d' % k)
+            self.assertEqual(zone['nature'], 'INTERDITE')
+            debut = min(p[0] for p in zone['sommets'])
+            largeur = max(p[0] for p in zone['sommets']) - debut
+            self.assertAlmostEqual(debut, origine + (k * 8 + (k - 1) * n) * c,
+                                   places=2)
+            self.assertAlmostEqual(largeur, n * c, places=2)
+            self.assertLess(debut, max(xs))
+        self.assertIn('allée de maintenance', traduction.regle_coupures)
+        self.assertIn('jeu latéral', traduction.regle_coupures)
+
+    def test_acal577_sans_cle_document_identique(self):
+        sans = entree_depuis_layout(_document('cheminee'))
+        self.assertEqual(self._coupures(sans), [])
+        self.assertEqual(sans.regle_coupures, '')
+
+    def test_acal577_cle_illisible_refus_nomme(self):
+        from apps.calepinage.services.traduction import TraductionRefusee
+        for champ, valeur in (('tousLesNModules', 0), ('largeurCoupureM', 0),
+                              ('source', ' ')):
+            doc = _document('cheminee')
+            coupure = {'tousLesNModules': 8, 'largeurCoupureM': 0.5,
+                       'source': 'allée'}
+            coupure[champ] = valeur
+            doc['zones'][0]['coupuresPavage'] = coupure
+            with self.assertRaises(TraductionRefusee) as refus:
+                entree_depuis_layout(doc)
+            self.assertEqual(refus.exception.champ,
+                             'zones.0.coupuresPavage.%s' % champ)
+
     def test_effectif_est_le_maximum(self):
         valeur, _ = degagement_effectif('cheminee', None, {
             'degagements_m': {'lanterneau': 1.8}})

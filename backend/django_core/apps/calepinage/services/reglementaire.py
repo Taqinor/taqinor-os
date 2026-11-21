@@ -1004,7 +1004,7 @@ MESSAGE_GABARIT_NON_PDF = (
 
 #: Les champs qu'un dépôt / une modification de gabarit peut écrire.
 CHAMPS_GABARIT = ('pays', 'code', 'genre', 'intitule', 'version', 'actif',
-                  'pieces_attendues', 'champs')
+                  'pieces_attendues', 'champs', 'verifie_le', 'limites')
 
 #: Les clés vérifiées, dans l'ordre du modèle, pour NOMMER l'élément fautif
 #: d'une liste (``pieces_attendues[1].source_reference``).
@@ -1057,6 +1057,10 @@ def gabarit_publie(gabarit):
         'actif': gabarit.actif,
         'pieces_attendues': list(gabarit.pieces_attendues or []),
         'champs': list(gabarit.champs or []),
+        # ACAL822 — date de relecture (ISO ou ``null``) et limites saisies.
+        'verifie_le': (gabarit.verifie_le.isoformat()
+                       if gabarit.verifie_le else None),
+        'limites': list(gabarit.limites or []),
         'fichiers': ({'attachment': fichier.pk, 'nom': fichier.filename}
                      if fichier is not None else None),
         'depose_par': ({'id': auteur.pk, 'nom_complet': str(auteur)}
@@ -1155,6 +1159,31 @@ def _premier_element_fautif(liste, cles, prefixe):
     return prefixe
 
 
+def _limite_fautive(liste):
+    """ACAL822 — le chemin NOMMÉ de la limite fautive (même ordre de contrôle
+    que ``GabaritDossierReglementaire._erreur_limites``), ou ``limites``."""
+    from ..models import GabaritDossierReglementaire as Gabarit
+
+    if not isinstance(liste, list):
+        return 'limites'
+    plein, vus = Gabarit._texte_plein, set()
+    for rang, limite in enumerate(liste):
+        chemin = f'limites[{rang}]'
+        if not isinstance(limite, dict):
+            return chemin
+        code = limite.get('code')
+        if not plein(code) or code.strip() in vus:
+            return f'{chemin}.code'
+        vus.add(code.strip())
+        valeur = limite.get('valeur')
+        if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+            return f'{chemin}.valeur'
+        for cle in ('unite', 'source'):
+            if not plein(limite.get(cle)):
+                return f'{chemin}.{cle}'
+    return 'limites'
+
+
 def _valider(gabarit):
     """``clean_fields()`` + ``clean()`` du modèle, refus RE-NOMMÉS au chemin
     fautif.
@@ -1189,6 +1218,8 @@ def _valider(gabarit):
             elif champ == 'champs':
                 nom = _premier_element_fautif(gabarit.champs, _CLES_CHAMP,
                                               champ)
+            elif champ == 'limites':
+                nom = _limite_fautive(gabarit.limites)
             erreurs[nom] = ' '.join(messages)
         # Deux éléments au même code (rien d'autre à reprocher au corps) : un
         # CONFLIT entre éléments — un schéma ne sait pas exprimer l'unicité
@@ -1210,13 +1241,29 @@ def _valider(gabarit):
             statut=HTTPStatus.CONFLICT)
 
 
+def _date_verifiee(valeur):
+    """ACAL822 — ``verifie_le`` : une date ISO, ou vide (jamais relu)."""
+    import datetime
+
+    if valeur in (None, ''):
+        return None
+    try:
+        return datetime.date.fromisoformat(valeur)
+    except (TypeError, ValueError):
+        raise GabaritRefuse({'verifie_le': (
+            "« verifie_le » se donne en date ISO AAAA-MM-JJ "
+            f"(reçu : {valeur!r}).")})
+
+
 def _appliquer(gabarit, donnees):
     for champ in CHAMPS_GABARIT:
         if champ not in donnees:
             continue
         valeur = donnees[champ]
-        if champ in ('pieces_attendues', 'champs'):
+        if champ in ('pieces_attendues', 'champs', 'limites'):
             valeur = _liste_saisie(valeur, champ)
+        elif champ == 'verifie_le':
+            valeur = _date_verifiee(valeur)
         elif champ == 'actif':
             valeur = _booleen(valeur)
         elif valeur is None:

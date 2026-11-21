@@ -49,6 +49,8 @@ LIBELLE = 'Rendement onduleur'
 
 #: La colonne d'énergie que cette étape POSE sur la série qu'elle rend.
 COLONNE_SORTIE = 'p_ac_kw'
+#: ACAL752 — la puissance continue ENTRANTE, écrite sur chaque point.
+COLONNE_ENTREE = 'p_dc_kw'
 
 #: Le champ de fiche que l'omission nomme (le nom de la COLONNE du modèle,
 #: celui que l'écran de fiche affiche).
@@ -136,6 +138,7 @@ def _convertir_par_courbe(serie, colonne, courbe, nominale):
     for point in serie.get('points') or []:
         copie = dict(point)
         puissance_kw = _puissance_kw(point.get(colonne), facteur_kw)
+        copie[COLONNE_ENTREE] = puissance_kw  # ACAL752 — avant tout arrêt
         if puissance_kw is None:
             copie[COLONNE_SORTIE] = None
             points.append(copie)
@@ -169,6 +172,7 @@ def _convertir_a_plat(serie, colonne, rendement_pct):
     for point in serie.get('points') or []:
         copie = dict(point)
         puissance_kw = _puissance_kw(point.get(colonne), facteur_kw)
+        copie[COLONNE_ENTREE] = puissance_kw  # ACAL752 — avant tout arrêt
         copie[COLONNE_SORTIE] = (None if puissance_kw is None
                                  else puissance_kw * rendement_pct / 100.0)
         points.append(copie)

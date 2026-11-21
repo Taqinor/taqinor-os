@@ -1131,6 +1131,12 @@ class GabaritDossierReglementaire(TenantModel):
                                         blank=True)
     #: ``[{code, libelle, type, obligatoire, cle_calepinage}]`` — SAISIE.
     champs = models.JSONField('Champs du gabarit', default=list, blank=True)
+    #: ACAL822 — quand la société a relu les pièces et limites de ce gabarit ;
+    #: vide = jamais relu (aucune date n'est supposée).
+    verifie_le = models.DateField('Vérifié le', null=True, blank=True)
+    #: ``[{code, valeur, unite, source}]`` — SAISIE, chaque limite avec sa
+    #: source ; aucune limite n'est livrée par le code (D-ACAL-43).
+    limites = models.JSONField('Limites saisies', default=list, blank=True)
     #: Le FICHIER de gabarit déposé par la société (``records``, ARC26).
     fichier = models.ForeignKey(
         'records.Attachment',
@@ -1196,6 +1202,14 @@ class GabaritDossierReglementaire(TenantModel):
         erreur_champs = self._erreur_champs()
         if erreur_champs:
             erreurs['champs'] = erreur_champs
+        erreur_limites = self._erreur_limites()
+        if erreur_limites:
+            erreurs['limites'] = erreur_limites
+        from django.utils import timezone
+
+        if self.verifie_le and self.verifie_le > timezone.localdate():
+            erreurs['verifie_le'] = (
+                "La date de vérification ne peut pas être dans le futur.")
         if erreurs:
             raise ValidationError(erreurs)
 
@@ -1238,6 +1252,37 @@ class GabaritDossierReglementaire(TenantModel):
             if not isinstance(piece.get('obligatoire', True), bool):
                 return (f"La pièce « {code} » : « obligatoire » se donne en "
                         "booléen (true ou false).")
+        return ''
+
+    def _erreur_limites(self):
+        """ACAL822 — chaque limite porte code, valeur numérique, unité ET
+        source ; deux limites au même code : ``FRAGMENT_DOUBLON`` (409)."""
+        if not isinstance(self.limites, list):
+            return ("Les limites se donnent en liste ordonnée "
+                    f"(reçu : {type(self.limites).__name__}).")
+        codes = set()
+        for rang, limite in enumerate(self.limites, start=1):
+            if not isinstance(limite, dict):
+                return (f"La limite n°{rang} doit être un objet "
+                        f"(reçu : {type(limite).__name__}).")
+            if not self._texte_plein(limite.get('code')):
+                return f"La limite n°{rang} doit porter un code."
+            code = limite['code'].strip()
+            if code in codes:
+                return f"Deux limites portent le même code : « {code} »."
+            codes.add(code)
+            valeur = limite.get('valeur')
+            if (isinstance(valeur, bool)
+                    or not isinstance(valeur, (int, float))
+                    or valeur != valeur or valeur in (float('inf'),
+                                                      float('-inf'))):
+                return f"La limite « {code} » doit porter une valeur numérique."
+            if not self._texte_plein(limite.get('unite')):
+                return f"La limite « {code} » doit porter son unité."
+            if not self._texte_plein(limite.get('source')):
+                return (f"La limite « {code} » doit porter sa SOURCE (texte, "
+                        "notice ou contrat qui la fixe) : aucune limite n'est "
+                        "reproduite de mémoire.")
         return ''
 
     def _erreur_champs(self):

@@ -788,3 +788,14 @@ def poids_solaires_mensuels():
     importer le moteur hors d'``apps.ventes``."""
     from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS
     return MOROCCO_SOLAR_MONTHLY_WEIGHTS
+
+
+def plafond_injection_loi_8221():
+    """ACAL783 — le plafond légal d'injection de la loi 82-21 (art. 12) et la
+    mention « aucune revente en basse tension », lus de la constante du moteur
+    C&I : le calepinage n'en recopie aucune valeur."""
+    from .quote_engine.constants_82_21 import (
+        MENTION_BT, PLAFOND_INJECTION_PCT, PLAFOND_INJECTION_SOURCE,
+    )
+    return {'pct': PLAFOND_INJECTION_PCT, 'source': PLAFOND_INJECTION_SOURCE,
+            'mention_bt': MENTION_BT}
