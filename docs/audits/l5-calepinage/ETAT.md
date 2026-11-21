@@ -40,7 +40,7 @@ qui construit le bloc M0 du complément du 20/11) — voir « Reste à faire ».
    tablette sous WebKit), rejeu des constats S1 (`registre/evenements/T1-orchestrateur-rejeu.jsonl`).
 5. **Maquettes** du nouvel atelier (sources dans `maquettes/`, page privée de Reda :
    https://claude.ai/artifact/FFRdWUCVY6votcyhYWXBpu) : Toit, Panneaux, Électrique, Résultats, résultat incomplet,
-   téléphone (relevé). Jetons de l'ERP (fond #F6F8FC, or #E8B54A, Archivo + Hanken Grotesk). **Direction VALIDÉE par Reda le 21/11/2026** (« Yes, go on ») : disposition studio (plan pleine hauteur, rail de 5 étapes à gauche, inspecteur à droite, outils flottants), résultats à un chiffre héros, « Prêt à envoyer ? », téléphone = relever / montrer / valider.
+   téléphone (relevé). Jetons de l'ERP (fond #F6F8FC, or #E8B54A, Archivo + Hanken Grotesk). **Direction retenue sur preuves** (Reda, 21/11 : « Yes, go on », puis « it is not me who have data on best practice and on what users perefer » — les choix de design se tranchent par les données de l'étude et par des paires jugées par des relecteurs neufs, jamais par sa validation) : disposition studio (plan pleine hauteur, rail de 5 étapes à gauche, inspecteur à droite, outils flottants), résultats à un chiffre héros, « Prêt à envoyer ? », téléphone = relever / montrer / valider.
 
 ## Chiffres mesurés sur l'atelier d'aujourd'hui (origin/main@da49cb55b)
 173 boutons, 36 onglets, 78 champs sur une page de 6 851 à 6 969 px (≈ 8 écrans) ; 134 contrôles sur 143 sous 44 px ;
