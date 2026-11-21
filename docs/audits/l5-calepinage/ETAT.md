@@ -1,8 +1,7 @@
 # Campagne L5 calepinage — état du chantier (à lire EN PREMIER pour reprendre)
 
 Dernière écriture : 21/11/2026 par la session « calpinage-module-enhance » (poste Reda_Laptop) · branche de notes
-`claude/calepinage-l5-notes` (poussée, NON mergée : notes de travail). Quota hebdomadaire lu à 98 % au moment de cette
-écriture (remise à zéro le 25/11 à 20 h UTC, ou par Reda) : le tour 1 n'est PAS terminé.
+`claude/calepinage-l5-notes` (poussée, NON mergée : notes de travail). Quota hebdomadaire lu à 99 % le 21/11 après la validation des maquettes (remise à zéro le 25/11 à 20 h UTC, ou par Reda) : le tour 1 n'est PAS terminé.
 
 **Prochaine action unique** : lire `backlog/D1…D6-*.md` (143 fiches, ≈ 340 tâches candidates, vérifiées dans le code)
 et les constats des relecteurs (`registre/constats/T1-*.jsonl`), puis écrire la vague 2 de tâches v3 dans
@@ -41,7 +40,7 @@ qui construit le bloc M0 du complément du 20/11) — voir « Reste à faire ».
    tablette sous WebKit), rejeu des constats S1 (`registre/evenements/T1-orchestrateur-rejeu.jsonl`).
 5. **Maquettes** du nouvel atelier (sources dans `maquettes/`, page privée de Reda :
    https://claude.ai/artifact/FFRdWUCVY6votcyhYWXBpu) : Toit, Panneaux, Électrique, Résultats, résultat incomplet,
-   téléphone (relevé). Jetons de l'ERP (fond #F6F8FC, or #E8B54A, Archivo + Hanken Grotesk). PAS ENCORE validées par Reda.
+   téléphone (relevé). Jetons de l'ERP (fond #F6F8FC, or #E8B54A, Archivo + Hanken Grotesk). **Direction VALIDÉE par Reda le 21/11/2026** (« Yes, go on ») : disposition studio (plan pleine hauteur, rail de 5 étapes à gauche, inspecteur à droite, outils flottants), résultats à un chiffre héros, « Prêt à envoyer ? », téléphone = relever / montrer / valider.
 
 ## Chiffres mesurés sur l'atelier d'aujourd'hui (origin/main@da49cb55b)
 173 boutons, 36 onglets, 78 champs sur une page de 6 851 à 6 969 px (≈ 8 écrans) ; 134 contrôles sur 143 sous 44 px ;
