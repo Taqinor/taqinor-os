@@ -41,6 +41,8 @@ import BadgePerime from './BadgePerime'
    panneau = UNE ligne en fin de `atelier/onglets.js` ; ce fichier-ci n'est plus
    rouvert (décision D-CALX 3 et 13). */
 import Rail from './atelier/Rail'
+// ACAL421 — « Conception automatique » : l'emprise OSM du lead épinglé devient le pan.
+import { aDejaUnPan, conceptionAuto } from './atelier/conceptionAuto'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -130,6 +132,14 @@ export default function AtelierPanneaux({
     return () => { annule = true }
   }, [calepinageId, relecture])
   const relire = () => setRelecture((n) => n + 1)
+  // ACAL421 — conception automatique : message du serveur ou du builder, jamais un pan sur refus.
+  const [messageAuto, setMessageAuto] = useState('')
+  const leadId = calepinage?.lead ?? null
+  const lancerConceptionAuto = async () => {
+    const r = await conceptionAuto(leadId, builderApi)
+    setMessageAuto(r.message)
+    if (r.ok) relire()
+  }
 
   return (
     <div className="cine-card mt-6 p-6" data-testid="cal-atelier-panneaux">
@@ -278,6 +288,14 @@ export default function AtelierPanneaux({
             contour. Le contour de l'atelier n'a pas changé d'un champ
             (`roof_layout.outline`, v2) et le tracé sur carte reste la voie de
             le poser. */}
+        {/* ACAL421 — absent en lecture seule, sans lead lié, sans builder, ou si un pan est déjà tracé. */}
+        {!enLectureSeule && leadId && builderApi?.ajouterPanDepuisContour && !aDejaUnPan(builderApi) && (
+          <button type="button" onClick={lancerConceptionAuto} data-testid="cal-conception-auto"
+            className="text-sm font-semibold text-brass-300 underline">
+            Conception automatique
+          </button>
+        )}
+        {messageAuto && <p className="text-sm text-lune-faint" role="status" data-testid="cal-conception-auto-message">{messageAuto}</p>}
         {typeof children === 'function'
           ? children({ calepinageId, contexte, builderApi, lectureSeule: enLectureSeule, onRecharger })
           : children}

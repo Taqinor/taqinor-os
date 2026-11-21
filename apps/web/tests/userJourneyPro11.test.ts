@@ -1115,3 +1115,33 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(relu.shading12x24).toEqual(apres.shading12x24);
   }, 120000);
 });
+
+// ACAL421 — « Conception automatique » : le contour posé sur un atelier SANS pan tracé occupe
+// le pan vide de départ (aucun pan fantôme area-1 gardé) ; un pan déjà tracé n'est pas écrasé.
+describe('parcours utilisateur pro-11 — ACAL421 contour posé sur le pan vide', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network in test'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('atelier vide : le contour remplace le pan vide ; pan tracé : il s’ajoute', async () => {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), onApiReady: (a) => { api = a; } });
+    fakeMaps[0].fire('load', {});
+    setBill('1500');
+    const contour = squareCorners(16);
+    expect(api!.ajouterPanDepuisContour(contour).ok).toBe(true);
+    const doc = api!.serializeLayout() as { zones: Array<{ vertices: unknown }> };
+    expect(doc.zones).toHaveLength(1);
+    expect(doc.zones[0].vertices).toEqual(contour);
+    api!.ajouterPanDepuisContour(squareCorners(12, -7.6195));
+    expect((api!.serializeLayout() as { zones: unknown[] }).zones).toHaveLength(2);
+  }, 60000);
+});

@@ -41,9 +41,12 @@ vi.mock('../../api/calepinageApi', () => ({
     moteur: { calculer: vi.fn() },
   },
 }))
+vi.mock('../../api/crmApi', () => ({ default: { getRoofFootprint: vi.fn() } }))
 vi.mock('../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 import calepinageApi from '../../api/calepinageApi'
+import crmApi from '../../api/crmApi'
+import { fireEvent } from '@testing-library/react'
 import AtelierPanneaux from './AtelierPanneaux'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
@@ -119,5 +122,41 @@ describe('ACAL42 — bandeau de lecture seule', () => {
     rendre()
     await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
     expect(screen.queryByTestId('cal-bandeau-lecture-seule')).toBeNull()
+  })
+})
+
+/* ACAL421 — « Conception automatique » : {lat, lng} servis → [lng, lat] attendus par le builder. */
+describe('ACAL421 — conception automatique', () => {
+  const POLYGONE = [{ lat: 33.5, lng: -7.6 }, { lat: 33.5, lng: -7.59 }, { lat: 33.51, lng: -7.59 }]
+  const builder = (zones = []) => ({
+    serializeLayout: vi.fn(() => ({ zones })),
+    ajouterPanDepuisContour: vi.fn(() => ({ ok: true, id: 'area-2' })),
+  })
+
+  it('emprise convertie en [lng, lat], pan vide remplacé, refus nommé sans emprise', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    const builderApi = builder()
+    crmApi.getRoofFootprint.mockResolvedValueOnce({ data: { polygon: POLYGONE } })
+    rendre({ builderApi })
+    fireEvent.click(await screen.findByTestId('cal-conception-auto'))
+    await waitFor(() => expect(builderApi.ajouterPanDepuisContour).toHaveBeenCalledTimes(1))
+    expect(crmApi.getRoofFootprint).toHaveBeenCalledWith(CTX.calepinage.lead)
+    expect(builderApi.ajouterPanDepuisContour.mock.calls[0][0])
+      .toEqual([[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.51]])
+
+    crmApi.getRoofFootprint.mockResolvedValueOnce({ data: { polygon: null, message: 'Aucun bâtiment trouvé ici.' } })
+    fireEvent.click(await screen.findByTestId('cal-conception-auto'))
+    expect(await screen.findByTestId('cal-conception-auto-message')).toHaveTextContent('Aucun bâtiment trouvé ici.')
+    expect(builderApi.ajouterPanDepuisContour).toHaveBeenCalledTimes(1)
+  })
+
+  it('bouton absent : pan déjà tracé, lecture seule', async () => {
+    rendre({ builderApi: builder([{ vertices: POLYGONE.map((p) => [p.lng, p.lat]) }]) })
+    await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
+    expect(screen.queryByTestId('cal-conception-auto')).toBeNull()
+    cleanup()
+    rendre({ builderApi: builder(), lectureSeule: true })
+    await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
+    expect(screen.queryByTestId('cal-conception-auto')).toBeNull()
   })
 })

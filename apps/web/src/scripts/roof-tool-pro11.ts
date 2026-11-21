@@ -4306,9 +4306,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         setStatus(verdict.motif);
         return verdict;
       }
-      if (closed && vertices.length >= 3) capturerGeometrieActive();
-      snapshotActiveAreaGeometry();
-      snapshotActiveAreaResult();
+      if (!closed && vertices.length === 0) { // ACAL421 — le pan vide de départ n'est pas gardé
+        areas.splice(areas.findIndex((a) => a.id === activeAreaId), 1);
+      } else {
+        if (closed && vertices.length >= 3) capturerGeometrieActive();
+        snapshotActiveAreaGeometry();
+        snapshotActiveAreaResult();
+      }
       areas.push(verdict.pan);
       activeAreaId = verdict.pan.id;
       loadArea(verdict.pan);
