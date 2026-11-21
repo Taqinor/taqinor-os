@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import calepinageApi from '../../api/calepinageApi'
 import RetourAtelier from './atelier/RetourAtelier'
 import useSurfacePose from './useSurfacePose'
 import ActionsSurfacePose from './ActionsSurfacePose'
@@ -102,6 +104,77 @@ const POSE_TERRAIN = {
   },
 }
 
+/** ACAL466 — « Lire la pente du relief » : Copernicus GLO-30, proposée, jamais imposée. */
+function PenteRelief({ calepinageId, surface, enregistree, onUtiliser }) {
+  const [lecture, setLecture] = useState(null)
+  const [enCours, setEnCours] = useState(false)
+  const [refus, setRefus] = useState(null)
+  const lire = async () => {
+    setEnCours(true)
+    setRefus(null)
+    try {
+      const { data } = await calepinageApi.calepinages.penteTerrain(calepinageId, surface)
+      setLecture(data)
+    } catch {
+      setLecture(null)
+      setRefus('La lecture du relief a échoué : saisissez la pente à la main.')
+    } finally {
+      setEnCours(false)
+    }
+  }
+  const lue = lecture && lecture.pente_deg !== null && lecture.pente_deg !== undefined
+  return (
+    <section className="mt-4 rounded border border-border p-3" data-testid="cal-terrain-relief">
+      <button
+        type="button"
+        onClick={lire}
+        disabled={!enregistree || enCours}
+        data-testid="cal-terrain-relief-lire"
+        className="rounded border border-border px-3 py-1 text-sm text-foreground disabled:opacity-60"
+      >
+        {enCours ? 'Lecture du relief…' : 'Lire la pente du relief'}
+      </button>
+      {!enregistree && (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-terrain-relief-aide">
+          Enregistrez d’abord le champ (contour tracé sur la carte) : le relief est lu sous ce contour.
+        </p>
+      )}
+      {refus && <p className="mt-2 text-sm text-destructive" data-testid="cal-terrain-relief-refus">{refus}</p>}
+      {lecture && !lue && (
+        <p className="mt-2 text-sm text-destructive" data-testid="cal-terrain-relief-motif">{lecture.motif}</p>
+      )}
+      {lue && (
+        <div className="mt-2 text-sm text-foreground" data-testid="cal-terrain-relief-resultat">
+          <p>
+            <span className="fig" data-testid="cal-terrain-relief-pente">{lecture.pente_deg} °</span>
+            {' '}de pente
+            {lecture.azimut_pente_deg === null || lecture.azimut_pente_deg === undefined
+              ? ' — terrain plat, pas d’orientation'
+              : `, vers ${lecture.azimut_pente_deg} ° (0 = nord, sens horaire)`}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-terrain-relief-source">
+            {lecture.source} — modèle de surface, bâtiments et arbres compris, valable pour un terrain.
+          </p>
+          {lecture.ancrage === 'epingle_du_site' && (
+            <p className="text-xs text-muted-foreground" data-testid="cal-terrain-relief-ancrage">
+              Relief lu autour de l’épingle du site (le contour saisi en mètres n’a pas de coordonnées).
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground" data-testid="cal-terrain-relief-attribution">{lecture.attribution}</p>
+          <button
+            type="button"
+            onClick={() => onUtiliser(lecture.pente_deg)}
+            data-testid="cal-terrain-relief-utiliser"
+            className="mt-2 rounded border border-border px-3 py-1 text-sm text-foreground"
+          >
+            Utiliser cette pente
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function ModeTerrain({ calepinageId: idPropose = null, persister = true, documentVivant = null }) {
   // ACAL345 — l'état d'écran (document, placeur CALX50, relecture, liste,
   // enregistrement/suppression PAR id) vient de `useSurfacePose`, l'UNIQUE
@@ -170,6 +243,14 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             </label>
           ))}
         </div>
+
+        <PenteRelief
+          key={pose.repereCourant}
+          calepinageId={calepinageId}
+          surface={pose.repereCourant}
+          enregistree={persister && pose.dejaEnregistree}
+          onUtiliser={(pente) => majChamp('penteTerrainDeg', String(pente))}
+        />
 
         <ActionsSurfacePose
           pose={pose}

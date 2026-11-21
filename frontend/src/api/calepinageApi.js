@@ -351,6 +351,9 @@ const calepinageApi = {
     // `config.signal` (AbortController) coupe l'attente.
     detectionToitDisponible: (id) => api.get(`${pivot(id)}detection-toit/`), // ACAL
     detectionToit: (id, corps, config) => api.post(`${pivot(id)}detection-toit/`, corps, config), // ACAL
+    // ACAL466 (contrat calepinage_pente_terrain.json) — pente et orientation du RELIEF sous un champ au sol
+    // (Copernicus GLO-30) : lecture pure ; `pente_deg: null` + `motif` quand le relief n'est pas lisible.
+    penteTerrain: (id, surface) => api.get(`${pivot(id)}pente-terrain/`, { params: { surface } }), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
