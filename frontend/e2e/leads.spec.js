@@ -238,7 +238,9 @@ test('LWZ: le menu ⋯ du rail est visible et cliquable dans le Dialog lead', as
   await modalXl(page).getByRole('button', { name: "Plus d'actions" }).click()
   const menu = page.getByRole('menu')
   await expect(menu).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: /Concevoir la toiture \(3D\)/ })).toBeVisible()
+  // ACAL904 — « Concevoir la toiture (3D) » a quitté ce menu (porte visible
+  // « Dessiner le toit ») : une entrée toujours présente sert de témoin.
+  await expect(menu.getByRole('menuitem', { name: 'Envoyer un questionnaire' })).toBeVisible()
 
   // Clic RÉEL sur un item — un item peint sous la modale le ferait échouer.
   await menu.getByRole('menuitem', { name: 'Convertir en client' }).click()

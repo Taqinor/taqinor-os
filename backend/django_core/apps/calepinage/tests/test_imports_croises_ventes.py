@@ -24,7 +24,10 @@ APPS = pathlib.Path(__file__).resolve().parents[2]
 #: {autoconsommation,batterie,consommation,profils_types}.py, views/pompage.py.
 PLAFONDS = {
     ('ventes', 'calepinage'): (18, 1),
-    ('calepinage', 'ventes'): (40, 5),
+    # ACAL997 : +1 — ``selectors_devis.py`` (module frère des sélecteurs lus
+    # par ventes) relit ``ventes.selectors``/``selectors_calepinage`` pour la
+    # fraîcheur de la conception, comme ``selectors.ombrage_servi``.
+    ('calepinage', 'ventes'): (41, 5),
 }
 
 PORTES = ('selectors', 'services')

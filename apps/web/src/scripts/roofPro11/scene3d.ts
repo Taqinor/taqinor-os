@@ -75,6 +75,7 @@ import { construireMaillagesPose } from './poseSurfaces'; // CALX124
 
 import { teinterAllees } from './teinteAllees'; // CALX403
 import { appliquerCiel } from './ciel'; // ACAL431
+import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579 — boucle des tronçons sortie
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -2084,27 +2085,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         socleMats.push(compose(foot[0], foot[1], socleZ, rowAngleRad, 0));
         socleMats.push(compose(heel[0], heel[1], socleZ, rowAngleRad, 0));
       };
-      for (const row of rows.values()) {
-        row.sort((a, b) => a.la - b.la);
-        let i = 0;
-        while (i < row.length) {
-          // Fin du TRONÇON contigu : deux voisins se touchent tant que l'écart de leurs
-          // centres ne dépasse pas la somme de leurs demi-largeurs + le jeu toléré.
-          let j = i;
-          while (
-            j + 1 < row.length &&
-            row[j + 1].la - row[j].la <= row[j].halfA + row[j + 1].halfA + CONTIG_GAP_M
-          ) j++;
-          // Bord AMONT du tronçon, puis le MILIEU de chaque jointure interne, puis le bord
-          // AVAL : exactement N+1 triangles pour les N panneaux contigus du tronçon.
-          addTriangle(row[i].la - row[i].halfA, row[i]);
-          for (let k = i; k < j; k++) {
-            addTriangle((row[k].la + row[k].halfA + row[k + 1].la - row[k + 1].halfA) / 2, row[k]);
-          }
-          addTriangle(row[j].la + row[j].halfA, row[j]);
-          i = j + 1;
-        }
-      }
+      // Bord AMONT de chaque tronçon contigu, les jointures internes, le bord AVAL : N+1 triangles
+      // pour N panneaux — ACAL579 : seulement les jointures portantes quand une portée est SAISIE
+      // sur le pan actif (jamais dans le visionneur client).
+      const portee = isOtherZone ? null : porteeAppliquee(readOnly, ctx.activeArea?.()?.porteeEntrePieds);
+      for (const row of rows.values()) poserTrianglesDeRangee(row, CONTIG_GAP_M, portee, addTriangle);
     }
 
     const panelIM = makeIM(panelGeo, panelMats, panelMatsArr, true, false);

@@ -98,6 +98,10 @@ FORME_PROPOSITION = inline_serializer('CalepinageConsommationProposee', {
                                       allow_null=True),
     'saisons': serializers.DictField(),
     'avertissements': serializers.ListField(child=serializers.CharField()),
+    # ACAL836 — servi seulement pour la saisie « factures.mois » : douze
+    # lignes ``{mois, facture_mad, kwh, source}`` (``facture`` | ``estime``).
+    'mois': serializers.ListField(child=serializers.DictField(),
+                                  required=False),
 })
 
 

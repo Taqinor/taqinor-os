@@ -216,8 +216,17 @@ def modules_dessines(svg):
     return re.findall(r'<polygon [^>]*stroke-width="0.15"[^>]*>', svg)
 
 
+def fleches(svg):
+    """Les polylignes des fleches de chaine d'une feuille, dans l'ordre."""
+    return re.findall(r'<g class="fleche-chaine"[^>]*><polyline points="'
+                      r'([^"]+)"', svg)
+
+
 class FeuilleDePanTest(SimpleTestCase):
-    """ACAL590 - une feuille A4 par pan : teintes, numeros, reperes + / -."""
+    """ACAL590 - une feuille A4 par pan : teintes, numeros, fleches de chaine.
+
+    Aucun repere « + » / « − » : l'affectation ne connait pas la polarite
+    (meme convention et meme legende que le plan de cablage, ACAL643)."""
 
     def feuilles(self, layout, table):
         from apps.calepinage.services.planche_pan import svgs_de_pans
@@ -228,7 +237,10 @@ class FeuilleDePanTest(SimpleTestCase):
         return affectation((1, ['z1#1', 'z1#2', 'z1#3']),
                            (2, ['z1#4', 'z1#5', 'z1#6']))
 
-    def test_deux_chaines_deux_teintes_six_numeros_quatre_reperes(self):
+    def test_deux_chaines_deux_teintes_six_numeros_deux_fleches(self):
+        from apps.calepinage.services.documents.plan_cablage import (
+            LEGENDE_SENS)
+
         feuilles = self.feuilles(layout_six_modules(), self.deux_chaines())
         self.assertEqual(len(feuilles), 1)
         svg = feuilles[0]
@@ -240,19 +252,29 @@ class FeuilleDePanTest(SimpleTestCase):
                               for m in modules}), 2)
         for numero in range(1, 7):
             self.assertIn('>%d</text>' % numero, svg)
-        self.assertEqual(svg.count('>+</text>'), 2)
-        self.assertEqual(svg.count('>−</text>'), 2)
-        self.assertIn("+ : début, − : fin, dans l'ordre de "
-                      "l'affectation publiée", texte_de_svg(svg))
+        self.assertNotIn('>+</text>', svg)
+        self.assertNotIn('>−</text>', svg)
+        self.assertNotIn('début', texte_de_svg(svg))
+        self.assertIn(LEGENDE_SENS, texte_de_svg(svg))
         self.assertEqual(svg.count('class="fleche-chaine"'), 2)
         self.assertIn('calepinage aaaaaaaaaaaa', svg)
+
+    def test_la_fleche_va_du_premier_au_dernier_numero(self):
+        """L'ordre de l'affectation ne change pas la fleche : elle suit les
+        numeros (1 -> 3), comme le plan de cablage."""
+        dans_l_ordre = self.feuilles(layout_six_modules(), affectation(
+            (1, ['z1#1', 'z1#2', 'z1#3'])))[0]
+        a_l_envers = self.feuilles(layout_six_modules(), affectation(
+            (1, ['z1#3', 'z1#2', 'z1#1'])))[0]
+        self.assertEqual(len(fleches(dans_l_ordre)), 1)
+        self.assertEqual(fleches(a_l_envers), fleches(dans_l_ordre))
 
     def test_un_module_non_affecte_reste_en_contour_gris_seul(self):
         table = affectation((1, ['z1#1', 'z1#2', 'z1#3', 'z1#4', 'z1#5']))
         svg = self.feuilles(layout_six_modules(), table)[0]
         neutres = [m for m in modules_dessines(svg) if 'fill="none"' in m]
         self.assertEqual(len(neutres), 1)
-        self.assertEqual(svg.count('>+</text>'), 1)
+        self.assertEqual(svg.count('class="fleche-chaine"'), 1)
 
     def test_sans_chaine_les_modules_sont_neutres_et_la_mention_est_la(self):
         from apps.calepinage.services.planche import MENTION_NON_CHAINE
@@ -263,9 +285,10 @@ class FeuilleDePanTest(SimpleTestCase):
                             for m in modules_dessines(svg)))
         self.assertIn(MENTION_NON_CHAINE, svg)
         self.assertNotIn('>+</text>', svg)
+        self.assertNotIn('class="fleche-chaine"', svg)
+        self.assertNotIn('polarité', svg)
 
-    def test_une_chaine_a_cheval_sur_deux_pans_n_a_qu_un_plus_et_un_moins(
-            self):
+    def test_une_chaine_a_cheval_sur_deux_pans_a_une_fleche_par_pan(self):
         layout = layout_six_modules()
         zone_b = copy.deepcopy(layout['zones'][0])
         zone_b.update(id='z2', label='Pan B')
@@ -274,10 +297,10 @@ class FeuilleDePanTest(SimpleTestCase):
         layout['zones'].append(zone_b)
         table = affectation((1, ['z1#1', 'z1#2', 'z2#1', 'z2#2']))
         feuille_a, feuille_b = self.feuilles(layout, table)
-        self.assertEqual((feuille_a.count('>+</text>'),
-                          feuille_a.count('>−</text>')), (1, 0))
-        self.assertEqual((feuille_b.count('>+</text>'),
-                          feuille_b.count('>−</text>')), (0, 1))
+        for feuille in (feuille_a, feuille_b):
+            self.assertEqual(len(fleches(feuille)), 1)
+            self.assertNotIn('>+</text>', feuille)
+            self.assertNotIn('>−</text>', feuille)
         self.assertIn('suite sur Pan B', feuille_a)
         self.assertIn('suite sur Pan Sud', feuille_b)
 

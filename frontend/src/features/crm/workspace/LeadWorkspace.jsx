@@ -444,6 +444,9 @@ export default function LeadWorkspace({
       // d'actions »).
       case 'questionnaire': return setQuestionnaireOpen(true)
       // PV22 — le geste résout le devis à calepiner avant de naviguer.
+      // ACAL904 — l'IdentityRail n'émet plus cette action (son entrée « ⋯ »
+      // est remplacée par le bouton « Dessiner le toit ») : la branche reste
+      // servie à qui l'émet encore (LeadWorkspace.toiture3d.test.jsx).
       case 'toiture-3d':
         return leaveGuard(() => { ouvrirConceptionToiture() })
       // EZ5 — le payload reste la CHAÎNE de mode historique ('auto', 'remise',

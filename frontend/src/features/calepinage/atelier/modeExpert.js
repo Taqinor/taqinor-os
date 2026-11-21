@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { store } from '../../../store'
 
 /* ============================================================================
@@ -44,5 +44,16 @@ export function useModeExpert(forceUrl = false) {
     setMemorise(valeur)
     ecrireModeExpert(utilisateurId, valeur)
   }, [utilisateurId])
-  return [forceUrl || memorise, basculer]
+  const expert = forceUrl || memorise
+  // Le PONT vers les scripts de l'atelier (ACAL552, 584, 717 : ils lisent
+  // `document.body.dataset.modeExpert === '1'`) : posé ici, l'UNIQUE endroit
+  // qui tient le mode, et retiré au démontage de l'atelier.
+  useEffect(() => {
+    const corps = typeof document !== 'undefined' ? document.body : null
+    if (!corps) return undefined
+    if (expert) corps.dataset.modeExpert = '1'
+    else delete corps.dataset.modeExpert
+    return () => { delete corps.dataset.modeExpert }
+  }, [expert])
+  return [expert, basculer]
 }

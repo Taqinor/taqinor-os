@@ -287,6 +287,12 @@ export const OBSTACLE_TYPES: { id: ObstacleType; label: string }[] = [
   { id: 'chien_assis', label: 'Chien-assis / lucarne' },
   { id: 'edicule', label: 'Édicule / local technique' },
   { id: 'antenne', label: 'Antenne / parabole' },
+  { id: 'lanterneau', label: 'Lanterneau' },
+  { id: 'exutoire', label: 'Exutoire de fumée' },
+  { id: 'climatiseur', label: 'Climatiseur / groupe de clim' },
+  { id: 'citerne', label: 'Citerne / réservoir' },
+  { id: 'garde_corps', label: 'Garde-corps' },
+  { id: 'joint_dilatation', label: 'Joint de dilatation' },
   { id: 'autre', label: 'Autre' },
 ];
 
@@ -305,7 +311,7 @@ export const OBSTACLE_TYPES: { id: ObstacleType; label: string }[] = [
  *  - autre 0,30 m : on retombe exactement sur le comportement historique.
  * Un obstacle SANS type garde donc 0,30 m — le calepinage d'aujourd'hui, inchangé.
  */
-export const CLEARANCE_BY_TYPE: Record<ObstacleType, number> = {
+export const CLEARANCE_BY_TYPE: Partial<Record<ObstacleType, number>> = {
   cheminee: 0.5,
   ventilation: OBSTACLE_CLEARANCE_M,
   chien_assis: 0.5,
@@ -703,6 +709,10 @@ export interface AreaRecord {
   /** ACAL510 — « Pan existant » (modules déjà en place) et son année de mise en service SAISIE (null = non saisie). */
   existant?: boolean;
   anneeMiseEnService?: number | null;
+  /** ACAL576 — coupures automatiques du pavage (contrat ACAL586), SAISIES ; absentes = aucune. */
+  coupuresPavage?: import('./coupuresPavage').CoupuresPavage;
+  /** ACAL579 — portée maximale entre deux pieds de châssis (contrat ACAL587), SAISIE et sourcée. */
+  porteeEntrePieds?: import('./piedsChassis').PorteeEntrePieds;
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════

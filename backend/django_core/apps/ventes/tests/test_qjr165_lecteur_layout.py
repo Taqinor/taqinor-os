@@ -314,7 +314,12 @@ class LesCinqOriginesLisentLeMemeLecteur(SimpleTestCase):
           clé légitime (et ``panels`` une LISTE de poses, pas un nombre) ;
         * ``layout_hash`` — qui n'INTERPRÈTE rien, il empreinte ;
         * ``pans_du_document`` (ACAL59) — LA primitive des pans posés que
-          ``lire_layout`` somme (toit + surfaces de pose).
+          ``lire_layout`` somme (toit + surfaces de pose) ;
+        * ``_faces_est_ouest`` (ACAL911) — ne lit PAS le document : elle
+          reçoit le ``geometry`` d'UNE zone déjà extrait par l'orientation du
+          pan et y compte la face (E/W) de chaque pose de
+          ``geometry.panels`` (une LISTE de poses, comme dans
+          ``extract_roof_config``), jamais un compte ni un wattage du layout.
         """
         source = inspect.getsource(geometrie)
         arbre = ast.parse(source)
@@ -329,6 +334,6 @@ class LesCinqOriginesLisentLeMemeLecteur(SimpleTestCase):
         self.assertEqual(
             porteuses,
             {'lire_layout', 'extract_roof_config', 'layout_hash',
-             'pans_du_document'},
+             'pans_du_document', '_faces_est_ouest'},
             "une NOUVELLE lecture de layout est apparue dans "
             "domain/geometrie.py — QJR165 n'en autorise qu'une.")

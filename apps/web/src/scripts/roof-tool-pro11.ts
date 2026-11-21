@@ -140,7 +140,7 @@ import {
   nouveauPanDepuisContour, // ACAL71
   panVierge,
 } from './roofPro11/zones';
-import { monterAlignementRangees, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
+import { monterAlignementRangees, pavageCellulesDe, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
 import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
 import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
@@ -224,7 +224,7 @@ import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
-import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; // ACAL576
+import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; // ACAL576, ACAL579
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
@@ -1353,6 +1353,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // disposition personnalisée (re-snap sur la nouvelle lattice) après une édition d'obstacle
   // ou d'axe pendant que l'éditeur est ouvert. Les autres méthodes pilotent le câblage interne.
   barreSelection = creerBarreSelection({ hote: () => map.getContainer?.() ?? null, editeur: layoutEditor, setStatus: (m) => setStatus(m), photographier: () => ctx.pushWorkshopHistory?.() }); // ACAL411 + ACAL418
+  monterChampsCoupures(ctx, { recalc: () => recalc() }); monterChampPortee(ctx, { recalc: () => recalc() }); // ACAL576, ACAL579 — rubrique « Avancé » de #rp9-layout-panel
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
   const occupiedCenters = layoutEditor.occupiedCenters;
   const reenterCustomLayout = layoutEditor.reenterCustomLayout;
@@ -3321,20 +3322,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   /** Les modules posés AVEC leur cellule de lattice (l'index que `scene3d` connaît). */
   function pavagePoseCellules(): { cellule: number; cx: number; cy: number }[] {
-    if (layoutEditor.isFreeMode()) {
-      return layoutEditor.freePanels().map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy }));
-    }
-    const grid = ctx.layoutPlan?.grid;
-    if (!grid) return [];
-    const st = ctx.layoutState;
-    if (st && st.cells.length === grid.panels.length && st.occupied.size) {
-      return [...st.occupied]
-        .filter((i) => i >= 0 && i < st.cells.length)
-        .sort((a, b) => a - b)
-        .map((i) => ({ cellule: i, cx: st.cells[i].cx, cy: st.cells[i].cy }));
-    }
-    const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
-    return grid.panels.slice(0, n).map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy }));
+    return pavageCellulesDe(ctx, layoutEditor).map(({ cellule, cx, cy }) => ({ cellule, cx, cy })); // une seule copie : alignementRangees.ts
   }
 
   /** Le repère AFFICHÉ d'un module posé : celui du document quand il en porte un (CALX111),

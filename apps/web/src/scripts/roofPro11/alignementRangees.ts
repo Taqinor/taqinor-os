@@ -145,12 +145,12 @@ export function alignerRangees<T extends Pose>(
   return { panels: sortie, immobiles };
 }
 
-/** Les modules RÉELLEMENT posés, dans le repère ENU du pavage courant (extrait de l'entrée). */
-export function pavagePoseDe(
-  ctx: Ctx,
-  editeur: { isFreeMode: () => boolean; freePanels: () => readonly { cx: number; cy: number; face?: 'E' | 'W' }[] },
-): { cx: number; cy: number; face?: 'E' | 'W' }[] {
-  if (editeur.isFreeMode()) return editeur.freePanels().map((p) => ({ ...p }));
+type EditeurPose = { isFreeMode: () => boolean; freePanels: () => readonly { cx: number; cy: number; face?: 'E' | 'W' }[] };
+
+/** Les modules RÉELLEMENT posés AVEC leur cellule de lattice (l'index que `scene3d` connaît) —
+ *  la SEULE copie de cette règle (l'entrée `roof-tool-pro11.ts` l'appelle). */
+export function pavageCellulesDe(ctx: Ctx, editeur: EditeurPose): { cellule: number; cx: number; cy: number; face?: 'E' | 'W' }[] {
+  if (editeur.isFreeMode()) return editeur.freePanels().map((p, i) => ({ cellule: i, ...p }));
   const grid = ctx.layoutPlan?.grid;
   if (!grid) return [];
   const st = ctx.layoutState;
@@ -158,10 +158,15 @@ export function pavagePoseDe(
     return [...st.occupied]
       .filter((i) => i >= 0 && i < st.cells.length)
       .sort((a, b) => a - b)
-      .map((i) => ({ cx: st.cells[i].cx, cy: st.cells[i].cy, face: st.cells[i].face }));
+      .map((i) => ({ cellule: i, cx: st.cells[i].cx, cy: st.cells[i].cy, face: st.cells[i].face }));
   }
   const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
-  return grid.panels.slice(0, n).map((p) => ({ cx: p.cx, cy: p.cy, face: p.face }));
+  return grid.panels.slice(0, n).map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy, face: p.face }));
+}
+
+/** Les modules RÉELLEMENT posés, dans le repère ENU du pavage courant (extrait de l'entrée). */
+export function pavagePoseDe(ctx: Ctx, editeur: EditeurPose): { cx: number; cy: number; face?: 'E' | 'W' }[] {
+  return pavageCellulesDe(ctx, editeur).map(({ cellule: _c, ...p }) => p);
 }
 
 export interface DepsAlignement {

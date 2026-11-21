@@ -54,7 +54,8 @@ import {
 } from './optimisationDocument'; // CALX114 câblage
 import { semerFondDepuisDocument } from './fondDocument'; // CALX107 câblage
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
-import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; // ACAL193 (sorti), ACAL593
+import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; import { emettreCoupures } from './coupuresPavage'; // ACAL193 (sorti), ACAL593, ACAL576
+import { pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -340,7 +341,7 @@ export interface SerializedZone {
   pitchSource?: Record<string, unknown>;
   facingAzimuthDeg?: number;
   facingManual: boolean;
-  verrouille?: boolean; existant?: boolean; anneeMiseEnService?: number; // ACAL520 cadenas ; ACAL510 pan existant — émis seulement quand ils sont posés
+  verrouille?: boolean; existant?: boolean; anneeMiseEnService?: number; coupuresPavage?: AreaRecord['coupuresPavage']; porteeEntrePieds?: AreaRecord['porteeEntrePieds']; // ACAL520 cadenas ; ACAL510 pan existant ; ACAL576 ; ACAL579 — émis seulement quand ils sont posés
   neededPanels: number;
   neededAuto: boolean;
   /** WJ24 — géométrie pleine par pan (optionnel, additif). Présent seulement si un plan
@@ -910,34 +911,6 @@ export class ErreurDocumentAtelier extends Error {
   }
 }
 
-/** ACAL252 — la pente (°) que décrit une `pitchSource`, ou `null` quand elle ne la détermine pas. */
-function penteDecrite(source: Record<string, unknown>): number | null {
-  const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-  if (source.mode === 'degres') return n(source.degres);
-  if (source.mode === 'pourcentage') {
-    const p = n(source.pourcentage);
-    return p === null ? null : (Math.atan(p / 100) * 180) / Math.PI;
-  }
-  if (source.mode === 'cotes') {
-    const portee = n(source.porteeM);
-    const hauteur = n(source.hauteurFaitageM);
-    return portee === null || hauteur === null || portee === 0 ? null : (Math.atan(hauteur / portee) * 180) / Math.PI;
-  }
-  return null;
-}
-
-/**
- * ACAL252 — `{ pitchSource }` à réémettre pour un pan, ou rien. La provenance est conservée
- * VERBATIM tant qu'elle décrit la pente émise ; une pente retouchée à la main dans l'atelier
- * (écart > 1e-6°) n'est plus celle que la source décrit : elle est alors omise, jamais mentie.
- */
-function pitchSourceEmise(source: Record<string, unknown> | undefined, pitchDeg: number): { pitchSource?: Record<string, unknown> } {
-  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
-  const decrite = penteDecrite(source);
-  if (decrite !== null && Number.isFinite(pitchDeg) && Math.abs(decrite - pitchDeg) > 1e-6) return {};
-  return { pitchSource: JSON.parse(JSON.stringify(source)) as Record<string, unknown> };
-}
-
 export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: SerializeMeta): SerializedLayout {
   // ACAL64 — deux pans de même identifiant : refus nommé, jamais un document émis (le second
   // pan écraserait le premier côté serveur, et le compte publié serait faux).
@@ -974,7 +947,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       ...pitchSourceEmise(a.pitchSource, isActive ? ctx.pitchDeg : a.pitchDeg),
       facingAzimuthDeg: isActive ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
-      ...(a.verrouille ? { verrouille: true } : {}), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
+      ...(a.verrouille ? { verrouille: true } : {}), ...emettreCoupures(a.coupuresPavage), ...emettrePortee(a.porteeEntrePieds), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
       ...(a.buildingId ? { buildingId: a.buildingId } : {}), // CAL59 — additif
@@ -1265,7 +1238,7 @@ const CLES_RACINE_ATELIER = new Set([
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([
-  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille', 'existant', 'anneeMiseEnService',
+  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille', 'existant', 'anneeMiseEnService', 'coupuresPavage', 'porteeEntrePieds',
   'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges', 'result',
 ]);
 
@@ -1490,7 +1463,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       : {}),
     facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
-    ...(z.verrouille === true ? { verrouille: true } : {}), ...(z.existant === true ? { existant: true, anneeMiseEnService: Number.isInteger(z.anneeMiseEnService) ? z.anneeMiseEnService : null } : {}), // ACAL520, ACAL510
+    ...(z.verrouille === true ? { verrouille: true } : {}), ...emettreCoupures(z.coupuresPavage), ...emettrePortee(z.porteeEntrePieds), ...(z.existant === true ? { existant: true, anneeMiseEnService: Number.isInteger(z.anneeMiseEnService) ? z.anneeMiseEnService : null } : {}), // ACAL520, ACAL510
     neededPanels: z.neededPanels,
     neededAuto: z.neededAuto,
     result: null,

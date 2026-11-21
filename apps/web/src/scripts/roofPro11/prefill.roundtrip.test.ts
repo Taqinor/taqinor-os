@@ -461,6 +461,23 @@ describe('ACAL510 — `existant` et `anneeMiseEnService` survivent à l’aller-
   });
 });
 
+describe('ACAL579 — la portée entre pieds fait l’aller-retour', () => {
+  const aller = (zone: Record<string, unknown>, vider = false) => {
+    const doc = documentRiche();
+    Object.assign(doc.zones[0], zone);
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    if (vider) for (const a of ctx.areas) delete a.porteeEntrePieds; // le champ vidé à l'écran
+    return serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null }));
+  };
+  it('saisir, enregistrer, rouvrir ⇒ valeur relue ; vider le champ ⇒ plus aucune clé', () => {
+    const p = { valeurM: 2.4, source: 'notice du système, p. 4' };
+    expect(aller({ porteeEntrePieds: p }).zones[0]).toMatchObject({ porteeEntrePieds: p });
+    expect('porteeEntrePieds' in aller({ porteeEntrePieds: p }, true).zones[0]).toBe(false);
+  });
+});
+
 describe('ACAL593 — les repères de chantier font l’aller-retour', () => {
   const aller = (reperes?: unknown[]) => {
     const doc = documentRiche() as unknown as Record<string, unknown>;

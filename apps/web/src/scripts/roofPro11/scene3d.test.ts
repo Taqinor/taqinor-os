@@ -34,6 +34,9 @@ import { decouperContour, monterFormesToit } from './formesToit';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { rectRing } from './harnaisAtelier';
 import { modulesDuDocument, panelQuadsLngLat } from './modulesGeo'; // ACAL528
+import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579
+import { readFileSync } from 'node:fs'; // ACAL579
+import { resolve } from 'node:path'; // ACAL579
 import { panelQuadsLngLat as panelQuadsViaScene3d } from './scene3d';
 import { MODULE_ATELIER_PAR_DEFAUT } from '../../lib/roofPro2';
 
@@ -825,5 +828,22 @@ describe('ACAL528 — modulesDuDocument', () => {
   it('un pan sans géométrie posée n’a pas de ligne ; un document vide non plus', () => {
     expect(modulesDuDocument({ zones: [{ id: 'z1' }] })).toEqual([]);
     expect(modulesDuDocument(null)).toEqual([]);
+  });
+});
+
+// ACAL579 — le visionneur CLIENT (`readOnly`) garde un triangle à chaque jointure malgré la portée.
+describe('ACAL579 — readOnly ⇒ 13 triangles malgré la portée', () => {
+  it('la portée n’est appliquée que dans l’atelier', () => {
+    const p = { valeurM: 2.4, source: 'notice' };
+    const row = () => Array.from({ length: 12 }, (_, i) => ({ la: i * 1.15, halfA: 0.565 }));
+    const compter = (readOnly: boolean) => {
+      let n = 0;
+      poserTrianglesDeRangee(row(), 0.25, porteeAppliquee(readOnly, p), () => { n++; });
+      return n;
+    };
+    expect(compter(true)).toBe(13);
+    expect(compter(false)).toBe(7);
+    const SRC_SCENE = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/scene3d.ts'), 'utf8');
+    expect(SRC_SCENE).toMatch(/porteeAppliquee\(readOnly, ctx\.activeArea\?\.\(\)\?\.porteeEntrePieds\)/);
   });
 });

@@ -4,14 +4,15 @@ Le plan de pose A3 montre le site entier : tous les modules y sont verts et les
 chaînes ne sont que des lignes de texte. L'équipe qui monte un pan à la fois
 reçoit ici, après les feuilles A3 (inchangées), une page A4 paysage PAR PAN
 posé : chaque module teinté de la couleur de sa chaîne (``PALETTE_CHAINES`` —
-la MÊME que l'écran et le plan de câblage), son numéro, et les repères « + »
-(début) / « − » (fin) de chaque chaîne.
+la MÊME que l'écran et le plan de câblage), son numéro, et la flèche de chaque
+chaîne, du premier au dernier numéro.
 
 RIEN n'est recalculé : la table module -> chaîne et la teinte sont LUES par
 ``documents/plan_cablage._plan_de_cablage`` (importé, non copié) ; le numéro
 est celui de ``panels[].n`` (``production.numeros_des_modules``, via la clé
-« <pan>#<n> »). « + » et « − » suivent l'ordre de l'affectation PUBLIÉE :
-ce n'est pas un relevé de câblage, et la légende le dit. Sans chaîne publiée,
+« <pan>#<n> »). Aucun « + » ni « − » : l'affectation ne connaît pas la
+polarité électrique — même convention que le plan de câblage (ACAL643),
+même phrase de légende (``plan_cablage.LEGENDE_SENS``). Sans chaîne publiée,
 les modules restent neutres et la feuille le dit. Aucun montant.
 """
 from __future__ import annotations
@@ -35,11 +36,6 @@ from .planche import (
 FORMAT_A4_MM = (297.0, 210.0)
 CADRE_DESSIN_MM = (10.0, 24.0, 196.0, 148.0)
 COLONNE_X_MM = 214.0
-
-SIGNE_DEBUT = '+'
-SIGNE_FIN = '−'
-LEGENDE_REPERES = ("+ : début, − : fin, dans l'ordre de l'affectation "
-                   "publiée — pas un relevé de câblage")
 
 #: Les règles de page ajoutées au HTML du plan de pose (A4 paysage nommée).
 STYLE_FEUILLE_PAN = ('@page pan{size:A4 landscape;margin:0;}'
@@ -71,9 +67,17 @@ def _numero(module):
     return str(module['module']).rpartition('#')[2]
 
 
+def _ordre_de_numero(module):
+    """Du plus petit au plus grand numéro (comme ``plan_cablage``) ; un
+    repère sans numéro lisible suit, dans l'ordre de l'affectation."""
+    numero = _numero(module)
+    return ((0, int(numero)) if numero.isdigit()
+            else (1, module['rang'] or 0))
+
+
 def _chaines_du_pan(modules_du_pan, modules, entrees, pans):
     """Par chaîne présente sur ce pan, dans l'ordre d'apparition :
-    ``{chaine, couleur, modules (par rang), total, debut, fin, suite}``."""
+    ``{chaine, couleur, modules (par numéro), total, suite}``."""
     totaux = {e['chaine']: e['modules'] for e in entrees}
     ordre = {pan['repere']: rang for rang, pan in enumerate(pans)}
     noms = {pan['repere']: _libelle_de_pan(pan) for pan in pans}
@@ -83,7 +87,7 @@ def _chaines_du_pan(modules_du_pan, modules, entrees, pans):
             chaines.setdefault(module['chaine'], []).append(module)
     sortie = []
     for chaine, lot in chaines.items():
-        lot = sorted(lot, key=lambda m: m['rang'])
+        lot = sorted(lot, key=_ordre_de_numero)
         autres = sorted({m['pan'] for m in modules
                          if m['chaine'] == chaine
                          and m['pan'] != lot[0]['pan']},
@@ -91,9 +95,7 @@ def _chaines_du_pan(modules_du_pan, modules, entrees, pans):
         sortie.append({
             'chaine': chaine, 'couleur': lot[0]['couleur'], 'modules': lot,
             'total': totaux.get(chaine), 'suite': [noms.get(c, c)
-                                                   for c in autres],
-            'debut': lot[0]['rang'] == 1,
-            'fin': lot[-1]['rang'] == totaux.get(chaine)})
+                                                   for c in autres]})
     return sortie
 
 
@@ -128,27 +130,15 @@ def _dessin_du_module(module, vers_feuille):
 
 
 def _reperes_de_chaine(chaine, vers_feuille):
-    """La polyligne fléchée par les centres (ordre de l'affectation publiée),
-    « + » sur le premier module si la chaîne COMMENCE sur ce pan, « − » sur
-    le dernier si elle y FINIT."""
+    """La flèche de la chaîne sur ce pan (``plan_cablage._fleche_de_chaine``,
+    la même que le plan de câblage) : par les centres, du premier au dernier
+    numéro. Aucun « + » ni « − » (ACAL643) ; rien pour un module seul."""
     from .documents.plan_cablage import _fleche_de_chaine
 
-    lot, couleur = chaine['modules'], chaine['couleur']
-    morceaux = []
-    if len(lot) > 1:
-        morceaux.append(_fleche_de_chaine(lot, couleur, vers_feuille))
-    for signe, module, present, decalage in (
-            (SIGNE_DEBUT, lot[0], chaine['debut'], -2.4),
-            (SIGNE_FIN, lot[-1], chaine['fin'], 2.4)):
-        if not present:
-            continue
-        x, y = vers_feuille(module['centre'])
-        morceaux.append(
-            '<text x="%s" y="%s" font-size="5" font-weight="bold" '
-            'text-anchor="middle" fill="#ffffff" stroke="%s" '
-            'stroke-width="0.35">%s</text>'
-            % (_n(x + decalage), _n(y - 0.6), NOIR, signe))
-    return morceaux
+    lot = chaine['modules']
+    if len(lot) < 2:
+        return []
+    return [_fleche_de_chaine(lot, chaine['couleur'], vers_feuille)]
 
 
 def _colonne_de_legende(chaines, sans_chaine):
@@ -386,6 +376,8 @@ def _pied_a4(texte):
 def _feuille_de_pan(pan, modules, entrees, pans, pied, zones=(),
                     fixation=None):
     """Le SVG A4 d'UN pan posé."""
+    from .documents.plan_cablage import LEGENDE_SENS
+
     modules_du_pan = [m for m in modules if m['pan'] == pan['repere']]
     chaines = _chaines_du_pan(modules_du_pan, modules, entrees, pans)
     cotes_de_zones = cotes_des_zones(pan, modules_du_pan, zones)
@@ -410,7 +402,8 @@ def _feuille_de_pan(pan, modules, entrees, pans, pied, zones=(),
     for chaine in chaines:
         corps += _reperes_de_chaine(chaine, vers_feuille)
     lignes = _colonne_de_legende(chaines, not entrees)
-    lignes.append((None, LEGENDE_REPERES))
+    if any(len(chaine['modules']) > 1 for chaine in chaines):
+        lignes.append((None, LEGENDE_SENS))
     lignes += _lignes_de_mesures(distances, motif, cotes_de_zones)
     lignes += _encart_fixation(fixation)
     _verifier_absence_d_argent('\n'.join(t for _c, t in lignes))
