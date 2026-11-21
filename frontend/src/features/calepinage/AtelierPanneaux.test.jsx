@@ -121,3 +121,42 @@ describe('ACAL42 — bandeau de lecture seule', () => {
     expect(screen.queryByTestId('cal-bandeau-lecture-seule')).toBeNull()
   })
 })
+
+/* ============================================================================
+   ACAL415 — les outils et onglets de l'atelier dans la palette ⌘K.
+   ========================================================================== */
+describe('ACAL415 — commandes ⌘K de l’atelier', () => {
+  const ecouter = () => {
+    const recus = []
+    const onEvt = (e) => recus.push(e.detail.actions)
+    window.addEventListener('taqinor:lead-workspace-actions', onEvt)
+    return { recus, fin: () => window.removeEventListener('taqinor:lead-workspace-actions', onEvt) }
+  }
+
+  it('l’atelier poste ses commandes puis les retire au démontage', async () => {
+    const { recus, fin } = ecouter()
+    const outilObstacle = vi.fn()
+    const { unmount } = rendre({ builderApi: { raccourcis: { outilObstacle } } })
+
+    const actions = recus.at(-1)
+    expect(actions.some((a) => a.label === 'Ouvrir Horizon lointain')).toBe(true)
+    const obstacle = actions.find((a) => a.label === 'Ajouter un obstacle')
+    obstacle.run()
+    expect(outilObstacle).toHaveBeenCalledTimes(1)
+
+    unmount()
+    expect(recus.at(-1)).toEqual([])
+    fin()
+  })
+
+  it('lecture seule : aucun outil d’édition proposé, les onglets restent', async () => {
+    const { recus, fin } = ecouter()
+    rendre({ lectureSeule: true, builderApi: { raccourcis: { outilObstacle: vi.fn(), outilMesure: vi.fn() } } })
+
+    const labels = recus.at(-1).map((a) => a.label)
+    expect(labels).not.toContain('Ajouter un obstacle')
+    expect(labels).toContain('Mesurer une distance')
+    expect(labels).toContain('Ouvrir Horizon lointain')
+    fin()
+  })
+})

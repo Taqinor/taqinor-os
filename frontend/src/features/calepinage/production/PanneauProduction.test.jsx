@@ -133,8 +133,49 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
     expect(within(manques).getByText(
       'Calepinage non simulé : la pose est connue, la production ne l\'est pas.',
     )).toBeInTheDocument()
-    expect(within(manques).getByTestId('calx48-lien-pertes'))
-      .toHaveAttribute('href', '/calepinage/1?onglet=pertes')
+    // ACAL397 : sans `parcours.manque`, les avertissements restent du texte.
+    expect(within(manques).queryByTestId('calx48-manque-ligne')).toBeNull()
+  })
+
+  /* ACAL397 — « Ce qui manque » = liste d'actions issue de `parcours.manque`
+     (contrat `calepinage_parcours_guide.json`, jamais écrit à la main). */
+  describe('liste des manques (ACAL397)', () => {
+    const manque = () => exempleContrat('calepinage', 'calepinage_parcours_guide', 'exemple').manque
+    const rendreAvec = (liste) => render(
+      <MemoryRouter><PanneauProduction calepinageId={1} parcours={{ etats: {}, manque: liste }} /></MemoryRouter>,
+    )
+
+    it('une entrée `nombre` > 1 ⇒ une ligne « × n », une ligne par entrée', async () => {
+      servir('exemple_vide')
+      const liste = manque()
+      rendreAvec(liste)
+      const lignes = await screen.findAllByTestId('calx48-manque-ligne')
+      expect(lignes).toHaveLength(liste.length)
+      const multiple = liste.find((m) => m.nombre > 1)
+      expect(screen.getByText(`× ${multiple.nombre}`)).toBeInTheDocument()
+    })
+
+    it('trie bloquant avant info', async () => {
+      servir('exemple_vide')
+      const [bloquant, info] = [manque()[0], manque()[1]]
+      rendreAvec([info, bloquant])
+      const lignes = await screen.findAllByTestId('calx48-manque-ligne')
+      expect(lignes[0]).toHaveTextContent(bloquant.message)
+      expect(lignes[1]).toHaveTextContent(info.message)
+    })
+
+    it('le lien porte onglet et champ ; `reglages` mène à /calepinage/reglages', async () => {
+      servir('exemple_vide')
+      rendreAvec([
+        { code: 'x', message: 'Norme', etape: 'electrique', gravite: 'a_regler', nombre: 1,
+          cible: { onglet: 'electrique', champ: 'norme' } },
+        { code: 'y', message: 'Réglage', etape: 'resultats', gravite: 'bloquant', nombre: 1,
+          cible: { onglet: 'reglages', champ: '' } },
+      ])
+      const lignes = await screen.findAllByTestId('calx48-manque-ligne')
+      expect(lignes[0]).toHaveAttribute('href', '/calepinage/reglages')
+      expect(lignes[1]).toHaveAttribute('href', '/calepinage/1?onglet=electrique&champ=norme')
+    })
   })
 
   it('suit queued → running → done sans refus, puis relit le résultat', async () => {
