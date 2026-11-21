@@ -716,6 +716,26 @@ export const ALL_HOOKS = [
   'cal-detection-proposition',
   'cal-detection-refus',
   'cal-detection-utiliser',
+  // ── atelier/BarreEnregistrement.jsx (complément L5) ──
+  'cal-enregistrer-calepinage',
+  'cal-etat-enregistrement',
+  'cal-erreur-enregistrement',
+  // ── atelier/PanneauPertesUnifie.jsx (complément L5) ──
+  'cal-pertes-unifie',
+  // ── AtelierPanneaux.jsx (complément L5) ──
+  'cal-conception-auto',
+  'cal-conception-auto-message',
+  // ── commun/RailGuide.jsx (complément L5) ──
+  'cal-rail-etapes',
+  'cal-etape',
+  'cal-etape--etat',
+  'cal-mode-expert',
+  // ── electrique/EtapeElectrique.jsx (complément L5) ──
+  'cal-etape-electrique-ecran',
+  'cal-electrique-synthese',
+  'cal-electrique-section',
+  // ── PhotoSiteCalage.jsx (complément L5) ──
+  'cal-photo-calage-monde',
 ]
 
 function readDoc() {

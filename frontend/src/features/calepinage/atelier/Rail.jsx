@@ -5,7 +5,9 @@ import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from
 import { HelpTip } from '../../../ui/HelpTip'
 import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
-import RailGuide from './RailGuide'
+// Le bandeau des étapes du mode guidé n'est PAS un onglet : il vit hors d'atelier/ (CALX383).
+// Le bandeau d'étapes du mode guidé n'est pas un onglet : il vit hors d'atelier/ (CALX383).
+import RailGuide from '../commun/RailGuide'
 import { PARAM_MODE, useModeExpert } from './modeExpert'
 import { PARAM_CHAMP, useOuvrirChamp } from './ouvrirChamp'
 import {

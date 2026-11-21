@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+#: Chemin du dépôt, pas une mesure : ``parents[1]`` = le paquet ``apps/calepinage`` (ce
+#: module vit dans ``services/``), où ``data/profil_depart.json`` est committé.
 FICHIER_PROFIL = Path(__file__).resolve().parents[1] / 'data' / 'profil_depart.json'
 
 #: La fin de toute référence écrite : la valeur est PUBLIÉE, pas mesurée.

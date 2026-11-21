@@ -19,6 +19,8 @@ from . import nombre_tel_que_servi
 
 __all__ = ['CSS_SECTION', 'MENTION_ECART_INFORMATIF', 'html_de_section']
 
+#: Chemin du dépôt, pas une mesure : ``parents[2]`` = le paquet ``apps/calepinage`` (ce
+#: module vit dans ``services/rapport/``), où ACAL474 a figé ``donnees/banc_validation.json``.
 BANC = (pathlib.Path(__file__).resolve().parents[2] / 'donnees'
         / 'banc_validation.json')
 

@@ -106,7 +106,7 @@ def transposer_serie_horizontale(serie, plan, contexte):
     instants, zeniths, azimuts = [], [], []
     for point in points:
         instant = datetime.datetime(point['annee'], point['mois'], point['jour'],
-                                    point['heure']) + vers_utc
+                                    point['heure'], tzinfo=datetime.timezone.utc) + vers_utc
         soleil = position_solaire(
             float(lat), float(lon), annee=instant.year, mois=instant.month,
             jour=instant.day, heure_utc=instant.hour + instant.minute / 60.0)
@@ -165,7 +165,7 @@ def transposer_serie_horizontale(serie, plan, contexte):
             if not math.isfinite(valeur):
                 raise EntreeInvalide(
                     f'La transposition ({modele}) ne rend pas de nombre pour '
-                    f'« {nous} » à {instants[rang].isoformat()} UTC.',
+                    f"« {nous} » à {instants[rang].strftime('%Y-%m-%dT%H:%M:%S')} UTC.",
                     champ='meteo.transposition')
             transpose[nous] = valeur
         transpose['t2m_c'] = point.get('t2m_c')

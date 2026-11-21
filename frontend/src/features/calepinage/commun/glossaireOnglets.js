@@ -41,4 +41,6 @@ export const GLOSSAIRE_ONGLETS = {
   'decisions-electriques': 'Voir les choix électriques faits et leurs raisons.',
   variantes: 'Comparer plusieurs variantes de l’installation côte à côte.',
   photos: 'Ajouter et caler les photos du site.',
+  optimiser: 'Comparer des inclinaisons, orientations et ratios DC/AC sur un pan, puis appliquer le meilleur.',
+  'detection-toit': 'Faire proposer un contour de toit à partir d’une image, à confirmer avant de le poser.',
 }

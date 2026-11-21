@@ -43,7 +43,7 @@ def deduire_direct_diffus(ghi, zeniths_deg, instants_utc, modele):
     Args:
         ghi: global horizontal (W/m2), un par instant.
         zeniths_deg: zénith du soleil au milieu de l'heure (degrés).
-        instants_utc: les instants (``datetime`` UTC naïfs) de ces zéniths.
+        instants_utc: les instants (``datetime`` UTC, avec ``tzinfo``) de ces zéniths.
         modele: ``'erbs'`` ou ``'disc'``.
 
     Raises:
@@ -73,6 +73,6 @@ def deduire_direct_diffus(ghi, zeniths_deg, instants_utc, modele):
         if not (math.isfinite(dni[rang]) and math.isfinite(dhi[rang])):
             raise EntreeInvalide(
                 f'La décomposition ({modele}) ne rend pas de nombre à '
-                f'{instants_utc[rang].isoformat()} UTC (global {glob[rang]:g} '
+                f"{instants_utc[rang].strftime('%Y-%m-%dT%H:%M:%S')} UTC (global {glob[rang]:g} "
                 f'W/m², zénith {zenith[rang]:.2f}°).', champ=CHAMP_MODELE)
     return [float(v) for v in dni], [float(v) for v in dhi]

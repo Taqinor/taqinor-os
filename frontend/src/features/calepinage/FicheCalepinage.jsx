@@ -6,6 +6,7 @@ import { urlFichierCalepinage } from '../../lib/calage/fichierCalepinage'
 import AssigneePicker from '../../components/AssigneePicker'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 import customFieldsApi from '../../api/customFieldsApi'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import SelecteurRattachement from './SelecteurRattachement'
 import useUtilisateursAssignables from './useUtilisateursAssignables'
 import { formatDateTime } from '../../lib/format'
@@ -182,9 +183,8 @@ export default function FicheCalepinage({ detail, onRelire }) {
   const [libellesChamps, setLibellesChamps] = useState({})
   useEffect(() => {
     let vivant = true
-    customFieldsApi.getDefs('calepinage').then((r) => {
+    lireToutesLesPages((p) => customFieldsApi.getDefs('calepinage', p)).then((defs) => {
       if (!vivant) return
-      const defs = r?.data?.results ?? r?.data ?? []
       setLibellesChamps(Object.fromEntries(
         defs.filter((d) => d.actif).map((d) => [d.code, d.libelle])))
     }).catch(() => {})
