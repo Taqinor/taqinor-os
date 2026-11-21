@@ -766,7 +766,7 @@ describe('FicheCalepinage — champs personnalisés (ACAL294)', () => {
     // La valeur SERVIE reste affichée telle quelle.
     expect(screen.getByTestId('cal-fiche-custom_data')).toHaveTextContent('toiture_accessible')
     const saisie = await screen.findByTestId('cal-fiche-custom-data-saisie')
-    expect(customFieldsApi.getDefs).toHaveBeenCalledWith('calepinage')
+    expect(customFieldsApi.getDefs).toHaveBeenCalledWith('calepinage', expect.objectContaining({ page: 1 }))
     const champ = within(saisie).getByRole('textbox')
     await userEvent.type(champ, 'T-1234')
     await userEvent.click(screen.getByTestId('cal-fiche-custom-data-enregistrer'))

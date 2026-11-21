@@ -1,4 +1,4 @@
-import { ETAPES } from './parcoursGuide'
+import { ETAPES } from '../atelier/parcoursGuide'
 
 /* ============================================================================
    ACAL393 — LES CINQ BOUTONS D'ÉTAPE DU PARCOURS GUIDÉ.

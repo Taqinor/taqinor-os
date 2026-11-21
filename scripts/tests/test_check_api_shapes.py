@@ -1406,12 +1406,13 @@ class CalepinageApiGoldenTests(unittest.TestCase):
 
     FACADE = ROOT / "frontend" / "src" / "api" / "calepinageApi.js"
     # ACAL242 — + les quatre portes ``gabarits`` (liste, creer, modifier,
-    # supprimer) que la garde résout.
+    # supprimer) que la garde résout. ACAL403 — + les trois portes du profil
+    # de départ (lire, appliquer, retirer), résolues elles aussi.
     RESOLUES = [
-        "calculer", "comparerProjets", "creer", "depuisLead",
+        "appliquerProfilDepart", "calculer", "comparerProjets", "creer", "depuisLead",
         "depuisModele", "enregistrerProfilsTypes", "get", "importerProjet",
-        "liste", "modeles", "modifier", "pose", "profilsTypes",
-        "recalculerSimulations", "resultat", "suggererPentesIGN",
+        "liste", "modeles", "modifier", "pose", "profilDepart", "profilsTypes",
+        "recalculerSimulations", "resultat", "retirerProfilDepart", "suggererPentesIGN",
         "suggestionPenteDisponible", "supprimer", "update", "zonesLestage",
     ]
 

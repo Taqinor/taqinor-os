@@ -27,8 +27,17 @@ export function baseServeur(hashBase) {
   return !hashBase || hashBase === AUCUN_DOCUMENT ? '' : String(hashBase)
 }
 
-const silencieux = (promesse) => {
+/* Envoi au mieux : un échec (levé tout de suite ou rejeté plus tard) ne
+   touche jamais l'écriture locale, qui a déjà eu lieu. */
+const silencieux = (appel) => {
+  let promesse
+  try { promesse = appel() } catch (err) { promesse = Promise.reject(err) }
   Promise.resolve(promesse).catch(() => {})
+}
+
+/** Le brouillon local `{layout, horodatage}`, ou `null` s'il est illisible. */
+function lireBrouillonLocal(valeur) {
+  try { return JSON.parse(valeur) } catch { return null }
 }
 
 /**
@@ -47,18 +56,17 @@ export function creerStockageMiroir({ base, calepinageId, envoyer, effacer }) {
     setItem(cle, valeur) {
       local.setItem(cle, valeur)
       if (!estBrouillon(cle) || typeof envoyer !== 'function') return
-      try {
-        const { layout, horodatage } = JSON.parse(valeur)
-        const hashBase = cle.slice(cle.lastIndexOf(':') + 1)
-        silencieux(envoyer(calepinageId, { layout, horodatage, base_empreinte: baseServeur(hashBase) }))
-      } catch {
-        // Un brouillon illisible reste local : le serveur n'en reçoit rien.
-      }
+      // Un brouillon illisible reste local : le serveur n'en reçoit rien.
+      const brouillon = lireBrouillonLocal(valeur)
+      if (!brouillon) return
+      const { layout, horodatage } = brouillon
+      const hashBase = cle.slice(cle.lastIndexOf(':') + 1)
+      silencieux(() => envoyer(calepinageId, { layout, horodatage, base_empreinte: baseServeur(hashBase) }))
     },
     removeItem(cle) {
       local.removeItem(cle)
       if (estBrouillon(cle) && typeof effacer === 'function') {
-        try { silencieux(effacer(calepinageId)) } catch { /* best-effort */ }
+        silencieux(() => effacer(calepinageId))
       }
     },
     get length() { return local.length },

@@ -30,10 +30,10 @@ function syntheseElectrique(parcours) {
   return 'Aucun point à régler pour l’instant'
 }
 
-export default function EtapeElectrique({
-  calepinageId = null, builderApi = null, onRecharger = null, lectureSeule = false,
-  documentVivant = null, parcours = null, ouvert = null,
-}) {
+/* Les props du rail (calepinageId, builderApi, onRecharger, lectureSeule,
+   documentVivant) sont relayées TELLES QUELLES à chaque section : `parcours`
+   et `ouvert` ne concernent que l'étape. */
+export default function EtapeElectrique({ parcours = null, ouvert = null, ...propsDuRail }) {
   const ouvertes = new Set()
   if (SECTIONS_ELECTRIQUES.some((s) => s.cle === ouvert)) ouvertes.add(ouvert)
   if (parcours?.etats?.electrique === 'bloque') ouvertes.add('verdict-electrique')
@@ -53,13 +53,7 @@ export default function EtapeElectrique({
                 <ErrorBoundary fallback={<p role="alert" className="text-sm text-destructive">{`La section « ${libelle} » n’a pas pu s’afficher.`}</p>}>
                   <Suspense fallback={<Spinner />}>
                     {Composant && (
-                      <Composant
-                        calepinageId={calepinageId}
-                        builderApi={builderApi}
-                        onRecharger={onRecharger}
-                        lectureSeule={lectureSeule}
-                        documentVivant={documentVivant}
-                      />
+                      <Composant {...propsDuRail} />
                     )}
                   </Suspense>
                 </ErrorBoundary>

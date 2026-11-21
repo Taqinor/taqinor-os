@@ -25,12 +25,13 @@ export function lireModeExpert(utilisateurId, stockage) {
   }
 }
 
+/** `true` si le choix est mémorisé ; `false` si le stockage est refusé (navigation
+    privée, quota) — l'écran fonctionne quand même, sans mémoire. */
 export function ecrireModeExpert(utilisateurId, expert, stockage) {
   try {
     (stockage ?? stockageDefaut())?.setItem(cleModeExpert(utilisateurId), expert ? '1' : '0')
-  } catch {
-    // stockage refusé : l'écran fonctionne quand même, sans mémoire
-  }
+    return true
+  } catch { return false }
 }
 
 /** `[expert, basculer]` — `forceUrl` (`?mode=expert`) impose l'expert sans l'écrire. */

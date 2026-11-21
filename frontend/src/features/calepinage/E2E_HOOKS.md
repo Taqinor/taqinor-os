@@ -824,3 +824,47 @@ retiré plus un hook ajouté.
 | `cal-detection-proposition` | détection du toit : la proposition « à confirmer ». |
 | `cal-detection-refus` | détection du toit : refus de pose d’un contour, avec son motif. |
 | `cal-detection-utiliser` | détection du toit : utiliser ce contour comme pan. |
+
+## BarreEnregistrement — complément L5 (`atelier/BarreEnregistrement.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-enregistrer-calepinage` | barre d’enregistrement collante de l’atelier (ACAL399). |
+| `cal-etat-enregistrement` | barre d’enregistrement : « Modifications non enregistrées » ou « Enregistré à HH:MM ». |
+| `cal-erreur-enregistrement` | barre d’enregistrement : erreur d’enregistrement affichée. |
+
+## PanneauPertesUnifie — complément L5 (`atelier/PanneauPertesUnifie.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-pertes-unifie` | onglet Pertes unifié : postes et diagramme sur une page (ACAL396). |
+
+## AtelierPanneaux — complément L5 (`AtelierPanneaux.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-conception-auto` | atelier : bouton « Conception automatique » (ACAL421). |
+| `cal-conception-auto-message` | atelier : message d’état de la conception automatique. |
+
+## RailGuide — complément L5 (`commun/RailGuide.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-rail-etapes` | rail guidé : bandeau des étapes du calepinage (ACAL393). |
+| `cal-etape` | rail guidé : bouton d’une étape (suffixe = clé de l’étape). |
+| `cal-etape--etat` | rail guidé : état d’une étape (gabarit `cal-etape-<clé>-etat`). |
+| `cal-mode-expert` | rail guidé : interrupteur « Mode expert » (ACAL394). |
+
+## EtapeElectrique — complément L5 (`electrique/EtapeElectrique.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-etape-electrique-ecran` | étape Électrique en une page (ACAL395). |
+| `cal-electrique-synthese` | étape Électrique : synthèse « Conforme » ou « n points à régler ». |
+| `cal-electrique-section` | étape Électrique : section repliable (suffixe = clé de l’onglet). |
+
+## PhotoSiteCalage — complément L5 (`PhotoSiteCalage.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-photo-calage-monde` | calage photo : import d’un fichier de calage monde (.jgw, .pgw, .wld). |

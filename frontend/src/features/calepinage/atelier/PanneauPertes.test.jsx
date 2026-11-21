@@ -309,9 +309,9 @@ describe('ACAL396 — `onEnregistre` après un enregistrement réussi, jamais ap
     enregistrerPertes.mockResolvedValue({ data: {} })
     // Réponses du CONTRAT `calepinage_resultat.json` (jamais un mock à la main) :
     // à jour, puis périmée après l'enregistrement du poste.
-    const servi = exempleContrat('calepinage', 'calepinage_resultat', 'exemple')
-    resultat.mockResolvedValueOnce({ data: { ...servi, simulation_perimee: false } })
-      .mockResolvedValue({ data: { ...servi, simulation_perimee: true } })
+    const aJour = exempleContrat('calepinage', 'calepinage_resultat', 'exemple')
+    const perimee = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime')
+    resultat.mockResolvedValueOnce({ data: aJour }).mockResolvedValue({ data: perimee })
     render(<MemoryRouter><PanneauPertesUnifie calepinageId={1} /></MemoryRouter>)
     await screen.findByTestId('cal143-panneau')
     expect(screen.queryByTestId('calx48-perime')).toBeNull()
