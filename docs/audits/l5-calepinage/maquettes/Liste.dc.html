@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Calepinages — liste</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap">
+<style>
+body{margin:0}
+a{color:#2342b5}a:hover{color:#0f1c54}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #f6f8fc; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 14px; overflow: hidden">
+
+  <header style="height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 24px; background: #ffffff; border-bottom: 1px solid #dde3f0">
+    <a href="#" style="display: flex; align-items: center; gap: 8px; min-height: 44px; color: #5a6488; text-decoration: none; font-size: 14px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      Ventes
+    </a>
+    <span aria-hidden="true" style="color: #b8c1d9">/</span>
+    <span style="font-weight: 600; font-size: 14px">Calepinages</span>
+  </header>
+
+  <main style="flex: 1; min-height: 0; padding: 24px 48px; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; align-items: center; gap: 16px">
+      <div style="flex: 1; display: flex; align-items: baseline; gap: 12px">
+        <h1 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 28px">Calepinages</h1>
+        <span style="font-size: 14px; color: #5a6488">6 projets</span>
+      </div>
+      <div style="position: relative; display: flex; align-items: center; gap: 8px; width: 360px; height: 44px; padding: 0 12px; box-sizing: border-box; background: #ffffff; border: 1px solid #dde3f0; border-radius: 10px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a6488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <label for="l-q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Rechercher un calepinage</label>
+        <input id="l-q" type="search" placeholder="Client, ville ou lead" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: 400 14px 'Hanken Grotesk', sans-serif; color: #0c1335">
+      </div>
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 10px; background: #e8b54a; color: #1a1505; font-weight: 600; font-size: 14px; text-decoration: none">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Nouveau calepinage
+      </a>
+    </div>
+
+    <div role="group" aria-label="Filtrer par état" style="display: flex; align-items: center; gap: 8px">
+      <button type="button" aria-pressed="true" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: #0c1335; color: #ffffff; font: 600 14px 'Hanken Grotesk', sans-serif">Tous<span style="font-weight: 500; color: #cfd6ea">6</span></button>
+      <button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 1px solid #dde3f0; border-radius: 999px; background: #ffffff; color: #0c1335; font: 500 14px 'Hanken Grotesk', sans-serif">Brouillon<span style="color: #5a6488">2</span></button>
+      <button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 1px solid #dde3f0; border-radius: 999px; background: #ffffff; color: #0c1335; font: 500 14px 'Hanken Grotesk', sans-serif">Prêt à envoyer<span style="color: #5a6488">1</span></button>
+      <button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 1px solid #dde3f0; border-radius: 999px; background: #ffffff; color: #0c1335; font: 500 14px 'Hanken Grotesk', sans-serif">Devis envoyé<span style="color: #5a6488">2</span></button>
+      <button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 1px solid #dde3f0; border-radius: 999px; background: #ffffff; color: #0c1335; font: 500 14px 'Hanken Grotesk', sans-serif">Signé<span style="color: #5a6488">1</span></button>
+      <div style="width: 1px; height: 28px; background: #dde3f0; margin: 0 4px"></div>
+      <button type="button" aria-pressed="false" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 1px solid #dde3f0; border-radius: 999px; background: #ffffff; color: #0c1335; font: 500 14px 'Hanken Grotesk', sans-serif"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>Mes calepinages</button>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 20px">
+      <a href="Main.dc.html" style="display: flex; flex-direction: column; min-height: 0; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; overflow: hidden; color: #0c1335; text-decoration: none">
+        <svg role="img" aria-label="Vue de dessus du toit, 12 panneaux" viewBox="0 0 400 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 140px; flex: none"><rect width="400" height="150" fill="#dfe5d6"/><rect x="0" y="118" width="400" height="32" fill="#c9ced8"/><circle cx="60" cy="40" r="18" fill="#7fa56b"/><circle cx="340" cy="50" r="14" fill="#7fa56b"/><path d="M130 20h140v92H130z" fill="#b9856a"/><path d="M130 20h140v46H130z" fill="#c59378"/><path d="M130 66h140" stroke="#8f6450" stroke-width="2"/><path d="M130 20h140v92H130z" fill="none" stroke="#e8b54a" stroke-width="2"/><rect x="226" y="30" width="14" height="14" fill="#64748b" stroke="#334155" stroke-width="1.2"/><g fill="#1c2846" stroke="#c9d3e6" stroke-width=".8"><rect x="139" y="69" width="19" height="19"/><rect x="160" y="69" width="19" height="19"/><rect x="181" y="69" width="19" height="19"/><rect x="202" y="69" width="19" height="19"/><rect x="223" y="69" width="19" height="19"/><rect x="244" y="69" width="19" height="19"/><rect x="139" y="90" width="19" height="19"/><rect x="160" y="90" width="19" height="19"/><rect x="181" y="90" width="19" height="19"/><rect x="202" y="90" width="19" height="19"/><rect x="223" y="90" width="19" height="19"/><rect x="244" y="90" width="19" height="19"/></g></svg>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-top: 1px solid #dde3f0">
+          <span style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+            <span style="display: flex; flex-direction: column"><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px">Villa Bennani</span><span style="font-size: 14px; color: #5a6488">Casablanca</span></span>
+            <span style="flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #eef1f8; color: #3d4566; font-weight: 600; font-size: 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="3 3" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>Brouillon</span>
+          </span>
+          <span style="display: flex; gap: 8px; font-size: 14px"><span style="font-weight: 600">6,96 kWc</span><span style="color: #5a6488">·</span><span>12 panneaux</span><span style="color: #5a6488">·</span><span>11 480 kWh/an</span></span>
+          <span style="margin-top: auto; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #5a6488">
+            <span style="flex: 1; display: flex; align-items: center; gap: 12px"><span>Modifié aujourd'hui à 14:41</span><span style="display: flex; align-items: center; gap: 5px; font-weight: 600; color: #96650b"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>1 point à régler</span></span>
+            <span style="width: 28px; height: 28px; border-radius: 14px; background: #eef1f8; color: #0c1335; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px">HB</span>
+          </span>
+        </span>
+      </a>
+      <a href="#" style="display: flex; flex-direction: column; min-height: 0; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; overflow: hidden; color: #0c1335; text-decoration: none">
+        <svg role="img" aria-label="Vue de dessus du toit, 8 panneaux" viewBox="0 0 400 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 140px; flex: none"><rect width="400" height="150" fill="#dfe5d6"/><rect x="0" y="118" width="400" height="32" fill="#c9ced8"/><circle cx="80" cy="100" r="16" fill="#7fa56b"/><circle cx="320" cy="30" r="16" fill="#7fa56b"/><path d="M140 18h120v50h-50v50h-70z" fill="#c59378"/><path d="M140 18h120v50h-50v50h-70z" fill="none" stroke="#e8b54a" stroke-width="2"/><g fill="#1c2846" stroke="#c9d3e6" stroke-width=".8"><rect x="150" y="26" width="19" height="17"/><rect x="171" y="26" width="19" height="17"/><rect x="192" y="26" width="19" height="17"/><rect x="213" y="26" width="19" height="17"/><rect x="150" y="45" width="19" height="17"/><rect x="171" y="45" width="19" height="17"/><rect x="192" y="45" width="19" height="17"/><rect x="213" y="45" width="19" height="17"/></g></svg>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-top: 1px solid #dde3f0">
+          <span style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+            <span style="display: flex; flex-direction: column"><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px">Villa Tazi</span><span style="font-size: 14px; color: #5a6488">Rabat</span></span>
+            <span style="flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #e3f1e6; color: #1f5a2c; font-weight: 600; font-size: 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/></svg>Prêt à envoyer</span>
+          </span>
+          <span style="display: flex; gap: 8px; font-size: 14px"><span style="font-weight: 600">4,64 kWc</span><span style="color: #5a6488">·</span><span>8 panneaux</span><span style="color: #5a6488">·</span><span>7 420 kWh/an</span></span>
+          <span style="margin-top: auto; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #5a6488">
+            <span style="flex: 1; display: flex; align-items: center; gap: 12px"><span>Modifié aujourd'hui à 11:05</span></span>
+            <span style="width: 28px; height: 28px; border-radius: 14px; background: #eef1f8; color: #0c1335; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px">NA</span>
+          </span>
+        </span>
+      </a>
+      <a href="#" style="display: flex; flex-direction: column; min-height: 0; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; overflow: hidden; color: #0c1335; text-decoration: none">
+        <svg role="img" aria-label="Vue de dessus du toit, 10 panneaux" viewBox="0 0 400 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 140px; flex: none"><rect width="400" height="150" fill="#dfe5d6"/><rect x="0" y="118" width="400" height="32" fill="#c9ced8"/><circle cx="70" cy="60" r="20" fill="#7fa56b"/><circle cx="330" cy="90" r="15" fill="#7fa56b"/><path d="M120 18h160v96H120z" fill="#b9856a"/><path d="M120 18l40 48h80l40-48z" fill="#c59378"/><path d="M120 114l40-48M280 114l-40-48M160 66h80" stroke="#8f6450" stroke-width="2" fill="none"/><path d="M120 18h160v96H120z" fill="none" stroke="#e8b54a" stroke-width="2"/><g fill="#1c2846" stroke="#c9d3e6" stroke-width=".8"><rect x="149" y="72" width="19" height="18"/><rect x="170" y="72" width="19" height="18"/><rect x="191" y="72" width="19" height="18"/><rect x="212" y="72" width="19" height="18"/><rect x="233" y="72" width="19" height="18"/><rect x="149" y="92" width="19" height="18"/><rect x="170" y="92" width="19" height="18"/><rect x="191" y="92" width="19" height="18"/><rect x="212" y="92" width="19" height="18"/><rect x="233" y="92" width="19" height="18"/></g></svg>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-top: 1px solid #dde3f0">
+          <span style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+            <span style="display: flex; flex-direction: column"><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px">Maison Berrada</span><span style="font-size: 14px; color: #5a6488">Fès</span></span>
+            <span style="flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #e8edfb; color: #1f3aa6; font-weight: 600; font-size: 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></svg>Devis envoyé</span>
+          </span>
+          <span style="display: flex; gap: 8px; font-size: 14px"><span style="font-weight: 600">5,80 kWc</span><span style="color: #5a6488">·</span><span>10 panneaux</span><span style="color: #5a6488">·</span><span>9 400 kWh/an</span></span>
+          <span style="margin-top: auto; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #5a6488">
+            <span style="flex: 1; display: flex; align-items: center; gap: 12px"><span>Modifié hier à 17:20</span></span>
+            <span style="width: 28px; height: 28px; border-radius: 14px; background: #eef1f8; color: #0c1335; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px">HB</span>
+          </span>
+        </span>
+      </a>
+      <a href="#" style="display: flex; flex-direction: column; min-height: 0; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; overflow: hidden; color: #0c1335; text-decoration: none">
+        <svg role="img" aria-label="Vue de dessus du toit, 30 panneaux" viewBox="0 0 400 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 140px; flex: none"><rect width="400" height="150" fill="#dfe5d6"/><rect x="0" y="118" width="400" height="32" fill="#c9ced8"/><circle cx="40" cy="30" r="14" fill="#7fa56b"/><rect x="70" y="12" width="260" height="104" fill="#b7bdc9"/><rect x="70" y="12" width="260" height="104" fill="none" stroke="#e8b54a" stroke-width="2"/><g fill="#1c2846" stroke="#c9d3e6" stroke-width=".8"><rect x="84" y="22" width="19" height="22"/><rect x="105" y="22" width="19" height="22"/><rect x="126" y="22" width="19" height="22"/><rect x="147" y="22" width="19" height="22"/><rect x="168" y="22" width="19" height="22"/><rect x="189" y="22" width="19" height="22"/><rect x="210" y="22" width="19" height="22"/><rect x="231" y="22" width="19" height="22"/><rect x="252" y="22" width="19" height="22"/><rect x="273" y="22" width="19" height="22"/></g><g fill="#1c2846" stroke="#c9d3e6" stroke-width=".8"><rect x="84" y="54" width="19" height="22"/><rect x="105" y="54" width="19" height="22"/><rect x="126" y="54" width="19" height="22"/><rect x="147" y="54" width="19" height="22"/><rect x="168" y="54" width="19" height="22"/><rect x="189" y="54" width="19" height="22"/><rect x="210" y="54" width="19" height="22"/><rect x="231" y="54" width="19" height="22"/><rect x="252" y="54" width="19" height="22"/><rect x="273" y="54" width="19" height="22"/></g><g fill="#1c2846" stroke="#c9d3e6" stroke-width=".8"><rect x="84" y="86" width="19" height="22"/><rect x="105" y="86" width="19" height="22"/><rect x="126" y="86" width="19" height="22"/><rect x="147" y="86" width="19" height="22"/><rect x="168" y="86" width="19" height="22"/><rect x="189" y="86" width="19" height="22"/><rect x="210" y="86" width="19" height="22"/><rect x="231" y="86" width="19" height="22"/><rect x="252" y="86" width="19" height="22"/><rect x="273" y="86" width="19" height="22"/></g></svg>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-top: 1px solid #dde3f0">
+          <span style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+            <span style="display: flex; flex-direction: column"><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px">Boulangerie Amrani</span><span style="font-size: 14px; color: #5a6488">Marrakech</span></span>
+            <span style="flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #0c1335; color: #ffffff; font-weight: 600; font-size: 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l2.6 2 3.3-.2.9 3.2 2.7 1.9-1.2 3.1 1.2 3.1-2.7 1.9-.9 3.2-3.3-.2L12 22l-2.6-2-3.3.2-.9-3.2-2.7-1.9 1.2-3.1L2.5 8.9l2.7-1.9.9-3.2 3.3.2z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>Signé</span>
+          </span>
+          <span style="display: flex; gap: 8px; font-size: 14px"><span style="font-weight: 600">17,40 kWc</span><span style="color: #5a6488">·</span><span>30 panneaux</span><span style="color: #5a6488">·</span><span>29 580 kWh/an</span></span>
+          <span style="margin-top: auto; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #5a6488">
+            <span style="flex: 1; display: flex; align-items: center; gap: 12px"><span>Modifié 18 novembre</span></span>
+            <span style="width: 28px; height: 28px; border-radius: 14px; background: #eef1f8; color: #0c1335; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px">YK</span>
+          </span>
+        </span>
+      </a>
+      <a href="#" style="display: flex; flex-direction: column; min-height: 0; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; overflow: hidden; color: #0c1335; text-decoration: none">
+        <svg role="img" aria-label="Vue de dessus du toit, 14 panneaux" viewBox="0 0 400 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 140px; flex: none"><rect width="400" height="150" fill="#dfe5d6"/><rect x="0" y="118" width="400" height="32" fill="#c9ced8"/><circle cx="50" cy="90" r="18" fill="#7fa56b"/><circle cx="355" cy="40" r="16" fill="#7fa56b"/><path d="M110 18h180v94H110z" fill="#b9856a"/><path d="M110 18h180v47H110z" fill="#c59378"/><path d="M110 65h180" stroke="#8f6450" stroke-width="2"/><path d="M110 18h180v94H110z" fill="none" stroke="#e8b54a" stroke-width="2"/><g fill="#1c2846" stroke="#c9d3e6" stroke-width=".8"><rect x="127" y="69" width="19" height="18"/><rect x="148" y="69" width="19" height="18"/><rect x="169" y="69" width="19" height="18"/><rect x="190" y="69" width="19" height="18"/><rect x="211" y="69" width="19" height="18"/><rect x="232" y="69" width="19" height="18"/><rect x="253" y="69" width="19" height="18"/><rect x="127" y="89" width="19" height="18"/><rect x="148" y="89" width="19" height="18"/><rect x="169" y="89" width="19" height="18"/><rect x="190" y="89" width="19" height="18"/><rect x="211" y="89" width="19" height="18"/><rect x="232" y="89" width="19" height="18"/><rect x="253" y="89" width="19" height="18"/></g></svg>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-top: 1px solid #dde3f0">
+          <span style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+            <span style="display: flex; flex-direction: column"><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px">Villa Idrissi</span><span style="font-size: 14px; color: #5a6488">Agadir</span></span>
+            <span style="flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #e8edfb; color: #1f3aa6; font-weight: 600; font-size: 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></svg>Devis envoyé</span>
+          </span>
+          <span style="display: flex; gap: 8px; font-size: 14px"><span style="font-weight: 600">8,12 kWc</span><span style="color: #5a6488">·</span><span>14 panneaux</span><span style="color: #5a6488">·</span><span>14 210 kWh/an</span></span>
+          <span style="margin-top: auto; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #5a6488">
+            <span style="flex: 1; display: flex; align-items: center; gap: 12px"><span>Modifié 17 novembre</span></span>
+            <span style="width: 28px; height: 28px; border-radius: 14px; background: #eef1f8; color: #0c1335; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px">NA</span>
+          </span>
+        </span>
+      </a>
+      <a href="#" style="display: flex; flex-direction: column; min-height: 0; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px; overflow: hidden; color: #0c1335; text-decoration: none">
+        <svg role="img" aria-label="Vue de dessus du toit, 6 panneaux" viewBox="0 0 400 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 140px; flex: none"><rect width="400" height="150" fill="#dfe5d6"/><rect x="0" y="118" width="400" height="32" fill="#c9ced8"/><circle cx="90" cy="40" r="16" fill="#7fa56b"/><circle cx="310" cy="92" r="18" fill="#7fa56b"/><path d="M150 26h100v84H150z" fill="#b9856a"/><path d="M150 26h100v42H150z" fill="#c59378"/><path d="M150 68h100" stroke="#8f6450" stroke-width="2"/><path d="M150 26h100v84H150z" fill="none" stroke="#e8b54a" stroke-width="2" stroke-dasharray="6 4"/><g fill="#1c2846" stroke="#c9d3e6" stroke-width=".8"><rect x="157" y="78" width="13" height="22"/><rect x="172" y="78" width="13" height="22"/><rect x="187" y="78" width="13" height="22"/><rect x="202" y="78" width="13" height="22"/><rect x="217" y="78" width="13" height="22"/><rect x="232" y="78" width="13" height="22"/></g></svg>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-top: 1px solid #dde3f0">
+          <span style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+            <span style="display: flex; flex-direction: column"><span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px">Maison Lahlou</span><span style="font-size: 14px; color: #5a6488">Tanger</span></span>
+            <span style="flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #eef1f8; color: #3d4566; font-weight: 600; font-size: 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="3 3" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>Brouillon</span>
+          </span>
+          <span style="display: flex; gap: 8px; font-size: 14px"><span style="font-weight: 600">3,48 kWc</span><span style="color: #5a6488">·</span><span>6 panneaux</span><span style="color: #5a6488">·</span><span>5 390 kWh/an</span></span>
+          <span style="margin-top: auto; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #5a6488">
+            <span style="flex: 1; display: flex; align-items: center; gap: 12px"><span>Modifié 14 novembre</span></span>
+            <span style="width: 28px; height: 28px; border-radius: 14px; background: #eef1f8; color: #0c1335; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px">YK</span>
+          </span>
+        </span>
+      </a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

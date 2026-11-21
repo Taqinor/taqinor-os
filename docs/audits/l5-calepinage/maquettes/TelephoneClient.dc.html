@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Téléphone — montrer au client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap">
+<style>
+body{margin:0}
+a{color:#2342b5}a:hover{color:#0f1c54}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #f6f8fc; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 16px; overflow: hidden">
+
+  <!-- Vue 3D du toit -->
+  <div style="position: relative; height: 464px; flex: none; overflow: hidden">
+    <svg role="img" aria-label="La villa vue de trois quarts : 12 panneaux bleu nuit posés sur le pan sud du toit, soleil de midi en été" viewBox="0 0 390 464" style="position: absolute; inset: 0; width: 100%; height: 100%">
+      <defs>
+        <linearGradient id="tc-ciel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcd6ef"/><stop offset="1" stop-color="#eef2f2"/></linearGradient>
+        <linearGradient id="tc-sol" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d6e1c6"/><stop offset="1" stop-color="#c3d2b0"/></linearGradient>
+      </defs>
+      <rect width="390" height="464" fill="url(#tc-ciel)"/>
+      <circle cx="318" cy="64" r="30" fill="#f3d36a" opacity=".35"/>
+      <circle cx="318" cy="64" r="18" fill="#f3d36a"/>
+      <path d="M0 300C90 288 250 286 390 296V464H0z" fill="url(#tc-sol)"/>
+      <g transform="translate(-14 -60) scale(1.15)">
+        <path d="M330 320l44-12v78l-44 14z" fill="#3f4a36" opacity=".16"/>
+        <circle cx="26" cy="370" r="24" fill="#7fa56b"/><rect x="23" y="388" width="6" height="22" fill="#7b5e44"/>
+        <circle cx="352" cy="388" r="14" fill="#86ac72"/>
+        <path d="M60 310L250 350V430L60 390z" fill="#efe6d8" stroke="#b9a98f" stroke-width="1"/>
+        <path d="M250 350L330 320V400L250 430z" fill="#d9cdb8" stroke="#b9a98f" stroke-width="1"/>
+        <g fill="#9fc7d9" stroke="#7a8fa0" stroke-width="1">
+          <path d="M88.5 336L117 342V366L88.5 360z"/>
+          <path d="M164.5 352L193 358V382L164.5 376z"/>
+          <path d="M276 360L300 351V375L276 384z"/>
+        </g>
+        <path d="M208.2 377.2L227.2 381.2V425.2L208.2 421.2z" fill="#8f6450"/>
+        <rect x="236" y="236" width="15" height="36" fill="#8a7f74" stroke="#5d544c" stroke-width="1"/>
+        <rect x="234" y="233" width="19" height="5" fill="#6d645b"/>
+        <path d="M250 350L330 320L290 275z" fill="#e3d8c4" stroke="#b9a98f" stroke-width="1"/>
+        <path d="M60 310L250 350L290 275L100 235z" fill="#b9856a" stroke="#8f6450" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M100 235L290 275" stroke="#7d5644" stroke-width="3" stroke-linecap="round"/>
+        <g fill="#1c2846" stroke="#c9d3e6" stroke-width="1.2" stroke-linejoin="round">
+          <path d="M77.8 302.7L103.4 308.1L117.7 281.4L92.1 276z"/><path d="M105.7 308.6L131.3 314L145.5 287.3L119.9 281.9z"/><path d="M133.6 314.5L159.2 319.9L173.4 293.2L147.8 287.8z"/><path d="M161.4 320.3L187 325.7L201.3 299L175.7 293.6z"/><path d="M189.3 326.2L214.9 331.6L229.1 304.9L203.6 299.5z"/><path d="M217.2 332.1L242.8 337.5L257 310.8L231.4 305.4z"/>
+          <path d="M93 274.2L118.6 279.6L132.9 252.9L107.3 247.5z"/><path d="M120.9 280.1L146.5 285.5L160.7 258.8L135.1 253.4z"/><path d="M148.8 286L174.4 291.4L188.6 264.7L163 259.3z"/><path d="M176.6 291.8L202.2 297.2L216.5 270.5L190.9 265.1z"/><path d="M204.5 297.7L230.1 303.1L244.3 276.4L218.8 271z"/><path d="M232.4 303.6L258 309L272.2 282.3L246.6 276.9z"/>
+        </g>
+        <path d="M60 310L250 350" stroke="#6f4c3c" stroke-width="2" stroke-linecap="round"/>
+      </g>
+    </svg>
+
+    <div style="position: absolute; top: 16px; left: 16px; display: flex; flex-direction: column; padding: 8px 12px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 12px; box-shadow: 0 4px 14px rgba(12,19,53,.12)">
+      <span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px; line-height: 1.2">Villa Bennani</span>
+      <span style="font-size: 12px; color: #5a6488">Casablanca · pan sud</span>
+    </div>
+    <span style="position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: rgba(12,19,53,.82); color: #ffffff; font-size: 12px; white-space: nowrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 11-3-6.7"/><path d="M21 4v5h-5"/></svg>
+      Glissez un doigt pour tourner autour
+    </span>
+  </div>
+
+  <div style="flex: 1; min-height: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px">
+
+    <!-- Barre du soleil -->
+    <div style="display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 8px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px">
+      <button type="button" aria-label="Faire passer la journée" style="flex: none; width: 48px; height: 48px; border: 0; border-radius: 12px; background: #0c1335; color: #ffffff"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 14px; font-weight: 600">21 juin · 12 h</span>
+        <div style="position: relative; height: 6px; border-radius: 3px; background: #eef1f8"><div style="position: absolute; left: 0; top: 0; width: 46%; height: 6px; border-radius: 3px; background: #e8b54a"></div><div style="position: absolute; left: calc(46% - 9px); top: -6px; width: 18px; height: 18px; box-sizing: border-box; border-radius: 9px; background: #ffffff; border: 2px solid #e8b54a"></div></div>
+      </div>
+      <div role="group" aria-label="Saison" style="flex: none; display: flex; padding: 3px; background: #eef1f8; border-radius: 10px">
+        <button type="button" aria-pressed="false" style="height: 44px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #5a6488; font: 500 14px 'Hanken Grotesk', sans-serif">Hiver</button>
+        <button type="button" aria-pressed="true" style="height: 44px; padding: 0 10px; border: 0; border-radius: 8px; background: #ffffff; color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,.12)">Été</button>
+      </div>
+    </div>
+
+    <!-- Trois chiffres -->
+    <div style="display: grid; grid-template-columns: 0.8fr 1.25fr 0.95fr; gap: 8px">
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px">
+        <span style="font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 28px; line-height: 1.1">12</span>
+        <span style="font-size: 14px; line-height: 1.3; color: #5a6488">panneaux</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; background: #0c1335; color: #ffffff; border-radius: 14px">
+        <span style="font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 28px; line-height: 1.1; white-space: nowrap">11 480</span>
+        <span style="font-size: 14px; line-height: 1.3; color: #cfd6ea">kWh par an · estimation</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; background: #ffffff; border: 1px solid #dde3f0; border-radius: 14px">
+        <span style="font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 28px; line-height: 1.1">82 %</span>
+        <span style="font-size: 14px; line-height: 1.3; color: #5a6488">de votre facture</span>
+      </div>
+    </div>
+    <span style="font-size: 12px; line-height: 1.45; color: #5a6488">Estimation pour une année moyenne à Casablanca. Les montants figurent dans le devis.</span>
+  </div>
+
+  <footer style="flex: none; display: flex; gap: 8px; padding: 12px 16px 20px; background: #ffffff; border-top: 1px solid #dde3f0">
+    <a href="Telephone.dc.html" style="flex: none; display: flex; align-items: center; justify-content: center; height: 52px; padding: 0 16px; border: 1px solid #b8c1d9; border-radius: 12px; color: #0c1335; font-weight: 600; text-decoration: none">Retour au relevé</a>
+    <button type="button" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; height: 52px; border: 0; border-radius: 12px; background: #e8b54a; color: #1a1505; font: 600 16px 'Hanken Grotesk', sans-serif">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+      Envoyer le lien
+    </button>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
