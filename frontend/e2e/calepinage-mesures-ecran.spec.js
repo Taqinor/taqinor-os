@@ -173,8 +173,8 @@ test('ACAL478: budget du mode guidé', async ({ page }) => {
   await page.getByTestId('cal-onglet-production').click()
   await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
   for (const cle of ['fiches', 'reglages']) {
-    await expect(page.getByTestId(`cal-onglet-${cle}`), `l'onglet ${cle} ne doit pas être requis avant un premier résultat`)
-      .not.toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator(`[data-testid="cal-onglet-${cle}"][aria-selected="true"]`),
+      `l'onglet ${cle} ne doit pas être requis avant un premier résultat`).toHaveCount(0)
   }
 
   expect(etapes, `le mode guidé compte ${etapes} étapes (budget : 5)`).toBeLessThanOrEqual(5)
