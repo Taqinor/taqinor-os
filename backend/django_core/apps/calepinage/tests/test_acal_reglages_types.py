@@ -60,7 +60,7 @@ class TypesDeclaresTest(SimpleTestCase):
                 with self.subTest(section=section, cle=cle):
                     self.assertIn(cle, TYPES_CLES.get(section, {}))
                     self.assertTrue(TYPES_CLES[section][cle].get('type'))
-        self.assertEqual(total, 37)  # 28 simulation + 9 electrique_societe
+        self.assertEqual(total, 40)  # 31 simulation (+ ACAL455/456/463) + 9 electrique_societe
 
     def test_aucun_type_pour_une_cle_hors_registre(self):
         for section, types in TYPES_CLES.items():
