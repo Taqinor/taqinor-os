@@ -1013,13 +1013,18 @@ def contenu_tiers_du_tour(ctx: Optional[ActionContext]) -> bool:
     return bool(getattr(ctx, "contenu_tiers", None))
 
 
-def noter_message_tiers(ctx: Optional[ActionContext], origine: str) -> None:
+def noter_message_tiers(ctx: Optional[ActionContext], origine: str,
+                        colle: bool = True) -> None:
     """Le MESSAGE de l'utilisateur porte lui-même un texte tiers (texte collé
     ou cité, liste — `relais_copilote.question_porte_un_texte_tiers`) ou une
-    image : marque A5 du tour ET borne serrée des créations de devis."""
+    image : marque A5 du tour ET borne serrée des créations de devis.
+    `colle` (D-COP-5) : texte VRAIMENT collé ou image — les actions directes
+    redeviennent des cartes ; une phrase tapée à virgules n'y suffit pas."""
     noter_contenu_tiers(ctx, origine)
     if ctx is not None:
         ctx.message_tiers = True
+        if colle:
+            ctx.message_colle = True
 
 
 # Revue S2 (copilote v2) — `ventes.devis.composer` / `creer_auto` ÉCRIVENT (un
@@ -1192,12 +1197,12 @@ REFUS_ECRITURES_INTERNES = (
 def action_directe(ctx: Optional[ActionContext], action: dict[str, Any]) -> bool:
     """D-COP-5 (Reda, 21/11/2026) — une action `outward` marquee `directe` par
     le catalogue Django s'execute sans carte, SAUF quand le message de
-    l'utilisateur porte un texte colle ou une image (`message_tiers`) : une
+    l'utilisateur porte un texte VRAIMENT colle ou une image (`message_colle`) : une
     consigne venue d'un tiers ne s'execute jamais sans son doigt. Jamais une
     action `irreversible`."""
     return (bool(action.get("directe"))
             and action.get("risk") == RISK_OUTWARD
-            and not getattr(ctx, "message_tiers", False))
+            and not getattr(ctx, "message_colle", False))
 
 
 def est_ecriture_interne(action: dict[str, Any]) -> bool:

@@ -306,12 +306,28 @@ def question_porte_un_texte_tiers(question) -> bool:
     return len(segments) >= LISTE_COLLEE_SEGMENTS
 
 
+def question_vraiment_collee(question) -> bool:
+    """D-COP-5 — la garde des actions DIRECTES : un texte réellement collé ou
+    cité (long, passage entre guillemets, liste numérotée, au moins trois
+    lignes), jamais une phrase tapée à virgules. Le 21/11 « … facture de 600
+    dirhams, je veux un devis, il s'appelle … » (deux virgules) faisait
+    revenir la création du lead en carte."""
+    texte = question.strip() if isinstance(question, str) else ""
+    if len(texte) > QUESTION_COLLEE_CARACTERES or _PASSAGE_CITE.search(texte):
+        return True
+    if len(_ENTREE_NUMEROTEE.findall(texte)) >= 2:
+        return True
+    return len([ligne for ligne in texte.splitlines() if ligne.strip()]) >= LISTE_COLLEE_SEGMENTS
+
+
 def noter_question_du_tour(ctx, question) -> None:
     """Une liste ou un texte collé dans la question marque le tour (A5) et
-    borne ses créations de devis à une (revue S2)."""
+    borne ses créations de devis à une (revue S2) ; un texte VRAIMENT collé
+    remet aussi en carte les actions directes (D-COP-5)."""
     if ctx is not None and question_porte_un_texte_tiers(question):
         from app.services.action_tools import noter_message_tiers
-        noter_message_tiers(ctx, "question")
+        noter_message_tiers(ctx, "question",
+                            colle=question_vraiment_collee(question))
 
 
 # ── A5 (revue F3 #3) — la marque suit la CONVERSATION ────────────────────────

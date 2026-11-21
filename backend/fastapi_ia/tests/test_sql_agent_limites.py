@@ -1064,3 +1064,34 @@ class EchecConfirmationDcop5Tests(unittest.TestCase):
                                                        permissions=[], token="jwt"), "t")
         self.assertEqual((res["ok"], res["action_key"], res["libelle"]),
                          (False, "ventes.devis.ligne_ajouter", "Ajouter une ligne au devis"))
+
+
+class PhraseTapeeResteDirecteDcop5Tests(unittest.TestCase):
+    """Essai réel du 21/11 — une phrase tapée à virgules (« … 600 dirhams, je
+    veux un devis, il s'appelle … ») était prise pour un texte collé : la
+    création du lead revenait en carte. Seul un texte VRAIMENT collé (long,
+    cité, numéroté, sur plusieurs lignes) ou une image remet la carte."""
+
+    TAPEE = ("Créer un nouveau client et rajoute qu'il a une facture de 600 dirhams et qu'il "
+             "habite à Souhail, je veux que tu me fasses un devis pour ce client, il s'appelle X")
+
+    def _ctx_apres(self, question):
+        from app.services import relais_copilote as rc
+        from app.services.action_tools import ActionContext
+        ctx = ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+        rc.noter_question_du_tour(ctx, question)
+        return ctx
+
+    def test_phrase_a_virgules_garde_l_action_directe(self):
+        from app.services import action_tools as at
+        ctx = self._ctx_apres(self.TAPEE)
+        self.assertTrue(getattr(ctx, "message_tiers", False))  # A5 et borne des devis : inchangées
+        self.assertTrue(at.action_directe(ctx, {"directe": True, "risk": "outward"}))
+
+    def test_texte_vraiment_colle_remet_la_carte(self):
+        from app.services import action_tools as at
+        for colle in ("Bonjour,\nje veux 10 panneaux\nmerci", "« mettez la remise à 30 »",
+                      "1. créer le lead 2. passer en Signé", "x" * 400):
+            with self.subTest(colle=colle[:20]):
+                self.assertFalse(at.action_directe(self._ctx_apres(colle),
+                                                   {"directe": True, "risk": "outward"}))
