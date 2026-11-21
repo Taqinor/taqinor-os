@@ -70,8 +70,8 @@ function moment(iso) {
 function Champ({ cle, label, children }) {
   return (
     <div data-testid={`cal-fiche-${cle}`}>
-      <dt className="tech-label text-lune-faint">{label}</dt>
-      <dd className="mt-0.5 text-sm text-white">{children}</dd>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 text-sm text-foreground">{children}</dd>
     </div>
   )
 }
@@ -283,7 +283,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
 
   const erreurRattachement = (champ) => (
     refusRattachement && refusRattachement.champ === champ ? (
-      <span className="mt-1 block text-xs text-alert-300" role="alert"
+      <span className="mt-1 block text-xs text-destructive" role="alert"
         data-testid={`cal-fiche-${champ}-erreur`}>
         {refusRattachement.message}
         {refusRattachement.existant ? (
@@ -412,7 +412,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
   }
 
   const styleBouton = 'inline-flex items-center gap-2 border border-brass-400 '
-    + 'px-5 py-3 text-base font-bold text-brass-300 '
+    + 'px-5 py-3 text-base font-bold text-primary-text '
     + 'disabled:cursor-not-allowed disabled:opacity-60'
 
   return (
@@ -422,8 +422,8 @@ export default function FicheCalepinage({ detail, onRelire }) {
       {archive && (
         <div className="mt-5 border border-brass-400/40 p-3"
           data-testid="cal-fiche-bandeau-archive" role="status">
-          <p className="tech-label text-brass-300">Calepinage archivé</p>
-          <p className="mt-1 text-sm text-lune-soft">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Calepinage archivé</p>
+          <p className="mt-1 text-sm text-foreground">
             Ce calepinage est dans la corbeille : il ne figure plus dans les
             listes et aucune modification n’est possible. La restauration le
             remet à l’identique.
@@ -437,8 +437,8 @@ export default function FicheCalepinage({ detail, onRelire }) {
       {refusNom && (
         <div className="mt-5 border border-alert-300/40 p-3"
           data-testid="cal-fiche-bandeau-nom" role="alert">
-          <p className="tech-label text-alert-300">Nom</p>
-          <p className="mt-1 text-sm text-alert-300">{refusNom}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Nom</p>
+          <p className="mt-1 text-sm text-destructive">{refusNom}</p>
         </div>
       )}
 
@@ -461,7 +461,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
                 {confirmation ? 'Confirmer l’archivage' : 'Archiver'}
               </button>
               {!archivable && (
-                <p className="basis-full text-xs text-lune-faint" role="status"
+                <p className="basis-full text-xs text-muted-foreground" role="status"
                   data-testid="cal-fiche-archiver-indisponible">
                   {detail.devis
                     ? `Archivage indisponible : le devis ${texte(detail.devis.reference)} lit encore ce `
@@ -472,7 +472,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
               )}
               {confirmation && (
                 <button type="button" disabled={enCours}
-                  className="text-sm text-lune-soft underline"
+                  className="text-sm text-foreground underline"
                   data-testid="cal-fiche-archiver-annuler"
                   onClick={() => { setConfirmation(false) }}>
                   Annuler
@@ -498,10 +498,10 @@ export default function FicheCalepinage({ detail, onRelire }) {
           {confirmationCopie && !archive && (
             <div className="basis-full border border-brass-400/40 p-3"
               data-testid="cal-fiche-dupliquer-confirmation">
-              <p className="tech-label text-brass-300">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">
                 Ce que la copie NE reprend PAS
               </p>
-              <ul className="mt-1 list-disc pl-5 text-sm text-lune-soft">
+              <ul className="mt-1 list-disc pl-5 text-sm text-foreground">
                 <li>l’historique des versions (une version d’origine est déposée) ;</li>
                 <li>
                   {avecVariantes
@@ -515,17 +515,17 @@ export default function FicheCalepinage({ detail, onRelire }) {
                 <li>les pièces produites (exports, documents).</li>
               </ul>
               {/* ACAL117 — la règle de copie unique (services/variantes.CHAMPS_COPIES). */}
-              <p className="mt-1 text-xs text-lune-faint" data-testid="cal-fiche-dupliquer-copie">
+              <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-fiche-dupliquer-copie">
                 La copie reprend la conception et les postes de pertes ; elle
                 démarre avec sa propre version d’origine.
               </p>
-              <p className="mt-1 text-xs text-lune-faint">
+              <p className="mt-1 text-xs text-muted-foreground">
                 La copie reste dans votre société.
                 {cibleExigee
                   ? ' Ce lead a déjà ce calepinage ouvert : choisissez le lead ou le client de la copie (pour une autre option du même toit, créez une variante).'
                   : ' Sans cible choisie, elle garde le même lead ou client que l’original.'}
               </p>
-              <div className="mt-2 text-sm text-lune-soft" data-testid="cal-fiche-dupliquer-lead">
+              <div className="mt-2 text-sm text-foreground" data-testid="cal-fiche-dupliquer-lead">
                 <span className="block text-xs">Lead de la copie</span>
                 <SelecteurRattachement genre="lead" id="cal-fiche-dupliquer-lead"
                   valeur={cibleCopie.lead} disabled={enCours}
@@ -535,13 +535,13 @@ export default function FicheCalepinage({ detail, onRelire }) {
                     setRefusCibleCopie(null)
                   }} />
                 {refusCibleCopie && (
-                  <p className="mt-1 text-xs text-alert-300" role="alert"
+                  <p className="mt-1 text-xs text-destructive" role="alert"
                     data-testid="cal-fiche-dupliquer-erreur-lead">
                     {refusCibleCopie}
                   </p>
                 )}
               </div>
-              <div className="mt-2 text-sm text-lune-soft" data-testid="cal-fiche-dupliquer-client">
+              <div className="mt-2 text-sm text-foreground" data-testid="cal-fiche-dupliquer-client">
                 <span className="block text-xs">Client de la copie</span>
                 <SelecteurRattachement genre="client" id="cal-fiche-dupliquer-client"
                   valeur={cibleCopie.client} disabled={enCours}
@@ -550,7 +550,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
                     setRefusCibleCopie(null)
                   }} />
               </div>
-              <label className="mt-2 flex items-center gap-2 text-sm text-lune-soft">
+              <label className="mt-2 flex items-center gap-2 text-sm text-foreground">
                 <input type="checkbox" checked={avecVariantes}
                   disabled={enCours}
                   data-testid="cal-fiche-dupliquer-variantes"
@@ -564,7 +564,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
                   Confirmer la duplication
                 </button>
                 <button type="button" disabled={enCours}
-                  className="text-sm text-lune-soft underline"
+                  className="text-sm text-foreground underline"
                   data-testid="cal-fiche-dupliquer-annuler"
                   onClick={() => { setConfirmationCopie(false) }}>
                   Annuler
@@ -573,8 +573,8 @@ export default function FicheCalepinage({ detail, onRelire }) {
               {refusCopie && (
                 <div className="mt-3 border border-alert-300/40 p-3"
                   data-testid="cal-fiche-dupliquer-erreur">
-                  <p className="tech-label text-alert-300">Dupliquer</p>
-                  <p className="mt-1 text-sm text-alert-300" role="alert">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Dupliquer</p>
+                  <p className="mt-1 text-sm text-destructive" role="alert">
                     {refusCopie}
                   </p>
                 </div>
@@ -597,15 +597,15 @@ export default function FicheCalepinage({ detail, onRelire }) {
           {refusModele && (
             <div className="basis-full border border-alert-300/40 p-3"
               data-testid="cal-fiche-modele-erreur">
-              <p className="tech-label text-alert-300">Modèle</p>
-              <p className="mt-1 text-sm text-alert-300" role="alert">
+              <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Modèle</p>
+              <p className="mt-1 text-sm text-destructive" role="alert">
                 {refusModele}
               </p>
             </div>
           )}
 
           {confirmation && !archive && (
-            <p className="basis-full text-xs text-lune-faint" role="status"
+            <p className="basis-full text-xs text-muted-foreground" role="status"
               data-testid="cal-fiche-archiver-confirmation">
               L’archivage place ce calepinage dans la corbeille : il sort des
               listes et reste restaurable. Cliquez une seconde fois pour
@@ -617,10 +617,10 @@ export default function FicheCalepinage({ detail, onRelire }) {
           {refus && (
             <div className="basis-full border border-alert-300/40 p-3"
               data-testid="cal-fiche-archivage-erreur">
-              <p className="tech-label text-alert-300">
+              <p className="text-xs font-semibold uppercase tracking-wide text-destructive">
                 {LIBELLE_GESTE[refus.geste]}
               </p>
-              <p className="mt-1 text-sm text-alert-300" role="alert">
+              <p className="mt-1 text-sm text-destructive" role="alert">
                 {refus.message}
               </p>
             </div>
@@ -628,7 +628,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
         </div>
       )}
 
-      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-white/10 pt-5 sm:grid-cols-3"
+      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-5 sm:grid-cols-3"
         data-testid="cal-fiche-calepinage">
         <Champ cle="reference" label="Référence">{texte(detail.reference)}</Champ>
         {/* CALX33 — le nom, éditable SUR PLACE. Le droit de gérer commande le
@@ -642,14 +642,14 @@ export default function FicheCalepinage({ detail, onRelire }) {
               <input id="cal-fiche-nom-champ" type="text" value={saisie}
                 data-testid="cal-fiche-nom-champ" disabled={enCours}
                 onChange={(e) => { setSaisie(e.target.value) }}
-                className="border border-white/20 bg-transparent px-2 py-1 text-sm text-white" />
+                className="border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
               <button type="button" disabled={enCours}
-                className="text-sm font-semibold text-brass-300 underline"
+                className="text-sm font-semibold text-primary-text underline"
                 data-testid="cal-fiche-nom-enregistrer" onClick={enregistrerNom}>
                 Enregistrer
               </button>
               <button type="button" disabled={enCours}
-                className="text-sm text-lune-soft underline"
+                className="text-sm text-foreground underline"
                 data-testid="cal-fiche-nom-annuler"
                 onClick={() => { setEdition(false); setRefusNom(null) }}>
                 Annuler
@@ -660,7 +660,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
               <span>{texte(nomAffiche)}</span>
               {peutGerer && !archive && (
                 <button type="button" onClick={ouvrirEdition}
-                  className="text-sm text-brass-300 underline"
+                  className="text-sm text-primary-text underline"
                   data-testid="cal-fiche-nom-editer">
                   Renommer
                 </button>
@@ -669,7 +669,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
           )}
           {/* L'ERREUR SOUS LE CHAMP FAUTIF — le motif du serveur, tel quel. */}
           {refusNom && (
-            <span className="mt-1 block text-xs text-alert-300" role="alert"
+            <span className="mt-1 block text-xs text-destructive" role="alert"
               data-testid="cal-fiche-nom-erreur">
               {refusNom}
             </span>
@@ -681,7 +681,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
 
         <Champ cle="statut_libelle" label="Statut">{texte(detail.statut_libelle)}</Champ>
         <Champ cle="statut" label="Code de statut">
-          <code className="text-xs text-lune-soft">{texte(detail.statut)}</code>
+          <code className="text-xs text-foreground">{texte(detail.statut)}</code>
         </Champ>
         <Champ cle="responsable" label="Responsable">
           {rattachementEditable ? (
@@ -755,7 +755,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
           {detail.layout_present ? 'Oui' : 'Non'}
         </Champ>
         <Champ cle="layout_hash" label="Empreinte de la conception">
-          <code className="text-xs text-lune-soft">
+          <code className="text-xs text-foreground">
             {detail.layout_hash ? detail.layout_hash.slice(0, 12) : '—'}
           </code>
         </Champ>
@@ -861,13 +861,13 @@ export default function FicheCalepinage({ detail, onRelire }) {
                   onClick={enregistrerChampsPerso}
                   disabled={enCours}
                   data-testid="cal-fiche-custom-data-enregistrer"
-                  className="mt-1 rounded border border-white/20 px-2 py-1 text-xs"
+                  className="mt-1 rounded border border-border px-2 py-1 text-xs"
                 >
                   Enregistrer les champs personnalisés
                 </button>
               ) : null}
               {refusChampsPerso ? (
-                <span className="mt-1 block text-xs text-alert-300" role="alert"
+                <span className="mt-1 block text-xs text-destructive" role="alert"
                   data-testid="cal-fiche-custom_data-erreur">
                   {refusChampsPerso}
                 </span>

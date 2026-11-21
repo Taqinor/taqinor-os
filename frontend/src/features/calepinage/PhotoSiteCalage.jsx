@@ -382,11 +382,11 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
 
   return (
     <div className="page max-w-[900px]" data-testid="cal-photo-calage">
-      <p className="tech-label rule-brass text-brass-300">Caler la photo du site</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Caler la photo du site</p>
 
       {/* CALX38 — dépôt d'une photo, EN TÊTE du panneau. */}
       <Card className="mt-3 space-y-3 p-4" data-testid="cal-photo-depot">
-        <p className="tech-label text-lune-faint">Déposer une photo</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Déposer une photo</p>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
@@ -451,7 +451,7 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
       </Card>
 
       {photos.length === 0 && (
-        <Card className="mt-3 p-4 text-sm text-lune-soft" data-testid="cal-photo-calage-vide">
+        <Card className="mt-3 p-4 text-sm text-foreground" data-testid="cal-photo-calage-vide">
           Aucune photo de site n’est encore rattachée à ce calepinage : déposez
           une photo drone/oblique/sol avant de la caler.
         </Card>
@@ -479,7 +479,7 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
             </SelectContent>
           </Select>
 
-          <label className="flex items-center gap-2 text-xs text-lune-soft">
+          <label className="flex items-center gap-2 text-xs text-foreground">
             Opacité
             <input
               type="range"
@@ -518,13 +518,13 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
             crossOrigin={crossOriginFichierCalepinage()}
           />
 
-          <p className="mt-2 text-xs text-lune-faint">
+          <p className="mt-2 text-xs text-muted-foreground">
             Déplacez les 4 poignées numérotées pour aligner la photo sur le
             contour réel du toit. Le calage est rechargé tel quel à la
             réouverture de cette photo.
           </p>
 
-          <label className="mt-3 block text-xs text-lune-faint">
+          <label className="mt-3 block text-xs text-muted-foreground">
             Importer le fichier de calage (.jgw, .pgw, .wld — degrés WGS84)
             <input type="file" accept=".jgw,.pgw,.wld" className="mt-1 block"
               onChange={importerFichierMonde} data-testid="cal-photo-calage-monde" />
@@ -578,7 +578,7 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
           </div>
 
           {!photo.calage && toucheeId !== photo.id && (
-            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-photo-calage-non-cale">
+            <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-photo-calage-non-cale">
               Photo non calée : déplacez une poignée pour poser un calage.
             </p>
           )}
@@ -642,7 +642,7 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
           )}
 
           {message && (
-            <p className="mt-3 text-sm text-lune-soft" role="status"
+            <p className="mt-3 text-sm text-foreground" role="status"
               data-testid="cal-photo-calage-message">{message}</p>
           )}
         </>
