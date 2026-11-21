@@ -275,6 +275,12 @@ export default function BuilderDom({
                 <button type="button" data-sun-season="winter" className={chipClass} aria-pressed="true">Hiver (pire cas)</button>
                 <button type="button" data-sun-season="summer" className={chipClass} aria-pressed="false">Été</button>
               </div>
+              {/* ACAL436 — carte d'accès solaire (ids lus par shadingUi.ts, qui crée lui-même le mois, le bloc chiffré et les heures masquées dans ce parent). */}
+              <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Accès solaire</span>
+                <button type="button" id="rp9-heatmap-toggle" className={chipClass} aria-pressed="false">Carte d'accès solaire</button>
+                <p id="rp9-heatmap-note" className="w-full text-xs text-muted-foreground" />
+              </div>
             </div>
           </div>
 
