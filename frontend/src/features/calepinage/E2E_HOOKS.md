@@ -49,10 +49,8 @@ retiré plus un hook ajouté.
 | `cal-biblio-favori` | bibliothèque favori. |
 | `cal-biblio-favori-ajouter` | bibliothèque favori ajouter. |
 | `cal-biblio-favori-erreur` | bibliothèque favori message d'erreur. |
-| `cal-biblio-favori-ids` | bibliothèque favori identifiants. |
 | `cal-biblio-favori-ligne` | bibliothèque favori ligne. |
 | `cal-biblio-favori-retirer` | bibliothèque favori retirer. |
-| `cal-biblio-favori-role` | bibliothèque favori rôle. |
 | `cal-biblio-favoris-edition` | bibliothèque favoris édition. |
 | `cal-biblio-favoris-enregistrer` | bibliothèque favoris enregistrer. |
 | `cal-biblio-favoris-erreur` | bibliothèque favoris message d'erreur. |

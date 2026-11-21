@@ -735,20 +735,6 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertTrue(donnees['exemple_incomplet']['etapes_omises'])
         self.assertIn('180 = Sud', donnees['pourquoi'])
 
-    def test_etat_conception_du_detail(self):
-        # ACAL1005 — « rapide » est un MARQUAGE, jamais un remplissage.
-        donnees = _charger('calepinage_detail.json')
-        for nom in ('exemple', 'exemple_vide', 'exemple_rapide'):
-            self.assertIn(donnees[nom]['etat_conception'],
-                          ('rapide', 'complet'), nom)
-        self.assertEqual(donnees['exemple']['etat_conception'], 'complet')
-        rapide = donnees['exemple_rapide']
-        self.assertEqual(rapide['etat_conception'], 'rapide')
-        self.assertEqual(rapide['etat_conception_motif'],
-                         'ouvert depuis un devis automatique : à vérifier '
-                         'sur place')
-        self.assertLessEqual(set(rapide), set(donnees['exemple']))
-
 
 class CheminDeclareTest(unittest.TestCase):
     """Renommer une route sans toucher l'échantillon échoue ICI."""

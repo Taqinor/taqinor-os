@@ -206,6 +206,8 @@ SCHEMA = {
     'composition_imposee': _cle((dict,), COMPOSITION_IMPOSEE, DERIVEE,
                                 'COP2-V3 — ce qui a été imposé, et par qui ; '
                                 'lu par `domain/composition_imposee`.'),
+    # ACAL1004 — marque du bouton « Devis automatique » (personne n'a regardé le toit).
+    'origine_conception': _cle((str,), AUTO_DEVIS, DERIVEE, 'ACAL1004 — `rapide` : lu par le calepinage (ACAL1006).'),
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),
