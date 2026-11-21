@@ -350,6 +350,8 @@ money_decimal_places:
     - "backend/django_core/apps/stock/models.py::MouvementStock.cout_unitaire"
     # Produit.prix_par_panneau_ht : barème 156,25 x 1,30 = 203,125/panneau (L-FORFAIT, fondateur 24/08/2026).
     - "backend/django_core/apps/stock/models.py::Produit.prix_par_panneau_ht"
+    # UsageIA.cout : coût d'UN appel IA en MAD, 6 décimales car une fraction de centime par appel (jamais arrondi à 2).
+    - "backend/django_core/apps/agent/models.py::UsageIA.cout"
 
 tests_sautes_environnement:
   critere: un test n'est sauté QUE si un binaire ou service externe est absent de l'environnement (ex. pg_dump, soffice, Chrome headless), jamais pour cause de bug ou de dette; chaque saut porte condition et raison en ligne
