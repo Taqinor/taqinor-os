@@ -8,11 +8,7 @@ jamais un blocage. Les clés lues sont celles du schéma ``roof_layout_v2`` :
 """
 from __future__ import annotations
 
-
-def _nombre(valeur):
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return valeur
+from .valeurs import nombre as _nombre
 
 
 def avertissements_hypotheses(layout):
