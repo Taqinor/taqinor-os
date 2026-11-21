@@ -21,6 +21,8 @@
 <p class="text-sm text-lune-soft" role="status">Calepinage automatique depuis le tracé client — à vérifier</p>
 <button type="button" class="rp9-chip" data-testid="rp9-recommencer-trace-client">Recommencer depuis le tracé client</button>
 </div>
+<div id="rp9-studio" class="rp9-studio">
+<div id="rp9-studio-scene" class="rp9-studio-scene">
 <div class="cine-card mt-6 overflow-hidden">
 <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
 <label for="rp9-address" class="sr-only">Adresse</label>
@@ -280,6 +282,8 @@
 </div>
 <p id="rp9-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">Chargement…</p>
 </div>
+</div>
+<div id="rp9-studio-inspecteur" class="rp9-studio-inspecteur">
 <div id="rp9-results" class="rp9-results cine-card mt-6 p-6">
 <p class="tech-label rule-brass text-brass-300">Recommandation</p>
 <p id="rp9-reco-title" class="fig mt-4 text-2xl text-brass-300">—</p>
@@ -672,10 +676,15 @@
 <button type="button" class="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60" style="background: var(--rp-ok-600);">
 <span>Enregistrer la conception</span>
 </button>
+<p class="text-sm text-lune-soft" data-testid="cal-resume-atelier">
+<span data-testid="cal-resume-panneaux">—</span> · <span data-testid="cal-resume-kwc">—</span> · <span data-testid="cal-resume-production">—</span>
+</p>
 </div>
 </div>
 <div class="cine-card mt-6 p-6">
 <p class="text-xs text-lune-faint">La conception est rangée sur le calepinage, avec une nouvelle version dès qu'elle a changé. Aucun statut n'est modifié ; le devis, lui, se génère par son propre bouton.</p>
+</div>
+</div>
 </div>
 </div>
 </div>

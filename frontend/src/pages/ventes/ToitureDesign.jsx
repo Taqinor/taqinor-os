@@ -72,6 +72,7 @@ import { toastInfo } from '../../lib/toast'
 // diverge de la cible vendue du devis.
 import { useConfirmDialog } from '../../ui/confirm'
 import BarreEnregistrement from '../../features/calepinage/atelier/BarreEnregistrement'
+import ResumeAtelier from '../../features/calepinage/atelier/ResumeAtelier'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 // L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
@@ -101,6 +102,12 @@ const CONS_WINDOW_INNER = { __html: CONS_WINDOW_HTML }
 
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
+// ACAL402 — conteneur « studio » : un vrai `<div>` en mode calepinage, transparent sinon
+// (lead et devis gardent leur DOM). Les ids `rp9-studio-*` servent la spec e2e.
+const Studio = ({ actif, nom, children }) => (actif
+  ? <div id={`rp9-studio${nom}`} className={`rp9-studio${nom}`}>{children}</div>
+  : <>{children}</>)
+
 const messageResyncRefusee = (raison) => (
   `Conception enregistrée — devis NON resynchronisé : ${raison}`)
 const MESSAGE_RESYNC_RESEAU = 'Conception enregistrée — resynchronisation du devis impossible (réseau)'
@@ -1335,6 +1342,8 @@ function AtelierToiture({
           </div>
         )}
 
+        <Studio actif={estCalepinage} nom="">
+        <Studio actif={estCalepinage} nom="-scene">
         <BuilderDom
           basculerPleinEcran3d={basculerPleinEcran3d}
           chipClass={chipClass}
@@ -1349,6 +1358,8 @@ function AtelierToiture({
           toitClientPresent={toitClientPresent}
           toitClientVisible={toitClientVisible}
         />
+        </Studio>
+        <Studio actif={estCalepinage} nom="-inspecteur">
 
         {/* RECOMMANDATION (panneaux/optimiseur visibles ici) */}
         <div id="rp9-results" className="rp9-results cine-card mt-6 p-6">
@@ -1534,7 +1545,10 @@ function AtelierToiture({
           enCours={sending} desactive={sending || !sceneHydratee}
           onEnregistrer={enregistrerCalepinage}
           modifiee={sceneModifiee} enregistreLe={enregistreLe}
-          statut={genStatus} erreur={genError} />
+          statut={genStatus} erreur={genError}>
+          <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
+            lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
+        </BarreEnregistrement>
         <div className="cine-card mt-6 p-6">
           <p className="text-xs text-lune-faint">
             La conception est rangée sur le calepinage, avec une nouvelle
@@ -1625,6 +1639,8 @@ function AtelierToiture({
         </div>
         </>
         )}
+        </Studio>
+        </Studio>
 
       </div>
     </div>
