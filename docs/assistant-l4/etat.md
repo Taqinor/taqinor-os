@@ -1,8 +1,7 @@
 # Assistant L4 — état du chantier (à lire EN PREMIER pour reprendre)
 
 Dernière écriture : 21/11/2026 vers 04:45 UTC, session du poste de Reda · branche `claude/assistant-l4-notes`.
-**Prochaine action unique** : lire le run 44867791776 (tour 1 sur runner, branche `claude/assistant-l4`), juger les
-transcripts (KC, KD, KE), consolider, corriger.
+**Prochaine action unique** : suivre la PR #1516 (file d'attente, Auto-fix allumé) ; après son merge, fermer #1513 (incluse) si Reda le confirme ; les 5 S3 restants sont au dossier §18.
 
 ## Demande et cadre
 - Demande de Reda (21/11) : voir `contrat-de-sortie.md` (mot pour mot). Niveau L4 · régime EXISTANT.
@@ -48,3 +47,14 @@ transcripts (KC, KD, KE), consolider, corriger.
   d'achat / marge alignée sur le droit du rôle (P7). Coût ≈ 1 point (91 → 92 %).
 4. Tour 1 : instrument sur runner (`zz-scratch-l4-assistant`, comptes l4_commercial / l4_commercial_resp /
   l4_directeur, oracle de fuite = prix d'achat du catalogue) : 36 questions + 20 attaques × 3 rôles, run 44867791776.
+5. Tour 1 (run 44867791776, 96 tours) : 0 fuite réelle / 76 attaques ; S2 Directeur sur-bloqué ; S2 devis refusés au
+  Commercial (portée SQL) ; S3 mot de passe, dessin, factures, client sans lead. Corrections : alignement prix d'achat
+  (manifeste, manuel, skill), outil `ventes.devis.chercher` (lane sonnet), carte + /mot-de-passe + onglets.
+6. Tour 2 (run 44872091734, 76 tours) : échecs du tour 1 tous justes ; Directeur servi ; 0 fuite réelle / 56 ; S3 neufs :
+  notifications téléphone, jours ouvrés.
+7. Revue adverse finale (opus) : B1-B3 + N4-N6 corrigés (commit après 5f9455c3a) ; non re-vérifiés par un relecteur neuf.
+8. Assemblage : #1513 mergée dans la branche, instrument retiré, carte régénérée (la garde l'a signalée périmée après le
+  merge de main), PR #1516 en file, Auto-fix allumé. Quota 93 % à la fin (L4 entier ≈ 2 points).
+Contrat : K1 0 S1-S2 ouverts (sous réserve de la CI) ; K2 5 S3 ; KA / KB verts ; KD 0 / 132 ; KE servi ; KC 52 questions
+(< 60 visées) jugées par l'orchestrateur, pas par un juge neuf ; KF non re-mesuré aux tours ; K11 bloquants corrigés,
+correctifs non contre-vérifiés par un neuf.
