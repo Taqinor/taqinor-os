@@ -47,7 +47,7 @@ export default function ResumeAtelier({ lireLayout, calepinageId, rechargerLe })
     production = `≈ ${formatNumber(vivant.kwh, { decimals: 0 })} kWh/an (estimation)`
   }
   return (
-    <p className="text-sm text-lune-soft" data-testid="cal-resume-atelier">
+    <p className="text-sm text-muted-foreground" data-testid="cal-resume-atelier">
       <span data-testid="cal-resume-panneaux">
         {vivant.panneaux === null ? '—' : `${formatNumber(vivant.panneaux, { decimals: 0 })} panneaux`}
       </span>

@@ -595,16 +595,16 @@
 </p>
 <nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes" class="mb-2 flex flex-wrap items-center gap-1.5">
 <button type="button" data-testid="cal-etape-toit" data-etat="" aria-current="step" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-primary bg-primary/10 font-medium">
-<span class="tech-label text-lune-faint">1</span>Toit</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">1</span>Toit</button>
 <button type="button" data-testid="cal-etape-panneaux" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">2</span>Panneaux</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">2</span>Panneaux</button>
 <button type="button" data-testid="cal-etape-electrique" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">3</span>Électrique</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">3</span>Électrique</button>
 <button type="button" data-testid="cal-etape-resultats" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">4</span>Résultats</button>
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">4</span>Résultats</button>
 <button type="button" data-testid="cal-etape-documents" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="tech-label text-lune-faint">5</span>Documents</button>
-<label class="ml-auto inline-flex items-center gap-1.5 text-xs text-lune-faint" title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
+<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">5</span>Documents</button>
+<label class="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
 <input data-testid="cal-mode-expert" type="checkbox">Mode expert</label>
 </nav>
 <div role="tablist" aria-orientation="horizontal" class="items-center gap-1 rounded-lg border border-border bg-muted p-1 flex w-full flex-wrap gap-x-1 gap-y-1.5" aria-label="Onglets du calepinage" tabindex="0" data-orientation="horizontal" style="outline: none;">
@@ -698,12 +698,12 @@
 <div class="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
 </div>
 </div>
-<div class="sticky bottom-0 z-30 mt-6 border-t border-lune-faint/40 bg-black/90 p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
+<div class="sticky bottom-0 z-30 mt-6 border-t border-border bg-card p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
 <div class="flex flex-wrap items-center gap-3">
-<button type="button" class="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60" style="background: var(--rp-ok-600);">
+<button type="button" class="inline-flex items-center justify-center gap-3 bg-ok-600 px-6 py-3 text-base font-bold disabled:cursor-not-allowed disabled:opacity-60" style="background: var(--rp-ok-600); color: rgb(255, 255, 255);">
 <span>Enregistrer le calepinage</span>
 </button>
-<p class="text-sm text-lune-soft" data-testid="cal-resume-atelier">
+<p class="text-sm text-muted-foreground" data-testid="cal-resume-atelier">
 <span data-testid="cal-resume-panneaux">—</span> · <span data-testid="cal-resume-kwc">—</span> · <span data-testid="cal-resume-production">—</span>
 </p>
 </div>

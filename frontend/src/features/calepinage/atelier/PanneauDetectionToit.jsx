@@ -103,7 +103,7 @@ export default function PanneauDetectionToit({ calepinageId, builderApi = null, 
 
   return (
     <Card className="space-y-3 p-4" data-testid="cal-detection-panneau">
-      <p className="text-sm text-lune-faint">
+      <p className="text-sm text-muted-foreground">
         Le serveur propose un contour « à confirmer » ; rien n’est posé avant « Utiliser ce contour ».
       </p>
       {carte && (
