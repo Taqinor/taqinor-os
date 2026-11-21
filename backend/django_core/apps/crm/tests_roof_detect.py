@@ -186,7 +186,8 @@ class FetchBuildingFootprintTests(TestCase):
 
         entetes = fake_requests.post.call_args.kwargs.get("headers") or {}
         agent = entetes.get("User-Agent", "")
-        self.assertTrue(agent.startswith("TAQINOR-OS/"), agent)
+        self.assertTrue(agent.startswith("solar-erp-calepinage/"), agent)
+        self.assertNotIn("TAQINOR", agent.upper())  # marque blanche (SCA29)
         self.assertNotIn("@", agent)
 
 
