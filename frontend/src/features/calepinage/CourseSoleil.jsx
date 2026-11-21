@@ -95,6 +95,12 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
     ?? zones.find((z) => z.id === layout?.activeAreaId) ?? zones[0] ?? null
   // ACAL251 — latitude de l'épingle du document, sinon du repère servi (détail).
   const latitudeDeg = useLatitudeDuSite(calepinageId, layout)
+  // ACAL449 — la table d'ombrage servie du pan (écrite par le constructeur, ACAL459) :
+  // les bornes de la légende sont celles de la table, au format français.
+  const tableOmbrage = zone?.geometry?.shadeTable ?? null
+  const facteursOmbrage = Array.isArray(tableOmbrage?.facteurs)
+    ? tableOmbrage.facteurs.flat().filter((f) => typeof f === 'number' && f >= 0 && f <= 1) : []
+  const fr = (n) => String(n).replace('.', ',')
   const horizonPoints = Array.isArray(layout?.horizonProfile?.points) ? layout.horizonProfile.points : []
 
   // CALX118 — le soleil de SCÈNE (contrat CALX88) : `scene` absent ⇒ le défaut
@@ -182,6 +188,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
             obstructions={obstructions}
             sunDay={sceneSunDay}
             sunHour={sceneSunHour}
+            tableOmbrage={tableOmbrage}
             ariaLabel={`Course du soleil du pan ${libellePan(zone, zones.indexOf(zone))}`}
           />
           <LegendeCourbes libelleHorizon="Horizon lointain">
@@ -248,6 +255,15 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
             </ul>
           )}
 
+          {facteursOmbrage.length > 0 ? (
+            <p className="mt-1 text-xs text-muted-foreground" data-testid="acal449-legende">
+              {`Zones d’ombrage (table servie) : de ${fr(Math.min(...facteursOmbrage))} (plus ombré) à ${fr(Math.max(...facteursOmbrage))} (libre) — teinte d’autant plus forte que le facteur est bas.`}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground" data-testid="acal449-absente">
+              table d’ombrage absente : rouvrez et enregistrez l’atelier
+            </p>
+          )}
           {latitudeDeg === null && (
             <p className="mt-1 text-xs text-amber-300">
               Latitude du site inconnue (aucun repère posé) — la course du soleil n’est pas tracée.
