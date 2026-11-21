@@ -127,6 +127,44 @@ def simuler(profil):
     return rendu['blocs'], transport, calepinage
 
 
+class ReleveTelephoneDuProfilTest(SimpleTestCase):
+    """ACAL517 — `releve` (mode, date, précision) : le SCHÉMA l'admet ou le refuse."""
+
+    @staticmethod
+    def _erreurs(profil):
+        import jsonschema
+        schema = json.loads(SCHEMA.read_text(encoding='utf-8'))
+        racine = {'$ref': '#/$defs/horizonProfile', '$defs': schema['$defs']}
+        validateur = jsonschema.Draft202012Validator(
+            racine, format_checker=jsonschema.FormatChecker())
+        return list(validateur.iter_errors(profil))
+
+    def _avec(self, **releve):
+        base = {'mode': 'telephone', 'date': '2026-11-21', 'precisionDeg': 5}
+        base.update(releve)
+        return dict(profil_document(), releve=base)
+
+    def test_un_profil_avec_releve_valide_le_schema(self):
+        self.assertEqual(self._erreurs(self._avec()), [])
+
+    def test_un_profil_sans_releve_reste_valide(self):
+        self.assertEqual(self._erreurs(profil_document()), [])
+
+    def test_un_mode_gps_est_refuse(self):
+        self.assertTrue(self._erreurs(self._avec(mode='gps')))
+
+    def test_une_date_illisible_est_refusee(self):
+        self.assertTrue(self._erreurs(self._avec(date='21/11/2026')))
+
+    def test_une_precision_nulle_ou_negative_est_refusee(self):
+        self.assertTrue(self._erreurs(self._avec(precisionDeg=0)))
+        self.assertTrue(self._erreurs(self._avec(precisionDeg=-2)))
+
+    def test_la_source_ne_recoit_aucune_troisieme_valeur(self):
+        profil = dict(profil_document(), source='telephone')
+        self.assertTrue(self._erreurs(profil))
+
+
 class ProfilDuDocumentTest(SimpleTestCase):
 
     def test_simulation_accepte_le_profil_du_document(self):

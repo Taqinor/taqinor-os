@@ -25,7 +25,7 @@ import {
 } from './optimizer';
 import { PERIMETER_SETBACK_M } from '../../lib/roofPro2';
 import { type LngLat } from '../../lib/roof';
-import { $, esc, fmt, fmtMad } from './dom';
+import { $, celluleEconomies, esc, fmt } from './dom';
 import { type Ctx } from './context';
 import { type RenderConfigOpts } from './types';
 
@@ -201,7 +201,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
         `<td class="num">${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
         `<td class="num">${fmt(Math.round(r.annualKwh))}</td>` +
         `<td class="num">${cover} %</td>` +
-        `<td class="num">${fmtMad(r.savingsLow)} – ${fmtMad(r.savingsHigh)}</td>`;
+        celluleEconomies(wrap, r.savingsLow, r.savingsHigh);
       tr.addEventListener('click', () => renderMatrixRow(r));
       tbody.appendChild(tr);
     }

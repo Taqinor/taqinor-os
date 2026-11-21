@@ -13,6 +13,11 @@ export const fmt = (n: number): string => new Intl.NumberFormat('fr-FR').format(
 /** Montant arrondi en MAD. */
 export const fmtMad = (n: number): string => `${fmt(Math.round(n))} MAD`;
 
+/** ACAL546 — la cellule « Économies/an » d'une ligne de comparatif : vide (aucune cellule) quand le
+ *  tableau porte `data-sans-montant` (atelier ERP : l'argent ne vit que dans `ventes`). */
+export const celluleEconomies = (wrap: HTMLElement | null, bas: number, haut: number): string =>
+  wrap?.dataset.sansMontant ? '' : `<td class="num">${fmtMad(bas)} – ${fmtMad(haut)}</td>`;
+
 /** Échappe le texte pour l'insérer en toute sécurité dans un attribut/texte SVG. */
 export const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

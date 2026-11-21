@@ -1339,10 +1339,15 @@ def construire_courbes_journalieres(devis, data, monthly_consumption=None):
         ville = data.get('client_city') or ville_lead
         mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
 
+        from .horaire.base import serie_de_base_production
         from .horaire.ombrage import facteur_production_saison
+        from .horaire.productible_pose import base_de_production
+        # ACAL999 — base de la pose réelle servie : sa série, facteur 1,0.
+        mensuel, incluses = serie_de_base_production(
+            base_de_production(devis), mensuel)
         production = production_par_saison(
             kwc, mensuel, ville, lat, lon,
-            facteur=facteur_production_saison(devis))
+            facteur=1.0 if incluses else facteur_production_saison(devis))
         equipements = equipements_du_devis(devis)
         consommation = _consommation(monthly_consumption, equipements)
         if not production and not consommation:

@@ -698,3 +698,37 @@ describe('ACAL572 — l’écran « Lestage »', () => {
     expect(champLestage('largeur_bande_rive_m')).toBeDisabled()
   })
 })
+
+describe('ACAL561 — retraits par type d’arête', () => {
+  it('la section degagements ENTIÈRE est renvoyée, la ligne égout ajoutée avec sa source', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    await screen.findByTestId('acal561-carte')
+    // Servie par le contrat : « égout 0,40 m — notice X ».
+    expect(screen.getByTestId('acal561-retrait-egout')).toHaveValue(0.4)
+    fireEvent.change(screen.getByTestId('acal561-retrait-rive'), { target: { value: '0.25' } })
+    fireEvent.change(screen.getByTestId('acal561-source-rive'), { target: { value: 'notice Y' } })
+    fireEvent.click(screen.getByTestId('acal561-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const corps = mocks.putParametres.mock.calls[0][0]
+    expect(Object.keys(corps)).toEqual(['degagements'])
+    expect(corps.degagements.retrait_rive_m).toBe(REGLAGES.degagements.retrait_rive_m)
+    expect(corps.degagements.allee_technique_m).toBe(REGLAGES.degagements.allee_technique_m)
+    expect(corps.degagements.retraits_par_arete).toEqual([
+      { type: 'egout', retrait_m: 0.4, source: 'notice X', reference: '' },
+      { type: 'rive', retrait_m: 0.25, source: 'notice Y', reference: '' },
+    ])
+  })
+
+  it('le refus serveur nommé se pose sous la ligne envoyée à ce rang', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockRejectedValue({ response: { status: 400, data: {
+      'degagements.retraits_par_arete[0].source': 'la source manque' } } })
+    rendre()
+    await screen.findByTestId('acal561-carte')
+    fireEvent.click(screen.getByTestId('acal561-enregistrer'))
+    expect(await screen.findByTestId('acal561-erreur-egout')).toHaveTextContent('la source manque')
+  })
+})

@@ -1,6 +1,7 @@
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Stat } from '../../../ui'
 import { useModeExpert } from '../atelier/modeExpert'
+import TuileCouverture from './TuileCouverture'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import {
   kwh, kwhParKwc, nonCalculee, nonPublie, pourcentagePerf,
@@ -11,7 +12,7 @@ import {
    celle de `production.total` servie ; `null` s'écrit « non calculée », jamais 0.
    Sans simulation (jamais lancée ou périmée), AUCUNE tuile : un seul état. */
 
-export default function ResultatHeros({ total, simule, motif, avertissements, plages = null }) {
+export default function ResultatHeros({ total, simule, motif, avertissements, plages = null, autoconsommation = null }) {
   const [expert] = useModeExpert()
   if (!simule) {
     return (
@@ -47,6 +48,7 @@ export default function ResultatHeros({ total, simule, motif, avertissements, pl
           </span>
         ) : undefined} />
       </div>
+      {expert && <TuileCouverture autoconsommation={autoconsommation} />}
       <details data-testid="acal443-details">
         <summary className="cursor-pointer text-sm text-muted-foreground">
           Détails statistiques

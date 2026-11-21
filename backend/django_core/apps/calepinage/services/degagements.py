@@ -67,6 +67,19 @@ DEGAGEMENTS_ATELIER = (
     ('autre', 0.30, 'Autre'),
 )
 
+#: ACAL499 — les types d'obstacle ajoutés après coup (ACAL498) : ils n'ont
+#: AUCUNE valeur d'atelier (ni source publiée) et prennent le recul de base
+#: tant que la
+#: société n'a pas saisi le sien. ``DEGAGEMENTS_ATELIER`` reste à 6 lignes.
+TYPES_SANS_VALEUR_ATELIER = (
+    ('lanterneau', 'Lanterneau'),
+    ('exutoire', 'Exutoire de fumée'),
+    ('climatiseur', 'Climatiseur / groupe de clim'),
+    ('citerne', 'Citerne'),
+    ('garde_corps', 'Garde-corps'),
+    ('joint_dilatation', 'Joint de dilatation'),
+)
+
 #: Dégagement de l'atelier pour un obstacle SANS type
 #: (``OBSTACLE_CLEARANCE_M``).
 DEGAGEMENT_ATELIER_DEFAUT_M = 0.30
@@ -107,22 +120,38 @@ _CLES_ALLEE_CIRCULATION = ('pays', 'largeur_m', 'source', 'reference')
 #: lettres minuscules (ISO 3166-1 alpha-2), jamais devinée.
 _PAYS_ALLEE = re.compile(r'^[a-z]{2}$')
 
+#: ACAL561 — les retraits SUPPLÉMENTAIRES par type d'arête (en plus du
+#: retrait de pourtour) : ``[{"type": "egout", "retrait_m": 0.4,
+#: "source": "…", "reference": "…"}]``, une entrée par type, vide par défaut.
+CLE_RETRAITS_ARETE = 'retraits_par_arete'
+
+#: Les types d'arête de l'atelier (``edges.ts::EDGE_TYPES`` sans
+#: ``inconnue`` — parité testée par ``edges.test.ts``).
+TYPES_ARETE = ('faitage', 'noue', 'arretier', 'egout', 'rive')
+
+_CLES_RETRAIT_ARETE = ('type', 'retrait_m', 'source', 'reference')
+
 __all__ = [
     'SECTION', 'DEGAGEMENTS_ATELIER', 'DEGAGEMENT_ATELIER_DEFAUT_M',
-    'RETRAIT_ATELIER_M', 'CLE_RETRAIT', 'CLE_ALLEE', 'CLE_SOURCE',
-    'MENTION_NON_SOURCEE', 'CLE_ALLEES_CIRCULATION',
-    '_degagement_du_type', '_retrait_perimetre', 'allee_technique',
+    'TYPES_SANS_VALEUR_ATELIER', 'RETRAIT_ATELIER_M', 'CLE_RETRAIT',
+    'CLE_ALLEE', 'CLE_SOURCE',
+    'MENTION_NON_SOURCEE', 'CLE_ALLEES_CIRCULATION', 'CLE_RETRAITS_ARETE',
+    'TYPES_ARETE', '_degagement_du_type', '_retrait_perimetre', 'allee_technique',
     '_largeur_allee_circulation', 'normaliser_section_degagements',
 ]
 
 
 def _types_admis():
     """Les types d'obstacle de l'atelier — jamais une liste recopiée."""
-    return tuple(nom for nom, _valeur, _libelle in DEGAGEMENTS_ATELIER)
+    return (tuple(nom for nom, _valeur, _libelle in DEGAGEMENTS_ATELIER)
+            + tuple(nom for nom, _libelle in TYPES_SANS_VALEUR_ATELIER))
 
 
 def _libelle(type_obstacle):
     for nom, _valeur, libelle in DEGAGEMENTS_ATELIER:
+        if nom == type_obstacle:
+            return libelle
+    for nom, libelle in TYPES_SANS_VALEUR_ATELIER:
         if nom == type_obstacle:
             return libelle
     return type_obstacle
@@ -192,7 +221,8 @@ def normaliser_section_degagements(valeur):
         return {}
 
     admises = _types_admis() + (
-        CLE_RETRAIT, CLE_ALLEE, CLE_ALLEES_CIRCULATION, CLE_SOURCE)
+        CLE_RETRAIT, CLE_ALLEE, CLE_ALLEES_CIRCULATION, CLE_SOURCE,
+        CLE_RETRAITS_ARETE)
     inconnues = [str(cle) for cle in valeur if str(cle) not in admises]
     if inconnues:
         raise ReglageInvalide(
@@ -210,6 +240,9 @@ def normaliser_section_degagements(valeur):
             continue
         if cle == CLE_ALLEES_CIRCULATION:
             propre[cle] = _allees_circulation(brut)
+            continue
+        if cle == CLE_RETRAITS_ARETE:
+            propre[cle] = _retraits_par_arete(brut)
             continue
         propre[cle] = _metres_positifs(brut, f'{SECTION}.{cle}', _titre(cle))
     return propre
@@ -270,6 +303,55 @@ def _allee_circulation_entree(brut, indice):
 
     return {'pays': pays, 'largeur_m': largeur, 'source': source,
             'reference': reference}
+
+
+def _retraits_par_arete(brut):
+    """ACAL561 — la liste ``retraits_par_arete`` VALIDÉE (une entrée par type
+    d'arête, ``source`` obligatoire) ; le champ fautif est nommé avec la
+    section : ``degagements.retraits_par_arete[i].<clé>``."""
+    racine = f'{SECTION}.{CLE_RETRAITS_ARETE}'
+    if brut is None:
+        return []
+    if not isinstance(brut, list):
+        raise ReglageInvalide(
+            f"« {CLE_RETRAITS_ARETE} » doit être une liste "
+            "{type, retrait_m, source, reference}.", champ=racine)
+    propres, vus = [], set()
+    for indice, entree in enumerate(brut):
+        prefixe = f'{racine}[{indice}]'
+        if not isinstance(entree, dict):
+            raise ReglageInvalide(f"« {prefixe} » doit être un objet.",
+                                  champ=prefixe)
+        surplus = sorted(set(entree) - set(_CLES_RETRAIT_ARETE))
+        if surplus:
+            raise ReglageInvalide(
+                f"« {prefixe} » ne porte que type, retrait_m, source et "
+                f"reference (reçu en plus : {', '.join(surplus)}).",
+                champ=f'{prefixe}.{surplus[0]}')
+        type_arete = entree.get('type')
+        if type_arete not in TYPES_ARETE:
+            raise ReglageInvalide(
+                f"« {prefixe}.type » doit être l'un de : "
+                f"{', '.join(TYPES_ARETE)} (reçu : {type_arete!r}).",
+                champ=f'{prefixe}.type')
+        if type_arete in vus:
+            raise ReglageInvalide(
+                f"Le type d'arête « {type_arete} » est réglé deux fois.",
+                champ=f'{prefixe}.type')
+        vus.add(type_arete)
+        retrait = _metres_positifs(entree.get('retrait_m'),
+                                   f'{prefixe}.retrait_m',
+                                   "Retrait supplémentaire d'arête")
+        source = str(entree.get('source') or '').strip()
+        if not source:
+            raise ReglageInvalide(
+                f"« {prefixe}.source » doit être renseignée : un retrait ne "
+                "se défend pas sans sa provenance.", champ=f'{prefixe}.source')
+        reference = entree.get('reference')
+        propres.append({'type': type_arete, 'retrait_m': retrait,
+                        'source': source,
+                        'reference': str(reference or '').strip()})
+    return propres
 
 
 def _allees_circulation(brut):
@@ -334,6 +416,9 @@ def _degagement_du_type(type_obstacle, section=None):
 
     if saisi is None:
         valeur = _atelier(nom) if nom else DEGAGEMENT_ATELIER_DEFAUT_M
+        if nom in dict(TYPES_SANS_VALEUR_ATELIER):
+            return (valeur, '%s : %.2f m (recul de base, aucun dégagement '
+                    'société pour ce type)' % (libelle, valeur))
         return (valeur, '%s : %.2f m (%s)'
                 % (libelle, valeur, MENTION_NON_SOURCEE))
 

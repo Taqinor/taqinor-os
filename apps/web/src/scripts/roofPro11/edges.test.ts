@@ -1,7 +1,9 @@
 // CAL57 — déduction PURE du type d'arête par segment de contour.
 // CALX93 — noue / arêtier déduits des pentes et azimuts SAISIS, sinon « inconnue ».
 import { describe, expect, it } from 'vitest';
-import { deduceEdgeDetails, deduceEdgeTypes, EDGE_COLOR_BY_TYPE, reinitialiserDepuisTraceClient, type EdgeDeductionZone } from './edges';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { deduceEdgeDetails, deduceEdgeTypes, EDGE_COLOR_BY_TYPE, EDGE_TYPES, reinitialiserDepuisTraceClient, type EdgeDeductionZone } from './edges';
 import { TRIANGLE_SUD, TRIANGLE_EST, DIAGONALE_SUD } from './harnaisAtelier';
 
 const DEG2RAD = Math.PI / 180;
@@ -215,5 +217,18 @@ describe('ACAL78 — reinitialiserDepuisTraceClient', () => {
     expect(reinitialiserDepuisTraceClient(pan, trace, [pan, frere]).buildingId).toBeUndefined();
     // Un tracé qui reste dans l'emprise du bâtiment garde son rattachement.
     expect(reinitialiserDepuisTraceClient(pan, ancien, [pan, frere]).buildingId).toBe('bat-1');
+  });
+});
+
+describe('ACAL561 — TYPES_ARETE du serveur = EDGE_TYPES sans « inconnue »', () => {
+  it('les deux listes portent les mêmes types, dans le même ordre', () => {
+    const py = readFileSync(
+      fileURLToPath(new URL('../../../../../backend/django_core/apps/calepinage/services/degagements.py', import.meta.url)),
+      'utf8',
+    );
+    const ligne = /^TYPES_ARETE = \(([^)]*)\)/m.exec(py);
+    expect(ligne, 'TYPES_ARETE absent de degagements.py').not.toBeNull();
+    const serveur = [...(ligne as RegExpExecArray)[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    expect(serveur).toEqual(EDGE_TYPES.filter((t) => t !== 'inconnue'));
   });
 });

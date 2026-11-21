@@ -119,6 +119,11 @@ class EntreesMoteur:
     # ``horaire.productible_societe`` ; ``None`` = vide ou règles < 3 : le
     # moteur horaire garde la série PVGIS et l'empreinte reste celle d'avant.
     productible_kwh_kwc: object = None
+    # ACAL999 (D-ACAL-36) — base de production de la pose réelle
+    # (``horaire.productible_pose.base_de_production``) ; ``None`` = chemin
+    # d'aujourd'hui, empreinte d'avant. Servie, elle remplace productible et
+    # ombrage (déjà inclus).
+    base_production: object = None
 
     # ── accès mapping en LECTURE SEULE (pont de déplacement, voir docstring) ─
 
@@ -367,7 +372,14 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         mppt_paires=_mppt_paires_du_devis(devis),
         perte_ombrage_pct=_perte_ombrage_du_devis(devis),
         ombrage_balayage=_ombrage_balayage(devis),
-        productible_kwh_kwc=_productible_du_devis(devis))
+        productible_kwh_kwc=_productible_du_devis(devis),
+        base_production=_base_production_du_devis(devis))
+
+
+def _base_production_du_devis(devis):
+    """ACAL999 — la base de la pose réelle (niveau 15), ou ``None``."""
+    from apps.ventes.horaire.productible_pose import base_de_production
+    return base_de_production(devis)
 
 
 def _ombrage_balayage(devis):
@@ -431,6 +443,12 @@ def kwargs_moteur_ombre(entrees):
     # stockage l'acceptent, même base de production dans tout le tableau.
     if entrees.get('productible_kwh_kwc') is not None:
         kwargs['productible_kwh_kwc'] = entrees.get('productible_kwh_kwc')
+    if entrees.get('base_production'):
+        # ACAL999 — la base de la pose réelle, pertes et ombrage INCLUS : ni
+        # perte ni productible à côté (ils seraient appliqués deux fois).
+        kwargs.pop('perte_ombrage_pct', None)
+        kwargs.pop('productible_kwh_kwc', None)
+        kwargs['base_production'] = entrees.get('base_production')
     return kwargs
 
 
@@ -640,6 +658,13 @@ def empreinte_entrees(e):
         # CE2E6 — seulement quand la société a saisi une valeur (niveau 3) :
         # sinon empreinte d'avant ; une valeur qui bouge périme le bloc.
         charge['productible_kwh_kwc'] = _arrondi(productible, 2)
+    base = getattr(e, 'base_production', None)
+    if base:
+        # ACAL999 — seulement quand une base est servie : une base qui bouge
+        # périme le bloc ; sans base, empreinte d'avant.
+        charge['base_production'] = {
+            'annuel': _arrondi(base.get('kwh_kwc_annuel'), 2),
+            'mensuel': _serie_arrondie(base.get('kwh_kwc_mensuel'), 2)}
     if getattr(e, 'hors_reseau', False):
         # ERR-QJR605 — seulement « vrai » : l'empreinte d'un site raccordé ne
         # change pas, un site isolé ne partage jamais le tableau d'un autre.

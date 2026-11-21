@@ -16,6 +16,7 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import GraphiqueMensuel from './GraphiqueMensuel'
 import ResultatHeros from './ResultatHeros'
+import LigneSurLaDuree from './LigneSurLaDuree'
 import CartePostesPertes from './CartePostesPertes'
 import LigneValeursPubliees from './LigneValeursPubliees'
 import ResultatIncomplet from './ResultatIncomplet'
@@ -425,7 +426,9 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       />
       <BlocBase base={production?.base} />
       <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
-        motif={data?.motif} avertissements={data?.avertissements} plages={data?.cascade?.plages} />
+        motif={data?.motif} avertissements={data?.avertissements} plages={data?.cascade?.plages}
+        autoconsommation={data?.autoconsommation} />
+      {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}
       {data?.simule === true && !perime && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
       {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} />}
       <ReglagesUtilises simulation={data?.simulation} ouvert={sourcesOuvertes} onBascule={setSourcesOuvertes} />

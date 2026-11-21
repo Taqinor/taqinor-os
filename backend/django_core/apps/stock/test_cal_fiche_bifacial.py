@@ -104,3 +104,35 @@ class FicheChampsElectriquesTests(SimpleTestCase):
         champs = set(FicheTechniqueSerializer().fields)
         for _type, champ, _valeur, _cle in CHAMPS_ELECTRIQUES:
             self.assertIn(champ, champs)
+
+
+class SousChainesParModuleTests(SimpleTestCase):
+    """ACAL720 — sous-chaînes par module : vide par défaut (non publié), 3
+    publié par le sélecteur, 0 et un texte refusés en nommant le champ."""
+
+    @staticmethod
+    def _specs(**champs):
+        fiche = FicheTechnique(type_fiche='module', **champs)
+        return specs_for_produit(SimpleNamespace(fiche_technique=fiche))
+
+    def test_fiche_ancienne_vide(self):
+        self.assertIsNone(FicheTechnique(type_fiche='module')
+                          .sous_chaines_par_module)
+        self.assertNotIn('sous_chaines_par_module', self._specs())
+
+    def test_trois_publie(self):
+        self.assertEqual(
+            self._specs(sous_chaines_par_module=3)['sous_chaines_par_module'],
+            3)
+
+    def test_serialiseur_accepte_3_refuse_0_et_texte(self):
+        from apps.stock.serializers_fiche_technique import (
+            FicheTechniqueSerializer)
+        champ = FicheTechniqueSerializer().fields['sous_chaines_par_module']
+        self.assertEqual(champ.run_validation(3), 3)
+        for valeur in (0, 'abc'):
+            with self.subTest(valeur=valeur):
+                serialiseur = FicheTechniqueSerializer(
+                    data={'sous_chaines_par_module': valeur}, partial=True)
+                self.assertFalse(serialiseur.is_valid())
+                self.assertIn('sous_chaines_par_module', serialiseur.errors)

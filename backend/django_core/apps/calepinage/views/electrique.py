@@ -256,7 +256,7 @@ class ElectriqueActionsMixin:
         responses=forme_reponse(
             'CalepinageEvaluationElectrique', 'verdict', 'publiable',
             'bloquants', 'alertes', 'manquantes', 'regle_mppt',
-            'regle_chaine', 'temperatures', 'publication'))
+            'regle_chaine', 'temperatures', 'chaines', 'onduleurs_suggeres', 'publication'))
     @action(detail=True, methods=['post'], url_path='evaluer-electrique',
             permission_classes=[PeutVoirCalepinage])
     def evaluer_electrique(self, request, pk=None):

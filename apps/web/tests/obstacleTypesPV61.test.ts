@@ -8,10 +8,21 @@ import { packFlushPlane } from '../src/lib/estimatorBrainV3';
 import { obstacleRing, type Obstacle } from '../src/lib/obstacles';
 import {
   OBSTACLE_TYPES,
-  CLEARANCE_BY_TYPE,
+  CLEARANCE_BY_TYPE as CLEARANCE_PARTIELLE,
   clearanceForType,
+  motifDegagementType,
   obstructionClearancesFor,
+  poserDegagementsSociete,
 } from '../src/scripts/roofPro11/types';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+// ACAL498 — la table est partielle (les types neufs retombent sur le recul de base) ; les
+// cinq types historiques y figurent toujours.
+const CLEARANCE_BY_TYPE = CLEARANCE_PARTIELLE as Record<
+  'cheminee' | 'ventilation' | 'chien_assis' | 'edicule' | 'antenne' | 'autre',
+  number
+>;
 import { serializeLayout, deserializeLayout } from '../src/scripts/roofPro11/prefill';
 import { type Ctx } from '../src/scripts/roofPro11/context';
 import { type AreaRecord } from '../src/scripts/roofPro11/types';
@@ -47,15 +58,33 @@ function obs(id: string, dxM: number, dyM: number, dim = 1.5, type?: Obstacle['t
 
 describe('PV61 — table des dégagements par type', () => {
   it('chaque type du sélecteur a un dégagement, et « autre » vaut le dégagement de base', () => {
+    // ACAL498 — les six types ajoutés n'ont pas d'entrée : ils retombent sur le recul de base.
     for (const t of OBSTACLE_TYPES) {
-      expect(CLEARANCE_BY_TYPE[t.id], `type ${t.id}`).toBeGreaterThan(0);
+      expect(clearanceForType(t.id), `type ${t.id}`).toBeGreaterThan(0);
       expect(t.label.length).toBeGreaterThan(0); // libellé FR pour le sélecteur
     }
+    expect(clearanceForType('climatiseur')).toBe(OBSTACLE_CLEARANCE_M);
     expect(CLEARANCE_BY_TYPE.autre).toBe(OBSTACLE_CLEARANCE_M);
     // Les obstacles HAUTS reculent plus que les petits/bas.
     expect(CLEARANCE_BY_TYPE.cheminee).toBeGreaterThan(CLEARANCE_BY_TYPE.antenne);
     expect(CLEARANCE_BY_TYPE.edicule).toBeGreaterThan(CLEARANCE_BY_TYPE.ventilation);
     expect(CLEARANCE_BY_TYPE.chien_assis).toBeGreaterThan(CLEARANCE_BY_TYPE.ventilation);
+  });
+
+  it('ACAL498 — l’enum du contrat roof_layout_v2 = les ids de OBSTACLE_TYPES, dans l’ordre', () => {
+    const schema = JSON.parse(
+      readFileSync(
+        fileURLToPath(
+          new URL(
+            '../../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json',
+            import.meta.url,
+          ),
+        ),
+        'utf8',
+      ),
+    );
+    expect(schema.$defs.obstacle.properties.type.enum).toEqual(OBSTACLE_TYPES.map((t) => t.id));
+    expect(OBSTACLE_TYPES[OBSTACLE_TYPES.length - 1].id).toBe('autre');
   });
 
   it('un type absent/inconnu retombe sur le dégagement de base (jamais 0)', () => {
@@ -72,6 +101,37 @@ describe('PV61 — table des dégagements par type', () => {
       OBSTACLE_CLEARANCE_M,
       CLEARANCE_BY_TYPE.antenne,
     ]);
+  });
+});
+
+describe('ACAL499 — dégagement d’un type neuf lu dans les réglages de la société', () => {
+  it('CLEARANCE_BY_TYPE reste les 6 types historiques ; la société donne 1,8 au lanterneau, la citerne le recul de base', () => {
+    expect(Object.keys(CLEARANCE_PARTIELLE).sort()).toEqual(
+      ['antenne', 'autre', 'cheminee', 'chien_assis', 'edicule', 'ventilation'],
+    );
+    const contrat = JSON.parse(
+      readFileSync(
+        fileURLToPath(
+          new URL(
+            '../../../backend/django_core/apps/calepinage/contract_samples/parametres_calepinage.json',
+            import.meta.url,
+          ),
+        ),
+        'utf8',
+      ),
+    );
+    try {
+      poserDegagementsSociete(contrat.exemple_degagement_type_neuf.degagements);
+      expect(clearanceForType('lanterneau')).toBe(1.8);
+      expect(motifDegagementType('lanterneau')).toContain('réglage de votre société — Préréglage FM Global');
+      expect(clearanceForType('citerne')).toBe(OBSTACLE_CLEARANCE_M);
+      expect(motifDegagementType('citerne')).toBe('recul de base, aucun dégagement société pour ce type');
+      expect(motifDegagementType('cheminee')).toBeNull();
+      expect(clearanceForType('cheminee')).toBe(0.5); // un historique ignore la société
+    } finally {
+      poserDegagementsSociete(null);
+    }
+    expect(clearanceForType('lanterneau')).toBe(OBSTACLE_CLEARANCE_M);
   });
 });
 

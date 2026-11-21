@@ -5,6 +5,7 @@ import useDocumentCalepinage from './useDocumentCalepinage'
 import RetourAtelier from './atelier/RetourAtelier'
 import { RAISON_LECTURE_SEULE, lireConflit } from './conflitEcriture'
 import { messageRefus } from './commun/refusServeur'
+import { demarrerCapteurs, lireInclinaison, lireVisee, arreter as arreterCapteurs } from './capteursTelephone'
 import { mesuresDeVisite, panParDefaut, penteRetenue, pourcentageDepuisPente, saisieDuPan, sourceDePente, suggestionsEnAttente, zonesDuDocument } from './SaisiePente.helpers'
 
 /* ============================================================================
@@ -88,6 +89,11 @@ export default function SaisiePente({
   const [visite, setVisite] = useState(null)
   const [deVisite, setDeVisite] = useState(false)
   const [orientationRetenue, setOrientationRetenue] = useState(false)
+  // ACAL519 — mesure au téléphone : proposition « à confirmer », précision de boussole DÉCLARÉE.
+  const [capteurOuvert, setCapteurOuvert] = useState(false)
+  const [mesureTel, setMesureTel] = useState(null)
+  const [precisionTel, setPrecisionTel] = useState('')
+  const [refusTel, setRefusTel] = useState(null)
 
   /* CALX29 — Suggestion de pente LiDAR IGN, FRANCE SEULEMENT.
      `disponible` vient d'une LECTURE LOCALE (`GET .../suggestion-pente/`,
@@ -293,6 +299,59 @@ export default function SaisiePente({
     }
   }
 
+  const capteursPresents = typeof window !== 'undefined' && typeof window.DeviceOrientationEvent !== 'undefined'
+  const ouvrirTelephone = async () => {
+    const depart = await demarrerCapteurs()
+    if (depart.indisponible) { setRefusTel({ champ: 'capteur', motif: depart.motif }); return }
+    setRefusTel(null)
+    setCapteurOuvert(true)
+  }
+  const prendreMesureTel = () => {
+    const inc = lireInclinaison()
+    const visee = lireVisee()
+    if (inc.indisponible || visee.indisponible) {
+      setRefusTel({ champ: 'capteur', motif: inc.motif || visee.motif })
+      return
+    }
+    const c = Math.cos(inc.betaDeg * Math.PI / 180) * Math.cos(inc.gammaDeg * Math.PI / 180)
+    setRefusTel(null)
+    setMesureTel({
+      penteDeg: Math.acos(Math.max(-1, Math.min(1, c))) * 180 / Math.PI,
+      azimutDeg: (visee.azimutDeg + 180) % 360, // le haut du téléphone vise le faîte : le pan regarde à l'opposé
+    })
+  }
+  const confirmerMesureTel = async () => {
+    if (lectureSeule || !mesureTel || !zone || doc.etat !== 'ok') return
+    const precision = Number(String(precisionTel).replace(',', '.'))
+    const champs = {
+      pitchDeg: mesureTel.penteDeg,
+      pitchSource: { mode: 'degres', degres: mesureTel.penteDeg, provenance: 'telephone' },
+    }
+    const precisionOk = precisionTel.trim() !== '' && Number.isFinite(precision) && precision > 0
+    if (precisionOk) {
+      champs.facingAzimuthDeg = mesureTel.azimutDeg
+      champs.facingAzimuthSource = 'releve'
+      champs.facingAzimuthPrecisionDeg = precision
+    }
+    try {
+      const res = await calepinageApi.calepinages.enregistrerSectionLayout(calepinageId, {
+        cle: 'zones', zone_id: zone.id, champs, base_empreinte: documentVivant?.empreinte || doc.empreinte,
+      })
+      const mises = res?.data?.roof_layout?.zones
+        ?? zones.map((z) => (String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
+      doc.appliquerSection('zones', mises, res?.data?.empreinte_document ?? null)
+      documentVivant?.appliquerSection?.('zones', mises, res?.data?.empreinte_document ?? null)
+      setRefusTel(precisionOk ? null : { champ: 'precision',
+        motif: 'Déclarez la précision de la boussole pour confirmer aussi l’orientation : seule la pente est enregistrée.' })
+      setMesureTel(null)
+      arreterCapteurs()
+      setCapteurOuvert(false)
+      setMessage(`Pente mesurée au téléphone enregistrée sur le pan « ${zone.label || zone.id} ».`)
+    } catch (e) {
+      setRefusTel({ champ: 'capteur', motif: messageRefus(e, 'La mesure n’a pas pu être enregistrée.') })
+    }
+  }
+
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
@@ -414,6 +473,44 @@ export default function SaisiePente({
       {message && (
         <p className="mt-3 text-sm text-foreground" role="status"
           data-testid="cal-pente-message">{message}</p>
+      )}
+
+      {/* ACAL519 — mesure au téléphone : absente sans capteur (donc invisible au bureau). */}
+      {persister && !lectureSeule && capteursPresents && (
+        <details className="mt-4" data-testid="pente-tel">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-primary-text">Mesurer avec le téléphone</summary>
+          <p className="text-xs text-muted-foreground">
+            Posez le téléphone à plat sur le toit, le haut vers le faîte. La boussole peut dévier près du métal.
+          </p>
+          {!capteurOuvert ? (
+            <button type="button" onClick={ouvrirTelephone} data-testid="pente-tel-demarrer"
+              className="mt-2 min-h-11 rounded border border-border px-3 text-sm text-foreground">Activer les capteurs</button>
+          ) : (
+            <button type="button" onClick={prendreMesureTel} data-testid="pente-tel-mesurer"
+              className="mt-2 min-h-11 rounded border border-border px-3 text-sm text-foreground">Prendre la mesure</button>
+          )}
+          {mesureTel && (
+            <div className="mt-2 space-y-2" data-testid="pente-tel-proposition">
+              <p className="text-sm text-foreground">
+                {`Pente proposée : ${auDixieme(mesureTel.penteDeg)}° · orientation proposée : ${auDixieme(mesureTel.azimutDeg)}° (à confirmer)`}
+              </p>
+              <label className="block text-sm text-foreground">
+                Précision de la boussole (°)
+                <input type="text" inputMode="decimal" step="any" value={precisionTel}
+                  data-testid="pente-tel-precision"
+                  onChange={(e) => setPrecisionTel(e.target.value)}
+                  className="fig mt-1 h-11 w-full border border-border bg-background px-2 text-base text-foreground" />
+              </label>
+              <button type="button" onClick={confirmerMesureTel} data-testid="pente-tel-confirmer"
+                className="min-h-11 rounded bg-brass-500/20 px-4 text-sm font-semibold text-primary-text">Confirmer</button>
+            </div>
+          )}
+          {refusTel && (
+            <span role="alert" className="mt-1 block text-xs text-red-300" data-testid={`pente-tel-erreur-${refusTel.champ}`}>
+              {refusTel.motif}
+            </span>
+          )}
+        </details>
       )}
 
       {/* CALX29 — suggestion LiDAR IGN, visible SEULEMENT si la lecture

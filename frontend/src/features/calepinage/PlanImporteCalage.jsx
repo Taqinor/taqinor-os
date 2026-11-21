@@ -5,7 +5,7 @@ import useDocumentCalepinage, { MESSAGE_ILLISIBLE } from './useDocumentCalepinag
 import { lireConflit } from './conflitEcriture'
 import { refusServeur } from './commun/refusServeur'
 import RetourAtelier from './atelier/RetourAtelier'
-import { echelleDepuisDeuxPoints } from './PlanImporteCalage.helpers'
+import { echelleDepuisDeuxPoints, phraseControleEchelle } from './PlanImporteCalage.helpers'
 
 /* ============================================================================
    CAL63 — CALER UN PLAN IMPORTÉ : rotation, ÉCHELLE SAISIE.
@@ -111,6 +111,7 @@ export default function PlanImporteCalage({
   // ACAL213 — le rang (1, 2, …) de l'entité choisie dans le calque ('' = défaut serveur).
   const [entiteChoisie, setEntiteChoisie] = useState('')
   const [contourImporte, setContourImporte] = useState(null)
+  const [controleEchelle, setControleEchelle] = useState(null) // ACAL513
   const [refusImport, setRefusImport] = useState(null)
 
   const sommets = Array.isArray(contourImporte) ? contourImporte : []
@@ -179,6 +180,7 @@ export default function PlanImporteCalage({
     setRefus(null)
     setRefusImport(null)
     setMessage(null)
+    setControleEchelle(null)
     const corps = new FormData()
     corps.append('fichier', fichierDepose)
     corps.append('calque', calqueChoisi)
@@ -190,6 +192,7 @@ export default function PlanImporteCalage({
     }))
     Promise.resolve(calepinageApi.calepinages.importerPlan(calepinageId, corps))
       .then((res) => {
+        setControleEchelle(res?.data?.controle_echelle ?? null)
         const contourGeo = res?.data?.contour_lnglat
         if (!Array.isArray(contourGeo) || !contourGeo.length) {
           setRefusImport({
@@ -442,6 +445,11 @@ export default function PlanImporteCalage({
             ? `${mesure.echelle} m par unité de plan (source : ${mesure.source})`
             : 'non calculée — aucune échelle n’est estimée à votre place'}
         </p>
+        {phraseControleEchelle(controleEchelle) && (
+          <p className="mt-1 text-sm text-foreground" role="status" data-testid="cal-calage-controle">
+            {phraseControleEchelle(controleEchelle)}
+          </p>
+        )}
       </fieldset>
 
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">

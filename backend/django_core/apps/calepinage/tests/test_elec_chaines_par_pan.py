@@ -274,3 +274,56 @@ class MpptNonIndependantsTest(SimpleTestCase):
                 self.assertEqual(self._mppt_par_pan(apres),
                                  {'PAN-1': 1, 'PAN-2': 2})
                 self.assertEqual(apres.regle_mppt, avant.regle_mppt)
+
+
+class _CalepinageEssai:
+    """Le strict minimum lu par ``evaluation_electrique`` — aucun ORM."""
+
+    pk = 11
+    statut = 'brouillon'
+    company = None
+
+    def __init__(self, *comptes):
+        self.roof_layout = _layout(*comptes)
+        self.resultat = {'entree_electrique': {
+            'temperature_min_c': -5.0, 'temperature_max_c': 70.0}}
+
+
+def _materiel_essai(**onduleur):
+    return {
+        'module': MODULE, 'onduleur': dict(ONDULEUR, **onduleur),
+        'optimiseur': None,
+        'designations': {'module': 'Module d essai',
+                         'onduleur': 'Onduleur d essai 10 kW',
+                         'optimiseur': ''},
+        'absents': (),
+    }
+
+
+class OnduleursMinimumTest(SimpleTestCase):
+    """ACAL632 — le plus petit nombre d'onduleurs qui tient le champ."""
+
+    def _suggestion(self, *comptes):
+        from apps.calepinage.services.electrique import evaluation_electrique
+
+        return evaluation_electrique(
+            _CalepinageEssai(*comptes), materiel=_materiel_essai(
+                isc_max_mppt_a=45.0))['onduleurs_suggeres']
+
+    def test_trois_pans_sur_deux_entrees_demandent_deux_onduleurs(self):
+        suggestion = self._suggestion(12, 8, 6)
+
+        self.assertEqual(suggestion['nombre'], 2)
+        self.assertIn('2 onduleurs sont nécessaires : 3 pans pour 2 entrées '
+                      'par onduleur', suggestion['motif'])
+        for pan in ('PAN-1', 'PAN-2', 'PAN-3'):
+            self.assertIn(pan, suggestion['motif'])
+        self.assertIn("n'a que 2 entrée(s) MPPT",
+                      '\n'.join(suggestion['signaux_avec_1']))
+
+    def test_deux_pans_tiennent_sur_un_seul_onduleur_sans_motif(self):
+        suggestion = self._suggestion(12, 8)
+
+        self.assertEqual(suggestion['nombre'], 1)
+        self.assertEqual(suggestion['motif'], '')
+        self.assertEqual(suggestion['signaux_avec_1'], [])

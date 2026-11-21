@@ -640,6 +640,9 @@ def etude_horaire_preview(request):
         etude = _bloc_enregistre_du_devis(devis, corps, kwc, occupation,
                                           batterie)
         if etude is None:
+            # ACAL1170 — la même base de la pose réelle que le bloc du devis.
+            from .horaire.productible_pose import base_de_production
+            base = base_de_production(devis, kwc=kwc) if devis is not None else None
             etude = calculer_etude_horaire(
                 kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
                 lon=lon, occupation=occupation, equipements=equipements,
@@ -648,9 +651,10 @@ def etude_horaire_preview(request):
                 jour_reference=jour_reference,
                 # D-RES-2710-1 — même ombrage du calepinage que le bloc du
                 # devis enregistré (``None`` sans devis : aucun ombrage).
-                perte_ombrage_pct=perte_ombrage_du_devis(devis),
+                perte_ombrage_pct=None if base else perte_ombrage_du_devis(devis),
                 # CE2E6 — le productible saisi par la société, comme le devis.
-                productible_kwh_kwc=productible_societe(company, devis), **batterie)
+                productible_kwh_kwc=None if base else productible_societe(company, devis),
+                base_production=base, **batterie)
         if etude is None:
             avertissements.append(
                 'Étude non calculable pour cette taille : localisation du '

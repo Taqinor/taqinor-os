@@ -166,6 +166,12 @@ CLES_SIMULATION = (
     ('ombrage_borne_importante_pct', "Perte d'ombrage à partir de laquelle on la dit importante", '%',
      'Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l\'ombrage '
      'par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut'),  # ACAL716
+    ('nettoyages_par_an', 'Nettoyages des panneaux par an', 'par an',
+     "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale "
+     '(PVsyst, Soiling loss)'),  # ACAL742
+    ('inclinaison_autonettoyage_deg', "Inclinaison à partir de laquelle la pluie lave les panneaux", '°',
+     "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale "
+     '(PVsyst, Soiling loss)'),  # ACAL742
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
@@ -286,6 +292,8 @@ TYPES_CLES = {
         'seuil_acces_retrait': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL716
         'ombrage_borne_courant_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL716
         'ombrage_borne_importante_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL716
+        'nettoyages_par_an': {'type': 'entier', 'minimum': 0},  # ACAL742
+        'inclinaison_autonettoyage_deg': {'type': 'nombre', 'minimum': 0, 'maximum': 90},  # ACAL742
     },
     SECTION_ELECTRIQUE_SOCIETE: {
         'tolerance_polystring_acceptable_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
@@ -355,9 +363,13 @@ def libelles_de_cle(section, cle):
     ``REGLES`` (une seule source) ; ailleurs, de :data:`LIBELLES_ENUM`.
     """
     if (section, cle) == (SECTION_SIMULATION, 'regle_qualite_module'):
-        from .etapes.qualite_module import REGLES
+        # Résolution par le nom (``etapes.charger``) : un import statique de
+        # ``qualite_module`` tirerait, depuis ``models``, toute la chaîne de
+        # simulation jusqu'aux modèles crm/installations (contrat CAL5).
+        from . import etapes
 
-        return {valeur: regle['libelle'] for valeur, regle in REGLES.items()}
+        regles = etapes.charger('qualite_module').REGLES
+        return {valeur: regle['libelle'] for valeur, regle in regles.items()}
     return dict(LIBELLES_ENUM.get(section, {}).get(cle) or {})
 
 

@@ -52,6 +52,7 @@ import {
 import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
 import { monterAtelierPose } from './poseSurfaces'; // CALX123
 import { suivreAlt } from './altTracker';
+import { dateImageCapturee, lireImageCapture, poserImageCapture } from './imageCapture'; // ACAL509
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -504,6 +505,42 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       addressEl.parentElement?.appendChild(note);
     }
     note.textContent = imageryDisclosure(provider);
+  }
+  // ACAL509 — « Date de la photo » (AAAA-MM-JJ) + source, sous la ligne d'origine de l'image.
+  // Saisie seule, aucune date proposée ; un refus s'affiche sous le champ fautif.
+  ensureImageCaptureFields();
+  function ensureImageCaptureFields() {
+    if (!addressEl || $('rp9-image-date') || typeof document.createElement !== 'function') return;
+    const champ = (id: string, label: string, valeur: string) => {
+      const l = document.createElement('label');
+      l.className = 'rp9-image-capture text-xs block';
+      l.textContent = `${label} `;
+      const i = document.createElement('input');
+      i.id = id;
+      i.type = 'text';
+      i.value = valeur;
+      i.className = 'rp9-image-capture-input';
+      l.appendChild(i);
+      const e = document.createElement('span');
+      e.id = `${id}-erreur`;
+      e.className = 'rp9-image-capture-erreur text-xs block';
+      l.appendChild(e);
+      addressEl.parentElement?.appendChild(l);
+      return { i, e };
+    };
+    const deja = dateImageCapturee();
+    const d = champ('rp9-image-date', 'Date de la photo (AAAA-MM-JJ)', deja?.date ?? '');
+    const s = champ('rp9-image-date-source', 'Source de cette date', deja?.source ?? '');
+    const valider = () => {
+      d.e.textContent = '';
+      s.e.textContent = '';
+      if (!d.i.value.trim() && !s.i.value.trim()) return poserImageCapture(null);
+      const lu = lireImageCapture(d.i.value, s.i.value);
+      if (lu.ok) return poserImageCapture(lu.valeur);
+      (lu.champ === 'date' ? d.e : s.e).textContent = lu.motif;
+    };
+    d.i.addEventListener('change', valider);
+    s.i.addEventListener('change', valider);
   }
 
   // CAL54 — CALQUES OPTIONNELS. Superposition raster PURE : on ajoute une source et une

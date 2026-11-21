@@ -41,6 +41,8 @@ from apps.calepinage.services.catalogue_fixation import (
 )
 from authentication.models import Company
 
+from .test_api_liste import BaseApiCalepinage
+
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 MIGRATION = RACINE_APP / 'migrations' / '0014_calx358_systeme_fixation.py'
 CONTRAT = json.loads(
@@ -247,3 +249,133 @@ class CatalogueEnBase(TestCase):
         with self.assertRaises(ValidationError) as refus:
             instance.clean()
         self.assertIn('systeme', refus.exception.message_dict)
+
+
+# ── ACAL558 — le catalogue servi en HTTP ────────────────────────────────────
+
+URL_SYSTEMES = '/api/django/calepinage/calepinages/systemes-fixation/'
+CONTRAT_SYSTEMES = json.loads(
+    (RACINE_APP / 'contract_samples' / 'calepinage_systemes_fixation.json')
+    .read_text(encoding='utf-8'))
+
+
+def _corps(**champs):
+    corps = json.loads(json.dumps(
+        CONTRAT_SYSTEMES['exemple_creation']['corps']))
+    corps.update(champs)
+    return corps
+
+
+class CatalogueEnHttp(BaseApiCalepinage):
+    """ACAL558 — liste, création, modification, suppression ; société et
+    droits lus côté serveur."""
+
+    def setUp(self):
+        from apps.roles.models import Role
+        from django.contrib.auth import get_user_model
+
+        super().setUp()
+        self.role_lecteur = Role.objects.create(
+            company=self.company, nom='Lecteur calepinage',
+            permissions=['calepinage_voir'])
+        lecteur = get_user_model().objects.create_user(
+            username='cal_lecteur_558', password='x', company=self.company,
+            role=self.role_lecteur)
+        self.api_lecteur = self._client(lecteur)
+
+    def _creer(self, **champs):
+        reponse = self.api.post(URL_SYSTEMES, _corps(**champs), format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        return reponse.data['systeme']
+
+    def test_creation_a_la_forme_du_contrat(self):
+        systeme = self._creer()
+        attendu = CONTRAT_SYSTEMES['exemple_creation']['reponse']['systeme']
+        self.assertEqual(set(systeme), set(attendu))
+        self.assertEqual([c['role'] for c in systeme['composants']],
+                         ['rail', 'lest'])
+        self.assertEqual([c['ordre'] for c in systeme['composants']], [0, 1])
+        liste = self.api.get(URL_SYSTEMES)
+        self.assertEqual(liste.status_code, 200, liste.data)
+        self.assertEqual([s['id'] for s in liste.data['systemes']],
+                         [systeme['id']])
+
+    def test_post_sans_provenance_refuse_en_nommant_le_champ(self):
+        reponse = self.api.post(URL_SYSTEMES, _corps(provenance=''),
+                                format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('provenance', reponse.data)
+        self.assertIn('provenance du système est obligatoire',
+                      reponse.data['provenance'][0])
+        self.assertFalse(SystemeFixation.objects.exists())
+
+    def test_composant_sans_source_n_ecrit_aucun_systeme(self):
+        corps = _corps()
+        corps['composants'][1]['source'] = ''
+        reponse = self.api.post(URL_SYSTEMES, corps, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('composants[1].source', reponse.data)
+        self.assertFalse(SystemeFixation.objects.exists())
+        self.assertFalse(ComposantFixation.objects.exists())
+
+    def test_regle_invalide_et_code_en_double(self):
+        self._creer()
+        corps = _corps()
+        corps['composants'][0]['regle'] = {'base': 'surface'}
+        reponse = self.api.post(URL_SYSTEMES, corps, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.data['composants[0].regle'],
+                         [erreur_de_regle({'base': 'surface'})])
+        self.assertIn('code', reponse.data)
+
+    def test_company_du_corps_ignoree(self):
+        systeme = self._creer(company=self.autre.pk)
+        self.assertEqual(
+            SystemeFixation.objects.get(pk=systeme['id']).company_id,
+            self.company.pk)
+
+    def test_autre_societe_liste_vide_et_detail_404(self):
+        systeme = self._creer()
+        self.assertEqual(self.api_autre.get(URL_SYSTEMES).data,
+                         {'systemes': []})
+        detail = f"{URL_SYSTEMES}{systeme['id']}/"
+        self.assertEqual(self.api_autre.get(detail).status_code, 404)
+        self.assertEqual(self.api_autre.delete(detail).status_code, 404)
+        self.assertTrue(SystemeFixation.objects.filter(
+            pk=systeme['id']).exists())
+
+    def test_lecteur_lit_mais_n_ecrit_pas(self):
+        systeme = self._creer()
+        detail = f"{URL_SYSTEMES}{systeme['id']}/"
+        self.assertEqual(self.api_lecteur.get(URL_SYSTEMES).status_code, 200)
+        self.assertEqual(self.api_lecteur.get(detail).status_code, 200)
+        self.assertEqual(self.api_lecteur.post(
+            URL_SYSTEMES, _corps(code='autre'), format='json').status_code,
+            403)
+        self.assertEqual(self.api_lecteur.patch(
+            detail, {'actif': False}, format='json').status_code, 403)
+        self.assertEqual(self.api_lecteur.delete(detail).status_code, 403)
+
+    def test_patch_remplace_les_composants_et_delete_libere_le_calepinage(
+            self):
+        from apps.calepinage.models import Calepinage
+
+        systeme = self._creer()
+        detail = f"{URL_SYSTEMES}{systeme['id']}/"
+        corps = _corps()
+        corps['composants'] = list(reversed(corps['composants']))
+        reponse = self.api.patch(
+            detail, {'actif': False, 'composants': corps['composants']},
+            format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertFalse(reponse.data['systeme']['actif'])
+        self.assertEqual([c['role'] for c in
+                          reponse.data['systeme']['composants']],
+                         ['lest', 'rail'])
+        self.assertEqual(ComposantFixation.objects.count(), 2)
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Villa',
+            systeme_fixation_id=systeme['id'])
+        self.assertEqual(self.api.delete(detail).status_code, 204)
+        calepinage.refresh_from_db()
+        self.assertIsNone(calepinage.systeme_fixation_id)

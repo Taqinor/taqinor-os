@@ -7,6 +7,7 @@ laisse jamais se voir.
 """
 
 import ast
+import math
 import os
 import unittest
 
@@ -19,8 +20,10 @@ from core.calepinage.surfaces.rectangle import SurfaceRectangle
 from core.calepinage.types import (
     KIT_AO_PAYSAGE,
     KIT_AO_PORTRAIT,
+    Kit,
     NatureZone,
     Obstacle,
+    OrientationModule,
     Provenance,
     Rives,
     Zone,
@@ -41,8 +44,25 @@ class DessineEgaleCompte(unittest.TestCase):
         obs = appliquer_regles(obstacles)
         plan = compter_plan(surface, rangees, obs, zones)
         tables = poser_plan(surface, rangees, obs, zones)
-        self.assertEqual(2 * len(tables), plan.modules)
+        kit = rangees[0][1]
+        self.assertEqual(kit.modules_par_pas * len(tables), plan.modules)
         return plan.modules
+
+    def test_acal582_chassis_2_x_10_compte_des_blocs_entiers(self):
+        kit = Kit(code="CH", libelle="Châssis 2 × 10", module_long_m=2.278,
+                  module_court_m=1.134, puissance_module_wc=550.0,
+                  inclinaison_deg=10.0, orientation=OrientationModule.PORTRAIT,
+                  modules_par_table=1, rangs_par_table=2, modules_par_rang=10,
+                  jeu_entre_rangs_m=0.03)
+        self.assertEqual(kit.modules_par_pas, 20)
+        self.assertAlmostEqual(kit.cote_le_long_rangee_m, 11.34)
+        self.assertAlmostEqual(kit.emprise_transversale_m, 2 * 2.278 * math.cos(
+            math.radians(10.0)) + 0.03)
+        surface = SurfaceRectangle(repere="R", longueur_m=30.0, largeur_m=12.0,
+                                   rives=RIVES_AO)
+        total = self._verifier(surface, ((0.35, kit), (5.5, kit)))
+        self.assertGreater(total, 0)
+        self.assertEqual(total % 20, 0)
 
     def test_ecole_rectangle(self):
         surface = SurfaceRectangle(repere="BAT_C_ECOLE", longueur_m=51.10,

@@ -245,6 +245,7 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             'cellules_serie', 'temp_coeff_isc_pct_c',
             'ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c',
             'ond_mppt_independants', 'opt_onduleurs_compatibles',
+            'sous_chaines_par_module',  # ACAL720
             'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
             'date_creation', 'date_mise_a_jour',
         ]

@@ -401,6 +401,12 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, _totaux_seuls, avec_batterie_di
             "productible par ville illisible (devis %s, ville %r) — repli",
             getattr(devis, "reference", None), _client_city, exc_info=True)
         _productible = _co_productible
+    # ACAL973 (D-ACAL-36) — niveau 15 : la base de la pose réelle, lue UNE
+    # fois (pertes et ombrage inclus ⇒ aucun derate) ; ``None`` ⇒ inchangé.
+    from apps.ventes.horaire.productible_pose import base_de_production
+    _base_pose = None if _mode_ci else base_de_production(devis)
+    if _base_pose:
+        _productible = _co_productible = _base_pose["kwh_kwc_annuel"]
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
 
     def _etude_horaire_pour(kwc):
@@ -473,8 +479,12 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, _totaux_seuls, avec_batterie_di
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
     # drapeau ``puissance_inconnue`` fait OMETTRE ces vignettes au rendu, au
     # lieu d'imprimer « 0 kWh » / « 0 MAD/an » / « Retour en 0 ans ».
+    if _base_pose:  # ACAL973
+        roi_kwargs["productible_pertes_incluses"] = True
     roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
                                 **roi_kwargs)
+    if _base_pose:  # ACAL973 — la source, nommée à l'annexe
+        roi["productible_source"] = _base_pose["source"]
     # ── F1/L-2OPT (26/08/2026) — LA CHAÎNE ÉCONOMIQUE SE CALCULE PAR OPTION ──
     # ``calculate_savings_roi`` dérive TOUT (production, autoconsommation,
     # économies, payback, cashflow 25 ans) d'UN SEUL kWc. Depuis que les deux

@@ -980,20 +980,31 @@ def _appel_pvgis(url, timeout=PVGIS_TIMEOUT_S):
         return None
 
 
-def _url_drcalc(lat, lon, mois):
+def _plan(angle_deg, aspect_deg):
+    """ACAL1197 — ``(angle, aspect)`` normalisés (15.0 -> 15) et le suffixe de
+    clé de cache : vide au plan de référence (cache d'aujourd'hui intact)."""
+    angle, aspect = (int(v) if float(v).is_integer() else float(v)
+                     for v in (angle_deg, aspect_deg))
+    reference = (angle, aspect) == (PVGIS_ANGLE_DEG, PVGIS_ASPECT_DEG)
+    return angle, aspect, '' if reference else ':%s:%s' % (angle, aspect)
+
+
+def _url_drcalc(lat, lon, mois, angle_deg=PVGIS_ANGLE_DEG,
+                aspect_deg=PVGIS_ASPECT_DEG):
     params = {
         'lat': lat, 'lon': lon, 'month': mois,
-        'angle': PVGIS_ANGLE_DEG, 'aspect': PVGIS_ASPECT_DEG,
+        'angle': angle_deg, 'aspect': aspect_deg,
         'global': 1, 'outputformat': 'json',
     }
     return PVGIS_DRCALC + '?' + urllib.parse.urlencode(params)
 
 
-def _url_pvcalc(lat, lon):
+def _url_pvcalc(lat, lon, angle_deg=PVGIS_ANGLE_DEG,
+                aspect_deg=PVGIS_ASPECT_DEG):
     params = {
         'lat': lat, 'lon': lon, 'peakpower': 1, 'loss': PVGIS_LOSS_PCT,
         'pvtechchoice': PVGIS_PVTECH, 'outputformat': 'json',
-        'angle': PVGIS_ANGLE_DEG, 'aspect': PVGIS_ASPECT_DEG,
+        'angle': angle_deg, 'aspect': aspect_deg,
         'mountingplace': PVGIS_MOUNTING,
     }
     return PVGIS_PVCALC + '?' + urllib.parse.urlencode(params)
@@ -1060,7 +1071,8 @@ def _coordonnees(lat, lon):
     return latf, lonf
 
 
-def profil_horaire_live(lat, lon, mois):
+def profil_horaire_live(lat, lon, mois, *, angle_deg=PVGIS_ANGLE_DEG,
+                        aspect_deg=PVGIS_ASPECT_DEG):
     """Forme 24 h UTC au point GPS via ``DRcalc``, ou ``None``. Cache 30 j.
 
     Clé de cache SYSTÈME (jamais scopée société — la physique d'un point GPS
@@ -1072,19 +1084,22 @@ def profil_horaire_live(lat, lon, mois):
     if coords is None or mois not in (1, 4, 7):
         return None
     latf, lonf = coords
-    cle = 'pvgis:drprofil:%.3f:%.3f:%d' % (latf, lonf, mois)
+    angle, aspect, suffixe = _plan(angle_deg, aspect_deg)  # ACAL1197
+    cle = 'pvgis:drprofil:%.3f:%.3f:%d' % (latf, lonf, mois) + suffixe
 
     en_cache = _cache_lire(cle)
     if en_cache is not None:
         return en_cache or None
 
-    forme = _forme_depuis_drcalc(_appel_pvgis(_url_drcalc(latf, lonf, mois)))
+    forme = _forme_depuis_drcalc(_appel_pvgis(
+        _url_drcalc(latf, lonf, mois, angle, aspect)))
     if forme is not None:
         _cache_ecrire(cle, forme)
     return forme
 
 
-def productible_mensuel_live(lat, lon):
+def productible_mensuel_live(lat, lon, *, angle_deg=PVGIS_ANGLE_DEG,
+                             aspect_deg=PVGIS_ASPECT_DEG):
     """12 ``E_m`` (kWh/kWc/mois) au point GPS via ``PVcalc``, ou ``None``.
 
     Mêmes paramètres FIGÉS que la table de référence (angle 30, aspect 0,
@@ -1095,13 +1110,15 @@ def productible_mensuel_live(lat, lon):
     if coords is None:
         return None
     latf, lonf = coords
-    cle = 'pvgis:emens:%.3f:%.3f' % (latf, lonf)
+    angle, aspect, suffixe = _plan(angle_deg, aspect_deg)  # ACAL1197
+    cle = 'pvgis:emens:%.3f:%.3f' % (latf, lonf) + suffixe
 
     en_cache = _cache_lire(cle)
     if en_cache is not None:
         return en_cache or None
 
-    valeurs = _mensuel_depuis_pvcalc(_appel_pvgis(_url_pvcalc(latf, lonf)))
+    valeurs = _mensuel_depuis_pvcalc(_appel_pvgis(
+        _url_pvcalc(latf, lonf, angle, aspect)))
     if valeurs is not None:
         _cache_ecrire(cle, valeurs)
     return valeurs

@@ -154,12 +154,12 @@ def _type_obstacle(valeur, champ):
     ``DEGAGEMENTS_ATELIER``) : c'est la même table que celle qui porte leur
     dégagement, on n'en tient pas une seconde.
     """
-    from .degagements import DEGAGEMENTS_ATELIER
+    from .degagements import _types_admis  # ACAL499 : + types sans valeur
 
     texte = _texte(valeur, champ, "Type d'obstacle")
     if texte is None:
         return None
-    admis = tuple(cle for cle, _, _ in DEGAGEMENTS_ATELIER)
+    admis = _types_admis()
     if texte not in admis:
         raise _refus(
             f"Type d'obstacle inconnu : « {texte} ». Types admis : "

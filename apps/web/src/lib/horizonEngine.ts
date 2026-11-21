@@ -57,6 +57,16 @@ export interface HorizonProfile {
   points: HorizonPoint[];
   /** Hauteur maximale du profil (°), pour l'affichage — jamais recalculée à la main. */
   hauteurMaxDeg: number | null;
+  /** ACAL517 — provenance « relevé téléphone » (facultative ; effacée dès qu'un point change). */
+  releve?: ReleveHorizon;
+}
+
+/** ACAL517 — comment un profil a été relevé : mode (seule valeur : téléphone), date AAAA-MM-JJ
+ *  et précision DÉCLARÉE (°, > 0). `source` ne reçoit aucune troisième valeur. */
+export interface ReleveHorizon {
+  mode: 'telephone';
+  date: string;
+  precisionDeg: number;
 }
 
 /** Trie les points par azimut croissant — condition pour une interpolation correcte.
@@ -101,6 +111,48 @@ export function horizonMaxHeightDeg(points: readonly HorizonPoint[]): number | n
   const sorted = sortedHorizonPoints(points);
   if (!sorted.length) return null;
   return sorted.reduce((max, p) => Math.max(max, p.heightDeg), -Infinity);
+}
+
+/** ACAL517 — `releve` relu d'un document : conforme (mode, date, précision > 0) ou absent. */
+function lireReleve(brut: unknown): ReleveHorizon | undefined {
+  const r = brut as { mode?: unknown; date?: unknown; precisionDeg?: unknown } | null | undefined;
+  if (!r || r.mode !== 'telephone' || typeof r.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.date)) return undefined;
+  if (typeof r.precisionDeg !== 'number' || !Number.isFinite(r.precisionDeg) || r.precisionDeg <= 0) return undefined;
+  return { mode: 'telephone', date: r.date, precisionDeg: r.precisionDeg };
+}
+
+/** CAL93 — normalise un profil d'horizon avant écriture : points TRIÉS/assainis (aucun
+ *  point non fini), `hauteurMaxDeg` RECALCULÉE (jamais recopiée telle quelle — c'est la
+ *  seule définition, `horizonMaxHeightDeg`), source repliée sur `'saisie'` si absente.
+ *  ACAL517 — `releve` conforme réémis tel quel ; sans `releve`, aucune clé. */
+export function serializeHorizonProfile(profile: HorizonProfile): HorizonProfile {
+  const points = sortedHorizonPoints(profile.points);
+  const releve = lireReleve(profile.releve);
+  return {
+    source: profile.source === 'pvgis' ? 'pvgis' : 'saisie',
+    points,
+    hauteurMaxDeg: horizonMaxHeightDeg(points),
+    ...(releve ? { releve } : {}),
+  };
+}
+
+/**
+ * CAL93 — relit le profil d'horizon d'un layout sérialisé. Un JSON douteux (points
+ * manquants/non finis, source inconnue) est assaini plutôt que de casser l'ouverture ;
+ * moins de 2 points exploitables (ou clé absente) ⇒ `null`, jamais un horizon inventé.
+ */
+export function deserializeHorizonProfileFromLayout(json: unknown): HorizonProfile | null {
+  const raw = (json as { horizonProfile?: { source?: unknown; points?: unknown; releve?: unknown } } | null | undefined)?.horizonProfile;
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.points)) return null;
+  const points = sortedHorizonPoints(
+    (raw.points as Array<{ azimuthDeg?: unknown; heightDeg?: unknown }>)
+      .filter((p) => typeof p?.azimuthDeg === 'number' && typeof p?.heightDeg === 'number')
+      .map((p) => ({ azimuthDeg: p.azimuthDeg as number, heightDeg: p.heightDeg as number })),
+  );
+  if (points.length < 2) return null;
+  const source: HorizonSource = raw.source === 'pvgis' ? 'pvgis' : 'saisie';
+  const releve = lireReleve(raw.releve);
+  return { source, points, hauteurMaxDeg: horizonMaxHeightDeg(points), ...(releve ? { releve } : {}) };
 }
 
 /**

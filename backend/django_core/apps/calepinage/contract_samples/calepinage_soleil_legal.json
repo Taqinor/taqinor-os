@@ -1,0 +1,20 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/soleil-legal/",
+  "pourquoi": "ACAL730 — la correspondance heure solaire vraie / heure légale du jour `?date=AAAA-MM-JJ`, au site du calepinage (noyau ACAL718). Le décalage UTC du jour est lu dans `zoneinfo` pour le fuseau SAISI (réglages d'imagerie, sinon profil société) — jamais déduit de la longitude. Fuseau non saisi : 409 `{site.fuseau: [motif]}` (`exemple_sans_fuseau`) ; épingle absente : 409 `{site.pin: [motif]}` ; date absente ou mal formée : 400 `{date: [motif]}`. Valeurs arrondies au dixième de minute. Lu par l'écran hôte de l'atelier (ACAL719).",
+  "exemple": {
+    "date": "2026-02-11",
+    "fuseau": "Africa/Casablanca",
+    "fuseau_source": "profil_societe",
+    "longitude_deg": -7.59,
+    "decalage_utc_min": 60,
+    "equation_du_temps_min": -14.2,
+    "ecart_legal_moins_solaire_min": 104.6,
+    "midi_solaire_legal_h": 13.743333333333334,
+    "mention": "fuseau repris du profil société (Paramètres › Société)"
+  },
+  "exemple_sans_fuseau": {
+    "site.fuseau": [
+      "fuseau du site non renseigné : aucune heure légale n'est calculée"
+    ]
+  }
+}

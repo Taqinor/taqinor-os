@@ -139,6 +139,28 @@ describe('ACAL70 — « Poser comme pan du toit » (le serveur géoréférence, 
     })
   })
 
+  it.each([
+    ['exemple_controle_mm_x10', /A–B mesure 9,84 m.*98,4 m \(×10\)/],
+    ['exemple_controle_mm_concorde', /concordent/],
+    ['exemple_controle_inconnu', /ne déclare pas son unité : aucun contrôle possible/],
+  ])('ACAL513 — contrôle d’échelle « %s » : la phrase du serveur, calage non bloqué', async (variante, motif) => {
+    const utilisateur = userEvent.setup()
+    const atelier = builderApi()
+    rendre({ builderApi: atelier })
+    await proposerLeContour(utilisateur)
+    expect(screen.queryByTestId('cal-calage-controle')).toBeNull()
+
+    importerPlan.mockResolvedValueOnce({
+      data: { ...contrat('exemple'), controle_echelle: contrat(variante) },
+    })
+    fireEvent.change(screen.getByLabelText(/Distance réelle/), { target: { value: '98.4' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Poser comme pan du toit' }))
+
+    expect(await screen.findByTestId('cal-calage-controle')).toHaveTextContent(motif)
+    expect(screen.getByTestId('cal-calage-controle')).toHaveAttribute('role', 'status')
+    expect(atelier.ajouterPanDepuisContour).toHaveBeenCalledTimes(1) // jamais bloqué
+  })
+
   it('sans distance réelle : refus SOUS le champ, aucun appel, aucun pan', async () => {
     const utilisateur = userEvent.setup()
     const atelier = builderApi()

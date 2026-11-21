@@ -88,6 +88,7 @@ import {
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
+import TableauComparatif from '../../features/calepinage/atelier/TableauComparatif.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
@@ -1445,6 +1446,9 @@ function AtelierToiture({
             les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.
           </p>
         </div>
+
+        {/* ACAL546 — « Comparer les poses » (toit plat), sans colonne en MAD ; mode calepinage seulement. */}
+        {estCalepinage && <TableauComparatif />}
 
         {/* ERR-ACAL311-PANNEAU-ABSENT-ERP — « Affiner ma consommation » (`#rp9-cons-window`) :
             balisage UNIQUE partagé avec la preview publique (`@roofpro/consumptionMarkup`),

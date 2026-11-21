@@ -35,7 +35,8 @@ def specs_for_produit(produit):
         degradation_annuelle_pct, degradation_annee1_pct,
         garantie_pct_a_10_ans, garantie_pct_a_25_ans,
         rendement_par_irradiance, tolerance_pmax_min_pct,
-        tolerance_pmax_max_pct}`` (CAL114 : poids, épaisseur, rendement,
+        tolerance_pmax_max_pct, sous_chaines_par_module (ACAL720)}``
+        (CAL114 : poids, épaisseur, rendement,
         technologie de cellule et bifacial étaient déjà sur la fiche mais
         omis de ce bloc — cf. CAL111-113 ; les trois dernières, CALX60) ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
@@ -140,6 +141,9 @@ def specs_for_produit(produit):
             ('cellules_serie', getattr(fiche, 'cellules_serie', None)),
             ('temp_coeff_isc_pct_c',
              getattr(fiche, 'temp_coeff_isc_pct_c', None)),
+            # ACAL720 — sous-chaînes (diodes de dérivation) par module.
+            ('sous_chaines_par_module',
+             getattr(fiche, 'sous_chaines_par_module', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'onduleur':

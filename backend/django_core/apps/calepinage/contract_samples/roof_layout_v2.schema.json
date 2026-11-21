@@ -599,6 +599,12 @@
             "chien_assis",
             "edicule",
             "antenne",
+            "lanterneau",
+            "exutoire",
+            "climatiseur",
+            "citerne",
+            "garde_corps",
+            "joint_dilatation",
             "autre"
           ]
         },
@@ -1951,6 +1957,17 @@
             "number",
             "null"
           ]
+        },
+        "releve": {
+          "description": "ACAL517 — provenance d'un profil relevé au téléphone : `mode` (seule valeur : 'telephone'), `date` du relevé et `precisionDeg` DÉCLARÉE. Facultatif : absent = profil sans provenance de relevé (saisie au bureau, PVGIS, fichier). Effacé dès qu'un point est ajouté, retiré ou importé. `source` ne reçoit aucune troisième valeur.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "date", "precisionDeg"],
+          "properties": {
+            "mode": {"type": "string", "enum": ["telephone"]},
+            "date": {"type": "string", "format": "date"},
+            "precisionDeg": {"type": "number", "exclusiveMinimum": 0}
+          }
         }
       }
     },

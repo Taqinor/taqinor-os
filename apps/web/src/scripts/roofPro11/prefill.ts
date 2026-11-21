@@ -30,7 +30,8 @@ import { nettoyerEnvironment, type EnvironmentObject } from './environment';
 import { type ShadeObstruction } from '../../lib/shadingEngine'; // ACAL27
 import { serializeExclusionZones, deserializeExclusionZones, idPanEnDouble, type ExclusionZone } from './zones';
 import { resolveSetbacks, PERIMETER_SETBACK_M, type PerimeterSetbacks } from '../../lib/roofPro2';
-import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
+import { serializeHorizonProfile, type HorizonProfile } from '../../lib/horizonEngine';
+export { serializeHorizonProfile, deserializeHorizonProfileFromLayout } from '../../lib/horizonEngine'; // ACAL517 : déplacées, ré-exportées
 import { lireCoucheElectrique, type CoucheElectrique, type DocumentElectrique } from './electrique3d';
 import { numeroterDocument, registreAtelier } from './numerotation'; // CALX111
 
@@ -52,7 +53,7 @@ import {
   ecrireOptimisationDansDocument,
   semerOptimisationDepuisDocument,
 } from './optimisationDocument'; // CALX114 câblage
-import { semerFondDepuisDocument } from './fondDocument'; // CALX107 câblage
+import { semerFondDepuisDocument, imageCapturePourDocument } from './fondDocument'; // CALX107 câblage ; ACAL509
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
 import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; import { emettreCoupures } from './coupuresPavage'; // ACAL193 (sorti), ACAL593, ACAL576
 import { pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
@@ -1155,7 +1156,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
 
     ...emettrePourDocument(ctx.parcelle), // ACAL233 — la parcelle tracée ; aucune parcelle ⇒ aucune clé
 
-    ...underlayPourDocument(ctx), // CALX107 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
+    ...underlayPourDocument(ctx), ...imageCapturePourDocument(), // CALX107 / ACAL509 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
 
     ...emettreSurfacesPose(ctx.surfacesPose), // CALX123 — les surfaces de pose tracées (contrat `poseSurfaces[]`) ; aucune surface ⇒ aucune clé
 
@@ -1232,7 +1233,7 @@ function pansPavesDansLaSession(layout: SerializedLayout, ctx: Ctx): Set<string>
 const CLES_RACINE_ATELIER = new Set([
   'version', 'pin', 'outline', 'billKwh', 'zones', 'activeAreaId', 'result', 'scenario', 'panelWatt',
   'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements', 'reperesChantier',
-  'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay',
+  'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay', 'imageCapture',
   'poseSurfaces', 'consumption', 'modules', 'optimisation', 'motifsPansVides', 'electrical', 'parcelle', 'alleeTechnique',
   'pinSource', 'repereAcquitte', // ACAL193 — réémises par `emettreProvenanceEpingle`
 ]);
@@ -1330,37 +1331,6 @@ export function deserializeSetbacksFromLayout(json: unknown): PerimeterSetbacks 
   const raw = (json as { setbacksM?: Partial<PerimeterSetbacks> } | null | undefined)?.setbacksM;
   if (!raw || typeof raw !== 'object') return null;
   return resolveSetbacks(raw);
-}
-
-/** CAL93 — normalise un profil d'horizon avant écriture : points TRIÉS/assainis (aucun
- *  point non fini), `hauteurMaxDeg` RECALCULÉE (jamais recopiée telle quelle — c'est la
- *  seule définition, `horizonMaxHeightDeg`), source repliée sur `'saisie'` si absente. */
-export function serializeHorizonProfile(profile: HorizonProfile): HorizonProfile {
-  const points = sortedHorizonPoints(profile.points);
-  return {
-    source: profile.source === 'pvgis' ? 'pvgis' : 'saisie',
-    points,
-    hauteurMaxDeg: horizonMaxHeightDeg(points),
-  };
-}
-
-/**
- * CAL93 — relit le profil d'horizon d'un layout sérialisé. Mêmes garde-fous que
- * `deserializeSetbacksFromLayout` : un JSON douteux (points manquants/non finis, source
- * inconnue) est assaini plutôt que de casser l'ouverture ; moins de 2 points exploitables
- * (ou clé absente — document antérieur à CAL93) ⇒ `null`, jamais un horizon inventé.
- */
-export function deserializeHorizonProfileFromLayout(json: unknown): HorizonProfile | null {
-  const raw = (json as { horizonProfile?: { source?: unknown; points?: unknown } } | null | undefined)?.horizonProfile;
-  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.points)) return null;
-  const points = sortedHorizonPoints(
-    (raw.points as Array<{ azimuthDeg?: unknown; heightDeg?: unknown }>)
-      .filter((p) => typeof p?.azimuthDeg === 'number' && typeof p?.heightDeg === 'number')
-      .map((p) => ({ azimuthDeg: p.azimuthDeg as number, heightDeg: p.heightDeg as number })),
-  );
-  if (points.length < 2) return null;
-  const source: HorizonSource = raw.source === 'pvgis' ? 'pvgis' : 'saisie';
-  return { source, points, hauteurMaxDeg: horizonMaxHeightDeg(points) };
 }
 
 /**

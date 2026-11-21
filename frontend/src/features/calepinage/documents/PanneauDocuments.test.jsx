@@ -75,11 +75,11 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     expect(codes).toEqual([
       'rapport_etude', 'rapport_ombrage', 'export_projet_json', 'plan_cablage',
       'manuel_proprietaire', 'document_asbuilt', 'dossier_fin_chantier',
-      'diagramme_pertes', 'presentation_compacte',
+      'diagramme_pertes', 'presentation_compacte', 'pertes_en_postes',
     ])
   })
 
-  it('9 documents servis ⇒ 9 lignes, rien de plus', async () => {
+  it('10 documents servis ⇒ 10 lignes, rien de plus', async () => {
     servirInventaire('exemple')
 
     rendre()
@@ -108,7 +108,7 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     expect(screen.queryByTestId('cal-doc-manque-rapport_etude')).toBeNull()
   })
 
-  it('sans conception (exemple_vide) : les NEUF boutons sont inactifs, motif ET manque lisibles', async () => {
+  it('sans conception (exemple_vide) : les DIX boutons sont inactifs, motif ET manque lisibles', async () => {
     servirInventaire('exemple_vide')
 
     rendre(2) // exemple_vide::calepinage = 2
@@ -124,7 +124,7 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     expect(screen.getByTestId('cal-doc-manque-item-rapport_etude-roof_layout'))
       .toHaveTextContent(attendu.manque[0].ou_saisir)
 
-    // Les NEUF sont indisponibles ici.
+    // Les DIX sont indisponibles ici.
     for (const code of exempleContrat(APP, NOM, 'exemple_vide').documents.map((d) => d.code)) {
       expect(screen.getByTestId(`cal-doc-bouton-${code}`)).toBeDisabled()
     }

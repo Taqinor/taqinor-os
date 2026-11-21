@@ -61,8 +61,8 @@ class TypesDeclaresTest(SimpleTestCase):
                     self.assertIn(cle, TYPES_CLES.get(section, {}))
                     self.assertTrue(TYPES_CLES[section][cle].get('type'))
         # 31 simulation (+ ACAL455/456/463) + 9 electrique_societe
-        # (+5 d'autres lanes ; + 2 ACAL704, + 3 ACAL716).
-        self.assertEqual(total, 50)
+        # (+5 d'autres lanes ; + 2 ACAL704, + 3 ACAL716, + 2 ACAL742).
+        self.assertEqual(total, 52)
 
     def test_aucun_type_pour_une_cle_hors_registre(self):
         for section, types in TYPES_CLES.items():
@@ -264,14 +264,15 @@ class LibellesEnumTest(SimpleTestCase):
     def test_la_regle_de_qualite_reprend_les_libelles_de_regles(self):
         from apps.calepinage.services.etapes.qualite_module import REGLES
 
-        ligne = next(l for l in registre_des_reglages()['simulation']
-                     if l['cle'] == 'regle_qualite_module')
+        ligne = next(entree for entree in registre_des_reglages()['simulation']
+                     if entree['cle'] == 'regle_qualite_module')
         self.assertEqual(
             ligne['libelles'],
             {valeur: regle['libelle'] for valeur, regle in REGLES.items()})
 
     def test_mots_cites_par_la_tache(self):
-        lignes = {l['cle']: l for l in registre_des_reglages()['simulation']}
+        lignes = {entree['cle']: entree
+                  for entree in registre_des_reglages()['simulation']}
         self.assertEqual(lignes['mode_meteo']['libelles']['tmy'],
                          'Année type (TMY)')
         self.assertEqual(lignes['modele_iam']['libelles']['martin_ruiz'],
@@ -412,7 +413,9 @@ class ClesOmbrageAcal716Test(SimpleTestCase):
 
     def test_au_registre_en_fin_typees_et_sans_valeur(self):
         cles = list(registre('simulation'))
-        self.assertEqual(cles[-3:], list(self.CLES))
+        # ACAL742 ajoute ensuite deux clés : les trois restent contiguës.
+        debut = cles.index(self.CLES[0])
+        self.assertEqual(cles[debut:debut + 3], list(self.CLES))
         servi = {ligne['cle']: ligne
                  for ligne in registre_des_reglages()['simulation']}
         self.assertEqual(servi['seuil_acces_retrait']['type'], 'nombre')
@@ -434,6 +437,40 @@ class ClesOmbrageAcal716Test(SimpleTestCase):
             with self.subTest(cle=cle):
                 with self.assertRaises(ReglageInvalide) as refus:
                     _normaliser_section_simulation({cle: _saisie('abc')})
+                self.assertEqual(refus.exception.champ, cle)
+
+
+class ClesNettoyageAcal742Test(SimpleTestCase):
+    """ACAL742 — « nettoyages par an » et « inclinaison d'autonettoyage » :
+    typées, sourcées, en fin de registre, SANS valeur préremplie."""
+
+    CLES = ('nettoyages_par_an', 'inclinaison_autonettoyage_deg')
+
+    def test_en_fin_de_registre_typees_et_sans_valeur(self):
+        self.assertEqual(list(registre('simulation'))[-2:], list(self.CLES))
+        servi = {ligne['cle']: ligne
+                 for ligne in registre_des_reglages()['simulation']}
+        self.assertEqual(servi['nettoyages_par_an']['type'], 'entier')
+        self.assertEqual(servi['nettoyages_par_an']['unite'], 'par an')
+        self.assertEqual(servi['inclinaison_autonettoyage_deg']['type'],
+                         'nombre')
+        self.assertEqual(servi['inclinaison_autonettoyage_deg']['maximum'],
+                         90)
+        for cle in self.CLES:
+            self.assertIn('Soiling loss', servi[cle]['reference'])
+            self.assertNotIn('valeur', servi[cle])
+
+    def test_saisie_normalisee_et_sans_source_refusee(self):
+        rendu = _normaliser_section_simulation({
+            'nettoyages_par_an': _saisie(4, 'societe'),
+            'inclinaison_autonettoyage_deg': _saisie('10,5', 'societe')})
+        self.assertEqual(rendu['nettoyages_par_an']['valeur'], 4)
+        self.assertEqual(rendu['inclinaison_autonettoyage_deg']['valeur'],
+                         10.5)
+        for cle in self.CLES:
+            with self.subTest(cle=cle):
+                with self.assertRaises(ReglageInvalide) as refus:
+                    _normaliser_section_simulation({cle: {'valeur': 4}})
                 self.assertEqual(refus.exception.champ, cle)
 
 

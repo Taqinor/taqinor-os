@@ -124,3 +124,16 @@ test('ACAL503 : `.rp9-btn` et `.rp9-input` ont une règle (cadre, 44 px, aucune 
   assert.match(CSS, /\.rp9-host \.rp9-btn:focus-visible/)
   assert.match(CSS, /\.rp9-host \.rp9-input:focus-visible/)
 })
+
+test('ACAL493 : hauteur et bandeau « Compte NON engageable » montés', () => {
+  const debut = SRC.indexOf('id="rp9-obs-edit"')
+  assert.ok(debut >= 0)
+  const fin = SRC.indexOf('id="rp9-obs-engage"')
+  assert.ok(fin > debut, 'rp9-obs-engage absent ou avant rp9-obs-edit')
+  const carte = SRC.slice(debut, fin)
+  assert.match(carte, /id="rp9-obs-height"[^>]*inputMode="decimal"/)
+  assert.doesNotMatch(carte.slice(carte.indexOf('id="rp9-obs-height"'), carte.indexOf('id="rp9-obs-height"') + 200), /value=/)
+  // le bandeau est HORS de la carte (la carte se ferme avant lui) et masqué par défaut
+  assert.match(SRC.slice(fin - 40, fin + 80), /id="rp9-obs-engage" role="status" hidden/)
+  assert.match(carte, /<\/div>\s*\{\/\* ACAL493/, 'le bandeau doit suivre la fermeture de la carte')
+})

@@ -11,7 +11,12 @@ Run :
     python manage.py test apps.ventes.tests.test_acal_ombrage_etude_devis -v2
 """
 import copy
+import json
+from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
+
+from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.selectors import ombrage_servi
@@ -275,3 +280,184 @@ class OmbrageEtudeDevisTest(BaseApiCalepinage):
                     1.0 - perte / 100.0, places=3)
                 self.assertAlmostEqual(balaye['production_annuelle_kwh'],
                                        etude['annuel']['production_kwh'], delta=1.0)
+
+    # ── ACAL999 — la base de production de la pose réelle ─────────────────
+    def _niveau(self, niveau, **champs):
+        Devis.objects.filter(pk=self.devis.pk).update(
+            regles_calcul=niveau, mode_installation='residentiel', **champs)
+        self.devis.refresh_from_db()
+
+    def test_acal999_niveau_15_meme_base_aux_entrees_et_a_la_page(self, *_m):
+        from apps.calepinage.selectors_devis import productible_pose_servi
+        from apps.ventes.domain.entrees import (
+            entrees_depuis_devis, kwargs_moteur_ombre)
+        from apps.ventes.horaire.productible_pose import (
+            base_de_production, base_depuis_servi)
+        from apps.ventes.horaire.public import production_annuelle_pour_kwc
+        self._niveau(15)
+        with patch_materiel():
+            servi = productible_pose_servi(self.devis.pk, self.company,
+                                           tolerance_kwc_ratio=0.02)
+            base = base_de_production(self.devis)
+            entrees = entrees_depuis_devis(self.devis)
+        self.assertEqual(base, base_depuis_servi(servi)[0])
+        self.assertEqual(entrees.base_production, base)
+        if base is not None:  # simulation complète : servie partout
+            kwargs = kwargs_moteur_ombre(entrees)
+            self.assertEqual(kwargs['base_production'], base)
+            self.assertNotIn('perte_ombrage_pct', kwargs)
+            self.assertNotIn('productible_kwh_kwc', kwargs)
+            self.assertEqual(
+                production_annuelle_pour_kwc(servi['kwc_simule'],
+                                             ville='Casablanca',
+                                             base_production=base),
+                round(servi['kwc_simule'] * sum(base['kwh_kwc_mensuel'])))
+        else:  # incomplet : jamais servi, la ville sert
+            self.assertTrue(servi is None or servi['perime'])
+
+    def test_acal999_envoye_puis_resimule_relit_la_base_rangee(self, *_m):
+        from apps.ventes.horaire.productible_pose import base_de_production
+        rangee = {'kwh_kwc_annuel': 1388.4, 'kwh_kwc_mensuel': [115.7] * 12,
+                  'pertes_incluses': True, 'source': 'calepinage_enregistre'}
+        self._niveau(15, statut=Devis.Statut.ENVOYE, etude_params={
+            'etude_horaire': {'base_production': rangee}})
+        layout = copy.deepcopy(self.calepinage.roof_layout)
+        layout['zones'][0]['geometry']['count'] = 3
+        self.calepinage.roof_layout = layout
+        self.calepinage.save(update_fields=['roof_layout'])
+        with patch_materiel():
+            simuler_calepinage(self.calepinage, client=_ClientParOrientation(),
+                               materiel=MATERIEL, enregistrer=True)
+            with mock.patch('apps.calepinage.selectors_devis.'
+                            'productible_pose_servi') as vivant:
+                self.assertEqual(base_de_production(self.devis), rangee)
+        vivant.assert_not_called()
+
+    def test_acal999_niveau_14_rien_ne_change(self, *_m):
+        from apps.ventes.domain.entrees import (
+            empreinte_entrees, entrees_depuis_devis, kwargs_moteur_ombre)
+        from apps.ventes.horaire.productible_pose import (
+            diagnostic_base_de_production)
+        self._niveau(14)
+        with patch_materiel():
+            entrees = entrees_depuis_devis(self.devis)
+            self.assertEqual(diagnostic_base_de_production(self.devis),
+                             (None, 'règles d’avant le 21/11'))
+        self.assertIsNone(entrees.base_production)
+        self.assertNotIn('base_production', kwargs_moteur_ombre(entrees))
+        self.assertEqual(empreinte_entrees(entrees), empreinte_entrees(
+            SimpleNamespace(**{c: entrees[c] for c in entrees.keys()
+                               if c != 'base_production'})))
+
+
+_SERVI_POSE = {
+    'perime': False, 'motif': '', 'kwc_simule': 71.0,
+    'kwh_kwc_annuel': 1388.4, 'pertes_et_ombrage_inclus': True,
+    'kwh_kwc_mensuel': [75.2, 85.6, 115.3, 130.4, 148.9, 155.1, 160.2, 149.6,
+                        122.8, 101.5, 77.4, 66.4]}
+
+
+class BaseDeProductionSansBaseTest(SimpleTestCase):
+    """ACAL999 — le résolveur et ses lecteurs, sans base (doublures)."""
+
+    def _devis(self, **champs):
+        return SimpleNamespace(**dict(dict(
+            pk=1, company=None, regles_calcul=15, statut='brouillon',
+            mode_installation='residentiel', etude_params={}), **champs))
+
+    def _diag(self, devis, servi=_SERVI_POSE, kwc=71.0):
+        from apps.ventes.horaire.productible_pose import (
+            diagnostic_base_de_production)
+        with mock.patch('apps.calepinage.selectors_devis.'
+                        'productible_pose_servi', return_value=servi) as lu:
+            return diagnostic_base_de_production(devis, kwc=kwc), lu
+
+    def test_contrat_d_acal996_donne_la_base(self):
+        from apps.ventes.horaire.productible_pose import base_depuis_servi
+        exemple = json.loads((Path(__file__).resolve().parents[2]
+                              / 'calepinage' / 'contract_samples'
+                              / 'calepinage_productible_pose.json')
+                             .read_text(encoding='utf-8'))
+        base, motif = base_depuis_servi(exemple['exemple'], kwc=71.0)
+        self.assertEqual(base, {
+            'kwh_kwc_annuel': 1388.4,
+            'kwh_kwc_mensuel': exemple['exemple']['kwh_kwc_mensuel'],
+            'pertes_incluses': True, 'source': 'calepinage_enregistre'})
+        self.assertEqual(motif, '')
+        incomplet = base_depuis_servi(exemple['exemple_incomplet'])
+        self.assertEqual(incomplet, (None, exemple['exemple_incomplet']['motif']))
+        self.assertIsNone(base_depuis_servi(exemple['exemple_perime'])[0])
+
+    def test_brouillon_niveau_15_lit_le_servi(self):
+        (base, motif), lu = self._diag(self._devis())
+        self.assertEqual(base['kwh_kwc_annuel'], 1388.4)
+        self.assertEqual(lu.call_args.kwargs['tolerance_kwc_ratio'], 0.02)
+
+    def test_kwc_hors_tolerance_ville_et_motif(self):
+        (base, motif), _lu = self._diag(self._devis(), kwc=80.0)
+        self.assertIsNone(base)
+        self.assertEqual(motif, 'lignes du devis différentes du calepinage')
+
+    def test_incomplet_ville(self):
+        servi = dict(_SERVI_POSE, perime=True, pertes_et_ombrage_inclus=False,
+                     motif='résultat incomplet : 3 pertes non renseignées')
+        (base, motif), _lu = self._diag(self._devis(), servi=servi)
+        self.assertIsNone(base)
+        self.assertIn('incomplet', motif)
+
+    def test_niveau_14_et_non_residentiel_ville(self):
+        (base, motif), lu = self._diag(self._devis(regles_calcul=14))
+        self.assertEqual((base, motif), (None, 'règles d’avant le 21/11'))
+        lu.assert_not_called()
+        (base, _m), _lu = self._diag(self._devis(mode_installation='industriel'))
+        self.assertIsNone(base)
+
+    def test_envoye_relit_la_base_rangee_jamais_le_vivant(self):
+        rangee = {'kwh_kwc_annuel': 1300.0, 'kwh_kwc_mensuel': [108.3] * 12,
+                  'pertes_incluses': True, 'source': 'calepinage_enregistre'}
+        devis = self._devis(statut='envoye',
+                            etude_params={'etude_horaire': {'base_production': rangee}})
+        (base, _m), lu = self._diag(devis)
+        self.assertEqual(base, rangee)
+        lu.assert_not_called()
+        (base, _m), _lu = self._diag(self._devis(statut='envoye'))
+        self.assertIsNone(base)
+
+    def test_page_publique_lit_la_base_sans_derate(self):
+        from apps.ventes.horaire.public import (
+            production_annuelle_pour_kwc, production_journaliere_par_saison)
+        base = {'kwh_kwc_annuel': 1388.4, 'pertes_incluses': True,
+                'kwh_kwc_mensuel': _SERVI_POSE['kwh_kwc_mensuel'],
+                'source': 'calepinage_enregistre'}
+        with mock.patch('apps.ventes.horaire.public.productible_mensuel',
+                        return_value=None):
+            self.assertEqual(
+                production_annuelle_pour_kwc(71.0, ville='X', perte_ombrage_pct=10.0,
+                                             base_production=base),
+                round(71.0 * sum(base['kwh_kwc_mensuel'])))
+            self.assertIsNone(production_annuelle_pour_kwc(71.0, ville='X'))
+        with mock.patch('apps.ventes.horaire.public.productible_mensuel',
+                        return_value=None), \
+                mock.patch('apps.ventes.horaire.public.production_par_saison',
+                           return_value={'ete': {}}) as saison:
+            production_journaliere_par_saison(71.0, ville='X', facteur=0.9,
+                                              base_production=base)
+        args, kwargs = saison.call_args
+        self.assertEqual(args[1][0], base['kwh_kwc_mensuel'])
+        self.assertEqual(kwargs['facteur'], 1.0)
+
+    def test_kwargs_et_empreinte(self):
+        from apps.ventes.domain.entrees import empreinte_entrees, kwargs_moteur_ombre
+        base = {'kwh_kwc_annuel': 1388.4, 'pertes_incluses': True,
+                'kwh_kwc_mensuel': [115.7] * 12, 'source': 'calepinage_enregistre'}
+        entrees = {'conso_kwh_mensuelles': [300.0] * 12, 'ville': 'X',
+                   'productible_kwh_kwc': 1600.0}
+        self.assertNotIn('base_production', kwargs_moteur_ombre(entrees))
+        avec = kwargs_moteur_ombre(dict(entrees, base_production=base))
+        self.assertEqual(avec['base_production'], base)
+        self.assertNotIn('productible_kwh_kwc', avec)
+        sans = SimpleNamespace(conso_kwh_mensuelles=[300.0] * 12, ville='X')
+        self.assertEqual(empreinte_entrees(sans), empreinte_entrees(
+            SimpleNamespace(base_production=None, **vars(sans))))
+        self.assertNotEqual(empreinte_entrees(sans), empreinte_entrees(
+            SimpleNamespace(base_production=base, **vars(sans))))

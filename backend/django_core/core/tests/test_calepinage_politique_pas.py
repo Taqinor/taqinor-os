@@ -19,6 +19,8 @@ from core.calepinage.types import (
     KIT_AO_PORTRAIT,
     KIT_VILLA_720,
     Axe,
+    Kit,
+    OrientationModule,
     Parametres,
     Rives,
 )
@@ -221,6 +223,22 @@ class LElevationVientDeLaLatitude(unittest.TestCase):
                            politique=AntiOmbrage(latitude_deg=30.4))
         self.assertGreaterEqual(len(agadir.rangees), len(national.rangees))
         self.assertGreaterEqual(agadir.modules, national.modules)
+
+    def test_acal582_un_chassis_2_rangs_porte_l_ombre_d_une_table_de_2_modules(self):
+        """Entraxe à 10 h solaire (latitude 30,4°) d'un châssis 2 × 10 ≥ celui
+        d'une table d'UN rang de 2 modules de haut (même hauteur d'ombre)."""
+        commun = dict(libelle="essai", module_court_m=1.134,
+                      puissance_module_wc=550.0, inclinaison_deg=15.0,
+                      orientation=OrientationModule.PORTRAIT,
+                      modules_par_table=1)
+        chassis = Kit(code="CH", module_long_m=2.278, rangs_par_table=2,
+                      modules_par_rang=10, jeu_entre_rangs_m=0.03, **commun)
+        haute = Kit(code="H2", module_long_m=2 * 2.278, **commun)
+        politique = AntiOmbrage(latitude_deg=30.4)
+        self.assertAlmostEqual(politique.hauteur_module_m(chassis),
+                               politique.hauteur_module_m(haute))
+        self.assertGreaterEqual(politique.pas_de_rangee_m(chassis),
+                                politique.pas_de_rangee_m(haute))
 
     def test_le_majeur_du_moteur_a_ete_incremente(self):
         """Un compte publiable peut changer à toiture identique : MAJEUR."""

@@ -75,6 +75,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   const doc = useDocumentCalepinage(calepinageId)
   const [points, setPoints] = useState([])
   const [source, setSource] = useState('saisie')
+  const [releve, setReleve] = useState(null) // ACAL517 : provenance « relevé téléphone », effacée à toute modification
   const [saisie, setSaisie] = useState({ azimut: '', hauteur: '' })
   const [message, setMessage] = useState(null)
   const [recuperation, setRecuperation] = useState(false)
@@ -92,6 +93,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     if (profil && Array.isArray(profil.points)) {
       setPoints(sortedHorizonPoints(profil.points))
       setSource(profil.source === 'pvgis' ? 'pvgis' : 'saisie')
+      setReleve(profil.releve ?? null)
     }
   }
 
@@ -116,6 +118,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     setPoints((prev) => sortedHorizonPoints([...prev, { azimuthDeg: az, heightDeg: h }]))
     setSaisie({ azimut: '', hauteur: '' })
     setSource('saisie') // toute saisie manuelle bascule la source (jamais mélangée à `pvgis`)
+    setReleve(null)
     setMessage(null)
   }
 
@@ -123,6 +126,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     setPoints((prev) => sortedHorizonPoints(prev).filter((_, i) => i !== index))
     // ACAL124 — un profil PVGIS dont on retire un point est un profil CORRIGÉ.
     setSource('saisie')
+    setReleve(null)
   }
 
   function recupererDepuisPvgis() {
@@ -139,6 +143,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
         }
         setPoints(sortedHorizonPoints(profil))
         setSource('pvgis')
+        setReleve(null)
         setMessage(`Profil PVGIS récupéré (${profil.length} points) — à enregistrer pour l’appliquer.`)
       })
       .catch(() => setMessage('Le profil d’horizon n’a pas pu être récupéré depuis PVGIS.'))
@@ -159,6 +164,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     if (directionsDistinctes(r.points) < DIRECTIONS_MINIMALES) { setMessage(`Import refusé — ${MESSAGE_TOUR_INCOMPLET}.`); return }
     setPoints(sortedHorizonPoints(r.points))
     setSource('saisie')
+    setReleve(null)
     const conv = r.format.startsWith('deux') ? `, ${convention === CONVENTION_NORD ? '0° = Nord, sens horaire' : '0° = Sud, + vers l’Ouest'}` : ''
     setMessage(`Fichier ${fichier.nom} importé (${r.format}${conv}) — à enregistrer pour l’appliquer.`)
   }
@@ -168,7 +174,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     const propres = sortedHorizonPoints(points)
     // ACAL24 — UNE clé, par `layout/section/` ; `null` retire le profil.
     const valeur = propres.length >= 2
-      ? { source, points: propres, hauteurMaxDeg: horizonMaxHeightDeg(propres) }
+      ? { source, points: propres, hauteurMaxDeg: horizonMaxHeightDeg(propres), ...(releve ? { releve } : {}) }
       : null
     const res = await ecrireSection({
       calepinageId, cle: 'horizonProfile', valeur, empreinte: doc.empreinte, documentVivant,

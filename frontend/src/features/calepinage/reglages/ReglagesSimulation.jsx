@@ -6,6 +6,7 @@ import ReglagesSite from './ReglagesSite'
 import DemarrageRapide from './DemarrageRapide'
 import ReglagesNorme from './ReglagesNorme'
 import ReglagesLestage from './ReglagesLestage'
+import ReglagesRetraitsAretes from './ReglagesRetraitsAretes'
 import { useOuvrirChamp } from '../atelier/ouvrirChamp'
 import { refusServeur } from '../commun/refusServeur'
 
@@ -504,6 +505,7 @@ export default function ReglagesSimulation() {
   // ACAL397 — `norme_electrique` servie ; `#<champ>` (lien de « ce qui manque ») focalisé après chargement.
   const [normeServie, setNormeServie] = useState(null)
   const [lestage, setLestage] = useState({ registre: null, servi: null }) // ACAL572
+  const [degagements, setDegagements] = useState(null) // ACAL561 — la section servie, renvoyée entière
   const [chargement, setChargement] = useState(true)
   const [erreurChargement, setErreurChargement] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -533,6 +535,7 @@ export default function ReglagesSimulation() {
         setDocumentsServis(data.documents && typeof data.documents === 'object' ? data.documents : {})
         setNormeServie(data.norme_electrique && typeof data.norme_electrique === 'object' ? data.norme_electrique : {})
         setLestage({ registre: servi.lestage ?? null, servi: data.lestage ?? {} })
+        setDegagements(data.degagements && typeof data.degagements === 'object' ? data.degagements : {})
         setServis({ simulation: data.simulation, electrique_societe: data.electrique_societe })
         setLignesParSection({
           simulation: lignesDepuis(simulation, data.simulation),
@@ -754,6 +757,7 @@ export default function ReglagesSimulation() {
       )}
 
       <ReglagesLestage registre={lestage.registre} servi={lestage.servi} peutGerer={peutGerer} />
+      {degagements && <ReglagesRetraitsAretes servi={degagements} peutGerer={peutGerer} />}
       <CarteHistorique servi={presetsServis?.versions_conservees ?? null} peutGerer={peutGerer} />
       <CarteRapport documents={documentsServis} peutGerer={peutGerer} />
     </div>

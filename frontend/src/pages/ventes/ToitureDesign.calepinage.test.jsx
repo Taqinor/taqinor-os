@@ -875,3 +875,20 @@ describe('ToitureDesign — le fond photo charge le fichier par son URL servie (
       .toBe(`https://api.exemple.test${photo.url}`)
   })
 })
+
+describe('ACAL546 — « Comparer les poses » monté en mode calepinage, sans montant', () => {
+  it('le bloc comparatif est monté : sans en-tête Économies, attribut data-sans-montant posé', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByText('Comparer les poses')).toBeInTheDocument()
+    const bloc = document.getElementById('rp9-compare-wrap')
+    expect(bloc).not.toBeNull()
+    expect(bloc.getAttribute('data-sans-montant')).toBe('1')
+    expect(bloc.querySelector('#rp9-compare')).not.toBeNull()
+    expect(bloc.querySelector('#rp9-matrix-filter')).not.toBeNull()
+    expect(bloc.textContent).not.toMatch(/MAD|Économies/)
+    expect(bloc.querySelectorAll('thead th')).toHaveLength(5)
+  })
+})

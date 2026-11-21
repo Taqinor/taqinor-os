@@ -4,6 +4,7 @@
 // sont ajoutés).
 import { useEffect, useRef, useState } from 'react'
 import { exporterImageHd } from '../exportImage'
+import { exporterSceneGltf } from '../exportGltf'
 import { basculerPleinEcran, estEnPleinEcranSur } from '../pleinEcran'
 
 export function useAtelierVues({ builderApi, calepinageId, devisId }) {
@@ -33,6 +34,17 @@ export function useAtelierVues({ builderApi, calepinageId, devisId }) {
     setHdMessage(res.ok ? `Image HD exportée : ${res.width} × ${res.height} px (${res.nom}).` : res.motif)
     setHdBusy(false)
   }
+  // ACAL537 — export de la scène 3D en glTF (expert) : le message dit le fichier ou le motif.
+  const [gltfBusy, setGltfBusy] = useState(false)
+  const [gltfMessage, setGltfMessage] = useState(null)
+  const exporterGltf = async () => {
+    if (gltfBusy) return
+    setGltfBusy(true)
+    setGltfMessage(null)
+    const res = await exporterSceneGltf(builderApi, { reference: calepinageId ?? devisId })
+    setGltfMessage(res.ok ? `Scène 3D exportée (${res.nom}).` : res.motif)
+    setGltfBusy(false)
+  }
   // CALX129 — plein écran RÉVERSIBLE du conteneur de la scène 3D. `mapWrapRef`
   // pointe `.rp9-map-wrap`, l'enveloppe ADDITIVE déjà posée par L-MAP autour de
   // `#rp9-map` (jamais l'id lui-même : le builder ne cherche que ses propres
@@ -56,7 +68,7 @@ export function useAtelierVues({ builderApi, calepinageId, devisId }) {
 
   return {
     vue2d, setVue2d, plan2d, panId2d, ouvrirVue2d,
-    hdBusy, hdMessage, exporterHd,
+    hdBusy, hdMessage, exporterHd, gltfBusy, gltfMessage, exporterGltf,
     mapWrapRef, pleinEcran3d, basculerPleinEcran3d,
   }
 }

@@ -2054,7 +2054,9 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     # DÉCLARE (``rendement_batterie_source``), au lieu de faire passer un
     # forfait pour une caractéristique du produit vendu.
     rendement_bat = rendement_batterie_du_devis(devis)
-    perte_ombrage = perte_ombrage_du_devis(devis)
+    from apps.ventes.horaire.productible_pose import base_de_production
+    base = base_de_production(devis, kwc=puissance)  # ACAL1170 — pertes et ombrage DANS la base
+    perte_ombrage = None if base else perte_ombrage_du_devis(devis)
     resultat = calculer_etude_horaire(
         kwc=puissance, conso_kwh_mensuelles=conso,
         ville=ville, lat=lat, lon=lon,
@@ -2067,7 +2069,8 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
         batterie_rendement_source=rendement_bat['source'],
         tranches=tranches, charges_fixes_mad=charges_fixes,
         source_conso=source_conso, detail_conso=detail_conso, jour_reference=jour_reference,
-        perte_ombrage_pct=perte_ombrage, productible_kwh_kwc=productible_du_devis(devis))  # CE2E6
+        perte_ombrage_pct=perte_ombrage, base_production=base,
+        productible_kwh_kwc=None if base else productible_du_devis(devis))  # CE2E6
     if resultat is not None:
         resultat['occupation_source'] = occupation_source
         if perte_ombrage is not None:  # D-RES-2710-1 — perte dite au bloc
