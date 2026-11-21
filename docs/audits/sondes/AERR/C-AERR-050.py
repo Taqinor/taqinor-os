@@ -1,10 +1,12 @@
-"""Constat C-AERR-050 (lead, S2, C2) : pages/visites/VisiteWizardPage.jsx::SlotTile (`supprimer`). La croix de 20 px sur le coin de la
-vignette appelle `deleteVisitePhoto` (suppression définitive côté serveur) sans confirmation ni Annuler. Le détecteur cherche l'appel
-dans `supprimer` sans confirmation dans son corps ni devant chacun de ses sites d'appel."""
+"""Constat C-AERR-050 (lead, S2, C2 ; tâche AERR106, correctif a2c1fe22a7) : pages/visites/VisiteWizardPage.jsx::SlotTile
+(`supprimer`). La croix de la vignette supprime définitivement la photo (`deleteVisitePhoto`). Le détecteur lit le CORRECTIF
+dans le corps de `supprimer` : une confirmation attendue (`await confirm…(`, p. ex. `confirmDelete`) puis `if (!ok) return`
+AVANT l'appel `deleteVisitePhoto(`. repro = suppression sans cette confirmation gardée. Réécrite le 20/11/2026 : l'ancienne règle lisait un motif périmé."""
 SONDE = {"constat": "C-AERR-050", "sha": "3acfee471",
-         "attendu": "supprimer (dans SlotTile) appelle deleteVisitePhoto( sans confirm( / ConfirmDialog / mutateWithUndo / undo, corps ou site d'appel"}
-import pathlib, re
-RACINE = pathlib.Path(__file__).resolve().parents[4]
+         "attendu": "supprimer (dans SlotTile) appelle deleteVisitePhoto( sans `await confirm…(` suivi de `if (!ok) return` avant l'appel"}
+import os, pathlib, re
+# AUDIT_RACINE (optionnel) : racine d'un autre arbre (témoin négatif sur l'arbre d'avant le correctif).
+RACINE = pathlib.Path(os.environ.get("AUDIT_RACINE") or pathlib.Path(__file__).resolve().parents[4])
 SRC = RACINE / "frontend/src"
 
 
@@ -80,8 +82,6 @@ def catchs(s):
 def rendu(repro_, introuvable, **details):
     return {"repro": bool(repro_), "observe": {"introuvable": introuvable, **details}, "methode": "lecture écran"}
 
-SUR = re.compile(r"\bconfirm\s*\(|useConfirmDialog|ConfirmDialog|setConfirm\w*\(|mutateWithUndo|\bundo\b", re.I)
-
 
 def sonde(ctx=None):
     t = lire("pages/visites/VisiteWizardPage.jsx")
@@ -89,12 +89,15 @@ def sonde(ctx=None):
     s = corps(tuile, "supprimer") if tuile else None
     if s is None:
         return rendu(False, ["pages/visites/VisiteWizardPage.jsx::SlotTile::supprimer"])
-    supprime = "deleteVisitePhoto(" in s
-    sites = [bool(SUR.search(tuile[max(0, m.start() - 220):m.start()])) for m in re.finditer(r"(?<![\w.])supprimer\(", tuile)]
-    sur_corps = bool(SUR.search(s))
-    return rendu(supprime and not sur_corps and not (sites and all(sites)), [],
-                 supprime_la_photo=supprime, confirmation_dans_le_corps=sur_corps,
-                 sites_d_appel=len(sites), sites_d_appel_confirmes=sum(sites))
+    i_del = s.find("deleteVisitePhoto(")
+    if i_del < 0:
+        return rendu(False, ["SlotTile::supprimer::deleteVisitePhoto("])
+    avant = s[:i_del]
+    m = re.search(r"(?:const|let)\s+(\w+)\s*=\s*await\s+confirm\w*\s*\(", avant)
+    garde = bool(m and re.search(r"if\s*\(\s*!\s*" + re.escape(m.group(1)) + r"\s*\)\s*return\b", avant[m.end():]))
+    garde = garde or bool(re.search(r"if\s*\(\s*!\s*\(?\s*await\s+confirm\w*\s*\(", avant))
+    return rendu(not garde, [], confirmation_attendue=bool(m), suppression_gardee_par_la_confirmation=garde)
+
 
 if __name__ == "__main__":
     import json

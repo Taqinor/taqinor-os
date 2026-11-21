@@ -160,8 +160,28 @@ Choix pris seul par la session (réversibles, jamais des décisions de Reda) :
    les références du § 4, WebKit pour le téléphone si le moteur est installé sur le poste (à vérifier, jamais supposé).
 4. Étage « vraie vie » (gestes de Reda, jamais de Claude) : deploy, 30 minutes de parcours écrits sur son appareil,
    5 jours d'usage réel, 3 questions de débrief ; puis lecture de la prod en lecture seule.
-5. Entrées attendues de Reda : deux fichiers .PAN/.OND réels (CALX339/356/357, déjà demandés le 21/09) ; un rapport
-   PVsyst réel d'un projet (ACAL486).
+5. Entrées de Reda — mise à jour du 21/11/2026 (« search the files you want on the net i cannot provide them ») :
+   recherche faite le 21/11, sources officielles seulement.
+   - Fichiers `.PAN` / `.OND` : Jinko, Canadian Solar, Huawei et Deye n'en publient aucun sur leurs sites publics
+     (fiches, manuels, certificats seulement). Deux fichiers RÉELS existent dans le dépôt officiel pvlib (tag v0.16.1,
+     `tests/data`, BSD-3-Clause) : `ET-M772BH550GL.PAN` (1 399 octets) et
+     `CPS SCH275KTL-DO-US-800-250kW_275kVA_1.OND` (3 284 octets) ; pvlib fournit déjà le lecteur
+     `pvlib.iotools.read_panond`. CALX339/356/357 sont débloquées dessus dans `docs/PLAN2.md`. Limite : pour importer
+     les produits du catalogue il faudra LEURS fichiers (distributeur ou base PVsyst).
+   - Rapport PVsyst réel : le meilleur rapport public trouvé est l'annexe d'un appel d'offres d'Enabel, école
+     Al-Bakri à Hébron, 22,86 kWc, PVsyst 7.3.1, 8 pages
+     (https://www.enabel.be/app/uploads/2026/07/Annex-9-PV-System-report_p.pdf, lu le 21/11/2026) : coordonnées,
+     Meteonorm 8.1, inclinaison et azimut, 36 modules Trina 635 Wc en 2 chaînes de 18, onduleurs Growatt
+     MID 22KTL3-X et 20KTL3-X, tous les réglages de pertes, tableau mensuel, diagramme de pertes
+     (38 542 kWh/an, indice de performance 83,12 %). Limites : pas au Maroc, matériel hors catalogue, météo Meteonorm
+     (le moteur lit PVGIS : un écart d'irradiation est attendu et se dit). Les rapports marocains trouvés ne sont que
+     des copies sur Scribd (source écartée).
+   - **À FAIRE par la session qui tient `docs/plans/PLAN_AUDIT_CALEPINAGE.md`** (tenu le 21/11 par un autre poste,
+     `dev-all-acal-m0` — non modifié ici) : sortir ACAL486 de la section GATED et la réécrire sur ce rapport — le
+     projet d'Hébron rejoué dans le moteur, ses chiffres rangés en données de test avec l'URL et la date de lecture
+     (jamais une copie du PDF), écart publié poste par poste dans la note de validation (ACAL475), l'écart de météo
+     nommé à part.
+   - Plus rien n'est attendu de Reda pour ces deux points. D-ACAL-34 (P99) est répondue : non (ACAL457 en SKIP).
 
 ## 8. Constats du complément (un par tâche ; critère de `METHODE.md` §A.4)
 
