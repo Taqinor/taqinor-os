@@ -221,6 +221,7 @@ import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout, deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/prefill';
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
+import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
 
 let booted = false;
 
@@ -3061,6 +3062,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   needInputEl?.addEventListener('input', () => {
     const v = parseInt((needInputEl.value || '').replace(/\D/g, ''), 10);
     if (Number.isFinite(v) && v > 0) setNeeded(v);
+  });
+  $<HTMLInputElement>('rp9-cible-kwh')?.addEventListener('input', (ev) => { // ACAL470
+    const x = parseInt(((ev.target as HTMLInputElement).value || '').replace(/\D/g, ''), 10);
+    const e = optimizer.etatCarte();
+    const r = e && x > 0 ? panneauxPourCible(x, e.kwhParPanneau, e.tiennent, clampNeeded) : null;
+    if (!r) return;
+    setNeeded(r.panneaux);
+    if (needNoteEl) needNoteEl.textContent = phraseCible(r);
   });
   needInputEl?.addEventListener('blur', () => {
     if (needInputEl) needInputEl.value = neededPanels > 0 ? fmt(neededPanels) : '—';

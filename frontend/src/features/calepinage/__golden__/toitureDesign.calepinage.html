@@ -294,6 +294,8 @@
 <input id="rp9-need-input" inputmode="numeric" disabled="" class="fig h-11 w-20 border border-border bg-background text-center text-2xl text-foreground" type="text" value="—">
 <button type="button" id="rp9-need-plus" aria-label="Un de plus" class="h-11 w-11 border border-border text-2xl text-foreground">+</button>
 </div>
+<label for="rp9-cible-kwh" class="mt-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production visée (kWh/an)</label>
+<input id="rp9-cible-kwh" inputmode="numeric" autocomplete="off" aria-label="Production annuelle visée en kWh par an" class="fig mt-1 h-11 w-32 border border-border bg-background text-center text-foreground" type="text">
 <p id="rp9-need-note" class="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite">
 </p>
 </div>
@@ -529,6 +531,13 @@
 <div class="flex flex-wrap items-center gap-2">
 <button type="button" class="rp9-chip" aria-pressed="true" data-testid="cal-onglet-3d">Vue 3D</button>
 <button type="button" class="rp9-chip" aria-pressed="false" data-testid="cal-onglet-2d">Vue 2D — plan</button>
+</div>
+<div class="mt-2 flex flex-wrap items-center gap-2">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vue</span>
+<button type="button" class="rp9-chip" data-testid="cal-vue-dessus">Dessus</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-sud">Sud</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-trois-quarts">3/4</button>
+<button type="button" class="rp9-chip" data-testid="cal-vue-face-panneaux">Face aux panneaux</button>
 </div>
 </div>
 <div class="mt-4 flex flex-wrap items-center gap-2" data-testid="cal-export-hd">

@@ -132,7 +132,7 @@ function squareCorners(side: number, lng0 = -7.62, lat0 = 33.59): [number, numbe
   ];
 }
 
-const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-obs-length', 'rp9-obs-width', 'rp9-overhang-input'];
+const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-cible-kwh', 'rp9-obs-length', 'rp9-obs-width', 'rp9-overhang-input'];
 const ID_RANGES = ['rp9-tilt-range', 'rp9-pitch-range', 'rp9-facing-range'];
 const ID_BUTTONS = [
   'rp9-finish', 'rp9-clear', 'rp9-undo-point', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',

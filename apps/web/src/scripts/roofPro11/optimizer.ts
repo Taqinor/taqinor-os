@@ -353,6 +353,8 @@ export interface Optimizer {
   computeMatrixPvgis: () => Promise<void>;
   /** Plafonne le besoin (1–400, arrondi) — partagé avec l'entrée. */
   clampNeeded: (n: number) => number;
+  /** ACAL470 — énergie annuelle par panneau de la carte affichée et nombre qui tient ; null sans carte. */
+  etatCarte: () => { kwhParPanneau: number; tiennent: number } | null;
 }
 
 export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
@@ -520,6 +522,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  CAL37 — un document SANS cible vendue (`ctx.cibleVendue` faux : un calepinage sans
    *  devis lié) n'a rien vendu du tout : le besoin nul y redevient « aucune cible », et on
    *  montre ce qui tient, comme en mode lead. Devis/AO ne passent jamais ce drapeau. */
+  // ACAL470 — énergie/panneau de la carte affichée + ce qui tient (lus par `cibleProduction`).
+  let derniereCarte: { count: number; annualKwh: number } | null = null;
+  let dernierFit = 0;
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -532,6 +537,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  champ qui n'existe même pas dans cet écran) et affichent « X posés / N au devis »
    *  (repère DOM stable `rp9-need-note`, préfixe HUD existant). */
   function syncNeedControl(fitCount: number, familyLabel: string) {
+    dernierFit = fitCount;
     const active = ctx.neededPanels > 0;
     // L2 — en mode devis, le champ reste ACTIONNABLE même à 0 : aucune facture n'existe
     // dans cet écran pour dériver un besoin automatiquement (le champ facture est retiré
@@ -941,6 +947,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   }
 
   function paintCard(d: CardData, sourceLabel?: string) {
+    derniereCarte = { count: d.count, annualKwh: d.annualKwh };
     const set = (id: string, v: string) => {
       const el = $(id);
       if (el) el.textContent = v;
@@ -1575,6 +1582,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     buildMatrix,
     computeMatrixPvgis,
     clampNeeded,
+    etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit } : null),
   };
 }
 
