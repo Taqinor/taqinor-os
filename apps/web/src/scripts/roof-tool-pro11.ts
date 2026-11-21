@@ -189,7 +189,16 @@ import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
-import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
+import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
+import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
+import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypotheses } from './roofPro11/hypotheses'; // ACAL417
+import { monterAidePente } from './roofPro11/penteAide'; // ACAL416
+import { type TableOmbrage } from './roofPro11/tableOmbrage'; // ACAL459
+import { type FacteurVueCiel } from './roofPro11/vueCiel'; // ACAL460
+import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
+import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
+import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
   deltaMetresFond,
@@ -379,8 +388,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const areasTotalSavingsEl = $('rp9-areas-total-savings');
   if (!mapEl) return;
 
+  const etatVide = creerEtatVide(mapEl); // ACAL420 — carte d'aide avant tout tracé
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
+    etatVide.maj(vertices.length, closed);
   };
 
   // Readout « surface du toit » : aire BRUTE du tracé (obstacles non déduits),
@@ -1131,6 +1142,24 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     redrawObstacles: () => redrawObstacles(), // CALX97 câblage
     recalc: () => recalc(), // CALX97 câblage
     setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
+    apresRendu: () => { formesToit.rafraichir(); toitParCotes.rafraichir(); }, // ACAL410 · ACAL422
+  });
+  // ACAL422 — « Créer le toit » : longueur × largeur × orientation saisies, contour fermé par `close`.
+  const toitParCotes = monterToitParCotes({
+    ancre: addAreaBtn, vide: () => !closed && vertices.length === 0, setStatus: (m) => setStatus(m),
+    centre: () => { const c = map.getCenter?.(); return c ? [c.lng, c.lat] : null; },
+    creer: (anneau) => { vertices = anneau; close(); },
+  });
+  // ACAL410 — « Forme du toit » : un clic remplace le pan actif par les pans de la forme.
+  const formesToit = monterFormesToit({
+    ancre: addAreaBtn, contour: () => (closed ? vertices : []), pente: () => pitchDeg, existants: () => areas,
+    obstacles: () => obstacles.length, setStatus: (m) => setStatus(m),
+    appliquer: (pans) => {
+      areas.splice(Math.max(0, areas.findIndex((a) => a.id === activeAreaId)), 1, ...pans);
+      activeAreaId = pans[0].id;
+      loadArea(pans[0]);
+      renderAreasPanel();
+    },
   });
   const liveActiveResult = zones.liveActiveResult;
   const snapshotActiveAreaResult = zones.snapshotActiveAreaResult;
@@ -1285,8 +1314,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W69 — « Personnaliser la disposition ». `renderScene`/`renderActive`/`obstacleMode`
   // sont déclarés plus bas : injectés en wrappers paresseux (hoistés, référencés à
   // l'exécution). Le module câble lui-même +/−/reset/grille tactile/glissé 3D.
+  let barreSelection: { rafraichir: () => void } | undefined; // ACAL411
   const layoutEditor = createLayoutEditor(ctx, {
     map,
+    onSelectionChange: () => barreSelection?.rafraichir(), // ACAL411
     renderScene: (pack, grid, tiltDeg, family, maxCount, flush, occupiedSet) =>
       renderScene(pack, grid, tiltDeg, family, maxCount, flush, occupiedSet),
     prodConfigFromState,
@@ -1309,6 +1340,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W79 — `occupiedCenters`/`reenterCustomLayout` permettent à recalc() de re-entrer la
   // disposition personnalisée (re-snap sur la nouvelle lattice) après une édition d'obstacle
   // ou d'axe pendant que l'éditeur est ouvert. Les autres méthodes pilotent le câblage interne.
+  barreSelection = creerBarreSelection({ hote: () => map.getContainer?.() ?? null, editeur: layoutEditor, setStatus: (m) => setStatus(m), photographier: () => ctx.pushWorkshopHistory?.() }); // ACAL411 + ACAL418
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
   const occupiedCenters = layoutEditor.occupiedCenters;
   const reenterCustomLayout = layoutEditor.reenterCustomLayout;
@@ -2964,7 +2996,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
 
   finishBtn?.addEventListener('click', close);
-  clearBtn?.addEventListener('click', reset);
+  const annulerAtelier = creerAnnulerAtelier({ // ACAL412 — ↶ ↷ + Ctrl+Z / Ctrl+Y hors du panneau de disposition
+    ancre: clearBtn, editeur: layoutEditor, modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState),
+    apres: () => { redrawTrace(); redrawObstacles(); recalc(); }, setStatus: (m) => setStatus(m),
+  });
+  const bandeau = creerBandeauAnnuler(clearBtn, annulerAtelier.annuler); // ACAL413
+  ctx.bandeauAnnuler = bandeau.montrer;
+  fermerAuProchainGeste(ctx, bandeau);
+  clearBtn?.addEventListener('click', () => {
+    const pans = areas.filter((a) => (a.id === activeAreaId ? closed : a.vertices.length >= 3)).length;
+    const obstacles = areas.reduce((n, a) => n + (a.id === activeAreaId ? ctx.obstacles.length : a.obstacles.length), 0);
+    if (confirmerEffacer({ pans, obstacles, consommation: consHandEdited || consAppliances.length > 0 || ctx.consSource != null, ombres: ctx.shadeObstructions.length > 0 })) { reset(); etatVide.maj(0, false); } // ACAL420 — site vierge : la carte d'aide revient
+  });
 
   // — « Plusieurs zones » : ajouter une zone + sélection/suppression dans la liste —
   addAreaBtn?.addEventListener('click', addArea);
@@ -3652,15 +3695,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       b.addEventListener('click', () => setRoofType(b.dataset.rooftype as RoofType));
     });
   }
+  function etatHyp(): EtatHypotheses { // ACAL417 — pente et face confirmées ? (source du pan actif)
+    const a = activeArea();
+    return { pitched: roofType === 'pitched', pitchDeg, pitchSource: a?.pitchSource, facingAzimuthDeg, facingManual, facingAzimuthSource: (a as Record<string, unknown> | undefined)?.facingAzimuthSource, facingAutoInferred };
+  }
   function syncPitchChips() {
-    document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
-      b.setAttribute('aria-pressed', String(Number(b.dataset.pitch) === Math.round(pitchDeg)));
-    });
+    syncFacingNote(); // ACAL417 — puces de pente ET de face + mentions « à confirmer »
   }
   function syncFacingChips() {
-    document.querySelectorAll<HTMLButtonElement>('[data-facing]').forEach((b) => {
-      b.setAttribute('aria-pressed', String(Number(b.dataset.facing) === Math.round(facingAzimuthDeg)));
-    });
     syncFacingNote();
   }
   // Boussole 8 points (FR) : nom cardinal de l'azimut courant pour la lecture vivante.
@@ -3680,24 +3722,20 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   /** W106 — note honnête sous « Face du pan » : auto-orientée vers une faîtière voisine,
    *  réglée à la main, ou défaut (sud / pan isolé). Vide en mode plat. */
   function syncFacingNote() {
+    const h = etatHyp();
+    appliquerHypotheses(h, facingNoteEl); // ACAL417 — puces pressées seulement si confirmées + mention de pente
     if (!facingNoteEl) return;
-    if (roofType !== 'pitched') {
-      facingNoteEl.textContent = '';
-      return;
-    }
-    if (facingManual) {
-      facingNoteEl.textContent = 'Face réglée à la main (votre choix est tenu pour cette zone).';
-    } else if (facingAutoInferred) {
-      facingNoteEl.textContent = 'Face auto-orientée vers la faîtière commune avec une zone voisine — cliquez « Face du pan » pour la corriger.';
-    } else {
-      facingNoteEl.textContent = '';
-    }
+    if (!h.pitched) facingNoteEl.textContent = '';
+    else if (facingManual) facingNoteEl.textContent = 'Face réglée à la main (votre choix est tenu pour cette zone).';
+    else facingNoteEl.textContent = etatHypotheses(h).noteFace;
   }
+  const confirmerPente = () => { const a = activeArea(); if (a) a.pitchSource = sourcePenteClic(pitchDeg); };
   document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
     b.addEventListener('click', () => {
       pitchDeg = Number(b.dataset.pitch);
       if (pitchRangeEl) pitchRangeEl.value = String(Math.round(pitchDeg));
       if (pitchValueEl) pitchValueEl.textContent = `${Math.round(pitchDeg)}°`;
+      confirmerPente();
       syncPitchChips();
       if (roofType === 'pitched' && closed) pitchedRecompute();
     });
@@ -3707,6 +3745,15 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (!Number.isFinite(v)) return;
     pitchDeg = v;
     if (pitchValueEl) pitchValueEl.textContent = `${Math.round(v)}°`;
+    confirmerPente();
+    syncPitchChips();
+    if (roofType === 'pitched' && closed) pitchedRecompute();
+  });
+  monterAidePente(pitchRangeEl?.parentElement ?? null, (deg, source) => { // ACAL416 — pente en %, ou portée + hauteur
+    pitchDeg = deg;
+    if (pitchRangeEl) pitchRangeEl.value = String(Math.round(deg));
+    if (pitchValueEl) pitchValueEl.textContent = `${Math.round(deg)}°`;
+    const a = activeArea(); if (a) a.pitchSource = source;
     syncPitchChips();
     if (roofType === 'pitched' && closed) pitchedRecompute();
   });
@@ -3736,6 +3783,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (roofType === 'pitched' && closed) pitchedRecompute();
   });
   syncFacingSlider();
+  syncPitchChips(); // ACAL417 — au chargement, aucune puce pressée tant que rien n'est confirmé
 
   // W109 — débord panneaux autorisé (m) : valeur typée NON snappée (step="any"), bornée ≥ 0
   // côté logique seulement. Change la CAPACITÉ géométrique (plus de panneaux aux rives) puis
@@ -4012,6 +4060,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     };
   }
 
+  /** ACAL459 — table d'ombrage par direction du pan ACTIF + signature courante des sources (méta par pan). */
+  function activeShadeTableMeta(): { shadeTableByZone: Record<string, TableOmbrage | null>; signatureOmbrage: string; skyViewByZone: Record<string, FacteurVueCiel | null> } {
+    const g = geometrieZoneActive(ctx); // ACAL460 — + facteur de vue du ciel (pose réelle du pan)
+    const points = (g?.panels ?? []).map((p) => ({ x: p.cx, y: p.cy }));
+    return { shadeTableByZone: { [ctx.activeAreaId]: shadingUi.tableOmbrage(points) }, signatureOmbrage: shadingUi.signatureTable(), skyViewByZone: { [ctx.activeAreaId]: g ? shadingUi.vueCiel(points, g.tiltDeg, g.azimuthDeg) : null } };
+  }
+
   // ═══════════ CALX3 — L'ENTRÉE MOTEUR, LE PLAN APPLIQUÉ, LES RACCOURCIS ═══════════
   //
   // L'atelier de calepinage poste une `entree` au moteur, lui applique le plan rendu,
@@ -4143,6 +4198,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   let aimantationActive = true;
   function basculerAimantation() {
     aimantationActive = !aimantationActive;
+    ctx.aimantationActive = aimantationActive; // ACAL425 — le glissé libre lit le même état
     if (aimantationActive && layoutEditor.isFreeMode()) {
       const poses = layoutEditor.freePanels();
       if (poses.length) {
@@ -4228,7 +4284,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           // PV19 — l'origine devis (id / puissance panneau / scénario vendus) sert de socle.
           devisOrigin,
           // CAL248 — l'accès solaire par module du pan actif voyage avec le document.
-          solarAccess: activeSolarAccessMeta(),
+          solarAccess: { ...activeSolarAccessMeta(), ...activeShadeTableMeta() }, // ACAL459 — + table d'ombrage par direction
           // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document.
           setbacks,
           // CAL93 — le profil d'horizon lointain RÉGLÉ voyage avec le document.
@@ -4250,9 +4306,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         setStatus(verdict.motif);
         return verdict;
       }
-      if (closed && vertices.length >= 3) capturerGeometrieActive();
-      snapshotActiveAreaGeometry();
-      snapshotActiveAreaResult();
+      if (!closed && vertices.length === 0) { // ACAL421 — le pan vide de départ n'est pas gardé
+        areas.splice(areas.findIndex((a) => a.id === activeAreaId), 1);
+      } else {
+        if (closed && vertices.length >= 3) capturerGeometrieActive();
+        snapshotActiveAreaGeometry();
+        snapshotActiveAreaResult();
+      }
       areas.push(verdict.pan);
       activeAreaId = verdict.pan.id;
       loadArea(verdict.pan);

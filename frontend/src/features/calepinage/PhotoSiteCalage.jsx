@@ -12,6 +12,7 @@ import {
   SelectTrigger, SelectValue, Spinner,
 } from '../../ui'
 import { dessinerApercuDrape } from '../../lib/calage/apercuDrape'
+import { coinsDepuisFichierMonde } from './commun/fichierCalageMonde'
 import { DEFAULT_CENTER, coinsDepuisMarqueurs, positionsInitiales } from './PhotoSiteCalage.helpers'
 
 /* ============================================================================
@@ -251,6 +252,23 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
         else setMessage('Le calage n’a pas pu être enregistré.')
       })
       .finally(() => setEnregistrement(false))
+  }
+
+  // ACAL424 — « Importer le fichier de calage » (.jgw/.pgw/.wld, degrés WGS84) :
+  // les 4 coins se posent sur les poignées ; rien n'est enregistré avant le clic
+  // « Enregistrer le calage ».
+  const importerFichierMonde = async (evenement) => {
+    const fichier = evenement.target.files?.[0]
+    evenement.target.value = ''
+    if (!fichier || markersRef.current.length !== 4) return
+    const image = imageRef.current
+    const res = coinsDepuisFichierMonde(
+      await fichier.text(), image?.naturalWidth, image?.naturalHeight)
+    if (res.erreur) { setErreurCalage(res.erreur); return }
+    setErreurCalage(null)
+    res.coins.forEach((pos, i) => markersRef.current[i].setLatLng(pos))
+    setToucheeId(photo.id)
+    redessiner()
   }
 
   // ACAL203 — modifier (genre, date, légende) / supprimer la photo ouverte.
@@ -505,6 +523,12 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
             contour réel du toit. Le calage est rechargé tel quel à la
             réouverture de cette photo.
           </p>
+
+          <label className="mt-3 block text-xs text-lune-faint">
+            Importer le fichier de calage (.jgw, .pgw, .wld — degrés WGS84)
+            <input type="file" accept=".jgw,.pgw,.wld" className="mt-1 block"
+              onChange={importerFichierMonde} data-testid="cal-photo-calage-monde" />
+          </label>
 
           <div className="mt-3 flex flex-wrap gap-3">
             <Button type="button" onClick={enregistrer}

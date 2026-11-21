@@ -347,6 +347,8 @@ export interface ZonesDeps {
   recalc?: () => void;
   /** Bandeau de statut (refus nommés, confirmations). */
   setStatus?: (msg: string) => void;
+  /** ACAL410 — appelé à chaque rendu de la liste des pans (les puces « Forme du toit » s'y recalent). */
+  apresRendu?: () => void;
 }
 
 /** CAL84 — libellé d'un bâtiment (repli « Bâtiment sans id » pour un groupe sans
@@ -414,6 +416,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   function syncAddAreaButton() {
     const { addAreaBtn } = ctx.dom;
     if (addAreaBtn) addAreaBtn.disabled = !ctx.closed || ctx.vertices.length < 3;
+    deps.apresRendu?.(); // ACAL410
   }
 
   /** Rend le panneau « Zones » : total agrégé (zone active = résultat LIVE, pas le snapshot

@@ -57,6 +57,14 @@ function seulSelectionne(attendu) {
 async function entrerDansLeRail(utilisateur) {
   await utilisateur.tab()
   expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Lexique des termes du solaire' }))
+  // ACAL393 — les cinq boutons d'étape précèdent la liste d'onglets.
+  for (const cle of ['toit', 'panneaux', 'electrique', 'resultats', 'documents']) {
+    await utilisateur.tab()
+    expect(document.activeElement).toBe(screen.getByTestId(`cal-etape-${cle}`))
+  }
+  // ACAL394 — l'interrupteur « Mode expert » suit les boutons d'étape.
+  await utilisateur.tab()
+  expect(document.activeElement).toBe(screen.getByTestId('cal-mode-expert'))
   await utilisateur.tab()
 }
 

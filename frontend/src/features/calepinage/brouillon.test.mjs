@@ -19,6 +19,8 @@ import {
   brouillonPertinent, creerGestionnaireBrouillon,
   purgerBrouillonsOrphelins, memoriserReprise, consommerReprise,
 } from './brouillon.js'
+import { baseServeur, creerStockageMiroir, lireBrouillonServeur } from './brouillonServeur.js'
+import { documentContrat } from '../../test/fixtures/contractSamples.js'
 
 /** Stockage en mémoire — MÊME contrat que `localStorage` (getItem/setItem/removeItem). */
 function stockageFactice(donnees = new Map()) {
@@ -418,4 +420,75 @@ test('reprise — mémorisée puis consommée UNE fois au boot suivant', () => {
   assert.equal(consommerReprise(storage, ids), null)
   assert.equal(memoriserReprise(stockageQuiLeve(), ids, { zones: [] }), false)
   assert.equal(consommerReprise(stockageQuiLeve(), ids), null)
+})
+
+/* ACAL400 — le miroir SERVEUR du brouillon (`brouillonServeur.js`). Les
+   réponses viennent du contrat committé `calepinage_brouillon.json` (PACT13). */
+const CONTRAT_BROUILLON = documentContrat('calepinage', 'calepinage_brouillon')
+
+test('ACAL400 — le miroir écrit en local ET envoie au serveur, puis efface des deux côtés', () => {
+  const envois = []
+  const effacements = []
+  const local = stockageFactice()
+  const miroir = creerStockageMiroir({
+    base: local, calepinageId: 41,
+    envoyer: (id, corps) => { envois.push([id, corps]); return Promise.resolve() },
+    effacer: (id) => { effacements.push(id); return Promise.resolve() },
+  })
+  const { layout, horodatage, base_empreinte: empreinte } = CONTRAT_BROUILLON.corps_ecriture
+  const g = creerGestionnaireBrouillon({
+    storage: miroir, calepinageId: 41, utilisateurId: 7, hashBase: empreinte,
+    intervalleSecondes: 30, obtenirLayout: (() => {
+      let n = 0
+      return () => (n++ === 0 ? { zones: [] } : layout)
+    })(),
+    minuteur: { definir: () => 1, annuler: () => {} },
+  })
+  g.demarrer() // amorce : aucune écriture
+  assert.equal(envois.length, 0)
+  assert.equal(g.enregistrerMaintenant(), true)
+  assert.ok(lireBrouillon(local, g.cle), 'le localStorage reste la première source')
+  assert.equal(envois.length, 1)
+  assert.equal(envois[0][0], 41)
+  assert.deepEqual(Object.keys(envois[0][1]).sort(), Object.keys(CONTRAT_BROUILLON.corps_ecriture).sort())
+  assert.equal(envois[0][1].base_empreinte, empreinte)
+  assert.deepEqual(envois[0][1].layout, layout)
+  assert.ok(typeof horodatage === 'string')
+  g.effacer()
+  assert.deepEqual(effacements, [41])
+  assert.equal(lireBrouillon(local, g.cle), null)
+})
+
+test('ACAL400 — « aucun-document » part comme l’empreinte vide ; les autres clés ne partent jamais', () => {
+  assert.equal(baseServeur('aucun-document'), '')
+  assert.equal(baseServeur(null), '')
+  const envois = []
+  const miroir = creerStockageMiroir({
+    base: stockageFactice(), calepinageId: 4,
+    envoyer: (id, corps) => { envois.push(corps); return Promise.resolve() },
+  })
+  miroir.setItem('__calepinage_brouillon_sonde__', '1')
+  miroir.setItem(construireCle({ calepinageId: 41, utilisateurId: 7, hashBase: 'x' }), '{"layout":{},"horodatage":"t"}')
+  assert.equal(envois.length, 0, 'ni la sonde ni un autre calepinage (41 ≠ 4)')
+  miroir.setItem(construireCle({ calepinageId: 4, utilisateurId: 7, hashBase: 'aucun-document' }),
+    '{"layout":{"zones":[]},"horodatage":"t"}')
+  assert.deepEqual(envois, [{ layout: { zones: [] }, horodatage: 't', base_empreinte: '' }])
+})
+
+test('ACAL400 — lecture serveur : exemple ⇒ proposé (serveur), exemple_vide ou base différente ⇒ null', async () => {
+  const exemple = CONTRAT_BROUILLON.exemple
+  const lire = (donnees) => () => Promise.resolve({ data: donnees })
+  const propose = await lireBrouillonServeur({
+    lire: lire(exemple), calepinageId: 41, hashBase: exemple.base_empreinte,
+  })
+  assert.deepEqual(propose, { layout: exemple.layout, horodatage: exemple.horodatage, serveur: true })
+  assert.equal(await lireBrouillonServeur({
+    lire: lire(CONTRAT_BROUILLON.exemple_vide), calepinageId: 41, hashBase: exemple.base_empreinte,
+  }), null)
+  assert.equal(await lireBrouillonServeur({
+    lire: lire(exemple), calepinageId: 41, hashBase: 'autre-empreinte',
+  }), null)
+  assert.equal(await lireBrouillonServeur({
+    lire: () => Promise.reject(new Error('réseau')), calepinageId: 41, hashBase: 'x',
+  }), null)
 })

@@ -64,6 +64,9 @@ Module PUR : aucune base, aucun réseau, aucun appel PVGIS.
 """
 from __future__ import annotations
 
+import math
+
+from apps.calepinage.services import bifacial_sheds
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.bifacial import PARAMETRES_REQUIS, gain_bifacial
 from ..valeurs import nombre as _nombre
@@ -223,7 +226,17 @@ def appliquer(serie, contexte):
             champ=f'simulation.{CLE_ALBEDO}')
 
     repere, motif_repere = _repere_reflechi(serie)
+    # ACAL465 — le gain HEURE PAR HEURE (pvlib infinite_sheds) quand le site
+    # fournit la série horizontale ; sinon le gain mensuel ci-dessus, et
+    # ``entree.modele`` le dit.
+    horaire, motif_modele = _gain_horaire(
+        serie, contexte, geometries, albedos, bifacialite, mismatch)
     entree = {
+        'modele': (bifacial_sheds.MODELE if horaire
+                   else bifacial_sheds.MODELE_REPLI),
+        'reference_modele': (bifacial_sheds.REFERENCE if horaire
+                             else 'services/bifacial.py::gain_bifacial'),
+        'motif_modele': motif_modele,
         'geometrie_source': SOURCE_SOCIETE if repli_societe
         else SOURCE_DOCUMENT,
         'bifacialite_pct': bifacialite,
@@ -252,7 +265,17 @@ def appliquer(serie, contexte):
         'motif_repere_reflechi': motif_repere,
     }
 
-    rendue = _appliquer_par_mois(serie, gains, mode)
+    if horaire:
+        entree['gain_annuel_pct'] = round(horaire['gain_annuel_pct'], 6)
+        entree['heures_calculees'] = horaire['heures']
+        entree['hauteur_centre_m'] = horaire['hauteur_centre_m']
+        entree['gain_mensuel_pct'] = [
+            {'mois': MOIS_LIBELLES[rang],
+             'gain_pct': (None if valeur is None else round(valeur, 6))}
+            for rang, valeur in enumerate(horaire['mensuel_pct'])]
+        rendue = _appliquer_horaire(serie, horaire['gains_pct'])
+    else:
+        rendue = _appliquer_par_mois(serie, gains, mode)
     return rendue, _etapes.etape_appliquee(
         LIBELLE, source=SOURCE, entree=entree, reference=REFERENCE, gain=True)
 
@@ -458,6 +481,93 @@ def _gains_par_mois(bifacialite, albedos, geometries, mismatch):
         gains.append(None if gain_du_mois is None
                      else round(gain_du_mois, 6))
     return gains, diagnostics, echecs
+
+
+def _gain_horaire(serie, contexte, geometries, albedos, bifacialite,
+                  mismatch):
+    """ACAL465 — ``(gain horaire pvlib, '')`` ou ``(None, motif du repli)``.
+
+    La série horizontale (GHI, DHI) est posée dans le contexte par la
+    simulation, ré-indexée sur l'heure du site comme la série du pan. Un seul
+    pan par chaîne ; un paramètre absent donne le repli mensuel, jamais une
+    valeur supposée.
+    """
+    horizontale = contexte.get(bifacial_sheds.CLE_HORIZONTALE_LEGALE)
+    if not isinstance(horizontale, dict) or not horizontale.get('points'):
+        return None, bifacial_sheds.MOTIF_HORIZONTALE_ABSENTE
+    plans = [plan for plan in (contexte.get('plans') or ())
+             if isinstance(plan, dict)]
+    if len(geometries) != 1 or len(plans) != 1:
+        return None, ("Le modèle horaire se calcule pan par pan : plusieurs "
+                      'pans dans une même chaîne, le gain mensuel '
+                      "s'applique.")
+    plan, geometrie = plans[0], geometries[0]
+    azimut = _nombre(plan.get('azimut_pvgis_deg'))
+    site = contexte.get('site') if isinstance(contexte.get('site'),
+                                              dict) else {}
+    latitude = _nombre(plan.get('lat', site.get('lat')))
+    longitude = _nombre(plan.get('lon', site.get('lon')))
+    manquants = [nom for nom, valeur in (
+        ('azimut_pvgis_deg', azimut), ('lat', latitude), ('lon', longitude),
+        ('inclinaison_deg', geometrie['inclinaison_deg'])) if valeur is None]
+    if manquants:
+        return None, ('Entrée du modèle horaire absente : '
+                      f"{', '.join(manquants)} — le gain mensuel s'applique.")
+    pente = (geometrie['taux_occupation'] * geometrie['pas_rangee_m']
+             if geometrie['taux_occupation'] and geometrie['pas_rangee_m']
+             else 0.0)
+    # pvlib attend la hauteur du CENTRE de la rangée : hauteur libre (bord
+    # bas) + demi-hauteur de la table inclinée (géométrie, pas un réglage).
+    centre = geometrie['hauteur_pose_m'] + 0.5 * pente * math.sin(
+        math.radians(geometrie['inclinaison_deg']))
+    table = {}
+    for point in horizontale['points']:
+        cle = bifacial_sheds.cle_du_point(point)
+        if cle is not None:
+            table[cle] = (_nombre(point.get('gi_w_m2')),
+                          _nombre(point.get('gd_i_w_m2')))
+    resultat = bifacial_sheds.gain_horaire(
+        points=serie.get('points') or [], horizontale=table,
+        meteo=contexte.get('meteo'), latitude=latitude, longitude=longitude,
+        inclinaison_deg=geometrie['inclinaison_deg'], azimut_pvgis_deg=azimut,
+        taux_occupation=geometrie['taux_occupation'],
+        hauteur_centre_m=centre, pas_rangee_m=geometrie['pas_rangee_m'],
+        albedos_par_mois=[valeur for valeur, _source in albedos],
+        bifacialite_pct=bifacialite, mismatch_pct=mismatch)
+    if resultat is None:
+        if not serie.get('points') or _etapes.instant_utc(
+                serie['points'][0], contexte.get('meteo')) is None:
+            return None, (f'{_etapes.MOTIF_INSTANT_UTC_INCONNU} Le gain '
+                          "mensuel s'applique.")
+        return None, ("Aucune heure de la série horizontale ne s'aligne sur "
+                      "la série du pan : le gain mensuel s'applique.")
+    resultat['hauteur_centre_m'] = round(centre, 6)
+    return resultat, ''
+
+
+def _appliquer_horaire(serie, gains):
+    """Une COPIE de la série dont chaque heure porte SON gain de face arrière."""
+    colonne = _etapes.colonne_energie(serie)
+    if colonne is None:
+        return serie
+    points = []
+    for point, gain in zip(serie.get('points') or [], gains):
+        valeur = point.get(colonne) if isinstance(point, dict) else None
+        if not gain or valeur is None:
+            points.append(point)
+            continue
+        try:
+            echelle = float(valeur) * (1.0 + gain / 100.0)
+        except (TypeError, ValueError):
+            points.append(point)
+            continue
+        copie = dict(point)
+        copie[colonne] = echelle
+        points.append(copie)
+    rendue = dict(serie)
+    rendue['points'] = points
+    rendue['colonne_energie'] = colonne
+    return rendue
 
 
 def _appliquer_par_mois(serie, gains, mode):

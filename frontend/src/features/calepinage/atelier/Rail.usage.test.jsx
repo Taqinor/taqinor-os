@@ -85,11 +85,11 @@ describe('CALX397 — la mesure d’usage des onglets', () => {
 
   it('UN appel par ouverture, ZÉRO à la ré-ouverture dans la même session', async () => {
     const utilisateur = userEvent.setup()
-    const versions = onglet('versions')
-    const activite = onglet('activite')
-    rendreRail()
-
-    await utilisateur.click(screen.getByTestId(`cal-onglet-${versions.cle}`))
+    // ACAL393 — le rail guidé ne montre que les essentiels de l'étape :
+    // Documents et Dossiers sont ceux de l'étape « Documents ».
+    const versions = onglet('documents')
+    const activite = onglet('dossiers')
+    rendreRail(`?${PARAM_ONGLET}=${versions.cle}`)
     await waitFor(() => expect(ecransSignales()).toEqual([`calepinage:${versions.cle}`]))
 
     await utilisateur.click(screen.getByTestId(`cal-onglet-${activite.cle}`))

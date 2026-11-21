@@ -275,6 +275,6 @@ describe('CAL53 — l’écran est ATTEIGNABLE', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByTestId('cal-lien-photos-calage'))
-      .toHaveAttribute('href', '/calepinage/9/photos')
+      .toHaveAttribute('href', '/calepinage/9?onglet=photos')
   })
 })

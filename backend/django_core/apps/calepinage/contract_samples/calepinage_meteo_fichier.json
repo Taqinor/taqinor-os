@@ -69,10 +69,17 @@
     "message": "Série météo enregistrée et rattachée au calepinage. Elle ne relance aucun calcul : la simulation la reprendra à son prochain lancement.",
     "remplace": null
   },
-  "exemple_refus_horizontal": {
-    "ghi_w_m2": [
-      "Ce fichier ne porte que l'irradiance globale HORIZONTALE (colonne « ghi_w_m2 ») : la chaîne de pertes a besoin de l'irradiance sur le PLAN des modules (colonne « gi_w_m2 »). La transposition horizontal → plan n'est pas disponible dans ce module (elle demande le modèle à une diode, tâche CALX198) : aucune irradiance de plan n'est supposée à partir de l'horizontale. Exportez la série en irradiance de plan (POA), ou laissez PVGIS la calculer."
+  "exemple_refus_composante_seule": {
+    "dni_w_m2": [
+      "Aucune colonne « dni_w_m2 » dans ce fichier horizontal : donnez dni_w_m2 ET dhi_w_m2, ou ni l'un ni l'autre (le global seul est décomposé par le modèle saisi) — aucune composante n'est supposée à sa place."
     ]
+  },
+  "exemple_global_seul_accepte": {
+    "meteo": {
+      "service": "fichier",
+      "composantes_origine": "deduites"
+    },
+    "message": "Série météo enregistrée et rattachée au calepinage. Elle ne relance aucun calcul : la simulation la reprendra à son prochain lancement."
   },
   "exemple_refus_sans_fuseau": {
     "horodatage": [

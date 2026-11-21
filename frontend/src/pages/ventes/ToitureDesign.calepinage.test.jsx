@@ -27,7 +27,7 @@ vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }
 import '../../test/toitureDesignHarnessCalepinage'
 import {
   initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBoot, reinitialiserBootMinimal,
-  LAYOUT, snapshot, apiBuilder,
+  LAYOUT, snapshot, apiBuilder, serializeLayout,
 } from '../../test/toitureDesignHarness'
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
@@ -160,6 +160,42 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
 
     await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
     expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
+  })
+
+  /* ACAL398 — un enregistrement qui crée une version relance la simulation
+     toute seule (UN POST sans `forcer`) ; inchangé → aucun appel ; refus 409
+     → aucun toast (la phrase est reprise par l'onglet Production). */
+  it('ACAL398 — version créée ⇒ UN POST simuler sans forcer ; refus 409 ⇒ aucun toast', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 4 } })
+    calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.simuler.mockRejectedValue(
+      { response: { status: 409, data: { detail: 'Mode météo non choisi.' } } })
+    snapshot.mockReturnValue('data:image/png;base64,aGk=')
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button',
+      { name: /Enregistrer le calepinage/ }))
+
+    await waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledTimes(1))
+    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(String(CTX.calepinage.id))
+    expect(toastInfo).not.toHaveBeenCalled()
+  })
+
+  it('ACAL398 — conception inchangée ⇒ aucun appel simuler', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button',
+      { name: /Enregistrer le calepinage/ }))
+
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
+    expect(calepinageApi.calepinages.simuler).not.toHaveBeenCalled()
   })
 
   it('refus 400 : le message du SERVEUR s’affiche, jamais un texte fabriqué', async () => {
@@ -481,6 +517,100 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(document.getElementById('rp9-address').value).toBe('')
+  })
+
+  /* ACAL399 — barre d'enregistrement collée en bas : indicateur d'état + bouton. */
+  describe('ACAL399 — barre d’enregistrement', () => {
+    const bootHydrate = () => initRoofToolPro8.mockImplementation((options) => {
+      options?.onApiReady?.(apiBuilder())
+      options?.onHydrationTerminee?.()
+    })
+
+    it('scène modifiée ⇒ « Modifications non enregistrées » ; après enregistrement ⇒ « Enregistré à HH:MM »', async () => {
+      calepinageApi.calepinages.designContext.mockResolvedValue(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+        { data: { inchange: false, version: 5 } })
+      calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
+      bootHydrate()
+
+      rendreCalepinage(CTX.calepinage.id)
+      const bouton = await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+      await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
+      expect(screen.queryByTestId('cal-etat-enregistrement')).toBeNull()
+
+      serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
+      await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement'))
+        .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
+
+      await userEvent.click(bouton)
+      await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement'))
+        .toHaveTextContent(/Enregistré à \d{2}:\d{2}/))
+    })
+
+    it('lecture seule ⇒ pas de barre', async () => {
+      calepinageApi.calepinages.designContext.mockResolvedValue({
+        data: { ...CTX, modifiable: false, raison_lecture_seule: 'Figé.' },
+      })
+      rendreCalepinage(CTX.calepinage.id)
+      await screen.findByTestId('pv20-lecture-seule')
+      expect(screen.queryByTestId('cal-enregistrer-calepinage')).toBeNull()
+      expect(screen.queryByTestId('cal-etat-enregistrement')).toBeNull()
+    })
+
+    /* ACAL401 — barre de résumé vivante : les trois chiffres sont lus sur le document
+       sérialisé (`result` de l'exemple COMMITTÉ roof_layout_v2), « — » quand absents. */
+    describe('résumé vivant (ACAL401)', () => {
+      const RESULT = exempleContrat('calepinage', 'roof_layout_v2.schema').result
+      const texte = (id) => screen.getByTestId(id).textContent.replace(/\s+/g, ' ')
+
+      it('document sérialisé ⇒ panneaux, kWc et production « estimation »', async () => {
+        calepinageApi.calepinages.designContext.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_design_context'))
+        calepinageApi.calepinages.resultat.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_resultat', 'exemple_perime'))
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: RESULT })
+        bootHydrate()
+        rendreCalepinage(CTX.calepinage.id)
+
+        await waitFor(() => expect(texte('cal-resume-panneaux')).toContain(`${RESULT.panels} panneaux`),
+          { timeout: 3000 })
+        expect(texte('cal-resume-kwc')).toMatch(/14,4 kWc/)
+        expect(texte('cal-resume-production')).toMatch(/≈ 18 771 kWh\/an \(estimation\)/)
+
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: { ...RESULT, panels: 19 } })
+        await waitFor(() => expect(texte('cal-resume-panneaux')).toContain('19 panneaux'),
+          { timeout: 3000 })
+      })
+
+      it('résultat frais ⇒ « P50 … (simulation) »', async () => {
+        const frais = exempleContrat('calepinage', 'calepinage_resultat')
+        calepinageApi.calepinages.designContext.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_design_context'))
+        calepinageApi.calepinages.resultat.mockResolvedValue({ data: frais })
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: RESULT })
+        bootHydrate()
+        rendreCalepinage(CTX.calepinage.id)
+
+        await waitFor(() => expect(texte('cal-resume-production'))
+          .toMatch(/P50 13 000 kWh\/an \(simulation\)/))
+      })
+
+      it('chiffre absent ⇒ « — », jamais 0', async () => {
+        calepinageApi.calepinages.designContext.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_design_context'))
+        calepinageApi.calepinages.resultat.mockResolvedValue(
+          reponseContrat('calepinage', 'calepinage_resultat', 'exemple_perime'))
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: {} })
+        bootHydrate()
+        rendreCalepinage(CTX.calepinage.id)
+
+        await screen.findByTestId('cal-resume-panneaux')
+        expect(texte('cal-resume-panneaux')).toBe('—')
+        expect(texte('cal-resume-kwc')).toBe('—')
+        expect(texte('cal-resume-production')).toBe('—')
+      })
+    })
   })
 
   it('lecture seule : la raison du serveur s’affiche et le bouton disparaît', async () => {

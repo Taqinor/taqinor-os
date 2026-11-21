@@ -1,0 +1,18 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/brouillon/",
+  "pourquoi": "ACAL400 (C-ACAL-L5-400) — LE BROUILLON DE L'ATELIER, AUSSI CÔTÉ SERVEUR, PAR UTILISATEUR. Le brouillon local (`frontend/src/features/calepinage/brouillon.js`, CALX68/ACAL84) ne vivait que dans le `localStorage` d'UN navigateur : un poste fermé en pleine conception perdait tout pour le téléphone ou le portable. LA PORTE : `GET` / `PUT` / `DELETE calepinages/<pk>/brouillon/` (sous-ressource en `@action`, garde `PeutLireOuEcrireCalepinage` : lecture = `calepinage_voir`, écriture = `calepinage_gerer`). STRICTEMENT PRIVÉ À L'AUTEUR : chaque utilisateur ne lit, n'écrit et n'efface que SON brouillon (clé = son identifiant, pris côté serveur, jamais dans le corps) ; borné société (un calepinage d'une autre société est introuvable, 404). `PUT` prend `{layout, horodatage, base_empreinte}` — `base_empreinte` est l'empreinte « document » (`empreinte_document`, ACAL39) du document SERVEUR sur lequel l'atelier a ouvert (`\"\"` pour un document encore vide) — et rend le brouillon enregistré (forme `exemple`). `GET` rend ce brouillon tant que `base_empreinte` ÉGALE l'empreinte « document » ACTUELLE ; périmé (le document a changé depuis) ou absent ⇒ `null` (`exemple_vide`). `DELETE` l'efface (« Enregistrer le calepinage » ou « Ignorer ») et rend `null`. ÉCRIRE UN BROUILLON NE CRÉE AUCUNE VERSION et ne change NI `layout_hash`, NI l'empreinte « document », NI `updated_at`, NI le journal (D-ACAL-4/21) : écriture par `update()` en base, ni `save()` ni signaux. Un caractère nul ou illisible dans le document est refusé (409 nommant le champ, comme `layout`). Le champ de stockage `brouillons_atelier` n'apparaît JAMAIS dans le détail ni dans `export-projet.json`. Valeurs : des PLACEHOLDERS assumés.",
+  "corps_ecriture": {
+    "layout": {"schema_version": 2, "zones": [{"id": 1}]},
+    "horodatage": "2026-11-20T09:15:00.000Z",
+    "base_empreinte": "3f1c0a9e2b7d4c6a8e5f1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6"
+  },
+  "exemple": {
+    "layout": {"schema_version": 2, "zones": [{"id": 1}]},
+    "horodatage": "2026-11-20T09:15:00.000Z",
+    "base_empreinte": "3f1c0a9e2b7d4c6a8e5f1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6"
+  },
+  "exemple_vide": null,
+  "refus_caractere_interdit": {
+    "layout": "« layout.zones[0].nom » contient un caractere interdit (caractere nul ou illisible) : corrigez la saisie."
+  }
+}

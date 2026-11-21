@@ -13,6 +13,8 @@
  * 4. Le plan est DÉCLARATIF et l'aide en est DÉRIVÉE : elle ne peut pas mentir.
  * 5. La mesure s'affiche avec SA PRÉCISION — jamais arrondie en silence.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { methodesCarteInertes, ctxTraceVide } from './harnaisAtelier';
 import {
@@ -35,6 +37,7 @@ import {
   type ModeClavier,
 } from './clavier';
 import { createMapDraw } from './mapDraw';
+import { actionDisposition, lignesDePortee, TABLE_RACCOURCIS } from './raccourcisAtelier';
 import {
   ARRONDI_MESURE,
   createMesureUi,
@@ -567,5 +570,78 @@ describe('CALX128 — les gestes clavier du mode MESURE', () => {
     expect(sortie.texte).toContain('abandonnée');
     expect(mesure.isActive()).toBe(false);
     expect(mesure.list()).toHaveLength(0);
+  });
+});
+
+describe('ACAL414 — UNE table de raccourcis', () => {
+  it('chaque ligne de TABLE_RACCOURCIS est lue par PLAN_CLAVIER, la disposition ou l’atelier', () => {
+    const tracees = lignesDePortee('trace');
+    expect(PLAN_CLAVIER).toHaveLength(tracees.length);
+    tracees.forEach((l, i) => {
+      expect(PLAN_CLAVIER[i].ecriture).toBe(l.ecriture);
+      expect(PLAN_CLAVIER[i].action).toBe(l.action);
+    });
+    const lues = new Set([...tracees, ...lignesDePortee('disposition'), ...lignesDePortee('atelier')]);
+    for (const l of TABLE_RACCOURCIS) expect(lues.has(l)).toBe(true);
+  });
+
+  it('Ctrl+Z / Ctrl+Y / Ctrl+Maj+Z se résolvent par la table, une touche nue non', () => {
+    expect(actionDisposition({ key: 'z', ctrlKey: true })).toBe('annuler');
+    expect(actionDisposition({ key: 'Z', metaKey: true })).toBe('annuler');
+    expect(actionDisposition({ key: 'y', ctrlKey: true })).toBe('refaire');
+    expect(actionDisposition({ key: 'z', ctrlKey: true, shiftKey: true })).toBe('refaire');
+    expect(actionDisposition({ key: 'z' })).toBeNull();
+  });
+
+  it('les gestes destructifs sont marqués', () => {
+    const destructifs = TABLE_RACCOURCIS.filter((l) => l.destructif).map((l) => l.action);
+    expect(destructifs).toContain('supprimer');
+    expect(destructifs).toContain('annuler-dernier');
+  });
+});
+
+describe('ACAL418 — l’aide nomme Alt + clic sur un panneau', () => {
+  it('la table des gestes souris porte la ligne, et l’aide la reprend', async () => {
+    const { GESTES_SOURIS, aideGestesSouris } = await import('./clavier');
+    expect(GESTES_SOURIS).toHaveLength(3);
+    const ligne = aideGestesSouris().find((l) => l.touches === 'Alt + clic sur un panneau');
+    expect(ligne?.libelle).toContain('retirer');
+  });
+});
+
+describe('ACAL481 — une seule table fait foi ; une touche nue destructive est annulable', () => {
+  const lire = (rel: string) => readFileSync(resolve(__dirname, rel), 'utf8');
+  const racine = '../../../../../';
+  // Preuve d'annulation par action destructive : où le geste est annulé (lu par texte).
+  const ANNULABLE: Record<string, { fichier: string; motif: RegExp }> = {
+    supprimer: { fichier: 'obstaclesUi.ts', motif: /pushWorkshopHistory/ },
+    'annuler-dernier': { fichier: 'mapDraw.ts', motif: /'annuler-dernier': annuler/ },
+  };
+  const nue = (l: { modificateurs?: { ctrl?: boolean; alt?: boolean } }) => !l.modificateurs?.ctrl && !l.modificateurs?.alt;
+
+  it('toute action destructive sur touche nue est annulable, et la table a une action annuler', () => {
+    const nues = TABLE_RACCOURCIS.filter((l) => l.destructif && nue(l)).map((l) => l.action);
+    expect(nues.length).toBeGreaterThan(0);
+    for (const a of new Set(nues)) {
+      const p = ANNULABLE[a];
+      expect(p, `action destructive « ${a} » sur touche nue non marquée annulable`).toBeDefined();
+      expect(lire(p.fichier)).toMatch(p.motif);
+    }
+    expect(TABLE_RACCOURCIS.some((l) => l.action === 'annuler')).toBe(true);
+    expect(lire('annulerAtelier.ts')).toContain('editeur.undo');
+  });
+
+  it('une même action n’a pas deux jeux de touches différents (aucune table parallèle)', () => {
+    const vues = new Map<string, string>();
+    for (const l of TABLE_RACCOURCIS) {
+      const cle = `${l.action}|${l.portees.includes('atelier') ? 'atelier' : 'autre'}|${JSON.stringify(l.modificateurs ?? {})}`;
+      const touches = [...l.touches].map((t) => t.toLowerCase()).sort().join(',');
+      expect(vues.get(cle) ?? touches, `action « ${l.action} » : touches divergentes`).toBe(touches);
+      vues.set(cle, touches);
+    }
+    // les lecteurs ne redéclarent aucune touche littérale
+    const aide = lire(`${racine}frontend/src/features/calepinage/RaccourcisAtelier.helpers.js`);
+    expect(aide.match(/touche:\s*['"`]/g) ?? []).toEqual([]);
+    expect(lire('clavier.ts').match(/key:\s*['"](Delete|Backspace)['"]/g) ?? []).toEqual([]);
   });
 });

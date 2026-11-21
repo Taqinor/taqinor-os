@@ -163,5 +163,250 @@ class SansFournisseurTest(unittest.TestCase):
         self.assertEqual(temoin, ['A'])
 
 
+# ── ACAL468 — le balayage d'orientation : UN appel par couple distinct ──────
+class _Limiteur0:
+    def attendre_son_tour(self):
+        pass
+
+
+def _layout_champ_au_sol(**surface):
+    base = {'id': 'sol-1', 'kind': 'sol', 'label': 'Champ', 'moduleWc': 500,
+            'tiltDeg': 15, 'rowAzimuthDeg': 90, 'engine': {'modules': 10}}
+    base.update(surface)
+    return {'zones': [], 'poseSurfaces': [base]}
+
+
+def _client_enregistre(cache=None):
+    """Un ClientPvgis dont le transport COMPTE les appels réels."""
+    from apps.calepinage.services.pvgis_serie import ClientPvgis, _Cache
+
+    reseau = []
+
+    def transport(url, timeout_s):
+        reseau.append(url)
+        return 200, '{"ok": 1}'
+
+    client = ClientPvgis(transport=transport, limiteur=_Limiteur0(),
+                         cache=cache if cache is not None else _Cache())
+    return client, reseau
+
+
+def _simuler_enregistre(cal, *, variante, client):
+    """Une « simulation » qui ne fait que l'appel PVGIS du plan du point
+    (angle = tiltDeg, aspect = azimut de face PVGIS) et rend un rendement
+    maximal à 20° / Sud."""
+    surface = variante.roof_layout['poseSurfaces'][0]
+    angle = surface['tiltDeg']
+    face = (surface['rowAzimuthDeg'] + 90.0) % 360.0
+    client._appeler('seriescalc', {'lat': 33.57, 'lon': -7.59,
+                                   'angle': angle, 'aspect': face - 180.0})
+    rendement = 1500.0 - abs(angle - 20.0) * 10 - abs(face - 180.0)
+    return {'blocs': {'production': {'total': {
+        'p50_kwh': rendement * 5, 'specific_yield_kwh_kwc': rendement,
+        'complete': True, 'socle_manquant': []}}}}
+
+
+CORPS_3X3 = {'pan': 1, 'axes': [
+    {'nom': 'inclinaison_deg', 'min': 10, 'max': 30, 'pas': 10},
+    {'nom': 'azimut_deg', 'min': 150, 'max': 210, 'pas': 30}]}
+
+
+def _contrat_balayage(cle):
+    import json
+    import pathlib
+
+    chemin = (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+              / 'calepinage_balayage.json')
+    return json.loads(chemin.read_text(encoding='utf-8'))[cle]
+
+
+class BalayageAppelsPvgisTest(unittest.TestCase):
+    def _cal(self, layout=None):
+        import types
+
+        return types.SimpleNamespace(
+            roof_layout=layout or _layout_champ_au_sol(), pk=1)
+
+    def test_neuf_points_font_neuf_appels_et_le_rejeu_zero(self):
+        from apps.calepinage.services.balayage import balayer
+
+        client, reseau = _client_enregistre()
+        premier = balayer(self._cal(), CORPS_3X3, client=client,
+                          simuler=_simuler_enregistre)
+        self.assertEqual(len(premier['grille']), 9)
+        self.assertEqual(len(reseau), 9)
+        self.assertEqual(premier['appels_pvgis'], 9)
+        client2, _ = _client_enregistre(cache=client.cache)
+        client2.transport = client.transport
+        rejeu = balayer(self._cal(), CORPS_3X3, client=client2,
+                        simuler=_simuler_enregistre)
+        self.assertEqual(len(reseau), 9, 'le rejeu ne doit rien appeler')
+        self.assertEqual(rejeu['appels_pvgis'], 0)
+        self.assertEqual(rejeu['grille'], premier['grille'])
+
+    def test_optimum_grille_et_forme_du_contrat(self):
+        import json
+
+        from apps.calepinage.services.balayage import balayer
+
+        client, _ = _client_enregistre()
+        cal = self._cal()
+        avant = json.dumps(cal.roof_layout, sort_keys=True)
+        sortie = balayer(cal, CORPS_3X3, client=client,
+                         simuler=_simuler_enregistre)
+        self.assertEqual(sortie['optimum']['inclinaison_deg'], 20.0)
+        self.assertEqual(sortie['optimum']['azimut_deg'], 180.0)
+        self.assertEqual(json.dumps(cal.roof_layout, sort_keys=True), avant,
+                         'le document du calepinage ne doit pas bouger')
+        self.assertEqual(sorted(sortie),
+                         sorted(_contrat_balayage('exemple_resultat')))
+        for ligne in sortie['grille']:
+            self.assertEqual(
+                sorted(ligne),
+                sorted(['inclinaison_deg', 'azimut_deg', 'p50_kwh',
+                        'rendement_specifique_kwh_kwc']))
+
+    def test_un_client_neuf_par_point_est_detecte(self):
+        """Mutant : sans le client partagé, le cache ne sert plus."""
+        from apps.calepinage.services.balayage import balayer
+
+        client, reseau = _client_enregistre()
+        balayer(self._cal(), CORPS_3X3, client=client,
+                simuler=_simuler_enregistre)
+
+        def un_client_par_point(cal, *, variante, client):
+            neuf, _ = _client_enregistre()
+            neuf.transport = client.transport
+            return _simuler_enregistre(cal, variante=variante, client=neuf)
+
+        avant = len(reseau)
+        balayer(self._cal(), CORPS_3X3, client=client,
+                simuler=un_client_par_point)
+        self.assertGreater(len(reseau), avant)
+
+    def test_refus_nommes(self):
+        from apps.calepinage.services.balayage import (
+            BalayageInvalide, valider_demande)
+
+        layout = _layout_champ_au_sol()
+        axe = {'nom': 'inclinaison_deg', 'min': 10, 'max': 30, 'pas': 10}
+        cas = [
+            ({'pan': 1, 'axes': [dict(axe, pas=0)]}, 'axes[0].pas'),
+            ({'pan': 1, 'axes': [dict(axe, pas=0.01, max=90)]},
+             'axes[0].pas'),
+            ({'pan': 9, 'axes': [axe]}, 'pan'),
+            ({'pan': 1, 'axes': []}, 'axes'),
+            ({'pan': 1, 'axes': [dict(axe, nom='ratio_dc_ac', min=0)]},
+             'axes[0].min'),
+            ({'pan': 1, 'axes': [
+                {'nom': 'inclinaison_deg', 'min': 0, 'max': 90, 'pas': 1},
+                {'nom': 'azimut_deg', 'min': 0, 'max': 360, 'pas': 5}]},
+             'axes'),
+        ]
+        for corps, champ in cas:
+            with self.assertRaises(BalayageInvalide) as capture:
+                valider_demande(layout, corps)
+            self.assertEqual(capture.exception.champ, champ, corps)
+        valider_demande(layout, {'pan': 1, 'axes': [axe]})
+
+    def test_pan_a_pente_imposee_par_le_toit_est_refuse(self):
+        from apps.calepinage.services.balayage import (
+            BalayageInvalide, valider_demande)
+
+        toit = {'zones': [{'id': 'z1', 'label': 'Pan A',
+                           'roofType': 'pitched', 'pitchDeg': 22,
+                           'facingAzimuthDeg': 180,
+                           'geometry': {'count': 8}}]}
+        axes = [{'nom': 'inclinaison_deg', 'min': 10, 'max': 30, 'pas': 10}]
+        with self.assertRaises(BalayageInvalide) as capture:
+            valider_demande(toit, {'pan': 'z1', 'axes': axes})
+        self.assertEqual(capture.exception.champ, 'pan')
+        plat = {'zones': [dict(toit['zones'][0], roofType='flat')]}
+        valider_demande(plat, {'pan': 'z1', 'axes': axes})
+
+    def test_accuse_de_la_vue_a_les_cles_du_contrat(self):
+        import types
+
+        from apps.calepinage.views.balayage import accuse_de_balayage
+
+        job = types.SimpleNamespace(pk=1, kind='calepinage',
+                                    statut='en_attente', progress_pct=0,
+                                    message_erreur='')
+        self.assertEqual(accuse_de_balayage(job),
+                         _contrat_balayage('exemple'))
+
+
+class ClientHorizontal:
+    """ACAL465 — un client double : compte les lectures d'irradiance."""
+
+    def __init__(self, *, depuis_cache=False, erreur=None):
+        self.demandes = []
+        self.depuis_cache = depuis_cache
+        self.erreur = erreur
+
+    def serie_irradiance(self, **parametres):
+        self.demandes.append(parametres)
+        if self.erreur is not None:
+            raise self.erreur
+        return {'points': [{'annee': 2020, 'mois': 6, 'jour': 15,
+                            'heure': 12, 'gi_w_m2': 900.0,
+                            'gd_i_w_m2': 150.0}],
+                'serie_horaire': {'pas_minutes': 60},
+                'depuis_cache': self.depuis_cache}
+
+
+class SerieHorizontaleBifacialeTest(unittest.TestCase):
+    """ACAL465 — UN appel de plus par site, seulement si la fiche est
+    bifaciale, et compté dans ``appels_pvgis``."""
+
+    def _poser(self, fiche, client, *, fichier=None):
+        from apps.calepinage.services.simulation import _poser_horizontale
+
+        contexte = {'fiche_module': fiche, 'meteo': {'heure': {'base': 'utc'}},
+                    'site': dict(SITE)}
+        compteur = {'appels': 0}
+        _poser_horizontale(
+            contexte, client=client, decision={'fenetre_annees': (2020, 2020)},
+            fichier=fichier, compteur=compteur,
+            plan={'lat': 33.5, 'lon': -7.6})
+        return contexte, compteur
+
+    def test_fiche_bifaciale_un_appel_horizontal_compte(self):
+        client = ClientHorizontal()
+        contexte, compteur = self._poser({'bifacialite_pct': 70.0}, client)
+
+        self.assertEqual(compteur['appels'], 1)
+        demande = client.demandes[0]
+        self.assertEqual(demande['inclinaison_deg'], 0.0)
+        self.assertTrue(demande['composantes'])
+        self.assertTrue(demande['masque_dans_la_geometrie'])
+        self.assertEqual(
+            len(contexte['serie_horizontale_legale']['points']), 1)
+
+    def test_fiche_monofaciale_ou_fichier_depose_aucun_appel(self):
+        for fiche, fichier in (({'puissance_wc': 500.0}, None),
+                               ({'bifacialite_pct': 70.0}, {'points': []})):
+            with self.subTest(fiche=fiche):
+                client = ClientHorizontal()
+                contexte, compteur = self._poser(fiche, client,
+                                                 fichier=fichier)
+                self.assertEqual(client.demandes, [])
+                self.assertEqual(compteur['appels'], 0)
+                self.assertNotIn('serie_horizontale_legale', contexte)
+
+    def test_reponse_du_cache_non_comptee_et_refus_replie(self):
+        _, compteur = self._poser({'bifacialite_pct': 70.0},
+                                  ClientHorizontal(depuis_cache=True))
+        self.assertEqual(compteur['appels'], 0)
+
+        from apps.calepinage.services.pvgis_serie import PvgisIndisponible
+
+        contexte, compteur = self._poser(
+            {'bifacialite_pct': 70.0},
+            ClientHorizontal(erreur=PvgisIndisponible('hors ligne')))
+        self.assertEqual(compteur['appels'], 0)
+        self.assertNotIn('serie_horizontale_legale', contexte)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -68,5 +68,12 @@ export default function useSuiviJob({ intervalleMs, surIssue, surInterruption })
       })
   }
 
-  return { enCours, job, lancer }
+  /** ACAL398 — reprend un job déjà parti (simulation automatique). */
+  const reprendre = (jobId) => {
+    setJob({ job_id: jobId })
+    setEnCours(true)
+    suivre(jobId)
+  }
+
+  return { enCours, job, lancer, reprendre }
 }

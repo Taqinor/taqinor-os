@@ -79,6 +79,7 @@ from apps.calepinage.services.p50p90 import bankable
 from apps.calepinage.services.site import (
     decalage_utc_minutes, fuseau_du_site,
 )
+from . import irradiation_mensuelle as _irr
 from .valeurs import nombre as _flottant
 
 #: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare (CALX148).
@@ -104,6 +105,7 @@ ORDRE_ETAPES = (
     'horizon',            # masque lointain : avant tout ombrage proche
     'ombrage_proche',     # matrice 12×24 du constructeur
     'acces_module',       # solarAccess module par module (même moteur)
+    'ombrage_diffus',     # diffus × facteur de vue du ciel (ACAL461)
     'inter_rangees',      # auto-ombrage des rangées entre elles
     'bifacial',           # GAIN, juste après l'auto-ombrage (préambule L3)
     # — l'optique et l'irradiance (PVsyst, Array and system losses) —
@@ -160,6 +162,7 @@ LIBELLES = {
     'horizon': "Masque lointain (ligne d'horizon)",
     'ombrage_proche': 'Ombrage proche (matrice 12×24)',
     'acces_module': 'Accès solaire, module par module',
+    'ombrage_diffus': 'Ombrage du diffus (vue du ciel)',
     'inter_rangees': 'Auto-ombrage entre rangées',
     'bifacial': 'Gain bifacial en face arrière',
     'iam': "Incidence (IAM)",
@@ -215,6 +218,7 @@ ETAPES_HORS_CATALOGUE = {
                       'constructeur.',
     'acces_module': "L'accès solaire est une lecture par module du même "
                     "moteur d'ombrage.",
+    'ombrage_diffus': 'Le diffus vient du facteur de vue du ciel du pan.',
     'inter_rangees': "L'auto-ombrage se calcule sur la géométrie des "
                      'rangées.',
     'bifacial': 'Le bifacial est un GAIN : le catalogue ne décrit que des '
@@ -312,11 +316,13 @@ TOUJOURS_OMISES = {
     'diodes': 'Étape non modélisée en v1 : PV*SOL assume 0,5 % de pertes de '
               'diodes, chiffre de leur logiciel et non du nôtre — aucun '
               'forfait n\'est appliqué à sa place.',
-    'neige': "Aucune valeur mensuelle de neige saisie pour cette société : "
-             "l'étape figure dans la cascade pour être VUE, et reste omise "
-             "tant que les mois ne sont pas renseignés (0 % par défaut "
-             'ferait croire à un calcul).',
 }
+
+#: ACAL463 — les étapes CALCULÉES quand une saisie existe, mais dont l'omission
+#: ne compte PAS comme « perte non renseignée » (comportement conservé de la
+#: neige, quand elle était toujours omise : un site sans neige n'a rien à
+#: saisir, et un 0 % supposé se lirait comme un calcul).
+OMISES_NON_COMPTEES = ('neige',)
 
 #: L'ALBÉDO DE FACE AVANT, déclaré ici pour le bloc ``resultat['meteo']``
 #: (contrat CALX143). PVGIS applique déjà un albédo dans le ``Gr(i)`` qu'il
@@ -386,7 +392,8 @@ _EPSILON = 1e-9
 
 __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'POSTE_PAR_ETAPE', 'ETAPES_HORS_CATALOGUE', 'POSTES_HORS_CHAINE',
-           'EXCLUSIVITES', 'TOUJOURS_OMISES', 'ALBEDO_FACE_AVANT',
+           'EXCLUSIVITES', 'TOUJOURS_OMISES', 'OMISES_NON_COMPTEES',
+           'ALBEDO_FACE_AVANT',
            'CLE_METEO_PARTAGEE', 'CLE_FOURNISSEUR_METEO',
            'MODES_METEO', 'CLE_REGLAGE_MODE_METEO',
            'CLE_REGLAGE_FENETRE_ANNEES', 'PLAFOND_FENETRE_ANNEES',
@@ -509,6 +516,8 @@ def appliquer_chaine(serie, contexte=None, resultat=None, *, phase=None,
         # module, IAM, salissure) réécrivent ``gi_w_m2``, et un PR divisé par
         # l'irradiation de la série FINALE vaudrait 1,0 quoi qu'il arrive.
         irradiation_incidente = irradiation_kwh_m2(serie)
+        # ACAL451 — la même lecture, mois par mois (publiée par la production).
+        contexte[_irr.CLE_IRRADIATION_MENSUELLE] = _irr.par_mois(serie)
     else:
         _installer_meteo_partagee(contexte)
         irradiation_incidente = None
@@ -1261,6 +1270,10 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
              if isinstance(plan, dict)]
     series = _series_par_pan(serie, contexte, plans)
     incidentes = _irradiations_incidentes(cascade, contexte, plans)
+    # ACAL451 — l'irradiation mensuelle, pondérée comme l'annuelle (kWc).
+    mensuelles = _irr.mensuelles_des_pans(
+        contexte, [_cle_de_pan(plan) for plan in plans if _est_equipe(plan)])
+    irr_mensuelles, irr_kwc = [], []
 
     mensuel = {mois: None for mois in range(1, 13)}
     annuel = {}
@@ -1295,6 +1308,8 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         if irradiation is not None and kwc:
             irradiation_ponderee = _ajouter(irradiation_ponderee,
                                             irradiation * kwc)
+            irr_mensuelles.append(mensuelles.get(_cle_de_pan(plan)))
+            irr_kwc.append(kwc)
         a_remplir.append((ligne, kwh, annuel_pan, kwc, irradiation))
         lignes.append(ligne)
 
@@ -1306,6 +1321,8 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
             'irradiation_incidente_kwh_m2'))
         if irradiation is not None and total_kwc:
             irradiation_ponderee = irradiation * total_kwc
+            irr_mensuelles = [contexte.get(_irr.CLE_IRRADIATION_MENSUELLE)]
+            irr_kwc = [total_kwc]
         if plans:
             avertissements.append(MOTIF_PAN_SANS_SERIE)
 
@@ -1394,6 +1411,8 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         {'mois': mois, 'p50_kwh': mois_publies[mois - 1]}
         for mois in range(1, 13)
     ]
+    production['irradiation_mensuelle'] = _irr.publier(
+        _irr.ponderer(irr_mensuelles, irr_kwc), annees_fenetre)
     for ligne, publie in zip(lignes, _repartir(
             bruts_par_pan, production['total']['p50_kwh'])):
         ligne['p50_kwh'] = publie
@@ -1436,8 +1455,9 @@ def completude_de_la_chaine(cascade, contexte=None):
                 continue
             omises.add(nom)
             exclusivite = EXCLUSIVITES.get(nom)
-            if nom in TOUJOURS_OMISES or (exclusivite is not None
-                                          and motif == exclusivite[1]):
+            if (nom in TOUJOURS_OMISES or nom in OMISES_NON_COMPTEES
+                    or (exclusivite is not None
+                        and motif == exclusivite[1])):
                 continue
             non_renseignees.add(nom)
     socle = [nom for nom in SOCLE_PHYSIQUE if nom in omises]

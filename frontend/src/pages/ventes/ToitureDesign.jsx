@@ -62,13 +62,17 @@ import AtelierPanneaux from '../../features/calepinage/AtelierPanneaux'
 // rapide du constructeur vs simulation) ; ne modifie AUCUN chiffre de la carte
 // « Recommandation » (`rp9-results` ci-dessous), il se contente de la commenter.
 import BandeauProvenanceProduction from '../../features/calepinage/production/BandeauProvenanceProduction'
+import { lancerSimulationAuto } from '../../features/calepinage/production/simulationAuto' // ACAL398
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { hacherLayout, creerGestionnaireBrouillon, memoriserReprise } from '../../features/calepinage/brouillon'
+import { creerStockageMiroir } from '../../features/calepinage/brouillonServeur' // ACAL400
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis.
 import { useConfirmDialog } from '../../ui/confirm'
+import BarreEnregistrement from '../../features/calepinage/atelier/BarreEnregistrement'
+import ResumeAtelier from '../../features/calepinage/atelier/ResumeAtelier'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 // L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
@@ -98,6 +102,12 @@ const CONS_WINDOW_INNER = { __html: CONS_WINDOW_HTML }
 
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
+// ACAL402 — conteneur « studio » : un vrai `<div>` en mode calepinage, transparent sinon
+// (lead et devis gardent leur DOM). Les ids `rp9-studio-*` servent la spec e2e.
+const Studio = ({ actif, nom, children }) => (actif
+  ? <div id={`rp9-studio${nom}`} className={`rp9-studio${nom}`}>{children}</div>
+  : <>{children}</>)
+
 const messageResyncRefusee = (raison) => (
   `Conception enregistrée — devis NON resynchronisé : ${raison}`)
 const MESSAGE_RESYNC_RESEAU = 'Conception enregistrée — resynchronisation du devis impossible (réseau)'
@@ -283,6 +293,7 @@ function AtelierToiture({
   // enregistrement réussi ; `sceneModifiee` arme `useDirtyGuard`.
   const hashSceneReferenceRef = useRef(null)
   const [sceneModifiee, setSceneModifiee] = useState(false)
+  const [enregistreLe, setEnregistreLe] = useState(null) // ACAL399 — heure de la dernière réponse 2xx
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -389,6 +400,8 @@ function AtelierToiture({
   }
   const ignorerBrouillon = () => {
     setBrouillonPropose(null)
+    // ACAL400 — « Ignorer » efface la copie SERVEUR (le local reste, CALX68).
+    Promise.resolve(calepinageApi.calepinages.effacerBrouillon?.(calepinageId)).catch(() => {})
   }
 
   // ACAL84 — en lecture seule, aucun brouillon n'est écrit : il n'y aurait
@@ -408,7 +421,12 @@ function AtelierToiture({
     if (!estCalepinage || !builderReady || !sceneHydratee || !hashBaseBrouillon
       || lectureSeuleContexte) return undefined
     const gestionnaire = creerGestionnaireBrouillon({
-      storage: stockageBrouillonLocal(),
+      // ACAL400 — miroir : localStorage d'abord, copie serveur (autre poste).
+      storage: creerStockageMiroir({
+        base: stockageBrouillonLocal(), calepinageId,
+        envoyer: calepinageApi.calepinages.envoyerBrouillon,
+        effacer: calepinageApi.calepinages.effacerBrouillon,
+      }),
       calepinageId,
       utilisateurId: utilisateurCourantId,
       hashBase: hashBaseBrouillon,
@@ -717,6 +735,7 @@ function AtelierToiture({
     try {
       const layout = apiTool.serializeLayout()
       let resultat
+      let heureReponse = null
       try {
         // ACAL23 — l'écriture COMPLÈTE porte If-Match = l'empreinte « document »
         // lue au boot puis remplacée par celle de chaque réponse 2xx.
@@ -725,6 +744,7 @@ function AtelierToiture({
           : await calepinageApi.calepinages
             .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument)
         resultat = varianteId ? {} : (res?.data ?? {})
+        heureReponse = res?.headers?.date || new Date().toISOString() // ACAL399
       } catch (err) {
         const code = err?.response?.status
         const data = err?.response?.data
@@ -782,6 +802,7 @@ function AtelierToiture({
         setSending(false)
         setStatus('Conception inchangée — le calepinage n’a pas bougé.')
         marquerSceneEnregistree(layout) // ACAL85
+        setEnregistreLe(heureReponse) // ACAL399
         await rafraichirContexte() // ACAL83
         return resynchroniserDevisLie() // ACAL37
       }
@@ -807,7 +828,12 @@ function AtelierToiture({
           ? `Conception enregistrée — version ${resultat.version}.`
           : 'Conception enregistrée.'
       )
+      // ACAL398 — nouvelle version du calepinage (pas une variante) : la simulation repart
+      // seule, sans attendre ; son issue est reprise par l'onglet Production.
+      if (!varianteId) lancerSimulationAuto(calepinageId)
+
       marquerSceneEnregistree(layout) // ACAL85
+      setEnregistreLe(heureReponse) // ACAL399
       await rafraichirContexte() // ACAL83
       return resynchroniserDevisLie() // ACAL37
     } catch (err) {
@@ -1117,7 +1143,9 @@ function AtelierToiture({
         {estCalepinage && brouillonPropose && (
           <div className="cine-card mt-4 border border-brass-400/40 p-4"
             data-testid="cal-brouillon-bandeau">
-            <p className="tech-label text-brass-300">Brouillon local</p>
+            <p className="tech-label text-brass-300">
+              {brouillonPropose.serveur ? 'Brouillon d’un autre poste' : 'Brouillon local'}
+            </p>
             <p className="mt-1 text-sm text-lune-soft" role="status">
               Un brouillon non enregistré du{' '}
               {formaterHeureBrouillon(brouillonPropose.horodatage)} a été
@@ -1314,6 +1342,8 @@ function AtelierToiture({
           </div>
         )}
 
+        <Studio actif={estCalepinage} nom="">
+        <Studio actif={estCalepinage} nom="-scene">
         <BuilderDom
           basculerPleinEcran3d={basculerPleinEcran3d}
           chipClass={chipClass}
@@ -1328,6 +1358,8 @@ function AtelierToiture({
           toitClientPresent={toitClientPresent}
           toitClientVisible={toitClientVisible}
         />
+        </Studio>
+        <Studio actif={estCalepinage} nom="-inspecteur">
 
         {/* RECOMMANDATION (panneaux/optimiseur visibles ici) */}
         <div id="rp9-results" className="rp9-results cine-card mt-6 p-6">
@@ -1507,24 +1539,22 @@ function AtelierToiture({
             n'est touché — le devis a son propre bouton (CAL38). Absent en
             lecture seule, comme dans les deux autres modes. */}
         {estCalepinage && !lectureSeule && (
-        <div className="cine-card mt-6 p-6" data-testid="cal-enregistrer-calepinage">
-          <button type="button" onClick={enregistrerCalepinage} disabled={sending || !sceneHydratee}
-            className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: 'var(--rp-ok-600)' }}>
-            {sending && (
-              <span aria-hidden="true"
-                className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
-            )}
-            <span>{sending ? 'Enregistrement en cours…'
-              : (devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage')}</span>
-          </button>
-          <p className="mt-3 text-xs text-lune-faint">
+        <>
+        <BarreEnregistrement
+          libelle={devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage'}
+          enCours={sending} desactive={sending || !sceneHydratee}
+          onEnregistrer={enregistrerCalepinage}
+          modifiee={sceneModifiee} enregistreLe={enregistreLe}
+          statut={genStatus} erreur={genError}>
+          <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
+            lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
+        </BarreEnregistrement>
+        <div className="cine-card mt-6 p-6">
+          <p className="text-xs text-lune-faint">
             La conception est rangée sur le calepinage, avec une nouvelle
             version dès qu'elle a changé. Aucun statut n'est modifié ; le devis,
             lui, se génère par son propre bouton.
           </p>
-          {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
-          {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive" data-testid="cal-erreur-enregistrement">{genError}</p>}
 
           {/* Lot 2 critique #29 — refus ÉLECTRIQUE de la resynchro du devis :
               les bloquants du serveur, mot pour mot ; « Passer outre »
@@ -1607,7 +1637,10 @@ function AtelierToiture({
             </div>
           )}
         </div>
+        </>
         )}
+        </Studio>
+        </Studio>
 
       </div>
     </div>

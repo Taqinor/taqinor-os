@@ -12,8 +12,10 @@ from __future__ import annotations
 import unittest
 
 from apps.calepinage.services import etapes
-from apps.calepinage.services.chaine_pertes import appliquer_chaine
-from apps.calepinage.services.etapes import salissure
+from apps.calepinage.services.chaine_pertes import (
+    OMISES_NON_COMPTEES, appliquer_chaine, completude_de_la_chaine,
+)
+from apps.calepinage.services.etapes import neige, salissure
 
 #: Janvier pèse peu, juillet pèse gros : une salissure d'été ne coûte pas la
 #: même chose qu'une salissure d'hiver.
@@ -208,6 +210,81 @@ class DansLaChaineTest(unittest.TestCase):
         self.assertEqual(etape['entree']['origine_du_reglage'], 'calepinage')
         self.assertEqual(etape['entree']['valeurs_pct'], mensuel)
         self.assertNotIn('saisie_ecartee', etape['entree'])
+
+
+#: ACAL463 — douze pertes de neige : janvier 4 %, février 2 %, le reste 0 %.
+NEIGE = [4.0, 2.0] + [0.0] * 10
+
+
+def contexte_neige(valeur, *, source='societe'):
+    return {'reglages_simulation': {
+        'neige_mensuelle_pct': {
+            'valeur': valeur, 'source': source,
+            'reference': 'Relevé de couverture neigeuse du site'}}}
+
+
+class NeigeTest(unittest.TestCase):
+    """ACAL463 — la neige est CALCULÉE mois par mois, ou omise en le disant."""
+
+    def test_une_heure_de_janvier_a_1000_ressort_a_960(self):
+        serie = {'pas_minutes': 60, 'points': [
+            {'annee': 2020, 'mois': 1, 'jour': 15, 'heure': 12,
+             'p_w': 1000.0, 'gi_w_m2': 1000.0},
+            {'annee': 2020, 'mois': 7, 'jour': 15, 'heure': 12,
+             'p_w': 1000.0, 'gi_w_m2': 1000.0}]}
+        sortie, cascade = appliquer_chaine(serie, contexte_neige(NEIGE))
+        etape = next(e for e in cascade['etapes'] if e['etape'] == 'neige')
+
+        self.assertEqual(etape['motif_omission'], '')
+        janvier, juillet = sortie['points']
+        self.assertAlmostEqual(janvier['gi_w_m2'], 960.0, 6)
+        self.assertAlmostEqual(janvier['p_w'], 960.0, 6)
+        self.assertAlmostEqual(juillet['gi_w_m2'], 1000.0, 6)
+        self.assertEqual(etape['entree']['mode'], 'mensuelle')
+        self.assertEqual(etape['entree']['valeurs_pct'], NEIGE)
+        self.assertAlmostEqual(etape['entree']['moyenne_pct'], 0.5, 3)
+        self.assertEqual(etape['source'], 'societe')
+
+    def test_une_valeur_unique_est_dite_annuelle(self):
+        _, etape = neige.appliquer(SERIE, contexte_neige(1.0))
+
+        self.assertEqual(etape['entree']['mode'], 'annuelle')
+
+    def test_sans_saisie_ou_sans_source_l_etape_est_omise_en_nommant_la_cle(
+            self):
+        for contexte in ({}, contexte_neige(NEIGE, source='')):
+            with self.subTest(contexte=contexte):
+                rendue, etape = neige.appliquer(SERIE, contexte)
+                self.assertIs(rendue, SERIE)
+                self.assertIn('simulation.neige_mensuelle_pct',
+                              etape['motif_omission'])
+
+    def test_onze_valeurs_et_un_mois_vide_sont_refuses_en_le_nommant(self):
+        _, onze = neige.appliquer(SERIE, contexte_neige(NEIGE[:11]))
+        incomplete = list(NEIGE)
+        incomplete[2] = None
+        _, vide = neige.appliquer(SERIE, contexte_neige(incomplete))
+
+        self.assertIn('12 valeurs', onze['motif_omission'])
+        self.assertIn('mars', vide['motif_omission'])
+        self.assertIn('de la neige', vide['motif_omission'])
+        self.assertNotIn('salissure', vide['motif_omission'])
+
+    def test_une_neige_non_saisie_ne_compte_pas_comme_perte_non_renseignee(
+            self):
+        _, cascade = appliquer_chaine(SERIE, {})
+
+        self.assertIn('neige', cascade['etapes_omises'])
+        self.assertIn('neige', OMISES_NON_COMPTEES)
+        sans_neige = dict(cascade, etapes=[
+            e for e in cascade['etapes'] if e['etape'] != 'neige'],
+            etapes_omises=[nom for nom in cascade['etapes_omises']
+                           if nom != 'neige'])
+
+        # Le compte « pertes non renseignées » est identique avec ou sans
+        # la ligne neige : comportement d'aujourd'hui conservé.
+        self.assertEqual(completude_de_la_chaine(cascade),
+                         completude_de_la_chaine(sans_neige))
 
 
 if __name__ == '__main__':

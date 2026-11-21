@@ -41,6 +41,10 @@ import BadgePerime from './BadgePerime'
    panneau = UNE ligne en fin de `atelier/onglets.js` ; ce fichier-ci n'est plus
    rouvert (décision D-CALX 3 et 13). */
 import Rail from './atelier/Rail'
+// ACAL415 — outils et onglets cherchables dans ⌘K.
+import { useCommandesAtelier } from './atelier/useCommandesAtelier'
+// ACAL421 — « Conception automatique » : l'emprise OSM du lead épinglé devient le pan.
+import { aDejaUnPan, conceptionAuto } from './atelier/conceptionAuto'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -66,6 +70,13 @@ import Rail from './atelier/Rail'
 function valeur(brut, suffixe = '') {
   if (brut === null || brut === undefined || brut === '') return '—'
   return `${brut}${suffixe}`
+}
+
+/** ACAL406 — la source de la cible en mots ; une valeur inconnue reste telle quelle. */
+const LIBELLES_SOURCE_CIBLE = {
+  devis: 'Devis lié',
+  lead: 'Taille souhaitée sur la fiche du lead',
+  factures: 'Factures du lead',
 }
 
 /* ============================================================================
@@ -104,6 +115,7 @@ export default function AtelierPanneaux({
   /* ACAL42 — la lecture seule est relue du SERVEUR (design-context) à chaque
      montage : aucun état local de déverrouillage. */
   const enLectureSeule = lectureSeule
+  useCommandesAtelier({ builderApi, lectureSeule: enLectureSeule })
 
   /* UNE SEULE LECTURE DE L'AGRÉGAT (CAL17), partagée. La fiche et le bouton
      devis parlent de la MÊME vérité : deux lectures, ce serait deux états le
@@ -123,6 +135,14 @@ export default function AtelierPanneaux({
     return () => { annule = true }
   }, [calepinageId, relecture])
   const relire = () => setRelecture((n) => n + 1)
+  // ACAL421 — conception automatique : message du serveur ou du builder, jamais un pan sur refus.
+  const [messageAuto, setMessageAuto] = useState('')
+  const leadId = calepinage?.lead ?? null
+  const lancerConceptionAuto = async () => {
+    const r = await conceptionAuto(leadId, builderApi)
+    setMessageAuto(r.message)
+    if (r.ok) relire()
+  }
 
   return (
     <div className="cine-card mt-6 p-6" data-testid="cal-atelier-panneaux">
@@ -138,7 +158,7 @@ export default function AtelierPanneaux({
             s'ouvre depuis son atelier, jamais depuis une entrée de menu
             permanente qui n'aurait aucun calepinage à désigner. */}
         <Link
-          to={`/calepinage/${calepinageId}/variantes`}
+          to={`/calepinage/${calepinageId}?onglet=variantes`}
           data-testid="cal-lien-variantes"
           className="text-sm font-semibold text-brass-300 underline"
         >
@@ -147,7 +167,7 @@ export default function AtelierPanneaux({
         {/* CAL53 — la photo de site (CAL52) se cale depuis ici : un item de
             menu permanent n'aurait aucun calepinage à désigner. */}
         <Link
-          to={`/calepinage/${calepinageId}/photos`}
+          to={`/calepinage/${calepinageId}?onglet=photos`}
           data-testid="cal-lien-photos-calage"
           className="text-sm font-semibold text-brass-300 underline"
         >
@@ -175,7 +195,7 @@ export default function AtelierPanneaux({
           <dt className="tech-label mt-0.5 text-lune-faint">Cible — puissance</dt>
         </div>
         <div>
-          <dd className="fig text-lg text-white">{valeur(cible?.source)}</dd>
+          <dd className="fig text-lg text-white">{valeur(LIBELLES_SOURCE_CIBLE[cible?.source] ?? cible?.source)}</dd>
           <dt className="tech-label mt-0.5 text-lune-faint">Source de la cible</dt>
         </div>
         <div>
@@ -271,6 +291,14 @@ export default function AtelierPanneaux({
             contour. Le contour de l'atelier n'a pas changé d'un champ
             (`roof_layout.outline`, v2) et le tracé sur carte reste la voie de
             le poser. */}
+        {/* ACAL421 — absent en lecture seule, sans lead lié, sans builder, ou si un pan est déjà tracé. */}
+        {!enLectureSeule && leadId && builderApi?.ajouterPanDepuisContour && !aDejaUnPan(builderApi) && (
+          <button type="button" onClick={lancerConceptionAuto} data-testid="cal-conception-auto"
+            className="text-sm font-semibold text-brass-300 underline">
+            Conception automatique
+          </button>
+        )}
+        {messageAuto && <p className="text-sm text-lune-faint" role="status" data-testid="cal-conception-auto-message">{messageAuto}</p>}
         {typeof children === 'function'
           ? children({ calepinageId, contexte, builderApi, lectureSeule: enLectureSeule, onRecharger })
           : children}

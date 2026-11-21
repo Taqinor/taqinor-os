@@ -38,18 +38,24 @@ const REPONSE_VIDE = {
   catalogue: CATALOGUE_TEST,
 }
 
+/* ACAL396 — le bouton de calcul du diagramme est sous `calepinage_gerer` (doublure : pas de Provider Redux). */
+vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
+
 const pertes = vi.fn()
 const enregistrerPertes = vi.fn()
+const resultat = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       pertes: (...a) => pertes(...a),
       enregistrerPertes: (...a) => enregistrerPertes(...a),
+      resultat: (...a) => resultat(...a),
     },
   },
 }))
 
 const { default: PanneauPertes } = await import('./PanneauPertes')
+const { default: PanneauPertesUnifie } = await import('./PanneauPertesUnifie')
 
 const rendre = () => render(
   <MemoryRouter><PanneauPertes calepinageId={1} /></MemoryRouter>,
@@ -269,5 +275,51 @@ describe('ACAL44 — lecture seule (devis lié figé)', () => {
       .toHaveTextContent('Conception figée')
     fireEvent.click(bouton)
     expect(enregistrerPertes).not.toHaveBeenCalled()
+  })
+})
+
+describe('ACAL396 — `onEnregistre` après un enregistrement réussi, jamais après un refus', () => {
+  it('appelé une fois après succès', async () => {
+    pertes.mockResolvedValue({ data: REPONSE_VIDE })
+    enregistrerPertes.mockResolvedValue({ data: {} })
+    const onEnregistre = vi.fn()
+    render(<MemoryRouter><PanneauPertes calepinageId={1} onEnregistre={onEnregistre} /></MemoryRouter>)
+    await screen.findByTestId('cal-pertes-poste-iam')
+    fireEvent.change(champPct('iam'), { target: { value: '3.5' } })
+    fireEvent.change(champSource('iam'), { target: { value: 'pvgis' } })
+    fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
+    await waitFor(() => expect(onEnregistre).toHaveBeenCalledTimes(1))
+  })
+
+  it('jamais appelé après un refus du serveur', async () => {
+    pertes.mockResolvedValue({ data: REPONSE_VIDE })
+    enregistrerPertes.mockRejectedValue({ response: { data: { iam: ['refusé'] } } })
+    const onEnregistre = vi.fn()
+    render(<MemoryRouter><PanneauPertes calepinageId={1} onEnregistre={onEnregistre} /></MemoryRouter>)
+    await screen.findByTestId('cal-pertes-poste-iam')
+    fireEvent.change(champPct('iam'), { target: { value: '3.5' } })
+    fireEvent.change(champSource('iam'), { target: { value: 'pvgis' } })
+    fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
+    await screen.findByTestId('cal-pertes-erreur-iam')
+    expect(onEnregistre).not.toHaveBeenCalled()
+  })
+
+  it('panneau unifié : enregistrer un poste relit le diagramme (bandeau « périmée ») sans changer d’onglet', async () => {
+    pertes.mockResolvedValue({ data: REPONSE_VIDE })
+    enregistrerPertes.mockResolvedValue({ data: {} })
+    // Réponses du CONTRAT `calepinage_resultat.json` (jamais un mock à la main) :
+    // à jour, puis périmée après l'enregistrement du poste.
+    const aJour = exempleContrat('calepinage', 'calepinage_resultat', 'exemple')
+    const perimee = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime')
+    resultat.mockResolvedValueOnce({ data: aJour }).mockResolvedValue({ data: perimee })
+    render(<MemoryRouter><PanneauPertesUnifie calepinageId={1} /></MemoryRouter>)
+    await screen.findByTestId('cal143-panneau')
+    expect(screen.queryByTestId('calx48-perime')).toBeNull()
+    await screen.findByTestId('cal-pertes-poste-iam')
+    fireEvent.change(champPct('iam'), { target: { value: '3.5' } })
+    fireEvent.change(champSource('iam'), { target: { value: 'pvgis' } })
+    fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
+    expect(await screen.findByTestId('calx48-perime')).toBeTruthy()
+    expect(resultat).toHaveBeenCalledTimes(2)
   })
 })

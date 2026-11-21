@@ -1,21 +1,21 @@
 // ENF22 — helpers extraits de RaccourcisAtelier.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
 
+import { lignesDePortee } from '@roofpro/raccourcisAtelier'
+
 /**
  * CAL101 — la table UNIQUE des raccourcis.
  * `action` est la clé du gestionnaire attendu dans la prop `actions` ;
  * `touche` est comparée à `event.key` SANS casse ; `ctrl` exige la touche
  * Contrôle (ou Commande) ; `libelle` est ce que l'aide affiche.
  */
-export const RACCOURCIS = [
-  { action: 'outilTrace', touche: 't', libelle: 'Outil tracé de toit', affichage: 'T' },
-  { action: 'outilObstacle', touche: 'o', libelle: 'Outil obstacle', affichage: 'O' },
-  { action: 'outilZone', touche: 'z', libelle: 'Outil zone', affichage: 'Z' },
-  { action: 'outilMesure', touche: 'm', libelle: 'Outil mesure', affichage: 'M' },
-  { action: 'aimantation', touche: 'a', libelle: 'Activer ou couper l’aimantation', affichage: 'A' },
-  { action: 'supprimer', touche: 'delete', libelle: 'Supprimer la sélection', affichage: 'Suppr' },
-  { action: 'dupliquer', touche: 'd', ctrl: true, libelle: 'Dupliquer la sélection', affichage: 'Ctrl + D' },
-  { action: 'pleinEcran', touche: 'f', libelle: 'Plein écran', affichage: 'F' },
-]
+// ACAL414 — lue dans la table unique `@roofpro/raccourcisAtelier` (portée « atelier »).
+export const RACCOURCIS = lignesDePortee('atelier').map((l) => ({
+  action: l.action,
+  touche: l.touches[0],
+  ...(l.modificateurs?.ctrl ? { ctrl: true } : {}),
+  libelle: l.libelle,
+  affichage: l.ecriture,
+}))
 
 /**
  * CAL101 — vrai quand la frappe appartient à un champ de saisie. Un raccourci

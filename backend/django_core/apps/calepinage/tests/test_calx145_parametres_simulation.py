@@ -421,3 +421,196 @@ class EquivalenceSocieteTest(TestCase):
             enregistrer_parametres(self.company, {SECTION_SIMULATION: {
                 'sigma_modele_pct': {'valeur': 3.0}}})
         self.assertEqual(refus.exception.champ, 'sigma_modele_pct')
+
+
+# ── ACAL403 — le profil de départ sourcé (D-ACAL-31) ──────────────────────
+URL_PROFIL = '/api/django/calepinage/calepinages/profil-depart/'
+
+
+class ProfilDepartFichierTest(SimpleTestCase):
+    """Le FICHIER du profil : toute valeur porte sa page lue, toute clé du
+    registre est soit proposée, soit listée « sans source »."""
+
+    def test_chaque_valeur_est_sourcee_et_chaque_cle_comptee(self):
+        from apps.calepinage.services.parametres_cles import REGISTRES
+        from apps.calepinage.services.profil_depart import charger_profil
+
+        profil = charger_profil()
+        for ligne in profil['valeurs']:
+            self.assertEqual(ligne['source'], 'texte')
+            self.assertTrue(ligne['reference'].startswith('Profil de départ — '))
+            self.assertTrue(ligne['url'].startswith('https://'))
+            self.assertRegex(ligne['date_lecture'], r'^\d{4}-\d{2}-\d{2}$')
+        proposees = {(v['section'], v['cle']) for v in profil['valeurs']}
+        sans = {(v['section'], v['cle']) for v in profil['sans_source']}
+        tout = {(s, c[0]) for s, lignes in REGISTRES.items() for c in lignes}
+        self.assertEqual(proposees & sans, set())
+        self.assertEqual(proposees | sans, tout)
+
+    def test_acal404_chaque_ligne_lisible_sourcee_et_comptee_une_fois(self):
+        # ACAL404 — la valeur passe la validation de TYPE du registre, la
+        # date de lecture n'est pas future, la référence et l'URL existent ;
+        # chaque clé du registre est dans EXACTEMENT une des deux listes.
+        import datetime
+
+        from apps.calepinage.services.parametres import (
+            _normaliser_cles_a_registre)
+        from apps.calepinage.services.parametres_cles import REGISTRES
+        from apps.calepinage.services.profil_depart import (
+            _saisie_du_profil, charger_profil)
+
+        def verifier(profil):
+            for ligne in profil['valeurs']:
+                self.assertIn(ligne['cle'],
+                              {c[0] for c in REGISTRES[ligne['section']]})
+                self.assertEqual(ligne['source'], 'texte')
+                self.assertTrue(ligne.get('url', '').startswith('https://'),
+                                ligne['cle'])
+                self.assertTrue(ligne['reference'].strip())
+                self.assertLessEqual(
+                    datetime.date.fromisoformat(ligne['date_lecture']),
+                    datetime.date.today())
+                _normaliser_cles_a_registre(
+                    ligne['section'],
+                    {ligne['cle']: _saisie_du_profil(ligne)})
+            for ligne in profil['sans_source']:
+                self.assertTrue(ligne['motif'].strip(), ligne['cle'])
+            comptes = {}
+            for ligne in profil['valeurs'] + profil['sans_source']:
+                cle = (ligne['section'], ligne['cle'])
+                comptes[cle] = comptes.get(cle, 0) + 1
+            tout = {(s, c[0]) for s, lignes in REGISTRES.items()
+                    for c in lignes}
+            self.assertEqual(set(comptes), tout)
+            self.assertEqual(set(comptes.values()), {1})
+
+        profil = charger_profil()
+        verifier(profil)
+        # Mutant : une ligne sans URL ⇒ échec.
+        mutant = json.loads(json.dumps(profil))
+        del mutant['valeurs'][0]['url']
+        with self.assertRaises((AssertionError, KeyError)):
+            verifier(mutant)
+
+    def test_reference_ecrite_dit_page_date_et_valeur_publiee(self):
+        from apps.calepinage.services.profil_depart import reference_ecrite
+
+        ligne = {'reference': 'Profil de départ — X', 'url': 'https://a.b/c',
+                 'date_lecture': '2026-11-20'}
+        self.assertEqual(reference_ecrite(ligne),
+                         'Profil de départ — X — https://a.b/c — lu le '
+                         '2026-11-20 — valeur publiée, non mesurée')
+
+
+class ProfilDepartApplicationTest(TestCase):
+    """ORM + route réelle — non exécuté sur l'hôte de lane (aucune base)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.calepinage.services.profil_depart import charger_profil
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            DIRECTEUR_PERMISSIONS, RESPONSABLE_PERMISSIONS,
+        )
+        from authentication.models import Company
+
+        self.company = Company.objects.create(nom='Profil Co',
+                                              slug='acal403-profil')
+        self.autre = Company.objects.create(nom='Autre Co',
+                                            slug='acal403-autre')
+        user = get_user_model().objects.create_user
+        self.dir = user(username='acal403_dir', password='x',
+                        company=self.company, role=Role.objects.create(
+                            company=self.company, nom='Directeur',
+                            permissions=list(DIRECTEUR_PERMISSIONS)))
+        self.resp = user(username='acal403_resp', password='x',
+                         company=self.company, role=Role.objects.create(
+                             company=self.company, nom='Responsable',
+                             permissions=list(RESPONSABLE_PERMISSIONS)))
+
+        def client(u):
+            api = APIClient()
+            api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(u)}')
+            return api
+        self.api_dir, self.api_resp = client(self.dir), client(self.resp)
+        # FIXTURE DE TEST (jamais servie) : la ligne b0 du vrai fichier + une
+        # seconde ligne pour avoir « une clé saisie, une clé vide ».
+        b0 = charger_profil()['valeurs'][0]
+        self.profil = {'valeurs': [b0, dict(
+            b0, cle='sigma_modele_pct', valeur=3,
+            reference='Profil de départ — fixture de test')], 'sans_source': []}
+
+    def _simulation(self, company=None):
+        return parametres_de_societe(company or self.company)[SECTION_SIMULATION]
+
+    def test_cle_saisie_jamais_ecrasee_cle_vide_remplie(self):
+        from apps.calepinage.services.profil_depart import appliquer_profil
+
+        saisie = {'valeur': 0.07, 'source': 'societe', 'reference': ''}
+        enregistrer_parametres(self.company, {SECTION_SIMULATION: {
+            'b0_iam': saisie}})
+        rendu = appliquer_profil(self.company, user=self.dir,
+                                 profil=self.profil)
+        self.assertEqual(rendu['appliquees'],
+                         [{'cle': 'sigma_modele_pct', 'section': 'simulation'}])
+        self.assertEqual(rendu['ignorees'], [{
+            'cle': 'b0_iam', 'section': 'simulation', 'motif': 'deja_saisie'}])
+        simulation = self._simulation()
+        self.assertEqual(simulation['b0_iam'], saisie)
+        self.assertEqual(simulation['sigma_modele_pct']['source'], 'texte')
+        self.assertTrue(simulation['sigma_modele_pct']['reference'].endswith(
+            'valeur publiée, non mesurée'))
+
+    def test_retrait_ne_touche_pas_une_valeur_retouchee(self):
+        from apps.calepinage.services.profil_depart import (
+            appliquer_profil, retirer_profil,
+        )
+
+        appliquer_profil(self.company, user=self.dir, profil=self.profil)
+        enregistrer_parametres(self.company, {SECTION_SIMULATION: {
+            'sigma_modele_pct': {'valeur': 4, 'source': 'societe'}}})
+        rendu = retirer_profil(self.company, user=self.dir, profil=self.profil)
+        self.assertEqual(rendu['retirees'],
+                         [{'cle': 'b0_iam', 'section': 'simulation'}])
+        simulation = self._simulation()
+        self.assertNotIn('b0_iam', simulation)
+        self.assertEqual(simulation['sigma_modele_pct']['valeur'], 4)
+
+    def test_route_sans_le_droit_403_avec_le_droit_200(self):
+        self.assertEqual(self.api_resp.get(URL_PROFIL).status_code, 200)
+        self.assertEqual(self.api_resp.post(URL_PROFIL).status_code, 403)
+        self.assertEqual(self.api_resp.delete(URL_PROFIL).status_code, 403)
+        self.assertEqual(self._simulation(), {})
+        reponse = self.api_dir.post(URL_PROFIL)
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertIn('b0_iam', self._simulation())
+        self.assertEqual(self.api_dir.delete(URL_PROFIL).status_code, 200)
+        self.assertNotIn('b0_iam', self._simulation())
+
+    def test_get_dit_l_etat_de_chaque_valeur(self):
+        # La référence écrite par « Appliquer » (``reference_ecrite``)
+        # distingue une valeur POSÉE par le profil (« Retirer » la retire)
+        # d'une saisie — le GET le dit, ligne par ligne.
+        def etats():
+            reponse = self.api_resp.get(URL_PROFIL)
+            self.assertEqual(reponse.status_code, 200)
+            return {v['cle']: v['etat'] for v in reponse.data['valeurs']}
+
+        self.assertEqual(set(etats().values()), {'a_appliquer'})
+        self.assertEqual(self.api_dir.post(URL_PROFIL).status_code, 200)
+        self.assertEqual(set(etats().values()), {'posee_par_profil'})
+        enregistrer_parametres(self.company, {SECTION_SIMULATION: {
+            'b0_iam': {'valeur': 0.07, 'source': 'societe'}}})
+        self.assertEqual(etats()['b0_iam'], 'deja_saisie')
+
+    def test_autre_societe_ses_reglages_intacts(self):
+        enregistrer_parametres(self.autre, {SECTION_SIMULATION: {
+            'mode_meteo': {'valeur': 'tmy', 'source': 'societe'}}})
+        avant = self._simulation(self.autre)
+        self.assertEqual(self.api_dir.post(URL_PROFIL).status_code, 200)
+        self.assertEqual(self.api_dir.delete(URL_PROFIL).status_code, 200)
+        self.assertEqual(self._simulation(self.autre), avant)

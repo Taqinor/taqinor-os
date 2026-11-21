@@ -2,6 +2,10 @@
 // d'ombrage (hourlyShadeFactors, etc.) est déjà testé ailleurs (shadingWJ19.test.ts) ;
 // ce fichier couvre uniquement la résolution PURE de la hauteur (le reste de
 // `createShadingUi` a besoin d'une carte MapLibre + du DOM, hors de portée d'un test pur).
+import { sunDirection } from '../../lib/roofPro2'; // ACAL459
+import { annualShadeFactor, MID_MONTH_DAY_OF_YEAR, DIFFUSE_FRACTION_WHEN_SHADED } from '../../lib/shadingEngine'; // ACAL459
+import { tableOmbrage, recomposerMatrice, ajouterTableOmbrage, garderTableRelue, signerSources } from './tableOmbrage'; // ACAL459
+import { facteurVueCiel, vueCielDuPan, ajouterVueCiel, garderVueCielRelue } from './vueCiel'; // ACAL460
 import { describe, expect, it } from 'vitest';
 import {
   effectiveBuildingHeightM,
@@ -401,5 +405,111 @@ describe('ACAL27 — ombres tracées : sérialisées, relues, même matrice', ()
     const lu = deserializeShadeObstructions({ shadeObstructions: exemple });
     expect(lu.lues).toEqual([]);
     expect(serializeShadeObstructions(lu.lues, lu.nonLues)).toEqual({ shadeObstructions: exemple });
+  });
+});
+
+// ═══ ACAL459 — table des facteurs d'ombrage DIRECT par direction du soleil ═══
+describe('ACAL459 — table par direction', () => {
+  // Une obstruction à 10 m au sud (y = −10), hauteur 5 m, demi-largeur 3 m, un module à l'origine :
+  // elle coupe le soleil sous atan(5/10) = 26,57° (valeur dérivée à la main) dans son cône d'azimut.
+  const mur: ShadeObstructionENU[] = [{ x: 0, y: -10, effHeightM: 5, halfWidthM: 3 }];
+  const un = [{ x: 0, y: 0 }];
+  const case_ = (t: NonNullable<ReturnType<typeof tableOmbrage>>, az: number, h: number) =>
+    t.facteurs[t.hauteursDeg.indexOf(h)][t.azimutsDeg.indexOf(az)];
+
+  it('case (sud, 20°) = 0, (sud, 30°) = 1 ; hors du cône d’azimut = 1', () => {
+    const t = tableOmbrage(un, mur, 'sig')!;
+    expect(case_(t, 180, 20)).toBe(0);
+    expect(case_(t, 180, 30)).toBe(1);
+    expect(case_(t, 0, 20)).toBe(1); // mutant « ignorer le cône d'azimut » ⇒ 0 ⇒ échec
+    expect(t.methode).toBe('centres_de_modules');
+    expect(t.signature).toBe('sig');
+    expect(t.facteurs).toHaveLength(t.hauteursDeg.length);
+    t.facteurs.forEach((l) => expect(l).toHaveLength(t.azimutsDeg.length));
+  });
+
+  it('chaque case = part des modules dont le rayon n’est pas coupé (jamais mêlée au diffus)', () => {
+    // Deux modules : un derrière l'obstruction, un 12 m plus à l'ouest hors de son cône (y = 0).
+    const t = tableOmbrage([{ x: 0, y: 0 }, { x: -12, y: 0 }], mur, 's')!;
+    expect(case_(t, 180, 20)).toBe(0.5);
+    expect(case_(t, 180, 30)).toBe(1);
+  });
+
+  it('sans obstruction ou sans module : aucune table (jamais « 1 partout »)', () => {
+    expect(tableOmbrage(un, [], 's')).toBeNull();
+    expect(tableOmbrage([], mur, 's')).toBeNull();
+  });
+
+  it('le pas de grille garde le facteur annuel recomposé à moins de 2 points de l’exact', () => {
+    const lat = 33.6;
+    const modules = Array.from({ length: 24 }, (_, i) => ({ x: (i % 8) * 1.15 - 4, y: Math.floor(i / 8) * 1.8 - 2 }));
+    const scenarios: ShadeObstructionENU[][] = [
+      [{ x: 0, y: -8, effHeightM: 6, halfWidthM: 3 }],
+      [{ x: 0, y: -6, effHeightM: 10, halfWidthM: 14 }],
+      [{ x: 0, y: -7, effHeightM: 5, halfWidthM: 6 }, { x: 12, y: 0, effHeightM: 7, halfWidthM: 4 }, { x: -12, y: 2, effHeightM: 7, halfWidthM: 4 }],
+    ];
+    const prod = fallbackPerKwc();
+    const soleil = (m: number, h: number) => sunDirection(lat, MID_MONTH_DAY_OF_YEAR[m], h + 0.5);
+    for (const obs of scenarios) {
+      const mats = modules.map((p) => hourlyShadeFactors(lat, obs, p.x, p.y));
+      const exact = mats[0].map((_r, m) => mats[0][m].map((_v, h) => mats.reduce((s, mt) => s + mt[m][h], 0) / mats.length));
+      const recompose = recomposerMatrice(tableOmbrage(modules, obs, 's')!, soleil, DIFFUSE_FRACTION_WHEN_SHADED);
+      expect(Math.abs(annualShadeFactor(prod, recompose, lat) - annualShadeFactor(prod, exact, lat))).toBeLessThan(0.02);
+    }
+  });
+
+  it('sérialisation : la table est écrite par ajouterTableOmbrage, relue seulement à signature inchangée', () => {
+    const t = tableOmbrage(un, mur, 'a')!;
+    const g: { shadeTable?: typeof t } = {};
+    ajouterTableOmbrage(g, t);
+    expect(g.shadeTable).toStrictEqual(t);
+    ajouterTableOmbrage(g, null); // rien à écrire : la clé reste ce qu'elle était (jamais un 1 écrit)
+    garderTableRelue(g, 'a');
+    expect(g.shadeTable).toBeDefined();
+    garderTableRelue(g, 'b'); // sources déplacées ⇒ clé retirée
+    expect(g.shadeTable).toBeUndefined();
+    expect(signerSources('x')).toBe(signerSources('x'));
+    expect(signerSources('x')).not.toBe(signerSources('y'));
+  });
+});
+
+// ═══ ACAL460 — facteur de vue du ciel d'un pan ═══
+describe('ACAL460 — facteur de vue du ciel', () => {
+  // Le prédicat de blocage est injecté. Plan horizontal, ciel coupé sous la hauteur h : poids = sin a · cos a,
+  // ∫ de h à 90° ÷ ∫ de 0 à 90° = cos²h (dérivation à la main) ; cos²20° = 0,8830.
+  const mur: ShadeObstructionENU[] = [{ x: 0, y: -10, effHeightM: 5, halfWidthM: 3 }];
+  const un = [{ x: 0, y: 0 }];
+  const sousHauteur = (h: number) => (_x: number, _y: number, a: number) => a < h;
+
+  it('coupé sous 20° partout ⇒ cos²(20°) à moins de 2 points ; mutant sans pesée par le cosinus ⇒ 0,658', () => {
+    const f = facteurVueCiel(un, mur, 0, 180, sousHauteur(20))!;
+    expect(Math.abs(f - Math.cos((20 * Math.PI) / 180) ** 2)).toBeLessThan(0.02);
+    expect(f).toBeGreaterThan(0.85); // sans la pesée par le cosinus (1 − cos 70° = 0,658) ⇒ échec
+  });
+
+  it('jamais coupé ⇒ 1 (plat et incliné) ; sans obstruction ou sans module ⇒ aucune valeur', () => {
+    expect(facteurVueCiel(un, mur, 0, 180, () => false)).toBe(1);
+    expect(facteurVueCiel(un, mur, 30, 200, () => false)).toBe(1);
+    expect(facteurVueCiel(un, [], 30, 180)).toBeNull();
+    expect(facteurVueCiel([], mur, 30, 180)).toBeNull();
+    expect(vueCielDuPan(null, 's')).toBeNull();
+  });
+
+  it('un mur réel au sud coupe moins que 1 un plan plein sud ; moyenne des modules', () => {
+    const f = facteurVueCiel(un, mur, 30, 180)!;
+    expect(f).toBeLessThan(1);
+    expect(f).toBeGreaterThan(0.9); // un mur de 3 m de demi-largeur ne cache qu'une petite part du dôme
+  });
+
+  it('écriture : méthode isotrope sans horizon ; relue seulement à signature inchangée', () => {
+    const v = vueCielDuPan(0.9, 'a')!;
+    expect(v.methode).toEqual({ diffus: 'isotrope', horizon: false, resolution: 'centres_de_modules' });
+    const g: { skyViewFactor?: typeof v } = {};
+    ajouterVueCiel(g, { skyViewByZone: { z: v } }, 'z');
+    ajouterVueCiel(g, { skyViewByZone: { z: null } }, 'z'); // rien à écrire : jamais un 1
+    garderVueCielRelue(g, { signatureOmbrage: 'a' });
+    expect(g.skyViewFactor).toStrictEqual(v);
+    garderVueCielRelue(g, { signatureOmbrage: 'b' });
+    expect(g.skyViewFactor).toBeUndefined();
   });
 });

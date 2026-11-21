@@ -9,7 +9,7 @@
      4. un 404 de la porte (calepinage inconnu ou d'une autre société)
         affiche « Calepinage introuvable », jamais une erreur générique. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const CONTRAT = documentContrat('calepinage', 'calepinage_troncons')
@@ -121,5 +121,40 @@ describe('CheminementCables (CALX229)', () => {
     expect(await screen.findByTestId('calx229-introuvable')).toBeInTheDocument()
     expect(screen.getByText('Calepinage introuvable')).toBeInTheDocument()
     expect(screen.queryByTestId('calx229-erreur')).toBeNull()
+  })
+
+  it('ACAL472 : « Proposer le tracé » appelle l’API du builder avec côté, de, vers ; un refus est NOMMÉ', async () => {
+    servir(CONTRAT.exemple)
+    const proposerCheminement = vi.fn()
+      .mockReturnValueOnce({ ok: true, cheminement: { id: 'ch9', points: [{}, {}, {}] } })
+      .mockReturnValueOnce({ ok: false, champ: 'electrical.cheminements.points', message: 'Aucun chemin entre les deux organes.' })
+    const builderApi = {
+      electrique: {
+        proposerCheminement,
+        documentElectrique: () => ({ equipements: [{ id: 'eq1', label: 'Onduleur' }, { id: 'eq2', label: 'Coffret' }] }),
+      },
+    }
+
+    render(<MemoryRouter><CheminementCables calepinageId={12} builderApi={builderApi} /></MemoryRouter>)
+
+    await screen.findByTestId('acal472-proposer')
+    fireEvent.change(screen.getByTestId('acal472-cote'), { target: { value: 'ac' } })
+    fireEvent.change(screen.getByTestId('acal472-de'), { target: { value: 'eq1' } })
+    fireEvent.change(screen.getByTestId('acal472-vers'), { target: { value: 'eq2' } })
+    fireEvent.click(screen.getByTestId('acal472-proposer'))
+
+    expect(proposerCheminement).toHaveBeenCalledWith({ cote: 'ac', de: 'eq1', vers: 'eq2' })
+    expect(screen.getByTestId('acal472-resultat')).toHaveTextContent('3 points')
+    fireEvent.click(screen.getByTestId('acal472-proposer'))
+    expect(screen.getByTestId('acal472-resultat')).toHaveTextContent('Aucun chemin entre les deux organes.')
+  })
+
+  it('ACAL472 : sans outil 3D prêt, le motif est nommé, rien n’est inventé', async () => {
+    servir(CONTRAT.exemple)
+
+    rendre()
+
+    fireEvent.click(await screen.findByTestId('acal472-proposer'))
+    expect(screen.getByTestId('acal472-resultat')).toHaveTextContent('Outil 3D non prêt')
   })
 })

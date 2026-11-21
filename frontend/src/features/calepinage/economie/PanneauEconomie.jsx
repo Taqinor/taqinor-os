@@ -4,6 +4,7 @@ import ventesApi from '../../../api/ventesApi'
 import useResource from '../../../hooks/useResource'
 import { formatDate, formatMAD, formatNumber, formatPercent } from '../../../lib/format'
 import { Card, Spinner, Stat } from '../../../ui'
+import GraphiqueFlux from './GraphiqueFlux'
 import { MotifAbsence } from '../MotifAbsence'
 
 /* ============================================================================
@@ -240,6 +241,7 @@ function BlocEconomie({ economie }) {
           />
         ))}
       </div>
+      <GraphiqueFlux flux={flux} retourAns={economie.retour_ans} />
       <TableauFlux flux={flux} />
       <TableauHypotheses hypotheses={hypotheses} />
       <ListeOmissions omissions={omissions} />

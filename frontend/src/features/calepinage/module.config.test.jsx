@@ -117,3 +117,53 @@ describe('calepinage — module.config (CAL34)', () => {
     }
   })
 })
+
+// ACAL407 — une adresse par panneau : chaque route profonde redirige vers `?onglet=`.
+describe('calepinage — routes profondes redirigées (ACAL407)', () => {
+  const CLES = ['fiches', 'pompage', 'plan', 'pente', 'terrain', 'ombriere', 'schema',
+    'production', 'pertes', 'horizon', 'course-soleil', 'dossiers', 'affectation']
+
+  async function ouvrir(chemin) {
+    const { Suspense } = await import('react')
+    const { render, screen } = await import('@testing-library/react')
+    const { MemoryRouter, Routes, Route, useLocation } = await import('react-router-dom')
+    const { default: config } = await import('./module.config.jsx')
+    const Sonde = () => {
+      const l = useLocation()
+      return <div data-testid="sonde">{l.pathname + l.search}</div>
+    }
+    const racine = config.routes.find((r) => r.path === '/calepinage/:id')
+    const profondes = config.routes.filter((r) => /^\/calepinage\/:id\/[^/]+$/.test(r.path))
+    render(
+      <MemoryRouter initialEntries={[chemin]}>
+        <Routes>
+          <Route path={racine.path} element={<Sonde />} />
+          {profondes.map((r) => {
+            const C = r.component
+            return (
+              <Route key={r.path} path={r.path}
+                element={<Suspense fallback={null}><C /></Suspense>} />
+            )
+          })}
+        </Routes>
+      </MemoryRouter>,
+    )
+    return screen
+  }
+
+  for (const cle of CLES) {
+    it(`/calepinage/9/${cle} → /calepinage/9?onglet=${cle}`, async () => {
+      const screen = await ouvrir(`/calepinage/9/${cle}`)
+      expect(await screen.findByTestId('sonde')).toHaveTextContent(`/calepinage/9?onglet=${cle}`)
+    }, 60_000)
+  }
+
+  it('variantes et photos ne redirigent pas', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const { default: Redir } = await import('./atelier/RedirectionOnglet')
+    for (const fin of ['variantes', 'photos']) {
+      const route = config.routes.find((r) => r.path === `/calepinage/:id/${fin}`)
+      expect(route.component).not.toBe(Redir)
+    }
+  })
+})
