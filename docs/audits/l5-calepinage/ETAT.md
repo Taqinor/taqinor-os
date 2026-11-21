@@ -132,3 +132,27 @@ complet = 37 réglages société (128 champs).
 - ENSUITE : assembler les lots, lancer les gardes, une critique finale (modèle de pointe) sur la décision d'architecture
   et sur le lot, puis insérer dans `PLAN_AUDIT_CALEPINAGE.md` (bail à obtenir) et dans les plans des autres
   propriétaires ; écrire les tâches du lot D8.
+
+## Mise à jour du 21/11/2026 (soir) — intégration de la vague 2
+- **PR #1517** (docs seulement, NON mergée, auto-merge NON activé — une critique finale doit la lire d'abord) : groupe
+  « ACAL — complément du 2026-11-21 (vague 2) » inséré dans PLAN_AUDIT_DEVIS (17), MOTEUR (3), CHANTIERS (7), STOCK (4),
+  LEAD (2), PARAMETRES (2), DEPLOY (2), SAV (1) et WEB_PLAN (3) = 41 tâches ; D-ACAL-35..42 dans `decisions.yml` et la
+  mémoire partagée ; dossier `docs/audits/2026-11-21-calepinage-l5-vague2.md` ; maquettes, T1 et architecture recopiés.
+- **En attente du bail** : `PLAN_AUDIT_CALEPINAGE.md` (tenu par `DESKTOP-APTAHF6/dev-all-acal-m0`) — 431 tâches dans
+  `INSERTION-PLAN_AUDIT_CALEPINAGE.md` (dans la PR sous `docs/audits/l5-calepinage/` et ici sous `lots2/`), à insérer tel
+  quel avant `## DONE LOG`. Bails tenus par `Reda_Laptop/claude/calepinage-vague2` sur les 9 autres fichiers (à libérer
+  après le merge).
+- **Décisions** : D-ACAL-35 (production de la pose réelle au PDF des nouveaux devis à calepinage, écarts montrés avant ;
+  précise D-ACAL-6/QJR107/INTERDIT P50) et D-ACAL-36 (surfaces cochées) ; puis D-ACAL-37..42 (4 éléments client hors PDF,
+  kit de fixation affleurant, rien sans facture, réservoir interne, modèles « Exemple », dossier distributeur générique).
+- **Architecture corrigée (D8, d'après la critique)** : (1) production et économie restent dans `apps/ventes`, une porte
+  `chiffrer_conception` (ACAL991-992) ; (2) l'atelier lit le bloc `chiffrage` du design-context (ACAL993-995), « estimation »
+  sinon ; (3) le calepinage SERT le productible posé (ACAL996-997), le moteur le CONSOMME (ACAL999 horaire, ACAL973 PDF) ;
+  (4) UN niveau de règles 15 (ACAL998), dry-run `--niveau` (ACAL1000), activation GATED sur la lecture par Reda (ACAL1001) ;
+  (5) « rapide » = une marque sur `build_devis_auto` inchangé (ACAL1004-1008) ; (6) `pans_poses` pur dans `core/calepinage`
+  (ACAL1002-1003) ; ni `core/conception`, ni interrupteur d'environnement, ni remplacement de `string_design`.
+- Réconciliation : 19 tâches retirées (liste au dossier), ACAL1026-1030 ajoutées (soleil animé web, raccourcis tactiles,
+  croquis grisé, lecture affleurante, moitié devis d'ACAL901) ; 472 tâches au total, réserve 55 lignes.
+- **Reste** : critique finale de la PR #1517 puis merge et libération des bails ; insertion du bloc calepinage quand le
+  bail est libre — trancher alors la porte PACT11 (216 refus contre 23 à la base : 12 tâches backend étendent
+  `apps/calepinage/selectors.py`) ; tour 2 de relecteurs après les livraisons de l'autre poste ; démontage de la pile `l5cal`.

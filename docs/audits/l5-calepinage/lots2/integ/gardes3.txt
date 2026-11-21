@@ -1,0 +1,23 @@
+=== audit_registre
+Registre des audits : unites.yml cohérent avec dossiers et plans.
+rc=0
+=== lanes docs/plans/PLAN_AUDIT_CALEPINAGE.md REFUS=216
+REFUSÉ (@after externe, OWN) : ACAL423 — attend ACAL402 (docs/plans/PLAN_AUDIT_CALEPINAGE.md:716, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce p
+REFUSÉ (@after externe, OWN) : ACAL439 — attend ACAL430 (docs/plans/PLAN_AUDIT_CALEPINAGE.md:778, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce p
+REFUSÉ (@after externe, OWN) : ACAL441 — attend ACAL436 (docs/plans/PLAN_AUDIT_CALEPINAGE.md:790, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce p
+REFUSÉ (@after externe, OWN) : ACAL470 — attend ACAL427 (docs/plans/PLAN_AUDIT_CALEPINAGE.md:772, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce p
+REFUSÉ (@after externe, OWN) : ACAL478 — attend ACAL385 (docs/plans/PLAN_AUDIT_CALEPINAGE.md:678, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce p
+REFUSÉ (@after externe, OWN) : ACAL499 — attend ACAL498 (docs/plans/PLAN_AUDIT_CALEPINAGE.md:923, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce p
+REFUSÉ (@after externe, OWN) : ACAL558 — attend ACAL557 (docs/plans/PLAN_AUDIT_CALEPINAGE.md:932, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce p
+REFUSÉ (@after externe, OWN) : ACAL616 — attend ACAL614 (docs/plans/PLAN_AUDIT_CALEPINAGE.md:952, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce p
+=== lanes docs/plans/PLAN_AUDIT_DEVIS.md REFUS=1
+REFUSÉ (@after externe, OWN) : ADEV116 — attend ADEV46 (docs/plans/PLAN_AUDIT_TRANSVERSE.md:331, pas encore cochée) — un @after vers une tâche d'un autre plan se respecte : lancer d'abord ce pl
+=== lanes docs/plans/PLAN_AUDIT_MOTEUR.md REFUS=0
+=== lanes docs/plans/PLAN_AUDIT_LEAD.md REFUS=0
+=== lanes docs/plans/PLAN_AUDIT_CHANTIERS.md REFUS=0
+=== lanes docs/plans/PLAN_AUDIT_STOCK.md REFUS=0
+=== lanes docs/plans/PLAN_AUDIT_SAV.md REFUS=0
+=== lanes docs/plans/PLAN_AUDIT_PARAMETRES.md REFUS=0
+=== lanes docs/plans/PLAN_AUDIT_DEPLOY.md REFUS=0
+=== lanes docs/WEB_PLAN.md REFUS=0
+FIN

@@ -1,0 +1,26 @@
+=== check_taches_cablage
+OK : 31 tache(s) creent un ecran et 17 portent deux moities ; aucun NOUVEAU constat bloquant (0 dette(s) historique(s) gelee(s), dont 0 desormais corrigee(s)).
+   [non bloquant] 2 tache(s) creent une surface HTTP sans consommateur nomme — `--forme2` pour la liste.
+   [non bloquant] 13 composant(s) redefini(s) hors de leur fichier proprietaire — `--doublons` pour la liste.
+   FORME 5 : 13 tache(s) v2 gelee(s), 590 tache(s) v3.
+rc=0
+=== check_ancres_taches
+Ancres de taches : 518 tache(s) v3 verifiee(s), 1946 ancre(s) fichier::symbole ; 5 tache(s) v2, 0 ancre(s) derivee(s) (rapport seul) ; 0 echec(s) bloquant(s), 0 en rapport.
+rc=0
+=== check_ownership
+note : 7 glob(s) ne couvrent encore aucun fichier (cibles déclarées d'avance par des tâches planifiées, ou globs périmés) — --verbose pour la liste
+OK — 19459 fichiers, chacun à UN propriétaire parmi 22 ; 30 plans vérifiés ; 67 surfaces append-only
+rc=0
+=== check_decisions
+OK : decisions coherentes avec les taches (0 signalement(s)).
+rc=0
+=== check_plan_taches_mixtes
+OK : 495 tache(s) mixte(s) lue(s), aucune moitie manquante nouvelle (0 dette(s) historique(s), dont 0 desormais corrigee(s)).
+rc=0
+=== check_build_order
+BUILD_ORDER.yml valide : DAG acyclique, seuils parseables, aucun préfixe orphelin.
+rc=0
+=== check_audit_dossier
+Dossiers d'audit v3 conformes au gabarit.
+rc=0
+FIN-A

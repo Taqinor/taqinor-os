@@ -137,7 +137,7 @@ t["line"] = t["line"].replace(a, "Migrer, en UNE migration, les champs de fiche 
 t["line"] = t["line"].replace("Persistance :", "Persistance : (+ `sous_chaines_par_module` PositiveSmallIntegerField nul, ACAL720 ; `var_bus_dc_redresse_v` DecimalField 6,1 nul, ACAL816) ;", 1)
 log("EDIT 660 : une migration pour 659 + 720 + 816")
 # 510 : après le contrat 573 ; 824 : après 822 ; 861 : après 922 ; 674 : après 604
-ADD_AFTER = {"ACAL510": ["ACAL573"], "ACAL511": ["ACAL573"], "ACAL824": ["ACAL822"], "ACAL861": ["ACAL922"], "ACAL674": ["ACAL604"], "ACAL858": ["ACAL934"]}
+ADD_AFTER = {"ACAL510": ["ACAL573"], "ACAL511": ["ACAL573"], "ACAL824": ["ACAL822"], "ACAL861": ["ACAL922"], "ACAL674": ["ACAL604"], "ACAL858": ["ACAL934"], "ACAL589": ["ACAL667"], "ACAL903": ["ACAL667"], "ACAL663": ["ACAL817"]}
 
 # ---- 4. @after : remap, même plan, existants ----
 def plan_of(i):

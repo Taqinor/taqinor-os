@@ -4,18 +4,18 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 
 ## Où vivent les tâches
 
-- 471 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`).
-- Groupe principal : `docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `## Groupe ACAL — complément du 2026-11-21 (vague 2)`. Si ce groupe n'y est pas encore (fichier tenu par un autre poste au 21/11), le bloc prêt à insérer est `docs/audits/l5-calepinage/lots2/INSERTION-PLAN_AUDIT_CALEPINAGE.md` (branche de notes).
+- 472 tâches v3 (constat `C-ACAL-L5-<numéro de la tâche>`).
+- Groupe principal : `docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `## Groupe ACAL — complément du 2026-11-21 (vague 2)`. Si ce groupe n'y est pas encore (fichier tenu par un autre poste au 21/11), le bloc prêt à insérer, tel quel, juste avant `## DONE LOG`, est `docs/audits/l5-calepinage/INSERTION-PLAN_AUDIT_CALEPINAGE.md` (dans ce dépôt).
 - Moitiés des autres propriétaires : même titre de groupe dans `PLAN_AUDIT_DEVIS`, `PLAN_AUDIT_MOTEUR`, `PLAN_AUDIT_LEAD`, `PLAN_AUDIT_CHANTIERS`, `PLAN_AUDIT_STOCK`, `PLAN_AUDIT_SAV`, `PLAN_AUDIT_PARAMETRES`, `PLAN_AUDIT_DEPLOY` et `docs/WEB_PLAN.md`.
 - Décisions de Reda du 21/11 : D-ACAL-35 à D-ACAL-42 (`docs/audits/decisions.yml`, `docs/claude-memory/calepinage-decisions-fondateur.md`).
 
 ## Comptes
 
-- Par domaine : D1 43, D2 64, D3 61, D4 82, D5 67, D6 52, D7 79, D8 22, acceptation 1.
-- Par priorité : P0 15, P1 134, P2 188, P3 133, — 1.
-- Par plan : PLAN_AUDIT_CALEPINAGE 431, PLAN_AUDIT_CHANTIERS 7, PLAN_AUDIT_DEPLOY 2, PLAN_AUDIT_DEVIS 16, PLAN_AUDIT_LEAD 2, PLAN_AUDIT_MOTEUR 3, PLAN_AUDIT_PARAMETRES 2, PLAN_AUDIT_SAV 1, PLAN_AUDIT_STOCK 4, WEB_PLAN 3.
-- Par section : Acceptation en direct (orchestrateur, jamais une lane) 1, GATED (ne PAS auto-construire) 2, M1 bloquant-fondateur 148, M2 320.
-- Par gravité : S1 18, S2 137, S3 272, S4 10, — 34.
+- Par domaine : D1 43, D2 64, D3 61, D4 82, D5 67, D6 53, D7 79, D8 22, acceptation 1.
+- Par priorité : P0 15, P1 134, P2 189, P3 133, — 1.
+- Par plan : PLAN_AUDIT_CALEPINAGE 431, PLAN_AUDIT_CHANTIERS 7, PLAN_AUDIT_DEPLOY 2, PLAN_AUDIT_DEVIS 17, PLAN_AUDIT_LEAD 2, PLAN_AUDIT_MOTEUR 3, PLAN_AUDIT_PARAMETRES 2, PLAN_AUDIT_SAV 1, PLAN_AUDIT_STOCK 4, WEB_PLAN 3.
+- Par section : Acceptation en direct (orchestrateur, jamais une lane) 1, GATED (ne PAS auto-construire) 2, M1 bloquant-fondateur 148, M2 321.
+- Par gravité : S1 18, S2 137, S3 273, S4 10, — 34.
 
 ## Table des constats (générée depuis les fichiers d'insertion)
 
@@ -491,6 +491,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-1027 | C13, S4 | ACAL1027 | PLAN_AUDIT_CALEPINAGE | M2 | Masquer le lien « Raccourcis clavier (?) » sur un appareil sans clavier (écran tactile principal) |
 | C-ACAL-L5-1028 | C18, S3 | ACAL1028 | PLAN_AUDIT_CALEPINAGE | M2 | Montrer, sur l'onglet Schéma unifilaire quand la fiche technique est incomplète, un croquis de principe grisé  |
 | C-ACAL-L5-1029 | C1, S2 | ACAL1029 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dire combien de modules du document sont posés à plat sur un toit en pente (affleurants) |
+| C-ACAL-L5-1030 | C15, S3 | ACAL1030 | PLAN_AUDIT_DEVIS | M2 | Ajouter à la surface figée des sélecteurs de ventes la fonction de compatibilité du matériel posée par ACAL901 |
 | C-ACAL-L5-1031 | C19, S3 | ACAL1031 | PLAN_AUDIT_CALEPINAGE | Acceptation en direct (orchestrateur, jamais une lane) | Acceptation live de la vague 2 du complément (ACAL491-521, ACAL526-537, ACAL546-555, ACAL557-569, ACAL572-582, |
 
 ## Tâches retirées à la réconciliation (doublons ou décisions)
