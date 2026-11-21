@@ -19,6 +19,7 @@ vi.mock('../../../api/calepinageApi', () => ({
       resultat: vi.fn(), simuler: vi.fn(),
       entreeElectrique: vi.fn(() => Promise.resolve({ data: { entree: {} } })),
       enregistrerEntreeElectrique: vi.fn(),
+      exportCsv: vi.fn(),
     },
     moteur: { resultat: vi.fn() },
   },
@@ -329,5 +330,52 @@ describe('PanneauBatterie — déclarer la batterie (ACAL167)', () => {
 
     await vi.waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(1, { forcer: true }))
     expect(poste()).toEqual({ batterie: { strategie: 'autoconso' } })
+  })
+})
+
+/* ACAL447 — la semaine 8 à 14 de mars, lue dans le CSV horaire. Les états de
+   charge viennent du contrat `calepinage_serie_horaire.json` (jamais tapés). */
+describe('PanneauBatterie — semaine d’état de charge (ACAL447)', () => {
+  const socs = () => exempleContrat('calepinage', 'calepinage_serie_horaire', 'exemple_tronquee').serie_horaire.points
+    .map((p) => p.batterie_soc_pct).filter((v) => v !== null)
+  const csv = (lignes) => ['annee;mois;jour;heure;batterie_soc_pct', ...lignes].join('\r\n')
+  const fr = (v) => String(v).replace('.', ',')
+
+  it('la semaine de mars se trace depuis batterie_soc_pct ; sans batterie, aucune requête de série', async () => {
+    const [a, b] = socs()
+    calepinageApi.calepinages.exportCsv.mockResolvedValue({
+      data: csv([`2020;3;8;10;${fr(a)}`, '2020;3;8;11;', `2020;3;9;10;${fr(b)}`]),
+    })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesSimulees() })
+    rendre()
+
+    const bloc = await screen.findByTestId('acal447-semaine')
+    const titre = await within(bloc).findByTestId('acal447-titre')
+    expect(calepinageApi.calepinages.exportCsv)
+      .toHaveBeenCalledWith(1, 'horaire', 'annee,mois,jour,heure,batterie_soc_pct')
+    expect(titre).toHaveTextContent('du 8 au 14 mars 2020 (année météo de la série, pas une moyenne)')
+    // une heure sans valeur est un trou, jamais 0 (table équivalente du graphique)
+    expect(bloc.textContent).not.toMatch(/\b0 %/)
+    cleanup()
+
+    // sans batterie dispatchée : le motif du panneau reste seul, aucune requête de série
+    calepinageApi.calepinages.exportCsv.mockClear()
+    const sansBatterie = donneesSimulees()
+    sansBatterie.batterie = {
+      groupes: [], total: null, avertissements: [], motif_absence: MOTIF_SANS_STRATEGIE,
+    }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: sansBatterie })
+    rendre()
+    await screen.findByTestId('calx14-batterie-motif')
+    expect(screen.queryByTestId('acal447-semaine')).toBeNull()
+    expect(calepinageApi.calepinages.exportCsv).not.toHaveBeenCalled()
+  })
+
+  it('série agrégée au jour : le motif nomme la cause, aucune courbe', async () => {
+    calepinageApi.calepinages.exportCsv.mockResolvedValue({ data: csv(['2020;3;8;;55,0']) })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesSimulees() })
+    rendre()
+    expect(await screen.findByTestId('acal447-motif'))
+      .toHaveTextContent('courbe horaire indisponible : série agrégée au jour')
   })
 })
