@@ -82,6 +82,10 @@ c.save(update_fields=['roof_layout', 'layout_hash'])
 sortie(1)`)
 }
 
+/** Quitte l'écran AVANT de supprimer ses calepinages : sinon une requête encore en vol (layout/, résultat…) sur
+ *  la fiche supprimée revient 404 et tombe dans les oracles durs (course de nettoyage, pas un défaut produit). */
+const quitterLaPage = (page) => page.goto('about:blank').catch(() => undefined)
+
 async function nettoyer(...cals) {
   const ids = cals.filter(Boolean)
   if (!ids.length) return
@@ -357,6 +361,7 @@ etape('PA2.5-ACAL393-ACAL394-ACAL419-ACAL408-rail-guide', ['ACAL393', 'ACAL394',
     await expect(page.getByTestId('cal-mode-expert'), 'décoché et mémorisé').not.toBeChecked(T)
     await page.waitForLoadState('networkidle').catch(() => undefined) // aucun appel en vol vers le calepinage nettoyé
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -386,6 +391,7 @@ etape('PA2.5-ACAL407-ACAL409-adresses-onglets', ['ACAL407', 'ACAL409'], async ({
     await expect(page.getByTestId('cal-onglet-photos')).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByTestId('cal-onglet-panneau').getByTestId('cal-photo-calage'), 'Photos du site dans l’atelier').toBeVisible(T)
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -437,6 +443,7 @@ etape('PA2.5-ACAL399-ACAL400-barre-brouillon', ['ACAL399', 'ACAL400'], async ({ 
     await expect(bouton, 'après enregistrement, toujours visible en haut').toBeInViewport()
   } finally {
     if (autre) await autre.close().catch(() => undefined)
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -466,6 +473,7 @@ sortie(1)`)
     await py(`from apps.customfields.models import CustomFieldDef
 CustomFieldDef.objects.filter(code='${code}').delete()
 sortie(1)`).catch(() => undefined)
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -486,6 +494,7 @@ etape('PA2.5-ACAL488-detection-toit-sans-cle', ['ACAL488'], async ({ page, conte
     await expect(page.getByTestId('cal-detection-carte'), 'aucun bouton « Détecter le toit »').toHaveCount(0)
     await expect(page.getByTestId('cal-detection-choisir'), 'aucun bouton d’image').toHaveCount(0)
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -510,6 +519,7 @@ etape('PA2.5-ACAL415-palette-commandes', ['ACAL415'], async ({ page, context, su
     await expect(page).toHaveURL(/[?&]onglet=horizon/)
     await expect(page.getByTestId('cal-onglet-panneau').getByTestId('cal-horizon'), 'onglet Horizon ouvert').toBeVisible(T)
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -537,6 +547,7 @@ etape('PA2.5-ACAL414-aide-raccourcis', ['ACAL414'], async ({ page, context, suiv
     await expect(aide, 'touches du TRACÉ (table unique)').toContainText('Poser un sommet du contour')
     await expect(aide, 'touches de la DISPOSITION (table unique)').toContainText('Annuler la dernière modification de la disposition')
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -603,6 +614,7 @@ etape('PA2.3-ACAL420-ACAL422-ACAL410-trace-vierge', ['ACAL420', 'ACAL422', 'ACAL
     expect(doc4.zones, 'quatre pans enregistrés').toHaveLength(4)
     await expect(zones, 'liste des zones à jour : 4 pans').toHaveCount(4)
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal, cal4)
   }
 })
@@ -650,6 +662,7 @@ etape('PA2.3-ACAL417-hypotheses-a-confirmer', ['ACAL417'], async ({ page, contex
     await expect(page.locator('#rp9-pitch-note'), 'rouvert : aucune mention de pente').toHaveText('')
     expect((await lireLayout(page.request, cal.id)).roof_layout.zones.find((x) => x.id === z.id)?.pitchSource).toEqual(z.pitchSource)
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -680,6 +693,7 @@ etape('PA2.3-ACAL416-aide-pente-pourcentage', ['ACAL416'], async ({ page, contex
     await expect(page.locator('#cal-pente-pourcentage'), 'onglet Pente : « En pourcentage » 50').toHaveValue('50', T)
     await expect(page.getByTestId('cal-pente-source')).toContainText('pourcentage')
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -735,6 +749,7 @@ etape('PA2.3-ACAL413-ACAL412-annuler-effacements', ['ACAL413', 'ACAL412'], async
     await expect(page.locator('#rp9-status'), '↶').toContainText('Action annulée.')
     expect(nObstacles(await enregistrer(page, cal.id, bouton)), '↶ : obstacles rendus').toBe(3)
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -776,6 +791,7 @@ etape('PA2.3-ACAL413-effacer-question-nommee', ['ACAL413'], async ({ page, conte
     await expect(page.locator('#rp9-etat-vide'), '« Effacer » : contour effacé, atelier vierge').toHaveText(/^1 · Localisez le toit/, T)
     expect(natives, 'aucun dialogue natif').toEqual([])
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -975,6 +991,7 @@ sortie(r)`)
     expect(nToasts, 'refus nommé → AUCUN toast (Then d’ACAL398)').toBe(0)
   } finally {
     await restaurerReglages(reglages)
+    await quitterLaPage(page)
     await nettoyer(cal, sans)
   }
 })
@@ -1015,6 +1032,7 @@ sortie(1)`)
       await expect(graphique.locator('.recharts-reference-line'), 'repère du retour').toHaveCount(1)
     }
   } finally {
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -1068,6 +1086,7 @@ sortie(r)`)
     expect(relu.choixConception?.tilt, 'rouvert puis enregistré : inclinaison conservée').toBe(optimum.inclinaison_deg)
   } finally {
     await restaurerReglages(reglages)
+    await quitterLaPage(page)
     await nettoyer(cal)
   }
 })
@@ -1141,6 +1160,7 @@ sortie(1)`)
     expect(chiffres(await page.getByTestId('acal405-message').innerText()), 'profil retiré').toBeGreaterThan(0)
   } finally {
     await restaurerReglages(reglages)
+    await quitterLaPage(page)
     if (SIMULE) await nettoyer(SIMULE)
     SIMULE = null
   }
