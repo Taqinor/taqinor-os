@@ -17,6 +17,8 @@ est une autre correspondance, inchangée.
 """
 from __future__ import annotations
 
+from .valeurs import nombre as _nombre
+
 #: Les cinq postes lisibles, dans l'ordre de lecture, et leurs étapes.
 POSTES = (
     ('ombres_proches', 'Ombres proches',
@@ -41,12 +43,6 @@ MOTIF_SANS_CASCADE = ('Aucune cascade de pertes publiée : les postes '
                       'lisibles ne peuvent pas être regroupés.')
 
 __all__ = ['POSTES', 'POSTE_DE_L_ETAPE', 'MOTIF_SANS_CASCADE', 'regrouper']
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return float(valeur)
 
 
 def _pct(kwh, depart):

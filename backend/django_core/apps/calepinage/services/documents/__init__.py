@@ -208,6 +208,9 @@ _DEFINITIONS_DOCUMENTS = (
      'svg', 'diagramme-pertes.svg/', 'serveur'),
     ('presentation_compacte', 'Présentation compacte (synthèse une page)',
      'pdf', 'presentation-compacte.pdf/', 'serveur'),
+    # ACAL697 — la fiche « pertes en 5 postes », remise au client (D-ACAL-38).
+    ('pertes_en_postes', 'Pertes expliquées en 5 postes (une page)',
+     'pdf', 'pertes-en-postes.pdf/', 'serveur'),
 )
 
 
@@ -453,3 +456,8 @@ MISES_EN_PAGE['document_asbuilt'] = (
 # ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
 MISES_EN_PAGE['presentation_compacte'] = (
     lambda: _piece('presentation_compacte').html_de_presentation_compacte)
+
+
+# ── ACAL697 — la fiche « pertes en 5 postes », une page, sans production ───
+MISES_EN_PAGE['pertes_en_postes'] = (
+    lambda: _piece('pertes_en_postes').html_de_pertes_en_postes)

@@ -23,7 +23,9 @@ APPS = pathlib.Path(__file__).resolve().parents[2]
 #: Hors portes aujourd'hui : ventes/dsr_provider.py ; calepinage/services/
 #: {autoconsommation,batterie,consommation,profils_types}.py, views/pompage.py.
 PLAFONDS = {
-    ('ventes', 'calepinage'): (18, 1),
+    # ACAL999 : +1 — ``ventes/horaire/productible_pose.py`` lit
+    # ``calepinage.selectors_devis.productible_pose_servi`` (porte selectors).
+    ('ventes', 'calepinage'): (19, 1),
     # ACAL997 : +1 — ``selectors_devis.py`` (module frère des sélecteurs lus
     # par ventes) relit ``ventes.selectors``/``selectors_calepinage`` pour la
     # fraîcheur de la conception, comme ``selectors.ombrage_servi``.
@@ -133,15 +135,20 @@ class CliquetDesImportsCroisesTest(unittest.TestCase):
 
     def test_plafond_moins_un_echoue_en_nommant_le_fichier(self):
         importent, hors = mesurer('ventes', 'calepinage')
-        plafond, plafond_hors = PLAFONDS[('ventes', 'calepinage')]
+        # Plafond = compte RÉEL − 1 (jamais le plafond déclaré − 1 : l'arbre
+        # réel peut être sous le plafond).
         messages = depassements('ventes', 'calepinage', importent, hors,
-                                plafond - 1, plafond_hors)
+                                len(importent) - 1, len(hors))
         self.assertEqual(len(messages), 1)
         self.assertIn(importent[0], messages[0])
 
     def test_import_de_coherence_registre_ajoute_echoue(self):
-        importent, hors = mesurer('calepinage', 'ventes')
         plafond, plafond_hors = PLAFONDS[('calepinage', 'ventes')]
+        # Arbre d'ESSAI exactement AU plafond : l'arbre réel peut être en
+        # dessous (une baisse passe), et un import ajouté n'y dépasserait
+        # rien — rouge CI de da22723b4 (40 fichiers réels pour 41).
+        importent = [f'calepinage/essai_{i}.py' for i in range(plafond)]
+        hors = importent[:plafond_hors]
         neuf = 'calepinage/services/nouveau.py'
         source = 'from apps.ventes.coherence.registre import TOLERANCES\n'
         self.assertTrue(hors_portes(modules_importes(source, 'ventes')))

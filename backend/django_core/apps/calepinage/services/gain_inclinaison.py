@@ -15,6 +15,8 @@ simulation continue.
 """
 from __future__ import annotations
 
+from .valeurs import nombre as _nombre
+
 MOTIF_FICHIER = ("Météo d'un fichier déposé : aucune série horizontale PVGIS "
                  "n'est demandée, le gain d'inclinaison n'est pas publié.")
 MOTIF_REFUS = ("La série horizontale PVGIS (inclinaison 0°) n'a pas pu être "
@@ -23,19 +25,13 @@ MOTIF_SANS_POINT = "La série horizontale PVGIS reçue ne porte aucun point."
 MOTIF_PLAN_INCOMPLET = ("L'irradiation du plan n'est pas connue pour les "
                         'douze mois : aucune somme partielle n\'est publiée.')
 
-__all__ = ['bloc_vide', 'depuis_serie', 'demander']
+__all__ = ['depuis_serie', 'demander']
 
 
-def bloc_vide(motif):
+def _bloc_vide(motif):
     return {'ghi_mensuel': [], 'ghi_annuel_kwh_m2': None,
             'plan_annuel_kwh_m2': None, 'gain_pct': None,
             'motif_omission': motif}
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return float(valeur)
 
 
 def depuis_serie(reponse, irradiation_mensuelle):
@@ -46,7 +42,7 @@ def depuis_serie(reponse, irradiation_mensuelle):
         'pas_minutes')) or 60.0
     annees = {p.get('annee') for p in points if p.get('annee') is not None}
     if not points or not annees:
-        return bloc_vide(MOTIF_SANS_POINT)
+        return _bloc_vide(MOTIF_SANS_POINT)
     sommes = dict.fromkeys(range(1, 13), 0.0)
     for point in points:
         valeur = _nombre(point.get('gi_w_m2'))
@@ -74,7 +70,7 @@ def demander(client, plan, decision, fichier, compteur, production):
     from .pvgis_serie import BASE_PAR_DEFAUT, EntreeInvalide, PvgisIndisponible
 
     if fichier is not None:
-        return bloc_vide(MOTIF_FICHIER)
+        return _bloc_vide(MOTIF_FICHIER)
     debut, fin = (decision.get('fenetre_annees') or (None, None))
     try:
         reponse = client.serie_irradiance(
@@ -83,7 +79,7 @@ def demander(client, plan, decision, fichier, compteur, production):
             base=BASE_PAR_DEFAUT, composantes=True,
             masque_dans_la_geometrie=True)
     except (EntreeInvalide, PvgisIndisponible) as refus:
-        return bloc_vide(MOTIF_REFUS.format(motif=refus))
+        return _bloc_vide(MOTIF_REFUS.format(motif=refus))
     if not (reponse or {}).get('depuis_cache'):
         compteur['appels'] = compteur.get('appels', 0) + 1
     return depuis_serie(reponse, (production or {}).get(

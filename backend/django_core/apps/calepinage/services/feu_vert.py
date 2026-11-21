@@ -52,6 +52,7 @@ PIECES_EXECUTION = (
     'plan_cablage',         # plan-cablage.pdf
     'plan_cablage_dxf',     # plan-cablage.dxf
     'export_dxf',           # export.dxf
+    'export_kml',           # export.kml (ACAL536)
     'export_xlsx',          # classeur / nomenclature
     'export_csv',
     'pack_technique',       # dossier technique (GED)

@@ -67,7 +67,11 @@ class TailleExpliciteParite(_BaseAuto):
         'facture_absente' (lu sur l'``AutoDevisError``), taille souhaitée ⇒
         None ; les cinq clés d'avant restent."""
         from apps.ventes.selectors import cible_depuis_lead
-        sans = cible_depuis_lead(self._lead(email='acal1145-sans@example.com'), self.company)
+        # ``_BaseAuto._lead`` pose par défaut ``taille_souhaitee_kwc`` = 7,1 :
+        # « sans taille » doit l'ôter, sinon la taille du lead est souveraine
+        # (``source: 'lead'``, aucun refus, ``motif_code`` None — le rouge CI).
+        sans = cible_depuis_lead(self._lead(taille_souhaitee_kwc=None,
+                                            email='acal1145-sans@example.com'), self.company)
         self.assertEqual(sans['motif_code'], 'facture_absente')
         self.assertIsNone(sans['panneaux'])
         self.assertIn('facture', sans['refus'])

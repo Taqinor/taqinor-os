@@ -396,7 +396,7 @@ def tolerance_orientation_societe(parametres):
     return valeur if valeur is not None and valeur >= 0 else None
 
 
-def fusions_de_pans(pans, tolerance_deg=None):
+def _fusions_de_pans(pans, tolerance_deg=None):
     """ACAL650 — les pans regroupés par orientation, dans l'ordre du document
     (sans tolérance saisie : un groupe par pan, comportement d'aujourd'hui)."""
     groupes = []
@@ -415,7 +415,7 @@ def _groupes_electriques(layout, tolerance_deg=None):
     est-ouest, un par face (ACAL139) ; ACAL650 : des pans de même orientation
     à la tolérance SAISIE près forment un groupe, libellé du PREMIER pan."""
     groupes = []
-    for fusion in fusions_de_pans(_pans_poses(layout), tolerance_deg):
+    for fusion in _fusions_de_pans(_pans_poses(layout), tolerance_deg):
         tete = fusion[0]
         if len(fusion) == 1:
             groupes.extend(_groupes_du_pan(tete))
@@ -1013,7 +1013,7 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
                  + ((coeffs,) if coeffs else ())),
         regle_mppt=regle, partage_mppt=partage, temperatures=temperatures,
         coefficients_non_sources=tuple(module.coefficients_non_sources),
-        fusions=tuple(tuple(p.cle_stable for p in f) for f in fusions_de_pans(
+        fusions=tuple(tuple(p.cle_stable for p in f) for f in _fusions_de_pans(
             pans, options.get('tolerance_orientation_deg')) if len(f) > 1))
 
 

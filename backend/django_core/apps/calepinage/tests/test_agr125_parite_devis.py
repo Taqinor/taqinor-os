@@ -318,6 +318,33 @@ class PariteVolumesDevisCalepinageTest(TestCase):
         self.assertEqual(donnees['entrees']['profondeur_calage_m'], 42.0)
         self.assertEqual(self._calepinage(self._complet())['alertes'], [])
 
+    def test_acal1114_plafond_du_forage_et_bilan_du_reservoir(self):
+        """ACAL1114 — débit d'exploitation trop bas ⇒ ``plafond_atteint`` et
+        alerte sous ``debit_exploitation_m3h`` ; sans réservoir ⇒ bilan
+        ``calcule: false`` + motif ; réservoir et besoin ⇒ bilan calculé ;
+        sans débit d'exploitation ⇒ aucun plafond. Mutant : ne pas transmettre
+        ``plafond_m3h`` ⇒ rouge."""
+        sans = self._calepinage(dict(self._complet(), besoin_m3_jour=40))
+        self.assertIsNone(sans['volumes']['plafond_forage_m3h'])
+        self.assertFalse(sans['volumes']['plafond_atteint'])
+        self.assertEqual(sans['bilan_reservoir']['calcule'], False)
+        self.assertEqual(sans['bilan_reservoir']['motif'], 'aucun réservoir déclaré')
+        bas = self._calepinage(dict(self._complet(), debit_exploitation_m3h=2,
+                                    volume_reservoir_m3=30, besoin_m3_jour=40))
+        self.assertEqual(bas['volumes']['plafond_forage_m3h'], 2.0)
+        self.assertTrue(bas['volumes']['plafond_atteint'])
+        self.assertIn(('plafond_forage', 'debit_exploitation_m3h'),
+                      [(a['code'], a['champ']) for a in bas['alertes']])
+        self.assertTrue(bas['bilan_reservoir']['calcule'])
+        self.assertEqual(len(bas['bilan_reservoir']['jours_manque_mois']), 12)
+        self.assertEqual(bas['entrees']['debit_exploitation_m3h'], 2.0)
+        self.assertEqual(set(bas['bilan_reservoir']),
+                         set(CONTRAT_CALEPINAGE['exemple']['bilan_reservoir']))
+        # part du forage réglée par la société : 50 % de 4 m³/h = 2 m³/h
+        CompanyProfile.objects.filter(company=self.co).update(agricole_part_debit_forage_pct=Decimal('50'))
+        regle = self._calepinage(dict(self._complet(), debit_exploitation_m3h=4))
+        self.assertEqual(regle['volumes']['plafond_forage_m3h'], 2.0)
+
 
 class PariteHmtTest(TestCase):
     """La HMT du calepinage est celle de ``hmt_composantes`` (AGR111)."""

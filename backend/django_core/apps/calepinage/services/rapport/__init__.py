@@ -193,10 +193,16 @@ def resultat_du_rapport(calepinage):
     ``GET resultat/`` (``resultat_calepinage`` : fraîcheur CALX70 comprise —
     une simulation périmée est servie à ``null``, jamais réimprimée).
     """
+    from ..comparaison import _hash_de_simulation
+
     stocke = getattr(calepinage, 'resultat', None)
     if not isinstance(stocke, dict) or not stocke:
         raise RapportRefuse(SANS_RESULTAT, champ='resultat')
     verifier_etancheite(stocke)
+    # « Simulé » = une empreinte de simulation déposée (ACAL111) : une copie
+    # n'emporte que son matériel (ACAL959), jamais un calcul qui a eu lieu.
+    if not _hash_de_simulation(stocke):
+        raise RapportRefuse(SANS_RESULTAT, champ='resultat')
 
     from ..electrique import TemperaturesInvalides, resultat_calepinage
 

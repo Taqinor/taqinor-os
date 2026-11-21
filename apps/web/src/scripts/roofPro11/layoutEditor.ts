@@ -2313,8 +2313,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       return false;
     }
     emptyPress = null;
-    const iPan = ctx.areas.findIndex((a) => a.id === ctx.activeAreaId); // ACAL510 — modules d'un pan existant : refus nommé
-    const refus = motifPanExistant(ctx.areas[iPan], Math.max(0, iPan));
+    const iPan = (ctx.areas ?? []).findIndex((a) => a.id === ctx.activeAreaId); // ACAL510 — modules d'un pan existant : refus nommé
+    const refus = motifPanExistant(ctx.areas?.[iPan], Math.max(0, iPan));
     if (refus) { if (layoutNoteEl) layoutNoteEl.textContent = refus; return true; } // consommé : rien ne bouge
     const drag: NonNullable<typeof layoutDrag> = { from, startPoint: point, moved: false, altKey, ctrlKey };
     layoutDrag = drag;

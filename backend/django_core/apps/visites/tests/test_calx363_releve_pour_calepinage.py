@@ -41,8 +41,11 @@ CONTRAT = json.loads(
 #: Les clés que le CALEPINAGE ajoute (CALX364) : lui seul sait si CE
 #: calepinage a déjà repris la visite, et quel relevé il a écrit — et
 #: (ACAL13, servies par ACAL210) si ce relevé est encore à jour de la
-#: visite (``a_jour``) et en quoi il en diffère (``ecart``).
-CLES_COTE_CALEPINAGE = {'deja_repris', 'releve', 'a_jour', 'ecart'}
+#: visite (``a_jour``) et en quoi il en diffère (``ecart``) — et (ACAL526)
+#: en quoi la visite diffère du toit DESSINÉ (``ecart_dessin``), calculé par
+#: le calepinage : l'app visites ne connaît pas le dessin.
+CLES_COTE_CALEPINAGE = {'deja_repris', 'releve', 'a_jour', 'ecart',
+                        'ecart_dessin'}
 
 #: Les clés que CETTE lecture sert — dérivées du contrat, jamais retapées.
 CLES_COTE_VISITES = set(CONTRAT['exemple']) - CLES_COTE_CALEPINAGE

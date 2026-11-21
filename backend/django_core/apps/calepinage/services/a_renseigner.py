@@ -41,11 +41,10 @@ MOTIF_HORS_REGISTRE = ("« {champ} » n'est ni un réglage de la société ni un
                        'calepinage lui-même.')
 MOTIF_SANS_CHAMP = "L'étape ne nomme aucun champ manquant."
 
-__all__ = ['FORMAT_CHAMP_MANQUANT', 'champ_du_motif', 'construire',
-           'textes_de_completude']
+__all__ = ['FORMAT_CHAMP_MANQUANT', 'construire', 'textes_de_completude']
 
 
-def champ_du_motif(motif):
+def _champ_du_motif(motif):
     """Le champ nommé par le motif d'``etape_omise``, ou ``''``."""
     trouve = _MOTIF_CHAMP.search(motif or '')
     return trouve.group('champ').strip() if trouve else ''
@@ -81,7 +80,7 @@ def construire(cascade, non_renseignees):
         motif = etape.get('motif_omission')
         if not motif or etape.get('etape') not in noms:
             continue
-        champ = champ_du_motif(motif)
+        champ = _champ_du_motif(motif)
         if (etape.get('etape'), champ) in vues:
             continue
         vues.add((etape.get('etape'), champ))

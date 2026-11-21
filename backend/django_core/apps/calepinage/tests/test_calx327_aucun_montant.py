@@ -176,6 +176,37 @@ def _resultat():
     return copy.deepcopy(ECHANTILLON['exemple'])
 
 
+def _resultat_postes():
+    resultat = _resultat()
+    resultat['cascade']['postes_lisibles'] = copy.deepcopy(POSTES_LISIBLES)
+    return resultat
+
+
+#: ACAL697 — cinq postes lisibles dont un compté, un partiel, un non compté.
+POSTES_LISIBLES = {
+    'depart_kwh': 16800.0, 'arrivee_kwh': 13400.0, 'arrivee_pct': 79.9,
+    'total_pct': 20.1, 'motif_absence': '',
+    'postes': [
+        {'poste': 'ombres_proches', 'libelle': 'Ombres proches',
+         'perte_kwh': 300.0, 'perte_pct': 1.8, 'statut': 'compte',
+         'etapes': []},
+        {'poste': 'poussiere', 'libelle': 'Poussière', 'perte_kwh': None,
+         'perte_pct': None, 'statut': 'non_compte',
+         'etapes': [{'etape': 'salissure', 'libelle': 'Salissure',
+                     'motif_omission': 'Aucune salissure saisie.'}]},
+        {'poste': 'chaleur', 'libelle': 'Chaleur', 'perte_kwh': 900.0,
+         'perte_pct': 5.4, 'statut': 'compte', 'etapes': []},
+        {'poste': 'cables_et_onduleur', 'libelle': 'Câbles et onduleur',
+         'perte_kwh': 700.0, 'perte_pct': 4.2, 'statut': 'compte',
+         'etapes': []},
+        {'poste': 'autres', 'libelle': 'Autres pertes', 'perte_kwh': 500.0,
+         'perte_pct': 3.0, 'statut': 'partiel',
+         'etapes': [{'etape': 'spectral', 'libelle': 'Correction spectrale',
+                     'motif_omission': 'toujours omis'}]},
+    ],
+}
+
+
 # ── Le pare-feu de TEXTE — jetons entiers, jamais une sous-chaîne ──────────
 #
 # Le jeu de jetons est CELUI du Done= (« MAD, €, DH, prix, coût, montant,
@@ -321,6 +352,17 @@ def _html_presentation_compacte():
         styles=STYLES)
 
 
+def _html_pertes_en_postes():
+    from apps.calepinage.services.documents.pertes_en_postes import (
+        html_de_pertes_en_postes,
+    )
+
+    nu = SimpleNamespace(company=None, pk=None, titre='Villa Anfa',
+                         resultat=None, layout_hash='', version_moteur='')
+    return html_de_pertes_en_postes(nu, resultat=_resultat_postes(),
+                                    styles=STYLES, etat={})
+
+
 def _html_plan_cablage():
     from apps.calepinage.services.documents.plan_cablage import (
         html_du_plan_cablage,
@@ -388,6 +430,7 @@ RENDEURS_HTML_PURS = {
     'document_asbuilt': _html_document_asbuilt,
     'manuel_proprietaire': _html_manuel_proprietaire,
     'presentation_compacte': _html_presentation_compacte,
+    'pertes_en_postes': _html_pertes_en_postes,  # ACAL697
     'plan_cablage': _html_plan_cablage,
     'planche_pdf': _html_planche,
     'plan_pose_pdf': _html_plan_pose,
@@ -457,7 +500,8 @@ class DerivationEtCouvertureTest(unittest.TestCase):
              'plan_masse_pdf', 'note_calcul_pdf', 'pack_technique',
              'rapport_etude', 'rapport_ombrage', 'plan_cablage',
              'manuel_proprietaire', 'document_asbuilt',
-             'dossier_fin_chantier', 'presentation_compacte'})
+             'dossier_fin_chantier', 'presentation_compacte',
+             'pertes_en_postes'})
 
 
 class AucunMontantDansLeHtmlTest(unittest.TestCase):
@@ -489,6 +533,23 @@ class AucunMontantDansLeHtmlTest(unittest.TestCase):
         texte_note = _texte_visible(RENDEURS_HTML_PURS['note_calcul_pdf']())
         self.assertIn(MENTION_PAS_UN_DEVIS, texte_presentation)
         self.assertIn(LIBELLE_MARGE['troncon_min_cm'], texte_note)
+
+
+class FichePertesEnPostesTest(unittest.TestCase):
+    """ACAL697 — la fiche remise au client : aucun montant, aucun kWh."""
+
+    def test_la_fiche_ne_porte_aucun_montant_ni_kwh(self):
+        texte = _texte_visible(_html_pertes_en_postes())
+        self.assertEqual(_mots_de_montant_dans(texte), [])
+        self.assertNotRegex(texte, r'(?i)kwh')
+        self.assertIn('Étude technique', texte)
+
+    def test_un_poste_non_compte_est_nomme_jamais_zero(self):
+        texte = _texte_visible(_html_pertes_en_postes())
+        self.assertIn('non compté', texte)
+        self.assertIn('Aucune salissure saisie.', texte)
+        self.assertNotRegex(texte, r'(?<![\d,])0 %')  # jamais 0 %
+        self.assertIn('1,8 %', texte)  # la part servie, telle quelle
 
 
 class MontantInjecteParUnGabaritEstDetecteTest(unittest.TestCase):
@@ -556,6 +617,9 @@ class AucunMontantDansLePdfReelTest(unittest.TestCase):
             plan_cablage as _cablage,
         )
         from apps.calepinage.services.documents import (
+            pertes_en_postes as _pertes,
+        )
+        from apps.calepinage.services.documents import (
             presentation_compacte as _presentation,
         )
         from apps.calepinage.services.rapport import rendre_rapport
@@ -613,6 +677,9 @@ class AucunMontantDansLePdfReelTest(unittest.TestCase):
                     nu_presentation, resultat=_resultat(),
                     roof_layout=LAYOUT_PLANCHE, svg_planche='',
                     styles=STYLES),
+            'pertes_en_postes': _pertes.rendre_pertes_en_postes(
+                nu_presentation, resultat=_resultat_postes(), styles=STYLES,
+                etat={}),
             'plan_cablage': _cablage.rendre_plan_cablage_pdf(
                 nu_cablage, moment=MOMENT, affectation=AFFECTATION_CABLAGE),
             'planche_pdf': _planche.rendre_planche_pdf(

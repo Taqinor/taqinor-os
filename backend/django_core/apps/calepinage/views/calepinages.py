@@ -1276,13 +1276,17 @@ def _refus_devis(refus):
 
 def _version_en_ligne(version):
     """Une version d'historique, telle que la liste l'affiche."""
+    from ..services.comparaison import _hash_de_simulation
+
     return {
         'id': version.pk,
         'libelle': version.libelle or '',
         'layout_hash': _texte(version.layout_hash),
         'cree_le': _horodatage(version.created_at),
         'cree_par': _personne(getattr(version, 'cree_par', None)),
-        'a_un_resultat': bool(version.resultat),
+        # « Avec résultat » = une simulation déposée (empreinte, ACAL111) —
+        # jamais le seul matériel qu'emporte une copie (ACAL959).
+        'a_un_resultat': bool(_hash_de_simulation(version.resultat)),
     }
 
 
@@ -1627,6 +1631,9 @@ def detail_calepinage(calepinage, request=None):
     company = getattr(calepinage, 'company', None)
     layout = getattr(calepinage, 'roof_layout', None)
     peremption = _peremption_calepinage(calepinage, company)
+    # Une seule lecture des variantes : le compteur sert aussi la permission
+    # « retenir » (plus de second ``.exists()``, budget de requêtes CALX390).
+    variantes = _compteur_variantes(calepinage)
     return {
         'id': calepinage.pk,
         'reference': reference_calepinage(calepinage),
@@ -1650,7 +1657,7 @@ def detail_calepinage(calepinage, request=None):
         'layout_stale': peremption['layout_stale'],
         'layout_nb_panneaux': peremption['layout_nb_panneaux'],
         'versions': _compteur_versions(calepinage),
-        'variantes': _compteur_variantes(calepinage),
+        'variantes': variantes,
         'image': image_apercu(calepinage),
         'contexte_geographique': cal_selectors.contexte_geographique(
             calepinage),
@@ -1659,7 +1666,8 @@ def detail_calepinage(calepinage, request=None):
         or {},
         # ACAL294 — les champs personnalisés de la société (objet | null).
         'custom_data': getattr(calepinage, 'custom_data', None),
-        'permissions': _permissions(calepinage, request),
+        'permissions': _permissions(calepinage, request,
+                                    a_des_variantes=bool(variantes['total'])),
     }
 
 
@@ -1854,6 +1862,7 @@ def _compteur_variantes(calepinage):
     pas « zéro kWh »).
     """
     from .. import selectors as cal_selectors
+    from ..services.comparaison import colonnes_production
 
     lignes = list(cal_selectors.variantes(calepinage))
     if not lignes:
@@ -1862,12 +1871,18 @@ def _compteur_variantes(calepinage):
     return {
         'total': len(lignes),
         'retenue_id': retenue.pk if retenue is not None else None,
-        'non_simulees': len([v for v in lignes if not v.resultat]),
+        # Même lecture que le comparatif (``colonnes_production``) : le seul
+        # matériel d'une copie (ACAL959) n'est pas un résultat de moteur.
+        'non_simulees': len([v for v in lignes
+                             if not colonnes_production(v.resultat)[0]]),
     }
 
 
-def _permissions(calepinage, request):
-    """Ce que L'APPELANT a le droit de faire — jamais un drapeau décoratif."""
+def _permissions(calepinage, request, *, a_des_variantes):
+    """Ce que L'APPELANT a le droit de faire — jamais un drapeau décoratif.
+
+    ``a_des_variantes`` : lu par l'appelant dans ``_compteur_variantes`` (la
+    même liste, aucune requête de plus)."""
     from ..services.archivage import raison_refus_archivage
 
     user = getattr(request, 'user', None) if request is not None else None
@@ -1879,9 +1894,7 @@ def _permissions(calepinage, request):
         # prédicat que ``services.archivage.archiver``.
         'peut_supprimer': peut_gerer and not raison_refus_archivage(
             calepinage),
-        'peut_retenir_variante': peut_gerer and bool(
-            getattr(calepinage, 'variantes', None)
-            and calepinage.variantes.exists()),
+        'peut_retenir_variante': peut_gerer and a_des_variantes,
         # ACAL171 (D-ACAL-9) — dérogation électrique : calepinage_approuver.
         'peut_deroger': bool(user) and PeutApprouverCalepinage(
             ).has_permission(request, None),

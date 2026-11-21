@@ -13,6 +13,10 @@ import functools
 import json
 import pathlib
 
+from .valeurs import nombre as _nombre
+
+#: Chemin du fichier de bandes publiées (ACAL701) ; ``parents[1]`` = le
+#: dossier de l'app calepinage, qui porte ``data/`` — aucune valeur chiffrée.
 FICHIER = pathlib.Path(__file__).resolve().parents[1] / 'data' / 'plages_usuelles.json'
 MOTIF_AUCUNE_BANDE = 'aucune bande sourcée'
 
@@ -26,12 +30,6 @@ def charger():
         return json.loads(FICHIER.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return {}
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return float(valeur)
 
 
 def _pastille(valeur, bande):

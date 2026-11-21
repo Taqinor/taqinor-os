@@ -11,13 +11,9 @@ chaque ``pr`` est ``null`` avec le motif du PR annuel.
 """
 from __future__ import annotations
 
+from .valeurs import nombre as _nombre
+
 __all__ = ['publier']
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return float(valeur)
 
 
 def _temperatures(serie):

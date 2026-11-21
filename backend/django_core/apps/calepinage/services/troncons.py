@@ -360,7 +360,7 @@ def _reglage_source(reglages, cle):
     return (_nombre(saisie.get('valeur')), provenance)
 
 
-def cablage_societe(parametres):
+def _cablage_societe(parametres):
     """ACAL635/636 — ρ de la chute et facteur de regroupement, LUS sur les
     réglages société sourcés. Un réglage absent ⇒ ρ à 20 °C et aucun facteur :
     le comportement d'aujourd'hui, jamais une valeur supposée."""
@@ -503,7 +503,7 @@ def _dimensionner_troncon(troncon, contexte):
             "norme applicable : aucune section n'est proposée sans elle."
             % CLE_CIBLE[cote]))
 
-    cablage = norme.get('cablage') or cablage_societe({})
+    cablage = norme.get('cablage') or _cablage_societe({})
     proposee = noyau.proposer_section(
         courant_ib_a=courant, longueur_m=troncon['longueur_m'],
         tension_v=tension, cible_pct=cible, bareme=bareme,
@@ -1052,7 +1052,7 @@ def troncons_du_calepinage(calepinage, *, layout=None):
         coefficients, _refus = coefficients_publies(
             parametres.get('norme_electrique') or {})
         norme = dict(norme, coefficients=coefficients,
-                     cablage=cablage_societe(parametres))  # ACAL635/636
+                     cablage=_cablage_societe(parametres))  # ACAL635/636
     conception, materiel, _donnees, document = conception_du_calepinage(
         calepinage, layout=layout)
     return troncons_de_la_conception(

@@ -159,7 +159,9 @@ def _faces_est_ouest(geo, azimut, inclinaison):
             comptes[face] += 1
     total = comptes['E'] + comptes['W']
     return [{'face': face, 'azimut_deg': azimut_face, 'inclinaison_deg': inclinaison,
-             'part': round(comptes[face] / total, 4) if total else 0.5,
+             # La part est la FRACTION exacte des poses (sans arrondi : les
+             # deux faces somment à 1 ; kWc et surface sont arrondis plus loin).
+             'part': comptes[face] / total if total else 0.5,
              'modules': comptes[face] if total else None, 'hypothese': not total}
             for face, azimut_face in (('E', cap), ('W', (cap + 180.0) % 360.0))
             if not total or comptes[face]]

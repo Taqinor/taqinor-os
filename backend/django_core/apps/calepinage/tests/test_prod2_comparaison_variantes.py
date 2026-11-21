@@ -249,7 +249,7 @@ class ConceptionCouranteTest(unittest.TestCase):
     """ACAL978 — la conception courante est comparée d'office, en tête."""
 
     @staticmethod
-    def _comparer(variantes_servies):
+    def _comparer(variantes_servies, resultat=None):
         from types import SimpleNamespace
         from unittest import mock
 
@@ -257,7 +257,7 @@ class ConceptionCouranteTest(unittest.TestCase):
 
         calepinage = SimpleNamespace(
             pk=1, roof_layout=None,
-            resultat={'total_modules': 12, 'kwc': 8.64})
+            resultat=resultat or {'total_modules': 12, 'kwc': 8.64})
         for v in variantes_servies:
             v.calepinage = calepinage
         with mock.patch.object(selectors, 'variantes',
@@ -298,6 +298,15 @@ class ConceptionCouranteTest(unittest.TestCase):
         self.assertEqual(par_nom['A']['ecart_modules'], 0)
         self.assertEqual(par_nom['Conception courante']['ecart_modules'], 2)
         self.assertEqual(par_nom['B']['ecart_modules'], 4)
+
+    def test_courante_non_simulee_dit_null_jamais_a_jour(self):
+        """Un résultat sans production (copie depuis un modèle : seule
+        l'``entree_electrique``) n'est ni périmé ni à jour : ``None``."""
+        servi = self._comparer(
+            [], resultat={'entree_electrique': {'dc_m': 12}})
+        courante = servi['lignes'][0]
+        self.assertFalse(courante['simulee'])
+        self.assertIsNone(courante['simulation_perimee'])
 
     def test_la_lecture_ne_cree_aucune_variante(self):
         from apps.calepinage.selectors import _courante_comme_variante

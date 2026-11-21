@@ -192,7 +192,7 @@ class ARenseignerTest(SimpleTestCase):
         for champ in ('simulation.salissure_mensuelle_pct',
                       'simulation.lid_par_techno (ligne « mono »)'):
             motif = etape_omise('X', 'Absent.', champ=champ)['motif_omission']
-            self.assertEqual(ar.champ_du_motif(motif), champ)
+            self.assertEqual(ar._champ_du_motif(motif), champ)
 
     def test_societe_sans_reglages_nomme_salissure_lid_mismatch(self):
         blocs = _simuler()

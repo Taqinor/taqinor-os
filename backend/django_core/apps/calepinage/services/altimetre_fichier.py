@@ -23,6 +23,14 @@ import math
 
 __all__ = ['ReliefIllisible', 'altimetre_depuis_geotiff']
 
+#: Numéros d'étiquettes et de clés fixés par la spécification GeoTIFF (OGC
+#: GeoTIFF 1.1, OGC 19-008r4 ; reprend GeoTIFF Revision 1.0, 1995) :
+#: ModelPixelScaleTag 33550, ModelTiepointTag 33922, ModelTransformationTag
+#: 34264, GeoKeyDirectoryTag 34735 ; clés GTModelTypeGeoKey 1024 (1 =
+#: projeté, 2 = géographique), GTRasterTypeGeoKey 1025 (1 = PixelIsArea,
+#: 2 = PixelIsPoint), GeographicTypeGeoKey 2048 (code EPSG, 4326 = WGS84).
+#: 42113 est l'étiquette privée GDAL_NODATA (documentation du pilote GTiff de
+#: GDAL), hors de la spécification OGC.
 TAG_ECHELLE = 33550
 TAG_POINT_DE_LIAISON = 33922
 TAG_TRANSFORMATION = 34264

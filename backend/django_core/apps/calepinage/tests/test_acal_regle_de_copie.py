@@ -244,20 +244,20 @@ class MaterielDuModeleTest(SimpleTestCase):
 
     def test_seules_les_cles_blanches_sont_copiees(self):
         from apps.calepinage.services.variantes import (
-            CHAMPS_ENTREE_DU_MODELE, resultat_du_modele,
+            CHAMPS_ENTREE_DU_MODELE, _resultat_du_modele,
         )
         entree = {cle: i for i, cle in enumerate(CHAMPS_ENTREE_DU_MODELE)}
         entree.update(temperature_min_c=-10, temperature_max_c=70,
                       longueurs={'dc': 30}, cle_future='x')
-        self.assertEqual(resultat_du_modele({'entree_electrique': entree,
-                                             'production': {'p50': 1}}),
+        self.assertEqual(_resultat_du_modele({'entree_electrique': entree,
+                                              'production': {'p50': 1}}),
                          {'entree_electrique': {
                              cle: i for i, cle in
                              enumerate(CHAMPS_ENTREE_DU_MODELE)}})
 
     def test_sans_cle_blanche_aucun_resultat(self):
-        from apps.calepinage.services.variantes import resultat_du_modele
+        from apps.calepinage.services.variantes import _resultat_du_modele
         for resultat in (None, {}, {'simulation': {'hash_entree': 'x'}},
                          {'entree_electrique': {'temperature_min_c': -5}}):
             with self.subTest(resultat=resultat):
-                self.assertIsNone(resultat_du_modele(resultat))
+                self.assertIsNone(_resultat_du_modele(resultat))

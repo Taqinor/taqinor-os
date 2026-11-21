@@ -635,6 +635,40 @@ def presentation_compacte_pdf(self, request, pk=None):
 CalepinageViewSet.presentation_compacte_pdf = presentation_compacte_pdf
 
 
+# ── ACAL697 — la fiche « pertes en 5 postes », une page, sans production ───
+@extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                          409: REPONSE_REFUS_ETAT})
+@action(detail=True, methods=['get'], url_path=r'pertes-en-postes\.pdf',
+        url_name='pertes-en-postes-pdf',
+        permission_classes=[PeutVoirCalepinage])
+def pertes_en_postes_pdf(self, request, pk=None):
+    """ACAL697 — les pertes en cinq postes, une page « Étude technique », SANS
+    kWh de production ni montant (D-ACAL-38 d) ; remise par
+    ``remettre-document`` (code ``pertes_en_postes``).
+
+    * **200** — le PDF ;
+    * **409** — une donnée refusée (clé de coût) : motif et champ NOMMÉ.
+    """
+    from ..services.documents.pertes_en_postes import rendre_pertes_en_postes
+    from ..services.planche import nom_de_fichier
+    from ..services.rapport import RapportRefuse
+    from .sorties import MIME_PDF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        octets = rendre_pertes_en_postes(calepinage,
+                                         company=calepinage.company)
+    except RapportRefuse as refus:
+        return Response({refus.champ or 'resultat': str(refus)},
+                        status=status.HTTP_409_CONFLICT)
+    return reponse_de_fichier(
+        octets, mime=MIME_PDF,
+        nom_fichier=nom_de_fichier(calepinage, 'pertes-en-postes.pdf'))
+
+
+CalepinageViewSet.pertes_en_postes_pdf = pertes_en_postes_pdf
+
+
 # ── CALX319 — le dossier de fin de chantier ─────────────────────────────────
 #: La réponse 201 telle que l'action la compose ci-dessous — jamais un
 #: « type: object » vide (check_openapi_shapes, R1).

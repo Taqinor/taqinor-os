@@ -84,4 +84,15 @@ class VolumeResultatTest(BaseApiCalepinage):
         copie = dupliquer(self.calepinage, user=self.user,
                           lead_id=self.lead_2.pk)
         copie = Calepinage.objects.get(pk=copie.pk)
-        self.assertIsNone(copie.resultat)
+        # ACAL959 (D-ACAL-15) — la copie emporte le seul MATÉRIEL choisi
+        # (``resultat['entree_electrique']``) : aucune série horaire, aucun
+        # chiffre de simulation.
+        from apps.calepinage.services.electrique import CLE_ENTREE
+        from apps.calepinage.services.variantes import (
+            CHAMPS_ENTREE_DU_MODELE)
+
+        if copie.resultat is not None:
+            self.assertEqual(set(copie.resultat), {CLE_ENTREE})
+            self.assertLessEqual(set(copie.resultat[CLE_ENTREE]),
+                                 set(CHAMPS_ENTREE_DU_MODELE))
+        self.assertLess(len(json.dumps(copie.resultat)), 1024)
