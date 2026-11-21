@@ -24,8 +24,7 @@ import types
 
 from .pvgis_serie import CACHE_MAX
 
-__all__ = ['AXES_PRIS_EN_CHARGE', 'BalayageInvalide', 'appliquer_point',
-           'balayer', 'points_de_la_grille', 'valider_demande']
+__all__ = ['AXES_PRIS_EN_CHARGE', 'BalayageInvalide', 'balayer', 'valider_demande']
 
 AXES_PRIS_EN_CHARGE = ('inclinaison_deg', 'azimut_deg', 'ratio_dc_ac')
 _BORNES = {'inclinaison_deg': (0.0, 90.0), 'azimut_deg': (0.0, 360.0)}
@@ -180,7 +179,7 @@ def valider_demande(layout, corps):
     return ligne['cle'], balayes
 
 
-def points_de_la_grille(axes):
+def _points_de_la_grille(axes):
     """Le produit cartésien, une ligne ``{axe: valeur}`` par point."""
     points = [{}]
     for nom, valeurs in axes:
@@ -188,7 +187,7 @@ def points_de_la_grille(axes):
     return points
 
 
-def appliquer_point(layout, pan, point):
+def _appliquer_point(layout, pan, point):
     """Une COPIE du document où le pan porte l'orientation du point."""
     copie = copy.deepcopy(layout)
     ligne, objet = _cible(copie, pan, par_cle=True)
@@ -273,13 +272,13 @@ def balayer(calepinage, corps, *, client=None, simuler=None,
                                       **extra)
 
     grille, complete, socle = [], True, []
-    points = points_de_la_grille(axes)
+    points = _points_de_la_grille(axes)
     avec_ratio = any(nom == 'ratio_dc_ac' for nom, _v in axes)
     if avec_ratio:
         base, kwc, nombre = _onduleur_au_ratio(calepinage, layout, materiel)
     for index, point in enumerate(points):
         fantome = types.SimpleNamespace(
-            roof_layout=appliquer_point(layout, pan, point), resultat=None,
+            roof_layout=_appliquer_point(layout, pan, point), resultat=None,
             pk=None)
         extra = {}
         if avec_ratio:
