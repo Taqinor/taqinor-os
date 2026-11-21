@@ -1180,18 +1180,32 @@ def _sortie_ecriture_sans_texte(result: dict[str, Any]) -> str:
 # Vague 2 (FND5) — plafond des ecritures SILENCIEUSES d'un tour, tous domaines :
 # une action `internal` qui n'est ni un GET, ni une lecture declaree
 # (`lecture`), ni un lien de document, ni une action `taches.*` (qui garde SA
-# garde) s'execute sans carte ; au-dela de cinq dans le meme tour, refus. Le
+# garde) s execute sans carte ; au-dela de dix dans le meme tour (D-COP-5), refus. Le
 # contexte est par requete : une reprise apres confirmation repart a zero
 # (c'est un nouveau tour voulu par un doigt).
-ECRITURES_INTERNES_PAR_TOUR = 5
+ECRITURES_INTERNES_PAR_TOUR = 10
 REFUS_ECRITURES_INTERNES = (
-    "Action refusée : cinq écritures déjà faites dans ce tour ; dis à "
+    "Action refusée : dix écritures déjà faites dans ce tour ; dis à "
     "l'utilisateur ce qui reste et laisse-le relancer.")
 
 
+def action_directe(ctx: Optional[ActionContext], action: dict[str, Any]) -> bool:
+    """D-COP-5 (Reda, 21/11/2026) — une action `outward` marquee `directe` par
+    le catalogue Django s'execute sans carte, SAUF quand le message de
+    l'utilisateur porte un texte colle ou une image (`message_tiers`) : une
+    consigne venue d'un tiers ne s'execute jamais sans son doigt. Jamais une
+    action `irreversible`."""
+    return (bool(action.get("directe"))
+            and action.get("risk") == RISK_OUTWARD
+            and not getattr(ctx, "message_tiers", False))
+
+
 def est_ecriture_interne(action: dict[str, Any]) -> bool:
-    """Vraie pour une ecriture qui part SANS carte (voir le bloc ci-dessus)."""
-    return (action.get("risk", RISK_INTERNAL) == RISK_INTERNAL
+    """Vraie pour une ecriture qui part SANS carte (voir le bloc ci-dessus) :
+    une action `internal`, ou `outward` marquee `directe` (D-COP-5)."""
+    sans_carte = (action.get("risk", RISK_INTERNAL) == RISK_INTERNAL
+                  or (action.get("directe") and action.get("risk") == RISK_OUTWARD))
+    return (bool(sans_carte)
             and str(action.get("method", "POST")).upper() != "GET"
             and not action.get("lecture") and action.get("carte") != "document"
             and not str(action.get("key", "")).startswith(PREFIXE_TACHES))
@@ -1274,7 +1288,7 @@ def run_catalogue_action(
         return garde
 
     risk = action.get("risk", RISK_INTERNAL)
-    if risk in _RISK_NEEDS_CONFIRM:
+    if risk in _RISK_NEEDS_CONFIRM and not action_directe(ctx, action):
         preview = _human_preview(
             action, inputs, _libelles_objets(ctx, action, inputs),
             multiligne=copilote_du_tour(ctx))
@@ -1302,7 +1316,7 @@ def run_catalogue_action(
         return json.dumps(proposal, ensure_ascii=False)
 
     # Action interne -> execution immediate (AIC97 : une ecriture porte la cle du tour).
-    # revue S2 — devis bornes par tour ; FND5 — cinq ecritures silencieuses au plus.
+    # revue S2 — devis bornes par tour ; FND5 — dix ecritures silencieuses au plus (D-COP-5).
     refus = garde_creations_devis(ctx, action) or garde_ecritures_internes(ctx, action)
     if refus is not None:
         return refus
@@ -1474,15 +1488,18 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
 
     action, inputs, refus = _preparer_confirmation(ctx, record)
     if refus:
-        return {"ok": False, "error": refus + _NON_EXECUTEE}
+        return {"ok": False, "error": refus + _NON_EXECUTEE,
+                "action_key": str(record.get("action_key") or "")}
     action_key = action["key"]
 
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_idempotence(token))
     if not res.get("ok"):
+        # D-COP-5 — clé et libellé : la reprise après échec nomme l'action.
         return {"ok": False, "status": res.get("status"),
                 "error": texte_echec_confirmation(res),
-                "request_id": res.get("request_id")}
+                "request_id": res.get("request_id"),
+                "action_key": action_key, "libelle": _libelle_action(action)}
 
     # AUDV27 (YHARD2) — journalise la confirmation APRES exécution réelle.
     # `log_confirmed_action` existait côté Django, testée, mais aucun appelant
@@ -1612,7 +1629,9 @@ def _journaliser_ecriture_interne(
         logger.warning("Ecriture interne non journalisee (%s) : AGENT_HMAC_SECRET absent.", action["key"])
         return
     res = _django_call(ctx, "/api/django/agent/logs/confirmer/", method="POST", payload={
-        "action_key": action["key"], "risk_level": RISK_INTERNAL, "origine": "interne",
+        "action_key": action["key"], "origine": "interne",
+        # D-COP-5 — une action `directe` garde son niveau declare (`outward`).
+        "risk_level": action.get("risk") or RISK_INTERNAL,
         "inputs": entrees, "object_id": object_id, "proposal_hash": preuve, "preuve": preuve})
     if not res.get("ok"):
         logger.warning("Ecriture interne non journalisee (%s): %s", action["key"], res.get("error"))

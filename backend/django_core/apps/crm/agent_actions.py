@@ -552,7 +552,7 @@ QUALIFIER_LEAD = AgentAction(
         "responsable, le parcage, le téléphone ni l'e-mail. "
         "Exemple : « Facture 2 300 en été, 1 400 en hiver, il décide avec "
         "son frère ». "
-        "Résultat : le lead mis à jour, après confirmation."
+        "Résultat : le lead mis à jour."
     ),
     endpoint='/api/django/crm/leads/{id}/',
     method='PATCH',
@@ -568,7 +568,7 @@ CHANGER_ETAPE_LEAD = AgentAction(
     label="Changer l'étape d'un lead",
     description=(
         "Sert à : faire AVANCER un lead dans le pipeline (étapes = clés de "
-        "STAGES.py), après confirmation. "
+        "STAGES.py). "
         "Ne pas utiliser pour : signer (l'acceptation d'un devis le fait), "
         "parquer au Froid (geste de l'écran avec sa raison) ni reculer. "
         "Exemple : « Passe le lead 12 en devis envoyé ». "
@@ -600,7 +600,7 @@ JOURNALISER_LEAD = AgentAction(
     description=(
         "Sert à : consigner au fil du lead un appel, un e-mail ou un "
         "WhatsApp déjà passé (premier contact horodaté ; outcome=rappel "
-        "déplace la prochaine touche), après confirmation. "
+        "déplace la prochaine touche). "
         "Ne pas utiliser pour : une simple note (crm.lead.note) ni clore "
         "une touche (crm.suivi.proposer_reponse). "
         "Exemple : « Note que je l'ai appelé, il rappellera lundi ». "
@@ -624,7 +624,7 @@ PLANIFIER_VISITE = AgentAction(
     label='Planifier une visite : elle entre dans la journée de la personne désignée',
     description=(
         "Sert à : poser la visite technique d'un lead (date, qui la fait, "
-        "touche qui l'a demandée), après confirmation ; la personne "
+        "touche qui l'a demandée) ; la personne "
         "désignée est notifiée, sauf si c'est toi. "
         "Ne pas utiliser pour : une visite de maintenance "
         "(installations) ni proposer la visite (crm.visite.message). "
@@ -787,7 +787,7 @@ MESSAGE_MANUEL = AgentAction(
 
 def _entrees_creer_lead():
     champs = ('type_installation', 'raccordement', 'batterie_souhaitee',
-              'taille_souhaitee_kwc')
+              'taille_souhaitee_kwc', 'facture_hiver', 'facture_ete')
     proprietes = {
         'nom': {'type': 'string', 'description': 'Nom de famille (ou société).'},
         'prenom': {'type': 'string'},
@@ -818,8 +818,10 @@ CREER_LEAD_ASSISTANT = AgentAction(
     label='Créer un lead',
     description=(
         "Sert à : créer le lead d'une demande de client (message collé, "
-        "capture, appel) : nom, téléphone, besoin. Société, responsable et "
-        "étape sont posés par le serveur. "
+        "capture, appel) : nom, téléphone, ville, facture d'électricité "
+        "(facture_hiver, en DH par mois ; facture_ete si elle diffère), besoin "
+        "— tout ce qui est dit, en UN appel. Société, responsable et étape sont "
+        "posés par le serveur. "
         "Ne pas utiliser pour : un lead déjà connu (cherche-le par son "
         "téléphone avec crm.lead.chercher) ni modifier une fiche. "
         "Exemple : « Karim, 0661007731 : 10 panneaux, onduleur triphasé "
@@ -852,7 +854,7 @@ LEAD_PERDU = AgentAction(
         "(crm.lead.changer_etape). "
         "Exemple : « Le lead 12 a signé chez un concurrent : perdu, motif "
         "prix ». "
-        "Résultat : le lead mis à jour, après confirmation ; sans motif le "
+        "Résultat : le lead mis à jour ; sans motif le "
         "serveur refuse (409)."
     ),
     endpoint='/api/django/crm/leads/{id}/',
@@ -907,7 +909,7 @@ RESTAURER_LEAD = AgentAction(
         "Ne pas utiliser pour : un lead jamais archivé ni rouvrir un lead "
         "perdu. "
         "Exemple : « Remets le lead 12 dans la liste ». "
-        "Résultat : le lead restauré, après confirmation."
+        "Résultat : le lead restauré."
     ),
     endpoint='/api/django/crm/leads/{id}/restaurer/',
     method='POST',
@@ -932,7 +934,7 @@ REAFFECTER_LEAD = AgentAction(
         "tous ses dossiers (crm.dossiers.deleguer). "
         "Exemple : « Passe le lead 12 à Nadia » → crm.collegues.lister "
         "(q=nadia), puis owner = son id. "
-        "Résultat : le lead réaffecté, après confirmation ; sans le droit "
+        "Résultat : le lead réaffecté ; sans le droit "
         "de réaffecter, le serveur refuse (403)."
     ),
     endpoint='/api/django/crm/leads/{id}/',
@@ -963,7 +965,7 @@ ETIQUETER_LEAD = AgentAction(
         "Ne pas utiliser pour : l'étape, le motif de perte ni une note "
         "(crm.lead.note). "
         "Exemple : « Étiquette le lead 12 : villa, urgent ». "
-        "Résultat : le lead mis à jour, après confirmation ; la liste "
+        "Résultat : le lead mis à jour ; la liste "
         "REMPLACE les étiquettes actuelles."
     ),
     endpoint='/api/django/crm/leads/{id}/',
@@ -1066,7 +1068,7 @@ DELEGUER_DOSSIERS = AgentAction(
     description=(
         "Sert à : confier à un collègue TOUS les dossiers encore à travailler "
         "d'un responsable (les siens par défaut) avec leurs relances "
-        "ouvertes, après confirmation ; le collègue est prévenu. "
+        "ouvertes ; le collègue est prévenu. "
         "Ne pas utiliser pour : un seul lead (crm.lead.reaffecter) ni "
         "prévenir les clients : ce choix se fait sur l'écran (« Déléguer mes "
         "dossiers »). "

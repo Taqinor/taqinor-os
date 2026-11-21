@@ -3,8 +3,9 @@
 Déclare, via le registre AG1 (:mod:`apps.agent.registry`), les actions du flux
 devis → bon de commande → facture → encaissement que l'agent (relais FastAPI +
 JWT utilisateur) peut PROPOSER. Ce module est PUREMENT des métadonnées : aucune
-exécution ici et AUCUN nouvel endpoint — chaque action pointe vers un endpoint
-Ventes EXISTANT, qui re-vérifie permission ET société à l'exécution.
+exécution ici — chaque action pointe vers un endpoint Ventes (les lignes : les
+routes de l'assistant ``devis/{id}/assistant-lignes/<operation>/``, 20/11/2026),
+qui re-vérifie permission ET société à l'exécution.
 
 Multi-tenant : ``company`` n'apparaît JAMAIS dans le schéma ``inputs`` — la
 société est forcée côté serveur (``perform_create`` / l'action de viewset) à
@@ -37,7 +38,8 @@ quand elle en exige un (``encaisser``, ``ventes_modifier``…), sinon au code du
 module le plus proche — un test de PARITÉ (``apps/agent/tests/test_registry.py``)
 compare le catalogue aux gardes réelles des routes :
   * création de devis        → ``ventes_creer``
-  * remise globale           → ``ventes_modifier`` (PATCH du devis)
+  * remise globale, lignes   → ``ventes_modifier`` (PATCH du devis, routes
+    ``assistant-lignes``)
   * génération du PDF devis   → ``ventes_pdf``
   * accepter / convertir      → ``ventes_valider``
   * émettre une tranche, encaisser → ``encaisser`` (``PeutEncaisser``, ASEC29)
@@ -156,107 +158,165 @@ CREER_AUTO = AgentAction(
 )
 
 
-# Action — Ajouter une ligne à un devis brouillon. Endpoint réel : POST
-# /api/django/ventes/devis-lignes/ (LigneDevisViewSet). La société est imposée
-# côté serveur (la ligne doit cibler un devis de la société du caller).
+# 20/11/2026 (incident prod : « ajoute la structure » répondait 400 à chaque
+# fois) — les lignes passent par les routes de l'assistant
+# ``POST devis/{id}/assistant-lignes/<operation>/`` (``views/assistant.py``,
+# ``domain/lignes_assistant.py``) : désignation et prix du CATALOGUE, quantité
+# en nombre JSON, options « sans » / « avec » batterie d'un devis à deux
+# options. Avant : ``devis-lignes/`` (sérialiseur de l'écran : quantité
+# décimal-chaîne, désignation obligatoire). Clés inchangées ; ``id`` désigne
+# désormais le DEVIS, ``ligne`` la ligne. Garde réelle des routes :
+# ``ventes_modifier`` (palier + grille, comme ``assistant-taille``).
+_VARIANTE_LIGNE = {
+    'type': 'string', 'enum': ['sans', 'avec', 'les_deux'],
+    'description': ("Devis à deux options : « sans » ou « avec » batterie "
+                    "seulement ; absent = les deux options. Devis à une "
+                    "option : ignoré."),
+}
+_ID_DEVIS_LIGNE = {'type': 'integer', 'description': 'Identifiant du devis.'}
+_ID_LIGNE = {'type': 'integer',
+             'description': 'Identifiant de la LIGNE de devis à changer.'}
+_QUANTITE_LIGNE = {'type': 'number', 'minimum': 0.01,
+                   'description': 'Quantité (strictement positive).'}
+
 LIGNE_AJOUTER = AgentAction(
     key='ventes.devis.ligne_ajouter',
     label='Ajouter une ligne au devis',
     description=(
-        "Sert à : ajouter un produit du catalogue à un devis brouillon ; ajoute "
-        "un montant : proposition puis confirmation obligatoire. Ne pas "
-        "utiliser pour : changer une ligne existante (ligne_modifier) ni créer "
-        "un devis. Exemple : « ajoute 2 batteries au devis 12 » → devis=12, "
-        "produit=<id>, quantite=2 ; prix_unitaire HT, designation, remise (%) "
-        "optionnels. Résultat : la ligne est créée, les totaux recalculés."
+        "Sert à : ajouter un produit du catalogue à un devis brouillon ou "
+        "envoyé ; désignation et prix viennent du catalogue. Sur un devis à "
+        "deux options, la ligne va dans les deux sauf variante=sans ou avec. "
+        "Ne pas utiliser pour : changer la quantité d'une ligne existante "
+        "(ligne_modifier) ni créer un devis. Exemple : « ajoute 2 batteries "
+        "à l'option avec batterie du devis 12 » → id=12, produit=<id>, "
+        "quantite=2, variante=avec. Résultat : la ligne est ajoutée, l'ancien "
+        "et le nouveau total sont rendus, et le total de chaque option."
     ),
-    endpoint='/api/django/ventes/devis-lignes/',
+    endpoint='/api/django/ventes/devis/{id}/assistant-lignes/ajouter/',
     method='POST',
     inputs={
         'type': 'object',
         'properties': {
-            'devis': {'type': 'integer', 'description': 'Identifiant du devis brouillon.'},
-            'produit': {'type': 'integer', 'description': 'Identifiant du produit du catalogue.'},
-            'designation': {'type': 'string'},
-            'quantite': {'type': 'number', 'description': 'Quantité (strictement positive).'},
-            'prix_unitaire': {
-                'type': 'number',
-                'description': 'Prix unitaire HT ; absent = prix du catalogue.',
-            },
-            'remise': {'type': 'number', 'description': 'Remise de la ligne en %.'},
+            'id': _ID_DEVIS_LIGNE,
+            'produit': {'type': 'integer',
+                        'description': 'Identifiant du produit du catalogue.'},
+            'quantite': dict(_QUANTITE_LIGNE,
+                             description='Quantité (défaut : 1).'),
+            'variante': _VARIANTE_LIGNE,
         },
-        'required': ['devis', 'produit', 'quantite'],
+        'required': ['id', 'produit'],
     },
-    required_permission=_PERM_CREER,
-    # COP-G3 — ajouter une ligne CHANGE le total du devis (et peut y poser un
-    # prix libre) : même règle que ``ligne_modifier`` / ``remise``.
+    required_permission=_PERM_MODIFIER,
+    # COP-G3 — le risque DÉCRIT l'effet (le total du devis change) ; la
+    # politique de confirmation vit dans ``apps/agent/registry.py``.
     risk=RISK_OUTWARD,
     confirm_summary='Ajouter cette ligne au devis (le total change).',
-    objets={'devis': 'devis'},
+    objets={'id': 'devis'},
 )
 
 
-# Action — Modifier une ligne de devis. Endpoint réel : PATCH
-# /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). L'id est celui de la
-# LIGNE (COP2-V5 : ``ventes.devis.lignes``, lot copilote, les liste ; sans
-# copilote, l'agent le demande s'il ne l'a pas). Prix, quantité et remise changent le montant du devis : COP-G3,
-# proposition à confirmer — AIC98 : une baisse de prix de ligne (prix tapé) compte
-# comme une remise pour le seuil d'approbation T17 (``profondeur_remise_effective``).
+# Action — la QUANTITÉ d'une ligne (jamais son prix : le Guide de la
+# commerciale interdit de toucher un prix de ligne ; AIC98 — une baisse de
+# prix de ligne compte comme une remise pour le seuil T17).
 LIGNE_MODIFIER = AgentAction(
     key='ventes.devis.ligne_modifier',
     label='Modifier une ligne de devis',
     description=(
-        "Sert à : changer le prix unitaire HT, la quantité, la remise ou la "
-        "désignation d'une ligne de devis brouillon ; change un montant : "
-        "proposition puis confirmation obligatoire. Ne pas utiliser pour : "
-        "retirer une ligne ni la remise globale (remise). Exemple : « passe la "
-        "batterie à 1 unité » → id=<id de la ligne>, quantite=1 ; sans id de "
-        "ligne, demande-le. Résultat : ligne mise à jour, totaux recalculés."
+        "Sert à : changer la quantité d'une ligne d'un devis brouillon ou "
+        "envoyé ; sur un devis à deux options, la ligne des deux options "
+        "sauf variante=sans ou avec. Ne pas utiliser pour : un prix ou une "
+        "remise de ligne (non modifiables ici), retirer une ligne, la remise "
+        "globale (remise). Exemple : « passe les panneaux à 12 sur le devis "
+        "12 » → id=12, ligne=<id de la ligne>, quantite=12 ; sans id de "
+        "ligne, demande-le. Résultat : la quantité est changée, l'ancien et "
+        "le nouveau total sont rendus, et le total de chaque option."
     ),
-    endpoint='/api/django/ventes/devis-lignes/{id}/',
-    method='PATCH',
+    endpoint='/api/django/ventes/devis/{id}/assistant-lignes/modifier/',
+    method='POST',
     inputs={
         'type': 'object',
         'properties': {
-            'id': {'type': 'integer', 'description': 'Identifiant de la LIGNE de devis.'},
-            'prix_unitaire': {'type': 'number', 'description': 'Prix unitaire HT.'},
-            'quantite': {'type': 'number', 'description': 'Quantité (strictement positive).'},
-            'remise': {'type': 'number', 'description': 'Remise de la ligne en %.'},
-            'designation': {'type': 'string'},
+            'id': _ID_DEVIS_LIGNE,
+            'ligne': _ID_LIGNE,
+            'quantite': _QUANTITE_LIGNE,
+            'variante': _VARIANTE_LIGNE,
         },
-        'required': ['id'],
+        'required': ['id', 'ligne', 'quantite'],
     },
-    required_permission=_PERM_CREER,
+    required_permission=_PERM_MODIFIER,
     risk=RISK_OUTWARD,
     confirm_summary='Modifier cette ligne du devis (le total change).',
+    objets={'id': 'devis'},
 )
 
 
-# Action — Retirer une ligne d'un devis brouillon. Endpoint réel : DELETE
-# /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). Suppression → on
-# demande une confirmation avant exécution.
 LIGNE_SUPPRIMER = AgentAction(
     key='ventes.devis.ligne_supprimer',
     label='Retirer une ligne de devis',
     description=(
-        "Sert à : retirer une ligne d'un devis brouillon, par id de ligne ; "
-        "change un montant : proposition puis confirmation obligatoire. Ne pas "
-        "utiliser pour : réduire une quantité (ligne_modifier). Exemple : « "
-        "enlève la ligne 87 » → id=87. Résultat : la ligne disparaît du devis, "
-        "totaux recalculés."
+        "Sert à : retirer une ligne d'un devis brouillon ou envoyé ; sur un "
+        "devis à deux options, des deux options sauf variante=sans ou avec. "
+        "Ne pas utiliser pour : réduire une quantité (ligne_modifier). Pour "
+        "remplacer un produit par un autre : retirer puis ajouter. Exemple : "
+        "« enlève la pergola du devis 12 » → id=12, ligne=<id de la ligne>. "
+        "Résultat : la ligne est retirée, l'ancien et le nouveau total sont "
+        "rendus, et le total de chaque option."
     ),
-    endpoint='/api/django/ventes/devis-lignes/{id}/',
-    method='DELETE',
+    endpoint='/api/django/ventes/devis/{id}/assistant-lignes/supprimer/',
+    method='POST',
     inputs={
         'type': 'object',
         'properties': {
-            'id': {'type': 'integer', 'description': 'Identifiant de la LIGNE de devis.'},
+            'id': _ID_DEVIS_LIGNE,
+            'ligne': _ID_LIGNE,
+            'variante': _VARIANTE_LIGNE,
         },
-        'required': ['id'],
+        'required': ['id', 'ligne'],
     },
-    required_permission=_PERM_CREER,
+    required_permission=_PERM_MODIFIER,
     risk=RISK_OUTWARD,
     confirm_summary='Retirer cette ligne du devis.',
+    objets={'id': 'devis'},
+)
+
+
+# 20/11/2026 — REMPLACER un produit par un autre, à sa place (lot copilote :
+# un outil neuf naît dans le lot). Même domaine que les trois autres.
+LIGNE_REMPLACER = AgentAction(
+    key='ventes.devis.ligne_remplacer',
+    label='Remplacer le produit d\'une ligne',
+    description=(
+        "Sert à : remplacer le produit d'une ligne par un autre produit du "
+        "catalogue, à sa place, dans un devis brouillon ou envoyé ; sur un "
+        "devis à deux options, dans les deux sauf variante=sans ou avec ; "
+        "quantité inchangée sauf quantite. Ne pas utiliser "
+        "pour : changer une quantité (ligne_modifier). Exemple : « remplace "
+        "la pergola par la structure acier » → id=<devis>, ligne=<id de la "
+        "ligne pergola lu par ventes.devis.lignes>, produit=<id de la "
+        "structure acier lu par ventes.catalogue.chercher>. Résultat : la "
+        "ligne est remplacée, l'ancien et le nouveau total sont rendus, et "
+        "le total de chaque option."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/assistant-lignes/remplacer/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': _ID_DEVIS_LIGNE,
+            'ligne': _ID_LIGNE,
+            'produit': {'type': 'integer', 'description': (
+                'Identifiant du produit du catalogue qui remplace.')},
+            'quantite': dict(_QUANTITE_LIGNE, description=(
+                'Quantité (défaut : celle de la ligne remplacée).')),
+            'variante': _VARIANTE_LIGNE,
+        },
+        'required': ['id', 'ligne', 'produit'],
+    },
+    required_permission=_PERM_MODIFIER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Remplacer le produit de cette ligne (le total change).',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
 )
 
 
@@ -269,7 +329,7 @@ REMISE_DEVIS = AgentAction(
     description=(
         "Sert à : fixer la remise globale (en %) d'un devis brouillon ; change "
         "un montant : proposition puis confirmation obligatoire. Ne pas "
-        "utiliser pour : la remise d'une seule ligne (ligne_modifier). "
+        "utiliser pour : la remise d'une seule ligne (non offerte). "
         "Exemple : « remise de 2 % sur le devis 12 » → id=12, "
         "remise_globale=2. Résultat : remise appliquée, totaux HT, TVA et TTC "
         "recalculés."
@@ -716,7 +776,8 @@ COMPOSER_DEVIS = AgentAction(
 
 # COP2-V5 — lire les lignes d'UN devis (``GET devis/{id}/lignes-assistant/``,
 # garde ``LectureVentes`` = ``ventes_voir``) : l'id de ligne que
-# ``ligne_modifier`` / ``ligne_supprimer`` demandent. Prix TTC seulement.
+# ``ligne_modifier`` / ``ligne_supprimer`` / ``ligne_remplacer`` demandent
+# (``ligne``). Prix TTC seulement.
 LIGNES_DEVIS = AgentAction(
     key='ventes.devis.lignes',
     label='Lire les lignes du devis',
@@ -725,7 +786,7 @@ LIGNES_DEVIS = AgentAction(
         "prix TTC) avant de modifier ou retirer une ligne. Ne pas utiliser "
         "pour : modifier le devis ni lire un prix d'achat (jamais servi). "
         "Exemple : « passe la batterie du devis 451 à 2 » → id=451, puis "
-        "ligne_modifier avec le ligne_id lu. Résultat : référence, statut, "
+        "ligne_modifier avec ligne=le ligne_id lu. Résultat : référence, statut, "
         "total TTC et lignes du devis."
     ),
     endpoint='/api/django/ventes/devis/{id}/lignes-assistant/',
@@ -1105,7 +1166,9 @@ VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
                            PROLONGER_DEVIS, REFUSER_DEVIS, REVISER_DEVIS,
                            TAILLE_APERCU, TAILLE_DEVIS, WHATSAPP_RELANCE,
-                           FACTURER_VENTE)
+                           FACTURER_VENTE,
+                           # 20/11/2026 — remplacer un produit à sa place.
+                           LIGNE_REMPLACER)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

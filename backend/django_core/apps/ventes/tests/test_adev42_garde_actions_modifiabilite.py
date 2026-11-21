@@ -72,6 +72,13 @@ GARDEES_409 = {
     'assistant_taille': [('post', {
         'nb_panneaux': 9, 'ancien_total_ttc': '10800',
         'nouveau_total_ttc': '10800'})],
+    # 20/11/2026 — les lignes changées par l'assistant : même prédicat
+    # unique (geste LIGNES, ``lignes_assistant.refus_de_statut``), refus 409
+    # ``revision_possible`` AVANT toute lecture de ligne ou de produit.
+    'assistant_lignes_ajouter': [('post', {'produit': 1, 'quantite': 2})],
+    'assistant_lignes_modifier': [('post', {'ligne': 1, 'quantite': 2})],
+    'assistant_lignes_supprimer': [('post', {'ligne': 1})],
+    'assistant_lignes_remplacer': [('post', {'ligne': 1, 'produit': 1})],
 }
 
 #: Écritures LÉGITIMES sur un devis accepté (elles ne modifient pas son

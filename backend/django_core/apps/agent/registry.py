@@ -131,6 +131,40 @@ CLES_COPILOTE_VAGUE1 = frozenset({
     'stock.produit.supprimer',
 })
 
+# D-COP-5 (Reda, 21/11/2026, question interactive : « presque rien » ne se
+# confirme). Après ses deux conversations du 20/11 (un devis = quatre cartes et
+# autant de « go »), l'assistant FAIT directement ce qui lui est demandé
+# clairement. Seuls gardent la carte : factures et paiements, ce qui part chez
+# un client (e-mail, message, notification au client), suppression et
+# archivage, mouvements de stock et commandes fournisseur, et toute action
+# ``irreversible``. Liste BLANCHE : une action ``outward`` qui n'y figure pas
+# garde sa carte (échec fermé pour toute action future). ``risk`` reste la
+# description de l'effet ; ``directe`` (dérivé, ``as_dict``) dit au relais de
+# l'exécuter sans carte. Le relais garde la carte quand le MESSAGE porte un
+# texte collé ou une image (consigne venue d'un tiers).
+ACTIONS_DIRECTES = frozenset({
+    # Leads : créer, compléter, ranger, confier.
+    'crm.lead.creer', 'crm.lead.create', 'crm.lead.qualifier',
+    'crm.lead.update', 'crm.lead.etiqueter', 'crm.lead.journaliser',
+    'crm.lead.changer_etape', 'crm.lead.perdu', 'crm.lead.restaurer',
+    'crm.lead.reaffecter', 'crm.dossiers.deleguer', 'crm.client.create',
+    # Agendas internes (la personne désignée est prévenue, jamais le client).
+    'crm.visite.planifier', 'visites.visite.replanifier',
+    'visites.visite.valider', 'installations.chantier.planifier',
+    'installations.intervention.planifier_visite',
+    # Devis (brouillon comme envoyé : décision du 19/11 maintenue, le résultat
+    # redit l'ancien et le nouveau total).
+    'ventes.devis.ligne_ajouter', 'ventes.devis.ligne_modifier',
+    'ventes.devis.ligne_supprimer', 'ventes.devis.ligne_remplacer', 'ventes.devis.remise',
+    'ventes.devis.taille', 'ventes.devis.reviser', 'ventes.devis.prolonger',
+    'ventes.devis.refuser', 'ventes.devis.accepter',
+    'ventes.devis.convertir_bc',
+    # Calepinage (conception interne, publiée au devis).
+    'calepinage.preparer', 'calepinage.retenir', 'calepinage.publier_devis',
+    # SAV interne (le client n'est prévenu que par résoudre/transition : carte).
+    'sav.ticket.create', 'sav.ticket.update',
+})
+
 
 @dataclass(frozen=True)
 class AgentAction:
@@ -221,6 +255,9 @@ class AgentAction:
             'lot': self.lot,
             'objets': dict(self.objets),
             'lecture': bool(self.lecture),
+            # D-COP-5 — exécutée sans carte par le relais (jamais une
+            # action ``irreversible``).
+            'directe': self.risk == RISK_OUTWARD and self.key in ACTIONS_DIRECTES,
             'noyau': self.key in NOYAU,
             'natif_seul': (self.lot == LOT_COPILOTE and self.key not in NOYAU
                            and self.key not in CLES_COPILOTE_VAGUE1),

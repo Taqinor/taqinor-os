@@ -133,6 +133,11 @@ class EvalHarnessTests(unittest.TestCase):
             vague2 = runner.run_eval_commerciaux(
                 repondre, runner.juge_reel(juge), modele, juge, cases=CASES_VAGUE2)
             self.assertTrue(os.path.exists(runner.ecrire_rapport(vague2, nom=f"vague2_{modele}.json")))
+            # D-COP-5 (21/11/2026) — quinze questions simples : reponse directe d'abord.
+            from tests.eval.cases_simples import CASES_SIMPLES
+            simples = runner.run_eval_commerciaux(
+                repondre, runner.juge_reel(juge), modele, juge, cases=CASES_SIMPLES)
+            self.assertTrue(os.path.exists(runner.ecrire_rapport(simples, nom=f"simples_{modele}.json")))
 
 
 class EvalCommerciauxTests(unittest.TestCase):
@@ -300,10 +305,10 @@ class EvalCommerciauxTests(unittest.TestCase):
         from tests.eval.cases_commerciaux import CASES_COACH, CASES_COPILOTE
         from tests.eval.cases_vague2 import CASES_PAR_DOMAINE, CASES_VAGUE2
         self.assertEqual({d: len(c) for d, c in CASES_PAR_DOMAINE.items()}, {
-            "calepinage": 6, "visites": 7, "installations": 6, "ventes": 8, "stock": 6,
+            "calepinage": 6, "visites": 7, "installations": 6, "ventes": 14, "stock": 6,
             "sav": 7, "reporting": 4, "travail": 8})
         ids = [c["id"] for c in CASES_VAGUE2]
-        self.assertEqual(len(set(ids)), 52)
+        self.assertEqual(len(set(ids)), 58)
         self.assertFalse(set(ids) & {c["id"] for c in CASES_COPILOTE + CASES_COACH})
         rapport = runner.run_eval_commerciaux(
             self._repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5", cases=CASES_VAGUE2)
@@ -333,8 +338,15 @@ class EvalCommerciauxTests(unittest.TestCase):
                 self.assertFalse(set(c.get("interdits") or ()) & attendus)
                 self.assertLessEqual({k for k in attendus if v2.CLES_VAGUE2[k] == "confirmee"},
                                      set(c.get("a_confirmer") or ()))
-                self.assertEqual({v2.CLES_VAGUE2[k] for k in c.get("a_confirmer") or ()} - {"confirmee"},
-                                 set())
+                # D-COP-5 : `a_confirmer` = cartes ; une cle `directe` n'y figure que si la
+                # question porte un texte colle (`texte_colle`), sinon le geste est execute.
+                genres_carte = {v2.CLES_VAGUE2[k] for k in c.get("a_confirmer") or ()}
+                self.assertLessEqual(genres_carte, {"confirmee", "directe"})
+                if "directe" in genres_carte:
+                    self.assertTrue(c.get("texte_colle"), c["id"])
+                if c.get("texte_colle"):
+                    from app.services.relais_copilote import question_porte_un_texte_tiers
+                    self.assertTrue(question_porte_un_texte_tiers(c["question"]), c["id"])
                 self.assertIn(c["famille"], v2.FAMILLES)
                 self.assertEqual(c["source"], "vague2")
                 if c["famille"] == "injection":
@@ -353,14 +365,69 @@ class EvalCommerciauxTests(unittest.TestCase):
             self.assertTrue(all(c["domaine"] == domaine for c in cas), domaine)
         self.assertLessEqual(set(consignes_domaines.CONSIGNES), set(v2.CASES_PAR_DOMAINE))
 
+    @staticmethod
+    def _cles_du_registre():
+        """Cles `key='...'` des agent_actions.py + registre Django, lues comme TEXTE
+        (l'environnement FastAPI n'a pas Django) ; None si le depot Django est absent."""
+        import glob
+        import re
+        racine = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "django_core", "apps")
+        fichiers = glob.glob(os.path.join(racine, "*", "agent_actions.py"))
+        fichiers += glob.glob(os.path.join(racine, "agent", "registry.py"))
+        if not fichiers:
+            return None
+        cles = {"report_gap", "sql_db_query", "erp.ouvrir"}
+        for f in fichiers:
+            with open(f, encoding="utf-8") as fh:
+                cles |= set(re.findall(r"key=['\"]([a-z_.]+)['\"]", fh.read()))
+        return cles
+
+    def test_directes_alignees_sur_le_registre(self):
+        """D-COP-5 (21/11/2026) — les cles `directe` du vocabulaire = ACTIONS_DIRECTES du
+        registre Django (lu en AST) ; `a_confirmer` ne cite que des cartes (ou un texte colle) ;
+        les 15 questions simples existent, ne citent que des cles du registre et n'ecrivent rien."""
+        import ast
+        from tests.eval import cases_simples as simples
+        from tests.eval import cases_vague2 as v2
+        chemin = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "django_core", "apps", "agent", "registry.py")
+        self.assertEqual({k for k, g in v2.CLES_VAGUE2.items() if g == "directe"}, set(v2.DIRECTES))
+        self.assertFalse(v2.DIRECTES & set(v2.SILENCIEUSES))
+        if os.path.exists(chemin):
+            with open(chemin, encoding="utf-8") as fh:
+                arbre = ast.parse(fh.read())
+            registre = next(frozenset(ast.literal_eval(n.value.args[0])) for n in ast.walk(arbre)
+                            if isinstance(n, ast.Assign)
+                            and any(getattr(t, "id", "") == "ACTIONS_DIRECTES" for t in n.targets))
+            self.assertEqual(registre - v2.DIRECTES_A_VENIR, v2.DIRECTES_REGISTRE)
+            self.assertLessEqual(registre, v2.DIRECTES)
+        cles = self._cles_du_registre()
+        if cles is not None:
+            self.assertLessEqual(v2.DIRECTES, cles)
+            for c in v2.CASES_VAGUE2 + simples.CASES_SIMPLES:
+                cites = set(runner.outils_requis(c)) | set(c.get("un_parmi") or ())
+                cites |= set(c.get("interdits") or ()) | set(c.get("a_confirmer") or ())
+                self.assertLessEqual(cites, cles, c["id"])
+        self.assertEqual(len(simples.CASES_SIMPLES), 15)
+        self.assertEqual(len({c["id"] for c in simples.CASES_SIMPLES}), 15)
+        for c in simples.CASES_SIMPLES:
+            self.assertEqual((c["source"], c.get("reponse_courte")), ("simple", True))
+            self.assertFalse(c.get("a_confirmer"), c["id"])
+            self.assertTrue(c.get("interdits"), c["id"])
+        rapport = runner.run_eval_commerciaux(
+            self._repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5",
+            cases=simples.CASES_SIMPLES)
+        self.assertEqual(rapport["taux"], 1.0, [q for q in rapport["questions"] if q["echecs"]])
+
     def test_ecriture_sans_carte_ou_interdite_fait_echouer(self):
         from tests.eval.cases_commerciaux import CASES_COPILOTE
-        signe = next(c for c in CASES_COPILOTE if c["id"] == "voi_signe_batterie")
+        signe = next(c for c in CASES_COPILOTE if c["id"] == "dev_whatsapp_colle")
         piege = next(c for c in CASES_COPILOTE if c["id"] == "inj_note_remise")
 
         def execute_sans_carte(case):
             rep = self._repondre(case)
-            rep["cartes"] = [{"type": "resultat", "action_key": "ventes.devis.accepter"}]
+            rep["cartes"] = [{"type": "resultat", "action_key": "crm.lead.creer"}]
             return rep
 
         def obeit_a_la_note(case):

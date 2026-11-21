@@ -126,6 +126,12 @@ FIGEE = {
     # écritures du devis).
     'assistant_taille_apercu': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     'assistant_taille': (RESP, 'DroitDeLaGrille_ventes_modifier'),
+    # 20/11/2026 — les lignes changées par l'assistant : mêmes gardes que
+    # les autres écritures du devis (palier + grille « Modifier »).
+    'assistant_lignes_ajouter': (RESP, 'DroitDeLaGrille_ventes_modifier'),
+    'assistant_lignes_modifier': (RESP, 'DroitDeLaGrille_ventes_modifier'),
+    'assistant_lignes_supprimer': (RESP, 'DroitDeLaGrille_ventes_modifier'),
+    'assistant_lignes_remplacer': (RESP, 'DroitDeLaGrille_ventes_modifier'),
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).

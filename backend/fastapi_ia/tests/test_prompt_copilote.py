@@ -30,6 +30,8 @@ CLES_CANONIQUES = {
     "ventes.devis.lignes",
     # 19/11/2026 — une personne se désigne par son NOM (jamais un id demandé).
     "crm.collegues.lister",
+    # D-COP-5 (21/11/2026) — devis automatique enchaîné à la création du lead.
+    "ventes.devis.creer_auto",
 }
 
 #: Mots à majuscule admis dans les consignes : débuts de phrase, titres,
@@ -42,6 +44,9 @@ MAJUSCULES_ADMISES = {
     "Les", "Lis", "Maroc", "Ne", "Outils", "Ouvrir", "Pas", "Pour", "Propositions",
     "Préparer", "Quand", "Remise", "Rôle", "Sans", "Seules", "Si", "Signé",
     "Tant", "Textes", "Tout", "Tu", "Un", "Une", "Whats", "Étapes",
+    # D-COP-5 (21/11/2026) — « Faire d'un trait » ; Safi est une ville de
+    # l'exemple (conversation réelle du 20/11), pas un prénom.
+    "Faire", "Crée", "Safi", "Après", "Presque", "Réponds", "Quartier",
 }
 
 _DECALAGE = re.compile(r"(UTC|GMT)\s*[+\-−]\s*\d|[+\-]0[0-9]:00")
@@ -106,6 +111,24 @@ class ConsignesTests(unittest.TestCase):
         self.assertLess(self.TEXTE.index("Agir d'abord en lecture"),
                         self.TEXTE.index("Le travail du jour"))
 
+    def test_faire_d_un_trait_et_actions_directes(self):
+        """D-COP-5 (conversations du 20/11/2026) — un devis demandé avec le
+        client se fait en un tour, sans « go » ; la facture va sur la fiche ;
+        presque tout est fait directement ; un refus n'est jamais reproposé à
+        l'identique ; une question simple reçoit sa réponse."""
+        for extrait in (
+                "Faire d'un trait", "EN ENTIER dans le même tour",
+                "Ne demande jamais « go » ni « continue »", "facture_hiver",
+                "ventes.devis.creer_auto", "pose-la (crm.lead.qualifier) et refais l'étape",
+                "total TTC de CHAQUE option",
+                "Presque tout se fait directement", "factures et paiements",
+                "ne repropose jamais une carte",
+                "reçoit sa réponse, pas un menu"):
+            self.assertIn(extrait, self.TEXTE)
+        self.assertLess(self.TEXTE.index("Agir d'abord en lecture"),
+                        self.TEXTE.index("Faire d'un trait"))
+        self.assertNotIn("dis-moi « go »", self.TEXTE)
+
     def test_une_personne_se_designe_par_son_nom(self):
         """Incident du 19/11/2026 — l'assistant demandait au fondateur
         « l'identifiant utilisateur » d'une collègue : jamais un id demandé,
@@ -128,7 +151,8 @@ class ConsignesTests(unittest.TestCase):
 
     def test_texte_stable_et_borne(self):
         # 950 -> 1000 (copilote v2, 18/11/2026) : paragraphe « Agir d'abord en lecture ».
-        self.assertLessEqual(len(self.TEXTE.split()), 1000)
+        # 1000 -> 1160 (D-COP-5, 21/11/2026) : « Faire d'un trait », actions directes.
+        self.assertLessEqual(len(self.TEXTE.split()), 1160)
         self.assertNotRegex(self.TEXTE, r"20\d\d")  # aucune date dans le cache
 
     def test_aucun_decalage_horaire_en_dur_dans_le_code(self):
@@ -305,8 +329,8 @@ REGLES_PAR_DOMAINE = {
                    "ni un chiffre de devis", "erp.ouvrir", "deux fois au plus",
                    "calepinage.publier_apercu d'abord", "l'ancien et le nouveau total"),
     "visites": ("demande qui fait la visite", "« moi » convient", "jamais un « créneau libre »",
-                "Un geste, une carte", "irréversible", "Jamais de dérogation"),
-    "installations": ("une seule carte", "la date, le technicien et l'intervention de pose",
+                "Un geste à la fois", "(seule à confirmer)", "irréversible", "Jamais de dérogation"),
+    "installations": ("un seul appel", "la date, le technicien et l'intervention de pose",
                       "sans passe-outre", "Le statut du chantier ne change jamais par toi",
                       "jamais de dérogation", "rien ne part au fournisseur"),
     "ventes": ("BROUILLON de facture", "demande sur quelle facture",

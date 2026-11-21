@@ -154,3 +154,15 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   gardes ; sous Windows le test du script de deploy ne finit pas : l'arrêter) ; un fichier de test neuf exige une tâche
   cochée qui le cite avec « Nouveau fichier car : » (groupe COPW de PLAN2) et un préfixe neuf se déclare dans
   `docs/BUILD_ORDER.yml` ; le budget du bundle se relève au juste-dessus de la mesure du runner.
+
+## Décision de Reda (21/11/2026, question interactive) — ne jamais re-demander
+- **D-COP-5 = « presque rien » ne se confirme.** L'assistant exécute directement (liste blanche
+  `registry.ACTIONS_DIRECTES`) ; seuls gardent la carte : factures, paiements, ce qui part chez le client,
+  archivage/annulation, stock et commandes fournisseur, toute action `irreversible`, et toute écriture quand le
+  message porte un texte collé ou une image. Remplace les défauts « remise, prix de ligne, étape : à confirmer » et
+  la carte des devis envoyés du 19/11 (le résultat redit l'ancien et le nouveau total). Ce n'était PAS l'option
+  recommandée (« seulement les gestes risqués ») : ne pas la réintroduire.
+- Origine : ses deux conversations du 20/11 (quatre cartes et deux « Continue » pour un devis ; un ajout de ligne
+  refusé 400 quatre fois en silence). Dossier : `docs/assistant-copilote.md` §17.
+- **Règle** : une action neuve qui écrit naît HORS de `ACTIONS_DIRECTES` (carte) ; l'y ajouter seulement si elle ne
+  touche ni argent, ni client, ni suppression, ni stock.

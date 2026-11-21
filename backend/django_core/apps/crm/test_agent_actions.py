@@ -1734,6 +1734,16 @@ class CrmAssistantCreerLeadTest(_CopiloteBase):
              lead.batterie_souhaitee, str(lead.taille_souhaitee_kwc)),
             ('residentiel', 'triphase', 'avec', '7.10'))
 
+    def test_facture_dite_ecrite_sur_la_fiche_des_la_creation(self):
+        """D-COP-5 — « facture de 600 dirhams » : sur la fiche (devis
+        automatique possible au même tour), plus dans la note seule."""
+        resp = self._creer(facture_hiver=600, facture_ete='750.5', ville='Safi')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        lead = Lead.objects.get(pk=resp.data['identite']['id'])
+        self.assertEqual((str(lead.facture_hiver), str(lead.facture_ete)),
+                         ('600.00', '750.50'))
+        self.assertEqual(self._creer(nom='Négatif', facture_hiver=-1).status_code, 400)
+
     def test_corps_refuse_en_nommant_le_champ(self):
         for corps, champ in (({'nom': ''}, 'nom'), ({}, 'nom'),
                              ({'nom': 'X', 'raccordement': 'biphase'},

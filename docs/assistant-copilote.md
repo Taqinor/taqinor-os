@@ -463,3 +463,31 @@ demande lequel, sans choisir.
 **Leçon.** Un geste qui existe à l'écran et que l'assistant ne connaît pas se voit dès la première vraie question : à
 chaque fonction livrée à l'écran, se demander si l'assistant doit la connaître (manuel) ou la faire (outil).
 
+
+## 17. « Presque rien ne se confirme » — D-COP-5 et les deux conversations du 20/11/2026
+
+**Ce que Reda a vécu (lu en lecture seule sur le serveur le 21/11).**
+- 12 h 20 → 13 h 27, devis d'un client existant : la pergola retirée, mais l'ajout de la structure acier proposé quatre
+  fois et jamais fait. Cause : `POST /api/django/ventes/devis-lignes/` répondait **400** à chaque confirmation (12 h 22,
+  13 h 22, 13 h 25) — `DecimalStricte` refuse un nombre JSON (`quantite: 10`) et `designation` était obligatoire alors
+  que l'action ne la demandait pas. L'échec n'entrait pas dans la conversation : le modèle ne le savait pas et
+  reproposait la même carte.
+- 15 h 09 → 15 h 34, « crée le client, facture de 600 DH, à Souhail, fais-lui un devis » : quatre cartes (créer,
+  facture, ville, panneaux) et deux « Continue » tapés. La facture partait dans la note (champ absent de
+  `crm.lead.creer`), le devis automatique la réclamait ; « Souhail » n'est pas une ville ; le total « 44 900 DH » sans
+  savoir de quelle option.
+
+**Décision D-COP-5 (Reda, 21/11/2026, question interactive : « Almost nothing »).** L'assistant FAIT directement ce
+qui lui est demandé clairement. Gardent la carte : factures et paiements, ce qui part chez le client (e-mail,
+résolution ou transition SAV qui prévient le client), archivage et annulation, mouvements de stock et commandes
+fournisseur, toute action `irreversible`, et toute écriture quand le message porte un texte collé ou une image.
+
+**Ce qui est construit.**
+- `registry.ACTIONS_DIRECTES` (liste blanche ; une action future garde sa carte) et le champ dérivé `directe` du
+  catalogue ; le relais (`action_tools.action_directe`) exécute sans carte, compte l'écriture (plafond du tour porté de
+  cinq à dix) et la journalise `origine=interne` à son niveau déclaré (`agent/logs/confirmer/` l'accepte).
+- Une confirmation refusée par l'ERP entre dans la conversation (`relais_copilote.apres_echec_confirmation`) : le modèle
+  dit la raison et corrige, jamais la même carte.
+- `crm.lead.creer` prend `facture_hiver` / `facture_ete` ; consignes « Faire d'un trait » (un devis demandé avec son
+  client se fait en un tour, jamais « go »), total de CHAQUE option, une question simple reçoit sa réponse.
+- Lignes de devis par l'assistant : voir la PR (endpoint assistant des lignes, totaux par option).

@@ -115,6 +115,7 @@ def _reponse_devis_auto(devis, alertes):
     Contrat : ``contract_samples/assistant_devis_cree.json``."""
     from ..models import ShareLink
     from ..domain.composition_imposee import lignes_ttc
+    from ..selectors_assistant import options_du_devis
     link = ShareLink.for_devis(devis)
     resume = _resume_devis_auto(devis)
     return {
@@ -136,6 +137,9 @@ def _reponse_devis_auto(devis, alertes):
         'kwc_avec': resume['kwc_avec'],
         'postes_apres_visite': resume['postes_apres_visite'],
         'composition': lignes_ttc(devis),
+        # 20/11/2026 (DEV-202611-0090) — chaque option avec SES chiffres :
+        # ``total_ttc`` (gardé) ne dit pas à quelle option il correspond.
+        'options': options_du_devis(devis),
     }
 
 

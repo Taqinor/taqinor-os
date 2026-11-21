@@ -257,3 +257,53 @@ def panneau_par_defaut_id(company):
     if resolution.statut != STATUT_UNIQUE or resolution.produit is None:
         return None
     return resolution.produit.pk
+
+
+# ── Les OPTIONS d'un devis (incident DEV-202611-0090 du 20/11/2026) ─────────
+#
+# L'assistant disait « le total TTC est de 44 900 DH, je ne peux pas dire à
+# quelle option il correspond » : les réponses ne portaient qu'UN total. Le
+# bloc ``options`` dit chaque option avec SES chiffres, lus par les fonctions
+# canoniques : total = ``utils.options.option_totaux`` (la chaîne HT → remise
+# → TVA → TTC du PDF, filtrage d'option compris) ; panneaux et kWc d'une
+# option = ``domain.lignes.cible_depuis_lignes`` (QJR33, même variante) ; kWc
+# d'un devis à une option = ``domain.scenario.puissance_kwc_du_devis``.
+
+LIBELLES_OPTIONS = {'sans': 'Sans batterie', 'avec': 'Avec batterie',
+                    '': 'Option unique'}
+
+
+def _kwc_arrondi(valeur):
+    try:
+        return round(float(valeur), 3) if valeur is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def options_du_devis(devis):
+    """``[{variante, libelle, kwc, nb_panneaux, total_ttc}]`` — une entrée
+    par option d'un devis à deux options (« sans » puis « avec »), une seule
+    (``variante=''``) sinon. Lecture pure, relue en base ; jamais d'achat."""
+    from .domain.lignes import cible_depuis_lignes
+    from .domain.scenario import puissance_kwc_du_devis
+    from .utils.options import (
+        AVEC_BATTERIE, SANS_BATTERIE, deux_options_declarees, option_totaux)
+
+    frais = type(devis).objects.get(pk=devis.pk)
+    if not deux_options_declarees(frais):
+        cible = cible_depuis_lignes(frais, 'sans')
+        return [{'variante': '', 'libelle': LIBELLES_OPTIONS[''],
+                 'kwc': _kwc_arrondi(puissance_kwc_du_devis(frais)),
+                 'nb_panneaux': int(cible.get('panneaux') or 0),
+                 'total_ttc': texte_montant(option_totaux(frais)['ttc'])}]
+    options = []
+    # Ligne ``variante`` 'sans'/'avec' ; option du noyau 'sans_batterie'/…
+    for variante, option in (('sans', SANS_BATTERIE), ('avec', AVEC_BATTERIE)):
+        cible = cible_depuis_lignes(frais, variante)
+        options.append({
+            'variante': variante, 'libelle': LIBELLES_OPTIONS[variante],
+            'kwc': _kwc_arrondi(cible.get('kwc')),
+            'nb_panneaux': int(cible.get('panneaux') or 0),
+            'total_ttc': texte_montant(
+                option_totaux(frais, option=option)['ttc'])})
+    return options

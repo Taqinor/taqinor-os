@@ -353,8 +353,13 @@ async def confirm_action(
 
     result = await sql_agent_service.confirm_action(action_ctx, request.token.strip())
     if not result.get("ok"):
-        return ConfirmResponse(
-            ok=False, detail=result.get("error", "L'action n'a pas pu etre executee."))
+        detail = result.get("error", "L'action n'a pas pu etre executee.")
+        # D-COP-5 — l'échec entre dans la conversation : le modèle le sait et
+        # dit le geste qui marche (le 20/11 il reproposait la même carte, 4 fois).
+        suite = await asyncio.to_thread(
+            relais_copilote.apres_echec_confirmation, sql_agent_service, action_ctx,
+            company_id, int(token_payload.get("user_id", 0)), result)
+        return ConfirmResponse(ok=False, detail=detail, suite=suite)
     data = result.get("data")
     apres = await asyncio.to_thread(
         relais_copilote.apres_confirmation, sql_agent_service, action_ctx,

@@ -17,6 +17,9 @@
       {"designation": "Batterie Dyness 5 kWh", "quantite": 1, "prix_unitaire_ttc": "14000.00", "total_ttc": "14000.00", "variante": ""}
     ],
     "alertes": [],
+    "options": [
+      {"variante": "", "libelle": "Option unique", "kwc": 8.52, "nb_panneaux": 12, "total_ttc": "76400.00"}
+    ],
     "lien": "/ventes/devis?devis=451"
   },
   "exemple_409_apercu_perime": {

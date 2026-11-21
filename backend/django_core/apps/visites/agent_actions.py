@@ -125,8 +125,8 @@ REPLANIFIER = AgentAction(
     key='visites.visite.replanifier',
     label="Déplacer la visite ou changer qui la fait : la personne désignée est prévenue",
     description=(
-        "Sert à : changer la date prévue d'une visite EN ATTENTE (brouillon) et/ou la personne qui la fait, "
-        "après confirmation ; la personne désignée est prévenue (sauf si c'est toi), la ligne « déplacé du … "
+        "Sert à : changer la date prévue d'une visite EN ATTENTE (brouillon) et/ou la personne qui la fait ; "
+        "la personne désignée est prévenue (sauf si c'est toi), la ligne « déplacé du … "
         "au … » est écrite dans les notes et le suivi du lead est recalé. Au moins un des deux champs. "
         "Ne pas utiliser pour : annuler (visites.visite.annuler), poser une NOUVELLE visite "
         "(crm.visite.planifier) ni modifier une visite réalisée, validée ou annulée (409). "
@@ -190,8 +190,8 @@ VALIDER = AgentAction(
     key='visites.visite.valider',
     label="Valider la visite : feu vert au calepinage, la visite est figée et son assigné est prévenu",
     description=(
-        "Sert à : donner le feu vert du bureau d'études à une visite TERMINÉE et complète, après "
-        "confirmation : la visite passe « validée » (figée), le récapitulatif des mesures est écrit sur la "
+        "Sert à : donner le feu vert du bureau d'études à une visite TERMINÉE et complète : "
+        "la visite passe « validée » (figée), le récapitulatif des mesures est écrit sur la "
         "fiche du lead, le calepinage peut démarrer et la personne qui l'a faite est prévenue. "
         "Ne pas utiliser pour : renvoyer la visite au terrain (écran de revue), une visite non terminée ou "
         "incomplète (409 qui liste ce qui manque). Lis visites.visite.resume dans le même tour avant de "

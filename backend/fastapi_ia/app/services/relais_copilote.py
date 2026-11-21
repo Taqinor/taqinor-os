@@ -623,6 +623,25 @@ def apres_confirmation(service, ctx, company_id: int, user_id: int,
                                     libelle, resultat)}
 
 
+def apres_echec_confirmation(service, ctx, company_id: int, user_id: int,
+                             resultat: dict) -> Optional[dict]:
+    """D-COP-5 — après une confirmation REFUSÉE par l'ERP : l'échec est écrit
+    dans l'historique et, sous le moteur natif, le modèle reprend avec la
+    raison (il l'explique et corrige au lieu de reproposer la même carte, ce
+    qu'il a fait quatre fois le 20/11). Rend la `suite` ou None."""
+    libelle = str(resultat.get("libelle") or resultat.get("action_key") or "l'action")
+    erreur = str(resultat.get("error") or "refus de l'ERP")[:400]
+    try:
+        service._ajouter_historique(user_id, [{
+            "role": "agent", "content": f"Action NON exécutée ({libelle}) : {erreur}",
+            "cartes": [], "confirmation": True, "contenu_tiers": True}])
+        return reprise_native(service, ctx, company_id, user_id, libelle,
+                              {"echec": erreur})
+    except Exception as exc:  # best-effort : la carte dit déjà l'échec
+        logger.warning("Reprise après échec impossible : %s", exc)
+        return None
+
+
 # ── COP-B6 — aiguillage vers le moteur natif ─────────────────────────────────
 
 MESSAGE_ACTION_INTERROMPUE = (
@@ -660,7 +679,7 @@ def _outil_action(ctx, action: dict, collecteur: list):
 
     entrees = action.get("inputs") if isinstance(action.get("inputs"), dict) else {}
     description = action.get("description") or action.get("label") or action["key"]
-    if action.get("risk") in ("outward", "irreversible"):
+    if action.get("risk") in ("outward", "irreversible") and not action.get("directe"):
         description += _SUFFIXE_SENSIBLE
 
     def executer(args):
@@ -868,6 +887,12 @@ def message_de_reprise(libelle: str, resultat: dict) -> str:
     registre), puis — sous l'enveloppe NON FIABLE, car il porte des noms lus
     chez Django — l'aperçu confirmé (objet nommé, entrées) et le résultat."""
     from app.services import sql_agent_service as svc
+    if "echec" in resultat:
+        return (f"L'utilisateur a confirmé l'action « {libelle} », mais l'ERP l'a "
+                "REFUSÉE : rien n'a été fait. Dis-le en une phrase avec la raison, "
+                "puis corrige toi-même ce qui peut l'être (donnée manquante, autre "
+                "outil) ; ne repropose jamais la même action à l'identique.\n"
+                + svc._etiqueter_non_fiable({"raison": resultat.get("echec")}))
     return (f"L'utilisateur a confirmé l'action « {libelle} ».\n"
             + svc._etiqueter_non_fiable({"apercu": resultat.get("apercu") or "",
                                          "resultat": resultat.get("data")}))

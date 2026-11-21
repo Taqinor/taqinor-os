@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5230, operations: 8062, components: 4021}
+counts: {paths: 5238, operations: 8070, components: 4030}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3760,6 +3760,10 @@ operations:
 - post /api/django/ventes/devis/{id}/acquitter-derive/ -> django_ventes_devis_acquitter_derive_create
 - post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
+- post /api/django/ventes/devis/{id}/assistant-lignes/ajouter/ -> django_ventes_devis_assistant_lignes_ajouter_create
+- post /api/django/ventes/devis/{id}/assistant-lignes/modifier/ -> django_ventes_devis_assistant_lignes_modifier_create
+- post /api/django/ventes/devis/{id}/assistant-lignes/remplacer/ -> django_ventes_devis_assistant_lignes_remplacer_create
+- post /api/django/ventes/devis/{id}/assistant-lignes/supprimer/ -> django_ventes_devis_assistant_lignes_supprimer_create
 - post /api/django/ventes/devis/{id}/assistant-taille/ -> django_ventes_devis_assistant_taille_create
 - get /api/django/ventes/devis/{id}/assistant-taille/apercu/ -> django_ventes_devis_assistant_taille_apercu_retrieve
 - post /api/django/ventes/devis/{id}/avenant/demander-signature/ -> django_ventes_devis_avenant_demander_signature_create
@@ -7795,6 +7799,10 @@ operations:
 - post /api/v1/ventes/devis/{id}/acquitter-derive/ -> v1_ventes_devis_acquitter_derive_create
 - post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
+- post /api/v1/ventes/devis/{id}/assistant-lignes/ajouter/ -> v1_ventes_devis_assistant_lignes_ajouter_create
+- post /api/v1/ventes/devis/{id}/assistant-lignes/modifier/ -> v1_ventes_devis_assistant_lignes_modifier_create
+- post /api/v1/ventes/devis/{id}/assistant-lignes/remplacer/ -> v1_ventes_devis_assistant_lignes_remplacer_create
+- post /api/v1/ventes/devis/{id}/assistant-lignes/supprimer/ -> v1_ventes_devis_assistant_lignes_supprimer_create
 - post /api/v1/ventes/devis/{id}/assistant-taille/ -> v1_ventes_devis_assistant_taille_create
 - get /api/v1/ventes/devis/{id}/assistant-taille/apercu/ -> v1_ventes_devis_assistant_taille_apercu_retrieve
 - post /api/v1/ventes/devis/{id}/avenant/demander-signature/ -> v1_ventes_devis_avenant_demander_signature_create
@@ -10774,6 +10782,8 @@ components:
 - DevisOffreTailleCleRequestCleEnum
 - DevisOffreTailleCleRequestRequest
 - DevisOffresTailles
+- DevisOptionAssistant
+- DevisOptionAssistantAvant
 - DevisOverridesResponse
 - DevisPdfOptionsRequestRequest
 - DevisPdfPartageResponse
@@ -10929,6 +10939,7 @@ components:
 - ErreurApi
 - ErreurAuthentification
 - ErreurCalendrierIcs
+- ErreurLignesAssistant
 - ErreurRelanceWhatsappAssistant
 - ErreurTailleAssistant
 - EtapeApprobationAchat
@@ -11353,6 +11364,7 @@ components:
 - LeverReserveRequeteRequest
 - LicenceStatut
 - LicenceStatutPublic
+- LigneAjouterAssistantRequestRequest
 - LigneAvoir
 - LigneBonCommandeFournisseur
 - LigneBonCommandeFournisseurRequest
@@ -11365,6 +11377,7 @@ components:
 - LigneFactureRequest
 - LigneInventaire
 - LigneInventaireRequest
+- LigneModifierAssistantRequestRequest
 - LigneNoteDebit
 - LignePermanenceRequest
 - LignePicking
@@ -11375,11 +11388,15 @@ components:
 - LigneReceptionFournisseurRequest
 - LigneRemiseEncaissement
 - LigneRemiseEncaissementRequest
+- LigneRemplacerAssistantRequestRequest
 - LigneRetourClient
 - LigneRetourClientRequest
 - LigneRetourFournisseur
 - LigneRetourFournisseurRequest
 - LigneSerieRequeteRequest
+- LigneSupprimerAssistantRequestRequest
+- LignesAssistantLigne
+- LignesAssistantResponse
 - LimModeEnum
 - ListePrix
 - ListePrixLigneSaisieRequest

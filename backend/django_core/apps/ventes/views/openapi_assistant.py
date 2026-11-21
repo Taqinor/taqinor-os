@@ -7,7 +7,7 @@ borne ne grossit pas.
 """
 from rest_framework import serializers as s
 
-from .openapi_docs import _ser
+from .openapi_docs import _ser, options_devis_assistant
 
 _MONTANT = s.CharField()
 
@@ -69,6 +69,7 @@ _TAILLE_COMMUN = {
 #: (``assistant_devis_taille_apercu.json``) : aucune écriture.
 TailleAssistantApercuResponse = _ser('TailleAssistantApercuResponse', {
     **_TAILLE_COMMUN,
+    'options': options_devis_assistant(),
     'nb_panneaux_avant': s.IntegerField(allow_null=True),
     'kwc_avant': s.FloatField(allow_null=True),
     'a_faire': s.ChoiceField(choices=['proposer', 'rien']),
@@ -87,6 +88,7 @@ TailleAssistantRequest = _ser('TailleAssistantRequest', {
 #: VAD7 — réponse de l'écriture (``assistant_devis_taille.json``).
 TailleAssistantResponse = _ser('TailleAssistantResponse', {
     **_TAILLE_COMMUN,
+    'options': options_devis_assistant(),
     'composition': s.ListField(child=_ser('TailleAssistantLigne', {
         'designation': s.CharField(),
         'quantite': s.FloatField(),
@@ -163,3 +165,78 @@ ImpayesAssistantResponse = _ser('ImpayesAssistantResponse', {
     })),
     'lien': s.CharField(),
 })
+
+# ── 20/11/2026 — les LIGNES d'un devis changées par l'assistant ─────────────
+# ``POST ventes/devis/<pk>/assistant-lignes/<operation>/`` (contrat
+# ``assistant_devis_lignes_modifier.json``, ``domain/lignes_assistant.py``).
+# Quatre corps EXACTS (un par opération) : désignation et prix viennent du
+# catalogue, jamais du corps ; quantité en nombre JSON OU en texte.
+
+
+def _quantite_assistant(**kwargs):
+    from decimal import Decimal
+
+    from core.champs_stricts import DecimalSouple
+    return DecimalSouple(max_digits=10, decimal_places=2,
+                         min_value=Decimal('0.01'),
+                         max_value=Decimal('99999999.99'), **kwargs)
+
+
+def _variante_assistant():
+    # Motif plutôt qu'un ``enum`` : un énuméré « variante » de plus entrerait
+    # en collision de nom avec ceux du schéma (avertissement du générateur).
+    return s.RegexField(r'^(sans|avec|les_deux)$', required=False)
+
+
+def _id_assistant():
+    return s.IntegerField(min_value=1, max_value=2 ** 31 - 1)
+
+
+LigneAjouterAssistantRequest = _ser('LigneAjouterAssistantRequest', {
+    'produit': _id_assistant(),
+    'quantite': _quantite_assistant(required=False),
+    'variante': _variante_assistant(),
+})
+LigneModifierAssistantRequest = _ser('LigneModifierAssistantRequest', {
+    'ligne': _id_assistant(),
+    'quantite': _quantite_assistant(),
+    'variante': _variante_assistant(),
+})
+LigneSupprimerAssistantRequest = _ser('LigneSupprimerAssistantRequest', {
+    'ligne': _id_assistant(),
+    'variante': _variante_assistant(),
+})
+LigneRemplacerAssistantRequest = _ser('LigneRemplacerAssistantRequest', {
+    'ligne': _id_assistant(),
+    'produit': _id_assistant(),
+    'quantite': _quantite_assistant(required=False),
+    'variante': _variante_assistant(),
+})
+
+LignesAssistantResponse = _ser('LignesAssistantResponse', {
+    'devis_id': s.IntegerField(),
+    'reference': s.CharField(),
+    'statut': s.CharField(),
+    # ajouter | modifier | supprimer | remplacer (texte : aucun énuméré de
+    # plus dans le schéma, voir ``_variante_assistant``).
+    'operation': s.CharField(),
+    'corrige_apres_envoi': s.BooleanField(),
+    'ancien_total_ttc': _MONTANT,
+    'nouveau_total_ttc': _MONTANT,
+    'options': options_devis_assistant(avec_ancien=True),
+    'lignes_touchees': s.ListField(child=_ser('LignesAssistantLigne', {
+        'ligne_id': s.IntegerField(),
+        'etat': s.CharField(),  # ajoutee | modifiee | retiree
+        'designation': s.CharField(),
+        'quantite': s.FloatField(),
+        'variante': s.CharField(allow_blank=True),
+        'total_ttc': _MONTANT,
+    })),
+    # Une instance NEUVE de la MÊME classe (un champ enfant ne se lie qu'une
+    # fois ; drf-spectacular identifie un composant par sa classe).
+    'alertes': s.ListField(child=type(_ALERTE)()),
+    'lien': s.CharField(),
+})
+ErreurLignesAssistant = _ser('ErreurLignesAssistant', {
+    'detail': s.CharField(required=False), 'field': s.CharField(required=False),
+    'code': s.CharField(required=False)})

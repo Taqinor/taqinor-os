@@ -55,7 +55,7 @@ PLANIFIER_VISITE_MAINTENANCE = AgentAction(
     key='installations.intervention.planifier_visite',
     label='Visite de maintenance : entre dans la journée du technicien désigné, notifié',
     description=(
-        "Sert à : planifier, après confirmation, une visite de maintenance "
+        "Sert à : planifier une visite de maintenance "
         "(intervention de type contrôle) sur un chantier à une date. Le "
         "technicien désigné est notifié ; sans technicien, la visite n'est "
         "dans la journée de personne (l'installateur du chantier est mis "
@@ -279,7 +279,7 @@ SUGGERER_CRENEAU = AgentAction(
         "indisponibilité, charge la plus faible, puis distance. Seuls les "
         "comptes déjà affectés à une intervention sont proposés ; les "
         "visites techniques ne comptent pas ; rien n'est réservé. Ne pas "
-        "utiliser pour : planifier (c'est une proposition à confirmer, à "
+        "utiliser pour : planifier (installations.chantier.planifier, à "
         "part) ni une visite de lead. Exemple : « quand poser le chantier "
         "12 ? » → chantier=12, type_intervention=pose. Résultat : "
         "{chantier_id, propositions[]}."
@@ -324,7 +324,7 @@ PLANIFIER_POSE = AgentAction(
     key='installations.chantier.planifier',
     label='Pose : date et technicien du chantier + intervention dans sa journée, notifié',
     description=(
-        "Sert à : planifier, après confirmation, la POSE d'un chantier en un "
+        "Sert à : planifier la POSE d'un chantier en un "
         "geste : date de pose (et de fin), technicien du chantier, ET "
         "l'intervention de pose créée ou déplacée — c'est elle qui entre dans "
         "la journée du technicien (notifié). Le statut ne change pas. Ne pas "

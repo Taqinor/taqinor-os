@@ -406,6 +406,35 @@ def _refus_taille(refus):
     return Response(refus.corps, status=status.HTTP_409_CONFLICT)
 
 
+# ── 20/11/2026 — les LIGNES d'un devis changées par l'assistant ─────────────
+
+#: Gardes des quatre routes de lignes : celles des autres écritures du devis
+#: (palier + grille « Modifier », comme ``assistant-taille`` et l'écran).
+GARDES_LIGNES = [IsResponsableOrAdmin, DroitDeLaGrille('ventes_modifier')]
+REPONSES_LIGNES = {200: DA.LignesAssistantResponse, 400: D.ErreurDetail,
+                   404: DA.ErreurLignesAssistant,
+                   409: DA.ErreurLignesAssistant}
+
+
+def _lignes_assistant(vue, request, operation, declare):
+    """Le corps commun des routes ``assistant-lignes/<operation>/`` : portée
+    ``get_object`` (société + rôle : hors portée → 404), corps EXACT de
+    l'opération (400), puis ``domain/lignes_assistant`` (refus nommés en
+    404/409, rien d'écrit). Statut jamais écrit ; aucun PDF (règle #4)."""
+    from ..domain.lignes_assistant import LignesRefusees, appliquer_operation
+    from ..domain.verrou_devis import toucher
+    from ..utils.corps import valider_corps
+    devis = vue.get_object()
+    corps = valider_corps(request, declare)
+    try:
+        rendu = appliquer_operation(devis, operation, corps,
+                                    utilisateur=request.user)
+    except LignesRefusees as refus:
+        return Response(refus.corps, status=refus.statut)
+    toucher(devis)
+    return Response({**rendu, 'lien': SA.lien_devis(devis.pk)})
+
+
 class DevisAssistantActionsMixin:
     """Copilote vague 2 (lane VAD) — routes de ``DevisViewSet`` réservées à
     l'assistant (mixin, aucune base). Portée = ``get_object`` (société +
@@ -480,9 +509,57 @@ class DevisAssistantActionsMixin:
             'ancien_total_ttc': m['ancien_total_ttc'],
             'nouveau_total_ttc': m['nouveau_total_ttc'],
             'alertes': m['alertes'],
+            'options': m['options'],
             'a_faire': 'rien' if inchange else 'proposer',
             'lien': SA.lien_devis(devis.pk),
         })
+
+    # api-only: écrite par l'assistant (action `ventes.devis.ligne_ajouter`), aucun écran.
+    @extend_schema(request=DA.LigneAjouterAssistantRequest,
+                   responses=REPONSES_LIGNES)
+    @action(detail=True, methods=['post'], url_path='assistant-lignes/ajouter',
+            permission_classes=GARDES_LIGNES)
+    def assistant_lignes_ajouter(self, request, pk=None):
+        """Ajoute un produit du catalogue (désignation et prix du catalogue)
+        à une option ou aux deux (contrat
+        ``assistant_devis_lignes_modifier.json``)."""
+        return _lignes_assistant(self, request, 'ajouter',
+                                 DA.LigneAjouterAssistantRequest)
+
+    # api-only: écrite par l'assistant (action `ventes.devis.ligne_modifier`), aucun écran.
+    @extend_schema(request=DA.LigneModifierAssistantRequest,
+                   responses=REPONSES_LIGNES)
+    @action(detail=True, methods=['post'],
+            url_path='assistant-lignes/modifier',
+            permission_classes=GARDES_LIGNES)
+    def assistant_lignes_modifier(self, request, pk=None):
+        """Change la QUANTITÉ d'une ligne (jamais son prix)."""
+        return _lignes_assistant(self, request, 'modifier',
+                                 DA.LigneModifierAssistantRequest)
+
+    # api-only: écrite par l'assistant (action `ventes.devis.ligne_supprimer`), aucun écran.
+    @extend_schema(request=DA.LigneSupprimerAssistantRequest,
+                   responses=REPONSES_LIGNES)
+    @action(detail=True, methods=['post'],
+            url_path='assistant-lignes/supprimer',
+            permission_classes=GARDES_LIGNES)
+    def assistant_lignes_supprimer(self, request, pk=None):
+        """Retire une ligne (d'une option ou des deux)."""
+        return _lignes_assistant(self, request, 'supprimer',
+                                 DA.LigneSupprimerAssistantRequest)
+
+    # api-only: écrite par l'assistant (action `ventes.devis.ligne_remplacer`), aucun écran.
+    @extend_schema(request=DA.LigneRemplacerAssistantRequest,
+                   responses=REPONSES_LIGNES)
+    @action(detail=True, methods=['post'],
+            url_path='assistant-lignes/remplacer',
+            permission_classes=GARDES_LIGNES)
+    def assistant_lignes_remplacer(self, request, pk=None):
+        """Remplace le produit d'une ligne par un autre produit du
+        catalogue, à sa place (« remplace la pergola par la structure
+        acier »)."""
+        return _lignes_assistant(self, request, 'remplacer',
+                                 DA.LigneRemplacerAssistantRequest)
 
     # api-only: écrite par l'assistant (action `ventes.devis.taille`, confirmée), aucun écran.
     @extend_schema(request=DA.TailleAssistantRequest,
@@ -522,5 +599,6 @@ class DevisAssistantActionsMixin:
             'nouveau_total_ttc': m['nouveau_total_ttc'],
             'composition': lignes_ttc(devis),
             'alertes': m['alertes'],
+            'options': m['options'],
             'lien': SA.lien_devis(devis.pk),
         })
