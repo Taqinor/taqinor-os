@@ -357,8 +357,9 @@ class ChaineReelleTest(SimpleTestCase):
 
     def test_la_meteo_publiee_compte_les_appels_reellement_partis(self):
         # UN pan, UNE requête : la mémoire du fournisseur est devant le
-        # client, elle ne le contourne pas.
-        self.assertEqual(self.blocs['meteo']['appels_pvgis'], 1)
+        # client, elle ne le contourne pas. ACAL706 : + UNE requête à 0°
+        # (l'horizontale du gain d'inclinaison).
+        self.assertEqual(self.blocs['meteo']['appels_pvgis'], 2)
         self.assertEqual(self.blocs['meteo']['service'], 'seriescalc')
 
     def test_l_entete_de_simulation_porte_l_empreinte_et_la_duree(self):

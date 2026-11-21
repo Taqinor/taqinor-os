@@ -140,6 +140,7 @@ import {
   nouveauPanDepuisContour, // ACAL71
   panVierge,
 } from './roofPro11/zones';
+import { monterAlignementRangees, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
 import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
 import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
@@ -3304,21 +3305,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     return null;
   }
 
-  /** Les modules RÉELLEMENT posés, dans le repère ENU du pavage courant. */
-  function pavagePose(): { cx: number; cy: number; face?: 'E' | 'W' }[] {
-    if (layoutEditor.isFreeMode()) return layoutEditor.freePanels().map((p) => ({ ...p }));
-    const grid = ctx.layoutPlan?.grid;
-    if (!grid) return [];
-    const st = ctx.layoutState;
-    if (st && st.cells.length === grid.panels.length && st.occupied.size) {
-      return [...st.occupied]
-        .filter((i) => i >= 0 && i < st.cells.length)
-        .sort((a, b) => a - b)
-        .map((i) => ({ cx: st.cells[i].cx, cy: st.cells[i].cy, face: st.cells[i].face }));
-    }
-    const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
-    return grid.panels.slice(0, n).map((p) => ({ cx: p.cx, cy: p.cy, face: p.face }));
-  }
+  /** Les modules RÉELLEMENT posés, dans le repère ENU du pavage courant (ACAL584 : extrait vers `alignementRangees.ts`). */
+  const pavagePose = () => pavagePoseDe(ctx, layoutEditor);
 
   // ═══════ CALX403 câblage — les modules posés EN TRAVERS d'une allée, nommés et teintés ═══════
   // `obstaclesUi` sait compter les modules qui chevauchent une allée de circulation, mais
@@ -3512,6 +3500,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     syncPrioriteRemplissage();
   }
   ensurePrioriteRemplissage();
+  monterAlignementRangees({ // ACAL584 — « Alignement des rangées » sous la priorité de pose
+    ctx, pose: pavagePose, retraitM: () => setbacks.lateralM, ancre: () => document.querySelector<HTMLElement>('.rp9-priorite'),
+    poser: (p) => layoutEditor.hydrateLayout(p, undefined, 'free'), photo: () => ctx.pushWorkshopHistory?.(),
+  });
 
   // PV63/CAL76 — QUATRE CHAMPS de retrait de rive (latéral / extrémité / acrotère / joint),
   // créés à côté du groupe « marge » si la page ne les fournit pas. Règle de saisie :

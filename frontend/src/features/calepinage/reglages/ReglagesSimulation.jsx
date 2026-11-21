@@ -80,6 +80,8 @@ function registreDepuisServeur(liste) {
       reference: typeof ligne.reference === 'string' ? ligne.reference : '',
       type: typeof ligne.type === 'string' ? ligne.type : '',
       valeurs: Array.isArray(ligne.valeurs) ? ligne.valeurs.map(String) : null,
+      // ACAL964 — {valeur technique: mot français}, `enum` seulement.
+      libelles: ligne.libelles && typeof ligne.libelles === 'object' ? ligne.libelles : null,
       // ACAL770 — {valeur: motif} : acceptées à l'écriture, jamais honorées.
       nonServies: ligne.valeurs_non_servies && typeof ligne.valeurs_non_servies === 'object'
         ? ligne.valeurs_non_servies : null,
@@ -211,9 +213,12 @@ function ChampValeur({ r, ligne, disabled, erreur, onChange }) {
     return (
       <select {...commun}>
         <option value="">— aucune —</option>
-        {options.map((v) => (r.nonServies?.[v]
-          ? <option key={v} value={v} disabled>{`${v} — indisponible`}</option>
-          : <option key={v} value={v}>{v}</option>))}
+        {options.map((v) => {
+          const mot = r.libelles?.[v] || v
+          return r.nonServies?.[v]
+            ? <option key={v} value={v} disabled>{`${mot} — indisponible`}</option>
+            : <option key={v} value={v}>{mot}</option>
+        })}
       </select>
     )
   }

@@ -469,56 +469,56 @@
         "ghi_mensuel": [
           {
             "mois": 1,
-            "ghi_kwh_m2": 0.88
+            "ghi_kwh_m2": 68.657
           },
           {
             "mois": 2,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 64.844
           },
           {
             "mois": 3,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 72.472
           },
           {
             "mois": 4,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 76.286
           },
           {
             "mois": 5,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 83.915
           },
           {
             "mois": 6,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 87.73
           },
           {
             "mois": 7,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 91.543
           },
           {
             "mois": 8,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 91.543
           },
           {
             "mois": 9,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 80.101
           },
           {
             "mois": 10,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 76.286
           },
           {
             "mois": 11,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 64.844
           },
           {
             "mois": 12,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 57.214
           }
         ],
-        "ghi_annuel_kwh_m2": 0.88,
+        "ghi_annuel_kwh_m2": 915.435,
         "plan_annuel_kwh_m2": 1052.75,
-        "gain_pct": 119530.68,
+        "gain_pct": 15.0,
         "motif_omission": ""
       }
     },
@@ -2048,56 +2048,56 @@
         "ghi_mensuel": [
           {
             "mois": 1,
-            "ghi_kwh_m2": 0.88
+            "ghi_kwh_m2": 68.657
           },
           {
             "mois": 2,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 64.844
           },
           {
             "mois": 3,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 72.472
           },
           {
             "mois": 4,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 76.286
           },
           {
             "mois": 5,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 83.915
           },
           {
             "mois": 6,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 87.73
           },
           {
             "mois": 7,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 91.543
           },
           {
             "mois": 8,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 91.543
           },
           {
             "mois": 9,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 80.101
           },
           {
             "mois": 10,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 76.286
           },
           {
             "mois": 11,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 64.844
           },
           {
             "mois": 12,
-            "ghi_kwh_m2": 0.0
+            "ghi_kwh_m2": 57.214
           }
         ],
-        "ghi_annuel_kwh_m2": 0.88,
+        "ghi_annuel_kwh_m2": 915.435,
         "plan_annuel_kwh_m2": 1052.75,
-        "gain_pct": 119530.68,
+        "gain_pct": 15.0,
         "motif_omission": ""
       }
     },

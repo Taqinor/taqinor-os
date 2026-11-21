@@ -521,7 +521,7 @@ describe('ACAL770 — les valeurs que le serveur ne sait pas honorer sont grisé
     const optionTmy = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
       .find((o) => o.value === 'tmy')
     expect(optionTmy.disabled).toBe(true)
-    expect(optionTmy.textContent).toBe('tmy — indisponible')
+    expect(optionTmy.textContent).toBe('Année type (TMY) — indisponible')
     const optionPluri = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
       .find((o) => o.value === 'pluriannuel')
     expect(optionPluri.disabled).toBe(false)
@@ -571,5 +571,40 @@ describe('ACAL947 — toutes les erreurs de réglage d’un coup, sous le bouton
     const bouton = screen.getByTestId('calx69-enregistrer')
     expect(bouton.compareDocumentPosition(liste) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(champValeur('sigma_modele_pct').value).toBe('abc')
+  })
+})
+
+describe('ACAL964 — les listes montrent des mots français et envoient la valeur technique', () => {
+  it('« Année type (TMY) » s’affiche pour tmy ; une valeur hors liste reste telle quelle', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage')
+    servi.data.simulation.modele_degradation = { valeur: 'inconnu', source: 'societe', reference: '' }
+    mocks.getParametres.mockResolvedValue(servi)
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    const options = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
+    const tmy = options.find((o) => o.value === 'tmy')
+    expect(tmy.textContent).toContain('Année type (TMY)')
+    expect(options.find((o) => o.value === 'pluriannuel').textContent).toBe('Plusieurs années réelles')
+    // plus aucun mot à tiret bas dans les listes des enums du registre
+    for (const ligne of servi.data.registre.simulation.filter((r) => r.type === 'enum')) {
+      for (const o of champValeur(ligne.cle).querySelectorAll('option')) {
+        if (o.value) expect(o.textContent).not.toMatch(/_/)
+      }
+    }
+    // la valeur stockée hors liste reste affichée telle quelle
+    expect(champValeur('modele_degradation').value).toBe('inconnu')
+  })
+
+  it('l’aller-retour envoie la clé technique, jamais le libellé', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: {} })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    fireEvent.change(champValeur('mode_meteo'), { target: { value: 'pluriannuel' } })
+    fireEvent.change(champSource('mode_meteo'), { target: { value: 'societe' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0].simulation.mode_meteo.valeur).toBe('pluriannuel')
   })
 })
