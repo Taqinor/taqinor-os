@@ -166,3 +166,12 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   refusé 400 quatre fois en silence). Dossier : `docs/assistant-copilote.md` §17.
 - **Règle** : une action neuve qui écrit naît HORS de `ACTIONS_DIRECTES` (carte) ; l'y ajouter seulement si elle ne
   touche ni argent, ni client, ni suppression, ni stock.
+
+## L4 du 21/11/2026 — connaissance de l'ERP et confidentialité par rôle
+- La **carte de l'ERP** (`assistant/carte_erp.md`) est GÉNÉRÉE par `scripts/assistant_carte_erp.py` et vérifiée en CI
+  (`--check`) : après tout ajout d'écran, d'action d'assistant ou de droit, régénérer la carte dans la même PR.
+- Prix d'achat / marge : seulement aux rôles `prix_achat_voir` / `marge_voir`, jamais dans un texte client (0 fuite sur
+  132 attaques réelles, Directeur servi). Ne jamais réécrire « jamais, même au Directeur ».
+- Choix pris SEUL (pas une décision de Reda) : `DIRECTES_SENSIBLES` — accepter / convertir / refuser un devis, perdu,
+  changer d'étape, réaffecter, déléguer repassent par une carte après une lecture de données dans le tour (injection
+  par une note de lead). À lui soumettre s'il trouve ces cartes gênantes. Dossier §18.

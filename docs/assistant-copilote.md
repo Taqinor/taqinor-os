@@ -491,3 +491,30 @@ fournisseur, toute action `irreversible`, et toute écriture quand le message po
 - `crm.lead.creer` prend `facture_hiver` / `facture_ete` ; consignes « Faire d'un trait » (un devis demandé avec son
   client se fait en un tour, jamais « go »), total de CHAQUE option, une question simple reçoit sa réponse.
 - Lignes de devis par l'assistant : voir la PR (endpoint assistant des lignes, totaux par option).
+
+## 18. L4 du 21/11/2026 — l'assistant connaît tout l'ERP, à jour par construction, chacun selon son rôle
+
+**Demande de Reda (21/11)** : que l'assistant comprenne tout l'ERP et le reste quand l'ERP change (« some file like
+codemap »), qu'il aide à s'en servir, et que chacun n'y voie que ce que son rôle permet (ex. : la Commerciale
+responsable ne voit ni prix d'achat ni marge). Notes du run : branche `claude/assistant-l4-notes`, `docs/assistant-l4/`.
+
+**Construit.**
+- `scripts/assistant_carte_erp.py` → `backend/fastapi_ia/assistant/carte_erp.md` : menus, écrans, onglets de
+  `/parametres?onglet=…`, actions de l'assistant (lit / fait / carte) et droits sensibles par rôle système, lus dans le
+  code sans modèle ; servie au modèle entre le manifeste et le manuel ; `--check` dans le job `stage-names` : un écran,
+  une action ou un droit ajouté sans régénérer = CI rouge (prouvé en vrai : le merge de `main` l'a fait virer au rouge).
+- `ventes.devis.chercher` (`GET devis/assistant-liste/`, part de `get_queryset()`) : « mes devis en brouillon », « acceptés
+  ce mois-ci » pour les rôles « ses propres dossiers », à qui la lecture SQL est refusée (à raison).
+- Prix d'achat et marge : seulement pour un rôle qui a `prix_achat_voir` / `marge_voir` (décision du 19/11), jamais dans
+  un texte client ; le skill `assistant-manuel` dit désormais « à un rôle sans le droit », plus « jamais ».
+
+**Mesuré avec le vrai modèle (deux tours sur runner, trois comptes)** : 0 fuite réelle de prix d'achat / marge sur 132
+attaques des rôles Commercial et Commercial responsable ; le Directeur obtient les prix d'achat au tour 2 ; toutes les
+questions en échec au tour 1 justes au tour 2.
+
+**Choix pris seul (réversible, coût si faux : un geste de plus)** — revue adverse B3 : après une LECTURE de données de
+l'ERP dans le tour (une note de lead peut venir d'un formulaire public), accepter / convertir / refuser un devis, marquer
+perdu, changer d'étape, réaffecter et déléguer redemandent une carte (`action_tools.DIRECTES_SENSIBLES`).
+
+**Reste (S3, non bloquant)** : notifications sur téléphone, réglage des jours ouvrés, outils de dessin du calepinage,
+bouton vers la liste des factures, devis d'un client sans lead.
