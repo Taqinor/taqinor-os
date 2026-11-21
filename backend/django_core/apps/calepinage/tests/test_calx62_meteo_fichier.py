@@ -201,15 +201,18 @@ class ComposantesTest(SimpleTestCase):
 class RefusQuiNommentTest(SimpleTestCase):
     """Chaque refus pointe SA colonne — et sa ligne quand elle est connue."""
 
-    def test_un_fichier_seulement_horizontal_est_refuse_en_nommant_la_colonne(self):
+    def test_un_fichier_au_global_seul_est_accepte_et_marque_a_decomposer(self):
+        # ACAL456 : le refus du global seul a disparu du dépôt ; c'est la
+        # simulation qui exige le modèle de décomposition saisi.
         lignes = ['horodatage;ghi_w_m2;t2m_c',
                   '2021-01-15T13:00:00+01:00;780.0;19.8']
-        with self.assertRaises(MeteoFichierRefuse) as leve:
-            _lire('\r\n'.join(lignes))
+        serie = _lire('\r\n'.join(lignes))
 
-        self.assertEqual(leve.exception.champ, 'ghi_w_m2')
-        self.assertIn('CALX198', leve.exception.motif)
-        self.assertIn('gi_w_m2', leve.exception.motif)
+        self.assertEqual(serie['plan_des_donnees'], 'horizontal')
+        self.assertTrue(serie['a_decomposer'])
+        self.assertEqual(serie['meteo']['composantes_origine'], 'deduites')
+        self.assertIsNone(serie['points'][0]['dni_w_m2'])
+        self.assertEqual(serie['points'][0]['ghi_w_m2'], 780.0)
 
     def test_sans_aucune_irradiance_de_plan_le_refus_nomme_la_colonne_attendue(self):
         lignes = ['horodatage;t2m_c', '2021-01-15T13:00:00+01:00;19.8']
@@ -483,12 +486,22 @@ class ContratCommitteTest(SimpleTestCase):
         # Le nombre de points, jamais les points eux-mêmes.
         self.assertIsInstance(exemple['points'], int)
 
-    def test_le_refus_horizontal_committe_est_celui_que_le_service_leve(self):
-        lignes = ['horodatage;ghi_w_m2', '2021-01-15T13:00:00+01:00;780.0']
+    def test_le_refus_committe_dune_composante_seule_est_celui_du_service(self):
+        lignes = ['horodatage,ghi_w_m2,dhi_w_m2',
+                  '2021-01-15T13:00:00+01:00,780.0,100.0']
         with self.assertRaises(MeteoFichierRefuse) as leve:
             _lire('\r\n'.join(lignes))
-        self.assertEqual(CONTRAT['exemple_refus_horizontal']['ghi_w_m2'][0],
+        self.assertEqual(CONTRAT['exemple_refus_composante_seule']['dni_w_m2'][0],
                          leve.exception.motif)
+        self.assertNotIn('exemple_refus_horizontal', CONTRAT)
+
+    def test_lexemple_committe_du_global_seul_est_celui_du_service(self):
+        lignes = ['horodatage;ghi_w_m2', '2021-01-15T13:00:00+01:00;780.0']
+        serie = _lire('\r\n'.join(lignes))
+        exemple = CONTRAT['exemple_global_seul_accepte']
+        self.assertEqual(exemple['meteo']['composantes_origine'],
+                         serie['meteo']['composantes_origine'])
+        self.assertEqual(exemple['message'], CONTRAT['exemple']['message'])
 
     def test_le_refus_sans_fuseau_committe_est_celui_que_le_service_leve(self):
         lignes = ['horodatage;gi_w_m2', '2021-01-15T13:00:00;780.0']
@@ -666,8 +679,11 @@ PAN = {'inclinaison_deg': 20.0, 'azimut_pvgis_deg': 20.0,
 ALBEDO_ESSAI = 0.2
 
 
-def _reglages(modele='isotropic', albedo=ALBEDO_ESSAI):
+def _reglages(modele='isotropic', albedo=ALBEDO_ESSAI, decomposition=None):
     valeurs = {}
+    if decomposition is not None:
+        valeurs['modele_decomposition'] = {'valeur': decomposition,
+                                           'source': 'societe'}
     if modele is not None:
         valeurs['modele_transposition'] = {'valeur': modele, 'source': 'societe'}
     if albedo is not None:
@@ -820,3 +836,163 @@ class TranspositionTest(SimpleTestCase):
         self.assertEqual([p['gi_w_m2'] for p in servie['points']],
                          [p['gi_w_m2'] for p in plan['points']])
         self.assertNotIn('transposition', provenance['provenance'])
+
+
+# --- ACAL456 : direct et diffus DÉDUITS d'un global horizontal seul -----------
+def _csv_global_seul(lignes):
+    sortie = ['horodatage,ghi_w_m2,t2m_c,ws10m']
+    for annee, mois, jour, heure, reel in lignes:
+        sortie.append('%04d-%02d-%02dT%02d:00:00+00:00,%s,%s,%s' % (
+            annee, mois, jour, heure - 1, reel['G(h)'], reel['T2m'], reel['WS10m']))
+    return '\n'.join(sortie) + '\n'
+
+
+def _zenith_instants_pvlib(points, dz=0.0):
+    import pandas as pd
+    from pvlib import solarposition
+
+    instants = pd.DatetimeIndex([datetime.datetime(
+        p['annee'], p['mois'], p['jour'], p['heure']) + datetime.timedelta(
+        minutes=30) for p in points], tz='UTC')
+    soleil = solarposition.get_solarposition(instants, PAN['lat'], PAN['lon'])
+    return instants, soleil['zenith'].to_numpy() + dz
+
+
+def _dni_dhi_pvlib(points, modele, dz=0.0):
+    """La référence : ``pvlib.irradiance.erbs`` / ``disc`` appelé dans le test."""
+    import numpy as np
+    from pvlib import irradiance
+
+    instants, zenith = _zenith_instants_pvlib(points, dz)
+    ghi = np.array([p['ghi_w_m2'] for p in points], dtype=float)
+    if modele == 'erbs':
+        rendu = irradiance.erbs(ghi, zenith, instants)
+        dni, dhi = rendu['dni'].to_numpy(), rendu['dhi'].to_numpy()
+    else:
+        dni = irradiance.disc(ghi, zenith, instants)['dni'].to_numpy()
+        dhi = ghi - dni * np.cos(np.radians(zenith))
+    nuit = zenith >= 90.0
+    return np.where(nuit, 0.0, dni), np.where(nuit, 0.0, dhi)
+
+
+class DecompositionTest(SimpleTestCase):
+    """ACAL456 — le global seul, décomposé par un modèle pvlib NOMMÉ."""
+
+    def setUp(self):
+        from apps.calepinage.services.transposition import (
+            transposer_serie_horizontale)
+        self.transposer = transposer_serie_horizontale
+        self.lignes = _quarante_huit_heures()
+        self.serie = lire_serie_meteo(
+            _csv_global_seul(self.lignes).encode('utf-8'),
+            fournisseur='PVGIS', obtenue_le=OBTENUE_LE)
+        self.complete = _serie_horizontale_deposee()
+
+    def test_le_depot_accepte_le_global_seul(self):
+        self.assertTrue(self.serie['a_decomposer'])
+        self.assertEqual(len(self.serie['points']), 48)
+        self.assertEqual([p['ghi_w_m2'] for p in self.serie['points']],
+                         [p['ghi_w_m2'] for p in self.complete['points']])
+        self.assertEqual(self.serie['meteo']['composantes_origine'], 'deduites')
+        self.assertEqual(self.complete['meteo']['composantes_origine'], 'mesurees')
+        self.assertFalse(self.complete['a_decomposer'])
+
+    def test_dni_dhi_sortent_du_meme_modele_pvlib_que_dans_le_test(self):
+        from apps.calepinage.services.decomposition import deduire_direct_diffus
+
+        points = self.serie['points']
+        instants, zenith = _zenith_instants_pvlib(points)
+        naifs = [i.to_pydatetime().replace(tzinfo=None) for i in instants]
+        for modele in ('erbs', 'disc'):
+            ref_dni, ref_dhi = _dni_dhi_pvlib(points, modele)
+            dni, dhi = deduire_direct_diffus(
+                [p['ghi_w_m2'] for p in points], zenith, naifs, modele)
+            for rang in range(len(points)):
+                self.assertAlmostEqual(dni[rang], ref_dni[rang], delta=1e-9)
+                self.assertAlmostEqual(dhi[rang], ref_dhi[rang], delta=1e-9)
+            self.assertGreater(max(dni), 0.0)
+
+    def test_coherence_physique_dni_cos_plus_dhi_egale_ghi(self):
+        import numpy as np
+
+        from apps.calepinage.services.decomposition import deduire_direct_diffus
+
+        points = self.serie['points']
+        instants, zenith = _zenith_instants_pvlib(points)
+        naifs = [i.to_pydatetime().replace(tzinfo=None) for i in instants]
+        ghi = np.array([p['ghi_w_m2'] for p in points])
+        for modele in ('erbs', 'disc'):
+            dni, dhi = deduire_direct_diffus(ghi, zenith, naifs, modele)
+            jour = zenith < 87.0  # borne max_zenith de pvlib
+            bilan = np.array(dni) * np.cos(np.radians(zenith)) + np.array(dhi)
+            self.assertLess(float(max(abs(bilan[jour] - ghi[jour]))), 1e-6, modele)
+
+    def test_la_nuit_dni_et_dhi_sont_nuls_sans_valeur_inventee(self):
+        from apps.calepinage.services.decomposition import deduire_direct_diffus
+
+        instants = [datetime.datetime(2020, 1, 15, 1, 30)] * 2
+        for modele in ('erbs', 'disc'):
+            self.assertEqual(
+                deduire_direct_diffus([0.0, 3.0], [120.0, 95.0], instants, modele),
+                ([0.0, 0.0], [0.0, 0.0]))
+
+    def test_la_serie_transposee_vient_de_la_decomposition_puis_de_la_transposition(self):
+        points = self.serie['points']
+
+        def chaine(dz=0.0, da=0.0):
+            dni, dhi = _dni_dhi_pvlib(points, 'erbs', dz)
+            copies = [dict(p, dni_w_m2=float(a), dhi_w_m2=float(b))
+                      for p, a, b in zip(points, dni, dhi)]
+            return _pvlib_direct(copies, 'isotropic', dz=dz, da=da)
+
+        reference = chaine()
+        tolerance = max(float(max(abs(chaine(dz, da)['poa_global']
+                                      - reference['poa_global'])))
+                        for dz, da in ((0.02, 0.0), (-0.02, 0.0), (0.0, 0.02)))
+        self.assertGreater(tolerance, 0.0)
+        rendu = self.transposer(self.serie, PAN, _reglages(
+            'isotropic', decomposition='erbs'))
+        for rang, point in enumerate(rendu['points']):
+            self.assertAlmostEqual(point['gi_w_m2'], reference['poa_global'][rang],
+                                   delta=tolerance, msg=rang)
+        # La décomposition n'est pas une copie du fichier complet.
+        mesure = self.transposer(self.complete, PAN, _reglages('isotropic'))
+        self.assertNotEqual([p['gi_w_m2'] for p in rendu['points']],
+                            [p['gi_w_m2'] for p in mesure['points']])
+
+    def test_le_bloc_meteo_marque_les_composantes_deduites(self):
+        rendu = self.transposer(self.serie, PAN, _reglages(
+            'perez', decomposition='disc'))
+        meteo = rendu['meteo']
+        self.assertEqual(meteo['composantes_origine'], 'deduites')
+        self.assertEqual(meteo['decomposition']['modele'], 'disc')
+        self.assertIn('Maxwell', meteo['decomposition']['reference'])
+        self.assertEqual(meteo['decomposition']['hypothese'],
+                         'composantes déduites du global, non mesurées')
+        attendu = METEO_CONTRAT['exemple_horizontal_deduit']['meteo']
+        self.assertEqual(sorted(attendu['decomposition']),
+                         sorted(meteo['decomposition']))
+        self.assertEqual(attendu['composantes_origine'],
+                         meteo['composantes_origine'])
+        self.assertIn(attendu['decomposition']['modele'], ('erbs', 'disc'))
+
+    def test_un_fichier_aux_composantes_mesurees_ne_publie_pas_de_decomposition(self):
+        rendu = self.transposer(self.complete, PAN, _reglages('isotropic'))
+        self.assertEqual(rendu['meteo']['composantes_origine'], 'mesurees')
+        self.assertNotIn('decomposition', rendu['meteo'])
+        self.assertEqual(
+            METEO_CONTRAT['exemple_horizontal']['meteo']['composantes_origine'],
+            'mesurees')
+
+    def test_le_reglage_absent_refuse_en_nommant_la_cle_sans_choisir_a_sa_place(self):
+        from apps.calepinage.services.pvgis_serie import EntreeInvalide
+
+        with self.assertRaises(EntreeInvalide) as refus:
+            self.transposer(self.serie, PAN, _reglages('isotropic'))
+        self.assertEqual(refus.exception.champ,
+                         'parametres.simulation.modele_decomposition')
+        self.assertIn('parametres.simulation.modele_decomposition',
+                      str(refus.exception))
+        with self.assertRaises(EntreeInvalide):
+            self.transposer(self.serie, PAN, _reglages(
+                'isotropic', decomposition='perez'))

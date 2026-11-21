@@ -116,13 +116,12 @@ OCTETS_MAX = LIGNES_MAX * 160
 SEPARATEURS = (';', ',')
 
 MOTIF_HORIZONTAL_SEUL = (
-    "Ce fichier ne porte que l'irradiance globale HORIZONTALE "
-    '(colonne « {colonne} ») : la chaîne de pertes a besoin de l\'irradiance '
-    'sur le PLAN des modules (colonne « {attendue} »). La transposition '
-    'horizontal → plan n\'est pas disponible dans ce module (elle demande le '
-    'modèle à une diode, tâche CALX198) : aucune irradiance de plan n\'est '
-    'supposée à partir de l\'horizontale. Exportez la série en irradiance de '
-    'plan (POA), ou laissez PVGIS la calculer.'
+    "Cette colonne (« {colonne} ») porte une irradiance HORIZONTALE sous un nom "
+    "que le dépôt ne lit pas : la chaîne de pertes a besoin de l'irradiance sur "
+    "le PLAN des modules (colonne « {attendue} ») ou, à l'horizontale, de la "
+    'colonne « ghi_w_m2 » (avec dni_w_m2 et dhi_w_m2, ou seule : ses composantes '
+    "sont alors déduites par le modèle saisi). Aucune irradiance de plan n'est "
+    'supposée.'
 )
 
 MOTIF_SANS_FUSEAU = (
@@ -380,10 +379,11 @@ def lire_serie_meteo(fichier, *, fournisseur='', nom_fichier='',
     contenu = _octets(fichier)
     lignes = _lignes_utiles(_texte(contenu))
     separateur, titres, rang_entete = _entete(lignes)
-    if COLONNE_IRRADIANCE_PLAN not in titres and all(
-            colonne in titres for colonne in ('ghi_w_m2', 'dni_w_m2', 'dhi_w_m2')):
+    if COLONNE_IRRADIANCE_PLAN not in titres and 'ghi_w_m2' in titres:
         # ACAL455 — global, direct et diffus horizontaux : lus par ACAL454,
         # transposés plus tard vers CHAQUE pan (``services/transposition.py``).
+        # ACAL456 — le global SEUL passe aussi : ses composantes sont déduites
+        # à la simulation (``services/decomposition.py``), modèle saisi.
         from .meteo_horizontale import lire_serie_horizontale
         serie = lire_serie_horizontale(contenu, format='csv', fournisseur=fournisseur,
                                        nom_fichier=nom_fichier, obtenue_le=obtenue_le)

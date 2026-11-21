@@ -122,12 +122,18 @@ def _points_epw(lignes, fuseau):
 
 
 def _points_csv(lignes, rang_entete, separateur, titres):
+    # ACAL456 — le global SEUL (ni dni ni dhi) est admis : les composantes sont
+    # alors déduites plus tard (``decomposition.py``) ; une seule des deux
+    # colonnes reste refusée.
+    seul = 'ghi_w_m2' in titres and not {'dni_w_m2', 'dhi_w_m2'} & set(titres)
     for colonne in COLONNES_HORIZONTALES_REQUISES:
-        if colonne not in titres:
+        if colonne not in titres and not (seul and colonne != 'ghi_w_m2'):
             raise MeteoFichierRefuse(
-                'Aucune colonne « {0} » dans ce fichier horizontal : le global '
-                'seul ne suffit pas, aucune composante n\'est supposée à sa '
-                'place.'.format(colonne), champ=colonne, ligne=rang_entete)
+                'Aucune colonne « {0} » dans ce fichier horizontal : donnez '
+                'dni_w_m2 ET dhi_w_m2, ou ni l\'un ni l\'autre (le global seul '
+                'est décomposé par le modèle saisi) — aucune composante n\'est '
+                'supposée à sa place.'.format(colonne),
+                champ=colonne, ligne=rang_entete)
     points, moments = [], []
     for rang, ligne in lignes:
         if rang <= rang_entete:
@@ -139,6 +145,9 @@ def _points_csv(lignes, rang_entete, separateur, titres):
         point = {'annee': moment.year, 'mois': moment.month, 'jour': moment.day,
                  'heure': moment.hour}
         for nom in COLONNES_HORIZONTALES_REQUISES:
+            if seul and nom != 'ghi_w_m2':
+                point[nom] = None
+                continue
             point[nom] = _cellule_numerique(lue.get(nom), colonne=nom,
                                             ligne=rang, obligatoire=True)
         for nom in ('t2m_c', 'ws10m'):
@@ -179,7 +188,9 @@ def lire_serie_horizontale(fichier, *, format, fournisseur='', nom_fichier='',
     Returns:
         dict — ``service`` (``'fichier'``), ``plan_des_donnees``
         (``'horizontal'``), ``points`` (``annee, mois, jour, heure, ghi_w_m2,
-        dni_w_m2, dhi_w_m2, t2m_c, ws10m``), ``mode``, ``annees`` et ``meteo``.
+        dni_w_m2, dhi_w_m2, t2m_c, ws10m``), ``mode``, ``annees`` et ``meteo``
+        (``composantes_origine``). ACAL456 : un CSV au global seul rend
+        ``dni_w_m2``/``dhi_w_m2`` à ``None`` et ``a_decomposer: True``.
 
     Raises:
         MeteoFichierRefuse: format inconnu, fuseau absent (ligne 1), valeur de
@@ -219,6 +230,8 @@ def lire_serie_horizontale(fichier, *, format, fournisseur='', nom_fichier='',
         lignes_lues=len(points), annees=annees, decalages=decalages,
         obtenue_le=horodatage)
     meteo['mode'] = mode
+    a_decomposer = points[0]['dni_w_m2'] is None
+    meteo['composantes_origine'] = 'deduites' if a_decomposer else 'mesurees'
     return {'service': 'fichier', 'plan_des_donnees': 'horizontal',
             'points': points, 'mode': mode, 'annees': annees, 'meteo': meteo,
-            'url': None, 'depuis_cache': False}
+            'a_decomposer': a_decomposer, 'url': None, 'depuis_cache': False}
