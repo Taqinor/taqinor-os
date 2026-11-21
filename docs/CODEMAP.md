@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 31e0869249aa43c64d720c8a2297347caa3cea1622770e095838286c9e137b83
-Plan fingerprint: 7b9d95af4c9cad0810c1cfa80b31efbee5d1511dae3ee2137411d23d04e83320
+Structure fingerprint: 63b2665ff2b01bfd0ae50d845d9907dd81e26a3baeed483a96b6dfc09d0d5dcc
+Plan fingerprint: 4aa4c7fb6980a3a2b1fd9cc45144a4fec276adb7d2254ec9e5ec721369e5f8f0
 
 
 
@@ -620,7 +620,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1336)**
+**Done (1337)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1615,6 +1615,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX335` — Figer le contrat du catalogue de fixation et de sa nomenclature
 - `CALX336` — Figer le contrat de la reprise d'une visite technique dans un calepinage
 - `CALX337` — Figer le contrat des écarts de pose réelle
+- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
 - `CALX340` — Étendre le contrat des réglages avec les zones de vent et de neige société
 - `CALX341` — Construire la comparaison de jusqu'à 5 calepinages et son export tableur
 - `CALX342` — Servir la comparaison de calepinages sur sa propre route de liste
@@ -1959,7 +1960,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (115)**
+**Open — to build (117)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2051,6 +2052,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX199` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX200` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
+- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `CALX373` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX374` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX375` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
@@ -2077,15 +2080,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT108` — [GATED: geste du fondateur — `reparer_vente_active --lister` = 0 en prod ; aujourd'hui…
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
-**Blocked — awaiting founder decision (11)**
+**Blocked — awaiting founder decision (8)**
 
 - `AGR113` — ET0 et pluie efficace par région tirées de FAO CLIMWAT (ou de la DMN), sinon étiquetées…
 - `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
 - `ENF19` — Duplicats (1 181) à zéro
-- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
-- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
-- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `QC2` — [GATED: paid — Inforisk/Charika API] Registry-backed autocomplete (the true Odoo-style…
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
