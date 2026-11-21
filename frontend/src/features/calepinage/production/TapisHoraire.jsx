@@ -6,6 +6,7 @@ import {
   CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import calepinageApi from '../../../api/calepinageApi'
+import { lireCsvHoraire, texteDuFichier } from './serieHoraire'
 import { formatNumber } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 import { ChartEmpty, ChartFrame, ChartTooltip } from '../../../ui/charts'
@@ -73,6 +74,9 @@ const GRANDEURS = [
 
 const LIGNE_JOUR = 'jour'
 
+/** ACAL446 — les sept colonnes historiques + `charge_kwh` (CALX313). */
+const COLONNES_HORAIRE = 'annee,mois,jour,heure,production_kw,irradiance_plan_w_m2,charge_kwh'
+
 const SANS_SERIE = (
   "La série horaire n'est pas encore enregistrée pour ce calepinage : le "
   + 'tapis reste vide plutôt que de peindre des zéros.'
@@ -88,64 +92,6 @@ function nombre(valeur) {
   if (valeur === null || valeur === undefined || valeur === '') return null
   const lu = Number(valeur)
   return Number.isFinite(lu) ? lu : null
-}
-
-/** Un nombre écrit à la française par le serveur (`1,25`), ou `null`. */
-function nombreFrancais(cellule) {
-  const texte = String(cellule ?? '').trim()
-  if (!texte) return null
-  // `\s` en JS couvre DEJA l'espace insecable (U+00A0) et l'espace fin
-  // insecable (U+202F) qu'un serveur peut emettre : aucun caractere
-  // invisible n'entre dans ce fichier.
-  const lu = Number(texte.replace(/\s/g, '').replace(',', '.'))
-  return Number.isFinite(lu) ? lu : null
-}
-
-/** Le texte d'un fichier servi en blob (navigateur) ou déjà en chaîne. */
-async function texteDuFichier(donnees) {
-  if (typeof donnees === 'string') return donnees
-  if (donnees && typeof donnees.text === 'function') return donnees.text()
-  return ''
-}
-
-/**
- * Les points de la série, lus dans le CSV que le serveur produit (CAL144).
- *
- * L'en-tête de provenance précède le tableau : on repère la ligne de titres
- * (`annee;mois;…`) et on ne lit que ce qui suit. Une cellule vide reste
- * `null` — le serveur l'a laissée vide parce que l'heure n'a pas de mesure.
- */
-function lireCsvHoraire(texte) {
-  const brut = String(texte || '')
-  // Le serveur prefixe le fichier du BOM qu'Excel attend (CAL144) : on le
-  // retire par son POINT DE CODE, jamais par un caractere colle dans la
-  // source.
-  const sansBom = brut.charCodeAt(0) === 0xFEFF ? brut.slice(1) : brut
-  const lignes = sansBom.split('\n').map((ligne) => ligne.replace('\r', ''))
-  const depart = lignes.findIndex((ligne) => ligne.split(';')[0] === 'annee')
-  if (depart < 0) return null
-  const titres = lignes[depart].split(';').map((titre) => titre.trim())
-  const points = []
-  for (const ligne of lignes.slice(depart + 1)) {
-    if (!ligne.trim()) continue
-    const cellules = ligne.split(';')
-    const point = {}
-    titres.forEach((titre, rang) => { point[titre] = cellules[rang] })
-    const annee = nombreFrancais(point.annee)
-    if (annee === null) continue
-    points.push({
-      annee,
-      mois: nombreFrancais(point.mois),
-      jour: nombreFrancais(point.jour),
-      heure: nombreFrancais(point.heure),
-      p_ac_kw: nombreFrancais(point.production_kw),
-      gi_w_m2: nombreFrancais(point.irradiance_plan_w_m2),
-      // La courbe de charge ne figure pas dans ce fichier (sept colonnes
-      // historiques, CAL144) : elle reste absente, jamais inventée.
-      charge_kwh: null,
-    })
-  }
-  return { points, colonnes: titres, tronquee: null, motif_troncature: '' }
 }
 
 /** Le refus du serveur, tel qu'il l'a écrit — ou `null`. */
@@ -243,7 +189,7 @@ function journeesTypes(points, cle) {
 
 export default function TapisHoraire({
   calepinageId, serie: serieProposee, geometriePresente = true,
-  perime = false, motif = '',
+  perime = false, motif = '', motifConsommation = '',
 }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -293,7 +239,7 @@ export default function TapisHoraire({
         setEnCours(false)
       })
     }
-    return Promise.resolve(calepinageApi.calepinages.exportCsv(id, 'horaire'))
+    return Promise.resolve(calepinageApi.calepinages.exportCsv(id, 'horaire', COLONNES_HORAIRE))
       .then(async (res) => setChargee(lireCsvHoraire(await texteDuFichier(res?.data))))
       .catch(async (erreur) => setRefus(await motifDuRefus(erreur) || SANS_SERIE))
       .finally(() => setEnCours(false))
@@ -508,6 +454,11 @@ export default function TapisHoraire({
               </li>
             ))}
           </ul>
+          {journeeActive && !chargeActive && (
+            <p className="text-xs text-muted-foreground" data-testid="acal446-sans-charge">
+              Consommation non tracée : {motifConsommation || 'consommation non calculée'}
+            </p>
+          )}
         </div>
       )}
     </Card>

@@ -28,6 +28,8 @@ import { polyfillResizeObserver } from '../../../test/selectNatif'
 const CONTRAT = documentContrat('calepinage', 'calepinage_serie_horaire')
 
 const exportCsv = vi.fn()
+//: ACAL446 — la liste de colonnes demandée à la porte d'export (CALX313).
+const COLONNES_DEMANDEES = 'annee,mois,jour,heure,production_kw,irradiance_plan_w_m2,charge_kwh'
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: { exportCsv: (...a) => exportCsv(...a) } },
 }))
@@ -161,7 +163,7 @@ describe('CALX64 — la série lue par la MÊME porte que le panneau Séries', (
     rendre()
 
     await screen.findByTestId('cal-tapis')
-    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire')
+    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES)
     expect(screen.getAllByTestId('cal-tapis-jour')).toHaveLength(2)
     // 6,800 et 7,200 kW sont les bornes RÉELLEMENT publiées par le fichier :
     // rien n'est arrondi vers un chiffre plus flatteur.
@@ -244,7 +246,7 @@ describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — un seul essai', () =>
       <MemoryRouter><TapisHoraire calepinageId={10} /></MemoryRouter>,
     )
     await waitFor(() => expect(exportCsv).toHaveBeenCalledTimes(2))
-    expect(exportCsv).toHaveBeenNthCalledWith(2, 10, 'horaire')
+    expect(exportCsv).toHaveBeenNthCalledWith(2, 10, 'horaire', COLONNES_DEMANDEES)
   })
 })
 
@@ -264,7 +266,7 @@ describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — geometriePresente', (
 
     await screen.findByTestId('cal-tapis-vide')
     expect(exportCsv).toHaveBeenCalledTimes(1)
-    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire')
+    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES)
   })
 
   it('prop absente (autre appelant) : comportement d’aujourd’hui, la porte '
@@ -295,5 +297,34 @@ describe('ACAL218 — simulation périmée', () => {
     expect(await screen.findByTestId('cal-tapis-perime'))
       .toHaveTextContent('La simulation est périmée')
     expect(exportCsv).not.toHaveBeenCalled()
+  })
+})
+
+describe('ACAL446 — la consommation servie est tracée', () => {
+  const csv = (avecCharge) => [
+    'Provenance;Module Calepinage',
+    '',
+    `annee;mois;jour;heure;production_kw;irradiance_plan_w_m2${avecCharge ? ';charge_kwh' : ''}`,
+    ...[10, 11, 12, 13].map((h) => `2021;6;15;${h};5,${h};800,00${avecCharge ? `;0,${h}` : ''}`),
+  ].join('\r\n')
+
+  it('colonnes demandées avec charge_kwh : la ligne « Consommation » se trace', async () => {
+    exportCsv.mockResolvedValue({ data: csv(true) })
+    rendre()
+
+    await screen.findByTestId('cal-tapis')
+    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire', COLONNES_DEMANDEES)
+    expect(await screen.findByText('Consommation (kWh)')).toBeInTheDocument()
+    expect(screen.queryByTestId('acal446-sans-charge')).toBeNull()
+  })
+
+  it('sans charge_kwh : aucune ligne et le motif servi est nommé', async () => {
+    exportCsv.mockResolvedValue({ data: csv(false) })
+    rendre({ motifConsommation: 'Aucune courbe de charge saisie.' })
+
+    await screen.findByTestId('cal-tapis')
+    expect(screen.queryByText('Consommation (kWh)')).toBeNull()
+    expect(screen.getByTestId('acal446-sans-charge'))
+      .toHaveTextContent('Consommation non tracée : Aucune courbe de charge saisie.')
   })
 })

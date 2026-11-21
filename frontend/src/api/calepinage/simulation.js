@@ -10,8 +10,13 @@ export const simulation = {
     // FICHIER (blob) ; quand la donnée manque, le serveur refuse en 400 et
     // NOMME le champ absent (`points`, `mensuel`, `shading12x24`) — l'écran
     // affiche ce motif-là sous le bouton, il n'en invente aucun.
-    exportCsv: (id, quoi) =>
-      api.get(`${pivot(id)}export-csv/`, { responseType: 'blob', params: { quoi } }),
+    // ACAL446 — `colonnes` OPTIONNEL (CSV de noms, CALX313) : absent ⇒ le
+    // serveur sert ses colonnes par défaut, l'appel d'export reste inchangé.
+    exportCsv: (id, quoi, colonnes) =>
+      api.get(`${pivot(id)}export-csv/`, {
+        responseType: 'blob',
+        params: colonnes ? { quoi, colonnes } : { quoi },
+      }),
 
     // CALX62 — le DÉPÔT d'une série météo horaire de la société, à la place
     // de PVGIS (`views/meteo_fichier.py`, contrat
