@@ -363,6 +363,10 @@ export const ALL_HOOKS = [
   'cal-onglet-2d',
   'cal-onglet-3d',
   'cal-onglets-vue',
+  'cal-vue-dessus',
+  'cal-vue-face-panneaux',
+  'cal-vue-sud',
+  'cal-vue-trois-quarts',
   'cal-panneau-calques',
   // ── atelier/PanneauActivite.jsx ──
   'cal-activite',

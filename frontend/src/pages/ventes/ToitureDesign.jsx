@@ -1373,6 +1373,9 @@ function AtelierToiture({
                 className="fig h-11 w-20 border border-border bg-background text-center text-2xl text-foreground" />
               <button type="button" id="rp9-need-plus" aria-label="Un de plus" className="h-11 w-11 border border-border text-2xl text-foreground">+</button>
             </div>
+            <label htmlFor="rp9-cible-kwh" className="mt-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production visée (kWh/an)</label>
+            <input id="rp9-cible-kwh" type="text" inputMode="numeric" autoComplete="off" aria-label="Production annuelle visée en kWh par an"
+              className="fig mt-1 h-11 w-32 border border-border bg-background text-center text-foreground" />
             <p id="rp9-need-note" className="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6" aria-live="polite">
