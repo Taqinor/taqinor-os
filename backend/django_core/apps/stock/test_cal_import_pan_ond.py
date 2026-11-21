@@ -12,13 +12,16 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.stock.tests.test_import_pan_ond -v 2
 """
+import json
 from decimal import Decimal
+from pathlib import Path
 
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.stock.importers.fiche_pan_ond import (
     FichierIllisible,
+    champs_attendus,
     champs_a_ecrire,
     parse_pan_ond_bytes,
     parse_pan_ond_text,
@@ -95,7 +98,12 @@ class ParsePanOndPurTests(TestCase):
         # supplémentaire) — ils doivent être listés, jamais ignorés en
         # silence.
         self.assertIn('muISC', proposition.non_reconnus)
-        self.assertIn('muVocSpec', proposition.non_reconnus)
+        # CALX356 — ``muVocSpec`` (mV/°C) est désormais rapporté à la Voc
+        # du MÊME fichier (définition du coefficient relatif %/°C).
+        self.assertNotIn('muVocSpec', proposition.non_reconnus)
+        self.assertEqual(
+            proposition.mapping['temp_coeff_voc_pct_c'],
+            Decimal('-123.500') / (Decimal('49.500') * 10))
         self.assertIn('Manufacturer', proposition.non_reconnus)
         self.assertNotIn('PVObject_', proposition.non_reconnus)
 
@@ -244,3 +252,150 @@ class ImporterDatasheetEndpointTests(TestCase):
             {'produit': autre_produit.pk, 'file': self._upload(FICHIER_PAN)},
             format='multipart')
         self.assertEqual(resp.status_code, 404)
+
+
+# ── CALX356 — les DEUX vrais fichiers PVsyst (pvlib v0.16.1, BSD-3, déposés
+# par CALX339 dans contract_samples/pvsyst/, voir SOURCE.md) et le contrat
+# partagé contract_samples/fiche_import_pan_ond.json. ROUGE avant CALX356 : le
+# .OND réel (BOM UTF-8) était refusé « type non reconnu », ``Vmp``/``Imp`` et
+# ``PNomConv`` du format réel n'étaient pas lus, et l'aperçu ne listait aucun
+# champ attendu absent. ──
+DOSSIER_ECHANTILLONS = Path(__file__).resolve().parent / 'contract_samples'
+PAN_REEL = DOSSIER_ECHANTILLONS / 'pvsyst' / 'ET-M772BH550GL.PAN'
+OND_REEL = (DOSSIER_ECHANTILLONS / 'pvsyst'
+            / 'CPS_SCH275KTL-DO-US-800-250kW_275kVA_1.OND')
+CONTRAT = json.loads(
+    (DOSSIER_ECHANTILLONS / 'fiche_import_pan_ond.json').read_text(
+        encoding='utf-8'))
+URL_IMPORT = '/api/django/stock/fiches-techniques/importer-datasheet/'
+# CALX357 — `exemple` porte à null les clés des AUTRES états de la route
+# (check_api_shapes compare l'exemple à l'union des réponses de la vue) :
+# l'aperçu réel ne les renvoie pas.
+CLES_AUTRES_ETATS = {'ecrits', 'fiche', 'detail', 'champ', 'ligne'}
+APERCU_OND = {k: v for k, v in CONTRAT['exemple'].items()
+              if k not in CLES_AUTRES_ETATS}
+
+
+class FichiersPvsystReelsTests(TestCase):
+    def test_pan_reel_lu_avec_ses_vraies_cles(self):
+        proposition = parse_pan_ond_bytes(PAN_REEL.read_bytes(), PAN_REEL.name)
+        self.assertEqual(proposition.type_fiche, 'module')
+        m = proposition.mapping
+        self.assertEqual(m['pmax_wc'], Decimal('550.0'))
+        self.assertEqual(m['vmp_v'], Decimal('41.96'))
+        self.assertEqual(m['imp_a'], Decimal('13.110'))
+        self.assertEqual(m['epaisseur_mm'], Decimal('35.000'))
+        self.assertEqual(m['temp_coeff_pmax_pct_c'], Decimal('-0.340'))
+        self.assertEqual(m['bifacialite_pct'], Decimal('70.000'))
+        self.assertEqual(m['temp_coeff_voc_pct_c'],
+                         Decimal('-128.0') / (Decimal('49.90') * 10))
+        # muISC (mA/°C) : aucun champ de destination → conservé, jamais deviné.
+        self.assertIn('muISC', proposition.non_reconnus)
+        self.assertNotIn('PVObject_Commercial', proposition.non_reconnus)
+        self.assertEqual(proposition.champs_attendus_absents, [])
+
+    def test_ond_reel_avec_bom_lu(self):
+        donnees = OND_REEL.read_bytes()
+        self.assertTrue(donnees.startswith(b'\xef\xbb\xbf'))
+        proposition = parse_pan_ond_bytes(donnees, OND_REEL.name)
+        self.assertEqual(proposition.type_fiche, 'onduleur')
+        m = proposition.mapping
+        self.assertEqual(m['ond_ac_kw'], Decimal('250.000'))
+        self.assertEqual(m['ond_n_mppt'], 12)
+        self.assertEqual(m['ond_phases'], 3)
+        self.assertEqual(m['ond_conso_nuit_w'], Decimal('5.00'))
+        # Le fichier ne publie pas IMaxMPP : listé, jamais rempli d'un repli
+        # (IMaxDC=360 est un courant DC TOTAL, pas par MPPT — non converti).
+        self.assertEqual(proposition.champs_attendus_absents,
+                         ['ond_i_max_mppt_a'])
+        self.assertNotIn('ond_i_max_mppt_a', m)
+        self.assertIn('IMaxDC', proposition.non_reconnus)
+        self.assertNotIn('Converter', proposition.non_reconnus)
+        self.assertNotIn('ProfilPIO', proposition.non_reconnus)
+
+    def test_champs_attendus_couvre_la_table(self):
+        self.assertIn('ond_i_max_mppt_a', champs_attendus('onduleur'))
+        self.assertIn('temp_coeff_voc_pct_c', champs_attendus('module'))
+
+    def test_fichier_illisible_nomme_la_ligne(self):
+        with self.assertRaises(FichierIllisible) as ctx:
+            propose_mapping('\n\nrien de PVsyst ici\n')
+        self.assertEqual(ctx.exception.ligne, 3)
+        self.assertIn('Ligne 3', str(ctx.exception))
+
+
+class ImportReelContratTests(TestCase):
+    """Le serveur rend EXACTEMENT l'exemple committé du contrat partagé."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='calx356-co', defaults={'nom': 'CALX356'})[0]
+        self.user = CustomUser.objects.create_user(
+            username='calx356-user', password='x', company=self.co,
+            is_superuser=True, is_staff=True)
+        self.produit = Produit.objects.create(
+            company=self.co, nom='Produit CALX356', sku='CALX356-P',
+            prix_achat=Decimal('1'), prix_vente=Decimal('2'),
+            quantite_stock=0)
+        self.client_api = APIClient()
+        self.client_api.force_authenticate(self.user)
+
+    def _post(self, chemin, **extra):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        corps = {'produit': self.produit.pk,
+                 'file': SimpleUploadedFile(
+                     chemin.name, chemin.read_bytes(),
+                     content_type='application/octet-stream')}
+        corps.update(extra)
+        return self.client_api.post(URL_IMPORT, corps, format='multipart')
+
+    def test_apercu_ond_egal_exemple(self):
+        resp = self._post(OND_REEL)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(json.loads(resp.content), APERCU_OND)
+        self.assertTrue(all(CONTRAT['exemple'][k] is None
+                            for k in CLES_AUTRES_ETATS))
+        self.assertFalse(
+            FicheTechnique.objects.filter(produit=self.produit).exists())
+
+    def test_apercu_pan_egal_exemple_module(self):
+        resp = self._post(PAN_REEL)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(json.loads(resp.content), CONTRAT['exemple_module'])
+
+    def test_pmax_deja_saisi_egal_exemple(self):
+        FicheTechnique.objects.create(
+            company=self.co, produit=self.produit, type_fiche='module',
+            pmax_wc=Decimal('545.00'))
+        resp = self._post(PAN_REEL)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(json.loads(resp.content),
+                         CONTRAT['exemple_module_pmax_deja_saisi'])
+
+    def test_confirme_ond_ecrit_et_forme_du_contrat(self):
+        resp = self._post(OND_REEL, confirmer='true')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        attendu = CONTRAT['exemple_confirme']
+        corps = json.loads(resp.content)
+        self.assertEqual(set(corps), set(attendu))
+        for cle in ('type_fiche', 'ecrits', 'deja_saisis', 'non_reconnus',
+                    'champs_attendus_absents', 'confirme'):
+            self.assertEqual(corps[cle], attendu[cle], cle)
+        fiche = FicheTechnique.objects.get(produit=self.produit)
+        self.assertEqual(fiche.ond_ac_kw, Decimal('250.00'))
+        self.assertEqual(fiche.ond_n_mppt, 12)
+        self.assertEqual(fiche.ond_phases, 3)
+        self.assertIsNone(fiche.ond_i_max_mppt_a)
+        for champ, valeur in attendu['fiche'].items():
+            if champ in ('id', 'produit'):
+                continue
+            self.assertEqual(corps['fiche'][champ], valeur, champ)
+
+    def test_refus_egal_exemple_refus(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = self.client_api.post(URL_IMPORT, {
+            'produit': self.produit.pk,
+            'file': SimpleUploadedFile('x.pan', b'rien de PVsyst ici')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(json.loads(resp.content), CONTRAT['exemple_refus'])

@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 31e0869249aa43c64d720c8a2297347caa3cea1622770e095838286c9e137b83
-Plan fingerprint: 7b9d95af4c9cad0810c1cfa80b31efbee5d1511dae3ee2137411d23d04e83320
+Structure fingerprint: 7268d1ca101b26872fe2290f3466bb44582e0bcda45b3a22b2c81a6b02899d6b
+Plan fingerprint: 5bfbddd059b2cec82538b87a76bbea3d563e7aa3c170b6858f172887675e0126
 
 
 
@@ -381,6 +381,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **Doctrine** : schéma OpenAPI = serveur (ENF11) ; le fuzz tourne sur la population ENTIÈRE, hebdomadaire (`.github/workflows/api-fuzz-full.yml`, 16 tranches, dispatch `paquets` pour une passe ciblée) ; le job quotidien `api-fuzz` de `release-verify.yml` a disparu.
 - **core** : `core/parametres_requete.py` (valeurs de paramètres vérifiées contre le schéma en mode strict, NUL = 400 partout), `core/views_periode.py` (période `AAAA-MM` ou vide), `core/pagination.py` (`page`/`page_size` entiers ≥ 1 publiés et appliqués), `authentication/cookie_auth.py` (en-tête Authorization présent mais mal formé = 401).
 - **stock / achats** : `apps/stock/corps_achats.py` (corps publiés des actions BCF, contrôle qualité, retours), `erreurs_achats.py` (capacité des montants numeric(14,2) → 409), `openapi_helpers.py` (`choix_ou_vide`, `ID_ENTIER`, dates RFC 3339) ; `etat_ci.py` (CCAT1-2 : `prix_connu_ci` partagé par `selectors.produits_ci`/`etat_ci_produit`, `etat_ci_complet` = état C&I servi par la fiche produit, hybrides BT et batteries de l'option « avec batterie » compris).
+- **stock / fiche PVsyst** : `importers/fiche_pan_ond.py` (lecteur .PAN/.OND, CAL117 + CALX356) → `POST stock/fiches-techniques/importer-datasheet/` (aperçu puis `confirmer=true`) ; écran `pages/stock/ImportFichePvsyst.jsx` dans la fiche technique de `ProduitForm` (CALX357) ; contrat `contract_samples/fiche_import_pan_ond.json` + fichiers réels `contract_samples/pvsyst/`.
 - **installations** : `serializers_bornes.py` (bornes publiées en mixins, hors du fichier-mur `serializers.py`), `services_bornes.py`, `views/_openapi.py` (corps `NoterRequete`, `AnnulerChantierRequete`…, filtres texte sans NUL).
 - **sav** : `champs_corps.py` (`TexteSansSubstitut`, `QuantitePositive`), `query_params.py` (« valeur ou vide »).
 - **ged** : `pdf_etat.py` (`PdfInexploitable`), `corps_requete.py` (arbres de conditions typés, `nom_fichier_sur`).
@@ -620,7 +621,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1336)**
+**Done (1339)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1615,6 +1616,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX335` — Figer le contrat du catalogue de fixation et de sa nomenclature
 - `CALX336` — Figer le contrat de la reprise d'une visite technique dans un calepinage
 - `CALX337` — Figer le contrat des écarts de pose réelle
+- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
 - `CALX340` — Étendre le contrat des réglages avec les zones de vent et de neige société
 - `CALX341` — Construire la comparaison de jusqu'à 5 calepinages et son export tableur
 - `CALX342` — Servir la comparaison de calepinages sur sa propre route de liste
@@ -1628,6 +1630,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX351` — Démarrer un calepinage depuis un modèle et un jeu de réglages société
 - `CALX352` — Proposer modèle et jeu de réglages au moment de la création
 - `CALX355` — Rendre les nouveaux champs de fiche saisissables dans le formulaire produit
+- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
+- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `CALX358` — Créer le catalogue de systèmes de fixation dans le module
 - `CALX359` — Calculer la nomenclature de fixation d'un calepinage et l'exporter
 - `CALX360` — Monter la fixation en onglet de l'atelier
@@ -2077,15 +2081,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT108` — [GATED: geste du fondateur — `reparer_vente_active --lister` = 0 en prod ; aujourd'hui…
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
-**Blocked — awaiting founder decision (11)**
+**Blocked — awaiting founder decision (8)**
 
 - `AGR113` — ET0 et pluie efficace par région tirées de FAO CLIMWAT (ou de la DMN), sinon étiquetées…
 - `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
 - `ENF19` — Duplicats (1 181) à zéro
-- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
-- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
-- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `QC2` — [GATED: paid — Inforisk/Charika API] Registry-backed autocomplete (the true Odoo-style…
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
