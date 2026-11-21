@@ -91,6 +91,15 @@ class AgentActionConfirmerViewTests(TestCase):
         self.assertEqual((log.origine, log.inputs_json, log.risk_level), ('interne', {'id': 1489}, 'internal'))
         self.assertFalse(resp.data['is_undoable'])
 
+    def test_action_directe_journalisee_interne_a_son_niveau(self):
+        """D-COP-5 — une action de ACTIONS_DIRECTES (crm.client.create),
+        exécutée sans carte, se journalise `interne` au niveau `outward`."""
+        resp = self._interne({'risk_level': 'outward', 'origine': 'interne'},
+                             action_key='crm.client.create')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        log = AgentActionLog.objects.get(pk=resp.data['id'])
+        self.assertEqual((log.origine, log.risk_level), ('interne', 'outward'))
+
     def test_origine_interne_refusee_pour_une_action_confirmee_et_valeur_inconnue(self):
         # D-COP-5 — une action `outward` HORS de ACTIONS_DIRECTES garde sa carte :
         # jamais journalisée `interne` ; une action directe (crm.client.create), si.
@@ -102,9 +111,6 @@ class AgentActionConfirmerViewTests(TestCase):
         resp = self._interne({'risk_level': 'outward', 'origine': 'interne'},
                              action_key='tmp.dcop5.carte')
         self.assertEqual(resp.status_code, 403)
-        directe = self._interne({'risk_level': 'outward', 'origine': 'interne'},
-                                action_key='crm.client.create')
-        self.assertEqual(directe.status_code, 201, directe.data)
         for valeur in ('autre', ['interne'], 3):
             with self.subTest(origine=valeur):
                 resp = self._interne({'risk_level': 'internal', 'origine': valeur})
