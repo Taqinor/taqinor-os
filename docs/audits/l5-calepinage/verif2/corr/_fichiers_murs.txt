@@ -1,0 +1,17 @@
+# Fichiers de code de 1 900 lignes ou plus déclarés par la vague (taille, chemin) — la garde joue à partir de 2 000 lignes
+11469 apps/web/src/pages/proposition/[...token].astro
+8215 backend/django_core/apps/installations/services.py
+4424 apps/web/src/scripts/roof-tool-pro11.ts
+4125 backend/django_core/apps/calepinage/services/electrique.py
+3722 backend/django_core/apps/stock/selectors.py
+3718 backend/django_core/apps/installations/selectors.py
+3225 apps/web/src/scripts/roofPro11/layoutEditor.ts
+3130 apps/web/src/scripts/roofPro11/scene3d.ts
+2534 backend/django_core/apps/calepinage/services/chaine_pertes.py
+2372 apps/web/tests/estimatorRuntimePro10Pro11.test.ts
+2333 frontend/src/pages/stock/ProduitForm.jsx
+2125 backend/django_core/apps/sav/selectors.py
+2108 apps/web/src/lib/estimatorBrainV2.ts
+2013 apps/web/src/scripts/roofPro11/prefill.ts
+1958 backend/django_core/apps/calepinage/views/calepinages.py
+1936 backend/django_core/apps/ventes/quote_engine/pricing.py

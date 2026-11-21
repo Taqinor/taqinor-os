@@ -179,3 +179,28 @@ complet = 37 réglages société (128 champs).
 - **Ordre de fin** : trier les constats → corriger → merger #1517 (9 autres plans, décisions, dossier) → quand #1515
   est mergée et le bail libéré, insérer le bloc calepinage sur le `main` du moment, gardes, PR docs seulement, merge.
   À démonter ensuite : les worktrees `l5-verif` et `l5-vague2-integ`.
+
+## Mise à jour du 21/11/2026 (soir) — vérification complète et corrections de la vague 2
+
+- **PR #1515 de l'autre poste mergée à 14 h 00 UTC** ; ses baux sont libérés. Cette session tient les douze fichiers
+  de plan (owner `Reda_Laptop/claude/calepinage-vague2`), dont `PLAN_AUDIT_CALEPINAGE.md` (bail repris sur l'accord
+  de Reda : « you can force claimed now that pr3 is merged »), `PLAN_AUDIT_TRANSVERSE.md` et `PLAN_AUDIT_SECURITE.md`.
+- **Vérification** (`verif2/rapports/`) : 17 vérificateurs neufs ont relu les 472 tâches contre le code ; environ
+  quatre sur dix demandaient une correction, une vingtaine étaient des doublons entre domaines, quatre étaient déjà
+  construites par l'autre poste. Critique finale : `verif2/rapports/CRITIQUE-fable-vague2.md` (8 bloquants).
+- **Corrections** (`verif2/corr/`) : deux passes par lot, la réécriture du lot D8 (chaîne D-ACAL-36), neuf tâches
+  manquantes, puis une passe de cohérence. État : 475 tâches vivantes, 23 supprimées, 0 cycle
+  (`verif2/outils/coherence_vague.py`). Format des copies d'édition et outils : `verif2/corr/BRIEF-correcteur.md`.
+- **Trois faits trouvés par la vérification** : (1) les surfaces au sol, ombrières et façades sont lues à 90° près
+  aujourd'hui côté devis (`pans_du_document` ajoute 90 à une valeur qui est déjà une face) → ACAL921 est GATED
+  derrière la liste d'ACAL1194 ; (2) la production imprimée d'un devis C&I vient du toit DÉCLARÉ du lead → ACAL1195 ;
+  (3) le format « une page » imprime encore des économies estimées sans consommation connue → ACAL1033.
+- **Arbitrages pris** (détail : `verif2/corr/BRIEF-passe2.md` et `BRIEF-passe3.md`) : un `@after` vers un autre plan
+  est un vrai tag ; la tâche qui ajoute un champ porte sa migration ; aucune fonction neuve dans
+  `apps/calepinage/selectors.py` (modules frères) ; neuf tâches « vague 0 » à construire d'abord ; chaque tâche
+  d'écran dit étape, niveau et effet sur le premier écran ; une capacité nouvelle va au niveau expert.
+- **En cours** : réassemblage dans les plans (brief `verif2/corr/BRIEF-integration2.md`), gardes, simulation de
+  construction, puis merge de la PR #1517. Reste ensuite : libérer les baux, démonter les worktrees `l5-verif` et
+  `l5-vague2-integ`, mettre à jour la mémoire.
+- **Gestes attendus de Reda** (pas des questions) : lire la liste des écarts d'ACAL1000 avant l'activation ACAL1001 ;
+  lire la liste d'ACAL1194 avant ACAL921 ; créer et tarifer l'article « kit de fixation ».
