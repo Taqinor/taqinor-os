@@ -205,6 +205,12 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
         if refus:
             journal['avertissements'] = [*journal.get('avertissements', ()),
                                          refus]
+        # ACAL426 — pentes / faces jamais confirmées : dites, jamais bloquées.
+        from .hypotheses_toit import avertissements_hypotheses
+
+        journal['avertissements'] = [
+            *journal.get('avertissements', ()),
+            *avertissements_hypotheses(layout)]
     return devis, cree
 
 
