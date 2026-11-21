@@ -21,7 +21,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 
 | Constat | Critère, gravité | Tâche | Plan | Section | Titre abrégé |
 |---|---|---|---|---|---|
-| C-ACAL-L5-491 | C4, S2 | ACAL491 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter « Dupliquer » et « Poser en série » dans la carte « Obstacle sélectionné » de l'atelier ERP |
+| C-ACAL-L5-1032 | C4, S2 | ACAL1032 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter « Dupliquer » et « Poser en série » dans la carte « Obstacle sélectionné » de l'atelier ERP |
 | C-ACAL-L5-492 | C3, S3 | ACAL492 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dire dans l'aide des raccourcis ce que fait Ctrl + D (« Dupliquer l'obstacle sélectionné ») et le faire parler |
 | C-ACAL-L5-493 | C4, S2 | ACAL493 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Monter dans la carte « Obstacle sélectionné » la saisie de HAUTEUR et le bandeau « Compte NON engageable » que |
 | C-ACAL-L5-494 | C4, S2 | ACAL494 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Ajouter à Réglages › Calepinage la section « Gabarits d'obstacle » (voir, créer, modifier, supprimer ; rectang |
@@ -492,7 +492,7 @@ Dossier de la vague 2 de la campagne go-deep L5 calepinage (demandes de Reda des
 | C-ACAL-L5-1028 | C18, S3 | ACAL1028 | PLAN_AUDIT_CALEPINAGE | M2 | Montrer, sur l'onglet Schéma unifilaire quand la fiche technique est incomplète, un croquis de principe grisé  |
 | C-ACAL-L5-1029 | C1, S2 | ACAL1029 | PLAN_AUDIT_CALEPINAGE | M1 bloquant-fondateur | Dire combien de modules du document sont posés à plat sur un toit en pente (affleurants) |
 | C-ACAL-L5-1030 | C15, S3 | ACAL1030 | PLAN_AUDIT_DEVIS | M2 | Ajouter à la surface figée des sélecteurs de ventes la fonction de compatibilité du matériel posée par ACAL901 |
-| C-ACAL-L5-1031 | C19, S3 | ACAL1031 | PLAN_AUDIT_CALEPINAGE | Acceptation en direct (orchestrateur, jamais une lane) | Acceptation live de la vague 2 du complément (ACAL491-521, ACAL526-537, ACAL546-555, ACAL557-569, ACAL572-582, |
+| C-ACAL-L5-1031 | C19, S3 | ACAL1031 | PLAN_AUDIT_CALEPINAGE | Acceptation en direct (orchestrateur, jamais une lane) | Acceptation live de la vague 2 du complément (ACAL1032, ACAL492-521, ACAL526-537, ACAL546-555, ACAL557-569, ACAL572-582, |
 
 ## Tâches retirées à la réconciliation (doublons ou décisions)
 
