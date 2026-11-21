@@ -68,6 +68,10 @@ PAYS_COUVERT = 'fr'
 SOURCE = 'IGN — RGE ALTI® / LiDAR HD'
 URL_SOURCE = 'https://data.geopf.fr/altimetrie/'
 
+#: ACAL535 — la source d'une suggestion lue sur le relief (GeoTIFF) que
+#: l'installateur a déposé : pas d'URL, le fichier n'est pas conservé.
+SOURCE_RELIEF = "relief fourni par l'installateur"
+
 #: Point d'entrée public de l'altimétrie Géoplateforme (aucune clé).
 URL_ALTIMETRIE = 'https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json'
 RESSOURCE_ALTIMETRIE = 'ign_rge_alti_wld'
@@ -90,7 +94,7 @@ SUGGEREE, VALIDEE, REFUSEE = 'suggeree', 'validee', 'refusee'
 CLE_SUGGESTION = 'pitchSuggestion'
 
 __all__ = [
-    'PAYS_COUVERT', 'SOURCE', 'URL_SOURCE', 'CLE_SUGGESTION',
+    'PAYS_COUVERT', 'SOURCE', 'SOURCE_RELIEF', 'URL_SOURCE', 'CLE_SUGGESTION',
     'SUGGEREE', 'VALIDEE', 'REFUSEE', 'ServiceIndisponible',
     'service_disponible', 'suggerer_pentes', 'accepter_suggestion',
     'refuser_suggestion',
@@ -128,7 +132,8 @@ def _refus_de_pays(company):
         "pente à la main.")
 
 
-def suggerer_pentes(company, roof_layout, *, altimetre=None, maintenant=None):
+def suggerer_pentes(company, roof_layout, *, altimetre=None, maintenant=None,
+                    depuis_fichier=False):
     """Une suggestion de pente/azimut par pan exploitable du document.
 
     Args:
@@ -149,7 +154,11 @@ def suggerer_pentes(company, roof_layout, *, altimetre=None, maintenant=None):
         ServiceIndisponible: la société n'est pas en France. AUCUNE requête
             sortante n'a été émise à ce stade.
     """
-    if not service_disponible(company):
+    # ACAL535 — un relief fourni par l'installateur (``depuis_fichier``) ne
+    # passe pas par la porte du pays ; il exige son altimètre (jamais l'IGN).
+    if depuis_fichier and altimetre is None:
+        raise ValueError("depuis_fichier exige l'altimètre du fichier.")
+    if not depuis_fichier and not service_disponible(company):
         raise _refus_de_pays(company)
 
     pans = [zone for zone in (roof_layout or {}).get('zones') or []
@@ -179,8 +188,8 @@ def suggerer_pentes(company, roof_layout, *, altimetre=None, maintenant=None):
             'zoneId': str(pan.get('id') or ''),
             'pitchDeg': pente,
             'facingAzimuthDeg': azimut,
-            'source': SOURCE,
-            'sourceUrl': URL_SOURCE,
+            'source': SOURCE_RELIEF if depuis_fichier else SOURCE,
+            'sourceUrl': None if depuis_fichier else URL_SOURCE,
             'suggestedAt': horodatage,
             'status': SUGGEREE,
             'points': len(mesures),
@@ -241,7 +250,9 @@ def _libelle_source(suggestion):
     annee, mois, jour = (date.split('-') + ['', ''])[:3]
     if not (annee and mois and jour):
         return ''
-    return f'source IGN (suggestion validée le {jour}/{mois}/{annee})'
+    origine = ('source : relief fourni par l\'installateur'
+               if suggestion.get('source') == SOURCE_RELIEF else 'source IGN')
+    return f'{origine} (suggestion validée le {jour}/{mois}/{annee})'
 
 
 # ---------------------------------------------------------------------------

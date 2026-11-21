@@ -60,6 +60,7 @@ import textwrap
 from html import escape
 
 from ..planche import PlancheRefusee
+from ..tensions_chaines import chaines_servies
 from ..chaines import COULEUR_NON_AFFECTE, PALETTE_CHAINES
 
 __all__ = [
@@ -276,10 +277,26 @@ def _texte_entree(entree):
         else 'entrée MPPT non attribuée')
 
 
-def _lignes_de_chaine(entree):
+def _texte_tension(servie):
+    """ACAL672 — « Voc à −5 °C : 642,0 V · Isc : 13,9 A », LUS du serveur."""
+    voc, froid = servie.get('voc_froid_v'), servie.get('temperature_froide_c')
+    if voc is None or froid is None:
+        return 'tension non calculée : fiche incomplète'
+    texte = 'Voc à %s °C : %s V' % (
+        ('%g' % froid).replace('-', '−').replace('.', ','),
+        ('%.1f' % voc).replace('.', ','))
+    isc = servie.get('isc_a')
+    return texte if isc is None else '%s · Isc : %s A' % (
+        texte, ('%g' % isc).replace('.', ','))
+
+
+def _lignes_de_chaine(entree, chaines=None):
     titre = 'Chaîne %s — %s' % (entree['chaine'],
                                 _pluriel(entree['modules'], 'module'))
-    return [titre] + [_texte_entree(e) for e in entree['entrees']]
+    lignes = [titre] + [_texte_entree(e) for e in entree['entrees']]
+    if chaines is not None:
+        lignes.append(_texte_tension(chaines.get(entree['chaine']) or {}))
+    return lignes
 
 
 #: ACAL643 — la légende des flèches : le sens de NUMÉROTATION des modules,
@@ -347,7 +364,7 @@ def _lignes_de_legende(plan):
     """Toutes les lignes de texte de la légende, dans l'ordre d'impression."""
     lignes = ['CHAÎNES']
     for entree in plan['legende']:
-        lignes.extend(_lignes_de_chaine(entree))
+        lignes.extend(_lignes_de_chaine(entree, plan.get('chaines')))
     if _chaines_a_fleche(plan):
         lignes.append(LEGENDE_SENS)
     if plan['manuels']:
@@ -452,7 +469,7 @@ def _legende_svg(plan):
 
     blocs.append(titre('CHAÎNES'))
     for entree in plan['legende']:
-        lignes = _lignes_de_chaine(entree)
+        lignes = _lignes_de_chaine(entree, plan.get('chaines'))
 
         def chaine(y, entree=entree, lignes=lignes):
             morceaux = [
@@ -598,11 +615,16 @@ def _affectation_publiee_du_calepinage(calepinage):
 
 def _plan_du_calepinage(calepinage, *, affectation=None):
     """Le plan de câblage d'un ``Calepinage`` (affectation LUE si absente)."""
-    if affectation is None:
+    publiee = affectation is None
+    if publiee:
         affectation = _affectation_publiee_du_calepinage(calepinage)
     plan = _plan_de_cablage(getattr(calepinage, 'roof_layout', None),
                             affectation)
     plan['consigne_dc'] = _consigne_dc_de_societe(calepinage)
+    if publiee:
+        # ACAL672 — les tensions SERVIES (``evaluer-electrique``), rien de
+        # recalculé ici.
+        plan['chaines'] = chaines_servies(calepinage)
     return plan
 
 

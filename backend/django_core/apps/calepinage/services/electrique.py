@@ -51,12 +51,8 @@ from core.electrique.types import (
 from .chaine_la_plus_faible import (  # noqa: F401 — ré-export (ACAL646)
     METHODE_CHAINE_FAIBLE, MOTIF_CHAINE_FAIBLE_ABSENTE,
     REFERENCE_CHAINE_FAIBLE, _chaine_la_plus_faible)
-from .bordereau_calepinage import (
-    bordereau_du_calepinage as _bordereau_du_calepinage,  # ACAL632
-)
-from .validation_batterie import (  # noqa: F401 — ré-export (ACAL633)
-    valider_batterie as _valider_batterie,
-)
+from . import bordereau_calepinage as _bordereau_calepinage  # ACAL632
+from . import validation_batterie as _validation_batterie  # ACAL633
 from .capacites_coffrets import (  # noqa: F401 — ré-export (ACAL618)
     CLES_CAPACITE_COFFRET, capacites_des_coffrets,
 )
@@ -799,7 +795,7 @@ def _valider_entree(calepinage, fusionnee, postee):
                 "« %s » doit être un objet {...} (reçu : %s)."
                 % (cle, type(valeur).__name__), champ=cle)
     _valider_transformateur(postee.get('transformateur'))
-    _valider_batterie(postee.get('batterie'))  # ACAL166
+    _validation_batterie.valider_batterie(postee.get('batterie'))  # ACAL166
     _valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
@@ -1814,7 +1810,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # les câbles ci-dessus (``cables['noyau']``), des coffrets RÉELLEMENT
     # posés dans le plan et de la règle de structure SOURCÉE ; chaque ligne
     # porte sa référence d'article quand la société en a posé une.
-    bordereau = _bordereau_du_calepinage(
+    bordereau = _bordereau_calepinage.bordereau_du_calepinage(
         calepinage, conception, cables.get('noyau'),
         equipements=_equipements_electriques(document),
         branches=((micro['bloc'] or {}).get('branches') or ()

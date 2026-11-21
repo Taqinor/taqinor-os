@@ -308,3 +308,42 @@ class ValeursAttenduesParChaineTest(SimpleTestCase):
         with mock.patch.object(sel, 'calepinage_retenu_pour_devis',
                                return_value=None):
             self.assertIsNone(sel.valeurs_attendues_par_chaine(1, None))
+
+
+class DeuxOnduleursTest(SimpleTestCase):
+    """ACAL633 — N onduleurs acceptés : l'onduleur de chaque chaîne est numéroté."""
+
+    LAYOUT_4_PANS = {'version': 2, 'zones': [
+        {'id': 'z%d' % rang, 'label': 'PAN-%d' % rang,
+         'geometry': {'count': 12, 'azimuthDeg': azimut, 'tiltDeg': 15.0}}
+        for rang, azimut in enumerate((180.0, 90.0, 270.0, 135.0), start=1)]}
+
+    def _conception(self, **options):
+        return concevoir_par_pan(
+            self.LAYOUT_4_PANS, module_specs=MODULE, onduleur_specs=ONDULEUR,
+            temperatures=_temperatures(), module_designation='Module d essai',
+            onduleur_designation='Onduleur d essai', **options)
+
+    @staticmethod
+    def _par_chaine(lignes):
+        vus = {}
+        for ligne in lignes:
+            if ligne['chaine'] is not None:
+                vus[ligne['chaine']] = (ligne['onduleur'], ligne['mppt'])
+        return [vus[cle] for cle in sorted(vus)]
+
+    def test_quatre_chaines_sur_deux_onduleurs_sont_numerotees_1_1_2_2(self):
+        from apps.calepinage.services.chaines import evaluer_onduleurs
+
+        conception = self._conception(nombre_onduleurs=2)
+
+        self.assertEqual(self._par_chaine(affectation(conception)),
+                         [(1, 1), (1, 2), (2, 1), (2, 2)])
+        self.assertEqual(evaluer_onduleurs(conception).nombre, 2)
+
+    def test_sans_la_cle_le_comportement_d_aujourd_hui_est_inchange(self):
+        conception = self._conception()
+
+        for ligne in affectation(conception):
+            self.assertNotIn(ligne['onduleur'], (2,))
+        self.assertIsNone(conception.nombre_onduleurs)

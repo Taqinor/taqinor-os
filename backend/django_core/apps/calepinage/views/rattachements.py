@@ -174,7 +174,7 @@ from . import systemes_fixation as _systemes_fixation_action  # noqa: F401 — i
 from . import soleil_legal as _soleil_legal_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ACAL535 — même patron : rattache ``suggestions-pente-relief`` (POST : la pente
 # de chaque pan lue sur un relief GeoTIFF déposé, sans porte du pays ni IGN).
-from . import suggestion_pente_relief as _suggestion_pente_relief_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+from . import suggestion_pente_relief as _pente_relief_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.

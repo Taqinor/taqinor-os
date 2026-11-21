@@ -145,6 +145,43 @@ class PlanDeCablageTest(unittest.TestCase):
         self.assertIn('onduleur 1 · entrée MPPT 2', lignes)
         self.assertIn('Non affectés : 0 module', lignes)
 
+    def test_chaque_chaine_porte_sa_tension_a_froid_et_sa_temperature(self):
+        # ACAL672 — valeurs SERVIES (6 modules x 53,5 V a froid d'exemple de
+        # la fiche = 321,0 V ; la tension a chaud 216,0 V ne doit PAS sortir).
+        servies = {
+            1: {'voc_froid_v': 321.0, 'temperature_froide_c': -5.0,
+                'vmp_chaud_v': 216.0, 'isc_a': 13.9},
+            2: {'voc_froid_v': None, 'temperature_froide_c': -5.0,
+                'vmp_chaud_v': None, 'isc_a': None}}
+        plan = dict(self.plan, chaines=servies)
+        lignes = _lignes_de_legende(plan)
+        self.assertIn('Voc à −5 °C : 321,0 V · Isc : 13,9 A', lignes)
+        self.assertIn('tension non calculée : fiche incomplète', lignes)
+        self.assertFalse([t for t in lignes if '216' in t])
+        for texte in lignes:
+            self.assertIsNone(MOTS_DE_MONTANT.search(texte), texte)
+        self.assertIn('Voc à −5 °C : 321,0 V', svg_de(plan))
+
+    def test_sans_chaines_servies_la_legende_reste_celle_d_avant(self):
+        self.assertNotIn('tension non calculée : fiche incomplète',
+                         _lignes_de_legende(self.plan))
+
+    def test_le_plan_du_calepinage_lit_les_tensions_servies(self):
+        servies = {'chaines': [{'chaine': 1, 'voc_froid_v': 321.0,
+                                'temperature_froide_c': -5.0,
+                                'isc_a': 13.9}]}
+        with mock.patch(
+                'apps.calepinage.services.electrique.resultat_calepinage',
+                return_value={'electrique': {'affectation': AFFECTATION}}),                 mock.patch(
+                    'apps.calepinage.services.electrique.'
+                    'evaluation_electrique', return_value=servies),                 mock.patch(
+                    'apps.calepinage.selectors.parametres_de_societe',
+                    return_value={}):
+            plan = _plan_du_calepinage(NU)
+        self.assertEqual(plan['chaines'][1]['voc_froid_v'], 321.0)
+        self.assertIn('Voc à −5 °C : 321,0 V · Isc : 13,9 A',
+                      _lignes_de_legende(plan))
+
     def test_un_onduleur_non_attribue_est_dit_jamais_numerote(self):
         table = [dict(entree, onduleur=None) for entree in AFFECTATION]
         lignes = _lignes_de_legende(_plan_de_cablage(LAYOUT, table))

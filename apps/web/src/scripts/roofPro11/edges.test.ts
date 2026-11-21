@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { deduceEdgeDetails, deduceEdgeTypes, EDGE_COLOR_BY_TYPE, EDGE_TYPES, reinitialiserDepuisTraceClient, type EdgeDeductionZone } from './edges';
+import { lireTableRetraits, poserRetraitsSociete } from './retraitsSociete'; // ACAL562
+import { fusionnerAretesSaisies } from './edges';
 import { TRIANGLE_SUD, TRIANGLE_EST, DIAGONALE_SUD } from './harnaisAtelier';
 
 const DEG2RAD = Math.PI / 180;
@@ -230,5 +232,45 @@ describe('ACAL561 — TYPES_ARETE du serveur = EDGE_TYPES sans « inconnue »', 
     expect(ligne, 'TYPES_ARETE absent de degagements.py').not.toBeNull();
     const serveur = [...(ligne as RegExpExecArray)[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
     expect(serveur).toEqual(EDGE_TYPES.filter((t) => t !== 'inconnue'));
+  });
+});
+
+describe('ACAL562 — retraits de la société posés sur les arêtes typées', () => {
+  const table = lireTableRetraits({
+    retraits_par_arete: [
+      { type: 'egout', retrait_m: 0.4, source: 'notice X' },
+      { type: 'rive', retrait_m: 0.3, source: 'notice X' },
+      { type: 'faitage', retrait_m: 0.2, source: 'notice X' },
+    ],
+  });
+  const quatre = [
+    { index: 0, type: 'egout' as const },
+    { index: 1, type: 'rive' as const },
+    { index: 2, type: 'faitage' as const },
+    { index: 3, type: 'rive' as const },
+  ];
+
+  it('pan à 4 arêtes (2 rives, 1 faîtage, 1 égout) ⇒ 3 retraits distincts lus au réglage, marqués société', () => {
+    const { edges, inconnues } = poserRetraitsSociete(undefined, quatre, table);
+    expect(edges!.map((e) => e.retraitM)).toEqual([0.4, 0.3, 0.2, 0.3]);
+    expect(new Set(edges!.map((e) => e.retraitM)).size).toBe(3);
+    expect(edges!.every((e) => e.retraitOrigine === 'societe')).toBe(true);
+    expect(inconnues).toBe(0);
+  });
+
+  it('une arête au retrait saisi reste intacte ; une arête inconnue n’en reçoit aucun et est comptée', () => {
+    const saisie = [{ index: 0, type: 'egout' as const, retraitM: 0.9 }];
+    const deduites = [...quatre.slice(0, 3), { index: 3, type: 'inconnue' as const }];
+    const { edges, inconnues } = poserRetraitsSociete(saisie, deduites, table);
+    expect(edges![0]).toEqual({ index: 0, type: 'egout', retraitM: 0.9 });
+    expect(edges!.find((e) => e.index === 3)).toBeUndefined();
+    expect(inconnues).toBe(1);
+  });
+
+  it('sans table : aucun changement ; `fusionnerAretesSaisies` reporte retraitOrigine', () => {
+    expect(poserRetraitsSociete(undefined, quatre, {}).edges).toBeUndefined();
+    const { edges } = poserRetraitsSociete(undefined, quatre, table);
+    const fusion = fusionnerAretesSaisies(edges, quatre);
+    expect(fusion![0]).toMatchObject({ retraitM: 0.4, retraitOrigine: 'societe' });
   });
 });

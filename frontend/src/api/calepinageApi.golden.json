@@ -971,6 +971,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.suggestionPenteRelief": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/suggestions-pente-relief/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.supprimerPhoto": [
     {
       "config": null,

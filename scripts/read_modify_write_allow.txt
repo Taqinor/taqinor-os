@@ -23,7 +23,6 @@ backend/django_core/apps/ged/services.py::marquer_signe  # tâche ACNC à trier,
 backend/django_core/apps/ged/services.py::relancer_demande_document  # tâche ACNC à trier, propriétaire ged
 backend/django_core/apps/installations/services.py::appliquer_statut_document  # tâche ACNC du plan chantiers
 backend/django_core/apps/installations/services.py::contre_transferer_stock_livraison  # tâche ACNC du plan chantiers
-backend/django_core/apps/installations/services.py::ensure_checklist_items  # tâche ACNC du plan chantiers
 backend/django_core/apps/installations/services.py::snapshot_revision_kit  # tâche ACNC du plan chantiers
 backend/django_core/apps/installations/services.py::ventiler_stock_livraison  # tâche ACNC du plan chantiers
 backend/django_core/apps/installations/views/demande_transfert.py::perform_update  # tâche ACNC du plan chantiers

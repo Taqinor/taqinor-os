@@ -1414,8 +1414,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         blocs['avertissements'].insert(0, entete)
     # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
     # fournisseur compte ce qui est réellement parti sur le réseau.
-    from .gain_inclinaison import demander as gain_inclinaison  # ACAL706
-    blocs['production']['gain_inclinaison'] = gain_inclinaison(
+    from . import gain_inclinaison as _gain_inclinaison  # ACAL706
+    blocs['production']['gain_inclinaison'] = _gain_inclinaison.demander(
         client, reference, decision, fichier, compteur, blocs['production'])
     blocs['meteo']['appels_pvgis'] = compteur['appels']
     identite = _relayer_fichier_meteo(blocs['meteo'], fichier, provenance)

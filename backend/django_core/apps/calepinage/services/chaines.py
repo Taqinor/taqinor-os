@@ -195,6 +195,9 @@ class Conception:
     #: ACAL650 — les clés stables des pans FUSIONNÉS en un groupe électrique
     #: (un tuple par groupe de 2 pans ou plus) ; vide = aucun regroupement.
     fusions: Tuple[Tuple[str, ...], ...] = ()
+    #: ACAL633 — le nombre d'onduleurs ACCEPTÉ dans l'entrée (``None`` = non
+    #: saisi : le plafond de dossier fait foi, comme avant).
+    nombre_onduleurs: Optional[int] = None
 
     @property
     def fiche_incomplete(self):
@@ -954,11 +957,16 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     à plusieurs modèles est dimensionné modèle par modèle
     (``_concevoir_par_module``) ; mono-module, le chemin est inchangé.
     """
+    nombre_onduleurs = options.pop('nombre_onduleurs', None)  # ACAL633
     pans, fiches_par_pan = _pans_avec_leur_fiche(
         _pans_poses(layout), fiches_modules, module_specs, module_designation)
     module, manque_module = specs_module(module_specs, module_designation)
     onduleur, manque_onduleur = _specs_onduleur(onduleur_specs,
                                                 onduleur_designation)
+    if nombre_onduleurs and onduleur is not None:
+        # ACAL633 — N onduleurs acceptés : N × les entrées MPPT du modèle.
+        onduleur = replace(
+            onduleur, n_mppt=int(onduleur.n_mppt) * int(nombre_onduleurs))
     # ACAL162 — AUCUN onduleur de chaîne désigné (fiche vide, pas une fiche
     # incomplète) mais un MICRO-onduleur en emplacement optimiseur : le champ
     # est câblé en branches AC. Aucun onduleur fictif n'est construit.
@@ -1014,7 +1022,8 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
         regle_mppt=regle, partage_mppt=partage, temperatures=temperatures,
         coefficients_non_sources=tuple(module.coefficients_non_sources),
         fusions=tuple(tuple(p.cle_stable for p in f) for f in _fusions_de_pans(
-            pans, options.get('tolerance_orientation_deg')) if len(f) > 1))
+            pans, options.get('tolerance_orientation_deg')) if len(f) > 1),
+        nombre_onduleurs=int(nombre_onduleurs) if nombre_onduleurs else None)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1112,6 +1121,11 @@ def affectation(conception, *, imposee=None):
     evaluation = evaluer_onduleurs(conception)
     nombre = evaluation.nombre if evaluation is not None else 0
     numero_onduleur = 1 if nombre == 1 else None
+    # ACAL633 — N onduleurs ACCEPTÉS : la chaîne sur l'entrée globale j va à
+    # l'onduleur ⌈j ÷ entrées par onduleur⌉, sur son entrée locale.
+    accepte = getattr(conception, 'nombre_onduleurs', None)
+    par_onduleur = (max(1, conception.entree.onduleur.n_mppt // accepte)
+                    if accepte and conception.entree is not None else None)
 
     repartitions_par_pan = {}
     for repartition in getattr(conception, 'repartitions', ()) or ():
@@ -1144,8 +1158,10 @@ def affectation(conception, *, imposee=None):
                         'module': sien.cle_module(rang_module),
                         'pan': sien.label,
                         'chaine': _numero_chaine(chaine),
-                        'onduleur': numero_onduleur,
-                        'mppt': chaine.mppt,
+                        'onduleur': (numero_onduleur if not par_onduleur else
+                                     (chaine.mppt - 1) // par_onduleur + 1),
+                        'mppt': (chaine.mppt if not par_onduleur else
+                                 (chaine.mppt - 1) % par_onduleur + 1),
                         'source': SOURCE_AUTO,
                     }
     lignes = []
@@ -1232,7 +1248,25 @@ def evaluer_onduleurs(conception, *, reglages=None):
         return None
     puissance_dc = (conception.resultat.puissance_kwc
                     if conception.chaines else entree.puissance_kwc)
-    return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    accepte = getattr(conception, 'nombre_onduleurs', None)
+    if not accepte:
+        return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    # ACAL633 — le nombre ACCEPTÉ remplace celui du plafond de dossier : le
+    # noyau ne sait compter que par plafond, on lui donne la puissance par
+    # onduleur qui rend EXACTEMENT ce nombre, puis on rétablit le vrai plafond.
+    if not puissance_dc or puissance_dc <= 0:
+        return dimensionner_onduleurs(entree, puissance_dc, reglages)
+    evaluation = dimensionner_onduleurs(
+        replace(entree, plafond_kwc_par_onduleur=puissance_dc / accepte),
+        puissance_dc, reglages)
+    plafond = entree.plafond_kwc_par_onduleur
+    bloquants = tuple(evaluation.bloquants)
+    if plafond and puissance_dc / accepte > float(plafond) + 1e-9:
+        bloquants += ("%s kWc par onduleur au-dessus du plafond de %s kWc — "
+                      "déport de modules nécessaire"
+                      % (fr(puissance_dc / accepte, 1), fr(plafond, 0)),)
+    return replace(evaluation, plafond_kwc_par_onduleur=plafond,
+                   bloquants=bloquants)
 
 
 def empreinte_entree(layout, *, module_specs, onduleur_specs, temperatures,

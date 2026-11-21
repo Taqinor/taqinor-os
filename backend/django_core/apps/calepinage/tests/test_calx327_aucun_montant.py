@@ -182,29 +182,17 @@ def _resultat_postes():
     return resultat
 
 
-#: ACAL697 — cinq postes lisibles dont un compté, un partiel, un non compté.
-POSTES_LISIBLES = {
-    'depart_kwh': 16800.0, 'arrivee_kwh': 13400.0, 'arrivee_pct': 79.9,
-    'total_pct': 20.1, 'motif_absence': '',
-    'postes': [
-        {'poste': 'ombres_proches', 'libelle': 'Ombres proches',
-         'perte_kwh': 300.0, 'perte_pct': 1.8, 'statut': 'compte',
-         'etapes': []},
-        {'poste': 'poussiere', 'libelle': 'Poussière', 'perte_kwh': None,
-         'perte_pct': None, 'statut': 'non_compte',
-         'etapes': [{'etape': 'salissure', 'libelle': 'Salissure',
-                     'motif_omission': 'Aucune salissure saisie.'}]},
-        {'poste': 'chaleur', 'libelle': 'Chaleur', 'perte_kwh': 900.0,
-         'perte_pct': 5.4, 'statut': 'compte', 'etapes': []},
-        {'poste': 'cables_et_onduleur', 'libelle': 'Câbles et onduleur',
-         'perte_kwh': 700.0, 'perte_pct': 4.2, 'statut': 'compte',
-         'etapes': []},
-        {'poste': 'autres', 'libelle': 'Autres pertes', 'perte_kwh': 500.0,
-         'perte_pct': 3.0, 'statut': 'partiel',
-         'etapes': [{'etape': 'spectral', 'libelle': 'Correction spectrale',
-                     'motif_omission': 'toujours omis'}]},
-    ],
-}
+#: ACAL697 — cinq postes lisibles dont un compté, un partiel, un non compté :
+#: ceux de l'échantillon de contrat (aucune part de perte écrite en dur ici,
+#: ``test_politique_pertes_pvgis.AucunePerteCacheeTest``).
+POSTES_LISIBLES = json.loads(
+    (RACINE_APP / 'contract_samples' / 'calepinage_pertes_cascade.json')
+    .read_text(encoding='utf-8'))['exemple']['cascade']['postes_lisibles']
+
+
+def _premier_poste(statut):
+    return next(poste for poste in POSTES_LISIBLES['postes']
+                if poste['statut'] == statut)
 
 
 # ── Le pare-feu de TEXTE — jetons entiers, jamais une sous-chaîne ──────────
@@ -546,10 +534,15 @@ class FichePertesEnPostesTest(unittest.TestCase):
 
     def test_un_poste_non_compte_est_nomme_jamais_zero(self):
         texte = _texte_visible(_html_pertes_en_postes())
+        _premier_poste('non_compte')  # l'échantillon en porte un
+        motif = next(etape['motif_omission']
+                     for poste in POSTES_LISIBLES['postes']
+                     for etape in poste['etapes'])
+        part = str(_premier_poste('compte')['perte_pct']).replace('.', ',')
         self.assertIn('non compté', texte)
-        self.assertIn('Aucune salissure saisie.', texte)
+        self.assertIn(motif, texte.replace('&#x27;', "'"))
         self.assertNotRegex(texte, r'(?<![\d,])0 %')  # jamais 0 %
-        self.assertIn('1,8 %', texte)  # la part servie, telle quelle
+        self.assertIn(part + ' %', texte)  # la part servie, telle quelle
 
 
 class MontantInjecteParUnGabaritEstDetecteTest(unittest.TestCase):

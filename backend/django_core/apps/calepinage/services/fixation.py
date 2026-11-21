@@ -452,7 +452,7 @@ def bom_de_fixation(calepinage, systeme, refus=(), source=None):
     }
 
 
-def lignes_par_pan(roof_layout, composants):
+def _lignes_par_pan(roof_layout, composants):
     """ACAL592 — ``{repere de pan: lignes}`` : la MÊME règle et le même
     arrondi que ``_lignes_de_fixation``, sur les grandeurs de CHAQUE pan à
     poser (PUR ; ``[]`` sans conception lisible)."""
@@ -490,8 +490,8 @@ def fixation_par_pan(calepinage):
     systeme, _refus = resoudre_systeme(company, calepinage=calepinage)
     if systeme is None:
         return None
-    return lignes_par_pan(getattr(calepinage, 'roof_layout', None),
-                          composants_du_systeme(systeme))
+    return _lignes_par_pan(getattr(calepinage, 'roof_layout', None),
+                           composants_du_systeme(systeme))
 
 
 def table_fixation(calepinage):

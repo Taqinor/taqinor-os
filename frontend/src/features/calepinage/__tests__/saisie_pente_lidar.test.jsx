@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 /* ============================================================================
    CALX29 — SUGGESTION DE PENTE LIDAR IGN, FRANCE SEULEMENT.
@@ -18,6 +20,7 @@ const layout = vi.fn()
 const enregistrerLayout = vi.fn()
 const disponibilite = vi.fn()
 const decision = vi.fn()
+const relief = vi.fn()
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
@@ -25,6 +28,7 @@ vi.mock('../../../api/calepinageApi', () => ({
       layout: (...a) => layout(...a),
       enregistrerLayoutCalepinage: (...a) => enregistrerLayout(...a),
       decisionSuggestionPente: (...a) => decision(...a),
+      suggestionPenteRelief: (...a) => relief(...a),
     },
     parametres: {
       suggestionPenteDisponible: (...a) => disponibilite(...a),
@@ -201,5 +205,49 @@ describe('CALX29 / ACAL66 — société en France : suggestions par pan, décid�
     await screen.findByTestId('cal-pente-lidar-suggerer')
     expect(screen.queryByTestId('cal-pente-lidar-decalage')).not.toBeInTheDocument()
     expect(screen.queryByTestId('cal-pente-lidar-decalage-x')).not.toBeInTheDocument()
+  })
+})
+
+describe('ACAL535 — relief de drone : société hors France, aucun appel IGN', () => {
+  // Le contrat partagé (le test tourne depuis `frontend/`).
+  const contrat = JSON.parse(readFileSync(
+    resolve(globalThis.process.cwd(), '../backend/django_core/apps/calepinage/contract_samples/calepinage_suggestion_pente.json'),
+    'utf8')).relief
+  const reliefRendu = () => {
+    const zones = [{
+      id: 'pan-1', pitchDeg: 18, vertices: [[0, 0], [1, 0], [1, 1]],
+      pitchSuggestion: { ...contrat.exemple_suggestion },
+    }]
+    return { data: { roof_layout: { zones }, empreinte_document: 'E9', inchange: false, version: 3 } }
+  }
+  const deposer = async () => {
+    const fichier = new File(['x'], 'relief.tif', { type: 'image/tiff' })
+    fireEvent.change(await screen.findByTestId('cal-pente-relief-fichier'), { target: { files: [fichier] } })
+    return fichier
+  }
+
+  it('le dépôt envoie le fichier et le jeton, sans bouton IGN ni suggestion IGN', async () => {
+    disponibilite.mockResolvedValue({ data: { disponible: false, suggestions: [], detail: '' } })
+    relief.mockResolvedValue(reliefRendu())
+    rendre()
+    const fichier = await deposer()
+    await waitFor(() => expect(relief).toHaveBeenCalledTimes(1))
+    const [id, corps] = relief.mock.calls[0]
+    expect(id).toBe(7)
+    expect(corps.get('relief')).toBe(fichier)
+    expect(corps.get('base_empreinte')).toBe('E0')
+    expect(decision).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('cal-pente-lidar-suggerer')).not.toBeInTheDocument()
+    const carte = await screen.findByTestId('cal-pente-lidar-suggestion-pan-1')
+    expect(carte).toHaveTextContent(contrat.source)
+    expect(carte).not.toHaveTextContent('LiDAR IGN')
+  })
+
+  it('un relief refusé (400 nommant relief) affiche le motif du serveur', async () => {
+    disponibilite.mockResolvedValue({ data: { disponible: false, suggestions: [], detail: '' } })
+    relief.mockRejectedValue({ response: { status: 400, data: contrat.exemple_refus } })
+    rendre()
+    await deposer()
+    expect(await screen.findByTestId('cal-pente-lidar-message')).toHaveTextContent('en mètres')
   })
 })

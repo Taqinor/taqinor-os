@@ -1,0 +1,75 @@
+{
+  "source": "PVsyst — Albedo usual coefficients",
+  "surfaces": [
+    {
+      "surface": "Herbe fraîche",
+      "valeur": 0.26,
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-21"
+    },
+    {
+      "surface": "Neige fraîche",
+      "valeur": 0.82,
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-21"
+    },
+    {
+      "surface": "Asphalte mouillé",
+      "valeur": 0.18,
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-21"
+    },
+    {
+      "surface": "Tuiles rouges",
+      "valeur": 0.33,
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-21"
+    },
+    {
+      "surface": "Aluminium",
+      "valeur": 0.85,
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-21"
+    },
+    {
+      "surface": "Cuivre",
+      "valeur": 0.74,
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-21"
+    },
+    {
+      "surface": "Acier galvanisé neuf",
+      "valeur": 0.35,
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-21"
+    },
+    {
+      "surface": "Acier galvanisé très sale",
+      "valeur": 0.08,
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-21"
+    }
+  ],
+  "ecartees": [
+    {
+      "surface": "Environnement urbain",
+      "motif": "la page imprime une fourchette (0.14 - 0.22), pas une valeur unique"
+    },
+    {
+      "surface": "Herbe",
+      "motif": "la page imprime une fourchette (0.15 - 0.25), pas une valeur unique"
+    },
+    {
+      "surface": "Neige mouillée",
+      "motif": "la page imprime une fourchette (0.55-0.75), pas une valeur unique"
+    },
+    {
+      "surface": "Asphalte sec",
+      "motif": "la page imprime une fourchette (0.09-0.15), pas une valeur unique"
+    },
+    {
+      "surface": "Béton",
+      "motif": "la page imprime une fourchette (0.25-0.35), pas une valeur unique"
+    }
+  ]
+}
