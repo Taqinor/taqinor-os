@@ -208,6 +208,86 @@ def factures_cherchees(user, *, q='', client_id=None, statut='', limite=10):
     return {'total': total, 'lignes': [_ligne_facture(f) for f in page]}
 
 
+# ── 21/11/2026 — retrouver des devis (lecture de la portée du rôle) ─────────
+
+#: ``limite`` de ``devis_cherches`` : défaut et plafond.
+DEVIS_LIMITE_DEFAUT = 20
+DEVIS_LIMITE_MAX = 50
+
+
+def _devis_du_texte(qs, company_id, q):
+    """Référence, nom/prénom du client, nom/prénom/téléphone du lead (le
+    téléphone sert à CHERCHER, il n'est jamais rendu)."""
+    from django.db.models import Q
+
+    filtre = (Q(reference__icontains=q) | Q(client__nom__icontains=q)
+              | Q(client__prenom__icontains=q) | Q(lead__nom__icontains=q)
+              | Q(lead__prenom__icontains=q))
+    if sum(c.isdigit() for c in q) >= CHIFFRES_TELEPHONE:
+        filtre |= Q(lead__telephone__icontains=q.strip())
+        par_tel = _clients_par_telephone(company_id, q)
+        if par_tel:
+            filtre |= Q(client_id__in=par_tel)
+    return qs.filter(filtre)
+
+
+def _devis_de_la_periode(qs, statut, depuis, jusqu_a):
+    """``depuis`` / ``jusqu_a`` (dates incluses) sur la date de création ; pour
+    un devis ACCEPTÉ, sur la date d'acceptation (à défaut, la création)."""
+    from django.db.models import Q
+
+    for borne, op in ((depuis, 'gte'), (jusqu_a, 'lte')):
+        if borne is None:
+            continue
+        creation = Q(**{f'date_creation__date__{op}': borne})
+        if statut == 'accepte':
+            qs = qs.filter(Q(**{f'date_acceptation__{op}': borne})
+                           | (Q(date_acceptation__isnull=True) & creation))
+        else:
+            qs = qs.filter(creation)
+    return qs
+
+
+def _ligne_devis(devis):
+    envoi = devis.date_envoi
+    accepte = devis.date_acceptation
+    total = devis.total_ttc
+    return {
+        'devis_id': devis.pk,
+        'reference': devis.reference,
+        'statut': devis.statut,
+        'client': nom_du_client(devis.client if devis.client_id else None),
+        'lead_id': devis.lead_id,
+        'total_ttc': texte_montant(total) if total is not None else None,
+        'cree_le': devis.date_creation.date().isoformat(),
+        'envoye_le': envoi.date().isoformat() if envoi else None,
+        'accepte_le': accepte.isoformat() if accepte else None,
+        'lien': lien_devis(devis.pk),
+    }
+
+
+def devis_cherches(qs, company_id, *, statut='', depuis=None, jusqu_a=None,
+                   q='', limite=DEVIS_LIMITE_DEFAUT):
+    """Les devis de ``qs`` — le queryset DÉJÀ borné par ``DevisViewSet.
+    get_queryset()`` (société + visibilité du rôle + règle du responsable de
+    lead : exactement les lignes de l'écran) — qui répondent aux filtres ; les
+    plus récents d'abord. ``{total, limite, lignes}`` (contrat
+    ``assistant_devis_liste.json``). Jamais de prix d'achat ni de marge."""
+    limite = max(1, min(int(limite or DEVIS_LIMITE_DEFAUT), DEVIS_LIMITE_MAX))
+    qs = qs.prefetch_related(None)
+    if statut:
+        qs = qs.filter(statut=statut)
+    qs = _devis_de_la_periode(qs, statut, depuis, jusqu_a)
+    if q:
+        qs = _devis_du_texte(qs, company_id, q)
+    total = qs.count()
+    page = (qs.select_related('client')
+            .prefetch_related('lignes', 'lignes__produit')
+            .order_by('-date_creation', '-id')[:limite])
+    return {'total': total, 'limite': limite,
+            'lignes': [_ligne_devis(d) for d in page]}
+
+
 # ── VAD10 — le bloc « impayés » du point du matin ───────────────────────────
 
 #: Au plus cinq lignes par liste du point du matin (contrat du digest).

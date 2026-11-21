@@ -435,10 +435,89 @@ def _lignes_assistant(vue, request, operation, declare):
     return Response({**rendu, 'lien': SA.lien_devis(devis.pk)})
 
 
+DATE_ISO = r'^\d{4}-\d{2}-\d{2}$'
+PARAMETRES_LISTE_DEVIS = [
+    OpenApiParameter('statut', {'type': 'string',
+                                'enum': ['brouillon', 'envoye', 'accepte',
+                                         'refuse', 'expire']},
+                     OpenApiParameter.QUERY, required=False),
+    OpenApiParameter('depuis', {'type': 'string', 'format': 'date',
+                                'pattern': DATE_ISO},
+                     OpenApiParameter.QUERY, required=False,
+                     description="Date incluse (création ; acceptation pour "
+                                 "statut=accepte)."),
+    OpenApiParameter('jusqu_a', {'type': 'string', 'format': 'date',
+                                 'pattern': DATE_ISO},
+                     OpenApiParameter.QUERY, required=False,
+                     description='Date incluse (mêmes dates que depuis).'),
+    _q_param(),
+    OpenApiParameter('limite', {'type': 'integer', 'minimum': 1,
+                                'maximum': SA.DEVIS_LIMITE_MAX},
+                     OpenApiParameter.QUERY, required=False),
+]
+
+
+def _lire_liste_devis(request):
+    """Paramètres de ``devis/assistant-liste/`` ; 400 nommant chaque fautif."""
+    import datetime
+    import re
+    params, erreurs = request.query_params, {}
+    _non_declares(params, frozenset(p.name for p in PARAMETRES_LISTE_DEVIS)
+                  | {'format'}, erreurs)
+    lus = {'q': _texte_q(params, erreurs), 'statut': '',
+           'depuis': None, 'jusqu_a': None, 'limite': SA.DEVIS_LIMITE_DEFAUT}
+    statut = params.get('statut')
+    if statut is not None:
+        valeurs = ['brouillon', 'envoye', 'accepte', 'refuse', 'expire']
+        if statut not in valeurs:
+            erreurs['statut'] = ['Valeur « %s » invalide : attendu %s.'
+                                 % (statut, ', '.join(valeurs))]
+        else:
+            lus['statut'] = statut
+    for nom in ('depuis', 'jusqu_a'):
+        brut = params.get(nom)
+        if brut is None:
+            continue
+        try:
+            if not re.match(DATE_ISO, brut):
+                raise ValueError
+            lus[nom] = datetime.date.fromisoformat(brut)
+        except ValueError:
+            erreurs[nom] = ['Date attendue au format AAAA-MM-JJ.']
+    brut = params.get('limite')
+    if brut is not None:
+        if not brut.isdigit() or not 1 <= int(brut) <= SA.DEVIS_LIMITE_MAX:
+            erreurs['limite'] = ['Entier attendu entre 1 et %d.'
+                                 % SA.DEVIS_LIMITE_MAX]
+        else:
+            lus['limite'] = int(brut)
+    if erreurs:
+        raise ValidationError(erreurs)
+    return lus
+
+
 class DevisAssistantActionsMixin:
     """Copilote vague 2 (lane VAD) — routes de ``DevisViewSet`` réservées à
     l'assistant (mixin, aucune base). Portée = ``get_object`` (société +
     visibilité du rôle, celle de la liste des devis) : hors portée → 404."""
+
+    # api-only: lue par l'assistant (action `ventes.devis.chercher`), aucun écran ne l'appelle.
+    @extend_schema(request=None, parameters=PARAMETRES_LISTE_DEVIS,
+                   responses={200: DA.DevisListeAssistantResponse,
+                              400: D.ErreurDetail})
+    @action(detail=False, methods=['get'], url_path='assistant-liste',
+            permission_classes=[LectureVentes])
+    def assistant_liste(self, request):
+        """Retrouver des devis (statut, période, texte) dans la portée EXACTE
+        de l'écran des devis : le point de départ est ``get_queryset()``
+        (société + visibilité du rôle + règle du responsable de lead), jamais
+        un queryset brut. Jamais de prix d'achat ni de marge. Contrat :
+        ``contract_samples/assistant_devis_liste.json``."""
+        lus = _lire_liste_devis(request)
+        return Response(SA.devis_cherches(
+            self.get_queryset(), request.user.company_id, statut=lus['statut'],
+            depuis=lus['depuis'], jusqu_a=lus['jusqu_a'], q=lus['q'],
+            limite=lus['limite']))
 
     # api-only: lue par l'assistant (action `ventes.vente.etat`), aucun écran ne l'appelle.
     @extend_schema(request=None,

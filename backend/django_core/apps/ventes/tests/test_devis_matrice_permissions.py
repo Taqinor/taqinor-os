@@ -132,6 +132,9 @@ FIGEE = {
     'assistant_lignes_modifier': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     'assistant_lignes_supprimer': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     'assistant_lignes_remplacer': (RESP, 'DroitDeLaGrille_ventes_modifier'),
+    # 21/11/2026 — retrouver des devis (lecture de la portée de l'écran) :
+    # LECTURE du module (code ``ventes_voir``).
+    'assistant_liste': LECTURE,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).

@@ -56,8 +56,9 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
 #: (copilote vague 2, ``views/assistant.py`` : ``vente-assistant``,
 #: ``assistant-taille`` POST et ``assistant-taille/apercu`` GET) + les quatre
 #: routes de lignes de l'assistant (20/11/2026, ``assistant-lignes/ajouter``,
-#: ``/modifier``, ``/supprimer``, ``/remplacer``, POST).
-NB_ROUTES = 74
+#: ``/modifier``, ``/supprimer``, ``/remplacer``, POST) + ``assistant-liste``
+#: (21/11/2026, GET, collection : retrouver des devis).
+NB_ROUTES = 75
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches

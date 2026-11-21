@@ -803,6 +803,43 @@ LIGNES_DEVIS = AgentAction(
 )
 
 
+# 21/11/2026 — retrouver des devis (``GET devis/assistant-liste/``, garde
+# ``LectureVentes`` = ``ventes_voir``, contrat ``assistant_devis_liste.json``) :
+# la portée EXACTE de l'écran des devis (un commercial voit les siens). Aucun
+# prix d'achat, aucune marge.
+CHERCHER_DEVIS = AgentAction(
+    key='ventes.devis.chercher',
+    label='Retrouver des devis',
+    description=(
+        "Sert à : lister ou compter les devis que je peux voir, par statut, "
+        "période ou texte (« mes devis en brouillon », « devis acceptés ce "
+        "mois-ci », « les devis de Benali »). Ne pas utiliser pour : lire les "
+        "lignes d'un devis (ventes.devis.lignes) ni les factures. Exemple : "
+        "statut=accepte, depuis=2026-11-01. Résultat : total, limite et "
+        "devis (référence, statut, client, total TTC, dates, lien)."
+    ),
+    endpoint='/api/django/ventes/devis/assistant-liste/',
+    method='GET',
+    inputs={'type': 'object', 'properties': {
+        'statut': {'type': 'string',
+                   'enum': ['brouillon', 'envoye', 'accepte', 'refuse',
+                            'expire'],
+                   'description': 'Statut du devis.'},
+        'depuis': {'type': 'string', 'format': 'date',
+                   'description': 'Date incluse AAAA-MM-JJ (création ; '
+                                  'acceptation si statut=accepte).'},
+        'jusqu_a': {'type': 'string', 'format': 'date',
+                    'description': 'Date incluse AAAA-MM-JJ.'},
+        'q': {'type': 'string', 'description': (
+            'Référence, nom du client ou du lead.')},
+        'limite': _entier('Lignes rendues (1 à 50, défaut 20).'),
+    }, 'additionalProperties': False},
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+)
+
+
 # ── Copilote vague 2 (lane VAD) — la vie du devis après sa création ─────────
 
 def _id_devis():
@@ -1162,6 +1199,7 @@ FACTURER_VENTE = AgentAction(
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
+                           CHERCHER_DEVIS,
                            # Copilote vague 2 (lane VAD).
                            VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
                            PROLONGER_DEVIS, REFUSER_DEVIS, REVISER_DEVIS,

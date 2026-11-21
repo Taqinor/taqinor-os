@@ -46,6 +46,7 @@ from apps.ventes.agent_actions import (
     ENVOYER_EMAIL_DEVIS,
     EXPLIQUER_DEVIS,
     LIGNES_DEVIS,
+    CHERCHER_DEVIS,
     VENTES_ACTIONS,
     VENTES_ACTIONS_COPILOTE,
     register_ventes_actions,
@@ -1767,3 +1768,151 @@ class LignesAssistantEcritureTest(_BaseVenteAssistant):
         self.assertEqual(LIGNE_AJOUTER.inputs['properties']['quantite']['type'],
                          'number')
         self.assertEqual(LIGNE_REMPLACER.lot, LOT_COPILOTE)
+
+
+class DevisChercherAssistantTest(TestCase):
+    """21/11/2026 — ``GET devis/assistant-liste/`` (action
+    ``ventes.devis.chercher``) : la portée EXACTE de l'écran des devis (un
+    Commercial « mes enregistrements » ne voit que les siens), filtres statut /
+    période / texte, jamais un prix d'achat ni une marge, plafond de 50."""
+
+    URL = CHERCHER_DEVIS.endpoint
+
+    def setUp(self):
+        import datetime
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        from apps.ventes.models import LigneDevis
+        self.company = Company.objects.create(nom='CHD Co', slug='chd-co')
+        self.autre = Company.objects.create(nom='CHD Autre', slug='chd-autre')
+        role_soi = Role.objects.create(
+            company=self.company, nom='Commercial soi',
+            permissions=COMMERCIAL_PERMISSIONS + ['records_scope_soi'],
+            est_systeme=False)
+        self.moi = User.objects.create_user(
+            username='chd_moi', password='x', role=role_soi,
+            role_legacy='commercial', company=self.company)
+        self.collegue = User.objects.create_user(
+            username='chd_collegue', password='x', role_legacy='responsable',
+            company=self.company)
+        self.client_a = Client.objects.create(
+            company=self.company, nom='Benali', prenom='Karim',
+            email='chd-a@example.com', telephone='+212600000081',
+            adresse='Rabat')
+        self.client_b = Client.objects.create(
+            company=self.company, nom='Lahlou', prenom='Sara',
+            email='chd-b@example.com', telephone='+212600000082',
+            adresse='Fès')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Batterie CHD', sku='CHD-BAT',
+            prix_vente=Decimal('1000'), prix_achat=Decimal('654.32'))
+        self.aujourdhui = timezone.now().date()
+
+        def creer(ref, client, auteur, statut):
+            d = Devis.objects.create(
+                company=self.company, reference=ref, client=client,
+                statut=statut, taux_tva=Decimal('20.00'), created_by=auteur)
+            LigneDevis.objects.create(
+                devis=d, produit=self.produit, designation='Batterie CHD',
+                quantite=Decimal('1'), prix_unitaire=Decimal('1000'), ordre=0)
+            return d
+        self.brouillon = creer('CHD-001', self.client_a, self.moi,
+                               Devis.Statut.BROUILLON)
+        self.accepte = creer('CHD-002', self.client_b, self.moi,
+                             Devis.Statut.ACCEPTE)
+        self.du_collegue = creer('CHD-003', self.client_a, self.collegue,
+                                 Devis.Statut.BROUILLON)
+        # Un devis accepté il y a 60 jours : créé et accepté hors du mois.
+        self.ancien = creer('CHD-004', self.client_b, self.moi,
+                            Devis.Statut.ACCEPTE)
+        ancien = timezone.now() - datetime.timedelta(days=60)
+        Devis.objects.filter(pk=self.ancien.pk).update(
+            date_creation=ancien, date_acceptation=ancien.date())
+        Devis.objects.filter(pk=self.accepte.pk).update(
+            date_acceptation=self.aujourdhui)
+        autre_client = Client.objects.create(
+            company=self.autre, nom='Benali', email='chd-x@example.com',
+            telephone='+212600000083', adresse='Agadir')
+        Devis.objects.create(
+            company=self.autre, reference='CHD-AUTRE', client=autre_client,
+            statut=Devis.Statut.BROUILLON, taux_tva=Decimal('20.00'))
+
+    def _refs(self, user, **params):
+        resp = auth(user).get(self.URL, params)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return {ligne['reference'] for ligne in resp.data['lignes']}, resp
+
+    def test_commercial_portee_soi_ne_voit_que_les_siens(self):
+        refs, resp = self._refs(self.moi)
+        self.assertEqual(refs, {'CHD-001', 'CHD-002', 'CHD-004'})
+        self.assertEqual(resp.data['total'], 3)
+        self.assertEqual(set(resp.data), {'total', 'limite', 'lignes'})
+        # Le responsable (portée « tout ») voit aussi ceux du collègue.
+        refs, _ = self._refs(self.collegue)
+        self.assertIn('CHD-001', refs)
+        self.assertIn('CHD-003', refs)
+
+    def test_filtre_statut_brouillon_et_forme_de_la_ligne(self):
+        refs, resp = self._refs(self.moi, statut='brouillon')
+        self.assertEqual(refs, {'CHD-001'})
+        ligne = resp.data['lignes'][0]
+        self.assertEqual(set(ligne), {
+            'devis_id', 'reference', 'statut', 'client', 'lead_id',
+            'total_ttc', 'cree_le', 'envoye_le', 'accepte_le', 'lien'})
+        self.assertEqual((ligne['client'], ligne['total_ttc'],
+                          ligne['statut']),
+                         ('Benali Karim', '1200.00', 'brouillon'))
+
+    def test_acceptes_ce_mois_ci_suit_la_date_d_acceptation(self):
+        debut = self.aujourdhui.replace(day=1).isoformat()
+        refs, resp = self._refs(self.moi, statut='accepte', depuis=debut)
+        self.assertEqual(refs, {'CHD-002'})
+        self.assertEqual(resp.data['total'], 1)
+        self.assertEqual(resp.data['lignes'][0]['accepte_le'],
+                         self.aujourdhui.isoformat())
+        refs, _ = self._refs(self.moi, statut='accepte', jusqu_a=debut)
+        self.assertEqual(refs, {'CHD-004'})
+
+    def test_recherche_texte_client_et_reference(self):
+        refs, _ = self._refs(self.moi, q='lahlou')
+        self.assertEqual(refs, {'CHD-002', 'CHD-004'})
+        refs, _ = self._refs(self.moi, q='CHD-001')
+        self.assertEqual(refs, {'CHD-001'})
+        # « Benali » : les siens seulement, jamais celui du collègue ni de
+        # l'autre société.
+        refs, _ = self._refs(self.moi, q='Benali')
+        self.assertEqual(refs, {'CHD-001'})
+
+    def test_autre_societe_jamais_listee(self):
+        for user in (self.moi, self.collegue):
+            refs, _ = self._refs(user)
+            self.assertNotIn('CHD-AUTRE', refs)
+
+    def test_aucun_prix_d_achat_ni_marge(self):
+        _, resp = self._refs(self.collegue)
+        texte = str(resp.data).lower()
+        for interdit in ('654.32', 'prix_achat', 'marge', 'telephone',
+                         '+212600000081'):
+            self.assertNotIn(interdit, texte)
+
+    def test_limite_plafonnee_a_50_et_parametres_invalides_400(self):
+        resp = auth(self.moi).get(self.URL, {'limite': 51})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('limite', resp.data)
+        resp = auth(self.moi).get(self.URL, {'limite': 1})
+        self.assertEqual((resp.status_code, resp.data['limite'],
+                          len(resp.data['lignes']), resp.data['total']),
+                         (200, 1, 1, 3))
+        for params in ({'statut': 'inconnu'}, {'depuis': '21/11/2026'},
+                       {'lead': 1}):
+            with self.subTest(params=params):
+                self.assertEqual(
+                    auth(self.moi).get(self.URL, params).status_code, 400)
+
+    def test_action_declaree_comme_la_route(self):
+        from apps.agent.registry import LOT_COPILOTE
+        self.assertEqual((CHERCHER_DEVIS.lot, CHERCHER_DEVIS.risk,
+                          CHERCHER_DEVIS.required_permission,
+                          CHERCHER_DEVIS.method),
+                         (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'GET'))
+        self.assertLessEqual(len(CHERCHER_DEVIS.description), 600)
+        self.assertIn(CHERCHER_DEVIS, VENTES_ACTIONS_COPILOTE)

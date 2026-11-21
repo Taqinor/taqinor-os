@@ -83,6 +83,15 @@
       ]
     },
     {
+      "nom": "assistant_liste",
+      "url_path": "assistant-liste",
+      "url_name": "assistant-liste",
+      "detail": false,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "assistant_taille",
       "url_path": "assistant-taille",
       "url_name": "assistant-taille",
@@ -700,6 +709,7 @@
     "assistant_lignes_modifier",
     "assistant_lignes_remplacer",
     "assistant_lignes_supprimer",
+    "assistant_liste",
     "assistant_taille",
     "assistant_taille_apercu",
     "atomic",

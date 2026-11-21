@@ -50,6 +50,25 @@ VenteEtatAssistantResponse = _ser('VenteEtatAssistantResponse', {
     'lien': s.CharField(),
 })
 
+#: 21/11/2026 — ``GET ventes/devis/assistant-liste/``
+#: (``assistant_devis_liste.json``) : les devis de la portée de l'écran.
+DevisListeAssistantResponse = _ser('DevisListeAssistantResponse', {
+    'total': s.IntegerField(),
+    'limite': s.IntegerField(),
+    'lignes': s.ListField(child=_ser('DevisListeAssistantLigne', {
+        'devis_id': s.IntegerField(),
+        'reference': s.CharField(),
+        'statut': s.CharField(),
+        'client': s.CharField(allow_blank=True),
+        'lead_id': s.IntegerField(allow_null=True),
+        'total_ttc': s.CharField(allow_null=True),
+        'cree_le': s.DateField(),
+        'envoye_le': s.DateField(allow_null=True),
+        'accepte_le': s.DateField(allow_null=True),
+        'lien': s.CharField(),
+    })),
+})
+
 _ALERTE = _ser('TailleAssistantAlerte', {
     'code': s.CharField(), 'message': s.CharField()})
 _TAILLE_COMMUN = {
