@@ -78,7 +78,7 @@ function refusParChamp(err, cle, repli) {
 
 function Etiquette({ texte, alerte }) {
   return (
-    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] ${
+    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs ${
       alerte ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'
     }`}
     >
@@ -90,13 +90,13 @@ function Etiquette({ texte, alerte }) {
 function SourcePiece({ source }) {
   if (!source?.type) {
     // Une pièce sans source déclarée n'est pas présentée comme officielle.
-    return <span className="text-[11px] text-destructive">source non déclarée</span>
+    return <span className="text-xs text-destructive">source non déclarée</span>
   }
   const libelle = source.type === 'gabarit_societe'
     ? `gabarit déposé par la société${source.fichier ? ` — ${source.fichier}` : ''}`
     : 'pièce déclarée par la société'
   return (
-    <span className="text-[11px] text-muted-foreground" data-testid="cal196-source">
+    <span className="text-xs text-muted-foreground" data-testid="cal196-source">
       {libelle}
       {source.depose_le ? ` · ${formatDateTime(source.depose_le)}` : ''}
     </span>

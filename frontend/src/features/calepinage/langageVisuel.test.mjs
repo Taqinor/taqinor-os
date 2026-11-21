@@ -60,3 +60,10 @@ test("PLAFOND ne nomme que des fichiers existants, jamais ceux de l'enveloppe", 
     assert.ok(!ENVELOPPE.includes(f), `${f} est dans l'enveloppe`)
   }
 })
+test("ACAL438 : aucun texte de l'atelier sous 12 px", () => {
+  for (const f of ['DossiersReglementaires.jsx', 'commun/Provenance.jsx', 'plan/AffectationChaines.jsx']) {
+    assert.ok(!/text-\[1[01]px\]/.test(readFileSync(join(SRC, C + f), 'utf8')), `${f} porte text-[10px]/text-[11px]`)
+  }
+  const css = readFileSync(join(SRC, 'styles/roofbuilder.css'), 'utf8')
+  for (const m of css.matchAll(/font(?:-size)?:\s*(?:[0-9]+\s+)?(0?\.\d+)rem/g)) assert.ok(parseFloat(m[1]) >= 0.75, `roofbuilder.css : ${m[0]} < 0,75 rem`)
+})
