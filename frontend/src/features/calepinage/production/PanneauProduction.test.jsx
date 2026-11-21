@@ -31,6 +31,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
+import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat
@@ -375,6 +376,35 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
     // Par pan : les colonnes P75 / P90 / PR sont masquées aussi.
     const ligne = within(screen.getByTestId('cal236-par-pan')).getByText('PAN-A').closest('tr')
     expect(within(ligne).getAllByTestId('acal52-non-publie')).toHaveLength(3)
+  })
+
+  /* ACAL398 — la simulation partie à l'enregistrement : l'onglet reprend son job. */
+  it('ACAL398 — job automatique en cours ⇒ « Simulation en cours… » puis relecture', async () => {
+    viderSimulationsAuto()
+    servir('exemple')
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: { job_id: 'j-9' } })
+    calepinageApi.moteur.resultat
+      .mockResolvedValueOnce({ data: { job_id: 'j-9', statut: 'running' } })
+      .mockResolvedValue({ data: { job_id: 'j-9', statut: 'done' } })
+    await lancerSimulationAuto(1)
+    render(<MemoryRouter><PanneauProduction calepinageId={1} intervalleMs={300} /></MemoryRouter>)
+
+    expect(await screen.findByText('Simulation en cours…')).toBeInTheDocument()
+    await waitFor(() => expect(calepinageApi.moteur.resultat).toHaveBeenCalledWith('j-9'))
+    await waitFor(() => expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThan(1))
+  })
+
+  it('ACAL398 — refus nommé du serveur ⇒ phrase affichée dans l’onglet', async () => {
+    viderSimulationsAuto()
+    servir('exemple')
+    calepinageApi.calepinages.simuler.mockRejectedValue(
+      { response: { status: 409, data: { 'parametres.mode_meteo': ['Mode météo non choisi.'] } } })
+    await lancerSimulationAuto(1)
+    rendre()
+
+    const refus = await screen.findByTestId('calx48-refus')
+    expect(refus).toHaveTextContent('La simulation automatique n’a pas démarré : Mode météo non choisi.')
+    expect(screen.getByTestId('calx48-lien-reglages')).toBeInTheDocument()
   })
 
   it('complet : ni bandeau ni masquage', async () => {
