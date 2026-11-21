@@ -46,8 +46,10 @@ export const simulation = {
     // D-CALX 12) — ou 200 `{deja_calcule: true, calcule_le}` quand les
     // entrées n'ont pas bougé. `{ forcer: true }` relance quand même. Un
     // refus 400 NOMME le réglage ou le champ à corriger.
-    simuler: (id, { forcer = false } = {}) =>
-      api.post(`${pivot(id)}simuler/`, { forcer }),
+    // ACAL398 — `silencieux` : l'appelant affiche lui-même le refus (relance
+    // automatique) ; le pont axios ne lève alors AUCUN toast.
+    simuler: (id, { forcer = false, silencieux = false } = {}) =>
+      api.post(`${pivot(id)}simuler/`, { forcer }, silencieux ? { suppressErrorToast: true } : undefined),
 
     // ACAL392 — l'état du parcours guidé (contrat `calepinage_parcours_guide.json`).
     parcours: (id) => api.get(`${pivot(id)}parcours/`),

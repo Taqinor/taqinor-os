@@ -197,7 +197,7 @@ import { monterAidePente } from './roofPro11/penteAide'; // ACAL416
 import { type TableOmbrage } from './roofPro11/tableOmbrage'; // ACAL459
 import { type FacteurVueCiel } from './roofPro11/vueCiel'; // ACAL460
 import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
-import { creerBandeauAnnuler, confirmerEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
+import { creerBandeauAnnuler, demanderEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
 import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
@@ -3006,7 +3006,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   clearBtn?.addEventListener('click', () => {
     const pans = areas.filter((a) => (a.id === activeAreaId ? closed : a.vertices.length >= 3)).length;
     const obstacles = areas.reduce((n, a) => n + (a.id === activeAreaId ? ctx.obstacles.length : a.obstacles.length), 0);
-    if (confirmerEffacer({ pans, obstacles, consommation: consHandEdited || consAppliances.length > 0 || ctx.consSource != null, ombres: ctx.shadeObstructions.length > 0 })) { reset(); etatVide.maj(0, false); } // ACAL420 — site vierge : la carte d'aide revient
+    demanderEffacer(clearBtn, { pans, obstacles, consommation: consHandEdited || consAppliances.length > 0 || ctx.consSource != null, ombres: ctx.shadeObstructions.length > 0 }, () => { reset(); etatVide.maj(0, false); }); // ACAL420 — site vierge : la carte d'aide revient
   });
 
   // — « Plusieurs zones » : ajouter une zone + sélection/suppression dans la liste —
