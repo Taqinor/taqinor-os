@@ -1,0 +1,518 @@
+{
+  "sha": "1b556ddd94da5f57ec2588e92279104ddd5f4fbe",
+  "date": "2026-11-21",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL392",
+    "ACAL393",
+    "ACAL394",
+    "ACAL395",
+    "ACAL396",
+    "ACAL397",
+    "ACAL398",
+    "ACAL399",
+    "ACAL400",
+    "ACAL403",
+    "ACAL405",
+    "ACAL406",
+    "ACAL407",
+    "ACAL408",
+    "ACAL409",
+    "ACAL410",
+    "ACAL412",
+    "ACAL413",
+    "ACAL414",
+    "ACAL415",
+    "ACAL416",
+    "ACAL417",
+    "ACAL419",
+    "ACAL420",
+    "ACAL422",
+    "ACAL443",
+    "ACAL444",
+    "ACAL446",
+    "ACAL448",
+    "ACAL453",
+    "ACAL469",
+    "ACAL475",
+    "ACAL488"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.5-ACAL393-ACAL394-ACAL419-ACAL408-rail-guide",
+      "taches": [
+        "ACAL393",
+        "ACAL394",
+        "ACAL419",
+        "ACAL408"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL393-ACAL394-ACAL419-ACAL408-rail-guide.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL407-ACAL409-adresses-onglets",
+      "taches": [
+        "ACAL407",
+        "ACAL409"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL407-ACAL409-adresses-onglets.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL399-ACAL400-barre-brouillon",
+      "taches": [
+        "ACAL399",
+        "ACAL400"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL399-ACAL400-barre-brouillon.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL406-fiche-champ-personnalise",
+      "taches": [
+        "ACAL406"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL406-fiche-champ-personnalise.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL488-detection-toit-sans-cle",
+      "taches": [
+        "ACAL488"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL488-detection-toit-sans-cle.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL415-palette-commandes",
+      "taches": [
+        "ACAL415"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL415-palette-commandes.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL414-aide-raccourcis",
+      "taches": [
+        "ACAL414"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL414-aide-raccourcis.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL420-ACAL422-ACAL410-trace-vierge",
+      "taches": [
+        "ACAL420",
+        "ACAL422",
+        "ACAL410"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL420-ACAL422-ACAL410-trace-vierge.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL417-hypotheses-a-confirmer",
+      "taches": [
+        "ACAL417"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL417-hypotheses-a-confirmer.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL416-aide-pente-pourcentage",
+      "taches": [
+        "ACAL416"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL416-aide-pente-pourcentage.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL413-ACAL412-annuler-effacements",
+      "taches": [
+        "ACAL413",
+        "ACAL412"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL413-ACAL412-annuler-effacements.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.3-ACAL413-effacer-question-nommee",
+      "taches": [
+        "ACAL413"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.3-ACAL413-effacer-question-nommee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats",
+      "taches": [
+        "ACAL392",
+        "ACAL395",
+        "ACAL443",
+        "ACAL453",
+        "ACAL446",
+        "ACAL444"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL397-manque-ouvre-le-champ",
+      "taches": [
+        "ACAL397"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL397-manque-ouvre-le-champ.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL396-pertes-unifie",
+      "taches": [
+        "ACAL396"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL396-pertes-unifie.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL398-simulation-auto",
+      "taches": [
+        "ACAL398"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL398-simulation-auto.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL448-economie-flux",
+      "taches": [
+        "ACAL448"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL448-economie-flux.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL469-optimiser",
+      "taches": [
+        "ACAL469"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL469-optimiser.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL475-rapport-note-validation",
+      "taches": [
+        "ACAL475"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL475-rapport-note-validation.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PA2.5-ACAL405-ACAL403-demarrage-rapide",
+      "taches": [
+        "ACAL405",
+        "ACAL403"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-21/ACCEPTATION-ACAL-PA2.5-ACAL405-ACAL403-demarrage-rapide.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
