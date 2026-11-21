@@ -145,7 +145,7 @@ export default function AtelierPanneaux({
             s'ouvre depuis son atelier, jamais depuis une entrée de menu
             permanente qui n'aurait aucun calepinage à désigner. */}
         <Link
-          to={`/calepinage/${calepinageId}/variantes`}
+          to={`/calepinage/${calepinageId}?onglet=variantes`}
           data-testid="cal-lien-variantes"
           className="text-sm font-semibold text-brass-300 underline"
         >
@@ -154,7 +154,7 @@ export default function AtelierPanneaux({
         {/* CAL53 — la photo de site (CAL52) se cale depuis ici : un item de
             menu permanent n'aurait aucun calepinage à désigner. */}
         <Link
-          to={`/calepinage/${calepinageId}/photos`}
+          to={`/calepinage/${calepinageId}?onglet=photos`}
           data-testid="cal-lien-photos-calage"
           className="text-sm font-semibold text-brass-300 underline"
         >

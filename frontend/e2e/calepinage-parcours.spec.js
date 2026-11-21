@@ -113,7 +113,7 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
 
   // ── 5. LA RETENIR, PAR L'ÉCRAN (CAL42) ─────────────────────────────────
   await page.getByTestId('cal-lien-variantes').click()
-  await expect(page).toHaveURL(/\/calepinage\/\d+\/variantes/)
+  await expect(page).toHaveURL(/\/calepinage\/\d+\?onglet=variantes/)
   const tableau = page.getByTestId('cal-tableau-variantes')
   await expect(tableau).toBeVisible()
 

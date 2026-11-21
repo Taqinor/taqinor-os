@@ -53,7 +53,7 @@ const AtelierCalepinage = lazy(async () => {
 
 /* ACAL407 — les 13 routes profondes `/calepinage/:id/<cle>` ne montent plus de
    panneau : elles REDIRIGENT vers `/calepinage/:id?onglet=<cle>` (une adresse
-   par panneau). `variantes` et `photos` restent des pages (ACAL409). */
+   par panneau). `variantes` et `photos` redirigent aussi (ACAL409 : onglets du rail). */
 const RedirectionOnglet = lazy(() => import('./atelier/RedirectionOnglet'))
 
 // CAL35 — la LISTE réelle : vignettes, filtres RÉELLEMENT servis par CAL16,
@@ -62,14 +62,7 @@ const CalepinageList = lazy(() => import('./CalepinageList'))
 // CAL36 — l'écran de CRÉATION : choisir un lead OU un client, recherche bornée
 // société côté serveur, contexte géographique lu et jamais deviné.
 const CalepinageNouveau = lazy(() => import('./CalepinageNouveau'))
-// CAL42 — le comparatif des variantes (CAL105 fondue) : tableau une colonne par
-// variante + vue côte à côte, alimentés UNIQUEMENT par le contrat CAL3.
-const VariantesCompare = lazy(() => import('./VariantesCompare'))
-/* CAL53 — le CALAGE d'une photo de site (CAL52 : drone/oblique/sol) sur la
-   carte, par ses 4 coins (réutilise `roofTextureWarp.js`, VT11). Contextuel à
-   UN calepinage : deep-link ouvert depuis l'atelier (CAL37), jamais un item
-   de menu permanent qui n'aurait aucun calepinage à désigner. */
-const PhotoSiteCalage = lazy(() => import('./PhotoSiteCalage'))
+// ACAL409 — `VariantesCompare` (CAL42) et `PhotoSiteCalage` (CAL53) sont des onglets du rail (`atelier/onglets.js`).
 // CAL201 — la bibliothèque du module (presets, kits, modèles, favoris) :
 // société active respectée, lecture seule sans `calepinage_gerer`.
 const Bibliotheque = lazy(() => import('./Bibliotheque'))
@@ -194,7 +187,7 @@ const config = {
        c'est une ligne de plus dans `atelier/onglets.js`, rien d'autre. */
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },
+    { path: '/calepinage/:id/variantes', component: RedirectionOnglet, roles: ROLES },
     // CAL121
     // contextuelle: les fiches techniques trouées des équipements de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/fiches', component: RedirectionOnglet, roles: ROLES },
@@ -203,7 +196,7 @@ const config = {
     // contextuelle: (CAL63) caler le plan importé de CE calepinage sur la carte — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/plan', component: RedirectionOnglet, roles: ROLES },
     // CAL53 — caler une photo de site (CAL52) de CE calepinage sur la carte.
-    { path: '/calepinage/:id/photos', component: PhotoSiteCalage, roles: ROLES },
+    { path: '/calepinage/:id/photos', component: RedirectionOnglet, roles: ROLES },
     // contextuelle: (CAL58) la pente de CE calepinage, par l'un des trois modes de saisie — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/pente', component: RedirectionOnglet, roles: ROLES },
     // contextuelle: (CAL89) le champ au SOL de CE calepinage (mode terrain) — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.

@@ -12,10 +12,10 @@ const LIBELLE_ETAT = {
   a_faire: 'à faire', en_cours: 'en cours', fait: 'fait', bloque: 'bloqué',
 }
 
-export default function RailGuide({ etapeActive, etats, onChoisir }) {
+export default function RailGuide({ etapeActive, etats, onChoisir, expert = false, onBasculerExpert = null }) {
   return (
     <nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes"
-      className="mb-2 flex flex-wrap gap-1.5">
+      className="mb-2 flex flex-wrap items-center gap-1.5">
       {ETAPES.map((etape, rang) => {
         const etat = etats[etape.cle]
         const actif = etape.cle === etapeActive
@@ -41,6 +41,14 @@ export default function RailGuide({ etapeActive, etats, onChoisir }) {
           </button>
         )
       })}
+      {onBasculerExpert && (
+        <label className="ml-auto inline-flex items-center gap-1.5 text-xs text-lune-faint"
+          title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
+          <input type="checkbox" data-testid="cal-mode-expert" checked={expert}
+            onChange={(e) => onBasculerExpert(e.target.checked)} />
+          Mode expert
+        </label>
+      )}
     </nav>
   )
 }

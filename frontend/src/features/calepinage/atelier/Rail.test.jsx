@@ -43,7 +43,7 @@ import AtelierPanneaux from '../AtelierPanneaux'
 import config from '../module.config.jsx'
 import Rail from './Rail'
 import { reponseContrat } from '../../../test/fixtures/contractSamples'
-import { ETAPES, ESSENTIELS } from './parcoursGuide'
+import { ETAPES, ESSENTIELS, ecranGuideDeOnglet } from './parcoursGuide'
 import { ONGLETS, PARAM_ONGLET, ongletParCle, ongletsTries, resoudreOnglet } from './onglets'
 
 const ID = '7'
@@ -172,8 +172,15 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
       await panneauOuvert()
       expect(screen.queryByTestId('cal-onglet-erreur'),
         `le panneau « ${onglet.cle} » a échoué au rendu`).toBeNull()
-      expect(screen.getByTestId(`cal-onglet-${onglet.cle}`))
+      // ACAL395 : en guidé, les 7 onglets électriques sont des sections d'UNE
+      // page portée par l'onglet `ouverture` ; la section demandée est dépliée.
+      const ecran = ecranGuideDeOnglet(onglet.cle)
+      expect(screen.getByTestId(`cal-onglet-${ecran ? ecran.ouverture : onglet.cle}`))
         .toHaveAttribute('aria-selected', 'true')
+      if (ecran?.ouverture === 'verdict-electrique') {
+        expect(screen.getByTestId(`cal-electrique-section-${onglet.cle}`))
+          .toHaveAttribute('data-state', 'open')
+      }
     }, 30_000)
   }
 
@@ -214,6 +221,118 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
     await waitFor(() => expect(screen.getByTestId('temoin-url'))
       .toHaveTextContent(`onglet=${cible.cle}`))
     expect(await panneauOuvert()).toBeTruthy()
+  })
+})
+
+describe('ACAL394 — l’interrupteur « Mode expert »', () => {
+  beforeEach(() => { try { window.localStorage.clear() } catch { /* ignoré */ } })
+
+  it('guidé par défaut ; cocher montre tous les onglets rangés sous leur étape, et survit à un rechargement', async () => {
+    const utilisateur = userEvent.setup()
+    const premier = rendreRail()
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    await utilisateur.click(screen.getByTestId('cal-mode-expert'))
+    expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
+    let total = 0
+    for (const etape of ETAPES) {
+      await utilisateur.click(screen.getByTestId(`cal-etape-${etape.cle}`))
+      total += screen.getAllByRole('tab').length
+    }
+    expect(total).toBe(ONGLETS.length)
+
+    premier.unmount()
+    // rechargement : la mémoire du navigateur garde l’expert.
+    rendreRail()
+    expect(screen.getByTestId('cal-mode-expert')).toBeChecked()
+    expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
+  }, 30_000)
+
+  it('`?mode=expert` force le mode expert', () => {
+    rendreRail('?mode=expert')
+    expect(screen.getByTestId('cal-mode-expert')).toBeChecked()
+    expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
+  })
+})
+
+describe('ACAL409 — « Comparer les variantes » et « Photos du site » sont des onglets du rail', () => {
+  it('le registre passe à 38 onglets, la table du parcours couvre `variantes` (Résultats) et `photos` (Toit)', () => {
+    expect(ONGLETS).toHaveLength(38)
+    expect(ETAPES.find((e) => e.cle === 'resultats').onglets).toContain('variantes')
+    expect(ETAPES.find((e) => e.cle === 'toit').onglets).toContain('photos')
+  })
+
+  it('`?onglet=variantes` monte VariantesCompare dans l’étape Résultats, `?onglet=photos` PhotoSiteCalage dans Toit', async () => {
+    const premier = rendreRail(`?${PARAM_ONGLET}=variantes`)
+    expect(screen.getByTestId('cal-etape-resultats')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByTestId('cal-onglet-variantes')).toHaveAttribute('aria-selected', 'true')
+    await panneauOuvert()
+    premier.unmount()
+    rendreRail(`?${PARAM_ONGLET}=photos`)
+    expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByTestId('cal-onglet-photos')).toHaveAttribute('aria-selected', 'true')
+    await panneauOuvert()
+  }, 30_000)
+
+  it('les routes profondes `/variantes` et `/photos` redirigent comme les autres', () => {
+    for (const segment of ['variantes', 'photos']) {
+      const route = config.routes.find((r) => r.path === `/calepinage/:id/${segment}`)
+      const redirection = config.routes.find((r) => r.path === '/calepinage/:id/fiches')
+      expect(route?.component, segment).toBe(redirection.component)
+    }
+  })
+})
+
+describe('ACAL395 — l’étape Électrique en UNE page', () => {
+  const SECTIONS = ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
+    'materiel-electrique', 'saisies-electriques', 'decisions-electriques']
+  const parcoursElectrique = (etat) => {
+    const base = reponseContrat('calepinage', 'calepinage_parcours_guide')
+    const ligne = (code) => ({ code, message: 'm', etape: 'electrique', cible: { onglet: 'verdict-electrique', champ: '' }, gravite: 'a_regler', nombre: 1 })
+    return {
+      ...base,
+      data: {
+        ...base.data,
+        etapes: base.data.etapes.map((e) => (e.cle === 'electrique' ? { ...e, etat } : e)),
+        manque: [...base.data.manque, ligne('a'), ligne('b')],
+      },
+    }
+  }
+  beforeEach(() => { try { window.localStorage.clear() } catch { /* ignoré */ } })
+
+  it('guidé : UNE page, « 2 points à régler » et 7 sections ; le Verdict est ouvert quand l’étape est bloquée', async () => {
+    mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
+    const utilisateur = userEvent.setup()
+    rendreRail()
+    await utilisateur.click(screen.getByTestId('cal-etape-electrique'))
+    expect(await screen.findByTestId('cal-etape-electrique-ecran', {}, { timeout: DELAI_PANNEAU })).toBeTruthy()
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('2 points à régler'))
+    for (const cle of SECTIONS) expect(screen.getByTestId(`cal-electrique-section-${cle}`), cle).toBeTruthy()
+    expect(screen.getByTestId('cal-electrique-section-verdict-electrique')).toHaveAttribute('data-state', 'open')
+    expect(screen.getByTestId('cal-electrique-section-raccordement')).toHaveAttribute('data-state', 'closed')
+    // une seule page : pas un onglet par panneau.
+    expect(screen.queryByTestId('cal-onglet-raccordement')).toBeNull()
+  }, 30_000)
+
+  it('« Conforme » quand l’étape est faite', async () => {
+    mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
+    rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Conforme'))
+  }, 30_000)
+
+  it('un ancien lien `?onglet=verdict-electrique` déplie le Verdict, `?onglet=raccordement` le Raccordement', async () => {
+    const premier = rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
+    expect(await screen.findByTestId('cal-electrique-section-verdict-electrique', {}, { timeout: DELAI_PANNEAU }))
+      .toHaveAttribute('data-state', 'open')
+    premier.unmount()
+    rendreRail(`?${PARAM_ONGLET}=raccordement`)
+    expect(await screen.findByTestId('cal-electrique-section-raccordement', {}, { timeout: DELAI_PANNEAU }))
+      .toHaveAttribute('data-state', 'open')
+  }, 30_000)
+
+  it('en mode expert, les 7 onglets restent', () => {
+    rendreRail(`?${PARAM_ONGLET}=raccordement&mode=expert`)
+    for (const cle of SECTIONS) expect(screen.getByTestId(`cal-onglet-${cle}`), cle).toBeTruthy()
+    expect(screen.queryByTestId('cal-etape-electrique-ecran')).toBeNull()
   })
 })
 
