@@ -1072,22 +1072,11 @@ etape('PA2.5-ACAL472-trace-propose', ['ACAL472'], async ({ page, context, suivi 
     await centrerCarte(page)
     const px = await pixel(page, cible)
     await page.mouse.click(px.x, px.y)
-    await page.waitForTimeout(800)
-    let eqs = (await docVivant(page))?.electrical?.equipements || []
-    let parGeste = eqs.some((e) => e.type === 'onduleur')
-    if (!parGeste) {
-      // DÉFAUT (CALX222, pas ACAL472) : « Armer la pose » n'est relié à AUCUN clic de la carte (`typeArme()` n'a aucun
-      // lecteur, `poser` n'est appelé par aucun gestionnaire). L'organe est posé par l'API publique de l'atelier.
-      console.log('[ACAL472] DÉFAUT CALX222 : armer + clic sur la carte ne pose rien ; pose par builderApi.electrique.poser')
-      test.info().annotations.push({ type: 'défaut', description: 'CALX222 : « Armer la pose » + clic sur la carte ne pose aucun organe (typeArme() sans lecteur) — onduleur posé par builderApi.electrique.poser' })
-      const r = await page.evaluate((ll) => {
-        const el = window.__builderApi().electrique
-        el.armerPose('onduleur')
-        return JSON.parse(JSON.stringify(el.poser(ll, { label: 'Onduleur' })))
-      }, cible)
-      expect(r.ok, `pose de l’onduleur (${JSON.stringify(r)})`).toBe(true)
-      eqs = (await docVivant(page))?.electrical?.equipements || []
-    }
+    // CALX222 (corrigé) : le clic sur la carte pose l'organe armé — plus de repli par l'API publique.
+    await expect.poll(async () => ((await docVivant(page))?.electrical?.equipements || []).some((e) => e.type === 'onduleur'),
+      { ...T, message: '« Armer la pose » + clic sur la carte : onduleur posé par le geste' }).toBe(true)
+    const eqs = (await docVivant(page))?.electrical?.equipements || []
+    console.log(`[ACAL472] onduleur posé par le geste (armer + clic) : ${JSON.stringify(eqs.find((e) => e.type === 'onduleur'))}`)
     const ond = eqs.find((e) => e.type === 'onduleur')
     expect(ond, 'onduleur posé').toBeTruthy()
     let doc = await enregistrer(page, cal.id, bouton)
