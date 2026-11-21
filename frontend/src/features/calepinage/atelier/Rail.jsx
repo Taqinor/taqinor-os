@@ -2,6 +2,8 @@ import { Suspense, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../../api/axios'
 import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui'
+import { HelpTip } from '../../../ui/HelpTip'
+import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
 import RailGuide from './RailGuide'
 import { PARAM_MODE, useModeExpert } from './modeExpert'
@@ -238,13 +240,17 @@ export default function Rail({
         className="flex w-full flex-wrap gap-x-1 gap-y-1.5"
       >
         {visibles.map((onglet) => (
-          <TabsTrigger
-            key={onglet.cle}
-            value={onglet.cle}
-            data-testid={`cal-onglet-${onglet.cle}`}
-          >
-            {libelleOnglet(onglet)}
-          </TabsTrigger>
+          <span key={onglet.cle} className="inline-flex items-center gap-0.5">
+            <TabsTrigger value={onglet.cle} data-testid={`cal-onglet-${onglet.cle}`}>
+              {libelleOnglet(onglet)}
+            </TabsTrigger>
+            {/* ACAL419 — la bulle est HORS de `TabsTrigger` : hors du trajet des flèches. */}
+            {GLOSSAIRE_ONGLETS[onglet.cle] && (
+              <HelpTip label={`À quoi sert « ${onglet.libelle} »`} tabIndex={-1}>
+                {GLOSSAIRE_ONGLETS[onglet.cle]}
+              </HelpTip>
+            )}
+          </span>
         ))}
       </TabsList>
 

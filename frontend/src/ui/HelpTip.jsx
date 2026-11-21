@@ -19,12 +19,13 @@ import { Popover, PopoverTrigger, PopoverContent } from './Popover'
      <span className="inline-flex items-center gap-1.5">
        Score de lead <HelpTip label="Score de lead">Texte FR 2-4 phrases…</HelpTip>
      </span> */
-export function HelpTip({ label = 'Aide', children, side = 'top', align = 'center', className }) {
+export function HelpTip({ label = 'Aide', children, side = 'top', align = 'center', className, tabIndex }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
+          tabIndex={tabIndex}
           aria-label={label}
           title={label}
           className={cn(

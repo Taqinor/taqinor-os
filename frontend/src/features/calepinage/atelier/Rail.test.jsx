@@ -42,6 +42,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 import AtelierPanneaux from '../AtelierPanneaux'
 import config from '../module.config.jsx'
 import Rail from './Rail'
+import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { reponseContrat } from '../../../test/fixtures/contractSamples'
 import { ETAPES, ESSENTIELS, ecranGuideDeOnglet } from './parcoursGuide'
 import { ONGLETS, PARAM_ONGLET, ongletParCle, ongletsTries, resoudreOnglet } from './onglets'
@@ -498,3 +499,21 @@ describe('ACAL44 — lecture seule relayée', () => {
 function TemoinUrl() {
   return <span data-testid="temoin-url">{useLocation().search}</span>
 }
+
+describe('ACAL419 — une bulle d’aide par onglet', () => {
+  it('chaque onglet de ONGLETS a une bulle d’aide non vide, et le glossaire n’a rien en trop', () => {
+    const cles = ONGLETS.map((o) => o.cle).sort()
+    expect(Object.keys(GLOSSAIRE_ONGLETS).sort()).toEqual(cles)
+    for (const c of cles) expect(GLOSSAIRE_ONGLETS[c].trim().length).toBeGreaterThan(0)
+  })
+
+  it('le « ? » est rendu hors de l’onglet (hors trajet des flèches)', async () => {
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}?onglet=series&mode=expert`]}>
+        <Routes><Route path="/calepinage/:id" element={<Rail calepinageId={ID} />} /></Routes>
+      </MemoryRouter>,
+    )
+    const aide = await screen.findByRole('button', { name: /À quoi sert « Séries »/ })
+    expect(aide.closest('[role="tab"]')).toBeNull()
+  })
+})
