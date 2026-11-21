@@ -14,7 +14,7 @@ import pathlib
 import unittest
 
 from apps.calepinage.services.parcours_guide import (
-    ETAPES, etapes_du_parcours, regrouper_manque,
+    ETAPES, _etapes_du_parcours, regrouper_manque,
 )
 
 CONTRAT = json.loads((pathlib.Path(__file__).resolve().parents[1]
@@ -30,7 +30,7 @@ def _etats(**faits):
     base = dict(toit_fait=True, modules=10, verdict='indetermine',
                 simule=False, perime=False, devis_lie=False)
     base.update(faits)
-    return {e['cle']: e['etat'] for e in etapes_du_parcours(**base)}
+    return {e['cle']: e['etat'] for e in _etapes_du_parcours(**base)}
 
 
 class ManqueRegroupeTest(unittest.TestCase):
@@ -76,7 +76,7 @@ class EtapesTest(unittest.TestCase):
         self.assertEqual(list(etats), attendu)
 
     def test_ordre_et_cles_du_contrat(self):
-        etapes = etapes_du_parcours(toit_fait=True, modules=1,
+        etapes = _etapes_du_parcours(toit_fait=True, modules=1,
                                     verdict='conforme', simule=True,
                                     perime=False, devis_lie=True)
         self.assertEqual([e['cle'] for e in etapes],
