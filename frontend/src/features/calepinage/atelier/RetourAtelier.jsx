@@ -51,12 +51,12 @@ export default function RetourAtelier({
       <Link
         to={cible}
         data-testid="cal-retour-atelier-lien"
-        className="font-semibold text-brass-300 underline"
+        className="font-semibold text-primary-text underline"
       >
         {titre ? `← Calepinage ${titre}` : '← Calepinage'}
       </Link>
-      <span aria-hidden="true" className="text-lune-faint">/</span>
-      <span className="text-lune-soft" data-testid="cal-retour-atelier-onglet">
+      <span aria-hidden="true" className="text-muted-foreground">/</span>
+      <span className="text-foreground" data-testid="cal-retour-atelier-onglet">
         {onglet.libelle}
       </span>
     </nav>

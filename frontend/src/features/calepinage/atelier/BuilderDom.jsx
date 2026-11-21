@@ -21,8 +21,8 @@ export default function BuilderDom({
   return (
     <>
         {/* BUILDER — DOM complet (mêmes ids que la preview pro-11). */}
-        <div className="cine-card mt-6 overflow-hidden">
-          <form id="rp9-search" className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
+        <div className="rounded-xl border border-border bg-card mt-6 overflow-hidden">
+          <form id="rp9-search" className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row">
             <label htmlFor="rp9-address" className="sr-only">Adresse</label>
             <div className="relative flex-1">
               <input id="rp9-address" name="address" type="text" autoComplete="off"
@@ -30,7 +30,7 @@ export default function BuilderDom({
                 aria-controls="rp9-suggestions" aria-haspopup="listbox"
                 placeholder="Adresse du client" className={inputClass} />
               <ul id="rp9-suggestions" role="listbox" aria-label="Suggestions d'adresses" hidden
-                className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto border border-white/15 bg-nuit-900"></ul>
+                className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto border border-border bg-background"></ul>
             </div>
             <button type="submit" className="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950">Localiser</button>
           </form>
@@ -46,11 +46,11 @@ export default function BuilderDom({
             ref={mapWrapRef}
             data-plein-ecran={pleinEcran3d ? '1' : '0'}
             data-testid="rp9-map-wrap"
-            className={pleinEcran3d ? 'rp9-map-wrap fixed inset-0 z-[var(--z-overlay)] bg-nuit-900' : 'rp9-map-wrap'}
+            className={pleinEcran3d ? 'rp9-map-wrap fixed inset-0 z-[var(--z-overlay)] bg-background' : 'rp9-map-wrap'}
           >
             <div
               id="rp9-map"
-              className={pleinEcran3d ? 'h-full w-full bg-nuit-700' : 'h-[56vh] min-h-[360px] w-full bg-nuit-700'}
+              className={pleinEcran3d ? 'h-full w-full bg-muted' : 'h-[56vh] min-h-[360px] w-full bg-muted'}
               role="application" aria-label="Carte 3D pour dessiner le toit"
             >
               <div id="rp9-compass" className="rp9-compass" aria-hidden="true">
@@ -81,7 +81,7 @@ export default function BuilderDom({
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
+          <div className="flex flex-wrap items-center gap-3 border-t border-border p-4">
             <button type="button" id="rp9-finish" disabled className={chipClass}>Terminer le tracé</button>
             <button type="button" id="rp9-undo-point" hidden className={chipClass}>Annuler le dernier point</button>
             <button type="button" id="rp9-clear" className={chipClass}>Effacer</button>
@@ -115,90 +115,90 @@ export default function BuilderDom({
                 {photoToitVisible ? 'Photo réelle : affichée' : 'Photo réelle : masquée'}
               </button>
             )}
-            <p className="ml-auto text-sm text-lune-faint"><span>Surface&nbsp;: </span><span id="rp9-area-value" className="text-white">—</span></p>
+            <p className="ml-auto text-sm text-muted-foreground"><span>Surface&nbsp;: </span><span id="rp9-area-value" className="text-foreground">—</span></p>
           </div>
 
           {/* Contrôles de config (mode normal) */}
-          <div id="rp9-config" hidden className="space-y-4 border-t border-white/10 bg-nuit-800 p-4">
+          <div id="rp9-config" hidden className="space-y-4 border-t border-border bg-card p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="tech-label mr-1 text-lune-faint">Type de toit</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Type de toit</span>
               <button type="button" data-rooftype="flat" className={chipClass} aria-pressed="true">Toit plat</button>
               <button type="button" data-rooftype="pitched" className={chipClass} aria-pressed="false">Toit en pente / tuiles</button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" id="rp9-optimum" className={`${chipClass} text-brass-300`}>↺ Réinitialiser</button>
-              <span id="rp9-optimum-note" className="min-w-0 flex-1 text-xs text-lune-faint"></span>
+              <button type="button" id="rp9-optimum" className={`${chipClass} text-primary-text`}>↺ Réinitialiser</button>
+              <span id="rp9-optimum-note" className="min-w-0 flex-1 text-xs text-muted-foreground"></span>
             </div>
             <div id="rp9-flat-controls" className="space-y-4">
               <div id="rp9-flat-only" className="space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="tech-label mr-1 text-lune-faint">Orientation</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Orientation</span>
                   <button type="button" data-family="south" className={chipClass} aria-pressed="true">Plein sud<span className="rp9-reco-badge" hidden> ✓</span></button>
                   <button type="button" data-family="eastwest" className={chipClass} aria-pressed="false">Est-Ouest<span className="rp9-reco-badge" hidden> ✓</span></button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="tech-label mr-1 text-lune-faint">Inclinaison</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Inclinaison</span>
                   <button type="button" data-tilt="reco" className={chipClass} aria-pressed="true">Recommandé<span className="rp9-reco-badge" hidden> ✓</span></button>
                   <button type="button" data-tilt="29" className={chipClass} aria-pressed="false">29°<span className="rp9-reco-badge" hidden> ✓</span></button>
                   <button type="button" data-tilt="15" className={chipClass} aria-pressed="false">15°<span className="rp9-reco-badge" hidden> ✓</span></button>
                   <button type="button" data-tilt="10" className={chipClass} aria-pressed="false">10°<span className="rp9-reco-badge" hidden> ✓</span></button>
                 </div>
                 <div className="flex items-center gap-3">
-                  <label htmlFor="rp9-tilt-range" className="tech-label shrink-0 text-lune-faint">Inclinaison fine</label>
+                  <label htmlFor="rp9-tilt-range" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0">Inclinaison fine</label>
                   <input id="rp9-tilt-range" type="range" min="5" max="35" step="1" defaultValue="29" className="rp9-range min-w-0 flex-1" />
-                  <span id="rp9-tilt-value" className="w-16 shrink-0 text-right text-sm font-semibold text-brass-300">29°</span>
+                  <span id="rp9-tilt-value" className="w-16 shrink-0 text-right text-sm font-semibold text-primary-text">29°</span>
                 </div>
                 <div id="rp9-azimuth-group" hidden className="flex flex-wrap items-center gap-2">
-                  <span className="tech-label mr-1 text-lune-faint">Azimut</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Azimut</span>
                   <button type="button" data-azimuth="south" className={chipClass} aria-pressed="true">Plein sud<span className="rp9-reco-badge" hidden> ✓</span></button>
                   <button type="button" data-azimuth="aligned" className={chipClass} aria-pressed="false">Aligné toit<span className="rp9-reco-badge" hidden> ✓</span></button>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="tech-label mr-1 text-lune-faint">Panneaux</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Panneaux</span>
                 <button type="button" data-orient="auto" className={chipClass} aria-pressed="true">Auto</button>
                 <button type="button" data-orient="portrait" className={chipClass} aria-pressed="false">Portrait<span className="rp9-reco-badge" hidden> ✓</span></button>
                 <button type="button" data-orient="landscape" className={chipClass} aria-pressed="false">Paysage<span className="rp9-reco-badge" hidden> ✓</span></button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="tech-label mr-1 text-lune-faint">Marge de rive</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Marge de rive</span>
                 <button type="button" data-margin="keep" className={chipClass} aria-pressed="true">Garder<span className="rp9-reco-badge" hidden> ✓</span></button>
                 <button type="button" data-margin="remove" className={chipClass} aria-pressed="false">Pleine rive<span className="rp9-reco-badge" hidden> ✓</span></button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <label htmlFor="rp9-overhang-input" className="tech-label mr-1 text-lune-faint">Débord (m)</label>
+                <label htmlFor="rp9-overhang-input" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Débord (m)</label>
                 <input id="rp9-overhang-input" type="number" inputMode="decimal" step="any" min="0" defaultValue="0"
-                  className="fig h-9 w-20 border border-white/20 bg-nuit-900 px-2 text-center text-base text-white outline-none focus:border-brass-400" />
+                  className="fig h-9 w-20 border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" />
               </div>
             </div>
             <div id="rp9-pitched-controls" hidden className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="tech-label mr-1 text-lune-faint">Pente</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Pente</span>
                 <button type="button" data-pitch="15" className={chipClass} aria-pressed="false">~15°</button>
                 <button type="button" data-pitch="22" className={chipClass} aria-pressed="true">~22°</button>
                 <button type="button" data-pitch="30" className={chipClass} aria-pressed="false">~30°</button>
                 <button type="button" data-pitch="45" className={chipClass} aria-pressed="false">~45°</button>
               </div>
               <div className="flex items-center gap-3">
-                <label htmlFor="rp9-pitch-range" className="tech-label shrink-0 text-lune-faint">Pente fine</label>
+                <label htmlFor="rp9-pitch-range" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0">Pente fine</label>
                 <input id="rp9-pitch-range" type="range" min="5" max="45" step="1" defaultValue="22" className="rp9-range min-w-0 flex-1" />
-                <span id="rp9-pitch-value" className="w-12 shrink-0 text-right text-sm font-semibold text-brass-300">22°</span>
+                <span id="rp9-pitch-value" className="w-12 shrink-0 text-right text-sm font-semibold text-primary-text">22°</span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="tech-label mr-1 text-lune-faint">Face du pan</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Face du pan</span>
                 <button type="button" data-facing="180" className={chipClass} aria-pressed="true">Sud</button>
                 <button type="button" data-facing="135" className={chipClass} aria-pressed="false">Sud-Est</button>
                 <button type="button" data-facing="225" className={chipClass} aria-pressed="false">Sud-Ouest</button>
                 <button type="button" data-facing="90" className={chipClass} aria-pressed="false">Est</button>
                 <button type="button" data-facing="270" className={chipClass} aria-pressed="false">Ouest</button>
               </div>
-              <p id="rp9-facing-note" className="min-h-[1rem] text-xs text-lune-faint" aria-live="polite"></p>
+              <p id="rp9-facing-note" className="min-h-[1rem] text-xs text-muted-foreground" aria-live="polite"></p>
               <div className="flex items-center gap-3">
-                <label htmlFor="rp9-facing-range" className="tech-label shrink-0 text-lune-faint">Sens de la pente</label>
+                <label htmlFor="rp9-facing-range" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0">Sens de la pente</label>
                 <input id="rp9-facing-range" type="range" min="0" max="359" step="any" defaultValue="180" className="rp9-range min-w-0 flex-1" />
-                <span id="rp9-facing-value" className="w-28 shrink-0 text-right text-sm font-semibold text-brass-300">Sud · 180°</span>
+                <span id="rp9-facing-value" className="w-28 shrink-0 text-right text-sm font-semibold text-primary-text">Sud · 180°</span>
               </div>
-              <p id="rp9-pitched-note" className="min-h-[1.25rem] text-xs text-lune-soft" aria-live="polite"></p>
+              <p id="rp9-pitched-note" className="min-h-[1.25rem] text-xs text-foreground" aria-live="polite"></p>
             </div>
 
             {/* CAL107 — bloc « Obstacles », porté de apps/web/src/pages/preview/
@@ -207,42 +207,42 @@ export default function BuilderDom({
                 l'ERP — la pose d'obstacle n'était donc reachable QUE sur la page de
                 préview publique, jamais depuis le poste d'un commercial. */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="tech-label mr-1 text-lune-faint">Obstacles</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Obstacles</span>
               <button type="button" id="rp9-obstacle" className={chipClass}>Ajouter un obstacle (cheminée…)</button>
               <button type="button" id="rp9-obstacle-clear" className={chipClass}>Tout effacer</button>
             </div>
-            <p className="text-xs leading-relaxed text-lune-faint">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               Marquez les obstacles (climatiseur, cheminée, lanterneau, citerne…) — on
               n'y posera pas de panneaux. Glissez sur le toit pour dessiner un
               rectangle ; touchez-le pour le redimensionner.
             </p>
-            <div id="rp9-obs-edit" hidden className="border border-white/15 bg-nuit-900/40 p-4">
+            <div id="rp9-obs-edit" hidden className="border border-border bg-background/40 p-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="tech-label text-brass-300">Obstacle sélectionné</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-primary-text">Obstacle sélectionné</span>
                 <button type="button" id="rp9-obs-delete"
-                  className="border border-alert-300/60 px-3 py-2 text-sm font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">
+                  className="border border-alert-300/60 px-3 py-2 text-sm font-semibold text-destructive transition-colors hover:bg-alert-300/10">
                   × Supprimer
                 </button>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <label className="block text-sm text-lune-soft">
+                <label className="block text-sm text-foreground">
                   Longueur (m)
                   <input id="rp9-obs-length" type="text" inputMode="decimal" step="any"
-                    className="fig mt-1 h-9 w-full border border-white/20 bg-nuit-900 px-2 text-center text-base text-white outline-none focus:border-brass-400" />
+                    className="fig mt-1 h-9 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" />
                 </label>
-                <label className="block text-sm text-lune-soft">
+                <label className="block text-sm text-foreground">
                   Largeur (m)
                   <input id="rp9-obs-width" type="text" inputMode="decimal" step="any"
-                    className="fig mt-1 h-9 w-full border border-white/20 bg-nuit-900 px-2 text-center text-base text-white outline-none focus:border-brass-400" />
+                    className="fig mt-1 h-9 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" />
                 </label>
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <span className="tech-label text-lune-faint">Taille</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Taille</span>
                 <button type="button" id="rp9-obs-minus" aria-label="Réduire l'obstacle"
-                  className="h-11 w-11 border border-white/25 text-xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">−</button>
+                  className="h-11 w-11 border border-border text-xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">−</button>
                 <button type="button" id="rp9-obs-plus" aria-label="Agrandir l'obstacle"
-                  className="h-11 w-11 border border-white/25 text-xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">+</button>
-                <span id="rp9-obs-dims" className="fig text-sm text-lune-soft">—</span>
+                  className="h-11 w-11 border border-border text-xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">+</button>
+                <span id="rp9-obs-dims" className="fig text-sm text-foreground">—</span>
               </div>
             </div>
 
@@ -251,15 +251,15 @@ export default function BuilderDom({
                 points, « Terminer la mesure » la pose (refusée tant qu'elle est
                 géométriquement invalide pour son genre), « Annuler » abandonne la session. */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="tech-label mr-1 text-lune-faint">Mesurer</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Mesurer</span>
               <button type="button" data-mesure-kind="distance" id="rp9-mesure-distance" className={chipClass} aria-pressed="false">Distance</button>
               <button type="button" data-mesure-kind="area" id="rp9-mesure-area" className={chipClass} aria-pressed="false">Surface</button>
               <button type="button" data-mesure-kind="angle" id="rp9-mesure-angle" className={chipClass} aria-pressed="false">Angle</button>
               <button type="button" id="rp9-mesure-finish" hidden className={chipClass}>Terminer la mesure</button>
               <button type="button" id="rp9-mesure-cancel" hidden className={chipClass}>Annuler</button>
             </div>
-            <p id="rp9-mesure-note" className="min-h-[1rem] text-xs text-lune-faint" aria-live="polite"></p>
-            <ul id="rp9-mesure-list" className="space-y-1 text-xs text-lune-soft"></ul>
+            <p id="rp9-mesure-note" className="min-h-[1rem] text-xs text-muted-foreground" aria-live="polite"></p>
+            <ul id="rp9-mesure-list" className="space-y-1 text-xs text-foreground"></ul>
           </div>
 
           {/* W69 — « Personnaliser la disposition » : porté de apps/web/toiture-3d-pro-11.astro
@@ -267,18 +267,18 @@ export default function BuilderDom({
               manuelle des panneaux (▦ Emplacements validés / ✥ Placement libre), pilotés par le
               module partagé roofPro11/layoutEditor.ts. Ids/data-* STRICTEMENT identiques à
               l'astro : le moteur les cherche par id, un id renommé = bouton mort silencieux. */}
-          <div id="rp9-layout-window" hidden className="border-t border-white/10 bg-nuit-800 p-4">
+          <div id="rp9-layout-window" hidden className="border-t border-border bg-card p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-              <p className="tech-label text-brass-300">Personnaliser la disposition</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Personnaliser la disposition</p>
               <button type="button" id="rp9-layout-toggle" aria-pressed="false"
-                className="border border-brass-400 bg-brass-400/10 px-4 py-2 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+                className="border border-brass-400 bg-brass-400/10 px-4 py-2 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20">
                 Déplacer les panneaux
               </button>
             </div>
-            <p className="mt-2 text-xs leading-relaxed text-lune-faint">
-              Activez, puis dans le <strong className="text-lune-soft">plan tactile</strong> ci-dessous
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Activez, puis dans le <strong className="text-foreground">plan tactile</strong> ci-dessous
               touchez un panneau (bleu) puis un emplacement libre (vert) pour l'y déplacer — ou
-              utilisez <strong className="text-lune-soft">+ / −</strong>. Vous pouvez aussi glisser un
+              utilisez <strong className="text-foreground">+ / −</strong>. Vous pouvez aussi glisser un
               panneau directement sur la 3D. Les panneaux se calent toujours sur des emplacements
               valides (jamais hors toit, hors retrait ou sur un obstacle) ; le nombre, la puissance,
               la production et les économies se recalculent.
@@ -293,74 +293,74 @@ export default function BuilderDom({
                   (contour du toit, chevauchement, obstacle), et les distances réelles
                   s'affichent pendant le geste. */}
               <div className="flex flex-wrap items-center gap-3">
-                <span className="tech-label text-lune-faint">Mode d’édition</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mode d’édition</span>
                 <button type="button" id="rp9-layout-mode-lattice" aria-pressed="true"
-                  className="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 aria-pressed:border-brass-400">
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text aria-pressed:border-brass-400">
                   ▦ Emplacements validés
                 </button>
                 <button type="button" id="rp9-layout-mode-free" aria-pressed="false"
-                  className="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">
                   ✥ Placement libre
                 </button>
               </div>
 
               <div id="rp9-free-controls" hidden className="space-y-3 border border-brass-400/30 bg-brass-400/5 p-3">
-                <p className="text-xs leading-relaxed text-lune-soft">
+                <p className="text-xs leading-relaxed text-foreground">
                   En placement libre, ces deux marges sont les vôtres : les baisser fait tenir
-                  plus de panneaux. Les <strong className="text-lune-soft">distances réellement
+                  plus de panneaux. Les <strong className="text-foreground">distances réellement
                   mesurées</strong> s’affichent pendant le déplacement — rien n’est réduit dans
                   votre dos. Le contour du toit, les chevauchements et les obstacles restent,
                   eux, infranchissables.
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
-                  <label htmlFor="rp9-free-setback" className="text-sm text-lune-soft">Retrait de rive (cm)</label>
+                  <label htmlFor="rp9-free-setback" className="text-sm text-foreground">Retrait de rive (cm)</label>
                   <input id="rp9-free-setback" name="freeSetback" type="text" inputMode="decimal" step="any"
-                    className="w-24 border border-white/25 bg-nuit-900 px-3 py-2 text-sm text-white" />
-                  <label htmlFor="rp9-free-gap" className="text-sm text-lune-soft">Écart entre panneaux (cm)</label>
+                    className="w-24 border border-border bg-background px-3 py-2 text-sm text-foreground" />
+                  <label htmlFor="rp9-free-gap" className="text-sm text-foreground">Écart entre panneaux (cm)</label>
                   <input id="rp9-free-gap" name="freeGap" type="text" inputMode="decimal" step="any"
-                    className="w-24 border border-white/25 bg-nuit-900 px-3 py-2 text-sm text-white" />
+                    className="w-24 border border-border bg-background px-3 py-2 text-sm text-foreground" />
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <button type="button" id="rp9-free-add" aria-pressed="false"
-                    className="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+                    className="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20">
                     ＋ Ajouter un panneau
                   </button>
-                  <span id="rp9-free-measure" className="fig text-sm text-brass-300" aria-live="polite"></span>
+                  <span id="rp9-free-measure" className="fig text-sm text-primary-text" aria-live="polite"></span>
                 </div>
               </div>
 
               <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
                 <div>
-                  <dd id="rp9-layout-count" className="fig text-lg text-white sm:text-xl">—</dd>
-                  <dt className="tech-label mt-0.5 text-lune-faint">Panneaux posés</dt>
+                  <dd id="rp9-layout-count" className="fig text-lg text-foreground sm:text-xl">—</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux posés</dt>
                 </div>
                 <div>
-                  <dd id="rp9-layout-kwc" className="fig text-lg text-white sm:text-xl">—</dd>
-                  <dt className="tech-label mt-0.5 text-lune-faint">Puissance</dt>
+                  <dd id="rp9-layout-kwc" className="fig text-lg text-foreground sm:text-xl">—</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Puissance</dt>
                 </div>
                 <div>
-                  <dd id="rp9-layout-free" className="fig text-lg text-white sm:text-xl">—</dd>
-                  <dt className="tech-label mt-0.5 text-lune-faint">Emplacements libres</dt>
+                  <dd id="rp9-layout-free" className="fig text-lg text-foreground sm:text-xl">—</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Emplacements libres</dt>
                 </div>
                 <div>
-                  <dd id="rp9-layout-cover" className="fig text-lg text-brass-300 sm:text-xl">—</dd>
-                  <dt className="tech-label mt-0.5 text-lune-faint">Couverture besoin</dt>
+                  <dd id="rp9-layout-cover" className="fig text-lg text-primary-text sm:text-xl">—</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Couverture besoin</dt>
                 </div>
               </dl>
 
               {/* Boutons +/− (touch + mouvement réduit, sans glissé fin) */}
               <div className="flex flex-wrap items-center gap-3">
-                <span className="tech-label text-lune-faint">Ajouter / retirer</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ajouter / retirer</span>
                 <button type="button" id="rp9-layout-minus" aria-label="Retirer un panneau"
-                  className="h-11 w-11 border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">−</button>
+                  className="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">−</button>
                 <button type="button" id="rp9-layout-plus" aria-label="Ajouter un panneau"
-                  className="h-11 w-11 border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">+</button>
+                  className="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">+</button>
                 <button type="button" id="rp9-layout-fill"
-                  className="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:opacity-40">
+                  className="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:opacity-40">
                   ⤢ Remplir automatiquement
                 </button>
                 <button type="button" id="rp9-layout-reset"
-                  className="ml-auto border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+                  className="ml-auto border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20">
                   ↺ Réinitialiser la disposition optimale
                 </button>
               </div>
@@ -374,31 +374,31 @@ export default function BuilderDom({
                   repli tactile (et le mode rangée), et le compteur dit en permanence combien
                   de panneaux sont tenus. */}
               <div className="flex flex-wrap items-center gap-3">
-                <span className="tech-label text-lune-faint">Sélection &amp; rangée</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sélection &amp; rangée</span>
                 <button type="button" id="rp9-layout-select" aria-pressed="false"
-                  className="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">
                   ▭ Sélection multiple
                 </button>
                 <button type="button" id="rp9-layout-row" aria-pressed="false"
-                  className="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">
                   ⇔ Déplacer la rangée
                 </button>
                 <button type="button" id="rp9-layout-clear-sel"
-                  className="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
                   ✕ Effacer la sélection
                 </button>
                 <span id="rp9-layout-selcount" data-rp9-selcount="0" aria-live="polite"
-                  className="text-sm font-semibold text-brass-300">
+                  className="text-sm font-semibold text-primary-text">
                   Aucun panneau sélectionné
                 </span>
               </div>
-              <p className="text-xs leading-relaxed text-lune-soft">
-                Sur la 3D : <strong className="text-lune-soft">glissez sur le toit, à côté des
+              <p className="text-xs leading-relaxed text-foreground">
+                Sur la 3D : <strong className="text-foreground">glissez sur le toit, à côté des
                 panneaux</strong>, pour encadrer un groupe ou une rangée ·{' '}
-                <strong className="text-lune-soft">double-clic</strong> sur un panneau = toute sa
-                rangée · <strong className="text-lune-soft">Ctrl (⌘) + clic</strong> ajoute ou
-                retire un panneau · <strong className="text-lune-soft">Maj + glissé</strong> ajoute
-                un cadre au groupe · <strong className="text-lune-soft">Échap</strong> lâche la
+                <strong className="text-foreground">double-clic</strong> sur un panneau = toute sa
+                rangée · <strong className="text-foreground">Ctrl (⌘) + clic</strong> ajoute ou
+                retire un panneau · <strong className="text-foreground">Maj + glissé</strong> ajoute
+                un cadre au groupe · <strong className="text-foreground">Échap</strong> lâche la
                 sélection. Glissez ensuite n’importe quel panneau sélectionné : tout le groupe
                 suit le curseur.
               </p>
@@ -406,42 +406,42 @@ export default function BuilderDom({
               {/* PV26 — annuler / rétablir (Ctrl+Z / Ctrl+Y, ou ⌘). Les flèches du
                   clavier déplacent le panneau (ou le groupe) d'un emplacement. */}
               <div className="flex flex-wrap items-center gap-3">
-                <span className="tech-label text-lune-faint">Historique</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historique</span>
                 <button type="button" id="rp9-layout-undo" disabled
-                  className="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
-                  ↶ Annuler <span className="text-lune-faint">(Ctrl+Z)</span>
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
+                  ↶ Annuler <span className="text-muted-foreground">(Ctrl+Z)</span>
                 </button>
                 <button type="button" id="rp9-layout-redo" disabled
-                  className="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
-                  ↷ Rétablir <span className="text-lune-faint">(Ctrl+Y)</span>
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
+                  ↷ Rétablir <span className="text-muted-foreground">(Ctrl+Y)</span>
                 </button>
-                <span className="text-xs text-lune-soft">Flèches ← ↑ ↓ → : déplacer d’un emplacement</span>
+                <span className="text-xs text-foreground">Flèches ← ↑ ↓ → : déplacer d’un emplacement</span>
               </div>
 
               {/* Nudge d'AZIMUT : n'a de sens que sur un toit en PENTE (la face du pan est
                   imposée par la toiture ; sur toit plat l'azimut est un axe de l'optimiseur).
                   Masqué en toit plat. */}
               <div id="rp9-layout-azimuth" hidden className="flex flex-wrap items-center gap-3">
-                <span className="tech-label text-lune-faint">Azimut du pan</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Azimut du pan</span>
                 <button type="button" id="rp9-layout-az-minus" aria-label="Diminuer l’azimut d’un degré"
-                  className="h-11 w-11 border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">−</button>
-                <span id="rp9-layout-az-value" className="fig text-lg text-white">—</span>
+                  className="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">−</button>
+                <span id="rp9-layout-az-value" className="fig text-lg text-foreground">—</span>
                 <button type="button" id="rp9-layout-az-plus" aria-label="Augmenter l’azimut d’un degré"
-                  className="h-11 w-11 border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">+</button>
+                  className="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">+</button>
               </div>
 
               {/* Repli tactile : tap-sélection d'un panneau → tap-cible d'un emplacement vide.
                   Une mini-carte des cellules (occupées / libres) rend l'interaction code-vérifiable
                   et fonctionne sans glissé fin ni mouvement. */}
               <div>
-                <p className="tech-label text-lune-faint">Plan des emplacements (tactile) — touchez un panneau, puis un emplacement libre</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plan des emplacements (tactile) — touchez un panneau, puis un emplacement libre</p>
                 <div id="rp9-layout-grid" className="rp9-layout-grid mt-3" role="group" aria-label="Plan des emplacements de panneaux"></div>
-                <p id="rp9-layout-note" className="mt-2 min-h-[1.25rem] text-xs leading-relaxed text-lune-soft" aria-live="polite"></p>
+                <p id="rp9-layout-note" className="mt-2 min-h-[1.25rem] text-xs leading-relaxed text-foreground" aria-live="polite"></p>
               </div>
             </div>
           </div>
 
-          <p id="rp9-status" className="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">Chargement…</p>
+          <p id="rp9-status" className="border-t border-border px-4 py-3 text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
         </div>
     </>
   )

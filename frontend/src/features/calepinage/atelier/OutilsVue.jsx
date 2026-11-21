@@ -81,7 +81,7 @@ export default function OutilsVue({
             reste strictement inchangée. */}
         {builderReady && (
           <div className="mt-4 flex flex-wrap items-center gap-2" data-testid="cal-export-hd">
-            <span className="tech-label text-lune-faint">Image HD</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Image HD</span>
             {FACTEURS_HD.map((f) => (
               <button
                 key={f}
@@ -94,7 +94,7 @@ export default function OutilsVue({
                 {`Exporter ${f}×`}
               </button>
             ))}
-            {hdMessage && <span className="text-xs text-lune-faint" data-testid="cal-export-hd-message">{hdMessage}</span>}
+            {hdMessage && <span className="text-xs text-muted-foreground" data-testid="cal-export-hd-message">{hdMessage}</span>}
           </div>
         )}
     </>

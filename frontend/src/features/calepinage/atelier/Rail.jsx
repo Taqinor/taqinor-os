@@ -229,7 +229,7 @@ export default function Rail({
           P50/P90, GCR, TSRF, PVGIS, MPPT…), jamais une seconde définition dans
           une bulle. Placé AVANT la liste d'onglets : il reste hors du trajet
           Maj+Tab qui ramène du panneau à l'onglet ouvert (CALX392). */}
-      <p className="mb-1.5 text-right text-xs text-lune-faint">
+      <p className="mb-1.5 text-right text-xs text-muted-foreground">
         <Link to="/aide/lexique" className="underline underline-offset-2"
           data-testid="cal-rail-lexique">
           Lexique des termes du solaire
@@ -264,7 +264,7 @@ export default function Rail({
           >
             <Suspense
               fallback={(
-                <p className="mt-3 flex items-center gap-2 text-sm text-lune-faint">
+                <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Spinner />
                   {`Ouverture de l'onglet « ${libelleActif} »…`}
                 </p>

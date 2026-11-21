@@ -930,8 +930,8 @@ function AtelierToiture({
   const blocAvertissements = () => (
     avertissementsSync.length > 0 && (
       <div className="mt-4 border border-brass-400/40 p-4" data-testid="pvheal-avertissements">
-        <p className="tech-label text-brass-300">À vérifier</p>
-        <ul className="mt-2 space-y-1 text-sm text-lune-soft" role="status">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">À vérifier</p>
+        <ul className="mt-2 space-y-1 text-sm text-foreground" role="status">
           {avertissementsSync.map((a) => <li key={a}>{a}</li>)}
         </ul>
       </div>
@@ -990,7 +990,7 @@ function AtelierToiture({
   )
 
   const inputClass =
-    'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white outline-none focus:border-brass-400'
+    'w-full border border-border bg-muted px-3 py-3 text-base text-foreground outline-none focus:border-brass-400'
   const chipClass = 'rp9-chip'
 
   // L-MAP (fondateur 26/08/2026) — le contour BRUT du client, tel quel
@@ -1066,10 +1066,10 @@ function AtelierToiture({
   const blocLivraison = () => (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="tech-label rule-brass text-brass-300">Conception enregistrée</p>
-        <p className="text-sm text-lune-soft">Devis <span className="font-semibold text-white">{deliver.reference}</span></p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Conception enregistrée</p>
+        <p className="text-sm text-foreground">Devis <span className="font-semibold text-foreground">{deliver.reference}</span></p>
       </div>
-      <p className="text-sm text-lune-soft">
+      <p className="text-sm text-foreground">
         Le devis est créé et la vue 3D enregistrée.
         {' '}
         L’envoi au client se fait depuis la fiche lead, onglet Devis : c’est là
@@ -1080,7 +1080,7 @@ function AtelierToiture({
         <Link
           to={`/crm/leads/${leadFiche}`}
           data-testid="rp9-vers-fiche-lead"
-          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text"
         >
           Ouvrir la fiche lead
         </Link>
@@ -1095,7 +1095,7 @@ function AtelierToiture({
           (lead/devis/AO) — c'est LE MÊME écran, jamais une fenêtre qu'on ne
           peut refermer que par le bouton retour du navigateur. */}
       <div className="rp9-topbar">
-        <p className="tech-label rule-brass text-brass-300">Interne · conception toiture</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Interne · conception toiture</p>
         <button
           type="button"
           onClick={fermer}
@@ -1110,27 +1110,27 @@ function AtelierToiture({
       <div className="mt-6">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
           {devisSynchronise && (
-            <h1 className="display text-xl text-white sm:text-2xl">
-              Devis <span className="text-brass-300">{devisReference || devisId || '—'}</span> ·{' '}
-              <span className="text-lune-soft">{devisLabel || '—'}</span>
+            <h1 className="display text-xl text-foreground sm:text-2xl">
+              Devis <span className="text-primary-text">{devisReference || devisId || '—'}</span> ·{' '}
+              <span className="text-foreground">{devisLabel || '—'}</span>
             </h1>
           )}
           {estCalepinage && !devisSynchronise && (
-            <h1 className="display text-xl text-white sm:text-2xl">
-              Calepinage <span className="text-brass-300">{calepinageId || '—'}</span> ·{' '}
-              <span className="text-lune-soft">{calepinageTitre || '—'}</span>
+            <h1 className="display text-xl text-foreground sm:text-2xl">
+              Calepinage <span className="text-primary-text">{calepinageId || '—'}</span> ·{' '}
+              <span className="text-foreground">{calepinageTitre || '—'}</span>
             </h1>
           )}
           {estLead && (
-            <h1 className="display text-xl text-white sm:text-2xl">
-              Lead <span className="text-brass-300">{leadId || '—'}</span> ·{' '}
-              <span className="text-lune-soft">{leadLabel || '—'}</span>
+            <h1 className="display text-xl text-foreground sm:text-2xl">
+              Lead <span className="text-primary-text">{leadId || '—'}</span> ·{' '}
+              <span className="text-foreground">{leadLabel || '—'}</span>
             </h1>
           )}
         </div>
-        <p className="mt-2 text-sm text-lune-faint" aria-live="polite">{status}</p>
+        <p className="mt-2 text-sm text-muted-foreground" aria-live="polite">{status}</p>
         {apercuMessage && (
-          <p className="mt-1 text-sm text-brass-300" role="status" data-testid="apercu-3d-avertissement">
+          <p className="mt-1 text-sm text-primary-text" role="status" data-testid="apercu-3d-avertissement">
             {apercuMessage}
           </p>
         )}
@@ -1141,12 +1141,12 @@ function AtelierToiture({
             le brouillon, « Ignorer » ferme le bandeau — « rien n'est
             réhydraté sans le geste ». */}
         {estCalepinage && brouillonPropose && (
-          <div className="cine-card mt-4 border border-brass-400/40 p-4"
+          <div className="rounded-xl border border-border bg-card mt-4 border-brass-400/40 p-4"
             data-testid="cal-brouillon-bandeau">
-            <p className="tech-label text-brass-300">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">
               {brouillonPropose.serveur ? 'Brouillon d’un autre poste' : 'Brouillon local'}
             </p>
-            <p className="mt-1 text-sm text-lune-soft" role="status">
+            <p className="mt-1 text-sm text-foreground" role="status">
               Un brouillon non enregistré du{' '}
               {formaterHeureBrouillon(brouillonPropose.horodatage)} a été
               trouvé sur cet appareil — reprendre où vous en étiez, ou
@@ -1157,7 +1157,7 @@ function AtelierToiture({
                 type="button"
                 onClick={reprendreBrouillon}
                 data-testid="cal-brouillon-reprendre"
-                className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+                className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text"
               >
                 {`Reprendre le brouillon du ${formaterHeureBrouillon(brouillonPropose.horodatage)}`}
               </button>
@@ -1165,7 +1165,7 @@ function AtelierToiture({
                 type="button"
                 onClick={ignorerBrouillon}
                 data-testid="cal-brouillon-ignorer"
-                className="inline-flex items-center gap-2 px-5 py-3 text-base font-semibold text-lune-faint"
+                className="inline-flex items-center gap-2 px-5 py-3 text-base font-semibold text-muted-foreground"
               >
                 Ignorer
               </button>
@@ -1177,7 +1177,7 @@ function AtelierToiture({
             pourquoi la carte reste au niveau Maroc quand ni épingle ni GPS
             de fiche n'existent, plutôt que de laisser deviner. */}
         {sansPositionGps && (
-          <p className="mt-1 text-xs text-lune-faint/70" data-testid="pv-sans-gps">
+          <p className="mt-1 text-xs text-muted-foreground/70" data-testid="pv-sans-gps">
             Pas de position GPS sur la fiche — carte au niveau Maroc.
           </p>
         )}
@@ -1188,7 +1188,7 @@ function AtelierToiture({
             (l'atelier n'a pas d'API pour injecter un contour a posteriori —
             même patron de rechargement que `window.__taqinorRoofBooted`). */}
         {estLead && contourMessage && (
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-lune-faint/70" data-testid="pv-contour-osm-absent">
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground/70" data-testid="pv-contour-osm-absent">
             <p>{contourMessage}</p>
             <button
               type="button"
@@ -1201,14 +1201,14 @@ function AtelierToiture({
         )}
 
         {loadError && (
-          <p className="mt-3 text-sm text-alert-300" role="alert">{loadError}</p>
+          <p className="mt-3 text-sm text-destructive" role="alert">{loadError}</p>
         )}
 
         {/* PV20 — LECTURE SEULE : le motif vient du serveur, jamais rédigé ici. */}
         {lectureSeule && (
-          <div className="cine-card mt-6 border border-brass-400/40 p-5" data-testid="pv20-lecture-seule">
-            <p className="tech-label rule-brass text-brass-300">Lecture seule</p>
-            <p className="mt-3 text-sm text-lune-soft" role="status">
+          <div className="rounded-xl border border-border bg-card mt-6 border-brass-400/40 p-5" data-testid="pv20-lecture-seule">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Lecture seule</p>
+            <p className="mt-3 text-sm text-foreground" role="status">
               {raisonLectureSeule || (estCalepinage
                 ? 'Ce calepinage ne peut plus être modifié.'
                 : 'Ce devis ne peut plus être modifié.')}
@@ -1219,7 +1219,7 @@ function AtelierToiture({
             {devisSynchronise && (
               <Link
                 to={`/ventes/devis/${devisId}/3d`}
-                className="mt-4 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+                className="mt-4 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text"
               >
                 Voir en 3D
               </Link>
@@ -1232,7 +1232,7 @@ function AtelierToiture({
                 onClick={() => reviser(devisARevise.id, devisARevise.reference)}
                 disabled={sending}
                 data-testid="acal-reviser-lecture-seule"
-                className="mt-4 ml-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-4 ml-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Réviser (v2)
               </button>
@@ -1242,11 +1242,11 @@ function AtelierToiture({
 
         {/* ACAL192 (D-ACAL-13) — GPS du lead corrigé après le tracé : décider. */}
         {deriveRepere === 'a_decider' && (
-          <div className="cine-card mt-6 border border-brass-400/40 p-5" data-testid="acal-derive-repere">
-            <p className="text-sm text-brass-300" role="status">
+          <div className="rounded-xl border border-border bg-card mt-6 border-brass-400/40 p-5" data-testid="acal-derive-repere">
+            <p className="text-sm text-primary-text" role="status">
               {`Le GPS du lead a été corrigé${ecartRepere ? ` (${ecartRepere})` : ''}.`}
             </p>
-            <p className="mt-1 text-xs text-lune-soft">
+            <p className="mt-1 text-xs text-foreground">
               Recentrer déplace toute la conception sur le nouveau repère (une version est créée) ;
               garder conserve l’emplacement dessiné.
             </p>
@@ -1256,7 +1256,7 @@ function AtelierToiture({
                 onClick={() => gesteRepere(calepinageApi.calepinages.recentrerSurLead)}
                 disabled={repereEnCours || lectureSeule}
                 data-testid="acal-derive-recentrer"
-                className="inline-flex items-center border border-brass-400 px-4 py-2 text-sm font-semibold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center border border-brass-400 px-4 py-2 text-sm font-semibold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Recentrer sur le GPS du lead
               </button>
@@ -1265,7 +1265,7 @@ function AtelierToiture({
                 onClick={() => gesteRepere(calepinageApi.calepinages.garderRepere)}
                 disabled={repereEnCours || lectureSeule}
                 data-testid="acal-derive-garder"
-                className="inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-lune-soft disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Garder ce repère
               </button>
@@ -1273,20 +1273,20 @@ function AtelierToiture({
           </div>
         )}
         {estCalepinage && repereErreur && (
-          <p className="mt-3 text-sm text-alert-300" role="alert" data-testid="acal-derive-erreur">
+          <p className="mt-3 text-sm text-destructive" role="alert" data-testid="acal-derive-erreur">
             {repereErreur}
           </p>
         )}
 
         {cibleEstimee && (
-          <p className="mt-3 text-xs text-lune-soft" role="status" data-testid="acal-cible-estimee">
+          <p className="mt-3 text-xs text-foreground" role="status" data-testid="acal-cible-estimee">
             {cibleEstimee}
           </p>
         )}
 
         {/* PV20 — avertissements serveur (multi-villa, aucune ligne panneau…). */}
         {estCalepinage && avertissements.length > 0 && (
-          <ul className="mt-4 space-y-1 text-xs text-lune-faint" data-testid="pv20-avertissements">
+          <ul className="mt-4 space-y-1 text-xs text-muted-foreground" data-testid="pv20-avertissements">
             {avertissements.map((a) => <li key={a}>{a}</li>)}
           </ul>
         )}
@@ -1303,14 +1303,14 @@ function AtelierToiture({
             vient de l'engagement du dossier (cible.panneaux), pas d'une
             facture d'électricité — le bloc n'y a aucun sens non plus. */}
         {estLead && (
-        <div className="cine-card mt-6 p-5">
-          <label htmlFor="rp9-bill" className="block text-sm text-lune-soft">
+        <div className="rounded-xl border border-border bg-card mt-6 p-5">
+          <label htmlFor="rp9-bill" className="block text-sm text-foreground">
             Facture d'électricité moyenne par mois (MAD)
           </label>
           <div className="mt-2 flex items-center gap-3">
             <input id="rp9-bill" name="bill" type="text" inputMode="decimal" step="any"
               placeholder="ex. 1 500" className={`${inputClass} max-w-[12rem]`} />
-            <span className="text-xs text-lune-faint">≈ <span id="rp9-bill-kwh" className="fig">—</span> par an</span>
+            <span className="text-xs text-muted-foreground">≈ <span id="rp9-bill-kwh" className="fig">—</span> par an</span>
           </div>
         </div>
         )}
@@ -1326,7 +1326,7 @@ function AtelierToiture({
             className="mt-6 flex flex-wrap items-center justify-between gap-3 border border-brass-400/40 p-4"
             data-testid="rp9-calepinage-auto-note"
           >
-            <p className="text-sm text-lune-soft" role="status">
+            <p className="text-sm text-foreground" role="status">
               Calepinage automatique depuis le tracé client — à vérifier
             </p>
             {recommencerDisponible && (
@@ -1362,33 +1362,33 @@ function AtelierToiture({
         <Studio actif={estCalepinage} nom="-inspecteur">
 
         {/* RECOMMANDATION (panneaux/optimiseur visibles ici) */}
-        <div id="rp9-results" className="rp9-results cine-card mt-6 p-6">
-          <p className="tech-label rule-brass text-brass-300">Recommandation</p>
-          <p id="rp9-reco-title" className="fig mt-4 text-2xl text-brass-300">—</p>
-          <div className="mt-5 border border-white/10 bg-nuit-800/60 p-4">
-            <label htmlFor="rp9-need-input" className="tech-label text-lune-faint">Panneaux nécessaires</label>
+        <div id="rp9-results" className="rp9-results rounded-xl border border-border bg-card mt-6 p-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Recommandation</p>
+          <p id="rp9-reco-title" className="fig mt-4 text-2xl text-primary-text">—</p>
+          <div className="mt-5 border border-border bg-card/60 p-4">
+            <label htmlFor="rp9-need-input" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Panneaux nécessaires</label>
             <div className="mt-2 flex items-center gap-3">
-              <button type="button" id="rp9-need-minus" aria-label="Un de moins" className="h-11 w-11 border border-white/25 text-2xl text-white">−</button>
+              <button type="button" id="rp9-need-minus" aria-label="Un de moins" className="h-11 w-11 border border-border text-2xl text-foreground">−</button>
               <input id="rp9-need-input" type="text" inputMode="numeric" defaultValue="—" disabled
-                className="fig h-11 w-20 border border-white/20 bg-nuit-900 text-center text-2xl text-white" />
-              <button type="button" id="rp9-need-plus" aria-label="Un de plus" className="h-11 w-11 border border-white/25 text-2xl text-white">+</button>
+                className="fig h-11 w-20 border border-border bg-background text-center text-2xl text-foreground" />
+              <button type="button" id="rp9-need-plus" aria-label="Un de plus" className="h-11 w-11 border border-border text-2xl text-foreground">+</button>
             </div>
-            <p id="rp9-need-note" className="mt-2 min-h-[1.5rem] text-xs text-lune-faint" aria-live="polite"></p>
+            <p id="rp9-need-note" className="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6" aria-live="polite">
-            <div><dd id="rp9-reco-kwc" className="fig text-2xl text-white">—</dd><dt className="tech-label mt-1 text-lune-faint">Puissance</dt></div>
-            <div><dd id="rp9-reco-panels" className="fig text-2xl text-white">—</dd><dt className="tech-label mt-1 text-lune-faint">Panneaux</dt></div>
-            <div><dd id="rp9-reco-prod" className="fig text-xl text-white">—</dd><dt className="tech-label mt-1 text-lune-faint">Production</dt></div>
-            <div><dd id="rp9-reco-cover" className="fig text-xl text-white">—</dd><dt className="tech-label mt-1 text-lune-faint">Couverture</dt></div>
+            <div><dd id="rp9-reco-kwc" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Puissance</dt></div>
+            <div><dd id="rp9-reco-panels" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Panneaux</dt></div>
+            <div><dd id="rp9-reco-prod" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production</dt></div>
+            <div><dd id="rp9-reco-cover" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture</dt></div>
           </dl>
-          <div className="mt-5 border-t border-white/10 pt-5">
-            <dd id="rp9-reco-savings" className="fig text-xl text-brass-300">—</dd>
-            <dt className="tech-label mt-1 text-lune-faint">Économies estimées</dt>
+          <div className="mt-5 border-t border-border pt-5">
+            <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
           </div>
-          <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-lune-soft"></p>
-          <p id="rp9-reco-bifacial" className="mt-2 text-xs text-lune-faint"></p>
-          <p id="rp9-reco-band" className="mt-2 min-h-[2.5rem] text-xs text-lune-faint" aria-live="polite"></p>
-          <p id="rp9-maxline" className="mt-3 text-xs text-lune-faint"></p>
+          <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
+          <p id="rp9-reco-bifacial" className="mt-2 text-xs text-muted-foreground"></p>
+          <p id="rp9-reco-band" className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
+          <p id="rp9-maxline" className="mt-3 text-xs text-muted-foreground"></p>
         </div>
 
         {/* CALX94/CALX109 — L'ANCRAGE ATTENDU par `roofPro11/edgesUi.ts` (« Corriger le
@@ -1406,27 +1406,27 @@ function AtelierToiture({
             (`zones.ts renderAreasPanel`). Non conditionnel au mode — comme `#rp9-results`
             ci-dessus, c'est un module du CONSTRUCTEUR partagé par les trois modes ; un
             conteneur `hidden` par défaut ne change rien au mode devis. */}
-        <div id="rp9-areas-window" hidden className="cine-card mt-6 p-5 sm:p-6">
+        <div id="rp9-areas-window" hidden className="rounded-xl border border-border bg-card mt-6 p-5 sm:p-6">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <p className="tech-label rule-brass text-brass-300">Total — toutes les zones</p>
-            <p className="text-xs text-lune-faint">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Total — toutes les zones</p>
+            <p className="text-xs text-muted-foreground">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
           </div>
           <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4" aria-live="polite">
             <div>
-              <dd id="rp9-areas-total-panels" className="fig text-lg text-white sm:text-xl">—</dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">Panneaux</dt>
+              <dd id="rp9-areas-total-panels" className="fig text-lg text-foreground sm:text-xl">—</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux</dt>
             </div>
             <div>
-              <dd id="rp9-areas-total-kwc" className="fig text-lg text-white sm:text-xl">—</dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">Puissance</dt>
+              <dd id="rp9-areas-total-kwc" className="fig text-lg text-foreground sm:text-xl">—</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Puissance</dt>
             </div>
             <div>
-              <dd id="rp9-areas-total-prod" className="fig text-lg text-white sm:text-xl">—</dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">Production estimée</dt>
+              <dd id="rp9-areas-total-prod" className="fig text-lg text-foreground sm:text-xl">—</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Production estimée</dt>
             </div>
             <div>
-              <dd id="rp9-areas-total-savings" className="fig text-lg text-brass-300 sm:text-xl">—</dd>
-              <dt className="tech-label mt-0.5 text-lune-faint">Économies estimées</dt>
+              <dd id="rp9-areas-total-savings" className="fig text-lg text-primary-text sm:text-xl">—</dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Économies estimées</dt>
             </div>
           </dl>
           {/* Liste des zones (script-rendu) : libellé, panneaux, kWc, « Voir » + suppr. La
@@ -1434,7 +1434,7 @@ function AtelierToiture({
               CALX109) ajoutent aussi leurs propres panneaux ICI (`appendChild`, patron
               `obstaclesUi.ts ensureTypePicker`) — rien d'autre à câbler côté écran. */}
           <ul id="rp9-areas-list" className="mt-5 space-y-2"></ul>
-          <p className="mt-3 text-xs leading-relaxed text-lune-faint">
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
             « + Ajouter une zone » fige la zone tracée et démarre un nouveau tracé sur la même
             facture. La 3D et les graphes détaillés affichent la zone sélectionnée (« Voir ») ;
             les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.
@@ -1464,23 +1464,22 @@ function AtelierToiture({
             le devis d'un appel d'offres naît du BORDEREAU DES PRIX (action
             « Créer le devis » de l'écran Bordereau), pas d'un calepinage. */}
         {estLead && (
-        <div className="cine-card mt-6 p-6">
+        <div className="rounded-xl border border-border bg-card mt-6 p-6">
           {!deliver ? (
             <div>
               <button type="button" onClick={generer} disabled={sending}
-                className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ background: 'var(--rp-ok-600)' }}>
+                className="inline-flex w-full items-center justify-center gap-3 bg-success px-6 py-4 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
                 {sending && (
                   <span aria-hidden="true"
-                    className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+                    className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-border border-t-white"></span>
                 )}
                 <span>{sending ? 'Génération en cours…' : 'Générer le devis'}</span>
               </button>
-              <p className="mt-3 text-xs text-lune-faint">
+              <p className="mt-3 text-xs text-muted-foreground">
                 Un seul clic : le devis est créé et la vue 3D enregistrée ; l’envoi se fait depuis la fiche lead.
               </p>
-              {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
-              {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
+              {genStatus && <p className="mt-3 text-sm text-foreground" aria-live="polite">{genStatus}</p>}
+              {genError && <p className="mt-3 text-sm text-destructive" aria-live="assertive">{genError}</p>}
             </div>
           ) : blocLivraison()}
           {blocAvertissements()}
@@ -1549,8 +1548,8 @@ function AtelierToiture({
           <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
             lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
         </BarreEnregistrement>
-        <div className="cine-card mt-6 p-6">
-          <p className="text-xs text-lune-faint">
+        <div className="rounded-xl border border-border bg-card mt-6 p-6">
+          <p className="text-xs text-muted-foreground">
             La conception est rangée sur le calepinage, avec une nouvelle
             version dès qu'elle a changé. Aucun statut n'est modifié ; le devis,
             lui, se génère par son propre bouton.
@@ -1561,17 +1560,17 @@ function AtelierToiture({
               seulement pour un approbateur (droit SERVI par le détail). */}
           {bloquageSync?.bloquants && (
             <div className="mt-4 border border-alert-300/40 p-4" data-testid="cal-sync-bloquants">
-              <ul className="space-y-1 text-sm text-alert-300">
+              <ul className="space-y-1 text-sm text-destructive">
                 {bloquageSync.bloquants.map((b, i) => (
                   <li key={`${b?.code ?? 'b'}-${i}`} data-testid="cal-sync-bloquant">
                     {texteBloquant(b)}
-                    {b?.detail && <span className="block text-xs text-lune-faint">{b.detail}</span>}
+                    {b?.detail && <span className="block text-xs text-muted-foreground">{b.detail}</span>}
                   </li>
                 ))}
               </ul>
               {bloquageSync.derogationPossible && (bloquageSync.peutDeroger ? (
                 <div className="mt-3 space-y-2">
-                  <label className="block text-xs text-lune-soft" htmlFor="cal-sync-motif">
+                  <label className="block text-xs text-foreground" htmlFor="cal-sync-motif">
                     Motif de la dérogation
                   </label>
                   <textarea
@@ -1582,18 +1581,18 @@ function AtelierToiture({
                     className="w-full border border-lune-faint/40 bg-transparent p-2 text-sm"
                   />
                   {motifDerogationErreur && (
-                    <p className="text-xs text-alert-300" role="alert" data-testid="cal-sync-motif-erreur">
+                    <p className="text-xs text-destructive" role="alert" data-testid="cal-sync-motif-erreur">
                       {motifDerogationErreur}
                     </p>
                   )}
                   <button type="button" onClick={passerOutreSync} disabled={sending}
                     data-testid="cal-sync-passer-outre"
-                    className="inline-flex items-center gap-2 border border-alert-300 px-4 py-2 text-sm font-bold text-alert-300 disabled:cursor-not-allowed disabled:opacity-60">
+                    className="inline-flex items-center gap-2 border border-alert-300 px-4 py-2 text-sm font-bold text-destructive disabled:cursor-not-allowed disabled:opacity-60">
                     Passer outre et resynchroniser
                   </button>
                 </div>
               ) : (
-                <p className="mt-2 text-xs text-lune-faint" data-testid="cal-sync-derogation-reservee">
+                <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-sync-derogation-reservee">
                   {MESSAGE_DEROGATION_RESERVEE}
                 </p>
               ))}
@@ -1604,13 +1603,13 @@ function AtelierToiture({
               écrasé ; distinct du verrou ci-dessous. */}
           {documentModifie && (
             <div className="mt-4 border border-brass-400/40 p-4" data-testid="cal-document-modifie">
-              <p className="text-sm text-brass-300" role="alert">
+              <p className="text-sm text-primary-text" role="alert">
                 La conception a été modifiée ailleurs (onglet, autre navigateur) — rechargez avant
                 d’enregistrer.
               </p>
-              <p className="mt-1 text-xs text-lune-soft">{documentModifie.detail}</p>
+              <p className="mt-1 text-xs text-foreground">{documentModifie.detail}</p>
               <button type="button" onClick={rechargerAtelier}
-                className="mt-3 inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-300"
+                className="mt-3 inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-primary-text"
                 data-testid="cal-document-modifie-recharger">
                 Recharger
               </button>
@@ -1621,9 +1620,9 @@ function AtelierToiture({
               geste est une NOUVELLE version (même `reviserEtOuvrir`). */}
           {conflit?.revision_possible && devisId && (
             <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
-              <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
+              <p className="text-sm text-foreground" role="status">{conflit.detail}</p>
               <button type="button" onClick={() => reviser(devisId, devisReference)} disabled={sending}
-                className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60">
+                className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60">
                 Réviser (v2)
               </button>
             </div>
@@ -1632,8 +1631,8 @@ function AtelierToiture({
           {/* 409 : le devis lié est figé (accepté, refusé, expiré ou remplacé) — motif du SERVEUR. */}
           {conflit && !conflit.revision_possible && (
             <div className="mt-4 border border-alert-300/40 p-4" data-testid="cal-conflit-lecture-seule">
-              <p className="tech-label text-alert-300">Lecture seule</p>
-              <p className="mt-2 text-sm text-alert-300" role="alert">{conflit.detail}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Lecture seule</p>
+              <p className="mt-2 text-sm text-destructive" role="alert">{conflit.detail}</p>
             </div>
           )}
         </div>
@@ -1757,10 +1756,10 @@ function ConceptionDuDevis() {
   }
   return (
     <div className="rp9-host" data-testid="acal37-resolution">
-      <p className="tech-label rule-brass text-brass-300">Interne · conception toiture</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Interne · conception toiture</p>
       {resolution.erreur
-        ? <p className="mt-3 text-sm text-alert-300" role="alert">{resolution.erreur}</p>
-        : <p className="mt-3 text-sm text-lune-faint" aria-live="polite">Ouverture de la conception du devis…</p>}
+        ? <p className="mt-3 text-sm text-destructive" role="alert">{resolution.erreur}</p>
+        : <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">Ouverture de la conception du devis…</p>}
     </div>
   )
 }
