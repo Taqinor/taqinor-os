@@ -168,6 +168,8 @@ class VentesAgentCatalogueTest(TestCase):
             'ventes.facture.whatsapp_relance': {'id': 'facture'},
             'ventes.vente.facturer': {'id': 'devis'},
             'ventes.devis.ligne_remplacer': {'id': 'devis'},
+            # L4 (21/11/2026) — recherche de devis : ne désigne aucun objet.
+            'ventes.devis.chercher': {},
         }
         for action in VENTES_ACTIONS_COPILOTE:
             self.assertIn(action.key, cles)
@@ -368,11 +370,18 @@ class VentesAgentCatalogueTest(TestCase):
         pdf = ventes[GENERER_PDF_DEVIS.key].description
         self.assertIn('/proposal', pdf)
         self.assertIn('règle #4', pdf)
-        for action in (ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE,
-                       GENERER_FACTURE, ENREGISTRER_PAIEMENT):
+        # D-COP-5 — facture et paiement gardent la carte ; accepter et convertir
+        # sont directs (carte seulement après une lecture de données, B3) et ne
+        # se font que sur une demande claire.
+        for action in (GENERER_FACTURE, ENREGISTRER_PAIEMENT):
             self.assertIn(
                 'change un statut : proposition puis confirmation obligatoire',
                 ventes[action.key].description, action.key)
+        for action in (ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE):
+            self.assertIn('change un statut : seulement sur', ventes[action.key].description,
+                          action.key)
+        for action in (ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE,
+                       GENERER_FACTURE, ENREGISTRER_PAIEMENT):
             self.assertTrue(ventes[action.key].confirm_summary, action.key)
 
     def test_register_is_idempotent(self):
@@ -1737,7 +1746,8 @@ class LignesAssistantEcritureTest(_BaseVenteAssistant):
         resp = self._post('ajouter', {'produit': self.acier.pk, 'quantite': 1},
                           user=self._hors_societe())
         self.assertEqual(resp.status_code, 404)
-        for quantite in (0, -1, True, 'abc'):
+        # api-fuzz #1516 : 10 001 et 10^8 refusés (débordement de la marge figée).
+        for quantite in (0, -1, True, 'abc', 10001, 99999999):
             with self.subTest(quantite=quantite):
                 resp = self._post('ajouter', {'produit': self.acier.pk,
                                               'quantite': quantite})

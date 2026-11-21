@@ -198,7 +198,7 @@ def _quantite_assistant(**kwargs):
     from core.champs_stricts import DecimalSouple
     return DecimalSouple(max_digits=10, decimal_places=2,
                          min_value=Decimal('0.01'),
-                         max_value=Decimal('99999999.99'), **kwargs)
+                         max_value=Decimal('10000'), **kwargs)  # = lignes_assistant.QUANTITE_MAX
 
 
 def _variante_assistant():

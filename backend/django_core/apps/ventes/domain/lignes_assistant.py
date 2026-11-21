@@ -45,7 +45,10 @@ SANS, AVEC, LES_DEUX = 'sans', 'avec', 'les_deux'
 VARIANTES = (SANS, AVEC, LES_DEUX)
 #: Bornes de la quantité demandée (``LigneDevis.quantite`` : 10 chiffres, 2
 #: décimales) ; au-delà de deux décimales, arrondi au centième.
-QUANTITE_MIN, QUANTITE_MAX = Decimal('0.01'), Decimal('99999999.99')
+#: CI de la file d'attente #1516 (api-fuzz) — une quantité démesurée (≈ 10^8)
+#: faisait déborder `marge_snapshot` (12 chiffres) au geste suivant sur le devis
+#: (500 sur reappliquer-lead). Aucune ligne d'un devis solaire n'approche 10 000.
+QUANTITE_MIN, QUANTITE_MAX = Decimal('0.01'), Decimal('10000')
 _CENTIEME = Decimal('0.01')
 _LIBELLES_CLOS = {'accepte': 'accepté', 'refuse': 'refusé', 'expire': 'expiré'}
 _LIBELLES_OPTION = {SANS: 'sans batterie', AVEC: 'avec batterie'}
@@ -80,8 +83,8 @@ def lire_quantite(valeur):
         if QUANTITE_MIN <= nombre <= QUANTITE_MAX:
             return nombre
     raise LignesRefusees(
-        'quantite : un nombre strictement positif (au plus deux décimales), '
-        'par exemple 10 ou 2.5.', field='quantite', code='quantite_invalide',
+        'quantite : un nombre strictement positif, au plus 10 000 et deux '
+        'décimales, par exemple 10 ou 2.5.', field='quantite', code='quantite_invalide',
         statut=400)
 
 
