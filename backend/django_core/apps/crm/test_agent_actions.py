@@ -1740,8 +1740,8 @@ class CrmAssistantCreerLeadTest(_CopiloteBase):
         resp = self._creer(facture_hiver=600, facture_ete='750.5', ville='Safi')
         self.assertEqual(resp.status_code, 201, resp.data)
         lead = Lead.objects.get(pk=resp.data['identite']['id'])
-        self.assertEqual((str(lead.facture_hiver), str(lead.facture_ete)),
-                         ('600.00', '750.50'))
+        self.assertEqual((str(lead.facture_hiver), str(lead.facture_ete), lead.ete_differente),
+                         ('600.00', '750.50', True))  # N4 : le dimensionnement la lit
         self.assertEqual(self._creer(nom='Négatif', facture_hiver=-1).status_code, 400)
 
     def test_corps_refuse_en_nommant_le_champ(self):

@@ -328,7 +328,7 @@ REMISE_DEVIS = AgentAction(
     label='Appliquer une remise au devis',
     description=(
         "Sert à : fixer la remise globale (en %) d'un devis brouillon ; change "
-        "un montant : proposition puis confirmation obligatoire. Ne pas "
+        "un montant : fait directement, l'ancien et le nouveau total sont redits. Ne pas "
         "utiliser pour : la remise d'une seule ligne (non offerte). "
         "Exemple : « remise de 2 % sur le devis 12 » → id=12, "
         "remise_globale=2. Résultat : remise appliquée, totaux HT, TVA et TTC "
@@ -428,8 +428,8 @@ ACCEPTER_DEVIS = AgentAction(
     label='Accepter un devis',
     description=(
         "Sert à : marquer un devis accepté par le client (nom, date, option si "
-        "le devis en a deux) ; change un statut : proposition puis "
-        "confirmation obligatoire. Ne pas utiliser pour : un accord oral non "
+        "le devis en a deux) ; change un statut : seulement sur un accord "
+        "dit clairement par l'utilisateur. Ne pas utiliser pour : un accord oral non "
         "confirmé ni un devis brouillon à modifier. Exemple : « M. Alaoui a "
         "signé le devis 12, avec batterie » → id=12, nom, "
         "option=avec_batterie. Résultat : devis accepté, lead passé à Signé, "
@@ -480,7 +480,7 @@ CONVERTIR_EN_BON_COMMANDE = AgentAction(
     label='Convertir le devis en bon de commande',
     description=(
         "Sert à : créer le bon de commande d'un devis déjà accepté ; change "
-        "un statut : proposition puis confirmation obligatoire. Ne pas "
+        "un statut : seulement sur demande claire de l'utilisateur. Ne pas "
         "utiliser pour : un devis non accepté (accepter d'abord) ni pour "
         "facturer. Exemple : « lance la commande du devis 12 » → id=12. "
         "Résultat : bon de commande numéroté lié au devis, société forcée "
@@ -950,7 +950,7 @@ PROLONGER_DEVIS = AgentAction(
     label='Prolonger la validité du devis envoyé (nouvelle date de fin)',
     description=(
         "Sert à : repousser la date de fin de validité d'un devis ENVOYÉ "
-        "(jamais plus courte) ; proposition puis confirmation obligatoire. "
+        "(jamais plus courte) ; fait directement. "
         "Ne pas utiliser pour : un devis expiré (réviser, pas prolonger : "
         "ventes.devis.reviser) ni un brouillon. Exemple : « prolonge le devis "
         "de Benali jusqu'au 15 décembre » → id, date=2026-12-15 ; sans date, "
@@ -1096,7 +1096,7 @@ TAILLE_DEVIS = AgentAction(
         "Sert à : changer en place le nombre de panneaux (et de modules de "
         "batterie) d'un devis brouillon ou envoyé, totaux recopiés de "
         "ventes.devis.taille_apercu ; un envoyé est corrigé sur place, le "
-        "client voit les nouveaux chiffres : confirmation obligatoire. Ne pas "
+        "client voit les nouveaux chiffres : redis l'ancien et le nouveau total. Ne pas "
         "utiliser pour : un accepté (réviser puis la taille sur la V2), une "
         "remise ni un prix. Exemple : « mets-lui 12 panneaux » → id, "
         "nb_panneaux=12, ancien_total_ttc, nouveau_total_ttc de l'aperçu. "

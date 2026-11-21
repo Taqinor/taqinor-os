@@ -355,8 +355,9 @@ def historique_porte_un_texte_tiers(brut: Optional[list], copilote: bool = True)
 def noter_historique_du_tour(ctx, brut: Optional[list], copilote: bool = True) -> None:
     """Moteur LangChain : marque le tour si l'historique relu l'est (A5)."""
     if ctx is not None and historique_porte_un_texte_tiers(brut, copilote):
-        from app.services.action_tools import noter_contenu_tiers
+        from app.services.action_tools import noter_contenu_tiers, noter_donnees_lues
         noter_contenu_tiers(ctx, "historique")
+        noter_donnees_lues(ctx)
 
 
 def marque_du_tour(ctx) -> bool:
@@ -370,7 +371,12 @@ def _marques_natives(ctx) -> dict[str, Any]:
     """Crochets A5 remis au moteur natif : il dit si le passé qu'il relit est
     marqué, et garde la marque du tour avec la conversation."""
     from app.services.action_tools import noter_contenu_tiers
-    return {"noter_relu_tiers": lambda: noter_contenu_tiers(ctx, "historique"),
+    from app.services.action_tools import noter_donnees_lues
+
+    def _relu():
+        noter_contenu_tiers(ctx, "historique")
+        noter_donnees_lues(ctx)
+    return {"noter_relu_tiers": _relu,
             "marque_du_tour": lambda: marque_du_tour(ctx)}
 
 
@@ -397,7 +403,9 @@ def marquer_lectures_tierces(outils: list, ctx) -> list:
             self.nom = nom
 
         def on_tool_start(self, serialized, input_str, **kwargs):
+            from app.services.action_tools import noter_donnees_lues
             noter_contenu_tiers(ctx, self.nom)
+            noter_donnees_lues(ctx)
 
     for outil in outils:
         nom = getattr(outil, "name", None) or "outil"
@@ -936,6 +944,12 @@ def reprise_native(service, ctx, company_id: int, user_id: int, libelle: str,
     # A5 — le résultat de l'ERP entre dans le tour de reprise : marqué.
     from app.services.action_tools import noter_contenu_tiers
     noter_contenu_tiers(ctx, "reprise")
+    # L4 (revue adverse du 21/11, B1) — la reprise ne sait pas si le message
+    # d'origine portait un texte collé : par prudence, toute écriture directe
+    # repasse par une carte pendant la reprise.
+    from app.services.action_tools import noter_donnees_lues
+    ctx.message_colle = True
+    noter_donnees_lues(ctx)
     try:
         prep = _preparer(service, libelle, company_id, ctx, catalogue, collecteur)
         rendu = moteur_natif.reprendre(conversation=conversation_de(company_id, user_id),

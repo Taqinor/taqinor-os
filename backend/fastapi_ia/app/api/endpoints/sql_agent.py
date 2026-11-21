@@ -356,9 +356,15 @@ async def confirm_action(
         detail = result.get("error", "L'action n'a pas pu etre executee.")
         # D-COP-5 — l'échec entre dans la conversation : le modèle le sait et
         # dit le geste qui marche (le 20/11 il reproposait la même carte, 4 fois).
-        suite = await asyncio.to_thread(
+        # L4 (revue adverse du 21/11, B2) — reprise SEULEMENT sur un refus
+        # métier net (4xx : rien d'écrit). Jeton introuvable / déjà confirmé
+        # (double appui) ou issue incertaine (0, 5xx) : jamais « refusée,
+        # corrige » — le modèle referait une action peut-être déjà faite.
+        statut = int(result.get("status") or 0)
+        suite = (await asyncio.to_thread(
             relais_copilote.apres_echec_confirmation, sql_agent_service, action_ctx,
             company_id, int(token_payload.get("user_id", 0)), result)
+            if 400 <= statut < 500 else None)
         return ConfirmResponse(ok=False, detail=detail, suite=suite)
     data = result.get("data")
     apres = await asyncio.to_thread(

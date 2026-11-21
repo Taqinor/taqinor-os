@@ -410,6 +410,13 @@ def appliquer_operation(devis, operation, corps, *, utilisateur=None):
             'Ce devis n\'a qu\'une option : la ligne vaut pour tout le devis.')})
     if operation == 'ajouter':
         _exclure_options_hors_huawei(devis, entrees, deux, alertes)
+    elif operation == 'remplacer' and options_hors_huawei(devis, entrees['produit'], deux):
+        # Revue adverse du 21/11 (N5) — remplacer par un accessoire Huawei dans
+        # une option à onduleur non-Huawei écrivait la ligne hors total et hors PDF.
+        raise LignesRefusees(
+            f'« {entrees["produit"].nom} » est un accessoire de l’onduleur Huawei : il ne '
+            'compte que dans l’option à onduleur Huawei. Ajoutez-le (geste « ajouter ») '
+            'au lieu de remplacer une ligne.', field='produit', code='accessoire_huawei')
     options_avant = options_du_devis(devis)
     avant = {li['ligne_id']: li for li in lignes_ttc(devis, avec_ids=True)}
     avant_geste = debut_de_geste_devis(devis, utilisateur)

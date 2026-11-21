@@ -1095,3 +1095,35 @@ class PhraseTapeeResteDirecteDcop5Tests(unittest.TestCase):
             with self.subTest(colle=colle[:20]):
                 self.assertFalse(at.action_directe(self._ctx_apres(colle),
                                                    {"directe": True, "risk": "outward"}))
+
+
+class DirectesSensiblesApresLectureTests(unittest.TestCase):
+    """Revue adverse du 21/11 (B3) — une consigne cachée dans une donnée lue
+    (note d'un lead venu d'un formulaire public) ne déclenche jamais, sans
+    carte, un geste qui change l'état ou le propriétaire d'un dossier ; les
+    autres gestes directs (créer, qualifier, lignes, taille) le restent."""
+
+    def _ctx(self):
+        from app.services.action_tools import ActionContext
+        return ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+
+    def test_sensible_direct_sans_lecture_carte_apres_lecture(self):
+        from app.services import action_tools as at
+        accepter = {"key": "ventes.devis.accepter", "directe": True, "risk": "outward"}
+        qualifier = {"key": "crm.lead.qualifier", "directe": True, "risk": "outward"}
+        ctx = self._ctx()
+        self.assertTrue(at.action_directe(ctx, accepter))
+        at.garde_ecriture_taches(ctx, {"key": "crm.lead.resume", "method": "GET"}, {}, [])
+        self.assertFalse(at.action_directe(ctx, accepter))
+        self.assertTrue(at.action_directe(ctx, qualifier))
+
+    def test_une_ecriture_seule_ne_compte_pas_comme_lecture_avant_son_resultat(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        at.garde_ecriture_taches(ctx, {"key": "crm.lead.creer", "method": "POST"}, {}, [])
+        self.assertTrue(at.action_directe(ctx, {"key": "crm.lead.perdu", "directe": True,
+                                                "risk": "outward"}))
+        self.assertEqual(at.DIRECTES_SENSIBLES, frozenset({
+            "ventes.devis.accepter", "ventes.devis.convertir_bc", "ventes.devis.refuser",
+            "crm.lead.perdu", "crm.lead.changer_etape", "crm.lead.reaffecter",
+            "crm.dossiers.deleguer"}))

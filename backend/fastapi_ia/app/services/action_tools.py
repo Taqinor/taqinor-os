@@ -1009,6 +1009,16 @@ def noter_contenu_tiers(ctx: Optional[ActionContext], origine: str) -> None:
         ctx.contenu_tiers = origine or "tiers"
 
 
+def noter_donnees_lues(ctx: Optional[ActionContext]) -> None:
+    """L4 (revue adverse du 21/11, B3) — des DONNÉES de l'ERP (lead, client,
+    ligne SQL, résultat ou erreur d'un outil, historique relu) sont entrées dans
+    le tour : un texte que n'importe qui a pu écrire (note d'un lead Meta). Les
+    gestes directs SENSIBLES redeviennent des cartes (`DIRECTES_SENSIBLES`).
+    Distinct de `contenu_tiers`, posé par TOUT appel d'outil, écriture comprise."""
+    if ctx is not None:
+        ctx.donnees_lues = True
+
+
 def contenu_tiers_du_tour(ctx: Optional[ActionContext]) -> bool:
     return bool(getattr(ctx, "contenu_tiers", None))
 
@@ -1145,6 +1155,8 @@ def garde_ecriture_taches(ctx: ActionContext, action: dict[str, Any],
     cle = str(action.get("key", ""))
     if not est_ecriture_taches(action):
         noter_contenu_tiers(ctx, cle or "action")
+        if str(action.get("method", "GET")).upper() == "GET" or action.get("lecture"):
+            noter_donnees_lues(ctx)
         return None
     if contenu_tiers_du_tour(ctx):
         return _ecriture_en_carte_echo(ctx, action, inputs, collector)
@@ -1194,15 +1206,28 @@ REFUS_ECRITURES_INTERNES = (
     "l'utilisateur ce qui reste et laisse-le relancer.")
 
 
+#: L4 (revue adverse du 21/11, B3) — gestes directs qui changent l'ÉTAT ou le
+#: PROPRIÉTAIRE d'un dossier : une consigne cachée dans une donnée lue (note d'un
+#: lead venu d'un formulaire public) ne doit jamais les déclencher sans un doigt.
+#: Ils restent directs tant que le tour n'a lu aucune donnée de l'ERP.
+DIRECTES_SENSIBLES = frozenset({
+    "ventes.devis.accepter", "ventes.devis.convertir_bc", "ventes.devis.refuser",
+    "crm.lead.perdu", "crm.lead.changer_etape", "crm.lead.reaffecter",
+    "crm.dossiers.deleguer",
+})
+
+
 def action_directe(ctx: Optional[ActionContext], action: dict[str, Any]) -> bool:
     """D-COP-5 (Reda, 21/11/2026) — une action `outward` marquee `directe` par
     le catalogue Django s'execute sans carte, SAUF quand le message de
     l'utilisateur porte un texte VRAIMENT colle ou une image (`message_colle`) : une
     consigne venue d'un tiers ne s'execute jamais sans son doigt. Jamais une
     action `irreversible`."""
-    return (bool(action.get("directe"))
-            and action.get("risk") == RISK_OUTWARD
-            and not getattr(ctx, "message_colle", False))
+    if (not action.get("directe") or action.get("risk") != RISK_OUTWARD
+            or getattr(ctx, "message_colle", False)):
+        return False
+    return not (action.get("key") in DIRECTES_SENSIBLES
+                and getattr(ctx, "donnees_lues", False))
 
 
 def est_ecriture_interne(action: dict[str, Any]) -> bool:
@@ -1344,6 +1369,7 @@ def run_catalogue_action(
         if details and copilote_du_tour(ctx):
             texte += " Détails du refus : " + json.dumps(details, ensure_ascii=False)
         return texte
+    noter_donnees_lues(ctx)  # B3 : le résultat d'une écriture porte aussi des données de l'ERP
     result = {
         "type": "result", "action_key": action["key"],
         "libelle": _libelle_action(action), "carte": action.get("carte"),

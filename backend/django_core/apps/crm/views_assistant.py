@@ -712,6 +712,12 @@ def lead_creer(request):
     from .leads_creation import DoublonLead, creer_lead_pour_assistant
 
     donnees = corps_valide(request, _CORPS_LEAD_CREER)
+    # Revue adverse du 21/11 (N4) — une facture d'été DIFFÉRENTE n'est lue par
+    # le dimensionnement que si `ete_differente` est posé : sinon le devis
+    # automatique du même tour l'ignorait en silence.
+    if (donnees.get('facture_ete') is not None and donnees.get('facture_hiver') is not None
+            and donnees['facture_ete'] != donnees['facture_hiver']):
+        donnees['ete_differente'] = True
     try:
         lead = creer_lead_pour_assistant(
             request,
