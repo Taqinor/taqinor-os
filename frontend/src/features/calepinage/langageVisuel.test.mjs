@@ -21,14 +21,6 @@ const PLAFOND = {
     'atelier/PanneauOptimiser.jsx': 2,
     'atelier/ResumeAtelier.jsx': 1,
     'commun/RailGuide.jsx': 4,
-    'CourseSoleil.jsx': 21,
-    'HorizonPanel.jsx': 31,
-    'ModeTerrain.jsx': 29,
-    'Ombriere.jsx': 42,
-    'PanneauAllees.jsx': 74,
-    'PlanImporteCalage.jsx': 49,
-    'RemplissageProuve.jsx': 12,
-    'SaisiePente.jsx': 41,
   }).map(([k, v]) => [C + k, v])),
 }
 const ENVELOPPE = [

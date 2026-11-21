@@ -68,8 +68,8 @@ export default function RemplissageProuve({
   const regime = regimeDePreuve(resultat)
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-remplissage">
-      <p className="tech-label rule-brass text-brass-300">Remplissage automatique</p>
+    <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-remplissage">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Remplissage automatique</p>
 
       {!lectureSeule && (
         <button
@@ -77,7 +77,7 @@ export default function RemplissageProuve({
           onClick={remplir}
           disabled={enCours}
           data-testid="cal-remplissage-lancer"
-          className="mt-3 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
+          className="mt-3 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text"
         >
           {enCours ? 'Calcul en cours…' : 'Remplir automatiquement'}
         </button>
@@ -86,7 +86,7 @@ export default function RemplissageProuve({
       {/* L'AVANCEMENT PUBLIÉ par la tâche de fond — jamais une barre qui
           avance toute seule pour faire patienter. */}
       {enCours && job?.job_id && (
-        <p className="mt-3 text-sm text-lune-soft" role="status"
+        <p className="mt-3 text-sm text-foreground" role="status"
           data-testid="cal-remplissage-avancement">
           Calcul de fond n°{job.job_id} —{' '}
           {job.progress_pct === null || job.progress_pct === undefined
@@ -102,7 +102,7 @@ export default function RemplissageProuve({
       )}
 
       {regime && (
-        <div className="mt-4 border-t border-white/10 pt-4">
+        <div className="mt-4 border-t border-border pt-4">
           <p
             className={`text-sm font-semibold ${regime.prouve ? 'text-emerald-300' : 'text-amber-200'}`}
             data-testid="cal-remplissage-regime"
@@ -110,7 +110,7 @@ export default function RemplissageProuve({
           >
             {regime.phrase}
           </p>
-          <p className="mt-1 text-xs text-lune-faint" data-testid="cal-remplissage-methode">
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-remplissage-methode">
             Méthode : {regime.methode ?? 'non publiée'}
           </p>
 
@@ -121,12 +121,12 @@ export default function RemplissageProuve({
               type="button"
               onClick={() => onAppliquer && onAppliquer(resultat)}
               data-testid="cal-remplissage-appliquer"
-              className="mt-3 rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
+              className="mt-3 rounded border border-border px-4 py-2 text-sm font-semibold text-foreground"
             >
               Appliquer ce plan (remplace la disposition en cours)
             </button>
           )}
-          <p className="mt-2 text-xs text-lune-faint">
+          <p className="mt-2 text-xs text-muted-foreground">
             Tant que vous ne l’appliquez pas, votre disposition manuelle reste
             celle du calepinage.
           </p>
@@ -134,7 +134,7 @@ export default function RemplissageProuve({
       )}
 
       {resultat && !regime && (
-        <p className="mt-3 text-sm text-lune-soft" data-testid="cal-remplissage-sans-preuve">
+        <p className="mt-3 text-sm text-foreground" data-testid="cal-remplissage-sans-preuve">
           Le moteur n’a publié aucun régime de preuve pour ce plan : rien n’est
           affirmé — ni « prouvé », ni borne supérieure.
         </p>

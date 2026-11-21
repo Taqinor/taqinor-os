@@ -134,7 +134,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
     return (
       <>
         <RetourAtelier calepinageId={calepinageId} />
-        <div className="cine-card mt-6 p-6" data-testid="cal-course-soleil-loading">Chargement…</div>
+        <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-course-soleil-loading">Chargement…</div>
       </>
     )
   }
@@ -142,9 +142,9 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="cine-card mt-6 p-6" data-testid="cal-course-soleil">
-      <p className="tech-label rule-brass text-brass-300">Course du soleil</p>
-      <p className="mt-1 text-sm text-lune-faint">
+      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-course-soleil">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Course du soleil</p>
+      <p className="mt-1 text-sm text-muted-foreground">
         Azimut (0°=Nord) en abscisse, hauteur du soleil en ordonnée, pour les trois jours
         de repère (solstices et équinoxe). L’horizon lointain saisi (Horizon lointain) et
         les obstructions proches à hauteur saisie sont surimprimés à leur position réelle.
@@ -154,14 +154,14 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
 
       {zones.length > 1 && (
         <div className="mt-3">
-          <label htmlFor="cal-course-soleil-pan" className="tech-label text-lune-faint">
+          <label htmlFor="cal-course-soleil-pan" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Pan
           </label>
           <select
             id="cal-course-soleil-pan"
             value={zone?.id ?? ''}
             onChange={(e) => setPanChoisi(e.target.value)}
-            className="mt-1 block rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+            className="mt-1 block rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
           >
             {zones.map((z, i) => (
               <option key={z.id} value={z.id}>{libellePan(z, i)}</option>
@@ -171,7 +171,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
       )}
 
       {!zone && !erreur && (
-        <p className="mt-3 text-sm text-lune-faint">Aucun pan tracé dans cette conception.</p>
+        <p className="mt-3 text-sm text-muted-foreground">Aucun pan tracé dans cette conception.</p>
       )}
 
       {zone && (
@@ -197,7 +197,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
 
           {/* CALX118 — l'instant du soleil de scène AFFICHÉ, et le défaut NOMMÉ quand le
               document n'en porte aucun (jamais un 21 juin supposé silencieusement). */}
-          <p className="mt-1 text-xs text-lune-faint" data-testid="cal-course-soleil-scene">
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-course-soleil-scene">
             {sceneEnregistree
               ? `Soleil affiché : jour ${sceneSunDay} de l’année, ${sceneSunHour} h — instant enregistré dans l’atelier 3D.`
               : `Soleil affiché : solstice d’hiver, midi (jour ${JOUR_SOLSTICE_HIVER}, ${SCENE_SUN_HOUR_DEFAUT} h) — aucun instant enregistré, comportement d’aujourd’hui.`}
@@ -208,24 +208,24 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
 
           {/* ACAL74 — la hauteur EMPLOYÉE et sa provenance, TOUJOURS lisibles sous le
               diagramme : celle du bâtiment du pan (document), ou l'hypothèse. */}
-          <div className="mt-3 border-t border-white/10 pt-3" data-testid="cal-course-soleil-hauteur-toit">
-            <p className="tech-label text-lune-faint">
+          <div className="mt-3 border-t border-border pt-3" data-testid="cal-course-soleil-hauteur-toit">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Hauteur de toit employée pour les obstructions proches
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="fig text-sm text-white" data-testid="cal-course-soleil-hauteur-toit-valeur">
+              <span className="fig text-sm text-foreground" data-testid="cal-course-soleil-hauteur-toit-valeur">
                 {`${hauteurToitM} m`}
               </span>
             </div>
             <p
-              className="mt-1 text-xs text-lune-faint"
+              className="mt-1 text-xs text-muted-foreground"
               data-testid="cal-course-soleil-hauteur-toit-provenance"
             >
               {mentionHauteur}
             </p>
             {provenanceHauteurToit === 'hypothese' && (
               <p className="mt-1 text-xs">
-                <Link to={`/calepinage/${calepinageId}`} className="font-semibold text-brass-300 underline">
+                <Link to={`/calepinage/${calepinageId}`} className="font-semibold text-primary-text underline">
                   Saisir la hauteur dans l’atelier (Bâtiment)
                 </Link>
               </p>
@@ -236,7 +236,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
               (règle de la tâche) : aucune obstruction n'est tracée sans que
               la hauteur employée soit lisible juste à côté d'elle. */}
           {obstructions.length > 0 && (
-            <ul className="mt-2 space-y-0.5 text-xs text-lune-faint" data-testid="cal-course-soleil-obstructions-hauteur">
+            <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground" data-testid="cal-course-soleil-obstructions-hauteur">
               {obstructions.map((o, i) => (
                 <li
                   key={`${o.label ?? 'obs'}-${i}`}
@@ -254,12 +254,12 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
             </p>
           )}
           {!horizonPoints.length && (
-            <p className="mt-1 text-xs text-lune-faint">
+            <p className="mt-1 text-xs text-muted-foreground">
               Aucun horizon lointain saisi (voir « Horizon lointain ») — non tracé.
             </p>
           )}
           {!obstructions.length && (
-            <p className="mt-1 text-xs text-lune-faint">
+            <p className="mt-1 text-xs text-muted-foreground">
               Aucune obstruction proche à hauteur saisie sur ce pan — aucune n’est surimprimée.
             </p>
           )}
