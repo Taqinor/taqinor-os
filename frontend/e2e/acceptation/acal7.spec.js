@@ -947,6 +947,10 @@ sortie(r)`)
     console.log(`[ACAL398] tâche exécutée : ${JSON.stringify(issue).slice(0, 300)}`)
     await expect(page.getByTestId('acal443-heros'), 'P50 frais, sans clic').toHaveText(/\d/, { timeout: 180_000 })
 
+    // Le tapis horaire du calepinage simulé est chargé (export horaire) AVANT que les réglages ne changent.
+    await expect(page.getByTestId('cal-tapis-journee-type'), 'tapis horaire du résultat frais').toBeVisible(T)
+    await page.waitForLoadState('networkidle').catch(() => undefined)
+    await page.goto('/calepinage')
     // Sans mode météo : la simulation automatique est refusée, la phrase dite dans Production.
     await retirerMeteo()
     sans = await calepinageAvec('ACAL398 sans meteo', toitPlat())
