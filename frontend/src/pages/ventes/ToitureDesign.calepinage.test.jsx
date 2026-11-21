@@ -27,7 +27,7 @@ vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }
 import '../../test/toitureDesignHarnessCalepinage'
 import {
   initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBoot, reinitialiserBootMinimal,
-  LAYOUT, snapshot, apiBuilder,
+  LAYOUT, snapshot, apiBuilder, serializeLayout,
 } from '../../test/toitureDesignHarness'
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
@@ -517,6 +517,46 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(document.getElementById('rp9-address').value).toBe('')
+  })
+
+  /* ACAL399 — barre d'enregistrement collée en bas : indicateur d'état + bouton. */
+  describe('ACAL399 — barre d’enregistrement', () => {
+    const bootHydrate = () => initRoofToolPro8.mockImplementation((options) => {
+      options?.onApiReady?.(apiBuilder())
+      options?.onHydrationTerminee?.()
+    })
+
+    it('scène modifiée ⇒ « Modifications non enregistrées » ; après enregistrement ⇒ « Enregistré à HH:MM »', async () => {
+      calepinageApi.calepinages.designContext.mockResolvedValue(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+        { data: { inchange: false, version: 5 } })
+      calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
+      bootHydrate()
+
+      rendreCalepinage(CTX.calepinage.id)
+      const bouton = await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+      await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
+      expect(screen.queryByTestId('cal-etat-enregistrement')).toBeNull()
+
+      serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
+      await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement'))
+        .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
+
+      await userEvent.click(bouton)
+      await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement'))
+        .toHaveTextContent(/Enregistré à \d{2}:\d{2}/))
+    })
+
+    it('lecture seule ⇒ pas de barre', async () => {
+      calepinageApi.calepinages.designContext.mockResolvedValue({
+        data: { ...CTX, modifiable: false, raison_lecture_seule: 'Figé.' },
+      })
+      rendreCalepinage(CTX.calepinage.id)
+      await screen.findByTestId('pv20-lecture-seule')
+      expect(screen.queryByTestId('cal-enregistrer-calepinage')).toBeNull()
+      expect(screen.queryByTestId('cal-etat-enregistrement')).toBeNull()
+    })
   })
 
   it('lecture seule : la raison du serveur s’affiche et le bouton disparaît', async () => {
