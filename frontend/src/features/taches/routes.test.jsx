@@ -488,3 +488,14 @@ describe('TCH43 — useEnLigne', () => {
     expect(message.closest('[role="status"]')).not.toBeNull()
   })
 })
+
+describe('ACAL482 — la région « annonce » masquée ne crée pas de défilement horizontal (WebKit 390 px)', () => {
+  it('`.tch .annonce` est ancrée (left/top) avec une marge négative : pas de position statique au bord droit', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src', 'styles', 'taches', 'base.css'), 'utf8')
+    const regle = /\.tch \.annonce\s*\{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(regle).toMatch(/position:\s*absolute/)
+    expect(regle).toMatch(/left:\s*0/)
+    expect(regle).toMatch(/top:\s*0/)
+    expect(regle).toMatch(/margin:\s*-1px/)
+  })
+})
