@@ -72,7 +72,7 @@ def regrouper_manque(avertissements):
 
 
 def _etapes_du_parcours(*, toit_fait, modules, verdict, simule, perime,
-                       devis_lie):
+                        devis_lie):
     """Les cinq états, d'après des faits déjà lus (fonction PURE)."""
     panneaux_faits = bool(modules) and modules > 0
     panneaux = 'fait' if (toit_fait and panneaux_faits) else 'a_faire'
