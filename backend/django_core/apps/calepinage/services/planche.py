@@ -84,6 +84,9 @@ VERT_MODULE_FOND = '#c8e6c9'
 GRIS_PAN = '#f4f4f4'
 ORANGE = '#ef6c00'
 GRIS_TEXTE = '#444444'
+#: ACAL575 — la teinte d'un module d'un pan EXISTANT (déjà posé).
+GRIS_MODULE = '#9e9e9e'
+GRIS_MODULE_FOND = '#e0e0e0'
 
 
 # ── CAL194 — trois plans, une seule géométrie ───────────────────────────────
@@ -231,6 +234,13 @@ def _dimensions_module(roof_layout, zone=None):
 
 # ── La GÉOMÉTRIE de planche : une projection en lecture seule ───────────────
 
+def _annee(valeur):
+    """ACAL575 — l'année de mise en service SAISIE, ou ``None``."""
+    if isinstance(valeur, bool) or not isinstance(valeur, int) or valeur < 1:
+        return None
+    return valeur
+
+
 def geometrie_de_planche(roof_layout):
     """``roof_layout`` -> géométrie PLANE en mètres, prête à dessiner.
 
@@ -299,6 +309,10 @@ def geometrie_de_planche(roof_layout):
             # ACAL263 — le module de CE pan (catalogue puis repli kit).
             'module_m': _dimensions_module(roof_layout, zone),
             'batiment': str(zone.get('buildingId') or ''),
+            # ACAL575 — pan d'une installation déjà posée (additif) ; l'année
+            # n'est jamais déduite.
+            'existant': zone.get('existant') is True,
+            'annee_mise_en_service': _annee(zone.get('anneeMiseEnService')),
         }
         pans.append(pan)
         obstacles.extend(_obstacles_du_pan(zone, local, rang))
@@ -706,6 +720,7 @@ def _dessin_des_modules(pan, vers_feuille, module_m=None):
     if 'module_m' not in pan:
         pan = dict(pan, module_m=module_m)
     morceaux = []
+    existant = pan.get('existant') is True
     for centre in pan['modules']:
         coins = coins_du_module(pan, centre)
         if coins is None:
@@ -715,11 +730,13 @@ def _dessin_des_modules(pan, vers_feuille, module_m=None):
             x, y = vers_feuille(centre)
             morceaux.append(
                 '<circle cx="%s" cy="%s" r="0.7" fill="%s" />'
-                % (_n(x), _n(y), VERT_MODULE))
+                % (_n(x), _n(y), GRIS_MODULE if existant else VERT_MODULE))
             continue
-        morceaux.append(_polygone(coins, vers_feuille, contour=VERT_MODULE,
-                                  remplissage=VERT_MODULE_FOND,
-                                  trait=TRAIT_MODULE))
+        morceaux.append(_polygone(
+            coins, vers_feuille,
+            contour=GRIS_MODULE if existant else VERT_MODULE,
+            remplissage=GRIS_MODULE_FOND if existant else VERT_MODULE_FOND,
+            trait=TRAIT_MODULE, tirets='1 0.6' if existant else ''))
     return morceaux
 
 
@@ -792,6 +809,10 @@ LIBELLE_MODULE_SANS_POSE = (
     'ouvrir et enregistrer le calepinage')
 
 
+#: ACAL575 — la légende d'un module d'un pan existant.
+LIBELLE_MODULE_EXISTANT = 'Module existant (déjà posé)'
+
+
 def _modules_au_centre(geometrie):
     """Vrai si un module aux cotes connues est figuré par son centre faute
     de pose, d'azimut ou de pente enregistrés."""
@@ -827,6 +848,18 @@ def _entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
         entrees.append((VERT_MODULE, VERT_MODULE_FOND,
                         LIBELLE_MODULE_SANS_POSE
                         if _modules_au_centre(geometrie) else 'Module posé'))
+    if contenu in (CONTENU_IMPLANTATION, CONTENU_POSE):
+        # ACAL575 — l'entrée « existant », seulement avec un pan existant.
+        existants = [pan for pan in geometrie.get('pans') or ()
+                     if pan.get('existant') and pan['modules']]
+        if existants:
+            annees = sorted({p['annee_mise_en_service'] for p in existants
+                             if p.get('annee_mise_en_service')})
+            entrees.append((GRIS_MODULE, GRIS_MODULE_FOND,
+                            LIBELLE_MODULE_EXISTANT + (
+                                ' — mis en service en '
+                                + ', '.join(str(a) for a in annees)
+                                if annees else ''), '1 0.6'))
     obstacles = geometrie.get('obstacles') or ()
     if obstacles:
         entrees.append((NOIR, '#ffffff', 'Obstacle relevé'))
@@ -936,12 +969,13 @@ def _legende_svg(x, y, entrees):
     morceaux = ['<text x="%s" y="%s" font-size="3.6" font-weight="bold" '
                 'fill="%s">LÉGENDE</text>' % (_n(x), _n(y), NOIR)]
     courant = y + 5.0
-    for contour, remplissage, libelle in entrees:
+    for contour, remplissage, libelle, *tirets in entrees:
         morceaux.append(
             '<rect x="%s" y="%s" width="4" height="3" fill="%s" stroke="%s" '
-            'stroke-width="0.2" />'
+            'stroke-width="0.2"%s />'
             '<text x="%s" y="%s" font-size="3.2" fill="%s">%s</text>'
             % (_n(x), _n(courant - 2.4), remplissage, contour,
+               ' stroke-dasharray="%s"' % tirets[0] if tirets else '',
                _n(x + 6.0), _n(courant), NOIR, escape(libelle)))
         courant += 4.6
     return morceaux, courant

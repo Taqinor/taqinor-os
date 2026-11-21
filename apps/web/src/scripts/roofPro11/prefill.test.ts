@@ -16,6 +16,7 @@ import {
   deserializeSceneFromLayout,
   hydrateFromDevis,
   lireCouchesDocument,
+  geometrieZoneActive,
 } from './prefill';
 import { appliquerHydratationAuCtx, hydratationDeSection } from './hydratation';
 import { uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
@@ -259,6 +260,14 @@ describe('CAL248 — accès solaire par module persisté dans le document', () =
     // Un document ANCIEN (phrase) se relit, normalisé en objet sans rien inventer.
     const ancien = deserializeSolarAccess({ solarAccess: { ...access([0.9, 0.8, 0.7]), method: 'phrase libre' } }, 3);
     expect(ancien?.method).toEqual({ description: 'phrase libre' });
+  });
+
+  it('geometrieZoneActive(ctx, meta) porte solarAccess.values ; sans meta, aucun solarAccess (ACAL728)', () => {
+    const ctx = makeCtx([zone('z1', { renderPlan: planWith(3) })]);
+    ctx.activeAreaId = 'z1';
+    const avec = geometrieZoneActive(ctx, { solarAccessByZone: { z1: access([0.98, 0.6, 0.42]) } });
+    expect(avec?.solarAccess?.values).toEqual([0.98, 0.6, 0.42]);
+    expect(geometrieZoneActive(ctx)?.solarAccess).toBeUndefined();
   });
 
   it('absent par défaut : un document SANS accès solaire reste identique à aujourd’hui', () => {

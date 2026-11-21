@@ -190,6 +190,55 @@ class GrandeursDuDocumentTest(SimpleTestCase):
                                     in lues['manquants'].values()))
 
 
+def layout_deux_pans(existants, neufs, *, existant=True, annee=2019):
+    """ACAL575 — Pan A (``existant``) puis Pan B neuf, mêmes dimensions."""
+    document = layout(existants)
+    zone_a = document['zones'][0]
+    zone_a['label'] = 'Pan A'
+    if existant is not None:
+        zone_a['existant'] = existant
+    if annee is not None:
+        zone_a['anneeMiseEnService'] = annee
+    zone_b = copy.deepcopy(zone_a)
+    zone_b.update(id='z2', label='Pan B')
+    zone_b.pop('existant', None)
+    zone_b.pop('anneeMiseEnService', None)
+    zone_b['geometry']['panels'] = [{'cx': x, 'cy': y} for x, y in neufs]
+    zone_b['geometry']['count'] = len(neufs)
+    document['zones'].append(zone_b)
+    return document
+
+
+class PanExistantExcluDeLaFixationTest(SimpleTestCase):
+    """ACAL575 — les modules d'un pan « existant » ne se commandent pas."""
+
+    def neufs(self):
+        return [(1.0 + PAS * k, y) for y in (1.0, 3.0) for k in range(3)]
+
+    def test_dix_existants_et_six_neufs_comptent_six(self):
+        valeurs = fixation._grandeurs_du_document(
+            layout_deux_pans(deux_rangees_de_cinq(), self.neufs()))['valeurs']
+        self.assertEqual(valeurs['modules'], 6)
+        self.assertEqual(valeurs['pans'], 1)
+        self.assertEqual(valeurs['rangees'], 2)
+        self.assertEqual(valeurs['jonctions'], 4)
+        self.assertEqual(valeurs['extremites'], 4)
+        self.assertAlmostEqual(valeurs['longueur_rangees_m'], 7.2, places=2)
+
+    def test_un_pan_sans_la_cle_se_compte_comme_avant(self):
+        valeurs = fixation._grandeurs_du_document(
+            layout_deux_pans(deux_rangees_de_cinq(), self.neufs(),
+                             existant=None))['valeurs']
+        self.assertEqual(valeurs['modules'], 16)
+        self.assertEqual(valeurs['pans'], 2)
+
+    def test_tout_existant_n_a_aucun_module_a_commander(self):
+        document = layout_deux_pans(deux_rangees_de_cinq(), self.neufs())
+        document['zones'][1]['existant'] = True
+        lues = fixation._grandeurs_du_document(document)
+        self.assertTrue(all(v is None for v in lues['valeurs'].values()))
+
+
 class LignesDeFixationTest(SimpleTestCase):
 
     def test_rejoue_exactement_l_exemple_committe(self):

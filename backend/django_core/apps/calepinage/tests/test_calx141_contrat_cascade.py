@@ -196,6 +196,25 @@ class PasDeDeriveTest(unittest.TestCase):
                     'plate — quatre lecteurs l’itèrent déjà (D-CALX 11).')
 
 
+class OmbrageChainesTest(unittest.TestCase):
+    """ACAL711/713 — la variante `exemple_ombrage_chaines` (deux pans)."""
+
+    def test_les_chaines_des_deux_pans_et_leurs_bornes(self):
+        etape = CASCADE['exemple_ombrage_chaines']['cascade']['etapes'][0]
+        self.assertEqual(set(etape), CLES_ETAPE)
+        self.assertEqual(etape['etape'], 'mismatch_ombrage')
+        entree = etape['entree']
+        self.assertEqual(entree['pans'], ['P1', 'P2'])
+        self.assertIsNone(entree['bornes'])
+        self.assertTrue(entree['bornes_motif'])
+        for chaine in entree['chaines']:
+            for cle in ('bornes', 'ecart_bornes_pct', 'modules_ombres',
+                        'module_le_plus_ombre'):
+                self.assertIn(cle, chaine)
+        self.assertEqual(sorted(entree['hypothese_orientation']),
+                         ['orientation', 'texte'])
+
+
 class PlagesTest(unittest.TestCase):
     """ACAL702 — la pastille se calcule à partir de bandes écrites ICI
     (nombres INVENTÉS pour le test, jamais le fichier réel)."""

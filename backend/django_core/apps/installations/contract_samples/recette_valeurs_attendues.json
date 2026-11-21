@@ -1,0 +1,31 @@
+{
+  "endpoint": "GET /api/django/installations/recettes-commissioning/<int:pk>/valeurs-attendues/",
+  "pourquoi": "ACAL666 (PACT10) — contrat posé SEUL avant le serveur (ACAL667) et l'écran (ACAL668) : aujourd'hui le technicien TAPE `voc_attendu_v`, `isc_attendu_a`, `pmax_attendu_w` de `CommissioningIVReading` alors que le calepinage retenu les connaît. Une ligne par chaîne du calepinage retenu du chantier, dans l'ordre des repères. AUCUN CHIFFRE INVENTÉ : les valeurs de l'exemple sont DÉRIVÉES À LA MAIN d'une fiche module réelle (Voc 49,5 V, Isc 13,9 A, Pmax 550 W) — 10 modules en série : Voc attendu = 10 × 49,5 V = 495 V, Isc attendu = 13,9 A (le courant ne s'additionne pas en série), Pmax attendue = 10 × 550 W = 5 500 W — aux conditions STC (25 °C, 1 000 W/m²) ; `sources` nomme chaque provenance. `corrigee` dit si la valeur a été ramenée aux conditions de la mesure, `isc_corrige_motif` pourquoi (null sinon). Sans calepinage retenu, `chaines` est une liste VIDE et `motif` le dit : jamais une ligne supposée. Le pendant calepinage est le sélecteur `valeurs_attendues_par_chaine` (ACAL665).",
+  "exemple": {
+    "installation": 31,
+    "chaines": [
+      {
+        "chaine": "CH1",
+        "modules": 10,
+        "voc_attendu_v": 495.0,
+        "isc_attendu_a": 13.9,
+        "pmax_attendu_w": 5500.0,
+        "sources": [
+          "fiche module « Module PV 550 Wc » : voc_v, isc_a, pmax_wc",
+          "calepinage retenu #12 : chaîne CH1 de 10 modules"
+        ],
+        "corrigee": false,
+        "isc_corrige_motif": null
+      }
+    ],
+    "temperature_c": 25.0,
+    "eclairement_w_m2": 1000.0
+  },
+  "exemple_sans_calepinage": {
+    "installation": 32,
+    "chaines": [],
+    "motif": "aucun calepinage retenu pour le devis de ce chantier : les valeurs attendues ne sont pas calculées",
+    "temperature_c": null,
+    "eclairement_w_m2": null
+  }
+}

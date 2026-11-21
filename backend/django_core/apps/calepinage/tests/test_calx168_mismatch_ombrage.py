@@ -428,6 +428,38 @@ class BornesParChaine(SimpleTestCase):
         self.assertEqual(p2['modules_ombres'], [])
 
 
+class HypotheseOrientation(SimpleTestCase):
+    """ACAL713 — le sens de pose est une HYPOTHÈSE NOMMÉE, sans chiffre."""
+
+    def _entree(self, panneaux):
+        contexte = contexte_de([1.0, 1.0, 0.2])
+        contexte['ombrage']['layout']['zones'][0]['geometry']['panels'] = (
+            panneaux)
+        return mismatch_ombrage.appliquer(SERIE, contexte)[1]['entree']
+
+    def test_paysage_sans_angle_propre(self):
+        entree = self._entree([{'cx': 0, 'cy': 0, 'face': 0, 'n': 1}])
+        self.assertEqual(entree['hypothese_orientation']['orientation'],
+                         'paysage')
+        self.assertIn('Hypothèse de lecture, non mesurée',
+                      entree['hypothese_orientation']['texte'])
+        self.assertEqual(entree['hypothese'], mismatch_ombrage.HYPOTHESE_MODULE)
+
+    def test_placement_libre_des_un_angle_deg(self):
+        # Mutant « ignorer angleDeg » : rendrait « paysage ».
+        entree = self._entree([{'cx': 0, 'cy': 0},
+                               {'cx': 1, 'cy': 0, 'angleDeg': 30}])
+        self.assertEqual(entree['hypothese_orientation'],
+                         {'orientation': 'libre',
+                          'texte': mismatch_ombrage.HYPOTHESE_LIBRE})
+
+    def test_aucun_chiffre_dans_les_textes(self):
+        for texte in (mismatch_ombrage.HYPOTHESE_PAYSAGE,
+                      mismatch_ombrage.HYPOTHESE_LIBRE):
+            self.assertFalse(any(c.isdigit() for c in texte), texte)
+            self.assertNotIn('%', texte)
+
+
 class GardeAntiForfait(SimpleTestCase):
     """AUCUN facteur forfaitaire d'atténuation d'ombrage dans le module."""
 

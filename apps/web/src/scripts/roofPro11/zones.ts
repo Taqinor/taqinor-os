@@ -19,6 +19,7 @@ import { type Obstacle } from '../../lib/obstacles';
 import { pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
 import { appliquerReglagesAuxPans, pansReglesAMain } from './jeuReglages'; // ACAL554
+import { accesMoyenDuPan, mentionAcces, trierPansParAcces } from './triPans'; // ACAL728
 import {
   centroideAnneau,
   dimensionsRectangleM,
@@ -362,6 +363,8 @@ export interface ZonesDeps {
   apresRendu?: () => void;
   /** ACAL554 — active un pan (« Voir » : charge et re-pave) ; absent, le report de réglages est indisponible. */
   selectArea?: (id: string) => void;
+  /** ACAL728 — accès solaire moyen (0..1) du calcul VIVANT du pan actif ; absent, l'enregistré sert. */
+  accesVivant?: () => number | null;
 }
 
 /** CAL84 — libellé d'un bâtiment (repli « Bâtiment sans id » pour un groupe sans
@@ -434,6 +437,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
 
   /** Rend le panneau « Zones » : total agrégé (zone active = résultat LIVE, pas le snapshot
    *  potentiellement périmé) + une ligne par zone. Masqué tant qu'aucune zone n'a de résultat. */
+  let triParAcces = false; // ACAL728
   function renderAreasPanel() {
     syncAddAreaButton();
     const { areasWindowEl, areasListEl, areasTotalPanelsEl, areasTotalKwcEl, areasTotalProdEl, areasTotalSavingsEl } = ctx.dom;
@@ -473,6 +477,21 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const multiBuilding = hasMultipleBuildings(stats);
 
     if (areasListEl) {
+      // ACAL728 — tri d'AFFICHAGE à la demande (jamais écrit) ; un seul pan ⇒ pas de bouton.
+      const accesDe = (a: AreaRecord) => (a.id === activeAreaId ? deps.accesVivant?.() ?? null : null) ?? accesMoyenDuPan(a);
+      const ordre = triParAcces ? trierPansParAcces(areas, accesDe) : areas;
+      let triBtn = document.getElementById('rp9-areas-tri') as HTMLButtonElement | null;
+      if (!triBtn) {
+        triBtn = document.createElement('button');
+        triBtn.id = 'rp9-areas-tri';
+        triBtn.type = 'button';
+        triBtn.className = 'mb-2 min-h-11 border border-white/25 px-3 py-1 text-xs font-semibold text-lune-soft hover:border-brass-400';
+        triBtn.textContent = 'Trier par ensoleillement';
+        triBtn.addEventListener('click', () => { triParAcces = !triParAcces; renderAreasPanel(); });
+        areasListEl.insertAdjacentElement('beforebegin', triBtn);
+      }
+      triBtn.hidden = areas.length < 2;
+      triBtn.setAttribute('aria-pressed', String(triParAcces));
       const rowHtml = (a: AreaRecord, i: number): string => {
         const r = a.id === activeAreaId ? liveActive : a.result;
         const active = a.id === activeAreaId;
@@ -497,7 +516,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           class="w-24 border border-white/15 bg-nuit-900/60 px-1.5 py-0.5 text-[11px] text-lune-soft focus:border-brass-400 focus:outline-none" />`;
         return `<li class="flex flex-wrap items-center gap-x-3 gap-y-1 border ${rowClass} p-3 text-sm" data-area-row="${a.id}">
           <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
-          <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}</span>
+          <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}${triParAcces ? ` · ${mentionAcces(accesDe(a))}` : ''}</span>
           ${buildingInput}
           <span class="ml-auto flex items-center gap-2">${boutonReporterReglages(a.id, areas.length)}${lockBtn}${viewBtn}${delBtn}</span>
         </li>`;
@@ -505,14 +524,14 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       if (!multiBuilding) {
         // CAL59 — aucune zone ne porte de `buildingId` : liste plate, octet pour octet
         // identique au comportement historique (aucun sous-total redondant).
-        areasListEl.innerHTML = areas.map((a, i) => rowHtml(a, i)).join('');
+        areasListEl.innerHTML = ordre.map((a) => rowHtml(a, areas.indexOf(a))).join('');
       } else {
         // CAL59 — un calepinage multi-bâtiments : une ligne d'en-tête de sous-total PAR
         // bâtiment (panneaux/kWc CALCULÉS, jamais saisis), suivie des zones du groupe.
         const indexOf = new Map(areas.map((a, i) => [a.id, i]));
         areasListEl.innerHTML = stats.byBuilding
           .map((b) => {
-            const rows = areas.filter((a) => (a.buildingId ?? null) === b.buildingId);
+            const rows = ordre.filter((a) => (a.buildingId ?? null) === b.buildingId);
             const header = `<li class="border border-white/20 bg-nuit-900/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-lune-faint" data-building-header="${esc(b.buildingId ?? '')}">
               ${esc(buildingLabel(b.buildingId))} — ${fmt(b.panels)} panneaux · ${b.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc
             </li>`;

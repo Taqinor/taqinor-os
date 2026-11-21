@@ -233,6 +233,36 @@ def _plans_du_contexte(pose, document):
     return plans
 
 
+def _parts_vieillies(document, par_pan, maintenant=None):
+    """ACAL842 — ``[{p50_kwh, age_ans}]`` des pans quand l'un est EXISTANT.
+
+    Âge = année du calcul − ``zones[].anneeMiseEnService`` (pans ``existant``) ;
+    une année dans le futur est refusée en nommant le champ ; ``None`` quand
+    aucun pan n'a d'âge (la projection est alors celle d'avant, à l'octet).
+    """
+    moment = maintenant or datetime.datetime.now(datetime.timezone.utc)
+    ages = {}
+    for rang, zone in enumerate((document or {}).get('zones') or []):
+        if not isinstance(zone, dict) or not zone.get('existant'):
+            continue
+        annee = zone.get('anneeMiseEnService')
+        if not isinstance(annee, int) or isinstance(annee, bool):
+            continue
+        if annee > moment.year:
+            raise SimulationRefusee(
+                "L'année de mise en service du pan existant (%d) est dans "
+                "le futur : corrigez-la." % annee,
+                champ='zones[%d].anneeMiseEnService' % rang)
+        for repere in (zone.get('label'), zone.get('id')):
+            if repere:
+                ages[str(repere)] = moment.year - annee
+    if not any(ages.values()):
+        return None
+    return [{'p50_kwh': ligne.get('p50_kwh') or 0.0,
+             'age_ans': ages.get(str(ligne.get('pan')), 0)}
+            for ligne in par_pan or () if isinstance(ligne, dict)]
+
+
 def _ombrage_du_document(document):
     """Les lectures d'ombrage du constructeur, telles que le document les porte.
 
@@ -1470,7 +1500,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         maintenant=maintenant, sortie=serie_production, cascade=cascade)
     _ajouter_avertissement(blocs, blocs['validation'].get('avertissement'))
 
-    projection = tableau_pluriannuel(total.get('p50_kwh'), contexte)
+    projection = tableau_pluriannuel(
+        total.get('p50_kwh'), contexte,
+        parts=_parts_vieillies(meta['document'],
+                               blocs['production'].get('par_pan'), maintenant))
     # CALX63 — chaque année de la projection porte la capacité restante de la
     # batterie quand le vieillissement est publié (fiche cycles/EOL saisie) ;
     # sans lui, les lignes sortent inchangées.

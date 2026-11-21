@@ -124,8 +124,8 @@ def _grandeurs_du_document(roof_layout):
     longueur, pans_sans_pas = 0.0, []
     for pan in geometrie.get('pans') or ():
         centres = pan.get('modules') or []
-        if not centres:
-            continue
+        if not centres or pan.get('existant'):
+            continue  # ACAL575 : un pan existant ne se commande pas
         pans += 1
         modules += len(centres)
         lignes = _rangees_orientees(centres, pan.get('azimut_deg'))

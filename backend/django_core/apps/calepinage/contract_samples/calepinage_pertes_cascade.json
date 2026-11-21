@@ -243,11 +243,15 @@
             "granularite": "module",
             "brins_proteges": null,
             "hypothese": "Le nombre de brins protégés par une diode de dérivation ne figure sur aucune fiche : la contrainte est appliquée au MODULE ENTIER, hypothèse la plus pessimiste pour la borne haute. La fourchette encadre la vérité, elle ne prétend pas la trancher.",
+            "hypothese_orientation": {
+              "orientation": "paysage",
+              "texte": "Hypothèse de lecture, non mesurée : les modules sont posés en paysage (grand côté le long de la rangée, convention de l'atelier). L'ombre qui monte du bas d'un module n'y coupe alors qu'une sous-chaîne ; en portrait, la même ombre les couperait toutes."
+            },
             "bornes": null,
             "ecart_bornes_pct": null,
-            "facteur_applique": 0.8,
+            "facteur_applique": null,
             "perte_lineaire_deja_appliquee": true,
-            "pan": "P1",
+            "pan": null,
             "chaines_mesurees": 2,
             "modules_mesures": 7,
             "modules_sans_acces": [],

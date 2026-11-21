@@ -1,0 +1,42 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/catalogue-materiel/",
+  "pourquoi": "ACAL960 — LE CATALOGUE DU MATÉRIEL DE LA SOCIÉTÉ, POUR COCHER LES FAVORIS.\n\nLa Bibliothèque (Favoris matériel) propose deux listes à cocher, Modules et Onduleurs, au lieu d'identifiants tapés. Chaque liste est celle des produits ACTIFS de la société (jamais ceux d'une autre société, jamais archivés), triés par nom, SANS aucun prix. `favori` marque ceux déjà épinglés dans `parametres/` → `favoris_materiel` ; `fiche_complete` et `champs_manquants` disent si la fiche technique permet le calcul électrique (même règle que `entree-electrique/`, candidats) : une fiche incomplète reste cochable, signalée. `optimiseurs` est listé et non cochable à cet écran.\n\nLe serveur ne lit que les clés `modules`, `onduleurs`, `optimiseurs` de `favoris_materiel`. Droit : `calepinage_voir`. Lecture pure, rien n'est stocké.\n\nLES VALEURS SONT DES PLACEHOLDERS (README, règle 4) : ce sont les CLÉS et leurs natures qui font le contrat.",
+  "exemple": {
+    "modules": [
+      {
+        "id": 412,
+        "libelle": "Module monocristallin 580 Wc (exemple)",
+        "marque": "Marque exemple",
+        "favori": true,
+        "fiche_complete": true,
+        "champs_manquants": []
+      },
+      {
+        "id": 418,
+        "libelle": "Module 550 Wc (exemple)",
+        "marque": "",
+        "favori": false,
+        "fiche_complete": false,
+        "champs_manquants": [
+          "pmax_wc"
+        ]
+      }
+    ],
+    "onduleurs": [
+      {
+        "id": 901,
+        "libelle": "Onduleur réseau 10 kW (exemple)",
+        "marque": "Marque exemple",
+        "favori": false,
+        "fiche_complete": true,
+        "champs_manquants": []
+      }
+    ],
+    "optimiseurs": []
+  },
+  "exemple_vide": {
+    "modules": [],
+    "onduleurs": [],
+    "optimiseurs": []
+  }
+}

@@ -94,7 +94,9 @@
     },
     "custom_data": {
       "toiture_accessible": true
-    }
+    },
+    "etat_conception": "complet",
+    "etat_conception_motif": ""
   },
   "exemple_vide": {
     "id": 2,
@@ -152,7 +154,13 @@
       "peut_retenir_variante": false,
       "peut_deroger": false
     },
-    "custom_data": null
+    "custom_data": null,
+    "etat_conception": "complet",
+    "etat_conception_motif": ""
+  },
+  "exemple_rapide": {
+    "etat_conception": "rapide",
+    "etat_conception_motif": "ouvert depuis un devis automatique : à vérifier sur place"
   },
   "forme_serveur_note": "ACAL6 — `partielle` TANT QUE la moitié back (D03-T20/T21/T26, D06-T02/T03, D09-T33) ne sert pas la clé racine `custom_data` ; la première moitié back remet `complete`."
 }

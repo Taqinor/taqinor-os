@@ -23,13 +23,15 @@ Run :
 import copy
 import json
 import pathlib
+import re
 from unittest import mock
 
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.rangees import rangees_du_pan
 from apps.calepinage.services.planche import (
-    CONTENU_POSE, CONTENU_TOITURE, PlanDePoseRefuse, geometrie_de_planche,
+    CONTENU_POSE, CONTENU_TOITURE, GRIS_MODULE, PlanDePoseRefuse,
+    geometrie_de_planche,
     _lignes_de_chaines, _rendre_plan_pose_svg, svg_de_planche,
     _verifier_absence_d_argent,
 )
@@ -128,6 +130,62 @@ class ReperesDePoseTest(SimpleTestCase):
     def test_les_reperes_n_apparaissent_pas_sur_les_autres_plans(self):
         toiture = svg_de_planche(self.geometrie, contenu=CONTENU_TOITURE)
         self.assertNotIn('>R1</text>', toiture)
+
+
+def layout_pan_existant(annee=2019):
+    """ACAL575 - Pan A existant (10 modules) puis Pan B neuf (6 modules)."""
+    layout = copy.deepcopy(LAYOUT)
+    zone_a = layout['zones'][0]
+    zone_a['obstacles'] = []
+    zone_a['existant'] = True
+    if annee is not None:
+        zone_a['anneeMiseEnService'] = annee
+    zone_a['geometry']['panels'] = [
+        {'cx': 1.0 + 2.5 * k, 'cy': 1.0 + 2.0 * r}
+        for r in range(2) for k in range(5)]
+    zone_b = copy.deepcopy(zone_a)
+    zone_b.update(id='z2', label='Pan B')
+    zone_b.pop('existant')
+    zone_b.pop('anneeMiseEnService', None)
+    zone_b['geometry']['panels'] = [
+        {'cx': 1.0 + 2.5 * k, 'cy': 6.0 + 2.0 * r}
+        for r in range(2) for k in range(3)]
+    layout['zones'].append(zone_b)
+    return layout
+
+
+class ModulesExistantsTest(SimpleTestCase):
+    """ACAL575 - les modules d'un pan existant sont teintes et legendes."""
+
+    def svg(self, layout):
+        return svg_de_planche(geometrie_de_planche(layout),
+                              contenu=CONTENU_POSE)
+
+    def test_dix_existants_grises_six_neufs_verts_et_la_legende_le_dit(self):
+        svg = self.svg(layout_pan_existant())
+        self.assertEqual(len(re.findall(
+            r'<polygon [^>]*stroke="#2e7d32"', svg)), 6)
+        gris = re.findall(r'<polygon [^>]*stroke="%s"[^>]*>' % GRIS_MODULE,
+                          svg)
+        self.assertEqual(len(gris), 10)
+        self.assertTrue(all('stroke-dasharray' in g for g in gris))
+        self.assertIn('Module existant (déjà posé) — mis en service en '
+                      '2019', svg)
+
+    def test_sans_annee_saisie_la_legende_n_en_invente_pas(self):
+        svg = self.svg(layout_pan_existant(annee=None))
+        self.assertIn('Module existant (déjà posé)<', svg)
+        self.assertNotIn('mis en service', svg)
+
+    def test_un_pan_sans_la_cle_est_rendu_comme_avant(self):
+        svg = self.svg(LAYOUT)
+        self.assertNotIn(GRIS_MODULE, svg)
+        self.assertNotIn('Module existant', svg)
+
+    def test_la_geometrie_publie_les_deux_cles_additives(self):
+        pans = geometrie_de_planche(layout_pan_existant())['pans']
+        self.assertEqual([(p['existant'], p['annee_mise_en_service'])
+                          for p in pans], [(True, 2019), (False, None)])
 
 
 class ListeDesChainesTest(SimpleTestCase):

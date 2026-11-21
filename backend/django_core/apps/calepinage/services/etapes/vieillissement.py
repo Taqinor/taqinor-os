@@ -108,7 +108,7 @@ __all__ = ['CLE_HORIZON', 'CLE_MODELE', 'MODELE_LINEAIRE',
            'tableau_pluriannuel', 'garantie_fabricant', 'bloc_duree_de_vie']
 
 
-def tableau_pluriannuel(p50_annee1_kwh, contexte):
+def tableau_pluriannuel(p50_annee1_kwh, contexte, parts=None):
     """Le bloc ``production.annees`` (CALX4) — ou la seule année 1.
 
     Args:
@@ -117,6 +117,9 @@ def tableau_pluriannuel(p50_annee1_kwh, contexte):
             production inconnue ne se projette pas sur vingt ans.
         contexte: le dict des étapes — ``reglages_simulation``,
             ``fiche_module`` (et, s'il existe, ``fiches_modules``).
+        parts: ACAL842 — ``[{p50_kwh, age_ans}]``, un pan par ligne ; un pan
+            posé il y a ``age_ans`` ans vieillit de ``f(age + N) / f(1)``.
+            ``None`` ou aucun âge > 0 : le bloc est celui d'avant, à l'octet.
 
     Returns:
         ``{annees, modele, horizon_annees, source_horizon, produit_horizon,
@@ -156,22 +159,37 @@ def tableau_pluriannuel(p50_annee1_kwh, contexte):
     if horizon is None:
         return _bloc(annee1, motif=motif)
 
-    facteurs = _facteurs(modele, degradation, premiere, horizon)
+    ages = [int(p['age_ans']) for p in parts or () if p.get('age_ans')]
+    age_max = max(ages, default=0)
+    facteurs = _facteurs(modele, degradation, premiere, horizon + age_max)
     reference_facteur = facteurs[0]
     annees = []
-    for rang, facteur in enumerate(facteurs, start=1):
-        ligne = {
-            'annee': rang,
-            'facteur': round(facteur, 6),
-            'p50_kwh': round(p50 * facteur / reference_facteur, 3),
-            'source': (SOURCE_CHAINE if rang == 1
-                       else f'{modele} — fiche produit'),
-        }
+    for rang in range(1, horizon + 1):
+        facteur = facteurs[rang - 1]
+        if age_max:  # ACAL842 : chaque pan à son âge + le rang
+            valeur = sum(p['p50_kwh'] * facteurs[int(p.get('age_ans') or 0)
+                                                 + rang - 1]
+                         for p in parts) / reference_facteur
+            source = ('chaîne + âge des pans existants' if rang == 1 else
+                      f'{modele} — fiche produit + âge des pans existants')
+        else:
+            valeur = p50 * facteur / reference_facteur
+            source = (SOURCE_CHAINE if rang == 1
+                      else f'{modele} — fiche produit')
+        ligne = {'annee': rang, 'facteur': round(facteur, 6),
+                 'p50_kwh': round(valeur, 3), 'source': source}
         if facteur <= 0.0:
             ligne['plancher'] = True
         annees.append(ligne)
-    return _bloc(annees, modele=modele, horizon=horizon,
+    bloc = _bloc(annees, modele=modele, horizon=horizon,
                  source_horizon=source_horizon, produit=produit)
+    if age_max:
+        nom = _nom_du_produit(fiche)
+        bloc['mention_age'] = (
+            "Âge des pans existants lu sur la saisie de chaque pan (année de "
+            "mise en service) ; dégradation de la fiche du module du système"
+            + (f" ({nom})" if nom else '') + " appliquée à tous les pans.")
+    return bloc
 
 
 # ── le modèle, CHOISI ──────────────────────────────────────────────────

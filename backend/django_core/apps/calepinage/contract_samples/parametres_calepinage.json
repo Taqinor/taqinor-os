@@ -54,11 +54,11 @@
       "versions_conservees": 20
     },
     "favoris_materiel": {
-      "panneau": [
+      "modules": [
         412,
         418
       ],
-      "onduleur_hybride": [
+      "onduleurs": [
         901
       ]
     },

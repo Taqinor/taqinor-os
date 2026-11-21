@@ -366,3 +366,68 @@ class EntreesRefusees(SimpleTestCase):
         with self.assertRaises(EntreeInvalide) as capture:
             position_solaire(33.5, -7.6, **parametres)
         self.assertIn('heure_utc', str(capture.exception))
+
+
+class CorrespondanceHeureLegale(SimpleTestCase):
+    """ACAL718 — heure solaire vraie ↔ heure légale (ET, longitude, décalage)."""
+
+    def _calcul(self, longitude, *, mois=2, jour=11, decalage=60):
+        from core.calepinage.soleil import correspondance_heure_legale
+
+        return correspondance_heure_legale(
+            longitude, annee=2026, mois=mois, jour=jour,
+            decalage_utc_min=decalage)
+
+    def test_casablanca_le_11_fevrier_en_utc_plus_1(self):
+        # Dérivé à la main : ET ≈ −14,2 min ; 60 + 14,2 + 4 × 7,6 = 104,6 min
+        # ⇒ midi solaire à 12 + 104,6 / 60 ≈ 13,743 h (13 h 45).
+        resultat = self._calcul(-7.6)
+        self.assertAlmostEqual(resultat.equation_du_temps_min, -14.2, delta=0.2)
+        self.assertAlmostEqual(resultat.ecart_legal_moins_solaire_min, 104.6,
+                               delta=1.0)
+        self.assertAlmostEqual(resultat.midi_solaire_legal_h, 13.743,
+                               delta=1.0 / 60.0)
+        greenwich = self._calcul(0.0, decalage=0)
+        self.assertAlmostEqual(greenwich.ecart_legal_moins_solaire_min, 14.2,
+                               delta=0.2)
+
+    def test_contre_pvlib_spencer71_sur_365_jours(self):
+        import datetime
+
+        import numpy
+        from pvlib import solarposition
+
+        ecart_max = 0.0
+        jour = datetime.date(2026, 1, 1)
+        while jour.year == 2026:
+            rang = jour.timetuple().tm_yday
+            reference = float(solarposition.equation_of_time_spencer71(
+                numpy.array([rang]))[0])
+            nous = self._calcul(0.0, mois=jour.month, jour=jour.day,
+                                decalage=0).equation_du_temps_min
+            ecart_max = max(ecart_max, abs(nous - reference))
+            jour += datetime.timedelta(days=1)
+        print('\nACAL718 — écart maximal ET contre pvlib spencer71 : '
+              '%.3f min' % ecart_max)
+        self.assertLessEqual(ecart_max, 1.0)
+
+    def test_angle_horaire_nul_au_midi_solaire_legal(self):
+        resultat = self._calcul(-7.6)
+        heure_utc = resultat.midi_solaire_legal_h - 60 / 60.0
+        position = position_solaire(33.5, -7.6, annee=2026, mois=2, jour=11,
+                                    heure_utc=heure_utc)
+        self.assertAlmostEqual(position.angle_horaire_deg, 0.0, delta=0.1)
+
+    def test_entrees_refusees_en_nommant_le_champ(self):
+        from core.calepinage.soleil import correspondance_heure_legale
+
+        for champ, appel in (
+                ('longitude', lambda: self._calcul(200.0)),
+                ('date', lambda: self._calcul(-7.6, mois=2, jour=30)),
+                ('decalage_utc_min', lambda: correspondance_heure_legale(
+                    -7.6, annee=2026, mois=2, jour=11,
+                    decalage_utc_min=None))):
+            with self.subTest(champ=champ):
+                with self.assertRaises(EntreeInvalide) as capture:
+                    appel()
+                self.assertIn(champ, str(capture.exception))

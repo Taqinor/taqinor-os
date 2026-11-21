@@ -376,6 +376,12 @@ const calepinageApi = {
     get: () => api.get('/calepinage/parametres/'),
     update: (corps) => api.put('/calepinage/parametres/', corps),
 
+    // ACAL960 — le catalogue du matériel de la société (modules, onduleurs,
+    // optimiseurs ACTIFS, sans prix, favoris marqués) pour COCHER les favoris
+    // de la Bibliothèque. Route de l'objet métier (`detail=False`), droit
+    // `calepinage_voir`. Forme : contract_samples/calepinage_catalogue_materiel.json.
+    catalogueMateriel: () => api.get('/calepinage/calepinages/catalogue-materiel/'),
+
     // ACAL133 — « Tout recalculer » après un changement de réglage société :
     // relance en tâche de fond chaque simulation périmée de la société
     // (`views/parametres.py::RecalculerSimulationsView`, ACAL134). Rend 202

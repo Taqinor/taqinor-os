@@ -1149,6 +1149,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
     apresRendu: () => { formesToit.rafraichir(); toitParCotes.rafraichir(); }, // ACAL410 · ACAL422
     selectArea: (id: string) => selectArea(id), // ACAL554
+    accesVivant: () => shadingUi.solarAccess()?.average ?? null, // ACAL728
   });
   // ACAL422 — « Créer le toit » : longueur × largeur × orientation saisies, contour fermé par `close`.
   const toitParCotes = monterToitParCotes({
@@ -2550,7 +2551,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function capturerGeometrieActive() {
     const a = activeArea();
     if (!a || !closed || vertices.length < 3) return;
-    const geo = geometrieZoneActive(ctx);
+    const geo = geometrieZoneActive(ctx, activeSolarAccessMeta() ?? undefined); // ACAL728 — la géométrie capturée garde l'accès solaire
     if (geo) a.geometrieEnregistree = geo;
   }
 

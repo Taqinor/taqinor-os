@@ -38,7 +38,7 @@
   display: none;
   border: none;
   background: transparent;
-  color: #0f172a;
+  color: var(--foreground);
   padding: 10px;
   margin-right: 4px;
   border-radius: var(--radius-md);

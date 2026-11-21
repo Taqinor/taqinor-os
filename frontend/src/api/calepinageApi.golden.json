@@ -1147,6 +1147,14 @@
       "verbe": "post"
     }
   ],
+  "parametres.catalogueMateriel": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/catalogue-materiel/",
+      "verbe": "get"
+    }
+  ],
   "parametres.enregistrerProfilsTypes": [
     {
       "config": null,

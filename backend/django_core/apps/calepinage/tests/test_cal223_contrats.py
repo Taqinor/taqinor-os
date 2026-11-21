@@ -426,6 +426,9 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_detection_toit.json':
         'détection du toit par IA (ACAL391) : appelle un fournisseur externe '
         'sur une image reçue ; route livrée par ACAL485',
+    'calepinage_catalogue_materiel.json':  # ACAL960
+        'GET : produits actifs de la société (modules, onduleurs) lus en '
+        'base — affirmé par tests/test_acal_favoris_materiel.py',
     'calepinage_variantes_par_module.json':  # ACAL594
         'POST : une variante par module du stock ; écrit les variantes en '
         'base — affirmé par tests/test_api_variantes.py (VariantesParModule)',
@@ -731,6 +734,20 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
                     'specific_yield_kwh_kwc'], nom)
         self.assertTrue(donnees['exemple_incomplet']['etapes_omises'])
         self.assertIn('180 = Sud', donnees['pourquoi'])
+
+    def test_etat_conception_du_detail(self):
+        # ACAL1005 — « rapide » est un MARQUAGE, jamais un remplissage.
+        donnees = _charger('calepinage_detail.json')
+        for nom in ('exemple', 'exemple_vide', 'exemple_rapide'):
+            self.assertIn(donnees[nom]['etat_conception'],
+                          ('rapide', 'complet'), nom)
+        self.assertEqual(donnees['exemple']['etat_conception'], 'complet')
+        rapide = donnees['exemple_rapide']
+        self.assertEqual(rapide['etat_conception'], 'rapide')
+        self.assertEqual(rapide['etat_conception_motif'],
+                         'ouvert depuis un devis automatique : à vérifier '
+                         'sur place')
+        self.assertLessEqual(set(rapide), set(donnees['exemple']))
 
 
 class CheminDeclareTest(unittest.TestCase):

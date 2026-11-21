@@ -142,6 +142,34 @@ HYPOTHESE_BRIN = (
     "localise pas l'ombre à l'intérieur du module, et aucune répartition "
     "entre brins n'est inventée ici.")
 
+#: ACAL713 — le sens de pose, HYPOTHÈSE NOMMÉE (jamais une mesure, aucun
+#: chiffre) : l'atelier pose en paysage le long de la rangée
+#: (``roofPro2.ts::PANEL2_LONG_M``) ; un panneau à angle propre
+#: (``panels[].angleDeg``, placement libre) ne dit pas son sens.
+HYPOTHESE_PAYSAGE = (
+    'Hypothèse de lecture, non mesurée : les modules sont posés en paysage '
+    "(grand côté le long de la rangée, convention de l'atelier). L'ombre qui "
+    "monte du bas d'un module n'y coupe alors qu'une sous-chaîne ; en "
+    'portrait, la même ombre les couperait toutes.')
+HYPOTHESE_LIBRE = (
+    'Certains modules sont posés en placement libre, avec leur propre '
+    "angle : le document ne dit pas s'ils sont en portrait ou en paysage, "
+    "l'hypothèse n'est pas énoncée.")
+
+
+def _hypothese_orientation(layout, repere):
+    """``{orientation, texte}`` selon les panneaux du pan nommé."""
+    for zone in (layout or {}).get('zones') or ():
+        if not isinstance(zone, dict) or (repere is not None and repere not in (
+                str(zone.get('id')), str(zone.get('label')))):
+            continue
+        panneaux = (zone.get('geometry') or {}).get('panels') or ()
+        if any(isinstance(p, dict) and p.get('angleDeg') is not None
+               for p in panneaux):
+            return {'orientation': 'libre', 'texte': HYPOTHESE_LIBRE}
+    return {'orientation': 'paysage', 'texte': HYPOTHESE_PAYSAGE}
+
+
 #: La raison publiée pour une chaîne qui n'impose plus son courant.
 RAISON_SANS_CONTRAINTE = (
     'Un micro-onduleur ou un optimiseur est déclaré sur cette chaîne : '
@@ -168,7 +196,8 @@ __all__ = ['POSTE', 'CLE_REGLAGE', 'MODELE_DERIVATION',
            'MOTIF_AUCUNE_CHAINE_MESURABLE', 'MOTIF_CHAINES_A_VIDE',
            'MOTIF_SEUIL_ABSENT', 'HYPOTHESE_MODULE', 'HYPOTHESE_BRIN',
            'RAISON_SANS_CONTRAINTE', 'REFERENCE', 'appliquer',
-           'MOTIF_BORNES_PLUSIEURS_PANS', 'fusionner_entrees']
+           'MOTIF_BORNES_PLUSIEURS_PANS', 'fusionner_entrees',
+           'HYPOTHESE_PAYSAGE', 'HYPOTHESE_LIBRE']
 
 
 def appliquer(serie, contexte):
@@ -236,6 +265,7 @@ def appliquer(serie, contexte):
         'brins_proteges': brins,
         'hypothese': (HYPOTHESE_BRIN.format(brins=brins) if brins
                       else HYPOTHESE_MODULE),
+        'hypothese_orientation': _hypothese_orientation(layout, repere),
         'bornes': {
             'basse': _borne(MODELE_DERIVATION, basse, lineaire, nominal),
             'haute': _borne(MODELE_COURANT_SERIE, haute, lineaire, nominal),
@@ -349,8 +379,9 @@ def fusionner_entrees(lignes):
     fusion['chaines'] = [chaine for entree in entrees
                          for chaine in entree.get('chaines') or ()]
     fusion['pans'] = [entree.get('pan') for entree in entrees]
-    fusion['bornes'] = None
-    fusion['ecart_bornes_pct'] = None
+    # jamais un chiffre du PREMIER pan présenté comme celui du site
+    fusion['bornes'] = fusion['ecart_bornes_pct'] = None
+    fusion['facteur_applique'] = fusion['pan'] = None
     fusion['bornes_motif'] = MOTIF_BORNES_PLUSIEURS_PANS
     for cle in ('chaines_mesurees', 'modules_mesures'):
         fusion[cle] = sum(entree.get(cle) or 0 for entree in entrees)

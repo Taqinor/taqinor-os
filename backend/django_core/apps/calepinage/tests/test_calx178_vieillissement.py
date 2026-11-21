@@ -272,5 +272,70 @@ class DureeDeVieTest(unittest.TestCase):
         self.assertIsNone(omis['garantie']['pct_a_10_ans'])
 
 
+class AgeDesPansExistantsTest(unittest.TestCase):
+    """ACAL842 — un pan posé il y a 5 ans vieillit de f(âge + N) / f(1)."""
+
+    PARTS = [{'p50_kwh': 4000.0, 'age_ans': 5},
+             {'p50_kwh': 3000.0, 'age_ans': 0}]
+
+    def _bloc(self, parts, **options):
+        options.setdefault('fiche', FICHE)
+        return vieillissement.tableau_pluriannuel(
+            7000.0, contexte_de(horizon=10, modele='lineaire', **options),
+            parts=parts)
+
+    def test_pan_de_5_ans_decale_la_projection(self):
+        bloc = self._bloc(self.PARTS)
+        f = vieillissement._facteurs('lineaire', 0.55, 2.0, 15)
+        for rang in (1, 4, 10):
+            attendu = (3000.0 * f[rang - 1] + 4000.0 * f[5 + rang - 1]) / f[0]
+            self.assertAlmostEqual(bloc['annees'][rang - 1]['p50_kwh'],
+                                   attendu, places=2)
+        neufs = self._bloc([{'p50_kwh': 7000.0, 'age_ans': 0}])
+        self.assertLess(bloc['annees'][0]['p50_kwh'],
+                        neufs['annees'][0]['p50_kwh'])
+        self.assertEqual(bloc['annees'][0]['source'],
+                         'chaîne + âge des pans existants')
+        self.assertIn('JA Solar JAM72D40 580 MB', bloc['mention_age'])
+
+    def test_sans_pan_existant_le_bloc_est_identique(self):
+        sans = vieillissement.tableau_pluriannuel(
+            7000.0, contexte_de(fiche=FICHE, horizon=10, modele='lineaire'))
+        for parts in (None, [], [{'p50_kwh': 7000.0, 'age_ans': 0}]):
+            self.assertEqual(self._bloc(parts), sans)
+        self.assertNotIn('mention_age', sans)
+
+    def test_sans_fiche_de_degradation_l_age_est_omis(self):
+        bloc = self._bloc(self.PARTS, fiche={'designation': 'X'})
+        self.assertEqual(len(bloc['annees']), 1)
+        self.assertNotIn('mention_age', bloc)
+        self.assertIn('dégradation', bloc['motif_omission'])
+
+    def test_annee_future_refusee_en_nommant_le_champ(self):
+        import datetime
+
+        from apps.calepinage.services.simulation import (
+            SimulationRefusee, _parts_vieillies)
+        moment = datetime.datetime(2026, 11, 21, tzinfo=datetime.timezone.utc)
+        document = {'zones': [
+            {'id': 'A', 'label': 'PAN-A', 'existant': True,
+             'anneeMiseEnService': 2021},
+            {'id': 'B', 'label': 'PAN-B'},
+            {'id': 'C', 'label': 'PAN-C', 'existant': True,
+             'anneeMiseEnService': 2027}]}
+        par_pan = [{'pan': 'PAN-A', 'p50_kwh': 4000.0},
+                   {'pan': 'PAN-B', 'p50_kwh': 3000.0}]
+        with self.assertRaises(SimulationRefusee) as capture:
+            _parts_vieillies(document, par_pan, moment)
+        self.assertEqual(capture.exception.champ,
+                         'zones[2].anneeMiseEnService')
+        document['zones'].pop()
+        self.assertEqual(_parts_vieillies(document, par_pan, moment),
+                         [{'p50_kwh': 4000.0, 'age_ans': 5},
+                          {'p50_kwh': 3000.0, 'age_ans': 0}])
+        document['zones'][0]['existant'] = False
+        self.assertIsNone(_parts_vieillies(document, par_pan, moment))
+
+
 if __name__ == '__main__':
     unittest.main()
