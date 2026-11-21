@@ -6,14 +6,13 @@
 //   ACAL455 (transposition d'un CSV horizontal déposé), ACAL456 (décomposition d'un CSV au global seul),
 //   ACAL461 (ombrage du diffus), ACAL462 (ombrage électrique au rapport), ACAL463 (neige), ACAL467 (table d'ombrage
 //   direct), ACAL468 (balayage inclinaison × azimut), ACAL475 (note de validation au rapport), ACAL477 (axe ratio
-//   DC/AC), ACAL485 (détection du toit : indisponible sans clé).
+//   DC/AC), ACAL485 (détection du toit : indisponible sans clé), ACAL465 (gain bifacial infinite_sheds d'un champ au sol).
 // Montage : la pile du runner n'a PAS de worker Celery. Chaque travail de fond est LANCÉ par sa vraie route
 // (`POST simuler/`, `POST balayage/` → 202 + job), puis la VRAIE tâche Celery (`apps.calepinage.tasks.*`) est
 // exécutée telle quelle au shell Django avec ce job (le rôle du worker), et son issue est RELUE par la vraie route
 // `GET moteur/resultat/<job>/` puis `GET resultat/`. PVGIS est appelé EN DIRECT : « PVGIS injoignable » = NON JOUABLE
 // (rejouer le run), jamais un faux vert. Réglages société posés par la vraie route `PUT parametres/`, état d'avant
 // rendu à la fin de chaque étape. Données propres à chaque étape (lead + calepinage), nettoyées.
-// Non couvert ici (motif dit au rapport) : ACAL465 (bifacial : aucune fiche bifaciale au catalogue de démo).
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test, expect, request as pwRequest } from '@playwright/test'
@@ -23,7 +22,7 @@ import { RACINE } from './_enregistrement.js'
 import { API_DJANGO, PNG_1PX, assurerSessionPage, connexionApi, lireJson, textePdf } from '../helpers.js'
 
 const etape = groupe('ACAL', ['ACAL392', 'ACAL400', 'ACAL403', 'ACAL426', 'ACAL445', 'ACAL451', 'ACAL452', 'ACAL455',
-  'ACAL456', 'ACAL461', 'ACAL462', 'ACAL463', 'ACAL467', 'ACAL468', 'ACAL475', 'ACAL477', 'ACAL485'])
+  'ACAL456', 'ACAL461', 'ACAL462', 'ACAL463', 'ACAL467', 'ACAL468', 'ACAL475', 'ACAL477', 'ACAL485', 'ACAL465'])
 fermerDjangoApresTout()
 test.describe.configure({ timeout: 900_000 })
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
@@ -776,6 +775,114 @@ sortie({'reels': len(reels), 'servis_cache': len([u for u in cl.urls_appelees if
     expect(String(ratios.grille[0].mention_ratio || ''), 'hypothèse « remis à l’échelle » dite').toMatch(/remis à l.échelle/)
   } finally {
     await nettoyer(cal)
+    await rendreReglages(photo)
+  }
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// ACAL465 — PA2.5 : champ au sol BIFACIAL ⇒ `GET resultat/` : étape « bifacial » au modèle `infinite_sheds` (pvlib),
+// et UN appel PVGIS de plus (la série horizontale du site) qu'un champ monofacial identique.
+// Fiche module : celle du CATALOGUE ERP, `PAN-CS-710` (Canadian Solar CS7N-710TB-AG, `bifacial: True` au seed) dont le
+// seul champ manquant, `bifacialite_pct`, est lu sur la datasheet PUBLIQUE du fabricant, « PV Module Product Datasheet
+// V1.9_EN », Apr. 2025 (https://solarproof.com.au/datasheets/panel_datasheet_CS-Datasheet-TOPBiHiKu7_CS7N-TB-AG_v1.9_EN.pdf,
+// lue le 21/11/2026) : « Power Bifaciality* 80 % », « Bifaciality Tolerance: ± 5 % » ; même page, colonne
+// CS7N-710TB-AG : 710 W, Vmp 40.4 V, Imp 17.59 A, Voc 48.3 V, Isc 18.59 A, 22.9 %, 2384 × 1303 × 33 mm — celles de la
+// fiche ERP. La valeur est posée le temps de l'étape, la fiche est rendue telle quelle ensuite.
+// Albédo et mismatch arrière : les valeurs SOURCÉES du profil de départ (ACAL403). Géométrie des rangées du champ
+// d'essai (hauteur, taux d'occupation, pas) : réglages de la société d'essai, dits comme tels.
+// ════════════════════════════════════════════════════════════════════════════
+const DATASHEET_CS710 = 'Canadian Solar CS7N-710TB-AG, PV Module Product Datasheet V1.9_EN (Apr. 2025), « Power Bifaciality 80 % (± 5 %) » — https://solarproof.com.au/datasheets/panel_datasheet_CS-Datasheet-TOPBiHiKu7_CS7N-TB-AG_v1.9_EN.pdf'
+
+async function designerSku(id, sku) {
+  const r = await py(`from apps.calepinage.models import Calepinage
+from apps.calepinage.services.chaines import CHAMPS_ONDULEUR
+from apps.calepinage.services.electrique import enregistrer_entree
+from apps.stock.models import Produit
+from apps.stock.selectors import produits_par_type_fiche_qs
+from apps.stock.selectors_fiche_technique import specs_for_produit
+c = Calepinage.objects.get(pk=${Number(id)})
+module = Produit.objects.filter(company=c.company, sku=${J(sku)}).first()
+onduleur = None
+for p in produits_par_type_fiche_qs(c.company, 'onduleur'):
+    s = specs_for_produit(p) or {}
+    if all(s.get(cle) not in (None, '') for cle, _ in CHAMPS_ONDULEUR):
+        onduleur = p
+        break
+if module and onduleur:
+    enregistrer_entree(c, {'module_produit': module.pk, 'onduleur_produit': onduleur.pk}, user=U.objects.get(username='demo_admin'))
+specs = (specs_for_produit(module) or {}) if module else {}
+sortie({'module': module and {'id': module.pk, 'nom': module.nom, 'specs': {k: specs.get(k) for k in ('pmax_wc', 'vmp_v', 'imp_a', 'voc_v', 'isc_a', 'bifacialite_pct')}},
+        'onduleur': onduleur and {'id': onduleur.pk, 'nom': onduleur.nom}})`)
+  if (!r?.module || !r?.onduleur) throw new Error(`NON JOUABLE — ${sku} ou onduleur complet absent du catalogue : ${J(r)}`)
+  return r
+}
+const poserBifacialite = (sku, valeur) => py(`from apps.stock.models import Produit
+from apps.stock.models_fiche_technique import FicheTechnique
+p = Produit.objects.get(company=${SOC}, sku=${J(sku)})
+f = FicheTechnique.objects.get(produit=p)
+avant = None if f.bifacialite_pct is None else str(f.bifacialite_pct)
+f.bifacialite_pct = ${valeur === null || valeur === undefined ? 'None' : `'${valeur}'`}
+f.save(update_fields=['bifacialite_pct'])
+sortie({'avant': avant, 'bifacial': f.bifacial})`)
+const champSol = (tilt) => ({
+  version: 2, pin: PIN, zones: [],
+  poseSurfaces: [{ id: 'champ-1', kind: 'sol', label: 'CHAMP-SOL', moduleWc: 710, tiltDeg: tilt, rowAzimuthDeg: 90.0, engine: { modules: 24 } }],
+})
+
+etape('PA2.5-ACAL465-bifacial', ['ACAL465'], async ({ page }) => {
+  const photo = await photoReglages()
+  let mono = null
+  let bif = null
+  let fiche = null
+  try {
+    const profil = await lireJson(await page.request.get(`${CAL}/calepinages/profil-depart/`, T), 'GET profil-depart/')
+    const duProfil = (cle) => {
+      const v = (profil.valeurs || []).find((x) => x.cle === cle)
+      if (!v) throw new Error(`profil de départ sans « ${cle} »`)
+      return { valeur: v.valeur, source: v.source, reference: `${v.reference} — ${v.url}` }
+    }
+    await regler(page.request, {
+      simulation: {
+        ...METEO_2020,
+        albedo_mensuel: duProfil('albedo_mensuel'),
+        bifacial_mismatch_arriere_pct: duProfil('bifacial_mismatch_arriere_pct'),
+        bifacial_hauteur_pose_m: S(1.0, 'acceptation ACAL8 — hauteur libre du champ d’essai', 'saisie'),
+        bifacial_taux_occupation: S(0.4, 'acceptation ACAL8 — taux d’occupation du champ d’essai', 'saisie'),
+        bifacial_pas_rangee_m: S(6.0, 'acceptation ACAL8 — pas entre rangées du champ d’essai', 'saisie'),
+      },
+    })
+    // Témoin MONOFACIAL : la fiche ERP telle qu'elle est (bifacialité non publiée), inclinaison jamais demandée (26°).
+    mono = await calepinageAvec('ACAL465 mono', champSol(26))
+    const m = await designerSku(mono.id, 'PAN-CS-710')
+    console.log(`[ACAL465] fiche ERP désignée : ${J(m)}`)
+    const rm = await simuler(page.request, mono.id)
+    expect(rm.simule, `simulation monofaciale servie (${rm.motif})`).toBe(true)
+    const etapeMono = etapeDe(rm, 'bifacial')
+    console.log(`[ACAL465] monofacial : appels_pvgis ${rm.meteo?.appels_pvgis} ; bifacial « ${etapeMono?.motif_omission} » ; P50 ${rm.production?.total?.p50_kwh}`)
+    expect(etapeMono?.motif_omission || '', 'fiche sans bifacialité : étape omise').not.toBe('')
+
+    // Fiche BIFACIALE : bifacialité 80 % lue sur la datasheet du fabricant, champ au sol jamais demandé (25°).
+    fiche = await poserBifacialite('PAN-CS-710', '80.0')
+    console.log(`[ACAL465] bifacialite_pct 80.0 posée (avant ${fiche.avant}, bifacial ${fiche.bifacial}) — source : ${DATASHEET_CS710}`)
+    bif = await calepinageAvec('ACAL465 bif', champSol(25))
+    await designerSku(bif.id, 'PAN-CS-710')
+    const rb = await simuler(page.request, bif.id)
+    expect(rb.simule, `simulation bifaciale servie (${rb.motif})`).toBe(true)
+    const e = etapeDe(rb, 'bifacial')
+    console.log(`[ACAL465] bifacial : ${J(e)?.slice(0, 1400)}`)
+    console.log(`[ACAL465] appels_pvgis mono ${rm.meteo?.appels_pvgis} → bifacial ${rb.meteo?.appels_pvgis} ; P50 ${rm.production?.total?.p50_kwh} → ${rb.production?.total?.p50_kwh} ; gain annuel ${e?.entree?.gain_annuel_pct} % ; ${e?.kwh_avant} → ${e?.kwh_apres} kWh`)
+    expect(e?.motif_omission || '', 'étape bifacial appliquée').toBe('')
+    expect(e.gain, 'étape publiée comme un GAIN').toBe(true)
+    expect(e.entree?.modele, 'modèle nommé : pvlib infinite_sheds').toBe('infinite_sheds')
+    expect(String(e.entree?.reference_modele || ''), 'référence pvlib publiée').toMatch(/infinite_sheds/)
+    expect(Number(e.entree?.bifacialite_pct), 'bifacialité de la fiche').toBe(80)
+    expect(e.entree?.gain_annuel_pct, 'gain annuel horaire chiffré').toBeGreaterThan(0)
+    expect(e.entree?.heures_calculees, 'gain calculé heure par heure').toBeGreaterThan(0)
+    expect(e.kwh_apres, 'production après gain > avant').toBeGreaterThan(e.kwh_avant)
+    expect(rb.meteo?.appels_pvgis, 'UN appel PVGIS de plus (série horizontale du site)').toBe((rm.meteo?.appels_pvgis ?? 0) + 1)
+  } finally {
+    if (fiche) await poserBifacialite('PAN-CS-710', fiche.avant)
+    await nettoyer(mono, bif)
     await rendreReglages(photo)
   }
 })
