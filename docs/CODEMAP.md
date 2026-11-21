@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 9286438434cd9d9829fd1e6759bb5451e6eb633d81748937cb225a9df056c2b0
-Plan fingerprint: 7b9d95af4c9cad0810c1cfa80b31efbee5d1511dae3ee2137411d23d04e83320
+Plan fingerprint: ec7488b6a72a22f0c0816fae3404e96a58a79ce33fecfa627e443e5f9511a210
 
 
 
@@ -620,7 +620,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1336)**
+**Done (1337)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1672,6 +1672,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `COPW1` — Cartes de l'assistant pour l'après-devis, le stock, le SAV et le pilotage
 - `COPW2` — Cartes de l'assistant pour le calepinage, les visites et les chantiers
 - `COPW3` — Point du matin étendu et dossier du lead
+- `COPW4` — Carte de l'ERP de l'assistant, générée depuis le code et gardée en CI
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — Contrat d'abord (PACT10)
 - `CRXB4` — UN round-robin
@@ -1959,7 +1960,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (115)**
+**Open — to build (118)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -2051,6 +2052,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX131` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX199` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX200` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
+- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
+- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
+- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `CALX373` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX374` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
 - `CALX375` — [Reda 09/10/2026 — D-CALX-PAYANT : différé]
@@ -2077,15 +2081,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT108` — [GATED: geste du fondateur — `reparer_vente_active --lister` = 0 en prod ; aujourd'hui…
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
-**Blocked — awaiting founder decision (11)**
+**Blocked — awaiting founder decision (8)**
 
 - `AGR113` — ET0 et pluie efficace par région tirées de FAO CLIMWAT (ou de la DMN), sinon étiquetées…
 - `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
 - `ENF19` — Duplicats (1 181) à zéro
-- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
-- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
-- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `QC2` — [GATED: paid — Inforisk/Charika API] Registry-backed autocomplete (the true Odoo-style…
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
