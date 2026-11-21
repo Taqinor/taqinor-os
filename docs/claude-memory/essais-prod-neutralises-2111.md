@@ -12,7 +12,7 @@ data », puis « those test leads should be suppressed ». Chaque geste a été 
 avec les fonctions de l'ERP, après un essai à blanc.
 
 ## Ce qui a été fait (prod, 21/11 vers 17 h UTC, commit déployé 919b49b7d)
-- **13 fausses acceptations défaites** par `ventes.services.annuler_acceptation` (devis d'essai de juin à août, leads
+- **14 fausses acceptations défaites** (13 d'abord, la dernière le soir) par `ventes.services.annuler_acceptation` (devis d'essai de juin à août, leads
   24, 377, 370, 281, 40, 39, 38, 35, 1) : les devis sont revenus à « envoyé » (validité reportée au 21/12/2026) et leurs
   **11 chantiers d'essai annulés** par l'abonné (motif « dés-acceptation »).
 - **2 factures d'essai annulées** par `annuler_facture` : FAC-202606-0002 et FAC-202606-0003 (31 068 MAD de fausses
@@ -22,6 +22,11 @@ avec les fonctions de l'ERP, après un essai à blanc.
   « Reda kasri », sans devis, 17 000 MAD) et FAC-202606-0001 (client de démonstration « Tazi Omar », 33 139,44 MAD).
   Avoirs émis : **AVO-202611-0003 et AVO-202611-0004**, des essais eux aussi. Aucune notification, aucun mouvement de
   stock. Les 5 factures « en retard » qui restent sont celles de vrais clients d'octobre.
+- **Dernière fausse acceptation défaite le soir même** (« Yes, put it back » de Reda) : le chantier d'essai
+  CHT-202606-0004 avait sorti 11 lignes de stock le 21/06 (40 unités) et bloquait DEV-202606-0068. Remis par un
+  retour de matériel validé (`valider_retour_materiel`, mouvements `RETOUR-CHT-202606-0004`), chantier annulé par
+  `annuler_chantiers_desaccepte`, puis `annuler_acceptation`. Ses 11 réservations gardent `consomme=True` : c'est
+  l'historique, le retour les compense. **Les 7 devis acceptés qui restent sont tous réels.**
 - **53 leads d'essai en corbeille** (`soft_delete`, restaurables) : noms « test… », noms tapés au hasard, fiches au
   téléphone de Reda. Pour ceux qui portaient des devis, la garde « archivez-le plutôt » de l'ERP a été contournée
   depuis le serveur, sur sa demande explicite.
@@ -29,9 +34,6 @@ avec les fonctions de l'ERP, après un essai à blanc.
   l'époque Odoo). Le site n'a amené aucune vraie signature.
 
 ## Ce qui reste, volontairement
-- **DEV-202606-0068** (lead d'essai 35, en corbeille) reste « accepté » : son chantier d'essai **CHT-202606-0004** est à
-  « Mise en service » avec 11 lignes de stock réellement sorties en juin (11 mouvements sous sa référence). La
-  dés-acceptation est refusée par l'ERP tant que ce stock est sorti. Toute analyse des signatures doit l'exclure.
 - **Les trois fiches de démonstration** (leads 1, 2, 3) restent, archivées : décision du 30/09
   ([[demo-accounts-prod-incident]]). Le chantier de démonstration CHT-202606-0001 reste « à planifier », non annulé.
 - **Jamais touchés** : marouane essaid (356), marouane (353), Said Essaidi (1075) — vraies personnes dont le nom
@@ -45,6 +47,9 @@ avec les fonctions de l'ERP, après un essai à blanc.
   (`ERR-NOTIF-LEAD-ASSIGNE-CORBEILLE` dans `docs/ERROR_PLAN.md`). Parade tant que ce n'est pas corrigé : appeler
   `arreter_cadence(lead, user=None, motif=…)` puis `annuler_rendez_vous_sur_arret(lead, None, cause=…)` AVANT
   `soft_delete`, et compter les notifications créées après.
+- Un chantier avancé (stock sorti) bloque la dés-acceptation même annulé à la main. Voie par les fonctions de l'ERP :
+  retour de matériel validé pour le retournable, `annuler_chantiers_desaccepte(devis, user, company)` (motif-marqueur
+  que le contrôle de blocage ignore, aucun `chantier_annule` émis), puis `annuler_acceptation`.
 - Annuler une facture numérotée émet un avoir au numéro définitif ; refuser un devis n'a pas de retour ; ré-accepter un
   devis envoie un e-mail de confirmation au client.
 - Un « essai à blanc » dans une transaction annulée n'annule pas un e-mail ou une notification déjà partis : lire
