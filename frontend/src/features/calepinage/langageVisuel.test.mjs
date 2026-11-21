@@ -11,17 +11,15 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
 const SRC = fileURLToPath(new URL('../../', import.meta.url))
 const L = /\b(?:cine-card|tech-label|rule-brass)\b|text-lune-(?:soft|faint)|text-brass-\d+|text-alert-\d+|bg-nuit-\d+|text-white|(?:border|bg|divide)-white\/\d+/g
 const C = 'features/calepinage/'
 const PLAFOND = {
   ...Object.fromEntries(Object.entries({
-    'atelier/BarreEnregistrement.jsx': 6, 'atelier/DiffVersions.jsx': 12, 'atelier/OngletCoupeRangees.jsx': 19,
-    'atelier/PanneauActivite.jsx': 4, 'atelier/PanneauBatterie.jsx': 2, 'atelier/PanneauDetectionToit.jsx': 1,
-    'atelier/PanneauOptimiser.jsx': 2, 'atelier/PanneauPertes.jsx': 40, 'atelier/PanneauReleve.jsx': 65,
-    'atelier/PanneauSeries.jsx': 11, 'atelier/PanneauVersions.jsx': 8, 'atelier/PoseReelle.jsx': 24,
-    'atelier/Projet.jsx': 12, 'atelier/RepriseVisite.jsx': 24, 'atelier/ResumeAtelier.jsx': 1,
+    'atelier/BarreEnregistrement.jsx': 6,
+    'atelier/PanneauDetectionToit.jsx': 1,
+    'atelier/PanneauOptimiser.jsx': 2,
+    'atelier/ResumeAtelier.jsx': 1,
     'ActionsSurfacePose.jsx': 11, 'AtelierPanneaux.jsx': 25, 'BoutonDevis.jsx': 28, 'commun/RailGuide.jsx': 4,
     'CourseSoleil.jsx': 21, 'electrique/DecisionsElectriques.jsx': 1, 'electrique/MaterielElectrique.jsx': 2,
     'electrique/Raccordement.jsx': 6, 'electrique/SaisiesElectriques.jsx': 8, 'electrique/VerdictElectrique.jsx': 4,
@@ -36,7 +34,6 @@ const ENVELOPPE = [
   ...['BuilderDom', 'OutilsVue', 'Rail', 'RetourAtelier'].map((n) => `${C}atelier/${n}.jsx`),
   'pages/ventes/ToitureDesign.jsx',
 ]
-
 function fichiers(dir, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name)
@@ -47,7 +44,6 @@ function fichiers(dir, out = []) {
 }
 const cibles = [...fichiers(join(SRC, C)), join(SRC, ENVELOPPE[4])].map((p) => relative(SRC, p).split(sep).join('/'))
 const compte = (f) => (readFileSync(join(SRC, f), 'utf8').match(L) || []).length
-
 test("les 5 fichiers de l'enveloppe n'ont plus aucune classe de L", () => {
   for (const f of ENVELOPPE) assert.equal(compte(f), 0, `${f} porte encore des classes du site public`)
 })

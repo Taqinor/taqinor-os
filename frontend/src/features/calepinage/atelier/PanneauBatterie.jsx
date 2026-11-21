@@ -172,7 +172,7 @@ function DeclarationBatterie({ id, onRelancer }) {
         value={valeur}
         onChange={(e) => poser(cle, e.target.value)}
         aria-invalid={refus ? 'true' : undefined}
-        className="w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+        className="w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
       >
         <option value="">— non choisi —</option>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}

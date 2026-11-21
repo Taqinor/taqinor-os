@@ -248,13 +248,13 @@ function phraseStatut(origine) {
 function SelectSource({ poste, saisie, disabled, onChangeSource }) {
   return (
     <label className="block" data-testid={`cal-pertes-source-${poste}`}>
-      <span className="tech-label text-lune-faint">Source</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source</span>
       <select
         id={`cal-pertes-source-select-${poste}`}
         value={saisie.source ?? ''}
         disabled={disabled}
         onChange={(e) => onChangeSource(poste, e.target.value)}
-        className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
       >
         <option value="">— aucune —</option>
         {SOURCES.map(([cle, label]) => <option key={cle} value={cle}>{label}</option>)}
@@ -267,7 +267,7 @@ function LignePourcentage({ poste, saisie, erreur, disabled, onChangePct, onChan
   return (
     <>
       <label className="block" data-testid={`cal-pertes-champ-${poste}`}>
-        <span className="tech-label text-lune-faint">Pourcentage (%)</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pourcentage (%)</span>
         <input
           type="number"
           step="any"
@@ -277,7 +277,7 @@ function LignePourcentage({ poste, saisie, erreur, disabled, onChangePct, onChan
           onChange={(e) => onChangePct(poste, e.target.value)}
           aria-invalid={erreur ? 'true' : undefined}
           aria-describedby={erreur ? `cal-pertes-erreur-${poste}` : undefined}
-          className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+          className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
         />
       </label>
       <SelectSource poste={poste} saisie={saisie} disabled={disabled} onChangeSource={onChangeSource} />
@@ -290,13 +290,13 @@ function LigneMensuelle({ poste, saisie, erreur, disabled, onChangeMois, onChang
   return (
     <>
       <div className="sm:col-span-2" data-testid={`cal-pertes-champ-${poste}`}>
-        <span className="tech-label text-lune-faint">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Douze valeurs mensuelles (%)
         </span>
         <div className="mt-1 grid grid-cols-4 gap-2 sm:grid-cols-6">
           {MOIS.map((libelleMois, i) => (
             <label key={libelleMois} className="block">
-              <span className="text-xs text-lune-faint">{libelleMois}</span>
+              <span className="text-xs text-muted-foreground">{libelleMois}</span>
               <input
                 type="number"
                 step="any"
@@ -307,7 +307,7 @@ function LigneMensuelle({ poste, saisie, erreur, disabled, onChangeMois, onChang
                 onChange={(e) => onChangeMois(poste, i, e.target.value)}
                 aria-invalid={erreur ? 'true' : undefined}
                 aria-describedby={erreur ? `cal-pertes-erreur-${poste}` : undefined}
-                className="mt-1 w-full rounded border border-white/15 bg-black/30 px-1 py-1 text-xs text-white"
+                className="mt-1 w-full rounded border border-border bg-black/30 px-1 py-1 text-xs text-foreground"
               />
             </label>
           ))}
@@ -328,12 +328,12 @@ function LignePoste({
   const lectureSeule = ecarte && !saisie.force
   const statut = phraseStatut(origine)
   return (
-    <fieldset className="mt-4 border-t border-white/10 pt-4" data-testid={`cal-pertes-poste-${poste}`}>
-      <legend className="tech-label text-lune-faint">
+    <fieldset className="mt-4 border-t border-border pt-4" data-testid={`cal-pertes-poste-${poste}`}>
+      <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {ligne.libelle}{ligne.horsCatalogue ? ' (hors catalogue)' : ''}
       </legend>
       {ligne.reference && (
-        <p className="text-xs text-lune-soft">{ligne.reference}</p>
+        <p className="text-xs text-muted-foreground">{ligne.reference}</p>
       )}
       {statut && (
         <p
@@ -359,13 +359,13 @@ function LignePoste({
             />
           )}
         <label className="block sm:col-span-2" data-testid={`acal136-reference-${poste}`}>
-          <span className="tech-label text-lune-faint">Référence</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Référence</span>
           <input
             type="text"
             value={saisie.reference ?? ''}
             disabled={lectureSeule}
             onChange={(e) => onChangeChamp(poste, 'reference', e.target.value)}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
           />
         </label>
       </div>
@@ -374,21 +374,21 @@ function LignePoste({
           type="button"
           onClick={() => onChangeChamp(poste, 'force', true)}
           data-testid={`acal136-forcer-${poste}`}
-          className="mt-2 rounded border border-white/15 px-3 py-1 text-xs font-semibold text-white"
+          className="mt-2 rounded border border-border px-3 py-1 text-xs font-semibold text-foreground"
         >
           Forcer
         </button>
       )}
       {saisie.force && (
         <label className="mt-2 block" data-testid={`acal136-motif-${poste}`}>
-          <span className="tech-label text-lune-faint">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Motif du forçage (obligatoire)
           </span>
           <input
             type="text"
             value={saisie.motif_force ?? ''}
             onChange={(e) => onChangeChamp(poste, 'motif_force', e.target.value)}
-            className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
           />
         </label>
       )}
@@ -501,15 +501,15 @@ export default function PanneauPertes({ calepinageId: idPropose, lectureSeule = 
 
   if (chargement) {
     return (
-      <p className="mt-3 text-sm text-lune-faint" data-testid="cal-pertes-chargement">
+      <p className="mt-3 text-sm text-muted-foreground" data-testid="cal-pertes-chargement">
         Chargement des postes de pertes…
       </p>
     )
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-pertes-panel">
-      <p className="tech-label rule-brass text-brass-300">Postes de pertes</p>
+    <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-pertes-panel">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Postes de pertes</p>
 
       {champsFautifs.length > 0 && (
         <p
@@ -542,12 +542,12 @@ export default function PanneauPertes({ calepinageId: idPropose, lectureSeule = 
         />
       ))}
 
-      <div className="mt-6 border-t border-white/10 pt-4" data-testid="cal-pertes-total">
-        <p className="tech-label text-lune-faint">Total des postes saisis</p>
-        <p className="fig text-lg text-white">
+      <div className="mt-6 border-t border-border pt-4" data-testid="cal-pertes-total">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total des postes saisis</p>
+        <p className="fig text-lg text-foreground">
           {total === null ? '—' : `${total.toFixed(2)} %`}
         </p>
-        <p className="mt-1 text-xs text-lune-soft" data-testid="cal-pertes-mention">
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-pertes-mention">
           {MENTION_TOTAL}
         </p>
       </div>
@@ -564,19 +564,19 @@ export default function PanneauPertes({ calepinageId: idPropose, lectureSeule = 
         disabled={enCours || lectureSeule}
         title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
         data-testid="cal-pertes-enregistrer"
-        className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
+        className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text"
       >
         {enCours ? 'Enregistrement…' : 'Enregistrer les postes de pertes'}
       </button>
       {/* ACAL44 — lecture seule (devis lié figé) : le motif est DIT. */}
       {lectureSeule && (
-        <p className="mt-2 text-xs text-brass-300" data-testid="cal-pertes-lecture-seule">
+        <p className="mt-2 text-xs text-primary-text" data-testid="cal-pertes-lecture-seule">
           Conception figée : révisez le devis (nouvelle version) pour la modifier.
         </p>
       )}
 
       {message && (
-        <p className="mt-3 text-sm text-lune-soft" role="status" data-testid="cal-pertes-message">
+        <p className="mt-3 text-sm text-muted-foreground" role="status" data-testid="cal-pertes-message">
           {message}
         </p>
       )}
