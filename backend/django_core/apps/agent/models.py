@@ -191,7 +191,7 @@ class UsageIA(TenantModel):
     input_tokens = models.PositiveIntegerField('Jetons en entrée', default=0)
     output_tokens = models.PositiveIntegerField('Jetons en sortie', default=0)
     cout = models.DecimalField(
-        'Coût estimé (MAD)', max_digits=14, decimal_places=6,
+        'Coût estimé (MAD)', max_digits=14, decimal_places=2,
         null=True, blank=True)
     success = models.BooleanField('Succès', default=True)
     duration_ms = models.PositiveIntegerField('Durée (ms)', default=0)

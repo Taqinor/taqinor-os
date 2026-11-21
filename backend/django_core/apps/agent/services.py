@@ -21,6 +21,7 @@ alimenté par les apps qui en ont besoin, jamais l'inverse).
 from __future__ import annotations
 
 import logging
+from decimal import ROUND_HALF_UP, Decimal
 import hashlib
 import hmac
 import json
@@ -381,7 +382,8 @@ def enregistrer_usage_ia(*, company_id, capability, provider, feature_key='',
                 feature_key=str(feature_key or '')[:120],
                 input_tokens=max(0, int(prompt_tokens or 0)),
                 output_tokens=max(0, int(completion_tokens or 0)),
-                cout=cost_estimated if cout_tarife else None,
+                cout=(Decimal(str(cost_estimated)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                      if cout_tarife else None),
                 success=bool(success),
                 duration_ms=max(0, int(latency_ms or 0)),
             )

@@ -230,7 +230,7 @@ class UsageIASinkTests(TestCase):
     def test_cout_pose_seulement_si_tarife(self):
         self._appel()
         # (120 × 1 + 30 × 2) / 1000 = 0,18 MAD
-        self.assertEqual(UsageIA.objects.get().cout, Decimal('0.180000'))
+        self.assertEqual(UsageIA.objects.get().cout, Decimal('0.18'))
 
     def test_aucun_contenu_stocke(self):
         self._appel()

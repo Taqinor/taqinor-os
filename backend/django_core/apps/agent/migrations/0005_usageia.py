@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
                                                  verbose_name="Fonction appelante")),
                 ("input_tokens", models.PositiveIntegerField(default=0, verbose_name="Jetons en entrée")),
                 ("output_tokens", models.PositiveIntegerField(default=0, verbose_name="Jetons en sortie")),
-                ("cout", models.DecimalField(blank=True, decimal_places=6, max_digits=14, null=True,
+                ("cout", models.DecimalField(blank=True, decimal_places=2, max_digits=14, null=True,
                                              verbose_name="Coût estimé (MAD)")),
                 ("success", models.BooleanField(default=True, verbose_name="Succès")),
                 ("duration_ms", models.PositiveIntegerField(default=0, verbose_name="Durée (ms)")),
