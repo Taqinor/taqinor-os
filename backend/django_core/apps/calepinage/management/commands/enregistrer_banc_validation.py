@@ -27,7 +27,8 @@ import datetime
 import json
 import pathlib
 import urllib.parse
-import urllib.request
+
+import httpx
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -92,8 +93,9 @@ class Command(BaseCommand):
             for production, suffixe in ((True, ''), (False, '_irradiance')):
                 url = _requete(lat, lon, options['annee'],
                                production=production)
-                with urllib.request.urlopen(url, timeout=120) as flux:
-                    reponse = json.loads(flux.read().decode('utf-8'))
+                flux = httpx.get(url, timeout=120)
+                flux.raise_for_status()
+                reponse = flux.json()
                 reponse = _tronquer(reponse)
                 reponse['_provenance'] = {
                     'enregistre_le': aujourd_hui, 'url': url,
