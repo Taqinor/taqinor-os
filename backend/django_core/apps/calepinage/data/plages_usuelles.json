@@ -1,0 +1,361 @@
+{
+  "pourquoi": "ACAL701 — bandes de pertes « usuelles » par étape, recopiées d'une page PUBLIÉE relue (url, date). Une étape sans bande sourcée reste ABSENTE de « bandes » et figure dans « sans_bande » avec son motif (D-CALX 7 : zéro chiffre inventé).",
+  "bandes": [],
+  "total": null,
+  "sans_bande": [
+    {
+      "etape": "horizon",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "ombrage_proche",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "acces_module",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "ombrage_diffus",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "inter_rangees",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "bifacial",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "iam",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "spectral",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "salissure",
+      "motif": "La page PVsyst de la salissure n'imprime que des majorants isolés (« less than 1% », « less than 2% ») et la traite comme une perte d'IRRADIANCE, pas comme une bande (minimum ; maximum) de l'énergie qui entre dans l'étape. Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/soiling-loss.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "neige",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "niveau_irradiance",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "thermique",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "qualite_module",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "lid",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "mismatch_fabricant",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "mismatch_ombrage",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "diodes",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "ohmique_dc",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "mppt",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "onduleur",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "ecretage",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "ohmique_ac",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "transformateur",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "auxiliaires",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    },
+    {
+      "etape": "indisponibilite",
+      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
+          "date_lecture": "2026-11-21"
+        },
+        {
+          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
+          "date_lecture": "2026-11-21"
+        }
+      ]
+    }
+  ]
+}

@@ -180,6 +180,228 @@ class NoteDeValidationTest(unittest.TestCase):
         self.assertNotRegex(page + sans, r'(?i)\bvalidée?s?\b')
 
 
+class ConsommationEtSectionsOmisesTest(unittest.TestCase):
+    """ACAL832 — la consommation servie est imprimée telle quelle ; sans
+    consommation, ni section ni ligne « non calculé » à l'annexe."""
+
+    def page(self, res):
+        return html_du_rapport(NU, resultat=res, site=SITE,
+                               identite=IDENTITE, styles=STYLES,
+                               paginer=False)
+
+    def test_la_consommation_servie_est_imprimee_telle_quelle(self):
+        from apps.calepinage.services.rapport import nombre_tel_que_servi
+        res = resultat()
+        page = self.page(res)
+        self.assertIn('data-section="consommation"', page)
+        self.assertIn('Consommation et hypothèses', page)
+        bloc = res['consommation']
+        self.assertIn(nombre_tel_que_servi(bloc['total_kwh']), page)
+        self.assertIn(bloc['courbe_origine'], page)
+        charge = bloc['charges'][0]
+        self.assertIn(charge['libelle'].replace("'", '&#x27;'), page)
+        self.assertIn(nombre_tel_que_servi(charge['kwh_an']), page)
+
+    def test_sans_consommation_ni_section_ni_ligne_non_calcule(self):
+        res = resultat()
+        res['consommation'] = None
+        sections = [s['code'] for s in rapport(resultat=res)['sections']]
+        self.assertNotIn('consommation', sections)
+        page = self.page(res)
+        self.assertNotIn('data-section="consommation"', page)
+        self.assertNotIn('consommation.total_kwh', page)
+
+    def test_le_total_n_est_pas_arrondi(self):
+        res = resultat()
+        res['consommation']['total_kwh'] = 9600.123
+        self.assertIn('9600,123', self.page(res))
+
+
+class HorsReseauTest(unittest.TestCase):
+    """ACAL833 — défaillance, pire mois et banque ; omise si raccordé."""
+
+    BLOC = {
+        'defaillance_kwh': 250.0, 'heures_defaillantes': 96,
+        'taux_defaillance': 0.026, 'mois_le_plus_defavorable': 12,
+        'par_mois': [{'mois': 11, 'defaillance_kwh': 8.0,
+                      'heures_defaillantes': 3},
+                     {'mois': 12, 'defaillance_kwh': 40.0,
+                      'heures_defaillantes': 9}],
+        'soc_minimal_pct': 18.4,
+        'banque': {'capacite_utile_kwh': 10.0, 'capacite_nominale_kwh': 11.1,
+                   'jours_autonomie': 2.0, 'dod_pct': 90.0,
+                   'source_dod': 'fiche'},
+        'mentions': ['Mention servie du bloc.'],
+        'quantiles_publiables': False,
+        'motif_quantiles': 'Aucun quantile P75/P90 hors réseau.',
+        'motif_absence': '',
+    }
+
+    def page(self, res):
+        return html_du_rapport(NU, resultat=res, site=SITE,
+                               identite=IDENTITE, styles=STYLES,
+                               paginer=False)
+
+    def test_hors_reseau_imprime_defaillance_pire_mois_et_banque(self):
+        res = resultat()
+        res['hors_reseau'] = copy.deepcopy(self.BLOC)
+        page = self.page(res)
+        self.assertIn('data-section="hors_reseau"', page)
+        for attendu in ('250,0', '18,4', '11,1', 'fiche',
+                        'Mention servie du bloc.',
+                        'Aucun quantile P75/P90 hors réseau.'):
+            self.assertIn(attendu, page)
+        self.assertIn('12 (mois le plus défavorable)', page)
+        self.assertNotIn('11 (mois le plus défavorable)', page)
+
+    def test_raccorde_la_section_est_absente(self):
+        res = resultat()
+        res['hors_reseau'] = dict(self.BLOC, defaillance_kwh=None)
+        sections = [s['code'] for s in rapport(resultat=res)['sections']]
+        self.assertNotIn('hors_reseau', sections)
+        page = self.page(res)
+        self.assertNotIn('data-section="hors_reseau"', page)
+        self.assertNotIn('hors_reseau.defaillance_kwh', page)
+
+
+class PhotosSiteTest(unittest.TestCase):
+    """ACAL759 — les photos déposées, légendées et datées, dans le rapport."""
+
+    PNG = 'data:image/png;base64,iVBORw0KGgo='
+    DEUX = [
+        {'genre': 'drone', 'legende': 'Toiture nord',
+         'prise_le': '2026-09-01', 'url': PNG},
+        {'genre': 'sol', 'legende': '', 'prise_le': '2026-09-03', 'url': PNG},
+    ]
+
+    def html(self, photos):
+        return html_du_rapport(NU, resultat=resultat(), site=SITE,
+                               identite=IDENTITE, styles=STYLES,
+                               photos=photos, paginer=False)
+
+    def test_deux_photos_deux_figures_dans_l_ordre_servi(self):
+        page = self.html(self.DEUX)
+        self.assertEqual(page.count('<figure class="photo-site">'), 2)
+        self.assertLess(page.index('Toiture nord — 2026-09-01'),
+                        page.index('sol — 2026-09-03'))
+
+    def test_aucune_photo_dit_la_phrase(self):
+        page = self.html([])
+        self.assertIn('Aucune photo du site déposée pour ce calepinage.',
+                      page)
+        self.assertNotIn('<figure', page)
+
+    def test_octets_illisibles_disent_image_indisponible(self):
+        page = self.html([dict(self.DEUX[0], url='')])
+        self.assertIn('Image indisponible.', page)
+        self.assertNotIn('<img', page)
+
+    def test_la_section_suit_le_site_et_la_meteo(self):
+        page = self.html(self.DEUX)
+        self.assertLess(page.index('Site et source météo'),
+                        page.index('Photos du site'))
+
+
+class AutoconsommationTest(unittest.TestCase):
+    """ACAL757 — taux, bilan d'énergie, batterie et mois, tels que servis."""
+
+    def section(self, res):
+        from apps.calepinage.services.rapport import autoconsommation
+        return autoconsommation.html_de_section({'resultat': res})
+
+    def test_imprime_les_valeurs_de_l_exemple_du_contrat(self):
+        from apps.calepinage.services.rapport import nombre_tel_que_servi
+        res = resultat()
+        page = self.section(res)
+        for taux in ('62,0 %', '71,0 %', '58,0 %'):
+            self.assertIn(taux, page)
+        energie = res['autoconsommation']['energie']
+        for cle in ('production_brute_kwh', 'export_reseau_kwh'):
+            self.assertIn(nombre_tel_que_servi(energie[cle]), page)
+        from html import escape
+        self.assertIn(escape(res['autoconsommation']['definition']), page)
+        self.assertIn('96', page)  # heures écrêtées du plafond
+        total = res['batterie']['total']
+        self.assertIn(nombre_tel_que_servi(total['energie_stockee_kwh']), page)
+        self.assertIn(nombre_tel_que_servi(
+            total['energie']['pertes_batterie_kwh']), page)
+        self.assertIn('BAT-ESSAI-1', page)
+
+    def test_douze_lignes_mensuelles(self):
+        res = resultat()
+        page = self.section(res)
+        self.assertEqual(len(res['autoconsommation']['par_mois']), 12)
+        for mois in res['autoconsommation']['par_mois']:
+            self.assertIn('<td class="valeur">%d</td>' % mois['mois'], page)
+        # en-tête + 12 lignes dans la table mensuelle
+        self.assertIn('Autoconsommée (kWh)', page)
+
+    def test_un_motif_d_absence_remplace_les_tables(self):
+        res = resultat()
+        res['autoconsommation'] = {'motif_absence': 'Aucune courbe de charge.'}
+        page = self.section(res)
+        self.assertIn('Aucune courbe de charge.', page)
+        self.assertNotIn('Taux de couverture', page)
+
+    def test_un_taux_absent_n_est_jamais_un_zero(self):
+        res = resultat()
+        res['autoconsommation']['taux_autonomie'] = None
+        page = self.section(res)
+        self.assertIn('non calculée', page)
+        self.assertNotIn('0,0 %', page)
+
+    def test_un_taux_n_est_pas_arrondi_a_l_entier(self):
+        res = resultat()
+        res['autoconsommation']['taux_couverture'] = 0.7123
+        self.assertIn('71,23 %', self.section(res))
+
+
+class SyntheseTest(unittest.TestCase):
+    """ACAL756 — la page de chiffres clés, lue dans le résultat servi."""
+
+    def synthese(self, res):
+        from apps.calepinage.services.rapport import synthese
+        return synthese.html_de_section({'resultat': res})
+
+    def test_imprime_les_chiffres_de_l_exemple_du_contrat(self):
+        from apps.calepinage.services.rapport import nombre_tel_que_servi
+        res = resultat()
+        page = self.synthese(res)
+        total = res['production']['total']
+        self.assertIn(nombre_tel_que_servi(total['p50_kwh']), page)
+        self.assertIn(nombre_tel_que_servi(total['p90_kwh']), page)
+        self.assertIn(nombre_tel_que_servi(res['pose']['kwc']), page)
+        self.assertIn('71,0 %', page)  # taux_couverture 0.71 x 100
+        self.assertIn('aucun contrôle non conforme', page)
+        self.assertLessEqual(page.count('<tr>'), 12)
+
+    def test_la_synthese_suit_la_garde_dans_le_rapport(self):
+        page = html_du_rapport(NU, resultat=resultat(), site=SITE,
+                               identite=IDENTITE, styles=STYLES)
+        self.assertIn('Synthèse', page)
+        self.assertLess(page.index('Synthèse'),
+                        page.index('Site et source météo'))
+
+    def test_une_donnee_absente_est_non_calculee_jamais_zero(self):
+        res = resultat('exemple_vide')
+        page = self.synthese(res)
+        self.assertIn('non calculée', page)
+        self.assertNotIn('>0 kWh<', page)
+        self.assertNotIn('>0,0 %<', page)
+
+    def test_un_resultat_incomplet_porte_la_mention_borne_haute(self):
+        res = resultat()
+        res['production']['total']['complete'] = False
+        res['production']['total']['mention'] = 'borne haute — 2 pertes'
+        self.assertIn('borne haute — 2 pertes', self.synthese(res))
+
+    def test_un_controle_non_conforme_est_nomme(self):
+        res = resultat()
+        res['electrique']['verdicts'][0]['conforme'] = False
+        res['electrique']['verdicts'][0]['libelle'] = 'Voc trop haute'
+        self.assertIn('Voc trop haute', self.synthese(res))
+
+
 class MiseEnPageTest(unittest.TestCase):
     def setUp(self):
         self.html = html_de_rapport(rapport())

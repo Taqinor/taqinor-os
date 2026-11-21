@@ -137,21 +137,54 @@ class AnneeMoyenneTest(SimpleTestCase):
             self.assertLessEqual(projection[0]['p50_kwh'], p50 + 0.1)
 
     def test_garde_fou_rendement_specifique(self):
-        # 900 W/m² de crête, 365 jours : un rendement hors [600 ; 2400] est
-        # SIGNALÉ, jamais borné.
-        rendement = self.trois['production']['total'][
-            'specific_yield_kwh_kwc']
+        # ACAL704 — aucune borne en code : SANS borne saisie, rien n'avertit
+        # (mutant « remettre (600, 2400) » : échec ici, deux jours de fixture
+        # CALX5 donnent un rendement absurde) ; AVEC une borne saisie et
+        # sourcée sous le rendement, l'avertissement la cite.
         prefixe = MOTIF_RENDEMENT_INVRAISEMBLABLE.split('{')[0]
-        signale = any(texte.startswith(prefixe)
-                      for texte in self.trois.get('avertissements') or [])
-        self.assertEqual(signale, not 600.0 <= rendement <= 2400.0)
-        # Deux jours seulement (fixture CALX5) : rendement absurde ⇒ signalé.
-        court = simuler_calepinage(
-            _Calepinage(), client=_ClientRejoue(), materiel=MATERIEL,
-            reglages=REGLAGES, enregistrer=False)['blocs']
-        self.assertTrue(any(texte.startswith(prefixe)
-                            for texte in court['avertissements']))
-        self.assertIsNotNone(court['production']['total']['p50_kwh'])
+
+        def court(reglages):
+            return simuler_calepinage(
+                _Calepinage(), client=_ClientRejoue(), materiel=MATERIEL,
+                reglages=reglages, enregistrer=False)['blocs']
+
+        sans = court(REGLAGES)
+        self.assertFalse(any(texte.startswith(prefixe)
+                             for texte in sans['avertissements']))
+        rendement = sans['production']['total']['specific_yield_kwh_kwc']
+        avec_reglages = copy.deepcopy(REGLAGES)
+        borne = rendement / 2.0
+        avec_reglages['simulation']['rendement_specifique_max_kwh_kwc'] = {
+            'valeur': borne, 'source': 'societe',
+            'reference': 'Cas de test ACAL704'}
+        avec = court(avec_reglages)
+        signales = [texte for texte in avec['avertissements']
+                    if texte.startswith(prefixe)]
+        self.assertEqual(len(signales), 1)
+        self.assertIn(f'{borne:g}', signales[0])
+        self.assertIn('non saisie', signales[0])
+        self.assertEqual(avec['production']['total']['specific_yield_kwh_kwc'],
+                         rendement, 'la valeur est publiée telle quelle')
+
+    def test_borne_sans_source_n_est_pas_lue(self):
+        from apps.calepinage.services.rendement_plausible import (
+            avertissement_de_rendement)
+
+        def contexte(**saisies):
+            return {'reglages_simulation': saisies}
+
+        sourcee = {'valeur': 2400.0, 'source': 'societe', 'reference': 'x'}
+        self.assertTrue(avertissement_de_rendement(
+            2650.0, contexte(rendement_specifique_max_kwh_kwc=sourcee)))
+        self.assertEqual(avertissement_de_rendement(
+            2650.0, contexte(rendement_specifique_max_kwh_kwc=dict(
+                sourcee, source=''))), '')
+        self.assertEqual(avertissement_de_rendement(2650.0, contexte()), '')
+        bas = {'valeur': 3000.0, 'source': 'societe', 'reference': 'x'}
+        texte = avertissement_de_rendement(
+            2650.0, contexte(rendement_specifique_min_kwh_kwc=bas,
+                             rendement_specifique_max_kwh_kwc=sourcee))
+        self.assertIn('[3000 ; 2400]', texte)
 
     def test_version_simulation_bumpee_perime(self):
         # ACAL54 a bumpé ``sim-1`` (somme des années) ; une version

@@ -10,6 +10,7 @@ import { couleursAretes, EDGE_COLOR_BY_TYPE, type EdgeDeductionZone } from './ed
 import { deserializeLayout, serializeLayout } from './prefill';
 import { etiquette, registreAtelier, reinitialiserNumerotation } from './numerotation';
 import { createLayoutEditor } from './layoutEditor';
+import { createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures } from './layoutHistory'; // ACAL515
 import { type Ctx } from './context';
 import { panDeTest, ctxDeBase, ptM, LNG0, LAT0, carteEditeurFactice, depsEditeur } from './harnaisAtelier';
 import { type AreaRecord, type LayoutPlan } from './types';
@@ -269,5 +270,91 @@ describe('CALX113 câblage — une symétrie survit au rechargement (l’orienta
     const reposes = editor.freePanels();
     expect(reposes[0].angleDeg).toBe(37);
     expect(reposes[1].angleDeg).toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL515 — « Pivoter le site » : un geste, un Annuler.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL515 — pivoterSiteActif', () => {
+  const montage = (opts: { panneaux?: boolean } = {}) => {
+    const decale = (d: number) => CARRE.map(([x, y]) => [x + d, y] as LngLat);
+    const areas = [
+      { ...zone('area-1', [...CARRE]), obstacles: [{ id: 'o1', centerLng: LNG0, centerLat: LAT0 }] as never },
+      { ...zone('area-2', decale(0.0004)), facingAzimuthDeg: 90 },
+    ];
+    if (opts.panneaux) areas[1].result = { panels: 6, kwc: 3, annualKwh: 4000, savingsLow: 0, savingsHigh: 0 };
+    const ctx = {
+      ...ctxDeBase(areas), activeArea: () => areas[0], closed: true, dom: {},
+      environment: [{ id: 'e1', kind: 'tree', centerLng: LNG0 + 0.0002, centerLat: LAT0 + 0.0001 }],
+      exclusionZones: [{ id: 'x1', nature: 'interdite', vertices: [[LNG0, LAT0], [LNG0 + 0.0001, LAT0], [LNG0, LAT0 + 0.0001]], setbackM: 0 }],
+      measurements: [{ id: 'm1', kind: 'distance', points: [[LNG0, LAT0], [LNG0 + 0.0003, LAT0]] }],
+    } as unknown as Ctx;
+    const historique = createWorkshopHistory();
+    const pousser = vi.fn(() => historique.push(photoAtelierDepuisCtx(ctx)));
+    ctx.pushWorkshopHistory = pousser;
+    const setStatus = vi.fn();
+    const zones = createZones(ctx, { redrawTrace: vi.fn(), redrawObstacles: vi.fn(), recalc: vi.fn(), setStatus });
+    return { ctx, areas, zones, historique, pousser, setStatus };
+  };
+
+  it('pivote tous les pans d’un geste : UNE photo d’historique, faces +90, statut nommé', () => {
+    const { ctx, areas, zones, pousser, setStatus } = montage();
+    const avant = JSON.stringify(areas.map((a) => a.vertices));
+    expect(zones.pivoterSiteActif(90)).toBe(true);
+    expect(pousser).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(areas.map((a) => a.vertices))).not.toBe(avant);
+    expect(areas.map((a) => a.facingAzimuthDeg)).toEqual([270, 180]);
+    expect(ctx.facingAzimuthDeg).toBe(270); // le pan vivant tourne aussi
+    expect(ctx.vertices).toEqual(areas[0].vertices);
+    expect(setStatus).toHaveBeenCalledWith('Site pivoté de 90° — les obstacles gardent leur orientation nord-sud.');
+  });
+
+  it('Annuler restaure aussi environnement, zones d’exclusion et mesures', () => {
+    const { ctx, zones, historique } = montage();
+    const avant = JSON.stringify([ctx.environment, ctx.exclusionZones, ctx.measurements, ctx.areas.map((a) => a.vertices)]);
+    const refEnv = ctx.environment;
+    expect(zones.pivoterSiteActif(90)).toBe(true);
+    expect(JSON.stringify([ctx.environment, ctx.exclusionZones, ctx.measurements])).not.toBe(JSON.stringify(JSON.parse(avant).slice(0, 3)));
+    const photo = historique.undo(photoAtelierDepuisCtx(ctx));
+    expect(photo).not.toBeNull();
+    restaurerEnvZonesMesures(ctx, photo!);
+    ctx.areas.splice(0, ctx.areas.length, ...photo!.areas);
+    expect(JSON.stringify([ctx.environment, ctx.exclusionZones, ctx.measurements, ctx.areas.map((a) => a.vertices)])).toBe(avant);
+    expect(ctx.environment).toBe(refEnv); // référence stable
+    expect(historique.canUndo()).toBe(false); // une seule photo
+  });
+
+  it('un pan avec panneaux posés : refus nommé, rien ne bouge, aucune photo', () => {
+    const { areas, zones, pousser, setStatus } = montage({ panneaux: true });
+    const avant = JSON.stringify(areas);
+    expect(zones.pivoterSiteActif(90)).toBe(false);
+    expect(JSON.stringify(areas)).toBe(avant);
+    expect(pousser).not.toHaveBeenCalled();
+    expect(setStatus).toHaveBeenCalledWith('Zone area-2 : des panneaux sont posés — retirez la pose avant de pivoter le site.');
+  });
+
+  it('un angle illisible est refusé', () => {
+    const { zones, pousser } = montage();
+    expect(zones.pivoterSiteActif(Number.NaN)).toBe(false);
+    expect(pousser).not.toHaveBeenCalled();
+  });
+});
+
+// ACAL520 — le cadenas d'un pan refuse cotes et rotation (le glissé de sommet et la suppression sont
+// gardés par `motifPanVerrouille`, même fonction, dans obstaclesUi.ts et roof-tool-pro11.ts).
+describe('ACAL520 — pan verrouillé : cotes et rotation refusées', () => {
+  it('appliquerAuPanActif refuse en nommant le pan ; déverrouiller rétablit le geste', () => {
+    const areas = [{ ...zone('area-1', [...CARRE]), label: 'Pan 1', verrouille: true }, zone('area-2', [...CARRE])];
+    const ctx = makeCtx(areas);
+    const setStatus = vi.fn();
+    const zones = createZones(ctx, { redrawTrace: vi.fn(), redrawObstacles: vi.fn(), recalc: vi.fn(), setStatus });
+    const avant = JSON.stringify(ctx.vertices);
+    expect(zones.pivoterPanActif(90)).toBe(false);
+    expect(zones.redimensionnerPanActif(8, 12)).toBe(false);
+    expect(JSON.stringify(ctx.vertices)).toBe(avant);
+    expect(setStatus).toHaveBeenCalledWith('Pan 1 verrouillé — déverrouillez-le d’abord.');
+    delete areas[0].verrouille;
+    expect(zones.pivoterPanActif(90)).toBe(true);
   });
 });

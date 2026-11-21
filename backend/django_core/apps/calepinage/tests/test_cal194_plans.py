@@ -121,6 +121,22 @@ class EchelleNommeeTest(SimpleTestCase):
         self.assertEqual(_echelle_nommee(5.0), 200)
         self.assertEqual(_echelle_nommee(10.0), 100)
 
+    def test_l_echelle_nommee_est_l_entier_le_plus_proche(self):
+        # ACAL602 — jamais le rang normalisé SUPÉRIEUR (19,28 -> 1/100).
+        self.assertEqual(_echelle_nommee(19.28), 52)
+        self.assertEqual(_echelle_nommee(31.36), 32)
+        self.assertIn('1/52', _mention_d_echelle(19.28))
+
+    def test_la_planche_des_48_modules_imprime_l_echelle_reelle(self):
+        from apps.calepinage.services.planche import _transformation
+
+        from .test_cal171_planche import _layout_de_48_modules
+
+        geometrie = geometrie_de_planche(_layout_de_48_modules('portrait'))
+        _vers, echelle = _transformation(geometrie['etendue'])
+        svg = svg_de_planche(geometrie)
+        self.assertIn('Échelle du tracé 1/%d' % round(1000.0 / echelle), svg)
+
     def test_la_mention_porte_sa_condition_de_validite(self):
         mention = _mention_d_echelle(5.0)
         self.assertIn('1/200', mention)

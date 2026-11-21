@@ -181,3 +181,50 @@ class ReleveM3Tests(_Base):
         r = api.post(url, {'type': 'litres', 'valeur': '10'}, format='json')
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.data, contrat['exemple_400_type'])
+
+
+class VolumesMensuelsMesuresTests(_Base):
+    """ACAL845 — volumes d'eau mensuels mesurés depuis les index m³."""
+
+    slug = 'acal845'
+
+    def _trois_releves(self):
+        self._releve(1000, date(2026, 12, 31))
+        self._releve(1200, date(2027, 1, 10))  # pas le dernier de janvier
+        self._releve(1450, date(2027, 1, 31))
+        self._releve(1900, date(2027, 2, 28))
+
+    def test_janvier_et_fevrier_rendus_mars_sans_releve(self):
+        from apps.sav.selectors_releves import volumes_mensuels_mesures
+
+        self._trois_releves()
+        r = volumes_mensuels_mesures(self.co, [self.equip.pk], 2027)
+        self.assertEqual(r['annee'], 2027)
+        self.assertEqual(r['equipements'], 1)
+        self.assertEqual(r['m3'][:3], [450.0, 450.0, None])
+        self.assertEqual(r['m3'][3:], [None] * 9)
+        self.assertIn('aucun relevé en mars', r['motifs'])
+        self.assertEqual(volumes_mensuels_mesures(self.co, [], 2027)['m3'],
+                         [None] * 12)
+
+    def test_un_releve_kwh_et_une_autre_societe_ne_comptent_pas(self):
+        from apps.sav.models import ReleveCompteurEquipement
+        from apps.sav.selectors_releves import volumes_mensuels_mesures
+
+        self._trois_releves()
+        self._releve(90000, date(2027, 3, 31), type_releve='kwh')
+        autre = Company.objects.create(nom='Autre ACAL845', slug='autre-acal845')
+        ReleveCompteurEquipement.objects.create(
+            company=autre, equipement=self.equip, type='m3',
+            valeur=Decimal('5000'), date=date(2027, 3, 31))
+        r = volumes_mensuels_mesures(self.co, [self.equip.pk], 2027)
+        self.assertEqual(r['m3'][:3], [450.0, 450.0, None])
+        self.assertEqual(volumes_mensuels_mesures(autre, [self.equip.pk], 2027)['m3'][2],
+                         None)
+
+    def test_devis_sans_chantier_douze_none_et_motif(self):
+        from apps.sav.selectors_releves import volumes_mensuels_du_devis
+
+        r = volumes_mensuels_du_devis(self.co, 987654, annee=2027)
+        self.assertEqual(r['m3'], [None] * 12)
+        self.assertEqual(r['motifs'], ['aucun chantier lié à ce devis'])

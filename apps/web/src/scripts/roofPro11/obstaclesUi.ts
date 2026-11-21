@@ -82,6 +82,7 @@ import {
 } from './zones';
 import { suivreAlt } from './altTracker';
 import { viderObstaclesAnnulable } from './bandeauAnnuler'; // ACAL413
+import { motifPanVerrouille } from './panVerrouille'; // ACAL520
 
 /** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
  *  libellé FR + note « bloque le compte » pour PLAN/DEVINE. */
@@ -1523,6 +1524,8 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const mv = ctx.moveVertex;
     if (!mv) return;
     if (mv.idx < 0 || mv.idx >= ctx.vertices.length) return;
+    const verrou = motifPanVerrouille(ctx.activeArea?.(), ctx.areas?.findIndex((a) => a.id === ctx.activeAreaId)); // ACAL520
+    if (verrou) { setStatus(verrou); return; }
     // CAL100 — même photo unique que le glissé d'obstacle, juste avant le premier mouvement.
     if (!mv.moved) ctx.pushWorkshopHistory?.();
     // Delta lng/lat (annule le parallaxe de la vue inclinée), comme le glissé d'obstacle.

@@ -1,6 +1,6 @@
 {
   "ast": {
-    "FicheTechnique": "1e21e155720b117386d3624468ff64239b4b9f7f",
+    "FicheTechnique": "99f67b011776d317f19f8e4a1bd5ea4412127c83",
     "_est_nombre": "5d18c0bef90e040ff010a635babf0336bbe24585",
     "_valider_courbe": "bfa8fece7cfe0c8262df1bb3994254992b14c056",
     "valider_courbe_irradiance": "1569e31152555f78800b28b078b5ba0ff5c2a04f",
@@ -1965,6 +1965,54 @@
         "max_digits": null,
         "max_length": null,
         "nom": "struct_notice",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "b772c4b0d856f9ed74f4b7e28b5862a56ed00186",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "serrage_min_mm",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "1f4de547a7d9142aa57248f010d79586923d1d4f",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "serrage_max_mm",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "TextField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "95a3b80ba39d4067c70c55357e19bab387c7ae1e",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "serrage_source",
         "null": false,
         "on_delete": null,
         "related_name": null,

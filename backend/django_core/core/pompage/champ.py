@@ -467,6 +467,65 @@ def _chaines_pour(variateur, module, nb, temperatures):
     return nb, chaines, alertes, False
 
 
+def controle_chaine_variateur(variateur, module, serie, paralleles=1,
+                              temperatures=None):
+    """ACAL809 — CONSTATE une chaîne DONNÉE (``serie`` × ``paralleles``) contre
+    la fenêtre de tension du variateur, sans rien adapter ni choisir.
+
+    ``module`` : dict aux noms de :func:`spec_module`. Verdict ``conforme``,
+    ``hors_fenetre`` (motif chiffré) ou ``non_verifiable`` (motif nommé)."""
+    froid, chaud, source, mention = _temperatures(temperatures)
+    sortie = {"verdict": "non_verifiable", "motif": None, "serie": serie,
+              "paralleles": paralleles, "voc_froid_v": None,
+              "vmp_chaud_v": None, "fenetre": None,
+              "temperatures": {"froid_c": froid, "chaud_c": chaud,
+                               "source": source, "mention": mention or None},
+              "alertes": []}
+    spec = spec_module(module)
+    if not variateur or not fiche_saisie(variateur):
+        sortie["motif"] = "fiche du variateur non saisie"
+        return sortie
+    if spec is None or not serie or serie < 1:
+        sortie["motif"] = ("module incomplet (Vmp, Voc, Isc, Imp, Pmax)"
+                           if spec is None else "nombre de modules en série inconnu")
+        return sortie
+    onduleur = spec_variateur(variateur)
+    fenetre = fenetre_admissible(spec, onduleur, froid, chaud,
+                                 temp_source=source, temp_mention=mention)
+    voc = serie * fenetre.voc_froid_unitaire_v
+    vmp = serie * fenetre.vmp_chaud_unitaire_v
+    sortie.update(voc_froid_v=round(voc), vmp_chaud_v=round(vmp),
+                  fenetre={"longueur_min": fenetre.longueur_min,
+                           "longueur_max": fenetre.longueur_max},
+                  verdict="hors_fenetre")
+    courant, i_max = (paralleles or 1) * spec.imp_a, onduleur.i_max_mppt_a
+    if fenetre.trop_etroite:
+        sortie["motif"] = fenetre.motif
+    elif serie > fenetre.longueur_max and fenetre.max_par_voc is not None \
+            and serie > fenetre.max_par_voc:
+        sortie["motif"] = ("trop longue : Voc à froid %s V au-dessus des %s V "
+                           "du variateur" % (_fr(voc, 0), _fr(onduleur.v_max_abs, 0)))
+    elif serie > fenetre.longueur_max:
+        sortie["motif"] = ("trop longue : Vmp à froid %s V au-dessus des %s V du "
+                           "haut de plage MPPT" % (_fr(serie * fenetre.vmp_froid_unitaire_v, 0),
+                                                   _fr(onduleur.mppt_v_max, 0)))
+    elif serie < fenetre.longueur_min:
+        seuil = max(onduleur.mppt_v_min, onduleur.tension_demarrage_v or 0.0)
+        sortie["motif"] = ("trop courte : Vmp à chaud %s V sous les %s V du "
+                           "démarrage du MPPT" % (_fr(vmp, 0), _fr(seuil, 0)))
+    elif i_max > 0 and courant > i_max:
+        sortie["motif"] = ("courant : %s A au-dessus des %s A du MPPT du "
+                           "variateur" % (_fr(courant), _fr(i_max)))
+    else:
+        sortie["verdict"] = "conforme"
+        if i_max <= 0:
+            sortie["alertes"].append(_alerte(
+                "courant_mppt_non_verifiable", "variateur.fiche",
+                "Courant MPPT du variateur non publié : courant de la chaîne "
+                "non vérifié."))
+    return sortie
+
+
 def _repli_borne(nb, kwc0, pmax, plaque):
     """AGM2 (D-AGM-2) — ``(nb, mention)`` du repli « besoin non couvert » :
     le kWc de départ, BORNÉ à la borne haute de la bande champ/pompe × la

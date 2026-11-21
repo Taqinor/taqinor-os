@@ -35,7 +35,10 @@
         "inclinaison_deg": 10.0,
         "orientation": "PORTRAIT",
         "modules_par_table": 2,
-        "faitage_m": 0.0
+        "faitage_m": 0.0,
+        "rangs_par_table": 1,
+        "modules_par_rang": 1,
+        "jeu_entre_rangs_m": null
       }
     ],
     "parametres": {

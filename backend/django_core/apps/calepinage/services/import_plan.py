@@ -256,6 +256,35 @@ def lire_calage(brut):
     return point_a, point_b, valides['distanceM'], rotation
 
 
+MOTIF_CONTROLE_INCONNU = ("Le fichier ne déclare pas son unité : aucun "
+                          "contrôle possible.")
+
+
+def controle_echelle(analyse, calage):
+    """ACAL512 — A–B en mètres selon l'unité DÉCLARÉE, face à la distance saisie.
+
+    Un contrôle affiché, jamais un jugement : aucun seuil, et l'échelle posée
+    reste celle de la distance SAISIE (choix CAL63). Lit ``_FACTEUR_UNITE``
+    d'``analyse_plan`` sans la modifier.
+    """
+    import math
+
+    from ..analyse_plan import _FACTEUR_UNITE
+
+    (ax, ay), (bx, by), distance_m, _rotation = calage
+    unite = (analyse or {}).get('unite') or 'inconnu'
+    facteur = _FACTEUR_UNITE.get(unite)
+    saisie = float(distance_m)
+    if facteur is None:
+        return {'unite': 'inconnu', 'distance_selon_unite_m': None,
+                'distance_saisie_m': saisie, 'rapport': None,
+                'motif': MOTIF_CONTROLE_INCONNU}
+    selon = math.hypot(bx - ax, by - ay) / facteur
+    return {'unite': unite, 'distance_selon_unite_m': round(selon, 6),
+            'distance_saisie_m': saisie,
+            'rapport': round(saisie / selon, 6)}
+
+
 def _epingle_exploitable(pin):
     """``(lat, lng)`` flottants d'une épingle dans les bornes GPS, ou ``None``."""
     import math

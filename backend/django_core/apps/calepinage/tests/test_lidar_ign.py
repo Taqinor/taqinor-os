@@ -375,3 +375,105 @@ class EndpointTest(TestCase):
                 URL, {'roof_layout': {'zones': zones}}, format='json')
             self.assertEqual(reponse.status_code, 400, zones)
             self.assertIn('roof_layout', reponse.data)
+
+
+# ---------------------------------------------------------------------------
+# ACAL534 — l'altimètre d'un relief GeoTIFF fourni par l'installateur.
+# ---------------------------------------------------------------------------
+
+def _geotiff(*, modele=2, pente_deg=20.0, taille=400, pas=1e-5,
+             geo=True, mode='F', sans_donnee=None):
+    """Les octets d'un GeoTIFF float32 en degrés, incliné vers le SUD."""
+    import io
+    import math
+
+    import numpy as np
+    from PIL import Image, TiffImagePlugin, TiffTags
+
+    metres_par_degre = math.pi / 180.0 * 6378137.0
+    lat_haut = LAT + taille * pas / 2.0
+    lignes = np.arange(taille, dtype='float64')[:, None]
+    lat = lat_haut - (lignes + 0.5) * pas
+    relief = np.tan(math.radians(pente_deg)) * (lat - LAT) * metres_par_degre
+    tableau = np.repeat(relief + 200.0, taille, axis=1).astype('float32')
+    image = Image.fromarray(tableau, mode=mode)
+    ifd = TiffImagePlugin.ImageFileDirectory_v2()
+    if geo:
+        ifd[33550] = (pas, pas, 0.0)
+        ifd.tagtype[33550] = TiffTags.DOUBLE
+        ifd[33922] = (0.0, 0.0, 0.0, LON - taille * pas / 2.0, lat_haut, 0.0)
+        ifd.tagtype[33922] = TiffTags.DOUBLE
+        ifd[34735] = (1, 1, 0, 3, 1024, 0, 1, modele, 1025, 0, 1, 1,
+                      2048, 0, 1, 4326)
+        ifd.tagtype[34735] = TiffTags.SHORT
+    tampon = io.BytesIO()
+    image.save(tampon, format='TIFF', tiffinfo=ifd)
+    return tampon.getvalue()
+
+
+class AltimetreFichierTest(SimpleTestCase):
+    """ACAL534 — pente 20° vers le sud retrouvée ; refus nommés."""
+
+    def _suggestion(self, octets):
+        from unittest import mock
+
+        from apps.calepinage.services.altimetre_fichier import (
+            altimetre_depuis_geotiff)
+
+        altimetre = altimetre_depuis_geotiff(octets)
+        with mock.patch(
+                'apps.calepinage.services.lidar_ign.service_disponible',
+                return_value=True):
+            return suggerer_pentes(
+                object(), DOCUMENT, altimetre=altimetre,
+                maintenant='2026-03-12T10:00:00+00:00')
+
+    def test_relief_incline_de_20_degres_vers_le_sud(self):
+        (suggestion,) = self._suggestion(_geotiff())
+        self.assertAlmostEqual(suggestion['pitchDeg'], 20.0, delta=0.1)
+        self.assertAlmostEqual(suggestion['facingAzimuthDeg'], 180.0,
+                               delta=0.1)
+
+    def test_hors_emprise_rend_none_jamais_un_repli(self):
+        from apps.calepinage.services.altimetre_fichier import (
+            altimetre_depuis_geotiff)
+
+        altimetre = altimetre_depuis_geotiff(_geotiff())
+        dedans, dehors = altimetre([(LON, LAT), (LON + 1.0, LAT)])
+        self.assertIsNotNone(dedans)
+        self.assertIsNone(dehors)
+
+    def test_projection_en_metres_refusee_en_la_nommant(self):
+        from apps.calepinage.services.altimetre_fichier import (
+            ReliefIllisible, altimetre_depuis_geotiff)
+
+        with self.assertRaises(ReliefIllisible) as ctx:
+            altimetre_depuis_geotiff(_geotiff(modele=1))
+        self.assertEqual(
+            str(ctx.exception),
+            'Le relief est en mètres (projection) : exportez-le en WGS84 '
+            '(degrés).')
+
+    def test_sans_georeferencement_ou_illisible_refuse(self):
+        from apps.calepinage.services.altimetre_fichier import (
+            ReliefIllisible, altimetre_depuis_geotiff)
+
+        with self.assertRaises(ReliefIllisible) as sans_etiquettes:
+            altimetre_depuis_geotiff(_geotiff(geo=False))
+        self.assertIn('géoréférencement', str(sans_etiquettes.exception))
+        with self.assertRaises(ReliefIllisible) as illisible:
+            altimetre_depuis_geotiff(b'ceci n est pas un tiff')
+        self.assertIn('illisible', str(illisible.exception))
+
+    def test_image_sans_altitudes_lisibles_refusee(self):
+        from apps.calepinage.services.altimetre_fichier import (
+            ReliefIllisible, altimetre_depuis_geotiff)
+        import io
+
+        from PIL import Image
+
+        tampon = io.BytesIO()
+        Image.new('RGB', (4, 4)).save(tampon, format='TIFF')
+        with self.assertRaises(ReliefIllisible) as ctx:
+            altimetre_depuis_geotiff(tampon.getvalue())
+        self.assertIn('altitudes', str(ctx.exception))

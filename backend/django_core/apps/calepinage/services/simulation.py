@@ -55,7 +55,7 @@ from .chaine_pertes import (
 from .etapes.autoconsommation import bloc_autoconsommation
 from .etapes.batterie import bloc_batterie
 from .etapes.hors_reseau import bloc_hors_reseau
-from .etapes.vieillissement import tableau_pluriannuel
+from .etapes.vieillissement import bloc_duree_de_vie, tableau_pluriannuel
 from .incertitude import (
     IncertitudeInvalide, bloc_incertitude, masquer_depassements,
 )
@@ -65,6 +65,7 @@ from .pvgis_serie import (
     EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
 from . import irradiation_mensuelle as _irr
+from .a_renseigner import construire as construire_a_renseigner
 from .bifacial_sheds import CLE_HORIZONTALE_LEGALE
 from .horizon import profil_depuis_document
 from .simulation_modules import production_module_par_module
@@ -1360,6 +1361,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         # σ saisi illisible : un refus NOMMÉ, jamais une exception brute.
         raise _refus_nomme(refus) from refus
     blocs['cascade'] = cascade
+    from .regroupement_pertes import regrouper  # ACAL695 — cinq postes lisibles
+    cascade['postes_lisibles'] = regrouper(cascade)
+    from .plages_usuelles import evaluer  # ACAL702 — pastilles sourcées
+    cascade['plages'] = evaluer(cascade)
     blocs['meteo'] = ecrit['meteo']
     blocs['production'] = ecrit['production']
     blocs['serie_horaire'] = ecrit['serie_horaire']
@@ -1369,7 +1374,11 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     for texte in (ecrit.get('avertissements') or []):
         _ajouter_avertissement(blocs, texte)
     # ACAL49 — la « borne haute » ouvre les avertissements (D-ACAL-7).
-    entete = completude_de_la_chaine(cascade, contexte)['avertissement']
+    completude = completude_de_la_chaine(cascade, contexte)
+    entete = completude['avertissement']
+    # ACAL699 — chaque perte non renseignée : le champ et où LIRE sa valeur.
+    cascade['a_renseigner'] = construire_a_renseigner(
+        cascade, completude['non_renseignees'])
     if entete and entete in blocs.get('avertissements', ()):
         blocs['avertissements'].remove(entete)
         blocs['avertissements'].insert(0, entete)
@@ -1466,6 +1475,9 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['production']['projection'] = capacite_batterie_par_annee(
         projection['annees'],
         ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
+    # ACAL693 — horizon, motif et garantie du fabricant à côté du tableau.
+    blocs['production']['duree_de_vie'] = bloc_duree_de_vie(
+        projection, contexte)
     if projection.get('motif_omission'):
         _ajouter_avertissement(blocs, MOTIF_PROJECTION.format(
             motif=projection['motif_omission']))

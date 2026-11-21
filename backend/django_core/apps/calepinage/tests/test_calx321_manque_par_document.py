@@ -221,6 +221,17 @@ class ChampReellementLeveTest(unittest.TestCase):
             document['manque'][0]['champ'],
             'roof_layout.zones[].geometry.solarAccess.values')
 
+    def test_consigne_ombrage_sans_bouton_calculer(self):
+        # ACAL732 - aucun bouton « Calculer » n'existe : la consigne dit
+        # de saisir une ombre ou un obstacle avec sa hauteur, puis
+        # d'enregistrer.
+        ligne = self.par_code['rapport_ombrage']['manque'][0]
+        self.assertNotIn('Calculer', ligne['ou_saisir'])
+        self.assertNotIn('bouton', ligne['ou_saisir'])
+        self.assertIn('hauteur', ligne['ou_saisir'])
+        self.assertIn('enregistrer', ligne['ou_saisir'])
+        self.assertIsNone(ligne['onglet'])
+
     def test_plan_cablage_nomme_le_seul_chainage(self):
         # ACAL219 - le rendu ne lit jamais ``troncons`` : seul le chainage
         # servi conditionne la carte (``test_acal_inventaire_vrai`` prouve

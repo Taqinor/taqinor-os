@@ -13,7 +13,8 @@ Run :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.planche import (
-    PlancheRefusee, _dimensions_module, _echelle_de_dessin, geometrie_de_planche,
+    PlancheRefusee, _dimensions_module, _echelle_de_dessin, coins_du_module,
+    geometrie_de_planche,
     html_de_planche, nom_de_fichier, svg_de_planche, texte_de_longueur,
 )
 
@@ -34,6 +35,7 @@ LAYOUT = {
                        'type': 'cheminee', 'provenance': 'RELEVE'}],
         'geometry': {
             'azimuthDeg': 180.0, 'tiltDeg': 15.0, 'count': 2,
+            'panelOrientation': 'landscape',
             'origin': [-7.6, 33.5],
             'panels': [{'cx': 1.0, 'cy': 1.0}, {'cx': 3.5, 'cy': 1.0}],
         },
@@ -168,3 +170,140 @@ class EnveloppeHtmlTest(SimpleTestCase):
         self.assertTrue(nom.endswith('.pdf'))
         self.assertNotIn('/', nom)
         self.assertNotIn(' ', nom)
+
+
+# ── ACAL601 — chaque module dans son vrai sens ──────────────────────────────
+
+def _layout_de_48_modules(pose, pas=1.323):
+    import copy
+
+    layout = copy.deepcopy(LAYOUT)
+    geometrie = layout['zones'][0]['geometry']
+    geometrie['panelOrientation'] = pose
+    geometrie['count'] = 48
+    geometrie['panels'] = [{'cx': 1.0 + pas * i, 'cy': 1.0}
+                           for i in range(48)]
+    return layout
+
+
+def _se_recouvrent(a, b):
+    """Deux rectangles alignés sur les axes (azimut 180°) : recouvrement ?"""
+    ax = [p[0] for p in a]
+    ay = [p[1] for p in a]
+    bx = [p[0] for p in b]
+    by = [p[1] for p in b]
+    return (min(ax) < max(bx) - 1e-9 and min(bx) < max(ax) - 1e-9
+            and min(ay) < max(by) - 1e-9 and min(by) < max(ay) - 1e-9)
+
+
+class EmpriseVraieDesModulesTest(SimpleTestCase):
+    def _coins(self, pose, **modifs):
+        pan = dict(geometrie_de_planche(_layout_de_48_modules(pose))['pans'][0],
+                   **modifs)
+        return pan, [coins_du_module(pan, c) for c in pan['modules']]
+
+    def test_48_modules_portrait_au_pas_de_1_323_ne_se_recouvrent_pas(self):
+        pan, coins = self._coins('portrait')
+        self.assertEqual(len(coins), 48)
+        for carre in coins:
+            largeur = max(p[0] for p in carre) - min(p[0] for p in carre)
+            hauteur = max(p[1] for p in carre) - min(p[1] for p in carre)
+            self.assertAlmostEqual(largeur, 1.303, places=3)
+            # 2,384 x cos(15 deg) dans la pente (le LAYOUT du fichier est a 15).
+            self.assertAlmostEqual(hauteur, 2.384 * 0.9659258, places=3)
+        for i, a in enumerate(coins):
+            for b in coins[i + 1:]:
+                self.assertFalse(_se_recouvrent(a, b))
+
+    def test_pente_de_30_degres_donne_2_065_m_dans_la_pente(self):
+        _pan, coins = self._coins('portrait', pente_deg=30.0)
+        hauteur = (max(p[1] for p in coins[0]) - min(p[1] for p in coins[0]))
+        self.assertAlmostEqual(hauteur, 2.065, places=3)
+
+    def test_paysage_le_grand_cote_le_long_de_la_rangee(self):
+        _pan, coins = self._coins('landscape')
+        largeur = max(p[0] for p in coins[0]) - min(p[0] for p in coins[0])
+        self.assertAlmostEqual(largeur, 2.384, places=3)
+
+    def test_pose_mixte_lit_l_orientation_de_chaque_module(self):
+        layout = _layout_de_48_modules('mixed')
+        panneaux = layout['zones'][0]['geometry']['panels']
+        panneaux[0]['orient'] = 'portrait'
+        panneaux[1]['orient'] = 'landscape'
+        pan = geometrie_de_planche(layout)['pans'][0]
+        premier, deuxieme, troisieme = (
+            coins_du_module(pan, c) for c in pan['modules'][:3])
+        self.assertAlmostEqual(max(p[0] for p in premier)
+                               - min(p[0] for p in premier), 1.303, places=3)
+        self.assertAlmostEqual(max(p[0] for p in deuxieme)
+                               - min(p[0] for p in deuxieme), 2.384, places=3)
+        self.assertIsNone(troisieme)  # sans `orient` : jamais devine
+
+    def test_sans_pose_azimut_ou_pente_le_module_reste_un_cercle(self):
+        for retrait in ({'orientation_modules': None}, {'azimut_deg': None},
+                        {'pente_deg': None}):
+            _pan, coins = self._coins('portrait', **retrait)
+            self.assertEqual(coins, [None] * 48)
+        layout = _layout_de_48_modules('diagonale')
+        pan = geometrie_de_planche(layout)['pans'][0]
+        self.assertIsNone(pan['orientation_modules'])
+        self.assertIsNone(coins_du_module(pan, pan['modules'][0]))
+
+    def test_la_planche_dessine_les_rectangles_ou_dit_la_pose_absente(self):
+        svg = svg_de_planche(
+            geometrie_de_planche(_layout_de_48_modules('portrait')))
+        self.assertNotIn('r="0.7"', svg)
+        self.assertNotIn('orientation non enregistrée', svg)
+        layout = _layout_de_48_modules('portrait')
+        del layout['zones'][0]['geometry']['panelOrientation']
+        svg = svg_de_planche(geometrie_de_planche(layout))
+        self.assertIn('r="0.7"', svg)
+        self.assertIn('Module posé — orientation non enregistrée '
+                      '(figuré par son centre) ; ouvrir et enregistrer le '
+                      'calepinage', svg)
+
+
+# ── ACAL603 — les cotes générales mesurent le TOIT seul ─────────────────────
+
+def _layout_avec_obstacles_hors_rive():
+    import copy
+
+    layout = copy.deepcopy(LAYOUT)
+    zone = layout['zones'][0]
+    # Une lucarne à cheval sur la rive ouest et une cheminée au nord.
+    zone['obstacles'] += [
+        {'id': 'obs-2', 'centerLng': -7.60000, 'centerLat': 33.50005,
+         'lengthM': 2.0, 'widthM': 3.0, 'type': 'lucarne',
+         'provenance': 'RELEVE'},
+        {'id': 'obs-3', 'centerLng': -7.59995, 'centerLat': 33.50010,
+         'lengthM': 4.0, 'widthM': 1.0, 'type': 'cheminee',
+         'provenance': 'RELEVE'}]
+    return layout
+
+
+class CotesDuToitSeulTest(SimpleTestCase):
+    def test_un_obstacle_a_cheval_sur_la_rive_ne_change_pas_les_cotes(self):
+        base = geometrie_de_planche(LAYOUT)
+        large = geometrie_de_planche(_layout_avec_obstacles_hors_rive())
+        # La boîte entière grandit, l'emprise du toit non.
+        self.assertGreater(large['etendue'][2] - large['etendue'][0],
+                           base['etendue'][2] - base['etendue'][0])
+        self.assertEqual(large['etendue_toit'], base['etendue_toit'])
+        x0, y0, x1, y1 = large['etendue_toit']
+        svg = svg_de_planche(large)
+        self.assertIn('>%s</text>' % texte_de_longueur(x1 - x0), svg)
+        self.assertIn('>%s</text>' % texte_de_longueur(y1 - y0), svg)
+        e0, f0, e1, f1 = large['etendue']
+        self.assertNotIn('>%s</text>' % texte_de_longueur(e1 - e0), svg)
+        self.assertNotIn('>%s</text>' % texte_de_longueur(f1 - f0), svg)
+
+    def test_sans_contour_ni_pan_repli_sur_l_etendue(self):
+        from apps.calepinage.services.planche import _etendue_du_toit
+
+        geometrie = dict(geometrie_de_planche(LAYOUT), contour=[])
+        geometrie['pans'] = [dict(p, points=[]) for p in geometrie['pans']]
+        geometrie['etendue_toit'] = _etendue_du_toit(geometrie)
+        self.assertIsNone(geometrie['etendue_toit'])
+        x0, y0, x1, y1 = geometrie['etendue']
+        self.assertIn('>%s</text>' % texte_de_longueur(x1 - x0),
+                      svg_de_planche(geometrie))

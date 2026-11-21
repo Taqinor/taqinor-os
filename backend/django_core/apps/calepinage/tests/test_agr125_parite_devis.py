@@ -170,6 +170,124 @@ class PariteVolumesDevisCalepinageTest(TestCase):
             'heures_pompage': None, 'volume_reservoir_m3': None})
         self.assertEqual(donnees['entrees']['heures_pompage'], 7.0)
 
+    PUITS = {'debit_souhaite_m3h': 1, 'coefficient_rabattement_m_par_m3h': 0.25,
+             'hauteur_refoulement_m': 4, 'longueur_tuyauterie_m': 350,
+             'diametre_interieur_mm': 100, 'materiau_conduite': 'pehd',
+             'pertes_singulieres_m': 0.8, 'pression_service_bar': 1.0}
+
+    def test_acal806_hmt_et_volumes_suivent_le_niveau_de_chaque_mois(self):
+        kwc = self._preview()['champ']['kwc']
+        saison = self._calepinage(dict(
+            self.PUITS, kwc=kwc, niveau_statique_ete_m=45,
+            niveau_statique_hiver_m=35, mois_niveau_bas=[6, 7, 8, 9]))
+        hiver = self._calepinage(dict(self.PUITS, kwc=kwc, niveau_statique_m=35))
+        mensuelle = saison['hmt_mensuelle']
+        self.assertEqual(mensuelle['manquantes'], [])
+        ete_hmt = hmt_du_puits(**dict(
+            {k: v for k, v in self.PUITS.items() if k != 'debit_souhaite_m3h'},
+            debit_m3h=1, niveau_statique_m=45))['hmt_m']
+        self.assertEqual(mensuelle['valeurs_m'][6], ete_hmt)
+        self.assertEqual(mensuelle['valeurs_m'][0], hiver['hmt']['hmt_m'])
+        self.assertEqual(saison['hmt']['hmt_m'], max(mensuelle['valeurs_m']))
+        self.assertEqual(saison['entrees']['mois_niveau_bas'], [6, 7, 8, 9])
+        juillet, janvier = 6, 0
+        pvgis_saison = saison['volumes']['m3_mois_pvgis']
+        pvgis_hiver = hiver['volumes']['m3_mois_pvgis']
+        self.assertLess(pvgis_saison[juillet], pvgis_hiver[juillet])
+        self.assertEqual(pvgis_saison[janvier], pvgis_hiver[janvier])
+        self.assertIsNone(hiver['hmt_mensuelle'])
+
+    def test_acal806_niveau_d_ete_sans_mois_erreur_nommee(self):
+        donnees = self._calepinage(dict(self.PUITS, niveau_statique_ete_m=45))
+        self.assertIn('mois_niveau_bas', donnees['erreurs'])
+        self.assertIsNone(donnees['hmt_mensuelle'])
+
+    def test_acal810_chaines_du_champ_contre_le_variateur(self):
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            resultat={'entree_electrique': {'module_produit': self.panneau.pk}})
+        base = {'hmt_saisie': self._preview()['hmt']['valeur_m'],
+                'debit_souhaite_m3h': 1}
+        sonde = self._calepinage(dict(base, modules_en_serie=1))['chaines_variateur']
+        longueur_max = sonde['fenetre']['longueur_max']
+        self.assertGreater(longueur_max, 1)
+        bloc = self._calepinage(dict(base, modules_en_serie=longueur_max))
+        self.assertEqual(bloc['chaines_variateur']['verdict'], 'conforme')
+        trop = self._calepinage(dict(base, modules_en_serie=longueur_max + 1))
+        self.assertEqual(trop['chaines_variateur']['verdict'], 'hors_fenetre')
+        longue = self._calepinage(dict(base, modules_en_serie=21))['chaines_variateur']
+        self.assertEqual(longue['verdict'], 'hors_fenetre')
+        self.assertEqual(longue['fenetre']['longueur_max'], longueur_max)
+        sans = self._calepinage(base)['chaines_variateur']
+        self.assertEqual(sans['verdict'], 'non_verifiable')
+        self.assertEqual(sans['motif'], 'nombre de modules par chaîne non saisi')
+        self.assertEqual(sans['champ'], 'modules_en_serie')
+
+    def test_acal810_module_non_designe_non_verifiable(self):
+        donnees = self._calepinage({'hmt_saisie': self._preview()['hmt']['valeur_m'],
+                                    'debit_souhaite_m3h': 1, 'modules_en_serie': 12})
+        bloc = donnees['chaines_variateur']
+        self.assertEqual(bloc['verdict'], 'non_verifiable')
+        self.assertIn('module PV non désigné', bloc['motif'])
+        self.assertEqual(set(bloc), set(CONTRAT_CALEPINAGE['exemple']['chaines_variateur']))
+
+    def _complet(self):
+        devis = self._preview()
+        return {'hmt_saisie': devis['hmt']['valeur_m'], 'debit_souhaite_m3h': 1,
+                'kwc': devis['champ']['kwc']}
+
+    def _stocke(self):
+        self.calepinage.refresh_from_db()
+        return (self.calepinage.resultat or {}).get('pompage_dernier')
+
+    def test_acal831_post_complet_enregistre_le_dernier_rendu(self):
+        donnees = self._calepinage(self._complet())
+        self.assertTrue(donnees['enregistre'])
+        self.assertIsNone(donnees['motif_non_enregistre'])
+        stocke = self._stocke()
+        self.assertEqual(set(stocke),
+                         set(CONTRAT_CALEPINAGE['exemple_enregistre']))
+        self.assertEqual(stocke['volumes'], donnees['volumes'])
+        self.assertNotIn('calepinage', stocke)
+        self.assertNotIn('erreurs', stocke)
+        self.assertNotIn('"prix', json.dumps(stocke))  # aucune clé « prix »
+        # un nouveau POST remplace le précédent
+        second = self._calepinage(dict(self._complet(), heures_pompage=5))
+        self.assertTrue(second['enregistre'])
+        self.assertEqual(self._stocke()['entrees']['heures_pompage'], 5.0)
+
+    def test_acal831_post_incomplet_n_ecrit_rien(self):
+        donnees = self._calepinage({'hmt_saisie': None})
+        self.assertFalse(donnees['enregistre'])
+        self.assertIn('debit_souhaite_m3h', donnees['motif_non_enregistre'])
+        self.assertIsNone(self._stocke())
+
+    def test_acal831_verrou_refuse_rien_ecrit_motif_mot_pour_mot(self):
+        from unittest import mock
+
+        from apps.calepinage.services.verrou import VerrouilleRefuse
+
+        motif = 'Devis accepté : révisez-le (nouvelle version).'
+        with mock.patch('apps.calepinage.services.verrou.verifier_ecriture_autorisee',
+                        side_effect=VerrouilleRefuse(motif, champ='pompage')):
+            donnees = self._calepinage(self._complet())
+        self.assertFalse(donnees['enregistre'])
+        self.assertEqual(donnees['motif_non_enregistre'], motif)
+        self.assertIsNotNone(donnees['volumes'])  # le calcul reste servi
+        self.assertIsNone(self._stocke())
+
+    def test_acal831_lecteur_seul_calcule_sans_enregistrer(self):
+        role = Role.objects.create(company=self.co, nom='Lecteur calepinage',
+                                   permissions=['calepinage_voir'])
+        lecteur = User.objects.create_user(
+            username='agr125_lecteur', password='x', company=self.co, role=role)
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(lecteur)}')
+        donnees = self._calepinage(self._complet())
+        self.assertFalse(donnees['enregistre'])
+        self.assertEqual(donnees['motif_non_enregistre'],
+                         'droit calepinage_gerer manquant')
+        self.assertIsNone(self._stocke())
+
     def test_corps_json_seul_multipart_415(self):
         """api-fuzz #997 : le schéma ne propose que JSON (un multipart ne sait
         pas porter ``null`` : « None » était lu comme texte → faux 400)."""

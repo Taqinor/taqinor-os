@@ -80,6 +80,9 @@ function registreDepuisServeur(liste) {
       reference: typeof ligne.reference === 'string' ? ligne.reference : '',
       type: typeof ligne.type === 'string' ? ligne.type : '',
       valeurs: Array.isArray(ligne.valeurs) ? ligne.valeurs.map(String) : null,
+      // ACAL770 — {valeur: motif} : acceptées à l'écriture, jamais honorées.
+      nonServies: ligne.valeurs_non_servies && typeof ligne.valeurs_non_servies === 'object'
+        ? ligne.valeurs_non_servies : null,
       minimum: typeof ligne.minimum === 'number' ? ligne.minimum : null,
       maximum: typeof ligne.maximum === 'number' ? ligne.maximum : null,
     })
@@ -208,7 +211,9 @@ function ChampValeur({ r, ligne, disabled, erreur, onChange }) {
     return (
       <select {...commun}>
         <option value="">— aucune —</option>
-        {options.map((v) => <option key={v} value={v}>{v}</option>)}
+        {options.map((v) => (r.nonServies?.[v]
+          ? <option key={v} value={v} disabled>{`${v} — indisponible`}</option>
+          : <option key={v} value={v}>{v}</option>))}
       </select>
     )
   }
@@ -270,6 +275,16 @@ function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
           />
         </label>
       </div>
+      {Object.entries(r.nonServies || {}).map(([valeur, motif]) => (
+        <p
+          key={valeur}
+          role="status"
+          data-testid={`acal770-motif-${r.cle}-${valeur}`}
+          className="mt-2 text-sm text-muted-foreground"
+        >
+          {ligne.valeurTexte === valeur ? `Valeur enregistrée — attention. ${motif}` : motif}
+        </p>
+      ))}
       {erreur && (
         <p
           id={`calx69-erreur-${r.cle}`}

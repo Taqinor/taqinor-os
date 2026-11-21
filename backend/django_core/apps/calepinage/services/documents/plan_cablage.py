@@ -54,7 +54,9 @@ câblage sans câblage est une feuille trompeuse.
 """
 from __future__ import annotations
 
+import math
 import re
+import textwrap
 from html import escape
 
 from ..planche import PlancheRefusee
@@ -139,6 +141,7 @@ def _modules_du_plan(roof_layout, geometrie):
     zones = [(rang, zone) for rang, zone in enumerate(
         brutes if isinstance(brutes, (list, tuple)) else [], start=1)
         if isinstance(zone, dict)]
+    from ..planche import coins_du_module
     from ..production import cle_de_module, cle_de_pan, numeros_des_modules
 
     modules = []
@@ -152,7 +155,10 @@ def _modules_du_plan(roof_layout, geometrie):
                             'pan': cle,
                             'centre': centre,
                             # ACAL263 — les cotes du module de CE pan.
-                            'module_m': pan.get('module_m')})
+                            'module_m': pan.get('module_m'),
+                            # ACAL605 — l'emprise VRAIE (planche, DXF) ou
+                            # ``None`` : le module est alors un cercle.
+                            'coins': coins_du_module(pan, centre)})
     return modules
 
 
@@ -269,11 +275,74 @@ def _lignes_de_chaine(entree):
     return [titre] + [_texte_entree(e) for e in entree['entrees']]
 
 
+#: ACAL643 — la légende des flèches : le sens de NUMÉROTATION des modules,
+#: jamais une polarité (l'ordre électrique d'une chaîne n'est pas publié).
+LEGENDE_SENS = 'sens de numérotation — la polarité se vérifie sur site'
+
+
+def _modules_par_chaine_ordonnes(plan):
+    """``{chaîne: [modules…]}`` dessinés, du plus petit au plus grand numéro.
+
+    Le numéro est celui du repère « <pan>#<n> » dans son pan ; les pans
+    gardent l'ordre du document, et un repère sans numéro lisible garde sa
+    position dans le document."""
+    pans = {}
+    ordonnes = {}
+    for position, module in enumerate(plan['modules']):
+        if module['chaine'] is None:
+            continue
+        numero = str(module['module']).rpartition('#')[2]
+        pan = pans.setdefault(module['pan'], len(pans))
+        ordonnes.setdefault(module['chaine'], []).append(
+            ((pan, int(numero) if numero.isdigit() else position), module))
+    return {chaine: [m for _cle, m in sorted(lot, key=lambda c: c[0])]
+            for chaine, lot in ordonnes.items()}
+
+
+def _chaines_a_fleche(plan):
+    """Les chaînes de plus d'un module dessiné : seules à porter une flèche
+    (et la légende du sens) ; rien sans toit dessiné."""
+    if not plan['geometrie'].get('etendue'):
+        return {}
+    return {chaine: modules for chaine, modules
+            in _modules_par_chaine_ordonnes(plan).items()
+            if len(modules) > 1}
+
+
+def _fleche_de_chaine(modules, couleur, vers_feuille):
+    """ACAL643 — la flèche d'une chaîne : une ligne brisée par les centres
+    de ses modules, du plus petit au plus grand numéro, dans la couleur de
+    la chaîne, et sa pointe sur le dernier. Aucun « + » ni « − »."""
+    from ..planche import TRAIT_PAN, _n
+
+    points = [vers_feuille(m['centre']) for m in modules]
+    (xa, ya), (xb, yb) = points[-2], points[-1]
+    longueur = math.hypot(xb - xa, yb - ya)
+    if longueur == 0:
+        return ''
+    ux, uy = (xb - xa) / longueur, (yb - ya) / longueur
+    taille = 2.4
+    base = (xb - ux * taille, yb - uy * taille)
+    pointe = ' '.join('%s,%s' % (_n(x), _n(y)) for x, y in (
+        (xb, yb),
+        (base[0] - uy * taille / 2, base[1] + ux * taille / 2),
+        (base[0] + uy * taille / 2, base[1] - ux * taille / 2)))
+    return ('<g class="fleche-chaine" data-chaine="%s">'
+            '<polyline points="%s" fill="none" stroke="%s" '
+            'stroke-width="%s" />'
+            '<polygon points="%s" fill="%s" /></g>'
+            % (escape(str(modules[0]['chaine']), quote=True),
+               ' '.join('%s,%s' % (_n(x), _n(y)) for x, y in points),
+               couleur, _n(TRAIT_PAN * 3), pointe, couleur))
+
+
 def _lignes_de_legende(plan):
     """Toutes les lignes de texte de la légende, dans l'ordre d'impression."""
     lignes = ['CHAÎNES']
     for entree in plan['legende']:
         lignes.extend(_lignes_de_chaine(entree))
+    if _chaines_a_fleche(plan):
+        lignes.append(LEGENDE_SENS)
     if plan['manuels']:
         lignes.append('× affectation manuelle : %s'
                       % _pluriel(plan['manuels'], 'module'))
@@ -282,6 +351,9 @@ def _lignes_de_legende(plan):
     if plan['non_dessines']:
         lignes.append('Affectés sans position posée (non dessinés) : %s'
                       % _pluriel(plan['non_dessines'], 'module'))
+    # ACAL673 — la consigne DC de la SOCIÉTÉ, mot pour mot ; vide : rien.
+    if plan.get('consigne_dc'):
+        lignes.append(plan['consigne_dc'])
     return lignes
 
 
@@ -298,16 +370,11 @@ def _verifier_legende_sans_montant(lignes):
 
 # ── Le SVG : la planche de toiture + la couche de câblage ──────────────────
 
-def _coins(centre, module_m):
-    demi_l, demi_c = module_m[0] / 2.0, module_m[1] / 2.0
-    return ((centre[0] - demi_l, centre[1] - demi_c),
-            (centre[0] + demi_l, centre[1] - demi_c),
-            (centre[0] + demi_l, centre[1] + demi_c),
-            (centre[0] - demi_l, centre[1] + demi_c))
+def _forme_de_module(module, vers_feuille):
+    """Un module : teinté par sa chaîne, ou en CONTOUR SEUL s'il n'en a pas.
 
-
-def _forme_de_module(module, vers_feuille, module_m):
-    """Un module : teinté par sa chaîne, ou en CONTOUR SEUL s'il n'en a pas."""
+    ACAL605 — l'emprise est ``module['coins']`` (``planche.coins_du_module``,
+    la même que la planche et le DXF)."""
     from ..planche import TRAIT_MODULE, _n
 
     affecte = module['chaine'] is not None
@@ -322,14 +389,14 @@ def _forme_de_module(module, vers_feuille, module_m):
     else:
         style = ('fill="none" stroke="%s" stroke-width="%s"'
                  % (COULEUR_NON_AFFECTE, _n(TRAIT_MODULE * 2)))
-    if module_m is None:
+    if module.get('coins') is None:
         # Emprise non SOURCÉE : le module est figuré par son centre, jamais
         # par un rectangle de taille plausible (règle de la planche).
         x, y = vers_feuille(module['centre'])
         return '<circle %s cx="%s" cy="%s" r="0.9" %s />' % (
             attributs, _n(x), _n(y), style)
     points = ' '.join('%s,%s' % tuple(_n(c) for c in vers_feuille(p))
-                      for p in _coins(module['centre'], module_m))
+                      for p in module['coins'])
     return '<polygon %s points="%s" %s />' % (attributs, points, style)
 
 
@@ -399,6 +466,13 @@ def _legende_svg(plan):
         blocs.append((_PAS_TITRE + _PAS_SOUS_LIGNE * (len(lignes) - 1),
                       chaine))
 
+    if _chaines_a_fleche(plan):
+        def sens(y):
+            return ('<text class="legende-sens" x="%s" y="%s" '
+                    'font-size="2.5" fill="%s">%s</text>'
+                    % (_n(x), _n(y), _GRIS_TEXTE, escape(LEGENDE_SENS)))
+        blocs.append((_PAS_SOUS_LIGNE + 1.0, sens))
+
     if plan['manuels']:
         texte_manuel = ('× affectation manuelle : %s'
                         % _pluriel(plan['manuels'], 'module'))
@@ -425,6 +499,18 @@ def _legende_svg(plan):
         morceaux.append('</g>')
         return ''.join(morceaux)
     blocs.append((hauteur_encart + 2.0, encart_svg))
+
+    consigne = textwrap.wrap(plan.get('consigne_dc') or '', 44)
+    if consigne:
+        def consigne_svg(y):
+            return ('<text class="consigne-dc" x="%s" y="%s" '
+                    'font-size="2.8" fill="%s">%s</text>' % (
+                        _n(x), _n(y), _NOIR, ''.join(
+                            '<tspan x="%s" dy="%s">%s</tspan>' % (
+                                _n(x), '0' if rang == 0 else _n(3.4),
+                                escape(ligne))
+                            for rang, ligne in enumerate(consigne))))
+        blocs.append((3.4 * len(consigne) + 2.0, consigne_svg))
 
     total = sum(hauteur for hauteur, _ in blocs)
     y = FORMAT_A3_MM[1] - MARGE_MM - total + 3.0
@@ -459,13 +545,14 @@ def _svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
     if geometrie.get('etendue'):
         vers_feuille, _echelle = _transformation(geometrie['etendue'])
         for module in plan['modules']:
-            couche.append(_forme_de_module(
-                module, vers_feuille,
-                module['module_m'] if 'module_m' in module
-                else geometrie.get('module_m')))
+            couche.append(_forme_de_module(module, vers_feuille))
         for module in plan['modules']:
             if module['manuel']:
                 couche.append(_marque_manuelle(module, vers_feuille))
+        couleurs = {e['chaine']: e['couleur'] for e in plan['legende']}
+        for chaine, modules in _chaines_a_fleche(plan).items():
+            couche.append(_fleche_de_chaine(modules, couleurs[chaine],
+                                            vers_feuille))
     couche.append('</g>')
     couche.append(_legende_svg(plan))
     # ACAL260 — un SVG empilé (toit + surfaces de pose) reçoit la couche dans
@@ -506,8 +593,25 @@ def _plan_du_calepinage(calepinage, *, affectation=None):
     """Le plan de câblage d'un ``Calepinage`` (affectation LUE si absente)."""
     if affectation is None:
         affectation = _affectation_publiee_du_calepinage(calepinage)
-    return _plan_de_cablage(getattr(calepinage, 'roof_layout', None),
+    plan = _plan_de_cablage(getattr(calepinage, 'roof_layout', None),
                             affectation)
+    plan['consigne_dc'] = _consigne_dc_de_societe(calepinage)
+    return plan
+
+
+def _consigne_dc_de_societe(calepinage):
+    """ACAL673 — la phrase que la SOCIÉTÉ a saisie dans ses réglages
+    (``electrique_societe.consigne_dc_plan_cablage``), ``''`` si vide : le
+    logiciel n'écrit jamais lui-même une consigne de sécurité."""
+    from ... import selectors
+
+    reglages = selectors.parametres_de_societe(
+        getattr(calepinage, 'company', None))
+    entree = (reglages.get('electrique_societe') or {}).get(
+        'consigne_dc_plan_cablage')
+    valeur = entree.get('valeur') if isinstance(entree, dict) else None
+    texte = valeur.get('texte') if isinstance(valeur, dict) else None
+    return texte.strip() if isinstance(texte, str) else ''
 
 
 def _rendre_plan_cablage_svg(calepinage, *, moment=None, affectation=None):

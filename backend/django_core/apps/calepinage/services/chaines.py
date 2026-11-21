@@ -192,6 +192,9 @@ class Conception:
     #: branches AC — l'UNIQUE indicateur de ce régime.
     micro_seul: bool = False
     _drapeaux: Tuple[str, ...] = field(default=(), repr=False)
+    #: ACAL650 — les clés stables des pans FUSIONNÉS en un groupe électrique
+    #: (un tuple par groupe de 2 pans ou plus) ; vide = aucun regroupement.
+    fusions: Tuple[Tuple[str, ...], ...] = ()
 
     @property
     def fiche_incomplete(self):
@@ -364,11 +367,50 @@ def _module_du_pan(pan):
                      pmax_wc=pmax)
 
 
-def _groupes_electriques(layout):
-    """Les ``GroupePan`` du noyau — UN groupe par pan, jamais deux mélangés ;
-    DEUX pour un pan est-ouest, un par face (ACAL139)."""
-    return tuple(groupe for pan in _pans_poses(layout)
-                 for groupe in _groupes_du_pan(pan))
+def _meme_orientation(a, b, tolerance_deg):
+    """ACAL650 — deux pans d'orientation CONNUE et égale à la tolérance
+    saisie près (azimut circulaire, inclinaison) ; est-ouest exclu."""
+    valeurs = (a.azimut_deg, b.azimut_deg, a.inclinaison_deg,
+               b.inclinaison_deg)
+    if tolerance_deg is None or a.est_ouest or b.est_ouest \
+            or a.module != b.module \
+            or not (a.source_orientation and b.source_orientation) \
+            or any(v is None for v in valeurs):
+        return False
+    ecart_azimut = abs((a.azimut_deg - b.azimut_deg + 180.0) % 360.0 - 180.0)
+    return (ecart_azimut <= tolerance_deg + 1e-9
+            and abs(a.inclinaison_deg - b.inclinaison_deg)
+            <= tolerance_deg + 1e-9)
+
+
+def fusions_de_pans(pans, tolerance_deg=None):
+    """ACAL650 — les pans regroupés par orientation, dans l'ordre du document
+    (sans tolérance saisie : un groupe par pan, comportement d'aujourd'hui)."""
+    groupes = []
+    for pan in pans:
+        tete = next((g for g in groupes
+                     if _meme_orientation(g[0], pan, tolerance_deg)), None)
+        if tete is None:
+            groupes.append([pan])
+        else:
+            tete.append(pan)
+    return groupes
+
+
+def _groupes_electriques(layout, tolerance_deg=None):
+    """Les ``GroupePan`` du noyau — UN groupe par pan ; DEUX pour un pan
+    est-ouest, un par face (ACAL139) ; ACAL650 : des pans de même orientation
+    à la tolérance SAISIE près forment un groupe, libellé du PREMIER pan."""
+    groupes = []
+    for fusion in fusions_de_pans(_pans_poses(layout), tolerance_deg):
+        tete = fusion[0]
+        if len(fusion) == 1:
+            groupes.extend(_groupes_du_pan(tete))
+            continue
+        groupes.append(GroupePan(
+            label=tete.label, nb_modules=sum(p.modules for p in fusion),
+            azimut_deg=tete.azimut_deg, inclinaison_deg=tete.inclinaison_deg))
+    return tuple(groupes)
 
 
 # ──────────────────────────────────────────────────────── fiches techniques
@@ -547,7 +589,8 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
                       zone_keraunique=False, inclure_prise_terre=False,
                       plafond_kwc_par_onduleur=None, regime=None,
                       batterie=False, batterie_designation='',
-                      batterie_kwh=None, batterie_v_nominal=None):
+                      batterie_kwh=None, batterie_v_nominal=None,
+                      tolerance_orientation_deg=None):
     """L'``EntreeElectrique`` du noyau, construite depuis le CALEPINAGE.
 
     Les températures viennent de CAL123 (``services.electrique``) : elles sont
@@ -560,7 +603,7 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
     """
     return EntreeElectrique(
         module=module, onduleur=onduleur,
-        groupes=_groupes_electriques(layout),
+        groupes=_groupes_electriques(layout, tolerance_orientation_deg),
         dc_m=float(dc_m or 0.0), ac_m=float(ac_m or 0.0),
         phases=int(phases or getattr(onduleur, 'phases', 1) or 1),
         temp_froid_c=temperatures.froid_c, temp_chaud_c=temperatures.chaud_c,
@@ -948,7 +991,9 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
         alertes=(tuple(resultat.alertes) + messages
                  + ((coeffs,) if coeffs else ())),
         regle_mppt=regle, partage_mppt=partage, temperatures=temperatures,
-        coefficients_non_sources=tuple(module.coefficients_non_sources))
+        coefficients_non_sources=tuple(module.coefficients_non_sources),
+        fusions=tuple(tuple(p.cle_stable for p in f) for f in fusions_de_pans(
+            pans, options.get('tolerance_orientation_deg')) if len(f) > 1))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1052,26 +1097,39 @@ def affectation(conception, *, imposee=None):
         repartitions_par_pan.setdefault(repartition.pan, []).append(
             repartition)
 
-    lignes = []
+    # ACAL650 — un groupe FUSIONNÉ : les chaînes du premier pan parcourent
+    # les modules de tous ses pans, chacun publié avec SON pan d'origine.
+    suite = {cle: [p for p in conception.pans if p.cle_stable in fusion]
+             for fusion in getattr(conception, 'fusions', ()) for cle in fusion}
+    par_pan = {}
     for pan in conception.pans:
-        par_rang = {}
+        groupe = suite.get(pan.cle_stable, [pan])
+        if groupe[0] is not pan:
+            continue
         for rangs, chaines in _rangs_par_groupe(
                 pan, chaines_par_pan.get(pan.label, ()),
                 repartitions_par_pan.get(pan.label, ())):
+            if len(groupe) > 1:
+                rangs = [(p, r) for p in groupe for r in range(1, p.modules + 1)]
             libres = iter(rangs)
             for chaine in chaines:
                 for _ in range(chaine.nb_modules):
                     rang_module = next(libres, None)
                     if rang_module is None:
                         break
-                    par_rang[rang_module] = {
-                        'module': pan.cle_module(rang_module),
-                        'pan': pan.label,
+                    sien, rang_module = (rang_module if len(groupe) > 1
+                                         else (pan, rang_module))
+                    par_pan.setdefault(sien.cle_stable, {})[rang_module] = {
+                        'module': sien.cle_module(rang_module),
+                        'pan': sien.label,
                         'chaine': _numero_chaine(chaine),
                         'onduleur': numero_onduleur,
                         'mppt': chaine.mppt,
                         'source': SOURCE_AUTO,
                     }
+    lignes = []
+    for pan in conception.pans:
+        par_rang = par_pan.get(pan.cle_stable, {})
         for rang_module in range(1, pan.modules + 1):
             lignes.append(par_rang.get(rang_module) or {
                 'module': pan.cle_module(rang_module),
@@ -1498,8 +1556,12 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
             chaines_par_mppt.setdefault(
                 (ligne['onduleur'], ligne['mppt']), set()).add(numero)
 
+    # ACAL650 — deux pans d'un même groupe FUSIONNÉ ne font qu'une surface.
+    groupe_de = {p.label: i for i, fusion in enumerate(
+        getattr(conception, 'fusions', ())) for p in conception.pans
+        if p.cle_stable in fusion}
     for numero, pans in sorted(pans_par_chaine.items()):
-        if len(pans) > 1:
+        if len({groupe_de.get(p, p) for p in pans}) > 1:
             refus.append(
                 "Chaîne %d : elle traverse les pans %s — une chaîne reste sur "
                 "UN pan." % (numero, ', '.join(sorted(pans))))

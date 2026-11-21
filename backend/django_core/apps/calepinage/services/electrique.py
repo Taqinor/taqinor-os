@@ -48,6 +48,9 @@ from core.electrique.types import (
     NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
     TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C, VerdictElectrique,
 )
+from .chaine_la_plus_faible import (  # noqa: F401 — ré-export (ACAL646)
+    METHODE_CHAINE_FAIBLE, MOTIF_CHAINE_FAIBLE_ABSENTE,
+    REFERENCE_CHAINE_FAIBLE, _chaine_la_plus_faible)
 from .valeurs import nombre as _nombre
 
 __all__ = [
@@ -462,57 +465,8 @@ BLOCS_SIMULATION = (
 #: La clé publiée dans ``resultat['electrique']`` — conditionnelle.
 CLE_CHAINE_FAIBLE = 'chaine_la_plus_faible'
 
-#: Comment la chaîne est désignée. Une COMPARAISON, pas un seuil : le plus mal
-#: exposé des modules mesurés du toit, rien de plus.
-METHODE_CHAINE_FAIBLE = (
-    'Chaîne qui porte le module le plus mal exposé du toit, désignée par '
-    "COMPARAISON des accès solaires du document (aucun seuil) — c'est un "
-    "signal de CÂBLAGE : aucun kWh n'en est dérivé.")
-
-#: La référence citée, et elle reste une citation — jamais un chiffre repris.
-REFERENCE_CHAINE_FAIBLE = (
-    'PV*SOL — ombrage module par module publié comme un signal de '
-    'configuration '
-    '(https://help.valentin-software.com/pvsol/en/pages/pv-modules/shading/)')
-
-MOTIF_CHAINE_FAIBLE_ABSENTE = (
-    "Aucune chaîne n'a d'accès solaire mesuré : la chaîne la plus faible en "
-    'ombrage n\'est pas désignée. Un module sans accès calculé n\'est pas un '
-    'module non ombré.')
-
-
-def _chaine_la_plus_faible(layout, table_affectation):
-    """``(bloc, motif)`` — la chaîne à regarder, ou l'absence MOTIVÉE.
-
-    Args:
-        layout: le document ``roof_layout`` v2, qui porte (ou non)
-            ``zones[].geometry.solarAccess.values``.
-        table_affectation: la table CAL125 réellement dimensionnée.
-
-    Returns:
-        ``(bloc, '')`` quand une chaîne est désignée, ``(None, motif)``
-        sinon. Le bloc porte la chaîne, son pan, le module fautif, son accès
-        solaire (fraction de 0 à 1, telle que le document la publie), l'écart
-        contre le module le mieux exposé, la méthode et la référence citée.
-    """
-    from .ombrage_chaines import ombrage_des_chaines
-
-    lecture = ombrage_des_chaines(layout, table_affectation)
-    if not lecture['mesure']:
-        return None, lecture['motif']
-    if not lecture['signalements']:
-        return None, MOTIF_CHAINE_FAIBLE_ABSENTE
-    pire = lecture['signalements'][0]
-    return {
-        'chaine': pire['chaine'],
-        'pan': pire['pan'],
-        'module': pire['module'],
-        'acces_solaire': pire['acces'],
-        'ecart': pire['ecart'],
-        'methode': METHODE_CHAINE_FAIBLE,
-        'reference': REFERENCE_CHAINE_FAIBLE,
-        'raison': pire['raison'],
-    }, ''
+# ACAL646 — la désignation (méthode, référence, motif) vit dans
+# ``services/chaine_la_plus_faible.py``, ré-importée en tête de module.
 
 
 #: Les blocs dont la forme est une LISTE PLATE (D-CALX 11). Quatre lecteurs
@@ -3701,6 +3655,17 @@ def _regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                 **_bloc_temperature(None),
             })
             continue
+        precision = nom
+        if cle_module == 'pmax_wc':
+            # ACAL646 — la puissance d'une entrée est celle de SES modules.
+            ratio = _nombre(_champ_de_fiche(optimiseur_specs,
+                                            CLE_MODULES_PAR_OPTIMISEUR))
+            if ratio is not None and ratio >= 2:
+                valeur *= int(ratio)
+                precision = '%s ; %d modules par entrée' % (nom, int(ratio))
+            elif ratio is None:
+                precision = ('%s ; un module comparé : modules par '
+                             'optimiseur non publié' % nom)
         conforme = valeur <= borne + 1e-9
         texte = (formateur(valeur) if formateur
                  else '%s %s' % (fr(valeur, 0), unite))
@@ -3712,7 +3677,7 @@ def _regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
             'source': 'fiche',
             'detail': '%s %s %s (%s)' % (
                 texte, 'sous' if conforme else 'AU-DESSUS DE', texte_borne,
-                nom),
+                precision),
             **_bloc_temperature(None),
         })
 

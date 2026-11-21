@@ -206,6 +206,50 @@ class GoldenTroisProjetsTest(SimpleTestCase):
                             for m in messages), messages)
 
 
+EXEMPLES = (pathlib.Path(__file__).resolve().parent.parent / 'exemples')
+NOMS_EXEMPLES = ('residentiel_pan_sud_15', 'ci_toit_plat_est_ouest_chassis',
+                 'champ_sol_sud')
+
+
+class ExemplesDeBibliothequeTest(SimpleTestCase):
+    """ACAL895 — les trois documents d'exemple sont de VRAIS documents
+    dessinables (contour + pans), jamais le dictionnaire ``PROJETS``."""
+
+    def _document(self, nom):
+        return json.loads(
+            (EXEMPLES / f'{nom}.json').read_text(encoding='utf-8'))
+
+    def test_valides_au_schema_et_decrivent_une_geometrie(self):
+        from apps.calepinage.services.io_layout import valider_document
+        from apps.calepinage.services.layout import (
+            layout_decrit_une_geometrie)
+
+        for nom in NOMS_EXEMPLES:
+            with self.subTest(exemple=nom):
+                document = self._document(nom)
+                valider_document(document)
+                self.assertTrue(layout_decrit_une_geometrie(document))
+
+    def test_ne_sont_pas_les_documents_sans_contour_du_golden(self):
+        for nom in NOMS_EXEMPLES:
+            with self.subTest(exemple=nom):
+                self.assertNotEqual(self._document(nom), PROJETS[nom])
+                self.assertGreaterEqual(len(self._document(nom)['outline']), 3)
+
+    def test_se_simulent(self):
+        for nom in NOMS_EXEMPLES:
+            with self.subTest(exemple=nom):
+                calepinage = _Calepinage(
+                    layout=self._document(nom), pertes=POSTES)
+                materiel = copy.deepcopy(MATERIEL)
+                materiel['onduleur']['ac_kw'] = 30.0
+                rendu = simuler_calepinage(
+                    calepinage, client=_ClientEnregistre(),
+                    materiel=materiel, reglages=_reglages(),
+                    enregistrer=False)
+                self.assertTrue(rendu['blocs'])
+
+
 def ecrire_le_golden():  # pragma: no cover — chemin « --write » seulement
     document = {
         '_provenance': {

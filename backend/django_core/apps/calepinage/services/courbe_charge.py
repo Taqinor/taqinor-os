@@ -744,6 +744,15 @@ def _charges_annuelles(declaration, points, contigues, avertissements):
                 '{type}).'.format(rang=rang + 1, type=type(charge).__name__),
                 champ='charges[{rang}]'.format(rang=rang))
         code = str(charge.get('type') or '').strip().lower()
+        if charge.get('deja_dans_les_factures') is True:
+            # ACAL779 (D-RES-2710) — déjà dans la conso des factures : la
+            # compter doublerait l'énergie. Ignorée et DITE, jamais refusée.
+            avertissements.append(
+                'La charge n°{rang} ({code}) est déjà comprise dans les '
+                'factures : elle est ignorée pour ne pas être comptée deux '
+                "fois (décochez la case pour l'ajouter).".format(
+                    rang=rang + 1, code=code or 'sans type'))
+            continue
         bloc, deja_annuelle = _bloc_de_charge(charge, points, contigues)
         mois_actifs, saisis = _mois_actifs(charge, code)
         courbe = _annualiser(bloc, points, mois_actifs, deja_annuelle)

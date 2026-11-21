@@ -191,7 +191,10 @@
           "valeurs": [
             "tmy",
             "pluriannuel"
-          ]
+          ],
+          "valeurs_non_servies": {
+            "tmy": "Année type : n'aboutit pas sans fichier — la météo PVGIS d'année type est à plat et n'est pas ramenée au plan des modules ; choisissez « pluriannuel », ou déposez un fichier météo d'année type sur le calepinage (onglet Séries)."
+          }
         },
         {
           "cle": "modele_iam",
@@ -203,7 +206,10 @@
             "fresnel",
             "ashrae",
             "martin_ruiz"
-          ]
+          ],
+          "valeurs_non_servies": {
+            "martin_ruiz": "Martin-Ruiz : pas encore pris en charge ; la simulation utilise Fresnel."
+          }
         },
         {
           "cle": "b0_iam",
@@ -448,6 +454,49 @@
             "erbs",
             "disc"
           ]
+        },
+        {
+          "cle": "rendement_specifique_min_kwh_kwc",
+          "libelle": "Rendement spécifique vraisemblable, borne basse",
+          "unite": "kWh/kWc",
+          "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "rendement_specifique_max_kwh_kwc",
+          "libelle": "Rendement spécifique vraisemblable, borne haute",
+          "unite": "kWh/kWc",
+          "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "seuil_acces_retrait",
+          "libelle": "Accès solaire sous lequel on propose de retirer un module",
+          "unite": "",
+          "reference": "HelioScope — Optimize shaded modules (https://help-center.helioscope.com/hc/en-us/articles/7835499970707-Optimize-shaded-modules) ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "cle": "ombrage_borne_courant_pct",
+          "libelle": "Perte d'ombrage à partir de laquelle on la dit courante",
+          "unite": "%",
+          "reference": "Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l'ombrage par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "ombrage_borne_importante_pct",
+          "libelle": "Perte d'ombrage à partir de laquelle on la dit importante",
+          "unite": "%",
+          "reference": "Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l'ombrage par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "electrique_societe": [
@@ -522,6 +571,45 @@
           "libelle": "Seuil bas du rapport DC/AC (onduleur sous-utilisé)",
           "unite": "",
           "reference": "OpenSolar — Inverter sizing and stringing recommendations",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "temperature_service_cable_c",
+          "libelle": "Température de service des câbles (résistivité de la chute de tension)",
+          "unite": "°C",
+          "reference": "Réglage société — aucune température de service n'est supposée",
+          "type": "nombre"
+        },
+        {
+          "cle": "alpha_cuivre_par_c",
+          "libelle": "Coefficient de température de la résistivité du cuivre (α)",
+          "unite": "1/°C",
+          "reference": "Réglage société — ρ(θ) = ρ20 × (1 + α × (θ − 20)), α cité de sa source",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "facteur_regroupement",
+          "libelle": "Facteur de regroupement appliqué au courant admissible des câbles",
+          "unite": "",
+          "reference": "Réglage société — facteur de l'installation (IEC 60364-5-52), jamais un défaut",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "cle": "consigne_dc_plan_cablage",
+          "libelle": "Consigne DC imprimée sur le plan de câblage",
+          "unite": "",
+          "reference": "Réglage société — texte saisi une fois, jamais écrit par le logiciel",
+          "type": "table"
+        },
+        {
+          "cle": "tolerance_orientation_pans_deg",
+          "libelle": "Tolérance d'orientation pour câbler une chaîne sur deux pans",
+          "unite": "°",
+          "reference": "PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée",
           "type": "nombre",
           "minimum": 0
         }
@@ -585,7 +673,10 @@
           "valeurs": [
             "tmy",
             "pluriannuel"
-          ]
+          ],
+          "valeurs_non_servies": {
+            "tmy": "Année type : n'aboutit pas sans fichier — la météo PVGIS d'année type est à plat et n'est pas ramenée au plan des modules ; choisissez « pluriannuel », ou déposez un fichier météo d'année type sur le calepinage (onglet Séries)."
+          }
         },
         {
           "cle": "modele_iam",
@@ -597,7 +688,10 @@
             "fresnel",
             "ashrae",
             "martin_ruiz"
-          ]
+          ],
+          "valeurs_non_servies": {
+            "martin_ruiz": "Martin-Ruiz : pas encore pris en charge ; la simulation utilise Fresnel."
+          }
         },
         {
           "cle": "b0_iam",
@@ -842,6 +936,49 @@
             "erbs",
             "disc"
           ]
+        },
+        {
+          "cle": "rendement_specifique_min_kwh_kwc",
+          "libelle": "Rendement spécifique vraisemblable, borne basse",
+          "unite": "kWh/kWc",
+          "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "rendement_specifique_max_kwh_kwc",
+          "libelle": "Rendement spécifique vraisemblable, borne haute",
+          "unite": "kWh/kWc",
+          "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "seuil_acces_retrait",
+          "libelle": "Accès solaire sous lequel on propose de retirer un module",
+          "unite": "",
+          "reference": "HelioScope — Optimize shaded modules (https://help-center.helioscope.com/hc/en-us/articles/7835499970707-Optimize-shaded-modules) ; aucune valeur proposée par défaut",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "cle": "ombrage_borne_courant_pct",
+          "libelle": "Perte d'ombrage à partir de laquelle on la dit courante",
+          "unite": "%",
+          "reference": "Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l'ombrage par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "ombrage_borne_importante_pct",
+          "libelle": "Perte d'ombrage à partir de laquelle on la dit importante",
+          "unite": "%",
+          "reference": "Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l'ombrage par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "electrique_societe": [
@@ -916,6 +1053,45 @@
           "libelle": "Seuil bas du rapport DC/AC (onduleur sous-utilisé)",
           "unite": "",
           "reference": "OpenSolar — Inverter sizing and stringing recommendations",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "temperature_service_cable_c",
+          "libelle": "Température de service des câbles (résistivité de la chute de tension)",
+          "unite": "°C",
+          "reference": "Réglage société — aucune température de service n'est supposée",
+          "type": "nombre"
+        },
+        {
+          "cle": "alpha_cuivre_par_c",
+          "libelle": "Coefficient de température de la résistivité du cuivre (α)",
+          "unite": "1/°C",
+          "reference": "Réglage société — ρ(θ) = ρ20 × (1 + α × (θ − 20)), α cité de sa source",
+          "type": "nombre",
+          "minimum": 0
+        },
+        {
+          "cle": "facteur_regroupement",
+          "libelle": "Facteur de regroupement appliqué au courant admissible des câbles",
+          "unite": "",
+          "reference": "Réglage société — facteur de l'installation (IEC 60364-5-52), jamais un défaut",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "cle": "consigne_dc_plan_cablage",
+          "libelle": "Consigne DC imprimée sur le plan de câblage",
+          "unite": "",
+          "reference": "Réglage société — texte saisi une fois, jamais écrit par le logiciel",
+          "type": "table"
+        },
+        {
+          "cle": "tolerance_orientation_pans_deg",
+          "libelle": "Tolérance d'orientation pour câbler une chaîne sur deux pans",
+          "unite": "°",
+          "reference": "PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée",
           "type": "nombre",
           "minimum": 0
         }

@@ -446,6 +446,9 @@ class ParametresCalepinageView(APIView):
                 # ENF11 — clé d'objet interdite : inexprimable au schéma → 409.
                 return Response({refus.champ or 'detail': str(refus)},
                                 status=status.HTTP_409_CONFLICT)
+            if getattr(refus, 'erreurs', None):  # ACAL947 — toutes, d'un coup
+                return Response(refus.erreurs,
+                                status=status.HTTP_400_BAD_REQUEST)
             if getattr(refus, 'section', ''):
                 return Response({refus.section: {refus.champ: str(refus)}},
                                 status=status.HTTP_400_BAD_REQUEST)

@@ -147,7 +147,8 @@ ROUTES_HORS_VERROU = {
                                'rien d\'écrit)',
     ('POST', 'consommation/proposer'): 'proposition de consommation '
                                        '(lecture calculée)',
-    ('POST', 'pompage'): 'proposition de pompage (lecture calculée)',
+    ('POST', 'pompage'): 'calcul + enregistrement du dernier dimensionnement, '
+                         'jamais 409 (verrou lu par la vue : enregistre false)',
     ('POST', 'detection-toit'): 'proposition de toit par IA à confirmer '
                                 "(rien d'écrit, ACAL485)",
 }

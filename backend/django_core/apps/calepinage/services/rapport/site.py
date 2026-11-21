@@ -47,7 +47,7 @@ from __future__ import annotations
 
 from html import escape
 
-from . import nombre_tel_que_servi
+from . import nombre_tel_que_servi, valeur_imprimable
 from ..note_calcul import _source_lisible
 from ..site import SOURCE_PVGIS, fuseau_du_site
 
@@ -169,6 +169,50 @@ def _detail_fichier(base, meteo):
     return (' — %s' % qui if qui else '') + (' (%s)' % nom if nom else '')
 
 
+#: ACAL760 — code de modèle servi -> nom lisible (la seule correspondance
+#: écrite ici ; un code inconnu s'imprime tel que servi, jamais deviné).
+_NOM_MODELE = {
+    'fresnel': 'Fresnel', 'ashrae': 'ASHRAE', 'martin_ruiz': 'Martin-Ruiz',
+    'faiman': 'Faiman', 'noct': 'NOCT', 'isotropic': 'Liu et Jordan',
+    'haydavies': 'Hay et Davies', 'perez': 'Perez',
+}
+
+
+def _modele_nomme(code, reference):
+    nom = escape(_NOM_MODELE.get(code, str(code)))
+    return _avec_source(nom, escape(str(reference))) if reference else nom
+
+
+def _modele_d_etape(cascade, code_etape):
+    """Le modèle NOMMÉ par l'étape ``code_etape`` de la cascade — « non
+    appliquée » avec son motif si elle est omise, « non nommé » sinon."""
+    etape = next((e for e in (cascade or {}).get('etapes') or ()
+                  if isinstance(e, dict) and e.get('etape') == code_etape),
+                 None)
+    if etape is None:
+        return 'non nommé'
+    if etape.get('kwh_apres') is None and etape.get('motif_omission'):
+        return 'non appliquée — %s' % escape(str(etape['motif_omission']))
+    entree = etape.get('entree')
+    if not isinstance(entree, dict) or not entree.get('modele'):
+        return 'non nommé'
+    return _modele_nomme(entree['modele'], etape.get('reference'))
+
+
+def _transposition(meteo):
+    bloc = meteo.get('transposition')
+    if not isinstance(bloc, dict) or not bloc.get('modele'):
+        return ("Non nommée : l'irradiance sur le plan vient de la source "
+                "météo")
+    albedo = bloc.get('albedo') or {}
+    detail = _modele_nomme(bloc['modele'], bloc.get('reference'))
+    if albedo.get('valeur') is not None:
+        detail += ' <span class="detail">albédo %s (%s)</span>' % (
+            valeur_imprimable(albedo['valeur']),
+            escape(str(albedo.get('source') or 'source non renseignée')))
+    return detail
+
+
 def html_de_section(contexte):
     """Le corps de la section ``site_meteo`` (le titre est posé par
     l'assembleur)."""
@@ -212,6 +256,15 @@ def html_de_section(contexte):
     horizon = _horizon_disponible(meteo)
     if horizon is not None:
         lignes.append(_ligne("Profil d'horizon", _ligne_horizon(horizon)))
+
+    # ACAL760 — les modèles employés, nommés tels que servis, jamais supposés.
+    cascade = resultat.get('cascade')
+    lignes.append(_ligne("Modèle d'incidence (IAM)",
+                         _modele_d_etape(cascade, 'iam')))
+    lignes.append(_ligne('Température des cellules',
+                         _modele_d_etape(cascade, 'thermique')))
+    lignes.append(_ligne('Transposition vers le plan des modules',
+                         _transposition(meteo)))
 
     table = '<table class="site-meteo generique">%s</table>' % ''.join(lignes)
     if horizon is None:

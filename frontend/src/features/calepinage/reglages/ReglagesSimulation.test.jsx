@@ -511,3 +511,39 @@ describe('ACAL397 — « ce qui manque » → /calepinage/reglages#norme : le ch
     expect(corps.norme_electrique.coefficients).toEqual(servi.data.norme_electrique.coefficients)
   })
 })
+
+describe('ACAL770 — les valeurs que le serveur ne sait pas honorer sont grisées avec leur motif', () => {
+  it('« tmy » et « martin_ruiz » : options désactivées « — indisponible », motif visible', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    const optionTmy = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
+      .find((o) => o.value === 'tmy')
+    expect(optionTmy.disabled).toBe(true)
+    expect(optionTmy.textContent).toBe('tmy — indisponible')
+    const optionPluri = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
+      .find((o) => o.value === 'pluriannuel')
+    expect(optionPluri.disabled).toBe(false)
+
+    const motif = screen.getByTestId('acal770-motif-mode_meteo-tmy')
+    expect(motif).toHaveAttribute('role', 'status')
+    expect(motif).toHaveTextContent('n\'aboutit pas sans fichier')
+    const optionMartin = Array.from(champValeur('modele_iam').querySelectorAll('option'))
+      .find((o) => o.value === 'martin_ruiz')
+    expect(optionMartin.disabled).toBe(true)
+    expect(screen.getByTestId('acal770-motif-modele_iam-martin_ruiz')).toHaveTextContent('Fresnel')
+    // une ligne sans valeur non servie ne change pas
+    expect(screen.queryByTestId('acal770-motif-attenuation_horizon-true')).toBeNull()
+  })
+
+  it('une valeur déjà enregistrée reste affichée et son motif devient un avertissement', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage')
+    servi.data.simulation.mode_meteo = { valeur: 'tmy', source: 'societe', reference: '' }
+    mocks.getParametres.mockResolvedValue(servi)
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(champValeur('mode_meteo').value).toBe('tmy')
+    expect(screen.getByTestId('acal770-motif-mode_meteo-tmy')).toHaveTextContent('Valeur enregistrée')
+  })
+})

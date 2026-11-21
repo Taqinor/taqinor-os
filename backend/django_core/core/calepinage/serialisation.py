@@ -189,14 +189,19 @@ def _zone_depuis(d):
 
 
 def _kit(k):
-    return {"code": k.code, "libelle": k.libelle,
-            "module_long_m": k.module_long_m,
-            "module_court_m": k.module_court_m,
-            "puissance_module_wc": k.puissance_module_wc,
-            "inclinaison_deg": k.inclinaison_deg,
-            "orientation": k.orientation.value,
-            "modules_par_table": k.modules_par_table,
-            "faitage_m": k.faitage_m}
+    document = {"code": k.code, "libelle": k.libelle,
+                "module_long_m": k.module_long_m,
+                "module_court_m": k.module_court_m,
+                "puissance_module_wc": k.puissance_module_wc,
+                "inclinaison_deg": k.inclinaison_deg,
+                "orientation": k.orientation.value,
+                "modules_par_table": k.modules_par_table,
+                "faitage_m": k.faitage_m}
+    if k.est_chassis or k.jeu_entre_rangs_m is not None:  # ACAL581
+        document.update(rangs_par_table=k.rangs_par_table,
+                        modules_par_rang=k.modules_par_rang,
+                        jeu_entre_rangs_m=k.jeu_entre_rangs_m)
+    return document
 
 
 def _kit_depuis(d):
@@ -207,7 +212,10 @@ def _kit_depuis(d):
                inclinaison_deg=d["inclinaison_deg"],
                orientation=OrientationModule(d["orientation"]),
                modules_par_table=d.get("modules_par_table", 2),
-               faitage_m=d.get("faitage_m", 0.0))
+               faitage_m=d.get("faitage_m", 0.0),
+               rangs_par_table=d.get("rangs_par_table", 1),
+               modules_par_rang=d.get("modules_par_rang", 1),
+               jeu_entre_rangs_m=d.get("jeu_entre_rangs_m"))
 
 
 def _parametres(p):

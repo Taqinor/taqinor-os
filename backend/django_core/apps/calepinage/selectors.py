@@ -213,6 +213,10 @@ def calepinages_ouverts_du_lead(company, lead_id):
 #: ACAL196 — « CAL-AAMM-NNNN » : le numéro à la fin est l'identifiant.
 _REFERENCE_AFFICHEE = re.compile(r'^CAL-(?:\d{4}-)?(\d{1,18})$',
                                  re.IGNORECASE)
+#: ACAL948 — le titre de repli « Calepinage #12 » (ou « #12 ») : égalité sur le
+#: numéro, jamais en sous-chaîne (« #12 » ne remonte ni le 112 ni le 120).
+_TITRE_DE_REPLI = re.compile(r'^(?:calepinage\s*)?#\s*(\d{1,18})$',
+                             re.IGNORECASE)
 
 
 def _condition_recherche(terme, company, user=None):
@@ -227,6 +231,9 @@ def _condition_recherche(terme, company, user=None):
     reference = _REFERENCE_AFFICHEE.match(terme)
     if reference:
         condition |= Q(pk=int(reference.group(1)))
+    repli = _TITRE_DE_REPLI.match(terme)
+    if repli:  # ACAL948 — seul un calepinage SANS titre s'affiche ainsi
+        condition |= Q(pk=int(repli.group(1)), titre='')
     if company is not None:
         from apps.crm.selectors import rechercher_leads_minimal
 
@@ -278,6 +285,8 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
         lignes = lignes.filter(_condition_recherche(terme, company, user))
     if not inclure_archives:
         lignes = lignes.filter(**_CONDITION_ACTIF)
+    # ACAL895 — un modèle d'EXEMPLE n'est jamais compté (liste, KPI, API).
+    lignes = lignes.filter(exemple=False)
     return lignes.order_by('-created_at', '-id')
 
 
@@ -363,6 +372,8 @@ def comparer_variantes(calepinage):
     * aucune grandeur n'est recalculée ici : tout est LU dans le ``resultat``
       déposé par le moteur. Ce comparatif compare, il ne calcule pas.
     """
+    from .services.comparaison import hypotheses_comparees
+
     lignes = list(variantes(calepinage))
     retenue = next((v for v in lignes if v.retenue), None)
     reference = _mesures_variante(retenue) if retenue is not None else {}
@@ -383,6 +394,10 @@ def comparer_variantes(calepinage):
         'lignes': [_ligne_comparaison(v, reference, len(lignes),
                                       reference_p50=reference_p50)
                    for v in lignes],
+        # ACAL883 — mêmes hypothèses de pertes et de météo ? (simulées seules)
+        'hypotheses': hypotheses_comparees({
+            v.pk: v.resultat for v in lignes
+            if _production_comparee(v)[0]}),
     }
 
 
@@ -430,6 +445,34 @@ def _production_comparee(variante):
     return colonnes_production(
         resultat if isinstance(resultat, dict) else {},
         perimee=simulation_perimee_de_la_variante(variante))
+
+
+def _module_de_la_variante(variante):
+    """ACAL595 — le module que désignent les pans de la variante.
+
+    ``{id, libelle, pmax_wc, longueur_mm, largeur_mm}`` quand tous les pans
+    désignent le MÊME module (résolu par ``io_layout.module_du_pan``, seule
+    résolution du renvoi), ``{'mixte': True}`` quand ils diffèrent (un pan
+    sans module compte comme différent), ``None`` quand aucun pan n'en
+    désigne. Une cote absente de la fiche vaut ``None``. Rien n'est recalculé.
+    """
+    from .services.io_layout import module_du_pan
+
+    document = getattr(variante, 'roof_layout', None)
+    zones = document.get('zones') if isinstance(document, dict) else None
+    designes = [
+        module_du_pan(document, zone) for zone in zones or []
+        if isinstance(zone, dict) and isinstance(zone.get('geometry'), dict)]
+    identifiants = {m.get('id') if m else None for m in designes}
+    if identifiants <= {None}:
+        return None
+    if len(identifiants) > 1:
+        return {'mixte': True}
+    module = next(m for m in designes if m)
+    return {'id': module.get('id'), 'libelle': module.get('libelle'),
+            'pmax_wc': module.get('pmaxWc'),
+            'longueur_mm': module.get('longueurMm'),
+            'largeur_mm': module.get('largeurMm')}
 
 
 def _ligne_comparaison(variante, reference, nombre_de_lignes,
@@ -486,6 +529,7 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes,
         # ACAL172 — le verdict électrique de LA variante (contrat
         # calepinage_publication_electrique.json, ligne de comparer/).
         'verdict_electrique': verdict_electrique_de_la_variante(variante),
+        'module': _module_de_la_variante(variante),  # ACAL595
     }
 
 
@@ -1111,7 +1155,9 @@ def registre_des_reglages():
     ``parametres_cles.TYPES_CLES`` : l'écran saisit dans le type que le PUT
     validera, sans le redéclarer.
     """
-    from .services.parametres_cles import REGISTRES, type_de_cle
+    from .services.parametres_cles import (
+        REGISTRES, VALEURS_NON_SERVIES, type_de_cle,
+    )
 
     def _ligne(section, cle, libelle, unite, reference):
         ligne = {'cle': cle, 'libelle': libelle, 'unite': unite,
@@ -1123,6 +1169,9 @@ def registre_des_reglages():
                 ligne[borne] = typage[borne]
         if typage.get('valeurs'):
             ligne['valeurs'] = list(typage['valeurs'])
+        non_servies = VALEURS_NON_SERVIES.get(section, {}).get(cle)
+        if non_servies:  # ACAL770
+            ligne['valeurs_non_servies'] = dict(non_servies)
         return ligne
 
     return {

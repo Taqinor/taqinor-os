@@ -78,18 +78,7 @@ def hmt_du_puits(*, hmt_saisie=None, debit_m3h=None, niveau_statique_m=None,
     ``{hmt_m, source, composantes, debit_convergence_m3h, iterations}`` plus
     ``manquantes`` et ``alertes`` (lues par la vue, retirées de la réponse).
     """
-    resultat = hmt_composantes(
-        hmt_saisie=hmt_saisie, debit_m3h=debit_m3h,
-        niveau_dynamique_m=niveau_dynamique_m,
-        niveau_statique_m=niveau_statique_m,
-        rabattement_specifique_m_par_m3h=coefficient_rabattement_m_par_m3h,
-        denivele_m=denivele_m if denivele_m is not None else hauteur_refoulement_m,
-        longueur_conduite_m=longueur_tuyauterie_m,
-        diametre_interieur_mm=diametre_interieur_mm,
-        materiau_conduite=materiau_conduite, c_hazen_williams=c_hazen_williams,
-        coefficient_frottement=coefficient_frottement,
-        pertes_singulieres_m=pertes_singulieres_m,
-        pression_service_bar=pression_service_bar)
+    resultat = hmt_composantes(**parametres_hmt_du_puits(**locals()))
     calculee = resultat['source'] == 'calculee'
     return {
         'hmt_m': resultat['valeur_m'],
@@ -102,6 +91,26 @@ def hmt_du_puits(*, hmt_saisie=None, debit_m3h=None, niveau_statique_m=None,
     }
 
 
+def parametres_hmt_du_puits(**saisie):
+    """La saisie de l'écran (champs de :func:`hmt_du_puits`) traduite en
+    paramètres de ``hmt_composantes`` — UNE correspondance pour
+    :func:`hmt_du_puits` et ``core.pompage.hydraulique.hmt_mensuelle`` (ACAL806)."""
+    denivele = saisie.get('denivele_m')
+    return dict(
+        hmt_saisie=saisie.get('hmt_saisie'), debit_m3h=saisie.get('debit_m3h'),
+        niveau_dynamique_m=saisie.get('niveau_dynamique_m'),
+        niveau_statique_m=saisie.get('niveau_statique_m'),
+        rabattement_specifique_m_par_m3h=saisie.get('coefficient_rabattement_m_par_m3h'),
+        denivele_m=denivele if denivele is not None else saisie.get('hauteur_refoulement_m'),
+        longueur_conduite_m=saisie.get('longueur_tuyauterie_m'),
+        diametre_interieur_mm=saisie.get('diametre_interieur_mm'),
+        materiau_conduite=saisie.get('materiau_conduite'),
+        c_hazen_williams=saisie.get('c_hazen_williams'),
+        coefficient_frottement=saisie.get('coefficient_frottement'),
+        pertes_singulieres_m=saisie.get('pertes_singulieres_m'),
+        pression_service_bar=saisie.get('pression_service_bar'))
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # AGR125 — les 12 volumes par le MÊME calcul que le devis (AGR114).
 # ═══════════════════════════════════════════════════════════════════════════
@@ -109,7 +118,8 @@ def hmt_du_puits(*, hmt_saisie=None, debit_m3h=None, niveau_statique_m=None,
 def volumes_mensuels(*, debit_hmt_m3h, pumping_hours=None, courbe_pompe=None,
                      hmt_m=None, kwc=None, p_plaque_kw=None, rendement_mppt=None,
                      salissure_pct=None, profils_horaires=None,
-                     source_irradiation=None, jours_par_mois=None):
+                     source_irradiation=None, jours_par_mois=None,
+                     hmt_m_mois=None):
     """AGR125 — 12 volumes mensuels : production PHYSIQUE + calcul plat.
 
     ``m3_mois_pvgis`` porte désormais la production PHYSIQUE de
@@ -140,7 +150,8 @@ def volumes_mensuels(*, debit_hmt_m3h, pumping_hours=None, courbe_pompe=None,
         production = production_mensuelle(
             kwc=kwc, profils_horaires=profils_horaires,
             courbe_pompe=courbe_pompe, hmt_m=hmt_m, p_plaque_kw=p_plaque_kw,
-            rendement_mppt=rendement_mppt, salissure_pct=salissure_pct)
+            rendement_mppt=rendement_mppt, salissure_pct=salissure_pct,
+            hmt_m_mois=hmt_m_mois)
         journaliers = production['m3_jour_mois']
         if journaliers is None or production['source_irradiation'] != 'pvgis':
             warnings.append(production['motif']

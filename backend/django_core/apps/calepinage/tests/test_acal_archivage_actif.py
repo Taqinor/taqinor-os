@@ -289,3 +289,68 @@ class ArchivageActifTest(BaseApiCalepinage):
                                    client_id=self.client_a.pk)
         self.assertEqual(refus.exception.champ, 'modele')
         self.assertEqual(Calepinage.objects.count(), avant)
+
+
+class ExemplesDeBibliothequeTest(BaseApiCalepinage):
+    """ACAL895 (D-ACAL-42) — trois modèles « Exemple », semés une fois,
+    jamais comptés."""
+
+    def _semer(self, *options):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        sortie = StringIO()
+        call_command('semer_exemples_calepinage', '--societe',
+                     str(self.company.pk), *options, stdout=sortie)
+        return sortie.getvalue()
+
+    def test_dry_run_ne_cree_rien(self):
+        self._semer()
+        self.assertEqual(Calepinage.objects.filter(exemple=True).count(), 0)
+
+    def test_semis_deux_fois_trois_modeles_sans_rattachement(self):
+        self._semer('--apply')
+        self._semer('--apply')
+        exemples = Calepinage.objects.filter(company=self.company,
+                                             exemple=True)
+        self.assertEqual(exemples.count(), 3)
+        for calepinage in exemples:
+            self.assertIsNone(calepinage.lead_id)
+            self.assertIsNone(calepinage.client_id)
+            self.assertIsNone(calepinage.devis_id)
+            self.assertIsNone(calepinage.cree_par_id)
+            self.assertTrue(calepinage.titre.startswith('Exemple — '))
+            self.assertTrue(calepinage.roof_layout)
+        self.assertEqual(calepinages_modeles(self.company).count(), 3)
+
+    def test_aucune_liste_ni_kpi_ne_les_compte(self):
+        self._semer('--apply')
+        self.assertEqual(
+            selectors.liste_calepinages(self.company).count(), 0)
+        self.assertEqual(self._ids_liste_http(), set())
+
+    def _ids_liste_http(self):
+        reponse = self.api.get(URL)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        lignes = reponse.data
+        if isinstance(lignes, dict):
+            lignes = lignes.get('results', [])
+        return {ligne['id'] for ligne in lignes}
+
+    def test_la_bibliotheque_sert_le_drapeau_exemple_en_lecture_seule(self):
+        self._semer('--apply')
+        reponse = self.api.get(f'{URL}modeles/')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual([m['exemple'] for m in reponse.data],
+                         [True, True, True])
+
+    def test_creer_depuis_un_exemple_donne_une_copie_non_exemple(self):
+        self._semer('--apply')
+        modele = Calepinage.objects.filter(exemple=True).first()
+        copie = creer_depuis_modele(modele, user=self.user,
+                                    client_id=self.client_a.pk)
+        self.assertFalse(copie.exemple)
+        self.assertEqual(copie.client_id, self.client_a.pk)
+        self.assertIn(copie.pk, {c.pk for c in
+                                 selectors.liste_calepinages(self.company)})

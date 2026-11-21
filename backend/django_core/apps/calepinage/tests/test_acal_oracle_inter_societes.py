@@ -185,3 +185,26 @@ class OracleInterSocietesTest(TestCase):
         self.assertIsNone(entree['module_produit'])
         entree = enregistrer_entree(self.calepinage, {'onduleur_produit': ''})
         self.assertEqual(entree['onduleur_produit'], '')
+
+    # ── évaluation à chaud : mêmes produits désignés (ACAL615) ─────────
+    def _a_chaud(self, champ):
+        return lambda pk: self.api.post(
+            f'{URL}{self.calepinage.pk}/evaluer-electrique/',
+            {'entree_electrique': {champ: pk}}, format='json')
+
+    def test_evaluer_electrique_produit_etranger_a_chaud_comme_absent(self):
+        avant = self._instantane()
+        for champ in ('module_produit', 'onduleur_produit',
+                      'optimiseur_produit'):
+            with self.subTest(champ=champ):
+                r = self._paire(self._a_chaud(champ), self.produit_voisin.pk,
+                                statut=404)
+                self.assertEqual(_champs(r.data), [champ])
+                # Le MÊME corps qu'``entree-electrique``.
+                ref = self._entree(champ)(self.produit_voisin.pk)
+                self.assertEqual(_normalise(r.data, self.produit_voisin.pk),
+                                 _normalise(ref.data, self.produit_voisin.pk))
+        r = self._a_chaud('onduleur_produit')('abc')
+        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(_champs(r.data), ['onduleur_produit'])
+        self.assertEqual(self._instantane(), avant)

@@ -365,7 +365,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         'entree_electrique': [JSONParser], 'etiquettes': [JSONParser],
         'fixation': [JSONParser], 'variantes': [JSONParser],
         'schema_unifilaire': [JSONParser], 'releve': [JSONParser],
-        'releve_detail': [JSONParser], 'releve_visite': [JSONParser]}
+        'releve_detail': [JSONParser], 'releve_visite': [JSONParser],
+        'variantes_par_module': [JSONParser]}
 
     #: CALX347 — la décision d'approbation exige ``calepinage_approuver``, pas
     #: ``calepinage_gerer`` : un porteur de GÉRER seul n'y a pas droit, et un
@@ -1296,6 +1297,7 @@ def contexte_conception(calepinage, request=None):
     from apps.ventes.selectors import config_carte  # ACAL282 — lecture unique
 
     from .. import selectors as cal_selectors
+    from ..services.consommation import facture_mensuelle_du_lead
 
     company = getattr(calepinage, 'company', None)
     devis = _devis_lie_de(calepinage, company)
@@ -1362,6 +1364,9 @@ def contexte_conception(calepinage, request=None):
         'natures_zones': list(natures_admises()),
         'variante': ({'id': variante.pk, 'nom': variante.nom,
                       'devis': variante.devis_id} if variante else None),
+        # ACAL776 — la facture mensuelle moyenne du lead (lecture pure).
+        'consommation_lead': facture_mensuelle_du_lead(
+            company, getattr(calepinage, 'lead_id', None)),
     }
 
 

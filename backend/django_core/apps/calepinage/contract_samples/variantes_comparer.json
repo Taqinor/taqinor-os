@@ -7,6 +7,20 @@
     "retenue_id": 11,
     "reference_modules": 12,
     "introuvables": [],
+    "hypotheses": {
+      "identiques": false,
+      "comparees": 2,
+      "differences": [
+        {
+          "cle": "fenetre_annees",
+          "libelle": "Fenêtre d'années météo",
+          "valeurs": {
+            "11": "2020-2021 (source : societe)",
+            "12": "2015-2020 (source : societe)"
+          }
+        }
+      ]
+    },
     "lignes": [
       {
         "id": 11,
@@ -66,6 +80,7 @@
         "entree_hash": "abababababababababababababababababababababababababababababababab",
         "simulation_perimee": false,
         "source_mesures": "simulation",
+        "module": {"id": "produit-4112", "libelle": "Module monocristallin 580 Wc (exemple)", "pmax_wc": 580.0, "longueur_mm": 2278.0, "largeur_mm": 1134.0},
         "verdict_electrique": {
           "verdict": "conforme",
           "bloquants": []
@@ -129,6 +144,7 @@
         "entree_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
         "simulation_perimee": true,
         "source_mesures": "simulation",
+        "module": {"mixte": true},
         "verdict_electrique": {
           "verdict": "conforme",
           "bloquants": []
@@ -176,6 +192,7 @@
         "entree_hash": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
         "simulation_perimee": null,
         "source_mesures": "conception",
+        "module": null,
         "verdict_electrique": {
           "verdict": "conforme",
           "bloquants": []
@@ -188,6 +205,11 @@
     "retenue_id": 21,
     "reference_modules": 12,
     "introuvables": [],
+    "hypotheses": {
+      "identiques": null,
+      "comparees": 0,
+      "differences": []
+    },
     "lignes": [
       {
         "id": 21,
@@ -231,6 +253,7 @@
         "entree_hash": "abababababababababababababababababababababababababababababababab",
         "simulation_perimee": null,
         "source_mesures": "conception",
+        "module": null,
         "verdict_electrique": {
           "verdict": "conforme",
           "bloquants": []

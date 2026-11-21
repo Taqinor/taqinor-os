@@ -64,6 +64,7 @@ PAR_PROPRIETAIRE = {
         'STATUT_RECALCULABLE', 'comparaison_calepinage_devis',
         'config_carte', 'SECTIONS_ATELIER_3D', '_reglages_atelier',
         'devis_concevables', 'contexte_conception_devis',
+        'compatibilite_du_materiel',  # ACAL901
     ],
     # SPL145 → selectors_cadence.py (9 + DECLENCHEUR_PEREMPTION_JOURS)
     'cadence': [
@@ -160,7 +161,7 @@ class SurfaceSelectorsVentes(SimpleTestCase):
     def test_comptes_par_proprietaire(self):
         comptes = {p: len(n) for p, n in PAR_PROPRIETAIRE.items()}
         self.assertEqual(comptes, {
-            'facturation': 28, 'calepinage': 13, 'cadence': 10,
+            'facturation': 28, 'calepinage': 14, 'cadence': 10,
             'publicite': 9, 'portail': 8, 'stock': 6})
         tous = [n for noms in PAR_PROPRIETAIRE.values() for n in noms]
         self.assertEqual(len(tous), len(set(tous)))

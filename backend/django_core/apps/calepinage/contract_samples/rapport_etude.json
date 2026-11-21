@@ -13,6 +13,17 @@
         "motif_si_absent": "La page de garde s'imprime toujours : une mention absente y est barrée « non renseigné », jamais inventée."
       },
       {
+        "code": "synthese",
+        "titre": "Synthèse",
+        "ordre": 15,
+        "obligatoire": false,
+        "entrees_exigees": [
+          "pose.kwc",
+          "production.total.p50_kwh"
+        ],
+        "motif_si_absent": "Synthèse non calculée : la puissance crête et la production annuelle P50 sont nécessaires (calepinez la toiture dans l'atelier, puis lancez la simulation dans l'onglet Production)."
+      },
+      {
         "code": "site_meteo",
         "titre": "Site et source météo",
         "ordre": 20,
@@ -21,6 +32,14 @@
           "production.base"
         ],
         "motif_si_absent": "Aucune base d'irradiance publiée pour ce calepinage : lancez la simulation (onglet Production) pour que la source météo soit connue."
+      },
+      {
+        "code": "photos_site",
+        "titre": "Photos du site",
+        "ordre": 25,
+        "obligatoire": false,
+        "entrees_exigees": [],
+        "motif_si_absent": "La section s'imprime toujours : sans photo déposée, elle dit « Aucune photo du site déposée pour ce calepinage »."
       },
       {
         "code": "systeme",
@@ -52,6 +71,37 @@
           "production.mensuel[]"
         ],
         "motif_si_absent": "Production non simulée : le productible annuel et mensuel n'est publié qu'après la simulation (onglet Production)."
+      },
+      {
+        "code": "consommation",
+        "titre": "Consommation et hypothèses",
+        "ordre": 52,
+        "obligatoire": false,
+        "entrees_exigees": [
+          "consommation.total_kwh"
+        ],
+        "motif_si_absent": "Aucune consommation servie : la section est omise (la courbe de charge se saisit dans l'onglet Production)."
+      },
+      {
+        "code": "hors_reseau",
+        "titre": "Hors réseau",
+        "ordre": 54,
+        "obligatoire": false,
+        "entrees_exigees": [
+          "hors_reseau.defaillance_kwh",
+          "hors_reseau.par_mois[]"
+        ],
+        "motif_si_absent": "Aucune simulation hors réseau servie : la section est omise pour une installation raccordée."
+      },
+      {
+        "code": "autoconsommation",
+        "titre": "Autoconsommation et batterie",
+        "ordre": 55,
+        "obligatoire": false,
+        "entrees_exigees": [
+          "autoconsommation"
+        ],
+        "motif_si_absent": "Autoconsommation non calculée : elle se lit sur une simulation faite avec une courbe de charge (onglet Production, consommation du site)."
       },
       {
         "code": "ombrage",

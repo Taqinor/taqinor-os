@@ -116,7 +116,7 @@ import { besoinAutoRelu } from './cible'; // ACAL367
  *  balayage V6 sont évaluées à 10° et 15°). N'entre dans AUCUN pavage. */
 const EW_DEFAULT_TILT_DEG = 10;
 
-export type VariantCardId = 'south-max' | 'eastwest' | 'aligned';
+export type VariantCardId = 'couvre-besoin' | 'south-max' | 'eastwest' | 'aligned';
 
 export interface VariantCard {
   id: VariantCardId;
@@ -132,6 +132,7 @@ export interface VariantCard {
 }
 
 const VARIANT_TITLES: Record<VariantCardId, string> = {
+  'couvre-besoin': 'Couvre le besoin',
   'south-max': 'Densité maximale (plein sud)',
   eastwest: 'Est-Ouest dos à dos',
   aligned: 'Aligné sur le toit',
@@ -168,6 +169,13 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
   };
   const candidates: { id: VariantCardId; row: MatrixEvalV6 | null; reason: (r: MatrixEvalV6) => string }[] = [
     {
+      // ACAL547 — le plus petit nombre de panneaux qui atteint le besoin du balayage (≥ 100 %) ;
+      // c'est une ESTIMATION du navigateur (production annuelle ÷ besoin), dite telle quelle.
+      id: 'couvre-besoin',
+      row: pick((r) => r.pctOfTarget >= 100, (r) => -r.placedCount),
+      reason: (r) => `${r.placedCount} panneaux suffisent (estimation : ${Math.round(r.pctOfTarget)} % du besoin) à ${r.tiltDeg}°, ${r.layoutLabel}.`,
+    },
+    {
       id: 'south-max',
       // Densité = le plus de panneaux qui TIENNENT (fitCount, pas le nombre posé : celui-ci
       // est plafonné au besoin et ne dirait rien de la densité). À égalité, le plus productif.
@@ -203,6 +211,14 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
     });
   }
   return cards;
+}
+
+/** ACAL547 — aucune ligne du balayage n'atteint le besoin : le maximum MESURÉ, dit en toutes lettres. */
+export function phraseCouvertureMax(result: MatrixV6Result | null | undefined): string | null {
+  const rows = (result?.rows ?? []).filter((r) => Number.isFinite(r.pctOfTarget));
+  if (!rows.length || rows.some((r) => r.pctOfTarget >= 100)) return null;
+  const max = rows.reduce((a, r) => (r.pctOfTarget > a.pctOfTarget ? r : a));
+  return `Aucune pose ne couvre le besoin (estimation) : le toit donne au plus ${Math.round(max.pctOfTarget)} % (${max.placedCount} panneaux).`;
 }
 
 /* ═════════ CALX114 — L'OBJECTIF SAISI DU DOCUMENT, LU PAR LES DEUX BALAYAGES ═════════
@@ -1090,6 +1106,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       btn.addEventListener('click', () => applyVariant(c));
       host.appendChild(btn);
     }
+    const max = phraseCouvertureMax(ctx.matrixResult); // ACAL547
+    if (max) host.insertAdjacentHTML('beforeend', `<p class="rp9-variant-why" role="note">${max}</p>`);
   }
 
   /**

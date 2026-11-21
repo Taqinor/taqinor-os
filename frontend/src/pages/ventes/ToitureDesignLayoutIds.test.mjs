@@ -109,3 +109,18 @@ test('ACAL436 : la bascule de la carte d\'accès solaire est montée dans Builde
   }
   assert.match(SRC, /id="rp9-heatmap-toggle"[^>]*aria-pressed="false"/)
 })
+
+test('ACAL503 : `.rp9-btn` et `.rp9-input` ont une règle (cadre, 44 px, aucune couleur littérale)', () => {
+  const CSS = readFileSync(join(HERE, '../../styles/roofbuilder.css'), 'utf8')
+  for (const sel of ['.rp9-host .rp9-btn', '.rp9-host .rp9-input']) {
+    const debut = CSS.indexOf(`${sel} {`)
+    assert.ok(debut >= 0, `${sel} sans règle dans roofbuilder.css`)
+    const bloc = CSS.slice(debut, CSS.indexOf('}', debut))
+    assert.match(bloc, /min-height:\s*2\.75rem/, `${sel} : min-height 2.75rem absent`)
+    assert.match(bloc, /border/, `${sel} : bordure absente`)
+    assert.doesNotMatch(bloc, /#|rgb\(/, `${sel} : couleur littérale`)
+  }
+  assert.match(CSS, /\.rp9-host \.rp9-btn\[aria-pressed='true'\]/)
+  assert.match(CSS, /\.rp9-host \.rp9-btn:focus-visible/)
+  assert.match(CSS, /\.rp9-host \.rp9-input:focus-visible/)
+})

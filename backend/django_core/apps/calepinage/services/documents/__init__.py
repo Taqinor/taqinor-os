@@ -131,8 +131,9 @@ _MANQUE_CHAMPS_CONNUS = {
 MANQUE_SOLAR_ACCESS = {
     'champ': 'roof_layout.zones[].geometry.solarAccess.values',
     'libelle': 'Accès solaire par module (matrice d’ombrage)',
-    'ou_saisir': "Calculer l'ombrage dans l'atelier 3D avant d'imprimer ce "
-                 'rapport.',
+    'ou_saisir': "Tracer une ombre, ou saisir un obstacle avec sa hauteur, "
+                 "dans l'atelier 3D, puis enregistrer : l'accès solaire de "
+                 'chaque module se calcule alors tout seul.',
     'onglet': None,
 }
 MOTIF_SANS_OMBRAGE = (

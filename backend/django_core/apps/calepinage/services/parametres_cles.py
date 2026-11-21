@@ -151,6 +151,21 @@ CLES_SIMULATION = (
      'PVsyst — Transposition model (Hay, Perez ; aucun modèle choisi à la place de la société)'),  # ACAL455
     ('modele_decomposition', "Modèle de décomposition d'un fichier météo au global seul (direct/diffus)", '',
      'pvlib — irradiance.erbs (Erbs 1982) ou irradiance.disc (Maxwell 1987) ; aucun modèle imposé'),  # ACAL456
+    ('rendement_specifique_min_kwh_kwc', 'Rendement spécifique vraisemblable, borne basse', 'kWh/kWc',
+     'Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; '
+     'aucune valeur proposée par défaut'),  # ACAL704
+    ('rendement_specifique_max_kwh_kwc', 'Rendement spécifique vraisemblable, borne haute', 'kWh/kWc',
+     'Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; '
+     'aucune valeur proposée par défaut'),  # ACAL704
+    ('seuil_acces_retrait', 'Accès solaire sous lequel on propose de retirer un module', '',
+     'HelioScope — Optimize shaded modules (https://help-center.helioscope.com/hc/en-us/articles/'
+     '7835499970707-Optimize-shaded-modules) ; aucune valeur proposée par défaut'),  # ACAL716
+    ('ombrage_borne_courant_pct', "Perte d'ombrage à partir de laquelle on la dit courante", '%',
+     'Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l\'ombrage '
+     'par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut'),  # ACAL716
+    ('ombrage_borne_importante_pct', "Perte d'ombrage à partir de laquelle on la dit importante", '%',
+     'Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l\'ombrage '
+     'par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut'),  # ACAL716
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
@@ -171,6 +186,16 @@ CLES_ELECTRIQUE_SOCIETE = (
     ('cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n\'est supposée'),
     ('seuil_bas_dc_ac', 'Seuil bas du rapport DC/AC (onduleur sous-utilisé)', '',
      'OpenSolar — Inverter sizing and stringing recommendations'),  # CALX213
+    ('temperature_service_cable_c', 'Température de service des câbles (résistivité de la chute de tension)', '°C',
+     'Réglage société — aucune température de service n\'est supposée'),  # ACAL635
+    ('alpha_cuivre_par_c', 'Coefficient de température de la résistivité du cuivre (α)', '1/°C',
+     'Réglage société — ρ(θ) = ρ20 × (1 + α × (θ − 20)), α cité de sa source'),  # ACAL635
+    ('facteur_regroupement', 'Facteur de regroupement appliqué au courant admissible des câbles', '',
+     'Réglage société — facteur de l\'installation (IEC 60364-5-52), jamais un défaut'),  # ACAL636
+    ('consigne_dc_plan_cablage', 'Consigne DC imprimée sur le plan de câblage', '',
+     'Réglage société — texte saisi une fois, jamais écrit par le logiciel'),  # ACAL673
+    ('tolerance_orientation_pans_deg', "Tolérance d'orientation pour câbler une chaîne sur deux pans", '°',
+     'PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée'),  # ACAL650
 )
 
 #: ``{section: tuple de déclarations}`` — le SEUL point d'entrée des lecteurs.
@@ -256,6 +281,11 @@ TYPES_CLES = {
         'neige_mensuelle_pct': {'type': 'table_mensuelle', 'minimum': 0, 'maximum': 100},  # ACAL463
         'modele_transposition': {'type': 'enum', 'valeurs': ('isotropic', 'haydavies', 'perez')},  # ACAL455
         'modele_decomposition': {'type': 'enum', 'valeurs': ('erbs', 'disc')},  # ACAL456
+        'rendement_specifique_min_kwh_kwc': {'type': 'nombre', 'minimum': 0},  # ACAL704
+        'rendement_specifique_max_kwh_kwc': {'type': 'nombre', 'minimum': 0},  # ACAL704
+        'seuil_acces_retrait': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL716
+        'ombrage_borne_courant_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL716
+        'ombrage_borne_importante_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL716
     },
     SECTION_ELECTRIQUE_SOCIETE: {
         'tolerance_polystring_acceptable_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
@@ -267,6 +297,33 @@ TYPES_CLES = {
         'regle_bom_structure': {'type': 'table'},  # ACAL132
         'cos_phi_par_defaut': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL132
         'seuil_bas_dc_ac': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'temperature_service_cable_c': {'type': 'nombre'},  # ACAL635
+        'alpha_cuivre_par_c': {'type': 'nombre', 'minimum': 0},  # ACAL635
+        'facteur_regroupement': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL636
+        'consigne_dc_plan_cablage': {'type': 'table'},  # ACAL673
+        'tolerance_orientation_pans_deg': {'type': 'nombre', 'minimum': 0},  # ACAL650
+    },
+}
+
+
+#: ACAL770 — les valeurs d'une liste que le serveur ACCEPTE à l'écriture mais
+#: ne sait PAS honorer : ``{section: {clé: {valeur: motif}}}``. L'écran les
+#: grise avec leur motif (rien n'est retiré de l'enum : brancher plutôt que
+#: retirer). Chaque couple est exercé par ``test_calx69_registre_servi.py``.
+VALEURS_NON_SERVIES = {
+    SECTION_SIMULATION: {
+        'mode_meteo': {
+            'tmy': (
+                "Année type : n'aboutit pas sans fichier — la météo PVGIS "
+                "d'année type est à plat et n'est pas ramenée au plan des "
+                "modules ; choisissez « pluriannuel », ou déposez un fichier "
+                "météo d'année type sur le calepinage (onglet Séries)."),
+        },
+        'modele_iam': {
+            'martin_ruiz': (
+                "Martin-Ruiz : pas encore pris en charge ; la simulation "
+                "utilise Fresnel."),
+        },
     },
 }
 
@@ -366,6 +423,11 @@ FORMES_TABLES = {
                 'crochets_par_module': _NOMBRE_POSITIF,
                 'crochets_minimum': _NOMBRE_POSITIF,
                 'source': _TEXTE_LIBRE}},
+        # ACAL673 — {texte} : la phrase de la SOCIÉTÉ imprimée sur le plan de
+        # câblage (documents/plan_cablage.py::_lignes_de_legende)
+        'consigne_dc_plan_cablage': {
+            'type': 'object', 'additionalProperties': False,
+            'required': ['texte'], 'properties': {'texte': _TEXTE_LIBRE}},
     },
 }
 

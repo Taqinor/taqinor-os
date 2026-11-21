@@ -131,5 +131,40 @@ class BilanTest(unittest.TestCase):
         self.assertAlmostEqual(sum(charge['courbe']), 16.0, places=6)
 
 
+class DejaDansLesFacturesTest(unittest.TestCase):
+    """ACAL779 (D-RES-2710) — une charge déjà dans les factures est ignorée,
+    dite par un avertissement qui la nomme, jamais refusée."""
+
+    VEHICULE_DECLARE = {'type': 'vehicule', 'km_par_jour': 30,
+                        'kwh_par_100km': 16, 'fenetre_recharge': [22, 23, 0]}
+
+    def _courbe(self, **cles):
+        from apps.calepinage.services.courbe_charge import (
+            construire_courbe_charge,
+        )
+        from .test_calx189_courbe_charge import layout_de_test, serie_de_test
+        return construire_courbe_charge(serie_de_test(), consommation={
+            'layout': layout_de_test(1.0),
+            'charges': [dict(self.VEHICULE_DECLARE, **cles)]})
+
+    def test_deja_dans_les_factures_n_ajoute_aucune_energie(self):
+        resultat = self._courbe(deja_dans_les_factures=True)
+        bloc = resultat['consommation']
+        self.assertIsNotNone(bloc)
+        self.assertEqual(bloc['charges'], [])
+        self.assertEqual(bloc['total_charges_kwh'], 0)
+        self.assertIn(
+            'La charge n°1 (vehicule) est déjà comprise dans les factures : '
+            'elle est ignorée pour ne pas être comptée deux fois (décochez '
+            "la case pour l'ajouter)", ' '.join(resultat['avertissements']))
+
+    def test_case_decochee_ou_absente_inchangee(self):
+        absente = self._courbe()
+        decochee = self._courbe(deja_dans_les_factures=False)
+        self.assertEqual(absente, decochee)
+        self.assertEqual(len(absente['consommation']['charges']), 1)
+        self.assertGreater(absente['consommation']['total_charges_kwh'], 0)
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

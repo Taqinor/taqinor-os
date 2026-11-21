@@ -864,6 +864,18 @@ class FicheTechnique(models.Model):
         default=dict, blank=True,
         help_text='Provenance de la masse : {"document": "", "date": null, '
                   '"page": null}.')
+    # ACAL567 — Module : zone de serrage fabricant (mm, depuis l'extrémité du
+    # module). Bornes à saisir ensemble et sourcées (même discipline que la
+    # masse ↔ notice) ; vide = non publiée, jamais 0.
+    serrage_min_mm = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Module — zone de serrage fabricant, minimum (mm).')
+    serrage_max_mm = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Module — zone de serrage fabricant, maximum (mm).')
+    serrage_source = models.TextField(
+        blank=True, default='',
+        help_text='Module — source de la zone de serrage (notice, page).')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #

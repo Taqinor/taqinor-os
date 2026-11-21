@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "modePoseDeclare": "sol",
+  "pin": {"lat": 33.5731, "lng": -7.5898},
+  "outline": [
+    [33.573100, -7.589800],
+    [33.573100, -7.589350],
+    [33.573325, -7.589350],
+    [33.573325, -7.589800]
+  ],
+  "zones": [],
+  "poseSurfaces": [
+    {
+      "id": "champ-1",
+      "kind": "sol",
+      "label": "CHAMP-SOL",
+      "vertices": [[0, 0], [40, 0], [40, 25], [0, 25]],
+      "moduleWc": 710,
+      "tiltDeg": 20.0,
+      "rowAzimuthDeg": 90.0,
+      "engine": {"modules": 24}
+    }
+  ],
+  "scenario": "reseau"
+}

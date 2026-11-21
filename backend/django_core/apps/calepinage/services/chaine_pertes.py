@@ -413,7 +413,6 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'publier_resultat_de_chaine',
            # ACAL54 — l'année moyenne de la fenêtre météo.
            'PORTEE_ANNEE_MOYENNE', 'CLE_ANNEES_FENETRE',
-           'RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC',
            'MOTIF_RENDEMENT_INVRAISEMBLABLE', 'annees_de_la_fenetre',
            # ACAL49 — la complétude (D-ACAL-7).
            'SOCLE_PHYSIQUE', 'MENTION_BORNE_HAUTE', 'MOTIF_SOCLE_MANQUANT',
@@ -1233,15 +1232,9 @@ AVERTISSEMENT_BORNE_HAUTE = (
     'Production publiée en {mention} : PR, P75, P90 et P95 non publiés tant '
     'que les pertes du socle ne sont pas saisies ({postes}).')
 
-#: ACAL54 — le GARDE-FOU de vraisemblance du rendement spécifique (kWh/kWc
-#: et par an), borne du plan ACAL54 (C-ACAL-079, audit D3 du 04/10/2026) :
-#: hors de cette plage, un AVERTISSEMENT nommé est publié — la valeur n'est
-#: jamais bornée ni corrigée.
-RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC = (600.0, 2400.0)
-MOTIF_RENDEMENT_INVRAISEMBLABLE = (
-    'Rendement spécifique de {valeur} kWh/kWc par an hors de la plage '
-    'vraisemblable [{bas} ; {haut}] : vérifiez la fenêtre météo, la '
-    'puissance posée et la série reçue. La valeur est publiée telle quelle.')
+#: ACAL704 — le garde-fou du rendement spécifique lit les bornes SAISIES.
+from .rendement_plausible import (  # noqa: E402
+    MOTIF_RENDEMENT_INVRAISEMBLABLE, avertissement_de_rendement)
 
 MOTIF_PAN_SANS_SERIE = (
     'Aucune série de sortie de chaîne par pan : les colonnes par pan restent '
@@ -1353,10 +1346,9 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
 
     quantiles = _quantiles(total_kwh, annuel, total_kwc, contexte)
     rendement = _rendement(total_kwh, total_kwc)
-    bas, haut = RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC
-    if rendement is not None and not bas <= rendement <= haut:
-        avertissements.append(MOTIF_RENDEMENT_INVRAISEMBLABLE.format(
-            valeur=rendement, bas=int(bas), haut=int(haut)))
+    hors_plage = avertissement_de_rendement(rendement, contexte)
+    if hors_plage:
+        avertissements.append(hors_plage)
     for avertissement in avertissements:
         _ajouter_avertissement(resultat, avertissement)
     entete = completude_de_la_chaine(cascade, contexte)['avertissement']
@@ -1461,17 +1453,10 @@ def completude_de_la_chaine(cascade, contexte=None):
                 continue
             non_renseignees.add(nom)
     socle = [nom for nom in SOCLE_PHYSIQUE if nom in omises]
-    n = len(non_renseignees)
-    mention = (MENTION_BORNE_HAUTE.format(
-        n=n, pertes='perte' if n == 1 else 'pertes',
-        s='' if n == 1 else 's') if n else '')
-    motif = (MOTIF_SOCLE_MANQUANT.format(postes=', '.join(socle))
-             if socle else '')
-    avertissement = (AVERTISSEMENT_BORNE_HAUTE.format(
-        mention=f'« {mention} »', postes=', '.join(socle)) if socle else '')
+    from .a_renseigner import textes_de_completude  # ACAL699 — extrait
     return {'complete': not socle, 'socle_manquant': socle,
-            'mention': mention, 'motif': motif,
-            'avertissement': avertissement}
+            **textes_de_completude(socle, len(non_renseignees)),
+            'non_renseignees': sorted(non_renseignees)}
 
 
 def irradiation_kwh_m2(serie):

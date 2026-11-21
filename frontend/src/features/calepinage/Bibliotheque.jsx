@@ -735,6 +735,13 @@ export default function Bibliotheque() {
                     {modele.statut_libelle && (
                       <span className="text-muted-foreground"> — {modele.statut_libelle}</span>
                     )}
+                    {/* ACAL895 — un modèle d'exemple porte son badge ; clé servie en
+                        lecture seule, jamais envoyée. */}
+                    {modele.exemple === true && (
+                      <Badge variant="outline" className="ml-2" data-testid={`cal-biblio-modele-exemple-${modele.id}`}>
+                        Exemple
+                      </Badge>
+                    )}
 
                     {/* CALX42 — « Partir de ce modèle » : le rattachement est
                         SAISI, jamais repris du modèle. */}

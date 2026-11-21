@@ -113,7 +113,85 @@
         "spectral",
         "indisponibilite"
       ],
-      "irradiation_incidente_kwh_m2": 2105.5
+      "irradiation_incidente_kwh_m2": 2105.5,
+      "postes_lisibles": {
+        "depart_kwh": 16800.0,
+        "arrivee_kwh": 15792.3,
+        "arrivee_pct": 94.002,
+        "total_pct": 6.0,
+        "postes": [
+          {
+            "poste": "ombres_proches",
+            "libelle": "Ombres proches",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "poussiere",
+            "libelle": "Poussière",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "chaleur",
+            "libelle": "Chaleur",
+            "perte_kwh": 1344.0,
+            "perte_pct": 8.0,
+            "statut": "compte",
+            "etapes": []
+          },
+          {
+            "poste": "cables_et_onduleur",
+            "libelle": "Câbles et onduleur",
+            "perte_kwh": 127.4,
+            "perte_pct": 0.758,
+            "statut": "compte",
+            "etapes": []
+          },
+          {
+            "poste": "autres",
+            "libelle": "Autres pertes",
+            "perte_kwh": -463.7,
+            "perte_pct": -2.76,
+            "statut": "partiel",
+            "etapes": [
+              {
+                "etape": "spectral",
+                "libelle": "Correction spectrale",
+                "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+              },
+              {
+                "etape": "indisponibilite",
+                "libelle": "Indisponibilité réseau et maintenance",
+                "motif_omission": "Aucun taux d'indisponibilité saisi pour cette société : l'étape est OMISE et la série ressort inchangée. Champ manquant : réglages de simulation, « indisponibilite_pct »."
+              }
+            ]
+          }
+        ],
+        "motif_absence": ""
+      },
+      "a_renseigner": {
+        "etapes_comptees": 4,
+        "etapes_a_compter": 5,
+        "lignes": [],
+        "non_localisables": [
+          {
+            "etape": "indisponibilite",
+            "libelle": "Indisponibilité réseau et maintenance",
+            "champ": "",
+            "motif": "L'étape ne nomme aucun champ manquant."
+          }
+        ]
+      },
+      "plages": {
+        "etapes": {},
+        "total": null,
+        "motif_absence": "aucune bande sourcée"
+      }
     }
   },
   "exemple_vide": {
@@ -124,7 +202,26 @@
       "postes_non_sources": [],
       "hash_entree": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
       "etapes_omises": [],
-      "irradiation_incidente_kwh_m2": 2105.5
+      "irradiation_incidente_kwh_m2": 2105.5,
+      "postes_lisibles": {
+        "depart_kwh": null,
+        "arrivee_kwh": null,
+        "arrivee_pct": null,
+        "total_pct": null,
+        "postes": [],
+        "motif_absence": "Aucune cascade de pertes publiée : les postes lisibles ne peuvent pas être regroupés."
+      },
+      "a_renseigner": {
+        "etapes_comptees": 0,
+        "etapes_a_compter": 0,
+        "lignes": [],
+        "non_localisables": []
+      },
+      "plages": {
+        "etapes": {},
+        "total": null,
+        "motif_absence": "aucune bande sourcée"
+      }
     }
   }
 }

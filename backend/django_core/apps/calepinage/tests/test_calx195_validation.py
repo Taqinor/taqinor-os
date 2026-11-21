@@ -320,7 +320,7 @@ class FormeDuBlocTest(SimpleTestCase):
     def test_les_huit_cles_du_contrat_sont_servies(self):
         for cle in ('faite_le', 'total_chaine_locale_kwh',
                     'total_pvcalc_kwh', 'ecart_pct', 'tolerance_pct',
-                    'verdict', 'avertissement', 'motif'):
+                    'verdict', 'avertissement', 'motif', 'poste_principal'):
             self.assertIn(cle, self.bloc)
 
     def test_aucune_cle_hors_de_la_liste_declaree(self):
@@ -335,6 +335,70 @@ class FormeDuBlocTest(SimpleTestCase):
 
     def test_la_chaine_entiere_publie_les_douze_mois(self):
         self.assertEqual(len(self.bloc['mensuel']), 12)
+
+
+def _etape_essai(rang, nom, perte_kwh, perte_pct, *, gain=False, omise=''):
+    return {'rang': rang, 'etape': nom, 'libelle': f'Libellé {nom}',
+            'perte_kwh': perte_kwh, 'perte_pct': perte_pct, 'gain': gain,
+            'motif_omission': omise}
+
+
+#: Cascade ÉCRITE dans le test : ``thermique`` retire le plus d'énergie ;
+#: ``salissure`` a la plus grande PART (pour tuer le mutant « perte_pct ») ;
+#: l'étape omise et le gain portent de plus grands nombres et sont exclus.
+CASCADE_ESSAI = {'etapes': [
+    _etape_essai(1, 'horizon', 40.0, 2.0),
+    _etape_essai(2, 'bifacial', 500.0, 9.0, gain=True),
+    _etape_essai(3, 'thermique', 120.0, 6.0),
+    _etape_essai(4, 'spectral', 900.0, 30.0, omise='non modélisée'),
+    _etape_essai(5, 'salissure', 90.0, 12.0),
+]}
+PERTES_INEGALES = {'chaine_pct': 18.0, 'pvgis_pct': 14.0, 'egales': False}
+
+
+class PostePrincipalTest(SimpleTestCase):
+    """ACAL692 — le plus gros poste est CITÉ, jamais démontré ni inventé."""
+
+    def _attendu(self, cascade):
+        # Référence INDÉPENDANTE : max de perte_kwh des étapes appliquées.
+        appliquees = [e for e in cascade['etapes']
+                      if not e['motif_omission'] and not e['gain']]
+        meilleure = max(appliquees, key=lambda e: (e['perte_kwh'], -e['rang']))
+        return {cle: meilleure[cle] for cle in
+                ('etape', 'libelle', 'perte_kwh', 'perte_pct', 'rang')}
+
+    def test_le_poste_qui_retire_le_plus_d_energie(self):
+        poste = v._poste_principal(CASCADE_ESSAI, PERTES_INEGALES, -4.0)
+        self.assertEqual(poste, self._attendu(CASCADE_ESSAI))
+        self.assertEqual(poste['etape'], 'thermique')
+
+    def test_egalite_rang_le_plus_bas(self):
+        cascade = {'etapes': [_etape_essai(7, 'b', 50.0, 1.0),
+                              _etape_essai(3, 'a', 50.0, 2.0)]}
+        poste = v._poste_principal(cascade, PERTES_INEGALES, -1.0)
+        self.assertEqual(poste['rang'], 3)
+
+    def test_les_cinq_cas_null(self):
+        egales = dict(PERTES_INEGALES, egales=True)
+        chaine_moins = {'chaine_pct': 10.0, 'pvgis_pct': 14.0,
+                        'egales': False}
+        for pertes, ecart, cascade in (
+                (egales, -4.0, CASCADE_ESSAI),
+                (chaine_moins, -4.0, CASCADE_ESSAI),
+                (PERTES_INEGALES, 2.0, CASCADE_ESSAI),
+                (PERTES_INEGALES, -4.0, {'etapes': []}),
+                (PERTES_INEGALES, None, CASCADE_ESSAI)):
+            self.assertIsNone(v._poste_principal(cascade, pertes, ecart))
+
+    def test_bloc_vide_porte_la_cle_a_null(self):
+        bloc = v.ecart_vs_pvcalc(serie_entree(), contexte(), None)
+        self.assertIn('poste_principal', bloc)
+        self.assertIsNone(bloc['poste_principal'])
+
+    def test_le_motif_cite_le_poste_sans_le_dire_cause(self):
+        texte = v.MOTIF_POSTE_PRINCIPAL.format(**self._attendu(CASCADE_ESSAI))
+        self.assertIn('« Libellé thermique » (6.0 %', texte)
+        self.assertIn('pas démontré comme cause', texte)
 
 
 class FormePvcalcMensuelleTest(SimpleTestCase):

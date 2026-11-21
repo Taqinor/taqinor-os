@@ -24,6 +24,8 @@ import {
   availableOptionalLayers,
   optionalLayerSourceSpec,
   type ImageryProvider,
+  imageryDisclosure,
+  resolutionSourceRefus,
 } from './roofConfig';
 
 const KEYS = { maptilerKey: 'KEY', mapboxToken: 'TOK' };
@@ -236,5 +238,35 @@ describe('CAL54 — parcellaire cadastral : calque optionnel France, purement vi
     // devenir le fond, ni porter la moindre donnée de calcul.
     expect(imageryProviders().map((p) => p.id)).not.toContain(CADASTRE_FR_ID);
     expect(optionalLayers().every((l) => l.visualOnly === true)).toBe(true);
+  });
+});
+
+describe('ACAL508 — d’où vient l’image', () => {
+  const base: ImageryProvider = {
+    id: 'essai', label: 'Essai Satellite', attribution: 'x', resolutionM: null, countries: null,
+  };
+  it('sans résolution annoncée : la phrase « non annoncées », jamais un nombre', () => {
+    expect(imageryDisclosure(getImageryProvider('mapbox'))).toBe(
+      'Image : Mapbox Satellite (Maxar Vivid) — date et résolution non annoncées par le fournisseur',
+    );
+    expect(imageryDisclosure(base)).not.toMatch(/\d/);
+  });
+  it('avec résolution ET source : la valeur et l’URL', () => {
+    const p = { ...base, resolutionM: 0.3, resolutionSource: 'https://fournisseur.example/resolution' };
+    expect(imageryDisclosure(p)).toBe(
+      'Image : Essai Satellite — résolution annoncée : 0,3 m par pixel (source : https://fournisseur.example/resolution)',
+    );
+    expect(resolutionSourceRefus(p)).toBeNull();
+  });
+  it('une résolution sans source est refusée en nommant le fournisseur et n’est jamais affichée', () => {
+    const p = { ...base, resolutionM: 0.3 };
+    expect(resolutionSourceRefus(p)).toContain('« essai »');
+    expect(imageryDisclosure(p)).not.toContain('0,3');
+  });
+  it('les trois fournisseurs déclarés respectent la règle', () => {
+    for (const id of ['maptiler', 'mapbox', 'ign_bd_ortho']) expect(resolutionSourceRefus(getImageryProvider(id)!)).toBeNull();
+  });
+  it('aucun fournisseur ⇒ aucune ligne', () => {
+    expect(imageryDisclosure(null)).toBe('');
   });
 });

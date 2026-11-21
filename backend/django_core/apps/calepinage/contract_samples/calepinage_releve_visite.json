@@ -118,7 +118,41 @@
       ]
     },
     "a_jour": true,
-    "ecart": []
+    "ecart": [],
+    "ecart_dessin": [
+      {
+        "pan": "z1",
+        "mesure": "pente",
+        "visite": 15.0,
+        "dessin": 15.0,
+        "ecart": 0.0,
+        "source_dessin": "valeur de départ"
+      },
+      {
+        "pan": "z1",
+        "mesure": "longueur",
+        "visite": 12.5,
+        "dessin": 12.5,
+        "ecart": 0.0,
+        "source_dessin": "contour tracé"
+      },
+      {
+        "pan": "z1",
+        "mesure": "largeur",
+        "visite": 8.0,
+        "dessin": 8.0,
+        "ecart": 0.0,
+        "source_dessin": "contour tracé"
+      },
+      {
+        "pan": "z1",
+        "mesure": "orientation",
+        "visite": "sud",
+        "dessin": 180.0,
+        "ecart": null,
+        "source_dessin": "face du pan"
+      }
+    ]
   },
   "exemple_avant_reprise": {
     "visite_id": 7,
@@ -205,7 +239,8 @@
     "deja_repris": false,
     "releve": null,
     "a_jour": false,
-    "ecart": []
+    "ecart": [],
+    "ecart_dessin": []
   },
   "exemple_vide": {
     "visite_id": null,
@@ -216,7 +251,8 @@
     "deja_repris": false,
     "releve": null,
     "a_jour": false,
-    "ecart": []
+    "ecart": [],
+    "ecart_dessin": []
   },
   "corps_post": {
     "remplacer": true
@@ -344,6 +380,89 @@
         "releve": 12.0,
         "visite": 15.0
       }
+    ],
+    "ecart_dessin": [
+      {
+        "pan": "z1",
+        "mesure": "pente",
+        "visite": 15.0,
+        "dessin": 15.0,
+        "ecart": 0.0,
+        "source_dessin": "valeur de départ"
+      },
+      {
+        "pan": "z1",
+        "mesure": "longueur",
+        "visite": 12.5,
+        "dessin": 12.5,
+        "ecart": 0.0,
+        "source_dessin": "contour tracé"
+      },
+      {
+        "pan": "z1",
+        "mesure": "largeur",
+        "visite": 8.0,
+        "dessin": 8.0,
+        "ecart": 0.0,
+        "source_dessin": "contour tracé"
+      },
+      {
+        "pan": "z1",
+        "mesure": "orientation",
+        "visite": "sud",
+        "dessin": 180.0,
+        "ecart": null,
+        "source_dessin": "face du pan"
+      }
     ]
-  }
+  },
+  "exemple_ecart_dessin_plusieurs_pans": [
+    {
+      "pan": null,
+      "mesure": "pente",
+      "visite": 15.0,
+      "dessin": null,
+      "ecart": null,
+      "source_dessin": null,
+      "motif": "pans à rapprocher à la main"
+    },
+    {
+      "pan": null,
+      "mesure": "longueur",
+      "visite": 12.5,
+      "dessin": null,
+      "ecart": null,
+      "source_dessin": null,
+      "motif": "pans à rapprocher à la main"
+    },
+    {
+      "pan": null,
+      "mesure": "largeur",
+      "visite": 8.0,
+      "dessin": null,
+      "ecart": null,
+      "source_dessin": null,
+      "motif": "pans à rapprocher à la main"
+    },
+    {
+      "pan": null,
+      "mesure": "orientation",
+      "visite": "sud",
+      "dessin": null,
+      "ecart": null,
+      "source_dessin": null,
+      "motif": "pans à rapprocher à la main"
+    }
+  ],
+  "exemple_ecart_dessin_non_releve": [
+    {
+      "pan": "z1",
+      "mesure": "pente",
+      "visite": null,
+      "dessin": 15.0,
+      "ecart": null,
+      "source_dessin": "valeur de départ",
+      "motif": "non relevé"
+    }
+  ]
 }

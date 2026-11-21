@@ -364,7 +364,33 @@
           "source": "pvgis",
           "observe": true
         }
-      ]
+      ],
+      "projection": [
+        {
+          "annee": 1,
+          "facteur": null,
+          "p50_kwh": 13000.0,
+          "source": "chaine_pertes"
+        },
+        {
+          "annee": 2,
+          "facteur": 0.9945,
+          "p50_kwh": 12928.5,
+          "source": "lineaire — fiche produit"
+        }
+      ],
+      "duree_de_vie": {
+        "horizon_annees": 2,
+        "source_horizon": "reglage",
+        "produit_horizon": "",
+        "motif_omission": "",
+        "garantie": {
+          "pct_a_10_ans": 90.0,
+          "pct_a_25_ans": 80.0,
+          "produit": "JA Solar JAM72D40 580 MB",
+          "motif": ""
+        }
+      }
     },
     "pertes": [
       {
@@ -453,7 +479,73 @@
       "etapes_omises": [
         "spectral"
       ],
-      "irradiation_incidente_kwh_m2": 2105.5
+      "irradiation_incidente_kwh_m2": 2105.5,
+      "postes_lisibles": {
+        "depart_kwh": 16800.0,
+        "arrivee_kwh": 16800.0,
+        "arrivee_pct": 100.0,
+        "total_pct": 20.1,
+        "postes": [
+          {
+            "poste": "ombres_proches",
+            "libelle": "Ombres proches",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "poussiere",
+            "libelle": "Poussière",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "chaleur",
+            "libelle": "Chaleur",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "cables_et_onduleur",
+            "libelle": "Câbles et onduleur",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "autres",
+            "libelle": "Autres pertes",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": [
+              {
+                "etape": "spectral",
+                "libelle": "Correction spectrale",
+                "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+              }
+            ]
+          }
+        ],
+        "motif_absence": ""
+      },
+      "a_renseigner": {
+        "etapes_comptees": 1,
+        "etapes_a_compter": 1,
+        "lignes": [],
+        "non_localisables": []
+      },
+      "plages": {
+        "etapes": {},
+        "total": null,
+        "motif_absence": "aucune bande sourcée"
+      }
     },
     "meteo": {
       "service": "seriescalc",
@@ -535,7 +627,10 @@
         "production_kwh": 13000.0,
         "autoconsomme_kwh": 8060.0,
         "surplus_kwh": 4940.0,
-        "import_reseau_kwh": 1540.0
+        "import_reseau_kwh": 1540.0,
+        "production_brute_kwh": 13210.0,
+        "export_reseau_kwh": 4730.0,
+        "apres_batterie": true
       },
       "par_mois": [
         {
@@ -639,9 +734,11 @@
         "applique": true,
         "plafond_kw": 6.0,
         "justification": "Plafond d'injection SAISI par la société, avec sa source — jamais une constante.",
-        "energie_ecretee_kwh": 210.0
+        "energie_ecretee_kwh": 210.0,
+        "heures_ecretees": 96
       },
-      "motif_absence": ""
+      "motif_absence": "",
+      "definition": "Taux d'autoconsommation = énergie autoconsommée ÷ production vue au point de livraison. Couverture = énergie autoconsommée ÷ CONSOMMATION (règle COUV-AUTO) — jamais production ÷ consommation. Autonomie = 1 − énergie importée ÷ consommation."
     },
     "batterie": {
       "groupes": [
@@ -660,7 +757,17 @@
         "capacite_utile_kwh": 10.0,
         "energie_restituee_kwh": 2400.0,
         "taux_autonomie": 0.58,
-        "heures_sans_import": 3120
+        "heures_sans_import": 3120,
+        "energie_stockee_kwh": 2650.0,
+        "energie": {
+          "production_kwh": 13000.0,
+          "consommation_kwh": 9600.0,
+          "autoconsomme_kwh": 8060.0,
+          "export_kwh": 4940.0,
+          "import_reseau_kwh": 1540.0,
+          "pertes_batterie_kwh": 250.0,
+          "variation_stock_kwh": 0.0
+        }
       },
       "avertissements": []
     },
@@ -746,7 +853,8 @@
       "tolerance_pct": 5.0,
       "verdict": "dans_la_tolerance",
       "avertissement": "",
-      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement."
+      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement.",
+      "poste_principal": null
     },
     "simulation_perimee": false,
     "motif": "",
@@ -1289,7 +1397,20 @@
           "source": "pvgis",
           "observe": true
         }
-      ]
+      ],
+      "projection": [],
+      "duree_de_vie": {
+        "horizon_annees": null,
+        "source_horizon": null,
+        "produit_horizon": "",
+        "motif_omission": "Aucune durée d'exploitation saisie, et aucun module du système ne porte sa garantie de production : le tableau pluriannuel est OMIS et seule l'année 1 est publiée. Ni 20 ni 25 ans ne sont supposés. Non renseigné : « simulation.annees_exploitation » ou « Produit.garantie_production_mois ».",
+        "garantie": {
+          "pct_a_10_ans": null,
+          "pct_a_25_ans": null,
+          "produit": "",
+          "motif": "Non renseigné : « FicheTechnique.garantie_pct_a_10_ans », « FicheTechnique.garantie_pct_a_25_ans »"
+        }
+      }
     },
     "pertes": [],
     "cascade": null,
@@ -1684,7 +1805,33 @@
           "source": "pvgis",
           "observe": true
         }
-      ]
+      ],
+      "projection": [
+        {
+          "annee": 1,
+          "facteur": null,
+          "p50_kwh": 13000.0,
+          "source": "chaine_pertes"
+        },
+        {
+          "annee": 2,
+          "facteur": 0.9945,
+          "p50_kwh": 12928.5,
+          "source": "lineaire — fiche produit"
+        }
+      ],
+      "duree_de_vie": {
+        "horizon_annees": 2,
+        "source_horizon": "reglage",
+        "produit_horizon": "",
+        "motif_omission": "",
+        "garantie": {
+          "pct_a_10_ans": 90.0,
+          "pct_a_25_ans": 80.0,
+          "produit": "JA Solar JAM72D40 580 MB",
+          "motif": ""
+        }
+      }
     },
     "pertes": [
       {
@@ -1773,7 +1920,73 @@
       "etapes_omises": [
         "spectral"
       ],
-      "irradiation_incidente_kwh_m2": 2105.5
+      "irradiation_incidente_kwh_m2": 2105.5,
+      "postes_lisibles": {
+        "depart_kwh": 16800.0,
+        "arrivee_kwh": 16800.0,
+        "arrivee_pct": 100.0,
+        "total_pct": 20.1,
+        "postes": [
+          {
+            "poste": "ombres_proches",
+            "libelle": "Ombres proches",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "poussiere",
+            "libelle": "Poussière",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "chaleur",
+            "libelle": "Chaleur",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "cables_et_onduleur",
+            "libelle": "Câbles et onduleur",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": []
+          },
+          {
+            "poste": "autres",
+            "libelle": "Autres pertes",
+            "perte_kwh": null,
+            "perte_pct": null,
+            "statut": "non_compte",
+            "etapes": [
+              {
+                "etape": "spectral",
+                "libelle": "Correction spectrale",
+                "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+              }
+            ]
+          }
+        ],
+        "motif_absence": ""
+      },
+      "a_renseigner": {
+        "etapes_comptees": 1,
+        "etapes_a_compter": 1,
+        "lignes": [],
+        "non_localisables": []
+      },
+      "plages": {
+        "etapes": {},
+        "total": null,
+        "motif_absence": "aucune bande sourcée"
+      }
     },
     "meteo": {
       "service": "seriescalc",
@@ -2066,7 +2279,8 @@
       "tolerance_pct": 5.0,
       "verdict": "dans_la_tolerance",
       "avertissement": "",
-      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement."
+      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement.",
+      "poste_principal": null
     },
     "simulation_perimee": false,
     "motif": "",

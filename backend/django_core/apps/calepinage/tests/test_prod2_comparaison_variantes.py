@@ -125,5 +125,125 @@ class NonSimuleeTest(unittest.TestCase):
         self.assertEqual(repr(RESULTAT_MODULE), avant)
 
 
+class ModuleDeLaVarianteTest(unittest.TestCase):
+    """ACAL595 — ``lignes[].module`` : le module désigné par les pans."""
+
+    @staticmethod
+    def _variante(*modules_des_pans):
+        catalogue = {
+            'B': {'id': 'produit-2', 'libelle': 'B 430', 'pmaxWc': 430.0,
+                  'longueurMm': 2278.0, 'largeurMm': 1134.0},
+            'C': {'id': 'produit-3', 'libelle': 'C 600', 'pmaxWc': 600.0,
+                  'longueurMm': None, 'largeurMm': 1303.0}}
+        zones = []
+        for rang, cle in enumerate(modules_des_pans):
+            geometrie = {'count': 4}
+            if cle:
+                geometrie['moduleId'] = catalogue[cle]['id']
+            zones.append({'id': f'z{rang}', 'geometry': geometrie})
+        from types import SimpleNamespace
+        return SimpleNamespace(roof_layout={
+            'modules': list(catalogue.values()), 'zones': zones})
+
+    def test_pans_sur_le_meme_module(self):
+        from apps.calepinage.selectors import _module_de_la_variante
+
+        self.assertEqual(
+            _module_de_la_variante(self._variante('B', 'B')),
+            {'id': 'produit-2', 'libelle': 'B 430', 'pmax_wc': 430.0,
+             'longueur_mm': 2278.0, 'largeur_mm': 1134.0})
+
+    def test_une_cote_absente_vaut_none(self):
+        from apps.calepinage.selectors import _module_de_la_variante
+
+        module = _module_de_la_variante(self._variante('C'))
+        self.assertIsNone(module['longueur_mm'])
+        self.assertEqual(module['largeur_mm'], 1303.0)
+
+    def test_pans_sur_deux_modules_sont_mixtes(self):
+        from apps.calepinage.selectors import _module_de_la_variante
+
+        self.assertEqual(
+            _module_de_la_variante(self._variante('B', 'C')), {'mixte': True})
+        # même le second pan seul fait basculer : pas de lecture du 1er pan
+        self.assertEqual(
+            _module_de_la_variante(self._variante('B', None)),
+            {'mixte': True})
+
+    def test_aucun_module_designe_donne_none(self):
+        from apps.calepinage.selectors import _module_de_la_variante
+        from types import SimpleNamespace
+
+        self.assertIsNone(_module_de_la_variante(self._variante(None)))
+        self.assertIsNone(_module_de_la_variante(
+            SimpleNamespace(roof_layout=None)))
+
+
+def _resultat_hypotheses(fenetre, poussiere=None, base='PVGIS-SARAH3'):
+    reglages = {'fenetre_annees': {'valeur': fenetre, 'source': 'societe'}}
+    if poussiere is not None:
+        reglages['salissure_mensuelle_pct'] = {
+            'valeur': poussiere, 'source': 'societe'}
+    return {'simulation': {'reglages_utilises': reglages},
+            'meteo': {'base_rayonnement': base, 'mode': 'pluriannuel'}}
+
+
+class HypothesesComparees(unittest.TestCase):
+    """ACAL883 — « mêmes hypothèses » ou la liste des différences servie."""
+
+    def test_reglages_differents_difference_nommee(self):
+        import json
+        import pathlib
+
+        from apps.calepinage.services.comparaison import hypotheses_comparees
+
+        servi = hypotheses_comparees({
+            11: _resultat_hypotheses('2020-2021'),
+            12: _resultat_hypotheses('2015-2020')})
+        contrat = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'variantes_comparer.json').read_text(encoding='utf-8'))
+        self.assertEqual(servi, contrat['exemple']['hypotheses'])
+        self.assertFalse(servi['identiques'])
+
+    def test_memes_hypotheses_identiques(self):
+        from apps.calepinage.services.comparaison import hypotheses_comparees
+
+        servi = hypotheses_comparees({
+            1: _resultat_hypotheses('2020-2021'),
+            2: _resultat_hypotheses('2020-2021')})
+        self.assertEqual(servi, {'identiques': True, 'comparees': 2,
+                                 'differences': []})
+
+    def test_une_cle_absente_d_un_cote_est_non_saisie(self):
+        from apps.calepinage.services.comparaison import hypotheses_comparees
+
+        servi = hypotheses_comparees({
+            1: _resultat_hypotheses('2020-2021'),
+            2: _resultat_hypotheses('2020-2021', poussiere=3.0)})
+        (difference,) = servi['differences']
+        self.assertEqual(difference['cle'], 'salissure_mensuelle_pct')
+        self.assertEqual(difference['valeurs']['1'], 'non saisi')
+
+    def test_la_base_meteo_differente_est_une_difference(self):
+        from apps.calepinage.services.comparaison import hypotheses_comparees
+
+        servi = hypotheses_comparees({
+            1: _resultat_hypotheses('2020-2021'),
+            2: _resultat_hypotheses('2020-2021', base='PVGIS-ERA5')})
+        self.assertEqual([d['cle'] for d in servi['differences']],
+                         ['meteo.base_rayonnement'])
+
+    def test_une_seule_variante_simulee_donne_null(self):
+        from apps.calepinage.services.comparaison import hypotheses_comparees
+
+        self.assertEqual(
+            hypotheses_comparees({1: _resultat_hypotheses('2020-2021')}),
+            {'identiques': None, 'comparees': 1, 'differences': []})
+        self.assertEqual(
+            hypotheses_comparees({}),
+            {'identiques': None, 'comparees': 0, 'differences': []})
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

@@ -140,6 +140,8 @@ import {
   nouveauPanDepuisContour, // ACAL71
   panVierge,
 } from './roofPro11/zones';
+import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
+import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
@@ -1373,7 +1375,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // CAL69 — redessine le calque des zones d'exclusion (même cadence que les obstacles).
   const redrawExclusionZones = obstaclesUi.redrawExclusionZones;
   const clearPreview = obstaclesUi.clearPreview;
-  const syncObsEdit = obstaclesUi.syncObsEdit;
+  const objetsSite = monterObjetsSite(ctx, { selectArea: (id) => selectArea(id), selectObstacle: (id) => obstaclesUi.selectObstacle(id) }); // ACAL533
+  const syncObsEdit = () => { obstaclesUi.syncObsEdit(); objetsSite.redessiner(); }; // le tableau suit chaque pose
   const selectObstacle = obstaclesUi.selectObstacle;
   const obstacleAtPoint = obstaclesUi.obstacleAtPoint;
   const setObstacleMode = obstaclesUi.setObstacleMode;
@@ -2707,6 +2710,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function deleteArea(id: string) {
     const idx = areas.findIndex((a) => a.id === id);
     if (idx < 0) return;
+    const verrou = motifPanVerrouille(areas[idx], idx); // ACAL520
+    if (verrou) { setStatus(verrou); return; }
     const wasActive = id === activeAreaId;
     areas.splice(idx, 1);
     if (areas.length === 0) {

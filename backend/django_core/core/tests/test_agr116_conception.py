@@ -4,10 +4,11 @@
 import unittest
 
 from core.pompage.conception import (
-    alerte_heures_superieures_24, besoin_retenu, conception,
-    controle_conception, heures_pic,
+    alerte_heures_superieures_24, besoin_retenu, comparaison_direct_reservoir,
+    conception, controle_conception, controle_pompes_par_variateur,
+    heures_pic,
 )
-from core.pompage.volumes import _CLEARSKY_HOURLY_SHAPE
+from core.pompage.volumes import _CLEARSKY_HOURLY_SHAPE, bilan_reservoir_journalier
 
 PIC = max(_CLEARSKY_HOURLY_SHAPE)
 PROFILS = tuple(tuple(f / PIC * 900 for f in _CLEARSKY_HOURLY_SHAPE)
@@ -256,3 +257,83 @@ class Alertes(unittest.TestCase):
         r = conception(besoin=besoin_retenu(volume_declare_m3_jour=100))
         self.assertIsNone(r["conception"]["debit_conception_m3h"])
         self.assertIn("heures_pic_inconnues", _codes(r))
+
+
+class DirectContreReservoir(unittest.TestCase):
+    """ACAL814 — pompage direct contre réservoir déclaré (interne)."""
+
+    BESOIN = [10.0] * 6 + [12.0] + [10.0] * 5
+    PROD = [11.0] * 12
+    CAS = dict(besoin_m3_jour_mois=BESOIN, heures_pic_mois=[5.0] * 12,
+               heures_demande_h=2, production_m3_jour_mois=PROD,
+               volume_reservoir_m3=20)
+
+    def test_direct_6_contre_reservoir_2_4_juillet_critique(self):
+        r = comparaison_direct_reservoir(**self.CAS)
+        self.assertIsNone(r["motif"])
+        self.assertEqual(r["direct"]["debit_conception_m3h"], 6.0)
+        self.assertEqual(r["avec_reservoir"]["debit_conception_m3h"], 2.4)
+        self.assertEqual(r["direct"]["mois_critique"], 7)
+        self.assertEqual(r["avec_reservoir"]["mois_critique"], 7)
+
+    def test_jours_de_manque_lus_du_bilan_journalier(self):
+        r = comparaison_direct_reservoir(**self.CAS)
+        direct = bilan_reservoir_journalier(besoin_m3_jour_mois=self.BESOIN,
+                                            production_m3_jour_mois=self.PROD,
+                                            volume_reservoir_m3=0)
+        reservoir = bilan_reservoir_journalier(besoin_m3_jour_mois=self.BESOIN,
+                                               production_m3_jour_mois=self.PROD,
+                                               volume_reservoir_m3=20)
+        self.assertEqual(r["direct"]["jours_manque"], direct["jours_manque"])
+        self.assertEqual(r["avec_reservoir"]["jours_manque"],
+                         reservoir["jours_manque"])
+        self.assertEqual(r["direct"]["jours_manque"], 31)
+
+    def test_fenetre_absente_ou_reservoir_absent_motif(self):
+        r = comparaison_direct_reservoir(**dict(self.CAS, heures_demande_h=None))
+        self.assertIsNone(r["direct"])
+        self.assertIsNotNone(r["avec_reservoir"])
+        self.assertEqual(r["motif"], "fenêtre de demande non saisie")
+        r = comparaison_direct_reservoir(**dict(self.CAS, volume_reservoir_m3=None))
+        self.assertIsNone(r["avec_reservoir"])
+        self.assertEqual(r["motif"], "aucun réservoir déclaré")
+
+
+class PompesParVariateur(unittest.TestCase):
+    """ACAL819 — plusieurs pompes sur un même variateur."""
+
+    VAR = {"id": 9, "nom": "VARIATEUR VEICHI SI23 5.5KW 380V", "pompe_kw": "5.5"}
+
+    def _pompes(self, n):
+        return [{"nom": "Pompe %d" % i, "kw": 1.1} for i in range(n)]
+
+    def test_quatre_pompes_conformes_dans_les_deux_modes(self):
+        ensemble = controle_pompes_par_variateur(
+            pompes=self._pompes(4), variateur=self.VAR, mode="ensemble")
+        self.assertEqual(ensemble["verdict"], "conforme")
+        self.assertEqual(ensemble["kw_demande"], 4.4)
+        tour = controle_pompes_par_variateur(
+            pompes=self._pompes(4), variateur=self.VAR, mode="a_tour_de_role")
+        self.assertEqual(tour["verdict"], "conforme")
+        self.assertEqual(tour["kw_demande"], 1.1)
+        self.assertEqual(tour["marge_kw"], 4.4)
+
+    def test_six_pompes_ensemble_depassent(self):
+        r = controle_pompes_par_variateur(
+            pompes=self._pompes(6), variateur=self.VAR, mode="ensemble")
+        self.assertEqual(r["verdict"], "depasse")
+        self.assertEqual(r["kw_demande"], 6.6)
+        self.assertLess(r["marge_kw"], 0)
+
+    def test_donnee_absente_non_verifiable(self):
+        r = controle_pompes_par_variateur(pompes=self._pompes(4), variateur=self.VAR)
+        self.assertEqual(r["verdict"], "non_verifiable")
+        self.assertIn("mode de marche non saisi", r["motif"])
+        r = controle_pompes_par_variateur(
+            pompes=[{"nom": "Pompe 3 CV", "kw": None}], variateur=self.VAR,
+            mode="ensemble")
+        self.assertEqual(r["verdict"], "non_verifiable")
+        self.assertIn("Pompe 3 CV", r["motif"])
+        r = controle_pompes_par_variateur(
+            pompes=self._pompes(2), variateur={"nom": "SI23 5.5KW"}, mode="ensemble")
+        self.assertEqual(r["verdict"], "non_verifiable")

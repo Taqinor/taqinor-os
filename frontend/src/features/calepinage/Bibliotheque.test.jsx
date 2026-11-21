@@ -150,6 +150,19 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
       .toBeInTheDocument()
   })
 
+  it('ACAL895 — un modèle d’exemple porte le badge « Exemple », un modèle ordinaire non', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+    mocks.getModeles.mockResolvedValue({
+      data: [{ ...MODELES[0], exemple: true }, { id: 99, titre: 'Mon modèle', exemple: false }],
+    })
+    render(<Bibliotheque />)
+
+    expect(await screen.findByTestId(`cal-biblio-modele-exemple-${MODELES[0].id}`))
+      .toHaveTextContent('Exemple')
+    expect(screen.queryByTestId('cal-biblio-modele-exemple-99')).toBeNull()
+  })
+
   it('aucun modèle marqué : le DIT', async () => {
     mocks.hasPermission.mockReturnValue(true)
     mocks.getParametres.mockResolvedValue({ data: REGLAGES })

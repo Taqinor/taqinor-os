@@ -239,6 +239,8 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             'prot_pouvoir_coupure_ka', 'prot_poles', 'prot_tension_v',
             'cable_cote', 'cable_section_mm2', 'cable_ame',
             'struct_type_pose', 'struct_masse_kg_m2', 'struct_notice',
+            # ACAL567 — zone de serrage fabricant du module (sourcée).
+            'serrage_min_mm', 'serrage_max_mm', 'serrage_source',
             'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
             'date_creation', 'date_mise_a_jour',
         ]
@@ -381,7 +383,33 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
                 'struct_notice': (
                     'Masse de structure saisie sans notice : renseignez le '
                     'document fabricant (`struct_notice.document`).')}, code=CODE_REFUS_ETAT)
+        self._valider_zone_serrage(attrs, inst)
         return attrs
+
+    @staticmethod
+    def _valider_zone_serrage(attrs, inst):
+        """ACAL567 — zone de serrage : deux bornes ensemble, min ≤ max, et une
+        source (relues sur l'instance en PATCH) ; refus 409 nommant le champ."""
+        def lu(champ, defaut=None):
+            return attrs.get(champ, getattr(inst, champ, defaut))
+        mini, maxi = lu('serrage_min_mm'), lu('serrage_max_mm')
+        source = (lu('serrage_source', '') or '').strip()
+        refus = None
+        if mini is not None and maxi is None:
+            refus = ('serrage_max_mm', 'Zone de serrage incomplète : '
+                     'renseignez aussi le maximum (mm).')
+        elif maxi is not None and mini is None:
+            refus = ('serrage_min_mm', 'Zone de serrage incomplète : '
+                     'renseignez aussi le minimum (mm).')
+        elif mini is not None and mini > maxi:
+            refus = ('serrage_min_mm', 'Zone de serrage : le minimum '
+                     'dépasse le maximum.')
+        elif mini is not None and not source:
+            refus = ('serrage_source', 'Zone de serrage saisie sans source : '
+                     'renseignez la notice fabricant.')
+        if refus:
+            raise serializers.ValidationError(
+                {refus[0]: refus[1]}, code=CODE_REFUS_ETAT)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

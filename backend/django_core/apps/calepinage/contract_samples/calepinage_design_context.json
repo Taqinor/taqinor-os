@@ -94,6 +94,11 @@
     "raison_lecture_seule": "",
     "avertissements": [],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": 900.0,
+      "source": "lead",
+      "motif": ""
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -194,6 +199,11 @@
     "raison_lecture_seule": "",
     "avertissements": [],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -280,6 +290,11 @@
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
     ],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -330,6 +345,11 @@
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
     ],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -416,6 +436,11 @@
       "Le contour du client est inutilisable (points confondus) : tracez le toit sur la carte."
     ],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -507,6 +532,11 @@
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
     ],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -598,6 +628,11 @@
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
     ],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -698,6 +733,11 @@
     "raison_lecture_seule": "",
     "avertissements": [],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -798,6 +838,11 @@
     "raison_lecture_seule": "",
     "avertissements": [],
     "revision_possible": true,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -898,6 +943,11 @@
     "raison_lecture_seule": "Devis accepté : sa conception est figée. Utilisez « Réviser » pour créer la version suivante.",
     "avertissements": [],
     "revision_possible": true,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -998,6 +1048,11 @@
     "raison_lecture_seule": "Remplacé par DEV-202610-0002",
     "avertissements": [],
     "revision_possible": false,
+    "consommation_lead": {
+      "facture_mensuelle_mad": null,
+      "source": null,
+      "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
+    },
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",

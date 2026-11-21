@@ -125,6 +125,11 @@ def specs_for_produit(produit):
              getattr(fiche, 'tolerance_pmax_min_pct', None)),
             ('tolerance_pmax_max_pct',
              getattr(fiche, 'tolerance_pmax_max_pct', None)),
+            # ACAL567 — zone de serrage fabricant (clé absente si non saisie).
+            ('serrage_min_mm', getattr(fiche, 'serrage_min_mm', None)),
+            ('serrage_max_mm', getattr(fiche, 'serrage_max_mm', None)),
+            ('serrage_source',
+             getattr(fiche, 'serrage_source', None) or None),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'onduleur':

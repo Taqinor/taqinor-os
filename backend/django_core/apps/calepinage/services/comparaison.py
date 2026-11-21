@@ -40,7 +40,7 @@ from .valeurs import nombre as _nombre
 
 __all__ = ['CLES_PRODUCTION', 'MOTIF_NON_SIMULEE', 'MOTIF_PERIMEE',
            'NOMBRE_PERTES_DOMINANTES', 'colonnes_production',
-           'verdict_electrique_de_la_variante']
+           'hypotheses_comparees', 'verdict_electrique_de_la_variante']
 
 
 def verdict_electrique_de_la_variante(variante):
@@ -214,3 +214,81 @@ def colonnes_production(resultat, *, perimee=False):
 
     colonnes['pertes_dominantes'] = _pertes_dominantes(resultat)
     return True, colonnes, ''
+
+
+#: ACAL883 — les blocs ``resultat['meteo']`` comparés, et leur libellé.
+_LIBELLES_METEO = (
+    ('base_rayonnement', 'Base de rayonnement'),
+    ('base_meteo', 'Base météo'),
+    ('mode', 'Mode météo'),
+    ('fenetre_annees', 'Fenêtre météo (années)'),
+    ('point', 'Point météo'),
+)
+
+
+def _texte_hypothese(valeur):
+    if isinstance(valeur, dict):
+        return ', '.join(f'{cle} {valeur[cle]}' for cle in sorted(valeur)
+                         if not isinstance(valeur[cle], (dict, list)))
+    return str(valeur)
+
+
+def _hypotheses_du_resultat(resultat):
+    """``{cle: (libellé, texte)}`` — réglages utilisés (valeur et source) et
+    météo, LUS dans le résultat déposé, jamais recalculés."""
+    from .parametres_cles import SECTION_SIMULATION, registre
+
+    libelles = registre(SECTION_SIMULATION)
+    simulation = _dict(_dict(resultat).get('simulation'))
+    lues = {}
+    for cle, reglage in _dict(simulation.get('reglages_utilises')).items():
+        reglage = _dict(reglage)
+        libelle = (libelles.get(cle) or (cle,))[0]
+        lues[cle] = (libelle, '%s (source : %s)' % (
+            _texte_hypothese(reglage.get('valeur')),
+            reglage.get('source') or 'non dite'))
+    meteo = _dict(_dict(resultat).get('meteo'))
+    for cle, libelle in _LIBELLES_METEO:
+        if meteo.get(cle) is not None:
+            lues['meteo.' + cle] = (libelle, _texte_hypothese(meteo[cle]))
+    fichier = simulation.get('meteo_fichier')
+    if fichier is not None:
+        lues['meteo.fichier'] = ('Fichier météo déposé',
+                                 _texte_hypothese(fichier))
+    return lues
+
+
+def hypotheses_comparees(resultats):
+    """ACAL883 — les variantes comparées reposent-elles sur les MÊMES
+    hypothèses de pertes et de météo ?
+
+    Args:
+        resultats: ``{variante_id: resultat}`` des seules variantes simulées
+            et non périmées (l'appelant filtre : une variante non simulée
+            n'est pas comparée).
+
+    Returns:
+        ``{identiques, comparees, differences}`` — ``identiques`` vaut
+        ``None`` sous deux variantes comparées ; chaque différence porte
+        ``cle``, ``libelle`` et ``valeurs`` (``{id: texte}``, « non saisi »
+        quand un côté ne porte pas la clé). Rien n'est recalculé.
+    """
+    lues = {str(identifiant): _hypotheses_du_resultat(resultat)
+            for identifiant, resultat in resultats.items()}
+    if len(lues) < 2:
+        return {'identiques': None, 'comparees': len(lues),
+                'differences': []}
+    cles = []
+    for hypotheses in lues.values():
+        cles.extend(cle for cle in hypotheses if cle not in cles)
+    differences = []
+    for cle in cles:
+        valeurs = {identifiant: (hypotheses[cle][1] if cle in hypotheses
+                                 else 'non saisi')
+                   for identifiant, hypotheses in lues.items()}
+        if len(set(valeurs.values())) > 1:
+            libelle = next(h[cle][0] for h in lues.values() if cle in h)
+            differences.append({'cle': cle, 'libelle': libelle,
+                                'valeurs': valeurs})
+    return {'identiques': not differences, 'comparees': len(lues),
+            'differences': differences}

@@ -91,8 +91,14 @@ VERDICT_HORS_TOLERANCE = 'hors_tolerance'
 CLES_VALIDATION = (
     'faite_le', 'total_chaine_locale_kwh', 'total_pvcalc_kwh', 'ecart_pct',
     'tolerance_pct', 'verdict', 'avertissement', 'motif',
-    'tolerance_source', 'pertes_totales', 'mensuel',
+    'tolerance_source', 'pertes_totales', 'mensuel', 'poste_principal',
 )
+
+#: ACAL692 — le plus gros poste de la cascade, CITÉ (jamais une cause).
+MOTIF_POSTE_PRINCIPAL = (
+    " Plus gros poste de pertes de la chaîne : « {libelle} » ({perte_pct} % "
+    "de l'énergie qui lui arrive). PVGIS ne détaille pas ses pertes : ce "
+    'poste est cité, pas démontré comme cause.')
 
 #: Les décimales publiées : les totaux au dixième de kWh (la cadence de
 #: ``chaine_pertes``), l'écart au centième de point.
@@ -232,6 +238,9 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
                                               pvgis=pertes['pvgis_pct'])
 
     ecart = _ecart_pct(total_local, total_pvgis)
+    poste = _poste_principal(cascade, pertes, ecart)
+    if poste is not None:
+        motif += MOTIF_POSTE_PRINCIPAL.format(**poste)
     tolerance = _etapes.reglage(contexte, CLE_TOLERANCE)
     verdict, avertissement, motif = _verdict(ecart, tolerance, motif)
 
@@ -247,8 +256,32 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
         'tolerance_source': (tolerance or {}).get('source'),
         'pertes_totales': pertes,
         'mensuel': _mensuel(sortie, mesure_pvgis['mensuel_kwh'], annees),
+        'poste_principal': poste,
     }
     return _publier(resultat, bloc)
+
+
+def _poste_principal(cascade, pertes, ecart):
+    """ACAL692 — l'étape APPLIQUÉE (ni omise, ni gain) qui retire le plus
+    d'énergie (``perte_kwh``, égalité : rang le plus bas), seulement quand
+    la chaîne perd PLUS que PVGIS et produit MOINS ; sinon ``None``."""
+    chaine, pvgis = pertes.get('chaine_pct'), pertes.get('pvgis_pct')
+    if (pertes.get('egales') or chaine is None or pvgis is None
+            or ecart is None or not float(chaine) > float(pvgis)
+            or not ecart < 0):
+        return None
+    candidates = []
+    for etape in (cascade or {}).get('etapes') or []:
+        perte = etape.get('perte_kwh')
+        if (etape.get('motif_omission') or etape.get('gain')
+                or not isinstance(perte, (int, float)) or perte <= 0):
+            continue
+        candidates.append((-float(perte), etape.get('rang') or 0, etape))
+    if not candidates:
+        return None
+    etape = min(candidates, key=lambda c: (c[0], c[1]))[2]
+    return {cle: etape.get(cle)
+            for cle in ('etape', 'libelle', 'perte_kwh', 'perte_pct', 'rang')}
 
 
 # ── la production que PVGIS a calculée lui-même ─────────────────────────

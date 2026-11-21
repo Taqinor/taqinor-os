@@ -40,7 +40,7 @@ from ..serializers import forme_du_contrat, forme_reponse
 from ..services.electrique import (
     CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
     entree_electrique_servie, entree_stockee, evaluation_electrique,
-    resultat_calepinage, verdict_publiable,
+    resultat_calepinage, verdict_publiable, _valider_produits_designes,
 )
 from ..services.protections import DecisionInvalide
 from ..services.terre import TerreInvalide
@@ -232,6 +232,10 @@ class ElectriqueActionsMixin:
                                       "objet."},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
+            if entree:
+                # ACAL615 — un produit désigné à chaud est validé comme à
+                # l'enregistrement (borné société, 404 nommé, jamais un 500).
+                _valider_produits_designes(calepinage, entree)
             evaluation = evaluation_electrique(
                 calepinage, entree=entree, layout=layout)
             # La clé est TOUJOURS présente : ``None`` quand l'appel porte un
@@ -242,5 +246,7 @@ class ElectriqueActionsMixin:
                 else verdict_publiable(calepinage))
             return Response(evaluation)
         except (EntreeInvalide, *_REFUS_DE_LECTURE) as refus:
+            introuvable = getattr(refus, 'introuvable', False)
             return Response({refus.champ or 'entree_electrique': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_404_NOT_FOUND if introuvable
+                                    else status.HTTP_400_BAD_REQUEST))

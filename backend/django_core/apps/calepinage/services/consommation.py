@@ -185,6 +185,34 @@ def _lire_lead(company, lead_id):
     return get_company_lead(company, lead_id, avec_corbeille=True)
 
 
+MOTIF_SANS_FACTURE_LEAD = (
+    "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à "
+    "ce calepinage) : aucune facture mensuelle moyenne n'est servie.")
+MOTIF_FACTURE_INCOMPLETE = (
+    'Le profil du lead compte moins de 12 mois connus : aucune facture '
+    'mensuelle moyenne n\'est servie.')
+
+
+def facture_mensuelle_du_lead(company, lead_id, *, lire_lead=None):
+    """ACAL776 — la facture mensuelle MOYENNE du lead, servie à l'atelier.
+
+    ``{facture_mensuelle_mad, source, motif}`` : la moyenne est l'``annuel_mad``
+    du profil du lead ÷ 12 (jamais une facture inventée) ; sans lead (ou lead
+    d'une autre société), sans facture ou à moins de 12 mois connus, la
+    valeur et la source sont ``None`` et le motif nomme la donnée manquante.
+    Lecture pure : rien n'est écrit.
+    """
+    profil = _profil_depuis_lead(company, lead_id, lire_lead=lire_lead)
+    annuel = profil['annuel_mad']
+    if annuel is None:
+        motif = (MOTIF_SANS_FACTURE_LEAD if profil['source'] is None
+                 else MOTIF_FACTURE_INCOMPLETE)
+        return {'facture_mensuelle_mad': None, 'source': None,
+                'motif': motif}
+    return {'facture_mensuelle_mad': round(annuel / 12, 2),
+            'source': profil['source'], 'motif': ''}
+
+
 def _profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
     """Le profil pré-rempli depuis le lead d'un calepinage, ou VIDE.
 

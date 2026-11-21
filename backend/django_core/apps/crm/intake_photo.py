@@ -246,6 +246,54 @@ def _run_capture_ocr(lead, content: bytes, filename: str, mime: str) -> None:
                     getattr(lead, 'pk', None), exc)
 
 
+#: ACAL838 — les deux motifs dits à l'écran (sans écrire quoi que ce soit).
+MOTIF_OCR_DESACTIVE = ("La lecture de photo de facture est désactivée sur ce "
+                       "serveur : demandez à l'administrateur de l'activer.")
+MOTIF_PHOTO_ILLISIBLE = ("La photo n'a pas pu être lue : saisissez les mois "
+                         "à la main.")
+
+
+def lire_photo_facture(user, contenu, nom='', mime=''):
+    """ACAL838 — PROPOSITION de kWh lus sur une photo de facture, sans lead.
+
+    Rend ``{disponible, motif, lignes: [{mois, kwh}]}`` : OCR coupé ⇒
+    indisponible nommé, aucun appel réseau ; ``contenu`` None ⇒ seule la
+    disponibilité ; OCR lisible ⇒ UNE ligne, ``mois`` toujours null (l'OCR ne
+    lit pas le mois : l'utilisateur le choisit) ; panne, statut ≠ 200 ou texte
+    sans kWh ⇒ lignes vides et motif. N'écrit RIEN : aucun lead, aucune pièce
+    jointe, aucun journal (la fonction ne reçoit pas de lead)."""
+    if not capture_ocr_enabled():
+        return {'disponible': False, 'motif': MOTIF_OCR_DESACTIVE, 'lignes': []}
+    if contenu is None:
+        return {'disponible': True, 'motif': None, 'lignes': []}
+    illisible = {'disponible': True, 'motif': MOTIF_PHOTO_ILLISIBLE, 'lignes': []}
+    token = _service_token_for(user)
+    if not token:
+        return illisible
+    try:
+        import requests
+
+        resp = requests.post(
+            _fastapi_ocr_url(),
+            files={'file': (nom or 'facture.jpg', contenu, mime or 'image/jpeg')},
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=_OCR_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.info('lecture photo facture : statut %s', resp.status_code)
+            return illisible
+        payload = resp.json() or {}
+        kwh = _extract_conso_kwh(payload.get('donnees_structurees') or {},
+                                 payload.get('texte_brut') or '')
+    except Exception as exc:  # noqa: BLE001 — une panne d'OCR devient « illisible »
+        logger.info('lecture photo facture : échec (%s)', exc)
+        return illisible
+    if kwh is None:
+        return illisible
+    return {'disponible': True, 'motif': None,
+            'lignes': [{'mois': None, 'kwh': kwh}]}
+
+
 def _extract_conso_kwh(structurees: dict, texte: str):
     """Consommation mensuelle (kWh) depuis les données structurées OCR, sinon
     premier motif « N kWh » plausible du texte brut. None si introuvable."""

@@ -76,6 +76,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     'CODE_DOCUMENT', 'CHEMIN_CONTRAT', 'MODULES_DE_SECTION', 'RapportRefuse',
+    'SECTIONS_OMISES_SANS_DONNEES',
     'sections_declarees', 'valeur_au_chemin', 'entrees_manquantes',
     'verifier_etancheite', 'resultat_du_rapport', 'redacteur_de_section',
     'feuille_de_section',
@@ -89,10 +90,15 @@ __all__ = [
 #: générique). La garde n'a pas de rédacteur : c'est la page de garde du
 #: gabarit (CALX295).
 MODULES_DE_SECTION = {
+    'synthese': 'synthese',
     'site_meteo': 'site',
+    'photos_site': 'photos_site',
     'systeme': 'systeme',
     'pertes': 'pertes',
     'production': 'production',
+    'autoconsommation': 'autoconsommation',
+    'hors_reseau': 'hors_reseau',
+    'consommation': 'consommation',
     'ombrage': 'ombrage',
     'electrique': 'electrique',
     'nomenclature': 'nomenclature',
@@ -100,6 +106,12 @@ MODULES_DE_SECTION = {
     'validation': 'validation',
     'hypotheses': 'annexe_hypotheses',
 }
+
+#: ACAL832 — les sections OMISES quand une de leurs entrées exigées manque :
+#: ni imprimées, ni listées « non calculé » à l'annexe (« pas de donnée » n'est
+#: pas « pas calculé » : une installation raccordée n'a pas de bloc hors
+#: réseau). Les autres sections, elles, disent leur motif.
+SECTIONS_OMISES_SANS_DONNEES = frozenset({'consommation', 'hors_reseau'})
 
 #: Motif servi quand le calepinage n'a jamais été calculé.
 SANS_RESULTAT = ("Aucun résultat de moteur enregistré pour ce calepinage : le "
@@ -348,7 +360,7 @@ def _codes_retenus(sections, declarees):
 def construire_rapport(calepinage, *, langue=None, sections=None,
                        resultat=None, resultat_stocke=None, site=None,
                        identite=None, styles=None, mentions=None, etat=None,
-                       fiches_sans_pdf=None, motif_schema=''):
+                       fiches_sans_pdf=None, motif_schema='', photos=None):
     """Le rapport, prêt à mettre en page — aucune grandeur recalculée.
 
     Args:
@@ -403,6 +415,8 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
         if section['code'] not in retenus:
             continue
         manque = entrees_manquantes(resultat, section)
+        if manque and section['code'] in SECTIONS_OMISES_SANS_DONNEES:
+            continue  # ACAL832 — omise : ni imprimée, ni « non calculé »
         lignes.append(dict(
             section,
             titre=libelle(section['code'], langue_servie),
@@ -430,6 +444,7 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
                                                           dict) else {}),
         'fiches_sans_pdf': [str(f) for f in fiches_sans_pdf or () if f],
         'motif_schema': str(motif_schema or ''),
+        'photos': list(photos or ()),
     }
 
 
@@ -448,6 +463,7 @@ def contexte_de_section(rapport, section):
         'provenance': rapport['provenance'],
         'fiches_sans_pdf': rapport.get('fiches_sans_pdf') or [],
         'motif_schema': rapport.get('motif_schema') or '',
+        'photos': rapport.get('photos') or [],
         'libelle': functools.partial(libelle, langue=rapport['langue']),
     }
 
@@ -534,6 +550,10 @@ def html_du_rapport(calepinage, *, paginer=True, **options):
     """
     from .mise_en_page import html_de_rapport_pagine
 
+    if 'photos' not in options:  # ACAL759 : lues UNE fois
+        from ..documents.document_asbuilt import _photos_du_calepinage
+
+        options['photos'] = _photos_du_calepinage(calepinage)
     if 'fiches_sans_pdf' not in options:
         options['fiches_sans_pdf'] = _fiches_sans_pdf(calepinage)
     if 'motif_schema' not in options:

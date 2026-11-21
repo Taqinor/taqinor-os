@@ -287,5 +287,9 @@ class AucuneConstanteNormativeTest(unittest.TestCase):
                   if isinstance(noeud, ast.Constant)
                   and isinstance(noeud.value, (int, float))
                   and not isinstance(noeud.value, bool)
-                  and noeud.value not in lestage.NOMBRES_DE_FORME]
+                  and noeud.value not in lestage.NOMBRES_DE_FORME
+                  # ACAL939 — les deux constantes PHYSIQUES déclarées
+                  and noeud.value not in {
+                      valeur for valeur, _ in
+                      lestage.CONSTANTES_PHYSIQUES.values()}]
         self.assertEqual(intrus, [])

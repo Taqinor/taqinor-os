@@ -23,6 +23,8 @@ import { type LayoutPlan } from './types';
 import { createLayoutState } from '../../lib/layoutVariability';
 import { placeFreePanels, type FreePanel } from '../../lib/freeLayout';
 import { carteEditeurFactice, depsEditeur } from './harnaisAtelier';
+import { natureSilhouette, silhouetteDuLot, silhouetteGeoJSON, peindreSilhouette, texteDeMesure } from './silhouetteGlisse'; // ACAL551
+import type { FreeCheck, FreeGeom } from '../../lib/freeLayout'; // ACAL551
 
 /** Un contour CARRÉ centré sur l'origine ENU, de demi-côté `halfWidthM`. */
 function squareRingENU(halfWidthM: number): [number, number][] {
@@ -526,5 +528,77 @@ describe('ACAL418 — barre de sélection : Retirer la sélection', () => {
     expect(editor.freePanels()).toHaveLength(2);
     expect(editor.undo()).toBe(false);
     expect(editor.freePanels()).toHaveLength(2);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL551 — silhouette du panneau glissé : rouge (dur), ambre (marge réglable), rien (valide).
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL551 — silhouette du glissé', () => {
+  const verdict = (violations: FreeCheck['violations'], hard: boolean): FreeCheck =>
+    ({ ok: violations.length === 0, violations, hard, edgeM: 0.2, panelM: null });
+  const g = { u: [1, 0], s: [0, 1], widthM: 2, depthM: 1 } as unknown as FreeGeom;
+
+  it('natureSilhouette : obstacle ⇒ dur, retrait ou écart seul ⇒ relâchable, valide ⇒ rien', () => {
+    expect(natureSilhouette(verdict(['obstacle'], true))).toBe('dur');
+    expect(natureSilhouette(verdict(['overlap'], true))).toBe('dur');
+    expect(natureSilhouette(verdict(['setback'], false))).toBe('relachable');
+    expect(natureSilhouette(verdict(['gap'], false))).toBe('relachable');
+    expect(natureSilhouette(verdict([], false))).toBeNull();
+    expect(natureSilhouette(null)).toBeNull();
+  });
+
+  it('silhouetteGeoJSON rend un anneau de 4 coins (fermé) par membre du lot', () => {
+    const coins: [number, number][][] = [
+      [[0, 0], [2, 0], [2, 1], [0, 1]],
+      [[3, 0], [5, 0], [5, 1], [3, 1]],
+    ];
+    const f = silhouetteGeoJSON(coins, [-7.6, 33.5], 'dur');
+    expect(f).toHaveLength(2);
+    for (const e of f) {
+      expect(e.properties.nature).toBe('dur');
+      const anneau = e.geometry.coordinates[0];
+      expect(anneau).toHaveLength(5);
+      expect(anneau[0]).toEqual(anneau[4]);
+      expect(new Set(anneau.slice(0, 4).map((p) => p.join())).size).toBe(4);
+    }
+  });
+
+  it('silhouetteDuLot : position valide ⇒ null ; refusée ⇒ une silhouette par membre, à la position visée', () => {
+    const membres = [{ index: 0, cx: 0, cy: 0 }, { index: 1, cx: 3, cy: 0 }];
+    const panels = [{ cx: 0, cy: 0 }, { cx: 3, cy: 0 }];
+    expect(silhouetteDuLot(g, panels, membres, 1, 1, verdict([], false), [-7.6, 33.5])).toBeNull();
+    const f = silhouetteDuLot(g, panels, membres, 1, 1, verdict(['obstacle'], true), [-7.6, 33.5])!;
+    expect(f).toHaveLength(2);
+    // le premier membre visé à (1, 1) : centre est/nord décalé d'un mètre de l'origine
+    const lngs = f[0].geometry.coordinates[0].map((p) => p[0]);
+    const lats = f[0].geometry.coordinates[0].map((p) => p[1]);
+    expect(Math.min(...lngs)).toBeGreaterThanOrEqual(-7.6 - 1e-12);
+    expect(Math.max(...lngs)).toBeGreaterThan(-7.6 + 1.5 / (111320 * Math.cos(33.5 * Math.PI / 180)));
+    expect(Math.min(...lats)).toBeGreaterThan(33.5 + 0.4 / 111320);
+  });
+
+  it('peindreSilhouette crée la source et la couche à la demande, efface sur null, ignore une carte inerte', () => {
+    const sources = new Map<string, { setData: (d: unknown) => void; data: unknown }>();
+    const couches: unknown[] = [];
+    const carte = {
+      getSource: (id: string) => sources.get(id),
+      addSource: (id: string, spec: { data: unknown }) => sources.set(id, { data: spec.data, setData(d) { this.data = d; } }),
+      addLayer: (spec: unknown) => couches.push(spec),
+    };
+    const f = silhouetteGeoJSON([[[0, 0], [2, 0], [2, 1], [0, 1]]], [-7.6, 33.5], 'relachable');
+    peindreSilhouette(carte, f);
+    expect(couches).toHaveLength(1);
+    expect((sources.get('rp9-glisse-silhouette')!.data as { features: unknown[] }).features).toHaveLength(1);
+    peindreSilhouette(carte, null);
+    expect((sources.get('rp9-glisse-silhouette')!.data as { features: unknown[] }).features).toHaveLength(0);
+    expect(couches).toHaveLength(1); // pas de couche en double
+    expect(() => peindreSilhouette({}, f)).not.toThrow();
+    expect(() => peindreSilhouette(null, null)).not.toThrow();
+  });
+
+  it('texteDeMesure garde la cause en toutes lettres', () => {
+    expect(texteDeMesure(verdict(['obstacle'], true))).toBe('Rive : 20 cm · Voisin : — — il tomberait sur un obstacle (ou son dégagement)');
   });
 });

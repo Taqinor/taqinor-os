@@ -244,6 +244,60 @@ class CaptureOcrTests(TestCase):
         self.assertEqual(float(self.lead.conso_mensuelle_kwh), 412.5)
         self.assertEqual(self.lead.tranche_onee, 'Tranche 4')
 
+    # ── ACAL838 — proposition de kWh sans rien écrire ──────────────────────
+    def _rien_n_a_bouge(self, journal_avant):
+        from apps.records.models import Attachment
+
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.conso_mensuelle_kwh)
+        self.assertFalse(self.lead.tranche_onee)
+        self.assertEqual(LeadActivity.objects.filter(lead=self.lead).count(),
+                         journal_avant)
+        self.assertEqual(Attachment.objects.filter(company=self.company).count(), 0)
+
+    @override_settings(CRM_CAPTURE_OCR_ENABLED=False)
+    def test_acal838_ocr_coupe_indisponible_sans_appel_reseau(self):
+        from .intake_photo import MOTIF_OCR_DESACTIVE, lire_photo_facture
+
+        with mock.patch('requests.post') as mock_post:
+            r = lire_photo_facture(self.owner, b'\xff\xd8\xff', 'f.jpg', 'image/jpeg')
+        mock_post.assert_not_called()
+        self.assertEqual(r, {'disponible': False, 'motif': MOTIF_OCR_DESACTIVE,
+                             'lignes': []})
+
+    @override_settings(CRM_CAPTURE_OCR_ENABLED=True)
+    def test_acal838_ocr_repond_une_ligne_lead_et_journal_inchanges(self):
+        from .intake_photo import lire_photo_facture
+
+        avant = LeadActivity.objects.filter(lead=self.lead).count()
+        with mock.patch('requests.post', return_value=self._fake_ocr_response({
+            'texte_brut': 'ONEE Facture — Consommation 385 kWh — Tranche: 3',
+            'donnees_structurees': {},
+        })):
+            r = lire_photo_facture(self.owner, b'\xff\xd8\xff', 'f.jpg', 'image/jpeg')
+        self.assertEqual(r, {'disponible': True, 'motif': None,
+                             'lignes': [{'mois': None, 'kwh': 385.0}]})
+        self._rien_n_a_bouge(avant)
+        self.assertEqual(lire_photo_facture(self.owner, None),
+                         {'disponible': True, 'motif': None, 'lignes': []})
+
+    @override_settings(CRM_CAPTURE_OCR_ENABLED=True)
+    def test_acal838_ocr_en_panne_ou_sans_kwh_lignes_vides(self):
+        from .intake_photo import MOTIF_PHOTO_ILLISIBLE, lire_photo_facture
+
+        avant = LeadActivity.objects.filter(lead=self.lead).count()
+        attendu = {'disponible': True, 'motif': MOTIF_PHOTO_ILLISIBLE, 'lignes': []}
+        with mock.patch('requests.post', side_effect=RuntimeError('panne')):
+            self.assertEqual(lire_photo_facture(self.owner, b'x'), attendu)
+        refus = self._fake_ocr_response({})
+        refus.status_code = 429
+        with mock.patch('requests.post', return_value=refus):
+            self.assertEqual(lire_photo_facture(self.owner, b'x'), attendu)
+        with mock.patch('requests.post', return_value=self._fake_ocr_response({
+                'texte_brut': 'Facture sans consommation', 'donnees_structurees': {}})):
+            self.assertEqual(lire_photo_facture(self.owner, b'x'), attendu)
+        self._rien_n_a_bouge(avant)
+
 
 class ExtractionHelpersTests(TestCase):
     """Parsing local déterministe (sans réseau)."""

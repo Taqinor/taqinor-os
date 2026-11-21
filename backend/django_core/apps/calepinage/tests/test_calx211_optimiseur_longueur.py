@@ -151,3 +151,33 @@ class SansOptimiseurTest(SimpleTestCase):
         self.assertIsNone(regle['longueur_max_modules'])
         self.assertEqual(regle['longueur_source'], '')
         self.assertEqual(regle['longueur_reference'], '')
+
+
+class EntreeMultiModulesTest(SimpleTestCase):
+    """ACAL646 — la puissance d'entrée est celle de TOUS les modules de
+    l'entrée (modules par optimiseur × fiche) ; tension et courant restent
+    comparés module par module."""
+
+    MODULE_220 = dict(MODULE, pmax_wc=220.0)
+
+    def _verdicts(self, optimiseur):
+        regle = _regle_de_chaine(self.MODULE_220, ONDULEUR, optimiseur,
+                                 designation='Optimiseur d essai')
+        return {v['code']: v for v in regle['verdicts_entree']}
+
+    def test_deux_modules_de_220_sur_400_sortent_au_dessus(self):
+        verdicts = self._verdicts(dict(OPTIMISEUR_ENTREE_SEULE,
+                                       pmax_in_w=400.0,
+                                       modules_par_optimiseur=2))
+        puissance = verdicts['optimiseur_pmax_in_w']
+        self.assertFalse(puissance['conforme'])
+        self.assertIn('440 Wc AU-DESSUS DE 400 Wc', puissance['detail'])
+        self.assertTrue(verdicts['optimiseur_v_in_max']['conforme'])
+
+    def test_ratio_absent_compare_un_module_et_le_dit(self):
+        optimiseur = dict(OPTIMISEUR_ENTREE_SEULE, pmax_in_w=400.0)
+        optimiseur.pop('modules_par_optimiseur')
+        puissance = self._verdicts(optimiseur)['optimiseur_pmax_in_w']
+        self.assertTrue(puissance['conforme'])
+        self.assertIn('220 Wc sous 400 Wc', puissance['detail'])
+        self.assertIn('un module comparé', puissance['detail'])

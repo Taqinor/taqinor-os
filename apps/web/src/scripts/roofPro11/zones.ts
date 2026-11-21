@@ -16,6 +16,8 @@ import { geodesicAreaM2, isSimplePolygon, pointInPolygon, type LngLat } from '..
 import { referenceContourRing } from './prefill'; // ACAL71 — le validateur de contour UNIQUE
 import { facteurDerateAnnuel } from './optimizer'; // ACAL356 — le dérate UNIQUE (ombrage × horizon)
 import { type Obstacle } from '../../lib/obstacles';
+import { pivoterSite } from './siteRotation'; // ACAL514
+import { motifPanVerrouille } from './panVerrouille'; // ACAL520
 import {
   centroideAnneau,
   dimensionsRectangleM,
@@ -322,6 +324,8 @@ export interface Zones {
   /** CALX97 — fait pivoter le pan ACTIF (contour + obstacles) de l'angle saisi. Renvoie
    *  false et n'applique RIEN quand c'est refusé ; le motif nomme le pan. */
   pivoterPanActif: (angleDeg: number) => boolean;
+  /** ACAL515 — pivote TOUT le site d'un geste annulable ; false et rien ne bouge si refusé. */
+  pivoterSiteActif: (angleDeg: number) => boolean;
   /** CALX97 — repose le pan ACTIF aux cotes saisies (pan rectangulaire seulement). */
   redimensionnerPanActif: (largeurM: number, longueurM: number) => boolean;
   /** CALX98 — duplique le pan ACTIF (contour, obstacles et réglages) dans une zone neuve
@@ -472,6 +476,8 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           areas.length > 1
             ? `<button type="button" data-area-del="${a.id}" aria-label="Supprimer ${esc(a.label)}" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>`
             : '';
+        // ACAL520 — cadenas du pan (≥ 44 px, `aria-pressed`) : verrouillé, ses gestes refusent.
+        const lockBtn = `<button type="button" data-area-lock="${a.id}" aria-pressed="${a.verrouille ? 'true' : 'false'}" aria-label="Verrouiller ${esc(a.label || areaLabel(i))}" class="min-h-11 min-w-11 border px-2.5 py-1 text-xs font-semibold ${a.verrouille ? 'border-brass-400 text-brass-300' : 'border-white/25 text-lune-soft'}">${a.verrouille ? 'Verrouillé' : 'Verrouiller'}</button>`;
         const viewBtn = active
           ? `<span class="text-xs font-semibold text-brass-300">● active</span>`
           : `<button type="button" data-area-select="${a.id}" class="border border-white/25 px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">Voir</button>`;
@@ -484,7 +490,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
           <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}</span>
           ${buildingInput}
-          <span class="ml-auto flex items-center gap-2">${viewBtn}${delBtn}</span>
+          <span class="ml-auto flex items-center gap-2">${lockBtn}${viewBtn}${delBtn}</span>
         </li>`;
       };
       if (!multiBuilding) {
@@ -581,7 +587,11 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       `<label class="inline-flex items-center gap-1" for="rp9-pan-rotation">Rotation (°)` +
       `<input type="text" id="rp9-pan-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-pan-pivoter" class="rp9-btn">Pivoter le pan</button>` +
-      `<span id="rp9-pan-geometry-erreur" class="text-alert-300" role="alert" hidden></span>`;
+      `<label class="inline-flex items-center gap-1" for="rp9-site-rotation">Rotation du site (°)` +
+      `<input type="text" id="rp9-site-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<button type="button" id="rp9-site-pivoter" class="rp9-btn">Pivoter le site</button>` +
+      `<span id="rp9-pan-geometry-erreur" class="text-alert-300" role="alert" hidden></span>` +
+      `<span id="rp9-site-erreur" class="text-alert-300" role="alert" hidden></span>`;
     areasWindowEl.appendChild(el);
     return el;
   }
@@ -604,16 +614,19 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   }
 
   /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
-  function direRefusGeometrie(motif: string | null) {
-    if (panErreurEl) {
-      panErreurEl.textContent = motif ?? '';
-      panErreurEl.hidden = !motif;
+  function direRefusGeometrie(motif: string | null, idErreur = 'rp9-pan-geometry-erreur') {
+    const erreurEl = idErreur === 'rp9-pan-geometry-erreur' ? panErreurEl : document.getElementById(idErreur);
+    if (erreurEl) {
+      erreurEl.textContent = motif ?? '';
+      erreurEl.hidden = !motif;
     }
     if (motif) deps.setStatus?.(motif);
   }
 
   /** Applique une géométrie transformée au pan ACTIF (contour + obstacles vivants). */
-  function appliquerAuPanActif(geometrie: GeometriePan) {
+  function appliquerAuPanActif(geometrie: GeometriePan): boolean {
+    const verrou = motifPanVerrouille(ctx.activeArea?.(), ctx.areas.findIndex((a) => a.id === ctx.activeAreaId)); // ACAL520
+    if (verrou) { direRefusGeometrie(verrou); return false; }
     ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
     ctx.vertices.splice(0, ctx.vertices.length, ...geometrie.vertices);
     ctx.obstacles.splice(0, ctx.obstacles.length, ...geometrie.obstacles);
@@ -622,6 +635,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     deps.redrawObstacles?.();
     deps.recalc?.();
     renderAreasPanel();
+    return true;
   }
 
   function pivoterPanActif(angleDeg: number): boolean {
@@ -635,8 +649,50 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       return false;
     }
     direRefusGeometrie(null);
-    appliquerAuPanActif(verdict.geometrie);
+    if (!appliquerAuPanActif(verdict.geometrie)) return false;
     deps.setStatus?.(`${nomDuPanActif()} pivoté de ${angleDeg}° — ses obstacles ont suivi.`);
+    return true;
+  }
+
+  /** ACAL515 — pivote TOUT le site (pans, obstacles, environnement, zones, mesures) d'un seul geste
+   *  annulable. Refus NOMMÉ (panneaux posés, angle illisible…) : rien ne bouge. */
+  function pivoterSiteActif(angleDeg: number): boolean {
+    snapshotActiveAreaResult();
+    snapshotActiveAreaGeometry();
+    const verdict = pivoterSite({
+      zones: ctx.areas.map((a) => ({
+        label: a.label, vertices: a.vertices, obstacles: a.obstacles, facingAzimuthDeg: a.facingAzimuthDeg,
+        geometry: a.geometrieEnregistree, result: a.result,
+      })),
+      environment: ctx.environment ?? [], exclusionZones: ctx.exclusionZones ?? [], measurements: ctx.measurements ?? [],
+    }, angleDeg);
+    if (!verdict.ok) {
+      direRefusGeometrie(verdict.motif, 'rp9-site-erreur');
+      return false;
+    }
+    direRefusGeometrie(null, 'rp9-site-erreur');
+    ctx.pushWorkshopHistory?.(); // UN seul point d'historique pour tout le geste
+    const tournees = verdict.site.zones as Array<Pick<AreaRecord, 'vertices' | 'obstacles' | 'facingAzimuthDeg' | 'geometrieEnregistree'> & { geometry?: AreaRecord['geometrieEnregistree'] }>;
+    ctx.areas.forEach((a, i) => {
+      a.vertices = tournees[i].vertices;
+      a.obstacles = tournees[i].obstacles;
+      a.facingAzimuthDeg = tournees[i].facingAzimuthDeg;
+      if (tournees[i].geometry) a.geometrieEnregistree = tournees[i].geometry;
+    });
+    for (const k of ['environment', 'exclusionZones', 'measurements'] as const) {
+      (ctx[k] as unknown[] | undefined)?.splice(0, Infinity, ...(verdict.site[k] as unknown[]));
+    }
+    const actif = ctx.activeArea();
+    if (actif) {
+      ctx.vertices.splice(0, ctx.vertices.length, ...actif.vertices);
+      ctx.obstacles.splice(0, ctx.obstacles.length, ...actif.obstacles);
+      ctx.facingAzimuthDeg = actif.facingAzimuthDeg;
+    }
+    deps.redrawTrace?.();
+    deps.redrawObstacles?.();
+    deps.recalc?.();
+    renderAreasPanel();
+    deps.setStatus?.(`Site pivoté de ${angleDeg}° — les obstacles gardent leur orientation nord-sud.`);
     return true;
   }
 
@@ -652,7 +708,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       return false;
     }
     direRefusGeometrie(null);
-    appliquerAuPanActif(verdict.geometrie);
+    if (!appliquerAuPanActif(verdict.geometrie)) return false;
     deps.setStatus?.(`${nomDuPanActif()} reposé aux cotes saisies — son centre n’a pas bougé.`);
     return true;
   }
@@ -687,7 +743,18 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       redimensionnerPanActif(nombreSaisi(panLargeurEl?.value), nombreSaisi(panLongueurEl?.value));
     } else if (cible?.id === 'rp9-pan-pivoter') {
       pivoterPanActif(nombreSaisi(panRotationEl?.value));
+    } else if (cible?.id === 'rp9-site-pivoter') {
+      pivoterSiteActif(nombreSaisi((document.getElementById('rp9-site-rotation') as HTMLInputElement | null)?.value));
     }
+  });
+
+  // ACAL520 — clic sur le cadenas d'un pan : bascule `verrouille` et redessine la liste.
+  ctx.dom.areasListEl?.addEventListener('click', (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-area-lock]')?.dataset.areaLock;
+    const pan = id ? ctx.areas.find((a) => a.id === id) : undefined;
+    if (!pan) return;
+    if (pan.verrouille) delete pan.verrouille; else pan.verrouille = true; // absent = modifiable : octet pour octet
+    renderAreasPanel();
   });
 
   // ————————————————————————————————————————————————————————————————————
@@ -939,6 +1006,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     renderAreasPanel,
     setAreaBuilding,
     pivoterPanActif,
+    pivoterSiteActif,
     redimensionnerPanActif,
     dupliquerPanActif,
     choisirModuleDuPanActif, // CALX109/CALX110 câblage

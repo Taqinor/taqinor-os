@@ -35,7 +35,8 @@ __all__ = [
     "AMPACITE_U1000R2V_TRI", "SECTIONS_MM2_CI", "AMPACITE_H1Z2Z2K_CI",
     "AMPACITE_U1000R2V_MONO_CI", "AMPACITE_U1000R2V_TRI_CI",
     "BAREMES_ETENDUS", "CRITERE_HORS_BAREME_THERMIQUE", "bareme_pour",
-    "RHO_CUIVRE_20C", "COEFF_ISC_DIMENSIONNEMENT",
+    "RHO_CUIVRE_20C", "TEMPERATURE_REFERENCE_RHO_C",
+    "COEFF_ISC_DIMENSIONNEMENT",
     "CHUTE_CIBLE_DC_PCT", "CHUTE_MAX_DC_PCT", "CHUTE_CIBLE_AC_PCT",
     "CHUTE_MAX_AC_PCT", "SECTION_MIN_DC_MM2", "CRITERE_ECHAUFFEMENT",
     "CRITERE_CHUTE", "CRITERE_LES_DEUX", "CRITERE_PLANCHER",
@@ -117,6 +118,9 @@ BAREMES_ETENDUS = (
 #: valeur ; le moteur reste sur la valeur à 20 °C, comme le guide, et compense
 #: par une CIBLE de chute plus basse que le maximum admissible.
 RHO_CUIVRE_20C = 0.01851
+#: ACAL635 — la température à laquelle ``RHO_CUIVRE_20C`` est publiée : la
+#: référence de ρ(θ) = ρ20 × (1 + α × (θ − 20)), α et θ saisis par la société.
+TEMPERATURE_REFERENCE_RHO_C = 20.0
 
 #: Coefficient de dimensionnement des câbles DC : 1,25 × Isc (IEC 62548 §7.3 —
 #: l'ensoleillement peut dépasser 1000 W/m², le courant aussi).
@@ -250,7 +254,8 @@ def verifier_ib_in_iz(ib_a, in_a, iz_a):
 def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
                      bareme=AMPACITE_H1Z2Z2K, coefficient=2.0,
                      calibre_in_a=None, courant_service_a=None,
-                     section_min_mm2=None):
+                     section_min_mm2=None, rho=RHO_CUIVRE_20C,
+                     facteur_iz=1.0):
     """Plus petite section qui satisfait Iz ET la cible de chute de tension.
 
     ``courant_ib_a`` sert au critère d'ÉCHAUFFEMENT (courant de dimensionnement,
@@ -263,6 +268,11 @@ def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
     changer les deux sections « calculées » publiées
     (``section_par_echauffement_mm2``/``section_par_chute_mm2``) — un lecteur
     doit pouvoir voir ce que la physique exigeait ET ce que le plancher impose.
+
+    ACAL635 — ``rho`` : la résistivité de la chute (défaut ρ à 20 °C ; une
+    résistivité à chaud est CALCULÉE par l'appelant depuis des réglages
+    sourcés). ACAL636 — ``facteur_iz`` : facteur de regroupement appliqué au
+    courant admissible du barème (Ib comparé à facteur × Iz ; 1 = sans).
     """
     courant_chute = (float(courant_ib_a or 0.0) if courant_service_a is None
                      else float(courant_service_a))
@@ -272,10 +282,11 @@ def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
     section_thermique = None
     section_chute = None
     for section, iz in bareme:
-        if section_thermique is None and iz + 1e-9 >= exigence_thermique:
+        if section_thermique is None \
+                and iz * facteur_iz + 1e-9 >= exigence_thermique:
             section_thermique = section
         chute = chute_tension_pct(longueur_m, courant_chute, section, tension_v,
-                                  coefficient)
+                                  coefficient, rho)
         if section_chute is None and chute <= cible_pct + 1e-9:
             section_chute = section
 
@@ -306,9 +317,9 @@ def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
 
     return SectionProposee(
         section_mm2=retenue,
-        iz_a=ampacite(retenue, bareme) or 0.0,
+        iz_a=(ampacite(retenue, bareme) or 0.0) * facteur_iz,
         chute_pct=chute_tension_pct(longueur_m, courant_chute, retenue,
-                                    tension_v, coefficient),
+                                    tension_v, coefficient, rho),
         critere=critere,
         section_par_echauffement_mm2=(None if thermique_hors_bareme
                                       else section_thermique),

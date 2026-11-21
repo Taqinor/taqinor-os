@@ -213,5 +213,64 @@ class HorizonDeriveTest(unittest.TestCase):
         self.assertEqual(bloc['source_horizon'], 'reglage')
 
 
+class DureeDeVieTest(unittest.TestCase):
+    """ACAL693 — horizon, motif et garantie LUE sur la fiche, jamais supposée."""
+
+    #: Garantie de référence écrite ICI (jamais recopiée de la sortie).
+    G10, G25 = 90.0, 84.8
+
+    def _fiche(self, nom, g10=G10, g25=G25):
+        fiche = dict(FICHE, designation=nom)
+        if g10 is not None:
+            fiche['garantie_pct_a_10_ans'] = g10
+        if g25 is not None:
+            fiche['garantie_pct_a_25_ans'] = g25
+        return fiche
+
+    def _bloc(self, contexte):
+        projection = vieillissement.tableau_pluriannuel(P50_ANNEE1, contexte)
+        return vieillissement.bloc_duree_de_vie(projection, contexte)
+
+    def test_paire_commune_a_deux_modeles(self):
+        fiches = [self._fiche('Module A'), self._fiche('Module B')]
+        bloc = self._bloc(contexte_de(fiche=fiches[0], horizon=25,
+                                      modele='lineaire', fiches=fiches))
+        self.assertEqual(bloc['horizon_annees'], 25)
+        self.assertEqual(bloc['source_horizon'], 'reglage')
+        self.assertEqual(bloc['motif_omission'], '')
+        self.assertEqual(bloc['garantie']['pct_a_10_ans'], self.G10)
+        self.assertEqual(bloc['garantie']['pct_a_25_ans'], self.G25)
+        self.assertEqual(bloc['garantie']['motif'], '')
+
+    def test_paires_differentes_aucune_retenue(self):
+        # Mutant « premier modèle seulement » : rendrait 90,0 / 84,8.
+        fiches = [self._fiche('Module A'),
+                  self._fiche('Module B', g10=88.0, g25=80.0)]
+        garantie = self._bloc(contexte_de(fiche=fiches[0], horizon=25,
+                                          fiches=fiches))['garantie']
+        self.assertIsNone(garantie['pct_a_10_ans'])
+        self.assertIsNone(garantie['pct_a_25_ans'])
+        self.assertIn('garanties différentes entre modèles', garantie['motif'])
+
+    def test_champ_absent_nomme_le_champ(self):
+        fiche = self._fiche('Module A', g25=None)
+        garantie = self._bloc(contexte_de(fiche=fiche, horizon=25))['garantie']
+        self.assertEqual(garantie['pct_a_10_ans'], self.G10)
+        self.assertIsNone(garantie['pct_a_25_ans'])
+        self.assertIn('FicheTechnique.garantie_pct_a_25_ans',
+                      garantie['motif'])
+
+    def test_horizon_derive_et_omission(self):
+        fiche = dict(self._fiche('Module A'), garantie_production_mois=360)
+        bloc = self._bloc(contexte_de(fiche=fiche, modele='lineaire'))
+        self.assertEqual(bloc['horizon_annees'], 30)
+        self.assertEqual(bloc['source_horizon'], 'derivee_fiche')
+        self.assertEqual(bloc['produit_horizon'], 'Module A')
+        omis = self._bloc(contexte_de(fiche=FICHE, modele='lineaire'))
+        self.assertIsNone(omis['horizon_annees'])
+        self.assertTrue(omis['motif_omission'])
+        self.assertIsNone(omis['garantie']['pct_a_10_ans'])
+
+
 if __name__ == '__main__':
     unittest.main()

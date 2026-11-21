@@ -386,6 +386,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             'responsable', 'responsable_nom',  # CALX406
             'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
             'contraintes_site',  # CIQ136
+            'exemple',  # ACAL895 — modèle d'exemple, LECTURE SEULE
             'custom_data',  # ACAL294 — écrit ici, LU par le détail (CAL17)
         ]
         #: ACAL33 — ``devis`` est LU, jamais écrit par le CRUD : le seul
@@ -393,7 +394,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         #: unicité « un calepinage par devis »).
         read_only_fields = [
             'layout_hash', 'roof_image', 'version_moteur', 'cree_par',
-            'created_at', 'updated_at', 'devis',
+            'created_at', 'updated_at', 'devis', 'exemple',
         ]
         #: ACAL294 — ``custom_data`` est publié par le DÉTAIL (contrat
         #: ``calepinage_detail.json``) ; la LISTE ne le porte pas.

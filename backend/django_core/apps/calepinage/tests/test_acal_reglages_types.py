@@ -446,7 +446,7 @@ class FormeDesTablesTest(SimpleTestCase):
         )
 
         tables = self._tables()
-        self.assertEqual(len(tables), 5)
+        self.assertEqual(len(tables), 6)  # + ACAL673
         champs = _sections_requete_resserrees()
         ecarts = []
         for section, cle in tables:

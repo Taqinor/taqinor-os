@@ -198,6 +198,37 @@ class Options(unittest.TestCase):
                                  "sonde_niveau")
         self.assertIn("protection marche à sec intégrée", option["motif"])
 
+    def _marche_a_sec(self, **surcharge):
+        kit = composer_kit(**dict(BASE, **surcharge))
+        return [a for a in kit["alertes"]
+                if a["code"] == "marche_a_sec_non_protegee"]
+
+    def test_acal808_ni_sonde_ni_protection_alerte(self):
+        var = dict(VARIATEUR, fiche={"var_protection_marche_a_sec": False})
+        alerte = self._marche_a_sec(variateur=var, options_cochees=None)
+        self.assertEqual(len(alerte), 1)
+        self.assertEqual(set(alerte[0]), {"code", "champ", "message"})
+        self.assertEqual(alerte[0]["champ"], "kit.options.sonde_niveau")
+        self.assertIn("la pompe tournerait à sec", alerte[0]["message"])
+
+    def test_acal808_protection_inconnue_a_saisir(self):
+        var = dict(VARIATEUR, fiche={"var_protection_marche_a_sec": None})
+        alerte = self._marche_a_sec(variateur=var)
+        self.assertEqual(len(alerte), 1)
+        self.assertIn("ne dit pas s'il protège de la marche à sec : à saisir",
+                      alerte[0]["message"])
+
+    def test_acal808_sonde_cochee_ou_protection_publiee_aucune_alerte(self):
+        sans = dict(VARIATEUR, fiche={"var_protection_marche_a_sec": False})
+        self.assertEqual(self._marche_a_sec(
+            variateur=sans, options_cochees=["sonde_niveau"]), [])
+        avec = dict(VARIATEUR, fiche={"var_protection_marche_a_sec": True})
+        self.assertEqual(self._marche_a_sec(variateur=avec), [])
+        self.assertEqual(self._marche_a_sec(variateur=None), [])
+        placeholder = dict(POMPE, placeholder=True, produit=None)
+        self.assertEqual(self._marche_a_sec(variateur=sans, pompe=placeholder),
+                         [])
+
     def test_total_ttc_quand_tout_est_price(self):
         def avec_prix(p, prix):
             return dict(p, prix_ttc=prix)

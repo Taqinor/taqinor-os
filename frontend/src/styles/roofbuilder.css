@@ -255,6 +255,48 @@
   cursor: not-allowed;
 }
 
+/* ── Boutons et champs créés à la volée (rp9-btn, rp9-input) — ACAL503 ───── */
+.rp9-host .rp9-btn {
+  min-height: 2.75rem;
+  border: 1px solid color-mix(in srgb, var(--rp-lune-soft) 35%, transparent);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--rp-lune-soft);
+  background: transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.rp9-host .rp9-btn:hover,
+.rp9-host .rp9-btn:focus-visible,
+.rp9-host .rp9-btn[aria-pressed='true'] {
+  border-color: var(--rp-brass-400);
+  color: var(--rp-brass-300);
+}
+.rp9-host .rp9-btn[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--primary-text) 15%, transparent);
+}
+.rp9-host .rp9-btn:focus-visible,
+.rp9-host .rp9-input:focus-visible {
+  outline: 2px solid var(--rp-brass-400);
+  outline-offset: 2px;
+}
+.rp9-host .rp9-btn:disabled,
+.rp9-host .rp9-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.rp9-host .rp9-input {
+  min-height: 2.75rem;
+  border: 1px solid color-mix(in srgb, var(--rp-lune-soft) 35%, transparent);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--rp-lune-soft);
+  background: transparent;
+  border-radius: 2px;
+}
+
 /* ── Curseurs (rp9-range) ───────────────────────────────────────────────── */
 .rp9-host .rp9-range {
   appearance: none;

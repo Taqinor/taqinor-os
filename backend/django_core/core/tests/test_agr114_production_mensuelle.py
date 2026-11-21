@@ -11,8 +11,8 @@ import unittest
 from core.pompage import agronomie
 from core.pompage.volumes import (
     _CLEARSKY_HOURLY_SHAPE, ESTIMATION_SIMILITUDE,
-    ETIQUETTE_RENDEMENT_NON_PUBLIE, mois_critique,
-    production_mensuelle,
+    ETIQUETTE_RENDEMENT_NON_PUBLIE, bilan_reservoir_journalier,
+    mois_critique, production_mensuelle,
 )
 
 OSP_30_8 = {"debits_m3h": [0, 12, 24, 30, 36, 39],
@@ -194,3 +194,73 @@ class MoisCritique(unittest.TestCase):
 
     def test_sans_besoin_none(self):
         self.assertIsNone(mois_critique(None, [1] * 12))
+
+
+class BilanReservoir(unittest.TestCase):
+    """ACAL804 — niveau du réservoir jour par jour sur l'année type."""
+
+    BESOIN = [10] * 12
+    PROD = [14] * 6 + [6] * 6
+
+    def test_reservoir_30_m3(self):
+        r = bilan_reservoir_journalier(besoin_m3_jour_mois=self.BESOIN,
+                                       production_m3_jour_mois=self.PROD,
+                                       volume_reservoir_m3=30)
+        self.assertTrue(r["calcule"])
+        self.assertIsNone(r["motif"])
+        self.assertEqual(r["jours_manque"], 177)
+        self.assertEqual(r["jours_plein"], 174)
+        self.assertEqual(r["besoin_couvert_pct"], 80.7)
+        self.assertEqual(r["jours_manque_mois"],
+                         [0] * 6 + [24, 31, 30, 31, 30, 31])
+        self.assertEqual(r["niveau_fin_mois_m3"][5], 30)
+        self.assertEqual(r["niveau_fin_mois_m3"][11], 0)
+        self.assertIn("année type", r["mention"])
+        self.assertIn("jours sans soleil ne sont pas simulées", r["mention"])
+
+    def test_reservoir_0_pompage_direct(self):
+        r = bilan_reservoir_journalier(besoin_m3_jour_mois=self.BESOIN,
+                                       production_m3_jour_mois=self.PROD,
+                                       volume_reservoir_m3=0)
+        self.assertEqual(r["jours_manque"], 184)
+        self.assertEqual(r["besoin_couvert_pct"], 79.8)
+        self.assertIsNone(r["jours_plein"])
+
+    def test_entrees_absentes_motif_nomme_jamais_zero(self):
+        cas = (
+            (dict(volume_reservoir_m3=None), "aucun réservoir déclaré"),
+            (dict(volume_reservoir_m3=30, besoin_m3_jour_mois=None),
+             "besoin non saisi"),
+            (dict(volume_reservoir_m3=30, production_m3_jour_mois=None),
+             "production non calculée"),
+        )
+        for surcharge, motif in cas:
+            args = dict(besoin_m3_jour_mois=self.BESOIN,
+                        production_m3_jour_mois=self.PROD)
+            args.update(surcharge)
+            r = bilan_reservoir_journalier(**args)
+            self.assertFalse(r["calcule"])
+            self.assertEqual(r["motif"], motif)
+            self.assertIsNone(r["jours_manque"])
+            self.assertIsNone(r["besoin_couvert_pct"])
+
+
+class HmtMensuelleProduction(unittest.TestCase):
+    """ACAL805 — la production de chaque mois suit la HMT de ce mois."""
+
+    def test_juillet_a_80_m_produit_moins_que_juillet_a_60_m(self):
+        plat = production_mensuelle(hmt_m=60, **BASE)
+        ete = production_mensuelle(hmt_m=60, hmt_m_mois=[60] * 6 + [80] + [60] * 5,
+                                   **BASE)
+        self.assertLess(ete["m3_jour_mois"][6], plat["m3_jour_mois"][6])
+        for mois in range(12):
+            if mois != 6:
+                self.assertEqual(ete["m3_jour_mois"][mois],
+                                 plat["m3_jour_mois"][mois])
+        self.assertEqual(ete["debit_nominal_m3h"], plat["debit_nominal_m3h"])
+
+    def test_sans_hmt_m_mois_inchange(self):
+        self.assertEqual(production_mensuelle(hmt_m=60, hmt_m_mois=None, **BASE),
+                         production_mensuelle(hmt_m=60, **BASE))
+        trous = production_mensuelle(hmt_m=60, hmt_m_mois=[None] * 12, **BASE)
+        self.assertEqual(trous, production_mensuelle(hmt_m=60, **BASE))

@@ -416,3 +416,24 @@ describe('ACAL459 — shadeTable survivante à une réédition', () => {
     expect(rouvrir(docAvecTable(), 'fnv1a-autre').zones.map(cle)).toEqual([undefined, undefined]);
   });
 });
+
+describe('ACAL520 — le cadenas d’un pan survit à l’aller-retour', () => {
+  const aller = (verrouille: boolean) => {
+    const doc = documentRiche();
+    if (verrouille) (doc.zones[0] as { verrouille?: boolean }).verrouille = true;
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    return { h, sortie: serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null })) };
+  };
+  it('`verrouille` revient tel quel', () => {
+    const { h, sortie } = aller(true);
+    expect(h.zones![0].verrouille).toBe(true);
+    expect(sortie.zones[0].verrouille).toBe(true);
+  });
+  it('un pan sans drapeau n’en gagne aucun (octet pour octet)', () => {
+    const { h, sortie } = aller(false);
+    expect(h.zones![0].verrouille).toBeUndefined();
+    expect('verrouille' in sortie.zones[0]).toBe(false);
+  });
+});

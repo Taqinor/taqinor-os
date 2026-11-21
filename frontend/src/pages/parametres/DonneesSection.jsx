@@ -376,7 +376,17 @@ const CHAMPS_MODULE_NUM = [
   ['epaisseur_mm', 'Épaisseur (mm)'], ['poids_kg', 'Poids (kg)'],
   ['temp_coeff_voc_pct_c', 'Coeff. temp. Voc (%/°C)'],
   ['temp_coeff_pmax_pct_c', 'Coeff. temp. Pmax (%/°C)'],
+  // ACAL571 — zone de serrage fabricant (sourcée : voir LIBELLE_SERRAGE_SOURCE).
+  ['serrage_min_mm', 'Zone de serrage min (mm)'],
+  ['serrage_max_mm', 'Zone de serrage max (mm)'],
 ]
+const LIBELLE_SERRAGE_SOURCE = 'Source de la zone de serrage'
+// ACAL571 — un refus serveur nommant l'un de ces champs s'affiche avec son libellé.
+const LIBELLES_SERRAGE = {
+  serrage_min_mm: 'Zone de serrage min (mm)',
+  serrage_max_mm: 'Zone de serrage max (mm)',
+  serrage_source: LIBELLE_SERRAGE_SOURCE,
+}
 const CHAMPS_ONDULEUR_NUM = [
   ['ond_n_mppt', 'Nombre de MPPT'],
   ['ond_mppt_v_min', 'Tension MPPT min (V)'],
@@ -472,6 +482,7 @@ function FichesTechniques() {
     }
     v.techno_cellule = f.techno_cellule || ''
     v.bifacial = Boolean(f.bifacial)
+    v.serrage_source = f.serrage_source || ''
     if (f.ond_phases != null) v.ond_phases = String(f.ond_phases)
     setVals(v); setPdfFile(null); setError(null)
   }
@@ -484,6 +495,7 @@ function FichesTechniques() {
     if (typeFiche === 'module') {
       if (vals.techno_cellule) payload.techno_cellule = vals.techno_cellule
       payload.bifacial = Boolean(vals.bifacial)
+      if (vals.serrage_source?.trim()) payload.serrage_source = vals.serrage_source
     }
     if (typeFiche === 'onduleur' && vals.ond_phases !== undefined && vals.ond_phases !== '') {
       payload.ond_phases = Number(vals.ond_phases)
@@ -509,7 +521,9 @@ function FichesTechniques() {
       resetForm()
       load()
     } catch (e) {
-      setError(frErr(e, "L'enregistrement de la fiche a échoué."))
+      const message = frErr(e, "L'enregistrement de la fiche a échoué.")
+      const champ = Object.keys(LIBELLES_SERRAGE).find((k) => e?.response?.data?.[k])
+      setError(champ ? `${LIBELLES_SERRAGE[champ]} : ${message}` : message)
     } finally { setBusy(false) }
   }
 
@@ -636,6 +650,9 @@ function FichesTechniques() {
           <div className="grid gap-2 sm:grid-cols-3 sm:items-center">
             <Input placeholder="Technologie de cellule" value={vals.techno_cellule ?? ''}
                    onChange={(e) => setVal('techno_cellule', e.target.value)} />
+            <Input placeholder={LIBELLE_SERRAGE_SOURCE} aria-label={LIBELLE_SERRAGE_SOURCE}
+                   value={vals.serrage_source ?? ''}
+                   onChange={(e) => setVal('serrage_source', e.target.value)} />
             <div className="flex items-center gap-2">
               <Checkbox id="fiche-bifacial" checked={Boolean(vals.bifacial)}
                         onCheckedChange={(v) => setVal('bifacial', Boolean(v))}

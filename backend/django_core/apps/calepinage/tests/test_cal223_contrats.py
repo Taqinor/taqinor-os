@@ -107,7 +107,8 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_horizon.json':
         'profil PVGIS lu sur le calepinage en base (CAL92/93)',
     'calepinage_pompage.json':
-        'dimensionnement qui lit le catalogue produits en base (CAL155-159)',
+        'dimensionnement qui lit le catalogue produits en base (CAL155-159) '
+        'et range le dernier rendu dans resultat (ACAL831, test_agr125)',
     'calepinage_resultat.json':
         'résultat du moteur électrique, lu sur le calepinage en base (CAL244)',
     'calepinage_sorties.json':
@@ -425,10 +426,17 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_detection_toit.json':
         'détection du toit par IA (ACAL391) : appelle un fournisseur externe '
         'sur une image reçue ; route livrée par ACAL485',
+    'calepinage_variantes_par_module.json':  # ACAL594
+        'POST : une variante par module du stock ; écrit les variantes en '
+        'base — affirmé par tests/test_api_variantes.py (VariantesParModule)',
     'calepinage_pente_terrain.json':
         'pente du relief du champ au sol (ACAL466) : lit le relief '
         'Copernicus GLO-30 sur le réseau (HTTP Range) ; route livrée par '
         'ACAL466',
+    'calepinage_pret_a_envoyer.json':  # ACAL856
+        'contrôles « prêt à envoyer ? » (ACAL857-864) : lisent le lead, le '
+        'devis lié, la simulation et les réglages société en base ; route '
+        'livrée par ACAL860',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -480,6 +488,7 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/balayage.py``) : ``calepinage_balayage.json`` en est SORTI.
     # ACAL485 a livré ``GET``/``POST calepinages/<pk>/detection-toit/``
     # (``views/detection_toit.py``) : ``calepinage_detection_toit.json`` en est SORTI.
+    'calepinage_pret_a_envoyer.json': 'ACAL860',  # ACAL856
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne

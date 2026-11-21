@@ -1,0 +1,78 @@
+"""ACAL895 (D-ACAL-42) — semer trois MODÈLES d'exemple dans la bibliothèque.
+
+Trois calepinages ``exemple=True`` (villa à toit incliné, toit plat est-ouest,
+champ au sol), marqués modèles, sans lead, client, devis ni utilisateur créé,
+jamais comptés dans la liste, les KPI ni l'API publique. Les documents sont de
+vrais ``roof_layout_v2`` (contour + pans) committés dans ``exemples/``.
+
+IDEMPOTENT (clé : société + titre + ``exemple``) et DRY-RUN PAR DÉFAUT : la
+production ne reçoit ces lignes que sur un geste explicite (``--apply``),
+jamais au déploiement.
+
+    python manage.py semer_exemples_calepinage --societe <id>
+    python manage.py semer_exemples_calepinage --societe <id> --apply
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+
+from django.core.management.base import BaseCommand, CommandError
+
+EXEMPLES = pathlib.Path(__file__).resolve().parents[2] / 'exemples'
+
+#: (fichier du document, titre affiché dans la bibliothèque)
+MODELES = (
+    ('residentiel_pan_sud_15.json', 'Exemple — villa à toit incliné'),
+    ('ci_toit_plat_est_ouest_chassis.json',
+     'Exemple — toit plat est-ouest (commerce)'),
+    ('champ_sol_sud.json', 'Exemple — champ au sol'),
+)
+
+
+class Command(BaseCommand):
+    help = ("ACAL895 — sème trois modèles d'exemple dans la bibliothèque "
+            "d'une société. Dry-run par défaut ; --apply écrit.")
+
+    def add_arguments(self, parser):
+        parser.add_argument('--societe', type=int, required=True,
+                            help="Identifiant de la société.")
+        parser.add_argument('--apply', action='store_true',
+                            help='Écrit réellement (sinon : liste seule).')
+
+    def handle(self, *args, **options):
+        from django.db import transaction
+
+        from authentication.models import Company
+
+        from ...models import Calepinage
+        from ...services.layout import enregistrer_layout
+        from ...services.modeles import marquer_modele
+
+        company = Company.objects.filter(pk=options['societe']).first()
+        if company is None:
+            raise CommandError(
+                "Société introuvable : %s." % options['societe'])
+        appliquer = options['apply']
+        crees = 0
+        for fichier, titre in MODELES:
+            existe = Calepinage.objects.filter(
+                company=company, titre=titre, exemple=True).exists()
+            if existe:
+                self.stdout.write('%s → déjà présent' % titre)
+                continue
+            self.stdout.write('%s → %s' % (
+                titre, 'créé' if appliquer else 'à créer (dry-run)'))
+            crees += 1
+            if not appliquer:
+                continue
+            document = json.loads(
+                (EXEMPLES / fichier).read_text(encoding='utf-8'))
+            with transaction.atomic():
+                calepinage = Calepinage.objects.create(
+                    company=company, titre=titre, exemple=True)
+                enregistrer_layout(calepinage, document,
+                                   libelle="Modèle d'exemple")
+                marquer_modele(calepinage)
+        self.stdout.write('%s modèle(s) %s.' % (
+            crees, 'créés' if appliquer else 'à créer (dry-run)'))

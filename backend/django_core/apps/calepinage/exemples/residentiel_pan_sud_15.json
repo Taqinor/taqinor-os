@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "pin": {"lat": 33.5731, "lng": -7.5898},
+  "outline": [
+    [33.573100, -7.589800],
+    [33.573100, -7.589700],
+    [33.573154, -7.589700],
+    [33.573154, -7.589800]
+  ],
+  "activeAreaId": "z1",
+  "zones": [
+    {
+      "id": "z1",
+      "label": "PAN-SUD",
+      "vertices": [[0, 0], [10, 0], [10, 6], [0, 6]],
+      "obstacles": [],
+      "roofType": "pitched",
+      "pitchDeg": 15.0,
+      "facingAzimuthDeg": 180.0,
+      "facingManual": false,
+      "neededPanels": 12,
+      "neededAuto": true,
+      "geometry": {
+        "azimuthDeg": 180.0,
+        "tiltDeg": 15.0,
+        "family": "south",
+        "flush": true,
+        "count": 12,
+        "origin": [-7.5898, 33.5731]
+      }
+    }
+  ],
+  "scenario": "reseau"
+}

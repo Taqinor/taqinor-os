@@ -117,6 +117,22 @@ class RechercheDeLaListeTest(BaseApiCalepinage):
         # Le NOM DU CLIENT rattaché (« Bâtiment Atlas »).
         self.assertEqual(self._ids('Atlas'), {self.hangar.pk})
 
+    def test_titre_de_repli_calepinage_diese_numero_est_trouve(self):
+        """ACAL948 — « Calepinage #12 » et « #12 » trouvent le 12 sans titre,
+        pas le 120 ; l'égalité porte sur le numéro."""
+        sans_titre = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk)
+        autre = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_2.pk)
+        for terme in (f'Calepinage #{sans_titre.pk}', f'#{sans_titre.pk}',
+                      f'calepinage # {sans_titre.pk}'):
+            with self.subTest(terme=terme):
+                trouves = self._ids(terme)
+                self.assertIn(sans_titre.pk, trouves)
+                self.assertNotIn(autre.pk, trouves)
+        # un numéro qui n'est qu'une sous-chaîne ne remonte pas
+        self.assertNotIn(sans_titre.pk, self._ids(f'#{sans_titre.pk}0'))
+
     def test_recherche_ne_sort_pas_de_la_societe(self):
         etranger = Calepinage.objects.create(
             company=self.autre, lead_id=999, titre='Toiture hangar voisine')

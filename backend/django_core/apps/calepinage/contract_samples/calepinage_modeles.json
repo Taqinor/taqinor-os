@@ -38,6 +38,7 @@
       "ville": "Casablanca"
     },
     "contraintes_site": {},
+    "exemple": false,
     "nom": "Toiture Anfa"
   },
   "exemple_liste": [
@@ -77,6 +78,7 @@
         "ville": "Casablanca"
       },
       "contraintes_site": {},
+      "exemple": false,
       "nom": "Toiture Anfa"
     }
   ],

@@ -274,4 +274,35 @@ describe('PV7 — fiches techniques (type_fiche, édition, PDF)', () => {
       )
     })
   })
+
+  it('ACAL571 — zone de serrage : payload serrage_*, réouverture remplie, refus nommé', async () => {
+    const user = userEvent.setup()
+    stockApi.getFichesTechniques.mockResolvedValue({
+      data: [{ ...FICHE_MODULE, serrage_min_mm: 345, serrage_max_mm: 415,
+        serrage_source: 'notice Aiko, p. 12' }],
+    })
+    stockApi.getProduits.mockResolvedValue({ data: PRODUITS })
+    stockApi.updateFicheTechnique.mockRejectedValueOnce({
+      response: { status: 409, data: { serrage_source: ['Zone de serrage saisie sans source.'] } },
+    })
+    renderSection()
+    await screen.findByText('Panneau X')
+
+    await user.click(screen.getByRole('button', { name: 'Modifier la fiche' }))
+    // Réouverture : les trois champs sont remplis.
+    expect(screen.getByPlaceholderText('Zone de serrage min (mm)')).toHaveValue(345)
+    expect(screen.getByPlaceholderText('Zone de serrage max (mm)')).toHaveValue(415)
+    const source = screen.getByPlaceholderText('Source de la zone de serrage')
+    expect(source).toHaveValue('notice Aiko, p. 12')
+
+    // Source effacée : refus du serveur affiché avec le libellé du champ.
+    await user.clear(source)
+    await user.click(screen.getByRole('button', { name: 'Enregistrer les modifications' }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent('Source de la zone de serrage')
+    const payload = stockApi.updateFicheTechnique.mock.calls[0][1]
+    expect(payload).toMatchObject({ serrage_min_mm: '345', serrage_max_mm: '415' })
+    // Un champ vide n'est jamais envoyé (ni 0, ni chaîne vide).
+    expect(payload).not.toHaveProperty('serrage_source')
+  })
 })

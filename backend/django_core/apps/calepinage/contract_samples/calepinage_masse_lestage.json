@@ -253,9 +253,23 @@
       ]
     },
     "lestage": {
-      "parametres": [],
+      "parametres": [
+        {
+          "cle": "masse_volumique_air_kg_m3",
+          "libelle": "Masse volumique de l'air",
+          "unite": "kg/m³",
+          "valeur": 1.225,
+          "source": "atmosphère type au niveau de la mer (ISO 2533)"
+        },
+        {
+          "cle": "acceleration_pesanteur_m_s2",
+          "libelle": "Accélération de la pesanteur",
+          "unite": "m/s²",
+          "valeur": 9.80665,
+          "source": "valeur normale de la pesanteur (3e CGPM, 1901)"
+        }
+      ],
       "manquants": [
-        "masse_volumique_air_kg_m3",
         "vitesse_vent_reference_m_s",
         "categorie_terrain",
         "coefficient_terrain",
@@ -263,7 +277,6 @@
         "coefficient_pression_horizontal",
         "coefficient_frottement",
         "charge_neige_kn_m2",
-        "acceleration_pesanteur_m_s2",
         "masse_structure_kg_par_module"
       ],
       "lignes": [
@@ -279,11 +292,10 @@
             "coefficient_terrain"
           ],
           "manquants": [
-            "masse_volumique_air_kg_m3",
             "vitesse_vent_reference_m_s",
             "coefficient_terrain"
           ],
-          "mention": "paramètres à saisir : Masse volumique de l'air, Vitesse de vent de référence, Coefficient de terrain"
+          "mention": "paramètres à saisir : Vitesse de vent de référence, Coefficient de terrain"
         },
         {
           "code": "pression_soulevement",
@@ -298,12 +310,11 @@
             "coefficient_pression_soulevement"
           ],
           "manquants": [
-            "masse_volumique_air_kg_m3",
             "vitesse_vent_reference_m_s",
             "coefficient_terrain",
             "coefficient_pression_soulevement"
           ],
-          "mention": "paramètres à saisir : Masse volumique de l'air, Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (soulèvement)"
+          "mention": "paramètres à saisir : Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (soulèvement)"
         },
         {
           "code": "effort_soulevement_module",
@@ -319,13 +330,12 @@
             "surface_module_m2"
           ],
           "manquants": [
-            "masse_volumique_air_kg_m3",
             "vitesse_vent_reference_m_s",
             "coefficient_terrain",
             "coefficient_pression_soulevement",
             "surface_module_m2"
           ],
-          "mention": "paramètres à saisir : Masse volumique de l'air, Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (soulèvement), surface_module_m2"
+          "mention": "paramètres à saisir : Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (soulèvement), surface_module_m2"
         },
         {
           "code": "lest_anti_soulevement",
@@ -343,15 +353,13 @@
             "masse_resistante_kg"
           ],
           "manquants": [
-            "masse_volumique_air_kg_m3",
             "vitesse_vent_reference_m_s",
             "coefficient_terrain",
             "coefficient_pression_soulevement",
             "surface_module_m2",
-            "acceleration_pesanteur_m_s2",
             "masse_resistante_kg"
           ],
-          "mention": "paramètres à saisir : Masse volumique de l'air, Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (soulèvement), surface_module_m2, Accélération de la pesanteur, masse_resistante_kg"
+          "mention": "paramètres à saisir : Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (soulèvement), surface_module_m2, masse_resistante_kg"
         },
         {
           "code": "effort_horizontal_module",
@@ -367,13 +375,12 @@
             "surface_module_m2"
           ],
           "manquants": [
-            "masse_volumique_air_kg_m3",
             "vitesse_vent_reference_m_s",
             "coefficient_terrain",
             "coefficient_pression_horizontal",
             "surface_module_m2"
           ],
-          "mention": "paramètres à saisir : Masse volumique de l'air, Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (horizontal), surface_module_m2"
+          "mention": "paramètres à saisir : Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (horizontal), surface_module_m2"
         },
         {
           "code": "lest_anti_glissement",
@@ -392,16 +399,14 @@
             "masse_resistante_kg"
           ],
           "manquants": [
-            "masse_volumique_air_kg_m3",
             "vitesse_vent_reference_m_s",
             "coefficient_terrain",
             "coefficient_pression_horizontal",
             "surface_module_m2",
             "coefficient_frottement",
-            "acceleration_pesanteur_m_s2",
             "masse_resistante_kg"
           ],
-          "mention": "paramètres à saisir : Masse volumique de l'air, Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (horizontal), surface_module_m2, Coefficient de frottement, Accélération de la pesanteur, masse_resistante_kg"
+          "mention": "paramètres à saisir : Vitesse de vent de référence, Coefficient de terrain, Coefficient de pression (horizontal), surface_module_m2, Coefficient de frottement, masse_resistante_kg"
         },
         {
           "code": "charge_neige_module",

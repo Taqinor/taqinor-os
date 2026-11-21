@@ -38,6 +38,8 @@ import {
 } from '../../lib/estimatorBrainV6';
 import { ringBBox, type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
+import { panelQuadsLngLat, PLAN_DEG2M, PLAN_DEG2RAD, type PlanQuad } from './modulesGeo'; // ACAL528 — déplacés tels quels
+export { panelQuadsLngLat, type PlanQuad }; // ré-export : `roof-tool-pro11.ts`, `perf.test.ts`
 import { roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../../lib/roofConfig';
 // CALX100 — `FLOORS`/`FLOOR_HEIGHT_M` ne sont plus lus ici : la hauteur des murs vient du
 // document (`batiment.ts`), qui garde ces deux constantes comme sa hauteur de DESSIN.
@@ -1150,9 +1152,6 @@ export function couleurParAffectation(
 // celui de la 3D par construction : c'est la MÊME liste de rectangles.
 // ————————————————————————————————————————————————————————————————————————
 
-/** Un module posé, en lng/lat : les quatre coins tels que la 3D les a placés. */
-export type PlanQuad = LngLat[];
-
 export interface PlanViewOptions {
   /** Zone de dessin (px). */
   widthPx: number;
@@ -1185,9 +1184,6 @@ export interface PlanView {
   panelCount: number;
 }
 
-const PLAN_DEG2RAD = Math.PI / 180;
-const PLAN_DEG2M = PLAN_DEG2RAD * PLAN_WGS84_RADIUS;
-import { WGS84_RADIUS as PLAN_WGS84_RADIUS } from '../../lib/geo';
 
 /**
  * Projette un contour et ses modules en vue PLAN orthographique, nord en haut,
@@ -1261,44 +1257,6 @@ export function projectPlanView(
   };
 }
 
-
-/**
- * CAL104 — quads lng/lat des modules POSÉS, reconstruits depuis la géométrie que la 3D a
- * déjà placée : centres ENU (`cx`, `cy`, repère `origin`), empreinte au sol du module
- * (`slopeLenM × cos β` dans le sens de la pente, `rowWidthM` le long de la rangée) et
- * azimut du pavage. AUCUN pavage n'est refait : on habille des centres existants, donc le
- * COMPTE est exactement celui de la 3D.
- */
-export function panelQuadsLngLat(
-  origin: LngLat,
-  centers: readonly { cx: number; cy: number }[],
-  slopeLenM: number,
-  rowWidthM: number,
-  tiltDeg: number,
-  azimuthDeg: number,
-): PlanQuad[] {
-  const cosLat = Math.max(1e-6, Math.cos(origin[1] * PLAN_DEG2RAD));
-  // Empreinte AU SOL dans le sens de la pente : la longueur du module vue de dessus.
-  const depth = Math.max(1e-6, slopeLenM * Math.cos((tiltDeg || 0) * PLAN_DEG2RAD));
-  const width = Math.max(1e-6, rowWidthM);
-  // L'azimut oriente les rangées : on tourne le rectangle du même angle.
-  const a = (azimuthDeg || 0) * PLAN_DEG2RAD;
-  const ca = Math.cos(a);
-  const sa = Math.sin(a);
-  const half: [number, number][] = [
-    [-width / 2, -depth / 2],
-    [width / 2, -depth / 2],
-    [width / 2, depth / 2],
-    [-width / 2, depth / 2],
-  ];
-  return centers.map((c) =>
-    half.map(([dx, dy]) => {
-      const e = c.cx + dx * ca + dy * sa;
-      const n = c.cy - dx * sa + dy * ca;
-      return [origin[0] + e / (PLAN_DEG2M * cosLat), origin[1] + n / PLAN_DEG2M] as LngLat;
-    }),
-  );
-}
 
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const { map, lowEnd, shadowSize } = deps;

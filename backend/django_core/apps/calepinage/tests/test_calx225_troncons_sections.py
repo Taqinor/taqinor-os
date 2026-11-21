@@ -317,3 +317,91 @@ class EnveloppeTest(SimpleTestCase):
         dc = par_id(paquet)['ch1']
         self.assertIsNotNone(dc['section_mm2'])
         self.assertGreaterEqual(dc['section_mm2'], noyau.SECTION_MIN_DC_MM2)
+
+
+def reglages_cablage(**saisies):
+    """Réglages société « fr » avec des clés ``electrique_societe`` sourcées."""
+    return {'imagerie': {'pays': 'fr'}, 'norme_electrique': {},
+            'electrique_societe': {
+                cle: {'valeur': valeur, 'source': 'texte',
+                      'reference': 'notice câble X'}
+                for cle, valeur in saisies.items()}}
+
+
+class ResistiviteAChaudTest(SimpleTestCase):
+    """ACAL635 — ρ(θ) saisie par la société (θ et α sourcés)."""
+
+    def test_noyau_la_chute_suit_la_resistivite_passee(self):
+        # DC 40 m, 12 A, 6 mm² : ρ(70 °C) = ρ20 × (1 + 0,00393 × 50).
+        rho_70 = noyau.RHO_CUIVRE_20C * (1 + 0.00393 * (70 - 20))
+        froid = noyau.proposer_section(12.0, 40.0, 600.0, 50.0,
+                                       section_min_mm2=6.0)
+        chaud = noyau.proposer_section(12.0, 40.0, 600.0, 50.0,
+                                       section_min_mm2=6.0, rho=rho_70)
+        self.assertEqual(froid.section_mm2, 6.0)
+        self.assertAlmostEqual(chaud.chute_pct / froid.chute_pct, 1.1965,
+                               places=6)
+
+    def test_le_reglage_sourcé_calcule_rho_a_chaud(self):
+        cablage = service.cablage_societe(reglages_cablage(
+            temperature_service_cable_c=70, alpha_cuivre_par_c=0.00393))
+        self.assertAlmostEqual(cablage['rho'],
+                               0.01851 * (1 + 0.00393 * 50), places=9)
+        self.assertIn('résistivité à 70 °C (réglage société, source notice '
+                      'câble X', cablage['mention_rho'])
+
+    def test_un_reglage_vide_garde_rho_20(self):
+        for saisies in ({'temperature_service_cable_c': 70},
+                        {'alpha_cuivre_par_c': 0.00393}, {}):
+            with self.subTest(saisies=saisies):
+                cablage = service.cablage_societe(reglages_cablage(**saisies))
+                self.assertEqual(cablage['rho'], noyau.RHO_CUIVRE_20C)
+                self.assertIn('résistivité à 20 °C', cablage['mention_rho'])
+
+    @patch('apps.calepinage.services.electrique.parametres_societe')
+    @patch('apps.calepinage.services.electrique.conception_du_calepinage')
+    def test_la_chute_publiee_et_la_regle_source_changent(self, conception,
+                                                          reglages):
+        conception.return_value = (conception_reelle(), {}, {},
+                                   DOCUMENT_EXEMPLE)
+        reglages.return_value = reglages_cablage()
+        froid = par_id(service.troncons_du_calepinage(object()))['ch1']
+        reglages.return_value = reglages_cablage(
+            temperature_service_cable_c=70, alpha_cuivre_par_c=0.00393)
+        chaud = par_id(service.troncons_du_calepinage(object()))['ch1']
+        self.assertGreater(chaud['chute_pct'], froid['chute_pct'])
+        self.assertIn('résistivité à 20 °C', froid['regle_source'])
+        self.assertIn('résistivité à 70 °C (réglage société, source notice',
+                      chaud['regle_source'])
+
+
+class FacteurDeRegroupementTest(SimpleTestCase):
+    """ACAL636 — facteur de regroupement sourcé appliqué à Iz."""
+
+    def test_noyau_compare_ib_a_facteur_fois_iz(self):
+        # Ib 60 A : 6 mm² = 70 A suffit seul ; 0,8 × 70 = 56 A non ⇒ 10 mm².
+        sans = noyau.proposer_section(60.0, 1.0, 600.0, 50.0)
+        avec = noyau.proposer_section(60.0, 1.0, 600.0, 50.0, facteur_iz=0.8)
+        self.assertEqual(sans.section_mm2, 6.0)
+        self.assertEqual(avec.section_mm2, 10.0)
+        self.assertAlmostEqual(avec.iz_a, 0.8 * 98.0)
+
+    def test_le_reglage_sourcé_fait_choisir_plus_gros_et_le_dit(self):
+        document = cascade_dc(60.0)
+        document['electrical']['cheminements'][0]['longueurSaisieM'] = 1.0
+        sans = par_id(service._troncons_du_document(
+            document, contexte(courants=courants_cascade(60.0))))['ch1']
+        norme = dict(NORME_FR, cablage=service.cablage_societe(
+            reglages_cablage(facteur_regroupement=0.8)))
+        avec = par_id(service._troncons_du_document(
+            document, contexte(norme=norme,
+                               courants=courants_cascade(60.0))))['ch1']
+        self.assertGreater(avec['section_mm2'], sans['section_mm2'])
+        self.assertEqual(avec['section_mm2'], 10.0)
+        self.assertEqual(avec['critere_dimensionnant'],
+                         'échauffement (facteur de regroupement 0,8, '
+                         'source notice câble X)')
+
+    def test_reglage_vide_facteur_un(self):
+        self.assertNotIn('facteur_iz', service.cablage_societe(
+            reglages_cablage()))

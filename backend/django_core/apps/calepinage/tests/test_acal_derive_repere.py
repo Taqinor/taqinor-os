@@ -18,6 +18,8 @@ import json
 import pathlib
 from decimal import Decimal
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage, CalepinageVersion
 from apps.calepinage.services import repere as service_repere
 from apps.crm.models import Lead
@@ -388,3 +390,47 @@ class DeriveRepereTest(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         relue = self.calepinage.roof_layout['shadeObstructions'][0]
         self.assertAlmostEqual(longueur(relue, MARRAKECH), 10.82, places=2)
+
+
+class TranslationPureTest(SimpleTestCase):
+    """Sans base : la couverture du schéma et la translation pure."""
+
+    def _cible_a_500_m(self):
+        from core.calepinage.geo import deprojeteur_local
+        lng, lat = deprojeteur_local(
+            (CASABLANCA['lng'], CASABLANCA['lat']))((500.0, 0.0))
+        return {'lat': lat, 'lng': lng}
+
+    def test_schema_couvert_sans_base(self):
+        schema = coordonnees_du_schema()
+        declares = set(service_repere.CHEMINS_TRANSLATES) | set(
+            service_repere.COORDONNEES_EXEMPTEES)
+        self.assertEqual(set(schema) - declares, set())
+        self.assertEqual(set(service_repere.CHEMINS_TRANSLATES) - set(schema),
+                         set())
+
+    def test_trace_d_une_haie_translatee_comme_une_emprise(self):
+        """ACAL505 — ``environment[].trace`` suit le recentrage."""
+        trace = [list(p) for p in PAN[:2]]
+        document = {'version': 2, 'pin': dict(CASABLANCA), 'environment': [
+            {'id': 'h', 'kind': 'ligne', 'trace': trace},
+            {'id': 'b', 'kind': 'batiment',
+             'footprint': [list(p) for p in PAN[:2]]}]}
+        recentre = service_repere._translater_document(
+            document, CASABLANCA, self._cible_a_500_m())
+        haie, batiment = recentre['environment']
+        self.assertNotEqual(haie['trace'], trace)
+        self.assertEqual(haie['trace'], batiment['footprint'])
+
+    def test_point_d_un_repere_de_chantier_suit_le_recentrage(self):
+        """ACAL599 — recentrage de 500 m : le repère bouge du même vecteur
+        que le pan."""
+        document = {'version': 2, 'pin': dict(CASABLANCA),
+                    'zones': [{'id': 'z1', 'vertices': [list(PAN[0])]}],
+                    'reperesChantier': [{'id': 'r1', 'type': 'acces',
+                                         'point': list(PAN[0])}]}
+        recentre = service_repere._translater_document(
+            document, CASABLANCA, self._cible_a_500_m())
+        point = recentre['reperesChantier'][0]['point']
+        self.assertNotEqual(point, list(PAN[0]))
+        self.assertEqual(point, recentre['zones'][0]['vertices'][0])

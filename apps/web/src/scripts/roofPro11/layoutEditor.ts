@@ -54,7 +54,10 @@ import { type LngLat, pointInPolygon } from '../../lib/roof';
 import { type ProdConfig, type RenderSceneFn } from './types';
 import { creerCalqueReperes, glisserAimante } from './reperesAlignement'; // ACAL425
 import { actionDisposition } from './raccourcisAtelier';
-import { createLayoutHistory, createValueHistory, createWorkshopHistory, type WorkshopSnapshot } from './layoutHistory';
+import {
+  createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures,
+  type WorkshopSnapshot,
+} from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
 import {
   moveFreePanels,
@@ -89,6 +92,7 @@ import {
   segmentsCross,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
+import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; // ACAL551
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -774,25 +778,6 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     workshopHistory.drop();
   }
 
-  /** Libellé FR d'une contrainte violée — on NOMME ce qui bloque, jamais « impossible ». */
-  function violationLabel(v: FreeViolation): string {
-    switch (v) {
-      case 'outline':
-        return 'le panneau sortirait du toit';
-      case 'overlap':
-        return 'il chevaucherait un autre panneau';
-      case 'obstacle':
-        return 'il tomberait sur un obstacle (ou son dégagement)';
-      case 'setback':
-        return 'il passerait sous le retrait de rive que vous avez fixé';
-      case 'gap':
-        return 'il passerait sous l’écart entre panneaux que vous avez fixé';
-      default:
-        return 'placement invalide';
-    }
-  }
-  const cm = (m: number): string => `${Math.round(m * 100)} cm`;
-
   /** Affiche les distances MESURÉES (rive / voisin) — c'est ce qui rend une marge réduite
    *  VISIBLE : l'utilisateur voit le chiffre auquel il descend, il ne le devine pas. */
   function showMeasure(chk: FreeCheck | null) {
@@ -801,10 +786,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       freeMeasureEl.textContent = '';
       return;
     }
-    const edge = Number.isFinite(chk.edgeM) ? cm(chk.edgeM) : '—';
-    const near = chk.panelM === null ? '—' : cm(chk.panelM);
-    const verdict = chk.ok ? '' : ` — ${chk.violations.map(violationLabel).join(', ')}`;
-    freeMeasureEl.textContent = `Rive : ${edge} · Voisin : ${near}${verdict}`;
+    freeMeasureEl.textContent = texteDeMesure(chk); // ACAL551 — composeur extrait
   }
 
   /** Panneau libre le plus proche d'un point écran (même seuil de saisie que la lattice). */
@@ -1283,23 +1265,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // annulable — AUCUN câblage supplémentaire requis côté entrée : `undo()`/`redo()` sont déjà
   // les fonctions branchées sur Ctrl+Z/Ctrl+Y et les boutons ↶/↷ (plus bas dans ce fichier).
   const workshopHistory = createWorkshopHistory();
-  // CAL100 — un `ctx` de test/hôte antérieur peut ne PAS porter vertices/obstacles/areas
-  // (fixtures allégées qui ne peuplent que ce dont le mode libre a besoin) : jamais lu en
-  // aveugle, même garde que `margins()` pour `freeMargins` un peu plus haut dans ce fichier.
-  function snapshotWorkshop(): WorkshopSnapshot {
-    return {
-      vertices: Array.isArray(ctx.vertices) ? ctx.vertices.map((v) => [v[0], v[1]]) : [],
-      obstacles: Array.isArray(ctx.obstacles) ? ctx.obstacles.map((o) => ({ ...o })) : [],
-      areas: Array.isArray(ctx.areas)
-        ? ctx.areas.map((a) => ({ ...a, vertices: a.vertices.map((v) => [v[0], v[1]]), obstacles: a.obstacles.map((o) => ({ ...o })) }))
-        : [],
-      roofType: ctx.roofType,
-      pitchDeg: ctx.pitchDeg,
-      facingAzimuthDeg: ctx.facingAzimuthDeg,
-      layoutOccupied: ctx.layoutState ? [...ctx.layoutState.occupied].sort((a, b) => a - b) : undefined,
-      freeState: ctx.freeState ? { panels: ctx.freeState.panels.map((p) => ({ ...p })) } : undefined,
-    };
-  }
+  // CAL100 — corps extrait vers `layoutHistory.ts::photoAtelierDepuisCtx` (ACAL515).
+  function snapshotWorkshop(): WorkshopSnapshot { return photoAtelierDepuisCtx(ctx); }
   function applyWorkshopSnapshot(s: WorkshopSnapshot) {
     if (Array.isArray(ctx.vertices)) ctx.vertices = s.vertices.map((v) => [v[0], v[1]]);
     if (Array.isArray(ctx.obstacles)) ctx.obstacles = s.obstacles.map((o) => ({ ...o }));
@@ -1312,6 +1279,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     ctx.roofType = s.roofType;
     ctx.pitchDeg = s.pitchDeg;
     ctx.facingAzimuthDeg = s.facingAzimuthDeg;
+    restaurerEnvZonesMesures(ctx, s); // ACAL515
     if (s.layoutOccupied && ctx.layoutState) {
       ctx.layoutState.occupied = new Set(s.layoutOccupied.filter((i) => i >= 0 && i < ctx.layoutState!.cells.length));
     }
@@ -2432,6 +2400,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!res.ok) {
       d.freeBlocked = res.blocked;
       if (res.blocked) showMeasure(res.blocked);
+      peindreSilhouette(map, silhouetteDuLot(g, st.panels, d.freeOrigin, dx, dy, res.blocked, ctx.layoutPlan?.pack.origin)); // ACAL551
       if (layoutNoteEl) {
         const why = res.blocked ? res.blocked.violations.map(violationLabel).join(', ') : 'placement invalide';
         layoutNoteEl.textContent = `Ici : ${why}.`;
@@ -2440,6 +2409,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     d.freeBlocked = undefined;
     d.freePreviewed = true;
+    peindreSilhouette(map, null); // ACAL551 — position valide : le panneau suit le curseur, aucune silhouette
     // Mesures affichées pour le panneau SAISI, à sa position d'aperçu (rive / voisin) : la
     // marge réduite reste un acte VU et CHOISI, jamais un glissement silencieux.
     const posed = st.panels[d.from];
@@ -2650,6 +2620,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  simple CLIC (souris, `removeOnTap`) sans glissé SUPPRIME le panneau saisi ; un tap tactile
    *  bref ne supprime pas (la suppression tactile passe par l'appui long, géré séparément). */
   function endLayoutDrag(point: maplibregl.Point, removeOnTap = false) {
+    peindreSilhouette(map, null); // ACAL551 — relâchement : la silhouette disparaît, rien d'autre ne change
     // CALX116 — fin d'un LASSO : la sélection devient les panneaux dont le CENTRE tombe
     // dans l'anneau tracé (même logique que le cadre : un simple clic, sans glissé, bascule
     // le panneau visé au lieu de fermer un anneau de surface nulle).

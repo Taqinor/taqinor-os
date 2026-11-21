@@ -18,6 +18,7 @@ Run :
     python manage.py test apps.calepinage.tests.test_design_context -v2
 """
 import json
+import unittest
 import pathlib
 from unittest import mock
 
@@ -321,6 +322,17 @@ class ContexteConceptionTest(BaseApiCalepinage):
         # Sans simulation de V : aucun ombrage d'une autre conception.
         self.assertIsNone(ombrage_servi(b.pk, self.company))
 
+    def test_facture_mensuelle_du_lead_servie(self):
+        # ACAL776 — 900 MAD en hiver et en été ⇒ 900,0 ; sans facture ⇒ null.
+        Lead.objects.filter(pk=self.lead_lie.pk).update(
+            facture_hiver=900, ete_differente=False)
+        servi = self._contexte(self.avec_devis)['consommation_lead']
+        self.assertEqual(servi, {'facture_mensuelle_mad': 900.0,
+                                 'source': 'lead', 'motif': ''})
+        sans_lead = self._contexte(self.nu)['consommation_lead']
+        self.assertIsNone(sans_lead['facture_mensuelle_mad'])
+        self.assertTrue(sans_lead['motif'])
+
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)
@@ -328,3 +340,44 @@ class ContexteConceptionTest(BaseApiCalepinage):
     def test_sans_permission_403(self):
         reponse = self.api_sans.get(url_contexte(self.avec_devis.pk))
         self.assertEqual(reponse.status_code, 403)
+
+
+class FactureMensuelleDuLeadTest(unittest.TestCase):
+    """ACAL776 — la facture mensuelle moyenne du lead, sans base."""
+
+    @staticmethod
+    def lead(hiver, ete=None, differente=False):
+        return mock.Mock(facture_hiver=hiver, facture_ete=ete,
+                         ete_differente=differente, conso_mensuelle_kwh=None)
+
+    def servi(self, lead, lead_id=7):
+        from apps.calepinage.services.consommation import (
+            facture_mensuelle_du_lead,
+        )
+        return facture_mensuelle_du_lead(
+            object(), lead_id, lire_lead=lambda company, pk: lead)
+
+    def test_900_en_hiver_et_en_ete_sert_900(self):
+        servi = self.servi(self.lead(900))
+        self.assertEqual(servi, {'facture_mensuelle_mad': 900.0,
+                                 'source': 'lead', 'motif': ''})
+
+    def test_la_moyenne_est_annuel_divise_par_douze(self):
+        # hiver 1200 / été 600 : la moyenne des douze mois interpolés.
+        servi = self.servi(self.lead(1200, 600, True))
+        self.assertIsNotNone(servi['facture_mensuelle_mad'])
+        self.assertLess(servi['facture_mensuelle_mad'], 1200.0)
+        self.assertGreater(servi['facture_mensuelle_mad'], 600.0)
+
+    def test_sans_facture_null_avec_motif(self):
+        servi = self.servi(self.lead(None))
+        self.assertIsNone(servi['facture_mensuelle_mad'])
+        self.assertIsNone(servi['source'])
+        self.assertIn('facture', servi['motif'])
+
+    def test_sans_lead_ou_autre_societe_null_avec_motif(self):
+        for lead_id, lead in ((None, None), (7, None)):
+            with self.subTest(lead_id=lead_id):
+                servi = self.servi(lead, lead_id)
+                self.assertIsNone(servi['facture_mensuelle_mad'])
+                self.assertIn('lead', servi['motif'])

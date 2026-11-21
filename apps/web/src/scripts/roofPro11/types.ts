@@ -669,6 +669,9 @@ export interface AreaRecord {
   /** W106 — la face de ce pan a-t-elle été fixée À LA MAIN (override par zone) ? Si oui,
    *  l'auto-inférence d'adjacence ne l'écrase jamais. Optionnel (rétro-compatible, défaut false). */
   facingManual?: boolean;
+  /** ACAL520 — cadenas du pan (`zones[].verrouille` du document) : verrouillé, ses sommets, son glissé,
+   *  sa suppression, ses cotes et sa rotation refusent en le nommant. Absent = modifiable. */
+  verrouille?: boolean;
   neededPanels: number;
   neededAuto: boolean;
   result: AreaResult | null;
