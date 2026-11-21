@@ -530,6 +530,9 @@
     {
       "config": {
         "params": {
+          "colonnes": {
+            "k": 1
+          },
           "quoi": 3
         },
         "responseType": "blob"

@@ -386,7 +386,8 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
         geste que personne n'a demandé en ouvrant simplement l'onglet. */}
     <TapisHoraire calepinageId={id} serie={data?.serie_horaire}
       geometriePresente={geometriePresente}
-      perime={perime} motif={data?.motif} />
+      perime={perime} motif={data?.motif}
+      motifConsommation={data?.autoconsommation?.motif_absence} />
     </>
   )
 }
