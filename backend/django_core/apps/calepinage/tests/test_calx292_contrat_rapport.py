@@ -39,7 +39,7 @@ RESULTAT = _charger('calepinage_resultat.json')['exemple']
 #: Les dix codes que la tâche DÉCLARE — ni plus, ni moins.
 CODES_ATTENDUS = ('garde', 'site_meteo', 'systeme', 'pertes', 'production',
                   'ombrage', 'electrique', 'nomenclature', 'hypotheses',
-                  'preuve')
+                  'preuve', 'validation')
 
 CLES_SECTION = ('code', 'titre', 'ordre', 'obligatoire', 'entrees_exigees',
                 'motif_si_absent')

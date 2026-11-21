@@ -7,7 +7,7 @@
    « — », et l'absence de pertes (non simulé) dit pourquoi plutôt que
    d'afficher un graphe vide silencieux. */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
@@ -194,6 +194,32 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
 
     expect(screen.getByTestId('calx48-mention-source'))
       .toHaveTextContent('Chaîne de pertes séquentielle calculée')
+  })
+
+  it('ACAL444 : étape omise = ligne grisée « omise » avec son motif, sans barre ; aucune largeur fixe de 640 ; ligne dépliable', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesAvecCascadeDetaillee() })
+    rendre()
+
+    const cascade = await screen.findByTestId('calx48-cascade-detaillee')
+    const lignes = within(cascade).getByTestId('acal444-lignes')
+    expect(lignes.querySelectorAll('[width="640"]').length).toBe(0)
+    expect(cascade.querySelector('.recharts-wrapper')).toBeNull()
+
+    const omise = within(lignes).getByTestId('acal444-ligne-spectral')
+    expect(omise).toHaveAttribute('data-omise', 'true')
+    expect(within(omise).getByText('omise')).toBeInTheDocument()
+    expect(omise.textContent).toContain('D-CALX 16')
+    expect(within(omise).queryByTestId('acal444-barre-spectral')).toBeNull()
+
+    const thermique = within(lignes).getByTestId('acal444-ligne-thermique')
+    expect(within(thermique).getByTestId('acal444-barre-thermique')).toBeInTheDocument()
+    expect(within(lignes).queryByTestId('acal444-detail-thermique')).toBeNull()
+    fireEvent.click(within(thermique).getByRole('button'))
+    const detail = within(lignes).getByTestId('acal444-detail-thermique')
+    expect(detail.textContent).toContain('temp_coeff_pmax_pct_c')
+    expect(detail.textContent).toContain('Fiche produit du module désigné (essai)')
+    expect(within(detail).getByText('16 800 kWh')).toBeInTheDocument()
+    expect(within(detail).getByText('15 456 kWh')).toBeInTheDocument()
   })
 
   it('cascade absente : la liste plate (D-CALX 11) est affichée, avec la mention « postes saisis, non calculés »', async () => {

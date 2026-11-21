@@ -319,3 +319,118 @@ class RegistreTest(unittest.TestCase):
                     bifacial.CLE_MISMATCH):
             with self.subTest(cle=cle):
                 self.assertIn(cle, connues)
+
+
+class InfiniteShedsTest(unittest.TestCase):
+    """ACAL465 — le gain heure par heure égale celui de pvlib, ou se replie.
+
+    Deux réponses PVGIS RÉELLES enregistrées (15/06/2020, Casablanca) : le
+    plan incliné (la série du pan) et l'HORIZONTAL (GHI, DHI).
+    """
+
+    LAT, LON = 33.5, -7.6
+    METEO = {'heure': {'base': 'utc'}}
+    #: albédo de juin dans ALBEDO_SAISONNIER.
+    ALBEDO_JUIN = 0.5
+
+    @classmethod
+    def _points(cls, nom):
+        from apps.calepinage.tests.test_pvgis_serie import serie_enregistree
+
+        return [dict(point) for point in serie_enregistree(nom)['points']
+                if point['mois'] == 6 and point['jour'] == 15]
+
+    def setUp(self):
+        plan = self._points('seriescalc_casablanca_sud_composantes.json')
+        self.serie = {'pas_minutes': 60, 'points': [
+            dict(point, p_w=1000.0 * point['gi_w_m2']) for point in plan]}
+        self.horizontale = {'pas_minutes': 60, 'points': self._points(
+            'seriescalc_casablanca_horizontal_15juin.json')}
+        self.assertEqual(len(self.serie['points']), 24)
+        self.assertEqual(len(self.horizontale['points']), 24)
+
+    def _contexte(self, *, horizontale=True, mismatch=None):
+        contexte = contexte_de(
+            ALBEDO_SAISONNIER, mismatch=mismatch,
+            plans=[dict(PLAN, lat=self.LAT, lon=self.LON,
+                        azimut_pvgis_deg=0.0)])
+        contexte['meteo'] = self.METEO
+        if horizontale:
+            contexte['serie_horizontale_legale'] = self.horizontale
+        return contexte
+
+    def _gain_pvlib_direct(self, mismatch=None):
+        """Le gain annuel (%) calculé DIRECTEMENT avec pvlib sur le jeu."""
+        import math
+
+        import numpy as np
+        import pvlib
+        from pvlib.bifacial import infinite_sheds
+
+        from core.calepinage.soleil import position_solaire
+
+        avant = arriere = 0.0
+        for point, horizontal in zip(self.serie['points'],
+                                     self.horizontale['points']):
+            moment = etapes.instant_utc(point, self.METEO)
+            position = position_solaire(
+                self.LAT, self.LON, annee=moment.year, mois=moment.month,
+                jour=moment.day, heure_utc=moment.hour + moment.minute / 60)
+            ghi, dhi = horizontal['gi_w_m2'], horizontal['gd_i_w_m2']
+            if ghi <= 0 or position.elevation_deg <= 0:
+                continue
+            zenith = 90.0 - position.elevation_deg
+            dni = float(pvlib.irradiance.dni(
+                np.array([ghi]), np.array([dhi]), np.array([zenith]))[0])
+            sortie = infinite_sheds.get_irradiance(
+                25.0, 180.0, zenith, 180.0 + position.azimut_depuis_sud_deg,
+                0.5, 1.0 + 0.5 * 1.7 * math.sin(math.radians(25.0)), 3.4,
+                ghi, dhi, dni, self.ALBEDO_JUIN, model='isotropic',
+                bifaciality=0.7, shade_factor=0.0, transmission_factor=0.0)
+            avant += float(np.ravel(sortie['poa_front'])[0])
+            arriere += float(np.ravel(sortie['poa_global'] - sortie['poa_front'])[0])
+        garde = 1.0 if mismatch is None else 1.0 - mismatch / 100.0
+        return 100.0 * arriere * garde / avant
+
+    def test_le_gain_horaire_egale_celui_de_pvlib_au_centieme_de_point(self):
+        rendue, etape = bifacial.appliquer(self.serie, self._contexte())
+
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertEqual(etape['entree']['modele'], 'infinite_sheds')
+        self.assertIn('pvlib', etape['entree']['reference_modele'])
+        attendu = self._gain_pvlib_direct()
+        self.assertGreater(attendu, 0.5)
+        self.assertAlmostEqual(etape['entree']['gain_annuel_pct'], attendu,
+                               delta=0.005)
+        # Le gain est APPLIQUÉ : chaque heure de jour porte le sien.
+        self.assertGreater(energie(rendue), energie(self.serie))
+
+    def test_le_mismatch_arriere_saisi_est_conserve(self):
+        _, brut = bifacial.appliquer(self.serie, self._contexte())
+        _, saisi = bifacial.appliquer(
+            self.serie, self._contexte(mismatch=10.0))
+
+        self.assertAlmostEqual(saisi['entree']['gain_annuel_pct'],
+                               self._gain_pvlib_direct(10.0), delta=0.005)
+        self.assertAlmostEqual(saisi['entree']['gain_annuel_pct'],
+                               0.9 * brut['entree']['gain_annuel_pct'],
+                               delta=0.005)
+
+    def test_sans_serie_horizontale_le_gain_mensuel_s_applique_et_le_dit(self):
+        _, etape = bifacial.appliquer(
+            self.serie, self._contexte(horizontale=False))
+
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertEqual(etape['entree']['modele'], 'facteurs_de_vue_isotrope')
+        self.assertTrue(etape['entree']['motif_modele'])
+        self.assertNotIn('gain_annuel_pct', etape['entree'])
+
+    def test_un_parametre_manquant_reste_omis_et_nomme(self):
+        contexte = self._contexte()
+        plan = dict(contexte['plans'][0])
+        plan.pop('engine')
+        plan['geometry'] = {'tiltDeg': 25.0}
+        contexte['plans'] = [plan]
+        _, etape = bifacial.appliquer(self.serie, contexte)
+
+        self.assertTrue(etape['motif_omission'])

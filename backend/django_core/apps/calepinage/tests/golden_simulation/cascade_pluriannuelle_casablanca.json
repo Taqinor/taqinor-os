@@ -2,8 +2,8 @@
  "_provenance": {
   "tache": "CALX196",
   "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
-  "produit_le": "2026-10-06",
-  "arbre_sha": "e4698289780ee856f2e335a95ad646fc84869bcb",
+  "produit_le": "2026-11-21",
+  "arbre_sha": "c15bae711dcf40ea3fb68f266f3aabf3e07bb61f",
   "fixture": "seriescalc_casablanca_sud_deux_annees.json",
   "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
   "fenetre_annees": "2019-2020",
@@ -114,6 +114,7 @@
     "horizon",
     "ombrage_proche",
     "acces_module",
+    "ombrage_diffus",
     "inter_rangees",
     "bifacial",
     "iam",
@@ -184,6 +185,20 @@
     {
      "omise": true,
      "rang": 4,
+     "etape": "ombrage_diffus",
+     "libelle": "Ombrage du diffus (vue du ciel)",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 151.368,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Le document de toiture ne porte aucun facteur de vue du ciel (« zones[].geometry.skyViewFactor.facteur ») : le diffus n'est pas dérate, rien n'est supposé. Champ manquant : « ombrage.skyViewFactor »."
+    },
+    {
+     "omise": true,
+     "rang": 5,
      "etape": "inter_rangees",
      "libelle": "Auto-ombrage entre rangées",
      "gain": false,
@@ -197,7 +212,7 @@
     },
     {
      "omise": true,
-     "rang": 5,
+     "rang": 6,
      "etape": "bifacial",
      "libelle": "Gain bifacial en face arrière",
      "gain": false,
@@ -211,7 +226,7 @@
     },
     {
      "omise": true,
-     "rang": 6,
+     "rang": 7,
      "etape": "iam",
      "libelle": "Incidence (IAM)",
      "gain": false,
@@ -225,7 +240,7 @@
     },
     {
      "omise": true,
-     "rang": 7,
+     "rang": 8,
      "etape": "spectral",
      "libelle": "Correction spectrale",
      "gain": false,
@@ -239,7 +254,7 @@
     },
     {
      "omise": false,
-     "rang": 8,
+     "rang": 9,
      "etape": "salissure",
      "libelle": "Salissure",
      "gain": false,
@@ -291,7 +306,7 @@
     },
     {
      "omise": true,
-     "rang": 9,
+     "rang": 10,
      "etape": "neige",
      "libelle": "Couverture de neige",
      "gain": false,
@@ -301,11 +316,11 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Aucune valeur mensuelle de neige saisie pour cette société : l'étape figure dans la cascade pour être VUE, et reste omise tant que les mois ne sont pas renseignés (0 % par défaut ferait croire à un calcul)."
+     "motif_omission_non_compare": "Aucune valeur mensuelle de neige saisie (avec sa source) pour cette société : l'étape figure dans la cascade pour être VUE, et reste omise tant que les mois ne sont pas renseignés (0 % par défaut ferait croire à un calcul). Champ manquant : « simulation.neige_mensuelle_pct »."
     },
     {
      "omise": true,
-     "rang": 10,
+     "rang": 11,
      "etape": "niveau_irradiance",
      "libelle": "Niveau d'irradiance",
      "gain": false,
@@ -319,7 +334,7 @@
     },
     {
      "omise": true,
-     "rang": 11,
+     "rang": 12,
      "etape": "thermique",
      "libelle": "Échauffement des modules",
      "gain": false,
@@ -333,7 +348,7 @@
     },
     {
      "omise": false,
-     "rang": 12,
+     "rang": 13,
      "etape": "qualite_module",
      "libelle": "Qualité module",
      "gain": false,
@@ -347,7 +362,7 @@
     },
     {
      "omise": false,
-     "rang": 13,
+     "rang": 14,
      "etape": "lid",
      "libelle": "LID (première exposition)",
      "gain": false,
@@ -361,7 +376,7 @@
     },
     {
      "omise": false,
-     "rang": 14,
+     "rang": 15,
      "etape": "mismatch_fabricant",
      "libelle": "Dispersion de fabrication (mismatch)",
      "gain": false,
@@ -378,7 +393,7 @@
     },
     {
      "omise": true,
-     "rang": 15,
+     "rang": 16,
      "etape": "mismatch_ombrage",
      "libelle": "Dispersion d'ombrage (I-V par chaîne)",
      "gain": false,
@@ -392,7 +407,7 @@
     },
     {
      "omise": true,
-     "rang": 16,
+     "rang": 17,
      "etape": "diodes",
      "libelle": "Diodes de chaîne",
      "gain": false,
@@ -406,7 +421,7 @@
     },
     {
      "omise": false,
-     "rang": 17,
+     "rang": 18,
      "etape": "ohmique_dc",
      "libelle": "Pertes ohmiques DC",
      "gain": false,
@@ -420,7 +435,7 @@
     },
     {
      "omise": true,
-     "rang": 18,
+     "rang": 19,
      "etape": "mppt",
      "libelle": "Fenêtre MPPT",
      "gain": false,
@@ -434,7 +449,7 @@
     },
     {
      "omise": false,
-     "rang": 19,
+     "rang": 20,
      "etape": "onduleur",
      "libelle": "Rendement onduleur",
      "gain": false,
@@ -448,7 +463,7 @@
     },
     {
      "omise": true,
-     "rang": 20,
+     "rang": 21,
      "etape": "ecretage",
      "libelle": "Écrêtage",
      "gain": false,
@@ -462,7 +477,7 @@
     },
     {
      "omise": false,
-     "rang": 21,
+     "rang": 22,
      "etape": "ohmique_ac",
      "libelle": "Pertes ohmiques AC",
      "gain": false,
@@ -476,7 +491,7 @@
     },
     {
      "omise": true,
-     "rang": 22,
+     "rang": 23,
      "etape": "transformateur",
      "libelle": "Transformateur",
      "gain": false,
@@ -490,7 +505,7 @@
     },
     {
      "omise": true,
-     "rang": 23,
+     "rang": 24,
      "etape": "auxiliaires",
      "libelle": "Auxiliaires",
      "gain": false,
@@ -504,7 +519,7 @@
     },
     {
      "omise": false,
-     "rang": 24,
+     "rang": 25,
      "etape": "indisponibilite",
      "libelle": "Indisponibilité",
      "gain": false,
@@ -528,7 +543,7 @@
     "performance_ratio": 0.87,
     "complete": true,
     "socle_manquant": [],
-    "mention": "borne haute — 13 pertes non renseignées",
+    "mention": "borne haute — 14 pertes non renseignées",
     "performance_ratio_motif": "",
     "p75_kwh_motif": "",
     "p90_kwh_motif": "",

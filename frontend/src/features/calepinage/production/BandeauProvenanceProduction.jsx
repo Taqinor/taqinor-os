@@ -3,6 +3,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatDate, formatNumber, formatPercent } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
+import { estProfilDepart, MENTION_PUBLIEE } from '../reglages/profilDepart'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 
 /* ============================================================================
@@ -150,6 +151,11 @@ export function ReglagesUtilises({ simulation }) {
               <td className="py-1">{cle}</td>
               <td className="py-1 tabular-nums" title={reglages[cle]?.reference || undefined}>
                 {texteReglage(reglages[cle]?.valeur)}
+                {estProfilDepart(reglages[cle]?.reference) && (
+                  <span className="block text-muted-foreground" data-testid="acal405-publiee">
+                    {MENTION_PUBLIEE}
+                  </span>
+                )}
               </td>
               <td className="py-1">{texteReglage(reglages[cle]?.source)}</td>
             </tr>

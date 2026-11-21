@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5238, operations: 8070, components: 4030}
+counts: {paths: 5248, operations: 8090, components: 4041}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -545,13 +545,20 @@ operations:
 - post /api/django/calepinage/calepinages/import-projet/ -> django_calepinage_calepinages_import_projet_create
 - get /api/django/calepinage/calepinages/modeles/ -> django_calepinage_calepinages_modeles_list
 - post /api/django/calepinage/calepinages/preparer/ -> django_calepinage_calepinages_preparer_create
+- delete /api/django/calepinage/calepinages/profil-depart/ -> django_calepinage_calepinages_profil_depart_destroy
+- get /api/django/calepinage/calepinages/profil-depart/ -> django_calepinage_calepinages_profil_depart_retrieve
+- post /api/django/calepinage/calepinages/profil-depart/ -> django_calepinage_calepinages_profil_depart_create
 - get /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_retrieve
 - patch /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_partial_update
 - get /api/django/calepinage/calepinages/{id}/apercu-document/ -> django_calepinage_calepinages_apercu_document_retrieve
 - get /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_retrieve
 - post /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_create
 - post /api/django/calepinage/calepinages/{id}/archiver/ -> django_calepinage_calepinages_archiver_create
+- post /api/django/calepinage/calepinages/{id}/balayage/ -> django_calepinage_calepinages_balayage_create
 - get /api/django/calepinage/calepinages/{id}/bom-fixation/ -> django_calepinage_calepinages_bom_fixation_retrieve
+- delete /api/django/calepinage/calepinages/{id}/brouillon/ -> django_calepinage_calepinages_brouillon_destroy
+- get /api/django/calepinage/calepinages/{id}/brouillon/ -> django_calepinage_calepinages_brouillon_retrieve
+- put /api/django/calepinage/calepinages/{id}/brouillon/ -> django_calepinage_calepinages_brouillon_update
 - post /api/django/calepinage/calepinages/{id}/champs-dossier/ -> django_calepinage_calepinages_champs_dossier_create
 - get /api/django/calepinage/calepinages/{id}/chatter/historique/ -> django_calepinage_calepinages_chatter_historique_list
 - post /api/django/calepinage/calepinages/{id}/chatter/noter/ -> django_calepinage_calepinages_chatter_noter_create
@@ -560,6 +567,8 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/consommation/proposer/ -> django_calepinage_calepinages_consommation_proposer_create
 - post /api/django/calepinage/calepinages/{id}/demarquer-modele/ -> django_calepinage_calepinages_demarquer_modele_create
 - get /api/django/calepinage/calepinages/{id}/design-context/ -> django_calepinage_calepinages_design_context_retrieve
+- get /api/django/calepinage/calepinages/{id}/detection-toit/ -> django_calepinage_calepinages_detection_toit_retrieve
+- post /api/django/calepinage/calepinages/{id}/detection-toit/ -> django_calepinage_calepinages_detection_toit_create
 - get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> django_calepinage_calepinages_diagramme_pertes.svg_retrieve
 - get /api/django/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> django_calepinage_calepinages_document_asbuilt.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/documents/ -> django_calepinage_calepinages_documents_retrieve
@@ -602,6 +611,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/modules-disponibles/ -> django_calepinage_calepinages_modules_disponibles_retrieve
 - get /api/django/calepinage/calepinages/{id}/note-calcul.pdf/ -> django_calepinage_calepinages_note_calcul.pdf_retrieve
 - post /api/django/calepinage/calepinages/{id}/pack-technique/ -> django_calepinage_calepinages_pack_technique_create
+- get /api/django/calepinage/calepinages/{id}/parcours/ -> django_calepinage_calepinages_parcours_retrieve
 - get /api/django/calepinage/calepinages/{id}/pertes/ -> django_calepinage_calepinages_pertes_retrieve
 - get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
 - post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
@@ -4621,13 +4631,20 @@ operations:
 - post /api/v1/calepinage/calepinages/import-projet/ -> v1_calepinage_calepinages_import_projet_create
 - get /api/v1/calepinage/calepinages/modeles/ -> v1_calepinage_calepinages_modeles_list
 - post /api/v1/calepinage/calepinages/preparer/ -> v1_calepinage_calepinages_preparer_create
+- delete /api/v1/calepinage/calepinages/profil-depart/ -> v1_calepinage_calepinages_profil_depart_destroy
+- get /api/v1/calepinage/calepinages/profil-depart/ -> v1_calepinage_calepinages_profil_depart_retrieve
+- post /api/v1/calepinage/calepinages/profil-depart/ -> v1_calepinage_calepinages_profil_depart_create
 - get /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_retrieve
 - patch /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_partial_update
 - get /api/v1/calepinage/calepinages/{id}/apercu-document/ -> v1_calepinage_calepinages_apercu_document_retrieve
 - get /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_retrieve
 - post /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_create
 - post /api/v1/calepinage/calepinages/{id}/archiver/ -> v1_calepinage_calepinages_archiver_create
+- post /api/v1/calepinage/calepinages/{id}/balayage/ -> v1_calepinage_calepinages_balayage_create
 - get /api/v1/calepinage/calepinages/{id}/bom-fixation/ -> v1_calepinage_calepinages_bom_fixation_retrieve
+- delete /api/v1/calepinage/calepinages/{id}/brouillon/ -> v1_calepinage_calepinages_brouillon_destroy
+- get /api/v1/calepinage/calepinages/{id}/brouillon/ -> v1_calepinage_calepinages_brouillon_retrieve
+- put /api/v1/calepinage/calepinages/{id}/brouillon/ -> v1_calepinage_calepinages_brouillon_update
 - post /api/v1/calepinage/calepinages/{id}/champs-dossier/ -> v1_calepinage_calepinages_champs_dossier_create
 - get /api/v1/calepinage/calepinages/{id}/chatter/historique/ -> v1_calepinage_calepinages_chatter_historique_list
 - post /api/v1/calepinage/calepinages/{id}/chatter/noter/ -> v1_calepinage_calepinages_chatter_noter_create
@@ -4636,6 +4653,8 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/consommation/proposer/ -> v1_calepinage_calepinages_consommation_proposer_create
 - post /api/v1/calepinage/calepinages/{id}/demarquer-modele/ -> v1_calepinage_calepinages_demarquer_modele_create
 - get /api/v1/calepinage/calepinages/{id}/design-context/ -> v1_calepinage_calepinages_design_context_retrieve
+- get /api/v1/calepinage/calepinages/{id}/detection-toit/ -> v1_calepinage_calepinages_detection_toit_retrieve
+- post /api/v1/calepinage/calepinages/{id}/detection-toit/ -> v1_calepinage_calepinages_detection_toit_create
 - get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> v1_calepinage_calepinages_diagramme_pertes.svg_retrieve
 - get /api/v1/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> v1_calepinage_calepinages_document_asbuilt.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/documents/ -> v1_calepinage_calepinages_documents_retrieve
@@ -4678,6 +4697,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/modules-disponibles/ -> v1_calepinage_calepinages_modules_disponibles_retrieve
 - get /api/v1/calepinage/calepinages/{id}/note-calcul.pdf/ -> v1_calepinage_calepinages_note_calcul.pdf_retrieve
 - post /api/v1/calepinage/calepinages/{id}/pack-technique/ -> v1_calepinage_calepinages_pack_technique_create
+- get /api/v1/calepinage/calepinages/{id}/parcours/ -> v1_calepinage_calepinages_parcours_retrieve
 - get /api/v1/calepinage/calepinages/{id}/pertes/ -> v1_calepinage_calepinages_pertes_retrieve
 - get /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_retrieve
 - post /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_create
@@ -10194,6 +10214,9 @@ components:
 - CalepinageAssistantPublierDevis
 - CalepinageAssistantRefus
 - CalepinageAssistantResume
+- CalepinageBalayageAccuse
+- CalepinageBalayageCorpsRequest
+- CalepinageBrouillonCorpsRequest
 - CalepinageChampsDossierCorpsParDossierRequest
 - CalepinageChampsDossierCorpsParGabaritRequest
 - CalepinageChampsDossierCorpsRequest
@@ -10210,6 +10233,10 @@ components:
 - CalepinageDepuisModeleCorpsRequest
 - CalepinageDesignContext
 - CalepinageDetail
+- CalepinageDetectionToit
+- CalepinageDetectionToitCorpsOrigineEnum
+- CalepinageDetectionToitCorpsRequest
+- CalepinageDetectionToitDispo
 - CalepinageDocumentAuteur
 - CalepinageDocumentEntree
 - CalepinageDocumentImage
@@ -10286,12 +10313,16 @@ components:
 - CalepinageParametresEcrite
 - CalepinageParametresReponse
 - CalepinageParametresRequeteRequest
+- CalepinageParcoursGuide
 - CalepinagePhotoSite
 - CalepinagePhotosSite
 - CalepinagePlanImporte
 - CalepinagePompageCorpsRequest
 - CalepinagePompageReponse
 - CalepinagePoseReelle
+- CalepinageProfilDepart
+- CalepinageProfilDepartApplication
+- CalepinageProfilDepartRetrait
 - CalepinagePublicationDevis
 - CalepinageRaccordement
 - CalepinageRaccordementCorpsRequest

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 #: Méthode « utile » de chaque capacité — celle qui déclenche un appel RÉEL et
 #: donc une ligne de journal d'usage (NTAI1).
-CAPABILITY_METHODS = ('extract', 'transcribe', 'inspect', 'complete')
+CAPABILITY_METHODS = ('extract', 'transcribe', 'inspect', 'complete', 'detecter')
 
 
 @dataclass
@@ -241,6 +241,20 @@ class VisionQAProvider(_BaseProvider):
         raise NotImplementedError
 
 
+class VisionToitProvider(_BaseProvider):
+    """ACAL489 — capacité : image de toit → contour et pans PROPOSÉS.
+
+    Une proposition, jamais une décision : l'utilisateur la confirme
+    (D-ACAL-33). Seuls les octets et le type de l'image sont transmis."""
+
+    capability = 'vision_toit'
+
+    def detecter(self, *, content: bytes, mime_type: str) -> AIResult:
+        """``data['pans']`` = ``[{'sommets': [[fx, fy], …], 'confiance': c|None}]``,
+        fractions de l'image dans [0, 1], au moins 3 sommets par pan."""
+        raise NotImplementedError
+
+
 class LLMProvider(_BaseProvider):
     """Capacité : génération texte (synthèse, brouillon de réponse)."""
 
@@ -275,6 +289,14 @@ class NoOpVisionQAProvider(VisionQAProvider):
     label = 'Aucun contrôle vision'
 
     def inspect(self, *, content, mime_type, checklist):
+        return AIResult.noop(self.key)
+
+
+class NoOpVisionToitProvider(VisionToitProvider):
+    key = 'noop'
+    label = 'Aucune détection du toit (tracé manuel)'
+
+    def detecter(self, *, content, mime_type):
         return AIResult.noop(self.key)
 
 

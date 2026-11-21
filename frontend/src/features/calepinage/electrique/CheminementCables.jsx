@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import { Card, EmptyState, Spinner } from '../../../ui'
+import { Button, Card, EmptyState, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { celluleLongueur, libelleCote } from './CheminementCables.helpers'
 
@@ -37,7 +38,56 @@ import { celluleLongueur, libelleCote } from './CheminementCables.helpers'
 
 const CODE_INTROUVABLE = 'CALX229_INTROUVABLE'
 
-export default function CheminementCables({ calepinageId } = {}) {
+/** ACAL472 — « Proposer le tracé » : le plus court chemin le long des rangées et de la
+    rive est calculé par la scène 3D (`builderApi.electrique.proposerCheminement`) ; ce
+    panneau ne calcule rien. Un refus est affiché tel que la scène le nomme. */
+function ProposerTrace({ builderApi }) {
+  const [cote, setCote] = useState('dc')
+  const [de, setDe] = useState('')
+  const [vers, setVers] = useState('')
+  const [resultat, setResultat] = useState(null)
+  const equipements = builderApi?.electrique?.documentElectrique?.()?.equipements ?? []
+  const proposer = () => {
+    const proposerCheminement = builderApi?.electrique?.proposerCheminement
+    if (typeof proposerCheminement !== 'function') {
+      setResultat('Outil 3D non prêt — ouvrez la conception dans l’atelier 3D avant de proposer un tracé.')
+      return
+    }
+    const r = proposerCheminement({ cote, de, vers })
+    setResultat(r.ok
+      ? `Tracé proposé : ${r.cheminement.points.length} points. Enregistrez l’atelier pour que le métré le mesure.`
+      : r.message)
+  }
+  const champ = (id, valeur, set, libelle, options) => (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      {libelle}
+      <select
+        data-testid={`acal472-${id}`}
+        value={valeur}
+        onChange={(e) => set(e.target.value)}
+        className="h-9 rounded border border-border bg-card px-2 text-sm text-foreground"
+      >
+        {options}
+      </select>
+    </label>
+  )
+  const organes = [<option key="" value="">—</option>, ...equipements.map((e) => (
+    <option key={e.id} value={e.id}>{e.label || e.id}</option>
+  ))]
+  return (
+    <section className="flex flex-wrap items-end gap-3" data-testid="acal472-bloc">
+      {champ('cote', cote, setCote, 'Côté', ['dc', 'ac', 'terre'].map((c) => (
+        <option key={c} value={c}>{libelleCote(c)}</option>
+      )))}
+      {champ('de', de, setDe, 'De', organes)}
+      {champ('vers', vers, setVers, 'Vers', organes)}
+      <Button type="button" onClick={proposer} data-testid="acal472-proposer">Proposer le tracé</Button>
+      {resultat && <p className="w-full text-sm" data-testid="acal472-resultat">{resultat}</p>}
+    </section>
+  )
+}
+
+export default function CheminementCables({ calepinageId, builderApi } = {}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -111,6 +161,8 @@ export default function CheminementCables({ calepinageId } = {}) {
             <strong data-testid="calx229-total-ac">{formatPercent(totaux.ac_chute_pct, { decimals: 2 })}</strong>
           </span>
         </div>
+
+        <ProposerTrace builderApi={builderApi} />
 
         {troncons.length === 0
           ? (

@@ -57,7 +57,13 @@
           "perte_pct": -3.0,
           "gain": true,
           "source": "fiche",
-          "entree": "bifacialite_pct",
+          "entree": {
+            "modele": "infinite_sheds",
+            "reference_modele": "pvlib.bifacial.infinite_sheds.get_irradiance (essai)",
+            "motif_modele": "",
+            "bifacialite_pct": 70.0,
+            "gain_annuel_pct": 3.0
+          },
           "reference": "Fiche produit du module désigné (essai)",
           "motif_omission": ""
         },

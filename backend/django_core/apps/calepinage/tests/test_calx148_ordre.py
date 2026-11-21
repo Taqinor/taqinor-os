@@ -36,8 +36,8 @@ def cascade(contexte):
 class OrdreTest(unittest.TestCase):
     """L'ordre lui-même : sans doublon, et aux rangs que la doctrine fixe."""
 
-    def test_vingt_quatre_etapes_sans_doublon(self):
-        self.assertEqual(len(ORDRE_ETAPES), 24)
+    def test_vingt_cinq_etapes_sans_doublon(self):
+        self.assertEqual(len(ORDRE_ETAPES), 25)
         self.assertEqual(len(set(ORDRE_ETAPES)), len(ORDRE_ETAPES),
                          'une étape est déclarée deux fois : son rang '
                          'deviendrait ambigu.')
@@ -171,13 +171,24 @@ class ToujoursOmisesTest(unittest.TestCase):
                           'une étape absente se lirait « oubliée ».')
 
     def test_elles_sont_omises_avec_leur_motif_et_perte_pct_null(self):
-        for nom in ('spectral', 'diodes', 'neige'):
+        for nom in ('spectral', 'diodes'):
             etape = self.par_nom[nom]
             self.assertEqual(etape['motif_omission'], TOUJOURS_OMISES[nom])
             self.assertIsNone(etape['perte_pct'],
                               f'{nom} : 0 % se lirait « gratuite ».')
             self.assertIsNone(etape['perte_kwh'])
             self.assertIsNone(etape['kwh_apres'])
+
+    def test_la_neige_sort_de_la_table_mais_reste_omise_sans_saisie(self):
+        # ACAL463 — la neige est CALCULÉE quand douze valeurs sourcées sont
+        # saisies ; sans saisie elle reste omise en nommant la clé, à null.
+        self.assertNotIn('neige', TOUJOURS_OMISES)
+        etape = self.par_nom['neige']
+        self.assertIn('simulation.neige_mensuelle_pct',
+                      etape['motif_omission'])
+        self.assertIsNone(etape['perte_pct'])
+        self.assertIsNone(etape['perte_kwh'])
+        self.assertIsNone(etape['kwh_apres'])
 
     def test_leur_motif_ne_forfaitise_jamais_le_chiffre_du_concurrent(self):
         self.assertIn('0,5 %', TOUJOURS_OMISES['diodes'])

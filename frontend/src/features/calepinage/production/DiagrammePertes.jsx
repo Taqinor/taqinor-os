@@ -14,6 +14,7 @@ import {
   CHART_TOKENS, CHART_GRID_STYLE, BAR_RADIUS, animationDuration, CHART_ANIM_EASING,
 } from '../../../ui/charts/chart-theme.js'
 import { CASCADE_ARRIVEE, CASCADE_DEPART, construireCascadeDetaillee } from './DiagrammePertes.helpers'
+import CascadePertesLignes from './CascadePertesLignes'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 
 /* ============================================================================
@@ -92,15 +93,6 @@ const pctCascadeDetaillee = (v) => (v === null || v === undefined
 
 const kwhCascadeDetaillee = (v) => (v === null || v === undefined
   ? 'non calculée' : `${formatNumber(v, { decimals: 0 })} kWh`)
-
-/** La couleur d'une barre de la cascade détaillée : total (cumulé), étape
-    OMISE (hachure — jamais dissimulée), GAIN (bifacial…) ou perte ordinaire. */
-function couleurCascadeDetaillee(ligne) {
-  if (ligne.total) return CHART_TOKENS.primary
-  if (ligne.omise) return 'url(#calx48-hachure)'
-  if (ligne.gain) return CHART_TOKENS.success
-  return CHART_TOKENS.warning
-}
 
 /** CALX48 — dit laquelle des deux sources est affichée, jamais un panneau
     muet sur sa propre provenance (D-CALX 11 : la liste plate n'est QUE
@@ -275,8 +267,6 @@ function DiagrammePertesCascade({ pertes }) {
  */
 function DiagrammePertesCascadeDetaillee({ etapes, totalPct = null }) {
   const lignes = construireCascadeDetaillee(etapes, totalPct)
-  const dur = animationDuration()
-
   const colonnes = [
     { key: 'rang', header: 'Rang', format: (v, row) => (row.total ? '—' : v) },
     { key: 'nom', header: 'Étape' },
@@ -304,76 +294,16 @@ function DiagrammePertesCascadeDetaillee({ etapes, totalPct = null }) {
 
   return (
     <div className="flex flex-col gap-2" data-testid="calx48-cascade-detaillee">
-      <svg width={0} height={0} aria-hidden="true">
-        <defs>
-          {/* Étape omise : même hachure que le poste non sourcé — jamais dissimulée. */}
-          <pattern
-            id="calx48-hachure" patternUnits="userSpaceOnUse" width={6} height={6}
-            patternTransform="rotate(45)"
-          >
-            <rect width={6} height={6} fill={CHART_TOKENS.muted} fillOpacity={0.15} />
-            <line x1={0} y1={0} x2={0} y2={6} stroke={CHART_TOKENS.muted} strokeWidth={2} />
-          </pattern>
-        </defs>
-      </svg>
+      {/* ACAL444 — les lignes sont du vrai texte (focusable, dépliable) : hors du
+          conteneur `aria-hidden` du ChartFrame, qui ne garde ici que la table. */}
+      <CascadePertesLignes lignes={lignes} />
 
       <ChartFrame
         label="Chaîne de pertes séquentielle, rang par rang, de l'irradiance incidente à l'énergie livrée"
         columns={colonnes}
         rows={lignes}
         getRowKey={(row) => row.nom}
-      >
-        <BarChart
-          width={640}
-          height={280}
-          data={lignes}
-          margin={{ top: 8, right: 8, bottom: 24, left: 0 }}
-        >
-          <CartesianGrid {...CHART_GRID_STYLE} />
-          <XAxis
-            dataKey="nom"
-            tick={{ fontSize: 10, fill: CHART_TOKENS.axis }}
-            tickLine={false}
-            interval={0}
-            angle={-20}
-            textAnchor="end"
-            height={50}
-          />
-          <YAxis
-            domain={[0, (max) => Math.max(100, Math.ceil(max))]}
-            tick={{ fontSize: 11, fill: CHART_TOKENS.axis }}
-            tickLine={false}
-            axisLine={false}
-            unit="%"
-          />
-          <Tooltip
-            content={(
-              <ChartTooltip
-                format={(v, name, entry) => {
-                  const row = entry?.payload
-                  if (row?.total) return formatPercent(v, { decimals: 1 })
-                  if (row?.omise) return row.motif || 'Étape omise, sans motif publié.'
-                  return `${formatPercent(v, { decimals: 1 })} · ${libelleSource(row?.source)}`
-                }}
-              />
-            )}
-          />
-          <Bar dataKey="base" stackId="cascade" fill="transparent" isAnimationActive={false} />
-          <Bar
-            dataKey="valeur"
-            name="Étape"
-            stackId="cascade"
-            radius={BAR_RADIUS}
-            isAnimationActive={dur > 0}
-            animationDuration={dur}
-            animationEasing={CHART_ANIM_EASING}
-          >
-            {lignes.map((ligne) => (
-              <Cell key={ligne.nom} fill={couleurCascadeDetaillee(ligne)} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ChartFrame>
+      />
     </div>
   )
 }

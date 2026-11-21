@@ -509,6 +509,11 @@ export const ALL_HOOKS = [
   'cal-retour-atelier',
   'cal-retour-atelier-lien',
   'cal-retour-atelier-onglet',
+  // ── atelier/ResumeAtelier.jsx ──
+  'cal-resume-atelier',
+  'cal-resume-kwc',
+  'cal-resume-panneaux',
+  'cal-resume-production',
   // ── documents/PanneauDocuments.jsx ──
   'cal-doc-bouton',
   'cal-doc-bouton-export-layout',
@@ -704,6 +709,38 @@ export const ALL_HOOKS = [
   'cal-variante-renommer',
   'cal-variante-supprimer-confirmer',
   'cal-variante-supprimer',
+  // ── atelier/PanneauDetectionToit.jsx ──
+  'cal-detection-annuler',
+  'cal-detection-carte',
+  'cal-detection-choisir',
+  'cal-detection-emprise',
+  'cal-detection-fichier',
+  'cal-detection-indisponible',
+  'cal-detection-message',
+  'cal-detection-panneau',
+  'cal-detection-proposition',
+  'cal-detection-refus',
+  'cal-detection-utiliser',
+  // ── atelier/BarreEnregistrement.jsx (complément L5) ──
+  'cal-enregistrer-calepinage',
+  'cal-etat-enregistrement',
+  'cal-erreur-enregistrement',
+  // ── atelier/PanneauPertesUnifie.jsx (complément L5) ──
+  'cal-pertes-unifie',
+  // ── AtelierPanneaux.jsx (complément L5) ──
+  'cal-conception-auto',
+  'cal-conception-auto-message',
+  // ── commun/RailGuide.jsx (complément L5) ──
+  'cal-rail-etapes',
+  'cal-etape',
+  'cal-etape--etat',
+  'cal-mode-expert',
+  // ── electrique/EtapeElectrique.jsx (complément L5) ──
+  'cal-etape-electrique-ecran',
+  'cal-electrique-synthese',
+  'cal-electrique-section',
+  // ── PhotoSiteCalage.jsx (complément L5) ──
+  'cal-photo-calage-monde',
 ]
 
 function readDoc() {

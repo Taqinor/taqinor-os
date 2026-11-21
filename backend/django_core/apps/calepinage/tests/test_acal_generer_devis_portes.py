@@ -337,6 +337,44 @@ class GenererDevisPortesTest(BaseApiCalepinage):
                          sorted(set(CONTRAT['exemple_deduplique'])
                                 | {'electrique'}))
 
+    def test_hypotheses_toit_non_confirmees_nommees(self):
+        """ACAL426 — pan en pente sans source : deux avertissements nommés ;
+        avec source : aucun ; toit plat : aucun ; jamais de blocage."""
+        def doc(**champs):
+            pan = {'id': 'A', 'label': 'A', 'roofType': 'pitched',
+                   'vertices': [[0, 0], [10, 0], [10, 6], [0, 6]],
+                   'pitchDeg': 22, 'facingAzimuthDeg': 180, **champs}
+            d = copy.deepcopy(TOIT)
+            d['zones'] = [pan]
+            return d
+
+        from apps.calepinage.services.hypotheses_toit import (
+            avertissements_hypotheses)
+
+        self.assertEqual(avertissements_hypotheses(doc()), [
+            "Pan « A » : la pente (22°) n'a jamais été confirmée — "
+            "confirmez-la avant d'envoyer le devis.",
+            "Pan « A » : la face (180°) n'a jamais été confirmée — "
+            "confirmez-la avant d'envoyer le devis."])
+        self.assertEqual(len(avertissements_hypotheses(
+            doc(pitchSource={'mode': 'degres'}))), 1)
+        self.assertEqual(avertissements_hypotheses(doc(
+            pitchSource={'mode': 'degres'}, facingManual=True)), [])
+        self.assertEqual(avertissements_hypotheses(doc(
+            pitchSource={'mode': 'degres'},
+            facingAzimuthSource='releve')), [])
+        self.assertEqual(avertissements_hypotheses(
+            doc(roofType='flat')), [])
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL426')
+        enregistrer_layout(calepinage, doc(), user=self.user)
+        reponse = self._generer(calepinage)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertTrue(any('la pente (22°)' in m
+                            for m in reponse.data['avertissements']))
+        self.assertTrue(any('la face (180°)' in m
+                            for m in reponse.data['avertissements']))
+
 
 class GenererDevisConcurrentTest(TransactionTestCase):
     """ACON46 — deux « Générer le devis » CONCURRENTS sur le même calepinage :

@@ -81,6 +81,7 @@ import {
   tousLesObstacles, // ACAL64
 } from './zones';
 import { suivreAlt } from './altTracker';
+import { viderObstaclesAnnulable } from './bandeauAnnuler'; // ACAL413
 
 /** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
  *  libellé FR + note « bloque le compte » pour PLAN/DEVINE. */
@@ -1638,14 +1639,14 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     );
   });
   obstacleClearBtn?.addEventListener('click', () => {
-    if (!ctx.obstacles.length) return;
-    ctx.obstacles = [];
+    if (!viderObstaclesAnnulable(ctx)) return; // ACAL413 — photo d'historique AVANT de vider
     ctx.selectedObsId = null;
     setObstacleMode(false);
     redrawObstacles();
     syncObsEdit();
     if (ctx.closed) recalc();
     setStatus('Obstacles effacés — le calepinage reprend tout le toit.');
+    ctx.bandeauAnnuler?.('Obstacles effacés');
   });
 
   // — Édition de l'obstacle sélectionné (saisie exacte + boutons + / − + suppr.) —

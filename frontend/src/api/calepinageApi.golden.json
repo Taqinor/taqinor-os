@@ -72,6 +72,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.balayer": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/balayage/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.bomFixation": [
     {
       "config": {
@@ -79,6 +87,14 @@
       },
       "data": null,
       "url": "/calepinage/calepinages/7/bom-fixation/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.brouillon": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/brouillon/",
       "verbe": "get"
     }
   ],
@@ -290,6 +306,24 @@
       "verbe": "get"
     }
   ],
+  "calepinages.detectionToit": [
+    {
+      "config": {
+        "k": 1
+      },
+      "data": 3,
+      "url": "/calepinage/calepinages/7/detection-toit/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.detectionToitDisponible": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/detection-toit/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.documents": [
     {
       "config": null,
@@ -331,6 +365,14 @@
       },
       "url": "/calepinage/calepinages/7/variantes/",
       "verbe": "post"
+    }
+  ],
+  "calepinages.effacerBrouillon": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/brouillon/",
+      "verbe": "delete"
     }
   ],
   "calepinages.enregistrerChampsDossier": [
@@ -419,6 +461,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.envoyerBrouillon": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/brouillon/",
+      "verbe": "put"
+    }
+  ],
   "calepinages.envoyerFondPlan": [
     {
       "config": null,
@@ -480,6 +530,9 @@
     {
       "config": {
         "params": {
+          "colonnes": {
+            "k": 1
+          },
           "quoi": 3
         },
         "responseType": "blob"
@@ -690,6 +743,14 @@
       "config": null,
       "data": null,
       "url": "/calepinage/calepinages/7/modules-disponibles/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.parcours": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/parcours/",
       "verbe": "get"
     }
   ],
@@ -1066,6 +1127,14 @@
       "verbe": "get"
     }
   ],
+  "parametres.appliquerProfilDepart": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/profil-depart/",
+      "verbe": "post"
+    }
+  ],
   "parametres.enregistrerProfilsTypes": [
     {
       "config": null,
@@ -1084,6 +1153,14 @@
       "verbe": "get"
     }
   ],
+  "parametres.profilDepart": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/profil-depart/",
+      "verbe": "get"
+    }
+  ],
   "parametres.profilsTypes": [
     {
       "config": null,
@@ -1098,6 +1175,14 @@
       "data": null,
       "url": "/calepinage/parametres/recalculer-simulations/",
       "verbe": "post"
+    }
+  ],
+  "parametres.retirerProfilDepart": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/profil-depart/",
+      "verbe": "delete"
     }
   ],
   "parametres.suggererPentesIGN": [

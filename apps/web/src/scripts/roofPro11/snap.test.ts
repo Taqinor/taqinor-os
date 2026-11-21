@@ -27,6 +27,8 @@ import {
   TOLERANCE_ANGLE_DEG,
 } from './snap';
 import { DEG2RAD, WGS84_RADIUS } from './constants';
+import { lireCotes, rectangleDepuisCotes } from './toitParCotes';
+import { geodesicAreaM2 } from '../../lib/roof';
 import { type LngLat } from '../../lib/roof';
 
 const DEG2M = DEG2RAD * WGS84_RADIUS;
@@ -567,5 +569,48 @@ describe('CALX99 — azimutNormaleArete : cap de la normale sortante', () => {
   it('point inexploitable : NaN plutôt qu’un azimut inventé', () => {
     expect(Number.isNaN(azimutNormaleArete(P, [Number.NaN, 33.5]))).toBe(true);
     expect(Number.isNaN(azimutNormaleArete(null as unknown as LngLat, P))).toBe(true);
+  });
+});
+
+// ACAL422 — contour créé depuis des cotes saisies.
+describe('ACAL422 — rectangle depuis cotes : aire 96 m², 4 angles droits, orientation appliquée', () => {
+  const C: LngLat = [-7.6, 33.5];
+
+  it('12 × 8, orientation 0 : côté long vers l’est (12 m), 8 m de large, aire 96 m², angles droits', () => {
+    const r = rectangleDepuisCotes(C, 12, 8, 0);
+    expect(r).toHaveLength(4);
+    expect(distanceEntreM(r[0], r[1])).toBeCloseTo(12, 2);
+    expect(distanceEntreM(r[1], r[2])).toBeCloseTo(8, 2);
+    expect(distanceEntreM(r[2], r[3])).toBeCloseTo(12, 2);
+    expect(distanceEntreM(r[3], r[0])).toBeCloseTo(8, 2);
+    expect(distanceEntreM(r[0], r[2])).toBeCloseTo(Math.hypot(12, 8), 2); // diagonales = angles droits
+    expect(distanceEntreM(r[1], r[3])).toBeCloseTo(Math.hypot(12, 8), 2);
+    expect(geodesicAreaM2(r)).toBeGreaterThan(95.9);
+    expect(geodesicAreaM2(r)).toBeLessThan(96.1);
+    expect(capEntreDeg(r[0], r[1])).toBeCloseTo(90, 1);
+    const centre = centroideAnneau(r) as LngLat;
+    expect(distanceEntreM(centre, C)).toBeLessThan(0.01);
+  });
+
+  it('l’orientation tourne le côté long dans le sens horaire ; l’aire ne change pas', () => {
+    const r = rectangleDepuisCotes(C, 12, 8, 30);
+    expect(capEntreDeg(r[0], r[1])).toBeCloseTo(120, 1);
+    expect(distanceEntreM(r[0], r[1])).toBeCloseTo(12, 2);
+    expect(geodesicAreaM2(r)).toBeGreaterThan(95.9);
+  });
+
+  it('saisies refusées en nommant le champ ; aucun arrondi ni borne', () => {
+    for (const [l, w, o, champ] of [
+      ['', '8', '', 'Longueur'],
+      ['abc', '8', '', 'Longueur'],
+      ['12', '0', '', 'Largeur'],
+      ['12', '-3', '', 'Largeur'],
+      ['12', '8', 'x', 'Orientation'],
+    ] as const) {
+      const v = lireCotes(l, w, o);
+      expect(v.ok).toBe(false);
+      if (!v.ok) expect(v.motif).toContain(champ);
+    }
+    expect(lireCotes('12,345', '8.5', '-45.25')).toEqual({ ok: true, longueurM: 12.345, largeurM: 8.5, orientationDeg: -45.25 });
   });
 });

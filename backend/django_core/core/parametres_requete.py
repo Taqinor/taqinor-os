@@ -373,6 +373,9 @@ def _installer_recherche_tolerante() -> None:
     SearchFilter.filter_queryset = filter_queryset
 
 
+_INSTALLE = {'fait': False}
+
+
 def installer() -> None:
     """Enveloppe ``APIView.initial`` une seule fois (idempotent) ; rend la
     recherche DRF tolérante au caractère nul (voir ci-dessus)."""
@@ -381,6 +384,15 @@ def installer() -> None:
     _installer_recherche_tolerante()
     origine = APIView.initial
     if getattr(origine, '_enfp_parametres_requete', False):
+        return
+    # Drapeau tenu par CE MODULE (jamais un attribut de la classe APIView, qui
+    # remonterait dans les noms publics de chaque vue — goldens ventes) :
+    # Sentry ré-enveloppe ``initial`` au premier appel DRF sans
+    # ``functools.wraps`` (le drapeau de la fonction se perd) — sans lui
+    # l'installation serait doublée. Notre contrôle est déjà dans la chaîne :
+    # on re-marque l'enveloppe extérieure.
+    if _INSTALLE['fait']:
+        origine._enfp_parametres_requete = True
         return
 
     @functools.wraps(origine)
@@ -391,6 +403,7 @@ def installer() -> None:
 
     initial._enfp_parametres_requete = True
     APIView.initial = initial
+    _INSTALLE['fait'] = True
 
 
 def choix_ou_400(request, nom, choix):

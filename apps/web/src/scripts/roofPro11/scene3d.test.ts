@@ -2,6 +2,7 @@
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
 import { describe, expect, it } from 'vitest';
+import { dimensionsTexture } from './panelTexture';
 import {
   generateRoofShapePans,
   computeRidgeLifts,
@@ -28,6 +29,7 @@ import {
   imageEntierementTransparente,
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
+import { decouperContour, monterFormesToit } from './formesToit';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { rectRing } from './harnaisAtelier';
 
@@ -681,5 +683,68 @@ describe('ACAL87 — capture de l’aperçu après rendu', () => {
     const carte = { once: () => { throw new Error('carte détachée'); }, triggerRepaint: () => {} };
     await expect(capturerApresRendu(carte, { toDataURL: () => 'x' }, () => OPAQUE, 10))
       .resolves.toBeNull();
+  });
+});
+
+describe('ACAL433 : la grille de texture suit le rapport du panneau', () => {
+  const pas = (r: number) => {
+    const d = dimensionsTexture(r);
+    return { d, h: (d.w - 28) / d.cols, v: (d.h - 34) / 2 / d.rowsHalf };
+  };
+  it('1,83 : rendu identique a aujourd hui (512 x 280, 24 colonnes, 3 demi-rangees)', () => {
+    expect(dimensionsTexture(1.83)).toEqual({ w: 512, h: 280, cols: 24, rowsHalf: 3 });
+  });
+  it.each([1303 / 2384, 1.52, 1 / 1.52])('rapport %f : canevas au rapport, cellules carrées (écart <= 5 %)', (r) => {
+    const { d, h, v } = pas(r);
+    if (Math.round(r * 100) === 183) return; // 1,83 : grille d'origine conservée telle quelle (cas ci-dessus)
+    expect(Math.abs(h / v - 1)).toBeLessThanOrEqual(0.05);
+    expect(Math.abs(d.w / d.h / r - 1)).toBeLessThanOrEqual(0.03);
+  });
+  it('portrait et paysage donnent des grilles différentes (le rapport est lu)', () => {
+    expect(dimensionsTexture(0.55)).not.toEqual(dimensionsTexture(1.83));
+    expect(dimensionsTexture(1.52)).not.toEqual(dimensionsTexture(1.83));
+  });
+});
+
+describe('ACAL410 — puces de forme : 4 pans, L refusé sur contour convexe', () => {
+  it('« 4 pans » sur un contour de 4 sommets : 4 pans à la pente SAISIE, aire conservée, ids neufs', () => {
+    const ring = rectRing(10, 6);
+    const v = decouperContour(ring, 'hip', 30, [{ id: 'area-1' }]);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.pans).toHaveLength(4);
+    for (const p of v.pans) expect(p.pitchDeg).toBe(30);
+    expect(new Set(v.pans.map((p) => p.id)).size).toBe(4);
+    expect(v.pans.map((p) => p.id)).not.toContain('area-1');
+    expect(sumAreaM2(v.pans.map((p) => ({ vertices: p.vertices, facingAzimuthDeg: 0 }))) / geodesicAreaM2(ring)).toBeCloseTo(1, 6);
+  });
+
+  it('« L » et « T » sur un contour CONVEXE : refus nommé, rien de produit', () => {
+    for (const f of ['l_gable', 't_gable'] as const) {
+      const v = decouperContour(rectRing(10, 6), f, 30, []);
+      expect(v.ok).toBe(false);
+      if (!v.ok) expect(v.motif).toMatch(/convexe/i);
+    }
+  });
+
+  it('un clic remplace le pan actif ; un pan à obstacles est refusé sans rien changer', () => {
+    let appels = 0;
+    let statut = '';
+    let nbObstacles = 0;
+    const f = monterFormesToit({
+      ancre: null,
+      contour: () => rectRing(10, 6),
+      pente: () => 30,
+      existants: () => [{ id: 'area-1' }],
+      obstacles: () => nbObstacles,
+      appliquer: (pans) => void (appels += pans.length),
+      setStatus: (m) => void (statut = m),
+    });
+    expect(f.cliquer('hip').ok).toBe(true);
+    expect(appels).toBe(4);
+    nbObstacles = 1;
+    expect(f.cliquer('gable').ok).toBe(false);
+    expect(appels).toBe(4);
+    expect(statut).toMatch(/obstacles/);
   });
 });

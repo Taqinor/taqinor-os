@@ -1,0 +1,274 @@
+{
+  "valeurs": [
+    {
+      "cle": "b0_iam",
+      "section": "simulation",
+      "valeur": 0.05,
+      "unite": "",
+      "source": "texte",
+      "reference": "Profil de départ — PVsyst, Array incidence loss (IAM) : « measurements on real crystalline modules indicate a value of bo = 0.05 »",
+      "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-incidence-loss-iam.html",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "modele_iam",
+      "section": "simulation",
+      "valeur": "fresnel",
+      "unite": "",
+      "source": "texte",
+      "reference": "Profil de départ — PVsyst, Array incidence loss (IAM) : « Fresnel model (recommended with default coefficients) »",
+      "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-incidence-loss-iam.html",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "regle_qualite_module",
+      "section": "simulation",
+      "valeur": "quart_pvsyst",
+      "unite": "",
+      "source": "texte",
+      "reference": "Profil de départ — PVsyst, Module quality losses : « PVsyst uses one-quarter of the difference between these values »",
+      "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/module-quality-losses.html",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "mismatch_fabricant_pct",
+      "section": "simulation",
+      "valeur": 2,
+      "unite": "%",
+      "source": "texte",
+      "reference": "Profil de départ — PVsyst, Array mismatch losses : « PVsyst considers a maximum default value of 2%, for classic strings length »",
+      "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-mismatch-losses/index.html",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "thermique_par_pose",
+      "section": "simulation",
+      "valeur": {
+        "pose_libre": {
+          "uc_w_m2k": 29,
+          "uv_w_m3sk": 0,
+          "source": "texte",
+          "reference": "PVsyst, U-value (thermal losses) : free-standing (open-rack), « with air circulation all around the collectors » : Uc = 29 W/m²K, Uv = 0"
+        },
+        "dos_isole": {
+          "uc_w_m2k": 15,
+          "uv_w_m3sk": 0,
+          "source": "texte",
+          "reference": "PVsyst, U-value (thermal losses) : « for fully insulated backside » : Uc = 15 W/m²K, Uv = 0"
+        }
+      },
+      "unite": "W/m²K et W/m³sK",
+      "source": "texte",
+      "reference": "Profil de départ — PVsyst, U-value (thermal losses) : deux lignes nommées par les cas chiffrés de la page (pose libre, dos isolé) ; la semi-intégration n'y a pas de valeur (« between these 2 limits »), relu le 20/11/2026 ; aucune correspondance vers les types de pose du document n'est supposée",
+      "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-thermal-losses/u-value-measurement.html",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "albedo_mensuel",
+      "section": "simulation",
+      "valeur": 0.2,
+      "unite": "",
+      "source": "texte",
+      "reference": "Profil de départ — PVsyst, Albedo usual coefficients : « The usual value is 0.2 (default in PVsyst). » (une seule valeur pour les douze mois)",
+      "url": "https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "bifacial_mismatch_arriere_pct",
+      "section": "simulation",
+      "valeur": 10,
+      "unite": "%",
+      "source": "texte",
+      "reference": "Profil de départ — PVsyst, Bifacial systems : « it is set to 10% by default and can be changed by the user »",
+      "url": "https://www.pvsyst.com/help/project-design/bifacial-systems/index.html",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "resolution_minutes",
+      "section": "simulation",
+      "valeur": 60,
+      "unite": "minutes",
+      "source": "texte",
+      "reference": "Profil de départ — PVGIS, API non-interactive service, seriescalc (« Hourly radiation ») : « First year of the output of hourly averages » — pas horaire = 60 minutes",
+      "url": "https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "tolerance_polystring_acceptable_pct",
+      "section": "electrique_societe",
+      "valeur": 4,
+      "unite": "%",
+      "source": "texte",
+      "reference": "Profil de départ — PV*SOL, Polystring connection : « If the MPP voltages between the strings differ by more than 4%, the wiring is within the tolerance range » (écart de tension MPP entre chaînes)",
+      "url": "https://help.valentin-software.com/pvsol/en/pages/inverters/polystring-connection/",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "tolerance_polystring_bloquante_pct",
+      "section": "electrique_societe",
+      "valeur": 10,
+      "unite": "%",
+      "source": "texte",
+      "reference": "Profil de départ — PV*SOL, Polystring connection : « if the MPP voltages between the strings differ by more than 10%, the wiring is in the blocking range » (écart de tension MPP entre chaînes)",
+      "url": "https://help.valentin-software.com/pvsol/en/pages/inverters/polystring-connection/",
+      "date_lecture": "2026-11-20"
+    },
+    {
+      "cle": "seuil_bas_dc_ac",
+      "section": "electrique_societe",
+      "valeur": 1.0,
+      "unite": "",
+      "source": "texte",
+      "reference": "Profil de départ — PV*SOL, Configuration check : facteur de dimensionnement (puissance DC / puissance AC) — « As a rule, it should not be smaller than 100%. » (100 % = 1,0)",
+      "url": "https://help.valentin-software.com/pvsol/en/pages/inverters/configuration-check/",
+      "date_lecture": "2026-11-20"
+    }
+  ],
+  "sans_source": [
+    {
+      "cle": "fenetre_annees",
+      "section": "simulation",
+      "motif": "PVGIS seriescalc : la fenêtre par défaut va de « the first year of the DB » à « the last year of the DB » — les années ne sont pas imprimées sur la page lue le 20/11/2026, et la fenêtre reste un choix société."
+    },
+    {
+      "cle": "mode_meteo",
+      "section": "simulation",
+      "motif": "Choix société ; la page HelioScope « TMY Weather File Primer » n'a pas pu être relue le 20/11/2026 (hôte injoignable) : aucune recommandation lue."
+    },
+    {
+      "cle": "sigma_modele_pct",
+      "section": "simulation",
+      "motif": "PVsyst « P50/P90 evaluations » (lue le 20/11/2026) ne chiffre pas l'incertitude du modèle."
+    },
+    {
+      "cle": "sigma_biais_meteo_pct",
+      "section": "simulation",
+      "motif": "PVsyst « P50/P90 evaluations » (lue le 20/11/2026) ne chiffre pas le biais long terme de la source météo."
+    },
+    {
+      "cle": "sigma_meteo_saisi_pct",
+      "section": "simulation",
+      "motif": "PVsyst « P50/P90 evaluations » (lue le 20/11/2026) ne donne qu'une fourchette (« typically 3–4% (RMS) ») : aucune valeur unique publiée."
+    },
+    {
+      "cle": "tolerance_validation_pct",
+      "section": "simulation",
+      "motif": "Réglage société (décision fondateur 21/09/2026) : aucune page publiée ne fixe cette tolérance."
+    },
+    {
+      "cle": "annees_exploitation",
+      "section": "simulation",
+      "motif": "Choix société : aucune page lue le 20/11/2026 ne publie une durée d'exploitation par défaut."
+    },
+    {
+      "cle": "lid_par_techno",
+      "section": "simulation",
+      "motif": "PVsyst « LID loss » (lue le 20/11/2026) donne une fourchette (« typically ranges from 1% to 3% ») et un défaut suggéré de 2 % sans le relier à une technologie de cellule : une valeur PAR technologie n'est pas publiée."
+    },
+    {
+      "cle": "modele_degradation",
+      "section": "simulation",
+      "motif": "PVsyst « Ageing » et « Module performance degradation » (lues le 20/11/2026) ne disent ni linéaire ni exponentiel."
+    },
+    {
+      "cle": "attenuation_horizon",
+      "section": "simulation",
+      "motif": "Aucune page lue le 20/11/2026 ne recommande d'atténuer ou non le profil d'horizon PVGIS."
+    },
+    {
+      "cle": "salissure_mensuelle_pct",
+      "section": "simulation",
+      "motif": "PVsyst « Soiling loss » (lue le 20/11/2026) ne publie aucun défaut (seulement « less than 1% » en climat pluvieux) : dépend du site."
+    },
+    {
+      "cle": "indisponibilite_fenetres",
+      "section": "simulation",
+      "motif": "PVsyst « Unavailability loss » (lue le 20/11/2026) ne publie aucune fenêtre par défaut : propre à chaque installation."
+    },
+    {
+      "cle": "auxiliaires_w_constants",
+      "section": "simulation",
+      "motif": "PVsyst « Auxiliaries consumption » (lue le 20/11/2026) ne donne qu'un exemple de centrale de 100 MW, aucun défaut."
+    },
+    {
+      "cle": "auxiliaires_w_par_kw",
+      "section": "simulation",
+      "motif": "PVsyst « Auxiliaries consumption » (lue le 20/11/2026) ne chiffre pas le terme en W/kW."
+    },
+    {
+      "cle": "auxiliaires_w_nuit",
+      "section": "simulation",
+      "motif": "PVsyst « Auxiliaries consumption » (lue le 20/11/2026) ne donne qu'un exemple (13 kW pour 100 MW), aucun défaut."
+    },
+    {
+      "cle": "bifacial_hauteur_pose_m",
+      "section": "simulation",
+      "motif": "Géométrie propre à chaque installation : aucune valeur par défaut sur la page PVsyst « Bifacial systems » lue le 20/11/2026."
+    },
+    {
+      "cle": "bifacial_taux_occupation",
+      "section": "simulation",
+      "motif": "Géométrie propre à chaque installation : aucune valeur par défaut sur la page PVsyst « Bifacial systems » lue le 20/11/2026."
+    },
+    {
+      "cle": "bifacial_pas_rangee_m",
+      "section": "simulation",
+      "motif": "Géométrie propre à chaque installation : aucune valeur par défaut sur la page PVsyst « Bifacial systems » lue le 20/11/2026."
+    },
+    {
+      "cle": "seuil_derivation_acces",
+      "section": "simulation",
+      "motif": "Aucune page lue le 20/11/2026 ne publie ce seuil (la référence du registre dit qu'aucun n'est proposé)."
+    },
+    {
+      "cle": "plafond_modules_simules",
+      "section": "simulation",
+      "motif": "Décision fondateur 21/09/2026 (mesurée par CALX389), pas une page publiée : réglage société."
+    },
+    {
+      "cle": "seuil_desequilibre_pct",
+      "section": "electrique_societe",
+      "motif": "PV*SOL « Configuration check » et « Polystring connection » (lues le 20/11/2026) ne chiffrent pas de seuil de déséquilibre entre entrées MPPT."
+    },
+    {
+      "cle": "borne_usuelle_dc_ac",
+      "section": "electrique_societe",
+      "motif": "PV*SOL « Configuration check » (lue le 20/11/2026) ne publie qu'un plancher (100 %) ; les 115 % y recommandent une météo à la minute, pas une borne usuelle ; la page OpenSolar n'a pas pu être relue (hôte injoignable)."
+    },
+    {
+      "cle": "seuil_alerte_dc_ac",
+      "section": "electrique_societe",
+      "motif": "PV*SOL « Configuration check » (lue le 20/11/2026) ne publie pas de seuil d'alerte haut ; la page OpenSolar n'a pas pu être relue (hôte injoignable)."
+    },
+    {
+      "cle": "correspondances_nomenclature",
+      "section": "electrique_societe",
+      "motif": "Réglage société : aucun code article n'est publié."
+    },
+    {
+      "cle": "regle_bom_structure",
+      "section": "electrique_societe",
+      "motif": "Réglage société : dépend du système de fixation retenu ; aucune page publiée."
+    },
+    {
+      "cle": "cos_phi_par_defaut",
+      "section": "electrique_societe",
+      "motif": "Réglage société : aucune page lue le 20/11/2026 ne publie un cos φ par défaut."
+    },
+    {
+      "cle": "neige_mensuelle_pct",
+      "section": "simulation",
+      "motif": "La page Aurora « System Losses » refuse la lecture automatique (HTTP 403, 20/11/2026) ; la perte de neige dépend du site."
+    },
+    {
+      "cle": "modele_transposition",
+      "section": "simulation",
+      "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
+    },
+    {
+      "cle": "modele_decomposition",
+      "section": "simulation",
+      "motif": "Choix de modèle propre à la société (Erbs ou DISC) : aucun modèle n'est choisi à sa place, laissé sans valeur (D-CALX 7, ACAL456)."
+    }
+  ]
+}

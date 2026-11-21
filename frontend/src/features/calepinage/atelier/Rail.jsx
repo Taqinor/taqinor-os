@@ -2,7 +2,17 @@ import { Suspense, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../../api/axios'
 import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui'
-import { PARAM_ONGLET, groupesOnglets, resoudreOnglet } from './onglets'
+import { HelpTip } from '../../../ui/HelpTip'
+import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
+import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
+// Le bandeau des étapes du mode guidé n'est PAS un onglet : il vit hors d'atelier/ (CALX383).
+// Le bandeau d'étapes du mode guidé n'est pas un onglet : il vit hors d'atelier/ (CALX383).
+import RailGuide from '../commun/RailGuide'
+import { PARAM_MODE, useModeExpert } from './modeExpert'
+import { PARAM_CHAMP, useOuvrirChamp } from './ouvrirChamp'
+import {
+  ECRANS_ETAPE, ETAPES, ecranGuideDeOnglet, etapeActive, ongletsVisibles, useParcours,
+} from './parcoursGuide'
 
 /* ============================================================================
    CALX1 — LE RAIL D'ONGLETS DE L'ATELIER.
@@ -149,8 +159,23 @@ export default function Rail({
 
   const [parametres, setParametres] = useSearchParams()
   const actif = resoudreOnglet(parametres.get(PARAM_ONGLET))
-  const groupes = groupesOnglets()
   const cleActive = actif?.cle ?? null
+  // ACAL393 — rail guidé : 5 étapes ; pour l'étape active, ses seuls essentiels
+  // (+ l'onglet ouvert s'il est expert). L'étape se déduit de l'URL.
+  const parcours = useParcours(calepinageId)
+  const etats = parcours.etats
+  const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
+  // ACAL395 — en guidé, les panneaux d'un écran d'étape (Électrique) s'ouvrent
+  // dans UNE page portée par l'onglet `ouverture` ; l'URL garde la clé demandée.
+  const ecran = expert ? null : ecranGuideDeOnglet(cleActive)
+  const cleVue = ecran ? ecran.ouverture : cleActive
+  const cleEtape = etapeActive(cleVue, etats)
+  const visibles = ongletsVisibles(cleEtape, cleVue, expert).map(ongletParCle).filter(Boolean)
+  const libelleOnglet = (o) => (!expert
+    && Object.values(ECRANS_ETAPE).find((e) => e.ouverture === o.cle)?.libelle) || o.libelle
+
+  // ACAL397 — `?champ=` : défiler jusqu'au champ et le focaliser.
+  useOuvrirChamp(parametres.get(PARAM_CHAMP), cleActive)
 
   // CALX392 — le panneau à focaliser, et SI une ouverture le demande.
   const panneauRef = useRef(null)
@@ -171,7 +196,7 @@ export default function Rail({
      calepinage peut en porter d'autres (filtre, variante) qu'on n'a pas à
      connaître ici. */
   const ouvrir = (cle) => {
-    if (cle === cleActive) {
+    if (cle === cleVue) {
       // Rouvrir l'onglet déjà ouvert (Entrée sur lui) : rien à écrire dans
       // l'URL, le focus part simplement sur son panneau.
       panneauRef.current?.focus()
@@ -183,11 +208,17 @@ export default function Rail({
     setParametres(suivants)
   }
 
-  const Composant = actif?.composant ?? null
+  const choisirEtape = (cle) => {
+    const premier = ongletsVisibles(cle, null, expert)[0] ?? ETAPES.find((e) => e.cle === cle)?.onglets[0]
+    if (premier) ouvrir(premier)
+  }
+
+  const Composant = ecran?.composant ?? actif?.composant ?? null
+  const libelleActif = ecran ? ecran.libelle : actif?.libelle
 
   return (
     <Tabs
-      value={cleActive ?? ''}
+      value={cleVue ?? ''}
       onValueChange={ouvrir}
       activationMode="manual"
       orientation="horizontal"
@@ -204,39 +235,38 @@ export default function Rail({
           Lexique des termes du solaire
         </Link>
       </p>
+      <RailGuide etapeActive={cleEtape} etats={etats} onChoisir={choisirEtape}
+        expert={expert} onBasculerExpert={basculerExpert} />
       <TabsList
         aria-label="Onglets du calepinage"
         className="flex w-full flex-wrap gap-x-1 gap-y-1.5"
       >
-        {groupes.map(({ groupe, onglets }) => (
-          <span key={groupe} role="none" className="flex flex-wrap items-center gap-1">
-            {/* L'intertitre du groupe : un repère visuel, jamais un élément
-                interactif (il resterait sur le chemin du clavier pour rien). */}
-            <span className="tech-label px-1 text-lune-faint" aria-hidden="true">{groupe}</span>
-            {onglets.map((onglet) => (
-              <TabsTrigger
-                key={onglet.cle}
-                value={onglet.cle}
-                data-testid={`cal-onglet-${onglet.cle}`}
-              >
-                {onglet.libelle}
-              </TabsTrigger>
-            ))}
+        {visibles.map((onglet) => (
+          <span key={onglet.cle} className="inline-flex items-center gap-0.5">
+            <TabsTrigger value={onglet.cle} data-testid={`cal-onglet-${onglet.cle}`}>
+              {libelleOnglet(onglet)}
+            </TabsTrigger>
+            {/* ACAL419 — la bulle est HORS de `TabsTrigger` : hors du trajet des flèches. */}
+            {GLOSSAIRE_ONGLETS[onglet.cle] && (
+              <HelpTip label={`À quoi sert « ${onglet.libelle} »`} tabIndex={-1}>
+                {GLOSSAIRE_ONGLETS[onglet.cle]}
+              </HelpTip>
+            )}
           </span>
         ))}
       </TabsList>
 
       {actif && Composant && (
-        <TabsContent ref={panneauRef} value={actif.cle} data-testid="cal-onglet-panneau">
+        <TabsContent ref={panneauRef} value={cleVue} data-testid="cal-onglet-panneau">
           <ErrorBoundary
-            key={actif.cle}
-            fallback={<EchecOnglet libelle={actif.libelle} />}
+            key={cleVue}
+            fallback={<EchecOnglet libelle={libelleActif} />}
           >
             <Suspense
               fallback={(
                 <p className="mt-3 flex items-center gap-2 text-sm text-lune-faint">
                   <Spinner />
-                  {`Ouverture de l'onglet « ${actif.libelle} »…`}
+                  {`Ouverture de l'onglet « ${libelleActif} »…`}
                 </p>
               )}
             >
@@ -249,6 +279,8 @@ export default function Rail({
                 onRecharger={onRecharger}
                 lectureSeule={lectureSeule}
                 documentVivant={documentVivant}
+                parcours={parcours}
+                ouvert={cleActive}
               />
             </Suspense>
           </ErrorBoundary>

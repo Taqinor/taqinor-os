@@ -31,6 +31,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
+import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat
@@ -80,10 +81,60 @@ describe('PanneauProduction (CAL236)', () => {
     expect(screen.getByTestId('cal236-non-simule')).toHaveTextContent(
       'Calepinage non simulé : la pose est connue, la production ne l\'est pas.',
     )
-    const total = screen.getByTestId('cal236-total')
-    // Aucune occurrence de « 0 kWh » : la production non lancée n'est jamais un zéro.
-    expect(within(total).queryByText(/^0 kWh$/)).toBeNull()
-    expect(within(total).getAllByText('non calculée').length).toBeGreaterThan(0)
+    // ACAL443 : un seul état, aucune tuile (le conteneur des chiffres n'existe pas).
+    expect(screen.queryByTestId('cal236-total')).toBeNull()
+    const etat = screen.getByTestId('acal443-non-calcule')
+    expect(within(etat).queryByText(/^0 kWh$/)).toBeNull()
+    expect(etat).toHaveTextContent('Production non calculée')
+  })
+
+  it('ACAL443 — héros : P50 en grand, trois secondaires, détails repliés ; non simulé ou périmé : un seul état, zéro tuile', async () => {
+    servir('exemple')
+    const { unmount } = rendre()
+    const total = await screen.findByTestId('cal236-total')
+    const serveur = exempleContrat('calepinage', 'calepinage_resultat', 'exemple').production.total
+    expect(within(screen.getByTestId('acal443-heros')).getByText('Production annuelle (P50)')).toBeInTheDocument()
+    expect(within(screen.getByTestId('acal443-heros')).getByText('13 000 kWh')).toBeInTheDocument()
+    for (const libelle of ['Puissance installée', 'Productible', 'Pertes totales']) {
+      expect(within(total).getByText(libelle)).toBeInTheDocument()
+    }
+    const details = screen.getByTestId('acal443-details')
+    expect(details.tagName).toBe('DETAILS')
+    expect(details).not.toHaveAttribute('open')
+    expect(within(details).getByText('P75 (annuel)')).toBeInTheDocument()
+    expect(within(details).getByText('79,9 %')).toBeInTheDocument()
+    expect(serveur.p50_kwh).toBe(13000)
+    unmount()
+
+    servir('exemple_perime')
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('cal236-total')).toBeNull()
+    expect(screen.getByTestId('acal443-non-calcule')).toHaveTextContent('Production non calculée')
+  })
+
+  it('ACAL453 — le graphique mensuel se trace depuis par_mois ; mois null sans valeur ; bloc absent = motif nommé', async () => {
+    // Clone du contrat, modifié en place : aucun littéral de réponse écrit à la main.
+    const servi = structuredClone(exempleContrat('calepinage', 'calepinage_resultat', 'exemple'))
+    const mars = servi.autoconsommation.par_mois.find((m) => m.mois === 3)
+    mars.consommation_kwh = null
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: servi })
+    const { unmount } = rendre()
+    const graphique = await screen.findByTestId('acal453-graphique')
+    // Valeurs servies telles quelles (mois 1 : 975 kWh produits, 720 consommés).
+    expect(within(graphique).getByText('975 kWh')).toBeInTheDocument()
+    expect(within(graphique).getByText('720 kWh')).toBeInTheDocument()
+    // Mois 3 : consommation null ⇒ « non calculée », jamais 0 kWh.
+    expect(within(graphique).getByText('non calculée')).toBeInTheDocument()
+    expect(within(within(graphique).getByText('non calculée').closest('tr')).getByText('Mar')).toBeInTheDocument()
+    // Le tableau P50 reste à côté, inchangé.
+    expect(screen.getByTestId('cal236-mensuel')).toBeInTheDocument()
+    unmount()
+
+    servi.autoconsommation.par_mois = null
+    servi.autoconsommation.motif_absence = 'Aucune courbe de charge saisie.'
+    rendre()
+    expect(await screen.findByTestId('acal453-vide')).toHaveTextContent('Aucune courbe de charge saisie.')
   })
 
   it('un pan sans module affiche un vrai 0 modules, distinct de « non calculée »', async () => {
@@ -133,8 +184,49 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
     expect(within(manques).getByText(
       'Calepinage non simulé : la pose est connue, la production ne l\'est pas.',
     )).toBeInTheDocument()
-    expect(within(manques).getByTestId('calx48-lien-pertes'))
-      .toHaveAttribute('href', '/calepinage/1?onglet=pertes')
+    // ACAL397 : sans `parcours.manque`, les avertissements restent du texte.
+    expect(within(manques).queryByTestId('calx48-manque-ligne')).toBeNull()
+  })
+
+  /* ACAL397 — « Ce qui manque » = liste d'actions issue de `parcours.manque`
+     (contrat `calepinage_parcours_guide.json`, jamais écrit à la main). */
+  describe('liste des manques (ACAL397)', () => {
+    const manque = () => exempleContrat('calepinage', 'calepinage_parcours_guide', 'exemple').manque
+    const rendreAvec = (liste) => render(
+      <MemoryRouter><PanneauProduction calepinageId={1} parcours={{ etats: {}, manque: liste }} /></MemoryRouter>,
+    )
+
+    it('une entrée `nombre` > 1 ⇒ une ligne « × n », une ligne par entrée', async () => {
+      servir('exemple_vide')
+      const liste = manque()
+      rendreAvec(liste)
+      const lignes = await screen.findAllByTestId('calx48-manque-ligne')
+      expect(lignes).toHaveLength(liste.length)
+      const multiple = liste.find((m) => m.nombre > 1)
+      expect(screen.getByText(`× ${multiple.nombre}`)).toBeInTheDocument()
+    })
+
+    it('trie bloquant avant info', async () => {
+      servir('exemple_vide')
+      const [bloquant, info] = [manque()[0], manque()[1]]
+      rendreAvec([info, bloquant])
+      const lignes = await screen.findAllByTestId('calx48-manque-ligne')
+      expect(lignes[0]).toHaveTextContent(bloquant.message)
+      expect(lignes[1]).toHaveTextContent(info.message)
+    })
+
+    it('le lien porte onglet et champ ; `reglages` mène à /calepinage/reglages', async () => {
+      servir('exemple_vide')
+      rendreAvec([
+        { code: 'x', message: 'Norme', etape: 'electrique', gravite: 'a_regler', nombre: 1,
+          cible: { onglet: 'electrique', champ: 'norme' } },
+        { code: 'y', message: 'Réglage', etape: 'resultats', gravite: 'bloquant', nombre: 1,
+          cible: { onglet: 'reglages', champ: '' } },
+      ])
+      const lignes = await screen.findAllByTestId('calx48-manque-ligne')
+      expect(lignes[0]).toHaveAttribute('href', '/calepinage/reglages')
+      expect(lignes[1]).toHaveAttribute('href', '/calepinage/1?onglet=electrique&champ=norme')
+    })
   })
 
   it('suit queued → running → done sans refus, puis relit le résultat', async () => {
@@ -334,6 +426,35 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
     // Par pan : les colonnes P75 / P90 / PR sont masquées aussi.
     const ligne = within(screen.getByTestId('cal236-par-pan')).getByText('PAN-A').closest('tr')
     expect(within(ligne).getAllByTestId('acal52-non-publie')).toHaveLength(3)
+  })
+
+  /* ACAL398 — la simulation partie à l'enregistrement : l'onglet reprend son job. */
+  it('ACAL398 — job automatique en cours ⇒ « Simulation en cours… » puis relecture', async () => {
+    viderSimulationsAuto()
+    servir('exemple')
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: { job_id: 'j-9' } })
+    calepinageApi.moteur.resultat
+      .mockResolvedValueOnce({ data: { job_id: 'j-9', statut: 'running' } })
+      .mockResolvedValue({ data: { job_id: 'j-9', statut: 'done' } })
+    await lancerSimulationAuto(1)
+    render(<MemoryRouter><PanneauProduction calepinageId={1} intervalleMs={300} /></MemoryRouter>)
+
+    expect(await screen.findByText('Simulation en cours…')).toBeInTheDocument()
+    await waitFor(() => expect(calepinageApi.moteur.resultat).toHaveBeenCalledWith('j-9'))
+    await waitFor(() => expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThan(1))
+  })
+
+  it('ACAL398 — refus nommé du serveur ⇒ phrase affichée dans l’onglet', async () => {
+    viderSimulationsAuto()
+    servir('exemple')
+    calepinageApi.calepinages.simuler.mockRejectedValue(
+      { response: { status: 409, data: { 'parametres.mode_meteo': ['Mode météo non choisi.'] } } })
+    await lancerSimulationAuto(1)
+    rendre()
+
+    const refus = await screen.findByTestId('calx48-refus')
+    expect(refus).toHaveTextContent('La simulation automatique n’a pas démarré : Mode météo non choisi.')
+    expect(screen.getByTestId('calx48-lien-reglages')).toBeInTheDocument()
   })
 
   it('complet : ni bandeau ni masquage', async () => {

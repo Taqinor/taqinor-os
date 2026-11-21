@@ -142,6 +142,24 @@ from . import fond_plan as _fond_plan_action  # noqa: F401 — import d'enregist
 # CALA2 — même patron : rattache les routes MINCES de l'assistant (résumé,
 # du-lead, a-traiter, contenance, preparer, publier-devis), ``views/assistant.py``.
 from . import assistant as _assistant_actions  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL400 — même patron : rattache ``brouillon`` (GET/PUT/DELETE du brouillon
+# d'atelier de l'appelant, côté serveur, ``services/brouillon.py``).
+from . import brouillon as _brouillon_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL392 — même patron : rattache ``parcours`` (GET l'état des 5 étapes du
+# parcours guidé et « ce qui manque » regroupé, ``services/parcours_guide.py``).
+# Lecture PURE : ni statut, ni version, ni écriture.
+from . import parcours_guide as _parcours_guide_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL468 — même patron : rattache ``balayage`` (POST le balayage d'orientation
+# d'un pan libre en tâche de fond, ``services/balayage.py``, nature ``balayage``).
+# N'écrit RIEN au calepinage : il ne simule que des copies du document.
+from . import balayage as _balayage_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL403 — même patron : rattache ``profil-depart`` (action de LISTE : GET le
+# profil sourcé, POST/DELETE l'appliquer/retirer, ``services/profil_depart.py``).
+from . import profil_depart as _profil_depart_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL485 — même patron : rattache ``detection-toit`` (GET la disponibilité,
+# POST une PROPOSITION de toit par IA à confirmer, ``services/detection_toit.py``).
+# N'écrit RIEN au calepinage ; l'image n'est jamais stockée.
+from . import detection_toit as _detection_toit_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -181,6 +199,11 @@ MODULES_RATTACHES = (
     'consommation',  # ACAL310
     'fond_plan',  # ACAL72
     'assistant',  # CALA2
+    'brouillon',  # ACAL400
+    'parcours_guide',  # ACAL392
+    'balayage',  # ACAL468
+    'profil_depart',  # ACAL403
+    'detection_toit',  # ACAL485
 )
 
 __all__ = ['MODULES_RATTACHES']

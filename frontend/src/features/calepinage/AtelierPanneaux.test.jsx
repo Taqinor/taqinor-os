@@ -41,9 +41,12 @@ vi.mock('../../api/calepinageApi', () => ({
     moteur: { calculer: vi.fn() },
   },
 }))
+vi.mock('../../api/crmApi', () => ({ default: { getRoofFootprint: vi.fn() } }))
 vi.mock('../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 import calepinageApi from '../../api/calepinageApi'
+import crmApi from '../../api/crmApi'
+import { fireEvent } from '@testing-library/react'
 import AtelierPanneaux from './AtelierPanneaux'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
@@ -72,7 +75,7 @@ describe('AtelierPanneaux (CAL37)', () => {
     expect(screen.getByTestId('cal-cible-panneaux'))
       .toHaveTextContent(String(CTX.cible.panneaux))
     expect(screen.getByTestId('cal-lien-variantes'))
-      .toHaveAttribute('href', `/calepinage/${CTX.calepinage.id}/variantes`)
+      .toHaveAttribute('href', `/calepinage/${CTX.calepinage.id}?onglet=variantes`)
   })
 
   it('cible nulle : « non renseignée », et l’écran le DIT', async () => {
@@ -119,5 +122,82 @@ describe('ACAL42 — bandeau de lecture seule', () => {
     rendre()
     await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
     expect(screen.queryByTestId('cal-bandeau-lecture-seule')).toBeNull()
+  })
+})
+
+/* =====================================================================  })
+})
+
+   ACAL415 — les outils et onglets de l'atelier dans la palette ⌘K.
+   ========================================================================== */
+describe('ACAL415 — commandes ⌘K de l’atelier', () => {
+  const ecouter = () => {
+    const recus = []
+    const onEvt = (e) => recus.push(e.detail.actions)
+    window.addEventListener('taqinor:lead-workspace-actions', onEvt)
+    return { recus, fin: () => window.removeEventListener('taqinor:lead-workspace-actions', onEvt) }
+  }
+
+  it('l’atelier poste ses commandes puis les retire au démontage', async () => {
+    const { recus, fin } = ecouter()
+    const outilObstacle = vi.fn()
+    const { unmount } = rendre({ builderApi: { raccourcis: { outilObstacle } } })
+
+    const actions = recus.at(-1)
+    expect(actions.some((a) => a.label === 'Ouvrir Horizon lointain')).toBe(true)
+    const obstacle = actions.find((a) => a.label === 'Ajouter un obstacle')
+    obstacle.run()
+    expect(outilObstacle).toHaveBeenCalledTimes(1)
+
+    unmount()
+    expect(recus.at(-1)).toEqual([])
+    fin()
+  })
+
+  it('lecture seule : aucun outil d’édition proposé, les onglets restent', async () => {
+    const { recus, fin } = ecouter()
+    rendre({ lectureSeule: true, builderApi: { raccourcis: { outilObstacle: vi.fn(), outilMesure: vi.fn() } } })
+
+    const labels = recus.at(-1).map((a) => a.label)
+    expect(labels).not.toContain('Ajouter un obstacle')
+    expect(labels).toContain('Mesurer une distance')
+    expect(labels).toContain('Ouvrir Horizon lointain')
+    fin()
+  })
+})
+
+/* ACAL421 — « Conception automatique » : {lat, lng} servis → [lng, lat] attendus par le builder. */
+describe('ACAL421 — conception automatique', () => {
+  const POLYGONE = [{ lat: 33.5, lng: -7.6 }, { lat: 33.5, lng: -7.59 }, { lat: 33.51, lng: -7.59 }]
+  const builder = (zones = []) => ({
+    serializeLayout: vi.fn(() => ({ zones })),
+    ajouterPanDepuisContour: vi.fn(() => ({ ok: true, id: 'area-2' })),
+  })
+
+  it('emprise convertie en [lng, lat], pan vide remplacé, refus nommé sans emprise', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    const builderApi = builder()
+    crmApi.getRoofFootprint.mockResolvedValueOnce({ data: { polygon: POLYGONE } })
+    rendre({ builderApi })
+    fireEvent.click(await screen.findByTestId('cal-conception-auto'))
+    await waitFor(() => expect(builderApi.ajouterPanDepuisContour).toHaveBeenCalledTimes(1))
+    expect(crmApi.getRoofFootprint).toHaveBeenCalledWith(CTX.calepinage.lead)
+    expect(builderApi.ajouterPanDepuisContour.mock.calls[0][0])
+      .toEqual([[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.51]])
+
+    crmApi.getRoofFootprint.mockResolvedValueOnce({ data: { polygon: null, message: 'Aucun bâtiment trouvé ici.' } })
+    fireEvent.click(await screen.findByTestId('cal-conception-auto'))
+    expect(await screen.findByTestId('cal-conception-auto-message')).toHaveTextContent('Aucun bâtiment trouvé ici.')
+    expect(builderApi.ajouterPanDepuisContour).toHaveBeenCalledTimes(1)
+  })
+
+  it('bouton absent : pan déjà tracé, lecture seule', async () => {
+    rendre({ builderApi: builder([{ vertices: POLYGONE.map((p) => [p.lng, p.lat]) }]) })
+    await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
+    expect(screen.queryByTestId('cal-conception-auto')).toBeNull()
+    cleanup()
+    rendre({ builderApi: builder(), lectureSeule: true })
+    await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
+    expect(screen.queryByTestId('cal-conception-auto')).toBeNull()
   })
 })

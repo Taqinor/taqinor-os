@@ -106,4 +106,12 @@ export const projet = {
     versionsDiff: (id, versionId, contreId) =>
       api.get(`${pivot(id)}versions/${versionId}/diff/`,
         { params: contreId ? { contre: contreId } : {} }),
+
+    // ACAL400 — le BROUILLON d'atelier de l'appelant, côté serveur (contrat
+    // `contract_samples/calepinage_brouillon.json`, porte `views/brouillon.py`) :
+    // GET `{layout, horodatage, base_empreinte}` ou `null` (absent ou périmé) ;
+    // PUT range ; DELETE efface. Privé à l'auteur, aucune version créée.
+    brouillon: (id) => api.get(`${pivot(id)}brouillon/`),
+    envoyerBrouillon: (id, corps) => api.put(`${pivot(id)}brouillon/`, corps),
+    effacerBrouillon: (id) => api.delete(`${pivot(id)}brouillon/`),
 }

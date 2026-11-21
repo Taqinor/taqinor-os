@@ -141,6 +141,8 @@ export interface Ctx {
    *  AVANT de muter `ctx` pour que le geste devienne annulable. Optionnel : absent (layout
    *  editor pas encore monté, ou tests unitaires isolés) → no-op, comportement inchangé. */
   pushWorkshopHistory?: () => void;
+  /** ACAL413 — montre le bandeau « <message> — Annuler » (posé par l'atelier ; absent = rien). */
+  bandeauAnnuler?: (message: string) => void;
   /** CAL75 — écart LATÉRAL entre panneaux d'une même rangée EN POSE OPTIMISÉE (m), saisi par
    *  la société. Optionnel : absent/non fini → PANEL_SIDE_GAP_M (2 cm, valeur d'étude),
    *  calepinage identique à aujourd'hui. Un `ctx` antérieur à CAL75 ne porte pas ce champ —
@@ -309,6 +311,8 @@ export interface Ctx {
   /** Marges RELÂCHABLES courantes (retrait de rive + écart entre panneaux), en mètres.
    *  Initialisées sur les valeurs de l'étude ; l'utilisateur a le droit de les baisser. */
   freeMargins: FreeMargins;
+  /** ACAL425 — aimantation du glissé libre (touche A) ; absent = allumée. */
+  aimantationActive?: boolean;
 
   // — W68 « Affiner ma consommation » (mutable) —
   /** Le panneau « Affiner » est-il ouvert ? */
