@@ -72,6 +72,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.balayer": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/balayage/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.bomFixation": [
     {
       "config": {
@@ -295,6 +303,24 @@
       },
       "data": null,
       "url": "/calepinage/calepinages/7/design-context/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.detectionToit": [
+    {
+      "config": {
+        "k": 1
+      },
+      "data": 3,
+      "url": "/calepinage/calepinages/7/detection-toit/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.detectionToitDisponible": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/detection-toit/",
       "verbe": "get"
     }
   ],

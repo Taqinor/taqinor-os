@@ -813,3 +813,14 @@ retiré plus un hook ajouté.
 | `cal-variante-renommer` | variantes : renommer (suffixe = id). |
 | `cal-variante-supprimer-confirmer` | variantes : confirmer la suppression (suffixe = id). |
 | `cal-variante-supprimer` | variantes : supprimer (suffixe = id). |
+| `cal-detection-annuler` | détection du toit : annuler l’attente (ACAL488). |
+| `cal-detection-carte` | détection du toit : détecter depuis la capture de la carte. |
+| `cal-detection-choisir` | détection du toit : choisir une photo ou un plan. |
+| `cal-detection-emprise` | détection du toit : emprise de l’image choisie. |
+| `cal-detection-fichier` | détection du toit : champ fichier de l’image. |
+| `cal-detection-indisponible` | détection du toit : phrase « non activée », aucun bouton. |
+| `cal-detection-message` | détection du toit : message d’état (annulée, échec, pan posé). |
+| `cal-detection-panneau` | détection du toit : le panneau. |
+| `cal-detection-proposition` | détection du toit : la proposition « à confirmer ». |
+| `cal-detection-refus` | détection du toit : refus de pose d’un contour, avec son motif. |
+| `cal-detection-utiliser` | détection du toit : utiliser ce contour comme pan. |

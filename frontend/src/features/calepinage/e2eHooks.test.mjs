@@ -704,6 +704,18 @@ export const ALL_HOOKS = [
   'cal-variante-renommer',
   'cal-variante-supprimer-confirmer',
   'cal-variante-supprimer',
+  // ── atelier/PanneauDetectionToit.jsx ──
+  'cal-detection-annuler',
+  'cal-detection-carte',
+  'cal-detection-choisir',
+  'cal-detection-emprise',
+  'cal-detection-fichier',
+  'cal-detection-indisponible',
+  'cal-detection-message',
+  'cal-detection-panneau',
+  'cal-detection-proposition',
+  'cal-detection-refus',
+  'cal-detection-utiliser',
 ]
 
 function readDoc() {

@@ -29,6 +29,7 @@ import {
   deserializeSceneFromLayout,
   deserializeSetbacksFromLayout,
   lireAlleeTechnique, // ACAL258
+  lireChoixConception, // ACAL469
   lireCouchesDocument,
   serializeLayout,
   type ConsumptionHydration,
@@ -208,7 +209,7 @@ function appliquerZonesSection(ctx: Ctx, zones: ReadonlyArray<Record<string, unk
 }
 
 /** ACAL26 — les sections qu'un onglet du Rail peut appliquer une à une. */
-export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' | 'environment' | 'alleeTechnique' | 'zones';
+export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' | 'environment' | 'alleeTechnique' | 'zones' | 'choixConception';
 
 /**
  * ACAL26 — traduit UNE section `{cle: valeur}` en hydratation partielle, avec les MÊMES
@@ -218,6 +219,7 @@ export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' |
  */
 export function hydratationDeSection(cle: CleSectionAtelier, valeur: unknown): HydratationAtelier {
   if (cle === 'alleeTechnique') return { alleeTechnique: lireAlleeTechnique({ alleeTechnique: valeur }) }; // ACAL258
+  if (cle === 'choixConception') return { choixConception: lireChoixConception({ choixConception: valeur }) }; // ACAL469
   if (cle === 'zones') return { zonesSection: Array.isArray(valeur) ? (valeur as Array<Record<string, unknown>>) : [] }; // ACAL366
   const lu = lireCouchesDocument({ [cle]: valeur });
   if (cle === 'poseSurfaces') return { surfacesPose: lu.surfacesPose };
