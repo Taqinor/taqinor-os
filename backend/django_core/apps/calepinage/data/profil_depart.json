@@ -281,21 +281,6 @@
       "motif": "Borne propre à la société, avec sa source : aucune page publiée ne donne de borne universelle du rendement spécifique, laissée sans valeur (D-CALX 7, ACAL704)."
     },
     {
-      "cle": "seuil_acces_retrait",
-      "section": "simulation",
-      "motif": "Seuil propre à la société : aucune page publiée ne fixe l'accès solaire sous lequel retirer un module, laissé sans valeur (D-CALX 7, ACAL716)."
-    },
-    {
-      "cle": "ombrage_borne_courant_pct",
-      "section": "simulation",
-      "motif": "Borne de lecture propre à la société : aucune page publiée relue ne chiffre une perte d'ombrage « courante », laissée sans valeur (D-CALX 7, ACAL716)."
-    },
-    {
-      "cle": "ombrage_borne_importante_pct",
-      "section": "simulation",
-      "motif": "Borne de lecture propre à la société : aucune page publiée relue ne chiffre une perte d'ombrage « importante », laissée sans valeur (D-CALX 7, ACAL716)."
-    },
-    {
       "cle": "nettoyages_par_an",
       "section": "simulation",
       "motif": "Fréquence de nettoyage propre à la société : la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss), aucune valeur publiée trouvée, laissée sans valeur (D-CALX 7, ACAL742)."

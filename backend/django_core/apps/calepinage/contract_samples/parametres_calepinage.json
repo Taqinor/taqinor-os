@@ -508,33 +508,6 @@
           "minimum": 0
         },
         {
-          "cle": "seuil_acces_retrait",
-          "libelle": "Accès solaire sous lequel on propose de retirer un module",
-          "unite": "",
-          "reference": "HelioScope — Optimize shaded modules (https://help-center.helioscope.com/hc/en-us/articles/7835499970707-Optimize-shaded-modules) ; aucune valeur proposée par défaut",
-          "type": "nombre",
-          "minimum": 0,
-          "maximum": 1
-        },
-        {
-          "cle": "ombrage_borne_courant_pct",
-          "libelle": "Perte d'ombrage à partir de laquelle on la dit courante",
-          "unite": "%",
-          "reference": "Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l'ombrage par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut",
-          "type": "pourcentage",
-          "minimum": 0,
-          "maximum": 100
-        },
-        {
-          "cle": "ombrage_borne_importante_pct",
-          "libelle": "Perte d'ombrage à partir de laquelle on la dit importante",
-          "unite": "%",
-          "reference": "Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l'ombrage par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut",
-          "type": "pourcentage",
-          "minimum": 0,
-          "maximum": 100
-        },
-        {
           "cle": "nettoyages_par_an",
           "libelle": "Nettoyages des panneaux par an",
           "unite": "par an",
@@ -1214,33 +1187,6 @@
           "reference": "Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; aucune valeur proposée par défaut",
           "type": "nombre",
           "minimum": 0
-        },
-        {
-          "cle": "seuil_acces_retrait",
-          "libelle": "Accès solaire sous lequel on propose de retirer un module",
-          "unite": "",
-          "reference": "HelioScope — Optimize shaded modules (https://help-center.helioscope.com/hc/en-us/articles/7835499970707-Optimize-shaded-modules) ; aucune valeur proposée par défaut",
-          "type": "nombre",
-          "minimum": 0,
-          "maximum": 1
-        },
-        {
-          "cle": "ombrage_borne_courant_pct",
-          "libelle": "Perte d'ombrage à partir de laquelle on la dit courante",
-          "unite": "%",
-          "reference": "Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l'ombrage par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut",
-          "type": "pourcentage",
-          "minimum": 0,
-          "maximum": 100
-        },
-        {
-          "cle": "ombrage_borne_importante_pct",
-          "libelle": "Perte d'ombrage à partir de laquelle on la dit importante",
-          "unite": "%",
-          "reference": "Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l'ombrage par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut",
-          "type": "pourcentage",
-          "minimum": 0,
-          "maximum": 100
         },
         {
           "cle": "nettoyages_par_an",

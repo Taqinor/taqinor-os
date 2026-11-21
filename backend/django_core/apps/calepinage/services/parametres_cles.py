@@ -157,15 +157,6 @@ CLES_SIMULATION = (
     ('rendement_specifique_max_kwh_kwc', 'Rendement spécifique vraisemblable, borne haute', 'kWh/kWc',
      'Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; '
      'aucune valeur proposée par défaut'),  # ACAL704
-    ('seuil_acces_retrait', 'Accès solaire sous lequel on propose de retirer un module', '',
-     'HelioScope — Optimize shaded modules (https://help-center.helioscope.com/hc/en-us/articles/'
-     '7835499970707-Optimize-shaded-modules) ; aucune valeur proposée par défaut'),  # ACAL716
-    ('ombrage_borne_courant_pct', "Perte d'ombrage à partir de laquelle on la dit courante", '%',
-     'Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l\'ombrage '
-     'par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut'),  # ACAL716
-    ('ombrage_borne_importante_pct', "Perte d'ombrage à partir de laquelle on la dit importante", '%',
-     'Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l\'ombrage '
-     'par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut'),  # ACAL716
     ('nettoyages_par_an', 'Nettoyages des panneaux par an', 'par an',
      "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale "
      '(PVsyst, Soiling loss)'),  # ACAL742
@@ -289,9 +280,6 @@ TYPES_CLES = {
         'modele_decomposition': {'type': 'enum', 'valeurs': ('erbs', 'disc')},  # ACAL456
         'rendement_specifique_min_kwh_kwc': {'type': 'nombre', 'minimum': 0},  # ACAL704
         'rendement_specifique_max_kwh_kwc': {'type': 'nombre', 'minimum': 0},  # ACAL704
-        'seuil_acces_retrait': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL716
-        'ombrage_borne_courant_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL716
-        'ombrage_borne_importante_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL716
         'nettoyages_par_an': {'type': 'entier', 'minimum': 0},  # ACAL742
         'inclinaison_autonettoyage_deg': {'type': 'nombre', 'minimum': 0, 'maximum': 90},  # ACAL742
     },

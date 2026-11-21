@@ -30,12 +30,22 @@ CHAMPS_COMPOSANT = ('role', 'libelle', 'unite', 'produit_id', 'regle',
                     'source')
 
 
+#: Le seul refus d'un code par ailleurs recevable : déjà porté dans la société.
+CODE_EN_DOUBLE = 'Un système de fixation porte déjà ce code dans la société.'
+TEXTE_ATTENDU = 'Un texte est attendu.'
+SANS_NUL = 'Le caractère nul est interdit.'
+
+
 class SystemeRefuse(Exception):
-    """Refus NOMMÉ : ``erreurs`` = ``{chemin du champ: [message]}``."""
+    """Refus NOMMÉ : ``erreurs`` = ``{chemin du champ: [message]}``.
+
+    ``statut`` : 409 quand le SEUL refus est le code déjà porté (le corps est
+    recevable, c'est l'état du catalogue qui s'y oppose — ENF11), 400 sinon."""
 
     def __init__(self, erreurs):
         super().__init__('Système de fixation refusé.')
         self.erreurs = erreurs
+        self.statut = 409 if erreurs == {'code': [CODE_EN_DOUBLE]} else 400
 
 
 def systeme_publie(systeme):
@@ -100,8 +110,7 @@ def _valider_systeme(systeme, erreurs):
     if code and 'code' not in erreurs and SystemeFixation.objects.filter(
             company=systeme.company, code=code).exclude(
                 pk=systeme.pk).exists():
-        erreurs['code'] = [
-            'Un système de fixation porte déjà ce code dans la société.']
+        erreurs['code'] = [CODE_EN_DOUBLE]
 
 
 def _composants(corps, systeme, erreurs):
@@ -133,8 +142,50 @@ def _composants(corps, systeme, erreurs):
     return composants
 
 
+def _chemins_nuls(valeur, chemin):
+    """Les chemins des textes qui portent un caractère nul (refusé par la
+    base : jamais un 500)."""
+    if isinstance(valeur, str):
+        return [chemin] if '\x00' in valeur else []
+    if isinstance(valeur, dict):
+        chemins = [chemin or '_'] if any('\x00' in str(cle) for cle in valeur) else []
+        return chemins + [c for cle, v in valeur.items()
+                          for c in _chemins_nuls(v, f'{chemin}.{cle}' if chemin else str(cle))]
+    if isinstance(valeur, list):
+        return [c for rang, v in enumerate(valeur)
+                for c in _chemins_nuls(v, f'{chemin}[{rang}]')]
+    return []
+
+
+def _refus_de_type(corps):
+    """api-fuzz (PR #1522) — les TYPES publiés, refusés en nommant le champ :
+    un texte est un texte (jamais un nombre lu comme son texte), ``actif`` un
+    booléen, ``produit_id`` un entier ou ``null``."""
+    erreurs = {chemin: [SANS_NUL] for chemin in _chemins_nuls(corps, '')}
+    for cle in ('code', 'libelle', 'fabricant', 'mode_pose', 'provenance'):
+        if cle in corps and not isinstance(corps[cle], str):
+            erreurs.setdefault(cle, [TEXTE_ATTENDU])
+    if 'actif' in corps and not isinstance(corps['actif'], bool):
+        erreurs.setdefault('actif', ['Un booléen (true/false) est attendu.'])
+    lignes = corps.get('composants')
+    for rang, ligne in enumerate(lignes if isinstance(lignes, list) else ()):
+        if not isinstance(ligne, dict):
+            continue
+        for cle in ('role', 'libelle', 'unite', 'source'):
+            if cle in ligne and not isinstance(ligne[cle], str):
+                erreurs.setdefault(f'composants[{rang}].{cle}', [TEXTE_ATTENDU])
+        produit = ligne.get('produit_id')
+        if produit is not None and (isinstance(produit, bool)
+                                    or not isinstance(produit, int)):
+            erreurs.setdefault(f'composants[{rang}].produit_id',
+                               ["L'identifiant entier du produit, ou null."])
+    return erreurs
+
+
 def _enregistrer(systeme, corps):
-    erreurs = {}
+    erreurs = _refus_de_type(corps)
+    if erreurs:
+        raise SystemeRefuse(erreurs)
     saisis = _textes({cle: corps[cle] for cle in CHAMPS_SYSTEME
                       if cle in corps},
                      ('code', 'libelle', 'fabricant', 'mode_pose',

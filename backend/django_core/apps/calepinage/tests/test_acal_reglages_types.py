@@ -61,8 +61,8 @@ class TypesDeclaresTest(SimpleTestCase):
                     self.assertIn(cle, TYPES_CLES.get(section, {}))
                     self.assertTrue(TYPES_CLES[section][cle].get('type'))
         # 31 simulation (+ ACAL455/456/463) + 9 electrique_societe
-        # (+5 d'autres lanes ; + 2 ACAL704, + 3 ACAL716, + 2 ACAL742).
-        self.assertEqual(total, 52)
+        # (+5 d'autres lanes ; + 2 ACAL704, + 2 ACAL742).
+        self.assertEqual(total, 49)
 
     def test_aucun_type_pour_une_cle_hors_registre(self):
         for section, types in TYPES_CLES.items():
@@ -403,41 +403,6 @@ class RouteParametresTest(TestCase):
         self.assertEqual(reponse.status_code, 200, reponse.content)
         self.assertEqual(reponse.data['presets']['a'], 'xy')
         self.assertEqual(reponse.data['presets']['b'], ['z', {'c': 'd'}])
-
-
-class ClesOmbrageAcal716Test(SimpleTestCase):
-    """ACAL716 — trois clés d'ombrage au registre, typées, SANS valeur."""
-
-    CLES = ('seuil_acces_retrait', 'ombrage_borne_courant_pct',
-            'ombrage_borne_importante_pct')
-
-    def test_au_registre_en_fin_typees_et_sans_valeur(self):
-        cles = list(registre('simulation'))
-        # ACAL742 ajoute ensuite deux clés : les trois restent contiguës.
-        debut = cles.index(self.CLES[0])
-        self.assertEqual(cles[debut:debut + 3], list(self.CLES))
-        servi = {ligne['cle']: ligne
-                 for ligne in registre_des_reglages()['simulation']}
-        self.assertEqual(servi['seuil_acces_retrait']['type'], 'nombre')
-        self.assertEqual(servi['seuil_acces_retrait']['maximum'], 1)
-        for cle in self.CLES[1:]:
-            self.assertEqual(servi[cle]['type'], 'pourcentage')
-            self.assertEqual(servi[cle]['unite'], '%')
-        for cle in self.CLES:
-            self.assertIn('aucune valeur proposée par défaut',
-                          servi[cle]['reference'])
-            self.assertNotIn('valeur', servi[cle])
-
-    def test_saisie_valide_acceptee_et_abc_refuse_en_nommant_la_cle(self):
-        rendu = _normaliser_section_simulation({
-            'ombrage_borne_courant_pct': {'valeur': 12, 'source': 'societe',
-                                          'reference': 'x'}})
-        self.assertEqual(rendu['ombrage_borne_courant_pct']['valeur'], 12)
-        for cle in self.CLES:
-            with self.subTest(cle=cle):
-                with self.assertRaises(ReglageInvalide) as refus:
-                    _normaliser_section_simulation({cle: _saisie('abc')})
-                self.assertEqual(refus.exception.champ, cle)
 
 
 class ClesNettoyageAcal742Test(SimpleTestCase):

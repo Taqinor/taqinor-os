@@ -21,7 +21,7 @@ from __future__ import annotations
 import copy
 
 from django.db import transaction
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
@@ -32,7 +32,8 @@ from core.champs_stricts import ChaineStricte, non_blanc
 from ..permissions import PeutGererCalepinage
 from ..services.altimetre_fichier import ReliefIllisible, altimetre_depuis_geotiff
 from ..services.layout import (
-    DocumentModifie, LayoutRefuse, _relire_sous_verrou, enregistrer_layout,
+    DocumentModifie, LayoutRefuse, _relire_sous_verrou, empreinte_document,
+    enregistrer_layout,
 )
 from ..services.lidar_ign import (
     CLE_SUGGESTION, REFUSEE, SUGGEREE, VALIDEE, suggerer_pentes,
@@ -73,7 +74,12 @@ def _trace(suggestion):
         'empreinte_document': serializers.CharField(allow_null=True),
         'layout_hash': serializers.CharField(allow_null=True),
         'inchange': serializers.BooleanField(),
-        'version': serializers.IntegerField(allow_null=True)})})
+        'version': serializers.IntegerField(allow_null=True)}),
+        400: OpenApiResponse(description="Refus nommant « relief » (absent, "
+                                         "illisible, en mètres, sans pan couvert) "
+                                         "ou « base_empreinte »."),
+        409: OpenApiResponse(description="Jeton périmé (document_modifie) ou "
+                                         "zone introuvable.")})
 @action(detail=True, methods=['post'], url_path='suggestions-pente-relief',
         url_name='suggestions-pente-relief',
         permission_classes=[PeutGererCalepinage],
@@ -87,6 +93,13 @@ def suggestions_pente_relief(self, request, pk=None):
         return _refus('base_empreinte',
                       "Jeton manquant : envoyez base_empreinte, l'empreinte "
                       "du document ouvert.")
+    # Le JETON avant le fichier : un jeton périmé est refusé à l'écriture
+    # (409 ``document_modifie``) quoi que dise le relief — on ne lit donc pas
+    # un fichier pour rien. La relecture SOUS VERROU plus bas reste le juge.
+    courante = empreinte_document(calepinage.roof_layout)
+    if base != courante:
+        return Response(DocumentModifie(courante).corps(),
+                        status=status.HTTP_409_CONFLICT)
     fichier = request.FILES.get(CHAMP_RELIEF)
     octets = fichier.read() if fichier is not None else b''
     if not octets:
