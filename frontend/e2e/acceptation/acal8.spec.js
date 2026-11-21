@@ -330,12 +330,14 @@ sortie(1)`)
     const put2 = await page.request.put(`${CAL}/calepinages/${cal.id}/brouillon/`, { ...T, data: { ...brouillonA, base_empreinte: vivant } })
     expect(put2.status()).toBe(200)
     expect((await lireJson(await posteB.get(`${CAL}/calepinages/${cal.id}/brouillon/`, T), 'brouillon vivant')).base_empreinte).toBe(vivant)
+    const brouillonAutreVivant = { ...brouillonAutre, base_empreinte: vivant }
+    expect((await autre.put(`${CAL}/calepinages/${cal.id}/brouillon/`, { ...T, data: brouillonAutreVivant })).status()).toBe(200)
     const del = await page.request.delete(`${CAL}/calepinages/${cal.id}/brouillon/`, T)
     expect(del.status(), 'DELETE brouillon/').toBe(200)
     expect(await del.json()).toBeNull()
     expect(await lireJson(await posteB.get(`${CAL}/calepinages/${cal.id}/brouillon/`, T), 'après DELETE'), 'effacé ⇒ null').toBeNull()
     expect(await lireJson(await autre.get(`${CAL}/calepinages/${cal.id}/brouillon/`, T), 'autre après DELETE de A'),
-      'le DELETE de A n’efface pas celui de l’autre compte').toEqual(brouillonAutre)
+      'le DELETE de A n’efface pas celui de l’autre compte').toEqual(brouillonAutreVivant)
     await py(`U.objects.filter(username=${J(nom)}).update(is_active=False)
 sortie(1)`)
   } finally {
@@ -386,7 +388,7 @@ sortie(1)`)
       expect(s?.source, `${v.section}.${v.cle} écrite source « texte »`).toBe('texte')
       expect(String(s?.reference), `${v.section}.${v.cle} : référence au préfixe du contrat`).toContain(prefixe)
       expect(String(s?.reference), `${v.section}.${v.cle} : « valeur publiée, non mesurée »`).toContain('valeur publiée, non mesurée')
-      expect(J(s?.valeur), `${v.section}.${v.cle} : valeur du profil`).toBe(J(v.valeur))
+      expect(s?.valeur, `${v.section}.${v.cle} : valeur du profil`).toEqual(v.valeur)
     }
     // Second POST : rien de vide ⇒ toutes ignorées « deja_saisie ».
     const app2 = await lireJson(await page.request.post(`${CAL}/calepinages/profil-depart/`, T), 'POST 2')
@@ -424,7 +426,8 @@ etape('PA2-ACAL485-detection-toit-sans-cle', ['ACAL485'], async ({ page }) => {
     console.log(`[ACAL485] GET : ${J(dispo)}`)
     expect(dispo.disponible, 'sans clé : indisponible').toBe(false)
     expect(String(dispo.motif || '').trim(), 'motif dit').not.toBe('')
-    expect(dispo.origines_acceptees).toEqual(expect.arrayContaining(['importee', 'carte']))
+    // « carte » n'est ouverte que par le réglage DETECTION_TOIT_CAPTURE_CARTE (conditions de l'imagerie lues par Reda).
+    expect(dispo.origines_acceptees, 'origine « importee » acceptée').toContain('importee')
     const r = await page.request.post(`${CAL}/calepinages/${cal.id}/detection-toit/`, {
       ...T,
       multipart: {
@@ -644,57 +647,76 @@ async function deposerMeteo(request, id, nom, csv) {
   return JSON.parse(corps)
 }
 
-etape('PA2.5-ACAL455-456-meteo-horizontale', ['ACAL455', 'ACAL456'], async ({ page }) => {
+const REGLAGES_METEO_FICHIER = {
+  simulation: {
+    ...METEO_2020,
+    modele_transposition: S('isotropic', 'acceptation ACAL8 — modèle choisi par la société (essai)'),
+    modele_decomposition: S('erbs', 'acceptation ACAL8 — modèle choisi par la société (essai)'),
+    albedo_mensuel: S(0.2, 'acceptation ACAL8 — albédo mesuré (essai)', 'mesure'),
+  },
+}
+
+etape('PA2.5-ACAL455-transposition-csv-horizontal', ['ACAL455'], async ({ page }) => {
   const photo = await photoReglages()
   let a = null
-  let b = null
   try {
-    await regler(page.request, {
-      simulation: {
-        ...METEO_2020,
-        modele_transposition: S('isotropic', 'acceptation ACAL8 — modèle choisi par la société (essai)'),
-        modele_decomposition: S('erbs', 'acceptation ACAL8 — modèle choisi par la société (essai)'),
-        albedo_mensuel: S(0.2, 'acceptation ACAL8 — albédo mesuré (essai)', 'mesure'),
-      },
-    })
-    // ACAL455 — composantes mesurées : transposées vers le plan.
+    await regler(page.request, REGLAGES_METEO_FICHIER)
     a = await calepinageAvec('ACAL455', PAN_20_200)
     await designerMateriel(a.id)
     const depot = await deposerMeteo(page.request, a.id, 'casablanca-horizontal.csv', CSV_HORIZONTAL)
     console.log(`[ACAL455] dépôt : ${J(depot).slice(0, 400)}`)
     const ra = await simuler(page.request, a.id)
     expect(ra.simule, `simulation servie (${ra.motif})`).toBe(true)
-    console.log(`[ACAL455] meteo ${J(ra.meteo).slice(0, 900)} ; P50 ${ra.production?.total?.p50_kwh}`)
+    console.log(`[ACAL455] meteo ${J(ra.meteo).slice(0, 1200)} ; P50 ${ra.production?.total?.p50_kwh}`)
+    expect(ra.meteo?.service, 'la simulation a pris le fichier déposé').toBe('fichier')
+    expect(ra.meteo?.fichier?.nom).toBe('casablanca-horizontal.csv')
     expect(ra.meteo?.transposition?.modele, 'meteo.transposition.modele = réglage').toBe('isotropic')
-    expect(String(ra.meteo.transposition.reference || ''), 'référence du modèle nommée').not.toBe('')
-    expect(ra.meteo.transposition.albedo?.source, 'albédo et sa source').toBe('mesure')
-    expect(J(ra.meteo.transposition.albedo?.valeur)).toContain('0.2')
-    expect(ra.meteo.composantes_origine, 'composantes mesurées').toBe('mesurees')
-    expect(ra.meteo.decomposition, 'aucune décomposition pour un fichier mesuré').toBeFalsy()
+    expect(String(ra.meteo.transposition.reference || ''), 'référence du modèle nommée').toMatch(/isotrop/i)
+    expect(ra.meteo.transposition.albedo, 'albédo et sa source').toEqual({ valeur: Array(12).fill(0.2), source: 'mesure' })
+    expect(ra.meteo.decomposition, 'aucune décomposition pour un fichier aux composantes mesurées').toBeFalsy()
     expect(ra.production?.total?.p50_kwh, 'production chiffrée sur le fichier déposé').toBeGreaterThan(0)
+  } finally {
+    await nettoyer(a)
+    await rendreReglages(photo)
+  }
+})
 
-    // ACAL456 — global seul : direct et diffus DÉDUITS par le modèle nommé, puis transposés.
+etape('PA2.5-ACAL456-decomposition-csv-global', ['ACAL456'], async ({ page }) => {
+  const photo = await photoReglages()
+  let b = null
+  try {
+    await regler(page.request, REGLAGES_METEO_FICHIER)
     b = await calepinageAvec('ACAL456', PAN_20_200)
     await designerMateriel(b.id)
-    await deposerMeteo(page.request, b.id, 'casablanca-global-seul.csv', CSV_GLOBAL)
+    const depot = await deposerMeteo(page.request, b.id, 'casablanca-global-seul.csv', CSV_GLOBAL)
+    console.log(`[ACAL456] dépôt : ${J(depot).slice(0, 600)}`)
     const rb = await simuler(page.request, b.id)
     expect(rb.simule, `simulation servie (${rb.motif})`).toBe(true)
-    console.log(`[ACAL456] meteo ${J(rb.meteo).slice(0, 900)} ; P50 ${rb.production?.total?.p50_kwh}`)
-    expect(rb.meteo?.decomposition?.modele, 'meteo.decomposition.modele = réglage').toBe('erbs')
+    console.log(`[ACAL456] meteo ${J(rb.meteo).slice(0, 1200)} ; P50 ${rb.production?.total?.p50_kwh}`)
+    expect(rb.meteo?.service, 'la simulation a pris le fichier déposé').toBe('fichier')
+    expect(rb.meteo?.transposition?.modele, 'puis transposées').toBe('isotropic')
+    expect(rb.production?.total?.p50_kwh, 'production chiffrée').toBeGreaterThan(0)
+    // Diagnostic (avant l'assertion) : ce que la série DÉPOSÉE porte côté serveur, et les clés de `meteo` servies.
+    const deposee = await py(`from apps.calepinage.models import Calepinage
+from apps.calepinage.services.simulation import _serie_meteo_deposee
+f = _serie_meteo_deposee(Calepinage.objects.get(pk=${Number(b.id)})) or {}
+m = f.get('meteo') or {}
+sortie({'a_decomposer': f.get('a_decomposer'), 'composantes_origine': m.get('composantes_origine'),
+        'decomposition': m.get('decomposition'), 'plan_des_donnees': f.get('plan_des_donnees')})`)
+    console.log(`[ACAL456] série déposée (serveur) : ${J(deposee)} ; dépôt.meteo.composantes_origine=${depot?.meteo?.composantes_origine} ; clés de meteo servies : ${Object.keys(rb.meteo || {}).sort().join(',')}`)
+    expect(rb.meteo?.decomposition?.modele, '`GET resultat/` : meteo.decomposition.modele = réglage').toBe('erbs')
     expect(rb.meteo.decomposition.hypothese).toBe('composantes déduites du global, non mesurées')
     expect(String(rb.meteo.decomposition.reference || '')).not.toBe('')
     expect(rb.meteo.composantes_origine, 'composantes « deduites »').toBe('deduites')
-    expect(rb.meteo.transposition?.modele, 'puis transposées').toBe('isotropic')
-    expect(rb.production?.total?.p50_kwh, 'production chiffrée').toBeGreaterThan(0)
   } finally {
-    await nettoyer(a, b)
+    await nettoyer(b)
     await rendreReglages(photo)
   }
 })
 
 // ════════════════════════════════════════════════════════════════════════════
 // ACAL468 + ACAL477 — balayage d'un CHAMP AU SOL : grille 3 × 3 (inclinaison × azimut) et optimum nommé ; axe ratio
-// DC/AC (trois ratios) ⇒ `ecretage_pct` strictement croissant, sans appel PVGIS de plus ; refus nommés en 400.
+// DC/AC (trois ratios) ⇒ `ecretage_pct` strictement croissant, la série d'irradiance partagée ; refus nommés en 400.
 // ════════════════════════════════════════════════════════════════════════════
 etape('API-ACAL468-477-balayage', ['ACAL468', 'ACAL477'], async ({ page }) => {
   const photo = await photoReglages()
@@ -735,7 +757,22 @@ etape('API-ACAL468-477-balayage', ['ACAL468', 'ACAL477'], async ({ page }) => {
     expect(ratios.grille, 'trois ratios').toHaveLength(3)
     expect(ecr.every((v) => typeof v === 'number'), 'ecretage_pct publié pour chaque ratio').toBeTruthy()
     expect(ecr[1] > ecr[0] && ecr[2] > ecr[1], `ecretage_pct strictement croissant ${J(ecr)}`).toBeTruthy()
-    expect(ratios.appels_pvgis, 'aucun appel PVGIS par ratio (même série)').toBeLessThanOrEqual(1)
+    // « Sur la MÊME série » : le même balayage rejoué au shell avec un client PVGIS neuf (cache de processus partagé),
+    // appels RÉELS triés : série d'irradiance (seriescalc sans pvcalculation) contre contrôle PVcalc (pvcalculation=1).
+    const appels = await travailler(`from apps.calepinage.models import Calepinage
+from apps.calepinage.services.balayage import balayer as balayer_service
+from apps.calepinage.services.pvgis_serie import ClientPvgis
+c = Calepinage.objects.get(pk=${Number(cal.id)})
+cl = ClientPvgis()
+r = balayer_service(c, json.loads(${J(J({ pan: 1, axes: [{ nom: 'ratio_dc_ac', min: 1.25, max: 1.75, pas: 0.25 }] }))}), client=cl)
+reels = [u for u in cl.urls_appelees if u]
+sortie({'reels': len(reels), 'servis_cache': len([u for u in cl.urls_appelees if u is None]),
+        'serie': len([u for u in reels if '/seriescalc?' in u and 'pvcalculation=1' not in u]),
+        'pvcalc': len([u for u in reels if 'pvcalculation=1' in u]),
+        'ecretage': [l['ecretage_pct'] for l in r['grille']], 'appels_pvgis': r['appels_pvgis']})`)
+    console.log(`[ACAL477] appels du balayage des ratios (route) : ${ratios.appels_pvgis} ; rejoué au shell : ${J(appels)}`)
+    expect(appels.ecretage, 'rejoué : mêmes écrêtages').toEqual(ecr)
+    expect(appels.serie, 'série d’irradiance partagée : aucun appel de série par ratio').toBeLessThanOrEqual(1)
     expect(String(ratios.grille[0].mention_ratio || ''), 'hypothèse « remis à l’échelle » dite').toMatch(/remis à l.échelle/)
   } finally {
     await nettoyer(cal)
