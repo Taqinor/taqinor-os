@@ -10,6 +10,9 @@ import {
 import SunDiagram from './SunDiagram'
 import { LegendeCourbes } from './LegendeCourbes'
 import RetourAtelier from './atelier/RetourAtelier'
+import {
+  lireFichierHorizon, nombreDeColonnes, CONVENTION_NORD, CONVENTION_SUD,
+} from './horizonFichier'
 
 /* ============================================================================
    CAL93 — L'HORIZON LOINTAIN, tracé en fond de la course du soleil, et appliqué
@@ -75,6 +78,8 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   const [saisie, setSaisie] = useState({ azimut: '', hauteur: '' })
   const [message, setMessage] = useState(null)
   const [recuperation, setRecuperation] = useState(false)
+  const [fichier, setFichier] = useState(null) // { nom, texte }
+  const [convention, setConvention] = useState(null) // ACAL458 : jamais présélectionnée
   const chargement = doc.etat === 'chargement'
   const illisible = doc.etat === 'erreur'
 
@@ -140,6 +145,24 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
       .finally(() => setRecuperation(false))
   }
 
+  function choisirFichier(e) {
+    const f = e.target.files?.[0]
+    if (!f) { setFichier(null); return }
+    const lecteur = new FileReader()
+    lecteur.onload = () => setFichier({ nom: f.name, texte: String(lecteur.result ?? '') })
+    lecteur.readAsText(f)
+  }
+
+  function importerFichier() {
+    const r = lireFichierHorizon(fichier.texte, convention)
+    if (r.erreur) { setMessage(`Import refusé — ${r.erreur}`); return }
+    if (directionsDistinctes(r.points) < DIRECTIONS_MINIMALES) { setMessage(`Import refusé — ${MESSAGE_TOUR_INCOMPLET}.`); return }
+    setPoints(sortedHorizonPoints(r.points))
+    setSource('saisie')
+    const conv = r.format.startsWith('deux') ? `, ${convention === CONVENTION_NORD ? '0° = Nord, sens horaire' : '0° = Sud, + vers l’Ouest'}` : ''
+    setMessage(`Fichier ${fichier.nom} importé (${r.format}${conv}) — à enregistrer pour l’appliquer.`)
+  }
+
   async function enregistrer() {
     if (doc.etat !== 'ok' || tourIncomplet) return
     const propres = sortedHorizonPoints(points)
@@ -194,6 +217,29 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
           className="rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
         >
           {recuperation ? 'Récupération…' : 'Récupérer depuis PVGIS'}
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-end gap-3" data-testid="cal-horizon-import">
+        <label className="block">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fichier d’horizon (.txt, .csv)</span>
+          <input type="file" accept=".txt,.csv,text/plain" onChange={choisirFichier} className="mt-1 block text-sm text-foreground" data-testid="cal-horizon-fichier" />
+        </label>
+        <label className="flex items-center gap-1 text-sm text-foreground">
+          <input type="radio" name="cal-horizon-convention" checked={convention === CONVENTION_NORD} onChange={() => setConvention(CONVENTION_NORD)} />
+          0° = Nord, sens horaire
+        </label>
+        <label className="flex items-center gap-1 text-sm text-foreground">
+          <input type="radio" name="cal-horizon-convention" checked={convention === CONVENTION_SUD} onChange={() => setConvention(CONVENTION_SUD)} />
+          0° = Sud, + vers l’Ouest
+        </label>
+        <button
+          type="button"
+          onClick={importerFichier}
+          disabled={!fichier || (convention === null && nombreDeColonnes(fichier.texte) !== 1)}
+          className="rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+        >
+          Importer
         </button>
       </div>
 
