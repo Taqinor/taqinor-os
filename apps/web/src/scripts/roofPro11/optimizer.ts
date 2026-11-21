@@ -102,6 +102,8 @@ import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
+import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
+import { cotesDePavage } from '../../lib/roofPro2';
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -565,7 +567,11 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  L2 — en mode devis, les libellés parlent du DEVIS (jamais « votre facture », un
    *  champ qui n'existe même pas dans cet écran) et affichent « X posés / N au devis »
    *  (repère DOM stable `rp9-need-note`, préfixe HUD existant). */
-  function syncNeedControl(fitCount: number, familyLabel: string) {
+  /** ACAL549 — cause mesurée du pan actif vide (besoin > 0, rien posé), notée pour le document. */
+  const motifPanActif = (pack: PackResult, grid: PanelGrid, placed: number, retraitM: number | null, module?: Panel2Module): MotifPanVide | null =>
+    noterMotifPanVide(ctx.activeAreaId, ctx.neededPanels > 0 && placed === 0
+      ? causeDuPanVide(mesurerPanVide(pack, grid, retraitM, cotesDePavage(module), filtrageSeuil(grid.panels))) : null);
+  function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null) {
     dernierFit = fitCount;
     const active = ctx.neededPanels > 0;
     // L2 — en mode devis, le champ reste ACTIONNABLE même à 0 : aucune facture n'existe
@@ -593,11 +599,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
           : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
       return;
     }
-    const placed = Math.min(ctx.neededPanels, fitCount);
+    const placed = motif ? 0 : Math.min(ctx.neededPanels, fitCount); // ACAL549 — un motif = un pan vide mesuré
     if (placed < ctx.neededPanels) {
+      const cause = motif ? ` — ${motif.message}` : ' (toit ou obstacles)'; // ACAL549
       needNoteEl.textContent = ctx.devisMode
-        ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — seuls ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles).`
-        : `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles). On pose ${fmt(placed)}.`;
+        ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — seuls ${fmt(placed)} tiennent en ${familyLabel}${cause}.`
+        : `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel}${cause}. On pose ${fmt(placed)}.`;
     } else if (fitCount > ctx.neededPanels) {
       needNoteEl.textContent = ctx.devisMode
         ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — il reste de la place sur le toit, laissée libre.`
@@ -660,7 +667,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       o.sourceLabel,
     );
-    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud');
+    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud', motifPanActif(o.pack, o.grid, placed, null)); // ACAL549 : retrait non transmis ici
     syncTiltControl(o.tiltDeg, o.isReco);
     if (o.isReco) paintMaxLine();
     highlightRow(o.rowId);
@@ -822,7 +829,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS au GPS exact)' : '(production estimée — table par latitude)',
     );
-    syncNeedControl(grid.count, liveOrientationLabel(w));
+    syncNeedControl(grid.count, liveOrientationLabel(w), motifPanActif(pack, grid, placedCount, retraitApplique(setbacksForMargin(w.margin), setbackM)));
     syncTiltControl(w.tiltDeg, isReco);
     paintMaxLine();
     highlightRow(null);

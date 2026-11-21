@@ -30,7 +30,7 @@ SECTION = 'presets'
 
 __all__ = [
     'CLE_JEUX', 'SECTION', 'CLE_APPROBATION_EXIGEE',
-    'jeux_de_societe', 'normaliser_section_presets',
+    'jeux_de_societe', 'normaliser_section_presets', 'champs_de_preset',
 ]
 
 #: CALX348 — la clé, DANS la section ``presets``, qui exige l'approbation
@@ -97,3 +97,49 @@ def normaliser_section_presets(valeur):
         "« Approbation exigée » se règle par oui ou non (booléen) "
         f"(reçu : {type(exigee).__name__}).",
         champ=CLE_APPROBATION_EXIGEE)
+
+
+#: ACAL961 — les champs de ``REGLAGES`` qu'un préréglage ne propose PAS : le
+#: libellé est le nom du préréglage, ``rives`` est un objet imbriqué (hors
+#: d'un champ plat), ``priorite`` ne se règle pas ici.
+_CHAMPS_HORS_PRESET = ('libelle', 'rives', 'priorite')
+
+
+def champs_de_preset():
+    """ACAL961 — les champs admis d'un préréglage, bâtis depuis ``REGLAGES``.
+
+    Une ligne ``{cle, libelle, type, unite, valeurs}`` par réglage que
+    l'atelier applique (``services/gabarits.py``, source UNIQUE : aucune
+    liste recopiée ici). ``type`` : ``choix`` (``valeurs`` = le vocabulaire
+    admis), ``booleen``, ``entier`` (les comptes) ou ``nombre`` ; ``unite`` :
+    « m » pour ``*_m``, « ° » pour ``*Deg`` / ``*_deg``, sinon ``None``.
+    LECTURE PURE : rien n'est stocké.
+    """
+    from . import gabarits
+
+    choix = {'orientation': gabarits.ORIENTATIONS,
+             'famille': gabarits.FAMILLES,
+             'roofType': gabarits.TYPES_TOITURE}
+    booleens = ('facingManual', 'neededAuto')
+    lignes = []
+    for cle, libelle in gabarits.REGLAGES:
+        if cle in _CHAMPS_HORS_PRESET:
+            continue
+        if cle in choix:
+            type_champ = 'choix'
+        elif cle in booleens:
+            type_champ = 'booleen'
+        elif cle in gabarits.COMPTES:
+            type_champ = 'entier'
+        else:
+            type_champ = 'nombre'
+        if cle.endswith('_m'):
+            unite = 'm'
+        elif cle.endswith(('Deg', '_deg')):
+            unite = '°'
+        else:
+            unite = None
+        lignes.append({'cle': cle, 'libelle': libelle, 'type': type_champ,
+                       'unite': unite,
+                       'valeurs': list(choix[cle]) if cle in choix else None})
+    return lignes

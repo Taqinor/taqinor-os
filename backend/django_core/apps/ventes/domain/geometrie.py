@@ -566,6 +566,9 @@ def pans_du_document(layout):
             'module_id': module_id,
             'produit_id': (modele or {}).get('produitId'),
             'module_wc': watt_pan,
+            # ACAL1029 (D-ACAL-39) — posé à plat sur la couverture (même sens
+            # que ``calepinage/services/etapes/thermique.py::_pose_du_plan``).
+            'affleurant': geo.get('flush') is True,
         }
         if modules <= 0:
             pan['kwc'] = None
@@ -608,6 +611,7 @@ def pans_du_document(layout):
             'module_id': None,
             'produit_id': None,
             'module_wc': watt,
+            'affleurant': False,
         }
         if modules <= 0:
             pan['avertissement'] = 'pan %s non pavé — non chiffré' % libelle
@@ -668,6 +672,12 @@ def modeles_designes(layout):
     if not any(m.get('produit_id') for m in modeles):
         return []
     return [dict(m) for m in modeles if int(m['count'] or 0) > 0]
+
+
+def modules_affleurants(layout):
+    """ACAL1029 (D-ACAL-39) — modules posés à plat sur un toit en pente
+    (``geometry.flush: true``) ; 0 sans aucune zone affleurante. Pure."""
+    return sum(p['modules'] for p in pans_du_document(layout) if p.get('affleurant'))
 
 
 def refus_des_pans(pans):

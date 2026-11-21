@@ -346,8 +346,9 @@ class BalayageRatioDcAcTest(SimpleTestCase):
         self.assertLess(ecretages[1], ecretages[2])
         self.assertTrue(all(ligne['mention_ratio'].endswith('hypothèse')
                             for ligne in grille))
-        # un seul défaut de cache pour trois ratios : la série est partagée
-        self.assertEqual(sortie['appels_pvgis'], 1)
+        # deux défauts de cache pour trois ratios : la série du plan et la
+        # série horizontale d'ACAL706 ; le balayage n'en ajoute AUCUN.
+        self.assertEqual(sortie['appels_pvgis'], 2)
 
     def test_mutant_puissance_ac_figee_est_detecte(self):
         sortie = self._balayer(_materiel(ac_kw=5.0), mutant=True)

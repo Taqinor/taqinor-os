@@ -1,0 +1,108 @@
+// ACAL549 — LA CAUSE MESURÉE D'UN PAN OÙ AUCUN MODULE NE TIENT (contrat ACAL555 `motifsPansVides`).
+// `causeDuPanVide` est PURE : elle reçoit des mesures prises dans la MÊME passe de pavage et rend la
+// PREMIÈRE cause vraie, testée dans cet ordre (cette tâche en est la seule propriétaire) :
+// retrait de rive → obstacles → seuil d'accès solaire → module trop grand → inconnue. Aucun défaut :
+// une mesure absente (`null`) rend sa cause intestable, jamais vraie.
+import { resolveSetbacks, type Panel2Module, type PerimeterSetbacks } from '../../lib/roofPro2';
+import { type PackResult, type PanelGrid } from '../../lib/estimatorBrainV2';
+
+export type CodeMotifPanVide = 'retrait_rive' | 'obstacles' | 'seuil_acces_solaire' | 'module_trop_grand' | 'inconnue';
+export interface MotifPanVide { code: CodeMotifPanVide; message: string; mesures: Record<string, number> }
+export interface MesuresPanVide {
+  largeurPanM: number; retraitM: number | null; coteCourtM: number; coteLongM: number;
+  aireM2: number; surfacePosableM2: number; candidats: number; seuil: number | null; ecartes: number;
+}
+
+export const CLE_MOTIFS_PANS_VIDES = 'motifsPansVides';
+const r2 = (v: number): number => Math.round(v * 100) / 100;
+const fr = (v: number, d = 2): string => v.toFixed(d).replace('.', ',');
+
+/** Plus petite largeur (m) d'un contour en mètres : étendue minimale perpendiculaire à ses arêtes. */
+export function largeurMinimaleM(ringENU: readonly [number, number][]): number {
+  let min = Infinity;
+  for (let i = 0; i < ringENU.length; i++) {
+    const [ax, ay] = ringENU[i];
+    const [bx, by] = ringENU[(i + 1) % ringENU.length];
+    const l = Math.hypot(bx - ax, by - ay);
+    if (l < 1e-9) continue;
+    const [nx, ny] = [-(by - ay) / l, (bx - ax) / l];
+    const proj = ringENU.map(([x, y]) => x * nx + y * ny);
+    min = Math.min(min, Math.max(...proj) - Math.min(...proj));
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
+/** Le plus petit des retraits de rive RÉELLEMENT passés au pavage (latéral / extrémité / acrotère). */
+export function retraitApplique(setbacks: Partial<PerimeterSetbacks> | undefined, setbackM: number): number {
+  const s = resolveSetbacks(setbacks, setbackM);
+  return Math.min(s.lateralM, s.extremityM, s.parapetM);
+}
+
+/** Mesures d'un pavage vide, toutes lues sur le pack rendu (aucune valeur par défaut). */
+export function mesurerPanVide(pack: PackResult, grid: PanelGrid, retraitM: number | null, module: Panel2Module,
+  filtrage: { ecartes: number[]; seuilApplique: number | null } | null): MesuresPanVide {
+  return {
+    largeurPanM: largeurMinimaleM(pack.ringENU), retraitM, coteCourtM: module.courtM, coteLongM: module.longM,
+    aireM2: pack.areaM2, surfacePosableM2: pack.usableAreaM2, candidats: grid.panels.length,
+    seuil: filtrage?.seuilApplique ?? null, ecartes: filtrage?.ecartes.length ?? 0,
+  };
+}
+
+export function causeDuPanVide(m: MesuresPanVide): MotifPanVide {
+  const utile = Math.max(0, m.largeurPanM - 2 * (m.retraitM ?? 0));
+  if (m.retraitM != null && m.retraitM > 0 && utile < m.coteCourtM) {
+    return { code: 'retrait_rive',
+      message: `Aucun module : le retrait de rive (${fr(m.retraitM)} m de chaque côté) ne laisse que ${fr(utile)} m sur ${fr(m.largeurPanM)} m de large`,
+      mesures: { retraitM: r2(m.retraitM), largeurPanM: r2(m.largeurPanM), largeurUtileM: r2(utile), coteModuleM: r2(m.coteCourtM) } };
+  }
+  if (m.aireM2 > 0 && m.surfacePosableM2 <= 1e-6) {
+    return { code: 'obstacles', message: `Aucun module : les obstacles et zones couvrent les ${fr(m.aireM2, 1)} m² du pan`,
+      mesures: { surfacePosableM2: 0 } };
+  }
+  if (m.seuil != null && m.candidats > 0 && m.ecartes >= m.candidats) {
+    return { code: 'seuil_acces_solaire',
+      message: `Aucun module : le seuil d'accès solaire de ${Math.round(m.seuil * 100)} % a écarté les ${m.ecartes} emplacements`,
+      mesures: { seuil: m.seuil, ecartes: m.ecartes } };
+  }
+  if (m.candidats === 0) {
+    return { code: 'module_trop_grand',
+      message: `Aucun module : le module (${fr(m.coteLongM)} × ${fr(m.coteCourtM)} m) ne tient pas dans la surface posable (${fr(m.surfacePosableM2, 1)} m²)`,
+      mesures: { coteModuleM: r2(m.coteCourtM), surfacePosableM2: r2(m.surfacePosableM2) } };
+  }
+  return { code: 'inconnue', message: "Aucun module posé — la cause n'a pas pu être déterminée", mesures: {} };
+}
+
+// — Mémoire d'atelier : un motif par pan, semée depuis le document, écrite à la sérialisation. —
+const memoire = new Map<string, MotifPanVide>();
+
+/** Note (ou retire, `null`) le motif d'un pan ; rend le motif noté. */
+export function noterMotifPanVide(panId: string | null | undefined, motif: MotifPanVide | null): MotifPanVide | null {
+  if (panId) { if (motif) memoire.set(panId, motif); else memoire.delete(panId); }
+  return motif;
+}
+
+/** À L'OUVERTURE — la mémoire repart de ce que le document porte (rien ⇒ mémoire vide). */
+export function semerMotifsDepuisDocument(json: unknown): void {
+  memoire.clear();
+  const brut = (json as Record<string, unknown> | null | undefined)?.[CLE_MOTIFS_PANS_VIDES];
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return;
+  for (const [id, m] of Object.entries(brut as Record<string, MotifPanVide>)) {
+    if (m && typeof m.code === 'string' && typeof m.message === 'string') memoire.set(id, JSON.parse(JSON.stringify(m)));
+  }
+}
+
+/** À LA SÉRIALISATION — un motif par pan VIDE du dessin ; aucun ⇒ la clé est retirée. */
+export function ecrireMotifsDansDocument(layout: unknown): boolean {
+  const cible = layout as Record<string, unknown> | null | undefined;
+  if (!cible || typeof cible !== 'object') return false;
+  const sortie: Record<string, MotifPanVide> = {};
+  for (const z of Array.isArray(cible.zones) ? (cible.zones as Array<Record<string, unknown>>) : []) {
+    const g = (z?.geometry ?? {}) as { count?: number; panels?: unknown[] };
+    const garni = Number(g.count) > 0 || (Array.isArray(g.panels) && g.panels.length > 0);
+    const m = typeof z?.id === 'string' ? memoire.get(z.id) : undefined;
+    if (m && !garni) sortie[z.id as string] = JSON.parse(JSON.stringify(m));
+  }
+  if (Object.keys(sortie).length === 0) { delete cible[CLE_MOTIFS_PANS_VIDES]; return false; }
+  cible[CLE_MOTIFS_PANS_VIDES] = sortie;
+  return true;
+}

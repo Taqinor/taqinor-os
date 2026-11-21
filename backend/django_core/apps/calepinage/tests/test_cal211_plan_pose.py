@@ -188,6 +188,126 @@ class ModulesExistantsTest(SimpleTestCase):
                           for p in pans], [(True, 2019), (False, None)])
 
 
+def layout_six_modules():
+    """ACAL590 - un pan (``z1``) de 6 modules en paysage, 2 rangees de 3."""
+    layout = copy.deepcopy(LAYOUT)
+    layout['zones'][0]['obstacles'] = []
+    layout['zones'][0]['geometry']['panels'] = [
+        {'cx': 1.0 + 2.5 * k, 'cy': 1.0 + 2.0 * r}
+        for r in range(2) for k in range(3)]
+    return layout
+
+
+def affectation(*chaines):
+    """``[(chaine, [cle de module, ...]), ...]`` -> la table publiee."""
+    return [{'module': cle, 'pan': cle.partition('#')[0], 'chaine': chaine,
+             'onduleur': 1, 'mppt': 1, 'source': 'automatique'}
+            for chaine, cles in chaines for cle in cles]
+
+
+def modules_dessines(svg):
+    """Les polygones de MODULE (trait fin 0,15) d'une feuille de pan."""
+    return re.findall(r'<polygon [^>]*stroke-width="0.15"[^>]*>', svg)
+
+
+class FeuilleDePanTest(SimpleTestCase):
+    """ACAL590 - une feuille A4 par pan : teintes, numeros, reperes + / -."""
+
+    def feuilles(self, layout, table):
+        from apps.calepinage.services.planche_pan import svgs_de_pans
+
+        return svgs_de_pans(layout, table, pied='calepinage aaaaaaaaaaaa')
+
+    def deux_chaines(self):
+        return affectation((1, ['z1#1', 'z1#2', 'z1#3']),
+                           (2, ['z1#4', 'z1#5', 'z1#6']))
+
+    def test_deux_chaines_deux_teintes_six_numeros_quatre_reperes(self):
+        feuilles = self.feuilles(layout_six_modules(), self.deux_chaines())
+        self.assertEqual(len(feuilles), 1)
+        svg = feuilles[0]
+        self.assertIn('viewBox="0 0 297 210"', svg)
+        self.assertIn('Pan Sud — plan de pose', svg)
+        modules = modules_dessines(svg)
+        self.assertEqual(len(modules), 6)
+        self.assertEqual(len({re.search(r'fill="([^"]+)"', m).group(1)
+                              for m in modules}), 2)
+        for numero in range(1, 7):
+            self.assertIn('>%d</text>' % numero, svg)
+        self.assertEqual(svg.count('>+</text>'), 2)
+        self.assertEqual(svg.count('>−</text>'), 2)
+        self.assertIn('+ : début, − : fin, dans l&#x27;ordre de '
+                      'l&#x27;affectation publiée', svg)
+        self.assertEqual(svg.count('class="fleche-chaine"'), 2)
+        self.assertIn('calepinage aaaaaaaaaaaa', svg)
+
+    def test_un_module_non_affecte_reste_en_contour_gris_seul(self):
+        table = affectation((1, ['z1#1', 'z1#2', 'z1#3', 'z1#4', 'z1#5']))
+        svg = self.feuilles(layout_six_modules(), table)[0]
+        neutres = [m for m in modules_dessines(svg) if 'fill="none"' in m]
+        self.assertEqual(len(neutres), 1)
+        self.assertEqual(svg.count('>+</text>'), 1)
+
+    def test_sans_chaine_les_modules_sont_neutres_et_la_mention_est_la(self):
+        from apps.calepinage.services.planche import MENTION_NON_CHAINE
+
+        svg = self.feuilles(layout_six_modules(), [])[0]
+        self.assertEqual(len(modules_dessines(svg)), 6)
+        self.assertTrue(all('fill="none"' in m
+                            for m in modules_dessines(svg)))
+        self.assertIn(MENTION_NON_CHAINE, svg)
+        self.assertNotIn('>+</text>', svg)
+
+    def test_une_chaine_a_cheval_sur_deux_pans_n_a_qu_un_plus_et_un_moins(
+            self):
+        layout = layout_six_modules()
+        zone_b = copy.deepcopy(layout['zones'][0])
+        zone_b.update(id='z2', label='Pan B')
+        zone_b['geometry']['panels'] = [{'cx': 1.0, 'cy': 1.0},
+                                        {'cx': 3.5, 'cy': 1.0}]
+        layout['zones'].append(zone_b)
+        table = affectation((1, ['z1#1', 'z1#2', 'z2#1', 'z2#2']))
+        feuille_a, feuille_b = self.feuilles(layout, table)
+        self.assertEqual((feuille_a.count('>+</text>'),
+                          feuille_a.count('>−</text>')), (1, 0))
+        self.assertEqual((feuille_b.count('>+</text>'),
+                          feuille_b.count('>−</text>')), (0, 1))
+        self.assertIn('suite sur Pan B', feuille_a)
+        self.assertIn('suite sur Pan Sud', feuille_b)
+
+    def test_un_pan_sans_module_n_a_pas_de_feuille(self):
+        layout = layout_six_modules()
+        vide = copy.deepcopy(layout['zones'][0])
+        vide.update(id='z2', label='Pan vide')
+        vide['geometry']['panels'] = []
+        layout['zones'].append(vide)
+        self.assertEqual(len(self.feuilles(layout, self.deux_chaines())), 1)
+        sans_module = copy.deepcopy(layout)
+        sans_module['zones'][0]['geometry']['panels'] = []
+        self.assertEqual(self.feuilles(sans_module, []), [])
+
+    def test_aucun_montant_sur_la_feuille(self):
+        svg = self.feuilles(layout_six_modules(), self.deux_chaines())[0]
+        for interdit in ('prix', 'prix_achat', 'mad', 'montant'):
+            self.assertNotIn(interdit, svg.lower())
+
+    def test_le_pdf_ajoute_les_pages_a4_apres_les_feuilles_a3(self):
+        from apps.calepinage.services.planche import html_de_planche
+        from apps.calepinage.services.planche_pan import feuilles_de_pans
+
+        calepinage = calepinage_de_pose()
+        svg = plan_de_pose_svg(calepinage)
+        with patch_materiel():
+            style, pages = feuilles_de_pans(calepinage, moment=MOMENT)
+        self.assertIn('@page pan{size:A4 landscape', style)
+        self.assertEqual(pages.count('class="feuille-pan"'), 1)
+        avant = html_de_planche(svg)
+        apres = html_de_planche(svg, style, pages)
+        self.assertNotIn('feuille-pan', avant)
+        self.assertTrue(apres.index('</svg>') < apres.index('class="feuille-pan"'))
+        self.assertEqual(apres.count('<svg'), avant.count('<svg') + 1)
+
+
 class ListeDesChainesTest(SimpleTestCase):
     def test_les_chaines_sont_recopiees_du_moteur(self):
         lignes = _lignes_de_chaines(RESULTAT)

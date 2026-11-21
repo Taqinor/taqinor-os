@@ -17,6 +17,11 @@ import {
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
 import { panneauxPourCible } from './cibleProduction';
+import { cotesDePavage } from '../../lib/roofPro2';
+import {
+  causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, noterMotifPanVide, retraitApplique,
+  semerMotifsDepuisDocument, type MesuresPanVide,
+} from './motifPanVide'; // ACAL549
 
 const ring = rectRing(20, 15);
 const baseOpts: PackOptions = { family: 'south', tiltDeg: 13 };
@@ -424,5 +429,53 @@ describe('ACAL470 : objectif de production tapé', () => {
     expect(panneauxPourCible(50000, 600, 30, clampNeeded)).toEqual({ panneaux: 30, plafonne: true, maxKwhAn: 18000 });
     expect(panneauxPourCible(0, 600, 30, clampNeeded)).toBeNull();
     expect(panneauxPourCible(100, 0, 30, clampNeeded)).toBeNull();
+  });
+});
+
+// ACAL549 — la cause MESURÉE d'un pan vide, dans l'ordre retrait → obstacles → seuil → module → inconnue.
+describe('ACAL549 — causeDuPanVide', () => {
+  const MODULE = cotesDePavage(undefined);
+  const mesures = (o: Partial<MesuresPanVide> = {}): MesuresPanVide => ({
+    largeurPanM: 4, retraitM: 0, coteCourtM: MODULE.courtM, coteLongM: MODULE.longM, aireM2: 12,
+    surfacePosableM2: 12, candidats: 3, seuil: null, ecartes: 0, ...o,
+  });
+
+  it('pan de 3 × 1,5 m, retrait 0,80 m ⇒ retrait_rive avec 0,80 et 1,50', () => {
+    const pack = packConfig(rectRing(3, 1.5), 33.5, { family: 'south', tiltDeg: 13, setbackM: 0.8 });
+    expect(pack.best.count).toBe(0);
+    const m = causeDuPanVide(mesurerPanVide(pack, pack.best, retraitApplique(undefined, 0.8), MODULE, null));
+    expect(m.code).toBe('retrait_rive');
+    expect(m.message).toBe('Aucun module : le retrait de rive (0,80 m de chaque côté) ne laisse que 0,00 m sur 1,50 m de large');
+    expect(m.mesures).toMatchObject({ retraitM: 0.8, largeurPanM: 1.5, largeurUtileM: 0 });
+  });
+
+  it('obstacles couvrant tout ⇒ obstacles (et passe AVANT le seuil) ; seuil ⇒ seuil_acces_solaire ; rien ⇒ module_trop_grand / inconnue', () => {
+    expect(causeDuPanVide(mesures({ surfacePosableM2: 0, seuil: 0.8, ecartes: 3 })).code).toBe('obstacles');
+    const s = causeDuPanVide(mesures({ seuil: 0.8, ecartes: 3 }));
+    expect(s.code).toBe('seuil_acces_solaire');
+    expect(s.message).toContain('80 %');
+    expect(causeDuPanVide(mesures({ candidats: 0, surfacePosableM2: 1 })).code).toBe('module_trop_grand');
+    expect(causeDuPanVide(mesures())).toEqual({ code: 'inconnue', message: "Aucun module posé — la cause n'a pas pu être déterminée", mesures: {} });
+  });
+
+  it('le retrait passe AVANT les obstacles (ordre des causes)', () => {
+    expect(causeDuPanVide(mesures({ largeurPanM: 1.5, retraitM: 0.8, surfacePosableM2: 0 })).code).toBe('retrait_rive');
+  });
+
+  it('écrit `motifsPansVides` pour le pan vide, le relit, et le retire dès que le pan porte un module', () => {
+    const motif = causeDuPanVide(mesures({ largeurPanM: 1.5, retraitM: 0.8 }));
+    semerMotifsDepuisDocument({});
+    noterMotifPanVide('z1', motif);
+    const doc: Record<string, unknown> = { zones: [{ id: 'z1', geometry: { count: 0 } }, { id: 'z2', geometry: { count: 4 } }] };
+    expect(ecrireMotifsDansDocument(doc)).toBe(true);
+    expect(doc.motifsPansVides).toEqual({ z1: motif });
+    semerMotifsDepuisDocument({});
+    expect(ecrireMotifsDansDocument(doc)).toBe(false);
+    expect('motifsPansVides' in doc).toBe(false);
+    semerMotifsDepuisDocument({ motifsPansVides: { z1: motif } });
+    expect(ecrireMotifsDansDocument(doc)).toBe(true);
+    (doc.zones as Array<{ geometry: { count: number } }>)[0].geometry.count = 2;
+    expect(ecrireMotifsDansDocument(doc)).toBe(false);
+    semerMotifsDepuisDocument({});
   });
 });

@@ -1351,7 +1351,7 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
 
 # ── Les sorties : SVG, puis PDF par la plomberie PARTAGÉE ───────────────────
 
-def html_de_planche(svg):
+def html_de_planche(svg, style_en_plus='', pages_en_plus=''):
     """Encapsule le SVG dans un HTML A3 paysage — le chemin éprouvé du dépôt.
 
     Aucune police distante, aucune image externe : le document est autonome,
@@ -1371,7 +1371,8 @@ def html_de_planche(svg):
         '@page{size:A3 landscape;margin:0;}'
         'html,body{margin:0;padding:0;background:#fff;}'
         'svg{display:block;width:100%;height:auto;}'
-        + style + '</style></head><body>' + svg + '</body></html>'
+        + style + style_en_plus + '</style></head><body>' + svg
+        + pages_en_plus + '</body></html>'
     )
 
 
@@ -1610,8 +1611,12 @@ def rendre_plan_pose_pdf(calepinage, *, company=None, **options):
     """Octets PDF du plan de pose, par ``core.pdf.render_pdf`` (ARC11)."""
     from core.pdf import render_pdf
 
+    from .planche_pan import feuilles_de_pans
+
     svg = _rendre_plan_pose_svg(calepinage, **options)
-    return render_pdf(html=html_de_planche(svg),
+    # ACAL590 — une feuille A4 par pan, APRÈS les feuilles A3 d'avant.
+    style, pages = feuilles_de_pans(calepinage, moment=options.get('moment'))
+    return render_pdf(html=html_de_planche(svg, style, pages),
                       company=company or getattr(calepinage, 'company', None))
 
 

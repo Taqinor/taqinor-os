@@ -75,9 +75,17 @@ FIXTURE_PAR_PLAN = {
 }
 
 
+#: Le plan horizontal (ACAL706) n'a AUCUNE réponse enregistrée : on ne
+#: l'invente pas, le transport rejoué le refuse comme PVGIS le ferait et la
+#: simulation publie un gain d'inclinaison « non calculé » avec son motif.
+PLAN_SANS_ENREGISTREMENT = (0.0, 0.0)
+
+
 def _transport(url, timeout_s):
     requete = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     plan = (float(requete['angle'][0]), float(requete['aspect'][0]))
+    if plan == PLAN_SANS_ENREGISTREMENT:
+        return 404, ''
     return 200, (FIXTURES / FIXTURE_PAR_PLAN[plan]).read_text(
         encoding='utf-8')
 

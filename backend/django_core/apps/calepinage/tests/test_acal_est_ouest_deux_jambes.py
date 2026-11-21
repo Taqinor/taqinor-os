@@ -77,7 +77,8 @@ class DeuxJambesTest(SimpleTestCase):
     def test_deux_appels_pvgis_par_face(self):
         blocs, client = _simuler(_layout(_zone_est_ouest()))
         aspects = sorted({demande['aspect_deg'] for demande in client.demandes})
-        self.assertEqual(aspects, [-90.0, 90.0])
+        # Deux jambes (-90, +90) + la requete horizontale d'ACAL706 (0).
+        self.assertEqual(aspects, [-90.0, 0.0, 90.0])
         # UN pan au rapport (les jambes sont internes).
         self.assertEqual(len(blocs['production']['par_pan']), 1)
         # Le profil horaire porte les DEUX faces : la crête du matin (est,
@@ -125,7 +126,7 @@ class DeuxJambesTest(SimpleTestCase):
         self.assertTrue(any('répartition est/ouest supposée' in texte
                             for texte in blocs.get('avertissements') or ()))
         self.assertEqual(sorted({d['aspect_deg'] for d in client.demandes}),
-                         [-90.0, 90.0])
+                         [-90.0, 0.0, 90.0])  # + horizontale (ACAL706)
 
     def test_un_pan_sud_reste_une_seule_jambe(self):
         jambes = jambes_du_pan({'azimut_deg': 180.0, 'modules': 12,

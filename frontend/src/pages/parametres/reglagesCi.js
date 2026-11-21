@@ -13,6 +13,8 @@ export const REGLAGES_CI_NOMBRES = [
   { champ: 'recette_ecart_pmax_pct', label: 'Écart de recette toléré sur la puissance crête (%)', aide: AIDE_SANS_VERDICT },
   { champ: 'recette_echantillon_iv_pct', label: 'Échantillon de courbes I-V à la recette (%)', aide: AIDE_SANS_VERDICT },
   { champ: 'recette_pr_seuil_interne', label: 'Seuil interne de performance ratio (%) — alerte interne', aide: AIDE_SANS_VERDICT },
+  // ACAL669 — seuil société, sans défaut : vide = isolement non jugé.
+  { champ: 'recette_isolement_min_mohm', label: "Résistance d'isolement minimale à la recette (MΩ)", aide: AIDE_SANS_VERDICT },
   { champ: 'delai_intervention_suivi_heures', label: "Délai d'intervention du suivi (heures)", aide: AIDE_NON_ENGAGE },
   { champ: 'delai_reception_definitive_mois', label: 'Délai de réception définitive (mois)', aide: AIDE_NON_ENGAGE },
 ]

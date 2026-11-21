@@ -19,7 +19,7 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_cal197_presets -v2
 """
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage import selectors
 from apps.calepinage.services.parametres import enregistrer_parametres
@@ -112,3 +112,66 @@ class PresetsDeSocieteSelectorTest(TestCase):
         _poser_jeux(self.company, [])
         self.assertEqual([k['code'] for k in
                           kits_de_societe(self.company)], ['K7'])
+
+
+class ChampsDePresetTest(SimpleTestCase):
+    """ACAL961 — les champs admis d'un préréglage, bâtis depuis ``REGLAGES``."""
+
+    def test_une_ligne_par_reglage_hors_libelle_rives_priorite(self):
+        from apps.calepinage.services.gabarits import REGLAGES
+        from apps.calepinage.services.presets import champs_de_preset
+
+        attendues = [cle for cle, _ in REGLAGES
+                     if cle not in ('libelle', 'rives', 'priorite')]
+        lignes = champs_de_preset()
+        self.assertEqual([ligne['cle'] for ligne in lignes], attendues)
+        for ligne in lignes:
+            self.assertEqual(
+                set(ligne), {'cle', 'libelle', 'type', 'unite', 'valeurs'})
+
+    def test_unites_types_et_valeurs(self):
+        from apps.calepinage.services.gabarits import (
+            FAMILLES, ORIENTATIONS, TYPES_TOITURE,
+        )
+        from apps.calepinage.services.presets import champs_de_preset
+
+        par_cle = {ligne['cle']: ligne for ligne in champs_de_preset()}
+        self.assertEqual(par_cle['allee_m']['unite'], 'm')
+        self.assertEqual(par_cle['pitchDeg']['unite'], '°')
+        self.assertEqual(par_cle['chassis_sous_pente_deg']['unite'], '°')
+        self.assertIsNone(par_cle['rangees']['unite'])
+        self.assertEqual(par_cle['rangees']['type'], 'entier')
+        self.assertEqual(par_cle['neededAuto']['type'], 'booleen')
+        self.assertEqual(par_cle['pitchDeg']['type'], 'nombre')
+        self.assertEqual(par_cle['orientation']['valeurs'],
+                         list(ORIENTATIONS))
+        self.assertEqual(par_cle['famille']['valeurs'], list(FAMILLES))
+        self.assertEqual(par_cle['roofType']['valeurs'], list(TYPES_TOITURE))
+        self.assertIsNone(par_cle['allee_m']['valeurs'])
+
+    def test_retirer_une_cle_de_reglages_retire_la_ligne(self):
+        """Mutant : la liste suit ``REGLAGES``, elle n'en copie rien."""
+        from unittest import mock
+
+        from apps.calepinage.services import gabarits
+        from apps.calepinage.services.presets import champs_de_preset
+
+        reduit = tuple(c for c in gabarits.REGLAGES if c[0] != 'allee_m')
+        with mock.patch.object(gabarits, 'REGLAGES', reduit):
+            self.assertNotIn('allee_m',
+                             [ligne['cle'] for ligne in champs_de_preset()])
+
+    def test_le_contrat_publie_la_meme_liste(self):
+        import json
+        import pathlib
+
+        from apps.calepinage.services.presets import champs_de_preset
+
+        racine = pathlib.Path(__file__).resolve().parent.parent
+        contrat = json.loads((racine / 'contract_samples'
+                              / 'parametres_calepinage.json')
+                             .read_text(encoding='utf-8'))
+        self.assertEqual(contrat['exemple']['champs_preset'],
+                         champs_de_preset())
+        self.assertEqual(contrat['exemple_vide']['champs_preset'],
+                         champs_de_preset())

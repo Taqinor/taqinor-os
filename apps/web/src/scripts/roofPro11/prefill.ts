@@ -1314,7 +1314,7 @@ const CLES_RACINE_ATELIER = new Set([
   'version', 'pin', 'outline', 'billKwh', 'zones', 'activeAreaId', 'result', 'scenario', 'panelWatt',
   'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements',
   'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay',
-  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'electrical', 'parcelle', 'alleeTechnique',
+  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'motifsPansVides', 'electrical', 'parcelle', 'alleeTechnique',
   'pinSource', 'repereAcquitte', // ACAL193 — réémises par `emettreProvenanceEpingle`
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */

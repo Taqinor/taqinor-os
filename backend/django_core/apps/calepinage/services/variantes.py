@@ -380,7 +380,8 @@ def resultat_du_modele(resultat):
 
 #: ACON11 (D-ACAL-15) — les clés du document propres au site et au client
 #: de la SOURCE : jamais recopiées vers un autre lead/client (modèle compris).
-CLES_D_UN_AUTRE_SITE = ('consumption', 'billKwh', 'result', 'underlay')
+CLES_D_UN_AUTRE_SITE = ('consumption', 'billKwh', 'result', 'underlay',
+                        'imageCapture')  # ACAL1041 : date de l'image du site
 
 MESSAGE_CIBLE_SANS_REPERE = ("Le lead n'a pas de repère toit (GPS ou point "
                              "de toit) : placez-le d'abord")

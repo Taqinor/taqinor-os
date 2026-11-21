@@ -169,7 +169,9 @@ class RegleDeCopieTest(BaseApiCalepinage):
         from apps.records.models import Activity
 
         document = dict(_document(), billKwh=540, result={'kwc': 5.5},
-                        underlay={'attachmentId': 7})
+                        underlay={'attachmentId': 7},
+                        imageCapture={'date': '2025-03-21',
+                                      'source': 'page du fournisseur'})
         Calepinage.objects.filter(pk=self.source.pk).update(
             roof_layout=document)
         self.source.refresh_from_db()
@@ -204,6 +206,37 @@ class RegleDeCopieTest(BaseApiCalepinage):
         self.assertEqual(refus.exception.champ, 'lead')
         self.assertIn("n'a pas de repère toit", str(refus.exception))
         self.assertEqual(Calepinage.objects.count(), avant)
+
+
+class ImageCaptureTest(SimpleTestCase):
+    """ACAL1041 — la date de l'image est propre au site, jamais recopiée."""
+
+    def test_image_capture_absent_de_la_copie_vers_un_autre_lead(self):
+        from apps.calepinage.services.variantes import preparer_pour_cible
+        source = dict(_document(), imageCapture={
+            'date': '2025-03-21', 'source': 'page du fournisseur'})
+        for pin in (None, dict(MARRAKECH)):
+            with self.subTest(pin=pin):
+                self.assertNotIn('imageCapture',
+                                 preparer_pour_cible(source, pin))
+        self.assertIn('imageCapture', source)
+
+    def test_echantillon_valide_et_refus_nommes(self):
+        import json
+        import pathlib
+
+        from jsonschema import Draft202012Validator
+        schema = json.loads((pathlib.Path(__file__).resolve().parents[1]
+                             / 'contract_samples/roof_layout_v2.schema.json')
+                            .read_text(encoding='utf-8'))
+        valideur = Draft202012Validator(schema['properties']['imageCapture'])
+        echantillon = schema['exemple_image_capture']
+        self.assertTrue(valideur.is_valid(echantillon))
+        for faux in (dict(echantillon, date='21/03/2025'),
+                     dict(echantillon, source=''), {'date': '2025-03-21'}):
+            with self.subTest(faux=faux):
+                self.assertFalse(valideur.is_valid(faux))
+        self.assertNotIn('imageCapture', schema['exemple'])
 
 
 class MaterielDuModeleTest(SimpleTestCase):

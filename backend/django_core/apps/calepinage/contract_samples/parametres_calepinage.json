@@ -643,6 +643,101 @@
         }
       ]
     },
+    "champs_preset": [
+      {
+        "cle": "orientation",
+        "libelle": "Orientation du module",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "portrait",
+          "paysage"
+        ]
+      },
+      {
+        "cle": "famille",
+        "libelle": "Famille de table",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "south",
+          "eastwest"
+        ]
+      },
+      {
+        "cle": "allee_m",
+        "libelle": "Allée",
+        "type": "nombre",
+        "unite": "m",
+        "valeurs": null
+      },
+      {
+        "cle": "roofType",
+        "libelle": "Type de toiture",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "flat",
+          "pitched"
+        ]
+      },
+      {
+        "cle": "pitchDeg",
+        "libelle": "Pente",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "facingAzimuthDeg",
+        "libelle": "Azimut de face",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "facingManual",
+        "libelle": "Azimut saisi à la main",
+        "type": "booleen",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "neededAuto",
+        "libelle": "Dimensionnement automatique",
+        "type": "booleen",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "rangees",
+        "libelle": "Rangées",
+        "type": "entier",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "colonnes",
+        "libelle": "Colonnes",
+        "type": "entier",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "chassis_sous_pente_deg",
+        "libelle": "Seuil châssis incliné",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "chassis_inclinaison_deg",
+        "libelle": "Inclinaison du châssis",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      }
+    ],
     "kits": [
       {
         "id": 12,
@@ -1153,7 +1248,102 @@
         }
       ]
     },
-    "kits": []
+    "kits": [],
+    "champs_preset": [
+      {
+        "cle": "orientation",
+        "libelle": "Orientation du module",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "portrait",
+          "paysage"
+        ]
+      },
+      {
+        "cle": "famille",
+        "libelle": "Famille de table",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "south",
+          "eastwest"
+        ]
+      },
+      {
+        "cle": "allee_m",
+        "libelle": "Allée",
+        "type": "nombre",
+        "unite": "m",
+        "valeurs": null
+      },
+      {
+        "cle": "roofType",
+        "libelle": "Type de toiture",
+        "type": "choix",
+        "unite": null,
+        "valeurs": [
+          "flat",
+          "pitched"
+        ]
+      },
+      {
+        "cle": "pitchDeg",
+        "libelle": "Pente",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "facingAzimuthDeg",
+        "libelle": "Azimut de face",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "facingManual",
+        "libelle": "Azimut saisi à la main",
+        "type": "booleen",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "neededAuto",
+        "libelle": "Dimensionnement automatique",
+        "type": "booleen",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "rangees",
+        "libelle": "Rangées",
+        "type": "entier",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "colonnes",
+        "libelle": "Colonnes",
+        "type": "entier",
+        "unite": null,
+        "valeurs": null
+      },
+      {
+        "cle": "chassis_sous_pente_deg",
+        "libelle": "Seuil châssis incliné",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      },
+      {
+        "cle": "chassis_inclinaison_deg",
+        "libelle": "Inclinaison du châssis",
+        "type": "nombre",
+        "unite": "°",
+        "valeurs": null
+      }
+    ]
   },
   "exemple_put_fusion": {
     "endpoint": "PUT /api/django/calepinage/parametres/",

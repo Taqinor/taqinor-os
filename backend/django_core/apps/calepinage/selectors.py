@@ -51,7 +51,8 @@ SECTIONS_PARAMETRES = (
 #: elles ne sont pas des sections (aucune n'entre dans ``enregistrer_parametres``).
 #: Le contrat les porte ; les gardes de cohérence les retirent avant de comparer.
 #: CALX145/69 — ``registre`` rejoint ``kits`` : même mécanique, lecture seule.
-SECTIONS_LECTURE_SEULE = ('kits', 'registre')
+#: ACAL961 — ``champs_preset`` (champs admis d'un préréglage) de même.
+SECTIONS_LECTURE_SEULE = ('kits', 'registre', 'champs_preset')
 
 
 def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,

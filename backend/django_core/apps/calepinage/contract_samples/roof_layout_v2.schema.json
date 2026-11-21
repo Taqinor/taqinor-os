@@ -257,6 +257,16 @@
       "items": {
         "$ref": "#/$defs/repereChantier"
       }
+    },
+    "imageCapture": {
+      "description": "ACAL1041 — date de prise de vue de l'image satellite du site et sa source. SAISI, aucune valeur par défaut : absent = jamais renseignée. Propre au SITE : jamais recopiée vers un autre lead (`services/variantes.py::CLES_D_UN_AUTRE_SITE`). Lue par l'atelier (ACAL509) et le calcul de hauteur par l'ombre (ACAL496). Forme : `exemple_image_capture`.",
+      "type": "object",
+      "required": ["date", "source"],
+      "properties": {
+        "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "source": {"type": "string", "minLength": 1}
+      },
+      "x-hors-exemple": true
     }
   },
   "$defs": {
@@ -2530,6 +2540,7 @@
     {"id": "env-haie", "kind": "ligne", "trace": [[-7.6203, 33.5002], [-7.6199, 33.5002]], "heightM": 2, "epaisseurM": 0.8},
     {"id": "env-arbre", "kind": "arbre", "centerLng": -7.6202, "centerLat": 33.4999, "heightM": 4, "crownDiameterM": 3, "hauteurFutureM": 8, "dansAns": 10, "supposeCoupe": false}
   ],
+  "exemple_image_capture": {"date": "2025-03-21", "source": "page du fournisseur"},
   "exemple": {
     "version": 2,
     "modePoseDeclare": "sol",

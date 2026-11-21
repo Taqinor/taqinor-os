@@ -44,6 +44,7 @@ from ..serializers import _SchemaCorpsObligatoire
 from ..selectors import (
     kits_de_pose_disponibles, parametres_de_societe, registre_des_reglages,
 )
+from ..services.presets import champs_de_preset
 from ..services.parametres import (
     CaractereInterditEnCle, ReglageInterdit, ReglageInvalide,
     enregistrer_parametres,
@@ -344,6 +345,8 @@ def _forme_reglages(nom, avec_registre=False, partielle=False):
         champs.update(_sections_requete_resserrees())
     if avec_registre:
         champs['registre'] = _forme_registre()
+        champs['champs_preset'] = serializers.ListField(
+            child=serializers.DictField(), required=False)
     return inline_serializer(nom, champs)
 
 
@@ -373,6 +376,9 @@ class ParametresCalepinageView(APIView):
         # publié en LECTURE SEULE : l'écran n'a plus à le redéclarer,
         # ``services/parametres_cles.py`` reste la seule déclaration.
         reponse['registre'] = registre_des_reglages()
+        # ACAL961 — les champs admis d'un préréglage (lecture seule, dérivés
+        # de ``REGLAGES``) : l'écran les propose au lieu d'un texte libre.
+        reponse['champs_preset'] = champs_de_preset()
         # ACAL288 — le catalogue des sections du rapport d'étude, DÉRIVÉ du
         # contrat ``rapport_etude.json`` (jamais stocké, jamais accepté en
         # écriture) : l'écran coche parmi CES sections, dans CET ordre.

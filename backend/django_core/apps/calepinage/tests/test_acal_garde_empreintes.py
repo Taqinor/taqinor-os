@@ -54,6 +54,7 @@ CLASSEMENT_RACINE = {
     'consumption': DOCUMENT,
     'devisId': DOCUMENT,
     'electrical': DOCUMENT,
+    'imageCapture': DOCUMENT,  # ACAL1041 : date de l'image, non chiffrée
     'jeuReglages': DOCUMENT,
     'measurements': DOCUMENT,
     'motifsPansVides': DOCUMENT,  # ACAL555 : cause d'un pan vide, non chiffrée
@@ -82,7 +83,8 @@ CLASSEMENT_PAN = {cle: IMPRIMEE for cle in (
     'existant', 'anneeMiseEnService',  # ACAL573
     'chassis',  # ACAL581
     'coupuresPavage',  # ACAL586
-    'porteeEntrePieds')}  # ACAL587
+    'porteeEntrePieds',  # ACAL587
+    'verrouille')}  # ACAL520 : le pan est imprimé en entier
 
 
 def _schema():

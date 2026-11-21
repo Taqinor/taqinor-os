@@ -6,7 +6,7 @@ Run :
 """
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.installations.models import CommissioningRecord, Installation
 from apps.installations.services import (
@@ -46,6 +46,24 @@ class ResultatDeriveTests(TestCase):
         raisons = verifier_transition_statut(
             self.inst, Installation.Statut.INSTALLE)
         self.assertTrue(any('62446' in r for r in raisons), raisons)
+
+    def test_isolement_juge_contre_le_seuil_societe(self):
+        """ACAL670 — 0,5 MΩ pour un seuil de 1 MΩ : non conforme, quel que
+        soit le booléen envoyé ; ≥ seuil : vrai ; sans seuil : la saisie."""
+        from apps.parametres.models import CompanyProfile
+
+        r = self._patch(dict(TOUS_VRAIS, isolement_mohm='0.5'))
+        self.assertTrue(r.data['isolement_ok'])  # aucun seuil : la saisie
+        profil = CompanyProfile.get(self.company)
+        profil.recette_isolement_min_mohm = Decimal('1')
+        profil.save()
+        r = self._patch(dict(TOUS_VRAIS, isolement_mohm='0.5'))
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data['isolement_ok'])
+        self.assertEqual(r.data['resultat'], 'non_conforme')
+        r = self._patch(dict(TOUS_VRAIS, isolement_ok=False,
+                             isolement_mohm='1.2'))
+        self.assertTrue(r.data['isolement_ok'])
 
     def test_tous_les_essais_vrais_conforme(self):
         r = self._patch(TOUS_VRAIS)
@@ -103,3 +121,19 @@ class ResultatDeriveTests(TestCase):
         self.rec.refresh_from_db()
         self.assertEqual(self.rec.resultat,
                          CommissioningRecord.Resultat.NON_CONFORME)
+
+
+class JugerIsolementTests(SimpleTestCase):
+    """ACAL670 — le jugement pur : mesure ≥ seuil ; sans seuil ou sans
+    mesure, la valeur saisie (jamais un seuil inventé, jamais 0)."""
+
+    def test_sous_le_seuil_faux_au_dessus_vrai(self):
+        from apps.installations.recette_isolement import juger_isolement
+        self.assertFalse(juger_isolement(Decimal('0.5'), Decimal('1'), True))
+        self.assertTrue(juger_isolement(Decimal('1'), Decimal('1'), False))
+        self.assertTrue(juger_isolement(Decimal('0.2'), Decimal('0.1'), False))
+
+    def test_sans_seuil_ou_sans_mesure_la_saisie(self):
+        from apps.installations.recette_isolement import juger_isolement
+        self.assertTrue(juger_isolement(Decimal('0.5'), None, True))
+        self.assertIsNone(juger_isolement(None, Decimal('1'), None))

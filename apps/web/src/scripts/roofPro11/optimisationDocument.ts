@@ -17,6 +17,7 @@
  */
 import { choixOptimisationCourant, poserChoixOptimisation } from './optimizer';
 import { type ChoixOptimisation } from '../../lib/estimatorBrainV6';
+import { ecrireMotifsDansDocument, semerMotifsDepuisDocument } from './motifPanVide'; // ACAL549
 
 /** La clé RACINE du contrat CALX88. Une seule formulation dans tout l'atelier. */
 export const CLE_OPTIMISATION = 'optimisation';
@@ -37,6 +38,7 @@ export function lireOptimisationDuDocument(json: unknown): ChoixOptimisation | n
 export function semerOptimisationDepuisDocument(json: unknown): ChoixOptimisation | null {
   const choix = lireOptimisationDuDocument(json);
   poserChoixOptimisation(choix);
+  semerMotifsDepuisDocument(json); // ACAL549 — les causes des pans vides relues avec le reste
   return choix;
 }
 
@@ -50,6 +52,7 @@ export function semerOptimisationDepuisDocument(json: unknown): ChoixOptimisatio
 export function ecrireOptimisationDansDocument(layout: unknown): boolean {
   const cible = layout as Record<string, unknown> | null | undefined;
   if (!cible || typeof cible !== 'object') return false;
+  ecrireMotifsDansDocument(cible); // ACAL549 — clé `motifsPansVides`, même crochet d'écriture
   const choix = choixOptimisationCourant();
   if (!choix) {
     delete cible[CLE_OPTIMISATION];
