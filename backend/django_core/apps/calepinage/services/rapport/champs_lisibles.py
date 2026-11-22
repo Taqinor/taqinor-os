@@ -202,8 +202,11 @@ def libelle_de_poste(cle):
 def _intitule_technique(chemin):
     """L'intitulé d'un chemin ou d'une clé : postes, réglages, fiche, saisie."""
     sans = _CROCHETS.sub('', chemin)
-    return (_intitule_champ(chemin) or libelle_de_poste(sans)
-            or _intitule_saisie(sans))
+    poste = libelle_de_poste(sans)
+    if not poste and sans.endswith('_pct'):  # « indisponibilite_pct »
+        poste = libelle_de_poste(sans[:-4])
+        poste = poste + ' (%)' if poste else ''
+    return _intitule_champ(chemin) or poste or _intitule_saisie(sans)
 
 
 def _intitule_saisie(sans):

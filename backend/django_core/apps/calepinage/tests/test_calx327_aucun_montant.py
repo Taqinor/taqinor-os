@@ -556,7 +556,10 @@ class FichePertesEnPostesTest(unittest.TestCase):
     def test_un_poste_non_compte_est_nomme_jamais_zero(self):
         texte = _texte_visible(_html_pertes_en_postes())
         _premier_poste('non_compte')  # l'échantillon en porte un
-        motif = next(etape['motif_omission']
+        from apps.calepinage.services.rapport.champs_lisibles import motif_lisible
+
+        # R3-19 : le texte IMPRIMÉ est le motif lisible, la donnée servie ne change pas.
+        motif = next(motif_lisible(etape['motif_omission'])
                      for poste in POSTES_LISIBLES['postes']
                      for etape in poste['etapes'])
         part = str(_premier_poste('compte')['perte_pct']).replace('.', ',')

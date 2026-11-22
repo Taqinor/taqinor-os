@@ -2594,12 +2594,10 @@ def _motifs_des_troncons(troncons):
     )
     from .troncons import phrase_de_l_omission
 
-    motifs = []
-    for omission in (troncons or {}).get('omissions') or ():
-        motifs.append(_motif_publication(
-            'TRONCON_NON_CALCULABLE', STATUT_MOTIF_OMIS,
-            phrase_de_l_omission(omission),
-            'tronçons du calepinage'))
+    motifs = [_motif_publication(
+        'TRONCON_NON_CALCULABLE', STATUT_MOTIF_OMIS,
+        phrase_de_l_omission(omission), 'tronçons du calepinage')
+        for omission in (troncons or {}).get('omissions') or ()]
     for verdict in (troncons or {}).get('verdicts') or ():
         if verdict.get('bloquant'):
             statut = STATUT_BLOQUANT

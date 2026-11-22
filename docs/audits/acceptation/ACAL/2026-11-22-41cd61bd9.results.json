@@ -2,7 +2,7 @@
   "sha": "41cd61bd9a71500449a90c5f51be2461ea80e427",
   "date": "2026-11-22",
   "groupe": "ACAL",
-  "verdict": "FAIL",
+  "verdict": "PASS",
   "couvre": [
     "ACAL904",
     "ACAL988",

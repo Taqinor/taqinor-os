@@ -67,13 +67,6 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
     if (fieldErrors) {
       // AERR52 — le message NOMME le champ (« Nom : Ce champ est requis »).
       const firstKey = Object.keys(fieldErrors)[0]
-      // N5 — une clé hors carte n'a pas d'intitulé : la phrase du serveur, quand elle est une vraie
-      // phrase (ou nomme le champ entre guillemets), le dit déjà ; la préfixer montrerait la clé technique.
-      const phrase = fieldErrors[firstKey]
-      const sansIntitule = !Object.hasOwn(fieldLabels, firstKey) || !fieldLabels[firstKey]?.label
-      if (sansIntitule && (phrase.length >= PHRASE_AUTONOME || phrase.includes('«'))) {
-        return { message: phrase, fieldErrors }
-      }
       return { message: `${libelleChamp(firstKey)} : ${fieldErrors[firstKey]}`, fieldErrors }
     }
   }
@@ -83,9 +76,6 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
   }
   return { message: fallback }
 }
-
-// N5 — au-delà de cette longueur, un message de champ est une phrase qui se suffit à elle-même.
-const PHRASE_AUTONOME = 40
 
 // Libellé de la carte, sinon la clé lisible (« date_echeance » → « Date echeance »).
 function libelleChamp(cle) {
