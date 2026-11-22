@@ -356,26 +356,6 @@ gen-cond-acompte-financeur=
       {
         "signal": {}
       }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "devis": 36,
-        "kwc": 5.68
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "devis": 36,
-        "kwc": 5.72
-      },
-      {
-        "signal": {}
-      }
     ]
   ],
   "ventesApi.replaceLignesDevis": [

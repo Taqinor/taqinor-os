@@ -324,6 +324,12 @@ class ControlesDuResultatTest(SimpleTestCase):
         ombrage = self._controles(cascade=cascade)['ombrage_chiffre']
         self.assertEqual(ombrage['etat'], 'a_regler')
         self.assertEqual(ombrage['cause'], 'Aucun obstacle relevé.')
+        cascade = {'etapes': [{
+            'etape': 'ombrage_proche',
+            'motif_omission': 'Omis. Champ manquant : « ombrage.shading12x24 ».'}]}
+        cause = self._controles(cascade=cascade)['ombrage_chiffre']['cause']
+        self.assertNotIn('ombrage.shading12x24', cause)
+        self.assertIn("matrice d'ombrage", cause)
         calcule = {'etapes': [{'etape': 'ombrage_proche',
                                'motif_omission': '',
                                'perte_pct': OMBRAGE_ESSAI_PCT}]}

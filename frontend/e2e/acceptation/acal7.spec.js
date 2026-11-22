@@ -821,7 +821,11 @@ etape('PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats', ['ACAL3
     const n = pret.nombre_bloquants + pret.nombre_a_regler
     const attendu = n > 0 ? `${n} contrôle${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'
     await expect(page.getByTestId('cal-electrique-synthese'), `synthèse (${n} points servis)`).toHaveText(attendu, T)
-    await expect(page.locator('[data-testid^="cal-electrique-section-"]'), 'sept sections repliables').toHaveCount(7)
+    // ACAL1191 — l'étape ne monte que les sections principales ; les autres vivent sous « Réglages avancés » (replié).
+    const sections = page.locator('[data-testid^="cal-electrique-section-"]')
+    await expect(sections, 'sections principales seules avant dépliage').toHaveCount(2)
+    await page.getByTestId('cal-electrique-avances').getByRole('button', { name: 'Réglages avancés' }).click()
+    await expect(sections, 'toutes les sections repliables existent une fois « Réglages avancés » déplié').toHaveCount(8)
 
     // ACAL443 / ACAL453 / ACAL446 — Production.
     await page.goto(`/calepinage/${cal.id}?onglet=production`)

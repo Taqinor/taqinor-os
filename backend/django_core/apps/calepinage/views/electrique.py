@@ -44,6 +44,7 @@ from ..services.electrique import (
     resultat_calepinage, verdict_publiable, _valider_produits_designes,
 )
 from ..services.protections import DecisionInvalide
+from ..services.rapport.champs_lisibles import avec_motifs_lisibles
 from ..services.terre import TerreInvalide
 
 __all__ = ['ElectriqueActionsMixin']
@@ -116,14 +117,14 @@ class ElectriqueActionsMixin:
                     status=status.HTTP_409_CONFLICT)  # ENF11 : état stocké
         try:
             if variante is None:
-                return Response(resultat_calepinage(calepinage))
+                return Response(avec_motifs_lisibles(resultat_calepinage(calepinage)))
             # Lot 2 critique #17 — la simulation servie est celle de LA
             # variante (ACAL112 l'écrit sur ``variante.resultat``).
             servi = resultat_calepinage(
                 calepinage, layout=variante.roof_layout,
                 porteur_simulation=variante)
             servi['variante'] = {'id': variante.pk, 'nom': variante.nom}
-            return Response(servi)
+            return Response(avec_motifs_lisibles(servi))
         except _REFUS_DE_LECTURE as refus:
             return Response({refus.champ or 'temperatures': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -179,7 +180,7 @@ class ElectriqueActionsMixin:
         refuser_caractere_interdit(corps)  # 409 : inexprimable au schéma
         try:
             enregistrer_entree(calepinage, corps, user=request.user)
-            return Response(resultat_calepinage(calepinage))
+            return Response(avec_motifs_lisibles(resultat_calepinage(calepinage)))
         except (EntreeInvalide, *_REFUS_DE_LECTURE) as refus:
             introuvable = getattr(refus, 'introuvable', False)
             return Response({refus.champ or 'entree_electrique': str(refus)},

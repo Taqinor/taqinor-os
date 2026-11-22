@@ -76,7 +76,11 @@ const LIBELLES_HYPOTHESES = {
 
 // Libellé lisible d'une grandeur d'hypothèse — la clé brute sert de repli :
 // jamais un libellé inventé pour une clé que ce panneau ne connaît pas encore.
-const libelleHypothese = (cle) => LIBELLES_HYPOTHESES[cle] || cle
+// R3-07 — une entrée de remplacement (`remplacements[0]`) : l'équipement, le mode et l'année
+// sont déjà dans sa source ; ici son rang, en clair.
+const RANG_REMPLACEMENT = /^remplacements\[\d+\]$/
+const libelleHypothese = (cle) => LIBELLES_HYPOTHESES[cle]
+  || (RANG_REMPLACEMENT.test(cle) ? `Remplacement n° ${Number(cle.match(/\d+/)[0]) + 1}` : cle)
 
 // Formatage de la VALEUR d'une hypothèse, dérivé du SUFFIXE de sa clé (mêmes
 // conventions que le reste du dépôt : `_mad`, `_pct`, `_kwh`, `_ans`) — jamais
@@ -84,7 +88,7 @@ const libelleHypothese = (cle) => LIBELLES_HYPOTHESES[cle] || cle
 function formatValeurHypothese(cle, valeur) {
   if (valeur === null || valeur === undefined) return 'non publié'
   if (typeof valeur !== 'number') return String(valeur)
-  if (cle.endsWith('_mad')) return formatMAD(valeur, { decimals: 0 })
+  if (cle.endsWith('_mad') || RANG_REMPLACEMENT.test(cle)) return formatMAD(valeur, { decimals: 0 })
   if (cle.endsWith('_pct')) return formatPercent(valeur, { decimals: 2 })
   if (cle.endsWith('_kwh')) return `${formatNumber(valeur, { decimals: 0 })} kWh`
   if (cle.endsWith('_ans')) return `${formatNumber(valeur, { decimals: 0 })} ans`

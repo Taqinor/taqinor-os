@@ -54,7 +54,8 @@ export function construireCascadeDetaillee(etapes, totalPct = null, plages = nul
       poste: etape.etape,
       rang: etape.rang,
       omise,
-      motif: etape.motif_omission || '',
+      // R3-19 — le texte lisible du serveur (même fonction que le rapport), le motif servi à défaut.
+      motif: etape.motif_lisible || etape.motif_omission || '',
       pertePct: etape.perte_pct,
       kwhAvant: etape.kwh_avant ?? null,
       kwhApres: etape.kwh_apres ?? null,

@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
-import { uniq, gotoLeads, createLead, API_DJANGO, lireJson, telephoneMobileUnique } from './helpers'
+import { uniq, API_DJANGO, lireJson, telephoneMobileUnique } from './helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const BASE = join(here, 'calepinage-mesures-ecran.baseline.json')
@@ -229,8 +229,13 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
   let gestes = 0
   const geste = async (action) => { gestes += 1; return action() }
 
-  await gotoLeads(page)
-  const nomLead = await createLead(page, { nom: uniq('ACAL385 Lead'), facture: 900, ville: 'Casablanca' })
+  // Lead créé par l'API (le formulaire dépasse 15 s dès que la liste des leads grossit : instable en CI comme ici) ;
+  // les gestes comptés commencent APRÈS, à l'ouverture du calepinage.  await amorcerSession(page)
+  const nomLead = uniq('ACAL385 Lead')
+  await lireJson(await page.request.post(`${API_DJANGO}/crm/leads/`, {
+    timeout: 120_000,
+    data: { nom: nomLead, ville: 'Casablanca', telephone: telephoneMobileUnique(), type_installation: 'residentiel', facture_hiver: '900' },
+  }), 'lead')
 
   // ── gestes : du lead à la production lue ──
   await page.goto('/calepinage/nouveau')

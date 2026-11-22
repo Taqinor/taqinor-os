@@ -341,6 +341,22 @@ describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', ()
     expect(lignes[3].valeur).toBeCloseTo(81, 6)
   })
 
+  it("R3-19 — une étape omise montre le texte lisible du serveur, jamais le chemin du motif", () => {
+    const etapes = [
+      { rang: 1, etape: 'a', libelle: 'Étape A', kwh_avant: 100, kwh_apres: 90, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
+      {
+        rang: 2, etape: 'b', libelle: 'Étape B', kwh_avant: 90, kwh_apres: null, perte_pct: null, gain: false, source: null,
+        motif_omission: 'Omis. Champ manquant : « ombrage.shading12x24 ».',
+        motif_lisible: "Omis. Champ manquant : « matrice d'ombrage 12 mois × 24 heures ».",
+      },
+      { rang: 3, etape: 'c', libelle: 'Étape C', kwh_avant: 90, kwh_apres: null, perte_pct: null, gain: false, source: null, motif_omission: 'Motif ancien servi sans texte lisible.' },
+    ]
+    const lignes = construireCascadeDetaillee(etapes, 10)
+    expect(lignes[2].motif).toBe("Omis. Champ manquant : « matrice d'ombrage 12 mois × 24 heures ».")
+    // Un serveur qui ne sert pas encore la clé : le motif servi, tel quel.
+    expect(lignes[3].motif).toBe('Motif ancien servi sans texte lisible.')
+  })
+
   it('gain bifacial au-dessus du niveau courant', () => {
     const etapes = [
       { rang: 1, etape: 'a', libelle: 'Perte', kwh_avant: 100, kwh_apres: 90, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },

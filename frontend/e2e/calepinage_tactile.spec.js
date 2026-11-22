@@ -226,6 +226,23 @@ async function contourEnregistre(page, id) {
   return contour
 }
 
+// Attend que la carte ait fini de bouger (animation de zoom, inertie) : trois captures du canvas, espacées de
+// 250 ms, identiques. `deRef` = capture d'avant le geste : on attend d'abord (au plus 4 s) que la carte ait
+// changé — un geste sans effet visible (Alt + molette hors calage) ne change rien et ne doit pas échouer.
+async function attendreCarteImmobile(page, deRef = null) {
+  const canvas = page.locator('#rp9-map canvas').first()
+  const lire = async () => (await canvas.screenshot({ animations: 'disabled' })).toString('base64')
+  if (deRef) await expect.poll(lire, { intervals: [100], timeout: 4_000 }).not.toBe(deRef).catch(() => {})
+  let derniere = null
+  let identiques = 0
+  await expect.poll(async () => {
+    const cette = await lire()
+    identiques = cette === derniere ? identiques + 1 : 0
+    derniere = cette
+    return identiques
+  }, { intervals: [250], timeout: 30_000, message: 'la carte finit de bouger' }).toBeGreaterThanOrEqual(2)
+}
+
 // Défilement de la page : l'ERP défile dans son conteneur de contenu (jamais `window`) — on lit le premier
 // ancêtre défilant de la carte, à défaut `window.scrollY`.
 async function defilement(page) {
@@ -349,9 +366,10 @@ test.describe('ACAL988 — gestes de carte à la souris (bureau)', () => {
       const v = vMolette = await mesurerApres(page, clic, async () => {
         const c = await centreCarte(page)
         depart = await defilement(page)
+        const avantGeste = await page.locator('#rp9-map canvas').first().screenshot({ animations: 'disabled' })
         await page.mouse.move(c.x, c.y)
         await page.mouse.wheel(0, -500)
-        await page.waitForTimeout(1500) // fin de l'animation de zoom
+        await attendreCarteImmobile(page, avantGeste.toString('base64')) // fin de l'animation de zoom
         expect(await defilement(page), `geste « molette » (${SOURIS}) : la page ne défile pas`).toBe(depart)
       })
       expect(v.echelle, `geste « molette » (${SOURIS}) : la molette zoome (degrés par pixel ${base.echelle} -> ${v.echelle})`)
@@ -367,7 +385,7 @@ test.describe('ACAL988 — gestes de carte à la souris (bureau)', () => {
       await page.mouse.move(c.x, c.y)
       await page.mouse.wheel(0, 300)
       await page.keyboard.up('Alt')
-      await page.waitForTimeout(1000)
+      await attendreCarteImmobile(page)
       await expect(page.locator('#rp9-map canvas').first(), `geste « molette + Alt » (${SOURIS}) : la carte reste affichée`).toBeVisible()
       sansErreur(vMolette.erreurs, 'molette + Alt')
     })
@@ -377,8 +395,9 @@ test.describe('ACAL988 — gestes de carte à la souris (bureau)', () => {
         const v = await mesurerApres(page, clic, async () => {
           const cible = await centreRecoitLeClic(page, classe)
           expect(cible.recu, `geste « ${sens} » (${SOURIS}) : le centre du bouton reçoit le clic (reçu par ${cible.sous})`).toBe(true)
+          const avantGeste = (await page.locator('#rp9-map canvas').first().screenshot({ animations: 'disabled' })).toString('base64')
           await page.locator(`.${classe}`).click()
-          await page.waitForTimeout(1500)
+          await attendreCarteImmobile(page, avantGeste)
         })
         const ok = plusPetit ? v.echelle < base.echelle * 0.9 : v.echelle > base.echelle * 1.1
         expect(ok, `geste « ${sens} » (${SOURIS}) : le zoom change dans le bon sens (${base.echelle} -> ${v.echelle})`).toBe(true)
@@ -424,11 +443,12 @@ test.describe('ACAL988 — gestes de carte au doigt (iPhone)', () => {
       const v = await mesurerApres(page, taper, async () => {
         const c = await centreCarte(page)
         haut = await defilement(page)
+        const avantGeste = (await page.locator('#rp9-map canvas').first().screenshot({ animations: 'disabled' })).toString('base64')
         await doigts(page, [
           { de: { x: c.x - 40, y: c.y }, vers: { x: c.x - 40, y: c.y + 80 } },
           { de: { x: c.x + 40, y: c.y }, vers: { x: c.x + 40, y: c.y + 80 } },
         ])
-        await page.waitForTimeout(1200)
+        await attendreCarteImmobile(page, avantGeste)
         expect(await defilement(page), `geste « deux doigts » (${IPHONE}) : la page ne défile pas`).toBe(haut)
       })
       expect(v.coinA, `geste « deux doigts » (${IPHONE}) : la carte a bougé sous les mêmes pixels`).not.toEqual(base.coinA)
@@ -439,11 +459,12 @@ test.describe('ACAL988 — gestes de carte au doigt (iPhone)', () => {
     await etape('geste « pincer »', async () => {
       const v = await mesurerApres(page, taper, async () => {
         const c = await centreCarte(page)
+        const avantGeste = (await page.locator('#rp9-map canvas').first().screenshot({ animations: 'disabled' })).toString('base64')
         await doigts(page, [
           { de: { x: c.x - 20, y: c.y }, vers: { x: c.x - 100, y: c.y } },
           { de: { x: c.x + 20, y: c.y }, vers: { x: c.x + 100, y: c.y } },
         ])
-        await page.waitForTimeout(1500)
+        await attendreCarteImmobile(page, avantGeste)
       })
       expect(v.echelle, `geste « pincer » (${IPHONE}) : écarter deux doigts zoome (${base.echelle} -> ${v.echelle})`)
         .toBeLessThan(base.echelle * 0.9)
@@ -455,8 +476,9 @@ test.describe('ACAL988 — gestes de carte au doigt (iPhone)', () => {
         const v = await mesurerApres(page, taper, async () => {
           const cible = await centreRecoitLeClic(page, classe)
           expect(cible.recu, `geste « ${sens} » (${IPHONE}) : le centre du bouton reçoit le tap (reçu par ${cible.sous})`).toBe(true)
+          const avantGeste = (await page.locator('#rp9-map canvas').first().screenshot({ animations: 'disabled' })).toString('base64')
           await page.locator(`.${classe}`).tap()
-          await page.waitForTimeout(1500)
+          await attendreCarteImmobile(page, avantGeste)
         })
         const ok = plusPetit ? v.echelle < base.echelle * 0.9 : v.echelle > base.echelle * 1.1
         expect(ok, `geste « ${sens} » (${IPHONE}) : le zoom change dans le bon sens (${base.echelle} -> ${v.echelle})`).toBe(true)
@@ -491,8 +513,9 @@ test('ACAL988 — WebKit iPhone 13 : tap coin, « + » / « − », plein écran
       const v = await mesurerApres(page, taper, async () => {
         const cible = await centreRecoitLeClic(page, classe)
         expect(cible.recu, `geste « ${sens} » (${WEBKIT}) : le centre du bouton reçoit le tap (reçu par ${cible.sous})`).toBe(true)
+        const avantGeste = (await page.locator('#rp9-map canvas').first().screenshot({ animations: 'disabled' })).toString('base64')
         await page.locator(`.${classe}`).tap()
-        await page.waitForTimeout(1500)
+        await attendreCarteImmobile(page, avantGeste)
       })
       const ok = plusPetit ? v.echelle < base.echelle * 0.9 : v.echelle > base.echelle * 1.1
       expect(ok, `geste « ${sens} » (${WEBKIT}) : le zoom change dans le bon sens (${base.echelle} -> ${v.echelle})`).toBe(true)

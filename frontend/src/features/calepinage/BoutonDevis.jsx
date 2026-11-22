@@ -105,7 +105,7 @@ export const MESSAGE_RETOUCHES_NON_ENREGISTREES = 'Retouches non enregistrées :
 function messageDevisNonModifie(motif, devis = null) {
   const texte = typeof motif === 'string' ? motif.trim() : ''
   const reference = devis?.reference ? ` ${devis.reference}` : ''
-  const quel = devis?.statut === 'envoye' ? `le devis envoyé${reference}` : `le devis lié${reference}`
+  const quel = `le devis lié${reference}`
   return `La conception est enregistrée, mais ${quel} n’a pas été modifié${texte ? ` : ${texte}` : '.'}`
 }
 

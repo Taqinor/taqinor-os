@@ -623,7 +623,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
 
         await waitFor(() => expect(texte('cal-resume-panneaux')).toContain(`${RESULT.panels} panneaux`),
           { timeout: 3000 })
-        expect(texte('cal-resume-kwc')).toMatch(/14,4 kWc/)
+        expect(texte('cal-resume-kwc')).toMatch(/14,40 kWc/)
         expect(texte('cal-resume-production')).toMatch(/≈ 18 771 kWh\/an \(estimation\)/)
 
         serializeLayout.mockReturnValue({ ...LAYOUT, result: { ...RESULT, panels: 19 } })

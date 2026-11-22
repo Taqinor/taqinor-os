@@ -1045,6 +1045,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     liveResolveFlat();
   }
 
+  /** V1-02 — la cible (kWh/an) d'une carte : celle du solveur si positive, sinon la facture du lead servie (ACAL777), sinon 0. */
+  const cibleDeCarte = (cibleSolveur: number): number => (cibleSolveur > 0 ? cibleSolveur : billToAnnualKwh(factureCarte()));
+
   /** ACAL852 — la phrase de couverture : « ≈ N % de la facture », ou « facture inconnue » quand la cible est absente ou nulle. */
   const couverture = (target: number, cov: number) =>
     (target > 0 ? (modeErp() ? ` — production ÷ consommation : ${cov} %` : ` ≈ ${cov} % de la facture`) : '. Facture inconnue — saisissez-la pour voir la couverture');
@@ -1330,12 +1333,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // V5 : production de vérité = PVGIS au (pente, face) réels, pose 'building'.
     // Disponible → on remplace la valeur table par le chiffre PVGIS et on recalcule
     // couverture + économies de façon cohérente ; sinon repli table (« estimé »).
-    const target = ctx.pitchedRec.targetAnnualKwh;
+    const targetSolveur = ctx.pitchedRec.targetAnnualKwh;
+    const target = cibleDeCarte(targetSolveur); // V1-02 — la facture du lead, repli d'AFFICHAGE (toit en pente aussi)
     const usePvgis = ctx.pitchedPvgisPerKwc != null && ctx.pitchedRec.totalKwc > 0 && !plane.northFacing;
     const f = facteurDerateAnnuel(ctx); // ACAL356 — 1 ⇒ chiffres inchangés
     const annualKwh = (usePvgis ? ctx.pitchedRec.totalKwc * (ctx.pitchedPvgisPerKwc as number) : ctx.pitchedRec.totalAnnualKwh) * f;
     const pct = target > 0 ? (annualKwh / target) * 100 : 0;
-    const savings = usePvgis || f < 1 ? annualSavingsMad(annualKwh, target, tariffForCity(undefined)) : { low: ctx.pitchedRec.savingsLow, high: ctx.pitchedRec.savingsHigh };
+    const savings = usePvgis || f < 1 || (targetSolveur <= 0 && target > 0) ? annualSavingsMad(annualKwh, target, tariffForCity(undefined)) : { low: ctx.pitchedRec.savingsLow, high: ctx.pitchedRec.savingsHigh };
     paintCard(
       {
         title: `Toit en pente ~${Math.round(fp.pitchDeg)}° · face ${facingLabel(ctx.facingAzimuthDeg)}`,
@@ -1412,8 +1416,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     renderScene(flushToPack(w.pack), flushGridToPanelGrid(w.grid), w.pack.pitchDeg, 'south', w.placedCount, true);
     // ACAL356 — dérate ombrage × horizon ; économies recalculées du kWh dératé (1 ⇒ chiffres du solveur).
     const f = facteurDerateAnnuel(ctx);
-    const eco = f < 1 ? annualSavingsMad(w.annualKwh * f, res.target) : { low: w.savingsLow, high: w.savingsHigh };
-    const cov = Math.round(w.pctOfTarget * f);
+    // V1-02 — cible du solveur nulle (champ facture absent en ERP) : la facture du lead sert à l'AFFICHAGE seulement.
+    const cible = cibleDeCarte(res.target);
+    const repli = !(res.target > 0) && cible > 0;
+    const pctCarte = repli ? (w.annualKwh * f / cible) * 100 : w.pctOfTarget * f;
+    const eco = f < 1 || repli ? annualSavingsMad(w.annualKwh * f, cible) : { low: w.savingsLow, high: w.savingsHigh };
+    const cov = Math.round(pctCarte);
     const tiltTxt = `${Math.round(ctx.pitchDeg)}°`;
     // W74 — pan orienté nord (production quasi nulle) ET pan non viable (trop petit /
     // contraint à néant) ont chacun leur message honnête, distincts d'un faux gagnant.
@@ -1427,8 +1435,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         : ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0
           ? `Ce devis ne porte aucun panneau — aucune pose proposée sur ce pan. Fixez un nombre (facture ou saisie) pour calepiner.`
           : isReco
-            ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel})${couverture(res.target, cov)}. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
-            : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux${couverture(res.target, cov)}. Les badges « Recommandé » montrent la pose/marge optimale.`;
+            ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel})${couverture(cible, cov)}. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
+            : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux${couverture(cible, cov)}. Les badges « Recommandé » montrent la pose/marge optimale.`;
     paintCard(
       {
         title: `Toit en pente ~${tiltTxt} · face ${facingLabel(ctx.facingAzimuthDeg)} · ${w.layoutLabel}`,
@@ -1436,14 +1444,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         count: w.placedCount,
         kwc: w.kwc,
         annualKwh: w.annualKwh * f,
-        pct: w.pctOfTarget * f,
+        pct: pctCarte,
         savingsLow: eco.low,
         savingsHigh: eco.high,
         why,
         family: 'south', // pose affleurante mono-orientation → pas d'écrêtage E-O
         flush: true, // ACAL975 — pose affleurante : pas de gain bifacial
         tiltDeg: w.pack.pitchDeg,
-        target: ctx.pitchedRec ? ctx.pitchedRec.targetAnnualKwh : undefined,
+        target: ctx.pitchedRec ? cibleDeCarte(ctx.pitchedRec.targetAnnualKwh) : undefined,
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS · pose affleurante « building »)' : '(production estimée · table committée — PVGIS indisponible)',
     );

@@ -549,6 +549,38 @@ describe('ACAL777 — factureCarteDe / lireFactureSaisie', () => {
     expect(factureCarteDe(0, undefined)).toBe(0);
     expect(factureCarteDe(0, -5)).toBe(0);
   });
+  // V1-02 — lead à factures été ≠ hiver (moyenne servie 1 350) : en TOIT EN PENTE le solveur lisait le champ
+  // `rp9-bill` (absent en ERP ⇒ 0) et la tuile restait « — / Facture inconnue » ; la facture servie est le repli d'AFFICHAGE.
+  it('V1-02 : toit en pente sans champ facture — la tuile a sa valeur depuis la facture servie, plus « Facture inconnue »', () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+      + '<dd id="rp9-reco-cover"></dd><p id="rp9-reco-band"></p><p id="rp9-reco-why"></p></body>').window.document;
+    g.document = doc;
+    const lancer = (factureServie: number | null) => {
+      const ctx = {
+        closed: true, vertices: rectRing(10, 8), roofType: 'pitched', pitchDeg: 25, facingAzimuthDeg: 200, centroidLat: 33.5,
+        areas: [], activeAreaId: null, opts: { chiffrage: null }, neededAuto: true, neededPanels: 0, pinned: new Set(),
+        pitchedYieldCache: new Map(), pitchedLocks: {}, overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        activeArea: () => null, dom: {}, centroid: [-7, 33],
+      } as unknown as Ctx;
+      const deps = {
+        renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, factureCarte: () => factureServie ?? 0,
+        obstructionRings: vi.fn(() => []), setStatus: vi.fn(),
+      };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolvePitched();
+      return (id: string) => doc.getElementById(id)?.textContent ?? '';
+    };
+    try {
+      const avecFacture = lancer(1350);
+      expect(avecFacture('rp9-reco-cover')).toMatch(/\d+ %/);
+      expect(avecFacture('rp9-reco-why')).not.toContain('Facture inconnue');
+      const sansFacture = lancer(null);
+      expect(sansFacture('rp9-reco-cover')).toBe('—'); // rien inventé sans facture
+      expect(sansFacture('rp9-reco-why')).toContain('Facture inconnue');
+    } finally { g.document = avant; }
+  });
   it('lireFactureSaisie : espaces et virgule décimale lus, vide ou illisible = 0', () => {
     expect(lireFactureSaisie({ value: '1 250,5' })).toBe(1250.5);
     expect(lireFactureSaisie({ value: '' })).toBe(0);

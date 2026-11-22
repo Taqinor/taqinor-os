@@ -124,7 +124,16 @@ describe('AtelierPanneaux (CAL37)', () => {
           contexte={{ ...CTX, calepinage: { ...CTX.calepinage, devis_lie: { ...lie, statut: 'envoye' } } }} />
       </MemoryRouter>,
     )
-    expect(screen.getByTestId('cal-devis-perime')).toHaveTextContent('Devis envoyé : il ne sera pas modifié')
+    expect(screen.getByTestId('cal-devis-perime'))
+      .toHaveTextContent('Devis envoyé : la resynchronisation le corrigera, et la correction sera notée sur le devis')
+    rerender(
+      <MemoryRouter>
+        <AtelierPanneaux calepinageId={CTX.calepinage.id}
+          contexte={{ ...CTX, calepinage: { ...CTX.calepinage, devis_lie: { ...lie, statut: 'accepte' } } }} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('cal-devis-perime'))
+      .toHaveTextContent('Devis accepté : il ne sera pas modifié — créez une révision')
   })
 
   it('lecture seule : aucune écriture proposée', async () => {

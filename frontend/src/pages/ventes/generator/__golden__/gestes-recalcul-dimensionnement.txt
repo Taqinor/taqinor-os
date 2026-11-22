@@ -494,18 +494,6 @@ Ligne optionnelle (add-on hors total)=on [ ]
         "lead": 77,
         "facture_hiver": 3000,
         "ville": "Mohammedia",
-        "kwc": 5.68
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia",
         "kwc": 5.68,
         "batterie_kwh": 5,
         "batteries": [

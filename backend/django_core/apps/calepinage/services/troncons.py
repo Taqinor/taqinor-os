@@ -243,6 +243,21 @@ def _troncon_publie(cheminement, longueur, rang):
     }
 
 
+def phrase_de_l_omission(omission):
+    """La phrase publiée d'une omission : tronçon et champ en intitulés (R3-19),
+    jamais la clé technique ; un champ sans intitulé connu n'est pas cité."""
+    from .rapport.champs_lisibles import champ_en_clair
+
+    nommes = []
+    if omission.get('troncon'):
+        nommes.append('tronçon « %s »' % omission['troncon'])
+    champ = champ_en_clair(omission.get('champ'))
+    if champ:
+        nommes.append('champ « %s »' % champ)
+    motif = omission.get('motif') or ''
+    return '%s : %s' % (', '.join(nommes), motif) if nommes else motif
+
+
 def _omission(troncon, champ, motif):
     """Une omission NOMMÉE : le tronçon, le champ, et pourquoi en français."""
     return {'troncon': troncon, 'champ': champ, 'motif': motif}

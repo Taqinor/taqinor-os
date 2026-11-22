@@ -105,3 +105,16 @@ test('apiErrorMessageServi: Blob illisible ou corps ordinaire → contrat habitu
     'Une erreur est survenue.')
   assert.equal(await apiErrorMessageServi({ response: { status: 400, data: { detail: 'X' } } }), 'X')
 })
+
+test('getApiError: une phrase serveur qui nomme déjà le champ n\'est pas préfixée par la clé technique (N5)', () => {
+  const phrase = 'La température minimale (60.0 °C) doit être inférieure à la température maximale (10.0 °C) : les deux champs semblent inversés.'
+  const err = { response: { status: 400, data: { temperature_min_c: [phrase] } } }
+  const { message, fieldErrors } = getApiError(err)
+  assert.equal(message, phrase)
+  assert.deepEqual(fieldErrors, { temperature_min_c: phrase })
+  const guillemets = { response: { status: 400, data: { nombre_modules: ['« Nombre de modules dans la chaîne » doit être un entier strictement positif.'] } } }
+  assert.equal(getApiError(guillemets).message, '« Nombre de modules dans la chaîne » doit être un entier strictement positif.')
+  // Une réponse générique courte garde son préfixe : sans lui, elle ne dirait rien.
+  const courte = { response: { status: 400, data: { temperature_min_c: ['Requis'] } } }
+  assert.equal(getApiError(courte).message, 'Temperature min c : Requis')
+})

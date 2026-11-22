@@ -211,7 +211,14 @@ class CinqSourcesDeRefusTest(unittest.TestCase):
         self.assertEqual([motif['statut'] for motif in motifs],
                          [STATUT_MOTIF_OMIS])
         self.assertIn('ch5', motifs[0]['libelle'])
-        self.assertIn('section_mm2', motifs[0]['libelle'])
+        # R3-19 : le champ s'écrit par son intitulé, jamais sa clé technique.
+        self.assertIn('section du câble', motifs[0]['libelle'])
+        self.assertNotIn('section_mm2', motifs[0]['libelle'])
+        vide = electrique._motifs_des_troncons({'omissions': [{
+            'troncon': None, 'champ': 'electrical.cheminements',
+            'motif': "aucun cheminement n'est tracé"}], 'verdicts': []})
+        self.assertNotIn('electrical.', vide[0]['libelle'])
+        self.assertNotIn('« — »', vide[0]['libelle'])
 
 
 class OmisMaisMotiveResteePubliableTest(unittest.TestCase):

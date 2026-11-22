@@ -127,7 +127,8 @@ class TableTest(unittest.TestCase):
         ligne = re.search(r'<tr[^>]*data-etape="spectral">.*?</tr>',
                           self.html).group(0)
         self.assertIn('<td>omis</td>', ligne)
-        self.assertIn('D-CALX 16', ligne)
+        self.assertNotIn('CALX', ligne)  # R3-19 : jamais un code de tâche
+        self.assertIn('Le spectral figure dans la cascade', ligne)
         self.assertNotIn('<td>0</td>', ligne)
 
     def test_un_gain_garde_son_signe_servi(self):
@@ -260,7 +261,7 @@ class MotifsLisiblesTest(unittest.TestCase):
         html, _ = self._html('ombrage.shading12x24')
         self.assertIn('matrice d&#x27;ombrage 12 mois × 24 heures', html)
         html, _ = self._html('un.chemin_inconnu')
-        self.assertIn('donnée manquante', html)
+        self.assertIn('Une donnée manque', html)
 
     def test_liste_non_renseigne_et_reglage_de_la_societe(self):
         from apps.calepinage.services.rapport.champs_lisibles import (
@@ -278,6 +279,122 @@ class MotifsLisiblesTest(unittest.TestCase):
         # Une phrase sans chemin est rendue telle quelle.
         phrase = 'Un facteur 1 supposé se lirait « aucune ombre, vérifié ».'
         self.assertEqual(motif_lisible(phrase), phrase)
+
+
+class FamilleDeMotifsSansNomInterneTest(unittest.TestCase):
+    """R3-19 (suite) — aucun motif que les services peuvent produire ne sort
+    de ``motif_lisible`` avec un code de tâche, un chemin pointé, une clé en
+    soulignés ou un index."""
+
+    INTERDIT = re.compile(r'[A-Za-z]{2}\.[A-Za-z_]{2}|_|\[\]|\[\d+\]|::|CALX|ACAL|\bCAL\d')
+
+    def test_les_motifs_du_contrat_et_des_services_sont_propres(self):
+        import importlib
+        import pkgutil
+
+        from apps.calepinage import services
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            motif_lisible,
+        )
+
+        phrases = set()
+        for racine in (RACINE_APP / 'contract_samples').glob('*.json'):
+            for motif in _motifs_du_json(json.loads(
+                    racine.read_text(encoding='utf-8'))):
+                phrases.add(motif)
+        for info in pkgutil.walk_packages(services.__path__,
+                                          services.__name__ + '.'):
+            try:
+                module = importlib.import_module(info.name)
+            except Exception:  # noqa: BLE001 — un module sans dépendance locale
+                continue
+            for nom, valeur in vars(module).items():
+                if nom.startswith('MOTIF') and isinstance(valeur, str):
+                    phrases.add(valeur)
+        self.assertGreater(len(phrases), 50)
+        for phrase in sorted(phrases):
+            with self.subTest(phrase=phrase[:60]):
+                sortie = motif_lisible(phrase.replace('{', '').replace('}', ''))
+                self.assertIsNone(self.INTERDIT.search(sortie), sortie)
+
+    def test_les_exemples_du_rapport(self):
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            motif_lisible,
+        )
+
+        attendus = {
+            'Meeus par core.calepinage.soleil (CALX146).':
+                'Meeus par position du soleil.',
+            'Il faut la fiche (FicheTechnique.sous_chaines_par_module) et '
+            "l'accès (solarAccess.bandes). L'un manque.":
+                "Il faut la fiche et l'accès. L'un manque.",
+            'Étape omise. Champ manquant : « un.chemin_inconnu ».':
+                'Étape omise. Une donnée manque.',
+            'Pertes non renseignées (salissure, lid, ohmique_dc) : non publiée.':
+                'Pertes non renseignées (salissure, LID (première exposition), '
+                'pertes ohmiques DC) : non publiée.',
+        }
+        for brut, propre in attendus.items():
+            with self.subTest(brut=brut):
+                self.assertEqual(motif_lisible(brut), propre)
+
+    def test_les_postes_non_sources_s_impriment_par_leur_libelle(self):
+        resultat = copy.deepcopy(RESULTAT['exemple'])
+        resultat['cascade']['postes_non_sources'] = ['ohmique_dc', 'lid']
+        html = html_de_section(contexte(resultat))
+        self.assertNotIn('ohmique_dc,', html)
+        self.assertIn('Pertes ohmiques DC, LID (première exposition)', html)
+
+    def test_le_resultat_servi_porte_le_texte_lisible_a_cote_du_motif(self):
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            avec_motifs_lisibles,
+        )
+
+        motif = 'Omis. Champ manquant : « ombrage.shading12x24 ».'
+        resultat = {'cascade': {'etapes': [
+            {'etape': 'a', 'motif_omission': motif},
+            {'etape': 'b', 'motif_omission': ''}]}}
+        servi = avec_motifs_lisibles(resultat)
+        a, b = servi['cascade']['etapes']
+        self.assertEqual(a['motif_omission'], motif)  # la donnée ne change pas
+        self.assertIn("matrice d'ombrage", a['motif_lisible'])
+        self.assertNotIn('shading12x24', a['motif_lisible'])
+        self.assertNotIn('motif_lisible', b)
+        self.assertNotIn('motif_lisible', resultat['cascade']['etapes'][0])
+        self.assertEqual(avec_motifs_lisibles({'cascade': None}),
+                         {'cascade': None})
+
+    def test_l_echantillon_du_resultat_porte_le_texte_lisible(self):
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            motif_lisible,
+        )
+
+        echantillon = json.loads((RACINE_APP / 'contract_samples'
+                                  / 'calepinage_resultat.json').read_text(
+                                      encoding='utf-8'))['exemple']
+        for etape in echantillon['cascade']['etapes']:
+            if etape.get('motif_omission'):
+                self.assertEqual(etape['motif_lisible'],
+                                 motif_lisible(etape['motif_omission']))
+
+    def test_un_decimal_se_groupe_comme_un_nombre(self):
+        from decimal import Decimal
+
+        self.assertEqual(nombre_tel_que_servi(Decimal('39255')),
+                         '39' + chr(0x202f) + '255')
+        self.assertEqual(nombre_tel_que_servi(Decimal('1234')), '1234')
+
+
+def _motifs_du_json(noeud):
+    if isinstance(noeud, dict):
+        for cle, valeur in noeud.items():
+            if 'motif' in cle and isinstance(valeur, str):
+                yield valeur
+            else:
+                yield from _motifs_du_json(valeur)
+    elif isinstance(noeud, list):
+        for valeur in noeud:
+            yield from _motifs_du_json(valeur)
 
 
 class SansCascadeTest(unittest.TestCase):

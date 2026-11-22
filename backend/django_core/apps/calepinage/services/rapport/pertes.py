@@ -43,7 +43,7 @@ from __future__ import annotations
 from html import escape
 
 from . import nombre_tel_que_servi
-from .champs_lisibles import motif_lisible
+from .champs_lisibles import libelle_de_poste, motif_lisible
 
 __all__ = ['CSS_SECTION', 'MENTION_CASCADE_ABSENTE',
            'html_de_section']
@@ -192,7 +192,8 @@ def _table_cascade(contexte, cascade, langue):
                 escape(_libelle(contexte, 'energie_livree'))))
     blocs = ['<table class="pertes-cascade"><tr>%s</tr>%s%s</table>'
              % (entete, lignes, total)]
-    non_sources = [str(p) for p in cascade.get('postes_non_sources') or ()
+    non_sources = [libelle_de_poste(str(p)) or str(p).replace('_', ' ')
+                   for p in cascade.get('postes_non_sources') or ()
                    if str(p).strip()]
     if non_sources:
         blocs.append('<p class="note">%s : %s</p>' % (

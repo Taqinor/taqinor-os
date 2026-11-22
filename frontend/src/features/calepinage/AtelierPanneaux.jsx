@@ -93,6 +93,20 @@ const LIBELLES_SOURCE_CIBLE = {
    `reviserEtOuvrir`, jamais un second). Le motif est `contexte.raison_lecture_seule`,
    la phrase du serveur reprise MOT POUR MOT — aucun état local.
    ========================================================================== */
+/* Recette V1-01 — ce que « Resynchroniser » fera du devis lié, selon son statut (règle QJR5, miroir
+   de `ventes/domain/resynchronisation.py`) : brouillon et envoyé se corrigent sur place (l'envoyé :
+   correction notée sur le devis) ; accepté, refusé, expiré se révisent (V2), jamais modifiés. */
+const LIBELLES_DEVIS_FIGES = { accepte: 'accepté', refuse: 'refusé', expire: 'expiré' }
+function libelleDevisPerime(statut) {
+  if (statut === 'envoye') {
+    return 'Devis envoyé : la resynchronisation le corrigera, et la correction sera notée sur le devis'
+  }
+  if (LIBELLES_DEVIS_FIGES[statut]) {
+    return `Devis ${LIBELLES_DEVIS_FIGES[statut]} : il ne sera pas modifié — créez une révision`
+  }
+  return 'Devis périmé — à resynchroniser'
+}
+
 function BandeauVerrou({ raison }) {
   return (
     <div className="mt-4 border border-brass-400/40 p-3" data-testid="cal-bandeau-lecture-seule">
@@ -189,15 +203,13 @@ export default function AtelierPanneaux({
           {/* CAL188 — l'en-tête de l'atelier, lu du MÊME champ serveur que la
               fiche devis et la liste (CAL189), jamais recalculé ici. */}
           {/* R2-13 — le devis lié ne suit plus la conception : dit tout de suite (le détail est relu
-              à chaque enregistrement), et dit qu'un devis ENVOYÉ ne sera pas modifié. */}
+              à chaque enregistrement) ce que la resynchronisation en fera, selon le statut. */}
           {detail?.layout_stale === true
             ? (
               <span data-testid="cal-devis-perime"
                 title="Les chiffres du devis ne correspondent plus à cette conception."
                 className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-300">
-                {calepinage?.devis_lie?.statut === 'envoye'
-                  ? 'Devis envoyé : il ne sera pas modifié'
-                  : 'Devis périmé — à resynchroniser'}
+                {libelleDevisPerime(calepinage?.devis_lie?.statut)}
               </span>
             )
             : (

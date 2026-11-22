@@ -628,16 +628,16 @@ describe('BoutonDevis — recette R2 (pose au-delà de la cible, devis existant,
     expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0078 créé')
   })
 
-  it('R2-23 : conception enregistrée, devis envoyé refusé ⇒ le motif du serveur, jamais « non enregistrée »', async () => {
-    const MOTIF = 'Ce devis ne peut plus être resynchronisé.'
-    const ENVOYE = { ...DETAIL, devis: { ...DETAIL.devis, statut: 'envoye' } }
+  it('R2-23 / V1-01 : conception enregistrée, devis refusé ⇒ le motif du serveur, sans « envoyé » en dur', async () => {
+    const MOTIF = 'Devis accepté : révisez-le'
+    const ENVOYE = { ...DETAIL, devis: { ...DETAIL.devis, statut: 'accepte' } }
     // La valeur que l'atelier rend quand la conception est rangée mais la resynchro refusée.
     const enregistrerAvant = vi.fn(async () => ({ enregistre: true, devisModifie: false, motif: MOTIF }))
     rendre({ detail: ENVOYE, enregistrerAvant })
     await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
     const refus = await screen.findByTestId('cal-devis-refus')
     expect(refus).toHaveTextContent(
-      `La conception est enregistrée, mais le devis envoyé ${DETAIL.devis.reference} n’a pas été modifié : ${MOTIF}`)
+      `La conception est enregistrée, mais le devis lié ${DETAIL.devis.reference} n’a pas été modifié : ${MOTIF}`)
     expect(refus).not.toHaveTextContent('n’a pas pu être enregistrée')
     expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
   })

@@ -329,6 +329,13 @@ def _ecart_pvgis(validation):
     return controle
 
 
+def _lisible(motif):
+    """Le motif servi, rendu sans nom interne (R3-19) : la donnée ne change pas."""
+    from .rapport.champs_lisibles import motif_lisible
+
+    return motif_lisible(motif)
+
+
 def _ombrage_chiffre(cascade):
     from .etapes.ombrage_proche import POSTE
 
@@ -340,7 +347,7 @@ def _ombrage_chiffre(cascade):
                          'Non simulé', cible=CIBLE_PRODUCTION)
     if etape.get('motif_omission'):
         return _controle('ombrage_chiffre', libelle, 'a_regler', 'Omis',
-                         cause=etape['motif_omission'],
+                         cause=_lisible(etape['motif_omission']),
                          geste='Compléter les obstacles et relancer',
                          cible=CIBLE_PRODUCTION)
     perte = etape.get('perte_pct')

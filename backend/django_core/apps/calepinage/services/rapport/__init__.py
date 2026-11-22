@@ -59,6 +59,7 @@ from __future__ import annotations
 import functools
 import importlib
 import json
+from decimal import Decimal
 from html import escape
 
 #: Le code du document, la déclaration des sections (CALX292) et le refus
@@ -300,6 +301,13 @@ def nombre_tel_que_servi(valeur, langue='fr'):
         return '—'
     if isinstance(valeur, int):
         return _grouper_milliers(str(valeur), langue, _CHIFFRES_ENTIER_MIN)
+    if isinstance(valeur, Decimal):
+        # N4 : un Decimal (production du devis) se groupe comme un nombre.
+        texte = format(valeur, 'f')
+        texte = _grouper_milliers(
+            texte, langue,
+            _CHIFFRES_FLOTTANT_MIN if '.' in texte else _CHIFFRES_ENTIER_MIN)
+        return texte.replace('.', ',') if langue != 'en' else texte
     if isinstance(valeur, float):
         texte = _grouper_milliers(repr(valeur), langue, _CHIFFRES_FLOTTANT_MIN)
         return texte.replace('.', ',') if langue != 'en' else texte
