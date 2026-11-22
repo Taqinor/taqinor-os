@@ -64,7 +64,7 @@
 .cal-res-cta:hover { filter: brightness(0.96); }
 
 /* ── Résultat incomplet ──────────────────────────────────────────────────── */
-.cal-resinc-haut { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.cal-resinc-haut { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; }
 .cal-resinc-plafond { padding: 28px; border-radius: 14px; gap: 8px; }
 .cal-resinc-phrase { font-size: 14px; line-height: 1.45; margin: 0; color: var(--color-lune); }
 .cal-resinc-progres { margin-top: 12px; display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600; }

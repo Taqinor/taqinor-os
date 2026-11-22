@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import calepinageApi from '../../../../../api/calepinageApi'
 import { messageRefus } from '../../../commun/refusServeur'
 import { lireConflit } from '../../../conflitEcriture'
+import { fmtKwc } from './panneaux/sources'
 
 /* ============================================================================
    ÉTAPE TOIT (maquette Main, 22/11) — LECTURE DU DOM DU CONSTRUCTEUR ET RENVOI
@@ -41,39 +42,46 @@ const nombre = (t) => {
   return m ? Number(m[0].replace(',', '.')) : null
 }
 
-/** « Surface du toit » : la somme des surfaces de la table des pans quand il y en a plusieurs, sinon la
-    surface du pan tracé (`#rp9-area-value`, sans son « ~ »). `null` tant qu'aucun contour n'existe. */
+/** « Surface du toit » : la somme des surfaces de la table des pans quand il y en a plusieurs (un pan encore
+    à tracer, « — », n'y compte pas), sinon la surface du pan tracé (`#rp9-area-value`, sans son « ~ »).
+    `null` tant qu'aucun contour n'existe. */
 export function lireSurface(racine) {
   const lignes = [...(racine?.querySelectorAll?.('[data-pan-stat]') ?? [])]
-  if (lignes.length > 1) {
-    const valeurs = lignes.map((l) => {
-      const cellules = l.querySelectorAll('td')
-      return nombre(texte(cellules[cellules.length - 2]))
-    })
-    if (valeurs.every((v) => v !== null)) {
-      return `${valeurs.reduce((a, b) => a + b, 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} m²`
-    }
-  }
+  const valeurs = lignes.map((l) => {
+    const cellules = l.querySelectorAll('td')
+    return nombre(texte(cellules[cellules.length - 2]))
+  }).filter((v) => v !== null && v > 0)
+  const somme = valeurs.length > 0
+    ? `${valeurs.reduce((a, b) => a + b, 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} m²`
+    : null
+  if (lignes.length > 1 && somme) return somme
   const t = texte(parId(racine, 'rp9-area-value')).replace(/^~\s*/, '')
-  return vide(t) ? null : t
+  // Le pan actif encore à tracer (ajout d'un pan) : la table garde le toit déjà tracé.
+  return vide(t) ? somme : t
 }
 
-/** Nombre de pans de la liste des zones (`#rp9-areas-list [data-area-row]`), `null` s'il n'y en a aucun. */
+/** Les zones de la liste du script (`#rp9-areas-list [data-area-row]`) : l'active est celle sans bouton
+    « Voir » ; « à tracer » = sans contour (texte écrit par `zones.ts::renderAreasPanel`). */
+export function lireZones(racine) {
+  return [...(racine?.querySelectorAll?.('#rp9-areas-list [data-area-row]') ?? [])].map((li) => ({
+    id: li.dataset.areaRow,
+    active: !li.querySelector('[data-area-select]'),
+    aTracer: /à tracer/.test(texte(li)),
+  }))
+}
+
+/** Nombre de pans TRACÉS de la liste des zones (une zone « à tracer » n'est pas encore un pan), `null` sans pan. */
 export function lirePans(racine) {
-  const n = racine?.querySelectorAll?.('#rp9-areas-list [data-area-row]')?.length ?? 0
+  const n = lireZones(racine).filter((z) => !z.aTracer).length
   return n > 0 ? n : null
 }
 
-/** « Besoin d'après la facture » : la puissance recommandée (`#rp9-reco-kwc`) SEULEMENT quand une facture la
-    dimensionne (économie connue) et que le toit la tient (production ÷ consommation ≥ 100 %) — sinon `null`. */
-export function lireBesoin(racine) {
-  const kwc = texte(parId(racine, 'rp9-reco-kwc'))
-  if (!/kWc/.test(kwc)) return null
-  const economie = texte(parId(racine, 'rp9-reco-savings'))
-  if (vide(economie) || /facture inconnue/i.test(economie)) return null
-  const couverture = nombre(texte(parId(racine, 'rp9-reco-cover')))
-  if (couverture === null || couverture < 100) return null
-  return `≈ ${kwc}`
+/** « Besoin d'après la facture » : UNIQUEMENT la taille tirée des factures du lead que sert le design-context
+    (`cible_factures.kwc`, accesseur `panneaux/sources.js::cibleFactures`, même chiffre et même format que l'étape
+    Panneaux). Jamais un chiffre du constructeur : en mode calepinage, ses `rp9-reco-*` / `rp9-need-*` décrivent la
+    pose ou la cible ENREGISTRÉE du pan, pas la facture. `null` (puce à deux parts) sans bloc servi. */
+export function texteBesoin(cible) {
+  return typeof cible?.kwc === 'number' && cible.kwc > 0 ? `≈ ${fmtKwc(cible.kwc)}` : null
 }
 
 /** Vue de la caméra lue sur la boussole de MapLibre (`rotateX(<inclinaison>deg)`) : 'plan' ou '3d', `null` inconnue. */
@@ -148,7 +156,6 @@ export function lireEtatToit(racine) {
   return {
     surface: lireSurface(racine),
     pans: lirePans(racine),
-    besoin: lireBesoin(racine),
     cotes: lireCotes(racine),
     obstacles: lireObstacles(racine),
     pente: lirePente(racine),
@@ -172,13 +179,43 @@ export const GESTES = {
     if (o.obstacle) cliquerControle(racine, 'rp9-obstacle')
     if (o.mesure) cliquerControle(racine, 'rp9-mesure-cancel')
   },
-  // Tracer : contour fermé ⇒ « + Ajouter une zone » (nouveau contour) ; sinon le tracé au clic est déjà actif.
-  trace: (racine) => (lireOutils(racine).ferme ? cliquerControle(racine, 'rp9-add-area') : false),
+  // Tracer, sans toit : le tracé au clic est déjà le mode actif (rien à cliquer). Avec un toit : `commencerAjoutPan`.
+  trace: () => false,
   obstacle: (racine) => cliquerControle(racine, 'rp9-obstacle'),
   mesure: (racine) => cliquerControle(racine, lireOutils(racine).mesure ? 'rp9-mesure-cancel' : 'rp9-mesure-distance'),
   // Annuler : le dernier point pendant un tracé, sinon l'historique de pose.
   annuler: (racine) => cliquerControle(racine, visible(parId(racine, 'rp9-undo-point')) ? 'rp9-undo-point' : 'rp9-layout-undo'),
   retablir: (racine) => cliquerControle(racine, 'rp9-layout-redo'),
+}
+
+const ligneZone = (racine, attribut, id) => [...(racine?.querySelectorAll?.(`[${attribut}]`) ?? [])]
+  .find((b) => b.getAttribute(attribut) === id) ?? null
+
+/** « Ajouter un pan » (toit déjà tracé) : « + Ajouter une zone » du script (`addArea`), qui ouvre une zone vide et
+    la rend active. Rend `{ precedent, nouveau }` (ids de zone) pour pouvoir l'annuler, `null` si rien n'est parti. */
+export function commencerAjoutPan(racine) {
+  const avant = lireZones(racine)
+  if (!cliquerControle(racine, 'rp9-add-area')) return null
+  const nouveau = lireZones(racine).find((z) => !avant.some((a) => a.id === z.id))
+  if (!nouveau) return null
+  return { precedent: avant.find((z) => z.active)?.id ?? null, nouveau: nouveau.id }
+}
+
+/** Annule l'ajout : la zone ouverte est supprimée par son « × » (`deleteArea`) et le pan d'avant redevient actif
+    par son « Voir » (`selectArea`) — le toit d'avant revient tel quel. Rend vrai si la zone a été retirée. */
+export function annulerAjoutPan(racine, ajout) {
+  const suppr = ligneZone(racine, 'data-area-del', ajout?.nouveau)
+  if (!suppr) return false
+  suppr.click()
+  ligneZone(racine, 'data-area-select', ajout.precedent)?.click()
+  return true
+}
+
+/** L'ajout est fini quand sa zone n'existe plus, ou que son contour est fermé : la ligne n'est plus « à tracer »,
+    ou « + Ajouter une zone » est réactivé (le script ne l'active que contour fermé — même un pan sans panneau). */
+export function ajoutTermine(racine, ajout) {
+  const z = lireZones(racine).find((x) => x.id === ajout.nouveau)
+  return !z || !z.aTracer || lireOutils(racine).ferme
 }
 
 /** Pose longueur × largeur dans le vrai contrôle : « Créer le toit » (soumet `#rp9-toit-cotes`) ou les cotes du

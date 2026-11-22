@@ -4,6 +4,7 @@ import '../../../styles/calepinage/54-etape-resultats.css'
 import { lienManque } from './lienManque'
 import { BandeauBorneHaute } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
+import { nomDePerte } from './nomsPertes'
 import { kwh } from './ResultatHeros.helpers'
 
 /* ACAL700 — L'ÉTAT « RÉSULTAT INCOMPLET » (maquette ResultatsIncomplet.dc.html) :
@@ -108,7 +109,9 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null 
               <li key={`${ligne.etape}-${ligne.cle}`} className="cal-resinc-ligne" data-testid="acal700-ligne">
                 <span className="cal-resinc-rang" aria-hidden="true">{i + 1}</span>
                 <span className="cal-resinc-texte">
-                  <span className="cal-resinc-nom">{ligne.libelle}</span>
+                  <span className="cal-resinc-nom" title={nomDePerte(ligne.etape, ligne.libelle).technique || undefined}>
+                    {nomDePerte(ligne.etape, ligne.libelle).nom}
+                  </span>
                   {RAISON[ligne.nature] && <span className="cal-resinc-raison">{RAISON[ligne.nature]}</span>}
                 </span>
                 <Link to={lienManque(calepinageId, ligne.cible)} className="cal-resinc-bouton"

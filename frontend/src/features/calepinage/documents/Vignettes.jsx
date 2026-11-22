@@ -1,43 +1,56 @@
-/* ACAL1193 — les vignettes de l'écran Documents (maquette `Documents.dc.html`) : cinq pictogrammes
-   statiques de 112 × 80, dessinés en SVG intégré. Aucune image, aucune couleur écrite : tout est
-   `currentColor` (la couleur du fond de vignette vient de la CSS, par jeton) avec des opacités. */
+/* ACAL1193 — les vignettes de l'écran Documents (maquette `Documents.dc.html`) : cinq petits plans
+   à plat de 112 × 80, dessinés en SVG intégré, au trait de la maquette (toit vu de dessus, panneaux
+   sombres en deux rangées, cotes ; schéma relié ; page de texte et tableau ; page avec histogramme ;
+   contour DXF en traits fins). Aucune image : tout est jeton (`var(--…)`), le fond et le filet de la
+   vignette viennent de la CSS. Ce sont des pictogrammes du TYPE de document, jamais le dessin du projet. */
 
-const CADRE = { width: 112, height: 80, viewBox: '0 0 112 80', fill: 'none', 'aria-hidden': 'true', focusable: 'false' }
-const TRAIT = { stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }
+const CADRE = { width: 112, height: 80, viewBox: '0 0 112 80', 'aria-hidden': 'true', focusable: 'false' }
+const NAVY = 'var(--foreground)'
+const OR = 'var(--primary)'
+const FILET = 'var(--border)'
+const SOURD = 'var(--muted-foreground)'
+const PAGE = 'var(--card)'
+const BLEU = 'var(--info)'
 
-function Panneaux({ x0, y0, lignes, colonnes, l = 14, h = 9, pas = 3 }) {
-  const cases = []
-  for (let r = 0; r < lignes; r += 1) {
-    for (let c = 0; c < colonnes; c += 1) {
-      cases.push(<rect key={`${r}-${c}`} x={x0 + c * (l + pas)} y={y0 + r * (h + pas)} width={l} height={h} rx="1.5"
-        fill="currentColor" fillOpacity={0.18 + ((r + c) % 3) * 0.12} {...TRAIT} strokeWidth={1} />)
-    }
-  }
-  return cases
+/** Une rangée de panneaux de 12 × 10 (pas 12), de `x0` à `x0 + 6 × 12`. */
+function Rangee({ x0 = 19, y, plein = true }) {
+  return [0, 1, 2, 3, 4, 5].map((i) => (
+    <rect key={i} x={x0 + i * 12} y={y} width="12" height="10"
+      fill={plein ? NAVY : 'none'} fillOpacity={plein ? 0.9 : undefined} stroke={plein ? PAGE : NAVY}
+      strokeWidth=".8" />
+  ))
 }
 
 function PlanDePose() {
   return (
     <svg {...CADRE}>
-      <path d="M10 66V24l46-14 46 14v42z" {...TRAIT} fillOpacity="0.06" fill="currentColor" />
-      <Panneaux x0={22} y0={26} lignes={3} colonnes={4} />
-      <path d="M22 62h68" {...TRAIT} strokeWidth={1.2} strokeDasharray="3 3" />
-      <path d="M10 72h92M10 69v6M102 69v6" {...TRAIT} strokeWidth={1} />
+      <rect x="14" y="12" width="84" height="56" fill={PAGE} stroke={OR} strokeWidth="1.5" />
+      <path d="M14 40h84" stroke={OR} strokeOpacity=".6" strokeWidth="1" />
+      <Rangee y={43} />
+      <Rangee y={53} />
+      <path d="M14 6h84M14 4v4M98 4v4M104 12v56M102 12h4M102 68h4" stroke={SOURD} strokeWidth="1" fill="none" />
     </svg>
   )
 }
 
 function SchemaElectrique() {
+  const boite = { fill: PAGE, stroke: NAVY, strokeWidth: 1.2 }
   return (
     <svg {...CADRE}>
-      <rect x="8" y="14" width="26" height="18" rx="2" fill="currentColor" fillOpacity="0.2" {...TRAIT} />
-      <rect x="8" y="46" width="26" height="18" rx="2" fill="currentColor" fillOpacity="0.2" {...TRAIT} />
-      <path d="M34 23h16v32H34M50 39h12" {...TRAIT} />
-      <rect x="62" y="27" width="22" height="24" rx="3" fill="currentColor" fillOpacity="0.12" {...TRAIT} />
-      <path d="M68 39h10M73 34v10" {...TRAIT} strokeWidth={1.2} />
-      <path d="M84 39h10" {...TRAIT} />
-      <circle cx="102" cy="39" r="8" {...TRAIT} />
-      <path d="M98 39h8" {...TRAIT} strokeWidth={1.2} />
+      <g fill={BLEU}>
+        <rect x="8" y="18" width="6" height="8" /><rect x="15" y="18" width="6" height="8" />
+        <rect x="22" y="18" width="6" height="8" />
+      </g>
+      <g fill={SOURD}>
+        <rect x="8" y="32" width="6" height="8" /><rect x="15" y="32" width="6" height="8" />
+        <rect x="22" y="32" width="6" height="8" />
+      </g>
+      <path d="M28 22h12M28 36h12M58 29h12M86 29v20M86 58v6H66M50 64H40" fill="none" stroke={NAVY} strokeWidth="1.2" />
+      <rect x="40" y="16" width="18" height="26" rx="2" {...boite} />
+      <rect x="70" y="16" width="22" height="28" rx="2" {...boite} />
+      <path d="M72 42l18-24" stroke={NAVY} strokeWidth="1" />
+      <rect x="50" y="54" width="16" height="18" rx="2" {...boite} />
+      <circle cx="32" cy="64" r="8" {...boite} />
     </svg>
   )
 }
@@ -45,25 +58,26 @@ function SchemaElectrique() {
 function NoteDeCalcul() {
   return (
     <svg {...CADRE}>
-      <path d="M30 8h38l14 14v50H30z" fill="currentColor" fillOpacity="0.06" {...TRAIT} />
-      <path d="M68 8v14h14" {...TRAIT} />
-      <path d="M38 34h34M38 42h26M38 50h30" {...TRAIT} strokeWidth={1.2} />
-      <path d="M42 66h8M46 62v8M58 66h8" {...TRAIT} />
+      <rect x="30" y="6" width="52" height="68" rx="2" fill={PAGE} stroke={FILET} />
+      <path d="M36 14h30M36 20h40M36 25h36" stroke={NAVY} strokeWidth="1.6" />
+      <rect x="36" y="32" width="40" height="26" fill="none" stroke={FILET} />
+      <path d="M36 40h40M36 49h40M54 32v26" stroke={FILET} />
+      <path d="M36 64h28M36 69h20" stroke={SOURD} strokeWidth="1.4" />
     </svg>
   )
 }
 
 function RapportDEtude() {
-  const barres = [26, 34, 44, 52, 56, 50, 40]
+  const barres = [[37, 42, 10], [43, 38, 14], [49, 33, 19], [55, 30, 22], [61, 34, 18], [67, 40, 12]]
   return (
     <svg {...CADRE}>
-      <rect x="14" y="8" width="84" height="64" rx="4" fill="currentColor" fillOpacity="0.06" {...TRAIT} />
-      <path d="M24 60h64" {...TRAIT} strokeWidth={1.2} />
-      {barres.map((b, i) => (
-        <rect key={`b${i}`} x={26 + i * 9} y={60 - b * 0.7} width="6" height={b * 0.7} rx="1"
-          fill="currentColor" fillOpacity="0.4" />
-      ))}
-      <path d="M24 18h26" {...TRAIT} strokeWidth={1.2} />
+      <rect x="30" y="6" width="52" height="68" rx="2" fill={PAGE} stroke={FILET} />
+      <rect x="36" y="12" width="40" height="8" rx="1" fill={NAVY} />
+      <g fill={OR}>
+        {barres.map(([x, y, h]) => <rect key={x} x={x} y={y} width="4" height={h} />)}
+      </g>
+      <path d="M36 52h40" stroke={FILET} />
+      <path d="M36 60h34M36 66h24" stroke={SOURD} strokeWidth="1.4" />
     </svg>
   )
 }
@@ -71,12 +85,13 @@ function RapportDEtude() {
 function PlanDxf() {
   return (
     <svg {...CADRE}>
-      <path d="M14 14v52h84" {...TRAIT} />
-      <path d="M22 58l26-30 24 12 16-14" {...TRAIT} strokeWidth={1.2} />
-      <rect x="40" y="40" width="22" height="14" fill="currentColor" fillOpacity="0.2" {...TRAIT} strokeWidth={1.2} />
-      <circle cx="22" cy="58" r="2.5" fill="currentColor" />
-      <circle cx="88" cy="26" r="2.5" fill="currentColor" />
-      <text x="82" y="62" fontSize="10" fontWeight="600" fill="currentColor" fontFamily="inherit">DXF</text>
+      <rect x="14" y="12" width="84" height="56" fill="none" stroke={BLEU} strokeWidth="1.2" />
+      <path d="M14 40h84" stroke={BLEU} strokeWidth=".8" strokeDasharray="3 2" />
+      <g fill="none" stroke={NAVY} strokeWidth=".8">
+        <Rangee y={43} plein={false} />
+        <Rangee y={53} plein={false} />
+      </g>
+      <rect x="74" y="18" width="8" height="8" fill="none" stroke={SOURD} strokeWidth="1" />
     </svg>
   )
 }

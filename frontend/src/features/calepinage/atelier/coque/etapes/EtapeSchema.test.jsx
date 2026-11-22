@@ -84,28 +84,75 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); document.body.innerHTML = '' })
 
 describe('EtapeSchema — sous-écran « Schéma électrique » (ACAL1301)', () => {
-  it('schéma au centre avec zoom, légende et cartouche SERVIS dans le panneau, note bleue, deux téléchargements', async () => {
+  it('schéma EN BLOCS au centre avec zoom, légende du dessin et cartouche SERVIS, note bleue, deux téléchargements', async () => {
     servir()
     const { panneau, pied } = rendre()
-    await waitFor(() => expect(screen.getByTestId('csch-svg')).toHaveTextContent('Champ PV'))
+    // F3 — le dessin de la maquette, composé depuis les données servies (blocs + chaînes + tronçons).
+    const blocs = await screen.findByTestId('csch-blocs')
+    await waitFor(() => expect(blocs).toHaveTextContent('Chaîne 1 · 2 panneaux'))
+    for (const texte of ['Côté panneaux · courant continu', 'Coffret côté panneaux', 'Onduleur', '10 kW',
+      'Coffret côté réseau', 'Disjoncteur', 'Côté réseau · courant alternatif', 'entrée 2 · 6 mm²']) {
+      expect(blocs).toHaveTextContent(texte)
+    }
     expect(screen.getByRole('button', { name: 'Zoomer' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Dézoomer' })).toBeTruthy()
     // Phrase sous le dessin : chaînes et câble DC SERVIS (2 chaînes de 2 modules, 18,4 + 12,0 m mesurés).
     await waitFor(() => expect(screen.getByText(
       'Dessiné tout seul à partir du raccordement : 2 chaînes de 2 panneaux, 30 m de câble côté panneaux au total.',
     )).toBeTruthy())
+    // Légende = ce que le dessin en blocs emploie (couleurs de chaîne servies comprises), dans l'ordre de la maquette.
     const legende = within(panneau).getByTestId('cal-schema-legende')
-    expect(legende).toHaveTextContent('Liaison entre deux organes')
-    expect(legende).toHaveTextContent('Liaison à la terre')
-    // Aucun « mm² » dans ce dessin : la légende n'en invente pas.
-    expect(legende).not.toHaveTextContent('Section du câble')
+    expect([...legende.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'Chaîne 1 · entrée 1', 'Chaîne 2 · entrée 2', 'Côté réseau (courant alternatif)', 'Liaison à la terre',
+      'mm²Section du câble, puis sa longueur'])
+    expect(legende.querySelector('li span').style.background).toBe('rgb(30, 144, 255)')
     const cartouche = await within(panneau).findByTestId('cal-schema-cartouche')
     for (const libelle of ['Projet', 'Date', 'Version', 'Auteur']) expect(cartouche).toHaveTextContent(libelle)
     expect(cartouche).toHaveTextContent('Toiture — bâtiment principal — Casablanca')
     expect(cartouche).toHaveTextContent("Utilisateur d'essai")
-    expect(panneau).toHaveTextContent('Le schéma se redessine quand le raccordement change.')
+    // Un clic sur un élément ouvre vraiment sa section : la 2e phrase de la maquette est rendue.
+    expect(panneau).toHaveTextContent(
+      'Le schéma se redessine quand le raccordement change. Cliquez sur un élément pour voir d’où vient sa valeur.')
     expect(within(pied).getByRole('button', { name: 'Télécharger (PDF)' })).toBeTruthy()
     expect(within(pied).getByRole('button', { name: 'DXF' })).toBeTruthy()
+  })
+
+  it('« Schéma détaillé » montre le SVG SERVI (celui du PDF / DXF) et sa propre légende ; rien n’est retiré', async () => {
+    servir()
+    const { panneau } = rendre()
+    await screen.findByTestId('csch-blocs')
+    fireEvent.click(screen.getByRole('button', { name: 'Schéma détaillé' }))
+    expect(screen.getByTestId('csch-svg')).toHaveTextContent('Champ PV')
+    expect(screen.queryByTestId('csch-blocs')).toBeNull()
+    const legende = within(panneau).getByTestId('cal-schema-legende')
+    expect(legende).toHaveTextContent('Liaison entre deux organes')
+    expect(legende).toHaveTextContent('Liaison à la terre')
+    // Aucun « mm² » dans ce SVG-là : la légende n'en invente pas.
+    expect(legende).not.toHaveTextContent('Section du câble')
+    expect(panneau).not.toHaveTextContent('Cliquez sur un élément')
+    fireEvent.click(screen.getByRole('button', { name: 'Schéma en blocs' }))
+    expect(screen.getByTestId('csch-blocs')).toBeTruthy()
+  })
+
+  it('un clic sur un bloc ouvre la section de l’étape Électrique où SA valeur se règle', async () => {
+    servir()
+    rendre()
+    await screen.findByTestId('csch-blocs')
+    fireEvent.click(await screen.findByTestId('csch-bloc-onduleur'))
+    const url = () => new URLSearchParams(screen.getByTestId('temoin-url').textContent)
+    expect(url().get('onglet')).toBe('materiel-electrique')
+    expect(url().get('champ')).toBeNull()
+  })
+
+  it('sans chaîne servie, le schéma détaillé du serveur reste affiché (aucun bloc inventé)', async () => {
+    servir()
+    const vide = contrat('calepinage_resultat')
+    vide.electrique.affectation = []
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: vide })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('csch-svg')).toHaveTextContent('Champ PV'))
+    expect(screen.queryByTestId('csch-blocs')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Schéma détaillé' })).toBeNull()
   })
 
   it('« Télécharger (PDF) » et « DXF » : le plan de câblage servi et son autre format, mêmes options', async () => {

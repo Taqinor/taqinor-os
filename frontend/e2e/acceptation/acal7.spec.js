@@ -20,6 +20,7 @@ import { groupe } from './_oracles.js'
 import { py, fermerDjangoApresTout } from './_django.js'
 import { RACINE } from './_enregistrement.js'
 import { API_DJANGO, assurerSessionPage, lireJson } from '../helpers.js'
+import { groupeDuControle } from '../../src/features/calepinage/commun/PretAEnvoyer.helpers.js'
 
 const etape = groupe('ACAL', [
   'ACAL392', 'ACAL393', 'ACAL394', 'ACAL395', 'ACAL396', 'ACAL397', 'ACAL398', 'ACAL399', 'ACAL400', 'ACAL403',
@@ -126,8 +127,13 @@ const enHaut = (page) => page.evaluate(() => window.scrollTo(0, 0))
 const boutonEnregistrer = (page) => page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ })
 
 /** Ouvre l'atelier (fond de repli) et attend la scène HYDRATÉE (+ la production chiffrée du pan actif). */
-async function ouvrirAtelier(page, id, onglet = null, { production = true, hydrate = true } = {}) {
-  await page.goto(`/calepinage/${id}${onglet ? `?onglet=${onglet}` : ''}`)
+async function ouvrirAtelier(page, id, onglet = null, { production = true, hydrate = true, expert = true } = {}) {
+  // Coque (22/11) : ces tests agissent sur les contrôles du constructeur — ouverts en expert (tous visibles,
+  // comme avant la refonte) ; `expert: false` garde le parcours guidé.
+  const params = new URLSearchParams()
+  if (onglet) params.set('onglet', onglet)
+  if (expert) params.set('mode', 'expert')
+  await page.goto(`/calepinage/${id}${params.size ? `?${params}` : ''}`)
   const bouton = boutonEnregistrer(page)
   if (hydrate) {
     try {
@@ -283,7 +289,7 @@ etape('PA2.5-ACAL393-ACAL394-ACAL419-ACAL408-rail-guide', ['ACAL393', 'ACAL394',
   await carteRefusee(context, suivi)
   const cal = await calepinageAvec('ACAL393', toitPlat())
   try {
-    await ouvrirAtelier(page, cal.id)
+    await ouvrirAtelier(page, cal.id, null, { expert: false }) // le parcours GUIDÉ par défaut
     const etapes = page.getByTestId('cal-rail-etapes')
     const LIBELLES = { toit: 'Toit', panneaux: 'Panneaux', electrique: 'Électrique', resultats: 'Résultats', documents: 'Documents' }
     await expect(etapes.getByRole('button'), 'cinq boutons d’étape').toHaveCount(5)
@@ -823,12 +829,14 @@ etape('PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats', ['ACAL3
     await page.goto(`/calepinage/${cal.id}?onglet=verdict-electrique`)
     await expect(page.getByTestId('cal-etape-electrique-ecran')).toBeVisible(T)
     const pret = await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/pret-a-envoyer/`, T), 'pret-a-envoyer')
-    const n = pret.nombre_bloquants + pret.nombre_a_regler
-    const attendu = n > 0 ? `${n} contrôle${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'
-    await expect(page.getByTestId('cal-electrique-synthese'), `synthèse (${n} points servis)`).toHaveText(attendu, T)
-    // ACAL1191 — l'étape ne monte que les sections principales ; les autres vivent sous « Réglages avancés » (replié).
+    // L3 (maquette Electrique) : la liste COURTE de l'étape ne compte que SES contrôles (`PretAEnvoyer filtre="electrique"`).
+    const n = (pret.controles ?? []).filter((c) => groupeDuControle(c) === 'electrique'
+      && (c.etat === 'bloquant' || c.etat === 'a_regler')).length
+    const attendu = n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'
+    await expect(page.getByTestId('cal-electrique-synthese'), `synthèse (${n} points électriques servis)`).toHaveText(attendu, T)
+    // L3 — aucune section au premier niveau : les 8 vivent sous « Réglages avancés » (replié).
     const sections = page.locator('[data-testid^="cal-electrique-section-"]')
-    await expect(sections, 'sections principales seules avant dépliage').toHaveCount(2)
+    await expect(sections, 'aucune section avant dépliage').toHaveCount(0)
     await page.getByTestId('cal-electrique-avances').getByRole('button', { name: 'Réglages avancés' }).click()
     await expect(sections, 'toutes les sections repliables existent une fois « Réglages avancés » déplié').toHaveCount(8)
 

@@ -37,8 +37,10 @@ export default function BarreProjet({
       </h1>
       <span className="cal-barre-espace" aria-hidden="true" />
       {enregistrement}
-      <label className="sr-only">
-        <input type="checkbox" data-testid="cal-mode-expert" checked={expert}
+      {/* Miroir du segmenté (contrat `cal-mode-expert` des tests) : hors du parcours clavier et sans boîte (le
+          segmenté est LE contrôle ; un seul arrêt de tabulation, un seul contrôle compté à l'écran). */}
+      <label className="sr-only cal-case-expert" aria-hidden="true">
+        <input type="checkbox" data-testid="cal-mode-expert" checked={expert} tabIndex={-1}
           onChange={(e) => onExpert(e.target.checked)} />
         Mode expert
       </label>

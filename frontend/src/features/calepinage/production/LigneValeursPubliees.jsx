@@ -1,6 +1,7 @@
 import useResource from '../../../hooks/useResource'
 import calepinageApi from '../../../api/calepinageApi'
 import { useModeExpert } from '../atelier/modeExpert'
+import { libelleReglage } from '../reglages/profilDepart'
 import { reglagesPublies } from './LigneValeursPubliees.helpers'
 import '../../../styles/calepinage/54-etape-resultats.css'
 
@@ -34,7 +35,13 @@ function LigneAvecRegistre({ publiees, onVoirSources, enNote = false }) {
     { select: (r) => r?.data ?? null },
   )
   const libelles = libellesDuRegistre(data)
-  const noms = publiees.map((cle) => libelles[cle] || cle).join(', ')
+  // Les mots de tous les jours du profil de départ (« Reflets du verre », « Écarts entre panneaux »…) ;
+  // une clé qui n'y est pas garde le libellé du registre servi, puis la clé.
+  // La ligne experte garde les libellés du registre (le terme technique).
+  const noms = [...new Set(publiees.map((cle) => {
+    const { nom } = libelleReglage(cle)
+    return enNote && nom !== 'Autre réglage' ? nom.toLowerCase() : (libelles[cle] || cle)
+  }))].join(', ')
   if (enNote) {
     // Étape Résultats guidée : la même phrase, DANS la note de « Du soleil au réseau ».
     return (

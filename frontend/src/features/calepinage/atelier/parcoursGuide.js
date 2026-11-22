@@ -101,7 +101,7 @@ export const ECRANS_ETAPE = {
   schema: {
     ouverture: 'schema',
     libelle: 'Schéma unifilaire',
-    titre: 'Schéma électrique',
+    titre: 'Le schéma électrique',
     cadre: CADRES.PLEIN_PANNEAU,
     onglets: ['schema'],
     composant: lazy(() => import('./coque/etapes/EtapeSchema')),

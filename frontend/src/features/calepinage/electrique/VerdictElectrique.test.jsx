@@ -557,16 +557,16 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
   function TemoinUrl() {
     return <p data-testid="temoin-url">{useLocation().search}</p>
   }
-  const rendreEtape = ({ builderApi = null } = {}) => {
+  const rendreEtape = ({ builderApi = null, id = 7 } = {}) => {
     const surCarte = document.createElement('div')
     document.body.appendChild(surCarte)
     const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
     render(
-      <MemoryRouter initialEntries={['/calepinage/7?onglet=verdict-electrique']}>
+      <MemoryRouter initialEntries={[`/calepinage/${id}?onglet=verdict-electrique`]}>
         <Routes>
           <Route path="/calepinage/:id" element={(
             <ContexteCoque.Provider value={coque}>
-              <EtapeElectrique calepinageId={7} builderApi={builderApi} ouvert="verdict-electrique"
+              <EtapeElectrique calepinageId={id} builderApi={builderApi} ouvert="verdict-electrique"
                 action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
               <TemoinUrl />
             </ContexteCoque.Provider>
@@ -589,7 +589,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(screen.getByRole('button', { name: 'Comparer avec 2 autres onduleurs' })).toBeTruthy()
     const liste = await screen.findByTestId('cal-pret-a-envoyer')
     // Filtre « electrique » : les contrôles des autres étapes n'y sont pas.
-    expect(within(liste).getByTestId('cal-pret-ligne-tension_froid')).toHaveTextContent('Tension des chaînes par grand froid')
+    expect(await within(liste).findByTestId('cal-pret-ligne-tension_froid')).toHaveTextContent('Tension des chaînes par grand froid')
     expect(within(liste).queryByTestId('cal-pret-ligne-visite_validee')).toBeNull()
     expect(within(liste).queryByTestId('cal-pret-ligne-simulation_fraiche')).toBeNull()
     expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Prêt à envoyer')
@@ -599,8 +599,46 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(screen.getByTestId('cal-elec-schema-voir')).toHaveTextContent('Schéma électriqueDessiné tout seul à partir du raccordementVoir')
     // Rien de normatif ni de clé brute à l'écran guidé (mutant : réafficher `ombrage.shading12x24`).
     expect(ecran.textContent).not.toMatch(/shading12x24|NF C 15-100|UTE C 15-712|ombrage\./)
-    // Les huit sections d'avant restent, repliées sous « Réglages avancés ».
+    // Les huit sections d'avant restent, repliées sous « Réglages avancés » — UN lien discret en bas (F3).
     expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'closed')
+    expect(screen.getByRole('button', { name: 'Réglages avancés' })).toHaveClass('cel-avances-lien')
+    expect(ecran.lastElementChild).toHaveClass('cel-avances') // en dernier, après la carte Schéma
+  })
+
+  it('F3 — lecture en cours : le titre est posé tout de suite, seules les lignes sont grisées, aucun compte inventé', async () => {
+    servirEtape()
+    calepinageApi.calepinages.pretAEnvoyer.mockReturnValue(new Promise(() => {}))
+    rendreEtape({ id: 701 })
+    const liste = screen.getByTestId('cal-pret-a-envoyer')
+    expect(liste).toHaveAttribute('aria-busy', 'true')
+    expect(within(liste).getByRole('heading', { name: 'Prêt à envoyer ?' })).toBeTruthy()
+    expect(within(liste).getByTestId('cel-pret-attente')).toBeTruthy()
+    expect(screen.queryByTestId('cal-electrique-synthese')).toBeNull()
+    // La carte « Schéma électrique — Voir » est déjà à sa place.
+    expect(screen.getByTestId('cal-elec-schema-voir')).toBeTruthy()
+  })
+
+  it('F3 — en revenant sur l’étape, la dernière liste SERVIE reste affichée pendant la relecture (plus de squelette)', async () => {
+    servirEtape()
+    rendreEtape({ id: 702 })
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Prêt à envoyer'))
+    cleanup()
+    document.body.innerHTML = ''
+    calepinageApi.calepinages.pretAEnvoyer.mockReturnValue(new Promise(() => {}))
+    rendreEtape({ id: 702 })
+    const liste = screen.getByTestId('cal-pret-a-envoyer')
+    expect(within(liste).getByTestId('cal-pret-ligne-tension_froid')).toBeTruthy()
+    expect(liste).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryByTestId('cel-pret-attente')).toBeNull()
+  })
+
+  it('F3 — légende de carte rangée par numéro de chaîne, quel que soit l’ordre de la table servie', async () => {
+    const r = resultat()
+    r.electrique.affectation.reverse()
+    servirEtape({ r })
+    const carte = rendreEtape({ builderApi: { setAffectationChaines: vi.fn() } })
+    const legende = await within(carte).findByRole('group', { name: 'Couleurs des chaînes' })
+    expect(legende.textContent).toBe('Chaîne 1 · entrée 1Chaîne 2 · entrée 2')
   })
 
   it('un point électrique à régler : pastille « 1 point à régler », ligne or pâle et « Régler » qui ouvre sa cible', async () => {

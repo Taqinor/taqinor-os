@@ -2,8 +2,11 @@
 annuelle déjà enregistrée, effectifs par statut.
 
 * ``kwc`` — le MÊME calcul que la présentation et les exports
-  (``mesures.mesures_du_document`` : la fiche du module de chaque pan du document),
-  jamais une simulation. ``None`` quand le document ne dit rien.
+  (``mesures.mesures_du_document`` : la fiche du module de chaque pan du document,
+  puis — quand elle décrit CE document, même nombre de modules — le bloc ``pose`` du
+  résultat enregistré, lu EN SQL comme le P50). Sans cette seconde lecture, un document
+  dont les pans ne portent pas de puissance de module (documents anciens) n'avait aucun
+  kWc sur sa carte alors que la simulation le connaît. ``None`` quand rien ne le dit.
 * ``production_kwh_an`` — le P50 déjà ENREGISTRÉ par la dernière simulation
   (``resultat.production.total.p50_kwh``). La liste ne charge jamais ``resultat``
   (série horaire, ACAL122) : la valeur est extraite EN SQL (:func:`annoter`),
@@ -26,17 +29,20 @@ STATUTS_COMPTES = ('brouillon', 'valide', 'perime', 'refuse')
 
 _ATTR_P50 = '_liste_p50_texte'
 _ATTR_MODULES_SIMULES = '_liste_modules_simules_texte'
+_ATTR_KWC_SIMULE = '_liste_kwc_simule_texte'
 
 
 def annoter(queryset):
-    """Extrait en SQL le P50 enregistré et le nombre de modules simulés (clés du
-    JSON ``resultat``) sans charger ``resultat`` : zéro requête par ligne."""
+    """Extrait en SQL le P50 enregistré, le nombre de modules et le kWc simulés (clés
+    du JSON ``resultat``, bloc ``pose`` = ``chaines.bloc_pose``) sans charger
+    ``resultat`` : zéro requête par ligne."""
     production = KeyTextTransform('production', 'resultat')
     total = KeyTextTransform('total', production)
+    pose = KeyTextTransform('pose', 'resultat')
     return queryset.annotate(
         **{_ATTR_P50: KeyTextTransform('p50_kwh', total),
-           _ATTR_MODULES_SIMULES: KeyTextTransform(
-               'modules', KeyTextTransform('pose', 'resultat'))})
+           _ATTR_MODULES_SIMULES: KeyTextTransform('total_modules', pose),
+           _ATTR_KWC_SIMULE: KeyTextTransform('kwc', pose)})
 
 
 def _nombre(texte):
@@ -54,7 +60,11 @@ def _mesures(calepinage):
         from .mesures import mesures_du_document
 
         document = getattr(calepinage, 'roof_layout', None)
-        memo = mesures_du_document(document) if isinstance(document, dict) and document else {}
+        pose = {'total_modules': _nombre(getattr(calepinage, _ATTR_MODULES_SIMULES, None)),
+                'kwc': _nombre(getattr(calepinage, _ATTR_KWC_SIMULE, None))}
+        resultat = {'pose': pose} if all(v is not None for v in pose.values()) else None
+        memo = (mesures_du_document(document, resultat)
+                if isinstance(document, dict) and document else {})
         try:
             calepinage._liste_mesures = memo
         except AttributeError:  # objet figé : pas de mémo, rien de faux

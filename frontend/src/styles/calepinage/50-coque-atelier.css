@@ -65,6 +65,8 @@
 }
 .cal-coque .cal-projet-sous-titre { font-size: 0.75rem; color: var(--muted-foreground); }
 .cal-coque .cal-barre-espace { flex: 1; }
+.cal-coque .cal-case-expert,
+.cal-coque .cal-case-expert input { width: 0; height: 0; margin: 0; padding: 0; border: 0; }
 
 /* Enregistrement (BarreEnregistrement, forme barre du haut) */
 .cal-coque .cal-barre-enregistrement { position: relative; display: flex; align-items: center; gap: 10px; }
@@ -219,20 +221,98 @@
 .cal-coque .cal-coque-sur-carte > * { pointer-events: auto; }
 .cal-coque .cal-coque-statut {
   position: absolute;
-  left: 16px;
+  right: 16px;
   bottom: 88px; /* au-dessus de la barre d'outils flottante (44 px + 6 + 6 + 20 du bas) : jamais dessous */
-  max-width: min(28rem, 60%);
+  max-width: min(20rem, 50%);
   z-index: 11;
-  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--card) 94%, transparent);
+  box-shadow: var(--shadow-xs);
 }
 .cal-coque .cal-coque-statut #rp9-status {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: color-mix(in oklch, var(--card) 92%, transparent);
-  padding: 6px 10px;
+  margin: 0;
+  padding: 4px 4px 4px 12px;
+  border: 0;
   font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
 }
-.cal-coque .cal-coque-statut #rp9-status:empty { display: none; }
+.cal-coque .cal-coque-statut-fermer {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 1rem;
+  position: relative;
+}
+.cal-coque .cal-coque-statut-fermer::after { content: ''; position: absolute; inset: -8px; } /* cible de 44 px */
+.cal-coque .cal-coque-statut:has(#rp9-status:empty),
+.cal-coque .cal-coque-statut[data-masque='1'] { display: none; }
+
+/* Bande des alertes du calepinage entier (BandeauxCoque.jsx) : sous le bandeau du projet, une ligne. */
+.cal-coque .cal-coque-alertes {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 20px;
+  max-height: 45dvh;
+  overflow-y: auto;
+  background: color-mix(in oklch, var(--primary) 10%, var(--card));
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  position: relative;
+  z-index: 19;
+}
+.cal-coque .cal-coque-alertes[hidden],
+.cal-coque .cal-coque-alertes:not(:has(.cal-coque-alertes-contenu > :not(.sr-only))) { display: none; }
+.cal-coque .cal-coque-alertes-contenu { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cal-coque .cal-coque-alertes-contenu > :not(.sr-only) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.cal-coque .cal-coque-alertes-contenu > * + * { border-top: 1px solid var(--border); }
+/* Repliée : UNE ligne — la première alerte, plus toute alerte bloquante (`role=alert` : conflit, blocage
+   d'enregistrement), jamais cachée ; les autres attendent « En savoir plus ». */
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > :not(.sr-only) ~ :not(.sr-only):not(:has([role='alert'])):not([role='alert']) { display: none; }
+.cal-coque .cal-coque-alertes-contenu p { margin: 0; }
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > :not(.sr-only) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+}
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p:first-child { flex: none; max-width: 40%; }
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p + p { flex: 1; }
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > div { flex: none; margin: 0 0 0 auto; flex-wrap: nowrap; }
+.cal-coque .cal-coque-alertes-contenu button { min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
+.cal-coque .cal-coque-alertes-plus {
+  flex: none;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--info);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
 
 /* Étape « pleine » (Résultats, Documents, Schéma) : l'écran occupe le centre. */
 .cal-coque .cal-coque-plein {
@@ -345,6 +425,57 @@
 }
 .cal-coque .cal-coque-ecran-hote { display: contents; }
 
+/* ── Pile de zoom en haut à droite (+, −, plein écran) — maquette Main, TOUTES les étapes à carte dès le
+   premier rendu (venue de 51-etape-toit.css, lane L1, qui ne se charge qu'à l'étape Toit) ──────────── */
+.cal-coque .maplibregl-ctrl-top-right { top: 16px; right: 16px; }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: 0 0 8px; }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button { width: 44px; height: 44px; color: var(--foreground); }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button + button { border-top: 1px solid var(--border); }
+/* Les pictogrammes MapLibre (images sombres fixes) sont redessinés en masque, à la couleur du texte. */
+.cal-coque .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
+.cal-coque .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon {
+  background: currentColor;
+  -webkit-mask: var(--cal-picto) center / 18px 18px no-repeat;
+  mask: var(--cal-picto) center / 18px 18px no-repeat;
+}
+.cal-coque .maplibregl-ctrl-zoom-in { --cal-picto: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E"); }
+.cal-coque .maplibregl-ctrl-zoom-out { --cal-picto: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E"); }
+/* Guidé (maquette Main) : la pile n'a que +, − et le plein écran, collés ; boussole et « ma position » de
+   MapLibre passent en Avancé ; la boussole N/S du constructeur descend sous la pile. */
+.cal-coque[data-avance='0'] .maplibregl-ctrl-compass,
+.cal-coque[data-avance='0'] .maplibregl-ctrl-top-right .maplibregl-ctrl-group:not(:first-child) { display: none; }
+.cal-coque[data-avance='0'] .maplibregl-ctrl-top-right .maplibregl-ctrl-group:first-child {
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+}
+.cal-coque[data-avance='0'] #rp9-compass { top: 168px; left: auto; right: 14px; }
+.rp9-host.cal-coque .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-md);
+}
+.rp9-host.cal-coque[data-avance='0'] .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran {
+  left: auto;
+  right: 16px;
+  top: 105px;
+  border-radius: 0 0 12px 12px;
+}
+
 /* ── Présentation « Montrer au client » (maquette TelephoneClient, client/HabillageClient.jsx) ──
    Le MÊME atelier : la carte 3D seule, bord à bord, en haut (464 px sur 844) ; bandeau, rail,
    panneau et calques d'étape sont `hidden` (jamais démontés) ; les commandes propres à la carte
@@ -355,6 +486,7 @@
 .cal-coque[data-presentation='1'] .rp9-map-wrap > :not(#rp9-map),
 .cal-coque[data-presentation='1'] .maplibregl-control-container,
 .cal-coque[data-presentation='1'] .maplibregl-marker,
+.cal-coque[data-presentation='1'] #rp9-compass,
 .cal-coque[data-presentation='1'] [class*='rp9-compass'] { display: none; }
 .cal-coque .cal-coque-sur-carte-client { position: absolute; inset: 0; z-index: 12; pointer-events: none; }
 .cal-coque .cal-coque-sur-carte-client > * { pointer-events: auto; }
@@ -385,3 +517,50 @@
 .cal-coque .cal-client-soleil-quand { font-size: 0.875rem; font-weight: 600; }
 .cal-coque .cal-client-soleil-curseur input { width: 100%; accent-color: var(--primary); min-height: 24px; }
 .cal-coque .cal-client-soleil .cal-segmente > button { height: 44px; padding: 0 10px; }
+
+/* ── « Avancé » en guidé : une FEUILLE à part, par-dessus l'écran, à droite (fermable : bouton, Échap, ou un
+   clic d'étape). L'écran guidé reste intact dessous ; rien de l'ancien atelier ne se mêle au panneau d'étape
+   ni sous la barre d'outils de la carte (ces contrôles-là sont ceux du mode Expert). ── */
+.cal-coque { --cal-haut-barre: 56px; }
+.cal-coque[data-feuille='1'] .cal-coque-avance:not([hidden]) {
+  position: fixed;
+  top: var(--cal-haut-barre);
+  right: 0;
+  bottom: 0;
+  width: min(520px, 100vw);
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 20px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+.cal-coque .cal-coque-feuille-tete {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 8px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.cal-coque .cal-coque-feuille-tete h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.cal-coque .cal-coque-feuille-fermer {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+/* Étape pleine (Résultats, Documents) : le panneau d'étape reste replié, seule la feuille s'affiche. */
+.cal-coque[data-feuille='1'][data-cadre='plein'] .cal-panneau-etape { width: 0; border: 0; }
+.cal-coque[data-feuille='1'][data-cadre='plein'] .cal-panneau-etape > :not(.cal-panneau-etape-corps) { display: none; }

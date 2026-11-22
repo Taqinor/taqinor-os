@@ -527,9 +527,11 @@ describe('ACAL405 — Démarrage rapide', () => {
       const lien = within(ligne).getByRole('link', { name: /Ouvrir la source/ })
       expect(lien).toHaveAttribute('href', PROFIL.valeurs[0].url)
       expect(lien).toHaveAttribute('target', '_blank')
-      // La citation intégrale (anglais, adresse entière) est dans le détail dépliable, pas en tête de ligne.
-      expect(ligne.querySelector('details')).toHaveTextContent(PROFIL.valeurs[0].reference)
-      expect(ligne.querySelector('summary')).toHaveTextContent('Citation complète')
+      // La citation intégrale (anglais, adresse entière) : en infobulle et pour les lecteurs d'écran, plus de
+      // ligne dépliable (la rangée garde la hauteur de la maquette).
+      expect(ligne.querySelector('details')).toBeNull()
+      expect(within(ligne).getByTestId(`acal405-citation-${CLE}`)).toHaveTextContent(PROFIL.valeurs[0].reference)
+      expect(ligne.querySelector('[title]')).toHaveAttribute('title', expect.stringContaining(PROFIL.valeurs[0].url))
     })
 
     it('« Remplir les N réglages vides » : N = les lignes vides réellement servies', async () => {
@@ -551,7 +553,7 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(bouton).toBeDisabled()
     })
 
-    it('les cases « Remplir » disent l’état : cochée = sera rempli, vide = en place et conservé ; jamais cliquables', async () => {
+    it('les cases « Remplir » : cochées d’office sur un réglage vide, décochables ; une valeur en place n’a pas de case active', async () => {
       mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
       servirReglages({})
       rendre()
@@ -560,7 +562,26 @@ describe('ACAL405 — Démarrage rapide', () => {
       const b = within(screen.getByTestId('acal405-valeur-albedo_mensuel')).getByRole('checkbox')
       expect(a).toBeChecked()
       expect(b).not.toBeChecked()
-      expect(a).toBeDisabled()
+      expect(a).toBeEnabled()
+      expect(b).toBeDisabled() // déjà renseignée : jamais remplacée
+      fireEvent.click(a)
+      expect(a).not.toBeChecked()
+      expect(screen.getByTestId('acal405-appliquer')).toHaveTextContent('Remplir les 4 réglages cochés')
+    })
+
+    it('« Remplir » n’envoie que les clés cochées (`cles`) ; tout décoché : bouton éteint', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+      mocks.appliquerProfilDepart.mockResolvedValue({ data: APPLICATION })
+      servirReglages({})
+      rendre()
+      await screen.findByTestId('acal405-valeur-b0_iam')
+      fireEvent.click(within(screen.getByTestId('acal405-valeur-b0_iam')).getByRole('checkbox'))
+      fireEvent.click(screen.getByTestId('acal405-appliquer'))
+      await screen.findByTestId('acal405-message')
+      const cles = mocks.appliquerProfilDepart.mock.calls[0][0]
+      expect(cles).toHaveLength(4)
+      expect(cles).not.toContain('b0_iam')
+      expect(cles).not.toContain('albedo_mensuel') // déjà renseignée
     })
 
     it('la ligne « Saisir » : les réglages sans valeur publiée mènent à leur saisie', async () => {
@@ -572,16 +593,15 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(lien).toHaveAttribute('href', '/calepinage/reglages#calx69-section-simulation')
     })
 
-    it('seul sur sa route : fil d’Ariane Réglages / Calepinage / Démarrage rapide et titre de page', async () => {
+    it('seul sur sa route : titre de page 28 px, sans second fil d’Ariane (la page en porte déjà un) ; `autonome` le rend', async () => {
       window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide')
       try {
         mocks.profilDepart.mockResolvedValue({ data: PROFIL })
         servirReglages({})
         const { default: DemarrageRapide } = await import('./DemarrageRapide')
         render(<DemarrageRapide />)
-        const fil = await screen.findByRole('navigation', { name: 'Fil d’Ariane' })
-        expect(fil).toHaveTextContent('Réglages/Calepinage/Démarrage rapide')
-        expect(screen.getByRole('heading', { level: 1, name: 'Démarrage rapide' })).toBeInTheDocument()
+        expect(await screen.findByRole('heading', { level: 1, name: 'Démarrage rapide' })).toBeInTheDocument()
+        expect(screen.queryByRole('navigation', { name: 'Fil d’Ariane' })).toBeNull()
         // Sans appelant, le droit est celui de la personne connectée (doublure : accordé).
         expect(screen.getByTestId('acal405-appliquer')).toBeInTheDocument()
       } finally {

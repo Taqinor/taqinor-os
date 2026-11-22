@@ -120,8 +120,13 @@ async function carteRefusee(context, suivi) {
 /** Ouvre l'atelier (fond de repli) et attend la scène HYDRATÉE + la production chiffrée du pan ACTIF.
  *  `production: false` seulement quand le pan actif relu est un pan VIDE (sans contour) : la carte Production
  *  est celle du pan actif, elle reste « — » (ACAL357, la zone ajoutée devient le pan actif). */
-async function ouvrirAtelier(page, id, onglet = null, { production = true } = {}) {
-  await page.goto(`/calepinage/${id}${onglet ? `?onglet=${onglet}` : ''}`)
+async function ouvrirAtelier(page, id, onglet = null, { production = true, expert = true } = {}) {
+  // Coque (22/11) : ces tests agissent sur les contrôles du constructeur — ouverts en expert (tous visibles,
+  // comme avant la refonte) ; `expert: false` garde le parcours guidé.
+  const params = new URLSearchParams()
+  if (onglet) params.set('onglet', onglet)
+  if (expert) params.set('mode', 'expert')
+  await page.goto(`/calepinage/${id}${params.size ? `?${params}` : ''}`)
   const bouton = page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ })
   try {
     await expect(bouton, '« Enregistrer le calepinage » actif (scène hydratée)').toBeEnabled({ timeout: 240_000 })

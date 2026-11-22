@@ -242,11 +242,15 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
       expect(screen.queryByTestId('cal-onglet-erreur'),
         `le panneau « ${onglet.cle} » a échoué au rendu`).toBeNull()
       // ACAL395 : en guidé, les 7 onglets électriques sont des sections d'UNE
-      // page portée par l'onglet `ouverture` ; la section demandée est dépliée.
+      // page portée par l'onglet `ouverture` ; la section demandée est dépliée
+      // (sous « Réglages avancés », déplié avec elle). L'onglet d'ouverture lui-même
+      // ne déplie plus rien (maquette Electrique, L3) : « Réglages avancés » reste replié.
       const ecran = ecranGuideDeOnglet(onglet.cle)
       expect(screen.getByTestId(`cal-onglet-${ecran ? ecran.ouverture : onglet.cle}`))
         .toHaveAttribute('aria-selected', 'true')
-      if (ecran?.ouverture === 'verdict-electrique') {
+      if (ecran?.ouverture === 'verdict-electrique' && onglet.cle === ecran.ouverture) {
+        expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'closed')
+      } else if (ecran?.ouverture === 'verdict-electrique') {
         expect(screen.getByTestId(`cal-electrique-section-${onglet.cle}`))
           .toHaveAttribute('data-state', 'open')
       }
@@ -407,22 +411,19 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
   const orange = pret.data.controles.find((c) => c.etat === 'a_regler')
   const info = pret.data.controles.find((c) => c.etat === 'info')
 
-  it('guidé : UNE page, « 2 contrôles à régler » et 3 déclencheurs (Équipements, Verdict, Réglages avancés) ; le Verdict est ouvert quand l’étape est bloquée', async () => {
+  it('guidé : UNE page, « N point à régler » sur les seuls contrôles ÉLECTRIQUES, les 8 sections derrière « Réglages avancés » (replié)', async () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
-    mocks.pretAEnvoyer.mockResolvedValue(pret)
+    // `manque[]` (2 lignes électriques) et l'orange de l'étape Résultats (`simulation_fraiche`) ne comptent pas :
+    // seul le contrôle électrique à régler (`chutes_tension`) fait le compte (maquette Electrique, `filtre`).
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, orange, { ...orange, code: 'chutes_tension' }]))
     const utilisateur = userEvent.setup()
     rendreRail()
     await utilisateur.click(screen.getByTestId('cal-etape-electrique'))
     expect(await screen.findByTestId('cal-etape-electrique-ecran', {}, { timeout: DELAI_PANNEAU })).toBeTruthy()
-    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('2 contrôles à régler'))
-    // ACAL1191 — TROIS déclencheurs : Équipements, Verdict, « Réglages avancés » (replié) ; les six autres
-    // sections n'existent qu'une fois « Réglages avancés » déplié.
-    for (const cle of ['equipements-electriques', 'verdict-electrique']) {
-      expect(screen.getByTestId(`cal-electrique-section-${cle}`), cle).toBeTruthy()
-    }
-    expect(screen.getByTestId('cal-electrique-section-verdict-electrique')).toHaveAttribute('data-state', 'open')
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 point à régler'))
+    // L3 — plus aucun déclencheur de premier niveau : « Réglages avancés » (replié) porte les 8 sections.
     expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'closed')
-    expect(screen.queryByTestId('cal-electrique-section-raccordement')).toBeNull()
+    for (const cle of SECTIONS) expect(screen.queryByTestId(`cal-electrique-section-${cle}`), cle).toBeNull()
     await utilisateur.click(within(screen.getByTestId('cal-electrique-avances')).getAllByRole('button', { name: 'Réglages avancés' })[0])
     for (const cle of SECTIONS) expect(await screen.findByTestId(`cal-electrique-section-${cle}`), cle).toBeTruthy()
     expect(screen.getByTestId('cal-electrique-section-raccordement')).toHaveAttribute('data-state', 'closed')
@@ -438,10 +439,11 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     expect(mocks.pretAEnvoyer).toHaveBeenCalledWith(ID)
   }, 30_000)
 
-  it('ACAL865 — un orange ⇒ UN seul « 1 contrôle à régler », et « Régler » pousse `?onglet=…&champ=…`', async () => {
+  it('ACAL865 — un orange électrique ⇒ UN seul « 1 point à régler », et « Régler » pousse `?onglet=…&champ=…`', async () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
     const cible = { etape: 'toit', onglet: 'pertes', champ: 'pente' }
-    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, info, { ...orange, cible }]))
+    // L3 — l'orange de l'échantillon (`simulation_fraiche`) est de l'étape Résultats : filtré ici ; un code électrique compte.
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, info, { ...orange, code: 'chutes_tension', cible }]))
     render(
       <MemoryRouter initialEntries={[`/calepinage/${ID}?${PARAM_ONGLET}=verdict-electrique`]}>
         <Routes>
@@ -449,24 +451,23 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
         </Routes>
       </MemoryRouter>,
     )
-    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 contrôle à régler'))
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 point à régler'))
     // un seul compte : `manque[]` (2 lignes électriques) n'est plus compté ici.
-    expect(screen.queryAllByText(/contrôles? à régler/)).toHaveLength(1)
+    expect(screen.queryAllByText(/points? à régler/)).toHaveLength(1)
     expect(screen.getByTestId(`cal-pret-ligne-${info.code}`)).toHaveTextContent(info.valeur_texte)
-    await userEvent.setup().click(screen.getByTestId(`cal-pret-regler-${orange.code}`))
+    await userEvent.setup().click(screen.getByTestId('cal-pret-regler-chutes_tension'))
     const recherche = new URLSearchParams(screen.getByTestId('temoin-url').textContent)
     expect(recherche.get(PARAM_ONGLET)).toBe('pertes')
     expect(recherche.get('champ')).toBe('pente')
   }, 30_000)
 
-  it('ACAL865 — les contrôles réussis sont repliés sous « Voir les n contrôles réussis »', async () => {
+  it('ACAL865 / L3 — la liste COURTE de l’étape montre toutes ses lignes, les réussies comprises (maquette Electrique)', async () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
-    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, orange]))
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, { ...orange, code: 'chutes_tension' }]))
     rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
-    const reussis = await screen.findByTestId('cal-pret-reussis', {}, { timeout: DELAI_PANNEAU })
-    expect(reussis.open).toBe(false)
-    expect(reussis).toHaveTextContent('Voir le contrôle réussi')
-    expect(within(reussis).getByTestId(`cal-pret-ligne-${ok.code}`)).toBeTruthy()
+    // le repli « Voir les n contrôles réussis » reste à la présentation par défaut de PretAEnvoyer (couverte ailleurs).
+    expect(await screen.findByTestId(`cal-pret-ligne-${ok.code}`, {}, { timeout: DELAI_PANNEAU })).toBeVisible()
+    expect(screen.queryByTestId('cal-pret-reussis')).toBeNull()
   }, 30_000)
 
   it('R3-10 — la ligne du dossier électrique ne répète pas la pastille qui dit la même chose', async () => {
@@ -480,11 +481,7 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     expect(screen.getByTestId(`cal-pret-ligne-${info.code}`)).toHaveTextContent(info.valeur_texte)
   }, 30_000)
 
-  it('un ancien lien `?onglet=verdict-electrique` déplie le Verdict, `?onglet=raccordement` le Raccordement', async () => {
-    const premier = rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
-    expect(await screen.findByTestId('cal-electrique-section-verdict-electrique', {}, { timeout: DELAI_PANNEAU }))
-      .toHaveAttribute('data-state', 'open')
-    premier.unmount()
+  it('un lien `?onglet=raccordement` déplie le Raccordement (et « Réglages avancés » avec lui)', async () => {
     rendreRail(`?${PARAM_ONGLET}=raccordement`)
     expect(await screen.findByTestId('cal-electrique-section-raccordement', {}, { timeout: DELAI_PANNEAU }))
       .toHaveAttribute('data-state', 'open')

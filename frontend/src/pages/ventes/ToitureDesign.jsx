@@ -1649,7 +1649,7 @@ function ConceptionDuDevis() {
   )
 }
 
-export default function ToitureDesign({ mode = 'lead' }) {
+export default function ToitureDesign({ mode = 'lead', lectureSeuleImposee = false }) {
   if (mode === 'devis') return <ConceptionDuDevis />
-  return <AtelierToiture mode={mode} />
+  return <AtelierToiture mode={mode} lectureSeuleImposee={lectureSeuleImposee} />
 }

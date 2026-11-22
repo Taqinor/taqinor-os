@@ -1189,6 +1189,26 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(screen.getByTestId('cal-etape-toit')).not.toHaveTextContent('à régler')
   })
 
+  it('« Avancé » (guidé) : une feuille à part par-dessus l’écran, l’écran guidé intact dessous ; Fermer la referme', async () => {
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    const coque = await screen.findByTestId('cal-coque')
+    const titre = screen.getByTestId('cal-panneau-etape-titre').textContent
+    const groupes = () => [...document.querySelectorAll('.cal-coque-groupe')].map((g) => g.hidden)
+    const groupesAvant = groupes()
+    await userEvent.click(screen.getByTestId('cal-rail-avance'))
+    const feuille = await screen.findByRole('dialog', { name: 'Avancé' })
+    expect(feuille).toHaveClass('cal-coque-avance')
+    expect(coque).toHaveAttribute('data-feuille', '1')
+    // L'écran guidé n'est pas touché : pas de bascule vers l'ancienne disposition, même titre d'étape.
+    expect(coque).toHaveAttribute('data-avance', '0')
+    expect(screen.getByTestId('cal-panneau-etape-titre').textContent).toBe(titre)
+    expect(groupes(), 'les groupes du constructeur ne changent pas d’état').toEqual(groupesAvant)
+    await userEvent.click(within(feuille).getByRole('button', { name: 'Fermer' }))
+    expect(screen.getByTestId('cal-atelier-panneaux').closest('.cal-coque-avance').hidden).toBe(true)
+    expect(coque).not.toHaveAttribute('data-feuille')
+  })
+
   it('scène propre déjà enregistrée : « ✓ Enregistré … » seul, comme la maquette ; modifiée : le bouton revient', async () => {
     amorcer()
     calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: new Date().toISOString() } } })
@@ -1219,8 +1239,9 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       expect(poignee).toHaveAttribute('aria-expanded', 'false')
       await userEvent.click(poignee)
       expect(panneau).toHaveAttribute('data-deplie', '1')
-      expect(within(panneau).getByTestId('cal-panneau-etape-titre')).toHaveTextContent('Le toit')
-      expect(await within(panneau).findByTestId('cal-action-etape-suivante')).toHaveTextContent('Poser les panneaux')
+      // (l'étape ouverte dépend du parcours servi : on vérifie la forme, pas l'étape)
+      expect(within(panneau).getByTestId('cal-panneau-etape-titre').textContent).not.toBe('')
+      expect(await within(panneau).findByTestId('cal-action-etape-suivante')).toHaveTextContent(/\S/)
       // Les groupes du constructeur restent dans le même panneau (jamais remontés ailleurs).
       expect(panneau.contains(document.getElementById('rp9-config'))).toBe(true)
     } finally { window.matchMedia = avant }

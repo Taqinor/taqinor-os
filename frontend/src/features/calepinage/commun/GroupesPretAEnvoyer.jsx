@@ -87,18 +87,28 @@ function messagePied(controles) {
 /* Maquette `Electrique.dc.html` — la liste COURTE d'une étape (`PretAEnvoyer court filtre=…`) : titre +
    pastille pâle « N points à régler », puis UNE liste encadrée : coche verte, titre, phrase de 12 px servie,
    « ? » (cause longue derrière) ; le point à régler sur fond or pâle avec « Régler » marine (même cible). */
-function ListeCourte({ controles, testIdCompte, onRegler }) {
+/* F3 — `attente` : une lecture est en vol. Sans ligne déjà servie, le titre est posé et seules les
+   lignes sont grisées (aucun compte inventé) ; avec la lecture précédente, ses lignes restent. */
+function ListeCourte({ controles, testIdCompte, onRegler, attente = false }) {
   const n = controles.filter((c) => c.etat === 'a_regler' || c.etat === 'bloquant').length
   const lignes = [...controles].sort((a, b) => (RANG[b.etat] ?? 2) - (RANG[a.etat] ?? 2))
+  const premiere = attente && controles.length === 0
   return (
-    <section data-testid="cal-pret-a-envoyer" aria-labelledby="cel-pret-titre" className="cel-pret">
+    <section data-testid="cal-pret-a-envoyer" aria-labelledby="cel-pret-titre" aria-busy={attente || undefined} className="cel-pret">
       <div className="cel-pret-tete">
         <h2 id="cel-pret-titre">Prêt à envoyer ?</h2>
-        <span data-testid={testIdCompte} className="cel-pret-badge" data-ton={n > 0 ? 'a_regler' : 'ok'}>
-          {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
-        </span>
+        {!premiere && (
+          <span data-testid={testIdCompte} className="cel-pret-badge" data-ton={n > 0 ? 'a_regler' : 'ok'}>
+            {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
+          </span>
+        )}
       </div>
-      {lignes.length === 0
+      {premiere && (
+        <ul className="cel-pret-lignes" data-testid="cel-pret-attente" aria-label="Lecture des contrôles en cours">
+          {[0, 1, 2].map((i) => <li key={i} className="cel-pret-ligne cel-pret-squelette"><span /></li>)}
+        </ul>
+      )}
+      {premiere ? null : lignes.length === 0
         ? <p className="cel-pret-vide">Aucun contrôle publié pour cette étape.</p>
         : (
           <ul className="cel-pret-lignes">
@@ -129,8 +139,8 @@ function ListeCourte({ controles, testIdCompte, onRegler }) {
   )
 }
 
-export default function GroupesPretAEnvoyer({ groupes, testIdCompte, pied, onRegler, court = false, controles = [] }) {
-  if (court) return <ListeCourte controles={controles} testIdCompte={testIdCompte} onRegler={onRegler} />
+export default function GroupesPretAEnvoyer({ groupes, testIdCompte, pied, onRegler, court = false, controles = [], attente = false }) {
+  if (court) return <ListeCourte controles={controles} testIdCompte={testIdCompte} onRegler={onRegler} attente={attente} />
   const tous = groupes.flatMap((g) => g.controles)
   const avecVerdict = tous.filter((c) => ['ok', 'a_regler', 'bloquant'].includes(c.etat))
   const bons = avecVerdict.filter((c) => c.etat === 'ok').length

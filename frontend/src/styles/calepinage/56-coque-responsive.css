@@ -32,7 +32,7 @@
 
   /* Le centre prend toute la largeur ; le tiroir se pose dessus, en bas. Les calques de la carte
      (légende, lecteur du soleil, barre d'outils, ligne d'état) se posent AU-DESSUS du tiroir fermé. */
-  .cal-coque { --cal-tiroir: 280px; }
+  .cal-coque { --cal-tiroir: 280px; --cal-haut-barre: 64px; }
   .cal-coque .cal-coque-corps { position: relative; }
   .cal-coque[data-cadre='carte']:not([data-presentation='1']) .cal-coque-sur-carte { bottom: var(--cal-tiroir); }
   .cal-coque.cal-coque[data-cadre='carte']:not([data-presentation='1']) .cal-coque-statut { bottom: calc(var(--cal-tiroir) + 16px); }
@@ -110,7 +110,7 @@
   .cal-coque .cal-barre-messages { width: min(22rem, calc(100vw - 16px)); }
 
   /* Rail en barre du bas ; la carte au-dessus ; le tiroir posé sur la carte, au-dessus de la barre. */
-  .cal-coque { --cal-tiroir: 300px; }
+  .cal-coque { --cal-tiroir: 300px; --cal-haut-barre: 0px; }
   .cal-coque .cal-coque-corps { flex-direction: column; }
   .cal-coque .cal-coque-sur-carte .cal-carte-flottante { max-width: calc(100vw - 24px); overflow-x: auto; }
   .cal-coque .cal-coque-centre { order: 1; flex: 1; min-height: 0; }
@@ -144,4 +144,49 @@
   .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-bouton-or-plein { height: 48px; padding: 0 14px; font-size: 0.875rem; }
   .cal-coque .cal-coque-plein { padding: 16px; }
   .cal-coque .cal-coque-statut { max-width: calc(100% - 32px); }
+}
+
+/* Maquette Tablette, étape Panneaux (guidé) : le tiroir est UNE rangée « Étape 2 sur 5 / Les panneaux · Panneau
+   [liste] · Raccorder les panneaux → », puis les cartes CÔTE À CÔTE (Couvrir la facture | Le plus de panneaux |
+   alerte d'ombre), le reste (sens de pose…) dessous. Même écran, mêmes éléments : le corps du tiroir et l'écran
+   passent en `display: contents` pour que leurs blocs se rangent dans la grille du tiroir (aucun déplacement DOM).
+   Les crochets sont les hooks de l'écran (`cal-panneaux-*`). */
+@media (min-width: 640px) and (max-width: 1279px) {
+  .cal-coque[data-etape='panneaux'][data-expert='0'] .cal-panneau-etape[data-tiroir='1']:not([hidden]) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
+    grid-template-areas: none;
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    align-content: start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] :is(.cal-panneau-etape-corps, .cal-coque-ecran-hote, .cal-pan,
+    .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture'])) { display: contents; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] :is(.cal-panneau-etape-controle, .cal-panneau-etape-emplacement,
+    .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture']) > h2) { display: none; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > * ,
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan > *,
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture']) > *,
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-panneau-etape-corps > * { grid-column: 1 / -1; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-tiroir-poignee { grid-row: 1; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-panneau-etape-tete { grid-row: 2; grid-column: 1; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-module'] {
+    grid-row: 2;
+    grid-column: 2 / 4;
+    justify-self: end;
+    align-self: center;
+    margin-right: 296px; /* la place du bouton d'action, à droite sur la même rangée */
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+  }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-module'] .cal-pan-liste-hote { width: 300px; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-panneau-etape-pied { grid-row: 2; grid-column: 3; justify-self: end; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-bouton-or-plein { width: 280px; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-option-facture'].cal-pan-option-pose { grid-row: 3; grid-column: 1; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-option-max'].cal-pan-option-pose { grid-row: 3; grid-column: 2; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-ombre'] { grid-row: 3; grid-column: 3; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan-option-pose { min-height: 96px; justify-content: center; }
 }

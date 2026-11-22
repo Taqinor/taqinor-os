@@ -1404,15 +1404,13 @@ describe('parcours utilisateur pro-11 — tuiles « Forme du toit » de la coque
   };
   const carre = (): [number, number][] => [[-7.62, 33.59], [-7.6199, 33.59], [-7.6199, 33.5901], [-7.62, 33.5901]];
 
-  it('coque : libellés « En L »/« En T », 7 tuiles avec pictogramme currentColor, Tracé libre, hook de la grille', async () => {
+  it('coque : libellés « En L »/« En T », 7 tuiles (classe + data-forme du pictogramme CSS), Tracé libre, hook de la grille', async () => {
     const { tuiles } = await monter(true, carre);
     expect(tuiles().map((b) => b.textContent)).toEqual(['Plat', '1 pan', '2 pans', '4 pans', 'En L', 'En T', 'Tracé libre']);
+    expect(tuiles().map((b) => b.dataset.forme)).toEqual(['flat', 'shed', 'gable', 'hip', 'l_gable', 't_gable', 'libre']);
     expect(document.getElementById('rp9-formes-toit')?.dataset.testid).toBe('cal-toit-formes');
     for (const b of tuiles()) {
-      const svg = b.querySelector('svg.rp9-forme-picto')!;
-      expect(svg.getAttribute('stroke'), b.textContent!).toBe('currentColor');
-      expect(svg.getAttribute('aria-hidden')).toBe('true');
-      expect(b.classList.contains('rp9-tuile-forme')).toBe(true);
+      expect(b.classList.contains('rp9-tuile-forme'), b.textContent!).toBe(true);
       expect(b.getAttribute('aria-pressed')).toBe('false');
     }
   });
@@ -1434,12 +1432,46 @@ describe('parcours utilisateur pro-11 — tuiles « Forme du toit » de la coque
     expect(appliques).toEqual([2]);
   });
 
+  it('toit rouvert : la tuile suit la géométrie des pans quand elle est sans ambiguïté, sinon aucune', async () => {
+    const { formeDuToit, decouperContour } = await import('../src/scripts/roofPro11/formesToit');
+    const decoupe = (forme: 'gable' | 'hip') => {
+      const v = decouperContour(carre(), forme, 22, []);
+      if (!v.ok) throw new Error(v.motif);
+      return v.pans;
+    };
+    expect(formeDuToit([{ id: 'a', vertices: carre(), roofType: 'flat' }])).toBe('flat');
+    expect(formeDuToit([{ id: 'a', vertices: carre(), roofType: 'pitched', facingAzimuthDeg: 180 }])).toBe('shed');
+    expect(formeDuToit(decoupe('gable'))).toBe('gable');
+    expect(formeDuToit(decoupe('hip'))).toBe('hip');
+    // Un pan encore à tracer (ajout en cours) ne change pas la forme lue sur les pans tracés.
+    expect(formeDuToit([...decoupe('gable'), { id: 'z', vertices: [] }])).toBe('gable');
+    // Deux pans en pente SANS arête commune (deux bâtiments) : aucune forme.
+    const loin = carre().map(([x, y]): [number, number] => [x + 0.01, y]);
+    expect(formeDuToit([
+      { id: 'a', vertices: carre(), roofType: 'pitched', facingAzimuthDeg: 180 },
+      { id: 'b', vertices: loin, roofType: 'pitched', facingAzimuthDeg: 0 },
+    ])).toBeNull();
+    // Un plat + une pente, ou rien de tracé : aucune forme.
+    expect(formeDuToit([{ id: 'a', vertices: carre(), roofType: 'flat' }, { id: 'b', vertices: loin, roofType: 'pitched' }])).toBeNull();
+    expect(formeDuToit([])).toBeNull();
+    // Coque : la tuile déduite est choisie au rafraîchissement, sans aucun clic.
+    document.body.innerHTML = '<div class="rp9-host cal-coque"><div><button id="rp9-add-area"></button></div></div>';
+    const { monterFormesToit } = await import('../src/scripts/roofPro11/formesToit');
+    const f = monterFormesToit({
+      ancre: document.getElementById('rp9-add-area'), contour: carre, pente: () => 22, existants: () => decoupe('gable'),
+      obstacles: () => 0, appliquer: () => {}, setStatus: () => {},
+    });
+    f.rafraichir();
+    const choisies = Array.from(document.querySelectorAll('#rp9-formes-toit button[aria-pressed="true"]')).map((b) => b.textContent);
+    expect(choisies).toEqual(['2 pans']);
+  });
+
   it('hors coque (mode lead) : puces texte, sans pictogramme ni Tracé libre ni état choisi', async () => {
     const { f, tuiles } = await monter(false, () => []);
     f.rafraichir();
     expect(document.getElementById('rp9-formes-toit')!.hidden, 'lead : masquée tant que le contour est ouvert').toBe(true);
     expect(tuiles().map((b) => b.textContent)).toEqual(['Plat', '1 pan', '2 pans', '4 pans', 'En L', 'En T']);
-    expect(document.querySelector('.rp9-forme-picto')).toBeNull();
+    expect(document.querySelector('.rp9-tuile-forme')).toBeNull();
     tuiles()[2].click();
     expect(tuiles().some((b) => b.hasAttribute('aria-pressed') || b.hasAttribute('aria-disabled'))).toBe(false);
     expect(document.getElementById('rp9-formes-toit')?.dataset.testid).toBeUndefined();

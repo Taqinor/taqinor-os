@@ -22,6 +22,14 @@ const TRACES = {
   lecture: <path d="M7 4l13 8-13 8z" fill="currentColor" stroke="none" />,
   chevron: <path d="M6 9l6 6 6-6" />,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16.5v.5" /></>,
+  // Barre d'outils de la carte et pile de zoom (maquette Main).
+  selection: <path d="M5 3l14 8-6 2-2 6z" />,
+  trace: <><path d="M4 18l5-12 6 9 5-7" /><circle cx="4" cy="18" r="1.6" /><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="15" r="1.6" /><circle cx="20" cy="8" r="1.6" /></>,
+  obstacle: <><rect x="5" y="5" width="14" height="14" rx="2" /><path d="M5 19L19 5" /></>,
+  mesure: <><path d="M3 17L17 3l4 4L7 21z" /><path d="M8 12l2 2M11 9l2 2M14 6l2 2" /></>,
+  annuler: <><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 010 12h-3" /></>,
+  retablir: <><path d="M15 14l5-5-5-5" /><path d="M20 9H10a6 6 0 000 12h3" /></>,
+  pleinEcran: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
   partager: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" /></>,
 }
 
@@ -30,7 +38,7 @@ export function Icone({ nom, taille = 24, epaisseur = 1.8, className = '' }) {
   return (
     <svg width={taille} height={taille} viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth={epaisseur} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-      className={className}>
+      className={className || undefined}>
       {TRACES[nom] ?? null}
     </svg>
   )

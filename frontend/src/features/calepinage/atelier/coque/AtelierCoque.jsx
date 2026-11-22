@@ -1,9 +1,10 @@
 import AtelierPanneaux from '../../AtelierPanneaux'
 import BuilderCarte from '../BuilderCarte'
 import BuilderOutils from '../BuilderOutils'
-import BuilderPose, { BuilderStatut } from '../BuilderPose'
+import BuilderPose from '../BuilderPose'
 import BuilderToit from '../BuilderToit'
 import InspecteurBuilder from '../InspecteurBuilder'
+import { StatutCarte } from './BandeauxCoque'
 import CoqueAtelier from './CoqueAtelier'
 import { sousTitreProjet, titreProjet } from './projet'
 
@@ -32,7 +33,7 @@ export default function AtelierCoque({
       libelleDevis={devisLie ? 'Resynchroniser le devis' : 'Générer le devis'}
       devisPossible={!lectureSeule}
       carte={<BuilderCarte {...proprietesBuilder} />}
-      statut={<div className="cal-coque-statut"><BuilderStatut /></div>}
+      statut={<StatutCarte />}
       groupes={{
         outils: <BuilderOutils {...proprietesBuilder} />,
         toit: <BuilderToit {...proprietesBuilder} />,

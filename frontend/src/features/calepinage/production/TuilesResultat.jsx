@@ -71,9 +71,11 @@ function EcartPvgis({ validation }) {
   const signe = pct < 0 ? '−' : (pct > 0 ? '+' : '')
   const tol = validation?.tolerance_pct
   const tolerance = nombre(tol) ? `±${formatNumber(tol, { decimals: Number.isInteger(tol) ? 0 : 1 })} %` : null
-  let phrase = 'Comparé à PVGIS au même endroit'
-  if (tolerance && validation.verdict === 'dans_la_tolerance') phrase = `Dans la tolérance de ${tolerance}`
-  else if (tolerance && validation.verdict === 'hors_tolerance') phrase = `Hors de la tolérance de ${tolerance}`
+  // Le bloc `validation` n'est publié que pour le MÊME site et la MÊME puissance crête (validation.py :
+  // `_memes_puissances`) : la phrase de la maquette est donc exacte ; un verdict servi s'y ajoute.
+  let phrase = 'Même site, mêmes panneaux'
+  if (tolerance && validation.verdict === 'dans_la_tolerance') phrase = `Même site, mêmes panneaux · dans ±${tolerance.slice(1)}`
+  else if (tolerance && validation.verdict === 'hors_tolerance') phrase = `Même site, mêmes panneaux · hors de ${tolerance}`
   return (
     <div className="cal-res-tuile" data-tuile="ecart-pvgis">
       <span className="cal-res-tuile-label">Écart avec PVGIS</span>

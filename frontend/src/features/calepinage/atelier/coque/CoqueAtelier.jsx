@@ -11,6 +11,7 @@ import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
 import {
   CADRES, ETAPES, ecranCoque, premierOngletEtape, useParcours, vueParcours,
 } from '../parcoursGuide'
+import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
 import PanneauEtape from './PanneauEtape'
@@ -121,12 +122,22 @@ export default function CoqueAtelier({
   const { cleEtape } = vueParcours(cleActive, parcours.etats, expert)
   const ecran = ecranCoque(cleActive, resoudreOnglet(cleActive), parcours.etats, expert)
   const cadre = expert ? CADRES.CARTE : (ecran?.cadre ?? CADRES.CARTE)
+  // « Avancé » (guidé) : une FEUILLE à part, posée par-dessus l'écran (l'écran guidé reste intact dessous) ;
+  // Expert : l'ancienne disposition entière (contrôles du constructeur, rangées sous la carte, recherche).
   const [avanceOuvert, setAvanceOuvert] = useState(false)
   const avance = expert || avanceOuvert
+  const feuille = !expert && avanceOuvert
+  useEffect(() => {
+    if (!feuille) return undefined
+    const echap = (e) => { if (e.key === 'Escape') setAvanceOuvert(false) }
+    window.addEventListener('keydown', echap)
+    return () => window.removeEventListener('keydown', echap)
+  }, [feuille])
   const carteVisible = cadre === CADRES.CARTE
 
   const choisirEtape = (cle) => {
     const premier = premierOngletEtape(cle, expert)
+    setAvanceOuvert(false) // une étape choisie referme la feuille « Avancé »
     if (!premier || premier === cleActive) return
     const suivants = new URLSearchParams(parametres)
     suivants.set(PARAM_ONGLET, premier)
@@ -212,12 +223,13 @@ export default function CoqueAtelier({
   return (
     <ContexteCoque.Provider value={valeurCoque}>
       <div className="rp9-host cal-coque" data-testid="cal-coque" data-etape={cleEtape} data-cadre={cadre}
-        data-avance={avance ? '1' : '0'} data-expert={expert ? '1' : '0'}
+        data-avance={expert ? '1' : '0'} data-expert={expert ? '1' : '0'} data-feuille={feuille ? '1' : undefined}
         data-presentation={presentation ? '1' : undefined}>
         <BarreProjet cache={!!presentation} retour={retour} titre={titre} sousTitre={sousTitre} expert={expert} onExpert={basculerExpert}
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
           enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
             derniereVersionLe={derniereVersionLe} />} />
+        <BandeauAlertes cache={!!presentation}>{alertes}</BandeauAlertes>
         <div id="rp9-studio" className="cal-coque-corps">
           <RailEtapes cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
             avance={avance} onAvance={setAvanceOuvert} />
@@ -238,16 +250,22 @@ export default function CoqueAtelier({
           <PanneauEtape numero={rang >= 0 ? rang + 1 : null} total={TOTAL} titre={ecran?.titre ?? null}
             cache={(pleine && !avance) || !!presentation} refCorps={setNoeudPanneau} refPied={setNoeudPiedPanneau}
             pied={piedParDefaut} tiroir={tiroir} deplie={deplie} onDeplier={setDeplie} refControle={setNoeudControle}>
-            {alertes}
             {carteVisible && ecranMonte}
-            <div className="cal-coque-groupe" data-groupe="toit" hidden={!(avance || cleEtape === 'toit')}>
+            <div className="cal-coque-groupe" data-groupe="toit" hidden={!(expert || cleEtape === 'toit')}>
               {groupes.outils}
               {groupes.toit}
             </div>
-            <div className="cal-coque-groupe" data-groupe="pose" hidden={!(avance || cleEtape === 'panneaux')}>
+            <div className="cal-coque-groupe" data-groupe="pose" hidden={!(expert || cleEtape === 'panneaux')}>
               {groupes.pose}
             </div>
-            <div className="cal-coque-avance" hidden={!avance}>
+            <div className="cal-coque-avance" hidden={!avance} role={feuille ? 'dialog' : undefined}
+              aria-label={feuille ? 'Avancé' : undefined}>
+              {feuille && (
+                <div className="cal-coque-feuille-tete">
+                  <h2>Avancé</h2>
+                  <button type="button" className="cal-coque-feuille-fermer" onClick={() => setAvanceOuvert(false)}>Fermer</button>
+                </div>
+              )}
               {contenuAvance}
               {renderAtelierPanneaux?.({
                 expert, onBasculerExpert: basculerExpert, parcours, portailDevis: noeudDevis,

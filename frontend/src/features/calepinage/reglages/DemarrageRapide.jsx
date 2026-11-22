@@ -23,8 +23,9 @@ import {
    Source · État. Les réglages portent un NOM en français courant, la valeur son
    unité à la française, la source son éditeur (« PVsyst · ouvrir ») ; la citation
    complète reste dans la ligne (dépliable) et en infobulle. Jamais de JSON, jamais
-   une clé technique. Le serveur n'applique le profil qu'EN BLOC (toutes les clés
-   vides) : les cases « Remplir » en disent l'état, elles ne choisissent pas.
+   une clé technique. Les cases « Remplir » CHOISISSENT : cochées par défaut sur chaque réglage vide, le
+   geste envoie la liste des clés cochées (`POST profil-depart/` avec `cles`) ; une valeur déjà en place
+   n'a pas de case active (jamais écrasée).
    ========================================================================== */
 
 const saisie = (reglages, { section, cle }) => {
@@ -66,41 +67,42 @@ function Etat({ v, etat, reglages }) {
   )
 }
 
-/** La case « Remplir » : l'état d'une ligne, dessiné comme la maquette. Désactivée — le serveur remplit en bloc. */
-function CaseRemplir({ etat, nom }) {
-  const rempli = etat === 'a_appliquer'
+/** La case « Remplir » (maquette) : cochée = sera remplie. Active seulement sur un réglage vide — une valeur
+    déjà en place n'est jamais remplacée (case vide, inactive). */
+function CaseRemplir({ etat, nom, coche, actif, onBascule }) {
+  const rempli = etat === 'a_appliquer' && coche
   return (
     <label className="relative mx-auto flex h-11 w-11 items-center justify-center">
       <input
         type="checkbox"
         checked={rempli}
-        disabled
-        readOnly
-        aria-label={rempli ? `Sera rempli : ${nom}` : `Déjà en place, non remplacé : ${nom}`}
-        className="absolute inset-0 m-0 opacity-0"
+        disabled={!actif}
+        onChange={onBascule}
+        aria-label={etat === 'a_appliquer' ? `Remplir : ${nom}` : `Déjà en place, non remplacé : ${nom}`}
+        className="peer absolute inset-0 m-0 cursor-pointer opacity-0 disabled:cursor-default"
       />
       {rempli ? (
-        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-foreground text-background" aria-hidden="true">
+        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-foreground text-background peer-focus-visible:ring-2 peer-focus-visible:ring-ring" aria-hidden="true">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
         </span>
       ) : (
-        <span className="h-[22px] w-[22px] rounded-md border-[1.5px] border-border bg-card" aria-hidden="true" />
+        <span className="h-[22px] w-[22px] rounded-md border-[1.5px] border-border bg-card peer-focus-visible:ring-2 peer-focus-visible:ring-ring" aria-hidden="true" />
       )}
     </label>
   )
 }
 
-function LigneProfil({ v, reglages }) {
+function LigneProfil({ v, reglages, coche, peut, onBascule }) {
   const { nom, aide } = libelleReglage(v.cle)
   const etat = etatDe(v, reglages)
   const precision = precisionValeur(v.valeur)
   const citation = `${v.reference} — ${v.url} — lu le ${dateFr(v.date_lecture)}`
   return (
     <div
-      className={`grid ${COLONNES} items-center border-b border-border px-2 py-2 pr-5 text-sm min-h-[60px]`}
+      className={`grid ${COLONNES} items-center border-b border-border px-2 pr-5 text-sm min-h-[60px]`}
       data-testid={`acal405-valeur-${v.cle}`}
     >
-      <CaseRemplir etat={etat} nom={nom} />
+      <CaseRemplir etat={etat} nom={nom} coche={coche} actif={peut && etat === 'a_appliquer'} onBascule={onBascule} />
       <span className="flex flex-col pr-3">
         <span className="font-semibold">{nom}</span>
         {aide ? <span className="text-xs text-muted-foreground">{aide}</span> : null}
@@ -110,6 +112,8 @@ function LigneProfil({ v, reglages }) {
         {precision ? <span className="text-xs text-muted-foreground">{precision}</span> : null}
       </span>
       <span className="flex flex-col pr-3">
+        {/* La citation complète (page, URL entière, date de lecture) : en infobulle et pour les lecteurs
+            d'écran — plus de ligne dépliable qui allongerait chaque rangée. */}
         <span className="flex items-center gap-2" title={citation}>
           <span className="font-semibold">{sourceCourte(v.reference)}</span>
           <a href={v.url} target="_blank" rel="noreferrer"
@@ -117,11 +121,8 @@ function LigneProfil({ v, reglages }) {
             aria-label={`Ouvrir la source : ${sourceCourte(v.reference)}`}>
             ouvrir<ExternalLink size={14} aria-hidden="true" />
           </a>
+          <span className="sr-only" data-testid={`acal405-citation-${v.cle}`}>{`Citation complète : ${citation}`}</span>
         </span>
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Citation complète</summary>
-          <span className="block break-words">{citation}</span>
-        </details>
       </span>
       <Etat v={v} etat={etat} reglages={reglages} />
     </div>
@@ -131,7 +132,7 @@ function LigneProfil({ v, reglages }) {
 /** Le réglage tapé À LA MAIN : aucune valeur publiée n'existe, la ligne le dit et mène à la saisie. */
 function LigneSansSource({ sansSource }) {
   return (
-    <div className={`grid ${COLONNES} items-center bg-muted/30 px-2 py-2 pr-5 text-sm min-h-[60px]`}>
+    <div className={`grid ${COLONNES} items-center bg-muted/30 px-2 pr-5 text-sm min-h-[60px]`}>
       <label className="relative mx-auto flex h-11 w-11 items-center justify-center">
         <input type="checkbox" disabled aria-label="Aucune valeur publiée : à saisir par vous"
           className="absolute inset-0 m-0 opacity-0" />
@@ -166,6 +167,14 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
   const [erreur, setErreur] = useState(null)
   const [message, setMessage] = useState(null)
   const [occupe, setOccupe] = useState(false)
+  // Les clés DÉCOCHÉES par la personne : tout réglage vide est coché d'office (maquette).
+  const [decoches, setDecoches] = useState(() => new Set())
+  const basculer = (cle) => setDecoches((avant) => {
+    const apres = new Set(avant)
+    if (apres.has(cle)) apres.delete(cle)
+    else apres.add(cle)
+    return apres
+  })
 
   const [lecture, setLecture] = useState(0)
   // Le droit d'approuver : celui que l'appelant donne, à défaut celui de la personne connectée
@@ -205,13 +214,16 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
   const valeurs = Array.isArray(profil?.valeurs) ? profil.valeurs : []
   const sansSource = Array.isArray(profil?.sans_source) ? profil.sans_source : []
   // N : les réglages vides que « Remplir » va réellement remplir (lus sur l'état servi).
-  const nbVides = valeurs.filter((v) => etatDe(v, reglages) === 'a_appliquer').length
+  const vides = valeurs.filter((v) => etatDe(v, reglages) === 'a_appliquer')
+  const nbVides = vides.length
+  const choisies = vides.filter((v) => !decoches.has(v.cle)).map((v) => v.cle)
+  const nbChoisies = choisies.length
   const Titre = seul ? 'h1' : 'h2'
 
   return (
     <Card className={seul ? 'space-y-5 border-0 bg-transparent p-0 shadow-none' : 'mt-5 space-y-4 p-4'}
       data-testid="acal405-demarrage">
-      {seul ? (
+      {autonome === true ? (
         <nav aria-label="Fil d’Ariane" className="flex items-center gap-3 text-sm text-muted-foreground">
           <a href="/calepinage/reglages" className="text-muted-foreground no-underline hover:underline">Réglages</a>
           <span aria-hidden="true">/</span>
@@ -235,19 +247,22 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
         <p role="alert" className="text-xs text-destructive" data-testid="acal405-erreur">{erreur}</p>
       )}
 
-      <section aria-label="Réglages proposés" className="overflow-x-auto rounded-[14px] border border-border bg-card">
+      {/* Le tableau défile DANS sa carte (en-tête collé) : le titre en haut et le pied (boutons) en bas
+          restent à l'écran, comme la maquette, quel que soit le nombre de réglages. */}
+      <section aria-label="Réglages proposés"
+        className={`overflow-auto rounded-[14px] border border-border bg-card ${seul ? 'min-h-[240px] max-h-[calc(100dvh-21rem)]' : ''}`}>
         <div className="min-w-[760px]">
-          <div className={`grid ${COLONNES} h-11 items-center bg-background px-2 pr-5 text-xs font-semibold text-muted-foreground`}>
+          <div className={`sticky top-0 z-10 grid ${COLONNES} h-11 items-center border-b border-border bg-background px-2 pr-5 text-xs font-semibold text-muted-foreground`}>
             <span className="text-center">Remplir</span><span>Réglage</span><span>Valeur proposée</span>
             <span>Source</span><span>État</span>
           </div>
-          {valeurs.map((v) => <LigneProfil key={`${v.section}-${v.cle}`} v={v} reglages={reglages} />)}
+          {valeurs.map((v) => (
+            <LigneProfil key={`${v.section}-${v.cle}`} v={v} reglages={reglages} peut={peut}
+              coche={!decoches.has(v.cle)} onBascule={() => basculer(v.cle)} />
+          ))}
           {sansSource.length > 0 && <LigneSansSource sansSource={sansSource} />}
-        </div>
-      </section>
-
-      {sansSource.length > 0 && (
-        <details className="text-xs" data-testid="acal405-sans-source">
+          {sansSource.length > 0 && (
+        <details className="border-t border-border px-4 py-2 text-xs" data-testid="acal405-sans-source">
           <summary className="cursor-pointer text-muted-foreground">
             {sansSource.length} réglages sans valeur publiée (laissés vides)
           </summary>
@@ -255,7 +270,9 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
             {sansSource.map((s) => <li key={`${s.section}-${s.cle}`}>{nomSansSource(s.cle)} — {s.motif}</li>)}
           </ul>
         </details>
-      )}
+          )}
+        </div>
+      </section>
 
       <div className="flex flex-wrap items-center gap-4">
         <span className="flex min-w-[260px] flex-1 items-start gap-2.5 text-sm leading-snug text-muted-foreground">
@@ -266,9 +283,9 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
         {peut && (
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             disabled={occupe}
-            className="h-12 rounded-[10px] px-5 text-base"
+            className="h-11 rounded-[10px] px-3 text-sm text-muted-foreground"
             data-testid="acal405-retirer"
             onClick={() => agir(
               () => calepinageApi.parametres.retirerProfilDepart(),
@@ -288,16 +305,17 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
         {peut && (
           <Button
             type="button"
-            disabled={occupe || nbVides === 0}
+            disabled={occupe || nbChoisies === 0}
             className="h-12 rounded-[10px] px-[22px] text-base"
             data-testid="acal405-appliquer"
             onClick={() => agir(
-              () => calepinageApi.parametres.appliquerProfilDepart(),
+              () => calepinageApi.parametres.appliquerProfilDepart(choisies),
               (d) => `${(d.appliquees || []).length} valeurs appliquées`,
             )}
           >
             {nbVides === 0 ? 'Aucun réglage vide à remplir'
-              : `Remplir ${nbVides === 1 ? 'le réglage vide' : `les ${nbVides} réglages vides`}`}
+              : (nbChoisies === 0 ? 'Aucun réglage coché'
+                : `Remplir ${nbChoisies === 1 ? 'le réglage' : `les ${nbChoisies} réglages`} ${nbChoisies === nbVides ? 'vide' : 'coché'}${nbChoisies === 1 ? '' : 's'}`)}
           </Button>
         )}
       </div>

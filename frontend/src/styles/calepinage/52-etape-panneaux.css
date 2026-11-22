@@ -2,25 +2,29 @@
    Aucune couleur littérale : jetons de l'ERP seulement (thème clair et sombre). Tailles 12/14/16/20 px.
    Importé par `atelier/coque/etapes/EtapePanneaux.jsx`. Les `@media` de la coque vont dans 56-coque-responsive. */
 
-.cal-coque .cal-pan { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.cal-coque .cal-pan { display: flex; flex-direction: column; gap: 20px; min-width: 0; line-height: 1.3; }
 .cal-coque .cal-pan-section { display: flex; flex-direction: column; gap: 8px; margin: 0; }
 .cal-coque .cal-pan-titre { margin: 0; font-size: 0.875rem; font-weight: 600; }
 .cal-coque .cal-pan-note { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--muted-foreground); }
+.cal-coque .cal-pan-note-ligne { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-coque .cal-pan-erreur { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--destructive); }
 .cal-coque .cal-pan-lien { color: var(--info); text-decoration: underline; }
 
 /* Le modèle de panneau : carte à liste déroulante (56 px, nom 14 px, ligne 12 px). */
 .cal-coque .cal-pan-liste-hote { position: relative; }
 .cal-coque .cal-pan-module {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 56px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: 56px;
   padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card);
   color: var(--foreground); text-align: left;
 }
 .cal-coque .cal-pan-module:disabled { opacity: 0.6; cursor: not-allowed; }
 .cal-coque .cal-pan-module svg { flex: none; color: var(--muted-foreground); }
 .cal-coque .cal-pan-module-texte { display: flex; flex-direction: column; min-width: 0; }
+/* Une ligne chacun, coupée par une ellipse (le nom entier reste dans l'infobulle du bouton). */
 .cal-coque .cal-pan-module-nom { font-size: 0.875rem; font-weight: 600; }
 .cal-coque .cal-pan-module-ligne { font-size: 0.75rem; font-weight: 400; color: var(--muted-foreground); }
+.cal-coque .cal-pan-module .cal-pan-module-nom,
+.cal-coque .cal-pan-module .cal-pan-module-ligne { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-coque .cal-pan-options {
   position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
   max-height: 320px; overflow-y: auto; background: var(--popover); border: 1px solid var(--border);
@@ -80,19 +84,25 @@
   gap: 20px; padding: 10px 20px; max-width: calc(100% - 140px); white-space: nowrap;
 }
 .cal-coque .cal-pan-puce .cal-indicateur + .cal-indicateur { padding-left: 20px; border-left: 1px solid var(--border); }
+/* Interlignes de la maquette : libellé 12/16, valeur 20/22. */
+.cal-coque .cal-pan-puce .cal-indicateur-libelle { line-height: 16px; }
+.cal-coque .cal-pan-puce .cal-indicateur-valeur { line-height: 22px; }
 .cal-coque .cal-coque-sur-carte > div.cal-carte-soleil { position: absolute; inset: 0; pointer-events: none; }
-.cal-coque .cal-carte-soleil > * { pointer-events: auto; position: absolute; bottom: 20px; }
+.cal-coque .cal-carte-soleil > * { pointer-events: auto; position: absolute; bottom: 20px; line-height: 16px; }
 .cal-coque .cal-pan-legende { left: 16px; width: 232px; padding: 0 14px 12px; }
+/* Le titre EST le bouton de la carte d'accès solaire : il couvre le haut de la légende (12 px de marge + la ligne
+   + 8 px jusqu'au dégradé, comme la maquette) ; 44 px de cible au toucher. */
 .cal-coque .cal-pan-legende-titre {
-  display: block; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent;
-  color: var(--foreground); font-size: 0.75rem; font-weight: 600; text-align: left;
+  display: block; width: 100%; padding: 12px 0 8px; border: 0; background: transparent;
+  color: var(--foreground); font-size: 0.75rem; font-weight: 600; line-height: 16px; text-align: left;
 }
+.cal-coque .cal-pan-legende-titre[aria-pressed='true'] { text-decoration: underline; text-underline-offset: 3px; }
+@media (pointer: coarse) { .cal-coque .cal-pan-legende-titre { min-height: 44px; } }
 .cal-coque .cal-pan-legende-titre:disabled { cursor: default; }
 .cal-coque .cal-pan-degrade { height: 10px; border-radius: 5px; }
 .cal-coque .cal-pan-legende-bornes {
   display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.75rem; color: var(--muted-foreground);
 }
-.cal-coque .cal-pan-legende-note { margin: 4px 0 0; font-size: 0.75rem; color: var(--muted-foreground); }
 .cal-coque .cal-pan-lecteur {
   left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px;
   box-shadow: var(--shadow-lg);
@@ -105,13 +115,28 @@
 .cal-coque .cal-pan-lecture[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--primary); }
 .cal-coque .cal-pan-curseur { display: flex; flex-direction: column; gap: 6px; width: 260px; }
 .cal-coque .cal-pan-curseur-tete {
-  display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted-foreground);
+  display: flex; justify-content: space-between; font-size: 0.75rem; line-height: 16px; color: var(--muted-foreground);
 }
 .cal-coque .cal-pan-curseur-tete strong { color: var(--foreground); font-weight: 600; }
-.cal-coque .cal-pan-curseur input[type='range'] { width: 100%; min-height: 24px; accent-color: var(--primary); }
+/* Curseur d'heure de la maquette : piste 6 px remplie d'or jusqu'au bouton, bouton 18 px blanc liseré or. */
+.cal-coque .cal-pan-heure {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin: 0; border-radius: 3px;
+  background: linear-gradient(to right, var(--primary) var(--cal-pan-rempli, 0%), var(--muted) var(--cal-pan-rempli, 0%));
+}
+.cal-coque .cal-pan-heure:disabled { opacity: 0.6; }
+.cal-coque .cal-pan-heure::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--card); border: 2px solid var(--primary); box-sizing: border-box;
+}
+.cal-coque .cal-pan-heure::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%; background: var(--card); border: 2px solid var(--primary); box-sizing: border-box;
+}
+.cal-coque .cal-pan-heure::-moz-range-track { height: 6px; border-radius: 3px; background: transparent; }
+.cal-coque .cal-pan-heure:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
+@media (pointer: coarse) { .cal-coque .cal-pan-heure { height: 24px; background-clip: content-box; padding: 9px 0; } }
 
-/* La ligne d'état du constructeur (bas gauche de la carte) se range au-dessus de la légende. */
-.cal-coque[data-etape='panneaux'] .cal-coque-statut { bottom: 132px; }
+/* La ligne d'état du constructeur (bas gauche de la carte) se range au-dessus de la légende (20 + 78 + 8 px). */
+.cal-coque[data-etape='panneaux'] .cal-coque-statut { bottom: 106px; }
 
 /* Mode guidé : la pose du constructeur (« Recommandation », « Personnaliser la disposition ») reste montée
    mais se range sous « Avancé » ; l'écran de l'étape la remplace. */

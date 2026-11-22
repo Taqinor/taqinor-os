@@ -55,7 +55,10 @@ def _avec_etats(profil, company):
 
 @extend_schema(methods=['GET'], responses=forme_du_contrat(
     'CalepinageProfilDepart', 'calepinage_profil_depart.json'))
-@extend_schema(methods=['POST'], request=None, responses=forme_du_contrat(
+@extend_schema(methods=['POST'], request=inline_serializer(
+    'CalepinageProfilDepartChoix',
+    {'cles': serializers.ListField(child=serializers.CharField(), required=False)}),
+    responses=forme_du_contrat(
     'CalepinageProfilDepartApplication', 'calepinage_profil_depart.json',
     cle='exemple_application'))
 # Le retrait REND son bilan (200 + corps) : un sérialiseur nu serait publié
@@ -71,9 +74,20 @@ def profil_depart(self, request):
     company = getattr(request.user, 'company', None)
     if methode == 'get':
         return Response(_avec_etats(charger_profil(), company))
+    options = {}
+    if methode == 'post':
+        cles = request.data.get('cles') if hasattr(request.data, 'get') else None
+        if cles is not None:
+            connues = {ligne['cle'] for ligne in charger_profil().get('valeurs', [])}
+            if (not isinstance(cles, list) or not all(isinstance(c, str) for c in cles)
+                    or not set(cles) <= connues):
+                return Response(
+                    {'cles': 'Liste de réglages du profil de départ attendue.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            options = {'cles': set(cles)}
     geste = appliquer_profil if methode == 'post' else retirer_profil
     try:
-        return Response(geste(company, user=request.user))
+        return Response(geste(company, user=request.user, **options))
     except ReglageInterdit as refus:
         return Response({refus.champ: str(refus)},
                         status=status.HTTP_403_FORBIDDEN)

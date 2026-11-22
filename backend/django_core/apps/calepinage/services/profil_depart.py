@@ -59,8 +59,12 @@ def _sections_verrouillees(company):
             for section in REGISTRES}
 
 
-def appliquer_profil(company, *, user, profil=None):
-    """Remplit les SEULES clés vides ; rend ``{appliquees, ignorees}``."""
+def appliquer_profil(company, *, user, profil=None, cles=None):
+    """Remplit les SEULES clés vides ; rend ``{appliquees, ignorees}``.
+
+    ``cles`` (F4, écran « Démarrage rapide » : une case par ligne) : ne traiter QUE ces clés du
+    profil ; ``None`` = tout le profil (comportement d'origine). Une clé non choisie n'est ni
+    appliquée ni listée dans ``ignorees`` (rien ne lui est arrivé)."""
     from django.db import transaction
 
     from .parametres import enregistrer_parametres
@@ -71,6 +75,8 @@ def appliquer_profil(company, *, user, profil=None):
         stockees = _sections_verrouillees(company)
         for ligne in profil.get('valeurs', []):
             section, cle = ligne['section'], ligne['cle']
+            if cles is not None and cle not in cles:
+                continue
             if cle in stockees.get(section, {}):
                 ignorees.append({'cle': cle, 'section': section,
                                  'motif': 'deja_saisie'})

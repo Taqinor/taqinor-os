@@ -119,10 +119,11 @@ async function mesurerGlisse(page, id, nb = NB) {
   await expect(page.locator('#rp9-need-note'), `${nb} modules posés avant la mesure`).toContainText(nombreLu(nb), T)
   console.log(`[ACAL440-diag] barre de résumé : « ${await page.getByTestId('cal-resume-panneaux').innerText()} »`)
   // « Déplacer les panneaux » : hors mode disposition, `beginLayoutDrag` refuse et le glissé déplacerait la CARTE.
-  // Coque (22/11, lane L2) : en guidé, le groupe « pose » du constructeur (`#rp9-layout-*`, `#rp9-need-*`,
-  // `#rp9-results`) vit sous « Avancé » — on le déplie d'abord (sans le refermer s'il l'est déjà).
-  const avance = page.getByTestId('cal-rail-avance')
-  if ((await avance.getAttribute('aria-expanded')) !== 'true') await avance.click()
+  // Coque (22/11) : les contrôles du constructeur (`#rp9-layout-*`, `#rp9-need-*`, `#rp9-results`, rangées sous
+  // la carte) sont ceux du mode EXPERT (« Avancé » en guidé est une feuille à part, sans eux).
+  if (!(await page.getByTestId('cal-mode-expert').isChecked())) {
+    await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
+  }
   const bascule = page.locator('#rp9-layout-toggle')
   await bascule.click()
   await expect(bascule).toHaveAttribute('aria-pressed', 'true')

@@ -127,6 +127,86 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
   })
 })
 
+/* F4 — LE RÉSULTAT COMPLET, vérifiable sans pile : aucun calepinage réel n'a toutes ses pertes renseignées,
+   donc le contrat `calepinage_resultat.json › exemple` (incomplet sur la cascade : postes non comptés) est
+   COMPLÉTÉ ici à partir de la forme documentée du sérialiseur (`cascade.postes_lisibles` : 5 postes
+   `compte`, `plages.total`, `simulation.reglages_utilises` du profil de départ). Chaque assertion reprend
+   un bloc de `Resultats.dc.html`, dans l'ordre de la maquette. */
+const COMPLET_MAQUETTE = () => {
+  const d = COMPLET()
+  d.cascade.postes_lisibles = {
+    depart_kwh: 16800, arrivee_kwh: 13675, arrivee_pct: 81.4, total_pct: 18.6, motif_absence: '',
+    postes: [
+      ['ombres_proches', 'Ombres proches', 3.0], ['poussiere', 'Poussière', 3.0], ['chaleur', 'Chaleur', 6.4],
+      ['cables_et_onduleur', 'Câbles et onduleur', 4.5], ['autres', 'Autres pertes', 3.1],
+    ].map(([poste, libelle, pct]) => ({ poste, libelle, perte_kwh: pct * 168, perte_pct: pct, statut: 'compte', etapes: [] })),
+  }
+  d.cascade.plages = { ...d.cascade.plages, total: { statut: 'dans_la_plage' } }
+  d.production.total.total_loss_pct = 18.6
+  const ref = 'Profil de départ — PVsyst, Array and system losses'
+  d.simulation = { ...d.simulation, reglages_utilises: {
+    b0_iam: { valeur: 0.05, source: 'profil', reference: ref },
+    mismatch_fabricant_pct: { valeur: 2, source: 'profil', reference: ref },
+    albedo_mensuel: { valeur: 0.2, source: 'profil', reference: ref },
+  } }
+  return d
+}
+
+describe('Étape Résultats — résultat complet, bloc par bloc (maquette Resultats)', () => {
+  it('même structure, mêmes mots, même ordre que Resultats.dc.html', async () => {
+    servir(COMPLET_MAQUETTE())
+    const { container } = rendre({ action: { libelle: 'Préparer les documents', onClick: vi.fn() } })
+    await screen.findByTestId('cal-resultats-tuiles')
+    const texte = (n) => n.textContent.replace(/\s+/g, ' ').trim()
+    const racine = container.querySelector('.cal-res')
+    // 1. Héros + 3 tuiles : libellé, chiffre, phrase — dans l'ordre.
+    const tuiles = [...screen.getByTestId('cal-resultats-tuiles').children].map((t) => [...t.children].map(texte))
+    expect(tuiles).toEqual([
+      ['Production la première année', '13 000 kWh', '1 505 kWh par kWc · année moyenne (P50)'],
+      ['De la consommation', '71 %', 'Pourquoi ce chiffre ?'],
+      ['Pertes au total', '18,6 %', 'Dans la plage habituelle'],
+      ['Écart avec PVGIS', '− 2,0 %', 'Même site, mêmes panneaux · dans ±5 %'],
+    ])
+    // 2. « Mois par mois » : titre, légende, 12 paires de barres, 12 initiales J F M A M J J A S O N D.
+    const mois = screen.getByTestId('cal-resultats-mois')
+    expect(texte(mois.querySelector('.cal-res-entete'))).toBe('Mois par moisProductionConsommation')
+    expect(mois.querySelectorAll('.cal-res-mois-paire')).toHaveLength(12)
+    mois.querySelectorAll('.cal-res-mois-paire').forEach((p) => expect(p.children).toHaveLength(2))
+    expect([...mois.querySelectorAll('.cal-res-mois-noms span')].map(texte).join('')).toBe('JFMAMJJASOND')
+    // 3. « Du soleil au réseau » : 7 lignes, dans l'ordre de la maquette, puis la note.
+    const pertes = screen.getByTestId('cal-resultats-pertes')
+    expect([...pertes.querySelectorAll('.cal-res-poste')].map(texte)).toEqual([
+      'Soleil reçu par les panneaux100 %', 'Ombres proches− 3,0 %', 'Poussière− 3,0 %', 'Chaleur− 6,4 %',
+      'Câbles et onduleur− 4,5 %', 'Autres pertes− 3,1 %', 'Électricité produite81,4 %',
+    ])
+    expect(texte(pertes.querySelector('.cal-res-entete'))).toMatch(/^Du soleil au réseauVoir les \d+ étapes$/)
+    expect(texte(pertes.querySelector('.cal-res-info'))).toBe(
+      '3 réglages utilisent des valeurs publiées, non mesurées sur ce chantier (reflets du verre, écarts entre panneaux, réflexion du sol). Voir les sources')
+    // 4. Pied : phrase + bouton doré, après les deux cartes.
+    expect(texte(screen.getByTestId('cal-resultats-pied'))).toBe(
+      'Année basse (9 fois sur 10 au-dessus) : 11 900 kWh · Dans 2 ans : 12 929 kWhPréparer les documents')
+    // Ordre global : tuiles, milieu (mois puis pertes), pied.
+    const ordre = [...racine.children].map((n) => n.getAttribute('data-testid') || n.className)
+    expect(ordre.slice(0, 3)).toEqual(['cal-resultats-tuiles', 'cal-res-milieu', 'cal-resultats-pied'])
+  })
+})
+
+describe('Étape Résultats — pertes nommées en clair', () => {
+  it('« Salissure / LID » deviennent les mots de la maquette, le terme technique reste en infobulle', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    servir({ ...base, production: borne.production, simulation: borne.simulation, cascade: borne.cascade })
+    rendre()
+    const lignes = await screen.findAllByTestId('acal700-ligne')
+    const noms = lignes.map((l) => l.querySelector('.cal-resinc-nom'))
+    expect(noms.map((n) => n.textContent.trim())).toEqual([
+      'Poussière sur les panneaux', 'Écarts entre panneaux', 'Vieillissement de la première année'])
+    expect(noms[0]).toHaveAttribute('title', 'Salissure')
+    expect(noms[2]).toHaveAttribute('title', 'LID (première exposition)')
+    expect(document.body.textContent).not.toMatch(/Salissure|LID|mismatch/)
+  })
+})
+
 describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet)', () => {
   it('carte « au plus » et « Pour un résultat complet » côte à côte, sans tuiles ni pied', async () => {
     const base = COMPLET()

@@ -92,7 +92,8 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
 
   // ── 3. L'ATELIER DU CALEPINAGE CRÉÉ ────────────────────────────────────
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  await expect(page.getByTestId('cal-atelier-panneaux')).toBeVisible()
+  // Coque (22/11) : le bloc de l'atelier vit sous « Avancé » en guidé — monté, pas visible.
+  await expect(page.getByTestId('cal-atelier-panneaux')).toBeAttached()
   const calepinageId = idDansUrl(page.url())
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
@@ -118,6 +119,8 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
     .toBeTruthy()
 
   // ── 5. LA RETENIR, PAR L'ÉCRAN (CAL42) ─────────────────────────────────
+  // Coque (22/11) : les liens de l'atelier vivent sous « Avancé » en guidé.
+  await page.getByTestId('cal-rail-avance').click()
   await page.getByTestId('cal-lien-variantes').click()
   await expect(page).toHaveURL(/\/calepinage\/\d+\?onglet=variantes/)
   const tableau = page.getByTestId('cal-tableau-variantes')
@@ -134,7 +137,8 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
   await expect(page.locator('[data-testid^="cal-retenue-"]').first()).toBeVisible()
 
   // ── 6. GÉNÉRER LE DEVIS (CAL24/CAL38), par l'écran ─────────────────────
-  await page.goto(`/calepinage/${calepinageId}`)
+  // Coque (22/11) : le bouton de devis du bloc de l'atelier est celui du mode expert (en guidé, il est à l'étape Documents).
+  await page.goto(`/calepinage/${calepinageId}?mode=expert`)
   const bloc = page.getByTestId('cal-bouton-devis')
   await expect(bloc).toBeVisible()
 
@@ -220,6 +224,9 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
   // La route profonde historique reste servie : le lien envoyé hier s'ouvre
   // encore aujourd'hui, sur le même écran que l'onglet.
   await page.goto(`/calepinage/${calepinageId}/pente`)
+  await expect(page).toHaveURL(/onglet=pente/)
+  // Coque (22/11) : le formulaire de pente vit dans le rail d'onglets du mode expert (l'étape Toit guidée a sa carte).
+  await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
   await expect(page.getByTestId('cal-pente')).toBeVisible()
 })
 
@@ -311,13 +318,18 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
     'carte indisponible sur cet environnement (le serveur ne publie aucune clé MapTiler) : '
     + 'le constructeur de l’atelier ne boote pas — gestes CALX89…CALX109 non rejouables ici')
 
+  // Coque (22/11) : les contrôles du constructeur (`#rp9-snap-angle`, `#rp9-obs-*`, `#rp9-results`, rangées sous
+  // la carte) sont ceux du mode EXPERT (« Avancé » en guidé est une feuille à part, sans eux).
+  if (!(await page.getByTestId('cal-mode-expert').isChecked())) {
+    await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
+  }
+
   // ── 1. LA CARTE ──────────────────────────────────────────────────────────
   const map = page.locator('#rp9-map')
   await expect(map).toBeVisible({ timeout: 20_000 })
   const box = await map.boundingBox()
   expect(box, 'le canvas de la carte doit avoir une taille').toBeTruthy()
   const cx = box.x + box.width / 2
-  const cy = box.y + box.height / 2
 
   // ── 2. CALX89 — ANGLES DROITS, armés AVANT le tracé (puce créée par le
   // constructeur lui-même, `mapDraw.ts ensureAngleChip`, éteinte par défaut). ──
@@ -331,11 +343,17 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // (CAL107 : « le `click` de MapLibre est synthétisé après un tap sans glissé —
   // même chemin que l'ajout d'un sommet de tracé ») : on rejoue exactement le
   // patron de `calepinage_tactile.spec.js`, souris au lieu du doigt. ──────────
+  // Coque (22/11) : « Terminer le tracé » / « Annuler le dernier point » sont remontés au-dessus de la barre
+  // d'outils (L1) ; le rectangle se trace AU-DESSUS d'eux (même surface qu'avant : 220 × 150 px).
+  const haut = box.y + 60
+  const garde = (await page.locator('#rp9-finish').locator('..').boundingBox())?.y ?? (box.y + box.height)
+  const h = Math.max(80, Math.min(150, garde - 16 - haut))
+  const demi = Math.round(16500 / h)
   const corners = [
-    { x: cx - 110, y: cy - 75 },
-    { x: cx + 110, y: cy - 75 },
-    { x: cx + 110, y: cy + 75 },
-    { x: cx - 110, y: cy + 75 },
+    { x: cx - demi, y: haut },
+    { x: cx + demi, y: haut },
+    { x: cx + demi, y: haut + h },
+    { x: cx - demi, y: haut + h },
   ]
   const undoPoint = page.locator('#rp9-undo-point')
   for (const pt of corners) {
@@ -366,9 +384,9 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   await polyBtn.click()
   await expect(polyBtn).toHaveAttribute('aria-pressed', 'true')
   const obsPts = [
-    { x: cx - 25, y: cy - 18 },
-    { x: cx + 25, y: cy - 18 },
-    { x: cx, y: cy + 18 },
+    { x: cx - 25, y: haut + h / 2 - 18 },
+    { x: cx + 25, y: haut + h / 2 - 18 },
+    { x: cx, y: haut + h / 2 + 18 },
   ]
   for (const pt of obsPts) {
     await page.mouse.click(pt.x, pt.y)
@@ -382,10 +400,6 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // du tracé (toit plat par défaut → la matrice se peint tout de suite). ─────
   // Coque : la recommandation (`#rp9-results`, où vivent les puces de cible) accompagne l'étape Panneaux.
   await page.getByTestId('cal-etape-panneaux').click()
-  // Coque (22/11, lane L2) : en guidé, le groupe « pose » du constructeur (`#rp9-layout-*`, `#rp9-need-*`,
-  // `#rp9-results`) vit sous « Avancé » — on le déplie d'abord (sans le refermer s'il l'est déjà).
-  const avance = page.getByTestId('cal-rail-avance')
-  if ((await avance.getAttribute('aria-expanded')) !== 'true') await avance.click()
   const cibleChip = page.locator('[data-cible="compte"]')
   await expect(cibleChip).toBeVisible({ timeout: 10_000 })
   await expect(cibleChip).toHaveAttribute('aria-pressed', 'false')
@@ -476,7 +490,8 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // ── 10. ROUVRIR LE CALEPINAGE — la cible reste affichée par l'ÉCRAN, cette
   // fois par une VRAIE réhydratation (`prefill.ts semerOptimisationDepuisDocument`),
   // pas seulement lue sur le document serveur. ─────────────────────────────
-  await page.goto(`/calepinage/${calepinageId}`)
+  // Coque (22/11) : ce test agit sur les contrôles du constructeur — en expert ils sont tous visibles, comme avant.
+  await page.goto(`/calepinage/${calepinageId}?mode=expert`)
   await expect(page.locator('#rp9-config')).toBeVisible({ timeout: 20_000 })
   await page.getByTestId('cal-etape-panneaux').click()
   const cibleChipRouverte = page.locator('[data-cible="compte"]')

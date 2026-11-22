@@ -7,9 +7,10 @@ import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-li
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
-  default: { calepinages: { get: vi.fn(), modulesDisponibles: vi.fn() } },
+  default: { calepinages: { designContext: vi.fn(), modulesDisponibles: vi.fn(), entreeElectrique: vi.fn(), resultat: vi.fn() } },
 }))
 
+import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import { ContexteCoque } from '../contexteCoque'
 import EtapePanneaux from './EtapePanneaux'
@@ -44,7 +45,7 @@ function monterConstructeur(o = {}) {
     </select>
     <span id="rp9-pan-module-mention">module de départ, à confirmer</span>
     <span id="rp9-pan-module-erreur" hidden></span>
-    <input id="rp9-sun-hour" type="range" min="6" max="18" value="${c.heure}">
+    <input id="rp9-sun-hour" type="range" min="6" max="${c.heureMax ?? 18}" value="${c.heure}">
     <input id="rp9-sun-date" type="date" value="${c.date}">
     <button data-sun-season="winter" aria-pressed="${c.saison === 'winter'}">w</button>
     <button data-sun-season="summer" aria-pressed="${c.saison === 'summer'}">s</button>
@@ -73,10 +74,20 @@ function rendre(props = {}) {
   )
 }
 
-beforeEach(() => {
-  calepinageApi.calepinages.get.mockResolvedValue({ data: { lead: { id: 42 } } })
+/** Les réponses servies : design-context (lead, taille des factures), catalogue, entrée électrique, résultat. */
+function servir({
+  cible = { panneaux: 12, kwc: 6.96, module_wc: 580 }, motif = '',
+  materiel = { module: null, modules_par_pan: [] }, resultat = { simule: false },
+} = {}) {
+  calepinageApi.calepinages.designContext.mockResolvedValue({
+    data: { calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: 900, motif }, cible_factures: cible },
+  })
   calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: { modules: CATALOGUE } })
-})
+  calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { materiel } })
+  calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultat })
+}
+
+beforeEach(() => servir())
 afterEach(() => {
   cleanup()
   document.getElementById('faux-constructeur')?.remove()
@@ -106,7 +117,8 @@ describe('étape Panneaux — panneau de droite', () => {
     const ordre = ['Panneau', 'Combien de panneaux ?', 'Sens de pose']
       .map((t) => screen.getByText(t).compareDocumentPosition(screen.getByText('Sens de pose')))
     expect(ordre[0] & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    for (const libelle of ['Couvrir la facture', 'Recommandé', 'Le plus de panneaux', 'Portrait', 'Paysage', 'Au mieux']) {
+    expect(await screen.findByText('Recommandé')).toBeInTheDocument() // la facture servie est lue
+    for (const libelle of ['Couvrir la facture', 'Le plus de panneaux', 'Portrait', 'Paysage', 'Au mieux']) {
       expect(screen.getByText(libelle)).toBeInTheDocument()
     }
     // pas de second bouton d'étape (le pied « Raccorder les panneaux → » est celui de la coque) ni d'« En stock »
@@ -132,37 +144,54 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(surChange).toHaveBeenCalledTimes(1)
   })
 
-  it('« Couvrir la facture » : choisie, badge Recommandé, chiffres lus', () => {
-    monterConstructeur()
-    rendre()
-    const carte = screen.getByTestId('cal-panneaux-option-facture')
-    expect(carte).toHaveAttribute('aria-pressed', 'true')
-    expect(carte).toHaveTextContent('Recommandé')
-    expect(carte).toHaveTextContent('12 panneaux · 6,96 kWc · 82 % de la facture')
-    expect(screen.getByTestId('cal-panneaux-option-max')).toHaveAttribute('aria-pressed', 'false')
-  })
-
-  it('« Le plus de panneaux » pose le plafond sur le vrai champ, puis « Couvrir la facture » rétablit le besoin', async () => {
-    const { espion } = monterConstructeur()
+  it('« Couvrir la facture » = la taille servie des factures (cible_factures), jamais la pose posée (55 panneaux, 809 %)', async () => {
+    // Calepinage 5 tel que relevé : cible enregistrée 60, 55 tiennent au module par défaut, 809 %.
+    const { espion } = monterConstructeur({
+      besoin: '60', panneaux: '55 × 720 W', kwc: '39,60 kWc', prod: '53 856 kWh/an', cover: '809 %',
+      note: '60 au devis — seuls 55 tiennent en plein sud (toit ou obstacles).',
+    })
     const surInput = espion('#rp9-need-input', 'input')
     rendre()
-    fireEvent.click(screen.getByTestId('cal-panneaux-option-max'))
-    expect(document.getElementById('rp9-need-input').value).toBe('400')
-    expect(surInput).toHaveBeenCalledTimes(1)
-    // le script a posé tout ce qui tient : 22 panneaux
-    document.getElementById('rp9-reco-panels').textContent = '22 × 580 W'
-    document.getElementById('rp9-reco-kwc').textContent = '12,76 kWc'
-    document.getElementById('rp9-reco-cover').textContent = '131 %'
-    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-max'))
-      .toHaveTextContent('22 panneaux · 12,76 kWc · dépasse la consommation'), { timeout: 3000 })
-    expect(screen.getByTestId('cal-panneaux-option-max')).toHaveAttribute('aria-pressed', 'true')
-    // l'autre carte garde ses chiffres d'avant (mémoire de l'option posée tant qu'elle l'était)
-    expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('12 panneaux · 6,96 kWc · 82 % de la facture')
-    fireEvent.click(screen.getByTestId('cal-panneaux-option-facture'))
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('Couvrir la factureRecommandé12 panneaux · 6,96 kWc'))
+    expect(facture).not.toHaveTextContent('809')
+    expect(facture).not.toHaveTextContent('%') // le pourcentage n'est dit qu'à côté de la taille posée
+    expect(facture).toHaveAttribute('aria-pressed', 'false')
+    // la pose actuelle = tout ce qui tient (55) : « Le plus de panneaux », son % nommé pour ce qu'il est
+    const max = screen.getByTestId('cal-panneaux-option-max')
+    expect(max).toHaveAttribute('aria-pressed', 'true')
+    expect(max).toHaveTextContent('55 panneaux · 39,60 kWc · ≈ 809 % de la consommation')
+    expect(document.body).not.toHaveTextContent('de la facture')
+    fireEvent.click(facture)
     expect(document.getElementById('rp9-need-input').value).toBe('12')
+    expect(surInput).toHaveBeenCalledTimes(1)
+    // le script a posé 12 panneaux : la carte devient la choisie, avec SA part lue sur le script
+    document.getElementById('rp9-need-note').textContent = 'Il reste de la place sur le toit, laissée libre.'
+    document.getElementById('rp9-reco-panels').textContent = '12 × 720 W'
+    document.getElementById('rp9-reco-kwc').textContent = '8,64 kWc'
+    document.getElementById('rp9-reco-prod').textContent = '9 589 kWh/an'
+    document.getElementById('rp9-reco-cover').textContent = '144 %'
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · ≈ 144 % de la consommation'), { timeout: 3000 })
+    expect(facture).toHaveAttribute('aria-pressed', 'true')
+    expect(max).toHaveAttribute('aria-pressed', 'false')
+    // l'autre carte garde les chiffres lus quand elle était posée
+    expect(max).toHaveTextContent('55 panneaux · 39,60 kWc')
+    fireEvent.click(max)
+    expect(document.getElementById('rp9-need-input').value).toBe('400')
   })
 
-  it('sans facture : « Couvrir la facture » grisée avec la raison servie et le lien vers le lead, jamais un besoin inventé', async () => {
+  it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
+    monterConstructeur({ besoin: '30', panneaux: '30 × 580 W', kwc: '17,40 kWc', prod: '28 700 kWh/an', cover: '431 %',
+      note: '30 posés — il reste de la place sur le toit, laissée libre.' })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('Recommandé'))
+    expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('cal-panneaux-option-max')).toHaveAttribute('aria-pressed', 'false')
+    expect(document.querySelector('[data-zone="pose-actuelle"]')).toHaveTextContent('Pose actuelle : 30 panneaux · 17,40 kWc')
+  })
+
+  it('sans taille tirée des factures : « Couvrir la facture » grisée avec le motif servi et le lien vers le lead', async () => {
+    servir({ cible: null, motif: 'Aucune facture sur le lead.' })
     monterConstructeur({
       besoin: '—', besoinDesactive: true, panneaux: '22 × 580 W', kwc: '12,76 kWc', cover: '—',
       note: 'Indiquez votre facture pour dimensionner le nombre de panneaux.',
@@ -172,11 +201,40 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(carte).toBeDisabled()
     expect(carte).not.toHaveTextContent('Recommandé')
     expect(carte).not.toHaveTextContent(/\d/)
-    expect(carte.parentElement).toHaveTextContent('Indiquez votre facture pour dimensionner le nombre de panneaux.')
+    await waitFor(() => expect(carte.parentElement).toHaveTextContent('Aucune facture sur le lead.'))
     // tout ce qui tient est déjà posé : « Le plus de panneaux » est l'option en vigueur
     expect(screen.getByTestId('cal-panneaux-option-max')).toHaveAttribute('aria-pressed', 'true')
     const lien = await screen.findByRole('link', { name: 'Renseigner la facture du lead' })
     expect(lien).toHaveAttribute('href', '/crm/leads/42')
+  })
+
+  it('module : pans sans module mais étude électrique qui en désigne un → état honnête, jamais le défaut du script', async () => {
+    servir({ materiel: { module: null, modules_par_pan: [
+      { pan: 'A', designation: 'Canadien Solar 710 Wc', produit_id: 1 }, { pan: 'B', designation: 'Canadien Solar 710 Wc', produit_id: 1 },
+    ] } })
+    const { racine } = monterConstructeur()
+    racine.querySelector('#rp9-pan-module-mention').textContent =
+      `${MODULE_PAR_DEFAUT_ATELIER.libelle} — aucun module du catalogue n’est posé sur ce site.`
+    rendre()
+    const carte = screen.getByTestId('cal-panneaux-module')
+    await waitFor(() => expect(carte.querySelector('.cal-pan-module-nom')).toHaveTextContent('Aucun panneau choisi sur ce toit'))
+    expect(carte.querySelector('.cal-pan-module-ligne')).toHaveTextContent('L’étude électrique utilise : Canadien Solar 710 Wc')
+    expect(carte).not.toHaveTextContent('Module par défaut') // le défaut du script n'est pas présenté comme le panneau
+    expect(carte.querySelector('[data-zone="aucun-module"]')).toHaveTextContent('Choisissez le panneau de ce toit dans la liste.')
+  })
+
+  it('module : plusieurs modèles dans l’étude électrique → « N modèles » ; le module écrit sur le pan prime', async () => {
+    servir({ materiel: { module: null, modules_par_pan: [
+      { pan: 'A', designation: 'Canadien Solar 710 Wc', produit_id: 1 }, { pan: 'B', designation: 'Jinko 580 Wc', produit_id: null },
+    ] } })
+    monterConstructeur()
+    rendre()
+    const carte = screen.getByTestId('cal-panneaux-module')
+    await waitFor(() => expect(carte.querySelector('.cal-pan-module-ligne'))
+      .toHaveTextContent('L’étude électrique utilise : 2 modèles (Canadien Solar 710 Wc · Jinko 580 Wc)'))
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    await waitFor(() => expect(carte.querySelector('.cal-pan-module-nom')).toHaveTextContent('Jinko Tiger Neo 580 Wc'), { timeout: 3000 })
+    expect(carte.querySelector('[data-zone="aucun-module"]')).toBeNull()
   })
 
   it('sens de pose : trois segments branchés sur data-orient ; le re-clic sur le sens posé ne part pas', () => {
@@ -222,7 +280,7 @@ describe('étape Panneaux — sur la carte', () => {
     monterConstructeur()
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
-    for (const t of ['Panneaux', '12', 'Puissance', '6,96 kWc', 'Production · estimation', '11 480 kWh / an', 'De la facture', '82 %']) {
+    for (const t of ['Panneaux', '12', 'Puissance', '6,96 kWc', 'Production · estimation', '11 480 kWh / an', 'De la consommation', '≈ 82 %']) {
       expect(puce).toHaveTextContent(t)
     }
     cleanup()
@@ -231,7 +289,44 @@ describe('étape Panneaux — sur la carte', () => {
     rendre()
     const reduite = within(noeudCarte).getByTestId('cal-sur-carte-resume')
     expect(reduite).not.toHaveTextContent('Production')
-    expect(reduite).not.toHaveTextContent('De la facture')
+    expect(reduite).not.toHaveTextContent('De la consommation')
+  })
+
+  it('puce : production PUBLIÉE fraîche et complète → le libellé de l’étape Résultats, jamais « estimation »', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: false,
+      production: { total: { p50_kwh: 52695, kwc: 25.56, complete: true } }, pose: { total_modules: 36, kwc: 25.56 } } })
+    monterConstructeur({ panneaux: '36 × 710 W', kwc: '25,56 kWc', prod: '39 255 kWh/an', cover: '590 %' })
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    await waitFor(() => expect(puce).toHaveTextContent('Production la première année'))
+    expect(puce).toHaveTextContent('52 695 kWh')
+    expect(puce).toHaveTextContent('36')
+    expect(puce).toHaveTextContent('25,56 kWc')
+    expect(puce).not.toHaveTextContent('39 255') // l'estimation du navigateur n'est plus dite à côté
+    expect(puce).not.toHaveTextContent('estimation')
+  })
+
+  it('puce : résultat publié INCOMPLET (traité comme périmé par le devis) → l’estimation, nommée « estimation »', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: false,
+      production: { total: { p50_kwh: 52695, complete: false } }, pose: { total_modules: 36 } } })
+    monterConstructeur()
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    expect(puce).toHaveTextContent('Production · estimation')
+    expect(puce).not.toHaveTextContent('52 695')
+  })
+
+  it('puce : résultat périmé → l’estimation du constructeur, nommée « estimation »', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: true,
+      production: { total: { p50_kwh: 52695, complete: true } }, pose: { total_modules: 36 } } })
+    monterConstructeur()
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    expect(puce).toHaveTextContent('Production · estimation')
+    expect(puce).toHaveTextContent('11 480 kWh / an')
+    expect(puce).not.toHaveTextContent('52 695')
   })
 
   it('légende d’ensoleillement : titre, dégradé, bornes ; le titre est le vrai bouton « carte d’accès solaire »', () => {
@@ -242,13 +337,17 @@ describe('étape Panneaux — sur la carte', () => {
     const titre = within(bloc).getByRole('button', { name: 'Ensoleillement de chaque panneau' })
     expect(bloc).toHaveTextContent('Ombragé')
     expect(bloc).toHaveTextContent('Plein soleil')
-    expect(bloc.querySelector('.cal-pan-degrade').style.background).toContain('linear-gradient')
+    // la rampe de la maquette (palette « atelier » posée par l'écran), lue de la MÊME fonction que la carte
+    const fond = bloc.querySelector('.cal-pan-degrade').style.background
+    expect(fond).toContain('rgb(31, 59, 115) 0%')
+    expect(fond).toContain('rgb(245, 158, 11) 100%')
+    expect(bloc).not.toHaveTextContent('Touchez le titre')
     fireEvent.click(titre)
     expect(carte).toHaveBeenCalledTimes(1)
   })
 
   it('lecteur du soleil : ▶, curseur d’heure, date et saisons renvoyés aux vrais contrôles', () => {
-    const { espion } = monterConstructeur()
+    const { espion } = monterConstructeur({ heureMax: '19' })
     const lecture = espion('#rp9-sun-play-day')
     const heure = espion('#rp9-sun-hour', 'input')
     const ete = espion('[data-sun-season="summer"]')
@@ -256,7 +355,8 @@ describe('étape Panneaux — sur la carte', () => {
     const bloc = within(noeudCarte).getByTestId('cal-carte-soleil')
     expect(bloc).toHaveTextContent('21 décembre · 15 h')
     expect(bloc).toHaveTextContent('6 h')
-    expect(bloc).toHaveTextContent('18 h')
+    expect(bloc).toHaveTextContent('19 h') // bornes lues sur le vrai curseur
+    expect(within(bloc).getByRole('slider').style.getPropertyValue('--cal-pan-rempli')).toBe('69%')
     fireEvent.click(within(bloc).getByRole('button', { name: 'Lire la journée' }))
     expect(lecture).toHaveBeenCalledTimes(1)
     fireEvent.change(within(bloc).getByRole('slider'), { target: { value: '9' } })

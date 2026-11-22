@@ -422,6 +422,29 @@ class ToitureDuLeadTest(unittest.TestCase):
         self.assertIsNone(self.servi(None, {'modePoseDeclare': ''})['mode_pose'])
 
 
+class CibleFacturesTest(unittest.TestCase):
+    """Maquette Panneaux — ``cible_factures`` : la cible du garde R2-17, telle quelle, sans base."""
+
+    @staticmethod
+    def servi(cible):
+        from apps.calepinage.views.toiture_lead import cible_factures
+
+        return cible_factures(mock.Mock(), lire_cible=lambda calepinage: cible)
+
+    def test_taille_tiree_des_factures_servie_telle_quelle(self):
+        servi = self.servi({'panneaux': 12, 'panel_watt': 580, 'kwc': 6.96, 'source': 'factures',
+                            'refus': None, 'motif_code': None})
+        self.assertEqual(set(servi), set(CONTRAT['exemple']['cible_factures']))
+        self.assertEqual(servi, {'panneaux': 12, 'kwc': 6.96, 'module_wc': 580.0})
+
+    def test_aucune_cible_des_factures_vaut_none(self):
+        # Sans lead, taille souhaitée du lead, refus (sans facture, C&I…) : jamais une taille devinée.
+        for cible in (None, {'panneaux': 10, 'panel_watt': 580, 'kwc': 5.8, 'source': 'lead'},
+                      {'panneaux': None, 'kwc': None, 'source': 'factures', 'refus': 'Aucune facture.'}):
+            with self.subTest(cible=cible):
+                self.assertIsNone(self.servi(cible))
+
+
 class FactureMensuelleDuLeadTest(unittest.TestCase):
     """ACAL776 — la facture mensuelle moyenne du lead, sans base."""
 

@@ -198,6 +198,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Maquette : 52 px de contenu + 1 px de bord de chaque côté = 54 px (le doré, sans bord, fait 52). */
+  box-sizing: content-box;
   height: 52px;
   padding: 0 16px;
   border: 1px solid var(--input);

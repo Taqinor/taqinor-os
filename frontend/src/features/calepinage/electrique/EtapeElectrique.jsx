@@ -243,7 +243,7 @@ export default function EtapeElectrique(props) {
       </section>
       <Accordion type="multiple" className="cel-avances" defaultValue={demandee ? ['avances'] : []}>
         <AccordionItem value="avances" data-testid="cal-electrique-avances">
-          <AccordionTrigger>Réglages avancés</AccordionTrigger>
+          <AccordionTrigger className="cel-avances-lien">Réglages avancés</AccordionTrigger>
           <AccordionContent>
             <Accordion type="multiple" defaultValue={demandee ? [demandee] : []}>
               {SECTIONS_ELECTRIQUES.map((s) => <Section key={s.cle} {...s} propsDuRail={propsDuRail} />)}

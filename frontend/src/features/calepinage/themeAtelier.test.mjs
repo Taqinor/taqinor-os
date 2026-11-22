@@ -33,6 +33,23 @@ test('toute déclaration de couleur littérale est dans un des 3 calques sur la 
   assert.deepEqual(fautives, [], `couleurs littérales hors calques : ${fautives.join(' | ')}`)
 })
 
+/* Coque des maquettes (22/11) — les feuilles `styles/calepinage/5x-*.css` de la refonte (50 à 58) n'ont
+   AUCUNE couleur littérale : jetons seuls, le thème sombre suit par les jetons. Les `url(data:…)` (masques
+   de pictogrammes peints à `currentColor`) sont hors champ : leur tracé n'est pas une couleur affichée. */
+test('les feuilles 5x-*.css de la coque n’ont aucune couleur littérale', async () => {
+  const { readdirSync } = await import('node:fs')
+  const dossier = new URL('../../styles/calepinage/', import.meta.url)
+  const feuilles = readdirSync(dossier).filter((f) => /^5\d-.+\.css$/.test(f)).sort()
+  assert.ok(feuilles.includes('50-coque-atelier.css') && feuilles.includes('56-coque-responsive.css'), feuilles.join(', '))
+  const fautives = []
+  for (const f of feuilles) {
+    const source = readFileSync(new URL(f, dossier), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/url\((["']?)data:[^)]*\1\)/g, 'url()')
+    for (const { sel, corps } of regles(source)) if (LITTERAL.test(corps)) fautives.push(`${f} › ${sel}`)
+  }
+  assert.deepEqual(fautives, [], `couleurs littérales dans la coque : ${fautives.join(' | ')}`)
+})
+
 /** Corps d'une règle -> { propriété: valeur } (comparaison de valeurs, pas de motif sur le texte). */
 function declarations(corps) {
   const out = {}

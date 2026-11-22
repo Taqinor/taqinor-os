@@ -80,10 +80,13 @@ export function useDonneesClient(id) {
     doc,
     plan: ok ? planDessus(doc.document) : null,
     tuiles: ok ? tuilesClient(doc.document, resultat) : [],
-    // Sans titre servi, le nom que l'atelier donne lui-même au calepinage (« Calepinage N », coque/projet.js).
-    titre: (contexte?.calepinage?.titre ?? '').trim() || (contexte ? `Calepinage ${id}` : ''),
+    // Le nom servi du projet ; sinon le client du devis lié (servi) ; sinon le nom que l'atelier donne lui-même
+    // au calepinage (« Calepinage N », coque/projet.js).
+    titre: (contexte?.calepinage?.titre ?? '').trim() || (contexte?.calepinage?.devis_lie?.client_nom ?? '').trim()
+      || (contexte ? `Calepinage ${id}` : ''),
     ville,
-    sousTitre: [ville, ok ? libellePan(doc.document) : ''].filter(Boolean).join(' · '),
+    // Le libellé du pan seulement s'il dit quelque chose au client (pas le nom automatique « Zone N »).
+    sousTitre: [ville, ok ? libellePan(doc.document).replace(/^Zone \d+$/, '') : ''].filter(Boolean).join(' · '),
   }
 }
 

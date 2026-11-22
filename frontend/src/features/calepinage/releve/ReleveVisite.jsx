@@ -6,12 +6,11 @@ import { panParDefaut, zonesDuDocument } from '../SaisiePente.helpers'
 import { demarrerCapteurs, lireInclinaison, lireVisee, arreter as arreterCapteurs } from '../capteursTelephone'
 import { messageRefus, refusServeur } from '../commun/refusServeur'
 import { lireConflit } from '../conflitEcriture'
-import { titreProjet } from '../atelier/coque/projet'
 import { Icone } from '../atelier/coque/primitives'
 import { champsDuReleve, corpsDuReleve, validerAvantEnvoi } from './corpsReleve'
 import {
-  LARGEUR, LONGUEUR, avecMesure, chainesSaisies, dateDuJour, degres, mesureDesChaines, mesureDuCapteur,
-  noteHorsLigne, nomDirection, provenancePente, versPoint, versVirgule,
+  LARGEUR, LONGUEUR, avecMesure, chainesSaisies, dateDuJour, mesureDesChaines, mesureDuCapteur,
+  ligneProjet, noteHorsLigne, nomDirection, penteDuPan, versPoint, versVirgule,
 } from './releveTelephone'
 import usePhotosReleve from './usePhotosReleve'
 import TuilesPhotos from './TuilesPhotos'
@@ -85,8 +84,8 @@ export default function ReleveVisite() {
       setAzimutDeg(c.azimutDeg)
       setPrecisionDeg(c.precisionDeg)
     }).catch(() => {})
-    Promise.resolve(calepinageApi.calepinages.designContext?.(id)).then((res) => {
-      if (vivant) setTitre(titreProjet({ calepinageTitre: (res?.data?.calepinage?.titre ?? '').trim(), calepinageId: id, contexte: res?.data }))
+    Promise.resolve(calepinageApi.calepinages.get?.(id)).then((res) => {
+      if (vivant) setTitre(ligneProjet(res?.data))
     }).catch(() => {})
     return () => { vivant = false; arreterCapteurs() }
   }, [id])
@@ -127,8 +126,7 @@ export default function ReleveVisite() {
     if (m && m.azimutDeg !== null) { setAzimutDeg(String(m.azimutDeg)); setAzimutAMain(false) }
   }
 
-  const penteAffichee = pente ? pente.degres : zone?.pitchDeg
-  const libellePente = pente ? (pente.capteur ? 'mesurée' : 'saisie à la main') : provenancePente(zone)
+  const carteP = penteDuPan(zone, pente)
   const direction = nomDirection(azimutDeg)
 
   /* La pente du PAN, écrite exactement comme `SaisiePente` (primitive par section). */
@@ -209,9 +207,8 @@ export default function ReleveVisite() {
           </div>
 
           <CarteMesure testId="releve-pente" libelle="Pente du toit"
-            valeur={penteAffichee === undefined || penteAffichee === null ? 'à mesurer' : `${degres(penteAffichee)} · ${libellePente}`}
-            bouton={penteAffichee === undefined || penteAffichee === null ? 'Mesurer' : 'Mesurer encore'}
-            onBouton={mesurerPente} desactive={!zone}>
+            valeur={carteP.valeur ?? 'à mesurer'} bouton={carteP.bouton} onBouton={mesurerPente} desactive={!zone}>
+            {carteP.aide && <p className="cal-tel-aide" data-testid="releve-pente-aide">{carteP.aide}</p>}
             {sansPan && <p className="cal-tel-aide" data-testid="releve-pente-sans-pan">Aucun pan dessiné : la pente s’enregistre sur un pan, tracez le toit dans l’atelier.</p>}
             {motifs.pente && <p role="alert" className="cal-tel-aide">{motifs.pente}</p>}
             {manuel.pente && zone && (

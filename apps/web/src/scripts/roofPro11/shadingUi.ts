@@ -34,7 +34,7 @@ import {
   pointSolarAccessMonth,
   solarAccessSummary,
   proposeShadedRemoval,
-  solarAccessColorRGB,
+  couleurAccesActive, // maquette Panneaux : palette choisie par l'hôte (site = solarAccessColorRGB)
   type SolarAccessSummary,
   type ShadeRemovalProposal,
   type ShadeObstruction,
@@ -996,7 +996,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     const access = heatmapAccessValues(ctx.centroidLat, enu, prod, panels, heatmapMonth);
     return (cellIndex: number) => {
       const a = cellIndex >= 0 && cellIndex < access.length ? access[cellIndex] : 1;
-      return solarAccessColorRGB(a);
+      return couleurAccesActive(a);
     };
   }
 

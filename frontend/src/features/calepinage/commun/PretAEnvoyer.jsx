@@ -81,16 +81,30 @@ function Ligne({ controle, onRegler }) {
 
 const RANG = { bloquant: 0, a_regler: 1, info: 2 }
 
+/* F3 (tour 2) — la DERNIÈRE lecture servie, par calepinage (mémoire de la page) : le contrôle est
+   recalculé à chaque lecture côté serveur (10 à 25 s mesurés sur la pile de revue) ; en revenant sur
+   l'étape (ou après un geste qui la remonte), la liste déjà servie reste affichée — marquée « mise
+   à jour en cours » — pendant que la nouvelle lecture arrive, au lieu d'un squelette. Rien n'est
+   calculé ici : ce sont les contrôles servis de la lecture précédente. */
+const DERNIERES_LECTURES = new Map()
+
 export default function PretAEnvoyer({
   calepinageId, testIdCompte, groupes = false, filtre = null, pied = null, court = false,
 }) {
   const [parametres, setParametres] = useSearchParams()
-  const { data, loading, error } = useResource(
+  const { data: lue, loading, error } = useResource(
     (id) => calepinageApi.calepinages.pretAEnvoyer(id), calepinageId,
     { select: (r) => r.data, errorMessage: 'Le contrôle « Prêt à envoyer ? » n’a pas pu être lu.' },
   )
+  if (typeof lue?.pret === 'boolean' && !loading) DERNIERES_LECTURES.set(calepinageId, lue)
+  const precedente = DERNIERES_LECTURES.get(calepinageId) ?? null
+  const data = typeof lue?.pret === 'boolean' && !loading ? lue : (loading ? precedente : lue)
   const lu = typeof data?.pret === 'boolean'
-  if (loading || error || !lu) {
+  if (court && loading && !lu) {
+    // Le titre est posé tout de suite ; seules les lignes encore en lecture sont grisées.
+    return <GroupesPretAEnvoyer court attente controles={[]} testIdCompte={testIdCompte} onRegler={() => {}} />
+  }
+  if ((loading && !lu) || (!loading && error) || !lu) {
     // Le `pied` (ex. le VRAI bouton de devis relayé, avec ses propres gardes) ne dépend pas de la
     // lecture des contrôles : il reste à l'écran pendant le chargement et après un échec.
     return (
@@ -119,7 +133,7 @@ export default function PretAEnvoyer({
   }
 
   if (court) {
-    return <GroupesPretAEnvoyer court controles={controles} testIdCompte={testIdCompte} onRegler={regler} />
+    return <GroupesPretAEnvoyer court attente={loading} controles={controles} testIdCompte={testIdCompte} onRegler={regler} />
   }
   if (groupes) {
     const rangees = [...GROUPES, GROUPE_AUTRES]

@@ -76,14 +76,45 @@ export function mesureDuCapteur(inclinaison, visee) {
 }
 
 /** D'où vient la pente enregistrée sur le pan — jamais « mesurée » sans le capteur. */
-export function provenancePente(zone) {
+function provenancePente(zone) {
   const source = zone?.pitchSource
   if (source && typeof source === 'object') {
     if (source.provenance === 'telephone') return 'mesurée'
     if (source.provenance === 'visite') return 'de la visite'
     return 'saisie à la main'
   }
-  return 'valeur de départ'
+  return null
+}
+
+/**
+ * La carte « Pente du toit » : la pente DU PAN telle que le document la stocke, lue comme
+ * l'atelier la lit (`EtapeToit.penteAffichee`). Un pan `roofType: 'flat'` est un TOIT PLAT :
+ * son `pitchDeg` (22 posé par `panVierge`, zones.ts) n'est pas une pente, et l'inclinaison
+ * des TABLES (`geometry.tiltDeg`, celle que l'API publie dans `pose`) n'est pas celle du toit.
+ * `pente` = la valeur en attente de « Terminer » ({ degres, capteur }), elle prime.
+ * Rend { valeur, aide, bouton } ; `valeur` null = rien de stocké.
+ */
+export function penteDuPan(zone, pente = null) {
+  if (pente) {
+    return { valeur: `${degres(pente.degres)} · ${pente.capteur ? 'mesurée' : 'saisie à la main'}`, aide: null, bouton: 'Mesurer encore' }
+  }
+  if (zone?.roofType === 'flat') return { valeur: 'Toit plat', aide: null, bouton: 'Mesurer' }
+  const deg = zone?.pitchDeg === null || zone?.pitchDeg === undefined ? NaN : Number(zone.pitchDeg)
+  if (!Number.isFinite(deg)) return { valeur: null, aide: null, bouton: 'Mesurer' }
+  const provenance = provenancePente(zone)
+  if (!provenance) {
+    return { valeur: `${degres(deg)} · à confirmer`, aide: 'Valeur de départ du pan, jamais mesurée.', bouton: 'Mesurer' }
+  }
+  return { valeur: `${degres(deg)} · ${provenance}`, aide: null, bouton: provenance === 'mesurée' ? 'Mesurer encore' : 'Mesurer' }
+}
+
+/** La ligne sous « Relevé de visite » : le client (ou le lead) — ville, lus sur le détail servi
+ *  (`GET /calepinages/<id>/` : `client`/`lead` = {nom, ville}) ; repli : le nom du calepinage. */
+export function ligneProjet(detail) {
+  if (!detail) return ''
+  const qui = (detail.client?.nom || detail.lead?.nom || detail.nom || '').trim()
+  const ville = (detail.lead?.ville || detail.client?.ville || '').trim()
+  return ville && qui && !qui.includes(ville) ? `${qui} — ${ville}` : qui
 }
 
 /** La note hors ligne, avec le compte RÉEL de la file (seules les photos y sont gardées). */

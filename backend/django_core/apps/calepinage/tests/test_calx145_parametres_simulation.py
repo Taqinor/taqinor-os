@@ -565,6 +565,30 @@ class ProfilDepartApplicationTest(TestCase):
         self.assertTrue(simulation['sigma_modele_pct']['reference'].endswith(
             'valeur publiée, non mesurée'))
 
+    def test_cles_choisies_seules_remplies_defaut_tout_le_profil(self):
+        """F4 — « Démarrage rapide » : une case par ligne. ``cles`` = seules ces clés du profil sont
+        traitées ; sans ``cles``, tout le profil (comportement d'origine). Non lancé (test à base)."""
+        from apps.calepinage.services.profil_depart import appliquer_profil
+
+        rendu = appliquer_profil(self.company, user=self.dir, profil=self.profil, cles={'sigma_modele_pct'})
+        self.assertEqual(rendu['appliquees'], [{'cle': 'sigma_modele_pct', 'section': 'simulation'}])
+        self.assertEqual(rendu['ignorees'], [])
+        self.assertNotIn('b0_iam', self._simulation())
+        rendu = appliquer_profil(self.company, user=self.dir, profil=self.profil)
+        self.assertEqual(rendu['appliquees'], [{'cle': 'b0_iam', 'section': 'simulation'}])
+
+    def test_route_post_avec_cles_choisies_400_si_inconnues_societe_inchangee(self):
+        reponse = self.api_dir.post(URL_PROFIL, {'cles': ['b0_iam']}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(reponse.data['appliquees'], [{'cle': 'b0_iam', 'section': 'simulation'}])
+        simulation = self._simulation()
+        self.assertIn('b0_iam', simulation)
+        for corps in ({'cles': ['n_importe_quoi']}, {'cles': 'b0_iam'}, {'cles': [3]}):
+            reponse = self.api_dir.post(URL_PROFIL, corps, format='json')
+            self.assertEqual(reponse.status_code, 400, corps)
+        self.assertEqual(self.api_resp.post(URL_PROFIL, {'cles': ['b0_iam']}, format='json').status_code, 403)
+        self.assertEqual(self._simulation(self.autre), {})
+
     def test_retrait_ne_touche_pas_une_valeur_retouchee(self):
         from apps.calepinage.services.profil_depart import (
             appliquer_profil, retirer_profil,

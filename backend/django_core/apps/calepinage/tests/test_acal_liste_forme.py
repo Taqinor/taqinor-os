@@ -200,6 +200,27 @@ class LectureDeLaCarteSansBaseTest(SimpleTestCase):
             _liste_p50_texte='11480', _liste_modules_simules_texte='12',
             _liste_mesures={'modules': 16})))
 
+    def test_le_kwc_simule_complete_un_document_sans_puissance_de_module(self):
+        """F4 — la carte lit aussi le bloc ``pose`` du résultat enregistré (annoté en SQL) : il est
+        transmis à ``mesures_du_document``, qui ne l'emploie que s'il décrit CE document."""
+        from unittest import mock
+
+        from apps.calepinage.services.lecture_liste import kwc_pose
+
+        ligne = SimpleNamespace(roof_layout={'result': {}}, _liste_modules_simules_texte='12',
+                                _liste_kwc_simule_texte='6.96')
+        with mock.patch('apps.calepinage.services.mesures.mesures_du_document',
+                        return_value={'modules': 12, 'kwc': 6.96}) as lecture:
+            self.assertEqual(kwc_pose(ligne), 6.96)
+        self.assertEqual(lecture.call_args.args[1], {'pose': {'total_modules': 12.0, 'kwc': 6.96}})
+        # Pas de simulation (ou pose incomplète) : le document seul, jamais un nombre inventé.
+        sans = SimpleNamespace(roof_layout={'result': {}}, _liste_modules_simules_texte=None,
+                               _liste_kwc_simule_texte=None)
+        with mock.patch('apps.calepinage.services.mesures.mesures_du_document',
+                        return_value={'modules': None, 'kwc': None}) as lecture:
+            self.assertIsNone(kwc_pose(sans))
+        self.assertIsNone(lecture.call_args.args[1])
+
 
 class CompteursEtCarteDeLaListeTest(BaseApiCalepinage):
     """D07-L6 — « compteurs_statut » et les deux chiffres de la carte (test à base : non lancé)."""

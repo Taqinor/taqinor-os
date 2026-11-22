@@ -12,7 +12,8 @@ import { formatNumber } from '../../../lib/format'
 const nb = (v, decimals = 0) => formatNumber(v, { decimals, locale: 'fr' })
 const estNombre = (v) => typeof v === 'number' && Number.isFinite(v)
 
-/** Les chaînes de la table servie : `[{chaine, nombre, couleur, mppt}]`, dans l'ordre de première apparition. */
+/** Les chaînes de la table servie : `[{chaine, nombre, couleur, mppt}]`, rangées par numéro de chaîne
+    (F3 : la table servie les donne dans l'ordre des modules — « Chaîne 3, 1, 4, 2 » sur la carte). */
 export function chainesServies(resultat) {
   const lignes = resultat?.electrique?.affectation
   if (!Array.isArray(lignes)) return []
@@ -31,6 +32,7 @@ export function chainesServies(resultat) {
     parChaine.get(cle).nombre += 1
   }
   return [...parChaine.values()]
+    .sort((a, b) => Number(a.chaine) - Number(b.chaine) || String(a.chaine).localeCompare(String(b.chaine)))
 }
 
 /** « 2 × 6 panneaux » (chaînes égales) ou « 6 + 5 panneaux » ; `null` sans chaîne servie. */

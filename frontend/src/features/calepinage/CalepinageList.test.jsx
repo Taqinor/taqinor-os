@@ -408,6 +408,14 @@ describe('CalepinageList — maquette Liste', () => {
     expect(screen.getByTestId('cal-vignette-303').textContent).not.toMatch(/panneau|kWc|kWh/)
   })
 
+  it('la grille a TROIS colonnes au plus, comme la maquette (jamais quatre)', async () => {
+    const { container } = rendre()
+    await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
+    const grille = container.querySelector('[class*="lg:grid-cols-3"]')
+    expect(grille).not.toBeNull()
+    expect(grille.className).not.toMatch(/grid-cols-4/)
+  })
+
   it('« points à régler » : seulement quand le serveur le sert et > 0 ; avatar = initiales du responsable', async () => {
     const avec = { ...AVEC_IMAGE, id: 311, points_a_regler: 1, responsable_nom: 'Hamza Bennani' }
     const sans = { ...SANS_IMAGE, id: 312 }

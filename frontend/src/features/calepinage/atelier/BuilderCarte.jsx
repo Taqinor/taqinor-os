@@ -1,10 +1,29 @@
 // Coque (22/11) — groupe « carte » du DOM du constructeur, DÉPLACÉ VERBATIM depuis
 // BuilderDom.jsx (move only) : la recherche d'adresse et l'enveloppe de la carte. Sous-arbre
 // intact (le script cherche ses ids et le parent de « Terminer le tracé »). Toujours monté.
-import { useContext } from 'react'
+import { useContext, useEffect } from 'react'
 import ToitClientOverlay from '../../ventes/ToitClientOverlay'
 import { ContexteCoque } from './coque/contexteCoque'
-import PictoToit from './coque/etapes/PictosToit'
+import { Icone } from './coque/primitives'
+
+// Maquette Main — les boutons de zoom de MapLibre portent des noms anglais (« Zoom in / Zoom out ») : dans la coque,
+// ils prennent ceux de la maquette. Le script crée la carte (et ses contrôles) après le montage : quelques essais.
+const NOMS_ZOOM = [['.maplibregl-ctrl-zoom-in', 'Zoomer'], ['.maplibregl-ctrl-zoom-out', 'Dézoomer']]
+const ESSAIS_ZOOM_MS = [0, 1500, 4000, 8000]
+
+function useZoomEnFrancais(actif, mapWrapRef) {
+  useEffect(() => {
+    if (!actif) return undefined
+    const nommer = () => {
+      for (const [sel, nom] of NOMS_ZOOM) {
+        const b = mapWrapRef?.current?.querySelector?.(sel)
+        if (b && b.getAttribute('aria-label') !== nom) { b.setAttribute('aria-label', nom); b.setAttribute('title', nom) }
+      }
+    }
+    const minuteurs = ESSAIS_ZOOM_MS.map((delai) => window.setTimeout(nommer, delai))
+    return () => minuteurs.forEach((m) => window.clearTimeout(m))
+  }, [actif, mapWrapRef])
+}
 
 export default function BuilderCarte({
   basculerPleinEcran3d,
@@ -21,6 +40,7 @@ export default function BuilderCarte({
   // inchangé) ; hors coque (mode lead), la puce texte d'avant, à l'octet près.
   const dansCoque = useContext(ContexteCoque) !== null
   const libellePleinEcran = pleinEcran3d ? 'Quitter le plein écran' : 'Plein écran'
+  useZoomEnFrancais(dansCoque, mapWrapRef)
   return (
     <>
           <form id="rp9-search" className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row">
@@ -78,7 +98,7 @@ export default function BuilderCarte({
               data-testid="rp9-plein-ecran-toggle"
               className={`${chipClass} rp9-carte-puce${dansCoque ? ' cal-carte-plein-ecran' : ''}`}
             >
-              {dansCoque ? <><PictoToit nom="pleinEcran" taille={18} /><span className="sr-only">{libellePleinEcran}</span></> : libellePleinEcran}
+              {dansCoque ? <><Icone nom="pleinEcran" taille={18} epaisseur={2} /><span className="sr-only">{libellePleinEcran}</span></> : libellePleinEcran}
             </button>
             {/* ACAL954 — « Terminer le tracé » SUR la carte (centré en bas), plus sous la flottaison ;
                 ids inchangés (lus par roof-tool-pro11.ts). Même fond opaque que la puce ACAL950,

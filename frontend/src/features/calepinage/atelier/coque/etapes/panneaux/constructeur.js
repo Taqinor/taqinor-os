@@ -36,6 +36,7 @@ function lireFigures() {
     watt: apres ? Number(apres[1].replace(/\D/g, '')) : null,
     kwc: valeurOuNull(texteDe('rp9-reco-kwc')),
     production: prod ? prod.replace(/\s*kWh\s*\/\s*an/, ' kWh / an') : null,
+    productionKwh: prod ? entierDe(prod) : null,
     couverture,
     couverturePct: couverture ? entierDe(couverture) : null,
   }
@@ -45,7 +46,8 @@ function lireBesoin() {
   const champ = $('rp9-need-input')
   if (!champ) return null
   const note = texteDe('rp9-need-note')
-  const tiennent = /(\d[\d\s]*)\s+tiennent/.exec(note)
+  // « … seuls 55 tiennent … » (besoin > ce qui tient) ou « on pose ce qui tient (55) » (aucune cible) — optimizer.ts.
+  const tiennent = /(\d[\d\s]*)\s+tiennent/.exec(note) ?? /ce qui tient \((\d[\d\s]*)\)/.exec(note)
   return {
     valeur: entierDe(champ.value),
     editable: !champ.disabled,
@@ -85,8 +87,14 @@ function lireSoleil() {
   const saisons = Array.from(document.querySelectorAll('[data-sun-season]'))
   const lecture = $('rp9-sun-play-day')
   const carte = $('rp9-heatmap-toggle')
+  const borne = (attr, defaut) => {
+    const n = Number(heure?.getAttribute(attr))
+    return Number.isFinite(n) && heure?.getAttribute(attr) ? n : defaut
+  }
   return {
     heure: heure ? entierDe(heure.value) : null,
+    min: borne('min', 6),
+    max: borne('max', 18),
     date: $('rp9-sun-date')?.value ?? '',
     saison: saisons.find(presse)?.dataset.sunSeason ?? null,
     lecture: lecture ? { active: presse(lecture) } : null,
@@ -100,25 +108,25 @@ function lireOrientation() {
   return puces.find(presse)?.dataset.orient ?? null
 }
 
-/** Le mode de nombre de panneaux que dit le besoin : `facture` (un besoin dérivé de la facture),
-    `max` (le plafond, ou rien à dériver : on pose tout ce qui tient), sinon `null`. */
-export function modeDe(besoin) {
-  if (!besoin) return null
-  if (besoin.valeur >= BESOIN_MAX || (!besoin.valeur && !besoin.editable)) return 'max'
-  return besoin.valeur > 0 ? 'facture' : null
+/** La pose actuelle est-elle « tout ce qui tient » ? Le plafond du besoin, ou la pose égale à ce que
+    le script dit tenir, ou aucun besoin à dériver (le script pose alors tout ce qui tient). LU, jamais déduit
+    du nombre posé seul. */
+export function poseMax(besoin, figures) {
+  if (!besoin || !(figures?.panneaux > 0)) return false
+  if (besoin.valeur >= BESOIN_MAX) return true
+  if (besoin.tiennent != null && figures.panneaux === besoin.tiennent) return true
+  return !besoin.valeur && !besoin.editable
 }
 
-/** Une lecture complète du constructeur, avec la mémoire des deux options (chiffres de l'option
-    qui n'est pas posée : elle ne se lit que le temps où elle l'a été). */
+/** Une lecture complète du constructeur, avec la mémoire de « Le plus de panneaux » (ses chiffres ne se
+    lisent que le temps où il est posé). */
 export function lireConstructeur(avant = null) {
   const besoin = lireBesoin()
   const figures = lireFigures()
-  const mode = modeDe(besoin)
-  const memoire = { facture: avant?.memoire?.facture ?? null, max: avant?.memoire?.max ?? null }
-  if (mode === 'facture' && figures.panneaux) memoire.facture = { ...figures, besoin: besoin.valeur }
-  if (mode === 'max' && figures.panneaux) memoire.max = figures
+  const max = poseMax(besoin, figures)
+  const memoire = { max: max ? figures : (avant?.memoire?.max ?? null) }
   return {
-    besoin, figures, mode, memoire,
+    besoin, figures, max, memoire,
     module: lireModule(),
     orientation: lireOrientation(),
     ombre: lireOmbre(),

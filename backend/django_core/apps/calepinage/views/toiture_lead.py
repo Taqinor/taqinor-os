@@ -48,3 +48,20 @@ def _libelle(lead, champ):
     if lead is None or not getattr(lead, champ, None):
         return None
     return str(getattr(lead, f'get_{champ}_display')()) or None
+
+
+def cible_factures(calepinage, *, lire_cible=None):
+    """Maquette Panneaux (22/11) — le bloc ``cible_factures`` : la taille que
+    le devis automatique tirerait des FACTURES du lead, par LA fonction du
+    garde R2-17 (``services.devis._cible_du_calepinage`` →
+    ``apps.ventes.selectors.cible_depuis_lead``) — jamais un second
+    dimensionnement. ``{panneaux, kwc, module_wc}``, ou ``None`` quand la
+    taille ne vient pas des factures (sans lead, sans facture, taille
+    souhaitée, C&I, agricole, refus). LECTURE PURE."""
+    if lire_cible is None:
+        from ..services.devis import _cible_du_calepinage as lire_cible
+    cible = lire_cible(calepinage)
+    if not cible or cible.get('source') != 'factures' or not cible.get('panneaux'):
+        return None
+    return {'panneaux': int(cible['panneaux']), 'kwc': nombre(cible.get('kwc')),
+            'module_wc': nombre(cible.get('panel_watt'))}

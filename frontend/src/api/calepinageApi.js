@@ -443,7 +443,8 @@ const calepinageApi = {
     // GET lit, POST remplit les seules clés vides, DELETE retire ce que le
     // profil a posé et qui n'a pas été retouché.
     profilDepart: () => api.get('/calepinage/calepinages/profil-depart/'),
-    appliquerProfilDepart: () => api.post('/calepinage/calepinages/profil-depart/'),
+    // `cles` (liste de clés du profil) : ne remplir que celles-là ; sans liste, tout le profil (F4).
+    appliquerProfilDepart: (cles) => api.post('/calepinage/calepinages/profil-depart/', Array.isArray(cles) ? { cles } : undefined),
     retirerProfilDepart: () => api.delete('/calepinage/calepinages/profil-depart/'),
   },
 

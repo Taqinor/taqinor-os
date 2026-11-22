@@ -1,14 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import '../../../../../styles/calepinage/51-etape-toit.css'
 import SaisiePente from '../../../SaisiePente'
 import { panParDefaut, sourceDePente, zonesDuDocument } from '../../../SaisiePente.helpers'
+import calepinageApi from '../../../../../api/calepinageApi'
+import useResource from '../../../../../hooks/useResource'
 import useDocumentCalepinage from '../../../useDocumentCalepinage'
 import { SurCarte } from '../emplacements'
-import { BoutonMarine, CarteFlottante, Indicateur, SectionEtape, Segmente } from '../primitives'
+import { BoutonMarine, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
 import {
-  GESTES, appliquerCotes, degres, enregistrerPentePan, nomFace, selectionnerObstacle, useEtatToit,
+  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, degres, enregistrerPentePan, nomFace,
+  selectionnerObstacle, texteBesoin, useEtatToit,
 } from './EtapeToit.helpers'
-import PictoToit from './PictosToit'
+import { cibleFactures } from './panneaux/sources'
+
+const SELECT_DATA = { select: (r) => r?.data ?? null }
 
 /* ============================================================================
    COQUE — L'ÉTAPE « TOIT » (maquette Main du 22/11 ; ToitSombre = même écran,
@@ -25,6 +30,7 @@ import PictoToit from './PictosToit'
    ========================================================================== */
 
 const ASTUCE_CONTOUR = 'Cliquez sur un coin pour le déplacer, ou double-cliquez sur un bord pour ajouter un point.'
+const ASTUCE_AJOUT = 'Cliquez sur la carte pour poser chaque coin du pan, double-cliquez pour le fermer. Échap annule l’ajout.'
 const DUREE_BULLE_MS = 8000
 
 const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -213,29 +219,54 @@ function Obstacles({ obstacles, relire }) {
   )
 }
 
-function Outil({ nom, libelle, presse, desactive = false, onClick }) {
+function Outil({ nom, libelle, presse, desactive = false, onClick, titre }) {
   return (
     <button type="button" className="cal-outil-carte" aria-label={libelle} aria-pressed={presse}
-      disabled={desactive} onClick={onClick}>
-      <PictoToit nom={nom} />
+      title={titre} disabled={desactive} onClick={onClick}>
+      <Icone nom={nom} taille={20} epaisseur={2} />
     </button>
   )
 }
 
-/** La barre d'outils flottante (bas, centrée) : 4 outils | annuler · rétablir | Plan · 3D. */
-function BarreOutils({ outils, builderApi, relire }) {
+const ESSAIS_VUE_MS = [0, 1500, 4000]
+
+/** La maquette ouvre l'étape en « Plan » : la caméra du dessus est posée à l'entrée (et reposée tant que la carte
+    se charge, sauf si l'utilisateur a déjà choisi sa vue). Le segment lit ensuite la vraie caméra (`outils.vue`). */
+function useVuePlanALEntree(builderApi) {
+  const choisie = useRef(false)
+  useEffect(() => {
+    if (typeof builderApi?.appliquerVue !== 'function') return undefined
+    const minuteurs = ESSAIS_VUE_MS.map((delai) => window.setTimeout(() => {
+      if (!choisie.current) builderApi.appliquerVue('dessus')
+    }, delai))
+    return () => minuteurs.forEach((m) => window.clearTimeout(m))
+  }, [builderApi])
+  return choisie
+}
+
+/** La barre d'outils flottante (bas, centrée) : 4 outils | annuler · rétablir | Plan · 3D. Le 2ᵉ outil dit ce
+    qu'il fait : « Tracer un contour » sans toit (le tracé au clic est actif), « Ajouter un pan » avec un toit. */
+function BarreOutils({ outils, builderApi, relire, ajout, onAjout }) {
   const [vueChoisie, setVueChoisie] = useState('plan')
+  const vueToucheeRef = useVuePlanALEntree(builderApi)
   const geste = (nom) => () => { GESTES[nom](document); relire() }
   const modeLibre = !outils.obstacle && !outils.mesure
   const changerVue = (v) => {
+    vueToucheeRef.current = true
     setVueChoisie(v)
     builderApi?.appliquerVue?.(v === '3d' ? 'trois-quarts' : 'dessus')
   }
+  const avecToit = outils.ferme || Boolean(ajout)
   return (
     <CarteFlottante role="toolbar" aria-label="Outils du plan" className="cal-barre-outils-carte"
       data-testid="cal-barre-outils-carte">
       <Outil nom="selection" libelle="Sélectionner" presse={modeLibre && outils.ferme} onClick={geste('selection')} />
-      <Outil nom="trace" libelle="Tracer un contour" presse={modeLibre && !outils.ferme} onClick={geste('trace')} />
+      {avecToit ? (
+        <Outil nom="trace" libelle="Ajouter un pan" presse={Boolean(ajout)} onClick={onAjout}
+          titre={ajout ? 'Annuler l’ajout du pan (Échap)' : 'Ajouter un pan : tracer un nouveau contour'} />
+      ) : (
+        <Outil nom="trace" libelle="Tracer un contour" presse={modeLibre} onClick={geste('trace')} />
+      )}
       <Outil nom="obstacle" libelle="Ajouter un obstacle" presse={outils.obstacle} onClick={geste('obstacle')} />
       <Outil nom="mesure" libelle="Mesurer" presse={outils.mesure} onClick={geste('mesure')} />
       <span className="cal-barre-outils-separateur" aria-hidden="true" />
@@ -248,21 +279,59 @@ function BarreOutils({ outils, builderApi, relire }) {
   )
 }
 
-/** La bulle « Contour tracé » : quelques secondes après la fermeture d'un tracé fait dans la séance. */
-function BulleContour({ contourFerme }) {
+function Bulle({ titre, texte }) {
+  return (
+    <div className="cal-toit-bulle" role="status">
+      <p className="cal-toit-bulle-titre">{titre}</p>
+      <p className="cal-toit-bulle-texte">{texte}</p>
+    </div>
+  )
+}
+
+/** La bulle « Contour tracé » : quelques secondes après la fermeture d'un tracé fait dans la séance. Pendant
+    l'ajout d'un pan, la bulle dit le geste suivant et comment l'annuler. */
+function BulleContour({ contourFerme, ajout }) {
   const [vue, setVue] = useState(0)
   useEffect(() => {
     if (!contourFerme) return undefined
     const minuterie = window.setTimeout(() => setVue(contourFerme), DUREE_BULLE_MS)
     return () => window.clearTimeout(minuterie)
   }, [contourFerme])
+  if (ajout) return <Bulle titre="Nouveau pan" texte={ASTUCE_AJOUT} />
   if (!contourFerme || vue === contourFerme) return null
-  return (
-    <div className="cal-toit-bulle" role="status">
-      <p className="cal-toit-bulle-titre">Contour tracé</p>
-      <p className="cal-toit-bulle-texte">{ASTUCE_CONTOUR}</p>
-    </div>
-  )
+  return <Bulle titre="Contour tracé" texte={ASTUCE_CONTOUR} />
+}
+
+/** « Ajouter un pan » et son annulation (re-clic ou Échap) : la zone vide ouverte est retirée, le pan d'avant
+    redevient actif. Pendant l'ajout, la puce (table des pans) et les cotes gardent le toit d'avant. */
+function useAjoutPan(etat, relire) {
+  const [ajout, setAjout] = useState(null)
+  // L'ajout est fini dès que sa zone a un contour (ou n'existe plus) : lu à chaque relecture de l'état.
+  const actif = ajout && !ajoutTermine(document, ajout) ? ajout : null
+  const enCours = useRef(null)
+  useEffect(() => { enCours.current = actif }, [actif])
+  const annuler = useCallback(() => {
+    if (enCours.current) annulerAjoutPan(document, enCours.current)
+    enCours.current = null
+    setAjout(null)
+    relire()
+  }, [relire])
+  const basculer = () => {
+    if (actif) { annuler(); return }
+    const lance = commencerAjoutPan(document)
+    if (lance) {
+      enCours.current = { ...lance, cotes: etat.cotes }
+      setAjout(enCours.current)
+    }
+    relire()
+  }
+  useEffect(() => {
+    if (!actif) return undefined
+    const surTouche = (e) => { if (e.key === 'Escape') annuler() }
+    document.addEventListener('keydown', surTouche)
+    return () => document.removeEventListener('keydown', surTouche)
+  }, [actif, annuler])
+  return [actif, basculer]
 }
 
 function ResumeCarte({ surface, pans, besoin }) {
@@ -288,12 +357,14 @@ export default function EtapeToit({
   calepinageId, builderApi = null, documentVivant = null, lectureSeule = false, enregistreLe = null,
 }) {
   const [etat, relire] = useEtatToit()
+  const contexte = useResource((id) => calepinageApi.calepinages.designContext(id), calepinageId, SELECT_DATA).data
+  const [ajout, basculerAjout] = useAjoutPan(etat, relire)
   return (
     <div className="cal-etape-toit">
       <div className="cal-toit-bloc cal-toit-bloc-forme">
         <SectionEtape titre="Forme" />
       </div>
-      <Dimensions cotes={etat.cotes} relire={relire} />
+      <Dimensions cotes={ajout ? { ...ajout.cotes, desactive: true } : etat.cotes} relire={relire} />
       <div className="cal-toit-bloc cal-toit-bloc-pente">
         <SectionEtape titre="Pente et orientation">
           <CartePente calepinageId={calepinageId} builderApi={builderApi} documentVivant={documentVivant}
@@ -302,9 +373,9 @@ export default function EtapeToit({
       </div>
       <Obstacles obstacles={etat.obstacles} relire={relire} />
       <SurCarte>
-        <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={etat.besoin} />
-        <BulleContour contourFerme={etat.contourFerme} />
-        <BarreOutils outils={etat.outils} builderApi={builderApi} relire={relire} />
+        <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={texteBesoin(cibleFactures(contexte))} />
+        <BulleContour contourFerme={etat.contourFerme} ajout={ajout} />
+        <BarreOutils outils={etat.outils} builderApi={builderApi} relire={relire} ajout={ajout} onAjout={basculerAjout} />
       </SurCarte>
     </div>
   )

@@ -65,7 +65,25 @@
 }
 .cel-pret-badge[data-ton='ok'] { background: color-mix(in oklch, var(--success) 14%, var(--card)); color: var(--success-text); }
 .cel-pret-vide { margin: 0; font-size: 0.75rem; color: var(--muted-foreground); }
-.cel-pret-lignes { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+/* F3 — la maquette montre 5 lignes : au-delà, la LISTE défile dans sa carte (la carte « Schéma
+   électrique — Voir » et le pied restent à leur place à 1440 × 900). */
+.cel-pret-lignes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 274px;
+  overscroll-behavior: contain;
+}
+.cel-pret[aria-busy='true'] .cel-pret-lignes { opacity: 0.7; }
+.cel-pret-squelette > span { flex: 1; height: 14px; border-radius: 6px; background: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .cel-pret-squelette > span { animation: cel-pret-pouls 1.4s ease-in-out infinite; }
+}
+@keyframes cel-pret-pouls { 50% { opacity: 0.5; } }
 .cel-pret-ligne {
   display: flex;
   align-items: center;
@@ -121,6 +139,20 @@
   font-size: 0.875rem;
 }
 .cel-avances { font-size: 0.875rem; color: var(--muted-foreground); }
+/* F3 — « Réglages avancés » : UN lien discret en bas du panneau (absent de la maquette, rien n'est retiré). */
+.cel-avances [data-testid='cal-electrique-avances'] { border: 0; }
+.cel-avances .cel-avances-lien {
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cel-avances .cel-avances-lien:hover { color: var(--foreground); }
 .cel-retour,
 .csch-retour {
   display: inline-flex;
@@ -257,6 +289,37 @@
 .csch-vue:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .csch-dessin { position: absolute; inset: 0; transform-origin: center; }
 .csch-dessin svg { display: block; width: 100%; height: 100%; }
+/* F3 — le schéma EN BLOCS : à l'échelle 1 (textes de 12 à 20 px réels), centré en haut de la vue. */
+.csch-vue[data-vue='blocs'] { background: transparent; }
+.csch-dessin.csch-dessin-blocs { display: flex; justify-content: safe center; align-items: flex-start; transform-origin: top center; }
+.csch-dessin.csch-dessin-blocs svg { flex: none; width: auto; height: auto; overflow: visible; }
+.csch-blocs-svg text { font-family: var(--font-brand, inherit); fill: var(--foreground); }
+.csch-blocs-svg .csch-t12 { font-size: 12px; }
+.csch-blocs-svg .csch-t14 { font-size: 14px; font-weight: 600; }
+.csch-blocs-svg .csch-t16 { font-size: 16px; font-weight: 600; }
+.csch-blocs-svg .csch-t20 { font-size: 20px; font-weight: 600; font-family: var(--font-display, inherit); }
+.csch-blocs-svg .csch-gras { font-weight: 600; }
+.csch-blocs-svg .csch-attenue { fill: var(--muted-foreground); }
+.csch-bande { fill: var(--background); stroke: color-mix(in oklch, var(--info) 30%, var(--border)); stroke-dasharray: 4 3; }
+.csch-boite { fill: var(--card); stroke: var(--foreground); stroke-width: 2; }
+.csch-organe { fill: var(--card); stroke: var(--border); }
+.csch-picto { fill: none; stroke: var(--foreground); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.csch-picto-fin { stroke-width: 2; }
+.csch-pilule { fill: var(--muted); }
+.csch-blocs-svg .csch-pilule-texte { fill: var(--muted-foreground); }
+.csch-liaison { fill: none; stroke: var(--foreground); stroke-width: 3; }
+.csch-zone { fill: transparent; stroke: transparent; }
+.csch-couleur,
+.csch-glyphe { fill: var(--foreground); }
+.csch-glyphe { stroke: var(--foreground); stroke-width: 2; }
+.csch-etiquette { paint-order: stroke; stroke: var(--background); stroke-width: 4px; stroke-linejoin: round; }
+.csch-terre path { fill: none; stroke: var(--muted-foreground); stroke-width: 2; stroke-dasharray: 6 4; }
+.csch-terre .csch-terre-symbole path { stroke-dasharray: none; stroke-linecap: round; }
+.csch-blocs-svg .csch-terre-texte { fill: color-mix(in oklch, var(--foreground) 78%, var(--muted-foreground)); }
+.csch-element { cursor: pointer; outline: none; }
+.csch-element:hover > rect:first-child { stroke: var(--ring); }
+.csch-element:focus-visible > rect:first-child { stroke: var(--ring); stroke-width: 3; }
+.csch-element:focus-visible > text { text-decoration: underline; }
 .csch-motifs { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px; }
 .csch-note { margin: 0; padding: 12px 24px 18px; font-size: 0.75rem; color: var(--muted-foreground); }
 

@@ -12,7 +12,7 @@ const RELEVE_COURANT = { id: 9, releve_le: '2026-11-20', notes: '', chaines: [],
 const ZONE = { id: 'z1', label: 'Pan sud', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]] }
 
 const api = {
-  releve: vi.fn(), designContext: vi.fn(), photos: vi.fn(), layout: vi.fn(),
+  releve: vi.fn(), get: vi.fn(), photos: vi.fn(), layout: vi.fn(),
   enregistrerReleve: vi.fn(), corrigerReleve: vi.fn(), supprimerReleve: vi.fn(),
   enregistrerSectionLayout: vi.fn(), appliquerCoteReleve: vi.fn(),
 }
@@ -49,7 +49,7 @@ beforeEach(() => {
   enLigne = true
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => enLigne })
   api.releve.mockResolvedValue({ data: { releves: [RELEVE_COURANT], releve_courant_id: 9 } })
-  api.designContext.mockResolvedValue({ data: { calepinage: { titre: 'Villa Bennani', client_ville: 'Casablanca' } } })
+  api.get.mockResolvedValue({ data: { nom: 'Calepinage 1', client: { nom: 'Villa Bennani', ville: '' }, lead: { nom: 'Bennani', ville: 'Casablanca' } } })
   api.photos.mockResolvedValue({ data: { photos: [{ id: 5, genre: 'drone', url: '/api/x/5/fichier/' }] } })
   api.layout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE] }, empreinte_document: 'emp-1' } })
   api.corrigerReleve.mockResolvedValue({ data: { releve: { ...RELEVE_COURANT } } })
@@ -175,5 +175,39 @@ describe('Relevé de visite — même porte, même corps que le panneau de l’a
     fireEvent.click(screen.getByTestId('releve-terminer'))
     expect(await screen.findByTestId('releve-erreur-precision')).toHaveTextContent('précision')
     expect(api.corrigerReleve).not.toHaveBeenCalled()
+  })
+})
+
+describe('Relevé de visite — la pente est celle du PAN, lue comme l’atelier la lit', () => {
+  const avecZone = (zone) => api.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...ZONE, ...zone }] }, empreinte_document: 'emp-1' } })
+
+  it('un pan « Toit plat » (pitchDeg 22 de panVierge, tables à 10°) se dit « Toit plat », jamais « 22° »', async () => {
+    avecZone({ roofType: 'flat', pitchDeg: 22, geometry: { tiltDeg: 10 } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('Toit plat'))
+    expect(screen.getByTestId('releve-pente-valeur').textContent).not.toMatch(/22|10/)
+    expect(screen.getByTestId('releve-pente-bouton')).toHaveTextContent('Mesurer')
+  })
+
+  it('un pan en pente sans provenance : « à confirmer » + l’aide « valeur de départ » ; tapée = « saisie à la main »', async () => {
+    avecZone({ roofType: 'pitched', pitchDeg: 22 })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('22° · à confirmer'))
+    expect(screen.getByTestId('releve-pente-aide')).toHaveTextContent('Valeur de départ du pan, jamais mesurée.')
+    cleanup()
+    avecZone({ roofType: 'pitched', pitchDeg: 18, pitchSource: { mode: 'degres', degres: 18 } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('18° · saisie à la main'))
+    cleanup()
+    avecZone({ roofType: 'pitched', pitchDeg: 24, pitchSource: { mode: 'degres', degres: 24, provenance: 'telephone' } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('24° · mesurée'))
+    expect(screen.getByTestId('releve-pente-bouton')).toHaveTextContent('Mesurer encore')
+  })
+
+  it('la ligne projet : le client servi — la ville ; sans rattachement, le nom du calepinage', async () => {
+    api.get.mockResolvedValue({ data: { nom: 'Calepinage 9', client: null, lead: null } })
+    rendre()
+    expect(await screen.findByTestId('releve-projet')).toHaveTextContent(/^Calepinage 9$/)
   })
 })
