@@ -198,6 +198,22 @@ _PUBLICATION_DEVIS = forme_du_contrat(
 _REFUS_VENTES = OpenApiResponse(
     description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
                 "charge, mot pour mot.")
+#: ACAL922 — le 409 de ``generer-devis`` : la charge ventes mot pour mot OU la
+#: demande de confirmation de taille ``{detail, code: 'confirmation_taille',
+#: champ: 'confirmer_taille', kwc, total_ttc, refus}`` (contrat
+#: ``calepinage_publication.json::exemple_409_confirmation_taille``).
+_REFUS_GENERER_DEVIS = OpenApiResponse(
+    response=inline_serializer('CalepinageGenererDevisRefus', {
+        'detail': drf_serializers.CharField(required=False),
+        'code': drf_serializers.CharField(required=False),
+        'champ': drf_serializers.CharField(required=False),
+        'kwc': drf_serializers.FloatField(required=False, allow_null=True),
+        'total_ttc': drf_serializers.CharField(required=False),
+        'refus': drf_serializers.CharField(required=False)}),
+    description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
+                "charge, mot pour mot ; ou ``code: confirmation_taille`` : "
+                "rien ne dimensionne le devis, renvoyer le corps avec "
+                "``confirmer_taille: true`` pour confirmer.")
 #: ACAL316 — le 428 que sert une écriture complète sans jeton If-Match :
 #: DOCUMENTÉ (api-fuzz du 14/10/2026 : « code HTTP non documenté »).
 _REPONSE_JETON_MANQUANT = OpenApiResponse(
@@ -790,9 +806,12 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             'remise_globale': drf_serializers.JSONField(required=False),
             'derogation_electrique': drf_serializers.JSONField(
                 required=False),
-            'surfaces_chiffrees': drf_serializers.JSONField(required=False)}),  # ACAL968
+            'surfaces_chiffrees': drf_serializers.JSONField(required=False),  # ACAL968
+            # ACAL922 — confirme un devis que rien ne dimensionne (``is True``).
+            'confirmer_taille': drf_serializers.BooleanField(
+                required=False)}),
         responses={200: _PUBLICATION_DEVIS, 201: _PUBLICATION_DEVIS,
-                   409: _REFUS_VENTES})
+                   409: _REFUS_GENERER_DEVIS})
     @action(detail=True, methods=['post'], url_path='generer-devis',
             permission_classes=[PeutGererCalepinage])
     def generer_devis(self, request, pk=None):
@@ -824,7 +843,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 remise_globale=corps.get('remise_globale'),
                 journal=journal,
                 derogation_electrique=corps.get('derogation_electrique'),
-                surfaces_chiffrees=corps.get('surfaces_chiffrees'))
+                surfaces_chiffrees=corps.get('surfaces_chiffrees'),
+                confirmer_taille=corps.get('confirmer_taille') is True)  # ACAL922
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
@@ -1616,10 +1636,7 @@ def _avertissements(geometrie, cible, contexte_devis):
     if cible is None:
         messages.append('Aucune cible de puissance connue : renseignez-la, '
                         'ou rattachez un devis.')
-    elif cible.get('refus'):
-        # ACAL194 — le motif du moteur, NOMMÉ (la donnée manquante).
-        messages.append('Cible de puissance non calculée : '
-                        + cible['refus'])
+    # ACAL965 — le refus du moteur (ACAL194) n'est dit qu'UNE fois : `cible.refus`, que l'écran affiche.
     return messages
 
 

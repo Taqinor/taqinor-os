@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Button, Card, Input, Label, Spinner } from '../../../ui'
+import { OBSTACLE_TYPES } from '@roofpro/types'
 
 /* ============================================================================
    ACAL488 — L'ONGLET « DÉTECTION DU TOIT » : le serveur PROPOSE un contour,
@@ -33,6 +34,7 @@ export default function PanneauDetectionToit({ calepinageId, builderApi = null, 
   const [proposition, setProposition] = useState(null)
   const [message, setMessage] = useState(null)
   const [refus, setRefus] = useState([])
+  const [coches, setCoches] = useState([])
   const controle = useRef(null)
   const fichier = useRef(null)
 
@@ -53,6 +55,7 @@ export default function PanneauDetectionToit({ calepinageId, builderApi = null, 
     setAttente(true)
     setMessage(null)
     setProposition(null)
+    setCoches([])
     setRefus([])
     Promise.resolve(calepinageApi.calepinages.detectionToit(calepinageId, corps, { signal: controle.current.signal }))
       .then((res) => setProposition(res?.data?.propositions ?? null))
@@ -91,6 +94,23 @@ export default function PanneauDetectionToit({ calepinageId, builderApi = null, 
     }
     setRefus(motifs)
     setMessage(poses ? `${poses} pan(s) posé(s) : enregistrez le calepinage pour les conserver.` : null)
+  }
+
+  // ACAL531 — les obstacles proposés ne sont posés QUE sur « Utiliser les obstacles cochés » : provenance
+  // DEVINE (non engageable), hauteur vide, décidées par l'atelier (`ajouterObstacleDepuisContour`).
+  const obstacles = proposition?.obstacles ?? []
+  const libelleObstacle = (o, i) => `${OBSTACLE_TYPES.find((t) => t.id === o.type)?.label ?? 'Obstacle'} ${i + 1}`
+  const utiliserObstacles = () => {
+    const motifs = []
+    let poses = 0
+    for (const i of coches) {
+      const verdict = builderApi?.ajouterObstacleDepuisContour?.(obstacles[i].contour_lnglat, obstacles[i].type)
+      if (verdict?.ok) poses += 1
+      else motifs.push(`${libelleObstacle(obstacles[i], i)} : ${verdict?.motif || 'l’obstacle n’a pas pu être posé.'}`)
+    }
+    setRefus(motifs)
+    setCoches([])
+    setMessage(poses ? `${poses} obstacle(s) posé(s) : à vérifier sur le toit, puis enregistrez le calepinage.` : null)
   }
 
   if (!dispo) return <Spinner />
@@ -142,6 +162,28 @@ export default function PanneauDetectionToit({ calepinageId, builderApi = null, 
           <Button onClick={utiliser} disabled={!actif || !builderApi?.ajouterPanDepuisContour} data-testid="cal-detection-utiliser">
             Utiliser ce contour
           </Button>
+          {obstacles.length > 0 && (
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Obstacles proposés</legend>
+              {obstacles.map((o, i) => (
+                <label key={i} className="flex min-h-11 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox" className="size-5" data-testid="cal-detection-obstacle"
+                    checked={coches.includes(i)} disabled={!actif}
+                    onChange={(e) => setCoches((c) => (e.target.checked ? [...c, i] : c.filter((x) => x !== i)))}
+                  />
+                  <span>{libelleObstacle(o, i)} <span className="text-muted-foreground">— proposé par l’IA — à vérifier sur le toit</span></span>
+                </label>
+              ))}
+              <Button
+                onClick={utiliserObstacles}
+                disabled={!actif || coches.length === 0 || !builderApi?.ajouterObstacleDepuisContour}
+                data-testid="cal-detection-obstacles-utiliser"
+              >
+                Utiliser les obstacles cochés
+              </Button>
+            </fieldset>
+          )}
         </div>
       )}
     </Card>

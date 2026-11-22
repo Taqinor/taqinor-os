@@ -184,7 +184,11 @@ _FORME_RACCORDEMENT = forme_du_contrat(
         'plafond_soutirage_kw': serializers.FloatField(
             required=False, min_value=0, max_value=SAISIE_MAXIMUM),
         'plafond_soutirage_justification': ChaineStricte(
-            required=False)}),
+            required=False),
+        # ACAL1187/1188 — texte libre du dispositif qui tient le plafond
+        # d'injection (``_texte_saisi`` : texte ou ``null``).
+        'dispositif_limitation_injection': ChaineStricte(
+            required=False, allow_null=True)}),
     responses=_FORME_RACCORDEMENT)
 @action(detail=True, methods=['get', 'post'], url_path='raccordement',
         permission_classes=[PeutLireOuEcrireCalepinage])

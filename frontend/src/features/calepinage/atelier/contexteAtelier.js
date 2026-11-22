@@ -231,6 +231,36 @@ export function reglagesAtelierDuContexte(contexte) {
   return { zones_types: zonesTypes ?? null, degagements: degagements ?? null }
 }
 
+// ACAL967 — « Calepinage <titre> chargé » : le mot « Calepinage » n'est ajouté que si le titre ne le porte pas déjà
+// (« Calepinage (copie) » ne devient plus « Calepinage Calepinage (copie) »). Sans titre : le numéro.
+export function phraseCalepinageCharge(titre, calepinageId, modifiable) {
+  const nom = (titre ?? '').trim() || String(calepinageId)
+  const sujet = /^calepinage/i.test(nom) ? nom : `Calepinage ${nom}`
+  return modifiable
+    ? `${sujet} chargé. Ajustez la conception, puis « Enregistrer le calepinage ».`
+    : `${sujet} en lecture seule — consultation de la conception.`
+}
+
+// ACAL962 — les réglages d'atelier tirés de `GET parametres/` : `pays` = `imagerie.pays` (null si
+// rien n'est réglé), jamais un pays supposé ; `null` si la réponse n'est pas un objet.
+export function reglagesAtelierDesParametres(p) {
+  if (!p || typeof p !== 'object') return null
+  // ACAL714 — les 3 réglages d'ombrage société (`{valeur, source, reference}`), `null` si aucun n'est saisi.
+  const sim = p.simulation && typeof p.simulation === 'object' ? p.simulation : {}
+  const simulation = {
+    seuil_acces_retrait: sim.seuil_acces_retrait ?? null,
+    ombrage_borne_courant_pct: sim.ombrage_borne_courant_pct ?? null,
+    ombrage_borne_importante_pct: sim.ombrage_borne_importante_pct ?? null,
+  }
+  const pays = typeof p.imagerie?.pays === 'string' && p.imagerie.pays.trim() ? p.imagerie.pays.trim() : null
+  return {
+    zones_types: p.zones_types ?? null,
+    degagements: p.degagements ?? null,
+    pays,
+    simulation: Object.values(simulation).some((v) => v !== null) ? simulation : null,
+  }
+}
+
 // CALX107 câblage — la taille du plan de fond, telle que `GET …/plan-importe/`
 // la PUBLIE (pixels naturels lus dans l'en-tête du fichier), ou `null`. Aucune
 // étendue n'est supposée : sans dimensions, l'atelier refuse de poser le plan

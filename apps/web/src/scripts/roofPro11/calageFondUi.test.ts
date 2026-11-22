@@ -37,6 +37,7 @@ import {
   gesteFond,
   largeurVignette,
   pointNaturel,
+  rotationDepuisMolette,
   rotationMolette,
   surLeFond,
 } from './calageFondUi';
@@ -111,6 +112,22 @@ describe('CALX108 — ajuster le fond : un geste RÉSERVÉ (Alt)', () => {
     expect(rotationMolette(-120, REPOS)).toBe(-1);
     expect(rotationMolette(0, REPOS)).toBe(0);
     expect(rotationMolette(Number.NaN, REPOS)).toBe(0);
+  });
+
+  it('ACAL949 — sans Alt, la molette ne demande jamais la position', () => {
+    const lit = () => {
+      throw new Error('position lue sans Alt');
+    };
+    const etatDe = () => REPOS;
+    expect(rotationDepuisMolette({ altKey: false, deltaY: 120 }, lit, etatDe)).toBe(0);
+    expect(rotationDepuisMolette(null, lit, etatDe)).toBe(0);
+  });
+
+  it('ACAL949 — avec Alt sur le fond, la molette tourne d’un pas', () => {
+    const etatDe = () => REPOS;
+    const pos = () => [-7.6, 33.58] as [number, number];
+    expect(rotationDepuisMolette({ altKey: true, deltaY: 120 }, pos, etatDe)).toBe(1);
+    expect(rotationDepuisMolette({ altKey: true, deltaY: -120 }, pos, etatDe)).toBe(-1);
   });
 
   it('le glissé se mesure en mètres est/nord, dans le plan tangent', () => {

@@ -75,6 +75,7 @@ import { useConfirmDialog } from '../../ui/confirm'
 import BarreEnregistrement from '../../features/calepinage/atelier/BarreEnregistrement'
 import { ETAPES } from '../../features/calepinage/atelier/parcoursGuide' // ACAL868
 import ResumeAtelier from '../../features/calepinage/atelier/ResumeAtelier'
+import BandeauConceptionRapide from '../../features/calepinage/atelier/BandeauConceptionRapide' // ACAL1007
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 // L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
@@ -503,6 +504,12 @@ function AtelierToiture({
   useEffect(() => {
     builderApi.current?.setReferenceContourVisible?.(toitClientVisible)
   }, [toitClientVisible, builderReady])
+
+  // ACAL994 — après « Enregistrer », le contexte relu (rafraichirContexte) porte le chiffrage SERVI : la carte
+  // Économies et le Total passent de l'estimation à la valeur du serveur. Mode lead : aucun chiffrage, rien à poser.
+  useEffect(() => {
+    if (estCalepinage && contexte) builderApi.current?.majChiffrage?.(contexte.chiffrage ?? null)
+  }, [contexte, builderReady, estCalepinage])
 
   // ACAL83 — UNE fonction relit design-context après chaque enregistrement
   // réussi : `contexte` (geometrie, avertissements, modifiable, cible) n'était
@@ -1325,6 +1332,10 @@ function AtelierToiture({
         {cibleEstimee && (
           <p className="mt-3 text-xs text-foreground" role="status" data-testid="acal-cible-estimee">
             {cibleEstimee}
+            {/* ACAL965 — le refus n'est dit qu'une fois ; le lien mène à la fiche pour le corriger. */}
+            {contexte?.cible?.refus && contexte?.calepinage?.lead != null && (
+              <> <Link className="inline-flex min-h-11 items-center underline" to={`/crm/leads/${contexte.calepinage.lead}`}>Ouvrir la fiche du lead</Link></>
+            )}
           </p>
         )}
 
@@ -1385,6 +1396,8 @@ function AtelierToiture({
             )}
           </div>
         )}
+        {estCalepinage && <BandeauConceptionRapide calepinageId={calepinageId} rechargerLe={enregistreLe}
+          onVerifier={lectureSeule || varianteId ? null : enregistrerCalepinage} />}
 
         <Studio actif={estCalepinage} nom="">
         <Studio actif={estCalepinage} nom="-scene">
@@ -1432,7 +1445,8 @@ function AtelierToiture({
           <dl className="mt-5 border-t border-border pt-5">
             <div>
               <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées<Pourquoi cle="toit.reco_economies" /></dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies (estimation de l’atelier, plafonnée à la facture)<Pourquoi cle="toit.reco_economies" /></dt>
+              <p id="rp9-reco-savings-note" hidden className="mt-1 text-xs text-muted-foreground">Le chiffre du devis est dans l’onglet Économie</p>
             </div>
           </dl>
           <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
@@ -1511,7 +1525,7 @@ function AtelierToiture({
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}
         {estCalepinage && calepinageId && (
-          <BandeauProvenanceProduction calepinageId={calepinageId} />
+          <BandeauProvenanceProduction calepinageId={calepinageId} chiffrage={contexte?.chiffrage} />
         )}
 
         {/* UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien.

@@ -18,6 +18,7 @@ composition (qui a ses propres tests côté ventes).
 Run :
     python manage.py test apps.calepinage.tests.test_api_generer_devis -v2
 """
+from decimal import Decimal
 from unittest import mock
 
 from apps.calepinage.models import Calepinage
@@ -38,8 +39,10 @@ class GenererDevisTest(BaseApiCalepinage):
         super().setUp()
         self.client_lie = Client.objects.create(company=self.company,
                                                 nom='Bâtiment Atlas 24')
+        # ACAL922 — lead DIMENSIONNÉ (taille souhaitée) : aucune question.
         self.lead_lie = Lead.objects.create(company=self.company,
-                                            nom='Toiture Anfa 24')
+                                            nom='Toiture Anfa 24',
+                                            taille_souhaitee_kwc=Decimal('5'))
         self.calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead_lie.pk,
             titre='Villa Anfa', roof_layout=LAYOUT, layout_hash='c' * 64)

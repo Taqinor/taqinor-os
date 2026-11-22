@@ -14,6 +14,7 @@ import {
   repereDuLead, leadToBuilderPayload,
   contexteCalepinageVersPayload, bankableFromDevis,
   stockageBrouillonLocal, stockageSessionLocal, tailleImagePlan, messageRefusRepere,
+  reglagesAtelierDesParametres, phraseCalepinageCharge,
 } from './contexteAtelier.js'
 
 // SPL214 — effet de boot de l'atelier (chargement lead/devis/calepinage puis
@@ -26,6 +27,19 @@ import {
 // restait masqué. La production PAR 1 kWc vient du repli PARTAGÉ `fallbackPerKwc` (productible
 // du devis, même calcul que quote_engine/productible.py), étiqueté « estimation » — aucune requête.
 const productionAtelierErp = () => fallbackPerKwc()
+
+// ACAL994 — mode calepinage : la production PAR kWc de l'atelier est celle du bloc `chiffrage` servi par
+// design-context (ACAL993) quand `production_annuelle_kwh` ET `kwc` sont `servi` — kWc × ce rendement rend
+// alors la valeur du serveur à la pose servie ; sinon le repli de table, sans rien inventer. Reste étiquetée
+// « estimation » (source `estimate`) : entre deux enregistrements le navigateur n'a qu'une mise à l'échelle.
+export function productionAtelierDepuisChiffrage(chiffrage) {
+  const prod = chiffrage?.production_annuelle_kwh
+  const kwc = chiffrage?.kwc
+  if (prod?.etat !== 'servi' || kwc?.etat !== 'servi' || !(prod.valeur > 0) || !(kwc.valeur > 0)) {
+    return productionAtelierErp
+  }
+  return () => fallbackPerKwc(prod.valeur / kwc.valeur)
+}
 
 /**
  * ACAL286 — pousse au builder la table d'affectation SERVIE (`electrique.affectation[]`, avec
@@ -150,22 +164,7 @@ export function useAtelierBoot(ctx) {
     function chargerReglagesAtelier() {
       return Promise.resolve()
         .then(() => calepinageApi.parametres.get())
-        .then((res) => {
-          const p = res?.data
-          if (!p || typeof p !== 'object') return null
-          // ACAL714 — les 3 réglages d'ombrage société (`{valeur, source, reference}`), `null` si aucun n'est saisi.
-          const sim = p.simulation && typeof p.simulation === 'object' ? p.simulation : {}
-          const simulation = {
-            seuil_acces_retrait: sim.seuil_acces_retrait ?? null,
-            ombrage_borne_courant_pct: sim.ombrage_borne_courant_pct ?? null,
-            ombrage_borne_importante_pct: sim.ombrage_borne_importante_pct ?? null,
-          }
-          return {
-            zones_types: p.zones_types ?? null,
-            degagements: p.degagements ?? null,
-            simulation: Object.values(simulation).some((v) => v !== null) ? simulation : null,
-          }
-        })
+        .then((res) => reglagesAtelierDesParametres(res?.data))
         .catch(() => null)
     }
 
@@ -457,7 +456,7 @@ export function useAtelierBoot(ctx) {
           // ACAL311 — kWh au barème société (null hors calepinage : « estimation »).
           proposerConsommation: proposerPourAtelier,
           lireFactureConsommation: lireFacture,
-          productionAtelier: productionAtelierErp,
+          productionAtelier: productionAtelierDepuisChiffrage(ctx?.chiffrage),
           maptilerKey: carte.maptilerKey,
           mapboxToken: carte.mapboxToken || undefined,
           reducedMotion: !!reducedMotion,
@@ -476,6 +475,10 @@ export function useAtelierBoot(ctx) {
           demanderPlanSurface: demanderPlanSurfaceDepuis(ctx),
           // ACAL777 — la facture du lead, repli d'affichage des cartes (jamais écrite au document).
           factureMensuelleMad: payload?.factureMensuelleMad ?? null,
+          // ACAL778 — un devis lié ⇒ la carte Économies renvoie vers l'onglet Économie.
+          devisLie: ctx?.calepinage?.devis_lie != null,
+          // ACAL994 — l'économie SERVIE (ou `null` : non servie ⇒ la carte dit « estimation »), relue ensuite par majChiffrage.
+          chiffrage: ctx?.chiffrage ?? null,
           // PV75 / ACAL37 — l'étude bancable du devis synchronisé (absente hors flux devis).
           ...(devisId ? { bankable } : {}),
           onApiReady: (a) => {
@@ -510,11 +513,7 @@ export function useAtelierBoot(ctx) {
           .join(', ')
         if (addrEl && adresse) addrEl.value = adresse
         const titre = (ctx?.calepinage?.titre ?? '').trim()
-        setStatus(
-          ctx?.modifiable
-            ? `Calepinage ${titre || calepinageId} chargé. Ajustez la conception, puis « Enregistrer le calepinage ».`
-            : `Calepinage ${titre || calepinageId} en lecture seule — consultation de la conception.`
-        )
+        setStatus(phraseCalepinageCharge(titre, calepinageId, ctx?.modifiable))
       }
 
       // CALX68 — brouillon local : détecté AVANT de booter le constructeur,

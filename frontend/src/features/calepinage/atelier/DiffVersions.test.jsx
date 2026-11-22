@@ -110,6 +110,19 @@ describe('DiffVersions — choisir deux versions (CALX346)', () => {
   })
 })
 
+describe('DiffVersions — empreintes courtes (ACAL967)', () => {
+  it('une empreinte de 64 caractères s’affiche en 8, l’entière en infobulle', async () => {
+    mocks.versions.mockResolvedValue({ data: [V3, V2, V1] })
+    mocks.versionsDiff.mockResolvedValue({ data: DIFF_EXEMPLE })
+    rendre()
+    const ligne = await screen.findByTestId('cal-diff-versions-ligne-layout_hash')
+    expect(ligne).toHaveTextContent('abababab')
+    expect(ligne).toHaveTextContent('cdcdcdcd')
+    expect(ligne.textContent).not.toContain('abababababab')
+    expect(ligne.querySelector('td[title]').getAttribute('title')).toHaveLength(64)
+  })
+})
+
 describe('DiffVersions — la restauration reste dans PanneauVersions (CALX346)', () => {
   it('un lien renvoie vers l’onglet Versions, AUCUN bouton d’écriture ici', async () => {
     mocks.versions.mockResolvedValue({ data: [V2, V1] })

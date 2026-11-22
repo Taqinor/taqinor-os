@@ -377,6 +377,7 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
                   or _variante_de_l_ouvert_lie(devis, company, lead_id,
                                                user=user))
         if adopte is not None:
+            _marquer_l_adopte(adopte, devis)
             return adopte
         try:
             with transaction.atomic():
@@ -392,6 +393,7 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
                     cree_par=user,
                     # ACAL297 — le propriétaire du lead, STOCKÉ.
                     responsable=responsable_par_defaut(company, lead_id),
+                    etat_conception=_etat_de_depart(devis, None),  # ACAL1006
                 )
         except IntegrityError:
             # ACAL33 — course perdue : la contrainte ``calepinage_un_par_devis``
@@ -405,6 +407,24 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
     journaliser_creation(calepinage, user=user)
     _noter_jeu(calepinage, jeu, regles, user=user)
     return calepinage, ORIGINE_CREE
+
+
+def _etat_de_depart(devis, document):
+    """ACAL1006 — ``'rapide'`` pour un devis automatique (ACAL1004) dont le
+    calepinage n'a encore aucun document dessiné, sinon ``'complet'``."""
+    params = getattr(devis, 'etude_params', None)
+    rapide = isinstance(params, dict) and params.get('origine_conception') == 'rapide'
+    return 'rapide' if rapide and not document else 'complet'
+
+
+def _marquer_l_adopte(adopte, devis):
+    """ACAL1006 — l'ouvert ADOPTÉ jamais dessiné devient ``rapide`` ; un
+    calepinage déjà dessiné (ou existant, ou variante) n'est jamais réécrit."""
+    calepinage, origine = adopte
+    if origine != ORIGINE_ADOPTE or _etat_de_depart(devis, calepinage.roof_layout) != 'rapide':
+        return
+    type(calepinage).objects.filter(pk=calepinage.pk).update(etat_conception='rapide')
+    calepinage.etat_conception = 'rapide'
 
 
 def _adopter_l_ouvert_du_lead(devis, company, lead_id, *, user=None):

@@ -112,6 +112,9 @@ class GenererApresChangementDuChampTest(BaseApiCalepinage):
         from apps.ventes.tests.test_from_layout_endpoint import seed_catalogue
 
         seed_catalogue(self.company)
+        # ACAL922 — lead DIMENSIONNÉ : la génération ne pose pas la question.
+        self.lead.taille_souhaitee_kwc = 5
+        self.lead.save(update_fields=['taille_souhaitee_kwc'])
         calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='QA-ACAL-SOL')
         enregistrer_layout(calepinage, _champ_au_sol(340), user=self.user)

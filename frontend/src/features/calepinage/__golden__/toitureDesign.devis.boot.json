@@ -68,6 +68,37 @@
       "reglagesAtelier": null,
       "demanderPlanSurface": "[fn]",
       "factureMensuelleMad": 900,
+      "devisLie": true,
+      "chiffrage": {
+        "marche": "residentiel",
+        "regles_calcul": 15,
+        "kwc": {
+          "valeur": 71,
+          "unite": "kWc",
+          "source": "devis",
+          "etat": "servi"
+        },
+        "production_annuelle_kwh": {
+          "valeur": 98576,
+          "unite": "kWh/an",
+          "source": "calepinage_enregistre",
+          "etat": "servi"
+        },
+        "economie_annee1_mad": {
+          "valeur": 7420,
+          "unite": "MAD",
+          "source": "devis",
+          "etat": "servi",
+          "option": "sans_batterie"
+        },
+        "autoconsommation_pct": {
+          "valeur": 62,
+          "unite": "%",
+          "source": "devis",
+          "etat": "servi"
+        },
+        "omissions": []
+      },
       "bankable": null,
       "onApiReady": "[fn]",
       "onHydrationTerminee": "[fn]"

@@ -1,0 +1,33 @@
+{
+  "pourquoi": "ACAL983 (garde K-DEFAUT-CHOIX) — les valeurs que personne n'a saisies et qui pourraient fixer seules un chiffre de devis. Chaque ligne est REJOUÉE : par `generer_devis` ou la porte de pose (test_acal_generer_devis_portes.py::DefautsAnnoncesTest), par l'estimateur (apps/web/tests/estimatorRuntimePro10Pro11.defauts.test.ts). La réponse attendue dit comment le défaut est tenu : une question 409 avant tout devis, ou absent (jamais appliqué sans saisie). Une ligne ajoutée = un cas rejoué ; « structures et socles » s'ajoutera quand la règle d'ACAL927 sera décidée.",
+  "defauts": [
+    {
+      "cle": "taille_sans_facture",
+      "valeur_origine": "toit rempli (ni facture ni taille souhaitée sur le lead)",
+      "cas": "lead résidentiel sans facture ni taille, « Générer le devis »",
+      "porte": "generer_devis",
+      "reponse": {"statut": 409, "code": "confirmation_taille"}
+    },
+    {
+      "cle": "module_absent_du_catalogue",
+      "valeur_origine": "module 720 W dessiné, absent du catalogue",
+      "cas": "100 modules de 720 W dessinés contre un catalogue à 550 W",
+      "porte": "generer_devis",
+      "reponse": {"statut": 409, "code": "module_substitue"}
+    },
+    {
+      "cle": "allee_terrain",
+      "valeur_origine": "allée de 0,60 m du moteur",
+      "cas": "champ au sol sans allée saisie",
+      "porte": "pose",
+      "reponse": {"politique": "ANTI_OMBRAGE"}
+    },
+    {
+      "cle": "inclinaison_est_ouest",
+      "valeur_origine": "inclinaison est-ouest de la grille complète (0 à 35°)",
+      "cas": "recommandation est-ouest sans inclinaison saisie",
+      "porte": "estimateur",
+      "reponse": {"inclinaisons": "EW_TILTS"}
+    }
+  ]
+}

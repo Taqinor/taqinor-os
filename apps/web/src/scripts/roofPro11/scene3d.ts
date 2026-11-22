@@ -18,6 +18,7 @@
  * appelées d'ici ; l'état partagé (obstacles/zones/disposition) passe par `ctx`.
  */
 import * as maplibregl from 'maplibre-gl';
+import { creerPoignees3d, type PoigneeEcran } from './poigneesSommets3d'; // ACAL1185
 import * as THREE from 'three';
 import { enuSharedEdgeOverlapM } from './edgeOverlap';
 import { makeCompose, configureShadowRenderer, ringsBBox, fitShadowCamera } from './threeShared';
@@ -150,6 +151,8 @@ export interface Scene3d {
    *  null si le renderer/canvas est indisponible OU si l'image est entièrement
    *  transparente (jamais un PNG vide téléversé). */
   snapshot: () => Promise<string | null>;
+  /** ACAL1185 — positions écran des poignées 3D des coins ([] en vue de dessus). */
+  positionsPoigneesEcran: () => PoigneeEcran[];
   /** CAL180 — rend la SCÈNE dans une cible HORS ÉCRAN à `scale` fois la taille du
    *  canvas et renvoie un blob PNG, avec les dimensions RÉELLEMENT obtenues (le
    *  facteur est rabaissé si le plafond `HD_MAX_SIDE_PX` l'impose). `null` si la
@@ -1252,6 +1255,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const { map, lowEnd, shadowSize } = deps;
   // Absent (ERP) → false : toutes les branches gardées ci-dessous sont inertes.
   const readOnly = deps.readOnly === true;
+  const poignees3d = creerPoignees3d(map); // ACAL1185 — poignées des coins au haut des murs
   const opts = ctx.opts;
 
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1507,6 +1511,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       if (glLost || !renderer || !scene || !threeCamera || !modelMatrix) return;
       const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix));
       threeCamera.projectionMatrix = m.multiply(modelMatrix);
+      poignees3d.suivre(threeCamera.projectionMatrix.elements);
       renderer.resetState();
       renderer.render(scene, threeCamera);
     },
@@ -2543,6 +2548,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     fitShadowCamera(sun, span, dist * 2);
 
     attacherCoucheElectrique(); // CALX219 câblage — la couche électrique revient sur la scène
+    if (scene) poignees3d.poser(scene, !readOnly && ctx.closed ? ctx.vertices : [], pack.origin, wallH); // ACAL1185
     for (const m of construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly)) sceneRoot!.add(m); // CALX124 — surfaces de pose (sol/ombrière) : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté
     map.triggerRepaint();
   }
@@ -2691,7 +2697,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   function snapshot(): Promise<string | null> {
     const canvas = renderer?.domElement ?? (glCanvas as HTMLCanvasElement | null) ?? null;
     if (!canvas || typeof canvas.toDataURL !== 'function') return Promise.resolve(null);
-    return capturerApresRendu(map, canvas, lireRgbaCanvas);
+    const rendre = poignees3d.masquer(); // ACAL1185 — jamais de poignée dans une image
+    return capturerApresRendu(map, canvas, lireRgbaCanvas).finally(rendre);
   }
 
   /**
@@ -2721,7 +2728,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       off.toneMappingExposure = 1.05;
       off.shadowMap.enabled = true;
       off.shadowMap.type = THREE.PCFSoftShadowMap;
+      const rendre = poignees3d.masquer(); // ACAL1185
       off.render(scene, threeCamera);
+      rendre();
       const blob = await new Promise<Blob | null>((resolve) => {
         if (typeof canvas.toBlob !== 'function') {
           resolve(null);
@@ -2758,7 +2767,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     attacherCoucheElectrique();
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf };
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf, positionsPoigneesEcran: poignees3d.ecran };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

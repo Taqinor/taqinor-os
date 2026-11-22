@@ -1481,6 +1481,10 @@ def rendre_planche_svg(calepinage, *, moment=None, roof_layout=None,
     le chantier a reçu, pour l'as-built) ; ``document`` l'emporte si les deux
     sont donnés.
     """
+    from .. import selectors_devis as _sd
+
+    if _sd.conception_rapide(calepinage):  # ACAL1008 — rien d'un dessin rapide ne sort
+        raise PlancheRefusee(_sd.MOTIF_CONCEPTION_RAPIDE, champ='etat_conception')
     document = options.pop('document', None)
     if document is None:
         document = roof_layout

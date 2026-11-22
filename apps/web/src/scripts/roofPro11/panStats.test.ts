@@ -1,7 +1,7 @@
 // CAL84 — statistiques par pan, totalisées par bâtiment puis par site. Toutes les
 // colonnes sont calculées ; ce test prouve que la somme des lignes == le total.
 import { describe, expect, it } from 'vitest';
-import { computePanStats, hasMultipleBuildings, PANEL_FOOTPRINT_M2 } from './panStats';
+import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, PANEL_FOOTPRINT_M2 } from './panStats';
 import { panDeTest } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 import { type AreaResult } from '../../lib/roofAreas';
@@ -65,5 +65,33 @@ describe('CAL84 — computePanStats', () => {
     const stats = computePanStats(areas, () => RESULT_OK);
     expect(stats.pans[0].azimuthDeg).toBeNull();
     expect(stats.pans[0].pitchDeg).toBeNull();
+  });
+});
+
+describe('ACAL981 — libellé du bâtiment et motif du contour', () => {
+  it('un pan fermé d’aire positive ne porte pas « contour du pan non tracé » ; un contour ouvert le porte', () => {
+    const ferme = computeSiteStats(computePanStats([zone('a')], () => null), []);
+    expect(ferme.lignes[0].motif).not.toContain('non tracé');
+    const ouvert = computeSiteStats(computePanStats([zone('a', { vertices: [] })], () => null), []);
+    expect(ouvert.lignes[0].motif).toBe('contour du pan non tracé');
+  });
+
+  it('un contour de 3 sommets confondus (aire nulle) dit « aire nulle : vérifiez le contour »', () => {
+    const p: [number, number] = [-7.6, 33.5];
+    const stats = computeSiteStats(computePanStats([zone('a', { vertices: [p, p, p] })], () => null), []);
+    expect(stats.lignes[0].motif).toBe('aire nulle : vérifiez le contour');
+  });
+
+  it('htmlTableSite d’un groupe sans identifiant écrit « Bâtiment 1 », jamais « Bâtiment sans id »', () => {
+    const html = htmlTableSite(computeSiteStats(computePanStats([zone('a')], () => RESULT_OK), []));
+    expect(html).toContain('Bâtiment 1');
+    expect(html).not.toContain('sans id');
+    expect(html).toContain('Total Bâtiment 1');
+  });
+
+  it('deux groupes dont un sans identifiant : rang par ordre, l’identifiant saisi reste tel quel', () => {
+    const html = htmlTableSite(computeSiteStats(computePanStats([zone('a', { buildingId: 'bat-A' }), zone('b')], () => RESULT_OK), []));
+    expect(html).toContain('bat-A');
+    expect(html).toContain('Bâtiment 2');
   });
 });

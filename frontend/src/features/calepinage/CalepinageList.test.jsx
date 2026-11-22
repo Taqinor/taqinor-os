@@ -119,6 +119,19 @@ describe('CalepinageList (CAL35)', () => {
     expect(vignette).toHaveAttribute('href', `/calepinage/${AVEC_IMAGE.id}`)
   })
 
+  it('ACAL957 — sous 768 px les filtres sont repliés derrière « Filtres » ; l’appui les déplie', async () => {
+    rendre()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+    const conteneur = screen.getByTestId('acal957-filtres')
+    const bouton = screen.getByTestId('acal957-filtres-basculer')
+    expect(conteneur.className).toContain('hidden md:grid')
+    expect(bouton.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(bouton)
+    expect(bouton.getAttribute('aria-expanded')).toBe('true')
+    expect(conteneur.className).not.toContain('hidden')
+    expect(screen.getByLabelText('Recherche')).toBeTruthy()
+  })
+
   it('la RECHERCHE part en `?q=` — le filtre servi par CAL16', async () => {
     rendre()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())

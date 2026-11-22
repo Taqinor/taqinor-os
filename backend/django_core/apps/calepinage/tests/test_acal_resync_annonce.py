@@ -8,6 +8,7 @@ Run :
     python manage.py test apps.calepinage.tests.test_acal_resync_annonce -v2
 """
 import copy
+from decimal import Decimal
 
 from core import events
 
@@ -30,6 +31,9 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         super().setUp()
         from apps.ventes.tests.test_from_layout_endpoint import seed_catalogue
         seed_catalogue(self.company)
+        # ACAL922 — lead DIMENSIONNÉ : « Générer » ne pose pas la question.
+        self.lead.taille_souhaitee_kwc = Decimal('5')
+        self.lead.save(update_fields=['taille_souhaitee_kwc'])
         self.calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='ACAL38')
         enregistrer_layout(self.calepinage, copy.deepcopy(TOIT),

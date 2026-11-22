@@ -29,6 +29,7 @@ import {
 } from '../../lib/obstacles';
 import { isSimplePolygon, type LngLat } from '../../lib/roof'; // ACAL77
 import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
+import { coinLePlusProche, type PoigneeEcran } from './poigneesSommets3d'; // ACAL1185
 import { insertionSurContour, supprimerSommet, metresParPixel } from './snap';
 import { $, esc } from './dom';
 import { type Ctx } from './context';
@@ -226,6 +227,8 @@ export interface ObstaclesUiDeps {
    *  Optionnel : absent, le bandeau d'allée ne parle QUE du couloir (surface retirée) —
    *  jamais un compte de modules inventé. Cette fonction ne supprime jamais rien. */
   modulesPoses?: () => { modules: ModulePose[]; origine: LngLat };
+  /** ACAL1185 — positions écran des poignées 3D des coins (vue inclinée) ; [] ou absente = on lit `rp9-pts`. */
+  positionsPoigneesEcran?: () => PoigneeEcran[];
 }
 
 export interface ObstaclesUi {
@@ -241,6 +244,8 @@ export interface ObstaclesUi {
   updateSelected: (transform: (o: Obstacle) => Obstacle) => void;
   deleteSelected: () => void;
   addObstacle: (o: Obstacle) => void;
+  /** ACAL531 — pose un obstacle PROPOSÉ (contour géoréférencé) : provenance DEVINE, hauteur vide. */
+  poserObstacleDepuisContour: (contour: unknown, type: unknown) => { ok: true; id: string } | { ok: false; motif: string };
   obstacleAtPoint: (pt: maplibregl.Point) => string | null;
   setObstacleMode: (on: boolean) => void;
   beginDraw: (lngLat: LngLat, point: maplibregl.Point) => void;
@@ -889,7 +894,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   poserDegagementsSociete(reglages?.degagements); // ACAL499
   /** CALX403 — le pays du site vient de la section `imagerie` déjà transmise (CAL47) :
    *  on ne le redemande pas, et on n'en suppose aucun. */
-  const paysDuSite = ctx.opts?.imagery?.pays ?? null;
+  const paysDuSite = ctx.opts?.imagery?.pays ?? reglages?.pays ?? null;
   const { gabarits: gabaritsObstacle, refuses: gabaritsRefuses } = lireGabaritsObstacle(reglages?.zones_types);
   // ACAL291 — les gabarits de ZONE réglementaire (les gabarits d'obstacle sont ignorés ici).
   const { gabarits: gabaritsZone, refuses: gabaritsZoneRefuses } = lireGabaritsZone(reglages?.zones_types);
@@ -1089,6 +1094,21 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
         `dégagement ${fmt1(degagementObstacle(verdict.obstacle))} m compris.`,
     );
     return true;
+  }
+
+  /** ACAL531 — obstacle PROPOSÉ par la détection du toit, confirmé par l'utilisateur : type connu de
+   *  l'atelier (sinon omis), provenance DEVINE (compte non engageable tant qu'il n'est pas relevé),
+   *  hauteur jamais renseignée. Même validateur de contour que le tracé polygonal. */
+  function poserObstacleDepuisContour(contour: unknown, type: unknown) {
+    const connu = OBSTACLE_TYPES.find((t) => t.id === type)?.id;
+    const verdict = obstaclePolygone(prochainId('obs', tousLesObstacles(ctx)), contour as LngLat[], {
+      ...(connu ? { type: connu } : {}),
+      provenance: 'DEVINE',
+    });
+    if (!verdict.ok) return { ok: false as const, motif: verdict.motif };
+    addObstacle(verdict.obstacle);
+    setStatus('Obstacle proposé posé — à vérifier sur le toit, non engageable tant qu’il n’est pas relevé.');
+    return { ok: true as const, id: verdict.obstacle.id };
   }
 
   /** CALX104 — pose l'obstacle circulaire au point cliqué, au rayon SAISI. */
@@ -1547,6 +1567,8 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   // — W92 — Déplacement d'un SOMMET du tracé (généralisation du glissé d'obstacle) —
   /** Sommet du tracé touché au point écran `pt`, ou null (lit la propriété `idx`). */
   function vertexAtPoint(pt: maplibregl.Point): number | null {
+    const poignees3d = deps.positionsPoigneesEcran?.() ?? []; // ACAL1185 — vue inclinée : la poignée 3D, pas le sol
+    if (poignees3d.length) return coinLePlusProche(poignees3d, pt, VERTEX_GRAB_PX);
     // Boîte de tolérance (rayon doigt ⊃ pastille) autour du point, comme un hit-test élargi.
     const box: [maplibregl.Point, maplibregl.Point] = [
       { x: pt.x - VERTEX_GRAB_PX, y: pt.y - VERTEX_GRAB_PX } as maplibregl.Point,
@@ -1794,7 +1816,12 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const cols = Math.round(parseNum(obsGridColsEl?.value ?? ''));
     const rows = Math.round(parseNum(obsGridRowsEl?.value ?? ''));
     const positions = gridPositions([o.centerLng, o.centerLat], spacing, cols, rows);
+    // ACAL1032 — le champ fautif (pas, puis colonnes, puis lignes) est marqué et reçoit le focus.
+    const fautif = !(spacing > 0) ? obsGridSpacingEl : !(cols >= 1) ? obsGridColsEl : !(rows >= 1) ? obsGridRowsEl : null;
+    for (const f of [obsGridSpacingEl, obsGridColsEl, obsGridRowsEl]) f?.removeAttribute('aria-invalid');
     if (!positions.length) {
+      fautif?.setAttribute('aria-invalid', 'true');
+      fautif?.focus();
       setStatus('Pas ou nombre de trame invalide (saisissez un pas > 0 et des colonnes/lignes ≥ 1).');
       return;
     }
@@ -1822,6 +1849,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     updateSelected,
     deleteSelected,
     addObstacle,
+    poserObstacleDepuisContour,
     obstacleAtPoint,
     setObstacleMode,
     beginDraw,

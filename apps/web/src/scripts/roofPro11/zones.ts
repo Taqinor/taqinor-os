@@ -14,7 +14,7 @@ import { type AreaRecord, type GabaritZone } from './types';
 import { type RoofShapePan, type RoofShapePreset } from './scene3d';
 import { geodesicAreaM2, isSimplePolygon, pointInPolygon, type LngLat } from '../../lib/roof';
 import { referenceContourRing } from './prefill'; // ACAL71 — le validateur de contour UNIQUE
-import { facteurDerateAnnuel } from './optimizer'; // ACAL356 — le dérate UNIQUE (ombrage × horizon)
+import { economieAffichee, facteurDerateAnnuel } from './optimizer'; // ACAL356 — le dérate UNIQUE (ombrage × horizon)
 import { type Obstacle } from '../../lib/obstacles';
 import { pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
@@ -28,7 +28,7 @@ import {
   pivoterPoint,
   redimensionnerRectangle,
 } from './snap';
-import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, type PanStat } from './panStats'; // CALX126
+import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, libelleBatiment, type PanStat } from './panStats'; // CALX126
 // CALX109/CALX110 câblage — le catalogue de modules de la société et le module posé sur
 // CHAQUE pan. `moduleSelect.ts` est PUR (aucun DOM) : c'est ici, dans le panneau du pan, que
 // le choix devient visible, et c'est de là qu'il repart vers le pavage et le document.
@@ -378,8 +378,8 @@ export interface ZonesDeps {
 /** CAL84 — libellé d'un bâtiment (repli « Bâtiment sans id » pour un groupe sans
  *  `buildingId` mélangé à des zones qui en portent un — cas limite, ne devrait pas
  *  arriver en pratique une fois CAL59 câblé, mais ne doit jamais planter l'affichage). */
-function buildingLabel(buildingId: string | null): string {
-  return buildingId ? buildingId : 'Bâtiment sans id';
+export function buildingLabel(buildingId: string | null, rang = 1): string {
+  return libelleBatiment(buildingId, rang); // ACAL981 — « Bâtiment <rang> », plus « Bâtiment sans id »
 }
 
 export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
@@ -486,7 +486,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       : poses.reduce((s, p) => s + (p.kwc as number), 0)) : total.kwc;
     if (areasTotalKwcEl) areasTotalKwcEl.textContent = kwcTotal == null ? '—' : `${kwcTotal.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`;
     if (areasTotalProdEl) areasTotalProdEl.textContent = total.annualKwh > 0 ? `${fmt(Math.round(total.annualKwh))} kWh/an` : '—';
-    if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—';
+    if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = economieAffichee(ctx, 'total', total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—'); // ACAL994
 
     // CAL59 — statistiques par pan + totaux par bâtiment (colonnes toutes CALCULÉES).
     // CALX110 câblage — 3ᵉ argument : le MODULE de chaque pan. Sans lui, deux modèles posés
@@ -550,10 +550,10 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
         // bâtiment (panneaux/kWc CALCULÉS, jamais saisis), suivie des zones du groupe.
         const indexOf = new Map(areas.map((a, i) => [a.id, i]));
         areasListEl.innerHTML = stats.byBuilding
-          .map((b) => {
+          .map((b, rang) => {
             const rows = ordre.filter((a) => (a.buildingId ?? null) === b.buildingId);
             const header = `<li class="border border-white/20 bg-nuit-900/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-lune-faint" data-building-header="${esc(b.buildingId ?? '')}">
-              ${esc(buildingLabel(b.buildingId))} — ${fmt(b.panels)} panneaux · ${b.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc
+              ${esc(buildingLabel(b.buildingId, rang + 1))} — ${fmt(b.panels)} panneaux · ${b.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc
             </li>`;
             return header + rows.map((a) => rowHtml(a, indexOf.get(a.id) ?? 0)).join('');
           })
@@ -581,11 +581,12 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   function renderStatsTable(el: HTMLElement, pans: PanStat[], multiBuilding: boolean): void {
     const fmtPct = (r: number | null) => (r == null ? '—' : `${Math.round(r * 100)} %`);
     const fmtDeg = (v: number | null) => (v == null ? '—' : `${Math.round(v)}°`);
+    const groupes = [...new Set(pans.map((p) => p.buildingId))];
     const rows = pans
       .map(
         (p) => `<tr data-pan-stat="${esc(p.id)}">
           <td class="px-2 py-1 text-white">${esc(p.label || p.id)}${etiquettePanExistant(ctx.areas.find((a) => a.id === p.id))}</td>
-          ${multiBuilding ? `<td class="px-2 py-1 text-lune-faint">${esc(buildingLabel(p.buildingId))}</td>` : ''}
+          ${multiBuilding ? `<td class="px-2 py-1 text-lune-faint">${esc(buildingLabel(p.buildingId, groupes.indexOf(p.buildingId) + 1))}</td>` : ''}
           <td class="px-2 py-1 text-right">${p.panels ? fmt(p.panels) : `0 <span class="text-lune-faint">(${esc(p.zeroReason)})</span>`}</td>
           <td class="px-2 py-1 text-right">${p.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
           <td class="px-2 py-1 text-right">${fmtDeg(p.azimuthDeg)}</td>
@@ -1460,13 +1461,7 @@ export function largeurAlleeDepuisReglages(
   pays: string | null | undefined,
 ): { largeurM: number | null; motif: string } {
   const code = String(pays ?? '').trim().toLowerCase();
-  const reglage = `degagements.allees_circulation.${code || '?'}`;
-  if (!code) {
-    return {
-      largeurM: null,
-      motif: `Allée de circulation : aucun pays n’est réglé pour ce site — réglage manquant : ${reglage}.`,
-    };
-  }
+  if (!code) return { largeurM: null, motif: motifAlleeSansLargeur(code) };
   const section = (sectionDegagements ?? {}) as Record<string, unknown>;
   const entrees = Array.isArray(section.allees_circulation) ? (section.allees_circulation as unknown[]) : [];
   for (const brut of entrees) {
@@ -1483,12 +1478,14 @@ export function largeurAlleeDepuisReglages(
       motif: `Allée de circulation (${code}) : ${largeur} m (réglage de votre société — ${citation}).`,
     };
   }
-  return {
-    largeurM: null,
-    motif:
-      `Allée de circulation (${code}) : aucune largeur n’est saisie pour ce pays — ` +
-      `réglage manquant : ${reglage}. L’allée n’est pas tracée tant qu’elle n’est pas saisie.`,
-  };
+  return { largeurM: null, motif: motifAlleeSansLargeur(code) };
+}
+
+/** ACAL962 — le refus d'une allée sans largeur, en mots simples (jamais la clé technique du réglage). */
+function motifAlleeSansLargeur(code: string): string {
+  return code
+    ? `Allée non tracée : aucune largeur d’allée n’est réglée pour le pays « ${code} ». Réglez-la dans Réglages › Allées.`
+    : 'Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages › Site.';
 }
 
 /** Verdict d'un tracé d'allée — un refus NOMME toujours sa raison. */
@@ -1497,12 +1494,7 @@ export type VerdictAllee = { ok: true; zone: ExclusionZone } | { ok: false; moti
 /** CALX403 — la largeur saisie est-elle exploitable ? `null` = oui, sinon le motif. */
 export function motifLargeurAllee(largeurM: number | null | undefined, pays?: string | null): string | null {
   if (largeurM == null || !Number.isFinite(largeurM) || largeurM <= 0) {
-    const code = String(pays ?? '').trim().toLowerCase();
-    const reglage = `degagements.allees_circulation.${code || '?'}`;
-    return (
-      'Allée non tracée : saisissez sa largeur en mètres. Aucune largeur n’est supposée — ' +
-      `réglage manquant : ${reglage}.`
-    );
+    return motifAlleeSansLargeur(String(pays ?? '').trim().toLowerCase());
   }
   return null;
 }

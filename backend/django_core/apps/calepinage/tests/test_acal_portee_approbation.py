@@ -10,6 +10,7 @@ Run :
     python manage.py test apps.calepinage.tests.test_acal_portee_approbation -v2
 """
 import copy
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, tag
@@ -63,6 +64,9 @@ class PorteeApprobationTest(BaseApiCalepinage):
         super().setUp()
         from apps.ventes.tests.test_from_layout_endpoint import seed_catalogue
         seed_catalogue(self.company)
+        # ACAL922 — lead DIMENSIONNÉ : « Générer » ne pose pas la question.
+        self.lead.taille_souhaitee_kwc = Decimal('5')
+        self.lead.save(update_fields=['taille_souhaitee_kwc'])
         self.calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='ACAL116')
         # ACAL303 — la conception est d'un AUTRE compte que le relecteur

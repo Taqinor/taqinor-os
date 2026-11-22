@@ -206,12 +206,14 @@ import { type TableOmbrage } from './roofPro11/tableOmbrage'; // ACAL459
 import { type FacteurVueCiel } from './roofPro11/vueCiel'; // ACAL460
 import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
 import { creerBandeauAnnuler, demanderEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
-import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422
+import { optionsGestesCarte, geleDefilementPendantGeste } from './roofPro11/gestesCarte'; // ACAL952
+import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
 import {
   createCalageFondUi,
   deltaMetresFond,
   gesteFond,
-  rotationMolette,
+  rotationDepuisMolette,
   surLeFond,
 } from './roofPro11/calageFondUi'; // CALX108 câblage
 import { buildAffectationColoring, createScene3d, projectPlanView, panelQuadsLngLat, type AffectationMode, type AffectationRow } from './roofPro11/scene3d';
@@ -228,6 +230,7 @@ import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts
+import { masquerMarqueur, retirerMarqueur } from './roofPro11/epingleClient'; // ACAL972
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
 import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; // ACAL576, ACAL579, ACAL585
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
@@ -449,12 +452,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // par le client, distinct du contour que Meriem trace. Posé dans applyHydration, retiré
   // dans clearEditorState (nouveau lead / effacement). null hors flux d'hydratation.
   let clientPinMarker: maplibregl.Marker | null = null;
-  const removeClientPinMarker = () => {
-    if (clientPinMarker) {
-      clientPinMarker.remove();
-      clientPinMarker = null;
-    }
-  };
+  const removeClientPinMarker = () => { clientPinMarker = retirerMarqueur(clientPinMarker); };
   // ACAL193 (D-ACAL-13) — le repère client est DÉPLAÇABLE à la main : le relâcher ailleurs
   // pose `pinSource: 'manuel'` (et cette épingle) dans le prochain document — elle ne
   // suivra plus d'office une correction du GPS du lead (le serveur proposera « Recentrer »
@@ -1305,6 +1303,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // contexte d'imagerie, `customAttribution` est vide et le contrôle est identique.
     attributionControl: { compact: true, customAttribution: activeImageryAttribution },
     fadeDuration: opts.reducedMotion ? 0 : 300,
+    ...optionsGestesCarte(window), // ACAL952
   });
   opts.onReady?.();
 
@@ -1381,6 +1380,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CALX403 câblage — les modules POSÉS (repère + emprise au sol) : sans eux, le bandeau
     // d'allée ne parlait QUE du couloir et ne pouvait nommer aucun module en travers.
     modulesPoses: () => modulesPosesPourAllees(), // CALX403 câblage
+    positionsPoigneesEcran: () => scene3d.positionsPoigneesEcran(), // ACAL1185 — paresseux : scene3d est construit plus bas
   });
   // CALX403 câblage — et la scène 3D teinte ces mêmes modules (module `teinteAllees.ts`).
   // Source relue à CHAQUE rendu : une allée tracée entre deux rendus se voit aussitôt.
@@ -2392,6 +2392,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       return;
     }
     closed = true;
+    masquerMarqueur(clientPinMarker); // ACAL972 — l'épingle du lead ne reste pas dessinée sur les panneaux
     if (finishBtn) finishBtn.disabled = true;
     if (undoPointBtn) undoPointBtn.hidden = true; // W92 — plus d'annulation après fermeture
     let lng = 0;
@@ -2429,7 +2430,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
 
   function go3DView() {
-    const target = { center: centroid, pitch: PITCH_VIEW } as const;
+    const target = { center: centroid, zoom: vertices.length >= 3 ? zoomToFitRing(vertices) : map.getZoom(), pitch: PITCH_VIEW } as const;
     if (opts.reducedMotion) map.jumpTo(target);
     else map.easeTo({ ...target, duration: 1100, essential: true });
   }
@@ -2801,13 +2802,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     else if (moveObs) endMove();
   });
   map.on('wheel', (e) => {
-    // CALX108 câblage — sans Alt (ou hors du fond), `rotationMolette` rend 0 et la
-    // molette reste EXACTEMENT le zoom de la carte.
+    // ACAL949 — sans Alt : zoom seul ; position = point DOM (`wheel` sans `lngLat`).
     const original = (e.originalEvent ?? null) as WheelEvent | null;
-    const rotationDeg = rotationMolette(
-      original?.deltaY ?? 0,
-      etatGesteFond([e.lngLat.lng, e.lngLat.lat], Boolean(original?.altKey)),
-    );
+    const rotationDeg = rotationDepuisMolette(original, () => {
+      const r = map.getCanvas().getBoundingClientRect();
+      const p = map.unproject([(original?.clientX ?? 0) - r.left, (original?.clientY ?? 0) - r.top]);
+      return [p.lng, p.lat] as LngLat;
+    }, etatGesteFond);
     if (!rotationDeg) return;
     e.preventDefault();
     mapDraw.ajusterFond({ rotationDeg }); // CALX108 câblage
@@ -2825,16 +2826,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
   });
   map.on('touchmove', (e) => {
-    if (drawing) {
-      e.preventDefault();
-      moveDraw([e.lngLat.lng, e.lngLat.lat]);
-    } else if (moveVertex) {
-      e.preventDefault();
-      doVertexMove([e.lngLat.lng, e.lngLat.lat]);
-    } else if (moveObs) {
-      e.preventDefault();
-      doMove([e.lngLat.lng, e.lngLat.lat]);
-    }
+    geleDefilementPendantGeste(e, Boolean(drawing || moveVertex || moveObs)); // ACAL952
+    if (drawing) moveDraw([e.lngLat.lng, e.lngLat.lat]);
+    else if (moveVertex) doVertexMove([e.lngLat.lng, e.lngLat.lat]);
+    else if (moveObs) doMove([e.lngLat.lng, e.lngLat.lat]);
   });
   // W77 — fenêtre/distance du double-tap tactile pour FINIR le tracé (parité dblclick).
   // Deux taps proches dans le temps ET l'espace = « terminer » ; deux taps éloignés = deux
@@ -4205,10 +4200,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       const choisis = layoutEditor.selection();
       if (choisis.length) layoutEditor.removeCells(choisis);
     },
-    dupliquer: () => {
-      if (!ctx.selectedObsId) return;
-      $<HTMLButtonElement>('rp9-obs-duplicate')?.click();
-    },
+    dupliquer: () => { $<HTMLButtonElement>('rp9-obs-duplicate')?.click(); }, // ACAL492 — le bouton dit « Sélectionnez d’abord… »
     copier: () => { layoutEditor.copierSelection(); }, // ACAL553
     coller: () => { layoutEditor.collerSelection(); },
     pleinEcran: basculerPleinEcran,
@@ -4268,6 +4260,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       setStatus(`${verdict.pan.label} ajouté depuis le contour — enregistrez pour le conserver.`);
       return { ok: true as const, id: verdict.pan.id };
     },
+    ajouterObstacleDepuisContour: (contour: unknown, type: unknown) => obstaclesUi.poserObstacleDepuisContour(contour, type), // ACAL531
     // ACAL26 — un onglet du Rail applique UNE section du document par la même fonction que
     // le boot (horizonProfile, poseSurfaces, underlay, environment).
     appliquerSection: (cle: CleSectionAtelier, valeur: unknown) => {
@@ -4326,6 +4319,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // avant map.on('load') (map.getLayer(...) renvoie undefined tant que
     // les layers n'existent pas encore).
     setReferenceContourVisible: (visible: boolean) => setReferenceContourVisible(visible),
+    majChiffrage: (chiffrage) => optimizer.majChiffrage(chiffrage), // ACAL994
     // AP-F2 — « Recommencer depuis le tracé client », posée par ToitureDesign.jsx à
     // côté de la note « Calepinage automatique depuis le tracé client — à vérifier ».
     recommencerDepuisTraceClient: () => recommencerDepuisTraceClient(),

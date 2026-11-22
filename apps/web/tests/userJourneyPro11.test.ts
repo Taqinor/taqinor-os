@@ -17,6 +17,8 @@
 // estimatorRuntimePro10Pro11.test.ts (même convention de fichier auto-suffisant).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoofTypeSelect } from '../src/lib/roofTypeSelect';
+import { zoomToFitRing } from '../src/lib/roof';
+import { PITCH_VIEW } from '../src/scripts/roofPro11/constants';
 
 // ── MapLibre mock : un faux Map qui capture les handlers et n'instancie AUCUN WebGL.
 //    addLayer N'APPELLE PAS onAdd → le calque Three.js ne démarre jamais → sceneRoot reste
@@ -1133,6 +1135,16 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(zones[0].neededAuto).toBe(true);
   }, 300000);
 
+  // ACAL956 — la fermeture cadre le toit entier (zoom d'ajustement) et incline à PITCH_VIEW.
+  it('ACAL956 — à la fermeture, le dernier jumpTo porte zoom = zoomToFitRing(sommets) et pitch = 58', async () => {
+    await boot();
+    traceRoof(fakeMaps[0]);
+    await flush();
+    const dernier = fakeMaps[0].jumpToCalls.at(-1) as { zoom?: number; pitch?: number };
+    expect(dernier.pitch).toBe(PITCH_VIEW);
+    expect(dernier.zoom).toBe(zoomToFitRing(squareCorners(16)));
+  }, 300000);
+
   // ACAL926 — un double-clic à un NOUVEL endroit pose le dernier coin ; sur le dernier sommet, aucun sommet parasite.
   it('ACAL926 — 3 clics puis clic + dblclick à un 4ᵉ point éloigné ⇒ 4 sommets ; double-clic sur le dernier sommet ⇒ 3', async () => {
     const coins = squareCorners(16, -7.62, 33.59);
@@ -1348,4 +1360,29 @@ describe('parcours utilisateur pro-11 — ACAL421 contour posé sur le pan vide'
     api!.ajouterPanDepuisContour(squareCorners(12, -7.6195));
     expect((api!.serializeLayout() as { zones: unknown[] }).zones).toHaveLength(2);
   }, 60000);
+});
+
+describe('parcours utilisateur pro-11 — ACAL492 Ctrl + D sans obstacle parle', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network in test'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('sans obstacle sélectionné, le geste atteint le bouton et #rp9-status dit « Sélectionnez d’abord »', async () => {
+    const bouton = document.createElement('button');
+    bouton.id = 'rp9-obs-duplicate';
+    document.body.appendChild(bouton);
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), onApiReady: (a) => { api = a; } });
+    fakeMaps[0].fire('load', {});
+    api!.raccourcis.dupliquer();
+    expect(txt('rp9-status')).toContain('Sélectionnez d’abord un obstacle à dupliquer.');
+  }, 300000);
 });

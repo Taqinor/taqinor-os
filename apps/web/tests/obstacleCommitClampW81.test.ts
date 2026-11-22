@@ -109,3 +109,64 @@ describe('W81 — l\'obstacle est borné au commit, pas à chaque frappe', () =>
     expect('heightM' in ctx.obstacles[0]).toBe(false);
   });
 });
+
+// ACAL1032 — « Dupliquer » et « Poser en série » : une trame 3 × 2 = UNE photo d'historique.
+describe('ACAL1032 — duplication et trame', () => {
+  beforeEach(() => {
+    setupDom();
+    for (const [id, tag] of [
+      ['rp9-obs-duplicate', 'button'], ['rp9-obs-grid-place', 'button'],
+      ['rp9-obs-grid-spacing', 'input'], ['rp9-obs-grid-cols', 'input'], ['rp9-obs-grid-rows', 'input'],
+    ]) {
+      const e = document.createElement(tag);
+      e.id = id;
+      document.body.appendChild(e);
+    }
+  });
+  const el = (id: string) => document.getElementById(id) as HTMLInputElement;
+  function monte() {
+    const ctx = makeCtx();
+    let photos = 0;
+    (ctx as unknown as { pushWorkshopHistory: () => void }).pushWorkshopHistory = () => { photos++; };
+    const ui = createObstaclesUi(ctx, { map: makeMap(), recalc: () => {}, setStatus: () => {} });
+    ui.addObstacle(defaultObstacle('obs-1', [-7.5, 33.5]));
+    photos = 0;
+    return { ctx, photos: () => photos };
+  }
+
+  it('« Dupliquer » ajoute une copie sélectionnée, en une photo', () => {
+    const { ctx, photos } = monte();
+    el('rp9-obs-duplicate').click();
+    expect(ctx.obstacles).toHaveLength(2);
+    expect(ctx.selectedObsId).toBe(ctx.obstacles[1].id);
+    expect(photos()).toBe(1);
+  });
+
+  it('trame 3 m, 3 colonnes, 2 lignes : 6 obstacles, UNE seule photo', () => {
+    const { ctx, photos } = monte();
+    el('rp9-obs-grid-spacing').value = '3';
+    el('rp9-obs-grid-cols').value = '3';
+    el('rp9-obs-grid-rows').value = '2';
+    el('rp9-obs-grid-place').click();
+    expect(ctx.obstacles).toHaveLength(6);
+    expect(photos()).toBe(1);
+  });
+
+  it('pas vide ou lignes à 0 : rien posé, aucune photo, champ fautif marqué', () => {
+    const { ctx, photos } = monte();
+    el('rp9-obs-grid-cols').value = '3';
+    el('rp9-obs-grid-rows').value = '2';
+    el('rp9-obs-grid-place').click();
+    expect(ctx.obstacles).toHaveLength(1);
+    expect(photos()).toBe(0);
+    expect(el('rp9-obs-grid-spacing').getAttribute('aria-invalid')).toBe('true');
+    expect(el('rp9-obs-grid-cols').hasAttribute('aria-invalid')).toBe(false);
+
+    el('rp9-obs-grid-spacing').value = '3';
+    el('rp9-obs-grid-rows').value = '0';
+    el('rp9-obs-grid-place').click();
+    expect(ctx.obstacles).toHaveLength(1);
+    expect(el('rp9-obs-grid-rows').getAttribute('aria-invalid')).toBe('true');
+    expect(el('rp9-obs-grid-spacing').hasAttribute('aria-invalid')).toBe(false);
+  });
+});

@@ -154,6 +154,54 @@ class SvgDePlancheTest(SimpleTestCase):
         self.assertGreater(echelle, 0.0)
 
 
+class _Pivot:
+    """Un calepinage sans base, à l'état de conception voulu (ACAL1006)."""
+
+    def __init__(self, etat):
+        self.pk, self.roof_layout, self.etat_conception = 9, LAYOUT, etat
+
+    def __str__(self):
+        return 'Calepinage 9'
+
+
+class ConceptionRapideTest(SimpleTestCase):
+    """ACAL1008 — rien d'un calepinage « rapide » ne sort côté client ;
+    un calepinage « complet » sort comme aujourd'hui (mutant : ignorer
+    l'état ⇒ les trois sorties du rapide passent, échec)."""
+
+    def test_planche_refusee_puis_acceptee_une_fois_verifiee(self):
+        from apps.calepinage.selectors_devis import MOTIF_CONCEPTION_RAPIDE
+        from apps.calepinage.services.planche import planche_svg_ou_vide, rendre_planche_svg
+
+        with self.assertRaises(PlancheRefusee) as capture:
+            rendre_planche_svg(_Pivot('rapide'), pied='pied')
+        self.assertEqual(str(capture.exception), MOTIF_CONCEPTION_RAPIDE)
+        self.assertEqual(capture.exception.champ, 'etat_conception')
+        self.assertEqual(planche_svg_ou_vide(_Pivot('rapide')), '')
+        complet = rendre_planche_svg(_Pivot('complet'), pied='pied')
+        self.assertEqual(complet, svg_de_planche(geometrie_de_planche(LAYOUT), titre='Calepinage 9', pied='pied'))
+
+    def test_rendement_de_la_pose_jamais_servi(self):
+        from apps.calepinage.selectors_devis import productible_pose_du_calepinage
+
+        self.assertIsNone(productible_pose_du_calepinage(_Pivot('rapide'), tolerance_kwc_ratio=0.05))
+
+    def test_annexe_du_site_omise(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes import calepinage_options as co
+
+        devis = SimpleNamespace(pk=5, company=object(), roof_layout=None)
+        layout = {'zones': [{'azimut_deg': 180, 'inclinaison_deg': 15}]}
+        with mock.patch('apps.calepinage.selectors.calepinage_du_devis', return_value=_Pivot('rapide')):
+            self.assertIsNone(co.parametres_site_publics(devis, layout, {'productible_ville': 'Casablanca'}))
+        with mock.patch('apps.calepinage.selectors.calepinage_du_devis', return_value=_Pivot('complet')), \
+                mock.patch.object(co, '_ombrage_mesure', return_value=False):
+            annexe = co.parametres_site_publics(devis, layout, {'productible_ville': 'Casablanca'})
+        self.assertEqual(annexe['irradiation'], {'source': 'PVGIS', 'ville': 'Casablanca'})
+
+
 class EnveloppeHtmlTest(SimpleTestCase):
     def test_le_html_porte_le_svg_et_le_format_a3(self):
         html = html_de_planche('<svg/>')

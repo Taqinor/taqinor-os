@@ -41,6 +41,10 @@ class Garde(BaseApiCalepinage):
 
     def setUp(self):
         super().setUp()
+        # ACAL922 — leads DIMENSIONNÉS : « Générer » ne pose pas la question.
+        for lead in (self.lead, self.lead_2):
+            lead.taille_souhaitee_kwc = Decimal('5')
+            lead.save(update_fields=['taille_souhaitee_kwc'])
         self.module = self._produit(
             nom='Module 18A', type_fiche='module', vmp_v=41.4, voc_v=49.3,
             isc_a=18.2, imp_a=17.2, pmax_wc=710.0)

@@ -98,4 +98,36 @@ describe('PanneauDetectionToit (ACAL488)', () => {
     expect(await screen.findByTestId('cal-detection-message')).toHaveTextContent('La capture de la carte n’est pas possible ici')
     expect(api.detectionToit).not.toHaveBeenCalled()
   })
+
+  /* ACAL531 — les obstacles proposés : cochés puis posés par UN geste, jamais avant ; provenance DEVINE. */
+  it('deux obstacles proposés : un coché ⇒ un obstacle posé (type, contour), l’autre non ; aucun clic ⇒ aucune pose', async () => {
+    disponible()
+    api.detectionToit.mockResolvedValue({ data: contrat('exemple') })
+    const ajouterObstacleDepuisContour = vi.fn(() => ({ ok: true, id: 'obs-1' }))
+    await envoyerImage({ ajouterPanDepuisContour: vi.fn(), ajouterObstacleDepuisContour })
+    await screen.findByTestId('cal-detection-proposition')
+    const proposes = contrat('exemple').propositions.obstacles
+    expect(proposes).toHaveLength(2)
+    const cases = screen.getAllByTestId('cal-detection-obstacle')
+    expect(cases).toHaveLength(2)
+    expect(screen.getAllByText(/proposé par l’IA — à vérifier sur le toit/)).toHaveLength(2)
+    expect(ajouterObstacleDepuisContour).not.toHaveBeenCalled()
+    const poser = screen.getByTestId('cal-detection-obstacles-utiliser')
+    expect(poser).toBeDisabled()
+    fireEvent.click(cases[0])
+    fireEvent.click(poser)
+    expect(ajouterObstacleDepuisContour).toHaveBeenCalledTimes(1)
+    expect(ajouterObstacleDepuisContour).toHaveBeenCalledWith(proposes[0].contour_lnglat, proposes[0].type)
+    expect(await screen.findByTestId('cal-detection-message')).toHaveTextContent('1 obstacle(s) posé(s)')
+  })
+
+  it('refus de pose d’un obstacle : le motif nommé est affiché', async () => {
+    disponible()
+    api.detectionToit.mockResolvedValue({ data: contrat('exemple') })
+    await envoyerImage({ ajouterObstacleDepuisContour: () => ({ ok: false, motif: 'Le contour se croise.' }) })
+    await screen.findByTestId('cal-detection-proposition')
+    fireEvent.click(screen.getAllByTestId('cal-detection-obstacle')[1])
+    fireEvent.click(screen.getByTestId('cal-detection-obstacles-utiliser'))
+    expect(screen.getAllByTestId('cal-detection-refus')[0]).toHaveTextContent('Le contour se croise.')
+  })
 })

@@ -4,7 +4,7 @@
      1. les NEUF champs de la saisie sont demandés, et remplis avec ce que le
         serveur publie (exemple COMMITTÉ `calepinage_raccordement.json`,
         CALX205, relu par `node:fs` — jamais recopié à la main) ;
-     2. les CINQ verdicts sont rendus PAR LEUR CODE, jamais par leur position,
+     2. les SIX verdicts sont rendus PAR LEUR CODE, jamais par leur position,
         et un verdict `omis` affiche le MOTIF du serveur — jamais une pastille
         « Conforme », jamais un chiffre à la place du motif ;
      3. une valeur `null` du bloc `calcul` rend un TIRET, jamais un `0` ;
@@ -67,7 +67,7 @@ describe('Raccordement (CALX244)', () => {
       .toBe(CONTRAT.exemple.saisie.source_cos_phi)
   })
 
-  it('rend les CINQ verdicts, lus par leur CODE', async () => {
+  it('rend les SIX verdicts, lus par leur CODE', async () => {
     servir(CONTRAT.exemple)
 
     rendre()
@@ -95,7 +95,7 @@ describe('Raccordement (CALX244)', () => {
       .not.toBe('')
   })
 
-  it('état vide : aucune grandeur n’est rendue `0`, cinq verdicts omis', async () => {
+  it('état vide : aucune grandeur n’est rendue `0`, six verdicts omis', async () => {
     servir(CONTRAT.exemple_vide)
 
     rendre()
@@ -454,5 +454,63 @@ describe('Raccordement — limites du distributeur (ACAL830)', () => {
     expect(corps.plafond_injection_a).toBeNull()
     for (let i = 0; i < 3; i += 1) await userEvent.click(screen.getByTestId('acal830-ajouter-plage'))
     expect(screen.queryByTestId('acal830-ajouter-plage')).toBeNull()
+  })
+})
+
+describe('Raccordement — limitation de l’injection (ACAL1188)', () => {
+  // Micro-onduleurs + plafond 0 kW : le sixième verdict, tel que le serveur le prononce
+  // (libellés et phrases de services/raccordement.py::_verdict_limitation_injection).
+  const verdictSix = (statut, detail) => CONTRAT.exemple.verdicts.map((v) => (
+    v.code === 'limitation_injection' ? { ...v, statut, detail, source: 'saisie — dispositif_limitation_injection' } : v))
+  const micro = (dispositif, statut, detail) => ({
+    ...CONTRAT.exemple,
+    saisie: { ...CONTRAT.exemple.saisie, plafond_injection_kw: 0, dispositif_limitation_injection: dispositif },
+    verdicts: verdictSix(statut, detail),
+  })
+  const DETAIL_ALERTE = 'Des micro-onduleurs ne limitent pas l’injection d’eux-mêmes : déclarez le dispositif qui tient ce plafond.'
+
+  it('le sixième verdict est rendu avec son intitulé, « À surveiller » et sa phrase', async () => {
+    servir(micro(null, 'alerte', DETAIL_ALERTE))
+
+    rendre()
+
+    await screen.findByTestId('calx244-verdicts')
+    expect(screen.getByTestId('calx244-verdict-limitation_injection')).toHaveTextContent('Limitation de l\'injection')
+    expect(screen.getByTestId('calx244-statut-limitation_injection')).toHaveTextContent('À surveiller')
+    expect(screen.getByTestId('calx244-detail-limitation_injection')).toHaveTextContent('déclarez le dispositif')
+  })
+
+  it('l’erreur du serveur s’affiche sous le champ dispositif', async () => {
+    servir(micro(null, 'alerte', DETAIL_ALERTE))
+    calepinageApi.calepinages.enregistrerRaccordement.mockRejectedValue({
+      response: { status: 400, data: { 'raccordement.dispositif_limitation_injection': 'Dispositif non valide.' } },
+    })
+
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    await userEvent.click(screen.getByText(/Limites imposées par le distributeur/))
+    await userEvent.type(document.getElementById('calx244-champ-dispositif_limitation_injection'), 'x')
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+
+    expect(await screen.findByTestId('calx244-erreur-dispositif_limitation_injection'))
+      .toHaveTextContent('Dispositif non valide.')
+  })
+
+  it('taper un dispositif puis enregistrer passe le verdict à « Conforme »', async () => {
+    servir(micro(null, 'alerte', DETAIL_ALERTE))
+    calepinageApi.calepinages.enregistrerRaccordement.mockResolvedValue({
+      data: micro('Passerelle de limitation', 'ok',
+        'un plafond d’injection est saisi sur des micro-onduleurs ; dispositif déclaré : Passerelle de limitation.'),
+    })
+
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    await userEvent.type(document.getElementById('calx244-champ-dispositif_limitation_injection'), 'Passerelle de limitation')
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerRaccordement).toHaveBeenCalledTimes(1))
+    const [, corps] = calepinageApi.calepinages.enregistrerRaccordement.mock.calls[0]
+    expect(corps.dispositif_limitation_injection).toBe('Passerelle de limitation')
+    await waitFor(() => expect(screen.getByTestId('calx244-statut-limitation_injection')).toHaveTextContent('Conforme'))
   })
 })

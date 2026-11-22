@@ -25,6 +25,8 @@ vi.mock('../../../api/calepinageApi', () => ({
       explications: vi.fn(), // ACAL880 — le registre (geste de chaque poste)
     },
     moteur: { resultat: vi.fn() },
+    // ACAL986 — la page d'arrivée des liens (Réglages) est rendue pour lire ses champs montés.
+    parametres: { get: vi.fn(), update: vi.fn(), profilDepart: vi.fn() },
   },
 }))
 
@@ -37,6 +39,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
+import ReglagesSimulation from '../reglages/ReglagesSimulation'
 import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
 
 const servir = (variante) => {
@@ -1122,5 +1125,54 @@ describe('PanneauProduction — existant et ajouté (ACAL848)', () => {
     rendre()
     await screen.findByTestId('cal236-panneau')
     expect(screen.queryByTestId('acal848-parties')).toBeNull()
+  })
+})
+
+/* ACAL986 (garde K-IMPASSE) — un message qui demande une saisie mène à un champ MONTÉ de la page
+   d'arrivée. Le registre est CALCULÉ au rendu des Réglages (contrat `parametres_calepinage.json`),
+   jamais écrit ici ; les cibles viennent des refus servis et des contrats. */
+describe('ACAL986 — chaque lien « aller aux réglages » vise un champ monté', () => {
+  const idsMontesDesReglages = async () => {
+    calepinageApi.parametres.get.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    const { container, unmount } = render(<ReglagesSimulation />)
+    await screen.findByTestId('acal572-lestage')
+    await screen.findByTestId('acal397-norme')
+    const ids = new Set([...container.querySelectorAll('[id]')].map((n) => n.id))
+    unmount()
+    return ids
+  }
+  const exiger = (ids, cible, message, ecran) => {
+    expect(ids.has(cible), `« ${message} » (${ecran}) vise #${cible}, aucun champ monté aux Réglages`).toBe(true)
+  }
+
+  it('les lignes de « ce qui manque » d’un refus de simulation ouvrent leur champ', async () => {
+    const ids = await idsMontesDesReglages()
+    const refus = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_manquants')
+    calepinageApi.calepinages.resultat.mockResolvedValue(
+      { data: exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide') })
+    calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: refus } })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+    await screen.findAllByTestId('acal940-manquant')
+
+    const liens = screen.getAllByTestId('acal940-lien-reglage')
+    const attendus = refus.manquants.filter((m) => m.cible?.onglet === 'reglages')
+    expect(attendus.length).toBeGreaterThan(0)
+    expect(liens).toHaveLength(attendus.length)
+    liens.forEach((lien, i) => {
+      const [chemin, ancre] = lien.getAttribute('href').split('#')
+      expect(chemin).toBe('/calepinage/reglages')
+      exiger(ids, ancre, attendus[i].motif, 'Production')
+    })
+  })
+
+  it('norme électrique et lestage : la cible servie existe sur la page d’arrivée', async () => {
+    const ids = await idsMontesDesReglages()
+    exiger(ids, 'norme', 'Choisir la norme', 'Provenance')
+    exiger(ids, 'lestage', 'Saisir le lestage', 'Provenance')
+    const lestage = exempleContrat('calepinage', 'calepinage_masse_lestage', 'exemple_vide').lestage
+    expect(lestage.manquants.length).toBeGreaterThan(0)
+    for (const cle of lestage.manquants) exiger(ids, `lestage-${cle}`, 'Masse et lestage', 'Atelier')
   })
 })

@@ -215,6 +215,7 @@ export default function CalepinageList() {
   const [client, setClient] = useState(null)
   const [page, setPage] = useState(1)
   const [etiquettes, setEtiquettes] = useState([])
+  const [filtresOuverts, setFiltresOuverts] = useState(false) // ACAL957 — sous 768 px, repliés
   // CALX406 — l'identifiant du responsable filtré ('' = tous).
   const [responsable, setResponsable] = useState('')
 
@@ -280,6 +281,7 @@ export default function CalepinageList() {
   }
   const filtreActif = Boolean(q || statut || depuis || lead || client || etiquettes.length
     || responsable)
+  const nbFiltres = [q, statut, depuis, lead, client, responsable].filter(Boolean).length + (etiquettes.length ? 1 : 0)
   const surFiltre = (poser) => (valeur) => { poser(valeur); setPage(1) }
 
   // CALX32 — changer le champ ou le sens relance la requête avec `ordering=`
@@ -351,6 +353,15 @@ export default function CalepinageList() {
           </div>
         </div>
 
+        {/* ACAL957 — sous 768 px : la recherche seule + « Filtres » ; le DOM garde tout. */}
+        <Button type="button" variant="outline" className="min-h-[44px] self-end md:hidden"
+          aria-expanded={filtresOuverts} aria-controls="acal957-filtres" data-testid="acal957-filtres-basculer"
+          onClick={() => setFiltresOuverts((v) => !v)}>
+          Filtres{nbFiltres ? ` · ${nbFiltres} actif${nbFiltres > 1 ? 's' : ''}` : ''}
+        </Button>
+
+        <div id="acal957-filtres" data-testid="acal957-filtres"
+          className={`${filtresOuverts ? 'grid' : 'hidden md:grid'} gap-3 sm:col-span-2 sm:grid-cols-2 lg:col-span-6 lg:grid-cols-6`}>
         <div className="space-y-1">
           <Label htmlFor="cal-statut">Statut</Label>
           <Select value={statut || '__tous__'} onValueChange={(v) => surFiltre(setStatut)(v === '__tous__' ? '' : v)}>
@@ -440,18 +451,19 @@ export default function CalepinageList() {
 
         {/* CALX344 — le filtre par étiquette libre (vocabulaire de la société,
             tag système exclu), sur toute la largeur de la carte. */}
-        <div className="sm:col-span-2 lg:col-span-7">
+        <div className="sm:col-span-2 lg:col-span-6">
           <FiltreEtiquettes valeur={etiquettes} onChange={surFiltre(setEtiquettes)} />
         </div>
 
         {filtreActif ? (
-          <div className="sm:col-span-2 lg:col-span-7">
+          <div className="sm:col-span-2 lg:col-span-6">
             <Button size="sm" variant="ghost" onClick={reinitialiser}>
               <X size={15} aria-hidden="true" />
               Réinitialiser les filtres
             </Button>
           </div>
         ) : null}
+        </div>
       </Card>
 
       {error ? (

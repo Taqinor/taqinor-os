@@ -97,8 +97,9 @@ class CibleDuLeadTest(BaseApiCalepinage):
         self.assertIsNotNone(cible)
         self.assertIsNone(cible['panneaux'])
         self.assertTrue(cible['refus'])
-        self.assertIn('Cible de puissance non calculée : ' + cible['refus'],
-                      contexte['avertissements'])
+        # ACAL965 — le refus n'est servi qu'une fois : dans `cible.refus`, jamais répété dans `avertissements`.
+        self.assertFalse([a for a in contexte['avertissements']
+                          if 'Cible de puissance non calculée' in a or cible['refus'] in a])
         self.assertNotIn('Aucune cible de puissance connue : renseignez-la, '
                          'ou rattachez un devis.',
                          contexte['avertissements'])

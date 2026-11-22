@@ -105,6 +105,7 @@ export const ALL_HOOKS = [
   'cal-devis-details-technicien',
   'cal-devis-ouvrir',
   'cal-devis-revenir',
+  'cal-devis-confirmation-taille',
   'cal-generer-devis',
   'cal-resynchroniser-devis',
   // ── CalepinageList.jsx ──
@@ -776,6 +777,8 @@ export const ALL_HOOKS = [
   'cal-detection-fichier',
   'cal-detection-indisponible',
   'cal-detection-message',
+  'cal-detection-obstacle',
+  'cal-detection-obstacles-utiliser',
   'cal-detection-panneau',
   'cal-detection-proposition',
   'cal-detection-refus',
@@ -790,6 +793,9 @@ export const ALL_HOOKS = [
   // ── AtelierPanneaux.jsx (complément L5) ──
   'cal-conception-auto',
   'cal-conception-auto-message',
+  // ── atelier/BandeauConceptionRapide.jsx (ACAL1007) ──
+  'cal-conception-rapide',
+  'cal-conception-rapide-verifier',
   // ── commun/RailGuide.jsx (complément L5) ──
   'cal-rail-etapes',
   'cal-etape',

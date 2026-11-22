@@ -132,6 +132,36 @@ class ListeBlanche3DPublique(TestCase):
                 self.assertEqual(len(geo['panels']), attendues)
                 self.assertEqual(geo['count'], posees)
 
+    def _calepinage(self, etat):
+        from apps.calepinage.models import Calepinage
+
+        return Calepinage.objects.create(
+            company=self.devis.company, client_id=self.devis.client_id,
+            devis=self.devis, titre='ACAL1196', roof_layout=LAYOUT,
+            etat_conception=etat)
+
+    def test_acal1196_brouillon_rapide_sans_vue_3d_puis_servie_une_fois_verifie(self):
+        """ACAL1196 — brouillon à calepinage « rapide » : ``None`` (repli de
+        l'affiche) ; le même calepinage vérifié (``complet``) : la géométrie
+        d'aujourd'hui (mutant : retirer la garde ⇒ échec)."""
+        servie = _safe_roof_layout(self.devis)
+        calepinage = self._calepinage('rapide')
+        self.assertEqual(self.devis.statut, 'brouillon')
+        self.assertIsNone(_safe_roof_layout(self.devis))
+        calepinage.etat_conception = 'complet'
+        calepinage.save(update_fields=['etat_conception'])
+        self.assertEqual(_safe_roof_layout(self.devis), servie)
+
+    def test_acal1196_devis_envoye_garde_sa_vue_meme_rapide(self):
+        """ACAL1196 — un devis non brouillon garde sa vue à l'octet (mutant :
+        retirer la condition de statut ⇒ échec)."""
+        servie = _safe_roof_layout(self.devis)
+        self._calepinage('rapide')
+        self.devis.statut = 'envoye'
+        self.devis.save(update_fields=['statut'])
+        self.assertEqual(json.dumps(_safe_roof_layout(self.devis), sort_keys=True),
+                         json.dumps(servie, sort_keys=True))
+
     def test_ancien_devis_inchange(self):
         self.devis.roof_layout = {'version': 2, 'zones': []}
         self.devis.save(update_fields=['roof_layout'])

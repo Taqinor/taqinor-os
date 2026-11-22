@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // CAL60 — hauteur de bâtiment saisissable (repli AFFICHÉ comme hypothèse). Le calcul
 // d'ombrage (hourlyShadeFactors, etc.) est déjà testé ailleurs (shadingWJ19.test.ts) ;
 // ce fichier couvre uniquement la résolution PURE de la hauteur (le reste de
@@ -27,6 +28,8 @@ import {
   phraseOrigineSeuil, // ACAL548
   executerAvecCarte, // ACAL726
   teteInfoBulleModule, // ACAL729
+  libelleLigneOmbre, // ACAL497
+  createShadingUi, // ACAL504
 } from './shadingUi';
 import {
   deserializeShadeObstructions,
@@ -694,5 +697,52 @@ describe('ACAL548 — lireSeuilSaisi et origine du seuil', () => {
     expect(html).toContain('seuil de ce dossier (80 %)');
     expect(html).not.toContain('seuil de votre société');
     expect(htmlProposition(p, 0.8, true, 'nº2, nº4')).toContain('seuil de votre société');
+  });
+});
+
+// ACAL497 — la ligne de la liste des ombres : une hauteur DÉDUITE se dit « à confirmer ».
+describe('ACAL497 — libelleLigneOmbre', () => {
+  it('10 m d’ombre, hauteur 10 m : « hauteur estimée … — à confirmer »', () => {
+    expect(libelleLigneOmbre(1, 10, 10)).toBe(
+      'Ombre 1 : ombre 10,0 m → hauteur estimée ~10,0 m — à confirmer (déduite de l’ombre et du soleil déclaré)');
+  });
+});
+
+// ACAL504 — la hauteur du bâtiment saisie SANS provenance est refusée sous le champ ET dans la barre d'état.
+describe('ACAL504 — refus d’une hauteur sans provenance', () => {
+  function monter() {
+    document.body.innerHTML =
+      '<div id="rp9-shade-batiment"><input id="rp9-shade-height"><p id="rp9-shade-height-note"></p></div>';
+    const zone = { id: 'z1', label: 'Pan', vertices: [], obstacles: [], buildingId: null };
+    const ctx = {
+      areas: [zone], activeAreaId: 'z1', vertices: [], closed: false, obstacles: [], batiments: [],
+      shadeObstructions: [], activeArea: () => zone, pushWorkshopHistory: () => {},
+    } as unknown as Ctx;
+    const statuts: string[] = [];
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    createShadingUi(ctx, { map, setStatus: (m) => statuts.push(m), recalcDisplays: () => {}, applyHeatmap: () => {} });
+    return { ctx, statuts };
+  }
+
+  it('6 m sans provenance : rien enregistré, message sous le champ et en barre d’état, focus sur la provenance', () => {
+    const { ctx, statuts } = monter();
+    const h = document.getElementById('rp9-shade-height') as HTMLInputElement;
+    h.value = '6';
+    h.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(document.getElementById('rp11-bat-erreur')?.textContent).toContain('Provenance obligatoire');
+    expect(statuts).toContain('Hauteur non enregistrée — champ « Provenance de la hauteur » à renseigner.');
+    expect(document.activeElement?.id).toBe('rp11-bat-source');
+    expect(ctx.batiments.some((b) => (b as { hauteurM?: number }).hauteurM === 6)).toBe(false);
+  });
+
+  it('6 m + « mesurée au télémètre » : la hauteur est rangée avec sa source', () => {
+    const { ctx } = monter();
+    const src = document.getElementById('rp11-bat-source') as HTMLInputElement;
+    src.value = 'mesurée au télémètre';
+    const h = document.getElementById('rp9-shade-height') as HTMLInputElement;
+    h.value = '6';
+    h.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(document.getElementById('rp11-bat-erreur')?.textContent).toBe('');
+    expect(hauteurToitPourOmbrageM(ctx.batiments, null)).toBe(6);
   });
 });

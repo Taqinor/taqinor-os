@@ -98,7 +98,8 @@ class PhaseDuLeadSurLeLayout(TestCase):
         return Lead.objects.create(
             company=self.company, nom='ACAL32', prenom='Lead%d' % self.n,
             email='acal32-%d@example.test' % self.n,
-            raccordement=raccordement)
+            raccordement=raccordement,
+            taille_souhaitee_kwc=Decimal('5'))  # ACAL922 : lead dimensionné
 
     def _generer_module(self, lead):
         calepinage = Calepinage.objects.create(

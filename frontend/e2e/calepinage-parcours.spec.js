@@ -31,7 +31,10 @@
 // comme d'autres specs sèment leur donnée ; les gestes suivants (retenir,
 // générer le devis) passent, eux, par l'INTERFACE RÉELLE.
 import { test, expect } from '@playwright/test'
-import { uniq, gotoLeads, createLead, openLead, closeLeadModal } from './helpers'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { uniq, gotoLeads, createLead, openLead, closeLeadModal, ouvertureGuideeCalepinage } from './helpers'
 
 const API = '/api/django/calepinage'
 
@@ -622,4 +625,66 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
     // apparaître, avec le lien retour vers l'atelier.
     await expect(page.getByTestId('cal-bloc-calepinage-devis')).toBeVisible({ timeout: 15_000 })
   }
+})
+
+// ACAL987 (garde K-RETOUR-FAUX, oracles qa-explorer 1 et 2) — un calepinage ENREGISTRÉ, jamais
+// simulé : ouvrir chaque onglet du rail SANS geste d'action ne fait répondre aucune requête de
+// l'API en 4xx/5xx et n'écrit aucun `console.error` ni `pageerror` ; l'inventaire des documents dit
+// « il manque le calcul », jamais « Aucune conception enregistrée ». Les clés sont LUES à la
+// source d'`atelier/onglets.js` (jamais recopiées) ; chaque échec nomme l'onglet et la requête.
+const ICI = dirname(fileURLToPath(import.meta.url))
+const lireSource = (...chemin) => readFileSync(join(ICI, ...chemin), 'utf8')
+const CLES_ONGLETS = [...lireSource('..', 'src', 'features', 'calepinage', 'atelier', 'onglets.js')
+  .replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/\{\s*cle:\s*'([^']+)'/g)].map((m) => m[1])
+
+test('ACAL987: calepinage enregistré non simulé — aucun onglet ne produit d’erreur sans geste', async ({ page }) => {
+  test.setTimeout(90_000 + CLES_ONGLETS.length * 4_000)
+  expect(CLES_ONGLETS.length, 'aucune clé lue dans atelier/onglets.js').toBeGreaterThan(0)
+  await gotoLeads(page)
+  const nomLead = await createLead(page, { nom: uniq('ACAL987 Lead'), facture: 900, ville: 'Casablanca' })
+  await page.goto('/calepinage/nouveau')
+  await page.getByRole('tab', { name: 'Lead' }).click()
+  await page.locator('#cal-nouveau-lead').getByRole('combobox').click()
+  await page.getByRole('searchbox').fill(nomLead)
+  await page.getByRole('option', { name: new RegExp(nomLead) }).first().click()
+  await page.locator('#cal-nouveau-nom').fill(uniq('ACAL987 Toiture'))
+  await page.getByRole('button', { name: 'Créer le calepinage' }).click()
+  await expect(page).toHaveURL(/\/calepinage\/\d+/)
+  const calepinageId = idDansUrl(page.url())
+
+  // La conception est ENREGISTRÉE (document du contrat roof_layout_v2), aucune simulation lancée.
+  const document = JSON.parse(lireSource('..', '..', 'backend', 'django_core', 'apps', 'calepinage',
+    'contract_samples', 'roof_layout_v2.schema.json')).exemple
+  const lu = await (await page.request.get(`${API}/calepinages/${calepinageId}/layout/`)).json()
+  const ecrit = await page.request.post(`${API}/calepinages/${calepinageId}/layout/`, {
+    headers: { 'If-Match': `"${lu.empreinte_document || ''}"` }, data: { roof_layout: document },
+  })
+  expect(ecrit.status(), `écriture du layout : ${await ecrit.text()}`).toBeLessThan(300)
+  const inventaire = await (await page.request.get(`${API}/calepinages/${calepinageId}/documents/`)).json()
+  for (const doc of inventaire.documents.filter((d) => !d.disponible)) {
+    expect(doc.motif_indisponible, `document « ${doc.code} »`).not.toContain('Aucune conception enregistrée')
+  }
+
+  let ongletCourant = 'atelier'
+  const erreurs = []
+  page.on('response', (rep) => {
+    if (rep.url().includes('/api/') && rep.status() >= 400) {
+      erreurs.push(`onglet « ${ongletCourant} » : ${rep.request().method()} ${rep.url()} → ${rep.status()}`)
+    }
+  })
+  page.on('console', (msg) => { if (msg.type() === 'error') erreurs.push(`onglet « ${ongletCourant} » : console.error ${msg.text()}`) })
+  page.on('pageerror', (err) => erreurs.push(`onglet « ${ongletCourant} » : pageerror ${err.message}`))
+
+  await page.goto(`/calepinage/${calepinageId}`)
+  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  for (const cle of CLES_ONGLETS) {
+    ongletCourant = cle
+    const url = new URL(page.url())
+    url.searchParams.set('onglet', cle)
+    await page.goto(url.toString())
+    await expect(page.getByTestId(`cal-onglet-${ouvertureGuideeCalepinage(cle)}`)).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('cal-onglet-panneau'), `panneau de l’onglet « ${cle} »`).toBeVisible()
+    await expect(page.getByTestId('cal-onglet-erreur'), `erreur nommée sur l’onglet « ${cle} »`).toHaveCount(0)
+  }
+  expect(erreurs, 'erreur(s) sans geste de l’utilisateur à l’ouverture des onglets').toEqual([])
 })

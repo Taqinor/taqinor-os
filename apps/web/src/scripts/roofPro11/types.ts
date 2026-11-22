@@ -33,6 +33,11 @@ export type RenderSceneFn = (
   occupiedSet?: Set<number>,
 ) => void;
 
+/** ACAL994 — l'économie de l'année 1 du bloc `chiffrage` (contrat calepinage_design_context) : LUE, jamais calculée ici. */
+export interface ChiffrageAtelier {
+  economie_annee1_mad?: { valeur: number | null; etat: string; option?: string | null } | null;
+}
+
 export interface InitOptions {
   maptilerKey: string;
   mapboxToken?: string;
@@ -111,6 +116,11 @@ export interface InitOptions {
   modulesDisponibles?: unknown;
   /** ACAL777 — facture mensuelle (MAD) du lead servie par le serveur (mode calepinage) : repli d'AFFICHAGE des cartes, jamais écrite au document. */
   factureMensuelleMad?: number | null;
+  /** ACAL778 — un devis est lié au calepinage (`contexte.calepinage.devis_lie` non nul) : la carte Recommandation ajoute « Le chiffre du devis est dans l'onglet Économie ». Jamais déduit de `cibleVendue`. */
+  devisLie?: boolean;
+  /** ACAL994 — bloc `chiffrage` SERVI par design-context (ERP seul ; `null` = rien de servi / hors ligne ⇒ la carte dit « estimation »).
+   *  Absent (site public) ⇒ aucune étiquette, rendu inchangé. */
+  chiffrage?: ChiffrageAtelier | null;
   /** ACAL80 — point de rendement PVGIS (URL) ; `null` = aucune requête (l'ERP n'a pas la
    *  route `/api/roof-yield` d'apps/web : repli sur la table committée). Absent = le défaut
    *  `/api/roof-yield` des pages publiques. */
@@ -154,6 +164,8 @@ export interface ReglagesAtelier {
   zones_types?: unknown;
   /** Section `degagements` (CAL71/CALX402) — dont `allees_circulation` par pays. */
   degagements?: unknown;
+  /** ACAL962 — le pays réglé de la société (`imagerie.pays`), `null` si rien n'est réglé. */
+  pays?: string | null;
   /** ACAL714 — `{seuil_acces_retrait, ombrage_borne_courant_pct, ombrage_borne_importante_pct}` (`{valeur, source, reference}` chacun), ou `null`. */
   simulation?: unknown;
 }
@@ -191,12 +203,17 @@ export interface RoofToolApi {
    *  (identifiant `prochainId`), refusé — motif nommé, aucun pan — s'il se croise ou sort
    *  de l'amplitude GPS. */
   ajouterPanDepuisContour: (contourLngLat: unknown) => { ok: true; id: string } | { ok: false; motif: string };
+  /** ACAL531 — un obstacle PROPOSÉ par la détection du toit (contour géoréférencé + type) est posé sur le
+   *  geste de l'utilisateur : provenance `DEVINE` (non engageable), hauteur vide ; refus nommé sinon. */
+  ajouterObstacleDepuisContour: (contourLngLat: unknown, type: unknown) => { ok: true; id: string } | { ok: false; motif: string };
   /** Instantané PNG (data URL) de la 3D rendue, ou null. */
   snapshot: () => string | null;
   /** L-MAP — bascule d'affichage du calque de référence géo-référencé
    *  (`opts.referenceContour`). Sans effet si aucun contour n'a été fourni
    *  au boot (le calque reste vide dans les deux cas). */
   setReferenceContourVisible: (visible: boolean) => void;
+  /** ACAL994 — le bloc `chiffrage` relu après « Enregistrer » : la carte Économies et le Total prennent la valeur servie. */
+  majChiffrage: (chiffrage: ChiffrageAtelier | null) => void;
   /** AP-F2 (fondateur 26/08/2026) — reseme la zone active DEPUIS le contour
    *  ORIGINAL du client (`opts.referenceContour`, MÊME source que le calque
    *  de référence) et relance l'optimiseur, pour que le commercial puisse
@@ -673,6 +690,8 @@ export interface CardData {
   /** W94 — besoin annuel (kWh) pour plafonner les économies de la fourchette
    * Année 1 ↔ Année 25 à la facture, à CHAQUE horizon. Optionnel (rétro-compatible). */
   target?: number;
+  /** ACAL975 — pose affleurante (toit en pente) : aucun gain bifacial proposé. */
+  flush?: boolean;
 }
 
 // ═══════════ « PLUSIEURS ZONES » — enregistrements de zone ═══════════
