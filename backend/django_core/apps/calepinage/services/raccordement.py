@@ -1183,7 +1183,7 @@ def _saisie_publiee(brute):
     try:
         plages = _limites.plages_saisies(brute.get(_limites.CHAMP_PLAGES))
     except _limites.PlageInvalide as refus:
-        raise _refus_saisie(refus.champ, str(refus))
+        raise _refus_saisie(refus.champ, str(refus), etat=refus.etat)
     saisie = {
         'plages_plafond_injection': plages,
         'plafond_soutirage_kw': _plafond_saisi(
