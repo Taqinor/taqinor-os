@@ -166,7 +166,7 @@
   ],
   "calepinages.composerPackTechnique": [
     {
-      "config": 3,
+      "config": {},
       "data": null,
       "url": "/calepinage/calepinages/7/pack-technique/",
       "verbe": "post"
@@ -345,7 +345,6 @@
   "calepinages.diagrammeEnergie": [
     {
       "config": {
-        "k": 1,
         "params": {
           "langue": 3
         },

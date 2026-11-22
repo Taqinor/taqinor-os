@@ -102,9 +102,24 @@ describe('panneau agricole — formulaire neuf', () => {
     fireEvent.change(document.getElementById('gen-source-niveau-dynamique'),
       { target: { value: '40.05' } })
     expect(majPompage).toHaveBeenCalledWith('source.niveau_dynamique_m', '40.05')
-    for (const input of document.querySelectorAll('input[type="number"]')) {
+    for (const input of document.querySelectorAll('input[type="number"], input[inputmode="decimal"]')) {
       expect(input.getAttribute('step')).toBe('any')
     }
+  })
+
+  // R1-09 / R1-10 (recette 22/11) — un Chrome en anglais faisait de « 50,5 » m
+  // une HMT de 505 m et de « 8,5 » m³/h un débit de 85 : la virgule se lit.
+  it('« 50,5 » dans la HMT ⇒ 50.5 ; « 8,5 » dans le débit ⇒ 8.5 ; aucun champ « number »', () => {
+    const setPompeHmt = vi.fn()
+    const setPompeDebit = vi.fn()
+    render(<PanneauAgricole {...PROPS_VIDES} setPompeHmt={setPompeHmt} setPompeDebit={setPompeDebit} />)
+    fireEvent.change(document.getElementById('gen-hmt'), { target: { value: '50,5' } })
+    expect(setPompeHmt).toHaveBeenLastCalledWith('50.5')
+    expect(document.getElementById('gen-hmt').value).toBe('50,5')
+    fireEvent.change(document.getElementById('gen-debit'), { target: { value: '8,5' } })
+    expect(setPompeDebit).toHaveBeenLastCalledWith('8.5')
+    expect(document.querySelectorAll('input[type="number"]')).toHaveLength(0)
+    expect(document.getElementById('gen-hmt')).toHaveAttribute('inputmode', 'decimal')
   })
 
   it('pompe existante : la plaque (dont le CV) est saisie', () => {
@@ -346,7 +361,7 @@ describe('économie déclarée (AGR212)', () => {
   it('tous les champs nombre gardent step="any"', () => {
     render(<PanneauAgricole {...PROPS_VIDES}
       ecoPompage={{ ...ECO_POMPAGE_VIDE, energie: 'electrique' }} />)
-    for (const input of document.querySelectorAll('input[type="number"]')) {
+    for (const input of document.querySelectorAll('input[type="number"], input[inputmode="decimal"]')) {
       expect(input.getAttribute('step')).toBe('any')
     }
   })

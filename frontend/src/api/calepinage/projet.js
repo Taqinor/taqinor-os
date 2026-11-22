@@ -15,7 +15,9 @@ export const projet = {
     // Réponse BLOB ; un refus 400 arrive lui aussi en Blob.
     comparatifXlsx: (id, autres = [], options) =>
       api.get(`${pivot(id)}comparatif.xlsx/`,
-        { responseType: 'blob', params: autres.length ? { ids: autres.join(',') } : {}, ...options }),
+        { responseType: 'blob', params: autres.length ? { ids: autres.join(',') } : {},
+          ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+          ...(options?.timeout ? { timeout: options.timeout } : {}) }),
 
     // CALX344 — les ÉTIQUETTES LIBRES du calepinage (contrat
     // `contract_samples/calepinage_etiquettes.json`, CALX332 ; porte
@@ -100,7 +102,9 @@ export const projet = {
     // qui SERAIT écrit — le serveur n'écrit rien tant que l'écran ne
     // renvoie pas `apercu: false` en confirmation explicite.
     exporterProjet: (id, options) =>
-      api.get(`${pivot(id)}export-projet.json/`, { responseType: 'blob', ...options }),
+      api.get(`${pivot(id)}export-projet.json/`, { responseType: 'blob',
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+        ...(options?.timeout ? { timeout: options.timeout } : {}) }),
     importerProjet: (corps) =>
       api.post('/calepinage/calepinages/import-projet/', corps),
 

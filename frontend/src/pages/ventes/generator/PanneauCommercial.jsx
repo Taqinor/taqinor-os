@@ -19,9 +19,11 @@
 // la facture réelle résidentielles ne sont plus montées ici.
 //
 // AUCUNE LOGIQUE ICI : l'état et les gestes arrivent en props, tout le calcul
-// reste dans l'écran porteur (et au serveur). Chaque `<input type="number">`
+// reste dans l'écran porteur (et au serveur). Chaque champ nombre (`ChampDecimal`)
 // garde `step="any"` (règle fondateur : aucun champ ne snappe jamais) et le
 // `noValidate` est resté sur le formulaire porteur.
+// R1-09/R1-10 (22/11) — champs nombre en `ChampDecimal` : la virgule se lit sur tout navigateur.
+import ChampDecimal from './ChampDecimal'
 import {
   Input, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -75,10 +77,10 @@ function HeuresDeLaReponse({ cle, reponses, setReponse }) {
   return (
     <div className="flex items-center gap-2 text-xs" data-testid={`ci-${h.cle}`}>
       <span>{h.libelle}</span>
-      <Input type="number" min="0" step="any" aria-label={`${h.libelle} début`}
-             value={plage[0] ?? ''} onChange={e => poser(0, e.target.value)} />
-      <Input type="number" min="0" step="any" aria-label={`${h.libelle} fin`}
-             value={plage[1] ?? ''} onChange={e => poser(1, e.target.value)} />
+      <ChampDecimal aria-label={`${h.libelle} début`}
+             value={plage[0] ?? ''} onValeur={(v) => poser(0, v)} />
+      <ChampDecimal aria-label={`${h.libelle} fin`}
+             value={plage[1] ?? ''} onValeur={(v) => poser(1, v)} />
     </div>
   )
 }
@@ -120,9 +122,8 @@ export default function PanneauCommercial({
                   {q.label}<BadgeRepris cle={`reponses.${q.key}`} repris={reprisLead} />
                 </Label>
                 {q.type === 'number' && (
-                  <Input id={`gen-com-${q.key}`} type="number" min="0" step="any"
-                         value={commercialAnswers[q.key] ?? ''}
-                         onChange={e => setCommercialAnswer(q.key, e.target.value)} />
+                  <ChampDecimal id={`gen-com-${q.key}`} value={commercialAnswers[q.key] ?? ''}
+                         onValeur={(v) => setCommercialAnswer(q.key, v)} />
                 )}
                 {q.type === 'select' && (
                   <Select value={commercialAnswers[q.key] ?? ''}

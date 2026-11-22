@@ -224,6 +224,7 @@ async function ouvrirAtelier(page, id, appareil) {
 test.describe.configure({ mode: 'serial' })
 
 test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => {
+  test.setTimeout(240_000) // le démarrage de l'atelier attend jusqu'à 240 s (voir ci-dessous) : le plafond par défaut de 60 s le coupait avant
   await carteRefusee(page.context())
   let gestes = 0
   const geste = async (action) => { gestes += 1; return action() }

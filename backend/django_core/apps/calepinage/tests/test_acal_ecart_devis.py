@@ -145,8 +145,8 @@ class EcartDevisTest(BaseApiCalepinage):
         ecart = exemple['ecart_devis']
         self.assertIn('production-ecart-devis', html)
         self.assertIn(ecart['reference'], html)
-        self.assertIn('12600,0', html)   # production du devis, telle quelle
-        self.assertIn('13000,0', html)   # P50 de l'étude
+        self.assertIn('12\u202f600,0', html)   # production du devis, telle quelle
+        self.assertIn('13\u202f000,0', html)   # P50 de l'étude
         self.assertIn('+3,2 %', html)
         self.assertIn('moteur du devis', html)
         # Sans écart servi : aucun bloc.
@@ -156,8 +156,8 @@ class EcartDevisTest(BaseApiCalepinage):
         # Les MÊMES valeurs que le JSON servi, sur un vrai calepinage.
         servi = resultat_calepinage(self._calepinage(), materiel=MATERIEL)
         html = html_de_section({'resultat': servi})
-        self.assertIn('10340,0', html)
-        self.assertIn('15606,0', html)
+        self.assertIn('10\u202f340,0', html)
+        self.assertIn('15\u202f606,0', html)
         self.assertIn('+50,9 %', html)
         self.assertEqual(Decimal('50.9'),
                          Decimal(str(servi['ecart_devis']['ecart_pct'])))
@@ -184,7 +184,7 @@ class EcartDevisProductionImprimeeTest(SimpleTestCase):
         ecart = self._ecart({'mode_installation': 'residentiel', 'prod_kwh': 3628})
         self.assertEqual(ecart['production_devis_kwh'], 3628.0)
         self.assertEqual(ecart['ecart_pct'], round((4808 - 3628) / 3628 * 100, 1))
-        self.assertIn('3628,0', html_de_section({'resultat': {'ecart_devis': ecart}}))
+        self.assertIn('3\u202f628,0', html_de_section({'resultat': {'ecart_devis': ecart}}))
 
     def test_sans_production_imprimee_aucune_phrase(self):
         """Pompage : le PDF n'imprime aucun kWh ⇒ aucun écart, jamais un 0."""

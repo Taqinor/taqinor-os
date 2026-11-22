@@ -36,7 +36,9 @@ import unittest
 from pathlib import Path
 
 from apps.ventes import economie, solar_finance
-from apps.ventes.economie import EconomieInvalide, flux_de_tresorerie
+from apps.ventes.economie import (
+    EconomieInvalide, _INTITULES_MOTIFS, flux_de_tresorerie,
+)
 
 CONTRAT = (Path(__file__).resolve().parents[1] / 'contract_samples'
            / 'ventes_economie.json')
@@ -124,7 +126,7 @@ class ActualisationTest(unittest.TestCase):
         self.assertNotIn('taux_actualisation_pct', cles_retenues(bloc))
         motif_van = next(o['motif'] for o in bloc['omissions']
                          if o['cle'] == 'van_mad')
-        self.assertIn('taux_actualisation_pct', motif_van)
+        self.assertIn(_INTITULES_MOTIFS['taux_actualisation_pct'], motif_van)
         # Le TRI et le retour simple n'en dépendent pas : ils restent publiés.
         self.assertIsNotNone(bloc['tri_pct'])
         self.assertEqual(bloc['retour_ans'], 9)
@@ -279,7 +281,7 @@ class LectureStricteDesTauxTest(unittest.TestCase):
         for cle in economie.INDICATEURS:
             with self.subTest(cle=cle):
                 self.assertIsNone(bloc[cle])
-                self.assertIn('indexation_pct', self.motif(bloc, cle))
+                self.assertIn(_INTITULES_MOTIFS['indexation_pct'], self.motif(bloc, cle))
         # Le flux nominal n'est pas traçable : aucune ligne publiée.
         self.assertEqual(bloc['flux'], [])
 
@@ -289,7 +291,7 @@ class LectureStricteDesTauxTest(unittest.TestCase):
         for cle in economie.INDICATEURS:
             with self.subTest(cle=cle):
                 self.assertIsNone(bloc[cle])
-                self.assertIn('degradation_pct', self.motif(bloc, cle))
+                self.assertIn(_INTITULES_MOTIFS['degradation_pct'], self.motif(bloc, cle))
         self.assertEqual(bloc['flux'], [])
 
     def test_actualisation_absente_seuls_les_indicateurs_actualises(self):
@@ -297,7 +299,7 @@ class LectureStricteDesTauxTest(unittest.TestCase):
         for cle in self.DERIVES:
             with self.subTest(cle=cle):
                 self.assertIsNone(bloc[cle])
-                self.assertIn('taux_actualisation_pct', self.motif(bloc, cle))
+                self.assertIn(_INTITULES_MOTIFS['taux_actualisation_pct'], self.motif(bloc, cle))
         self.assertIsNotNone(bloc['tri_pct'])
         self.assertEqual(bloc['retour_ans'], 9)
         self.assertEqual(len(bloc['flux']), 11)
@@ -305,8 +307,8 @@ class LectureStricteDesTauxTest(unittest.TestCase):
     def test_deux_taux_absents_tous_nommes(self):
         bloc = reference(indexation_pct=None, taux_actualisation_pct=None)
         motif = self.motif(bloc, 'van_mad')
-        self.assertIn('indexation_pct', motif)
-        self.assertIn('taux_actualisation_pct', motif)
+        self.assertIn(_INTITULES_MOTIFS['indexation_pct'], motif)
+        self.assertIn(_INTITULES_MOTIFS['taux_actualisation_pct'], motif)
         self.assertNotIn('taux_actualisation_pct',
                          self.motif(bloc, 'tri_pct'))
 

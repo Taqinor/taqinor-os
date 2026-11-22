@@ -257,7 +257,7 @@
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-kwh-annuel">Consommation annuelle (kWh)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-kwh-annuel" min="0" step="any" placeholder="ex: 150000" data-testid="gen-ci-kwh-annuel" type="number" value="96000">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ci-kwh-annuel" placeholder="ex: 150000" data-testid="gen-ci-kwh-annuel" type="text" value="96000">
 </div>
 </fieldset>
 <fieldset class="grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
@@ -335,11 +335,11 @@
 <div class="mt-3 grid gap-4 sm:grid-cols-2">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-chambres">Nombre de chambres</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-com-chambres" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-com-chambres" type="text" value="">
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-occupation_pct">Taux d'occupation annuel (%)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-com-occupation_pct" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-com-occupation_pct" type="text" value="">
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-piscine">Piscine chauffée</label>
@@ -368,22 +368,22 @@
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Jours ouvrés — heures (début / fin)</label>
 <div class="flex gap-2">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Jours ouvrés début" data-testid="gen-ci-plage-ouvre-debut" placeholder="ex: 8" type="number" value="">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Jours ouvrés fin" data-testid="gen-ci-plage-ouvre-fin" placeholder="ex: 18" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" aria-label="Jours ouvrés début" data-testid="gen-ci-plage-ouvre-debut" placeholder="ex: 8" type="text" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" aria-label="Jours ouvrés fin" data-testid="gen-ci-plage-ouvre-fin" placeholder="ex: 18" type="text" value="">
 </div>
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Samedi — heures (début / fin)</label>
 <div class="flex gap-2">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Samedi début" data-testid="gen-ci-plage-samedi-debut" placeholder="ex: 8" type="number" value="">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Samedi fin" data-testid="gen-ci-plage-samedi-fin" placeholder="ex: 18" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" aria-label="Samedi début" data-testid="gen-ci-plage-samedi-debut" placeholder="ex: 8" type="text" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" aria-label="Samedi fin" data-testid="gen-ci-plage-samedi-fin" placeholder="ex: 18" type="text" value="">
 </div>
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Dimanche — heures (début / fin)</label>
 <div class="flex gap-2">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Dimanche début" data-testid="gen-ci-plage-dimanche-debut" placeholder="ex: 8" type="number" value="">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" min="0" step="any" aria-label="Dimanche fin" data-testid="gen-ci-plage-dimanche-fin" placeholder="ex: 18" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" aria-label="Dimanche début" data-testid="gen-ci-plage-dimanche-debut" placeholder="ex: 8" type="text" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" aria-label="Dimanche fin" data-testid="gen-ci-plage-dimanche-fin" placeholder="ex: 18" type="text" value="">
 </div>
 </div>
 </div>
@@ -413,26 +413,26 @@
 <div class="grid gap-1.5">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-surface">Surface utile (m²)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-surface" min="0" step="any" data-testid="gen-ci-surface" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ci-surface" data-testid="gen-ci-surface" type="text" value="">
 </div>
 </div>
 <div class="grid gap-1.5">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-pente">Inclinaison des panneaux (°)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-pente" min="0" step="any" data-testid="gen-ci-pente" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ci-pente" data-testid="gen-ci-pente" type="text" value="">
 </div>
 </div>
 <div class="grid gap-1.5">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-longueur-ac">Distance onduleur → TGBT (m)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-longueur-ac" min="0" step="any" data-testid="gen-ci-longueur-ac" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ci-longueur-ac" data-testid="gen-ci-longueur-ac" type="text" value="">
 <p class="text-xs text-muted-foreground" data-testid="gen-ci-longueur-ac-aide">Vide : 10 m supposés avant la visite</p>
 </div>
 </div>
 <div class="grid gap-1.5">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-longueur-dc">Distance champ → onduleur, un sens (m)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-longueur-dc" min="0" step="any" data-testid="gen-ci-longueur-dc" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ci-longueur-dc" data-testid="gen-ci-longueur-dc" type="text" value="">
 <p class="text-xs text-muted-foreground" data-testid="gen-ci-longueur-dc-aide">Vide : 30 m supposés avant la visite</p>
 </div>
 </div>
@@ -467,7 +467,7 @@
 <div class="grid gap-4 sm:grid-cols-2">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-talon">Talon de consommation (kW)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-talon" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ci-talon" type="text" value="">
 <label class="flex items-center gap-2 text-xs cursor-pointer">
 <input data-testid="gen-ci-talon-inconnu" type="checkbox">Je ne sais pas</label>
 </div>
@@ -490,7 +490,7 @@
 <div class="grid gap-1.5">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-puissance">Puissance souscrite (kVA)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-puissance" min="0" step="any" data-testid="gen-ci-puissance" type="number" value="60">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ci-puissance" data-testid="gen-ci-puissance" type="text" value="60">
 </div>
 </div>
 <div class="grid gap-1.5">
@@ -504,7 +504,7 @@
 <div class="grid gap-1.5 sm:max-w-xs">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-taille">Taille explicite (kWc)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-taille" min="0" step="any" data-testid="gen-ci-taille" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ci-taille" data-testid="gen-ci-taille" type="text" value="">
 </div>
 <p class="text-xs text-muted-foreground" data-testid="ci-taille-aide">vide = taille calculée par la règle de l'horizon marginal</p>
 </div>
@@ -526,7 +526,7 @@
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-eco-taux">Taux d'actualisation déclaré par le client (%)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-eco-taux" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-eco-taux" type="text" value="">
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-eco-taux-source">Source du taux</label>
@@ -734,14 +734,14 @@
 </button>
 </td>
 <td data-label="Qté">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="40">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" data-role="line-qty" type="text" value="40">
 </td>
 <td data-label="Prix unit. TTC">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="1320">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" type="text" value="1320">
 <div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 1 200 MAD</div>
 </td>
 <td data-label="TVA %">
-<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="10">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" inputmode="decimal" step="any" autocomplete="off" type="text" value="10">
 </td>
 <td class="line-total" data-label="Total TTC">52 800 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 48 000 MAD</div>
 </td>
@@ -791,14 +791,14 @@
 </button>
 </td>
 <td data-label="Qté">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" data-role="line-qty" type="text" value="1">
 </td>
 <td data-label="Prix unit. TTC">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="62400">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" type="text" value="62400">
 <div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 52 000 MAD</div>
 </td>
 <td data-label="TVA %">
-<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" inputmode="decimal" step="any" autocomplete="off" type="text" value="20">
 </td>
 <td class="line-total" data-label="Total TTC">62 400 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 52 000 MAD</div>
 </td>
@@ -854,7 +854,7 @@
 <div class="gen-totals-row gen-discount-row">
 <div class="gen-total-item gen-total-inline gen-tier-2">
 <span class="gen-total-label">Réduction</span>
-<input min="0" max="100" step="any" class="gen-discount-input" type="number" value="0">
+<input inputmode="decimal" step="any" autocomplete="off" class="gen-discount-input" type="text" value="0">
 <span style="font-weight: 700;">%</span>
 </div>
 <div class="gen-total-item gen-total-inline gen-tier-2" data-testid="rail-tva-par-ligne">
@@ -868,7 +868,7 @@
 </div>
 <div class="gen-total-item gen-total-inline">
 <span class="gen-total-label">Prix cible / kWc</span>
-<input min="0" step="any" class="gen-discount-input" style="width: 100px;" placeholder="ex: 9000" type="number" value="">
+<input inputmode="decimal" step="any" autocomplete="off" class="gen-discount-input" style="width: 100px;" placeholder="ex: 9000" type="text" value="">
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" type="button">Appliquer via remise</button>
 </div>
 <div class="gen-total-item">
@@ -1006,11 +1006,11 @@
 <div class="grid gap-3 sm:grid-cols-3">
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-penaliteTaux">Pénalités de retard (% par semaine)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-penaliteTaux" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-penaliteTaux" type="text" value="">
 </div>
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-penalitePlafond">Plafond des pénalités (%)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-penalitePlafond" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-penalitePlafond" type="text" value="">
 </div>
 </div>
 <div class="grid gap-3 sm:grid-cols-3">
@@ -1020,11 +1020,11 @@
 </div>
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-cautionMontant">Caution : montant ou %</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-cautionMontant" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-cautionMontant" type="text" value="">
 </div>
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-cautionPlafond">Caution : plafond</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-cautionPlafond" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-cautionPlafond" type="text" value="">
 </div>
 </div>
 <div class="grid gap-3 sm:grid-cols-3">
@@ -1042,7 +1042,7 @@
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-acompte-financeur">Acompte client (%)</label>
 <div class="flex gap-2">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-acompte-financeur" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-acompte-financeur" type="text" value="">
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" type="button" data-testid="btn-echeancier-financeur">Échéancier organisme financeur</button>
 </div>
 </div>
@@ -1138,7 +1138,7 @@
 </div>
 <div class="border-t border-border pt-3">
 <div class="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
-<div class="text-sm text-foreground">28,60 kWc · 40 panneaux</div>
+<div class="text-sm text-foreground" data-testid="gen-rail-systeme">28,60 kWc · 40 panneaux</div>
 </div>
 <div class="flex flex-col gap-2 pt-1">
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="submit" form="gen-form">

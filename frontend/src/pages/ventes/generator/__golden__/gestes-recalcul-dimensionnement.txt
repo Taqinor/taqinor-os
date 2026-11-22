@@ -233,7 +233,7 @@ Total avec batterie · TTC
 Option recommandée
 Écart batterie : 19 200 MAD (+38 %)
 Système
-8,52 kWc · 12 panneaux
+5,68 kWc · 8 panneaux
 Créer le devis
 Annuler
 == CHAMPS ==
@@ -483,6 +483,18 @@ Ligne optionnelle (add-on hors total)=on [ ]
         "lead": 77,
         "facture_hiver": 3000,
         "ville": "Mohammedia"
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "dimensionner": true,
+        "lead": 77,
+        "facture_hiver": 3000,
+        "ville": "Mohammedia",
+        "kwc": 5.68
       },
       {
         "signal": {}

@@ -327,17 +327,21 @@ def _blocs_de_publication(annees, kwh=(1000.0, 900.0)):
     entree = {'distribution': {'energie_totale_kwh': kwh[0],
                                'classes': [{'energie_kwh': kwh[0],
                                             'part_pct': 100.0}]}}
+    # Le pourcentage se DÉDUIT des deux énergies (jamais un littéral de perte
+    # en dur : garde CAL238) ; l'ombrage du pan est une donnée de fabrication.
+    pct = 100.0 * (kwh[0] - kwh[1]) / kwh[0]
+    ombrage_pan_pct = 2.0
     etape = {'etape': 'onduleur', 'motif_omission': '', 'kwh_avant': kwh[0],
              'kwh_apres': kwh[1], 'perte_kwh': kwh[0] - kwh[1],
-             'perte_pct': 10.0, 'entree': entree}
+             'perte_pct': pct, 'entree': entree}
     return {
         'production': {'total': {'annees_fenetre': annees,
                                  'p50_kwh': kwh[1] / annees}},
-        'cascade': {'etapes': [etape], 'total_pct': 10.0,
+        'cascade': {'etapes': [etape], 'total_pct': pct,
                     'irradiation_incidente_kwh_m2': 2000.0,
                     'postes_lisibles': {'depart_kwh': kwh[0],
                                         'arrivee_kwh': kwh[1]}},
-        'ombrage': {'par_pan': [{'pan': 'A', 'perte_ombrage_pct': 2.0,
+        'ombrage': {'par_pan': [{'pan': 'A', 'perte_ombrage_pct': ombrage_pan_pct,
                                  'cascade': {'etapes': [dict(etape)]}}]},
         'performance': {'irradiation_plan_kwh_m2': 2000.0, 'pr': 0.8},
         'meteo': {'mode': 'pluriannuel'},

@@ -10,12 +10,12 @@
 // PanneauCommercial), mêmes props. AUCUNE LOGIQUE NI AUCUN CALCUL ICI : l'état
 // et les gestes arrivent en props ; sous chaque champ, la valeur RETENUE par
 // le serveur (`entrees_resolues`) avec sa provenance. Saisie 100 % libre :
-// chaque `<input type="number">` porte `step="any"` et `min="0"`, rien n'est
+// chaque champ nombre (`ChampDecimal`) porte `step="any"`, rien n’est
 // arrondi ni rejeté (le `noValidate` reste sur le formulaire porteur).
 import { Zap } from 'lucide-react'
 import { Card, CardContent, Input, Label, Button } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
-// R1-09/R1-10 (22/11) — tarifs (MAD/kWh) et montants de facture : `ChampDecimal`
+// R1-09/R1-10 (22/11) — tous les champs nombre (tarifs, montants, kWh, heures) : `ChampDecimal`
 // (texte à clavier décimal, `step="any"`, la virgule se lit sur tout navigateur).
 import ChampDecimal from './ChampDecimal'
 import { MONTHS_FR } from '../../../features/ventes/solar'
@@ -252,9 +252,9 @@ function Nombre({ id, label, value, onChange, placeholder, testid, aide }) {
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type="number" min="0" step="any" placeholder={placeholder}
+      <ChampDecimal id={id} placeholder={placeholder}
              data-testid={testid || id} value={value ?? ''}
-             onChange={(e) => onChange(e.target.value)} />
+             onValeur={(v) => onChange(v)} />
       {aide && <p className="text-xs text-muted-foreground" data-testid={`${testid || id}-aide`}>{aide}</p>}
     </div>
   )
@@ -313,10 +313,9 @@ export default function BlocEtudeReseau({
             {MONTHS_FR.map((m, i) => (
               <div key={m} className="gen-month">
                 <label className="gen-month-label" htmlFor={`gen-ci-kwh-${i}`}>{m}</label>
-                <input id={`gen-ci-kwh-${i}`} type="number" min="0" step="any"
-                       className="form-control form-control-sm"
+                <ChampDecimal natif id={`gen-ci-kwh-${i}`} className="form-control form-control-sm"
                        value={kwh[i] ?? ''}
-                       onChange={(e) => setChamp(`kwhMensuels.${i}`, e.target.value)} />
+                       onValeur={(v) => setChamp(`kwhMensuels.${i}`, v)} />
               </div>
             ))}
           </div>
@@ -337,10 +336,10 @@ export default function BlocEtudeReseau({
                        placeholder="Montant TTC (MAD)"
                        data-testid={`gen-ci-facture-montant-${i}`} value={f?.montant_ttc ?? ''}
                        onValeur={(v) => setChamp(`factures.${i}.montant_ttc`, v)} />
-                <Input type="number" min="0" step="any" aria-label={`kWh facturés ${i + 1}`}
+                <ChampDecimal aria-label={`kWh facturés ${i + 1}`}
                        placeholder="kWh (si imprimés)"
                        data-testid={`gen-ci-facture-kwh-${i}`} value={f?.kwh ?? ''}
-                       onChange={(e) => setChamp(`factures.${i}.kwh`, e.target.value)} />
+                       onValeur={(v) => setChamp(`factures.${i}.kwh`, v)} />
               </div>
             ))}
             <div>
@@ -400,14 +399,14 @@ export default function BlocEtudeReseau({
             <div className="grid gap-1.5" key={cle}>
               <Label>{libelle} — heures (début / fin)</Label>
               <div className="flex gap-2">
-                <Input type="number" min="0" step="any" aria-label={`${libelle} début`}
+                <ChampDecimal aria-label={`${libelle} début`}
                        data-testid={`gen-ci-plage-${cle}-debut`} placeholder="ex: 8"
                        value={p.plages?.[cle]?.debut ?? ''}
-                       onChange={(e) => setChamp(`plages.${cle}.debut`, e.target.value)} />
-                <Input type="number" min="0" step="any" aria-label={`${libelle} fin`}
+                       onValeur={(v) => setChamp(`plages.${cle}.debut`, v)} />
+                <ChampDecimal aria-label={`${libelle} fin`}
                        data-testid={`gen-ci-plage-${cle}-fin`} placeholder="ex: 18"
                        value={p.plages?.[cle]?.fin ?? ''}
-                       onChange={(e) => setChamp(`plages.${cle}.fin`, e.target.value)} />
+                       onValeur={(v) => setChamp(`plages.${cle}.fin`, v)} />
               </div>
             </div>
           ))}
@@ -489,9 +488,8 @@ export default function BlocEtudeReseau({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="gen-ci-talon">Talon de consommation (kW)</Label>
-              <Input id="gen-ci-talon" type="number" min="0" step="any"
-                     disabled={Boolean(p.talonInconnu)} value={p.talonKw ?? ''}
-                     onChange={(e) => setChamp('talonKw', e.target.value)} />
+              <ChampDecimal id="gen-ci-talon" disabled={Boolean(p.talonInconnu)} value={p.talonKw ?? ''}
+                     onValeur={(v) => setChamp('talonKw', v)} />
               <label className="flex items-center gap-2 text-xs cursor-pointer">
                 <input type="checkbox" data-testid="gen-ci-talon-inconnu"
                        checked={Boolean(p.talonInconnu)}

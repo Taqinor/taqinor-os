@@ -22,7 +22,7 @@ Run :
 import itertools
 import unittest
 
-from apps.ventes.economie import flux_de_tresorerie, lcoe
+from apps.ventes.economie import _INTITULES_MOTIFS, flux_de_tresorerie, lcoe
 
 
 def reference(**surcharges):
@@ -96,7 +96,7 @@ class LcoeTest(unittest.TestCase):
             production_annee1_kwh=10000, horizon_ans=10,
             taux_actualisation_pct=0, degradation_pct=0)
         self.assertIsNone(bloc['lcoe_mad_kwh'])
-        self.assertIn('indexation_pct', motif(bloc, 'lcoe_mad_kwh'))
+        self.assertIn(_INTITULES_MOTIFS['indexation_pct'], motif(bloc, 'lcoe_mad_kwh'))
 
     def test_le_bloc_economie_publie_le_meme_lcoe(self):
         onduleur = {'equipement': 'onduleur', 'annee': 6, 'mode': 'remplacer',
@@ -116,7 +116,7 @@ class LcoeTest(unittest.TestCase):
                                   economie_annee1_mad=12000, horizon_ans=10,
                                   taux_actualisation_pct=0)
         self.assertIsNone(bloc['lcoe_mad_kwh'])
-        self.assertIn('production_annee1_kwh', motif(bloc, 'lcoe_mad_kwh'))
+        self.assertIn(_INTITULES_MOTIFS['production_annee1_kwh'], motif(bloc, 'lcoe_mad_kwh'))
 
 
 if __name__ == '__main__':

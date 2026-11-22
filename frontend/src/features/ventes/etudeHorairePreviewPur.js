@@ -20,6 +20,7 @@
 //   4. Une donnée manquante est OMISE avec une explication FR courte, jamais
 //      comblée par une valeur inventée.
 
+import { formatNumber } from '../../lib/format.js'
 /**
  * Corps de la requête POST /ventes/etude-horaire/preview/, ou `null` quand
  * rien n'ancre un calcul réel (ni facture d'hiver saisie, ni devis existant
@@ -263,9 +264,12 @@ export function estimationConsoAffichable(estimationConso) {
 }
 
 // R2-07 — montants MAD au format de l'écran (virgule décimale, deux décimales
-// au plus) : ce module n'importe rien, d'où `toLocaleString` plutôt que
-// `lib/format`.
-const madFr = (v) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 2 })
+// au plus, jamais de zéro de remplissage) via `lib/format` (garde VX75 ; ce
+// module pur n'importe que ce fichier sans dépendance, chargeable hors Vite).
+const madFr = (v) => {
+  const n = Math.round(Number(v) * 100) / 100
+  return formatNumber(n, { decimals: (String(n).split('.')[1] || '').length })
+}
 
 /**
  * R2-07 (recette du 22/11/2026) — une facture DÉCLARÉE tombée dans un saut du

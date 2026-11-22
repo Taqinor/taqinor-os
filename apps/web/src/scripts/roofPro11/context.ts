@@ -176,8 +176,8 @@ export interface Ctx {
    * vente derrière, donc un besoin nul veut dire « aucune cible », et l'optimiseur pose
    * ce qui tient. Read-only : seul roof-tool-pro11.ts (l'hydratation) l'écrit. */
   readonly cibleVendue: boolean;
-  /** R2-13 — le nombre de panneaux du DEVIS lié, tel que la dernière hydratation l'a lu (`null` = aucun compte). Read-only : seul roof-tool-pro11.ts l'écrit. */
-  readonly panneauxDevis?: number | null;
+  /** R2-13 — le nombre de panneaux du DEVIS lié (`null` = aucun compte) : lu à l'hydratation (roof-tool-pro11.ts) et relu par `majChiffrage` (optimizer.ts). */
+  panneauxDevis?: number | null;
 
   // — Recommandation/optimum courant + flag « caler sur la reco » (mutable) —
   rec: Recommendation | null;

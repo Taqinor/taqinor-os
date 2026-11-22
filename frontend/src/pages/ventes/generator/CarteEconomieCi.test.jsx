@@ -3,7 +3,7 @@
 // le moteur. Run : npx vitest run src/pages/ventes/generator/CarteEconomieCi.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useState } from 'react'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 
 const api = vi.hoisted(() => ({ economieCiPreview: vi.fn() }))
 vi.mock('../../../api/ventesApi', () => ({ default: api }))
@@ -176,6 +176,14 @@ describe('CIQ224 — VoletInterneEconomieCi', () => {
       offre_cse_concurrente: { tarif_kwh_ht: 0.95, duree_ans: 20, indexation_pct_an: null, source: 'offre écrite du 01/09/2026' },
     }
     expect(saisiesEconomieCi(ecoCiDepuisSaisies(stocke), { aujourdhui: '2030-01-01' })).toEqual(stocke)
+  })
+
+  it('R1-09 — « 7,5 » dans le taux d’actualisation se lit 7,5 (jamais 75)', () => {
+    const setEcoChamp = vi.fn()
+    render(<CarteEconomieCi apercu={{}} eco={ECO_CI_VIDE} setEcoChamp={setEcoChamp} />)
+    fireEvent.change(document.getElementById('gen-eco-taux'), { target: { value: '7,5' } })
+    expect(setEcoChamp).toHaveBeenLastCalledWith(
+      'taux_actualisation_client', expect.objectContaining({ valeur_pct: '7.5' }))
   })
 })
 

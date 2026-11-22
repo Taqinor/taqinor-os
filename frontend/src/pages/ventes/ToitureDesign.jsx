@@ -89,6 +89,7 @@ import {
   dataUrlToBlob, repereDuLead, contourUtilisableDuLead, httpMessage,
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee, phraseToitureLead,
+  cibleActiveDuContexte,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import TableauComparatif from '../../features/calepinage/atelier/TableauComparatif.jsx'
@@ -510,8 +511,9 @@ function AtelierToiture({
   useEffect(() => {
     // R2-13 — le compte « · K au devis » suit le devis relu ; `cible.panneaux` n'est celui du DEVIS que si `source === 'devis'`.
     if (estCalepinage && contexte) {
+      const cibleActive = cibleActiveDuContexte(contexte) // QJR40 : jamais contexte.cible seul
       builderApi.current?.majChiffrage?.(contexte.chiffrage ?? null,
-        contexte.cible?.source === 'devis' ? (contexte.cible.panneaux ?? null) : null)
+        cibleActive.source === 'devis' ? (cibleActive.panneaux ?? null) : null)
     }
   }, [contexte, builderReady, estCalepinage])
 

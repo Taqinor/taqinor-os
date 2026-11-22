@@ -596,9 +596,9 @@ def _montant_dans_un_saut(montant, kwh, *, sortie_total, sous_mad, au_dessus_mad
             or montant - sortie_total <= _SAUT_MIN_MAD):
         return None
     return {
-        'montant_declare_mad': round(montant, 2),
-        'montant_retenu_mad': round(sortie_total, 2),
-        'montant_au_dessus_du_saut_mad': round(au_dessus_mad, 2),
+        'montant_declare_mad': arrondi_affichage(montant, 2),
+        'montant_retenu_mad': arrondi_affichage(sortie_total, 2),
+        'montant_au_dessus_du_saut_mad': arrondi_affichage(au_dessus_mad, 2),
         'kwh_mensuel': kwh,
     }
 

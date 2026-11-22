@@ -137,10 +137,12 @@ const T120 = { timeout: 120_000 }
 
 async function carteRefusee(context) {
   await context.route(/\/calepinage\/calepinages\/\d+\/design-context\//, async (route) => {
-    const reelle = await route.fetch()
-    const corps = await reelle.json()
-    corps.carte = { ...(corps.carte || {}), available: true, maptilerKey: 'cle-factice-acal988', mapboxToken: null }
-    await route.fulfill({ response: reelle, json: corps })
+    try {
+      const reelle = await route.fetch()
+      const corps = await reelle.json()
+      corps.carte = { ...(corps.carte || {}), available: true, maptilerKey: 'cle-factice-acal988', mapboxToken: null }
+      await route.fulfill({ response: reelle, json: corps })
+    } catch { /* page ou contexte fermés pendant la requête : rien à servir */ }
   })
   await context.route(/https:\/\/api\.maptiler\.com\//, (route) => route.fulfill({
     status: 403, contentType: 'application/json', body: '{"message":"Invalid key"}',
@@ -162,8 +164,9 @@ async function calepinageVide(request) {
 // `pageerror` (un geste qui lève une exception est un échec nommé).
 async function ouvrirAtelierGestes(page, id) {
   const erreurs = []
-  page.on('pageerror', (e) => erreurs.push(e.message))
-  page.on('dialog', (d) => { void d.accept() }) // « Effacer » demande une confirmation : on l'accepte
+  // Les échecs réseau d'arrière-plan (sondes de notifications pendant un redémarrage du serveur : « due to access
+  // control checks » sous WebKit) ne sont pas des exceptions de geste.
+  page.on('pageerror', (e) => { if (!/access control checks|Failed to fetch|Load failed|NetworkError/.test(e.message)) erreurs.push(e.message) })
   await page.goto('/apps')
   await expect(page.getByRole('heading', { name: 'Mes applications' })).toBeVisible({ timeout: 30_000 })
   await page.goto(`/calepinage/${id}`)
@@ -209,13 +212,11 @@ async function tracerContour(page, coins, poser, { doubleClic = false } = {}) {
 
 // Enregistre et relit le contour : [[lat, lng], …] dans l'ordre des coins posés.
 async function contourEnregistre(page, id) {
-  const defilement = await page.evaluate(() => window.scrollY)
   // On attend la réponse de l'écriture du document (sinon la relecture rendrait l'enregistrement précédent).
   const ecriture = page.waitForResponse((r) => /\/calepinages\/\d+\/layout\/$/.test(r.url()) && r.request().method() === 'POST', { timeout: 60_000 })
   await page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }).click()
   expect((await ecriture).status(), 'écriture du document de conception').toBeLessThan(300)
   await expect(page.getByTestId('cal-erreur-enregistrement')).toHaveCount(0, { timeout: 30_000 })
-  await page.evaluate((y) => window.scrollTo(0, y), defilement) // le clic peut avoir fait défiler la page : les coins restent où ils sont
   let contour = null
   await expect.poll(async () => {
     const lu = await lireJson(await page.request.get(`${CAL}/calepinages/${id}/layout/`, T120), 'layout')
@@ -225,23 +226,40 @@ async function contourEnregistre(page, id) {
   return contour
 }
 
-// Efface le tracé (la vue de la carte, elle, est gardée) pour en poser un second après un geste.
-async function effacer(page) {
-  await page.locator('#rp9-clear').scrollIntoViewIfNeeded()
-  await page.locator('#rp9-clear').click()
-  await expect(page.locator('#rp9-config')).toBeHidden() // le contour fermé a disparu
-  await expect(page.locator('#rp9-finish')).toBeDisabled()
-  await expect(page.locator('#rp9-undo-point')).toBeHidden()
-  await page.locator('#rp9-map canvas').first().scrollIntoViewIfNeeded()
+// Défilement de la page : l'ERP défile dans son conteneur de contenu (jamais `window`) — on lit le premier
+// ancêtre défilant de la carte, à défaut `window.scrollY`.
+async function defilement(page) {
+  return page.evaluate(() => {
+    for (let el = document.querySelector('#rp9-map')?.parentElement; el; el = el.parentElement) {
+      const o = getComputedStyle(el).overflowY
+      if ((o === 'auto' || o === 'scroll') && el.scrollHeight > el.clientHeight + 1) return el.scrollTop
+    }
+    return window.scrollY
+  })
 }
 
-// Mesure de la vue : degrés de longitude par pixel (zoom : plus petit = plus proche) et position du coin A.
-async function mesurerVue(page, id, poser) {
+// Centre de la partie VISIBLE de la carte (là où l'on applique un geste).
+async function centreCarte(page) {
+  const b = await page.locator('#rp9-map canvas').first().boundingBox()
+  const haut = Math.max(b.y, 0)
+  const bas = Math.min(b.y + b.height, page.viewportSize().height)
+  return { x: b.x + b.width / 2, y: haut + (bas - haut) / 2 }
+}
+
+// Une carte VIERGE par mesure (« Effacer » ne rend pas le contour : une fois fermé, la carte n'accepte plus de
+// coin) : on ouvre un calepinage neuf, on applique le geste sur la carte vide, puis on pose trois coins à des
+// pixels fixes et on lit le document enregistré. La vue de départ de la carte est la même à chaque ouverture : les
+// degrés par pixel (zoom, plus petit = plus proche) et la position du coin A se comparent d'une carte à l'autre.
+async function mesurerApres(page, poser, appliquer = null, options = {}, nom = '') {
+  const id = await calepinageVide(page.request)
+  const erreurs = await ouvrirAtelierGestes(page, id)
+  if (appliquer) await appliquer(erreurs)
   const coins = await coinsLibres(page)
-  await tracerContour(page, coins, poser)
+  await tracerContour(page, coins, poser, options)
   const contour = await contourEnregistre(page, id)
-  await effacer(page)
-  return { echelle: Math.abs(contour[1][1] - contour[0][1]) / 120, coinA: contour[0], coins }
+  const echelle = Math.abs(contour[1][1] - contour[0][1]) / 120
+  console.log(`[ACAL988] mesure ${nom || 'carte'} : ${echelle.toExponential(3)} deg/px, coin A ${contour[0].map((v) => v.toFixed(5)).join(' ; ')}`)
+  return { id, erreurs, coins, contour, echelle, coinA: contour[0] }
 }
 
 // « + » ou « − » : le CENTRE du bouton reçoit le clic de zoom, pas la puce « Plein écran » (T1-F1-002).
@@ -270,87 +288,103 @@ async function gestePleinEcran(page, appareil, cliquer) {
   await expect(enveloppe, `geste « plein écran » (${appareil}) : retour`).toHaveAttribute('data-plein-ecran', '0')
 }
 
+// Une ligne de la matrice : `test.step` nommé par le geste, avec sa durée (pour trouver le geste qui traîne).
+const etape = (nom, corps) => test.step(nom, async () => {
+  const debut = Date.now()
+  try { await corps() } finally { console.log(`[ACAL988] ${nom} : ${Math.round((Date.now() - debut) / 1000)} s`) }
+})
+
 const SOURIS = 'souris 1440×900'
 const IPHONE = 'iPhone 390×844'
+
+// Doigts : chaque trajet {de, vers} ; `pas` étapes de touchMove entre le toucher et le relâchement (protocole
+// DevTools : seul moyen de jouer deux doigts ; Chromium seulement).
+async function doigts(page, trajets, pas = 10) {
+  const cdp = await page.context().newCDPSession(page)
+  const points = (t) => trajets.map((d, i) => ({ id: i, x: d.de.x + (d.vers.x - d.de.x) * t, y: d.de.y + (d.vers.y - d.de.y) * t }))
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(0) })
+  for (let i = 1; i <= pas; i += 1) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(i / pas) })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await cdp.detach()
+}
 
 test.describe('ACAL988 — gestes de carte à la souris (bureau)', () => {
   test.use({ viewport: { width: 1440, height: 900 }, hasTouch: false })
 
   test('la matrice des gestes à la souris', async ({ page }) => {
-    test.setTimeout(480_000)
+    test.setTimeout(900_000)
     await carteRefusee(page.context())
-    const id = await calepinageVide(page.request)
-    const erreurs = await ouvrirAtelierGestes(page, id)
     const clic = (x, y) => page.mouse.click(x, y)
-    const sansErreur = (geste) => expect(erreurs, `geste « ${geste} » (${SOURIS}) : aucun pageerror`).toEqual([])
-    let vue = null
+    const sansErreur = (erreurs, geste) => expect(erreurs, `geste « ${geste} » (${SOURIS}) : aucun pageerror`).toEqual([])
 
-    await test.step('geste « clic coin » + « double-clic de fermeture »', async () => {
-      const coins = await coinsLibres(page)
-      await tracerContour(page, coins, clic, { doubleClic: true })
-      sansErreur('clic coin / double-clic de fermeture')
-      const contour = await contourEnregistre(page, id)
-      vue = { echelle: Math.abs(contour[1][1] - contour[0][1]) / 120, coinA: contour[0], coins, contour }
-      expect(vue.echelle, `geste « clic coin » (${SOURIS}) : les trois coins sont posés où l'on clique`).toBeGreaterThan(0)
+    // Carte de référence : clic coin ×3 puis double-clic de fermeture (le contour se ferme, « Terminer » se grise).
+    let base = null
+    await etape('geste « clic coin » + « double-clic de fermeture »', async () => {
+      base = await mesurerApres(page, clic, null, { doubleClic: true })
+      expect(base.echelle, `geste « clic coin » (${SOURIS}) : trois coins posés où l'on clique`).toBeGreaterThan(0)
+      sansErreur(base.erreurs, 'clic coin / double-clic de fermeture')
     })
 
-    await test.step('geste « glisser un coin »', async () => {
-      const { coins, coinA } = vue
-      await page.mouse.move(coins[0].x, coins[0].y)
+    await etape('geste « glisser un coin »', async () => {
+      const [a] = base.coins
+      await page.mouse.move(a.x, a.y)
       await page.mouse.down()
-      await page.mouse.move(coins[0].x + 20, coins[0].y + 15, { steps: 6 })
-      await page.mouse.move(coins[0].x + 45, coins[0].y + 30, { steps: 6 })
+      await page.mouse.move(a.x + 20, a.y + 15, { steps: 6 })
+      await page.mouse.move(a.x + 45, a.y + 30, { steps: 6 })
       await page.mouse.up()
-      const contour = await contourEnregistre(page, id)
-      expect(contour[0], `geste « glisser un coin » (${SOURIS}) : le premier coin a bougé`).not.toEqual(coinA)
-      expect(contour.slice(1), `geste « glisser un coin » (${SOURIS}) : les autres coins n'ont pas bougé`).toEqual(vue.contour.slice(1))
-      sansErreur('glisser un coin')
-      await effacer(page)
+      const contour = await contourEnregistre(page, base.id)
+      expect(contour[0], `geste « glisser un coin » (${SOURIS}) : le premier coin a bougé`).not.toEqual(base.coinA)
+      expect(contour.slice(1), `geste « glisser un coin » (${SOURIS}) : les autres coins n'ont pas bougé`).toEqual(base.contour.slice(1))
+      sansErreur(base.erreurs, 'glisser un coin')
     })
 
-    await test.step('geste « molette »', async () => {
-      const avant = await mesurerVue(page, id, clic)
-      const boite = await page.locator('#rp9-map').boundingBox()
-      await page.mouse.move(boite.x + boite.width * 0.7, boite.y + boite.height * 0.5)
-      const haut = await page.evaluate(() => window.scrollY)
-      await page.mouse.wheel(0, -500)
-      await page.waitForTimeout(1500) // fin de l'animation de zoom de la carte
-      expect(await page.evaluate(() => window.scrollY), `geste « molette » (${SOURIS}) : la page ne défile pas`).toBe(haut)
-      const apres = await mesurerVue(page, id, clic)
-      expect(apres.echelle, `geste « molette » (${SOURIS}) : la molette zoome (degrés par pixel ${avant.echelle} -> ${apres.echelle})`)
-        .toBeLessThan(avant.echelle * 0.9)
-      sansErreur('molette')
-      vue = apres
+    await etape('geste « plein écran »', async () => {
+      await gestePleinEcran(page, SOURIS, (b) => b.click())
+      sansErreur(base.erreurs, 'plein écran')
     })
 
-    await test.step('geste « molette + Alt »', async () => {
-      const boite = await page.locator('#rp9-map').boundingBox()
+    let vMolette = null
+    await etape('geste « molette » (la carte zoome, la page ne défile pas)', async () => {
+      let depart = null
+      const v = vMolette = await mesurerApres(page, clic, async () => {
+        const c = await centreCarte(page)
+        depart = await defilement(page)
+        await page.mouse.move(c.x, c.y)
+        await page.mouse.wheel(0, -500)
+        await page.waitForTimeout(1500) // fin de l'animation de zoom
+        expect(await defilement(page), `geste « molette » (${SOURIS}) : la page ne défile pas`).toBe(depart)
+      })
+      expect(v.echelle, `geste « molette » (${SOURIS}) : la molette zoome (degrés par pixel ${base.echelle} -> ${v.echelle})`)
+        .toBeLessThan(base.echelle * 0.9)
+      sansErreur(v.erreurs, 'molette')
+    })
+
+    // Molette + Alt (rotation du fond hors mode calage : sans effet, jamais une exception — T1-F1-001) : jouée sur la
+    // carte déjà mesurée, sans ouvrir une page de plus.
+    await etape('geste « molette + Alt »', async () => {
+      const c = await centreCarte(page)
       await page.keyboard.down('Alt')
-      await page.mouse.move(boite.x + boite.width * 0.7, boite.y + boite.height * 0.5)
-      await page.mouse.wheel(0, 200)
+      await page.mouse.move(c.x, c.y)
+      await page.mouse.wheel(0, 300)
       await page.keyboard.up('Alt')
       await page.waitForTimeout(1000)
-      sansErreur('molette + Alt')
+      await expect(page.locator('#rp9-map canvas').first(), `geste « molette + Alt » (${SOURIS}) : la carte reste affichée`).toBeVisible()
+      sansErreur(vMolette.erreurs, 'molette + Alt')
     })
 
     for (const [sens, classe, plusPetit] of [['+', 'maplibregl-ctrl-zoom-in', true], ['−', 'maplibregl-ctrl-zoom-out', false]]) {
-      await test.step(`geste « ${sens} »`, async () => {
-        const cible = await centreRecoitLeClic(page, classe)
-        expect(cible.recu, `geste « ${sens} » (${SOURIS}) : le centre du bouton reçoit le clic (reçu par ${cible.sous})`).toBe(true)
-        const avant = await mesurerVue(page, id, clic)
-        await page.locator(`.${classe}`).click()
-        await page.waitForTimeout(1200)
-        const apres = await mesurerVue(page, id, clic)
-        const ok = plusPetit ? apres.echelle < avant.echelle * 0.9 : apres.echelle > avant.echelle * 1.1
-        expect(ok, `geste « ${sens} » (${SOURIS}) : le zoom change dans le bon sens (${avant.echelle} -> ${apres.echelle})`).toBe(true)
-        sansErreur(sens)
+      await etape(`geste « ${sens} »`, async () => {
+        const v = await mesurerApres(page, clic, async () => {
+          const cible = await centreRecoitLeClic(page, classe)
+          expect(cible.recu, `geste « ${sens} » (${SOURIS}) : le centre du bouton reçoit le clic (reçu par ${cible.sous})`).toBe(true)
+          await page.locator(`.${classe}`).click()
+          await page.waitForTimeout(1500)
+        })
+        const ok = plusPetit ? v.echelle < base.echelle * 0.9 : v.echelle > base.echelle * 1.1
+        expect(ok, `geste « ${sens} » (${SOURIS}) : le zoom change dans le bon sens (${base.echelle} -> ${v.echelle})`).toBe(true)
+        sansErreur(v.erreurs, sens)
       })
     }
-
-    await test.step('geste « plein écran »', async () => {
-      await gestePleinEcran(page, SOURIS, (b) => b.click())
-      sansErreur('plein écran')
-    })
   })
 })
 
@@ -359,102 +393,85 @@ test.describe('ACAL988 — gestes de carte au doigt (iPhone)', () => {
 
   test('la matrice des gestes au doigt', async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'les gestes à deux doigts passent par le protocole DevTools (Chromium seulement)')
-    test.setTimeout(480_000)
+    test.setTimeout(900_000)
     await carteRefusee(page.context())
-    const id = await calepinageVide(page.request)
-    const erreurs = await ouvrirAtelierGestes(page, id)
     const taper = (x, y) => page.touchscreen.tap(x, y)
-    const sansErreur = (geste) => expect(erreurs, `geste « ${geste} » (${IPHONE}) : aucun pageerror`).toEqual([])
-    const cdp = await page.context().newCDPSession(page)
-    // Doigts : chaque trajet {de, vers} ; `pas` étapes de touchMove entre le toucher et le relâchement.
-    const doigts = async (trajets, pas = 10) => {
-      const points = (t) => trajets.map((d, i) => ({ id: i, x: d.de.x + (d.vers.x - d.de.x) * t, y: d.de.y + (d.vers.y - d.de.y) * t }))
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(0) })
-      for (let i = 1; i <= pas; i += 1) {
-        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(i / pas) })
-      }
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-    }
-    const centreCarte = async () => {
-      const b = await page.locator('#rp9-map canvas').first().boundingBox()
-      const haut = Math.max(b.y, 0)
-      return { x: b.x + b.width / 2, y: haut + (Math.min(b.y + b.height, 844) - haut) / 2 }
-    }
+    const sansErreur = (erreurs, geste) => expect(erreurs, `geste « ${geste} » (${IPHONE}) : aucun pageerror`).toEqual([])
 
-    let vue = null
-    await test.step('geste « clic coin » (tap)', async () => {
-      vue = await mesurerVue(page, id, taper)
-      expect(vue.echelle, `geste « clic coin » (${IPHONE}) : trois taps posent trois coins`).toBeGreaterThan(0)
-      sansErreur('clic coin')
+    let base = null
+    await etape('geste « clic coin » (tap)', async () => {
+      base = await mesurerApres(page, taper)
+      expect(base.echelle, `geste « clic coin » (${IPHONE}) : trois taps posent trois coins`).toBeGreaterThan(0)
+      sansErreur(base.erreurs, 'clic coin')
     })
 
-    await test.step('geste « un doigt : la page défile »', async () => {
-      await page.locator('#rp9-map canvas').first().scrollIntoViewIfNeeded()
-      const c = await centreCarte()
-      const avant = await page.evaluate(() => window.scrollY)
-      await doigts([{ de: { x: c.x, y: c.y + 120 }, vers: { x: c.x, y: c.y - 120 } }])
-      await expect.poll(() => page.evaluate(() => window.scrollY), { message: `geste « un doigt » (${IPHONE}) : la page défile` }).toBeGreaterThan(avant + 20)
-      sansErreur('un doigt')
+    await etape('geste « plein écran » (tap)', async () => {
+      await gestePleinEcran(page, IPHONE, (b) => b.tap())
+      sansErreur(base.erreurs, 'plein écran')
     })
 
-    await test.step('geste « deux doigts : la carte bouge »', async () => {
+    await etape('geste « un doigt : la page défile »', async () => {
       await page.locator('#rp9-map canvas').first().scrollIntoViewIfNeeded()
-      const avant = await mesurerVue(page, id, taper)
-      const c = await centreCarte()
-      const haut = await page.evaluate(() => window.scrollY)
-      await doigts([
-        { de: { x: c.x - 40, y: c.y }, vers: { x: c.x - 40, y: c.y + 80 } },
-        { de: { x: c.x + 40, y: c.y }, vers: { x: c.x + 40, y: c.y + 80 } },
-      ])
-      await page.waitForTimeout(1200)
-      expect(await page.evaluate(() => window.scrollY), `geste « deux doigts » (${IPHONE}) : la page ne défile pas`).toBe(haut)
-      const apres = await mesurerVue(page, id, taper)
-      expect(apres.coinA, `geste « deux doigts » (${IPHONE}) : la carte a bougé sous les mêmes pixels`).not.toEqual(avant.coinA)
-      sansErreur('deux doigts')
+      const c = await centreCarte(page)
+      const avant = await defilement(page)
+      await doigts(page, [{ de: { x: c.x, y: c.y + 120 }, vers: { x: c.x, y: c.y - 120 } }])
+      await expect.poll(() => defilement(page), { message: `geste « un doigt » (${IPHONE}) : la page défile` }).toBeGreaterThan(avant + 20)
+      sansErreur(base.erreurs, 'un doigt')
     })
 
-    await test.step('geste « pincer »', async () => {
-      await page.locator('#rp9-map canvas').first().scrollIntoViewIfNeeded()
-      const avant = await mesurerVue(page, id, taper)
-      const c = await centreCarte()
-      await doigts([
-        { de: { x: c.x - 20, y: c.y }, vers: { x: c.x - 100, y: c.y } },
-        { de: { x: c.x + 20, y: c.y }, vers: { x: c.x + 100, y: c.y } },
-      ])
-      await page.waitForTimeout(1500)
-      const apres = await mesurerVue(page, id, taper)
-      expect(apres.echelle, `geste « pincer » (${IPHONE}) : écarter deux doigts zoome (${avant.echelle} -> ${apres.echelle})`)
-        .toBeLessThan(avant.echelle * 0.9)
-      sansErreur('pincer')
+    await etape('geste « deux doigts : la carte bouge »', async () => {
+      let haut = null
+      const v = await mesurerApres(page, taper, async () => {
+        const c = await centreCarte(page)
+        haut = await defilement(page)
+        await doigts(page, [
+          { de: { x: c.x - 40, y: c.y }, vers: { x: c.x - 40, y: c.y + 80 } },
+          { de: { x: c.x + 40, y: c.y }, vers: { x: c.x + 40, y: c.y + 80 } },
+        ])
+        await page.waitForTimeout(1200)
+        expect(await defilement(page), `geste « deux doigts » (${IPHONE}) : la page ne défile pas`).toBe(haut)
+      })
+      expect(v.coinA, `geste « deux doigts » (${IPHONE}) : la carte a bougé sous les mêmes pixels`).not.toEqual(base.coinA)
+      expect(Math.abs(v.echelle / base.echelle - 1), `geste « deux doigts » (${IPHONE}) : le zoom ne change pas`).toBeLessThan(0.05)
+      sansErreur(v.erreurs, 'deux doigts')
+    })
+
+    await etape('geste « pincer »', async () => {
+      const v = await mesurerApres(page, taper, async () => {
+        const c = await centreCarte(page)
+        await doigts(page, [
+          { de: { x: c.x - 20, y: c.y }, vers: { x: c.x - 100, y: c.y } },
+          { de: { x: c.x + 20, y: c.y }, vers: { x: c.x + 100, y: c.y } },
+        ])
+        await page.waitForTimeout(1500)
+      })
+      expect(v.echelle, `geste « pincer » (${IPHONE}) : écarter deux doigts zoome (${base.echelle} -> ${v.echelle})`)
+        .toBeLessThan(base.echelle * 0.9)
+      sansErreur(v.erreurs, 'pincer')
     })
 
     for (const [sens, classe, plusPetit] of [['+', 'maplibregl-ctrl-zoom-in', true], ['−', 'maplibregl-ctrl-zoom-out', false]]) {
-      await test.step(`geste « ${sens} » (tap)`, async () => {
-        const cible = await centreRecoitLeClic(page, classe)
-        expect(cible.recu, `geste « ${sens} » (${IPHONE}) : le centre du bouton reçoit le tap (reçu par ${cible.sous})`).toBe(true)
-        const avant = await mesurerVue(page, id, taper)
-        await page.locator(`.${classe}`).tap()
-        await page.waitForTimeout(1200)
-        const apres = await mesurerVue(page, id, taper)
-        const ok = plusPetit ? apres.echelle < avant.echelle * 0.9 : apres.echelle > avant.echelle * 1.1
-        expect(ok, `geste « ${sens} » (${IPHONE}) : le zoom change dans le bon sens (${avant.echelle} -> ${apres.echelle})`).toBe(true)
-        sansErreur(sens)
+      await etape(`geste « ${sens} » (tap)`, async () => {
+        const v = await mesurerApres(page, taper, async () => {
+          const cible = await centreRecoitLeClic(page, classe)
+          expect(cible.recu, `geste « ${sens} » (${IPHONE}) : le centre du bouton reçoit le tap (reçu par ${cible.sous})`).toBe(true)
+          await page.locator(`.${classe}`).tap()
+          await page.waitForTimeout(1500)
+        })
+        const ok = plusPetit ? v.echelle < base.echelle * 0.9 : v.echelle > base.echelle * 1.1
+        expect(ok, `geste « ${sens} » (${IPHONE}) : le zoom change dans le bon sens (${base.echelle} -> ${v.echelle})`).toBe(true)
+        sansErreur(v.erreurs, sens)
       })
     }
-
-    await test.step('geste « plein écran » (tap)', async () => {
-      await gestePleinEcran(page, IPHONE, (b) => b.tap())
-      sansErreur('plein écran')
-    })
   })
 })
 
 // WebKit réel (iPhone 13) : les gestes à un point (tap, « + » / « − », plein écran). Ignoré, en le disant, quand
 // le navigateur WebKit n'est pas installé (aucune installation n'est tentée) ; les gestes à deux doigts restent
-// jouables seulement sous Chromium.
+// jouables seulement sous Chromium (protocole DevTools).
 test('ACAL988 — WebKit iPhone 13 : tap coin, « + » / « − », plein écran', async ({ playwright, browserName }, testInfo) => {
-  test.skip(browserName !== 'chromium', 'projet déjà WebKit : la ligne Chromium lance WebKit elle-même')
-  test.setTimeout(480_000)
+  test.skip(browserName !== 'chromium', 'la ligne Chromium lance WebKit elle-même')
+  test.setTimeout(900_000)
   let navigateur = null
   try { navigateur = await playwright.webkit.launch() } catch { navigateur = null }
   test.skip(!navigateur, 'navigateur WebKit non installé pour Playwright : gestes WebKit non jouables ici')
@@ -465,23 +482,22 @@ test('ACAL988 — WebKit iPhone 13 : tap coin, « + » / « − », plein écran
   try {
     const page = await contexte.newPage()
     await carteRefusee(contexte)
-    const id = await calepinageVide(page.request)
-    const erreurs = await ouvrirAtelierGestes(page, id)
     const taper = (x, y) => page.touchscreen.tap(x, y)
-    const avant = await mesurerVue(page, id, taper)
-    expect(avant.echelle, `geste « clic coin » (${WEBKIT}) : trois taps posent trois coins`).toBeGreaterThan(0)
-    for (const [sens, classe, plusPetit] of [['+', 'maplibregl-ctrl-zoom-in', true], ['−', 'maplibregl-ctrl-zoom-out', false]]) {
-      const cible = await centreRecoitLeClic(page, classe)
-      expect(cible.recu, `geste « ${sens} » (${WEBKIT}) : le centre du bouton reçoit le tap (reçu par ${cible.sous})`).toBe(true)
-      const base = await mesurerVue(page, id, taper)
-      await page.locator(`.${classe}`).tap()
-      await page.waitForTimeout(1200)
-      const apres = await mesurerVue(page, id, taper)
-      const ok = plusPetit ? apres.echelle < base.echelle * 0.9 : apres.echelle > base.echelle * 1.1
-      expect(ok, `geste « ${sens} » (${WEBKIT}) : le zoom change dans le bon sens (${base.echelle} -> ${apres.echelle})`).toBe(true)
-    }
+    const base = await mesurerApres(page, taper)
+    expect(base.echelle, `geste « clic coin » (${WEBKIT}) : trois taps posent trois coins`).toBeGreaterThan(0)
+    expect(base.erreurs, `geste « clic coin » (${WEBKIT}) : aucun pageerror`).toEqual([])
     await gestePleinEcran(page, WEBKIT, (b) => b.tap())
-    expect(erreurs, `gestes de carte (${WEBKIT}) : aucun pageerror`).toEqual([])
+    for (const [sens, classe, plusPetit] of [['+', 'maplibregl-ctrl-zoom-in', true], ['−', 'maplibregl-ctrl-zoom-out', false]]) {
+      const v = await mesurerApres(page, taper, async () => {
+        const cible = await centreRecoitLeClic(page, classe)
+        expect(cible.recu, `geste « ${sens} » (${WEBKIT}) : le centre du bouton reçoit le tap (reçu par ${cible.sous})`).toBe(true)
+        await page.locator(`.${classe}`).tap()
+        await page.waitForTimeout(1500)
+      })
+      const ok = plusPetit ? v.echelle < base.echelle * 0.9 : v.echelle > base.echelle * 1.1
+      expect(ok, `geste « ${sens} » (${WEBKIT}) : le zoom change dans le bon sens (${base.echelle} -> ${v.echelle})`).toBe(true)
+      expect(v.erreurs, `geste « ${sens} » (${WEBKIT}) : aucun pageerror`).toEqual([])
+    }
   } finally {
     await contexte.close()
     await navigateur.close()

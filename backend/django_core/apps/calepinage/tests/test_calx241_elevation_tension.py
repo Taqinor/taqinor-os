@@ -25,7 +25,7 @@ Run :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.raccordement import (
-    CODE_ELEVATION, RaccordementInvalide, _elevation_de_tension,
+    CODE_ELEVATION, RaccordementInvalide, _elevation_de_tension, _nom, _titre,
 )
 from core.electrique.cables import RHO_CUIVRE_20C, chute_tension_v
 
@@ -65,7 +65,7 @@ class SansLimiteTest(SimpleTestCase):
 
         self.assertEqual(verdict.code, CODE_ELEVATION)
         self.assertEqual(verdict.statut, 'non_verifiable')
-        self.assertIn('limite_elevation_pct', verdict.libelle)
+        self.assertIn(_nom('limite_elevation_pct'), verdict.libelle)
         self.assertIsNone(verdict.borne)
 
     def test_aucun_bareme_marocain_n_est_suppose(self):
@@ -164,7 +164,7 @@ class OmissionsTest(SimpleTestCase):
             TRONCONS, {'courant_a': 14.4, 'phases': 3})
 
         self.assertIsNone(bloc['elevation_pct'])
-        self.assertTrue(any('tension_nominale_v' in motif
+        self.assertTrue(any(_titre('tension_nominale_v') in motif
                             for motif in bloc['omissions']))
 
     def test_sans_regime_saisi_aucun_coefficient_n_est_suppose(self):

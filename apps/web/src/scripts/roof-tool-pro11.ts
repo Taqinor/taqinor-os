@@ -652,8 +652,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // de facture ou nouveau tracé.
   let neededPanels = 0;
   let neededAuto = true;
-  /** R2-13 — le nombre de panneaux du devis lu à la dernière hydratation (exposé par `ctx.panneauxDevis`). */
-  let panneauxDevisLu: number | null = null;
   // L2 — vrai dès que `applyDevisHydration` a tourné (devis OU affaire AO) : figé pour
   // toute la session, jamais remis à false. Lu par optimizer.ts (placedFor/buildPitchedLocks)
   // pour distinguer « besoin nul, mode lead » (remplir ce qui tient, historique) de
@@ -845,9 +843,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
     get cibleVendue() {
       return cibleVendue;
-    },
-    get panneauxDevis() {
-      return panneauxDevisLu;
     },
     get rec() {
       return rec;
@@ -2069,8 +2064,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CAL37 — figé pour la session, comme `devisMode` : un calepinage autonome
     // (`cibleVendue: false`) n'a AUCUNE vente derrière lui.
     cibleVendue = h.cibleVendue;
-    derniereCible = { cibleVendue: h.cibleVendue, neededPanels: h.neededPanels }; // ACAL925
-    panneauxDevisLu = h.neededPanels;
+    derniereCible = { cibleVendue: h.cibleVendue, neededPanels: h.neededPanels }; ctx.panneauxDevis = h.neededPanels; // ACAL925, R2-13
     const layout = devis.geometrie?.roof_layout ?? null;
     // ACAL31 — mesures (CAL102), zones d'exclusion (CAL69), retraits (CAL76), horizon (CAL93),
     // scène (CALX119), bâtiments (CALX100) et fond (CALX107) sont relus par
@@ -4325,10 +4319,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // avant map.on('load') (map.getLayer(...) renvoie undefined tant que
     // les layers n'existent pas encore).
     setReferenceContourVisible: (visible: boolean) => setReferenceContourVisible(visible),
-    majChiffrage: (chiffrage, panneauxDevis) => {
-      if (panneauxDevis !== undefined) panneauxDevisLu = typeof panneauxDevis === 'number' && panneauxDevis > 0 ? panneauxDevis : null; // R2-13
-      optimizer.majChiffrage(chiffrage); // ACAL994
-    },
+    majChiffrage: (chiffrage, panneauxDevis) => optimizer.majChiffrage(chiffrage, panneauxDevis), // ACAL994, R2-13
     // AP-F2 — « Recommencer depuis le tracé client », posée par ToitureDesign.jsx à
     // côté de la note « Calepinage automatique depuis le tracé client — à vérifier ».
     recommencerDepuisTraceClient: () => recommencerDepuisTraceClient(),

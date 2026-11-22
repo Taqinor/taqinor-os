@@ -167,11 +167,8 @@ class TotalApresJonctionTest(unittest.TestCase):
     """R3-18 — « page X / N » compte le document REMIS, schéma joint compris.
     Le rendu est injecté (``render_pdf`` simulé) : aucun WeasyPrint requis."""
 
-    def setUp(self):
-        try:
-            importlib.import_module('fitz')
-        except Exception:
-            self.skipTest('PyMuPDF indisponible sur ce poste')
+    # PyMuPDF est une dépendance ÉPINGLÉE (requirements.txt) : aucun saut
+    # d'environnement ici (garde ENF23) — le test lit le PDF avec ``fitz``.
 
     def test_le_compteur_du_gabarit_est_remplace_par_le_vrai_total(self):
         from apps.calepinage.services.rapport import _html_avec_total_de_pages

@@ -20,18 +20,23 @@ export const sorties = {
     // R3-20 — `options` (`{timeout, suppressErrorToast}`) : le panneau passe
     // le MÊME budget que `telechargerDocument` ; sans lui, 20 s (axios.js).
     telechargerSortie: (endpoint, params, options) =>
-      api.get(endpoint, { responseType: 'blob', params, ...options }),
+      api.get(endpoint, { responseType: 'blob', params,
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+        ...(options?.timeout ? { timeout: options.timeout } : {}) }),
     // ACAL536 — le KML (pans, zones, modules posés) pour Google Earth, en
     // blob ; contrat `contract_samples/calepinage_export_kml.json` (200 =
     // fichier KML, 409 = conception sans géométrie, refus nommé).
     exportKml: (id, options) =>
-      api.get(`${pivot(id)}export.kml/`, { responseType: 'blob', ...options }),
+      api.get(`${pivot(id)}export.kml/`, { responseType: 'blob',
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+        ...(options?.timeout ? { timeout: options.timeout } : {}) }),
 
     // ACAL761 — le schéma « où va l'énergie » (SVG rendu par le serveur) ;
     // `langue` optionnelle (fr, en). Lecture pure, en blob.
     diagrammeEnergie: (id, langue, options) => api.get(`${pivot(id)}diagramme-energie.svg/`,
       { responseType: 'blob', params: langue ? { langue } : undefined,
-        suppressErrorToast: true, ...options }),
+        suppressErrorToast: options?.suppressErrorToast ?? true,
+        ...(options?.timeout ? { timeout: options.timeout } : {}) }),
 
     // CALX24 — compose le dossier technique (planche + note de calcul
     // fusionnées) et le DÉPOSE dans la GED : en ÉCRITURE (POST), gardée par
@@ -39,7 +44,9 @@ export const sorties = {
     // `{document, nom, pieces, pages_attendues, signalements}`. Aucun import
     // `apps.ged` ici — l'écran ne parle qu'à CETTE action.
     composerPackTechnique: (id, options) =>
-      api.post(`${pivot(id)}pack-technique/`, undefined, options),
+      api.post(`${pivot(id)}pack-technique/`, undefined, {
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+        ...(options?.timeout ? { timeout: options.timeout } : {}) }),
 
     // CALX28 — export/import du DOCUMENT de conception (`roof_layout`,
     // schéma v2 — `views/io_layout.py`, CAL216). `exporterConception` rend

@@ -63,6 +63,18 @@ describe('CIQ135 — CarteIndustrielleMt', () => {
     expect(profil.registresMt[3].puissance).toBe('123.456')
   })
 
+  // R1-09 / R1-10 (recette 22/11) — un Chrome en anglais lisait « 0,85 » 85 et
+  // « 1 250,5 » 12505 : la saisie française se lit juste.
+  it('« 0,85 » dans le cos φ ⇒ 0.85 ; « 1 250,5 » dans un registre ⇒ 1250.5', () => {
+    let profil = null
+    render(<Harnais onProfil={(p) => { profil = p }} />)
+    fireEvent.change(document.getElementById('gen-ci-cos-phi'), { target: { value: '0,85' } })
+    expect(profil.cosPhi).toBe('0.85')
+    fireEvent.change(screen.getByTestId('gen-ci-reg-3-puissance'), { target: { value: '1 250,5' } })
+    expect(profil.registresMt[3].puissance).toBe('1250.5')
+    expect(screen.getByTestId('gen-ci-reg-3-puissance').value).toBe('1 250,5')
+  })
+
   it('fichier importé ⇒ `courbe_mesuree` transmis (contenu envoyé au parseur serveur)', async () => {
     let profil = null
     render(<Harnais onProfil={(p) => { profil = p }} />)

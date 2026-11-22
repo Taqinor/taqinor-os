@@ -113,7 +113,9 @@ export const simulation = {
     // produit AUCUN fichier et le serveur refuse en 400 en NOMMANT le champ
     // en cause — l'écran affiche CE motif-là, il n'en invente aucun.
     sldDxf: (id, options) =>
-      api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob', ...options }),
+      api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob',
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+        ...(options?.timeout ? { timeout: options.timeout } : {}) }),
 }
 // ACAL387 — contrat calepinage_profil_depart.json (M0)
 // ACAL388 — contrat calepinage_balayage.json (M0)

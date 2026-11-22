@@ -125,10 +125,14 @@ export function usePersistanceDevis(ctx) {
     if (orphan) {
       e.lines = `Sélectionnez un produit du stock pour la ligne « ${orphan.designation || '—'} »`
     } else if (sansPrix.length) {
+      // R5-01 (recette 22/11/2026) — c'est un REFUS : il se dit comme tel, avec
+      // le geste qui débloque (« ne sera pas enregistrée » se lisait comme un
+      // avertissement, le vendeur recliquait sans rien voir partir).
       e.lines = sansPrix.length === 1
-        ? `1 ligne « prix à renseigner » ne sera pas enregistrée : ${nomLigne(sansPrix[0])}`
-        : `${sansPrix.length} lignes « prix à renseigner » ne seront pas enregistrées : `
-          + sansPrix.map(nomLigne).join(', ')
+        ? `Enregistrement bloqué : 1 ligne « prix à renseigner » (${nomLigne(sansPrix[0])}) — `
+          + 'saisissez son prix dans Stock ou supprimez la ligne.'
+        : `Enregistrement bloqué : ${sansPrix.length} lignes « prix à renseigner » `
+          + `(${sansPrix.map(nomLigne).join(', ')}) — saisissez leur prix dans Stock ou supprimez ces lignes.`
     } else if (!usableLines().length) {
       e.lines = 'Au moins une ligne avec un produit et une quantité > 0'
     } else if (!accessoiresOnly) {
@@ -704,9 +708,16 @@ export function usePersistanceDevis(ctx) {
     }
   }
 
+  // R5-01 — un refus de `validate()` amène le bandeau des raisons sous les yeux :
+  // le bouton « Créer » de l'en-tête est loin de lui, le clic paraissait muet.
+  const montrerRefus = () => setTimeout(() => {
+    globalThis.document?.querySelector('[data-testid="erreur-enregistrement"]')
+      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, 0)
+
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate()) { montrerRefus(); return }
     // AGNR73 — 1er clic : l'avertissement des lignes sans produit est affiché, rien n'est écrit ;
     // 2e clic sur les MÊMES lignes : enregistré sans elles ; lignes changées : nouvel avertissement.
     const signature = lignesEcartees(lines).map(l => `${l.designation.trim()}×${l.quantite}`).join('|')
