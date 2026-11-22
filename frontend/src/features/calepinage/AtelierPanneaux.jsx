@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 /* CALX27 — le droit d'ÉCRITURE métier du module. Même code que la garde
@@ -148,6 +148,29 @@ export default function AtelierPanneaux({
   const [messageAuto, setMessageAuto] = useState('')
   const [rechercheAuto, setRechercheAuto] = useState(false)
   const leadId = calepinage?.lead ?? null
+  /* ACAL867 — à l'étape Documents GUIDÉE, « Générer le devis » quitte `cal-atelier-actions` : le rail le
+     monte dans l'écran de l'étape (UNE instance visible). L'étape et le mode viennent du rappel `onEtape`. */
+  const [etapeVue, setEtapeVue] = useState(null)
+  const surEtape = useCallback((vue) => {
+    setEtapeVue((avant) => (avant?.etape === vue?.etape && avant?.expert === vue?.expert
+      ? avant : { etape: vue?.etape, expert: vue?.expert }))
+    onEtape?.(vue)
+  }, [onEtape])
+  const devisAuRail = etapeVue?.etape === 'documents' && !etapeVue.expert
+  const boutonDevis = (
+    <BoutonDevis
+      calepinageId={calepinageId}
+      detail={detail}
+      lectureSeule={enLectureSeule}
+      onRecharger={onRecharger}
+      onRelire={relire}
+      enregistrerAvant={enregistrerAvant}
+      aDesRetouches={aDesRetouches}
+      atelierPret={atelierPret}
+      // ACAL93 — le verdict SERVEUR (design-context, ACAL36).
+      revisionPossible={!!contexte?.revision_possible}
+    />
+  )
   const lancerConceptionAuto = async () => {
     setRechercheAuto(true)
     setMessageAuto(MSG_EN_COURS)
@@ -253,7 +276,8 @@ export default function AtelierPanneaux({
         documentVivant={documentVivant}
         expert={expert}
         onBasculerExpert={basculerExpert}
-        onEtape={onEtape}
+        onEtape={surEtape}
+        actionDevis={devisAuRail ? boutonDevis : null}
       />
 
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
@@ -291,18 +315,7 @@ export default function AtelierPanneaux({
       </div>
 
       <div className="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
-        <BoutonDevis
-          calepinageId={calepinageId}
-          detail={detail}
-          lectureSeule={enLectureSeule}
-          onRecharger={onRecharger}
-          onRelire={relire}
-          enregistrerAvant={enregistrerAvant}
-          aDesRetouches={aDesRetouches}
-          atelierPret={atelierPret}
-          // ACAL93 — le verdict SERVEUR (design-context, ACAL36).
-          revisionPossible={!!contexte?.revision_possible}
-        />
+        {devisAuRail ? null : boutonDevis}
         {/* SOLMVP15 — le bouton « Reprendre le contour de l'affaire » (CAL242)
             était posé ici. Son endpoint est parti avec l'app d'appels d'offres,
             qui sort du produit : il n'y a plus d'affaire dont reprendre le

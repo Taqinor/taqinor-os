@@ -935,6 +935,9 @@ retiré plus un hook ajouté.
 
 | Hook | Sémantique |
 |---|---|
+| `cal-etape-documents-ecran` | étape Documents guidée : écran de fin de parcours (panneau « Prêt à envoyer ? », bouton de devis, documents). |
+| `cal-documents-synthese` | étape Documents : le compte du panneau « Prêt à envoyer ? » en tête. |
+| `cal-etape-documents-devis` | étape Documents : l’emplacement du bouton « Générer le devis » (une seule instance visible, relayée par le rail). |
 
 ## PretAEnvoyer — ACAL865 (`commun/PretAEnvoyer.jsx`)
 

@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { formatNumber } from '../../../lib/format'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: { resultat: vi.fn() } },
@@ -327,5 +328,48 @@ describe('ReglagesUtilises — prop ouvert (ACAL698)', () => {
     expect(screen.getByTestId('acal52-reglages-utilises')).toHaveAttribute('open')
     rerender(<ReglagesUtilises simulation={simulation} ouvert={false} />)
     expect(screen.getByTestId('acal52-reglages-utilises')).not.toHaveAttribute('open')
+  })
+})
+
+/* ACAL995 — ce que le devis annoncera, lu dans `chiffrage` (design-context, ACAL993 ;
+   forme `ventes/chiffrage_conception.json`, ACAL991). La simulation vaut la production
+   de l'exemple « pose réelle » du même contrat (98 576 kWh) : écart −11,5 %. */
+describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () => {
+  const ville = exempleContrat('ventes', 'chiffrage_conception', 'exemple_ville')
+  const pose = exempleContrat('ventes', 'chiffrage_conception', 'exemple')
+  const simule = () => {
+    const r = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    r.data.production.total.p50_kwh = pose.production_annuelle_kwh.valeur
+    calepinageApi.calepinages.resultat.mockResolvedValue(r)
+  }
+
+  const rendreAvec = (chiffrage) => render(
+    <MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={chiffrage} /></MemoryRouter>,
+  )
+
+  it('standard ville ⇒ la ligne et l’écart −11,5 %', async () => {
+    simule()
+    rendreAvec(ville)
+    // Espaces fines de `formatNumber` : comparées après normalisation des deux côtés.
+    const espaces = (t) => t.replace(/\s/g, ' ')
+    expect(espaces((await screen.findByTestId('acal995-devis-annonce')).textContent)).toBe(espaces(
+      `Le devis annonce : ${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — `
+      + `production standard de la ville (étude technique : −${formatNumber(11.5, { decimals: 1 })} %)`))
+  })
+
+  it('calepinage enregistré ⇒ rien', async () => {
+    simule()
+    rendreAvec(pose)
+    await screen.findByTestId('calx65-simulation')
+    expect(screen.queryByTestId('acal995-devis-annonce')).toBeNull()
+  })
+
+  it('non servi ⇒ « Le devis n’est pas encore chiffré : <motif servi> »', async () => {
+    const vide = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_vide').chiffrage
+    simule()
+    rendreAvec(vide)
+    const motif = vide.omissions.find((o) => o.grandeur === 'production_annuelle_kwh').motif
+    expect(await screen.findByTestId('acal995-devis-annonce'))
+      .toHaveTextContent(`Le devis n’est pas encore chiffré : ${motif}`)
   })
 })

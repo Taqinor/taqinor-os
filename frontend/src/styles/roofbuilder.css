@@ -244,9 +244,13 @@
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-.rp9-host .rp9-chip:hover {
-  border-color: var(--rp-brass-400);
-  color: var(--rp-brass-300);
+/* ACAL969 — le survol n'existe que pour un pointeur qui survole : après un toucher il restait « collé »
+   et se lisait comme un second état « choisi » (le seul état choisi est `[aria-pressed='true']`). */
+@media (hover: hover) {
+  .rp9-host .rp9-chip:hover {
+    border-color: var(--rp-brass-400);
+    color: var(--rp-brass-300);
+  }
 }
 .rp9-host .rp9-chip[aria-pressed='true'] {
   border-color: var(--rp-brass-400);
@@ -312,6 +316,50 @@
   color: var(--rp-lune-soft);
   background: transparent;
   border-radius: 2px;
+}
+
+/* ── Retraits, priorité de pose et notes créés à la volée — ACAL969 ──────── */
+.rp9-host .rp9-setbacks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+}
+.rp9-host .rp9-setbacks > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6rem;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  font-size: 0.875rem;
+  color: var(--rp-lune-soft);
+}
+.rp9-host .rp9-setbacks > .rp9-note { grid-column: 1 / -1; }
+.rp9-host .rp9-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--rp-lune-faint);
+  overflow-wrap: anywhere;
+}
+.rp9-host .rp9-priorite {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--rp-lune-soft);
+}
+.rp9-host .rp9-priorite .rp9-input {
+  width: 100%;
+  max-width: 100%;
+  min-height: 2.75rem;
+}
+@media (max-width: 639px) {
+  .rp9-host .rp9-setbacks { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── Curseurs (rp9-range) ───────────────────────────────────────────────── */

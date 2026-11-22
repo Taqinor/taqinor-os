@@ -122,6 +122,10 @@ export interface InitOptions {
    *  (barème indicatif) ») ; absente = pages publiques, comportement inchangé. */
   proposerConsommation?: ((corps: import('./consumption').CorpsPropositionConsommation) =>
     Promise<import('./consumption').PropositionConsommation>) | null;
+  /** ACAL918 — demande au MOTEUR le plan d'une surface de pose enregistrée (`POST calepinage/moteur/pose/`), fournie
+   *  par la page hôte (l'atelier ne parle jamais à Django) : rend la réponse du moteur, ou rejette avec une
+   *  `Error` dont le message est le motif français. Absente (pages publiques) = comportement d'avant. */
+  demanderPlanSurface?: (surface: import('./poseSurfaces').SurfacePose) => Promise<unknown>;
   /** ACAL840 — la lecture d'une PHOTO de facture (`GET`/`POST calepinages/<pk>/consommation/lire-facture/`,
    *  contrat `calepinage_consommation_photo_facture.json`), fournie par la page hôte (même patron
    *  que `proposerConsommation`). `null`/absente = aucun bouton « Lire une photo de facture ». */

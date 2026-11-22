@@ -108,6 +108,42 @@ describe('SchemaUnifilairePanel (CAL195)', () => {
   })
 })
 
+describe('SchemaUnifilairePanel — croquis de principe grisé (ACAL1028)', () => {
+  it('fiche incomplète : croquis et légende AU-DESSUS de la liste, sans aucune valeur ni nombre', async () => {
+    servir({ calepinage: 12, svg: null, bloquants: [], manquantes: ['module : Isc (A)'] })
+
+    rendre()
+
+    const croquis = await screen.findByTestId('acal1028-croquis')
+    expect(screen.getByTestId('acal1028-legende')).toHaveTextContent(
+      'Croquis de principe, sans valeur : votre schéma s’affichera quand les champs ci-dessous seront remplis.')
+    expect(croquis.textContent).not.toMatch(/\d/)
+    const liste = screen.getByTestId('cal195-manquantes')
+    expect(croquis.compareDocumentPosition(liste) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // La liste du serveur reste mot pour mot.
+    expect(screen.getByText('module : Isc (A)')).toBeInTheDocument()
+  })
+
+  it('bloquants seuls, schéma réel ou rien à dire : aucun croquis', async () => {
+    servir({ calepinage: 12, svg: null, manquantes: [], bloquants: ['MPPT 1 : 3 chaînes'] })
+    rendre()
+    await screen.findByTestId('cal195-bloquants')
+    expect(screen.queryByTestId('acal1028-croquis')).toBeNull()
+    cleanup()
+
+    servir({ calepinage: 12, svg: '<svg><title>SLD</title></svg>', bloquants: [], manquantes: ['reste un manque'] })
+    rendre()
+    await screen.findByTestId('cal195-svg')
+    expect(screen.queryByTestId('acal1028-croquis')).toBeNull()
+    cleanup()
+
+    servir({ calepinage: 12, svg: null, bloquants: [], manquantes: [] })
+    rendre()
+    await screen.findByTestId('cal195-sans-motif')
+    expect(screen.queryByTestId('acal1028-croquis')).toBeNull()
+  })
+})
+
 describe('SchemaUnifilairePanel — export PNG/SVG depuis le navigateur (CALX236)', () => {
   it('le bouton d’export est ABSENT tant que `svg` vaut `null`', async () => {
     servir({ calepinage: 12, svg: null, bloquants: [], manquantes: [] })

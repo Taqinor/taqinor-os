@@ -237,6 +237,33 @@ def _appoint_variateur(calepinage, variateur_id, serie, appoint):
 APPOINTS = ('reseau', 'groupe')
 
 
+def _bilans_reservoir(corps, besoin_jour_mois, pvgis, profils, reservoir):
+    """ACAL1114 / ACAL815 — ``(bilan_reservoir, comparaison)`` : le bilan du réservoir jour par jour (production
+    PVGIS ÷ jours du mois), puis le pompage direct (fenêtre de demande saisie) contre le réservoir déclaré
+    (heures-pic de chaque profil PVGIS déjà lu), à production égale."""
+    production_jour = [m / j for m, j in zip(pvgis, dim.JOURS_PAR_MOIS)] if pvgis else None
+    bilan_reservoir = bilan_reservoir_journalier(
+        besoin_m3_jour_mois=besoin_jour_mois, volume_reservoir_m3=reservoir,
+        production_m3_jour_mois=production_jour)
+    comparaison = comparaison_direct_reservoir(
+        besoin_m3_jour_mois=besoin_jour_mois, production_m3_jour_mois=production_jour,
+        heures_pic_mois=[heures_pic(p) for p in profils] if profils and len(profils) == 12 else None,
+        heures_demande_h=_nombre(corps.get('heures_demande_h')), volume_reservoir_m3=reservoir)
+    return bilan_reservoir, comparaison
+
+
+def _pompes_sur_variateur(corps, variateur_servi):
+    """ACAL821 — plusieurs pompes sur le variateur SERVI (``None`` sans liste saisie)."""
+    if not corps.get('pompes_variateur'):
+        return None
+    pompes_variateur = controle_pompes_par_variateur(
+        pompes=corps['pompes_variateur'], variateur=variateur_servi, mode=corps.get('mode_pompes'))
+    if variateur_servi is None and pompes_variateur['verdict'] == 'non_verifiable' \
+            and pompes_variateur['motif'] == 'plaque du variateur (kW) non publiée':
+        pompes_variateur['motif'] = 'aucun variateur retenu'
+    return pompes_variateur
+
+
 _NOMBRES_POMPAGE = (
     'hmt_saisie', 'debit_souhaite_m3h', 'heures_pompage',
     'volume_reservoir_m3', 'besoin_m3_jour', 'niveau_statique_m',
@@ -513,16 +540,7 @@ def pompage(self, request, pk=None):
     besoin_jour_mois = [besoin_jour] * 12 if besoin_jour is not None else (
         [b / j if b is not None else None for b, j in zip(besoin_mois, dim.JOURS_PAR_MOIS)] if besoin_mois else None)
     pvgis = (volumes or {}).get('m3_mois_pvgis')
-    production_jour = [m / j for m, j in zip(pvgis, dim.JOURS_PAR_MOIS)] if pvgis else None
-    bilan_reservoir = bilan_reservoir_journalier(
-        besoin_m3_jour_mois=besoin_jour_mois, volume_reservoir_m3=reservoir,
-        production_m3_jour_mois=production_jour)
-    # ACAL815 — pompage direct (fenêtre de demande saisie) contre réservoir déclaré
-    # (heures-pic de chaque profil PVGIS déjà lu), à production égale.
-    comparaison = comparaison_direct_reservoir(
-        besoin_m3_jour_mois=besoin_jour_mois, production_m3_jour_mois=production_jour,
-        heures_pic_mois=[heures_pic(p) for p in profils] if profils and len(profils) == 12 else None,
-        heures_demande_h=_nombre(corps.get('heures_demande_h')), volume_reservoir_m3=reservoir)
+    bilan_reservoir, comparaison = _bilans_reservoir(corps, besoin_jour_mois, pvgis, profils, reservoir)
 
     # ── 3 bis. ACAL810 — les chaînes du champ posé contre le variateur ──────
     serie = corps.get('modules_en_serie')
@@ -538,14 +556,7 @@ def pompage(self, request, pk=None):
             'variante retenue' % (chaines['paralleles'], chaines['serie'],
                                   chaines['modules_poses']))
 
-    # ACAL821 — plusieurs pompes sur le variateur SERVI (absent sans liste saisie).
-    pompes_variateur = None
-    if corps.get('pompes_variateur'):
-        pompes_variateur = controle_pompes_par_variateur(
-            pompes=corps['pompes_variateur'], variateur=variateur_servi, mode=corps.get('mode_pompes'))
-        if variateur_servi is None and pompes_variateur['verdict'] == 'non_verifiable' \
-                and pompes_variateur['motif'] == 'plaque du variateur (kW) non publiée':
-            pompes_variateur['motif'] = 'aucun variateur retenu'
+    pompes_variateur = _pompes_sur_variateur(corps, variateur_servi)  # ACAL821
 
     besoin = couverture_besoin_eau(
         besoin_m3_jour=besoin_jour, besoin_m3_mois=besoin_mois,

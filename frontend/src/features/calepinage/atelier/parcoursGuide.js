@@ -73,6 +73,13 @@ export const ECRANS_ETAPE = {
     onglets: ['pertes', 'postes-pertes'],
     composant: lazy(() => import('./PanneauPertesUnifie')),
   },
+  // ACAL867 — Documents : écran de FIN de parcours (« Prêt à envoyer ? », « Générer le devis », documents).
+  documents: {
+    ouverture: 'documents',
+    libelle: 'Documents',
+    onglets: ['documents'],
+    composant: lazy(() => import('../documents/EtapeDocuments')),
+  },
 }
 
 /** L'écran guidé qui porte l'onglet `cleOnglet` (ou `null`). */

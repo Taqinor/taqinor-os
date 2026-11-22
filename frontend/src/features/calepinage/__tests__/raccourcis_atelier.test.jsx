@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 import RaccourcisAtelier from '../RaccourcisAtelier'
 import { RACCOURCIS, estSaisieEnCours } from '../RaccourcisAtelier.helpers'
 import { lignesDePortee } from '@roofpro/raccourcisAtelier'
@@ -23,6 +23,50 @@ function actionsEspionnees() {
 }
 
 const rendre = (actions) => render(<RaccourcisAtelier actions={actions} />)
+
+/** ACAL1027 — un `matchMedia` doublé : `tactile` dit si la requête « sans survol, pointeur grossier » est vraie. */
+function doublerMatchMedia(tactile) {
+  const ecouteurs = new Set()
+  window.matchMedia = vi.fn((requete) => ({
+    matches: requete === '(hover: none) and (pointer: coarse)' ? tactile.valeur : false,
+    media: requete,
+    addEventListener: (_nom, f) => ecouteurs.add(f),
+    removeEventListener: (_nom, f) => ecouteurs.delete(f),
+  }))
+  return ecouteurs
+}
+
+describe('ACAL1027 — le lien « Raccourcis clavier (?) » sur un appareil sans clavier', () => {
+  afterEach(() => { delete window.matchMedia })
+
+  it('écran tactile principal : pas de bouton, mais « ? » ouvre toujours l’aide', () => {
+    doublerMatchMedia({ valeur: true })
+    rendre(actionsEspionnees())
+    expect(screen.queryByTestId('cal-raccourcis-bouton')).toBeNull()
+    fireEvent.keyDown(window, { key: '?' })
+    expect(screen.getByTestId('cal-raccourcis-aide')).toBeInTheDocument()
+  })
+
+  it('souris, ou pas de matchMedia : le bouton est rendu comme avant', () => {
+    doublerMatchMedia({ valeur: false })
+    rendre(actionsEspionnees())
+    expect(screen.getByTestId('cal-raccourcis-bouton')).toBeInTheDocument()
+    cleanup()
+    delete window.matchMedia
+    rendre(actionsEspionnees())
+    expect(screen.getByTestId('cal-raccourcis-bouton')).toBeInTheDocument()
+  })
+
+  it('suit un changement de mode (événement change de la requête)', () => {
+    const tactile = { valeur: true }
+    const ecouteurs = doublerMatchMedia(tactile)
+    rendre(actionsEspionnees())
+    expect(screen.queryByTestId('cal-raccourcis-bouton')).toBeNull()
+    tactile.valeur = false
+    act(() => { ecouteurs.forEach((f) => f()) })
+    expect(screen.getByTestId('cal-raccourcis-bouton')).toBeInTheDocument()
+  })
+})
 
 describe('CAL101 — l’aide-mémoire liste TOUS les raccourcis', () => {
   it('s’ouvre par « ? » et se referme par « ? »', () => {

@@ -50,3 +50,51 @@ test("ACAL438 : aucun texte de l'atelier sous 12 px", () => {
   const css = readFileSync(join(SRC, 'styles/roofbuilder.css'), 'utf8')
   for (const m of css.matchAll(/font(?:-size)?:\s*(?:[0-9]+\s+)?(0?\.\d+)rem/g)) assert.ok(parseFloat(m[1]) >= 0.75, `roofbuilder.css : ${m[0]} < 0,75 rem`)
 })
+
+// ACAL969 — GARDE « K-STYLE » : toute classe `rp9-*` posée par le constructeur (`className = '…'` dans
+// `apps/web/src/scripts/roof-tool-pro11.ts`) a une règle dans `roofbuilder.css`, un seul état « choisi »
+// (`[aria-pressed='true']`, fond doré), un survol réservé aux pointeurs qui survolent, un badge « recommandé »
+// distinct (sans fond, ≥ 12 px).
+const CSS_ROOFBUILDER = readFileSync(join(SRC, 'styles/roofbuilder.css'), 'utf8')
+const SCRIPT_PRO11 = readFileSync(join(SRC, '../../apps/web/src/scripts/roof-tool-pro11.ts'), 'utf8')
+const regles = (css) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selecteur: m[1].trim(), corps: m[2] }))
+
+test('ACAL969 : toute classe rp9-* créée par roof-tool-pro11.ts a une règle dans roofbuilder.css', () => {
+  const creees = new Set()
+  for (const m of SCRIPT_PRO11.matchAll(/\.className\s*=\s*'([^']*)'/g)) {
+    for (const c of m[1].split(/\s+/)) if (/^rp9-/.test(c)) creees.add(c)
+  }
+  assert.ok(creees.size > 0, 'aucune classe rp9-* repérée : le motif de la garde ne lit plus le script')
+  const sansRegle = [...creees].filter((c) => !new RegExp(`\.${c}(?![\w-])`).test(CSS_ROOFBUILDER))
+  assert.deepEqual(sansRegle, [], `classe(s) créée(s) par le constructeur sans règle dans roofbuilder.css : ${sansRegle.join(', ')}`)
+})
+
+test('ACAL969 : le survol de rp9-chip n’existe que sous @media (hover: hover)', () => {
+  const survolsNus = []
+  let reste = CSS_ROOFBUILDER
+  // On retire chaque bloc @media (hover: hover) { … } (accolades équilibrées) avant de chercher le survol.
+  for (let i = reste.indexOf('@media (hover: hover)'); i !== -1; i = reste.indexOf('@media (hover: hover)')) {
+    let profondeur = 0
+    let fin = reste.indexOf('{', i)
+    for (let j = fin; j < reste.length; j += 1) {
+      if (reste[j] === '{') profondeur += 1
+      if (reste[j] === '}') { profondeur -= 1; if (profondeur === 0) { fin = j; break } }
+    }
+    reste = reste.slice(0, i) + reste.slice(fin + 1)
+  }
+  for (const r of regles(reste)) if (/\.rp9-chip[^,{]*:hover/.test(r.selecteur)) survolsNus.push(r.selecteur)
+  assert.deepEqual(survolsNus, [], 'survol collé après un toucher : le placer sous @media (hover: hover)')
+})
+
+test('ACAL969 : UN seul état « choisi » (fond doré sur [aria-pressed]) ; le badge « recommandé » reste distinct', () => {
+  const dore = /background:\s*color-mix\(in srgb,\s*var\(--primary-text\)/
+  for (const r of regles(CSS_ROOFBUILDER)) {
+    if (/\.rp9-chip(?![\w-])/.test(r.selecteur) && dore.test(r.corps)) {
+      assert.match(r.selecteur, /aria-pressed='true'/, `${r.selecteur} : un second état « choisi » doré`)
+    }
+  }
+  const badge = regles(CSS_ROOFBUILDER).find((r) => /\.rp9-reco-badge\s*$/.test(r.selecteur))
+  assert.ok(badge, 'règle .rp9-reco-badge absente')
+  assert.ok(!/background/.test(badge.corps), '.rp9-reco-badge ne doit pas porter de fond doré')
+  assert.ok(parseFloat(badge.corps.match(/font-size:\s*([\d.]+)rem/)?.[1]) >= 0.75, '.rp9-reco-badge : texte sous 12 px')
+})

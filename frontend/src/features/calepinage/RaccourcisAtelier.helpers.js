@@ -29,6 +29,14 @@ export const SECTIONS_AIDE = [
     .map((l) => ({ ecriture: l.ecriture, libelle: l.libelle })),
 }))
 
+/** ACAL1027 — l'entrée principale est tactile : ni survol ni pointeur précis (constante d'interaction). */
+export const REQUETE_SANS_CLAVIER = '(hover: none) and (pointer: coarse)'
+
+/** ACAL1027 — vrai sur un appareil sans clavier ; faux sans `matchMedia` (tests, anciens navigateurs). */
+export function ecranSansClavier(fenetre = typeof window === 'undefined' ? null : window) {
+  return typeof fenetre?.matchMedia === 'function' && Boolean(fenetre.matchMedia(REQUETE_SANS_CLAVIER).matches)
+}
+
 /**
  * CAL101 — vrai quand la frappe appartient à un champ de saisie. Un raccourci
  * qui volerait cette frappe rendrait les formulaires inutilisables : c'est la

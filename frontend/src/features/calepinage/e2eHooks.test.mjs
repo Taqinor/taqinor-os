@@ -799,6 +799,10 @@ export const ALL_HOOKS = [
   'cal-etape-electrique-ecran',
   'cal-electrique-synthese',
   'cal-electrique-section',
+  // ── documents/EtapeDocuments.jsx (ACAL867) ──
+  'cal-etape-documents-ecran',
+  'cal-documents-synthese',
+  'cal-etape-documents-devis',
   // ── commun/PretAEnvoyer.jsx (ACAL865) ──
   'cal-pret-a-envoyer',
   'cal-pret-erreur',

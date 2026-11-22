@@ -214,6 +214,48 @@ def _plages(etats):
     return plages
 
 
+def _lignes_par_mois(par_mois):
+    """Les bilans mensuels arrondis, dans l'ordre des mois (taux ``None`` sur un mois sans consommation)."""
+    lignes_mois = []
+    for cle in sorted(par_mois):
+        bilan = par_mois[cle]
+        conso_mois = bilan['consommation_kwh']
+        bilan['taux_defaillance'] = (round(bilan['defaillance_kwh']
+                                           / conso_mois, 4)
+                                     if conso_mois > 0 else None)
+        bilan['consommation_kwh'] = round(conso_mois, 3)
+        bilan['defaillance_kwh'] = round(bilan['defaillance_kwh'], 3)
+        lignes_mois.append(bilan)
+    return lignes_mois
+
+
+def _bilan_protection(protection, etats_de_protection, arret_au_pas, sans_groupe, mentions):
+    """CALX272 — le bloc ``protection`` publié ; ajoute ses mentions à ``mentions`` (sans seuils : le motif).
+    ``sans_groupe`` (ACAL801) : aucun groupe d'appoint actif ⇒ la mention « entretien sans source AC »."""
+    if protection is None:
+        return {'seuils': None, 'heures_par_etat': None,
+                'plages_par_etat': None, 'arret_au_pas': None,
+                'motif': MOTIF_SANS_SEUILS}
+    bilan_protection = {
+        'seuils': dict(protection),
+        'heures_par_etat': {
+            etat: sum(1 for lu in etats_de_protection if lu == etat)
+            for etat in ETATS_PROTECTION},
+        'plages_par_etat': _plages(etats_de_protection),
+        'arret_au_pas': arret_au_pas,
+        'motif': '',
+    }
+    mentions.append(MENTION_SEUILS.format(
+        veille=f'{protection["veille_pct"]:g}',
+        entretien=f'{protection["entretien_pct"]:g}',
+        arret=f'{protection["arret_pct"]:g}'))
+    if sans_groupe:
+        mentions.append(MENTION_ENTRETIEN_SANS_SOURCE_AC)
+    if arret_au_pas is not None:
+        mentions.append(MENTION_ARRET.format(pas=arret_au_pas + 1))
+    return bilan_protection
+
+
 def _simuler_hors_reseau(charge_horaire, production_horaire, *,
                          capacite_utile_kwh, puissance_charge_kw=None,
                          puissance_decharge_kw=None, rendement_ar_pct=None,
@@ -414,16 +456,7 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
             if defaut > 0:
                 bilan['heures_defaillantes'] += 1
 
-    lignes_mois = []
-    for cle in sorted(par_mois):
-        bilan = par_mois[cle]
-        conso_mois = bilan['consommation_kwh']
-        bilan['taux_defaillance'] = (round(bilan['defaillance_kwh']
-                                           / conso_mois, 4)
-                                     if conso_mois > 0 else None)
-        bilan['consommation_kwh'] = round(conso_mois, 3)
-        bilan['defaillance_kwh'] = round(bilan['defaillance_kwh'], 3)
-        lignes_mois.append(bilan)
+    lignes_mois = _lignes_par_mois(par_mois)
 
     pire = None
     candidats = [ligne for ligne in lignes_mois
@@ -436,28 +469,8 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
             'Aucun mois n’accompagne la série : le mois le plus défavorable '
             'n’est PAS désigné (aucun calendrier n’est deviné).')
 
-    if protection is None:
-        bilan_protection = {'seuils': None, 'heures_par_etat': None,
-                            'plages_par_etat': None, 'arret_au_pas': None,
-                            'motif': MOTIF_SANS_SEUILS}
-    else:
-        bilan_protection = {
-            'seuils': dict(protection),
-            'heures_par_etat': {
-                etat: sum(1 for lu in etats_de_protection if lu == etat)
-                for etat in ETATS_PROTECTION},
-            'plages_par_etat': _plages(etats_de_protection),
-            'arret_au_pas': arret_au_pas,
-            'motif': '',
-        }
-        mentions.append(MENTION_SEUILS.format(
-            veille=f'{protection["veille_pct"]:g}',
-            entretien=f'{protection["entretien_pct"]:g}',
-            arret=f'{protection["arret_pct"]:g}'))
-        if appoint is None:
-            mentions.append(MENTION_ENTRETIEN_SANS_SOURCE_AC)
-        if arret_au_pas is not None:
-            mentions.append(MENTION_ARRET.format(pas=arret_au_pas + 1))
+    bilan_protection = _bilan_protection(protection, etats_de_protection,
+                                         arret_au_pas, appoint is None, mentions)
 
     return {
         'heures': len(charge),

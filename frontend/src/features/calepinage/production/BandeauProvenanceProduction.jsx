@@ -50,7 +50,7 @@ function useSourceCarte() {
   return source
 }
 
-export default function BandeauProvenanceProduction({ calepinageId }) {
+export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null }) {
   const source = useSourceCarte()
   const { data } = useResource(
     () => calepinageApi.calepinages.resultat(calepinageId), calepinageId,
@@ -84,7 +84,29 @@ export default function BandeauProvenanceProduction({ calepinageId }) {
         </span>
       )}
       <EcartDevis ecart={data?.ecart_devis} />
+      <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} />
     </p>
+  )
+}
+
+/* ACAL995 — ce que le devis ANNONCERA (`chiffrage` de design-context, ACAL993,
+   reçu de l'atelier qui l'a déjà lu : jamais un second appel), SEULEMENT quand
+   il n'imprime pas la pose réelle (« standard ville ») ; non chiffré ⇒ le motif
+   servi. Écart = (simulation − devis) ÷ devis, à l'affichage. */
+function DevisAnnonce({ chiffrage, p50 }) {
+  const prod = chiffrage?.production_annuelle_kwh
+  if (!prod) return null
+  if (prod.etat === 'non_servi' || prod.etat === 'indisponible') {
+    const motif = chiffrage.omissions?.find((o) => o.grandeur === 'production_annuelle_kwh')?.motif
+    return <span className="block" data-testid="acal995-devis-annonce">{`Le devis n’est pas encore chiffré : ${motif || 'motif non publié'}`}</span>
+  }
+  if (prod.etat !== 'servi' || prod.source !== 'standard_ville' || !prod.valeur) return null
+  const ecart = typeof p50 === 'number' ? ((p50 - prod.valeur) / prod.valeur) * 100 : null
+  return (
+    <span className="block" data-testid="acal995-devis-annonce">
+      {`Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — production standard de la ville`}
+      {ecart !== null && ` (étude technique : ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %)`}
+    </span>
   )
 }
 

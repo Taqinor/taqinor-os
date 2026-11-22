@@ -605,8 +605,13 @@ describe('PanneauBatterie — contrôles de l’ERP dans la déclaration (ACAL97
   const rendreExpert = (expert = true) => render(
     <MemoryRouter initialEntries={[expert ? '/?mode=expert' : '/']}><PanneauBatterie calepinageId={1} /></MemoryRouter>,
   )
-  const servirHorsReseau = (horsReseau) => calepinageApi.calepinages.resultat
-    .mockResolvedValue({ data: { ...donneesSimulees(), hors_reseau: horsReseau } })
+  // Même patron que les blocs plus haut : la charge part de donneesSimulees()
+  // (contrat calepinage_resultat, qui sert bien `hors_reseau`).
+  const servirHorsReseau = (horsReseau) => {
+    const donnees = donneesSimulees()
+    donnees.hors_reseau = horsReseau
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+  }
 
   beforeEach(() => {
     calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: VIDE.entree } })

@@ -165,11 +165,12 @@ import {
   type HydratationAtelier,
 } from './roofPro11/hydratation'; // ACAL26 — une seule hydratation pour les deux boots
 import { reinitialiserDepuisTraceClient } from './roofPro11/edges'; // ACAL78
-import { besoinAutoRelu, repartirCibleVendue, neededAutoApresConservation } from './roofPro11/cible'; // ACAL99, ACAL367
+import { appliquerObjectifsConserves, besoinAutoRelu, repartirCibleVendue } from './roofPro11/cible'; // ACAL99, ACAL367
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
 import { createLayoutEditor, resnapEnMasse } from './roofPro11/layoutEditor';
+import { pointsProches } from './roofPro11/snap'; // ACAL926
 // CALX3 — l'entrée du moteur de calepinage, composée depuis la scène vivante.
 import {
   composerEntreeMoteur,
@@ -1987,6 +1988,54 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     return false;
   }
 
+  /** ACAL925 — la cible de la dernière hydratation (devis ou lead) ; `null` = rien hydraté, « Effacer » revient à l'état d'avant. */
+  let derniereCible: { cibleVendue: boolean; neededPanels: number | null } | null = null;
+  /** Impose la cible VENDUE sur l'état vivant + la zone active (avant le calcul).
+   *  `h.neededPanels == null` = devis SANS ligne panneau : cible vendue de ZÉRO,
+   *  jamais un remplissage-au-mieux (L2, voir docstring de la fonction). */
+  function imposeTarget() {
+    const h = derniereCible; // ACAL925 — la cible de la DERNIÈRE hydratation (rejouée par « Effacer »)
+    if (!h) return;
+    // CAL37 — RIEN à imposer quand le document ne porte aucune cible VENDUE et
+    // qu'aucun nombre n'a été repris d'une zone enregistrée : imposer 0 ici
+    // gèlerait l'optimiseur d'un calepinage qui n'a pourtant aucun devis à
+    // respecter (aucun panneau posé, aucune recommandation, aucun rendement
+    // demandé). On laisse alors l'état vivant décider — `neededAuto` reste vrai,
+    // exactement comme pour un lead sans facture. Un calepinage DÉJÀ enregistré
+    // avec un nombre choisi (`a.neededPanels > 0`, repris juste au-dessus) garde
+    // ce nombre : le travail du commercial n'est jamais effacé.
+    if (!h.cibleVendue && h.neededPanels == null) {
+      if (!(neededPanels > 0)) {
+        neededAuto = true;
+        const zone = activeArea();
+        if (zone) zone.neededAuto = true;
+      }
+      return;
+    }
+    // ACAL79 — la cible VENDUE n'est jamais plafonnée (borne réservée aux besoins déduits).
+    const n = besoinVendu(h.neededPanels);
+    // ACAL99 — une conception ENREGISTRÉE (pose par pan) ou un site à plusieurs pans
+    // garde ses objectifs : la cible du devis n'écrase plus le 8 enregistré, et le total
+    // n'est jamais imposé au seul pan actif. Pan unique sans compte : cible imposée.
+    const repartition = repartirCibleVendue({ cibleVendue: n, zones: areas, activeAreaId });
+    if (repartition.mode === 'conserver') {
+      appliquerObjectifsConserves(areas, repartition.objectifs); // ACAL925 — boucle extraite (cible.ts)
+      const actif = activeArea();
+      if (actif && repartition.objectifs[actif.id] != null) {
+        neededPanels = actif.neededPanels;
+        neededAuto = actif.neededAuto;
+      }
+      return;
+    }
+    neededPanels = n;
+    neededAuto = false;
+    const a = activeArea();
+    if (a) {
+      a.neededPanels = n;
+      a.neededAuto = false;
+    }
+  }
+
   /**
    * PV19 — applique l'hydratation d'un DEVIS. Deux chemins, comme la fonction pure :
    *  1. le devis porte un design (`geometrie.roof_layout`) → on REMPLACE les zones par
@@ -2015,6 +2064,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CAL37 — figé pour la session, comme `devisMode` : un calepinage autonome
     // (`cibleVendue: false`) n'a AUCUNE vente derrière lui.
     cibleVendue = h.cibleVendue;
+    derniereCible = { cibleVendue: h.cibleVendue, neededPanels: h.neededPanels }; // ACAL925
     const layout = devis.geometrie?.roof_layout ?? null;
     // ACAL31 — mesures (CAL102), zones d'exclusion (CAL69), retraits (CAL76), horizon (CAL93),
     // scène (CALX119), bâtiments (CALX100) et fond (CALX107) sont relus par
@@ -2028,55 +2078,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // ACAL31 — seulement quand le payload porte un id de devis : un calepinage sans devis
     // n'écrit jamais `source: 'devis'` ni un `devisId: null` inventé (le document relu fait foi).
     devisOrigin = h.devisId != null ? { devisId: h.devisId, panelWatt: h.panelWatt, scenario: h.scenario } : null;
-
-    /** Impose la cible VENDUE sur l'état vivant + la zone active (avant le calcul).
-     *  `h.neededPanels == null` = devis SANS ligne panneau : cible vendue de ZÉRO,
-     *  jamais un remplissage-au-mieux (L2, voir docstring de la fonction). */
-    const imposeTarget = () => {
-      // CAL37 — RIEN à imposer quand le document ne porte aucune cible VENDUE et
-      // qu'aucun nombre n'a été repris d'une zone enregistrée : imposer 0 ici
-      // gèlerait l'optimiseur d'un calepinage qui n'a pourtant aucun devis à
-      // respecter (aucun panneau posé, aucune recommandation, aucun rendement
-      // demandé). On laisse alors l'état vivant décider — `neededAuto` reste vrai,
-      // exactement comme pour un lead sans facture. Un calepinage DÉJÀ enregistré
-      // avec un nombre choisi (`a.neededPanels > 0`, repris juste au-dessus) garde
-      // ce nombre : le travail du commercial n'est jamais effacé.
-      if (!h.cibleVendue && h.neededPanels == null) {
-        if (!(neededPanels > 0)) {
-          neededAuto = true;
-          const zone = activeArea();
-          if (zone) zone.neededAuto = true;
-        }
-        return;
-      }
-      // ACAL79 — la cible VENDUE n'est jamais plafonnée (borne réservée aux besoins déduits).
-      const n = besoinVendu(h.neededPanels);
-      // ACAL99 — une conception ENREGISTRÉE (pose par pan) ou un site à plusieurs pans
-      // garde ses objectifs : la cible du devis n'écrase plus le 8 enregistré, et le total
-      // n'est jamais imposé au seul pan actif. Pan unique sans compte : cible imposée.
-      const repartition = repartirCibleVendue({ cibleVendue: n, zones: areas, activeAreaId });
-      if (repartition.mode === 'conserver') {
-        for (const z of areas) {
-          const objectif = repartition.objectifs[z.id];
-          if (objectif == null) continue;
-          z.neededAuto = neededAutoApresConservation(z, objectif); // ERR-ACAL351 : avant l'écrasement
-          z.neededPanels = objectif;
-        }
-        const actif = activeArea();
-        if (actif && repartition.objectifs[actif.id] != null) {
-          neededPanels = actif.neededPanels;
-          neededAuto = actif.neededAuto;
-        }
-        return;
-      }
-      neededPanels = n;
-      neededAuto = false;
-      const a = activeArea();
-      if (a) {
-        a.neededPanels = n;
-        a.neededAuto = false;
-      }
-    };
 
     if (h.zones && h.zones.length) {
       // Le devis porte un design : ses zones REMPLACENT les zones par défaut.
@@ -2538,6 +2539,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const fresh = newAreaRecord();
     areas.push(fresh);
     activeAreaId = fresh.id;
+    imposeTarget(); // ACAL925 — la cible hydratée redevient le nombre voulu (sans cible hydratée : rien)
     if (areasWindowEl) areasWindowEl.hidden = true;
     renderAreasPanel();
   }
@@ -2864,6 +2866,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     pendingVertexPt = null;
   }
 
+  /** ACAL926 — geste « terminer » (double-clic / double-tap) : le coin en attente à un NOUVEL endroit (loin du dernier
+   *  sommet posé) est posé avant la fermeture ; sur le dernier sommet, il est jeté (aucun sommet parasite). */
+  function terminerCoinEnAttente() {
+    const dernier = vertices.length ? map.project(vertices[vertices.length - 1]) : null;
+    if (pendingVertex && !pointsProches(pendingVertexPt, dernier, DOUBLE_TAP_PX)) flushPendingVertex();
+    else cancelPendingVertex();
+  }
+
   map.on('touchend', (e) => {
     if (drawing) {
       endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
@@ -2879,15 +2889,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (obstacleMode || closed) return;
     const now = Date.now();
     const pt = e.point;
-    const isDoubleTap =
-      lastTapPt != null &&
-      now - lastTapMs <= TAP_FINISH_MS &&
-      Math.abs(pt.x - lastTapPt.x) < DOUBLE_TAP_PX &&
-      Math.abs(pt.y - lastTapPt.y) < DOUBLE_TAP_PX;
+    const isDoubleTap = now - lastTapMs <= TAP_FINISH_MS && pointsProches(pt, lastTapPt, DOUBLE_TAP_PX); // ACAL926
     if (isDoubleTap && vertices.length >= 3) {
       lastTapMs = 0;
       lastTapPt = null;
-      cancelPendingVertex(); // le 1ᵉʳ tap du double-tap ne pose pas de sommet (parité dblclick)
+      terminerCoinEnAttente(); // ACAL926 — même règle que le dblclick : posé si NOUVEL endroit, sinon jeté
       suppressClick = true; // neutralise le `click` synthétique de ce tap
       close();
       return;
@@ -2979,11 +2985,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // ne pose rien, le handler `dblclick` annulera le sommet en attente et fermera (parité
     // desktop INCHANGÉE : un double-clic ne laisse jamais de sommet parasite).
     if (pendingVertex) {
-      const near =
-        pendingVertexPt != null &&
-        Math.abs(e.point.x - pendingVertexPt.x) < DOUBLE_TAP_PX &&
-        Math.abs(e.point.y - pendingVertexPt.y) < DOUBLE_TAP_PX;
-      if (near) return; // double-clic au même endroit → laisser dblclick gérer
+      if (pointsProches(e.point, pendingVertexPt, DOUBLE_TAP_PX)) return; // double-clic au même endroit → laisser dblclick gérer
       flushPendingVertex();
     }
     pendingVertex = lngLat;
@@ -2999,7 +3001,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   map.on('dblclick', (e) => {
     e.preventDefault();
     if (parcelleUi.isActive()) return; // ACAL233 — le double-clic ne ferme pas le toit pendant la parcelle
-    cancelPendingVertex();
+    terminerCoinEnAttente(); // ACAL926
     close();
   });
 
