@@ -36,7 +36,7 @@ def _point(brut):
     return None if cx is None or cy is None else (cx, cy)
 
 
-def surface_de_boucle(centres, point_collecte):
+def _surface_de_boucle(centres, point_collecte):
     """La surface (m², 0,1 près) du polygone « module 1 … module N, point de
     collecte », ou ``None`` (un seul module, point absent ou illisible)."""
     point = _point(point_collecte)
@@ -151,7 +151,7 @@ def boucles_des_chaines(table, document, cheminement, reglages=None):
             manque.append("pan « %s » : point de collecte non saisi"
                           % libelle)
         else:
-            surface = surface_de_boucle(
+            surface = _surface_de_boucle(
                 [centre for _cle, centre in lues],
                 points[cles[0]]['point_collecte'])
         boucles.append(_jugee({

@@ -9,13 +9,15 @@ import { Button, Card } from '../../../ui'
 import ListeManques from './ListeManques'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
-  LIBELLE_BOUTON, etatCalcul, lienReglage, refusDepuisErreur, refusRenvoieAuxReglages,
+  LIBELLE_BOUTON, cibleHorsReglages, etatCalcul, lienReglage, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
+import { lienManque } from './lienManque'
 import { EcartPvgis, IncertitudeSigma, ReglagesUtilises, SourceMeteo } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import GraphiqueMensuel from './GraphiqueMensuel'
 import ResultatHeros from './ResultatHeros'
+import PartiesProduction from './PartiesProduction'
 import PourquoiProduction from './PourquoiProduction'
 import LigneSurLaDuree from './LigneSurLaDuree'
 import CartePostesPertes from './CartePostesPertes'
@@ -113,6 +115,19 @@ export function BandeauPerime({ motif }) {
    PAS désactivé quand aucun poste de perte n'est saisi : le service
    n'en exige aucun.
    ========================================================================== */
+// ACAL774 — le lien d'un refus qui ne se corrige pas dans les réglages (`plans`, `site.pin`).
+function LienHorsReglages({ calepinageId, champ }) {
+  const ou = cibleHorsReglages(champ)
+  if (!ou) return null
+  return (
+    <>
+      {' '}
+      <Link to={lienManque(calepinageId, ou.cible)} className="inline-flex min-h-11 items-center underline"
+        data-testid="acal774-lien">{ou.libelle}</Link>
+    </>
+  )
+}
+
 export function BoutonCalculer({
   calepinageId, data = null, avertissements = [], manque = [], intervalleMs = 2000, onTermine,
   declenchement = 0,
@@ -230,6 +245,7 @@ export function BoutonCalculer({
                       data-testid="acal940-lien-reglage">Ouvrir ce réglage</Link>
                   </>
                 )}
+                {!ligne.cible && <LienHorsReglages calepinageId={calepinageId} champ={ligne.champ} />}
               </li>
             ))}
           </ul>
@@ -237,6 +253,7 @@ export function BoutonCalculer({
       ) : refus && (
         <p className="text-sm text-destructive" role="alert" data-testid="calx48-refus">
           {refus.motif}
+          <LienHorsReglages calepinageId={calepinageId} champ={refus.champ} />
           {refusRenvoieAuxReglages(refus) && (
             <>
               {' '}
@@ -457,6 +474,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
         motif={data?.motif} avertissements={data?.avertissements} plages={data?.cascade?.plages}
         autoconsommation={data?.autoconsommation} />
+      {data?.simule === true && !perime && <PartiesProduction parties={production?.parties} />}
       {data?.simule === true && !perime && <EcartPvgis validation={data?.validation} />}
       {data?.simule === true && !perime && <PourquoiProduction cascade={data?.cascade} />}
       {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}

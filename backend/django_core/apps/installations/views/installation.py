@@ -297,6 +297,8 @@ class InstallationViewSet(ChantierAssistantMixin, oa.JsonOnlyMixin, CompanyScope
             # CIQ628 — réserves du chantier (lecture ; POST auto-gardé).
             'reserves',
             'etat_assistant', 'liste_assistant',  # copilote vague 2 (CHTA2/3) — lectures de l'assistant.
+            # ACAL589 — plan de pose du calepinage retenu (lecture terrain, « Ma journée »).
+            'plan_pose',
         ]:
             return [LectureDuModule()]
         elif self.action in WRITE_ACTIONS + [

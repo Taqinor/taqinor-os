@@ -3,6 +3,10 @@
     {
       "rendementPvgis": null,
       "proposerConsommation": "[fn]",
+      "lireFactureConsommation": {
+        "disponible": "[fn]",
+        "lire": "[fn]"
+      },
       "productionAtelier": "[fn]",
       "maptilerKey": "cle-d-essai",
       "reducedMotion": false,

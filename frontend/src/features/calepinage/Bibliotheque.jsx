@@ -634,7 +634,7 @@ export default function Bibliotheque() {
 
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section titre="Presets"
-          sousTitre="Marges, espacements et dégagements réutilisés (CAL197)">
+          sousTitre="Marges, espacements et dégagements réutilisés">
           {clesPresets.length === 0
             ? <ListeVide enfant="Aucun preset réglé : les valeurs de l’atelier s’appliquent." />
             : (
@@ -779,7 +779,7 @@ export default function Bibliotheque() {
         </Section>
 
         <Section titre="Kits"
-          sousTitre="Catalogue de pose du stock, lu (jamais dupliqué, CAL198)">
+          sousTitre="Catalogue de pose du stock, lu (jamais dupliqué)">
           {kits.length === 0
             ? <ListeVide enfant="Aucun kit de pose disponible pour votre société." />
             : (
@@ -805,7 +805,7 @@ export default function Bibliotheque() {
         </Section>
 
         <Section titre="Modèles"
-          sousTitre="Calepinages marqués réutilisables (CAL199)">
+          sousTitre="Calepinages marqués réutilisables">
           {(modeles ?? []).length === 0
             ? <ListeVide enfant="Aucun calepinage n’est marqué modèle." />
             : (
@@ -945,7 +945,7 @@ export default function Bibliotheque() {
         </Section>
 
         <Section titre="Favoris matériel"
-          sousTitre="Modules et onduleurs favoris du catalogue (CAL200)">
+          sousTitre="Modules et onduleurs favoris du catalogue">
           {clesFavoris.length === 0
             ? <ListeVide enfant="Aucun matériel favori réglé pour votre société." />
             : (
@@ -1055,7 +1055,7 @@ export default function Bibliotheque() {
           colonne. */}
       <div className="mt-4">
         <Section titre="Profils types"
-          sousTitre="Courbes de consommation de la société (CAL149) — la saisie de la société l’emporte toujours sur un repli">
+          sousTitre="Courbes de consommation de la société — la saisie de la société l’emporte toujours sur un repli">
           {lignesProfils.length === 0
             ? <ListeVide enfant="Aucun profil type servi pour votre société." />
             : (
@@ -1073,7 +1073,7 @@ export default function Bibliotheque() {
                           {' '}
                           <Badge variant="outline"
                             data-testid={`cal-biblio-profil-repli-${rang}`}>
-                            Hypothèse interne
+                            Profil de départ
                           </Badge>
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground"

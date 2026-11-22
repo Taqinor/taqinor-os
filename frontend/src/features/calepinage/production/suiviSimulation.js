@@ -61,6 +61,20 @@ export function lienReglage(champ) {
     : '/calepinage/reglages'
 }
 
+// ACAL774 — les refus SANS champ de réglage : où agir. `plans` : le module PV se désigne dans
+// l'onglet « Matériel électrique » (relu dans `atelier/parcoursGuide.js`) ; `site.pin` : l'épingle se
+// pose sur la carte de l'atelier (adresse du calepinage, sans onglet).
+const CIBLES_HORS_REGLAGES = {
+  plans: { cible: { onglet: 'materiel-electrique' }, libelle: 'Ouvrir le matériel électrique' },
+  'site.pin': { cible: {}, libelle: 'Ouvrir la carte de l’atelier' },
+}
+
+/** `{cible, libelle}` de l'endroit où agir pour un champ hors réglages ; `null` pour un champ inconnu. */
+export function cibleHorsReglages(champ) {
+  return typeof champ === 'string' && Object.hasOwn(CIBLES_HORS_REGLAGES, champ)
+    ? CIBLES_HORS_REGLAGES[champ] : null
+}
+
 /** L'issue d'un sondage `moteur/resultat/<job>/` :
     `{etat: 'attente'}` | `{etat: 'succes'}` | `{etat: 'refus', refus}`.
     Un statut inconnu n'est NI un succès NI un refus : on continue d'attendre

@@ -19,6 +19,7 @@ from html import escape
 from .lestage_zones import (
     CLE_ZONES_DE_POSE, PARAMETRES_ZONES_DE_POSE, repartir_modules,
 )
+from . import lestage_zones as _lestage_zones
 from .planche import (
     FORMAT_A3_MM, GRIS_TEXTE, MARGE_MM, NOIR, PlancheRefusee, _n, _polygone,
     _svg_a3, _transformation, _verifier_absence_d_argent, coins_du_module,
@@ -26,7 +27,7 @@ from .planche import (
 )
 
 __all__ = ['MODE_LESTE', 'PlanLestageRefuse', 'motif_plan_lestage',
-           'rendre_plan_lestage_pdf', 'svg_de_plan_lestage']
+           'rendre_plan_lestage_pdf']
 
 #: ``SystemeFixation.ModePose.TOIT_PLAT_LESTE``.
 MODE_LESTE = 'toit_plat_leste'
@@ -78,7 +79,7 @@ def _preparer(calepinage):
     section = (parametres_de_societe(getattr(calepinage, 'company', None))
                or {}).get('lestage') or {}
     zones = section.get(CLE_ZONES_DE_POSE) or {}
-    repartition = repartir_modules(geometrie.get('pans') or [], zones)
+    repartition = _lestage_zones.repartition_du_lestage(calepinage)  # ACAL564
     if not repartition['disponible']:
         noms = ', '.join(m['libelle'] for m in repartition['manquants'])
         raise PlanLestageRefuse(
@@ -173,22 +174,22 @@ def _bandeau(calepinage, repartition, zones):
     return sortie
 
 
-def svg_de_plan_lestage(calepinage, geometrie, zones):
+def _svg_de_plan_lestage(calepinage, geometrie, zones):
     """PUR — le SVG A3 depuis une géométrie et des ``zones_de_pose`` déjà
     lues (aucune base) : la mise en page vérifiée sans montant (CALX327)."""
     repartition = repartir_modules(geometrie.get('pans') or [], zones)
     return _svg_a3(_corps(calepinage, geometrie, repartition, zones))
 
 
-def svg_du_plan_lestage(calepinage):
+def _svg_du_plan_lestage(calepinage):
     """Le SVG A3 du plan de lestage (refus nommé sinon)."""
     geometrie, _repartition, zones = _preparer(calepinage)
-    return svg_de_plan_lestage(calepinage, geometrie, zones)
+    return _svg_de_plan_lestage(calepinage, geometrie, zones)
 
 
 def rendre_plan_lestage_pdf(calepinage, *, company=None):
     """Octets PDF du plan de lestage, par ``core.pdf.render_pdf`` (ARC11)."""
     from core.pdf import render_pdf
 
-    return render_pdf(html=html_de_planche(svg_du_plan_lestage(calepinage)),
+    return render_pdf(html=html_de_planche(_svg_du_plan_lestage(calepinage)),
                       company=company or getattr(calepinage, 'company', None))

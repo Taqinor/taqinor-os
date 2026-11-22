@@ -88,6 +88,22 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       .toBe(`${CTX_CAL.calepinage.client_adresse}, ${CTX_CAL.calepinage.client_ville}`)
   })
 
+  // ACAL777 — la facture mensuelle du lead (consommation_lead, ACAL776) part à l'atelier comme
+  // repli d'AFFICHAGE des cartes ; rien n'est inventé sans facture servie.
+  it('ACAL777 — consommation_lead 900 ⇒ initRoofToolPro8 reçoit factureMensuelleMad 900 ; sans facture : null', async () => {
+    expect(CTX_CAL.consommation_lead.facture_mensuelle_mad).toBe(900)
+    servirConceptionDevis()
+    rendreDevis(DEVIS_ID)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].factureMensuelleMad).toBe(900)
+    cleanup(); vi.clearAllMocks(); reinitialiserBoot()
+    const sans = { data: { ...CTX_CAL, consommation_lead: { facture_mensuelle_mad: null, source: null, motif: 'aucune' } } }
+    servirConceptionDevis(sans)
+    rendreDevis(DEVIS_ID)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].factureMensuelleMad).toBeNull()
+  })
+
   // Correction fondateur 24/08 — le backend (PV17 + repli GPS) porte déjà le
   // pin ou son absence dans `geometrie.pin` : sans lui, l'écran le DIT.
   it('correction 24/08 — sans aucune position (geometrie.pin=null) : message discret affiché', async () => {
@@ -1182,6 +1198,29 @@ describe('ToitureDesign — le calque « Électrique » route vers SA couche, ja
    `Vue2DPlan.jsx`, `__tests__/vue2d_plan.test.jsx`).
    ========================================================================== */
 describe('CALX129 — plein écran de la scène 3D', () => {
+  it('ACAL950 — la puce porte `rp9-carte-puce` (haut-gauche, sous la boussole) et plus `right-3 top-3`', async () => {
+    servirConceptionDevis(reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreDevis(DEVIS_ID)
+    const puce = await screen.findByTestId('rp9-plein-ecran-toggle')
+    expect(puce.classList.contains('rp9-carte-puce')).toBe(true)
+    for (const ancienne of ['right-3', 'top-3', 'absolute']) expect(puce.classList.contains(ancienne)).toBe(false)
+    // Toujours DANS le conteneur passé en plein écran (CALX129) : cliquable en plein écran.
+    expect(screen.getByTestId('rp9-map-wrap').contains(puce)).toBe(true)
+  })
+
+  it('ACAL954 — « Terminer le tracé » et « Annuler le dernier point » sont DANS la carte, ids inchangés', async () => {
+    servirConceptionDevis(reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreDevis(DEVIS_ID)
+    const wrap = await screen.findByTestId('rp9-map-wrap')
+    for (const id of ['rp9-finish', 'rp9-undo-point']) {
+      const bouton = document.getElementById(id)
+      expect(bouton, id).not.toBeNull()
+      expect(wrap.contains(bouton), id).toBe(true)
+      expect(bouton.classList.contains('rp9-carte-puce'), id).toBe(true)
+    }
+    expect(document.querySelectorAll('#rp9-finish')).toHaveLength(1)
+  })
+
   it('bascule sans ré-initialiser le builder, l’aspect du rendu suit le conteneur', async () => {
     servirConceptionDevis(
       reponseContrat('calepinage', 'calepinage_design_context'))

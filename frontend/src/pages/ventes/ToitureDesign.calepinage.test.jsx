@@ -921,7 +921,9 @@ describe('ACAL868 — le bouton de l’étape suivante dans la barre fixe', () =
 describe('ACAL869 — le panneau « Personnaliser la disposition » en mode guidé', () => {
   const clef = 'calepinage.mode_expert.anonyme'
   afterEach(() => { try { window.localStorage.removeItem(clef) } catch { /* ignoré */ } })
-  const boutonsDeBase = () => [...document.querySelectorAll('#rp9-layout-panel button')]
+  // ACAL876 — les « ? » d'explication (`commun/Pourquoi`, `data-grandeur`) posés sur les compteurs de pose ne sont
+  // pas des gestes de disposition : ils sont hors du compte.
+  const boutonsDeBase = () => [...document.querySelectorAll('#rp9-layout-panel button:not([data-grandeur])')]
     .filter((b) => !b.closest('#rp9-layout-avance'))
 
   it('guidé : 5 boutons visibles hors du volet, les autres rangés dans « Réglages avancés » replié', async () => {

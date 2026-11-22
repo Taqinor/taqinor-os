@@ -548,8 +548,6 @@ POSES_AVANT_LEUR_ROUTE = {
 CLES_POSEES_AVANT_LEUR_PRODUCTEUR = {
     'dossiers_reglementaires.json': {'packs_france': 'ACAL238'},
     'site_imagerie.json': {'site_effectif': 'ACAL129'},
-    # ACAL530 — sous-clé de ``exemple.propositions``.
-    'calepinage_detection_toit.json': {'obstacles': 'ACAL1049'},
 }
 
 
@@ -760,7 +758,7 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         en_attente = set(CLES_POSEES_AVANT_LEUR_PRODUCTEUR.get(
             'calepinage_detection_toit.json', {}))
         self.assertEqual(sorted(set(propositions) - en_attente),
-                         ['contour_lnglat', 'pans'])
+                         ['contour_lnglat', 'obstacles', 'pans'])
         self.assertEqual(donnees['exemple']['provenance'], 'ia')
         self.assertIs(donnees['exemple']['a_confirmer'], True)
         for pan in propositions['pans']:
@@ -769,10 +767,10 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
             self.assertTrue(all(len(p) == 2 for p in pan['contour_lnglat']))
         self.assertTrue(donnees['exemple_indisponible_503']['detail'])
 
-    def test_obstacles_proposes_en_attente_d_acal1049(self):
-        # ACAL530 — types : la liste de l'atelier (ACAL498) du schéma du document.
-        self.assertEqual(CLES_POSEES_AVANT_LEUR_PRODUCTEUR.get(
-            'calepinage_detection_toit.json'), {'obstacles': 'ACAL1049'})
+    def test_obstacles_proposes_servis_par_acal1049(self):
+        # ACAL530 — types : la liste de l'atelier (ACAL498) du schéma du document ;
+        # ACAL1049 sert la clé (plus « en attente »).
+        self.assertNotIn('calepinage_detection_toit.json', CLES_POSEES_AVANT_LEUR_PRODUCTEUR)
         types = _charger('roof_layout_v2.schema.json')['$defs']['obstacle'][
             'properties']['type']['enum']
         obstacles = _charger('calepinage_detection_toit.json')['exemple'][

@@ -112,6 +112,26 @@ function EcartDevis({ ecart }) {
   )
 }
 
+/* ACAL980 — « Ce qui est supposé » : les replis cachés du moteur (`suppose[]` de
+   `GET resultat/`, contrat `calepinage_resultat.json`), chacun avec sa valeur et
+   le champ à renseigner. Rien n'est calculé ici ; liste vide ou absente ⇒ rien. */
+export function Suppose({ suppose }) {
+  if (!Array.isArray(suppose) || suppose.length === 0) return null
+  return (
+    <div className="text-sm" data-testid="acal980-suppose">
+      <p className="text-xs font-medium text-muted-foreground">Ce qui est supposé</p>
+      <ul className="list-disc pl-5 text-xs">
+        {suppose.map((repli) => (
+          <li key={repli.code} data-testid={`acal980-${repli.code}`}>
+            {repli.libelle}
+            <span className="block text-muted-foreground">{`À renseigner : ${repli.champ}`}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 /* ACAL854 — l'écart à PVGIS que la simulation calcule déjà (`validation`,
    `services/validation.py::ecart_vs_pvcalc`) : la valeur servie, une décimale,
    signée. Aucun seuil ici : sans tolérance réglée par la société, pas de verdict. */

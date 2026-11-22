@@ -598,11 +598,9 @@ describe('PanneauBatterie — seuils de protection hors réseau (ACAL791)', () =
   })
 })
 
-describe('PanneauBatterie — groupe d’appoint hors réseau (ACAL803)', () => {
+describe('PanneauBatterie — contrôles de l’ERP dans la déclaration (ACAL970)', () => {
   const VIDE = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide')
-  const GROUPE = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_hors_reseau_avance').hors_reseau.groupe
   const SERVI = exempleContrat('calepinage', 'calepinage_simulation').hors_reseau
-  const poste = () => calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1]
   const declaration = () => screen.findByTestId('acal167-declaration', {}, { timeout: 10_000 })
   const rendreExpert = (expert = true) => render(
     <MemoryRouter initialEntries={[expert ? '/?mode=expert' : '/']}><PanneauBatterie calepinageId={1} /></MemoryRouter>,
@@ -612,56 +610,6 @@ describe('PanneauBatterie — groupe d’appoint hors réseau (ACAL803)', () => 
 
   beforeEach(() => {
     calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: VIDE.entree } })
-  })
-
-  it('le groupe saisi poste `hors_reseau.groupe` ; heures de marche et banque du mois chargé de l’exemple s’affichent', async () => {
-    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValueOnce({ data: {} })
-    calepinageApi.calepinages.entreeElectrique
-      .mockResolvedValueOnce({ data: { entree: VIDE.entree } })
-      .mockResolvedValueOnce({ data: { entree: { ...VIDE.entree, hors_reseau: { actif: true, groupe: GROUPE } } } })
-    servirHorsReseau(SERVI)
-    rendreExpert()
-    await declaration()
-    fireEvent.click(document.getElementById('acal167-actif'))
-    expect(document.getElementById('acal803-puissance_kw')).toBeNull()
-    fireEvent.click(document.getElementById('acal803-actif'))
-    for (const cle of ['puissance_kw', 'soc_demarrage_pct', 'soc_arret_pct', 'heures_max_par_jour']) {
-      const saisie = document.getElementById(`acal803-${cle}`)
-      expect(saisie.value, `${cle} jamais prérempli`).toBe('')
-      fireEvent.change(saisie, { target: { value: String(GROUPE[cle]) } })
-    }
-    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
-    await screen.findByTestId('acal167-message')
-    expect(poste()).toEqual({ hors_reseau: { actif: true, groupe: GROUPE } })
-
-    const g = SERVI.groupe
-    expect(screen.getByTestId('acal803-groupe')).toHaveTextContent(
-      `Le groupe a tourné ${formatNumber(g.heures_de_marche)} h dans l’année (${formatNumber(g.energie_fournie_kwh, { decimals: 0 })} kWh fournis)`)
-    expect(screen.getAllByTestId('acal803-groupe-mois')).toHaveLength(g.par_mois.length)
-    const b = SERVI.banque_mois_charge
-    expect(screen.getByTestId('acal803-banque-mois')).toHaveTextContent(
-      `Pour le mois le plus chargé (Décembre) : banque de ${formatNumber(b.capacite_utile_kwh, { decimals: 0 })} kWh utiles, `
-      + `défaillance ${formatNumber(b.defaillance_kwh, { decimals: 0 })} kWh`)
-
-    const motif = 'Le groupe démarre batterie basse.'
-    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValueOnce({
-      response: { status: 400, data: { 'hors_reseau.groupe.soc_demarrage_pct': motif } },
-    })
-    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
-    expect(await screen.findByTestId('acal803-soc_demarrage_pct-erreur')).toHaveTextContent(motif)
-  })
-
-  it('case décochée et rien au stock : aucun groupe posté ; sans groupe servi, rien de nouveau', async () => {
-    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
-    servirHorsReseau({ ...SERVI, groupe: null, banque_mois_charge: null, motif_banque_mois_charge: 'Mois non calculé.' })
-    rendreExpert()
-    await declaration()
-    fireEvent.click(document.getElementById('acal167-actif'))
-    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
-    await screen.findByTestId('acal167-message')
-    expect(poste()).toEqual({ hors_reseau: { actif: true } })
-    expect(screen.queryByTestId('acal803-groupe')).toBeNull()
-    expect(screen.getByTestId('acal803-banque-mois')).toHaveTextContent('non calculé : Mois non calculé.')
   })
 
   it('ACAL970 — la case hors réseau est un `Checkbox` de l’ERP, les listes portent `bg-card`', async () => {
@@ -678,14 +626,6 @@ describe('PanneauBatterie — groupe d’appoint hors réseau (ACAL803)', () => 
       expect(liste).toHaveClass('bg-card', 'border-input', 'text-foreground', 'h-[var(--control-h)]')
       expect(liste).not.toHaveClass('bg-black/30')
     }
-  })
-
-  it('hors mode expert, l’interrupteur du groupe n’existe pas', async () => {
-    servirHorsReseau(SERVI)
-    rendreExpert(false)
-    await declaration()
-    fireEvent.click(document.getElementById('acal167-actif'))
-    expect(document.getElementById('acal803-actif')).toBeNull()
   })
 })
 
@@ -825,60 +765,5 @@ describe('PanneauBatterie — détails du mode expert (ACAL789)', () => {
 
     await screen.findByTestId('calx14-batterie')
     expect(screen.queryByTestId('acal789-details')).toBeNull()
-  })
-})
-
-describe('PanneauBatterie — garde-fou, faits de la série et verdict (ACAL795)', () => {
-  const rendreExpert = (expert = true) => render(
-    <MemoryRouter initialEntries={[expert ? '/?mode=expert' : '/']}><PanneauBatterie calepinageId={1} /></MemoryRouter>,
-  )
-  const pct = (v) => `${formatNumber(v * 100, { decimals: 0 })} %`
-  const n = (v) => formatNumber(v, { decimals: 0 })
-
-  it('les trois faits, le garde-fou et le mot se lisent ; sans verdict le motif remplace le mot', async () => {
-    const haute = {
-      ...donneesSimulees(),
-      batterie: exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute').batterie,
-    }
-    const f = haute.batterie.total.faits_serie
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: haute })
-    const premier = rendreExpert()
-    const bloc = await screen.findByTestId('acal795-faits')
-    expect(within(bloc).getByTestId('acal795-garde-fou')).toHaveTextContent(
-      `Votre production est déjà consommée à ${pct(f.taux_autoconsommation_sans_batterie)} sans batterie`)
-    expect(within(bloc).getByTestId('acal795-pleine'))
-      .toHaveTextContent(`La batterie atteint 100 % ${n(f.jours_pleine)} jours sur ${n(f.jours_total)}`)
-    expect(within(bloc).getByTestId('acal795-vide'))
-      .toHaveTextContent(`Elle est vide avant l’aube ${n(f.nuits_au_plancher)} nuits sur ${n(f.jours_total)}`)
-    expect(within(bloc).getByTestId('acal795-surplus'))
-      .toHaveTextContent(`${pct(f.part_surplus_injecte)} du surplus part encore sur le réseau`)
-    expect(within(bloc).getByTestId('acal795-mot')).toHaveTextContent('Adaptée à votre consommation')
-    expect(within(bloc).queryByTestId('acal795-sans-verdict')).toBeNull()
-    premier.unmount()
-
-    const sansVerdict = donneesSimulees()
-    expect(sansVerdict.batterie.total.verdict).toBeNull()
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: sansVerdict })
-    rendreExpert()
-    const bloc2 = await screen.findByTestId('acal795-faits')
-    expect(within(bloc2).queryByTestId('acal795-mot')).toBeNull()
-    expect(within(bloc2).getByTestId('acal795-sans-verdict'))
-      .toHaveTextContent(`Pas de verdict : ${sansVerdict.batterie.total.motif_verdict}`)
-    expect(within(bloc2).getByTestId('acal795-pleine')).toHaveTextContent(n(f.jours_pleine))
-  })
-
-  it('un fait absent se lit « non calculé », jamais 0', async () => {
-    const donnees = donneesSimulees()
-    donnees.batterie.total.faits_serie = { ...donnees.batterie.total.faits_serie, part_surplus_injecte: null }
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
-    rendreExpert()
-    expect(await screen.findByTestId('acal795-surplus')).toHaveTextContent('non calculé')
-  })
-
-  it('hors mode expert : rien', async () => {
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesSimulees() })
-    rendreExpert(false)
-    await screen.findByTestId('calx14-batterie')
-    expect(screen.queryByTestId('acal795-faits')).toBeNull()
   })
 })

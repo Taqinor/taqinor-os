@@ -218,6 +218,8 @@ export interface RoofToolApi {
   renderCarteAccesHd: (
     scale: number,
   ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** ACAL896 — enregistre une orbite de 360° de la carte (10 s) ; un motif français si l'enregistrement est impossible. */
+  enregistrerOrbite: (options?: import('./videoOrbite').OptionsOrbite) => Promise<import('./videoOrbite').ResultatOrbite>;
   /** ACAL537 — la scène 3D en glTF binaire (repère local), ou `null` si non rendable. */
   exporterSceneGltf: () => Promise<{ blob: Blob } | null>;
   /** ACAL435 — caméra sur l'une des quatre vues prêtes (600 ms, instantané si reduced-motion). */

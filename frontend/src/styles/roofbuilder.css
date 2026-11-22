@@ -174,6 +174,9 @@
    jamais draguable : le tracé, le glissé de panneau et la sélection de
    groupe/rangée (PV34) restent À L'IDENTIQUE, quel que soit le z-index. ── */
 .rp9-host .rp9-map-wrap { position: relative; }
+/* ACAL951 — plein écran de REPLI (iPhone/iPad Safari, sans plein écran d'élément) : la
+   classe `fixed inset-0` perdait contre la règle ci-dessus ; celle-ci l'emporte (0,3,0). */
+.rp9-host .rp9-map-wrap[data-plein-ecran='1'] { position: fixed; inset: 0; }
 .rp9-host .rp9-toit-client {
   position: absolute;
   bottom: 12px;
@@ -253,6 +256,20 @@
 .rp9-host .rp9-chip:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+/* ACAL950 — la puce « Plein écran » hors de la pile de zoom (haut-droite) : en haut à
+   gauche SOUS la boussole (12 px + 48 px + 12 px d'écart), fond opaque, cible 44 px.
+   Sélecteur à trois classes : il l'emporte sur `.rp9-host .rp9-chip`. */
+.rp9-host .rp9-chip.rp9-carte-puce {
+  position: absolute;
+  left: 12px;
+  top: 72px;
+  z-index: 10;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 0.875rem;
+  color: var(--foreground);
+  background: var(--rp-nuit-900);
 }
 
 /* ── Boutons et champs créés à la volée (rp9-btn, rp9-input) — ACAL503 ───── */

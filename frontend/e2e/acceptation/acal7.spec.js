@@ -813,13 +813,14 @@ etape('PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats', ['ACAL3
     expect(normes, 'une seule ligne « norme électrique » (regroupée)').toHaveLength(1)
     expect(normes[0].cible, 'cible : réglages, champ norme').toEqual({ onglet: 'reglages', champ: 'norme' })
 
-    // ACAL395 — Électrique en un écran : synthèse = lignes `electrique` de « ce qui manque ».
+    // ACAL395 + ACAL865 — Électrique en un écran : synthèse = compte du panneau « Prêt à envoyer ? »
+    // (`GET pret-a-envoyer/` : bloquants + à régler), jamais les lignes `electrique` de « ce qui manque ».
     await page.goto(`/calepinage/${cal.id}?onglet=verdict-electrique`)
     await expect(page.getByTestId('cal-etape-electrique-ecran')).toBeVisible(T)
-    const etatElec = parcours.etapes.find((e) => e.cle === 'electrique')?.etat
-    const n = parcours.manque.filter((m) => m.etape === 'electrique').length
-    const attendu = etatElec === 'fait' ? 'Conforme' : (n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Aucun point à régler pour l’instant')
-    await expect(page.getByTestId('cal-electrique-synthese'), `synthèse (état ${etatElec}, ${n} lignes)`).toHaveText(attendu, T)
+    const pret = await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/pret-a-envoyer/`, T), 'pret-a-envoyer')
+    const n = pret.nombre_bloquants + pret.nombre_a_regler
+    const attendu = n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'
+    await expect(page.getByTestId('cal-electrique-synthese'), `synthèse (${n} points servis)`).toHaveText(attendu, T)
     await expect(page.locator('[data-testid^="cal-electrique-section-"]'), 'sept sections repliables').toHaveCount(7)
 
     // ACAL443 / ACAL453 / ACAL446 — Production.

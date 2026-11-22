@@ -169,7 +169,6 @@ function RailCorps({
   onRecharger = null, lectureSeule = false, documentVivant = null,
   expert, onBasculerExpert: basculerExpert,
   onEtape = null, // ACAL868 — publie {etape, expert, allerA} à l'écran (barre fixe) ; jamais un second état d'expert
-  actionDevis = null, // ACAL867 — « Générer le devis » de l'atelier, relayé tel quel à l'écran de l'étape Documents
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
@@ -306,7 +305,6 @@ function RailCorps({
                 lectureSeule={lectureSeule}
                 documentVivant={documentVivant}
                 parcours={parcours}
-                actionDevis={actionDevis}
                 ouvert={cleActive}
               />
             </Suspense>

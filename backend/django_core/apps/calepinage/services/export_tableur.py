@@ -392,6 +392,10 @@ def _tables_du_calepinage(calepinage):
     fixation = _table_fixation(calepinage)
     if fixation is not None:
         tables.append(fixation)
+    # ACAL885 — la feuille « Vérification », EN FIN, seulement si chaîné.
+    verification = _table_verification(calepinage)
+    if verification is not None:
+        tables.append(verification)
     return tables
 
 
@@ -465,6 +469,75 @@ def exporter_comparatif_xlsx(comparaison):
     entetes, lignes = _table_comparatif(comparaison)
     verifier_absence_de_prix(entetes, [ligne[1:] for ligne in lignes])
     return _classeur_octets([(FEUILLE_COMPARATIF, entetes, lignes)])
+# ── ACAL885 — la feuille « Vérification » ───────────────────────────────────
+
+#: Hors ``FEUILLES`` (deux tests la comparent aux feuilles d'un classeur non
+#: chaîné) : feuille optionnelle, comme ``FEUILLE_SURFACES``.
+FEUILLE_VERIFICATION = 'Vérification'
+NON_PUBLIEE = 'non publiée'
+
+
+def _lignes_verification(conception, evaluation):
+    """Les lignes ``Grandeur | Formule (texte) | Valeurs de la fiche |
+    Résultat`` : formules en TEXTE, valeurs lues de la ``Conception`` (la même
+    que le verdict) ; une valeur de fiche absente ⇒ « non publiée », la ligne
+    n'est pas calculée."""
+    from core.electrique.types import fr
+
+    def g(valeur):  # la valeur EXACTE de la fiche, virgule décimale
+        return ('%g' % valeur).replace('.', ',')
+
+    module = conception.entree.module
+    froid = getattr(conception.temperatures, 'froid_c', None)
+    if not getattr(conception.temperatures, 'sourcees', False):
+        froid = None
+    beta = (None if 'temp_coeff_voc_pct_c' in conception.coefficients_non_sources
+            else module.temp_coeff_voc_pct_c)
+    manque = [nom for nom, valeur in (
+        ('Voc de la fiche', module.voc_v or None), ('β (Voc) de la fiche', beta),
+        ('température mini', froid)) if valeur is None]
+    formule = ('Voc à froid = N × Voc × (1 + (β %/°C ÷ 100) × (Tmin − 25))')
+    lignes = []
+    for chaine in conception.chaines:
+        grandeur = 'Voc à froid — chaîne %s (%s)' % (chaine.repere, chaine.pan)
+        if manque:
+            lignes.append([grandeur, formule, 'Non renseigné : '
+                           + ', '.join(manque), NON_PUBLIEE])
+            continue
+        lignes.append([grandeur, formule,
+                       'N = %d ; Voc = %s V ; β = %s %%/°C ; Tmin = %s °C' % (
+                           chaine.nb_modules, g(module.voc_v), g(beta),
+                           g(froid)),
+                       '%s V' % fr(chaine.voc_froid_v, 1)])
+    ratio = getattr(getattr(evaluation, 'ratio_dc_ac', None), 'valeur', None)
+    lignes.append(['Ratio DC/AC', 'Ratio DC/AC = puissance DC ÷ puissance AC',
+                   ('DC = %s kWc ; AC = %d × %s kW' % (
+                       fr(evaluation.puissance_dc_kwc, 2), evaluation.nombre,
+                       fr(evaluation.ac_kw_unitaire, 2)))
+                   if ratio is not None else 'Puissance AC non renseignée',
+                   fr(ratio, 2) if ratio is not None else NON_PUBLIEE])
+    return lignes
+
+
+def _table_verification(calepinage):
+    """``(titre, entetes, lignes)`` de la feuille « Vérification », PRIX
+    VÉRIFIÉS, ou ``None`` quand le calepinage n'est pas chaîné."""
+    from .chaines import evaluer_onduleurs
+    from .electrique import TemperaturesInvalides, conception_du_calepinage
+
+    try:
+        conception = conception_du_calepinage(calepinage)[0]
+    except TemperaturesInvalides:
+        return None
+    evaluation = evaluer_onduleurs(conception)
+    if not conception.chaines or evaluation is None:
+        return None
+    entetes = ['Grandeur', 'Formule (texte)', 'Valeurs de la fiche', 'Résultat']
+    lignes = _lignes_verification(conception, evaluation)
+    verifier_absence_de_prix(entetes, lignes)
+    return FEUILLE_VERIFICATION, entetes, lignes
+
+
 # ── CALX359 — la feuille « Fixation » ───────────────────────────────────────
 
 

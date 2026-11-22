@@ -389,7 +389,7 @@ def _html_plan_pose():
 def _html_plan_lestage():
     """ACAL565 — la feuille de lestage, depuis la géométrie de la planche et
     quatre paramètres saisis (aucune base)."""
-    from apps.calepinage.services.plan_lestage import svg_de_plan_lestage
+    from apps.calepinage.services.plan_lestage import _svg_de_plan_lestage
     from apps.calepinage.services.planche import (
         geometrie_de_planche, html_de_planche,
     )
@@ -402,7 +402,7 @@ def _html_plan_lestage():
                                  ('largeur_coin_m', 0.8),
                                  ('lest_rive_kg_par_module', 12.5),
                                  ('lest_coin_kg_par_module', 25.0))}
-    return html_de_planche(svg_de_plan_lestage(
+    return html_de_planche(_svg_de_plan_lestage(
         nu, geometrie_de_planche(LAYOUT_PLANCHE), zones))
 
 

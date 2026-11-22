@@ -148,6 +148,7 @@ import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
 // `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
 import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './roofPro11/moduleSelect';
+import { enregistrerOrbite } from './roofPro11/videoOrbite'; // ACAL896
 import { factureCarteDe, lireFactureSaisie } from './roofPro11/factureCarte'; // ACAL777
 import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
 import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
@@ -4291,6 +4292,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),
     renderCarteAccesHd: (scale) => shadingUi.avecCarteDAcces(() => scene3d.renderOffscreen(scale)), // ACAL726
     exporterSceneGltf: () => scene3d.exporterSceneGltf(), // ACAL537
+    enregistrerOrbite: (o) => enregistrerOrbite(map, o), // ACAL896 — vidéo d'orbite, hors /proposal
     appliquerVue: (nom) => appliquerVue(map, nom, facingAzimuthDeg, !!opts.reducedMotion), // ACAL435
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
     // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les

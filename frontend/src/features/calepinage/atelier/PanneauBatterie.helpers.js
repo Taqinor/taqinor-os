@@ -26,9 +26,6 @@ export const SEUILS_HORS_RESEAU = ['veille_pct', 'entretien_pct', 'arret_pct']
 /** ACAL799 — les champs de `batterie.coupures` (serveur : `batterie_declaration.py::CHAMPS_COUPURES`). */
 export const CHAMPS_COUPURES = ['nombre_par_an', 'duree_h', 'heure_debut']
 
-/** ACAL803 — les nombres de `hors_reseau.groupe` (serveur : `groupe_appoint.py::CLES_GROUPE`, hors `actif`). */
-const CHAMPS_GROUPE = ['puissance_kw', 'soc_demarrage_pct', 'soc_arret_pct', 'heures_max_par_jour']
-
 const enTexte = (v) => (v === null || v === undefined ? '' : Array.isArray(v) ? v.join(', ') : String(v))
 
 const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -63,9 +60,6 @@ export function depuisEntree(entree) {
   // ACAL791 — seuils de protection hors réseau : relus du stock, jamais préremplis.
   const seuils = estObjet(h.seuils) ? h.seuils : {}
   etat.seuils = Object.fromEntries(SEUILS_HORS_RESEAU.map((cle) => [cle, enTexte(seuils[cle])]))
-  // ACAL803 — le groupe d'appoint : relu du stock, jamais prérempli.
-  const groupe = estObjet(h.groupe) ? h.groupe : {}
-  etat.groupe = { actif: groupe.actif === true, ...Object.fromEntries(CHAMPS_GROUPE.map((cle) => [cle, enTexte(groupe[cle])])) }
   return etat
 }
 
@@ -139,12 +133,6 @@ export function corpsDeclaration(etat, entree) {
   // ACAL791 — jamais postés si aucun champ n'est rempli et qu'aucun seuil n'est enregistré.
   const seuils = Object.fromEntries(SEUILS_HORS_RESEAU.map((cle) => [cle, nombreOuNull(etat.seuils?.[cle])]))
   if (Object.values(seuils).some((v) => v !== null) || 'seuils' in horsReseau) horsReseau.seuils = seuils
-  // ACAL803 — case cochée : le groupe et ses quatre nombres ; décochée : `{actif: false}` seulement s'il était au stock.
-  if (etat.actif && etat.groupe?.actif) {
-    horsReseau.groupe = { actif: true, ...Object.fromEntries(CHAMPS_GROUPE.map((cle) => [cle, nombreOuNull(etat.groupe[cle])])) }
-  } else if ('groupe' in horsReseau) {
-    horsReseau.groupe = { actif: false }
-  }
   const corps = {}
   if (stockeB || Object.keys(batterie).length) corps.batterie = batterie
   if (stockeH || Object.keys(horsReseau).length) corps.hors_reseau = horsReseau

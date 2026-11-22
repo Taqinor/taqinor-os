@@ -16,8 +16,9 @@ import { MemoryRouter } from 'react-router-dom'
    ========================================================================== */
 
 const layout = vi.fn()
+const explications = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { layout: (...a) => layout(...a) } },
+  default: { calepinages: { layout: (...a) => layout(...a), explications: (...a) => explications(...a) } },
 }))
 
 const { default: OngletCoupeRangees } = await import('./OngletCoupeRangees')
@@ -41,27 +42,30 @@ const MODULES = [{
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup() })
 
+/** Deux rangées posées sur `z1` (pas de 2,5 m) : la coupe est calculable. */
+const servirGeometrieComplete = () => layout.mockResolvedValue({
+  data: {
+    roof_layout: {
+      activeAreaId: 'z1',
+      pin: { lat: 33.5, lng: -7.6 },
+      modules: MODULES,
+      zones: [{
+        id: 'z1',
+        geometry: {
+          moduleId: 'm1',
+          tiltDeg: 13,
+          flush: false,
+          azimuthDeg: 180,
+          panels: [...rangee(0), ...rangee(-2.5)],
+        },
+      }],
+    },
+  },
+})
+
 describe('CALX121 — géométrie complète : la coupe est dessinée', () => {
   it('publie les cinq valeurs lues de la géométrie déjà posée', async () => {
-    layout.mockResolvedValue({
-      data: {
-        roof_layout: {
-          activeAreaId: 'z1',
-          pin: { lat: 33.5, lng: -7.6 },
-          modules: MODULES,
-          zones: [{
-            id: 'z1',
-            geometry: {
-              moduleId: 'm1',
-              tiltDeg: 13,
-              flush: false,
-              azimuthDeg: 180,
-              panels: [...rangee(0), ...rangee(-2.5)],
-            },
-          }],
-        },
-      },
-    })
+    servirGeometrieComplete()
     rendre()
 
     expect(await screen.findByTestId('cal-coupe-svg')).toBeInTheDocument()
@@ -137,5 +141,28 @@ describe('CALX121 — le serveur refuse la lecture', () => {
     rendre()
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger la conception.')
+  })
+})
+
+describe('ACAL876 — le « ? » de la coupe des rangées', () => {
+  it('inclinaison, pas, hauteur et longueur d’ombre portent un « ? » ; aucun chiffre de la coupe sans explication', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const userEvent = (await import('@testing-library/user-event')).default
+    const { fichierContrat } = await import('../../../test/fixtures/contractSamples')
+    const { chiffresSansGrandeur } = await import('../commun/useExplications')
+    const registre = JSON.parse(readFileSync(
+      join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8')).entrees
+    explications.mockResolvedValue({ data: { entrees: registre } })
+    servirGeometrieComplete()
+    rendre()
+    await screen.findByTestId('cal-coupe-svg')
+
+    for (const cle of ['inclinaison', 'pas_rangees', 'hauteur_hors_tout', 'longueur_ombre', 'rayon_solaire']) {
+      expect(document.querySelector(`[data-grandeur="toit.${cle}"]`), cle).not.toBeNull()
+    }
+    expect(chiffresSansGrandeur(screen.getByTestId('cal-coupe-panel'))).toEqual([])
+    await userEvent.click(document.querySelector('[data-grandeur="toit.pas_rangees"]'))
+    expect(await screen.findByText(registre.find((e) => e.cle === 'toit.pas_rangees').phrase)).toBeInTheDocument()
   })
 })

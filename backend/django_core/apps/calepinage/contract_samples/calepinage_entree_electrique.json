@@ -197,7 +197,6 @@
       "pans": {
         "z1": {
           "motif_parcours": "aller_retour",
-          "motif_affectation": "u",
           "point_collecte": {"cx": 2.4, "cy": 1.1}
         }
       }

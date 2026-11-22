@@ -320,14 +320,14 @@ class PlanLestagePurTest(SimpleTestCase):
 
     def test_la_feuille_dit_zones_lest_et_sources_sans_montant(self):
         from apps.calepinage.services.garde_montants import mots_d_argent
-        from apps.calepinage.services.plan_lestage import svg_de_plan_lestage
+        from apps.calepinage.services.plan_lestage import _svg_de_plan_lestage
         from apps.calepinage.services.planche import geometrie_de_planche
 
         from .test_cal171_planche import LAYOUT
 
-        svg = svg_de_plan_lestage(self._nu(LAYOUT),
-                                  geometrie_de_planche(LAYOUT),
-                                  _zones_saisies())
+        svg = _svg_de_plan_lestage(self._nu(LAYOUT),
+                                   geometrie_de_planche(LAYOUT),
+                                   _zones_saisies())
         for attendu in ('Plan de lestage', 'Centre', 'Rive', 'Coin',
                         '12,5 kg', 'notice K2 (essai)', 'calculées'):
             self.assertIn(attendu, svg)

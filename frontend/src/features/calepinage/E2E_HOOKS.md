@@ -468,6 +468,8 @@ retiré plus un hook ajouté.
 | `cal-export-hd-message` | outils de vue — message du dernier export HD. |
 | `cal-onglet-2d` | outils de vue — onglet « Vue 2D ». |
 | `cal-onglet-3d` | outils de vue — onglet « Vue 3D ». |
+| `cal-video-orbite` | outils de vue — bouton « Vidéo 10 s » : orbite de 360° enregistrée puis téléchargée (niveau expert). |
+| `cal-video-orbite-message` | outils de vue — « Enregistrement… (n s) », puis le fichier ou le motif. |
 | `cal-onglets-vue` | outils de vue — conteneur des onglets 2D/3D. |
 | `cal-vue-dessus` | outils de vue — caméra « Dessus ». |
 | `cal-vue-face-panneaux` | outils de vue — caméra « Face aux panneaux ». |
@@ -929,15 +931,10 @@ retiré plus un hook ajouté.
 | `cal-electrique-synthese` | étape Électrique : le compte du panneau « Prêt à envoyer ? » — « n points à régler » ou « Prêt à envoyer » (ACAL865). |
 | `cal-electrique-section` | étape Électrique : section repliable (suffixe = clé de l’onglet). |
 
-## PretAEnvoyer — ACAL865 (`commun/PretAEnvoyer.jsx`)
+## EtapeDocuments — ACAL867 (`documents/EtapeDocuments.jsx`)
 
 | Hook | Sémantique |
 |---|---|
-| `cal-pret-a-envoyer` | panneau « Prêt à envoyer ? » (contrôles avant l’envoi, `GET pret-a-envoyer/`). |
-| `cal-pret-erreur` | panneau « Prêt à envoyer ? » : lecture en échec. |
-| `cal-pret-ligne` | une ligne de contrôle (suffixe = `code` du contrôle). |
-| `cal-pret-regler` | bouton « Régler » d’un contrôle (suffixe = `code`) : ouvre `?onglet=&champ=`. |
-| `cal-pret-reussis` | contrôles réussis repliés (« Voir les n contrôles réussis »). |
 
 ## PhotoSiteCalage — complément L5 (`PhotoSiteCalage.jsx`)
 

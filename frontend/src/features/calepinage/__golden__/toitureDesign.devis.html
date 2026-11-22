@@ -52,10 +52,12 @@
 <p class="rp9-toit-client-label">Toit dessiné par le client · 52 m²</p>
 </div>
 <button type="button" data-testid="rp9-plein-ecran-toggle" class="rp9-chip rp9-carte-puce">Plein écran</button>
+<div class="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 gap-2">
+<button type="button" id="rp9-finish" disabled="" class="rp9-chip rp9-carte-puce" style="position: static;">Terminer le tracé</button>
+<button type="button" id="rp9-undo-point" hidden="" class="rp9-chip rp9-carte-puce" style="position: static;">Annuler le dernier point</button>
+</div>
 </div>
 <div class="flex flex-wrap items-center gap-3 border-t border-border p-4">
-<button type="button" id="rp9-finish" disabled="" class="rp9-chip">Terminer le tracé</button>
-<button type="button" id="rp9-undo-point" hidden="" class="rp9-chip">Annuler le dernier point</button>
 <button type="button" id="rp9-clear" class="rp9-chip">Effacer</button>
 <button type="button" id="rp9-add-area" disabled="" class="rp9-chip">+ Ajouter une zone</button>
 <button type="button" id="rp9-parcelle" aria-pressed="false" class="rp9-chip">Parcelle</button>
@@ -451,7 +453,7 @@
 </button>
 </dt>
 </div>
-<p data-facture-lead="" class="mt-2 text-xs text-lune-faint">Facture du lead : 900 MAD/mois</p>
+<p data-facture-lead="" class="mt-2 text-xs text-muted-foreground">Facture du lead : 900 MAD/mois</p>
 </dl>
 <p id="rp9-reco-why" class="mt-5 min-h-[3.5rem] text-xs text-foreground">
 </p>

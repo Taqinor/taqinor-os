@@ -52,7 +52,9 @@ async function motifDuRefus(erreur) {
     const premier = corps && typeof corps === 'object' ? Object.values(corps)[0] : null
     const motif = Array.isArray(premier) ? premier[0] : premier
     if (typeof motif === 'string' && motif.trim()) return motif
-  } catch { /* corps illisible */ }
+  } catch {
+    return "Le schéma n'a pas pu être chargé."  // corps illisible : le motif par défaut
+  }
   return "Le schéma n'a pas pu être chargé."
 }
 

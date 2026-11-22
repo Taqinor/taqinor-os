@@ -7,6 +7,7 @@ import { Button, Card, EmptyState, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { celluleLongueur, libelleCote } from './CheminementCables.helpers'
 import ParcoursDuPan from './ParcoursDuPan'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CALX229 — L'ONGLET « CHEMINEMENT & CÂBLES » DE L'ATELIER.
@@ -155,11 +156,13 @@ export default function CheminementCables({ calepinageId, builderApi } = {}) {
             Chute DC cumulée :
             {' '}
             <strong data-testid="calx229-total-dc">{formatPercent(totaux.dc_chute_pct, { decimals: 2 })}</strong>
+            <Pourquoi cle="electrique.chute_dc_cumulee" valeurs={{ totaux }} />
           </span>
           <span>
             Chute AC cumulée :
             {' '}
             <strong data-testid="calx229-total-ac">{formatPercent(totaux.ac_chute_pct, { decimals: 2 })}</strong>
+            <Pourquoi cle="electrique.chute_ac_cumulee" valeurs={{ totaux }} />
           </span>
         </div>
 
@@ -198,11 +201,13 @@ export default function CheminementCables({ calepinageId, builderApi } = {}) {
                     <td className="py-1">{`${t.de ?? '—'} → ${t.vers ?? '—'}`}</td>
                     <td className="py-1" data-testid={`calx229-longueur-${t.id}`}>
                       {celluleLongueur(t)}
+                      <Pourquoi cle="electrique.longueur_troncon" valeurs={t} />
                     </td>
                     <td className="py-1" data-testid={`calx229-section-${t.id}`}>
                       {t.section_mm2 === null || t.section_mm2 === undefined
                         ? '—'
                         : `${formatNumber(t.section_mm2, { decimals: 1 })} mm²`}
+                      <Pourquoi cle="electrique.section_troncon" valeurs={t} />
                     </td>
                     <td className="py-1" title={t.regle_source || ''}>
                       {t.critere_dimensionnant || '—'}

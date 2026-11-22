@@ -1409,9 +1409,13 @@ class CalepinageApiGoldenTests(unittest.TestCase):
     # supprimer) que la garde résout. ACAL403 — + les trois portes du profil
     # de départ (lire, appliquer, retirer), résolues elles aussi. ACAL960 — + la
     # porte ``catalogueMateriel`` (GET calepinages/catalogue-materiel/).
+    # ACAL628 + la porte ``controleChaine`` (POST calepinages/controle-chaine/,
+    # écran electrique/ControleChaine.jsx) ; ACAL871 + ``explications`` (GET
+    # calepinages/explications/, fragment simulation.js, lu par commun/useExplications.js).
     RESOLUES = [
-        "appliquerProfilDepart", "calculer", "catalogueMateriel", "comparerProjets", "creer", "depuisLead",
-        "depuisModele", "enregistrerProfilsTypes", "get", "importerProjet",
+        "appliquerProfilDepart", "calculer", "catalogueMateriel", "comparerProjets",
+        "controleChaine", "creer", "depuisLead",
+        "depuisModele", "enregistrerProfilsTypes", "explications", "get", "importerProjet",
         "liste", "modeles", "modifier", "pose", "profilDepart", "profilsTypes",
         "recalculerSimulations", "resultat", "retirerProfilDepart", "suggererPentesIGN",
         "suggestionPenteDisponible", "supprimer", "update", "zonesLestage",

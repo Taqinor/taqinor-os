@@ -30,7 +30,8 @@ const lireSession = () => {
   try { return JSON.parse(window.sessionStorage.getItem(CLE_SESSION) || 'null') ?? {} } catch { return {} }
 }
 const ecrireSession = (valeurs) => {
-  try { window.sessionStorage.setItem(CLE_SESSION, JSON.stringify(valeurs)) } catch { /* mémoire du navigateur absente : sans effet */ }
+  // Mémoire du navigateur absente : rien n'est gardé, l'écran reste le même (false).
+  try { window.sessionStorage.setItem(CLE_SESSION, JSON.stringify(valeurs)); return true } catch { return false }
 }
 
 export default function ControleChaine({ calepinageId } = {}) {

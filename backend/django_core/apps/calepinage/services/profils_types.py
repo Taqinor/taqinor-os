@@ -58,9 +58,8 @@ SOURCE_REPLI = 'hypothese_interne'
 
 #: La mention que TOUT profil de repli porte, partout où il sert.
 MENTION_REPLI = (
-    'Profil codé en dur dans le dépôt (apps/ventes/solar_design.py) — '
-    'HYPOTHÈSE INTERNE, jamais une mesure : la société n’a pas encore saisi '
-    'de profil pour cette famille.')
+    'Profil de départ de l’application — une hypothèse, jamais une mesure : '
+    'la société n’a pas encore saisi de profil pour cette famille.')
 
 #: Les profils de repli, par clé. La COURBE est relue dans le moteur de
 #: ventes à l'appel — jamais recopiée ici (deux copies divergent).

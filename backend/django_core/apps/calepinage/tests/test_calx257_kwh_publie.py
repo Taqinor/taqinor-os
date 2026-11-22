@@ -177,3 +177,59 @@ class GardeDeSourceTest(unittest.TestCase):
         }
         self.assertIn(('apps.parametres.tariff', 'kwh_depuis_facture'),
                       importes)
+
+
+class SupposeTest(SimpleTestCase):
+    """ACAL980 — « Ce qui est supposé » : un repli caché par entrée, sa valeur
+    LUE des constantes du moteur, jamais recopiée."""
+
+    DOSSIER = 'dossier'
+    FICHE = 'fiche'
+
+    def _liste(self, origine, societe):
+        from apps.calepinage.services.suppositions import (
+            liste_des_suppositions)
+
+        return liste_des_suppositions({'origine': origine}, societe,
+                                      self.DOSSIER)
+
+    def test_fiche_incomplete_et_sans_allee_nomme_les_deux_replis(self):
+        from core.calepinage.electrique import MODULES_PAR_CHAINE
+        from core.calepinage.types import Parametres
+
+        suppose = self._liste(self.DOSSIER, {})
+        self.assertEqual([s['code'] for s in suppose],
+                         ['longueur_chaine_dossier', 'allee_par_defaut'])
+        self.assertEqual(suppose[0]['valeur'], MODULES_PAR_CHAINE)
+        self.assertIn('%d modules par chaîne' % MODULES_PAR_CHAINE,
+                      suppose[0]['libelle'])
+        self.assertEqual(suppose[1]['valeur'], Parametres.__dataclass_fields__[
+            'allee_m'].default)
+        self.assertIn('0,60 m', suppose[1]['libelle'])
+        for repli in suppose:
+            self.assertEqual(sorted(repli),
+                             ['champ', 'code', 'libelle', 'valeur'])
+
+    def test_fiche_complete_et_allee_reglee_liste_vide(self):
+        societe = {'degagements': {'allee_technique_m': 0.8}}
+        self.assertEqual(self._liste(self.FICHE, societe), [])
+
+    def test_une_allee_reglee_retire_son_repli_seulement(self):
+        societe = {'degagements': {'allee_technique_m': 0.8}}
+        self.assertEqual(
+            [s['code'] for s in self._liste(self.DOSSIER, societe)],
+            ['longueur_chaine_dossier'])
+        self.assertEqual(
+            [s['code'] for s in self._liste(self.FICHE, {})],
+            ['allee_par_defaut'])
+
+    def test_la_forme_est_celle_du_contrat_partage(self):
+        import json
+
+        chemin = (pathlib.Path(__file__).resolve().parent.parent
+                  / 'contract_samples' / 'calepinage_resultat.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))
+        vide = exemple['exemple_vide']['suppose']
+        self.assertEqual(vide, self._liste(self.DOSSIER, {}))
+        self.assertEqual(exemple['exemple']['suppose'],
+                         self._liste(self.FICHE, {}))

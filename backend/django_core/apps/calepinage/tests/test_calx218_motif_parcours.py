@@ -245,10 +245,10 @@ class SurfaceDeBoucleTest(unittest.TestCase):
 
     def test_quatre_modules_alignes_et_collecte_a_1_5_3_font_4_5_m2(self):
         from apps.calepinage.services.boucles_chaines import (
-            boucles_des_chaines, surface_de_boucle)
+            boucles_des_chaines, _surface_de_boucle)
 
         # Triangle de base 3 m (cx 0 à 3) et de hauteur 3 m : 3 × 3 ÷ 2.
-        self.assertEqual(surface_de_boucle(
+        self.assertEqual(_surface_de_boucle(
             [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)],
             {'cx': 1.5, 'cy': 3.0}), 4.5)
         ligne = boucles_des_chaines(
@@ -272,10 +272,10 @@ class SurfaceDeBoucleTest(unittest.TestCase):
 
     def test_un_seul_module_ne_forme_pas_de_boucle(self):
         from apps.calepinage.services.boucles_chaines import (
-            boucles_des_chaines, surface_de_boucle)
+            boucles_des_chaines, _surface_de_boucle)
 
-        self.assertIsNone(surface_de_boucle([(0.0, 0.0)],
-                                            {'cx': 1.0, 'cy': 1.0}))
+        self.assertIsNone(_surface_de_boucle([(0.0, 0.0)],
+                                             {'cx': 1.0, 'cy': 1.0}))
         ligne = boucles_des_chaines(
             self.QUATRE[:1], self.DOCUMENT,
             {'pans': {'z1': {'point_collecte': {'cx': 1.0, 'cy': 1.0}}}})[0]

@@ -72,6 +72,17 @@ export function useAtelierBoot(ctx) {
     ? (corps) => proposerConsommation(calepinageId, corps).then(
       (res) => res?.data, (err) => { throw refusServeur(err) })
     : null
+  // ACAL840 — « Lire une photo de facture » : disponibilité + lecture, liées au calepinage ouvert.
+  const lireFacture = (calepinageId && calepinageApi.calepinages.lireFactureConsommation)
+    ? {
+      disponible: () => calepinageApi.calepinages.lireFactureDisponible(calepinageId).then((res) => res?.data),
+      lire: (fichier) => {
+        const corps = new FormData()
+        corps.append('fichier', fichier)
+        return calepinageApi.calepinages.lireFactureConsommation(calepinageId, corps).then((res) => res?.data)
+      },
+    }
+    : null
   // ENF22 — le corps du boot lit `ctx` (setters/refs du parent) a l'instant de
   // l'effet : un evenement d'effet, relance seulement par la liste ci-dessous.
   const demarrerBoot = useEffectEvent(() => {
@@ -404,6 +415,7 @@ export function useAtelierBoot(ctx) {
           rendementPvgis: null,
           // ACAL311 — kWh au barème société (null hors calepinage : « estimation »).
           proposerConsommation: proposerPourAtelier,
+          lireFactureConsommation: lireFacture,
           productionAtelier: productionAtelierErp,
           maptilerKey: carte.maptilerKey,
           mapboxToken: carte.mapboxToken || undefined,

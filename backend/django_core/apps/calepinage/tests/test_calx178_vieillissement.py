@@ -8,6 +8,7 @@ Run :
 """
 from __future__ import annotations
 
+import datetime
 import unittest
 
 from apps.calepinage.services import etapes
@@ -335,6 +336,85 @@ class AgeDesPansExistantsTest(unittest.TestCase):
                           {'p50_kwh': 3000.0, 'age_ans': 0}])
         document['zones'][0]['existant'] = False
         self.assertIsNone(_parts_vieillies(document, par_pan, moment))
+
+
+class PartiesExistantEtAjouteTest(unittest.TestCase):
+    """ACAL843 — ``production.parties`` regroupe ``par_pan`` sans rien changer."""
+
+    DOCUMENT = {'zones': [
+        {'id': 'z1', 'label': 'z1', 'existant': True, 'anneeMiseEnService': 2021},
+        {'id': 'z2', 'label': 'z2'}]}
+    PAR_PAN = [{'pan': 'z1', 'kwc': 3.0, 'p50_kwh': 4000.0},
+               {'pan': 'z2', 'kwc': 2.0, 'p50_kwh': 3000.0}]
+    MOMENT = datetime.datetime(2026, 11, 21, tzinfo=datetime.timezone.utc)
+
+    def _parties(self, document=None, **options):
+        from apps.calepinage.services.production_parties import (
+            parties_de_la_production)
+
+        options.setdefault('fiche', FICHE)
+        return parties_de_la_production(
+            self.DOCUMENT if document is None else document, self.PAR_PAN,
+            contexte_de(horizon=10, modele='lineaire', **options), self.MOMENT)
+
+    def test_trois_parties_sommees(self):
+        parties = self._parties()
+        f = vieillissement._facteurs('lineaire', 0.55, 2.0, 15)
+        vieilli = round(4000.0 * f[5] / f[0], 3)  # âge 5 : f(5 + 1) ÷ f(1)
+        self.assertEqual(parties['existant']['pans'], ['z1'])
+        self.assertEqual(parties['ajoute']['pans'], ['z2'])
+        self.assertEqual(parties['existant']['p50_kwh_neuf'], 4000.0)
+        self.assertEqual(parties['ajoute']['p50_kwh_neuf'], 3000.0)
+        self.assertEqual(parties['ajoute']['p50_kwh_avec_age'], 3000.0)
+        self.assertAlmostEqual(parties['existant']['p50_kwh_avec_age'], vieilli, 2)
+        self.assertLess(vieilli, 4000.0)
+        total = parties['total']
+        self.assertEqual(total['kwc'], 5.0)
+        self.assertEqual(total['p50_kwh_neuf'], 7000.0)
+        self.assertAlmostEqual(total['p50_kwh_avec_age'], vieilli + 3000.0, 2)
+        self.assertTrue(parties['mention'])
+
+    def test_la_forme_est_celle_du_contrat_partage(self):
+        import json
+        import pathlib
+
+        from apps.calepinage.services.production_parties import MENTION
+
+        chemin = (pathlib.Path(__file__).resolve().parent.parent
+                  / 'contract_samples' / 'calepinage_resultat.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))[
+            'exemple_avec_existant']['production']['parties']
+        parties = self._parties()
+        self.assertEqual(sorted(parties), sorted(exemple))
+        for cle in ('existant', 'ajoute'):
+            self.assertEqual(sorted(parties[cle]), sorted(exemple[cle]))
+        self.assertEqual(sorted(parties['total']), sorted(exemple['total']))
+        self.assertEqual(exemple['mention'], MENTION)
+
+    def test_cle_absente_sans_pan_existant(self):
+        sans = {'zones': [{'id': 'z1', 'label': 'z1'}, {'id': 'z2', 'label': 'z2'}]}
+        self.assertIsNone(self._parties(sans))
+
+    def test_l_existant_n_est_pas_compte_dans_ajoute(self):
+        parties = self._parties()
+        self.assertNotIn('z1', parties['ajoute']['pans'])
+        self.assertEqual(parties['ajoute']['kwc'], 2.0)
+
+    def test_sans_fiche_de_degradation_l_age_est_omis_et_dit(self):
+        parties = self._parties(fiche={'designation': 'X'})
+        self.assertIsNone(parties['existant']['p50_kwh_avec_age'])
+        self.assertIsNone(parties['total']['p50_kwh_avec_age'])
+        self.assertEqual(parties['ajoute']['p50_kwh_avec_age'], 3000.0)
+        self.assertEqual(parties['total']['p50_kwh_neuf'], 7000.0)
+        self.assertIn('absente', parties['mention'])
+
+    def test_l_autoconsommation_lit_la_serie_de_tous_les_pans(self):
+        from apps.calepinage.services.simulation import _somme_des_series
+
+        def serie(valeur):
+            return {'pas_minutes': 60, 'points': [{'p_ac_kw': valeur}] * 3}
+        somme = _somme_des_series([serie(2.0), serie(1.5)])
+        self.assertEqual([p['p_ac_kw'] for p in somme['points']], [3.5] * 3)
 
 
 if __name__ == '__main__':

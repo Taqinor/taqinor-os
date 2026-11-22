@@ -158,18 +158,40 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
     expect(screen.queryByTestId('calx349-suggestion-error')).toBeNull()
   })
 
-  it('une décision inconnue est rendue SOUS le champ « decision »', async () => {
+  it('une décision refusée (« decision ») s’affiche UNE fois, sous les boutons, sans clé brute au bandeau', async () => {
     servir('exemple_vide')
+    const message = 'Décision inconnue : « valide ». Décisions admises : approuve, refuse.'
     calepinageApi.calepinages.decisionApprobation.mockRejectedValue({
-      response: { data: { decision: 'Décision inconnue : « valide ». Décisions admises : approuve, refuse.' } },
+      response: { status: 409, data: { decision: message } },
     })
     rendre()
     await screen.findByTestId('calx349-decider')
 
     fireEvent.click(screen.getByTestId('calx349-approuver'))
 
-    await screen.findByTestId('calx349-erreur-decision')
-    expect(screen.getByTestId('calx349-bandeau')).toHaveTextContent('decision')
+    expect(await screen.findByTestId('calx349-erreur-decision')).toHaveTextContent(message)
+    expect(screen.getAllByText(message)).toHaveLength(1) // ACAL946 — une seule fois
+    expect(screen.queryByTestId('calx349-bandeau')).toBeNull()
+  })
+
+  it('ACAL946 — l’auteur relu par un autre approbateur : la phrase remplace « Approuver », « Refuser » reste', async () => {
+    servir('exemple_auteur')
+    rendre()
+    await screen.findByTestId('calx349-decider')
+    expect(screen.queryByTestId('calx349-approuver')).toBeNull()
+    const phrase = screen.getByTestId('acal946-autre-relecteur')
+    expect(phrase).toHaveTextContent('La conception doit être approuvée par un autre relecteur.')
+    expect(phrase).toHaveAttribute('title', echantillon('exemple_auteur').motif_sans_approbation)
+    expect(screen.getByTestId('calx349-refuser')).toBeInTheDocument()
+  })
+
+  it('ACAL946 — un autre relecteur (`peut_approuver` vrai) garde « Approuver »', async () => {
+    servir('exemple_vide')
+    rendre()
+    await screen.findByTestId('calx349-decider')
+    expect(echantillon('exemple_vide').peut_approuver).toBe(true)
+    expect(screen.getByTestId('calx349-approuver')).toBeInTheDocument()
+    expect(screen.queryByTestId('acal946-autre-relecteur')).toBeNull()
   })
 
   it('une suggestion automatique en attente est nommée SOUS son chemin de document', async () => {

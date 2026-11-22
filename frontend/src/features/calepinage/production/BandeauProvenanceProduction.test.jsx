@@ -18,7 +18,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import { PVGIS_LIVE_LOSS_PCT } from '@rooflib/systemLoss'
 import BandeauProvenanceProduction, {
-  BandeauBorneHaute, EcartPvgis, IncertitudeSigma, ReglagesUtilises, SourceMeteo,
+  BandeauBorneHaute, EcartPvgis, IncertitudeSigma, ReglagesUtilises, SourceMeteo, Suppose,
 } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 
@@ -291,6 +291,29 @@ describe('EcartPvgis — voyant (ACAL855)', () => {
 })
 
 /* ACAL698 — la prop facultative `ouvert` pilote le <details>. */
+describe('Suppose — « Ce qui est supposé » (ACAL980)', () => {
+  const contrat = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide').suppose
+
+  it('liste chaque repli avec son libellé servi et le champ à renseigner', () => {
+    render(<Suppose suppose={contrat} />)
+    const bloc = screen.getByTestId('acal980-suppose')
+    expect(bloc).toHaveTextContent('Ce qui est supposé')
+    expect(within(bloc).getByTestId('acal980-longueur_chaine_dossier')).toHaveTextContent(
+      "16 modules par chaîne (longueur retenue au dossier : fiche du module ou de l'onduleur incomplète)",
+    )
+    expect(within(bloc).getByTestId('acal980-allee_par_defaut')).toHaveTextContent(
+      "À renseigner : panneau Allées de l'atelier (largeur de l'allée technique)",
+    )
+  })
+
+  it('liste vide ou absente : rien', () => {
+    const { container, rerender } = render(<Suppose suppose={[]} />)
+    expect(container).toBeEmptyDOMElement()
+    rerender(<Suppose />)
+    expect(container).toBeEmptyDOMElement()
+  })
+})
+
 describe('ReglagesUtilises — prop ouvert (ACAL698)', () => {
   const simulation = { reglages_utilises: { b0_iam: { valeur: 0.05, source: 'texte', reference: 'x' } } }
 

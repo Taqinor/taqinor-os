@@ -49,11 +49,14 @@ from core.electrique.types import (
     TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C, VerdictElectrique,
 )
 from .chaine_la_plus_faible import _chaine_la_plus_faible  # ACAL646 — extraite
-from . import bordereau_calepinage as _bordereau_calepinage  # ACAL632
+# REP-alias — appelées par leur MODULE (un alias masque l'appelant à la garde
+# ``check_services_appeles``).
+from . import bordereau_calepinage as _module_bordereau  # ACAL632
 from . import validation_transformateur as _validation_transformateur  # ACAL642
 from . import validation_batterie as _validation_batterie  # ACAL633
 from . import batterie_declaration as _batterie_declaration  # ACAL786
 from . import hors_reseau_declaration as _hors_reseau_declaration  # ACAL790
+from . import suppositions as _suppositions  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
 
@@ -1740,7 +1743,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # les câbles ci-dessus (``cables['noyau']``), des coffrets RÉELLEMENT
     # posés dans le plan et de la règle de structure SOURCÉE ; chaque ligne
     # porte sa référence d'article quand la société en a posé une.
-    bordereau = _bordereau_calepinage.bordereau_du_calepinage(
+    bordereau = _module_bordereau.bordereau_du_calepinage(
         calepinage, conception, cables.get('noyau'),
         equipements=_equipements_electriques(document),
         branches=((micro['bloc'] or {}).get('branches') or ()
@@ -1860,6 +1863,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # CAL170 — la longueur de chaîne retenue et SON origine (fiche
         # calculée, ou longueur de dossier en repli assumé).
         'longueur_chaine': reconciliation,
+        'suppose': _suppositions.liste_des_suppositions(  # ACAL980
+            reconciliation, societe, ORIGINE_LONGUEUR_DOSSIER),
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         # CALX70 — les blocs de la simulation persistée (CALX4), servis tels
@@ -2883,18 +2888,8 @@ def _longueur_chaine_retenue(conception):
     par_pan = {r.pan: r.longueur_chaine for r in conception.repartitions}
 
     if conception.fiche_incomplete or not par_pan:
-        return {
-            'longueur': dossier,
-            'origine': ORIGINE_LONGUEUR_DOSSIER,
-            'detail': "longueur de dossier (core.calepinage.electrique, "
-                      "MODULES_PAR_CHAINE = %d) : les fiches ne permettent "
-                      "pas de calculer la fenêtre de tension — repli assumé, "
-                      "jamais présenté comme un calcul" % dossier,
-            'longueur_dossier': dossier,
-            'ecart': None,
-            'hors_tolerance': False,
-            'par_pan': {},
-        }
+        return _suppositions.repli_longueur_dossier(
+            dossier, ORIGINE_LONGUEUR_DOSSIER)  # ACAL980
 
     longueurs = set(par_pan.values())
     longueur = longueurs.pop() if len(longueurs) == 1 else None

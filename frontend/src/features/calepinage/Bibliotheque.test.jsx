@@ -96,7 +96,7 @@ const PROFILS = [
   {
     id: null, cle: 'commercial', libelle: 'Commercial / tertiaire (repli)',
     famille: 'commercial', source: 'hypothese_interne',
-    provenance: 'Profil codé en dur dans le dépôt — HYPOTHÈSE INTERNE.',
+    provenance: 'Profil de départ de l’application — une hypothèse, jamais une mesure.',
     courbes: { annuel: COURBE_24 }, saisons: ['annuel'],
   },
 ]
@@ -244,12 +244,22 @@ describe('CALX30 — profils types de consommation', () => {
     await rendreAvecDroit()
 
     expect(screen.getByTestId('cal-biblio-profil-repli-1'))
-      .toHaveTextContent('Hypothèse interne')
+      .toHaveTextContent('Profil de départ')
     expect(screen.getByTestId('cal-biblio-profil-provenance-1'))
-      .toHaveTextContent('HYPOTHÈSE INTERNE')
+      .toHaveTextContent('une hypothèse, jamais une mesure')
     // Il n'est PAS éditable : aucun champ de saisie sur cette ligne.
     expect(screen.queryByTestId('cal-biblio-profil-cle-1')).toBeNull()
     expect(screen.queryByTestId('cal-biblio-profil-retirer-1')).toBeNull()
+  })
+
+  it('ACAL963 — aucun texte de la page ne contient un code CALnnn, un chemin .py ni « dépôt »', async () => {
+    await rendreAvecDroit()
+    const texte = document.body.textContent
+    expect(texte).not.toMatch(/CAL\d+/)
+    expect(texte).not.toMatch(/\.py\b/)
+    expect(texte).not.toMatch(/dépôt/)
+    expect(texte).not.toMatch(/HYPOTHÈSE INTERNE/)
+    expect(texte).toContain('Marges, espacements et dégagements réutilisés')
   })
 
   it('un repli ne peut pas être présenté comme une mesure : il n’est jamais envoyé', async () => {
