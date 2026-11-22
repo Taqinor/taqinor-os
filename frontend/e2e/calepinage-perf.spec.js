@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
-import { API_DJANGO, assurerSessionPage, lireJson, uniq, telephoneMobileUnique } from './helpers'
+import { API_DJANGO, assurerSessionPage, lireJson, uniq, telephoneMobileUnique, sondeCarte } from './helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const CAL = `${API_DJANGO}/calepinage`
@@ -44,20 +44,6 @@ test.beforeEach(async ({ page, context }) => {
   await context.addInitScript(sondeCarte)
   await assurerSessionPage(page)
 })
-
-/** Capte la carte MapLibre de l'atelier (même sonde que `acceptation/acal10.spec.js::sondes`). */
-function sondeCarte() {
-  window.__cartes440 = []
-  Object.defineProperty(Object.prototype, '_maxTileCacheSize', {
-    configurable: true,
-    get() { return undefined },
-    set(v) {
-      Object.defineProperty(this, '_maxTileCacheSize', { value: v, writable: true, configurable: true, enumerable: true })
-      if (typeof this.project === 'function' && typeof this.getContainer === 'function') window.__cartes440.push(this)
-    },
-  })
-  window.__carte440 = () => window.__cartes440.filter((m) => m.getContainer()?.isConnected && m.getContainer().id === 'rp9-map').pop()
-}
 
 function consigner(nom, valeur, cible) {
   const ligne = `${nom} = ${valeur} ms (${cible})`

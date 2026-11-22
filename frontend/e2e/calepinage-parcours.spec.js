@@ -34,7 +34,7 @@ import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { uniq, gotoLeads, createLead, openLead, closeLeadModal } from './helpers'
+import { uniq, gotoLeads, createLead, openLead, closeLeadModal, sondeCarte } from './helpers'
 
 const API = '/api/django/calepinage'
 
@@ -252,6 +252,7 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
 // gestes sont donc joués ci-dessous, avec preuve de persistance comme les cinq autres.
 test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’optimisation, course du soleil, arête corrigée, module choisi — relus à l’identique', async ({ page }) => {
   // ── 0. Un lead FRAIS, un calepinage FRAIS créé depuis lui (même patron que CAL221) ──
+  await page.context().addInitScript(sondeCarte) // H7 — la carte de l'atelier, lue pour l'amener à l'échelle d'un toit (1bis)
   await gotoLeads(page)
   const nomLead = await createLead(page, {
     nom: uniq('CALX130 Lead'), facture: 900, ville: 'Casablanca',
@@ -327,6 +328,16 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // ── 1. LA CARTE ──────────────────────────────────────────────────────────
   const map = page.locator('#rp9-map')
   await expect(map).toBeVisible({ timeout: 20_000 })
+  // ── 1bis. À L'ÉCHELLE D'UN TOIT (H7). Le lead de cette spec n'a pas de position GPS : l'atelier ouvre la carte au
+  // niveau du PAYS (« carte au niveau Maroc »), où le rectangle de 220 × 150 px couvrirait ~140 000 km² — le pavage
+  // le refuse et aucun geste suivant n'a de sens. La navigation n'est pas le sujet de ce parcours (les gestes le
+  // sont) : la carte est amenée au zoom 20, centre inchangé, vue de dessus, par la sonde (même que ACAL440). ──
+  await expect.poll(() => page.evaluate(() => Boolean(window.__carte440?.())), { timeout: 60_000 }).toBe(true)
+  await page.evaluate(() => window.__carte440().jumpTo({ zoom: 20, pitch: 0, bearing: 0 }))
+  await expect.poll(() => page.evaluate(() => {
+    const m = window.__carte440()
+    return !m.isMoving() && Math.abs(m.getZoom() - 20) < 0.01
+  }), { timeout: 30_000 }).toBe(true)
   // La coque se met en page en plusieurs temps (bandeau, feuille, rangées) : on ne mesure la carte qu'une fois
   // sa boîte ET celle de la rangée « Terminer le tracé » identiques sur deux lectures successives.
   const lireBoites = async () => ({
@@ -714,18 +725,30 @@ test('ACAL987: calepinage enregistré non simulé — aucun onglet ne produit d�
       erreurs.push(`onglet « ${ongletCourant} » : ${rep.request().method()} ${rep.url()} → ${rep.status()}`)
     }
   })
-  page.on('console', (msg) => { if (msg.type() === 'error') erreurs.push(`onglet « ${ongletCourant} » : console.error ${msg.text()}`) })
+  // H7 — une pile dont le serveur publie une clé de carte FACTICE (pile de revue) fait booter la carte, et
+  // api.maptiler.com répond 403 à chaque tuile : ce « Failed to load resource » vient du fournisseur de fond, pas de
+  // l'ERP (en CI, sans clé, la carte ne boote pas et rien n'est demandé). Seule cette origine est écartée.
+  const duFondDeCarte = (msg) => /^https:\/\/api\.maptiler\.com\//.test(msg.location()?.url ?? '')
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' && !duFondDeCarte(msg)) erreurs.push(`onglet « ${ongletCourant} » : console.error ${msg.text()}`)
+  })
   page.on('pageerror', (err) => erreurs.push(`onglet « ${ongletCourant} » : pageerror ${err.message}`))
 
-  await page.goto(`/calepinage/${calepinageId}`)
+  // Coque : chaque panneau d'onglet s'ouvre dans le rail d'onglets du mode expert. H7 — l'atelier est ouvert UNE fois ;
+  // chaque onglet s'ouvre ensuite par son bouton du rail (ouvrir n'est pas un geste d'action), ou par son lien
+  // `?onglet=` s'il n'est pas au rail : 43 rechargements complets de l'atelier dépassaient le délai du test.
+  await page.goto(`/calepinage/${calepinageId}?mode=expert`)
   await expect(page.getByTestId('cal-rail-etapes')).toBeVisible()
   for (const cle of CLES_ONGLETS) {
     ongletCourant = cle
-    const url = new URL(page.url())
-    url.searchParams.set('onglet', cle)
-    // Coque : chaque panneau d'onglet s'ouvre dans le rail d'onglets du mode expert.
-    url.searchParams.set('mode', 'expert')
-    await page.goto(url.toString())
+    const bouton = page.getByTestId(`cal-onglet-${cle}`)
+    if (await bouton.isVisible()) await bouton.click()
+    else {
+      const url = new URL(page.url())
+      url.searchParams.set('onglet', cle)
+      url.searchParams.set('mode', 'expert')
+      await page.goto(url.toString())
+    }
     await expect(page.getByTestId(`cal-onglet-${cle}`)).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByTestId('cal-onglet-panneau'), `panneau de l’onglet « ${cle} »`).toBeVisible()
     await expect(page.getByTestId('cal-onglet-erreur'), `erreur nommée sur l’onglet « ${cle} »`).toHaveCount(0)
