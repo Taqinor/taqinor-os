@@ -1,0 +1,22 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/consommation/lire-facture/",
+  "pourquoi": "ACAL839 — la LECTURE d'une photo de facture, en PROPOSITION. `GET` de la même route = `exemple_disponibilite` (la lecture est-elle ouverte sur ce serveur ?) ; `POST` multipart `fichier` (photo, 10 Mo au maximum) = `exemple` quand l'OCR est actif : `lignes` = [{mois, kwh}] avec `mois` TOUJOURS null (la lecture ne rend jamais de mois : l'écran le fait choisir) ; OCR coupé (défaut) = `exemple_indisponible` : `disponible` faux, `motif` nommé, `lignes` vides, aucun appel réseau, HTTP 200. Une photo illisible rend `disponible` vrai, `lignes` vides et un `motif`. LECTURE PURE : rien n'est écrit, la photo n'est pas stockée. `refus_400_fichier` : fichier absent ou trop gros, nommé `fichier`. Valeurs ILLUSTRATIVES (placeholders), aucune donnée client.",
+  "exemple": {
+    "disponible": true,
+    "motif": null,
+    "lignes": [{"mois": null, "kwh": 412.0}]
+  },
+  "exemple_indisponible": {
+    "disponible": false,
+    "motif": "La lecture de photo de facture est désactivée sur ce serveur : demandez à l'administrateur de l'activer.",
+    "lignes": []
+  },
+  "exemple_disponibilite": {
+    "disponible": true,
+    "motif": null,
+    "lignes": []
+  },
+  "refus_400_fichier": {
+    "fichier": "Déposez la photo de la facture dans le champ « fichier » (10 Mo au maximum)."
+  }
+}

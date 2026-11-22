@@ -14,10 +14,16 @@ export const simulation = {
     // serveur sert ses colonnes par défaut, l'appel d'export reste inchangé.
     // ACAL767 — `options.suppressErrorToast` : une lecture que personne n'a
     // demandée garde son refus local (la carte), sans toast global.
+    // ACAL755 — `options.pas` (`jour`) : une ligne par jour, envoyé seulement
+    // quand il est posé.
     exportCsv: (id, quoi, colonnes, options) =>
       api.get(`${pivot(id)}export-csv/`, {
         responseType: 'blob',
-        params: colonnes ? { quoi, colonnes } : { quoi },
+        params: {
+          quoi,
+          ...(colonnes ? { colonnes } : {}),
+          ...(options?.pas ? { pas: options.pas } : {}),
+        },
         ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
       }),
 

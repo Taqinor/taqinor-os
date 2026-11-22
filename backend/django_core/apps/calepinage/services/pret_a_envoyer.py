@@ -13,6 +13,8 @@ Codes produits ici (``codes_produits`` du contrat) : ``visite_validee``,
 """
 from __future__ import annotations
 
+import re
+
 NON_EXIGE = 'Non exigé par votre société'
 SANS_LEAD = 'Sans lead : non applicable'
 A_LA_CREATION = 'Vérifié à la création du devis'
@@ -398,26 +400,26 @@ def _points_de_l_obstacle(obstacle, local):
     import math
 
     from .planche import _points_geo
-    from .valeurs import nombre as _nombre
+    from .valeurs import nombre
 
     if obstacle.get('forme') == 'polygone':
         points = _points_geo(obstacle.get('contour'), 'lnglat')
         return [local(lat, lng) for lat, lng in points] or None
-    lat, lng = _nombre(obstacle.get('centerLat')), _nombre(
+    lat, lng = nombre(obstacle.get('centerLat')), nombre(
         obstacle.get('centerLng'))
     if lat is None or lng is None:
         return None
     est, nord = local(lat, lng)
     if obstacle.get('forme') == 'cercle':
-        rayon = _nombre(obstacle.get('rayonM'))
+        rayon = nombre(obstacle.get('rayonM'))
         if rayon is None:
             return None
         return [(est + rayon * math.cos(2 * math.pi * k / POINTS_DU_CERCLE),
                  nord + rayon * math.sin(2 * math.pi * k / POINTS_DU_CERCLE))
                 for k in range(POINTS_DU_CERCLE)]
     # ``lengthM`` = étendue NORD-SUD, ``widthM`` = EST-OUEST (schéma v2).
-    nord_sud, est_ouest = (_nombre(obstacle.get('lengthM')),
-                           _nombre(obstacle.get('widthM')))
+    nord_sud, est_ouest = (nombre(obstacle.get('lengthM')),
+                           nombre(obstacle.get('widthM')))
     if nord_sud is None or est_ouest is None:
         return None
     return [(est + de * est_ouest / 2.0, nord + dn * nord_sud / 2.0)
@@ -554,6 +556,104 @@ def controle_taille_sans_facture(calepinage):
         cause='aucune facture ni taille souhaitée : le système n’est pas '
               'dimensionné sur la consommation',
         geste='Saisir la facture', cible=CIBLE_FACTURE)
+
+
+# ── ACAL1171 — le chiffre que le PDF du devis imprimera : la pose réelle ou la
+# ville. La cause est celle du résolveur du devis (ventes), CLASSÉE ici en geste.
+CIBLE_PERTES = {'etape': 'resultats', 'onglet': 'reglages', 'champ': ''}
+#: Le motif du résolveur → (état, geste, cible), au premier mot trouvé ;
+#: sans mot connu : la simulation est périmée.
+_MOTIFS_UN_SEUL_CHIFFRE = (
+    ('illisible', 'info', '', None),
+    ('rangé', 'info', '', None),  # devis envoyé : sa base rangée, sans geste
+    ('marché non', 'info', '', None),
+    ('aucune simulation', 'a_regler', 'Lancer la simulation', CIBLE_PRODUCTION),
+    ('aucun calepinage', 'a_regler', 'Lancer la simulation', CIBLE_PRODUCTION),
+    ('incomplet', 'a_regler', 'Renseigner les pertes manquantes', CIBLE_PERTES),
+    ('resynchronis', 'a_regler', 'Resynchroniser le devis', CIBLE_DOCUMENTS),
+    ('différentes', 'a_regler', 'Resynchroniser le devis', CIBLE_DOCUMENTS),
+)
+
+
+def controle_un_seul_chiffre(calepinage):
+    """ACAL1171 — ``un_seul_chiffre`` : le devis lié imprimera-t-il la
+    production de cette pose ? Jamais bloquant, ne lève pas."""
+    from apps.ventes.selectors_calepinage import production_annoncee_du_devis
+
+    libelle = 'Un seul chiffre de production'
+    devis = getattr(calepinage, 'devis', None)
+    if devis is None:
+        return _controle('un_seul_chiffre', libelle, 'info', A_LA_CREATION,
+                         cible=CIBLE_PRODUCTION)
+    lu = production_annoncee_du_devis(
+        getattr(devis, 'pk', None), getattr(calepinage, 'company', None))
+    if lu is None:
+        return _controle('un_seul_chiffre', libelle, 'info', 'Non vérifiable',
+                         cible=CIBLE_PRODUCTION)
+    if not lu['regles_a_jour']:
+        return _controle(
+            'un_seul_chiffre', libelle, 'info',
+            'Ce devis garde la production standard de la ville (règles '
+            'd’avant le 21/11)', cible=CIBLE_PRODUCTION)
+    if lu['servie']:
+        return _controle('un_seul_chiffre', libelle, 'ok',
+                         'Le devis imprimera la production de cette pose',
+                         cible=CIBLE_PRODUCTION)
+    motif = lu['motif']
+    etat, geste, cible = next(
+        ((e, g, c) for mot, e, g, c in _MOTIFS_UN_SEUL_CHIFFRE if mot in motif),
+        ('a_regler', 'Relancer la simulation', CIBLE_PRODUCTION))
+    pertes = re.search(r'(\d+) pertes?', motif)
+    if pertes and geste.startswith('Renseigner'):
+        geste = 'Renseigner les %s pertes manquantes' % pertes.group(1)
+    return _controle('un_seul_chiffre', libelle, etat,
+                     'Le devis retombera sur le standard de la ville',
+                     cause=motif, geste=geste, cible=cible or CIBLE_PRODUCTION)
+
+
+# ── ACAL906 — la compatibilité panneau ↔ onduleur et batterie ↔ onduleur : le
+# verdict de ventes (ACAL901), RELAYÉ tel quel — aucune règle recalculée ici.
+#: Verdict de ventes → (rang de gravité, état du contrôle, mot affiché).
+_COMPATIBILITE = {'compatible': (0, 'ok', 'Compatible'),
+                  'inconnu': (1, 'info', 'Non vérifiable'),
+                  'reserve': (2, 'a_regler', 'Compatible sous réserve'),
+                  'incompatible': (3, 'a_regler', 'Incompatible')}
+
+
+def controle_compatibilite(calepinage):
+    """ACAL906 — ``compatibilite_equipements`` : le pire des deux verdicts."""
+    from apps.ventes.selectors import compatibilite_du_materiel
+
+    from .electrique import entree_stockee, resoudre_materiel
+    from .equipements import equipements_du_calepinage
+
+    libelle = 'Compatibilité du matériel'
+    company = getattr(calepinage, 'company', None)
+    entree = entree_stockee(calepinage)
+    materiel = resoudre_materiel(company, entree, calepinage=calepinage)
+    produits = materiel['produits']
+    if not (produits.get('module') and produits.get('onduleur')):
+        return _controle('compatibilite_equipements', libelle, 'info',
+                         'Non vérifiable : matériel non désigné',
+                         cause=' ; '.join(materiel['absents']),
+                         geste='Choisir le module et l’onduleur',
+                         cible=CIBLE_MATERIEL)
+    batterie = (entree.get('batterie') or {}).get('produit')
+    if batterie in (None, '') and getattr(calepinage, 'devis_id', None):
+        batterie = ((equipements_du_calepinage(calepinage) or {})
+                    .get('batterie') or {}).get('produit')
+    servis = compatibilite_du_materiel(
+        produits['module'], produits['onduleur'], company, batterie)
+    lignes = [v for v in (servis['panneau_onduleur'],
+                          servis['batterie_onduleur']) if v]
+    rang = max(_COMPATIBILITE[v['statut']][0] for v in lignes)
+    pires = [v for v in lignes if _COMPATIBILITE[v['statut']][0] == rang]
+    _, etat, valeur = _COMPATIBILITE[pires[0]['statut']]
+    return _controle(
+        'compatibilite_equipements', libelle, etat, valeur,
+        cause=' ; '.join(r for v in pires for r in v['raisons']),
+        geste='Revoir le choix du matériel' if etat == 'a_regler' else '',
+        cible=CIBLE_MATERIEL)
 
 
 # ── ACAL860 — l'agrégat : tous les contrôles, rangés rouge, orange, info, vert.

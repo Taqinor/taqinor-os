@@ -126,6 +126,8 @@ ROUTES_HORS_VERROU = {
     ('POST', 'pose-reelle'): 'pose réelle : preuve du chantier (ACAL43)',
     ('DELETE', r'pose-reelle/(?P<zone_id>.+)'):
         'pose réelle : retrait du relevé d\'un pan (orphelin, ACAL267)',
+    ('POST', 'ecart-mesures'): 'consommation mesurée comparée à la simulée '
+                               '(lecture calculée, rien enregistré, ACAL846)',
     ('PATCH', PHOTO + '/calage'): 'photos de site (calage)',
     ('POST', 'releve-visite'): 'relevé terrain : reprise de la visite',
     ('POST', 'image-document'): 'documents : images des livrables',
@@ -162,6 +164,8 @@ ROUTES_HORS_VERROU = {
                                'rien d\'écrit)',
     ('POST', 'consommation/proposer'): 'proposition de consommation '
                                        '(lecture calculée)',
+    ('POST', 'consommation/lire-facture'): 'lecture calculée (photo de facture, '
+                                           "rien d'écrit, ACAL839)",
     ('POST', 'pompage'): 'calcul + enregistrement du dernier dimensionnement, '
                          'jamais 409 (verrou lu par la vue : enregistre false)',
     ('POST', 'detection-toit'): 'proposition de toit par IA à confirmer '

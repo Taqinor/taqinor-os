@@ -91,7 +91,7 @@ class ModelesEtMigrationTest(SimpleTestCase):
         self.assertEqual(
             set(ComposantFixation.Role.values),
             {'rail', 'pince_milieu', 'pince_fin', 'crochet', 'embout',
-             'lest', 'visserie'})
+             'lest', 'visserie', 'echafaudage'})  # echafaudage : ACAL598
 
     def test_produit_opaque_jamais_une_fk_dure(self):
         champ = ComposantFixation._meta.get_field('produit_id')

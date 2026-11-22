@@ -25,12 +25,18 @@ APPS = pathlib.Path(__file__).resolve().parents[2]
 PLAFONDS = {
     # ACAL999 : +1 — ``ventes/horaire/productible_pose.py`` lit
     # ``calepinage.selectors_devis.productible_pose_servi`` (porte selectors).
-    ('ventes', 'calepinage'): (19, 1),
-    # ACAL997 — ``selectors_devis.py`` (module frère des sélecteurs lus par
-    # ventes) relit ``ventes.selectors``/``selectors_calepinage`` pour la
-    # fraîcheur de la conception, comme ``selectors.ombrage_servi`` ; compte
-    # mesuré sur l'arbre, selectors_devis.py compris.
-    ('calepinage', 'ventes'): (40, 5),
+    # ACAL992 : +1 — ``ventes/domain/chiffrage_conception.py`` lit
+    # ``calepinage.selectors_devis.productible_pose_du_calepinage`` (porte selectors).
+    ('ventes', 'calepinage'): (21, 1),
+    # Compte MESURÉ sur l'arbre de la vague 2 (+4, tous par les portes
+    # selectors*/services*) : ACAL997 ``selectors_devis.py`` (relit
+    # ``ventes.selectors``/``selectors_calepinage`` pour la fraîcheur de la
+    # conception, comme ``selectors.ombrage_servi``) ;
+    # ``services/pret_a_envoyer.py`` et ``views/raccordement.py``
+    # (``ventes.selectors_calepinage``) ; ``services/pvgis_serie.py``
+    # (``ventes.services.orientation_du_pan``, ACAL911) ; ACAL993 +1 :
+    # ``views/chiffrage_contexte.py`` (``ventes.services.chiffrer_conception``).
+    ('calepinage', 'ventes'): (43, 5),
 }
 
 PORTES = ('selectors', 'services')

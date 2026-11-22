@@ -27,7 +27,7 @@
  * (login form + token + cross-domain) est remplacée par celle-ci. La source du
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
@@ -37,6 +37,7 @@ import crmApi from '../../api/crmApi'
 // `apps/calepinage`), c'est-à-dire sans devis exigé. Voir le bloc de
 // commentaire de `bootCalepinage` plus bas.
 import calepinageApi from '../../api/calepinageApi'
+import Pourquoi from '../../features/calepinage/commun/Pourquoi'
 // Lot 2 critique #27 — lecture du calepinage d'un devis (fiche devis) quand la
 // porte de résolution est refusée (403, droit de VOIR seulement).
 import ventesApi from '../../api/ventesApi'
@@ -65,13 +66,14 @@ import BandeauProvenanceProduction from '../../features/calepinage/production/Ba
 import { lancerSimulationAuto } from '../../features/calepinage/production/simulationAuto' // ACAL398
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
-import { hacherLayout, creerGestionnaireBrouillon, memoriserReprise } from '../../features/calepinage/brouillon'
+import { hacherLayout, creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
 import { creerStockageMiroir } from '../../features/calepinage/brouillonServeur' // ACAL400
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis.
 import { useConfirmDialog } from '../../ui/confirm'
 import BarreEnregistrement from '../../features/calepinage/atelier/BarreEnregistrement'
+import { ETAPES } from '../../features/calepinage/atelier/parcoursGuide' // ACAL868
 import ResumeAtelier from '../../features/calepinage/atelier/ResumeAtelier'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
@@ -295,6 +297,13 @@ function AtelierToiture({
   const hashSceneReferenceRef = useRef(null)
   const [sceneModifiee, setSceneModifiee] = useState(false)
   const [enregistreLe, setEnregistreLe] = useState(null) // ACAL399 — heure de la dernière réponse 2xx
+  // ACAL868 — l'étape du rail (publiée par `onEtape`) : la barre fixe en tire le bouton de l'étape suivante, guidé seulement.
+  const [etapeAtelier, setEtapeAtelier] = useState(null)
+  // ACAL945 — hors ligne : l'écriture (même document, même empreinte) attend l'événement `online`, UNE fois.
+  const [renvoiReseau, setRenvoiReseau] = useState(null)
+  const indexEtape = etapeAtelier && !etapeAtelier.expert ? ETAPES.findIndex((e) => e.cle === etapeAtelier.etape) : -1
+  const actionEtape = indexEtape >= 0 && ETAPES[indexEtape].action && ETAPES[indexEtape + 1]
+    ? { libelle: ETAPES[indexEtape].action, onClick: () => etapeAtelier.allerA(ETAPES[indexEtape + 1].cle) } : null
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -751,6 +760,13 @@ function AtelierToiture({
         const data = err?.response?.data
         setGenStatus(null)
         setSending(false)
+        if (estPanneReseau(err)) {
+          // ACAL945 — aucune réponse : le brouillon est écrit, jamais « erreur 0 », l'envoi repart au retour du réseau.
+          gestionnaireBrouillonRef.current?.enregistrerMaintenant()
+          setRenvoiReseau({ layout, empreinte: empreinteDocument })
+          setGenStatus('Pas de réseau — enregistré sur ce téléphone, envoi automatique au retour du réseau.')
+          return false
+        }
         if (code === 409 && data?.code === 'document_modifie') {
           // ACAL23 — la conception a changé AILLEURS : rien n'est écrasé, et ce
           // n'est PAS le verrou (bannière distincte, seule sortie : Recharger).
@@ -848,6 +864,33 @@ function AtelierToiture({
       return false
     }
   }
+
+  // ACAL945 — le renvoi UNIQUE au retour du réseau : même document, même empreinte (un autre poste a écrit entre-temps ⇒ 409, bannière).
+  const renvoyerApresPanne = useEffectEvent(async ({ layout, empreinte }) => {
+    setRenvoiReseau(null)
+    try {
+      const res = await calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinte)
+      const nouvelle = res?.data?.empreinte_document
+      if (nouvelle) setEmpreinteEcrite(nouvelle)
+      gestionnaireBrouillonRef.current?.effacer()
+      setHashBaseBrouillon(nouvelle || hashBaseBrouillon)
+      marquerSceneEnregistree(layout)
+      setEnregistreLe(res?.headers?.date || new Date().toISOString())
+      setGenStatus(null)
+      setStatus('Conception enregistrée au retour du réseau.')
+    } catch (err) {
+      const data = err?.response?.data
+      setGenStatus(null)
+      if (err?.response?.status === 409 && data?.code === 'document_modifie') setDocumentModifie({ detail: data.detail || 'La conception a été modifiée ailleurs.' })
+      else setGenError(httpMessage(err?.response?.status ?? 0, data))
+    }
+  })
+  useEffect(() => {
+    if (!renvoiReseau) return undefined
+    const surRetour = () => renvoyerApresPanne(renvoiReseau)
+    window.addEventListener('online', surRetour, { once: true })
+    return () => window.removeEventListener('online', surRetour)
+  }, [renvoiReseau])
 
   // PV21 / ACAL93 — « Réviser (v2) » : le devis est figé (accepté, refusé ou expiré ; un
   // envoyé se corrige sur place), on en crée une NOUVELLE version (brouillon) et on rouvre la conception dessus.
@@ -1346,6 +1389,7 @@ function AtelierToiture({
         <Studio actif={estCalepinage} nom="">
         <Studio actif={estCalepinage} nom="-scene">
         <BuilderDom
+          expert={!!etapeAtelier?.expert} // ACAL869 — « Réglages avancés » ouvert d'office en expert
           basculerPleinEcran3d={basculerPleinEcran3d}
           chipClass={chipClass}
           contourClientBrut={contourClientBrut}
@@ -1380,15 +1424,15 @@ function AtelierToiture({
             <p id="rp9-need-note" className="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6" aria-live="polite">
-            <div><dd id="rp9-reco-kwc" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Puissance</dt></div>
-            <div><dd id="rp9-reco-panels" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Panneaux</dt></div>
-            <div><dd id="rp9-reco-prod" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production</dt></div>
-            <div><dd id="rp9-reco-cover" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture</dt></div>
+            <div><dd id="rp9-reco-kwc" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Puissance<Pourquoi cle="toit.reco_puissance" /></dt></div>
+            <div><dd id="rp9-reco-panels" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Panneaux<Pourquoi cle="toit.reco_panneaux" /></dt></div>
+            <div><dd id="rp9-reco-prod" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production<Pourquoi cle="toit.reco_production" /></dt></div>
+            <div><dd id="rp9-reco-cover" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture<Pourquoi cle="toit.reco_couverture" /></dt></div>
           </dl>
           <dl className="mt-5 border-t border-border pt-5">
             <div>
               <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées<Pourquoi cle="toit.reco_economies" /></dt>
             </div>
           </dl>
           <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
@@ -1521,7 +1565,7 @@ function AtelierToiture({
           enCours={sending} desactive={sending || !sceneHydratee}
           onEnregistrer={enregistrerCalepinage}
           modifiee={sceneModifiee} enregistreLe={enregistreLe}
-          statut={genStatus} erreur={genError}>
+          statut={genStatus} erreur={genError} actionPrincipale={actionEtape}>
           <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
             lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
         </BarreEnregistrement>
@@ -1554,6 +1598,7 @@ function AtelierToiture({
             enregistrerAvant={enregistrerCalepinage}
             aDesRetouches={() => sceneHydratee && sceneEstModifiee()}
             atelierPret={sceneHydratee || atelierSansCarte}
+            onEtape={setEtapeAtelier}
           />
         )}
 

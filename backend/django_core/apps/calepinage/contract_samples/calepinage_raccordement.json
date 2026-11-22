@@ -11,13 +11,16 @@
       "cos_phi_impose": 0.9,
       "source_cos_phi": "saisie — contrat de raccordement du site (valeur d'essai)",
       "plafond_injection_kw": null,
-      "plafond_injection_justification": null
+      "plafond_injection_justification": null,
+      "plafond_injection_a": null
     },
     "calcul": {
       "elevation_pct": 0.82,
       "ecart_limite_pct": null,
       "puissance_injectee_kva": 8.0,
-      "desequilibre_pct": 11.4
+      "desequilibre_pct": 11.4,
+      "plafond_injection_kw_converti": null,
+      "plafond_injection_conversion": null
     },
     "verdicts": [
       {
@@ -91,13 +94,16 @@
       "cos_phi_impose": 0.9,
       "source_cos_phi": "saisie — contrat de raccordement du site (valeur d'essai)",
       "plafond_injection_kw": 8.0,
-      "plafond_injection_justification": "Contrat de raccordement du site : injection limitée à 8 kW (valeur d'essai)."
+      "plafond_injection_justification": "Contrat de raccordement du site : injection limitée à 8 kW (valeur d'essai).",
+      "plafond_injection_a": null
     },
     "calcul": {
       "elevation_pct": 0.82,
       "ecart_limite_pct": 2.18,
       "puissance_injectee_kva": 8.0,
-      "desequilibre_pct": 11.4
+      "desequilibre_pct": 11.4,
+      "plafond_injection_kw_converti": null,
+      "plafond_injection_conversion": null
     },
     "verdicts": [
       {
@@ -167,13 +173,16 @@
       "cos_phi_impose": null,
       "source_cos_phi": null,
       "plafond_injection_kw": null,
-      "plafond_injection_justification": null
+      "plafond_injection_justification": null,
+      "plafond_injection_a": null
     },
     "calcul": {
       "elevation_pct": null,
       "ecart_limite_pct": null,
       "puissance_injectee_kva": null,
-      "desequilibre_pct": null
+      "desequilibre_pct": null,
+      "plafond_injection_kw_converti": null,
+      "plafond_injection_conversion": null
     },
     "verdicts": [
       {

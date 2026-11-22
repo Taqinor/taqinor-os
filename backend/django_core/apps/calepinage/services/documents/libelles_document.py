@@ -118,6 +118,14 @@ LIBELLES = {
     'poste_omis': {'fr': 'omis', 'en': 'omitted'},
     'gain': {'fr': 'gain', 'en': 'gain'},
 
+    # ── ACAL772 — table IAM de la section pertes ──────────────────────────
+    'iam_titre': {'fr': "Facteur d'incidence (IAM)",
+                  'en': 'Incidence angle modifier (IAM)'},
+    'iam_col_angle': {'fr': 'Angle (°)', 'en': 'Angle (°)'},
+    'iam_col_facteur': {'fr': 'Facteur', 'en': 'Factor'},
+    'iam_modele': {'fr': 'Modèle', 'en': 'Model'},
+    'iam_indice_verre': {'fr': 'indice du verre', 'en': 'glass index'},
+
     # ── ACAL761 — schéma « où va l'énergie » ─────────────────────────────
     'energie_titre': {'fr': "Où va l'énergie", 'en': 'Where the energy goes'},
     'energie_titre_a': {'fr': "Du soleil à l'électricité",

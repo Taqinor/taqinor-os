@@ -23,6 +23,8 @@ import {
   matriceOmbrageDesSources, // ACAL27
   htmlProposition, // ACAL714
   seuilRetraitDesReglages, // ACAL714
+  lireSeuilSaisi, // ACAL548
+  phraseOrigineSeuil, // ACAL548
   executerAvecCarte, // ACAL726
   teteInfoBulleModule, // ACAL729
 } from './shadingUi';
@@ -663,5 +665,34 @@ describe('ACAL729 — tête d’info-bulle d’un module', () => {
     expect(libelleModuleAffecte({ module: 'a#2', chaine: null, mppt: null }, 'chaine')).toBeNull();
     const c = buildAffectationColoring([{ module: 'a#1', chaine: 2, mppt: 1 }, { module: 'a#2', chaine: null, mppt: null }], 'chaine');
     expect([...c.labelByModule.entries()]).toEqual([['a#1', 'chaîne 2']]);
+  });
+});
+
+// ACAL548 — le champ « Accès solaire minimal (%) » : lecture pure, jamais corrigée en silence.
+describe('ACAL548 — lireSeuilSaisi et origine du seuil', () => {
+  it('« 80 » ⇒ 0,8 ; « 80,5 » ⇒ 0,805 ; vide ⇒ retrait de la clé', () => {
+    expect(lireSeuilSaisi('80')).toEqual({ ok: true, valeur: 0.8 });
+    const r = lireSeuilSaisi('80,5');
+    expect(r.ok && r.valeur).toBeCloseTo(0.805, 9);
+    expect(lireSeuilSaisi('')).toEqual({ ok: true, valeur: null });
+    expect(lireSeuilSaisi('  ')).toEqual({ ok: true, valeur: null });
+  });
+  it('« abc », « 120 » et « -5 » sont REFUSÉS en nommant la règle, jamais bornés', () => {
+    for (const t of ['abc', '120', '-5', '80%']) {
+      expect(lireSeuilSaisi(t)).toEqual({ ok: false, erreur: 'Saisissez un nombre entre 0 et 100' });
+    }
+    expect(lireSeuilSaisi('100')).toEqual({ ok: true, valeur: 1 });
+  });
+  it('seuil du dossier 80 % et réglage société 60 % ⇒ 80 % prime et le texte dit « de ce dossier »', () => {
+    const reglages = { simulation: { seuil_acces_retrait: { valeur: 0.6 } } };
+    expect(phraseOrigineSeuil(0.8, reglages)).toBe('valeur de ce dossier : 80 % — réglage de votre société : 60 %');
+    expect(phraseOrigineSeuil(undefined, reglages)).toBe('réglage de votre société : 60 %');
+    expect(phraseOrigineSeuil(0.8, null)).toBe('valeur de ce dossier : 80 %');
+    expect(phraseOrigineSeuil(undefined, null)).toBe('');
+    const p = proposeShadedRemoval([0.9, 0.4, 0.9, 0.7, 0.9], 0.72, 0.8);
+    const html = htmlProposition(p, 0.8, true, 'nº2, nº4', 'dossier');
+    expect(html).toContain('seuil de ce dossier (80 %)');
+    expect(html).not.toContain('seuil de votre société');
+    expect(htmlProposition(p, 0.8, true, 'nº2, nº4')).toContain('seuil de votre société');
   });
 });

@@ -289,6 +289,22 @@ describe('CAL248 — accès solaire par module persisté dans le document', () =
     expect(sa.computedAt).toBe('2026-09-20T10:00:00.000Z');
   });
 
+  it('bandes (ACAL721) : écrites alignées sur values, relues à l’identique ; absentes sans bandes', () => {
+    const areas = [zone('z1', { renderPlan: planWith(3) })];
+    const bandes = [[0.5, 0.8, 0.9], [0.9, 0.95, 1], null];
+    const avec = serializeLayout(makeCtx(areas), null, {
+      solarAccessByZone: { z1: { ...access([0.7, 0.9, 1]), bandes } },
+    });
+    expect(avec.zones[0].geometry!.solarAccess!.bandes).toEqual(bandes);
+    const round = JSON.parse(JSON.stringify(avec));
+    expect(deserializeSolarAccess(round.zones[0].geometry, 3)?.bandes).toEqual(bandes);
+    // Longueur décalée : la liste est omise, jamais tronquée ni complétée par `values`.
+    expect(serializeSolarAccess({ ...access([0.7, 0.9, 1]), bandes: [[0.5, 0.8]] }, 3)).not.toHaveProperty('bandes');
+    // Sans bandes : le document sort comme avant.
+    const sans = serializeLayout(makeCtx(areas), null, { solarAccessByZone: { z1: access([0.7, 0.9, 1]) } });
+    expect(sans.zones[0].geometry!.solarAccess).not.toHaveProperty('bandes');
+  });
+
   it('aller-retour JSON : les valeurs sont conservées à l’identique', () => {
     const areas = [zone('z1', { renderPlan: planWith(3) })];
     const layout = serializeLayout(makeCtx(areas), null, {

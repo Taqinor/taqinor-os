@@ -59,11 +59,12 @@ ETATS = ('exemple', 'exemple_limite_saisie', 'exemple_vide')
 CHAMPS_SAISIE = {'puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
                  'source_cos_phi', 'plafond_injection_kw',
-                 'plafond_injection_justification'}
+                 'plafond_injection_justification', 'plafond_injection_a'}
 
-#: Les quatre grandeurs calculées.
+#: Les six grandeurs calculées (ACAL827 : + le plafond en A converti en kW).
 CHAMPS_CALCUL = {'elevation_pct', 'ecart_limite_pct', 'puissance_injectee_kva',
-                 'desequilibre_pct'}
+                 'desequilibre_pct', 'plafond_injection_kw_converti',
+                 'plafond_injection_conversion'}
 
 #: Les cinq champs d'un verdict, et les quatre statuts admis.
 CHAMPS_VERDICT = {'code', 'libelle', 'statut', 'detail', 'source'}
@@ -118,8 +119,10 @@ class TroisBlocsTest(SimpleTestCase):
     def test_les_trois_blocs_dans_chaque_etat(self):
         for etat in ETATS:
             # ACAL157 — + ``proposition_lead`` (null sans proposition).
+            # ACAL782/783 — + ``regime``, ``injection``, ``injection_motif``.
             self.assertEqual(sorted(RACCORDEMENT[etat]),
-                             ['calcul', 'proposition_lead', 'saisie',
+                             ['calcul', 'injection', 'injection_motif',
+                              'proposition_lead', 'regime', 'saisie',
                               'verdicts'],
                              f'{etat} : les blocs de réponse ont bougé.')
 

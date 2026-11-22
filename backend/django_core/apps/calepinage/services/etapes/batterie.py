@@ -86,8 +86,10 @@ from apps.calepinage.services.batterie import (CHAMP_JUSTIFICATION_PLAFOND,
                                                simuler_batterie,
                                                simuler_groupes,
                                                vieillissement_batterie)
+from apps.calepinage.services import secours as _secours
 from apps.calepinage.services.batterie_verdict import (
-    faits_de_la_serie, plancher_du_dispatch)
+    CLE_SEUIL_JOURS, CLE_SEUIL_NUITS, faits_de_la_serie, plancher_du_dispatch,
+    verdict_de_la_batterie)
 from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Batterie'
@@ -656,7 +658,8 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
                            pas_heures=float(pas) / 60.0,
                            horizon=_horizon(contexte)[0],
                            annees=annees_de_la_fenetre(contexte),
-                           reserve=reserve)
+                           reserve=reserve, contexte=contexte,
+                           heure_de_depart=heure_de_depart)
     if isinstance(reserve, dict):
         bloc['avertissements'].append(MENTION_RESERVE_APPAREILS.format(
             nombre=len(reserve['detail']), energie=reserve['energie_kwh'],
@@ -722,7 +725,7 @@ def _pointe_et_reserve(dispatch, strategie, reserve, annees):
 
 def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
              etat_initial, pas_heures=1.0, horizon=None, annees=1,
-             reserve=None):
+             reserve=None, contexte=None, heure_de_depart=0):
     """La série enrichie et le bloc, tirés des MÊMES flux pas par pas.
 
     ACAL54 — ``annees`` : le N de la fenêtre météo. Les énergies du bloc (et
@@ -768,6 +771,20 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
     if total_reseau > _EPSILON:
         avertissements.append(MENTION_CHARGE_RESEAU.format(
             reseau=round(total_reseau, 3)))
+
+    faits = faits_de_la_serie(
+        flux, capacite=capacite, pas_heures=pas_heures, annees=annees,
+        plancher=plancher_du_dispatch(dispatch, strategie))
+    verdict, motif_verdict = verdict_de_la_batterie(
+        faits, etapes.reglage(contexte, CLE_SEUIL_NUITS),
+        etapes.reglage(contexte, CLE_SEUIL_JOURS))
+
+    # ACAL797 — les coupures déclarées, rejouées sur la série du dispatch.
+    coupures, motif_coupures = _secours.rejouer_coupures(
+        flux, coupures=((contexte or {}).get(CLE_CONTEXTE) or {}).get(
+            'coupures'),
+        strategie=strategie, parametres=banque, etat_initial=etat_initial,
+        heure_de_depart=heure_de_depart, pas_heures=pas_heures)
 
     lignes = []
     for groupe in groupes:
@@ -815,9 +832,15 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
                 horizon=horizon),
             **_pointe_et_reserve(dispatch, strategie, reserve, annees),
             # ACAL793 — les faits de la série (plancher = réserve en backup).
-            'faits_serie': faits_de_la_serie(
-                flux, capacite=capacite, pas_heures=pas_heures, annees=annees,
-                plancher=plancher_du_dispatch(dispatch, strategie)),
+            'faits_serie': faits,
+            # ACAL794 — le mot de verdict, seulement avec les deux seuils.
+            'verdict': verdict,
+            'motif_verdict': motif_verdict,
+            'secours': {'coupures': coupures,
+                        'motif_coupures': motif_coupures,
+                        **_secours.heures_tenues(
+                            reserve if strategie == 'backup' else None,
+                            capacite)},
         },
         'avertissements': avertissements,
         'motif_absence': '',

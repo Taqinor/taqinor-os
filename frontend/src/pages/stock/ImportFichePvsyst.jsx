@@ -98,6 +98,7 @@ export default function ImportFichePvsyst({ produitId, onApplique }) {
     ? Object.entries(apercu.mapping ?? {}).map(([champ, valeur]) => `${libelleChamp(champ)} : ${valeur}`)
     : []
   const dejaSaisis = apercu?.deja_saisis ?? []
+  const controlesOmis = apercu?.controles_omis ?? []
 
   return (
     <div className="flex flex-col gap-3" data-testid="import-fiche-pvsyst">
@@ -136,6 +137,11 @@ export default function ImportFichePvsyst({ produitId, onApplique }) {
           {dejaSaisis.length > 0 && (
             <p className="text-xs text-muted-foreground" data-testid="pvsyst-deja-saisis">
               Déjà saisis, conservés tels quels : {dejaSaisis.map(libelleChamp).join(', ')}
+            </p>
+          )}
+          {controlesOmis.length > 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="pvsyst-controles-omis">
+              Contrôle non fait : {controlesOmis.join(' ; ')}
             </p>
           )}
           <ListeApercu titre="Champs du fichier non utilisés" elements={apercu.non_reconnus ?? []}

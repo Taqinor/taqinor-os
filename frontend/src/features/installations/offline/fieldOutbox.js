@@ -90,6 +90,9 @@ export const binaryOutbox = new BinaryOutbox({
   store: _binaryStore.store,
   persistent: _binaryStore.persistent,
   uploader: binaryUploader,
+  // REP-892 — la clé IndexedDB est partagée avec la file des photos de calepinage
+  // (`calepinage.photo`, ACAL892) : le rejeu terrain ne touche QUE ses types.
+  accepte: (entry) => Object.values(BINARY_OPS).includes(entry.op_type),
 })
 
 /**

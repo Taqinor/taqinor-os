@@ -124,6 +124,29 @@ class TestAllerRetourApi(AGR101Base):
                 continue
             self.assertEqual(str(lu[cle]), str(val), cle)
 
+    def test_acal817_bus_dc_redresse_servi_par_produits_pompage(self):
+        """ACAL817 — 540 V saisis sur la fiche se relisent dans
+        ``produits_pompage`` ; vide ⇒ null (« non publié »). Mutant : retirer
+        la clé de ``_FICHE_VARIATEUR_CHAMPS`` ⇒ KeyError."""
+        from apps.stock.selectors import produits_pompage
+        client = api_for(self.user)
+        r = client.post(URL_FICHES, {
+            'produit': self.variateur.pk, 'type_fiche': 'variateur_pompage',
+            'var_bus_dc_redresse_v': '540'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertIn('var_bus_dc_redresse_v',
+                      CONTRAT['fiches']['variateur_pompage']['champs'])
+
+        def _lu():
+            return {e['nom']: e for e in produits_pompage(self.company)}[
+                'Variateur test AGR101']['fiche']['var_bus_dc_redresse_v']
+
+        self.assertEqual(_lu(), 540.0)
+        r = client.patch(f'{URL_FICHES}{r.data["id"]}/',
+                         {'var_bus_dc_redresse_v': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(_lu())
+
     def test_fiche_module_existante_inchangee(self):
         fiche = FicheTechnique.objects.create(
             company=self.company, produit=self.pompe, type_fiche='module',

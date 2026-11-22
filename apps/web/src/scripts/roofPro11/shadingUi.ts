@@ -20,6 +20,7 @@ import { directPerduParHeure, moisDuJour, phraseDirectPerdu, svgCourbeDirectPerd
 import { modeExpertActif } from './orientationOmbre'; // ACAL717
 import { dateImageCapturee } from './imageCapture'; // ACAL496 / ACAL509
 import { phraseVerdictOmbrage } from './verdictOmbrage'; // ACAL715
+import { choixOptimisationCourant, poserChoixOptimisation } from './optimizer'; // ACAL548 (usage dans les fonctions seulement : import circulaire sûr)
 import { identifiantsModulesParCellule } from './libellesAffectation'; // ACAL729
 import {
   declarationSoleilPriseDeVue,
@@ -531,12 +532,46 @@ export function seuilRetraitDesReglages(reglages: { simulation?: unknown } | nul
 
 const pctFr = (v: number) => `${(v * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
 
+const estSeuil = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+
+/** ACAL548 — le seuil EFFECTIF : la valeur de CE dossier si elle existe, sinon le réglage de la société, sinon `null`. */
+export function seuilEffectifAccesSolaire(
+  valeurDossier: unknown,
+  reglages: { simulation?: unknown } | null | undefined,
+): { valeur: number; origine: 'dossier' | 'societe' } | null {
+  if (estSeuil(valeurDossier)) return { valeur: valeurDossier, origine: 'dossier' };
+  const societe = seuilRetraitDesReglages(reglages);
+  return societe == null ? null : { valeur: societe, origine: 'societe' };
+}
+
+/** ACAL548 — la phrase qui dit d'où vient le seuil (jamais écrite si aucune valeur n'existe). */
+export function phraseOrigineSeuil(valeurDossier: unknown, reglages: { simulation?: unknown } | null | undefined): string {
+  const societe = seuilRetraitDesReglages(reglages);
+  const lSociete = societe == null ? '' : `réglage de votre société : ${pctFr(societe)}`;
+  if (!estSeuil(valeurDossier)) return lSociete;
+  const lDossier = `valeur de ce dossier : ${pctFr(valeurDossier)}`;
+  return lSociete ? `${lDossier} — ${lSociete}` : lDossier;
+}
+
+export type SeuilSaisi = { ok: true; valeur: number | null } | { ok: false; erreur: string };
+
+/** ACAL548 — lit le champ « Accès solaire minimal (%) » : « 80 » ⇒ 0,8 ; vide ⇒ `null` (clé retirée) ;
+ *  un texte non numérique ou hors 0 à 100 est REFUSÉ en le disant, jamais corrigé. */
+export function lireSeuilSaisi(texte: string): SeuilSaisi {
+  const t = texte.trim().replace(',', '.');
+  if (t === '') return { ok: true, valeur: null };
+  const n = /^\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+  if (!Number.isFinite(n) || n < 0 || n > 100) return { ok: false, erreur: 'Saisissez un nombre entre 0 et 100' };
+  return { ok: true, valeur: n / 100 };
+}
+
 /** ACAL714 — le bloc « proposition de retrait » (CAL235) ; sans seuil réglé il dit où le régler, sans bouton. */
 export function htmlProposition(
   proposal: ShadeRemovalProposal | null,
   seuil: number | null,
   peutRetirer: boolean,
   modulesVises: string,
+  origine: 'dossier' | 'societe' = 'societe',
 ): string {
   if (seuil == null) {
     return '<div class="mt-1 opacity-80">Retrait proposé : aucun seuil réglé par votre société (Réglages › simulation).</div>';
@@ -545,7 +580,7 @@ export function htmlProposition(
   return `<div class="mt-2 border border-white/10 bg-nuit-900/40 p-2">` +
     `<div><span class="font-semibold text-white">Proposition</span> — retirer les ` +
     `<span class="fig">${proposal.count}</span> module(s) dont l’accès solaire est sous ` +
-    `${esc(pctFr(proposal.threshold))} : <span class="fig">−${esc(proposal.kwcLost.toLocaleString('fr-FR', { maximumFractionDigits: 2 }))}</span> kWc, ` +
+    `${esc(pctFr(proposal.threshold))} (${origine === 'dossier' ? `seuil de ce dossier (${esc(pctFr(proposal.threshold))})` : 'seuil de votre société'}) : <span class="fig">−${esc(proposal.kwcLost.toLocaleString('fr-FR', { maximumFractionDigits: 2 }))}</span> kWc, ` +
     `accès solaire moyen des ${proposal.remaining} restants ` +
     `<span class="fig">${esc(pctFr(proposal.averageBefore))}</span> → <span class="fig">${esc(pctFr(proposal.averageAfter))}</span>.</div>` +
     `<div class="mt-1 opacity-80">Modules visés : ${esc(modulesVises)}.</div>` + // CALX111 câblage
@@ -1009,7 +1044,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     ctx.vertices.length < 3 ? null : vueCielDuPan(facteurVueCiel(points, activeShadeEntries(), penteDeg, azimutDeg), signatureTable());
 
   /** ACAL714 — le seuil de retrait du RÉGLAGE société (`simulation.seuil_acces_retrait`), ou `null`. */
-  const seuilRetrait = (): number | null => seuilRetraitDesReglages(ctx.opts?.reglagesAtelier);
+  const seuilEffectif = () => seuilEffectifAccesSolaire(choixOptimisationCourant()?.seuilAccesSolaire, ctx.opts?.reglagesAtelier); // ACAL548
+  const seuilRetrait = (): number | null => seuilEffectif()?.valeur ?? null;
 
   function solarAccess(): SolarAccessSummary | null {
     const plan = ctx.layoutPlan;
@@ -1052,12 +1088,13 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     const seuil = seuilRetrait();
     const proposal = proposeShadedRemoval(s.perModule, panelKwcOfPlan(), seuil);
     lastProposal = proposal ? { indices: proposal.indices } : null;
-    const proposalHtml = htmlProposition(proposal, seuil, !!deps.removePanels, proposal ? proposal.indices.map(etiquetteModule).join(', ') : '');
+    const origineSeuil = seuilEffectif()?.origine ?? 'societe';
+    const proposalHtml = htmlProposition(proposal, seuil, !!deps.removePanels, proposal ? proposal.indices.map(etiquetteModule).join(', ') : '', origineSeuil);
     el.innerHTML =
       `<div><span class="font-semibold text-white">Accès solaire (${esc(periode)})</span> — ` +
       `moyenne du pan <span class="fig">${esc(pct(s.average))}</span> sur ${s.count} module(s), ` +
       `du plus ombragé <span class="fig">${esc(pct(s.min))}</span> au plus dégagé <span class="fig">${esc(pct(s.max))}</span>` +
-      (s.lowCount && seuil != null ? `, dont ${s.lowCount} sous le seuil de votre société (${esc(pct(seuil))})` : '') +
+      (s.lowCount && seuil != null ? `, dont ${s.lowCount} sous le seuil ${origineSeuil === 'dossier' ? 'de ce dossier' : 'de votre société'} (${esc(pct(seuil))})` : '') +
       '.</div>' +
       (modeExpertActif() ? `<div class="mt-1 text-white">${esc(phraseVerdictOmbrage(s, ctx.opts?.reglagesAtelier, periode))}</div>` : '') + // ACAL715
       `<div class="mt-1 opacity-80">${esc(s.method.description)}</div>` +
@@ -1372,6 +1409,32 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     recomputeShading();
   });
 
+  // ACAL548 — « Accès solaire minimal (%) » : écrit `optimisation.seuilAccesSolaire` (les autres clés sont gardées).
+  const seuilEl = $<HTMLInputElement>('rp9-seuil-acces');
+  const seuilErreurEl = $('rp9-seuil-acces-erreur');
+  const seuilNoteEl = $('rp9-seuil-acces-note');
+  function syncSeuilUi() {
+    const doc = choixOptimisationCourant()?.seuilAccesSolaire;
+    if (seuilEl && document.activeElement !== seuilEl) {
+      seuilEl.value = estSeuil(doc) ? (doc * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2, useGrouping: false }) : '';
+    }
+    if (seuilNoteEl) seuilNoteEl.textContent = phraseOrigineSeuil(doc, ctx.opts?.reglagesAtelier);
+  }
+  seuilEl?.addEventListener('change', () => {
+    const lu = lireSeuilSaisi(seuilEl.value);
+    if (seuilErreurEl) seuilErreurEl.textContent = lu.ok ? '' : lu.erreur;
+    seuilEl.setAttribute('aria-invalid', lu.ok ? 'false' : 'true');
+    if (!lu.ok) return; // rien ne change, rien n'est corrigé en silence
+    const suivant = { ...(choixOptimisationCourant() ?? {}) };
+    if (lu.valeur == null) delete suivant.seuilAccesSolaire;
+    else suivant.seuilAccesSolaire = lu.valeur;
+    poserChoixOptimisation(Object.keys(suivant).length ? suivant : null);
+    recalcDisplays();
+    renderSolarAccess();
+    syncSeuilUi();
+  });
+  syncSeuilUi();
+
   recomputeHorizonFactors(); // CAL93 — état initial (document rechargé avec un profil)
   renderHorizonNote();
   renderSolarAccess(); // CAL97 — état initial (dossier rechargé avec des obstructions)
@@ -1390,6 +1453,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   /** ACAL27 — redessine la liste et les lignes des ombres tracées après une hydratation,
    *  SANS recalcul (la matrice enregistrée reste en vigueur, cf. `recomputeFactors`). */
   function rafraichirOmbres() {
+    syncSeuilUi(); // ACAL548 — le champ se relit depuis le document
     renderList();
     drawShadeLines();
   }

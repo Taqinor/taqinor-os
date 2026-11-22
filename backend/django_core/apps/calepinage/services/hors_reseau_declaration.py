@@ -9,12 +9,14 @@ veille, chacun de 0 à 100 %) reste UNIQUE : celle de
 """
 from __future__ import annotations
 
+from . import groupe_appoint as _groupe_appoint
 from .valeurs import nombre as _nombre
 
 __all__ = ['CLES_HORS_RESEAU', 'valider_hors_reseau']
 
 #: ACAL166 — les clés d'une déclaration hors réseau (``etapes/hors_reseau.py``).
-CLES_HORS_RESEAU = ('actif', 'jours_autonomie', 'etat_initial_kwh', 'seuils')
+CLES_HORS_RESEAU = ('actif', 'jours_autonomie', 'etat_initial_kwh', 'seuils',
+                    'groupe')
 
 
 def valider_hors_reseau(saisie):
@@ -52,6 +54,7 @@ def valider_hors_reseau(saisie):
                          "ou nul (reçu : « %s »)." % etat,
                          'hors_reseau.etat_initial_kwh')
     _valider_seuils(saisie.get('seuils'), _refus_champ)
+    _groupe_appoint.valider_groupe(saisie.get('groupe'), _refus_champ)  # ACAL800
 
 
 def _valider_seuils(seuils, refuser):

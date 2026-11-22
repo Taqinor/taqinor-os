@@ -12,7 +12,7 @@ import math
 import unittest
 
 from core.pompage.champ import (
-    MENTION_TEMPERATURES_REPLI, choisir_variateur, controle_chaine_variateur,
+    MENTION_TEMPERATURES_REPLI, choisir_variateur, controle_appoint, controle_chaine_variateur,
     dimensionner_champ,
     e_d_depuis_profils, kw_normalise_depuis_cv, kwc_depart,
 )
@@ -462,6 +462,41 @@ class ControleChaine(unittest.TestCase):
             temperatures={"froid_c": 0, "chaud_c": 60, "source": "tmy_site"})
         self.assertEqual(r["temperatures"]["source"], "tmy_site")
         self.assertIsNone(r["temperatures"]["mention"])
+
+
+class ControleAppoint(unittest.TestCase):
+    """ACAL818 — appoint réseau/groupe : Vmp à chaud de la chaîne ≥ bus DC
+    redressé PUBLIÉ (400 V d'essai), Voc à froid ≤ ``ond_v_max_abs``."""
+
+    VAR = _var(4, 4, 380, fiche=dict(FICHE_250_780, var_bus_dc_redresse_v=400))
+
+    def test_12_conforme_11_vmp_sous_bus(self):
+        r = controle_appoint(self.VAR, PANNEAU, 12)
+        self.assertEqual(r["verdict"], "conforme")
+        # 422 = 12 × Vmp à chaud unitaire (35,13 V), le chiffre de
+        # ``controle_chaine_variateur`` sur la même chaîne (même source).
+        self.assertEqual(r["vmp_chaud_v"], 422)
+        self.assertEqual(r["vmp_chaud_v"],
+                         controle_chaine_variateur(self.VAR, PANNEAU, 12)["vmp_chaud_v"])
+        self.assertEqual((r["bus_redresse_v"], r["limite_v"]), (400, 800))
+        self.assertLessEqual(r["voc_froid_v"], 800)
+        r = controle_appoint(self.VAR, PANNEAU, 11)
+        self.assertEqual(r["verdict"], "vmp_sous_bus")
+        self.assertEqual(r["vmp_chaud_v"], 386)
+
+    def test_voc_au_dessus_limite(self):
+        r = controle_appoint(self.VAR, PANNEAU, 16)
+        self.assertEqual(r["verdict"], "voc_au_dessus_limite")
+        self.assertIn("800 V", r["motif"])
+
+    def test_fiche_sans_bus_non_verifiable_nomme_le_champ(self):
+        r = controle_appoint(_var(4, 4, 380, fiche=FICHE_250_780), PANNEAU, 12)
+        self.assertEqual(r["verdict"], "non_verifiable")
+        self.assertIn("var_bus_dc_redresse_v", r["motif"])
+        self.assertIsNone(r["vmp_chaud_v"])
+        sans_limite = dict(FICHE_250_780, var_bus_dc_redresse_v=400, ond_v_max_abs=None)
+        r = controle_appoint(_var(4, 4, 380, fiche=sans_limite), PANNEAU, 12)
+        self.assertIn("ond_v_max_abs", r["motif"])
 
 
 if __name__ == "__main__":

@@ -133,4 +133,29 @@ describe('ReglagesFixation (ACAL559)', () => {
       expect(document.getElementById(id)).toHaveAttribute('step', 'any')
     }
   })
+
+  it('« Grandeur de base » propose les quatre bases d’orientation (ACAL569)', async () => {
+    espions.liste.mockResolvedValue({ data: VIDE })
+    render(<ReglagesFixation />)
+    await screen.findByTestId('acal559-vide')
+    const options = Object.fromEntries([...document.getElementById('acal559-c0-base').options]
+      .map((o) => [o.value, o.textContent]))
+    expect(options).toMatchObject({
+      modules_portrait: 'modules en portrait', modules_paysage: 'modules en paysage',
+      rangees_portrait: 'rangées en portrait', rangees_paysage: 'rangées en paysage',
+    })
+  })
+
+  it('propose le rôle « Échafaudage » et les bases d’ACAL578 / ACAL598 (REP-fixation-ecran)', async () => {
+    espions.liste.mockResolvedValue({ data: VIDE })
+    render(<ReglagesFixation />)
+    await screen.findByTestId('acal559-vide')
+    const roles = [...document.getElementById('acal559-c0-role').options].map((o) => o.value)
+    expect(roles).toContain('echafaudage')
+    const bases = [...document.getElementById('acal559-c0-base').options].map((o) => o.value)
+    for (const base of ['tables', 'poteaux', 'pieds', 'longueur_egouts_m', 'facade_egouts_m2',
+      'role:echafaudage']) {
+      expect(bases).toContain(base)
+    }
+  })
 })

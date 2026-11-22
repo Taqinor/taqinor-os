@@ -172,6 +172,8 @@ _FORME_RACCORDEMENT = forme_du_contrat(
         'source_cos_phi': ChaineStricte(required=False),
         'plafond_injection_kw': serializers.FloatField(
             required=False, min_value=0, max_value=SAISIE_MAXIMUM),
+        'plafond_injection_a': serializers.FloatField(
+            required=False, min_value=0, max_value=SAISIE_MAXIMUM),
         'plafond_injection_justification': ChaineStricte(
             required=False)}),
     responses=_FORME_RACCORDEMENT)

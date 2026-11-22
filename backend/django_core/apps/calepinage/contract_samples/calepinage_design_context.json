@@ -105,7 +105,16 @@
       "RESERVEE",
       "PREFEREE"
     ],
-    "variante": null
+    "variante": null,
+    "chiffrage": {
+      "marche": "residentiel",
+      "regles_calcul": 15,
+      "kwc": {"valeur": 71.0, "unite": "kWc", "source": "devis", "etat": "servi"},
+      "production_annuelle_kwh": {"valeur": 98576, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
+      "economie_annee1_mad": {"valeur": 7420, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
+      "autoconsommation_pct": {"valeur": 62.0, "unite": "%", "source": "devis", "etat": "servi"},
+      "omissions": []
+    }
   },
   "exemple_variante": {
     "calepinage": {
@@ -356,7 +365,21 @@
       "RESERVEE",
       "PREFEREE"
     ],
-    "variante": null
+    "variante": null,
+    "chiffrage": {
+      "marche": "residentiel",
+      "regles_calcul": 14,
+      "kwc": {"valeur": null, "unite": "kWc", "source": null, "etat": "non_servi"},
+      "production_annuelle_kwh": {"valeur": null, "unite": "kWh/an", "source": null, "etat": "non_servi"},
+      "economie_annee1_mad": {"valeur": null, "unite": "MAD", "source": null, "etat": "non_servi", "option": null},
+      "autoconsommation_pct": {"valeur": null, "unite": "%", "source": null, "etat": "non_servi"},
+      "omissions": [
+        {"grandeur": "kwc", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"},
+        {"grandeur": "production_annuelle_kwh", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"},
+        {"grandeur": "economie_annee1_mad", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"},
+        {"grandeur": "autoconsommation_pct", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"}
+      ]
+    }
   },
   "forme_serveur_note": "ACAL5 — `partielle` TANT QUE les moitiés back (D02-T15, D06-T19, D08-T06) ne servent pas les clés ajoutées (revision_possible, calepinage.devis_lie, calepinage.lead_supprime, geometrie.empreinte_document / repere_lead / ecart_m / derive / contour_utilisable / source_repere, cible.source / cible.refus) ; la première moitié back remet `complete`.",
   "exemple_contour_inutilisable": {

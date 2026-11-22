@@ -20,7 +20,10 @@
             "id": 1,
             "nom_complet": "Utilisateur d'essai"
           },
-          "version": "1"
+          "version": "1",
+          "verifie_le": "2026-08-01",
+          "verification_max_jours": 365,
+          "verification_perimee": false
         },
         "pieces": [
           {
@@ -119,7 +122,10 @@
           "fichier": null,
           "depose_le": null,
           "depose_par": null,
-          "version": null
+          "version": null,
+          "verifie_le": null,
+          "verification_max_jours": null,
+          "verification_perimee": null
         },
         "pieces": [],
         "champs_a_completer": [],

@@ -6,9 +6,11 @@ import useResource from '../../../hooks/useResource'
 import { Badge, Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import CarteChaineOmbragee from './CarteChaineOmbragee'
+import BouclesDeChaines from './BouclesDeChaines'
 import HistogrammeEcretage from '../production/HistogrammeEcretage'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { messageRefus } from '../commun/refusServeur'
+import Pourquoi from '../commun/Pourquoi'
 import { formatDateTime } from '../../../lib/format'
 import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
 import { estIndeterminee, phraseChaine, volts } from './tensionsChaines'
@@ -169,7 +171,7 @@ function AlertePassable({ alerte, derogation, peutDeroger, onPasserOutre }) {
   }
   return (
     <li className="flex flex-col gap-1 text-sm" data-testid={`acal284-alerte-${alerte.code}`}>
-      <span>{alerte.libelle}</span>
+      <span>{alerte.libelle}<Pourquoi cle="electrique.alerte_non_bloquante" valeurs={alerte} /></span>
       {derogation ? (
         <span className="text-xs text-muted-foreground" data-testid={`acal284-derogation-${alerte.code}`}>
           {phraseDerogation(derogation)}
@@ -453,6 +455,7 @@ export default function VerdictElectrique({ calepinageId } = {}) {
             </>
           )}
         <TableauTensions chaines={data?.chaines} />
+        <BouclesDeChaines boucles={data?.boucles_dc} />
         <BlocDerogations calepinageId={id} />
         <CarteChaineOmbragee calepinageId={id} />
         <HistogrammeEcretage calepinageId={id} />

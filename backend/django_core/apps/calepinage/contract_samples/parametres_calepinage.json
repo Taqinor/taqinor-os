@@ -550,6 +550,24 @@
           "type": "nombre",
           "minimum": 0,
           "maximum": 90
+        },
+        {
+          "cle": "batterie_seuil_nuits_pct",
+          "libelle": "Part de nuits au plancher à partir de laquelle la batterie est dite trop petite",
+          "unite": "%",
+          "reference": "Réglage société — aucune valeur n'est supposée ; mot de verdict de la batterie (Pylon, Battery Recommender)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "batterie_seuil_jours_pleine_pct",
+          "libelle": "Part de jours pleine en dessous de laquelle la batterie est dite trop grande",
+          "unite": "%",
+          "reference": "Réglage société — aucune valeur n'est supposée ; mot de verdict de la batterie (Pylon, Battery Recommender)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "electrique_societe": [
@@ -681,6 +699,40 @@
           "reference": "Réglage société — limite saisie avec sa source ; aucune surface admissible supposée",
           "type": "nombre",
           "minimum": 0
+        },
+        {
+          "cle": "seuil_orientations_micro",
+          "libelle": "Nombre d'orientations à partir duquel étudier des micro-onduleurs",
+          "unite": "",
+          "reference": "Réglage société — seuil saisi avec sa source ; aucune règle de choix supposée",
+          "type": "entier",
+          "minimum": 1
+        },
+        {
+          "cle": "seuil_ecart_acces_optimiseur",
+          "libelle": "Écart d'accès solaire dans une chaîne à partir duquel étudier des optimiseurs",
+          "unite": "",
+          "reference": "Réglage société — seuil saisi avec sa source (0 à 1) ; aucune règle de choix supposée",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "cle": "gabarit_verification_max_jours",
+          "libelle": "Nombre de jours au-delà duquel un gabarit vérifié est à redemander",
+          "unite": "jours",
+          "reference": "Réglage société — durée saisie avec sa source ; aucune durée supposée",
+          "type": "entier",
+          "minimum": 1
+        },
+        {
+          "cle": "fiche_ecart_pmax_pct",
+          "libelle": "Écart toléré entre Pmax et Vmp × Imp d'une fiche module importée",
+          "unite": "%",
+          "reference": "Réglage société — seuil saisi avec sa source ; vide : contrôle omis et dit",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "lestage": [
@@ -1274,6 +1326,24 @@
           "type": "nombre",
           "minimum": 0,
           "maximum": 90
+        },
+        {
+          "cle": "batterie_seuil_nuits_pct",
+          "libelle": "Part de nuits au plancher à partir de laquelle la batterie est dite trop petite",
+          "unite": "%",
+          "reference": "Réglage société — aucune valeur n'est supposée ; mot de verdict de la batterie (Pylon, Battery Recommender)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "batterie_seuil_jours_pleine_pct",
+          "libelle": "Part de jours pleine en dessous de laquelle la batterie est dite trop grande",
+          "unite": "%",
+          "reference": "Réglage société — aucune valeur n'est supposée ; mot de verdict de la batterie (Pylon, Battery Recommender)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "electrique_societe": [
@@ -1405,6 +1475,40 @@
           "reference": "Réglage société — limite saisie avec sa source ; aucune surface admissible supposée",
           "type": "nombre",
           "minimum": 0
+        },
+        {
+          "cle": "seuil_orientations_micro",
+          "libelle": "Nombre d'orientations à partir duquel étudier des micro-onduleurs",
+          "unite": "",
+          "reference": "Réglage société — seuil saisi avec sa source ; aucune règle de choix supposée",
+          "type": "entier",
+          "minimum": 1
+        },
+        {
+          "cle": "seuil_ecart_acces_optimiseur",
+          "libelle": "Écart d'accès solaire dans une chaîne à partir duquel étudier des optimiseurs",
+          "unite": "",
+          "reference": "Réglage société — seuil saisi avec sa source (0 à 1) ; aucune règle de choix supposée",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "cle": "gabarit_verification_max_jours",
+          "libelle": "Nombre de jours au-delà duquel un gabarit vérifié est à redemander",
+          "unite": "jours",
+          "reference": "Réglage société — durée saisie avec sa source ; aucune durée supposée",
+          "type": "entier",
+          "minimum": 1
+        },
+        {
+          "cle": "fiche_ecart_pmax_pct",
+          "libelle": "Écart toléré entre Pmax et Vmp × Imp d'une fiche module importée",
+          "unite": "%",
+          "reference": "Réglage société — seuil saisi avec sa source ; vide : contrôle omis et dit",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "lestage": [

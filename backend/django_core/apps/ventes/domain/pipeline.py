@@ -628,9 +628,11 @@ def ecrire_etude_params(devis, intention, composition):
     # économies du layout (géométrie + kWc seulement) ; résidentiel/agricole
     # inchangés.
     from apps.ventes.domain.etude_schema import cles_etude_du_layout
+    # ACAL912 — + le layout : une surface de pose chiffrée ⇒ production du toit
+    # seul rendue à ``None``, que l'écrivain unique RETIRE (règle Z2).
     cles.update(cles_etude_du_layout(
         getattr(intention, 'mode_installation', None)
-        or getattr(devis, 'mode_installation', None), resultat))
+        or getattr(devis, 'mode_installation', None), resultat, intention.layout))
     bloc = ecrire_etude(devis, proprietaire=CALEPINAGE, **cles)
     # DC11 / QJR106 — la PROVENANCE fait partie de l'étape 6 : c'est une clé
     # d'``etude_params``, écrite par le MÊME écrivain unique, dans la même

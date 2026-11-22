@@ -1620,6 +1620,7 @@ class ComposantFixation(TenantModel):
         EMBOUT = 'embout', 'Embout'
         LEST = 'lest', 'Lest'
         VISSERIE = 'visserie', 'Visserie'
+        ECHAFAUDAGE = 'echafaudage', 'Échafaudage'  # ACAL598
 
     systeme = models.ForeignKey(
         SystemeFixation,

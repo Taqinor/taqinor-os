@@ -9,6 +9,7 @@ d'origine.
 import logging
 
 from .etat_ci import prix_connu_ci
+from .selectors_fiche_pompage import _FICHE_POMPE_CHAMPS, _FICHE_VARIATEUR_CHAMPS
 
 logger = logging.getLogger(__name__)
 
@@ -3158,19 +3159,7 @@ def produits_par_type_equipement(company, type_equipement, avec_prix=True):
 # pompage``) : le rôle vient de ``role_pompage`` DÉCLARÉ, sinon de la catégorie,
 # sinon des mots du nom (repli permanent, jumeau de l'ancienne lecture) ;
 # ``classement`` dit LEQUEL a répondu. JAMAIS ``prix_achat`` ni marge.
-
-_FICHE_POMPE_CHAMPS = (
-    'pompe_i_nominal_a', 'pompe_diametre_ext_mm', 'pompe_nb_etages',
-    'pompe_immersion_min_m', 'pompe_rendement_pct', 'pompe_q_nominal_m3h',
-    'pompe_hmt_nominale_m',
-)
-_FICHE_VARIATEUR_CHAMPS = (
-    'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
-    'ond_phases', 'ond_v_demarrage_v',
-    'var_voc_reco_min_v', 'var_voc_reco_max_v', 'var_v_sortie_v',
-    'var_i_sortie_nominal_a', 'var_protection_marche_a_sec',
-    'var_rendement_mppt_pct',
-)
+# ACAL817 — les clés de fiche servies : ``selectors_fiche_pompage``.
 
 
 def _nom_normalise(nom):

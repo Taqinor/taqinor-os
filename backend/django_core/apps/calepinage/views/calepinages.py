@@ -1069,7 +1069,9 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         ``contract_samples/calepinage_design_context.json``). LECTURE PURE,
         bornée société par ``get_queryset`` (404 pour une autre société).
         """
-        return Response(contexte_conception(self.get_object(), request))
+        from .chiffrage_contexte import avec_chiffrage  # ACAL993 — + le bloc ``chiffrage``
+        calepinage = self.get_object()
+        return Response(avec_chiffrage(contexte_conception(calepinage, request), calepinage))
 
     def _geste_repere(self, request, geste):
         """ACAL191 — exécute un geste de repère et rend la réponse d'écriture."""

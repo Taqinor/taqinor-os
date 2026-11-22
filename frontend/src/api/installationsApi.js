@@ -19,6 +19,9 @@ const installationsApi = {
   // Chantiers
   getInstallations: (params) => api.get('/installations/chantiers/', { params }),
   getInstallation: (id) => api.get(`/installations/chantiers/${id}/`),
+  // ACAL589 — plan de pose (SVG) du calepinage retenu, pour le terrain ;
+  // contrat `installations/calepinage_plan_pose.json`.
+  getPlanPose: (id) => api.get(`/installations/chantiers/${id}/plan-pose/`),
   createInstallation: (data) => api.post('/installations/chantiers/', data),
   updateInstallation: (id, data) => api.patch(`/installations/chantiers/${id}/`, data),
   deleteInstallation: (id) => api.delete(`/installations/chantiers/${id}/`),
@@ -100,6 +103,10 @@ const installationsApi = {
   // défaut sont calculés CÔTÉ SERVEUR (jamais recalculés ici).
   ajouterReleveIv: (recetteId, data) =>
     api.post(`/installations/recettes-commissioning/${recetteId}/ajouter-iv/`, data),
+  // ACAL668 — Voc / Isc / Pmax attendus par chaîne, lus sur le calepinage
+  // retenu (ACAL667, contrat `installations/recette_valeurs_attendues.json`).
+  valeursAttendues: (recetteId, params) =>
+    api.get(`/installations/recettes-commissioning/${recetteId}/valeurs-attendues/`, { params }),
 
   // CIQ636 — réserves du CHANTIER (recette / réception, contrat
   // `recette_ci.json` bloc `reserves`) : liste, ajout, levée.

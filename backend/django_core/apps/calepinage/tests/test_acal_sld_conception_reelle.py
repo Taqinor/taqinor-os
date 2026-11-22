@@ -20,6 +20,9 @@ réelle (``core.electrique.concevoir``, via l'adaptateur unique
 from __future__ import annotations
 
 from decimal import Decimal
+from unittest import mock
+
+from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage, ParametresCalepinage
 from apps.calepinage.services.electrique import (
@@ -162,3 +165,23 @@ class ConceptionReelle(BaseConceptionReelle):
                             cartouche=cartouche)['svg'],
             schema_unifilaire_svg(entree=conception.entree, resultat=complet,
                                   cartouche=cartouche))
+
+
+class ReglagesSocieteDeLaPlancheTest(SimpleTestCase):
+    """REP-676b — la planche lit la check-list décidée AVEC les réglages
+    société (réglage foudre…), comme le résultat électrique."""
+
+    def test_les_reglages_vont_a_la_checklist_decidee(self):
+        from apps.calepinage.services import sld
+
+        reglages = {'foudre': {'valeur': 'oui', 'source': 'societe'}}
+        with mock.patch('apps.calepinage.services.electrique.'
+                        'checklist_decidee',
+                        return_value=([], [])) as decidee, \
+                mock.patch('apps.calepinage.services.electrique.'
+                           'resultat_electrique_complet',
+                           return_value='resultat'):
+            resultat, _gabarit = sld.resultat_et_gabarit_decides(
+                'conception', {}, None, gabarit={}, reglages=reglages)
+        self.assertEqual(resultat, 'resultat')
+        self.assertIs(decidee.call_args.kwargs['reglages'], reglages)

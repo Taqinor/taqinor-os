@@ -182,6 +182,46 @@ class ChaineDeSimulationTest(SimpleTestCase):
         _suite, resultat = self._bloc(appareils=DEUX_APPAREILS)
         self.assertIn('batterie.duree_secours_h', resultat['motif_absence'])
 
+    APPAREILS_DISTINCTS = [
+        {'nom': 'Réfrigérateur', 'puissance_continue_kw': 0.5,
+         'puissance_pointe_kw': 1.5, 'quantite': 1},
+        {'nom': 'Éclairage', 'puissance_continue_kw': 0.2,
+         'puissance_pointe_kw': 0.2, 'quantite': 2},
+    ]
+
+    def test_acal798_deux_appareils_publient_deux_heures_tenues(self):
+        # Continue totale 0,5 + 2 × 0,2 = 0,9 kW ; 4 h ⇒ réserve 3,6 kWh.
+        _suite, resultat = self._bloc(appareils=self.APPAREILS_DISTINCTS,
+                                      duree_secours_h=4)
+        secours = resultat['total']['secours']
+        self.assertEqual(secours['motif_appareils'], '')
+        self.assertEqual(secours['energie_disponible_kwh'], 3.6)
+        # Énergie disponible ÷ (puissance continue × quantité), par appareil.
+        self.assertEqual(
+            [(a['nom'], a['heures_tenues']) for a in secours['appareils']],
+            [('Réfrigérateur', 7.2), ('Éclairage', 9.0)])
+        self.assertEqual(secours['heures_tenues_ensemble'], 4.0)
+
+    def test_acal798_capacite_plus_petite_que_la_reserve(self):
+        _suite, normal = self._bloc(appareils=self.APPAREILS_DISTINCTS,
+                                    duree_secours_h=4)
+        utile = normal['total']['capacite_utile_kwh']
+        # 40 h × 0,9 kW = 36 kWh demandés, la banque n'en a que `utile`.
+        _suite, resultat = self._bloc(appareils=self.APPAREILS_DISTINCTS,
+                                      duree_secours_h=40)
+        secours = resultat['total']['secours']
+        self.assertLess(utile, 36.0)
+        self.assertEqual(secours['energie_disponible_kwh'], round(utile, 3))
+        self.assertEqual(secours['heures_tenues_ensemble'],
+                         round(utile / 0.9, 2))
+        self.assertLess(secours['heures_tenues_ensemble'], 40)
+
+    def test_acal798_sans_appareils_null_avec_motif(self):
+        _suite, resultat = self._bloc(reserve_backup_kwh=2.0)
+        secours = resultat['total']['secours']
+        self.assertIsNone(secours['appareils'])
+        self.assertTrue(secours['motif_appareils'])
+
     def test_reserve_nue_et_appareils_a_la_fois(self):
         _suite, resultat = self._bloc(appareils=DEUX_APPAREILS,
                                       duree_secours_h=4,

@@ -1,0 +1,11 @@
+{
+  "endpoint": "n/a — rendu serveur du rapport d'ombrage, aucune route",
+  "pourquoi": "ACAL727 — la légende à échelle FIXE 0-100 % imprimée sous la carte de chaleur du rapport d'ombrage. Les trois stops (accès solaire 0, 0,5, 1 ; RVB 0-1) sont ceux de `solarAccessColorRGB` (apps/web/src/lib/shadingEngine.ts) : source de vérité PARTAGÉE du test serveur (STOPS_LEGENDE) et du test frontend, jamais lue en production. Les extrémités 0 % et 100 % sont les bornes du DOMAINE de la fonction, pas des mesures.",
+  "exemple": {
+    "stops": [
+      {"acces": 0, "rgb": [1, 0, 0]},
+      {"acces": 0.5, "rgb": [1, 1, 0]},
+      {"acces": 1, "rgb": [0, 1, 0]}
+    ]
+  }
+}

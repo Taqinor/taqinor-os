@@ -249,6 +249,16 @@
         "motif": "Seuil d'autonettoyage propre à la société : la salissure dépend de la pluie et de l'inclinaison (PVsyst, Soiling loss), aucune valeur publiée trouvée, laissé sans valeur (D-CALX 7, ACAL742)."
       },
       {
+        "cle": "batterie_seuil_nuits_pct",
+        "section": "simulation",
+        "motif": "Part de nuits au plancher au-delà de laquelle la batterie est dite trop petite : seuil propre à la société, aucune valeur publiée trouvée, laissé sans valeur (D-CALX 7, ACAL794)."
+      },
+      {
+        "cle": "batterie_seuil_jours_pleine_pct",
+        "section": "simulation",
+        "motif": "Part de jours pleine en dessous de laquelle la batterie est dite trop grande : seuil propre à la société, aucune valeur publiée trouvée, laissé sans valeur (D-CALX 7, ACAL794)."
+      },
+      {
         "cle": "facteur_regroupement",
         "section": "electrique_societe",
         "motif": "Facteur de regroupement des câbles : réglage société, aucune valeur publiée relue sur une page citée, laissé sans valeur (D-CALX 7, ACAL636)."
@@ -282,6 +292,26 @@
         "cle": "boucle_dc_max_m2",
         "section": "electrique_societe",
         "motif": "Surface maximale d'une boucle de chaîne : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL678)."
+      },
+      {
+        "cle": "seuil_orientations_micro",
+        "section": "electrique_societe",
+        "motif": "Seuil d'orientations pour étudier des micro-onduleurs : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL671)."
+      },
+      {
+        "cle": "seuil_ecart_acces_optimiseur",
+        "section": "electrique_societe",
+        "motif": "Seuil d'écart d'accès solaire pour étudier des optimiseurs : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL671)."
+      },
+      {
+        "cle": "gabarit_verification_max_jours",
+        "section": "electrique_societe",
+        "motif": "Durée de validité d'un gabarit vérifié : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL824)."
+      },
+      {
+        "cle": "fiche_ecart_pmax_pct",
+        "section": "electrique_societe",
+        "motif": "Écart toléré entre Pmax et Vmp × Imp d'une fiche module : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL657)."
       }
     ]
   },

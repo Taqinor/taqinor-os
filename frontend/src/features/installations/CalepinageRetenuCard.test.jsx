@@ -12,6 +12,16 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 import CalepinageRetenuCard from './CalepinageRetenuCard'
+import calepinageApi from '../../api/calepinageApi'
+import { downloadBlob } from '../../utils/downloadBlob'
+
+vi.mock('../../api/calepinageApi', () => ({
+  default: { calepinages: { telechargerDocument: vi.fn() } },
+}))
+vi.mock('../../utils/downloadBlob', () => ({
+  downloadBlob: vi.fn(),
+  filenameFromResponse: (_r, secours) => secours,
+}))
 
 // Échantillon du contrat CAL245 (voir
 // apps/installations/contract_samples/calepinage_retenu.json) — mêmes clés,
@@ -22,6 +32,7 @@ const CALEPINAGE = {
   nb_modules: 12,
   planche_url: '/calepinage/7',
   plan_pose_url: '/ventes/devis/103/3d',
+  plan_pose_pdf_url: '/calepinage/calepinages/7/plan-pose.pdf/',
 }
 
 function wrap(ui) {
@@ -43,6 +54,24 @@ describe('CalepinageRetenuCard (CAL213)', () => {
     expect(screen.getByText('12 modules')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Voir le calepinage' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Plan de pose 3D' })).toBeInTheDocument()
+  })
+
+  it('ACAL903 : « Plan de pose (PDF) » télécharge en blob, la page 3D reste', async () => {
+    calepinageApi.calepinages.telechargerDocument.mockResolvedValue({ data: 'blob' })
+    render(wrap(<CalepinageRetenuCard calepinage={CALEPINAGE} />))
+    await userEvent.click(screen.getByRole('button', { name: 'Plan de pose (PDF)' }))
+    expect(calepinageApi.calepinages.telechargerDocument).toHaveBeenCalledWith(
+      '/calepinage/calepinages/7/plan-pose.pdf/', undefined, { suppressErrorToast: true })
+    expect(downloadBlob).toHaveBeenCalledWith('blob', 'plan-pose.pdf')
+    await userEvent.click(screen.getByRole('button', { name: 'Plan de pose 3D' }))
+    expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/103/3d')
+  })
+
+  it('ACAL903 : un refus du serveur s’affiche sous le bouton', async () => {
+    calepinageApi.calepinages.telechargerDocument.mockRejectedValue(new Error('409'))
+    render(wrap(<CalepinageRetenuCard calepinage={CALEPINAGE} />))
+    await userEvent.click(screen.getByRole('button', { name: 'Plan de pose (PDF)' }))
+    expect(await screen.findByTestId('acal903-erreur-pdf')).toHaveTextContent('n’a pas pu être produit')
   })
 
   it('ACAL274 : affiche le kWc VENDU puis le dessin et l’écart', () => {

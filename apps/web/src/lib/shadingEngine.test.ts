@@ -10,6 +10,8 @@ import {
   hourlyShadeFactors,
   annualShadeFactor,
   cellsSolarAccess,
+  bandesSolarAccess,
+  pointSolarAccess,
   shadeObstructionsENU,
   solarAccessSummary,
   combineSolarAccess,
@@ -145,6 +147,30 @@ describe('CAL94 — la matrice d’ombrage : rien sans obstruction, du rouge der
     // vient d'une VRAIE géométrie, pas d'un facteur d'ombrage forfaitaire.
     expect(access[1]).toBeGreaterThan(0.99);
     expect(access[1]).toBeGreaterThan(access[0]);
+  });
+});
+
+describe('ACAL721 — bandesSolarAccess : une valeur par bande, de l’aval à l’amont', () => {
+  const LAT = 33.5;
+  const cheminee: ShadeObstructionENU = {
+    x: 0, y: -3, effHeightM: 5, halfWidthM: Math.hypot(3, 3) / 2, footprint: rect(0, -3, 1.5, 1.5),
+  };
+  const prod = fallbackPerKwc();
+  const aval = { x: 0, y: -1 }; // pan face au sud : l'aval est au sud (y négatif)
+
+  it('trois bandes : pointSolarAccess aux centres écrits à la main (0 ; −0,434 ; +0,434 m)', () => {
+    const bandes = bandesSolarAccess(LAT, [cheminee], prod, { x: 0, y: 0 }, aval, 1.303, 3);
+    // Aval = y négatif : la bande basse est à y = −0,434, la haute à y = +0,434.
+    const attendu = [-0.4343333, 0, 0.4343333].map((y) => pointSolarAccess(LAT, [cheminee], prod, 0, y));
+    expect(bandes).toHaveLength(3);
+    bandes.forEach((v, i) => expect(v).toBeCloseTo(attendu[i], 4));
+    expect(bandes[0]).toBeLessThan(bandes[2]); // la bande basse est la plus ombrée
+  });
+
+  it('n = 1 : la valeur du centre du module', () => {
+    expect(bandesSolarAccess(LAT, [cheminee], prod, { x: 0, y: 0 }, aval, 1.303, 1)).toEqual([
+      pointSolarAccess(LAT, [cheminee], prod, 0, 0),
+    ]);
   });
 });
 

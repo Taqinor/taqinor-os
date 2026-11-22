@@ -43,7 +43,8 @@ s'ajoutent, ADDITIFS — un appel sans eux sort EXACTEMENT ce qu'il sortait
   hors de ce vocabulaire est REFUSÉE en la NOMMANT — jamais silencieusement
   ignorée. Le bloc de provenance liste désormais les colonnes retenues (une
   ligne ``Colonnes retenues``), pour que le fichier reste lisible seul.
-* ``pas`` — ``horaire`` (défaut) ou ``15min``. Le second est REFUSÉ avec son
+* ``pas`` — ``horaire`` (défaut), ``jour`` (ACAL755 : une ligne par jour, par
+  l'agrégat existant de ``chaine_pertes``) ou ``15min``. Le dernier est REFUSÉ avec son
   motif : la série au pas de 15 minutes n'est pas encore produite par le
   moteur, et ce module n'INTERPOLE JAMAIS une série horaire pour la
   remplacer (même discipline que « série indisponible ⇒ refus », jamais un
@@ -71,7 +72,7 @@ EXPORTS = ('horaire', 'mensuel', 'ombrage', 'ombrage_modules')
 #: CALX313 — les deux pas de temps ÉNONCÉS. Seul ``horaire`` produit un
 #: fichier aujourd'hui ; ``15min`` est un pas RECONNU mais pas encore
 #: disponible (refus dédié, jamais une interpolation).
-PAS_DISPONIBLES = ('horaire', '15min')
+PAS_DISPONIBLES = ('horaire', 'jour', '15min')
 
 SEPARATEUR = ';'
 ENCODAGE_TABLEUR = 'utf-8-sig'
@@ -319,6 +320,23 @@ def _valider_pas(pas):
             'remplacer.', champ='pas')
 
 
+#: ACAL755 — la ligne de provenance du pas « jour ».
+LIGNE_PAS_JOUR = ('jour — puissances = moyenne de la journée (énergie du jour '
+                  '= valeur × 24 h), énergies = sommes')
+
+
+def _points_au_jour(points):
+    """Un point par jour : l'agrégat de ``chaine_pertes`` (flux moyennés,
+    énergies sommées), appelé au pas de 60 min. Une série déjà au jour
+    (``heure`` vide partout) est rendue telle quelle, jamais agrégée deux fois."""
+    if all(isinstance(point, dict) and point.get('heure') in (None, '')
+           for point in points):
+        return points
+    from .chaine_pertes import _agreger_au_jour
+
+    return _agreger_au_jour(points, 60)
+
+
 def _export_horaire(document, *, colonnes=None, pas='horaire'):
     _valider_pas(pas)
     noms = _colonnes_retenues(colonnes)
@@ -330,6 +348,9 @@ def _export_horaire(document, *, colonnes=None, pas='horaire'):
             "lancez la simulation avant d'exporter. Aucun fichier de zéros "
             "n'est produit à la place.", champ='points')
     lignes = _lignes_de_provenance(document, colonnes_retenues=noms)
+    if pas == 'jour':
+        points = _points_au_jour(points)
+        lignes.insert(len(lignes) - 1, ['Pas de temps', LIGNE_PAS_JOUR])
     lignes.append(list(noms))
     for point in points:
         lignes.append([COLONNES_HORAIRE[nom](point) for nom in noms])

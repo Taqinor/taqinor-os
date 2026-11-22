@@ -465,6 +465,36 @@ describe('DossiersReglementaires — ACAL242', () => {
     expect(calepinageApi.calepinages.enregistrerChampsDossier).not.toHaveBeenCalled()
   })
 
+  it('ACAL824 — ligne « Vérifié le » et bandeau seulement si périmé', async () => {
+    servir('exemple')
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+    // L'échantillon sert « à jour » : la ligne, pas de bandeau.
+    expect(screen.getByTestId(`acal824-verifie-${premier.id}`)).toHaveTextContent('Vérifié le')
+    expect(screen.queryByTestId(`acal824-perime-${premier.id}`)).toBeNull()
+
+    cleanup()
+    const perime = copie()
+    perime.data.dossiers[0].gabarit.verification_perimee = true
+    perime.data.dossiers[0].gabarit.verification_max_jours = 365
+    calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue(perime)
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+    expect(screen.getByTestId(`acal824-perime-${premier.id}`))
+      .toHaveTextContent('Vérifié il y a plus de 365 jours : redemandez le formulaire au distributeur')
+
+    cleanup()
+    const inconnu = copie()
+    inconnu.data.dossiers[0].gabarit.verifie_le = null
+    inconnu.data.dossiers[0].gabarit.verification_perimee = null
+    calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue(inconnu)
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+    expect(screen.queryByTestId(`acal824-verifie-${premier.id}`)).toBeNull()
+    expect(screen.queryByTestId(`acal824-perime-${premier.id}`)).toBeNull()
+  })
+
   it('bandeau conception perimee', async () => {
     servir('exemple')
     rendre()

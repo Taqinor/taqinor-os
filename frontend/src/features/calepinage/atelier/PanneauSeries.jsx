@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Download, Upload } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
-import { formatDate } from '../../../lib/format'
+import { formatDate, formatNumber } from '../../../lib/format'
 import { Button, Card, Input, Label } from '../../../ui'
 import { downloadBlob } from '../../../utils/downloadBlob'
 import { SelecteurFichier } from '../reglages/ReglagesGabarits'
@@ -121,6 +121,8 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
   const [sorties, setSorties] = useState({})
   // ACAL753 — colonnes cochées de la série horaire (non mémorisées).
   const [cochees, setCochees] = useState(() => new Set(COLONNES_D_OFFICE))
+  // ACAL755 — pas de temps de la série horaire : `horaire` (défaut) ou `jour`.
+  const [pas, setPas] = useState('horaire')
   const basculer = (nom) => setCochees((avant) => {
     const apres = new Set(avant)
     if (apres.has(nom)) apres.delete(nom)
@@ -143,9 +145,12 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
   const telecharger = useCallback((quoi) => {
     setSorties((precedent) => ({ ...precedent, [quoi]: { etat: 'encours' } }))
     const colonnes = quoi === 'horaire' ? colonnesAEnvoyer(cochees) : null
-    const appel = colonnes
-      ? calepinageApi.calepinages.exportCsv(calepinageId, quoi, colonnes)
-      : calepinageApi.calepinages.exportCsv(calepinageId, quoi)
+    const parJour = quoi === 'horaire' && pas === 'jour'
+    const appel = parJour
+      ? calepinageApi.calepinages.exportCsv(calepinageId, quoi, colonnes, { pas: 'jour' })
+      : colonnes
+        ? calepinageApi.calepinages.exportCsv(calepinageId, quoi, colonnes)
+        : calepinageApi.calepinages.exportCsv(calepinageId, quoi)
     return Promise.resolve(appel)
       .then((res) => {
         const fichier = `calepinage-${calepinageId}-${quoi}.csv`
@@ -165,7 +170,7 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
           },
         }))
       })
-  }, [calepinageId, cochees])
+  }, [calepinageId, cochees, pas])
 
   return (
     <div className="mt-6" data-testid="cal-series">
@@ -198,6 +203,22 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
                   {sortie.etat === 'encours' ? 'Préparation…' : 'Télécharger'}
                 </Button>
               </div>
+
+              {quoi === 'horaire' && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <Label htmlFor="acal755-pas">Pas</Label>
+                  <select
+                    id="acal755-pas"
+                    value={pas}
+                    onChange={(e) => setPas(e.target.value)}
+                    className="min-h-11 w-full rounded border border-border bg-background px-2 text-sm text-foreground"
+                    data-testid="acal755-pas"
+                  >
+                    <option value="horaire">Pas : heure</option>
+                    <option value="jour">Pas : jour</option>
+                  </select>
+                </div>
+              )}
 
               {quoi === 'horaire' && (
                 <fieldset className="mt-2" data-testid="cal-series-colonnes">
@@ -490,6 +511,49 @@ function DepotMeteo({ calepinageId, onDepose }) {
             : ''}
         </p>
       )}
+      {depose?.qualite && <QualiteFichier qualite={depose.qualite} />}
     </Card>
+  )
+}
+
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
+  'septembre', 'octobre', 'novembre', 'décembre']
+
+/** ACAL764 — les quatre lignes de contrôle du fichier déposé (servies par le dépôt, ACAL763) :
+    des nombres en mots simples, jamais un verdict ni un blocage. */
+function QualiteFichier({ qualite }) {
+  const { couverture, decalage, negatifs, extraterrestre, motifs } = qualite
+  const nonCalcule = (cle) => `non calculé — ${motifs?.[cle] || 'motif non servi'}`
+  const absents = Object.entries(couverture?.mois_absents || {})
+    .filter(([, mois]) => mois.length)
+    .map(([annee, mois]) => `${annee} : ${mois.map((m) => MOIS_FR[m - 1]).join(', ')}`)
+  const colonnes = Object.values(negatifs || {})
+  const nbNegatifs = colonnes.reduce((somme, c) => somme + c.nombre, 0)
+  const plusPetite = Math.min(...colonnes.map((c) => c.plus_petite).filter((v) => v != null))
+  const ecart = decalage?.ecart_median_min
+  const lignes = [
+    ['couverture', `Couverture : ${formatNumber(couverture.heures_lues)} heures sur ${couverture.annees.join(', ')} ; `
+      + `mois sans mesure : ${absents.length ? absents.join(' ; ') : 'aucun'}`],
+    ['decalage', decalage
+      ? `Décalage horaire : le milieu des journées mesurées tombe ${formatNumber(Math.abs(ecart))} minutes `
+        + `${ecart < 0 ? 'avant' : 'après'} le midi solaire calculé (sur ${formatNumber(decalage.jours_mesures)} jours)`
+      : `Décalage horaire : ${nonCalcule('decalage')}`],
+    ['negatifs', nbNegatifs
+      ? `Valeurs négatives : ${formatNumber(nbNegatifs)} valeurs négatives (la plus petite : −${formatNumber(Math.abs(plusPetite))} W/m²)`
+      : 'Valeurs négatives : aucune'],
+    ['extraterrestre', extraterrestre
+      ? `Au-dessus du soleil du jour : ${extraterrestre.heures_au_dessus
+        ? `${formatNumber(extraterrestre.heures_au_dessus)} heures au-dessus de l’irradiance extraterrestre `
+          + `(la plus forte : ${formatNumber(extraterrestre.plus_forte_w_m2)} W/m²)`
+        : 'aucune'}`
+      : `Au-dessus du soleil du jour : ${nonCalcule('extraterrestre')}`],
+  ]
+  return (
+    <div className="mt-2" data-testid="acal764-qualite">
+      <ul className="text-sm text-foreground">
+        {lignes.map(([cle, texte]) => <li key={cle} data-testid={`acal764-${cle}`}>{texte}</li>)}
+      </ul>
+      <p className="mt-1 text-xs text-muted-foreground">Contrôle fait au dépôt.</p>
+    </div>
   )
 }

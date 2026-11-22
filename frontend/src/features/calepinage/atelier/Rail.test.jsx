@@ -27,7 +27,8 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif({
   calepinages: new Proxy({}, { get: (_c, prop) => (prop === 'parcours' ? (...a) => mocks.parcours(...a)
-    : prop === 'modulesDisponibles' ? (...a) => mocks.modulesDisponibles(...a) : () => Promise.resolve({ data: {} })) }),
+    : prop === 'modulesDisponibles' ? (...a) => mocks.modulesDisponibles(...a)
+      : prop === 'pretAEnvoyer' ? (...a) => mocks.pretAEnvoyer(...a) : () => Promise.resolve({ data: {} })) }),
 }))
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
@@ -37,6 +38,7 @@ vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } })
    son bandeau d'échec au lieu du contenu. */
 const mocks = vi.hoisted(() => ({
   hasPermission: vi.fn(() => false), parcours: vi.fn(), modulesDisponibles: vi.fn(),
+  pretAEnvoyer: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 vi.mock('../../../hooks/useHasPermission', () => ({
   useHasPermission: (code) => mocks.hasPermission(code),
@@ -337,8 +339,26 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
   }
   beforeEach(() => { try { window.localStorage.clear() } catch { /* ignoré */ } })
 
+  /* ACAL865 — le compte de l'étape vient du panneau « Prêt à envoyer ? »
+     (contrat `calepinage_pret_a_envoyer.json`), jamais de `manque[]`. */
+  const pret = reponseContrat('calepinage', 'calepinage_pret_a_envoyer')
+  const pretAvec = (controles) => ({
+    ...pret,
+    data: {
+      ...pret.data,
+      controles,
+      nombre_bloquants: controles.filter((c) => c.etat === 'bloquant').length,
+      nombre_a_regler: controles.filter((c) => c.etat === 'a_regler').length,
+      pret: !controles.some((c) => ['bloquant', 'a_regler'].includes(c.etat)),
+    },
+  })
+  const ok = pret.data.controles.find((c) => c.etat === 'ok')
+  const orange = pret.data.controles.find((c) => c.etat === 'a_regler')
+  const info = pret.data.controles.find((c) => c.etat === 'info')
+
   it('guidé : UNE page, « 2 points à régler » et 7 sections ; le Verdict est ouvert quand l’étape est bloquée', async () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
+    mocks.pretAEnvoyer.mockResolvedValue(pret)
     const utilisateur = userEvent.setup()
     rendreRail()
     await utilisateur.click(screen.getByTestId('cal-etape-electrique'))
@@ -351,10 +371,43 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     expect(screen.queryByTestId('cal-onglet-raccordement')).toBeNull()
   }, 30_000)
 
-  it('« Conforme » quand l’étape est faite', async () => {
+  it('ACAL865 — tout ok ⇒ « Prêt à envoyer », même si « ce qui manque » a des lignes électriques', async () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok]))
     rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
-    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Conforme'))
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Prêt à envoyer'))
+    expect(mocks.pretAEnvoyer).toHaveBeenCalledWith(ID)
+  }, 30_000)
+
+  it('ACAL865 — un orange ⇒ UN seul « 1 point à régler », et « Régler » pousse `?onglet=…&champ=…`', async () => {
+    mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
+    const cible = { etape: 'toit', onglet: 'pertes', champ: 'pente' }
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, info, { ...orange, cible }]))
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}?${PARAM_ONGLET}=verdict-electrique`]}>
+        <Routes>
+          <Route path="/calepinage/:id" element={<><Rail /><TemoinUrl /></>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 point à régler'))
+    // un seul compte : `manque[]` (2 lignes électriques) n'est plus compté ici.
+    expect(screen.queryAllByText(/points? à régler/)).toHaveLength(1)
+    expect(screen.getByTestId(`cal-pret-ligne-${info.code}`)).toHaveTextContent(info.valeur_texte)
+    await userEvent.setup().click(screen.getByTestId(`cal-pret-regler-${orange.code}`))
+    const recherche = new URLSearchParams(screen.getByTestId('temoin-url').textContent)
+    expect(recherche.get(PARAM_ONGLET)).toBe('pertes')
+    expect(recherche.get('champ')).toBe('pente')
+  }, 30_000)
+
+  it('ACAL865 — les contrôles réussis sont repliés sous « Voir les n contrôles réussis »', async () => {
+    mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, orange]))
+    rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
+    const reussis = await screen.findByTestId('cal-pret-reussis', {}, { timeout: DELAI_PANNEAU })
+    expect(reussis.open).toBe(false)
+    expect(reussis).toHaveTextContent('Voir le contrôle réussi')
+    expect(within(reussis).getByTestId(`cal-pret-ligne-${ok.code}`)).toBeTruthy()
   }, 30_000)
 
   it('un ancien lien `?onglet=verdict-electrique` déplie le Verdict, `?onglet=raccordement` le Raccordement', async () => {
@@ -552,5 +605,36 @@ describe('ACAL419 — une bulle d’aide par onglet', () => {
     )
     const aide = await screen.findByRole('button', { name: /À quoi sert « Séries »/ })
     expect(aide.closest('[role="tab"]')).toBeNull()
+  })
+})
+
+describe('ACAL868 — le rail publie l’étape à la barre fixe', () => {
+  const ACTIONS = { toit: 'Poser les panneaux', panneaux: 'Raccorder les panneaux', electrique: 'Voir les résultats', resultats: 'Préparer les documents' }
+
+  it('chaque étape guidée sauf Documents porte `action` (libellé de la maquette)', () => {
+    for (const e of ETAPES) {
+      if (e.cle === 'documents') expect(e.action).toBeUndefined()
+      else expect(e.action, `étape ${e.cle}`).toBe(ACTIONS[e.cle])
+    }
+  })
+
+  it('`onEtape` reçoit l’étape et le mode ; `allerA` ouvre l’étape suivante', async () => {
+    try { window.localStorage.clear() } catch { /* ignoré */ }
+    const onEtape = vi.fn()
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}`]}>
+        <Routes>
+          <Route path="/calepinage/:id" element={<><Rail onEtape={onEtape} /><TemoinUrl /></>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(onEtape).toHaveBeenCalled())
+    const publie = onEtape.mock.calls.at(-1)[0]
+    expect(publie).toMatchObject({ expert: false })
+    const suivante = ETAPES[ETAPES.findIndex((e) => e.cle === publie.etape) + 1].cle
+    publie.allerA(suivante)
+    await waitFor(() => expect(screen.getByTestId('temoin-url')).toHaveTextContent('onglet='))
+    await waitFor(() => expect(onEtape.mock.calls.at(-1)[0]).toMatchObject({ etape: suivante, expert: false }))
+    expect(await panneauOuvert()).toBeTruthy()
   })
 })

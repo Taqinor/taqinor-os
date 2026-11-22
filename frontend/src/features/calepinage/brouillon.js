@@ -271,6 +271,14 @@ export function creerGestionnaireBrouillon({
 }
 
 /**
+ * ACAL945 — la requête n'a pas atteint le serveur : AUCUNE réponse (coupure, `ERR_NETWORK`). Faux pour toute réponse
+ * HTTP et pour un délai dépassé (`ECONNABORTED`) : le serveur a pu écrire, on ne rejoue donc pas.
+ */
+export function estPanneReseau(err) {
+  return !err?.response && err?.code !== 'ECONNABORTED' && err?.code !== 'ETIMEDOUT'
+}
+
+/**
  * ACAL84 — retire les brouillons ORPHELINS de ce calepinage et de cet
  * utilisateur : toute clé `calepinage_brouillon:<id>:<user>:*` autre que celle
  * de l'empreinte serveur courante (`hashBase`). Rend le nombre de clés

@@ -138,6 +138,38 @@ def _ligne_etape(contexte, etape, langue):
                _source(contexte, etape)))
 
 
+_MODELES_IAM = {'fresnel': 'Fresnel', 'ashrae': 'ASHRAE'}
+
+
+def _table_iam(contexte, cascade, langue):
+    """ACAL772 — la loi IAM retenue, telle que servie par l'étape ``iam`` ;
+    rien si l'étape est omise ou ne porte pas ``table_iam"""
+    etape = next((e for e in _etapes(cascade) if e.get('etape') == 'iam'), {})
+    entree = etape.get('entree') if isinstance(etape.get('entree'), dict) else {}
+    table = entree.get('table_iam')
+    if str(etape.get('motif_omission') or '').strip() or not table:
+        return ''
+    modele = str(entree.get('modele') or '')
+    legende = '%s : %s · %s %s' % (
+        escape(_libelle(contexte, 'iam_modele')),
+        escape(_MODELES_IAM.get(modele, modele)),
+        escape(_libelle(contexte, 'iam_indice_verre')),
+        nombre_tel_que_servi(entree.get('indice_verre'), langue))
+    if entree.get('b0') is not None:
+        legende += ' · b0 %s' % nombre_tel_que_servi(entree['b0'], langue)
+    lignes = ''.join(
+        '<tr><td class="kwh">%s</td><td class="kwh">%s</td></tr>'
+        % (nombre_tel_que_servi(ligne.get('angle_deg'), langue),
+           nombre_tel_que_servi(ligne.get('facteur'), langue))
+        for ligne in table if isinstance(ligne, dict))
+    return ('<div class="table-iam"><h4>%s</h4><table class="pertes-cascade">'
+            '<tr><th>%s</th><th class="kwh">%s</th></tr>%s</table>'
+            '<p class="note">%s</p></div>'
+            % (escape(_libelle(contexte, 'iam_titre')),
+               escape(_libelle(contexte, 'iam_col_angle')),
+               escape(_libelle(contexte, 'iam_col_facteur')), lignes, legende))
+
+
 def _table_cascade(contexte, cascade, langue):
     etapes = _etapes(cascade)
     entete = ''.join(
@@ -172,6 +204,7 @@ def _table_cascade(contexte, cascade, langue):
 
     blocs.append('<div class="diagramme-pertes">%s</div>' % svg_embarquable(
         svg_de_cascade(cascade, langue=langue)))
+    blocs.append(_table_iam(contexte, cascade, langue))
     # ACAL773 — « où va l'énergie » (ACAL761) sous la cascade ; un schéma
     # refusé imprime son motif, la table reste.
     from ..diagramme_energie import svg_d_energie

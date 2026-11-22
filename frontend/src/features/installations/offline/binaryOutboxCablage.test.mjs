@@ -105,3 +105,7 @@ test('retry automatique au retour du réseau (le hook flushe les DEUX files)', (
     FIELD.indexOf('export { OutboxQuotaError }'))
   assert.match(queue, /requestBackgroundSync\(\)/)
 })
+
+test('REP-892 — la file terrain ne rejoue que SES types binaires (clé partagée avec le calepinage)', () => {
+  assert.match(FIELD, /accepte: \(entry\) => Object\.values\(BINARY_OPS\)\.includes\(entry\.op_type\)/)
+})

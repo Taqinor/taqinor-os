@@ -365,6 +365,13 @@
         "energie_totale_kwh": 23.1,
         "energie_ecretee_kwh": 2.2,
         "part_ecretee_pct": 9.524
+      },
+      "declassement": {
+        "applique": true,
+        "t_debut_c": 40.0,
+        "pente_pct_par_c": 2.0,
+        "heures_declassees": 2,
+        "heures_sans_temperature": 0
       }
     }
   }

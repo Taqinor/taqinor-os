@@ -148,6 +148,7 @@ import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
 // `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
 import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './roofPro11/moduleSelect';
+import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
 import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
 import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
 import { creerInfoBulleOmbrage } from './roofPro11/infoBulleOmbrage'; // CALX122 câblage
@@ -1158,6 +1159,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     apresRendu: () => { formesToit.rafraichir(); toitParCotes.rafraichir(); }, // ACAL410 · ACAL422
     selectArea: (id: string) => selectArea(id), // ACAL554
     accesVivant: () => shadingUi.solarAccess()?.average ?? null, // ACAL728
+    etatCarte: () => optimizer.etatCarte(), // ACAL853
   });
   // ACAL422 — « Créer le toit » : longueur × largeur × orientation saisies, contour fermé par `close`.
   const toitParCotes = monterToitParCotes({
@@ -3985,7 +3987,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // ACAL138 — date du DERNIER calcul d'accès solaire écrit, par contenu : deux
   // sérialisations sans geste portent la MÊME date (et la date relue du document tant que
   // les valeurs n'ont pas changé).
-  let memoAccesSolaire: { cle: string; computedAt: string } | null = null;
+  let memoAccesSolaire: MemoAcces | null = null;
   function activeSolarAccessMeta():
     | { solarAccessByZone: Record<string, import('./roofPro11/prefill').SerializedSolarAccess> }
     | null {
@@ -3994,25 +3996,16 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const panneaux = geometrieZoneActive(ctx)?.panels ?? [];
     const s = shadingUi.solarAccessAnnuel(panneaux.map((p) => ({ x: p.cx, y: p.cy })));
     if (!s) return null;
-    const method = { ...s.method } as Record<string, unknown>;
-    const assumptions = {
-      periode: 'annee', // ACAL138 — toujours l'année entière (contrat ACAL2)
-      hypotheses: s.assumptions,
-      moduleLePlusOmbrage: s.min,
-      moduleLePlusDegage: s.max,
-      moyennePan: s.average,
-    };
-    const cle = JSON.stringify([s.perModule, method, assumptions]);
-    if (!memoAccesSolaire || memoAccesSolaire.cle !== cle) {
-      const relu = activeArea()?.geometrieEnregistree?.solarAccess;
-      const memeCalcul = relu && JSON.stringify([relu.values, relu.method, relu.assumptions]) === cle;
-      memoAccesSolaire = { cle, computedAt: memeCalcul ? relu.computedAt : new Date().toISOString() };
-    }
-    return {
-      solarAccessByZone: {
-        [ctx.activeAreaId]: { values: s.perModule, method, assumptions, computedAt: memoAccesSolaire.computedAt },
-      },
-    };
+    // ACAL721 — bandes (sous-chaînes de la fiche du module du pan) ; l'enveloppe + le mémo de date : bandesAcces.ts
+    const bandes = bandesDuPan({
+      catalogue: affectationDesPans(catalogueModulesAtelier, ctx.areas, ctx.modulesDuDocument).catalogue,
+      moduleId: activeArea()?.moduleId, panneaux,
+      inclinaisonDeg: ctx.layoutPlan?.tiltDeg ?? ctx.pitchDeg, azimutFaceDeg: ctx.facingAzimuthDeg,
+      acces: shadingUi.solarAccessAnnuel,
+    });
+    const res = enveloppeAccesSolaire(s, memoAccesSolaire, activeArea()?.geometrieEnregistree?.solarAccess, bandes);
+    memoAccesSolaire = res.memo;
+    return { solarAccessByZone: { [ctx.activeAreaId]: res.acces } };
   }
 
   /** ACAL459 — table d'ombrage par direction du pan ACTIF + signature courante des sources (méta par pan). */

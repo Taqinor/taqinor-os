@@ -11,11 +11,12 @@ import RetourAtelier from '../atelier/RetourAtelier'
 import {
   LIBELLE_BOUTON, etatCalcul, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
-import { IncertitudeSigma, ReglagesUtilises, SourceMeteo } from './BandeauProvenanceProduction'
+import { EcartPvgis, IncertitudeSigma, ReglagesUtilises, SourceMeteo } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import GraphiqueMensuel from './GraphiqueMensuel'
 import ResultatHeros from './ResultatHeros'
+import PourquoiProduction from './PourquoiProduction'
 import LigneSurLaDuree from './LigneSurLaDuree'
 import CartePostesPertes from './CartePostesPertes'
 import LigneValeursPubliees from './LigneValeursPubliees'
@@ -280,7 +281,8 @@ function TableauMensuelComplet({ mensuel, production }) {
         <tbody>
           {mensuel.map((point) => (
             <tr key={point.mois} className="border-t border-border/60">
-              <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}</td>
+              <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}
+                <Pourquoi cle="production.mensuel" valeurs={{ production }} /></td>
               {colonnes.map(([cle, , valeurs, rendu]) => (
                 <td key={cle} className="py-1 text-right tabular-nums" data-testid={`acal707-${cle}-${point.mois}`}>
                   {valeurs[point.mois] === null || valeurs[point.mois] === undefined
@@ -322,7 +324,8 @@ function TableauMensuel({ mensuel, production = null }) {
       <tbody>
         {mensuel.map((point) => (
           <tr key={point.mois} className="border-t border-border/60">
-            <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}</td>
+            <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}
+              <Pourquoi cle="production.mensuel" valeurs={{ production }} /></td>{/* ACAL873 */}
             <td className="py-1 text-right tabular-nums">{kwh(point.p50_kwh)}</td>
           </tr>
         ))}
@@ -437,6 +440,8 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
         motif={data?.motif} avertissements={data?.avertissements} plages={data?.cascade?.plages}
         autoconsommation={data?.autoconsommation} />
+      {data?.simule === true && !perime && <EcartPvgis validation={data?.validation} />}
+      {data?.simule === true && !perime && <PourquoiProduction cascade={data?.cascade} />}
       {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}
       {data?.simule === true && !perime && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
       {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} />}
@@ -468,7 +473,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
         geste que personne n'a demandé en ouvrant simplement l'onglet. */}
     <TapisHoraire calepinageId={id} serie={data?.serie_horaire}
       geometriePresente={geometriePresente}
-      perime={perime} motif={data?.motif}
+      perime={perime} motif={data?.motif} cascade={data?.cascade}
       motifConsommation={data?.autoconsommation?.motif_absence} />
     </>
   )

@@ -214,6 +214,7 @@ const CHAMPS_PAR_TYPE = {
     // Fondateur 17/11/2026 — puissance PV maximale raccordable (kWc) : la
     // borne « panneaux » d'un onduleur hybride (« Max. PV access power »).
     'ond_dc_max_kwc',
+    'ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c', // ACAL663 — réduction de puissance en chaleur
   ],
   module: [
     'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
@@ -223,6 +224,7 @@ const CHAMPS_PAR_TYPE = {
     // (CALX60). La courbe rendement/irradiance : COURBES_PAR_TYPE.
     'noct_c', 'bifacialite_pct',
     'tolerance_pmax_min_pct', 'tolerance_pmax_max_pct',
+    'cellules_serie', 'temp_coeff_isc_pct_c', // ACAL663 — champs lus par les modèles électriques
   ],
   // BATHOMO (fondateur 26/08/2026) — ``bat_max_modules_par_banc`` : le
   // plafond fondateur-éditable du nombre de modules IDENTIQUES qu'un même
@@ -258,14 +260,41 @@ const CHAMPS_PAR_TYPE = {
     'ond_phases', 'ond_v_demarrage_v',
     'var_voc_reco_min_v', 'var_voc_reco_max_v', 'var_v_sortie_v',
     'var_i_sortie_nominal_a', 'var_rendement_mppt_pct',
+    'var_bus_dc_redresse_v', // ACAL817 — bus DC redressé (appoint, ACAL818)
   ],
+}
+
+/** ACAL817 — clés saisies en champ NUMÉRIQUE libre (`step="any"`) par type
+ * de fiche dans `ProduitForm` ; `ond_phases` (variateur) a son propre choix. */
+export const CHAMPS_BLOC_NUMERIQUE = {
+  optimiseur: CHAMPS_PAR_TYPE.optimiseur,
+  pompe: CHAMPS_PAR_TYPE.pompe,
+  variateur_pompage: CHAMPS_PAR_TYPE.variateur_pompage.filter((cle) => cle !== 'ond_phases'),
 }
 
 // AGR105 — champs OUI / NON / NON PUBLIÉ (booléen nullable côté serveur).
 // État local : '' (non publié) | 'oui' | 'non' ; part à null / true / false.
 // Jamais un défaut « non » : un trou doit rester un trou.
 const CHAMPS_TRI_PAR_TYPE = {
+  onduleur: ['ond_mppt_independants'], // ACAL663
   variateur_pompage: ['var_protection_marche_a_sec'],
+}
+
+// ACAL663 — champs LISTE (SKU séparés par des virgules à l'écran, tableau au
+// serveur) : vide = « non publié » → `null`, jamais `[]` ni un SKU inventé.
+const CHAMPS_LISTE_PAR_TYPE = {
+  optimiseur: ['opt_onduleurs_compatibles'],
+}
+
+/** ACAL663 — les champs électriques que `FicheChampsElectriques` saisit, par
+ * type backend : numériques, oui/non/non publié (`CHOIX_TRI`), liste de SKU. */
+export const CHAMPS_ELECTRIQUES_FICHE = {
+  module: { numeriques: ['cellules_serie', 'temp_coeff_isc_pct_c'], tri: [], liste: [] },
+  onduleur: {
+    numeriques: ['ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c'],
+    tri: ['ond_mppt_independants'], liste: [],
+  },
+  optimiseur: { numeriques: [], tri: [], liste: CHAMPS_LISTE_PAR_TYPE.optimiseur },
 }
 export const CHOIX_TRI = [['oui', 'Oui'], ['non', 'Non']]
 
@@ -510,6 +539,13 @@ export const LIBELLES_FICHE = {
   bifacialite_pct: 'Facteur de bifacialité (%)',
   tolerance_pmax_min_pct: 'Tolérance de puissance — borne basse (%)',
   tolerance_pmax_max_pct: 'Tolérance de puissance — borne haute (%)',
+  // ACAL663 — champs lus par les modèles électriques (vide = non publié)
+  cellules_serie: 'Cellules en série',
+  temp_coeff_isc_pct_c: 'Coefficient de température de Isc (%/°C)',
+  ond_pnom_reduite_debut_c: 'Réduction de puissance — début (°C)',
+  ond_pnom_pente_pct_c: 'Réduction de puissance — pente (%/°C)',
+  ond_mppt_independants: 'Entrées MPPT indépendantes',
+  opt_onduleurs_compatibles: 'Onduleurs compatibles (SKU séparés par des virgules)',
   rendement_par_irradiance: COURBES_FICHE.rendement_par_irradiance.libelle,
   // Batterie
   bat_kwh_nominal: 'Capacité nominale (kWh)',
@@ -549,6 +585,7 @@ export const LIBELLES_FICHE = {
   var_i_sortie_nominal_a: 'Courant de sortie nominal (A)',
   var_protection_marche_a_sec: 'Protection marche à sec intégrée',
   var_rendement_mppt_pct: 'Rendement MPPT (%)',
+  var_bus_dc_redresse_v: 'Tension redressée du bus DC (V)',
 }
 
 /** Titre de la section affichée, par `type_fiche` backend. */
@@ -578,6 +615,8 @@ export function valeurFicheAffichee(cle, fiche) {
     if (fiche.ond_bat_aucune) return 'Aucune batterie compatible'
   }
   const v = fiche[cle]
+  // ACAL663 — liste de SKU : lue telle quelle, une liste vide est une absence.
+  if (Array.isArray(v) && !COURBES_FICHE[cle]) return v.length ? v.join(', ') : VALEUR_ABSENTE
   // AGR105 — booléen nullable : Oui / Non, jamais un trou rempli d'un défaut.
   if (typeof v === 'boolean') return v ? 'Oui' : 'Non'
   // CALX355 — une courbe se lit par son NOMBRE de points (jamais un
@@ -614,6 +653,7 @@ export function groupeFicheAffichage(fiche) {
   const cles = [
     ...CHAMPS_PAR_TYPE[type],
     ...(CHAMPS_TRI_PAR_TYPE[type] ?? []),
+    ...(CHAMPS_LISTE_PAR_TYPE[type] ?? []),
     ...(CHAMPS_CHOIX_PAR_TYPE[type] ?? []),
     ...(COURBES_PAR_TYPE[type] ?? []),
   ]
@@ -661,7 +701,7 @@ export function ficheFieldsVides() {
   for (const cles of Object.values(CHAMPS_CHOIX_PAR_TYPE)) {
     for (const cle of cles) out[cle] = ''
   }
-  for (const cles of Object.values(CHAMPS_TRI_PAR_TYPE)) {
+  for (const cles of [...Object.values(CHAMPS_TRI_PAR_TYPE), ...Object.values(CHAMPS_LISTE_PAR_TYPE)]) {
     for (const cle of cles) out[cle] = ''
   }
   for (const cles of Object.values(COURBES_PAR_TYPE)) {
@@ -692,6 +732,10 @@ export function champsFicheDepuisServeur(fiche) {
     for (const cle of cles) {
       out[cle] = fiche[cle] === true ? 'oui' : (fiche[cle] === false ? 'non' : '')
     }
+  }
+  // ACAL663 — un tableau de SKU se relit « a, b » ; null/[] → ''.
+  for (const cles of Object.values(CHAMPS_LISTE_PAR_TYPE)) {
+    for (const cle of cles) out[cle] = Array.isArray(fiche[cle]) ? fiche[cle].join(', ') : ''
   }
   for (const cles of Object.values(COURBES_PAR_TYPE)) {
     for (const cle of cles) out[cle] = lignesCourbeDepuisServeur(cle, fiche[cle])
@@ -728,6 +772,11 @@ export function champsFichePourType(ficheType, ficheFields) {
   for (const cle of CHAMPS_TRI_PAR_TYPE[typeBackend] ?? []) {
     const brut = ficheFields?.[cle]
     out[cle] = brut === 'oui' ? true : (brut === 'non' ? false : null)
+  }
+  // ACAL663 — « a, b » → ['a', 'b'] ; rien de saisi → null, jamais [].
+  for (const cle of CHAMPS_LISTE_PAR_TYPE[typeBackend] ?? []) {
+    const skus = String(ficheFields?.[cle] ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    out[cle] = skus.length ? skus : null
   }
   for (const cle of COURBES_PAR_TYPE[typeBackend] ?? []) {
     out[cle] = validerCourbe(cle, ficheFields?.[cle]).points

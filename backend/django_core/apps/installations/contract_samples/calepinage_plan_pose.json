@@ -1,0 +1,22 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/<int:pk>/plan-pose/",
+  "pourquoi": "ACAL589 — le plan de pose du calepinage RETENU, servi au terrain (« Ma journée », onglet « Plan ») et gardé dans le cache de lecture du navigateur (`readCache`, clé `plan_pose`) pour être relu réseau coupé avec sa mention d'âge. Lu à la demande sur `apps.calepinage.selectors_chantier.plan_pose_svg_pour_devis` (ACAL588) : aucune colonne chantier. Réponse {calepinage_id, plan_pose_svg, empreinte, motif} ; `plan_pose_svg` est un texte SVG affiché dans une <img> d'URL data:image/svg+xml (jamais injecté dans le DOM) ; sans plan il vaut null et `motif` dit pourquoi, tel que servi (aucun plan inventé). Bornée à la société par get_object (404 hors société), aucun montant. Le SVG ci-dessous est un EXEMPLE DE FORME, jamais un vrai plan.",
+  "exemple": {
+    "calepinage_id": 12,
+    "plan_pose_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 6\"><rect x=\"1\" y=\"1\" width=\"8\" height=\"4\"/></svg>",
+    "empreinte": "exemple-de-forme-empreinte",
+    "motif": ""
+  },
+  "exemple_sans_plan": {
+    "calepinage_id": null,
+    "plan_pose_svg": null,
+    "empreinte": null,
+    "motif": "aucun calepinage retenu pour le devis de ce chantier : aucun plan de pose à afficher"
+  },
+  "exemple_conception_changee": {
+    "calepinage_id": 12,
+    "plan_pose_svg": null,
+    "empreinte": "exemple-de-forme-empreinte",
+    "motif": "La conception a changé depuis l'acceptation du devis : le plan de pose courant n'est pas celui qui a été vendu."
+  }
+}

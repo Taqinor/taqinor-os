@@ -495,7 +495,10 @@ def _dessin_du_calepinage(calepinage):
     Une conception incomplète ou bloquée ne dessine rien : l'édition n'a
     alors aucun organe à nommer, et toute clef sera refusée en la nommant.
     """
-    from .electrique import bloquants_nommes, conception_du_calepinage
+    from .electrique import (
+        _reglages_electrique_societe, bloquants_nommes,
+        conception_du_calepinage,
+    )
 
     conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
@@ -507,8 +510,9 @@ def _dessin_du_calepinage(calepinage):
     # ACAL55 — le dessin lit un ``ResultatElectrique`` COMPLET (protections
     # comprises), jamais le ``ResultatChaines`` de la conception ; ACAL159 —
     # réduit à la check-list DÉCIDÉE.
-    resultat, gabarit = resultat_et_gabarit_decides(conception, donnees,
-                                                    norme)
+    resultat, gabarit = resultat_et_gabarit_decides(
+        conception, donnees, norme,
+        reglages=_reglages_electrique_societe(calepinage))
     return rendu_du_schema(getattr(conception, 'entree', None), resultat,
                            edition=edition_sld(calepinage),
                            gabarit=gabarit,
@@ -518,8 +522,11 @@ def _dessin_du_calepinage(calepinage):
 
 
 def resultat_et_gabarit_decides(conception, donnees, norme, *,
-                                gabarit=None):
+                                gabarit=None, reglages=None):
     """ACAL159 — ``(ResultatElectrique, gabarit)`` de la check-list DÉCIDÉE.
+
+    ``reglages`` : la section « electrique_societe » (REP-676b) — la planche
+    lit la MÊME check-list que le résultat électrique (réglage foudre…).
 
     Le résultat ne porte que les organes RETENUS (un organe écarté n'est
     plus dessiné) ; un organe AJOUTÉ par la société, qu'aucun bloc du noyau
@@ -529,7 +536,8 @@ def resultat_et_gabarit_decides(conception, donnees, norme, *,
     from .electrique import checklist_decidee, resultat_electrique_complet
     from .protections import ORIGINE_SOCIETE, organes_retenus
 
-    checklist, _avis = checklist_decidee(conception, donnees, norme)
+    checklist, _avis = checklist_decidee(conception, donnees, norme,
+                                         reglages=reglages)
     resultat = resultat_electrique_complet(conception, norme=norme,
                                            checklist=checklist)
     gabarit = dict(gabarit if gabarit is not None
@@ -784,7 +792,10 @@ def schema_du_calepinage(calepinage):
     libellés français du service électrique tels quels. Aucune clé ne
     disparaît jamais (leçon PACT10 du 03/08/2026).
     """
-    from .electrique import bloquants_nommes, conception_du_calepinage
+    from .electrique import (
+        _reglages_electrique_societe, bloquants_nommes,
+        conception_du_calepinage,
+    )
 
     conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
@@ -811,8 +822,9 @@ def schema_du_calepinage(calepinage):
     norme = _norme_du_calepinage(calepinage)
     # ACAL55 — l'adaptateur unique, jamais le ``ResultatChaines`` ; ACAL159
     # — réduit à la check-list décidée, ajouts signalés au bandeau.
-    resultat, gabarit = resultat_et_gabarit_decides(conception, donnees,
-                                                    norme)
+    resultat, gabarit = resultat_et_gabarit_decides(
+        conception, donnees, norme,
+        reglages=_reglages_electrique_societe(calepinage))
     dessin = rendu_du_schema(
         getattr(conception, 'entree', None), resultat,
         edition=edition,

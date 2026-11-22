@@ -169,6 +169,9 @@ from . import catalogue_materiel as _catalogue_materiel_action  # noqa: F401 —
 # ACAL558 — même patron : rattache ``systemes-fixation`` (liste/création) et
 # ``systemes-fixation/<id>`` (lecture/modification/suppression) du catalogue société.
 from . import systemes_fixation as _systemes_fixation_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# ACAL730 — même patron : rattache ``soleil-legal`` (GET : heure solaire vraie ↔
+# heure légale d'un jour au site, fuseau SAISI, rien n'est écrit).
+from . import soleil_legal as _soleil_legal_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ACAL535 — même patron : rattache ``suggestions-pente-relief`` (POST : la pente
 # de chaque pan lue sur un relief GeoTIFF déposé, sans porte du pays ni IGN).
 from . import suggestion_pente_relief as _pente_relief_action  # noqa: F401 — import d'enregistrement (D-ENF22)
@@ -223,6 +226,7 @@ MODULES_RATTACHES = (
     'variantes_modules',  # ACAL594
     'catalogue_materiel',  # ACAL960
     'systemes_fixation',  # ACAL558
+    'soleil_legal',  # ACAL730
     'suggestion_pente_relief',  # ACAL535
     'explications',  # ACAL871
     'pret_a_envoyer',  # ACAL860

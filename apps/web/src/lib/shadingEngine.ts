@@ -455,6 +455,45 @@ export function cellsSolarAccess(
   return points.map((p) => pointSolarAccess(latitudeDeg, obstructions, prod, p.x, p.y, diffuseFraction));
 }
 
+/**
+ * ACAL721 — les centres des `n` BANDES d'un module (une par sous-chaîne de sa fiche), de la
+ * bande BASSE (aval) à la bande HAUTE (amont), dans le plan du champ. `sensPente` = vecteur
+ * vers l'AVAL (sud pour un pan face au sud : y négatif) ; `penteHorizontaleM` = longueur du
+ * module dans le sens de la pente, projetée à l'horizontale. `n` ≤ 1 → le centre du module. PUR.
+ */
+export function centresDeBandes(
+  centre: SolarAccessPoint,
+  sensPente: SolarAccessPoint,
+  penteHorizontaleM: number,
+  n: number,
+): SolarAccessPoint[] {
+  const norme = Math.hypot(sensPente.x, sensPente.y);
+  if (!(n > 1) || !(norme > 0) || !(penteHorizontaleM > 0)) return [{ x: centre.x, y: centre.y }];
+  const pas = penteHorizontaleM / n;
+  return Array.from({ length: n }, (_, i) => {
+    const decalage = penteHorizontaleM / 2 - (i + 0.5) * pas; // + côté aval, − côté amont
+    return { x: centre.x + (sensPente.x / norme) * decalage, y: centre.y + (sensPente.y / norme) * decalage };
+  });
+}
+
+/**
+ * ACAL721 — accès solaire de chaque BANDE d'un module : `pointSolarAccess` évalué au centre de
+ * chaque bande (`centresDeBandes`), de la bande basse (aval) à la haute (amont). `n` = 1 → la
+ * valeur du centre du module. PUR.
+ */
+export function bandesSolarAccess(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  prod: PerKwcProduction,
+  centre: SolarAccessPoint,
+  sensPente: SolarAccessPoint,
+  penteHorizontaleM: number,
+  n: number,
+  diffuseFraction = DIFFUSE_FRACTION_WHEN_SHADED,
+): number[] {
+  return cellsSolarAccess(latitudeDeg, obstructions, prod, centresDeBandes(centre, sensPente, penteHorizontaleM, n), diffuseFraction);
+}
+
 // ═══════════ CAL97 — ACCÈS SOLAIRE CHIFFRÉ ET PUBLIÉ (TSRF) ═══════════
 // L'accès solaire par point était calculé UNIQUEMENT pour colorer la heatmap : aucun
 // chiffre n'en sortait. On l'agrège ici par module, par pan et pour l'installation, avec

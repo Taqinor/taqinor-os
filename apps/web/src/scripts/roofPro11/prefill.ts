@@ -58,6 +58,7 @@ import { semerFondDepuisDocument, imageCapturePourDocument } from './fondDocumen
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
 import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; import { emettreCoupures } from './coupuresPavage'; // ACAL193 (sorti), ACAL593, ACAL576
 import { orientationEmise } from './orientationDocument'; // ACAL608
+import { construireConsommation } from './consommationSerialisee'; import { type ChargeAvenir } from './chargesAvenir'; // ACAL780
 import { pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
@@ -276,6 +277,8 @@ export interface SerializedSolarAccess {
   assumptions: Record<string, unknown>;
   /** ISO 8601. */
   computedAt: string;
+  /** ACAL721/731 — accès par BANDE (sous-chaîne) de chaque module, aval → amont ; `null` = module sans bandes. Additif. */
+  bandes?: Array<number[] | null>;
 }
 
 /**
@@ -304,7 +307,10 @@ export function serializeSolarAccess(
     raw.assumptions && typeof raw.assumptions === 'object' && !Array.isArray(raw.assumptions)
       ? { ...raw.assumptions }
       : {};
-  return { values, method: { ...raw.method }, assumptions, computedAt };
+  // ACAL721 — liste de bandes alignée sur `values` (2 valeurs de [0;1] ou plus par module), sinon omise
+  const bandes = Array.isArray(raw.bandes) && raw.bandes.length === panelCount
+    ? raw.bandes.map((b) => (Array.isArray(b) && b.length >= 2 && b.every((v) => typeof v === 'number' && v >= 0 && v <= 1) ? b : null)) : null;
+  return { values, method: { ...raw.method }, assumptions, computedAt, ...(bandes?.some(Boolean) ? { bandes } : {}) };
 }
 
 /** CAL248 — relit l'accès solaire d'une géométrie de zone sérialisée. Absent, mal formé
@@ -706,6 +712,8 @@ export interface SerializedConsumption {
   saisons?: { ete: number; hiver: number };
   /** Appareils du calculateur (`ctx.consAppliances`). Omis si aucun appareil. */
   appareils?: Appliance[];
+  /** ACAL780 — charges à venir (voiture, PAC) : saisies, ou relues et réémises telles quelles. */
+  charges?: ChargeAvenir[];
   /** Comment la courbe a été obtenue — DÉDUITE, jamais un choix par défaut. */
   methode: 'facture' | 'courbe' | 'appareils';
   /** Provenance déclarative du bloc (jamais un chiffre, D-CALX 7). */
@@ -729,55 +737,11 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
   // ACAL26 — un bloc RELU du document (`ctx.consSource` posée par l'hydratation) est
   // toujours réémis : rouvrir puis enregistrer sans geste ne l'efface jamais.
   const relu = ctx.consSource != null;
-  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal || relu;
+  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal || relu
+    || ((ctx as { consCharges?: unknown[] }).consCharges?.length ?? 0) > 0; // ACAL780 — une charge seule suffit
   if (!touche) return {};
 
-  const courbe24 =
-    Array.isArray(ctx.consCurve) && ctx.consCurve.length === 24 ? ctx.consCurve.slice() : emptyCurve();
-  const methode: 'facture' | 'courbe' | 'appareils' = consHandEdited
-    ? 'courbe'
-    : appareilsSrc.length > 0
-      ? 'appareils'
-      : 'facture';
-  const consumption: SerializedConsumption = {
-    courbe24,
-    methode,
-    // ACAL26 — la provenance RELUE du document (`ctx.consSource`, posée par
-    // `appliquerHydratationAuCtx`) voyage telle quelle : rouvrir puis enregistrer sans
-    // geste ne réhorodate jamais la saisie. Sans provenance relue (saisie de cette
-    // session), l'atelier signe le bloc.
-    source:
-      ctx.consSource && typeof ctx.consSource.origine === 'string' && typeof ctx.consSource.saisi_le === 'string'
-        ? { origine: ctx.consSource.origine, saisi_le: ctx.consSource.saisi_le,
-            ...(typeof ctx.consSource.bareme === 'string' ? { bareme: ctx.consSource.bareme } : {}) } // ACAL311
-        : { origine: 'atelier', saisi_le: new Date().toISOString() },
-  };
-
-  const summerFactor =
-    typeof ctx.consSummerFactor === 'number' && Number.isFinite(ctx.consSummerFactor) ? ctx.consSummerFactor : null;
-  const winterFactor =
-    typeof ctx.consWinterFactor === 'number' && Number.isFinite(ctx.consWinterFactor) ? ctx.consWinterFactor : null;
-  if (consSeasonal && summerFactor != null && winterFactor != null) {
-    consumption.saisons = { ete: summerFactor, hiver: winterFactor };
-  }
-
-  // ACAL31 — une liste d'appareils VIDE relue du document repart vide (jamais retirée).
-  const appareilsRelus = (ctx.documentRelu?.consumption as { appareils?: unknown } | undefined)?.appareils;
-  if (appareilsSrc.length === 0 && ctx.consSource != null && Array.isArray(appareilsRelus) && appareilsRelus.length === 0) {
-    consumption.appareils = [];
-  }
-  if (appareilsSrc.length > 0) {
-    consumption.appareils = appareilsSrc.map((a) => ({
-      kind: a.kind,
-      label: a.label,
-      dailyKwh: a.dailyKwh,
-      startHour: a.startHour,
-      endHour: a.endHour,
-      billing: a.billing,
-    }));
-  }
-
-  return { consumption };
+  return { consumption: construireConsommation(ctx, appareilsSrc, consHandEdited, consSeasonal) }; // ACAL780 — corps extrait
 }
 
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */

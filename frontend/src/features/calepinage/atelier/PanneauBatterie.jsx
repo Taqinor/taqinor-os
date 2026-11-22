@@ -11,6 +11,11 @@ import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree } from './P
 import { MotifAbsence } from '../MotifAbsence'
 import SemaineBatterie from './SemaineBatterie'
 import Pourquoi from '../commun/Pourquoi'
+import SecoursBatterie from './SecoursBatterie'
+import ModeExpertBatterie from './ModeExpertBatterie'
+import SeuilsHorsReseau from './SeuilsHorsReseau'
+import { FenetresBatterie, ReglagesPointe } from './FenetresBatterie'
+import useExpertParUrl from '../production/useExpertParUrl'
 
 /* ============================================================================
    CALX14 — LE PANNEAU « BATTERIE », ET CE QUE LA CHAÎNE CALCULE DEVIENT ENFIN
@@ -115,12 +120,13 @@ function BandeauNonSimule({ avertissements }) {
 }
 
 
-function DeclarationBatterie({ id, onRelancer }) {
+function DeclarationBatterie({ id, onRelancer, reserve = null }) {
   const [entree, setEntree] = useState(null)
   const [etat, setEtat] = useState(null)
   const [erreurs, setErreurs] = useState({})
   const [message, setMessage] = useState(null)
   const [enCours, setEnCours] = useState(false)
+  const expert = useExpertParUrl()
 
   const lire = useCallback(() => Promise.resolve(calepinageApi.calepinages.entreeElectrique(id))
     .then((res) => {
@@ -154,7 +160,7 @@ function DeclarationBatterie({ id, onRelancer }) {
   }
 
   const erreur = (cle) => erreurs[`batterie.${cle}`]
-  const champ = (cle, libelle, valeur, onChange, type = 'text', refus = erreur(cle)) => (
+  const champ = (cle, libelle, valeur, onChange, type = 'text', refus = erreur(cle), grise = false) => (
     <div key={cle} className="flex flex-col gap-1">
       <Label htmlFor={`acal167-${cle}`}>{libelle}</Label>
       <Input
@@ -162,9 +168,11 @@ function DeclarationBatterie({ id, onRelancer }) {
         type={type}
         step={type === 'number' ? 'any' : undefined}
         invalid={Boolean(refus)}
+        disabled={grise}
         value={valeur}
         onChange={(e) => onChange(e.target.value)}
       />
+      {grise ? <p className="text-xs text-muted-foreground">Remplacée par les appareils</p> : null}
       {refus ? <p className="text-xs text-destructive" data-testid={`acal167-erreur-${cle}`}>{refus}</p> : null}
     </div>
   )
@@ -176,7 +184,7 @@ function DeclarationBatterie({ id, onRelancer }) {
         value={valeur}
         onChange={(e) => poser(cle, e.target.value)}
         aria-invalid={refus ? 'true' : undefined}
-        className="w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+        className="min-h-11 w-full rounded-md border border-input bg-card px-2 text-sm text-foreground"
       >
         <option value="">— non choisi —</option>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -202,8 +210,32 @@ function DeclarationBatterie({ id, onRelancer }) {
       <div className="grid gap-3 sm:grid-cols-2">
         {liste('strategie', 'Stratégie', etat.strategie, STRATEGIES.map((v) => [v, libelleStrategie(v)]), erreur('strategie'))}
         {liste('couplage', 'Couplage', etat.couplage, [['ac', 'AC'], ['dc', 'DC']], erreur('couplage'))}
-        {CHAMPS_BATTERIE.map((c) => champ(c.cle, c.libelle, etat[c.cle], (v) => poser(c.cle, v), c.genre === 'nombre' ? 'number' : 'text'))}
+        {CHAMPS_BATTERIE.map((c) => champ(
+          c.cle, c.libelle, etat[c.cle], (v) => poser(c.cle, v), c.genre === 'nombre' ? 'number' : 'text',
+          erreur(c.cle), c.cle === 'reserve_backup_kwh' && etat.appareils.length > 0))}
       </div>
+      {expert && etat.strategie === 'decalage' && (
+        <FenetresBatterie fenetres={etat.fenetres} erreurs={erreurs} onChange={(v) => poser('fenetres', v)} />
+      )}
+      {expert && etat.strategie === 'peak_shaving' && (
+        <ReglagesPointe
+          part={etat.part_effacable_pct}
+          plafond={etat.plafond_effacable_kw}
+          erreurs={erreurs}
+          onPart={(v) => poser('part_effacable_pct', v)}
+          onPlafond={(v) => poser('plafond_effacable_kw', v)}
+        />
+      )}
+      {etat.strategie === 'backup' && (
+        <SecoursBatterie
+          appareils={etat.appareils}
+          duree={etat.duree_secours_h}
+          erreurs={erreurs}
+          reserve={reserve}
+          onAppareils={(v) => poser('appareils', v)}
+          onDuree={(v) => poser('duree_secours_h', v)}
+        />
+      )}
       <fieldset className="flex flex-col gap-2" data-testid="acal167-hors-reseau">
         <legend className="text-sm font-semibold">Mode hors réseau</legend>
         <label className="flex items-center gap-2 text-sm" htmlFor="acal167-actif">
@@ -211,6 +243,9 @@ function DeclarationBatterie({ id, onRelancer }) {
           Le site est hors réseau
         </label>
         {champ('jours', 'Jours d’autonomie', etat.jours, (v) => poser('jours', v), 'number', erreurs['hors_reseau.jours_autonomie'])}
+        {expert && etat.actif && (
+          <SeuilsHorsReseau seuils={etat.seuils} erreurs={erreurs} onChange={(v) => poser('seuils', v)} />
+        )}
       </fieldset>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" disabled={enCours} data-testid="acal167-enregistrer">Enregistrer</Button>
@@ -552,11 +587,16 @@ export default function PanneauBatterie({ calepinageId, intervalleMs = 2000 }) {
       {perime
         ? <BandeauPerime motif={data?.motif} />
         : (!data?.simule && <BandeauNonSimule avertissements={data?.avertissements} />)}
-      <DeclarationBatterie id={id} onRelancer={() => setRelance((n) => n + 1)} />
+      <DeclarationBatterie
+        id={id}
+        onRelancer={() => setRelance((n) => n + 1)}
+        reserve={!perime && data?.simule ? data?.batterie?.total?.reserve_secours : null}
+      />
       <BoutonCalculer calepinageId={id} data={data} onTermine={refetch} declenchement={relance} intervalleMs={intervalleMs} />
       {!perime && data?.simule && (
         <>
           <BlocBatterie batterie={data?.batterie} />
+          <ModeExpertBatterie batterie={data?.batterie} />
           <ComparateurCapacites bloc={data?.batterie?.capacites_candidates} />
           {data?.batterie?.total && <SemaineBatterie calepinageId={id} />}
           <div className="border-t border-border/60 pt-3">

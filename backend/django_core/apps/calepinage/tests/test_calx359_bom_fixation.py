@@ -311,6 +311,144 @@ class PanExistantExcluDeLaFixationTest(SimpleTestCase):
         self.assertTrue(all(v is None for v in lues['valeurs'].values()))
 
 
+def avec_surface(document, kind, **surface):
+    """ACAL578 — ajoute une surface de pose (repère local du moteur, mètres)."""
+    document.setdefault('poseSurfaces', []).append(dict(
+        {'id': f's{len(document.get("poseSurfaces", [])) + 1}', 'kind': kind,
+         'label': f'Surface {kind}', 'contourM': [[0, 0], [10, 0], [10, 6], [0, 6]]},
+        **surface))
+    return document
+
+
+def douze_tables():
+    return {'modules': 48, 'tables': [{'x0': 0, 'y0': 2 * k, 'x1': 4, 'y1': 2 * k + 1}
+                                      for k in range(12)]}
+
+
+class TablesPoteauxPiedsTest(SimpleTestCase):
+    """ACAL578 — bases ``tables``, ``poteaux`` et ``pieds``."""
+
+    PIEUX = composant('Pieu', 'pieu', 'u', {'base': 'tables', 'facteur': 4,
+                                            'libelle_facteur': 'pieux par table'})
+
+    def test_douze_tables_fois_quatre_donnent_quarante_huit(self):
+        document = avec_surface(layout(deux_rangees_de_cinq()), 'sol', engine=douze_tables())
+        grandeurs = fixation._grandeurs_du_document(document)
+        self.assertEqual(fixation._lignes_de_fixation([self.PIEUX], grandeurs)[0]['quantite'], 48)
+
+    def test_champ_au_sol_seul_garde_ses_tables(self):
+        document = avec_surface({'version': 2}, 'sol', engine=douze_tables())
+        self.assertEqual(fixation._grandeurs_du_document(document)['valeurs']['tables'], 12)
+
+    def test_contour_dix_sur_six_entraxe_deux_et_demi_treize_poteaux(self):
+        contour = [(0, 0), (10, 0), (10, 6), (0, 6)]
+        self.assertEqual(len(fixation._positions_appuis(contour, 2.5)), 13)
+        document = avec_surface(layout(deux_rangees_de_cinq()), 'ombriere',
+                                appuis={'pasM': 2.5, 'sectionM': 0.2})
+        self.assertEqual(fixation._grandeurs_du_document(document)['valeurs']['poteaux'], 13)
+
+    def test_entraxe_absent_nomme_la_grandeur(self):
+        document = avec_surface(layout(deux_rangees_de_cinq()), 'ombriere',
+                                appuis={'sectionM': 0.2})
+        lues = fixation._grandeurs_du_document(document)
+        self.assertIsNone(lues['valeurs']['poteaux'])
+        self.assertIn('Entraxe des appuis non renseigné sur « Surface ombriere »',
+                      lues['manquants']['poteaux'])
+
+    def test_douze_modules_pas_1_15_portee_2_4_sept_pieds(self):
+        # Mutant « ⌈m ÷ k⌉ sans le + 1 » : 6 pieds ⇒ échec.
+        document = layout([(1.0 + 1.15 * k, 1.0) for k in range(12)])
+        document['zones'][0]['porteeEntrePieds'] = {'valeurM': 2.4, 'source': 'notice, p. 4'}
+        self.assertEqual(fixation._grandeurs_du_document(document)['valeurs']['pieds'], 7)
+
+    def test_portee_non_saisie_nomme_le_pan(self):
+        document = layout_deux_pans(deux_rangees_de_cinq(), deux_rangees_de_cinq(),
+                                    existant=None)
+        document['zones'][0]['porteeEntrePieds'] = {'valeurM': 2.4, 'source': 'notice'}
+        lues = fixation._grandeurs_du_document(document)
+        self.assertIsNone(lues['valeurs']['pieds'])
+        self.assertIn('Portée entre pieds non saisie', lues['manquants']['pieds'])
+        self.assertIn('Pan B', lues['manquants']['pieds'])
+
+    def test_sans_surface_ni_portee_les_six_bases_inchangees(self):
+        lues = fixation._grandeurs_du_document(layout(deux_rangees_de_cinq(), pose='portrait'))
+        self.assertEqual(lues['manquants'], {})
+        self.assertEqual((lues['valeurs']['modules'], lues['valeurs']['jonctions']), (10, 8))
+        ligne = fixation._lignes_de_fixation(
+            [composant('Pied', 'pied', 'u', {'base': 'pieds'})], lues)[0]
+        self.assertIsNone(ligne['quantite'])
+        self.assertIn('portée entre pieds', ligne['manquant'])
+
+
+def avec_egout(document, hauteur=6.0, source='mesurée au télémètre', aretes=None):
+    """ACAL598 — l'arête 0 du pan typée « égout », le pan rattaché au bâtiment B1."""
+    zone = document['zones'][0]
+    zone['edges'] = aretes if aretes is not None else [
+        {'index': 0, 'type': 'egout'}, {'index': 1, 'type': 'rive'},
+        {'index': 2, 'type': 'faitage'}, {'index': 3, 'type': 'rive'}]
+    zone['buildingId'] = 'B1'
+    document['buildings'] = [{'id': 'B1', 'label': 'Villa', 'hauteurM': hauteur, 'source': source}]
+    return document
+
+
+class EchafaudageTest(SimpleTestCase):
+    """ACAL598 — bases ``longueur_egouts_m`` / ``facade_egouts_m2`` (rôle échafaudage)."""
+
+    ECHAFAUDAGE = [
+        composant('Échafaudage', 'echafaudage', 'm²', {'base': 'facade_egouts_m2'}),
+        composant("Marge d'échafaudage en hauteur", 'echafaudage', 'm²',
+                  {'base': 'longueur_egouts_m', 'facteur': 1.5,
+                   'libelle_facteur': 'marge en hauteur (m)'}),
+    ]
+
+    def longueur_de_l_arete_0(self, document):
+        from apps.calepinage.services.planche import geometrie_de_planche
+
+        points = geometrie_de_planche(document)['pans'][0]['points']
+        return math.dist(points[0], points[1])
+
+    def test_egout_fois_six_metres_saisis(self):
+        # Mutant « + 2 m ajoutés à la hauteur » : × 8 au lieu de × 6 ⇒ échec.
+        document = avec_egout(layout(deux_rangees_de_cinq()))
+        metres = self.longueur_de_l_arete_0(document)
+        grandeurs = fixation._grandeurs_du_document(document)
+        self.assertEqual(grandeurs['valeurs']['longueur_egouts_m'], round(metres, 2))
+        self.assertEqual(grandeurs['valeurs']['facade_egouts_m2'], round(metres * 6.0, 2))
+        surface, marge = fixation._lignes_de_fixation(self.ECHAFAUDAGE, grandeurs)
+        self.assertEqual(surface['quantite'], round(metres * 6.0, 2))
+        self.assertEqual(marge['quantite'], round(round(metres, 2) * 1.5, 2))
+        self.assertIn('marge en hauteur (m)', marge['regle'])
+
+    def test_hauteur_non_saisie_nommee(self):
+        lues = fixation._grandeurs_du_document(
+            avec_egout(layout(deux_rangees_de_cinq()), hauteur=None, source=None))
+        self.assertIsNone(lues['valeurs']['facade_egouts_m2'])
+        self.assertIn('Hauteur du bâtiment « Villa » non saisie', lues['manquants']['facade_egouts_m2'])
+        ligne = fixation._lignes_de_fixation(self.ECHAFAUDAGE[:1], lues)[0]
+        self.assertIsNone(ligne['quantite'])
+
+    def test_hauteur_sans_source_reste_non_saisie(self):
+        lues = fixation._grandeurs_du_document(
+            avec_egout(layout(deux_rangees_de_cinq()), source=''))
+        self.assertIsNone(lues['valeurs']['facade_egouts_m2'])
+
+    def test_arete_non_typee_rend_none(self):
+        document = layout_deux_pans(deux_rangees_de_cinq(), deux_rangees_de_cinq(), existant=None)
+        avec_egout(document)
+        document['zones'][1]['edges'] = [{'index': 0, 'type': 'inconnue'}]
+        lues = fixation._grandeurs_du_document(document)
+        self.assertIsNone(lues['valeurs']['longueur_egouts_m'])
+        self.assertIn('Pan B', lues['manquants']['longueur_egouts_m'])
+
+    def test_systeme_sans_echafaudage_lignes_d_aujourd_hui(self):
+        sans = fixation._grandeurs_du_document(layout(deux_rangees_de_cinq(), pose='portrait'))
+        avec = fixation._grandeurs_du_document(
+            avec_egout(layout(deux_rangees_de_cinq(), pose='portrait')))
+        self.assertEqual(fixation._lignes_de_fixation(composants_du_contrat(), avec),
+                         fixation._lignes_de_fixation(composants_du_contrat(), sans))
+        self.assertEqual(sans['manquants'], {})
+
+
 class FixationParPanTest(SimpleTestCase):
     """ACAL592 - la nomenclature PAR PAN : memes regles, somme = globale."""
 

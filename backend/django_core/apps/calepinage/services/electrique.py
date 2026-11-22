@@ -2734,6 +2734,10 @@ def _rapport_publication(calepinage, *, layout=None):
     from .declassement_onduleur import motifs_du_declassement
 
     motifs.extend(motifs_du_declassement(calepinage, donnees, materiel))
+    # ACAL671 — onduleur de chaîne, micro-onduleurs ou optimiseurs (seuils société).
+    from .architecture_onduleur import motifs_de_l_architecture
+
+    motifs.extend(motifs_de_l_architecture(conception, document, donnees, reglages))
     # ACAL169 — le matériel NON DÉSIGNÉ est INDÉTERMINÉ (D-ACAL-9 : un
     # « indéterminé » ne bloque pas la génération) : publié, jamais bloquant.
     from core.electrique.types import STATUT_NON_VERIFIABLE

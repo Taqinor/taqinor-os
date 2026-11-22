@@ -554,6 +554,7 @@ def empreinte_simulation(calepinage, *, document, donnees, materiel,
     from .batterie import heures_tarif_societe
     from .electrique import _options_entree
     from .layout import empreinte_document
+    from . import limites_livraison as _limites
     from .raccordement import saisie_du_calepinage
 
     reglages = reglages if isinstance(reglages, dict) else {}
@@ -592,7 +593,8 @@ def empreinte_simulation(calepinage, *, document, donnees, materiel,
                    for cle in ENTREES_ELECTRIQUES_SIMULEES
                    if donnees.get(cle) is not None},
         'options': _options_entree(donnees),
-        'raccordement': saisie_du_calepinage(calepinage),
+        'raccordement': _limites.saisie_pour_simulation(
+            saisie_du_calepinage(calepinage)),
         'site': site,
         'meteo_fichier': _signature_meteo_deposee(calepinage),
         'tou_heures': heures_tarif_societe(getattr(calepinage, 'company',
@@ -627,6 +629,7 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
     from .electrique import conception_du_calepinage, parametres_societe
     from .norme import norme_applicable
     from .pertes import postes_du_calepinage
+    from . import limites_livraison as _limites
     from .raccordement import saisie_du_calepinage
 
     from .electrique import TemperaturesInvalides
@@ -716,7 +719,8 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         # ACAL155 — LA saisie de raccordement (cos φ imposé, plafond
         # d'injection), écrite par ``POST raccordement/`` : jamais une
         # section du document qu'aucun écrivain ne produit.
-        'raccordement': saisie_du_calepinage(calepinage),
+        'raccordement': _limites.saisie_pour_simulation(
+            saisie_du_calepinage(calepinage)),
         # ACAL166 — le mode hors réseau est DÉCLARÉ dans l'entrée électrique
         # enregistrée (jamais une section du document qu'aucun écrivain ne
         # produisait) ; absent, l'installation est raccordée (inchangé).

@@ -304,6 +304,8 @@ test('champsFichePourType ne garde que les champs du type, en nombres', () => {
     // CALX355 — bloc « rendement onduleur » : vides → null, courbe → null.
     ond_rendement_max_pct: null, ond_rendement_cec_pct: null,
     ond_dc_max_kwc: null,
+    // ACAL663 — champs électriques : vides → null, MPPT indépendants non renseigné → null.
+    ond_pnom_reduite_debut_c: null, ond_pnom_pente_pct_c: null, ond_mppt_independants: null,
     // Champ booléen du bloc onduleur : converti en `false`, jamais `null`.
     ond_bat_aucune: false,
     ond_courbe_rendement: null,
@@ -333,6 +335,7 @@ test('champsFichePourType(panneau) garde puissance, électrique complet et dimen
     // CALX355 — non saisis : `null`, jamais 0 ; courbe absente : `null`.
     noct_c: null, bifacialite_pct: null,
     tolerance_pmax_min_pct: null, tolerance_pmax_max_pct: null,
+    cellules_serie: null, temp_coeff_isc_pct_c: null, // ACAL663
     rendement_par_irradiance: null,
   })
 })
@@ -376,7 +379,7 @@ test('une valeur non numérique devient null plutôt que NaN', () => {
 // Le visualiseur produit (ProduitDetail) lit ces fonctions ; elles garantissent
 // qu'un champ VIDE se voit comme un trou, jamais comme une valeur.
 
-test('groupeFicheAffichage(onduleur) : les 15 variables, dans l’ordre du formulaire', () => {
+test('groupeFicheAffichage(onduleur) : les 18 variables, dans l’ordre du formulaire', () => {
   const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
   assert.equal(groupe.type, 'onduleur')
   assert.equal(groupe.titre, 'Onduleur')
@@ -387,6 +390,8 @@ test('groupeFicheAffichage(onduleur) : les 15 variables, dans l’ordre du formu
     'ond_bat_v_min', 'ond_bat_v_max',
     // CALX355 — bloc « rendement onduleur ».
     'ond_rendement_max_pct', 'ond_rendement_cec_pct', 'ond_dc_max_kwc',
+    // ACAL663 — champs électriques (le choix MPPT après les numériques).
+    'ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c', 'ond_mppt_independants',
     'ond_courbe_rendement',
   ])
   // Les trois variables que le fondateur a nommées sont bien SÉPARÉES.
@@ -400,7 +405,7 @@ test('groupeFicheAffichage(onduleur) : les 15 variables, dans l’ordre du formu
 test('un champ non renseigné affiche « à renseigner », JAMAIS un défaut ni un zéro', () => {
   const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
   const vides = groupe.lignes.filter((l) => l.absente)
-  assert.equal(vides.length, 15)
+  assert.equal(vides.length, 18)
   for (const ligne of vides) assert.equal(ligne.valeur, VALEUR_ABSENTE)
   // La règle « never invent numbers » à l'écran : aucune valeur de repli.
   assert.equal(valeurFicheAffichee('ond_v_max_abs', { type_fiche: 'onduleur' }),
@@ -441,7 +446,8 @@ test('groupeFicheAffichage(module/batterie) : leurs propres blocs', () => {
     'longueur_mm', 'largeur_mm',
     // CALX355
     'noct_c', 'bifacialite_pct', 'tolerance_pmax_min_pct',
-    'tolerance_pmax_max_pct', 'rendement_par_irradiance'])
+    'tolerance_pmax_max_pct', 'cellules_serie', 'temp_coeff_isc_pct_c', // ACAL663
+    'rendement_par_irradiance'])
 
   const bat = groupeFicheAffichage({ type_fiche: 'batterie', bat_v_nominal: '51.2' })
   assert.equal(bat.titre, 'Batterie')
@@ -656,4 +662,30 @@ test('CALX355 — le refus serveur nomme le champ par son libellé d’écran', 
   assert.equal(messageRefusFiche({ detail: 'Refusé.' }), 'Refusé.')
   assert.equal(messageRefusFiche(null), null)
   assert.equal(messageRefusFiche({}), null)
+})
+
+test('ACAL663 — champs électriques : vide → null (jamais 0), SKU en tableau, tri oui/non/vide', () => {
+  const mod = champsFichePourType('panneau', { cellules_serie: '144', temp_coeff_isc_pct_c: '' })
+  assert.equal(mod.cellules_serie, 144)
+  assert.equal(mod.temp_coeff_isc_pct_c, null)
+  const ond = champsFichePourType('onduleur_hybride', {
+    ond_pnom_reduite_debut_c: '', ond_pnom_pente_pct_c: '2.5', ond_mppt_independants: 'oui' })
+  assert.equal(ond.ond_pnom_reduite_debut_c, null)
+  assert.equal(ond.ond_pnom_pente_pct_c, 2.5)
+  assert.equal(ond.ond_mppt_independants, true)
+  assert.equal(champsFichePourType('onduleur_hybride', { ond_mppt_independants: '' }).ond_mppt_independants, null)
+  assert.equal(champsFichePourType('onduleur_hybride', { ond_mppt_independants: 'non' }).ond_mppt_independants, false)
+})
+
+test('ACAL663 — catégorie liste : relecture « a, b », vide ⇒ null, jamais []', () => {
+  assert.deepEqual(
+    champsFichePourType('optimiseur', { opt_onduleurs_compatibles: ' SKU-1 , SKU-2,, ' }).opt_onduleurs_compatibles,
+    ['SKU-1', 'SKU-2'])
+  assert.equal(champsFichePourType('optimiseur', { opt_onduleurs_compatibles: '' }).opt_onduleurs_compatibles, null)
+  assert.equal(champsFichePourType('optimiseur', { opt_onduleurs_compatibles: ' , ' }).opt_onduleurs_compatibles, null)
+  assert.equal(champsFicheDepuisServeur({ opt_onduleurs_compatibles: ['A', 'B'] }).opt_onduleurs_compatibles, 'A, B')
+  assert.equal(champsFicheDepuisServeur({ opt_onduleurs_compatibles: null }).opt_onduleurs_compatibles, '')
+  assert.equal(ficheFieldsVides().opt_onduleurs_compatibles, '')
+  assert.equal(valeurFicheAffichee('opt_onduleurs_compatibles', { opt_onduleurs_compatibles: ['A', 'B'] }), 'A, B')
+  assert.equal(valeurFicheAffichee('opt_onduleurs_compatibles', { opt_onduleurs_compatibles: [] }), VALEUR_ABSENTE)
 })

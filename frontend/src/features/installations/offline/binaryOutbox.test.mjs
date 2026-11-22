@@ -151,3 +151,19 @@ test('un flush concurrent est ignoré (pas de double envoi)', async () => {
   assert.equal(maxParallele, 1)
   assert.equal(await ob.count(), 0)
 })
+
+test('REP-892 — une entrée d’une autre file (calepinage.photo) reste en file, jamais marquée refusée', async () => {
+  const envoyees = []
+  const ob = new BinaryOutbox({
+    uploader: async (op) => { envoyees.push(op.op_type); return {} },
+    accepte: (op) => op.op_type === 'intervention.photo',
+  })
+  await ob.enqueue('calepinage.photo', { calepinageId: 9 }, { bytes: buf() })
+  await ob.enqueue('intervention.photo', { intervention: 1 }, { bytes: buf() })
+  const res = await ob.flush()
+  assert.deepEqual(envoyees, ['intervention.photo'])
+  assert.equal(res.failed, 0)
+  const [restante] = await ob.pending()
+  assert.equal(restante.op_type, 'calepinage.photo')
+  assert.equal(restante.serverError, undefined)
+})

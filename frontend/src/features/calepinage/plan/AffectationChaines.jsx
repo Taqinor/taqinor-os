@@ -4,8 +4,9 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
-import { couleurParModule, libelleGroupe } from './AffectationChaines.helpers'
+import { couleurParModule, drapeauOptimiseur, libelleGroupe, marquerModules } from './AffectationChaines.helpers'
 import { phrasesChaines } from '../electrique/tensionsChaines'
+import { libelleEtat } from '../electrique/etatVerdict'
 import ImportAffectation from './ImportAffectation'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
@@ -18,12 +19,7 @@ function manuellesDuServeur(lignes) {
   const proposition = new Map()
   for (const ligne of lignes || []) {
     if (ligne?.source !== 'affectation manuelle') continue
-    proposition.set(ligne.module, {
-      module: ligne.module,
-      chaine: ligne.chaine ?? null,
-      mppt: ligne.mppt ?? null,
-      onduleur: ligne.onduleur ?? null,
-    })
+    proposition.set(ligne.module, marquerModules([ligne], drapeauOptimiseur(ligne))[0])
   }
   return proposition
 }
@@ -33,13 +29,17 @@ function tableAffichee(lignes, proposition) {
   return (lignes || []).map((ligne) => {
     const impose = proposition.get(ligne.module)
     if (!impose) return ligne
-    return {
+    const affichee = {
       ...ligne,
       chaine: impose.chaine,
       mppt: impose.mppt,
       onduleur: impose.onduleur,
+      optimiseur: impose.optimiseur,
       source: 'affectation manuelle',
     }
+    // ACAL725 — le drapeau proposé remplace celui servi ; absent de la proposition ⇒ absent de la ligne.
+    if (!('optimiseur' in impose)) delete affichee.optimiseur
+    return affichee
   })
 }
 
@@ -75,6 +75,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
   const [chaine, setChaine] = useState('')
   const [mppt, setMppt] = useState('')
   const [onduleur, setOnduleur] = useState('')
+  const [optimiseur, setOptimiseur] = useState('inchange') // ACAL725 — 'inchange' | 'oui' | 'non'
   const [erreursChamp, setErreursChamp] = useState({})
   const [verdict, setVerdict] = useState(null)
   const [verdictEnVol, setVerdictEnVol] = useState(false)
@@ -154,14 +155,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     for (const { module } of obsoletes) {
       if (retirees.has(module)) continue
       const stockee = stockees.get(module)
-      if (stockee) {
-        par_module.set(module, {
-          module,
-          chaine: stockee.chaine ?? null,
-          mppt: stockee.mppt ?? null,
-          onduleur: stockee.onduleur ?? null,
-        })
-      }
+      if (stockee) par_module.set(module, marquerModules([stockee], drapeauOptimiseur(stockee))[0])
     }
     editions.forEach((ligne, module) => par_module.set(module, ligne))
     return Array.from(par_module.values())
@@ -226,15 +220,15 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     }
     setErreursChamp(erreurs)
     if (Object.keys(erreurs).length > 0) return
+    // ACAL725 — « inchangé » garde le drapeau que le module porte déjà (absent s'il n'en a pas).
+    const actuel = new Map(lignes.map((l) => [l.module, drapeauOptimiseur(l)]))
     setEditions((precedente) => {
       const suivante = new Map(precedente)
       selection.forEach((module) => {
-        suivante.set(module, {
-          module,
-          chaine: numeroChaine,
-          mppt: numeroMppt,
-          onduleur: numeroOnduleur,
-        })
+        const valeur = { oui: true, non: false }[optimiseur] ?? actuel.get(module)
+        const [ligne] = marquerModules(
+          [{ module, chaine: numeroChaine, mppt: numeroMppt, onduleur: numeroOnduleur }], valeur)
+        suivante.set(module, ligne)
       })
       return suivante
     })
@@ -302,6 +296,13 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
   })
 
   const bloquants = verdict?.bloquants || []
+  // ACAL935 — l'état se lit comme au cadre du devis (mêmes mots : `etatVerdict.js`) ;
+  // un serveur sans `etat` garde l'ancienne lecture du verdict à quatre mots.
+  const etatLu = verdict && (verdict.etat
+    ? libelleEtat(verdict.etat, verdict.points)
+    : libelleEtat(
+      { bloquant: 'bloquant', indetermine: 'a_completer' }[verdict.verdict] || 'pret',
+      verdict.verdict === 'bloquant' ? bloquants.length : (verdict.manquantes || []).length))
   const alertes = verdict?.alertes || []
   const aProposition = editions.size > 0 || retirees.size > 0
   // CALX53 — les avertissements publiés AVEC le résultat (coefficients de
@@ -403,14 +404,17 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
                 data-selectionne={selection.has(ligne.module) ? 'oui' : 'non'}
                 data-source={ligne.source}
                 data-chaine-faible={estFaible(ligne) ? 'oui' : 'non'}
+                data-optimiseur={ligne.optimiseur === true ? 'oui' : 'non'}
                 aria-pressed={selection.has(ligne.module)}
+                aria-label={ligne.optimiseur === true ? `${ligne.module.split('#').pop()} — optimiseur` : undefined}
                 title={`${ligne.module} — ${libelleGroupe(ligne, mode)} (${ligne.source})${
-                  estFaible(ligne) ? ' — chaîne la plus faible en ombrage' : ''
-                }`}
+                  ligne.optimiseur === true ? ' — optimiseur' : ''
+                }${estFaible(ligne) ? ' — chaîne la plus faible en ombrage' : ''}`}
                 style={{ backgroundColor: couleurs.get(ligne.module) || undefined }}
                 className={`h-7 w-12 rounded text-xs text-foreground ${
                   selection.has(ligne.module) ? 'ring-2 ring-foreground' : ''
-                } ${estFaible(ligne) ? 'outline outline-2 outline-dashed outline-amber-500' : ''}`}
+                } ${ligne.optimiseur === true ? 'border-2 border-solid border-primary' : ''} ${
+                  estFaible(ligne) ? 'outline outline-2 outline-dashed outline-amber-500' : ''}`}
                 onPointerDown={(e) => {
                   glisse.current = true
                   basculer(ligne.module, e.shiftKey || e.ctrlKey || e.metaKey)
@@ -472,6 +476,20 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
               : null}
           </div>
         ))}
+        {/* ACAL725 — l'électronique AU MODULE : inchangé / oui / non, posé avec la sélection. */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground" htmlFor="cal234-optimiseur">Optimiseur</label>
+          <select id="cal234-optimiseur" data-testid="cal234-champ-optimiseur" value={optimiseur}
+            onChange={(e) => setOptimiseur(e.target.value)}
+            className="min-h-11 rounded border border-border bg-background px-2 text-sm">
+            <option value="inchange">Inchangé</option>
+            <option value="oui">Oui</option>
+            <option value="non">Non</option>
+          </select>
+          {erreursChamp.optimiseur
+            ? <p className="text-xs text-destructive" data-testid="cal234-erreur-optimiseur">{String(erreursChamp.optimiseur)}</p>
+            : null}
+        </div>
         <Button type="button" onClick={affecterSelection} data-testid="cal234-affecter">
           Affecter la sélection
         </Button>
@@ -499,7 +517,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
             <p className="text-sm" data-testid="cal234-verdict-etat">
               Verdict du serveur :
               {' '}
-              {verdict.verdict}
+              {etatLu?.libelle}
             </p>
           )
           : null}
@@ -519,7 +537,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
             règle fondateur du 08/09/2026 interdit. Les clés déjà rendues sous
             leur propre champ ne sont pas répétées ici. */}
         {Object.entries(erreursChamp)
-          .filter(([code]) => !['chaine', 'mppt', 'onduleur', 'selection'].includes(code))
+          .filter(([code]) => !['chaine', 'mppt', 'onduleur', 'optimiseur', 'selection'].includes(code))
           .map(([code, message]) => (
             <p
               key={code}

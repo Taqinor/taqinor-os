@@ -1029,6 +1029,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.soleilLegal": [
+    {
+      "config": {
+        "params": 3
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/soleil-legal/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.sorties": [
     {
       "config": null,

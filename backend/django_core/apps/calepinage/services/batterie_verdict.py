@@ -22,7 +22,13 @@ ramenés à l'année moyenne de la fenêtre (``annees``).
 """
 from __future__ import annotations
 
-__all__ = ['faits_de_la_serie', 'plancher_du_dispatch']
+__all__ = ['faits_de_la_serie', 'plancher_du_dispatch',
+           'verdict_de_la_batterie', 'CLE_SEUIL_NUITS', 'CLE_SEUIL_JOURS']
+
+#: ACAL794 — les deux réglages société (section « simulation ») qui fondent le
+#: mot de verdict ; aucun n'a de valeur par défaut (D-CALX 7).
+CLE_SEUIL_NUITS = 'batterie_seuil_nuits_pct'
+CLE_SEUIL_JOURS = 'batterie_seuil_jours_pleine_pct'
 
 #: Tolérance d'arithmétique flottante (kWh) — jamais un seuil métier.
 _EPSILON = 1e-9
@@ -97,3 +103,35 @@ def faits_de_la_serie(flux, *, capacite, plancher=0.0, pas_heures=1.0,
         'taux_autoconsommation_sans_batterie': (
             sans_batterie['taux_autoconsommation']),
     }
+
+
+def verdict_de_la_batterie(faits, seuil_nuits, seuil_jours):
+    """``(verdict, motif)`` — « trop_petite », « trop_grande » ou « adaptee ».
+
+    ``seuil_nuits`` / ``seuil_jours`` : les réglages société ``{valeur,
+    source, reference}`` (pourcentages) ou ``None``. Sans l'un des deux, ou
+    sans jours dans la série, ``verdict`` vaut ``None`` et ``motif`` nomme ce
+    qui manque. Les parts sont celles des faits de la série (ACAL793) :
+    nuits au plancher ÷ jours, jours pleine ÷ jours.
+    """
+    from .valeurs import nombre
+
+    manquantes = [cle for cle, seuil in ((CLE_SEUIL_NUITS, seuil_nuits),
+                                         (CLE_SEUIL_JOURS, seuil_jours))
+                  if nombre((seuil or {}).get('valeur')) is None]
+    if manquantes:
+        return None, ('Verdict non rendu : réglage société non saisi (%s).'
+                      % ', '.join(manquantes))
+    jours = nombre((faits or {}).get('jours_total'))
+    if not jours or jours <= 0.0:
+        return None, 'Verdict non rendu : la série ne couvre aucun jour.'
+    part_nuits = nombre(faits.get('nuits_au_plancher')) / jours * 100.0
+    part_pleine = nombre(faits.get('jours_pleine')) / jours * 100.0
+    if part_nuits >= nombre(seuil_nuits['valeur']):
+        mot = 'trop_petite'
+    elif part_pleine <= nombre(seuil_jours['valeur']):
+        mot = 'trop_grande'
+    else:
+        mot = 'adaptee'
+    return {'mot': mot, 'seuils_utilises': {
+        CLE_SEUIL_NUITS: seuil_nuits, CLE_SEUIL_JOURS: seuil_jours}}, ''

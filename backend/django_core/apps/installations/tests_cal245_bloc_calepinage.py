@@ -15,8 +15,12 @@ import itertools
 import json
 import pathlib
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest import mock
 
+from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
+from rest_framework.test import APIClient
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.variantes import bascule_autorisee
@@ -93,6 +97,10 @@ class TestBlocCalepinageSerializer(TestCase):
         self.assertEqual(bloc['planche_url'], f'/calepinage/{calepinage.id}')
         self.assertEqual(
             bloc['plan_pose_url'], f'/ventes/devis/{self.devis.id}/3d')
+        # ACAL903 — le PDF du plan de pose, en plus de la page 3D inchangée.
+        self.assertEqual(
+            bloc['plan_pose_pdf_url'],
+            f'/calepinage/calepinages/{calepinage.id}/plan-pose.pdf/')
 
     def test_installation_ne_gagne_aucun_champ_calepinage(self):
         """Aucune migration chantier n'accompagne CAL245 : le bloc est un
@@ -200,3 +208,198 @@ class TestContratRecetteValeursAttendues(SimpleTestCase):
         vide = self.contrat['exemple_sans_calepinage']
         self.assertEqual(vide['chaines'], [])
         self.assertTrue(vide['motif'])
+
+
+def _contrat_valeurs_attendues():
+    chemin = (pathlib.Path(__file__).resolve().parent / 'contract_samples'
+              / 'recette_valeurs_attendues.json')
+    return json.loads(chemin.read_text(encoding='utf-8'))
+
+
+#: La fiche RÉELLE du contrat ACAL666 (Voc 49,5 V, Isc 13,9 A, Pmax 550 W).
+FICHE_CONTRAT = {'voc_v': 49.5, 'isc_a': 13.9, 'pmax_wc': 550}
+#: Une chaîne publiée de 10 modules (une ligne par module).
+AFFECTATION_10 = [{'module': f'm{n}', 'chaine': 1} for n in range(10)]
+
+
+def _valeurs_du_selecteur(*_a, temperature_c=None, eclairement_w_m2=None):
+    """Le VRAI calcul d'ACAL665 sur la fiche du contrat (base non lue)."""
+    from apps.calepinage.services.valeurs_attendues import valeurs_attendues
+
+    return valeurs_attendues(AFFECTATION_10, FICHE_CONTRAT,
+                             '« Module PV 550 Wc »', temperature_c=temperature_c,
+                             eclairement_w_m2=eclairement_w_m2)[0]
+
+
+class ValeursAttenduesFormeTest(SimpleTestCase):
+    """ACAL667 — ``valeurs_attendues_du_chantier`` rend le contrat d'ACAL666."""
+
+    def _servir(self, bloc, **params):
+        from apps.installations.selectors_recette import (
+            valeurs_attendues_du_chantier,
+        )
+
+        chantier = SimpleNamespace(pk=31, devis_id=7, company='societe')
+        with mock.patch('apps.calepinage.selectors.calepinage_retenu_pour_devis',
+                        return_value=bloc), \
+                mock.patch('apps.calepinage.selectors_chantier.'
+                           'valeurs_attendues_par_chaine',
+                           side_effect=_valeurs_du_selecteur):
+            return valeurs_attendues_du_chantier(chantier, **params)
+
+    def test_dix_modules_a_49_5_v_rendent_495_v(self):
+        servi = self._servir({'id': 12})
+        exemple = _contrat_valeurs_attendues()['exemple']
+        self.assertEqual(set(servi), set(exemple))
+        self.assertEqual(set(servi['chaines'][0]), set(exemple['chaines'][0]))
+        chaine = servi['chaines'][0]
+        self.assertEqual((chaine['chaine'], chaine['modules'], chaine['voc_attendu_v'],
+                          chaine['isc_attendu_a'], chaine['pmax_attendu_w']),
+                         ('CH1', 10, 495.0, 13.9, 5500.0))
+        self.assertIn('calepinage retenu #12 : chaîne CH1 de 10 modules',
+                      chaine['sources'])
+        self.assertFalse(chaine['corrigee'])
+        self.assertEqual((servi['temperature_c'], servi['eclairement_w_m2']),
+                         (exemple['temperature_c'], exemple['eclairement_w_m2']))
+
+    def test_sans_calepinage_retenu_liste_vide_et_motif(self):
+        servi = self._servir(None)
+        vide = _contrat_valeurs_attendues()['exemple_sans_calepinage']
+        self.assertEqual(set(servi), set(vide))
+        self.assertEqual(servi['chaines'], [])
+        self.assertEqual(servi['motif'], vide['motif'])
+
+
+User = get_user_model()
+
+
+class ValeursAttenduesRecetteTest(TestCase):
+    """ACAL667 — l'action ``valeurs-attendues`` : lecture tout rôle, bornée
+    à la société du demandeur (mutant « lire un autre chantier » ⇒ 404)."""
+
+    def setUp(self):
+        from apps.installations.services import ensure_commissioning_record
+
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(self.company, self.client_obj)
+        self.user = User.objects.create_user(
+            username=f'acal667-{self.company.pk}', password='x',
+            role_legacy='technicien', company=self.company)
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+        chantier = make_installation(self.company, self.client_obj, self.devis)
+        self.record = ensure_commissioning_record(chantier, self.user)
+        self.url = (f'/api/django/installations/recettes-commissioning/'
+                    f'{self.record.pk}/valeurs-attendues/')
+
+    def test_sans_calepinage_retenu_chaines_vides_et_motif(self):
+        reponse = self.api.get(self.url)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['chaines'], [])
+        self.assertEqual(reponse.data['motif'],
+                         _contrat_valeurs_attendues()['exemple_sans_calepinage']['motif'])
+
+    def test_calepinage_retenu_dix_modules_rend_495_v(self):
+        with mock.patch('apps.calepinage.selectors.calepinage_retenu_pour_devis',
+                        return_value={'id': 12}), \
+                mock.patch('apps.calepinage.selectors_chantier.'
+                           'valeurs_attendues_par_chaine',
+                           side_effect=_valeurs_du_selecteur):
+            reponse = self.api.get(self.url)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['chaines'][0]['voc_attendu_v'], 495.0)
+
+    def test_fiche_d_une_autre_societe_refusee(self):
+        autre = make_company()
+        intrus = User.objects.create_user(
+            username=f'acal667-intrus-{autre.pk}', password='x',
+            role_legacy='responsable', company=autre)
+        api = APIClient()
+        api.force_authenticate(intrus)
+        self.assertEqual(api.get(self.url).status_code, 404)
+
+
+def _contrat_plan_pose():
+    chemin = (pathlib.Path(__file__).resolve().parent / 'contract_samples'
+              / 'calepinage_plan_pose.json')
+    return json.loads(chemin.read_text(encoding='utf-8'))
+
+
+class PlanPoseDuChantierFormeTest(SimpleTestCase):
+    """ACAL589 — ``plan_pose_du_chantier`` rend la forme du contrat."""
+
+    def _servir(self, plan, devis_id=7):
+        from apps.installations.calepinage_retenu import plan_pose_du_chantier
+
+        chantier = SimpleNamespace(pk=31, devis_id=devis_id, company='societe')
+        with mock.patch('apps.calepinage.selectors_chantier.plan_pose_svg_pour_devis',
+                        return_value=plan) as lecture:
+            return plan_pose_du_chantier(chantier), lecture
+
+    def test_le_plan_et_l_empreinte_sont_servis(self):
+        exemple = _contrat_plan_pose()['exemple']
+        servi, lecture = self._servir({
+            'calepinage_id': exemple['calepinage_id'], 'svg': exemple['plan_pose_svg'],
+            'empreinte': exemple['empreinte'], 'motif': ''})
+        self.assertEqual(servi, exemple)
+        lecture.assert_called_once_with(7, 'societe')
+
+    def test_sans_calepinage_plan_null_et_motif(self):
+        servi, _lecture = self._servir(None)
+        self.assertEqual(servi, _contrat_plan_pose()['exemple_sans_plan'])
+
+    def test_sans_devis_rien_n_est_lu(self):
+        servi, lecture = self._servir(None, devis_id=None)
+        self.assertIsNone(servi['plan_pose_svg'])
+        lecture.assert_not_called()
+
+    def test_conception_changee_motif_tel_que_servi(self):
+        from apps.calepinage.selectors_chantier import MOTIF_CONCEPTION_CHANGEE
+
+        changee = _contrat_plan_pose()['exemple_conception_changee']
+        self.assertEqual(changee['motif'], MOTIF_CONCEPTION_CHANGEE)
+        servi, _lecture = self._servir({
+            'calepinage_id': 12, 'svg': None, 'empreinte': changee['empreinte'],
+            'motif': MOTIF_CONCEPTION_CHANGEE})
+        self.assertEqual(servi, changee)
+
+
+class PlanPoseRouteTest(TestCase):
+    """ACAL589 — ``GET chantiers/<pk>/plan-pose/`` : tout rôle, borné société."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(self.company, self.client_obj)
+        self.chantier = make_installation(self.company, self.client_obj, self.devis)
+        self.user = User.objects.create_user(
+            username=f'acal589-{self.company.pk}', password='x',
+            role_legacy='technicien', company=self.company)
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+        self.url = f'/api/django/installations/chantiers/{self.chantier.pk}/plan-pose/'
+
+    def test_la_route_rend_le_svg_et_l_empreinte(self):
+        exemple = _contrat_plan_pose()['exemple']
+        with mock.patch('apps.calepinage.selectors_chantier.plan_pose_svg_pour_devis',
+                        return_value={'calepinage_id': 12, 'svg': exemple['plan_pose_svg'],
+                                      'empreinte': exemple['empreinte'], 'motif': ''}):
+            reponse = self.api.get(self.url)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['plan_pose_svg'], exemple['plan_pose_svg'])
+        self.assertEqual(reponse.data['empreinte'], exemple['empreinte'])
+
+    def test_sans_calepinage_plan_null_et_motif(self):
+        reponse = self.api.get(self.url)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data, _contrat_plan_pose()['exemple_sans_plan'])
+
+    def test_chantier_d_une_autre_societe_404(self):
+        autre = make_company()
+        intrus = User.objects.create_user(
+            username=f'acal589-intrus-{autre.pk}', password='x',
+            role_legacy='responsable', company=autre)
+        api = APIClient()
+        api.force_authenticate(intrus)
+        self.assertEqual(api.get(self.url).status_code, 404)

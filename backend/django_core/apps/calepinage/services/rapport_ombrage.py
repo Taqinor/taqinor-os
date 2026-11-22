@@ -360,6 +360,29 @@ MOTIF_CARTE_PERIMEE = ('Carte de chaleur à rejoindre (conception modifiée '
                        'depuis le {date})')
 LEGENDE_CARTE = 'Carte de chaleur déposée le {date} pour cette conception'
 
+#: ACAL727 — les trois stops (accès 0-1, RVB 0-1) de ``solarAccessColorRGB``
+#: (apps/web/src/lib/shadingEngine.ts) : deux tests les comparent à la fonction.
+STOPS_LEGENDE = ((0, (1, 0, 0)), (0.5, (1, 1, 0)), (1, (0, 1, 0)))
+LEGENDE_ECHELLE_BAS = '0 % — à l’ombre'
+LEGENDE_ECHELLE_HAUT = '100 % — plein soleil'
+LEGENDE_ECHELLE_PHRASE = ('Échelle fixe : la couleur se lit en valeur '
+                          'absolue, jamais relative à ce pan.')
+
+
+def _html_legende_acces():
+    """ACAL727 — la rampe fixe 0-100 % sous la carte (bornes du DOMAINE)."""
+    arrets = ', '.join(
+        'rgb(%d, %d, %d) %g%%' % (*(round(c * 255) for c in rgb), acces * 100)
+        for acces, rgb in STOPS_LEGENDE)
+    return (
+        '<div class="ombrage-legende" style="height:10px;margin:6px 0 2px;'
+        'background:linear-gradient(to right, %s)"></div>'
+        '<table class="ombrage-legende-bornes" style="width:100%%"><tr>'
+        '<td>%s</td><td style="text-align:right">%s</td></tr></table>'
+        '<p class="note">%s</p>'
+        % (arrets, escape(LEGENDE_ECHELLE_BAS), escape(LEGENDE_ECHELLE_HAUT),
+           escape(LEGENDE_ECHELLE_PHRASE)))
+
 
 def _date_de_depot(moment):
     if moment is None:
@@ -404,9 +427,10 @@ def html_carte_de_chaleur(calepinage):
     if not data_uri:
         return '<p class="note">%s</p>' % escape(MOTIF_CARTE_ABSENTE)
     return ('<img class="ombrage-image" style="max-width:100%%" src="%s" '
-            'alt="Carte de chaleur d’ombrage"><p class="note">%s</p>'
+            'alt="Carte de chaleur d’ombrage"><p class="note">%s</p>%s'
             % (escape(data_uri, quote=True),
-               escape(LEGENDE_CARTE.format(date=date))))
+               escape(LEGENDE_CARTE.format(date=date)),
+               _html_legende_acces()))
 
 
 def _table_moyennes_mensuelles(moyennes):

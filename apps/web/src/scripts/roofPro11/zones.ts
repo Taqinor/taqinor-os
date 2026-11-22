@@ -371,6 +371,8 @@ export interface ZonesDeps {
   selectArea?: (id: string) => void;
   /** ACAL728 — accès solaire moyen (0..1) du calcul VIVANT du pan actif ; absent, l'enregistré sert. */
   accesVivant?: () => number | null;
+  /** ACAL853 — le kWh PEINT sur la carte Recommandation (par panneau) ; absent ou `null` (carte pas encore peinte), le calcul du solveur sert. */
+  etatCarte?: () => { kwhParPanneau: number } | null;
 }
 
 /** CAL84 — libellé d'un bâtiment (repli « Bâtiment sans id » pour un groupe sans
@@ -409,7 +411,10 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     // plafonnées à la facture (1 ⇒ chiffres du solveur inchangés).
     const f = facteurDerateAnnuel(ctx);
     const eco = f < 1 ? annualSavingsMad(w.annualKwh * f, res.target) : { low: w.savingsLow, high: w.savingsHigh };
-    return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh * f, savingsLow: eco.low, savingsHigh: eco.high };
+    // ACAL853 — le Total reprend le kWh peint sur la carte (un seul nombre à l'écran) ; sinon le calcul d'avant.
+    const carte = deps.etatCarte?.();
+    const annualKwh = carte ? carte.kwhParPanneau * w.placedCount : w.annualKwh * f;
+    return { panels: w.placedCount, kwc: w.kwc, annualKwh, savingsLow: eco.low, savingsHigh: eco.high };
   }
 
   /** Écrit l'instantané du résultat vivant dans l'enregistrement de la zone active. */

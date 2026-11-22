@@ -42,8 +42,26 @@ export function versPixelsPhoto(calage, largeur, hauteur) {
   }
 }
 
-/** Dessine l'image puis chaque module (`pans[].quads`, lng/lat) sur le canvas, à la taille native de l'image. */
-export function dessinerSurPhoto(canvas, image, calage, pans) {
+/** ACAL897 — les deux textes de l'image remise au client : aucun prix, aucun chiffre. */
+export const TITRE_IMAGE_CLIENT = 'Vos panneaux sur la photo de votre toit'
+export const LEGENDE_IMAGE_CLIENT = 'Projection indicative : le toit est supposé plat.'
+
+/** Titre en haut, légende en bas, sur un bandeau sombre ; le texte reste lisible (≥ 12 px à l'échelle de l'image). */
+function ecrireTextesClient(ctx, largeur, hauteur) {
+  const taille = Math.max(14, Math.round(largeur / 40))
+  ctx.font = `bold ${taille}px sans-serif`
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
+  ctx.fillRect(0, 0, largeur, taille * 2)
+  ctx.fillRect(0, hauteur - taille * 2, largeur, taille * 2)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillText(TITRE_IMAGE_CLIENT, taille, taille)
+  ctx.fillText(LEGENDE_IMAGE_CLIENT, taille, hauteur - taille)
+}
+
+/** Dessine l'image puis chaque module (`pans[].quads`, lng/lat) sur le canvas, à la taille native de l'image.
+ *  `client: true` (ACAL897) : le même dessin avec un titre et une légende client ; aucun repère interne. */
+export function dessinerSurPhoto(canvas, image, calage, pans, { client = false } = {}) {
   canvas.width = image.naturalWidth
   canvas.height = image.naturalHeight
   const ctx = canvas.getContext('2d')
@@ -64,4 +82,5 @@ export function dessinerSurPhoto(canvas, image, calage, pans) {
       ctx.stroke()
     }
   }
+  if (client) ecrireTextesClient(ctx, canvas.width, canvas.height)
 }

@@ -27,6 +27,7 @@ import { compressImage, validateFile } from '../../ui/file-utils'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 import ChampsRendementEtPvMaxOnduleur from './ChampsRendementEtPvMaxOnduleur'
+import FicheChampsElectriques from './FicheChampsElectriques'
 import ImportFichePvsyst from './ImportFichePvsyst'
 // PVOND (fondateur 18/08) — la classification produit reste UNE seule
 // source : la même que le générateur de devis, jamais réimplémentée ici.
@@ -57,7 +58,7 @@ import {
   // bloc optimiseur) : toute la logique reste PURE, testée par
   // pvondFicheTechnique.test.mjs (node --test).
   typeFicheFormulaire, COURBES_FICHE, CHOIX_CHIMIE_BATTERIE, ligneCourbeVide,
-  erreursCourbesPourType, messageRefusFiche, LIBELLES_FICHE, CHOIX_TRI,
+  erreursCourbesPourType, messageRefusFiche, LIBELLES_FICHE, CHOIX_TRI, CHAMPS_BLOC_NUMERIQUE,
 } from './pvondFicheTechnique.js'
 import { TYPES_EQUIPEMENT } from './typesEquipement'
 import { AlerteErreurStock } from './BandeauxListeStock'
@@ -1943,6 +1944,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                 </>
               )}
 
+              {/* ACAL663 — champs électriques de fiche (cellules, Isc, réduction, MPPT, SKU). */}
+              <FicheChampsElectriques ficheType={ficheType} ficheFields={ficheFields} setFicheField={setFicheField} />
+
               {/* CALX355 — la SORTIE de l'optimiseur / du micro-onduleur
                   (CALX60) : ce qui décide du câblage. Un micro-onduleur
                   remplit les champs « Micro-onduleur — … » (sortie
@@ -1956,12 +1960,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                     Laissez vides ceux qui ne s&apos;appliquent pas.
                   </p>
                   {/* Libellés = LIBELLES_FICHE, mot pour mot ceux du visualiseur. */}
-                  {[
-                    'opt_ac_kw', 'opt_ac_tension_v', 'opt_ac_i_max_a',
-                    'opt_ac_unites_max_par_branche', 'opt_v_out_nominal_v',
-                    'opt_v_out_min', 'opt_v_out_max', 'opt_i_out_max_a',
-                    'opt_pmax_out_w', 'opt_modules_max_par_chaine',
-                  ].map((cle) => (
+                  {CHAMPS_BLOC_NUMERIQUE.optimiseur.map((cle) => (
                     <FormField key={cle} label={LIBELLES_FICHE[cle]} htmlFor={`pf-ft-${cle}`}>
                       <Input id={`pf-ft-${cle}`} type="number" step="any" inputMode="decimal"
                              value={ficheFields[cle]}
@@ -1979,11 +1978,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                     Fiche pompe — recopiez la fiche constructeur du modèle exact ; laissez
                     vide ce qui n&apos;est pas publié.
                   </p>
-                  {[
-                    'pompe_i_nominal_a', 'pompe_diametre_ext_mm', 'pompe_nb_etages',
-                    'pompe_immersion_min_m', 'pompe_rendement_pct',
-                    'pompe_q_nominal_m3h', 'pompe_hmt_nominale_m',
-                  ].map((cle) => (
+                  {CHAMPS_BLOC_NUMERIQUE.pompe.map((cle) => (
                     <FormField key={cle} label={LIBELLES_FICHE[cle]} htmlFor={`pf-ft-${cle}`}>
                       <Input id={`pf-ft-${cle}`} type="number" step="any" inputMode="decimal"
                              value={ficheFields[cle]}
@@ -2002,11 +1997,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                     Fiche variateur — la compatibilité champ / variateur ne se vérifie
                     que sur ces valeurs publiées ; vides, elle reste « non vérifiable ».
                   </p>
-                  {[
-                    'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
-                    'ond_v_demarrage_v', 'var_voc_reco_min_v', 'var_voc_reco_max_v',
-                    'var_v_sortie_v', 'var_i_sortie_nominal_a', 'var_rendement_mppt_pct',
-                  ].map((cle) => (
+                  {CHAMPS_BLOC_NUMERIQUE.variateur_pompage.map((cle) => (
                     <FormField key={cle} label={LIBELLES_FICHE[cle]} htmlFor={`pf-ft-${cle}`}>
                       <Input id={`pf-ft-${cle}`} type="number" step="any" inputMode="decimal"
                              value={ficheFields[cle]}

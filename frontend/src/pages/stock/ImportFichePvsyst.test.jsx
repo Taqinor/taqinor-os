@@ -75,6 +75,24 @@ describe('ImportFichePvsyst (CALX357)', () => {
     expect(screen.getByTestId('pvsyst-non-utilises')).toBeTruthy()
   })
 
+  it('REP-657 : le contrôle de Pmax non fait est dit, sinon rien', async () => {
+    expect(CONTRAT.exemple_module.controles_omis).toHaveLength(1)
+    stockApi.deposerFichierPvsyst.mockResolvedValue(
+      reponseContrat('stock', 'fiche_import_pan_ond', 'exemple_module'))
+    const { container } = render(<ImportFichePvsyst produitId={3} />)
+    deposer(container, fichierReel(PAN))
+    const ligne = await screen.findByTestId('pvsyst-controles-omis')
+    expect(ligne.textContent).toContain(CONTRAT.exemple_module.controles_omis[0])
+  })
+
+  it('REP-657 : aucune ligne quand aucun contrôle n’est omis', async () => {
+    stockApi.deposerFichierPvsyst.mockResolvedValue(reponseContrat('stock', 'fiche_import_pan_ond'))
+    const { container } = render(<ImportFichePvsyst produitId={12} />)
+    deposer(container, fichierReel(OND))
+    await screen.findByTestId('pvsyst-apercu')
+    expect(screen.queryByTestId('pvsyst-controles-omis')).toBeNull()
+  })
+
   it('un champ déjà saisi est annoncé conservé', async () => {
     stockApi.deposerFichierPvsyst.mockResolvedValue(
       reponseContrat('stock', 'fiche_import_pan_ond', 'exemple_module_pmax_deja_saisi'))

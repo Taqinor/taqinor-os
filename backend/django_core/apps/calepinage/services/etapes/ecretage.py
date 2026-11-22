@@ -71,6 +71,9 @@ MENTION_S_MAX_ABSENTE = (
     "d'écrêtage reste la puissance ACTIVE, même avec un cos φ saisi."
     % CHAMP_S_MAX)
 
+MENTION_DECLASSEMENT_ABSENT = (
+    "déclassement thermique non modélisé — fiche incomplète")
+
 MOTIF_SERIE_ILLISIBLE = (
     "Aucune colonne d'énergie lisible sur la série : il n'y a pas de "
     "puissance à plafonner. Étape OMISE.")
@@ -91,13 +94,13 @@ REFERENCE_ECRETAGE = (
 
 __all__ = ['appliquer', 'LIBELLE', 'COLONNE_ECRETAGE', 'CHAMP_PUISSANCE_AC',
            'CHAMP_S_MAX', 'CHAMP_COS_PHI', 'MENTION_COS_PHI_ABSENT',
-           'MENTION_S_MAX_ABSENTE']
+           'MENTION_S_MAX_ABSENTE', 'MENTION_DECLASSEMENT_ABSENT']
 
 
 def appliquer(serie, contexte):
     """``(serie, etape)`` — la série plafonnée, l'énergie écrêtée retirée."""
     from apps.calepinage.services.distribution import (
-        MOTIF_SANS_PRODUCTION, histogramme_puissance,
+        MOTIF_SANS_PRODUCTION, histogramme_puissance, part_ecretee_pct,
     )
     from apps.calepinage.services.electrique import (
         MOTIF_ECRETAGE_SANS_SERIE, ecretage_depuis_serie,
@@ -124,6 +127,11 @@ def appliquer(serie, contexte):
     borne_kw, base, mention = _borne_kw(contexte, fiche, nombre,
                                         puissance_ac_kw)
     facteur_kw = etapes.FACTEURS_KW[colonne]
+    debut_c = _nombre(fiche.get('pnom_reduite_debut_c'))
+    pente_pct_c = _nombre(fiche.get('pnom_pente_pct_c'))
+    declasse = debut_c is not None and pente_pct_c is not None
+    bornes_kw = []
+    sans_temperature = 0
     points = []
     puissances_kw = []
     for point in serie.get('points') or []:
@@ -134,7 +142,13 @@ def appliquer(serie, contexte):
             points.append(copie)
             continue
         puissances_kw.append(puissance_kw)
-        perdu = max(0.0, puissance_kw - borne_kw)
+        borne_h = borne_kw
+        if declasse:
+            borne_h = _borne_horaire(point, borne_kw, debut_c, pente_pct_c)
+            sans_temperature += borne_h is None
+            borne_h = borne_kw if borne_h is None else borne_h
+        bornes_kw.append(borne_h)
+        perdu = max(0.0, puissance_kw - borne_h)
         copie[COLONNE_ECRETAGE] = perdu
         copie[colonne] = (puissance_kw - perdu) / facteur_kw
         points.append(copie)
@@ -143,7 +157,9 @@ def appliquer(serie, contexte):
     suite['points'] = points
     suite['colonne_energie'] = colonne
     distribution = histogramme_puissance(
-        puissances_kw, borne_kw, serie.get('pas_minutes') or etapes.PAS_MINUTES_PVGIS)
+        puissances_kw, borne_kw,
+        serie.get('pas_minutes') or etapes.PAS_MINUTES_PVGIS,
+        bornes_horaires_kw=bornes_kw if declasse else None)
     return suite, etapes.etape_appliquee(
         LIBELLE, source='fiche',
         entree={
@@ -156,9 +172,15 @@ def appliquer(serie, contexte):
             'colonne_ecretage': COLONNE_ECRETAGE,
             # Le POURCENTAGE est celui de ``ecretage_depuis_serie`` (CAL127) :
             # une seule formule d'écrêtage dans le dépôt, deux lecteurs.
-            'ecretage_pct': ecretage_depuis_serie(puissances_kw, borne_kw),
-            'heures_ecretees': sum(1 for valeur in puissances_kw
-                                   if valeur > borne_kw + 1e-9),
+            'ecretage_pct': (
+                part_ecretee_pct(puissances_kw, bornes_kw) if declasse
+                else ecretage_depuis_serie(puissances_kw, borne_kw)),
+            'heures_ecretees': sum(1 for valeur, borne in zip(puissances_kw, bornes_kw)
+                                   if valeur > borne + 1e-9),
+            # ACAL740 — le déclassement thermique, heure par heure.
+            'declassement': _declassement(
+                declasse, debut_c, pente_pct_c, bornes_kw, borne_kw,
+                sans_temperature),
             # ACAL736 — l'énergie par classe de puissance DEMANDÉE.
             'distribution': distribution,
             'motif_distribution': '' if distribution else MOTIF_SANS_PRODUCTION,
@@ -189,6 +211,27 @@ def _borne_kw(contexte, fiche, nombre, puissance_ac_kw):
             "cos φ %s saisi (source : %s) : la puissance apparente bornée "
             "reste au-dessus de la puissance active, qui plafonne donc "
             "l'injection" % (cos_phi, source_cos_phi))
+
+
+def _borne_horaire(point, borne_kw, debut_c, pente_pct_c):
+    """La borne de l'heure à sa température d'air, ou ``None`` sans ``t2m_c``."""
+    from core.electrique.onduleurs import puissance_a_temperature
+
+    air = _nombre(point.get('t2m_c'))
+    if air is None:
+        return None
+    return puissance_a_temperature(borne_kw, debut_c, pente_pct_c, air)
+
+
+def _declassement(declasse, debut_c, pente_pct_c, bornes_kw, borne_kw,
+                  sans_temperature):
+    if not declasse:
+        return {'applique': False, 'mention': MENTION_DECLASSEMENT_ABSENT}
+    return {'applique': True, 't_debut_c': debut_c,
+            'pente_pct_par_c': pente_pct_c,
+            'heures_declassees': sum(1 for b in bornes_kw
+                                     if b < borne_kw - 1e-9),
+            'heures_sans_temperature': sans_temperature}
 
 
 def _cos_phi_impose(contexte):

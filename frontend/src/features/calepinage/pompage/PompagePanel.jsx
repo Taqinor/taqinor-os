@@ -415,6 +415,42 @@ function VerdictChaines({ chaines }) {
   )
 }
 
+/* ACAL820 — appoint réseau ou groupe : le choix (vide = « Pas d'appoint »,
+   jamais envoyé) et la ligne du verdict servi (`appoint_variateur`). */
+const APPOINTS = [['', 'Pas d’appoint'], ['reseau', 'Réseau'], ['groupe', 'Groupe']]
+const ETAT_APPOINT = {
+  conforme: ['Conforme', 'text-emerald-300'],
+  vmp_sous_bus: ['Le champ ne passe pas au-dessus du bus : l’appoint fait tout le travail', 'text-red-300'],
+  voc_au_dessus_limite: ['Tension trop haute à froid', 'text-red-300'],
+}
+
+function ChoixAppoint({ choisi = '', onChange }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Appoint">
+      {APPOINTS.map(([cle, libelle]) => (
+        <button key={cle || 'aucun'} type="button" aria-pressed={choisi === cle ? 'true' : 'false'}
+          className={`${BOUTON} ${choisi === cle ? 'bg-brass-500/20 text-primary-text' : ''}`}
+          onClick={() => onChange('appoint', cle)}>{libelle}</button>
+      ))}
+    </div>
+  )
+}
+
+function VerdictAppoint({ bloc }) {
+  if (!bloc) return null
+  const bus = bloc.motif?.includes('var_bus_dc_redresse_v')
+  const [texte, couleur] = ETAT_APPOINT[bloc.verdict] ?? [bus
+    ? 'À vérifier : tension redressée du bus non publiée sur la fiche du variateur'
+    : `À vérifier : ${bloc.motif ?? 'donnée manquante'}`, 'text-amber-200']
+  return (
+    <div className={`mt-2 text-sm ${couleur}`} data-testid="cal-pompage-appoint">
+      <p>Appoint : le variateur est alimenté par le réseau ou un groupe en plus des panneaux</p>
+      <p>{texte}</p>
+      {bloc.motif && bloc.verdict !== 'non_verifiable' && <p className="text-xs">{bloc.motif}</p>}
+    </div>
+  )
+}
+
 export default function PompagePanel({ calepinageId: idPropose }) {
   /* Montable en panneau (le parent passe `calepinageId`) ou en écran à part
      entière sous `/calepinage/:id/pompage` — le routeur monte le composant
@@ -516,7 +552,11 @@ export default function PompagePanel({ calepinageId: idPropose }) {
               <MoisNiveauBas choisis={saisie.mois_niveau_bas} onChange={majChamp} />
             )}
             {groupe === 'champ_solaire' && (
-              <p className="mt-2 text-sm text-foreground">{`Modules posés : ${valeur(chaines?.modules_poses)}`}</p>
+              <>
+                <p className="mt-2 text-sm text-foreground">{`Modules posés : ${valeur(chaines?.modules_poses)}`}</p>
+                <ChoixAppoint choisi={saisie.appoint} onChange={majChamp} />
+                <VerdictAppoint bloc={resultat?.appoint_variateur} />
+              </>
             )}
           </fieldset>
         ))}

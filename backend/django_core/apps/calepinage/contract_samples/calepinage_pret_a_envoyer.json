@@ -22,12 +22,12 @@
     "taille_sans_facture": "ACAL861",
     "kwc_coherent": "ACAL862",
     "obstacle_hors_pan": "ACAL863",
-    "pans_vides": "ACAL864"
+    "pans_vides": "ACAL864",
+    "un_seul_chiffre": "ACAL1171 (lit apps/ventes/selectors_calepinage.py::production_annoncee_du_devis)",
+    "compatibilite_equipements": "ACAL906 (lit apps/ventes/selectors_calepinage.py::compatibilite_du_materiel)"
   },
   "codes_reserves": {
-    "un_seul_chiffre": "JAMAIS dans controles[] — passe dans codes_produits le jour où ACAL1171 le produit",
-    "schema_secours": "JAMAIS dans controles[] — réserve, aucun producteur planifié",
-    "compatibilite_equipements": "JAMAIS dans controles[] — passe dans codes_produits le jour où ACAL906 le produit"
+    "schema_secours": "JAMAIS dans controles[] — réserve, aucun producteur planifié"
   },
   "exemple": {
     "calepinage": 1,

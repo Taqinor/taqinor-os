@@ -370,6 +370,9 @@ const calepinageApi = {
     // ACAL466 (contrat calepinage_pente_terrain.json) — pente et orientation du RELIEF sous un champ au sol
     // (Copernicus GLO-30) : lecture pure ; `pente_deg: null` + `motif` quand le relief n'est pas lisible.
     penteTerrain: (id, surface) => api.get(`${pivot(id)}pente-terrain/`, { params: { surface } }), // ACAL
+    // ACAL719 (contrat calepinage_soleil_legal.json, ACAL730) — l'écart heure légale − heure solaire d'un jour
+    // (`params = {date}` AAAA-MM-JJ) : 409 `{site.fuseau|site.pin: [motif]}` quand le site ne le permet pas.
+    soleilLegal: (id, params) => api.get(`${pivot(id)}soleil-legal/`, { params }), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

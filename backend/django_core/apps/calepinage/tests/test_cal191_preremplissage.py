@@ -188,6 +188,46 @@ class GabaritManquantTest(unittest.TestCase):
         self.assertFalse(dossier['peut_generer'])
         self.assertIn("n'a pas été déposé", dossier['motif_non_generable'])
 
+    def test_verification_perimee_selon_la_duree_de_la_societe(self):
+        """ACAL824 — vérifié il y a 400 j, N = 365 ⇒ périmé ; sans N ou sans
+        date ⇒ ``None`` (jamais ``False`` : non vérifié n'est pas à jour)."""
+        import datetime
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.reglementaire import (
+            _entree_depuis_orm, _max_jours_societe)
+
+        aujourdhui = datetime.date.today()
+
+        def _servi(verifie_le, max_jours):
+            gabarit = SimpleNamespace(
+                pk=1, intitule='G', fichier=None, fichier_present=True,
+                depose_le=None, depose_par=None, version='',
+                pieces_attendues=[], champs=[], verifie_le=verifie_le)
+            entree = _entree_depuis_orm(gabarit, None, None, max_jours)
+            dossier = _composer_dossiers(
+                calepinage_id=1, pays='ma', entrees=[entree],
+                infos={})['dossiers'][0]
+            return dossier['gabarit']
+
+        vieux = aujourdhui - datetime.timedelta(days=400)
+        servi = _servi(vieux, 365)
+        self.assertEqual(servi['verifie_le'], vieux.isoformat())
+        self.assertEqual(servi['verification_max_jours'], 365)
+        self.assertIs(servi['verification_perimee'], True)
+        recent = aujourdhui - datetime.timedelta(days=10)
+        self.assertIs(_servi(recent, 365)['verification_perimee'], False)
+        self.assertIsNone(_servi(vieux, None)['verification_perimee'])
+        self.assertIsNone(_servi(None, 365)['verification_perimee'])
+        reglage = {'electrique_societe': {
+            'gabarit_verification_max_jours': {
+                'valeur': 365, 'source': 'Distributeur', 'reference': 'x'}}}
+        self.assertEqual(_max_jours_societe(reglage), 365)
+        self.assertIsNone(_max_jours_societe({}))
+        reglage['electrique_societe']['gabarit_verification_max_jours'][
+            'source'] = ''
+        self.assertIsNone(_max_jours_societe(reglage))
+
     def test_societe_sans_gabarit_ne_voit_aucun_dossier(self):
         agregat = _composer_dossiers(calepinage_id=2, pays='ma', entrees=[],
                                      infos={})

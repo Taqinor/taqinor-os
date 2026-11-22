@@ -29,7 +29,7 @@ from ..serializers_commissioning import (
 )
 from . import _openapi as oa
 
-READ_ACTIONS = ['list', 'retrieve']
+READ_ACTIONS = ['list', 'retrieve', 'valeurs_attendues']  # ACAL667 : lecture tout rôle
 MESSAGE_RECETTE_IEC_VERROUILLEE = 'Recette IEC 62446-1 verrouillée : le PV de réception est signé.'
 
 
@@ -158,6 +158,24 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
         return Response(
             CommissioningIVReadingSerializer(reading).data,
             status=status.HTTP_201_CREATED)
+
+    @oa.extend_schema(
+        operation_id='installations_recettes_commissioning_valeurs_attendues',
+        parameters=[oa.qfv('temperature_c'), oa.qfv('eclairement_w_m2')],
+        responses={200: OpenApiResponse(description=(
+            "ACAL667 — valeurs attendues par chaîne du calepinage retenu "
+            "(contrat recette_valeurs_attendues.json)."))})
+    @action(detail=True, methods=['get'], url_path='valeurs-attendues')
+    def valeurs_attendues(self, request, pk=None):
+        """ACAL667 — Voc / Isc / Pmax attendus par chaîne, lus sur le
+        calepinage retenu du devis du chantier (jamais saisis) ; la fiche est
+        bornée à la société du demandeur par ``get_object``."""
+        from ..selectors_recette import valeurs_attendues_du_chantier
+        record = self.get_object()
+        return Response(valeurs_attendues_du_chantier(
+            record.installation,
+            temperature_c=oa.nombre_requete(request, 'temperature_c'),
+            eclairement_w_m2=oa.nombre_requete(request, 'eclairement_w_m2')))
 
 
 MESSAGE_RECETTE_VERROUILLEE = (
