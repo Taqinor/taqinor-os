@@ -125,7 +125,8 @@ describe('DiagrammePertes (CAL143)', () => {
 
     await screen.findByTestId('cal143-panneau')
     expect(screen.getByTestId('acal52-borne-haute')).toBeInTheDocument()
-    expect(screen.getByTestId('acal52-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages')
+    expect(screen.getByTestId('acal52-lien-reglages'))
+      .toHaveAttribute('href', '/calepinage/reglages#calx69-section-simulation')
     expect(screen.getAllByTestId('acal52-reglage').length).toBeGreaterThan(0)
   })
 

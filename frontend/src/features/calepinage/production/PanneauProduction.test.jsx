@@ -40,6 +40,8 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
 import ReglagesSimulation from '../reglages/ReglagesSimulation'
+import sourceBibliotheque from '../Bibliotheque.jsx?raw'
+import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
 import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
 
 const servir = (variante) => {
@@ -488,7 +490,7 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
       expect(within(bandeau).getByText(poste)).toBeInTheDocument()
     }
     expect(within(bandeau).getByTestId('acal52-lien-reglages'))
-      .toHaveAttribute('href', '/calepinage/reglages')
+      .toHaveAttribute('href', '/calepinage/reglages#calx69-section-simulation')
 
     // PR, P75, P90, P95 : « non publié » (motif en infobulle), jamais un nombre.
     const total = screen.getByTestId('cal236-total')
@@ -797,7 +799,7 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     expect(lignes).toHaveLength(a.lignes.length)
     expect(lignes[0]).toHaveTextContent('Aucune valeur pour votre société')
     const renseigner = within(lignes[0]).getByTestId('acal700-renseigner')
-    expect(renseigner).toHaveAttribute('href', '/calepinage/reglages#salissure_mensuelle_pct')
+    expect(renseigner).toHaveAttribute('href', '/calepinage/reglages#calx69-salissure_mensuelle_pct')
     expect(within(bloc).getByTestId('acal700-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages')
     const sur = within(bloc).getByTestId('acal700-sur')
     for (const t of ['Panneaux', 'Puissance', 'Raccordement', 'Conforme', 'Ombres proches']) {
@@ -1167,6 +1169,28 @@ describe('ACAL986 — chaque lien « aller aux réglages » vise un champ monté
     })
   })
 
+  it('les lignes « Renseigner » du résultat incomplet (ACAL700) ouvrent leur champ monté', async () => {
+    const ids = await idsMontesDesReglages()
+    const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: {
+        ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+        production: borneHaute.production, simulation: borneHaute.simulation, cascade: borneHaute.cascade,
+      },
+    })
+    render(<MemoryRouter><PanneauProduction calepinageId={1} parcours={{ etapes: [], manque: [] }} /></MemoryRouter>)
+    const bloc = await screen.findByTestId('acal700-incomplet')
+    const lignes = borneHaute.cascade.a_renseigner.lignes.filter((l) => l.cible?.onglet === 'reglages')
+    const liens = within(bloc).getAllByTestId('acal700-renseigner')
+    expect(lignes.length).toBeGreaterThan(0)
+    expect(liens).toHaveLength(borneHaute.cascade.a_renseigner.lignes.length)
+    liens.forEach((lien, i) => {
+      const [chemin, ancre] = lien.getAttribute('href').split('#')
+      if (!chemin.endsWith('/calepinage/reglages')) return
+      exiger(ids, ancre, borneHaute.cascade.a_renseigner.lignes[i].libelle, 'Résultat incomplet')
+    })
+  })
+
   it('norme électrique et lestage : la cible servie existe sur la page d’arrivée', async () => {
     const ids = await idsMontesDesReglages()
     exiger(ids, 'norme', 'Choisir la norme', 'Provenance')
@@ -1174,5 +1198,26 @@ describe('ACAL986 — chaque lien « aller aux réglages » vise un champ monté
     const lestage = exempleContrat('calepinage', 'calepinage_masse_lestage', 'exemple_vide').lestage
     expect(lestage.manquants.length).toBeGreaterThan(0)
     for (const cle of lestage.manquants) exiger(ids, `lestage-${cle}`, 'Masse et lestage', 'Atelier')
+  })
+
+  it('tolérance PVGIS, borne haute et lien de la Bibliothèque : ancre montée aux Réglages', async () => {
+    const ids = await idsMontesDesReglages()
+    const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const { unmount } = render(<MemoryRouter>
+      <EcartPvgis validation={{ ecart_pct: -2, tolerance_pct: null, verdict: null }} />
+      <BandeauBorneHaute total={borneHaute.production.total} />
+    </MemoryRouter>)
+    const cibles = [
+      ['acal854-lien-tolerance', 'Régler la tolérance', 'Provenance'],
+      ['acal52-lien-reglages', 'Pertes non renseignées', 'Production'],
+    ]
+    for (const [testid, message, ecran] of cibles) {
+      const [chemin, ancre] = screen.getByTestId(testid).getAttribute('href').split('#')
+      expect(chemin).toBe('/calepinage/reglages')
+      exiger(ids, ancre, message, ecran)
+    }
+    unmount()
+    // La Bibliothèque ne demande aucune saisie : lien d'entrée vers la page (sans ancre), route des Réglages.
+    expect(sourceBibliotheque).toMatch(/href="\/calepinage\/reglages"[^>]*data-testid="cal-biblio-lien-reglages"/)
   })
 })

@@ -77,8 +77,6 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       // Ce calepinage-là porte un devis lié : sa cible EST une cible vendue,
       // et l'atelier se comporte alors exactement comme en mode devis.
       cibleVendue: true,
-      // ACAL777 — la facture du lead, repli d'affichage des cartes.
-      factureMensuelleMad: CTX.consommation_lead.facture_mensuelle_mad,
       fullName: CTX.calepinage.titre,
       // ACAL777 — la facture mensuelle du lead servie (ACAL776), repli d'affichage des cartes.
       factureMensuelleMad: CTX.consommation_lead.facture_mensuelle_mad,

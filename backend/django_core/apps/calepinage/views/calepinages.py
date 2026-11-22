@@ -1698,11 +1698,23 @@ def detail_calepinage(calepinage, request=None):
         or {},
         # ACAL294 — les champs personnalisés de la société (objet | null).
         'custom_data': getattr(calepinage, 'custom_data', None),
+        # ACAL1006 — « rapide » = jamais regardé sur place (marquage, pas un remplissage) ; lu par le bandeau ACAL1007.
+        'etat_conception': _etat_conception(calepinage),
+        'etat_conception_motif': (MOTIF_CONCEPTION_RAPIDE if _etat_conception(calepinage) == 'rapide' else None),
         # ACAL915 — ce que « Générer le devis » additionne (toit + sol, D-ACAL-5).
         'surfaces_chiffrables': surfaces_chiffrables(layout),
         'permissions': _permissions(calepinage, request,
                                     a_des_variantes=bool(variantes['total'])),
     }
+
+
+#: ACAL1005 — le texte posé au contrat ``calepinage_detail.json`` (exemple_rapide).
+MOTIF_CONCEPTION_RAPIDE = 'ouvert depuis un devis automatique : à vérifier sur place'
+
+
+def _etat_conception(calepinage):
+    """``rapide`` | ``complet`` (défaut : un calepinage sans la colonne est complet)."""
+    return 'rapide' if getattr(calepinage, 'etat_conception', 'complet') == 'rapide' else 'complet'
 
 
 def _peremption_calepinage(calepinage, company):
