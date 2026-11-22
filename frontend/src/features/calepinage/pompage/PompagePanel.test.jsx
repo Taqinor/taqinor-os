@@ -383,6 +383,48 @@ describe('ACAL821 — plusieurs pompes sur le même variateur', () => {
   })
 })
 
+describe('ACAL820 — appoint réseau ou groupe sur le bus DC du variateur', () => {
+  const APPOINT = RESULTAT.appoint_variateur
+  const avecAppoint = (surcharge) => ({ ...RESULTAT, appoint_variateur: { ...APPOINT, ...surcharge } })
+
+  it('le choix « Réseau » part dans le corps ; « Pas d’appoint » ne l’envoie pas', () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    fireEvent.click(screen.getByRole('button', { name: 'Réseau' }))
+    calculer()
+    expect(pompage.mock.calls[0][1]).toEqual({ appoint: 'reseau' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pas d’appoint' }))
+    calculer()
+    expect(pompage.mock.calls[1][1]).toEqual({})
+  })
+
+  it('vmp_sous_bus (exemple du contrat) : le champ ne passe pas au-dessus du bus, en rouge', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    const ligne = await screen.findByTestId('cal-pompage-appoint')
+    expect(ligne).toHaveTextContent('Appoint : le variateur est alimenté par le réseau ou un groupe en plus des panneaux')
+    expect(ligne).toHaveTextContent('Le champ ne passe pas au-dessus du bus : l’appoint fait tout le travail')
+    expect(ligne).not.toHaveTextContent('Conforme')
+    expect(ligne.className).toContain('text-red-300')
+  })
+
+  it('sans tension redressée publiée : la ligne nomme la fiche à compléter ; sans appoint : absente', async () => {
+    pompage.mockResolvedValue({ data: avecAppoint({ verdict: 'non_verifiable', vmp_chaud_v: null,
+      motif: 'tension redressée du bus DC non publiée (var_bus_dc_redresse_v)' }) })
+    rendre()
+    calculer()
+    expect(await screen.findByTestId('cal-pompage-appoint'))
+      .toHaveTextContent('À vérifier : tension redressée du bus non publiée sur la fiche du variateur')
+    cleanup()
+    pompage.mockResolvedValue({ data: RESULTAT_VIDE })
+    rendre()
+    calculer()
+    await screen.findByTestId('cal-pompage-hmt')
+    expect(screen.queryByTestId('cal-pompage-appoint')).toBeNull()
+  })
+})
+
 describe('AGR125 — la HMT calculée comme au devis (pertes singulières, pression)', () => {
   it('les champs sont vides par défaut et en step="any"', () => {
     rendre()

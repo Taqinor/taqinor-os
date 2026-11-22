@@ -1,6 +1,6 @@
 import { lazy } from 'react'
 import {
-  BadgeCheck, Columns3, FileStack, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
+  BadgeCheck, Columns3, FileStack, Grid3x3, Library, LayoutGrid, MoveHorizontal, PlusCircle, SlidersHorizontal,
   Wrench,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -84,6 +84,8 @@ const ReglagesSimulation = lazy(() => import('./reglages/ReglagesSimulation'))
 const ReglagesGabarits = lazy(() => import('./reglages/ReglagesGabarits'))
 // ACAL559 — le catalogue des systèmes de fixation de la société (niveau expert).
 const ReglagesFixation = lazy(() => import('./reglages/ReglagesFixation'))
+// ACAL893 — le défaut de la société (allée technique, allées de circulation par pays), sorti de l'atelier.
+const ReglagesAllees = lazy(() => import('./reglages/ReglagesAllees'))
 /* CALX342 — la COMPARAISON de 1 à 5 calepinages distincts (contrat
    `calepinage_comparaison_projets.json`, CALX331). Elle ne désigne AUCUN
    calepinage dans son chemin (la sélection voyage en `?ids=`) : une route de
@@ -148,6 +150,13 @@ const config = {
         roles: ROLES,
       },
       {
+        // ACAL893 — le défaut de la société pour les allées (plus dans l'atelier).
+        to: '/calepinage/reglages/allees',
+        label: 'Allées',
+        icon: <MoveHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
         // CALX342 — la comparaison de 1 à 5 calepinages ; sans sélection,
         // l'écran renvoie choisir dans la liste (mode « Comparer »).
         to: '/calepinage/comparaison',
@@ -164,6 +173,7 @@ const config = {
     ['/calepinage/sources', 'Calepinage — Sources des paramètres'],
     ['/calepinage/reglages/gabarits', 'Calepinage — Gabarits des dossiers'],
     ['/calepinage/reglages/fixation', 'Calepinage — Systèmes de fixation'],
+    ['/calepinage/reglages/allees', 'Calepinage — Allées'],
     ['/calepinage/reglages', 'Calepinage — Réglages simulation'],
     ['/calepinage/comparaison', 'Calepinage — Comparaison'],
     ['/calepinage/', 'Calepinage — Atelier'],
@@ -184,6 +194,8 @@ const config = {
     { path: '/calepinage/reglages/gabarits', component: ReglagesGabarits, roles: ROLES },
     // ACAL559 — AVANT `/calepinage/:id` : « reglages/fixation » n'est pas un identifiant.
     { path: '/calepinage/reglages/fixation', component: ReglagesFixation, roles: ROLES },
+    // ACAL893 — AVANT `/calepinage/:id` : « reglages/allees » n'est pas un identifiant.
+    { path: '/calepinage/reglages/allees', component: ReglagesAllees, roles: ROLES },
     // CALX342 — AVANT `/calepinage/:id` : « comparaison » n'est pas un identifiant.
     { path: '/calepinage/comparaison', component: ComparaisonProjets, roles: ROLES },
     /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est

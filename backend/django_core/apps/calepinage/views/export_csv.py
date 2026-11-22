@@ -103,9 +103,10 @@ _MOTIF_COLONNES = '^(?:%s)(?:,(?:%s))*$' % (_ALTERNATIVE_COLONNES,
                         'inchangé). Colonne inconnue -> 400, nommée.'),
         OpenApiParameter(
             name='pas', type=OpenApiTypes.STR, required=False,
-            enum=['horaire', '15min'],
+            enum=['horaire', 'jour', '15min'],
             description="CALX313, export horaire SEULEMENT — 'horaire' "
-                        "(défaut) ou '15min' (REFUSÉ : la série 15 minutes "
+                        "(défaut), 'jour' (ACAL755 : une ligne par jour) ou "
+                        "'15min' (REFUSÉ : la série 15 minutes "
                         "n'est pas encore produite, jamais une "
                         'interpolation).'),
     ],

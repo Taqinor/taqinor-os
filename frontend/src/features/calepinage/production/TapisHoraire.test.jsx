@@ -29,7 +29,7 @@ const CONTRAT = documentContrat('calepinage', 'calepinage_serie_horaire')
 
 const exportCsv = vi.fn()
 //: ACAL446 — la liste de colonnes demandée à la porte d'export (CALX313).
-const COLONNES_DEMANDEES = 'annee,mois,jour,heure,production_kw,irradiance_plan_w_m2,charge_kwh'
+const COLONNES_DEMANDEES = 'annee,mois,jour,heure,production_kw,irradiance_plan_w_m2,charge_kwh,p_dc_kw'
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: { exportCsv: (...a) => exportCsv(...a) } },
 }))
@@ -344,5 +344,46 @@ describe('ACAL446 — la consommation servie est tracée', () => {
     expect(screen.queryByText('Consommation (kWh)')).toBeNull()
     expect(screen.getByTestId('acal446-sans-charge'))
       .toHaveTextContent('Consommation non tracée : Aucune courbe de charge saisie.')
+  })
+})
+
+describe('ACAL738 — la puissance des panneaux et la limite de l’onduleur sont tracées', () => {
+  const csv = (avecPdc) => [
+    'Provenance;Module Calepinage',
+    '',
+    `annee;mois;jour;heure;production_kw;irradiance_plan_w_m2;charge_kwh${avecPdc ? ';p_dc_kw' : ''}`,
+    ...[10, 11, 12, 13].map((h) => `2021;6;15;${h};4,${h};800,00;0,${h}${avecPdc ? `;6,${h}` : ''}`),
+  ].join('\r\n')
+  const cascade = { etapes: [{ etape: 'ecretage', entree: { borne_kw: 5 } }] }
+
+  it('avec p_dc_kw et la borne : trois repères', async () => {
+    exportCsv.mockResolvedValue({ data: csv(true) })
+    rendre({ cascade })
+
+    await screen.findByTestId('cal-tapis')
+    expect(await screen.findByText('Puissance des panneaux (kW)')).toBeInTheDocument()
+    expect(screen.getByText(/Limite de l.onduleur : 5 kW/)).toBeInTheDocument()
+    expect(screen.queryByTestId('acal738-sans-panneaux')).toBeNull()
+  })
+
+  it('sans p_dc_kw : pas de courbe des panneaux, la phrase du manque est nommée', async () => {
+    exportCsv.mockResolvedValue({ data: csv(false) })
+    rendre({ cascade })
+
+    await screen.findByTestId('cal-tapis')
+    expect(screen.queryByText('Puissance des panneaux (kW)')).toBeNull()
+    expect(screen.getByTestId('acal738-sans-panneaux'))
+      .toHaveTextContent('Puissance des panneaux non tracée : la série servie ne porte pas la puissance des panneaux')
+    expect(screen.getByText(/Limite de l.onduleur : 5 kW/)).toBeInTheDocument()
+  })
+
+  it('sans borne : pas de ligne de limite, le motif servi est nommé', async () => {
+    exportCsv.mockResolvedValue({ data: csv(true) })
+    rendre({ cascade: { etapes: [{ etape: 'ecretage', motif_omission: 'Aucun onduleur dimensionné.' }] } })
+
+    await screen.findByTestId('cal-tapis')
+    expect(screen.queryByText(/Limite de l.onduleur/)).toBeNull()
+    expect(screen.getByTestId('acal738-sans-panneaux'))
+      .toHaveTextContent('Puissance des panneaux non tracée : Aucun onduleur dimensionné.')
   })
 })

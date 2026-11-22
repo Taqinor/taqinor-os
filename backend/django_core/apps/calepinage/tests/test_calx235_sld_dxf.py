@@ -188,6 +188,43 @@ class ReproductibleTest(SimpleTestCase):
         self.assertNotEqual(sans, avec)
 
 
+class ReglagesSocieteTest(SimpleTestCase):
+    """REP-sld-export — le DXF lit la check-list avec les MÊMES réglages
+    société que le SVG (``sld.py``), jamais sans."""
+
+    def test_le_dxf_passe_les_reglages_societe_a_la_checklist(self):
+        from unittest import mock
+
+        from apps.calepinage.services import electrique as _electrique
+        from apps.calepinage.services import sld as _sld
+
+        class _Arret(Exception):
+            pass
+
+        saisis = {}
+
+        def _decides(conception, donnees, norme, **options):
+            saisis.update(options)
+            raise _Arret()
+
+        conception = type('C', (), {'manquantes': (), 'micro_seul': False,
+                                    'entree': None})()
+        reglages = {'distance_separation_foudre_min_m': {'valeur': 1}}
+        with mock.patch.object(_electrique, 'conception_du_calepinage',
+                               return_value=(conception, {}, {}, None)), \
+                mock.patch.object(_electrique, 'bloquants_nommes',
+                                  return_value=[]), \
+                mock.patch.object(_electrique, 'parametres_societe',
+                                  return_value={}), \
+                mock.patch.object(_electrique, '_reglages_electrique_societe',
+                                  return_value=reglages), \
+                mock.patch.object(_sld, 'resultat_et_gabarit_decides',
+                                  side_effect=_decides):
+            with self.assertRaises(_Arret):
+                exporter_sld_dxf(object())
+        self.assertIs(saisis.get('reglages'), reglages)
+
+
 class _ConceptionMuette:
     """Une conception dont la fiche onduleur manque — l'objet que le service
     électrique rend dans ce cas (``fiche_incomplete``, ``manquantes``)."""

@@ -309,6 +309,7 @@ retiré plus un hook ajouté.
 | `cal-photo-sur-photo-canvas` | photo : canevas des modules projetés. |
 | `cal-photo-sur-photo-sans-calage` | photo : message « Calez d'abord la photo ». |
 | `cal-photo-sur-photo-telecharger` | photo : bouton « Télécharger l'image ». |
+| `cal-photo-image-client` | photo : bouton « Image pour le client » (PNG client : titre et légende, sans prix, ACAL897). |
 | `cal-photo-sur-photo-vide` | photo : message « Aucun module posé à projeter ». |
 | `cal-photo-supprimer` | photo de site — demande de suppression de la photo (ACAL203). |
 | `cal-photo-supprimer-confirmer` | photo de site — confirme la suppression (ACAL203). |
@@ -763,6 +764,7 @@ retiré plus un hook ajouté.
 | `cal-pompage-chaines` | pompage verdict des modules en série contre la fenêtre du variateur : icône et mot, Voc à froid, température du site (ACAL811). |
 | `cal-pompage-comparaison` | pompage deux cartes « Pompage direct » / « Avec le réservoir » (`data-option`) : débit de conception, mois critique, jours de manque, ou motif (ACAL815). |
 | `cal-pompage-pompes` | pompage verdict de plusieurs pompes sur le variateur retenu : kW demandés sur kW du variateur, conforme / trop petit / à vérifier (ACAL821). |
+| `cal-pompage-appoint` | pompage appoint réseau ou groupe : le champ passe-t-il au-dessus du bus DC redressé du variateur — conforme / sous le bus / trop haute à froid / à vérifier (ACAL820). |
 
 ## TapisHoraire (`production/TapisHoraire.jsx`)
 
@@ -871,6 +873,7 @@ retiré plus un hook ajouté.
 | `cal-badge-dessin` | variantes : badge « mesures du dessin, non simulée » (suffixe = id). |
 | `cal-variante-simuler` | variantes : simuler la variante (suffixe = id). |
 | `cal-variantes-bandeau` | variantes : ce que « Retenir » change (ACAL109). |
+| `cal-variantes-hypotheses` | variantes : hypothèses de pertes et de météo comparées (ACAL884). |
 | `cal-variantes-vide` | variantes : aucune variante. |
 | `cal-variante-renommer` | variantes : renommer (suffixe = id). |
 | `cal-variante-supprimer-confirmer` | variantes : confirmer la suppression (suffixe = id). |
@@ -894,6 +897,7 @@ retiré plus un hook ajouté.
 | `cal-enregistrer-calepinage` | barre d’enregistrement collante de l’atelier (ACAL399). |
 | `cal-etat-enregistrement` | barre d’enregistrement : « Modifications non enregistrées » ou « Enregistré à HH:MM ». |
 | `cal-erreur-enregistrement` | barre d’enregistrement : erreur d’enregistrement affichée. |
+| `cal-action-etape-suivante` | barre d’enregistrement : bouton de l’étape suivante du parcours guidé (ACAL868). |
 
 ## PanneauPertesUnifie — complément L5 (`atelier/PanneauPertesUnifie.jsx`)
 
@@ -922,8 +926,18 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-etape-electrique-ecran` | étape Électrique en une page (ACAL395). |
-| `cal-electrique-synthese` | étape Électrique : synthèse « Conforme » ou « n points à régler ». |
+| `cal-electrique-synthese` | étape Électrique : le compte du panneau « Prêt à envoyer ? » — « n points à régler » ou « Prêt à envoyer » (ACAL865). |
 | `cal-electrique-section` | étape Électrique : section repliable (suffixe = clé de l’onglet). |
+
+## PretAEnvoyer — ACAL865 (`commun/PretAEnvoyer.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-pret-a-envoyer` | panneau « Prêt à envoyer ? » (contrôles avant l’envoi, `GET pret-a-envoyer/`). |
+| `cal-pret-erreur` | panneau « Prêt à envoyer ? » : lecture en échec. |
+| `cal-pret-ligne` | une ligne de contrôle (suffixe = `code` du contrôle). |
+| `cal-pret-regler` | bouton « Régler » d’un contrôle (suffixe = `code`) : ouvre `?onglet=&champ=`. |
+| `cal-pret-reussis` | contrôles réussis repliés (« Voir les n contrôles réussis »). |
 
 ## PhotoSiteCalage — complément L5 (`PhotoSiteCalage.jsx`)
 

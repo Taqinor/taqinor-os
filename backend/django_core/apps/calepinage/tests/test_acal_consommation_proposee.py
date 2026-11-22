@@ -439,3 +439,88 @@ class FacturesMoisTest(SimpleTestCase):
         attendu = contrat['exemple_factures_mois']
         self.assertEqual(rendu['mois'], attendu['mois'])
         self.assertEqual(rendu['kwh_annuel'], attendu['kwh_annuel'])
+
+
+class LireFactureTest(BaseApiCalepinage):
+    """ACAL839 — ``consommation/lire-facture/`` : la lecture d'une photo de
+    facture, en proposition ; l'OCR (serveur IA) est simulé, jamais appelé."""
+
+    def setUp(self):
+        super().setUp()
+        import json
+        import pathlib
+
+        self.contrat = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'calepinage_consommation_photo_facture.json')
+            .read_text(encoding='utf-8'))
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Facture 839',
+            roof_layout=copy.deepcopy(LAYOUT))
+        self.url = f'{BASE}{self.calepinage.pk}/consommation/lire-facture/'
+
+    def _photo(self, octets=b'photo', nom='facture.jpg'):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        return {'fichier': SimpleUploadedFile(nom, octets,
+                                              content_type='image/jpeg')}
+
+    def _poster(self, corps, api=None):
+        return (api or self.api).post(self.url, corps, format='multipart')
+
+    def test_ocr_coupe_get_faux_et_post_200_lignes_vides_sans_reseau(self):
+        from unittest import mock
+
+        with mock.patch('requests.post', side_effect=AssertionError('réseau')):
+            lu = self.api.get(self.url)
+            reponse = self._poster(self._photo())
+        self.assertEqual(lu.status_code, 200)
+        self.assertEqual(dict(lu.data), self.contrat['exemple_indisponible'])
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(dict(reponse.data),
+                         self.contrat['exemple_indisponible'])
+
+    def test_ocr_actif_simule_rend_une_ligne_sans_mois_et_n_ecrit_rien(self):
+        from unittest import mock
+
+        from django.test import override_settings
+
+        reponse_ocr = mock.Mock(status_code=200)
+        reponse_ocr.json.return_value = {
+            'donnees_structurees': {'conso_kwh': 412}}
+        with override_settings(CRM_CAPTURE_OCR_ENABLED=True), \
+                mock.patch('apps.crm.intake_photo._service_token_for',
+                           return_value='jeton'), \
+                mock.patch('requests.post', return_value=reponse_ocr):
+            lu = self.api.get(self.url)
+            reponse = self._poster(self._photo())
+        self.assertEqual(dict(lu.data), self.contrat['exemple_disponibilite'])
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(dict(reponse.data), self.contrat['exemple'])
+        self.assertIsNone(reponse.data['lignes'][0]['mois'])
+        self.calepinage.refresh_from_db()
+        self.assertNotIn('consumption', self.calepinage.roof_layout)
+
+    def test_fichier_absent_ou_trop_gros_400_nomme(self):
+        absent = self._poster({})
+        self.assertEqual(absent.status_code, 400)
+        self.assertEqual(dict(absent.data), self.contrat['refus_400_fichier'])
+        gros = self._poster(self._photo(b'x' * (11 * 1024 * 1024)))
+        self.assertEqual(gros.status_code, 400)
+        self.assertIn('fichier', gros.data)
+
+    def test_sans_droit_403_et_autre_societe_404(self):
+        self.assertEqual(
+            self._poster(self._photo(), api=self.api_sans).status_code, 403)
+        self.assertEqual(
+            self._poster(self._photo(), api=self.api_autre).status_code, 404)
+        self.assertEqual(self.api_autre.get(self.url).status_code, 404)
+
+    def test_le_contrat_porte_les_motifs_du_service(self):
+        from apps.crm.intake_photo import MOTIF_OCR_DESACTIVE
+        from apps.calepinage.views.consommation import REFUS_FICHIER
+
+        self.assertEqual(self.contrat['exemple_indisponible']['motif'],
+                         MOTIF_OCR_DESACTIVE)
+        self.assertEqual(self.contrat['refus_400_fichier']['fichier'],
+                         REFUS_FICHIER)

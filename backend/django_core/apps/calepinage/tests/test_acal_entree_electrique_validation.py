@@ -181,7 +181,8 @@ class Ecriture(BaseValidation):
         # les deux corps d'essai du contrat sont acceptés (200).
         batterie = regle['properties']['batterie']['properties']
         for cle in ('appareils', 'duree_secours_h', 'fenetres',
-                    'part_effacable_pct', 'plafond_effacable_kw'):
+                    'part_effacable_pct', 'plafond_effacable_kw',
+                    'coupures'):  # coupures : ACAL796
             self.assertTrue(batterie[cle], cle)
         contrat = json.loads((pathlib.Path(__file__).resolve().parents[1]
                               / 'contract_samples'
@@ -190,6 +191,8 @@ class Ecriture(BaseValidation):
         # ACAL790 — les seuils hors réseau sont publiés et leur corps accepté.
         self.assertTrue(regle['properties']['hors_reseau']['properties'][
             'seuils'])
+        self.assertTrue(regle['properties']['hors_reseau']['properties'][
+            'groupe'])  # ACAL800
         for cle in ('exemple_secours', 'exemple_commande_avancee',
                     'exemple_hors_reseau_avance'):
             with self.subTest(corps=cle):

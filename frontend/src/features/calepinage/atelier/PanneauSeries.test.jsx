@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { formatNumber } from '../../../lib/format'
 import { MemoryRouter } from 'react-router-dom'
 import { COLONNES_CSV, COLONNES_DATE } from './colonnesCsv'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
@@ -85,6 +86,20 @@ afterEach(() => { cleanup() })
 const rendre = (props = {}) => render(
   <MemoryRouter><PanneauSeries calepinageId={5} {...props} /></MemoryRouter>,
 )
+
+describe('ACAL755 — le menu « Pas : heure / jour »', () => {
+  it('« Pas : jour » envoie pas=jour en 4e argument ; le défaut ne change pas', async () => {
+    exportCsv.mockResolvedValue({ data: 'x' })
+    rendre()
+    fireEvent.change(screen.getByTestId('acal755-pas'), { target: { value: 'jour' } })
+    fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'horaire', null, { pas: 'jour' }))
+  })
+
+  it("l'échantillon du contrat nomme le pas « jour »", () => {
+    expect(exempleContrat('calepinage', 'calepinage_export_csv').pas).toContain('jour')
+  })
+})
 
 describe('ACAL754 — la carte « Ombrage module par module »', () => {
   it("la 4e carte demande quoi=ombrage_modules ; l'échantillon la nomme", async () => {
@@ -250,6 +265,49 @@ describe('CALX62 — déposer une série météo de la société', () => {
       CONTRAT_METEO.exemple.meteo.fichier.nom)
     expect(provenance).toHaveTextContent(
       CONTRAT_METEO.exemple.meteo.fournisseur)
+  })
+
+  async function deposerAvec(reponse) {
+    const utilisateur = userEvent.setup()
+    deposerMeteoFichier.mockResolvedValue({ data: reponse })
+    rendre()
+    await utilisateur.upload(screen.getByTestId('cal-series-depot-fichier'), fichierCsv())
+    await utilisateur.type(screen.getByTestId('cal-series-depot-fournisseur'), 'Station d essai')
+    await utilisateur.click(screen.getByTestId('cal-series-depot-envoyer'))
+    return screen.findByTestId('acal764-qualite')
+  }
+
+  it('ACAL764 — les quatre lignes de qualité de l’exemple du contrat, sans verdict', async () => {
+    const q = CONTRAT_METEO.exemple.qualite
+    const bloc = await deposerAvec(CONTRAT_METEO.exemple)
+    const nb = (v) => formatNumber(v)
+    expect(screen.getByTestId('acal764-couverture').textContent).toBe(
+      `Couverture : ${nb(q.couverture.heures_lues)} heures sur 2021 ; mois sans mesure : aucun`)
+    expect(screen.getByTestId('acal764-decalage')).toHaveTextContent(
+      `tombe ${q.decalage.ecart_median_min} minutes après le midi solaire calculé (sur ${q.decalage.jours_mesures} jours)`)
+    expect(screen.getByTestId('acal764-negatifs')).toHaveTextContent('Valeurs négatives : aucune')
+    expect(screen.getByTestId('acal764-extraterrestre')).toHaveTextContent('Au-dessus du soleil du jour : aucune')
+    expect(bloc).toHaveTextContent('Contrôle fait au dépôt')
+    expect(bloc.querySelector('button')).toBeNull() // aucun bouton bloquant
+  })
+
+  it('ACAL764 — « avant » si l’écart est négatif ; une ligne null dit « non calculé » et son motif', async () => {
+    const q = CONTRAT_METEO.exemple.qualite
+    await deposerAvec({
+      ...CONTRAT_METEO.exemple,
+      qualite: {
+        ...q,
+        decalage: { ...q.decalage, ecart_median_min: -62.0 },
+        extraterrestre: null,
+        negatifs: { gi_w_m2: { nombre: 3, plus_petite: -4.5 } },
+        motifs: { extraterrestre: 'épingle du site absente' },
+      },
+    })
+    expect(screen.getByTestId('acal764-decalage')).toHaveTextContent('62 minutes avant le midi solaire')
+    expect(screen.getByTestId('acal764-extraterrestre')).toHaveTextContent(
+      'non calculé — épingle du site absente')
+    expect(screen.getByTestId('acal764-negatifs')).toHaveTextContent('3 valeurs négatives')
+    expect(screen.getByTestId('acal764-negatifs')).toHaveTextContent('la plus petite : −4,5 W/m²')
   })
 
   it('un refus qui nomme une COLONNE du CSV s’affiche sous le fichier, avec sa ligne', async () => {

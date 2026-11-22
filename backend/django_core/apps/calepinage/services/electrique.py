@@ -48,25 +48,18 @@ from core.electrique.types import (
     NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
     TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C, VerdictElectrique,
 )
-from .chaine_la_plus_faible import (  # noqa: F401 — ré-export (ACAL646)
-    METHODE_CHAINE_FAIBLE, MOTIF_CHAINE_FAIBLE_ABSENTE,
-    REFERENCE_CHAINE_FAIBLE, _chaine_la_plus_faible)
-from .bordereau_calepinage import (
-    bordereau_du_calepinage as _bordereau_du_calepinage,  # ACAL632
+from .chaine_la_plus_faible import _chaine_la_plus_faible  # ACAL646 — extraite
+# REP-alias — appelées par leur MODULE (un alias masque l'appelant à la garde
+# ``check_services_appeles``) ; ``_bordereau_du_calepinage`` reste ré-exporté
+# pour les tests qui l'appellent sous son ancien nom.
+from . import bordereau_calepinage as _module_bordereau  # ACAL632
+from . import validation_batterie as _validation_batterie  # ACAL633
+from . import validation_transformateur as _validation_transformateur  # ACAL642
+from .bordereau_calepinage import (  # noqa: F401 — ré-export (tests)
+    bordereau_du_calepinage as _bordereau_du_calepinage,
 )
-from .validation_transformateur import (  # noqa: F401 — ré-export (ACAL642)
-    valider_transformateur as _valider_transformateur,
-)
-from .validation_batterie import (  # noqa: F401 — ré-export (ACAL633)
-    valider_batterie as _valider_batterie,
-)
-from .batterie_declaration import (  # noqa: F401 — ré-export (ACAL786)
-    CLES_BATTERIE, valider_secours)
-from .hors_reseau_declaration import (  # noqa: F401 — ré-export (ACAL790)
-    CLES_HORS_RESEAU, valider_hors_reseau)
-from .capacites_coffrets import (  # noqa: F401 — ré-export (ACAL618)
-    CLES_CAPACITE_COFFRET, capacites_des_coffrets,
-)
+from . import batterie_declaration as _batterie_declaration  # ACAL786
+from . import hors_reseau_declaration as _hors_reseau_declaration  # ACAL790
 from .regle_chaine_publiee import (  # noqa: F401 — extraite (ACAL645)
     _regle_chaine_publiee,
 )
@@ -80,8 +73,7 @@ __all__ = [
     'temperatures_site', 'temperatures_pour_calepinage',
     'CLE_ENTREE', 'CHAMPS_ENTREE', 'EntreeInvalide',
     'CLE_SIMULATION', 'BLOCS_SIMULATION', 'BLOCS_LISTE',
-    'CLE_CHAINE_FAIBLE', 'METHODE_CHAINE_FAIBLE', 'REFERENCE_CHAINE_FAIBLE',
-    'MOTIF_CHAINE_FAIBLE_ABSENTE',
+    'CLE_CHAINE_FAIBLE',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'entree_electrique_servie', 'CLES_ENTREE_SERVIE',  # ACAL56
     'PROVENANCE_EXPLICITE', 'PROVENANCE_DEVIS', 'ROLES_MATERIEL',  # ACAL56
@@ -818,10 +810,12 @@ def _valider_entree(calepinage, fusionnee, postee):
             raise EntreeInvalide(
                 "« %s » doit être un objet {...} (reçu : %s)."
                 % (cle, type(valeur).__name__), champ=cle)
-    _valider_transformateur(postee.get('transformateur'))
-    _valider_batterie(postee.get('batterie'))  # ACAL166
-    valider_secours(postee.get('batterie'))  # ACAL786
-    valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166, ACAL790
+    _validation_transformateur.valider_transformateur(
+        postee.get('transformateur'))
+    _validation_batterie.valider_batterie(postee.get('batterie'))  # ACAL166
+    _batterie_declaration.valider_secours(postee.get('batterie'))  # ACAL786
+    _hors_reseau_declaration.valider_hors_reseau(  # ACAL166, ACAL790
+        postee.get('hors_reseau'))
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
         raise EntreeInvalide(
@@ -1754,7 +1748,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # les câbles ci-dessus (``cables['noyau']``), des coffrets RÉELLEMENT
     # posés dans le plan et de la règle de structure SOURCÉE ; chaque ligne
     # porte sa référence d'article quand la société en a posé une.
-    bordereau = _bordereau_du_calepinage(
+    bordereau = _module_bordereau.bordereau_du_calepinage(
         calepinage, conception, cables.get('noyau'),
         equipements=_equipements_electriques(document),
         branches=((micro['bloc'] or {}).get('branches') or ()
@@ -2748,6 +2742,10 @@ def _rapport_publication(calepinage, *, layout=None):
     from .declassement_onduleur import motifs_du_declassement
 
     motifs.extend(motifs_du_declassement(calepinage, donnees, materiel))
+    # ACAL671 — onduleur de chaîne, micro-onduleurs ou optimiseurs (seuils société).
+    from .architecture_onduleur import motifs_de_l_architecture
+
+    motifs.extend(motifs_de_l_architecture(conception, document, donnees, reglages))
     # ACAL169 — le matériel NON DÉSIGNÉ est INDÉTERMINÉ (D-ACAL-9 : un
     # « indéterminé » ne bloque pas la génération) : publié, jamais bloquant.
     from core.electrique.types import STATUT_NON_VERIFIABLE

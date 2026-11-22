@@ -3499,6 +3499,12 @@ def generate_premium_pdf(data: dict, out_path) -> str:
         return _render_premium_pdf(data, out_path)
 
 
+def _economies_sans_ancrage(data: dict) -> bool:
+    # ACAL1033 (D-ACAL-45) — ``ECONOMIES_SANS_ANCRAGE``, lu par le seul format « une page ».
+    from .residential.renderer import ancrage_reel_absent as _ancrage_absent
+    return bool(data.get("regles_pose_reelle")) and _ancrage_absent(data)
+
+
 def apply_quote_data(data: dict) -> None:
     """Ingère ``data`` dans les globales du module (SANS rendre quoi que ce soit).
 
@@ -3791,11 +3797,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
-    global SAVINGS_ESTIMATED  # M10 — économies estimées ?
-    SAVINGS_ESTIMATED = bool(data.get("savings_estimated"))
-    global ECONOMIES_SANS_ANCRAGE  # ACAL1033 — lu par le seul format « une page »
-    from .residential.renderer import ancrage_reel_absent as _ancrage_absent
-    ECONOMIES_SANS_ANCRAGE = bool(data.get("regles_pose_reelle")) and _ancrage_absent(data)
+    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE  # M10 — économies estimées ? ACAL1033 — sans ancrage ?
+    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE = bool(data.get("savings_estimated")), _economies_sans_ancrage(data)
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

@@ -330,6 +330,12 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(sorted(reponse.data),
                          sorted(CONTRAT_ELECTRIQUE['exemple']))
         self.assertTrue(set(CONTRAT['exemple']) <= set(reponse.data))
+        # REP-935 — la clé ``electrique`` sert aussi ``etat`` et ``points``.
+        self.assertEqual(sorted(reponse.data['electrique']),
+                         sorted(CONTRAT_ELECTRIQUE['exemple']['electrique']))
+        self.assertEqual(
+            sorted(CONTRAT_ELECTRIQUE['exemple_avec_manquantes']['electrique']),
+            sorted(CONTRAT_ELECTRIQUE['exemple']['electrique']))
         self.assertIsInstance(reponse.data['avertissements'], list)
         self.assertIsInstance(reponse.data['marques_manquantes'], list)
         second = self._generer(self.original)

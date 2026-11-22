@@ -388,6 +388,27 @@ class PariteVolumesDevisCalepinageTest(TestCase):
         rep = self.api.post(url, {'mode_pompes': 0}, format='json')
         self.assertEqual(rep.status_code, 400, rep.content[:300])
 
+    def test_acal820_appoint_sur_le_bus_dc_du_variateur_retenu(self):
+        """ACAL820 — fiche à bus 400 V d'essai, 11 modules (Vmp à chaud ≈ 370 V)
+        ⇒ ``vmp_sous_bus`` ; sans bus publié ⇒ ``non_verifiable`` nommant
+        ``var_bus_dc_redresse_v`` ; sans appoint ⇒ absent. Mutant : verdict
+        ``conforme`` par défaut ⇒ rouge."""
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            resultat={'entree_electrique': {'module_produit': self.panneau.pk}})
+        corps = dict(self._complet(), modules_en_serie=11, appoint='reseau')
+        sans_bus = self._calepinage(corps)['appoint_variateur']
+        self.assertEqual(set(sans_bus), set(CONTRAT_CALEPINAGE['exemple']['appoint_variateur']))
+        self.assertEqual(sans_bus['verdict'], 'non_verifiable')
+        self.assertIn('var_bus_dc_redresse_v', sans_bus['motif'])
+        FicheTechnique.objects.filter(produit=self.variateur).update(
+            var_bus_dc_redresse_v=Decimal('400'))
+        bloc = self._calepinage(corps)['appoint_variateur']
+        self.assertEqual((bloc['verdict'], bloc['appoint']), ('vmp_sous_bus', 'reseau'))
+        self.assertLess(bloc['vmp_chaud_v'], 400)
+        self.assertEqual(bloc['bus_redresse_v'], 400.0)
+        self.assertIsNone(self._calepinage(dict(corps, appoint=''))['appoint_variateur'])
+        self.assertIsNone(self._calepinage(self._complet())['appoint_variateur'])
+
 
 class PariteHmtTest(TestCase):
     """La HMT du calepinage est celle de ``hmt_composantes`` (AGR111)."""

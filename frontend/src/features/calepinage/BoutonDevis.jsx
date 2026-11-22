@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
+import { libelleEtat } from './electrique/etatVerdict'
 import calepinageApi from '../../api/calepinageApi'
 import { toastWarning } from '../../lib/toast'
 import { reviserEtOuvrir } from '../ventes/reviserDevis'
@@ -43,12 +44,26 @@ import {
    (`refusDevis.js`) : une seule lecture des refus du pont devis. */
 export { MESSAGE_DEROGATION_RESERVEE, MESSAGE_MOTIF_OBLIGATOIRE } from './refusDevis'
 
-/* Le verdict INDÉTERMINÉ d'un succès : les manquantes, sans rien bloquer. */
+/* Le dossier « À compléter » d'un succès : les manquantes, sans rien bloquer.
+   ACAL935 — lit `electrique.etat` (ACAL934) ; un serveur qui ne le sert pas
+   encore garde la lecture `verdict: 'indetermine'`. */
 function manquantesElectriques(data) {
   const electrique = data?.electrique
-  if (!electrique || electrique.verdict !== 'indetermine') return []
+  const aCompleter = electrique?.etat
+    ? electrique.etat === 'a_completer'
+    : electrique?.verdict === 'indetermine'
+  if (!aCompleter) return []
   return (Array.isArray(electrique.manquantes) ? electrique.manquantes : [])
     .filter((m) => typeof m === 'string' && m.trim()).map((m) => m.trim())
+}
+
+/* ACAL935 — le titre du cadre : les mots de `etatVerdict.js`, seule source. */
+function titreEtatElectrique(data, manquantes) {
+  const electrique = data?.electrique
+  const lu = electrique?.etat
+    ? libelleEtat(electrique.etat, electrique.points)
+    : libelleEtat('a_completer', manquantes.length)
+  return lu?.libelle ?? null
 }
 
 /* ACAL95 — CE QUE LA GÉNÉRATION ET LA RESYNCHRO N'ONT PAS PU FAIRE se lit à
@@ -213,9 +228,11 @@ export default function BoutonDevis({
     setMotif('')
     // ACAL866 — AVEC ou SANS message : la carte « Devis … créé » (jamais de navigation immédiate),
     // les lignes techniques (ACAL95, ACAL171) repliées dessous ; la référence est celle du serveur.
+    const manquantes = manquantesElectriques(res.data)
     setRetour({
       messages: messagesDuServeur(res.data),
-      manquantes: manquantesElectriques(res.data),
+      manquantes,
+      etatTitre: titreEtatElectrique(res.data, manquantes),
       lignes: null,
       inchange: false,
       devisId: nouveau,
@@ -241,15 +258,16 @@ export default function BoutonDevis({
     const data = res?.data ?? {}
     const messages = messagesDuServeur(data)
     const manquantes = manquantesElectriques(data)
+    const etatTitre = titreEtatElectrique(data, manquantes)
     const lignes = libelleLignesAjoutees(data.lignes_ajoutees)
     // ACAL95 — « Aucun changement » se DIT ; rien n'a bougé, rien à recharger.
     if (data.inchange) {
-      setRetour({ messages, manquantes, lignes: null, inchange: true, devisId: null, suite: null })
+      setRetour({ messages, manquantes, etatTitre, lignes: null, inchange: true, devisId: null, suite: null })
       return
     }
     // Quelque chose à lire : le rechargement attend « J'ai lu ».
     if (messages.length > 0 || manquantes.length > 0 || lignes) {
-      setRetour({ messages, manquantes, lignes, inchange: false, devisId: null, suite: 'recharger' })
+      setRetour({ messages, manquantes, etatTitre, lignes, inchange: false, devisId: null, suite: 'recharger' })
       return
     }
     await relireEtRecharger()
@@ -461,7 +479,7 @@ export default function BoutonDevis({
             {retour.manquantes?.length > 0 && (
               <div data-testid="cal-devis-indetermine">
                 <p className="text-sm text-foreground" role="status">
-                  Verdict électrique indéterminé — à compléter :
+                  {retour.etatTitre}
                 </p>
                 <ul className="mt-1 space-y-1 text-sm text-primary-text">
                   {retour.manquantes.map((m) => <li key={m}>{m}</li>)}
@@ -487,7 +505,7 @@ export default function BoutonDevis({
           {retour.manquantes?.length > 0 && (
             <div data-testid="cal-devis-indetermine">
               <p className="text-sm text-foreground" role="status">
-                Verdict électrique indéterminé — à compléter :
+                {retour.etatTitre}
               </p>
               <ul className="mt-1 space-y-1 text-sm text-primary-text">
                 {retour.manquantes.map((m) => <li key={m}>{m}</li>)}

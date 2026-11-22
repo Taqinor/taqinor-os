@@ -359,3 +359,169 @@ class PointeEtReserveServiesTest(SimpleTestCase):
                     'heures_au_dessus_du_seuil',
                     'nombre_depassements_residuels', 'reserve_secours'):
             self.assertIsNone(resultat['total'][cle], cle)
+
+
+class VerdictDeLaBatterieTest(SimpleTestCase):
+    """ACAL794 — un mot de verdict seulement avec les deux seuils société."""
+
+    @staticmethod
+    def _seuil(valeur):
+        return {'valeur': valeur, 'source': 'societe',
+                'reference': "Valeur d'essai"}
+
+    def _bloc(self, nuits=None, jours=None, conso=None):
+        contexte = contexte_de_test(heures=48)
+        if conso is not None:
+            contexte['consommation']['import_intervalle']['valeurs'] = (
+                [conso] * 48)
+        reglages = {}
+        if nuits is not None:
+            reglages['batterie_seuil_nuits_pct'] = self._seuil(nuits)
+        if jours is not None:
+            reglages['batterie_seuil_jours_pleine_pct'] = self._seuil(jours)
+        contexte['reglages_simulation'] = reglages
+        return bloc.bloc_batterie(serie_de_test(heures=48), contexte)[1]
+
+    def test_sans_reglage_verdict_null_et_motif_nomme_les_deux_cles(self):
+        total = self._bloc()['total']
+        self.assertIsNone(total['verdict'])
+        for cle in ('batterie_seuil_nuits_pct',
+                    'batterie_seuil_jours_pleine_pct'):
+            self.assertIn(cle, total['motif_verdict'])
+
+    def test_un_seul_reglage_nomme_celui_qui_manque(self):
+        total = self._bloc(nuits=50.0)['total']
+        self.assertIsNone(total['verdict'])
+        self.assertIn('batterie_seuil_jours_pleine_pct',
+                      total['motif_verdict'])
+        self.assertNotIn('batterie_seuil_nuits_pct', total['motif_verdict'])
+
+    def test_les_trois_mots_suivent_les_faits_de_la_serie(self):
+        # Faits (série de 2 jours, conso 0,1) : 1 nuit au plancher sur 2
+        # jours = 50 %, 2 jours pleine sur 2 = 100 %.
+        cas = (
+            (40.0, 50.0, 'trop_petite'),   # 50 >= 40
+            (80.0, 100.0, 'trop_grande'),  # 50 < 80 ; 100 <= 100
+            (80.0, 50.0, 'adaptee'),       # 50 < 80 ; 100 > 50
+        )
+        for nuits, jours, mot in cas:
+            with self.subTest(mot=mot):
+                total = self._bloc(nuits, jours, conso=0.1)['total']
+                faits = total['faits_serie']
+                self.assertEqual(faits['nuits_au_plancher'], 1.0)
+                self.assertEqual(faits['jours_pleine'], 2.0)
+                self.assertEqual(total['verdict']['mot'], mot)
+                self.assertEqual(total['motif_verdict'], '')
+                self.assertEqual(
+                    total['verdict']['seuils_utilises'],
+                    {'batterie_seuil_nuits_pct': self._seuil(nuits),
+                     'batterie_seuil_jours_pleine_pct': self._seuil(jours)})
+
+
+class CoupuresRejoueesTest(SimpleTestCase):
+    """ACAL797 — le réseau coupé, rejoué sur chaque jour de la série.
+
+    Références calculées ICI à la main : 3 kWh/h pendant 4 h = 12 kWh ; une
+    banque de 10 kWh pleine, rendement 100 % ⇒ elle restitue 10 ; à 81 %
+    (racine 0,9 par sens) ⇒ 10 × 0,9 = 9.
+    """
+
+    COUPURES = {'nombre_par_an': 12, 'duree_h': 4, 'heure_debut': 0}
+
+    @staticmethod
+    def _flux(heures=48, conso=3.0, prod=0.0, etat=10.0):
+        return [{'conso': conso, 'prod': prod, 'etat': etat}
+                for _ in range(heures)]
+
+    @staticmethod
+    def _banque(rendement=100.0, decharge=10.0):
+        return {'capacite_utile_kwh': 10.0, 'puissance_charge_kw': 10.0,
+                'puissance_decharge_kw': decharge,
+                'rendement_ar_pct': rendement}
+
+    def _rejouer(self, flux, banque, strategie='backup', coupures=None):
+        from apps.calepinage.services.secours import rejouer_coupures
+
+        return rejouer_coupures(
+            flux, coupures=coupures or self.COUPURES, strategie=strategie,
+            parametres=banque, etat_initial=10.0, heure_de_depart=0,
+            pas_heures=1.0)
+
+    def test_batterie_pleine_charge_constante_sans_production(self):
+        bloc_, motif = self._rejouer(self._flux(), self._banque())
+        self.assertEqual(motif, '')
+        # Chaque jour : 12 kWh demandés − 10 kWh restitués = 2 kWh.
+        self.assertEqual(bloc_['jours_testes'], 2)
+        self.assertEqual(
+            bloc_['energie_non_fournie_par_coupure_moyenne_kwh'], 2.0)
+        self.assertEqual(bloc_['energie_non_fournie_par_coupure_pire_kwh'],
+                         2.0)
+        self.assertEqual(bloc_['energie_non_fournie_kwh'], 24.0)  # 12 × 2
+        self.assertIn('Attendu par an', bloc_['mention'])
+
+    def test_le_rendement_reduit_ce_que_la_batterie_restitue(self):
+        bloc_, _ = self._rejouer(self._flux(), self._banque(rendement=81.0))
+        self.assertEqual(
+            bloc_['energie_non_fournie_par_coupure_moyenne_kwh'], 3.0)
+
+    def test_la_puissance_de_decharge_borne_la_restitution(self):
+        # 1 kW par heure pendant 4 h = 4 kWh restitués ; 12 − 4 = 8.
+        bloc_, _ = self._rejouer(self._flux(), self._banque(decharge=1.0))
+        self.assertEqual(
+            bloc_['energie_non_fournie_par_coupure_moyenne_kwh'], 8.0)
+
+    def test_le_solaire_sert_d_abord_et_recharge_le_surplus(self):
+        # 1er jour : 4 kW de production pour 3 kW de charge ⇒ rien de non
+        # fourni, le surplus ne dépasse pas la capacité (banque pleine).
+        bloc_, _ = self._rejouer(self._flux(prod=4.0), self._banque())
+        self.assertEqual(bloc_['energie_non_fournie_kwh'], 0.0)
+
+    def test_etat_de_depart_lu_sur_le_dispatch(self):
+        flux = self._flux(etat=4.0)  # banque à 4 kWh à l'heure de début
+        bloc_, _ = self._rejouer(flux, self._banque(), coupures=dict(
+            self.COUPURES, heure_debut=1))  # jamais le tout premier pas
+        self.assertEqual(
+            bloc_['energie_non_fournie_par_coupure_moyenne_kwh'], 8.0)
+
+    def test_sans_coupures_hors_backup_ou_duree_trop_longue(self):
+        from apps.calepinage.services.secours import rejouer_coupures
+
+        for kwargs, attendu in (
+                (dict(coupures=None), 'Aucune coupure déclarée'),
+                (dict(strategie='autoconso'), 'backup'),
+                (dict(coupures=dict(self.COUPURES, duree_h=100)),
+                 'batterie.coupures.duree_h'),
+                (dict(pas_heures=0.5), 'non horaire')):
+            with self.subTest(attendu=attendu):
+                params = dict(
+                    coupures=self.COUPURES, strategie='backup',
+                    parametres=self._banque(), etat_initial=10.0,
+                    heure_de_depart=0, pas_heures=1.0)
+                params.update(kwargs)
+                bloc_, motif = rejouer_coupures(self._flux(), **params)
+                self.assertIsNone(bloc_)
+                self.assertIn(attendu, motif)
+
+    def test_le_bloc_publie_secours_coupures(self):
+        contexte = contexte_de_test(strategie='backup', heures=48,
+                                    reserve_backup_kwh=2.0,
+                                    coupures=dict(self.COUPURES,
+                                                  heure_debut=18))
+        _suite, resultat = bloc.bloc_batterie(serie_de_test(heures=48),
+                                              contexte)
+        secours = resultat['total']['secours']
+        self.assertEqual(secours['motif_coupures'], '')
+        publie = secours['coupures']
+        self.assertEqual(publie['nombre_par_an'], 12)
+        self.assertEqual(publie['jours_testes'], 2)
+        self.assertEqual(
+            publie['energie_non_fournie_kwh'],
+            round(12 * publie['energie_non_fournie_par_coupure_moyenne_kwh'],
+                  3))
+        # Sans coupures déclarées : null + motif.
+        _suite, sans = bloc.bloc_batterie(
+            serie_de_test(heures=48),
+            contexte_de_test(strategie='backup', heures=48,
+                             reserve_backup_kwh=2.0))
+        self.assertIsNone(sans['total']['secours']['coupures'])
+        self.assertTrue(sans['total']['secours']['motif_coupures'])

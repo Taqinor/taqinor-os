@@ -239,6 +239,97 @@ class DistributionTest(SimpleTestCase):
         self.assertEqual(exemple, etape['entree']['distribution'])
 
 
+class DeclassementThermiqueTest(SimpleTestCase):
+    """ACAL740 — la borne d'écrêtage suit la température d'air, heure par heure.
+
+    Référence écrite ICI : ``5 × (1 − 2/100 × max(0, t2m − 40))`` ; jamais lue
+    dans la sortie.
+    """
+
+    TEMPERATURES = (30.0, 40.0, 45.0, 50.0)
+
+    def _serie(self, temperatures=None):
+        temperatures = self.TEMPERATURES if temperatures is None else temperatures
+        points = []
+        for heure, t2m in enumerate(temperatures):
+            point = {'heure': heure, 'p_ac_kw': 6.0}
+            if t2m is not None:
+                point['t2m_c'] = t2m
+            points.append(point)
+        return {'pas_minutes': 60, 'colonne_energie': 'p_ac_kw',
+                'points': points}
+
+    def _contexte(self, debut=40.0, pente=2.0):
+        contexte = _contexte(ac_kw=5.0)
+        if debut is not None:
+            contexte['fiche_onduleur']['pnom_reduite_debut_c'] = debut
+        if pente is not None:
+            contexte['fiche_onduleur']['pnom_pente_pct_c'] = pente
+        return contexte
+
+    @staticmethod
+    def _borne_ecrite(t2m):
+        return 5.0 * (1.0 - 2.0 / 100.0 * max(0.0, t2m - 40.0))
+
+    def test_la_borne_et_l_energie_ecretee_suivent_la_temperature(self):
+        apres, etape = ecretage.appliquer(self._serie(), self._contexte())
+        attendues = [max(0.0, 6.0 - self._borne_ecrite(t))
+                     for t in self.TEMPERATURES]
+        for point, attendue in zip(apres['points'], attendues):
+            self.assertAlmostEqual(point[COLONNE_ECRETAGE], attendue)
+        self.assertAlmostEqual(sum(attendues), 5.5)
+        entree = etape['entree']
+        self.assertEqual(entree['declassement'], {
+            'applique': True, 't_debut_c': 40.0, 'pente_pct_par_c': 2.0,
+            'heures_declassees': 2, 'heures_sans_temperature': 0})
+        self.assertEqual(entree['heures_ecretees'], 4)
+        self.assertAlmostEqual(entree['ecretage_pct'], 5.5 / 24.0 * 100.0,
+                               places=3)
+        distribution = entree['distribution']
+        self.assertAlmostEqual(distribution['energie_ecretee_kwh'], 5.5)
+        self.assertAlmostEqual(distribution['part_ecretee_pct'],
+                               entree['ecretage_pct'], places=3)
+        # La borne NOMINALE publiée ne bouge pas.
+        self.assertEqual(entree['borne_kw'], 5.0)
+
+    def test_un_point_sans_temperature_n_est_pas_declasse_et_est_compte(self):
+        apres, etape = ecretage.appliquer(
+            self._serie((30.0, None, 50.0, None)), self._contexte())
+        self.assertEqual(
+            etape['entree']['declassement']['heures_sans_temperature'], 2)
+        self.assertEqual(etape['entree']['declassement']['heures_declassees'],
+                         1)
+        self.assertAlmostEqual(apres['points'][1][COLONNE_ECRETAGE], 1.0)
+
+    def test_la_borne_est_plancher_zero(self):
+        apres, _etape = ecretage.appliquer(
+            self._serie((140.0, 40.0, 40.0, 40.0)), self._contexte())
+        self.assertAlmostEqual(apres['points'][0][COLONNE_ECRETAGE], 6.0)
+
+    def test_fiche_sans_les_champs_publie_la_mention_et_ne_change_rien(self):
+        reference, _ = ecretage.appliquer(self._serie(),
+                                          _contexte(ac_kw=5.0))
+        for debut, pente in ((None, 2.0), (40.0, None), (None, None)):
+            apres, etape = ecretage.appliquer(
+                self._serie(), self._contexte(debut=debut, pente=pente))
+            self.assertEqual(etape['entree']['declassement'], {
+                'applique': False,
+                'mention': 'déclassement thermique non modélisé — '
+                           'fiche incomplète'})
+            self.assertEqual(apres['points'], reference['points'])
+
+    def test_contrat_porte_le_declassement(self):
+        import json
+        import pathlib
+
+        chemin = (pathlib.Path(__file__).resolve().parent.parent
+                  / 'contract_samples' / 'calepinage_pertes_cascade.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))[
+            'exemple_entrees_onduleur']['ecretage']['declassement']
+        _apres, etape = ecretage.appliquer(self._serie(), self._contexte())
+        self.assertEqual(exemple, etape['entree']['declassement'])
+
+
 class FicheSansPuissanceAcTest(SimpleTestCase):
     """Pas de plafond publié ⇒ étape OMISE, série intacte, motif EXISTANT."""
 
@@ -384,7 +475,7 @@ class BalayageRatioDcAcTest(SimpleTestCase):
 
         pivot = _Calepinage(layout={'version': 2, 'pin': {
             'lat': 33.5731, 'lng': -7.5898}, 'zones': LAYOUT['zones']})
-        client = _client_en_cache_classe()(1000.0)
+        client = self.client = _client_en_cache_classe()(1000.0)
 
         def simuler(cal, *, variante, client, materiel=None):
             if mutant:  # puissance AC figée : le ratio ne change plus rien
@@ -411,7 +502,12 @@ class BalayageRatioDcAcTest(SimpleTestCase):
                             for ligne in grille))
         # deux défauts de cache pour trois ratios : la série du plan et la
         # série horizontale d'ACAL706 ; le balayage n'en ajoute AUCUN.
-        self.assertEqual(sortie['appels_pvgis'], 2)
+        # ACAL744 ajoute UN appel voulu (la base météo comparée) : on compte
+        # les appels de la CHAÎNE, comparaison exclue.
+        from apps.calepinage.services.pvgis_serie import BASE_PAR_DEFAUT
+        chaine = [u for u in self.client.urls_appelees if BASE_PAR_DEFAUT in u]
+        self.assertEqual(len(chaine), 2)
+        self.assertEqual(sortie['appels_pvgis'], len(self.client.urls_appelees))
 
     def test_mutant_puissance_ac_figee_est_detecte(self):
         sortie = self._balayer(_materiel(ac_kw=5.0), mutant=True)

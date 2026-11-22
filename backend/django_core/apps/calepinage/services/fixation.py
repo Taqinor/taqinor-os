@@ -10,7 +10,7 @@ nomenclature sans aucune ligne de fixation.
 
 CE QUE CE MODULE FAIT, ET RIEN D'AUTRE
 --------------------------------------
-Il LIT le document de conception et en tire six GRANDEURS (``BASES`` de
+Il LIT le document de conception et en tire les GRANDEURS (``BASES`` de
 ``services/catalogue_fixation.py``) — modules posés, rangées, pans,
 jonctions entre modules voisins, extrémités de rangées, longueur des rangées
 — puis applique à chaque composant du système choisi la règle de quantité
@@ -181,6 +181,147 @@ def _motif_sans_pas(noms):
             "entre modules n'y est pas lisible.")
 
 
+# ── ACAL578 — tables et poteaux des surfaces de pose, pieds à la portée saisie ─
+
+def _grandeur_tables(geometrie):
+    """Les tables du moteur (``engine.tables``) des champs au sol et ombrières."""
+    return sum(len(surface['tables']) for surface in geometrie.get('surfaces_de_pose') or ()
+               if surface['kind'] in ('sol', 'ombriere'))
+
+
+def _positions_appuis(contour, pas):
+    """Portage de ``poseSurfaces.ts::positionsAppuis`` (MÊME marche du contour
+    fermé, un appui tous les ``pas`` mètres), sans le plafond de dessin :
+    ``[(x, y)]`` — la nomenclature les compte, le plan de pose (ACAL580) les repère."""
+    positions, reste = [], 0.0
+    for rang, (ax, ay) in enumerate(contour):
+        bx, by = contour[(rang + 1) % len(contour)]
+        longueur, distance = math.hypot(bx - ax, by - ay), reste
+        if not longueur > 0:
+            continue
+        while distance < longueur:
+            positions.append((ax + (bx - ax) * distance / longueur, ay + (by - ay) * distance / longueur))
+            distance += pas
+        reste = math.fmod(math.fmod(reste - longueur, pas) + pas, pas)
+    return positions
+
+
+def _grandeur_poteaux(roof_layout):
+    """``(poteaux, motif)`` des ombrières : entraxe ET section saisis, sinon
+    ``None`` et la grandeur NOMMÉE (comme l'atelier, qui ne dessine alors rien)."""
+    from .planche import _points_metres
+
+    total, motifs = 0, []
+    brutes = (roof_layout or {}).get('poseSurfaces')
+    for rang, surface in enumerate(brutes if isinstance(brutes, list) else [], start=1):
+        if not isinstance(surface, dict) or surface.get('kind') != 'ombriere':
+            continue
+        nom = surface.get('label') or surface.get('id') or f'Ombrière {rang}'
+        appuis = surface.get('appuis') if isinstance(surface.get('appuis'), dict) else {}
+        pas, section = _nombre(appuis.get('pasM')), _nombre(appuis.get('sectionM'))
+        contour = _points_metres(surface.get('contourM'))
+        if pas is None or pas <= 0:
+            motifs.append(f'entraxe des appuis non renseigné sur « {nom} »')
+        elif section is None or section <= 0:
+            motifs.append(f'section des appuis non renseignée sur « {nom} »')
+        elif len(contour) <= 2:
+            motifs.append(f'contour non enregistré sur « {nom} »')
+        else:
+            total += len(_positions_appuis(contour, pas))
+    if motifs:
+        return None, _majuscule(' ; '.join(motifs)) + " : aucun poteau n'est compté."
+    return total, None
+
+
+def _portee(zone):
+    """La portée entre pieds SAISIE et sourcée (ACAL587), ou ``None``."""
+    brut = zone.get('porteeEntrePieds')
+    if not isinstance(brut, dict) or not str(brut.get('source') or '').strip():
+        return None
+    valeur = _nombre(brut.get('valeurM'))
+    return valeur if valeur is not None and valeur > 0 else None
+
+
+def _grandeur_pieds(roof_layout, pans):
+    """``(pieds, motif)`` — par segment de rangée ⌈m ÷ k⌉ + 1, k = max(1,
+    ⌊portée ÷ pas⌋) (règle d'ACAL587) ; ``(None, None)`` sans aucune portée."""
+    from .planche import _zones
+
+    portees = {str(zone.get('id') or f'PAN-{rang}'): _portee(zone)
+               for rang, zone in enumerate(_zones(roof_layout), start=1)}
+    if not any(portees.get(pan['repere']) for pan in pans):
+        return None, None
+    total, sans = 0, []
+    for pan in pans:
+        portee = portees.get(pan['repere'])
+        if portee is None:
+            sans.append(str(pan.get('libelle') or pan.get('repere')))
+            continue
+        lignes = _rangees_orientees(pan['modules'], pan.get('azimut_deg'))
+        pas = _pas_du_pan(lignes)
+        k = max(1, math.floor(portee / pas)) if pas else 1
+        total += sum(math.ceil(len(segment) / k) + 1
+                     for positions in lignes for segment in _segments(positions, pas))
+    if sans:
+        return None, ('Portée entre pieds non saisie sur le(s) pan(s) « ' + '», «'.join(sans)
+                      + ' » (porteeEntrePieds) : les pieds ne sont pas comptés.')
+    return total, None
+
+
+def _egouts_du_document(roof_layout, pans):
+    """ACAL598 — ``(valeurs, motifs)`` de ``longueur_egouts_m`` et
+    ``facade_egouts_m2`` : arêtes typées ``egout`` (CAL57) des pans à poser, par
+    pan × la hauteur SAISIE et sourcée de son bâtiment (CALX84). Aucun égout
+    typé dans le document : les deux valent ``None`` sans motif (rien n'a changé)."""
+    from .planche import _zones
+
+    zones = {str(zone.get('id') or f'PAN-{rang}'): zone for rang, zone in enumerate(_zones(roof_layout), start=1)}
+    brutes = (roof_layout or {}).get('buildings')
+    batiments = {str(b.get('id')): b for b in (brutes if isinstance(brutes, list) else []) if isinstance(b, dict)}
+    aretes = {repere: [a for a in zone.get('edges') or () if isinstance(a, dict)] for repere, zone in zones.items()}
+    if not any(a.get('type') == 'egout' for pan in pans for a in aretes.get(pan['repere'], ())):
+        return {'longueur_egouts_m': None, 'facade_egouts_m2': None}, {}
+    longueur, facade, sans_arete, sans_hauteur = 0.0, 0.0, [], []
+    for pan in pans:
+        zone, nom = zones.get(pan['repere']) or {}, pan.get('libelle') or pan['repere']
+        points, egouts = pan['points'], [a for a in aretes.get(pan['repere'], ()) if a.get('type') == 'egout']
+        rangs = [a.get('index') for a in egouts]
+        if (not egouts and any(a.get('type') in (None, 'inconnue') for a in aretes.get(pan['repere'], ()) or [{}])) \
+                or len(points) != len(zone.get('vertices') or ()) \
+                or any(not isinstance(i, int) or not 0 <= i < len(points) for i in rangs):
+            sans_arete.append(f"arêtes d'égout non typées ou sommet illisible sur le pan « {nom} »")
+            continue
+        metres = sum(math.dist(points[i], points[(i + 1) % len(points)]) for i in rangs)
+        batiment = batiments.get(str(zone.get('buildingId'))) or {}
+        hauteur = _nombre(batiment.get('hauteurM'))
+        longueur += metres
+        if hauteur is None or hauteur <= 0 or not str(batiment.get('source') or '').strip():
+            if metres:
+                sans_hauteur.append('hauteur du bâtiment « %s » non saisie' % (
+                    batiment.get('label') or zone.get('buildingId') or nom))
+        else:
+            facade += metres * hauteur
+    if sans_arete:
+        motif = _majuscule(' ; '.join(sans_arete)) + " : l'échafaudage n'est pas calculé."
+        return {'longueur_egouts_m': None, 'facade_egouts_m2': None}, dict.fromkeys(
+            ('longueur_egouts_m', 'facade_egouts_m2'), motif)
+    motifs = ({'facade_egouts_m2': _majuscule(' ; '.join(dict.fromkeys(sans_hauteur)))
+               + " : la façade n'est pas calculée."} if sans_hauteur else {})
+    return {'longueur_egouts_m': round(longueur, 2),
+            'facade_egouts_m2': None if sans_hauteur else round(facade, 2)}, motifs
+
+
+def _grandeurs_ajoutees(roof_layout, geometrie, pans):
+    """ACAL578 — ``(valeurs, manquants)`` des bases ``tables``, ``poteaux``, ``pieds``
+    (+ ACAL598 : ``longueur_egouts_m``, ``facade_egouts_m2``)."""
+    poteaux, motif_poteaux = _grandeur_poteaux(roof_layout)
+    pieds, motif_pieds = _grandeur_pieds(roof_layout, pans)
+    egouts, motifs_egouts = _egouts_du_document(roof_layout, pans)
+    motifs = {'poteaux': motif_poteaux, 'pieds': motif_pieds, **motifs_egouts}
+    return ({'tables': _grandeur_tables(geometrie), 'poteaux': poteaux, 'pieds': pieds, **egouts},
+            {base: motif for base, motif in motifs.items() if motif})
+
+
 def _grandeurs_du_document(roof_layout):
     """``{'valeurs': {base: nombre|None}, 'manquants': {base: motif}}``.
 
@@ -222,11 +363,18 @@ def _grandeurs_du_document(roof_layout):
         if sans_pas:
             pans_sans_pas.append(pan.get('libelle') or pan.get('repere'))
 
+    ajout, motifs_ajout = _grandeurs_ajoutees(roof_layout, geometrie, _pans_a_commander(geometrie))
     if not modules:
         motif = ("Aucun module n'est posé sur la conception : aucune "
                  "quantité de fixation n'est calculée.")
-        return {'valeurs': {base: None for base in BASES},
-                'manquants': {base: motif for base in BASES}}
+        sortie = {'valeurs': {base: None for base in BASES},
+                  'manquants': {base: motif for base in BASES}}
+        if geometrie.get('surfaces_de_pose'):  # ACAL578 — un champ au sol seul garde ses tables
+            for base in ('tables', 'poteaux'):
+                sortie['valeurs'][base] = ajout[base]
+                sortie['manquants'].pop(base)
+                sortie['manquants'].update({base: motifs_ajout[base]} if base in motifs_ajout else {})
+        return sortie
 
     valeurs = {'modules': modules, 'rangees': rangees, 'pans': pans,
                'jonctions': jonctions, 'extremites': extremites,
@@ -238,6 +386,8 @@ def _grandeurs_du_document(roof_layout):
     valeurs.update({base: None if sans_orientation else nombre
                     for base, nombre in orientation.items()})
     manquants.update(_motifs_orientation(sans_orientation, mixtes))
+    valeurs.update(ajout)
+    manquants.update(motifs_ajout)
     return {'valeurs': valeurs, 'manquants': manquants}
 
 

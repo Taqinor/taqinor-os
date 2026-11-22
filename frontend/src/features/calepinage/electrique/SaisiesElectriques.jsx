@@ -5,7 +5,9 @@ import calepinageApi from '../../../api/calepinageApi'
 import { Button, Card, Input, Label, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { refusParChamp } from './entreeElectrique'
-import { CHAMPS, EXIGENCE, GRANDEURS, corpsDeSaisie, depuisEntree } from './SaisiesElectriques.helpers'
+import {
+  CHAMPS, EXIGENCE, GRANDEURS, corpsDeSaisie, depuisEntree, nombreFr, propositionTemperatures,
+} from './SaisiesElectriques.helpers'
 
 /* ============================================================================
    ACAL153 — L'ONGLET « SAISIES ÉLECTRIQUES » DE L'ATELIER.
@@ -64,6 +66,8 @@ export default function SaisiesElectriques({ calepinageId, lectureSeule = false 
   const [erreurLecture, setErreurLecture] = useState(null)
   const [erreurs, setErreurs] = useState({})
   const [enregistrement, setEnregistrement] = useState(false)
+  // ACAL974 — la proposition du serveur (`temperatures` de evaluer-electrique), facultative.
+  const [temperatures, setTemperatures] = useState(null)
 
   const lire = useCallback(() => calepinageApi.calepinages.entreeElectrique(id)
     .then((res) => {
@@ -75,6 +79,18 @@ export default function SaisiesElectriques({ calepinageId, lectureSeule = false 
     .catch(() => setErreurLecture('Saisies électriques indisponibles.')), [id])
 
   useEffect(() => { lire() }, [lire])
+
+  // ACAL974 — rien à proposer quand une saisie est enregistrée ; une erreur n'affiche rien.
+  const sansTemperatures = entree && entree.temperature_min_c == null && entree.temperature_max_c == null
+  useEffect(() => {
+    if (!sansTemperatures) return undefined
+    let monte = true
+    Promise.resolve()
+      .then(() => calepinageApi.calepinages.evaluerElectrique(id, {}))
+      .then((res) => { if (monte) setTemperatures(res?.data?.temperatures ?? null) })
+      .catch(() => {})
+    return () => { monte = false }
+  }, [id, sansTemperatures])
 
   const poser = (cle, valeur) => setSaisie((s) => ({ ...s, [cle]: valeur }))
   const poserSous = (bloc, cle, valeur) => setSaisie((s) => ({ ...s, [bloc]: { ...s[bloc], [cle]: valeur } }))
@@ -115,6 +131,7 @@ export default function SaisiesElectriques({ calepinageId, lectureSeule = false 
     )
   }
   const groupes = [...new Set(CHAMPS.map((c) => c.groupe))]
+  const proposition = propositionTemperatures(temperatures, entree)
 
   // Un refus s'affiche SOUS son champ ; celui qu'aucun champ ne porte reste en bandeau.
   const connues = new Set([
@@ -154,6 +171,34 @@ export default function SaisiesElectriques({ calepinageId, lectureSeule = false 
           {groupes.map((groupe) => (
             <fieldset key={groupe} className="flex flex-col gap-3">
               <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{groupe}</legend>
+              {groupe === 'Site' && proposition
+                ? (
+                  <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="acal974-proposition">
+                    {proposition.etat === 'proposee'
+                      ? (
+                        <>
+                          <p>
+                            {`Proposée — à confirmer : ${nombreFr(proposition.froid)} °C / ${nombreFr(proposition.chaud)} °C, `
+                              + `tirée de PVGIS. ${proposition.detail}`}
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            data-testid="acal974-utiliser"
+                            onClick={() => setSaisie((s) => ({
+                              ...s,
+                              temperature_min_c: String(proposition.froid),
+                              temperature_max_c: String(proposition.chaud),
+                            }))}
+                          >
+                            Utiliser ces températures
+                          </Button>
+                        </>
+                      )
+                      : <p>Température du site non établie : saisissez-la.</p>}
+                  </div>
+                ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 {CHAMPS.filter((c) => c.groupe === groupe).map((c) => (
                   <Champ

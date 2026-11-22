@@ -489,6 +489,7 @@ def _consigner_et_servir(calepinage, garde, *, user=None):
         }
     return {'verdict': garde['verdict'],
             'manquantes': list(garde.get('manquantes') or ()),
+            'etat': garde['etat'], 'points': garde['points'],
             'derogation': derogation}
 
 

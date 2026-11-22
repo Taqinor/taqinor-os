@@ -25,12 +25,15 @@ from core.ai.fournisseurs_claude import ClaudeVisionToitProvider
 from core.ai.registry import register_provider
 from core.ai.usage import register_usage_sink, unregister_usage_sink
 
+from ._m0_en_attente import affirmer_non_servies, sans
 from .test_api_liste import BaseApiCalepinage, url_detail
 
 REPONSE = json.loads((pathlib.Path(__file__).parent / 'fixtures' / 'detection_toit_reponse.json')
                      .read_text(encoding='utf-8'))
 CONTRAT = json.loads((pathlib.Path(__file__).resolve().parent.parent / 'contract_samples'
                       / 'calepinage_detection_toit.json').read_text(encoding='utf-8'))
+# ACAL530 : clé posée avant son producteur (ACAL1049), retirée par lui.
+EN_ATTENTE = {'propositions.obstacles': 'ACAL1049'}
 EMPRISE = {'ouest': -7.6001, 'sud': 33.5699, 'est': -7.5997, 'nord': 33.5703}
 ENVOIS = []
 
@@ -96,7 +99,9 @@ class DetectionToitTest(BaseApiCalepinage):
         self.assertEqual(sorted(reponse.data), sorted(CONTRAT['exemple']))
         self.assertEqual((reponse.data['provenance'], reponse.data['a_confirmer']), ('ia', True))
         propositions = reponse.data['propositions']
-        self.assertEqual(sorted(propositions), sorted(CONTRAT['exemple']['propositions']))
+        attendu = sans(CONTRAT['exemple'], EN_ATTENTE)['propositions']
+        self.assertEqual(sorted(propositions), sorted(attendu))
+        affirmer_non_servies(self, reponse.data, EN_ATTENTE)
         premier = propositions['pans'][0]
         self.assertEqual(sorted(premier), sorted(CONTRAT['exemple']['propositions']['pans'][0]))
         # Fraction (0.1, 0.2) : 0.1 de l'ouest vers l'est, 0.2 du nord vers le sud.

@@ -47,6 +47,7 @@ from core.electrique.types import (
     COTE_AC, NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE,
     STATUT_BLOQUANT, STATUT_NON_VERIFIABLE, STATUT_OK, VerdictElectrique, fr,
 )
+from . import limites_livraison as _limites
 from .valeurs import nombre as _nombre
 
 import logging
@@ -977,7 +978,7 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
 CHAMPS_SAISIE = ('puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
                  'source_cos_phi', 'plafond_injection_kw',
-                 'plafond_injection_justification')
+                 'plafond_injection_justification', 'plafond_injection_a')
 
 #: ACAL155 — LA clé de ``Calepinage.resultat`` qui porte la saisie de
 #: raccordement. Unique : ni ``roof_layout['raccordement']`` (jamais écrit)
@@ -1003,6 +1004,7 @@ INTITULES_SAISIE = {
     'cos_phi_impose': 'le cos φ imposé',
     'phases': 'le nombre de phases du branchement',
     'plafond_injection_kw': "le plafond d'injection (kW)",
+    'plafond_injection_a': "le plafond d'injection (A)",
 }
 
 #: Le statut PUBLIÉ pour un contrôle qui n'a pas eu lieu. Le noyau le nomme
@@ -1070,13 +1072,13 @@ def _nombre_saisi(valeur, champ):
     return nombre
 
 
-def _plafond_saisi(valeur):
-    """Le plafond d'injection : un nombre ≥ 0, ``None``, ou un refus nommé.
+def _plafond_saisi(valeur, champ='plafond_injection_kw'):
+    """Le plafond d'injection (kW, ou A : ACAL827) : un nombre ≥ 0, ``None``,
+    ou un refus nommé.
 
     Zéro est ADMIS : une injection interdite (« zéro injection ») est un
     plafond réel, pas une absence de saisie.
     """
-    champ = 'plafond_injection_kw'
     if valeur is None or valeur == '':
         return None
     nombre = _nombre(valeur)
@@ -1125,6 +1127,8 @@ def _saisie_publiee(brute):
                                        'source_cos_phi'),
         'plafond_injection_kw': _plafond_saisi(
             brute.get('plafond_injection_kw')),
+        'plafond_injection_a': _plafond_saisi(
+            brute.get('plafond_injection_a'), 'plafond_injection_a'),
         'plafond_injection_justification': _texte_saisi(
             brute.get('plafond_injection_justification'),
             'plafond_injection_justification'),
@@ -1133,6 +1137,12 @@ def _saisie_publiee(brute):
                   'limite_elevation_pct', 'cos_phi_impose'):
         saisie[champ] = _nombre_saisi(brute.get(champ), champ)
     if (saisie['plafond_injection_kw'] is not None
+            and saisie['plafond_injection_a'] is not None):
+        raise _refus_saisie('plafond_injection_a',
+                            "Un plafond d'injection se donne en kW ou en A, "
+                            "pas les deux : videz l'un des deux champs.")
+    if ((saisie['plafond_injection_kw'] is not None
+         or saisie['plafond_injection_a'] is not None)
             and not saisie['plafond_injection_justification']):
         raise _refus_saisie('plafond_injection_justification',
                             REFUS_PLAFOND_SANS_JUSTIFICATION, etat=True)
@@ -1378,6 +1388,7 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
                                          reglages=reglages)
     verdicts = ((elevation['verdict'],) + tuple(branchement['verdicts'])
                 + (equilibrage['verdict'],))
+    kw_converti, conversion = _limites.convertir_plafond_a(saisie)
     return {
         'saisie': saisie,
         'calcul': {
@@ -1385,6 +1396,9 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
             'ecart_limite_pct': elevation['ecart_limite_pct'],
             'puissance_injectee_kva': branchement['puissance_injectee_kva'],
             'desequilibre_pct': equilibrage['desequilibre_pct'],
+            # ACAL827 — le plafond saisi en A, converti (formule ou motif).
+            'plafond_injection_kw_converti': kw_converti,
+            'plafond_injection_conversion': conversion,
         },
         'verdicts': [_verdict_publie(verdict) for verdict in verdicts],
         'proposition_lead': (dict(proposition_lead)

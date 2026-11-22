@@ -96,6 +96,36 @@ def _valeurs_de_l_axe(axe, indice):
     return nom, [round(mini + i * pas, 6) for i in range(nombre)]
 
 
+def _mois_du_critere(corps):
+    """ACAL812 — le mois SAISI du critère ``{nom: 'mois', mois}`` (jamais
+    deviné), ou ``None`` sans critère ; refus de FORME (400) nommé sinon."""
+    critere = corps.get('critere')
+    if critere is None:
+        return None
+    mois = critere.get('mois') if isinstance(critere, dict) else None
+    if not isinstance(critere, dict) or critere.get('nom') != 'mois':
+        raise BalayageInvalide("Le critère est {nom: 'mois', mois: 1 à 12}.",
+                               champ='critere', forme=True)
+    if isinstance(mois, bool) or not isinstance(mois, int) or not 1 <= mois <= 12:
+        raise BalayageInvalide('Le mois est un entier de 1 à 12.',
+                               champ='critere.mois', forme=True)
+    return mois
+
+
+def _energie_du_mois(production, mois):
+    """``p50_mois_kwh`` (``production.mensuel[mois-1]``) et
+    ``rendement_mois_kwh_kwc`` (÷ ``production.total.kwc``), ``None`` si l'un
+    manque — de la MÊME simulation, aucun appel de plus."""
+    mensuel = production.get('mensuel') or []
+    ligne = mensuel[mois - 1] if len(mensuel) >= mois else None
+    p50 = ligne.get('p50_kwh') if isinstance(ligne, dict) else None
+    kwc = (production.get('total') or {}).get('kwc')
+    valide = (isinstance(p50, (int, float)) and isinstance(kwc, (int, float))
+              and kwc > 0)
+    return {'p50_mois_kwh': p50,
+            'rendement_mois_kwh_kwc': round(p50 / kwc, 3) if valide else None}
+
+
 def _cible(layout, pan, *, par_cle=False):
     """``(rangée de pans_du_document, objet du document porteur)``."""
     from apps.ventes.services import pans_du_document
@@ -159,6 +189,7 @@ def valider_demande(layout, corps):
     # (409) : un corps mal formé est nommé comme tel, quel que soit le toit.
     for indice, axe in enumerate(axes):
         _forme_de_l_axe(axe, indice)
+    _mois_du_critere(corps)
     if not isinstance(layout, dict):
         raise BalayageInvalide("Le calepinage n'a pas de conception.",
                                champ='pan')
@@ -262,6 +293,7 @@ def balayer(calepinage, corps, *, client=None, simuler=None,
 
     layout = getattr(calepinage, 'roof_layout', None)
     pan, axes = valider_demande(layout, corps)
+    mois = _mois_du_critere(corps)
     client = client if client is not None else ClientPvgis()
     if simuler is None:
         from .simulation import simuler_calepinage
@@ -290,6 +322,8 @@ def balayer(calepinage, corps, *, client=None, simuler=None,
         ligne = dict(point, p50_kwh=total.get('p50_kwh'),
                      rendement_specifique_kwh_kwc=total.get(
                          'specific_yield_kwh_kwc'))
+        if mois is not None:
+            ligne.update(_energie_du_mois(sortie['blocs']['production'], mois))
         if avec_ratio:
             ligne.update(_ligne_ratio(point['ratio_dc_ac'], kwc, nombre,
                                       sortie['blocs'].get('cascade')))
@@ -306,6 +340,62 @@ def balayer(calepinage, corps, *, client=None, simuler=None,
     optimum = (max(classables,
                    key=lambda ligne: ligne['rendement_specifique_kwh_kwc'])
                if classables else None)
-    return {'grille': grille, 'optimum': optimum,
-            'appels_pvgis': _appels_irradiance(client),
-            'complete': complete, 'socle_manquant': socle, 'etat': 'done'}
+    resultat = {'grille': grille, 'optimum': optimum,
+                'appels_pvgis': _appels_irradiance(client),
+                'complete': complete, 'socle_manquant': socle,
+                'etat': 'done'}
+    if mois is not None:
+        resultat.update(_optimum_du_mois(grille, optimum))
+    return resultat
+
+
+def valider_objectif(calepinage, corps):
+    """ACAL835 — ``(cible_pct, charge, production, n0)`` de
+    ``{objectif: {critere: 'couverture', cible_pct}}`` : FORME refusée en 400
+    (nommée), simulation stockée inutilisable en 409 (``cible_couverture``)."""
+    from .. import selectors
+    from . import cible_couverture as _cible_couverture
+
+    objectif = corps.get('objectif') if isinstance(corps, dict) else None
+    if not isinstance(objectif, dict) or objectif.get('critere') != 'couverture':
+        raise BalayageInvalide("L'objectif est {critere: 'couverture', "
+                               'cible_pct}.', champ='objectif.critere', forme=True)
+    cible = _nombre(objectif.get('cible_pct'), 'objectif.cible_pct')
+    if not 0 < cible <= 100:
+        raise BalayageInvalide('La cible est un pourcentage de ]0 ; 100].',
+                               champ='objectif.cible_pct', forme=True)
+    servi = selectors.resultat_servi(calepinage)
+    serie = (getattr(calepinage, 'resultat', None) or {}).get('serie_horaire')
+    n0 = selectors.mesures_du_calepinage(calepinage).get('modules')
+    charge, production = _cible_couverture.lire_socle(servi, serie, n0)
+    return cible, charge, production, n0
+
+
+def balayer_objectif(calepinage, corps, *, progression=None):
+    """ACAL835 — le résultat de l'objectif de couverture (aucune écriture)."""
+    from . import cible_couverture as _cible_couverture
+
+    cible, charge, production, n0 = valider_objectif(calepinage, corps)
+    trouve = _cible_couverture.plus_petit_nombre_pour_couverture(
+        charge, production, n0, cible)
+    if progression is not None:
+        progression(95)
+    return dict(trouve, objectif=corps['objectif'],
+                hypothese=_cible_couverture.MENTION_HYPOTHESE,
+                complete=True, socle_manquant=[], etat='done')
+
+
+def _optimum_du_mois(grille, optimum):
+    """``optimum_mois`` (rendement du mois maximal) et ``ecart_mois_kwh``
+    (énergie du mois à l'optimum du mois moins à l'optimum de l'année)."""
+    classables = [ligne for ligne in grille
+                  if isinstance(ligne['rendement_mois_kwh_kwc'], (int, float))]
+    meilleur = (max(classables,
+                    key=lambda ligne: ligne['rendement_mois_kwh_kwc'])
+                if classables else None)
+    de_l_annee = (optimum or {}).get('p50_mois_kwh')
+    ecart = (meilleur['p50_mois_kwh'] - de_l_annee
+             if meilleur is not None and isinstance(de_l_annee, (int, float))
+             else None)
+    return {'optimum_mois': meilleur,
+            'ecart_mois_kwh': None if ecart is None else round(ecart, 3)}

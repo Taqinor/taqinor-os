@@ -926,6 +926,17 @@
           "nuits_au_plancher": 301.0,
           "part_surplus_injecte": 0.6514,
           "taux_autoconsommation_sans_batterie": 0.4354
+        },
+        "verdict": null,
+        "motif_verdict": "Verdict non rendu : réglage société non saisi (batterie_seuil_nuits_pct, batterie_seuil_jours_pleine_pct).",
+        "secours": {
+          "coupures": null,
+          "motif_coupures": "Aucune coupure déclarée : saisissez « batterie.coupures » (nombre par an, durée, heure de début)."
+,
+          "appareils": null,
+          "energie_disponible_kwh": null,
+          "heures_tenues_ensemble": null,
+          "motif_appareils": "Aucun appareil secouru déclaré (stratégie « backup » avec « batterie.appareils ») : aucune durée tenue."
         }
       },
       "avertissements": [],
@@ -1056,6 +1067,29 @@
         }
       ],
       "mentions": [],
+      "groupe": {
+        "puissance_kw": 5.0,
+        "soc_demarrage_pct": 20,
+        "soc_arret_pct": 80,
+        "heures_max_par_jour": 6,
+        "heures_de_marche": 90.0,
+        "energie_fournie_kwh": 343.014,
+        "par_mois": [
+          {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
+        ],
+        "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
+      },
+      "banque_mois_charge": {
+        "mois": 12,
+        "consommation_journaliere_kwh": 31.5,
+        "capacite_utile_kwh": 70.0,
+        "capacite_nominale_kwh": 77.778,
+        "jours_autonomie": 2.0,
+        "defaillance_kwh": 90.0,
+        "taux_defaillance": 0.0094,
+        "mention": "Banque dimensionnée sur le mois de plus forte consommation journalière (12, 31.5 kWh/jour), mêmes jours d’autonomie, fiche, seuils et groupe ; la banque moyenne ci-dessus reste publiée telle quelle. Ce n'est pas le « mois le plus défavorable » de la simulation (celui-ci est un résultat)."
+      },
+      "motif_banque_mois_charge": "",
       "motif_absence": "",
       "soc_minimal_pct": 18.4,
       "banque": {
@@ -1424,6 +1458,9 @@
       "mois_le_plus_defavorable": null,
       "par_mois": [],
       "mentions": [],
+      "groupe": null,
+      "banque_mois_charge": null,
+      "motif_banque_mois_charge": "",
       "motif_absence": "Aucune simulation lancée : aucun croisement horaire n'a eu lieu.",
       "soc_minimal_pct": null,
       "banque": null,
@@ -2341,6 +2378,43 @@
           "nuits_au_plancher": 301.0,
           "part_surplus_injecte": 0.6514,
           "taux_autoconsommation_sans_batterie": 0.4354
+        },
+        "verdict": {
+          "mot": "adaptee",
+          "seuils_utilises": {
+            "batterie_seuil_nuits_pct": {
+              "valeur": 90.0,
+              "source": "societe",
+              "reference": "Valeur d'exemple"
+            },
+            "batterie_seuil_jours_pleine_pct": {
+              "valeur": 40.0,
+              "source": "societe",
+              "reference": "Valeur d'exemple"
+            }
+          }
+        },
+        "motif_verdict": "",
+        "secours": {
+          "coupures": {
+            "nombre_par_an": 12,
+            "duree_h": 4,
+            "heure_debut": 18,
+            "jours_testes": 365,
+            "energie_non_fournie_par_coupure_moyenne_kwh": 1.25,
+            "energie_non_fournie_par_coupure_pire_kwh": 3.5,
+            "energie_non_fournie_kwh": 15.0,
+            "mention": "Attendu par an : 12 coupures × la moyenne de 365 jours testés. La date des coupures est inconnue : chacune est rejouée sur tous les jours de la série, depuis l'état de charge du dispatch à l'heure de début."
+          },
+          "motif_coupures": ""
+,
+          "appareils": [
+            {"nom": "Réfrigérateur", "quantite": 1, "puissance_continue_kw": 0.15, "heures_tenues": 40.0},
+            {"nom": "Éclairage", "quantite": 6, "puissance_continue_kw": 0.02, "heures_tenues": 50.0}
+          ],
+          "energie_disponible_kwh": 6.0,
+          "heures_tenues_ensemble": 22.22,
+          "motif_appareils": ""
         }
       },
       "avertissements": [],
@@ -2471,6 +2545,29 @@
         }
       ],
       "mentions": [],
+      "groupe": {
+        "puissance_kw": 5.0,
+        "soc_demarrage_pct": 20,
+        "soc_arret_pct": 80,
+        "heures_max_par_jour": 6,
+        "heures_de_marche": 90.0,
+        "energie_fournie_kwh": 343.014,
+        "par_mois": [
+          {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
+        ],
+        "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
+      },
+      "banque_mois_charge": {
+        "mois": 12,
+        "consommation_journaliere_kwh": 31.5,
+        "capacite_utile_kwh": 70.0,
+        "capacite_nominale_kwh": 77.778,
+        "jours_autonomie": 2.0,
+        "defaillance_kwh": 90.0,
+        "taux_defaillance": 0.0094,
+        "mention": "Banque dimensionnée sur le mois de plus forte consommation journalière (12, 31.5 kWh/jour), mêmes jours d’autonomie, fiche, seuils et groupe ; la banque moyenne ci-dessus reste publiée telle quelle. Ce n'est pas le « mois le plus défavorable » de la simulation (celui-ci est un résultat)."
+      },
+      "motif_banque_mois_charge": "",
       "motif_absence": "",
       "soc_minimal_pct": 18.4,
       "banque": {
@@ -3456,6 +3553,17 @@
           "nuits_au_plancher": 301.0,
           "part_surplus_injecte": 0.6514,
           "taux_autoconsommation_sans_batterie": 0.4354
+        },
+        "verdict": null,
+        "motif_verdict": "Verdict non rendu : réglage société non saisi (batterie_seuil_nuits_pct, batterie_seuil_jours_pleine_pct).",
+        "secours": {
+          "coupures": null,
+          "motif_coupures": "Aucune coupure déclarée : saisissez « batterie.coupures » (nombre par an, durée, heure de début)."
+,
+          "appareils": null,
+          "energie_disponible_kwh": null,
+          "heures_tenues_ensemble": null,
+          "motif_appareils": "Aucun appareil secouru déclaré (stratégie « backup » avec « batterie.appareils ») : aucune durée tenue."
         }
       },
       "avertissements": [],
@@ -3586,6 +3694,29 @@
         }
       ],
       "mentions": [],
+      "groupe": {
+        "puissance_kw": 5.0,
+        "soc_demarrage_pct": 20,
+        "soc_arret_pct": 80,
+        "heures_max_par_jour": 6,
+        "heures_de_marche": 90.0,
+        "energie_fournie_kwh": 343.014,
+        "par_mois": [
+          {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
+        ],
+        "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
+      },
+      "banque_mois_charge": {
+        "mois": 12,
+        "consommation_journaliere_kwh": 31.5,
+        "capacite_utile_kwh": 70.0,
+        "capacite_nominale_kwh": 77.778,
+        "jours_autonomie": 2.0,
+        "defaillance_kwh": 90.0,
+        "taux_defaillance": 0.0094,
+        "mention": "Banque dimensionnée sur le mois de plus forte consommation journalière (12, 31.5 kWh/jour), mêmes jours d’autonomie, fiche, seuils et groupe ; la banque moyenne ci-dessus reste publiée telle quelle. Ce n'est pas le « mois le plus défavorable » de la simulation (celui-ci est un résultat)."
+      },
+      "motif_banque_mois_charge": "",
       "motif_absence": "",
       "soc_minimal_pct": 18.4,
       "banque": {

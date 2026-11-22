@@ -27,6 +27,15 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 FichePdfCorps = corps('FichePdfCorps', pdf=serializers.FileField())
 
 
+def _ecart_pmax_societe(company):
+    """ACAL657 — le seuil société ``fiche_ecart_pmax_pct`` (section
+    ``electrique_societe`` du calepinage), ou ``None`` quand il n'est pas saisi."""
+    from apps.calepinage.selectors import parametres_de_societe
+    from apps.calepinage.services.limites_livraison import ecart_pmax_societe
+
+    return ecart_pmax_societe(parametres_de_societe(company).get('electrique_societe'))
+
+
 @extend_schema_view(
     list=extend_schema(parameters=[P('produit', INT)]),
     create=extend_schema(request={'application/json': FicheTechniqueSerializer}),
@@ -125,11 +134,17 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         try:
             proposition = parse_pan_ond_bytes(
-                upload.read(), filename=getattr(upload, 'name', '') or '')
+                upload.read(), filename=getattr(upload, 'name', '') or '',
+                ecart_pmax_pct=_ecart_pmax_societe(request.user.company))
         except FichierIllisible as exc:
             # CALX356 — le refus nomme la ligne fautive quand il y en a une.
             return Response(
                 {'detail': str(exc), 'champ': exc.champ, 'ligne': exc.ligne},
+                status=status.HTTP_400_BAD_REQUEST)
+        if proposition.refus:
+            # ACAL657 — fiche incohérente : refusée, rien n'est proposé.
+            return Response(
+                {'detail': proposition.refus, 'champ': 'file', 'ligne': None},
                 status=status.HTTP_400_BAD_REQUEST)
 
         # CALX356 — l'aperçu montre la valeur TELLE QU'ELLE SERA ENREGISTRÉE
@@ -154,6 +169,12 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
                 'non_reconnus': proposition.non_reconnus,
                 'champs_attendus_absents': proposition.champs_attendus_absents,
                 'deja_saisis': deja_saisis,
+                # ACAL1081 — contrat posé seul : refus (ACAL657) et conversions
+                # (ACAL658) se remplissent avec leur producteur.
+                'refus': proposition.refus,
+                'conversions': proposition.conversions,
+                # REP-657 — contrôles non faits, dits à l'écran.
+                'controles_omis': proposition.controles_omis,
                 'confirme': False,
             })
 
@@ -170,6 +191,9 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
             'deja_saisis': deja_saisis,
             'non_reconnus': proposition.non_reconnus,
             'champs_attendus_absents': proposition.champs_attendus_absents,
+            'refus': proposition.refus,
+            'conversions': proposition.conversions,
+            'controles_omis': proposition.controles_omis,
             'confirme': True,
             'fiche': FicheTechniqueSerializer(fiche).data,
         })

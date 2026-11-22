@@ -110,6 +110,7 @@ function BandeauVerrou({ raison }) {
 export default function AtelierPanneaux({
   calepinageId, contexte, builderApi, lectureSeule = false,
   onRecharger, documentVivant = null, enregistrerAvant = null, aDesRetouches = null, atelierPret = true,
+  onEtape = null, // ACAL868 — relayé au rail
   children,
 }) {
   const cible = contexte?.cible ?? null
@@ -252,6 +253,7 @@ export default function AtelierPanneaux({
         documentVivant={documentVivant}
         expert={expert}
         onBasculerExpert={basculerExpert}
+        onEtape={onEtape}
       />
 
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,

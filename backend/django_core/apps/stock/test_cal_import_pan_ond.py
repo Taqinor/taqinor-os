@@ -97,7 +97,8 @@ class ParsePanOndPurTests(TestCase):
         # convertis automatiquement (unité incompatible sans hypothèse
         # supplémentaire) — ils doivent être listés, jamais ignorés en
         # silence.
-        self.assertIn('muISC', proposition.non_reconnus)
+        # ACAL658 — ``muISC`` (mA/°C) est converti avec l'Isc du MÊME fichier.
+        self.assertNotIn('muISC', proposition.non_reconnus)
         # CALX356 — ``muVocSpec`` (mV/°C) est désormais rapporté à la Voc
         # du MÊME fichier (définition du coefficient relatif %/°C).
         self.assertNotIn('muVocSpec', proposition.non_reconnus)
@@ -106,6 +107,67 @@ class ParsePanOndPurTests(TestCase):
             Decimal('-123.500') / (Decimal('49.500') * 10))
         self.assertIn('Manufacturer', proposition.non_reconnus)
         self.assertNotIn('PVObject_', proposition.non_reconnus)
+
+    def test_cellules_serie_et_coefficient_isc_converti_et_nomme(self):
+        # ACAL658 — NCelS et muISC remplissent leurs champs ; l'aperçu NOMME
+        # chaque conversion faite ; sans Isc lisible, muISC reste non reconnu.
+        proposition = propose_mapping(FICHIER_PAN)
+        self.assertEqual(proposition.mapping['cellules_serie'], 144)
+        self.assertEqual(proposition.mapping['temp_coeff_isc_pct_c'],
+                         Decimal('7.500') / (Decimal('13.900') * 10))
+        self.assertEqual(proposition.conversions, [
+            'muISC (mA/°C) converti avec Isc du même fichier',
+            'muVocSpec (mV/°C) converti avec Voc du même fichier'])
+        sans_isc = propose_mapping(
+            FICHIER_PAN.replace('  Isc=13.900\n', ''))
+        self.assertIn('muISC', sans_isc.non_reconnus)
+        self.assertNotIn('temp_coeff_isc_pct_c', sans_isc.mapping)
+        self.assertNotIn('muISC (mA/°C) converti avec Isc du même fichier',
+                         sans_isc.conversions)
+
+    def test_vmp_superieur_a_voc_refuse_en_nommant_les_deux_cles(self):
+        # ACAL657 — rien n'est proposé à l'écriture.
+        proposition = propose_mapping(
+            FICHIER_PAN.replace('Vmpp=41.400', 'Vmpp=50.0')
+            .replace('Voc=49.500', 'Voc=49.5'))
+        self.assertEqual(
+            proposition.refus,
+            "Vmp (50,0 V) n'est pas inférieur à Voc (49,5 V) : fiche incohérente")
+        self.assertEqual(proposition.mapping, {})
+
+    def test_imp_superieur_a_isc_refuse(self):
+        proposition = propose_mapping(
+            FICHIER_PAN.replace('Impp=13.290', 'Impp=14.000'))
+        self.assertEqual(
+            proposition.refus,
+            "Imp (14,000 A) n'est pas inférieur à Isc (13,900 A) : fiche incohérente")
+
+    def test_ecart_pmax_non_controle_sans_reglage_puis_juge_avec(self):
+        coherente = propose_mapping(FICHIER_PAN)
+        self.assertEqual(coherente.refus, '')
+        self.assertEqual(coherente.controles_omis,
+                         ['écart de Pmax non contrôlé : réglage non saisi'])
+        # Vmp × Imp = 550,206 W pour Pmax 550 W : 0,04 % d'écart.
+        large = propose_mapping(FICHIER_PAN, ecart_pmax_pct=Decimal('0.5'))
+        self.assertEqual((large.refus, large.controles_omis), ('', []))
+        strict = propose_mapping(FICHIER_PAN, ecart_pmax_pct=Decimal('0.01'))
+        self.assertIn("Pmax (550,000 W) s'écarte de Vmp × Imp (550,2 W)", strict.refus)
+        self.assertEqual(strict.mapping, {})
+
+    def test_reglage_ecart_pmax_lu_avec_sa_source_seulement(self):
+        # ACAL657 — sans source ou hors [0, 100] : non saisi (None).
+        from apps.calepinage.services.limites_livraison import ecart_pmax_societe
+
+        def _reglage(**valeur):
+            return {'fiche_ecart_pmax_pct': valeur}
+
+        self.assertEqual(
+            ecart_pmax_societe(_reglage(valeur=0.5, source='Fabricant')),
+            Decimal('0.5'))
+        self.assertIsNone(ecart_pmax_societe(_reglage(valeur=0.5)))
+        self.assertIsNone(ecart_pmax_societe(_reglage(valeur=150, source='x')))
+        self.assertIsNone(ecart_pmax_societe(_reglage(valeur='abc', source='x')))
+        self.assertIsNone(ecart_pmax_societe({}))
 
     def test_ond_type_et_mapping(self):
         proposition = propose_mapping(FICHIER_OND)
@@ -277,6 +339,16 @@ APERCU_OND = {k: v for k, v in CONTRAT['exemple'].items()
 
 
 class FichiersPvsystReelsTests(TestCase):
+    def test_exemples_portent_refus_et_conversions_a_vide(self):
+        # ACAL1081 — le contrat pose `refus: ""` et `conversions: []` dans
+        # les quatre exemples de la réponse ; `exemple_refus` (erreur) non.
+        for nom in ('exemple', 'exemple_module',
+                    'exemple_module_pmax_deja_saisi', 'exemple_confirme'):
+            with self.subTest(exemple=nom):
+                self.assertEqual(CONTRAT[nom]['refus'], '')
+                self.assertEqual(CONTRAT[nom]['conversions'], [])
+        self.assertNotIn('refus', CONTRAT['exemple_refus'])
+
     def test_pan_reel_lu_avec_ses_vraies_cles(self):
         proposition = parse_pan_ond_bytes(PAN_REEL.read_bytes(), PAN_REEL.name)
         self.assertEqual(proposition.type_fiche, 'module')
@@ -289,8 +361,10 @@ class FichiersPvsystReelsTests(TestCase):
         self.assertEqual(m['bifacialite_pct'], Decimal('70.000'))
         self.assertEqual(m['temp_coeff_voc_pct_c'],
                          Decimal('-128.0') / (Decimal('49.90') * 10))
-        # muISC (mA/°C) : aucun champ de destination → conservé, jamais deviné.
-        self.assertIn('muISC', proposition.non_reconnus)
+        # ACAL658 — le vrai .PAN porte NCelS, muISC et Isc : les deux sont lus.
+        self.assertNotIn('muISC', proposition.non_reconnus)
+        self.assertIn('cellules_serie', m)
+        self.assertIn('temp_coeff_isc_pct_c', m)
         self.assertNotIn('PVObject_Commercial', proposition.non_reconnus)
         self.assertEqual(proposition.champs_attendus_absents, [])
 

@@ -434,6 +434,19 @@ describe('BoutonDevis — verdict électrique (ACAL171)', () => {
     expect(screen.queryByTestId('cal-devis-bloquants')).toBeNull()
   })
 
+  it('ACAL935 : « À compléter : N points » au cadre, jamais « indéterminé »', async () => {
+    const evaluation = exempleContrat('calepinage', 'calepinage_publication_electrique',
+      'exemple_evaluation')
+    const data = { ...MANQUANTES, electrique: { ...evaluation.electrique, points: 16, derogation: null } }
+    calepinageApi.calepinages.genererDevis.mockResolvedValueOnce({ data })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const bloc = await screen.findByTestId('cal-devis-indetermine')
+    expect(bloc).toHaveTextContent('À compléter : 16 points')
+    expect(bloc).not.toHaveTextContent(/indéterminé/i)
+    expect(bloc).not.toHaveTextContent(/conforme/i)
+  })
+
   it('sans calepinage_approuver, pas de bouton Passer outre', async () => {
     await refuser(false)
     expect(screen.queryByTestId('cal-devis-passer-outre')).toBeNull()

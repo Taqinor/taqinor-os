@@ -28,12 +28,22 @@ const MODES_POSE = [
 const ROLES = [
   ['rail', 'Rail'], ['pince_milieu', 'Pince de milieu'], ['pince_fin', 'Pince de fin'],
   ['crochet', 'Crochet'], ['embout', 'Embout'], ['lest', 'Lest'], ['visserie', 'Visserie'],
+  ['echafaudage', 'Échafaudage'], // ACAL598
 ]
 //: `catalogue_fixation.BASES` + « quantité d'un autre composant » (`role:<rôle>`).
 const BASES = [
   ['', 'aucune (règle non saisie)'], ['modules', 'modules posés'], ['rangees', 'rangées'],
   ['pans', 'pans'], ['jonctions', 'jonctions entre modules voisins'],
   ['extremites', 'extrémités de rangées'], ['longueur_rangees_m', 'longueur des rangées (m)'],
+  // ACAL569 — les quatre bases d'orientation (`catalogue_fixation.BASES_ORIENTATION`).
+  ['modules_portrait', 'modules en portrait'], ['modules_paysage', 'modules en paysage'],
+  ['rangees_portrait', 'rangées en portrait'], ['rangees_paysage', 'rangées en paysage'],
+  // ACAL578 / ACAL598 — surfaces de pose, pieds, égouts (`catalogue_fixation.BASES`).
+  ['tables', 'tables des surfaces de pose (sol, ombrière)'],
+  ['poteaux', "poteaux d'ombrière (entraxe et section des appuis saisis)"],
+  ['pieds', 'pieds de châssis (portée entre pieds saisie sur le pan)'],
+  ['longueur_egouts_m', "longueur des arêtes d'égout typées (m)"],
+  ['facade_egouts_m2', "façade sous égout : longueur d'égout × hauteur de bâtiment saisie (m²)"],
   ...ROLES.map(([role, libelle]) => [`role:${role}`, `quantité du composant « ${libelle} »`]),
 ]
 

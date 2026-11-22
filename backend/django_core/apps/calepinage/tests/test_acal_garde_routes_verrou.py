@@ -108,6 +108,16 @@ ROUTES_HORS_VERROU = {
                                "conception d'un calepinage",
     ('DELETE', 'profil-depart'): "réglages de la société (ACAL403), hors "
                                  "conception d'un calepinage",
+    ('POST', 'systemes-fixation'): "catalogue des systèmes de fixation de la "
+                                   "société (ACAL558) : écrit SystemeFixation, "
+                                   "jamais la conception d'un calepinage",
+    ('PATCH', r'systemes-fixation/(?P<systeme_id>[0-9]+)'):
+        "catalogue des systèmes de fixation de la société (ACAL558), hors "
+        "conception d'un calepinage",
+    ('DELETE', r'systemes-fixation/(?P<systeme_id>[0-9]+)'):
+        "catalogue des systèmes de fixation de la société (ACAL558) : les "
+        "calepinages qui le portaient restent sans choix (SET_NULL), leur "
+        "conception n'est pas écrite",
     ('POST', 'balayage'): "balayage (ACAL468) : simule des COPIES du "
                           "document, n'écrit rien au calepinage",
     ('DELETE', 'meteo-fichier'): 'simulation : entrée météo du calcul',
@@ -116,6 +126,8 @@ ROUTES_HORS_VERROU = {
     ('POST', 'pose-reelle'): 'pose réelle : preuve du chantier (ACAL43)',
     ('DELETE', r'pose-reelle/(?P<zone_id>.+)'):
         'pose réelle : retrait du relevé d\'un pan (orphelin, ACAL267)',
+    ('POST', 'ecart-mesures'): 'consommation mesurée comparée à la simulée '
+                               '(lecture calculée, rien enregistré, ACAL846)',
     ('PATCH', PHOTO + '/calage'): 'photos de site (calage)',
     ('POST', 'releve-visite'): 'relevé terrain : reprise de la visite',
     ('POST', 'image-document'): 'documents : images des livrables',
@@ -152,6 +164,8 @@ ROUTES_HORS_VERROU = {
                                'rien d\'écrit)',
     ('POST', 'consommation/proposer'): 'proposition de consommation '
                                        '(lecture calculée)',
+    ('POST', 'consommation/lire-facture'): 'lecture calculée (photo de facture, '
+                                           "rien d'écrit, ACAL839)",
     ('POST', 'pompage'): 'calcul + enregistrement du dernier dimensionnement, '
                          'jamais 409 (verrou lu par la vue : enregistre false)',
     ('POST', 'detection-toit'): 'proposition de toit par IA à confirmer '

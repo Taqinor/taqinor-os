@@ -12,6 +12,8 @@ de fiche s'il existe — sinon ``isc_corrige_motif`` le dit et ``isc_a`` reste
 """
 from collections import Counter
 
+from .valeurs import nombre
+
 #: Conditions d'essai STC (IEC 61215 / IEC 60904-3 — définition normative :
 #: cellule à 25 °C, éclairement 1 000 W/m²), pas un réglage.
 TEMPERATURE_STC_C = 25.0
@@ -24,13 +26,6 @@ CHAMPS_STC = (('voc_v', 'tension à vide (Voc)'),
               ('pmax_wc', 'puissance crête (Pmax)'))
 CHAMPS_CORRECTION = (('temp_coeff_voc_pct_c', 'coefficient de Voc'),
                      ('temp_coeff_pmax_pct_c', 'coefficient de Pmax'))
-
-
-def _nombre(valeur):
-    try:
-        return float(valeur) if valeur not in (None, '') else None
-    except (TypeError, ValueError):
-        return None
 
 
 def modules_par_chaine(table):
@@ -51,23 +46,23 @@ def valeurs_attendues(table, fiche, designation='', *, temperature_c=None,
     """
     fiche = fiche or {}
     manquants = [nom for cle, nom in CHAMPS_STC
-                 if _nombre(fiche.get(cle)) is None]
-    temperature = _nombre(temperature_c)
-    eclairement = _nombre(eclairement_w_m2)
+                 if nombre(fiche.get(cle)) is None]
+    temperature = nombre(temperature_c)
+    eclairement = nombre(eclairement_w_m2)
     corrige = temperature is not None and eclairement is not None
     if corrige:
         manquants += [nom for cle, nom in CHAMPS_CORRECTION
-                      if _nombre(fiche.get(cle)) is None]
+                      if nombre(fiche.get(cle)) is None]
     comptes = modules_par_chaine(table)
     if manquants or not comptes:
         return None, manquants
-    voc, isc, pmax = (_nombre(fiche[cle]) for cle, _ in CHAMPS_STC)
+    voc, isc, pmax = (nombre(fiche[cle]) for cle, _ in CHAMPS_STC)
     sources = ['fiche module %s' % designation if designation
                else 'fiche module']
     if corrige:
         sources += ['température de cellule saisie',
                     'éclairement saisi'] + [cle for cle, _ in CHAMPS_CORRECTION]
-    coeff_isc = _nombre(fiche.get('temp_coeff_isc_pct_c'))
+    coeff_isc = nombre(fiche.get('temp_coeff_isc_pct_c'))
     lignes = []
     for chaine, modules in comptes.items():
         ligne = {'chaine': chaine, 'modules': modules,
@@ -79,9 +74,9 @@ def valeurs_attendues(table, fiche, designation='', *, temperature_c=None,
             ecart = temperature - TEMPERATURE_STC_C
             facteur = eclairement / ECLAIREMENT_STC_W_M2
             ligne['voc_v'] = round(ligne['voc_stc_v'] * (
-                1 + _nombre(fiche['temp_coeff_voc_pct_c']) / 100 * ecart), 3)
+                1 + nombre(fiche['temp_coeff_voc_pct_c']) / 100 * ecart), 3)
             ligne['pmax_w'] = round(ligne['pmax_stc_w'] * facteur * (
-                1 + _nombre(fiche['temp_coeff_pmax_pct_c']) / 100 * ecart), 3)
+                1 + nombre(fiche['temp_coeff_pmax_pct_c']) / 100 * ecart), 3)
             if coeff_isc is None:
                 ligne['isc_a'] = None
                 ligne['isc_corrige_motif'] = MOTIF_ISC_SANS_COEFFICIENT

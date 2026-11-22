@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { Grid3x3 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardContent, Button } from '../../ui'
+import calepinageApi from '../../api/calepinageApi'
+import { downloadBlob, filenameFromResponse } from '../../utils/downloadBlob'
 
 /* ============================================================================
    CAL213 — encart « Calepinage retenu » de la fiche chantier (lecture seule).
@@ -20,6 +23,9 @@ import { Card, CardHeader, CardTitle, CardContent, Button } from '../../ui'
    ========================================================================== */
 export default function CalepinageRetenuCard({ calepinage }) {
   const navigate = useNavigate()
+  // ACAL903 — état du téléchargement du PDF « Plan de pose » (blob par le client API).
+  const [enCours, setEnCours] = useState(false)
+  const [erreurPdf, setErreurPdf] = useState(null)
 
   // Discipline du null (CAL245) : pas de calepinage retenu -> l'encart
   // DISPARAÎT, jamais une carte vide ou un tiret qui laisserait croire à une
@@ -27,11 +33,25 @@ export default function CalepinageRetenuCard({ calepinage }) {
   if (!calepinage) return null
 
   const { kwc, nb_modules: nbModules, planche_url: plancheUrl,
-    plan_pose_url: planPoseUrl, kwc_source: kwcSource,
+    plan_pose_url: planPoseUrl, plan_pose_pdf_url: planPosePdfUrl, kwc_source: kwcSource,
     dessin_kwc: dessinKwc, ecart_kwc: ecartKwc } = calepinage
   // ACAL274 — kWc/modules servis = le VENDU (lignes du devis) ; le dessin est
   // affiché comme tel avec l'écart que le serveur a calculé (jamais redérivé).
   const vendu = kwcSource === 'devis'
+
+  async function telechargerPlanPose() {
+    setErreurPdf(null)
+    setEnCours(true)
+    try {
+      const reponse = await calepinageApi.calepinages.telechargerDocument(
+        planPosePdfUrl, undefined, { suppressErrorToast: true })
+      downloadBlob(reponse.data, filenameFromResponse(reponse, 'plan-pose.pdf'))
+    } catch {
+      setErreurPdf('Le plan de pose (PDF) n’a pas pu être produit : ouvrez le calepinage pour voir ce qui est à reprendre.')
+    } finally {
+      setEnCours(false)
+    }
+  }
 
   return (
     <Card>
@@ -70,7 +90,17 @@ export default function CalepinageRetenuCard({ calepinage }) {
               Plan de pose 3D
             </Button>
           )}
+          {planPosePdfUrl && (
+            <Button size="sm" variant="outline" disabled={enCours} onClick={telechargerPlanPose}>
+              Plan de pose (PDF)
+            </Button>
+          )}
         </div>
+        {erreurPdf && (
+          <p role="alert" className="text-xs text-destructive" data-testid="acal903-erreur-pdf">
+            {erreurPdf}
+          </p>
+        )}
       </CardContent>
     </Card>
   )

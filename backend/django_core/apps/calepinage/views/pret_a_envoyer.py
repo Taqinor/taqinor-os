@@ -30,6 +30,8 @@ PRODUCTEURS = (
     controles.controle_kwc_coherent,  # ACAL862
     controles.controle_obstacle_hors_pan,  # ACAL863
     controles.controle_pans_vides,  # ACAL864
+    controles.controle_un_seul_chiffre,  # ACAL1171
+    controles.controle_compatibilite,  # ACAL906
 )
 
 

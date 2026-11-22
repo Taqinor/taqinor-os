@@ -104,7 +104,17 @@ def _batterie():
                      'required': ['charge', 'decharge'], 'properties': {
                          sorte: fenetres for sorte in ('charge', 'decharge')}},
         'part_effacable_pct': _positif(100, strict=True),
-        'plafond_effacable_kw': _positif(1e6, strict=True)},
+        'plafond_effacable_kw': _positif(1e6, strict=True),
+        # ACAL796 — coupures de réseau déclarées (null efface) ; plage jugée
+        # par services/batterie_declaration.py::_valider_coupures.
+        'coupures': {'type': 'object', 'nullable': True,
+                     'additionalProperties': False,
+                     'required': ['nombre_par_an', 'duree_h', 'heure_debut'],
+                     'properties': {
+                         'nombre_par_an': {'type': 'integer', 'minimum': 1},
+                         'duree_h': {'type': 'integer', 'minimum': 1},
+                         'heure_debut': {'type': 'integer', 'minimum': 0,
+                                         'maximum': 23}}}},
         # ACAL786 — appareils ⇒ durée, jamais avec la réserve nue ; fenêtres
         # OU listes d'heures, jamais les deux (règles de services/batterie.py).
         'allOf': [
@@ -126,7 +136,17 @@ def _hors_reseau():
                    'additionalProperties': False,
                    'required': ['veille_pct', 'entretien_pct', 'arret_pct'],
                    'properties': {nom: _positif(100) for nom in (
-                       'veille_pct', 'entretien_pct', 'arret_pct')}}}}
+                       'veille_pct', 'entretien_pct', 'arret_pct')}},
+        # ACAL800 — groupe d'appoint (null efface) ; démarrage < arrêt jugé
+        # par services/groupe_appoint.py.
+        'groupe': {'type': 'object', 'nullable': True,
+                   'additionalProperties': False, 'required': ['actif'],
+                   'properties': {
+                       'actif': {'type': 'boolean'},
+                       'puissance_kw': _positif(1e6, strict=True),
+                       'soc_demarrage_pct': _positif(100),
+                       'soc_arret_pct': _positif(100),
+                       'heures_max_par_jour': _positif(24, strict=True)}}}}
 
 
 def corps_entree_resserre():

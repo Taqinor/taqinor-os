@@ -347,6 +347,33 @@ def compatibilite_du_materiel(panneau_id, onduleur_id, company, batterie_id=None
     return sortie
 
 
+def production_annoncee_du_devis(devis_id, company):
+    """ACAL1171 — ce que le PDF du devis imprimera comme production : celle de
+    la pose réelle SERVIE par le calepinage, ou le standard de la ville.
+
+    Relaye le résolveur du marché (``diagnostic_plan_pose_pompage`` pour
+    l'agricole, ``diagnostic_base_de_production`` sinon) : rien n'est recalculé.
+    Rend ``{regles_a_jour, servie, motif}`` — ``motif`` dit pourquoi la ville
+    sert quand ``servie`` est faux — ou ``None`` (devis inconnu / d'une autre
+    société). Lecture pure, ne lève pas."""
+    from .domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+    from .models import Devis
+
+    if company is None or not devis_id:
+        return None
+    devis = Devis.objects.filter(company=company, pk=devis_id).first()
+    if devis is None:
+        return None
+    if devis.mode_installation == Devis.ModeInstallation.AGRICOLE:
+        from .domain.pompage_pose import diagnostic_plan_pose_pompage as lire
+    else:
+        from .horaire.productible_pose import (
+            diagnostic_base_de_production as lire)
+    base, motif = lire(devis)
+    return {'regles_a_jour': regles_au_moins(devis, REGLES_POSE_REELLE_2111),
+            'servie': base is not None, 'motif': motif}
+
+
 def devis_brouillon_pour_layout(company, lead_id, empreinte):
     """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
 

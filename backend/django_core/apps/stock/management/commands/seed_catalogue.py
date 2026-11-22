@@ -563,6 +563,20 @@ CABLES_PROTECTIONS_VIDES = [
     ('Coffret AC',           'COF-AC',      100, 5),
 ]
 
+# ACAL1172 (D-ACAL-39) — le kit de fixation d'un toit incliné : PRIX VIDE (0), le
+# prix est un geste du fondateur ; jamais auto-chiffré tant que ``prix_vente``
+# vaut 0 (``_has_price``), aucun stock inventé, description neutre sans chiffre.
+# Le nom contient « kit de fixation » (repère de la ligne de fixation du devis)
+# et jamais « panneau ». (nom, sku, qte, seuil, description)
+KIT_FIXATION_PRIX_A_RENSEIGNER = [
+    ('Kit de fixation toiture inclinée (crochets, rails, pinces)', 'KIT-FIX-INCL', 0, 0,
+     'Crochets, rails et pinces de fixation des modules sur une toiture inclinée'),
+]
+
+# ACAL1172 — catégorie IMPOSÉE par SKU : ``classify_categorie`` rangerait ce nom
+# dans « Protection & accessoires » (aucun mot « structure » ni « socle »).
+CATEGORIE_IMPOSEE_PAR_SKU = {'KIT-FIX-INCL': 'Structures & fixation'}
+
 # ── AGR104 — articles des OPTIONS du kit pompage (D-AGR-8), PRIX VIDES ───────
 # Articles GÉNÉRIQUES, sans marque ni caractéristique inventée : le fondateur
 # les renseigne (prix, fournisseur) ; tant que ``prix_vente`` vaut 0 ils sont
@@ -676,7 +690,7 @@ ROLES_CI_ARTICLES_EXISTANTS = {
 SKUS_SEMES = frozenset(
     row[1] for row in (
         *CATALOGUE, *POMPAGE, *VEICHI, *OSP,
-        *CABLES_PROTECTIONS_VIDES, *OPTIONS_POMPAGE,
+        *CABLES_PROTECTIONS_VIDES, *OPTIONS_POMPAGE, *KIT_FIXATION_PRIX_A_RENSEIGNER,
         *SKU_POMPAGE_PRIX_A_RENSEIGNER, *BATTERIE_DEYE_HV,
         *ARTICLES_CI_PRIX_A_RENSEIGNER,
     )
@@ -2180,6 +2194,24 @@ class Command(BaseCommand):
             )
             created.append(nom)
 
+        # ── ACAL1172 — kit de fixation toiture inclinée : PRIX VIDE (0), additif ──
+        for nom, sku, qte, seuil, description in KIT_FIXATION_PRIX_A_RENSEIGNER:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(CATEGORIE_IMPOSEE_PAR_SKU[sku]),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'), description=description,
+            )
+            created.append(nom)
+
         # ── AGR104 — options du kit pompage : PRIX VIDES (0), rôle DÉCLARÉ ──
         # Additif : jamais d'écriture sur un produit existant (ni prix, ni nom,
         # ni rôle) — un SKU déjà présent est simplement sauté.
@@ -2487,7 +2519,8 @@ class Command(BaseCommand):
         recategorises = 0
         hors_catalogue_categorie = 0
         for produit in Produit.objects.filter(company=company):
-            cible = taxo[classify_categorie(produit.nom)]
+            cible = taxo[CATEGORIE_IMPOSEE_PAR_SKU.get(produit.sku)
+                         or classify_categorie(produit.nom)]
             if produit.categorie_id == cible.id:
                 continue
             if produit.sku not in SKUS_SEMES:

@@ -333,6 +333,26 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertIsNone(sans_lead['facture_mensuelle_mad'])
         self.assertTrue(sans_lead['motif'])
 
+    def test_acal993_chiffrage_lu_par_la_porte_de_ventes(self):
+        """ACAL993 — lead à facture 900 MAD/mois, sans devis : ``chiffrage`` =
+        ``chiffrer_conception`` de ce calepinage ; sans lead : ``non_servi`` et
+        son motif. Mutant : renvoyer ``None`` ⇒ rouge."""
+        from apps.ventes.services import chiffrer_conception
+
+        Lead.objects.filter(pk=self.lead_lie.pk).update(facture_hiver=900, ete_differente=False)
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, titre='ACAL993',
+            roof_layout=LAYOUT, layout_hash='b' * 64)
+        servi = self._contexte(calepinage)['chiffrage']
+        attendu = chiffrer_conception(calepinage=calepinage, company=self.company)
+        self.assertEqual(set(servi), set(CONTRAT['exemple']['chiffrage']))
+        self.assertEqual(servi['production_annuelle_kwh']['valeur'],
+                         attendu['production_annuelle_kwh']['valeur'])
+        self.assertIsNotNone(servi['production_annuelle_kwh']['valeur'])
+        sans_lead = self._contexte(self.nu)['chiffrage']
+        self.assertEqual({sans_lead[c]['etat'] for c in ('kwc', 'production_annuelle_kwh')}, {'non_servi'})
+        self.assertEqual(sans_lead['omissions'], CONTRAT['exemple_vide']['chiffrage']['omissions'])
+
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)

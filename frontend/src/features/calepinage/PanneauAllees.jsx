@@ -262,23 +262,6 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
   )
 }
 
-/** ACAL258 — `allees_circulation` du serveur → lignes de formulaire (chaînes), une par pays. */
-function lignesCirculation(brut) {
-  if (!Array.isArray(brut)) return []
-  return brut.map((e) => ({
-    pays: String(e?.pays ?? ''), largeur_m: e?.largeur_m == null ? '' : String(e.largeur_m),
-    source: String(e?.source ?? ''), reference: String(e?.reference ?? ''),
-  }))
-}
-const ligneCirculationVide = (l) => Object.values(l).every((v) => String(v).trim() === '')
-/** Le corps posté d'une ligne : texte rogné, largeur numérique ; le serveur valide et REFUSE. */
-const corpsCirculation = (l) => ({
-  pays: l.pays.trim().toLowerCase(),
-  largeur_m: l.largeur_m.trim() === '' ? null : Number(l.largeur_m),
-  source: l.source.trim(),
-  reference: l.reference.trim(),
-})
-
 export default function PanneauAllees({
   entree = null, lectureSeule = false, calepinageId = null, builderApi = null,
   // ACAL316 — le document VIVANT de l'atelier ({empreinte, appliquerSection}) : son jeton est
@@ -290,17 +273,13 @@ export default function PanneauAllees({
 }) {
   const [parametres, setParametres] = useState(null)
   const [chargement, setChargement] = useState(true)
-  const [champ, setChamp] = useState('')
   const [enregistrement, setEnregistrement] = useState(false)
-  const [message, setMessage] = useState(null)
 
   const [recherche, setRecherche] = useState(null) // {enCours, resultat, refus}
   // ACAL258 — l'allée de CE calepinage (document) et le défaut société : deux états distincts.
   const [champCalepinage, setChampCalepinage] = useState('')
   const [sourceCalepinage, setSourceCalepinage] = useState('saisie')
   const [messageCalepinage, setMessageCalepinage] = useState(null)
-  const [confirmeSociete, setConfirmeSociete] = useState(false)
-  const [circulation, setCirculation] = useState([])
 
   useEffect(() => {
     let annule = false
@@ -309,9 +288,6 @@ export default function PanneauAllees({
         if (annule) return
         const reglages = res?.data ?? null
         setParametres(reglages)
-        const actuelle = reglages?.degagements?.allee_technique_m
-        setChamp(Number.isFinite(actuelle) ? String(actuelle) : '')
-        setCirculation(lignesCirculation(reglages?.degagements?.allees_circulation))
       })
       .catch(() => { if (!annule) setParametres(null) })
       .finally(() => { if (!annule) setChargement(false) })
@@ -382,40 +358,6 @@ export default function PanneauAllees({
     }).finally(() => setEnregistrement(false))
   }
 
-  const enregistrer = () => {
-    setEnregistrement(true)
-    setMessage(null)
-    const nombre = champ === '' ? null : Number(champ)
-    if (champ !== '' && !Number.isFinite(nombre)) {
-      setMessage('L’allée technique doit être un nombre de mètres.')
-      setEnregistrement(false)
-      return
-    }
-    const section = { ...(parametres?.degagements ?? {}) }
-    if (nombre === null) {
-      delete section.allee_technique_m
-    } else {
-      section.allee_technique_m = nombre
-    }
-    // ACAL258 — les allées de circulation par pays, saisies à part (une ligne par pays).
-    const lignes = circulation.filter((l) => !ligneCirculationVide(l))
-    if (lignes.length) section.allees_circulation = lignes.map(corpsCirculation)
-    else delete section.allees_circulation
-    Promise.resolve(calepinageApi.parametres.update({ degagements: section }))
-      .then((res) => {
-        // La réponse du PUT EST la vérité fraîche (même forme que GET) : pas
-        // besoin d'une seconde lecture pour la refléter.
-        setParametres(res?.data ?? null)
-        setConfirmeSociete(false)
-        setMessage('Défaut de la société enregistré — il s’applique à tous vos calepinages.')
-      })
-      .catch((e) => setMessage(
-        e?.response?.data?.['degagements.allee_technique_m']
-        || e?.response?.data?.degagements
-        || 'L’allée technique n’a pas pu être enregistrée.'))
-      .finally(() => setEnregistrement(false))
-  }
-
   return (
     <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-panneau-allees">
       <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">
@@ -474,66 +416,10 @@ export default function PanneauAllees({
             )}
           </section>
 
-          {/* ACAL258 — le DÉFAUT de la société : nommé, et confirmé avant d'écrire. */}
-          <section className="mt-4 border-t border-border pt-4" data-testid="cal-allees-societe">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Défaut de la société</p>
-            <label className="mt-2 block max-w-xs" data-testid="cal-allees-champ">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Largeur d’allée technique par défaut (m)
-              </span>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                id="cal-allees-largeur"
-                value={champ}
-                onChange={(e) => setChamp(e.target.value)}
-                className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
-              />
-            </label>
-
-            <div className="mt-3" data-testid="cal-allees-circulation">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Allées de circulation par pays</p>
-              {circulation.map((l, i) => (
-                <div key={i} className="mt-2 flex flex-wrap items-end gap-2" data-testid={`cal-allees-circulation-${i}`}>
-                  {[['pays', 'Pays (2 lettres)'], ['largeur_m', 'Largeur (m)'], ['source', 'Source'], ['reference', 'Référence']].map(([cle, libelle]) => (
-                    <label key={cle} className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{libelle}</span>
-                      <input
-                        id={`cal-allees-circulation-${i}-${cle}`}
-                        value={l[cle]}
-                        onChange={(e) => setCirculation((c) => c.map((x, j) => (j === i ? { ...x, [cle]: e.target.value } : x)))}
-                        className="mt-1 w-32 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
-                      />
-                    </label>
-                  ))}
-                  <button type="button" onClick={() => setCirculation((c) => c.filter((_, j) => j !== i))}
-                    className="rounded border border-border px-3 py-1 text-xs text-foreground">
-                    Retirer
-                  </button>
-                </div>
-              ))}
-              <button type="button"
-                onClick={() => setCirculation((c) => [...c, { pays: '', largeur_m: '', source: '', reference: '' }])}
-                data-testid="cal-allees-circulation-ajouter"
-                className="mt-2 rounded border border-border px-3 py-1.5 text-xs font-semibold text-foreground">
-                Ajouter un pays
-              </button>
-            </div>
-
-            <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
-              <input type="checkbox" checked={confirmeSociete} data-testid="cal-allees-confirmer-societe"
-                onChange={(e) => setConfirmeSociete(e.target.checked)} />
-              Je confirme : ce défaut s’applique à tous vos calepinages.
-            </label>
-            <div className="mt-3">
-              <button type="button" onClick={enregistrer} disabled={enregistrement || !confirmeSociete}
-                data-testid="cal-allees-enregistrer"
-                className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text">
-                Enregistrer le défaut de la société
-              </button>
-            </div>
-          </section>
+          {/* ACAL893 — le défaut de la société se règle dans les Réglages, plus dans l'atelier. */}
+          <p className="mt-4 border-t border-border pt-4 text-sm" data-testid="acal893-lien-reglages">
+            <a href="/calepinage/reglages/allees" className="inline-flex min-h-11 items-center underline">Régler le défaut de la société</a>
+          </p>
         </>
       )}
 
@@ -570,11 +456,6 @@ export default function PanneauAllees({
           Le moteur n’a trouvé aucune allée plus large à compte constant pour
           ce relevé : l’allée réglée reste la meilleure connue.
         </p>
-      )}
-
-      {message && (
-        <p className="mt-3 text-sm text-foreground" role="status"
-          data-testid="cal-allees-message">{message}</p>
       )}
 
       {calepinageId != null && contraintesSite !== undefined && (

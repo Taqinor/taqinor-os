@@ -146,6 +146,32 @@ class CoherenceCalepinageTests(TestCase):
         modules = self._audit('CAL_MODULES_DEVIS_VS_CALEPINAGE')
         self.assertEqual([v['reference'] for v in modules], [autre.reference])
 
+    def _production(self, devis, production_kwh, statut='brouillon'):
+        """ACAL1011 — bloc horaire RANGÉ ``production_kwh`` ; base servie
+        1 388,4 kWh/kWc (doublure du résolveur d'ACAL999 : niveau 15, brouillon
+        résidentiel) ; 16 × 550 W = 8,8 kWc ⇒ 12 217,92 kWh attendus."""
+        from unittest import mock
+        Devis.objects.filter(pk=devis.pk).update(
+            statut=statut, etude_params={'etude_horaire': {'annuel': {'production_kwh': production_kwh}}})
+        devis.refresh_from_db()
+        r = REGISTRE['CAL_PRODUCTION_DEVIS_VS_CALEPINAGE']
+        self.assertEqual(r.gravite, GRAVITE_AVERTISSEMENT)
+        with mock.patch('apps.ventes.horaire.productible_pose.base_de_production',
+                        return_value={'kwh_kwc_annuel': 1388.4, 'pertes_incluses': True}):
+            return r.check(r, devis, None)
+
+    def test_acal1011_production_rangee_perimee_leve_la_regle(self):
+        layout = _layout(16)
+        devis = self._devis(16, hash_devis=layout_hash(layout))
+        calepinage = self._calepinage(devis, layout)
+        perime, = self._production(devis, 13500)  # bloc d'avant la re-simulation
+        self.assertEqual(perime.valeurs, {
+            'production_devis': 13500.0, 'production_attendue': 12217.9,
+            'ecart_kwh': 1282.1, 'calepinage_id': calepinage.pk})
+        self.assertEqual(self._production(devis, 12218.4), [])  # arrondi au kWh
+        # Mutant « comparer aussi les envoyés » ⇒ rouge : la base RANGÉE fait foi.
+        self.assertEqual(self._production(devis, 13500, statut='envoye'), [])
+
     def test_devis_sans_calepinage_ignore(self):
         devis = self._devis(12)
         self.assertEqual(

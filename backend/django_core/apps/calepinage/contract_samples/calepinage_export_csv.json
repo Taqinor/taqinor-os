@@ -14,7 +14,7 @@
       "annee", "mois", "jour", "heure", "production_kw",
       "irradiance_plan_w_m2", "temperature_air_c"
     ],
-    "pas": ["horaire", "15min"],
+    "pas": ["horaire", "jour", "15min"],
     "exports": ["horaire", "mensuel", "ombrage", "ombrage_modules"]
   }
 }

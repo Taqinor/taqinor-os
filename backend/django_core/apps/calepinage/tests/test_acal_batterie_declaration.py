@@ -57,6 +57,10 @@ APPAREIL = {'nom': 'Réfrigérateur', 'puissance_continue_kw': 0.15,
 #: ACAL790 — des seuils de protection hors réseau d'essai, ordonnés.
 SEUILS = {'veille_pct': 30, 'entretien_pct': 20, 'arret_pct': 10}
 
+#: ACAL800 — un groupe d'appoint d'essai : démarre à 20 %, s'arrête à 80 %.
+GROUPE = {'actif': True, 'puissance_kw': 5.0, 'soc_demarrage_pct': 20,
+          'soc_arret_pct': 80, 'heures_max_par_jour': 6}
+
 #: La ligne batterie du devis lié, telle que ``equipements_du_calepinage`` la rend.
 CIBLE_EQUIPEMENTS = ('apps.calepinage.services.equipements'
                      '.equipements_du_calepinage')
@@ -190,6 +194,28 @@ class Declaration(BaseApiCalepinage):
                     enregistrer_entree(self.calepinage, {'batterie': saisie})
                 self.assertEqual(refus.exception.champ, champ)
 
+    def test_acal796_coupures_enregistrees_et_champ_faux_nomme(self):
+        coupures = {'nombre_par_an': 12, 'duree_h': 4, 'heure_debut': 18}
+        enregistrer_entree(self.calepinage, {'batterie': {
+            'strategie': 'backup', 'coupures': coupures}})
+        self.calepinage.refresh_from_db()
+        self.assertEqual(
+            entree_stockee(self.calepinage)['batterie']['coupures'],
+            coupures)
+        for fausses, champ in (
+                (dict(coupures, heure_debut=24),
+                 'batterie.coupures.heure_debut'),
+                (dict(coupures, duree_h=0), 'batterie.coupures.duree_h'),
+                ({'duree_h': 4, 'heure_debut': 18},
+                 'batterie.coupures.nombre_par_an')):
+            with self.subTest(champ=champ):
+                with self.assertRaises(EntreeInvalide) as refus:
+                    enregistrer_entree(self.calepinage, {'batterie': {
+                        'strategie': 'backup', 'coupures': fausses}})
+                self.assertEqual(refus.exception.champ, champ)
+        enregistrer_entree(self.calepinage, {'batterie': {
+            'strategie': 'backup', 'coupures': None}})  # null efface
+
     def test_acal790_seuils_hors_reseau_mal_formes_nomment_leur_seuil(self):
         for seuils, champ in (
                 ({'veille_pct': 10, 'entretien_pct': 15, 'arret_pct': 20},
@@ -209,6 +235,32 @@ class Declaration(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         self.assertEqual(entree_stockee(self.calepinage)['hors_reseau'][
             'seuils'], SEUILS)
+
+    def test_acal800_groupe_d_appoint_enregistre_et_faute_nommee(self):
+        groupe = dict(GROUPE)
+        reseau = {'actif': True, 'jours_autonomie': 2}
+        enregistrer_entree(self.calepinage, {'hors_reseau': dict(
+            reseau, groupe=groupe)})
+        self.calepinage.refresh_from_db()
+        self.assertEqual(entree_stockee(self.calepinage)['hors_reseau'][
+            'groupe'], groupe)
+        for fautif, champ in (
+                (dict(groupe, soc_demarrage_pct=80),
+                 'hors_reseau.groupe.soc_demarrage_pct'),
+                (dict(groupe, puissance_kw=0),
+                 'hors_reseau.groupe.puissance_kw'),
+                (dict(groupe, heures_max_par_jour=25),
+                 'hors_reseau.groupe.heures_max_par_jour'),
+                ({k: v for k, v in groupe.items() if k != 'soc_arret_pct'},
+                 'hors_reseau.groupe.soc_arret_pct')):
+            with self.subTest(champ=champ):
+                with self.assertRaises(EntreeInvalide) as refus:
+                    enregistrer_entree(self.calepinage, {'hors_reseau': dict(
+                        reseau, groupe=fautif)})
+                self.assertEqual(refus.exception.champ, champ)
+        for accepte in ({'actif': False}, None):
+            enregistrer_entree(self.calepinage, {'hors_reseau': dict(
+                reseau, groupe=accepte)})
 
     def test_declaration_enregistree_et_relue_telle_quelle(self):
         saisie = {'strategie': 'autoconso', 'packs': 2, 'couplage': 'ac'}
@@ -257,6 +309,93 @@ class SecoursEtCommandeAdmisTest(SimpleTestCase):
             valider_secours({'plafond_effacable_kw': -1})
         self.assertEqual(refus.exception.champ,
                          'batterie.plafond_effacable_kw')
+
+
+class CoupuresDeclareesTest(SimpleTestCase):
+    """ACAL796 — sans base : la forme des coupures, refus nommé."""
+
+    COUPURES = {'nombre_par_an': 12, 'duree_h': 4, 'heure_debut': 18}
+
+    def test_corps_conforme_accepte_et_null_efface(self):
+        self.assertIn('coupures', CLES_BATTERIE)
+        saisie = {'strategie': 'backup', 'coupures': dict(self.COUPURES)}
+        valider_batterie(saisie)
+        valider_secours(saisie)
+        valider_secours({'coupures': None})
+        saisie = CONTRAT_ENTREE['exemple_secours']['batterie']
+        self.assertEqual(saisie['coupures'], self.COUPURES)
+        valider_secours(saisie)
+
+    def test_chaque_champ_faux_nomme_son_champ(self):
+        cas = (
+            (dict(self.COUPURES, heure_debut=24), 'heure_debut'),
+            (dict(self.COUPURES, heure_debut=-1), 'heure_debut'),
+            (dict(self.COUPURES, duree_h=0), 'duree_h'),
+            (dict(self.COUPURES, nombre_par_an=1.5), 'nombre_par_an'),
+            (dict(self.COUPURES, nombre_par_an=True), 'nombre_par_an'),
+            ({'duree_h': 4, 'heure_debut': 18}, 'nombre_par_an'),
+            ({'nombre_par_an': 12, 'duree_h': 4}, 'heure_debut'),
+        )
+        for coupures, champ in cas:
+            with self.subTest(coupures=coupures):
+                with self.assertRaises(EntreeInvalide) as refus:
+                    valider_secours({'coupures': coupures})
+                self.assertEqual(refus.exception.champ,
+                                 'batterie.coupures.%s' % champ)
+        with self.assertRaises(EntreeInvalide) as refus:
+            valider_secours({'coupures': 'trois'})
+        self.assertEqual(refus.exception.champ, 'batterie.coupures')
+
+
+class GroupeAppointTest(SimpleTestCase):
+    """ACAL800 — sans base : la forme du groupe d'appoint, refus nommé."""
+
+    def _refus(self, groupe):
+        from apps.calepinage.services.hors_reseau_declaration import (
+            valider_hors_reseau,
+        )
+
+        with self.assertRaises(EntreeInvalide) as refus:
+            valider_hors_reseau({'actif': True, 'groupe': groupe})
+        return refus.exception.champ
+
+    def test_corps_conforme_actif_faux_et_null_acceptes(self):
+        from apps.calepinage.services.hors_reseau_declaration import (
+            CLES_HORS_RESEAU, valider_hors_reseau,
+        )
+
+        self.assertIn('groupe', CLES_HORS_RESEAU)
+        for groupe in (dict(GROUPE), {'actif': False}, None):
+            valider_hors_reseau({'actif': True, 'groupe': groupe})
+        corps = CONTRAT_ENTREE['exemple_hors_reseau_avance']['hors_reseau']
+        self.assertEqual(corps['groupe'], GROUPE | {'soc_demarrage_pct': 20})
+        valider_hors_reseau(corps)
+
+    def test_demarrage_au_dessus_de_l_arret_nomme_le_demarrage(self):
+        for demarrage in (80, 90):  # égal et au-dessus de l'arrêt
+            with self.subTest(demarrage=demarrage):
+                self.assertEqual(
+                    self._refus(dict(GROUPE, soc_demarrage_pct=demarrage)),
+                    'hors_reseau.groupe.soc_demarrage_pct')
+
+    def test_chaque_faute_nomme_son_champ(self):
+        cas = (
+            (dict(GROUPE, puissance_kw=0), 'puissance_kw'),
+            (dict(GROUPE, puissance_kw=True), 'puissance_kw'),
+            (dict(GROUPE, soc_arret_pct=101), 'soc_arret_pct'),
+            (dict(GROUPE, soc_demarrage_pct=-1), 'soc_demarrage_pct'),
+            (dict(GROUPE, heures_max_par_jour=0), 'heures_max_par_jour'),
+            (dict(GROUPE, heures_max_par_jour=24.5), 'heures_max_par_jour'),
+            (dict(GROUPE, actif='oui'), 'actif'),
+            (dict(GROUPE, carburant='diesel'), 'carburant'),
+            ({'actif': True, 'puissance_kw': 5, 'soc_demarrage_pct': 20,
+              'soc_arret_pct': 80}, 'heures_max_par_jour'),
+        )
+        for groupe, champ in cas:
+            with self.subTest(groupe=groupe):
+                self.assertEqual(self._refus(groupe),
+                                 'hors_reseau.groupe.%s' % champ)
+        self.assertEqual(self._refus('gros'), 'hors_reseau.groupe')
 
 
 class SeuilsHorsReseauTest(SimpleTestCase):

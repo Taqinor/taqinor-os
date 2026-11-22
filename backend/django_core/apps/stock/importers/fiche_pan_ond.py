@@ -88,13 +88,24 @@ MODULE_FIELD_MAP = {
     # définition du coefficient relatif, pas une hypothèse ; sans ``Voc``
     # lisible dans le fichier, la clé reste dans ``non_reconnus``.
     'muVocSpec': ('temp_coeff_voc_pct_c', 'mv_par_c_relatif_voc'),
+    # ACAL658 — nombre de cellules en série (entier direct) ; ``muISC``
+    # (mA/°C) rapporté à l'Isc STC du MÊME fichier : mA/°C ÷ (Isc × 1000 mA)
+    # × 100 = muISC ÷ (Isc × 10), calqué sur ``muVocSpec``.
+    'NCelS': ('cellules_serie', 'int'),
+    'muISC': ('temp_coeff_isc_pct_c', 'ma_par_c_relatif_isc'),
     # Facteur de bifacialité PVsyst en fraction (0.700) → % de la fiche.
     'BifacialityFactor': ('bifacialite_pct', 'fraction_to_pct'),
     # Tolérance haute de Pmax, déjà en % dans PVsyst (``PNomTolUp=0.90``).
     'PNomTolUp': ('tolerance_pmax_max_pct', 'float'),
 }
-# ``muISC`` (mA/°C) n'a AUCUN champ de destination (la fiche ne porte pas de
-# coefficient Isc) : il reste dans ``non_reconnus``, jamais deviné.
+# ``muISC`` sans ``Isc`` lisible dans le fichier reste dans ``non_reconnus``.
+
+#: ACAL658 — les conversions faites sur la valeur d'une clé, NOMMÉES à
+#: l'aperçu (ordre de publication ; seules celles réellement faites sont listées).
+CONVERSIONS_NOMMEES = {
+    'muISC': 'muISC (mA/°C) converti avec Isc du même fichier',
+    'muVocSpec': 'muVocSpec (mV/°C) converti avec Voc du même fichier',
+}
 
 ONDULEUR_FIELD_MAP = {
     'Pnom': ('ond_ac_kw', 'float_w_to_kw'),
@@ -186,6 +197,11 @@ def _convertir(valeur_str, conversion, raw=None):
         if voc <= 0:
             raise ValueError('Voc')
         return nombre / (voc * Decimal('10'))
+    if conversion == 'ma_par_c_relatif_isc':
+        isc = Decimal((raw or {}).get('Isc', ''))
+        if isc <= 0:
+            raise ValueError('Isc')
+        return nombre / (isc * Decimal('10'))
     return nombre
 
 
@@ -204,12 +220,55 @@ class PropositionImport:
     reconnus: list = field(default_factory=list)
     non_reconnus: list = field(default_factory=list)
     champs_attendus_absents: list = field(default_factory=list)
+    #: ACAL657 — phrase de refus d'une fiche incohérente (vide : cohérente) ;
+    #: non vide, ``mapping`` est vidé : rien n'est proposé à l'écriture.
+    refus: str = ''
+    #: ACAL658 — chaque conversion de valeur faite, en toutes lettres.
+    conversions: list = field(default_factory=list)
+    #: ACAL657 — les contrôles qui n'ont PAS eu lieu, et pourquoi.
+    controles_omis: list = field(default_factory=list)
 
 
-def propose_mapping(text, type_fiche_force=None):
+def _nombre_fr(valeur):
+    """``Decimal('50.0')`` → « 50,0 » : la valeur lue, virgule décimale."""
+    return str(valeur).replace('.', ',')
+
+
+def _coherence_de_fiche(mapping, ecart_pmax_pct):
+    """ACAL657 — ``(refus, controles_omis)`` d'une fiche MODULE.
+
+    Vmp ≥ Voc et Imp ≥ Isc sont impossibles sur un module : refus nommé. L'écart
+    entre Pmax et Vmp × Imp est un SEUIL (réglage société, jamais une constante) :
+    sans lui le contrôle est omis et le dit."""
+    voc, vmp = mapping.get('voc_v'), mapping.get('vmp_v')
+    isc, imp = mapping.get('isc_a'), mapping.get('imp_a')
+    if voc is not None and vmp is not None and vmp >= voc:
+        return (f"Vmp ({_nombre_fr(vmp)} V) n'est pas inférieur à Voc "
+                f"({_nombre_fr(voc)} V) : fiche incohérente", [])
+    if isc is not None and imp is not None and imp >= isc:
+        return (f"Imp ({_nombre_fr(imp)} A) n'est pas inférieur à Isc "
+                f"({_nombre_fr(isc)} A) : fiche incohérente", [])
+    pmax = mapping.get('pmax_wc')
+    if pmax is None or vmp is None or imp is None or vmp * imp <= 0:
+        return '', []
+    if ecart_pmax_pct is None:
+        return '', ['écart de Pmax non contrôlé : réglage non saisi']
+    ecart = abs(pmax - vmp * imp) / (vmp * imp) * 100
+    if ecart > ecart_pmax_pct:
+        return (f"Pmax ({_nombre_fr(pmax)} W) s'écarte de Vmp × Imp "
+                f"({_nombre_fr((vmp * imp).quantize(Decimal('0.1')))} W) de "
+                f"{_nombre_fr(ecart.quantize(Decimal('0.01')))} % : plus que les "
+                f"{_nombre_fr(ecart_pmax_pct)} % réglés, fiche incohérente", [])
+    return '', []
+
+
+def propose_mapping(text, type_fiche_force=None, ecart_pmax_pct=None):
     """Point d'entrée principal : rend une ``PropositionImport`` — jamais
     d'écriture, jamais d'effet de bord. Lève ``FichierIllisible`` si le
-    type ne peut pas être déterminé (fichier vide, format inconnu)."""
+    type ne peut pas être déterminé (fichier vide, format inconnu).
+
+    ``ecart_pmax_pct`` (ACAL657) : le seuil société de l'écart Pmax / (Vmp × Imp),
+    lu PAR LA VUE (ce module n'importe pas Django) ; ``None`` = non saisi."""
     raw = parse_pan_ond_text(text)
     type_fiche = type_fiche_force or detect_type(raw)
     if type_fiche not in ('module', 'onduleur'):
@@ -242,10 +301,18 @@ def propose_mapping(text, type_fiche_force=None):
     proposition.champs_attendus_absents = [
         champ for champ in champs_attendus(type_fiche)
         if champ not in proposition.mapping]
+    proposition.conversions = [phrase for cle, phrase in CONVERSIONS_NOMMEES.items()
+                               if cle in proposition.reconnus]
+    if type_fiche == 'module':
+        proposition.refus, proposition.controles_omis = _coherence_de_fiche(
+            proposition.mapping, ecart_pmax_pct)
+        if proposition.refus:
+            proposition.mapping = {}
+            proposition.conversions = []
     return proposition
 
 
-def parse_pan_ond_bytes(data, filename=''):
+def parse_pan_ond_bytes(data, filename='', ecart_pmax_pct=None):
     """Décode ``data`` (bytes) en tentant UTF-8 puis Latin-1 (les fichiers
     PVsyst historiques sont souvent en ANSI/Latin-1), puis délègue à
     ``propose_mapping``. Lève ``FichierIllisible`` si aucun encodage ne
@@ -263,7 +330,7 @@ def parse_pan_ond_bytes(data, filename=''):
         raise FichierIllisible(
             f"Fichier {filename or '(sans nom)'} illisible : encodage non "
             "reconnu (ni UTF-8 ni Latin-1).")
-    return propose_mapping(texte)
+    return propose_mapping(texte, ecart_pmax_pct=ecart_pmax_pct)
 
 
 def champs_a_ecrire(fiche, mapping):

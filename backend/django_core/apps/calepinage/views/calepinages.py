@@ -381,8 +381,12 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     #: VisiteTerrainViewSet.write_permission`` (VTA10) : une PROPRIÉTÉ, pas un
     #: ``get_permissions()`` réécrit, pour qu'aucune garde déclarée sur une
     #: ``@action`` ne soit jamais écrasée en silence.
+    #: ACAL831 — ``pompage`` (POST) est un CALCUL ouvert à ``calepinage_voir``
+    #: (garde déclarée ``PeutVoirCalepinage``) ; seul l'enregistrement du
+    #: dernier rendu exige ``calepinage_gerer`` (``_enregistrer_dernier``).
     PERMISSIONS_ECRITURE_PAR_ACTION = {'approbation': CAL_APPROUVER,
-                                       'profil_depart': CAL_APPROUVER}
+                                       'profil_depart': CAL_APPROUVER,
+                                       'pompage': CAL_VOIR}
 
     @property
     def write_permission(self):
@@ -1065,7 +1069,9 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         ``contract_samples/calepinage_design_context.json``). LECTURE PURE,
         bornée société par ``get_queryset`` (404 pour une autre société).
         """
-        return Response(contexte_conception(self.get_object(), request))
+        from .chiffrage_contexte import avec_chiffrage  # ACAL993 — + le bloc ``chiffrage``
+        calepinage = self.get_object()
+        return Response(avec_chiffrage(contexte_conception(calepinage, request), calepinage))
 
     def _geste_repere(self, request, geste):
         """ACAL191 — exécute un geste de repère et rend la réponse d'écriture."""

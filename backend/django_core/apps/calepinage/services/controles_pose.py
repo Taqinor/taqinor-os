@@ -10,6 +10,8 @@ alerte, mais une ligne ``info`` qui nomme ce qui manque.
 """
 from __future__ import annotations
 
+from .valeurs import nombre
+
 __all__ = ['alertes_du_systeme', 'erreur_de_controles_pose']
 
 #: Les trois valeurs numériques déclarées (mm) ; ``source`` est un texte.
@@ -21,13 +23,6 @@ GRAVITE_INFO = 'info'
 
 def _fr(valeur):
     return f'{valeur:g}'.replace('.', ',')
-
-
-def _nombre(valeur):
-    """Un nombre fini, sinon ``None`` (un booléen n'est pas un nombre)."""
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return valeur if valeur == valeur and abs(valeur) != float('inf') else None
 
 
 def erreur_de_controles_pose(valeur):
@@ -44,8 +39,8 @@ def erreur_de_controles_pose(valeur):
         if valeur.get(cle) is None:
             continue
         saisis = True
-        nombre = _nombre(valeur[cle])
-        if nombre is None or nombre < 0:
+        lu = None if isinstance(valeur[cle], str) else nombre(valeur[cle])
+        if lu is None or lu < 0:
             return f'« {cle} » : un nombre de millimètres positif est attendu.'
     if saisis and not str(valeur.get('source') or '').strip():
         return ('La source des contrôles de pose est obligatoire dès qu\'une '
@@ -65,8 +60,8 @@ def _alerte(code, message):
 def _zone_serrage(distance, module):
     if distance is None:
         return None
-    mini = _nombre(module.get('serrage_min_mm'))
-    maxi = _nombre(module.get('serrage_max_mm'))
+    mini = nombre(module.get('serrage_min_mm'))
+    maxi = nombre(module.get('serrage_max_mm'))
     if mini is None or maxi is None:
         return _info('Zone de serrage du module non saisie sur sa fiche : la '
                      'distance rail-bord n\'est pas contrôlée.')
@@ -79,8 +74,8 @@ def _zone_serrage(distance, module):
 
 
 def _porte_a_faux(controles):
-    reel = _nombre(controles.get('porte_a_faux_rail_mm'))
-    admis = _nombre(controles.get('porte_a_faux_max_mm'))
+    reel = nombre(controles.get('porte_a_faux_rail_mm'))
+    admis = nombre(controles.get('porte_a_faux_max_mm'))
     if reel is None and admis is None:
         return None
     if reel is None or admis is None:
@@ -101,7 +96,7 @@ def _alertes(controles, module):
         return [_info('Contrôles de pose non saisis sur le système : ni la '
                       'distance rail-bord ni le porte-à-faux ne sont '
                       'contrôlés.')]
-    alertes = [_zone_serrage(_nombre(controles.get('distance_rail_bord_mm')),
+    alertes = [_zone_serrage(nombre(controles.get('distance_rail_bord_mm')),
                              module or {}),
                _porte_a_faux(controles)]
     return [alerte for alerte in alertes if alerte]

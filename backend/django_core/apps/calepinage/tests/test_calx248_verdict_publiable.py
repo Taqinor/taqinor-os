@@ -467,5 +467,71 @@ class DeclassementThermiqueTest(unittest.TestCase):
         self.assertIsNone(puissance_a_temperature(10.0, None, 2.0, 50.0))
 
 
+def _pan(cle, azimut, acces):
+    return {'id': cle, 'label': 'PAN-%s' % cle.upper(),
+            'geometry': {'count': len(acces), 'azimuthDeg': azimut, 'tiltDeg': 15.0,
+                         'solarAccess': {'values': acces}}}
+
+
+#: Trois orientations ; le pan Sud a un module à 0,60 pour cinq à 0,95 (écart 0,35).
+LAYOUT_TROIS_ORIENTATIONS = dict(LAYOUT, zones=[
+    _pan('a', 180.0, [0.95] * 5 + [0.60]), _pan('b', 90.0, [0.9] * 6),
+    _pan('c', 270.0, [0.9] * 6)])
+#: Des seuils d'ESSAI (valeur + source), jamais une valeur proposée.
+SEUILS_SAISIS = {'seuil_orientations_micro': {'valeur': 3, 'source': 'societe'},
+                 'seuil_ecart_acces_optimiseur': {'valeur': 0.2, 'source': 'societe'}}
+
+
+class ArchitectureOnduleurTest(unittest.TestCase):
+    """ACAL671 — onduleur de chaîne, micro-onduleurs ou optimiseurs, seuils société."""
+
+    def _motif(self, layout, reglages):
+        rapport = _verdict(_Calepinage(layout=layout),
+                           _reglages_electrique_societe=lambda *a, **k: reglages)
+        self.assertNotEqual(_par_code(rapport, 'ARCHITECTURE_ONDULEUR')['statut'], STATUT_BLOQUANT)
+        return _par_code(rapport, 'ARCHITECTURE_ONDULEUR')
+
+    def test_trois_orientations_et_trente_cinq_pour_cent(self):
+        motif = self._motif(LAYOUT_TROIS_ORIENTATIONS, SEUILS_SAISIS)
+        self.assertEqual(motif['statut'], STATUT_OK)
+        self.assertEqual(motif['libelle'], "3 orientations et un écart d'accès solaire de 35 % "
+                         'dans une chaîne : micro-onduleurs ou optimiseurs à étudier')
+        self.assertEqual(motif['source'], 'societe')
+
+    def test_seuils_vides_aucun_verdict(self):
+        # Mutant « verdict rendu sans seuils » : statut ok ⇒ échec.
+        motif = self._motif(LAYOUT_TROIS_ORIENTATIONS, {})
+        self.assertEqual(motif['statut'], STATUT_NON_VERIFIABLE)
+        self.assertEqual(motif['libelle'], 'seuils non saisis : seuil_orientations_micro, '
+                         'seuil_ecart_acces_optimiseur')
+
+    def test_seuil_sans_source_reste_non_saisi(self):
+        reglages = dict(SEUILS_SAISIS, seuil_orientations_micro={'valeur': 3, 'source': ''})
+        self.assertEqual(self._motif(LAYOUT_TROIS_ORIENTATIONS, reglages)['libelle'],
+                         'seuils non saisis : seuil_orientations_micro')
+
+    def test_acces_solaire_non_mesure(self):
+        motif = self._motif(LAYOUT, SEUILS_SAISIS)
+        self.assertEqual((motif['statut'], motif['libelle']),
+                         (STATUT_NON_VERIFIABLE, 'accès solaire non mesuré'))
+
+    def test_sous_les_seuils_onduleur_de_chaine(self):
+        reglages = {'seuil_orientations_micro': {'valeur': 4, 'source': 'societe'},
+                    'seuil_ecart_acces_optimiseur': {'valeur': 0.5, 'source': 'societe'}}
+        self.assertTrue(self._motif(LAYOUT_TROIS_ORIENTATIONS, reglages)['libelle']
+                        .endswith(': onduleur de chaîne'))
+
+    def test_deux_types_au_registre(self):
+        from apps.calepinage.services.parametres_cles import (
+            SECTION_ELECTRIQUE_SOCIETE, TYPES_CLES, registre,
+        )
+
+        types = TYPES_CLES[SECTION_ELECTRIQUE_SOCIETE]
+        self.assertEqual(types['seuil_orientations_micro'], {'type': 'entier', 'minimum': 1})
+        self.assertEqual(types['seuil_ecart_acces_optimiseur'],
+                         {'type': 'nombre', 'minimum': 0, 'maximum': 1})
+        self.assertIn('seuil_orientations_micro', registre(SECTION_ELECTRIQUE_SOCIETE))
+
+
 if __name__ == '__main__':      # pragma: no cover
     unittest.main()

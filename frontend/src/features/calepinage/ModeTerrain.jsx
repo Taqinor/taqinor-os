@@ -291,7 +291,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
         )}
         {ligneEntraxe && <p className="mt-3 text-sm text-foreground" data-testid="cal-terrain-entraxe-calcule">{ligneEntraxe}</p>}
         {alerte && (
-          <div className="mt-3 rounded border border-border p-3 text-sm text-alert-300" role="alert" data-testid="cal-terrain-alerte-ombrage">
+          <div className="mt-3 rounded border border-border p-3 text-sm text-destructive" role="alert" data-testid="cal-terrain-alerte-ombrage">
             <p>{alerte}</p>
             <button
               type="button"

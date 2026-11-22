@@ -127,6 +127,41 @@ def kwc_devis_vs_calepinage(r, devis, ctx):
         attendu=round(kwc_doc, 3))]
 
 
+#: ACAL1011 — l'arrondi au kWh du bloc horaire (les deux côtés appliquent la
+#: même formule kWc × base, ACAL1169) : pas une tolérance du registre.
+_ECART_ARRONDI_KWH = 1.0
+
+
+@regle('CAL_PRODUCTION_DEVIS_VS_CALEPINAGE',
+       'Production rangée du devis ≠ kWc × base servie du calepinage (pose réelle)',
+       gravite=GRAVITE_AVERTISSEMENT, portee=PORTEE_DEVIS)
+def production_devis_vs_calepinage(r, devis, ctx):
+    """ACAL1011 — BROUILLON de niveau 15 seulement : un devis envoyé garde sa
+    base RANGÉE (D-ACAL-36), le comparer à la simulation vivante mentirait."""
+    calepinage = _calepinage_du_devis(devis, ctx)
+    if calepinage is None or getattr(devis, 'statut', None) != 'brouillon':
+        return []
+    from apps.ventes.domain.scenario import puissance_kwc_du_devis
+    from apps.ventes.horaire.productible_pose import base_de_production
+    base = base_de_production(devis)  # None ⇒ niveau ≤ 14, autre marché ou base non servie
+    bloc = (getattr(devis, 'etude_params', None) or {}).get('etude_horaire') or {}
+    production = (bloc.get('annuel') or {}).get('production_kwh') if isinstance(bloc, dict) else None
+    kwc = puissance_kwc_du_devis(devis)
+    if not base or production is None or not kwc:
+        return []
+    attendue = float(kwc) * float(base['kwh_kwc_annuel'])
+    ecart = abs(float(production) - attendue)
+    if ecart <= _ECART_ARRONDI_KWH:
+        return []
+    return [r.violation(
+        devis, 'Le devis range %.0f kWh/an, la pose réelle du calepinage en donne %.0f.'
+        % (float(production), attendue),
+        valeurs={'production_devis': round(float(production), 1),
+                 'production_attendue': round(attendue, 1),
+                 'ecart_kwh': round(ecart, 1), 'calepinage_id': calepinage.pk},
+        attendu=round(attendue, 1))]
+
+
 @regle('CAL_EMPREINTE_IMPRIMEE_PERIMEE',
        'Empreinte imprimée du calepinage ≠ empreinte du devis (non resynchronisé)',
        gravite=GRAVITE_AVERTISSEMENT, portee=PORTEE_DEVIS)

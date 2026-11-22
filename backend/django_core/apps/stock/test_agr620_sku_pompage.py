@@ -68,6 +68,32 @@ class SkuPompageTests(TestCase):
         self.assertFalse(ent.periodicite_defaut)
         self.assertFalse(self._p('INST-PMP').est_recurrent)
 
+    def test_kit_fixation_seme_deux_fois_prix_zero_categorie_imposee(self):
+        # ACAL1172 — un seul produit, prix 0, jamais « panneau », rangé dans
+        # « Structures & fixation » à CHAQUE passage (la re-catégorisation ne
+        # le renvoie pas dans « Protection & accessoires »).
+        sku = 'KIT-FIX-INCL'
+        _seed(self.co)
+        _seed(self.co)
+        self.assertEqual(
+            Produit.objects.filter(company=self.co, sku=sku).count(), 1)
+        p = self._p(sku)
+        self.assertEqual(
+            p.nom, 'Kit de fixation toiture inclinée (crochets, rails, pinces)')
+        self.assertIn('kit de fixation', p.nom.lower())
+        self.assertFalse(est_panneau(p.nom))
+        self.assertEqual((p.prix_vente, p.prix_achat), (0, 0))
+        self.assertEqual((p.quantite_stock, p.seuil_alerte), (0, 0))
+        self.assertEqual(p.categorie.nom, 'Structures & fixation')
+        self.assertFalse(re.search(r'\d', p.description or ''))
+        self.assertIn(sku, seed_mod.SKUS_SEMES)
+        # un prix saisi par le fondateur survit à un re-seed
+        Produit.objects.filter(company=self.co, sku=sku).update(
+            prix_vente=Decimal('99'))
+        _seed(self.co)
+        self.assertEqual(self._p(sku).prix_vente, Decimal('99'))
+        self.assertEqual(self._p(sku).categorie.nom, 'Structures & fixation')
+
     def test_descriptions_neutres_sans_chiffre_et_noms_jamais_panneau(self):
         _seed(self.co)
         for sku in SKUS:

@@ -53,9 +53,23 @@ export function lireCsvHoraire(texte) {
       // ACAL446 — colonnes optionnelles (`?colonnes=`, CALX313) : lues quand
       // le serveur les a servies, `null` sinon — jamais inventées.
       charge_kwh: nombreFrancais(point.charge_kwh),
+      // ACAL738 — puissance continue à l'entrée de l'onduleur (ACAL752).
+      p_dc_kw: nombreFrancais(point.p_dc_kw),
       batterie_soc_pct: nombreFrancais(point.batterie_soc_pct),
       reseau_import_kwh: nombreFrancais(point.reseau_import_kwh),
     })
   }
   return { points, colonnes: titres, tronquee: null, motif_troncature: '' }
+}
+
+/**
+ * ACAL738 — la limite de l'onduleur (kW) lue sur l'étape `ecretage` de la
+ * cascade (`entree.borne_kw`), ou `{ kw: null, motif }` : le motif d'omission
+ * servi, jamais une valeur supposée.
+ */
+export function limiteOnduleur(cascade) {
+  const etape = (cascade?.etapes ?? []).find((e) => e?.etape === 'ecretage')
+  const kw = Number(etape?.entree?.borne_kw)
+  if (etape?.entree?.borne_kw != null && Number.isFinite(kw)) return { kw, motif: '' }
+  return { kw: null, motif: etape?.motif_omission || "la limite de l'onduleur n'est pas servie." }
 }

@@ -34,7 +34,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import AffectationChaines from './AffectationChaines'
-import { couleurParModule } from './AffectationChaines.helpers'
+import { couleurParModule, marquerModules } from './AffectationChaines.helpers'
 
 const contratResultat = () => reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
 
@@ -208,6 +208,30 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
 
     expect(await screen.findByTestId('cal234-bloquant')).toHaveTextContent(motif)
     expect(screen.getByTestId('cal234-enregistrer')).toBeDisabled()
+  })
+
+  it('ACAL935 : le résumé dit « À compléter : N points », jamais « indetermine »', async () => {
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({
+      data: {
+        ...VERDICT_CONFORME,
+        verdict: 'indetermine',
+        manquantes: ['Onduleur : non désigné.'],
+        etat: 'a_completer',
+        points: 16,
+      },
+    })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    glisserSur([B1, B2])
+    saisir('chaine', '2')
+    saisir('mppt', '2')
+    saisir('onduleur', '1')
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+
+    const etat = await screen.findByTestId('cal234-verdict-etat')
+    expect(etat).toHaveTextContent('À compléter : 16 points')
+    expect(etat).not.toHaveTextContent(/indetermine|conforme/i)
   })
 
   it('un numéro invalide est refusé SOUS le champ fautif, sans appel serveur', async () => {
@@ -451,5 +475,84 @@ describe('AffectationChaines (CALX16) — la chaîne la plus faible', () => {
     expect(screen.queryByTestId('calx16-chaine-faible')).toBeNull()
     expect(screen.getByTestId(`cal234-module-${B1}`))
       .toHaveAttribute('data-chaine-faible', 'non')
+  })
+})
+
+describe('AffectationChaines (ACAL725) — le drapeau « optimiseur » par module', () => {
+  // Contrat ACAL733 : `affectation_manuelle[].optimiseur` vrai, faux, ou absent.
+  const contratOptimiseur = () => exempleContrat(
+    'calepinage', 'calepinage_entree_electrique', 'exemple_affectation_optimiseur').affectation_manuelle
+
+  const affecter = (modules, choix) => {
+    glisserSur(modules)
+    saisir('chaine', '2')
+    saisir('mppt', '2')
+    saisir('onduleur', '1')
+    fireEvent.change(screen.getByTestId('cal234-champ-optimiseur'), { target: { value: choix } })
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+  }
+  const corpsEnregistre = async () => {
+    await waitFor(() => expect(screen.getByTestId('cal234-enregistrer')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('cal234-enregistrer'))
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalled())
+    return calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls.at(-1)[1]
+  }
+
+  it('trois modules marqués « oui » : le corps envoyé porte `optimiseur: true` exactement sur eux', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    affecter([B1, B2, B3], 'oui')
+    const corps = await corpsEnregistre()
+    expect(corps.affectation_manuelle).toEqual([B1, B2, B3].map((module) => (
+      { module, chaine: 2, mppt: 2, onduleur: 1, optimiseur: true })))
+  })
+
+  it('« non » envoie `false` ; « inchangé » sur un module sans drapeau n’envoie AUCUNE clé', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    affecter([B1], 'non')
+    affecter([B2], 'inchange')
+    const corps = await corpsEnregistre()
+    const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
+    expect(parModule[B1].optimiseur).toBe(false)
+    expect('optimiseur' in parModule[B2]).toBe(false)
+  })
+
+  it('le serveur renvoyant le drapeau : le module s’affiche marqué (liseré, « optimiseur »), et le drapeau repart', async () => {
+    const [marque, demarque] = contratOptimiseur()
+    const reponse = contratResultat()
+    const donnees = JSON.parse(JSON.stringify(reponse.data))
+    donnees.electrique.affectation = donnees.electrique.affectation.map((ligne) => (
+      [B1, B2].includes(ligne.module)
+        ? { ...ligne, chaine: 2, mppt: 2, onduleur: 1, source: 'affectation manuelle',
+          optimiseur: ligne.module === B1 ? marque.optimiseur : demarque.optimiseur }
+        : ligne))
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: donnees })
+    rendre()
+    const module = await screen.findByTestId(`cal234-module-${B1}`)
+    expect(module).toHaveAttribute('data-optimiseur', 'oui')
+    expect(module).toHaveAttribute('aria-label', expect.stringContaining('optimiseur'))
+    expect(module.getAttribute('title')).toContain('optimiseur')
+    expect(module.className).toContain('border-solid')
+    expect(screen.getByTestId(`cal234-module-${B2}`)).toHaveAttribute('data-optimiseur', 'non')
+
+    affecter([B3], 'inchange') // une édition ailleurs : les drapeaux enregistrés repartent tels quels
+    const corps = await corpsEnregistre()
+    const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
+    expect(parModule[B1].optimiseur).toBe(true)
+    expect(parModule[B2].optimiseur).toBe(false)
+  })
+
+  it('`marquerModules` marque une liste de six modules d’un seul geste', () => {
+    const six = ['P#1', 'P#2', 'P#3', 'P#4', 'P#5', 'P#6'].map((module, i) => (
+      { module, chaine: 1, mppt: 1, onduleur: 1, cx: i }))
+    const marques = marquerModules(six, true)
+    expect(marques).toHaveLength(6)
+    expect(marques.every((l) => l.optimiseur === true)).toBe(true)
+    expect(marques[0]).toEqual({ module: 'P#1', chaine: 1, mppt: 1, onduleur: 1, optimiseur: true })
+    expect(marquerModules(six, undefined).some((l) => 'optimiseur' in l)).toBe(false)
   })
 })

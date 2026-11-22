@@ -114,28 +114,19 @@ describe('ACAL258 — la suggestion s’enregistre dans le document, pas dans la
   })
 })
 
-describe('ACAL258 — le défaut de la société, nommé et confirmé', () => {
-  it('édite les allées de circulation et préserve le reste de la section, après confirmation', async () => {
-    getParametres.mockResolvedValue({ data: { degagements: { retrait_rive_m: 0.5, source: 'devis technique' } } })
-    updateParametres.mockResolvedValue({ data: { degagements: {} } })
+describe('ACAL893 — le défaut de la société se règle dans les Réglages, plus dans l’atelier', () => {
+  it('l’atelier n’écrit plus le défaut : aucun bouton, aucun champ société, un lien vers Réglages › Allées', async () => {
+    getParametres.mockResolvedValue({ data: { degagements: { retrait_rive_m: 0.5 } } })
     render(<PanneauAllees entree={ENTREE} calepinageId={9} builderApi={builder()} />)
     await screen.findByTestId('cal-panneau-allees')
 
-    fireEvent.click(screen.getByTestId('cal-allees-circulation-ajouter'))
-    for (const [cle, v] of [['pays', 'MA'], ['largeur_m', '1.2'], ['source', 'Arrêté (essai)'], ['reference', 'art. 3']]) {
-      fireEvent.change(document.getElementById(`cal-allees-circulation-0-${cle}`), { target: { value: v } })
-    }
-    expect(screen.getByTestId('cal-allees-enregistrer')).toBeDisabled()
-    fireEvent.click(screen.getByTestId('cal-allees-confirmer-societe'))
-    fireEvent.click(screen.getByTestId('cal-allees-enregistrer'))
-
-    await waitFor(() => expect(updateParametres).toHaveBeenCalledTimes(1))
-    const [corps] = updateParametres.mock.calls[0]
-    expect(corps.degagements.allees_circulation).toEqual([
-      { pays: 'ma', largeur_m: 1.2, source: 'Arrêté (essai)', reference: 'art. 3' },
-    ])
-    expect(corps.degagements.retrait_rive_m).toBe(0.5)
-    expect(await screen.findByTestId('cal-allees-message')).toHaveTextContent('tous vos calepinages')
-    expect(enregistrerLayout).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('cal-allees-enregistrer')).toBeNull()
+    expect(screen.queryByTestId('cal-allees-societe')).toBeNull()
+    expect(screen.queryByTestId('cal-allees-confirmer-societe')).toBeNull()
+    expect(screen.queryByText('Enregistrer le défaut de la société')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Régler le défaut de la société' })).toHaveAttribute('href', '/calepinage/reglages/allees')
+    // l'allée de CE calepinage reste dans l'atelier
+    expect(screen.getByTestId('cal-allees-calepinage')).toBeInTheDocument()
+    expect(updateParametres).not.toHaveBeenCalled()
   })
 })

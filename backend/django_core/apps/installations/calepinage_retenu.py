@@ -41,6 +41,9 @@ def bloc_calepinage_retenu(installation):
         'ecart_kwc': ecart,
         'planche_url': bloc['planche_url'],
         'plan_pose_url': f'/ventes/devis/{installation.devis_id}/3d',
+        # ACAL903 — le PDF du plan de pose (équipe terrain), chemin relatif à la
+        # racine de l'API : l'écran le télécharge en blob par le client API.
+        'plan_pose_pdf_url': f"/calepinage/calepinages/{bloc['id']}/plan-pose.pdf/",
     }
 
 
@@ -81,3 +84,26 @@ def _dessin_kwc(installation):
         return None
     kwc = (mesures_du_calepinage(calepinage) or {}).get('kwc')
     return round(float(kwc), 2) if kwc else None
+
+
+#: ACAL589 — un chantier sans calepinage retenu n'a pas de plan : il le DIT.
+MOTIF_PLAN_SANS_CALEPINAGE = ('aucun calepinage retenu pour le devis de ce chantier : '
+                              'aucun plan de pose à afficher')
+
+
+def plan_pose_du_chantier(installation):
+    """ACAL589 — ``{calepinage_id, plan_pose_svg, empreinte, motif}`` du chantier.
+
+    Lu à la demande sur ``apps.calepinage.selectors_chantier.plan_pose_svg_pour_devis``
+    (ACAL588) : aucune colonne chantier. ``plan_pose_svg`` vaut ``None`` avec le
+    ``motif`` servi tel quel (conception modifiée, aucun calepinage retenu…).
+    """
+    from apps.calepinage.selectors_chantier import plan_pose_svg_pour_devis
+
+    plan = (plan_pose_svg_pour_devis(installation.devis_id, installation.company)
+            if installation is not None and installation.devis_id else None)
+    if plan is None:
+        return {'calepinage_id': None, 'plan_pose_svg': None, 'empreinte': None,
+                'motif': MOTIF_PLAN_SANS_CALEPINAGE}
+    return {'calepinage_id': plan['calepinage_id'], 'plan_pose_svg': plan['svg'],
+            'empreinte': plan['empreinte'], 'motif': plan['motif']}

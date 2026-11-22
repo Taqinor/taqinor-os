@@ -85,6 +85,18 @@ MOTIF_QUANTILES = (
     "année sur dix, c'est l'heure où la charge n'est pas servie. Le taux de "
     'défaillance et le mois le plus défavorable tiennent ce rôle.')
 
+MOTIF_SANS_MOIS = (
+    "Aucun mois n'accompagne la série : le mois de plus forte consommation "
+    "n'est pas désigné (aucun calendrier n'est deviné). Banque du mois "
+    'chargé non publiée.')
+
+MENTION_BANQUE_MOIS_CHARGE = (
+    'Banque dimensionnée sur le mois de plus forte consommation journalière '
+    '({mois}, {conso} kWh/jour), mêmes jours d’autonomie, fiche, seuils et '
+    "groupe ; la banque moyenne ci-dessus reste publiée telle quelle. Ce "
+    "n'est pas le « mois le plus défavorable » de la simulation (celui-ci "
+    'est un résultat).')
+
 MENTION_CONSOMMATION_JOURNALIERE = (
     'La consommation journalière qui dimensionne la banque est DÉRIVÉE de la '
     'courbe de charge assemblée ({total} kWh sur {jours} jour(s)), jamais '
@@ -154,7 +166,8 @@ def _omission(motif, *, champ=''):
         'surplus_perdu_kwh': None, 'soc_minimal_pct': None,
         'mois_le_plus_defavorable': None, 'par_mois': [],
         'banque': None, 'quantiles_publiables': None, 'motif_quantiles': '',
-        'mentions': [], 'motif_absence': texte,
+        'mentions': [], 'groupe': None, 'banque_mois_charge': None,
+        'motif_banque_mois_charge': '', 'motif_absence': texte,
     }
 
 
@@ -219,22 +232,28 @@ def bloc_hors_reseau(serie, contexte=None, *, charge=None):
             fiche['motif_rendement'],
             champ=f'{bloc_batterie.CLE_CONTEXTE}.groupes[].specs'
                   '.rendement_ar_pct')
+    mois = _mois_par_heure(serie, longueur)
     try:
-        rendu = dimensionner_hors_reseau(
-            courbe, production,
+        appel = dict(
             jours_autonomie=jours,
-            consommation_journaliere_kwh=conso_journaliere,
             dod_pct=fiche['dod_pct'],
             source_dod=fiche['source_dod'],
             rendement_ar_pct=fiche['rendement_ar_pct'],
             puissance_charge_kw=fiche['puissance_charge_kw'],
             puissance_decharge_kw=fiche['puissance_decharge_kw'],
-            mois_par_heure=_mois_par_heure(serie, longueur),
+            mois_par_heure=mois,
             etat_initial_kwh=declaration.get('etat_initial_kwh'),
             pas_heures=heures_du_pas,
             # CALX272 — les seuils de protection SAISIS sur le document
             # (``hors_reseau.seuils``) ; absents ⇒ comportement d'origine.
-            seuils=declaration.get('seuils'))
+            seuils=declaration.get('seuils'),
+            # ACAL801 — le groupe d'appoint SAISI (``hors_reseau.groupe``).
+            groupe=declaration.get('groupe'))
+        rendu = dimensionner_hors_reseau(
+            courbe, production, consommation_journaliere_kwh=conso_journaliere,
+            **appel)
+        banque_mois = _banque_du_mois_charge(courbe, production, mois,
+                                             heures_du_pas, appel)
     except HorsReseauInvalide as refus:
         return serie, _omission(refus.motif,
                                 champ=refus.champ or '')
@@ -244,7 +263,39 @@ def bloc_hors_reseau(serie, contexte=None, *, charge=None):
     from apps.calepinage.services.chaine_pertes import annees_de_la_fenetre
 
     return _publier(serie, rendu, courbe, mention,
-                    annees=annees_de_la_fenetre(contexte))
+                    annees=annees_de_la_fenetre(contexte),
+                    banque_mois=banque_mois)
+
+
+def _banque_du_mois_charge(courbe, production, mois, heures_du_pas, appel):
+    """ACAL802 — ``(banque, motif)`` : la banque redimensionnée sur le mois
+    dont la consommation JOURNALIÈRE est la plus haute (un SECOND appel à
+    ``dimensionner_hors_reseau``, mêmes jours, fiche, seuils et groupe), ou
+    ``(None, motif)`` sans mois sur la série."""
+    if not mois:
+        return None, MOTIF_SANS_MOIS
+    energie, heures = {}, {}
+    for numero, kwh in zip(mois, courbe):
+        energie[numero] = energie.get(numero, 0.0) + kwh
+        heures[numero] = heures.get(numero, 0.0) + heures_du_pas
+    par_jour = {numero: energie[numero] / (heures[numero] / 24.0)
+                for numero in energie}
+    chaud = max(sorted(par_jour), key=lambda numero: par_jour[numero])
+    rendu = dimensionner_hors_reseau(
+        courbe, production, consommation_journaliere_kwh=par_jour[chaud],
+        **appel)
+    banque, simulation = rendu['banque'], rendu['simulation']
+    return {
+        'mois': chaud,
+        'consommation_journaliere_kwh': round(par_jour[chaud], 3),
+        'capacite_utile_kwh': banque['capacite_utile_kwh'],
+        'capacite_nominale_kwh': banque['capacite_nominale_kwh'],
+        'jours_autonomie': banque['jours_autonomie'],
+        'defaillance_kwh': simulation['defaillance_kwh'],
+        'taux_defaillance': simulation['taux_defaillance'],
+        'mention': MENTION_BANQUE_MOIS_CHARGE.format(
+            mois=chaud, conso=round(par_jour[chaud], 1)),
+    }, ''
 
 
 def _omission_autonomie(serie):
@@ -270,7 +321,20 @@ def _par_mois_par_an(par_mois, annees):
             for ligne in par_mois]
 
 
-def _publier(serie, rendu, courbe, mention, annees=1):
+def _groupe_par_an(groupe, annees):
+    """ACAL801 — heures de marche et énergie du groupe à l'année moyenne."""
+    if groupe is None or annees <= 1:
+        return groupe
+    lignes = [dict(ligne, heures_de_marche=round(
+        ligne['heures_de_marche'] / annees, 1),
+        energie_fournie_kwh=_par_an(ligne['energie_fournie_kwh'], annees))
+        for ligne in groupe['par_mois']]
+    return dict(groupe, par_mois=lignes, heures_de_marche=round(
+        groupe['heures_de_marche'] / annees, 1),
+        energie_fournie_kwh=_par_an(groupe['energie_fournie_kwh'], annees))
+
+
+def _publier(serie, rendu, courbe, mention, annees=1, banque_mois=(None, '')):
     """La série enrichie et le bloc, tirés de la MÊME simulation.
 
     ACAL54 — ``annees`` : le N de la fenêtre météo ; les énergies du bloc
@@ -313,5 +377,12 @@ def _publier(serie, rendu, courbe, mention, annees=1):
         'motif_quantiles': MOTIF_QUANTILES,
         'mentions': (list(banque['mentions']) + list(simulation['mentions'])
                      + [mention]),
+        'groupe': _groupe_par_an(simulation['groupe'], annees),
+        # ACAL802 — la banque du mois chargé (énergies à l'année moyenne).
+        'banque_mois_charge': (
+            None if banque_mois[0] is None else dict(
+                banque_mois[0], defaillance_kwh=_par_an(
+                    banque_mois[0]['defaillance_kwh'], annees))),
+        'motif_banque_mois_charge': banque_mois[1],
         'motif_absence': '',
     }

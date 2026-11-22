@@ -738,3 +738,30 @@ class TensionsDesChainesSurLePlanTest(SimpleTestCase):
                         ligne['chaine'],
                         ('%g' % ligne['voc_froid_v']).replace('.', ',')),
                     svg)
+
+
+class PiedsDeChassisTest(SimpleTestCase):
+    """ACAL580 — le nombre de pieds de châssis (portée saisie) sur le plan de pose."""
+
+    PORTEE = {'valeurM': 2.4, 'source': 'notice du système, p. 4'}
+
+    def test_toit_plat_a_portee_saisie_sept_pieds(self):
+        from apps.calepinage.services.planche import _ligne_des_pieds
+
+        from .test_calx359_bom_fixation import layout as layout_d_un_pan
+
+        document = layout_d_un_pan([(1.0 + 1.15 * k, 1.0) for k in range(12)])
+        document['zones'][0]['porteeEntrePieds'] = dict(self.PORTEE)
+        self.assertEqual(_ligne_des_pieds(document), (
+            'Pieds de châssis : 7 (portée saisie 2,4 m — notice du système, p. 4)',))
+
+    def test_sans_portee_le_plan_d_aujourd_hui(self):
+        from apps.calepinage.services.planche import _ligne_des_pieds
+
+        self.assertEqual(_ligne_des_pieds(copy.deepcopy(LAYOUT)), ())
+
+    def test_la_ligne_est_imprimee_sur_le_plan_de_pose(self):
+        calepinage = calepinage_de_pose()
+        for zone in calepinage.roof_layout['zones']:
+            zone['porteeEntrePieds'] = dict(self.PORTEE)
+        self.assertIn('Pieds de châssis : ', texte_de_svg(plan_de_pose_svg(calepinage)))

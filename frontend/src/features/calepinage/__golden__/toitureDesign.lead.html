@@ -120,6 +120,14 @@
 <label for="rp9-overhang-input" class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Débord (m)</label>
 <input id="rp9-overhang-input" inputmode="decimal" step="any" min="0" class="fig h-9 w-20 border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" type="number" value="0">
 </div>
+<div class="flex flex-wrap items-center gap-2">
+<label for="rp9-seuil-acces" class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Accès solaire minimal (%)</label>
+<input id="rp9-seuil-acces" inputmode="decimal" aria-describedby="rp9-seuil-acces-erreur rp9-seuil-acces-note" class="fig h-11 w-20 border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" type="text">
+<span id="rp9-seuil-acces-note" class="text-xs text-muted-foreground">
+</span>
+<span id="rp9-seuil-acces-erreur" role="alert" class="w-full text-xs text-destructive">
+</span>
+</div>
 </div>
 <div id="rp9-pitched-controls" hidden="" class="space-y-4">
 <div class="flex flex-wrap items-center gap-2">
@@ -219,6 +227,82 @@
 </div>
 <p class="mt-2 text-xs leading-relaxed text-muted-foreground">Activez, puis dans le <strong class="text-foreground">plan tactile</strong> ci-dessous touchez un panneau (bleu) puis un emplacement libre (vert) pour l'y déplacer — ou utilisez <strong class="text-foreground">+ / −</strong>. Vous pouvez aussi glisser un panneau directement sur la 3D. Les panneaux se calent toujours sur des emplacements valides (jamais hors toit, hors retrait ou sur un obstacle) ; le nombre, la puissance, la production et les économies se recalculent.</p>
 <div id="rp9-layout-panel" hidden="" class="mt-5 space-y-5">
+<dl class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+<div>
+<dd id="rp9-layout-count" class="fig text-lg text-foreground sm:text-xl">—</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux posés<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.pose_panneaux" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
+</div>
+<div>
+<dd id="rp9-layout-kwc" class="fig text-lg text-foreground sm:text-xl">—</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Puissance<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.pose_puissance" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
+</div>
+<div>
+<dd id="rp9-layout-free" class="fig text-lg text-foreground sm:text-xl">—</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Emplacements libres<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.pose_emplacements_libres" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
+</div>
+<div>
+<dd id="rp9-layout-cover" class="fig text-lg text-primary-text sm:text-xl">—</dd>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Couverture besoin<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.pose_couverture" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
+</div>
+</dl>
+<div class="flex flex-wrap items-center gap-3">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Poser &amp; sélectionner</span>
+<button type="button" id="rp9-layout-fill" class="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:opacity-40">⤢ Remplir automatiquement</button>
+<button type="button" id="rp9-layout-select" aria-pressed="false" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">▭ Sélection multiple</button>
+<button type="button" id="rp9-layout-clear-sel" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">✕ Effacer la sélection</button>
+<span id="rp9-layout-selcount" data-rp9-selcount="0" aria-live="polite" class="text-sm font-semibold text-primary-text">Aucun panneau sélectionné</span>
+</div>
+<div class="flex flex-wrap items-center gap-3">
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historique</span>
+<button type="button" id="rp9-layout-undo" disabled="" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">↶ Annuler <span class="text-muted-foreground">(Ctrl+Z)</span>
+</button>
+<button type="button" id="rp9-layout-redo" disabled="" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">↷ Rétablir <span class="text-muted-foreground">(Ctrl+Y)</span>
+</button>
+<span class="text-xs text-foreground">Flèches ← ↑ ↓ → : déplacer d’un emplacement</span>
+</div>
+<details id="rp9-layout-avance" class="border border-border p-3">
+<summary class="min-h-11 cursor-pointer py-2 text-sm font-semibold text-foreground">Réglages avancés</summary>
+<div class="mt-3 space-y-5">
 <div class="flex flex-wrap items-center gap-3">
 <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mode d’édition</span>
 <button type="button" id="rp9-layout-mode-lattice" aria-pressed="true" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text aria-pressed:border-brass-400">▦ Emplacements validés</button>
@@ -238,47 +322,17 @@
 </span>
 </div>
 </div>
-<dl class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-<div>
-<dd id="rp9-layout-count" class="fig text-lg text-foreground sm:text-xl">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux posés</dt>
-</div>
-<div>
-<dd id="rp9-layout-kwc" class="fig text-lg text-foreground sm:text-xl">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Puissance</dt>
-</div>
-<div>
-<dd id="rp9-layout-free" class="fig text-lg text-foreground sm:text-xl">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Emplacements libres</dt>
-</div>
-<div>
-<dd id="rp9-layout-cover" class="fig text-lg text-primary-text sm:text-xl">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Couverture besoin</dt>
-</div>
-</dl>
 <div class="flex flex-wrap items-center gap-3">
 <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ajouter / retirer</span>
 <button type="button" id="rp9-layout-minus" aria-label="Retirer un panneau" class="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">−</button>
 <button type="button" id="rp9-layout-plus" aria-label="Ajouter un panneau" class="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">+</button>
-<button type="button" id="rp9-layout-fill" class="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:opacity-40">⤢ Remplir automatiquement</button>
 <button type="button" id="rp9-layout-reset" class="ml-auto border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20">↺ Réinitialiser la disposition optimale</button>
 </div>
 <div class="flex flex-wrap items-center gap-3">
-<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sélection &amp; rangée</span>
-<button type="button" id="rp9-layout-select" aria-pressed="false" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">▭ Sélection multiple</button>
+<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rangée</span>
 <button type="button" id="rp9-layout-row" aria-pressed="false" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">⇔ Déplacer la rangée</button>
-<button type="button" id="rp9-layout-clear-sel" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">✕ Effacer la sélection</button>
-<span id="rp9-layout-selcount" data-rp9-selcount="0" aria-live="polite" class="text-sm font-semibold text-primary-text">Aucun panneau sélectionné</span>
 </div>
 <p class="text-xs leading-relaxed text-foreground">Sur la 3D : <strong class="text-foreground">glissez sur le toit, à côté des panneaux</strong>, pour encadrer un groupe ou une rangée · <strong class="text-foreground">double-clic</strong> sur un panneau = toute sa rangée · <strong class="text-foreground">Ctrl (⌘) + clic</strong> ajoute ou retire un panneau · <strong class="text-foreground">Maj + glissé</strong> ajoute un cadre au groupe · <strong class="text-foreground">Échap</strong> lâche la sélection. Glissez ensuite n’importe quel panneau sélectionné : tout le groupe suit le curseur.</p>
-<div class="flex flex-wrap items-center gap-3">
-<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historique</span>
-<button type="button" id="rp9-layout-undo" disabled="" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">↶ Annuler <span class="text-muted-foreground">(Ctrl+Z)</span>
-</button>
-<button type="button" id="rp9-layout-redo" disabled="" class="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">↷ Rétablir <span class="text-muted-foreground">(Ctrl+Y)</span>
-</button>
-<span class="text-xs text-foreground">Flèches ← ↑ ↓ → : déplacer d’un emplacement</span>
-</div>
 <div id="rp9-layout-azimuth" hidden="" class="flex flex-wrap items-center gap-3">
 <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Azimut du pan</span>
 <button type="button" id="rp9-layout-az-minus" aria-label="Diminuer l’azimut d’un degré" class="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">−</button>
@@ -292,6 +346,8 @@
 <p id="rp9-layout-note" class="mt-2 min-h-[1.25rem] text-xs leading-relaxed text-foreground" aria-live="polite">
 </p>
 </div>
+</div>
+</details>
 </div>
 </div>
 <p id="rp9-status" class="border-t border-border px-4 py-3 text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
@@ -314,25 +370,75 @@
 <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-6" aria-live="polite">
 <div>
 <dd id="rp9-reco-kwc" class="fig text-2xl text-foreground">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Puissance</dt>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Puissance<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.reco_puissance" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
 </div>
 <div>
 <dd id="rp9-reco-panels" class="fig text-2xl text-foreground">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Panneaux</dt>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Panneaux<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.reco_panneaux" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
 </div>
 <div>
 <dd id="rp9-reco-prod" class="fig text-xl text-foreground">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production</dt>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.reco_production" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
 </div>
 <div>
 <dd id="rp9-reco-cover" class="fig text-xl text-foreground">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture</dt>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.reco_couverture" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
 </div>
 </dl>
 <dl class="mt-5 border-t border-border pt-5">
 <div>
 <dd id="rp9-reco-savings" class="fig text-xl text-primary-text">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées</dt>
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.reco_economies" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
+<circle cx="12" cy="12" r="10">
+</circle>
+<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3">
+</path>
+<path d="M12 17h.01">
+</path>
+</svg>
+</button>
+</dt>
 </div>
 </dl>
 <p id="rp9-reco-why" class="mt-5 min-h-[3.5rem] text-xs text-foreground">

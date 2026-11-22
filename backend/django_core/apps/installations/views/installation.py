@@ -1138,6 +1138,17 @@ class InstallationViewSet(ChantierAssistantMixin, oa.JsonOnlyMixin, CompanyScope
         inst = self.get_object()
         return Response(approvisionnement_chantier(inst))
 
+    @oa.extend_schema(responses=oa.OBJ)
+    @action(detail=True, methods=['get'], url_path='plan-pose',
+            permission_classes=[IsAnyRole])
+    def plan_pose(self, request, pk=None):
+        """ACAL589 — le plan de pose (SVG) du calepinage retenu, pour le
+        terrain (« Ma journée », lu aussi hors ligne depuis le cache). Contrat
+        ``contract_samples/calepinage_plan_pose.json`` ; borné à la société par
+        ``get_object`` (404 hors société), aucun montant, rien n'est écrit."""
+        from ..calepinage_retenu import plan_pose_du_chantier
+        return Response(plan_pose_du_chantier(self.get_object()))
+
     @oa.extend_schema(request=oa.CommanderBesoinRequete, responses={201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='commander-besoin',
             permission_classes=[IsResponsableOrAdmin])

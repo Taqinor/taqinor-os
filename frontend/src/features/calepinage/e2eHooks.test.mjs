@@ -268,6 +268,7 @@ export const ALL_HOOKS = [
   'cal-photo-sur-photo-canvas',
   'cal-photo-sur-photo-sans-calage',
   'cal-photo-sur-photo-telecharger',
+  'cal-photo-image-client',
   'cal-photo-sur-photo-vide',
   'cal-photo-supprimer',
   'cal-photo-supprimer-confirmer',
@@ -638,6 +639,7 @@ export const ALL_HOOKS = [
   'cal-pompage-chaines',
   'cal-pompage-comparaison',
   'cal-pompage-pompes',
+  'cal-pompage-appoint',
   // ── production/TapisHoraire.jsx ──
   'cal-tapis',
   'cal-tapis-grandeur',
@@ -759,6 +761,7 @@ export const ALL_HOOKS = [
   'cal-badge-dessin',
   'cal-variante-simuler',
   'cal-variantes-bandeau',
+  'cal-variantes-hypotheses',
   'cal-variantes-vide',
   'cal-variante-renommer',
   'cal-variante-supprimer-confirmer',
@@ -779,6 +782,7 @@ export const ALL_HOOKS = [
   'cal-enregistrer-calepinage',
   'cal-etat-enregistrement',
   'cal-erreur-enregistrement',
+  'cal-action-etape-suivante',
   // ── atelier/PanneauPertesUnifie.jsx (complément L5) ──
   'cal-pertes-unifie',
   // ── AtelierPanneaux.jsx (complément L5) ──
@@ -793,6 +797,12 @@ export const ALL_HOOKS = [
   'cal-etape-electrique-ecran',
   'cal-electrique-synthese',
   'cal-electrique-section',
+  // ── commun/PretAEnvoyer.jsx (ACAL865) ──
+  'cal-pret-a-envoyer',
+  'cal-pret-erreur',
+  'cal-pret-ligne',
+  'cal-pret-regler',
+  'cal-pret-reussis',
   // ── PhotoSiteCalage.jsx (complément L5) ──
   'cal-photo-calage-monde',
 ]

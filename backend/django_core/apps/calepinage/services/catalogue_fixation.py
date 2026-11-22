@@ -40,6 +40,13 @@ BASES = {
     'modules_paysage': 'modules en paysage',
     'rangees_portrait': 'rangées en portrait',
     'rangees_paysage': 'rangées en paysage',
+    # ACAL578 — surfaces de pose (moteur) et pieds de châssis (portée saisie).
+    'tables': 'tables des surfaces de pose (sol, ombrière)',
+    'poteaux': "poteaux d'ombrière (entraxe et section des appuis saisis)",
+    'pieds': 'pieds de châssis (portée entre pieds saisie sur le pan)',
+    # ACAL598 — échafaudage : arêtes typées « égout » et hauteur de bâtiment saisie.
+    'longueur_egouts_m': "longueur des arêtes d'égout typées (m)",
+    'facade_egouts_m2': "façade sous égout : longueur d'égout × hauteur de bâtiment saisie (m²)",
 }
 #: ACAL569 — les quatre bases qui dépendent de l'orientation enregistrée.
 BASES_ORIENTATION = ('modules_portrait', 'modules_paysage',

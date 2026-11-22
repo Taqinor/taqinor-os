@@ -45,6 +45,8 @@ PEREMPTION = 'apps.calepinage.serializers.peremption_du_calepinage'
 KWH = 'apps.ventes.selectors_calepinage.refus_kwh_declare_du_devis'
 
 SIMULATION = {'simulation': {'hash_entree': 'abc'}}
+#: Une part d'ombrage servie, de l'essai (ce que l'étape « ombrage proche » a calculé).
+OMBRAGE_ESSAI_PCT = 2.1
 
 
 class _Societe:
@@ -313,7 +315,8 @@ class ControlesDuResultatTest(SimpleTestCase):
         self.assertEqual(ombrage['etat'], 'a_regler')
         self.assertEqual(ombrage['cause'], 'Aucun obstacle relevé.')
         calcule = {'etapes': [{'etape': 'ombrage_proche',
-                               'motif_omission': '', 'perte_pct': 2.1}]}
+                               'motif_omission': '',
+                               'perte_pct': OMBRAGE_ESSAI_PCT}]}
         self.assertEqual(self._controles(
             cascade=calcule)['ombrage_chiffre']['etat'], 'ok')
         self.assertEqual(self._controles()['ombrage_chiffre']['etat'], 'info')
@@ -507,6 +510,168 @@ def _ctrl(code, etat):
     from apps.calepinage.services.pret_a_envoyer import _controle
 
     return _controle(code, code, etat, '')
+
+
+ANNONCEE = 'apps.ventes.selectors_calepinage.production_annoncee_du_devis'
+
+
+class _DevisPose:
+    pk = 41
+
+
+class UnSeulChiffreTest(SimpleTestCase):
+    """ACAL1171 — le chiffre que le PDF du devis imprimera : la pose ou la ville."""
+
+    def _controle(self, lu, *, devis=_DevisPose()):
+        from apps.calepinage.services.pret_a_envoyer import (
+            controle_un_seul_chiffre)
+
+        with mock.patch(ANNONCEE, return_value=lu) as lecture:
+            controle = controle_un_seul_chiffre(_Calepinage(devis=devis))
+        _forme_du_contrat(self, [controle])
+        self.assertNotEqual(controle['etat'], 'bloquant')
+        return controle, lecture
+
+    @staticmethod
+    def _lu(motif='', *, servie=False, regles=True):
+        return {'regles_a_jour': regles, 'servie': servie, 'motif': motif}
+
+    def test_base_servie_ok_et_lecture_bornee_societe(self):
+        controle, lecture = self._controle(self._lu(servie=True))
+        self.assertEqual(controle['etat'], 'ok')
+        self.assertEqual(controle['valeur_texte'],
+                         'Le devis imprimera la production de cette pose')
+        lecture.assert_called_once()
+        self.assertEqual(lecture.call_args.args[0], 41)
+        self.assertEqual(lecture.call_args.args[1].id, 7)
+
+    def test_simulation_absente_a_lancer(self):
+        for motif in ('aucune simulation du calepinage',
+                      'aucun calepinage lié'):
+            controle, _ = self._controle(self._lu(motif))
+            self.assertEqual(controle['etat'], 'a_regler', motif)
+            self.assertEqual(controle['geste'], 'Lancer la simulation')
+            self.assertEqual(controle['cause'], motif)
+
+    def test_simulation_perimee_a_relancer(self):
+        motif = 'la conception a changé depuis la simulation'
+        controle, _ = self._controle(self._lu(motif))
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['geste'], 'Relancer la simulation')
+        self.assertEqual(controle['cause'], motif)
+
+    def test_resultat_incomplet_nomme_les_pertes_a_renseigner(self):
+        controle, _ = self._controle(self._lu(
+            'résultat incomplet : 3 pertes non renseignées'))
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['geste'], 'Renseigner les 3 pertes manquantes')
+        self.assertEqual(controle['cible']['onglet'], 'reglages')
+        controle, _ = self._controle(self._lu(
+            'résultat du calepinage incomplet'))
+        self.assertEqual(controle['geste'], 'Renseigner les pertes manquantes')
+
+    def test_kwc_du_devis_different_a_resynchroniser(self):
+        for motif in ('lignes du devis différentes du calepinage',
+                      'Conception modifiée depuis le devis : '
+                      'resynchronisez le devis.'):
+            controle, _ = self._controle(self._lu(motif))
+            self.assertEqual(controle['etat'], 'a_regler', motif)
+            self.assertEqual(controle['geste'], 'Resynchroniser le devis')
+
+    def test_agricole_le_motif_du_resolveur_est_rendu_tel_quel(self):
+        motif = 'un pan sans inclinaison ou orientation lisible'
+        controle, _ = self._controle(self._lu(motif))
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['cause'], motif)
+
+    def test_info_sans_verdict_ni_geste(self):
+        cas = (self._lu('règles d’avant le 21/11', regles=False),
+               self._lu('marché non résidentiel'),
+               self._lu('aucune base rangée au bloc horaire'),
+               self._lu('calepinage illisible'), None)
+        for lu in cas:
+            controle, _ = self._controle(lu)
+            self.assertEqual(controle['etat'], 'info', lu)
+            self.assertEqual(controle['geste'], '', lu)
+
+    def test_sans_devis_lie_info_et_aucune_lecture(self):
+        controle, lecture = self._controle(self._lu(servie=True), devis=None)
+        self.assertEqual(controle['etat'], 'info')
+        lecture.assert_not_called()
+
+
+COMPATIBILITE = 'apps.ventes.selectors.compatibilite_du_materiel'
+MATERIEL = 'apps.calepinage.services.electrique.resoudre_materiel'
+
+
+class CompatibiliteTest(SimpleTestCase):
+    """ACAL906 — le verdict de ventes (ACAL901), relayé : le pire des deux."""
+
+    def _controle(self, servi, *, produits=None, batterie=None):
+        from apps.calepinage.services.pret_a_envoyer import (
+            controle_compatibilite)
+
+        calepinage = _Calepinage()
+        calepinage.resultat = {'entree_electrique': {
+            'batterie': {'produit': batterie}} if batterie else {}}
+        materiel = {'produits': produits or {'module': 11, 'onduleur': 12},
+                    'absents': ('onduleur non désigné',)}
+        with mock.patch(MATERIEL, return_value=materiel):
+            with mock.patch(COMPATIBILITE, return_value=servi) as lecture:
+                controle = controle_compatibilite(calepinage)
+        _forme_du_contrat(self, [controle])
+        return controle, lecture
+
+    @staticmethod
+    def _servi(statut, raisons=(), batterie=None):
+        return {'panneau_onduleur': {'statut': statut,
+                                     'raisons': list(raisons)},
+                'batterie_onduleur': batterie}
+
+    def test_incompatible_a_regler_avec_les_raisons_servies(self):
+        controle, lecture = self._controle(self._servi(
+            'incompatible', ['Voc à froid au-dessus du maximum']))
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['valeur_texte'], 'Incompatible')
+        self.assertEqual(controle['cause'], 'Voc à froid au-dessus du maximum')
+        self.assertEqual(controle['geste'], 'Revoir le choix du matériel')
+        self.assertEqual(lecture.call_args.args[:2], (11, 12))
+
+    def test_reserve_a_regler_avec_les_raisons_d_alerte(self):
+        controle, _ = self._controle(self._servi('reserve', ['écrêtage']))
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['cause'], 'écrêtage')
+
+    def test_compatible_ok(self):
+        controle, _ = self._controle(self._servi('compatible'))
+        self.assertEqual(controle['etat'], 'ok')
+        self.assertEqual(controle['geste'], '')
+
+    def test_inconnu_info_avec_les_champs_manquants(self):
+        controle, _ = self._controle(self._servi(
+            'inconnu', ['complétez la fiche : Vmax onduleur']))
+        self.assertEqual(controle['etat'], 'info')
+        self.assertEqual(controle['valeur_texte'], 'Non vérifiable')
+        self.assertIn('Vmax onduleur', controle['cause'])
+
+    def test_le_pire_des_deux_verdicts_l_emporte(self):
+        batterie = {'statut': 'incompatible', 'raisons': ['tension hors plage']}
+        controle, lecture = self._controle(
+            self._servi('compatible', batterie=batterie), batterie=21)
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['cause'], 'tension hors plage')
+        self.assertEqual(lecture.call_args.args[3], 21)
+        controle, _ = self._controle(self._servi(
+            'inconnu', ['fiche vide'],
+            batterie={'statut': 'compatible', 'raisons': []}))
+        self.assertEqual(controle['etat'], 'info')
+
+    def test_materiel_non_designe_info_sans_lecture(self):
+        controle, lecture = self._controle(
+            self._servi('compatible'), produits={'module': 11})
+        self.assertEqual(controle['etat'], 'info')
+        self.assertEqual(controle['cause'], 'onduleur non désigné')
+        lecture.assert_not_called()
 
 
 class AgregatTest(SimpleTestCase):

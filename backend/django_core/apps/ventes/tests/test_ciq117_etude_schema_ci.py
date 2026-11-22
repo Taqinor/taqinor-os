@@ -159,3 +159,38 @@ class LayoutParMarcheTest(SimpleTestCase):
         bloc = self._ecrire('residentiel')
         self.assertEqual(bloc['economies_annuelles'], 240005)
         self.assertEqual(bloc['production_annuelle'], 180000)
+
+    #: ACAL912 — zone 42 modules + champ au sol 176 ; ``result`` racine = le
+    #: toit seul (40 424 kWh, rejeu REJEU-NEW-2).
+    TOIT_ET_SOL = {
+        'panelWatt': 710, 'result': {'annualKwh': 40424, 'savings': 30000},
+        'zones': [{'id': 'Z1', 'geometry': {'count': 42}}],
+        'poseSurfaces': [{'kind': 'sol', 'id': 'TERRAIN', 'label': 'Champ au sol',
+                          'moduleWc': 550, 'engine': {'modules': 176}}]}
+
+    def test_acal912_surface_de_pose_retire_la_production_du_toit_seul(self):
+        """Mutant : écrire ``result.annualKwh`` malgré la surface ⇒ rouge."""
+        self.assertEqual(
+            es.cles_etude_du_layout('residentiel', self.TOIT_ET_SOL['result'], self.TOIT_ET_SOL),
+            {'production_annuelle': None, 'production_source': None,
+             'economies_annuelles': None})
+        devis = SimpleNamespace(pk=None, mode_installation='residentiel', etude_params={
+            'production_annuelle': 40424, 'production_source': 'calepinage',
+            'economies_annuelles': 30000})
+        intention = SimpleNamespace(mode_installation='residentiel', layout=self.TOIT_ET_SOL,
+                                    composition_les_deux=False)
+        from apps.ventes.domain import pipeline
+        with mock.patch.object(pipeline, 'estampiller_provenance', return_value=None), \
+                mock.patch.object(pipeline, '_scenario_de', return_value='Sans batterie'):
+            bloc = pipeline.ecrire_etude_params(devis, intention, ())
+        for cle in ('production_annuelle', 'production_source', 'economies_annuelles'):
+            self.assertNotIn(cle, bloc)
+
+    def test_acal912_toit_seul_inchange_au_bit_pres(self):
+        toit = {k: v for k, v in self.TOIT_ET_SOL.items() if k != 'poseSurfaces'}
+        self.assertEqual(es.cles_etude_du_layout('residentiel', toit['result'], toit),
+                         es.cles_etude_du_layout('residentiel', toit['result']))
+        vide = dict(self.TOIT_ET_SOL, poseSurfaces=[{'kind': 'sol', 'engine': {'modules': 0}}])
+        self.assertEqual(es.cles_etude_du_layout('residentiel', vide['result'], vide)['production_annuelle'],
+                         40424)
+        self.assertEqual(es.cles_etude_du_layout('industriel', {}, self.TOIT_ET_SOL), {})

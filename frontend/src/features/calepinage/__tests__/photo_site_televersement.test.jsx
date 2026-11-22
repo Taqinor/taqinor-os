@@ -26,6 +26,7 @@ vi.mock('leaflet', async () => (await import('./leafletFauxMock')).leafletFauxMo
 vi.mock('leaflet/dist/leaflet.css', () => ({}))
 
 const { default: PhotoSiteCalage } = await import('../PhotoSiteCalage')
+const { rejouerFile } = await import('../fileEnvoiPhotos')
 
 const PHOTO_NEUVE = {
   id: 5, genre: 'drone', legende: '', filename: 'photo.png',
@@ -119,5 +120,81 @@ describe('CALX38 — un dépôt réussi', () => {
 
     expect(await screen.findByTestId('cal-photo-depot-erreur-photo'))
       .toHaveTextContent("n'est pas une image")
+  })
+})
+
+describe('ACAL892 — photo déposée hors ligne : gardée sur l’appareil, envoyée au retour du réseau', () => {
+  let enLigne
+  const remplir = async () => {
+    await choisirGenre('Drone')
+    fireEvent.change(screen.getByTestId('cal-photo-depot-date'), { target: { value: '2026-09-20' } })
+    fireEvent.change(screen.getByTestId('cal-photo-depot-fichier'), { target: { files: [fichierPNG()] } })
+  }
+  const retourReseau = () => { enLigne.mockReturnValue(true); window.dispatchEvent(new Event('online')) }
+
+  beforeEach(() => {
+    photos.mockResolvedValue({ data: { photos: [] } })
+    enLigne = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+  })
+  afterEach(async () => {
+    enLigne.mockReturnValue(true)
+    ajouterPhoto.mockReset()
+    ajouterPhoto.mockResolvedValue({ data: { photo: PHOTO_NEUVE, photos: [PHOTO_NEUVE] } })
+    await rejouerFile(9) // vide la file partagée du module entre deux cas
+    enLigne.mockRestore()
+  })
+
+  it('hors ligne ⇒ photo en file, message et compte 1 ; au retour du réseau ⇒ envoi, compte 0, « Photo envoyée »', async () => {
+    rendre()
+    await screen.findByTestId('cal-photo-calage-vide')
+    await remplir()
+
+    const etat = await screen.findByTestId('acal892-file-attente')
+    expect(etat).toHaveTextContent('Photo gardée sur cet appareil : elle partira dès le retour du réseau.')
+    expect(etat).toHaveTextContent('1 photo en attente d’envoi')
+    expect(ajouterPhoto).not.toHaveBeenCalled()
+
+    ajouterPhoto.mockResolvedValue({ data: { photo: PHOTO_NEUVE, photos: [PHOTO_NEUVE] } })
+    retourReseau()
+    await waitFor(() => expect(ajouterPhoto).toHaveBeenCalledTimes(1))
+    const [id, corps] = ajouterPhoto.mock.calls[0]
+    expect(id).toBe(9)
+    expect(corps.get('genre')).toBe('drone')
+    expect(corps.get('prise_le')).toBe('2026-09-20')
+    await waitFor(() => expect(screen.getByTestId('acal892-file-attente')).toHaveTextContent('Photo envoyée.'))
+    expect(screen.getByTestId('acal892-file-attente')).not.toHaveTextContent('en attente')
+    expect(await rejouerFile(9)).toMatchObject({ envoyees: 0, restantes: 0 })
+  })
+
+  it('le compte survit au rechargement de l’écran (relu dans la file)', async () => {
+    rendre()
+    await screen.findByTestId('cal-photo-calage-vide')
+    await remplir()
+    await screen.findByTestId('acal892-file-attente')
+    cleanup()
+    rendre()
+    expect(await screen.findByTestId('acal892-file-attente')).toHaveTextContent('1 photo en attente d’envoi')
+  })
+
+  it('refus serveur (400) au retour du réseau ⇒ retirée de la file, champ nommé', async () => {
+    rendre()
+    await screen.findByTestId('cal-photo-calage-vide')
+    await remplir()
+    await screen.findByTestId('acal892-file-attente')
+    ajouterPhoto.mockRejectedValue({ response: { status: 400, data: { genre: 'Genre inconnu.' } } })
+    retourReseau()
+    await waitFor(() => expect(screen.getByTestId('acal892-file-attente')).toHaveTextContent('Photo refusée par le serveur (genre : Genre inconnu.)'))
+    expect(screen.getByTestId('acal892-file-attente')).not.toHaveTextContent('en attente')
+    expect(await rejouerFile(9)).toMatchObject({ restantes: 0 })
+  })
+
+  it('en ligne mais coupure pendant l’envoi (aucune réponse) ⇒ photo en file ; en ligne normal ⇒ inchangé', async () => {
+    enLigne.mockReturnValue(true)
+    ajouterPhoto.mockRejectedValueOnce(new Error('Network Error'))
+    rendre()
+    await screen.findByTestId('cal-photo-calage-vide')
+    await remplir()
+    expect(await screen.findByTestId('acal892-file-attente')).toHaveTextContent('Photo gardée sur cet appareil')
+    expect(ajouterPhoto).toHaveBeenCalledTimes(1)
   })
 })

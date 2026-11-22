@@ -13,7 +13,8 @@ def valider_batterie(saisie):
     disant. Les grandeurs de la batterie viennent de la FICHE du produit,
     jamais de cette saisie."""
     from .batterie import COUPLAGES, MOTIVATIONS, STRATEGIES
-    from .electrique import CLES_BATTERIE, _fini, _refus_champ
+    from .batterie_declaration import CLES_BATTERIE
+    from .electrique import _fini, _refus_champ
 
     if saisie is None:
         return

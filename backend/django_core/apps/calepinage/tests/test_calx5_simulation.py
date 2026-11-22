@@ -628,7 +628,70 @@ class ContratTest(SimpleTestCase):
                 # ACAL793 — les faits de la série.
                 self.assertEqual(sorted(servi['total']['faits_serie']),
                                  sorted(attendu['faits_serie']))
+                # ACAL794 — le mot de verdict : null + motif sans réglage.
+                self.assertEqual(
+                    sorted(attendu['verdict'] or ['mot', 'seuils_utilises']),
+                    ['mot', 'seuils_utilises'])
+        # ACAL797 — le secours : coupures null + motif, ou le bloc rejoué.
+        sec = CONTRAT['exemple']['batterie']['total']['secours']
+        self.assertIsNone(sec['coupures'])
+        self.assertTrue(sec['motif_coupures'])
+        rejoue = CONTRAT['exemple_borne_haute']['batterie']['total'][
+            'secours']['coupures']
+        self.assertEqual(sorted(rejoue), sorted([
+            'nombre_par_an', 'duree_h', 'heure_debut', 'jours_testes',
+            'energie_non_fournie_par_coupure_moyenne_kwh',
+            'energie_non_fournie_par_coupure_pire_kwh',
+            'energie_non_fournie_kwh', 'mention']))
+        self.assertEqual(servi['total']['secours'].keys(), sec.keys())
+        # ACAL798 — la liste d'appareils de l'exemple borne haute.
+        liste = CONTRAT['exemple_borne_haute']['batterie']['total'][
+            'secours']['appareils']
+        self.assertEqual(sorted(liste[0]), sorted([
+            'nom', 'quantite', 'puissance_continue_kw', 'heures_tenues']))
+        self.assertIsNone(sec['appareils'])
+        self.assertIsNone(CONTRAT['exemple']['batterie']['total']['verdict'])
+        self.assertTrue(
+            CONTRAT['exemple']['batterie']['total']['motif_verdict'])
+        self.assertIn(
+            CONTRAT['exemple_borne_haute']['batterie']['total'][
+                'verdict']['mot'], ('trop_petite', 'trop_grande', 'adaptee'))
         self.assertIsNone(CONTRAT['exemple_vide']['batterie']['total'])
+
+    def test_acal801_le_groupe_d_appoint_servi_a_les_cles_de_l_echantillon(
+            self):
+        from apps.calepinage.services.etapes import hors_reseau as etape
+        from apps.calepinage.tests.test_calx191_hors_reseau import (
+            GROUPE, contexte_de_test, serie_de_test,
+        )
+
+        contexte = contexte_de_test(heures=720, jours=0.1)
+        contexte[etape.CLE_CONTEXTE]['groupe'] = GROUPE
+        _suite, servi = etape.bloc_hors_reseau(serie_de_test(heures=720),
+                                               contexte)
+        self.assertEqual(sorted(servi), sorted(
+            CONTRAT['exemple']['hors_reseau']))
+        for nom in ('exemple', 'exemple_borne_haute'):
+            with self.subTest(exemple=nom):
+                attendu = CONTRAT[nom]['hors_reseau']['groupe']
+                self.assertEqual(sorted(servi['groupe']), sorted(attendu))
+                self.assertEqual(sorted(servi['groupe']['par_mois'][0]),
+                                 sorted(attendu['par_mois'][0]))
+        self.assertIsNone(CONTRAT['exemple_vide']['hors_reseau']['groupe'])
+        # ACAL802 — la banque du mois chargé : mêmes clés que l'étape.
+        from apps.calepinage.tests.test_calx191_hors_reseau import (
+            contexte_de_test as contexte_hr, serie_de_test as serie_hr,
+        )
+
+        _suite, annuel = etape.bloc_hors_reseau(
+            serie_hr(), contexte_hr(jours=2.0))
+        for nom in ('exemple', 'exemple_borne_haute'):
+            with self.subTest(exemple=nom, bloc='banque_mois_charge'):
+                self.assertEqual(
+                    sorted(annuel['banque_mois_charge']),
+                    sorted(CONTRAT[nom]['hors_reseau']['banque_mois_charge']))
+        self.assertIsNone(
+            CONTRAT['exemple_vide']['hors_reseau']['banque_mois_charge'])
 
     def test_les_trois_blocs_horaires_omis_ont_les_cles_de_exemple_vide(self):
         for nom in ('batterie', 'autoconsommation', 'hors_reseau'):

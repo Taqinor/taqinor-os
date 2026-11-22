@@ -13,7 +13,8 @@
       "dessin_kwc": 8.52,
       "ecart_kwc": 1.92,
       "planche_url": "/calepinage/7",
-      "plan_pose_url": "/ventes/devis/103/3d"
+      "plan_pose_url": "/ventes/devis/103/3d",
+      "plan_pose_pdf_url": "/calepinage/calepinages/7/plan-pose.pdf/"
     }
   },
   "exemple_sans_calepinage": {

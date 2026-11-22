@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -124,35 +124,15 @@ describe('CAL70 — l’écran lit le réglage société et le plateau du moteur
     const attendue = RESULTAT_AVEC_PLATEAU.suggestions
       .find((s) => s.code === 'ALLEE_GRATUITE').action.patch.allee_m
     expect(document.getElementById('cal-allees-largeur-calepinage')).toHaveValue(attendue)
-    // Le défaut société n'est pas touché : champ inchangé, aucune écriture.
-    expect(document.getElementById('cal-allees-largeur')).toHaveValue(null)
+    // ACAL893 — le défaut société n'est plus dans l'atelier (vérifié aussi par PanneauAllees.portee.test.jsx) :
+    // reprendre le plateau ne peut pas le toucher.
+    expect(document.getElementById('cal-allees-largeur')).toBeNull()
     // Rien n'est encore enregistré : c'est un geste EXPLICITE.
     expect(updateParametres).not.toHaveBeenCalled()
   })
 
-  it('enregistre la section dégagements — PRÉSERVE le reste de la section', async () => {
-    getParametres.mockResolvedValue({
-      data: { degagements: { retrait_rive_m: 0.5, source: 'devis technique' } },
-    })
-    updateParametres.mockResolvedValue({ data: { degagements: {} } })
-    rendre()
-    await screen.findByTestId('cal-panneau-allees')
-
-    fireEvent.change(document.getElementById('cal-allees-largeur'),
-      { target: { value: '1.2' } })
-    // ACAL258 — le défaut société se CONFIRME avant d'écrire.
-    expect(screen.getByTestId('cal-allees-enregistrer')).toBeDisabled()
-    fireEvent.click(screen.getByTestId('cal-allees-confirmer-societe'))
-    fireEvent.click(screen.getByTestId('cal-allees-enregistrer'))
-
-    await waitFor(() => expect(updateParametres).toHaveBeenCalledTimes(1))
-    const [corps] = updateParametres.mock.calls[0]
-    expect(corps.degagements.allee_technique_m).toBe(1.2)
-    expect(corps.degagements.retrait_rive_m).toBe(0.5)
-    expect(corps.degagements.source).toBe('devis technique')
-    expect(await screen.findByTestId('cal-allees-message'))
-      .toHaveTextContent('tous vos calepinages')
-  })
+  // ACAL893 — « enregistre la section dégagements — PRÉSERVE le reste de la section » vit désormais dans
+  // reglages/ReglagesAllees.test.jsx (premier cas : confirmation, 1.2, retrait_rive_m et source préservés, message).
 
   it('sans surface à analyser, le DIT plutôt que d’interroger le moteur', async () => {
     getParametres.mockResolvedValue({ data: { degagements: {} } })

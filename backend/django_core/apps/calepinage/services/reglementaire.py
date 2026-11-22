@@ -239,6 +239,11 @@ def _composer_dossier(entree, infos):
             'depose_le': gabarit.get('depose_le'),
             'depose_par': gabarit.get('depose_par'),
             'version': gabarit.get('version'),
+            # ACAL824 — la date de vérification, la durée réglée par la
+            # société et le verdict (``None`` : non réglé ou non vérifié).
+            'verifie_le': gabarit.get('verifie_le'),
+            'verification_max_jours': gabarit.get('verification_max_jours'),
+            'verification_perimee': gabarit.get('verification_perimee'),
         },
         'pieces': pieces,
         'champs_a_completer': champs,
@@ -358,7 +363,34 @@ def _adresse_du_site(calepinage):
     return adresse or ville
 
 
-def _entree_depuis_orm(gabarit, dossier, empreinte_courante=None):
+def _verification_perimee(verifie_le, max_jours, aujourdhui=None):
+    """ACAL824 — ``True`` si ``verifie_le`` date de plus de ``max_jours``
+    jours ; ``None`` quand on ne le SAIT pas (durée non réglée ou gabarit
+    jamais vérifié) — jamais ``False`` : « non vérifié » n'est pas « à jour »."""
+    if verifie_le is None or not max_jours:
+        return None
+    import datetime
+
+    aujourdhui = aujourdhui or datetime.date.today()
+    return (aujourdhui - verifie_le).days > max_jours
+
+
+def _max_jours_societe(parametres):
+    """ACAL824 — la durée de re-vérification saisie avec sa source (réglage
+    société ``gabarit_verification_max_jours``), ou ``None`` : jamais supposée."""
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
+    from .valeurs import nombre
+
+    saisie = ((parametres or {}).get(SECTION_ELECTRIQUE_SOCIETE) or {}).get(
+        'gabarit_verification_max_jours')
+    if not isinstance(saisie, dict) or not saisie.get('source'):
+        return None
+    valeur = nombre(saisie.get('valeur'))
+    return int(valeur) if valeur is not None and valeur >= 1 else None
+
+
+def _entree_depuis_orm(gabarit, dossier, empreinte_courante=None,
+                       max_jours=None):
     depose_par = gabarit.depose_par
     fichier = gabarit.fichier
     return {
@@ -375,6 +407,11 @@ def _entree_depuis_orm(gabarit, dossier, empreinte_courante=None):
                             'nom_complet': str(depose_par)}
                            if depose_par is not None else None),
             'version': gabarit.version or None,
+            'verifie_le': (gabarit.verifie_le.isoformat()
+                           if gabarit.verifie_le else None),
+            'verification_max_jours': max_jours,
+            'verification_perimee': _verification_perimee(
+                gabarit.verifie_le, max_jours),
         },
         'pieces_attendues': gabarit.pieces_attendues or [],
         'champs': gabarit.champs or [],
@@ -425,8 +462,12 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
             return None
         return empreinte_des_entrees(calepinage, 'fr', dossier=dossier)
 
+    from ..selectors import parametres_de_societe
+
+    max_jours = _max_jours_societe(parametres_de_societe(company))
     entrees = [_entree_depuis_orm(gabarit, dossiers.get(gabarit.pk),
-                                  _courante(dossiers.get(gabarit.pk)))
+                                  _courante(dossiers.get(gabarit.pk)),
+                                  max_jours)
                for gabarit in gabarits]
     return _composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
                               entrees=entrees, infos=infos)

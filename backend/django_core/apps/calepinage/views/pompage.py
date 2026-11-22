@@ -180,21 +180,8 @@ def _chaines_variateur(calepinage, variateur_id, serie, paralleles):
     posés ; aucune adaptation du champ."""
     from core.pompage.champ import controle_chaine_variateur
 
-    from ..services.electrique import (
-        entree_stockee, resoudre_materiel, temperatures_pour_calepinage)
-
-    materiel, module, temperatures, variateur = {}, None, None, None
-    if serie is not None:  # sans longueur saisie, rien à résoudre
-        entree = entree_stockee(calepinage)
-        materiel = resoudre_materiel(calepinage.company, entree,
-                                     calepinage=calepinage)
-        module = materiel.get('module') or None
-        site = temperatures_pour_calepinage(calepinage, saisie=entree,
-                                            module_specs=module)
-        if site.source is not None:
-            temperatures = {'froid_c': float(site.froid_c),
-                            'chaud_c': float(site.chaud_c), 'source': site.source}
-        variateur = _element_pompage(calepinage.company, variateur_id)
+    materiel, module, temperatures, variateur = _materiel_du_champ(
+        calepinage, variateur_id, serie)
     bloc = controle_chaine_variateur(variateur, module, serie or 0,
                                      paralleles or 1, temperatures)
     if serie is None:
@@ -208,6 +195,46 @@ def _chaines_variateur(calepinage, variateur_id, serie, paralleles):
                 modules_poses=_modules_retenus(calepinage),
                 champ='modules_en_serie' if serie is None else None)
     return bloc
+
+
+def _materiel_du_champ(calepinage, variateur_id, serie):
+    """ACAL810/ACAL820 — ``(materiel, module, temperatures, variateur)`` : le
+    module RETENU (``resoudre_materiel``), les températures du site et
+    l'élément ``produits_pompage`` du variateur ; rien sans longueur saisie."""
+    from ..services.electrique import (
+        entree_stockee, resoudre_materiel, temperatures_pour_calepinage)
+
+    if serie is None:
+        return {}, None, None, None
+    entree = entree_stockee(calepinage)
+    materiel = resoudre_materiel(calepinage.company, entree, calepinage=calepinage)
+    module = materiel.get('module') or None
+    site = temperatures_pour_calepinage(calepinage, saisie=entree, module_specs=module)
+    temperatures = None
+    if site.source is not None:
+        temperatures = {'froid_c': float(site.froid_c),
+                        'chaud_c': float(site.chaud_c), 'source': site.source}
+    return materiel, module, temperatures, _element_pompage(calepinage.company, variateur_id)
+
+
+def _appoint_variateur(calepinage, variateur_id, serie, appoint):
+    """ACAL820 — ``controle_appoint`` (ACAL818) sur le variateur retenu et le
+    module du calepinage ; ``None`` sans appoint choisi (réseau ou groupe)."""
+    if appoint not in APPOINTS:
+        return None
+    from core.pompage.champ import controle_appoint
+
+    _materiel, module, temperatures, variateur = _materiel_du_champ(calepinage, variateur_id, serie)
+    bloc = controle_appoint(variateur, module, serie or 0, temperatures)
+    if serie is None:
+        bloc['motif'] = 'nombre de modules par chaîne non saisi'
+    elif variateur is None:
+        bloc['motif'] = 'aucun variateur retenu'
+    return dict(bloc, appoint=appoint)
+
+
+#: ACAL820 — appoint du variateur : réseau ou groupe électrogène ; vide = aucun.
+APPOINTS = ('reseau', 'groupe')
 
 
 _NOMBRES_POMPAGE = (
@@ -273,7 +300,8 @@ def _champs_corps():
         'pompes_variateur': serializers.ListField(child=type('PompeSurVariateur', (serializers.Serializer,), {
             'nom': ChaineStricte(required=False, allow_blank=True),
             'kw': FlottantFini(required=False, allow_null=True)})(), required=False, allow_null=True),
-        'mode_pompes': ChaineStricte(required=False)}
+        'mode_pompes': ChaineStricte(required=False),
+        'appoint': ChaineStricte(required=False, allow_blank=True)}  # ACAL820 — APPOINTS, vide = aucun
 
 
 @extend_schema(
@@ -552,6 +580,8 @@ def pompage(self, request, pk=None):
         'bilan_reservoir': bilan_reservoir,
         'comparaison_reservoir': comparaison,
         'pompes_variateur': pompes_variateur,
+        'appoint_variateur': _appoint_variateur(  # ACAL820 — absent sans appoint
+            calepinage, (variateur_servi or {}).get('produit'), chaines['serie'], corps.get('appoint')),
         'erreurs': erreurs,
         'avertissements': avertissements,
         'alertes': alertes,

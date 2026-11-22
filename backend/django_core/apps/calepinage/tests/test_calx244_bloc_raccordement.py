@@ -49,9 +49,10 @@ RACCORDEMENT = json.loads(
 CODES = ['elevation_tension', 'puissance_souscrite', 'regime_phases',
          'tension_nominale', 'desequilibre_phases']
 
-#: Les quatre grandeurs du bloc ``calcul``.
+#: Les six grandeurs du bloc ``calcul`` (ACAL827 : + plafond A converti).
 CHAMPS_CALCUL = {'elevation_pct', 'ecart_limite_pct', 'puissance_injectee_kva',
-                 'desequilibre_pct'}
+                 'desequilibre_pct', 'plafond_injection_kw_converti',
+                 'plafond_injection_conversion'}
 
 #: Les cinq champs d'un verdict publié.
 CHAMPS_VERDICT = {'code', 'libelle', 'statut', 'detail', 'source'}
@@ -111,6 +112,61 @@ class FormeDuDocumentTest(SimpleTestCase):
         bloc = bloc_raccordement(None, SAISIE, [TRONCON_AC], {})
 
         self.assertEqual(set(bloc['calcul']), CHAMPS_CALCUL)
+
+    def test_plafond_en_ampere_converti_en_kw(self):
+        """ACAL827 — 16 A, 3 phases, 400 V, cos φ 1 ⇒ 11,085 kW et sa
+        formule ; champ manquant ⇒ null nommé ; kW + A ⇒ refus."""
+        saisie = dict(SAISIE, tension_nominale_v=400.0, cos_phi_impose=1.0,
+                      plafond_injection_a=16.0,
+                      plafond_injection_justification="contrat d'essai")
+        bloc = bloc_raccordement(None, saisie, [TRONCON_AC], {})
+        self.assertEqual(bloc['saisie']['plafond_injection_a'], 16.0)
+        self.assertEqual(bloc['calcul']['plafond_injection_kw_converti'],
+                         11.085)
+        self.assertEqual(bloc['calcul']['plafond_injection_conversion'],
+                         '3 phases : √3 × 400 V × 16 A × cos φ 1 = '
+                         '11,085 kW')
+        mono = bloc_raccordement(
+            None, dict(saisie, phases=1, tension_nominale_v=230.0),
+            [TRONCON_AC], {})
+        self.assertEqual(mono['calcul']['plafond_injection_kw_converti'],
+                         3.68)
+        self.assertTrue(mono['calcul']['plafond_injection_conversion']
+                        .startswith('Monophasé : 230 V'))
+        sans_cos = bloc_raccordement(
+            None, dict(saisie, cos_phi_impose=None, source_cos_phi=None),
+            [TRONCON_AC], {})
+        self.assertIsNone(sans_cos['calcul']['plafond_injection_kw_converti'])
+        self.assertIn('cos φ imposé',
+                      sans_cos['calcul']['plafond_injection_conversion'])
+        aucun = bloc_raccordement(None, SAISIE, [TRONCON_AC], {})
+        self.assertIsNone(aucun['calcul']['plafond_injection_kw_converti'])
+        self.assertIsNone(aucun['calcul']['plafond_injection_conversion'])
+        with self.assertRaises(RaccordementInvalide) as refus:
+            bloc_raccordement(None, dict(saisie, plafond_injection_kw=5.0),
+                              [TRONCON_AC], {})
+        self.assertEqual(refus.exception.champ,
+                         'raccordement.plafond_injection_a')
+        with self.assertRaises(RaccordementInvalide) as negatif:
+            bloc_raccordement(None, dict(saisie, plafond_injection_a=-1),
+                              [TRONCON_AC], {})
+        self.assertEqual(negatif.exception.champ,
+                         'raccordement.plafond_injection_a')
+        with self.assertRaises(RaccordementInvalide) as sans_just:
+            bloc_raccordement(
+                None, dict(saisie, plafond_injection_justification=None),
+                [TRONCON_AC], {})
+        self.assertTrue(sans_just.exception.etat)
+
+    def test_simulation_recoit_le_kw_converti(self):
+        from apps.calepinage.services.limites_livraison import (
+            saisie_pour_simulation)
+
+        lu = saisie_pour_simulation(dict(
+            SAISIE, cos_phi_impose=1.0, plafond_injection_a=16.0,
+            plafond_injection_kw=None))
+        self.assertEqual(lu['plafond_injection_kw'], 11.085)
+        self.assertNotIn('plafond_injection_a', lu)
 
     def test_les_cinq_verdicts_dans_l_ordre_du_contrat(self):
         bloc = bloc_raccordement(None, SAISIE, [TRONCON_AC], {})

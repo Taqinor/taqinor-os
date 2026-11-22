@@ -177,6 +177,48 @@ class ContenuPublieTest(SimpleTestCase):
         self.assertAlmostEqual(banque['capacite_utile_kwh'],
                                24.0 * 2.0 / 0.9, delta=0.1)
 
+    def _bloc_saisonnier(self, serie=None):
+        # Décembre (744 h) à 2 kWh/h, le reste de 2021 à 1 kWh/h.
+        serie = serie or serie_de_test()
+        contexte = contexte_de_test(jours=2.0)
+        contexte['consommation']['import_intervalle']['valeurs'] = [
+            2.0 if point['mois'] == 12 else CONSO_KWH
+            for point in serie['points']]
+        return bloc.bloc_hors_reseau(serie, contexte)[1]
+
+    def test_acal802_la_banque_du_mois_charge_est_au_moins_la_moyenne(self):
+        resultat = self._bloc_saisonnier()
+        moyenne = resultat['banque']
+        charge = resultat['banque_mois_charge']
+        self.assertEqual(resultat['motif_banque_mois_charge'], '')
+        # Décembre : 31 jours × 48 kWh = 1 488 kWh ; 744 h ÷ 24 = 31 jours.
+        self.assertEqual(charge['mois'], 12)
+        self.assertEqual(charge['consommation_journaliere_kwh'], 48.0)
+        # Même règle que la banque moyenne : conso × jours ÷ rendement 0,9.
+        self.assertAlmostEqual(charge['capacite_utile_kwh'],
+                               48.0 * 2.0 / 0.9, delta=0.1)
+        self.assertGreater(charge['capacite_utile_kwh'],
+                           moyenne['capacite_utile_kwh'])
+        self.assertEqual(charge['jours_autonomie'], moyenne['jours_autonomie'])
+        self.assertGreaterEqual(charge['capacite_nominale_kwh'],
+                                charge['capacite_utile_kwh'])
+        self.assertIsNotNone(charge['defaillance_kwh'])
+        self.assertIsNotNone(charge['taux_defaillance'])
+        # La banque moyenne reste publiée telle quelle : conso moyenne
+        # (8 760 + 744) ÷ 365 jours = 26,04 kWh/jour.
+        self.assertAlmostEqual(moyenne['capacite_utile_kwh'],
+                               (9504.0 / 365.0) * 2.0 / 0.9, delta=0.1)
+
+    def test_acal802_sans_mois_le_motif_est_nomme(self):
+        serie = serie_de_test(heures=72)
+        for point in serie['points']:
+            del point['mois']
+        _suite, resultat = bloc.bloc_hors_reseau(
+            serie, contexte_de_test(heures=72, jours=1.0))
+        self.assertEqual(resultat['motif_absence'], '')
+        self.assertIsNone(resultat['banque_mois_charge'])
+        self.assertIn('Aucun mois', resultat['motif_banque_mois_charge'])
+
     def test_aucune_colonne_reseau_n_est_ecrite(self):
         serie = serie_de_test(heures=72)
         suite, _resultat = bloc.bloc_hors_reseau(
@@ -186,6 +228,82 @@ class ContenuPublieTest(SimpleTestCase):
             self.assertNotIn('reseau_import_kwh', point)
             self.assertNotIn('reseau_export_kwh', point)
             self.assertIn('batterie_soc_pct', point)
+
+
+GROUPE = {'actif': True, 'puissance_kw': 5.0, 'soc_demarrage_pct': 20,
+          'soc_arret_pct': 80, 'heures_max_par_jour': 6}
+SEUILS = {'veille_pct': 30, 'entretien_pct': 20, 'arret_pct': 10}
+
+
+class GroupeDAppointTest(SimpleTestCase):
+    """ACAL801 — le groupe d'appoint : marche, énergie, défaillance."""
+
+    def _bloc(self, groupe=None, seuils=None, heures=720, jours=0.1):
+        contexte = contexte_de_test(heures=heures, jours=jours)
+        if groupe is not None:
+            contexte[bloc.CLE_CONTEXTE]['groupe'] = groupe
+        if seuils is not None:
+            contexte[bloc.CLE_CONTEXTE]['seuils'] = seuils
+        return bloc.bloc_hors_reseau(serie_de_test(heures=heures),
+                                     contexte)[1]
+
+    def test_un_groupe_de_5_kw_reduit_la_defaillance_et_publie_ses_heures(self):
+        sans = self._bloc()
+        avec = self._bloc(GROUPE)
+        self.assertLessEqual(avec['defaillance_kwh'], sans['defaillance_kwh'])
+        self.assertLess(avec['defaillance_kwh'], sans['defaillance_kwh'])
+        groupe = avec['groupe']
+        self.assertGreater(groupe['heures_de_marche'], 0)
+        self.assertGreater(groupe['energie_fournie_kwh'], 0)
+        # Budget : au plus 6 h par jour sur 30 jours.
+        self.assertLessEqual(groupe['heures_de_marche'], 6 * 30)
+        self.assertEqual([ligne['mois'] for ligne in groupe['par_mois']], [1])
+        self.assertAlmostEqual(
+            sum(ligne['heures_de_marche'] for ligne in groupe['par_mois']),
+            groupe['heures_de_marche'], places=2)
+        self.assertIn('courant de démarrage', groupe['mention'])
+        # Le bilan ferme : servi + défaillance = consommation.
+        self.assertAlmostEqual(avec['servi_kwh'] + avec['defaillance_kwh'],
+                               avec['consommation_kwh'], places=2)
+        for cle in ('puissance_kw', 'soc_demarrage_pct', 'soc_arret_pct',
+                    'heures_max_par_jour'):
+            self.assertEqual(groupe[cle], GROUPE[cle])
+
+    def test_actif_faux_ou_sans_groupe_rend_le_resultat_d_aujourd_hui(self):
+        sans = self._bloc()
+        self.assertIsNone(sans['groupe'])
+        self.assertEqual(self._bloc(dict(GROUPE, actif=False)), sans)
+
+    def test_la_mention_d_entretien_sans_source_ac_disparait_avec_un_groupe(
+            self):
+        from apps.calepinage.services.hors_reseau import (
+            MENTION_ENTRETIEN_SANS_SOURCE_AC,
+        )
+
+        self.assertIn(MENTION_ENTRETIEN_SANS_SOURCE_AC,
+                      self._bloc(seuils=SEUILS)['mentions'])
+        self.assertNotIn(MENTION_ENTRETIEN_SANS_SOURCE_AC,
+                         self._bloc(GROUPE, seuils=SEUILS)['mentions'])
+
+    def test_machine_d_etats_demarrage_arret_et_budget_du_jour(self):
+        from apps.calepinage.services.groupe_appoint import Groupe
+
+        # Capacité 10 kWh : démarre à 2 kWh, s'arrête à 8 kWh, 3 h par jour.
+        groupe = Groupe(dict(GROUPE, heures_max_par_jour=3), 10.0, 1.0)
+        etats = [1.0, 5.0, 9.0, 1.0, 1.0]
+        # 0 : 1 ≤ 2 démarre ; 1 : en marche (5 < 8) ; 2 : 9 ≥ 8 ARRÊT ;
+        # 3 : 1 ≤ 2 redémarre (3e heure du jour) ; 4 : budget épuisé.
+        self.assertEqual([groupe.marcher(rang, etat)
+                          for rang, etat in enumerate(etats)],
+                         [5.0, 5.0, 0.0, 5.0, 0.0])
+        self.assertEqual(groupe.heures_de_marche, 3.0)
+
+    def test_le_budget_du_jour_se_renouvelle_toutes_les_24_heures(self):
+        from apps.calepinage.services.groupe_appoint import Groupe
+
+        groupe = Groupe(dict(GROUPE, heures_max_par_jour=1), 10.0, 1.0)
+        energies = [groupe.marcher(rang, 1.0) for rang in (0, 1, 24, 25)]
+        self.assertEqual(energies, [5.0, 0.0, 5.0, 0.0])
 
 
 class OmissionsTest(SimpleTestCase):

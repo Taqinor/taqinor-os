@@ -16,13 +16,15 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.parsers import JSONParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.permissions import ScopedPermission
 
-from ..permissions import CAL_GERER, CAL_VOIR, PeutGererCalepinage
+from ..permissions import (
+    CAL_GERER, CAL_VOIR, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
+)
 from ..serializers import corps_obligatoire
 from ..serializers_conso import (
     ConsommationProposerCorpsSerializer, ProfilsTypesEcritureSerializer,
@@ -34,7 +36,7 @@ from ..services.profils_types import (
 )
 from .calepinages import CalepinageViewSet
 
-__all__ = ['ProfilsTypesView', 'proposer_consommation']
+__all__ = ['ProfilsTypesView', 'lire_facture_consommation', 'proposer_consommation']
 
 
 class ProfilsTypesView(APIView):
@@ -149,5 +151,49 @@ def proposer_consommation(self, request, pk=None):
     return Response(rendu)
 
 
+#: ACAL839 — au plus 10 Mo par photo (la borne du dépôt de photos du module).
+MAX_OCTETS_PHOTO_FACTURE = 10 * 1024 * 1024
+REFUS_FICHIER = 'Déposez la photo de la facture dans le champ « fichier » (10 Mo au maximum).'
+
+
+@extend_schema(methods=['GET'], responses={200: inline_serializer('CalepinageLireFactureDispo', {
+    'disponible': serializers.BooleanField(), 'motif': serializers.CharField(allow_null=True),
+    'lignes': serializers.ListField(child=serializers.DictField())})})
+@extend_schema(methods=['POST'], request=inline_serializer('CalepinageLireFactureCorps', {
+    'fichier': serializers.FileField()}), responses={200: inline_serializer('CalepinageLireFacture', {
+        'disponible': serializers.BooleanField(), 'motif': serializers.CharField(allow_null=True),
+        'lignes': serializers.ListField(child=serializers.DictField())})})
+@action(detail=True, methods=['get', 'post'], url_path='consommation/lire-facture',
+        url_name='consommation-lire-facture',
+        permission_classes=[PeutLireOuEcrireCalepinage], parser_classes=[MultiPartParser])
+def lire_facture_consommation(self, request, pk=None):
+    """ACAL839 — ``GET``/``POST /calepinages/<pk>/consommation/lire-facture/``.
+
+    ``GET`` dit si la lecture d'une photo de facture est disponible ; ``POST``
+    (multipart ``fichier``) rend la PROPOSITION ``{disponible, motif, lignes:
+    [{mois, kwh}]}`` — ``mois`` toujours ``null`` (la lecture ne rend jamais de
+    mois : l'écran le fait choisir). LECTURE PURE : rien n'est écrit, la photo
+    n'est pas stockée. OCR coupé : 200 et ``lignes`` vides, aucun appel réseau.
+    Fichier absent ou trop gros : 400 ``{fichier}``.
+    """
+    from apps.crm import services as crm_services
+
+    from .import_plan import _refus
+
+    self.get_object()  # L'OBJET D'ABORD : borné société (autre société ⇒ 404)
+    utilisateur = request.user
+    if request.method == 'GET':
+        return Response(crm_services.lire_photo_facture(utilisateur, None))
+    fichier = request.FILES.get('fichier')
+    if fichier is None or not fichier.size:
+        return _refus('fichier', REFUS_FICHIER)
+    if fichier.size > MAX_OCTETS_PHOTO_FACTURE:
+        return _refus('fichier', REFUS_FICHIER)
+    return Response(crm_services.lire_photo_facture(
+        utilisateur, fichier.read(), nom=fichier.name or '',
+        mime=getattr(fichier, 'content_type', '') or ''))
+
+
 # Rattachement au viewset PIVOT (patron CALX2, ``views/rattachements.py``).
 CalepinageViewSet.proposer_consommation = proposer_consommation
+CalepinageViewSet.lire_facture_consommation = lire_facture_consommation

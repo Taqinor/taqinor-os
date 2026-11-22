@@ -580,6 +580,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.exportKml": [
+    {
+      "config": {
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/export.kml/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.exporterConception": [
     {
       "config": null,
@@ -1016,6 +1026,16 @@
       },
       "data": null,
       "url": "/calepinage/calepinages/7/schema-unifilaire.dxf/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.soleilLegal": [
+    {
+      "config": {
+        "params": 3
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/soleil-legal/",
       "verbe": "get"
     }
   ],
