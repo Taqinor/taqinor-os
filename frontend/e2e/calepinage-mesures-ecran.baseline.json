@@ -1,8 +1,8 @@
 {
   "carte_disponible": false,
-  "controles_visibles": 36,
-  "tailles_texte_distinctes": 5,
-  "cibles_sous_44px": 9,
+  "controles_visibles": 34,
+  "tailles_texte_distinctes": 4,
+  "cibles_sous_44px": 7,
   "gestes_lead_production": 7,
   "mode_guide": {
     "mesure_le": "2026-11-22",
@@ -36,39 +36,39 @@
     "1440x900": {
       "avant_trace": {
         "consigne": 0,
-        "terminer": 0,
-        "rail": 1
+        "terminer": 1,
+        "rail": 0
       },
       "apres_fermeture": {
-        "resume": 0,
+        "resume": 1,
         "enregistrer": 0,
-        "generer": 1,
-        "rail": 1
+        "generer": 0,
+        "rail": 0
       },
       "apres_generer": {
-        "resume": 0,
+        "resume": 1,
         "enregistrer": 0,
-        "generer": 1,
-        "rail": 1
+        "generer": 0,
+        "rail": 0
       }
     },
     "390x844": {
       "avant_trace": {
         "consigne": 0,
         "terminer": 1,
-        "rail": 1
+        "rail": 0
       },
       "apres_fermeture": {
         "resume": 1,
-        "enregistrer": 1,
-        "generer": 1,
-        "rail": 1
+        "enregistrer": 0,
+        "generer": 0,
+        "rail": 0
       },
       "apres_generer": {
         "resume": 1,
-        "enregistrer": 1,
-        "generer": 1,
-        "rail": 1
+        "enregistrer": 0,
+        "generer": 0,
+        "rail": 0
       }
     }
   }

@@ -5439,3 +5439,65 @@ decisions:
     date: "2026-11-22"
     source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : dire (rejeu V3-01 : 1 250,75 tapé, 1 000 relu, sans un mot)"
     taches: [ACAL1324]
+
+  - id: D-ACAL-74
+    question: "Plafonds de taille du front relevés pour la reconstruction des écrans du calepinage : faut-il les garder relevés ?"
+    options:
+      - cle: relever
+        texte: "Relever les plafonds de la garde de taille (total gzippé, chunk roof-tool) le temps que la tâche ACAL1352 redescende le poids par du chargement à la demande"
+      - cle: redescendre
+        texte: "Ne rien relever : retirer ou différer du code avant de livrer, quitte à retarder la livraison"
+    reponse: relever
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER (comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage) ; fait : le plafond du total gzippé du front passe de 4 050 Ko à <TOTAL> Ko et celui du chunk roof-tool de 630 Ko à <ROOF_TOOL> Ko dans frontend/scripts/check_bundle_budget.mjs, avec la raison écrite au commit ; la tâche ACAL1352 les ramène"
+    taches: [ACAL1352]
+
+  - id: D-ACAL-75
+    question: "Au chargement, l'atelier doit-il rejouer la pose enregistrée ou re-poser le toit ?"
+    options:
+      - cle: rejouer
+        texte: "Rejouer la pose enregistrée telle quelle : 60 panneaux enregistrés s'affichent 60, et un simple chargement ne change aucun chiffre"
+      - cle: re_poser
+        texte: "Re-poser le toit à l'ouverture (comportement actuel : 55 panneaux affichés pour 60 enregistrés sur le calepinage 5, avec le module par défaut) et le dire à l'écran avant tout enregistrement"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le calepinage 5 est servi avec 60 panneaux (43,2 kWc) et l'écran en montre 55 (39,60 kWc) dès la première vue, un « Enregistrer » écrirait 55 ; recommandation : rejouer la pose enregistrée (le document est la vérité, l'écran ne doit jamais le contredire)"
+    taches: [ACAL1330]
+
+  - id: D-ACAL-76
+    question: "L'atelier doit-il dimensionner le toit d'après la facture du lead ?"
+    options:
+      - cle: afficher
+        texte: "Afficher seulement, comme construit le 22/11 : la taille tirée de la facture est une information et une carte « Couvrir la facture » ; la taille reste un choix du commercial"
+      - cle: dimensionner
+        texte: "Dimensionner automatiquement : la pose d'un calepinage vierge suit la taille tirée de la facture du lead"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : en mode calepinage la facture du lead n'entre que dans l'affichage, jamais dans la pose ; recommandation : afficher seulement, la taille reste un choix"
+    taches: [ACAL1331]
+
+  - id: D-ACAL-77
+    question: "Contrôle « Taille dimensionnée » de « Prêt à envoyer ? » : le renommer, ou ajouter un contrôle taille ≈ cible ?"
+    options:
+      - cle: renommer
+        texte: "Le renommer « Facture ou taille souhaitée renseignée » : il ne promet plus un dimensionnement qu'il ne vérifie pas"
+      - cle: ajouter_controle
+        texte: "Garder ce contrôle renommé ET ajouter un contrôle « Taille proche de la cible » qui passe à régler quand la pose dépasse deux fois la cible servie"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le contrôle teste seulement qu'une facture ou une taille souhaitée existe, et dit « Dimensionnée » pour 60 panneaux et ~6 655 kWh par an ; recommandation (de l'auteur du plan, non demandée au fondateur) : renommer d'abord, ajouter le second contrôle seulement si le fondateur veut qu'une taille démesurée gêne l'envoi"
+    taches: [ACAL1332]
+
+  - id: D-ACAL-78
+    question: "Quelle palette d'ensoleillement : bleu → or dans l'atelier, rouge → vert ailleurs ?"
+    options:
+      - cle: atelier_bleu_or
+        texte: "Bleu → or dans l'atelier (comme les maquettes) ; rouge → vert conservé sur le site public et sur le rapport d'ombrage PDF"
+      - cle: partout_bleu_or
+        texte: "Bleu → or partout, site public et rapport d'ombrage compris"
+      - cle: partout_rouge_vert
+        texte: "Rouge → vert partout, l'atelier compris (maquettes à corriger)"
+    reponse: atelier_bleu_or
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER (comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage) ; fait : l'atelier ERP pose la palette bleu → or (choisirPaletteAcces « atelier »), le site public et le rapport d'ombrage (STOPS_LEGENDE) gardent rouge → vert, aucun script du site public n'est touché"
+    taches: [ACAL1340]
