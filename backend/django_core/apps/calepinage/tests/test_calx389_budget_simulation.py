@@ -192,11 +192,36 @@ TAILLES = (1, 4, 12)
 # Doublement artificiel (la chaîne exécutée deux fois par passage) : 6 / 26 /
 # 74 passages et 0,135 / 0,521 / 1,630 s — c'est ce que la garde refuse.
 # ═══════════════════════════════════════════════════════════════════════════
+#
+# LES SÉRIES MÉTÉO — relevé du 22/11/2026 : UNE par pan, PLUS TROIS (et trois
+# seulement, quelle que soit la taille : 4 / 7 / 15 séries à 1 / 4 / 12 pans).
+# Les trois sont posées APRÈS la chaîne, sur le pan de référence, par
+# ``simulation.py::_appels_complementaires_pvgis`` :
+#
+#   1. ACAL706 — ``gain_inclinaison.py::demander`` : la série HORIZONTALE
+#      (inclinaison 0°, ``masque_dans_la_geometrie``), jamais celle d'un pan —
+#      c'est le plan de comparaison du « gain d'inclinaison » ;
+#   2. ACAL744 — ``meteo_comparee.py::comparer_bases`` : la série du pan de
+#      référence sur la base PRINCIPALE (mêmes angles, même fenêtre, même
+#      horizon que sa lecture par le fournisseur : le CLIENT la sert depuis son
+#      cache, aucune requête réseau ; elle est volontairement relue plutôt que
+#      portée d'un bloc à l'autre) ;
+#   3. ACAL744 — ``meteo_comparee.py::comparer_bases`` : la MÊME série sur
+#      l'AUTRE base de rayonnement, pour publier l'écart entre bases.
+#
+# Elles n'étaient pas dans le relevé du 24/09 parce qu'elles sont nées après
+# lui. Ce n'est pas du travail par pan : elles ne croissent PAS avec le nombre
+# de pans (la garde de travail par pan — passages et points — est inchangée).
+# Elles sont comptées ici, pour que la quatrième, un jour, rougisse.
+SERIES_COMPLEMENTAIRES = 3
+
 RELEVES = {
-    1: {'passages': 3, 'points': 864, 'series_meteo': 1, 'secondes': 0.074},
-    4: {'passages': 14, 'points': 4032, 'series_meteo': 4, 'secondes': 0.261},
-    12: {'passages': 38, 'points': 10944, 'series_meteo': 12,
-         'secondes': 0.748},
+    1: {'passages': 3, 'points': 864,
+        'series_meteo': 1 + SERIES_COMPLEMENTAIRES, 'secondes': 0.074},
+    4: {'passages': 14, 'points': 4032,
+        'series_meteo': 4 + SERIES_COMPLEMENTAIRES, 'secondes': 0.261},
+    12: {'passages': 38, 'points': 10944,
+         'series_meteo': 12 + SERIES_COMPLEMENTAIRES, 'secondes': 0.748},
 }
 
 #: La marge du plafond de TEMPS : un ordre de grandeur. Elle couvre un runner
@@ -528,7 +553,8 @@ class BudgetSimulationTest(SimpleTestCase):
 
     def test_une_serie_meteo_par_pan_et_aucun_reseau(self):
         for taille in TAILLES:
-            self.assertEqual(self.mesures[taille]['series_meteo'], taille)
+            self.assertEqual(self.mesures[taille]['series_meteo'],
+                             taille + SERIES_COMPLEMENTAIRES)
         self.transport_reseau.assert_not_called()
 
     def test_la_chaine_mesuree_calcule_au_lieu_de_s_omettre(self):
