@@ -7,7 +7,9 @@ import { PARAM_ONGLET } from '../atelier/onglets'
 import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
 import { libelleEtat } from '../electrique/etatVerdict'
 import Pourquoi from './Pourquoi'
-import { GROUPES, GROUPE_AUTRES, groupeDuControle } from './PretAEnvoyer.helpers'
+import {
+  GROUPES, GROUPE_AUTRES, MESSAGE_ECHEC, MESSAGE_LENT, estDelaiDepasse, groupeDuControle, heureDe,
+} from './PretAEnvoyer.helpers'
 import GroupesPretAEnvoyer from './GroupesPretAEnvoyer'
 
 /* ============================================================================
@@ -88,29 +90,55 @@ const RANG = { bloquant: 0, a_regler: 1, info: 2 }
    calculé ici : ce sont les contrôles servis de la lecture précédente. */
 const DERNIERES_LECTURES = new Map()
 
+/* H3 (tour 3) — LENT n'est pas ÉCHOUÉ : un délai dépassé (le client abandonne à 20 s) dit « prend
+   plus de temps que prévu » avec « Réessayer », et la dernière lecture servie de ce calepinage reste
+   affichée, marquée de son heure (« lecture de HH:MM ») ; « n'a pas pu être lu » reste pour un vrai
+   refus du serveur. La lecture d'une étape (`filtre`, `?etape=`) est gardée à part de la lecture
+   complète : l'une ne s'affiche jamais à la place de l'autre. */
+
+function AvisLent({ lueA, onReessayer }) {
+  return (
+    <div role="status" className="cel-pret-lent my-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-muted px-3 py-2 text-sm">
+      <span className="font-medium">{MESSAGE_LENT}</span>
+      {lueA && <span className="text-muted-foreground">{`Dernier verdict affiché : lecture de ${heureDe(lueA)}.`}</span>}
+      <button type="button" className="cel-pret-regler ml-auto" onClick={onReessayer}>Réessayer</button>
+    </div>
+  )
+}
+
 export default function PretAEnvoyer({
   calepinageId, testIdCompte, groupes = false, filtre = null, pied = null, court = false,
 }) {
   const [parametres, setParametres] = useSearchParams()
-  const { data: lue, loading, error } = useResource(
-    (id) => calepinageApi.calepinages.pretAEnvoyer(id), calepinageId,
-    { select: (r) => r.data, errorMessage: 'Le contrôle « Prêt à envoyer ? » n’a pas pu être lu.' },
+  const { data: lue, loading, error, refetch } = useResource(
+    // `etape` : seuls les contrôles de l'étape (le serveur ne calcule plus le reste).
+    (id) => calepinageApi.calepinages.pretAEnvoyer(id, filtre ? { etape: filtre } : undefined), calepinageId,
+    { select: (r) => r.data, errorMessage: (err) => (estDelaiDepasse(err) ? MESSAGE_LENT : MESSAGE_ECHEC) },
   )
-  if (typeof lue?.pret === 'boolean' && !loading) DERNIERES_LECTURES.set(calepinageId, lue)
-  const precedente = DERNIERES_LECTURES.get(calepinageId) ?? null
-  const data = typeof lue?.pret === 'boolean' && !loading ? lue : (loading ? precedente : lue)
-  const lu = typeof data?.pret === 'boolean'
-  if (court && loading && !lu) {
-    // Le titre est posé tout de suite ; seules les lignes encore en lecture sont grisées.
-    return <GroupesPretAEnvoyer court attente controles={[]} testIdCompte={testIdCompte} onRegler={() => {}} />
+  const cle = `${calepinageId}|${filtre ?? ''}`
+  if (typeof lue?.pret === 'boolean' && !loading && DERNIERES_LECTURES.get(cle)?.data !== lue) {
+    DERNIERES_LECTURES.set(cle, { data: lue, lueA: new Date() })
   }
-  if ((loading && !lu) || (!loading && error) || !lu) {
+  const precedente = DERNIERES_LECTURES.get(cle) ?? null
+  const lent = !loading && error === MESSAGE_LENT
+  const data = typeof lue?.pret === 'boolean' && !loading ? lue : ((loading || lent) ? precedente?.data : lue)
+  const lu = typeof data?.pret === 'boolean'
+  const avis = lent ? <AvisLent lueA={lu ? precedente?.lueA : null} onReessayer={() => { refetch() }} /> : null
+  if ((loading || lent) && !lu && (court || groupes)) {
+    // Le titre est posé tout de suite ; seules les lignes encore en lecture sont grisées (ou l'avis
+    // « plus de temps que prévu »). Le `pied` reste à l'écran.
+    return court
+      ? <GroupesPretAEnvoyer court attente={loading} avis={avis} controles={[]} testIdCompte={testIdCompte} onRegler={() => {}} />
+      : <GroupesPretAEnvoyer attente={loading} avis={avis} groupes={[]} testIdCompte={testIdCompte} pied={pied} onRegler={() => {}} />
+  }
+  if (lent && !lu) return avis
+  if ((!loading && error && !lent) || !lu) {
     // Le `pied` (ex. le VRAI bouton de devis relayé, avec ses propres gardes) ne dépend pas de la
     // lecture des contrôles : il reste à l'écran pendant le chargement et après un échec.
     return (
       <>
         <EtatEcranAtelier id={calepinageId} loading={loading}
-          error={error || 'Le contrôle « Prêt à envoyer ? » n’a pas pu être lu.'} testIdErreur="cal-pret-erreur" />
+          error={error || MESSAGE_ECHEC} testIdErreur="cal-pret-erreur" />
         {pied && <div className="cdoc-pied">{pied}</div>}
       </>
     )
@@ -133,17 +161,18 @@ export default function PretAEnvoyer({
   }
 
   if (court) {
-    return <GroupesPretAEnvoyer court attente={loading} controles={controles} testIdCompte={testIdCompte} onRegler={regler} />
+    return <GroupesPretAEnvoyer court attente={loading} avis={avis} controles={controles} testIdCompte={testIdCompte} onRegler={regler} />
   }
   if (groupes) {
     const rangees = [...GROUPES, GROUPE_AUTRES]
       .map((g) => ({ ...g, controles: controles.filter((c) => groupeDuControle(c) === g.cle) }))
       .filter((g) => g.controles.length > 0)
-    return <GroupesPretAEnvoyer groupes={rangees} testIdCompte={testIdCompte} pied={pied} onRegler={regler} />
+    return <GroupesPretAEnvoyer groupes={rangees} avis={avis} testIdCompte={testIdCompte} pied={pied} onRegler={regler} />
   }
 
   return (
     <section data-testid="cal-pret-a-envoyer" aria-label="Prêt à envoyer ?" className="mb-3 rounded-lg border border-border bg-card p-3">
+      {avis}
       <div className="flex flex-wrap items-baseline gap-x-2">
         {n > 0 && <h3 className="text-base font-semibold">Prêt à envoyer ?</h3>}
         <p data-testid={testIdCompte} className="text-base font-medium">

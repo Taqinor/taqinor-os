@@ -189,7 +189,7 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
             <span className="text-xs">Aucun aperçu</span>
           </div>
         )}
-        <div className="flex flex-1 flex-col gap-2 border-t border-border px-4 py-3.5">
+        <div className="flex min-h-[160px] flex-1 flex-col gap-2 border-t border-border px-4 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col">
               <span className="truncate font-display text-base font-semibold">{titre}</span>
@@ -576,7 +576,7 @@ export default function CalepinageList() {
 
       {!loading && lignes.length > 0 ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {lignes.map((ligne) => (
               <VignetteCalepinage
                 key={ligne.id}

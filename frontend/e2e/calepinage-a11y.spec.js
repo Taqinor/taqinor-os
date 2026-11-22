@@ -55,7 +55,7 @@ for (const theme of ['light', 'dark']) {
     await poserTheme(page, theme)
     const id = await creerCalepinage(page)
     // Sans clé MapTiler l'atelier monte quand même (fond de repli ACAL377) : on ne saute que si sa racine ne monte pas.
-    const monte = await page.getByTestId('cal-rail-onglets').waitFor({ timeout: 20_000 }).then(() => true, () => false)
+    const monte = await page.getByTestId('cal-rail-etapes').waitFor({ timeout: 20_000 }).then(() => true, () => false)
     test.skip(!monte, 'racine de l’atelier non montée sur cet environnement : a11y de l’atelier non rejouable ici')
     await verifier(page, `/calepinage/${id}`, theme)
 

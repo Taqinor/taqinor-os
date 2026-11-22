@@ -67,8 +67,9 @@ export const simulation = {
 
     // ACAL392 — l'état du parcours guidé (contrat `calepinage_parcours_guide.json`).
     parcours: (id) => api.get(`${pivot(id)}parcours/`),
-    // ACAL860 — « prêt à envoyer ? » (contrat `calepinage_pret_a_envoyer.json`).
-    pretAEnvoyer: (id) => api.get(`${pivot(id)}pret-a-envoyer/`),
+    // ACAL860 — « prêt à envoyer ? » (contrat `calepinage_pret_a_envoyer.json`) ; H3 : `etape` =
+    // seuls les contrôles de cette étape (`?etape=`, le serveur ne calcule pas le reste).
+    pretAEnvoyer: (id, { etape } = {}) => api.get(`${pivot(id)}pret-a-envoyer/`, etape ? { params: { etape } } : undefined),
 
     // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
     // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR

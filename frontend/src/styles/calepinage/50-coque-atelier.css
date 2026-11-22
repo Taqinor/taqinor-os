@@ -198,11 +198,10 @@
 }
 .cal-coque .cal-rail-etape[aria-current='step'] svg { color: var(--primary-text); }
 .cal-coque .cal-rail-avance[aria-expanded='true'] { color: var(--foreground); background: var(--muted); }
-.cal-coque .cal-rail-a-regler { font-size: 0.75rem; line-height: 14px; font-weight: 600; color: var(--warning-text); }
-/* Maquette Main/Documents : tuile de 70 px (12 + 24 + 6 + 16 + 12) ; avec « N à régler », la pastille tient DANS ces
-   70 px (marges et écarts resserrés) au lieu d'allonger la tuile à 96 px et de descendre les étapes suivantes. */
+.cal-coque .cal-rail-a-regler { font-size: 0.75rem; line-height: 16px; font-weight: 600; color: var(--warning-text); }
+/* Maquettes (mesurées en rendu) : tuile de 70 px (12 + 24 + 6 + 16 + 12) ; avec « 1 à régler » (Documents.dc.html,
+   sous Toit) 92 px (+ 6 + 16). L'interligne hérité (18 px) donnait 72 et 96 et descendait les étapes suivantes. */
 .cal-coque .cal-rail-libelle { line-height: 16px; }
-.cal-coque .cal-rail-etape:has(.cal-rail-a-regler) { gap: 2px; padding-block: 6px; }
 .cal-coque .cal-rail-espace { flex: 1; }
 
 .cal-coque .cal-coque-centre {
@@ -467,6 +466,9 @@
   border-radius: 12px 12px 0 0;
 }
 .cal-coque[data-avance='0'] #rp9-compass { top: 168px; left: auto; right: 14px; }
+/* H1 (tour 3) — aucune maquette d'étape à carte (Main, Panneaux, Électrique, Tablette) ne montre de boussole : en guidé
+   elle n'apparaît plus sur aucune étape (l'étape Toit la masquait déjà) ; Expert et « Avancé » la gardent. */
+.cal-coque[data-avance='0']:not([data-feuille='1']) #rp9-compass { display: none; }
 .rp9-host.cal-coque .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran {
   width: 44px;
   height: 44px;

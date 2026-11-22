@@ -5,6 +5,7 @@ import { BandeauBorneHaute } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import { nomDePerte } from './nomsPertes'
 import { kwh } from './ResultatHeros.helpers'
+import { estSansSource } from '../reglages/profilDepart'
 
 /* ACAL700 — L'ÉTAT « RÉSULTAT INCOMPLET » (maquette ResultatsIncomplet.dc.html) :
    un plafond, pas un résultat. Tout est SERVI (`production.total`,
@@ -82,6 +83,28 @@ function Progression({ aRenseigner }) {
   )
 }
 
+/* « Démarrage rapide » : MÊME décompte que la page Démarrage rapide — « Remplir » ne remplit que les réglages
+   pour lesquels une valeur publiée existe ; ceux qu'il laisse sans valeur (`estSansSource`, la liste `sans_source`
+   servie par le profil) ne sont jamais annoncés comme « à remplir ». */
+function DemarrageRapideBloc({ lignes }) {
+  const remplissables = lignes.filter((l) => !estSansSource(l.cle)).length
+  const texte = remplissables > 0
+    ? `Remplir ${remplissables > 1 ? `les ${remplissables} réglages vides` : 'le réglage vide'} avec des valeurs publiées, chacune avec sa source. Vous pourrez les remplacer par vos mesures.`
+    : 'Aucune valeur publiée n’existe pour ces réglages : le démarrage rapide ne peut pas les remplir, saisissez vos mesures.'
+  return (
+    <div className="cal-resinc-demarrage" data-testid="acal700-demarrage">
+      <span className="cal-resinc-demarrage-texte">
+        <strong>Démarrage rapide</strong>
+        <span data-testid="acal700-demarrage-texte">{texte}</span>
+      </span>
+      <Link to="/calepinage/reglages" className="cal-res-cta" style={{ minHeight: 44, fontSize: 14, padding: '0 16px' }}
+        data-testid="acal700-lien-reglages">
+        Voir les valeurs
+      </Link>
+    </div>
+  )
+}
+
 export default function ResultatIncomplet({ calepinageId, data, parcours = null }) {
   const total = data?.production?.total
   if (!estIncomplet(total)) return null
@@ -120,18 +143,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null 
               </li>
             ))}
           </ol>
-          <div className="cal-resinc-demarrage" data-testid="acal700-demarrage">
-            <span className="cal-resinc-demarrage-texte">
-              <strong>Démarrage rapide</strong>
-              <span>
-                {`Remplir ${lignes.length > 1 ? `les ${lignes.length} réglages vides` : 'le réglage vide'} avec des valeurs publiées, chacune avec sa source. Vous pourrez les remplacer par vos mesures.`}
-              </span>
-            </span>
-            <Link to="/calepinage/reglages" className="cal-res-cta" style={{ minHeight: 44, fontSize: 14, padding: '0 16px' }}
-              data-testid="acal700-lien-reglages">
-              Voir les valeurs
-            </Link>
-          </div>
+          <DemarrageRapideBloc lignes={lignes} />
         </section>
       </div>
       <CeQuiEstSur data={data} parcours={parcours} />

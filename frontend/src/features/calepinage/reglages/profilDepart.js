@@ -144,3 +144,7 @@ export const LIBELLES_SANS_SOURCE = {
 
 /** Le nom lisible d une clé sans source (jamais la clé elle-même). */
 export const nomSansSource = (cle) => LIBELLES_SANS_SOURCE[cle] || libelleReglage(cle).nom
+
+/** Vrai pour un réglage que le démarrage rapide laisse SANS valeur faute de source publiée : « Remplir » ne le
+    remplira pas. L'écran des résultats incomplets s'aligne dessus pour ne compter que ce que « Remplir » remplit. */
+export const estSansSource = (cle) => Object.prototype.hasOwnProperty.call(LIBELLES_SANS_SOURCE, cle)

@@ -124,7 +124,7 @@
       "valeurs": {
         "kwh": "batterie.total.energie.production_kwh"
       },
-      "geste": "Le détail de cette production est dans l'onglet Production.",
+      "geste": "Le détail de cette production est à l'étape Résultats.",
       "lexique": "production annuelle",
       "ecrans": [
         "batterie"
@@ -1117,7 +1117,7 @@
       "famille": "toit",
       "phrase": "Production estimée sur une année pour cette pose, d'après l'ensoleillement du site, l'orientation et l'inclinaison des panneaux.",
       "valeurs": {},
-      "geste": "Ouvrez l'onglet Production pour le détail mois par mois.",
+      "geste": "Ouvrez l'étape Résultats pour le détail mois par mois.",
       "lexique": null,
       "ecrans": []
     },

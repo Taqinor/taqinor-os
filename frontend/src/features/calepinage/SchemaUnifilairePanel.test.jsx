@@ -577,13 +577,16 @@ describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
     // Aucune étiquette de section ni de longueur ; la légende n'annonce pas un trait « réseau » servi.
     expect(plan.liaisons.filter((l) => l.aCalculer).every((l) => l.etiquette === null)).toBe(true)
     expect(plan.legende.map((l) => l.cle)).not.toContain('ac')
-    render(<PlancheSchema balisage={{ __html: schema.svg }} dessin={<SchemaEnBlocs plan={plan} />}
-      coteReseau={{ texte: phraseCoteReseau(resultat), onOuvrir: () => {} }} />)
+    const aCalculer = vi.fn()
+    render(<PlancheSchema balisage={{ __html: schema.svg }}
+      dessin={<SchemaEnBlocs plan={plan} coteReseau={{ texte: phraseCoteReseau(resultat), onOuvrir: aCalculer }} />} />)
     const blocs = screen.getByTestId('csch-blocs')
     for (const texte of ['Coffret côté réseau', 'Compteur', 'Réseau du', 'distributeur']) expect(blocs).toHaveTextContent(texte)
     expect(blocs.querySelectorAll('[data-a-calculer="true"]')).toHaveLength(3)
     expect(blocs.textContent).not.toMatch(/mm²|\d+ m/)
     expect(screen.getByTestId('csch-a-calculer')).toHaveTextContent('Lancez la simulation pour dimensionner le côté réseau')
+    fireEvent.click(screen.getByTestId('csch-a-calculer'))
+    expect(aCalculer).toHaveBeenCalledTimes(1) // ouvre l'étape Résultats (onglet production)
   })
 
   it('côté réseau : site déclaré hors réseau ⇒ rien dessiné ; simulé sans norme ⇒ la phrase nomme la norme', () => {

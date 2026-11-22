@@ -436,7 +436,7 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok]))
     rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
     await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Prêt à envoyer'))
-    expect(mocks.pretAEnvoyer).toHaveBeenCalledWith(ID)
+    expect(mocks.pretAEnvoyer).toHaveBeenCalledWith(ID, { etape: 'electrique' }) // H3 : `?etape=electrique`
   }, 30_000)
 
   it('ACAL865 — un orange électrique ⇒ UN seul « 1 point à régler », et « Régler » pousse `?onglet=…&champ=…`', async () => {

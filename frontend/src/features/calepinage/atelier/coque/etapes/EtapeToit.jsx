@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import SaisiePente from '../../../SaisiePente'
 import { panParDefaut, sourceDePente, zonesDuDocument } from '../../../SaisiePente.helpers'
-import calepinageApi from '../../../../../api/calepinageApi'
-import useResource from '../../../../../hooks/useResource'
 import useDocumentCalepinage from '../../../useDocumentCalepinage'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
@@ -11,8 +9,6 @@ import {
   selectionnerObstacle, texteBesoin, useEtatToit,
 } from './EtapeToit.helpers'
 import { useCibleFactures } from './panneaux/lectures'
-
-const SELECT_DATA = { select: (r) => r?.data ?? null }
 
 /* ============================================================================
    COQUE — L'ÉTAPE « TOIT » (maquette Main du 22/11 ; ToitSombre = même écran,

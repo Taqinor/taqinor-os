@@ -22,6 +22,23 @@ import { construireCle } from './brouillon.js'
 
 const AUCUN_DOCUMENT = 'aucun-document'
 
+/* H1 (tour 3) — l'état de VUE que l'outil sérialise avec le document : `scene` = l'instant du soleil affiché (jour +
+   heure ; saison, curseur d'heure, « Lire la journée » le changent — CALX119, « un point de vue, pas une donnée »).
+   Regarder le soleil n'est pas une modification : ni « Modifications non enregistrées », ni brouillon (mesuré le
+   22/11 : Été/Hiver sur le calepinage 9 envoyait 2 `PUT …/brouillon/` et écrasait celui d'un autre poste). Seule
+   clé de vue du document : Plan/3D, zoom, déplacement, cadrage, couleurs d'ensoleillement ne sont pas sérialisés
+   (même mesure). Un ENREGISTREMENT réel garde la sérialisation entière de l'outil : ceci ne sert qu'à comparer. */
+export const CLES_VUE_DOCUMENT = Object.freeze(['scene'])
+
+/** Le document SANS son état de vue (comparaison « modifié ? » et brouillon) ; tout autre valeur rendue telle quelle. */
+export function sansVue(layout) {
+  if (!layout || typeof layout !== 'object' || Array.isArray(layout)) return layout
+  if (!CLES_VUE_DOCUMENT.some((cle) => cle in layout)) return layout
+  const copie = { ...layout }
+  for (const cle of CLES_VUE_DOCUMENT) delete copie[cle]
+  return copie
+}
+
 /** L'empreinte que le serveur compare (`""` pour un document encore vide). */
 export function baseServeur(hashBase) {
   return !hashBase || hashBase === AUCUN_DOCUMENT ? '' : String(hashBase)

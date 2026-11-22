@@ -3,7 +3,7 @@ import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
   productionAtelierDepuisChiffrage, adresseSansDoublon, MESSAGE_ACCES_REFUSE,
-  cadrerToitAtelier, ZOOM_MAX_CADRAGE_ATELIER,
+  cadrerToitAtelier, ZOOM_MAX_CADRAGE_ATELIER, hauteurCouverteParTiroir,
 } from './useAtelierBoot'
 
 /* ACAL994 — la production de l'atelier ERP vient du bloc `chiffrage` servi par design-context
@@ -60,8 +60,21 @@ describe('F6 — cadrage du toit par l’atelier ERP', () => {
   it('demande le cadrage avec le plafond relevé de l’atelier (22, le site public garde 19)', () => {
     const cadrerToit = vi.fn(() => true)
     expect(cadrerToitAtelier({ cadrerToit })).toBe(true)
-    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER })
+    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER, basPx: 0 })
     expect(ZOOM_MAX_CADRAGE_ATELIER).toBe(22)
+  })
+  it('H1 — tablette : le cadrage vise la partie de la carte AU-DESSUS du tiroir (pixels couverts mesurés)', () => {
+    const boite = (top, bottom) => ({ getBoundingClientRect: () => ({ top, bottom }) })
+    const racine = (tiroir) => ({
+      getElementById: (id) => (id === 'rp9-map' ? boite(64, 820) : null),
+      querySelector: () => tiroir,
+    })
+    expect(hauteurCouverteParTiroir(racine(boite(540, 820)))).toBe(280)
+    expect(hauteurCouverteParTiroir(racine(null)), 'bureau : aucun tiroir').toBe(0)
+    expect(hauteurCouverteParTiroir(null)).toBe(0)
+    const cadrerToit = vi.fn(() => true)
+    cadrerToitAtelier({ cadrerToit }, racine(boite(540, 820)))
+    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER, basPx: 280 })
   })
   it('sans constructeur ou sans `cadrerToit` : rien, jamais une erreur', () => {
     expect(cadrerToitAtelier(null)).toBe(false)

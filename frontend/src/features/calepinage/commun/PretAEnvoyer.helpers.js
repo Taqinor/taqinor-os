@@ -52,3 +52,20 @@ export function phraseDesBons(bons, total) {
   const contr = (n) => `contrôle${n > 1 ? 's' : ''}`
   return `${bons} ${contr(bons)} sur ${total} ${bons > 1 ? 'sont bons' : 'est bon'}.`
 }
+
+/* H3 (tour 3) — lent n'est pas échoué : le délai dépassé du client (axios `ECONNABORTED`, 20 s) se dit
+   à part d'un refus du serveur. */
+export const MESSAGE_ECHEC = 'Le contrôle « Prêt à envoyer ? » n’a pas pu être lu.'
+export const MESSAGE_LENT = 'Le contrôle prend plus de temps que prévu.'
+export const estDelaiDepasse = (err) => err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message ?? ''))
+/** L'heure d'une lecture servie, « HH:MM » (l'heure locale du poste). */
+export const heureDe = (date) => date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+
+/** H3 — l'ordre d'une liste : bloquant, à régler, bon, puis info ; STABLE à état égal. */
+const RANG_LISTE = { bloquant: 0, a_regler: 1, ok: 2, info: 3 }
+export function rangerControles(controles) {
+  return controles
+    .map((c, i) => [c, i])
+    .sort(([a, i], [b, j]) => ((RANG_LISTE[a.etat] ?? 4) - (RANG_LISTE[b.etat] ?? 4)) || (i - j))
+    .map(([c]) => c)
+}

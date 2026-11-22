@@ -188,5 +188,11 @@
   .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-option-facture'].cal-pan-option-pose { grid-row: 3; grid-column: 1; }
   .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-option-max'].cal-pan-option-pose { grid-row: 3; grid-column: 2; }
   .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-ombre'] { grid-row: 3; grid-column: 3; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan-option-pose { min-height: 96px; justify-content: center; }
+  /* Maquette Tablette : la rangée des cartes REMPLIT le tiroir fermé (280 − 10 − 16 de marges − 20 de poignée + 4
+     − 52 de rangée de titre − 2 × 12 d'écart ≈ 160 px) ; ce qui suit (sens de pose…) commence SOUS le pli, entier, et
+     se lit en faisant défiler le tiroir ou en l'agrandissant — jamais une section coupée à mi-hauteur. */
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan-option-pose {
+    min-height: calc(var(--cal-tiroir) - 120px);
+    justify-content: center;
+  }
 }

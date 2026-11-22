@@ -20,6 +20,7 @@ const { default: calepinageApi } = await import('../../../api/calepinageApi')
 const { default: ventesApi } = await import('../../../api/ventesApi')
 const { default: axios } = await import('../../../api/axios')
 const { default: VueClient } = await import('./VueClient')
+const { oublierLecturesServies } = await import('../atelier/coque/etapes/panneaux/lectures')
 
 const ZONE = {
   id: 'z1', label: 'Pan sud',
@@ -29,10 +30,12 @@ const ZONE = {
 const RESULTAT = {
   simule: true, simulation_perimee: false,
   pose: { total_modules: 2, kwc: 1.1 },
-  production: { total: { p50_kwh: 11480.4 } },
+  production: { total: { p50_kwh: 11480.4, complete: true } },
   autoconsommation: { taux_couverture: 0.82 },
 }
 const api = calepinageApi.calepinages
+// Le chunk de l'atelier (lazy) se charge sous charge en plus d'1 s (délai par défaut de findBy) : 15 s.
+const ATTENTE_ATELIER = { timeout: 15000 }
 
 const rendre = (props = { webgl: false }) => render(
   <MemoryRouter initialEntries={['/calepinage/7/client']}>
@@ -51,7 +54,7 @@ beforeEach(() => {
   })
   api.resultat.mockResolvedValue({ data: RESULTAT })
 })
-afterEach(() => { cleanup() })
+afterEach(() => { cleanup(); oublierLecturesServies() })
 
 describe('Montrer au client — repli 2D, avec les seules données servies', () => {
   it('toit enregistré dessiné, puce du projet, trois tuiles dans l’ordre (la médiane marine), pied', async () => {
@@ -72,6 +75,29 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
     expect(screen.getByTestId('client-retour-releve')).toHaveTextContent('Retour au relevé')
     expect(screen.getByTestId('client-retour-releve').getAttribute('href')).toBe('/calepinage/7/releve')
     expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/MAD|DH|prix|marge/i)
+  })
+
+  it('H2 — résultat publié INCOMPLET (borne haute) : ni production ni couverture devant le client ; restent panneaux et puissance', async () => {
+    api.resultat.mockResolvedValue({ data: {
+      ...RESULTAT,
+      production: { total: { p50_kwh: 52695.1, complete: false, mention: 'borne haute — 17 pertes non renseignées' } },
+    } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(2))
+    const tuiles = [...screen.getByTestId('client-tuiles').children]
+    expect(tuiles.map((t) => t.dataset.testid)).toEqual(['client-tuile-panneaux', 'client-tuile-kwc'])
+    expect(tuiles[1]).toHaveTextContent('1,10kWc de puissance') // la pose servie du document (2 panneaux dessinés)
+    expect(tuiles[1].className).toContain('cal-client-tuile-marine')
+    const texte = screen.getByTestId('cal-vue-client').textContent
+    expect(texte).not.toMatch(/52.695|kWh|estimation|année moyenne|%/)
+  })
+
+  it('H2 — les lectures sont partagées : un seul design-context, un seul résultat, un seul document', async () => {
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(3))
+    expect(api.designContext).toHaveBeenCalledTimes(1)
+    expect(api.resultat).toHaveBeenCalledTimes(1)
+    expect(api.layout).toHaveBeenCalledTimes(1)
   })
 
   it('« Envoyer le lien » est désactivé et dit pourquoi, en français', async () => {
@@ -125,7 +151,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     const appliquerVue = vi.fn()
     reinitialiserBoot({ appliquerVue })
     rendre({ webgl: true })
-    const coque = await screen.findByTestId('cal-coque')
+    const coque = await screen.findByTestId('cal-coque', {}, ATTENTE_ATELIER)
     expect(coque).toHaveAttribute('data-presentation', '1')
     // Montés mais masqués : les contrôles du constructeur restent là (le soleil leur est renvoyé).
     expect(screen.getByTestId('cal-barre-projet').hidden).toBe(true)
@@ -147,7 +173,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
   it('le soleil : Été / Hiver et l’heure sont renvoyés aux VRAIS contrôles du constructeur', async () => {
     reinitialiserBoot({ appliquerVue: vi.fn() })
     rendre({ webgl: true })
-    const lecteur = await screen.findByTestId('client-soleil')
+    const lecteur = await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
     const ete = document.querySelector('[data-sun-season="summer"]')
     const clicEte = vi.fn()
     ete.addEventListener('click', clicEte)
@@ -164,7 +190,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
   it('aucune requête d’écriture au chargement ni en bougeant le soleil', async () => {
     reinitialiserBoot({ appliquerVue: vi.fn() })
     rendre({ webgl: true })
-    const lecteur = await screen.findByTestId('client-soleil')
+    const lecteur = await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
     await waitFor(() => expect(api.designContext).toHaveBeenCalled())
     await userEvent.click(within(lecteur).getByRole('button', { name: 'Été' }))
     await userEvent.click(within(lecteur).getByRole('button', { name: 'Hiver' }))
@@ -177,7 +203,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
   it('rien d’argent ni de libellé interne dans ce que voit le client', async () => {
     reinitialiserBoot({ appliquerVue: vi.fn(), ...apiBuilder() })
     rendre({ webgl: true })
-    await screen.findByTestId('client-soleil')
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
     await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(3))
     const visible = texteVisible(screen.getByTestId('cal-coque'))
     expect(visible).not.toMatch(/MAD|DH\b|€|prix|marge|achat|Interne|Expert|Avancé|Enregistrer|Générer le devis/i)

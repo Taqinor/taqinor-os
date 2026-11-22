@@ -295,6 +295,16 @@
 .cal-client-tuile-libelle { font-size: 0.875rem; line-height: 1.3; color: var(--muted-foreground); }
 .cal-client-tuile-marine .cal-client-tuile-libelle { color: var(--color-lune); }
 .cal-client-mention { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--muted-foreground); }
+/* H2 — la 3D n'a pas démarré (atelier en échec de chargement) : dit en bas de la scène, le toit enregistré reste. */
+.cal-client-repli-retard {
+  position: absolute; left: 16px; right: 16px; bottom: 16px; margin: 0; padding: 8px 12px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  font-size: 0.8125rem; line-height: 1.4; color: var(--foreground);
+}
+.cal-client-repli-reessayer {
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--info);
+  text-decoration: underline; cursor: pointer; min-height: 44px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .cal-tel *, .cal-tel *::before, .cal-tel *::after { transition: none !important; animation: none !important; }

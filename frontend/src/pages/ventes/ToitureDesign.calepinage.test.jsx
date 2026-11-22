@@ -1227,24 +1227,114 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(within(barre).getByRole('button', { name: 'Enregistrer le calepinage' })).toBeVisible()
   })
 
-  it('F6 — le toit remplit la carte : cadré une fois au boot, une fois au retour d’une étape pleine, sans modifier la scène', async () => {
+  it('H1 — chaque étape à carte s’ouvre en Plan, toit cadré (Toit, Panneaux, Électrique), jamais une étape pleine ; caméra seule', async () => {
     const cadrerToit = vi.fn(() => true)
-    reinitialiserBoot({ cadrerToit })
+    const appliquerVue = vi.fn()
+    reinitialiserBoot({ cadrerToit, appliquerVue })
     amorcer()
     calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: new Date().toISOString() } } })
     rendreCalepinage(CTX.calepinage.id)
     await screen.findByTestId('cal-coque')
-    await waitFor(() => expect(cadrerToit).toHaveBeenCalledTimes(1))
-    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: 22 })
-    await userEvent.click(screen.getByTestId('cal-etape-panneaux'))
-    expect(cadrerToit, 'une étape à carte ne recadre pas').toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalled())
+    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: 22, basPx: 0 })
+    for (const etape of ['panneaux', 'electrique']) {
+      cadrerToit.mockClear(); appliquerVue.mockClear()
+      await userEvent.click(screen.getByTestId(`cal-etape-${etape}`))
+      await waitFor(() => expect(appliquerVue, etape).toHaveBeenCalledWith('dessus'))
+      await waitFor(() => expect(cadrerToit, etape).toHaveBeenCalled())
+    }
     await userEvent.click(screen.getByTestId('cal-etape-resultats'))
     await waitFor(() => expect(document.getElementById('rp9-studio-scene').hidden).toBe(true))
+    cadrerToit.mockClear(); appliquerVue.mockClear()
+    await new Promise((r) => { setTimeout(r, 1700) })
+    expect(cadrerToit, 'étape pleine : la carte est masquée, rien n’est cadré').not.toHaveBeenCalled()
     await userEvent.click(screen.getByTestId('cal-etape-toit'))
-    await waitFor(() => expect(cadrerToit).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalled())
+    expect(appliquerVue).toHaveBeenCalledWith('dessus')
     // Caméra seule : la barre reste « Enregistré », aucun brouillon serveur écrit.
     expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
     expect(calepinageApi.calepinages.envoyerBrouillon).not.toHaveBeenCalled()
+  })
+
+  it('H1 — une vue CHOISIE par l’utilisateur (Avancé › 3/4) n’est plus remplacée par Plan aux étapes suivantes ; le cadrage, si', async () => {
+    const cadrerToit = vi.fn(() => true)
+    const appliquerVue = vi.fn()
+    reinitialiserBoot({ cadrerToit, appliquerVue })
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    await userEvent.click(screen.getByTestId('cal-rail-avance'))
+    await userEvent.click(await screen.findByTestId('cal-vue-trois-quarts'))
+    appliquerVue.mockClear(); cadrerToit.mockClear()
+    await userEvent.click(screen.getByTestId('cal-etape-panneaux'))
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalled())
+    expect(appliquerVue).not.toHaveBeenCalledWith('dessus')
+  })
+
+  it('H1 — regarder le soleil (instant de scène sérialisé) n’est PAS une modification : ni « non enregistrées », ni brouillon', async () => {
+    amorcer()
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: new Date().toISOString() } } })
+    serializeLayout.mockReturnValue({ ...LAYOUT, scene: { sunDay: 355, sunHour: 12 } })
+    rendreCalepinage(CTX.calepinage.id)
+    const barre = await screen.findByTestId('cal-enregistrer-calepinage')
+    await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/))
+    // Été, 15 h (ce que le lecteur du soleil écrit dans `scene`) : on attend plus d'un tic de brouillon (4 s) et de sondage (1,5 s).
+    serializeLayout.mockReturnValue({ ...LAYOUT, scene: { sunDay: 172, sunHour: 15 } })
+    await new Promise((r) => { setTimeout(r, 5500) })
+    expect(within(barre).getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
+    expect(calepinageApi.calepinages.envoyerBrouillon).not.toHaveBeenCalled()
+    // Témoin : une VRAIE modification du document, elle, se voit toujours.
+    serializeLayout.mockReturnValue({ ...LAYOUT, scene: { sunDay: 172, sunHour: 15 }, result: { panels: 9 } })
+    await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
+      .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
+  }, 20000)
+
+  it('H1 — chargement raté (design-context 504) : rien ne peut être enregistré ni mis en brouillon, « Réessayer » est offert', async () => {
+    calepinageApi.calepinages.designContext.mockRejectedValue({ response: { status: 504 } })
+    rendreCalepinage(CTX.calepinage.id)
+    const alerte = await screen.findByTestId('cal-erreur-chargement')
+    expect(alerte).toHaveTextContent('Impossible de charger le calepinage — réessayez. Rien n’a été modifié.')
+    expect(within(alerte).getByRole('button', { name: 'Réessayer' })).toBeVisible()
+    const bouton = within(screen.getByTestId('cal-enregistrer-calepinage')).getAllByRole('button')[0]
+    expect(bouton).toBeDisabled()
+    await userEvent.click(bouton)
+    await new Promise((r) => { setTimeout(r, 1700) })
+    expect(screen.queryByText('Modifications non enregistrées')).toBeNull()
+    expect(initRoofToolPro8).not.toHaveBeenCalled()
+    for (const nom of ['enregistrerLayoutCalepinageConditionnel', 'modifierVariante', 'envoyerBrouillon', 'effacerBrouillon']) {
+      const fn = calepinageApi.calepinages[nom]
+      if (typeof fn?.mock === 'object') expect(fn, nom).not.toHaveBeenCalled()
+    }
+  })
+
+  it('H1 — bandeau : à partir d’Électrique, la ligne dit la pose SERVIE (panneaux · kWc), + l’onduleur à Résultats et Documents', async () => {
+    amorcer()
+    const res = reponseContrat('calepinage', 'calepinage_resultat')
+    calepinageApi.calepinages.resultat.mockResolvedValue(res)
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    await userEvent.click(screen.getByTestId('cal-etape-toit'))
+    expect(screen.getByTestId('cal-projet-sous-titre')).toHaveTextContent(/^Lead · facture 900 MAD \/ mois$/)
+    const { total_modules: n } = res.data.pose
+    const o = res.data.electrique.onduleurs[0]
+    await userEvent.click(screen.getByTestId('cal-etape-electrique'))
+    const kwc = res.data.pose.kwc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })
+    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(`${n} panneaux · ${kwc} kWc`))
+    await userEvent.click(screen.getByTestId('cal-etape-documents'))
+    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent)
+      .toBe(`${n} panneaux · ${kwc} kWc · ${o.nombre} onduleur ${o.taille_kw} kW`))
+  })
+
+  it('H1 — les boutons de zoom de la carte sont nommés en français même quand la carte se monte tard', async () => {
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    const zoom = document.createElement('button')
+    zoom.className = 'maplibregl-ctrl-zoom-in'
+    zoom.setAttribute('aria-label', 'Zoom in')
+    screen.getByTestId('rp9-map-wrap').appendChild(zoom)
+    await waitFor(() => expect(zoom).toHaveAttribute('aria-label', 'Zoomer'))
+    expect(zoom).toHaveAttribute('title', 'Zoomer')
   })
 
   it('F6 — palette d’accès solaire bleu nuit → or posée dès le boot (toute étape, Expert compris)', async () => {

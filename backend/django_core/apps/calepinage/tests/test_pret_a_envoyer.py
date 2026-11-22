@@ -166,7 +166,9 @@ def _forme_du_contrat(test, controles):
         test.assertIn(controle['etat'], ('ok', 'info', 'a_regler', 'bloquant'))
 
 
-PUBLIABLE = 'apps.calepinage.services.electrique.verdict_publiable'
+#: H3 — ``verdict_publiable`` n'est que ``_rapport_publication(...)[0]`` : le
+#: producteur lit le rapport entier (son matériel sert aussi ACAL906).
+PUBLIABLE = 'apps.calepinage.services.electrique._rapport_publication'
 SERVI = 'apps.calepinage.selectors.resultat_servi'
 TRONCONS = 'apps.calepinage.services.troncons.troncons_du_calepinage'
 
@@ -184,7 +186,7 @@ class ControlesElectriquesTest(SimpleTestCase):
                        'etat': etat, 'points': points}
         resultat = {'electrique': {'verdicts': list(verdicts)},
                     'ratio_dc_ac': ratio}
-        with mock.patch(PUBLIABLE, return_value=publication), \
+        with mock.patch(PUBLIABLE, return_value=(publication, None, None)), \
                 mock.patch(SERVI, return_value=resultat), \
                 mock.patch(TRONCONS, return_value=troncons or {}):
             controles = controles_electriques(_Calepinage())
@@ -734,32 +736,96 @@ class AgregatTest(SimpleTestCase):
             self.assertEqual(controle_pentes_confirmees(
                 _Document([]))['etat'], 'ok')
 
+    @staticmethod
+    def _lectures_remplacees(materiel=None):
+        """Les lectures de base de tous les producteurs, remplacées."""
+        from contextlib import ExitStack
+
+        publication = {'publiable': True, 'motifs': [], 'etat': 'pret',
+                       'points': 0}
+        pile = ExitStack()
+        for cible, valeur in (
+                (FEU_VERT, False), (VISITE, None), (APPROUVE, False),
+                (EXIGEE, False), (PERIMEE, False),
+                (PUBLIABLE, (publication, None, materiel)), (SERVI, {}),
+                (TRONCONS, {}), (DOSSIERS, {'dossiers': []}),
+                (MESURES, {'kwc': None, 'pans': []}), (LEAD, object()),
+                (CIBLE, _cible()), (HYPOTHESES, [])):
+            pile.enter_context(mock.patch(cible, return_value=valeur))
+        return pile
+
     def test_codes_produits_exactement_ceux_du_contrat(self):
         from apps.calepinage.views.pret_a_envoyer import PRODUCTEURS
         from apps.calepinage.services.pret_a_envoyer import agreger
 
         calepinage = _Calepinage()
         calepinage.roof_layout = {'zones': []}
-        publication = {'publiable': True, 'motifs': [], 'etat': 'pret',
-                       'points': 0}
-        with mock.patch(FEU_VERT, return_value=False), \
-                mock.patch(VISITE, return_value=None), \
-                mock.patch(APPROUVE, return_value=False), \
-                mock.patch(EXIGEE, return_value=False), \
-                mock.patch(PERIMEE, return_value=False), \
-                mock.patch(PUBLIABLE, return_value=publication), \
-                mock.patch(SERVI, return_value={}), \
-                mock.patch(TRONCONS, return_value={}), \
-                mock.patch(DOSSIERS, return_value={'dossiers': []}), \
-                mock.patch(MESURES, return_value={'kwc': None, 'pans': []}), \
-                mock.patch(LEAD, return_value=object()), \
-                mock.patch(CIBLE, return_value=_cible()), \
-                mock.patch(HYPOTHESES, return_value=[]):
+        with self._lectures_remplacees():
             servi = agreger(calepinage, PRODUCTEURS)
         _forme_du_contrat(self, servi['controles'])
         codes = [c['code'] for c in servi['controles']]
         self.assertEqual(sorted(codes), sorted(CONTRAT['codes_produits']))
         self.assertFalse(set(codes) & set(CONTRAT['codes_reserves']))
+
+    def test_une_lecture_calcule_une_fois_les_entrees_partagees(self):
+        # H3 — mutant : retirer ``_partage`` ⇒ ``resultat_servi`` lu deux fois
+        # (électrique + résultat) et le matériel résolu deux fois : échec.
+        from apps.calepinage import selectors
+        from apps.calepinage.services import electrique
+        from apps.calepinage.services import pret_a_envoyer as service
+        from apps.calepinage.views.pret_a_envoyer import PRODUCTEURS
+
+        calepinage = _Calepinage()
+        calepinage.roof_layout = {'zones': []}
+        materiel = {'produits': {}, 'absents': ('module non désigné',)}
+        with self._lectures_remplacees(materiel), \
+                mock.patch(MATERIEL) as resolution:
+            servi = service.agreger(calepinage, PRODUCTEURS)
+            self.assertEqual(selectors.resultat_servi.call_count, 1)
+            self.assertEqual(electrique._rapport_publication.call_count, 1)
+            resolution.assert_not_called()
+            compat = next(c for c in servi['controles']
+                          if c['code'] == 'compatibilite_equipements')
+            self.assertEqual(compat['cause'], 'module non désigné')
+            # Hors ``agreger`` : aucune mémoire, chaque appel relit.
+            service.controles_du_resultat(calepinage)
+            service.controles_du_resultat(calepinage)
+            self.assertEqual(selectors.resultat_servi.call_count, 3)
+        self.assertIsNone(service._LECTURE.get())
+
+    def test_filtre_par_etape_couvre_le_rangement_de_l_ecran(self):
+        # H3 — ``?etape=`` : chaque code que l'écran range dans une étape
+        # (``PretAEnvoyer.helpers.js::ETAPE_DU_CODE``) est produit par un
+        # producteur de CETTE étape ; l'Électrique ne paie ni porte ni taille.
+        import re
+
+        from apps.calepinage.services.pret_a_envoyer import (
+            agreger, controle_taille_sans_facture, controles_de_porte,
+        )
+        from apps.calepinage.views.pret_a_envoyer import (
+            PRODUCTEURS, PRODUCTEURS_PAR_ETAPE,
+        )
+
+        self.assertFalse({controle_taille_sans_facture, controles_de_porte}
+                         & set(PRODUCTEURS_PAR_ETAPE['electrique']))
+        racine = pathlib.Path(__file__).resolve().parents[5]
+        helpers = (racine / 'frontend' / 'src' / 'features' / 'calepinage'
+                   / 'commun' / 'PretAEnvoyer.helpers.js')
+        if not helpers.exists():  # conteneur du backend : pas de front monté
+            self.skipTest('frontend absent')
+        table = re.search(r'ETAPE_DU_CODE = \{(.*?)\}', helpers.read_text(
+            encoding='utf-8'), re.S).group(1)
+        ecran = dict(re.findall(r"(\w+): '(\w+)'", table))
+        self.assertEqual(sorted(ecran), sorted(CONTRAT['codes_produits']))
+        calepinage = _Calepinage()
+        calepinage.roof_layout = {'zones': []}
+        with self._lectures_remplacees():
+            for etape, producteurs in PRODUCTEURS_PAR_ETAPE.items():
+                self.assertTrue(set(producteurs) <= set(PRODUCTEURS))
+                rendus = {c['code'] for c in agreger(
+                    calepinage, producteurs)['controles']}
+                attendus = {c for c, e in ecran.items() if e == etape}
+                self.assertTrue(attendus <= rendus, (etape, attendus - rendus))
 
 
 class PretAEnvoyerRouteTest(BaseApiCalepinage):
@@ -776,5 +842,23 @@ class PretAEnvoyerRouteTest(BaseApiCalepinage):
         reponse = self.api.get(url)
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(sorted(reponse.data), sorted(CONTRAT['exemple']))
+        self.assertIsNone(reponse.data['etape'])
         self.assertEqual(Calepinage.objects.get(pk=calepinage.pk)
                          .updated_at, avant)
+
+    def test_filtre_etape_et_etape_inconnue_400(self):
+        # H3 — ``?etape=electrique`` : les seuls contrôles électriques.
+        from apps.calepinage.models import Calepinage
+
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-H3-ETAPE')
+        url = f'{url_detail(calepinage.pk)}pret-a-envoyer/'
+        reponse = self.api.get(url, {'etape': 'electrique'})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['etape'], 'electrique')
+        codes = {c['code'] for c in reponse.data['controles']}
+        self.assertIn('verdict_electrique', codes)
+        self.assertNotIn('taille_sans_facture', codes)
+        self.assertNotIn('visite_validee', codes)
+        self.assertEqual(self.api.get(url, {'etape': 'plafond'}).status_code,
+                         400)

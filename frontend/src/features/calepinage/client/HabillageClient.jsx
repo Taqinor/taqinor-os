@@ -61,9 +61,28 @@ function LecteurSoleil() {
   )
 }
 
-export default function HabillageClient({ calepinageId, builderApi = null, noeudScene = null }) {
-  const donnees = useDonneesClient(calepinageId)
+/** Délai au-delà duquel une 3D toujours pas démarrée est DITE (le repli 2D reste), avec « Réessayer ». */
+export const DELAI_3D_MS = 45000
+
+/** Vrai quand la 3D n'a toujours pas démarré `DELAI_3D_MS` après l'ouverture (atelier en échec de chargement). */
+function useTroisDEnRetard(pret) {
+  const [retard, setRetard] = useState(false)
+  useEffect(() => {
+    if (pret) return undefined
+    const m = window.setTimeout(() => setRetard(true), DELAI_3D_MS)
+    return () => window.clearTimeout(m)
+  }, [pret])
+  return retard && !pret
+}
+
+export default function HabillageClient({
+  calepinageId, builderApi = null, noeudScene = null, contexte = null, onRecharger = null,
+}) {
+  const donnees = useDonneesClient(calepinageId, { contexte })
   const pret = useVueTroisQuarts(builderApi)
+  const retard = useTroisDEnRetard(pret)
+  // Recharger = relire la page (GET seulement) : l'atelier redémarre sa 3D.
+  const recharger = () => (typeof onRecharger === 'function' ? onRecharger() : window.location.reload())
   return (
     <>
       {noeudScene && createPortal(
@@ -71,6 +90,12 @@ export default function HabillageClient({ calepinageId, builderApi = null, noeud
           {!pret && (
             <div className="cal-client-repli" data-testid="client-repli-2d">
               {donnees.plan && <PlanDessus plan={donnees.plan} />}
+              {retard && (
+                <p className="cal-client-repli-retard" role="status" data-testid="client-3d-retard">
+                  {'La vue 3D n’a pas pu démarrer. '}
+                  <button type="button" className="cal-client-repli-reessayer" onClick={recharger}>Réessayer</button>
+                </p>
+              )}
             </div>
           )}
           <PuceProjet titre={donnees.titre} sousTitre={donnees.sousTitre} />

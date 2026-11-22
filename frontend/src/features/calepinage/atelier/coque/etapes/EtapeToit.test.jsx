@@ -30,6 +30,7 @@ vi.mock('../../../../../api/calepinageApi', () => ({
 const { default: EtapeToit } = await import('./EtapeToit')
 const { ContexteCoque } = await import('../contexteCoque')
 const H = await import('./EtapeToit.helpers')
+const { oublierLecturesServies } = await import('./panneaux/lectures')
 
 /* Le DOM que le constructeur possède, tel qu'il l'écrit (ids, textes, attributs) : 2 pans, contour fermé,
    facture connue, une cheminée et un chauffe-eau. */
@@ -107,7 +108,7 @@ beforeEach(() => {
     roof_layout: { zones: [{ ...ZONE, ...corps.champs }, { ...ZONE, id: 'area-2', label: 'Pan 2' }] },
   } }))
 })
-afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.useRealTimers() })
+afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.useRealTimers(); oublierLecturesServies() })
 
 describe('Étape Toit — le panneau de la maquette Main', () => {
   it('blocs dans l’ordre de la maquette, libellés mot pour mot, crochets e2e', async () => {
@@ -220,6 +221,31 @@ describe('Étape Toit — sur la carte', () => {
     expect(H.texteBesoin(null)).toBeNull()
     expect(H.texteBesoin({ panneaux: 10, kwc: null })).toBeNull()
     expect(H.texteBesoin({ panneaux: 10, kwc: 7.2 })).toBe('≈ 7,20 kWc')
+  })
+
+  it('H2 — lecture de la facture en cours : la puce n’affirme rien ; en échec : « Lecture impossible — réessayer »', async () => {
+    let finir
+    designContext.mockImplementation(() => new Promise((ok, ko) => { finir = { ok, ko } }))
+    rendre()
+    const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
+    const blocs = () => [...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)
+    await waitFor(() => expect(designContext).toHaveBeenCalledTimes(1))
+    expect(blocs()).toEqual(['Surface du toit107 m²', 'Pans2']) // en chargement : aucun besoin, aucune absence dite
+    await act(async () => { finir.ko(new Error('timeout of 20000ms exceeded')) })
+    const reessayer = await within(surCarte).findByRole('button', { name: 'Lecture impossible — réessayer' })
+    expect(blocs()[2]).toBe("Besoin d'après la factureLecture impossible — réessayer")
+    designContext.mockResolvedValue({ data: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
+    fireEvent.click(reessayer)
+    await waitFor(() => expect(blocs()).toEqual(['Surface du toit107 m²', 'Pans2', "Besoin d'après la facture≈ 2,84 kWc"]))
+    expect(designContext).toHaveBeenCalledTimes(2)
+  })
+
+  it('H2 — le design-context de l’atelier (`contexte`) prime : aucune seconde lecture', async () => {
+    rendre({ contexte: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
+    const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
+    expect([...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)[2]).toBe("Besoin d'après la facture≈ 2,84 kWc")
+    await new Promise((r) => setTimeout(r, 50))
+    expect(designContext).not.toHaveBeenCalled()
   })
 
   it('sans contour, pas de puce', () => {

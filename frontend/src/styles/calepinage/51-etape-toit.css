@@ -279,3 +279,8 @@
   .cal-coque .cal-lien-action,
   .cal-coque .cal-toit-pente-modifier > summary { min-height: 44px; }
 }
+/* H2 — la lecture de la facture a échoué : la puce le dit, en lien d'action (jamais une absence affirmée). */
+.cal-coque .cal-toit-reessayer {
+  background: none; border: 0; padding: 0; font: inherit; font-size: 0.8125rem; font-weight: 600;
+  color: var(--info); text-decoration: underline; cursor: pointer; text-align: left;
+}

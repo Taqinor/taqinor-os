@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle2, Info, OctagonX } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
 import { Icone as Picto } from '../atelier/coque/primitives'
 import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
-import { phraseDesBons } from './PretAEnvoyer.helpers'
+import { phraseDesBons, rangerControles } from './PretAEnvoyer.helpers'
 import useExplications, { remplirPhrase } from './useExplications'
 
 /* ACAL1193 — la présentation « par étape » de « Prêt à envoyer ? » (maquette `Documents.dc.html`,
@@ -15,7 +15,6 @@ const LEGENDE = [
   ['ok', 'Bon'], ['a_regler', 'À régler'], ['bloquant', 'Bloque le devis'],
 ]
 const libelleEtape = (cible) => ETAPES.find((e) => e.cle === etapeDeOnglet(cible?.onglet))?.libelle ?? null
-const RANG = { bloquant: 0, a_regler: 1 }
 
 function Pastille({ etat, taille = 22 }) {
   const Icone = ICONE[etat] ?? ICONE.info
@@ -92,10 +91,13 @@ function messagePied(controles) {
    « ? » (cause longue derrière) ; le point à régler sur fond or pâle avec « Régler » marine (même cible). */
 /* F3 — `attente` : une lecture est en vol. Sans ligne déjà servie, le titre est posé et seules les
    lignes sont grisées (aucun compte inventé) ; avec la lecture précédente, ses lignes restent. */
-function ListeCourte({ controles, testIdCompte, onRegler, attente = false }) {
+/* H3 — `avis` (nœud) : l'avis « plus de temps que prévu » posé sous le titre ; sans ligne servie, il
+   remplace le squelette. Lignes rangées bloquant, à régler, bon, info (`rangerControles`) : le point à
+   régler est EN TÊTE de la liste qui défile, jamais sous le pli. */
+function ListeCourte({ controles, testIdCompte, onRegler, attente = false, avis = null }) {
   const n = controles.filter((c) => c.etat === 'a_regler' || c.etat === 'bloquant').length
-  const lignes = [...controles].sort((a, b) => (RANG[b.etat] ?? 2) - (RANG[a.etat] ?? 2))
-  const premiere = attente && controles.length === 0
+  const lignes = rangerControles(controles)
+  const premiere = (attente || Boolean(avis)) && controles.length === 0
   return (
     <section data-testid="cal-pret-a-envoyer" aria-labelledby="cel-pret-titre" aria-busy={attente || undefined} className="cel-pret">
       <div className="cel-pret-tete">
@@ -106,7 +108,8 @@ function ListeCourte({ controles, testIdCompte, onRegler, attente = false }) {
           </span>
         )}
       </div>
-      {premiere && (
+      {avis}
+      {premiere && !avis && (
         <ul className="cel-pret-lignes" data-testid="cel-pret-attente" aria-label="Lecture des contrôles en cours">
           {[0, 1, 2].map((i) => <li key={i} className="cel-pret-ligne cel-pret-squelette"><span /></li>)}
         </ul>
@@ -142,8 +145,36 @@ function ListeCourte({ controles, testIdCompte, onRegler, attente = false }) {
   )
 }
 
-export default function GroupesPretAEnvoyer({ groupes, testIdCompte, pied, onRegler, court = false, controles = [], attente = false }) {
-  if (court) return <ListeCourte controles={controles} testIdCompte={testIdCompte} onRegler={onRegler} attente={attente} />
+/* H3 — présentation par étape EN ATTENTE (aucune lecture servie encore) : le titre, des lignes grisées
+   (ou l'avis « plus de temps que prévu ») et le `pied` ; aucun compte inventé. */
+function AttenteGroupes({ avis, attente, pied }) {
+  return (
+    <section data-testid="cal-pret-a-envoyer" aria-labelledby="cdoc-pret-titre" aria-busy={attente || undefined} className="cdoc-pret">
+      <div className="cdoc-pret-tete">
+        <div className="cdoc-pret-titres">
+          <h2 id="cdoc-pret-titre" className="cdoc-titre">Prêt à envoyer ?</h2>
+        </div>
+      </div>
+      {avis}
+      {!avis && (
+        <ul className="cel-pret-lignes" data-testid="cel-pret-attente" aria-label="Lecture des contrôles en cours">
+          {[0, 1, 2, 3, 4].map((i) => <li key={i} className="cel-pret-ligne cel-pret-squelette"><span /></li>)}
+        </ul>
+      )}
+      {pied && <div className="cdoc-pied"><div className="cdoc-pied-texte" />{pied}</div>}
+    </section>
+  )
+}
+
+export default function GroupesPretAEnvoyer({
+  groupes, testIdCompte, pied, onRegler, court = false, controles = [], attente = false, avis = null,
+}) {
+  if (court) return <ListeCourte controles={controles} testIdCompte={testIdCompte} onRegler={onRegler} attente={attente} avis={avis} />
+  if ((attente || avis) && groupes.length === 0) return <AttenteGroupes avis={avis} attente={attente} pied={pied} />
+  // H3 — les groupes qui portent un point bloquant puis à régler passent EN TÊTE (ordre des étapes
+  // gardé à égalité) : le premier point à régler est visible sans défiler.
+  const pire = (g) => Math.min(...g.controles.map((c) => ({ bloquant: 0, a_regler: 1 })[c.etat] ?? 2))
+  const ranges = groupes.map((g, i) => [g, i]).sort(([a, i], [b, j]) => (pire(a) - pire(b)) || (i - j)).map(([g]) => g)
   const tous = groupes.flatMap((g) => g.controles)
   const avecVerdict = tous.filter((c) => ['ok', 'a_regler', 'bloquant'].includes(c.etat))
   const bons = avecVerdict.filter((c) => c.etat === 'ok').length
@@ -163,14 +194,13 @@ export default function GroupesPretAEnvoyer({ groupes, testIdCompte, pied, onReg
           {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
         </span>
       </div>
+      {avis}
       <div className="cdoc-groupes">
-        {groupes.map((g) => (
+        {ranges.map((g) => (
           <div key={g.cle} className="cdoc-groupe" data-testid={`cal-pret-groupe-${g.cle}`}>
             <h3 className="cdoc-groupe-titre">{g.libelle}</h3>
             <ul className="cdoc-lignes">
-              {[...g.controles]
-                .sort((a, b) => (RANG[a.etat] ?? 2) - (RANG[b.etat] ?? 2))
-                .map((c) => <Ligne key={c.code} controle={c} onRegler={onRegler} />)}
+              {rangerControles(g.controles).map((c) => <Ligne key={c.code} controle={c} onRegler={onRegler} />)}
             </ul>
           </div>
         ))}

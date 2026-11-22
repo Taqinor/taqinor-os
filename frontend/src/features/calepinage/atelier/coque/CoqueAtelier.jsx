@@ -12,6 +12,7 @@ import {
 } from '../parcoursGuide'
 import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
+import { ETAPES_POSE, sousTitrePose } from './projet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
 import PanneauEtape from './PanneauEtape'
 import { BoutonOr } from './primitives'
@@ -66,22 +67,60 @@ function useTiroir() {
 
 const TOTAL = ETAPES.length
 
+// Les gestes qui CHOISISSENT une vue (segment Plan/3D de la carte, vues de la feuille « Avancé », boussole) : après
+// l'un d'eux, la coque ne repose plus « Plan » d'office pour la séance. Le cadrage reste reposé à chaque étape.
+const CHOIX_VUE = '.cal-barre-outils-carte [role="group"] button, [data-testid^="cal-vue-"], '
+  + '[data-testid="cal-onglet-3d"], [data-testid="cal-onglet-2d"], .maplibregl-ctrl-compass'
+// La carte et le constructeur se posent tard sur un poste chargé : la vue est reposée à ces instants après l'entrée.
+const ESSAIS_PLAN_MS = [0, 1500, 4000, 8000]
+
+/** Plan + cadrage à l'entrée d'une étape à carte (caméra seule : rien n'est sérialisé, aucun brouillon). */
+function usePlanALEntreeDEtape({ builderRef, actif, cle, builderApiCoque }) {
+  const vueChoisie = useRef(false)
+  useEffect(() => {
+    const noter = (e) => { if (e.target?.closest?.(CHOIX_VUE)) vueChoisie.current = true }
+    document.addEventListener('click', noter, true)
+    return () => document.removeEventListener('click', noter, true)
+  }, [])
+  useEffect(() => {
+    if (!actif || !builderApiCoque) return undefined
+    let touchee = false
+    const carte = document.getElementById('rp9-map')
+    const toucher = () => { touchee = true }
+    carte?.addEventListener('pointerdown', toucher, true)
+    carte?.addEventListener('wheel', toucher, { capture: true, passive: true })
+    const poser = () => {
+      const b = builderRef.current
+      if (!b || touchee) return
+      if (!vueChoisie.current) b.appliquerVue?.('dessus')
+      cadrerToitAtelier(b)
+    }
+    const minuteurs = ESSAIS_PLAN_MS.map((ms) => window.setTimeout(() => window.requestAnimationFrame(poser), ms))
+    return () => {
+      minuteurs.forEach((m) => window.clearTimeout(m))
+      carte?.removeEventListener('pointerdown', toucher, true)
+      carte?.removeEventListener('wheel', toucher, { capture: true })
+    }
+  }, [actif, cle, builderApiCoque, builderRef])
+}
+
 const etatSimulation = (data) => (data?.calcule_le && data?.simulation_perimee === false
   ? `Simulation à jour · ${formaterHeureBrouillon(data.calcule_le)}` : null)
 
-/** « Simulation à jour · HH:MM » à l'étape Résultats, seulement quand `resultat/` le sert. */
-function useEtatSimulation(calepinageId, actif, relecture) {
-  const [etat, setEtat] = useState(null)
+/** Le résultat SERVI (`resultat/`) aux étapes Électrique, Résultats et Documents : « Simulation à jour · HH:MM » à
+    Résultats, et la ligne « N panneaux · x kWc (· onduleur) » du bandeau (maquettes). `null` tant qu'il n'est pas lu. */
+function useResultatServi(calepinageId, actif, relecture) {
+  const [data, setData] = useState(null)
   useEffect(() => {
     if (!actif || !calepinageId) return undefined
     let vivant = true
     Promise.resolve()
       .then(() => calepinageApi.calepinages.resultat(calepinageId))
-      .then((rep) => { if (vivant) setEtat(etatSimulation(rep?.data)) })
-      .catch(() => { if (vivant) setEtat(null) })
+      .then((rep) => { if (vivant) setData(rep?.data ?? null) })
+      .catch(() => { if (vivant) setData(null) })
     return () => { vivant = false }
   }, [calepinageId, actif, relecture])
-  return actif ? etat : null
+  return actif ? data : null
 }
 
 /** L'heure de la dernière version enregistrée, servie par le détail (`versions.derniere_le`). */
@@ -175,23 +214,21 @@ export default function CoqueAtelier({
     tiroir,
   }), [noeudSurCarte, noeudPanneau, noeudPiedPanneau, noeudPiedPlein, noeudControle, pleine, prendrePied, tiroir])
 
-  // La carte réapparaît (retour d'une étape pleine) : elle se recale sur sa boîte, puis (F6) la
-  // caméra recadre le toit UNE fois par retour — caméra seule, la scène n'est pas modifiée.
+  // La carte réapparaît (retour d'une étape pleine) : elle se recale sur sa boîte (resize).
   const builderApiCoque = ecranProps.builderApi ?? null
   const builderRef = useRef(builderApiCoque)
   useEffect(() => { builderRef.current = builderApiCoque })
   const carteAvant = useRef(carteVisible)
   useEffect(() => {
-    if (carteVisible && !carteAvant.current) {
-      window.requestAnimationFrame(() => {
-        window.dispatchEvent(new Event('resize'))
-        cadrerToitAtelier(builderRef.current)
-      })
-    }
+    if (carteVisible && !carteAvant.current) window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
     carteAvant.current = carteVisible
   }, [carteVisible])
+  // H1 (tour 3) — RÈGLE DE LA COQUE : chaque étape à carte s'ouvre en « Plan », le toit cadré et centré (au-dessus
+  // du tiroir sur tablette), sauf si l'utilisateur a choisi une vue dans la séance ou touche la carte entre-temps.
+  usePlanALEntreeDEtape({ builderRef, actif: carteVisible && !presentation, cle: `${cleEtape}:${tiroir}`, builderApiCoque })
 
-  const etatPropre = useEtatSimulation(calepinageId, cleEtape === 'resultats' && !expert, enregistreLe)
+  const resultatServi = useResultatServi(calepinageId, ETAPES_POSE.includes(cleEtape), enregistreLe)
+  const etatPropre = cleEtape === 'resultats' && !expert ? etatSimulation(resultatServi) : null
   const derniereVersionLe = useDerniereVersion(calepinageId, enregistreLe)
 
   const onDevis = () => {
@@ -231,7 +268,8 @@ export default function CoqueAtelier({
       <div className="rp9-host cal-coque" data-testid="cal-coque" data-etape={cleEtape} data-cadre={cadre}
         data-avance={expert ? '1' : '0'} data-expert={expert ? '1' : '0'} data-feuille={feuille ? '1' : undefined}
         data-presentation={presentation ? '1' : undefined}>
-        <BarreProjet cache={!!presentation} retour={retour} titre={titre} sousTitre={sousTitre} expert={expert} onExpert={basculerExpert}
+        <BarreProjet cache={!!presentation} retour={retour} titre={titre} expert={expert} onExpert={basculerExpert}
+          sousTitre={sousTitrePose(resultatServi, cleEtape) || sousTitre}
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
           enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
             derniereVersionLe={derniereVersionLe} />} />

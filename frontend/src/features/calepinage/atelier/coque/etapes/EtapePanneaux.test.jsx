@@ -3,7 +3,7 @@
    (mêmes ids, mêmes éléments) et l'on prouve ce que React rend — structure, ordre, libellés mot pour mot,
    hooks — et que chaque geste part au VRAI contrôle ; les replis honnêtes (sans facture, sans avis d'ombrage). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
@@ -15,6 +15,7 @@ import calepinageApi from '../../../../../api/calepinageApi'
 import { ContexteCoque } from '../contexteCoque'
 import EtapePanneaux from './EtapePanneaux'
 import { jourMois, ligneModule } from './panneaux/formats'
+import { lireServi, oublierLecturesServies } from './panneaux/lectures'
 
 const CATALOGUE = [
   { module: { id: 'produit-1', libelle: 'Jinko Tiger Neo 580 Wc', pmaxWc: 580, longueurMm: 2278, largeurMm: 1134 },
@@ -93,6 +94,7 @@ afterEach(() => {
   document.getElementById('faux-constructeur')?.remove()
   noeudCarte?.remove()
   vi.clearAllMocks()
+  oublierLecturesServies()
 })
 
 describe('formats', () => {
@@ -208,6 +210,49 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(lien).toHaveAttribute('href', '/crm/leads/42')
   })
 
+  it('H2 — facture en cours de lecture : jamais « Aucune taille… » ; en échec : « Lecture impossible — réessayer »', async () => {
+    let finir
+    calepinageApi.calepinages.designContext.mockImplementation(() => new Promise((ok, ko) => { finir = { ok, ko } }))
+    monterConstructeur()
+    rendre()
+    const section = screen.getByTestId('cal-panneaux-option-facture').parentElement
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(1))
+    expect(section.querySelector('[data-zone="facture-lecture"]')).toHaveTextContent('Lecture de la facture du lead…')
+    expect(section).not.toHaveTextContent(/Aucune taille|Renseigner la facture/)
+    await act(async () => { finir.ko(new Error('timeout of 20000ms exceeded')) })
+    const reessayer = await within(section).findByRole('button', { name: 'réessayer' })
+    expect(section.querySelector('[data-zone="facture-echec"]')).toHaveTextContent('Lecture impossible — réessayer')
+    expect(section).not.toHaveTextContent(/Aucune taille|Renseigner la facture/)
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { calepinage: { lead: 40 }, consommation_lead: { facture_mensuelle_mad: 900, motif: '' },
+        cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } },
+    })
+    fireEvent.click(reessayer)
+    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('Couvrir la factureRecommandé4 panneaux · 2,84 kWc'))
+    expect(section).not.toHaveTextContent(/Aucune taille|Lecture impossible/)
+  })
+
+  it('H2 — Toit et Panneaux lisent la MÊME ressource : une lecture en vol ou fraîche est partagée, un échec jamais gardé', async () => {
+    const a = lireServi('contexte', 7)
+    const b = lireServi('contexte', 7)
+    expect(a).toBe(b)
+    await a
+    expect(lireServi('contexte', 7)).toBe(a) // fraîche : la même réponse (Toit → Panneaux ne relit pas)
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(1)
+    oublierLecturesServies()
+    calepinageApi.calepinages.designContext.mockRejectedValueOnce(new Error('timeout'))
+    await expect(lireServi('contexte', 7)).rejects.toThrow('timeout')
+    await lireServi('contexte', 7) // l'échec n'est pas gardé : relu
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(3)
+  })
+
+  it('H2 — le design-context de l’atelier (`contexte`) prime : aucune lecture, la taille servie tout de suite', () => {
+    monterConstructeur()
+    rendre({ contexte: { calepinage: { lead: 40 }, cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
+    expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('Couvrir la factureRecommandé4 panneaux · 2,84 kWc')
+    expect(calepinageApi.calepinages.designContext).not.toHaveBeenCalled()
+  })
+
   it('module : pans sans module mais étude électrique qui en désigne un → état honnête, jamais le défaut du script', async () => {
     servir({ materiel: { module: null, modules_par_pan: [
       { pan: 'A', designation: 'Canadien Solar 710 Wc', produit_id: 1 }, { pan: 'B', designation: 'Canadien Solar 710 Wc', produit_id: 1 },
@@ -217,9 +262,17 @@ describe('étape Panneaux — panneau de droite', () => {
       `${MODULE_PAR_DEFAUT_ATELIER.libelle} — aucun module du catalogue n’est posé sur ce site.`
     rendre()
     const carte = screen.getByTestId('cal-panneaux-module')
-    await waitFor(() => expect(carte.querySelector('.cal-pan-module-nom')).toHaveTextContent('Aucun panneau choisi sur ce toit'))
-    expect(carte.querySelector('.cal-pan-module-ligne')).toHaveTextContent('L’étude électrique utilise : Canadien Solar 710 Wc')
-    expect(carte).not.toHaveTextContent('Module par défaut') // le défaut du script n'est pas présenté comme le panneau
+    // H2 — la liste dit LA MÊME phrase avant et après la lecture de l'étude électrique (tablette = bureau) : aucun
+    // panneau choisi + le module par défaut avec lequel l'atelier calcule ; l'étude électrique est dite à part.
+    const nom = carte.querySelector('.cal-pan-module-nom')
+    const ligne = carte.querySelector('.cal-pan-module-ligne')
+    expect(nom).toHaveTextContent('Aucun panneau choisi sur ce toit')
+    expect(ligne).toHaveTextContent(`Module par défaut · ${ligneModule(MODULE_PAR_DEFAUT_ATELIER)}`)
+    await waitFor(() => expect(carte.querySelector('[data-zone="module-etude"]'))
+      .toHaveTextContent('L’étude électrique utilise : Canadien Solar 710 Wc.'))
+    expect(nom).toHaveTextContent('Aucun panneau choisi sur ce toit')
+    expect(ligne).toHaveTextContent(`Module par défaut · ${ligneModule(MODULE_PAR_DEFAUT_ATELIER)}`)
+    expect(nom).not.toHaveTextContent('Module par défaut') // le défaut n'est jamais présenté comme le panneau du projet
     expect(carte.querySelector('[data-zone="aucun-module"]')).toHaveTextContent('Choisissez le panneau de ce toit dans la liste.')
   })
 
@@ -230,8 +283,8 @@ describe('étape Panneaux — panneau de droite', () => {
     monterConstructeur()
     rendre()
     const carte = screen.getByTestId('cal-panneaux-module')
-    await waitFor(() => expect(carte.querySelector('.cal-pan-module-ligne'))
-      .toHaveTextContent('L’étude électrique utilise : 2 modèles (Canadien Solar 710 Wc · Jinko 580 Wc)'))
+    await waitFor(() => expect(carte.querySelector('[data-zone="module-etude"]'))
+      .toHaveTextContent('L’étude électrique utilise : 2 modèles (Canadien Solar 710 Wc · Jinko 580 Wc).'))
     document.getElementById('rp9-pan-module-select').value = 'produit-1'
     await waitFor(() => expect(carte.querySelector('.cal-pan-module-nom')).toHaveTextContent('Jinko Tiger Neo 580 Wc'), { timeout: 3000 })
     expect(carte.querySelector('[data-zone="aucun-module"]')).toBeNull()

@@ -222,6 +222,25 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(screen.queryByTestId('cal-resultats-tuiles')).toBeNull()
     expect(screen.queryByTestId('cal-resultats-pied')).toBeNull()
   })
+
+  it('« Démarrage rapide » ne compte que ce que « Remplir » remplit (même liste que la page Démarrage rapide)', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: borne.cascade }
+    const cles = data.cascade.a_renseigner.lignes.map((l) => l.cle)
+    expect(cles).toHaveLength(3) // salissure + LID : aucune valeur publiée ; écarts entre panneaux : valeur publiée
+    servir(data)
+    rendre()
+    const texte = await screen.findByTestId('acal700-demarrage-texte')
+    expect(texte).toHaveTextContent(/^Remplir le réglage vide avec des valeurs publiées/)
+    expect(texte).not.toHaveTextContent('3 réglages')
+    cleanup()
+    // Aucune ligne remplissable : jamais « Remplir » promis.
+    data.cascade.a_renseigner.lignes = data.cascade.a_renseigner.lignes.filter((l) => ['salissure_mensuelle_pct', 'lid_par_techno'].includes(l.cle))
+    servir(data)
+    rendre()
+    expect(await screen.findByTestId('acal700-demarrage-texte')).toHaveTextContent('Aucune valeur publiée n’existe pour ces réglages')
+  })
 })
 
 /* F7 — l'état « pas encore simulé » (jamais lancé / périmé), mêmes cartes que le résultat incomplet. Payloads =

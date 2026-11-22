@@ -446,6 +446,9 @@ export function useAtelierBoot(ctx) {
         return
       }
       if (cancelled) return
+      // H1 (tour 3) — une lecture RÉUSSIE efface l'échec d'un essai précédent (relance du boot) : l'écran ne garde
+      // jamais « Impossible de charger » sur une conception chargée, ni ne bloque l'enregistrement à tort.
+      setLoadError(null)
       // ACAL192 (D-ACAL-13, D-QJR5-15) — l'épingle SUIT le lead (`derive.etat ===
       // 'automatique'`) et le GPS du lead a été corrigé : le SERVEUR recentre UNE fois
       // (translation versionnée), puis le contexte est relu AVANT de booter le

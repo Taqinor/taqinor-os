@@ -726,8 +726,8 @@ function AtelierToiture({
     // la carte) : sérialiser AVANT réécrivait le document sans ses blocs relus (la
     // consommation au barème société disparaissait après F5 + Enregistrer). Rien n'est écrit
     // tant que la scène n'est pas hydratée.
-    if (!sceneHydratee) {
-      setGenError('Conception en cours de chargement : rien n’est enregistré, réessayez dans un instant.')
+    if (!sceneHydratee || loadError) { // H1 — chargement raté : jamais une scène vide écrite sur le vrai toit
+      setGenError(loadError ? 'Le calepinage n’a pas pu être chargé : rien n’est enregistré. Cliquez sur « Réessayer ».' : 'Conception en cours de chargement : rien n’est enregistré, réessayez dans un instant.')
       return false
     }
     if (catalogueIndisponible) {
@@ -1217,7 +1217,7 @@ function AtelierToiture({
         )}
 
         {loadError && (
-          <p className="mt-3 text-sm text-destructive" role="alert">{loadError}</p>
+          <p className="mt-3 text-sm text-destructive" role="alert" data-testid="cal-erreur-chargement">{loadError}{estCalepinage && <> Rien n’a été modifié. <button type="button" className="ml-2 font-semibold underline" data-testid="cal-reessayer-chargement" onClick={() => window.location.reload()}>Réessayer</button></>}</p>
         )}
 
         {/* PV20 — LECTURE SEULE : le motif vient du serveur, jamais rédigé ici. */}
@@ -1367,8 +1367,8 @@ function AtelierToiture({
         devisLabel={devisLabel} calepinageTitre={calepinageTitre} lectureSeule={lectureSeule}
         enregistrement={lectureSeule ? null : {
           libelle: devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage',
-          enCours: sending, desactive: sending || !sceneHydratee, onEnregistrer: enregistrerCalepinage,
-          modifiee: sceneModifiee, enregistreLe, statut: genStatus, erreur: genError,
+          enCours: sending, desactive: sending || !sceneHydratee || !!loadError, onEnregistrer: enregistrerCalepinage,
+          modifiee: sceneModifiee && !loadError, enregistreLe, statut: genStatus, erreur: genError,
         }}
         proprietesBuilder={proprietesBuilder} enregistreLe={enregistreLe} onEtape={setEtapeAtelier} onFermer={fermer}
         ecranProps={{

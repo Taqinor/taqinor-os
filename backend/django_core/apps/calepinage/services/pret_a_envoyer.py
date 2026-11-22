@@ -727,13 +727,14 @@ def controle_pentes_confirmees(calepinage):
                      cible=CIBLE_PENTE)
 
 
-def agreger(calepinage, producteurs):
+def agreger(calepinage, producteurs, *, etape=None):
     """ACAL860 — la réponse de ``GET pret-a-envoyer/`` (lecture seule).
 
     ``producteurs`` : les fonctions de contrôle de ce module (la table vit
     dans ``views/pret_a_envoyer.py``) ; chacune rend un contrôle ou une liste.
     Tri STABLE : à état égal, l'ordre des producteurs est gardé.
-    H3 — une mémoire de lecture (``_LECTURE``) vit le temps de cet appel."""
+    H3 — une mémoire de lecture (``_LECTURE``) vit le temps de cet appel ;
+    ``etape`` (le filtre ``?etape=`` de la vue, ``None`` = tous) est rendu."""
     controles = []
     jeton = _LECTURE.set({})
     try:
@@ -745,6 +746,7 @@ def agreger(calepinage, producteurs):
     controles.sort(key=lambda c: ORDRE_DES_ETATS.index(c['etat']))
     bloquants = sum(c['etat'] == 'bloquant' for c in controles)
     a_regler = sum(c['etat'] == 'a_regler' for c in controles)
-    return {'calepinage': calepinage.pk, 'pret': not (bloquants or a_regler),
+    return {'calepinage': calepinage.pk, 'etape': etape,
+            'pret': not (bloquants or a_regler),
             'nombre_bloquants': bloquants, 'nombre_a_regler': a_regler,
             'controles': controles}

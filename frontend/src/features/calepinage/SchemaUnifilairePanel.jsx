@@ -64,7 +64,7 @@ const PAS_CLAVIER = 40
    bloc reste un clic (et un glisser n'en déclenche aucun). */
 const SEUIL_GLISSER = 4
 
-export function PlancheSchema({ balisage, dessin = null, actions = null, note = null, coteReseau = null, children = null }) {
+export function PlancheSchema({ balisage, dessin = null, actions = null, note = null, children = null }) {
   const [echelle, setEchelle] = useState(1)
   const [decalage, setDecalage] = useState({ x: 0, y: 0 })
   const glisse = useRef(null)
@@ -139,14 +139,6 @@ export function PlancheSchema({ balisage, dessin = null, actions = null, note = 
           </div>
         )
         : <div className="csch-motifs">{children}</div>}
-      {/* Côté réseau pas encore calculé : UNE ligne, et le geste qui le dimensionne (étape Résultats). */}
-      {coteReseau && (
-        <p className="csch-a-calculer" data-testid="csch-a-calculer">
-          {coteReseau.onOuvrir
-            ? <button type="button" className="csch-lien" onClick={coteReseau.onOuvrir}>{coteReseau.texte}</button>
-            : coteReseau.texte}
-        </p>
-      )}
       {note && <p className="csch-note">{note}</p>}
     </section>
   )
@@ -272,7 +264,7 @@ function BlocAc({ b, onOuvrir }) {
 }
 
 /** F3 — le schéma en blocs de la maquette `Schema.dc.html`, dessiné depuis `planSchemaEnBlocs` (données servies). */
-export function SchemaEnBlocs({ plan, onOuvrir = null }) {
+export function SchemaEnBlocs({ plan, onOuvrir = null, coteReseau = null }) {
   const { largeur, hauteur, bandes, chaines, coffretDc, onduleur, blocsAc, liaisons, terre } = plan
   const xMax = terre ? Math.max(...terre.descentes.map(([x]) => x)) : 0
   return (
@@ -282,6 +274,18 @@ export function SchemaEnBlocs({ plan, onOuvrir = null }) {
         <g key={b.cle}>
           <rect x="0.5" y={b.y + 0.5} width={largeur - 1} height={b.h - 1} rx="10" className="csch-bande" />
           <text x="16" y={b.y + 22} className="csch-t12 csch-gras csch-attenue">{b.libelle}</text>
+          {/* Côté réseau pas encore calculé : UNE ligne, sur la ligne du titre de la bande, et le geste qui le dimensionne. */}
+          {b.cle === 'ac' && plan.coteReseauACalculer && coteReseau && (
+            coteReseau.onOuvrir
+              ? (
+                <g role="button" tabIndex={0} className="csch-element csch-a-calculer" data-testid="csch-a-calculer"
+                  onClick={coteReseau.onOuvrir}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); coteReseau.onOuvrir() } }}>
+                  <text x="212" y={b.y + 22} className="csch-t12 csch-lien-svg">{coteReseau.texte}</text>
+                </g>
+              )
+              : <text x="212" y={b.y + 22} className="csch-t12 csch-attenue" data-testid="csch-a-calculer">{coteReseau.texte}</text>
+          )}
         </g>
       ))}
       {terre && (

@@ -510,12 +510,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/rapport-etude.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -535,12 +535,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/rapport-ombrage.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -560,12 +560,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/export-projet.json/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -584,12 +584,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/plan-cablage.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -613,12 +613,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/manuel-proprietaire.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -637,12 +637,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/document-asbuilt.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -661,12 +661,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/dossier-fin-chantier/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -685,12 +685,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/diagramme-pertes.svg/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -710,12 +710,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/presentation-compacte.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],
@@ -734,12 +734,12 @@
         "endpoint": "/api/django/calepinage/calepinages/2/pertes-en-postes.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation dans l'onglet Production.",
+        "motif_indisponible": "Conception enregistrée — il manque le calcul : lancez la simulation à l'étape Résultats.",
         "manque": [
           {
             "champ": "resultat",
             "libelle": "Résultat de calcul enregistré (simulation)",
-            "ou_saisir": "Lancer la simulation dans l'onglet Production avant d'imprimer ce document.",
+            "ou_saisir": "Lancer la simulation à l'étape Résultats avant d'imprimer ce document.",
             "onglet": "production"
           }
         ],

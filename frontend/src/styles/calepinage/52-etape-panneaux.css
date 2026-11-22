@@ -142,3 +142,5 @@
 /* Mode guidé : la pose du constructeur (« Recommandation », « Personnaliser la disposition ») reste montée
    mais se range sous « Avancé » ; l'écran de l'étape la remplace. */
 .cal-coque[data-avance='0'] .cal-coque-groupe[data-groupe='pose'] { display: none; }
+/* H2 — « réessayer » (lecture de la facture en échec) : un bouton qui a l'air du lien de la note. */
+.cal-coque button.cal-pan-lien { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
