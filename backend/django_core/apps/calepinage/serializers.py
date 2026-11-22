@@ -84,11 +84,17 @@ REPONSE_REFUS_GENERER_DEVIS = OpenApiResponse(
         'champ': serializers.CharField(required=False),
         'kwc': serializers.FloatField(required=False, allow_null=True),
         'total_ttc': serializers.CharField(required=False),
-        'refus': serializers.CharField(required=False)}),
+        'refus': serializers.CharField(required=False),
+        # Recette R2-22 — ``code: devis_existant`` (et ``exemple_409_deja_rattache``).
+        'devis': serializers.IntegerField(required=False),
+        'reference': serializers.CharField(required=False)}),
     description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
                 "charge, mot pour mot ; ou ``code: confirmation_taille`` : "
-                "rien ne dimensionne le devis, renvoyer le corps avec "
-                "``confirmer_taille: true`` pour confirmer.")
+                "rien ne dimensionne le devis, ou la pose dépasse 2 × la cible "
+                "des factures, renvoyer le corps avec ``confirmer_taille: true`` "
+                "pour confirmer ; ou ``code: devis_existant`` : le lead a un "
+                "brouillon libre né avant ce calepinage, renvoyer le corps avec "
+                "``rattacher_devis: <devis>`` ou ``creer_autre_devis: true``.")
 
 #: ACAL1005 — le texte posé au contrat ``calepinage_detail.json`` (exemple_rapide).
 MOTIF_ETAT_RAPIDE = 'ouvert depuis un devis automatique : à vérifier sur place'
@@ -190,6 +196,18 @@ class LeadApercuSerializer(serializers.Serializer):
     supprime = serializers.BooleanField()
 
 
+def nb_panneaux_du_document(calepinage):
+    """R3-12 — le compte du DOCUMENT du calepinage (``mesures_du_document``,
+    le même que la présentation, le journal et les exports), ``None`` sans
+    document : rien à compter, jamais un zéro inventé. Sert aussi sans devis."""
+    document = getattr(calepinage, 'roof_layout', None)
+    if not (isinstance(document, dict) and document):
+        return None
+    from .services.mesures import mesures_du_document
+
+    return mesures_du_document(document)['modules']
+
+
 def peremption_du_calepinage(devis, calepinage):
     """ACAL47 (C-ACAL-112) — ``{layout_stale, layout_nb_panneaux}`` du badge du
     MODULE, lus sur LE sélecteur ventes ``peremption_layout_devis`` AVEC le
@@ -215,16 +233,7 @@ def peremption_du_calepinage(devis, calepinage):
         layout_stale = None
     else:
         layout_stale = bool(stale_comptes) or bool(divergente)
-    document = getattr(calepinage, 'roof_layout', None)
-    if not (isinstance(document, dict) and document):
-        # Aucun document sur le calepinage : rien à compter de son côté.
-        nb_calepinage = None
-    else:
-        # ACAL259 — LA lecture du module (``mesures_du_document``) : le même
-        # compte que la présentation, le journal et les exports.
-        from .services.mesures import mesures_du_document
-
-        nb_calepinage = mesures_du_document(document)['modules']
+    nb_calepinage = nb_panneaux_du_document(calepinage)
     return {
         'layout_stale': layout_stale,
         'layout_nb_panneaux': (nb_calepinage if nb_calepinage is not None
@@ -564,7 +573,10 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         memo = getattr(calepinage, '_calx390_peremption', None)
         if memo is not None:
             return memo
-        vide = {'layout_stale': None, 'layout_nb_panneaux': None}
+        # R3-12 : sans devis, la péremption reste inconnue (CAL188) mais le
+        # compte du document se lit quand même.
+        vide = {'layout_stale': None,
+                'layout_nb_panneaux': nb_panneaux_du_document(calepinage)}
         if not getattr(calepinage, 'devis_id', None):
             memo = vide
         else:

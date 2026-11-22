@@ -26,6 +26,7 @@ import {
   contexteToDevisPayload,
   reglagesAtelierDesParametres,
   phraseCalepinageCharge,
+  phraseToitureLead,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -131,4 +132,15 @@ test('ACAL967 — phraseCalepinageCharge n’ajoute « Calepinage » que si le t
   assert.equal(phraseCalepinageCharge('Calepinage (copie)', 5, false),
     'Calepinage (copie) en lecture seule — consultation de la conception.')
   assert.ok(phraseCalepinageCharge('  ', 7, true).startsWith('Calepinage 7 chargé.'), 'sans titre : le numéro')
+})
+
+test('R2-15 / R2-01 — phraseToitureLead redit ce que le lead déclare (contrat), rien quand il ne dit rien', () => {
+  const contrat = JSON.parse(readFileSync(join(HERE, '../../../../backend/django_core/apps/calepinage/contract_samples/calepinage_design_context.json'), 'utf8'))
+  assert.equal(phraseToitureLead(contrat.exemple.toiture_lead),
+    'Le lead déclare : toiture · tuiles · 60 m² disponibles · pente 25° · sud-ouest · ombrage partiel (palmier côté ouest) · 2 étages')
+  assert.equal(phraseToitureLead(contrat.exemple_sans_devis.toiture_lead), 'Le lead déclare : terrasse béton · sud')
+  assert.equal(phraseToitureLead({ ombrage_notes: 'antenne', roof_age: 15, structure_pref: 'Acier' }),
+    'Le lead déclare : ombrage : antenne · toiture de 15 ans · structure acier')
+  assert.equal(phraseToitureLead(contrat.exemple_vide.toiture_lead), null, 'tout nul : aucune ligne')
+  assert.equal(phraseToitureLead(undefined), null, 'contexte sans la clé (mode devis) : aucune ligne')
 })

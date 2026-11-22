@@ -57,6 +57,20 @@ describe('QJR549 — verrou optimiste de l’Édition complète', () => {
     expect(screen.queryByText('APRES-ENREGISTREMENT')).toBeNull()
   })
 
+  it('R2-19 — 409 dont le dernier écrivain est l’utilisateur : la bannière le dit, sans le nommer comme un autre', async () => {
+    const rouvert = devisRouvert('exemple_brouillon')
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    ventesApi.replaceLignesDevis.mockRejectedValue({
+      response: { status: 409, data: { ...CONFLIT, par_vous: true } },
+    })
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    const banniere = await screen.findByTestId('devis-verrou-banner')
+    expect(banniere.textContent).toMatch(/par vous, dans un autre onglet/)
+    expect(banniere.textContent).not.toMatch(new RegExp(`Modifié par ${CONFLIT.updated_by_nom}`))
+  })
+
   it('« Enregistrer quand même » renvoie UNE fois sans jeton', async () => {
     const rouvert = devisRouvert('exemple_brouillon')
     ventesApi.getDevisById.mockResolvedValue(rouvert)

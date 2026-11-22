@@ -289,6 +289,19 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     expect(screen.queryByRole('button', { name: /Enregistrer la conception/ })).toBeNull()
   })
 
+  it('R2-20 : un 403 sur le design-context dit « pas d’accès », sans outil d’édition', async () => {
+    calepinageApi.calepinages.depuisModele.mockResolvedValue({ data: { id: CTX_CAL.calepinage.id } })
+    calepinageApi.calepinages.designContext.mockRejectedValue({ response: { status: 403 } })
+
+    rendreDevis(DEVIS_ID)
+
+    expect(await screen.findByTestId('cal-acces-refuse'))
+      .toHaveTextContent('Vous n’avez pas accès à ce calepinage.')
+    expect(screen.queryByText(/réessayez/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull()
+    expect(initRoofToolPro8).not.toHaveBeenCalled()
+  })
+
   it('devis introuvable : message FR, aucun boot du builder', async () => {
     calepinageApi.calepinages.depuisModele.mockRejectedValue({ response: { status: 404 } })
 

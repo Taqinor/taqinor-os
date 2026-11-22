@@ -99,6 +99,8 @@ def _valeur_lisible(cle, valeur):
     pour une table — jamais une valeur inventée."""
     from ..services.parametres_cles import SECTION_SIMULATION, libelles_de_cle, registre
 
+    if isinstance(valeur, (dict, list, tuple, set)):
+        return 'valeurs saisies'  # R3-05 : une table n'est pas hachable
     libelle = libelles_de_cle(SECTION_SIMULATION, cle).get(valeur)
     if libelle:
         return libelle

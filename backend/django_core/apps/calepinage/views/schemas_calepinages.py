@@ -40,6 +40,18 @@ VERSION_LIGNE = inline_serializer('CalepinageVersionLigne', {
 }, many=True)
 PUBLICATION_DEVIS = forme_du_contrat(
     'CalepinagePublicationDevis', 'calepinage_publication.json')
+#: Le corps de ``generer-devis`` (déplacé de la vue, inchangé) + recette R2-22 :
+#: ``rattacher_devis`` / ``creer_autre_devis``, les deux réponses au 409
+#: ``devis_existant`` (contrat ``calepinage_publication.json``).
+CORPS_GENERER_DEVIS = inline_serializer('CalepinageGenererDevisCorps', {
+    'taux_tva': drf_serializers.JSONField(required=False),
+    'remise_globale': drf_serializers.JSONField(required=False),
+    'derogation_electrique': drf_serializers.JSONField(required=False),
+    'surfaces_chiffrees': drf_serializers.JSONField(required=False),  # ACAL968
+    # ACAL922 — confirme un devis que rien ne dimensionne (``is True``).
+    'confirmer_taille': drf_serializers.BooleanField(required=False),
+    'rattacher_devis': drf_serializers.IntegerField(required=False),
+    'creer_autre_devis': drf_serializers.BooleanField(required=False)})
 REFUS_VENTES = OpenApiResponse(
     description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
                 "charge, mot pour mot.")

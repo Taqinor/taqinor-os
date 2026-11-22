@@ -110,6 +110,15 @@ def serie_kwh_depuis_mad(serie_mad, *, tranches=None, charges_fixes_mad=None,
     # sans TPPAN, la chaîne est vide et le bloc garde sa forme d'avant.
     if exemple.get('tppan_source'):
         detail['tppan_source'] = exemple['tppan_source']
+    # R2-07 — UN MONTANT DÉCLARÉ RECALÉ PAR LE BARÈME SE DIT. Un montant tombé
+    # dans un saut du barème sélectif est résolu à la borne basse (prudent) :
+    # la facture retenue est plus basse que celle déclarée. Clé ADDITIVE, une
+    # entrée par montant distinct concerné (ordre de la série : l'hiver de
+    # janvier d'abord) ; absente hors saut, le bloc garde sa forme d'avant.
+    sauts = [r['montant_dans_un_saut'] for r in cache.values()
+             if r.get('montant_dans_un_saut')]
+    if sauts:
+        detail['montants_dans_un_saut'] = sauts
     return kwh, detail
 
 

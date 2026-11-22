@@ -15,6 +15,7 @@ import { formatNumber, formatMAD } from '../../../lib/format'
 import {
   balayageStockageAffichable, LIBELLES_MOIS,
 } from '../../../features/ventes/etudeHorairePreview'
+import { facturesRecaleesAffichables } from '../../../features/ventes/etudeHorairePreviewPur'
 import { moteur } from '../../../features/ventes/quote/valeur'
 import { SAISON_LABELS, fmtNum } from '../../../features/ventes/quote/ecranDefauts.js'
 import CarteMetrique, { GenCardHeader } from './CarteMetrique'
@@ -34,6 +35,9 @@ export default function ApercuSimulation({
 }) {
   // Deux options montrées ET deux champs PV : une production par option.
   const productionParOption = apercuProductionKwhAvec != null && showSans && showAvec
+  // R2-07 — une facture déclarée recalée par le barème (saut de tranche) est DITE.
+  const facturesRecalees = facturesRecaleesAffichables(
+    etudeHoraireDonnees?.consommation?.detail, etudeHoraireCorps)
   return (
     <Card id="gen-sec-simulation" data-nav-libelle="Simulation">
       {/* EDC9 — repliable en Édition complète (repliée par défaut, jamais
@@ -83,6 +87,11 @@ export default function ApercuSimulation({
             {etudeHoraireDonnees?.avertissements?.length > 0 && (
               <ul className="mb-3 list-disc pl-5 text-xs text-warning" data-testid="etude-horaire-avertissements">
                 {etudeHoraireDonnees.avertissements.map((a) => <li key={a}>{a}</li>)}
+              </ul>
+            )}
+            {facturesRecalees.length > 0 && (
+              <ul className="mb-3 list-disc pl-5 text-xs text-warning" data-testid="etude-horaire-facture-recalee">
+                {facturesRecalees.map((a) => <li key={a}>{a}</li>)}
               </ul>
             )}
             {etudeHoraireLignes.length > 0 && (

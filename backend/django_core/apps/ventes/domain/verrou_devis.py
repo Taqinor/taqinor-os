@@ -25,6 +25,12 @@ CODE_DEVIS_MODIFIE = 'devis_modifie'
 MSG_DEVIS_MODIFIE = (
     "Ce devis a été modifié par un autre utilisateur depuis votre ouverture. "
     "Rechargez avant d'enregistrer.")
+# R2-19 — le refus vise l'utilisateur LUI-MÊME (dernier écrivain = lui : autre
+# onglet, envoi précédent, geste de sa propre session) : on le dit.
+MSG_DEVIS_MODIFIE_PAR_VOUS = (
+    "Ce devis a été modifié depuis votre ouverture — par vous, dans un autre "
+    "onglet ou lors d'un envoi précédent. Rechargez pour reprendre la "
+    "dernière version.")
 
 
 def toucher_devis(devis_id):
@@ -56,14 +62,19 @@ def _jeton_attendu(donnees):
     return brut
 
 
-def verifier_jeton(devis, donnees):
-    """``None`` si l'écriture peut passer ; sinon la charge du 409."""
+def verifier_jeton(devis, donnees, utilisateur=None):
+    """``None`` si l'écriture peut passer ; sinon la charge du 409.
+
+    ``utilisateur`` (optionnel) : l'auteur de la requête. Quand c'est aussi le
+    dernier écrivain du devis, le message le dit (``par_vous``) au lieu de
+    nommer « un autre utilisateur ». Le 409 tombe exactement dans les mêmes
+    cas qu'avant."""
     brut = _jeton_attendu(donnees)
     if brut is None:
         return None
     from apps.ventes.models import Devis
     ligne = (Devis.objects.filter(pk=devis.pk)
-             .values('updated_at', 'updated_by__first_name',
+             .values('updated_at', 'updated_by_id', 'updated_by__first_name',
                      'updated_by__last_name', 'updated_by__username')
              .first())
     if ligne is None:
@@ -76,9 +87,14 @@ def verifier_jeton(devis, donnees):
         return None
     nom = ' '.join(p for p in (ligne['updated_by__first_name'],
                                ligne['updated_by__last_name']) if p).strip()
+    par_vous = bool(
+        utilisateur is not None and ligne['updated_by_id'] is not None
+        and ligne['updated_by_id'] == getattr(utilisateur, 'pk', None))
     return {
         'code': CODE_DEVIS_MODIFIE,
-        'detail': MSG_DEVIS_MODIFIE,
+        'detail': (MSG_DEVIS_MODIFIE_PAR_VOUS if par_vous
+                   else MSG_DEVIS_MODIFIE),
+        'par_vous': par_vous,
         'updated_at': courant.isoformat() if courant else '',
         'updated_by_nom': nom or (ligne['updated_by__username'] or ''),
     }

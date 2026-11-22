@@ -8,7 +8,7 @@ import {
 } from '../../../ui/charts/chart-theme.js'
 
 /* ACAL453 — GRAPHIQUE MENSUEL Production / Consommation / Autoconsommée.
-   Données SERVIES : `autoconsommation.par_mois` du résultat (ACAL445). Aucun
+   Données SERVIES : `autoconsommation.par_mois` (ACAL445), sinon `production.mensuel` (R3-08). Aucun
    calcul ; un mois `null` n'a pas de barre (jamais 0). Bloc ou `par_mois`
    absent : `ChartEmpty` qui nomme le `motif_absence` servi. */
 
@@ -18,35 +18,52 @@ const MOIS_COURT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
 const kwhOuNonCalcule = (v) => (v === null || v === undefined
   ? 'non calculée' : `${formatNumber(v, { decimals: 0 })} kWh`)
 
-export default function GraphiqueMensuel({ autoconsommation }) {
+export default function GraphiqueMensuel({ autoconsommation, production = null }) {
   const parMois = autoconsommation?.par_mois
-  if (!Array.isArray(parMois) || !parMois.length) {
+  const avecCharge = Array.isArray(parMois) && parMois.length > 0
+  const mensuel = Array.isArray(production?.mensuel) ? production.mensuel : []
+  if (!avecCharge && !mensuel.length) {
     return (
       <div data-testid="acal453-vide">
         <ChartEmpty
           title="Graphique mensuel indisponible"
           description={autoconsommation?.motif_absence
-            || 'Consommation et autoconsommation non calculées.'}
+            || 'Production, consommation et autoconsommation non calculées.'}
         />
       </div>
     )
   }
-  const donnees = parMois.map((m) => ({
+  /* R3-08 — la production mensuelle SERVIE se trace même sans consommation :
+     le motif ne vaut que pour la consommation et l'autoconsommation. */
+  const donnees = avecCharge ? parMois.map((m) => ({
     mois: MOIS_COURT[(m.mois || 1) - 1] || m.mois,
     production: m.production_kwh ?? null,
     consommation: m.consommation_kwh ?? null,
     autoconsommee: m.autoconsomme_kwh ?? null,
+  })) : mensuel.map((m) => ({
+    mois: MOIS_COURT[(m.mois || 1) - 1] || m.mois,
+    production: m.p50_kwh ?? null,
   }))
   const dur = animationDuration()
+  const nomProduction = avecCharge ? 'Production (au compteur)' : 'Production (P50)'
   return (
     <div data-testid="acal453-graphique">
+      {!avecCharge && (
+        <p className="mb-1 text-xs text-muted-foreground" data-testid="acal453-motif">
+          {`Consommation et énergie autoconsommée non tracées : ${autoconsommation?.motif_absence
+            || 'aucune consommation connue pour ce calepinage.'}`}
+        </p>
+      )}
       <ChartFrame
-        label="Production, consommation et énergie autoconsommée par mois"
+        label={avecCharge ? 'Production, consommation et énergie autoconsommée par mois'
+          : 'Production par mois'}
         columns={[
           { key: 'mois', header: 'Mois' },
-          { key: 'production', header: 'Production (au compteur)', align: 'right', format: kwhOuNonCalcule },
-          { key: 'consommation', header: 'Consommation', align: 'right', format: kwhOuNonCalcule },
-          { key: 'autoconsommee', header: 'Autoconsommée', align: 'right', format: kwhOuNonCalcule },
+          { key: 'production', header: nomProduction, align: 'right', format: kwhOuNonCalcule },
+          ...(avecCharge ? [
+            { key: 'consommation', header: 'Consommation', align: 'right', format: kwhOuNonCalcule },
+            { key: 'autoconsommee', header: 'Autoconsommée', align: 'right', format: kwhOuNonCalcule },
+          ] : []),
         ]}
         rows={donnees}
         getRowKey={(row) => row.mois}
@@ -67,12 +84,16 @@ export default function GraphiqueMensuel({ autoconsommation }) {
           />
           <Tooltip content={<ChartTooltip format={(v) => kwhOuNonCalcule(v)} />} />
           <Legend />
-          <Bar dataKey="production" name="Production (au compteur)"
+          <Bar dataKey="production" name={nomProduction}
             fill={CHART_TOKENS.primary} isAnimationActive={dur > 0} animationDuration={dur} />
-          <Bar dataKey="consommation" name="Consommation"
-            fill={CHART_TOKENS.warning} isAnimationActive={dur > 0} animationDuration={dur} />
-          <Bar dataKey="autoconsommee" name="Autoconsommée"
-            fill={CHART_TOKENS.success} isAnimationActive={dur > 0} animationDuration={dur} />
+          {avecCharge && (
+            <Bar dataKey="consommation" name="Consommation"
+              fill={CHART_TOKENS.warning} isAnimationActive={dur > 0} animationDuration={dur} />
+          )}
+          {avecCharge && (
+            <Bar dataKey="autoconsommee" name="Autoconsommée"
+              fill={CHART_TOKENS.success} isAnimationActive={dur > 0} animationDuration={dur} />
+          )}
         </BarChart>
       </ChartFrame>
     </div>

@@ -5,9 +5,71 @@
   "cibles_sous_44px": 47,
   "gestes_lead_production": 8,
   "mode_guide": {
-    "mesure_le": "2026-11-21",
-    "commit_mesure": "0bb4a72f796136b39bdae92a058e87210cfd7254",
+    "mesure_le": "2026-11-22",
+    "commit_mesure": "24ba201831fc3a8185655f46d18b6ec43c4ad72b",
     "etapes": 5,
-    "controles_premier_ecran": 59
+    "controles_premier_ecran": 53,
+    "par_etape": {
+      "toit": {
+        "onglets": 1,
+        "controles_panneau": 7
+      },
+      "panneaux": {
+        "onglets": 1,
+        "controles_panneau": 0
+      },
+      "electrique": {
+        "onglets": 2,
+        "controles_panneau": 18
+      },
+      "resultats": {
+        "onglets": 4,
+        "controles_panneau": 6
+      },
+      "documents": {
+        "onglets": 3,
+        "controles_panneau": 41
+      }
+    }
+  },
+  "visibilite": {
+    "1440x900": {
+      "avant_trace": {
+        "consigne": 0,
+        "terminer": 0,
+        "rail": 1
+      },
+      "apres_fermeture": {
+        "resume": 0,
+        "enregistrer": 0,
+        "generer": 1,
+        "rail": 1
+      },
+      "apres_generer": {
+        "resume": 0,
+        "enregistrer": 0,
+        "generer": 1,
+        "rail": 1
+      }
+    },
+    "390x844": {
+      "avant_trace": {
+        "consigne": 0,
+        "terminer": 1,
+        "rail": 1
+      },
+      "apres_fermeture": {
+        "resume": 1,
+        "enregistrer": 1,
+        "generer": 1,
+        "rail": 1
+      },
+      "apres_generer": {
+        "resume": 1,
+        "enregistrer": 1,
+        "generer": 1,
+        "rail": 1
+      }
+    }
   }
 }

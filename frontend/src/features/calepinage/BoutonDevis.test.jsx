@@ -560,3 +560,85 @@ describe('ACAL968 — une case par surface (toit ET champ au sol), toutes coché
     expect(screen.getByTestId('cal-bouton-devis')).toHaveTextContent('Cochez au moins une surface')
   })
 })
+
+/* Recette R2-17 / R2-22 / R2-23 (nuit du 22/11/2026) — les questions de « Générer » et le
+   message d'une resynchronisation refusée. Corps du contrat COMMITTÉ
+   `calepinage_publication.json`, jamais tapés à la main. */
+describe('BoutonDevis — recette R2 (pose au-delà de la cible, devis existant, resynchro refusée)', () => {
+  const POSE = exempleContrat('calepinage', 'calepinage_publication', 'exemple_409_confirmation_taille_pose')
+  const EXISTANT = exempleContrat('calepinage', 'calepinage_publication', 'exemple_409_devis_existant')
+  const RATTACHER = exempleContrat('calepinage', 'calepinage_publication', 'corps_rattacher_devis')
+  const AUTRE = exempleContrat('calepinage', 'calepinage_publication', 'corps_creer_autre_devis')
+  const CONFIRMER = exempleContrat('calepinage', 'calepinage_publication', 'corps_confirmer_taille')
+
+  it('R2-17 : la pose au-delà de 2 × la cible pose la MÊME question, « Confirmer » passe', async () => {
+    calepinageApi.calepinages.genererDevis
+      .mockRejectedValueOnce({ response: { status: 409, data: POSE } })
+      .mockResolvedValueOnce({ data: { devis: 75, reference: 'DEV-2611-0075', deduplique: false } })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const encadre = await screen.findByTestId('cal-devis-confirmation-taille')
+    expect(encadre).toHaveTextContent(POSE.detail)
+    expect(encadre).toHaveTextContent(POSE.refus)
+    await userEvent.click(within(encadre).getByRole('button', { name: 'Confirmer et générer' }))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CONFIRMER))
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0075 créé')
+  })
+
+  it('R2-22 : devis existant ⇒ « Rattacher » envoie son id, le rattachement est DIT (jamais « créé »)', async () => {
+    calepinageApi.calepinages.genererDevis
+      .mockRejectedValueOnce({ response: { status: 409, data: EXISTANT } })
+      .mockResolvedValueOnce({ data: { devis: EXISTANT.devis, reference: EXISTANT.reference, deduplique: true } })
+    const onRecharger = vi.fn()
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE, onRecharger })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const question = await screen.findByTestId('cal-devis-existant')
+    expect(question).toHaveTextContent(EXISTANT.detail)
+    expect(screen.queryByTestId('cal-devis-conflit')).toBeNull()
+    expect(within(question).getByRole('link', { name: 'Ouvrir le devis existant' }))
+      .toHaveAttribute('href', `/ventes/devis?devis=${EXISTANT.devis}`)
+    await userEvent.click(within(question).getByRole('button',
+      { name: `Rattacher ce calepinage au devis ${EXISTANT.reference}` }))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, RATTACHER))
+    const lu = await screen.findByTestId('cal-devis-avertissements')
+    expect(lu).toHaveTextContent(`Calepinage rattaché au devis ${EXISTANT.reference}`)
+    expect(screen.queryByTestId('cal-devis-cree')).toBeNull()
+    expect(screen.queryByTestId('cal-devis-existant')).toBeNull()
+    await userEvent.click(screen.getByTestId('cal-devis-j-ai-lu'))
+    expect(onRecharger).toHaveBeenCalledTimes(1)
+  })
+
+  it('R2-22 : « Créer un autre devis » envoie creer_autre_devis, puis une question de taille garde ce choix', async () => {
+    calepinageApi.calepinages.genererDevis
+      .mockRejectedValueOnce({ response: { status: 409, data: EXISTANT } })
+      .mockRejectedValueOnce({ response: { status: 409, data: POSE } })
+      .mockResolvedValueOnce({ data: { devis: 78, reference: 'DEV-2611-0078', deduplique: false } })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    await userEvent.click(within(await screen.findByTestId('cal-devis-existant'))
+      .getByRole('button', { name: 'Créer un autre devis' }))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, AUTRE))
+    await userEvent.click(within(await screen.findByTestId('cal-devis-confirmation-taille'))
+      .getByRole('button', { name: 'Confirmer et générer' }))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, { ...AUTRE, ...CONFIRMER }))
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0078 créé')
+  })
+
+  it('R2-23 : conception enregistrée, devis envoyé refusé ⇒ le motif du serveur, jamais « non enregistrée »', async () => {
+    const MOTIF = 'Ce devis ne peut plus être resynchronisé.'
+    const ENVOYE = { ...DETAIL, devis: { ...DETAIL.devis, statut: 'envoye' } }
+    // La valeur que l'atelier rend quand la conception est rangée mais la resynchro refusée.
+    const enregistrerAvant = vi.fn(async () => ({ enregistre: true, devisModifie: false, motif: MOTIF }))
+    rendre({ detail: ENVOYE, enregistrerAvant })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    const refus = await screen.findByTestId('cal-devis-refus')
+    expect(refus).toHaveTextContent(
+      `La conception est enregistrée, mais le devis envoyé ${DETAIL.devis.reference} n’a pas été modifié : ${MOTIF}`)
+    expect(refus).not.toHaveTextContent('n’a pas pu être enregistrée')
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+})

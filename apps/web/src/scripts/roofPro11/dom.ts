@@ -10,6 +10,10 @@ export const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
 /** Entier formaté à la française (séparateur de milliers fine espace). */
 export const fmt = (n: number): string => new Intl.NumberFormat('fr-FR').format(n);
 
+/** R2-09 — LE formateur d'une puissance : virgule française, 2 décimales (2,13 kWc), partout dans l'atelier. */
+export const fmtKwc = (n: number): string =>
+  n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 /** Montant arrondi en MAD. */
 export const fmtMad = (n: number): string => `${fmt(Math.round(n))} MAD`;
 

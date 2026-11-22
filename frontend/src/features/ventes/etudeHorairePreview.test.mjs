@@ -9,7 +9,7 @@ import {
   construireCorpsPreview, etiquetteSource, lignesAffichables, batteriesDesLignes,
   verdictBatteriePourTaille,
   libelleTranche, falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
-  estimationConsoAffichable,
+  estimationConsoAffichable, facturesRecaleesAffichables,
 } from './etudeHorairePreviewPur.js'
 import { isBattery, texteClassement, appartientAuPanierAvec } from './calc/classification.js'
 
@@ -360,4 +360,37 @@ test('RGEN7 batteries dans le corps', () => {
   assert.equal('batteries' in hier, false)
   assert.deepEqual(construireCorpsPreview({ ...base, batteries: [] }), hier)
   assert.deepEqual(construireCorpsPreview({ ...base, batteries: batteriesDesLignes(lignes.slice(1, 3), estBatterieAvec) }), hier)
+})
+
+// R2-07 — facture déclarée tombée dans un saut du barème : DITE, jamais recalculée
+// ici. Les quatre nombres sont ceux que le serveur rend pour 900 MAD (barème 2026,
+// `bareme.kwh_depuis_facture_mad(900)`, sonde du 22/11) ; l'écran ne fait que les nommer.
+const SAUT_900 = {
+  montant_declare_mad: 900, montant_retenu_mad: 831.61,
+  montant_au_dessus_du_saut_mad: 954.77, kwh_mensuel: 510,
+}
+
+test('facturesRecaleesAffichables : une facture d\'hiver dans un saut est dite avec les deux montants et le champ', () => {
+  const [phrase, ...reste] = facturesRecaleesAffichables(
+    { methode: 'inversion_bareme_tranches', montants_dans_un_saut: [SAUT_900] },
+    { facture_hiver: 900, facture_ete: 1300 })
+  assert.equal(reste.length, 0)
+  assert.match(phrase, /^Facture d'hiver déclarée 900 MAD : ce montant tombe entre deux tranches du tarif/)
+  assert.match(phrase, /le calcul retient 831,61 MAD \(510 kWh\/mois\)/)
+  assert.match(phrase, /entre 831,61 et 954,77 MAD/)
+  assert.match(phrase, /Corrigez la facture d'hiver sur la fiche du lead \(Profil énergétique\)/)
+})
+
+test('facturesRecaleesAffichables : l\'été est nommé, un montant inconnu du corps reste générique', () => {
+  const ete = { ...SAUT_900, montant_declare_mad: 1300 }
+  assert.match(facturesRecaleesAffichables({ montants_dans_un_saut: [ete] },
+    { facture_hiver: 900, facture_ete: 1300 })[0], /^Facture d'été déclarée 1\s?300 MAD .*Corrigez la facture d'été/)
+  assert.match(facturesRecaleesAffichables({ montants_dans_un_saut: [SAUT_900] }, { lead: 3 })[0],
+    /^Facture déclarée 900 MAD .*Corrigez cette facture/)
+})
+
+test('facturesRecaleesAffichables : hors saut (clé absente) rien n\'est dit', () => {
+  assert.deepEqual(facturesRecaleesAffichables({ methode: 'inversion_bareme_tranches' }, { facture_hiver: 1300 }), [])
+  assert.deepEqual(facturesRecaleesAffichables(undefined), [])
+  assert.deepEqual(facturesRecaleesAffichables({ montants_dans_un_saut: 'x' }), [])
 })

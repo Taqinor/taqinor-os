@@ -64,6 +64,20 @@ class ReglageSocieteParPosteTest(SimpleTestCase):
         self.assertEqual(_societe_des_postes({'mismatch_fabricant_pct': {'valeur': 2, 'source': 'societe'}})
                          ['mismatch']['resume'], '2 %')
 
+    def test_reglage_en_table_ou_en_liste_ne_leve_pas(self):
+        """R3-05 — `thermique_par_pose` (profil de départ) est un dict : la
+        lecture ne doit plus lever `unhashable type`, quelle que soit la forme."""
+        from apps.calepinage.services.pertes import CLES_SOCIETE_PAR_POSTE
+        from apps.calepinage.views.simulation import _societe_des_postes
+
+        table = _societe_des_postes({'thermique_par_pose': {'valeur': {'toit': 1.0}, 'source': 'texte'}})
+        self.assertTrue(table['thermique']['renseigne'])
+        self.assertIn('valeurs saisies', table['thermique']['resume'])
+        for forme in ({'a': 1}, [1, 2], [], {}, True, False, 0, 'x', 1.5):
+            reglages = {cle: {'valeur': forme, 'source': 'societe'}
+                        for cles in CLES_SOCIETE_PAR_POSTE.values() for cle, _ in cles}
+            _societe_des_postes(reglages)
+
     def test_chaque_cle_existe_au_registre(self):
         from apps.calepinage.services.parametres_cles import SECTION_SIMULATION, registre
         from apps.calepinage.services.pertes import CATALOGUE_PAR_POSTE, CLES_SOCIETE_PAR_POSTE

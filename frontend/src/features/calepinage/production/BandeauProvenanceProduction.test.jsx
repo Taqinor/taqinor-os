@@ -104,6 +104,19 @@ describe('BandeauProvenanceProduction (CALX65)', () => {
 
     const lien = within(simulation).getByTestId('calx65-lien-production')
     expect(lien).toHaveAttribute('href', '/calepinage/1?onglet=production')
+    // R2-06 — un total complet ne porte aucune mention de borne haute.
+    expect(within(simulation).queryByTestId('calx65-borne-haute')).toBeNull()
+  })
+
+  it('R2-06 : un P50 incomplet porte « borne haute » dans la ligne Simulation', async () => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    const incomplet = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute').production.total
+    reponse.data.production.total = { ...reponse.data.production.total, ...incomplet }
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+    rendre()
+
+    const simulation = await screen.findByTestId('calx65-simulation')
+    expect(within(simulation).getByTestId('calx65-borne-haute')).toHaveTextContent(/borne haute/i)
   })
 })
 

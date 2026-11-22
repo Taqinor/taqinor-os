@@ -33,6 +33,8 @@ retiré plus un hook ajouté.
 | `cal-cible-panneaux` | cible panneaux. |
 | `cal-lien-photos-calage` | lien photos calage. |
 | `cal-lien-variantes` | lien variantes. |
+| `cal-devis-perime` | R2-13 : badge « devis périmé / envoyé » de l'en-tête. |
+| `cal-acces-refuse` | R2-20 : écran d'un 403 sur le calepinage (aucun outil). |
 
 ## BadgePerime (`BadgePerime.jsx`)
 
@@ -115,6 +117,7 @@ retiré plus un hook ajouté.
 | `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
 | `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |
 | `cal-devis-confirmation-taille` | devis : question « rien ne dimensionne le devis » du 409 `confirmation_taille` (ACAL922/ACAL923). |
+| `cal-devis-existant` | devis : question « le lead a déjà un brouillon » du 409 `devis_existant` — rattacher, ou créer un autre devis (recette R2-22). |
 | `cal-generer-devis` | générer devis. |
 | `cal-resynchroniser-devis` | resynchroniser devis. |
 

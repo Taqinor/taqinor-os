@@ -709,6 +709,14 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     const box = document.createElement('div');
     box.id = 'rp9-trace-chips';
     box.className = 'rp9-trace-chips mt-2 flex flex-wrap items-center gap-2 text-xs';
+    // R2-09 — quand « Terminer le tracé » flotte SUR la carte (bandeau absolu de l'atelier ERP), les puces ne s'y empilent pas :
+    // elles recouvraient le toit. Elles vont en flux, juste sous la carte.
+    const enveloppe = anchor.classList.contains('absolute') ? anchor.parentElement : null;
+    if (enveloppe?.parentElement) {
+      box.className += ' px-4';
+      enveloppe.insertAdjacentElement('afterend', box);
+      return box;
+    }
     anchor.appendChild(box);
     return box;
   }

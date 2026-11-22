@@ -82,5 +82,10 @@ describe('AGNR18 — kWc des lignes au watt de chaque ligne panneau', () => {
     expect(totalAvec).toBeGreaterThan(0)
     expect(valeur(/^Prix \/ kWc/)).toBe(Math.round(totalAvec / 18.59))
     expect(valeur(/^Prix \/ kWc/)).not.toBe(Math.round(totalAvec / (22 * 0.715)))
+    // R2-21 — les deux options n'ont pas le même parc : le bloc « Système » du
+    // rail montre une ligne par option, jamais le seul compte « sans ».
+    const systeme = vue.container.querySelector('[data-testid="gen-rail-systeme"]')
+    expect(systeme?.textContent).toMatch(/Sans batterie : .*22 panneaux/)
+    expect(systeme?.textContent).toMatch(/Avec batterie : .*26 panneaux/)
   }, 60000)
 })

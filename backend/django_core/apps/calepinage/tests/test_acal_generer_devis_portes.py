@@ -197,6 +197,135 @@ class SurfacesCocheesSansBaseTest(SimpleTestCase):
         self.assertEqual(refus.exception.donnees['kwc_dessine'], 9.36)
 
 
+class RecetteR2SansBaseTest(SimpleTestCase):
+    """Recette R2 du 22/11/2026 — R2-17 (pose au-delà de 2 × la cible des
+    factures : la question ACAL922), R2-22 (brouillon libre né avant le
+    calepinage : 409 ``devis_existant``), R2-10 (``layout_finalise`` annoncé une
+    fois après une génération réussie)."""
+
+    CIBLE = {'panneaux': 4, 'panel_watt': 550, 'kwc': 2.2, 'source': 'factures',
+             'refus': None, 'motif_code': None}
+
+    def _poser(self, panneaux, cible, confirmer=False):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services import devis as service
+
+        devis = SimpleNamespace(etude_params={'puissance_kwc': 46.2}, total_ttc=Decimal('244500'))
+        lignes = [{'designation': 'Panneau 550 W', 'quantite': Decimal(panneaux)},
+                  {'designation': 'Onduleur réseau 10 kW', 'quantite': Decimal('1')}]
+        with mock.patch.object(service, '_cible_du_calepinage', return_value=cible), \
+                mock.patch('apps.ventes.selectors_calepinage.lignes_produits_calepinage',
+                           return_value=lignes):
+            service._garde_taille(devis, SimpleNamespace(lead_id=3, company=None), confirmer)
+
+    def test_r2_17_pose_au_dela_de_deux_fois_la_cible_pose_la_question(self):
+        from apps.calepinage.services.devis import FACTEUR_POSE_SUR_CIBLE, DevisRefuse
+
+        with self.assertRaises(DevisRefuse) as question:
+            self._poser(84, self.CIBLE)
+        self.assertEqual(question.exception.statut, 409)
+        self.assertEqual(question.exception.donnees, CONTRAT['exemple_409_confirmation_taille_pose'])
+        # La borne : 2 × 4 = 8 passe, 9 demande ; « Confirmer » passe toujours.
+        self._poser(FACTEUR_POSE_SUR_CIBLE * 4, self.CIBLE)
+        with self.assertRaises(DevisRefuse):
+            self._poser(FACTEUR_POSE_SUR_CIBLE * 4 + 1, self.CIBLE)
+        self._poser(84, self.CIBLE, confirmer=True)
+
+    def test_r2_17_sans_cible_des_factures_aucune_question(self):
+        for cible in ({**self.CIBLE, 'source': 'lead'},  # taille souhaitée saisie
+                      {'panneaux': None, 'panel_watt': None, 'kwc': None, 'source': 'lead',
+                       'refus': 'Lead commercial/industriel : étude C&I.', 'motif_code': None}):
+            with self.subTest(cible=cible):
+                self._poser(84, cible)
+
+    def test_r2_22_choix_invalides_nomment_le_champ(self):
+        from apps.calepinage.services.devis import DevisRefuse, _choix_de_generation
+
+        for rattacher, autre in (('76', False), (True, False), (76, True)):
+            with self.subTest(rattacher=rattacher, autre=autre):
+                with self.assertRaises(DevisRefuse) as refus:
+                    _choix_de_generation(False, rattacher, autre)
+                self.assertEqual(refus.exception.champ, 'rattacher_devis')
+        self.assertEqual(_choix_de_generation(True, 76, False)['rattacher_devis'], 76)
+
+    def _libres(self, choix, *, lie=None):
+        from datetime import datetime, timedelta, timezone as tz
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.devis import _brouillon_libre_choisi, _choix_de_generation
+
+        ne_le = datetime(2026, 11, 22, 5, 0, tzinfo=tz.utc)
+        tous = {pk: SimpleNamespace(pk=pk, reference=ref, is_active=True, total_ttc=Decimal(ttc),
+                                    date_creation=ne_le + timedelta(minutes=minutes))
+                for pk, ref, ttc, minutes in ((70, 'DEV-202611-0010', '9000', -60),
+                                              (76, 'DEV-202611-0013', '115800', -30),
+                                              (80, 'DEV-202611-0020', '5000', 30))}
+        lignes = [{'id': 70, 'statut': 'envoye'}, {'id': 76, 'statut': 'brouillon'},
+                  {'id': 80, 'statut': 'brouillon'}]
+        with mock.patch('apps.ventes.selectors.devis_par_mode_pour_lead', return_value=lignes), \
+                mock.patch('apps.ventes.selectors.get_devis_by_pk', side_effect=tous.get), \
+                mock.patch('apps.calepinage.selectors.calepinage_du_devis', return_value=lie):
+            return _brouillon_libre_choisi(SimpleNamespace(created_at=ne_le), None,
+                                           SimpleNamespace(pk=89), _choix_de_generation(False, *choix))
+
+    def test_r2_22_brouillon_libre_anterieur_question_puis_rattachement(self):
+        from apps.calepinage.services.devis import DevisRefuse
+
+        with self.assertRaises(DevisRefuse) as question:
+            self._libres((None, False))
+        self.assertEqual(question.exception.statut, 409)
+        # 80 est né APRÈS le calepinage, 70 est envoyé : seul 76 est nommé.
+        self.assertEqual(question.exception.donnees, CONTRAT['exemple_409_devis_existant'])
+        self.assertEqual(self._libres((CONTRAT['corps_rattacher_devis']['rattacher_devis'], False)).pk, 76)
+        for jamais in (70, 80):  # envoyé, ou né après : jamais rattaché par cette voie
+            with self.subTest(devis=jamais):
+                with self.assertRaises(DevisRefuse) as refus:
+                    self._libres((jamais, False))
+                self.assertEqual((refus.exception.statut, refus.exception.champ), (409, 'rattacher_devis'))
+        # Déjà porté par un calepinage : aucun brouillon libre, aucune question.
+        self.assertIsNone(self._libres((None, False), lie=object()))
+
+    def test_r2_10_annonce_une_fois_apres_une_generation_reussie(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from core import events
+
+        from apps.calepinage.services import devis as service
+
+        devis, user = SimpleNamespace(pk=71), object()
+        for issue, attendues in (((devis, True), 1), ((devis, False), 0),
+                                 (service.DevisRefuse('non', statut=409), 0)):
+            with self.subTest(issue=issue):
+                rappels = []
+                generer = (mock.patch.object(service, '_generer', side_effect=issue)
+                           if isinstance(issue, Exception)
+                           else mock.patch.object(service, '_generer', return_value=issue))
+                with generer, \
+                        mock.patch('apps.calepinage.services.feu_vert.verifier_avant_publication'), \
+                        mock.patch.object(service, '_exiger_layout', return_value={'zones': []}), \
+                        mock.patch.object(service, '_lead_et_client', return_value=(None, object())), \
+                        mock.patch.object(service, '_garde_electrique', return_value={}), \
+                        mock.patch.object(service, '_consigner_et_servir', return_value={}), \
+                        mock.patch('django.db.transaction.on_commit', side_effect=rappels.append), \
+                        mock.patch.object(events.layout_finalise, 'send') as envoi:
+                    try:
+                        service.generer_devis(SimpleNamespace(company=None), user=user)
+                    except service.DevisRefuse:
+                        pass
+                    self.assertEqual(len(rappels), attendues)
+                    envoi.assert_not_called()  # jamais DANS la transaction
+                    for rappel in rappels:
+                        rappel()
+                    self.assertEqual(envoi.call_count, attendues)
+                    if attendues:
+                        self.assertEqual(envoi.call_args.kwargs, {
+                            'sender': 'calepinage.services.devis', 'devis': devis, 'user': user})
+
+
 class GenererDevisPortesTest(BaseApiCalepinage):
 
     def setUp(self):
@@ -630,6 +759,61 @@ class GenererDevisPortesTest(BaseApiCalepinage):
                              f"{defaut['cle']} : {defaut['valeur_origine']} a fixé un devis")
             self.assertEqual(Devis.objects.filter(company=self.company).count(),
                              avant, defaut['cle'])
+
+    def test_r2_10_generation_reussie_note_le_lead_une_fois(self):
+        """Recette R2-10 — « Générer le devis » écrit UNE note « Conception 3D
+        finalisée » au lead (après la transaction) ; la dédup n'en écrit pas."""
+        from apps.crm.models import LeadActivity
+
+        notes = LeadActivity.objects.filter(lead=self.lead, body__startswith='Conception 3D finalisée')
+        with self.captureOnCommitCallbacks(execute=True):
+            premier = self._generer(self.original)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(notes.count(), 1)
+        self.assertEqual(notes.get().user_id, self.user.pk)
+        with self.captureOnCommitCallbacks(execute=True):
+            second = self._generer(self.original)
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(notes.count(), 1)
+
+    def _brouillon_puis_calepinage(self):
+        """R2-22 — le devis automatique d'abord, puis « Dessiner le toit »."""
+        ancien = Devis.objects.create(company=self.company, client=self.client_a,
+                                      lead=self.lead, reference='DEV-R222-0001')
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-R2-22')
+        enregistrer_layout(calepinage, copy.deepcopy(TOIT), user=self.user)
+        return ancien, calepinage
+
+    def test_r2_22_brouillon_anterieur_question_puis_creer_un_autre(self):
+        ancien, calepinage = self._brouillon_puis_calepinage()
+        avant = Devis.objects.filter(company=self.company).count()
+        question = self._generer(calepinage)
+        self.assertEqual(question.status_code, 409, question.data)
+        self.assertEqual(sorted(question.data), sorted(CONTRAT['exemple_409_devis_existant']))
+        self.assertEqual((question.data['code'], question.data['devis']), ('devis_existant', ancien.pk))
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), avant)
+        reponse = self.api.post(url_generer(calepinage.pk), CONTRAT['corps_creer_autre_devis'],
+                                format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertNotEqual(reponse.data['devis'], ancien.pk)
+
+    def test_r2_22_rattacher_au_brouillon_jamais_a_un_envoye(self):
+        ancien, calepinage = self._brouillon_puis_calepinage()
+        Devis.objects.filter(pk=ancien.pk).update(statut=Devis.Statut.ENVOYE)
+        refus = self.api.post(url_generer(calepinage.pk), {'rattacher_devis': ancien.pk}, format='json')
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertEqual(list(refus.data), ['rattacher_devis'])
+        calepinage.refresh_from_db()
+        self.assertIsNone(calepinage.devis_id)
+        Devis.objects.filter(pk=ancien.pk).update(statut=Devis.Statut.BROUILLON)
+        avant = Devis.objects.filter(company=self.company).count()
+        reponse = self.api.post(url_generer(calepinage.pk), {'rattacher_devis': ancien.pk}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['devis'], ancien.pk)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.devis_id, ancien.pk)
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), avant)
 
     def test_acal968_champ_seul_coche_176_resynchro_comprise(self):
         """ACAL968 (D-ACAL-37) — zone 42 + champ au sol 176, seul le champ

@@ -360,6 +360,24 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual({sans_lead[c]['etat'] for c in ('kwc', 'production_annuelle_kwh')}, {'non_servi'})
         self.assertEqual(sans_lead['omissions'], CONTRAT['exemple_vide']['chiffrage']['omissions'])
 
+    def test_r2_15_toiture_declaree_du_lead_servie(self):
+        """R2-15 / R2-01 — le lead en tuiles, 25°, sud-ouest, ombrage partiel :
+        ``toiture_lead`` le redit ; ``mode_pose`` est celui du DOCUMENT (CIQ112) ;
+        sans lead, tous les champs sont nuls."""
+        Lead.objects.filter(pk=self.lead_lie.pk).update(
+            type_toiture='tuiles', inclinaison_deg=25, orientation='sud_ouest',
+            ombrage='partiel', ombrage_notes=' palmier ')
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, titre='R2-15',
+            roof_layout={'modePoseDeclare': 'toiture_inclinee'})
+        servi = self._contexte(calepinage)['toiture_lead']
+        self.assertEqual(set(servi), set(CONTRAT['exemple']['toiture_lead']))
+        self.assertEqual((servi['type_toiture'], servi['inclinaison_deg'], servi['orientation'],
+                          servi['ombrage'], servi['ombrage_notes'], servi['mode_pose']),
+                         ('Tuiles', 25.0, 'Sud-Ouest', 'Partiel', 'palmier', 'toiture_inclinee'))
+        self.assertIsNone(servi['surface_toiture_m2'])
+        self.assertEqual(set(self._contexte(self.nu)['toiture_lead'].values()), {None})
+
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)
@@ -367,6 +385,41 @@ class ContexteConceptionTest(BaseApiCalepinage):
     def test_sans_permission_403(self):
         reponse = self.api_sans.get(url_contexte(self.avec_devis.pk))
         self.assertEqual(reponse.status_code, 403)
+
+
+class ToitureDuLeadTest(unittest.TestCase):
+    """R2-15 / R2-01 — le bloc ``toiture_lead``, sans base (lead non enregistré)."""
+
+    @staticmethod
+    def servi(lead, roof_layout=None, lead_id=7):
+        from apps.calepinage.views.toiture_lead import toiture_du_lead
+
+        calepinage = mock.Mock(lead_id=lead_id, roof_layout=roof_layout)
+        return toiture_du_lead(object(), calepinage, lire_lead=lambda company, pk: lead)
+
+    def test_ce_que_le_lead_declare_tel_quel(self):
+        lead = Lead(type_surface='toiture', type_toiture='tuiles', orientation='sud_ouest',
+                    ombrage='partiel', ombrage_notes='palmier', inclinaison_deg='25.00',
+                    surface_toiture_m2='60.00', nb_etages=2, roof_age=15, structure_pref='acier')
+        servi = self.servi(lead, {'modePoseDeclare': 'toiture_inclinee'})
+        self.assertEqual(set(servi), set(CONTRAT['exemple']['toiture_lead']))
+        self.assertEqual(servi, {
+            'type_surface': 'Toiture', 'type_toiture': 'Tuiles', 'orientation': 'Sud-Ouest',
+            'ombrage': 'Partiel', 'structure_pref': 'Acier', 'surface_toiture_m2': 60.0,
+            'inclinaison_deg': 25.0, 'nb_etages': 2.0, 'roof_age': 15.0,
+            'ombrage_notes': 'palmier', 'mode_pose': 'toiture_inclinee'})
+
+    def test_rien_de_declare_tout_est_nul(self):
+        # Un lead muet, puis aucun lead : chaque champ vaut None (jamais deviné).
+        for lead in (Lead(), None):
+            with self.subTest(lead=lead):
+                self.assertEqual(set(self.servi(lead).values()), {None})
+
+    def test_mode_pose_relu_du_document_jamais_recalcule(self):
+        # Le lead dit « tuiles » mais le document ne porte aucun mode : None
+        # (le serveur ne l'applique pas, l'atelier non plus).
+        self.assertIsNone(self.servi(Lead(type_toiture='tuiles'), {'zones': []})['mode_pose'])
+        self.assertIsNone(self.servi(None, {'modePoseDeclare': ''})['mode_pose'])
 
 
 class FactureMensuelleDuLeadTest(unittest.TestCase):

@@ -164,32 +164,30 @@ def is_devis_accepte(devis):
     return devis.statut == Devis.Statut.ACCEPTE
 
 
-def production_attendue_pour_devis(devis_id):
-    """YSERV8 — production annuelle attendue (kWh) calculée au devis.
-
-    Point d'entrée cross-app en LECTURE SEULE pour ``apps.monitoring`` (jamais
-    un import direct de ``ventes.models``) : lit la production annuelle stockée
-    dans ``Devis.etude_params['production_annuelle']`` (semée par le moteur
-    solaire à la création). Renvoie un ``Decimal`` positif, ou ``None`` si le
-    devis n'existe pas, n'a pas d'étude, ou porte une valeur non exploitable.
-    """
-    from decimal import Decimal, InvalidOperation
-
-    from .domain.scenario import figure_production_du_devis
-    from .models import Devis
-    devis = Devis.objects.filter(pk=devis_id).first()
-    if devis is None:
-        return None
-    # ACAL101 — la figure RECALÉE sur les lignes quand elle vient du
-    # calepinage (``production_source``), sinon la valeur stockée.
-    raw = figure_production_du_devis(devis)
-    if raw is None:
-        return None
+def production_imprimee_du_devis(devis):
+    """R2-14 (D-ACAL-6) — LA production annuelle (kWh, ``Decimal``) que le PDF
+    ``/proposal`` imprime pour ce devis (instance ou pk) : le MÊME rendu que
+    ``chiffrage_conception._depuis_devis`` (``build_quote_data(devis,
+    {'pdf_mode': 'full'})``), lu par ``quote_engine.figures.
+    production_imprimee`` — jamais la copie ``etude_params`` posée par le
+    calepinage. ``None`` sans devis, sans production imprimée (pompage, options
+    divergentes, production nulle) ou rendu en échec. Lecture seule, non scopée
+    (l'appelant vérifie la société) ; un appel = un rendu du devis."""
+    from .quote_engine.builder import build_quote_data
+    from .quote_engine.figures import production_imprimee
+    if not hasattr(devis, 'etude_params'):
+        devis = get_devis_by_pk(devis)
     try:
-        val = Decimal(str(raw))
-    except (InvalidOperation, ValueError, TypeError):
+        return production_imprimee(build_quote_data(devis, {'pdf_mode': 'full'})) if devis else None
+    except Exception:  # noqa: BLE001 — lecture d'écran, jamais bloquante (D-ENF22-BLE001)
+        logger.warning('production imprimée indisponible', exc_info=True)
         return None
-    return val if val > 0 else None
+
+
+#: YSERV8 — la production ATTENDUE d'une installation (``apps.monitoring``) est
+#: la promesse faite au client : la production imprimée (D-ACAL : « la
+#: production client = celle du devis »), plus la copie stockée du calepinage.
+production_attendue_pour_devis = production_imprimee_du_devis
 
 
 def kwc_dernier_devis(lead, company):

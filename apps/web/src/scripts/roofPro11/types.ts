@@ -36,6 +36,9 @@ export type RenderSceneFn = (
 /** ACAL994 — l'économie de l'année 1 du bloc `chiffrage` (contrat calepinage_design_context) : LUE, jamais calculée ici. */
 export interface ChiffrageAtelier {
   economie_annee1_mad?: { valeur: number | null; etat: string; option?: string | null } | null;
+  /** R2-16/17 — kWc et production annuelle SERVIS (même bloc `chiffrage` : lus, jamais recalculés ici). */
+  kwc?: { valeur: number | null; etat: string } | null;
+  production_annuelle_kwh?: { valeur: number | null; etat: string } | null;
 }
 
 export interface InitOptions {

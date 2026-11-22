@@ -196,6 +196,23 @@ class TestDevisVerrouEdition(TestCase):
                       format='json')
         self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(r.json()['updated_by_nom'], 'Sami Alaoui')
+        # R2-19 — le dernier écrivain EST l'auteur de la requête : le message
+        # le dit (« par vous »), le 409 tombe dans les mêmes cas.
+        self.assertTrue(r.json()['par_vous'])
+        self.assertIn('par vous', r.json()['detail'])
+
+    def test_patch_entete_jeton_perime_autre_ecrivain_message_inchange(self):
+        devis = self._devis(7)
+        api = self._api(self.user_b)
+        jeton = self._jeton(api, devis)
+        Devis.objects.filter(pk=devis.pk).update(
+            updated_at=timezone.now(), updated_by=self.user_a)
+        r = api.patch(f'/api/django/ventes/devis/{devis.id}/',
+                      {'note': 'x', 'expected_updated_at': jeton},
+                      format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertFalse(r.json()['par_vous'])
+        self.assertIn('par un autre utilisateur', r.json()['detail'])
 
     def test_lock_version_absent_comportement_inchange(self):
         # NTPLT17 — sans ``lock_version`` dans le corps, rien ne change :

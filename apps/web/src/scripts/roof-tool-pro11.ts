@@ -129,7 +129,7 @@ import { $, fmt, fmtMad, esc } from './roofPro11/dom';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
-import { lireJeuReglages, appliquerJeuAuPan, mentionJeuReglages, type JeuReglages, type ValeursJeuPan } from './roofPro11/jeuReglages'; // ACAL308
+import { lireJeuReglages, avecPoseDeclaree, appliquerJeuAuPan, mentionJeuReglages, type JeuReglages, type ValeursJeuPan } from './roofPro11/jeuReglages'; // ACAL308, R2-15
 import {
   createZones,
   exclusionObstructionRings,
@@ -652,6 +652,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // de facture ou nouveau tracé.
   let neededPanels = 0;
   let neededAuto = true;
+  /** R2-13 — le nombre de panneaux du devis lu à la dernière hydratation (exposé par `ctx.panneauxDevis`). */
+  let panneauxDevisLu: number | null = null;
   // L2 — vrai dès que `applyDevisHydration` a tourné (devis OU affaire AO) : figé pour
   // toute la session, jamais remis à false. Lu par optimizer.ts (placedFor/buildPitchedLocks)
   // pour distinguer « besoin nul, mode lead » (remplir ce qui tient, historique) de
@@ -843,6 +845,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
     get cibleVendue() {
       return cibleVendue;
+    },
+    get panneauxDevis() {
+      return panneauxDevisLu;
     },
     get rec() {
       return rec;
@@ -2065,6 +2070,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // (`cibleVendue: false`) n'a AUCUNE vente derrière lui.
     cibleVendue = h.cibleVendue;
     derniereCible = { cibleVendue: h.cibleVendue, neededPanels: h.neededPanels }; // ACAL925
+    panneauxDevisLu = h.neededPanels;
     const layout = devis.geometrie?.roof_layout ?? null;
     // ACAL31 — mesures (CAL102), zones d'exclusion (CAL69), retraits (CAL76), horizon (CAL93),
     // scène (CALX119), bâtiments (CALX100) et fond (CALX107) sont relus par
@@ -2639,7 +2645,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const fresh = newAreaRecord();
     // ACAL308 (D-ACAL-20) — le jeu de réglages mémorisé du document se pose sur le pan NEUF,
     // avant son pavage ; les pans existants ne sont jamais touchés.
-    const jeu = lireJeuReglages(ctx.documentRelu);
+    const jeu = avecPoseDeclaree(lireJeuReglages(ctx.documentRelu), ctx.documentRelu); // R2-15 — pose du toit du lead
     const posees = appliquerJeuAuPan(fresh, jeu);
     areas.push(fresh);
     activeAreaId = fresh.id;
@@ -2690,7 +2696,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  qu'il est VIERGE (le premier pan d'un calepinage vierge est un pan à dessiner comme les
    *  suivants). Un pan déjà tracé n'est jamais modifié. */
   function appliquerJeuAuPanVierge() {
-    const jeu = lireJeuReglages(ctx.documentRelu);
+    const jeu = avecPoseDeclaree(lireJeuReglages(ctx.documentRelu), ctx.documentRelu); // R2-15 — pose du toit du lead
     afficherMentionJeu(jeu);
     const actif = activeArea();
     if (!jeu || !actif || closed || vertices.length > 0 || actif.vertices.length > 0 || actif.result) return;

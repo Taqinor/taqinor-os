@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/generer-devis/",
-  "pourquoi": "ACAL3 (C-ACAL-104/105/106/009) — « GÉNÉRER LE DEVIS » depuis un calepinage : la réponse porte les avertissements de composition et les refus NOMMÉS. Consommée par frontend/src/features/calepinage/BoutonDevis.jsx (genererDevis, syncDevis) ; les moitiés back (D02-T07) et écran (D02-T20) IMPORTENT cet échantillon (PACT13), aucun mock tapé à la main. Réponses de GÉNÉRER : 201 {devis, reference, statut, layout_hash, deduplique:false, avertissements:[str], marques_manquantes:[str]} ; 200 {…, deduplique:true} quand le calepinage est déjà lié à un BROUILLON de même empreinte (double clic, client seul compris) ; 409 {detail, devis, reference, revision_possible} quand il est déjà rattaché à un devis non brouillon (aucun devis créé : utilisez « Resynchroniser le devis ») ; 422 {detail, errors:[str]} (pré-vol, inchangé) ; 422 {hors_reseau: str} (site isolé sans référence autonome / batterie) ; 422 {type_installation: str} (lead agricole : le pompage se chiffre depuis l'écran devis agricole — groupe AGR). Réponses de RESYNCHRONISER (POST …/sync-devis/) sous `sync_devis` : 200 {inchange, panneaux, kwc, scenario, batterie, lignes_modifiees, lignes_ajoutees, avertissements:[str]} (forme de domain/resynchronisation.reconcilier, INCHANGÉE) ; 409 {detail, revision_possible} (inchangé). Les codes HTTP et clés d'erreur existants ne changent pas (NE PAS FAIRE QJR5). La réponse jumelle de ventes from-layout a son propre échantillon (mêmes noms de clés avertissements / marques_manquantes). Aucun montant, aucun statut de devis écrit ici (règle #4) : le moteur /proposal ne fait que rendre. Valeurs ILLUSTRATIVES ; ce sont les clés et leurs natures qui font le contrat.",
+  "pourquoi": "ACAL3 (C-ACAL-104/105/106/009) — « GÉNÉRER LE DEVIS » depuis un calepinage : la réponse porte les avertissements de composition et les refus NOMMÉS. Consommée par frontend/src/features/calepinage/BoutonDevis.jsx (genererDevis, syncDevis) ; les moitiés back (D02-T07) et écran (D02-T20) IMPORTENT cet échantillon (PACT13), aucun mock tapé à la main. Réponses de GÉNÉRER : 201 {devis, reference, statut, layout_hash, deduplique:false, avertissements:[str], marques_manquantes:[str]} ; 200 {…, deduplique:true} quand le calepinage est déjà lié à un BROUILLON de même empreinte (double clic, client seul compris) ; 409 {detail, devis, reference, revision_possible} quand il est déjà rattaché à un devis non brouillon (aucun devis créé : utilisez « Resynchroniser le devis ») ; 422 {detail, errors:[str]} (pré-vol, inchangé) ; 422 {hors_reseau: str} (site isolé sans référence autonome / batterie) ; 422 {type_installation: str} (lead agricole : le pompage se chiffre depuis l'écran devis agricole — groupe AGR). Réponses de RESYNCHRONISER (POST …/sync-devis/) sous `sync_devis` : 200 {inchange, panneaux, kwc, scenario, batterie, lignes_modifiees, lignes_ajoutees, avertissements:[str]} (forme de domain/resynchronisation.reconcilier, INCHANGÉE) ; 409 {detail, revision_possible} (inchangé). Les codes HTTP et clés d'erreur existants ne changent pas (NE PAS FAIRE QJR5). La réponse jumelle de ventes from-layout a son propre échantillon (mêmes noms de clés avertissements / marques_manquantes). Aucun montant, aucun statut de devis écrit ici (règle #4) : le moteur /proposal ne fait que rendre. Valeurs ILLUSTRATIVES ; ce sont les clés et leurs natures qui font le contrat. Recette R2-17 (22/11/2026) — la MÊME question `confirmation_taille` quand la pose dépasse 2 × la cible tirée des factures du lead (`exemple_409_confirmation_taille_pose`, mêmes clés). Recette R2-22 (D-ACAL-1) — 409 `devis_existant` {detail, code, champ, devis, reference, total_ttc} quand le lead a un brouillon libre né avant ce calepinage : renvoyer `corps_rattacher_devis` (ce calepinage devient la conception de ce brouillon, resynchronisé : 200) ou `corps_creer_autre_devis` (201). Un devis envoyé ou accepté n'est jamais rattaché (409 {rattacher_devis}).",
   "exemple": {
     "devis": 412,
     "reference": "DEV-202610-0042",
@@ -58,6 +58,28 @@
   },
   "corps_confirmer_taille": {
     "confirmer_taille": true
+  },
+  "exemple_409_confirmation_taille_pose": {
+    "detail": "La pose compte 84 panneaux (46,20 kWc, 244 500,00 MAD TTC), plus de 2 fois les 4 panneaux de la cible tirée des factures du lead. Confirmez, ou réduisez la pose dans l’atelier.",
+    "code": "confirmation_taille",
+    "champ": "confirmer_taille",
+    "kwc": 46.2,
+    "total_ttc": "244500.00",
+    "refus": "Cible tirée des factures du lead (dimensionnement du devis automatique) : 4 panneaux (2,20 kWc)."
+  },
+  "exemple_409_devis_existant": {
+    "detail": "Ce lead a déjà le devis DEV-202611-0013 (brouillon, 115 800,00 MAD TTC), créé avant ce calepinage : rattachez-lui ce calepinage, ou créez un autre devis.",
+    "code": "devis_existant",
+    "champ": "rattacher_devis",
+    "devis": 76,
+    "reference": "DEV-202611-0013",
+    "total_ttc": "115800.00"
+  },
+  "corps_rattacher_devis": {
+    "rattacher_devis": 76
+  },
+  "corps_creer_autre_devis": {
+    "creer_autre_devis": true
   },
   "corps_surfaces_chiffrees": {
     "surfaces_chiffrees": ["s1"]

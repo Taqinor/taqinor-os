@@ -147,4 +147,8 @@ describe('ACAL547 — la carte « Couvre le besoin »', () => {
     expect(phraseCouvertureMax(balayage(ligne(20, 100)))).toBeNull();
     expect(phraseCouvertureMax(null)).toBeNull();
   });
+
+  it('R2-16 — sans cible positive (facture inconnue, pctOfTarget à 0) : aucune phrase « au plus 0 % »', () => {
+    expect(phraseCouvertureMax(balayage(ligne(20, 0), ligne(26, 0)))).toBeNull();
+  });
 });

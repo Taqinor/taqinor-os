@@ -73,7 +73,7 @@ class ContratCalepinageDuDevisTest(SimpleTestCase):
 
     def test_les_quatre_etats_existent_et_partagent_la_meme_forme(self):
         doc = document()
-        attendues = {'id', 'titre', 'layout_hash', 'a_jour'}
+        attendues = {'id', 'titre', 'reference', 'layout_hash', 'a_jour'}
         for variante, a_jour in (('exemple', True),
                                  ('exemple_a_rejouer', False),
                                  ('exemple_inconnu', None)):

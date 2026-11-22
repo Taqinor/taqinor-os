@@ -345,12 +345,13 @@ class DevisEtudesActionsMixin:
         # n'est pas une clé d'étude). Réponse littérale : la forme du 409
         # reste lisible par check_api_shapes.
         from ..domain.verrou_devis import verifier_jeton
-        charge = verifier_jeton(devis, request.data)
+        charge = verifier_jeton(devis, request.data, request.user)
         if charge is not None:
             return Response(
                 {'code': charge['code'], 'detail': charge['detail'],
                  'updated_at': charge['updated_at'],
-                 'updated_by_nom': charge['updated_by_nom']},
+                 'updated_by_nom': charge['updated_by_nom'],
+                 'par_vous': charge['par_vous']},
                 status=status.HTTP_409_CONFLICT)
 
         corps = request.data

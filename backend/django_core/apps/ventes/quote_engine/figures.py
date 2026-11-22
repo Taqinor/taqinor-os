@@ -675,6 +675,32 @@ def _divergent(quote: dict, cle: str) -> bool:
     return s is not None and a is not None and s > 0 and a > 0 and s != a
 
 
+def production_imprimee(quote: dict):
+    """R2-14 (D-ACAL-6) — LA production annuelle (kWh, ``Decimal``) que le PDF
+    du devis imprime, lue sur la charge utile de ``build_quote_data`` (miroir
+    des mêmes gardes que les gabarits) ; ``None`` quand le document n'en
+    imprime pas UNE :
+
+    * commercial / industriel — ``synthese_ci`` › ``systeme.production_kwh_an``
+      (CIQ307/CIQ331 : la couverture, le une-page C&I et /proposition) ;
+    * agricole — aucune (le document pompage n'imprime aucun kWh) ;
+    * résidentiel — ``prod_kwh`` (``cover.build``), sauf options aux champs PV
+      divergents : le document imprime « sans · avec », deux productions.
+
+    Jamais un 0 : une production nulle ou illisible rend ``None``."""
+    quote = quote or {}
+    mode = str(quote.get("mode_installation") or "").strip().lower()
+    if mode in MODES_CI:
+        from .ci.synthese import chiffres_cles, synthese_ci
+        valeur = chiffres_cles(synthese_ci(quote) or {}).get("production_kwh_an")
+    elif mode == "agricole" or _divergent(quote, "prod_kwh"):
+        return None
+    else:
+        valeur = quote.get("prod_kwh")
+    valeur = _num(valeur)
+    return valeur if valeur is not None and valeur > 0 else None
+
+
 def figures_depuis_proposition(payload: dict) -> dict[str, list[Mesure]]:
     """Charge utile de ``GET /api/django/public/proposal/<token>/data/`` →
     mêmes clés que les documents. Ne mappe que des champs SERVIS : aucune

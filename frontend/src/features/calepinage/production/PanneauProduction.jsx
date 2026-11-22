@@ -482,7 +482,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       {data?.simule === true && !perime && <PourquoiProduction cascade={data?.cascade} />}
       {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}
       {data?.simule === true && !perime && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
-      {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} />}
+      {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} production={data?.production} />}
       <ReglagesUtilises simulation={data?.simulation} ouvert={sourcesOuvertes} onBascule={setSourcesOuvertes} />
       {/* ENF15 — `meteo` / `incertitude` servis par `GET resultat/` (CALX143/144). */}
       {data?.simule && <SourceMeteo meteo={data?.meteo} />}

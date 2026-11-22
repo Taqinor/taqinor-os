@@ -49,7 +49,7 @@ import config from '../module.config.jsx'
 import Rail from './Rail'
 import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
-import { ETAPES, ESSENTIELS, ecranGuideDeOnglet } from './parcoursGuide'
+import { ETAPES, ESSENTIELS, ecranGuideDeOnglet, ongletsVisibles } from './parcoursGuide'
 import { ONGLETS, PARAM_ONGLET, ongletParCle, ongletsTries, resoudreOnglet } from './onglets'
 
 const ID = '7'
@@ -148,15 +148,30 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
     // ACAL393 — étape active par défaut = toit : ses seuls essentiels.
     expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
     expect(screen.getAllByRole('tab').map((t) => t.getAttribute('data-testid')))
-      .toEqual(['cal-onglet-pente', 'cal-onglet-terrain', 'cal-onglet-ombriere'])
+      .toEqual(['cal-onglet-pente'])
     expect(screen.queryByTestId('cal-onglet-panneau')).toBeNull()
+  })
+
+  // ACAL1190 — l'étape Toit guidée = le panneau de la maquette (un onglet) ; Terrain et Ombrière restent ouvrables.
+  it('mode guidé, étape Toit ⇒ seul `cal-onglet-pente` ; mode expert ⇒ Terrain et Ombrière présents', async () => {
+    window.localStorage.clear()
+    const utilisateur = userEvent.setup()
+    rendreRail()
+    expect(screen.getAllByRole('tab').map((t) => t.getAttribute('data-testid'))).toEqual(['cal-onglet-pente'])
+    expect(ongletsVisibles('toit')).toEqual(['pente'])
+    expect(ongletsVisibles('toit', 'terrain')).toEqual(['pente', 'terrain']) // `?onglet=terrain` l'ouvre encore
+    try {
+      await utilisateur.click(screen.getByTestId('cal-mode-expert'))
+      expect(screen.getByTestId('cal-onglet-terrain')).toBeTruthy()
+      expect(screen.getByTestId('cal-onglet-ombriere')).toBeTruthy()
+    } finally { window.localStorage.clear() } // le mode expert est mémorisé : ne pas le laisser aux cas suivants
   })
 
   it('chaque clé de ONGLETS est dans la table du parcours, une seule fois', () => {
     const dans = ETAPES.flatMap((e) => e.onglets)
     expect([...dans].sort()).toEqual(ONGLETS.map((o) => o.cle).sort())
     for (const cle of ESSENTIELS) expect(dans, `essentiel inconnu : ${cle}`).toContain(cle)
-    expect(ESSENTIELS).toHaveLength(13)
+    expect(ESSENTIELS).toHaveLength(11)
   })
 
   it('la pastille d’état vient du parcours (contrat) et l’étape active est la première non faite', async () => {
@@ -248,7 +263,7 @@ describe('ACAL394 — l’interrupteur « Mode expert »', () => {
   it('guidé par défaut ; cocher montre tous les onglets rangés sous leur étape, et survit à un rechargement', async () => {
     const utilisateur = userEvent.setup()
     const premier = rendreRail()
-    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
     await utilisateur.click(screen.getByTestId('cal-mode-expert'))
     expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
     let total = 0

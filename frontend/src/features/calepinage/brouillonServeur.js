@@ -28,12 +28,32 @@ export function baseServeur(hashBase) {
 }
 
 /* Envoi au mieux : un échec (levé tout de suite ou rejeté plus tard) ne
-   touche jamais l'écriture locale, qui a déjà eu lieu. */
-const silencieux = (appel) => {
-  let promesse
-  try { promesse = appel() } catch (err) { promesse = Promise.reject(err) }
-  Promise.resolve(promesse).catch(() => {})
+   touche jamais l'écriture locale, qui a déjà eu lieu. R2-04 — les envois d'UN
+   miroir partent EN FILE : un `DELETE` (après un enregistrement) ne peut plus
+   être doublé en route par un `PUT` plus gros parti avant lui, et laisser
+   le serveur avec un brouillon que l'on venait d'effacer. File vide : l'appel
+   part tout de suite, comme avant. */
+function creerFileEnvoi() {
+  let precedent = null
+  return (appel) => {
+    const lancer = () => {
+      try { return Promise.resolve(appel()) } catch (err) { return Promise.reject(err) }
+    }
+    const fini = (precedent ? precedent.then(lancer) : lancer()).catch(() => {})
+    precedent = fini
+    fini.then(() => { if (precedent === fini) precedent = null })
+  }
 }
+
+/* Une forme canonique (clés triées) : le jsonb du serveur ne garde pas l'ordre des clés du navigateur. */
+function canonique(valeur) {
+  if (Array.isArray(valeur)) return valeur.map(canonique)
+  if (valeur && typeof valeur === 'object') {
+    return Object.keys(valeur).sort().reduce((acc, cle) => { acc[cle] = canonique(valeur[cle]); return acc }, {})
+  }
+  return valeur
+}
+const memeDocument = (a, b) => JSON.stringify(canonique(a)) === JSON.stringify(canonique(b))
 
 /** Le brouillon local `{layout, horodatage}`, ou `null` s'il est illisible. */
 function lireBrouillonLocal(valeur) {
@@ -48,6 +68,7 @@ function lireBrouillonLocal(valeur) {
 export function creerStockageMiroir({ base, calepinageId, envoyer, effacer }) {
   if (!base) return null // sans localStorage, brouillon.js n'écrit rien (CALX68)
   const local = base
+  const silencieux = creerFileEnvoi()
   const cleModele = construireCle({ calepinageId, utilisateurId: 'u', hashBase: 'h' })
   const prefixe = cleModele.slice(0, cleModele.indexOf(':', cleModele.indexOf(':') + 1) + 1)
   const estBrouillon = (cle) => typeof cle === 'string' && cle.startsWith(prefixe)
@@ -78,15 +99,18 @@ export function creerStockageMiroir({ base, calepinageId, envoyer, effacer }) {
  * Le brouillon SERVEUR à proposer au bandeau de reprise, ou `null` : `{layout,
  * horodatage, serveur: true}` seulement s'il porte l'empreinte d'ouverture
  * (`hashBase`) — le serveur rend déjà `null` pour un brouillon périmé ; ce
- * contrôle couvre la course « document enregistré entre-temps ».
+ * contrôle couvre la course « document enregistré entre-temps ». R2-04 —
+ * `layoutServi` (le document que le serveur sert) : un brouillon IDENTIQUE à lui
+ * ne porte rien de non enregistré, il n'est jamais proposé.
  */
-export async function lireBrouillonServeur({ lire, calepinageId, hashBase }) {
+export async function lireBrouillonServeur({ lire, calepinageId, hashBase, layoutServi = null }) {
   if (typeof lire !== 'function' || calepinageId == null) return null
   try {
     const res = await lire(calepinageId)
     const b = res?.data
     if (!b || typeof b !== 'object' || b.layout == null) return null
     if ((b.base_empreinte ?? '') !== baseServeur(hashBase)) return null
+    if (layoutServi && memeDocument(b.layout, layoutServi)) return null
     return { layout: b.layout, horodatage: b.horodatage, serveur: true }
   } catch {
     return null

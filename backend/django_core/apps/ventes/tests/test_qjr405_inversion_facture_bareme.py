@@ -116,6 +116,63 @@ class InversionFactureTotaleTests(SimpleTestCase):
         self.assertLess(serie[5], serie[0])
 
 
+class MontantDansUnSautTests(SimpleTestCase):
+    """R2-07 (recette du 22/11/2026) — un montant tombé dans un SAUT du barème
+    sélectif est résolu à la borne basse (le côté prudent) : c'est voulu, mais
+    il faut le DIRE (règle du fondateur du 17/11 : tout ce que le calcul
+    transforme est annoncé). L'inversion rend donc un drapeau ADDITIF
+    ``montant_dans_un_saut`` avec le montant déclaré et le montant refacturé ;
+    hors saut, la sortie garde sa forme d'avant (clé absente).
+
+    900 MAD est la facture d'hiver déclarée du lead de la recette. Les attendus
+    sont DÉRIVÉS du barème (aucun nombre recopié) : on prouve d'abord que 900
+    est bien dans un saut (aucune consommation ne le produit)."""
+
+    _DANS_LE_SAUT = 900.0
+
+    def test_montant_dans_un_saut_rend_les_deux_montants(self):
+        sortie = bareme.kwh_depuis_facture_mad(self._DANS_LE_SAUT)
+        kwh = sortie['kwh_mensuel']
+        retenu = bareme.facture_mad(kwh)['total_mad']
+        au_dessus = bareme.facture_mad(kwh + 0.1)['total_mad']
+        # Le saut est réel : juste sous la borne on reste sous 900, juste
+        # au-dessus on le dépasse — aucune consommation ne fait 900 MAD.
+        self.assertLess(retenu, self._DANS_LE_SAUT - 1)
+        self.assertGreater(au_dessus, self._DANS_LE_SAUT + 1)
+        saut = sortie.get('montant_dans_un_saut')
+        self.assertIsNotNone(saut, 'le recalage doit être dit')
+        self.assertEqual(saut['montant_declare_mad'], self._DANS_LE_SAUT)
+        self.assertEqual(saut['montant_retenu_mad'], round(retenu, 2))
+        self.assertEqual(saut['kwh_mensuel'], kwh)
+        self.assertGreater(saut['montant_au_dessus_du_saut_mad'],
+                           self._DANS_LE_SAUT)
+
+    def test_montant_hors_saut_ne_rend_pas_le_drapeau(self):
+        for kwh in _KWH_DE_REFERENCE + (714.8,):
+            with self.subTest(kwh=kwh):
+                total = bareme.facture_mad(kwh)['total_mad']
+                self.assertNotIn('montant_dans_un_saut',
+                                 bareme.kwh_depuis_facture_mad(total))
+        for montant in (0.0, 10.0, 1300.0):
+            with self.subTest(montant=montant):
+                self.assertNotIn('montant_dans_un_saut',
+                                 bareme.kwh_depuis_facture_mad(montant))
+
+    def test_detail_de_consommation_porte_le_saut_de_la_facture_d_hiver(self):
+        from apps.ventes.horaire import conso
+        kwh, _source, detail = conso.profil_depuis_factures(
+            facture_hiver_mad=self._DANS_LE_SAUT, facture_ete_mad=1300.0,
+            ete_differente=True)
+        self.assertTrue(kwh)
+        sauts = detail.get('montants_dans_un_saut')
+        self.assertEqual(
+            [s['montant_declare_mad'] for s in (sauts or [])],
+            [self._DANS_LE_SAUT])
+        _kwh, _source, sans_saut = conso.profil_depuis_factures(
+            facture_hiver_mad=1300.0)
+        self.assertNotIn('montants_dans_un_saut', sans_saut)
+
+
 class M10EstimationMasqueLeGrapheTests(SimpleTestCase):
     """Le correctif M10 (19/08/2026) n'est pas défait par QJR405.
 

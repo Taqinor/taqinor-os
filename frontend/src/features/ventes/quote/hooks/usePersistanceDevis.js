@@ -56,7 +56,7 @@ const lignesEcartees = (lines) => lignesNonEnvoyees(lines).sansProduit
 export function usePersistanceDevis(ctx) {
   const {
     navigate, confirm, setClients, setLeads, setSaving, setErrors, setWarnings,
-    facturesEcartConfirmeRef, finish, editId, editDevis, jetonRef, forcerSansJetonRef,
+    facturesEcartConfirmeRef, finish, editId, editDevis, dirty, jetonRef, forcerSansJetonRef,
     setConflitVerrou, armerJeton, setRechargeEdit, recommendedChoice, overridesReg, produits,
     setOverridesReg, setOverridesErreur, messageErreurOverrides, leadId, setLeadId, clientId,
     setClientId, dateValidite, note, echeancierSaisie, echeancierAEnvoyer, conditions,
@@ -577,7 +577,10 @@ export function usePersistanceDevis(ctx) {
       // QJR549 — 409 `devis_modifie` : quelqu'un (ou le catalogue) a écrit ce
       // devis depuis l'ouverture. Bannière NON bloquante, rien d'autre écrit.
       if (err?.response?.status === 409 && err?.response?.data?.code === 'devis_modifie') {
-        setConflitVerrou({ par: err.response.data.updated_by_nom || '' })
+        setConflitVerrou({
+          par: err.response.data.updated_by_nom || '',
+          parVous: Boolean(err.response.data.par_vous),
+        })
         return null
       }
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
@@ -748,6 +751,14 @@ export function usePersistanceDevis(ctx) {
   const ouvrirConception3D = async () => {
     if (!validate()) {
       if (leadId && selectedLead) navigate(`/devis-design/${selectedLead.id}`)
+      return
+    }
+    // R2-19 (recette 22/11/2026) — un devis ouvert en édition et NON modifié
+    // depuis son chargement (`dirty` = différent de la référence d'écran) n'a
+    // rien à enregistrer : on ouvre l'outil 3D sans réécrire les lignes (qui
+    // avançait le jeton et pouvait se heurter au verrou pour rien).
+    if (editDevis && !dirty) {
+      navigate(`/ventes/devis/${editDevis.id}/design`)
       return
     }
     const res = await persisterDevis()

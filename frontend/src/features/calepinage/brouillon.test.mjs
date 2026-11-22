@@ -426,7 +426,7 @@ test('reprise — mémorisée puis consommée UNE fois au boot suivant', () => {
    réponses viennent du contrat committé `calepinage_brouillon.json` (PACT13). */
 const CONTRAT_BROUILLON = documentContrat('calepinage', 'calepinage_brouillon')
 
-test('ACAL400 — le miroir écrit en local ET envoie au serveur, puis efface des deux côtés', () => {
+test('ACAL400 — le miroir écrit en local ET envoie au serveur, puis efface des deux côtés', async () => {
   const envois = []
   const effacements = []
   const local = stockageFactice()
@@ -455,6 +455,7 @@ test('ACAL400 — le miroir écrit en local ET envoie au serveur, puis efface de
   assert.deepEqual(envois[0][1].layout, layout)
   assert.ok(typeof horodatage === 'string')
   g.effacer()
+  await new Promise((r) => setTimeout(r, 0)) // R2-04 — le DELETE part en file, après le PUT
   assert.deepEqual(effacements, [41])
   assert.equal(lireBrouillon(local, g.cle), null)
 })
@@ -491,6 +492,38 @@ test('ACAL400 — lecture serveur : exemple ⇒ proposé (serveur), exemple_vide
   assert.equal(await lireBrouillonServeur({
     lire: () => Promise.reject(new Error('réseau')), calepinageId: 41, hashBase: 'x',
   }), null)
+})
+
+test('R2-04 — un brouillon serveur IDENTIQUE au document servi (clés dans un autre ordre) n’est jamais proposé', async () => {
+  const exemple = CONTRAT_BROUILLON.exemple
+  const lire = () => Promise.resolve({ data: exemple })
+  const inverser = (v) => (Array.isArray(v) ? v.map(inverser) : (v && typeof v === 'object'
+    ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, inverser(x)])) : v))
+  const autreOrdre = inverser(exemple.layout)
+  assert.equal(await lireBrouillonServeur({
+    lire, calepinageId: 41, hashBase: exemple.base_empreinte, layoutServi: autreOrdre,
+  }), null)
+  assert.ok(await lireBrouillonServeur({
+    lire, calepinageId: 41, hashBase: exemple.base_empreinte, layoutServi: { zones: ['autre'] },
+  }), 'un document servi différent laisse le brouillon proposé')
+})
+
+test('R2-04 — les envois du miroir partent EN FILE : le DELETE ne passe jamais devant un PUT en vol', async () => {
+  const journal = []
+  let finirPut
+  const miroir = creerStockageMiroir({
+    base: stockageFactice(), calepinageId: 41,
+    envoyer: () => new Promise((resolu) => { journal.push('put-debut'); finirPut = () => { journal.push('put-fin'); resolu() } }),
+    effacer: () => { journal.push('delete'); return Promise.resolve() },
+  })
+  const cle = construireCle({ calepinageId: 41, utilisateurId: 7, hashBase: 'h1' })
+  miroir.setItem(cle, JSON.stringify({ layout: { a: 1 }, horodatage: 'x' }))
+  miroir.removeItem(cle)
+  await Promise.resolve()
+  assert.deepEqual(journal, ['put-debut'], 'le DELETE attend la fin du PUT')
+  finirPut()
+  await new Promise((r) => setTimeout(r, 0))
+  assert.deepEqual(journal, ['put-debut', 'put-fin', 'delete'])
 })
 
 test('ACAL945 — estPanneReseau : vrai sans réponse ou ERR_NETWORK ; faux pour ECONNABORTED et toute réponse HTTP', () => {

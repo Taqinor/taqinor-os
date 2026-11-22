@@ -77,7 +77,7 @@ from ..serializers import (
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
 # (``views/photos.py``) : une base de plus, zéro logique ajoutée ici.
 from .schemas_calepinages import (
-    CORPS_CREATION, CORPS_LAYOUT_RESSERRE, PARAM_IF_MATCH, PUBLICATION_DEVIS, REFUS_VENTES,
+    CORPS_CREATION, CORPS_GENERER_DEVIS, CORPS_LAYOUT_RESSERRE, PARAM_IF_MATCH, PUBLICATION_DEVIS, REFUS_VENTES,
     REPONSE_JETON_MANQUANT, SECTION_RESSERRE, VERSION_LIGNE,
 )
 from .photos import PhotosSiteMixin
@@ -88,7 +88,7 @@ from .releve import ReleveTerrainMixin
 # rester des ``@action`` de la SEULE forme d'URL du module (CAL233).
 from .sorties import SortiesMixin
 from ..services.devis import (
-    DevisRefuse, generer_devis, resynchroniser_devis,
+    DevisRefuse, generer_devis, reponses_du_corps, resynchroniser_devis,
 )
 from ..services.approbation import LIBELLES_STATUT, statut_derive
 from ..services.layout import (
@@ -723,15 +723,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
 
     # ── Le pont vers le devis : appeler, jamais refaire ────────────────────
     @extend_schema(
-        request=inline_serializer('CalepinageGenererDevisCorps', {
-            'taux_tva': drf_serializers.JSONField(required=False),
-            'remise_globale': drf_serializers.JSONField(required=False),
-            'derogation_electrique': drf_serializers.JSONField(
-                required=False),
-            'surfaces_chiffrees': drf_serializers.JSONField(required=False),  # ACAL968
-            # ACAL922 — confirme un devis que rien ne dimensionne (``is True``).
-            'confirmer_taille': drf_serializers.BooleanField(
-                required=False)}),
+        request=CORPS_GENERER_DEVIS,
         responses={200: PUBLICATION_DEVIS, 201: PUBLICATION_DEVIS,
                    409: REPONSE_REFUS_GENERER_DEVIS})
     @action(detail=True, methods=['post'], url_path='generer-devis',
@@ -766,7 +758,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 journal=journal,
                 derogation_electrique=corps.get('derogation_electrique'),
                 surfaces_chiffrees=corps.get('surfaces_chiffrees'),
-                confirmer_taille=corps.get('confirmer_taille') is True)  # ACAL922
+                **reponses_du_corps(corps))  # ACAL922, recette R2-22
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
@@ -1254,6 +1246,7 @@ def contexte_conception(calepinage, request=None):
 
     from .. import selectors as cal_selectors
     from ..services.consommation import facture_mensuelle_du_lead
+    from .toiture_lead import toiture_du_lead  # R2-15 — la toiture déclarée sur le lead
 
     company = getattr(calepinage, 'company', None)
     devis = _devis_lie_de(calepinage, company)
@@ -1263,8 +1256,7 @@ def contexte_conception(calepinage, request=None):
         getattr(request, 'query_params', {}).get('devis')))
     if variante is not None:
         devis, calepinage = variante.devis, copy.copy(calepinage)
-        calepinage.roof_layout = variante.roof_layout
-        calepinage.layout_hash = variante.layout_hash
+        calepinage.roof_layout, calepinage.layout_hash = variante.roof_layout, variante.layout_hash
     contexte_devis = _contexte_devis_lie(calepinage, company, devis=devis)
     # Lu UNE seule fois et partagé : la géométrie ET l'adresse en sortent.
     geo = cal_selectors.contexte_geographique(calepinage, avec_repere=True)
@@ -1323,6 +1315,9 @@ def contexte_conception(calepinage, request=None):
         # ACAL776 — la facture mensuelle moyenne du lead (lecture pure).
         'consommation_lead': facture_mensuelle_du_lead(
             company, getattr(calepinage, 'lead_id', None)),
+        # R2-15 / R2-01 (Q1, 22/11) — la toiture DÉCLARÉE sur le lead, affichée en
+        # lecture ; seul ``mode_pose`` (relu du document, CIQ112) agit.
+        'toiture_lead': toiture_du_lead(company, calepinage),
     }
 
 

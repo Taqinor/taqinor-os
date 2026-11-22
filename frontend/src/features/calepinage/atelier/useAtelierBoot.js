@@ -18,6 +18,19 @@ import {
   reglagesAtelierDesParametres, phraseCalepinageCharge,
 } from './contexteAtelier.js'
 
+// R2-20 — le refus de DROIT (403) n'est pas « introuvable — réessayez » : l'écran le DIT et masque ses outils.
+export const MESSAGE_ACCES_REFUSE = 'Vous n’avez pas accès à ce calepinage.'
+
+// R2-03 — « adresse, ville » sans répéter la ville quand l'adresse la porte déjà (« …, Agadir » + « Agadir »).
+export function adresseSansDoublon(adresse, ville) {
+  const a = (adresse ?? '').trim()
+  const v = (ville ?? '').trim()
+  if (!a || !v) return a || v
+  const norme = (t) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+  const dernier = norme(a.split(',').pop().trim())
+  return dernier === norme(v) || norme(a).includes(norme(v)) ? a : `${a}, ${v}`
+}
+
 // SPL214 — effet de boot de l'atelier (chargement lead/devis/calepinage puis
 // initialisation du builder), déplacé VERBATIM depuis pages/ventes/ToitureDesign.jsx
 // (move only : le corps de l'effet est inchangé ; seuls les imports et la
@@ -395,11 +408,12 @@ export function useAtelierBoot(ctx) {
         if (cancelled) return
         const code = err?.response?.status
         setLoadError(
-          code === 404
-            ? 'Calepinage introuvable.'
-            : 'Impossible de charger le calepinage — réessayez.'
+          code === 403 ? MESSAGE_ACCES_REFUSE
+            : code === 404
+              ? 'Calepinage introuvable.'
+              : 'Impossible de charger le calepinage — réessayez.'
         )
-        setStatus(`Calepinage introuvable (erreur ${code ?? '?'}).`)
+        setStatus(code === 403 ? MESSAGE_ACCES_REFUSE : `Calepinage introuvable (erreur ${code ?? '?'}).`)
         return
       }
       if (cancelled) return
@@ -507,11 +521,7 @@ export function useAtelierBoot(ctx) {
         // aucune adresse composée ici au-delà de la jointure des deux morceaux.
         poserLigneFactureLead(payload?.factureMensuelleMad)
         const addrEl = document.getElementById('rp9-address')
-        const adresse = [ctx?.calepinage?.client_adresse,
-          ctx?.calepinage?.client_ville]
-          .map((v) => (v ?? '').trim())
-          .filter(Boolean)
-          .join(', ')
+        const adresse = adresseSansDoublon(ctx?.calepinage?.client_adresse, ctx?.calepinage?.client_ville)
         if (addrEl && adresse) addrEl.value = adresse
         const titre = (ctx?.calepinage?.titre ?? '').trim()
         setStatus(phraseCalepinageCharge(titre, calepinageId, ctx?.modifiable))
@@ -553,6 +563,7 @@ export function useAtelierBoot(ctx) {
       if (!brouillon) {
         lireBrouillonServeur({
           lire: calepinageApi.calepinages.brouillon, calepinageId, hashBase: hashServeur,
+          layoutServi: ctx?.geometrie?.roof_layout ?? null, // R2-04 — identique au document servi : rien à reprendre
         }).then((serveur) => { if (!cancelled && serveur) setBrouillonPropose(serveur) })
       }
       // ACAL84 — le bandeau ne BLOQUE plus le chargement (ANON-08) : l'atelier

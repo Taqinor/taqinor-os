@@ -65,6 +65,18 @@ describe('BlocCalepinageDevis (CAL40 / CALX46)', () => {
     expect(screen.queryByTestId('cal-badge-a-rejouer')).toBeNull()
   })
 
+  it('R2-12 — sans titre, le bloc nomme le calepinage par sa référence', async () => {
+    const attendu = bloc('exemple')
+    ventesApi.getDevisById.mockResolvedValue({
+      data: { calepinage: { ...attendu, titre: '' } },
+    })
+
+    rendre()
+
+    expect(await screen.findByText(attendu.reference)).toBeInTheDocument()
+    expect(screen.queryByText('Calepinage sans titre')).toBeNull()
+  })
+
   it('a_jour = false : badge « à rejouer », valeur SERVEUR telle quelle', async () => {
     servirContrat('exemple_a_rejouer')
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { productionAtelierDepuisChiffrage } from './useAtelierBoot'
+import { productionAtelierDepuisChiffrage, adresseSansDoublon, MESSAGE_ACCES_REFUSE } from './useAtelierBoot'
 
 /* ACAL994 — la production de l'atelier ERP vient du bloc `chiffrage` servi par design-context
    (ACAL993) quand il est servi ; sinon le repli de table, étiqueté « estimation ». Les valeurs
@@ -36,5 +36,19 @@ describe('productionAtelierDepuisChiffrage (ACAL994)', () => {
     expect(productionAtelierDepuisChiffrage(null)(CFG).annualKwh).toBe(repli)
     const sansKwc = { ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, etat: 'non_servi' } }
     expect(productionAtelierDepuisChiffrage(sansKwc)(CFG).annualKwh).toBe(repli)
+  })
+})
+
+describe('R2-03 / R2-20', () => {
+  it('la ville déjà portée par l’adresse n’est pas répétée', () => {
+    expect(adresseSansDoublon('Quartier Founty, Agadir', 'Agadir')).toBe('Quartier Founty, Agadir')
+    expect(adresseSansDoublon('Quartier Founty, agadir', 'Agadir ')).toBe('Quartier Founty, agadir')
+    expect(adresseSansDoublon('12 rue des Oliviers', 'Casablanca')).toBe('12 rue des Oliviers, Casablanca')
+    expect(adresseSansDoublon('', 'Casablanca')).toBe('Casablanca')
+    expect(adresseSansDoublon(null, null)).toBe('')
+  })
+
+  it('un 403 dit le refus de droit, jamais « introuvable — réessayez »', () => {
+    expect(MESSAGE_ACCES_REFUSE).toBe('Vous n’avez pas accès à ce calepinage.')
   })
 })

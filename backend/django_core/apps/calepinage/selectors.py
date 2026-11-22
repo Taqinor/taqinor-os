@@ -162,6 +162,14 @@ def calepinages_visibles(user, *, inclure_archives=False, base=None,
     return restreindre_aux_siens(lignes, user)
 
 
+def reference_calepinage(calepinage):
+    """« CAL-AAMM-0001 » du calepinage — LA référence dérivée (ACAL196), servie
+    aux autres apps par cette porte (``ventes`` ne lit jamais ``services``)."""
+    from .services.presentation import reference_calepinage as _reference
+
+    return _reference(calepinage)
+
+
 def calepinage_ouvert_du_lead(company, lead_id):
     """ACAL182 — LE calepinage OUVERT (non archivé) d'un lead, ou ``None``.
 

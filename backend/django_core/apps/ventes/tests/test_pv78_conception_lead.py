@@ -19,6 +19,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client, Lead
+from apps.calepinage.selectors import reference_calepinage
 from apps.crm.selectors import conception_3d_du_lead
 from apps.ventes.models import Devis
 from apps.ventes.selectors import conception_pour_lead
@@ -58,7 +59,8 @@ class ConceptionPourLeadTest(TestCase):
 
     def test_toujours_les_deux_cles_sans_devis(self):
         self.assertEqual(conception_pour_lead(self.lead, self.company),
-                         {'kwc': None, 'image_url': None, 'calepinage': None})
+                         {'kwc': None, 'image_url': None, 'calepinage': None,
+                          'devis': None})
 
     def test_kwc_lu_dans_le_calepinage(self):
         self._devis()
@@ -85,7 +87,8 @@ class ConceptionPourLeadTest(TestCase):
         self._devis(company=self.other)
         # Même lead, autre société sur le devis → rien ne remonte.
         self.assertEqual(conception_pour_lead(self.lead, self.company),
-                         {'kwc': None, 'image_url': None, 'calepinage': None})
+                         {'kwc': None, 'image_url': None, 'calepinage': None,
+                          'devis': None})
 
     def test_image_url_chemin_relatif_meme_origine(self):
         # ACAL314 — un chemin RELATIF servi par Django, plus une URL
@@ -142,15 +145,45 @@ class ConceptionPourLeadTest(TestCase):
                            'geometry': {'count': 12, 'moduleId': 'm710'}}]})
         resultat = conception_pour_lead(self.lead, self.company)
         self.assertEqual(resultat['kwc'], 8.52)
-        self.assertEqual(resultat['calepinage'],
-                         {'id': calepinage.pk, 'statut': calepinage.statut})
+        self.assertEqual(
+            resultat['calepinage'],
+            {'id': calepinage.pk, 'statut': calepinage.statut,
+             'reference': reference_calepinage(calepinage)})
+        self.assertIsNone(resultat['devis'])
+
+    def test_calepinage_servi_aussi_quand_un_devis_existe(self):
+        """R2-10 — avec un devis, le lien vers le calepinage ne disparaît
+        plus ; le statut du devis est servi (clé additive ``devis``)."""
+        from apps.calepinage.models import Calepinage
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='',
+            roof_layout={'zones': []})
+        devis = self._devis()
+        resultat = conception_pour_lead(self.lead, self.company)
+        self.assertEqual(resultat['calepinage']['id'], calepinage.pk)
+        self.assertEqual(resultat['calepinage']['reference'],
+                         reference_calepinage(calepinage))
+        self.assertEqual(resultat['kwc'], 7.7)
+        self.assertEqual(resultat['devis'], {
+            'id': devis.pk, 'reference': devis.reference,
+            'statut': devis.statut})
+
+    def test_calepinage_d_une_autre_societe_jamais_servi(self):
+        from apps.calepinage.models import Calepinage
+        Calepinage.objects.create(
+            company=self.other, lead_id=self.lead.pk, titre='X',
+            roof_layout={'zones': []})
+        self._devis()
+        self.assertIsNone(
+            conception_pour_lead(self.lead, self.company)['calepinage'])
 
     def test_selecteur_crm_passe_plat(self):
         self._devis()
         self.assertEqual(conception_3d_du_lead(self.lead),
                          conception_pour_lead(self.lead, self.company))
         self.assertEqual(conception_3d_du_lead(None),
-                         {'kwc': None, 'image_url': None, 'calepinage': None})
+                         {'kwc': None, 'image_url': None, 'calepinage': None,
+                          'devis': None})
 
 
 class ConceptionSurLaFicheLeadTest(TestCase):
@@ -174,7 +207,7 @@ class ConceptionSurLaFicheLeadTest(TestCase):
         resp = self.api.get('/api/django/crm/leads/%s/' % self.lead.id)
         self.assertEqual(resp.status_code, 200)
         self.assertIn('conception', resp.data)
-        self.assertEqual(set(resp.data['conception']), {'kwc', 'image_url', 'calepinage'})
+        self.assertEqual(set(resp.data['conception']), {'kwc', 'image_url', 'calepinage', 'devis'})
         self.assertEqual(resp.data['conception']['kwc'], 7.7)
 
     def test_liste_ne_porte_pas_la_conception(self):

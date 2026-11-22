@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import { formatNumber } from '../../lib/format'
 /* CALX27 — le droit d'ÉCRITURE métier du module. Même code que la garde
    serveur de l'action (`PeutGererCalepinage`, `services/verrou.py`) : l'écran ne
    propose pas un geste que l'API refusera. */
@@ -187,8 +188,22 @@ export default function AtelierPanneaux({
           <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Calepinage</p>
           {/* CAL188 — l'en-tête de l'atelier, lu du MÊME champ serveur que la
               fiche devis et la liste (CAL189), jamais recalculé ici. */}
-          <BadgePerime layoutStale={detail?.layout_stale}
-            layoutNbPanneaux={detail?.layout_nb_panneaux} />
+          {/* R2-13 — le devis lié ne suit plus la conception : dit tout de suite (le détail est relu
+              à chaque enregistrement), et dit qu'un devis ENVOYÉ ne sera pas modifié. */}
+          {detail?.layout_stale === true
+            ? (
+              <span data-testid="cal-devis-perime"
+                title="Les chiffres du devis ne correspondent plus à cette conception."
+                className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                {calepinage?.devis_lie?.statut === 'envoye'
+                  ? 'Devis envoyé : il ne sera pas modifié'
+                  : 'Devis périmé — à resynchroniser'}
+              </span>
+            )
+            : (
+              <BadgePerime layoutStale={detail?.layout_stale}
+                layoutNbPanneaux={detail?.layout_nb_panneaux} />
+            )}
         </span>
         {/* Le comparatif des variantes est CONTEXTUEL à ce calepinage : il
             s'ouvre depuis son atelier, jamais depuis une entrée de menu
@@ -224,12 +239,12 @@ export default function AtelierPanneaux({
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <div>
           <dd className="fig text-lg text-foreground" data-testid="cal-cible-panneaux">
-            {cible ? valeur(cible.panneaux) : 'non renseignée'}
+            {cible ? valeur(cible.panneaux === null || cible.panneaux === undefined ? null : formatNumber(cible.panneaux, { decimals: 0 })) : 'non renseignée'}
           </dd>
           <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — panneaux</dt>
         </div>
         <div>
-          <dd className="fig text-lg text-foreground">{cible ? valeur(cible.kwc, ' kWc') : '—'}</dd>
+          <dd className="fig text-lg text-foreground">{cible ? valeur(cible.kwc === null || cible.kwc === undefined ? null : formatNumber(cible.kwc, { decimals: 2 }), ' kWc') : '—'}</dd>
           <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — puissance</dt>
         </div>
         <div>

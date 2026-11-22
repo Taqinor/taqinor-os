@@ -674,7 +674,8 @@ class DevisEditionActionsMixin:
         # n'avance le funnel.
         # QJR545 — verrou optimiste (jeton optionnel, autres clients).
         from ..domain.verrou_devis import verifier_jeton
-        charge = verifier_jeton(serializer.instance, self.request.data)
+        charge = verifier_jeton(serializer.instance, self.request.data,
+                               self.request.user)
         if charge is not None:
             raise _DevisModifie(charge)
         _gardes_mise_a_jour(serializer.instance, serializer.validated_data,

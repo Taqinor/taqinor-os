@@ -1,6 +1,7 @@
 // SPL213 — mappeurs purs de l'atelier 3D, déplacés VERBATIM depuis
 // pages/ventes/ToitureDesign.jsx (move only : seul `export` a été ajouté).
 import { refusServeur } from '../commun/refusServeur.js'
+import { formatNumber } from '../../../lib/format.js'
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
 export function dataUrlToBlob(dataUrl) {
@@ -173,6 +174,28 @@ export function libelleCibleEstimee(cible) {
   const origine = cible.source === 'lead'
     ? 'la taille souhaitée du lead' : 'les factures du lead'
   return `Cible estimée depuis ${origine} : ${n} panneaux (non vendue)`
+}
+
+// R2-15 / R2-01 (décision Q1, 22/11) — « Le lead déclare : tuiles · pente 25° · sud-ouest · ombrage partiel
+// (palmier) » : ce que la fiche du lead dit de sa toiture (`contexte.toiture_lead`, libellés de fiche servis),
+// AFFICHÉ en lecture seulement — aucune valeur n'en est préremplie (D-ACAL-7). `null` quand il ne dit rien.
+export function phraseToitureLead(toiture) {
+  if (!toiture || typeof toiture !== 'object') return null
+  const mot = (v) => (typeof v === 'string' && v.trim() ? v.trim().toLocaleLowerCase('fr') : null)
+  const nb = (v) => (Number.isFinite(v) ? formatNumber(v, { locale: 'fr' }) : null)
+  const avec = (valeur, gabarit) => (valeur == null ? null : gabarit(valeur))
+  const notes = typeof toiture.ombrage_notes === 'string' ? toiture.ombrage_notes.trim() : ''
+  const ombrage = mot(toiture.ombrage)
+  const parties = [
+    mot(toiture.type_surface), mot(toiture.type_toiture),
+    avec(nb(toiture.surface_toiture_m2), (s) => `${s} m² disponibles`),
+    avec(nb(toiture.inclinaison_deg), (p) => `pente ${p}°`), mot(toiture.orientation),
+    ombrage ? `ombrage ${ombrage}${notes ? ` (${notes})` : ''}` : (notes ? `ombrage : ${notes}` : null),
+    avec(nb(toiture.nb_etages), (n) => `${n} étage${toiture.nb_etages > 1 ? 's' : ''}`),
+    avec(nb(toiture.roof_age), (a) => `toiture de ${a} ans`),
+    avec(mot(toiture.structure_pref), (s) => `structure ${s}`),
+  ].filter(Boolean)
+  return parties.length ? `Le lead déclare : ${parties.join(' · ')}` : null
 }
 
 // ACAL192 (D-ACAL-13) — la phrase FRANÇAISE d'un refus serveur des gestes de repère

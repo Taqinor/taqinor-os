@@ -262,6 +262,45 @@ export function estimationConsoAffichable(estimationConso) {
   return { base, total, ajouts }
 }
 
+// R2-07 — montants MAD au format de l'écran (virgule décimale, deux décimales
+// au plus) : ce module n'importe rien, d'où `toLocaleString` plutôt que
+// `lib/format`.
+const madFr = (v) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 2 })
+
+/**
+ * R2-07 (recette du 22/11/2026) — une facture DÉCLARÉE tombée dans un saut du
+ * barème sélectif est résolue par le serveur à la borne basse (le côté
+ * prudent) : le calcul retient une facture PLUS BASSE que celle déclarée,
+ * puisque aucune consommation ne produit ce montant. Règle du fondateur du
+ * 17/11 : tout ce que le calcul transforme est DIT, avec le champ de la fiche.
+ *
+ * Lit `consommation.detail.montants_dans_un_saut` (clé additive, absente hors
+ * saut) et rend une phrase par montant, `[]` sinon — jamais un calcul côté
+ * écran : les quatre nombres viennent du serveur. `corps` (le corps envoyé à
+ * l'aperçu) nomme la facture (hiver / été) quand son montant y figure.
+ */
+export function facturesRecaleesAffichables(detail, corps = {}) {
+  const sauts = detail?.montants_dans_un_saut
+  if (!Array.isArray(sauts)) return []
+  return sauts
+    .filter((s) => s && Number(s.montant_declare_mad) > 0 && Number.isFinite(Number(s.montant_retenu_mad)))
+    .map((s) => {
+      const declare = Number(s.montant_declare_mad)
+      const quelle = Number(corps?.facture_hiver) === declare ? "Facture d'hiver"
+        : (Number(corps?.facture_ete) === declare ? "Facture d'été" : 'Facture')
+      const champ = quelle === "Facture d'été" ? "la facture d'été" : (quelle === 'Facture'
+        ? 'cette facture' : "la facture d'hiver")
+      const entre = Number(s.montant_au_dessus_du_saut_mad) > 0
+        ? ` (aucune consommation ne donne une facture entre ${madFr(s.montant_retenu_mad)} et `
+          + `${madFr(s.montant_au_dessus_du_saut_mad)} MAD)`
+        : ''
+      const kwh = Number(s.kwh_mensuel) > 0 ? ` (${madFr(s.kwh_mensuel)} kWh/mois)` : ''
+      return `${quelle} déclarée ${madFr(declare)} MAD : ce montant tombe entre deux tranches du tarif`
+        + `${entre} ; le calcul retient ${madFr(s.montant_retenu_mad)} MAD${kwh}. Corrigez ${champ} `
+        + 'sur la fiche du lead (Profil énergétique) si vous avez le montant exact.'
+    })
+}
+
 /**
  * CJ2b — verdict batterie du moteur POUR LA TAILLE RÉELLEMENT CHIFFRÉE.
  *

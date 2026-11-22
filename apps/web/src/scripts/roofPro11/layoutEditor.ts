@@ -49,7 +49,7 @@ import {
   DEG2RAD,
   DEG2M,
 } from './constants';
-import { $, fmt } from './dom';
+import { $, fmt, fmtKwc } from './dom';
 import { type Ctx } from './context';
 import { type LngLat, pointInPolygon } from '../../lib/roof';
 import { type ProdConfig, type RenderSceneFn } from './types';
@@ -361,6 +361,11 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const layoutKwcEl = $('rp9-layout-kwc');
   const layoutFreeEl = $('rp9-layout-free');
   const layoutCoverEl = $('rp9-layout-cover');
+  // R2-05 — ce ratio est « posés ÷ cible » : l'ERP ne l'appelle pas « Couverture » (mot du PDF pour l'autoconsommation).
+  if (opts?.chiffrage !== undefined) {
+    const dt = layoutCoverEl?.parentElement?.querySelector('dt');
+    if (dt) dt.textContent = 'Posés ÷ cible';
+  }
   const layoutMinusEl = $<HTMLButtonElement>('rp9-layout-minus');
   const layoutPlusEl = $<HTMLButtonElement>('rp9-layout-plus');
   const layoutResetEl = $<HTMLButtonElement>('rp9-layout-reset');
@@ -1358,7 +1363,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const free = freeOn ? 0 : emptyIndices(layoutState).length;
     const kwc = count * PANEL_KWC;
     if (layoutCountEl) layoutCountEl.textContent = fmt(count);
-    if (layoutKwcEl) layoutKwcEl.textContent = `${fmt1(kwc)} kWc`;
+    if (layoutKwcEl) layoutKwcEl.textContent = `${fmtKwc(kwc)} kWc`;
     if (layoutFreeEl) layoutFreeEl.textContent = fmt(free);
     const cover = ctx.neededPanels > 0 ? Math.round((count / ctx.neededPanels) * 100) : 0;
     if (layoutCoverEl) layoutCoverEl.textContent = ctx.neededPanels > 0 ? `${cover} %` : '—';

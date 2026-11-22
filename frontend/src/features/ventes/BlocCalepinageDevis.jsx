@@ -64,7 +64,7 @@ export default function BlocCalepinageDevis({ devisId }) {
         )}
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        {calepinage.titre || 'Calepinage sans titre'}
+        {calepinage.titre || calepinage.reference || 'Calepinage sans titre'}
       </p>
       <Link
         to={`/calepinage/${calepinage.id}`}

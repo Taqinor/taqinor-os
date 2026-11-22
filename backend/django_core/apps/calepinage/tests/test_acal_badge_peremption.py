@@ -75,3 +75,11 @@ class BadgePeremptionTest(BaseApiCalepinage):
             with self.subTest(source=sorted(source)[:3]):
                 self.assertIs(source['layout_stale'], False)
                 self.assertEqual(source['layout_nb_panneaux'], 12)
+
+    def test_sans_devis_le_compte_du_document_se_lit_et_la_peremption_reste_inconnue(self):
+        """R3-12 — « Panneaux posés » n'est plus « — » sans devis (non lancé : base)."""
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        for source in (self._detail(), self._ligne_de_liste()):
+            with self.subTest(source=sorted(source)[:3]):
+                self.assertIsNone(source['layout_stale'])
+                self.assertEqual(source['layout_nb_panneaux'], 16)

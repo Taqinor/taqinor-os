@@ -144,6 +144,17 @@ describe('PanneauProduction (CAL236)', () => {
 
     servi.autoconsommation.par_mois = null
     servi.autoconsommation.motif_absence = 'Aucune courbe de charge saisie.'
+    const { unmount: unmount2 } = rendre()
+    // R3-08 — la production mensuelle servie est tracée ; le motif ne vaut que pour la consommation.
+    const sansCharge = await screen.findByTestId('acal453-graphique')
+    expect(screen.queryByTestId('acal453-vide')).toBeNull()
+    expect(within(sansCharge).getByTestId('acal453-motif')).toHaveTextContent('Aucune courbe de charge saisie.')
+    expect(within(sansCharge).getByText('Production (P50)')).toBeInTheDocument()
+    expect(within(sansCharge).queryByText('Consommation')).toBeNull()
+    unmount2()
+
+    // Ni charge ni production mensuelle : l'état vide d'origine.
+    servi.production.mensuel = []
     rendre()
     expect(await screen.findByTestId('acal453-vide')).toHaveTextContent('Aucune courbe de charge saisie.')
   })
@@ -793,9 +804,8 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     const a = borneHaute.cascade.a_renseigner
     expect(within(bloc).getByTestId('acal700-etiquette')).toHaveTextContent('Production la première année · au plus')
     expect(within(bloc).getByTestId('acal700-plafond')).toHaveTextContent(
-      `C'est un plafond : ${a.lignes.length} pertes ne sont pas encore comptées. Le chiffre réel sera plus bas.`)
-    expect(within(bloc).getByTestId('acal700-jauge')).toHaveTextContent(
-      `${a.etapes_comptees} étapes sur ${a.etapes_a_compter}`)
+      `C'est un plafond : ${a.lignes.length} pertes non renseignées, toutes à renseigner ici. Le chiffre réel sera plus bas.`)
+    expect(within(bloc).queryByTestId('acal700-jauge')).toBeNull() // R3-06 : plus de troisième compte
     const lignes = within(bloc).getAllByTestId('acal700-ligne')
     expect(lignes).toHaveLength(a.lignes.length)
     expect(lignes[0]).toHaveTextContent('Aucune valeur pour votre société')
@@ -808,6 +818,17 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     }
     expect(bloc).toHaveTextContent("Les années basses et l'indice de performance s'affichent dès que le résultat est complet")
     expect(screen.queryByTestId('acal52-borne-haute')).toBeNull() // remplacé
+  })
+
+  it('R3-06 — un seul compte : 17 pertes non renseignées, dont 3 à renseigner ici', async () => {
+    const servi = incomplet()
+    servi.cascade = { ...servi.cascade, a_renseigner: { ...servi.cascade.a_renseigner, etapes_comptees: 4, etapes_a_compter: 21 } }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: servi })
+    rendreAvecParcours({ etapes: [], manque: [] })
+    const bloc = await screen.findByTestId('acal700-incomplet')
+    expect(within(bloc).getByTestId('acal700-plafond')).toHaveTextContent(
+      "C'est un plafond : 17 pertes non renseignées, dont 3 à renseigner ici. Le chiffre réel sera plus bas.")
+    expect(bloc).not.toHaveTextContent('étapes sur')
   })
 
   it('Raccordement « Conforme » seulement si l’étape électrique est faite', async () => {

@@ -5,8 +5,8 @@ au client) et le P50 de l'étude technique — jamais l'inverse.
 * ``resultat.ecart_devis`` = ``{devis, reference, production_devis_kwh,
   p50_calepinage_kwh, ecart_pct, mention}`` (contrat
   ``calepinage_resultat.json``, ``exemple_ecart_devis``) ; la production du
-  devis est LUE par ``apps.ventes.selectors.production_attendue_pour_devis``
-  (figure recalée, ACAL101) ;
+  devis est LUE par ``apps.ventes.selectors.production_imprimee_du_devis``
+  (R2-14 : celle que le PDF imprime, jamais la copie stockée du calepinage) ;
 * ``null`` sans devis lié, sans simulation, ou simulation périmée ;
 * la section « Production » du rapport d'étude imprime les deux chiffres et
   l'écart (mêmes valeurs que le JSON).
@@ -21,10 +21,14 @@ import copy
 import json
 import pathlib
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest import mock
+
+from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.electrique import (
-    BLOCS_SIMULATION, CLE_SIMULATION, MENTION_ECART_DEVIS,
+    BLOCS_SIMULATION, CLE_SIMULATION, MENTION_ECART_DEVIS, _ecart_devis,
     resultat_calepinage,
 )
 from apps.calepinage.services.rapport.production import html_de_section
@@ -157,3 +161,32 @@ class EcartDevisTest(BaseApiCalepinage):
         self.assertIn('+50,9 %', html)
         self.assertEqual(Decimal('50.9'),
                          Decimal(str(servi['ecart_devis']['ecart_pct'])))
+
+
+class EcartDevisProductionImprimeeTest(SimpleTestCase):
+    """R2-14 (S1) — devis 71 : 3 343 kWh stockés par le calepinage
+    (``production_source='calepinage'``), 3 628 imprimés par le PDF. La
+    phrase « production imprimée au client » (atelier, rapport d'étude)
+    porte 3 628. Sans base : devis et rendu sont des doublures."""
+
+    def _ecart(self, rendu):
+        devis = SimpleNamespace(pk=71, company_id=3, reference='DEV-202611-0071', roof_layout={},
+                                etude_params={'production_annuelle': 3343, 'production_source': 'calepinage'})
+        calepinage = SimpleNamespace(devis_id=71, company_id=3)
+        with mock.patch('apps.ventes.selectors.get_devis_by_pk', return_value=devis), \
+                mock.patch('apps.ventes.models.Devis.objects') as objets, \
+                mock.patch('apps.ventes.selectors_calepinage._conception_a_jour', return_value=True), \
+                mock.patch('apps.ventes.quote_engine.builder.build_quote_data', return_value=rendu):
+            objets.filter.return_value.first.return_value = devis
+            return _ecart_devis(calepinage, 4808.0)
+
+    def test_la_phrase_porte_la_production_imprimee(self):
+        ecart = self._ecart({'mode_installation': 'residentiel', 'prod_kwh': 3628})
+        self.assertEqual(ecart['production_devis_kwh'], 3628.0)
+        self.assertEqual(ecart['ecart_pct'], round((4808 - 3628) / 3628 * 100, 1))
+        self.assertIn('3628,0', html_de_section({'resultat': {'ecart_devis': ecart}}))
+
+    def test_sans_production_imprimee_aucune_phrase(self):
+        """Pompage : le PDF n'imprime aucun kWh ⇒ aucun écart, jamais un 0."""
+        self.assertIsNone(self._ecart({'mode_installation': 'agricole', 'prod_kwh': 3343}))
+        self.assertEqual(html_de_section({'resultat': {'ecart_devis': None}}).count('production-ecart-devis'), 0)

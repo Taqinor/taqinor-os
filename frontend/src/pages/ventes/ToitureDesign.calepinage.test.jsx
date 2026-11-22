@@ -880,6 +880,24 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     await screen.findByTestId('acal-cible-estimee')
     expect(screen.queryByRole('link', { name: 'Ouvrir la fiche du lead' })).toBeNull()
   })
+
+  it('R2-15 / R2-01 — la toiture déclarée sur le lead est AFFICHÉE avec « Voir la fiche du lead » ; rien quand il ne dit rien', async () => {
+    const ctx = exempleContrat('calepinage', 'calepinage_design_context')
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    rendreCalepinage(ctx.calepinage.id)
+    const ligne = await screen.findByTestId('acal-toiture-lead')
+    expect(ligne).toHaveTextContent('Le lead déclare : toiture · tuiles · 60 m² disponibles · pente 25° · sud-ouest')
+    expect(ligne).toContainElement(screen.getByRole('link', { name: 'Voir la fiche du lead' }))
+    expect(screen.getByRole('link', { name: 'Voir la fiche du lead' })).toHaveAttribute('href', `/crm/leads/${ctx.calepinage.lead}`)
+    // Rien n'est prérempli : le payload du constructeur ne porte aucune valeur du lead.
+    expect(JSON.stringify(initRoofToolPro8.mock.calls[0][0].hydrate.devis)).not.toContain('Sud-Ouest')
+    cleanup(); vi.clearAllMocks(); reinitialiserBoot()
+    const muet = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_vide').toiture_lead
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: { ...ctx, toiture_lead: muet } })
+    rendreCalepinage(ctx.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal-toiture-lead')).toBeNull()
+  })
 })
 
 describe('ToitureDesign — le fond photo charge le fichier par son URL servie (ACAL201)', () => {

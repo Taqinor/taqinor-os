@@ -26,8 +26,10 @@ export const ETAPES = [
     onglets: ['documents', 'dossiers', 'activite', 'versions', 'diff-versions', 'approbation', 'pose-reelle', 'projet'] },
 ]
 
+// ACAL1190 — l'étape Toit ne montre d'office que `pente` (la maquette : UN panneau) ; `terrain` et `ombriere`
+// passent au niveau expert (visibles d'office en expert, et un `?onglet=` les ouvre encore).
 export const ESSENTIELS = [
-  'pente', 'terrain', 'ombriere', 'fiches', 'verdict-electrique', 'schema',
+  'pente', 'fiches', 'verdict-electrique', 'schema',
   'production', 'pertes', 'batterie', 'economie', 'documents', 'dossiers', 'approbation',
 ]
 

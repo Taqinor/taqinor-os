@@ -870,6 +870,15 @@ export default function DevisGenerator({
     // AGNR18 — même dérivation au watt de chaque ligne que la branche SANS.
     return kwcPanneauxOption(lines, 'avec', panelW, produits) ?? 0
   })()
+  // R2-21 — le bloc « Système » du rail suit l'OPTION affichée (kWc facturé et
+  // panneaux de CETTE option), jamais le seul champ « panneaux » de la branche
+  // sans batterie sous un total « avec batterie ». Sans ligne panneau : repli
+  // sur la cible tapée (comportement d'avant).
+  const systemeOption = (opt) => {
+    const n = comptePanneauxOption(lines, opt, produits)
+    const k = opt === 'avec' ? kwpAvec : kwpLignes
+    return { kwc: k > 0 ? k : kwp, n: n > 0 ? n : (parseInt(nbPanneaux) || 0) }
+  }
 
   // EZ5 — dimensionner en kWc. Les deux champs sont BIDIRECTIONNELS : taper une
   // puissance cible remplit les panneaux (via `panneauxPourKwc`, la conversion
@@ -1617,7 +1626,7 @@ export default function DevisGenerator({
   } = usePersistanceDevis({
     navigate, confirm, setClients, setLeads, setSaving,
     setErrors, setWarnings, facturesEcartConfirmeRef,
-    finish, editId, editDevis, jetonRef, forcerSansJetonRef,
+    finish, editId, editDevis, dirty, jetonRef, forcerSansJetonRef,
     setConflitVerrou, armerJeton, setRechargeEdit,
     recommendedChoice, overridesReg, produits,
     setOverridesReg, setOverridesErreur,
@@ -2236,10 +2245,28 @@ export default function DevisGenerator({
                              lignesSansAchat={buyDetail.sansAchat} variante="lateral" />
             <div className="border-t border-border pt-3">
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
-              <div className="text-sm text-foreground">
-                {kwp > 0 ? `${formatNumber(kwp, { decimals: 2 })} kWc` : '— kWc'}
-                {parseInt(nbPanneaux) > 0 ? ` · ${parseInt(nbPanneaux)} panneaux` : ''}
-              </div>
+              {(() => {
+                const ligneSysteme = ({ kwc, n }) => (
+                  `${kwc > 0 ? `${formatNumber(kwc, { decimals: 2 })} kWc` : '— kWc'}`
+                  + `${n > 0 ? ` · ${n} panneaux` : ''}`)
+                const sSans = systemeOption('sans')
+                const sAvec = systemeOption('avec')
+                const deuxLignes = showSans && showAvec && modeInstallation !== 'agricole'
+                  && (sSans.n !== sAvec.n || Math.abs(sSans.kwc - sAvec.kwc) > 1e-9)
+                if (deuxLignes) {
+                  return (
+                    <div className="text-sm text-foreground" data-testid="gen-rail-systeme">
+                      <div>Sans batterie : {ligneSysteme(sSans)}</div>
+                      <div>Avec batterie : {ligneSysteme(sAvec)}</div>
+                    </div>
+                  )
+                }
+                return (
+                  <div className="text-sm text-foreground" data-testid="gen-rail-systeme">
+                    {ligneSysteme(optionArgent === 'avec' ? sAvec : sSans)}
+                  </div>
+                )
+              })()}
             </div>
             <div className="flex flex-col gap-2 pt-1">
               <Button type="submit" form="gen-form" loading={saving}>

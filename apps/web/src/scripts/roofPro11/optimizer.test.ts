@@ -22,7 +22,7 @@ import {
   type EntreeDepartage,
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
-import { fmtMad } from './dom'; // ACAL994
+import { fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
 import { panneauxPourCible } from './cibleProduction';
@@ -628,5 +628,14 @@ describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
       expect(opt).toBeDefined();
       expect(ligne(doc)).toBeNull();
     } finally { fin(); }
+  });
+});
+
+// R2-09 — UN formateur de puissance : virgule française, 2 décimales.
+describe('R2-09 — fmtKwc', () => {
+  it('2,13 kWc, 8,00 kWc, jamais « 2.13 » ni une seule décimale', () => {
+    expect(fmtKwc(2.13)).toBe('2,13');
+    expect(fmtKwc(8)).toBe('8,00');
+    expect(fmtKwc(2.1)).toBe('2,10');
   });
 });
