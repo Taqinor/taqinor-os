@@ -215,6 +215,8 @@ def extract_roof_config(layout):
             geo = {}
         count = int(res.get('count') or geo.get('count') or 0)
         kwc = float(res.get('kwc') or geo.get('kwc') or 0.0)
+        if a.get('existant') is True:
+            count, kwc = 0, 0.0  # Critique D1 : modules déjà posés, non vendus
         # ACAL276 — un pan dessiné sans ``result`` a l'aire de ses sommets.
         surface = float(aire_du_pan(a) or 0.0)
         # ── DEUX CONVENTIONS D'ANGLE, ET ELLES SONT OPPOSÉES ────────────────
@@ -269,7 +271,7 @@ def extract_roof_config(layout):
         }
         nb_pans_dessines += 1
         faces = orientation.get('faces') or []
-        if faces:
+        if faces and a.get('existant') is not True:
             # ACAL911 — une entrée par FACE posée (libellé, modules, kWc et
             # orientation de la face) ; le pan dessiné compte une fois.
             restants = count
@@ -289,8 +291,10 @@ def extract_roof_config(layout):
         surface_cumulee_m2 += surface
         total_panels += count
         kwc_cumule += kwc
-        if best is None or kwc > best['kwc']:
-            best = pan
+        # Critique D7 — le pan est comparé par son kWc ENTIER (une pose
+        # est-ouest n'est pas la moitié d'elle-même) ; ``pan`` le décrit.
+        if best is None or kwc > best[0]:
+            best = (kwc, pan)
 
     if not pans:
         return {}
@@ -303,9 +307,9 @@ def extract_roof_config(layout):
         'pans': pans,
     }
     if best is not None:
-        cfg['orientation_principale'] = best['orientation']
-        cfg['azimut_deg'] = best['azimut_deg']
-        cfg['inclinaison_deg'] = best['inclinaison_deg']
+        cfg['orientation_principale'] = best[1]['orientation']
+        cfg['azimut_deg'] = best[1]['azimut_deg']
+        cfg['inclinaison_deg'] = best[1]['inclinaison_deg']
     return cfg
 
 
@@ -572,6 +576,10 @@ def pans_du_document(layout):
             # que ``calepinage/services/etapes/thermique.py::_pose_du_plan``).
             'affleurant': geo.get('flush') is True,
         }
+        if zone.get('existant') is True:
+            # ACAL573 — modules DÉJÀ en place : gardés ici (production et
+            # chaînes du calepinage), jamais vendus (:func:`pans_vendus`).
+            pan['existant'] = True
         if modules <= 0:
             pan['kwc'] = None
             pan['avertissement'] = 'pan %s non pavé — non chiffré' % libelle
@@ -626,6 +634,13 @@ def pans_du_document(layout):
                 % (libelle, modules))
         pans.append(pan)
     return pans
+
+
+def pans_vendus(pans):
+    """Critique D1 — les pans que le DEVIS chiffre : tous sauf les pans
+    « existant » (modules déjà posés, ACAL573 : ni compte, ni kWc, ni modèle,
+    ni fixation). Un document sans pan existant les rend tous."""
+    return [p for p in pans or () if not p.get('existant')]
 
 
 def _catalogue_modules(layout):
@@ -692,7 +707,7 @@ def modeles_designes(layout):
 def modules_affleurants(layout):
     """ACAL1029 (D-ACAL-39) — modules posés à plat sur un toit en pente
     (``geometry.flush: true``) ; 0 sans aucune zone affleurante. Pure."""
-    return sum(p['modules'] for p in pans_du_document(layout) if p.get('affleurant'))
+    return sum(p['modules'] for p in pans_vendus(pans_du_document(layout)) if p.get('affleurant'))
 
 
 def refus_des_pans(pans):
@@ -740,10 +755,14 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
     # repli quand le toit est muet, c'est un pan. Le ``result`` racine (le
     # toit seul, D-ACAL-5) n'est lu qu'à défaut de toute géométrie de zone —
     # jamais additionné aux zones (aucun double compte).
-    pans = pans_du_document(layout)
+    tous = pans_du_document(layout)
+    # Critique D1 — un pan existant compte comme MESURÉ (le ``result`` racine,
+    # qui inclut ses modules, n'est pas relu) mais n'apporte aucun module.
+    zones_mesurees = any(p['kind'] == 'toit' and p['source'] != 'aucune' for p in tous)
+    existants = len(tous) - len(pans_vendus(tous))
+    pans = pans_vendus(tous)
     toit = [p for p in pans if p['kind'] == 'toit']
     surfaces = [p for p in pans if p['kind'] != 'toit']
-    zones_mesurees = any(p['source'] != 'aucune' for p in toit)
     if compte is None:
         if zones_mesurees:
             compte_toit = sum(p['modules'] for p in toit)
@@ -756,9 +775,11 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
 
     if kwc is None:
         toit_paves = [p for p in toit if p['modules'] > 0]
-        if zones_mesurees and toit_paves and all(p['kwc']
-                                                 for p in toit_paves):
+        if zones_mesurees and (toit_paves or existants) and all(
+                p['kwc'] for p in toit_paves):
             kwc_toit = sum(p['kwc'] for p in toit_paves)
+        elif existants:
+            kwc_toit = float(toiture.get('kwc') or 0.0)  # D1 : ni ``result`` racine
         else:
             kwc_toit = float(result.get('kwc') or toiture.get('kwc') or 0.0)
         surfaces_pavees = [p for p in surfaces if p['modules'] > 0]
@@ -1139,7 +1160,9 @@ def compte_moteur_du_layout(layout, *, company=None, devis=None,
     modules = 0
     detail = []
     for pan in pans:
-        zone = _zone_villa_depuis_pan(pan)
+        # Critique D1 — un pan existant n'est jamais recompté par le moteur.
+        zone = (None if isinstance(pan, dict) and pan.get('existant') is True
+                else _zone_villa_depuis_pan(pan))
         if zone is None:
             continue
         sortie = None

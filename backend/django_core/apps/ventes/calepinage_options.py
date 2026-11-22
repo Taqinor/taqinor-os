@@ -1284,7 +1284,8 @@ def parametres_site_publics(devis, layout_public, hypotheses=None,
         from apps.calepinage import selectors_devis as _sd
         from apps.calepinage.selectors import calepinage_du_devis
 
-        if getattr(devis, 'pk', None) and _sd.conception_rapide(
+        # D4 — brouillon seul (comme ACAL1196) : un devis envoyé garde son annexe.
+        if getattr(devis, 'pk', None) and getattr(devis, 'statut', None) == 'brouillon' and _sd.conception_rapide(
                 calepinage_du_devis(devis.pk, getattr(devis, 'company', None))):
             logger.info('parametres_site omis (devis %s) : %s', devis.pk, _sd.MOTIF_CONCEPTION_RAPIDE)
             return None  # ACAL1008 — annexe omise

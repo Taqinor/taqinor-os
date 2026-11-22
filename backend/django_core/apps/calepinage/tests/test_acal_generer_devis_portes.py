@@ -91,6 +91,112 @@ class DefautsAnnoncesSansBaseTest(SimpleTestCase):
         self.assertLess(saisie['entraxe_applique_m'], saisie['entraxe_calcule_m'])
 
 
+#: Critique 22/11 (D2) — zone 42 + champ au sol 176 (même toit qu'ACAL968).
+DOC_TOIT_ET_SOL = {
+    'scenario': 'reseau',
+    'zones': [{'id': 'z1', 'label': 'Zone 1', 'geometry': {'count': 42, 'kwc': 23.1},
+               'result': {'count': 42, 'kwc': 23.1}}],
+    'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1', 'moduleWc': 550,
+                      'engine': {'modules': 176}}]}
+
+
+class SurfacesCocheesSansBaseTest(SimpleTestCase):
+    """Critique 22/11 — D2 (devis partiel ACAL968 : à jour, ombrage de SES
+    pans, planche) et soupçon 2 (faux 409 ``module_substitue``)."""
+
+    @staticmethod
+    def _pivot(document):
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.geometrie import layout_hash
+
+        return SimpleNamespace(roof_layout=document, layout_hash=layout_hash(document))
+
+    def _devis_partiel(self, cles):
+        from apps.calepinage.services.devis import _layout_des_surfaces
+
+        return self._pivot(_layout_des_surfaces(copy.deepcopy(DOC_TOIT_ET_SOL), cles))
+
+    def test_devis_partiel_frais_a_jour_puis_perime_si_sa_surface_change(self):
+        from apps.ventes.selectors_calepinage import _conception_a_jour
+
+        devis = self._devis_partiel(['s1'])
+        self.assertIs(_conception_a_jour(devis, self._pivot(DOC_TOIT_ET_SOL)), True)
+        change = copy.deepcopy(DOC_TOIT_ET_SOL)
+        change['poseSurfaces'][0]['engine']['modules'] = 150
+        self.assertIs(_conception_a_jour(devis, self._pivot(change)), False)
+        retiree = copy.deepcopy(DOC_TOIT_ET_SOL)
+        retiree['poseSurfaces'] = []
+        self.assertIs(_conception_a_jour(devis, self._pivot(retiree)), False)
+        # La surface NON chiffrée change : ce que le devis vend est inchangé.
+        autre = copy.deepcopy(DOC_TOIT_ET_SOL)
+        autre['zones'][0]['geometry'].update(count=40, kwc=22.0)
+        self.assertIs(_conception_a_jour(devis, self._pivot(autre)), True)
+        # Devis complet : comparaison inchangée.
+        self.assertIs(_conception_a_jour(self._pivot(DOC_TOIT_ET_SOL),
+                                         self._pivot(DOC_TOIT_ET_SOL)), True)
+
+    def test_ombrage_du_devis_partiel_est_celui_de_ses_pans(self):
+        from apps.calepinage.selectors import _perte_ombrage_chiffree
+
+        def cascade(avant, perte):
+            return {'etapes': [{'etape': 'horizon', 'kwh_avant': avant, 'perte_kwh': perte}]}
+        lignes = [{'pan': 'Zone 1', 'cascade': cascade(1000, 100)},
+                  {'pan': 's1', 'cascade': cascade(3000, 30)}]
+        site = cascade(4000, 130)
+        self.assertEqual(_perte_ombrage_chiffree(self._devis_partiel(['s1']), lignes, site), 1.0)
+        self.assertEqual(_perte_ombrage_chiffree(self._devis_partiel(['z1']), lignes, site), 10.0)
+        self.assertEqual(_perte_ombrage_chiffree(self._pivot(DOC_TOIT_ET_SOL), lignes, site), 3.25)
+        # Le pan chiffré n'a pas SA cascade : aucune ombre empruntée à l'autre.
+        self.assertIsNone(_perte_ombrage_chiffree(self._devis_partiel(['s1']), lignes[:1], site))
+
+    def test_planche_du_devis_partiel_dessine_sa_copie(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage import selectors as cal_selectors
+        from apps.calepinage import services as cal_services
+        from apps.ventes.quote_engine.artefacts_rendu import _planche_calepinage
+
+        calepinage = SimpleNamespace(layout_hash='c' * 64, version_moteur='v1',
+                                     roof_layout=DOC_TOIT_ET_SOL)
+        for devis, attendu in ((self._devis_partiel(['s1']), 'partiel'),
+                               (self._pivot(DOC_TOIT_ET_SOL), None)):
+            devis.pk, devis.company = 7, None
+            with mock.patch.object(cal_selectors, 'calepinage_du_devis', return_value=calepinage), \
+                    mock.patch.object(cal_selectors, 'conception_figee_du_devis', return_value=None), \
+                    mock.patch.object(cal_services, 'texte_d_empreinte', return_value='pied') as pied, \
+                    mock.patch.object(cal_services, 'rendre_planche_svg', return_value='') as rendu:
+                _planche_calepinage(devis)
+            document = rendu.call_args.kwargs.get('document')
+            if attendu:
+                self.assertIs(document, devis.roof_layout)
+                self.assertEqual(pied.call_args.args[0], devis.layout_hash)
+            else:
+                self.assertIsNone(document)
+                self.assertEqual(pied.call_args.args[0], 'c' * 64)
+
+    def test_pan_pave_sans_kwc_lisible_pas_de_faux_409(self):
+        """Soupçon 2 — pan A 10 × 585 W + pan B 6 modules sans puissance,
+        ``result`` racine 9,36 kWc : la composition lit 9,36 ; la garde ne
+        refuse plus, et refuse toujours un vrai module substitué."""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.devis import DevisRefuse, _garde_module_substitue
+
+        doc = {'scenario': 'reseau', 'modules': [{'id': 'm1', 'pmaxWc': 585}],
+               'zones': [{'id': 'A', 'label': 'A', 'geometry': {'moduleId': 'm1', 'panels': [{}] * 10}},
+                         {'id': 'B', 'label': 'B', 'geometry': {'panels': [{}] * 6}}],
+               'result': {'count': 16, 'kwc': 9.36}}
+        with mock.patch('apps.ventes.selectors_calepinage.lignes_produits_calepinage',
+                        return_value=[]):
+            _garde_module_substitue(SimpleNamespace(etude_params={'puissance_kwc': 9.36}), doc)
+            with self.assertRaises(DevisRefuse) as refus:
+                _garde_module_substitue(SimpleNamespace(etude_params={'puissance_kwc': 8.8}), doc)
+        self.assertEqual(refus.exception.donnees['kwc_dessine'], 9.36)
+
+
 class GenererDevisPortesTest(BaseApiCalepinage):
 
     def setUp(self):

@@ -465,6 +465,24 @@ class AltimetreFichierTest(SimpleTestCase):
             altimetre_depuis_geotiff(b'ceci n est pas un tiff')
         self.assertIn('illisible', str(illisible.exception))
 
+    def test_relief_trop_grand_refuse_avant_decodage(self):
+        """Plafonds d'entrée : pixels et octets, refus en français."""
+        from unittest import mock
+
+        from apps.calepinage.services import altimetre_fichier as af
+
+        octets = _geotiff()  # 400 × 400 = 160 000 pixels
+        with mock.patch.object(af, 'MAX_PIXELS_RELIEF', 100_000), \
+                mock.patch('PIL.Image.Image.load', side_effect=AssertionError('décodé')):
+            with self.assertRaises(af.ReliefIllisible) as pixels:
+                af.altimetre_depuis_geotiff(octets)
+        self.assertIn('trop grand', str(pixels.exception))
+        with mock.patch.object(af, 'MAX_OCTETS_RELIEF', 1000):
+            with self.assertRaises(af.ReliefIllisible) as poids:
+                af.altimetre_depuis_geotiff(octets)
+        self.assertIn('trop volumineux', str(poids.exception))
+        self.assertIsNotNone(af.altimetre_depuis_geotiff(octets))
+
     def test_image_sans_altitudes_lisibles_refusee(self):
         from apps.calepinage.services.altimetre_fichier import (
             ReliefIllisible, altimetre_depuis_geotiff)

@@ -59,10 +59,15 @@ def _mesures_document(calepinage):
     from apps.calepinage.selectors import mesures_du_calepinage
     from apps.ventes.domain.geometrie import pans_du_document
     pans = pans_du_document(calepinage.roof_layout)
-    modules = sum(int(p.get('modules') or 0) for p in pans)
+    # Critique D1 — un pan existant (ACAL573) n'est pas vendu : hors comparaison.
+    modules = sum(int(p.get('modules') or 0) for p in pans if not p.get('existant'))
     # ACAL372 — kWc des FICHES déclarées par le document (ACAL259/273),
     # jamais ``geometry.kwc`` (wattage outil) ; inconnu ⇒ 0 ⇒ aucune violation.
-    kwc = float(mesures_du_calepinage(calepinage).get('kwc') or 0)
+    mesures = mesures_du_calepinage(calepinage)
+    kwc = float(mesures.get('kwc') or 0)
+    if kwc:
+        kwc = max(0.0, kwc - sum(float(m.get('kwc') or 0) for m, p in zip(
+            mesures.get('pans') or (), pans) if p.get('existant')))
     return modules, kwc
 
 

@@ -41,6 +41,10 @@ CLE_TYPE_RASTER = 1025      # 1 = pixel-surface, 2 = pixel-point
 CLE_GEOGRAPHIQUE = 2048     # 4326 = WGS84
 ALTITUDE_MIN, ALTITUDE_MAX = -500.0, 9000.0
 MODES_ALTITUDE = ('F', 'I', 'I;16', 'I;16S')
+#: Plafonds d'entrée (bombe de décompression, mémoire) : 30 Mo de fichier,
+#: 25 millions de pixels (≈ 200 Mo en float64) — contrôlés AVANT le décodage.
+MAX_OCTETS_RELIEF = 30 * 1024 * 1024
+MAX_PIXELS_RELIEF = 25_000_000
 
 
 class ReliefIllisible(ValueError):
@@ -64,9 +68,20 @@ def _lire(octets):
     from PIL import Image
 
     try:
+        if len(octets) > MAX_OCTETS_RELIEF:
+            raise ReliefIllisible(
+                "Le relief est trop volumineux (maximum "
+                f"{MAX_OCTETS_RELIEF // (1024 * 1024)} Mo).")
         image = Image.open(io.BytesIO(octets))
+        if image.size[0] * image.size[1] > MAX_PIXELS_RELIEF:
+            raise ReliefIllisible(
+                "Le relief est trop grand (maximum "
+                f"{MAX_PIXELS_RELIEF // 1_000_000} millions de pixels) : "
+                "découpez-le sur la zone du toit.")
         etiquettes = image.tag_v2
         image.load()
+    except ReliefIllisible:
+        raise
     except Exception as erreur:
         raise ReliefIllisible(
             "Le relief est illisible (GeoTIFF non compressé attendu) : "

@@ -150,7 +150,32 @@ def _conception_a_jour(devis, calepinage):
     empreinte_cal = getattr(calepinage, 'layout_hash', '') or ''
     if not (empreinte_devis and empreinte_cal):
         return None
+    selection = surfaces_chiffrees_du_devis(devis)
+    if selection is not None:
+        # ACAL968 — un devis qui ne chiffre qu'une PARTIE des surfaces porte
+        # l'empreinte de SA copie : comparée à la même copie du document courant.
+        from apps.calepinage.selectors import empreinte_de_la_selection
+
+        empreinte_cal = empreinte_de_la_selection(calepinage, selection)
     return empreinte_devis == empreinte_cal
+
+
+def surfaces_chiffrees_du_devis(devis):
+    """ACAL968 (D-ACAL-37) — les clés des surfaces que CE devis chiffre
+    (``roof_layout.choixConception.surfacesChiffrees``), ou ``None`` : le devis
+    chiffre tout le document. Lecture seule."""
+    document = getattr(devis, 'roof_layout', None)
+    choix = document.get('choixConception') if isinstance(document, dict) else None
+    selection = choix.get('surfacesChiffrees') if isinstance(choix, dict) else None
+    return selection if isinstance(selection, list) else None
+
+
+def kwc_lu_du_layout(layout):
+    """Critique 22/11 — le kWc du document tel que LA composition le lit
+    (``geometrie.lire_layout``), pour la garde ACAL914 du calepinage."""
+    from .domain.geometrie import lire_layout
+
+    return lire_layout(layout).kwc
 
 
 def schema_unifilaire_svg(*, devis=None, entree=None, resultat=None,

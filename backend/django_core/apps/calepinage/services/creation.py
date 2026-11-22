@@ -393,7 +393,8 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
                     cree_par=user,
                     # ACAL297 — le propriétaire du lead, STOCKÉ.
                     responsable=responsable_par_defaut(company, lead_id),
-                    etat_conception=_etat_de_depart(devis, None),  # ACAL1006
+                    # ACAL1006 — un toit dessiné à la main en mode devis est « complet ».
+                    etat_conception=_etat_de_depart(devis, getattr(devis, 'roof_layout', None)),
                 )
         except IntegrityError:
             # ACAL33 — course perdue : la contrainte ``calepinage_un_par_devis``

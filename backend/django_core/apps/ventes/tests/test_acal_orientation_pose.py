@@ -92,6 +92,20 @@ class OrientationPoseeTest(SimpleTestCase):
                           for p in pans], [(90.0, 10, 'pose'), (270.0, 10, 'pose')])
         self.assertEqual(sum(p['nb_panneaux'] for p in pans), 12)
 
+    def test_orientation_principale_pese_la_pose_est_ouest_entiere(self):
+        """Critique D7 — 10 kWc est-ouest + 6 kWc sud : le pan principal est
+        la pose est-ouest (son kWc ENTIER), décrite par sa face la plus forte."""
+        ew = _zone_plate_inclinee(family='eastwest', azimuthDeg=90, kwc=10.0,
+                                  panels=[{'cx': i, 'cy': 0, 'face': 'EW'[i % 2]}
+                                          for i in range(16)])
+        sud = _zone_plate_inclinee(tiltDeg=20, kwc=6.0)
+        cfg = extract_roof_config({'zones': [ew, sud]})
+        self.assertEqual((cfg['azimut_deg'], cfg['inclinaison_deg']), (90.0, 10))
+        self.assertEqual(cfg['orientation_principale'], 'Est')
+        # Un pan simple plus fort que la pose est-ouest entière gagne toujours.
+        sud['geometry']['kwc'] = 12.0
+        self.assertEqual(extract_roof_config({'zones': [ew, sud]})['azimut_deg'], 180)
+
     def test_resynchroniser_deux_fois_meme_geometrie(self):
         layout = _layout(_zone_plate_inclinee())
         premier = extract_roof_config(copy.deepcopy(layout))

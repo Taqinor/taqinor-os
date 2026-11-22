@@ -93,11 +93,23 @@ def _layout_des_surfaces(layout, cles):
     return copie
 
 
+def empreinte_des_surfaces(layout, cles):
+    """ACAL968 — l'empreinte imprimée de LA copie que chiffrerait la sélection
+    ``cles`` (même :func:`_layout_des_surfaces` que la création) ; ``''``
+    quand la sélection ne s'applique plus (surface retirée du document)."""
+    from apps.ventes.services import layout_hash
+
+    try:
+        return layout_hash(_layout_des_surfaces(layout, cles)) or ''
+    except DevisRefuse:
+        return ''
+
+
 def _selection_du_devis(devis):
     """ACAL968 — la sélection écrite au devis (``roof_layout``), ou ``None``."""
-    document = getattr(devis, 'roof_layout', None)
-    choix = document.get('choixConception') if isinstance(document, dict) else None
-    return choix.get('surfacesChiffrees') if isinstance(choix, dict) else None
+    from apps.ventes.selectors_calepinage import surfaces_chiffrees_du_devis
+
+    return surfaces_chiffrees_du_devis(devis)
 
 
 def _lead_et_client(calepinage):
@@ -351,13 +363,22 @@ def _garde_module_substitue(devis, layout):
     from .valeurs import nombre
 
     pans = pans_du_document(layout)
-    dessine = sum(p['kwc'] for p in pans if p.get('kwc'))
+    # Un pan existant (ACAL573) n'est pas vendu : la composition l'ignore aussi.
+    dessine = sum(p['kwc'] for p in pans if p.get('kwc') and not p.get('existant'))
     if dessine and not any(p['kind'] == 'toit' and p['source'] != 'aucune' for p in pans):
         # Toit sans pan mesuré : il est résumé par le ``result`` racine, que la
         # composition compte aussi (``ventes.lire_layout``) — sinon un toit
         # résumé + un champ au sol se lisait « champ seul » (faux 409).
         dessine += nombre(((layout if isinstance(layout, dict) else {})
                            .get('result') or {}).get('kwc')) or 0.0
+    if any(p['kind'] == 'toit' and p['modules'] > 0 and not p.get('kwc')
+           and not p.get('existant') for p in pans):
+        # Critique 22/11 (soupçon 2) — un pan pavé sans kWc lisible : la
+        # composition lit alors le toit à son résumé ; la somme partielle des
+        # pans ferait un faux 409. Le dessin est lu par LA même lecture.
+        from apps.ventes.selectors_calepinage import kwc_lu_du_layout
+
+        dessine = kwc_lu_du_layout(layout)
     compose = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
     if not dessine or compose is None:
         return

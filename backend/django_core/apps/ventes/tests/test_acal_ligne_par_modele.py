@@ -17,7 +17,7 @@ Run:
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -294,3 +294,49 @@ class LigneParModele(TestCase):
         self.assertEqual(sync.status_code, 200, sync.data)
         self.assertEqual(self._panneaux(devis_id),
                          {self.p550_premium.pk: 12})
+
+    def test_surface_de_pose_a_sa_puissance_cree_deux_lignes(self):
+        """Critique D3 / ACAL916 à la CRÉATION — zone 8 × 550 W + champ au sol
+        4 × 450 Wc, sans ``modules[]`` : deux lignes, chacune à son compte."""
+        layout = self._layout([_pan('A', 8, None)], [])
+        del layout['modules'], layout['zones'][0]['geometry']['moduleId']
+        layout['poseSurfaces'] = [{'id': 's1', 'kind': 'sol', 'label': 'Champ',
+                                   'moduleWc': 450, 'tiltDeg': 20, 'rowAzimuthDeg': 90,
+                                   'engine': {'modules': 4}}]
+        r = self._from_layout(layout)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(self._panneaux(r.data['id']),
+                         {self.p550.pk: 8, self.p450.pk: 4})
+
+
+class LigneParModeleSansFiche(SimpleTestCase):
+    """Critique D3 / ACAL916 — la composition (faux produits, aucune base)
+    ouvre une ligne par puissance posée même sans fiche désignée."""
+
+    def test_zone_710_et_champ_550_sans_fiche(self):
+        from apps.ventes.domain.composition_residentielle import (
+            composition_residentielle)
+        from apps.ventes.domain.geometrie import lire_layout, modeles_designes
+        from apps.ventes.tests.test_pvcompat_verdicts import _FauxProduit, _catalogue
+
+        layout = {'panelWatt': 710,
+                  'zones': [{'id': 'z1', 'label': 'Zone 1',
+                             'geometry': {'count': 42, 'kwc': 29.82}}],
+                  'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ 1',
+                                    'moduleWc': 550, 'engine': {'modules': 176},
+                                    'tiltDeg': 20, 'rowAzimuthDeg': 90}]}
+        lecture = lire_layout(layout)
+        catalogue = _catalogue(panneaux=[
+            _FauxProduit(3, 'Panneau Canadien Solar 710W', prix_vente='1500'),
+            _FauxProduit(4, 'Panneau Jinko 550W', prix_vente='1100')])
+        lignes = composition_residentielle(
+            catalogue, kwc=lecture.kwc, panel_watt=lecture.watt,
+            nb_panneaux=lecture.compte, avec_batterie=False,
+            modeles=modeles_designes(layout) or None)
+        panneaux = sorted((ligne.designation, int(ligne.quantite))
+                          for ligne, role in zip(lignes, lignes.roles) if role == 'panneau')
+        self.assertEqual(panneaux, [('Panneau Canadien Solar 710W', 42),
+                                    ('Panneau Jinko 550W', 176)])
+        # kWc composé = kWc dessiné : la garde ACAL914 ne refuse plus.
+        self.assertAlmostEqual(lignes.kwc_reel, lecture.kwc)
+        self.assertEqual(lignes.nb_panneaux, 218)

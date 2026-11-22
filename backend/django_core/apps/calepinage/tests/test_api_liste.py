@@ -560,6 +560,48 @@ class ActionsDeclareesTest(SimpleTestCase):
             self.assertIn(cle, {a.key for a in registry.all_actions()})
 
 
+class ConfirmationTailleAssistantTest(SimpleTestCase):
+    """Critique 22/11 (D6, ACAL922) — l'aperçu ANNONCE la question de taille
+    (mot pour mot celle de ``generer-devis``) au lieu d'échouer ; la
+    publication accepte ``confirmer_taille``, relayé tel quel."""
+
+    def test_l_apercu_annonce_la_question_mot_pour_mot(self):
+        from decimal import Decimal
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services import devis as service_devis
+        from apps.calepinage.services.assistant import _question_de_taille
+
+        devis = SimpleNamespace(etude_params={'puissance_kwc': 34.08},
+                                total_ttc=Decimal('168800'))
+        cree = {'deduplique': False}
+        with mock.patch.object(service_devis, 'taille_non_dimensionnee',
+                               return_value={'refus': 'Renseignez la facture.'}):
+            question = _question_de_taille(object(), devis, 'genere', cree)
+            self.assertIsNone(_question_de_taille(object(), devis, 'resynchronise', cree))
+            self.assertIsNone(_question_de_taille(object(), devis, 'genere',
+                                                  {'deduplique': True}))
+        self.assertEqual(question, {
+            'detail': 'Aucune facture ni taille souhaitée sur le lead : le devis remplit '
+                      'le toit (34,08 kWc, 168 800,00 MAD TTC). Confirmez, ou renseignez '
+                      'la facture du lead.',
+            'refus': 'Renseignez la facture.'})
+        with mock.patch.object(service_devis, 'taille_non_dimensionnee', return_value=None):
+            self.assertIsNone(_question_de_taille(object(), devis, 'genere', cree))
+        self.assertIn('confirmation_taille', echantillon(
+            'calepinage_assistant_publier_apercu.json', 'exemple_generer'))
+
+    def test_la_publication_accepte_la_confirmation(self):
+        from apps.calepinage.agent_actions import PUBLIER_DEVIS
+        from apps.calepinage.views.assistant import CHAMPS_PUBLIER
+
+        self.assertIn('confirmer_taille', CHAMPS_PUBLIER)
+        self.assertEqual(PUBLIER_DEVIS.inputs['properties']['confirmer_taille']['type'],
+                         'boolean')
+        self.assertNotIn('confirmer_taille', PUBLIER_DEVIS.inputs['required'])
+
+
 @override_settings(ASSISTANT_COPILOTE='tous')
 class ActionsServiesTest(BaseAssistantCalepinage):
     """CALA4 — servies copilote allumé, cachées module calepinage éteint (ARC33)."""
@@ -744,6 +786,37 @@ class PublierDevisTest(BaseAssistantCalepinage):
         self.assertEqual(reponse.data['code'], 'apercu_perime')
         self.assertIn('87', reponse.data['detail'])
 
+    def test_lead_sans_facture_apercu_annonce_puis_publication_confirmee(self):
+        """Critique 22/11 (D6, ACAL922) — lead sans facture ni taille : l'aperçu
+        rend 200 avec la question (plus de 409) ; publier sans la confirmation
+        ⇒ 409 ``confirmation_taille``, aucun devis ; confirmée ⇒ généré."""
+        import copy
+
+        from apps.calepinage.services.layout import enregistrer_layout
+        from apps.ventes.models import Devis
+        from apps.ventes.tests.test_from_layout_endpoint import seed_catalogue
+
+        from .test_acal_generer_devis_portes import TOIT
+
+        seed_catalogue(self.company)
+        enregistrer_layout(self.cal, copy.deepcopy(TOIT), user=self.user)
+        apercu = self.api.get(url_assistant('publier-devis/apercu/', self.cal.pk))
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertEqual(sorted(apercu.data), sorted(echantillon(
+            'calepinage_assistant_publier_apercu.json', 'exemple_generer')))
+        self.assertTrue(apercu.data['confirmation_taille']['detail'].startswith(
+            'Aucune facture ni taille souhaitée sur le lead'))
+        corps = {'nouveau_total_ttc': apercu.data['nouveau_total_ttc']}
+        avant = Devis.objects.filter(company=self.company).count()
+        refus = self._poster(corps)
+        self.assertEqual((refus.status_code, refus.data.get('code')),
+                         (409, 'confirmation_taille'), refus.data)
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), avant)
+        reponse = self._poster({**corps, 'confirmer_taille': True})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['geste'], 'genere')
+        self.assertEqual(self._poster({**corps, 'confirmer_taille': 'oui'}).status_code, 400)
+
     def test_actions_du_flux_en_deux_temps(self):
         from apps.calepinage.agent_actions import PUBLIER_APERCU, PUBLIER_DEVIS
 
@@ -752,7 +825,8 @@ class PublierDevisTest(BaseAssistantCalepinage):
         self.assertEqual(PUBLIER_DEVIS.required_permission, 'calepinage_gerer')
         self.assertEqual(PUBLIER_APERCU.required_permission, 'calepinage_gerer')
         self.assertEqual(set(PUBLIER_DEVIS.inputs['properties']),
-                         {'id', 'ancien_total_ttc', 'nouveau_total_ttc', 'devis'})
+                         {'id', 'ancien_total_ttc', 'nouveau_total_ttc', 'devis',
+                          'confirmer_taille'})
         self.assertEqual(PUBLIER_DEVIS.objets, {'id': 'calepinage', 'devis': 'devis'})
         self.assertIn('déjà envoyé au client', PUBLIER_DEVIS.label)
 

@@ -192,10 +192,17 @@ class ConceptionRapideTest(SimpleTestCase):
 
         from apps.ventes import calepinage_options as co
 
-        devis = SimpleNamespace(pk=5, company=object(), roof_layout=None)
+        devis = SimpleNamespace(pk=5, company=object(), roof_layout=None, statut='brouillon')
         layout = {'zones': [{'azimut_deg': 180, 'inclinaison_deg': 15}]}
         with mock.patch('apps.calepinage.selectors.calepinage_du_devis', return_value=_Pivot('rapide')):
             self.assertIsNone(co.parametres_site_publics(devis, layout, {'productible_ville': 'Casablanca'}))
+        # D4 : un devis déjà envoyé (ou accepté, refusé, expiré) garde son annexe.
+        for statut in ('envoye', 'accepte', 'refuse', 'expire'):
+            envoye = SimpleNamespace(pk=5, company=object(), roof_layout=None, statut=statut)
+            with mock.patch('apps.calepinage.selectors.calepinage_du_devis', return_value=_Pivot('rapide')), \
+                    mock.patch.object(co, '_ombrage_mesure', return_value=False):
+                annexe = co.parametres_site_publics(envoye, layout, {'productible_ville': 'Casablanca'})
+            self.assertEqual((annexe or {}).get('irradiation'), {'source': 'PVGIS', 'ville': 'Casablanca'}, statut)
         with mock.patch('apps.calepinage.selectors.calepinage_du_devis', return_value=_Pivot('complet')), \
                 mock.patch.object(co, '_ombrage_mesure', return_value=False):
             annexe = co.parametres_site_publics(devis, layout, {'productible_ville': 'Casablanca'})

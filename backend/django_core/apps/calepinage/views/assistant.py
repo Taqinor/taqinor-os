@@ -222,9 +222,9 @@ def publier_devis_apercu(self, request, pk=None):
 #: Un total TTC recopié de l'aperçu : texte décimal, deux décimales au plus.
 MONTANT = r'^\d{1,12}(\.\d{1,2})?$'
 #: CALA7 — ce que le corps de ``publier-devis`` accepte, et rien d'autre.
-CHAMPS_PUBLIER = ('ancien_total_ttc', 'nouveau_total_ttc', 'devis')
-CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc et devis sont acceptés ; '
-                    'TVA, remise et dérogation se règlent à l\'écran.')
+CHAMPS_PUBLIER = ('ancien_total_ttc', 'nouveau_total_ttc', 'devis', 'confirmer_taille')
+CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc, devis et confirmer_taille '
+                    'sont acceptés ; TVA, remise et dérogation se règlent à l\'écran.')
 
 
 @extend_schema(
@@ -232,7 +232,10 @@ CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc et devis sont acc
         'ancien_total_ttc': drf_serializers.RegexField(MONTANT, allow_null=True),
         'nouveau_total_ttc': drf_serializers.RegexField(MONTANT),
         'devis': drf_serializers.IntegerField(
-            required=False, allow_null=True, min_value=1, max_value=ID_MAX)}),
+            required=False, allow_null=True, min_value=1, max_value=ID_MAX),
+        # ACAL922 (critique D6) — la réponse de l'utilisateur à la question
+        # ``confirmation_taille`` de l'aperçu, relayée telle quelle.
+        'confirmer_taille': drf_serializers.BooleanField(required=False)}),
     responses={200: forme_du_contrat('CalepinageAssistantPublierDevis',
                                      'calepinage_assistant_publier_devis.json'),
                **REFUS_404_409})
@@ -257,9 +260,15 @@ def publier_devis(self, request, pk=None):
     if devis_vu is not None and (isinstance(devis_vu, bool) or not isinstance(devis_vu, int)):
         return refus('devis : l\'identifiant du devis lié, recopié de l\'aperçu.',
                      'devis', 'devis_invalide')
+    confirmer = corps.get('confirmer_taille', False)
+    if not isinstance(confirmer, bool):
+        return refus("confirmer_taille : true seulement quand l'utilisateur a confirmé la "
+                     "question de taille de l'aperçu.", 'confirmer_taille',
+                     'confirmer_taille_invalide')
     return _publication(publier, calepinage, user=request.user,
                         ancien_vu=corps.get('ancien_total_ttc'),
-                        nouveau_vu=corps.get('nouveau_total_ttc'), devis_vu=devis_vu)
+                        nouveau_vu=corps.get('nouveau_total_ttc'), devis_vu=devis_vu,
+                        confirmer_taille=confirmer)
 
 
 @extend_schema(

@@ -508,10 +508,11 @@ def _sans_affiche(calepinage):
     return copie
 
 
-def _publier(calepinage, user):
+def _publier(calepinage, user, confirmer_taille=False):
     """``(geste, devis, details)`` — génère le brouillon (aucun devis lié) ou
     resynchronise le devis lié, par les services EXISTANTS du pont devis,
-    sans TVA, remise ni dérogation. ``DevisRefuse`` remonte tel quel."""
+    sans TVA, remise ni dérogation. ``DevisRefuse`` remonte tel quel.
+    ACAL922 — ``confirmer_taille`` : la confirmation de l'utilisateur, relayée."""
     from apps.ventes.selectors import get_devis_by_pk
 
     from .devis import _devis_lie_actif, generer_devis, resynchroniser_devis
@@ -519,7 +520,8 @@ def _publier(calepinage, user):
     lie = _devis_lie_actif(calepinage)
     if lie is None:
         journal = {}
-        devis, cree = generer_devis(calepinage, user=user, journal=journal)
+        devis, cree = generer_devis(calepinage, user=user, journal=journal,
+                                    confirmer_taille=confirmer_taille)
         return 'genere', devis, {
             'deduplique': not cree, 'inchange': False,
             'avertissements': list(journal.get('avertissements') or ()),
@@ -552,8 +554,10 @@ def apercu_publication(calepinage, *, user):
     calcul = {}
     try:
         with transaction.atomic():
-            geste, devis, details = _publier(_sans_affiche(calepinage), user)
-            calcul.update(nouveau=_total_ttc(devis), inchange=details['inchange'])
+            geste, devis, details = _publier(_sans_affiche(calepinage), user,
+                                             confirmer_taille=True)
+            calcul.update(nouveau=_total_ttc(devis), inchange=details['inchange'],
+                          question=_question_de_taille(calepinage, devis, geste, details))
             raise _Annuler
     except _Annuler:
         pass
@@ -571,8 +575,25 @@ def apercu_publication(calepinage, *, user):
         'ancien_total_ttc': ancien,
         'nouveau_total_ttc': calcul['nouveau'],
         'a_faire': 'rien' if inchange else 'publier',
+        'confirmation_taille': calcul['question'],
         'lien': _lien_publication(calepinage, lie),
     }
+
+
+def _question_de_taille(calepinage, devis, geste, details):
+    """ACAL922 (critique D6) — la question « confirmer la taille » que la
+    publication posera, MOT POUR MOT celle de ``generer-devis`` : ``None`` ou
+    ``{detail, refus}``. L'aperçu l'ANNONCE ; la publication exige
+    ``confirmer_taille: true``, geste explicite de l'utilisateur relayé."""
+    from .devis import DevisRefuse, _garde_taille
+
+    if geste != 'genere' or details['deduplique']:
+        return None
+    try:
+        _garde_taille(devis, calepinage, False)
+    except DevisRefuse as question:
+        return {'detail': question.donnees['detail'], 'refus': question.donnees['refus']}
+    return None
 
 
 def _apercu_perime(nouveau):
@@ -599,9 +620,12 @@ def _exiger_devis_nomme(lie, devis_vu):
             'nomme.', 'devis', 'devis_a_nommer')
 
 
-def publier(calepinage, *, user, ancien_vu, nouveau_vu, devis_vu=None):
+def publier(calepinage, *, user, ancien_vu, nouveau_vu, devis_vu=None,
+            confirmer_taille=False):
     """CALA7 — PUBLIE la conception au devis (contrat
     ``calepinage_assistant_publier_devis.json``) aux seuls chiffres VUS.
+    ACAL922 — ``confirmer_taille`` : la réponse de l'utilisateur à la question
+    annoncée par l'aperçu, relayée telle quelle à ``generer_devis``.
 
     ``ancien_vu`` / ``nouveau_vu`` : les totaux TTC de l'aperçu confirmé
     (texte décimal ; ``ancien_vu`` None sans devis lié). Recalculés ici, dans
@@ -617,7 +641,8 @@ def publier(calepinage, *, user, ancien_vu, nouveau_vu, devis_vu=None):
     _exiger_devis_nomme(lie, devis_vu)
     with transaction.atomic():
         ancien = _total_ttc(lie)
-        geste, devis, details = _publier(_sans_affiche(calepinage), user)
+        geste, devis, details = _publier(_sans_affiche(calepinage), user,
+                                         confirmer_taille=confirmer_taille)
         nouveau = _total_ttc(devis)
         if (ancien, nouveau) != (_montant(ancien_vu), _montant(nouveau_vu)):
             raise _apercu_perime(nouveau)

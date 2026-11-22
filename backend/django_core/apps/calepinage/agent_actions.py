@@ -200,7 +200,9 @@ PUBLIER_APERCU = AgentAction(
         "Exemple : « mets le devis à jour avec le calepinage 12 » → id=12, "
         "puis propose calepinage.publier_devis avec ces totaux. Résultat : "
         "geste, devis lié, corrige_apres_envoi, ancien_total_ttc, "
-        "nouveau_total_ttc, a_faire (publier | rien). Un devis figé ou un "
+        "nouveau_total_ttc, a_faire (publier | rien), confirmation_taille "
+        "(null, ou {detail, refus} : le lead n'a ni facture ni taille souhaitée "
+        "— lis detail à l'utilisateur, mot pour mot). Un devis figé ou un "
         "verdict électrique bloquant est refusé ici (409 nommé) : dis-le et "
         "donne le lien."),
     endpoint=BASE + '{id}/publier-devis/apercu/',
@@ -243,6 +245,10 @@ PUBLIER_DEVIS = AgentAction(
                       description="Identifiant du devis lié, recopié de l'aperçu (devis.id) ; "
                                   "absent quand l'aperçu dit devis null. Obligatoire si ce "
                                   "devis est déjà envoyé."),
+        'confirmer_taille': {'type': 'boolean', 'title': 'Taille confirmée',
+                             'description': "true seulement quand l'aperçu porte "
+                                            "confirmation_taille : la proposition la montre et "
+                                            "l'utilisateur la confirme ; absent sinon."},
     }, ('id', 'nouveau_total_ttc')),
     required_permission=CAL_GERER,
     risk=RISK_OUTWARD,
