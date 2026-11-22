@@ -4,7 +4,9 @@ import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Button, Card } from '../../../ui'
 import Pourquoi from '../commun/Pourquoi'
+import CelluleEcart from '../commun/CelluleEcart'
 import { refusServeur } from '../commun/refusServeur'
+import { MOIS, nombre, valeurSaisie } from '../commun/mesuresMensuelles'
 
 /* ============================================================================
    ACAL888 — L'ONGLET « LIVRÉ ET PRÉVU » (étape Résultats, niveau expert).
@@ -16,24 +18,6 @@ import { refusServeur } from '../commun/refusServeur'
    du serveur. Un mois sans mesure s'écrit « — », jamais 0. Un refus nomme son
    champ (`annee`, `mesures[i].kwh_mesure`) et se rend sous le champ du mois.
    ========================================================================== */
-
-const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août',
-  'Septembre', 'Octobre', 'Novembre', 'Décembre']
-
-/** Un nombre servi, ou « — » quand il est vide (jamais 0). */
-const nombre = (valeur, signe = false) => {
-  if (valeur === null || valeur === undefined) return '—'
-  const texte = String(valeur).replace('.', ',')
-  return signe && valeur > 0 ? `+${texte}` : texte
-}
-
-/** Le texte saisi → ce qui part : vide ⇒ `null`, virgule décimale normalisée, le reste tel quel. */
-function valeurSaisie(texte) {
-  const propre = String(texte ?? '').trim().replace(/\s/g, '').replace(',', '.')
-  if (propre === '') return null
-  const n = Number(propre)
-  return Number.isFinite(n) ? n : propre
-}
 
 /** Les saisies (douze textes) relues d'une réponse du serveur : `kwh_mesure` par mois. */
 function saisiesDe(donnees) {
@@ -197,9 +181,7 @@ export default function ProductionMesuree({ calepinageId: idPropose = null }) {
                   <th scope="row" className="py-1 text-left font-normal">{MOIS[ligne.mois - 1] ?? ligne.mois}</th>
                   <td>{nombre(ligne.p50_kwh)}</td>
                   <td data-testid={`acal888-mesure-${ligne.mois}`}>{nombre(ligne.kwh_mesure)}</td>
-                  <td data-testid={`acal888-ecart-${ligne.mois}`}>
-                    {ligne.ecart_pct === null || ligne.ecart_pct === undefined ? '—' : `${nombre(ligne.ecart_pct, true)} %`}
-                  </td>
+                  <CelluleEcart ecart={ligne.ecart_pct} testId={`acal888-ecart-${ligne.mois}`} />
                 </tr>
               ))}
             </tbody>

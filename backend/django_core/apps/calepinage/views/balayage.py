@@ -70,7 +70,10 @@ _OBJECTIF = {'type': 'object', 'required': ['critere', 'cible_pct'], 'properties
     'cible_pct': {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True,
                   'maximum': 100}}}  # ACAL835
 
-_AXES_RESSERRES = {EXTENSION_CORPS_RESSERRE: {'properties': {
+# api-fuzz (PR #1523) : ``{}`` n'est pas une demande — des axes OU un objectif.
+_AXES_RESSERRES = {EXTENSION_CORPS_RESSERRE: {
+    'anyOf': [{'required': ['axes']}, {'required': ['objectif']}],
+    'properties': {
     'critere': _CRITERE_MOIS, 'objectif': _OBJECTIF, 'axes': {
         'type': 'array', 'minItems': 1, 'items': {
             'type': 'object', 'required': ['nom', 'min', 'max', 'pas'],

@@ -127,7 +127,7 @@ def _types_obstacle():
     return frozenset(schema['$defs']['obstacle']['properties']['type']['enum'])
 
 
-def projeter_obstacles(data, emprise):
+def _projeter_obstacles(data, emprise):
     """ACAL1049 — les obstacles du fournisseur, projetés comme les pans.
 
     Seuls les types de l'atelier sont servis : un autre est ÉCARTÉ et journalisé
@@ -162,4 +162,4 @@ def detecter(company_id, contenu, mime, emprise):
              'azimut_deg': None, 'confiance': pan['confiance']} for pan in pans]
     contour = _enveloppe([p for pan in pans for p in pan['contour_lnglat']])
     return {'contour_lnglat': contour, 'pans': pans,
-            'obstacles': projeter_obstacles(resultat.data, emprise)}
+            'obstacles': _projeter_obstacles(resultat.data, emprise)}
