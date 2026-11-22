@@ -996,3 +996,101 @@ class DecompositionTest(SimpleTestCase):
         with self.assertRaises(EntreeInvalide):
             self.transposer(self.serie, PAN, _reglages(
                 'isotropic', decomposition='perez'))
+
+
+# --- ACAL763 : le rapport de qualité du fichier déposé -----------------------
+LAT_CASA, LON_CASA = 33.5731, -7.5898  # point d'essai (Casablanca), épinglé par le test
+
+
+def _jours_a_soleil_decale(jours, *, retard_minutes, mois=1):
+    """``jours`` jours complets en UTC : le global suit le soleil calculé, RETARDÉ de
+    ``retard_minutes`` PAR CONSTRUCTION (l'écart attendu est imposé, jamais lu en sortie)."""
+    from core.calepinage.soleil import position_solaire
+
+    lignes = [EN_TETE]
+    for jour in range(1, jours + 1):
+        for heure in range(24):
+            instant = (datetime.datetime(2021, mois, jour, heure)
+                       - datetime.timedelta(minutes=retard_minutes))
+            pos = position_solaire(LAT_CASA, LON_CASA, annee=instant.year, mois=instant.month,
+                                   jour=instant.day, heure_utc=instant.hour + instant.minute / 60.0)
+            globale = round(900.0 * max(0.0, math.sin(math.radians(pos.elevation_deg))), 2)
+            lignes.append(';'.join([
+                '2021-{0:02d}-{1:02d}T{2:02d}:00:00Z'.format(mois, jour, heure),
+                str(globale), '0', '0', '0', '12', '2.5']))
+    return '\r\n'.join(lignes) + '\r\n'
+
+
+class QualiteTest(SimpleTestCase):
+    """ACAL763 — quatre lignes de nombres, aucun verdict."""
+
+    def rapport(self, texte, *, avec_pin=True, **extra):
+        from apps.calepinage.services.qualite_meteo import rapport_de_qualite
+
+        serie = _lire(texte)
+        return rapport_de_qualite(
+            serie['points'], latitude=LAT_CASA if avec_pin else None,
+            longitude=LON_CASA if avec_pin else None, decalage_minutes=0, **extra)
+
+    def test_un_fichier_decale_dune_heure_rend_un_ecart_denviron_60_minutes(self):
+        qualite = self.rapport(_jours_a_soleil_decale(8, retard_minutes=60))
+        self.assertAlmostEqual(qualite['decalage']['ecart_median_min'], 60.0, delta=10.0)
+        self.assertEqual(qualite['decalage']['jours_mesures'], 8)
+        self.assertEqual(qualite['decalage']['decalage_declare_min'], 0)
+        # Un fichier calé sur le soleil rend un écart proche de zéro.
+        calé = self.rapport(_jours_a_soleil_decale(8, retard_minutes=0))
+        self.assertAlmostEqual(calé['decalage']['ecart_median_min'], 0.0, delta=10.0)
+
+    def test_lheure_locale_nest_pas_lue_comme_utc(self):
+        from apps.calepinage.services.qualite_meteo import rapport_de_qualite
+
+        serie = _lire(_jours_a_soleil_decale(4, retard_minutes=0))
+        # Le même fichier, déclaré à +60 min : le soleil attendu est 60 min plus tard dans les
+        # heures écrites, la mesure tombe donc 60 min AVANT lui. Lu comme UTC, l'écart serait 0.
+        decale = rapport_de_qualite(serie['points'], latitude=LAT_CASA, longitude=LON_CASA,
+                                    decalage_minutes=60)
+        self.assertAlmostEqual(decale['decalage']['ecart_median_min'], -60.0, delta=10.0)
+
+    def test_annee_incomplete_nomme_ses_mois_absents(self):
+        qualite = self.rapport(_jours_a_soleil_decale(2, retard_minutes=0, mois=3))
+        self.assertEqual(qualite['couverture']['heures_lues'], 48)
+        self.assertEqual(qualite['couverture']['annees'], [2021])
+        self.assertEqual(qualite['couverture']['mois_absents']['2021'],
+                         [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+
+    def test_valeurs_negatives_comptees_par_colonne(self):
+        texte = _jours_a_soleil_decale(1, retard_minutes=0).replace(';0;0;0;12;', ';-3.5;0;0;12;', 2)
+        qualite = self.rapport(texte)
+        self.assertEqual(qualite['negatifs']['gb_i_w_m2'], {'nombre': 2, 'plus_petite': -3.5})
+        self.assertEqual(qualite['negatifs']['gi_w_m2']['nombre'], 0)
+
+    def test_valeur_au_dessus_de_lextraterrestre(self):
+        texte = _jours_a_soleil_decale(1, retard_minutes=0)
+        lignes = texte.split('\r\n')
+        lignes[13] = '2021-01-01T12:00:00Z;1500.0;0;0;0;12;2.5'
+        qualite = self.rapport('\r\n'.join(lignes))
+        extra = qualite['extraterrestre']
+        self.assertEqual(extra['heures_au_dessus'], 1)
+        self.assertEqual(extra['plus_forte_w_m2'], 1500.0)
+        self.assertLess(extra['reference_w_m2'], 1500.0)  # ~1410 W/m2 en janvier
+        self.assertEqual(self.rapport(_jours_a_soleil_decale(1, retard_minutes=0))
+                         ['extraterrestre']['heures_au_dessus'], 0)
+
+    def test_sans_epingle_decalage_et_extraterrestre_valent_null_avec_motif(self):
+        from apps.calepinage.services.qualite_meteo import MOTIF_SANS_EPINGLE
+
+        qualite = self.rapport(_jours_a_soleil_decale(1, retard_minutes=0), avec_pin=False)
+        self.assertIsNone(qualite['decalage'])
+        self.assertIsNone(qualite['extraterrestre'])
+        self.assertEqual(qualite['motifs'], {'decalage': MOTIF_SANS_EPINGLE,
+                                             'extraterrestre': MOTIF_SANS_EPINGLE})
+        self.assertEqual(qualite['couverture']['heures_lues'], 24)  # le reste est calculé
+
+    def test_lexemple_committe_porte_les_memes_cles_que_le_service(self):
+        qualite = self.rapport(_jours_a_soleil_decale(1, retard_minutes=0))
+        for cle in ('exemple', 'exemple_remplace'):
+            exemple = CONTRAT[cle]['qualite']
+            self.assertEqual(sorted(exemple), sorted(qualite))
+            self.assertEqual(sorted(exemple['decalage']), sorted(qualite['decalage']))
+            self.assertEqual(sorted(exemple['extraterrestre']), sorted(qualite['extraterrestre']))
+            self.assertEqual(sorted(exemple['couverture']), sorted(qualite['couverture']))

@@ -383,12 +383,10 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
     const cible = { etape: 'toit', onglet: 'pertes', champ: 'pente' }
     mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, info, { ...orange, cible }]))
-    let lieu = null
-    const Espion = () => { lieu = useLocation(); return null }
     render(
       <MemoryRouter initialEntries={[`/calepinage/${ID}?${PARAM_ONGLET}=verdict-electrique`]}>
         <Routes>
-          <Route path="/calepinage/:id" element={<><Rail /><Espion /></>} />
+          <Route path="/calepinage/:id" element={<><Rail /><TemoinUrl /></>} />
         </Routes>
       </MemoryRouter>,
     )
@@ -397,7 +395,7 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     expect(screen.queryAllByText(/points? à régler/)).toHaveLength(1)
     expect(screen.getByTestId(`cal-pret-ligne-${info.code}`)).toHaveTextContent(info.valeur_texte)
     await userEvent.setup().click(screen.getByTestId(`cal-pret-regler-${orange.code}`))
-    const recherche = new URLSearchParams(lieu.search)
+    const recherche = new URLSearchParams(screen.getByTestId('temoin-url').textContent)
     expect(recherche.get(PARAM_ONGLET)).toBe('pertes')
     expect(recherche.get('champ')).toBe('pente')
   }, 30_000)

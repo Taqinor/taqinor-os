@@ -103,6 +103,8 @@ def _forme():
         'message': serializers.CharField(),
         # ACAL148 — le fichier REMPLACÉ ({nom, depose_le}) ou null.
         'remplace': serializers.DictField(allow_null=True),
+        # ACAL763 — le rapport de qualité (nombres, aucun verdict), calculé au dépôt.
+        'qualite': serializers.DictField(),
     })
 
 
@@ -164,6 +166,19 @@ def _deposer(calepinage, contenu, nom_fichier, user, fournisseur=''):
         mime='text/csv',
         uploaded_by=user if getattr(user, 'pk', None) else None,
     )
+
+
+def _qualite(calepinage, serie):
+    """ACAL763 — le rapport de qualité de la série lue ; l'épingle vient du calepinage."""
+    from .. import selectors
+    from ..services import qualite_meteo, valeurs
+
+    pin = selectors.contexte_geographique(calepinage).get('pin') or {}
+    decalages = serie['meteo']['heure']['decalage_minutes']
+    return qualite_meteo.rapport_de_qualite(
+        serie['points'], latitude=valeurs.nombre(pin.get('lat')),
+        longitude=valeurs.nombre(pin.get('lng')),
+        decalage_minutes=decalages[0] if len(decalages) == 1 else None)
 
 
 def _fichier_retenu(calepinage):
@@ -346,6 +361,7 @@ def meteo_fichier(self, request, pk=None):
               f' par {nom_fichier or "meteo.csv"}', user=request.user)
     bloc = serie['serie_horaire']
     return Response({
+        'qualite': _qualite(calepinage, serie),
         'calepinage': calepinage.pk,
         'piece_jointe': piece.pk,
         'meteo': serie['meteo'],

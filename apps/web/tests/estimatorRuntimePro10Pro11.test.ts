@@ -2096,3 +2096,66 @@ describe('ACAL851 — les cartes disent la puissance du module RÉELLEMENT posé
     expect(txt('rp9-areas-total-panels')).not.toMatch(/720 W/);
   });
 });
+
+describe('runtime ACAL852 — sans facture, jamais « 0 MAD » ni « ≈ 0 % »', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('sans facture : « — facture inconnue » et la phrase « Facture inconnue »', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    traceRoof(fakeMaps[0]);
+    const savings = txt('rp9-reco-savings');
+    expect(savings).toBe('— facture inconnue');
+    expect(savings).not.toMatch(/0 MAD/);
+    expect(txt('rp9-reco-why')).toMatch(/Facture inconnue — saisissez-la pour voir la couverture/);
+    expect(txt('rp9-reco-why')).not.toMatch(/≈ 0 %/);
+    expect(txt('rp9-reco-band')).not.toMatch(/MAD/);
+  });
+
+  it('avec facture : les montants et « % de la facture », comme avant', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0]);
+    expect(txt('rp9-reco-savings')).toMatch(/MAD\/an/);
+    expect(txt('rp9-reco-savings')).not.toMatch(/inconnue/);
+    expect(txt('rp9-reco-why')).toMatch(/% de la facture/);
+  });
+});
+
+describe('runtime ACAL853 — un seul nombre de production pour un toit à un seul pan', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    // PVGIS généreux (comme W97 §4) : la base de la carte diffère de celle du solveur.
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: { body?: string }) => {
+      const body = init?.body ? (JSON.parse(init.body) as { legs?: { kwc?: number }[] }) : {};
+      const annual = (body.legs || []).reduce((a, lg) => a + (lg.kwc || 1) * 1900, 0);
+      return { ok: true, json: async () => ({ ok: true, annualKwh: annual }) } as unknown as Response;
+    }));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('#rp9-reco-prod == #rp9-areas-total-prod', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    traceRoof(fakeMaps[0], 30);
+    await flushPvgis();
+    expect(txt('rp9-reco-prod')).toMatch(/kWh\/an/);
+    expect(txt('rp9-areas-total-prod')).toBe(txt('rp9-reco-prod'));
+  }, 60000);
+});

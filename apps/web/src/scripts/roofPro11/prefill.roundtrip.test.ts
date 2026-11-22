@@ -541,3 +541,35 @@ describe('ACAL593 — les repères de chantier font l’aller-retour', () => {
     expect('reperesChantier' in aller()).toBe(false);
   });
 });
+
+describe('ACAL780 — les charges à venir (consumption.charges) font l’aller-retour', () => {
+  const VOITURE = { type: 'vehicule', km_par_jour: 30, kwh_par_100km: 16, fenetre_recharge: [22, 23, 0] };
+  const ouvrirAvec = (charges?: unknown[]) => {
+    const doc = documentRiche() as unknown as { consumption: Record<string, unknown> };
+    if (charges) doc.consumption.charges = charges;
+    return ouvrirAtelier({ id: 9, geometrie: { roof_layout: doc as unknown as SerializedLayout }, cibleVendue: false }).c;
+  };
+  const charges = (c: Ctx) => (enregistrerAtelier(c).consumption as { charges?: unknown[] }).charges;
+
+  it('charges relues puis ré-enregistrées à l’identique ; aucune clé sans charge', () => {
+    expect(charges(ouvrirAvec([VOITURE]))).toEqual([VOITURE]);
+    expect(charges(ouvrirAvec())).toBeUndefined();
+  });
+
+  it('une charge saisie sort dans consumption.charges ; la liste vidée sort vide', () => {
+    const c = ouvrirAvec([VOITURE]);
+    (c as unknown as { consCharges: unknown[] }).consCharges = [{ ...VOITURE, deja_dans_les_factures: true }];
+    expect(charges(c)).toEqual([{ ...VOITURE, deja_dans_les_factures: true }]);
+    (c as unknown as { consCharges: unknown[] }).consCharges = [];
+    expect(charges(c)).toEqual([]);
+  });
+
+  it('chargeDepuisSaisie : 30 km, 16 kWh/100 km, 22-24 h ; un champ vide est refusé sans défaut', async () => {
+    const { chargeDepuisSaisie, estRefusCharge } = await import('./chargesAvenir');
+    expect(chargeDepuisSaisie('vehicule', { km_par_jour: '30', kwh_par_100km: '16', fenetre_recharge: '22-24' })).toEqual(VOITURE);
+    const refus = chargeDepuisSaisie('vehicule', { km_par_jour: '30', kwh_par_100km: '', fenetre_recharge: '22-24' });
+    expect(estRefusCharge(refus) && refus.champ).toBe('kwh_par_100km');
+    expect(chargeDepuisSaisie('pac', { puissance_kw: '6', cop: '3,2', heures_fonctionnement: '6-8' }))
+      .toEqual({ type: 'pac', puissance_kw: 6, cop: 3.2, heures_fonctionnement: [6, 7, 8] });
+  });
+});

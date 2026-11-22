@@ -45,6 +45,8 @@ export interface ModuleDocument {
   poidsKg: number | null;
   /** Puissance crête unitaire (Wc). `null` = non renseignée. */
   pmaxWc: number | null;
+  /** ACAL721/731 — sous-chaînes de cellules (fiche) ; absent = fiche sans le champ, jamais 1 par défaut. */
+  sousChaines?: number;
   /** D'où viennent les valeurs ci-dessus, en clair (obligatoire au schéma). */
   source: string;
 }
@@ -179,6 +181,7 @@ function lireModule(brut: unknown): ModuleDocument | null {
     epaisseurMm: cote('epaisseurMm'),
     poidsKg: cote('poidsKg'),
     pmaxWc: cote('pmaxWc'),
+    ...(Number.isInteger(o.sousChaines) && (o.sousChaines as number) >= 1 ? { sousChaines: o.sousChaines as number } : {}),
     source,
   };
 }
