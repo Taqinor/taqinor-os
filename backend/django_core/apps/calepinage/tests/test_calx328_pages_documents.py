@@ -110,12 +110,24 @@ INTERVALLES = {
         "page forcé : jamais vide, jamais une dérive à des dizaines de "
         "pages pour l'exemple du contrat."),
     'rapport_etude': (
-        2, 14,
+        2, 19,
         "ACAL226 - le rapport SERVI est pagine : garde, sommaire en page 2, "
-        "puis une section par page (neuf sections), soit onze pages mesurees "
-        "pour l'exemple du contrat ; jamais un document d'une seule page, "
-        "jamais au-dela de quatorze (annexes constructeur exclues : "
-        "l'exemple n'en porte aucune)."),
+        "puis une section par page, plus les pages de debordement d'une "
+        "section longue. Mesure le 22/11/2026 sur l'exemple du contrat : "
+        "19 pages = garde 1 + sommaire 1 + neuf sections d'origine "
+        "(site_meteo, systeme, production, ombrage, electrique, nomenclature, "
+        "preuve, hypotheses : une page chacune ; pertes : deux pages depuis "
+        "le schema « ou va l'energie » d'ACAL773) + les six sections nees "
+        "depuis la borne de quatorze : synthese (ACAL756), photos_site "
+        "(ACAL759), consommation (ACAL832), hors_reseau (ACAL833), "
+        "autoconsommation (ACAL757, deux pages : son tableau mensuel "
+        "deborde) et validation (ACAL475) ; la section pompage (ACAL834) "
+        "est omise sur cet exemple (aucun pompage stocke). Aucune page "
+        "n'est vide (test ci-dessous) ; jamais un document d'une seule "
+        "page, jamais au-dela de dix-neuf : une section de plus, ou une "
+        "section qui deborde de plus, releve cette borne AVEC sa tache "
+        "nommee ici (annexes constructeur exclues : l'exemple n'en porte "
+        "aucune)."),
     'rapport_ombrage': (
         1, 6,
         "garde, un bloc par pan (deux pans dans l'exemple), la matrice "
