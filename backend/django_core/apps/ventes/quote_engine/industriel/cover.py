@@ -112,14 +112,39 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
             f'{bandeau}</div>')
 
 
+def _suffixe_source(d, L, source):
+    """CIQ341 — le suffixe du titre « Votre consommation et votre production » :
+    la SOURCE servie par ``synthese_ci`` (R4-02 : facture en dirhams)."""
+    from ..ci.synthese import SOURCE_FACTURES_MAD, TEXTES_SOURCE_FACTURES_MAD
+    if source == "factures":
+        return " — " + L("ci_ind_baseline_factures", "12 factures")
+    if source == "mois_interpoles":
+        n = _nb_factures_reelles(d)
+        return " — " + (
+            L("ci_ind_baseline_interpoles",
+              "{n} factures, mois interpolés — estimation", n=n)
+            if n else L("ci_ind_baseline_interpoles_sans_n",
+                        "mois interpolés — estimation"))
+    if source == "kwh_declares":
+        return " — " + L("ci_ind_source_kwh_declares",
+                         "d'après vos kWh déclarés")
+    if source == SOURCE_FACTURES_MAD:
+        return " — " + texte(TEXTES_SOURCE_FACTURES_MAD, ci_blocs.langue(d))
+    # Sans source servie, la couverture ne prétend plus « 12 mois ».
+    return ""
+
+
 def _factures(d, L, fmt, source):
     """``(barres, montant)`` de la facture électrique servie (12 mois) —
     QJR119 : les factures manquantes ne se REMBOURRENT PLUS de zéros ;
     CIQ341 : des kWh SEULS (source « kWh déclarés ») n'ont pas de montant en
-    MAD (ni facture imprimée, ni « facture non communiquée »)."""
+    MAD (ni facture imprimée, ni « facture non communiquée ») ; R4-02 : une
+    facture en dirhams convertie est imprimée quand la série est servie, et
+    jamais dite « non communiquée » (le client l'a donnée)."""
+    from ..ci.synthese import SOURCE_FACTURES_MAD
     bills = [float(b or 0) for b in (d.get("factures_mensuelles") or [])][:12]
     if source == "kwh_declares" or not any(b > 0 for b in bills):
-        return "", ("" if source == "kwh_declares" else (
+        return "", ("" if source in ("kwh_declares", SOURCE_FACTURES_MAD) else (
             '<div class="i1-basel">'
             + L("ci_ind_facture_non_communiquee_client",
                 "Facture électrique actuelle non communiquée — transmettez "
@@ -202,21 +227,7 @@ def build(ctx):
     # CIQ341 — la SOURCE de la baseline, servie par ``synthese_ci``.
     baseline = (d.get("ind_synthese") or {}).get("baseline") or {}
     source = baseline.get("source")
-    if source == "factures":
-        suffixe = " — " + L("ci_ind_baseline_factures", "12 factures")
-    elif source == "mois_interpoles":
-        n = _nb_factures_reelles(d)
-        suffixe = " — " + (
-            L("ci_ind_baseline_interpoles",
-              "{n} factures, mois interpolés — estimation", n=n)
-            if n else L("ci_ind_baseline_interpoles_sans_n",
-                        "mois interpolés — estimation"))
-    elif source == "kwh_declares":
-        suffixe = " — " + L("ci_ind_source_kwh_declares",
-                            "d'après vos kWh déclarés")
-    else:
-        # Sans source servie, la couverture ne prétend plus « 12 mois ».
-        suffixe = ""
+    suffixe = _suffixe_source(d, L, source)
 
     bars_html, bill_html = _factures(d, L, fmt, source)
 

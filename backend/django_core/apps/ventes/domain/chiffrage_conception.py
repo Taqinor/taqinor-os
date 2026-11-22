@@ -19,15 +19,17 @@ UNITES = {'kwc': 'kWc', 'production_annuelle_kwh': 'kWh/an',
           'economie_annee1_mad': 'MAD', 'autoconsommation_pct': '%'}
 MOTIF_FACTURE = 'renseignez la facture'  # D-ACAL-40
 MOTIF_AGRICOLE = 'le chiffrage agricole se lit au devis'
+MOTIF_SANS_PRODUCTION = "ce devis n'imprime pas de production"  # R3-E : agricole, options aux parcs différents
 MOTIF_SANS_LEAD = 'aucun lead lié : le chiffrage du devis ne peut pas être calculé'
 MOTIF_ECHEC = 'chiffrage indisponible : calcul du devis en échec'
 MOTIF_KWC = 'aucun module posé : puissance du calepinage inconnue'
 SOURCE_POSE, SOURCE_VILLE = 'calepinage_enregistre', 'standard_ville'
 
 
-def _bloc(marche, regles, valeurs, *, motif=MOTIF_FACTURE, etat='omis', option=None):
+def _bloc(marche, regles, valeurs, *, motif=MOTIF_FACTURE, etat='omis', option=None, motifs_propres=None):
     """Le contrat : ``valeurs`` = ``{grandeur: (valeur, source)}`` ; une
-    grandeur absente prend ``etat`` et son motif dans ``omissions``."""
+    grandeur absente prend ``etat`` et son motif (``motifs_propres[grandeur]`` d'abord)
+    dans ``omissions``."""
     sortie, omissions = {'marche': marche, 'regles_calcul': regles}, []
     for cle, unite in UNITES.items():
         valeur, source = valeurs.get(cle, (None, None))
@@ -35,7 +37,7 @@ def _bloc(marche, regles, valeurs, *, motif=MOTIF_FACTURE, etat='omis', option=N
         sortie[cle] = {'valeur': valeur, 'unite': unite,
                        'source': source if servi else None, 'etat': 'servi' if servi else etat}
         if not servi:
-            omissions.append({'grandeur': cle, 'motif': motif})
+            omissions.append({'grandeur': cle, 'motif': (motifs_propres or {}).get(cle, motif)})
     economie = sortie['economie_annee1_mad']
     economie['option'] = option if economie['valeur'] is not None else None
     sortie['omissions'] = omissions
@@ -63,7 +65,8 @@ def _depuis_devis(devis, marche):
     if not data.get('savings_estimated'):  # D-ACAL-40 : rien sans facture
         valeurs['economie_annee1_mad'] = (data.get('eco_a_ann' if avec else 'eco_s_ann'), 'devis')
         valeurs['autoconsommation_pct'] = (_pct(data.get('autoconso_avec' if avec else 'autoconso_sans')), 'devis')
-    return _bloc(marche, devis.regles_calcul, valeurs,
+    propres = {'production_annuelle_kwh': MOTIF_SANS_PRODUCTION} if imprimee is None else None
+    return _bloc(marche, devis.regles_calcul, valeurs, motifs_propres=propres,
                  option='avec_batterie' if avec else 'sans_batterie')
 
 

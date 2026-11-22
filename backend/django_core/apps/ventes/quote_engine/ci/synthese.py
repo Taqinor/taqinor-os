@@ -99,6 +99,21 @@ CLES_CONSOMMATION = ("kwh_mensuels", "consommation", "kwh_mensuel_declare",
 #: ``detail`` d'une provenance qui vaut FACTURE relevée (contrat CIQ2).
 DETAILS_FACTURE = frozenset({"facture", "mesure_visite"})
 
+#: R4-02 — source d'une consommation CONVERTIE d'une facture en dirhams
+#: (``facture_hiver_mad``, ``factures_mad`` en montants seuls) : jamais des
+#: « kWh déclarés ». Les mots sont ceux de l'écran vendeur
+#: (``domain/suppositions_ci.ORIGINES_CONSOMMATION``).
+SOURCE_FACTURES_MAD = "factures_mad"
+TEXTES_SOURCE_FACTURES_MAD = {
+    "fr": "consommation estimée à partir de votre facture en dirhams",
+    "en": "consumption estimated from your bill in dirhams",
+    "ar": "الاستهلاك مقدَّر انطلاقا من فاتورتكم بالدرهم",
+}
+#: Drapeau de rendu (``etude_params``) posé par la migration ventes 0160 sur
+#: les devis C&I non brouillons : ils gardent l'étiquette « kWh déclarés »
+#: qu'ils imprimaient (nouveaux rendus seulement, Q1 de la recette R4).
+DRAPEAU_SOURCE_CONSO_HISTORIQUE = "regles_source_conso_historique"
+
 #: Manquants du lead (CIQ405) qui relèvent de la visite (D-CIQ-5), et ce que
 #: le document en dit. Plusieurs colonnes « toit » ne font qu'une ligne.
 A_CONFIRMER_LEAD = {
@@ -242,15 +257,15 @@ def _kwh_an_moteur(etude_ci):
     return round(sum(mois.values()), 1)
 
 
-def _bloc_baseline(entrees, etude_ci=None):
+def _bloc_baseline(entrees, etude_ci=None, historique=False):
     """``(bloc, motif)`` — la consommation de référence et sa source, lues
     dans la provenance du moteur (jamais devinées). AMOT41 : le bloc porte
     aussi ``kwh_an`` (somme des 12 mois résolus du moteur) quand le bilan la
-    donne."""
+    donne. ``historique`` : :data:`DRAPEAU_SOURCE_CONSO_HISTORIQUE`."""
     feuille = _dict(etude_ci).get("feuille_consommation_retenue")
-    bloc, motif = _bloc_baseline_source(entrees, feuille)
+    bloc, motif = _bloc_baseline_source(entrees, feuille, historique)
     if bloc is None and feuille:  # feuille retenue absente des entrées
-        bloc, motif = _bloc_baseline_source(entrees)
+        bloc, motif = _bloc_baseline_source(entrees, historique=historique)
     if bloc is not None:
         kwh_an = _kwh_an_moteur(etude_ci)
         if kwh_an is not None:
@@ -273,11 +288,15 @@ def entree_consommation_retenue(etude_ci):
     return None
 
 
-def _bloc_baseline_source(entrees, feuille=None):
+def _bloc_baseline_source(entrees, feuille=None, historique=False):
     """``feuille`` (AMOT104) : la feuille que le moteur a retenue — seule lue ;
-    ``None`` : l'ordre de ``CLES_CONSOMMATION`` (études sans la clé)."""
+    ``None`` : l'ordre de ``CLES_CONSOMMATION`` (études sans la clé).
+    R4-02 : une facture en dirhams convertie rend :data:`SOURCE_FACTURES_MAD`,
+    sauf sur un devis ``historique`` (« kWh déclarés », comme il l'a reçu)."""
     if feuille == "courbe_mesuree":
         return {"source": "courbe_mesuree", "estimation": False}, None
+    mad = {"source": "kwh_declares" if historique else SOURCE_FACTURES_MAD,
+           "estimation": True}
     for cle in ((feuille,) if feuille in CLES_CONSOMMATION else CLES_CONSOMMATION):
         entree = _dict(entrees.get(cle))
         if not entree:
@@ -286,7 +305,7 @@ def _bloc_baseline_source(entrees, feuille=None):
         serie = _serie_kwh(entree.get("valeur"))
         interpoles = entree.get("mois_interpoles") or entree.get("interpoles")
         if feuille and serie is not None and all(v is None for v in serie):
-            return {"source": "kwh_declares", "estimation": True}, None  # montants MAD convertis
+            return mad, None  # montants MAD convertis
         if serie is not None:
             complets = (len(serie) == 12
                         and all(v is not None for v in serie))
@@ -295,6 +314,8 @@ def _bloc_baseline_source(entrees, feuille=None):
             if prov.get("detail") in DETAILS_FACTURE:
                 return {"source": "factures", "estimation": False,
                         "factures_mensuelles": serie}, None
+        if cle == "facture_hiver_mad":  # une facture d'hiver en MAD convertie
+            return mad, None
         return {"source": "kwh_declares", "estimation": True}, None
     return None, MOTIF_BASELINE_ABSENTE
 
@@ -988,7 +1009,7 @@ def synthese_ci(data):
                           "motif": (MOTIF_PRODUCTION_ABSENTE if etude_coherente
                                     else MOTIF_ETUDE_AUTRE_PUISSANCE)})
 
-    baseline, motif = _bloc_baseline(entrees, etude_ci)
+    baseline, motif = _bloc_baseline(entrees, etude_ci, _dict(data.get("etude")).get(DRAPEAU_SOURCE_CONSO_HISTORIQUE))
     if baseline is not None:
         synthese["baseline"] = baseline
     else:

@@ -18,12 +18,14 @@ Ce module vérifie :
   6. l'état d'une AUTRE société n'est jamais lisible (404 + garde en profondeur).
 """
 import json
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from authentication.models import Company
@@ -93,8 +95,161 @@ class ConsignationEchecTests(_Base):
                 f'/api/django/ventes/devis/{self.devis.pk}/generer-pdf/',
                 {}, format='json')
         self.assertEqual(resp.status_code, 202, resp.data)
-        self.assertIsNone(
-            cache.get(ventes_tasks.pdf_job_cache_key(self.devis.pk)))
+        # R1-02/R1-03 — la clé du job désigne désormais la NOUVELLE demande
+        # (en cours) : l'échec consigné n'y est plus.
+        job = cache.get(ventes_tasks.pdf_job_cache_key(self.devis.pk))
+        self.assertEqual(job['status'], 'pending')
+        self.assertEqual(job['demande'], resp.data['demande'])
+        self.assertEqual(self.api.get(self.url()).data['statut'], 'en_cours')
+
+
+class StatutPurTests(SimpleTestCase):
+    """R1-02/R1-03 — la décision « prêt / en cours / échec », sans base."""
+
+    MAINTENANT = datetime(2026, 11, 22, 3, 0, tzinfo=dt_timezone.utc)
+
+    def _demande(self, statut, minutes=1, erreur=None):
+        return {'demande': 'd1', 'status': statut, 'error': erreur,
+                'at': (self.MAINTENANT - timedelta(minutes=minutes)).isoformat()}
+
+    def test_un_ancien_fichier_ne_fait_pas_dire_pret_a_une_demande_en_cours(self):
+        statut, erreur, _ = ventes_tasks.statut_pdf_devis(
+            {}, self._demande('pending'), True, self.MAINTENANT)
+        self.assertEqual((statut, erreur), ('en_cours', None))
+
+    def test_demande_rendue_pret(self):
+        self.assertEqual(ventes_tasks.statut_pdf_devis(
+            {}, self._demande('done'), True, self.MAINTENANT)[0], 'pret')
+
+    def test_echec_de_la_demande_l_emporte_sur_un_ancien_fichier(self):
+        statut, erreur, _ = ventes_tasks.statut_pdf_devis(
+            {}, self._demande('error', erreur='boum'), True, self.MAINTENANT)
+        self.assertEqual((statut, erreur), ('echec', 'boum'))
+
+    def test_demande_jamais_close_se_dit_en_echec_passe_le_delai(self):
+        minutes = ventes_tasks.PDF_DEMANDE_DELAI_MAX_S // 60 + 1
+        statut, erreur, _ = ventes_tasks.statut_pdf_devis(
+            {}, self._demande('pending', minutes=minutes), True,
+            self.MAINTENANT)
+        self.assertEqual(statut, 'echec')
+        self.assertEqual(erreur, ventes_tasks.MSG_DEMANDE_SANS_REPONSE)
+
+    def test_sans_demande_suivie_comportement_wir217(self):
+        f = ventes_tasks.statut_pdf_devis
+        self.assertEqual(f({}, {}, True, self.MAINTENANT)[0], 'pret')
+        self.assertEqual(f({}, {}, False, self.MAINTENANT)[0], 'en_cours')
+        self.assertEqual(f({'status': 'error', 'error': 'x'}, {}, False,
+                           self.MAINTENANT)[:2], ('echec', 'x'))
+        self.assertEqual(f({'status': 'error', 'error': 'x'}, {}, True,
+                           self.MAINTENANT)[0], 'pret')
+
+
+class DemandePdfTests(_Base):
+    """R1-02/R1-03 — le fichier remis est celui des options DEMANDÉES."""
+
+    COMPLET = {'pdf_mode': 'full', 'include_etude': True}
+    UNE_PAGE = {'pdf_mode': 'onepage'}
+
+    def setUp(self):
+        super().setUp()
+        # Un ANCIEN rendu « complet » existe déjà (c'est le cas de R1).
+        from apps.ventes.quote_engine import clean_pdf_options
+        self.devis.fichier_pdf = 'devis/1/DEV-WIR217-1.pdf'
+        self.devis.pdf_render_meta = {
+            'empreinte': 'e-complet', 'options': clean_pdf_options(self.COMPLET)}
+        self.devis.save(update_fields=['fichier_pdf', 'pdf_render_meta'])
+
+    def _demander(self, options):
+        with patch('apps.ventes.tasks.task_generate_devis_pdf.delay') as delay:
+            delay.return_value.id = 'tache'
+            resp = self.api.post(
+                f'/api/django/ventes/devis/{self.devis.pk}/generer-pdf/',
+                options, format='json')
+        self.assertEqual(resp.status_code, 202, resp.data)
+        self.assertEqual(delay.call_args.kwargs['demande'], resp.data['demande'])
+        return resp.data['demande']
+
+    def _etat(self, demande=None):
+        suffixe = f'?demande={demande}' if demande else ''
+        return self.api.get(self.url() + suffixe).data
+
+    def _options_servies(self, demande):
+        with patch('apps.ventes.quote_engine.cle_pdf_a_jour',
+                   return_value='devis/1/DEV-WIR217-1.pdf') as cle, \
+                patch('apps.ventes.utils.pdf.download_pdf',
+                      return_value=b'%PDF-1.4 r1'):
+            resp = self.api.get(
+                f'/api/django/ventes/devis/{self.devis.pk}/telecharger-pdf/'
+                f'?demande={demande}')
+        self.assertEqual(resp.status_code, 200)
+        return cle.call_args.args[1]
+
+    def test_une_page_demandee_pas_pret_tant_que_non_rendue_puis_servie(self):
+        demande = self._demander(self.UNE_PAGE)
+        for etat in (self._etat(demande), self._etat()):
+            self.assertEqual(etat['statut'], 'en_cours')
+            self.assertFalse(etat['fichier_pdf'])
+        ventes_tasks._terminer_demande(self.devis.pk, demande)
+        self.assertEqual(self._etat(demande)['statut'], 'pret')
+        self.assertEqual(self._options_servies(demande)['pdf_mode'], 'onepage')
+
+    def test_deux_formats_coup_sur_coup_chacun_recoit_le_sien(self):
+        complet = self._demander(self.COMPLET)
+        une_page = self._demander(self.UNE_PAGE)
+        # La SECONDE finit d'abord : la première reste en cours.
+        ventes_tasks._terminer_demande(self.devis.pk, une_page)
+        self.assertEqual(self._etat(complet)['statut'], 'en_cours')
+        self.assertEqual(self._etat(une_page)['statut'], 'pret')
+        ventes_tasks._terminer_demande(self.devis.pk, complet)
+        servi = self._options_servies(complet)
+        self.assertEqual((servi['pdf_mode'], servi['include_etude']),
+                         ('full', True))
+        self.assertEqual(self._options_servies(une_page)['pdf_mode'],
+                         'onepage')
+
+    def test_echec_d_une_demande_ne_touche_pas_l_autre(self):
+        premiere = self._demander(self.COMPLET)
+        seconde = self._demander(self.UNE_PAGE)
+        ventes_tasks.consigner_echec_pdf_devis(
+            self.devis.pk, 'boum', demande=premiere)
+        self.assertEqual(self._etat(premiere)['statut'], 'echec')
+        self.assertEqual(self._etat(premiere)['erreur'], 'boum')
+        self.assertEqual(self._etat(seconde)['statut'], 'en_cours')
+        # Une tâche d'avant le correctif (sans demande) n'écrase pas non plus
+        # la dernière demande en cours.
+        ventes_tasks.consigner_echec_pdf_devis(self.devis.pk, 'ancienne')
+        self.assertEqual(self._etat()['statut'], 'en_cours')
+
+    def test_rendu_impossible_jamais_l_ancien_format_a_la_place(self):
+        demande = self._demander(self.UNE_PAGE)
+        ventes_tasks._terminer_demande(self.devis.pk, demande)
+        with patch('apps.ventes.quote_engine.cle_pdf_a_jour',
+                   side_effect=RuntimeError('moteur indisponible')), \
+                patch('apps.ventes.utils.pdf.download_pdf',
+                      return_value=b'%PDF-1.4 ancien') as lecture:
+            resp = self.api.get(
+                f'/api/django/ventes/devis/{self.devis.pk}/telecharger-pdf/'
+                f'?demande={demande}')
+        self.assertEqual(resp.status_code, 409)
+        lecture.assert_not_called()
+
+    def test_la_tache_clot_sa_demande_au_saut_d_idempotence(self):
+        demande = self._demander(self.UNE_PAGE)
+        with patch('apps.ventes.tasks._idempotent_cached_key',
+                   return_value='devis/1/DEV-WIR217-1.pdf'):
+            resultat = ventes_tasks.task_generate_devis_pdf.apply(
+                args=[self.devis.pk, self.UNE_PAGE],
+                kwargs={'demande': demande})
+        self.assertTrue(resultat.successful(), resultat.traceback)
+        self.assertEqual(self._etat(demande)['statut'], 'pret')
+
+    def test_aucun_statut_ecrit(self):
+        statut = self.devis.statut
+        demande = self._demander(self.UNE_PAGE)
+        ventes_tasks._terminer_demande(self.devis.pk, demande)
+        self._options_servies(demande)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, statut)
 
 
 class EtatPdfEndpointTests(_Base):

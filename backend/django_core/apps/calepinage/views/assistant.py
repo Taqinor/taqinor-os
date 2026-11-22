@@ -56,7 +56,10 @@ REPONSE_REFUS = OpenApiResponse(
         'champ': drf_serializers.CharField(required=False),
         'kwc': drf_serializers.FloatField(required=False, allow_null=True),
         'total_ttc': drf_serializers.CharField(required=False),
-        'refus': drf_serializers.CharField(required=False)}),
+        'refus': drf_serializers.CharField(required=False),
+        # CFIN2 (R2-22) — ``publier-devis`` relaie le 409 ``devis_existant``.
+        'devis': drf_serializers.IntegerField(required=False),
+        'reference': drf_serializers.CharField(required=False)}),
     description='Refus nommé : introuvable (404) ou état qui ne le permet pas (409).')
 REFUS_404_409 = {404: REPONSE_REFUS, 409: REPONSE_REFUS}
 
@@ -205,9 +208,39 @@ def _publication(fonction, calepinage, user, **kwargs):
                         status=_statut_refus_devis(refuse_devis))
 
 
-@extend_schema(responses={200: forme_du_contrat(
-    'CalepinageAssistantPublierApercu', 'calepinage_assistant_publier_apercu.json'),
-    **REFUS_404_409})
+#: CFIN2 (R2-22) — les deux réponses à la question ``devis_existant``.
+MESSAGE_RATTACHER = "rattacher_devis : l'identifiant du devis existant, recopié de l'aperçu (devis_existant.devis)."
+MESSAGE_CREER_AUTRE = "creer_autre_devis : true seulement quand l'utilisateur a choisi de créer un autre devis."
+
+
+def choix_devis_existant(request):
+    """``(choix | None, refus | None)`` — ``?rattacher_devis=<id>`` ou
+    ``?creer_autre_devis=true`` : la réponse de l'utilisateur à la question
+    ``devis_existant`` de l'aperçu (CFIN2, R2-22), relayée telle quelle."""
+    rattacher = request.query_params.get('rattacher_devis')
+    creer = request.query_params.get('creer_autre_devis')
+    if rattacher is None and creer is None:
+        return None, None
+    if rattacher is not None:
+        rattacher = str(rattacher).strip()
+        if not (rattacher.isascii() and rattacher.isdigit() and 0 < len(rattacher) < 19 and int(rattacher) > 0):
+            return None, refus(MESSAGE_RATTACHER, 'rattacher_devis', 'rattacher_devis_invalide')
+        rattacher = int(rattacher)
+    creer = str(creer if creer is not None else 'false').strip().lower()
+    if creer not in ('true', '1', 'false', '0'):
+        return None, refus(MESSAGE_CREER_AUTRE, 'creer_autre_devis', 'creer_autre_devis_invalide')
+    return {'rattacher_devis': rattacher, 'creer_autre_devis': creer in ('true', '1')}, None
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('rattacher_devis', ENTIER_ID, OpenApiParameter.QUERY, required=False,
+                         description="Réponse à devis_existant : rattacher à ce devis."),
+        OpenApiParameter('creer_autre_devis', OpenApiTypes.BOOL, OpenApiParameter.QUERY,
+                         required=False, description='Réponse à devis_existant : créer un autre devis.')],
+    responses={200: forme_du_contrat(
+        'CalepinageAssistantPublierApercu', 'calepinage_assistant_publier_apercu.json'),
+        400: REPONSE_REFUS, **REFUS_404_409})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, aperçu de calepinage.publier_devis)
 @action(detail=True, methods=['get'], url_path='publier-devis/apercu',
         permission_classes=[PeutGererCalepinage])
@@ -216,15 +249,34 @@ def publier_devis_apercu(self, request, pk=None):
     devis, calculé par le MÊME service dans une transaction annulée."""
     from ..services.assistant import apercu_publication
 
-    return _publication(apercu_publication, self.get_object(), user=request.user)
+    calepinage = self.get_object()  # 404 AVANT toute lecture des paramètres
+    choix, refuse = choix_devis_existant(request)
+    if refuse is not None:
+        return refuse
+    return _publication(apercu_publication, calepinage, user=request.user, choix_devis=choix)
 
 
 #: Un total TTC recopié de l'aperçu : texte décimal, deux décimales au plus.
 MONTANT = r'^\d{1,12}(\.\d{1,2})?$'
 #: CALA7 — ce que le corps de ``publier-devis`` accepte, et rien d'autre.
-CHAMPS_PUBLIER = ('ancien_total_ttc', 'nouveau_total_ttc', 'devis', 'confirmer_taille')
-CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc, devis et confirmer_taille '
-                    'sont acceptés ; TVA, remise et dérogation se règlent à l\'écran.')
+CHAMPS_PUBLIER = ('ancien_total_ttc', 'nouveau_total_ttc', 'devis', 'confirmer_taille',
+                  'rattacher_devis', 'creer_autre_devis')
+CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc, devis, confirmer_taille, '
+                    'rattacher_devis et creer_autre_devis sont acceptés ; TVA, remise et '
+                    'dérogation se règlent à l\'écran.')
+
+
+def _choix_du_corps(corps):
+    """``(choix | None, refus | None)`` — les réponses à ``devis_existant`` lues
+    du corps de ``publier-devis`` (CFIN2) ; « les deux à la fois » est refusé
+    par ``generer-devis`` lui-même (400 nommant ``rattacher_devis``)."""
+    rattacher = corps.get('rattacher_devis')
+    creer = corps.get('creer_autre_devis', False)
+    if rattacher is not None and (isinstance(rattacher, bool) or not isinstance(rattacher, int)):
+        return None, refus(MESSAGE_RATTACHER, 'rattacher_devis', 'rattacher_devis_invalide')
+    if not isinstance(creer, bool):
+        return None, refus(MESSAGE_CREER_AUTRE, 'creer_autre_devis', 'creer_autre_devis_invalide')
+    return {'rattacher_devis': rattacher, 'creer_autre_devis': creer}, None
 
 
 @extend_schema(
@@ -235,7 +287,10 @@ CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc, devis et confirm
             required=False, allow_null=True, min_value=1, max_value=ID_MAX),
         # ACAL922 (critique D6) — la réponse de l'utilisateur à la question
         # ``confirmation_taille`` de l'aperçu, relayée telle quelle.
-        'confirmer_taille': drf_serializers.BooleanField(required=False)}),
+        'confirmer_taille': drf_serializers.BooleanField(required=False),
+        # CFIN2 (R2-22) — la réponse de l'utilisateur à ``devis_existant``.
+        'rattacher_devis': drf_serializers.IntegerField(required=False, min_value=1, max_value=ID_MAX),
+        'creer_autre_devis': drf_serializers.BooleanField(required=False)}),
     responses={200: forme_du_contrat('CalepinageAssistantPublierDevis',
                                      'calepinage_assistant_publier_devis.json'),
                **REFUS_404_409})
@@ -265,10 +320,13 @@ def publier_devis(self, request, pk=None):
         return refus("confirmer_taille : true seulement quand l'utilisateur a confirmé la "
                      "question de taille de l'aperçu.", 'confirmer_taille',
                      'confirmer_taille_invalide')
+    choix, refuse = _choix_du_corps(corps)
+    if refuse is not None:
+        return refuse
     return _publication(publier, calepinage, user=request.user,
                         ancien_vu=corps.get('ancien_total_ttc'),
                         nouveau_vu=corps.get('nouveau_total_ttc'), devis_vu=devis_vu,
-                        confirmer_taille=confirmer)
+                        confirmer_taille=confirmer, choix_devis=choix)
 
 
 @extend_schema(

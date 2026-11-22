@@ -83,9 +83,9 @@ MOTIF_SERIE_ILLISIBLE = (
     "puissance continue à convertir. Étape OMISE.")
 
 MOTIF_SANS_PUISSANCE_NOMINALE = (
-    "La puissance nominale de l'onduleur n'est pas connue (ni « ac_kw » "
-    "ni « dc_max_kwc » sur la fiche, ou aucun nombre d'onduleurs au bloc « "
-    "electrique.onduleurs ») : la courbe η(P) n'a pas d'abscisse sur "
+    "La puissance nominale de l'onduleur n'est pas connue (ni la puissance "
+    "AC nominale ni la puissance continue maximale sur la fiche, ou aucun "
+    "nombre d'onduleurs retenu) : la courbe η(P) n'a pas d'abscisse sur "
     "laquelle se poser. Étape OMISE.")
 
 __all__ = ['appliquer', 'LIBELLE', 'COLONNE_SORTIE',

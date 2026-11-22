@@ -91,7 +91,7 @@ describe('R2 — LigneTable : « Tableau de protection AC/DC — total HT » au-
     // Chaque composant garde sa propre ligne éditable (quantité saisissable).
     for (const key of ['k2', 'k4']) {
       const tr = container.querySelector(`tr[data-line-key="${key}"]`)
-      expect(tr.querySelector('input[type="number"]')).not.toBeNull()
+      expect(tr.querySelector('input[inputmode="decimal"]')).not.toBeNull()
     }
   })
 
@@ -135,7 +135,7 @@ describe('R2 — LigneTable : « Tableau de protection AC/DC — total HT » au-
     // 1 800 + 500 = 2 300 HT.
     expect(entetes[0].querySelector('[data-groupe-total-ht]').textContent.replace(/[\s\u202F\u00A0]/g, '')).toMatch(/^2300/)
     for (const key of ['s1', 's2']) {
-      expect(container.querySelector(`tr[data-line-key="${key}"] input[type="number"]`)).not.toBeNull()
+      expect(container.querySelector(`tr[data-line-key="${key}"] input[inputmode="decimal"]`)).not.toBeNull()
     }
   })
 

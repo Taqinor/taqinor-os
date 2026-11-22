@@ -75,6 +75,24 @@ describe('VX137 — table de lignes : champs design system, saisie jamais rejet�
     expect(prix.value).toBe('1234.567')
   })
 
+  // R1-10 (recette 22/11, décision Q1) — un Chrome en anglais/arabe filtrait la
+  // virgule et l'espace d'un champ « number » : « 4 800,50 » devenait 480050.
+  it('« 4 800,50 » tapé dans le prix : la ligne vaut 4 800,50 × la quantité, jamais 480 050', async () => {
+    renderGenerator()
+    const designation = await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
+    const row = designation.closest('tr')
+    const qte = row.querySelector('td[data-label="Qté"] input')
+    const prix = row.querySelector('td[data-label="Prix unit. TTC"] input')
+    fireEvent.change(qte, { target: { value: '2' } })
+    fireEvent.change(prix, { target: { value: '4 800,50' } })
+    expect(prix.value).toBe('4 800,50')
+    expect(qte.value).toBe('2')
+    const attendu = formatMoney((parseFloat(qte.value) || 0) * 4800.5)
+    const normalise = (s) => s.replace(/\s+/g, ' ')
+    expect(normalise(row.querySelector('td[data-label="Total TTC"]').textContent)).toContain(normalise(attendu))
+    expect(normalise(row.textContent)).not.toContain(normalise(formatMoney((parseFloat(qte.value) || 0) * 480050)))
+  })
+
   it('la table de lignes ne contient plus aucun <input class="form-control"> natif', async () => {
     renderGenerator()
     await screen.findByDisplayValue('Smart Meter Huawei DTSU666')

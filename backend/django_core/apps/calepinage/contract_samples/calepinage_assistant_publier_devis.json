@@ -1,8 +1,10 @@
 {
   "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/publier-devis/",
-  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA7 + décision D-W2-Q1 = OUI_APRES_CONFIRMATION) — route MINCE réservée à l'assistant (action `calepinage.publier_devis`, risque outward, CONFIRMÉE ; carte null = générique) : sans devis lié actif elle GÉNÈRE le devis brouillon depuis la conception retenue ; devis lié BROUILLON ou ENVOYÉ → elle le RESYNCHRONISE (un devis envoyé se corrige en place, tracé « corrigé après envoi », D-QJR5-5 ; son statut ne change pas). Elle ne produit AUCUN PDF (règle #4) et n'écrit aucun statut. Corps : SEULEMENT `ancien_total_ttc` (null quand aucun devis n'est lié) et `nouveau_total_ttc`, recopiés de l'aperçu `calepinage_assistant_publier_apercu.json` : ce sont eux que la confirmation montre (« ancien total → nouveau total »), et le serveur refuse (409 `apercu_perime`) s'ils ne sont plus ceux qu'il recalcule — jamais une publication à des chiffres que l'utilisateur n'a pas vus. `confirmer_taille` (booléen, facultatif ; critique 22/11, D6 — ACAL922) : la réponse de l'utilisateur à la question `confirmation_taille` de l'aperçu, relayée telle quelle à `generer-devis` (sans elle, un lead sans facture ni taille rend le 409 `confirmation_taille`). Aucun autre champ (400) : ni TVA, ni remise, ni dérogation électrique, ni forçage — ils se règlent à l'écran. Garde `calepinage_gerer`. Refus propagés tels quels : devis figé (accepté, refusé, expiré, remplacé) → 409, verdict électrique bloquant → 409 (la dérogation est humaine, D-ACAL-9), approbation exigée non à jour → 400, et tous les refus de `generer-devis`. `geste` ∈ genere | resynchronise. `lien` = le devis. Montants en texte décimal ; aucun prix d'achat ni marge.",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA7 + décision D-W2-Q1 = OUI_APRES_CONFIRMATION) — route MINCE réservée à l'assistant (action `calepinage.publier_devis`, risque outward, CONFIRMÉE ; carte null = générique) : sans devis lié actif elle GÉNÈRE le devis brouillon depuis la conception retenue ; devis lié BROUILLON ou ENVOYÉ → elle le RESYNCHRONISE (un devis envoyé se corrige en place, tracé « corrigé après envoi », D-QJR5-5 ; son statut ne change pas). Elle ne produit AUCUN PDF (règle #4) et n'écrit aucun statut. Corps : SEULEMENT `ancien_total_ttc` (null quand aucun devis n'est lié) et `nouveau_total_ttc`, recopiés de l'aperçu `calepinage_assistant_publier_apercu.json` : ce sont eux que la confirmation montre (« ancien total → nouveau total »), et le serveur refuse (409 `apercu_perime`) s'ils ne sont plus ceux qu'il recalcule — jamais une publication à des chiffres que l'utilisateur n'a pas vus. `confirmer_taille` (booléen, facultatif ; critique 22/11, D6 — ACAL922) : la réponse de l'utilisateur à la question `confirmation_taille` de l'aperçu, relayée telle quelle à `generer-devis` (sans elle, un lead sans facture ni taille rend le 409 `confirmation_taille`). `rattacher_devis` / `creer_autre_devis` (CFIN2, recette R2-22) : la réponse de l'utilisateur à la question `devis_existant` de l'aperçu (le lead a déjà un brouillon libre né avant ce calepinage), relayée telle quelle à `generer-devis` — jamais les deux à la fois (400 `rattacher_devis`) ; sans elle, la publication rend le 409 `devis_existant` (`exemple_409_devis_existant`, mot pour mot celui de `generer-devis`) et n'écrit rien ; un rattachement rend `geste` genere et `deduplique` true. Aucun autre champ (400) : ni TVA, ni remise, ni dérogation électrique, ni forçage — ils se règlent à l'écran. Garde `calepinage_gerer`. Refus propagés tels quels : devis figé (accepté, refusé, expiré, remplacé) → 409, verdict électrique bloquant → 409 (la dérogation est humaine, D-ACAL-9), approbation exigée non à jour → 400, et tous les refus de `generer-devis`. `geste` ∈ genere | resynchronise. `lien` = le devis. Montants en texte décimal ; aucun prix d'achat ni marge.",
   "corps_exemple": {"ancien_total_ttc": "84500.00", "nouveau_total_ttc": "86900.00"},
   "corps_confirmer_taille": {"nouveau_total_ttc": "168800.00", "confirmer_taille": true},
+  "corps_rattacher_devis": {"nouveau_total_ttc": "116400.00", "rattacher_devis": 76},
+  "corps_creer_autre_devis": {"nouveau_total_ttc": "61200.00", "creer_autre_devis": true},
   "exemple": {
     "geste": "resynchronise",
     "devis": 45,
@@ -51,8 +53,16 @@
     "total_ttc": "168800.00",
     "refus": "Données insuffisantes pour dimensionner le devis : renseignez la facture d'électricité d'hiver (ou la taille souhaitée en kWc) du lead."
   },
+  "exemple_409_devis_existant": {
+    "detail": "Ce lead a déjà le devis DEV-202611-0013 (brouillon, 115 800,00 MAD TTC), créé avant ce calepinage : rattachez-lui ce calepinage, ou créez un autre devis.",
+    "code": "devis_existant",
+    "champ": "rattacher_devis",
+    "devis": 76,
+    "reference": "DEV-202611-0013",
+    "total_ttc": "115800.00"
+  },
   "exemple_400_champ_refuse": {
-    "detail": "Champ refusé : derogation_electrique. Seuls ancien_total_ttc, nouveau_total_ttc, devis et confirmer_taille sont acceptés ; TVA, remise et dérogation se règlent à l'écran.",
+    "detail": "Champ refusé : derogation_electrique. Seuls ancien_total_ttc, nouveau_total_ttc, devis, confirmer_taille, rattacher_devis et creer_autre_devis sont acceptés ; TVA, remise et dérogation se règlent à l'écran.",
     "field": "derogation_electrique",
     "code": "champ_refuse"
   }

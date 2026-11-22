@@ -98,6 +98,26 @@ class ChiffrerConceptionTest(SimpleTestCase):
         agricole = chiffrer('agricole', dict(RENDU, mode_installation='agricole'))
         self.assertEqual((agricole['valeur'], agricole['etat']), (None, 'non_servi'))  # marché agricole : non servi
 
+    def test_devis_sans_production_imprimee_dit_le_vrai_motif(self):
+        """R3-E — un devis qui n'imprime aucune production (options aux parcs
+        différents…) ne dit pas « renseignez la facture » pour elle ; la
+        facture, elle, reste le motif de l'économie quand elle manque."""
+        devis = N(pk=4, company_id=7, mode_installation='residentiel', regles_calcul=15, etude_params={})
+
+        def chiffrer(rendu):
+            with (mock.patch('apps.ventes.quote_engine.builder.build_quote_data', return_value=rendu),
+                  mock.patch('apps.ventes.horaire.productible_pose.base_de_production', return_value=None),
+                  mock.patch('apps.ventes.quote_engine.figures.production_imprimee', return_value=None)):
+                return self._chiffrer(_calepinage(devis))
+        motifs = lambda bloc: {o['grandeur']: o['motif'] for o in bloc['omissions']}  # noqa: E731
+        avec_facture = chiffrer(dict(RENDU))
+        self.assertEqual(motifs(avec_facture), {'production_annuelle_kwh': cc.MOTIF_SANS_PRODUCTION})
+        self.assertEqual(avec_facture['economie_annee1_mad']['valeur'], 7420)
+        sans_facture = chiffrer(dict(RENDU, savings_estimated=True))
+        self.assertEqual(motifs(sans_facture)['production_annuelle_kwh'], cc.MOTIF_SANS_PRODUCTION)
+        self.assertEqual(motifs(sans_facture)['economie_annee1_mad'], cc.MOTIF_FACTURE)
+        self.assertNotIn('facture', cc.MOTIF_SANS_PRODUCTION)
+
     def test_sans_devis_regles_15_base_de_la_pose(self):
         with mock.patch('apps.ventes.domain.entrees.entrees_depuis_lead', return_value=_entrees()), \
                 mock.patch('apps.ventes.domain.regles_calcul.regles_au_moins', return_value=True), \

@@ -6,7 +6,7 @@
   "gestes_lead_production": 8,
   "mode_guide": {
     "mesure_le": "2026-11-22",
-    "commit_mesure": "9d1e343dfd26563ad80ab9ceaa3b3b24ccd7f27f",
+    "commit_mesure": "faa43901c240eee4ada7302f81624bc0054976ac",
     "etapes": 5,
     "controles_premier_ecran": 45,
     "par_etape": {
@@ -27,7 +27,7 @@
         "controles_panneau": 6
       },
       "documents": {
-        "onglets": 3,
+        "onglets": 1,
         "controles_panneau": 41
       }
     }

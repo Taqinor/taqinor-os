@@ -15,6 +15,9 @@
 import { Zap } from 'lucide-react'
 import { Card, CardContent, Input, Label, Button } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
+// R1-09/R1-10 (22/11) — tarifs (MAD/kWh) et montants de facture : `ChampDecimal`
+// (texte à clavier décimal, `step="any"`, la virgule se lit sur tout navigateur).
+import ChampDecimal from './ChampDecimal'
 import { MONTHS_FR } from '../../../features/ventes/solar'
 import { libelleProvenance } from '../../../features/ventes/etudeCiPreview'
 import { inclinaisonRetenue, tailleLimiteeToit } from '../../../features/ventes/etudeCiPreviewPur'
@@ -171,9 +174,9 @@ export function CarteTarifFacture({
           ].map(([cle, champ, libelle]) => (
             <div className="grid gap-1.5" key={cle}>
               <Label htmlFor={`gen-tarif-${cle}`}>{libelle}</Label>
-              <Input id={`gen-tarif-${cle}`} type="number" min="0" step="any"
+              <ChampDecimal id={`gen-tarif-${cle}`}
                      placeholder={cle === 'puissance' && puissanceLead != null ? String(puissanceLead) : undefined}
-                     value={t[cle] ?? ''} onChange={(e) => setTarifChamp(cle, e.target.value)} />
+                     value={t[cle] ?? ''} onValeur={(v) => setTarifChamp(cle, v)} />
               <ErreurChamp erreurs={erreurs} champ={`mt.${champ}`} />
             </div>
           ))}
@@ -330,10 +333,10 @@ export default function BlocEtudeReseau({
                 <Input type="month" aria-label={`Mois de la facture ${i + 1}`}
                        data-testid={`gen-ci-facture-mois-${i}`} value={f?.mois ?? ''}
                        onChange={(e) => setChamp(`factures.${i}.mois`, e.target.value)} />
-                <Input type="number" min="0" step="any" aria-label={`Montant TTC (MAD) ${i + 1}`}
+                <ChampDecimal aria-label={`Montant TTC (MAD) ${i + 1}`}
                        placeholder="Montant TTC (MAD)"
                        data-testid={`gen-ci-facture-montant-${i}`} value={f?.montant_ttc ?? ''}
-                       onChange={(e) => setChamp(`factures.${i}.montant_ttc`, e.target.value)} />
+                       onValeur={(v) => setChamp(`factures.${i}.montant_ttc`, v)} />
                 <Input type="number" min="0" step="any" aria-label={`kWh facturés ${i + 1}`}
                        placeholder="kWh (si imprimés)"
                        data-testid={`gen-ci-facture-kwh-${i}`} value={f?.kwh ?? ''}

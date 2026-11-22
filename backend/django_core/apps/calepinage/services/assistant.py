@@ -508,22 +508,28 @@ def _sans_affiche(calepinage):
     return copie
 
 
-def _publier(calepinage, user, confirmer_taille=False):
+def _publier(calepinage, user, confirmer_taille=False, choix_devis=None):
     """``(geste, devis, details)`` — génère le brouillon (aucun devis lié) ou
     resynchronise le devis lié, par les services EXISTANTS du pont devis,
     sans TVA, remise ni dérogation. ``DevisRefuse`` remonte tel quel.
-    ACAL922 — ``confirmer_taille`` : la confirmation de l'utilisateur, relayée."""
+    ACAL922 — ``confirmer_taille`` : la confirmation de l'utilisateur, relayée.
+    CFIN2 (R2-22) — ``choix_devis`` ``{rattacher_devis, creer_autre_devis}`` :
+    la réponse de l'utilisateur à la question ``devis_existant``, relayée."""
     from apps.ventes.selectors import get_devis_by_pk
 
     from .devis import _devis_lie_actif, generer_devis, resynchroniser_devis
 
+    choix = choix_devis or {}
     lie = _devis_lie_actif(calepinage)
     if lie is None:
         journal = {}
         devis, cree = generer_devis(calepinage, user=user, journal=journal,
-                                    confirmer_taille=confirmer_taille)
+                                    confirmer_taille=confirmer_taille,
+                                    rattacher_devis=choix.get('rattacher_devis'),
+                                    creer_autre_devis=bool(choix.get('creer_autre_devis')))
         return 'genere', devis, {
             'deduplique': not cree, 'inchange': False,
+            'rattache': not cree and choix.get('rattacher_devis') == devis.pk,
             'avertissements': list(journal.get('avertissements') or ()),
             'marques_manquantes': list(journal.get('marques_manquantes') or ()),
             'electrique': journal.get('electrique') or {}}
@@ -542,25 +548,33 @@ def _lien_publication(calepinage, devis):
             else chemin('calepinage', calepinage.pk))
 
 
-def apercu_publication(calepinage, *, user):
+def apercu_publication(calepinage, *, user, choix_devis=None):
     """CALA7 — l'APERÇU de la publication, sans aucune écriture (contrat
     ``calepinage_assistant_publier_apercu.json``) : le MÊME service que la
-    publication, dans une transaction ANNULÉE, affiche retirée."""
+    publication, dans une transaction ANNULÉE, affiche retirée.
+    CFIN2 (R2-22) — sans ``choix_devis``, un brouillon libre antérieur du lead
+    est ANNONCÉ (``devis_existant``, ``a_faire: choisir``) au lieu d'échouer."""
     from django.db import transaction
 
+    from .devis import DevisRefuse
     from .presentation import reference_calepinage
 
     lie = _refuser_avant_publication(calepinage)
-    calcul = {}
+    calcul = {'existant': None}
     try:
         with transaction.atomic():
             geste, devis, details = _publier(_sans_affiche(calepinage), user,
-                                             confirmer_taille=True)
+                                             confirmer_taille=True, choix_devis=choix_devis)
             calcul.update(nouveau=_total_ttc(devis), inchange=details['inchange'],
                           question=_question_de_taille(calepinage, devis, geste, details))
             raise _Annuler
     except _Annuler:
         pass
+    except DevisRefuse as refus_devis:
+        calcul.update(nouveau=None, inchange=False, question=None,
+                      existant=_devis_existant_annonce(refus_devis))
+        if calcul['existant'] is None:
+            raise
     ancien = _total_ttc(lie)
     inchange = lie is not None and calcul['inchange'] and calcul['nouveau'] == ancien
     return {
@@ -574,20 +588,33 @@ def apercu_publication(calepinage, *, user):
         'kwc_apres': _kwc_du_document(calepinage.roof_layout),
         'ancien_total_ttc': ancien,
         'nouveau_total_ttc': calcul['nouveau'],
-        'a_faire': 'rien' if inchange else 'publier',
+        'a_faire': 'choisir' if calcul['existant'] else ('rien' if inchange else 'publier'),
         'confirmation_taille': calcul['question'],
+        'devis_existant': calcul['existant'],
         'lien': _lien_publication(calepinage, lie),
     }
+
+
+def _devis_existant_annonce(refus_devis):
+    """CFIN2 (R2-22) — la question ``devis_existant`` de ``generer-devis``, MOT
+    POUR MOT : ``{detail, devis, reference, total_ttc}``, ``None`` pour un autre
+    refus. Les deux réponses (``rattacher_devis`` = ``devis``, ou
+    ``creer_autre_devis``) restent un geste de l'utilisateur."""
+    donnees = getattr(refus_devis, 'donnees', None) or {}
+    if donnees.get('code') != 'devis_existant':
+        return None
+    return {cle: donnees.get(cle) for cle in ('detail', 'devis', 'reference', 'total_ttc')}
 
 
 def _question_de_taille(calepinage, devis, geste, details):
     """ACAL922 (critique D6) — la question « confirmer la taille » que la
     publication posera, MOT POUR MOT celle de ``generer-devis`` : ``None`` ou
     ``{detail, refus}``. L'aperçu l'ANNONCE ; la publication exige
-    ``confirmer_taille: true``, geste explicite de l'utilisateur relayé."""
+    ``confirmer_taille: true``, geste explicite de l'utilisateur relayé.
+    CFIN2 — un brouillon RATTACHÉ passe la même garde de taille (R2-17)."""
     from .devis import DevisRefuse, _garde_taille
 
-    if geste != 'genere' or details['deduplique']:
+    if geste != 'genere' or (details['deduplique'] and not details.get('rattache')):
         return None
     try:
         _garde_taille(devis, calepinage, False)
@@ -621,11 +648,12 @@ def _exiger_devis_nomme(lie, devis_vu):
 
 
 def publier(calepinage, *, user, ancien_vu, nouveau_vu, devis_vu=None,
-            confirmer_taille=False):
+            confirmer_taille=False, choix_devis=None):
     """CALA7 — PUBLIE la conception au devis (contrat
     ``calepinage_assistant_publier_devis.json``) aux seuls chiffres VUS.
     ACAL922 — ``confirmer_taille`` : la réponse de l'utilisateur à la question
-    annoncée par l'aperçu, relayée telle quelle à ``generer_devis``.
+    annoncée par l'aperçu, relayée telle quelle à ``generer_devis`` ; CFIN2 —
+    ``choix_devis`` de même pour la question ``devis_existant``.
 
     ``ancien_vu`` / ``nouveau_vu`` : les totaux TTC de l'aperçu confirmé
     (texte décimal ; ``ancien_vu`` None sans devis lié). Recalculés ici, dans
@@ -642,7 +670,8 @@ def publier(calepinage, *, user, ancien_vu, nouveau_vu, devis_vu=None,
     with transaction.atomic():
         ancien = _total_ttc(lie)
         geste, devis, details = _publier(_sans_affiche(calepinage), user,
-                                         confirmer_taille=confirmer_taille)
+                                         confirmer_taille=confirmer_taille,
+                                         choix_devis=choix_devis)
         nouveau = _total_ttc(devis)
         if (ancien, nouveau) != (_montant(ancien_vu), _montant(nouveau_vu)):
             raise _apercu_perime(nouveau)

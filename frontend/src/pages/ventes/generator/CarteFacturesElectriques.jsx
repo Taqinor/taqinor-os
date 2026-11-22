@@ -14,14 +14,19 @@
 // Commercial, en plus, sa catégorie) ; Résidentiel n'y met rien. Le DOM reste
 // donc byte-identique : une seule `<Card>`, un seul `<CardContent>`, jamais
 // une carte supplémentaire.
+//
+// R1-09 / R1-10 (22/11) — les champs de montant sont des `ChampDecimal` (texte
+// à clavier décimal, `step="any"`) : « 1 250,50 » se lit juste sur tout
+// navigateur. R1-15 (a) — un mois encore à sa valeur d'EXEMPLE le dit.
 import { Zap, BarChart3 } from 'lucide-react'
 import {
-  Card, CardContent, Button, Input, Label, HelpTip,
+  Card, CardContent, Button, Label, HelpTip,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
 import { GenCardHeader } from './CarteMetrique'
 import { MONTHS_FR } from '../../../features/ventes/solar'
 import { formatNumber } from '../../../lib/format'
+import ChampDecimal from './ChampDecimal'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 
@@ -44,16 +49,16 @@ export default function CarteFacturesElectriques({
         <div className="mt-3 grid items-end gap-4 sm:grid-cols-3">
           <div className="grid gap-1.5">
             <Label htmlFor="gen-hiver">Facture Hiver moy. (MAD/mois)</Label>
-            <Input id="gen-hiver" type="number" min="0" step="any"
+            <ChampDecimal id="gen-hiver"
                    placeholder="ex: 600" value={fHiver}
-                   onChange={e => { setFHiver(e.target.value); syncBillEstimator(e.target.value, fEte) }}
+                   onValeur={v => { setFHiver(v); syncBillEstimator(v, fEte) }}
                    onPaste={onHiverPaste} />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="gen-ete">Facture Été moy. (MAD/mois)</Label>
-            <Input id="gen-ete" type="number" min="0" step="any"
+            <ChampDecimal id="gen-ete"
                    placeholder="ex: 400" value={fEte}
-                   onChange={e => { setFEte(e.target.value); syncBillEstimator(fHiver, e.target.value) }}
+                   onValeur={v => { setFEte(v); syncBillEstimator(fHiver, v) }}
                    onPaste={onEtePaste} />
           </div>
           <Button type="button" variant="outline" onClick={handleEstimerMois}>
@@ -69,12 +74,17 @@ export default function CarteFacturesElectriques({
           {MONTHS_FR.map((m, i) => (
             <div key={m} className="gen-month">
               <span className="gen-month-label">{m}</span>
-              <input type="number" min="0" step="any" className="form-control form-control-sm"
+              <ChampDecimal natif className="form-control form-control-sm"
                      value={monthly[i]}
-                     onChange={e => setMonth(i, e.target.value)} />
+                     onValeur={v => setMonth(i, v)} />
               {/* AGNR34 — mois dérivés de hiver / été : une estimation en marches, jamais une facture. */}
               {provenanceMois[i] === 'derivee' && (
                 <span className="text-xs text-muted-foreground" data-testid={`mois-estime-${i}`}>estimé</span>
+              )}
+              {/* R1-15 (a) — valeur d'EXEMPLE (ni tapée, ni dérivée, ni relue) :
+                  jamais présentée comme une facture du client. */}
+              {provenanceMois[i] === 'exemple' && (
+                <span className="text-xs text-warning" data-testid={`mois-exemple-${i}`}>exemple</span>
               )}
             </div>
           ))}
@@ -128,12 +138,12 @@ export default function CarteFacturesElectriques({
                 {realBillMode === 'mad' ? 'Facture réelle (MAD/mois)' : 'Consommation réelle (kWh/mois)'}
               </Label>
               <div className="flex gap-2">
-                <Input id="gen-realbill" type="number" min="0" step="any" className="flex-1"
+                <ChampDecimal id="gen-realbill" className="flex-1"
                        placeholder={realBillMode === 'mad' ? 'ex: 850' : 'ex: 650'}
                        value={realBillMode === 'mad' ? realBillMad : realBillKwh}
-                       onChange={e => (realBillMode === 'mad'
-                         ? setRealBillMad(e.target.value)
-                         : setRealBillKwh(e.target.value))}
+                       onValeur={v => (realBillMode === 'mad'
+                         ? setRealBillMad(v)
+                         : setRealBillKwh(v))}
                        onPaste={onRealBillPaste} />
                 <Select value={realBillMode} onValueChange={setRealBillMode}>
                   <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>

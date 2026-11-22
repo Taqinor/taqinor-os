@@ -396,6 +396,51 @@ class ReglesCalculTests(SimpleTestCase):
         Devis.objects.filter.return_value.update.assert_called_once_with(
             regles_calcul=13)
 
+    def test_migration_0160_drapeau_des_seuls_ci_non_brouillons(self):
+        """R4-02 (22/11/2026) — un devis C&I envoyé garde « kWh déclarés » :
+        le drapeau seul est ajouté, aucune autre clé de l'étude ne bouge."""
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0160_r402_source_conso_historique')
+        etude_ci = {'etude_ci': {'feuille_consommation_retenue': 'facture_hiver_mad'}, 'tension': 'bt'}
+        lignes = [SimpleNamespace(pk=71, etude_params=dict(etude_ci), mode_installation='industriel'),
+                  SimpleNamespace(pk=72, etude_params={'kwc': 5}, mode_installation='residentiel'),
+                  SimpleNamespace(pk=73, etude_params={}, mode_installation='commercial'),
+                  SimpleNamespace(pk=74, etude_params={'kwc': 50}, mode_installation='Commercial')]
+        Devis = mock.MagicMock()
+        (Devis.objects.exclude.return_value.exclude.return_value.only.return_value
+         .order_by.return_value.iterator.return_value) = lignes
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.marquer(apps, None)
+        self.assertEqual(Devis.objects.exclude.call_args_list[0],
+                         mock.call(statut='brouillon', date_envoi__isnull=True))
+        self.assertEqual(Devis.objects.filter.call_args_list,
+                         [mock.call(pk=71), mock.call(pk=74)])
+        self.assertEqual(Devis.objects.filter.return_value.update.call_args_list, [
+            mock.call(etude_params=dict(etude_ci, regles_source_conso_historique=True)),
+            mock.call(etude_params={'kwc': 50, 'regles_source_conso_historique': True})])
+        self.assertEqual(lignes[0].etude_params, etude_ci)  # l'objet lu n'est pas muté
+        self.assertTrue(mod.doit_marquer({'etude_ci': {}}, None))
+        self.assertFalse(mod.doit_marquer({'regles_source_conso_historique': True}, 'industriel'))
+        self.assertFalse(mod.doit_marquer(None, 'industriel'))
+        self.assertEqual(mod.Migration.dependencies,
+                         [('ventes', '0159_regles_calcul_niveau_14')])
+
+    def test_migration_0160_retour_retire_le_drapeau(self):
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0160_r402_source_conso_historique')
+        Devis = mock.MagicMock()
+        (Devis.objects.filter.return_value.only.return_value.order_by.return_value
+         .iterator.return_value) = [SimpleNamespace(
+             pk=75, etude_params={'kwc': 50, 'regles_source_conso_historique': True})]
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.retirer(apps, None)
+        self.assertEqual(Devis.objects.filter.call_args_list[0],
+                         mock.call(etude_params__regles_source_conso_historique=True))
+        Devis.objects.filter.return_value.update.assert_called_once_with(
+            etude_params={'kwc': 50})
+
     def test_niveau_6_arrondi_des_seuls_nouveaux_rendus(self):
         self.assertFalse(regles_au_moins(
             SimpleNamespace(regles_calcul=REGLES_RETOURS_3010B), REGLES_ARRONDI_3010))

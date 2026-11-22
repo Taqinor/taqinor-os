@@ -139,10 +139,11 @@ test('AGR222 — ligne à 0 % sans base légale, et date de solde relue', async 
   await declarerButane(page)
 
   // Une ligne à 0 % sans base légale : le message s'affiche SOUS le champ.
-  // Le champ du taux est l'input NUMÉRIQUE : à 0 %, la même cellule montre en
-  // plus l'input texte « base légale » (deux inputs — violation stricte sinon).
+  // Le champ du taux est l'input à clavier DÉCIMAL (R1-10, 22/11 : texte qui lit
+  // la virgule) : à 0 %, la même cellule montre en plus l'input texte « base
+  // légale » (deux inputs — violation stricte sinon).
   const tva = page.locator('table.lines-table tbody tr').first()
-    .locator('td[data-label="TVA %"] input[type="number"]')
+    .locator('td[data-label="TVA %"] input[inputmode="decimal"]')
   await tva.fill('0')
   const base = page.getByTestId('ligne-base-legale').first()
   await expect(base.getByRole('alert')).toContainText(/Base légale obligatoire/)

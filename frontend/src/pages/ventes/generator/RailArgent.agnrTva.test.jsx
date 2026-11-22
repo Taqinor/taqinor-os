@@ -4,8 +4,9 @@
 //
 // Rendu RÉEL de `RailArgent`, totaux du vrai `optionTotalsTTC` (taux de ligne).
 // Run : npx vitest run src/pages/ventes/generator/RailArgent.agnrTva.test.jsx
+import { useState } from 'react'
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 
 import RailArgent from './RailArgent'
 import { formatMoney } from '../../../features/ventes/solar'
@@ -32,9 +33,36 @@ describe('AGNR28 — TVA par ligne, aucun champ d’en-tête au rail', () => {
     )
     expect(screen.getByTestId('rail-tva-par-ligne').textContent).toContain('TVA : par ligne (voir la table)')
     // Les seuls champs nombre du rail : remise et prix cible — plus de TVA.
-    const champs = [...container.querySelectorAll('input[type="number"]')]
+    const champs = [...container.querySelectorAll('input[inputmode="decimal"]')]
     expect(champs).toHaveLength(2)
+    expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0)
     expect(screen.getByText('Total final SANS batterie')).toBeInTheDocument()
     expect(container.textContent).toContain(formatMoney(totals.totalSans))
+  })
+})
+
+// R1-09 (recette 22/11, décision Q1) — « 12,5 » dans la remise d'un Chrome en
+// anglais devenait 125 (total à 200 MAD sans un mot). Le champ lit la virgule.
+describe('R1-09 — remise tapée à la française', () => {
+  function RailVivant() {
+    const [remise, setRemise] = useState('')
+    const totals = optionTotalsTTC(KIT, parseFloat(remise) || 0)
+    return (
+      <RailArgent
+        showSans showAvec={false} sansRec={false} avecRec={false} totals={totals}
+        discountPct={remise} setDiscountPct={setRemise} remiseMax=""
+        pkwc={null} prixCible="" setPrixCible={() => {}} applyPrixCible={() => {}} kwp={0}
+        marge={null} kpiTotal={totals.totalSans}
+      />
+    )
+  }
+
+  it('« 12,5 » → remise de 12,5 % (jamais 125 %), texte tapé laissé tel quel', () => {
+    const { container } = render(<RailVivant />)
+    const remise = container.querySelector('input.gen-discount-input')
+    fireEvent.change(remise, { target: { value: '12,5' } })
+    expect(remise.value).toBe('12,5')
+    expect(container.textContent).toContain(formatMoney(optionTotalsTTC(KIT, 12.5).totalSans))
+    expect(container.textContent).not.toContain(formatMoney(optionTotalsTTC(KIT, 125).totalSans))
   })
 })

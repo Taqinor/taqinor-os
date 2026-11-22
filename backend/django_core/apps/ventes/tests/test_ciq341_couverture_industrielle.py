@@ -96,6 +96,50 @@ class Ciq341Baseline(SimpleTestCase):
         self.assertNotIn("non communiquée", p1)
         self.assertNotIn("MAD/an", p1.split("kWh déclarés")[1][:200])
 
+    def _facture_hiver(self, *, envoye=False, factures=True, langue=None):
+        d = _data(factures=factures)
+        etude_ci = d["etude"]["etude_ci"]
+        etude_ci["entrees_resolues"] = {"facture_hiver_mad": {
+            "valeur": 60000, "provenance": {"origine": "lead", "detail": "client",
+                                            "date": "2026-11-22"}}}
+        etude_ci["feuille_consommation_retenue"] = "facture_hiver_mad"
+        if envoye:
+            d["etude"]["regles_source_conso_historique"] = True
+        if langue:
+            d["langue_sortie"] = langue
+        return _texte(_page1(d))
+
+    def test_facture_en_dirhams_jamais_kwh_declares(self):
+        # R4-02 (devis 89) — une consommation convertie d'une facture en MAD
+        # dit d'où elle vient ; la facture n'est plus masquée.
+        p1 = self._facture_hiver()
+        self.assertIn("Votre consommation et votre production — consommation "
+                      "estimée à partir de votre facture en dirhams", p1)
+        self.assertNotIn("kWh déclarés", p1)
+        self.assertIn("Facture électrique actuelle", p1)
+        # Sans série de factures : rien n'est dit « non communiquée ».
+        p1 = self._facture_hiver(factures=False)
+        self.assertIn("à partir de votre facture en dirhams", p1)
+        self.assertNotIn("non communiquée", p1)
+        self.assertNotIn("kWh déclarés", p1)
+
+    def test_facture_en_dirhams_traduite(self):
+        self.assertIn("consumption estimated from your bill in dirhams",
+                      self._facture_hiver(langue="en"))
+        self.assertIn("الاستهلاك مقدَّر انطلاقا من فاتورتكم بالدرهم",
+                      self._facture_hiver(langue="ar"))
+
+    def test_facture_en_dirhams_devis_envoye_inchange(self):
+        # Le drapeau de la migration 0160 : la page 1 d'hier, mot pour mot.
+        for factures in (True, False):
+            with self.subTest(factures=factures):
+                p1 = self._facture_hiver(envoye=True, factures=factures)
+                self.assertIn("Votre consommation et votre production — d'après "
+                              "vos kWh déclarés", p1)
+                self.assertNotIn("dirhams", p1)
+                self.assertNotIn("Facture électrique", p1)
+                self.assertNotIn("non communiquée", p1)
+
     def test_sans_source_pas_de_douze_mois(self):
         p1 = _texte(_page1(_data(etude=None, economie=None)))
         self.assertNotIn("12 mois —", p1)

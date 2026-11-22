@@ -3,6 +3,7 @@
 // raison sans rapport (ex. la frappe dans « Note »). Test isolé du composant
 // (pas de montage complet de DevisGenerator) — ProduitPicker est mocké pour
 // compter ses rendus sans tirer ses dépendances redux/permissions internes.
+import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { wrap, baseLine, baseProps } from './devisLineRow.testHelpers.jsx'
@@ -174,5 +175,72 @@ describe('DevisLineRow — QJR569 : badge « Qté figée » + « Libérer »', (
     )
     expect(screen.queryByText(/Qté figée/)).toBeNull()
     expect(screen.queryByRole('button', { name: /Libérer/ })).toBeNull()
+  })
+})
+
+// R1-09 / R1-10 / R1-11 (recette 22/11, décision Q1) — saisie française : un
+// Chrome en anglais ou en arabe filtrait la virgule et l'espace d'un champ
+// « number » (« 4 800,50 » → 480050). Le champ est un texte à clavier décimal
+// qui lit la virgule ; le total de la ligne suit le nombre LU.
+describe('R1-10 — saisie française des champs de ligne', () => {
+  function LigneVivante({ initiale = baseLine }) {
+    const [ligne, setLigne] = useState(initiale)
+    const poser = (_k, champ, v) => setLigne(l => ({ ...l, [champ]: v }))
+    return (
+      <table><tbody>{wrap(
+        <DevisLineRow {...baseProps({ line: ligne, onSetField: poser,
+          onQuantiteChange: (k, v) => poser(k, 'quantite', v) })} />,
+      )}</tbody></table>
+    )
+  }
+  const champ = (label) => document.querySelector(`td[data-label="${label}"] input`)
+  const totalLigne = () => document.querySelector('td[data-label="Total TTC"]').textContent.replace(/\s+/g, ' ')
+
+  it('champs texte à clavier décimal, step="any", aucune borne', () => {
+    render(<LigneVivante />)
+    for (const label of ['Qté', 'Prix unit. TTC', 'TVA %']) {
+      expect(champ(label)).toHaveAttribute('type', 'text')
+      expect(champ(label)).toHaveAttribute('inputmode', 'decimal')
+      expect(champ(label)).toHaveAttribute('step', 'any')
+      expect(champ(label)).not.toHaveAttribute('min')
+    }
+  })
+
+  it('« 4 800,50 » (espace normale ou insécable) → 4 800,5 × 4, jamais 480 050 ; le texte tapé reste affiché', () => {
+    render(<LigneVivante />)
+    for (const tape of ['4 800,50', '4 800,50', '4 800,50']) {
+      fireEvent.change(champ('Prix unit. TTC'), { target: { value: tape } })
+      expect(champ('Prix unit. TTC').value).toBe(tape)
+      expect(totalLigne()).toContain('19 202 MAD')
+      expect(totalLigne()).not.toMatch(/1 920 200/)
+    }
+  })
+
+  it('quantité « 2,5 » → 2,5 × 1 500 = 3 750', () => {
+    render(<LigneVivante />)
+    fireEvent.change(champ('Qté'), { target: { value: '2,5' } })
+    expect(totalLigne()).toContain('3 750 MAD')
+  })
+
+  it('une saisie illisible est DITE sous le champ et ne devient pas un autre nombre', () => {
+    render(<LigneVivante />)
+    fireEvent.change(champ('Prix unit. TTC'), { target: { value: '1,234.56' } })
+    expect(champ('Prix unit. TTC').value).toBe('1,234.56')
+    expect(champ('Prix unit. TTC')).toHaveAttribute('aria-invalid', 'true')
+    const td = document.querySelector('td[data-label="Prix unit. TTC"]')
+    expect(td.querySelector('[role="alert"]').textContent).toMatch(/n’est pas un nombre lisible.*le calcul garde 1500/)
+    expect(totalLigne()).toContain('6 000 MAD') // 4 × 1 500, la dernière valeur lue
+  })
+
+  it('R1-11 — une quantité vidée est acceptée et dite « ligne à 0 MAD »', () => {
+    render(<LigneVivante />)
+    expect(screen.queryByTestId('ligne-quantite-vide')).toBeNull()
+    fireEvent.change(champ('Qté'), { target: { value: '' } })
+    expect(screen.getByTestId('ligne-quantite-vide').textContent).toBe('Quantité vide : ligne à 0 MAD')
+  })
+
+  it('une valeur relue du serveur s’affiche telle qu’avant (point décimal)', () => {
+    render(<LigneVivante initiale={{ ...baseLine, prix_unit_ttc: '1234.56' }} />)
+    expect(champ('Prix unit. TTC').value).toBe('1234.56')
   })
 })

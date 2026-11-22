@@ -362,8 +362,10 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
   it('ACAL994 — après enregistrement, le chiffrage RELU est poussé à l’atelier (la valeur servie remplace l’estimation)', async () => {
     const majChiffrage = vi.fn()
     reinitialiserBoot({ majChiffrage })
+    // R2-13 — le compte du devis RELU (`cible.panneaux`, source « devis ») voyage avec le chiffrage.
     const apres = {
       ...CTX,
+      cible: { ...CTX.cible, panneaux: CTX.cible.panneaux + 2 },
       chiffrage: { ...CTX.chiffrage, economie_annee1_mad: { ...CTX.chiffrage.economie_annee1_mad, valeur: 8123 } },
     }
     const avant = { ...CTX, chiffrage: { ...CTX.chiffrage, economie_annee1_mad: { ...CTX.chiffrage.economie_annee1_mad, etat: 'non_servi', valeur: null } } }
@@ -371,9 +373,19 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
       { data: { inchange: false, version: 4 } })
     rendreCalepinage(CTX.calepinage.id)
-    await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(avant.chiffrage))
+    expect(CTX.cible.source).toBe('devis')
+    await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(avant.chiffrage, CTX.cible.panneaux))
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
-    await waitFor(() => expect(majChiffrage).toHaveBeenLastCalledWith(apres.chiffrage))
+    await waitFor(() => expect(majChiffrage).toHaveBeenLastCalledWith(apres.chiffrage, CTX.cible.panneaux + 2))
+  })
+
+  it('R2-13 — cible tirée des factures (pas d’un devis) : aucun compte « au devis » transmis', async () => {
+    const majChiffrage = vi.fn()
+    reinitialiserBoot({ majChiffrage })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      { data: { ...CTX, cible: { ...CTX.cible, source: 'factures' } } })
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(CTX.chiffrage ?? null, null))
   })
 
   /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */

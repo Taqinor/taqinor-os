@@ -55,7 +55,7 @@ describe('AGNR32 — le clone garde le prix tapé et la TVA de la ligne', () => 
     renderGenerator({ role_nom: 'Directeur', permissions: ['stock_creer'] })
     const input = await findSmartMeterDesignation()
     const ligne = input.closest('tr')
-    const [prix, tva] = [...ligne.querySelectorAll('input[type="number"]')].filter((el) => el.dataset.role !== 'line-qty')
+    const [prix, tva] = [...ligne.querySelectorAll('input[inputmode="decimal"]')].filter((el) => el.dataset.role !== 'line-qty')
     fireEvent.change(prix, { target: { value: '9999' } })
     fireEvent.change(tva, { target: { value: '10' } })
     fireEvent.change(input, { target: { value: 'Smart Meter perso' } })
@@ -65,7 +65,7 @@ describe('AGNR32 — le clone garde le prix tapé et la TVA de la ligne', () => 
     await waitFor(() => expect(stockApi.dupliquerProduit).toHaveBeenCalledWith('10', 'Smart Meter perso'))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     const apres = (await screen.findByDisplayValue('Smart Meter perso')).closest('tr')
-    const [prixApres, tvaApres] = [...apres.querySelectorAll('input[type="number"]')].filter((el) => el.dataset.role !== 'line-qty')
+    const [prixApres, tvaApres] = [...apres.querySelectorAll('input[inputmode="decimal"]')].filter((el) => el.dataset.role !== 'line-qty')
     expect(prixApres.value).toBe('9999')
     expect(tvaApres.value).toBe('10')
     // Le prix négocié est verrouillé (indicateur « prix tapé »).

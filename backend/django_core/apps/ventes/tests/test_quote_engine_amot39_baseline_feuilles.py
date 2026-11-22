@@ -79,12 +79,27 @@ class BaselineFeuillesTests(SimpleTestCase):
                 self.assertIsNone(_motif_baseline(s))
 
     def test_conversions_mad_reconnues(self):
-        # facture d'hiver (MAD) convertie par le moteur : estimation.
+        # facture d'hiver (MAD) convertie par le moteur : estimation, et
+        # R4-02 : jamais présentée comme des « kWh déclarés ».
         s = synthese_ci(_data({"facture_hiver_mad": {
             "valeur": 4200, "provenance": dict(PROV_CLIENT)}}))
-        self.assertEqual(s["baseline"], {"source": "kwh_declares",
+        self.assertEqual(s["baseline"], {"source": "factures_mad",
                                          "estimation": True})
         self.assertIsNone(_motif_baseline(s))
+
+    def test_facture_mad_devis_envoye_garde_son_etiquette(self):
+        # R4-02 — le drapeau posé par la migration 0160 sur les devis non
+        # brouillons : ils gardent « kWh déclarés » (nouveaux rendus seulement).
+        for feuille in (None, "facture_hiver_mad"):
+            with self.subTest(feuille=feuille):
+                data = _data({"facture_hiver_mad": {
+                    "valeur": 60000, "provenance": dict(PROV_CLIENT)}})
+                if feuille:
+                    data["etude"]["etude_ci"]["feuille_consommation_retenue"] = feuille
+                self.assertEqual(synthese_ci(data)["baseline"]["source"], "factures_mad")
+                data["etude"]["regles_source_conso_historique"] = True
+                self.assertEqual(synthese_ci(data)["baseline"],
+                                 {"source": "kwh_declares", "estimation": True})
 
     def test_toutes_les_sorties_du_moteur_listees(self):
         # Les sept feuilles que ``_consommation`` peut renvoyer.
@@ -117,6 +132,9 @@ class BaselineFeuillesTests(SimpleTestCase):
                     for m in range(12)]
         data = _data({"factures_mad": {"valeur": montants, "provenance": dict(PROV_FACTURE)}})
         data["etude"]["etude_ci"]["feuille_consommation_retenue"] = "factures_mad"
+        self.assertEqual(synthese_ci(data)["baseline"],
+                         {"source": "factures_mad", "estimation": True})  # R4-02
+        data["etude"]["regles_source_conso_historique"] = True  # devis envoyé : comme reçu
         self.assertEqual(synthese_ci(data)["baseline"],
                          {"source": "kwh_declares", "estimation": True})
         # Courbe mesurée seule : plus « non résolue ».

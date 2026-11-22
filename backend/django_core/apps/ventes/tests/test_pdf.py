@@ -342,7 +342,10 @@ class TestPdfEndpoints(TestCase):
         self.assertIn('task_id', resp.data)
         # default options = premium 3-page format
         from apps.ventes.quote_engine.builder import DEFAULT_PDF_OPTIONS
-        mock_task.delay.assert_called_once_with(devis.id, dict(DEFAULT_PDF_OPTIONS))
+        # R1-02/R1-03 — la tâche reçoit l'identifiant de CETTE demande.
+        self.assertTrue(resp.data['demande'])
+        mock_task.delay.assert_called_once_with(
+            devis.id, dict(DEFAULT_PDF_OPTIONS), demande=resp.data['demande'])
 
     @patch('apps.ventes.tasks.task_generate_devis_pdf')
     def test_generer_pdf_devis_passes_format_options(self, mock_task):

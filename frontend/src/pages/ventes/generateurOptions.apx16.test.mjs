@@ -88,5 +88,19 @@ test('les gardes de saisie du générateur sont intactes (jamais de valeur rejet
         `${f} : un input number sans step="any" (le champ « snapperait »)`)
       i = src.indexOf('type="number"', fin)
     }
+    // R1-09 / R1-10 — même règle pour le champ texte à clavier décimal : chaque
+    // `inputMode="decimal"` porte `step="any"`, et un `ChampDecimal` ne reçoit
+    // jamais de pas d'un appelant.
+    let j = src.indexOf('inputMode="decimal"')
+    while (j > -1) {
+      const fin = src.indexOf('/>', j)
+      assert.ok(fin > j && /step="any"/.test(src.slice(j, fin)),
+        `${f} : un champ décimal sans step="any"`)
+      j = src.indexOf('inputMode="decimal"', fin)
+    }
+    for (const c of src.split('<ChampDecimal').slice(1)) {
+      assert.doesNotMatch(c.slice(0, c.indexOf('/>')), /step=/, `${f} : un ChampDecimal reçoit un step`)
+    }
   }
+  assert.ok(fichiers.includes('ChampDecimal.jsx'), 'le champ décimal du générateur est introuvable')
 })

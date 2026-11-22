@@ -15,6 +15,9 @@ import { classifyProduct } from '../../features/ventes/calc/classification.js'
 // répartition elle-même).
 import { puRemise } from '../../features/ventes/remise'
 import { baseLegaleManquante } from '../../features/ventes/quote/lignesEcran'
+// R1-09 / R1-10 — saisie française (« 4 800,50 », « 12,5 ») lue juste quel que
+// soit le navigateur : texte à clavier décimal, `step="any"` gardé.
+import ChampDecimal from './generator/ChampDecimal'
 
 // VX188 — ligne de devis extraite en composant mémoïsé. DevisGenerator.jsx a
 // 64 useState ; le tableau de lignes était du JSX inline dans `lines.map()`,
@@ -26,8 +29,9 @@ import { baseLegaleManquante } from '../../features/ventes/quote/lignesEcran'
 //
 // Règle fondateur absolue : ne JAMAIS snapper/rejeter un nombre tapé — cette
 // extraction ne change AUCUNE logique de saisie, uniquement le découpage du
-// rendu (mêmes <Input type="number" step="any">, formulaire noValidate côté
-// parent inchangé).
+// rendu (mêmes champs `step="any"`, formulaire noValidate côté parent
+// inchangé). R1-09/R1-10 : ces champs sont des `ChampDecimal` (texte à clavier
+// décimal) — un Chrome en anglais ou en arabe ne filtre plus la virgule.
 function DevisLineRowImpl({
   line: l,
   produits,
@@ -248,9 +252,16 @@ function DevisLineRowImpl({
         </td>
       )}
       <td data-label="Qté">
-        <Input type="number" min="0" step="any" data-role="line-qty"
+        <ChampDecimal data-role="line-qty"
                className="h-[var(--control-h-sm)] ta-right" value={l.quantite}
-               onChange={e => onQuantiteChange(l._key, e.target.value)} />
+               onValeur={v => onQuantiteChange(l._key, v)} />
+        {/* R1-11 — une quantité VIDE est acceptée (jamais refusée) mais DITE :
+            la ligne compte 0 MAD. */}
+        {String(l.quantite ?? '').trim() === '' && (
+          <div className="mt-0.5 text-xs text-warning ta-right" data-testid="ligne-quantite-vide">
+            Quantité vide : ligne à 0 MAD
+          </div>
+        )}
         {/* QJR569 — quantité TAPÉE : verrou visible (le serveur ne la
             réécrit plus à une resynchronisation) et réversible. */}
         {l.quantiteManuelle && (
@@ -267,9 +278,9 @@ function DevisLineRowImpl({
         )}
       </td>
       <td data-label="Prix unit. TTC">
-        <Input type="number" min="0" step="any"
+        <ChampDecimal
                className="h-[var(--control-h-sm)] ta-right" value={l.prix_unit_ttc}
-               onChange={e => onSetField(l._key, 'prix_unit_ttc', e.target.value)} />
+               onValeur={v => onSetField(l._key, 'prix_unit_ttc', v)} />
         {/* U4 (fondateur 20/08/2026) — HT unitaire dérivé, lecture seule,
             discret : la saisie reste 100 % TTC (htFromTtc existant, aucune
             conversion à l'enregistrement). */}
@@ -294,11 +305,11 @@ function DevisLineRowImpl({
             DevisGenerator.jsx) — retiré dès la première modification. Cellule
             étroite (table dense) : `title` porte le micro-libellé plutôt
             qu'une ligne de texte séparée qui casserait la hauteur de ligne. */}
-        <Input type="number" min="0" step="any"
+        <ChampDecimal
                className={`h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground${l._tvaSuggested ? ' vx-suggested-field' : ''}`}
                value={l.taux_tva ?? '20'}
                title={l._tvaSuggested ? 'Suggéré — modifiable' : undefined}
-               onChange={e => onSetField(l._key, 'taux_tva', e.target.value)} />
+               onValeur={v => onSetField(l._key, 'taux_tva', v)} />
         {/* DC7 — AVERTISSEMENT de divergence uniquement : le taux attendu suit
             la désignation + les repères TVA société (expectedTvaForDesignation),
             et `Produit.tva` reste la source autoritaire par ligne. On n'altère

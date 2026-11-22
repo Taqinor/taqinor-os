@@ -110,7 +110,7 @@ describe('CIQ125 — BlocEtudeReseau, profil déclaré C&I', () => {
   it('saisie libre : chaque input number porte step="any", une décimale reste telle quelle', () => {
     let profil = null
     const { container } = render(<Harnais onProfil={(p) => { profil = p }} />)
-    for (const input of container.querySelectorAll('input[type=number]')) {
+    for (const input of container.querySelectorAll('input[type=number], input[inputmode=decimal]')) {
       expect(input.getAttribute('step')).toBe('any')
       expect(input).not.toHaveAttribute('max')
     }
@@ -191,7 +191,7 @@ describe('CIQ222 — carte « Tarif de la facture »', () => {
     render(<HarnaisTarif onTarif={() => {}} erreurs={erreursTarifDeclare(detail)} />)
     fireEvent.change(screen.getByLabelText('Contrat'), { target: { value: 'mt_general' } })
     expect(screen.getByTestId('erreur-tarif-mt.tarif_pointe')).toHaveTextContent('valeur négative refusée')
-    for (const input of screen.getByTestId('ci-tarif-mt').querySelectorAll('input[type=number]')) {
+    for (const input of screen.getByTestId('ci-tarif-mt').querySelectorAll('input[type=number], input[inputmode=decimal]')) {
       expect(input.getAttribute('step')).toBe('any')
     }
   })

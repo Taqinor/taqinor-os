@@ -53,13 +53,25 @@ test('le contrat devis_etat_pdf est committé et décrit l’endpoint etat-pdf',
 test('le wrapper etatPdfDevis vise l’URL RÉELLE du contrat', () => {
   assert.match(
     API,
-    /etatPdfDevis:[\s\S]*?api\.get\(`\/ventes\/devis\/\$\{id\}\/etat-pdf\/`\)/)
+    /etatPdfDevis:[\s\S]*?api\.get\(`\/ventes\/devis\/\$\{id\}\/etat-pdf\/`[,)]/)
+})
+
+// R1-02/R1-03 — le dialogue suit SA demande : ni « prêt » ni fichier d'un autre
+// format demandé avant ou après (clé `demande` de generer-pdf, additive).
+test('le sondage et l’ouverture suivent la demande rendue par generer-pdf', () => {
+  assert.match(genererUnPdfBody, /const lance = await dispatch\(genererPdfDevis\(/)
+  assert.match(genererUnPdfBody, /lance\?\.demande/)
+  assert.match(genererUnPdfBody, /ventesApi\.etatPdfDevis\(d\.id, \.\.\.suivi\)/)
+  const ouvertures = genererUnPdfBody.match(/ventesApi\.telechargerPdfDevis\([^)]*\)/g) ?? []
+  assert.ok(ouvertures.length >= 2)
+  for (const appel of ouvertures) assert.equal(appel, 'ventesApi.telechargerPdfDevis(d.id, ...suivi)')
+  assert.match(API, /etatPdfDevis: \(id, demande\) =>[^\n]*params: demande \? \{ demande \} : \{\}/)
 })
 
 // ── Le sondage lit l'ÉTAT, plus seulement `fichier_pdf` ─────────────────────
 
 test('le sondage interroge etat-pdf (et non plus le devis entier)', () => {
-  assert.match(genererUnPdfBody, /ventesApi\.etatPdfDevis\(d\.id\)/)
+  assert.match(genererUnPdfBody, /ventesApi\.etatPdfDevis\(d\.id[,)]/)
   assert.doesNotMatch(genererUnPdfBody, /ventesApi\.getDevisById\(d\.id\)/)
 })
 

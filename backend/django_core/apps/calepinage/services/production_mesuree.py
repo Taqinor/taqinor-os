@@ -33,7 +33,7 @@ MOTIF_SANS_SIMULATION = ("Simulation absente ou périmée : le P50 mensuel n'est
                          "pas servi, aucun écart n'est calculé.")
 
 
-def annee_maximale():
+def _annee_maximale():
     """La dernière année admise : l'année courante + 1."""
     return datetime.date.today().year + 1
 
@@ -72,10 +72,10 @@ def _valider(corps):
                             'attendues.')
     annee = _entier(corps.get('annee'), 'annee', ANNEE_MINI,
                     ANNEE_COLONNE_MAXI, 'Année des mesures')
-    if annee > annee_maximale():
+    if annee > _annee_maximale():
         raise MesureRefusee(
             '« Année des mesures » : %d au plus (année en cours et suivante).'
-            % annee_maximale(), 'annee', statut=409)
+            % _annee_maximale(), 'annee', statut=409)
     lignes = corps.get('mesures')
     if not isinstance(lignes, list) or len(lignes) > 12:
         raise MesureRefusee('« Production mesurée » : douze mois au plus.',
