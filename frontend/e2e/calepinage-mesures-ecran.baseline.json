@@ -1,9 +1,9 @@
 {
   "carte_disponible": false,
-  "controles_visibles": 58,
-  "tailles_texte_distinctes": 15,
-  "cibles_sous_44px": 47,
-  "gestes_lead_production": 8,
+  "controles_visibles": 36,
+  "tailles_texte_distinctes": 5,
+  "cibles_sous_44px": 9,
+  "gestes_lead_production": 7,
   "mode_guide": {
     "mesure_le": "2026-11-22",
     "commit_mesure": "eb59a99edca65f0b3a1880e2556861e2d9d90ad8",
