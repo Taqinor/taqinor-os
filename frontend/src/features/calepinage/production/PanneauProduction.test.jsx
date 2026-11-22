@@ -1172,12 +1172,11 @@ describe('ACAL986 — chaque lien « aller aux réglages » vise un champ monté
   it('les lignes « Renseigner » du résultat incomplet (ACAL700) ouvrent leur champ monté', async () => {
     const ids = await idsMontesDesReglages()
     const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
-    calepinageApi.calepinages.resultat.mockResolvedValue({
-      data: {
-        ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
-        production: borneHaute.production, simulation: borneHaute.simulation, cascade: borneHaute.cascade,
-      },
-    })
+    const donnees = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    donnees.data.production = borneHaute.production
+    donnees.data.simulation = borneHaute.simulation
+    donnees.data.cascade = borneHaute.cascade
+    calepinageApi.calepinages.resultat.mockResolvedValue(donnees)
     render(<MemoryRouter><PanneauProduction calepinageId={1} parcours={{ etapes: [], manque: [] }} /></MemoryRouter>)
     const bloc = await screen.findByTestId('acal700-incomplet')
     const lignes = borneHaute.cascade.a_renseigner.lignes.filter((l) => l.cible?.onglet === 'reglages')
