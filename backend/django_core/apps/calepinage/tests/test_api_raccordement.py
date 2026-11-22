@@ -43,7 +43,8 @@ User = get_user_model()
 
 #: Les cinq contrôles, dans l'ordre où le contrat CALX205 les publie.
 CODES = ['elevation_tension', 'puissance_souscrite', 'regime_phases',
-         'tension_nominale', 'desequilibre_phases']
+         'tension_nominale', 'desequilibre_phases',
+         'limitation_injection']  # ACAL1187 : le sixième
 
 #: Les mots d'argent qui n'ont rien à faire dans une pièce électrique.
 HORS_SUJET = ('prix', 'montant', 'mad', 'tva', 'remise')
@@ -79,7 +80,7 @@ class ActionRaccordementTest(BaseApiCalepinage):
         self.assertEqual(sorted(reponse.data),
                          sorted(RACCORDEMENT['exemple']))
 
-    def test_get_rend_toujours_les_cinq_verdicts(self):
+    def test_get_rend_toujours_les_six_verdicts(self):
         reponse = self.api.get(url_raccordement(self.calepinage.pk))
 
         self.assertEqual([v['code'] for v in reponse.data['verdicts']],

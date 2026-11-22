@@ -156,6 +156,15 @@ export function contraindreAngle(
 // édition des nœuds). Géométrie PURE, gestes câblés dans `obstaclesUi.ts`.
 // ————————————————————————————————————————————————————————————————————————
 
+/** ACAL926 — deux points ÉCRAN sont « au même endroit » : moins de `px` pixels d'écart sur chaque axe ; un point absent n'est proche de rien. */
+export function pointsProches(
+  a: { x: number; y: number } | null | undefined,
+  b: { x: number; y: number } | null | undefined,
+  px: number,
+): boolean {
+  return a != null && b != null && Math.abs(a.x - b.x) < px && Math.abs(a.y - b.y) < px;
+}
+
 /**
  * Mètres couverts par UN pixel écran au zoom MapLibre courant, à la latitude donnée
  * (tuiles de 512 px — convention MapLibre GL). Sert à exprimer une tolérance de SAISIE

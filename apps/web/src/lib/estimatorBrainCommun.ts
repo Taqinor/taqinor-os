@@ -104,6 +104,23 @@ export function departageBase(
   return undefined;
 }
 
+/** ACAL929 — départage par l'énergie du module SUPPLÉMENTAIRE (aucun appelant : `departageBase` reste inchangé,
+ *  donc le simulateur public aussi). À nombre de modules égal : `undefined` (la suite du départage reste
+ *  `departageBase`) ; une configuration sans module perd ; sinon celle qui pose plus de modules ne gagne que si
+ *  (énergie en plus) ÷ (modules en plus) est au moins l'énergie moyenne par module de l'autre. */
+export function departageParModule(
+  a: { annualKwh: number; placedCount: number },
+  b: { annualKwh: number; placedCount: number },
+): boolean | undefined {
+  if (a.placedCount === b.placedCount) return undefined;
+  if (a.placedCount <= 0) return false;
+  if (b.placedCount <= 0) return true;
+  const [plus, moins] = a.placedCount > b.placedCount ? [a, b] : [b, a];
+  const gainMarginal = (plus.annualKwh - moins.annualKwh) / (plus.placedCount - moins.placedCount);
+  const plusGagne = gainMarginal >= moins.annualKwh / moins.placedCount;
+  return plusGagne === (plus === a);
+}
+
 /** Départage commun V6/V7 (suite de `departageBase`) : plus proche du plein sud, puis
  *  inclinaison plus raide. `undefined` = égalité (reste à départager sur l'orientation). */
 export function departageAspect(

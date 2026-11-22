@@ -35,7 +35,7 @@ import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSe
 import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type EastWestGeometry, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import type { OptionChassis } from './estimatorBrainV2Blocs'; // ACAL585
-import { matrixTiltGrid, type YieldFn, type YieldSource } from './estimatorBrainV6';
+import { EW_TILTS, matrixTiltGrid, type YieldFn, type YieldSource } from './estimatorBrainV6';
 import { departageAspect, departageBase, productionFields, type EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
@@ -355,8 +355,11 @@ function orientationCandidates(ctx: SolveCtx, locked: OrientationAxis | undefine
   if (locked) return [locked];
   return turned ? ['south', 'aligned', 'eastwest'] : ['south', 'eastwest'];
 }
-function tiltCandidates(ctx: SolveCtx, locked: number | undefined): number[] {
-  if (locked != null) return [locked];
+function tiltCandidates(ctx: SolveCtx, locked: number | undefined, orientation: OrientationAxis): number[] {
+  if (locked != null) return [locked]; // une inclinaison VERROUILLÉE reste tenue de 0 à 35°
+  // ACAL928 — l'Est-Ouest libre n'essaie que les inclinaisons constructibles de V6 (tentes à 10-15°) ;
+  // plein sud et « aligné toit » gardent la grille complète.
+  if (orientation === 'eastwest') return [...EW_TILTS];
   return matrixTiltGrid(ctx.latitudeDeg);
 }
 function layoutCandidates(locked: LayoutAxis | undefined): LayoutAxis[] {
@@ -373,7 +376,7 @@ function marginCandidates(locked: MarginAxis | undefined): MarginAxis[] {
 function solveConstrained(ctx: SolveCtx, locks: AxisLocks, turned: boolean): LiveConfigEval {
   let winner: LiveConfigEval | null = null;
   for (const orientation of orientationCandidates(ctx, locks.orientation, turned)) {
-    for (const tiltDeg of tiltCandidates(ctx, locks.tiltDeg)) {
+    for (const tiltDeg of tiltCandidates(ctx, locks.tiltDeg, orientation)) {
       for (const layout of layoutCandidates(locks.layout)) {
         for (const margin of marginCandidates(locks.margin)) {
           const e = bestForOrientation(ctx, orientation, tiltDeg, layout, margin);

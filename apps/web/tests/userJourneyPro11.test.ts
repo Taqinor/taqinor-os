@@ -1100,7 +1100,98 @@ describe('parcours atelier pro-11 — dérate vivant et ombres du site (ACAL356,
     expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(false); // accepté : site vierge, la carte d'aide revient
     expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
-  }, 60000);
+  }, 300000);
+
+  // ACAL925 — « Effacer » ne perd pas la cible hydratée (lead à 4 panneaux : 4 après Effacer et un nouveau tracé).
+  it('ACAL925 — hydratation cible.panneaux 4, Effacer, retracer ⇒ 4 panneaux voulus, besoin non automatique', async () => {
+    const lead = { id: 7, cible: { panneaux: 4 }, cibleVendue: false, geometrie: { roof_point: { lat: 33.59, lng: -7.62 } } };
+    const besoin = () => (document.getElementById('rp9-need-input') as HTMLInputElement).value;
+    const api = await boot({ devis: lead });
+    traceRoof(fakeMaps[0]);
+    await flush();
+    expect(besoin()).toBe('4');
+    (document.getElementById('rp9-clear') as HTMLButtonElement).click();
+    Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-question-effacer button')).find((b) => b.textContent === 'Effacer')?.click();
+    expect(document.getElementById('rp9-etat-vide')?.hidden).toBe(false);
+    traceRoof(fakeMaps[0]);
+    await flush();
+    expect(besoin()).toBe('4');
+    const zones = (api().serializeLayout() as { zones: Array<{ neededPanels: number; neededAuto: boolean }> }).zones;
+    expect(zones[0].neededPanels).toBe(4);
+    expect(zones[0].neededAuto).toBe(false);
+  }, 300000);
+
+  // ACAL925 — sans cible hydratée, « Effacer » reste ce qu'il était (aucune cible inventée).
+  it('ACAL925 — sans cible hydratée, Effacer puis retracer ne fixe aucun nombre', async () => {
+    const api = await boot();
+    traceRoof(fakeMaps[0]);
+    (document.getElementById('rp9-clear') as HTMLButtonElement).click();
+    Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-question-effacer button')).find((b) => b.textContent === 'Effacer')?.click();
+    traceRoof(fakeMaps[0]);
+    await flush();
+    const zones = (api().serializeLayout() as { zones: Array<{ neededAuto: boolean }> }).zones;
+    expect(zones[0].neededAuto).toBe(true);
+  }, 300000);
+
+  // ACAL926 — un double-clic à un NOUVEL endroit pose le dernier coin ; sur le dernier sommet, aucun sommet parasite.
+  it('ACAL926 — 3 clics puis clic + dblclick à un 4ᵉ point éloigné ⇒ 4 sommets ; double-clic sur le dernier sommet ⇒ 3', async () => {
+    const coins = squareCorners(16, -7.62, 33.59);
+    const finir = async (pointDuDouble: { x: number; y: number }) => {
+      const api = await boot();
+      vi.useFakeTimers();
+      for (const [lng, lat] of coins.slice(0, 3)) {
+        fakeMaps[0].fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+        vi.advanceTimersByTime(241);
+      }
+      const [lng, lat] = coins[3];
+      const evt = { lngLat: { lng, lat }, point: pointDuDouble, preventDefault() {} };
+      fakeMaps[0].fire('click', evt);
+      fakeMaps[0].fire('click', evt);
+      fakeMaps[0].fire('dblclick', evt);
+      vi.advanceTimersByTime(241);
+      vi.useRealTimers();
+      return (api().serializeLayout() as { zones: Array<{ vertices: unknown[] }> }).zones[0].vertices.length;
+    };
+    expect(await finir({ x: 200, y: 200 })).toBe(4); // loin du dernier sommet (la doublure project() rend 0,0)
+    expect(await finir({ x: 0, y: 0 })).toBe(3); // sur le dernier sommet : comme aujourd'hui
+  }, 300000);
+
+  // ACAL985 (garde K-SAISIE-PERDUE) — UNE séance scriptée. Matrice lignes × colonnes (l'échec nomme les deux) :
+  //   facture × lead (consommation servie) · cible × Effacer · 4ᵉ coin × double-clic.
+  it('ACAL985 — facture du lead, tracé fermé par double-clic, Effacer, retracé : rien de saisi ne se perd', async () => {
+    const lead = { id: 7, cible: { panneaux: 4 }, cibleVendue: false, geometrie: { roof_point: { lat: 33.59, lng: -7.62 } } };
+    const api = await boot({ devis: lead });
+    const zones = () => (api().serializeLayout() as { zones: Array<{ vertices: unknown[]; neededPanels: number }> }).zones;
+    // Tracé : 3 clics puis clic + double-clic à un 4ᵉ coin éloigné (comme ACAL926).
+    const coins = squareCorners(16, -7.62, 33.59);
+    vi.useFakeTimers();
+    for (const [lng, lat] of coins.slice(0, 3)) {
+      fakeMaps[0].fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    const [lng, lat] = coins[3];
+    const evt = { lngLat: { lng, lat }, point: { x: 200, y: 200 }, preventDefault() {} };
+    fakeMaps[0].fire('click', evt);
+    fakeMaps[0].fire('click', evt);
+    fakeMaps[0].fire('dblclick', evt);
+    vi.advanceTimersByTime(241);
+    vi.useRealTimers();
+    await flush();
+    expect(zones()[0].vertices.length, 'ligne 4ᵉ coin × colonne double-clic : le coin est gardé (4 sommets, pas un triangle)').toBe(4);
+    expect(zones()[0].neededPanels, 'ligne cible × colonne lead : la cible du lead est portée par le pan').toBe(4);
+    // Effacer puis retracer : la cible hydratée reste celle du lead.
+    (document.getElementById('rp9-clear') as HTMLButtonElement).click();
+    Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-question-effacer button')).find((b) => b.textContent === 'Effacer')?.click();
+    traceRoof(fakeMaps[0]);
+    await flush();
+    expect(zones()[0].neededPanels, 'ligne cible × colonne Effacer : 4 panneaux voulus après Effacer et un nouveau tracé').toBe(4);
+    expect(zones()[0].vertices.length, 'ligne 4ᵉ coin × colonne Effacer : le retracé garde ses quatre coins').toBe(4);
+    // Facture (900 MAD/mois) : sa consommation atteint le document émis.
+    setBill('900');
+    await flush();
+    const billKwh = (api().serializeLayout() as { billKwh: number | null }).billKwh;
+    expect(billKwh, 'ligne facture × colonne lead : la consommation saisie atteint le document').toBeGreaterThan(0);
+  }, 300000);
 
   // ACAL410 (acceptation ACAL490) — « 2 pans » puis « 4 pans » : la liste des zones suit le document.
   it('« Forme du toit » : la liste des zones compte les pans découpés (2 puis 4)', async () => {

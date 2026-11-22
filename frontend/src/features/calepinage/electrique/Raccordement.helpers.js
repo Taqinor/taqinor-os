@@ -98,6 +98,15 @@ export const CHAMPS = [
     texte: true,
     aide: 'Le contrat de raccordement ou la prescription du gestionnaire de réseau qui impose le plafond. Obligatoire dès qu’un plafond est saisi.',
   },
+  // ACAL1187 — des micro-onduleurs ne limitent pas l'injection d'eux-mêmes : le dispositif qui tient le plafond.
+  {
+    cle: 'dispositif_limitation_injection',
+    libelle: 'Dispositif qui limite l’injection',
+    unite: '',
+    texte: true,
+    expert: true,
+    aide: 'Obligatoire pour tenir un plafond sur des micro-onduleurs (passerelle, pince de mesure…). Laissez vide s’il n’y en a pas : rien n’est supposé.',
+  },
   // ACAL830 — « Limites imposées par le distributeur » (ACAL827-829) : section
   // repliée, niveau expert. Le kW converti du plafond en A est CELUI DU SERVEUR.
   {

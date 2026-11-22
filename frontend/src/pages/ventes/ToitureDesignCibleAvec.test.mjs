@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
   cibleActiveDuContexte,
+  contexteCalepinageVersPayload,
   contexteToDevisPayload,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 
@@ -96,4 +97,18 @@ test('QJR40 — rejoué : devis « Les deux » divergents → la cible 3D cible 
   // Contexte absent (garde `?.`) : jamais un crash, jamais une valeur inventée.
   assert.deepEqual(cibleActiveDuContexte(null), {})
   assert.deepEqual(cibleActiveDuContexte(undefined), {})
+})
+
+test('ACAL985 (K-SAISIE-PERDUE) — ligne facture × colonne lead : le payload porte la consommation du lead, jamais inventée', () => {
+  // Le lead à 900 MAD/mois (ACAL776) : la facture servie atteint le payload de l'atelier.
+  const avec = contexteCalepinageVersPayload({
+    calepinage: { titre: 'Villa' },
+    consommation_lead: { facture_mensuelle_mad: 900 },
+    cible: { panneaux: 4, source: 'lead' },
+  })
+  assert.equal(avec.factureMensuelleMad, 900, 'ligne facture × colonne lead : la facture du lead est perdue en route')
+  assert.equal(avec.cible.panneaux, 4, 'ligne cible × colonne lead : la cible du lead est perdue en route')
+  // Sans facture servie : null (rien d'inventé), pas 0.
+  const sans = contexteCalepinageVersPayload({ calepinage: { titre: 'Villa' }, cible: {} })
+  assert.equal(sans.factureMensuelleMad, null, 'ligne facture × colonne lead : sans facture servie, null — jamais 0')
 })

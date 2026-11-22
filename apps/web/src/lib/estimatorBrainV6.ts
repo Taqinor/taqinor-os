@@ -245,7 +245,7 @@ export const SOUTH_SPAN_STEP_DEG = 15;
 export const SOUTH_SPAN_HALF_DEG = 45;
 
 /** Inclinaisons Est-Ouest candidates (l'E-O joue déjà la densité). */
-const EW_TILTS = [10, 12, 15] as const;
+export const EW_TILTS = [10, 12, 15] as const; // ACAL928 — lu aussi par V7
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const norm360 = (a: number) => ((a % 360) + 360) % 360;

@@ -25,15 +25,30 @@ from core.ai.fournisseurs_claude import ClaudeVisionToitProvider
 from core.ai.registry import register_provider
 from core.ai.usage import register_usage_sink, unregister_usage_sink
 
-from ._m0_en_attente import affirmer_non_servies, sans
 from .test_api_liste import BaseApiCalepinage, url_detail
 
 REPONSE = json.loads((pathlib.Path(__file__).parent / 'fixtures' / 'detection_toit_reponse.json')
                      .read_text(encoding='utf-8'))
 CONTRAT = json.loads((pathlib.Path(__file__).resolve().parent.parent / 'contract_samples'
                       / 'calepinage_detection_toit.json').read_text(encoding='utf-8'))
-# ACAL530 : clé posée avant son producteur (ACAL1049), retirée par lui.
-EN_ATTENTE = {'propositions.obstacles': 'ACAL1049'}
+# ACAL1049 : la réponse enregistrée porte deux obstacles (sommets en fractions de l'image).
+OBSTACLES = [{'type': 'climatiseur', 'confiance': 0.7,
+              'sommets': [[0.2, 0.3], [0.25, 0.3], [0.25, 0.35], [0.2, 0.35]]},
+             {'type': 'lanterneau', 'confiance': 0.5,
+              'sommets': [[0.7, 0.4], [0.75, 0.4], [0.75, 0.45], [0.7, 0.45]]}]
+
+
+def _reponse_avec(obstacles):
+    """La réponse enregistrée, dont le texte du modèle porte ``obstacles`` en plus des pans."""
+    copie = json.loads(json.dumps(REPONSE))
+    objet = json.loads(copie['content'][0]['text'])
+    if obstacles is not None:
+        objet['obstacles'] = obstacles
+    copie['content'][0]['text'] = json.dumps(objet)
+    return copie
+
+
+REPONSE_OBSTACLES = _reponse_avec(OBSTACLES)
 EMPRISE = {'ouest': -7.6001, 'sud': 33.5699, 'est': -7.5997, 'nord': 33.5703}
 ENVOIS = []
 
@@ -44,7 +59,7 @@ class DoubleVisionToit(ClaudeVisionToitProvider):
 
     def _repondre(requete):
         ENVOIS.append(requete.content)
-        return httpx.Response(200, json=REPONSE)
+        return httpx.Response(200, json=REPONSE_OBSTACLES)
     transport = httpx.MockTransport(_repondre)
 
 
@@ -99,9 +114,7 @@ class DetectionToitTest(BaseApiCalepinage):
         self.assertEqual(sorted(reponse.data), sorted(CONTRAT['exemple']))
         self.assertEqual((reponse.data['provenance'], reponse.data['a_confirmer']), ('ia', True))
         propositions = reponse.data['propositions']
-        attendu = sans(CONTRAT['exemple'], EN_ATTENTE)['propositions']
-        self.assertEqual(sorted(propositions), sorted(attendu))
-        affirmer_non_servies(self, reponse.data, EN_ATTENTE)
+        self.assertEqual(sorted(propositions), sorted(CONTRAT['exemple']['propositions']))
         premier = propositions['pans'][0]
         self.assertEqual(sorted(premier), sorted(CONTRAT['exemple']['propositions']['pans'][0]))
         # Fraction (0.1, 0.2) : 0.1 de l'ouest vers l'est, 0.2 du nord vers le sud.
@@ -165,3 +178,37 @@ class DetectionToitTest(BaseApiCalepinage):
         self.assertEqual(self.api_autre.get(self.url).status_code, 404)
         self.assertEqual(self._poster(_png(), api=self.api_autre).status_code, 404)
         self.assertEqual(ENVOIS, [])
+
+    def _poster_avec(self, reponse):
+        DoubleVisionToit.transport = httpx.MockTransport(lambda r: httpx.Response(200, json=reponse))
+        self.addCleanup(setattr, DoubleVisionToit, 'transport',
+                        httpx.MockTransport(DoubleVisionToit.__dict__['_repondre']))
+        resultat = self._poster(_png())
+        self.assertEqual(resultat.status_code, 200, resultat.data)
+        return resultat.data['propositions']
+
+    @ACTIVE
+    def test_obstacles_rendus_projetes_comme_les_pans(self):
+        obstacles = self._poster_avec(REPONSE_OBSTACLES)['obstacles']
+        self.assertEqual([o['type'] for o in obstacles], ['climatiseur', 'lanterneau'])
+        self.assertEqual(sorted(obstacles[0]), sorted(CONTRAT['exemple']['propositions']['obstacles'][0]))
+        self.assertEqual(len(obstacles[0]['contour_lnglat']), 4)
+        self.assertAlmostEqual(obstacles[0]['contour_lnglat'][0][0], -7.6001 + 0.2 * 0.0004, places=9)
+        self.assertAlmostEqual(obstacles[0]['contour_lnglat'][0][1], 33.5703 - 0.3 * 0.0004, places=9)
+        self.assertEqual([o['confiance'] for o in obstacles], [0.7, 0.5])
+
+    @ACTIVE
+    def test_type_hors_atelier_ecarte_sans_perdre_le_reste(self):
+        piscine = {'type': 'piscine', 'confiance': 0.9,
+                   'sommets': [[0.1, 0.1], [0.2, 0.1], [0.2, 0.2]]}
+        with self.assertLogs('apps.calepinage.services.detection_toit', level='INFO') as journal:
+            propositions = self._poster_avec(_reponse_avec([OBSTACLES[0], piscine, OBSTACLES[1]]))
+        self.assertEqual([o['type'] for o in propositions['obstacles']], ['climatiseur', 'lanterneau'])
+        self.assertEqual(len(propositions['pans']), 2)
+        self.assertTrue(any('propositions.obstacles[1].type' in ligne for ligne in journal.output))
+
+    @ACTIVE
+    def test_sans_obstacle_liste_vide(self):
+        propositions = self._poster_avec(_reponse_avec(None))
+        self.assertEqual(propositions['obstacles'], [])
+        self.assertEqual(len(propositions['pans']), 2)
