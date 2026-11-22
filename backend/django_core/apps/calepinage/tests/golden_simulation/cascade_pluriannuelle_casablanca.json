@@ -3,7 +3,7 @@
   "tache": "CALX196",
   "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
   "produit_le": "2026-11-22",
-  "arbre_sha": "d257d5bd4951e2a3c411c20571336a05c196cafc",
+  "arbre_sha": "86833417eee104fe63e1c34dd1d46a9322c3b8cb",
   "fixture": "seriescalc_casablanca_sud_deux_annees.json",
   "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
   "fenetre_annees": "2019-2020",
@@ -128,6 +128,7 @@
     "mismatch_fabricant",
     "mismatch_ombrage",
     "diodes",
+    "optimiseur",
     "ohmique_dc",
     "mppt",
     "onduleur",
@@ -420,11 +421,25 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Étape non modélisée en v1 : PV*SOL assume 0,5 % de pertes de diodes, chiffre de leur logiciel et non du nôtre — aucun forfait n'est appliqué à sa place."
+     "motif_omission_non_compare": "Les diodes se calculent par sous-chaînes : il faut le nombre de sous-chaînes de la fiche (FicheTechnique.sous_chaines_par_module) et l'accès par bande (solarAccess.bandes). L'un des deux manque : aucun forfait n'est appliqué (PV*SOL assume 0,5 %, chiffre de leur logiciel et non du nôtre)."
+    },
+    {
+     "omise": true,
+     "rang": 18,
+     "etape": "optimiseur",
+     "libelle": "Optimiseurs de puissance",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 142.048,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Aucun optimiseur n'est déclaré (ni produit pour le document, ni module marqué) : aucune perte de conversion à compter."
     },
     {
      "omise": false,
-     "rang": 18,
+     "rang": 19,
      "etape": "ohmique_dc",
      "libelle": "Pertes ohmiques DC",
      "gain": false,
@@ -438,7 +453,7 @@
     },
     {
      "omise": true,
-     "rang": 19,
+     "rang": 20,
      "etape": "mppt",
      "libelle": "Fenêtre MPPT",
      "gain": false,
@@ -452,7 +467,7 @@
     },
     {
      "omise": false,
-     "rang": 20,
+     "rang": 21,
      "etape": "onduleur",
      "libelle": "Rendement onduleur",
      "gain": false,
@@ -466,7 +481,7 @@
     },
     {
      "omise": true,
-     "rang": 21,
+     "rang": 22,
      "etape": "ecretage",
      "libelle": "Écrêtage",
      "gain": false,
@@ -480,7 +495,7 @@
     },
     {
      "omise": false,
-     "rang": 22,
+     "rang": 23,
      "etape": "ohmique_ac",
      "libelle": "Pertes ohmiques AC",
      "gain": false,
@@ -494,7 +509,7 @@
     },
     {
      "omise": true,
-     "rang": 23,
+     "rang": 24,
      "etape": "transformateur",
      "libelle": "Transformateur",
      "gain": false,
@@ -508,7 +523,7 @@
     },
     {
      "omise": true,
-     "rang": 24,
+     "rang": 25,
      "etape": "auxiliaires",
      "libelle": "Auxiliaires",
      "gain": false,
@@ -522,7 +537,7 @@
     },
     {
      "omise": false,
-     "rang": 25,
+     "rang": 26,
      "etape": "indisponibilite",
      "libelle": "Indisponibilité",
      "gain": false,

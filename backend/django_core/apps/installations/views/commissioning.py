@@ -160,7 +160,6 @@ class CommissioningRecordViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin,
             status=status.HTTP_201_CREATED)
 
     @oa.extend_schema(
-        operation_id='installations_recettes_commissioning_valeurs_attendues',
         parameters=[oa.qfv('temperature_c'), oa.qfv('eclairement_w_m2')],
         responses={200: OpenApiResponse(description=(
             "ACAL667 — valeurs attendues par chaîne du calepinage retenu "

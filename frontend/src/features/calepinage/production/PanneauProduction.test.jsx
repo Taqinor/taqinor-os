@@ -8,7 +8,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { exempleContrat, fichierContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { NON_PUBLIEE, chiffresSansGrandeur, remplirPhrase } from '../commun/useExplications'
 
 /* CALX64 — le panneau monte désormais `TapisHoraire`, qui relit la série par
    la porte d'export (CAL144/CALX6) : la doublure doit porter `exportCsv`,
@@ -17,7 +20,10 @@ import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractS
    fichier n'a pas à juger (il a son propre test). */
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
-    calepinages: { resultat: vi.fn(), exportCsv: vi.fn(), simuler: vi.fn(), diagrammeEnergie: vi.fn() },
+    calepinages: {
+      resultat: vi.fn(), exportCsv: vi.fn(), simuler: vi.fn(), diagrammeEnergie: vi.fn(),
+      explications: vi.fn(), // ACAL880 — le registre (geste de chaque poste)
+    },
     moteur: { resultat: vi.fn() },
   },
 }))
@@ -146,7 +152,19 @@ describe('PanneauProduction (CAL236)', () => {
     // exemple_vide : PAN-A porte 12 modules (un vrai nombre) et une production null.
     const ligne = within(parPan).getByText('PAN-A').closest('tr')
     expect(within(ligne).getByText('12')).toBeInTheDocument()
-    expect(within(ligne).getAllByText('non calculée').length).toBeGreaterThan(0)
+    // ACAL970 — « non calculée » passe en infobulle d'un « — ».
+    expect(within(ligne).getAllByTitle('non calculée').length).toBeGreaterThan(0)
+  })
+
+  it('ACAL970 — avant simulation le tableau par pan écrit « — » et chaque cellule a un espacement', async () => {
+    servir('exemple_vide')
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    const parPan = screen.getByTestId('cal236-par-pan')
+    for (const cellule of parPan.querySelectorAll('th, td')) expect(cellule).toHaveClass('px-3')
+    const ligne = within(parPan).getByText('PAN-A').closest('tr')
+    expect(within(ligne).queryByText('non calculée')).toBeNull()
+    for (const absent of within(ligne).getAllByTitle('non calculée')) expect(absent).toHaveTextContent(/^—$/)
   })
 
   it('erreur réseau : message français, aucune valeur inventée', async () => {
@@ -275,8 +293,26 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
     const refus = await screen.findByTestId('calx48-refus')
     expect(refus).toHaveTextContent('Aucun mode météo choisi pour ce document.')
     expect(refus).not.toHaveTextContent('La simulation a échoué.')
+    // ACAL940 — le lien ouvre le CHAMP du réglage nommé (ancre calx69-<clé>).
     expect(within(refus).getByTestId('calx48-lien-reglages'))
-      .toHaveAttribute('href', '/calepinage/reglages')
+      .toHaveAttribute('href', '/calepinage/reglages#calx69-mode_meteo')
+  })
+
+  it('ACAL940 — un seul 409 : 3 lignes, deux liens vers leur champ de réglage', async () => {
+    const refusManquants = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_manquants')
+    calepinageApi.calepinages.resultat.mockResolvedValue(vide())
+    calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: refusManquants } })
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+
+    const lignes = await screen.findAllByTestId('acal940-manquant')
+    expect(lignes).toHaveLength(3)
+    refusManquants.manquants.forEach((m, i) => expect(lignes[i]).toHaveTextContent(m.motif))
+    expect(screen.getAllByTestId('acal940-lien-reglage').map((a) => a.getAttribute('href'))).toEqual([
+      '/calepinage/reglages#calx69-mode_meteo', '/calepinage/reglages#calx69-fenetre_annees',
+    ])
   })
 
   it('refus 400 de la porte (fuseau) : motif nommé du serveur + lien vers les réglages', async () => {
@@ -939,5 +975,91 @@ describe('PanneauProduction — sur la durée (ACAL710)', () => {
     rendre()
     await screen.findByTestId('cal236-panneau')
     expect(screen.queryByTestId('acal710-ligne')).toBeNull()
+  })
+})
+
+/* ACAL873 — le « ? » de la famille PRODUCTION : chaque tuile, chaque mois et
+   l'écart PVGIS portent leur grandeur ; la phrase du registre insère la valeur
+   servie, jamais un chiffre écrit. */
+describe('PanneauProduction — « ? » de la famille production (ACAL873)', () => {
+  const REGISTRE = JSON.parse(readFileSync(
+    join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8')).entrees
+  const entree = (cle) => REGISTRE.find((e) => e.cle === cle)
+  const TUILES = ['production.p50_kwh', 'production.kwc', 'production.productible', 'production.pertes_totales',
+    'production.p75_kwh', 'production.p90_kwh', 'production.p95_kwh', 'production.variabilite',
+    'production.performance_ratio']
+
+  it('chaque tuile a son « ? » et sa phrase avec la valeur servie', async () => {
+    servir('exemple')
+    rendre()
+    const tuiles = await screen.findByTestId('cal236-total')
+    const grandeurs = [...tuiles.querySelectorAll('[data-grandeur]')].map((b) => b.getAttribute('data-grandeur'))
+    expect(grandeurs).toEqual(TUILES)
+    expect(chiffresSansGrandeur(tuiles)).toEqual([])
+    const data = exempleContrat('calepinage', 'calepinage_resultat', 'exemple')
+    const p90 = remplirPhrase(entree('production.p90_kwh'), data).replace(/\s/g, ' ')
+    expect(p90).toContain('neuf années sur dix')
+    expect(p90).toContain('11 900 kWh')
+    expect(entree('production.p90_kwh').source).toContain('DEPASSEMENTS')
+    expect(screen.getByTestId('cal236-mensuel').querySelectorAll('[data-grandeur="production.mensuel"]'))
+      .toHaveLength(data.production.mensuel.length)
+    expect(screen.getByTestId('acal854-ecart-pvgis').querySelector('[data-grandeur="production.ecart_pvgis"]'))
+      .not.toBeNull()
+  })
+
+  it('valeur absente ⇒ « valeur non publiée », jamais 0', () => {
+    const phrase = remplirPhrase(entree('production.p90_kwh'), { production: { total: { p90_kwh: null } } })
+    expect(phrase).toContain(NON_PUBLIEE)
+    expect(phrase).not.toMatch(/\b0 kWh/)
+  })
+})
+
+/* ACAL880 — « Pourquoi ce chiffre ? » : les trois plus gros postes CALCULÉS de
+   la cascade servie (`calepinage_pertes_cascade.json`), avec le geste du
+   registre ; niveau expert. Mutant : classer par rang ⇒ ordre faux, échec. */
+describe('PanneauProduction — Pourquoi ce chiffre ? (ACAL880)', () => {
+  const REGISTRE = JSON.parse(readFileSync(
+    join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8')).entrees
+  const CASCADE = exempleContrat('calepinage', 'calepinage_pertes_cascade').cascade
+  const servirAvecCascade = (variante = 'exemple') => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', variante)
+    if (reponse.data.cascade) reponse.data.cascade = CASCADE
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+  }
+  beforeEach(() => {
+    calepinageApi.calepinages.explications.mockResolvedValue({ data: { entrees: REGISTRE } })
+    localStorage.setItem(CLE_EXPERT, '1')
+  })
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+
+  it('trois plus gros postes calculés, triés par perte, avec leur geste', async () => {
+    servirAvecCascade()
+    rendre()
+    fireEvent.click(await screen.findByTestId('acal880-bouton'))
+    const postes = within(screen.getByTestId('acal880-postes')).getAllByRole('listitem')
+    expect(postes.map((li) => li.getAttribute('data-testid')))
+      .toEqual(['acal880-poste-thermique', 'acal880-poste-ohmique_dc', 'acal880-poste-irradiation_plan'])
+    const thermique = CASCADE.etapes.find((e) => e.etape === 'thermique')
+    expect(postes[0]).toHaveTextContent(thermique.libelle)
+    expect(postes[0].textContent.replace(/\s/g, ' ')).toContain('8,0 %')
+    expect(postes[0]).toHaveTextContent(thermique.source)
+    const geste = REGISTRE.find((e) => e.cle === 'pertes.etape').geste
+    expect(await within(postes[0]).findByText(geste)).toBeInTheDocument()
+  })
+
+  it('étape omise et étape de gain exclues', async () => {
+    servirAvecCascade()
+    rendre()
+    fireEvent.click(await screen.findByTestId('acal880-bouton'))
+    for (const etape of ['bifacial', 'spectral', 'indisponibilite']) {
+      expect(screen.queryByTestId(`acal880-poste-${etape}`)).toBeNull()
+    }
+  })
+
+  it('non simulé ⇒ pas de bouton', async () => {
+    servirAvecCascade('exemple_vide')
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal880-bouton')).toBeNull()
   })
 })

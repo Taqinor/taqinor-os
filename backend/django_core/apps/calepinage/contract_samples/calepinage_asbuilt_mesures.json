@@ -1,0 +1,52 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/ecart-mesures/",
+  "pourquoi": "ACAL846 — 12 consommations mensuelles MESURÉES (saisies, jamais enregistrées) comparées à la consommation simulée du calepinage, ramenée à l'année moyenne de la fenêtre météo (resultat.consommation.profil_mensuel ÷ production.total.annees_fenetre) ; écart en % au dixième, null quand le simulé est nul ou la mesure absente. L'eau est MESURÉE seulement (index m³ du SAV par apps.sav.selectors_releves.volumes_mensuels_du_devis) : les m³ simulés ne sont enregistrés nulle part. Garde calepinage_approuver ; kwh[i] négatif ou illisible : 409 qui nomme kwh[i]. Producteur : services/asbuilt.py::ecart_mesures_du_calepinage ; affirmé par apps/calepinage/tests/test_calx366_pose_reelle.py ; écran : ACAL847.",
+  "corps": {
+    "kwh": [850, 720, 760, 650, 700, 820, 1010, 990, 760, 700, 690, null],
+    "annee": 2025
+  },
+  "exemple": {
+    "annee": 2025,
+    "consommation": {
+      "lignes": [
+        {"mois": 1, "simule_kwh": 820.0, "mesure_kwh": 850.0, "ecart_pct": 3.7},
+        {"mois": 2, "simule_kwh": 760.0, "mesure_kwh": 720.0, "ecart_pct": -5.3},
+        {"mois": 3, "simule_kwh": 740.0, "mesure_kwh": 760.0, "ecart_pct": 2.7},
+        {"mois": 4, "simule_kwh": 680.0, "mesure_kwh": 650.0, "ecart_pct": -4.4},
+        {"mois": 5, "simule_kwh": 700.0, "mesure_kwh": 700.0, "ecart_pct": 0.0},
+        {"mois": 6, "simule_kwh": 800.0, "mesure_kwh": 820.0, "ecart_pct": 2.5},
+        {"mois": 7, "simule_kwh": 950.0, "mesure_kwh": 1010.0, "ecart_pct": 6.3},
+        {"mois": 8, "simule_kwh": 980.0, "mesure_kwh": 990.0, "ecart_pct": 1.0},
+        {"mois": 9, "simule_kwh": 750.0, "mesure_kwh": 760.0, "ecart_pct": 1.3},
+        {"mois": 10, "simule_kwh": 690.0, "mesure_kwh": 700.0, "ecart_pct": 1.4},
+        {"mois": 11, "simule_kwh": 710.0, "mesure_kwh": 690.0, "ecart_pct": -2.8},
+        {"mois": 12, "simule_kwh": 790.0, "mesure_kwh": null, "ecart_pct": null}
+      ],
+      "total_ecart_pct": 0.8,
+      "motif": null
+    },
+    "eau": {
+      "m3_mesures": [null, null, null, null, null, null, null, null, null, null, null, null],
+      "simule_m3": null,
+      "motif": "les volumes d'eau simulés ne sont pas enregistrés ; aucun devis lié à ce calepinage"
+    },
+    "mention": "Comparaison indicative, aucun engagement de garantie"
+  },
+  "resultat_simule": {
+    "consommation": {"profil_mensuel": [
+      {"mois": 1, "kwh": 1640.0}, {"mois": 2, "kwh": 1520.0}, {"mois": 3, "kwh": 1480.0},
+      {"mois": 4, "kwh": 1360.0}, {"mois": 5, "kwh": 1400.0}, {"mois": 6, "kwh": 1600.0},
+      {"mois": 7, "kwh": 1900.0}, {"mois": 8, "kwh": 1960.0}, {"mois": 9, "kwh": 1500.0},
+      {"mois": 10, "kwh": 1380.0}, {"mois": 11, "kwh": 1420.0}, {"mois": 12, "kwh": 1580.0}
+    ]},
+    "production": {"total": {"annees_fenetre": 2}}
+  },
+  "exemple_sans_simulation": {
+    "lignes": [],
+    "total_ecart_pct": null,
+    "motif": "lancez la simulation"
+  },
+  "refus_409_kwh": {
+    "kwh[2]": "« kwh[2] » doit être ≥ 0 (reçu : -5)."
+  }
+}

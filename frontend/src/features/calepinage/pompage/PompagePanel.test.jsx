@@ -26,8 +26,9 @@ const RESULTAT_VIDE = exempleContrat('calepinage', 'calepinage_pompage',
   'exemple_vide')
 
 const pompage = vi.fn()
+const explications = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { pompage: (...a) => pompage(...a) } },
+  default: { calepinages: { pompage: (...a) => pompage(...a), explications: (...a) => explications(...a) } },
 }))
 
 const { default: PompagePanel } = await import('./PompagePanel')
@@ -466,5 +467,45 @@ describe('AGR125 — la HMT calculée comme au devis (pertes singulières, press
     expect(await screen.findByTestId('cal-pompage-erreur-hmt_saisie'))
       .toHaveTextContent('manquant : pertes singulières, pression de service')
     expect(screen.getByTestId('cal-pompage-bandeau')).toBeInTheDocument()
+  })
+})
+describe('ACAL877 — le « ? » des grandeurs du pompage', () => {
+  const servirRegistre = async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { fichierContrat } = await import('../../../test/fixtures/contractSamples')
+    const registre = JSON.parse(readFileSync(
+      join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8')).entrees
+    explications.mockResolvedValue({ data: { entrees: registre } })
+    return registre
+  }
+
+  it('chaque grandeur a son « ? » ; le débit à la HMT cite la valeur servie', async () => {
+    const userEvent = (await import('@testing-library/user-event')).default
+    const { remplirPhrase } = await import('../commun/useExplications')
+    const registre = await servirRegistre()
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    await screen.findByTestId('cal-pompage-hmt')
+    for (const cle of ['hmt', 'debit_hmt', 'pompe', 'variateur', 'autonomie', 'source_irradiation',
+      'm3_mensuels', 'couverture']) {
+      expect(document.querySelector(`[data-grandeur="pompage.${cle}"]`), cle).not.toBeNull()
+    }
+    await userEvent.click(document.querySelector('[data-grandeur="pompage.debit_hmt"]'))
+    const phrase = remplirPhrase(registre.find((e) => e.cle === 'pompage.debit_hmt'), RESULTAT)
+    expect(phrase).toContain('Débit lu sur la courbe')
+    expect(phrase).toContain('8,2 m³/h')
+    expect(await screen.findByText(phrase)).toBeInTheDocument()
+  })
+
+  it('pompe sans courbe : la phrase dit pourquoi les volumes sont omis', async () => {
+    await servirRegistre()
+    pompage.mockResolvedValue({ data: RESULTAT_VIDE })
+    rendre()
+    calculer()
+    const absent = await screen.findByTestId('cal-pompage-volumes-absents')
+    expect(absent.querySelector('[data-grandeur="pompage.volumes_omis"]')).not.toBeNull()
+    expect(document.querySelector('[data-grandeur="pompage.m3_mensuels"]')).toBeNull()
   })
 })

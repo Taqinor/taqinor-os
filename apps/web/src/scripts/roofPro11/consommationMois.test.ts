@@ -5,13 +5,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { racineDepot } from './harnaisAtelier';
-import { corpsDepuisLignes, htmlBarres, monterGrilleFactures, type MoisPropose } from './consommationMois';
+import { corpsDepuisLignes, htmlBarres, monterGrilleFactures, MOTIF_LECTURE_VIDE, type LectureFacture, type MoisPropose } from './consommationMois';
 
 const CONTRAT = JSON.parse(readFileSync(join(
   racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples',
   'calepinage_consommation_proposee.json',
 ), 'utf8')) as Record<string, { mois: MoisPropose[] }>;
 const MOIS = CONTRAT.exemple_factures_mois.mois;
+const PHOTO = JSON.parse(readFileSync(join(
+  racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples',
+  'calepinage_consommation_photo_facture.json',
+), 'utf8')) as Record<string, LectureFacture>;
 
 afterEach(() => { vi.useRealTimers(); document.body.innerHTML = ''; });
 
@@ -83,5 +87,68 @@ describe('ACAL837 — la grille', () => {
     expect(refus.hidden).toBe(false);
     expect(refus.textContent).toBe('Cette facture est trop basse.');
     expect(hote.querySelector<HTMLElement>('[data-cons-mois-ligne="7"] [data-cons-mois-refus]')!.hidden).toBe(true);
+  });
+});
+
+describe('ACAL840 — lire une photo de facture', () => {
+  const attendre = () => new Promise((r) => setTimeout(r, 0));
+  function monterPhoto(disponible: { disponible: boolean; motif?: string | null }, lecture: LectureFacture) {
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    const lire = vi.fn(async () => lecture);
+    monterGrilleFactures(hote, {
+      lancer: vi.fn(), classe: () => '', ecouter: () => undefined,
+      lireFacture: { disponible: async () => disponible, lire },
+    });
+    return { hote, lire };
+  }
+  const choisirPhoto = async (hote: HTMLElement) => {
+    const champ = hote.querySelector<HTMLInputElement>('[data-cons-photo-fichier]')!;
+    Object.defineProperty(champ, 'files', { value: [new File(['x'], 'facture.jpg')] });
+    champ.dispatchEvent(new Event('change', { bubbles: true }));
+    await attendre();
+  };
+
+  it('bouton absent sans disponibilité : la raison seule, en petit texte', async () => {
+    const { hote } = monterPhoto(PHOTO.exemple_indisponible, PHOTO.exemple_indisponible);
+    await attendre();
+    expect(hote.querySelector('[data-cons-photo-fichier]')).toBeNull();
+    expect(hote.querySelector('[data-cons-photo-message]')?.textContent).toBe(PHOTO.exemple_indisponible.motif);
+  });
+
+  it('sans option fournie : aucun bloc photo', () => {
+    const hote = document.createElement('div');
+    monterGrilleFactures(hote, { lancer: vi.fn(), classe: () => '', ecouter: () => undefined });
+    expect(hote.querySelector('[data-cons-photo]')).toBeNull();
+  });
+
+  it('une ligne gardée remplit janvier en kWh (le mois est choisi, le kWh lu)', async () => {
+    const { hote } = monterPhoto(PHOTO.exemple_disponibilite, PHOTO.exemple);
+    await attendre();
+    await choisirPhoto(hote);
+    const ligne = hote.querySelector<HTMLElement>('[data-cons-photo-ligne]')!;
+    expect(ligne.querySelector<HTMLInputElement>('[data-cons-photo-kwh]')!.value).toBe('412');
+    // « Garder » sans mois : refus sous le champ, la grille reste vide.
+    ligne.querySelector<HTMLElement>('[data-cons-photo-garder]')!.click();
+    expect(ligne.querySelector<HTMLElement>('[data-cons-photo-refus]')!.textContent).toContain('Choisissez le mois');
+    expect(hote.querySelector<HTMLInputElement>('[data-cons-mois-ligne="1"] [data-cons-mois-valeur]')!.value).toBe('');
+    const choix = ligne.querySelector<HTMLSelectElement>('[data-cons-photo-mois]')!;
+    choix.value = '1';
+    ligne.querySelector<HTMLElement>('[data-cons-photo-garder]')!.click();
+    expect(hote.querySelector<HTMLInputElement>('[data-cons-mois-ligne="1"] [data-cons-mois-valeur]')!.value).toBe('412');
+    expect(hote.querySelector('[data-cons-photo-ligne]')).toBeNull();
+  });
+
+  it('« Ignorer » retire la ligne sans rien remplir ; lecture vide : message de repli', async () => {
+    const { hote } = monterPhoto(PHOTO.exemple_disponibilite, PHOTO.exemple);
+    await attendre();
+    await choisirPhoto(hote);
+    hote.querySelector<HTMLElement>('[data-cons-photo-ignorer]')!.click();
+    expect(hote.querySelector('[data-cons-photo-ligne]')).toBeNull();
+    expect(hote.querySelector<HTMLInputElement>('[data-cons-mois-ligne="1"] [data-cons-mois-valeur]')!.value).toBe('');
+    const vide = monterPhoto(PHOTO.exemple_disponibilite, { disponible: true, motif: null, lignes: [] });
+    await attendre();
+    await choisirPhoto(vide.hote);
+    expect(vide.hote.querySelector('[data-cons-photo-message]')?.textContent).toBe(MOTIF_LECTURE_VIDE);
   });
 });

@@ -157,6 +157,8 @@ export function contexteCalepinageVersPayload(contexte) {
     // (`neededPanels` du pan) prime à la réouverture.
     cibleVendue: contexte.cible?.source === 'devis',
     fullName: titre || undefined,
+    // ACAL777 — la facture mensuelle du lead servie (ACAL776) : repli d'AFFICHAGE des cartes ; `null` = rien inventé.
+    factureMensuelleMad: contexte.consommation_lead?.facture_mensuelle_mad ?? null,
   }
 }
 

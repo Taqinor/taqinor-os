@@ -214,6 +214,52 @@ class ContratTest(_Base):
         self.assert_forme_du_contrat(reponse.data, 'exemple_vide')
 
 
+class ConsommationInconnueTest(_Base):
+    """ACAL976 (D-ACAL-40) — sans consommation connue, l'économie du moteur
+    n'est qu'une estimation forfaitaire : ni économie, ni TRI, ni retour."""
+
+    CLES_CHIFFREES = ('tri_pct', 'retour_ans', 'van_mad', 'retour_actualise_ans')
+
+    def _bloc(self, **donnees):
+        with mock.patch(CONSTRUCTEUR,
+                        return_value=dict(DONNEES_REFERENCE, **donnees)):
+            return economie_pour_devis(self.devis.pk, self.company,
+                                       reglages=REGLAGES_REFERENCE)
+
+    def test_cle_savings_model_absente_rien_n_est_omis(self):
+        reference = self._bloc()
+        bloc = self._bloc(conso_annuelle_kwh=None)
+        self.assertIn('economie_annee1_mad',
+                      {h['cle'] for h in bloc['hypotheses']})
+        for cle in self.CLES_CHIFFREES + ('flux',):
+            self.assertEqual(bloc[cle], reference[cle], cle)
+
+    def test_sans_consommation_economie_tri_et_retour_omis(self):
+        bloc = self._bloc(savings_model='estimation', conso_annuelle_kwh=None,
+                          savings_estimated=True)
+        self.assertNotIn('economie_annee1_mad',
+                         {h['cle'] for h in bloc['hypotheses']})
+        omises = [o for o in bloc['omissions']
+                  if o['cle'] == 'economie_annee1_mad']
+        self.assertEqual(len(omises), 1, bloc['omissions'])
+        self.assertEqual(
+            omises[0]['motif'],
+            'consommation inconnue : renseignez la facture du lead avant de '
+            'lire le TRI et le retour')
+        self.assertEqual(bloc['flux'], [])
+        motifs = {o['cle']: o['motif'] for o in bloc['omissions']}
+        for cle in self.CLES_CHIFFREES:
+            self.assertIsNone(bloc[cle], cle)
+            self.assertIn('economie_annee1_mad', motifs.get(cle, ''), cle)
+
+    def test_avec_consommation_les_chiffres_ne_changent_pas(self):
+        reference = self._bloc()
+        bloc = self._bloc(savings_model='estimation', conso_annuelle_kwh=4800)
+        self.assertIsNotNone(bloc['tri_pct'])
+        for cle in self.CLES_CHIFFREES + ('flux',):
+            self.assertEqual(bloc[cle], reference[cle], cle)
+
+
 class VocabulaireTest(_Base):
     def test_aucune_cle_prix_cout_marge(self):
         with mock.patch(CONSTRUCTEUR, return_value=DONNEES_REFERENCE):

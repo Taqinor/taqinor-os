@@ -1222,7 +1222,8 @@ def affectation(conception, *, imposee=None):
 MOTIFS_AFFECTATION = ('rangee', 'u')
 
 #: ACAL642 — deux centres dont l'ordonnée diffère de moins que ceci sont de la
-#: même rangée : tolérance de bruit de calcul flottant (1 mm), pas une règle.
+#: même rangée : convention de calcul (tolérance de bruit flottant, 1 mm),
+#: jamais un seuil électrique ni une règle de pose.
 _TOLERANCE_RANGEE_M = 1e-3
 
 

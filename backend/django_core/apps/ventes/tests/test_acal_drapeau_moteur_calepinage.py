@@ -105,3 +105,56 @@ class CommandeDryRun(TestCase):
         self.assertFalse(ligne['recalculable'])
         self.assertIsNone(ligne['compte_moteur'])
         self.assertIn('jamais recalculé', ligne['motif'])
+
+    def test_acal1173_calepinages_dessin_vs_moteur_sans_ecrire(self):
+        """``--calepinages`` : chaque calepinage actif (dessiné, sans
+        géométrie, lié à un devis ENVOYÉ) est comparé au DESSIN, jamais aux
+        lignes du devis ; rien n'est écrit, le drapeau reste tel quel."""
+        from apps.crm.models import Lead
+        from apps.ventes.domain.geometrie import compte_moteur_du_layout
+        from apps.ventes.tests.test_calepinage_bascule import (
+            layout_avec_geometrie, layout_sans_geometrie)
+
+        lead = Lead.objects.create(company=self.company, nom='Toiture 1173')
+        dessine = Calepinage.objects.create(
+            company=self.company, lead_id=lead.pk, titre='Dessiné',
+            roof_layout=layout_avec_geometrie())
+        nu = Calepinage.objects.create(
+            company=self.company, client=self.client_obj, titre='Nu',
+            roof_layout=layout_sans_geometrie())
+        envoye = self._devis('DEV-A1173-01', statut='envoye')  # 10 lignes, dessin 12
+        Calepinage.objects.filter(devis=envoye).update(roof_layout=layout_avec_geometrie())
+        lie = Calepinage.objects.get(devis=envoye)
+        drapeau = moteur_calepinage_actif()
+        avant = (list(Calepinage.objects.order_by('pk').values_list('pk', 'roof_layout', 'layout_hash')),
+                 list(LigneDevis.objects.order_by('pk').values_list('pk', 'quantite')),
+                 list(Devis.objects.order_by('pk').values_list('pk', 'statut')))
+
+        resultat = self._lancer('--calepinages', '--company', self.company.slug)
+
+        self.assertTrue(resultat['lecture_seule'])
+        lignes = {li['calepinage']: li for li in resultat['calepinages']}
+        self.assertEqual(set(lignes), {dessine.pk, nu.pk, lie.pk})
+        moteur = compte_moteur_du_layout(layout_avec_geometrie(), company=self.company)['modules']
+        for cal, lead_id in ((dessine, lead.pk), (lie, None)):
+            ligne = lignes[cal.pk]
+            self.assertEqual(ligne['lead'], lead_id)
+            self.assertEqual(ligne['dessin'], 12)  # le dessin, pas les 10 lignes du devis
+            self.assertEqual(ligne['moteur'], moteur)
+            self.assertEqual(ligne['ecart'], moteur - 12)
+            self.assertEqual(ligne['motif'], '')
+        self.assertIsNone(lignes[nu.pk]['moteur'])
+        self.assertIsNone(lignes[nu.pk]['ecart'])
+        self.assertEqual(lignes[nu.pk]['motif'], 'aucune géométrie exploitable')
+        self.assertEqual(resultat['total'], {'calepinages': 3, 'ecart': 2 * (moteur - 12)})
+        apres = (list(Calepinage.objects.order_by('pk').values_list('pk', 'roof_layout', 'layout_hash')),
+                 list(LigneDevis.objects.order_by('pk').values_list('pk', 'quantite')),
+                 list(Devis.objects.order_by('pk').values_list('pk', 'statut')))
+        self.assertEqual(avant, apres)
+        self.assertEqual(moteur_calepinage_actif(), drapeau)
+
+        texte = StringIO()
+        call_command('comparer_compte_moteur_calepinage', '--calepinages',
+                     '--company', self.company.slug, stdout=texte)
+        self.assertIn('Calepinages comparés : 3', texte.getvalue())
+        self.assertIn('aucune géométrie exploitable', texte.getvalue())

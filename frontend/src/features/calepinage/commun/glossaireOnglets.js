@@ -44,4 +44,5 @@ export const GLOSSAIRE_ONGLETS = {
   photos: 'Ajouter et caler les photos du site.',
   optimiser: 'Comparer des inclinaisons, orientations et ratios DC/AC sur un pan, puis appliquer le meilleur.',
   'detection-toit': 'Faire proposer un contour de toit à partir d’une image, à confirmer avant de le poser.',
+  'consommation-mesuree': 'Comparer 12 consommations mesurées à la consommation simulée (droit d’approbation).',
 }

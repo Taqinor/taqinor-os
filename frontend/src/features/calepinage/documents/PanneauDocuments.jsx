@@ -9,6 +9,7 @@ import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
 import { useModeExpert } from '../atelier/modeExpert'
 import EntreeFichierJson from '../commun/EntreeFichierJson'
 import { refusServeur } from '../commun/refusServeur'
+import Pourquoi from '../commun/Pourquoi'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
 
 /* ============================================================================
@@ -250,7 +251,7 @@ function ResultatPost({ resultat }) {
       {resultat.pieces?.length > 0 && (
         <ul className="mt-1 list-disc pl-4 text-muted-foreground" data-testid="cal-doc-post-pieces">
           {resultat.pieces.map((piece) => (
-            <li key={piece.code}>{piece.libelle} — {piece.pages} p.</li>
+            <li key={piece.code}>{piece.libelle} — {piece.pages} p.<Pourquoi cle="documents.pages" /></li>
           ))}
         </ul>
       )}

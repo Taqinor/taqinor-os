@@ -652,3 +652,91 @@ def version_depuis_ecarts(calepinage, user=None):
                                   meme_empreinte_admise=True)
     journaliser_version_pose(calepinage, version=version, user=auteur)
     return version, True
+
+
+# ── ACAL846 — l'énergie MESURÉE comparée à la simulée ─────────────────────
+
+MENTION_ECART_MESURES = 'Comparaison indicative, aucun engagement de garantie'
+MOTIF_LANCER_SIMULATION = 'lancez la simulation'
+#: ACAL846 — les m³ simulés ne sont enregistrés nulle part (pompage lu à la
+#: demande) : l'eau est MESURÉE seulement.
+MOTIF_EAU_SIMULEE = "les volumes d'eau simulés ne sont pas enregistrés"
+MOTIF_EAU_SANS_DEVIS = 'aucun devis lié à ce calepinage'
+
+
+def _pct(mesure, simule):
+    """(mesure − simulé) ÷ simulé × 100 au dixième ; ``None`` sans l'un des deux."""
+    if mesure is None or not simule:
+        return None
+    return round((mesure - simule) / simule * 100, 1)
+
+
+def _mesures_kwh(brut):
+    """Les 12 kWh saisis (``None`` = mois non saisi) ; refus nommant ``kwh[i]``."""
+    from .valeurs import nombre_fini
+
+    if not isinstance(brut, (list, tuple)) or len(brut) != 12:
+        raise PoseRefusee('Saisissez douze consommations mensuelles (kWh), '
+                          'une par mois.', 'kwh')
+    return [nombre_fini(valeur, f'kwh[{rang}]', mini=0, erreur=PoseRefusee)
+            for rang, valeur in enumerate(brut)]
+
+
+def _ecart_consommation(resultat, mesures):
+    """Le bloc ``consommation`` — PUR. Le profil simulé somme TOUTE la fenêtre
+    météo : il est ramené à l'année moyenne (comme ``autoconsommation``)."""
+    from .valeurs import nombre
+
+    resultat = resultat if isinstance(resultat, dict) else {}
+    profil = {m.get('mois'): nombre(m.get('kwh'))
+              for m in (resultat.get('consommation') or {}).get('profil_mensuel') or ()
+              if isinstance(m, dict)}
+    if not profil:
+        return {'lignes': [], 'total_ecart_pct': None,
+                'motif': MOTIF_LANCER_SIMULATION}
+    total = ((resultat.get('production') or {}).get('total') or {})
+    annees = nombre(total.get('annees_fenetre'))
+    annees = annees if annees and annees >= 1 else 1
+    lignes = []
+    for mois, mesure in zip(range(1, 13), mesures):
+        brut = profil.get(mois)
+        simule = None if brut is None else round(brut / annees, 2)
+        lignes.append({'mois': mois, 'simule_kwh': simule,
+                       'mesure_kwh': mesure, 'ecart_pct': _pct(mesure, simule)})
+    comparables = [ligne for ligne in lignes if ligne['ecart_pct'] is not None]
+    return {'lignes': lignes,
+            'total_ecart_pct': _pct(
+                sum(ligne['mesure_kwh'] for ligne in comparables) if comparables else None,
+                sum(ligne['simule_kwh'] for ligne in comparables)),
+            'motif': None}
+
+
+def ecart_mesures_du_calepinage(calepinage, corps):
+    """POST ``ecart-mesures/`` — 12 kWh saisis comparés au simulé, et l'eau
+    mesurée du chantier. Rien n'est enregistré.
+
+    Raises:
+        PoseRefusee: ``kwh`` / ``kwh[i]`` / ``annee`` illisible (vue : 409).
+    """
+    from django.utils import timezone
+
+    corps = corps if isinstance(corps, dict) else {}
+    mesures = _mesures_kwh(corps.get('kwh'))
+    annee = corps.get('annee')
+    if annee in (None, ''):
+        annee = timezone.localdate().year - 1
+    elif isinstance(annee, bool) or not str(annee).strip().isdigit():
+        raise PoseRefusee("« annee » doit être une année (ex. 2025).", 'annee')
+    annee = int(annee)
+    eau = {'m3_mesures': [None] * 12, 'simule_m3': None,
+           'motif': f'{MOTIF_EAU_SIMULEE} ; {MOTIF_EAU_SANS_DEVIS}'}
+    if calepinage.devis_id:
+        from apps.sav.selectors_releves import volumes_mensuels_du_devis
+
+        volumes = volumes_mensuels_du_devis(calepinage.company, calepinage.devis_id,
+                                            annee=annee)
+        eau = {'m3_mesures': volumes['m3'], 'simule_m3': None,
+               'motif': ' ; '.join([MOTIF_EAU_SIMULEE] + list(volumes['motifs']))}
+    return {'annee': annee,
+            'consommation': _ecart_consommation(calepinage.resultat, mesures),
+            'eau': eau, 'mention': MENTION_ECART_MESURES}

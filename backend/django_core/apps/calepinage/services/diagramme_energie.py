@@ -30,6 +30,11 @@ __all__ = ['svg_d_energie', 'svg_de_l_energie_du_calepinage']
 
 _NOIR, _GRIS_TEXTE, _GRIS_TRAIT, _GRIS_FOND = '#111', '#555', '#999', '#f2f2f2'
 _POLICE = 'DejaVu Sans, Arial, sans-serif'
+#: Dimensions de MISE EN FORME du SVG (convention d'atelier, même discipline
+#: que ``diagramme_pertes.py``) : largeur d'un bloc, longueur de la plus grande
+#: barre, pas vertical entre deux lignes, épaisseur d'une barre, marge du
+#: titre, et nombre de lignes réservées par bloc pour fixer la hauteur.
+#: Aucune n'est une grandeur physique : elles ne changent aucun chiffre servi.
 LARGEUR_BLOC_PX = 372.0
 LARGEUR_BARRE_MAX_PX = 340.0
 PAS_LIGNE_PX = 30.0

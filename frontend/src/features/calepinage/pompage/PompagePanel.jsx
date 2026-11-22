@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import RetourAtelier from '../atelier/RetourAtelier'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CAL159 — L'ÉCRAN POMPAGE DU MODULE : puits, besoin, réservoir, volumes.
@@ -199,7 +200,7 @@ function VolumesMensuels({ volumes, besoin }) {
   if (!volumes) {
     return (
       <p className="mt-2 text-sm text-foreground" data-testid="cal-pompage-volumes-absents">
-        non calculé — pompe sans courbe
+        non calculé — pompe sans courbe<Pourquoi cle="pompage.volumes_omis" />
       </p>
     )
   }
@@ -213,8 +214,8 @@ function VolumesMensuels({ volumes, besoin }) {
         <tr className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <th className="text-left">Mois</th>
           <th className="text-right">m³ (plat)</th>
-          <th className="text-right">m³ (PVGIS)</th>
-          <th className="text-right">Couverture</th>
+          <th className="text-right">m³ (PVGIS)<Pourquoi cle="pompage.m3_mensuels" /></th>
+          <th className="text-right">Couverture<Pourquoi cle="pompage.couverture" /></th>
         </tr>
       </thead>
       <tbody>
@@ -579,38 +580,39 @@ export default function PompagePanel({ calepinageId: idPropose }) {
                 {valeur(resultat.hmt?.hmt_m, ' m')}
               </dd>
               <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">
-                HMT — {valeur(resultat.hmt?.source)}
+                HMT — {valeur(resultat.hmt?.source)}<Pourquoi cle="pompage.hmt" valeurs={resultat} />
               </dt>
             </div>
             <div data-testid="cal-pompage-debit">
               <dd className="fig text-lg text-foreground">
                 {valeur(pompe?.debit_hmt_m3h, ' m³/h')}
               </dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Débit à cette HMT</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Débit à cette HMT<Pourquoi cle="pompage.debit_hmt" valeurs={resultat} /></dt>
             </div>
             <div data-testid="cal-pompage-pompe">
               <dd className="text-sm text-foreground">{valeur(pompe?.nom)}</dd>
               <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">
                 Pompe retenue{pompe?.pompe_kw != null ? ` · ${pompe.pompe_kw} kW` : ''}
+                <Pourquoi cle="pompage.pompe" valeurs={resultat} />
               </dt>
             </div>
             <div data-testid="cal-pompage-variateur">
               <dd className="text-sm text-foreground">{valeur(variateur?.nom)}</dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Variateur assorti</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Variateur assorti<Pourquoi cle="pompage.variateur" valeurs={resultat} /></dt>
             </div>
             <div data-testid="cal-pompage-autonomie">
               <dd className="fig text-lg text-foreground">
                 {valeur(resultat.besoin?.autonomie_jours, ' j')}
               </dd>
               <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">
-                Autonomie du réservoir
+                Autonomie du réservoir<Pourquoi cle="pompage.autonomie" valeurs={resultat} />
               </dt>
             </div>
             <div data-testid="cal-pompage-irradiation">
               <dd className="text-sm text-foreground">
                 {valeur(resultat.volumes?.source_irradiation)}
               </dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Source d’irradiation</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Source d’irradiation<Pourquoi cle="pompage.source_irradiation" /></dt>
             </div>
           </dl>
 

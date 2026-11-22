@@ -11,11 +11,12 @@
  * garde ses charges : tant que l'utilisateur n'y touche pas, `consommationSerialisee.ts` les
  * réémet telles quelles (jamais effacées au prochain enregistrement).
  *
- * NON FAIT ICI (fichiers hors de la clause `Files:` de la tâche) : le champ `Ctx.consCharges`
- * (`context.ts`) et son accesseur (`roof-tool-pro11.ts`), l'appel de `monterChargesAvenir` dans
- * le panneau « Mode expert » et le conteneur de `ToitureDesign.jsx`. La climatisation (BTU +
- * EER) n'est pas proposée : `courbe_charge.py::_bloc_de_charge` ne lit pas ces champs pour
- * `clim` (il exige `puissance_kw`).
+ * CLIMATISATION NON PROPOSÉE : `courbe_charge.py::_bloc_de_charge` ne lit ni `btu` ni `eer` pour
+ * le type `clim` (il exige `puissance_kw`) ; l'écran n'offre que ce que le serveur lit, aucune
+ * conversion BTU/EER n'est inventée.
+ *
+ * Câblage : `Ctx.consCharges` (`context.ts`, absent tant que l'utilisateur n'y a pas touché),
+ * monté par `consumption.ts` dans `[data-cons-charges]` (conteneur de `ToitureDesign.jsx`).
  */
 import { esc } from './dom';
 
@@ -110,15 +111,27 @@ const resume = (c: ChargeAvenir): string => (c.type === 'vehicule'
   ? `${c.km_par_jour} km/jour · ${c.kwh_par_100km} kWh/100 km · ${(c.fenetre_recharge || []).join(', ')} h`
   : `${c.puissance_kw} kW · COP ${c.cop} · ${(c.heures_fonctionnement || []).join(', ')} h`);
 
+/** Accès de l'écran à la liste : `lire` rend la liste COURANTE (écran, sinon relue), `ecrire` la pose. */
+export interface AccesCharges {
+  lire: () => readonly ChargeAvenir[];
+  ecrire: (charges: ChargeAvenir[]) => void;
+}
+
 /**
- * Rend la liste des charges et le formulaire d'ajout dans `hote` (bloc « Mode expert »). `charges`
- * est le tableau VIVANT : chaque ajout, retrait ou case cochée le modifie puis appelle `surChangement`.
+ * Rend la liste des charges et le formulaire d'ajout dans `hote` (bloc « Mode expert »). Chaque
+ * ajout, retrait ou case cochée écrit une COPIE de la liste par `acces.ecrire`. Renvoie
+ * `rafraichir` : redessine seulement si la liste a changé (document relu après le montage), sans
+ * jamais effacer une saisie en cours.
  */
-export function monterChargesAvenir(hote: HTMLElement, charges: ChargeAvenir[], surChangement: () => void): void {
+export function monterChargesAvenir(hote: HTMLElement, acces: AccesCharges): { rafraichir: () => void } {
   let type: TypeCharge = 'vehicule';
   let refus: RefusCharge | null = null;
   let brouillon: Record<string, string> = {}; // la saisie reste à l'écran après un refus
+  let vue = '';
+  const copie = (): ChargeAvenir[] => chargesPourDocument(acces.lire());
   const rendre = () => {
+    const charges = acces.lire();
+    vue = JSON.stringify(charges);
     const lignes = charges.map((c, i) => `<li data-cons-charge="${i}" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
       <span class="font-semibold">${esc(LIBELLE_TYPE[c.type])}</span><span class="text-xs">${esc(resume(c))}</span>
       <label class="text-xs"><input type="checkbox" data-cons-charge-deja="${i}"${c.deja_dans_les_factures ? ' checked' : ''}> déjà dans mes factures</label>
@@ -136,15 +149,17 @@ export function monterChargesAvenir(hote: HTMLElement, charges: ChargeAvenir[], 
     const cible = e.target as HTMLInputElement;
     if (cible.matches('[data-cons-charge-type]')) { type = cible.value as TypeCharge; refus = null; brouillon = {}; rendre(); return; }
     const i = cible.getAttribute('data-cons-charge-deja');
-    if (i !== null && charges[Number(i)]) {
-      if (cible.checked) charges[Number(i)].deja_dans_les_factures = true; else delete charges[Number(i)].deja_dans_les_factures;
-      surChangement();
+    const liste = copie();
+    if (i !== null && liste[Number(i)]) {
+      if (cible.checked) liste[Number(i)].deja_dans_les_factures = true; else delete liste[Number(i)].deja_dans_les_factures;
+      acces.ecrire(liste);
+      vue = JSON.stringify(liste);
     }
   });
   hote.addEventListener('click', (e) => {
     const cible = e.target as HTMLElement;
     const sup = cible.getAttribute('data-cons-charge-del');
-    if (sup !== null) { charges.splice(Number(sup), 1); surChangement(); rendre(); return; }
+    if (sup !== null) { const liste = copie(); liste.splice(Number(sup), 1); acces.ecrire(liste); rendre(); return; }
     if (!cible.hasAttribute('data-cons-charge-ajouter')) return;
     const saisie: Record<string, string> = {};
     hote.querySelectorAll<HTMLInputElement>('[data-cons-charge-champ]').forEach((el) => { saisie[el.getAttribute('data-cons-charge-champ') || ''] = el.value; });
@@ -152,7 +167,8 @@ export function monterChargesAvenir(hote: HTMLElement, charges: ChargeAvenir[], 
     const res = chargeDepuisSaisie(type, saisie, deja);
     brouillon = saisie;
     if (estRefusCharge(res)) { refus = res; rendre(); return; }
-    refus = null; brouillon = {}; charges.push(res); surChangement(); rendre();
+    refus = null; brouillon = {}; acces.ecrire([...copie(), res]); rendre();
   });
   rendre();
+  return { rafraichir: () => { if (JSON.stringify(acces.lire()) !== vue) rendre(); } };
 }

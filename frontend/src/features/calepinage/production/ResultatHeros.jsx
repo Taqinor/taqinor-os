@@ -3,6 +3,7 @@ import { Stat } from '../../../ui'
 import { useModeExpert } from '../atelier/modeExpert'
 import TuileCouverture from './TuileCouverture'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
+import Pourquoi from '../commun/Pourquoi'
 import {
   kwh, kwhParKwc, nonCalculee, nonPublie, pourcentagePerf,
 } from './ResultatHeros.helpers'
@@ -26,20 +27,25 @@ export default function ResultatHeros({ total, simule, motif, avertissements, pl
   }
   const incomplet = estIncomplet(total)
   const publie = (v, m) => (incomplet ? nonPublie(m) : kwh(v))
+  // ACAL873 — le « ? » de chaque tuile : phrase du registre, valeurs servies.
+  // Clés LITTÉRALES : la garde du registre (explications.garde.test.js) les lit.
+  const servi = { production: { total } }
   return (
     <div className="flex flex-col gap-3" data-testid="cal236-total">
       <Stat
         tone="impact"
-        label="Production annuelle (P50)"
+        label={<>Production annuelle (P50)<Pourquoi cle="production.p50_kwh" valeurs={servi} /></>}
         value={kwh(total?.p50_kwh)}
         hint={incomplet && total?.mention ? total.mention : undefined}
         data-testid="acal443-heros"
       />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="Puissance installée" value={nonCalculee(total?.kwc,
-          (x) => `${formatNumber(x, { decimals: 2 })} kWc`)} />
-        <Stat label="Productible" value={kwhParKwc(total?.specific_yield_kwh_kwc)} />
-        <Stat label="Pertes totales" value={nonCalculee(total?.total_loss_pct,
+        <Stat label={<>Puissance installée<Pourquoi cle="production.kwc" valeurs={servi} /></>}
+          value={nonCalculee(total?.kwc, (x) => `${formatNumber(x, { decimals: 2 })} kWc`)} />
+        <Stat label={<>Productible<Pourquoi cle="production.productible" valeurs={servi} /></>}
+          value={kwhParKwc(total?.specific_yield_kwh_kwc)} />
+        <Stat label={<>Pertes totales<Pourquoi cle="production.pertes_totales" valeurs={servi} /></>}
+          value={nonCalculee(total?.total_loss_pct,
           (x) => formatPercent(x, { decimals: 1 }))}
         hint={expert && plages?.total ? (
           <span data-testid="acal703-total-plage">
@@ -54,16 +60,19 @@ export default function ResultatHeros({ total, simule, motif, avertissements, pl
           Détails statistiques
         </summary>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Stat label="P75 (annuel)" value={publie(total?.p75_kwh, total?.p75_kwh_motif)} />
-          <Stat label="P90 (annuel)" value={publie(total?.p90_kwh, total?.p90_kwh_motif)} />
-          <Stat label="P95 (annuel)" value={publie(total?.p95_kwh, total?.p95_kwh_motif)} />
+          <Stat label={<>P75 (annuel)<Pourquoi cle="production.p75_kwh" valeurs={servi} /></>}
+            value={publie(total?.p75_kwh, total?.p75_kwh_motif)} />
+          <Stat label={<>P90 (annuel)<Pourquoi cle="production.p90_kwh" valeurs={servi} /></>}
+            value={publie(total?.p90_kwh, total?.p90_kwh_motif)} />
+          <Stat label={<>P95 (annuel)<Pourquoi cle="production.p95_kwh" valeurs={servi} /></>}
+            value={publie(total?.p95_kwh, total?.p95_kwh_motif)} />
           <Stat
-            label="Variabilité annuelle (σ)"
+            label={<>Variabilité annuelle (σ)<Pourquoi cle="production.variabilite" /></>}
             value={nonCalculee(total?.annual_variability,
               (x) => formatPercent(x * 100, { decimals: 1 }))}
           />
           <Stat
-            label="Ratio de performance (PR)"
+            label={<>Ratio de performance (PR)<Pourquoi cle="production.performance_ratio" /></>}
             value={incomplet ? nonPublie(total?.performance_ratio_motif)
               : pourcentagePerf(total?.performance_ratio)}
           />

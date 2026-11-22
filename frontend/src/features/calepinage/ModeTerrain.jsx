@@ -324,7 +324,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             </div>
             <div data-testid="cal-terrain-kwc">
               <dd className="fig text-lg text-foreground">
-                {kwc === null ? '—' : `${kwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kWc`}
+                {kwc === null ? '—' : `${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(kwc)} kWc`}
               </dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {kwc === null ? 'Puissance non calculable' : 'Puissance du champ (modules posés × puissance saisie)'}

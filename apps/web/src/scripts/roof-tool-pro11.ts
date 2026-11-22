@@ -148,6 +148,7 @@ import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
 // `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
 import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './roofPro11/moduleSelect';
+import { factureCarteDe, lireFactureSaisie } from './roofPro11/factureCarte'; // ACAL777
 import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
 import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
 import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
@@ -1270,10 +1271,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const recomputeMatrix = matrix.recomputeMatrix;
   const setMatrixSort = matrix.setMatrixSort;
 
-  const monthlyBill = (): number => {
-    const raw = parseFloat((billEl?.value || '').replace(/\s/g, '').replace(',', '.'));
-    return Number.isFinite(raw) && raw > 0 ? raw : 0;
-  };
+  const monthlyBill = (): number => lireFactureSaisie(billEl);
 
   // — Three.js —
   // CAL48 — fournisseur d'imagerie ACTIF (registre `lib/roofConfig`), résolu depuis la
@@ -1688,6 +1686,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     syncChips: () => syncChips(),
     renderMatrixOptimumCard: () => renderMatrixOptimumCard(),
     monthlyBill: () => monthlyBill(),
+    factureCarte: () => factureCarteDe(monthlyBill(), opts.factureMensuelleMad), // ACAL777
     obstructionRings,
     obstructionClearances, // PV61 — dégagement par type d'obstacle
     setbacksOf, // PV63 — retraits latéral / extrémité / acrotère
@@ -2531,7 +2530,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // appareils, provenance relue) part avec lui (`clearEditorState` ne la touche plus).
     consCurve = emptyCurve();
     consHandEdited = false;
-    consAppliances = [];
+    consAppliances = []; ctx.consCharges = []; // ACAL780
     consDailyTarget = 0;
     ctx.consSource = null;
     areas.length = 0;

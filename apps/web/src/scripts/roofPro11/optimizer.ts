@@ -347,6 +347,8 @@ export interface OptimizerDeps {
   renderMatrixOptimumCard: () => void;
   /** Facture mensuelle (MAD) saisie — entrée. */
   monthlyBill: () => number;
+  /** ACAL777 — facture lue par les cartes seulement (saisie, sinon celle du lead) ; absente = `monthlyBill`. */
+  factureCarte?: () => number;
   /** Anneaux lng/lat des obstacles (zones d'exclusion) — entrée. */
   obstructionRings: () => LngLat[][];
   /** PV61 — dégagement (m) de CHAQUE obstacle selon son type, même ordre que
@@ -397,6 +399,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     obstructionRings,
     setStatus,
   } = deps;
+  const factureCarte = deps.factureCarte ?? monthlyBill; // ACAL777
   /** PV61 — dégagements par obstacle (type) ; dépendance absente → uniforme. */
   const obstructionClearances = (): number[] | undefined => deps.obstructionClearances?.();
   /** PV63 — retraits saisis quand la marge est GARDÉE ; absent → retrait unique. */
@@ -661,7 +664,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // WJ19 — puis dérate d'ombrage tracé (1 = aucun → inchangé).
     const annualKwh =
       (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * facteurDerateAnnuel(ctx);
-    const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
+    const target = ctx.rec && ctx.rec.targetAnnualKwh > 0 ? ctx.rec.targetAnnualKwh : billToAnnualKwh(factureCarte()); // ACAL777
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
     majNoteChassis(o.pack, o.grid); // ACAL585 — « n châssis de N × M posés » ou le motif
@@ -813,7 +816,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // ACAL356 — puis le dérate ombrage × horizon de `renderConfig` (1 ⇒ inchangé).
     const annualKwh = clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family)) * gapScale * facteurDerateAnnuel(ctx);
     const kwc = w.kwc * gapScale;
-    const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
+    const target = ctx.rec && ctx.rec.targetAnnualKwh > 0 ? ctx.rec.targetAnnualKwh : billToAnnualKwh(factureCarte()); // ACAL777
     const savings = annualSavingsMad(annualKwh, target);
     const pct = target > 0 ? (annualKwh / target) * 100 : 0;
     const cov = Math.round(pct);

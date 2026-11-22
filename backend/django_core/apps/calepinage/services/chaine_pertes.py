@@ -65,9 +65,6 @@ et douze champs par étape. ``resultat['pertes']`` n'est pas touché : il reste
 la LISTE PLATE des postes saisis (D-CALX 11).
 """
 from __future__ import annotations
-import logging
-
-import datetime
 
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services import orientation as _orientation
@@ -79,6 +76,8 @@ from apps.calepinage.services.p50p90 import bankable
 from apps.calepinage.services.site import (
     decalage_utc_minutes, fuseau_du_site,
 )
+from . import chaine_decalage as _decalage
+from . import chaine_resolution as _resolution
 from . import irradiation_mensuelle as _irr
 from .valeurs import nombre as _flottant
 
@@ -120,7 +119,8 @@ ORDRE_ETAPES = (
     'lid',                # première exposition
     'mismatch_fabricant',  # dispersion entre modules d'un même lot
     'mismatch_ombrage',   # dispersion I-V créée par l'ombre, par chaîne
-    'diodes',             # PV*SOL les assume à 0,5 % ; nous, jamais (v1)
+    'diodes',             # sous-chaînes de la fiche × accès par bande (ACAL722)
+    'optimiseur',         # rendement de la fiche, modules équipés (ACAL723)
     'ohmique_dc',         # chutes sur les longueurs du plan
     # — la conversion (PV*SOL : MPPT → rendement → écrêtage) —
     'mppt',               # fenêtre de tension MPP : AVANT la conversion
@@ -176,6 +176,7 @@ LIBELLES = {
     'mismatch_fabricant': 'Dispersion de fabrication (mismatch)',
     'mismatch_ombrage': "Dispersion d'ombrage (I-V par chaîne)",
     'diodes': 'Diodes de chaîne',
+    'optimiseur': 'Optimiseurs de puissance',
     'ohmique_dc': 'Pertes ohmiques DC',
     'mppt': 'Fenêtre MPPT',
     'onduleur': 'Rendement onduleur',
@@ -227,7 +228,10 @@ ETAPES_HORS_CATALOGUE = {
     'neige': 'Poste mensuel neuf, saisi par la société (CALX161).',
     'mismatch_ombrage': "La dispersion d'ombrage se calcule par chaîne à "
                         'partir des I-V, jamais en pourcentage saisi.',
-    'diodes': 'Poste non modélisé en v1 (voir TOUJOURS_OMISES).',
+    'diodes': 'Les diodes se calculent par sous-chaînes (fiche × bandes), '
+              'jamais en pourcentage saisi.',
+    'optimiseur': "Le rendement de l'optimiseur vient de sa fiche, pas "
+                  "d'un pourcentage saisi.",
     'mppt': 'La fenêtre MPPT se vérifie sur les tensions, pas en pourcentage.',
     'ecretage': "L'écrêtage se lit sur la série horaire, pas en pourcentage.",
 }
@@ -272,6 +276,20 @@ def _horizon_deja_dans_la_meteo(contexte):
     return horizon.get('origine') == 'dem_pvgis'
 
 
+def _diodes_sans_donnees(contexte):
+    """ACAL722 — la fiche ou les bandes manquent : l'étape est écartée."""
+    from apps.calepinage.services.etapes.diodes import sans_donnees
+
+    return sans_donnees(contexte)
+
+
+def _aucun_optimiseur(contexte):
+    """ACAL723 — aucun optimiseur déclaré : l'étape est écartée."""
+    from apps.calepinage.services.etapes.optimiseur import optimiseur_declare
+
+    return not optimiseur_declare(contexte)
+
+
 def _acces_module(contexte):
     """ACAL137 — l'accès solaire du PAN simulé, lu là où l'atelier l'écrit
     (``zones[].geometry.solarAccess``) par LE lecteur de l'étape — jamais
@@ -298,6 +316,17 @@ EXCLUSIVITES = {
         "L'accès solaire par module déclare couvrir l'ombre des rangées "
         "entre elles : l'auto-ombrage inter-rangées est écarté pour ne pas "
         "la compter deux fois."),
+    'diodes': (
+        _diodes_sans_donnees,
+        "Les diodes se calculent par sous-chaînes : il faut le nombre de "
+        "sous-chaînes de la fiche (FicheTechnique.sous_chaines_par_module) et "
+        "l'accès par bande (solarAccess.bandes). L'un des deux manque : "
+        "aucun forfait n'est appliqué (PV*SOL assume 0,5 %, chiffre de "
+        'leur logiciel et non du nôtre).'),
+    'optimiseur': (
+        _aucun_optimiseur,
+        "Aucun optimiseur n'est déclaré (ni produit pour le document, ni "
+        'module marqué) : aucune perte de conversion à compter.'),
     'horizon': (
         _horizon_deja_dans_la_meteo,
         "L'horizon vient du modèle de terrain de PVGIS, qui l'a DÉJÀ "
@@ -313,9 +342,6 @@ TOUJOURS_OMISES = {
     'spectral': 'Étape non modélisée en v1 : PVsyst applique un modèle '
                 'spectral, nous n\'en avons aucun — aucun forfait n\'est '
                 'appliqué à sa place.',
-    'diodes': 'Étape non modélisée en v1 : PV*SOL assume 0,5 % de pertes de '
-              'diodes, chiffre de leur logiciel et non du nôtre — aucun '
-              'forfait n\'est appliqué à sa place.',
 }
 
 #: ACAL463 — les étapes CALCULÉES quand une saisie existe, mais dont l'omission
@@ -1052,10 +1078,7 @@ def _colonnes_servies(points):
 
 # ── CALX192 — la vérité sur la résolution : PVGIS est HORAIRE ───────────
 
-#: La clé sous laquelle l'appelant (CALX5) POSE la courbe de charge du site,
-#: à SON pas : ``{pas_minutes, points}``. La chaîne ne la transforme jamais —
-#: elle publie seulement les deux pas, côte à côte.
-CLE_CHARGE = 'charge'
+CLE_CHARGE = _resolution.CLE_CHARGE  # ACAL722 — défini avec ses lecteurs
 
 #: La clé sous laquelle l'ordonnanceur INSTALLE l'accès à la météo au pas
 #: demandé. ``contexte['meteo_au_pas'](15)`` rend la série météo maintenue en
@@ -1089,10 +1112,10 @@ def _publier_la_resolution(resultat, serie, contexte):
     meteo = resultat['meteo']
     mesure = _pas_mesure(serie)
     meteo['pas_minutes'] = mesure
-    meteo['resolution_minutes'] = _resolution_reglee(contexte)
-    meteo['pas_charge_minutes'] = _pas_de_la_charge(contexte)
+    meteo['resolution_minutes'] = _resolution.resolution_reglee(contexte)
+    meteo['pas_charge_minutes'] = _resolution.pas_de_la_charge(contexte)
     meteo['interpolation'] = False
-    meteo['note_resolution'] = _note_de_resolution(
+    meteo['note_resolution'] = _resolution.note_de_resolution(
         mesure, meteo['pas_charge_minutes'])
     _ajouter_avertissement(resultat, meteo['note_resolution'])
     if (meteo['resolution_minutes'] is not None and mesure is not None
@@ -1112,7 +1135,7 @@ def _pas_mesure(serie):
     precedent = None
     ecarts = {}
     for point in (serie or {}).get('points') or []:
-        courant = _moment_du_point(point)
+        courant = _decalage.moment_du_point(point)
         if courant is None:
             continue
         if precedent is not None:
@@ -1124,42 +1147,6 @@ def _pas_mesure(serie):
         return max(ecarts.items(), key=lambda paire: paire[1])[0]
     declare = (serie or {}).get('pas_minutes')
     return int(declare) if declare else None
-
-
-def _resolution_reglee(contexte):
-    """Le pas de simulation RÉGLÉ par la société, ou ``None``."""
-    saisi = _etapes.reglage(contexte, 'resolution_minutes')
-    if saisi is None:
-        return None
-    valeur = _flottant(saisi.get('valeur'))
-    return None if valeur is None else int(valeur)
-
-
-def _pas_de_la_charge(contexte):
-    """Le pas PROPRE de la courbe de charge, publié à côté — jamais fondu."""
-    charge = contexte.get(CLE_CHARGE)
-    if not isinstance(charge, dict):
-        return None
-    valeur = _flottant(charge.get('pas_minutes'))
-    return None if valeur is None else int(valeur)
-
-
-def _note_de_resolution(mesure, pas_charge):
-    """La phrase française qui DIT ce qui se passe entre les deux pas."""
-    if mesure is None:
-        return ('Le pas de la série météo n\'a pas pu être mesuré : aucune '
-                'résolution n\'est annoncée, et aucune interpolation n\'est '
-                'faite.')
-    note = (f'La météo est au pas de {mesure} min (PVGIS sert une ligne par '
-            'heure) et aucune interpolation infra-horaire n\'est faite : '
-            'entre deux heures, l\'irradiance n\'est jamais lissée.')
-    if pas_charge is None or pas_charge >= mesure:
-        return note
-    return note + (
-        f' La courbe de charge, elle, garde SON pas de {pas_charge} min : '
-        'elle n\'est pas ramenée à l\'heure, et la météo y est maintenue en '
-        f'ESCALIER — la même valeur pour les {mesure // pas_charge} pas '
-        'd\'une même heure.')
 
 
 def _installer_meteo_au_pas(contexte, serie, mesure):
@@ -1922,12 +1909,12 @@ def _reindexer_sur_l_heure_du_site(serie, contexte):
     decales = []
     offsets = set()
     for point in points:
-        moment = _moment_du_point(point)
+        moment = _decalage.moment_du_point(point)
         if moment is None:
             decales.append(point)
             continue
         legal = decalage_utc_minutes(fuseau, moment)
-        saisonnier = _part_saisonniere_minutes(fuseau, moment)
+        saisonnier = _decalage.part_saisonniere_minutes(fuseau, moment)
         if legal is None or saisonnier is None:
             # Base de fuseaux indisponible : on ne décale RIEN plutôt que de
             # décaler la moitié de l'année (un doute ne produit pas un chiffre).
@@ -1940,7 +1927,7 @@ def _reindexer_sur_l_heure_du_site(serie, contexte):
         applique = legal if base == BASE_HEURE_UTC else saisonnier
         # ACAL131 — chaque point porte SON décalage UTC légal : c'est lui
         # que l'IAM, l'horizon et l'inter-rangées lisent (Ramadan compris).
-        decales.append(_point_decale(point, moment, applique, legal))
+        decales.append(_decalage.point_decale(point, moment, applique, legal))
 
     suite = dict(serie)
     suite['points'] = decales
@@ -1967,62 +1954,6 @@ def _poser_verdict_horaire(contexte, base, fuseau, decalages, motif, champ):
         'champ': champ,
         'blocs_omis': [] if not motif else list(BLOCS_HORAIRES_OMIS),
     }
-
-
-def _moment_du_point(point):
-    """L'horodatage d'un point, ou ``None`` s'il n'en porte pas de lisible."""
-    if not isinstance(point, dict):
-        return None
-    try:
-        return datetime.datetime(
-            int(point['annee']), int(point['mois']), int(point['jour']),
-            int(point['heure']), tzinfo=datetime.timezone.utc)
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def _part_saisonniere_minutes(fuseau, moment):
-    """La part SAISONNIÈRE du décalage, lue dans ``zoneinfo`` à cette date.
-
-    C'est ``utcoffset - standard``, c'est-à-dire exactement ce que la base de
-    fuseaux appelle ``dst()`` : au Maroc, ``0`` hors Ramadan et ``-60`` min
-    pendant (la base modélise le retour à UTC+0 comme un décalage saisonnier
-    NÉGATIF). Aucune valeur n'est écrite ici : tout vient de la base.
-    """
-    if not fuseau or moment is None:
-        return None
-    try:
-        from zoneinfo import ZoneInfo
-
-        saison = moment.replace(tzinfo=ZoneInfo(fuseau)).dst()
-    except Exception:       # pragma: no cover - dépend de la base installée
-        logging.getLogger(__name__).warning("chaine_pertes._part_saisonniere_minutes : ignorée", exc_info=True)
-        return None
-    if saison is None:
-        return None
-    return int(saison.total_seconds() // 60)
-
-
-def _point_decale(point, moment, minutes, decalage_utc=None):
-    """Une COPIE du point ré-étiquetée — aucune valeur mesurée n'est touchée.
-
-    Ré-indexer, c'est CHANGER L'ÉTIQUETTE d'une heure, jamais sa mesure :
-    l'irradiance, la température et le vent du point restent exactement ceux
-    que PVGIS a servis. ACAL131 — ``decalage_utc`` (minutes) est posé sur le
-    point (``etapes.CLE_DECALAGE_POINT``) : l'heure LÉGALE ré-étiquetée moins
-    ce décalage est son instant UTC.
-    """
-    copie = dict(point)
-    if decalage_utc is not None:
-        copie[_etapes.CLE_DECALAGE_POINT] = decalage_utc
-    if not minutes:
-        return copie
-    cible = moment + datetime.timedelta(minutes=minutes)
-    copie['annee'] = cible.year
-    copie['mois'] = cible.month
-    copie['jour'] = cible.day
-    copie['heure'] = cible.hour
-    return copie
 
 
 # ── CALX153 — année météo TYPE ou fenêtre PLURIANNUELLE ─────────────────

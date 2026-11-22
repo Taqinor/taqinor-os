@@ -4,7 +4,7 @@ import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import { Button, Card, Input, Label, Spinner, Stat } from '../../../ui'
+import { Button, Card, Checkbox, Input, Label, Spinner, Stat } from '../../../ui'
 import { refusParChamp } from '../electrique/entreeElectrique'
 import { BoutonCalculer } from '../production/PanneauProduction'
 import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree } from './PanneauBatterie.helpers'
@@ -13,7 +13,9 @@ import SemaineBatterie from './SemaineBatterie'
 import Pourquoi from '../commun/Pourquoi'
 import SecoursBatterie from './SecoursBatterie'
 import ModeExpertBatterie from './ModeExpertBatterie'
+import FaitsBatterie from './FaitsBatterie'
 import SeuilsHorsReseau from './SeuilsHorsReseau'
+import GroupeAppoint, { LectureGroupe } from './GroupeAppoint'
 import { FenetresBatterie, ReglagesPointe } from './FenetresBatterie'
 import useExpertParUrl from '../production/useExpertParUrl'
 
@@ -120,7 +122,7 @@ function BandeauNonSimule({ avertissements }) {
 }
 
 
-function DeclarationBatterie({ id, onRelancer, reserve = null }) {
+function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null }) {
   const [entree, setEntree] = useState(null)
   const [etat, setEtat] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -184,7 +186,7 @@ function DeclarationBatterie({ id, onRelancer, reserve = null }) {
         value={valeur}
         onChange={(e) => poser(cle, e.target.value)}
         aria-invalid={refus ? 'true' : undefined}
-        className="min-h-11 w-full rounded-md border border-input bg-card px-2 text-sm text-foreground"
+        className="h-[var(--control-h)] min-h-11 w-full rounded-md border border-input bg-card px-2 text-sm text-foreground"
       >
         <option value="">— non choisi —</option>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -234,17 +236,24 @@ function DeclarationBatterie({ id, onRelancer, reserve = null }) {
           reserve={reserve}
           onAppareils={(v) => poser('appareils', v)}
           onDuree={(v) => poser('duree_secours_h', v)}
+          expert={expert}
+          coupures={etat.coupures}
+          secours={secours}
+          onCoupures={(v) => poser('coupures', v)}
         />
       )}
       <fieldset className="flex flex-col gap-2" data-testid="acal167-hors-reseau">
         <legend className="text-sm font-semibold">Mode hors réseau</legend>
-        <label className="flex items-center gap-2 text-sm" htmlFor="acal167-actif">
-          <input id="acal167-actif" type="checkbox" checked={etat.actif} onChange={(e) => poser('actif', e.target.checked)} />
+        <label className="flex min-h-11 items-center gap-2 text-sm" htmlFor="acal167-actif">
+          <Checkbox id="acal167-actif" checked={etat.actif} onCheckedChange={(v) => poser('actif', v === true)} />
           Le site est hors réseau
         </label>
         {champ('jours', 'Jours d’autonomie', etat.jours, (v) => poser('jours', v), 'number', erreurs['hors_reseau.jours_autonomie'])}
         {expert && etat.actif && (
           <SeuilsHorsReseau seuils={etat.seuils} erreurs={erreurs} onChange={(v) => poser('seuils', v)} />
+        )}
+        {expert && etat.actif && (
+          <GroupeAppoint groupe={etat.groupe} erreurs={erreurs} onChange={(v) => poser('groupe', v)} />
         )}
       </fieldset>
       <div className="flex flex-wrap gap-2">
@@ -553,6 +562,7 @@ function BlocHorsReseau({ horsReseau }) {
         </p>
       )}
       <TableauParMois parMois={horsReseau.par_mois} />
+      <LectureGroupe horsReseau={horsReseau} nomMois={libelleMois} />
       {horsReseau.mentions?.length > 0 && (
         <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="calx14-hors-reseau-mentions">
           {horsReseau.mentions.map((m) => <li key={m}>{m}</li>)}
@@ -591,10 +601,12 @@ export default function PanneauBatterie({ calepinageId, intervalleMs = 2000 }) {
         id={id}
         onRelancer={() => setRelance((n) => n + 1)}
         reserve={!perime && data?.simule ? data?.batterie?.total?.reserve_secours : null}
+        secours={!perime && data?.simule ? data?.batterie?.total?.secours : null}
       />
       <BoutonCalculer calepinageId={id} data={data} onTermine={refetch} declenchement={relance} intervalleMs={intervalleMs} />
       {!perime && data?.simule && (
         <>
+          <FaitsBatterie batterie={data?.batterie} />
           <BlocBatterie batterie={data?.batterie} />
           <ModeExpertBatterie batterie={data?.batterie} />
           <ComparateurCapacites bloc={data?.batterie?.capacites_candidates} />

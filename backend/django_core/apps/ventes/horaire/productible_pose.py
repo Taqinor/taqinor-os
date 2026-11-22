@@ -57,13 +57,14 @@ def _kwc_du_devis(devis):
     return puissance_kwc_du_devis(devis)
 
 
-def diagnostic_base_de_production(devis, *, kwc=None):
-    """``(base | None, motif)`` — le motif dit pourquoi la ville sert."""
+def diagnostic_base_de_production(devis, *, kwc=None, marches=('residentiel',)):
+    """``(base | None, motif)`` — le motif dit pourquoi la ville sert.
+    ``marches`` : ACAL1195 — seule l'étude C&I passe ``('commercial', 'industriel')``."""
     if devis is None or not getattr(devis, 'pk', None):
         return None, 'devis non enregistré'
     if not regles_au_moins(devis, REGLES_POSE_REELLE_2111):
         return None, 'règles d’avant le 21/11'
-    if getattr(devis, 'mode_installation', None) != 'residentiel':
+    if getattr(devis, 'mode_installation', None) not in marches:
         return None, 'marché non résidentiel'
     if getattr(devis, 'statut', 'brouillon') != 'brouillon':
         return _base_rangee(devis)
@@ -80,6 +81,22 @@ def diagnostic_base_de_production(devis, *, kwc=None):
         return None, 'calepinage illisible'
 
 
-def base_de_production(devis, *, kwc=None):
+def base_de_production(devis, *, kwc=None, marches=('residentiel',)):
     """La base de production du devis, ou ``None`` (chemin d'aujourd'hui)."""
-    return diagnostic_base_de_production(devis, kwc=kwc)[0]
+    return diagnostic_base_de_production(devis, kwc=kwc, marches=marches)[0]
+
+
+def base_etude_ci(devis, *, kwc=None):
+    """ACAL1195 (D-ACAL-44) — ``(base | None, hypothèse | None)`` de l'étude C&I d'un BROUILLON de niveau
+    15 (un devis émis garde son bloc figé) : la base dit sa forme horaire supposée (comme ACAL1169), son
+    absence dit son motif ; niveau ≤ 14 ou non brouillon : ``(None, None)``, chemin d'aujourd'hui."""
+    from apps.ventes.horaire.base import FORME_HORAIRE_BASE
+
+    if getattr(devis, 'statut', None) != 'brouillon' or not regles_au_moins(devis, REGLES_POSE_REELLE_2111):
+        return None, None
+    base, motif = diagnostic_base_de_production(devis, kwc=kwc, marches=('commercial', 'industriel'))
+    if base:
+        return base, {'cle': 'forme_horaire', 'valeur': FORME_HORAIRE_BASE, 'statut': 'estimation',
+                      'source': base['source']}
+    return None, {'cle': 'base_production', 'valeur': None, 'statut': 'estimation',
+                  'source': 'production de la ville : ' + motif}

@@ -385,6 +385,12 @@ SANS_PRODUCTEUR_PUR = {
         'CAL212/CALX366) lit les `PoseReelle` et la variante retenue en base '
         '— la forme est affirmée contre l’exemple committé par '
         'apps/calepinage/tests/test_calx366_pose_reelle.py',
+    # ACAL846
+    'calepinage_asbuilt_mesures.json':
+        'consommation mesurée vs simulée : le cœur pur '
+        '(services/asbuilt.py::_ecart_consommation) est rejoué contre '
+        'l’exemple par apps/calepinage/tests/test_calx366_pose_reelle.py ; '
+        'l’eau lit les relevés m³ du SAV en base',
     # CALX335
     'calepinage_fixation_bom.json':
         'nomenclature de fixation : son producteur (CALX359, '

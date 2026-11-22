@@ -10,7 +10,7 @@ déjà émis n'est jamais recalculé »).
 LECTURE SEULE : aucun devis, aucune ligne, aucun calepinage n'est écrit.
 
     python manage.py comparer_compte_moteur_calepinage [--company SLUG]
-        [--devis REFERENCE] [--json]
+        [--devis REFERENCE] [--json] [--calepinages]
 """
 import json
 
@@ -32,8 +32,44 @@ class Command(BaseCommand):
         parser.add_argument(
             '--json', action='store_true', default=False,
             help='Sortie JSON (une liste de lignes).')
+        parser.add_argument('--calepinages', action='store_true', default=False,
+                            help='ACAL1173 — DESSIN de chaque calepinage actif vs moteur (lecture seule).')
+
+    def _calepinages(self, options):
+        """ACAL1173 — par calepinage actif : lead, dessin, moteur, écart, motif ; un total."""
+        from apps.calepinage.selectors import calepinages_actifs, mesures_du_calepinage
+        from apps.ventes.domain.geometrie import compte_moteur_du_layout, moteur_calepinage_actif
+        from authentication.models import Company
+
+        societes = Company.objects.order_by('pk')
+        if options.get('company'):
+            societes = societes.filter(slug=options['company'])
+        lignes = []
+        for societe in societes:
+            for cal in calepinages_actifs(societe).order_by('pk'):
+                dessin = mesures_du_calepinage(cal).get('modules')
+                moteur = (compte_moteur_du_layout(cal.roof_layout, company=societe) or {}).get('modules')
+                lignes.append({'societe': societe.slug, 'calepinage': cal.pk, 'lead': cal.lead_id,
+                               'dessin': dessin, 'moteur': moteur,
+                               'ecart': None if None in (moteur, dessin) else moteur - dessin,
+                               'motif': '' if moteur is not None else 'aucune géométrie exploitable'})
+        total = {'calepinages': len(lignes), 'ecart': sum(li['ecart'] or 0 for li in lignes)}
+        if options.get('json'):
+            self.stdout.write(json.dumps(
+                {'drapeau_actif': moteur_calepinage_actif(), 'lecture_seule': True,
+                 'calepinages': lignes, 'total': total}, ensure_ascii=False, indent=2))
+            return
+        self.stdout.write('DRY-RUN (lecture seule) — société | calepinage | lead | dessin | moteur | écart | motif')
+        gabarit = '  {societe} | {calepinage} | {lead} | {dessin} | {moteur} | {ecart} | {motif}'
+        for ligne in lignes:
+            self.stdout.write(gabarit.format(**ligne))
+        self.stdout.write('Calepinages comparés : {calepinages} ; écart total : {ecart}'.format(**total))
 
     def handle(self, *args, **options):
+        if options.get('calepinages'):
+            self._calepinages(options)
+            return
+
         from apps.calepinage.selectors import calepinage_du_devis
         from apps.ventes.domain.geometrie import moteur_calepinage_actif
         from apps.ventes.models import Devis

@@ -733,6 +733,15 @@
           "type": "pourcentage",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "cle": "seuil_acces_optimiseur",
+          "libelle": "Accès solaire sous lequel un module est proposé pour un optimiseur",
+          "unite": "",
+          "reference": "Réglage société — seuil saisi avec sa source (0 à 1) ; vide : aucune proposition",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
         }
       ],
       "lestage": [
@@ -1509,6 +1518,15 @@
           "type": "pourcentage",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "cle": "seuil_acces_optimiseur",
+          "libelle": "Accès solaire sous lequel un module est proposé pour un optimiseur",
+          "unite": "",
+          "reference": "Réglage société — seuil saisi avec sa source (0 à 1) ; vide : aucune proposition",
+          "type": "nombre",
+          "minimum": 0,
+          "maximum": 1
         }
       ],
       "lestage": [

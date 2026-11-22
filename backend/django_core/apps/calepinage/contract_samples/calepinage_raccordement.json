@@ -12,7 +12,10 @@
       "source_cos_phi": "saisie — contrat de raccordement du site (valeur d'essai)",
       "plafond_injection_kw": null,
       "plafond_injection_justification": null,
-      "plafond_injection_a": null
+      "plafond_injection_a": null,
+      "plages_plafond_injection": null,
+      "plafond_soutirage_kw": null,
+      "plafond_soutirage_justification": null
     },
     "calcul": {
       "elevation_pct": 0.82,
@@ -95,7 +98,10 @@
       "source_cos_phi": "saisie — contrat de raccordement du site (valeur d'essai)",
       "plafond_injection_kw": 8.0,
       "plafond_injection_justification": "Contrat de raccordement du site : injection limitée à 8 kW (valeur d'essai).",
-      "plafond_injection_a": null
+      "plafond_injection_a": null,
+      "plages_plafond_injection": null,
+      "plafond_soutirage_kw": null,
+      "plafond_soutirage_justification": null
     },
     "calcul": {
       "elevation_pct": 0.82,
@@ -174,7 +180,10 @@
       "source_cos_phi": null,
       "plafond_injection_kw": null,
       "plafond_injection_justification": null,
-      "plafond_injection_a": null
+      "plafond_injection_a": null,
+      "plages_plafond_injection": null,
+      "plafond_soutirage_kw": null,
+      "plafond_soutirage_justification": null
     },
     "calcul": {
       "elevation_pct": null,

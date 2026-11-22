@@ -18,6 +18,7 @@ import CascadePertesLignes from './CascadePertesLignes'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 import useExpertParUrl from './useExpertParUrl'
 import LimitesConnues from './LimitesConnues'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CAL143 — LE DIAGRAMME DE PERTES (Sankey/cascade) DU MODULE.
@@ -294,6 +295,8 @@ function DiagrammePertesCascadeDetaillee({ etapes, totalPct = null, plages = nul
     { key: 'source', header: 'Source', format: (v, row) => (row.total ? '—' : libelleSource(v)) },
     // Étape omise : le motif publié par le serveur, jamais reconstruit.
     { key: 'motif', header: 'Motif', format: (v, row) => (row.omise ? v : '') },
+    // ACAL873 — le « ? » de chaque étape (phrase du registre, famille pertes).
+    { key: 'pourquoi', header: 'Pourquoi', format: (v, row) => (row.total ? '' : <Pourquoi cle="pertes.etape" />) },
   ]
 
   return (

@@ -59,7 +59,9 @@ ETATS = ('exemple', 'exemple_limite_saisie', 'exemple_vide')
 CHAMPS_SAISIE = {'puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
                  'source_cos_phi', 'plafond_injection_kw',
-                 'plafond_injection_justification', 'plafond_injection_a'}
+                 'plafond_injection_justification', 'plafond_injection_a',
+                 'plages_plafond_injection',  # ACAL828
+                 'plafond_soutirage_kw', 'plafond_soutirage_justification'}  # ACAL829
 
 #: Les six grandeurs calculées (ACAL827 : + le plafond en A converti en kW).
 CHAMPS_CALCUL = {'elevation_pct', 'ecart_limite_pct', 'puissance_injectee_kva',
@@ -126,7 +128,7 @@ class TroisBlocsTest(SimpleTestCase):
                               'verdicts'],
                              f'{etat} : les blocs de réponse ont bougé.')
 
-    def test_les_neuf_champs_de_saisie(self):
+    def test_les_champs_de_saisie(self):
         from apps.calepinage.services.raccordement import (
             CHAMPS_SAISIE as SERVIS,
         )

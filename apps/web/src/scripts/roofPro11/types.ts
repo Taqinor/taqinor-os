@@ -109,6 +109,8 @@ export interface InitOptions {
   // panneau près. Le type reste volontairement OPAQUE ici : la forme fait foi dans
   // le contrat, et `moduleSelect.ts` est le seul à la lire.
   modulesDisponibles?: unknown;
+  /** ACAL777 — facture mensuelle (MAD) du lead servie par le serveur (mode calepinage) : repli d'AFFICHAGE des cartes, jamais écrite au document. */
+  factureMensuelleMad?: number | null;
   /** ACAL80 — point de rendement PVGIS (URL) ; `null` = aucune requête (l'ERP n'a pas la
    *  route `/api/roof-yield` d'apps/web : repli sur la table committée). Absent = le défaut
    *  `/api/roof-yield` des pages publiques. */
@@ -120,6 +122,10 @@ export interface InitOptions {
    *  (barème indicatif) ») ; absente = pages publiques, comportement inchangé. */
   proposerConsommation?: ((corps: import('./consumption').CorpsPropositionConsommation) =>
     Promise<import('./consumption').PropositionConsommation>) | null;
+  /** ACAL840 — la lecture d'une PHOTO de facture (`GET`/`POST calepinages/<pk>/consommation/lire-facture/`,
+   *  contrat `calepinage_consommation_photo_facture.json`), fournie par la page hôte (même patron
+   *  que `proposerConsommation`). `null`/absente = aucun bouton « Lire une photo de facture ». */
+  lireFactureConsommation?: import('./consommationMois').OptionLireFacture | null;
   /** ERR-ACAL311-PANNEAU-ABSENT-ERP — production PAR 1 kWc du plan courant, fournie par une
    *  page hôte SANS fenêtre de production ni `/api/roof-production` (l'ERP) : sans elle,
    *  « Affiner ma consommation » reste masqué faute de plan. Absente = pages publiques,

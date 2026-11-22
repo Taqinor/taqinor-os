@@ -1,7 +1,7 @@
 /* ACAL685 — « Boucles de câblage » du verdict électrique : une ligne par chaîne, les nombres et les phrases
    servis par `evaluerElectrique` (`boucles_dc[]`, ACAL677/678). L'écran ne compare ni ne calcule rien : le mot
    « au-dessus » vient de `depasse`, la cause d'un nombre absent de `indetermine`. */
-const nombreFr = (v) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 1 })
+const nombreFr = (v) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(Number(v))
 
 function phraseBoucle(b) {
   const causes = Array.isArray(b.indetermine) ? b.indetermine.join(' ; ') : ''

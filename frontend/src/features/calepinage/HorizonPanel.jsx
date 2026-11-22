@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { todayLocalIso } from '../../lib/dateLocale'
 import calepinageApi from '../../api/calepinageApi'
 import useDocumentCalepinage, {
   ecrireSection, MESSAGE_ILLISIBLE, useLatitudeDuSite,
@@ -150,7 +151,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     if (v.indisponible) { setMessage(v.motif); return }
     setPoints((prev) => sortedHorizonPoints([...prev, { azimuthDeg: v.azimutDeg, heightDeg: v.hauteurDeg }]))
     setSource('saisie')
-    setReleve({ mode: 'telephone', date: new Date().toISOString().slice(0, 10), precisionDeg })
+    setReleve({ mode: 'telephone', date: todayLocalIso(), precisionDeg })
     setMessage(null)
   }
 

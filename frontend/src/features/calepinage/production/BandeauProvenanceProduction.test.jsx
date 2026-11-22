@@ -16,8 +16,9 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
+import { PVGIS_LIVE_LOSS_PCT } from '@rooflib/systemLoss'
 import BandeauProvenanceProduction, {
-  BandeauBorneHaute, IncertitudeSigma, ReglagesUtilises, SourceMeteo,
+  BandeauBorneHaute, EcartPvgis, IncertitudeSigma, ReglagesUtilises, SourceMeteo,
 } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 
@@ -34,17 +35,44 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('BandeauProvenanceProduction (CALX65)', () => {
-  it('sans simulation : une seule mention, avec le mot « forfaitaires »', async () => {
+  it('sans simulation : une seule mention, sans PVGIS tant que la carte ne dit pas qu’il a répondu', async () => {
     servir('exemple_vide')
     rendre()
 
     const bandeau = await screen.findByTestId('calx65-bandeau')
-    expect(within(bandeau).getByTestId('calx65-rapide')).toHaveTextContent('forfaitaires')
     expect(within(bandeau).getByTestId('calx65-rapide')).toHaveTextContent(
-      'Estimation rapide (PVGIS PVcalc, pertes forfaitaires 20 %)',
+      "Estimation rapide de l'atelier — avant la simulation",
     )
     // UNE SEULE mention (Done) : la moitié « Simulation » n'existe pas.
     expect(within(bandeau).queryByTestId('calx65-simulation')).toBeNull()
+  })
+
+  /* ACAL894 — la provenance de la carte (`data-source-prod` de #rp9-reco-why). */
+  const carte = (source) => {
+    const el = document.createElement('p')
+    el.id = 'rp9-reco-why'
+    el.dataset.sourceProd = source
+    document.body.appendChild(el)
+    return el
+  }
+  afterEach(() => { document.getElementById('rp9-reco-why')?.remove() })
+
+  it('table par latitude ⇒ ni PVGIS ni 20 %', async () => {
+    carte('(production estimée — table par latitude)')
+    servir('exemple_vide')
+    rendre()
+    const rapide = await screen.findByTestId('calx65-rapide')
+    expect(rapide).not.toHaveTextContent('PVGIS')
+    expect(rapide).not.toHaveTextContent('20 %')
+  })
+
+  it('PVGIS répondu ⇒ PVGIS et la perte réellement passée au service', async () => {
+    carte('(production affinée via PVGIS au GPS exact)')
+    servir('exemple_vide')
+    rendre()
+    expect(await screen.findByTestId('calx65-rapide')).toHaveTextContent(
+      `Estimation rapide (PVGIS PVcalc, pertes forfaitaires ${PVGIS_LIVE_LOSS_PCT} %)`,
+    )
   })
 
   it('simulation périmée (CALX70, `production` publiée null) : une seule mention aussi', async () => {
@@ -62,7 +90,7 @@ describe('BandeauProvenanceProduction (CALX65)', () => {
     const bandeau = await screen.findByTestId('calx65-bandeau')
     // Les DEUX mentions sont visibles ENSEMBLE (le même bandeau), jamais l'une
     // à la place de l'autre.
-    expect(within(bandeau).getByTestId('calx65-rapide')).toHaveTextContent('forfaitaires')
+    expect(within(bandeau).getByTestId('calx65-rapide')).toHaveTextContent('Estimation rapide')
     const simulation = within(bandeau).getByTestId('calx65-simulation')
     expect(simulation).toHaveTextContent('P50')
     // `formatNumber` insère une espace fine insécable dans « 13 000 » :
@@ -203,6 +231,62 @@ describe('ReglagesUtilises — valeur publiée (ACAL405)', () => {
   it('une saisie ordinaire n’en porte pas', () => {
     render(<ReglagesUtilises simulation={simulation('mesuré sur site')} />)
     expect(screen.queryByTestId('acal405-publiee')).toBeNull()
+  })
+})
+
+/* ACAL854 — l'écart à PVGIS servi (`validation`), signé, une décimale. */
+describe('EcartPvgis (ACAL854)', () => {
+  const validation = exempleContrat('calepinage', 'calepinage_resultat', 'exemple').validation
+  const rendreEcart = (v) => render(<MemoryRouter><EcartPvgis validation={v} /></MemoryRouter>)
+
+  it('écart servi ⇒ la ligne, signe compris', () => {
+    rendreEcart(validation)
+    expect(screen.getByTestId('acal854-ecart-pvgis').textContent.replace(/\s/g, ' '))
+      .toContain('Comparé à PVGIS au même endroit : −2,0 %')
+    expect(screen.queryByTestId('acal854-sans-verdict')).toBeNull()
+    expect(screen.getByTestId('acal854-ecart-pvgis')).not.toHaveTextContent('PVcalc')
+  })
+
+  it('sans tolérance ⇒ « écart publié sans verdict » et le lien vers le réglage', () => {
+    rendreEcart({ ...validation, tolerance_pct: null, verdict: null })
+    expect(screen.getByTestId('acal854-sans-verdict')).toHaveTextContent('écart publié sans verdict')
+    expect(screen.getByTestId('acal854-lien-tolerance'))
+      .toHaveAttribute('href', '/calepinage/reglages#tolerance_validation_pct')
+  })
+
+  it('écart nul (aucune simulation) ⇒ rien', () => {
+    rendreEcart(exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime').validation)
+    expect(screen.queryByTestId('acal854-ecart-pvgis')).toBeNull()
+    rendreEcart({ ...validation, ecart_pct: null })
+    expect(screen.queryByTestId('acal854-ecart-pvgis')).toBeNull()
+  })
+})
+
+/* ACAL855 — le voyant suit le verdict SERVI, tolérance nommée. */
+describe('EcartPvgis — voyant (ACAL855)', () => {
+  const validation = exempleContrat('calepinage', 'calepinage_resultat', 'exemple').validation
+  const voyant = (v) => {
+    render(<MemoryRouter><EcartPvgis validation={v} /></MemoryRouter>)
+    return screen.queryByTestId('acal855-voyant')
+  }
+
+  it('dans la tolérance ⇒ vert, tolérance servie', () => {
+    const v = voyant(validation)
+    expect(v).toHaveAttribute('data-verdict', 'vert')
+    expect(v.textContent.replace(/\s/g, ' ')).toContain('Dans la tolérance de ±5 % réglée par votre société')
+    expect(screen.queryByTestId('acal855-lien-pertes')).toBeNull()
+  })
+
+  it('hors tolérance ⇒ orange, lien vers les Pertes, avertissement servi une fois', () => {
+    const v = voyant({ ...validation, verdict: 'hors_tolerance', avertissement: 'écart hors tolérance servi' })
+    expect(v).toHaveAttribute('data-verdict', 'orange')
+    expect(v.textContent.replace(/\s/g, ' ')).toContain('Hors de la tolérance de ±5 %')
+    expect(screen.getByTestId('acal855-lien-pertes')).toHaveAttribute('href', '/?onglet=pertes')
+    expect(screen.getAllByText('écart hors tolérance servi')).toHaveLength(1)
+  })
+
+  it('sans verdict ⇒ aucun voyant', () => {
+    expect(voyant({ ...validation, verdict: null, tolerance_pct: null })).toBeNull()
   })
 })
 

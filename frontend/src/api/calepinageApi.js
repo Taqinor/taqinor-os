@@ -359,6 +359,11 @@ const calepinageApi = {
     // calepinage_consommation_proposee.json) : LECTURE PURE, `{consumption, kwh_annuel,
     // courbe24, saisons, avertissements}` ; 400/409 nomment le champ, 404 lead absent.
     proposerConsommation: (id, corps) => api.post(`${pivot(id)}consommation/proposer/`, corps), // ACAL
+    // ACAL840 (contrat calepinage_consommation_photo_facture.json, ACAL839) — LIRE une photo de facture :
+    // GET = la lecture est-elle ouverte ? ; POST multipart `fichier` = lignes `{mois: null, kwh}` à
+    // confirmer (rien n'est écrit, la photo n'est pas stockée).
+    lireFactureDisponible: (id) => api.get(`${pivot(id)}consommation/lire-facture/`), // ACAL
+    lireFactureConsommation: (id, corps) => api.post(`${pivot(id)}consommation/lire-facture/`, corps), // ACAL
     // ACAL469 — le BALAYAGE d'un pan libre (contrat calepinage_balayage.json) : 202 + job,
     // suivi par `moteur.resultat(jobId)` ; rien n'est écrit au calepinage.
     balayer: (id, corps) => api.post(`${pivot(id)}balayage/`, corps), // ACAL

@@ -335,7 +335,8 @@ class ChaineReelleTest(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.rendu = _simuler()
+        cls.client_rejoue = _ClientRejoue()
+        cls.rendu = _simuler(client=cls.client_rejoue)
         cls.blocs = cls.rendu['blocs']
 
     def test_la_production_annuelle_est_un_nombre(self):
@@ -356,10 +357,14 @@ class ChaineReelleTest(SimpleTestCase):
             self.assertEqual(sorted(etape), attendues, etape['etape'])
 
     def test_la_meteo_publiee_compte_les_appels_reellement_partis(self):
-        # UN pan, UNE requête : la mémoire du fournisseur est devant le
-        # client, elle ne le contourne pas. ACAL706 : + UNE requête à 0°
-        # (l'horizontale du gain d'inclinaison).
-        self.assertEqual(self.blocs['meteo']['appels_pvgis'], 2)
+        # Le compteur publié = les requêtes réellement parties : ce client
+        # double ne répond jamais « depuis le cache », chaque demande compte.
+        # Chaîne : UN pan, UNE requête, + UNE à 0° (ACAL706, gain
+        # d'inclinaison) ; ACAL744 (comparer_bases) : + DEUX requêtes (la
+        # base principale puis l'autre base), soit 4.
+        self.assertEqual(self.blocs['meteo']['appels_pvgis'],
+                         len(self.client_rejoue.demandes))
+        self.assertEqual(self.blocs['meteo']['appels_pvgis'], 4)
         self.assertEqual(self.blocs['meteo']['service'], 'seriescalc')
 
     def test_l_entete_de_simulation_porte_l_empreinte_et_la_duree(self):

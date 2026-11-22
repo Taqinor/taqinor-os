@@ -78,15 +78,20 @@ export default function BuilderDom({
               type="button"
               onClick={basculerPleinEcran3d}
               data-testid="rp9-plein-ecran-toggle"
-              className={`${chipClass} absolute right-3 top-3 z-10`}
+              className={`${chipClass} rp9-carte-puce`}
             >
               {pleinEcran3d ? 'Quitter le plein écran' : 'Plein écran'}
             </button>
+            {/* ACAL954 — « Terminer le tracé » SUR la carte (centré en bas), plus sous la flottaison ;
+                ids inchangés (lus par roof-tool-pro11.ts). Même fond opaque que la puce ACAL950,
+                rangé dans le flux de ce bandeau (position statique). */}
+            <div className="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 gap-2">
+              <button type="button" id="rp9-finish" disabled className={`${chipClass} rp9-carte-puce`} style={{ position: 'static' }}>Terminer le tracé</button>
+              <button type="button" id="rp9-undo-point" hidden className={`${chipClass} rp9-carte-puce`} style={{ position: 'static' }}>Annuler le dernier point</button>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-border p-4">
-            <button type="button" id="rp9-finish" disabled className={chipClass}>Terminer le tracé</button>
-            <button type="button" id="rp9-undo-point" hidden className={chipClass}>Annuler le dernier point</button>
             <button type="button" id="rp9-clear" className={chipClass}>Effacer</button>
             <button type="button" id="rp9-add-area" disabled className={chipClass}>+ Ajouter une zone</button>
             {/* ACAL233 — la parcelle du site (clé racine `parcelle`, plan de masse). */}

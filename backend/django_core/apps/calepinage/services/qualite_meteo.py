@@ -91,7 +91,7 @@ def _decalage(points, colonne, latitude, longitude, decalage_minutes):
             continue
         poids_mesure = poids_soleil = som_mesure = som_soleil = 0.0
         for p in du_jour:
-            instant = (datetime.datetime(annee, mois, jour, p['heure'])
+            instant = (datetime.datetime(annee, mois, jour, p['heure'], tzinfo=datetime.timezone.utc)
                        - datetime.timedelta(minutes=decalage_minutes))
             pos = position_solaire(latitude, longitude, annee=instant.year, mois=instant.month,
                                    jour=instant.day, heure_utc=instant.hour + instant.minute / 60.0)

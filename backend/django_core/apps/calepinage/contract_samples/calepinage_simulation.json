@@ -853,9 +853,25 @@
         "justification": "Plafond d'injection SAISI par la société, avec sa source — jamais une constante.",
         "energie_ecretee_kwh": 210.0,
         "heures_ecretees": 96,
+        "plages": [
+          {
+            "debut_h": 16,
+            "fin_h": 18,
+            "plafond_kw": 2.0,
+            "heures_ecretees": 20,
+            "energie_ecretee_kwh": 60.0
+          }
+        ],
         "motif": ""
       },
       "motif_absence": "",
+      "soutirage": {
+        "plafond_kw": 6.0,
+        "justification": "Plafond de soutirage SAISI par la société, avec sa source — jamais une constante.",
+        "pointe_kw": 9.0,
+        "heures_au_dessus": 24,
+        "energie_au_dessus_kwh": 72.0
+      },
       "etape_plafond": {
         "libelle": "Plafond d'injection",
         "gain": false,
@@ -1430,6 +1446,7 @@
       "energie": null,
       "par_mois": null,
       "plafond": null,
+      "soutirage": null,
       "etape_plafond": null,
       "definition": "",
       "motif_absence": "Aucune simulation lancée : aucun croisement horaire n'a eu lieu."
@@ -2305,9 +2322,11 @@
         "justification": "Plafond d'injection SAISI par la société, avec sa source — jamais une constante.",
         "energie_ecretee_kwh": 210.0,
         "heures_ecretees": 96,
+        "plages": [],
         "motif": ""
       },
       "motif_absence": "",
+      "soutirage": null,
       "etape_plafond": {
         "libelle": "Plafond d'injection",
         "gain": false,
@@ -3480,9 +3499,11 @@
         "justification": "Plafond d'injection SAISI par la société, avec sa source — jamais une constante.",
         "energie_ecretee_kwh": 210.0,
         "heures_ecretees": 96,
+        "plages": [],
         "motif": ""
       },
       "motif_absence": "",
+      "soutirage": null,
       "etape_plafond": {
         "libelle": "Plafond d'injection",
         "gain": false,
@@ -3876,6 +3897,40 @@
   "exemple_refus_400": {
     "fuseau": [
       "Le fuseau horaire du site n'est pas réglé (Réglages > Imagerie) : la simulation ne démarre pas sans lui."
+    ]
+  },
+  "exemple_refus_manquants": {
+    "parametres.simulation.mode_meteo": [
+      "Le mode météo n'est pas choisi : la simulation est refusée. Renseignez « parametres.simulation.mode_meteo » avec sa source — tmy ou pluriannuel. Aucun mode par défaut n'est appliqué : une année météo type et une fenêtre pluriannuelle ne rendent pas le même chiffre, et choisir à la place de la société reviendrait à inventer le sien."
+    ],
+    "manquants": [
+      {
+        "champ": "parametres.simulation.mode_meteo",
+        "motif": "Le mode météo n'est pas choisi : la simulation est refusée. Renseignez « parametres.simulation.mode_meteo » avec sa source — tmy ou pluriannuel. Aucun mode par défaut n'est appliqué : une année météo type et une fenêtre pluriannuelle ne rendent pas le même chiffre, et choisir à la place de la société reviendrait à inventer le sien.",
+        "cible": {"onglet": "reglages", "champ": "calx69-mode_meteo"}
+      },
+      {
+        "champ": "parametres.simulation.fenetre_annees",
+        "motif": "La fenêtre d'années météo n'est pas renseignée alors que le mode « pluriannuel » est choisi : la simulation est refusée. Renseignez « parametres.simulation.fenetre_annees » avec sa source — toute la base disponible, dans la limite de 10 ans. Aucune fenêtre par défaut n'est appliquée.",
+        "cible": {"onglet": "reglages", "champ": "calx69-fenetre_annees"}
+      },
+      {
+        "champ": "site.pin",
+        "motif": "Le site de ce calepinage n'a pas de point GPS : la météo se demande à une latitude et une longitude, elles ne se devinent pas. Posez l'épingle du site sur la carte (« roof_layout.pin »).",
+        "cible": null
+      }
+    ]
+  },
+  "exemple_refus_sans_pan_equipe": {
+    "plans": [
+      "Aucun pan de ce calepinage ne porte à la fois des modules et une puissance crête : il n'y a rien à simuler. Posez des modules, puis désignez le module PV dans l'onglet Matériel électrique (ou liez un devis qui porte une ligne module) avant de lancer la simulation."
+    ],
+    "manquants": [
+      {
+        "champ": "plans",
+        "motif": "Aucun pan de ce calepinage ne porte à la fois des modules et une puissance crête : il n'y a rien à simuler. Posez des modules, puis désignez le module PV dans l'onglet Matériel électrique (ou liez un devis qui porte une ligne module) avant de lancer la simulation.",
+        "cible": null
+      }
     ]
   },
   "corps_variante": {

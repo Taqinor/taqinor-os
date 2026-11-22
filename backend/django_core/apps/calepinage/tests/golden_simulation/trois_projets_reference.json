@@ -146,6 +146,13 @@
      "perte_pct": null
     },
     {
+     "etape": "optimiseur",
+     "omise": true,
+     "kwh_avant": 17974.789,
+     "kwh_apres": null,
+     "perte_pct": null
+    },
+    {
      "etape": "ohmique_dc",
      "omise": true,
      "kwh_avant": 17974.789,
@@ -350,6 +357,13 @@
      "perte_pct": null
     },
     {
+     "etape": "optimiseur",
+     "omise": true,
+     "kwh_avant": 27077.732,
+     "kwh_apres": null,
+     "perte_pct": null
+    },
+    {
      "etape": "ohmique_dc",
      "omise": true,
      "kwh_avant": 27077.732,
@@ -548,6 +562,13 @@
     },
     {
      "etape": "diodes",
+     "omise": true,
+     "kwh_avant": 36607.791,
+     "kwh_apres": null,
+     "perte_pct": null
+    },
+    {
+     "etape": "optimiseur",
      "omise": true,
      "kwh_avant": 36607.791,
      "kwh_apres": null,

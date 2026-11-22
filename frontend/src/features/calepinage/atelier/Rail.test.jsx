@@ -295,8 +295,8 @@ describe('ACAL394 — l’interrupteur « Mode expert »', () => {
 })
 
 describe('ACAL409 — « Comparer les variantes » et « Photos du site » sont des onglets du rail', () => {
-  it('le registre passe à 41 onglets (ACAL628 : +1 « controle-chaine »), la table du parcours couvre `variantes` (Résultats) et `photos` (Toit)', () => {
-    expect(ONGLETS).toHaveLength(41)
+  it('le registre passe à 42 onglets (ACAL628 : +1 « controle-chaine » ; ACAL847 : +1 « consommation-mesuree »), la table du parcours couvre `variantes` (Résultats) et `photos` (Toit)', () => {
+    expect(ONGLETS).toHaveLength(42)
     expect(ETAPES.find((e) => e.cle === 'resultats').onglets).toContain('variantes')
     expect(ETAPES.find((e) => e.cle === 'toit').onglets).toContain('photos')
   })

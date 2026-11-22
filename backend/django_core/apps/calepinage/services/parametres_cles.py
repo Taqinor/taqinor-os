@@ -221,6 +221,8 @@ CLES_ELECTRIQUE_SOCIETE = (
      'Réglage société — durée saisie avec sa source ; aucune durée supposée'),  # ACAL824
     ('fiche_ecart_pmax_pct', "Écart toléré entre Pmax et Vmp × Imp d'une fiche module importée", '%',
      'Réglage société — seuil saisi avec sa source ; vide : contrôle omis et dit'),  # ACAL657
+    ('seuil_acces_optimiseur', "Accès solaire sous lequel un module est proposé pour un optimiseur", '',
+     'Réglage société — seuil saisi avec sa source (0 à 1) ; vide : aucune proposition'),  # ACAL647
 )
 
 #: ``{section: tuple de déclarations}`` — le SEUL point d'entrée des lecteurs.
@@ -337,6 +339,7 @@ TYPES_CLES = {
         'seuil_ecart_acces_optimiseur': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL671
         'gabarit_verification_max_jours': {'type': 'entier', 'minimum': 1},  # ACAL824
         'fiche_ecart_pmax_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL657
+        'seuil_acces_optimiseur': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL647
     },
 }
 

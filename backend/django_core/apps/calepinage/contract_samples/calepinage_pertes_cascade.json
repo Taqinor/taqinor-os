@@ -69,6 +69,20 @@
         },
         {
           "rang": 5,
+          "etape": "optimiseur",
+          "libelle": "Optimiseurs de puissance",
+          "kwh_avant": 15919.7,
+          "kwh_apres": null,
+          "perte_kwh": null,
+          "perte_pct": null,
+          "gain": false,
+          "source": null,
+          "entree": null,
+          "reference": null,
+          "motif_omission": "Aucun optimiseur n'est déclaré (ni produit pour le document, ni module marqué) : aucune perte de conversion à compter."
+        },
+        {
+          "rang": 6,
           "etape": "ohmique_dc",
           "libelle": "Chutes ohmiques côté courant continu",
           "kwh_avant": 15919.7,
@@ -82,7 +96,7 @@
           "motif_omission": ""
         },
         {
-          "rang": 6,
+          "rang": 7,
           "etape": "indisponibilite",
           "libelle": "Indisponibilité réseau et maintenance",
           "kwh_avant": 15792.3,
@@ -101,6 +115,7 @@
         "spectral",
         "thermique",
         "bifacial",
+        "optimiseur",
         "ohmique_dc",
         "indisponibilite"
       ],
@@ -111,6 +126,7 @@
       "hash_entree": "abababababababababababababababababababababababababababababababab",
       "etapes_omises": [
         "spectral",
+        "optimiseur",
         "indisponibilite"
       ],
       "irradiation_incidente_kwh_m2": 2105.5,
@@ -273,6 +289,7 @@
                   "P1#3"
                 ],
                 "sans_contrainte": false,
+                "modules_equipes": [],
                 "excedent_basse_pct": 20.0,
                 "excedent_haute_pct": 40.0,
                 "bornes": {
@@ -307,6 +324,7 @@
                 "acces_min": 1.0,
                 "modules_derives": [],
                 "sans_contrainte": false,
+                "modules_equipes": [],
                 "excedent_basse_pct": 0.0,
                 "excedent_haute_pct": 0.0,
                 "bornes": {

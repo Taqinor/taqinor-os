@@ -1,10 +1,13 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { PVGIS_LIVE_LOSS_PCT } from '@rooflib/systemLoss'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatDate, formatNumber, formatPercent } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import { estProfilDepart, MENTION_PUBLIEE } from '../reglages/profilDepart'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CALX65 — DIRE, DANS L'ATELIER, LAQUELLE DES DEUX PRODUCTIONS PARLE.
@@ -29,9 +32,26 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
    entier tant que le document a changé depuis le dernier calcul).
    ========================================================================== */
 
-const MENTION_RAPIDE = 'Estimation rapide (PVGIS PVcalc, pertes forfaitaires 20 %)'
+/* ACAL894 — PVGIS n'est nommé que s'il a répondu pour la carte (attribut
+   `data-source-prod` de `#rp9-reco-why`, posé par `optimizer.ts::paintCard`) ;
+   la perte citée est la constante réellement passée au service, importée. */
+const MENTION_PVGIS = `Estimation rapide (PVGIS PVcalc, pertes forfaitaires ${PVGIS_LIVE_LOSS_PCT} %)`
+const MENTION_ATELIER = "Estimation rapide de l'atelier — avant la simulation"
+const pvgisARepondu = (source) => /PVGIS/.test(source || '') && !/indisponible|table/i.test(source || '')
+
+function useSourceCarte() {
+  const lire = () => document.getElementById('rp9-reco-why')?.dataset?.sourceProd ?? ''
+  const [source, setSource] = useState(lire)
+  useEffect(() => {
+    const obs = new MutationObserver(() => setSource(lire()))
+    obs.observe(document.body, { subtree: true, childList: true, attributeFilter: ['data-source-prod'] })
+    return () => obs.disconnect()
+  }, [])
+  return source
+}
 
 export default function BandeauProvenanceProduction({ calepinageId }) {
+  const source = useSourceCarte()
   const { data } = useResource(
     () => calepinageApi.calepinages.resultat(calepinageId), calepinageId,
     {
@@ -46,7 +66,7 @@ export default function BandeauProvenanceProduction({ calepinageId }) {
 
   return (
     <p className="mt-2 text-xs text-foreground" data-testid="calx65-bandeau">
-      <span data-testid="calx65-rapide">{MENTION_RAPIDE}</span>
+      <span data-testid="calx65-rapide">{pvgisARepondu(source) ? MENTION_PVGIS : MENTION_ATELIER}</span>
       {aSimulation && (
         <span data-testid="calx65-simulation">
           {' — Simulation : P50 '}
@@ -88,6 +108,54 @@ function EcartDevis({ ecart }) {
       {pct !== null && pct !== undefined && (
         <>{' — écart '}{signe}{formatNumber(pct, { decimals: 1 })}{' %'}</>
       )}
+    </span>
+  )
+}
+
+/* ACAL854 — l'écart à PVGIS que la simulation calcule déjà (`validation`,
+   `services/validation.py::ecart_vs_pvcalc`) : la valeur servie, une décimale,
+   signée. Aucun seuil ici : sans tolérance réglée par la société, pas de verdict. */
+export function EcartPvgis({ validation }) {
+  const pct = validation?.ecart_pct
+  if (typeof pct !== 'number') return null
+  const signe = pct < 0 ? '−' : (pct > 0 ? '+' : '')
+  const sansVerdict = validation.tolerance_pct == null && validation.verdict == null
+  return (
+    <p className="text-sm text-muted-foreground" data-testid="acal854-ecart-pvgis">
+      {'Comparé à PVGIS au même endroit : '}{signe}{formatNumber(Math.abs(pct), { decimals: 1 })}{' %'}
+      <Pourquoi cle="production.ecart_pvgis" valeurs={{ validation }} />{/* ACAL873 */}
+      {sansVerdict && (
+        <span className="block text-xs" data-testid="acal854-sans-verdict">
+          {'écart publié sans verdict — la tolérance n\'est pas réglée ('}
+          <Link to="/calepinage/reglages#tolerance_validation_pct" className="text-primary-text underline"
+            data-testid="acal854-lien-tolerance">régler la tolérance</Link>{')'}
+        </span>
+      )}
+      <VoyantPvgis validation={validation} />
+    </p>
+  )
+}
+
+/* ACAL855 — le voyant affiche le `verdict` SERVI et la tolérance de la société ;
+   il ne décide d'aucun seuil. */
+function VoyantPvgis({ validation }) {
+  const { verdict, tolerance_pct: tol, avertissement } = validation
+  if (verdict !== 'dans_la_tolerance' && verdict !== 'hors_tolerance') return null
+  const tolerance = `±${formatNumber(tol, { decimals: Number.isInteger(tol) ? 0 : 1 })} %`
+  if (verdict === 'dans_la_tolerance') {
+    return (
+      <span className="mt-1 block w-fit rounded bg-success/10 px-2 py-1 text-xs text-success-text"
+        data-testid="acal855-voyant" data-verdict="vert">
+        {`Dans la tolérance de ${tolerance} réglée par votre société`}
+      </span>
+    )
+  }
+  return (
+    <span className="mt-1 block w-fit rounded border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
+      data-testid="acal855-voyant" data-verdict="orange">
+      {`Hors de la tolérance de ${tolerance} : vérifiez les pertes et la météo `}
+      <Link to={`?${PARAM_ONGLET}=pertes`} className="underline" data-testid="acal855-lien-pertes">voir les pertes</Link>
+      {avertissement && <span className="block" data-testid="acal855-avertissement">{avertissement}</span>}
     </span>
   )
 }

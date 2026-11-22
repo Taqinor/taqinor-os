@@ -14,6 +14,7 @@ import Pourquoi from '../commun/Pourquoi'
 import { formatDateTime } from '../../../lib/format'
 import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
 import { estIndeterminee, phraseChaine, volts } from './tensionsChaines'
+import { libelleEtat } from './etatVerdict'
 import { grouperMotifs, libelleStatut, motifsRefusants, statutRefuse, tonStatut } from './VerdictElectrique.helpers'
 
 /* ============================================================================
@@ -328,6 +329,8 @@ export default function VerdictElectrique({ calepinageId } = {}) {
   /* Les phrases du SERVEUR quand il n'a pas pu se prononcer (fiche non
      résolue : `evaluation_electrique` rend `manquantes[]`). */
   const manquantes = Array.isArray(data?.manquantes) ? data.manquantes : []
+  // ACAL613 — le ton vient de l'état servi (ACAL935) ; sans `etat`, repli d'avant.
+  const etatServi = publication ? libelleEtat(publication.etat, publication.points) : null
 
   if (loading) {
     return (
@@ -387,16 +390,21 @@ export default function VerdictElectrique({ calepinageId } = {}) {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">Dossier électrique :</span>
                   <Badge
-                    tone={publication.publiable ? 'success' : 'danger'}
+                    tone={etatServi?.ton || (publication.publiable ? 'success' : 'danger')}
+                    className="min-h-11"
                     data-testid="calx249-publiable"
                   >
-                    {publication.publiable ? 'Publiable' : 'Non publiable'}
+                    {etatServi && publication.titre
+                      ? publication.titre
+                      : (publication.publiable ? 'Publiable' : 'Non publiable')}
                   </Badge>
                 </div>
                 {publication.publiable
                   ? (
                     <p className="text-sm text-muted-foreground" data-testid="calx249-pourquoi-oui">
-                      Aucun motif bloquant, aucune valeur sans provenance.
+                      {etatServi && publication.phrase
+                        ? publication.phrase
+                        : 'Aucun motif bloquant, aucune valeur sans provenance.'}
                     </p>
                   )
                   : (

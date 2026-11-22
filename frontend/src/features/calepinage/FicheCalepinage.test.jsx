@@ -50,7 +50,7 @@ vi.mock('../../api/customFieldsApi', () => ({
 
    CE TEST PARCOURT LE CONTRAT. Il ne cite aucune clé à la main : il lit
    `Object.keys(exemple)` du fichier COMMITTÉ et exige un rendu pour chacune. Le
-   jour où le serveur publie une vingt-cinquième clé, ce test la réclame.
+   jour où le serveur publie une vingt-septième clé, ce test la réclame.
 
    IL VÉRIFIE AUSSI LA DISCIPLINE DU NULL, celle que le contrat impose : sur
    `exemple_vide`, une grandeur non mesurée vaut `null` — l'écran rend « — » et
@@ -105,11 +105,12 @@ beforeEach(() => {
 afterEach(() => { cleanup() })
 
 describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
-  it('rend une clé du contrat, et le contrat en publie bien vingt-cinq', () => {
+  it('rend une clé du contrat, et le contrat en publie bien vingt-six', () => {
     // Garde de dérive : si le contrat grossit, la liste ci-dessous grossit avec
     // lui et le test suivant exigera le rendu de la nouvelle clé.
-    // CIQ136 — `contraintes_site` ; ACAL6 — `custom_data` : 25 clés.
-    expect(CLES.length).toBe(25)
+    // CIQ136 — `contraintes_site` ; ACAL6 — `custom_data` ;
+    // ACAL915 — `surfaces_chiffrables` : 26 clés.
+    expect(CLES.length).toBe(26)
   })
 
   it.each(CLES)('affiche la clé publiée « %s »', (cle) => {
@@ -181,6 +182,9 @@ describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
     expect(screen.getByTestId('cal-fiche-client')).toHaveTextContent('—')
     // CIQ136 — aucune contrainte de site par défaut : « — », jamais FM.
     expect(screen.getByTestId('cal-fiche-contraintes_site')).toHaveTextContent('—')
+    // ACAL915 — aucune surface chiffrable : « — », jamais « 0 ».
+    expect(screen.getByTestId('cal-fiche-surfaces_chiffrables')).toHaveTextContent('—')
+    expect(screen.getByTestId('cal-fiche-surfaces_chiffrables')).not.toHaveTextContent('0')
     expect(screen.queryByRole('link', { name: 'Voir l’aperçu' })).toBeNull()
     // Les permissions de l'exemple vide : modifier + archiver (ACAL120 : le
     // geste « supprimer » est l'archivage), PAS retenir.

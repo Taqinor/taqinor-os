@@ -1503,6 +1503,10 @@ function AtelierToiture({
           dangerouslySetInnerHTML={CONS_WINDOW_INNER}
         />
 
+        {/* ACAL780 — charges à venir (voiture électrique, pompe à chaleur) : niveau expert, monté par
+            `consumption.ts` ; `hidden` tant que le Mode expert n'est pas actif. */}
+        <div data-cons-charges hidden className="mt-2" />
+
         {/* CALX65 — sous la carte du constructeur, en mode calepinage
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}

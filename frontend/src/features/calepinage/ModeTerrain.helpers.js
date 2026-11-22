@@ -19,7 +19,7 @@ export function motifChampVide(reponse) {
     + 'agrandissez le terrain.'
 }
 
-const unDecimale = (v) => Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+const unDecimale = (v) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(v))
 
 /** ACAL609 — « Entraxe calculé contre l'ombre d'hiver : 5,9 m (latitude 30,4°) », ou `null`. */
 export function ligneEntraxeCalcule(anti) {
