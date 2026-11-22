@@ -84,9 +84,10 @@ const ARCHIVABLE = {
   permissions: { ...DETAIL.permissions, peut_supprimer: true },
 }
 
-// `statut` et `statut_libelle` sont DEUX clés du contrat, rendues en deux
-// champs distincts (le libellé lisible et le code technique).
-const CLES = Object.keys(DOC.exemple)
+// ACAL966 — `id` et `statut` restent SERVIS par le contrat mais ne sont plus rendus (l'identifiant est dans
+// l'adresse, le statut se lit en mots par `statut_libelle`) : les autres clés sont toutes rendues.
+const NON_RENDUES = ['id', 'statut']
+const CLES = Object.keys(DOC.exemple).filter((cle) => !NON_RENDUES.includes(cle))
 
 const rendre = (detail) => render(
   <MemoryRouter><FicheCalepinage detail={detail} /></MemoryRouter>,
@@ -108,8 +109,20 @@ describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
   it('rend une clé du contrat, et le contrat en publie bien vingt-cinq', () => {
     // Garde de dérive : si le contrat grossit, la liste ci-dessous grossit avec
     // lui et le test suivant exigera le rendu de la nouvelle clé.
-    // CIQ136 — `contraintes_site` ; ACAL6 — `custom_data` : 25 clés.
-    expect(CLES.length).toBe(25)
+    // CIQ136 — `contraintes_site` ; ACAL6 — `custom_data` : 25 clés ; `surfaces_chiffrables` : 26 (d'une autre
+    // tâche, pas encore rendue par la fiche) ; ACAL966 : 2 ne sont plus rendues.
+    expect(CLES.length).toBe(24)
+  })
+
+  it('ACAL966 — ni « Identifiant technique » ni « Code de statut » ; « Statut » est gardé', () => {
+    rendre(DETAIL)
+
+    expect(screen.queryByText('Identifiant technique')).toBeNull()
+    expect(screen.queryByText('Code de statut')).toBeNull()
+    expect(screen.queryByTestId('cal-fiche-id')).toBeNull()
+    expect(screen.queryByTestId('cal-fiche-statut')).toBeNull()
+    expect(screen.getByText('Statut')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-fiche-statut_libelle')).toHaveTextContent(DETAIL.statut_libelle)
   })
 
   it.each(CLES)('affiche la clé publiée « %s »', (cle) => {

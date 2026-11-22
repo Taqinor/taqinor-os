@@ -15,7 +15,8 @@
       "plafond_injection_a": null,
       "plages_plafond_injection": null,
       "plafond_soutirage_kw": null,
-      "plafond_soutirage_justification": null
+      "plafond_soutirage_justification": null,
+      "dispositif_limitation_injection": null
     },
     "calcul": {
       "elevation_pct": 0.82,
@@ -60,6 +61,13 @@
         "statut": "omis",
         "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
         "source": null
+      },
+      {
+        "code": "limitation_injection",
+        "libelle": "Limitation de l'injection",
+        "statut": "omis",
+        "detail": "aucun plafond d'injection n'est saisi : il n'y a pas de limitation à contrôler.",
+        "source": null
       }
     ],
     "proposition_lead": {
@@ -101,7 +109,8 @@
       "plafond_injection_a": null,
       "plages_plafond_injection": null,
       "plafond_soutirage_kw": null,
-      "plafond_soutirage_justification": null
+      "plafond_soutirage_justification": null,
+      "dispositif_limitation_injection": null
     },
     "calcul": {
       "elevation_pct": 0.82,
@@ -146,6 +155,13 @@
         "statut": "omis",
         "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
         "source": null
+      },
+      {
+        "code": "limitation_injection",
+        "libelle": "Limitation de l'injection",
+        "statut": "omis",
+        "detail": "le champ ne compte pas que des micro-onduleurs : le contrôle porte sur un champ à micro-onduleurs seuls.",
+        "source": null
       }
     ],
     "proposition_lead": null,
@@ -183,7 +199,8 @@
       "plafond_injection_a": null,
       "plages_plafond_injection": null,
       "plafond_soutirage_kw": null,
-      "plafond_soutirage_justification": null
+      "plafond_soutirage_justification": null,
+      "dispositif_limitation_injection": null
     },
     "calcul": {
       "elevation_pct": null,
@@ -227,6 +244,13 @@
         "libelle": "Déséquilibre entre les phases",
         "statut": "omis",
         "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
+        "source": null
+      },
+      {
+        "code": "limitation_injection",
+        "libelle": "Limitation de l'injection",
+        "statut": "omis",
+        "detail": "aucun plafond d'injection n'est saisi : il n'y a pas de limitation à contrôler.",
         "source": null
       }
     ],

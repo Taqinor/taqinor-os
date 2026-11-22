@@ -675,14 +675,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
             </span>
           )}
         </Champ>
-        <Champ cle="id" label="Identifiant technique">
-          <span className="fig">{texte(detail.id)}</span>
-        </Champ>
-
         <Champ cle="statut_libelle" label="Statut">{texte(detail.statut_libelle)}</Champ>
-        <Champ cle="statut" label="Code de statut">
-          <code className="text-xs text-foreground">{texte(detail.statut)}</code>
-        </Champ>
         <Champ cle="responsable" label="Responsable">
           {rattachementEditable ? (
             <span className="inline-flex items-center gap-2">

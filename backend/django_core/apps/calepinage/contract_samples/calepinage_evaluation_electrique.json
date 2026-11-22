@@ -34,6 +34,7 @@
     ],
     "onduleurs_suggeres": {"nombre": 1, "motif": "", "signaux_avec_1": []},
     "boucles_dc": [{"chaine": 1, "pan": "PAN-A", "nombre_modules": 4, "surface_m2": 4.5, "limite_m2": 3, "limite_source": "societe", "depasse": true, "base": "estimation géométrique : centres des modules dans l'ordre de l'affectation, puis un fil de chaque bout jusqu'au point de collecte ; l'écart réel entre les deux fils n'est pas mesuré", "indetermine": []}],
+    "modules_sous_seuil": ["PAN-A#3", "PAN-A#4"],
     "publication": {
       "publiable": true,
       "motifs": [],
@@ -55,6 +56,7 @@
     "chaines": [],
     "onduleurs_suggeres": null,
     "boucles_dc": [],
+    "modules_sous_seuil": [],
     "publication": {
       "publiable": true,
       "motifs": [
@@ -90,6 +92,7 @@
     ],
     "onduleurs_suggeres": {"nombre": 2, "motif": "2 onduleurs sont nécessaires : 3 pans pour 2 entrées par onduleur (pans : PAN-1, PAN-2, PAN-3)", "signaux_avec_1": ["Exemple de forme : alerte de la conception à 1 onduleur"]},
     "boucles_dc": [],
+    "modules_sous_seuil": [],
     "publication": {
       "publiable": false,
       "motifs": [
@@ -124,6 +127,7 @@
     ],
     "onduleurs_suggeres": null,
     "boucles_dc": [],
+    "modules_sous_seuil": [],
     "publication": null
   },
   "exemple_vide": {
@@ -138,6 +142,7 @@
     "chaines": [],
     "onduleurs_suggeres": null,
     "boucles_dc": [],
+    "modules_sous_seuil": [],
     "publication": null
   },
   "exemple_indetermine": {
@@ -155,6 +160,7 @@
     ],
     "onduleurs_suggeres": null,
     "boucles_dc": [],
+    "modules_sous_seuil": [],
     "publication": null
   }
 }

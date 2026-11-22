@@ -33,6 +33,7 @@ vi.mock('../../api/calepinageApi', () => ({
       get: vi.fn(),
       genererDevis: vi.fn(),
       syncDevis: vi.fn(),
+      modulesDisponibles: vi.fn(() => Promise.resolve({ data: {} })), // ACAL867 — le rail monte l'étape Toit
     },
     // CAL70 — PanneauAllees (monté ici, emplacement CAL37) lit les réglages
     // société et interroge le moteur ; sans double par défaut, la promesse
@@ -250,4 +251,41 @@ describe('ACAL421 — conception automatique', () => {
     await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
     expect(screen.queryByTestId('cal-conception-auto')).toBeNull()
   })
+})
+
+describe('ACAL867 — l’étape Documents guidée porte « Générer le devis »', () => {
+  const rendreA = (recherche) => render(
+    <MemoryRouter initialEntries={[`/${recherche}`]}>
+      <AtelierPanneaux calepinageId={CTX.calepinage.id} contexte={CTX} />
+    </MemoryRouter>,
+  )
+  const dansActions = () => screen.getByTestId('cal-atelier-actions').querySelector('[data-testid="cal-generer-devis"]')
+  // Un calepinage SANS devis lié : le bouton est « Générer le devis » (avec un devis, c'est « Resynchroniser »).
+  beforeEach(() => {
+    calepinageApi.calepinages.get.mockResolvedValue({ data: exempleContrat('calepinage', 'calepinage_detail', 'exemple_vide') })
+  })
+
+  it('étape Documents guidée : un seul bouton, DANS l’écran de l’étape, plus dans cal-atelier-actions', async () => {
+    rendreA('?onglet=documents')
+
+    const ecran = await screen.findByTestId('cal-etape-documents-ecran', {}, { timeout: 15_000 })
+    await waitFor(() => expect(ecran.querySelector('[data-testid="cal-generer-devis"]')).not.toBeNull())
+    expect(screen.getAllByTestId('cal-generer-devis')).toHaveLength(1)
+    expect(dansActions()).toBeNull()
+    // Ordre : « Prêt à envoyer ? », le bouton, puis les documents.
+    const enfants = [...ecran.children]
+    expect(enfants[1].getAttribute('data-testid')).toBe('cal-etape-documents-devis')
+    expect(enfants).toHaveLength(3)
+  }, 30_000)
+
+  it('hors de l’étape Documents, ou en mode expert : le bouton reste dans cal-atelier-actions', async () => {
+    rendreA('')
+    await waitFor(() => expect(dansActions()).not.toBeNull())
+    expect(screen.queryByTestId('cal-etape-documents-ecran')).toBeNull()
+    cleanup()
+    rendreA('?onglet=documents&mode=expert')
+    await waitFor(() => expect(dansActions()).not.toBeNull())
+    expect(screen.getAllByTestId('cal-generer-devis')).toHaveLength(1)
+    expect(screen.queryByTestId('cal-etape-documents-ecran')).toBeNull()
+  }, 30_000)
 })

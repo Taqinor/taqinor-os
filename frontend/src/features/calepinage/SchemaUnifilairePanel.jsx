@@ -9,6 +9,7 @@ import RetourAtelier from './atelier/RetourAtelier'
 import { telechargerBlob } from './exportImage'
 import { corpsEdition, exporterSchemaPng, exporterSchemaSvg, motifDuRefusDxf, nomFichierSchema } from './SchemaUnifilairePanel.helpers'
 import EtatEcranAtelier from './atelier/EtatEcranAtelier'
+import CroquisSchemaGrise from './CroquisSchemaGrise'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
 const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
@@ -29,7 +30,10 @@ function Motifs({ donnees }) {
       </p>
     )
   }
-  return blocs.map((bloc) => (
+  const croquis = blocs.some((bloc) => bloc.cle === 'manquantes') // ACAL1028 — fiche incomplète seulement
+  return (<>
+    {croquis ? <CroquisSchemaGrise /> : null}
+    {blocs.map((bloc) => (
     <div key={bloc.cle} className="flex flex-col gap-1" data-testid={`cal195-${bloc.cle}`}>
       <div className="flex items-center gap-2 text-sm font-medium">
         <AlertCircle size={15} aria-hidden="true" />
@@ -39,7 +43,8 @@ function Motifs({ donnees }) {
         {bloc.lignes.map((ligne) => <li key={ligne}>{ligne}</li>)}
       </ul>
     </div>
-  ))
+    ))}
+  </>)
 }
 
 function EditionSchema({ id, donnees, onPoste, lectureSeule = false }) {

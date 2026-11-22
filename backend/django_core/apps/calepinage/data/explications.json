@@ -514,6 +514,17 @@
       ]
     },
     {
+      "cle": "mesure.ecart",
+      "famille": "mesure",
+      "phrase": "La différence, mois par mois, entre ce que le compteur a mesuré et la prévision du calcul : positive quand le réel dépasse la prévision, négative quand il reste en dessous.",
+      "valeurs": {},
+      "geste": "Collez les relevés du compteur pour chaque mois : l'écart se calcule sur les mois mesurés seulement.",
+      "lexique": null,
+      "ecrans": [
+        "livre-prevu"
+      ]
+    },
+    {
       "cle": "pertes.etape",
       "famille": "pertes",
       "phrase": "Chaque étape retire une part de l'énergie qui lui arrive, dans l'ordre du calcul : la colonne Source dit d'où vient la valeur, et une étape omise affiche le motif publié par le calcul au lieu d'une perte.",

@@ -47,7 +47,8 @@ RACCORDEMENT = json.loads(
 
 #: Les cinq contrôles, dans l'ordre où le contrat les publie.
 CODES = ['elevation_tension', 'puissance_souscrite', 'regime_phases',
-         'tension_nominale', 'desequilibre_phases']
+         'tension_nominale', 'desequilibre_phases',
+         'limitation_injection']  # ACAL1187 : le sixième
 
 #: Les six grandeurs du bloc ``calcul`` (ACAL827 : + plafond A converti).
 CHAMPS_CALCUL = {'elevation_pct', 'ecart_limite_pct', 'puissance_injectee_kva',

@@ -196,7 +196,9 @@ class ContratCalx205Test(SimpleTestCase):
 
         self.assertEqual(
             [CODE_ELEVATION, CODE_PUISSANCE_SOUSCRITE, CODE_REGIME_PHASES,
-             CODE_TENSION_NOMINALE, CODE_DESEQUILIBRE], attendus)
+             CODE_TENSION_NOMINALE, CODE_DESEQUILIBRE,
+             'limitation_injection'],  # ACAL1187 : le sixième
+            attendus)
 
     def test_les_intitules_sont_ceux_du_contrat(self):
         for verdict in RACCORDEMENT['exemple']['verdicts']:

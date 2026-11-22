@@ -104,6 +104,27 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     expect(initRoofToolPro8.mock.calls[0][0].factureMensuelleMad).toBeNull()
   })
 
+  // ACAL918 — l'option `demanderPlanSurface` : le contour tracé et la latitude de l'épingle partent au moteur.
+  it('ACAL918 — demanderPlanSurface poste le contour tracé + sol.latitude_deg de l’épingle et rend la réponse du moteur', async () => {
+    servirConceptionDevis()
+    rendreDevis(DEVIS_ID)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const { demanderPlanSurface } = initRoofToolPro8.mock.calls[0][0]
+    expect(typeof demanderPlanSurface).toBe('function')
+    calepinageApi.moteur.pose.mockResolvedValueOnce({ data: { total_modules: 132 } })
+    const contourM = [[0, 0], [30, 0], [30, 22], [0, 22]]
+    const reponse = await demanderPlanSurface({ id: 'sol-1', contourM, moduleLongM: 2.278, moduleCourtM: 1.134, moduleWc: 720, tiltDeg: 25 })
+    expect(reponse).toEqual({ total_modules: 132 })
+    const corps = calepinageApi.moteur.pose.mock.calls[0][0]
+    expect(corps.demande.contour).toEqual(contourM)
+    expect(corps.demande.surfaces[0].contour).toEqual(contourM)
+    expect(corps.sol).toEqual({ latitude_deg: CTX_CAL.geometrie.pin.lat })
+    // module absent ⇒ rien n'est envoyé : un motif, jamais une valeur inventée
+    calepinageApi.moteur.pose.mockClear()
+    await expect(demanderPlanSurface({ id: 'sol-2', contourM })).rejects.toThrow(/incomplet/)
+    expect(calepinageApi.moteur.pose).not.toHaveBeenCalled()
+  })
+
   // Correction fondateur 24/08 — le backend (PV17 + repli GPS) porte déjà le
   // pin ou son absence dans `geometrie.pin` : sans lui, l'écran le DIT.
   it('correction 24/08 — sans aucune position (geometrie.pin=null) : message discret affiché', async () => {

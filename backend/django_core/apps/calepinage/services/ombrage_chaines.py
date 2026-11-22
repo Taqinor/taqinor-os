@@ -48,7 +48,7 @@ from __future__ import annotations
 from .valeurs import nombre as _nombre
 
 __all__ = ['MOTIF_SANS_ACCES', 'acces_des_modules', 'acces_par_bande',
-           'acces_par_module', 'ombrage_des_chaines']
+           'acces_par_module', 'modules_sous_seuil', 'ombrage_des_chaines']
 
 MOTIF_SANS_ACCES = (
     "Le document de toiture ne porte aucun accès solaire par module "
@@ -157,6 +157,22 @@ def acces_des_modules(layout):
     """ACAL754 — ``{'<pan>#<n>': accès}`` dans l'ordre des pans du document,
     tel que persisté (``None`` = module non calculé) ; ``{}`` sans accès."""
     return dict(_acces_par_cle_de_module(layout))
+
+
+def modules_sous_seuil(layout, affectation, seuil):
+    """ACAL647 — les modules de l'affectation dont l'accès solaire est SOUS
+    ``seuil`` (réglage société ``seuil_acces_optimiseur``), dans l'ordre de
+    l'affectation : ce que l'écran propose d'équiper d'un optimiseur.
+
+    ``seuil`` vide ⇒ ``[]`` (aucune proposition, aucun seuil deviné) ; un
+    module sans accès calculé n'est jamais proposé."""
+    limite = _nombre(seuil)
+    if limite is None:
+        return []
+    acces = _acces_par_cle_de_module(layout)
+    cles = (str((ligne or {}).get('module') or '') for ligne in affectation or ())
+    return [cle for cle in cles
+            if acces.get(cle) is not None and acces[cle] < limite]
 
 
 def ombrage_des_chaines(layout, affectation, *, ecart_signale=None):

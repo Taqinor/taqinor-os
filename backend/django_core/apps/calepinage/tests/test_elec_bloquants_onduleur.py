@@ -403,3 +403,42 @@ class LimiteDeBoucleTest(SimpleTestCase):
 
         self.assertIs(evaluation['boucles_dc'][0]['depasse'], False)
         self.assertFalse([a for a in evaluation['alertes'] if 'boucle' in a])
+
+
+class ModulesSousSeuilTest(SimpleTestCase):
+    """ACAL647 — ``modules_sous_seuil[]`` : les modules à proposer à un optimiseur."""
+
+    ACCES = [0.95, 0.4, 0.3, 0.9]
+
+    def _evaluer(self, reglage):
+        from unittest import mock
+
+        calepinage = BoucleDeChaineTest._calepinage()
+        calepinage.roof_layout['zones'][0]['geometry']['solarAccess'] = {
+            'values': list(self.ACCES)}
+        with mock.patch(
+                'apps.calepinage.services.electrique.'
+                '_reglages_electrique_societe',
+                return_value=({'seuil_acces_optimiseur': reglage}
+                              if reglage is not None else {})):
+            return evaluation_electrique(
+                calepinage, materiel=_materiel(isc_max_mppt_a=45.0))
+
+    def test_seuil_vide_rend_une_liste_vide(self):
+        self.assertEqual(self._evaluer(None)['modules_sous_seuil'], [])
+        self.assertEqual(self._evaluer(
+            {'valeur': 0.5, 'source': ''})['modules_sous_seuil'], [])
+
+    def test_seuil_saisi_rend_les_modules_sous_le_seuil(self):
+        evaluation = self._evaluer({'valeur': 0.5, 'source': 'societe'})
+
+        self.assertEqual(evaluation['modules_sous_seuil'], ['z1#2', 'z1#3'])
+
+    def test_fiche_muette_garde_la_cle_vide(self):
+        materiel = _materiel()
+        del materiel['onduleur']['v_max_abs']
+
+        evaluation = evaluation_electrique(
+            BoucleDeChaineTest._calepinage(), materiel=materiel)
+
+        self.assertEqual(evaluation['modules_sous_seuil'], [])
