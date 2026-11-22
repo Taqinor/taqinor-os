@@ -295,8 +295,8 @@ describe('ACAL394 — l’interrupteur « Mode expert »', () => {
 })
 
 describe('ACAL409 — « Comparer les variantes » et « Photos du site » sont des onglets du rail', () => {
-  it('le registre passe à 42 onglets (ACAL628 : +1 « controle-chaine » ; ACAL847 : +1 « consommation-mesuree »), la table du parcours couvre `variantes` (Résultats) et `photos` (Toit)', () => {
-    expect(ONGLETS).toHaveLength(42)
+  it('le registre passe à 43 onglets (ACAL628 : +1 « controle-chaine » ; ACAL847 : +1 « consommation-mesuree » ; ACAL888 : +1 « livre-prevu »), la table du parcours couvre `variantes` (Résultats) et `photos` (Toit)', () => {
+    expect(ONGLETS).toHaveLength(43)
     expect(ETAPES.find((e) => e.cle === 'resultats').onglets).toContain('variantes')
     expect(ETAPES.find((e) => e.cle === 'toit').onglets).toContain('photos')
   })
@@ -342,6 +342,19 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
   /* ACAL865 — le compte de l'étape vient du panneau « Prêt à envoyer ? »
      (contrat `calepinage_pret_a_envoyer.json`), jamais de `manque[]`. */
   const pret = reponseContrat('calepinage', 'calepinage_pret_a_envoyer')
+  const pretAvec = (controles) => ({
+    ...pret,
+    data: {
+      ...pret.data,
+      controles,
+      nombre_bloquants: controles.filter((c) => c.etat === 'bloquant').length,
+      nombre_a_regler: controles.filter((c) => c.etat === 'a_regler').length,
+      pret: !controles.some((c) => ['bloquant', 'a_regler'].includes(c.etat)),
+    },
+  })
+  const ok = pret.data.controles.find((c) => c.etat === 'ok')
+  const orange = pret.data.controles.find((c) => c.etat === 'a_regler')
+  const info = pret.data.controles.find((c) => c.etat === 'info')
 
   it('guidé : UNE page, « 2 points à régler » et 7 sections ; le Verdict est ouvert quand l’étape est bloquée', async () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
@@ -356,6 +369,45 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     expect(screen.getByTestId('cal-electrique-section-raccordement')).toHaveAttribute('data-state', 'closed')
     // une seule page : pas un onglet par panneau.
     expect(screen.queryByTestId('cal-onglet-raccordement')).toBeNull()
+  }, 30_000)
+
+  it('ACAL865 — tout ok ⇒ « Prêt à envoyer », même si « ce qui manque » a des lignes électriques', async () => {
+    mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok]))
+    rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Prêt à envoyer'))
+    expect(mocks.pretAEnvoyer).toHaveBeenCalledWith(ID)
+  }, 30_000)
+
+  it('ACAL865 — un orange ⇒ UN seul « 1 point à régler », et « Régler » pousse `?onglet=…&champ=…`', async () => {
+    mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
+    const cible = { etape: 'toit', onglet: 'pertes', champ: 'pente' }
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, info, { ...orange, cible }]))
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}?${PARAM_ONGLET}=verdict-electrique`]}>
+        <Routes>
+          <Route path="/calepinage/:id" element={<><Rail /><TemoinUrl /></>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 point à régler'))
+    // un seul compte : `manque[]` (2 lignes électriques) n'est plus compté ici.
+    expect(screen.queryAllByText(/points? à régler/)).toHaveLength(1)
+    expect(screen.getByTestId(`cal-pret-ligne-${info.code}`)).toHaveTextContent(info.valeur_texte)
+    await userEvent.setup().click(screen.getByTestId(`cal-pret-regler-${orange.code}`))
+    const recherche = new URLSearchParams(screen.getByTestId('temoin-url').textContent)
+    expect(recherche.get(PARAM_ONGLET)).toBe('pertes')
+    expect(recherche.get('champ')).toBe('pente')
+  }, 30_000)
+
+  it('ACAL865 — les contrôles réussis sont repliés sous « Voir les n contrôles réussis »', async () => {
+    mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, orange]))
+    rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
+    const reussis = await screen.findByTestId('cal-pret-reussis', {}, { timeout: DELAI_PANNEAU })
+    expect(reussis.open).toBe(false)
+    expect(reussis).toHaveTextContent('Voir le contrôle réussi')
+    expect(within(reussis).getByTestId(`cal-pret-ligne-${ok.code}`)).toBeTruthy()
   }, 30_000)
 
   it('un ancien lien `?onglet=verdict-electrique` déplie le Verdict, `?onglet=raccordement` le Raccordement', async () => {
@@ -585,4 +637,30 @@ describe('ACAL868 — le rail publie l’étape à la barre fixe', () => {
     await waitFor(() => expect(onEtape.mock.calls.at(-1)[0]).toMatchObject({ etape: suivante, expert: false }))
     expect(await panneauOuvert()).toBeTruthy()
   })
+})
+
+describe('ACAL867 — l’étape Documents guidée : panneau, bouton de devis, documents', () => {
+  const rendreAvecDevis = (recherche) => render(
+    <MemoryRouter initialEntries={[`/calepinage/${ID}${recherche}`]}>
+      <Routes>
+        <Route path="/calepinage/:id" element={<Rail actionDevis={<button type="button" data-testid="cal-generer-devis">Générer le devis</button>} />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+  it('guidé : le bouton relayé s’affiche dans l’écran, entre « Prêt à envoyer ? » et les documents ; un seul bouton', async () => {
+    try { window.localStorage.clear() } catch { /* ignoré */ }
+    rendreAvecDevis(`?${PARAM_ONGLET}=documents`)
+    const ecran = await screen.findByTestId('cal-etape-documents-ecran', {}, { timeout: DELAI_PANNEAU })
+    expect(ecran.children).toHaveLength(3)
+    expect(ecran.children[1]).toContainElement(screen.getByTestId('cal-generer-devis'))
+    expect(screen.getAllByTestId('cal-generer-devis')).toHaveLength(1)
+  }, 30_000)
+
+  it('mode expert : l’onglet documents est inchangé (aucun écran d’étape, aucun bouton relayé)', async () => {
+    rendreAvecDevis(`?${PARAM_ONGLET}=documents&mode=expert`)
+    await panneauOuvert()
+    expect(screen.queryByTestId('cal-etape-documents-ecran')).toBeNull()
+    expect(screen.queryByTestId('cal-generer-devis')).toBeNull()
+  }, 30_000)
 })

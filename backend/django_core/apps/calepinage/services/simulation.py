@@ -1315,6 +1315,20 @@ def _annexes_de_production(blocs, serie_reference, projection, contexte):
         projection, contexte)
 
 
+def _parties_et_projection(blocs, document, projection, contexte, maintenant):
+    """ACAL843 — existant / ajouté côte à côte (absent sans pan existant) ; puis CALX63 — chaque année de la
+    projection porte la capacité restante de la batterie quand le vieillissement est publié (fiche cycles/EOL
+    saisie) ; sans lui, les lignes sortent inchangées."""
+    parties = _parties.parties_de_la_production(
+        document, blocs['production'].get('par_pan'), contexte, maintenant)
+    if parties is not None:
+        blocs['production']['parties'] = parties
+    from .batterie import capacite_batterie_par_annee
+    blocs['production']['projection'] = capacite_batterie_par_annee(
+        projection['annees'],
+        ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
+
+
 def simuler_calepinage(calepinage, *, forcer=False, client=None,
                        maintenant=None, enregistrer=True, materiel=None,
                        reglages=None, variante=None):
@@ -1534,18 +1548,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         total.get('p50_kwh'), contexte,
         parts=_parts_vieillies(meta['document'],
                                blocs['production'].get('par_pan'), maintenant))
-    # ACAL843 — existant / ajouté côte à côte ; absent sans pan existant.
-    parties = _parties.parties_de_la_production(
-        meta['document'], blocs['production'].get('par_pan'), contexte, maintenant)
-    if parties is not None:
-        blocs['production']['parties'] = parties
-    # CALX63 — chaque année de la projection porte la capacité restante de la
-    # batterie quand le vieillissement est publié (fiche cycles/EOL saisie) ;
-    # sans lui, les lignes sortent inchangées.
-    from .batterie import capacite_batterie_par_annee
-    blocs['production']['projection'] = capacite_batterie_par_annee(
-        projection['annees'],
-        ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
+    _parties_et_projection(blocs, meta['document'], projection, contexte, maintenant)
     _annexes_de_production(blocs, serie_reference, projection, contexte)
     if projection.get('motif_omission'):
         _ajouter_avertissement(blocs, MOTIF_PROJECTION.format(

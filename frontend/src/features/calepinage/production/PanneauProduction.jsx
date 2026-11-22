@@ -17,6 +17,7 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import GraphiqueMensuel from './GraphiqueMensuel'
 import ResultatHeros from './ResultatHeros'
+import PartiesProduction from './PartiesProduction'
 import PourquoiProduction from './PourquoiProduction'
 import LigneSurLaDuree from './LigneSurLaDuree'
 import CartePostesPertes from './CartePostesPertes'
@@ -473,6 +474,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
         motif={data?.motif} avertissements={data?.avertissements} plages={data?.cascade?.plages}
         autoconsommation={data?.autoconsommation} />
+      {data?.simule === true && !perime && <PartiesProduction parties={production?.parties} />}
       {data?.simule === true && !perime && <EcartPvgis validation={data?.validation} />}
       {data?.simule === true && !perime && <PourquoiProduction cascade={data?.cascade} />}
       {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}

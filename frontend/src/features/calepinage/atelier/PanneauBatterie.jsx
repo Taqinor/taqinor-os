@@ -13,7 +13,9 @@ import SemaineBatterie from './SemaineBatterie'
 import Pourquoi from '../commun/Pourquoi'
 import SecoursBatterie from './SecoursBatterie'
 import ModeExpertBatterie from './ModeExpertBatterie'
+import FaitsBatterie from './FaitsBatterie'
 import SeuilsHorsReseau from './SeuilsHorsReseau'
+import GroupeAppoint, { LectureGroupe } from './GroupeAppoint'
 import { FenetresBatterie, ReglagesPointe } from './FenetresBatterie'
 import useExpertParUrl from '../production/useExpertParUrl'
 
@@ -249,6 +251,9 @@ function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null })
         {champ('jours', 'Jours d’autonomie', etat.jours, (v) => poser('jours', v), 'number', erreurs['hors_reseau.jours_autonomie'])}
         {expert && etat.actif && (
           <SeuilsHorsReseau seuils={etat.seuils} erreurs={erreurs} onChange={(v) => poser('seuils', v)} />
+        )}
+        {expert && etat.actif && (
+          <GroupeAppoint groupe={etat.groupe} erreurs={erreurs} onChange={(v) => poser('groupe', v)} />
         )}
       </fieldset>
       <div className="flex flex-wrap gap-2">
@@ -557,6 +562,7 @@ function BlocHorsReseau({ horsReseau }) {
         </p>
       )}
       <TableauParMois parMois={horsReseau.par_mois} />
+      <LectureGroupe horsReseau={horsReseau} nomMois={libelleMois} />
       {horsReseau.mentions?.length > 0 && (
         <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="calx14-hors-reseau-mentions">
           {horsReseau.mentions.map((m) => <li key={m}>{m}</li>)}
@@ -600,6 +606,7 @@ export default function PanneauBatterie({ calepinageId, intervalleMs = 2000 }) {
       <BoutonCalculer calepinageId={id} data={data} onTermine={refetch} declenchement={relance} intervalleMs={intervalleMs} />
       {!perime && data?.simule && (
         <>
+          <FaitsBatterie batterie={data?.batterie} />
           <BlocBatterie batterie={data?.batterie} />
           <ModeExpertBatterie batterie={data?.batterie} />
           <ComparateurCapacites bloc={data?.batterie?.capacites_candidates} />

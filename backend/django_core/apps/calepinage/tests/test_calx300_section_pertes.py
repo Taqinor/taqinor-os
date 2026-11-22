@@ -81,7 +81,9 @@ class AucuneArithmetiqueTest(unittest.TestCase):
 
     def test_aucun_arrondi(self):
         cascade = cascade_du_contrat()
-        cascade['etapes'][4]['kwh_apres'] = 15792.34
+        # La DERNIÈRE étape chiffrée (une étape omise peut la suivre).
+        [e for e in cascade['etapes']
+         if e['kwh_apres'] is not None][-1]['kwh_apres'] = 15792.34
         html = html_de_section(contexte({'cascade': cascade}))
         self.assertEqual([c for c in cellules(html, 'kwh-apres')
                           if c != '—'][-1], '15792,34')
