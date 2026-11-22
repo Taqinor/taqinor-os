@@ -1374,6 +1374,8 @@ function AtelierToiture({
         ecranProps={{
           builderApi: builderApiActuel, onRecharger: rechargerAtelier,
           lectureSeule: lectureSeule || !!varianteId, documentVivant, contexte,
+          // L'atelier charge (ou relance) encore son design-context : les étapes attendent, sans lecture à elles.
+          contexteEnCours: contexte == null && !loadError,
         }}
         alertes={(
           <>

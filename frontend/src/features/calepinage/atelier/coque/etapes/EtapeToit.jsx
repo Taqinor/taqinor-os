@@ -362,12 +362,12 @@ function ResumeCarte({ surface, pans, besoin }) {
 }
 
 export default function EtapeToit({
-  calepinageId, builderApi = null, documentVivant = null, lectureSeule = false, enregistreLe = null, contexte: servi = null,
+  calepinageId, builderApi = null, documentVivant = null, lectureSeule = false, enregistreLe = null, contexte: servi = null, contexteEnCours = false,
 }) {
   const [etat, relire] = useEtatToit()
   // La taille des factures : l'accesseur PARTAGÉ avec l'étape Panneaux (trois états ; le design-context de
   // l'atelier, `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
-  const facture = useCibleFactures(calepinageId, servi)
+  const facture = useCibleFactures(calepinageId, servi, { attendre: contexteEnCours })
   const [ajout, basculerAjout] = useAjoutPan(etat, relire)
   return (
     <div className="cal-etape-toit">

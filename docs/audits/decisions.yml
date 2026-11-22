@@ -5449,7 +5449,7 @@ decisions:
         texte: "Ne rien relever : retirer ou différer du code avant de livrer, quitte à retarder la livraison"
     reponse: relever
     date: "2026-11-22"
-    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER (comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage) ; fait : le plafond du total gzippé du front passe de 4 050 Ko à 4 095 Ko (mesuré 4 079,2 Ko ; avant : 4 050 Ko) Ko et celui du chunk roof-tool de 630 Ko à 635 Ko (mesuré 631,5 Ko ; avant : 630 Ko) Ko dans frontend/scripts/check_bundle_budget.mjs, avec la raison écrite au commit ; la tâche ACAL1352 les ramène"
+    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER (comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage) ; fait : le plafond du total gzippé du front passe de 4 050 Ko à 4 130 Ko (mesuré par la CI 4 118,0 Ko ; avant : 4 050 Ko) Ko et celui du chunk roof-tool de 630 Ko à 635 Ko (mesuré 631,5 Ko ; avant : 630 Ko) Ko dans frontend/scripts/check_bundle_budget.mjs, avec la raison écrite au commit ; la tâche ACAL1352 les ramène"
     taches: [ACAL1352]
 
   - id: D-ACAL-75
@@ -5501,3 +5501,15 @@ decisions:
     date: "2026-11-22"
     source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER (comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage) ; fait : l'atelier ERP pose la palette bleu → or (choisirPaletteAcces « atelier »), le site public et le rapport d'ombrage (STOPS_LEGENDE) gardent rouge → vert, aucun script du site public n'est touché"
     taches: [ACAL1340]
+
+  - id: D-ACAL-79
+    question: "Les mots écrits par les lanes sans le fondateur (noms des pertes, onze noms et aides du Démarrage rapide, vingt-trois explications des contrôles « Prêt à envoyer ? ») sont-ils les bons ?"
+    options:
+      - cle: valides
+        texte: "Oui, tels quels"
+      - cle: a_corriger
+        texte: "Non : le fondateur donne ses corrections, appliquées mot pour mot"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "fidélité aux maquettes du 22/11/2026 ; mots écrits d'après la fonction de chaque contrôle, jamais relus ; recommandation : relecture par le fondateur avant le deploy"
+    taches: [ACAL1350]

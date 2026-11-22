@@ -78,10 +78,10 @@ export function useLectureServie(nature, id, { servi = null, actif = true } = {}
  * Panneaux (« Couvrir la facture ») : `{ etat, cible, motif, leadId, reessayer }`. `cible` n'a de sens qu'en
  * `etat === 'ok'` (`null` = le lead n'a pas de facture exploitable) ; en chargement ou en échec, rien n'est affirmé.
  */
-export function useCibleFactures(calepinageId, servi = null) {
+export function useCibleFactures(calepinageId, servi = null, { attendre = false } = {}) {
   // Le motif et le lead viennent du design-context (déjà chargé par l'atelier : `servi`) ; la taille, de sa
   // lecture à part (H3). L'état est celui des DEUX : chargement tant que l'une manque, échec dès que l'une échoue.
-  const contexte = useLectureServie('contexte', calepinageId, { servi })
+  const contexte = useLectureServie('contexte', calepinageId, { servi, actif: !attendre })
   const taille = useLectureServie('cible', calepinageId)
   const etat = [contexte.etat, taille.etat].includes('echec') ? 'echec'
     : (contexte.etat === 'ok' && taille.etat === 'ok' ? 'ok' : 'chargement')

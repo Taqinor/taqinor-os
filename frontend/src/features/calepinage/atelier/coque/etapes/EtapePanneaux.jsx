@@ -39,10 +39,10 @@ const sansParenthese = (t) => (t ?? '').replace(/\s*\([^)]*\)\s*$/, '')
 
 /** Les lectures servies de l'écran, par l'outil commun `useResource` (une lecture chacune ; résultat relu à
     chaque enregistrement). */
-function useServi(calepinageId, enregistreLe, servi = null) {
+function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
   // La taille des factures : l'accesseur PARTAGÉ avec l'étape Toit (trois états ; le design-context de l'atelier,
   // `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
-  const facture = useCibleFactures(calepinageId, servi)
+  const facture = useCibleFactures(calepinageId, servi, { attendre })
   const catalogue = useResource((id) => calepinageApi.calepinages.modulesDisponibles(id), calepinageId, selectData).data
   const entree = useResource((id) => calepinageApi.calepinages.entreeElectrique(id), calepinageId, selectData).data
   const resultat = useResource((p) => calepinageApi.calepinages.resultat(p.id), { id: calepinageId, enregistreLe },
@@ -305,13 +305,13 @@ function LecteurSoleil({ soleil, g }) {
   )
 }
 
-export default function EtapePanneaux({ calepinageId, lectureSeule = false, enregistreLe = null, contexte = null }) {
+export default function EtapePanneaux({ calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false }) {
   const [etat, rafraichir] = useConstructeur()
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
   const g = Object.fromEntries(Object.entries(gestes).map(([nom, geste]) => [
     nom, (...args) => { geste(...args); rafraichir() },
   ]))
-  const servi = useServi(calepinageId, enregistreLe, contexte)
+  const servi = useServi(calepinageId, enregistreLe, contexte, contexteEnCours)
   return (
     <div className="cal-pan">
       <ChoixModule etat={etat} entrees={servi.entrees} servis={servi.servis} lectureSeule={lectureSeule} g={g} />

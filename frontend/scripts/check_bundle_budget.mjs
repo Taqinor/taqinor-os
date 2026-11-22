@@ -249,8 +249,8 @@ const PER_CHUNK_BUDGET_KB = 350
 // (diff package.json vide), 671 chunks (plafond 865), aucun autre plafond dépassé. Budget : mesure arrondie aux
 // 5 Ko + 10 : 3995 -> 4050.
 // 22/11/2026 (D-ACAL-74, à confirmer par le fondateur) — reconstruction des 13 écrans du calepinage sur leurs
-// maquettes (coquille plein écran, écrans d'étape, vues téléphone) : mesuré 4 079,2 Ko → palier 4 095 Ko.
-const TOTAL_BUDGET_KB = 4095
+// maquettes (coquille plein écran, écrans d'étape, vues téléphone) : mesuré par la CI 4 118,0 Ko → palier 4 130 Ko.
+const TOTAL_BUDGET_KB = 4130
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

@@ -71,7 +71,15 @@ async function bootEtDom(ui, { coque = false } = {}) {
   // squelette de chargement ou l'écran selon la charge de la machine : golden instable).
   if (coque) await waitFor(() => expect(document.querySelector('.cal-coque-ecran-hote')).not.toBeNull(), { timeout: 15000 })
   await act(async () => { await new Promise((r) => setTimeout(r, 50)) })
+  // Les ids générés par React (useId : `_r_i_`) dépendent du nombre de rendus déjà faits dans le
+  // process (minutage, ordre des tests) : CI = `_r_1m_`, local = `_r_i_`. Renumérotés par ordre
+  // d'apparition ; la structure comparée reste intacte.
+  const vus = new Map()
   return document.body.innerHTML.replace(/></g, '>\n<')
+    .replace(/_r_[0-9a-z]+_/g, (m) => {
+      if (!vus.has(m)) vus.set(m, `_r_${vus.size}_`)
+      return vus.get(m)
+    })
 }
 
 beforeEach(() => {
