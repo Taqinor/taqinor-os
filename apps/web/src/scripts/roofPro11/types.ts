@@ -249,6 +249,9 @@ export interface RoofToolApi {
   exporterSceneGltf: () => Promise<{ blob: Blob } | null>;
   /** ACAL435 — caméra sur l'une des quatre vues prêtes (600 ms, instantané si reduced-motion). */
   appliquerVue: (nom: 'dessus' | 'sud' | 'trois-quarts' | 'face-panneaux') => void;
+  /** F6 — cadre la caméra sur TOUS les pans (sans animation, pente/cap gardés, jamais pendant un tracé) ;
+   *  caméra seule, rien de sérialisé. Faux = rien à cadrer. `zoomMax` absent = plafond d'aujourd'hui (19). */
+  cadrerToit: (options?: import('../../lib/roof').OptionsCadrage) => boolean;
   /** CAL104 — projection PLAN orthographique (nord en haut, cotée) de la zone
    *  ACTIVE, pour la vue 2D de l'écran hôte. Elle PROJETTE ce que la 3D a posé :
    *  même contour, mêmes modules, donc même compte et mêmes cotes. `null` tant

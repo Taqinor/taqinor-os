@@ -178,13 +178,13 @@ function Coffret({ titre, boite, onOuvrir, cleCible }) {
       <text x={x + 12} y={y + 28} className="csch-t14">{titre}</text>
       {detail && <Lignes x={x + 12} y={y + 50} lignes={detail} pas={16} className="csch-t12 csch-attenue" />}
       {organes.map((o, i) => {
-        const oy = y + 42 + i * 60
+        const oy = y + 42 + i * 66
         return (
           <g key={o.clef}>
-            <rect x={x + 12} y={oy} width={l - 24} height="50" rx="8" className="csch-organe" />
-            <g transform={`translate(${x + 20} ${oy + 13})`} className="csch-picto">{PICTOS[o.picto]}</g>
-            <text x={x + 54} y={oy + 22} className="csch-t14">{o.nom}</text>
-            <text x={x + 54} y={oy + 39} className="csch-t12 csch-attenue">{couperTexte(o.detail, 17, 1)[0]}</text>
+            <rect x={x + 12} y={oy} width={l - 24} height="56" rx="8" className="csch-organe" />
+            <g transform={`translate(${x + 20} ${oy + 16})`} className="csch-picto">{PICTOS[o.picto]}</g>
+            <text x={x + 54} y={oy + 20} className="csch-t14">{o.nom}</text>
+            <Lignes x={x + 54} y={oy + 36} lignes={couperTexte(o.detail, 19, 2)} pas={14} className="csch-t12 csch-attenue" />
           </g>
         )
       })}

@@ -6,7 +6,6 @@
 .cal-coque .cal-pan-section { display: flex; flex-direction: column; gap: 8px; margin: 0; }
 .cal-coque .cal-pan-titre { margin: 0; font-size: 0.875rem; font-weight: 600; }
 .cal-coque .cal-pan-note { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--muted-foreground); }
-.cal-coque .cal-pan-note-ligne { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-coque .cal-pan-erreur { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--destructive); }
 .cal-coque .cal-pan-lien { color: var(--info); text-decoration: underline; }
 

@@ -219,9 +219,9 @@ export function planSchemaEnBlocs(schema, resultat) {
   const organesAc = organesDe(blocs, AC_ORGANES, libelles)
   const trouve = (clef) => blocs.find((b) => b.clef === clef) ?? null
   const chaineAc = []
-  if (organesAc.length) chaineAc.push({ cle: 'coffret_ac', l: 180, h: Math.max(212, 42 + organesAc.length * 60), dy: 32, ecart: 72 })
+  if (organesAc.length) chaineAc.push({ cle: 'coffret_ac', l: 196, h: Math.max(212, 42 + organesAc.length * 66), dy: 32, ecart: 72 })
   const compteur = trouve('compteur_production')
-  if (compteur) chaineAc.push({ cle: 'compteur', l: 104, h: 98, ecart: 56, titre: couperTexte(compteur.titre, 12) })
+  if (compteur) chaineAc.push({ cle: 'compteur', l: 104, h: 98, ecart: 40, titre: couperTexte(compteur.titre, 12) })
   const tgbt = trouve('tgbt')
   if (tgbt) chaineAc.push({ cle: 'tgbt', l: 64, h: 64, ecart: 32, titre: couperTexte(tgbt.titre, 8) })
   const reseau = trouve('reseau')
@@ -258,7 +258,7 @@ export function planSchemaEnBlocs(schema, resultat) {
   const basRangees = rangees[rangees.length - 1].ligne
   const coffretDc = avecCoffretDc
     ? {
-      x: 302, y: 44, l: 180, h: Math.max(212, 42 + organesDc.length * 60, basRangees + 16 - 44, entrees[entrees.length - 1] + 16 - 44),
+      x: 302, y: 44, l: 196, h: Math.max(212, 42 + organesDc.length * 66, basRangees + 16 - 44, entrees[entrees.length - 1] + 16 - 44),
       organes: organesDc,
       // Sans organe de protection servi, la boîte dit ce que le serveur en publie (« 2 chaîne(s) raccordée(s) »).
       detail: organesDc.length ? null : couperTexte(trouve('coffret_dc')?.sous_titre, 22, 2),

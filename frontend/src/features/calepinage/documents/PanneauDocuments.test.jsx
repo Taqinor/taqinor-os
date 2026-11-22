@@ -3,6 +3,7 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { readFileSync } from 'node:fs'
 
 /* ============================================================================
    CALX320 — le panneau « Documents » BASCULE sur l'inventaire `documents/`
@@ -908,6 +909,22 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     // dix « ? », « Régler dans Toit », « Générer le devis », quatre « Aperçu » (le DXF n’en a pas), cinq « Télécharger »
     console.info(`ACAL1193 contrôles visibles (écran guidé, 10 contrôles) : ${n} :: ${controlesVisibles(container).map((e) => e.getAttribute('aria-label') || e.textContent.trim()).join(' | ')}`)
     expect(n).toBeLessThanOrEqual(22)
+  })
+  it('F4 — gabarit de la maquette : aucune marge propre à l’écran, les contrôles défilent DANS leur carte, vignettes à plat', async () => {
+    const css = readFileSync('src/styles/calepinage/55-etape-documents.css', 'utf8')
+      .split(String.fromCharCode(13)).join('')
+    const bloc = (sel) => {
+      const debut = css.lastIndexOf(`${sel} {`)
+      return debut < 0 ? '' : css.slice(debut, css.indexOf('}', debut))
+    }
+    expect(bloc('.cdoc-ecran')).not.toMatch(/padding/) // le centre de l'atelier donne déjà 24 / 28 px
+    expect(bloc('.cdoc-groupes')).toMatch(/overflow-y: auto/)
+    expect(bloc('.cdoc-groupes')).toMatch(/min-height: 0/)
+    expect(bloc('.cdoc-pied')).toMatch(/flex: none/) // la légende et « Générer le devis » ne défilent pas
+    servir()
+    monter()
+    await screen.findByTestId('cal-docs-liste')
+    expect(document.querySelectorAll('[data-vignette]')).toHaveLength(5)
   })
   it('PretAEnvoyer `filtre` : seule l’étape demandée, compte compris ; sans `groupes` la présentation d’origine', async () => {
     servir()

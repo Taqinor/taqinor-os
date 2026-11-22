@@ -237,6 +237,20 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(carte.querySelector('[data-zone="aucun-module"]')).toBeNull()
   })
 
+  it('ouvrir l’étape est en LECTURE SEULE : aucun input/change/click envoyé au constructeur, même après les sondages', async () => {
+    const { racine } = monterConstructeur({ besoin: '60', panneaux: '55 × 720 W', note: '60 au devis — seuls 55 tiennent.' })
+    const recus = []
+    for (const type of ['input', 'change', 'click']) racine.addEventListener(type, (e) => recus.push(`${type}:${e.target.id || e.target.outerHTML.slice(0, 40)}`), true)
+    servir({ resultat: { simule: true, simulation_perimee: false, production: { total: { p50_kwh: 1, complete: true } }, pose: {} },
+      materiel: { module: null, modules_par_pan: [{ pan: 'A', designation: 'Canadien Solar 710 Wc', produit_id: 1 }] } })
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique).toHaveBeenCalled())
+    await new Promise((r) => { setTimeout(r, 1300) }) // > 3 sondages de 400 ms
+    expect(recus).toEqual([])
+    expect(document.getElementById('rp9-need-input').value).toBe('60')
+    expect(document.getElementById('rp9-pan-module-select').value).toBe('')
+  })
+
   it('sens de pose : trois segments branchés sur data-orient ; le re-clic sur le sens posé ne part pas', () => {
     const { espion } = monterConstructeur({ orient: 'portrait' })
     const paysage = espion('[data-orient="landscape"]')
