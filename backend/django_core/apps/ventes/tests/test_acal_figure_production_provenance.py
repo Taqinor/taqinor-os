@@ -8,11 +8,12 @@ et UNE fonction rend la production recalée du devis
 * la figure du calepinage (base 720 W) est recalée sur la puissance des
   LIGNES (8 × 715 W = 5,72 kWc) — quelle que soit sa décimale ;
 * une étude sans marque (antérieure à ACAL101) n'est jamais recalée ;
-* R2-14 — le sélecteur cross-app ``production_imprimee_du_devis`` (atelier,
-  rapport d'étude, présentation compacte, monitoring via
-  ``production_attendue_pour_devis``) lit la production IMPRIMÉE par le PDF
-  (rendu du devis), jamais la copie stockée par le calepinage ; résidentiel,
-  commercial / industriel (``synthese_ci``) et agricole (rien).
+* le sélecteur cross-app ``production_attendue_pour_devis`` (monitoring,
+  écart de l'atelier) lit la figure recalée, sans rendre le devis ;
+* R2-14 — ``selectors_calepinage.production_imprimee_du_devis`` (présentation
+  compacte, document généré) lit la production IMPRIMÉE par le PDF (rendu du
+  devis) ; résidentiel, commercial / industriel (``synthese_ci``) et agricole
+  (rien).
 
 Sources RÉELLES : ``build_devis_from_layout``, ``sync_devis_from_layout``,
 ``etude_schema.fusionner`` (validation des clés).
@@ -36,9 +37,8 @@ from apps.stock.models import Produit
 from apps.ventes.domain.etude_schema import valider
 from apps.ventes.domain.scenario import figure_production_du_devis
 from apps.ventes.models import Devis, LigneDevis
-from apps.ventes.quote_engine.builder import build_quote_data
-from apps.ventes.quote_engine.figures import production_imprimee
-from apps.ventes.selectors import production_attendue_pour_devis, production_imprimee_du_devis
+from apps.ventes.selectors import production_attendue_pour_devis
+from apps.ventes.selectors_calepinage import production_imprimee_du_devis
 from apps.ventes.services import build_devis_from_layout, sync_devis_from_layout
 from authentication.models import Company
 
@@ -66,7 +66,7 @@ class ProductionProvenanceTest(TestCase):
             company=self.company, nom='Panneau Canadian Solar 715W',
             sku='A101-PAN', prix_vente=Decimal('1200'),
             prix_achat=Decimal('800'), quantite_stock=100)
-        self.onduleur = Produit.objects.create(
+        Produit.objects.create(
             company=self.company, nom='Onduleur réseau Growatt 10kW',
             sku='A101-OND', prix_vente=Decimal('14000'),
             prix_achat=Decimal('9000'), quantite_stock=100)
@@ -83,13 +83,6 @@ class ProductionProvenanceTest(TestCase):
             devis=devis, produit=self.panneau, designation=self.panneau.nom,
             quantite=Decimal(str(panneaux)), prix_unitaire=Decimal('1200'),
             remise=Decimal('0'))
-        # Le moteur PDF refuse un devis sans onduleur (builder.py, règle dure
-        # « une option ne se rend jamais sans onduleur ») : la ligne onduleur
-        # rend le devis rendable ; elle ne touche pas aux panneaux (kWc).
-        LigneDevis.objects.create(
-            devis=devis, produit=self.onduleur,
-            designation=self.onduleur.nom, quantite=Decimal('1'),
-            prix_unitaire=Decimal('14000'), remise=Decimal('0'))
         return devis
 
     def test_decimale_haute_marquee_calepinage(self):
@@ -128,10 +121,9 @@ class ProductionProvenanceTest(TestCase):
                                  int(round(annuel * 5.72 / 5.76)))
                 self.assertNotEqual(figure, int(round(annuel)))
         self.assertEqual(attendu, 8782)
-        # R2-14 — le sélecteur cross-app (monitoring, atelier) lit la
-        # production IMPRIMÉE (rendu du devis), plus la figure stockée.
+        # Le sélecteur cross-app (monitoring) lit la figure recalée.
         self.assertEqual(production_attendue_pour_devis(devis.pk),
-                         production_imprimee(build_quote_data(devis, {'pdf_mode': 'full'})))
+                         Decimal(str(int(round(8843.1 * 5.72 / 5.76)))))
 
     def test_etude_sans_marque_non_recalee(self):
         # Lot 2 critique #9 — aucun chemin n'écrit « saisie » : la production

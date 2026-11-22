@@ -212,7 +212,7 @@ def _production_du_devis_lie(calepinage):
     aucun nombre n'est écrit."""
     if not getattr(calepinage, 'devis_id', None):
         return None
-    from apps.ventes.selectors import production_imprimee_du_devis
+    from apps.ventes.selectors_calepinage import production_imprimee_du_devis
 
     from ..devis import _devis_lie_actif
 

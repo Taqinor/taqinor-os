@@ -5,8 +5,9 @@ au client) et le P50 de l'étude technique — jamais l'inverse.
 * ``resultat.ecart_devis`` = ``{devis, reference, production_devis_kwh,
   p50_calepinage_kwh, ecart_pct, mention}`` (contrat
   ``calepinage_resultat.json``, ``exemple_ecart_devis``) ; la production du
-  devis est LUE par ``apps.ventes.selectors.production_imprimee_du_devis``
-  (R2-14 : celle que le PDF imprime, jamais la copie stockée du calepinage) ;
+  devis est LUE par ``apps.ventes.selectors.production_attendue_pour_devis``
+  (figure recalée, ACAL101) — jamais un RENDU du devis : le rendu relit ce
+  résultat (ombrage servi, D-RES-2710-1) et crée le profil société (ACON87) ;
 * ``null`` sans devis lié, sans simulation, ou simulation périmée ;
 * la section « Production » du rapport d'étude imprime les deux chiffres et
   l'écart (mêmes valeurs que le JSON).
@@ -163,30 +164,33 @@ class EcartDevisTest(BaseApiCalepinage):
                          Decimal(str(servi['ecart_devis']['ecart_pct'])))
 
 
-class EcartDevisProductionImprimeeTest(SimpleTestCase):
-    """R2-14 (S1) — devis 71 : 3 343 kWh stockés par le calepinage
-    (``production_source='calepinage'``), 3 628 imprimés par le PDF. La
-    phrase « production imprimée au client » (atelier, rapport d'étude)
-    porte 3 628. Sans base : devis et rendu sont des doublures."""
+class EcartDevisSansRenduTest(SimpleTestCase):
+    """L'écart de l'atelier lit la figure du devis par le sélecteur YSERV8,
+    jamais par un rendu ``build_quote_data`` : le rendu d'un devis brouillon
+    relit ``resultat_calepinage`` (ombrage servi, D-RES-2710-1 — boucle) et
+    crée le profil société absent, qui périme la simulation (ACON87). Sans
+    base : devis et sélecteurs sont des doublures."""
 
-    def _ecart(self, rendu):
-        devis = SimpleNamespace(pk=71, company_id=3, reference='DEV-202611-0071', roof_layout={},
-                                etude_params={'production_annuelle': 3343, 'production_source': 'calepinage'})
+    def _ecart(self, production):
+        devis = SimpleNamespace(pk=71, company_id=3, reference='DEV-202611-0071', roof_layout={})
         calepinage = SimpleNamespace(devis_id=71, company_id=3)
         with mock.patch('apps.ventes.selectors.get_devis_by_pk', return_value=devis), \
-                mock.patch('apps.ventes.models.Devis.objects') as objets, \
                 mock.patch('apps.ventes.selectors_calepinage._conception_a_jour', return_value=True), \
-                mock.patch('apps.ventes.quote_engine.builder.build_quote_data', return_value=rendu):
-            objets.filter.return_value.first.return_value = devis
-            return _ecart_devis(calepinage, 4808.0)
+                mock.patch('apps.ventes.selectors.production_attendue_pour_devis',
+                           return_value=production) as lue, \
+                mock.patch('apps.ventes.quote_engine.builder.build_quote_data') as rendu:
+            ecart = _ecart_devis(calepinage, 4808.0)
+        rendu.assert_not_called()
+        lue.assert_called_once_with(71)
+        return ecart
 
-    def test_la_phrase_porte_la_production_imprimee(self):
-        ecart = self._ecart({'mode_installation': 'residentiel', 'prod_kwh': 3628})
+    def test_la_phrase_porte_la_figure_du_devis_sans_rendu(self):
+        ecart = self._ecart(Decimal('3628'))
         self.assertEqual(ecart['production_devis_kwh'], 3628.0)
         self.assertEqual(ecart['ecart_pct'], round((4808 - 3628) / 3628 * 100, 1))
         self.assertIn('3\u202f628,0', html_de_section({'resultat': {'ecart_devis': ecart}}))
 
-    def test_sans_production_imprimee_aucune_phrase(self):
-        """Pompage : le PDF n'imprime aucun kWh ⇒ aucun écart, jamais un 0."""
-        self.assertIsNone(self._ecart({'mode_installation': 'agricole', 'prod_kwh': 3343}))
+    def test_sans_production_aucune_phrase(self):
+        """Pompage : aucune production au devis ⇒ aucun écart, jamais un 0."""
+        self.assertIsNone(self._ecart(None))
         self.assertEqual(html_de_section({'resultat': {'ecart_devis': None}}).count('production-ecart-devis'), 0)

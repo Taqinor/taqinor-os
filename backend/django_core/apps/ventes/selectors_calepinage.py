@@ -422,6 +422,31 @@ def production_annoncee_du_devis(devis_id, company):
             'servie': base is not None, 'motif': motif}
 
 
+def production_imprimee_du_devis(devis):
+    """R2-14 (D-ACAL-6) — LA production annuelle (kWh, ``Decimal``) que le PDF
+    ``/proposal`` imprime pour ce devis (instance) : le MÊME rendu que
+    ``chiffrage_conception._depuis_devis`` (``build_quote_data(devis,
+    {'pdf_mode': 'full'})``), lu par ``quote_engine.figures.
+    production_imprimee``. ``None`` sans devis, sans production imprimée
+    (pompage, options divergentes, production nulle) ou rendu en échec.
+
+    UN APPEL = UN RENDU, qui n'est pas une lecture pure (le rendu crée le
+    profil société absent, ACON87) : réservé à un DOCUMENT généré à la demande
+    (présentation compacte). Jamais dans ``resultat_calepinage`` : le rendu du
+    devis relit ce résultat (ombrage servi, D-RES-2710-1) — boucle — et le
+    profil créé périmerait la simulation lue juste avant."""
+    from .quote_engine.builder import build_quote_data
+    from .quote_engine.figures import production_imprimee
+
+    if devis is None:
+        return None
+    try:
+        return production_imprimee(build_quote_data(devis, {'pdf_mode': 'full'}))
+    except Exception:  # noqa: BLE001 — document jamais bloqué par le rendu (D-ENF22-BLE001)
+        logger.warning('production imprimée indisponible', exc_info=True)
+        return None
+
+
 def devis_brouillon_pour_layout(company, lead_id, empreinte):
     """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
 
