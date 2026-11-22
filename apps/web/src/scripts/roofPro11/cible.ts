@@ -68,6 +68,19 @@ export function neededAutoApresConservation(pan: { neededPanels: number; neededA
   return pan.neededAuto === true && Math.round(pan.neededPanels) === objectif;
 }
 
+/** ACAL925 — pose les objectifs CONSERVÉS pan par pan (ERR-ACAL351 : le drapeau auto est lu AVANT l'écrasement). */
+export function appliquerObjectifsConserves(
+  zones: Array<{ id: string; neededPanels: number; neededAuto: boolean }>,
+  objectifs: Record<string, number>,
+): void {
+  for (const z of zones) {
+    const objectif = objectifs[z.id];
+    if (objectif == null) continue;
+    z.neededAuto = neededAutoApresConservation(z, objectif);
+    z.neededPanels = objectif;
+  }
+}
+
 /**
  * ACAL367 — besoin AUTO, facture non ressaisie dans cette session : le besoin ENREGISTRÉ du pan
  * (document relu), jamais « remplir le toit » : un simple horizon écrivait 57 296 kWh sur un

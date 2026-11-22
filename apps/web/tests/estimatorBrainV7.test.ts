@@ -16,7 +16,7 @@ import {
   type YieldFn,
 } from '../src/lib/estimatorBrainV7';
 import { PANEL2_WATT, aspectForAzimuth, optimalSouthTiltDeg } from '../src/lib/estimatorBrainV2';
-import { matrixTiltGrid } from '../src/lib/estimatorBrainV6';
+import { EW_TILTS, matrixTiltGrid } from '../src/lib/estimatorBrainV6';
 import { type LngLat } from '../src/lib/roof';
 
 const LAT = 33.59;
@@ -87,7 +87,8 @@ describe('V7 — le gagnant est le VRAI maximum sur tout le balayage', () => {
       ? ['south', 'aligned', 'eastwest']
       : ['south', 'eastwest'];
     for (const orientation of orientations) {
-      for (const tiltDeg of matrixTiltGrid(LAT)) {
+      // ACAL928 — l'Est-Ouest libre balaie les inclinaisons constructibles de V6, pas la grille complète.
+      for (const tiltDeg of orientation === 'eastwest' ? [...EW_TILTS] : matrixTiltGrid(LAT)) {
         for (const layout of ['portrait', 'landscape'] as const) {
           for (const margin of ['keep', 'remove'] as const) {
             const locked = solveLive(ring, LAT, BILL, [], { orientation, tiltDeg, layout, margin } as AxisLocks).winner;
@@ -358,5 +359,33 @@ describe('L2 — needImposedZero : un devis sans ligne panneau ne remplit jamais
     expect(res.effectiveNeed).toBe(6);
     expect(res.winner.placedCount).toBeLessThanOrEqual(6);
     expect(res.winner.placedCount).toBeGreaterThan(0);
+  });
+});
+
+// ACAL928 — T1-F1-023 : « Est-Ouest 35° » recommandé (+17 % de matériel pour +1,4 % d'énergie) et REJEU « Est-Ouest 0° » :
+// l'Est-Ouest LIBRE n'essaie que les inclinaisons constructibles de V6 (10, 12, 15°) ; un verrou reste tenu de 0 à 35°.
+describe('V7 — ACAL928 : Est-Ouest libre limité aux inclinaisons constructibles', () => {
+  const LAT_MARRAKECH = 31.63;
+  const toit163 = squareRing(12.8); // ≈ 163 m²
+  const permises = (t: number) => (EW_TILTS as readonly number[]).includes(t);
+
+  it('toit plat 163 m² à Marrakech, axes libres : jamais d’Est-Ouest hors {10, 12, 15}, nulle part dans le résultat', () => {
+    const res = solveLive(toit163, LAT_MARRAKECH, BILL, [], {});
+    for (const c of [res.winner, res.globalWinner]) {
+      if (c.orientation === 'eastwest') expect(permises(c.tiltDeg)).toBe(true);
+    }
+    if (res.recommended.orientation === 'eastwest') expect(permises(res.recommended.tiltDeg)).toBe(true);
+    // Est-Ouest tenu, inclinaison libre : l'inclinaison choisie est constructible (ni 0°, ni 35°)
+    const ew = solveLive(toit163, LAT_MARRAKECH, BILL, [], { orientation: 'eastwest' }).winner;
+    expect(permises(ew.tiltDeg)).toBe(true);
+    expect(ew.tiltDeg).toBeGreaterThanOrEqual(10);
+  });
+
+  it('une inclinaison VERROUILLÉE reste tenue de 0 à 35° en Est-Ouest ; plein sud garde la grille complète', () => {
+    for (const tiltDeg of [0, 35]) {
+      expect(solveLive(toit163, LAT_MARRAKECH, BILL, [], { orientation: 'eastwest', tiltDeg }).winner.tiltDeg).toBe(tiltDeg);
+    }
+    const sud = solveLive(toit163, LAT_MARRAKECH, BILL, [], { orientation: 'south' }).winner;
+    expect(matrixTiltGrid(LAT_MARRAKECH)).toContain(sud.tiltDeg);
   });
 });

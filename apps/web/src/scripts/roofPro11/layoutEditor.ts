@@ -8,6 +8,7 @@
  * panneaux change ; le rendement par panneau et le pavage restent ceux de
  * l'optimiseur (recompute par COMPTAGE via la fenêtre de production).
  */
+import { limiteModules, noteToitRempli, refusLimiteModules } from './limiteModules'; // ACAL891
 import * as maplibregl from 'maplibre-gl';
 import {
   createLayoutState,
@@ -1886,15 +1887,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // besoin : la note l'indique honnêtement (surproduction non rémunérée).
   layoutFillEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    const refus = refusLimiteModules(occupiedCount(ctx.layoutState) + emptyIndices(ctx.layoutState).length, limiteModules()); // ACAL891
+    if (refus) { if (layoutNoteEl) layoutNoteEl.textContent = refus; return; }
     recordHistory(); // PV26
     const r = fillAll(ctx.layoutState);
     ctx.layoutSel = null;
-    if (layoutNoteEl) {
-      const overNeed = ctx.neededPanels > 0 && r.count > ctx.neededPanels;
-      layoutNoteEl.textContent = overNeed
-        ? `Toit rempli automatiquement — ${fmt(r.count)} panneaux (le maximum qui tient). C’est plus que votre besoin (${fmt(ctx.neededPanels)}) : le surplus produit n’est pas rémunéré. Retirez-en avec « − » pour coller au besoin.`
-        : `Toit rempli automatiquement — ${fmt(r.count)} panneaux (le maximum qui tient sur ce toit).`;
-    }
+    if (layoutNoteEl) layoutNoteEl.textContent = noteToitRempli(r.count, ctx.neededPanels, fmt);
     renderCustomLayout();
     renderLayoutPanel();
   });
