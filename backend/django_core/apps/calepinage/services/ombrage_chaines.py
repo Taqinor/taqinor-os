@@ -52,7 +52,7 @@ __all__ = ['MOTIF_SANS_ACCES', 'acces_des_modules', 'acces_par_bande',
 
 MOTIF_SANS_ACCES = (
     "Le document de toiture ne porte aucun accès solaire par module "
-    "(« zones[].geometry.solarAccess ») : aucun écart d'ombrage n'est "
+    ": aucun écart d'ombrage n'est "
     'signalé. Le silence est explicite — un module sans accès calculé n’est '
     'pas un module non ombré.')
 

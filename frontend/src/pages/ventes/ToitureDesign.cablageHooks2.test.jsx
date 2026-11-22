@@ -60,6 +60,7 @@ describe('CALX104/CALX403 câblage — les réglages société atteignent enfin 
     expect(options.reglagesAtelier).toEqual({
       zones_types: PARAMETRES.zones_types,
       degagements: PARAMETRES.degagements,
+      pays: PARAMETRES.imagerie.pays, // ACAL962 — le pays réglé de la société, lu de l'exemple du contrat
       simulation: null, // ACAL714 — aucun des 3 réglages d'ombrage saisi dans l'exemple
     })
   })

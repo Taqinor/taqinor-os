@@ -37,8 +37,8 @@ def capacites_des_coffrets(company, equipements):
         produit = _produit_borne(company, identifiant)
         if produit is None:
             alertes.append(
-                "coffret DC « %s » : le produit « %s » désigné par "
-                "« equipements[].produitId » est introuvable dans le "
+                "coffret DC « %s » : le produit « %s » désigné "
+                "pour cet équipement est introuvable dans le "
                 "catalogue de la société — capacité d'entrées NON lue sur "
                 "une fiche."
                 % (equipement.get('label') or equipement.get('id') or '?',

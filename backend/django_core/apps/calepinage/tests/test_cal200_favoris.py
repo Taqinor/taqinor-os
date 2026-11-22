@@ -16,8 +16,9 @@ Run :
     python manage.py test apps.calepinage.tests.test_cal200_favoris -v2
 """
 from decimal import Decimal
+from unittest import mock
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage import selectors
 from apps.calepinage.services.parametres import enregistrer_parametres
@@ -85,3 +86,18 @@ class FavorisMaterielSelectorTest(TestCase):
         enregistrer_parametres(
             self.company, {'favoris_materiel': {'modules': [module.pk]}})
         self.assertEqual(selectors.favoris_materiel_de_societe(autre), {})
+
+
+class FavorisIdentifiantsInvalidesTest(SimpleTestCase):
+    """Fuzz de l'API : la section est à valeurs libres — un identifiant qui
+    n'est pas un entier de base est omis (jamais un 500), sans base."""
+
+    def test_identifiants_invalides_omis_sans_requete(self):
+        libres = {'favoris_materiel': {'modules': [
+            'abc', None, True, 1.5, {'a': 1}, [], -3, 0, 2 ** 70, '12']}}
+        with mock.patch.object(selectors, 'parametres_de_societe',
+                               return_value=libres):
+            with mock.patch('apps.stock.selectors.get_produit_scoped',
+                            side_effect=AssertionError('requete')):
+                resultat = selectors.favoris_materiel_de_societe(object())
+        self.assertEqual(resultat, {'modules': []})

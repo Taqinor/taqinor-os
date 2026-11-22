@@ -171,7 +171,7 @@ def norme_applicable(parametres=None):
         'motif': "aucune norme électrique sélectionnée%s : les calculs qui en "
                  "dépendent (sections de câble, chutes de tension, check-list "
                  "de protections) sont OMIS. Aucun texte normatif marocain "
-                 "n'est présent dans ce dépôt, et NF C 15-100 / UTE C 15-712-1 "
+                 "n'est intégré au module, et NF C 15-100 / UTE C 15-712-1 "
                  "ne sont pas imprimées sur un chantier qui ne les a pas "
                  "choisies — sélectionnez la norme applicable dans les "
                  "réglages du module."

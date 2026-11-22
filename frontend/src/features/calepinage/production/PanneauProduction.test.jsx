@@ -203,12 +203,11 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
     expect(bouton).not.toBeDisabled()
     expect(bouton).toHaveTextContent('Lancer la simulation')
 
-    const manques = screen.getByTestId('calx48-manques')
-    expect(within(manques).getByText(
+    // ACAL990 : l'avertissement servi est dit UNE fois (le bandeau) ; la liste ne le répète pas.
+    expect(screen.getByTestId('cal236-non-simule')).toHaveTextContent(
       'Calepinage non simulé : la pose est connue, la production ne l\'est pas.',
-    )).toBeInTheDocument()
-    // ACAL397 : sans `parcours.manque`, les avertissements restent du texte.
-    expect(within(manques).queryByTestId('calx48-manque-ligne')).toBeNull()
+    )
+    expect(screen.queryByTestId('calx48-manques')).toBeNull()
   })
 
   /* ACAL397 — « Ce qui manque » = liste d'actions issue de `parcours.manque`
@@ -460,9 +459,11 @@ describe('PanneauProduction — simulation périmée (ACAL218)', () => {
 
     await screen.findByTestId('cal236-panneau')
     const tapis = await screen.findByTestId('cal-tapis-perime')
-    expect(tapis).toHaveTextContent(
+    // ACAL990 : le motif servi est dit UNE fois (le bandeau) ; le tapis dit sa propre phrase.
+    expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
       'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
     )
+    expect(tapis).toHaveTextContent('relancez-la')
     expect(screen.queryByTestId('cal-tapis')).toBeNull()
     expect(calepinageApi.calepinages.exportCsv).not.toHaveBeenCalled()
   })
@@ -1218,5 +1219,26 @@ describe('ACAL986 — chaque lien « aller aux réglages » vise un champ monté
     unmount()
     // La Bibliothèque ne demande aucune saisie : lien d'entrée vers la page (sans ancre), route des Réglages.
     expect(sourceBibliotheque).toMatch(/href="\/calepinage\/reglages"[^>]*data-testid="cal-biblio-lien-reglages"/)
+  })
+})
+
+/* ACAL990 — garde de la classe K-JARGON : ce qui est RENDU (jamais le source) ne porte ni clé, ni chemin,
+   ni code interne, et un même avertissement ne s'affiche qu'une fois dans l'onglet. */
+describe('PanneauProduction — texte rendu (ACAL990)', () => {
+  const INTERDITS = [/::/, /\.py\b/, /\[\]/, /\?\./, /MODULES_PAR_CHAINE/, /degagements\./, /CAL\d+/, /\bmartin_ruiz\b/, /\btmy\b/]
+
+  it.each(['exemple_vide', 'exemple_perime'])('%s : chaque avertissement une seule fois, aucun jargon', async (variante) => {
+    servir(variante)
+    const { container } = rendre()
+    await screen.findByTestId('cal236-panneau')
+    const phrases = [...container.querySelectorAll('*')]
+      .filter((el) => el.children.length === 0).map((el) => el.textContent.trim()).filter(Boolean)
+    const servis = reponseContrat('calepinage', 'calepinage_resultat', variante).data.avertissements
+    for (const avertissement of servis) {
+      expect(phrases.filter((p) => p === avertissement.trim()), `affiché plusieurs fois : ${avertissement}`).toHaveLength(1)
+    }
+    for (const motif of INTERDITS) {
+      expect(phrases.filter((p) => motif.test(p)), `texte rendu portant ${motif}`).toEqual([])
+    }
   })
 })

@@ -135,7 +135,7 @@ REFERENCE = (
 #: combien de modules regardent à l'est et combien à l'ouest.
 HYPOTHESE_EST_OUEST = (
     " Châssis est-ouest sans face déclarée sur les modules "
-    "(zones[].geometry.panels[].face) : les deux pans du chevron portent la "
+    ": les deux pans du chevron portent la "
     "même table, ils sont donc comptés à parts égales — l'hypothèse est "
     'ANNONCÉE, jamais silencieuse.')
 

@@ -618,6 +618,42 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertEqual(sorted(connus - trouves), [],
                          "Échantillon déclaré mais absent du dossier.")
 
+    def test_phrases_servies_sans_jargon(self):
+        # ACAL990 (K-JARGON) — les phrases PRODUITES (jamais le source) d'une fiche vide : aucune clé,
+        # chemin, code interne ni valeur brute. Services listés ci-dessous ; l'échec nomme le service.
+        import re
+
+        from apps.calepinage.services import lestage, norme, ombrage_chaines, profils_types, suppositions
+        from apps.calepinage.tests.test_calx248_verdict_publiable import _Calepinage, _verdict
+
+        interdit = re.compile(r'::|\.py|\[\]|\?\.|MODULES_PAR_CHAINE|degagements\.|CAL\d+|dépôt')
+        brutes = {'martin_ruiz', 'tmy'}
+        servies = {
+            'norme.norme_applicable': norme.norme_applicable(None),
+            'electrique.verdict_publiable': _verdict(_Calepinage(layout={})),
+            'ombrage_chaines.ombrage_des_chaines': ombrage_chaines.ombrage_des_chaines({}, {}),
+            'lestage.feuille': lestage._feuille_de_lestage({}),
+            'profils_types.replis': profils_types._profils_de_repli(),
+            'suppositions.repli_longueur_dossier': suppositions.repli_longueur_dossier(16, 'dossier'),
+        }
+
+        def phrases(noeud):
+            if isinstance(noeud, str):
+                yield noeud
+            elif isinstance(noeud, dict):
+                for valeur in noeud.values():
+                    yield from phrases(valeur)
+            elif isinstance(noeud, (list, tuple)):
+                for valeur in noeud:
+                    yield from phrases(valeur)
+
+        for service, sortie in servies.items():
+            lues = list(phrases(sortie))
+            self.assertTrue(lues, service)
+            for phrase in lues:
+                self.assertIsNone(interdit.search(phrase), f'{service} : « {phrase[:90]} » porte une clé ou un chemin')
+                self.assertNotIn(phrase.strip(), brutes, f'{service} : valeur brute « {phrase} »')
+
     def test_etat_conception_du_detail(self):
         # ACAL1005 — `rapide` | `complet` ; `complet` sans motif, `rapide` motivé.
         donnees = _charger('calepinage_detail.json')

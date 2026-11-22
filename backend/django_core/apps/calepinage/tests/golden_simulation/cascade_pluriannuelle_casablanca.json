@@ -181,7 +181,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Le document de toiture ne porte aucun accès solaire par module (« zones[].geometry.solarAccess ») : aucun écart d'ombrage n'est signalé. Le silence est explicite — un module sans accès calculé n’est pas un module non ombré. Champ manquant : « ombrage.solarAccess »."
+     "motif_omission_non_compare": "Le document de toiture ne porte aucun accès solaire par module : aucun écart d'ombrage n'est signalé. Le silence est explicite — un module sans accès calculé n’est pas un module non ombré. Champ manquant : « ombrage.solarAccess »."
     },
     {
      "omise": true,
@@ -195,7 +195,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Le document de toiture ne porte aucun facteur de vue du ciel (« zones[].geometry.skyViewFactor.facteur ») : le diffus n'est pas dérate, rien n'est supposé. Champ manquant : « ombrage.skyViewFactor »."
+     "motif_omission_non_compare": "Le document de toiture ne porte aucun facteur de vue du ciel : le diffus n'est pas dérate, rien n'est supposé. Champ manquant : « ombrage.skyViewFactor »."
     },
     {
      "omise": true,

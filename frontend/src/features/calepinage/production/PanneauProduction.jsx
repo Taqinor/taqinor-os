@@ -448,6 +448,9 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
   // (AUCUNE requête de plus), pour que `TapisHoraire` ne l'ouvre même pas.
   // Acceptation ACAL490 — jamais simulé (ou calcul en cours) : aucune série
   // horaire n'existe, la porte d'export refuserait (400 « points ») : non ouverte.
+  // ACAL990 — un avertissement ne s'écrit qu'une fois : celui du bandeau n'est pas redit dans la liste.
+  const dejaDit = perime ? data?.motif : data?.avertissements?.[0]
+  const autresAvertissements = [...new Set(data?.avertissements ?? [])].filter((a) => a !== dejaDit)
   const geometriePresente = (data?.pose?.total_modules ?? 0) > 0 && data?.simule === true
 
   return (
@@ -465,14 +468,14 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       <BoutonCalculer
         calepinageId={id}
         data={data}
-        avertissements={data?.simule ? [] : (data?.avertissements ?? [])}
+        avertissements={data?.simule ? [] : autresAvertissements}
         manque={parcours?.manque ?? []}
         intervalleMs={intervalleMs}
         onTermine={refetch}
       />
       <BlocBase base={production?.base} />
       <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
-        motif={data?.motif} avertissements={data?.avertissements} plages={data?.cascade?.plages}
+        plages={data?.cascade?.plages}
         autoconsommation={data?.autoconsommation} />
       {data?.simule === true && !perime && <PartiesProduction parties={production?.parties} />}
       {data?.simule === true && !perime && <EcartPvgis validation={data?.validation} />}
@@ -508,7 +511,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
         geste que personne n'a demandé en ouvrant simplement l'onglet. */}
     <TapisHoraire calepinageId={id} serie={data?.serie_horaire}
       geometriePresente={geometriePresente}
-      perime={perime} motif={data?.motif} cascade={data?.cascade}
+      perime={perime} cascade={data?.cascade}
       motifConsommation={data?.autoconsommation?.motif_absence} />
     </>
   )

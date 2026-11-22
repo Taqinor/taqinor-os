@@ -226,7 +226,7 @@ FAMILLE_EST_OUEST = 'eastwest'
 #: ACAL139 — l'avertissement publié quand les faces posées sont inconnues.
 AVERTISSEMENT_EST_OUEST_SUPPOSE = (
     "Pan « {pan} » posé en est-ouest sans face déclarée par module "
-    "(geometry.panels[].face) : répartition est/ouest supposée à 50/50 du "
+    ": répartition est/ouest supposée à 50/50 du "
     "kWc. Reposez les modules dans l'atelier pour que chaque face compte "
     "ses modules réels.")
 

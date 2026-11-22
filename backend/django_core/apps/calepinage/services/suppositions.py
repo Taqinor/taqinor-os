@@ -31,8 +31,8 @@ def repli_longueur_dossier(dossier, origine):
     return {
         'longueur': dossier,
         'origine': origine,
-        'detail': "longueur de dossier (core.calepinage.electrique, "
-                  "MODULES_PAR_CHAINE = %d) : les fiches ne permettent "
+        'detail': "longueur de dossier (%d modules par chaîne) : les fiches "
+                  "ne permettent "
                   "pas de calculer la fenêtre de tension — repli assumé, "
                   "jamais présenté comme un calcul" % dossier,
         'longueur_dossier': dossier,

@@ -262,6 +262,14 @@ describe('CALX30 — profils types de consommation', () => {
     expect(texte).toContain('Marges, espacements et dégagements réutilisés')
   })
 
+  it('ACAL990 — aucun texte rendu ne porte une clé, un chemin ni une valeur brute', async () => {
+    await rendreAvecDroit()
+    const texte = document.body.textContent
+    for (const motif of [/::/, /\[\]/, /\?\./, /MODULES_PAR_CHAINE/, /degagements\./, /\bmartin_ruiz\b/, /\btmy\b/]) {
+      expect(texte).not.toMatch(motif)
+    }
+  })
+
   it('un repli ne peut pas être présenté comme une mesure : il n’est jamais envoyé', async () => {
     mocks.putProfilsTypes.mockResolvedValue({ data: { profils: PROFILS } })
     await rendreAvecDroit()
