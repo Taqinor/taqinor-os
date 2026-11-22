@@ -5341,3 +5341,101 @@ decisions:
     date: "2026-11-22"
     source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R5 (R5-03, VOULU côté code) ; recommandation : corriger (documentation seule, CLAUDE.md non touché par ce plan)"
     taches: []
+
+  - id: D-ACAL-67
+    question: "Étape Toit : que fait « Je ne la connais pas » sur la carte « Pente et orientation » ?"
+    options:
+      - cle: garder_depart
+        texte: "Garder la valeur de départ, toujours marquée « à confirmer » ; rien de neuf n'est enregistré"
+      - cle: etat_inconnu
+        texte: "Enregistrer un état « pente inconnue », repris par « Prêt à envoyer ? » et par la visite"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : garder_depart maintenant (construit ainsi), etat_inconnu si la visite doit le reprendre"
+    taches: [ACAL1316]
+
+  - id: D-ACAL-68
+    question: "Téléphone, relevé de visite : quelles sont les six photos attendues et que fait « Terminer le relevé » ?"
+    options:
+      - cle: categories_existantes
+        texte: "Les catégories de photos déjà stockées par le relevé ; « Terminer » enregistre et revient à la fiche, sans statut neuf"
+      - cle: six_maquette
+        texte: "Les six photos de la maquette comme liste fermée, et un statut « relevé terminé » sur le calepinage"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : categories_existantes (aucun statut inventé)"
+    taches: [ACAL1319]
+
+  - id: D-ACAL-69
+    question: "Vue « montrer au client » : par quel lien « Envoyer le lien » partage-t-il ?"
+    options:
+      - cle: lien_existant
+        texte: "Le lien de proposition ou le lien 3D public déjà existants, avec leurs gardes ; bouton désactivé avec son motif sinon"
+      - cle: lien_dedie
+        texte: "Un nouveau lien public dédié à la vue 3D"
+    reponse: lien_existant
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER (comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes) ; fait : aucun nouvel accès public n'est créé"
+    taches: [ACAL1314]
+
+  - id: D-ACAL-70
+    question: "Étape Électrique : faut-il placer l'onduleur sur le plan (« Déplacer l'onduleur », longueur de câble dessinée) ?"
+    options:
+      - cle: plus_tard
+        texte: "Non pour l'instant : la maquette le montre, aucune position d'onduleur n'est enregistrée aujourd'hui ; l'action reste masquée"
+      - cle: construire
+        texte: "Oui : enregistrer une position d'onduleur sur le plan et en déduire la longueur de câble"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : plus_tard (aucun chiffre inventé) ; construire demande une donnée neuve"
+    taches: [ACAL1317]
+
+  - id: D-ACAL-71
+    question: "Étape Panneaux : afficher « En stock » à côté de chaque modèle de panneau ?"
+    options:
+      - cle: si_servi
+        texte: "Oui, lu du stock réel par le sélecteur du stock ; rien affiché quand la quantité n'est pas servie"
+      - cle: non
+        texte: "Non : le stock ne se lit pas dans l'atelier"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : si_servi"
+    taches: [ACAL1318]
+
+  - id: D-ACAL-72
+    question: "La nouvelle coquille plein écran s'applique-t-elle aussi au mode lead du CRM ?"
+    options:
+      - cle: module_et_devis
+        texte: "Au module calepinage et à la conception d'un devis seulement ; l'écran du lead ne change pas (décision CAL34)"
+      - cle: partout
+        texte: "Partout, lead compris"
+    reponse: module_et_devis
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER (comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes) ; fait : le mode lead garde son écran, donc il diffère de l'atelier du module"
+    taches: [ACAL1278]
+
+  - id: D-ACAL-73
+    question: "Calepinage modifié après l'envoi de son devis : la resynchronisation corrige-t-elle le devis envoyé ?"
+    options:
+      - cle: corriger_dire
+        texte: "Oui, corrigé sur place comme tout devis envoyé (règle QJR5), et l'écran le dit avant d'agir"
+      - cle: refuser
+        texte: "Non : refuser et proposer une révision V2"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : corriger_dire, après le dry-run des écarts montré au fondateur"
+    taches: [ACAL1320]
+
+  - id: D-AGNR-7
+    question: "Facture d'hiver ou d'été tapée dans le générateur de devis : est-elle gardée ?"
+    options:
+      - cle: dire
+        texte: "Non, les factures vivent sur la fiche du lead : le champ le dit et renvoie vers la fiche"
+      - cle: garder_devis
+        texte: "Oui, gardée sur le devis (et la fiche du lead n'est pas touchée)"
+      - cle: ecrire_lead
+        texte: "Oui, écrite sur la fiche du lead à l'enregistrement du devis"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : dire (rejeu V3-01 : 1 250,75 tapé, 1 000 relu, sans un mot)"
+    taches: [ACAL1324]
