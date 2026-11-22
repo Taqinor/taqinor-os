@@ -4,11 +4,13 @@
 // dans DevisGenerator — aucun mock.
 //
 // Run : npx vitest run src/pages/ventes/generator/RailArgent.test.jsx
+import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 import RailArgent from './RailArgent'
 import CarteParametresTechniques from './CarteParametresTechniques'
+import ChampDecimal from './ChampDecimal'
 import { formatMoney } from '../../../features/ventes/solar'
 import { lignesRemiseesParPanier, optionTotalsTTC } from '../../../features/ventes/calc/totaux.js'
 
@@ -147,5 +149,32 @@ describe('R1-09 — CarteParametresTechniques : virgule française', () => {
       expect(el.hasAttribute('min')).toBe(false)
       expect(el.hasAttribute('max')).toBe(false)
     }
+  })
+})
+
+// V3-02 (rejeu du 22/11/2026) — la cible kWc se re-remplit depuis les panneaux dès qu'elle est
+// vide : le champ vidé PENDANT la frappe reste vide (« 5,5 » tapé ensuite devenait « 3.555,5 »).
+function CibleQuiSeReremplit({ surValeur }) {
+  const [valeur, setValeur] = useState('3.55')
+  return (
+    <ChampDecimal data-testid="cible" value={valeur}
+      onValeur={(v) => { surValeur(v); setValeur(v === '' ? '3.55' : v) }} />
+  )
+}
+
+describe('V3-02 — ChampDecimal : un champ vidé pendant la frappe n’est pas réécrit', () => {
+  it('vider puis taper « 5,5 » donne 5,5 ; la valeur recalculée revient à la sortie d’un champ laissé vide', () => {
+    const surValeur = vi.fn()
+    render(<CibleQuiSeReremplit surValeur={surValeur} />)
+    const champ = screen.getByTestId('cible')
+    fireEvent.focus(champ)
+    fireEvent.change(champ, { target: { value: '' } })
+    expect(champ.value).toBe('')
+    fireEvent.change(champ, { target: { value: '5,5' } })
+    expect(champ.value).toBe('5,5')
+    expect(surValeur).toHaveBeenLastCalledWith('5.5')
+    fireEvent.change(champ, { target: { value: '' } })
+    fireEvent.blur(champ)
+    expect(champ.value).toBe('3.55')
   })
 })

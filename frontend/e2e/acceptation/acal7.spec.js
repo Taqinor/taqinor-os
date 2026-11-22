@@ -844,7 +844,10 @@ etape('PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats', ['ACAL3
     const journee = page.getByTestId('cal-tapis-journee-type')
     await expect(journee, 'journée type').toBeVisible(T)
     await page.getByTestId('cal-tapis-mois-6').click()
-    await expect(journee.locator('.recharts-line'), 'juin : production ET consommation').toHaveCount(2, T)
+    // Trois courbes depuis la correction de TapisHoraire (lot R2/R3, `panneauxActifs`) : production, puissance des
+    // panneaux (pointillé, servie par la simulation) ET consommation — chacune nommée à la légende.
+    await expect(journee.locator('.recharts-line'), 'juin : production, puissance des panneaux ET consommation').toHaveCount(3, T)
+    await expect(journee).toContainText('Puissance des panneaux (kW)')
     await expect(journee).toContainText('Consommation (kWh)')
     await expect(page.getByTestId('acal446-sans-charge')).toHaveCount(0)
 

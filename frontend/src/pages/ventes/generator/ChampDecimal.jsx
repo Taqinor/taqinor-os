@@ -26,19 +26,29 @@ const memeNombre = (a, b) => {
   return x.etat === y.etat && x.valeur === y.valeur
 }
 
-export default function ChampDecimal({ value, onValeur, natif = false, className, ...props }) {
+export default function ChampDecimal({ value, onValeur, natif = false, className, onFocus, onBlur, ...props }) {
   const [texte, setTexte] = useState(() => enTexte(value))
   const [illisible, setIllisible] = useState(false)
   const recu = useRef(value)
+  const enFrappe = useRef(false)
   // Une valeur changée HORS de la frappe (rechargement, recomposition) prend
   // la place du texte ; l'écho de la frappe elle-même (même nombre) ne le
   // réécrit jamais.
   useEffect(() => {
     if (recu.current === value) return
     recu.current = value
-    setTexte((t) => (memeNombre(t, value) ? t : enTexte(value)))
+    // V3-02 — un champ VIDÉ pendant la frappe reste vide : une valeur recalculée
+    // (cible kWc re-remplie depuis les panneaux) n'est jamais écrite sous le
+    // curseur (« 5,5 » tapé ensuite devenait « 3.555,5 ») ; elle s'affiche à la sortie.
+    setTexte((t) => (memeNombre(t, value) || (t === '' && enFrappe.current) ? t : enTexte(value)))
     setIllisible(false)
   }, [value])
+  const surEntree = (e) => { enFrappe.current = true; onFocus?.(e) }
+  const surSortie = (e) => {
+    enFrappe.current = false
+    setTexte((t) => (t === '' ? enTexte(value) : t))
+    onBlur?.(e)
+  }
 
   const surFrappe = (e) => {
     const brut = e.target.value
@@ -56,6 +66,7 @@ export default function ChampDecimal({ value, onValeur, natif = false, className
     <>
       <Champ type="text" inputMode="decimal" step="any" autoComplete="off"
              className={className} value={texte} onChange={surFrappe}
+             onFocus={surEntree} onBlur={surSortie}
              aria-invalid={illisible ? 'true' : undefined} {...props} />
       {illisible && (
         <span role="alert" className="block text-xs text-destructive" data-champ-illisible="">
