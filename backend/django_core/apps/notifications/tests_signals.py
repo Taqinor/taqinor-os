@@ -54,6 +54,26 @@ class TestNotificationProducers(TestCase):
         self.assertEqual(
             Notification.objects.filter(event_type=EventType.LEAD_ASSIGNED).count(), 0)
 
+    def test_trashed_lead_resave_does_not_notify_assigned(self):
+        # ERR-NOTIF-LEAD-ASSIGNE-CORBEILLE
+        lead = Lead.objects.create(company=self.company, nom='X', owner=self.owner)
+        Notification.objects.all().delete()
+        lead.soft_delete(self.actor)
+        lead.save()  # re-sauvegarde d'un lead en corbeille (cadence)
+        lead.nom = 'Y'
+        lead.save()
+        self.assertEqual(
+            Notification.objects.filter(event_type=EventType.LEAD_ASSIGNED).count(), 0)
+
+    def test_trashed_lead_reassigned_does_not_notify(self):
+        lead = Lead.objects.create(company=self.company, nom='X', owner=self.owner)
+        lead.soft_delete(self.actor)
+        Notification.objects.all().delete()
+        lead.owner = self.actor
+        lead.save()
+        self.assertEqual(
+            Notification.objects.filter(event_type=EventType.LEAD_ASSIGNED).count(), 0)
+
     def test_devis_accepted_notifies_creator(self):
         client = Client.objects.create(
             company=self.company, nom='ClientCo', email='c@example.com')
