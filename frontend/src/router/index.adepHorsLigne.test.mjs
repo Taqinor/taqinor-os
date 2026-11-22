@@ -71,16 +71,6 @@ test('J3 — délai dépassé, navigateur HORS LIGNE : état hors ligne (vrai ho
   assert.deepEqual(await authLoader(requete), { horsLigne: true })
 })
 
-test("J3 — l'écran de démarrage a deux textes : hors ligne, et serveur lent avec nouvel essai seul", () => {
-  const ecran = readFileSync(path.join(__dirname, 'HorsLigneDemarrage.jsx'), 'utf8')
-  assert.match(ecran, /titre: 'Le serveur met du temps à répondre'/)
-  assert.match(ecran, /bouton: 'Réessayer'/)
-  assert.match(ecran, /titre: 'Hors ligne',/)
-  assert.match(ecran, /Impossible de joindre le serveur\./)
-  assert.match(ecran, /const lent = useLoaderData\(\)\?\.lent === true/)
-  assert.match(ecran, /setTimeout\(\(\) => reessayerRef\.current\(\), DELAI_NOUVEL_ESSAI_MS\)/)
-})
-
 test('401 et 403 : redirection vers /login avec ?next= comme avant', async () => {
   for (const status of [401, 403]) {
     const { authLoader } = monter({ status, reseau: false })

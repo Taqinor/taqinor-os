@@ -1015,6 +1015,7 @@ retiré plus un hook ajouté.
 | `cal-docs-telecharger` | étape Documents : bouton « Télécharger » d’un document (suffixe = clé). |
 | `cal-docs-motif` | étape Documents : motif servi d’un document indisponible (suffixe = clé). |
 | `cal-docs-erreurs` | étape Documents : erreurs de lecture des documents. |
+| `cal-doc-reessayer` | étape Documents : relancer la lecture de la liste des documents quand elle est lente ou en échec. |
 | `cal-docs-attente` | étape Documents : documents en cours de lecture. |
 | `cal-docs-vide` | étape Documents : aucun document servi. |
 | `cal-docs-info-devis` | étape Documents : bandeau d’information sur le devis. |

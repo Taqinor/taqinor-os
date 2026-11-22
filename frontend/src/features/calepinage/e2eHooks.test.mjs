@@ -879,6 +879,7 @@ export const ALL_HOOKS = [
   'cal-docs-telecharger',
   'cal-docs-motif',
   'cal-docs-erreurs',
+  'cal-doc-reessayer',
   'cal-docs-attente',
   'cal-docs-vide',
   'cal-docs-info-devis',

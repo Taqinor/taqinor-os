@@ -35,7 +35,8 @@ export default function OutilsVue({
   hdBusy, hdMessage, exporterHd, gltfBusy, gltfMessage, exporterGltf,
 }) {
   const [expert] = useModeExpert()
-  const enPlan = useVueCarte() === 'plan'
+  // Hors de la coque (mode lead, figé) l'état « Plan » n'est jamais lu : le DOM y reste celui d'avant.
+  const enPlan = useVueCarte() === 'plan' && typeof document !== 'undefined' && !!document.querySelector('.cal-coque')
   // ACAL896 — « Vidéo 10 s » : état local du bouton (ToitureDesign.jsx n'est pas touché).
   const { id: reference } = useParams()
   const [videoMessage, setVideoMessage] = useState(null) // null = au repos ; sinon le texte affiché
@@ -116,7 +117,7 @@ export default function OutilsVue({
                     type="button"
                     className={chipClass}
                     data-testid={hook}
-                    aria-pressed={nom === 'dessus' ? enPlan : undefined}
+                    aria-pressed={nom === 'dessus' && enPlan ? true : undefined}
                     onClick={() => builderApi.current?.appliquerVue?.(nom)}
                   >
                     {libelle}

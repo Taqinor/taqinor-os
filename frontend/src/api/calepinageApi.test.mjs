@@ -155,7 +155,7 @@ test('CAL33 — une SEULE forme d’URL : tout passe par /calepinage/…', () =>
 test('CAL33 — les neuf actions exigées par la tâche sont déclarées', () => {
   const attendues = {
     // J3 : la lecture du document porte l'option LECTURE_LENTE (60 s, sans toast d'expiration).
-    layout: /layout: \(id\) => api\.get\(`\$\{pivot\(id\)\}layout\/`(?:, LECTURE_LENTE)?\)/,
+    layout: /layout: \(id\) => api\.get\(`\$\{pivot\(id\)\}layout\/`(?:, \{ silencieuxExpiration: true, timeout: 60000 \})?\)/,
     image: /envoyerImage: \(id, corps\) => api\.post\(`\$\{pivot\(id\)\}roof-image\/`, corps\)/,
     versions: /versions: \(id\) => api\.get\(`\$\{pivot\(id\)\}versions\/`\)/,
     // ACAL109 : la liste vient de comparer/ (le GET variantes/ n'avait plus

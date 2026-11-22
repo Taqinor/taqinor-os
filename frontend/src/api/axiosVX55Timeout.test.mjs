@@ -149,13 +149,13 @@ test('J3 : les lectures lourdes du relevé et du démarrage de l’atelier sont 
   const CALEPINAGE = readFileSync(join(HERE, 'calepinageApi.js'), 'utf8')
   const SIMULATION = readFileSync(join(HERE, 'calepinage/simulation.js'), 'utf8')
   const SORTIES = readFileSync(join(HERE, 'calepinage/sorties.js'), 'utf8')
-  assert.match(CALEPINAGE, /const detailLent = \{ get: \(id\) => api\.get\(pivot\(id\), LECTURE_LENTE\) \}/)
+  assert.match(CALEPINAGE, /const detailLent = \{ get: \(id\) => api\.get\(pivot\(id\), \{ silencieuxExpiration: true, timeout: 60000 \}\) \}/)
   assert.match(CALEPINAGE, /\(crud\('calepinages'\)\),\s*\n\s*\.\.\.detailLent,/)
   for (const chemin of ['layout', 'photos', 'resultat']) {
-    assert.match(CALEPINAGE, new RegExp(`${chemin}: \\(id\\) => api\\.get\\(\`\\$\\{pivot\\(id\\)\\}${chemin}/\`, LECTURE_LENTE\\)`))
+    assert.match(CALEPINAGE, new RegExp(`${chemin}: \\(id\\) => api\\.get\\(\`\\$\\{pivot\\(id\\)\\}${chemin}/\`, \\{ silencieuxExpiration: true, timeout: 60000 \\}\\)`))
   }
   assert.match(SIMULATION, /parcours: \(id\) => api\.get\(`\$\{pivot\(id\)\}parcours\/`, LECTURE_LENTE\)/)
-  assert.match(SORTIES, /releve: \(id\) => api\.get\(`\$\{pivot\(id\)\}releve\/`, LECTURE_LENTE\)/)
+  assert.match(SORTIES, /releve: \(id\) => api\.get\(`\$\{pivot\(id\)\}releve\/`, \{ silencieuxExpiration: true, timeout: 60000 \}\)/)
 })
 
 test("ACAL1351 : `pret-a-envoyer/` et `design-context/` posent l'option et un délai de 60 s", () => {

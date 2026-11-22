@@ -2,7 +2,7 @@ import api from './axios'
 import { makeResourceFactory } from './resource'
 import { pivot } from './calepinage/_base'
 import { projet } from './calepinage/projet'
-import { simulation, LECTURE_LENTE } from './calepinage/simulation'
+import { simulation } from './calepinage/simulation'
 import { sorties } from './calepinage/sorties'
 
 // ACAL316 — l'en-tête If-Match d'une écriture COMPLÈTE du document (obligatoire côté serveur,
@@ -59,7 +59,7 @@ const jetonIfMatch = (empreinte) => ({ headers: { 'If-Match': empreinte || '""' 
 const crud = makeResourceFactory(api, '/calepinage')
 // J3 — le DÉTAIL agrégé (22 à 42 s mesurés sous charge) est une lecture lente : délai de 60 s, sans
 // toast d'expiration (l'écran qui le lit dit lui-même qu'il attend). Remplace le `get` du CRUD partagé.
-const detailLent = { get: (id) => api.get(pivot(id), LECTURE_LENTE) }
+const detailLent = { get: (id) => api.get(pivot(id), { silencieuxExpiration: true, timeout: 60000 }) }
 
 // CALX37 — corps du POST de duplication d'une variante : `nom` saisi prime ;
 // sans lui, un nom dérivé de la source évite un POST refusé pour nom vide.
@@ -94,7 +94,7 @@ const calepinageApi = {
     // `contract_samples/roof_layout_v2.schema.json`). GET relit, POST
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
-    layout: (id) => api.get(`${pivot(id)}layout/`, LECTURE_LENTE), // J3 : lecture lente du démarrage
+    layout: (id) => api.get(`${pivot(id)}layout/`, { silencieuxExpiration: true, timeout: 60000 }), // J3 : lecture lente du démarrage
     // ACAL364 — plus aucun écran n'écrit le document entier par `layout/` hors de l'atelier
     // (qui passe par `enregistrerLayoutCalepinageConditionnel`, If-Match) : la clé sans appelant est retirée.
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
@@ -104,7 +104,7 @@ const calepinageApi = {
 
     // CAL52 — les photos de site (drone/oblique/sol), MÊME magasin que
     // `roof-image`. `corps` est un FormData (photo, genre, prise_le, legende).
-    photos: (id) => api.get(`${pivot(id)}photos/`, LECTURE_LENTE), // J3 : lecture lente du relevé
+    photos: (id) => api.get(`${pivot(id)}photos/`, { silencieuxExpiration: true, timeout: 60000 }), // J3 : lecture lente du relevé
     ajouterPhoto: (id, corps) => api.post(`${pivot(id)}photos/`, corps),
     // CAL53 — le calage (4 coins [latitude, longitude]) d'UNE photo de site,
     // rechargé tel quel à la réouverture. `null` efface le calage.
@@ -173,7 +173,7 @@ const calepinageApi = {
 
     // CAL244 — le résultat retenu du calepinage
     // (`contract_samples/calepinage_resultat.json`).
-    resultat: (id) => api.get(`${pivot(id)}resultat/`, LECTURE_LENTE), // J3 : lecture lente du démarrage
+    resultat: (id) => api.get(`${pivot(id)}resultat/`, { silencieuxExpiration: true, timeout: 60000 }), // J3 : lecture lente du démarrage
 
     /* CAL125 — l'ENTRÉE du calcul électrique. Le matériel est DÉSIGNÉ et les
        longueurs/températures sont SAISIES ; la réponse est le `resultat`

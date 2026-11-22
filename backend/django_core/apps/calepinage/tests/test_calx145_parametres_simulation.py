@@ -583,9 +583,17 @@ class ProfilDepartApplicationTest(TestCase):
         self.assertEqual(reponse.data['appliquees'], [{'cle': 'b0_iam', 'section': 'simulation'}])
         simulation = self._simulation()
         self.assertIn('b0_iam', simulation)
-        for corps in ({'cles': ['n_importe_quoi']}, {'cles': 'b0_iam'}, {'cles': [3]}):
+        for corps in ({'cles': 'b0_iam'}, {'cles': [3]}):  # hors schéma : 400
             reponse = self.api_dir.post(URL_PROFIL, corps, format='json')
             self.assertEqual(reponse.status_code, 400, corps)
+        # clé inconnue (liste bien formée) = refus d'état 409 lisible dans ``detail`` (fuzz CI)
+        reponse = self.api_dir.post(URL_PROFIL, {'cles': ['n_importe_quoi']}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertIn('n_importe_quoi', reponse.data['detail'])
+        # liste vide / doublons : valides, jamais 400 (non lancé : test à base)
+        self.assertEqual(self.api_dir.post(URL_PROFIL, {'cles': []}, format='json').status_code, 200)
+        self.assertEqual(
+            self.api_dir.post(URL_PROFIL, {'cles': ['b0_iam', 'b0_iam']}, format='json').status_code, 200)
         self.assertEqual(self.api_resp.post(URL_PROFIL, {'cles': ['b0_iam']}, format='json').status_code, 403)
         self.assertEqual(self._simulation(self.autre), {})
 

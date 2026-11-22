@@ -161,7 +161,11 @@ function ApercuCarte({ url, alt }) {
       const g = toile.getContext('2d')
       g.drawImage(el, 0, 0, 24, 24)
       if (apercuVide(g.getImageData(0, 0, 24, 24).data)) setEchec(true)
-    } catch { /* image d'une autre origine ou canvas absent : on garde l'image */ }
+    } catch {
+      // Image d'une autre origine ou canvas absent : l'aperçu ne peut pas être
+      // contrôlé, on garde l'image telle quelle (pas d'erreur à montrer).
+      return
+    }
   }
   if (url && !echec) {
     return (

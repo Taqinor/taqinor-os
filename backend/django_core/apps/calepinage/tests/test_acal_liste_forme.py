@@ -120,11 +120,11 @@ class RechercheDeLaListeTest(BaseApiCalepinage):
         self.assertEqual(self._ids('Atlas'), {self.hangar.pk})
 
     def test_recherche_par_ville_du_client_et_du_lead(self):
-        """Maquette « Liste » (« Client, ville ou lead ») : la VILLE du client
-        rattaché et celle du lead rattaché sont cherchées, bornées société."""
-        from apps.crm.models import Client, Lead
+        """Maquette « Liste » (« Client, ville ou lead ») : la VILLE du lead
+        rattaché est cherchée (le client n'a pas de ville), bornées société."""
+        from apps.crm.models import Lead
 
-        Client.objects.filter(pk=self.client_a.pk).update(ville='Essaouira')
+        Lead.objects.filter(pk=self.lead.pk).update(ville='Essaouira')
         Lead.objects.filter(pk=self.lead_2.pk).update(ville='Tétouan')
         Lead.objects.create(company=self.autre, nom='Voisin', ville='Tétouan')
         etranger = Calepinage.objects.create(
