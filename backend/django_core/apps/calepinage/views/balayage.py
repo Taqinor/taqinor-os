@@ -74,14 +74,15 @@ _OBJECTIF = {'type': 'object', 'required': ['critere', 'cible_pct'], 'properties
 _AXES_RESSERRES = {EXTENSION_CORPS_RESSERRE: {
     'anyOf': [{'required': ['axes']}, {'required': ['objectif']}],
     'properties': {
-    'critere': _CRITERE_MOIS, 'objectif': _OBJECTIF, 'axes': {
-        'type': 'array', 'minItems': 1, 'items': {
-            'type': 'object', 'required': ['nom', 'min', 'max', 'pas'],
-            'properties': {
-                'nom': {'type': 'string', 'enum': list(AXES_PRIS_EN_CHARGE)},
-                'min': {'type': 'number'}, 'max': {'type': 'number'},
-                'pas': {'type': 'number', 'minimum': 0,
-                        'exclusiveMinimum': True}}}}}}}
+        'critere': _CRITERE_MOIS, 'objectif': _OBJECTIF, 'axes': {
+            'type': 'array', 'minItems': 1, 'items': {
+                'type': 'object', 'required': ['nom', 'min', 'max', 'pas'],
+                'properties': {
+                    'nom': {'type': 'string',
+                            'enum': list(AXES_PRIS_EN_CHARGE)},
+                    'min': {'type': 'number'}, 'max': {'type': 'number'},
+                    'pas': {'type': 'number', 'minimum': 0,
+                            'exclusiveMinimum': True}}}}}}}
 
 
 @extend_schema(

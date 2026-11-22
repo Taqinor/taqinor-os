@@ -15,7 +15,6 @@ from __future__ import annotations
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
 
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import corps_obligatoire, forme_du_contrat
@@ -68,4 +67,6 @@ def production_mesuree(self, request, pk=None):
     return Response(etat_production_mesuree(calepinage))
 
 
-# Le nom d
+# Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
+# ``__name__`` (piège CALX7).
+CalepinageViewSet.production_mesuree = production_mesuree
