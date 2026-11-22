@@ -177,7 +177,7 @@ export default function LigneTable({
           </div>
         </details>
 
-        {errorLines && <div className="px-4 py-2 text-xs text-destructive">{errorLines}</div>}
+        {errorLines && <div role="alert" className="px-4 py-2 text-xs text-destructive">{errorLines}</div>}
         {/* QX20 — échappatoire documentée à la garde d'équipement solaire.
             Relibellée (incident fondateur 01/09 round 2) : ce même état
             EST le mode « Composition libre » — le libellé d'origine

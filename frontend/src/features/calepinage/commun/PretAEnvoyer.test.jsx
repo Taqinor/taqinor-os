@@ -22,9 +22,10 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PretAEnvoyer from './PretAEnvoyer'
-import { MESSAGE_ECHEC, MESSAGE_LENT, rangerControles } from './PretAEnvoyer.helpers'
+import { ETAPE_DU_CODE, MESSAGE_ECHEC, MESSAGE_LENT, rangerControles } from './PretAEnvoyer.helpers'
 
 const pret = exempleContrat('calepinage', 'calepinage_pret_a_envoyer', 'exemple')
+const etapeDuCode = exempleContrat('calepinage', 'calepinage_pret_a_envoyer', 'etape_du_code')
 const [modeleBloquant, modeleARegler, modeleInfo, modeleOk] = pret.controles
 const ligne = (modele, code) => ({ ...modele, code, libelle: `Contrôle ${code}` })
 // Électrique : ok, info, à régler, bloquant (l'ordre où le serveur les mettrait sans tri d'écran).
@@ -122,5 +123,9 @@ describe('PretAEnvoyer — lent n’est pas échoué (H3)', () => {
     monter({ calepinageId: 106, groupes: true })
     await waitFor(() => expect(screen.getByTestId('cal-pret-erreur')).toHaveTextContent(MESSAGE_ECHEC))
     expect(screen.queryByText(MESSAGE_LENT)).toBeNull()
+  })
+
+  it('le rangement par étape de l’écran est celui du contrat, que le serveur prend pour filtrer `?etape=`', () => {
+    expect(ETAPE_DU_CODE).toEqual(etapeDuCode)
   })
 })

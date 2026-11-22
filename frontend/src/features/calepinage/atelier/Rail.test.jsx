@@ -47,6 +47,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 import AtelierPanneaux from '../AtelierPanneaux'
 import config from '../module.config.jsx'
 import Rail from './Rail'
+import { BoutonOr, BoutonMarine, Segmente, Tuile, Indicateur, SectionEtape } from './coque/primitives'
 import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import { ETAPES, ESSENTIELS, ecranGuideDeOnglet, ongletsVisibles } from './parcoursGuide'
@@ -735,4 +736,61 @@ describe('ACAL867 — l’étape Documents guidée : panneau, bouton de devis, d
     expect(screen.queryByTestId('cal-etape-documents-ecran')).toBeNull()
     expect(screen.queryByTestId('cal-generer-devis')).toBeNull()
   }, 30_000)
+})
+
+/* ACAL1280 — les pièces partagées de la coque se manipulent au clavier. */
+describe('ACAL1280 — pièces de la coque : clavier et rôles', () => {
+  afterEach(() => cleanup())
+
+  it('tuile de choix : atteignable par Tab, activée par Entrée et Espace, état dans aria-pressed', async () => {
+    const user = userEvent.setup()
+    const clic = vi.fn()
+    render(<Tuile choisie onClick={clic}>Toit plat</Tuile>)
+    const tuile = screen.getByRole('button', { name: 'Toit plat' })
+    expect(tuile).toHaveAttribute('aria-pressed', 'true')
+    await user.tab()
+    expect(tuile).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await user.keyboard(' ')
+    expect(clic).toHaveBeenCalledTimes(2)
+  })
+
+  it('bascule à segments : groupe nommé, un bouton par option, aria-pressed suit la valeur, Tab + Entrée/Espace', async () => {
+    const user = userEvent.setup()
+    const change = vi.fn()
+    render(<Segmente libelle="Vue" valeur="plan" onChange={change}
+      options={[{ valeur: 'plan', libelle: 'Plan' }, { valeur: '3d', libelle: '3D' }]} />)
+    expect(screen.getByRole('group', { name: 'Vue' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '3D' })).toHaveAttribute('aria-pressed', 'false')
+    await user.tab()
+    await user.tab()
+    expect(screen.getByRole('button', { name: '3D' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await user.keyboard(' ')
+    expect(change).toHaveBeenCalledWith('3d')
+    expect(change).toHaveBeenCalledTimes(2)
+  })
+
+  it('boutons or et marine : vrais <button>, activés par Entrée et Espace', async () => {
+    const user = userEvent.setup()
+    const or = vi.fn()
+    const marine = vi.fn()
+    render(<><BoutonOr plein fleche onClick={or}>Poser</BoutonOr><BoutonMarine onClick={marine}>Confirmer</BoutonMarine></>)
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Poser' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await user.tab()
+    await user.keyboard(' ')
+    expect(or).toHaveBeenCalledTimes(1)
+    expect(marine).toHaveBeenCalledTimes(1)
+  })
+
+  it('pastille et carte d’étape : lisibles (texte), jamais focalisables', () => {
+    render(<SectionEtape titre="Pose"><Indicateur libelle="Surface" valeur="42 m²" /></SectionEtape>)
+    expect(screen.getByRole('heading', { name: 'Pose' })).toBeInTheDocument()
+    expect(screen.getByText('Surface')).toBeInTheDocument()
+    expect(screen.getByText('42 m²')).toBeInTheDocument()
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
 })

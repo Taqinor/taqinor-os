@@ -795,10 +795,9 @@ class AgregatTest(SimpleTestCase):
 
     def test_filtre_par_etape_couvre_le_rangement_de_l_ecran(self):
         # H3 — ``?etape=`` : chaque code que l'écran range dans une étape
-        # (``PretAEnvoyer.helpers.js::ETAPE_DU_CODE``) est produit par un
-        # producteur de CETTE étape ; l'Électrique ne paie ni porte ni taille.
-        import re
-
+        # (``etape_du_code`` du contrat, que ``PretAEnvoyer.helpers.js`` doit
+        # égaler : ``PretAEnvoyer.test.jsx``) est produit par un producteur de
+        # CETTE étape ; l'Électrique ne paie ni porte ni taille.
         from apps.calepinage.services.pret_a_envoyer import (
             agreger, controle_taille_sans_facture, controles_de_porte,
         )
@@ -808,14 +807,7 @@ class AgregatTest(SimpleTestCase):
 
         self.assertFalse({controle_taille_sans_facture, controles_de_porte}
                          & set(PRODUCTEURS_PAR_ETAPE['electrique']))
-        racine = pathlib.Path(__file__).resolve().parents[5]
-        helpers = (racine / 'frontend' / 'src' / 'features' / 'calepinage'
-                   / 'commun' / 'PretAEnvoyer.helpers.js')
-        if not helpers.exists():  # conteneur du backend : pas de front monté
-            self.skipTest('frontend absent')
-        table = re.search(r'ETAPE_DU_CODE = \{(.*?)\}', helpers.read_text(
-            encoding='utf-8'), re.S).group(1)
-        ecran = dict(re.findall(r"(\w+): '(\w+)'", table))
+        ecran = CONTRAT['etape_du_code']
         self.assertEqual(sorted(ecran), sorted(CONTRAT['codes_produits']))
         calepinage = _Calepinage()
         calepinage.roof_layout = {'zones': []}

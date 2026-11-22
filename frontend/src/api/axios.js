@@ -182,6 +182,10 @@ api.interceptors.response.use(
       // {signal}) : celle-ci ne doit PAS toaster (l'écran a changé/démonté),
       // celui-là DOIT — l'utilisateur doit savoir que le réseau a calé.
       if (error.code === 'ECONNABORTED') {
+        // ACAL1351 — option PAR REQUÊTE `silencieuxExpiration: true` : l'écran qui lit
+        // (lecture lourde, `timeout` relevé) dit lui-même « prend plus de temps que
+        // prévu » ; le toast global le couvrirait. Sans l'option : toast inchangé.
+        if (originalRequest.silencieuxExpiration) return Promise.reject(error)
         toastError('La connexion a expiré. Vérifiez votre connexion et réessayez.')
         return Promise.reject(error)
       }

@@ -1,0 +1,500 @@
+{
+  "Main": {
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Toit",
+      "Panneaux",
+      "Électrique",
+      "Résultats",
+      "Documents",
+      "Avancé",
+      "Surface du toit",
+      "Pans",
+      "Besoin d’après la facture",
+      "Contour tracé",
+      "Plan",
+      "3D",
+      "Étape 1 sur 5",
+      "Le toit",
+      "Forme",
+      "Plat",
+      "2 pans",
+      "4 pans",
+      "En L",
+      "En T",
+      "Tracé libre",
+      "Dimensions",
+      "Longueur",
+      "Largeur",
+      "Pente et orientation",
+      "Obstacles",
+      "+ Ajouter",
+      "Poser les panneaux"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "À confirmer",
+        "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      },
+      {
+        "libelle": "Valeur de départ, pas une mesure",
+        "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      },
+      {
+        "libelle": "Confirmer",
+        "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      },
+      {
+        "libelle": "Je ne la connais pas",
+        "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      }
+    ]
+  },
+  "ToitSombre": {
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Toit",
+      "Panneaux",
+      "Électrique",
+      "Résultats",
+      "Documents",
+      "Avancé",
+      "Surface du toit",
+      "Pans",
+      "Besoin d’après la facture",
+      "Contour tracé",
+      "Plan",
+      "3D",
+      "Étape 1 sur 5",
+      "Le toit",
+      "Forme",
+      "Plat",
+      "2 pans",
+      "4 pans",
+      "En L",
+      "En T",
+      "Tracé libre",
+      "Dimensions",
+      "Longueur",
+      "Largeur",
+      "Pente et orientation",
+      "Obstacles",
+      "+ Ajouter",
+      "Poser les panneaux"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "À confirmer",
+        "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      },
+      {
+        "libelle": "Valeur de départ, pas une mesure",
+        "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      },
+      {
+        "libelle": "Confirmer",
+        "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      },
+      {
+        "libelle": "Je ne la connais pas",
+        "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      }
+    ]
+  },
+  "Panneaux": {
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Toit",
+      "Panneaux",
+      "Électrique",
+      "Résultats",
+      "Documents",
+      "Avancé",
+      "Puissance",
+      "Production · estimation",
+      "De la facture",
+      "Ensoleillement de chaque panneau",
+      "Ombragé",
+      "Plein soleil",
+      "Hiver",
+      "Été",
+      "Étape 2 sur 5",
+      "Les panneaux",
+      "Panneau",
+      "Combien de panneaux ?",
+      "Couvrir la facture",
+      "Recommandé",
+      "Le plus de panneaux",
+      "Sens de pose",
+      "Portrait",
+      "Paysage",
+      "Au mieux",
+      "Raccorder les panneaux"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "En stock",
+        "raison": "Accepté (BRIEF-M4 « Known and accepted ») : « En stock » n’est pas affiché par le produit."
+      }
+    ]
+  },
+  "Electrique": {
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Toit",
+      "Panneaux",
+      "Électrique",
+      "Résultats",
+      "Documents",
+      "Avancé",
+      "Chaînes",
+      "Onduleur",
+      "Câble côté panneaux",
+      "Raccorder automatiquement",
+      "Modifier une chaîne",
+      "Étape 3 sur 5",
+      "Le raccordement",
+      "Comparer avec",
+      "Prêt à envoyer ?",
+      "Tension par temps froid",
+      "Panneaux pour l’onduleur",
+      "Câbles",
+      "Protections",
+      "Schéma électrique",
+      "Dessiné tout seul à partir du raccordement",
+      "Voir",
+      "Voir les résultats"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "En stock",
+        "raison": "Accepté (BRIEF-M4 « Known and accepted ») : « En stock » n’est pas affiché par le produit."
+      },
+      {
+        "libelle": "Déplacer l’onduleur",
+        "raison": "Accepté : pas de boîte onduleur / câble / « Déplacer l’onduleur » sur la carte."
+      },
+      {
+        "libelle": "entrée A",
+        "raison": "Accepté : les entrées de l’onduleur sont numérotées 1-4, pas A/B."
+      },
+      {
+        "libelle": "entrée B",
+        "raison": "Accepté : les entrées de l’onduleur sont numérotées 1-4, pas A/B."
+      }
+    ]
+  },
+  "Schema": {
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Toit",
+      "Panneaux",
+      "Électrique",
+      "Résultats",
+      "Documents",
+      "Avancé",
+      "Schéma électrique",
+      "sans échelle",
+      "Côté panneaux · courant continu",
+      "Côté réseau · courant alternatif",
+      "Chaîne 1",
+      "Chaîne 2",
+      "Coffret côté panneaux",
+      "Parafoudre",
+      "Sectionneur",
+      "Onduleur",
+      "continu → alternatif",
+      "Coffret côté réseau",
+      "Disjoncteur",
+      "Compteur",
+      "Réseau du distributeur",
+      "Terre : coffrets, onduleur et structure",
+      "Étape 3 sur 5",
+      "Le schéma électrique",
+      "Légende",
+      "Liaison à la terre",
+      "Section du câble, puis sa longueur",
+      "Cartouche",
+      "Projet",
+      "Date",
+      "Version",
+      "Auteur",
+      "Le schéma se redessine quand le raccordement change",
+      "Télécharger (PDF)",
+      "DXF"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "entrée A",
+        "raison": "Accepté : les entrées de l’onduleur sont numérotées 1-4, pas A/B."
+      },
+      {
+        "libelle": "entrée B",
+        "raison": "Accepté : les entrées de l’onduleur sont numérotées 1-4, pas A/B."
+      }
+    ]
+  },
+  "Resultats": {
+    "etat_ancre": "Du soleil au réseau",
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Toit",
+      "Panneaux",
+      "Électrique",
+      "Résultats",
+      "Documents",
+      "Avancé",
+      "Production la première année",
+      "année moyenne (P50)",
+      "De la consommation",
+      "Pourquoi ce chiffre ?",
+      "Pertes au total",
+      "Écart avec PVGIS",
+      "Même site, mêmes panneaux",
+      "Mois par mois",
+      "Production",
+      "Consommation",
+      "Du soleil au réseau",
+      "Voir les 22 étapes",
+      "Soleil reçu par les panneaux",
+      "Ombres proches",
+      "Poussière",
+      "Chaleur",
+      "Câbles et onduleur",
+      "Autres pertes",
+      "Électricité produite",
+      "Voir les sources",
+      "9 fois sur 10 au-dessus",
+      "Préparer les documents"
+    ],
+    "acceptes_absents": []
+  },
+  "ResultatsIncomplet": {
+    "etat_ancre": "Pour un résultat complet",
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Toit",
+      "Panneaux",
+      "Électrique",
+      "Résultats",
+      "Documents",
+      "Production la première année · au plus",
+      "C’est un plafond",
+      "étapes sur 22",
+      "Pour un résultat complet",
+      "Poussière sur les panneaux",
+      "Vieillissement de la première année",
+      "Écarts entre panneaux",
+      "Renseigner",
+      "Démarrage rapide",
+      "Voir les valeurs",
+      "Ce qui est déjà sûr",
+      "Puissance",
+      "Raccordement",
+      "Ombres proches",
+      "l’indice de performance s’affichent dès que le résultat est complet"
+    ],
+    "acceptes_absents": []
+  },
+  "Documents": {
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Toit",
+      "Panneaux",
+      "Électrique",
+      "Résultats",
+      "Documents",
+      "Avancé",
+      "Prêt à envoyer ?",
+      "Visite technique",
+      "Puissance annoncée",
+      "Taille adaptée à la facture",
+      "Ombres chiffrées",
+      "Tension par temps froid",
+      "Panneaux pour l’onduleur",
+      "Câbles et protections",
+      "Production vérifiée avec PVGIS",
+      "Calcul à jour",
+      "Bon",
+      "À régler",
+      "Bloque le devis",
+      "Documents du projet",
+      "Plan de pose pour l’équipe",
+      "Schéma électrique",
+      "Note de calcul",
+      "Rapport d’étude",
+      "Plan au format DXF",
+      "Aperçu",
+      "Télécharger",
+      "Le devis remis au client ne se fait pas ici"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "Aperçu (Plan au format DXF)",
+        "raison": "Accepté : pas d’« Aperçu » pour le DXF (les autres documents gardent le leur)."
+      }
+    ]
+  },
+  "Liste": {
+    "attendus": [
+      "Ventes",
+      "Calepinages",
+      "Rechercher un calepinage",
+      "Nouveau calepinage",
+      "Tous",
+      "Brouillon",
+      "Mes calepinages"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "Prêt à envoyer",
+        "raison": "Accepté : les pastilles d’état sont les vrais états du produit (Brouillon / Validé / Périmé / Refusé), pas ceux de la maquette."
+      },
+      {
+        "libelle": "Devis envoyé",
+        "raison": "Accepté : les pastilles d’état sont les vrais états du produit (Brouillon / Validé / Périmé / Refusé), pas ceux de la maquette."
+      },
+      {
+        "libelle": "Signé",
+        "raison": "Accepté : les pastilles d’état sont les vrais états du produit (Brouillon / Validé / Périmé / Refusé), pas ceux de la maquette."
+      }
+    ]
+  },
+  "DemarrageRapide": {
+    "attendus": [
+      "Réglages",
+      "Calepinage",
+      "Démarrage rapide",
+      "Les réglages encore vides peuvent recevoir une valeur publiée par un logiciel de référence, toujours affichée avec sa source.",
+      "Vous la remplacerez par vos propres mesures",
+      "Remplir",
+      "Réglage",
+      "Valeur proposée",
+      "Source",
+      "État",
+      "Vieillissement de la première année",
+      "Écarts entre panneaux",
+      "Échauffement selon la pose",
+      "Reflets du verre",
+      "Pertes dans les câbles côté panneaux",
+      "Réflexion du sol",
+      "Marge de l’onduleur",
+      "Poussière sur les panneaux",
+      "ouvrir",
+      "Vide",
+      "Saisir",
+      "Tout saisir à la main",
+      "réglages vides",
+      "Réglages › Calepinage"
+    ],
+    "acceptes_absents": []
+  },
+  "Tablette": {
+    "attendus": [
+      "Calepinages",
+      "Guidé",
+      "Expert",
+      "Générer le devis",
+      "Panneaux",
+      "Puissance",
+      "Production · estimation",
+      "De la facture",
+      "Ensoleillement de chaque panneau",
+      "Ombragé",
+      "Plein soleil",
+      "Étape 2 sur 5",
+      "Les panneaux",
+      "Panneau",
+      "Raccorder les panneaux",
+      "Couvrir la facture",
+      "Recommandé",
+      "Le plus de panneaux"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "En stock",
+        "raison": "Accepté (BRIEF-M4 « Known and accepted ») : « En stock » n’est pas affiché par le produit."
+      }
+    ]
+  },
+  "Telephone": {
+    "attendus": [
+      "Relevé de visite",
+      "Photos",
+      "Mesures",
+      "Longueur",
+      "Largeur",
+      "Pente du toit",
+      "Mesurer encore",
+      "Le toit regarde vers",
+      "Boussole",
+      "Voir en 3D",
+      "Terminer le relevé"
+    ],
+    "acceptes_absents": [
+      {
+        "libelle": "Toit entier",
+        "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette."
+      },
+      {
+        "libelle": "Compteur",
+        "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette."
+      },
+      {
+        "libelle": "Tableau",
+        "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette."
+      },
+      {
+        "libelle": "Obstacles",
+        "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette."
+      },
+      {
+        "libelle": "Passage des câbles",
+        "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette."
+      },
+      {
+        "libelle": "Vue vers le sud",
+        "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette."
+      }
+    ]
+  },
+  "TelephoneClient": {
+    "attendus": [
+      "Glissez un doigt pour tourner autour",
+      "Hiver",
+      "Été",
+      "panneaux",
+      "kWh par an · estimation",
+      "de votre facture",
+      "Estimation pour une année moyenne",
+      "Les montants figurent dans le devis.",
+      "Retour au relevé",
+      "Envoyer le lien"
+    ],
+    "acceptes_absents": []
+  }
+}

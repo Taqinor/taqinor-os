@@ -11,7 +11,7 @@ export const GROUPES = [
 ]
 export const GROUPE_AUTRES = { cle: 'autres', libelle: 'Autres contrôles' }
 
-const ETAPE_DU_CODE = {
+export const ETAPE_DU_CODE = {
   visite_validee: 'toit',
   approbation_a_jour: 'toit',
   conception_perimee: 'toit',

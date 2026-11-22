@@ -29,6 +29,31 @@
   "codes_reserves": {
     "schema_secours": "JAMAIS dans controles[] — réserve, aucun producteur planifié"
   },
+  "etape_du_code": {
+    "visite_validee": "toit",
+    "approbation_a_jour": "toit",
+    "conception_perimee": "toit",
+    "pentes_confirmees": "toit",
+    "obstacle_hors_pan": "toit",
+    "pans_vides": "toit",
+    "kwc_coherent": "panneaux",
+    "taille_sans_facture": "panneaux",
+    "ombrage_chiffre": "panneaux",
+    "un_seul_chiffre": "panneaux",
+    "kwh_declare": "panneaux",
+    "hypotheses_conso": "panneaux",
+    "verdict_electrique": "electrique",
+    "materiel_designe": "electrique",
+    "tension_froid": "electrique",
+    "orientation_mppt": "electrique",
+    "ratio_dc_ac": "electrique",
+    "chutes_tension": "electrique",
+    "terre_protections": "electrique",
+    "compatibilite_equipements": "electrique",
+    "ecart_pvgis": "resultats",
+    "simulation_fraiche": "resultats",
+    "dossier_pieces": "resultats"
+  },
   "exemple": {
     "calepinage": 1,
     "etape": null,

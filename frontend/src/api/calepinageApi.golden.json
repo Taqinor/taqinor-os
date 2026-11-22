@@ -325,7 +325,9 @@
   "calepinages.designContext": [
     {
       "config": {
-        "params": 3
+        "params": 3,
+        "silencieuxExpiration": true,
+        "timeout": 60000
       },
       "data": null,
       "url": "/calepinage/calepinages/7/design-context/",
@@ -918,7 +920,10 @@
   ],
   "calepinages.pretAEnvoyer": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/pret-a-envoyer/",
       "verbe": "get"

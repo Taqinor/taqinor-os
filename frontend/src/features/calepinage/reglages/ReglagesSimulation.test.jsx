@@ -505,7 +505,7 @@ describe('ACAL405 — Démarrage rapide', () => {
 
     it('toute clé « sans source » servie par le contrat a son nom français', async () => {
       const { LIBELLES_SANS_SOURCE, nomSansSource, estSansSource } = await import('./profilDepart')
-      // L'écran des résultats incomplets s'aligne sur cette liste (« Remplir » ne remplit pas ces réglages).
+      // L'écran des résultats incomplets lit cette même liste (« Remplir » ne remplit pas ces réglages).
       for (const cle of ['salissure_mensuelle_pct', 'lid_par_techno', 'indisponibilite_fenetres']) expect(estSansSource(cle), cle).toBe(true)
       for (const v of PROFIL.valeurs) expect(estSansSource(v.cle), v.cle).toBe(false)
       const libellesRegistre = Object.fromEntries(
