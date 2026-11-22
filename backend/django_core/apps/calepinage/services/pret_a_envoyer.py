@@ -14,6 +14,42 @@ Codes produits ici (``codes_produits`` du contrat) : ``visite_validee``,
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
+
+#: H3 (22/11) — la mémoire d'UNE lecture d'``agreger`` (par requête, jamais
+#: globale) : le résultat servi, le rapport de publication et le matériel
+#: qu'il a résolu sont calculés UNE fois et lus par chaque producteur qui en a
+#: besoin. Posée et retirée par ``agreger`` ; hors de lui (un producteur appelé
+#: seul), rien n'est gardé : aucune lecture ne peut servir un verdict périmé.
+_LECTURE = ContextVar('pret_a_envoyer_lecture', default=None)
+
+
+def _partage(calepinage, cle, calcul):
+    """``calcul()`` une fois par lecture d'``agreger`` (clé : pk + ``cle``)."""
+    memoire = _LECTURE.get()
+    if memoire is None:
+        return calcul()
+    cle = (getattr(calepinage, 'pk', None), cle)
+    if cle not in memoire:
+        memoire[cle] = calcul()
+    return memoire[cle]
+
+
+def _resultat(calepinage):
+    """Le ``resultat`` servi (``GET resultat/``), une fois par lecture."""
+    from .. import selectors
+
+    return _partage(calepinage, 'resultat',
+                    lambda: selectors.resultat_servi(calepinage) or {})
+
+
+def _rapport(calepinage):
+    """``(publication, conception, materiel)`` du verdict publiable, une fois."""
+    from .electrique import _rapport_publication
+
+    return _partage(calepinage, 'publication',
+                    lambda: _rapport_publication(calepinage))
+
 
 NON_EXIGE = 'Non exigé par votre société'
 SANS_LEAD = 'Sans lead : non applicable'
@@ -231,7 +267,7 @@ def _ratio_dc_ac(ratio):
 
     from .electrique import SOURCE_BORNE_NOYAU
 
-    libelle = 'Rapport puissance panneaux / onduleur'
+    libelle = 'Puissance des panneaux face à l’onduleur'
     valeur = (ratio or {}).get('valeur')
     if valeur is None:
         return _elec('ratio_dc_ac', libelle, 'info',
@@ -263,16 +299,16 @@ def _chutes(troncons):
 
 
 def controles_electriques(calepinage):
-    """ACAL858 — les sept contrôles électriques, LUS. Ne lève pas."""
-    from .. import selectors
-    from .electrique import (
-        CODE_FICHE_INCOMPLETE, CODE_POLYSTRING, verdict_publiable,
-    )
+    """ACAL858 — les sept contrôles électriques, LUS. Ne lève pas.
+
+    Le verdict est celui de ``verdict_publiable`` (``_rapport_publication``
+    en est le seul calcul : son matériel est gardé pour ACAL906)."""
+    from .electrique import CODE_FICHE_INCOMPLETE, CODE_POLYSTRING
     from .troncons import troncons_du_calepinage
 
-    publication = verdict_publiable(calepinage)
+    publication = _rapport(calepinage)[0]
     motifs = publication['motifs']
-    resultat = selectors.resultat_servi(calepinage) or {}
+    resultat = _resultat(calepinage)
     verdicts = ((resultat.get('electrique') or {}).get('verdicts')) or ()
     fiche = [m for m in motifs if m['code'] == CODE_FICHE_INCOMPLETE]
     materiel = (_controle('materiel_designe', 'Matériel électrique désigné',
@@ -288,7 +324,7 @@ def controles_electriques(calepinage):
     return [
         _verdict_electrique(publication), materiel,
         _tension_froid(verdicts),
-        _depuis_motifs('orientation_mppt', 'Orientations par entrée MPPT',
+        _depuis_motifs('orientation_mppt', 'Une seule orientation par entrée',
                        poly, geste='Revoir l’affectation des chaînes'),
         _ratio_dc_ac(resultat.get('ratio_dc_ac')),
         _chutes(troncons_du_calepinage(calepinage)),
@@ -388,9 +424,7 @@ def _hypotheses_conso(consommation):
 
 def controles_du_resultat(calepinage):
     """ACAL859 — les quatre contrôles de résultat et de dossier. Ne lève pas."""
-    from .. import selectors
-
-    resultat = selectors.resultat_servi(calepinage) or {}
+    resultat = _resultat(calepinage)
     return [_ecart_pvgis(resultat.get('validation')),
             _ombrage_chiffre(resultat.get('cascade')),
             _dossier_pieces(calepinage),
@@ -640,7 +674,12 @@ def controle_compatibilite(calepinage):
     libelle = 'Compatibilité du matériel'
     company = getattr(calepinage, 'company', None)
     entree = entree_stockee(calepinage)
-    materiel = resoudre_materiel(company, entree, calepinage=calepinage)
+    # H3 — le matériel que le verdict électrique vient de résoudre (même
+    # entrée stockée, même devis lié) quand cette lecture l'a déjà calculé.
+    memoire = _LECTURE.get() or {}
+    rapport = memoire.get((getattr(calepinage, 'pk', None), 'publication'))
+    materiel = (rapport[2] if rapport and rapport[2] is not None else
+                resoudre_materiel(company, entree, calepinage=calepinage))
     produits = materiel['produits']
     if not (produits.get('module') and produits.get('onduleur')):
         return _controle('compatibilite_equipements', libelle, 'info',
@@ -693,11 +732,16 @@ def agreger(calepinage, producteurs):
 
     ``producteurs`` : les fonctions de contrôle de ce module (la table vit
     dans ``views/pret_a_envoyer.py``) ; chacune rend un contrôle ou une liste.
-    Tri STABLE : à état égal, l'ordre des producteurs est gardé."""
+    Tri STABLE : à état égal, l'ordre des producteurs est gardé.
+    H3 — une mémoire de lecture (``_LECTURE``) vit le temps de cet appel."""
     controles = []
-    for producteur in producteurs:
-        rendu = producteur(calepinage)
-        controles.extend(rendu if isinstance(rendu, list) else [rendu])
+    jeton = _LECTURE.set({})
+    try:
+        for producteur in producteurs:
+            rendu = producteur(calepinage)
+            controles.extend(rendu if isinstance(rendu, list) else [rendu])
+    finally:
+        _LECTURE.reset(jeton)
     controles.sort(key=lambda c: ORDRE_DES_ETATS.index(c['etat']))
     bloquants = sum(c['etat'] == 'bloquant' for c in controles)
     a_regler = sum(c['etat'] == 'a_regler' for c in controles)

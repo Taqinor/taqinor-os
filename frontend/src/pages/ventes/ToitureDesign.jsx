@@ -1373,7 +1373,7 @@ function AtelierToiture({
         proprietesBuilder={proprietesBuilder} enregistreLe={enregistreLe} onEtape={setEtapeAtelier} onFermer={fermer}
         ecranProps={{
           builderApi: builderApiActuel, onRecharger: rechargerAtelier,
-          lectureSeule: lectureSeule || !!varianteId, documentVivant,
+          lectureSeule: lectureSeule || !!varianteId, documentVivant, contexte,
         }}
         alertes={(
           <>

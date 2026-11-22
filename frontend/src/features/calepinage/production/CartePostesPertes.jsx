@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Info } from 'lucide-react'
 import { formatPercent } from '../../../lib/format'
-import '../../../styles/calepinage/54-etape-resultats.css'
 import { CHART_TOKENS } from '../../../ui/charts/chart-theme.js'
 import { useModeExpert } from '../atelier/modeExpert'
 import CascadePertesLignes from './CascadePertesLignes'

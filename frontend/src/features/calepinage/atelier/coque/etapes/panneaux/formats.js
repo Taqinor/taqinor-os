@@ -1,6 +1,8 @@
 // Étape « Panneaux » — les formats de la ligne d'un modèle et de la date du soleil (fr-FR).
 
-const fr = (n, max = 2) => n.toLocaleString('fr-FR', { maximumFractionDigits: max })
+import { formatNumber } from '../../../../../../lib/format'
+
+const fr = (n, max = 2) => formatNumber(n, { maxDecimals: max })
 
 /** La ligne sous le nom d'un modèle : puissance et cotes de la fiche servie, jamais une valeur supposée. */
 export function ligneModule(module) {

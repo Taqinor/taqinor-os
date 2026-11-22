@@ -12,7 +12,9 @@
 .cal-res-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .cal-res-lien { background: transparent; border: 0; padding: 0; min-height: 44px; color: var(--info);
   font: 500 14px var(--font-brand); text-decoration: underline; cursor: pointer; }
-.cal-res-lien:hover { color: var(--color-azur-900); }
+@media (hover: hover) {
+  .cal-res-lien:hover { color: var(--color-azur-900); }
+}
 .cal-res-sourdine { color: var(--muted-foreground); }
 
 /* ── Quatre tuiles ───────────────────────────────────────────────────────── */
@@ -61,7 +63,9 @@
 .cal-res-cta { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 22px; border: 0;
   border-radius: 10px; background: var(--primary); color: var(--primary-foreground); font: 600 16px var(--font-brand);
   text-decoration: none; cursor: pointer; }
-.cal-res-cta:hover { filter: brightness(0.96); }
+@media (hover: hover) {
+  .cal-res-cta:hover { filter: brightness(0.96); }
+}
 
 /* ── Résultat incomplet ──────────────────────────────────────────────────── */
 .cal-resinc-haut { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; }

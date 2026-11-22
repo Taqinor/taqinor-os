@@ -3,7 +3,6 @@ import calepinageApi from '../../../api/calepinageApi'
 import { useModeExpert } from '../atelier/modeExpert'
 import { libelleReglage } from '../reglages/profilDepart'
 import { reglagesPublies } from './LigneValeursPubliees.helpers'
-import '../../../styles/calepinage/54-etape-resultats.css'
 
 /* ACAL698 — « n réglages utilisent des valeurs publiées, non mesurées sur ce
    chantier (…) · Voir les sources ». Le compte est celui des réglages FIGÉS au

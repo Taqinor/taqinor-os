@@ -2,7 +2,6 @@ import {
   Bar, BarChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { formatNumber } from '../../../lib/format'
-import '../../../styles/calepinage/54-etape-resultats.css'
 import { ChartEmpty, ChartFrame, ChartTooltip } from '../../../ui/charts'
 import {
   CHART_GRID_STYLE, CHART_TOKENS, animationDuration,

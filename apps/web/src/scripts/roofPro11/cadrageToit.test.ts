@@ -84,6 +84,19 @@ describe('cadrerToit — le toit remplit la carte (F6)', () => {
     b.fire('idle');
     expect(b.map.jumpTo).toHaveBeenCalledTimes(1);
   });
+  it('H1 — basPx (tiroir de la tablette) : cadré dans la partie VISIBLE, centre de carte plus au sud, zoom sur la hauteur visible', () => {
+    const plein = carte();
+    cadrerToit(plein.map, sources(), { zoomMax: 22 });
+    const tiroir = carte();
+    cadrerToit(tiroir.map, sources(), { zoomMax: 22, basPx: 280 });
+    const a = plein.map.jumpTo.mock.calls[0][0];
+    const b = tiroir.map.jumpTo.mock.calls[0][0];
+    expect(b.zoom).toBeLessThan(a.zoom); // 510 px visibles au lieu de 790
+    expect(b.center[0]).toBeCloseTo(a.center[0], 9);
+    // 140 px (la moitié du tiroir) à ce zoom, en mètres, vers le sud.
+    const mpp = (2 * Math.PI * R * Math.cos((b.center[1] * Math.PI) / 180)) / (512 * 2 ** b.zoom);
+    expect((a.center[1] - b.center[1]) * DEG2M).toBeCloseTo(140 * mpp, 1);
+  });
   it('apiCamera expose appliquerVue (inchangée) et cadrerToit', () => {
     const { map } = carte();
     const api = apiCamera(map, sources(), true);

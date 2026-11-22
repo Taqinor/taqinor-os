@@ -152,7 +152,9 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.cel-avances .cel-avances-lien:hover { color: var(--foreground); }
+@media (hover: hover) {
+  .cel-avances .cel-avances-lien:hover { color: var(--foreground); }
+}
 .cel-retour,
 .csch-retour {
   display: inline-flex;
@@ -168,8 +170,10 @@
   font-weight: 500;
 }
 .cel-retour { align-self: flex-start; padding: 0; }
-.cel-retour:hover,
-.csch-retour:hover { color: var(--foreground); }
+@media (hover: hover) {
+  .cel-retour:hover,
+  .csch-retour:hover { color: var(--foreground); }
+}
 
 /* ── Calques posés sur la carte (portail `SurCarte`) ───────────────────── */
 .cel-pastille {
@@ -238,7 +242,9 @@
 }
 .cel-barre-principal { padding: 0 16px; background: var(--foreground); color: var(--background); font-weight: 600; }
 .cel-barre-texte { padding: 0 14px; background: transparent; color: var(--foreground); font-weight: 500; }
-.cel-barre-texte:hover { background: var(--muted); }
+@media (hover: hover) {
+  .cel-barre-texte:hover { background: var(--muted); }
+}
 .cel-barre-principal:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ── Sous-écran « Schéma » (cadre `plein-panneau`) ─────────────────────── */
@@ -255,10 +261,10 @@
   box-shadow: var(--shadow-md);
   overflow: hidden;
 }
-.csch-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px 0 24px; }
+.csch-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 19px 20px 0 24px; }
 .csch-titres { display: flex; flex-direction: column; }
-.csch-titres h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
-.csch-titres span { font-size: 0.875rem; color: var(--muted-foreground); }
+.csch-titres h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; line-height: 22px; }
+.csch-titres span { font-size: 0.875rem; line-height: 18px; color: var(--muted-foreground); }
 .csch-outils { display: flex; align-items: center; gap: 8px; }
 .csch-zoom { display: flex; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .csch-zoom button {
@@ -316,11 +322,20 @@
 .csch-terre .csch-terre-symbole path { stroke-dasharray: none; stroke-linecap: round; }
 .csch-blocs-svg .csch-terre-texte { fill: color-mix(in oklch, var(--foreground) 78%, var(--muted-foreground)); }
 .csch-element { cursor: pointer; outline: none; }
-.csch-element:hover > rect:first-child { stroke: var(--ring); }
+@media (hover: hover) {
+  .csch-element:hover > rect:first-child { stroke: var(--ring); }
+}
 .csch-element:focus-visible > rect:first-child { stroke: var(--ring); stroke-width: 3; }
 .csch-element:focus-visible > text { text-decoration: underline; }
 .csch-motifs { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px; }
 .csch-note { margin: 0; padding: 12px 24px 18px; font-size: 0.75rem; color: var(--muted-foreground); }
+.csch-a-calculer { margin: 0; padding: 10px 24px 0; font-size: 0.875rem; color: var(--muted-foreground); }
+.csch-a-calculer + .csch-note { padding-top: 6px; }
+.csch-lien { padding: 0; border: 0; background: none; font: inherit; color: color-mix(in oklch, var(--info) 70%, var(--foreground)); text-decoration: underline; cursor: pointer; }
+.csch-lien:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* Côté réseau en creux : boîtes pointillées, texte atténué, aucune valeur. */
+.csch-boite.csch-boite-creux { fill: transparent; stroke: var(--muted-foreground); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.csch-liaison.csch-liaison-creux { stroke: var(--muted-foreground); stroke-width: 2; stroke-dasharray: 6 4; }
 
 /* Panneau : légende, cartouche, note bleue, pied */
 .cel-section { display: flex; flex-direction: column; gap: 8px; }
@@ -348,7 +363,7 @@
 }
 .csch-cartouche > div { display: contents; }
 .csch-cartouche dt,
-.csch-cartouche dd { margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.csch-cartouche dd { margin: 0; padding: 10px 12px; line-height: 19px; border-bottom: 1px solid var(--border); }
 .csch-cartouche dt { background: var(--background); color: var(--muted-foreground); }
 .csch-cartouche dd { font-weight: 500; overflow-wrap: anywhere; }
 .csch-cartouche > div:last-child dt,
@@ -367,6 +382,8 @@
 .csch-info svg { flex: none; margin-top: 2px; color: var(--info); }
 .csch-pied { display: flex; flex-direction: column; gap: 8px; }
 .csch-pied-messages p { margin: 0; font-size: 0.75rem; color: var(--destructive); }
+/* Ce n'est pas une erreur (« il manque le calcul ») : une note discrète, pas du texte rouge. */
+.csch-pied-note p { color: var(--muted-foreground); }
 .csch-pied-boutons { display: flex; gap: 8px; }
 .csch-pied-boutons .cal-bouton-or-plein { flex: 1; width: auto; }
 .csch-dxf {

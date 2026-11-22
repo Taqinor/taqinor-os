@@ -2,8 +2,6 @@ import { Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState
 import { useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../../api/calepinageApi'
 import { ErrorBoundary, SkeletonCard, SkeletonText } from '../../../../ui'
-import '../../../../styles/calepinage/50-coque-atelier.css'
-import '../../../../styles/calepinage/56-coque-responsive.css'
 import BarreEnregistrement from '../BarreEnregistrement'
 import { formaterHeureBrouillon } from '../contexteAtelier'
 import { PARAM_MODE, useModeExpert } from '../modeExpert'

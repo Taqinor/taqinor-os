@@ -7,21 +7,28 @@ import { ContexteCoque } from './coque/contexteCoque'
 import { Icone } from './coque/primitives'
 
 // Maquette Main — les boutons de zoom de MapLibre portent des noms anglais (« Zoom in / Zoom out ») : dans la coque,
-// ils prennent ceux de la maquette. Le script crée la carte (et ses contrôles) après le montage : quelques essais.
+// ils prennent ceux de la maquette. Le script crée la carte (et ses contrôles) après le montage, parfois très tard sur
+// un poste chargé : un observateur renomme chaque bouton DÈS qu'il apparaît (et si MapLibre le renomme ensuite).
 const NOMS_ZOOM = [['.maplibregl-ctrl-zoom-in', 'Zoomer'], ['.maplibregl-ctrl-zoom-out', 'Dézoomer']]
-const ESSAIS_ZOOM_MS = [0, 1500, 4000, 8000]
+
+function nommerZoomEnFrancais(racine) {
+  for (const [sel, nom] of NOMS_ZOOM) {
+    const b = racine?.querySelector?.(sel)
+    if (b && (b.getAttribute('aria-label') !== nom || b.getAttribute('title') !== nom)) {
+      b.setAttribute('aria-label', nom); b.setAttribute('title', nom)
+    }
+  }
+}
 
 function useZoomEnFrancais(actif, mapWrapRef) {
   useEffect(() => {
-    if (!actif) return undefined
-    const nommer = () => {
-      for (const [sel, nom] of NOMS_ZOOM) {
-        const b = mapWrapRef?.current?.querySelector?.(sel)
-        if (b && b.getAttribute('aria-label') !== nom) { b.setAttribute('aria-label', nom); b.setAttribute('title', nom) }
-      }
-    }
-    const minuteurs = ESSAIS_ZOOM_MS.map((delai) => window.setTimeout(nommer, delai))
-    return () => minuteurs.forEach((m) => window.clearTimeout(m))
+    const racine = mapWrapRef?.current
+    if (!actif || !racine) return undefined
+    nommerZoomEnFrancais(racine)
+    if (typeof MutationObserver !== 'function') return undefined
+    const obs = new MutationObserver(() => nommerZoomEnFrancais(racine))
+    obs.observe(racine, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label', 'title'] })
+    return () => obs.disconnect()
   }, [actif, mapWrapRef])
 }
 

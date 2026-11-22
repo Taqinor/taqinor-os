@@ -3,14 +3,13 @@ import { useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { renderTrustedSvg } from '../../../../../lib/trustedSvg'
-import '../../../../../styles/calepinage/53-etape-electrique.css'
 import { Spinner } from '../../../../../ui'
 import { downloadBlob, filenameFromResponse } from '../../../../../utils/downloadBlob'
 import { OPTIONS_TELECHARGEMENT, erreurDeTelechargement } from '../../../documents/telechargement'
 import { phraseRaccordement } from '../../../electrique/resumeRaccordement'
 import { MotifsSchema, PlancheSchema, SchemaEnBlocs } from '../../../SchemaUnifilairePanel'
 import {
-  lignesCartouche, lignesLegende, motifDuRefusDxf, nomFichierSchema, planSchemaEnBlocs,
+  lignesCartouche, lignesLegende, motifDuRefusDxf, nomFichierSchema, phraseCoteReseau, planSchemaEnBlocs,
 } from '../../../SchemaUnifilairePanel.helpers'
 import { PARAM_ONGLET } from '../../onglets'
 import { PARAM_CHAMP } from '../../ouvrirChamp'
@@ -102,7 +101,7 @@ function Telechargements({ id, piece, schemaServi, reference }) {
   return (
     <div className="csch-pied">
       {(erreurs || motif) && (
-        <div role={erreurs ? 'alert' : 'status'} className="csch-pied-messages">
+        <div role={erreurs ? 'alert' : 'status'} className={`csch-pied-messages${erreurs ? '' : ' csch-pied-note'}`}>
           {(erreurs ?? [motif]).map((m) => <p key={m}>{m}</p>)}
         </div>
       )}
@@ -149,6 +148,9 @@ export default function EtapeSchema({ calepinageId: id }) {
     <div className="csch-ecran" data-testid="csch-ecran">
       <PlancheSchema balisage={balisage} note={balisage ? phraseRaccordement(resultat) : null}
         dessin={enBlocs ? <SchemaEnBlocs plan={plan} onOuvrir={ouvrirOnglet} /> : null}
+        coteReseau={enBlocs && plan.coteReseauACalculer
+          ? { texte: phraseCoteReseau(resultat), onOuvrir: resultat?.simule === true ? null : () => ouvrirOnglet('production') }
+          : null}
         actions={(
           <>
             {plan && (

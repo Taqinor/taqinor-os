@@ -8,7 +8,7 @@
    restent montés et reviennent en Avancé / Expert.
    ========================================================================== */
 
-/* L'or pâle de la maquette (tuile choisie, carte de pente) : #fdf6e3 en clair, #2a2618 (brun-or) en sombre. Un
+/* L'or pâle de la maquette (tuile choisie, carte de pente) : crème doré en clair, brun-or en sombre. Un
    mélange de l'or avec la carte en oklch tirait au violet sur la carte navy du thème sombre ; le fond de pastille
    or (`--tag-2-bg`, redéfini par le thème sombre) mêlé à la carte donne les deux teintes, jetons seuls. */
 .cal-coque { --cal-or-pale: color-mix(in srgb, var(--tag-2-bg) 60%, var(--card)); }
@@ -262,7 +262,9 @@
   background: transparent;
   color: var(--foreground);
 }
-.cal-coque .cal-outil-carte:hover { background: var(--muted); }
+@media (hover: hover) {
+  .cal-coque .cal-outil-carte:hover { background: var(--muted); }
+}
 .cal-coque .cal-outil-carte[aria-pressed='true'] { background: var(--foreground); color: var(--background); }
 .cal-coque .cal-outil-carte:disabled { color: var(--muted-foreground); background: transparent; cursor: not-allowed; }
 .cal-coque .cal-barre-outils-separateur { width: 1px; height: 28px; margin: 0 4px; background: var(--border); }

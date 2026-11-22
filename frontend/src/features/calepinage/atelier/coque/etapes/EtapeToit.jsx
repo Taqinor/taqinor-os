@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import '../../../../../styles/calepinage/51-etape-toit.css'
 import SaisiePente from '../../../SaisiePente'
 import { panParDefaut, sourceDePente, zonesDuDocument } from '../../../SaisiePente.helpers'
 import calepinageApi from '../../../../../api/calepinageApi'
@@ -11,7 +10,7 @@ import {
   GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, degres, enregistrerPentePan, nomFace,
   selectionnerObstacle, texteBesoin, useEtatToit,
 } from './EtapeToit.helpers'
-import { cibleFactures } from './panneaux/sources'
+import { useCibleFactures } from './panneaux/lectures'
 
 const SELECT_DATA = { select: (r) => r?.data ?? null }
 
@@ -334,6 +333,19 @@ function useAjoutPan(etat, relire) {
   return [actif, basculer]
 }
 
+/** Le « Besoin d'après la facture » de la puce selon l'état de la lecture : en chargement, rien (aucune absence
+    affirmée) ; en échec, « Lecture impossible — réessayer » ; lue, le chiffre servi (ou rien : pas de facture). */
+function besoinAffiche(facture) {
+  if (facture.etat === 'echec') {
+    return (
+      <button type="button" className="cal-toit-reessayer" onClick={facture.reessayer} data-zone="besoin-echec">
+        Lecture impossible — réessayer
+      </button>
+    )
+  }
+  return facture.etat === 'ok' ? texteBesoin(facture.cible) : null
+}
+
 function ResumeCarte({ surface, pans, besoin }) {
   if (!surface) return null
   const blocs = [
@@ -354,10 +366,12 @@ function ResumeCarte({ surface, pans, besoin }) {
 }
 
 export default function EtapeToit({
-  calepinageId, builderApi = null, documentVivant = null, lectureSeule = false, enregistreLe = null,
+  calepinageId, builderApi = null, documentVivant = null, lectureSeule = false, enregistreLe = null, contexte: servi = null,
 }) {
   const [etat, relire] = useEtatToit()
-  const contexte = useResource((id) => calepinageApi.calepinages.designContext(id), calepinageId, SELECT_DATA).data
+  // La taille des factures : l'accesseur PARTAGÉ avec l'étape Panneaux (trois états ; le design-context de
+  // l'atelier, `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
+  const facture = useCibleFactures(calepinageId, servi)
   const [ajout, basculerAjout] = useAjoutPan(etat, relire)
   return (
     <div className="cal-etape-toit">
@@ -373,7 +387,7 @@ export default function EtapeToit({
       </div>
       <Obstacles obstacles={etat.obstacles} relire={relire} />
       <SurCarte>
-        <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={texteBesoin(cibleFactures(contexte))} />
+        <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={besoinAffiche(facture)} />
         <BulleContour contourFerme={etat.contourFerme} ajout={ajout} />
         <BarreOutils outils={etat.outils} builderApi={builderApi} relire={relire} ajout={ajout} onAjout={basculerAjout} />
       </SurCarte>

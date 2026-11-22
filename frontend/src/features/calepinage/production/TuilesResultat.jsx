@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import '../../../styles/calepinage/54-etape-resultats.css'
 
 /* LA RANGÉE DE QUATRE TUILES de l'étape Résultats (maquette Resultats.dc.html) :
    « Production la première année » (héros sombre), « De la consommation »,

@@ -41,7 +41,7 @@
     left: 72px;
     right: 0;
     bottom: 0;
-    z-index: 30;
+    z-index: calc(var(--z-base) + 30);
     width: auto;
     height: 280px;
     display: grid;

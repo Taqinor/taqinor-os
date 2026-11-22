@@ -5,7 +5,6 @@ import { gestes, useConstructeur } from '../atelier/coque/etapes/panneaux/constr
 import { jourMois } from '../atelier/coque/etapes/panneaux/formats'
 import { PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
 import { useDonneesClient } from './vueClient.helpers'
-import '../../../styles/calepinage/58-telephone.css'
 
 /* ============================================================================
    « MONTRER AU CLIENT » — L'HABILLAGE DE L'ATELIER EN MODE PRÉSENTATION

@@ -24,7 +24,7 @@ vi.mock('./exportImage', () => ({
 import calepinageApi from '../../api/calepinageApi'
 import SchemaUnifilairePanel, { PlancheSchema, SchemaEnBlocs } from './SchemaUnifilairePanel'
 import {
-  motifDuRefusDxf, corpsEdition, couperTexte, lignesCartouche, lignesLegende, planSchemaEnBlocs,
+  motifDuRefusDxf, corpsEdition, couperTexte, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planSchemaEnBlocs,
 } from './SchemaUnifilairePanel.helpers'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
@@ -438,7 +438,7 @@ describe('PlancheSchema, légende et cartouche (ACAL1301)', () => {
     expect(lignesCartouche(detail)).toEqual([
       { libelle: 'Projet', valeur: 'Toiture — bâtiment principal — Casablanca' },
       { libelle: 'Date', valeur: new Date(le).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) },
-      { libelle: 'Version', valeur: `Enregistrée à ${heure} · abababab` },
+      { libelle: 'Version', valeur: `Enregistrée à ${heure}` }, // l'empreinte technique n'est plus montrée quand l'heure est servie
       { libelle: 'Auteur', valeur: "Utilisateur d'essai" },
     ])
     detail.responsable = null
@@ -563,6 +563,41 @@ describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
     expect(onOuvrir).not.toHaveBeenCalled()
     expect(blocs.style.transform).toContain('translate(50px, 0px)')
     expect(vue).toHaveAttribute('data-vue', 'blocs')
+  })
+
+  it('côté réseau pas encore servi : réseau, compteur et coffret EN CREUX, sans aucune valeur ; servi, ils les remplace', () => {
+    const { schema, resultat } = echantillons()
+    schema.blocs = schema.blocs.filter((b) => !['disjoncteur_ac', 'parafoudre_ac', 'ddr', 'compteur_production', 'tgbt', 'reseau'].includes(b.clef))
+    resultat.simule = false
+    resultat.hors_reseau = null // jamais simulé : le site est raccordé au réseau tant qu'on n'a pas dit le contraire
+    resultat.troncons = null
+    const plan = planSchemaEnBlocs(schema, resultat)
+    expect(plan.coteReseauACalculer).toBe(true)
+    expect(plan.blocsAc.map((b) => [b.cle, b.aCalculer])).toEqual([['coffret_ac', true], ['compteur', true], ['reseau', true]])
+    // Aucune étiquette de section ni de longueur ; la légende n'annonce pas un trait « réseau » servi.
+    expect(plan.liaisons.filter((l) => l.aCalculer).every((l) => l.etiquette === null)).toBe(true)
+    expect(plan.legende.map((l) => l.cle)).not.toContain('ac')
+    render(<PlancheSchema balisage={{ __html: schema.svg }} dessin={<SchemaEnBlocs plan={plan} />}
+      coteReseau={{ texte: phraseCoteReseau(resultat), onOuvrir: () => {} }} />)
+    const blocs = screen.getByTestId('csch-blocs')
+    for (const texte of ['Coffret côté réseau', 'Compteur', 'Réseau du', 'distributeur']) expect(blocs).toHaveTextContent(texte)
+    expect(blocs.querySelectorAll('[data-a-calculer="true"]')).toHaveLength(3)
+    expect(blocs.textContent).not.toMatch(/mm²|\d+ m/)
+    expect(screen.getByTestId('csch-a-calculer')).toHaveTextContent('Lancez la simulation pour dimensionner le côté réseau')
+  })
+
+  it('côté réseau : site déclaré hors réseau ⇒ rien dessiné ; simulé sans norme ⇒ la phrase nomme la norme', () => {
+    const { schema, resultat } = echantillons()
+    schema.blocs = schema.blocs.filter((b) => !['disjoncteur_ac', 'compteur_production', 'tgbt', 'reseau', 'ddr'].includes(b.clef))
+    resultat.hors_reseau = { banque: null, jours_autonomie: 2 } // bloc chiffré, sans `motif_absence`
+    expect(estHorsReseau(resultat)).toBe(true)
+    const plan = planSchemaEnBlocs(schema, resultat)
+    expect(plan.coteReseauACalculer).toBe(false)
+    expect(plan.blocsAc).toEqual([])
+    resultat.hors_reseau = { motif_absence: 'Ce calepinage n’est pas déclaré hors réseau' }
+    expect(estHorsReseau(resultat)).toBe(false)
+    expect(phraseCoteReseau({ simule: true })).toMatch(/norme électrique/)
+    expect(phraseCoteReseau({ simule: false })).toMatch(/Lancez la simulation/)
   })
 
   it('couperTexte : mots entiers, n lignes au plus, … au bout', () => {

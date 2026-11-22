@@ -1,7 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { formatNumber } from '../../../lib/format'
-import '../../../styles/calepinage/54-etape-resultats.css'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 

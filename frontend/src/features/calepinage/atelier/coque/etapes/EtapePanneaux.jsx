@@ -4,13 +4,13 @@ import { choisirPaletteAcces, couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
-import '../../../../../styles/calepinage/52-etape-panneaux.css'
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
 import { BESOIN_MAX, gestes, useConstructeur } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
-import { cibleFactures, fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
+import { useCibleFactures } from './panneaux/lectures'
+import { fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
 
 /* ============================================================================
    COQUE — L'ÉCRAN DE L'ÉTAPE « PANNEAUX » (maquettes Panneaux et Tablette).
@@ -39,37 +39,45 @@ const sansParenthese = (t) => (t ?? '').replace(/\s*\([^)]*\)\s*$/, '')
 
 /** Les lectures servies de l'écran, par l'outil commun `useResource` (une lecture chacune ; résultat relu à
     chaque enregistrement). */
-function useServi(calepinageId, enregistreLe) {
-  const contexte = useResource((id) => calepinageApi.calepinages.designContext(id), calepinageId, selectData).data
+function useServi(calepinageId, enregistreLe, servi = null) {
+  // La taille des factures : l'accesseur PARTAGÉ avec l'étape Toit (trois états ; le design-context de l'atelier,
+  // `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
+  const facture = useCibleFactures(calepinageId, servi)
   const catalogue = useResource((id) => calepinageApi.calepinages.modulesDisponibles(id), calepinageId, selectData).data
   const entree = useResource((id) => calepinageApi.calepinages.entreeElectrique(id), calepinageId, selectData).data
   const resultat = useResource((p) => calepinageApi.calepinages.resultat(p.id), { id: calepinageId, enregistreLe },
     selectData).data
   return {
-    leadId: contexte?.calepinage?.lead ?? null,
-    cible: cibleFactures(contexte),
-    motifFacture: contexte?.consommation_lead?.motif || '',
+    leadId: facture.leadId,
+    facture,
+    cible: facture.cible,
+    motifFacture: facture.motif,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
   }
 }
 
-/** Ce que la carte du modèle affiche : le choix vivant du constructeur (le module écrit sur le pan) ; sans module
-    sur le pan alors que l'étude électrique en désigne un, l'état honnête (« Aucun panneau choisi sur ce toit »)
-    et ce que l'étude électrique utilise — jamais le défaut du script présenté comme le panneau du projet. */
+/** Ce que la carte du modèle affiche : le choix vivant du constructeur (le module écrit sur le pan). Sans module sur
+    le pan : l'état honnête, LE MÊME sur toutes les tailles et quel que soit l'état des lectures (« Aucun panneau
+    choisi sur ce toit » + le module par défaut AVEC LEQUEL l'atelier calcule — c'est lui qui fait la puissance de la
+    puce) ; ce que l'étude électrique utilise est dit à part, sous la liste (`noteEtude`), quand il est servi — jamais
+    le défaut présenté comme le panneau du projet, jamais une phrase qui change selon la vitesse du réseau (H2). */
 function moduleAffiche(module, fiches, servis) {
   const fiche = (id) => fiches.get(id)?.module ?? null
   if (module.valeur) {
     const o = module.options.find((x) => x.valeur === module.valeur)
     return { nom: fiche(module.valeur)?.libelle ?? o?.libelle ?? '', ligne: ligneModule(fiche(module.valeur)) }
   }
-  if (servis.length > 0) {
-    const utilise = servis.length > 1
-      ? `${servis.length} modèles (${servis.map((x) => x.designation).join(' · ')})` : servis[0].designation
-    return { nom: 'Aucun panneau choisi sur ce toit', ligne: `L’étude électrique utilise : ${utilise}`, aucun: true }
+  const defaut = ligneModule(MODULE_PAR_DEFAUT_ATELIER)
+  const utilise = servis.length > 1
+    ? `${servis.length} modèles (${servis.map((x) => x.designation).join(' · ')})` : (servis[0]?.designation ?? '')
+  return {
+    nom: 'Aucun panneau choisi sur ce toit',
+    ligne: ['Module par défaut', defaut].filter(Boolean).join(' · '),
+    noteEtude: utilise ? `L’étude électrique utilise : ${utilise}.` : '',
+    aucun: true,
   }
-  return { nom: sansParenthese(MODULE_PAR_DEFAUT_ATELIER.libelle), ligne: ligneModule(MODULE_PAR_DEFAUT_ATELIER) }
 }
 
 function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
@@ -121,6 +129,7 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
           </ul>
         )}
       </div>
+      {affiche.noteEtude && <p className="cal-pan-note" data-zone="module-etude">{affiche.noteEtude}</p>}
       {affiche.aucun && !lectureSeule && (
         <p className="cal-pan-note" data-zone="aucun-module">Choisissez le panneau de ce toit dans la liste.</p>
       )}
@@ -158,7 +167,18 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
         </span>
         {ligneFacture && <span className="cal-pan-option-ligne">{ligneFacture}</span>}
       </button>
-      {!cible && (
+      {servi.facture.etat === 'chargement' && (
+        <p className="cal-pan-note cal-pan-note-attente" data-zone="facture-lecture" aria-live="polite">
+          Lecture de la facture du lead…
+        </p>
+      )}
+      {servi.facture.etat === 'echec' && (
+        <p className="cal-pan-note" data-zone="facture-echec" role="alert">
+          {'Lecture impossible — '}
+          <button type="button" className="cal-pan-lien" onClick={servi.facture.reessayer}>réessayer</button>
+        </p>
+      )}
+      {servi.facture.etat === 'ok' && !cible && (
         <p className="cal-pan-note">
           {raison}
           {servi.leadId && (
@@ -224,7 +244,7 @@ function PuceResume({ figures, publiee }) {
     : [
       ['Panneaux', figures.panneaux ? String(figures.panneaux) : null],
       ['Puissance', figures.kwc],
-      ['Production · estimation', figures.production],
+      ['Production · estimation de la pose', figures.production],
       ['De la consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)
@@ -285,13 +305,13 @@ function LecteurSoleil({ soleil, g }) {
   )
 }
 
-export default function EtapePanneaux({ calepinageId, lectureSeule = false, enregistreLe = null }) {
+export default function EtapePanneaux({ calepinageId, lectureSeule = false, enregistreLe = null, contexte = null }) {
   const [etat, rafraichir] = useConstructeur()
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
   const g = Object.fromEntries(Object.entries(gestes).map(([nom, geste]) => [
     nom, (...args) => { geste(...args); rafraichir() },
   ]))
-  const servi = useServi(calepinageId, enregistreLe)
+  const servi = useServi(calepinageId, enregistreLe, contexte)
   return (
     <div className="cal-pan">
       <ChoixModule etat={etat} entrees={servi.entrees} servis={servi.servis} lectureSeule={lectureSeule} g={g} />

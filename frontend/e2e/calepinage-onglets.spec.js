@@ -176,6 +176,8 @@ test('CALX387: le lien profond /calepinage/:id/<cle> ouvre le MÊME panneau que 
   await page.goto(`/calepinage/${calepinageId}/${cle}`)
   // ACAL407 — la route profonde REDIRIGE (remplacement) vers `?onglet=<cle>`.
   await expect(page).toHaveURL(new RegExp(`/calepinage/${calepinageId}\\?onglet=${cle}`))
+  // Coque (22/11) : le formulaire de pente vit dans le rail d'onglets du mode expert (en guidé, l'étape Toit a sa carte).
+  await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
   await expect(page.getByTestId('cal-pente')).toBeVisible()
 
   // Puis l'onglet, cliqué depuis le rail, mène au MÊME panneau — même clé

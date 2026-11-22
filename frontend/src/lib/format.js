@@ -111,14 +111,18 @@ export function formatMontant(value, { devise, decimals = 2, withSymbol = true, 
  * décimale) ; `locale: 'en'` → virgule milliers + point décimal ; `locale:
  * 'ar'` → mêmes séparateurs qu'ar-MA (chiffres occidentaux, jamais
  * arabo-indiens par défaut — voir `numberingSystemFor`).
+ * `maxDecimals` (sans `decimals`) : AU PLUS ce nombre de décimales, sans zéro
+ * ajouté (« 22 », « 22,5 ») — omis, la sortie reste identique.
  */
-export function formatNumber(value, { decimals, locale } = {}) {
+export function formatNumber(value, { decimals, maxDecimals, locale } = {}) {
   const n = toNumber(value)
   if (n === null) return '—'
   const opts = { numberingSystem: numberingSystemFor(locale) }
   if (decimals !== undefined) {
     opts.minimumFractionDigits = decimals
     opts.maximumFractionDigits = decimals
+  } else if (maxDecimals !== undefined) {
+    opts.maximumFractionDigits = maxDecimals
   }
   return new Intl.NumberFormat(resolveLocaleTag(locale), opts).format(n)
 }

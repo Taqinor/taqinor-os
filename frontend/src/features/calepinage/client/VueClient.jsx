@@ -4,7 +4,6 @@ import { ContextePresentation } from '../atelier/coque/contexteCoque'
 import HabillageClient from './HabillageClient'
 import { PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
 import { useDonneesClient, webglDisponible } from './vueClient.helpers'
-import '../../../styles/calepinage/58-telephone.css'
 
 /* ============================================================================
    « MONTRER AU CLIENT » AU TÉLÉPHONE (`/calepinage/:id/client`, maquette TelephoneClient).

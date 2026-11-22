@@ -38,7 +38,7 @@
   background: var(--card);
   border-bottom: 1px solid var(--border);
   position: relative;
-  z-index: 20;
+  z-index: calc(var(--z-base) + 20);
 }
 .cal-coque .cal-retour {
   border: 0;
@@ -52,7 +52,9 @@
   text-decoration: none;
   font-size: 0.875rem;
 }
-.cal-coque .cal-retour:hover { color: var(--foreground); }
+@media (hover: hover) {
+  .cal-coque .cal-retour:hover { color: var(--foreground); }
+}
 .cal-coque .cal-projet { display: flex; flex-direction: column; min-width: 0; margin: 0; font-size: 0.875rem; font-weight: 400; }
 .cal-coque .cal-projet-titre {
   font-family: var(--font-display);
@@ -185,7 +187,9 @@
   font-weight: 500;
   font-size: 0.75rem;
 }
-.cal-coque .cal-rail-etape:hover { color: var(--foreground); }
+@media (hover: hover) {
+  .cal-coque .cal-rail-etape:hover { color: var(--foreground); }
+}
 .cal-coque .cal-rail-etape[aria-current='step'] {
   background: color-mix(in oklch, var(--primary) 12%, var(--card));
   color: var(--foreground);
@@ -194,7 +198,11 @@
 }
 .cal-coque .cal-rail-etape[aria-current='step'] svg { color: var(--primary-text); }
 .cal-coque .cal-rail-avance[aria-expanded='true'] { color: var(--foreground); background: var(--muted); }
-.cal-coque .cal-rail-a-regler { font-size: 0.75rem; font-weight: 600; color: var(--warning-text); }
+.cal-coque .cal-rail-a-regler { font-size: 0.75rem; line-height: 14px; font-weight: 600; color: var(--warning-text); }
+/* Maquette Main/Documents : tuile de 70 px (12 + 24 + 6 + 16 + 12) ; avec « N à régler », la pastille tient DANS ces
+   70 px (marges et écarts resserrés) au lieu d'allonger la tuile à 96 px et de descendre les étapes suivantes. */
+.cal-coque .cal-rail-libelle { line-height: 16px; }
+.cal-coque .cal-rail-etape:has(.cal-rail-a-regler) { gap: 2px; padding-block: 6px; }
 .cal-coque .cal-rail-espace { flex: 1; }
 
 .cal-coque .cal-coque-centre {
@@ -217,14 +225,14 @@
 .cal-coque[data-avance='0'] .cal-coque-scene #rp9-search { display: none; }
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) { flex: 1; min-height: 0; }
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) #rp9-map { height: 100%; min-height: 0; }
-.cal-coque .cal-coque-sur-carte { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+.cal-coque .cal-coque-sur-carte { position: absolute; inset: 0; pointer-events: none; z-index: calc(var(--z-base) + 10); }
 .cal-coque .cal-coque-sur-carte > * { pointer-events: auto; }
 .cal-coque .cal-coque-statut {
   position: absolute;
   right: 16px;
   bottom: 88px; /* au-dessus de la barre d'outils flottante (44 px + 6 + 6 + 20 du bas) : jamais dessous */
   max-width: min(20rem, 50%);
-  z-index: 11;
+  z-index: calc(var(--z-base) + 11);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -270,7 +278,7 @@
   border-bottom: 1px solid var(--border);
   font-size: 0.875rem;
   position: relative;
-  z-index: 19;
+  z-index: calc(var(--z-base) + 19);
 }
 .cal-coque .cal-coque-alertes[hidden],
 .cal-coque .cal-coque-alertes:not(:has(.cal-coque-alertes-contenu > :not(.sr-only))) { display: none; }
@@ -346,6 +354,7 @@
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 1.25rem;
+  line-height: 1.1; /* maquette : boîte de 22 px (l'interligne hérité en faisait 30 et descendait le panneau) */
 }
 .cal-coque .cal-panneau-etape-corps {
   flex: 1;
@@ -414,7 +423,9 @@
   background: transparent;
   font-weight: 400;
 }
-.cal-coque .cal-bouton-enregistrer-etat:hover:not(:disabled) .cal-etat-ok { text-decoration: underline; }
+@media (hover: hover) {
+  .cal-coque .cal-bouton-enregistrer-etat:hover:not(:disabled) .cal-etat-ok { text-decoration: underline; }
+}
 .cal-coque .cal-bouton-enregistrer-etat:disabled { opacity: 1; cursor: default; }
 
 /* Mode guidé : les rangées que le constructeur insère SOUS la carte (aides de tracé « Angles droits »,
@@ -488,7 +499,7 @@
 .cal-coque[data-presentation='1'] .maplibregl-marker,
 .cal-coque[data-presentation='1'] #rp9-compass,
 .cal-coque[data-presentation='1'] [class*='rp9-compass'] { display: none; }
-.cal-coque .cal-coque-sur-carte-client { position: absolute; inset: 0; z-index: 12; pointer-events: none; }
+.cal-coque .cal-coque-sur-carte-client { position: absolute; inset: 0; z-index: calc(var(--z-base) + 12); pointer-events: none; }
 .cal-coque .cal-coque-sur-carte-client > * { pointer-events: auto; }
 .cal-coque .cal-client-repli { position: absolute; inset: 0; background: var(--muted); }
 .cal-coque .cal-client-soleil {
@@ -528,7 +539,7 @@
   right: 0;
   bottom: 0;
   width: min(520px, 100vw);
-  z-index: 45;
+  z-index: calc(var(--z-base) + 45);
   display: flex;
   flex-direction: column;
   gap: 16px;

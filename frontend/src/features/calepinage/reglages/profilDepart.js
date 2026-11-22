@@ -1,3 +1,5 @@
+import { formatNumber } from '../../../lib/format'
+
 /* ACAL405 — le préfixe des références écrites par « Appliquer aux réglages
    vides » : écrit UNE fois côté écran, égal à `prefixe_reference` du contrat
    `calepinage_profil_depart.json` (un test les compare). */
@@ -40,7 +42,7 @@ const VALEURS_TEXTE = {
   quart_pvsyst: 'Un quart de l’écart, comme PVsyst',
 }
 
-const NOMBRE = (n) => Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 })
+const NOMBRE = (n) => formatNumber(Number(n), { maxDecimals: 3 })
 
 /** Un nombre et son unité à la française : « 2 % », « 60 minutes », « 0,2 ». */
 export function nombreAvecUnite(valeur, unite) {

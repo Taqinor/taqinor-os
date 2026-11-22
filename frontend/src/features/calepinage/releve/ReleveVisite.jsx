@@ -15,7 +15,6 @@ import {
 import usePhotosReleve from './usePhotosReleve'
 import TuilesPhotos from './TuilesPhotos'
 import { CarteMesure, ChampDecimal } from './CarteMesure'
-import '../../../styles/calepinage/58-telephone.css'
 
 /* ============================================================================
    « RELEVÉ DE VISITE » AU TÉLÉPHONE (`/calepinage/:id/releve`, maquette Telephone, 390×844).

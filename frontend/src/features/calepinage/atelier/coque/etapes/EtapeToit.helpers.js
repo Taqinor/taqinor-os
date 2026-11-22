@@ -3,6 +3,7 @@ import calepinageApi from '../../../../../api/calepinageApi'
 import { messageRefus } from '../../../commun/refusServeur'
 import { lireConflit } from '../../../conflitEcriture'
 import { fmtKwc } from './panneaux/sources'
+import { formatNumber } from '../../../../../lib/format'
 
 /* ============================================================================
    ÉTAPE TOIT (maquette Main, 22/11) — LECTURE DU DOM DU CONSTRUCTEUR ET RENVOI
@@ -34,7 +35,7 @@ export function nomFace(azimutDeg) {
 export function degres(valeur) {
   const n = Number(valeur)
   if (!Number.isFinite(n)) return null
-  return n.toLocaleString('fr-FR', { maximumFractionDigits: 1 })
+  return formatNumber(n, { maxDecimals: 1 })
 }
 
 const nombre = (t) => {
@@ -52,7 +53,7 @@ export function lireSurface(racine) {
     return nombre(texte(cellules[cellules.length - 2]))
   }).filter((v) => v !== null && v > 0)
   const somme = valeurs.length > 0
-    ? `${valeurs.reduce((a, b) => a + b, 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} m²`
+    ? `${formatNumber(valeurs.reduce((a, b) => a + b, 0), { decimals: 0 })} m²`
     : null
   if (lignes.length > 1 && somme) return somme
   const t = texte(parId(racine, 'rp9-area-value')).replace(/^~\s*/, '')

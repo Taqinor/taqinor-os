@@ -327,8 +327,22 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // ── 1. LA CARTE ──────────────────────────────────────────────────────────
   const map = page.locator('#rp9-map')
   await expect(map).toBeVisible({ timeout: 20_000 })
-  const box = await map.boundingBox()
-  expect(box, 'le canvas de la carte doit avoir une taille').toBeTruthy()
+  // La coque se met en page en plusieurs temps (bandeau, feuille, rangées) : on ne mesure la carte qu'une fois
+  // sa boîte ET celle de la rangée « Terminer le tracé » identiques sur deux lectures successives.
+  const lireBoites = async () => ({
+    carte: await map.boundingBox(),
+    garde: (await page.locator('#rp9-finish').locator('..').boundingBox())?.y ?? null,
+  })
+  let box = null
+  let gardeY = null
+  for (let essai = 0, avant = ''; essai < 40; essai += 1) {
+    const l = await lireBoites()
+    const cle = JSON.stringify(l)
+    if (l.carte && cle === avant) { box = l.carte; gardeY = l.garde; break }
+    avant = cle
+    await page.waitForFunction((t) => performance.now() - t > 250, await page.evaluate(() => performance.now()), { polling: 50 })
+  }
+  expect(box, 'le canvas de la carte doit avoir une taille stable').toBeTruthy()
   const cx = box.x + box.width / 2
 
   // ── 2. CALX89 — ANGLES DROITS, armés AVANT le tracé (puce créée par le
@@ -346,7 +360,7 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // Coque (22/11) : « Terminer le tracé » / « Annuler le dernier point » sont remontés au-dessus de la barre
   // d'outils (L1) ; le rectangle se trace AU-DESSUS d'eux (même surface qu'avant : 220 × 150 px).
   const haut = box.y + 60
-  const garde = (await page.locator('#rp9-finish').locator('..').boundingBox())?.y ?? (box.y + box.height)
+  const garde = gardeY ?? (box.y + box.height)
   const h = Math.max(80, Math.min(150, garde - 16 - haut))
   const demi = Math.round(16500 / h)
   const corners = [

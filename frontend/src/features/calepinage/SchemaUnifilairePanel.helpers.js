@@ -180,6 +180,20 @@ export function couperTexte(texte, max, n = 2) {
   return gardees
 }
 
+/** Site déclaré hors réseau : `resultat.hors_reseau` est un bloc chiffré (sans `motif_absence`, que le serveur
+    pose quand le site n'est pas déclaré hors réseau — alors `null` tant qu'aucune simulation n'a eu lieu). */
+export function estHorsReseau(resultat) {
+  const h = resultat?.hors_reseau
+  return Boolean(h) && typeof h === 'object' && !h.motif_absence
+}
+
+/** La phrase du côté réseau en creux : ce qui le dimensionne (la simulation, sinon la norme choisie). */
+export function phraseCoteReseau(resultat) {
+  return resultat?.simule === true
+    ? 'Choisissez la norme électrique dans les réglages pour dimensionner le côté réseau'
+    : 'Lancez la simulation pour dimensionner le côté réseau'
+}
+
 /** La section commune à TOUS les tronçons d'un côté (`dc` | `ac`), sinon `null`. */
 function sectionDuCote(troncons, cote) {
   const duCote = troncons.filter((t) => t?.cote === cote)
@@ -226,6 +240,16 @@ export function planSchemaEnBlocs(schema, resultat) {
   if (tgbt) chaineAc.push({ cle: 'tgbt', l: 64, h: 64, ecart: 32, titre: couperTexte(tgbt.titre, 8) })
   const reseau = trouve('reseau')
   if (reseau) chaineAc.push({ cle: 'reseau', l: 140, h: 130, ecart: 32, titre: ['Réseau du', 'distributeur'], detail: couperTexte(reseau.titre, 18, 1) })
+  /* Côté réseau PAS ENCORE SERVI (pas de simulation, pas de norme choisie) : l'installation raccordée au réseau
+     a pourtant un coffret, un compteur et le réseau. Ils sont dessinés EN CREUX (`aCalculer`) — ni calibre ni
+     section ni appareil inventés — et sont remplacés par les blocs servis dès que le serveur les sert.
+     Un site déclaré hors réseau n'en a pas : rien n'est dessiné. */
+  const aCalculer = chaineAc.length === 0 && !estHorsReseau(resultat)
+  if (aCalculer) {
+    chaineAc.push({ cle: 'coffret_ac', aCalculer: true, l: 196, h: 212, dy: 32, ecart: 72, titre: ['Coffret côté réseau'] })
+    chaineAc.push({ cle: 'compteur', aCalculer: true, l: 104, h: 98, ecart: 40, titre: ['Compteur'] })
+    chaineAc.push({ cle: 'reseau', aCalculer: true, l: 140, h: 130, ecart: 32, titre: ['Réseau du', 'distributeur'] })
+  }
   const largeurAc = 16 + chaineAc.reduce((s, b) => s + b.l + b.ecart, 0)
   const ox = Math.max(696, largeurAc)
   const largeur = ox + 160 + 16
@@ -297,9 +321,9 @@ export function planSchemaEnBlocs(schema, resultat) {
   const blocsAc = chaineAc.map((b, i) => {
     const x = curseur - b.ecart - b.l
     const bloc = { ...b, x, y: b.dy != null ? yAc + b.dy : lienAc - b.h / 2 }
-    const ac1 = i === 0
+    const ac1 = i === 0 && !b.aCalculer
     const lignes = ac1 ? [secAc == null ? null : `${chiffre(secAc, Number.isInteger(secAc) ? 0 : 1)} mm²`, longueurAc == null ? null : `${chiffre(longueurAc)} m`].filter(Boolean) : []
-    liaisons.push({ cle: `ac${i}`, couleur: null, points: [[x + b.l, lienAc], [curseur, lienAc]],
+    liaisons.push({ cle: `ac${i}`, couleur: null, aCalculer: Boolean(b.aCalculer), points: [[x + b.l, lienAc], [curseur, lienAc]],
       etiquette: lignes.length ? { x: x + b.l + 6, y: lienAc - 10 - (lignes.length - 1) * 16, lignes } : null })
     curseur = x
     return bloc
@@ -307,7 +331,7 @@ export function planSchemaEnBlocs(schema, resultat) {
   if (organesAc.length) blocsAc[0].organes = organesAc
 
   // Terre : seulement quand le schéma SERVI en trace une (liaison en pointillé du SVG du serveur).
-  const coffrets = [coffretDc, blocsAc.find((b) => b.cle === 'coffret_ac')].filter(Boolean)
+  const coffrets = [coffretDc, blocsAc.find((b) => b.cle === 'coffret_ac' && !b.aCalculer)].filter(Boolean)
   const terre = /stroke-dasharray/.test(String(schema?.svg ?? ''))
     ? {
       y: yAc + 267,
@@ -320,7 +344,7 @@ export function planSchemaEnBlocs(schema, resultat) {
   const etiquettes = liaisons.some((l) => l.etiquette?.lignes.some((t) => t.includes('mm²')))
   const legende = [
     ...rangees.map((r) => ({ cle: `chaine-${r.chaine}`, trait: 'chaine', couleur: r.couleur, libelle: r.legende })),
-    ...(blocsAc.length ? [{ cle: 'ac', trait: 'plein', libelle: 'Côté réseau (courant alternatif)' }] : []),
+    ...(blocsAc.some((b) => !b.aCalculer) ? [{ cle: 'ac', trait: 'plein', libelle: 'Côté réseau (courant alternatif)' }] : []),
     ...(terre ? [{ cle: 'terre', trait: 'pointille', libelle: 'Liaison à la terre' }] : []),
     ...(etiquettes ? [{ cle: 'section', trait: 'mm2', libelle: 'Section du câble, puis sa longueur' }] : []),
   ]
@@ -338,6 +362,7 @@ export function planSchemaEnBlocs(schema, resultat) {
     liaisons,
     terre,
     legende,
+    coteReseauACalculer: aCalculer,
   }
 }
 
@@ -357,8 +382,8 @@ export function lignesCartouche(detail) {
   const le = lisible(detail.versions?.derniere_le) ? detail.versions.derniere_le
     : (lisible(detail.modifie_le) ? detail.modifie_le : null)
   const empreinte = typeof detail.layout_hash === 'string' && detail.layout_hash ? detail.layout_hash.slice(0, 8) : ''
-  const version = [lisible(detail.versions?.derniere_le) ? `Enregistrée à ${heure(detail.versions.derniere_le)}` : '', empreinte]
-    .filter(Boolean).join(' · ')
+  // L'empreinte du document est une référence technique : elle ne sert que faute d'heure d'enregistrement.
+  const version = lisible(detail.versions?.derniere_le) ? `Enregistrée à ${heure(detail.versions.derniere_le)}` : empreinte
   const auteur = String(detail.responsable?.nom_complet ?? detail.cree_par?.nom_complet ?? '').trim()
   return [
     { libelle: 'Projet', valeur: projet },

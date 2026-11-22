@@ -1,8 +1,9 @@
 // Étape « Panneaux » — les chiffres qui ne se lisent pas sur les contrôles `rp9-*` : chacun a UNE source
 // nommée (réponse servie), jamais un nombre supposé.
 import { estIncomplet } from '../../../../production/BandeauProvenanceProduction.helpers'
+import { formatNumber } from '../../../../../../lib/format'
 
-export const fmtKwc = (kw) => `${kw.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kWc`
+export const fmtKwc = (kw) => `${formatNumber(kw, { decimals: 2 })} kWc`
 
 /**
  * LA taille tirée des FACTURES du lead, servie par le design-context (`cible_factures`, calculée côté serveur par

@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import '../../../styles/calepinage/54-etape-resultats.css'
 import { lienManque } from './lienManque'
 import { BandeauBorneHaute } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'

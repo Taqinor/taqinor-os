@@ -1000,6 +1000,14 @@ retiré plus un hook ajouté.
 | `cal-resultats-mois` | étape Résultats : carte « Mois par mois ». |
 | `cal-resultats-pertes` | étape Résultats : carte « Du soleil au réseau ». |
 | `cal-resultats-pied` | étape Résultats : pied « Année basse… » + bouton de l’étape suivante. |
+| `cal-avant-simulation` | étape Résultats avant simulation : racine (`data-etat` = `jamais` ou `perime`). |
+| `cal-avant-titre` | étape Résultats avant simulation : titre. |
+| `cal-avant-phrase` | étape Résultats avant simulation : phrase d’explication. |
+| `cal-avant-liste` | étape Résultats avant simulation : carte de la liste de ce qui manque. |
+| `cal-avant-ligne` | étape Résultats avant simulation : une ligne manquante (`data-code`). |
+| `cal-avant-aide` | étape Résultats avant simulation : bouton « ? » qui déplie la raison servie. |
+| `cal-avant-servi` | étape Résultats avant simulation : raison technique servie, dépliée. |
+| `cal-avant-renseigner` | étape Résultats avant simulation : lien « Renseigner » vers l’étape qui manque. |
 | `cal-docs-controles` | étape Documents : colonne « Prêt à envoyer ? ». |
 | `cal-docs-liste` | étape Documents : colonne « Documents du projet ». |
 | `cal-docs-carte` | étape Documents : carte d’un document (suffixe = clé). |

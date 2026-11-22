@@ -64,7 +64,7 @@ const PAS_CLAVIER = 40
    bloc reste un clic (et un glisser n'en déclenche aucun). */
 const SEUIL_GLISSER = 4
 
-export function PlancheSchema({ balisage, dessin = null, actions = null, note = null, children = null }) {
+export function PlancheSchema({ balisage, dessin = null, actions = null, note = null, coteReseau = null, children = null }) {
   const [echelle, setEchelle] = useState(1)
   const [decalage, setDecalage] = useState({ x: 0, y: 0 })
   const glisse = useRef(null)
@@ -139,6 +139,14 @@ export function PlancheSchema({ balisage, dessin = null, actions = null, note = 
           </div>
         )
         : <div className="csch-motifs">{children}</div>}
+      {/* Côté réseau pas encore calculé : UNE ligne, et le geste qui le dimensionne (étape Résultats). */}
+      {coteReseau && (
+        <p className="csch-a-calculer" data-testid="csch-a-calculer">
+          {coteReseau.onOuvrir
+            ? <button type="button" className="csch-lien" onClick={coteReseau.onOuvrir}>{coteReseau.texte}</button>
+            : coteReseau.texte}
+        </p>
+      )}
       {note && <p className="csch-note">{note}</p>}
     </section>
   )
@@ -218,7 +226,24 @@ function Onduleur({ o, onOuvrir }) {
   )
 }
 
+/* Côté réseau pas encore servi : la boîte en creux (pointillés), son nom, « à calculer » — aucune valeur. */
+function BlocACalculer({ b }) {
+  const cx = b.x + b.l / 2
+  const titre = b.titre ?? []
+  const total = titre.length * 17 + 18
+  const y0 = b.y + (b.h - total) / 2
+  return (
+    <g data-testid={`csch-bloc-${b.cle}`} data-a-calculer="true"
+      aria-label={`${titre.join(' ')} : à calculer`}>
+      <rect x={b.x} y={b.y} width={b.l} height={b.h} rx="10" className="csch-boite csch-boite-creux" />
+      <Lignes x={cx} y={y0 + 14} lignes={titre} pas={17} className="csch-t14 csch-attenue" ancre="middle" />
+      <text x={cx} y={y0 + titre.length * 17 + 14} textAnchor="middle" className="csch-t12 csch-attenue">à calculer</text>
+    </g>
+  )
+}
+
 function BlocAc({ b, onOuvrir }) {
+  if (b.aCalculer) return <BlocACalculer b={b} />
   const cx = b.x + b.l / 2
   if (b.cle === 'coffret_ac') return <Coffret titre="Coffret côté réseau" boite={b} onOuvrir={onOuvrir} cleCible={CIBLE_DU_BLOC.coffret} />
   const titre = b.titre ?? []
@@ -268,7 +293,7 @@ export function SchemaEnBlocs({ plan, onOuvrir = null }) {
       )}
       {liaisons.map((l) => (
         <polyline key={l.cle} points={l.points.map((p) => p.join(',')).join(' ')}
-          className={l.couleur ? 'csch-liaison' : 'csch-liaison csch-liaison-ac'} style={l.couleur ? { stroke: l.couleur } : undefined} />
+          className={l.couleur ? 'csch-liaison' : `csch-liaison csch-liaison-ac${l.aCalculer ? ' csch-liaison-creux' : ''}`} style={l.couleur ? { stroke: l.couleur } : undefined} />
       ))}
       {liaisons.filter((l) => l.etiquette).map((l) => (
         <Element key={`e-${l.cle}`} cible={CIBLE_DU_BLOC.cable} onOuvrir={onOuvrir} libelle={`Câble : ${l.etiquette.lignes.join(', ')}`}>

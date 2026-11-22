@@ -121,7 +121,9 @@
   border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--foreground);
   font-weight: 600; font-size: 14px;
 }
-.cdoc-bouton:hover:not(:disabled) { background: var(--muted); }
+@media (hover: hover) {
+  .cdoc-bouton:hover:not(:disabled) { background: var(--muted); }
+}
 .cdoc-bouton:disabled { opacity: 0.5; cursor: not-allowed; }
 .cdoc-bouton:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .cdoc-info {

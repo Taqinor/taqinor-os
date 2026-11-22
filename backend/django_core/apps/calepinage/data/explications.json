@@ -434,7 +434,7 @@
     {
       "cle": "controle.orientation_mppt",
       "famille": "controle",
-      "phrase": "Vérifie qu'une même entrée de l'onduleur ne mélange pas des panneaux de pans ou d'orientations différents.",
+      "phrase": "Vérifie qu'une même entrée de l'onduleur (entrée MPPT) ne mélange pas des panneaux de pans ou d'orientations différents.",
       "valeurs": {},
       "geste": "Si ce n'est pas bon : revoyez l'affectation des chaînes aux entrées.",
       "lexique": null,
@@ -461,7 +461,7 @@
     {
       "cle": "controle.ratio_dc_ac",
       "famille": "controle",
-      "phrase": "Compare la puissance des panneaux à celle de l'onduleur ; un verdict n'est donné que si votre société a saisi une fourchette dans les réglages.",
+      "phrase": "Compare la puissance des panneaux à celle de l'onduleur (rapport DC/AC) ; un verdict n'est donné que si votre société a saisi une fourchette dans les réglages.",
       "valeurs": {},
       "geste": "Si ce n'est pas bon : revoyez le choix de l'onduleur, ou saisissez la fourchette dans les réglages.",
       "lexique": null,

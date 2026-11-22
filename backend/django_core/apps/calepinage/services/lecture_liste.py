@@ -23,6 +23,7 @@ from django.db.models import Count
 from django.db.models.fields.json import KeyTextTransform
 
 from .approbation import annoter_statut_derive
+from .valeurs import nombre
 
 #: Les statuts dérivés servis (``approbation.STATUT_*``), dans l'ordre des puces.
 STATUTS_COMPTES = ('brouillon', 'valide', 'perime', 'refuse')
@@ -45,12 +46,10 @@ def annoter(queryset):
            _ATTR_KWC_SIMULE: KeyTextTransform('kwc', pose)})
 
 
-def _nombre(texte):
-    try:
-        valeur = float(texte)
-    except (TypeError, ValueError):
-        return None
-    return valeur if valeur == valeur and valeur > 0 else None  # ni NaN ni 0 inventé
+def _positif(texte):
+    """La lecture du module (``valeurs.nombre``), réservée aux valeurs > 0 : ni NaN ni 0 inventé."""
+    valeur = nombre(texte)
+    return valeur if valeur is not None and valeur > 0 else None
 
 
 def _mesures(calepinage):
@@ -60,8 +59,8 @@ def _mesures(calepinage):
         from .mesures import mesures_du_document
 
         document = getattr(calepinage, 'roof_layout', None)
-        pose = {'total_modules': _nombre(getattr(calepinage, _ATTR_MODULES_SIMULES, None)),
-                'kwc': _nombre(getattr(calepinage, _ATTR_KWC_SIMULE, None))}
+        pose = {'total_modules': _positif(getattr(calepinage, _ATTR_MODULES_SIMULES, None)),
+                'kwc': _positif(getattr(calepinage, _ATTR_KWC_SIMULE, None))}
         resultat = {'pose': pose} if all(v is not None for v in pose.values()) else None
         memo = (mesures_du_document(document, resultat)
                 if isinstance(document, dict) and document else {})
@@ -83,10 +82,10 @@ def production_annuelle(calepinage):
     nombre de modules simulés n'est plus celui du document."""
     if not hasattr(calepinage, _ATTR_P50):
         return None  # ligne non annotée (détail, écriture) : la liste est seule à le servir
-    p50 = _nombre(getattr(calepinage, _ATTR_P50))
+    p50 = _positif(getattr(calepinage, _ATTR_P50))
     if p50 is None:
         return None
-    simules = _nombre(getattr(calepinage, _ATTR_MODULES_SIMULES, None))
+    simules = _positif(getattr(calepinage, _ATTR_MODULES_SIMULES, None))
     poses = _mesures(calepinage).get('modules')
     if simules is not None and poses is not None and int(simules) != int(poses):
         return None

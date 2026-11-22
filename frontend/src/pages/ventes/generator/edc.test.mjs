@@ -27,12 +27,17 @@ const generateurComplet = (exclus = []) => [
 // Commentaires retirés : ils citent des règles qui piégeraient les regex.
 const sansCommentaires = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '')
 
-/** Texte du bloc EDC<n> : de son en-tête jusqu'à l'en-tête suivant (ou la fin). */
+// Les blocs EDC vivent dans leur feuille (`styles/generateur/44-…`) : leur fin est celle de la feuille, pas
+// celle d'index.css (des feuilles importées après elle — coque du calepinage, 50+ — ne sont pas des blocs EDC).
+const feuilleEdc = lire('../../../styles/generateur/44-edition-complete-edc.css').trimEnd()
+const finEdc = cssBrut.indexOf(feuilleEdc) + feuilleEdc.length
+
+/** Texte du bloc EDC<n> : de son en-tête jusqu'à l'en-tête suivant (ou la fin de la feuille EDC). */
 function blocEdc(n) {
   const debut = cssBrut.indexOf(`/* ── EDC${n} — `)
   assert.ok(debut >= 0, `le bloc EDC${n} doit exister en fin d'index.css`)
   const suite = cssBrut.indexOf('/* ── EDC', debut + 10)
-  return sansCommentaires(cssBrut.slice(debut, suite < 0 ? undefined : suite))
+  return sansCommentaires(cssBrut.slice(debut, suite < 0 || suite > finEdc ? finEdc : suite))
 }
 
 test('EDC2 : le plafond 980 px d’origine (LDPQ1) est INTACT — neutralisé, jamais édité', () => {
@@ -63,7 +68,8 @@ test('EDC2 : sélecteurs promis — neutralisation, conteneur, rail et total con
 })
 
 test('EDC : aucun bloc EDC ne pose `table-layout: fixed` ni `position: fixed`', () => {
-  const tous = cssBrut.slice(cssBrut.indexOf('/* ── EDC'))
+  assert.ok(cssBrut.indexOf(feuilleEdc) >= 0, 'la feuille EDC est importée telle quelle par index.css')
+  const tous = cssBrut.slice(cssBrut.indexOf('/* ── EDC'), finEdc)
   assert.doesNotMatch(sansCommentaires(tous), /table-layout:\s*fixed/)
   assert.doesNotMatch(sansCommentaires(tous), /position:\s*fixed/)
 })

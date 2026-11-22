@@ -3,8 +3,23 @@
 // carte après une étape pleine). La caméra seule bouge : aucune géométrie, aucun calcul, aucun
 // brouillon — la scène n'est jamais marquée modifiée (la caméra n'est pas sérialisée).
 // Le site public ne l'appelle pas ; sans `zoomMax`, le plafond reste celui d'aujourd'hui (19).
-import { cadrageAnneaux, type LngLat, type OptionsCadrage } from '../../lib/roof';
+import { WGS84_RADIUS } from '../../lib/geo';
+import { cadrageAnneaux, type LngLat, type OptionsCadrage as OptionsCadrageToit } from '../../lib/roof';
 import { appliquerVue, type NomVue } from './vuesCamera';
+
+/** H1 (tour 3) — `basPx` : hauteur du bas de la carte COUVERTE (tiroir de la tablette) ; le toit est cadré au centre
+ *  de la partie VISIBLE, au-dessus. Absent ou 0 : la carte entière, comportement d'avant. */
+export interface OptionsCadrage extends OptionsCadrageToit {
+  basPx?: number;
+}
+
+/** Le centre de la carte qui place `centre` au milieu de la partie visible (le bas couvert sur `basPx`). Vue du dessus,
+ *  cap nul : le centre de la carte descend de `basPx / 2` pixels (mètres par pixel de MapLibre, tuiles 512 px). */
+function centreAuDessus(centre: LngLat, zoom: number, basPx: number): LngLat {
+  const lat = centre[1];
+  const metresParPixel = (2 * Math.PI * WGS84_RADIUS * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
+  return [centre[0], lat - ((basPx / 2) * metresParPixel) / ((Math.PI / 180) * WGS84_RADIUS)];
+}
 
 export { appliquerVue };
 
@@ -41,9 +56,10 @@ export function cadrerToit(map: CarteCadrable, sources: SourcesCamera, options: 
     if (touche || sources.trace()) return false;
     map.resize();
     const { clientWidth, clientHeight } = map.getContainer();
-    const cible = cadrageAnneaux(sources.anneaux(), clientWidth, clientHeight, options);
+    const bas = Math.max(0, Math.min(options.basPx ?? 0, clientHeight * 0.6));
+    const cible = cadrageAnneaux(sources.anneaux(), clientWidth, clientHeight - bas, options);
     if (!cible) return false;
-    map.jumpTo(cible);
+    map.jumpTo(bas > 0 ? { ...cible, center: centreAuDessus(cible.center, cible.zoom, bas) } : cible);
     return true;
   };
   const anneauxValides = sources.anneaux().some((a) => Array.isArray(a) && a.length >= 3);

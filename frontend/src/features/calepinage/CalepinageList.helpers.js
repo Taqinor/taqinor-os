@@ -1,5 +1,7 @@
 // ENF22 — helpers extraits de CalepinageList.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
 
+import { formatNumber } from '../../lib/format'
+
 /* ACAL197 — LES STATUTS SERVIS (contrat `calepinage_liste.json`,
    `statuts_publies`) : le filtre les propose TOUJOURS, pas seulement ceux de la
    page courante. Gardée par un vitest contre l'échantillon de contrat. */
@@ -19,9 +21,7 @@ export const STYLE_STATUT = {
   refuse: 'bg-destructive/10 text-destructive',
 }
 
-const FR = (valeur, decimales) => Number(valeur).toLocaleString('fr-FR', {
-  minimumFractionDigits: decimales, maximumFractionDigits: decimales,
-})
+const FR = (valeur, decimales) => formatNumber(Number(valeur), { decimals: decimales })
 
 /** « 6,96 kWc · 12 panneaux · 11 480 kWh/an » — CHAQUE morceau seulement quand
     le serveur le sert (`kwc`, `layout_nb_panneaux`, `production_kwh_an`), jamais

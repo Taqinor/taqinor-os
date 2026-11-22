@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import '../../../styles/calepinage/54-etape-resultats.css'
 import { lienManque } from './lienManque'
 import { manqueClair } from './nomsPertes'
 import { CeQuiEstSur } from './ResultatIncomplet'

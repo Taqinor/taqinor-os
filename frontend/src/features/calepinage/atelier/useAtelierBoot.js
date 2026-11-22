@@ -83,9 +83,21 @@ export const ZOOM_MAX_CADRAGE_ATELIER = 22
  * seule : rien de sérialisé, aucun brouillon, la scène n'est pas marquée modifiée. Sans effet
  * si le constructeur n'expose pas `cadrerToit` (ancien build) ou pendant un tracé.
  */
-export function cadrerToitAtelier(builder) {
+export function cadrerToitAtelier(builder, racine = typeof document !== 'undefined' ? document : null) {
   return typeof builder?.cadrerToit === 'function'
-    ? builder.cadrerToit({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER }) : false
+    ? builder.cadrerToit({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER, basPx: hauteurCouverteParTiroir(racine) }) : false
+}
+
+/**
+ * H1 (tour 3) — tablette / téléphone : le tiroir du bas (`#rp9-studio-inspecteur[data-tiroir="1"]`) couvre le bas de la
+ * carte ; le cadrage vise la partie VISIBLE, au-dessus. Rend les pixels couverts (0 au bureau, sans tiroir ou sans DOM).
+ */
+export function hauteurCouverteParTiroir(racine) {
+  const carte = racine?.getElementById?.('rp9-map')
+  const tiroir = racine?.querySelector?.('#rp9-studio-inspecteur[data-tiroir="1"]:not([hidden])')
+  if (!carte || !tiroir) return 0
+  const bas = carte.getBoundingClientRect().bottom - tiroir.getBoundingClientRect().top
+  return Number.isFinite(bas) && bas > 0 ? Math.round(bas) : 0
 }
 
 /**
