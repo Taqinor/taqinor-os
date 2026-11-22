@@ -212,7 +212,7 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
             <div className="flex min-w-0 flex-col">
               <span className="truncate font-display text-base font-semibold">{titre}</span>
               {ville ? <span className="truncate text-sm text-muted-foreground">{ville}</span> : null}
-              {propre ? <span className="truncate text-xs text-muted-foreground" data-testid="acal-vignette-nom">{propre}</span> : null}
+              {propre ? <span className="truncate text-xs text-muted-foreground" data-testid="liste-vignette-nom">{propre}</span> : null}
             </div>
             <span className="flex shrink-0 items-center gap-1.5">
               <BadgePerime layoutStale={calepinage?.layout_stale}

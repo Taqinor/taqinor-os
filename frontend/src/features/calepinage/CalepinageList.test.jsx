@@ -445,10 +445,10 @@ describe('CalepinageList — maquette Liste', () => {
     const carte = await screen.findByTestId('cal-vignette-331')
     expect(within(carte).getByText('Villa Bennani').className).toContain('font-semibold')
     expect(carte).toHaveTextContent('Casablanca')
-    expect(within(carte).getByTestId('acal-vignette-nom')).toHaveTextContent('ACAL987 Toiture x7')
+    expect(within(carte).getByTestId('liste-vignette-nom')).toHaveTextContent('ACAL987 Toiture x7')
     const libreCarte = screen.getByTestId('cal-vignette-332')
     expect(within(libreCarte).getByText('Toiture libre').className).toContain('font-semibold')
-    expect(within(libreCarte).queryByTestId('acal-vignette-nom')).toBeNull()
+    expect(within(libreCarte).queryByTestId('liste-vignette-nom')).toBeNull()
     expect(screen.getByPlaceholderText('Client, ville ou lead')).toBeInTheDocument()
   })
 
