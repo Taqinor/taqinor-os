@@ -1975,6 +1975,56 @@ BAREMES_FORFAIT = {
 }
 
 
+def _semer_prix_vides(company, Produit, MouvementStock, record_stock_movement,
+                      get_categorie, created, skipped):
+    """PVG3 — Câbles & protections DC/AC, puis ACAL1172 — kit de fixation toiture inclinée : PRIX VIDES (0),
+    additifs (un SKU ou un nom actif déjà présent est sauté). Tant que prix_vente vaut 0, le produit est exclu
+    du chiffrage automatique — même garde que les pompes OSP."""
+    for nom, sku, qte, seuil in CABLES_PROTECTIONS_VIDES:
+        if (Produit.objects.filter(company=company, sku=sku).exists()
+                or Produit.objects.filter(
+                    company=company, nom__iexact=nom,
+                    is_archived=False).exists()):
+            skipped.append(nom)
+            continue
+        produit = Produit.objects.create(
+            company=company, nom=nom, sku=sku,
+            categorie=get_categorie(classify_categorie(nom)),
+            prix_achat=Decimal('0'),
+            prix_vente=Decimal('0'),  # à renseigner par le fondateur
+            quantite_stock=qte, seuil_alerte=seuil,
+            tva=Decimal('20.00'),
+        )
+        record_stock_movement(
+            company=company, produit=produit,
+            type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+            quantite=qte, quantite_avant=0, quantite_apres=qte,
+            reference='SEED-CATALOGUE',
+            note='Stock initial (câbles/protections — prix à renseigner)',
+            # Le produit est créé DÉJÀ à sa quantité : on trace
+            # l'entrée sans la ré-écrire (AUD223).
+            created_by=None, save_produit=False,
+        )
+        created.append(nom)
+
+    for nom, sku, qte, seuil, description in KIT_FIXATION_PRIX_A_RENSEIGNER:
+        if (Produit.objects.filter(company=company, sku=sku).exists()
+                or Produit.objects.filter(
+                    company=company, nom__iexact=nom,
+                    is_archived=False).exists()):
+            skipped.append(nom)
+            continue
+        Produit.objects.create(
+            company=company, nom=nom, sku=sku,
+            categorie=get_categorie(CATEGORIE_IMPOSEE_PAR_SKU[sku]),
+            prix_achat=Decimal('0'),
+            prix_vente=Decimal('0'),  # à renseigner par le fondateur
+            quantite_stock=qte, seuil_alerte=seuil,
+            tva=Decimal('20.00'), description=description,
+        )
+        created.append(nom)
+
+
 class Command(BaseCommand):
     help = "Seed the stock with the devis-simulator catalogue (idempotent, additive only)."
 
@@ -2164,53 +2214,9 @@ class Command(BaseCommand):
             )
             created.append(nom)
 
-        # ── PVG3 — Câbles & protections DC/AC : PRIX VIDES (0) ──
-        # Tant que prix_vente vaut 0, le produit est exclu du chiffrage
-        # automatique — même garde que les pompes OSP ci-dessus.
-        for nom, sku, qte, seuil in CABLES_PROTECTIONS_VIDES:
-            if (Produit.objects.filter(company=company, sku=sku).exists()
-                    or Produit.objects.filter(
-                        company=company, nom__iexact=nom,
-                        is_archived=False).exists()):
-                skipped.append(nom)
-                continue
-            produit = Produit.objects.create(
-                company=company, nom=nom, sku=sku,
-                categorie=get_categorie(classify_categorie(nom)),
-                prix_achat=Decimal('0'),
-                prix_vente=Decimal('0'),  # à renseigner par le fondateur
-                quantite_stock=qte, seuil_alerte=seuil,
-                tva=Decimal('20.00'),
-            )
-            record_stock_movement(
-                company=company, produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
-                quantite=qte, quantite_avant=0, quantite_apres=qte,
-                reference='SEED-CATALOGUE',
-                note='Stock initial (câbles/protections — prix à renseigner)',
-                # Le produit est créé DÉJÀ à sa quantité : on trace
-                # l'entrée sans la ré-écrire (AUD223).
-                created_by=None, save_produit=False,
-            )
-            created.append(nom)
-
-        # ── ACAL1172 — kit de fixation toiture inclinée : PRIX VIDE (0), additif ──
-        for nom, sku, qte, seuil, description in KIT_FIXATION_PRIX_A_RENSEIGNER:
-            if (Produit.objects.filter(company=company, sku=sku).exists()
-                    or Produit.objects.filter(
-                        company=company, nom__iexact=nom,
-                        is_archived=False).exists()):
-                skipped.append(nom)
-                continue
-            Produit.objects.create(
-                company=company, nom=nom, sku=sku,
-                categorie=get_categorie(CATEGORIE_IMPOSEE_PAR_SKU[sku]),
-                prix_achat=Decimal('0'),
-                prix_vente=Decimal('0'),  # à renseigner par le fondateur
-                quantite_stock=qte, seuil_alerte=seuil,
-                tva=Decimal('20.00'), description=description,
-            )
-            created.append(nom)
+        # ── PVG3 (câbles & protections) puis ACAL1172 (kit de fixation) : PRIX VIDES (0) ──
+        _semer_prix_vides(company, Produit, MouvementStock, record_stock_movement,
+                          get_categorie, created, skipped)
 
         # ── AGR104 — options du kit pompage : PRIX VIDES (0), rôle DÉCLARÉ ──
         # Additif : jamais d'écriture sur un produit existant (ni prix, ni nom,

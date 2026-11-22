@@ -137,7 +137,7 @@ _CORPS_ECART_MESURES = {
     'type': 'object',
     'properties': {
         'kwh': {'type': 'array', 'minItems': 12, 'maxItems': 12,
-                'items': {'type': ['number', 'null'], 'minimum': 0}},
+                'items': {'type': 'number', 'nullable': True, 'minimum': 0}},
         'annee': {'type': 'integer', 'minimum': 1900},
     },
     'required': ['kwh'],

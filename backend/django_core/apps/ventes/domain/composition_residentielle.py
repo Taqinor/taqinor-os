@@ -217,6 +217,21 @@ def _kit_de_fixation(tarifes):
                  if 'kit de fixation' in (getattr(p, 'nom', '') or '').lower()), None)
 
 
+def _ajouter_structure_socle_et_kit(ajouter, premier, avertir, role_structure_du_produit, *,
+                                    role_structure, structure, derivees, tarifes_par_pk,
+                                    structure_type, modules_affleurants, nb):
+    """QJR403 — structure et socle aux quantités dérivées du compte ; puis ACAL927 — le kit de fixation des
+    modules affleurants, sinon NOMMÉ absent (avertissement). Les fermetures de ``composition_residentielle``
+    sont reçues telles quelles."""
+    ajouter(role_structure, structure, derivees['structure'])
+    ajouter('socle', premier('socle'), derivees['socle'])
+    if int(modules_affleurants or 0) > 0:
+        kit = _kit_de_fixation(tarifes_par_pk.values())
+        if kit is None:
+            avertir('Pose affleurante : aucun kit de fixation tarifé au catalogue — ligne non ajoutée.')
+        ajouter(role_structure_du_produit(kit, structure_type), kit, min(int(modules_affleurants), nb))
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               structure_produit_id=None,
@@ -1104,13 +1119,10 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # DÉFINITION UNIQUE (:func:`quantites_derivees_du_compte`), pour que le
     # chemin MODE_ECRIRE puisse les RE-DÉRIVER sans écrire une seconde formule.
     _derivees = quantites_derivees_du_compte(nb, modules_affleurants)
-    ajouter(role_structure, structure, _derivees['structure'])
-    ajouter('socle', premier('socle'), _derivees['socle'])
-    if int(modules_affleurants or 0) > 0:  # ACAL927 — le kit de fixation, sinon NOMMÉ absent
-        kit = _kit_de_fixation(tarifes_par_pk.values())
-        if kit is None:
-            _avertir('Pose affleurante : aucun kit de fixation tarifé au catalogue — ligne non ajoutée.')
-        ajouter(role_structure_du_produit(kit, structure_type), kit, min(int(modules_affleurants), nb))
+    _ajouter_structure_socle_et_kit(
+        ajouter, premier, _avertir, role_structure_du_produit, role_structure=role_structure,
+        structure=structure, derivees=_derivees, tarifes_par_pk=tarifes_par_pk,
+        structure_type=structure_type, modules_affleurants=modules_affleurants, nb=nb)
     # C4/PVCBL — métrage AU MÈTRE : le DC suit les paires de MPPT, la terre
     # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
     # RSIZ5 — paires DÉRIVÉES du champ et des onduleurs vendus (niveau 3).

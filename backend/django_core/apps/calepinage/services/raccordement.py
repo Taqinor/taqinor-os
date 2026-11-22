@@ -1215,7 +1215,8 @@ def _saisie_publiee(brute):
             and saisie['plafond_injection_a'] is not None):
         raise _refus_saisie('plafond_injection_a',
                             "Un plafond d'injection se donne en kW ou en A, "
-                            "pas les deux : videz l'un des deux champs.")
+                            "pas les deux : videz l'un des deux champs.",
+                            etat=True)  # règle liant deux champs : 409
     if ((saisie['plafond_injection_kw'] is not None
          or saisie['plafond_injection_a'] is not None
          or saisie['plages_plafond_injection'])

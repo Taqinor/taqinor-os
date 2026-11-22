@@ -5,6 +5,7 @@ import crmApi from '../../../api/crmApi'
 import calepinageApi from '../../../api/calepinageApi'
 import { urlFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
 import { refusServeur } from '../commun/refusServeur'
+import { formatNumber } from '../../../lib/format'
 import { demandeMoteur, motifRefus } from '../ModeTerrain.helpers' // ACAL918
 import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
@@ -81,7 +82,7 @@ export function poserLigneFactureLead(facture) {
   const ligne = document.createElement('p')
   ligne.setAttribute('data-facture-lead', '')
   ligne.className = 'mt-2 text-xs text-muted-foreground'
-  ligne.textContent = `Facture du lead : ${Number(facture).toLocaleString('fr-FR')} MAD/mois`
+  ligne.textContent = `Facture du lead : ${formatNumber(Number(facture), { locale: 'fr' })} MAD/mois`
   hote.insertAdjacentElement('afterend', ligne)
 }
 

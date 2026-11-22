@@ -841,10 +841,9 @@ describe('PanneauBatterie — garde-fou, faits de la série et verdict (ACAL795)
   const n = (v) => formatNumber(v, { decimals: 0 })
 
   it('les trois faits, le garde-fou et le mot se lisent ; sans verdict le motif remplace le mot', async () => {
-    const haute = {
-      ...donneesSimulees(),
-      batterie: exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute').batterie,
-    }
+    // Même patron que servirHorsReseau : contrat calepinage_resultat, qui sert `batterie`.
+    const haute = donneesSimulees()
+    haute.batterie = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute').batterie
     const f = haute.batterie.total.faits_serie
     calepinageApi.calepinages.resultat.mockResolvedValue({ data: haute })
     const premier = rendreExpert()

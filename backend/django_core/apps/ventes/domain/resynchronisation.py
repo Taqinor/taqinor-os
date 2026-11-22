@@ -230,6 +230,15 @@ def _kit_hors_composition_residentielle(devis, agricole, multi_villa):
     return bool(agricole or multi_villa or mode in MARCHES_CI)
 
 
+def _appliquer_cles_etude(etude, cles):
+    """Pose les clés d'étude du layout sur ``etude`` ; ACAL912 — une clé à ``None`` est RETIRÉE, jamais
+    laissée périmée."""
+    for cle in [c for c, v in cles.items() if v is None]:
+        etude.pop(cle, None)
+        cles.pop(cle)
+    etude.update(cles)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -1107,11 +1116,8 @@ def reconcilier(devis, intention):
         # géométrie et le kWc, jamais production ni économies (le moteur C&I
         # les calcule) ; résidentiel/agricole inchangés.
         from apps.ventes.domain.etude_schema import cles_etude_du_layout
-        cles = cles_etude_du_layout(getattr(verrou, 'mode_installation', None), result, layout)
-        for cle in [c for c, v in cles.items() if v is None]:  # ACAL912 — retirées, jamais périmées
-            etude.pop(cle, None)
-            cles.pop(cle)
-        etude.update(cles)
+        _appliquer_cles_etude(etude, cles_etude_du_layout(
+            getattr(verrou, 'mode_installation', None), result, layout))
         # QJR63 — LE kWc VIENT DE SON PROPRIÉTAIRE, PLUS DU LAYOUT. Ce site
         # écrivait ``kwc`` — celui du CALEPINAGE — même quand la règle de
         # plafond de variante venait de faire atterrir le devis sur un AUTRE
