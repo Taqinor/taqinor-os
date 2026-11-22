@@ -1,0 +1,81 @@
+# Contre-vérification — F2-ELEC — Électrique et schéma (étape Électrique)
+
+38 corrections livrées sans preuve en direct, S1-S2 d'abord. Pour chacune : rejoue la « preuve », regarde l'écran, écris UN verdict (ok / partiel / non-fait / faux / regression / deja-present).
+Le texte complet d'une tâche (constat d'origine, Given/When/Then) : `grep -n "<id> —" docs/plans/PLAN_AUDIT_CALEPINAGE.md` dans le worktree en lecture.
+
+- **ACAL1300** (S1) — Assembler l'écran de l'étape « Électrique » (carte de l'onduleur, « Comparer avec N autres onduleurs », « Prêt à envoyer ? » court, carte « Schéma électrique — Voir ») ; fini quand l'étape guidée montre ces blocs sous « Étape 3 su
+  - Preuve : PA2.3 — capture à 1440 × 900 sur un calepinage dans le même état (calepinage 1 de la pile de recette, mode guidé, thème clair), posée à côté de `docs/audits/l5-calepinage/maquettes/Electrique.dc.html` rendue en `file://` à la même taille : faits 1 à 6 et 10 : « Étape 3 sur 5 · Le raccordement », carte onduleur + « Comparer avec N autres onduleurs », « Prêt à envoyer ? » + pastille « 1 point à régler », lignes à coche verte et « ? », ligne dorée « Régler », carte « Schéma électrique — Voir », bouton « Voir les résul
+- **ACAL1301** (S1) — Faire du schéma unifilaire un écran à part entière (schéma au centre avec zoom, légende et cartouche à droite, « Télécharger (PDF) » et « DXF ») ; fini quand le schéma remplit le centre sans être coupé, que la légende et le cartou
+  - Preuve : PA2.3 — capture à 1440 × 900 sur un calepinage dans le même état (calepinage 1 de la pile de recette, mode guidé, thème clair), posée à côté de `docs/audits/l5-calepinage/maquettes/Schema.dc.html` rendue en `file://` à la même taille : faits de la maquette : schéma plein centre avec zoom ±, panneau droit « Légende » (couleurs des chaînes, côté réseau, terre, mm²) + « Cartouche » (Projet, Date, Version, Auteur), note bleue, « Télécharger (PDF) » en or + « DXF » ; verdict FIDÈLE d'un relecteur neuf (CLAUDE.md 3-bis :
+- **ACAL934** (S2) — Servir un état à trois valeurs du dossier électrique (« prêt », « à compléter : N points », « bloquant : N »), calculé UNE fois, sans changer D-ACAL-9 ; fini quand un calepinage de 8 modules sans module ni onduleur désignés rend «
+  - Preuve : API — `POST evaluer-electrique/` du calepinage 1 de REV-F1 (8 modules, sans matériel) : `etat` 'a_completer'.
+- **ACAL935** (S2) — Faire lire au cadre de génération du devis et au résumé de l'affectation le même état et les mêmes mots (« Prêt », « À compléter : N points », « Bloquant : N ») ; fini quand le calepinage de T1-S1-020 affiche « À compléter : N poi
+  - Preuve : calepinage 1 de REV-F1 (8 modules, sans matériel) : le cadre après « Générer le devis » et le résumé de l'affectation disent la même phrase.
+- **ACAL1188** (S2) — Prouver dans l'écran « Raccordement » le sixième contrôle et le champ « Dispositif qui limite l'injection » ; fini quand, sur l'exemple micro-onduleurs + plafond 0 kW, l'écran montre « Limitation de l'injection — À surveiller », q
+  - Preuve : PA3 — étape Électrique, section Raccordement d'un champ à micro-onduleurs : « Limitation de l'injection — À surveiller », puis « Conforme » après saisie du dispositif.
+- **ACAL1299** (S2) — Colorer les chaînes sur la carte de l'étape Électrique et y poser la pastille (Chaînes, Onduleur, Câble côté panneaux), la barre d'actions (« Raccorder automatiquement », « Modifier une chaîne ») et la légende des chaînes ; fini q
+  - Preuve : PA2.3 — capture à 1440 × 900 sur un calepinage dans le même état (calepinage 1 de la pile de recette, mode guidé, thème clair), posée à côté de `docs/audits/l5-calepinage/maquettes/Electrique.dc.html` rendue en `file://` à la même taille : faits 7, 8 et 9 : pastille « Chaînes | Onduleur | Câble côté panneaux » (câble seulement s'il est servi), barre d'actions « Raccorder automatiquement » + deux actions texte, légende des chaînes en bas à gauche ; verdict FIDÈLE d'un relecteur neuf (CLAUDE.md 3-bis : la lane écrit 
+- **ACAL612** (S3) — Composer côté serveur le `titre` et la `phrase` de `publication` à partir de l'`etat` et des `points` d'ACAL934 (« Prêt », « À compléter : 11 points », « Bloquant : 2 ») ; fini quand un dossier sans matériel désigné ni norme rend 
+  - Preuve : pile locale — ouvrir l'onglet Verdict électrique d'un calepinage sans onduleur désigné et lire `publication.titre` dans la réponse de `evaluer-electrique`.
+- **ACAL613** (S3) — Faire dire à l'onglet « Verdict électrique » ce que dit le serveur : le titre et la phrase de `publication`, ambre quand il reste des points non vérifiés ; fini quand « Publiable » ne s'affiche plus au-dessus de points non vérifié
+  - Preuve : pile locale — onglet Verdict électrique d'un calepinage sans onduleur : badge ambre « Publiable, avec N points à compléter ».
+- **ACAL617** (S3) — Ajouter à l'étape Électrique (niveau expert) le lien « Comparer avec d'autres onduleurs » sous le champ Onduleur, les cartes de configuration et le bouton « Appliquer » ; fini quand appliquer une carte enregistre cet onduleur et q
+  - Preuve : à rejouer par l'orchestrateur sur la pile locale (calepinage de démo avec 3 onduleurs en catalogue) : cliquer le lien, comparer, appliquer le voisin, relire le verdict.
+- **ACAL619** (S3) — Afficher la tension de chaque chaîne : une bulle sous « Affecter la sélection » pour les chaînes qui viennent d'être affectées et un tableau « Tension par temps froid » dans le verdict ; fini quand « Chaîne 3 : 12 modules — Voc à 
+  - Preuve : à rejouer par l'orchestrateur sur la pile locale : affecter 12 modules à la chaîne 3, lire la bulle, ouvrir le tableau du verdict.
+- **ACAL627** (S3) — Servir `POST calepinages/controle-chaine/` : le verdict d'une chaîne (module, onduleur, N modules, températures saisies) par le noyau, sans calepinage ; fini quand 22 modules de Voc 49,5 V à −5 °C sur un onduleur de 1 000 V sorten
+  - Preuve : pile locale — appeler la route avec deux produits du catalogue et une température.
+- **ACAL628** (S3) — Offrir le « Contrôle rapide d'une chaîne » : choisir un module et un onduleur, taper N et la température, lire le verdict sans rien dessiner ; fini quand l'utilisateur lit « 22 modules : trop haut, 1 177 V pour 1 000 V » au premie
+  - Preuve : pile locale — ouvrir le contrôle rapide, deux produits, 22 modules, −5 °C.
+- **ACAL630** (S3) — Lire un plan de chaînes CSV (`module;chaine;mppt;onduleur`), valider chaque ligne, puis passer les seules lignes sans refus au verdict d'affectation existant, chaque refus nommant la ligne du fichier ; fini quand une ligne fausse 
+  - Preuve : pile locale — importer un CSV à une ligne fausse.
+- **ACAL631** (S3) — Ajouter dans « Affectation des chaînes » un bouton « Importer un plan de chaînes (CSV) » qui montre les refus ligne par ligne puis propose d'appliquer ; fini quand un CSV valide remplit la proposition d'affectation sans rien enreg
+  - Preuve : pile locale — importer un CSV valide puis un CSV fautif.
+- **ACAL632** (S3) — Calculer le plus petit nombre d'onduleurs du modèle retenu pour lequel plus aucun pan ne dépasse les entrées MPPT, plus aucune entrée n'est surchargée en courant et plus aucun module ne reste hors chaîne, et le servir comme sugges
+  - Preuve : pile locale — étape Électrique d'un champ à trois pans sur un onduleur 2 MPPT : la réponse porte la suggestion.
+- **ACAL633** (S3) — Accepter un nombre d'onduleurs dans l'entrée électrique, le faire lire par TOUS les calculs (conception des chaînes, `evaluer_onduleurs`) et numéroter l'onduleur de chaque chaîne ; fini quand, avec 2 onduleurs acceptés, `affectati
+  - Preuve : pile locale — accepter la suggestion à 2 onduleurs : l'affectation montre l'onduleur 1 et l'onduleur 2.
+- **ACAL634** (S3) — Dire à l'utilisateur « 2 onduleurs sont nécessaires pour câbler les 26 modules » et lui laisser l'accepter d'un clic ; fini quand accepter écrit le nombre dans l'entrée électrique et relance le verdict
+  - Preuve : pile locale — champ à trois pans sur un onduleur 2 MPPT : carte, clic, verdict relancé.
+- **ACAL635** (S3) — Calculer la chute de tension avec la résistivité du cuivre à une température de service SAISIE par la société (avec sa source) et citer cette température dans la `regle_source` du tronçon ; fini quand θ = 70 °C saisi avec source c
+  - Preuve : pile locale — saisir les deux réglages, ouvrir « Cheminement & câbles » : la chute change et la `regle_source` cite 70 °C.
+- **ACAL636** (S3) — Appliquer un facteur de regroupement saisi par la société (valeur + source) au courant admissible d'un tronçon ; fini quand un facteur de 0,8 saisi avec source fait choisir une section plus grande que sans facteur
+  - Preuve : pile locale — saisir le facteur, relire la section proposée d'un tronçon DC.
+- **ACAL641** (S3) — Saisir, pour chaque pan, le motif de parcours du câble et le point de collecte (aujourd'hui aucun écran ne les écrit) ; fini quand choisir « aller-retour » sur un pan change la longueur publiée de la course DC de ce pan
+  - Preuve : pile locale — calepinage à deux pans posés : choisir « aller-retour » + un point de collecte, enregistrer, lire la course DC publiée changer.
+- **ACAL642** (S3) — Ordonner l'affectation des modules aux chaînes selon un motif par pan (« le long de la rangée » ou « aller-retour en U ») au lieu du seul ordre du document ; fini quand, sur un pan 2 × 10, le motif en U met les modules 1 à 10 puis
+  - Preuve : pile locale — pan de deux rangées, motif « aller-retour en U », ouvrir « Affectation des chaînes » : les modules d'une chaîne se suivent le long du U.
+- **ACAL647** (S3) — Proposer les modules ombrés pour un optimiseur dans l'affectation des chaînes (liste calculée par le serveur d'après un seuil saisi par la société) ; fini quand, seuil vide, aucune proposition n'apparaît et, seuil saisi, « 6 modul
+  - Preuve : pile locale — saisir un seuil dans les réglages, ouvrir « Affectation des chaînes » d'un calepinage ombré, cliquer « Les équiper ».
+- **ACAL664** (S3) — Publier la puissance AC disponible de l'onduleur à la température d'AIR maximale du site d'après la réduction publiée sur sa fiche ; fini quand une fiche « −2 %/°C au-delà de 45 °C » et un site dont l'air monte à 50 °C rendent 90 
+  - Preuve : pile locale — onglet Verdict électrique d'un calepinage dont l'onduleur porte la réduction : la ligne s'affiche.
+- **ACAL671** (S3) — Publier une ligne « plutôt onduleur de chaîne, micro-onduleurs ou optimiseurs » d'après le nombre d'orientations et le plus grand écart d'accès solaire à l'intérieur d'une chaîne, avec des seuils saisis par la société ; fini quand
+  - Preuve : pile locale — onglet Verdict électrique d'un calepinage à trois orientations, seuils saisis puis vides.
+- **ACAL675** (S3) — Poser dans la check-list des protections la question « coupure d'urgence DC / arrêt rapide exigé ? » (oui, non, non renseigné) et ajouter l'organe au schéma et à la nomenclature quand la réponse est oui ; fini quand « oui » fait a
+  - Preuve : pile locale — décisions de protections avec l'exigence « oui » : l'organe figure au schéma unifilaire et à la nomenclature.
+- **ACAL678** (S3) — Avertir, sans bloquer, quand la boucle d'une chaîne dépasse une surface maximale SAISIE par la société (valeur + source, vide par défaut) ; fini quand, la limite saisie à 3 m² avec sa source, la chaîne de 4,5 m² d'ACAL677 ajoute u
+  - Preuve : pile locale — saisir la limite dans les réglages du module, ouvrir l'onglet « Affectation des chaînes » (étape Panneaux) : l'alerte figure dans sa liste d'alertes (`frontend/src/features/calepinage/plan/AffectationChaines.jsx:498`, qui affiche `alertes[]` ; `VerdictElectrique.jsx` ne lit pas cette liste) ; texte seulement, aucune interface neuve.
+- **ACAL685** (S3) — Afficher dans le verdict électrique (niveau expert) la surface de boucle de chaque chaîne, sa limite société et l'alerte du serveur ; fini quand la ligne « Chaîne 1 : boucle de 4,5 m², limite de 3 m² » s'affiche avec les nombres s
+  - Preuve : à rejouer par l'orchestrateur sur la pile locale : calepinage à un pan posé, point de collecte saisi, limite saisie dans les réglages : lire la ligne et l'alerte dans le verdict.
+- **ACAL687** (S3) — Faire lire par le verdict de raccordement les phases saisies dans « Saisies électriques » quand le raccordement ne les porte pas, en le disant ; fini quand 1 phase saisie à un seul endroit n'est plus redemandée par le verdict
+  - Preuve : pile locale — saisir 1 phase dans « Saisies électriques » seulement : le verdict ne demande plus la saisie.
+- **ACAL782** (S3) — Publier le régime loi 82-21 du site dans le bloc raccordement ; fini quand un calepinage de 12 kWc triphasé publie `regime` = « Accord de raccordement » avec sa base légale, sa puissance retenue et « base à confirmer avec le distr
+  - Preuve : PA2.5 — ouvrir Raccordement d'un calepinage de 12 kWc : le régime est publié avec sa source.
+- **ACAL783** (S3) — Comparer la part injectée simulée au plafond légal de 20 % de la production annuelle (loi 82-21 art. 12) et la publier, avec un avertissement non bloquant quand elle le dépasse ; fini quand une simulation à 35 % d'injection publie
+  - Preuve : PA2.5 — simuler un site sans consommation de jour : l'avertissement apparaît.
+- **ACAL784** (S3) — Afficher le régime 82-21 et la part injectée face au plafond en deux lignes de l'onglet Raccordement ; fini quand les deux lignes se lisent sur l'exemple du contrat, toujours visibles, avec un voyant orange au-delà du plafond
+  - Preuve : PA2.5 — ouvrir Raccordement d'un calepinage de 12 kWc simulé : les deux lignes.
+- **ACAL822** (S3) — Faire porter au gabarit de dossier réglementaire une date « vérifié le » et des limites saisies `{code, valeur, unité, source}`, pour le dossier marocain générique (D-ACAL-43) ; fini quand un gabarit « Dossier marocain générique »
+  - Preuve : PA2.5 — API seulement : créer le gabarit d'essai, le relire, puis envoyer une limite sans source.
+- **ACAL824** (S3) — Dire sur chaque dossier « vérifié le … » et avertir « vérifié il y a plus de N jours » quand la société a réglé N ; fini quand un gabarit vérifié il y a 400 jours avec N = 365 affiche l'avertissement, et qu'aucun avertissement ne 
+  - Preuve : PA2.5 — Réglages › Électrique société : saisir N avec sa source, puis onglet Documents : la ligne et le bandeau.
+- **ACAL827** (S3) — Saisir le plafond d'injection en ampères et publier sa conversion en kW ; fini quand 16 A en triphasé à 400 V avec un cos φ imposé de 1 publient `calcul.plafond_injection_kw_converti` = 11,085 kW avec sa formule
+  - Preuve : PA2.5 — API : POST du cas, puis relancer la simulation : l'écrêtage cite 11,085 kW.
+- **ACAL830** (S3) — Ajouter au bloc « Raccordement » (étape Électrique, niveau expert, replié) le plafond en ampères, trois plages horaires et le plafond de soutirage ; fini quand ces champs survivent au rechargement et que le kW converti s'affiche s
+  - Preuve : PA2.5 — étape Électrique, niveau expert : saisir 16 A et une plage, enregistrer, recharger.
+- **ACAL887** (S3) — Enregistrer douze valeurs mensuelles de production MESURÉE par calepinage et servir leur écart au P50 mensuel (`GET/PUT calepinages/<pk>/production-mesuree/`) ; fini quand douze mesures collées rendent douze écarts en pourcentage
+  - Preuve : PA2.5 — coller 12 mesures sur un calepinage simulé : douze écarts en pourcentage.
+- **ACAL895** (S3) — Semer, de façon IDEMPOTENTE, trois MODÈLES de bibliothèque marqués « Exemple » (villa à toit incliné, toit plat C&I est-ouest, champ au sol), sans lead, client ni devis, jamais comptés dans les chiffres ; fini quand `semer_exemple
+  - Preuve : pile locale : dry-run puis `--apply`, ouvrir la bibliothèque (badge « Exemple »), créer un projet depuis un exemple pour un lead d'essai ; la production ne reçoit ces lignes que sur un geste de Reda (commande `--apply`, jamais au déploiement).
+- **ACAL974** (S3) — Proposer la température minimale et maximale du site tirées de la météo, marquées « proposée — à confirmer » ; fini quand les champs vides de Saisies électriques montrent la proposition servie (ou rien) avec un bouton « Utiliser c
+  - Preuve : PA2.5 — calepinage avec épingle et module à fiche complète : Saisies électriques propose les températures, champs modifiables (rejoué par l'orchestrateur, PVGIS joignable).

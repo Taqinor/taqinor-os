@@ -1,0 +1,93 @@
+# Contre-vérification — F2-SIMU — Simulation : météo, pertes, ombrage, réglages de simulation
+
+44 corrections livrées sans preuve en direct, S1-S2 d'abord. Pour chacune : rejoue la « preuve », regarde l'écran, écris UN verdict (ok / partiel / non-fait / faux / regression / deja-present).
+Le texte complet d'une tâche (constat d'origine, Given/When/Then) : `grep -n "<id> —" docs/plans/PLAN_AUDIT_CALEPINAGE.md` dans le worktree en lecture.
+
+- **ACAL404** (S2) — Compiler le profil de départ (données) : chaque valeur de `data/profil_depart.json` vient d'une page PUBLIÉE relue par la lane (URL, date de lecture) ; une clé sans source vérifiable reste ABSENTE et figure dans `sans_source` avec
+  - Preuve : une seconde lane indépendante relit 100 % des URL et signale tout écart (revue de données, sans écran).
+- **ACAL692** (S2) — Nommer, dans `validation`, le plus gros poste de pertes de la cascade quand la chaîne perd plus que PVGIS et produit moins (`validation.poste_principal`), et aligner l'échantillon sur les clés réellement servies ; fini quand la rè
+  - Preuve : revue de données sans écran : simuler un calepinage de démo à pertes déclarées inégales et lire `validation.poste_principal` dans `GET resultat/`.
+- **ACAL693** (S2) — Servir `production.duree_de_vie` (horizon, motif d'omission du tableau pluriannuel et garantie de production du fabricant à 10 et 25 ans) à côté de `production.projection` ; fini quand le test et les deux échantillons le portent e
+  - Preuve : revue de données sans écran : `GET resultat/` d'un calepinage simulé avec fiche garantie : `production.duree_de_vie.garantie.pct_a_25_ans` égale la fiche.
+- **ACAL695** (S2) — Servir `cascade.postes_lisibles` : la cascade regroupée en cinq postes lisibles (Ombres proches, Poussière, Chaleur, Câbles et onduleur, Autres pertes) par une table de correspondance étape → poste testée contre `ORDRE_ETAPES` ; f
+  - Preuve : revue de données sans écran : `GET resultat/` d'un calepinage de démo : `cascade.postes_lisibles` à cinq postes, `autres` « partiel » avec `spectral` et `diodes` nommés.
+- **ACAL699** (S2) — Servir `cascade.a_renseigner` : pour chaque étape omise faute de réglage société ou de champ de fiche, la clé ou le champ à renseigner, le libellé, la phrase « où lire la valeur » SANS chiffre et le compte « étapes comptées sur ét
+  - Preuve : revue de données sans écran : un calepinage de société neuve : `cascade.a_renseigner.lignes` nomme salissure, vieillissement/LID et mismatch, chacun avec sa page à lire.
+- **ACAL701** (S2) — Compiler `plages_usuelles` (données) : pour chaque étape de la cascade, la bande de perte imprimée par une page PUBLIÉE relue par la lane (URL, date de lecture, grandeur) ; une étape sans bande sourcée reste ABSENTE ; fini quand c
+  - Preuve : une seconde lane indépendante relit 100 % des URL et signale tout écart (revue de données, sans écran).
+- **ACAL702** (S2) — Publier `cascade.plages` : pour chaque étape appliquée qui a une bande sourcée, « dans la plage » ou « inhabituel » avec la bande et sa page ; fini quand une perte hors bande est marquée « inhabituel » et qu'une étape sans bande n
+  - Preuve : revue de données sans écran : `GET resultat/` d'un calepinage de démo : `cascade.plages.etapes` ne contient que les étapes dont la page publie une bande.
+- **ACAL704** (S2) — Remplacer la borne codée en dur du rendement spécifique (600 ; 2 400 kWh/kWc) par deux réglages société sourcés (sans valeur) : l'avertissement ne part que si la société a saisi sa borne ; fini quand un rendement hors d'une borne 
+  - Preuve : revue de données : société sans borne saisie, rendement 2 650 : aucun avertissement ; avec la borne saisie dans Réglages simulation : l'avertissement apparaît.
+- **ACAL705** (S2) — Servir `production.bilan_mensuel` : température ambiante moyenne et indice de performance (PR) par mois, à côté de l'irradiation du plan ; fini quand les 12 lignes se lisent sur l'exemple et que la somme pondérée des mois retrouve
+  - Preuve : revue de données : `GET resultat/` du golden : douze PR autour du PR annuel, un mois d'été à température plus haute.
+- **ACAL706** (S2) — Servir `production.gain_inclinaison` : l'irradiation horizontale par mois (une requête PVGIS à 0°, même base et même fenêtre) et le gain d'inclinaison du plan des modules ; fini quand le gain égale le rapport de deux irradiations 
+  - Preuve : revue de données : `GET resultat/` d'un calepinage de démo : `gain_pct` positif pour un toit incliné, motif nommé pour un fichier déposé sans horizontale.
+- **ACAL758** (S2) — Faire servir par l'étape IAM sa table « angle d'incidence, facteur » (0 à 90°, pas de 10°) calculée par la loi retenue ; fini quand `cascade.etapes[iam].entree.table_iam` porte 10 lignes égales à la formule de Fresnel écrite dans 
+  - Preuve : revue de données : simuler un calepinage de démo, lire `cascade.etapes` à l'étape `iam` dans `GET resultat/` et comparer le facteur à 60° à la valeur du test.
+- **ACAL786** (S2) — Admettre à l'enregistrement les réglages de secours et de commande que la simulation lit déjà (`appareils`, `duree_secours_h`, `fenetres`, `part_effacable_pct`, `plafond_effacable_kw`) ; fini quand `POST entree-electrique/` avec `
+  - Preuve : PA2.5 — poster ce corps sur un calepinage de démo avec batterie du stock, relancer, lire la réserve.
+- **ACAL790** (S2) — Refuser à l'enregistrement un seuil de protection hors réseau mal formé en nommant `hors_reseau.seuils.<seuil>` ; fini quand `POST entree-electrique/` avec une veille sous l'arrêt rend 400 sous `hors_reseau.seuils.veille_pct` et q
+  - Preuve : PA2.5 — poster une veille sous l'arrêt sur un calepinage de démo : 400 sous `hors_reseau.seuils.veille_pct`.
+- **ACAL736** (S?) — Servir l'histogramme de l'énergie par classe de puissance dans l'entrée de l'étape `ecretage` (`entree.distribution`) avec l'énergie écrêtée et sa part ; fini quand, sur 5 heures de puissances connues, les classes, l'énergie écrêt
+  - Preuve : PA2.5 — calepinage à ratio DC/AC élevé : `GET resultat/`, étape `ecretage`, `entree.distribution` non nul.
+- **ACAL740** (S?) — Appliquer le déclassement thermique de l'onduleur à la borne d'écrêtage heure par heure avec la température d'air `t2m_c` servie ; fini quand, sur 4 heures de températures connues, la borne et l'énergie écrêtée égalent la formule 
+  - Preuve : PA2.5 — fiche d'onduleur renseignée, site chaud : étape `ecretage` plus bas qu'avec la fiche vide.
+- **ACAL742** (S?) — Déclarer au registre des réglages société deux clés sans valeur, « nettoyages par an » et « inclinaison d'autonettoyage », typées et sourcées ; fini quand le registre servi les liste avec leur type et qu'aucune valeur n'est prérem
+  - Preuve : PA2.5 — Réglages simulation : les deux lignes apparaissent vides, avec leur référence.
+- **ACAL744** (S?) — Comparer l'irradiation incidente de la base PVGIS utilisée avec celle de l'AUTRE base (SARAH3 / ERA5) sur le même pan et les mêmes années, et publier l'écart annuel et mensuel dans `meteo.comparaison_base` ; fini quand deux séries
+  - Preuve : PA2.5 — simuler un calepinage de démo : `GET resultat/`, `meteo.comparaison_base.ecart_pct` non nul.
+- **ACAL749** (S?) — Servir la liste « ce que cette simulation ne modélise pas » (`cascade.limites_connues`, texte sans chiffre) ; fini quand le test affirme chaque limite contre le code et que l'ombrage du diffus n'est servi que si son étape est abse
+  - Preuve : PA2.5 — `GET resultat/` : `cascade.limites_connues` non vide.
+- **ACAL751** (S?) — Imprimer les limites connues et les étapes non comptées à l'annexe « Hypothèses » du rapport d'étude interne ; fini quand l'annexe d'un résultat servi contient la liste, dans la langue du rapport, et qu'un résultat sans `limites_c
+  - Preuve : PA2.5 — rapport d'étude PDF d'un calepinage simulé : l'annexe contient la liste.
+- **ACAL752** (S?) — Écrire la colonne `p_dc_kw` (puissance continue à l'entrée de l'onduleur) sur chaque point de la série à l'étape « onduleur », aujourd'hui toujours `null` dans la série persistée ; fini quand la série d'une simulation réelle porte
+  - Preuve : PA2.5 — simuler un calepinage, `GET export-csv/?quoi=horaire&colonnes=…,p_dc_kw` ⇒ la colonne est remplie.
+- **ACAL470** (S3) — Saisir une cible de production annuelle (kWh/an) qui fixe le nombre de panneaux à poser ; fini quand taper un objectif dans « Production visée » règle « Panneaux nécessaires » sur le plus petit nombre dont l'énergie annuelle affic
+  - Preuve : PA2.5 — toit plat : saisir 12 000 kWh/an, lire N et l'énergie de la carte ≥ 12 000 ; objectif irréaliste : phrase du maximum.
+- **ACAL711** (S3) — Servir, pour chaque chaîne touchée par l'ombre, ses deux bornes de perte, leur écart et ses modules ombrés, et garder les chaînes des DEUX pans quand la cascade somme plusieurs pans ; fini quand `entree.chaines[]` de l'étape `mism
+  - Preuve : pile locale — calepinage à deux pans avec accès solaire par module et `seuil_derivation_acces` saisi : simuler puis lire `GET …/resultat/` ; `cascade.etapes` (étape `mismatch_ombrage`) `.entree.chaines` porte les chaînes des deux pans (PA2.5).
+- **ACAL713** (S3) — Écrire l'hypothèse portrait/paysage comme HYPOTHÈSE NOMMÉE dans l'entrée de l'étape `mismatch_ombrage`, selon le sens de pose que le document décrit réellement ; fini quand `entree.hypothese_orientation` dit « paysage » pour des m
+  - Preuve : pile locale — calepinage simulé avec un seuil de dérivation : lire `entree.hypothese_orientation` dans `GET …/resultat/`, puis déplacer un module en placement libre et relire.
+- **ACAL716** (S3) — Ajouter au registre des réglages société, SANS valeur, trois clés d'ombrage — le seuil de retrait d'un module et les deux bornes de lecture « courante » et « importante » — avec leur aide ; fini quand `GET parametres/` les publie 
+  - Preuve : pile locale — ouvrir `/calepinage/reglages`, section simulation : les trois lignes apparaissent vides, la référence de Reonic est lisible sous chacune ; saisir 12 puis recharger.
+- **ACAL722** (S3) — Calculer l'étape `diodes` par sous-chaînes : le champ de fiche et les accès par bande affinent la dispersion d'ombrage, sans jamais sortir de l'intervalle des deux bornes de la chaîne ; fini quand l'exemple à deux modules dont un 
+  - Preuve : pile locale — module à 3 sous-chaînes (fiche), ombre sur un module, accès par bande écrit par l'atelier : simuler puis lire l'étape `diodes` dans `GET …/resultat/` (PA2.5).
+- **ACAL723** (S3) — Ajouter l'étape « optimiseur » qui applique le rendement publié sur la fiche de l'optimiseur aux SEULS modules équipés ; fini quand 2 modules équipés sur 10 d'accès égaux avec un rendement de fiche de 99,0 % retirent 0,20 % de l'é
+  - Preuve : pile locale — produit optimiseur désigné, deux modules marqués (ACAL725), simuler : l'étape `optimiseur` porte 0,x % et son entrée ; sans optimiseur : omise sans bruit dans « borne haute ».
+- **ACAL724** (S3) — Exempter de la contrainte de chaîne les SEULS modules équipés d'un optimiseur (ou micro-onduleur) au lieu de toute la chaîne ; fini quand une chaîne de trois modules (1,0 ; 1,0 ; 0,5) dont le module à 0,5 est équipé ne perd plus r
+  - Preuve : pile locale — deux modules marqués « optimiseur » dans l'affectation (ACAL725), simuler : la carte d'ACAL712 n'apparaît plus pour une chaîne dont le module ombré est équipé.
+- **ACAL730** (S3) — Servir `GET calepinages/<pk>/soleil-legal/?date=AAAA-MM-JJ` : la correspondance heure solaire vraie / heure légale du jour choisi, au fuseau et à la longitude du site ; fini quand l'échantillon de contrat est affirmé par le test s
+  - Preuve : pile locale — `GET …/soleil-legal/?date=2026-02-11` et `?date=2026-03-20` : le décalage vaut 60, puis 0 si le jour tombe pendant le Ramadan de l'année (valeur lue de la base `zoneinfo`).
+- **ACAL733** (S3) — Accepter et conserver un drapeau « optimiseur » PAR MODULE dans l'affectation manuelle, et le servir dans la table d'affectation ; fini quand un PUT d'affectation avec `optimiseur: true` sur deux modules rend ces deux lignes avec 
+  - Preuve : pile locale — `POST …/entree-electrique/` avec deux lignes marquées, relire `GET …/resultat/` : `electrique.affectation[]` (PA2.5).
+- **ACAL787** (S3) — Servir dans `batterie.total` ce que le dispatch calcule déjà : pointe avant/après effacement, dépassements restants, réserve déduite des appareils ; fini quand l'échantillon `calepinage_simulation.json` porte ces clés (et celles d
+  - Preuve : PA2.5 — calepinage avec batterie du stock en `peak_shaving` : `GET resultat/` montre les quatre clés.
+- **ACAL793** (S3) — Publier dans `batterie.total` quatre faits tirés de la série horaire — jours où la batterie atteint 100 %, nuits où elle touche son plancher, part du surplus encore injecté, taux d'autoconsommation SANS batterie ; fini quand l'exe
+  - Preuve : PA2.5 — calepinage avec batterie du stock : `GET resultat/` montre `batterie.total.faits_serie`.
+- **ACAL794** (S3) — Dire « adaptée », « trop petite » ou « trop grande » seulement quand la société a saisi ses deux seuils sourcés ; fini quand, sans réglage, `batterie.total.verdict` vaut `null` avec le motif nommé et qu'avec les deux réglages le m
+  - Preuve : PA2.5 — saisir les deux réglages dans Paramètres, relancer : le mot suit les faits ; les effacer : le motif réapparaît.
+- **ACAL796** (S3) — Admettre à l'enregistrement les coupures de réseau déclarées (`batterie.coupures` : combien par an, de combien d'heures, vers quelle heure) ; fini quand un corps conforme est accepté et qu'un champ faux est refusé en nommant `batt
+  - Preuve : PA2.5 — poster `coupures` sur un calepinage de démo : 200 ; un `heure_debut` de 24 : 400 sous `batterie.coupures.heure_debut`.
+- **ACAL797** (S3) — Rejouer les coupures déclarées sur chaque jour de l'année type et publier l'énergie non fournie (`batterie.total.secours.coupures`) ; fini quand 12 coupures de 4 h publient `energie_non_fournie_kwh` sur une série de test aux valeu
+  - Preuve : PA2.5 — calepinage avec batterie du stock en `backup` : 12 coupures de 4 h, relancer, lire l'énergie non fournie dans `GET resultat/`.
+- **ACAL798** (S3) — Publier les heures que tient chaque appareil secouru (`batterie.total.secours.appareils`) ; fini quand deux appareils déclarés publient deux durées dérivées de l'énergie disponible et de leur puissance continue
+  - Preuve : PA2.5 — calepinage avec batterie du stock en `backup`, deux appareils : lire les heures tenues dans `GET resultat/`.
+- **ACAL800** (S3) — Admettre à l'enregistrement un groupe électrogène d'appoint pour un site hors réseau (`hors_reseau.groupe` : puissance, SOC de démarrage et d'arrêt, heures max par jour) ; fini quand un corps conforme est accepté et qu'un démarrag
+  - Preuve : PA2.5 — poster un groupe sur un calepinage de démo hors réseau : 200 ; un démarrage au-dessus de l'arrêt : 400 nommé.
+- **ACAL801** (S3) — Simuler le groupe électrogène d'appoint d'un site hors réseau et publier ses heures de marche et l'énergie fournie par mois ; fini quand un groupe de 5 kW à SOC 20 → 80 % publie des heures de marche par mois et une défaillance inf
+  - Preuve : PA2.5 — calepinage hors réseau avec batterie du stock : déclarer un groupe, relancer, lire heures de marche et défaillance.
+- **ACAL802** (S3) — Publier à côté de la banque moyenne la banque dimensionnée sur le mois de plus forte consommation (`hors_reseau.banque_mois_charge`) ; fini quand elle rend capacité, jours d'autonomie et défaillance qui en résulte, ou la raison de
+  - Preuve : PA2.5 — calepinage hors réseau avec batterie du stock : lire les deux banques dans `GET resultat/`.
+- **ACAL828** (S3) — Admettre jusqu'à trois plages horaires de plafond d'injection et les appliquer heure par heure ; fini quand une plage 16 h-18 h à 2 kW n'écrête que les heures 16 et 17 et que le bloc publie, par plage, les heures et l'énergie écrê
+  - Preuve : PA2.5 — API : POST de la plage, simulation, lecture de `autoconsommation.plafond.plages`.
+- **ACAL829** (S3) — Admettre un plafond de soutirage (kW) et publier les heures où l'import réseau le dépasse ; fini quand une charge de 9 kW face à un plafond saisi de 6 kW publie 9 kW de pointe et les heures au-dessus
+  - Preuve : PA2.5 — API : POST du plafond, simulation, lecture de `autoconsommation.soutirage`.
+- **ACAL835** (S3) — Chercher le plus petit nombre de panneaux qui atteint une couverture visée (% de la consommation) sur le bilan horaire ; fini quand un objectif `couverture` de 70 % rend le plus petit N dont la couverture COUV-AUTO atteint 70 %, o
+  - Preuve : PA2.5 — API : `POST balayage/ {objectif…}` sur un calepinage simulé, N lu au résultat du job.
+- **ACAL980** (S3) — Servir une liste « Ce qui est supposé » nommant chaque repli caché, sa valeur et le champ à renseigner ; fini quand `GET resultat/` publie `suppose[]` pour la longueur de chaîne de dossier, et l'allée par défaut du moteur, et que 
+  - Preuve : PA2.3 — fiche incomplète : la Production liste les deux suppositions en mots simples (rejoué par l'orchestrateur).
+- **ACAL770** (S4) — Ne proposer dans Réglages simulation que les valeurs d'une liste que le serveur sait honorer : le serveur publie `valeurs_non_servies` (valeur et motif) pour `mode_meteo` « tmy » et `modele_iam` « martin_ruiz », l'écran les désact
+  - Preuve : PA2.5 — Réglages simulation : « tmy » grisé avec son motif ; choisir « pluriannuel » puis lancer la simulation sans refus de mode.
+- **ACAL771** (S4) — Ajouter à la liste `manquants[]` d'ACAL940 le seul refus HORS réglages qu'elle ne porte pas, « aucun pan équipé » (champ `plans`) ; fini quand un calepinage sans module reçoit une ligne `plans` dans le même 409 que les autres manq
+  - Preuve : PA2.5 — calepinage aux réglages remplis mais sans module : « Lancer la simulation » nomme le champ `plans`, dans la même liste que les autres manques.
