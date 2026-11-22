@@ -235,12 +235,13 @@ def peremption_du_calepinage(devis, calepinage):
 def surfaces_chiffrables(document):
     """ACAL915 (D-ACAL-5) — ``[{cle, kind, libelle, modules}]`` : les pans et
     surfaces de pose POSÉS que le devis additionne, lus de LA primitive
-    ``pans_du_document`` (un pan non pavé n'est pas chiffré). Lecture seule."""
-    from apps.ventes.services import pans_du_document
+    ``pans_du_document`` (un pan non pavé n'est pas chiffré ; un pan existant,
+    Critique D1, n'est pas proposé : ``pans_vendus``). Lecture seule."""
+    from apps.ventes.services import pans_du_document, pans_vendus
 
     return [{'cle': pan['cle'], 'kind': pan['kind'], 'libelle': pan['libelle'],
              'modules': int(pan['modules'])}
-            for pan in pans_du_document(document if isinstance(document, dict) else {})
+            for pan in pans_vendus(pans_du_document(document if isinstance(document, dict) else {}))
             if int(pan.get('modules') or 0) > 0]
 
 

@@ -633,11 +633,40 @@ def _modes_libres(devis):
     return identifiants, rangs
 
 
-def zones_publiees(layout_public):
-    """Les zones du calepinage assaini, avec leur rang — dicts seulement."""
+def _zone_existante(zone):
+    """Critique D1 — un pan « existant » (ACAL573 : modules DÉJÀ en place)
+    n'est pas l'installation vendue : ni compté, ni prolongé, ni retaillé
+    (même lecture que ``geometrie.pans_vendus``)."""
+    return isinstance(zone, dict) and zone.get('existant') is True
+
+
+def zones_publiees(layout_public, avec_existants=False):
+    """Les zones du calepinage assaini, avec leur rang — dicts seulement ;
+    un pan existant seulement sur demande (le dessin dérivé le garde)."""
     return [(rang, zone)
             for rang, zone in enumerate((layout_public or {}).get('zones') or [])
-            if isinstance(zone, dict)]
+            if isinstance(zone, dict) and (avec_existants or not _zone_existante(zone))]
+
+
+def _marquer_existants(layout_public, brut):
+    """Critique D1 — la COPIE du layout public dont les zones « existant » du
+    document BRUT portent ``existant: True`` (la whitelist publique ne recopie
+    pas la clé) ; même appariement que :func:`_modes_libres` (``id`` d'abord,
+    rang des seuls dicts à défaut). Aucun pan existant ⇒ le layout lui-même."""
+    zones = brut.get('zones') if isinstance(brut, dict) else None
+    brutes = [z for z in zones if isinstance(z, dict)] if isinstance(zones, list) else []
+    rangs = {rang for rang, zone in enumerate(brutes) if _zone_existante(zone)}
+    if not rangs or not isinstance(layout_public, dict):
+        return layout_public
+    ids = {brutes[rang].get('id') for rang in rangs if brutes[rang].get('id')}
+    marquees, rang = [], 0
+    for zone in layout_public.get('zones') or []:
+        if isinstance(zone, dict):
+            if (zone.get('id') in ids) if zone.get('id') else (rang in rangs):
+                zone = dict(zone, existant=True)
+            rang += 1
+        marquees.append(zone)
+    return dict(layout_public, zones=marquees)
 
 
 def nb_panneaux_publies(layout_public):
@@ -940,7 +969,7 @@ def layout_derive(layout_public, par_zone):
     chiffres du devis sous un autre toit.
     """
     zones = []
-    for rang, zone in zones_publiees(layout_public):
+    for rang, zone in zones_publiees(layout_public, avec_existants=True):
         nouvelle = {cle: zone[cle] for cle in _ZONE_RECOPIEES if cle in zone}
         if 'obstacles' in zone:
             # La clé SUIT la zone source (même vide : le calepinage dit alors
@@ -951,6 +980,8 @@ def layout_derive(layout_public, par_zone):
                 for o in zone['obstacles'] or [] if isinstance(o, dict)]
         panneaux = par_zone.get(rang) or []
         geometrie = zone.get('geometry')
+        if _zone_existante(zone) and isinstance(geometrie, dict):  # Critique D1 : déjà en place, tel quel
+            panneaux = [p for p in geometrie.get('panels') or [] if isinstance(p, dict)]
         if panneaux and isinstance(geometrie, dict):
             geo = {cle: geometrie[cle] for cle in _GEO_RECOPIEES
                    if cle in geometrie}
@@ -1089,6 +1120,7 @@ def deriver(devis, offres_tailles, layout_public, sld_servi=False):
     if not offres:
         return None
     brut = getattr(devis, 'roof_layout', None)
+    layout_public = _marquer_existants(layout_public, brut)  # Critique D1
     trames = lire_trames(layout_public, _modes_libres(devis),
                          contraintes=brut if isinstance(brut, dict) else None)
     if not trames:
@@ -1156,8 +1188,13 @@ def calepinage_options_publique(devis, offres_tailles, layout_public,
 # ANNEXE « PARAMÈTRES DU SITE » (audit #23)
 # ════════════════════════════════════════════════════════════════════════════
 
-def _pan_principal(layout_public):
+def _pan_principal(layout_public, pose_reelle=False):
     """Le pan le PLUS PUISSANT du calepinage assaini, ou ``None``.
+
+    ``pose_reelle`` (niveau de règles 15, la vague ACAL — jamais un devis déjà
+    envoyé, que la migration du niveau ne touche pas) : ACAL911 (tables d'une
+    pose est-ouest) et le jumeau de la Critique D7 (faces pesées ensemble).
+    Faux : la lecture d'AVANT la vague, au bit près.
 
     Même lecture que ``services.extract_roof_config`` (qui retient déjà le pan
     le plus puissant comme orientation principale) : ``_pans_geometry``
@@ -1175,6 +1212,8 @@ def _pan_principal(layout_public):
     pans = [pan for pan in (layout_public or {}).get('pans') or []
             if isinstance(pan, dict)]
     if pans:
+        if pose_reelle:
+            return _face_du_pan_principal(pans)
         return max(pans, key=lambda p: _fini(p.get('kwc')) or 0.0)
     # ACAL58 — la MÊME lecture que ``extract_roof_config`` : l'orientation
     # des modules POSÉS (``geometry``) d'abord, la pente du toit à défaut.
@@ -1183,11 +1222,35 @@ def _pan_principal(layout_public):
     for zone in (layout_public or {}).get('zones') or []:
         if not isinstance(zone, dict):
             continue
+        geo = zone.get('geometry')
+        if not pose_reelle and isinstance(geo, dict) and geo.get('family') == 'eastwest':
+            # Avant ACAL911 : une pose est-ouest gardait la lecture du TOIT.
+            zone = {cle: valeur for cle, valeur in zone.items() if cle != 'geometry'}
         orientation = orientation_du_pan(zone)
         return {'azimut_deg': orientation['azimut_deg'],
                 'inclinaison_deg': orientation['inclinaison_deg'],
                 'roof_type': zone.get('roofType')}
     return None
+
+
+def _face_du_pan_principal(pans):
+    """Critique D7, jumeau — les faces CONSÉCUTIVES d'une pose est-ouest
+    (« <pan> — face est|ouest », ACAL911) pèsent ENSEMBLE, du kWc entier de la
+    pose ; le pan retenu est décrit par sa face la plus forte (même règle que
+    ``geometrie.extract_roof_config``). Sans face : ``max`` d'avant."""
+    from .domain.geometrie import LIBELLES_FACES
+
+    groupes = []
+    for pan in pans:
+        base, sep, face = str(pan.get('label') or '').rpartition(' — face ')
+        cle = base if sep and face in LIBELLES_FACES.values() else None
+        if (cle is not None and groupes and groupes[-1][0] == cle
+                and len(groupes[-1][1]) < len(LIBELLES_FACES)):
+            groupes[-1][1].append(pan)
+        else:
+            groupes.append((cle, [pan]))
+    _cle, faces = max(groupes, key=lambda g: sum(_fini(p.get('kwc')) or 0.0 for p in g[1]))
+    return max(faces, key=lambda p: _fini(p.get('kwc')) or 0.0)
 
 
 def _matrice_ombrage_valide(matrice):
@@ -1289,8 +1352,10 @@ def parametres_site_publics(devis, layout_public, hypotheses=None,
                 calepinage_du_devis(devis.pk, getattr(devis, 'company', None))):
             logger.info('parametres_site omis (devis %s) : %s', devis.pk, _sd.MOTIF_CONCEPTION_RAPIDE)
             return None  # ACAL1008 — annexe omise
+        from .domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+
         annexe = {}
-        pan = _pan_principal(layout_public)
+        pan = _pan_principal(layout_public, pose_reelle=regles_au_moins(devis, REGLES_POSE_REELLE_2111))
         if pan:
             azimut = _fini(pan.get('azimut_deg'))
             if azimut is not None:

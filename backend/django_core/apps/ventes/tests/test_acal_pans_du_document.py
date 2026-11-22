@@ -10,13 +10,18 @@ Run:
         -Modules "apps.ventes.tests.test_acal_pans_du_document"
 """
 import copy
+from io import StringIO
 
-from django.test import SimpleTestCase
+from django.core.management import call_command
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.domain.geometrie import (
     extract_roof_config, lire_layout, modules_affleurants, pans_du_document,
     refus_des_pans, validate_composition_for_layout)
+from apps.crm.models import Client
 from apps.ventes.domain.taille import AutoDevisError
+from apps.ventes.models import Devis
+from authentication.models import Company
 
 MIXTE = {
     'zones': [{'id': 'zA', 'label': 'Toit', 'geometry': {
@@ -115,3 +120,54 @@ class PansDuDocument(SimpleTestCase):
         # Tout existant : rien à vendre, le ``result`` racine n'est pas relu.
         layout['zones'] = layout['zones'][:1]
         self.assertEqual((lire_layout(layout).compte, lire_layout(layout).kwc), (0, 0.0))
+
+
+def _layout_pan_existant():
+    """Critique D1 — pan A « existant » (10 modules en place) + pan B neuf (6)."""
+    def pan(cle, nombre, **extra):
+        return dict({'id': cle, 'label': cle, 'geometry': {
+            'azimuthDeg': 180, 'tiltDeg': 20,
+            'panels': [{'cx': i, 'cy': 0} for i in range(nombre)]}}, **extra)
+    return {'panelWatt': 585, 'zones': [pan('A', 10, existant=True), pan('B', 6)]}
+
+
+class PansExistantsDryRunPur(SimpleTestCase):
+    def test_modules_des_pans_existants(self):
+        from apps.ventes.management.commands.acal_dryrun_compte_layout import _modules_existants
+
+        layout = _layout_pan_existant()
+        self.assertEqual(_modules_existants(layout), 10)
+        layout['zones'][0].pop('existant')
+        self.assertEqual(_modules_existants(layout), 0)
+        self.assertEqual(_modules_existants(None), 0)
+
+
+class PansExistantsDryRun(TestCase):
+    """Critique D1 — le dry-run du fondateur : les devis NON brouillon dont une
+    zone est « existant », lus sans aucune écriture."""
+
+    def setUp(self):
+        self.co = Company.objects.create(nom='D1', slug='d1-existant')
+        self.client_ = Client.objects.create(company=self.co, nom='Extension')
+
+    def _devis(self, reference, layout, statut):
+        return Devis.objects.create(company=self.co, client=self.client_,
+                                    reference=reference, statut=statut, roof_layout=layout)
+
+    def test_liste_les_envoyes_a_pan_existant_sans_rien_ecrire(self):
+        envoye = self._devis('DEV-D1-ENV', _layout_pan_existant(), Devis.Statut.ENVOYE)
+        self._devis('DEV-D1-BRO', _layout_pan_existant(), Devis.Statut.BROUILLON)
+        neuf = _layout_pan_existant()
+        neuf['zones'][0].pop('existant')
+        self._devis('DEV-D1-NEUF', neuf, Devis.Statut.ENVOYE)
+
+        sortie = StringIO()
+        call_command('acal_dryrun_compte_layout', '--pans-existants', stdout=sortie)
+        texte = sortie.getvalue()
+
+        self.assertIn('DEV-D1-ENV | envoye | 10 | 6', texte)
+        self.assertNotIn('DEV-D1-BRO', texte)
+        self.assertNotIn('DEV-D1-NEUF', texte)
+        self.assertIn('Devis concernés : 1', texte)
+        envoye.refresh_from_db()
+        self.assertEqual(envoye.roof_layout, _layout_pan_existant())

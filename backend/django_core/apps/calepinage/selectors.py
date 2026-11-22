@@ -176,13 +176,14 @@ def calepinage_ouvert_du_lead(company, lead_id):
     return _ouverts(company, lead_id).first()
 
 
-def mesures_du_calepinage(calepinage):
+def mesures_du_calepinage(calepinage, document=None):
     """ACAL273 — ``{modules, kwc, ...}`` du document de pose d'un calepinage,
     LU par ``mesures_du_document`` (la fiche du module du document, jamais le
-    wattage constant de l'outil). ``{}`` sans calepinage ni document."""
+    wattage constant de l'outil). ``{}`` sans calepinage ni document.
+    ``document`` : une copie de ce document (ACAL968, la sélection d'un devis)."""
     from .services.mesures import mesures_du_document
 
-    document = getattr(calepinage, 'roof_layout', None)
+    document = getattr(calepinage, 'roof_layout', None) if document is None else document
     if not isinstance(document, dict):
         return {}
     return mesures_du_document(document)
@@ -826,6 +827,18 @@ def _perte_ombrage_chiffree(devis, lignes, cascade):
         energie = float(cascade['etapes'][0].get('kwh_avant') or 0.0)
         perdu, entree = perdu + pct * energie, entree + energie
     return round(perdu / entree, 3) if entree else None
+
+
+def document_de_la_selection(calepinage, cles):
+    """ACAL968 — la COPIE du document de ``calepinage`` limitée aux surfaces
+    ``cles`` (celle qu'un devis partiel chiffre), ou ``None`` quand la
+    sélection ne s'applique plus. Porte de l'auditeur de cohérence (ventes)."""
+    from .services import devis as _devis
+
+    try:
+        return _devis._layout_des_surfaces(getattr(calepinage, 'roof_layout', None) or {}, cles)
+    except _devis.DevisRefuse:
+        return None
 
 
 def empreinte_de_la_selection(calepinage, cles):

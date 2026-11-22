@@ -31,6 +31,7 @@ Run:
     docker compose exec django_core python manage.py test \\
         apps.ventes.tests.test_calepinage_options -v 2
 """
+import copy
 import json
 import math
 import uuid
@@ -1299,3 +1300,83 @@ class ParametresSiteChargeUtileTests(TestCase):
         for cle in ('orientation_deg', 'inclinaison_deg', 'orientation',
                     'type_toit'):
             self.assertNotIn(cle, annexe)
+
+
+def _toit_avec_pan_existant():
+    """Critique D1 — z1 « existant » (18 modules déjà en place) + z2 neuf (6)."""
+    layout = toit()
+    neuf = copy.deepcopy(toit(rangees=2, colonnes=3)['zones'][0])
+    neuf.update(id='z2', label='Pan neuf')
+    layout['zones'][0]['existant'] = True
+    layout['zones'].append(neuf)
+    return layout
+
+
+class PanExistantPublicTests(SimpleTestCase):
+    """Critique D1 (suite) — rien de ce qui est montré au client comme « votre
+    installation » ne compte un pan existant ; la clé n'est pas publiée."""
+
+    def test_le_compte_et_les_trames_ignorent_le_pan_existant(self):
+        layout = _toit_avec_pan_existant()
+        self.assertEqual(co.nb_panneaux_publies(layout), 6)
+        self.assertEqual([trame.index for trame in co.lire_trames(layout)], [1])
+        self.assertEqual(co.capacite_du_layout(layout) >= 6, True)
+        sans = copy.deepcopy(layout)
+        sans['zones'][0].pop('existant')
+        self.assertEqual(co.nb_panneaux_publies(sans), 24)  # devis entier : inchangé
+
+    def test_cartes_de_taille_du_layout_public_sans_la_cle(self):
+        brut = _toit_avec_pan_existant()
+        public = copy.deepcopy(brut)
+        public['zones'][0].pop('existant')  # ``_safe_roof_layout`` ne la recopie pas
+        bloc = co.deriver(_DevisFactice(brut), offres(recommande=6, max=8), public)
+        self.assertEqual(bloc['nb_panneaux_calepines'], 6)
+        self.assertEqual(bloc['offres']['recommande']['sans']['origine'], 'devis')
+        derive = bloc['offres']['max']['sans']
+        self.assertEqual(derive['nb_panneaux_dessines'], 8)
+        zones = {z['id']: z for z in derive['layout']['zones']}
+        self.assertEqual(len(zones['z1']['geometry']['panels']), 18)  # dessiné tel quel
+        self.assertEqual(len(zones['z2']['geometry']['panels']), 8)
+        self.assertNotIn('existant', json.dumps(bloc))
+        self.assertNotIn('existant', json.dumps(public))  # aucune mutation
+
+
+def _devis_annexe(layout, statut, regles):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(pk=None, statut=statut, regles_calcul=regles,
+                           roof_layout=layout)
+
+
+class AnnexeEnvoyeeTests(SimpleTestCase):
+    """ACAL911 / Critique D7 (jumeau) — l'annexe d'un devis rendu aux règles
+    ≤ 14 (tout devis envoyé) lit comme AVANT la vague ; niveau 15 seulement :
+    tables est-ouest et faces pesées ensemble."""
+
+    ZONE_EO = {'label': 'Toit', 'roofType': 'flat', 'pitchDeg': 0,
+               'facingAzimuthDeg': 180,
+               'geometry': {'family': 'eastwest', 'tiltDeg': 10,
+                            'azimuthDeg': 90, 'count': 12, 'kwc': 7.0}}
+    PANS_EO = [
+        {'label': 'Toit — face est', 'kwc': 5.0, 'azimut_deg': 90, 'inclinaison_deg': 10},
+        {'label': 'Toit — face ouest', 'kwc': 5.0, 'azimut_deg': 270, 'inclinaison_deg': 10},
+        {'label': 'Sud', 'kwc': 6.0, 'azimut_deg': 180, 'inclinaison_deg': 20}]
+
+    def _annexe(self, layout, statut, regles):
+        return co.parametres_site_publics(_devis_annexe(layout, statut, regles), layout)
+
+    def test_zone_est_ouest_sans_pans_geometry(self):
+        layout = {'zones': [copy.deepcopy(self.ZONE_EO)]}
+        for statut in ('envoye', 'accepte', 'refuse', 'expire', 'brouillon'):
+            annexe = self._annexe(layout, statut, 14)
+            self.assertEqual((annexe['orientation_deg'], annexe['inclinaison_deg']),
+                             (180.0, 0.0), statut)
+        annexe = self._annexe(layout, 'brouillon', 15)
+        self.assertEqual((annexe['orientation_deg'], annexe['inclinaison_deg']), (90.0, 10.0))
+
+    def test_branche_pans_faces_pesees_ensemble_au_niveau_15(self):
+        layout = {'pans': copy.deepcopy(self.PANS_EO)}
+        self.assertEqual(self._annexe(layout, 'envoye', 14)['orientation_deg'], 180.0)
+        self.assertEqual(self._annexe(layout, 'brouillon', 15)['orientation_deg'], 90.0)
+        layout['pans'][2]['kwc'] = 12.0  # un pan simple plus fort gagne toujours
+        self.assertEqual(self._annexe(layout, 'brouillon', 15)['orientation_deg'], 180.0)

@@ -12,6 +12,7 @@ Run :
 """
 import copy
 from io import StringIO
+from types import SimpleNamespace
 
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
@@ -112,6 +113,17 @@ class OrientationPoseeTest(SimpleTestCase):
         second = extract_roof_config(copy.deepcopy(layout))
         self.assertEqual(premier, second)
 
+    def test_dry_run_compare_l_annexe_sans_pans_geometry(self):
+        """Critique 22/11 (ACAL911) — sans ``_pans_geometry``, la première zone
+        est-ouest : toit (≤ 14, envoyés) → tables (niveau 15) ; sud : rien."""
+        from apps.ventes.management.commands.acal_dryrun_orientation import _comparer
+
+        zone = _zone_plate_inclinee(family='eastwest', azimuthDeg=90, tiltDeg=10)
+        zone['facingAzimuthDeg'] = 180
+        self.assertEqual(_comparer(SimpleNamespace(roof_layout=_layout(zone))),
+                         [('annexe (sans _pans_geometry)', (0, 180), (10, 90))])
+        self.assertEqual(_comparer(SimpleNamespace(roof_layout=_layout(_zone_plate_inclinee()))), [])
+
     def test_annexe_client_branche_zones_lit_la_pose(self):
         pan = _pan_principal({'zones': [_zone_plate_inclinee()]})
         self.assertEqual(pan['inclinaison_deg'], 10)
@@ -164,3 +176,19 @@ class ZonesEtudeDuDevisTest(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.roof_layout['_pans_geometry'][0]
                          ['inclinaison_deg'], 0)
+
+    def test_dry_run_liste_l_annexe_d_un_envoye_sans_pans_geometry(self):
+        zone = _zone_plate_inclinee(family='eastwest', azimuthDeg=90, tiltDeg=10)
+        zone['facingAzimuthDeg'] = 180
+        self._devis('DEV-ACAL911-ENV', _layout(zone), statut=Devis.Statut.ENVOYE)
+        self._devis('DEV-ACAL911-SUD', _layout(_zone_plate_inclinee()),
+                    statut=Devis.Statut.ENVOYE)
+
+        sortie = StringIO()
+        call_command('acal_dryrun_orientation', stdout=sortie)
+        texte = sortie.getvalue()
+
+        self.assertIn('DEV-ACAL911-ENV', texte)
+        self.assertIn('annexe (sans _pans_geometry) : inclinaison 0 → 10, azimut 180 → 90', texte)
+        self.assertNotIn('DEV-ACAL911-SUD', texte)
+        self.assertIn('Devis concernés : 1', texte)

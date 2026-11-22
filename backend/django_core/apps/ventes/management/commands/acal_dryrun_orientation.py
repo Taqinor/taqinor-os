@@ -8,12 +8,33 @@ cette commande liste, AVANT le merge, les devis NON brouillon dont la
 géométrie stockée changerait à ce geste — référence / statut / inclinaison et
 azimut avant → après — pour la décision du fondateur.
 
+Critique 22/11 (ACAL911) — un devis SANS ``_pans_geometry`` est aussi listé :
+son annexe « paramètres du site » lit la première zone en direct ; posée en
+est-ouest, la lecture des TABLES (niveau de règles 15) diffère de celle du
+TOIT (≤ 14, ce que lit un devis envoyé : ligne « annexe »).
+
 LECTURE SEULE. ``--dry-run`` est le défaut ET le seul mode : aucun devis
 (et surtout aucun devis envoyé) n'est jamais réécrit ici.
 
     python manage.py acal_dryrun_orientation [--company <slug>] [--tous]
 """
 from django.core.management.base import BaseCommand
+from django.db.models import Q
+
+
+def _ecart_annexe(layout):
+    """Sans ``_pans_geometry`` — ``[(label, toit, tables)]`` quand l'annexe
+    client lirait la première zone autrement au niveau 15 (pose est-ouest)."""
+    from apps.ventes.calepinage_options import _pan_principal
+
+    zones = layout.get('zones') if isinstance(layout.get('zones'), list) else []
+    premiere = {'zones': [z for z in zones if isinstance(z, dict)][:1]}
+    toit, tables = _pan_principal(premiere), _pan_principal(premiere, pose_reelle=True)
+    if not toit or not tables:
+        return []
+    a = (toit['inclinaison_deg'], toit['azimut_deg'])
+    b = (tables['inclinaison_deg'], tables['azimut_deg'])
+    return [('annexe (sans _pans_geometry)', a, b)] if a != b else []
 
 
 def _comparer(devis):
@@ -23,6 +44,8 @@ def _comparer(devis):
     layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
     avant = [p for p in (layout.get('_pans_geometry') or [])
              if isinstance(p, dict)]
+    if not avant:
+        return _ecart_annexe(layout)
     apres = (extract_roof_config(layout) or {}).get('pans') or []
     ecarts = []
     for index, (vieux, neuf) in enumerate(zip(avant, apres), start=1):
@@ -51,7 +74,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from apps.ventes.models import Devis
 
-        qs = (Devis.objects.filter(roof_layout__has_key='_pans_geometry')
+        qs = (Devis.objects.filter(Q(roof_layout__has_key='_pans_geometry')
+                                   | Q(roof_layout__has_key='zones'))
               .select_related('company').order_by('company_id', 'reference'))
         if not options.get('tous'):
             qs = qs.exclude(statut=Devis.Statut.BROUILLON)
