@@ -5,6 +5,7 @@ import crmApi from '../../../api/crmApi'
 import calepinageApi from '../../../api/calepinageApi'
 import { urlFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
 import { refusServeur } from '../commun/refusServeur'
+import { demandeMoteur, motifRefus } from '../ModeTerrain.helpers' // ACAL918
 import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { lireBrouillonServeur } from '../brouillonServeur.js'
@@ -44,6 +45,46 @@ export async function pousserAffectationAtelier(builder, calepinageId) {
   builder.setAffectationChaines(Array.isArray(lignes) ? lignes : null, 'chaine')
 }
 
+/**
+ * ACAL918 — l'option `demanderPlanSurface` de l'atelier : la demande au moteur (`calepinageApi.moteur.pose`) d'une
+ * surface de pose enregistrée. Le contour tracé voyage tel quel (`contourM`), la latitude de l'épingle part dans `sol`
+ * (ACAL606) ; l'atelier ne parle jamais à Django. Rend la réponse du moteur, ou rejette avec le motif français.
+ */
+export function demanderPlanSurfaceDepuis(ctx) {
+  const latitude = Number(ctx?.geometrie?.pin?.lat)
+  return async (surface) => {
+    // `demandeMoteur` pose kit, axe et paramètres ; le contour (rectangle de convenance) est remplacé par le tracé.
+    const base = demandeMoteur({
+      repere: surface.id, largeurM: 1, profondeurM: 1, rowAzimuthDeg: surface.rowAzimuthDeg, tiltDeg: surface.tiltDeg,
+      moduleLongM: surface.moduleLongM, moduleCourtM: surface.moduleCourtM, puissanceWc: surface.moduleWc,
+      modulesParTable: surface.modulesParTable, alleeM: surface.alleeM,
+    })
+    if (!base || !Array.isArray(surface.contourM) || surface.contourM.length < 3) {
+      throw new Error('contour ou module incomplet : rien n’est envoyé au moteur')
+    }
+    const demande = { ...base, contour: surface.contourM, surfaces: [{ ...base.surfaces[0], contour: surface.contourM }] }
+    try {
+      const res = await calepinageApi.moteur.pose({ demande, ...(Number.isFinite(latitude) ? { sol: { latitude_deg: latitude } } : {}) })
+      return res.data
+    } catch (e) {
+      throw new Error(motifRefus(e?.response?.data) || 'le moteur n’a pas répondu')
+    }
+  }
+}
+
+/** ACAL777 — « Facture du lead : 900 MAD/mois » sous la carte Recommandation (rien si la facture est inconnue). */
+export function poserLigneFactureLead(facture) {
+  const hote = document.getElementById('rp9-reco-savings')?.parentElement
+  if (!hote) return
+  hote.parentElement?.querySelector('[data-facture-lead]')?.remove()
+  if (!(Number(facture) > 0)) return
+  const ligne = document.createElement('p')
+  ligne.setAttribute('data-facture-lead', '')
+  ligne.className = 'mt-2 text-xs text-muted-foreground'
+  ligne.textContent = `Facture du lead : ${Number(facture).toLocaleString('fr-FR')} MAD/mois`
+  hote.insertAdjacentElement('afterend', ligne)
+}
+
 export function useAtelierBoot(ctx) {
   // Identifiants et drapeaux de mode, puis refs, puis setters d'état.
   // ACAL37 — plus de mode devis écrivain : `devisId` = le devis SYNCHRONISÉ du flux
@@ -71,6 +112,17 @@ export function useAtelierBoot(ctx) {
   const proposerPourAtelier = (typeof proposerConsommation === 'function' && calepinageId)
     ? (corps) => proposerConsommation(calepinageId, corps).then(
       (res) => res?.data, (err) => { throw refusServeur(err) })
+    : null
+  // ACAL840 — « Lire une photo de facture » : disponibilité + lecture, liées au calepinage ouvert.
+  const lireFacture = (calepinageId && calepinageApi.calepinages.lireFactureConsommation)
+    ? {
+      disponible: () => calepinageApi.calepinages.lireFactureDisponible(calepinageId).then((res) => res?.data),
+      lire: (fichier) => {
+        const corps = new FormData()
+        corps.append('fichier', fichier)
+        return calepinageApi.calepinages.lireFactureConsommation(calepinageId, corps).then((res) => res?.data)
+      },
+    }
     : null
   // ENF22 — le corps du boot lit `ctx` (setters/refs du parent) a l'instant de
   // l'effet : un evenement d'effet, relance seulement par la liste ci-dessous.
@@ -404,6 +456,7 @@ export function useAtelierBoot(ctx) {
           rendementPvgis: null,
           // ACAL311 — kWh au barème société (null hors calepinage : « estimation »).
           proposerConsommation: proposerPourAtelier,
+          lireFactureConsommation: lireFacture,
           productionAtelier: productionAtelierErp,
           maptilerKey: carte.maptilerKey,
           mapboxToken: carte.mapboxToken || undefined,
@@ -419,6 +472,10 @@ export function useAtelierBoot(ctx) {
           modulesDisponibles,
           // CALX104/CALX403 câblage — voir `boot()` plus haut.
           reglagesAtelier,
+          // ACAL918 — le plan du moteur pour « Enregistrer le contour tracé » (surface de pose).
+          demanderPlanSurface: demanderPlanSurfaceDepuis(ctx),
+          // ACAL777 — la facture du lead, repli d'affichage des cartes (jamais écrite au document).
+          factureMensuelleMad: payload?.factureMensuelleMad ?? null,
           // PV75 / ACAL37 — l'étude bancable du devis synchronisé (absente hors flux devis).
           ...(devisId ? { bankable } : {}),
           onApiReady: (a) => {
@@ -444,6 +501,7 @@ export function useAtelierBoot(ctx) {
         // serveur connaît déjà. Le contexte la porte sous les MÊMES noms que le
         // contrat devis (`client_adresse`/`client_ville`) — aucune clé devinée,
         // aucune adresse composée ici au-delà de la jointure des deux morceaux.
+        poserLigneFactureLead(payload?.factureMensuelleMad)
         const addrEl = document.getElementById('rp9-address')
         const adresse = [ctx?.calepinage?.client_adresse,
           ctx?.calepinage?.client_ville]

@@ -66,6 +66,7 @@
       ],
       "modulesDisponibles": null,
       "reglagesAtelier": null,
+      "demanderPlanSurface": "[fn]",
       "factureMensuelleMad": 900,
       "onApiReady": "[fn]",
       "onHydrationTerminee": "[fn]"

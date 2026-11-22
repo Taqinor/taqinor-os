@@ -29,6 +29,34 @@ const AXES = [
 
 const nombre = (v) => (v === '' || v === null ? NaN : Number(v))
 
+/* ACAL813 — « Optimiser pour le mois de » : critère `{nom: 'mois', mois}` du
+   balayage (ACAL812) ; la réponse est LUE de `optimum_mois`, `optimum` et
+   `ecart_mois_kwh`. « Toute l'année » (défaut) ne poste aucun critère. */
+const nomDuMois = (m) => new Date(2000, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long' })
+const MOIS = Array.from({ length: 12 }, (_, i) => i + 1)
+const degres = (v) => `${formatNumber(v, { decimals: 0 })}°`
+
+function OptimumDuMois({ resultat, mois, onAppliquer }) {
+  const duMois = resultat?.optimum_mois
+  const annee = resultat?.optimum
+  if (!mois || !duMois || !annee) return null
+  const ecart = Number(resultat.ecart_mois_kwh)
+  const nom = nomDuMois(mois)
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <p className="text-sm" data-testid="acal813-mois">
+        {degres(duMois.inclinaison_deg)} pour {nom}, {degres(annee.inclinaison_deg)} pour l’année
+        {Number.isFinite(ecart) ? ` : ${ecart >= 0 ? '+' : '−'} ${formatNumber(Math.abs(ecart), { decimals: 0 })} kWh en ${nom}` : ''}
+      </p>
+      {onAppliquer && (
+        <Button variant="outline" onClick={() => onAppliquer(duMois)} data-testid="acal813-appliquer">
+          Appliquer pour ce mois
+        </Button>
+      )}
+    </div>
+  )
+}
+
 /** Fond de case : du plus bas (clair) au plus haut (vert) rendement de la grille. */
 function fondDeCase(valeur, bas, haut) {
   const t = haut > bas ? (valeur - bas) / (haut - bas) : 1
@@ -42,6 +70,8 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
   const [resultat, setResultat] = useState(null)
   const [refus, setRefus] = useState(null)
   const [message, setMessage] = useState(null)
+  const [mois, setMois] = useState('')
+  const [moisLance, setMoisLance] = useState(null)
   const suivi = useSuiviJob({
     intervalleMs: 2000,
     surIssue: (issue, job) => {
@@ -61,7 +91,10 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
       nom: a.nom,
       min: nombre(bornes[a.nom].min), max: nombre(bornes[a.nom].max), pas: nombre(bornes[a.nom].pas),
     }))
-    suivi.lancer(calepinageApi.calepinages.balayer(calepinageId, { pan: nombre(pan), axes }), {
+    const corps = { pan: nombre(pan), axes }
+    if (mois) corps.critere = { nom: 'mois', mois: Number(mois) }
+    setMoisLance(mois ? Number(mois) : null)
+    suivi.lancer(calepinageApi.calepinages.balayer(calepinageId, corps), {
       surSynchrone: () => setRefus({ champ: '', motif: 'Réponse inattendue du serveur : le balayage n’a pas démarré.' }),
       surErreur: (e) => setRefus(refusDepuisErreur(e)),
     })
@@ -76,10 +109,10 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
   const appliquable = !!optimum && !!builderApi?.appliquerSection && !lectureSeule
     && colonnes.length > 0
 
-  const appliquer = () => {
+  const appliquer = (point = optimum) => {
     const corps = { epingles: [] }
-    if (optimum.inclinaison_deg !== undefined) { corps.tilt = optimum.inclinaison_deg; corps.epingles.push('tilt') }
-    if (optimum.azimut_deg !== undefined) { corps.azimuth = optimum.azimut_deg; corps.epingles.push('azimuth') }
+    if (point.inclinaison_deg !== undefined) { corps.tilt = point.inclinaison_deg; corps.epingles.push('tilt') }
+    if (point.azimut_deg !== undefined) { corps.azimuth = point.azimut_deg; corps.epingles.push('azimuth') }
     builderApi.appliquerSection('choixConception', corps)
     setMessage('Optimum appliqué à l’atelier : enregistrez le calepinage pour le conserver.')
   }
@@ -94,6 +127,14 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
         <div>
           <Label htmlFor="acal469-pan">Pan n°</Label>
           <Input id="acal469-pan" type="number" step="any" value={pan} onChange={(e) => setPan(e.target.value)} />
+        </div>
+        <div>
+          <Label htmlFor="acal813-critere">Optimiser pour le mois de</Label>
+          <select id="acal813-critere" value={mois} onChange={(e) => setMois(e.target.value)}
+            className="min-h-11 w-full rounded-md border border-input bg-card px-2 text-sm text-foreground">
+            <option value="">Toute l’année</option>
+            {MOIS.map((m) => <option key={m} value={m}>{nomDuMois(m)}</option>)}
+          </select>
         </div>
         {AXES.map((a) => (
           <fieldset key={a.nom} className="flex items-end gap-2">
@@ -166,8 +207,9 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
           {' — '}{formatNumber(optimum.rendement_specifique_kwh_kwc, { decimals: 1 })} kWh/kWc
         </p>
       )}
+      <OptimumDuMois resultat={resultat} mois={moisLance} onAppliquer={appliquable ? appliquer : null} />
       {appliquable && (
-        <Button onClick={appliquer} data-testid="acal469-appliquer">Appliquer l’optimum</Button>
+        <Button onClick={() => appliquer()} data-testid="acal469-appliquer">Appliquer l’optimum</Button>
       )}
       {message && <p className="text-sm" role="status" data-testid="acal469-message">{message}</p>}
     </Card>

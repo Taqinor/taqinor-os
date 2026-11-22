@@ -69,6 +69,34 @@ describe('PanneauOptimiser (ACAL469)', () => {
     expect(await screen.findByTestId('acal469-incomplet')).toHaveTextContent('pvgis')
   })
 
+  /* ACAL813 — le critère « mois » (ACAL812). L'exemple du contrat porte un
+     optimum du mois identique à celui de l'année : il est décalé ici pour que
+     lire `optimum` au lieu de `optimum_mois` se voie (mutant). */
+  it('ACAL813 — juillet poste `critere` et affiche « X° pour juillet, Y° pour l’année » et l’écart du mois', async () => {
+    const res = resultat()
+    const mois = { ...res.optimum_mois, inclinaison_deg: res.optimum.inclinaison_deg + 10 }
+    servir({ ...res, optimum_mois: mois, ecart_mois_kwh: res.ecart_mois_kwh + 12 })
+    const appliquerSection = vi.fn()
+    render(<PanneauOptimiser calepinageId={7} builderApi={{ appliquerSection }} />)
+    fireEvent.change(screen.getByLabelText('Optimiser pour le mois de'), { target: { value: '7' } })
+    fireEvent.click(screen.getByTestId('acal469-lancer'))
+    const phrase = await screen.findByTestId('acal813-mois')
+    expect(calepinageApi.calepinages.balayer.mock.calls[0][1].critere).toEqual({ nom: 'mois', mois: 7 })
+    expect(phrase).toHaveTextContent(
+      `${mois.inclinaison_deg}° pour juillet, ${res.optimum.inclinaison_deg}° pour l’année : + 12 kWh en juillet`)
+    fireEvent.click(screen.getByTestId('acal813-appliquer'))
+    expect(appliquerSection).toHaveBeenCalledWith('choixConception', { tilt: mois.inclinaison_deg, epingles: ['tilt'] })
+  })
+
+  it('ACAL813 — « Toute l’année » par défaut : aucun critère posté, aucune phrase du mois', async () => {
+    servir(resultat())
+    render(<PanneauOptimiser calepinageId={7} />)
+    fireEvent.click(screen.getByTestId('acal469-lancer'))
+    await screen.findByTestId('acal469-optimum')
+    expect(calepinageApi.calepinages.balayer.mock.calls[0][1]).not.toHaveProperty('critere')
+    expect(screen.queryByTestId('acal813-mois')).toBeNull()
+  })
+
   it('un refus 400 du serveur nomme le champ fautif', async () => {
     calepinageApi.calepinages.balayer.mockRejectedValue({ response: { data: { pan: ['Pan introuvable dans le document : 9.'] } } })
     render(<PanneauOptimiser calepinageId={7} />)

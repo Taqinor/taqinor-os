@@ -323,3 +323,26 @@ describe('ACAL396 — `onEnregistre` après un enregistrement réussi, jamais ap
     expect(resultat).toHaveBeenCalledTimes(2)
   })
 })
+
+/* ACAL979 — un poste non saisi cite le réglage société servi par `catalogue[].societe`
+   (exemple du contrat `calepinage_pertes.json`) ; un poste saisi garde son texte. */
+describe('ACAL979 — la valeur héritée du réglage société', () => {
+  const CATALOGUE = exempleContrat('calepinage', 'calepinage_pertes').catalogue
+
+  it('le poste Incidence dit « Réglage société : ASHRAE, b0 = 0,05 », la salissure « aucun », l’ohmique rien', async () => {
+    pertes.mockResolvedValue({ data: { ...CONTRAT_VIDE, postes: [], catalogue: CATALOGUE } })
+    rendre()
+    expect(await screen.findByTestId('acal979-societe-iam')).toHaveTextContent('Réglage société : ASHRAE, b0 = 0,05')
+    expect(screen.getByTestId('acal979-societe-salissure')).toHaveTextContent('Réglage société : aucun')
+    expect(screen.getByTestId('cal-pertes-poste-ohmique_dc')).toBeInTheDocument()
+    expect(screen.queryByTestId('acal979-societe-ohmique_dc')).toBeNull()
+  })
+
+  it('un poste SAISI garde son texte : aucune ligne « Réglage société »', async () => {
+    const saisi = { poste: 'iam', libelle: 'Incidence (IAM)', pct: 3, source: 'saisie', reference: 'x', mensuel: null }
+    pertes.mockResolvedValue({ data: { ...CONTRAT_VIDE, postes: [saisi], catalogue: CATALOGUE } })
+    rendre()
+    await screen.findByTestId('cal-pertes-poste-iam')
+    expect(screen.queryByTestId('acal979-societe-iam')).toBeNull()
+  })
+})
