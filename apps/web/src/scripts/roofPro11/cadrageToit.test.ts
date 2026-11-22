@@ -2,6 +2,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { apiCamera, cadrerToit, type CarteCadrable } from './cadrageToit';
 import type { LngLat } from '../../lib/roof';
+import * as THREE from 'three';
+import { creerPoignees3d } from './poigneesSommets3d';
+import { poserPresentation } from './presentationCarte';
 
 const R = 6378137;
 const DEG2M = (Math.PI / 180) * R;
@@ -103,5 +106,85 @@ describe('cadrerToit — le toit remplit la carte (F6)', () => {
     api.appliquerVue('dessus');
     expect(map.jumpTo).toHaveBeenCalledWith({ pitch: 0, bearing: 0 });
     expect(api.cadrerToit({ zoomMax: 22 })).toBe(true);
+  });
+});
+
+// H6 — mode présentation (vue client) : tout marqueur d'édition se tait, un doigt fait tourner la maison.
+function cartePresentable() {
+  const vis: Record<string, string | undefined> = { 'rp9-pts': undefined, 'rp9-line': undefined, 'rp9-ref-contour-line': 'none', 'rp9-obs': undefined };
+  const ev: Record<string, Array<() => void>> = {};
+  const dom: Record<string, (e: Partial<PointerEvent>) => void> = {};
+  let cap = 10;
+  const map = {
+    ...carte().map,
+    getLayer: (id: string) => (id in vis ? {} : undefined),
+    getLayoutProperty: (id: string) => vis[id],
+    setLayoutProperty: vi.fn((id: string, _n: string, v: string) => { vis[id] = v; }),
+    triggerRepaint: vi.fn(),
+    on: vi.fn((t: string, f: () => void) => { (ev[t] ||= []).push(f); }),
+    off: vi.fn((t: string, f: () => void) => { ev[t] = (ev[t] || []).filter((g) => g !== f); }),
+    getBearing: () => cap,
+    setBearing: (c: number) => { cap = c; },
+    dragPan: { enable: vi.fn(), disable: vi.fn() },
+    getCanvasContainer: () => ({
+      addEventListener: (t: string, f: (e: Partial<PointerEvent>) => void) => { dom[t] = f; },
+      removeEventListener: (t: string) => { delete dom[t]; },
+    }),
+  };
+  return { map: map as unknown as CarteCadrable & typeof map, vis, ev, dom, cap: () => cap };
+}
+
+describe('modePresentation — vue client sans marqueur d\'édition (H6)', () => {
+  it('masque les calques d\'édition présents, garde les autres, et rend chacun tel quel à la sortie', () => {
+    const c = cartePresentable();
+    const api = apiCamera(c.map, sources(), true);
+    expect(api.modePresentation(true)).toBe(true);
+    expect(c.vis['rp9-pts']).toBe('none');
+    expect(c.vis['rp9-line']).toBe('none');
+    expect(c.vis['rp9-obs']).toBeUndefined(); // un obstacle est une donnée, pas un marqueur
+    c.vis['rp9-pts'] = 'visible'; // un module le ré-affiche (bascule de pente)…
+    c.ev.idle.forEach((f) => f()); // …il est re-masqué au prochain repos de la carte
+    expect(c.vis['rp9-pts']).toBe('none');
+    expect(api.modePresentation(false)).toBe(false);
+    expect(c.vis['rp9-pts']).toBe('visible');
+    expect(c.vis['rp9-ref-contour-line']).toBe('none'); // masqué avant : reste masqué
+    expect(c.ev.idle).toEqual([]);
+    expect(c.map.triggerRepaint).toHaveBeenCalledTimes(2);
+  });
+  it('un doigt fait tourner (cap), deux doigts ne tournent pas ; déplacer la carte est rendu à la sortie', () => {
+    const c = cartePresentable();
+    const api = apiCamera(c.map, sources(), true);
+    api.modePresentation(true);
+    expect(c.map.dragPan.disable).toHaveBeenCalled();
+    c.dom.pointerdown({ pointerId: 1, button: 0, clientX: 100 });
+    c.dom.pointermove({ pointerId: 1, clientX: 150 });
+    expect(c.cap()).toBeCloseTo(10 - 50 * 0.4, 6);
+    c.dom.pointerdown({ pointerId: 2, button: 0, clientX: 300 });
+    c.dom.pointermove({ pointerId: 1, clientX: 250 });
+    expect(c.cap()).toBeCloseTo(-10, 6); // pincement : la carte garde la main
+    c.dom.pointerup({ pointerId: 1 });
+    c.dom.pointerup({ pointerId: 2 });
+    api.modePresentation(false);
+    expect(c.map.dragPan.enable).toHaveBeenCalled();
+    expect(c.dom.pointermove).toBeUndefined();
+  });
+  it('les poignées 3D des coins (vue inclinée) se taisent en présentation : invisibles et insaisissables', () => {
+    const c = cartePresentable();
+    const carte3d = Object.assign(c.map, { getPitch: () => 60, getCanvas: () => ({ clientWidth: 390, clientHeight: 464 }) });
+    const p = creerPoignees3d(carte3d as never);
+    const scene = new THREE.Scene();
+    p.poser(scene, toit, toit[0], 6);
+    p.suivre(new THREE.Matrix4().makePerspective(-1, 1, 1, -1, 1, 1000).elements);
+    const groupe = scene.children.at(-1)!;
+    expect(groupe.visible).toBe(true);
+    poserPresentation(carte3d as never, true);
+    expect(groupe.visible).toBe(false);
+    expect(c.vis['rp9-pts']).toBe('none');
+    expect(p.ecran()).toEqual([]);
+    p.masquer()(); // la capture d'image rend l'état « présentation », pas l'état d'avant
+    expect(groupe.visible).toBe(false);
+    poserPresentation(carte3d as never, false);
+    expect(groupe.visible).toBe(true);
+    expect(c.vis['rp9-pts']).toBe('none'); // vue inclinée : le cercle du sol reste caché (ACAL1185)
   });
 });

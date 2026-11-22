@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Icone, Segmente } from '../atelier/coque/primitives'
 import { gestes, useConstructeur } from '../atelier/coque/etapes/panneaux/constructeur'
 import { jourMois } from '../atelier/coque/etapes/panneaux/formats'
-import { PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
+import { AvisEchec3D, IconeTourner, PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
 import { useDonneesClient } from './vueClient.helpers'
 
 /* ============================================================================
@@ -22,21 +22,33 @@ import { useDonneesClient } from './vueClient.helpers'
    ========================================================================== */
 
 const ESSAIS_VUE_MS = [0, 1500, 4000]
+/** H6 — la maison remplit la scène comme sur la maquette (le toit sur ~55 % de la largeur ; caméra seule). */
+const CADRAGE_CLIENT = { zoomMax: 22, part: 0.55 }
 
 const SAISONS = [{ valeur: 'winter', libelle: 'Hiver' }, { valeur: 'summer', libelle: 'Été' }]
 
-/** La caméra de trois-quarts, posée dès que l'API du constructeur est là ; `pret` ensuite. */
+/** La caméra de trois-quarts, posée dès que l'API du constructeur est là ; `pret` ensuite.
+ *  H6 — et le MODE PRÉSENTATION de la carte (`modePresentation`, roofPro11/presentationCarte.ts) : poignées,
+ *  tracé, cotes et étiquettes d'édition masqués ; un doigt fait tourner la maison (`tourne` : l'aide le dit). */
 function useVueTroisQuarts(builderApi) {
   const [pret, setPret] = useState(false)
+  const [tourne, setTourne] = useState(false)
   useEffect(() => {
     if (typeof builderApi?.appliquerVue !== 'function') return undefined
+    const presentation = typeof builderApi.modePresentation === 'function'
+    const actif = presentation && builderApi.modePresentation(true) === true
     const minuteurs = ESSAIS_VUE_MS.map((delai) => window.setTimeout(() => {
       builderApi.appliquerVue('trois-quarts')
+      builderApi.cadrerToit?.(CADRAGE_CLIENT)
       setPret(true)
+      setTourne(actif)
     }, delai))
-    return () => minuteurs.forEach((m) => window.clearTimeout(m))
+    return () => {
+      minuteurs.forEach((m) => window.clearTimeout(m))
+      if (presentation) builderApi.modePresentation(false)
+    }
   }, [builderApi])
-  return pret
+  return { pret, tourne }
 }
 
 function LecteurSoleil() {
@@ -54,6 +66,7 @@ function LecteurSoleil() {
       <div className="cal-client-soleil-curseur">
         <span className="cal-client-soleil-quand">{quand}</span>
         <input type="range" min="6" max="18" step="1" value={heure} aria-label="Heure du soleil"
+          className="cal-pan-heure" style={{ '--cal-pan-rempli': `${((Number(heure) - 6) / 12) * 100}%` }}
           onChange={(e) => g(gestes.heure)(e.target.value)} />
       </div>
       <Segmente libelle="Saison" options={SAISONS} valeur={saison} onChange={g(gestes.saison)} />
@@ -79,7 +92,7 @@ export default function HabillageClient({
   calepinageId, builderApi = null, noeudScene = null, contexte = null, onRecharger = null,
 }) {
   const donnees = useDonneesClient(calepinageId, { contexte })
-  const pret = useVueTroisQuarts(builderApi)
+  const { pret, tourne } = useVueTroisQuarts(builderApi)
   const retard = useTroisDEnRetard(pret)
   // Recharger = relire la page (GET seulement) : l'atelier redémarre sa 3D.
   const recharger = () => (typeof onRecharger === 'function' ? onRecharger() : window.location.reload())
@@ -90,15 +103,16 @@ export default function HabillageClient({
           {!pret && (
             <div className="cal-client-repli" data-testid="client-repli-2d">
               {donnees.plan && <PlanDessus plan={donnees.plan} />}
-              {retard && (
-                <p className="cal-client-repli-retard" role="status" data-testid="client-3d-retard">
-                  {'La vue 3D n’a pas pu démarrer. '}
-                  <button type="button" className="cal-client-repli-reessayer" onClick={recharger}>Réessayer</button>
-                </p>
-              )}
+              {retard && <AvisEchec3D onReessayer={recharger} />}
             </div>
           )}
           <PuceProjet titre={donnees.titre} sousTitre={donnees.sousTitre} />
+          {pret && tourne && (
+            <span className="cal-client-pastille cal-client-geste" data-testid="client-aide-geste">
+              <IconeTourner />
+              Glissez un doigt pour tourner autour
+            </span>
+          )}
         </>,
         noeudScene,
       )}

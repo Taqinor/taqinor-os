@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../../api/calepinageApi'
 import { ErrorBoundary, SkeletonCard, SkeletonText } from '../../../../ui'
 import BarreEnregistrement from '../BarreEnregistrement'
@@ -104,6 +104,49 @@ function usePlanALEntreeDEtape({ builderRef, actif, cle, builderApiCoque }) {
   }, [actif, cle, builderApiCoque, builderRef])
 }
 
+// H7 — la feuille « Avancé » ne reste jamais par-dessus ce qu'elle n'a pas ouvert. Elle se referme : sur Échap, sur un
+// changement d'adresse (lien ou onglet suivi depuis elle — CAL221 : « Comparer les variantes » laissait la feuille sur
+// « Retenir »), sur un clic hors d'elle, et quand un geste fait DEPUIS elle ouvre un autre dialogue (posé hors d'elle).
+const GARDE_FEUILLE = '.cal-coque-avance, [data-testid="cal-rail-avance"], [role="dialog"], [role="alertdialog"], '
+  + '[role="listbox"], [role="menu"], [data-radix-popper-content-wrapper], [data-sonner-toaster]'
+const AUTRE_DIALOGUE = '[role="dialog"]:not(.cal-coque-avance), [role="alertdialog"], [aria-modal="true"]'
+const ESSAIS_DIALOGUE_MS = [50, 400, 1500]
+
+function useFermetureFeuille(feuille, fermer, cleLieu) {
+  const fermerRef = useRef(fermer)
+  useEffect(() => { fermerRef.current = fermer })
+  // L'adresse au moment où la feuille s'ouvre : tenue à jour tant qu'elle est fermée (aucun état posé au montage).
+  const lieuOuvert = useRef(cleLieu)
+  useEffect(() => {
+    if (feuille && lieuOuvert.current !== cleLieu) fermerRef.current()
+  }, [feuille, cleLieu])
+  useEffect(() => { if (!feuille) lieuOuvert.current = cleLieu })
+  useEffect(() => {
+    if (!feuille) return undefined
+    const dialoguesHors = () => [...document.querySelectorAll(AUTRE_DIALOGUE)]
+      .filter((d) => !d.closest('.cal-coque-avance')).length
+    const minuteurs = []
+    const echap = (e) => { if (e.key === 'Escape') fermerRef.current() }
+    const dehors = (e) => { if (!e.target?.closest?.(GARDE_FEUILLE)) fermerRef.current() }
+    const dedans = (e) => {
+      if (!e.target?.closest?.('.cal-coque-avance')) return
+      const avant = dialoguesHors()
+      ESSAIS_DIALOGUE_MS.forEach((ms) => minuteurs.push(window.setTimeout(() => {
+        if (dialoguesHors() > avant) fermerRef.current()
+      }, ms)))
+    }
+    window.addEventListener('keydown', echap)
+    document.addEventListener('pointerdown', dehors, true)
+    document.addEventListener('click', dedans, true)
+    return () => {
+      window.removeEventListener('keydown', echap)
+      document.removeEventListener('pointerdown', dehors, true)
+      document.removeEventListener('click', dedans, true)
+      minuteurs.forEach((m) => window.clearTimeout(m))
+    }
+  }, [feuille])
+}
+
 const etatSimulation = (data) => (data?.calcule_le && data?.simulation_perimee === false
   ? `Simulation à jour · ${formaterHeureBrouillon(data.calcule_le)}` : null)
 
@@ -165,12 +208,8 @@ export default function CoqueAtelier({
   const [avanceOuvert, setAvanceOuvert] = useState(false)
   const avance = expert || avanceOuvert
   const feuille = !expert && avanceOuvert
-  useEffect(() => {
-    if (!feuille) return undefined
-    const echap = (e) => { if (e.key === 'Escape') setAvanceOuvert(false) }
-    window.addEventListener('keydown', echap)
-    return () => window.removeEventListener('keydown', echap)
-  }, [feuille])
+  const lieu = useLocation()
+  useFermetureFeuille(feuille, () => setAvanceOuvert(false), `${lieu.pathname}${lieu.search}`)
   const carteVisible = cadre === CADRES.CARTE
 
   const choisirEtape = (cle) => {

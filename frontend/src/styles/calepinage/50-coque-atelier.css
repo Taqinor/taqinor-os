@@ -261,6 +261,10 @@
   position: relative;
 }
 .cal-coque .cal-coque-statut-fermer::after { content: ''; position: absolute; inset: -8px; } /* cible de 44 px */
+/* H7 — premier écran guidé (maquette Main : aucune pastille, aucun × sur la carte) : la pastille d'état reste LUE,
+   sa croix ne vit qu'en Expert (un nouveau message la rouvre de toute façon). */
+.cal-coque[data-expert='0'] .cal-coque-statut-fermer { display: none; }
+.cal-coque[data-expert='0'] .cal-coque-statut #rp9-status { padding-right: 12px; }
 .cal-coque .cal-coque-statut:has(#rp9-status:empty),
 .cal-coque .cal-coque-statut[data-masque='1'] { display: none; }
 
@@ -527,8 +531,8 @@
 }
 .cal-coque .cal-client-soleil-lecture[aria-pressed='true'] { background: var(--primary); color: var(--primary-foreground); }
 .cal-coque .cal-client-soleil-curseur { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.cal-coque .cal-client-soleil-quand { font-size: 0.875rem; font-weight: 600; }
-.cal-coque .cal-client-soleil-curseur input { width: 100%; accent-color: var(--primary); min-height: 24px; }
+.cal-coque .cal-client-soleil-quand { font-size: 0.875rem; font-weight: 600; line-height: 1.25; }
+/* H6 — le curseur d'heure de la maquette (piste 6 px or, bouton 18 px liseré) : celui de l'étape Panneaux (`.cal-pan-heure`). */
 .cal-coque .cal-client-soleil .cal-segmente > button { height: 44px; padding: 0 10px; }
 
 /* ── « Avancé » en guidé : une FEUILLE à part, par-dessus l'écran, à droite (fermable : bouton, Échap, ou un

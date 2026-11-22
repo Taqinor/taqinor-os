@@ -35,6 +35,58 @@ def _partage(calepinage, cle, calcul):
     return memoire[cle]
 
 
+def _empreinte_de_lecture(calepinage, cle):
+    """H5 — la clé d'``une_fois_par_lecture`` : tout ce dont le calcul dépend.
+
+    Le pk ET l'instance (une autre instance du même pk, relue ou modifiée en
+    mémoire, ne reçoit pas le calcul d'une autre), le document et le
+    ``resultat`` portés PAR CETTE instance (un document rebranché en mémoire
+    change la clé), le devis lié et la société."""
+    return (cle, getattr(calepinage, 'pk', None), id(calepinage),
+            id(getattr(calepinage, 'roof_layout', None)),
+            id(getattr(calepinage, 'resultat', None)),
+            getattr(calepinage, 'devis_id', None),
+            getattr(calepinage, 'company_id', None))
+
+
+def une_fois_par_lecture(cle):
+    """H5 — décorateur : ``fonction(calepinage)`` calculée UNE fois par lecture.
+
+    Seulement pendant une lecture d'``agreger`` (``_LECTURE`` posée) ET pour
+    l'appel SANS aucune option (pas d'``entree``/``layout``/``materiel``…, ni
+    argument positionnel en plus) : un appel qui évalue autre chose que
+    l'enregistré est toujours recalculé. Hors lecture : l'appel tel quel,
+    rien n'est gardé. Un refus (exception) est gardé aussi : le calcul est
+    déterministe le temps d'une lecture, le même refus est relevé à chaque
+    appel, comme avant, sans être recalculé.
+    Le résultat gardé est PARTAGÉ : les appelants le lisent sans le modifier.
+    Le calcul passe par ``enveloppe.__wrapped__`` (posé par ``wraps``) : un
+    test peut l'espionner pour compter les calculs réels.
+    """
+    import functools
+
+    def decorer(fonction):
+        @functools.wraps(fonction)
+        def enveloppe(calepinage, *args, **options):
+            calcul = enveloppe.__wrapped__
+            memoire = _LECTURE.get()
+            if (memoire is None or args
+                    or any(v is not None for v in options.values())):
+                return calcul(calepinage, *args, **options)
+            empreinte = _empreinte_de_lecture(calepinage, cle)
+            if empreinte not in memoire:
+                try:
+                    memoire[empreinte] = (True, calcul(calepinage))
+                except Exception as refus:  # le MÊME refus, relevé à chaque appel
+                    memoire[empreinte] = (False, refus)
+            reussi, valeur = memoire[empreinte]
+            if not reussi:
+                raise valeur
+            return valeur
+        return enveloppe
+    return decorer
+
+
 def _resultat(calepinage):
     """Le ``resultat`` servi (``GET resultat/``), une fois par lecture."""
     from .. import selectors

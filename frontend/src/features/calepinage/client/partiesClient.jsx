@@ -29,6 +29,25 @@ export function PlanDessus({ plan }) {
   )
 }
 
+/** La flèche circulaire des maquettes (« tourner autour », « voir la 3D »). */
+export function IconeTourner() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 11-3-6.7" /><path d="M21 4v5h-5" /></svg>
+  )
+}
+
+/** La 3D n'a pas démarré (atelier en échec, chunk du constructeur introuvable) : dit sur la scène, avec « Réessayer »
+ *  (relire la page : des GET seulement). Le toit enregistré dessiné de dessus reste dessous. */
+export function AvisEchec3D({ onReessayer }) {
+  return (
+    <p className="cal-client-repli-retard" role="status" data-testid="client-3d-retard">
+      {'La vue 3D n’a pas pu démarrer. '}
+      <button type="button" className="cal-client-repli-reessayer" onClick={onReessayer}>Réessayer</button>
+    </p>
+  )
+}
+
 /** La puce du projet (titre ; ville · pan), en haut à gauche de la scène. */
 export function PuceProjet({ titre, sousTitre }) {
   if (!titre && !sousTitre) return null

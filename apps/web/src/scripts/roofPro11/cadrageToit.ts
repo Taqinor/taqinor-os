@@ -6,6 +6,7 @@
 import { WGS84_RADIUS } from '../../lib/geo';
 import { cadrageAnneaux, type LngLat, type OptionsCadrage as OptionsCadrageToit } from '../../lib/roof';
 import { appliquerVue, type NomVue } from './vuesCamera';
+import { poserPresentation, type CartePresentable } from './presentationCarte';
 
 /** H1 (tour 3) — `basPx` : hauteur du bas de la carte COUVERTE (tiroir de la tablette) ; le toit est cadré au centre
  *  de la partie VISIBLE, au-dessus. Absent ou 0 : la carte entière, comportement d'avant. */
@@ -71,10 +72,11 @@ export function cadrerToit(map: CarteCadrable, sources: SourcesCamera, options: 
   return true;
 }
 
-/** Les deux commandes de caméra de l'API du constructeur (ACAL435 + F6). */
-export function apiCamera(map: CarteCadrable, sources: SourcesCamera, reducedMotion: boolean) {
+/** Les commandes de caméra de l'API du constructeur (ACAL435 + F6) ; H6 — `modePresentation` (vue client). */
+export function apiCamera(map: CarteCadrable & CartePresentable, sources: SourcesCamera, reducedMotion: boolean) {
   return {
     appliquerVue: (nom: NomVue) => appliquerVue(map, nom, sources.azimut(), reducedMotion),
     cadrerToit: (options?: OptionsCadrage) => cadrerToit(map, sources, options),
+    modePresentation: (actif: boolean) => poserPresentation(map, actif),
   };
 }

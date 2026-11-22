@@ -200,6 +200,27 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     expect(appelsDEcriture()).toEqual([])
   })
 
+  it('H6 — mode présentation de la carte : demandé au constructeur (aucune poignée), l’aide de geste dite, rendu à la sortie', async () => {
+    const modePresentation = vi.fn(() => true)
+    const cadrerToit = vi.fn(() => true)
+    reinitialiserBoot({ appliquerVue: vi.fn(), modePresentation, cadrerToit })
+    const { unmount } = rendre({ webgl: true })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    await waitFor(() => expect(modePresentation).toHaveBeenCalledWith(true))
+    expect(await screen.findByTestId('client-aide-geste')).toHaveTextContent('Glissez un doigt pour tourner autour')
+    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: 22, part: 0.55 })
+    unmount()
+    expect(modePresentation).toHaveBeenLastCalledWith(false)
+  })
+
+  it('H6 — un constructeur sans mode présentation : aucune aide de geste (un doigt n’y fait pas tourner)', async () => {
+    reinitialiserBoot({ appliquerVue: vi.fn() })
+    rendre({ webgl: true })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    await waitFor(() => expect(screen.getByTestId('client-projet')).toBeInTheDocument())
+    expect(screen.queryByTestId('client-aide-geste')).toBeNull()
+  })
+
   it('rien d’argent ni de libellé interne dans ce que voit le client', async () => {
     reinitialiserBoot({ appliquerVue: vi.fn(), ...apiBuilder() })
     rendre({ webgl: true })

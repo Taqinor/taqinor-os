@@ -1,8 +1,8 @@
-import { Suspense, lazy, useMemo } from 'react'
+import { Component, Suspense, lazy, useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ContextePresentation } from '../atelier/coque/contexteCoque'
 import HabillageClient from './HabillageClient'
-import { PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
+import { AvisEchec3D, IconeTourner, PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
 import { useDonneesClient, webglDisponible } from './vueClient.helpers'
 
 /* ============================================================================
@@ -23,7 +23,7 @@ import { useDonneesClient, webglDisponible } from './vueClient.helpers'
 const Atelier = lazy(() => import('../../../pages/ventes/ToitureDesign'))
 
 /** Le repli 2D : le toit enregistré dessiné de dessus, les tuiles et le pied (écran L7). */
-function VueClient2D({ id }) {
+function VueClient2D({ id, echec3d = false }) {
   const d = useDonneesClient(id)
   return (
     <div className="cal-tel" data-testid="cal-vue-client">
@@ -34,11 +34,12 @@ function VueClient2D({ id }) {
           </p>
         )}
         <PuceProjet titre={d.titre} sousTitre={d.sousTitre} />
-        <Link to={`/calepinage/${id}`} className="cal-client-pastille" data-testid="client-voir-3d">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 11-3-6.7" /><path d="M21 4v5h-5" /></svg>
-          Vue de dessus · voir la 3D dans l’atelier
-        </Link>
+        {echec3d ? <AvisEchec3D onReessayer={() => window.location.reload()} /> : (
+          <Link to={`/calepinage/${id}`} className="cal-client-pastille" data-testid="client-voir-3d">
+            <IconeTourner />
+            Vue de dessus · voir la 3D dans l’atelier
+          </Link>
+        )}
       </div>
       <div className="cal-client-corps">
         <TuilesClient tuiles={d.tuiles} ville={d.ville} />
@@ -50,15 +51,25 @@ function VueClient2D({ id }) {
 
 const PRESENTATION = { rendu: (props) => <HabillageClient {...props} /> }
 
+/** H6 — le chunk de l'atelier (ou du constructeur) ne se charge pas : la vue client reste, en repli 2D, et le DIT
+ *  (« Réessayer ») — jamais la page d'erreur générique devant le client. */
+class GardeAtelier extends Component {
+  constructor(props) { super(props); this.state = { echec: false } }
+  static getDerivedStateFromError() { return { echec: true } }
+  render() { return this.state.echec ? <VueClient2D id={this.props.id} echec3d /> : this.props.children }
+}
+
 export default function VueClient({ webgl }) {
   const { id } = useParams()
   const peut3d = useMemo(() => (webgl === undefined ? webglDisponible() : webgl), [webgl])
   if (!peut3d) return <VueClient2D id={id} />
   return (
     <ContextePresentation.Provider value={PRESENTATION}>
-      <Suspense fallback={<VueClient2D id={id} />}>
-        <Atelier mode="calepinage" lectureSeuleImposee />
-      </Suspense>
+      <GardeAtelier id={id}>
+        <Suspense fallback={<VueClient2D id={id} />}>
+          <Atelier mode="calepinage" lectureSeuleImposee />
+        </Suspense>
+      </GardeAtelier>
     </ContextePresentation.Provider>
   )
 }

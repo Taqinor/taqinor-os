@@ -1210,6 +1210,30 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(coque).not.toHaveAttribute('data-feuille')
   })
 
+  it('H7 — la feuille « Avancé » se referme quand on la quitte : lien suivi (CAL221), clic dehors, Échap', async () => {
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    const coque = await screen.findByTestId('cal-coque')
+    const ouvrir = async () => {
+      await userEvent.click(screen.getByTestId('cal-rail-avance'))
+      await waitFor(() => expect(coque).toHaveAttribute('data-feuille', '1'))
+    }
+    // « Comparer les variantes » ouvre un autre écran : la feuille ne reste pas par-dessus (« Retenir » masqué avant).
+    await ouvrir()
+    await userEvent.click(screen.getByTestId('cal-lien-variantes'))
+    await waitFor(() => expect(coque).not.toHaveAttribute('data-feuille'))
+    expect(screen.queryByRole('dialog', { name: 'Avancé' })).toBeNull()
+    // Un clic hors de la feuille (la carte) la referme ; un clic DANS la feuille, non.
+    await ouvrir()
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Avancé' })).getByRole('heading', { name: 'Avancé' }))
+    expect(coque).toHaveAttribute('data-feuille', '1')
+    await userEvent.click(document.getElementById('rp9-map'))
+    await waitFor(() => expect(coque).not.toHaveAttribute('data-feuille'))
+    await ouvrir()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(coque).not.toHaveAttribute('data-feuille'))
+  })
+
   it('scène propre déjà enregistrée : « ✓ Enregistré … » seul, comme la maquette ; modifiée : le bouton revient', async () => {
     amorcer()
     calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: new Date().toISOString() } } })

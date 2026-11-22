@@ -251,7 +251,7 @@
   box-shadow: var(--shadow-tile);
 }
 .cal-client-puce-titre { font-family: var(--font-display); font-weight: 600; font-size: 1rem; line-height: 1.2; }
-.cal-client-puce-ligne { font-size: 0.75rem; color: var(--muted-foreground); }
+.cal-client-puce-ligne { font-size: 0.75rem; line-height: 1.35; color: var(--muted-foreground); }
 .cal-client-pastille {
   position: absolute;
   left: 50%;
@@ -269,6 +269,13 @@
   white-space: nowrap;
   text-decoration: none;
 }
+/* H6 — l'aide de geste sur la 3D (maquette : 6 × 12 px) : un texte, pas une cible — le doigt passe à la carte. */
+.cal-coque .cal-client-pastille.cal-client-geste { min-height: 0; padding: 6px 12px; line-height: 1.35; pointer-events: none; }
+/* H6 — zones sûres du téléphone (encoche, barre d'accueil ; `viewport-fit=cover`) : vue client seulement. */
+.cal-coque[data-presentation='1'] .cal-client-puce,
+.cal-tel .cal-client-puce { top: max(16px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left)); }
+.cal-coque[data-presentation='1'] .cal-tel-pied,
+.cal-tel .cal-client-corps ~ .cal-tel-pied { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
 .cal-client-corps {
   flex: 1;
   min-height: 0;
