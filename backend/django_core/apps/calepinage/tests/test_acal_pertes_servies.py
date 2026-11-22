@@ -16,9 +16,11 @@ Run :
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -35,6 +37,42 @@ BASE = '/api/django/calepinage/calepinages/'
 
 IAM = {'poste': 'iam', 'libelle': 'Incidence (IAM)', 'pct': 3.0,
        'source': 'saisie', 'reference': 'relevé bureau d’études'}
+
+
+def _contrat_pertes():
+    chemin = Path(__file__).resolve().parents[1] / 'contract_samples' / 'calepinage_pertes.json'
+    return json.loads(chemin.read_text(encoding='utf-8'))
+
+
+class ReglageSocieteParPosteTest(SimpleTestCase):
+    """ACAL979 — le résumé du réglage société d'un poste (lecture pure)."""
+
+    def test_ashrae_b0_et_societe_vide(self):
+        from apps.calepinage.views.simulation import _societe_des_postes
+
+        rempli = _societe_des_postes({
+            'modele_iam': {'valeur': 'ashrae', 'source': 'societe'},
+            'b0_iam': {'valeur': 0.05, 'source': 'societe'}})
+        self.assertEqual(rempli['iam'], {
+            'cles': ['modele_iam', 'b0_iam'], 'renseigne': True,
+            'resume': 'ASHRAE, b0 = 0,05', 'source': 'societe'})
+        vide = _societe_des_postes({})
+        self.assertEqual(vide['iam'], {'cles': ['modele_iam', 'b0_iam'], 'renseigne': False,
+                                       'resume': '', 'source': None})
+        # Une valeur sans source n'est pas un réglage (même règle que `etapes.reglage`).
+        self.assertFalse(_societe_des_postes({'mismatch_fabricant_pct': {'valeur': 2}})['mismatch']['renseigne'])
+        self.assertEqual(_societe_des_postes({'mismatch_fabricant_pct': {'valeur': 2, 'source': 'societe'}})
+                         ['mismatch']['resume'], '2 %')
+
+    def test_chaque_cle_existe_au_registre(self):
+        from apps.calepinage.services.parametres_cles import SECTION_SIMULATION, registre
+        from apps.calepinage.services.pertes import CATALOGUE_PAR_POSTE, CLES_SOCIETE_PAR_POSTE
+
+        connues = registre(SECTION_SIMULATION)
+        for poste, cles in CLES_SOCIETE_PAR_POSTE.items():
+            self.assertIn(poste, CATALOGUE_PAR_POSTE, poste)
+            for cle, _court in cles:
+                self.assertIn(cle, connues, (poste, cle))
 
 
 class PertesServiesTest(TestCase):
@@ -123,6 +161,27 @@ class PertesServiesTest(TestCase):
         schema = PostesDePertesSerializer().fields['pertes'].child.fields
         self.assertEqual(schema['mensuel'].min_length, 12)
         self.assertEqual(schema['mensuel'].max_length, 12)
+
+    def test_acal979_catalogue_cite_le_reglage_societe(self):
+        """ACAL979 — société à ashrae et b0 = 0,05 ⇒ `societe.resume` servi
+        sur la ligne `iam` du catalogue ; un poste sans clé société porte
+        `societe: null` ; la ligne a la forme du contrat."""
+        from apps.calepinage.services.parametres import enregistrer_parametres
+
+        enregistrer_parametres(self.calepinage.company, {'simulation': {
+            'modele_iam': {'valeur': 'ashrae', 'source': 'societe', 'reference': 'PVsyst'},
+            'b0_iam': {'valeur': 0.05, 'source': 'societe', 'reference': 'PVsyst'}}})
+
+        catalogue = {e['poste']: e for e in self._get('pertes')['catalogue']}
+
+        self.assertEqual(catalogue['iam']['societe']['resume'], 'ASHRAE, b0 = 0,05')
+        self.assertTrue(catalogue['iam']['societe']['renseigne'])
+        self.assertEqual(catalogue['iam']['societe']['cles'], ['modele_iam', 'b0_iam'])
+        self.assertFalse(catalogue['salissure']['societe']['renseigne'])
+        self.assertIsNone(catalogue['ohmique_dc']['societe'])
+        contrat = _contrat_pertes()['exemple']['catalogue']
+        self.assertEqual(set(catalogue['iam']), set(contrat[0]))
+        self.assertEqual(set(catalogue['iam']['societe']), set(contrat[0]['societe']))
 
     def test_corps_formulaire_refuse_415_pas_400_trompeur(self):
         # CI #997 fuzz : le schéma ne déclare que du JSON (liste d'objets) ;
