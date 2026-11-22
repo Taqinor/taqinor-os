@@ -22,7 +22,9 @@ import { configureStore } from '@reduxjs/toolkit'
 import { mocks } from '../../test/calepinageListMocks'
 
 import CalepinageList from './CalepinageList'
-import { STATUTS_CALEPINAGE, initiales, modifieDe } from './CalepinageList.helpers'
+import {
+  STATUTS_CALEPINAGE, apercuVide, identiteCarte, initiales, modifieDe,
+} from './CalepinageList.helpers'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -435,6 +437,30 @@ describe('CalepinageList — maquette Liste', () => {
     expect(await screen.findByTestId('cal-vignette-321')).toHaveTextContent('Fès')
   })
 
+  it('le titre de la carte est le client (puis la ville), le nom propre passe en petit ; sans rattachement il reste le titre', async () => {
+    const lie = { ...SANS_IMAGE, id: 331, nom: 'ACAL987 Toiture x7', client_apercu: { id: 4, nom: 'Villa Bennani', ville: 'Casablanca' } }
+    const libre = { ...SANS_IMAGE, id: 332, nom: 'Toiture libre', client_apercu: null, lead: null }
+    mocks.list.mockResolvedValue({ data: { count: 2, next: null, previous: null, results: [lie, libre] } })
+    rendre()
+    const carte = await screen.findByTestId('cal-vignette-331')
+    expect(within(carte).getByText('Villa Bennani').className).toContain('font-semibold')
+    expect(carte).toHaveTextContent('Casablanca')
+    expect(within(carte).getByTestId('acal-vignette-nom')).toHaveTextContent('ACAL987 Toiture x7')
+    const libreCarte = screen.getByTestId('cal-vignette-332')
+    expect(within(libreCarte).getByText('Toiture libre').className).toContain('font-semibold')
+    expect(within(libreCarte).queryByTestId('acal-vignette-nom')).toBeNull()
+    expect(screen.getByPlaceholderText('Client, ville ou lead')).toBeInTheDocument()
+  })
+
+  it('une image qui ne se charge pas retombe sur « Aucun aperçu »', async () => {
+    mocks.list.mockResolvedValue({ data: { count: 1, next: null, previous: null, results: [AVEC_IMAGE] } })
+    rendre()
+    const img = await screen.findByTestId('cal-vignette-image')
+    fireEvent.error(img)
+    expect(await screen.findByTestId('cal-vignette-sans-image')).toHaveTextContent('Aucun aperçu')
+    expect(screen.queryByTestId('cal-vignette-image')).toBeNull()
+  })
+
   it('« Mes calepinages » : absent sans personne connectée', async () => {
     rendre()
     await screen.findByTestId('cal-liste-filtres-etat')
@@ -474,5 +500,22 @@ describe('CalepinageList.helpers — modifieDe / initiales', () => {
     expect(initiales('Hamza Bennani')).toBe('HB')
     expect(initiales('demo_admin')).toBe('D')
     expect(initiales('')).toBeNull()
+  })
+})
+
+describe('CalepinageList.helpers — identiteCarte / apercuVide', () => {
+  it('identiteCarte : client, sinon lead, sinon nom propre', () => {
+    expect(identiteCarte({ nom: 'N', client_apercu: { nom: 'C', ville: 'Fès' } }))
+      .toEqual({ titre: 'C', ville: 'Fès', propre: 'N' })
+    expect(identiteCarte({ nom: 'N', lead: { nom: 'L', ville: 'Rabat' } }))
+      .toEqual({ titre: 'L', ville: 'Rabat', propre: 'N' })
+    expect(identiteCarte({ nom: 'N' })).toEqual({ titre: 'N', ville: null, propre: null })
+    expect(identiteCarte({ nom: 'Pareil', client_apercu: { nom: 'Pareil' } }).propre).toBeNull()
+  })
+
+  it('apercuVide : tout blanc ou transparent = vide ; un pixel sombre = non', () => {
+    expect(apercuVide(new Uint8ClampedArray([255, 255, 255, 255, 0, 0, 0, 0]))).toBe(true)
+    expect(apercuVide(new Uint8ClampedArray([255, 255, 255, 255, 20, 30, 40, 255]))).toBe(false)
+    expect(apercuVide(new Uint8ClampedArray([]))).toBe(false)
   })
 })

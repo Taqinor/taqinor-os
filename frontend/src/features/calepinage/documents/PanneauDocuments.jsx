@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
+import { LECTURE_LENTE } from '../../../api/calepinage/simulation'
 import useResource from '../../../hooks/useResource'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { formatDateTime } from '../../../lib/format'
@@ -12,6 +13,7 @@ import {
   MINUTES_DE_DELAI, OPTIONS_TELECHARGEMENT, erreurDeTelechargement,
 } from './telechargement'
 import Pourquoi from '../commun/Pourquoi'
+import { estDelaiDepasse } from '../commun/PretAEnvoyer.helpers'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
 import { cartesGuide } from './cartesGuide'
 import ColonneDocuments from './ColonneDocuments'
@@ -101,6 +103,27 @@ function ErreursSortie({ erreurs }) {
     devinette. */
 function hrefAttachment(attachmentId) {
   return `/api/django/records/attachments/${attachmentId}/download/`
+}
+
+const MESSAGE_INVENTAIRE_ECHEC = 'Inventaire des documents indisponible.'
+const MESSAGE_INVENTAIRE_LENT = 'L’inventaire des documents prend plus de temps que prévu.'
+const OPTIONS_INVENTAIRE = {
+  select: (r) => r.data,
+  errorMessage: (err) => (estDelaiDepasse(err) ? MESSAGE_INVENTAIRE_LENT : MESSAGE_INVENTAIRE_ECHEC),
+}
+
+/** Un délai dépassé n'est pas un refus : on le dit comme tel, avec « Réessayer » dans les deux cas. */
+function ErreurInventaire({ message, onReessayer }) {
+  const lent = message === MESSAGE_INVENTAIRE_LENT
+  return (
+    <div role={lent ? 'status' : 'alert'} data-testid="cal-doc-erreur" data-lent={lent ? 'oui' : undefined}
+      className="cdoc-inventaire-attente">
+      <span className={lent ? 'font-medium' : 'text-destructive'}>{message}</span>
+      <Button type="button" variant="outline" size="sm" data-testid="cal-doc-reessayer" onClick={() => { onReessayer() }}>
+        Réessayer
+      </Button>
+    </div>
+  )
 }
 
 /** La liste `manque[]` d'un document indisponible — chaque entrée NOMME son
@@ -567,8 +590,7 @@ export default function PanneauDocuments({
   const id = calepinageId ?? idRoute
 
   const { data, loading, error, refetch } = useResource(
-    () => calepinageApi.calepinages.documents(id), id,
-    { select: (r) => r.data, errorMessage: 'Inventaire des documents indisponible.' },
+    () => calepinageApi.calepinages.documents(id, LECTURE_LENTE), id, OPTIONS_INVENTAIRE, // J6 : lecture lente
   )
 
   // ACAL228 — l'inventaire `sorties/` (distinct de `documents/`). Une erreur
@@ -842,9 +864,7 @@ export default function PanneauDocuments({
   }
 
   if (loading) return <Spinner />
-  if (error) {
-    return <p className="text-sm text-destructive" data-testid="cal-doc-erreur">{error}</p>
-  }
+  if (error) return <ErreurInventaire message={error} onReessayer={refetch} />
 
   const documents = data?.documents || []
 

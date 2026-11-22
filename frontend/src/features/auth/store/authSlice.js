@@ -9,15 +9,19 @@ export const fetchMe = createAsyncThunk(
   'auth/fetchMe',
   async (_, { rejectWithValue }) => {
     try {
-      const { data } = await api.get('/auth/me/')
+      // J3 — serveur chargé (42 s mesurés le 22/11) : le démarrage attend 60 s au lieu de 20 s,
+      // et l'écran de démarrage dit lui-même qu'il attend (aucun toast d'expiration).
+      const { data } = await api.get('/auth/me/', { silencieuxExpiration: true, timeout: 60000 })
       return data
     } catch (err) {
       // ADEP33 — le rejet DISTINGUE un refus d'authentification (401/403) d'une
       // panne : ``reseau`` = aucune réponse reçue (hors ligne, DNS, timeout),
       // ``status`` = code HTTP reçu (null sans réponse). Contrat interne front
-      // consommé par le routeur (ADEP19).
+      // consommé par le routeur (ADEP19). J3 : ``expire`` = le délai du client
+      // est dépassé (le serveur est lent, pas injoignable).
       const status = err?.response?.status ?? null
-      return rejectWithValue({ status, reseau: !err?.response })
+      const expire = err?.code === 'ECONNABORTED' || err?.code === 'ETIMEDOUT'
+      return rejectWithValue({ status, reseau: !err?.response, expire })
     }
   }
 )

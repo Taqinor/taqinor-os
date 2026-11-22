@@ -136,3 +136,6 @@
 @media (prefers-reduced-motion: reduce) {
   .cdoc-bouton, .cdoc-regler { transition: none; }
 }
+/* J6 — l'inventaire des documents lu trop lentement / refusé : phrase + « Réessayer », dans la colonne. */
+.cdoc-inventaire-attente { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; font-size: 14px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; }

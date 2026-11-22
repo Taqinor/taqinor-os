@@ -47,7 +47,7 @@ export function nomDePerte(etape, libelleServi = '') {
    `parcours_guide.MOTIFS`, donne le titre simple, une ligne claire et le mot du bouton ; la phrase servie
    reste derrière le « ? ». Code inconnu : le message servi sert de titre, sans ligne — rien n'est perdu. */
 export const MANQUES_CLAIRS = {
-  norme_absente: { titre: 'Norme électrique à choisir', ligne: 'Sans elle, les câbles, les chutes de tension et les protections ne sont pas calculés.' },
+  norme_absente: { titre: 'Choisir la norme électrique de votre société', ligne: 'Sans elle, les câbles, les chutes de tension et les protections ne sont pas calculés.' },
   simulation_perimee: { titre: 'Calcul à refaire', ligne: 'Le calepinage a changé depuis le dernier calcul.', bouton: 'Voir' },
   production_non_simulee: { titre: 'Production à calculer', ligne: 'Lancez la simulation pour la connaître.', bouton: 'Voir' },
   coefficients_non_sources: { titre: 'Températures de référence', ligne: 'Des valeurs standard servent en attendant celles du site.' },

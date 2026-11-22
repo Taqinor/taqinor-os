@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
@@ -63,7 +63,8 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
     expect(plan.querySelectorAll('.cal-client-pan')).toHaveLength(1)
     expect(plan.querySelectorAll('.cal-client-module')).toHaveLength(2)
     expect(await screen.findByTestId('client-projet')).toHaveTextContent('Villa Bennani')
-    expect(screen.getByTestId('client-projet')).toHaveTextContent('Casablanca · Pan sud')
+    // J1 — l'orientation lue sur la face SERVIE du pan (azimut 180°), jamais son libellé.
+    expect(screen.getByTestId('client-projet')).toHaveTextContent('Casablanca · pan sud')
     await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(3))
     const tuiles = [...screen.getByTestId('client-tuiles').children]
     expect(tuiles.map((t) => t.dataset.testid)).toEqual(['client-tuile-panneaux', 'client-tuile-kwh', 'client-tuile-couverture'])
@@ -200,17 +201,67 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     expect(appelsDEcriture()).toEqual([])
   })
 
-  it('H6 — mode présentation de la carte : demandé au constructeur (aucune poignée), l’aide de geste dite, rendu à la sortie', async () => {
-    const modePresentation = vi.fn(() => true)
-    const cadrerToit = vi.fn(() => true)
-    reinitialiserBoot({ appliquerVue: vi.fn(), modePresentation, cadrerToit })
+  it('H6/J1 — la vue de trois quarts TENUE par le constructeur ; la 3D montrée quand elle est prête ; rendu à la sortie', async () => {
+    let prete = null
+    const modePresentation = vi.fn((actif, vue) => { if (actif) prete = vue.surPrete; return actif })
+    reinitialiserBoot({ appliquerVue: vi.fn(), modePresentation, cadrerToit: vi.fn(() => true) })
     const { unmount } = rendre({ webgl: true })
     await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
-    await waitFor(() => expect(modePresentation).toHaveBeenCalledWith(true))
+    await waitFor(() => expect(modePresentation).toHaveBeenCalledWith(true, expect.objectContaining({
+      vue: 'trois-quarts', cadrage: { zoomMax: 22, part: 0.62, cielPx: 190 },
+    })))
+    // Tant que la vue n'est pas posée et le toit cadré : le toit enregistré de dessus, dit en mots de client.
+    expect(screen.getByTestId('client-repli-2d')).toBeInTheDocument()
+    expect(screen.getByTestId('client-voir-3d')).toHaveTextContent('La vue 3D se prépare…')
+    expect(screen.getByTestId('client-voir-3d').closest('a')).toBeNull()
+    act(() => prete())
     expect(await screen.findByTestId('client-aide-geste')).toHaveTextContent('Glissez un doigt pour tourner autour')
-    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: 22, part: 0.55 })
+    expect(screen.queryByTestId('client-repli-2d')).toBeNull()
     unmount()
     expect(modePresentation).toHaveBeenLastCalledWith(false)
+  })
+
+  it('J1 — l’atelier sous la vue client est inerte (ni Tab ni lecteur d’écran) ; la vue client reste vivante', async () => {
+    reinitialiserBoot({ appliquerVue: vi.fn() })
+    rendre({ webgl: true })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    await waitFor(() => expect(screen.getByTestId('cal-rail-etapes').closest('[inert]')).not.toBeNull())
+    for (const t of ['cal-barre-projet', 'cal-panneau-etape']) {
+      expect(screen.getByTestId(t).closest('[inert]')?.getAttribute('aria-hidden')).toBe('true')
+    }
+    for (const t of ['client-soleil', 'client-envoyer-lien', 'client-retour-releve', 'client-projet']) {
+      expect(screen.getByTestId(t).closest('[inert]')).toBeNull()
+    }
+    // Les VRAIS contrôles du soleil restent montés (inertes) : la vue client les pilote toujours.
+    expect(document.getElementById('rp9-sun-hour').closest('[inert]')).not.toBeNull()
+  })
+
+  it('J1 — ouverture en été à midi quand la scène porte l’instant par défaut du constructeur', async () => {
+    api.layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [ZONE], activeAreaId: 'z1', scene: { sunDay: 355, sunHour: 12 } }, empreinte_document: 'e',
+    } })
+    const clicEte = vi.fn()
+    document.addEventListener('click', (e) => { if (e.target?.dataset?.sunSeason === 'summer') clicEte() }, true)
+    reinitialiserBoot({ appliquerVue: vi.fn() })
+    rendre({ webgl: true })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    await waitFor(() => expect(clicEte).toHaveBeenCalledTimes(1))
+  })
+
+  it('J1 — un instant CHOISI par le commercial est gardé (aucun Été posé d’office)', async () => {
+    api.layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [ZONE], activeAreaId: 'z1', scene: { sunDay: 100, sunHour: 15 } }, empreinte_document: 'e',
+    } })
+    const clicEte = vi.fn()
+    const ecoute = (e) => { if (e.target?.dataset?.sunSeason === 'summer') clicEte() }
+    document.addEventListener('click', ecoute, true)
+    reinitialiserBoot({ appliquerVue: vi.fn() })
+    rendre({ webgl: true })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    await waitFor(() => expect(screen.getByTestId('client-tuiles').children.length).toBeGreaterThan(0))
+    await new Promise((r) => { setTimeout(r, 300) })
+    document.removeEventListener('click', ecoute, true)
+    expect(clicEte).not.toHaveBeenCalled()
   })
 
   it('H6 — un constructeur sans mode présentation : aucune aide de geste (un doigt n’y fait pas tourner)', async () => {
@@ -229,5 +280,31 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     const visible = texteVisible(screen.getByTestId('cal-coque'))
     expect(visible).not.toMatch(/MAD|DH\b|€|prix|marge|achat|Interne|Expert|Avancé|Enregistrer|Générer le devis/i)
     expect(visible).toContain('Envoyer le lien')
+  })
+})
+
+describe('J1 — tuiles tenues hors de l’atelier, orientation certaine', () => {
+  it('une lecture du résultat en échec est relue seule : la tuile de puissance arrive sans recharger la page', async () => {
+    api.resultat.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
+    api.resultat.mockResolvedValue({ data: { ...RESULTAT, production: { total: { p50_kwh: 1, complete: false } } } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(1))
+    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(2), { timeout: 9000 })
+    expect(api.resultat).toHaveBeenCalledTimes(2)
+    expect(api.layout).toHaveBeenCalledTimes(1) // la lecture réussie n'est pas refaite
+  })
+
+  it('deux pans de faces différentes : aucune orientation dite ; deux pans au sud : « orienté sud »', async () => {
+    const ouest = { ...ZONE, id: 'z2', geometry: { ...ZONE.geometry, azimuthDeg: 270 } }
+    api.layout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE, ouest] }, empreinte_document: 'e' } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('client-projet')).toHaveTextContent('Casablanca'))
+    await waitFor(() => expect(screen.getByTestId('client-plan')).toBeInTheDocument())
+    expect(screen.getByTestId('client-projet').textContent).not.toMatch(/pan|orienté/)
+    cleanup()
+    oublierLecturesServies()
+    api.layout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE, { ...ZONE, id: 'z3' }] }, empreinte_document: 'e' } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('client-projet')).toHaveTextContent('Casablanca · orienté sud'))
   })
 })

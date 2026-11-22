@@ -117,8 +117,13 @@
 
 /* ── Pas encore simulé (même cartes que le résultat incomplet) ────────────── */
 .cal-resavant-titre { color: var(--color-azur-100); }
-.cal-resinc-plafond .cal-resinc-phrase { font-size: 16px; }
 .cal-resinc-plafond [data-testid="calx48-lancer"] { margin-top: 12px; }
 .cal-resinc-aide { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
   margin-left: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--card);
   color: var(--muted-foreground); font: 600 12px var(--font-brand); cursor: pointer; vertical-align: middle; }
+/* J6 — « Rien à remplir » : un lien discret (pas le bouton or) ; le détail des pertes, discret au pied de l'écran. */
+.cal-resinc-discret { flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px;
+  font: 600 14px var(--font-brand); color: var(--color-encre); text-decoration: underline; text-underline-offset: 3px; }
+.cal-res > details[data-zone="avance"] { background: transparent; border: 0; padding: 0 4px; box-shadow: none; }
+.cal-res > details[data-zone="avance"] > summary { font: 500 14px var(--font-brand); color: var(--muted-foreground); min-height: 44px;
+  display: flex; align-items: center; }

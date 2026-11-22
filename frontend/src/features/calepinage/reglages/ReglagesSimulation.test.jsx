@@ -552,7 +552,8 @@ describe('ACAL405 — Démarrage rapide', () => {
       servirReglages({})
       rendre()
       const bouton = await screen.findByTestId('acal405-appliquer')
-      expect(bouton).toHaveTextContent('Aucun réglage vide à remplir')
+      // Le profil est lu d'abord (le bouton n'annonce rien pendant la lecture), puis il le dit.
+      await waitFor(() => expect(bouton).toHaveTextContent('Aucun réglage à remplir'))
       expect(bouton).toBeDisabled()
     })
 
@@ -585,6 +586,34 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(cles).toHaveLength(4)
       expect(cles).not.toContain('b0_iam')
       expect(cles).not.toContain('albedo_mensuel') // déjà renseignée
+    })
+
+    it('pendant la lecture : lignes grises, boutons éteints, AUCUNE annonce ; un échec dit simplement et propose « Réessayer »', async () => {
+      let rejeter
+      mocks.profilDepart.mockReturnValueOnce(new Promise((_, ko) => { rejeter = ko }))
+      servirReglages({})
+      rendre()
+      expect((await screen.findAllByTestId('acal405-ligne-en-lecture')).length).toBeGreaterThan(0)
+      const bouton = screen.getByTestId('acal405-appliquer')
+      expect(bouton).toBeDisabled()
+      expect(bouton).not.toHaveTextContent('Aucun réglage')
+      expect(screen.getByTestId('acal405-retirer')).toBeDisabled()
+      rejeter(new Error('lent'))
+      expect(await screen.findByTestId('acal405-echec-lecture')).toHaveTextContent('n’ont pas pu être lus')
+      expect(screen.queryAllByTestId('acal405-ligne-en-lecture')).toHaveLength(0)
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+      fireEvent.click(screen.getByTestId('acal405-reessayer'))
+      expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toBeInTheDocument()
+      expect(screen.queryByTestId('acal405-echec-lecture')).toBeNull()
+    }, 60000)
+
+    it('une valeur déjà en place : case éteinte mais visible, jamais remplacée (D-ACAL-31) ; « ouvrir » souligné', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+      servirReglages({})
+      rendre()
+      const ligne = await screen.findByTestId('acal405-valeur-albedo_mensuel')
+      expect(within(ligne).getByRole('checkbox', { name: /Déjà en place, non remplacé/ })).toBeDisabled()
+      expect(within(ligne).getByRole('link', { name: /Ouvrir la source/ }).className).toMatch(/(^| )underline( |$)/)
     })
 
     it('la ligne « Saisir » : les réglages sans valeur publiée mènent à leur saisie', async () => {
@@ -633,7 +662,10 @@ describe('ACAL405 — Démarrage rapide', () => {
     mocks.retirerProfilDepart.mockResolvedValue({ data: { retirees: [{ cle: CLE }], gardees: [] } })
     servirReglages({})
     rendre()
-    fireEvent.click(await screen.findByTestId('acal405-retirer'))
+    // Éteint pendant la lecture du profil : le geste n'est offert qu'une fois les réglages lus.
+    const retirer = await screen.findByTestId('acal405-retirer')
+    await waitFor(() => expect(retirer).toBeEnabled())
+    fireEvent.click(retirer)
     expect(await screen.findByTestId('acal405-message')).toHaveTextContent('1 valeurs retirées')
     expect(mocks.retirerProfilDepart).toHaveBeenCalledTimes(1)
   })

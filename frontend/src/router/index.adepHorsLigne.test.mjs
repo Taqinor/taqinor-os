@@ -21,7 +21,7 @@ const fin = src.indexOf('// ODX6 — Garde de MODULE')
 assert.ok(debut > 0 && fin > debut, 'bloc des loaders introuvable dans index.jsx')
 const bloc = src.slice(debut, fin)
 
-function monter(rejet) {
+function monter(rejet, { enLigne = true } = {}) {
   const etat = { isAuthenticated: false, user: null, role: null, permissions: [] }
   const fetchMe = () => ({ type: 'fetchMe' })
   fetchMe.fulfilled = { match: (r) => r.fulfilled === true }
@@ -37,12 +37,12 @@ function monter(rejet) {
   const redirect = (to) => ({ redirectTo: to })
   const fabrique = new Function(
     'store', 'fetchMe', 'redirect', 'portalHomePath', 'peutEntrerDansPortail',
-    'cheminMotDePassePortail', 'estAutoriseEntree', 'resolveLandingFromAuth', 'URL',
+    'cheminMotDePassePortail', 'estAutoriseEntree', 'resolveLandingFromAuth', 'URL', 'navigator',
     `${bloc}\nreturn { authLoader, rootLoader }`,
   )
   return fabrique(
     store, fetchMe, redirect, () => null, () => true, () => null, () => true,
-    () => '/dashboard', URL,
+    () => '/dashboard', URL, { onLine: enLigne },
   )
 }
 
@@ -54,10 +54,31 @@ test('échec réseau : pas de redirection, état hors ligne', async () => {
   assert.deepEqual(res, { horsLigne: true })
 })
 
-test('503 : pas de redirection, état hors ligne', async () => {
-  const { authLoader, rootLoader } = monter({ status: 503, reseau: false })
+// J3 — un serveur qui RÉPOND (5xx) ou qui répond LENTEMENT (délai dépassé) n'est pas « hors ligne ».
+test('503 : pas de redirection, état « serveur lent » (le serveur a répondu)', async () => {
+  const { authLoader, rootLoader } = monter({ status: 503, reseau: false, expire: false })
+  assert.deepEqual(await authLoader(requete), { horsLigne: true, lent: true })
+  assert.deepEqual(await rootLoader(), { horsLigne: true, lent: true })
+})
+
+test('J3 — délai dépassé, navigateur en ligne : « serveur lent », jamais « Hors ligne »', async () => {
+  const { authLoader } = monter({ status: null, reseau: true, expire: true })
+  assert.deepEqual(await authLoader(requete), { horsLigne: true, lent: true })
+})
+
+test('J3 — délai dépassé, navigateur HORS LIGNE : état hors ligne (vrai hors ligne inchangé)', async () => {
+  const { authLoader } = monter({ status: null, reseau: true, expire: true }, { enLigne: false })
   assert.deepEqual(await authLoader(requete), { horsLigne: true })
-  assert.deepEqual(await rootLoader(), { horsLigne: true })
+})
+
+test("J3 — l'écran de démarrage a deux textes : hors ligne, et serveur lent avec nouvel essai seul", () => {
+  const ecran = readFileSync(path.join(__dirname, 'HorsLigneDemarrage.jsx'), 'utf8')
+  assert.match(ecran, /titre: 'Le serveur met du temps à répondre'/)
+  assert.match(ecran, /bouton: 'Réessayer'/)
+  assert.match(ecran, /titre: 'Hors ligne',/)
+  assert.match(ecran, /Impossible de joindre le serveur\./)
+  assert.match(ecran, /const lent = useLoaderData\(\)\?\.lent === true/)
+  assert.match(ecran, /setTimeout\(\(\) => reessayerRef\.current\(\), DELAI_NOUVEL_ESSAI_MS\)/)
 })
 
 test('401 et 403 : redirection vers /login avec ?next= comme avant', async () => {

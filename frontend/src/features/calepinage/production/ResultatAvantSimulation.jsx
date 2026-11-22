@@ -13,6 +13,9 @@ import { BoutonCalculer } from './PanneauProduction'
    Aucune figure n'est écrite ici. */
 
 const RANG = { bloquant: 0, a_regler: 1, info: 2 }
+/* Ces deux lignes disent « lancez/relancez le calcul » : la carte sombre, à côté, porte déjà CE bouton — la liste
+   ne garde que ce que l'utilisateur doit RENSEIGNER. */
+const DOUBLON_DU_BOUTON = ['production_non_simulee', 'simulation_perimee']
 
 function Ligne({ rang, m, calepinageId }) {
   const [ouvert, setOuvert] = useState(false)
@@ -23,7 +26,6 @@ function Ligne({ rang, m, calepinageId }) {
       <span className="cal-resinc-texte">
         <span className="cal-resinc-nom">
           {titre}
-          {m.nombre > 1 && <span className="ml-1 tabular-nums cal-res-sourdine">{`× ${m.nombre}`}</span>}
           {technique && (
             <button type="button" className="cal-resinc-aide" aria-expanded={ouvert} title={technique}
               aria-label={`Pourquoi : ${titre}`} data-testid="cal-avant-aide" onClick={() => setOuvert((o) => !o)}>?</button>
@@ -44,6 +46,7 @@ export default function ResultatAvantSimulation({
 }) {
   const perime = data?.simulation_perimee === true
   const manque = (parcours?.manque ?? [])
+    .filter((m) => !DOUBLON_DU_BOUTON.includes(m?.code))
     .map((m, i) => ({ m, i }))
     .sort((a, b) => (RANG[a.m.gravite] ?? 2) - (RANG[b.m.gravite] ?? 2) || a.i - b.i)
   return (

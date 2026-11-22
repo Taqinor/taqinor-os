@@ -165,7 +165,7 @@ function ApercuCarte({ url, alt }) {
   }
   if (url && !echec) {
     return (
-      <img ref={img} src={url} alt={alt} crossOrigin="anonymous" onLoad={verifier} onError={() => setEchec(true)}
+      <img ref={img} src={url} alt={alt} onLoad={verifier} onError={() => setEchec(true)}
         className="block h-[140px] w-full flex-none object-cover" data-testid="cal-vignette-image" />
     )
   }
@@ -212,7 +212,7 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
             <div className="flex min-w-0 flex-col">
               <span className="truncate font-display text-base font-semibold">{titre}</span>
               {ville ? <span className="truncate text-sm text-muted-foreground">{ville}</span> : null}
-              {propre ? <span className="truncate text-xs text-muted-foreground" data-testid="cal-vignette-nom">{propre}</span> : null}
+              {propre ? <span className="truncate text-xs text-muted-foreground" data-testid="acal-vignette-nom">{propre}</span> : null}
             </div>
             <span className="flex shrink-0 items-center gap-1.5">
               <BadgePerime layoutStale={calepinage?.layout_stale}
@@ -379,6 +379,9 @@ export default function CalepinageList() {
     ? 'bg-foreground font-semibold text-background'
     : 'border border-border bg-card font-medium text-foreground'}`
 
+  // Les deux boutons discrets de la rangée des puces : 44 px de cible, un libellé visible seulement quand actifs.
+  const calme = (actif) => `h-11 gap-2 rounded-full text-sm text-muted-foreground ${actif ? 'px-3' : 'w-11 px-0'}`
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4">
@@ -400,13 +403,7 @@ export default function CalepinageList() {
             onChange={(e) => surFiltre(setQ)(e.target.value)}
           />
         </div>
-        <Button variant="outline" className="h-11 rounded-[10px]"
-          onClick={() => (modeComparaison ? quitterComparaison() : setModeComparaison(true))}
-          data-testid="cal-mode-comparer">
-          <Columns3 size={16} aria-hidden="true" />
-          {modeComparaison ? 'Annuler la comparaison' : 'Comparer'}
-        </Button>
-        <Button className="h-11 gap-2 rounded-[10px] px-[18px]" onClick={() => navigate('/calepinage/nouveau')}>
+        <Button className="h-11 gap-2 rounded-[10px] px-[18px] font-semibold" onClick={() => navigate('/calepinage/nouveau')}>
           <Plus size={18} aria-hidden="true" />
           Nouveau calepinage
         </Button>
@@ -439,12 +436,27 @@ export default function CalepinageList() {
           </>
         ) : null}
       </div>
-        <Button type="button" variant="outline" className="ml-auto h-11 rounded-full"
-          aria-expanded={filtresVisibles} aria-controls="acal957-filtres" data-testid="acal957-filtres-basculer"
-          onClick={() => setFiltresOuverts((v) => !v)}>
-          <SlidersHorizontal size={16} aria-hidden="true" />
-          {`Filtres${nbAvances ? ` · ${nbAvances} actif${nbAvances > 1 ? 's' : ''}` : ''}`}
-        </Button>
+        {/* « Comparer » et « Filtres » : deux vraies fonctions hors maquette — discrètes (pictogramme seul,
+            le libellé se lit à voix haute et en infobulle), la recherche et « Nouveau calepinage » dominent. */}
+        <span className="ml-auto flex items-center gap-1">
+          <Button type="button" variant="ghost" className={calme(modeComparaison)}
+            title="Comparer" aria-pressed={modeComparaison}
+            onClick={() => (modeComparaison ? quitterComparaison() : setModeComparaison(true))}
+            data-testid="cal-mode-comparer">
+            <Columns3 size={16} aria-hidden="true" />
+            <span className={modeComparaison ? undefined : 'sr-only'}>
+              {modeComparaison ? 'Annuler la comparaison' : 'Comparer'}
+            </span>
+          </Button>
+          <Button type="button" variant="ghost" className={calme(nbAvances > 0)} title="Filtres"
+            aria-expanded={filtresVisibles} aria-controls="acal957-filtres" data-testid="acal957-filtres-basculer"
+            onClick={() => setFiltresOuverts((v) => !v)}>
+            <SlidersHorizontal size={16} aria-hidden="true" />
+            <span className={nbAvances ? undefined : 'sr-only'}>
+              {`Filtres${nbAvances ? ` · ${nbAvances} actif${nbAvances > 1 ? 's' : ''}` : ''}`}
+            </span>
+          </Button>
+        </span>
       </div>
 
       {modeComparaison ? (

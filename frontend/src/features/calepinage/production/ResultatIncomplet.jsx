@@ -28,9 +28,15 @@ const RAISON = {
 function phraseDuCompte(aRenseigner, ici) {
   const total = Math.max(
     (aRenseigner?.etapes_a_compter ?? 0) - (aRenseigner?.etapes_comptees ?? 0), ici)
-  const pertes = `${total} ${total > 1 ? 'pertes non renseignées' : 'perte non renseignée'}`
-  if (ici === total) return `${pertes}${total > 1 ? ', toutes à renseigner ici.' : ', à renseigner ici.'}`
-  return `${pertes}, dont ${ici} à renseigner ici.`
+  return `${total} ${total > 1 ? 'pertes ne sont pas encore comptées' : 'perte n’est pas encore comptée'}.`
+}
+
+/* La part de ce compte qu'on règle ICI (les lignes de la liste) — dite à côté, pas dans la phrase de 14 px
+   qui doit tenir sur UNE ligne comme celle de la maquette. */
+function partIci(aRenseigner, ici) {
+  const total = Math.max(
+    (aRenseigner?.etapes_a_compter ?? 0) - (aRenseigner?.etapes_comptees ?? 0), ici)
+  return ici === total ? `${total > 1 ? 'Toutes sont' : 'Elle est'} à renseigner ici.` : `${ici} à renseigner ici.`
 }
 
 function Valeur({ etiquette, valeur }) {
@@ -97,10 +103,17 @@ function DemarrageRapideBloc({ lignes }) {
         <strong>Démarrage rapide</strong>
         <span data-testid="acal700-demarrage-texte">{texte}</span>
       </span>
-      <Link to="/calepinage/reglages" className="cal-res-cta" style={{ minHeight: 44, fontSize: 14, padding: '0 16px' }}
-        data-testid="acal700-lien-reglages">
-        Voir les valeurs
-      </Link>
+      {remplissables > 0 ? (
+        <Link to="/calepinage/reglages" className="cal-res-cta" style={{ minHeight: 44, fontSize: 14, padding: '0 16px' }}
+          data-testid="acal700-lien-reglages">
+          Voir les valeurs
+        </Link>
+      ) : (
+        // Rien à remplir : pas de bouton or qui promet des valeurs — un lien discret vers la page des réglages.
+        <Link to="/calepinage/reglages" className="cal-resinc-discret" data-testid="acal700-lien-reglages">
+          Saisir mes mesures
+        </Link>
+      )}
     </div>
   )
 }
@@ -119,7 +132,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null 
             Production la première année · au plus
           </p>
           <p className="cal-res-tuile-valeur m-0" data-testid="acal700-valeur">{kwh(total.p50_kwh)}</p>
-          <p className="cal-resinc-phrase" data-testid="acal700-plafond">
+          <p className="cal-resinc-phrase" data-testid="acal700-plafond" title={partIci(aRenseigner, lignes.length)}>
             {`C'est un plafond : ${phraseDuCompte(aRenseigner, lignes.length)} Le chiffre réel sera plus bas.`}
           </p>
           <Progression aRenseigner={aRenseigner} />
