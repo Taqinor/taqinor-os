@@ -1,43 +1,52 @@
 import { formaterHeureBrouillon } from './contexteAtelier'
+import { Icone } from './coque/primitives'
 
-/* ACAL399 — barre d'enregistrement du calepinage, collée en bas de la fenêtre : le bouton se
-   voit sans défiler, avec l'état de la scène (« Modifications non enregistrées » / « Enregistré
-   à HH:MM »). `children` : emplacement du résumé (ACAL401). État d'écran seulement : l'heure
-   vient de la réponse 2xx, rien n'est stocké. */
+/* ACAL399 — l'enregistrement du calepinage et l'état de la scène (« Modifications non
+   enregistrées » / « Enregistré à HH:MM »). État d'écran seulement : l'heure vient de la réponse
+   2xx, rien n'est stocké, aucun enregistrement automatique n'est inventé.
+   Coque (maquettes 22/11) — FORME BARRE DU HAUT : à droite du bandeau du projet. Scène propre et
+   déjà enregistrée dans la session ⇒ « ✓ Enregistré à HH:MM » seul ; modifiée (ou heure inconnue)
+   ⇒ le bouton « Enregistrer le calepinage » (+ l'état). `etatPropre` (« Simulation à jour · HH:MM »,
+   lu sur le serveur par la coque) remplace « Enregistré à » quand l'étape le sert. Les messages
+   (statut, erreur) s'affichent sous la barre. Le bouton de l'étape suivante n'est PLUS ici : il est
+   au pied du panneau d'étape (un seul bouton « suivant » par étape). */
 export default function BarreEnregistrement({
-  libelle, enCours, desactive, onEnregistrer, modifiee, enregistreLe, statut, erreur, children,
-  actionPrincipale = null, // ACAL868 — {libelle, onClick} : le bouton de l'étape suivante, à droite
+  libelle, enCours, desactive, onEnregistrer, modifiee, enregistreLe, statut, erreur,
+  etatPropre = null,
 }) {
   const heure = enregistreLe ? formaterHeureBrouillon(enregistreLe) : ''
-  const etat = modifiee ? 'Modifications non enregistrées'
-    : (heure ? `Enregistré à ${heure}` : null)
+  const propre = !modifiee && !enCours
+  const textePropre = etatPropre || (heure ? `Enregistré à ${heure}` : null)
+  const boutonVisible = !propre || !heure
   return (
-    <div className="sticky bottom-0 z-30 mt-6 border-t border-border bg-card p-3 backdrop-blur"
-      data-testid="cal-enregistrer-calepinage">
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={onEnregistrer} disabled={desactive}
-          className="inline-flex items-center justify-center gap-3 bg-success px-6 py-3 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
+    <div className="cal-barre-enregistrement" data-testid="cal-enregistrer-calepinage">
+      {modifiee && (
+        <p className="cal-etat-modifie" role="status" data-testid="cal-etat-enregistrement">
+          Modifications non enregistrées
+        </p>
+      )}
+      {propre && textePropre && (
+        <p className="cal-etat-ok" role="status" data-testid="cal-etat-enregistrement">
+          <Icone nom="coche" taille={16} epaisseur={2.2} />
+          {textePropre}
+        </p>
+      )}
+      {boutonVisible && (
+        <button type="button" onClick={onEnregistrer} disabled={desactive} className="cal-bouton-enregistrer">
           {enCours && (
             <span aria-hidden="true"
-              className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
           )}
           <span>{enCours ? 'Enregistrement en cours…' : libelle}</span>
         </button>
-        {etat && (
-          <p className={`text-sm ${modifiee ? 'text-primary' : 'text-muted-foreground'}`}
-            role="status" data-testid="cal-etat-enregistrement">{etat}</p>
-        )}
-        {children}
-        {actionPrincipale && (
-          <button type="button" onClick={actionPrincipale.onClick} data-testid="cal-action-etape-suivante"
-            className="ml-auto inline-flex min-h-11 items-center justify-center bg-primary px-6 py-3 text-base font-bold text-primary-foreground">
-            {actionPrincipale.libelle}
-          </button>
-        )}
-      </div>
-      {statut && <p className="mt-2 text-sm text-muted-foreground" aria-live="polite">{statut}</p>}
-      {erreur && (
-        <p className="mt-2 text-sm text-destructive" role="alert" data-testid="cal-erreur-enregistrement">{erreur}</p>
+      )}
+      {(statut || erreur) && (
+        <div className="cal-barre-messages">
+          {statut && <p className="text-sm text-muted-foreground" aria-live="polite">{statut}</p>}
+          {erreur && (
+            <p className="text-sm text-destructive" role="alert" data-testid="cal-erreur-enregistrement">{erreur}</p>
+          )}
+        </div>
       )}
     </div>
   )

@@ -37,21 +37,19 @@ import crmApi from '../../api/crmApi'
 // `apps/calepinage`), c'est-à-dire sans devis exigé. Voir le bloc de
 // commentaire de `bootCalepinage` plus bas.
 import calepinageApi from '../../api/calepinageApi'
-import Pourquoi from '../../features/calepinage/commun/Pourquoi'
 // Lot 2 critique #27 — lecture du calepinage d'un devis (fiche devis) quand la
 // porte de résolution est refusée (403, droit de VOIR seulement).
 import ventesApi from '../../api/ventesApi'
 // Lot 2 critique #23 / #29 — LE décodeur des refus du pont devis (partagé
 // avec « Générer / Resynchroniser le devis »).
 import {
-  MESSAGE_DEROGATION_RESERVEE, MESSAGE_MOTIF_OBLIGATOIRE,
-  bloquageElectrique, refusServeur, texteBloquant,
+  MESSAGE_MOTIF_OBLIGATOIRE, bloquageElectrique, refusServeur,
 } from '../../features/calepinage/refusDevis'
-// CAL37 — l'UNIQUE emplacement où les tâches suivantes (CAL38 le bouton devis,
-// CAL180 l'export image) posent leurs panneaux : aucune d'elles n'a donc à
-// rouvrir ce fichier. SOLMVP15 a retiré CAL242 (reprise de contour AO) avec
-// l'app ao (Groupe SOLMVP).
-import AtelierPanneaux from '../../features/calepinage/AtelierPanneaux'
+// Coque (22/11) — le mode calepinage s'ouvre dans l'atelier plein écran des maquettes (AtelierPanneaux,
+// l'enregistrement et les groupes du constructeur y sont placés par `atelier/coque/AtelierCoque.jsx`).
+import AtelierCoque from '../../features/calepinage/atelier/coque/AtelierCoque'
+import InspecteurBuilder from '../../features/calepinage/atelier/InspecteurBuilder.jsx'
+import AlertesEnregistrement from '../../features/calepinage/atelier/AlertesEnregistrement.jsx'
 // CAL103 — le panneau de CALQUES de l'atelier (visibilité + opacité, ordre de rendu
 // déterminé, état persisté par utilisateur). Additif : les bascules historiques
 // (tracé client, photo réelle) restent en place et continuent de fonctionner.
@@ -72,8 +70,6 @@ import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis.
 import { useConfirmDialog } from '../../ui/confirm'
-import BarreEnregistrement from '../../features/calepinage/atelier/BarreEnregistrement'
-import { ETAPES } from '../../features/calepinage/atelier/parcoursGuide' // ACAL868
 import ResumeAtelier from '../../features/calepinage/atelier/ResumeAtelier'
 import BandeauConceptionRapide from '../../features/calepinage/atelier/BandeauConceptionRapide' // ACAL1007
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
@@ -92,27 +88,12 @@ import {
   cibleActiveDuContexte,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
-import TableauComparatif from '../../features/calepinage/atelier/TableauComparatif.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier, MESSAGE_ACCES_REFUSE } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
-import { CONS_WINDOW_HTML } from '@roofpro/consumptionMarkup' // ERR-ACAL311-PANNEAU-ABSENT-ERP
-
-// ERR-ACAL311-PANNEAU-ABSENT-ERP (vague 10, rejeu P5.5) — objet `__html` UNIQUE au module :
-// React 19 compare la prop `dangerouslySetInnerHTML` par IDENTITÉ et réécrivait `innerHTML` à
-// chaque rendu d'un objet littéral neuf. Le constructeur saisit `#rp9-cons-window` à son boot :
-// le nœud qu'il démasquait était remplacé (détaché), la fenêtre affichée restait `hidden`.
-const CONS_WINDOW_INNER = { __html: CONS_WINDOW_HTML }
-
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
-// ACAL402 — conteneur « studio » : un vrai `<div>` en mode calepinage, transparent sinon
-// (lead et devis gardent leur DOM). Les ids `rp9-studio-*` servent la spec e2e.
-const Studio = ({ actif, nom, children }) => (actif
-  ? <div id={`rp9-studio${nom}`} className={`rp9-studio${nom}`}>{children}</div>
-  : <>{children}</>)
-
 const messageResyncRefusee = (raison) => (
   `Conception enregistrée — devis NON resynchronisé : ${raison}`)
 const MESSAGE_RESYNC_RESEAU = 'Conception enregistrée — resynchronisation du devis impossible (réseau)'
@@ -299,13 +280,10 @@ function AtelierToiture({
   const hashSceneReferenceRef = useRef(null)
   const [sceneModifiee, setSceneModifiee] = useState(false)
   const [enregistreLe, setEnregistreLe] = useState(null) // ACAL399 — heure de la dernière réponse 2xx
-  // ACAL868 — l'étape du rail (publiée par `onEtape`) : la barre fixe en tire le bouton de l'étape suivante, guidé seulement.
+  // ACAL868 — l'étape du rail (publiée par la coque) : son niveau expert ouvre les volets avancés du constructeur.
   const [etapeAtelier, setEtapeAtelier] = useState(null)
   // ACAL945 — hors ligne : l'écriture (même document, même empreinte) attend l'événement `online`, UNE fois.
   const [renvoiReseau, setRenvoiReseau] = useState(null)
-  const indexEtape = etapeAtelier && !etapeAtelier.expert ? ETAPES.findIndex((e) => e.cle === etapeAtelier.etape) : -1
-  const actionEtape = indexEtape >= 0 && ETAPES[indexEtape].action && ETAPES[indexEtape + 1]
-    ? { libelle: ETAPES[indexEtape].action, onClick: () => etapeAtelier.allerA(ETAPES[indexEtape + 1].cle) } : null
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -1162,47 +1140,11 @@ function AtelierToiture({
     )
   }
 
-  return (
-    <div className="rp9-host">
-      {/* Fondateur 18/08 — barre haute : le libellé d'origine à gauche, le
-          bouton Fermer (X) à droite. Toujours présent, quel que soit le mode
-          (lead/devis/AO) — c'est LE MÊME écran, jamais une fenêtre qu'on ne
-          peut refermer que par le bouton retour du navigateur. */}
-      <div className="rp9-topbar">
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Interne · conception toiture</p>
-        <button
-          type="button"
-          onClick={fermer}
-          className="rp9-close"
-          aria-label="Fermer la conception 3D"
-          data-testid="rp9-fermer"
-        >
-          <X className="size-5" aria-hidden="true" />
-        </button>
-      </div>
-
-      <div className="mt-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-          {devisSynchronise && (
-            <h1 className="display text-xl text-foreground sm:text-2xl">
-              Devis <span className="text-primary-text">{devisReference || devisId || '—'}</span> ·{' '}
-              <span className="text-foreground">{devisLabel || '—'}</span>
-            </h1>
-          )}
-          {estCalepinage && !devisSynchronise && (
-            <h1 className="display text-xl text-foreground sm:text-2xl">
-              Calepinage <span className="text-primary-text">{calepinageId || '—'}</span> ·{' '}
-              <span className="text-foreground">{calepinageTitre || '—'}</span>
-            </h1>
-          )}
-          {estLead && (
-            <h1 className="display text-xl text-foreground sm:text-2xl">
-              Lead <span className="text-primary-text">{leadId || '—'}</span> ·{' '}
-              <span className="text-foreground">{leadLabel || '—'}</span>
-            </h1>
-          )}
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground" aria-live="polite">{status}</p>
+  // Coque (22/11) — les bandeaux d'état et la note « calepinage automatique » : MÊMES blocs pour les deux
+  // écrans (le lead les garde dans sa colonne, la coque du module en tête de son panneau d'étape).
+  const bandeaux = (
+    <>
+        <p className={estCalepinage ? 'sr-only' : 'mt-2 text-sm text-muted-foreground'} aria-live="polite">{status}</p>
         {apercuMessage && (
           <p className="mt-1 text-sm text-primary-text" role="status" data-testid="apercu-3d-avertissement">
             {apercuMessage}
@@ -1378,31 +1320,10 @@ function AtelierToiture({
             {avertissements.map((a) => <li key={a}>{a}</li>)}
           </ul>
         )}
-
-        {/* ÉTAPE FACTURE (alimente l'optimiseur) — MODE LEAD SEULEMENT. PV86 :
-            en mode devis le dimensionnement vient du devis (cible.panneaux,
-            imposée à l'optimiseur — voir roofPro11/prefill.ts hydrateFromDevis),
-            la facture y est redondante et le fondateur a demandé son retrait.
-            Retrait total (pas un simple masquage) : le builder lit ces deux
-            éléments via `$('rp9-bill')`/`$('rp9-bill-kwh')`, qui renvoie `null`
-            si absent (roofPro11/dom.ts) et TOUS les usages sont déjà gardés
-            (`billEl?.value`, `if (billKwhEl)`, `billEl?.addEventListener`) —
-            aucune casse à l'init sans ce bloc. Mode AO : le dimensionnement
-            vient de l'engagement du dossier (cible.panneaux), pas d'une
-            facture d'électricité — le bloc n'y a aucun sens non plus. */}
-        {estLead && (
-        <div className="rounded-xl border border-border bg-card mt-6 p-5">
-          <label htmlFor="rp9-bill" className="block text-sm text-foreground">
-            Facture d'électricité moyenne par mois (MAD)
-          </label>
-          <div className="mt-2 flex items-center gap-3">
-            <input id="rp9-bill" name="bill" type="text" inputMode="decimal" step="any"
-              placeholder="ex. 1 500" className={`${inputClass} max-w-[12rem]`} />
-            <span className="text-xs text-muted-foreground">≈ <span id="rp9-bill-kwh" className="fig">—</span> par an</span>
-          </div>
-        </div>
-        )}
-
+    </>
+  )
+  const noteAuto = (
+    <>
         {/* AP-F2 (fondateur 26/08/2026) — note explicite quand les panneaux à
             l'écran viennent d'un SEMIS AUTOMATIQUE depuis le tracé client, jamais
             d'un calepinage enregistré par un commercial (voir calepinageAutomatiqueVisible
@@ -1429,137 +1350,135 @@ function AtelierToiture({
             )}
           </div>
         )}
-        {estCalepinage && <BandeauConceptionRapide calepinageId={calepinageId} rechargerLe={enregistreLe}
-          onVerifier={lectureSeule || varianteId ? null : enregistrerCalepinage} />}
+    </>
+  )
+  const proprietesBuilder = {
+    expert: !!etapeAtelier?.expert, // ACAL869 — « Réglages avancés » ouvert d'office en expert
+    basculerPleinEcran3d, chipClass, contourClientBrut, inputClass, mapWrapRef, photoToit, photoToitVisible,
+    pleinEcran3d, setPhotoToitVisible, setToitClientVisible, toitClientPresent, toitClientVisible,
+  }
 
-        <Studio actif={estCalepinage} nom="">
-        <Studio actif={estCalepinage} nom="-scene">
-        <BuilderDom
-          expert={!!etapeAtelier?.expert} // ACAL869 — « Réglages avancés » ouvert d'office en expert
-          basculerPleinEcran3d={basculerPleinEcran3d}
-          chipClass={chipClass}
-          contourClientBrut={contourClientBrut}
-          inputClass={inputClass}
-          mapWrapRef={mapWrapRef}
-          photoToit={photoToit}
-          photoToitVisible={photoToitVisible}
-          pleinEcran3d={pleinEcran3d}
-          setPhotoToitVisible={setPhotoToitVisible}
-          setToitClientVisible={setToitClientVisible}
-          toitClientPresent={toitClientPresent}
-          toitClientVisible={toitClientVisible}
-        />
-        </Studio>
-        <Studio actif={estCalepinage} nom="-inspecteur">
-
-        {/* RECOMMANDATION (panneaux/optimiseur visibles ici) */}
-        <div id="rp9-results" className="rp9-results rounded-xl border border-border bg-card mt-6 p-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Recommandation</p>
-          <p id="rp9-reco-title" className="fig mt-4 text-2xl text-primary-text">—</p>
-          <div className="mt-5 border border-border bg-card/60 p-4">
-            <label htmlFor="rp9-need-input" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Panneaux nécessaires</label>
-            <div className="mt-2 flex items-center gap-3">
-              <button type="button" id="rp9-need-minus" aria-label="Un de moins" className="h-11 w-11 border border-border text-2xl text-foreground">−</button>
-              <input id="rp9-need-input" type="text" inputMode="numeric" defaultValue="—" disabled
-                className="fig h-11 w-20 border border-border bg-background text-center text-2xl text-foreground" />
-              <button type="button" id="rp9-need-plus" aria-label="Un de plus" className="h-11 w-11 border border-border text-2xl text-foreground">+</button>
-            </div>
-            <label htmlFor="rp9-cible-kwh" className="mt-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production visée (kWh/an)</label>
-            <input id="rp9-cible-kwh" type="text" inputMode="numeric" autoComplete="off" aria-label="Production annuelle visée en kWh par an"
-              className="fig mt-1 h-11 w-32 border border-border bg-background text-center text-foreground" />
-            <p id="rp9-need-note" className="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
-          </div>
-          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6" aria-live="polite">
-            <div><dd id="rp9-reco-kwc" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Puissance<Pourquoi cle="toit.reco_puissance" /></dt></div>
-            <div><dd id="rp9-reco-panels" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Panneaux<Pourquoi cle="toit.reco_panneaux" /></dt></div>
-            <div><dd id="rp9-reco-prod" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production<Pourquoi cle="toit.reco_production" /></dt></div>
-            <div><dd id="rp9-reco-cover" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture<Pourquoi cle="toit.reco_couverture" /></dt></div>
-          </dl>
-          <dl className="mt-5 border-t border-border pt-5">
-            <div>
-              <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies (estimation de l’atelier, plafonnée à la facture)<Pourquoi cle="toit.reco_economies" /></dt>
-              <p id="rp9-reco-savings-note" hidden className="mt-1 text-xs text-muted-foreground">Le chiffre du devis est dans l’onglet Économie</p>
-            </div>
-          </dl>
-          <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
-          <p id="rp9-reco-bifacial" className="mt-2 text-xs text-muted-foreground"></p>
-          <p id="rp9-reco-band" className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
-          <p id="rp9-maxline" className="mt-3 text-xs text-muted-foreground"></p>
-        </div>
-
-        {/* CALX94/CALX109 — L'ANCRAGE ATTENDU par `roofPro11/edgesUi.ts` (« Corriger le
-            type d'une arête », CALX94) et `roofPro11/zones.ts` (sélecteur de module du pan
-            actif, CALX109) : les deux s'accrochent à `ctx.dom.areasWindowEl`, lu depuis
-            `#rp9-areas-window` (`roof-tool-pro11.ts`). Cet id n'existait QUE sur la page de
-            démonstration publique (`pages/preview/toiture-3d-pro-11.astro`) — absent d'ici,
-            il rendait les deux gestes injoignables sur l'écran RÉELLEMENT servi par
-            `/calepinage/:id` comme par `/devis-design/:id` (voir l'en-tête de
-            `frontend/e2e/calepinage-parcours.spec.js`, CALX130). `edgesUi.ts` retombe sur
-            ce même conteneur dès que `#rp9-edges-host` est absent (son repli documenté) :
-            un seul ancrage suffit aux deux modules, aucun besoin d'un second conteneur.
-            Même contenu/emplacement que la page publique, juste après `#rp9-results` :
-            masqué par défaut, affiché par le script dès qu'une zone a un résultat
-            (`zones.ts renderAreasPanel`). Non conditionnel au mode — comme `#rp9-results`
-            ci-dessus, c'est un module du CONSTRUCTEUR partagé par les trois modes ; un
-            conteneur `hidden` par défaut ne change rien au mode devis. */}
-        <div id="rp9-areas-window" hidden className="rounded-xl border border-border bg-card mt-6 p-5 sm:p-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Total — toutes les zones</p>
-            <p className="text-xs text-muted-foreground">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
-          </div>
-          <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4" aria-live="polite">
-            <div>
-              <dd id="rp9-areas-total-panels" className="fig text-lg text-foreground sm:text-xl">—</dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux</dt>
-            </div>
-            <div>
-              <dd id="rp9-areas-total-kwc" className="fig text-lg text-foreground sm:text-xl">—</dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Puissance</dt>
-            </div>
-            <div>
-              <dd id="rp9-areas-total-prod" className="fig text-lg text-foreground sm:text-xl">—</dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Production estimée</dt>
-            </div>
-            <div>
-              <dd id="rp9-areas-total-savings" className="fig text-lg text-primary-text sm:text-xl">—</dd>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Économies estimées</dt>
-            </div>
-          </dl>
-          {/* Liste des zones (script-rendu) : libellé, panneaux, kWc, « Voir » + suppr. La
-              zone active est mise en évidence. `edgesUi.ts`/`zones.ts` (module picker,
-              CALX109) ajoutent aussi leurs propres panneaux ICI (`appendChild`, patron
-              `obstaclesUi.ts ensureTypePicker`) — rien d'autre à câbler côté écran. */}
-          <ul id="rp9-areas-list" className="mt-5 space-y-2"></ul>
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            « + Ajouter une zone » fige la zone tracée et démarre un nouveau tracé sur la même
-            facture. La 3D et les graphes détaillés affichent la zone sélectionnée (« Voir ») ;
-            les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.
-          </p>
-        </div>
-
-        {/* ACAL546 — « Comparer les poses » (toit plat), sans colonne en MAD ; mode calepinage seulement. */}
-        {estCalepinage && <TableauComparatif />}
-
-        {/* ERR-ACAL311-PANNEAU-ABSENT-ERP — « Affiner ma consommation » (`#rp9-cons-window`) :
-            balisage UNIQUE partagé avec la preview publique (`@roofpro/consumptionMarkup`),
-            sans lequel `consumption.ts monterProposition` ne montait rien ici (« Reprendre du
-            lead », CSV, Ramadan, classe tarifaire). Objet constant (CONS_WINDOW_INNER) : React ne la réécrit pas. */}
-        <div
-          // check-no-danger-allow: CONS_WINDOW_HTML est une chaîne CONSTANTE du dépôt (@roofpro/consumptionMarkup), aucune donnée utilisateur
-          dangerouslySetInnerHTML={CONS_WINDOW_INNER}
-        />
-
-        {/* ACAL780 — charges à venir (voiture électrique, pompe à chaleur) : niveau expert, monté par
-            `consumption.ts` ; `hidden` tant que le Mode expert n'est pas actif. */}
-        <div data-cons-charges hidden className="mt-2" />
-
+  // Coque (22/11) — MODE CALEPINAGE (module et `/ventes/devis/:id/design`) : l'atelier plein écran des
+  // maquettes. Les groupes du constructeur y sont montés une fois pour toute la session (jamais démontés).
+  if (estCalepinage) {
+    return (
+      <AtelierCoque
+        calepinageId={calepinageId} contexte={contexte} devisId={devisId} devisReference={devisReference}
+        devisLabel={devisLabel} calepinageTitre={calepinageTitre} lectureSeule={lectureSeule}
+        enregistrement={lectureSeule ? null : {
+          libelle: devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage',
+          enCours: sending, desactive: sending || !sceneHydratee, onEnregistrer: enregistrerCalepinage,
+          modifiee: sceneModifiee, enregistreLe, statut: genStatus, erreur: genError,
+        }}
+        proprietesBuilder={proprietesBuilder} enregistreLe={enregistreLe} onEtape={setEtapeAtelier}
+        ecranProps={{
+          builderApi: builderApiActuel, onRecharger: rechargerAtelier,
+          lectureSeule: lectureSeule || !!varianteId, documentVivant,
+        }}
+        alertes={(
+          <>
+            {bandeaux}
+            {noteAuto}
+            <BandeauConceptionRapide calepinageId={calepinageId} rechargerLe={enregistreLe}
+              onVerifier={lectureSeule || varianteId ? null : enregistrerCalepinage} />
+            {!lectureSeule && (
+              <AlertesEnregistrement bloquageSync={bloquageSync} motifDerogation={motifDerogation}
+                setMotifDerogation={setMotifDerogation} motifDerogationErreur={motifDerogationErreur}
+                setMotifDerogationErreur={setMotifDerogationErreur} passerOutreSync={passerOutreSync} sending={sending}
+                documentModifie={documentModifie} rechargerAtelier={rechargerAtelier} conflit={conflit}
+                devisId={devisId} reviser={reviser} devisReference={devisReference} />
+            )}
+          </>
+        )}
+        avance={(
+          <>
+            <InspecteurBuilder estCalepinage />
         {/* CALX65 — sous la carte du constructeur, en mode calepinage
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}
         {estCalepinage && calepinageId && (
           <BandeauProvenanceProduction calepinageId={calepinageId} chiffrage={contexte?.chiffrage} />
         )}
+            <OutilsVue builderReady={builderReady} utilisateurCourantId={utilisateurCourantId}
+              builderApiActuel={builderApiActuel} builderApi={builderApi} chipClass={chipClass}
+              vue2d={vue2d} setVue2d={setVue2d} plan2d={plan2d} panId2d={panId2d} ouvrirVue2d={ouvrirVue2d}
+              hdBusy={hdBusy} hdMessage={hdMessage} exporterHd={exporterHd}
+              gltfBusy={gltfBusy} gltfMessage={gltfMessage} exporterGltf={exporterGltf} />
+            <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
+              lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
+          </>
+        )}
+        atelierPanneaux={contexte && {
+          // CALX8 — l'OBJET du constructeur (`builderApiActuel`, un état), jamais la ref nue.
+          builderApi: builderApiActuel,
+          // ACON80 — en mode variante, lecture seule jusqu'à ce que la route connaisse les variantes.
+          lectureSeule: lectureSeule || !!varianteId, onRecharger: rechargerAtelier, documentVivant,
+          // ACAL94 — Générer / Resynchroniser rangent d'abord l'écran ; Réviser sait s'il reste des retouches.
+          enregistrerAvant: enregistrerCalepinage, aDesRetouches: () => sceneHydratee && sceneEstModifiee(),
+          atelierPret: sceneHydratee || atelierSansCarte,
+        }}
+      />
+    )
+  }
+
+  return (
+    <div className="rp9-host">
+      {/* Fondateur 18/08 — barre haute : le libellé d'origine à gauche, le
+          bouton Fermer (X) à droite. Toujours présent, quel que soit le mode
+          (lead/devis/AO) — c'est LE MÊME écran, jamais une fenêtre qu'on ne
+          peut refermer que par le bouton retour du navigateur. */}
+      <div className="rp9-topbar">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Interne · conception toiture</p>
+        <button
+          type="button"
+          onClick={fermer}
+          className="rp9-close"
+          aria-label="Fermer la conception 3D"
+          data-testid="rp9-fermer"
+        >
+          <X className="size-5" aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="mt-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+          {estLead && (
+            <h1 className="display text-xl text-foreground sm:text-2xl">
+              Lead <span className="text-primary-text">{leadId || '—'}</span> ·{' '}
+              <span className="text-foreground">{leadLabel || '—'}</span>
+            </h1>
+          )}
+        </div>
+        {bandeaux}
+
+        {/* ÉTAPE FACTURE (alimente l'optimiseur) — MODE LEAD SEULEMENT. PV86 :
+            en mode devis le dimensionnement vient du devis (cible.panneaux,
+            imposée à l'optimiseur — voir roofPro11/prefill.ts hydrateFromDevis),
+            la facture y est redondante et le fondateur a demandé son retrait.
+            Retrait total (pas un simple masquage) : le builder lit ces deux
+            éléments via `$('rp9-bill')`/`$('rp9-bill-kwh')`, qui renvoie `null`
+            si absent (roofPro11/dom.ts) et TOUS les usages sont déjà gardés
+            (`billEl?.value`, `if (billKwhEl)`, `billEl?.addEventListener`) —
+            aucune casse à l'init sans ce bloc. Mode AO : le dimensionnement
+            vient de l'engagement du dossier (cible.panneaux), pas d'une
+            facture d'électricité — le bloc n'y a aucun sens non plus. */}
+        {estLead && (
+        <div className="rounded-xl border border-border bg-card mt-6 p-5">
+          <label htmlFor="rp9-bill" className="block text-sm text-foreground">
+            Facture d'électricité moyenne par mois (MAD)
+          </label>
+          <div className="mt-2 flex items-center gap-3">
+            <input id="rp9-bill" name="bill" type="text" inputMode="decimal" step="any"
+              placeholder="ex. 1 500" className={`${inputClass} max-w-[12rem]`} />
+            <span className="text-xs text-muted-foreground">≈ <span id="rp9-bill-kwh" className="fig">—</span> par an</span>
+          </div>
+        </div>
+        )}
+
+        {noteAuto}
+
+        <BuilderDom {...proprietesBuilder} />
+        <InspecteurBuilder estCalepinage={estCalepinage} />
 
         {/* UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien.
             PV20 — mode lead UNIQUEMENT : un devis existant n'est jamais recréé
@@ -1607,151 +1526,6 @@ function AtelierToiture({
           hdBusy={hdBusy} hdMessage={hdMessage} exporterHd={exporterHd}
           gltfBusy={gltfBusy} gltfMessage={gltfMessage} exporterGltf={exporterGltf}
         />
-
-        {/* ACAL955 — « Enregistrer » AVANT « Générer le devis » (ordre du DOM, du
-            clavier et des lecteurs d'écran) : la barre précède AtelierPanneaux. */}
-        {estCalepinage && !lectureSeule && (
-        <BarreEnregistrement
-          libelle={devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage'}
-          enCours={sending} desactive={sending || !sceneHydratee}
-          onEnregistrer={enregistrerCalepinage}
-          modifiee={sceneModifiee} enregistreLe={enregistreLe}
-          statut={genStatus} erreur={genError} actionPrincipale={actionEtape}>
-          <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
-            lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
-        </BarreEnregistrement>
-        )}
-
-        {estCalepinage && contexte && (
-          <AtelierPanneaux
-            calepinageId={calepinageId}
-            contexte={contexte}
-            // CALX8 — `builderApi` (ci-dessus) est une REF `useRef` (O3) : elle
-            // ne change JAMAIS d'identité, donc la passer telle quelle a envoyé
-            // `undefined` pour toujours à `AtelierPanneaux` (`.entreeMoteur`,
-            // `.appliquerPlan`, `.raccourcis` lus SUR la ref au lieu de
-            // l'objet posé par le builder). Il faut transmettre l'OBJET —
-            // `builderApiActuel`, un ÉTAT posé par les mêmes `onApiReady`
-            // (jamais `builderApi.current` ici : `react-hooks/refs` interdit
-            // de lire une ref PENDANT le rendu, seuls les effets/gestionnaires
-            // le peuvent ; le reste du fichier continue de lire
-            // `builderApi.current` dans ce cadre-là, inchangé).
-            builderApi={builderApiActuel}
-            // ACON80 — en mode variante, les écrivains du rail visent encore
-            // `calepinages/<C1>/layout/section/` : lecture seule jusqu'à ce que
-            // la route connaisse les variantes (jamais une écriture sur C1).
-            lectureSeule={lectureSeule || !!varianteId}
-            onRecharger={rechargerAtelier}
-            documentVivant={documentVivant}
-            // ACAL94 — Générer / Resynchroniser rangent d'abord l'écran (une
-            // seule fonction d'enregistrement), et Réviser sait s'il reste
-            // des retouches non enregistrées.
-            enregistrerAvant={enregistrerCalepinage}
-            aDesRetouches={() => sceneHydratee && sceneEstModifiee()}
-            atelierPret={sceneHydratee || atelierSansCarte}
-            onEtape={setEtapeAtelier}
-          />
-        )}
-
-        {/* CAL37 — MODE CALEPINAGE : « Enregistrer le calepinage ». La
-            conception se range sur le calepinage (une VERSION n'est déposée
-            que si elle a changé) ; aucun statut n'est écrit et aucun devis
-            n'est touché — le devis a son propre bouton (CAL38). Absent en
-            lecture seule, comme dans les deux autres modes. */}
-        {estCalepinage && !lectureSeule && (
-        <>
-        <div className="rounded-xl border border-border bg-card mt-6 p-6">
-          <p className="text-xs text-muted-foreground">
-            La conception est rangée sur le calepinage, avec une nouvelle
-            version dès qu'elle a changé. Aucun statut n'est modifié ; le devis,
-            lui, se génère par son propre bouton.
-          </p>
-
-          {/* Lot 2 critique #29 — refus ÉLECTRIQUE de la resynchro du devis :
-              les bloquants du serveur, mot pour mot ; « Passer outre »
-              seulement pour un approbateur (droit SERVI par le détail). */}
-          {bloquageSync?.bloquants && (
-            <div className="mt-4 border border-alert-300/40 p-4" data-testid="cal-sync-bloquants">
-              <ul className="space-y-1 text-sm text-destructive">
-                {bloquageSync.bloquants.map((b, i) => (
-                  <li key={`${b?.code ?? 'b'}-${i}`} data-testid="cal-sync-bloquant">
-                    {texteBloquant(b)}
-                    {b?.detail && <span className="block text-xs text-muted-foreground">{b.detail}</span>}
-                  </li>
-                ))}
-              </ul>
-              {bloquageSync.derogationPossible && (bloquageSync.peutDeroger ? (
-                <div className="mt-3 space-y-2">
-                  <label className="block text-xs text-foreground" htmlFor="cal-sync-motif">
-                    Motif de la dérogation
-                  </label>
-                  <textarea
-                    id="cal-sync-motif"
-                    value={motifDerogation}
-                    onChange={(e) => { setMotifDerogation(e.target.value); setMotifDerogationErreur(null) }}
-                    data-testid="cal-sync-motif"
-                    className="w-full border border-border bg-transparent p-2 text-sm"
-                  />
-                  {motifDerogationErreur && (
-                    <p className="text-xs text-destructive" role="alert" data-testid="cal-sync-motif-erreur">
-                      {motifDerogationErreur}
-                    </p>
-                  )}
-                  <button type="button" onClick={passerOutreSync} disabled={sending}
-                    data-testid="cal-sync-passer-outre"
-                    className="inline-flex items-center gap-2 border border-alert-300 px-4 py-2 text-sm font-bold text-destructive disabled:cursor-not-allowed disabled:opacity-60">
-                    Passer outre et resynchroniser
-                  </button>
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-sync-derogation-reservee">
-                  {MESSAGE_DEROGATION_RESERVEE}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {/* ACAL23 — 409 `document_modifie` : modifiée AILLEURS, rien n'est
-              écrasé ; distinct du verrou ci-dessous. */}
-          {documentModifie && (
-            <div className="mt-4 border border-brass-400/40 p-4" data-testid="cal-document-modifie">
-              <p className="text-sm text-primary-text" role="alert">
-                La conception a été modifiée ailleurs (onglet, autre navigateur) — rechargez avant
-                d’enregistrer.
-              </p>
-              <p className="mt-1 text-xs text-foreground">{documentModifie.detail}</p>
-              <button type="button" onClick={rechargerAtelier}
-                className="mt-3 inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-primary-text"
-                data-testid="cal-document-modifie-recharger">
-                Recharger
-              </button>
-            </div>
-          )}
-
-          {/* ACAL37 — 409 RÉVISABLE de la resynchronisation du devis : le bon
-              geste est une NOUVELLE version (même `reviserEtOuvrir`). */}
-          {conflit?.revision_possible && devisId && (
-            <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
-              <p className="text-sm text-foreground" role="status">{conflit.detail}</p>
-              <button type="button" onClick={() => reviser(devisId, devisReference)} disabled={sending}
-                className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60">
-                Réviser (v2)
-              </button>
-            </div>
-          )}
-
-          {/* 409 : le devis lié est figé (accepté, refusé, expiré ou remplacé) — motif du SERVEUR. */}
-          {conflit && !conflit.revision_possible && (
-            <div className="mt-4 border border-alert-300/40 p-4" data-testid="cal-conflit-lecture-seule">
-              <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Lecture seule</p>
-              <p className="mt-2 text-sm text-destructive" role="alert">{conflit.detail}</p>
-            </div>
-          )}
-        </div>
-        </>
-        )}
-        </Studio>
-        </Studio>
 
       </div>
     </div>

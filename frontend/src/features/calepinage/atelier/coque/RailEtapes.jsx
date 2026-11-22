@@ -1,0 +1,11 @@
+import RailGuide from '../../commun/RailGuide'
+
+/* Coque — le rail de gauche (maquette Main : 96 px, fond carte, filet droit ; Tablette :
+   72 px, pictogrammes seuls — par la feuille 56-coque-responsive). Les cinq étapes du
+   parcours (états et « N à régler » servis par `parcours/`) et « Avancé » en bas. */
+export default function RailEtapes({ etapeActive, parcours, onChoisir, avance, onAvance }) {
+  return (
+    <RailGuide vertical etapeActive={etapeActive} etats={parcours?.etats ?? {}}
+      manque={parcours?.manque ?? []} onChoisir={onChoisir} avance={avance} onAvance={onAvance} />
+  )
+}

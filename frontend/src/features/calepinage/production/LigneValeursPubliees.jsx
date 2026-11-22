@@ -1,7 +1,8 @@
 import useResource from '../../../hooks/useResource'
 import calepinageApi from '../../../api/calepinageApi'
 import { useModeExpert } from '../atelier/modeExpert'
-import { estProfilDepart } from '../reglages/profilDepart'
+import { reglagesPublies } from './LigneValeursPubliees.helpers'
+import '../../../styles/calepinage/54-etape-resultats.css'
 
 /* ACAL698 — « n réglages utilisent des valeurs publiées, non mesurées sur ce
    chantier (…) · Voir les sources ». Le compte est celui des réglages FIGÉS au
@@ -25,7 +26,7 @@ function libellesDuRegistre(donnees) {
   return table
 }
 
-function LigneAvecRegistre({ publiees, onVoirSources }) {
+function LigneAvecRegistre({ publiees, onVoirSources, enNote = false }) {
   const { data } = useResource(
     () => (calepinageApi.parametres?.get
       ? calepinageApi.parametres.get() : Promise.resolve(null)),
@@ -34,6 +35,20 @@ function LigneAvecRegistre({ publiees, onVoirSources }) {
   )
   const libelles = libellesDuRegistre(data)
   const noms = publiees.map((cle) => libelles[cle] || cle).join(', ')
+  if (enNote) {
+    // Étape Résultats guidée : la même phrase, DANS la note de « Du soleil au réseau ».
+    return (
+      <>
+        <span data-testid="acal698-texte-note">
+          {publiees.length} {publiees.length > 1 ? 'réglages utilisent' : 'réglage utilise'} des
+          valeurs publiées, non mesurées sur ce chantier ({noms}).
+        </span>{' '}
+        <button type="button" className="cal-res-lien" style={{ minHeight: 0 }} onClick={onVoirSources}>
+          Voir les sources
+        </button>
+      </>
+    )
+  }
   return (
     <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground" data-testid="acal698-ligne">
       <span data-testid="acal698-texte">
@@ -52,12 +67,16 @@ function LigneAvecRegistre({ publiees, onVoirSources }) {
   )
 }
 
+/** Le contenu de la note de l'étape Résultats (rien si aucun réglage n'est une valeur publiée). */
+export function NoteValeursPubliees({ simulation, onVoirSources }) {
+  const publiees = reglagesPublies(simulation)
+  if (publiees.length === 0) return null
+  return <LigneAvecRegistre publiees={publiees} onVoirSources={onVoirSources} enNote />
+}
+
 export default function LigneValeursPubliees({ simulation, onVoirSources }) {
   const [expert] = useModeExpert()
-  const reglages = simulation?.reglages_utilises
-  const publiees = reglages && typeof reglages === 'object'
-    ? Object.keys(reglages).filter((cle) => estProfilDepart(reglages[cle]?.reference))
-    : []
+  const publiees = reglagesPublies(simulation)
   if (!expert || publiees.length === 0) return null
   return <LigneAvecRegistre publiees={publiees} onVoirSources={onVoirSources} />
 }

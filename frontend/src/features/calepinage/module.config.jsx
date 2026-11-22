@@ -65,6 +65,12 @@ const AtelierCalepinage = lazy(async () => {
    panneau : elles REDIRIGENT vers `/calepinage/:id?onglet=<cle>` (une adresse
    par panneau). `variantes` et `photos` redirigent aussi (ACAL409 : onglets du rail). */
 const RedirectionOnglet = lazy(() => import('./atelier/RedirectionOnglet'))
+/* Coque (maquettes 22/11) — l'atelier et les deux écrans de téléphone sont PLEIN ÉCRAN
+   (`plein: true` : ni barre latérale ni en-tête de l'ERP, `router/moduleRoutes.jsx`). */
+const ReleveVisite = lazy(() => import('./releve/ReleveVisite'))
+const VueClient = lazy(() => import('./client/VueClient'))
+// Coque — la page « Démarrage rapide » des réglages (le composant de la lane réglages, dans son cadre).
+const DemarrageRapidePage = lazy(() => import('./DemarrageRapidePage'))
 
 // CAL35 — la LISTE réelle : vignettes, filtres RÉELLEMENT servis par CAL16,
 // pagination et état vide qui explique le geste de création.
@@ -183,6 +189,7 @@ const config = {
     ['/calepinage/reglages/gabarits', 'Calepinage — Gabarits des dossiers'],
     ['/calepinage/reglages/fixation', 'Calepinage — Systèmes de fixation'],
     ['/calepinage/reglages/allees', 'Calepinage — Allées'],
+    ['/calepinage/reglages/demarrage-rapide', 'Calepinage — Démarrage rapide'],
     ['/calepinage/reglages', 'Calepinage — Réglages simulation'],
     ['/calepinage/comparaison', 'Calepinage — Comparaison'],
     ['/calepinage/', 'Calepinage — Atelier'],
@@ -205,6 +212,8 @@ const config = {
     { path: '/calepinage/reglages/fixation', component: ReglagesFixation, ...GARDE_LECTURE },
     // ACAL893 — AVANT `/calepinage/:id` : « reglages/allees » n'est pas un identifiant.
     { path: '/calepinage/reglages/allees', component: ReglagesAllees, ...GARDE_LECTURE },
+    // Coque — AVANT `/calepinage/:id` ; lien depuis le volet « Avancé » de l'atelier.
+    { path: '/calepinage/reglages/demarrage-rapide', component: DemarrageRapidePage, ...GARDE_LECTURE },
     // CALX342 — AVANT `/calepinage/:id` : « comparaison » n'est pas un identifiant.
     { path: '/calepinage/comparaison', component: ComparaisonProjets, ...GARDE_LECTURE },
     /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
@@ -219,7 +228,11 @@ const config = {
        encore s'ouvrir demain) mais REDIRIGENT vers `?onglet=` (ACAL407), et
        aucune n'est à ajouter ici pour un onglet neuf — un panneau de plus,
        c'est une ligne de plus dans `atelier/onglets.js`, rien d'autre. */
-    { path: '/calepinage/:id', component: AtelierCalepinage, ...GARDE_LECTURE },
+    { path: '/calepinage/:id', component: AtelierCalepinage, plein: true, ...GARDE_LECTURE },
+    // contextuelle: le relevé de visite au téléphone d'UN calepinage, ouvert depuis son atelier (volet « Avancé »).
+    { path: '/calepinage/:id/releve', component: ReleveVisite, plein: true, ...GARDE_LECTURE },
+    // contextuelle: la vue à montrer au client d'UN calepinage, ouverte depuis son atelier (volet « Avancé »).
+    { path: '/calepinage/:id/client', component: VueClient, plein: true, ...GARDE_LECTURE },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/variantes', component: RedirectionOnglet, ...GARDE_LECTURE },
     // CAL121

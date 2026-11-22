@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { formatNumber } from '../../lib/format'
@@ -126,6 +127,11 @@ export default function AtelierPanneaux({
   calepinageId, contexte, builderApi, lectureSeule = false,
   onRecharger, documentVivant = null, enregistrerAvant = null, aDesRetouches = null, atelierPret = true,
   onEtape = null, // ACAL868 — relayé au rail
+  // Coque (22/11) — monté dans le volet « Avancé » de la coque : le niveau expert et le parcours
+  // sont TENUS par la coque (un seul état), et à l'étape Documents guidée le bouton de devis part
+  // dans l'emplacement que l'écran de l'étape lui ouvre (`portailDevis`, un nœud DOM) — une instance.
+  dansCoque = false, expert: expertImpose = null, onBasculerExpert = null, parcours = null,
+  portailDevis = null,
   children,
 }) {
   const cible = contexte?.cible ?? null
@@ -136,7 +142,9 @@ export default function AtelierPanneaux({
   const enLectureSeule = lectureSeule
   useCommandesAtelier({ builderApi, lectureSeule: enLectureSeule })
   const [parametres] = useSearchParams()
-  const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
+  const [expertLocal, basculerLocal] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
+  const expert = expertImpose ?? expertLocal
+  const basculerExpert = onBasculerExpert ?? basculerLocal
 
   /* UNE SEULE LECTURE DE L'AGRÉGAT (CAL17), partagée. La fiche et le bouton
      devis parlent de la MÊME vérité : deux lectures, ce serait deux états le
@@ -304,8 +312,11 @@ export default function AtelierPanneaux({
         expert={expert}
         onBasculerExpert={basculerExpert}
         onEtape={surEtape}
-        actionDevis={devisAuRail ? boutonDevis : null}
+        actionDevis={devisAuRail && !dansCoque ? boutonDevis : null}
+        dansCoque={dansCoque}
+        parcours={parcours}
       />
+      {devisAuRail && dansCoque && portailDevis ? createPortal(boutonDevis, portailDevis) : null}
 
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
           `onRecharger` et `lectureSeule` leur sont passés par l'atelier, pour

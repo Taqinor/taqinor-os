@@ -13,6 +13,8 @@ import {
 } from './telechargement'
 import Pourquoi from '../commun/Pourquoi'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
+import { cartesGuide } from './cartesGuide'
+import ColonneDocuments from './ColonneDocuments'
 
 /* ============================================================================
    CALX320 — LE PANNEAU « DOCUMENTS » BASCULE SUR L'INVENTAIRE `documents/`.
@@ -554,7 +556,13 @@ function SectionSorties({
   )
 }
 
-export default function PanneauDocuments({ calepinageId, builderApi = null, onRecharger = null }) {
+/* ACAL1193 — `guide` : l'écran Documents GUIDÉ (`ColonneDocuments`, maquette `Documents.dc.html`) ; le
+   panneau d'origine ci-dessous en reste la vue Expert (rendue en plus, sous la colonne, en mode
+   expert seulement). Mêmes gestes, mêmes helpers, mêmes textes d'erreur dans les deux vues. */
+export default function PanneauDocuments({
+  calepinageId, builderApi = null, onRecharger = null, guide = false, enregistreLe = null,
+}) {
+  const [expert] = useModeExpert()
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -729,6 +737,20 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
     }
   }
 
+  // ACAL1193 — « Aperçu » d'une pièce PDF de `sorties/` : le MÊME téléchargement, ouvert dans un onglet.
+  async function apercuSortie(sortie) {
+    const code = sortie.code
+    setErreursSorties((precedent) => ({ ...precedent, [code]: null }))
+    try {
+      const reponse = await calepinageApi.calepinages.telechargerSortie(
+        sortie.endpoint, undefined, OPTIONS_TELECHARGEMENT)
+      window.open(URL.createObjectURL(new Blob([reponse.data], { type: 'application/pdf' })), '_blank', 'noopener')
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur, { delai: true })
+      setErreursSorties((precedent) => ({ ...precedent, [code]: details }))
+    }
+  }
+
   async function remettreSortie(sortie) {
     const code = sortie.code
     setErreursSorties((precedent) => ({ ...precedent, [code]: null }))
@@ -826,7 +848,7 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
 
   const documents = data?.documents || []
 
-  return (
+  const vueExpert = (
     <Card className="flex flex-col gap-3 p-4" data-testid="cal-doc-panneau">
       <h2 className="text-base font-semibold">Documents</h2>
       {data?.layout_hash && (
@@ -887,5 +909,22 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
         onDeposerCarteDeChaleur={joindreCarteDeChaleur}
       />
     </Card>
+  )
+  if (!guide) return vueExpert
+
+  const cartes = cartesGuide(documents, inventaireSorties?.sorties)
+  const estDocument = (carte) => carte.source === 'document'
+  return (
+    <>
+      <ColonneDocuments
+        cartes={cartes}
+        enregistreLe={enregistreLe}
+        enCoursDe={(c) => (estDocument(c) ? enCours === c.code : enCoursSortie === c.code)}
+        erreursDe={(c) => (estDocument(c) ? erreurs[c.code] : erreursSorties[c.code])}
+        onTelecharger={(c) => (estDocument(c) ? telecharger(c.code) : telechargerSortie(c.entree))}
+        onApercu={(c) => (c.apercu === 'html' ? apercu(c.code) : apercuSortie(c.entree))}
+      />
+      {expert ? vueExpert : null}
+    </>
   )
 }

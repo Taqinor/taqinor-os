@@ -1,25 +1,31 @@
 import { useEffect, useState } from 'react'
+import { CircleCheck, CircleDashed, ExternalLink, Info } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
+import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Button, Card } from '../../../ui'
+import {
+  dateFr, libelleReglage, nomSansSource, precisionValeur, sourceCourte, valeurLisible,
+} from './profilDepart'
 
 /* ============================================================================
    ACAL405 (D-ACAL-31) — « DÉMARRAGE RAPIDE » : LES VALEURS PUBLIÉES PROPOSÉES.
    ----------------------------------------------------------------------------
    `GET calepinages/profil-depart/` (ACAL403, contrat
    `calepinage_profil_depart.json`) sert `{valeurs, sans_source}`. AUCUNE valeur
-   n'est écrite ici : « Appliquer aux réglages vides » appelle `POST` (le
-   serveur ne touche que les clés VIDES), puis `onChange` fait relire les
-   réglages. L'état de chaque valeur est celui que le serveur SERT (`etat` :
-   `a_appliquer`, `posee_par_profil`, `deja_saisie`, lu par la référence écrite
-   du profil) ; à défaut, il se lit sur les réglages SERVIS, jamais sur un
-   brouillon. Le profil est relu après chaque geste.
-   ========================================================================== */
+   n'est écrite ici : « Remplir les N réglages vides » appelle `POST` (le serveur
+   ne touche que les clés VIDES), puis `onChange` fait relire les réglages. L'état
+   de chaque valeur est celui que le serveur SERT (`etat` : `a_appliquer`,
+   `posee_par_profil`, `deja_saisie`, lu par la référence écrite du profil) ; à
+   défaut, il se lit sur les réglages SERVIS, jamais sur un brouillon. Le profil
+   est relu après chaque geste.
 
-const LIBELLE_ETAT = {
-  a_appliquer: 'à appliquer',
-  posee_par_profil: 'posée par le profil (retirable)',
-  deja_saisie: 'déjà saisie',
-}
+   MAQUETTE « Démarrage rapide » : un tableau Remplir · Réglage · Valeur proposée ·
+   Source · État. Les réglages portent un NOM en français courant, la valeur son
+   unité à la française, la source son éditeur (« PVsyst · ouvrir ») ; la citation
+   complète reste dans la ligne (dépliable) et en infobulle. Jamais de JSON, jamais
+   une clé technique. Le serveur n'applique le profil qu'EN BLOC (toutes les clés
+   vides) : les cases « Remplir » en disent l'état, elles ne choisissent pas.
+   ========================================================================== */
 
 const saisie = (reglages, { section, cle }) => {
   const ligne = reglages?.[section]?.[cle]
@@ -27,15 +33,148 @@ const saisie = (reglages, { section, cle }) => {
     && ligne.valeur !== null && ligne.valeur !== undefined
 }
 
-const texte = (v) => (typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v))
+/** L'état de la ligne : `a_appliquer` | `posee_par_profil` | `deja_saisie`. */
+const etatDe = (v, reglages) => v.etat ?? (saisie(reglages, v) ? 'deja_saisie' : 'a_appliquer')
 
-export default function DemarrageRapide({ reglages, peutApprouver, onChange }) {
+const COLONNES = 'grid-cols-[64px_1.3fr_1.35fr_0.8fr_1fr]'
+
+function Etat({ v, etat, reglages }) {
+  const saisi = reglages?.[v.section]?.[v.cle]
+  if (etat === 'deja_saisie') {
+    const sienne = saisi && typeof saisi === 'object' && saisi.valeur !== undefined && saisi.valeur !== null
+      ? ` (${valeurLisible(saisi.valeur, v.unite)})` : ''
+    return (
+      <span className="flex items-center gap-1.5 font-medium text-success-text" data-testid={`acal405-etat-${v.cle}`}>
+        <CircleCheck size={16} className="flex-none" aria-hidden="true" />
+        {`Déjà renseigné par vous${sienne} — conservé`}
+      </span>
+    )
+  }
+  if (etat === 'posee_par_profil') {
+    return (
+      <span className="flex items-center gap-1.5 font-medium text-foreground" data-testid={`acal405-etat-${v.cle}`}>
+        <CircleCheck size={16} className="flex-none text-success-text" aria-hidden="true" />
+        Posée par le profil (retirable)
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1.5 text-muted-foreground" data-testid={`acal405-etat-${v.cle}`}>
+      <CircleDashed size={16} className="flex-none" aria-hidden="true" />
+      Vide
+    </span>
+  )
+}
+
+/** La case « Remplir » : l'état d'une ligne, dessiné comme la maquette. Désactivée — le serveur remplit en bloc. */
+function CaseRemplir({ etat, nom }) {
+  const rempli = etat === 'a_appliquer'
+  return (
+    <label className="relative mx-auto flex h-11 w-11 items-center justify-center">
+      <input
+        type="checkbox"
+        checked={rempli}
+        disabled
+        readOnly
+        aria-label={rempli ? `Sera rempli : ${nom}` : `Déjà en place, non remplacé : ${nom}`}
+        className="absolute inset-0 m-0 opacity-0"
+      />
+      {rempli ? (
+        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-foreground text-background" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+        </span>
+      ) : (
+        <span className="h-[22px] w-[22px] rounded-md border-[1.5px] border-border bg-card" aria-hidden="true" />
+      )}
+    </label>
+  )
+}
+
+function LigneProfil({ v, reglages }) {
+  const { nom, aide } = libelleReglage(v.cle)
+  const etat = etatDe(v, reglages)
+  const precision = precisionValeur(v.valeur)
+  const citation = `${v.reference} — ${v.url} — lu le ${dateFr(v.date_lecture)}`
+  return (
+    <div
+      className={`grid ${COLONNES} items-center border-b border-border px-2 py-2 pr-5 text-sm min-h-[60px]`}
+      data-testid={`acal405-valeur-${v.cle}`}
+    >
+      <CaseRemplir etat={etat} nom={nom} />
+      <span className="flex flex-col pr-3">
+        <span className="font-semibold">{nom}</span>
+        {aide ? <span className="text-xs text-muted-foreground">{aide}</span> : null}
+      </span>
+      <span className="flex flex-col pr-3">
+        <span className="font-display text-base font-semibold tabular-nums">{valeurLisible(v.valeur, v.unite)}</span>
+        {precision ? <span className="text-xs text-muted-foreground">{precision}</span> : null}
+      </span>
+      <span className="flex flex-col pr-3">
+        <span className="flex items-center gap-2" title={citation}>
+          <span className="font-semibold">{sourceCourte(v.reference)}</span>
+          <a href={v.url} target="_blank" rel="noreferrer"
+            className="inline-flex min-h-[44px] items-center gap-1 text-sm text-info underline-offset-2 hover:underline"
+            aria-label={`Ouvrir la source : ${sourceCourte(v.reference)}`}>
+            ouvrir<ExternalLink size={14} aria-hidden="true" />
+          </a>
+        </span>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer">Citation complète</summary>
+          <span className="block break-words">{citation}</span>
+        </details>
+      </span>
+      <Etat v={v} etat={etat} reglages={reglages} />
+    </div>
+  )
+}
+
+/** Le réglage tapé À LA MAIN : aucune valeur publiée n'existe, la ligne le dit et mène à la saisie. */
+function LigneSansSource({ sansSource }) {
+  return (
+    <div className={`grid ${COLONNES} items-center bg-muted/30 px-2 py-2 pr-5 text-sm min-h-[60px]`}>
+      <label className="relative mx-auto flex h-11 w-11 items-center justify-center">
+        <input type="checkbox" disabled aria-label="Aucune valeur publiée : à saisir par vous"
+          className="absolute inset-0 m-0 opacity-0" />
+        <span className="h-[22px] w-[22px] rounded-md border-[1.5px] border-dashed border-border bg-muted" aria-hidden="true" />
+      </label>
+      <span className="flex flex-col pr-3">
+        <span className="font-semibold">{`${sansSource.length} autres réglages`}</span>
+        <span className="text-xs text-muted-foreground">Gardés vides tant qu’aucune page publiée ne donne de valeur</span>
+      </span>
+      <span className="flex flex-col pr-3">
+        <span className="font-semibold text-warning-text">Aucune valeur publiée — à saisir par vous</span>
+        <span className="text-xs text-muted-foreground">Rien n’est proposé : une valeur tapée de mémoire serait inventée</span>
+      </span>
+      <span className="text-muted-foreground">—</span>
+      <span className="flex items-center gap-3">
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <CircleDashed size={16} className="flex-none" aria-hidden="true" />
+          Vide
+        </span>
+        <a href="/calepinage/reglages#calx69-section-simulation"
+          className="flex h-11 items-center rounded-[10px] border border-border px-3.5 font-semibold text-foreground no-underline hover:bg-muted"
+          data-testid="acal405-saisir">
+          Saisir
+        </a>
+      </span>
+    </div>
+  )
+}
+
+export default function DemarrageRapide({ reglages, peutApprouver, onChange, autonome }) {
   const [profil, setProfil] = useState(null)
   const [erreur, setErreur] = useState(null)
   const [message, setMessage] = useState(null)
   const [occupe, setOccupe] = useState(false)
 
   const [lecture, setLecture] = useState(0)
+  // Le droit d'approuver : celui que l'appelant donne, à défaut celui de la personne connectée
+  // (l'écran seul, `/calepinage/reglages/demarrage-rapide`, n'a pas d'appelant).
+  const droit = useHasPermission('calepinage_approuver')
+  const peut = peutApprouver ?? droit
+  // Seul sur sa route : titre de page et fil d'Ariane ; dans Réglages : une carte parmi les autres.
+  const seul = autonome ?? (typeof window !== 'undefined'
+    && /\/demarrage-rapide\/?$/.test(window.location.pathname))
 
   useEffect(() => {
     let annule = false
@@ -65,67 +204,71 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange }) {
 
   const valeurs = Array.isArray(profil?.valeurs) ? profil.valeurs : []
   const sansSource = Array.isArray(profil?.sans_source) ? profil.sans_source : []
+  // N : les réglages vides que « Remplir » va réellement remplir (lus sur l'état servi).
+  const nbVides = valeurs.filter((v) => etatDe(v, reglages) === 'a_appliquer').length
+  const Titre = seul ? 'h1' : 'h2'
 
   return (
-    <Card className="mt-5 p-4" data-testid="acal405-demarrage">
-      <h2 className="text-base font-semibold text-foreground">Démarrage rapide</h2>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Valeurs publiées par leur source, proposées pour les réglages vides :
-        elles ne sont pas mesurées sur vos sites et ne remplacent jamais une saisie.
-      </p>
+    <Card className={seul ? 'space-y-5 border-0 bg-transparent p-0 shadow-none' : 'mt-5 space-y-4 p-4'}
+      data-testid="acal405-demarrage">
+      {seul ? (
+        <nav aria-label="Fil d’Ariane" className="flex items-center gap-3 text-sm text-muted-foreground">
+          <a href="/calepinage/reglages" className="text-muted-foreground no-underline hover:underline">Réglages</a>
+          <span aria-hidden="true">/</span>
+          <a href="/calepinage" className="text-muted-foreground no-underline hover:underline">Calepinage</a>
+          <span aria-hidden="true">/</span>
+          <span className="font-semibold text-foreground" aria-current="page">Démarrage rapide</span>
+        </nav>
+      ) : null}
+      <div className="flex flex-col gap-1.5">
+        <Titre className={seul ? 'font-display text-h2 font-semibold text-foreground' : 'text-base font-semibold text-foreground'}>
+          Démarrage rapide
+        </Titre>
+        <p className={`max-w-[860px] text-muted-foreground ${seul ? 'text-base leading-normal' : 'text-xs'}`}>
+          Les réglages encore vides peuvent recevoir une valeur publiée par un logiciel de référence,
+          toujours affichée avec sa source.<br />
+          Vous la remplacerez par vos propres mesures quand vous les aurez ; ce que vous avez déjà
+          saisi n’est jamais écrasé.
+        </p>
+      </div>
       {erreur && (
-        <p role="alert" className="mt-2 text-xs text-destructive" data-testid="acal405-erreur">{erreur}</p>
+        <p role="alert" className="text-xs text-destructive" data-testid="acal405-erreur">{erreur}</p>
       )}
-      <ul className="mt-2 text-sm">
-        {valeurs.map((v) => (
-          <li
-            key={`${v.section}-${v.cle}`}
-            className="border-t border-border/60 py-1"
-            data-testid={`acal405-valeur-${v.cle}`}
-          >
-            <span className="font-medium">{v.cle}</span>{' : '}
-            <span className="tabular-nums">{texte(v.valeur)}{v.unite ? ` ${v.unite}` : ''}</span>
-            {' — '}
-            <span data-testid={`acal405-etat-${v.cle}`}>
-              {LIBELLE_ETAT[v.etat] ?? (saisie(reglages, v) ? 'déjà saisie' : 'à appliquer')}
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              {v.reference}{' — '}
-              <a href={v.url} target="_blank" rel="noreferrer" className="underline">{v.url}</a>
-              {' — lu le '}{v.date_lecture}
-            </span>
-          </li>
-        ))}
-      </ul>
+
+      <section aria-label="Réglages proposés" className="overflow-x-auto rounded-[14px] border border-border bg-card">
+        <div className="min-w-[760px]">
+          <div className={`grid ${COLONNES} h-11 items-center bg-background px-2 pr-5 text-xs font-semibold text-muted-foreground`}>
+            <span className="text-center">Remplir</span><span>Réglage</span><span>Valeur proposée</span>
+            <span>Source</span><span>État</span>
+          </div>
+          {valeurs.map((v) => <LigneProfil key={`${v.section}-${v.cle}`} v={v} reglages={reglages} />)}
+          {sansSource.length > 0 && <LigneSansSource sansSource={sansSource} />}
+        </div>
+      </section>
+
       {sansSource.length > 0 && (
-        <details className="mt-2 text-xs" data-testid="acal405-sans-source">
+        <details className="text-xs" data-testid="acal405-sans-source">
           <summary className="cursor-pointer text-muted-foreground">
-            {sansSource.length} clés sans source (laissées vides)
+            {sansSource.length} réglages sans valeur publiée (laissés vides)
           </summary>
-          <ul className="mt-1">
-            {sansSource.map((s) => <li key={`${s.section}-${s.cle}`}>{s.cle} — {s.motif}</li>)}
+          <ul className="mt-1 space-y-1">
+            {sansSource.map((s) => <li key={`${s.section}-${s.cle}`}>{nomSansSource(s.cle)} — {s.motif}</li>)}
           </ul>
         </details>
       )}
-      {peutApprouver && (
-        <div className="mt-3 flex flex-wrap gap-3">
+
+      <div className="flex flex-wrap items-center gap-4">
+        <span className="flex min-w-[260px] flex-1 items-start gap-2.5 text-sm leading-snug text-muted-foreground">
+          <Info size={18} className="mt-0.5 flex-none" aria-hidden="true" />
+          Tant qu’une valeur publiée sert, le résultat porte la mention « valeur publiée, non mesurée ».
+          Tout reste modifiable dans Réglages › Calepinage.
+        </span>
+        {peut && (
           <Button
             type="button"
-            size="sm"
-            disabled={occupe}
-            data-testid="acal405-appliquer"
-            onClick={() => agir(
-              () => calepinageApi.parametres.appliquerProfilDepart(),
-              (d) => `${(d.appliquees || []).length} valeurs appliquées`,
-            )}
-          >
-            Appliquer aux réglages vides
-          </Button>
-          <Button
-            type="button"
-            size="sm"
             variant="outline"
             disabled={occupe}
+            className="h-12 rounded-[10px] px-5 text-base"
             data-testid="acal405-retirer"
             onClick={() => agir(
               () => calepinageApi.parametres.retirerProfilDepart(),
@@ -134,10 +277,32 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange }) {
           >
             Retirer le profil
           </Button>
-        </div>
-      )}
+        )}
+        <a
+          href="/calepinage/reglages#calx69-section-simulation"
+          className="flex h-12 items-center rounded-[10px] border border-border bg-card px-5 text-base font-semibold text-foreground no-underline hover:bg-muted"
+          data-testid="acal405-saisir-main"
+        >
+          Tout saisir à la main
+        </a>
+        {peut && (
+          <Button
+            type="button"
+            disabled={occupe || nbVides === 0}
+            className="h-12 rounded-[10px] px-[22px] text-base"
+            data-testid="acal405-appliquer"
+            onClick={() => agir(
+              () => calepinageApi.parametres.appliquerProfilDepart(),
+              (d) => `${(d.appliquees || []).length} valeurs appliquées`,
+            )}
+          >
+            {nbVides === 0 ? 'Aucun réglage vide à remplir'
+              : `Remplir ${nbVides === 1 ? 'le réglage vide' : `les ${nbVides} réglages vides`}`}
+          </Button>
+        )}
+      </div>
       {message && (
-        <p role="status" className="mt-2 text-sm text-muted-foreground" data-testid="acal405-message">{message}</p>
+        <p role="status" className="text-sm text-muted-foreground" data-testid="acal405-message">{message}</p>
       )}
     </Card>
   )

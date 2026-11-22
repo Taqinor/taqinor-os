@@ -1,0 +1,106 @@
+/* Étape « Résultats » (maquettes Resultats.dc.html et ResultatsIncomplet.dc.html).
+   Aucune couleur littérale : jetons de l'ERP seulement (clair et sombre). Mise en page par
+   requêtes de conteneur : l'écran prend la largeur du centre de l'atelier (≈ 1 150 px) et
+   s'empile quand il est plus étroit. Importé par `EtapeResultats.jsx` et `ResultatIncomplet.jsx`. */
+
+.cal-res, .cal-resinc { container-type: inline-size; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+/* ── Cartes ─────────────────────────────────────────────────────────────── */
+.cal-res-carte { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px 24px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; }
+.cal-res-titre { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 20px; line-height: 1.2; }
+.cal-res-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cal-res-lien { background: transparent; border: 0; padding: 0; min-height: 44px; color: var(--info);
+  font: 500 14px var(--font-brand); text-decoration: underline; cursor: pointer; }
+.cal-res-lien:hover { color: var(--color-azur-900); }
+.cal-res-sourdine { color: var(--muted-foreground); }
+
+/* ── Quatre tuiles ───────────────────────────────────────────────────────── */
+.cal-res-tuiles { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 16px; }
+.cal-res-tuile { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 22px 24px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; }
+.cal-res-tuile-label { font-size: 14px; color: var(--muted-foreground); }
+.cal-res-tuile-valeur { font-family: var(--font-display); font-weight: 600; font-size: 28px; line-height: 1.1; }
+.cal-res-tuile-note { font-size: 14px; color: var(--muted-foreground); }
+.cal-res-heros, .cal-resinc-plafond { background: var(--color-encre); border-color: var(--color-encre); color: var(--color-azur-100); }
+.cal-res-heros .cal-res-tuile-label, .cal-res-heros .cal-res-tuile-note,
+.cal-resinc-plafond .cal-res-tuile-label, .cal-resinc-plafond .cal-res-tuile-note { color: var(--color-lune); }
+.cal-res-heros .cal-res-tuile-valeur, .cal-resinc-plafond .cal-res-tuile-valeur {
+  font-weight: 700; font-size: 40px; line-height: 1.05; letter-spacing: -0.02em; color: var(--color-azur-100); }
+.cal-res-explication { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted-foreground); }
+
+/* ── Mois par mois + Du soleil au réseau ─────────────────────────────────── */
+.cal-res-milieu { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
+.cal-res-legende { display: flex; gap: 16px; font-size: 12px; color: var(--muted-foreground); }
+.cal-res-legende span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-res-pastille { width: 10px; height: 10px; border-radius: 2px; background: var(--primary); }
+.cal-res-pastille-conso { background: var(--color-azur-200); }
+.cal-res-mois { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px; align-items: end;
+  height: 220px; padding-top: 8px; border-bottom: 1px solid var(--border); }
+.cal-res-mois-paire { display: flex; gap: 3px; align-items: end; height: 100%; }
+.cal-res-barre { flex: 1; min-height: 0; border-radius: 3px 3px 0 0; background: var(--primary); }
+.cal-res-barre-conso { background: var(--color-azur-200); }
+.cal-res-mois-noms { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px; text-align: center;
+  font-size: 12px; color: var(--muted-foreground); }
+
+.cal-res-postes { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.cal-res-poste { display: grid; grid-template-columns: minmax(110px, 150px) 1fr 64px; align-items: center; gap: 12px; }
+.cal-res-piste { height: 14px; border-radius: 7px; background: var(--muted); }
+.cal-res-piste > span { display: block; height: 14px; border-radius: 7px; background: var(--color-encre-soft); }
+.cal-res-piste-depart { background: var(--color-encre); }
+.cal-res-piste-arrivee > span { background: var(--primary); }
+.cal-res-poste-pct { text-align: right; color: var(--muted-foreground); }
+.cal-res-poste-fort { font-weight: 600; color: var(--foreground); }
+.cal-res-poste-arrivee { padding-top: 10px; border-top: 1px solid var(--border); font-weight: 600; }
+.cal-res-info { margin-top: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+  background: var(--background); border-radius: 10px; font-size: 14px; line-height: 1.45; color: var(--muted-foreground); }
+
+/* ── Pied ────────────────────────────────────────────────────────────────── */
+.cal-res-pied { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.cal-res-pied-ligne { font-size: 14px; color: var(--muted-foreground); }
+.cal-res-cta { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 22px; border: 0;
+  border-radius: 10px; background: var(--primary); color: var(--primary-foreground); font: 600 16px var(--font-brand);
+  text-decoration: none; cursor: pointer; }
+.cal-res-cta:hover { filter: brightness(0.96); }
+
+/* ── Résultat incomplet ──────────────────────────────────────────────────── */
+.cal-resinc-haut { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.cal-resinc-plafond { padding: 28px; border-radius: 14px; gap: 8px; }
+.cal-resinc-phrase { font-size: 14px; line-height: 1.45; margin: 0; color: var(--color-lune); }
+.cal-resinc-progres { margin-top: 12px; display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600; }
+.cal-resinc-piste { flex: 1; height: 8px; border-radius: 4px; background: var(--color-encre-soft); }
+.cal-resinc-piste > span { display: block; height: 8px; border-radius: 4px; background: var(--primary); }
+.cal-resinc-liste { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none;
+  border: 1px solid var(--border); border-radius: 10px; }
+.cal-resinc-ligne { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 14px;
+  border-bottom: 1px solid var(--border); }
+.cal-resinc-ligne:last-child { border-bottom: 0; }
+.cal-resinc-rang { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center;
+  border-radius: 14px; background: var(--muted); font-weight: 600; }
+.cal-resinc-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cal-resinc-nom { font-weight: 600; }
+.cal-resinc-raison { font-size: 12px; color: var(--muted-foreground); }
+.cal-resinc-bouton { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; flex: none;
+  padding: 0 14px; border-radius: 8px; background: var(--color-encre); color: var(--color-azur-100);
+  font: 600 14px var(--font-brand); text-decoration: none; }
+.cal-resinc-demarrage { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 10px;
+  background: var(--color-brass-50); border: 1px solid var(--color-brass-200); color: var(--color-brass-700); }
+.cal-resinc-demarrage-texte { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 1.45; }
+.cal-resinc-demarrage-texte strong { font-weight: 600; color: var(--color-encre); }
+.cal-resinc-sur { grid-template-columns: repeat(4, minmax(0, 1fr)); display: grid; gap: 16px; }
+
+@container (max-width: 860px) {
+  .cal-res-milieu, .cal-resinc-haut { grid-template-columns: 1fr; }
+  .cal-res-tuiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cal-res-heros { grid-column: 1 / -1; }
+}
+@container (max-width: 520px) {
+  .cal-res-tuiles { grid-template-columns: 1fr; }
+  .cal-resinc-sur { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cal-res-poste { grid-template-columns: 1fr 64px; }
+  .cal-res-poste .cal-res-piste { grid-column: 1 / -1; grid-row: 2; }
+  .cal-res-mois, .cal-res-mois-noms { gap: 4px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cal-res-barre, .cal-res-piste > span { transition: height var(--motion-base, 200ms) ease, width var(--motion-base, 200ms) ease; }
+}

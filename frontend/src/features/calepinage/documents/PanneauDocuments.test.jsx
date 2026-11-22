@@ -32,6 +32,8 @@ vi.mock('../../../api/calepinageApi', () => ({
       composerPackTechnique: vi.fn(), // ACAL228
       declencherDocument: vi.fn(), // ACAL223
       apercuDocument: vi.fn(), // ACAL223
+      pretAEnvoyer: vi.fn(), // ACAL1193
+      explications: vi.fn(() => Promise.resolve({ data: { entrees: [] } })), // ACAL1193
     },
   },
 }))
@@ -50,6 +52,8 @@ import calepinageApi from '../../../api/calepinageApi'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { ONGLETS } from '../atelier/onglets'
 import PanneauDocuments from './PanneauDocuments'
+import EtapeDocuments from './EtapeDocuments'
+import PretAEnvoyer from '../commun/PretAEnvoyer'
 
 const APP = 'calepinage'
 const NOM = 'calepinage_documents'
@@ -791,5 +795,127 @@ describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
     const texte = await screen.findByText(/n'a pas fini de préparer ce document en 2 minutes/)
     expect(texte).toBeInTheDocument()
     expect(screen.queryByText(/timeout of/)).toBeNull()
+  })
+})
+
+describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () => {
+  const pret = exempleContrat(APP, 'calepinage_pret_a_envoyer', 'exemple')
+  // Dix contrôles, comme la maquette : le contrat porte un modèle de ligne par état, décliné par code.
+  const CODES = ['visite_validee', 'pentes_confirmees', 'kwc_coherent', 'taille_sans_facture', 'ombrage_chiffre',
+    'tension_froid', 'ratio_dc_ac', 'chutes_tension', 'ecart_pvgis', 'simulation_fraiche']
+  const [, modeleARegler, , modeleOk] = pret.controles
+  const dixControles = () => CODES.map((code, i) => ({
+    ...(i === 1 ? modeleARegler : modeleOk),
+    code,
+    libelle: `Contrôle ${code}`,
+    valeur_texte: `Valeur ${i}`,
+    ...(i === 1 ? { cible: { etape: 'toit', onglet: 'releve', champ: '' } } : {}),
+  }))
+  const servir = (controles = dixControles()) => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.sorties.mockResolvedValue(reponseContrat(APP, 'calepinage_sorties', 'exemple'))
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue({
+      data: {
+        ...pret,
+        controles,
+        nombre_bloquants: controles.filter((c) => c.etat === 'bloquant').length,
+        nombre_a_regler: controles.filter((c) => c.etat === 'a_regler').length,
+        pret: false,
+      },
+    })
+  }
+  const monter = (props = {}) => render(
+    <MemoryRouter>
+      <EtapeDocuments calepinageId={1} actionDevis={<button type="button">Générer le devis</button>} {...props} />
+    </MemoryRouter>,
+  )
+  const controlesVisibles = (racine) => [...racine.querySelectorAll('button, a[href], input, select, textarea, summary')]
+    .filter((e) => !e.disabled && !e.hidden)
+
+  it('deux colonnes : « Prêt à envoyer ? » rangé par étape à gauche, les documents à droite', async () => {
+    servir()
+    monter()
+    const gauche = await screen.findByTestId('cal-docs-controles')
+    expect(await within(gauche).findByRole('heading', { name: 'Prêt à envoyer ?' })).toBeTruthy()
+    expect(screen.getByTestId('cal-documents-synthese')).toHaveTextContent('9 contrôles sur 10 sont bons.')
+    expect(within(gauche).getAllByRole('heading', { level: 3 }).map((h) => h.textContent))
+      .toEqual(['Toit', 'Panneaux', 'Électrique', 'Résultats'])
+    expect(gauche).toHaveTextContent('1 point à régler')
+    expect(within(screen.getByTestId('cal-pret-ligne-pentes_confirmees'))
+      .getByRole('button', { name: 'Régler dans Toit' })).toBeTruthy()
+    expect(within(gauche).getByRole('group', { name: 'Légende' })).toHaveTextContent('BonÀ réglerBloque le devis')
+    expect(within(screen.getByTestId('cal-etape-documents-devis'))
+      .getByRole('button', { name: 'Générer le devis' })).toBeTruthy()
+    expect(gauche).toHaveTextContent('Le point à régler n’empêche pas le devis')
+    const droite = await screen.findByTestId('cal-docs-liste')
+    expect(within(droite).getByRole('heading', { level: 2 })).toHaveTextContent('Documents du projet')
+    const cartes = within(droite).getAllByTestId('cal-docs-carte')
+    expect(cartes.map((c) => c.dataset.document))
+      .toEqual(['plan_pose', 'schema', 'note_calcul', 'rapport_etude', 'dxf'])
+    for (const carte of cartes) {
+      expect(carte.querySelector('svg[aria-hidden="true"]')).toBeTruthy() // la vignette
+      expect(within(carte).getByRole('button', { name: /Télécharger/ })).toBeTruthy()
+    }
+    expect(within(cartes[0]).getByRole('button', { name: 'Aperçu' })).toBeTruthy()
+    expect(droite).toHaveTextContent('Le devis remis au client ne se fait pas ici')
+    expect(droite.querySelectorAll('[data-vignette]')).toHaveLength(5)
+  })
+
+  it('aucune empreinte en guidé ; « Faits à partir de … » seulement si l’heure est relayée', async () => {
+    servir()
+    const { unmount } = monter()
+    await screen.findByTestId('cal-docs-liste')
+    expect(screen.queryByTestId('cal-doc-empreinte')).toBeNull()
+    expect(screen.queryByText(/Faits à partir de la version enregistrée/)).toBeNull()
+    unmount()
+    monter({ enregistreLe: '2026-11-22T14:41:00' })
+    expect(await screen.findByText(/Faits à partir de la version enregistrée à 14:41\./)).toBeTruthy()
+  })
+
+  it('télécharger passe par les helpers existants, mêmes options et mêmes textes d’erreur', async () => {
+    servir()
+    calepinageApi.calepinages.telechargerDocument.mockResolvedValue({ data: new Blob(['x']), headers: {} })
+    const utilisateur = userEvent.setup()
+    monter()
+    await utilisateur.click(await screen.findByTestId('cal-docs-telecharger-rapport_etude'))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.telechargerDocument.mock.calls[0][2])
+      .toEqual({ timeout: 120000, suppressErrorToast: true })
+    calepinageApi.calepinages.telechargerSortie.mockRejectedValue(
+      Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
+    await utilisateur.click(screen.getByTestId('cal-docs-telecharger-note_calcul'))
+    expect(await screen.findByText(/n'a pas fini de préparer ce document en 2 minutes/)).toBeTruthy()
+  })
+
+  it('une pièce indisponible est grisée avec son motif servi, jamais un bouton mort', async () => {
+    servir()
+    const sorties = reponseContrat(APP, 'calepinage_sorties', 'exemple')
+    sorties.data.sorties = sorties.data.sorties.map((x) => (x.code === 'dxf'
+      ? { ...x, disponible: false, motif_indisponible: 'Aucune conception enregistrée.' } : x))
+    calepinageApi.calepinages.sorties.mockResolvedValue(sorties)
+    monter()
+    expect(await screen.findByTestId('cal-docs-telecharger-dxf')).toBeDisabled()
+    expect(screen.getByTestId('cal-docs-motif-dxf')).toHaveTextContent('Aucune conception enregistrée.')
+    expect(screen.queryByTestId('cal-docs-apercu-dxf')).toBeNull() // le DXF n’a pas d’aperçu
+  })
+
+  it('ACAL1193 — contrôles visibles de l’écran guidé : au plus 22', async () => {
+    servir()
+    const { container } = monter()
+    await screen.findByTestId('cal-docs-liste')
+    await screen.findByTestId('cal-pret-ligne-visite_validee')
+    const n = controlesVisibles(container).length
+    // dix « ? », « Régler dans Toit », « Générer le devis », quatre « Aperçu » (le DXF n’en a pas), cinq « Télécharger »
+    console.info(`ACAL1193 contrôles visibles (écran guidé, 10 contrôles) : ${n} :: ${controlesVisibles(container).map((e) => e.getAttribute('aria-label') || e.textContent.trim()).join(' | ')}`)
+    expect(n).toBeLessThanOrEqual(22)
+  })
+  it('PretAEnvoyer `filtre` : seule l’étape demandée, compte compris ; sans `groupes` la présentation d’origine', async () => {
+    servir()
+    render(<MemoryRouter><PretAEnvoyer calepinageId={1} testIdCompte="compte" filtre="electrique" /></MemoryRouter>)
+    // tension_froid, ratio_dc_ac, chutes_tension (tous ok) : « Prêt à envoyer », aucun autre contrôle
+    expect(await screen.findByTestId('compte')).toHaveTextContent('Prêt à envoyer')
+    expect(screen.queryByTestId('cal-pret-ligne-visite_validee')).toBeNull()
+    expect(screen.queryByTestId('cal-pret-groupe-electrique')).toBeNull() // pas `groupes` : présentation d'origine
+    expect(screen.getByTestId('cal-pret-reussis')).toHaveTextContent('Voir les 3 contrôles réussis')
   })
 })

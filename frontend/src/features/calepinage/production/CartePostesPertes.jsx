@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { Info } from 'lucide-react'
 import { formatPercent } from '../../../lib/format'
+import '../../../styles/calepinage/54-etape-resultats.css'
 import { CHART_TOKENS } from '../../../ui/charts/chart-theme.js'
 import { useModeExpert } from '../atelier/modeExpert'
 import CascadePertesLignes from './CascadePertesLignes'
@@ -98,6 +100,82 @@ export default function CartePostesPertes({ cascade }) {
             </div>
           )}
         </>
+      )}
+    </section>
+  )
+}
+
+/* « DU SOLEIL AU RÉSEAU » de l'étape Résultats (maquette Resultats.dc.html), guidé et expert :
+   « Soleil reçu par les panneaux » 100 %, les postes LISIBLES servis (`cascade.postes_lisibles`,
+   ACAL695 — le serveur regroupe déjà Ombres proches / Poussière / Chaleur / Câbles et onduleur /
+   Autres pertes, rien n'est regroupé ici), « Électricité produite » servie en pied, « Voir les N
+   étapes » qui déplie les lignes d'ACAL444. Un poste sans valeur servie (« non compté ») est OMIS,
+   jamais une barre à zéro (l'état « résultat incomplet » dit ce qui manque) ; un poste « partiel »
+   dit combien d'étapes ne sont pas comptées. La longueur des barres n'est que le cumul visuel
+   des pourcentages servis. `note` : la ligne « valeurs publiées » (si le serveur la justifie). */
+export function DuSoleilAuReseau({ cascade, note = null }) {
+  const [ouvert, setOuvert] = useState(false)
+  const postes = cascade?.postes_lisibles
+  const liste = (Array.isArray(postes?.postes) ? postes.postes : [])
+    .filter((p) => p.statut !== 'non_compte' && typeof p.perte_pct === 'number')
+  if (liste.length === 0) return null
+  const etapes = Array.isArray(cascade?.etapes) ? cascade.etapes : []
+  const arrivee = typeof postes?.arrivee_pct === 'number' ? postes.arrivee_pct : null
+  const restes = liste.map((_, i) => 100 - liste.slice(0, i + 1).reduce((somme, p) => somme + p.perte_pct, 0))
+  return (
+    <section className="cal-res-carte" data-testid="cal-resultats-pertes">
+      <div className="cal-res-entete">
+        <h2 className="cal-res-titre">Du soleil au réseau</h2>
+        {etapes.length > 0 && (
+          <button type="button" className="cal-res-lien" aria-expanded={ouvert}
+            onClick={() => setOuvert((o) => !o)}>
+            {ouvert ? 'Masquer les étapes' : `Voir les ${etapes.length} étapes`}
+          </button>
+        )}
+      </div>
+      <ul className="cal-res-postes">
+        <li className="cal-res-poste" data-poste="soleil">
+          <span>Soleil reçu par les panneaux</span>
+          <div className="cal-res-piste cal-res-piste-depart" aria-hidden="true" />
+          <span className="cal-res-poste-pct cal-res-poste-fort">100 %</span>
+        </li>
+        {liste.map((p, i) => {
+          const omises = Array.isArray(p.etapes) ? p.etapes.length : 0
+          return (
+            <li key={p.poste} className="cal-res-poste" data-poste={p.poste} data-statut={p.statut}>
+              <span>
+                {p.libelle}
+                {p.statut === 'partiel' && omises > 0 && (
+                  <span className="cal-res-sourdine block text-xs">
+                    {`+ ${omises} ${omises > 1 ? 'étapes non comptées' : 'étape non comptée'}`}
+                  </span>
+                )}
+              </span>
+              <div className="cal-res-piste" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, restes[i]))}%` }} /></div>
+              <span className="cal-res-poste-pct">{`− ${formatPercent(p.perte_pct, { decimals: 1 })}`}</span>
+            </li>
+          )
+        })}
+        {arrivee !== null && (
+          <li className="cal-res-poste cal-res-poste-arrivee" data-poste="arrivee">
+            <span>Électricité produite</span>
+            <div className="cal-res-piste cal-res-piste-arrivee" aria-hidden="true">
+              <span style={{ width: `${Math.max(0, Math.min(100, arrivee))}%` }} />
+            </div>
+            <span className="cal-res-poste-pct cal-res-poste-fort">{formatPercent(arrivee, { decimals: 1 })}</span>
+          </li>
+        )}
+      </ul>
+      {ouvert && (
+        <div data-zone="etapes">
+          <CascadePertesLignes lignes={construireCascadeDetaillee(etapes, cascade.total_pct ?? null, cascade.plages ?? null)} />
+        </div>
+      )}
+      {note && (
+        <div className="cal-res-info">
+          <Info size={18} aria-hidden="true" style={{ flex: 'none', marginTop: 2 }} />
+          <span>{note}</span>
+        </div>
       )}
     </section>
   )

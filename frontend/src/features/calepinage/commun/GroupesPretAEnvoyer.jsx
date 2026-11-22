@@ -1,0 +1,131 @@
+import { AlertTriangle, CheckCircle2, Info, OctagonX } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
+import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
+import { phraseDesBons } from './PretAEnvoyer.helpers'
+import useExplications, { remplirPhrase } from './useExplications'
+
+/* ACAL1193 — la présentation « par étape » de « Prêt à envoyer ? » (maquette `Documents.dc.html`,
+   `PretAEnvoyer groupes`). Aucun état n'est calculé ici : chaque pastille, chaque phrase et chaque
+   cible vient du contrôle SERVI ; les longues explications (cause, registre, geste) sont derrière
+   le « ? » de la ligne — rien n'est supprimé. */
+
+const ICONE = { ok: CheckCircle2, a_regler: AlertTriangle, bloquant: OctagonX, info: Info }
+const LEGENDE = [
+  ['ok', 'Bon'], ['a_regler', 'À régler'], ['bloquant', 'Bloque le devis'],
+]
+const libelleEtape = (cible) => ETAPES.find((e) => e.cle === etapeDeOnglet(cible?.onglet))?.libelle ?? null
+const RANG = { bloquant: 0, a_regler: 1 }
+
+function Pastille({ etat, taille = 22 }) {
+  const Icone = ICONE[etat] ?? ICONE.info
+  return <Icone size={taille} className="cdoc-ico" data-etat={etat} aria-hidden="true" />
+}
+
+/** Le « ? » de la ligne : cause servie + phrase du registre + geste, dans UNE bulle. Rien à dire ⇒ rien. */
+function Pourquoi({ controle }) {
+  const entrees = useExplications()
+  const entree = entrees?.find((e) => e.cle === `controle.${controle.code}`) ?? null
+  const cause = controle.etat !== 'ok' ? controle.cause : ''
+  // Le registre ne publie pas encore d'entrée `controle.*` : sans cause ni source de seuil servies,
+  // rien à dire derrière le « ? » — jamais un cercle mort.
+  if (!cause && !controle.seuil_source && entrees && !entree) return null
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="cdoc-aide" aria-label={`Pourquoi : ${controle.libelle}`}
+          data-grandeur={`controle.${controle.code}`}>
+          <span aria-hidden="true">?</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 text-sm leading-relaxed text-foreground normal-case tracking-normal">
+        <div className="flex flex-col gap-2">
+          {cause && <p>{cause}</p>}
+          {entree && <p>{remplirPhrase(entree, controle)}</p>}
+          {controle.seuil_source && <p className="text-muted-foreground">{`Source du seuil : ${controle.seuil_source}.`}</p>}
+          {controle.geste && controle.etat !== 'ok' && <p className="text-muted-foreground">{controle.geste}</p>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function Ligne({ controle, onRegler }) {
+  const aRegler = (controle.etat === 'a_regler' || controle.etat === 'bloquant') && Boolean(controle.cible?.onglet)
+  const etape = libelleEtape(controle.cible)
+  return (
+    <li data-testid={`cal-pret-ligne-${controle.code}`} data-etat={controle.etat} className="cdoc-ligne">
+      <Pastille etat={controle.etat} />
+      <span className="cdoc-ligne-texte">
+        <span className="cdoc-ligne-titre">{controle.libelle}</span>
+        {controle.valeur_texte ? <span className="cdoc-ligne-detail">{controle.valeur_texte}</span> : null}
+      </span>
+      <Pourquoi controle={controle} />
+      {aRegler && (
+        <button type="button" data-testid={`cal-pret-regler-${controle.code}`} className="cdoc-regler"
+          onClick={() => onRegler(controle.cible)}>
+          {etape ? `Régler dans ${etape}` : 'Régler'}
+        </button>
+      )}
+    </li>
+  )
+}
+
+function messagePied(controles) {
+  const bloquants = controles.filter((c) => c.etat === 'bloquant').length
+  const aRegler = controles.filter((c) => c.etat === 'a_regler').length
+  if (bloquants > 0) {
+    return `${bloquants > 1 ? 'Ces points bloquent' : 'Ce point bloque'} le devis : à régler avant de le générer.`
+  }
+  if (aRegler > 0) {
+    return `${aRegler > 1 ? 'Les points à régler n’empêchent' : 'Le point à régler n’empêche'} pas le devis : `
+      + `${aRegler > 1 ? 'ils restent signalés' : 'il reste signalé'} tant qu’${aRegler > 1 ? 'ils ne sont' : 'il n’est'} pas réglé${aRegler > 1 ? 's' : ''}.`
+  }
+  return null
+}
+
+export default function GroupesPretAEnvoyer({ groupes, testIdCompte, pied, onRegler }) {
+  const tous = groupes.flatMap((g) => g.controles)
+  const avecVerdict = tous.filter((c) => ['ok', 'a_regler', 'bloquant'].includes(c.etat))
+  const bons = avecVerdict.filter((c) => c.etat === 'ok').length
+  const n = avecVerdict.length - bons
+  const message = messagePied(tous)
+  return (
+    <section data-testid="cal-pret-a-envoyer" aria-labelledby="cdoc-pret-titre" className="cdoc-pret">
+      <div className="cdoc-pret-tete">
+        <div className="cdoc-pret-titres">
+          <h2 id="cdoc-pret-titre" className="cdoc-titre">Prêt à envoyer ?</h2>
+          <span data-testid={testIdCompte} className="cdoc-sous">
+            {avecVerdict.length > 0 ? phraseDesBons(bons, avecVerdict.length) : 'Aucun contrôle publié pour l’instant.'}
+          </span>
+        </div>
+        <span className="cdoc-badge" data-ton={n > 0 ? 'a_regler' : 'ok'}>
+          <Pastille etat={n > 0 ? 'a_regler' : 'ok'} taille={16} />
+          {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
+        </span>
+      </div>
+      <div className="cdoc-groupes">
+        {groupes.map((g) => (
+          <div key={g.cle} className="cdoc-groupe" data-testid={`cal-pret-groupe-${g.cle}`}>
+            <h3 className="cdoc-groupe-titre">{g.libelle}</h3>
+            <ul className="cdoc-lignes">
+              {[...g.controles]
+                .sort((a, b) => (RANG[a.etat] ?? 2) - (RANG[b.etat] ?? 2))
+                .map((c) => <Ligne key={c.code} controle={c} onRegler={onRegler} />)}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <div className="cdoc-pied">
+        <div className="cdoc-pied-texte">
+          {message && <span className="cdoc-note">{message}</span>}
+          <div role="group" aria-label="Légende" className="cdoc-legende">
+            {LEGENDE.map(([etat, libelle]) => (
+              <span key={etat}><Pastille etat={etat} taille={16} />{libelle}</span>
+            ))}
+          </div>
+        </div>
+        {pied}
+      </div>
+    </section>
+  )
+}

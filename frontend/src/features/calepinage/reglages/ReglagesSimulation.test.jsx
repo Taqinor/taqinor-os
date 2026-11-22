@@ -424,11 +424,11 @@ describe('ACAL405 — Démarrage rapide', () => {
     mocks.profilDepart.mockResolvedValue({ data: PROFIL })
     servirReglages({})
     rendre()
-    expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toHaveTextContent('à appliquer')
+    expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toHaveTextContent('Vide')
     expect(screen.getByTestId(`acal405-valeur-${CLE}`)).toHaveTextContent(PROFIL.valeurs[0].url)
     expect(screen.getByTestId('acal405-sans-source')).toHaveTextContent(PROFIL.sans_source[0].motif)
-    for (const [etat, libelle] of [['posee_par_profil', 'posée par le profil (retirable)'],
-      ['deja_saisie', 'déjà saisie']]) {
+    for (const [etat, libelle] of [['posee_par_profil', 'Posée par le profil (retirable)'],
+      ['deja_saisie', 'Déjà renseigné par vous']]) {
       cleanup()
       mocks.profilDepart.mockResolvedValue({ data: profilA(etat) })
       servirReglages({})
@@ -441,7 +441,153 @@ describe('ACAL405 — Démarrage rapide', () => {
     mocks.profilDepart.mockResolvedValue({ data: profilA(undefined) })
     servirReglages({ [CLE]: { valeur: 0.07, source: 'texte', reference: 'saisie' } })
     rendre()
-    expect(await screen.findByTestId(`acal405-etat-${CLE}`)).toHaveTextContent('déjà saisie')
+    expect(await screen.findByTestId(`acal405-etat-${CLE}`))
+      .toHaveTextContent('Déjà renseigné par vous (0,07) — conservé')
+  })
+
+  /* Maquette « Démarrage rapide » : des mots de tous les jours, un tableau à cinq colonnes. */
+  describe('maquette — tableau Remplir · Réglage · Valeur proposée · Source · État', () => {
+    const LIGNE = (cle, valeur, extra = {}) => ({
+      ...PROFIL.valeurs[0], cle, valeur, etat: 'a_appliquer', unite: '', ...extra,
+    })
+    const PROFIL_RICHE = {
+      ...PROFIL,
+      valeurs: [
+        LIGNE('b0_iam', 0.05),
+        LIGNE('mismatch_fabricant_pct', 2, { unite: '%' }),
+        LIGNE('resolution_minutes', 60, { unite: 'minutes' }),
+        LIGNE('modele_iam', 'fresnel'),
+        LIGNE('thermique_par_pose', {
+          pose_libre: { uc_w_m2k: 29, uv_w_m3sk: 0 }, dos_isole: { uc_w_m2k: 15, uv_w_m3sk: 0 },
+        }, { unite: 'W/m²K et W/m³sK' }),
+        { ...LIGNE('albedo_mensuel', 0.2), etat: 'deja_saisie' },
+      ],
+    }
+
+    it('le tableau : cinq colonnes, un nom français par réglage, sa valeur avec son unité', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+      servirReglages({})
+      rendre()
+      await screen.findByTestId('acal405-valeur-b0_iam')
+      const tableau = screen.getByRole('region', { name: 'Réglages proposés' })
+      for (const colonne of ['Remplir', 'Réglage', 'Valeur proposée', 'Source', 'État']) {
+        expect(within(tableau).getAllByText(colonne).length).toBeGreaterThan(0)
+      }
+      const ligne = (cle) => screen.getByTestId(`acal405-valeur-${cle}`)
+      expect(ligne('b0_iam')).toHaveTextContent('Reflets du verre')
+      expect(ligne('b0_iam')).toHaveTextContent('0,05')
+      expect(ligne('mismatch_fabricant_pct')).toHaveTextContent('Écarts entre panneaux')
+      expect(ligne('mismatch_fabricant_pct')).toHaveTextContent('2 %')
+      expect(ligne('resolution_minutes')).toHaveTextContent('60 minutes')
+      expect(ligne('modele_iam')).toHaveTextContent('Fresnel')
+      expect(ligne('thermique_par_pose')).toHaveTextContent('29 · 15 W/m²K')
+      expect(ligne('thermique_par_pose')).toHaveTextContent('Pose libre · dos isolé')
+    })
+
+    it('jamais de JSON ni de clé technique à l’écran', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+      servirReglages({})
+      rendre()
+      await screen.findByTestId('acal405-valeur-b0_iam')
+      const carte = screen.getByTestId('acal405-demarrage')
+      // Les lignes de valeur ne montrent ni accolade, ni clé du registre.
+      for (const v of PROFIL_RICHE.valeurs) {
+        const texte = screen.getByTestId(`acal405-valeur-${v.cle}`).textContent
+        expect(texte, v.cle).not.toMatch(/[{}[\]"]/)
+        expect(texte, v.cle).not.toContain(v.cle)
+      }
+      expect(carte.textContent).not.toContain('"uc_w_m2k"')
+      // Les clés laissées sans valeur sont nommées en français, jamais par leur clé.
+      for (const s of PROFIL.sans_source) {
+        expect(screen.getByTestId('acal405-sans-source').textContent).not.toContain(s.cle)
+      }
+    })
+
+    it('toute clé « sans source » servie par le contrat a son nom français', async () => {
+      const { LIBELLES_SANS_SOURCE, nomSansSource } = await import('./profilDepart')
+      const libellesRegistre = Object.fromEntries(
+        Object.values(REGISTRE).flat().map((r) => [r.cle, r.libelle]))
+      for (const s of PROFIL.sans_source) {
+        expect(nomSansSource(s.cle), s.cle).not.toBe('Autre réglage')
+      }
+      // Le nom français d'une clé sans source EST le libellé du registre servi (apostrophes typographiques mises à part).
+      for (const [cle, nom] of Object.entries(LIBELLES_SANS_SOURCE)) {
+        if (libellesRegistre[cle]) {
+          expect(nom.replace(/’/g, "'"), cle).toBe(libellesRegistre[cle].replace(/’/g, "'"))
+        }
+      }
+    })
+
+    it('la source : l’éditeur en clair + « ouvrir » vers la MÊME adresse ; la citation complète reste dans la ligne', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+      servirReglages({})
+      rendre()
+      const ligne = await screen.findByTestId(`acal405-valeur-${CLE}`)
+      expect(ligne).toHaveTextContent('PVsyst')
+      const lien = within(ligne).getByRole('link', { name: /Ouvrir la source/ })
+      expect(lien).toHaveAttribute('href', PROFIL.valeurs[0].url)
+      expect(lien).toHaveAttribute('target', '_blank')
+      // La citation intégrale (anglais, adresse entière) est dans le détail dépliable, pas en tête de ligne.
+      expect(ligne.querySelector('details')).toHaveTextContent(PROFIL.valeurs[0].reference)
+      expect(ligne.querySelector('summary')).toHaveTextContent('Citation complète')
+    })
+
+    it('« Remplir les N réglages vides » : N = les lignes vides réellement servies', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+      servirReglages({})
+      rendre()
+      // 6 lignes dont 1 déjà renseignée : 5 vides.
+      await waitFor(() => expect(screen.getByTestId('acal405-appliquer')).toHaveTextContent('Remplir les 5 réglages vides'))
+      expect(screen.getByRole('link', { name: 'Tout saisir à la main' })).toHaveAttribute(
+        'href', '/calepinage/reglages#calx69-section-simulation')
+    })
+
+    it('rien à remplir : le bouton le dit et se désactive', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: profilA('deja_saisie') })
+      servirReglages({})
+      rendre()
+      const bouton = await screen.findByTestId('acal405-appliquer')
+      expect(bouton).toHaveTextContent('Aucun réglage vide à remplir')
+      expect(bouton).toBeDisabled()
+    })
+
+    it('les cases « Remplir » disent l’état : cochée = sera rempli, vide = en place et conservé ; jamais cliquables', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+      servirReglages({})
+      rendre()
+      await screen.findByTestId('acal405-valeur-b0_iam')
+      const a = within(screen.getByTestId('acal405-valeur-b0_iam')).getByRole('checkbox')
+      const b = within(screen.getByTestId('acal405-valeur-albedo_mensuel')).getByRole('checkbox')
+      expect(a).toBeChecked()
+      expect(b).not.toBeChecked()
+      expect(a).toBeDisabled()
+    })
+
+    it('la ligne « Saisir » : les réglages sans valeur publiée mènent à leur saisie', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+      servirReglages({})
+      rendre()
+      const lien = await screen.findByTestId('acal405-saisir')
+      expect(lien).toHaveTextContent('Saisir')
+      expect(lien).toHaveAttribute('href', '/calepinage/reglages#calx69-section-simulation')
+    })
+
+    it('seul sur sa route : fil d’Ariane Réglages / Calepinage / Démarrage rapide et titre de page', async () => {
+      window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide')
+      try {
+        mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+        servirReglages({})
+        const { default: DemarrageRapide } = await import('./DemarrageRapide')
+        render(<DemarrageRapide />)
+        const fil = await screen.findByRole('navigation', { name: 'Fil d’Ariane' })
+        expect(fil).toHaveTextContent('Réglages/Calepinage/Démarrage rapide')
+        expect(screen.getByRole('heading', { level: 1, name: 'Démarrage rapide' })).toBeInTheDocument()
+        // Sans appelant, le droit est celui de la personne connectée (doublure : accordé).
+        expect(screen.getByTestId('acal405-appliquer')).toBeInTheDocument()
+      } finally {
+        window.history.replaceState(null, '', '/')
+      }
+    })
   })
 
   it('le clic appelle POST puis relit les réglages', async () => {
@@ -449,7 +595,9 @@ describe('ACAL405 — Démarrage rapide', () => {
     mocks.appliquerProfilDepart.mockResolvedValue({ data: APPLICATION })
     servirReglages({})
     rendre()
-    fireEvent.click(await screen.findByTestId('acal405-appliquer'))
+    // Le bouton reste éteint tant que le profil n'est pas lu (aucun N à annoncer).
+    await waitFor(() => expect(screen.getByTestId('acal405-appliquer')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('acal405-appliquer'))
     expect(await screen.findByTestId('acal405-message'))
       .toHaveTextContent(`${APPLICATION.appliquees.length} valeurs appliquées`)
     expect(mocks.appliquerProfilDepart).toHaveBeenCalledTimes(1)

@@ -826,7 +826,12 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     for (const t of ['Panneaux', 'Puissance', 'Raccordement', 'Conforme', 'Ombres proches']) {
       expect(within(sur).getByText(t)).toBeInTheDocument()
     }
-    expect(bloc).toHaveTextContent("Les années basses et l'indice de performance s'affichent dès que le résultat est complet")
+    expect(bloc).toHaveTextContent("Les années basses (9 fois sur 10 au-dessus) et l'indice de performance s'affichent dès que le résultat est complet")
+    // Maquette ResultatsIncomplet : la barre « N étapes sur M » du serveur, les lignes numérotées, la carte « au plus » à gauche.
+    expect(within(bloc).getByTestId('acal700-progression')).toHaveTextContent(`${a.etapes_comptees} ${a.etapes_comptees > 1 ? 'étapes' : 'étape'} sur ${a.etapes_a_compter}`)
+    expect(within(bloc).getByTestId('acal700-valeur')).toHaveTextContent('kWh')
+    expect(lignes[0]).toHaveTextContent('1')
+    expect(within(bloc).getByTestId('acal700-lien-reglages')).toHaveTextContent('Voir les valeurs')
     expect(screen.queryByTestId('acal52-borne-haute')).toBeNull() // remplacé
   })
 
@@ -838,7 +843,8 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     const bloc = await screen.findByTestId('acal700-incomplet')
     expect(within(bloc).getByTestId('acal700-plafond')).toHaveTextContent(
       "C'est un plafond : 17 pertes non renseignées, dont 3 à renseigner ici. Le chiffre réel sera plus bas.")
-    expect(bloc).not.toHaveTextContent('étapes sur')
+    // Le compte de la barre est celui du serveur (4 sur 21), le même que « 17 pertes non renseignées » (21 − 4).
+    expect(within(bloc).getByTestId('acal700-progression')).toHaveTextContent('4 étapes sur 21')
   })
 
   it('Raccordement « Conforme » seulement si l’étape électrique est faite', async () => {

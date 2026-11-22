@@ -1,23 +1,28 @@
-import { useMemo, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
+import { ReactReduxContext } from 'react-redux'
 import { messageRefus } from './commun/refusServeur'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Columns3, LayoutGrid, Plus, Search, X } from 'lucide-react'
+import {
+  CircleCheck, CircleDashed, CircleX, Columns3, LayoutGrid, Plus, Search, SlidersHorizontal,
+  TriangleAlert, User, X,
+} from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
 import useResource from '../../hooks/useResource'
 import { unwrapList } from '../../api/resource'
 import {
-  Badge, Button, Card, Checkbox, Combobox, EmptyState, Input, Label, Spinner,
+  Button, Card, Checkbox, Combobox, EmptyState, Input, Label, Spinner,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../ui'
-import { formatDate } from '../../lib/format'
 import { urlImage } from './urlImage'
 // CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur que la
 // fiche devis et l'en-tête de l'atelier (CAL189), jamais recalculé ici.
 import BadgePerime from './BadgePerime'
 // CALX344 — le filtre par étiquette libre (`?etiquette=`, CALX343).
 import { FiltreEtiquettes } from './Etiquettes'
-import { STATUTS_CALEPINAGE } from './CalepinageList.helpers'
+import {
+  STATUTS_CALEPINAGE, STYLE_STATUT, initiales, modifieDe, morceauxMesures, nombreProjets, villeDe,
+} from './CalepinageList.helpers'
 
 /* ============================================================================
    CAL35 — L'ÉCRAN LISTE `/calepinage` : la porte autonome, enfin.
@@ -129,16 +134,27 @@ function responsableDe(ligne) {
    5 projets). Une case de plus serait refusée 400 sous le champ `ids`. */
 const BORNE_COMPARAISON = 5
 
-/* ── La vignette ───────────────────────────────────────────────────────────
-   `image.url` présent ⇒ l'aperçu réel. Absent ⇒ carte neutre explicite.
+/* ── La carte (maquette « Liste ») ────────────────────────────────────────
+   `image.url` présent ⇒ l'aperçu réel. Absent ⇒ carte neutre « Aucun aperçu »,
+   jamais un faux dessin de toit. Chaque chiffre (kWc, panneaux, kWh/an,
+   « points à régler ») n'apparaît que lorsque le serveur le SERT.
    CALX342 — `selection` (facultatif) pose une case « Comparer » HORS du lien :
-   cocher ne doit jamais ouvrir l'atelier. Sans elle, la vignette est
-   exactement celle d'avant. */
+   cocher ne doit jamais ouvrir l'atelier. */
+const ICONE_STATUT = {
+  brouillon: CircleDashed, valide: CircleCheck, perime: TriangleAlert, refuse: CircleX,
+}
+
 export function VignetteCalepinage({ calepinage, selection = null }) {
   const url = urlImage(calepinage?.image?.url) || null
   const titre = calepinage?.nom || calepinage?.reference || 'Calepinage'
+  const ville = villeDe(calepinage)
+  const mesures = morceauxMesures(calepinage)
+  const modifie = modifieDe(calepinage?.modifie_le)
+  const points = calepinage?.points_a_regler
+  const resp = responsableDe(calepinage)
+  const Icone = ICONE_STATUT[calepinage?.statut] || CircleDashed
   return (
-    <Card className="relative overflow-hidden transition-shadow hover:shadow-ui-md">
+    <Card className="relative flex min-h-0 flex-col overflow-hidden rounded-[14px] transition-shadow hover:shadow-ui-md">
       {selection ? (
         <label className="absolute left-2 top-2 z-10 flex items-center gap-1.5 rounded-md bg-card/90 px-2 py-1 text-xs shadow-ui-xs">
           <Checkbox
@@ -153,52 +169,76 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
       ) : null}
       <Link
         to={`/calepinage/${calepinage.id}`}
-        className="block"
+        className="flex min-h-0 flex-1 flex-col text-foreground no-underline"
+        title={`${calepinage?.reference || ''} · ${rattachementDe(calepinage)}`}
         data-testid={`cal-vignette-${calepinage.id}`}
       >
-        <div className="aspect-[4/3] w-full bg-muted">
-          {url ? (
-            <img
-              src={url}
-              alt={`Aperçu de toiture — ${titre}`}
-              className="h-full w-full object-cover"
-              data-testid="cal-vignette-image"
-            />
-          ) : (
-            <div
-              className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground"
-              data-testid="cal-vignette-sans-image"
-            >
-              <LayoutGrid size={28} strokeWidth={1.5} aria-hidden="true" />
-              <span className="text-xs">Aucun aperçu de toiture</span>
+        {url ? (
+          <img
+            src={url}
+            alt={`Aperçu de toiture — ${titre}`}
+            className="block h-[140px] w-full flex-none object-cover"
+            data-testid="cal-vignette-image"
+          />
+        ) : (
+          <div
+            className="flex h-[140px] w-full flex-none flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"
+            data-testid="cal-vignette-sans-image"
+          >
+            <LayoutGrid size={28} strokeWidth={1.5} aria-hidden="true" />
+            <span className="text-xs">Aucun aperçu</span>
+          </div>
+        )}
+        <div className="flex flex-1 flex-col gap-2 border-t border-border px-4 py-3.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate font-display text-base font-semibold">{titre}</span>
+              {ville ? <span className="truncate text-sm text-muted-foreground">{ville}</span> : null}
             </div>
-          )}
-        </div>
-        <div className="space-y-1 p-3">
-          <div className="flex items-start justify-between gap-2">
-            <span className="truncate text-sm font-medium">{titre}</span>
-            <span className="flex shrink-0 items-center gap-1">
+            <span className="flex shrink-0 items-center gap-1.5">
               <BadgePerime layoutStale={calepinage?.layout_stale}
                 layoutNbPanneaux={calepinage?.layout_nb_panneaux} />
               {calepinage?.statut_libelle ? (
-                <Badge variant="outline">{calepinage.statut_libelle}</Badge>
+                <span
+                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${STYLE_STATUT[calepinage.statut] || STYLE_STATUT.brouillon}`}
+                >
+                  <Icone size={14} aria-hidden="true" />
+                  {calepinage.statut_libelle}
+                </span>
               ) : null}
             </span>
           </div>
-          <div className="truncate text-xs text-muted-foreground">
-            {calepinage?.reference || '—'}
-            {' · '}
-            {rattachementDe(calepinage)}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {calepinage?.modifie_le ? `Modifié le ${formatDate(calepinage.modifie_le)}` : '—'}
-          </div>
-          {/* CALX406 — la colonne « Responsable » de la liste. */}
-          <div className="truncate text-xs text-muted-foreground"
-            data-testid={`cal-responsable-${calepinage.id}`}>
-            {responsableDe(calepinage)
-              ? `Responsable : ${responsableDe(calepinage).nom}`
-              : 'Sans responsable'}
+          {mesures.length ? (
+            <div className="flex flex-wrap gap-x-2 text-sm">
+              {mesures.map((m, rang) => (
+                <span key={m.texte} className="flex gap-2">
+                  {rang ? <span className="text-muted-foreground" aria-hidden="true">·</span> : null}
+                  <span className={m.fort ? 'font-semibold' : undefined}>{m.texte}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {/* Référence et rattachement : pour les lecteurs d'écran et en infobulle. */}
+          <span className="sr-only">{`${calepinage?.reference || ''} · ${rattachementDe(calepinage)}`}</span>
+          <div className="mt-auto flex items-center gap-2.5 text-xs text-muted-foreground">
+            <span className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+              <span>{modifie || '—'}</span>
+              {typeof points === 'number' && points > 0 ? (
+                <span className="flex items-center gap-1 font-semibold text-warning-text">
+                  <TriangleAlert size={14} aria-hidden="true" />
+                  {`${points} point${points > 1 ? 's' : ''} à régler`}
+                </span>
+              ) : null}
+            </span>
+            {/* CALX406 — la colonne « Responsable » : initiales, nom complet en clair pour la lecture d'écran. */}
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground"
+              title={resp ? resp.nom : 'Sans responsable'}
+              data-testid={`cal-responsable-${calepinage.id}`}
+            >
+              <span aria-hidden="true">{resp ? initiales(resp.nom) : '—'}</span>
+              <span className="sr-only">{resp ? `Responsable : ${resp.nom}` : 'Sans responsable'}</span>
+            </span>
           </div>
         </div>
       </Link>
@@ -215,9 +255,14 @@ export default function CalepinageList() {
   const [client, setClient] = useState(null)
   const [page, setPage] = useState(1)
   const [etiquettes, setEtiquettes] = useState([])
-  const [filtresOuverts, setFiltresOuverts] = useState(false) // ACAL957 — sous 768 px, repliés
+  // Maquette « Liste » — la barre de filtres est repliée derrière « Filtres » (ACAL957 la
+  // repliait déjà sous 768 px) ; un filtre avancé actif la garde ouverte (`filtresVisibles`).
+  const [filtresOuverts, setFiltresOuverts] = useState(false)
   // CALX406 — l'identifiant du responsable filtré ('' = tous).
   const [responsable, setResponsable] = useState('')
+  // « Mes calepinages » : l'identifiant de la personne connectée (lu du magasin, jamais deviné).
+  const contexteRedux = useContext(ReactReduxContext)
+  const idMoi = contexteRedux?.store?.getState?.()?.auth?.user?.id
 
   // CALX32 — le tri vit dans l'URL (`?ordering=`), partageable et rechargeable
   // à l'identique — contrairement aux autres filtres ci-dessus (état local).
@@ -257,6 +302,8 @@ export default function CalepinageList() {
   )
 
   const lignes = useMemo(() => unwrapList({ data }), [data])
+  // Effectifs par statut servis avec la liste (une requête groupée côté serveur) : sans eux, aucun nombre.
+  const compteurs = Array.isArray(data) ? null : (data?.compteurs_statut ?? null)
   const total = Array.isArray(data) ? data.length : (data?.count ?? lignes.length)
   const pageSuivante = Array.isArray(data) ? null : data?.next
   const pagePrecedente = Array.isArray(data) ? null : data?.previous
@@ -281,8 +328,12 @@ export default function CalepinageList() {
   }
   const filtreActif = Boolean(q || statut || depuis || lead || client || etiquettes.length
     || responsable)
-  const nbFiltres = [q, statut, depuis, lead, client, responsable].filter(Boolean).length + (etiquettes.length ? 1 : 0)
-  const surFiltre = (poser) => (valeur) => { poser(valeur); setPage(1) }
+    const surFiltre = (poser) => (valeur) => { poser(valeur); setPage(1) }
+  // Les filtres avancés (hors recherche et puces d'état) : l'un d'eux actif garde la barre ouverte.
+  const responsableAvance = responsable && String(responsable) !== String(idMoi) ? responsable : ''
+  const nbAvances = [depuis, lead, client, responsableAvance, champTri].filter(Boolean).length
+    + (etiquettes.length ? 1 : 0)
+  const filtresVisibles = filtresOuverts || nbAvances > 0
 
   // CALX32 — changer le champ ou le sens relance la requête avec `ordering=`
   // ET remet la pagination à la première page (sinon une page 3 triée
@@ -302,22 +353,79 @@ export default function CalepinageList() {
     setPage(1)
   }
 
+  const puces = [['', 'Tous'], ...optionsStatut]
+  const nombreDe = (valeur) => (compteurs ? compteurs[valeur === '' ? 'tous' : valeur] : null)
+  const estMoi = idMoi !== undefined && idMoi !== null && String(responsable) === String(idMoi)
+  const classePuce = (actif) => `flex h-11 items-center gap-2 rounded-full px-4 text-sm ${actif
+    ? 'bg-foreground font-semibold text-background'
+    : 'border border-border bg-card font-medium text-foreground'}`
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold">Calepinages</h1>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline"
-            onClick={() => (modeComparaison ? quitterComparaison() : setModeComparaison(true))}
-            data-testid="cal-mode-comparer">
-            <Columns3 size={16} aria-hidden="true" />
-            {modeComparaison ? 'Annuler la comparaison' : 'Comparer'}
-          </Button>
-          <Button size="sm" onClick={() => navigate('/calepinage/nouveau')}>
-            <Plus size={16} aria-hidden="true" />
-            Nouveau calepinage
-          </Button>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-1 items-baseline gap-3">
+          <h1 className="font-display text-h2 font-semibold">Calepinages</h1>
+          <span className="text-sm text-muted-foreground">
+            {nombreProjets(total)}
+          </span>
         </div>
+        <div className="relative flex h-11 w-full items-center gap-2 rounded-[10px] border border-border bg-card px-3 sm:w-[360px]">
+          <Search size={18} className="text-muted-foreground" aria-hidden="true" />
+          <label htmlFor="cal-q" className="sr-only">Rechercher un calepinage</label>
+          <input
+            id="cal-q"
+            type="search"
+            className="min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            value={q}
+            placeholder="Client, référence ou lead"
+            onChange={(e) => surFiltre(setQ)(e.target.value)}
+          />
+        </div>
+        <Button variant="outline" className="h-11 rounded-[10px]"
+          onClick={() => (modeComparaison ? quitterComparaison() : setModeComparaison(true))}
+          data-testid="cal-mode-comparer">
+          <Columns3 size={16} aria-hidden="true" />
+          {modeComparaison ? 'Annuler la comparaison' : 'Comparer'}
+        </Button>
+        <Button className="h-11 gap-2 rounded-[10px] px-[18px]" onClick={() => navigate('/calepinage/nouveau')}>
+          <Plus size={18} aria-hidden="true" />
+          Nouveau calepinage
+        </Button>
+      </div>
+
+      {/* Les puces d'état : celles du serveur (Brouillon, Validé, Périmé, Refusé), chacune avec son effectif quand il est servi. */}
+      <div className="flex flex-wrap items-center gap-2">
+      <div role="group" aria-label="Filtrer par état" data-testid="cal-liste-filtres-etat"
+        className="flex flex-wrap items-center gap-2">
+        {puces.map(([valeur, libelle]) => (
+          <button key={valeur || 'tous'} type="button" aria-pressed={statut === valeur}
+            className={classePuce(statut === valeur)}
+            onClick={() => surFiltre(setStatut)(valeur)}>
+            {libelle}
+            {nombreDe(valeur) !== null && nombreDe(valeur) !== undefined ? (
+              <span className={statut === valeur ? 'font-medium opacity-80' : 'text-muted-foreground'}>
+                {nombreDe(valeur)}
+              </span>
+            ) : null}
+          </button>
+        ))}
+        {idMoi !== undefined && idMoi !== null ? (
+          <>
+            <div className="mx-1 h-7 w-px bg-border" aria-hidden="true" />
+            <button type="button" className={classePuce(estMoi)} aria-pressed={estMoi}
+              onClick={() => surFiltre(setResponsable)(estMoi ? '' : String(idMoi))}>
+              <User size={16} aria-hidden="true" />
+              Mes calepinages
+            </button>
+          </>
+        ) : null}
+      </div>
+        <Button type="button" variant="outline" className="ml-auto h-11 rounded-full"
+          aria-expanded={filtresVisibles} aria-controls="acal957-filtres" data-testid="acal957-filtres-basculer"
+          onClick={() => setFiltresOuverts((v) => !v)}>
+          <SlidersHorizontal size={16} aria-hidden="true" />
+          {`Filtres${nbAvances ? ` · ${nbAvances} actif${nbAvances > 1 ? 's' : ''}` : ''}`}
+        </Button>
       </div>
 
       {modeComparaison ? (
@@ -334,34 +442,9 @@ export default function CalepinageList() {
         </Card>
       ) : null}
 
-      <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-7">
-        <div className="space-y-1">
-          <Label htmlFor="cal-q">Recherche</Label>
-          <div className="relative">
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              id="cal-q"
-              className="pl-7"
-              value={q}
-              placeholder="Référence, nom…"
-              onChange={(e) => surFiltre(setQ)(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* ACAL957 — sous 768 px : la recherche seule + « Filtres » ; le DOM garde tout. */}
-        <Button type="button" variant="outline" className="min-h-[44px] self-end md:hidden"
-          aria-expanded={filtresOuverts} aria-controls="acal957-filtres" data-testid="acal957-filtres-basculer"
-          onClick={() => setFiltresOuverts((v) => !v)}>
-          Filtres{nbFiltres ? ` · ${nbFiltres} actif${nbFiltres > 1 ? 's' : ''}` : ''}
-        </Button>
-
-        <div id="acal957-filtres" data-testid="acal957-filtres"
-          className={`${filtresOuverts ? 'grid' : 'hidden md:grid'} gap-3 sm:col-span-2 sm:grid-cols-2 lg:col-span-6 lg:grid-cols-6`}>
+      {/* Les filtres de la liste, TOUS conservés (ACAL957 : « le DOM garde tout ») — repliés par défaut. */}
+      <Card className={`${filtresVisibles ? 'grid' : 'hidden'} gap-3 p-3 sm:grid-cols-2 lg:grid-cols-6`}
+        id="acal957-filtres" data-testid="acal957-filtres">
         <div className="space-y-1">
           <Label htmlFor="cal-statut">Statut</Label>
           <Select value={statut || '__tous__'} onValueChange={(v) => surFiltre(setStatut)(v === '__tous__' ? '' : v)}>
@@ -463,7 +546,6 @@ export default function CalepinageList() {
             </Button>
           </div>
         ) : null}
-        </div>
       </Card>
 
       {error ? (

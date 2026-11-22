@@ -194,7 +194,7 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     expect(within(table).getByText('Gain bifacial en face arrière')).toBeInTheDocument()
 
     expect(screen.getByTestId('calx48-mention-source'))
-      .toHaveTextContent('Chaîne de pertes séquentielle calculée')
+      .toHaveTextContent('Chaîne de pertes calculée, étape par étape.')
   })
 
   it('ACAL444 : étape omise = ligne grisée « omise » avec son motif, sans barre ; aucune largeur fixe de 640 ; ligne dépliable', async () => {

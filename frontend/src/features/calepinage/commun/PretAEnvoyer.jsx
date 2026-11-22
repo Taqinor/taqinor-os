@@ -7,6 +7,8 @@ import { PARAM_ONGLET } from '../atelier/onglets'
 import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
 import { libelleEtat } from '../electrique/etatVerdict'
 import Pourquoi from './Pourquoi'
+import { GROUPES, GROUPE_AUTRES, groupeDuControle } from './PretAEnvoyer.helpers'
+import GroupesPretAEnvoyer from './GroupesPretAEnvoyer'
 
 /* ============================================================================
    ACAL865 — « PRÊT À ENVOYER ? » (maquette `Electrique.dc.html`).
@@ -18,7 +20,18 @@ import Pourquoi from './Pourquoi'
    `?onglet=<cible.onglet>&champ=<cible.champ>`) —, les `info` en valeur sans
    pastille, les `ok` repliés. Aucun prix, aucun statut : l'écran LIT.
    Partagé : l'étape Électrique le monte en tête (son compte remplace l'ancienne
-   synthèse), l'écran Documents le reprendra (ACAL867).
+   synthèse), l'écran Documents le reprend (ACAL867).
+
+   PROPS (additifs, le comportement par défaut ne change pas) — « POUR L3 » :
+   - `groupes` (bool) : rend la maquette `Documents.dc.html` — « N contrôles sur M sont bons »,
+     une pastille, les contrôles RANGÉS PAR ÉTAPE (Toit / Panneaux / Électrique / Résultats), une
+     ligne par contrôle (pastille d'état, titre, courte phrase servie, « ? » qui ouvre la
+     cause longue) et « Régler dans <étape> » sur les points à régler (mêmes cibles qu'avant).
+   - `filtre` (clé d'étape : 'toit' | 'panneaux' | 'electrique' | 'resultats') : ne garde que les
+     contrôles de CETTE étape — compte et lignes compris, dans les deux présentations
+     (l'étape Électrique : `filtre="electrique"`).
+   - `pied` (nœud) : en présentation `groupes`, posé à droite de la légende (l'écran Documents y met
+     « Générer le devis »).
    ========================================================================== */
 
 const TON = { bloquant: 'danger', a_regler: 'warning' }
@@ -65,7 +78,7 @@ function Ligne({ controle, onRegler }) {
 
 const RANG = { bloquant: 0, a_regler: 1, info: 2 }
 
-export default function PretAEnvoyer({ calepinageId, testIdCompte }) {
+export default function PretAEnvoyer({ calepinageId, testIdCompte, groupes = false, filtre = null, pied = null }) {
   const [parametres, setParametres] = useSearchParams()
   const { data, loading, error } = useResource(
     (id) => calepinageApi.calepinages.pretAEnvoyer(id), calepinageId,
@@ -79,8 +92,11 @@ export default function PretAEnvoyer({ calepinageId, testIdCompte }) {
     )
   }
 
-  const controles = data.controles ?? []
-  const n = Number(data.nombre_bloquants ?? 0) + Number(data.nombre_a_regler ?? 0)
+  const servis = data.controles ?? []
+  const controles = filtre ? servis.filter((c) => groupeDuControle(c) === filtre) : servis
+  const n = filtre
+    ? controles.filter((c) => c.etat === 'bloquant' || c.etat === 'a_regler').length
+    : Number(data.nombre_bloquants ?? 0) + Number(data.nombre_a_regler ?? 0)
   const enTete = controles.filter((c) => c.etat in RANG).sort((a, b) => RANG[a.etat] - RANG[b.etat])
   const reussis = controles.filter((c) => c.etat === 'ok')
 
@@ -90,6 +106,13 @@ export default function PretAEnvoyer({ calepinageId, testIdCompte }) {
     if (cible.champ) suivants.set(PARAM_CHAMP, cible.champ)
     else suivants.delete(PARAM_CHAMP)
     setParametres(suivants)
+  }
+
+  if (groupes) {
+    const rangees = [...GROUPES, GROUPE_AUTRES]
+      .map((g) => ({ ...g, controles: controles.filter((c) => groupeDuControle(c) === g.cle) }))
+      .filter((g) => g.controles.length > 0)
+    return <GroupesPretAEnvoyer groupes={rangees} testIdCompte={testIdCompte} pied={pied} onRegler={regler} />
   }
 
   return (

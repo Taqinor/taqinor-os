@@ -84,9 +84,13 @@ export function buildModuleRoutes(deps) {
   // Variable PascalCase (couverte par varsIgnorePattern '^[A-Z_]') plutôt qu'un
   // argument déstructuré : le lint local ne compte pas l'usage JSX seul.
   const WithLayout = deps.WithLayout
+  // Coque (calepinage, 22/11) — `plein: true` sur une route : écran plein, sans la mise en page de
+  // l'ERP (`WithAtelier`, injecté par le routeur). Sans `WithAtelier` fourni : `WithLayout`, inchangé.
+  const WithAtelier = deps.WithAtelier ?? deps.WithLayout
   return configs.flatMap((c) =>
     (c.routes ?? []).map((r) => {
       const Comp = r.component
+      const Enveloppe = r.plein ? WithAtelier : WithLayout
       // WIR171 — `permRepliPalier` transmis tel quel : c'est lui qui fait
       // basculer `roleLoader` sur la sémantique `HasPermissionOrLegacy`.
       const base = r.roles ? roleLoader(r.roles, r.perm, r.permRepliPalier) : authLoader
@@ -95,9 +99,9 @@ export function buildModuleRoutes(deps) {
         path: r.path,
         loader,
         element: (
-          <WithLayout>
+          <Enveloppe>
             <Comp />
-          </WithLayout>
+          </Enveloppe>
         ),
       }
     }),

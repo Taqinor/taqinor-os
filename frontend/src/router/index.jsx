@@ -389,6 +389,25 @@ function WithLayout({ children }) {
   )
 }
 
+// Coque (calepinage, maquettes 22/11) — équivalent de `WithLayout` SANS la mise en page de l'ERP
+// (ni barre latérale, ni en-tête) : l'atelier de calepinage plein écran porte son propre bandeau.
+// Mêmes gardes : raccourcis + palette ⌘K, frontière d'erreur clée par chemin, Suspense squelette.
+// Routes qui le demandent : `plein: true` dans un `module.config.jsx`, et la conception d'un devis.
+function WithAtelier({ children }) {
+  const { pathname } = useLocation()
+  const donneesLoader = useLoaderData()
+  if (donneesLoader?.horsLigne) return <HorsLigneDemarrage />
+  return (
+    <ShortcutsProvider>
+      <RouteErrorBoundary key={pathname}>
+        <Suspense fallback={<Fallback />}>{children}</Suspense>
+      </RouteErrorBoundary>
+      <CommandPalette />
+      <QuickCreateModalHost />
+    </ShortcutsProvider>
+  )
+}
+
 // NTPRT8/20/27 — équivalent de `WithLayout` pour les PORTAILS EXTERNES : même
 // error-boundary + Suspense keyées par chemin, mais AUCUNE surface interne
 // (pas de Layout ERP, pas de palette de commandes, pas de quick-create).
@@ -623,7 +642,7 @@ const router = createBrowserRouter([
   // PV20 — Conception 3D SUR un devis existant : même écran, mode « devis »
   // (boot en UN SEUL appel sur design-context, hydraté par le calepinage et la
   // cible DÉJÀ vendus). Le mode lead ci-dessous reste strictement inchangé.
-  { path: '/ventes/devis/:id/design', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign mode="devis" /></WithLayout> },
+  { path: '/ventes/devis/:id/design', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithAtelier><ToitureDesign mode="devis" /></WithAtelier> },
   // Conception 3D de la toiture (héberge le builder roofPro11 du site, en ERP).
   { path: '/devis-design/:id', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign /></WithLayout> },
 
@@ -647,7 +666,7 @@ const router = createBrowserRouter([
 
   // UX1 — Routes des modules « coquille » enregistrées via le registre. Chaque
   // route est gatée par le même authLoader/roleLoader que le reste de l'app.
-  ...buildModuleRoutes({ WithLayout, authLoader, roleLoader, moduleLoader }),
+  ...buildModuleRoutes({ WithLayout, WithAtelier, authLoader, roleLoader, moduleLoader }),
 
   // VX131(c) — écran 403 dédié (roleLoader y redirige désormais un refus de
   // rôle/permission), rendu via authLoader seul (un utilisateur non connecté

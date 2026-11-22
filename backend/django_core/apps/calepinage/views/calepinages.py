@@ -83,13 +83,13 @@ from .schemas_calepinages import (
 from .photos import PhotosSiteMixin
 # CAL64 — idem pour le relevé terrain mobile (``views/releve.py``).
 from .releve import ReleveTerrainMixin
-# CAL174 — les SOUS-RESSOURCES de sortie (planche PDF/SVG) vivent dans leur
-# propre module de vues ; elles sont greffées ICI, sur le viewset pivot, pour
-# rester des ``@action`` de la SEULE forme d'URL du module (CAL233).
+# CAL174 — les SOUS-RESSOURCES de sortie vivent dans leur propre module de vues, greffées ICI.
 from .sorties import SortiesMixin
+from .liste_compteurs import ListeCompteursMixin  # effectifs par statut de la liste
 from ..services.devis import (
     DevisRefuse, generer_devis, reponses_du_corps, resynchroniser_devis,
 )
+from ..services import lecture_liste
 from ..services.approbation import LIBELLES_STATUT, statut_derive
 from ..services.layout import (
     MESSAGE_JETON_VERSION_MANQUANT,
@@ -261,7 +261,7 @@ class _OrdreStatutDerive(filters.OrderingFilter):
     ]),
 )
 class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMixin,
-                        ChatterViewSetMixin, ActionIdempotenteMixin,
+                        ChatterViewSetMixin, ActionIdempotenteMixin, ListeCompteursMixin,
                         ElectriqueActionsMixin, SortiesMixin,
                         SchemaUnifilaireMixin, CompanyScopedModelViewSet):
     """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``.
@@ -388,7 +388,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             inclure_archives=getattr(self, 'action', None) != 'list',
             lead_id=_entier(params.get('lead'), 'lead'),
             client_id=_entier(params.get('client'), 'client'),
-            statut=_statut(params.get('statut')),
+            statut=None if self.sans_filtre_statut else _statut(params.get('statut')),
             depuis=_moment(params.get('depuis')),
             q=params.get('q'))
         # CALX406 — ``?responsable=<id>`` : la colonne « Responsable » de la
@@ -578,8 +578,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             # ACAL122 — la liste ne charge JAMAIS ``resultat`` (série horaire
             # de 8 760 points par ligne) : le sérialiseur ne l'expose pas.
             # ``roof_layout`` reste chargé (layout_stale / nb_panneaux).
-            queryset = (queryset.prefetch_related('devis__lignes')
-                        .defer('resultat'))
+            queryset = lecture_liste.annoter(queryset.prefetch_related('devis__lignes').defer('resultat'))
         return queryset
 
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────

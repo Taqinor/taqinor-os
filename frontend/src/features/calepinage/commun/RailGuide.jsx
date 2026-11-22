@@ -1,4 +1,5 @@
-import { ETAPES } from '../atelier/parcoursGuide'
+import { ETAPES, aReglerDeLEtape } from '../atelier/parcoursGuide'
+import { Icone } from '../atelier/coque/primitives'
 
 /* ============================================================================
    ACAL393 — LES CINQ BOUTONS D'ÉTAPE DU PARCOURS GUIDÉ.
@@ -6,13 +7,54 @@ import { ETAPES } from '../atelier/parcoursGuide'
    `calepinage_parcours_guide.json`) : une pastille d'état par étape. La lecture
    est best-effort : sans réponse, les boutons restent là, sans pastille. Un
    clic ouvre l'étape via `onChoisir(cleEtape)` — le rail écrit l'URL.
+   Coque (maquettes 22/11) — `vertical` : le RAIL DE GAUCHE de l'atelier plein écran
+   (pictogramme + libellé empilés, l'étape active dans une tuile pâle bordée d'or,
+   « Avancé » en bas, ligne « N à régler » lue sur `manque` servi par le parcours).
    ========================================================================== */
 
 const LIBELLE_ETAT = {
   a_faire: 'à faire', en_cours: 'en cours', fait: 'fait', bloque: 'bloqué',
 }
 
-export default function RailGuide({ etapeActive, etats, onChoisir, expert = false, onBasculerExpert = null }) {
+function RailVertical({ etapeActive, etats, manque, onChoisir, avance, onAvance }) {
+  return (
+    <nav aria-label="Étapes" data-testid="cal-rail-etapes" className="cal-rail">
+      {ETAPES.map((etape) => {
+        const etat = etats[etape.cle]
+        const actif = etape.cle === etapeActive
+        const aRegler = aReglerDeLEtape(manque, etape.cle)
+        return (
+          <button key={etape.cle} type="button" data-testid={`cal-etape-${etape.cle}`}
+            data-etat={etat ?? ''} aria-current={actif ? 'step' : undefined}
+            aria-label={etat ? `${etape.libelle} (${LIBELLE_ETAT[etat]})` : undefined}
+            onClick={() => onChoisir(etape.cle)} className="cal-rail-etape">
+            <Icone nom={etape.cle} />
+            <span className="cal-rail-libelle">{etape.libelle}</span>
+            {etat && (
+              <span data-testid={`cal-etape-${etape.cle}-etat`} className="sr-only">{LIBELLE_ETAT[etat]}</span>
+            )}
+            {aRegler > 0 && <span className="cal-rail-a-regler">{`${aRegler} à régler`}</span>}
+          </button>
+        )
+      })}
+      <span className="cal-rail-espace" aria-hidden="true" />
+      <button type="button" data-testid="cal-rail-avance" aria-expanded={avance}
+        onClick={() => onAvance(!avance)} className="cal-rail-etape cal-rail-avance">
+        <Icone nom="avance" taille={22} />
+        <span className="cal-rail-libelle">Avancé</span>
+      </button>
+    </nav>
+  )
+}
+
+export default function RailGuide({
+  etapeActive, etats, onChoisir, expert = false, onBasculerExpert = null,
+  vertical = false, manque = [], avance = false, onAvance = () => {},
+}) {
+  if (vertical) {
+    return <RailVertical etapeActive={etapeActive} etats={etats} manque={manque}
+      onChoisir={onChoisir} avance={avance} onAvance={onAvance} />
+  }
   return (
     <nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes"
       className="mb-2 flex flex-wrap items-center gap-1.5">
