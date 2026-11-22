@@ -123,11 +123,13 @@ ROUTES_HORS_VERROU = {
     ('DELETE', 'meteo-fichier'): 'simulation : entrée météo du calcul',
     ('POST', 'evaluer-electrique'): 'évaluation électrique à la demande '
                                     '(lecture calculée)',
+    ('POST', 'controle-chaine'): "verdict d'une chaîne sans dessin "
+                                 '(lecture calculée, rien écrit, ACAL627)',
+    ('POST', 'importer-affectation'): 'plan de chaînes CSV verdicté, jamais '
+                                      'enregistré (lecture calculée, ACAL630)',
     ('POST', 'pose-reelle'): 'pose réelle : preuve du chantier (ACAL43)',
     ('DELETE', r'pose-reelle/(?P<zone_id>.+)'):
         'pose réelle : retrait du relevé d\'un pan (orphelin, ACAL267)',
-    ('POST', 'ecart-mesures'): 'consommation mesurée comparée à la simulée '
-                               '(lecture calculée, rien enregistré, ACAL846)',
     ('PATCH', PHOTO + '/calage'): 'photos de site (calage)',
     ('POST', 'releve-visite'): 'relevé terrain : reprise de la visite',
     ('POST', 'image-document'): 'documents : images des livrables',
