@@ -3,6 +3,7 @@ import BuilderCarte from '../BuilderCarte'
 import BuilderOutils from '../BuilderOutils'
 import BuilderPose, { BuilderStatut } from '../BuilderPose'
 import BuilderToit from '../BuilderToit'
+import InspecteurBuilder from '../InspecteurBuilder'
 import CoqueAtelier from './CoqueAtelier'
 import { sousTitreProjet, titreProjet } from './projet'
 
@@ -16,12 +17,15 @@ import { sousTitreProjet, titreProjet } from './projet'
 export default function AtelierCoque({
   calepinageId, contexte, devisId, devisReference, devisLabel, calepinageTitre, lectureSeule,
   enregistrement, proprietesBuilder, enregistreLe, onEtape, ecranProps, alertes, avance, atelierPanneaux,
+  onFermer = null,
 }) {
   const devisLie = contexte?.calepinage?.devis_lie ?? null
   return (
     <CoqueAtelier
       calepinageId={calepinageId}
-      retour={devisId ? { to: `/ventes/devis/${devisId}`, libelle: 'Devis' } : { to: '/calepinage', libelle: 'Calepinages' }}
+      retour={devisId
+        ? { to: `/ventes/devis/${devisId}`, libelle: 'Devis', onClick: onFermer }
+        : { to: '/calepinage', libelle: 'Calepinages', onClick: onFermer }}
       titre={titreProjet({ devisId, devisReference, calepinageTitre, calepinageId, contexte })}
       sousTitre={sousTitreProjet({ devisId, devisLabel, contexte })}
       enregistrement={enregistrement}
@@ -32,7 +36,8 @@ export default function AtelierCoque({
       groupes={{
         outils: <BuilderOutils {...proprietesBuilder} />,
         toit: <BuilderToit {...proprietesBuilder} />,
-        pose: <BuilderPose {...proprietesBuilder} />,
+        // La recommandation du constructeur (`rp9-results`, cible, besoin) accompagne la pose (étape Panneaux).
+        pose: <><BuilderPose {...proprietesBuilder} /><InspecteurBuilder estCalepinage /></>,
       }}
       alertes={alertes}
       avance={avance}

@@ -868,6 +868,8 @@ etape('PA2.3-ACAL380-provenance-pan-seance', ['ACAL380'], async ({ page, context
     ...T, data: { releve_le: '2026-11-20', chaines: [], azimut_boussole_deg: 200, precision_azimut_deg: 5 },
   })
   expect(releve.status(), `relevé → ${(await releve.text()).slice(0, 200)}`).toBeLessThan(300)
+  // Coque (22/11) : l'onglet « Relevé terrain » est dans le rail d'onglets du mode expert (bandeau « Expert »).
+  await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
   await page.getByTestId('cal-onglet-releve').click()
   await expect(page.getByTestId('cal-releve-azimut-mesure')).toContainText('200', T)
   await page.getByTestId('cal-releve-azimut-pan').selectOption(String(trace.id))

@@ -1370,7 +1370,7 @@ function AtelierToiture({
           enCours: sending, desactive: sending || !sceneHydratee, onEnregistrer: enregistrerCalepinage,
           modifiee: sceneModifiee, enregistreLe, statut: genStatus, erreur: genError,
         }}
-        proprietesBuilder={proprietesBuilder} enregistreLe={enregistreLe} onEtape={setEtapeAtelier}
+        proprietesBuilder={proprietesBuilder} enregistreLe={enregistreLe} onEtape={setEtapeAtelier} onFermer={fermer}
         ecranProps={{
           builderApi: builderApiActuel, onRecharger: rechargerAtelier,
           lectureSeule: lectureSeule || !!varianteId, documentVivant,
@@ -1392,7 +1392,6 @@ function AtelierToiture({
         )}
         avance={(
           <>
-            <InspecteurBuilder estCalepinage />
         {/* CALX65 — sous la carte du constructeur, en mode calepinage
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}
@@ -1405,7 +1404,7 @@ function AtelierToiture({
               hdBusy={hdBusy} hdMessage={hdMessage} exporterHd={exporterHd}
               gltfBusy={gltfBusy} gltfMessage={gltfMessage} exporterGltf={exporterGltf} />
             <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
-              lireLayout={() => builderApi.current?.serializeLayout?.() ?? null} />
+              lireLayout={() => (sceneHydratee ? builderApi.current?.serializeLayout?.() ?? null : null)} />
           </>
         )}
         atelierPanneaux={contexte && {

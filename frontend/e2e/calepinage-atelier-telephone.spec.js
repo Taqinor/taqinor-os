@@ -49,11 +49,12 @@ test('ACAL482 : liste, fiche et onglet releve à 390 px — sans défilement hor
   await page.locator('#cal-nouveau-nom').fill(uniq('Tel ACAL482 Toiture'))
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible()
   expect(await sansDebordement(page), 'fiche : défilement horizontal (px)').toBeLessThanOrEqual(0)
 
   const url = new URL(page.url())
   url.searchParams.set('onglet', 'releve')
+  url.searchParams.set('mode', 'expert') // Coque (22/11) : le rail d'onglets est celui du mode expert
   await page.goto(url.toString())
   await page.getByTestId('cal-onglet-releve').click()
   const panneau = page.getByTestId('cal-onglet-panneau')

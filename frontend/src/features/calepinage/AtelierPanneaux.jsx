@@ -244,6 +244,16 @@ export default function AtelierPanneaux({
         >
           Photos du site
         </Link>
+        {/* Coque (22/11) — les écrans de téléphone et le démarrage rapide des réglages, depuis l'atelier. */}
+        <Link to={`/calepinage/${calepinageId}/releve`} className="text-sm font-semibold text-primary-text underline">
+          Relevé de visite
+        </Link>
+        <Link to={`/calepinage/${calepinageId}/client`} className="text-sm font-semibold text-primary-text underline">
+          Montrer au client
+        </Link>
+        <Link to="/calepinage/reglages/demarrage-rapide" className="text-sm font-semibold text-primary-text underline">
+          Démarrage rapide des réglages
+        </Link>
       </div>
       {/* ACAL600 — étape Panneaux, niveau expert seulement ; jamais en lecture seule. */}
       {expert && !enLectureSeule && calepinageId && <ComparerModules calepinageId={calepinageId} />}

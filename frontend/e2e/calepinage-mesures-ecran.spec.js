@@ -216,7 +216,7 @@ async function ouvrirAtelier(page, id, appareil) {
   await page.setViewportSize({ width: appareil.largeur, height: appareil.hauteur })
   await page.goto(`/calepinage/${id}`)
   await expect.poll(() => page.evaluate(() => Boolean(window.__taqinorRoofBooted)), { timeout: 240_000 }).toBe(true)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible() // Coque (22/11) : le rail des étapes
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
   await page.waitForLoadState('networkidle').catch(() => {})
 }
@@ -246,7 +246,7 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
   await geste(() => page.locator('#cal-nouveau-nom').fill(uniq('ACAL385 Toiture')))
   await geste(() => page.getByRole('button', { name: 'Créer le calepinage' }).click())
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible() // Coque (22/11) : le rail des étapes
   await expect(page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }))
     .toBeEnabled({ timeout: 240_000 })
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)

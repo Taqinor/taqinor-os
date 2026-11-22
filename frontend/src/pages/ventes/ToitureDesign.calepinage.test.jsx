@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -262,8 +262,13 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mock.calls[0][2])
       .toBe(CTX.geometrie.empreinte_document)
     // Le jeton suivant est celui RENDU par la réponse 2xx, jamais celui du boot.
-    await waitFor(() => expect(bouton).not.toBeDisabled())
-    await userEvent.click(bouton)
+    // Coque (22/11) : scène propre après l'écriture ⇒ « Enregistré à HH:MM » seul ; une retouche
+    // ramène le bouton (le bandeau n'enregistre jamais tout seul).
+    await screen.findByText(/Enregistré à \d{2}:\d{2}/)
+    serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
+    const rebouton = await screen.findByRole('button', { name: /Enregistrer le calepinage/ }, { timeout: 5000 })
+    await waitFor(() => expect(rebouton).not.toBeDisabled())
+    await userEvent.click(rebouton)
     await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel)
       .toHaveBeenCalledTimes(2))
     expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mock.calls[1][2])
@@ -1006,7 +1011,9 @@ describe('ACAL868 — le bouton de l’étape suivante dans la barre fixe', () =
     rendreCalepinage(CTX.calepinage.id)
     const bouton = await screen.findByTestId('cal-action-etape-suivante')
     expect(bouton).toHaveTextContent('Poser les panneaux')
-    expect(bouton.closest('[data-testid="cal-enregistrer-calepinage"]')).not.toBeNull()
+    // Coque (22/11) : le bouton de l'étape suivante est au PIED du panneau d'étape (un seul par étape).
+    expect(bouton.closest('#rp9-studio-inspecteur')).not.toBeNull()
+    expect(screen.getAllByTestId('cal-action-etape-suivante')).toHaveLength(1)
     await userEvent.click(bouton)
     await waitFor(() => expect(screen.getByTestId('cal-action-etape-suivante')).toHaveTextContent('Raccorder les panneaux'))
   })
@@ -1090,5 +1097,95 @@ describe('ACAL945 — enregistrer hors ligne sans mentir', () => {
     expect(await screen.findByText(/Le serveur n’a pas répondu/)).toBeInTheDocument()
     window.dispatchEvent(new Event('online'))
     expect(enregistrer).toHaveBeenCalledTimes(1)
+  })
+})
+
+/* Coque (maquettes 22/11, Main / Resultats / Tablette) — l'atelier plein écran : bandeau du projet,
+   rail des cinq étapes + « Avancé », carte au centre, panneau d'étape à droite ; les étapes pleines
+   (Résultats, Documents) masquent carte et panneau SANS les démonter ; l'expert rend l'ancien inspecteur. */
+describe('Coque — l’atelier plein écran (maquette Main)', () => {
+  const clef = 'calepinage.mode_expert.anonyme'
+  afterEach(() => { try { window.localStorage.removeItem(clef) } catch { /* ignoré */ } })
+  const amorcer = () => calepinageApi.calepinages.designContext.mockResolvedValue(
+    reponseContrat('calepinage', 'calepinage_design_context'))
+
+  it('bandeau, rail, carte et panneau dans l’ordre de la maquette, aux libellés de la maquette', async () => {
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    const coque = await screen.findByTestId('cal-coque')
+    const barre = screen.getByTestId('cal-barre-projet')
+    // Le bandeau : « Calepinages », le nom servi (+ ville servie), la ligne lead + facture servie, Guidé | Expert, devis.
+    expect(screen.getByTestId('cal-retour-liste')).toHaveTextContent('Calepinages')
+    expect(screen.getByTestId('cal-projet-titre')).toHaveTextContent(CTX.calepinage.titre)
+    expect(screen.getByTestId('cal-projet-titre')).toHaveTextContent(CTX.calepinage.client_ville)
+    expect(screen.getByTestId('cal-projet-sous-titre')).toHaveTextContent(/^Lead · facture 900 MAD \/ mois$/)
+    const mode = within(barre).getByRole('group', { name: 'Mode' })
+    expect(within(mode).getAllByRole('button').map((b) => b.textContent)).toEqual(['Guidé', 'Expert'])
+    expect(within(mode).getByRole('button', { name: 'Guidé' })).toHaveAttribute('aria-pressed', 'true')
+    // Un devis lié (contrat) : le bouton doré dit « Resynchroniser le devis ».
+    expect(screen.getByTestId('cal-generer-devis-haut')).toHaveTextContent('Resynchroniser le devis')
+    // Le rail : 5 étapes empilées puis « Avancé » ; Toit en cours.
+    const rail = screen.getByTestId('cal-rail-etapes')
+    expect([...rail.querySelectorAll('button')].map((b) => b.querySelector('.cal-rail-libelle')?.textContent))
+      .toEqual(['Toit', 'Panneaux', 'Électrique', 'Résultats', 'Documents', 'Avancé'])
+    expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
+    // L'ordre des zones : bandeau, rail, centre (carte), panneau.
+    const zones = [barre, rail, document.getElementById('rp9-studio-scene'), screen.getByTestId('cal-panneau-etape')]
+    for (let i = 1; i < zones.length; i += 1) {
+      expect(zones[i - 1].compareDocumentPosition(zones[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    // Le panneau : « Étape 1 sur 5 » au-dessus de « Le toit », pied doré « Poser les panneaux ».
+    expect(screen.getByText('Étape 1 sur 5')).toBeTruthy()
+    expect(screen.getByTestId('cal-panneau-etape-titre')).toHaveTextContent('Le toit')
+    expect(await screen.findByTestId('cal-action-etape-suivante')).toHaveTextContent('Poser les panneaux')
+    expect(coque).toHaveAttribute('data-cadre', 'carte')
+  })
+
+  it('Résultats : carte et panneau masqués (jamais démontés), la carte revient sur Toit et se recale (resize)', async () => {
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    const carte = document.getElementById('rp9-map')
+    await userEvent.click(screen.getByTestId('cal-etape-resultats'))
+    await waitFor(() => expect(screen.getByTestId('cal-coque')).toHaveAttribute('data-cadre', 'plein'))
+    expect(document.getElementById('rp9-map')).toBe(carte)
+    expect(document.getElementById('rp9-studio-scene').hidden).toBe(true)
+    expect(screen.getByTestId('cal-panneau-etape').hidden).toBe(true)
+    // Le panneau d'étape et ses groupes du constructeur restent montés.
+    expect(document.getElementById('rp9-config')).not.toBeNull()
+    expect(document.getElementById('rp9-layout-window')).not.toBeNull()
+    const redimensionne = vi.fn()
+    window.addEventListener('resize', redimensionne)
+    try {
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
+      await waitFor(() => expect(document.getElementById('rp9-studio-scene').hidden).toBe(false))
+      await waitFor(() => expect(redimensionne).toHaveBeenCalled())
+      expect(document.getElementById('rp9-map')).toBe(carte)
+    } finally { window.removeEventListener('resize', redimensionne) }
+  })
+
+  it('Expert : l’ancien inspecteur (onglets) est déplié, aucun bouton « suivant » ; Avancé le déplie en guidé', async () => {
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-atelier-panneaux')
+    const avance = screen.getByTestId('cal-atelier-panneaux').closest('.cal-coque-avance')
+    expect(avance.hidden).toBe(true)
+    await userEvent.click(screen.getByTestId('cal-rail-avance'))
+    expect(avance.hidden).toBe(false)
+    expect(screen.getByTestId('cal-rail-avance')).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
+    await waitFor(() => expect(screen.getByTestId('cal-mode-expert')).toBeChecked())
+    expect(screen.getByTestId('cal-rail-onglets')).toBeTruthy()
+    expect(screen.queryByTestId('cal-action-etape-suivante')).toBeNull()
+    expect(screen.getByTestId('cal-coque')).toHaveAttribute('data-expert', '1')
+  })
+
+  it('« N à régler » sous une étape : lu sur le parcours servi, absent sans manque', async () => {
+    amorcer()
+    calepinageApi.calepinages.parcours.mockResolvedValue(reponseContrat('calepinage', 'calepinage_parcours_guide'))
+    rendreCalepinage(CTX.calepinage.id)
+    // contrat : un manque « bloquant » × 2 et un « info » sur Résultats ⇒ « 2 à régler » sous Résultats seul.
+    await waitFor(() => expect(screen.getByTestId('cal-etape-resultats')).toHaveTextContent('2 à régler'))
+    expect(screen.getByTestId('cal-etape-toit')).not.toHaveTextContent('à régler')
   })
 })

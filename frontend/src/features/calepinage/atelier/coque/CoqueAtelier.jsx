@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../../api/calepinageApi'
 import { ErrorBoundary, SkeletonCard, SkeletonText } from '../../../../ui'
 import '../../../../styles/calepinage/50-coque-atelier.css'
@@ -55,6 +55,21 @@ function useEtatSimulation(calepinageId, actif, relecture) {
     return () => { vivant = false }
   }, [calepinageId, actif, relecture])
   return actif ? etat : null
+}
+
+/** L'heure de la dernière version enregistrée, servie par le détail (`versions.derniere_le`). */
+function useDerniereVersion(calepinageId, relecture) {
+  const [le, setLe] = useState(null)
+  useEffect(() => {
+    if (!calepinageId) return undefined
+    let vivant = true
+    Promise.resolve()
+      .then(() => calepinageApi.calepinages.get(calepinageId))
+      .then((rep) => { if (vivant) setLe(rep?.data?.versions?.derniere_le ?? null) })
+      .catch(() => { if (vivant) setLe(null) })
+    return () => { vivant = false }
+  }, [calepinageId, relecture])
+  return le
 }
 
 /** Met le focus sur le vrai bouton de devis dès qu'il est monté (étape Documents). */
@@ -124,6 +139,7 @@ export default function CoqueAtelier({
   }, [carteVisible])
 
   const etatPropre = useEtatSimulation(calepinageId, cleEtape === 'resultats' && !expert, enregistreLe)
+  const derniereVersionLe = useDerniereVersion(calepinageId, enregistreLe)
 
   const onDevis = () => {
     if (cleEtape !== 'documents') allerA('documents')
@@ -143,9 +159,13 @@ export default function CoqueAtelier({
           <SkeletonText lines={2} />
         </div>
       )}>
-        <Ecran {...ecranProps} calepinageId={calepinageId} parcours={parcours} ouvert={cleActive}
-          action={action} enregistreLe={enregistreLe}
-          actionDevis={<span ref={setNoeudDevis} className="contents" />} />
+        {/* Un onglet ouvert par l'URL (`?onglet=`) : l'écran monté EST son panneau (`cal-onglet-panneau`,
+            le hook du rail d'onglets, qui ne monte pas de panneau en guidé dans la coque). */}
+        <div className="cal-coque-ecran-hote" data-testid={cleActive ? 'cal-onglet-panneau' : undefined}>
+          <Ecran {...ecranProps} calepinageId={calepinageId} parcours={parcours} ouvert={cleActive}
+            action={action} enregistreLe={enregistreLe}
+            actionDevis={<span ref={setNoeudDevis} className="contents" />} />
+        </div>
       </Suspense>
     </ErrorBoundary>
   )
@@ -159,7 +179,8 @@ export default function CoqueAtelier({
         data-avance={avance ? '1' : '0'} data-expert={expert ? '1' : '0'}>
         <BarreProjet retour={retour} titre={titre} sousTitre={sousTitre} expert={expert} onExpert={basculerExpert}
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
-          enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre} />} />
+          enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
+            derniereVersionLe={derniereVersionLe} />} />
         <div id="rp9-studio" className="cal-coque-corps">
           <RailEtapes etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
             avance={avance} onAvance={setAvanceOuvert} />
@@ -188,13 +209,6 @@ export default function CoqueAtelier({
               {groupes.pose}
             </div>
             <div className="cal-coque-avance" hidden={!avance}>
-              {calepinageId && (
-                <nav aria-label="Autres écrans du calepinage" className="cal-coque-liens">
-                  <Link to={`/calepinage/${calepinageId}/releve`}>Relevé de visite</Link>
-                  <Link to={`/calepinage/${calepinageId}/client`}>Montrer au client</Link>
-                  <Link to="/calepinage/reglages/demarrage-rapide">Démarrage rapide des réglages</Link>
-                </nav>
-              )}
               {contenuAvance}
               {renderAtelierPanneaux?.({
                 expert, onBasculerExpert: basculerExpert, parcours, portailDevis: noeudDevis,

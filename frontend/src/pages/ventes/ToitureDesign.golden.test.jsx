@@ -64,9 +64,12 @@ function journalDuBoot() {
   }
 }
 
-async function bootEtDom(ui) {
+async function bootEtDom(ui, { coque = false } = {}) {
   render(ui)
   await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+  // Coque (22/11) : l'écran d'étape est paresseux ; le golden attend qu'il soit monté (sinon le
+  // squelette de chargement ou l'écran selon la charge de la machine : golden instable).
+  if (coque) await waitFor(() => expect(document.querySelector('.cal-coque-ecran-hote')).not.toBeNull(), { timeout: 15000 })
   await act(async () => { await new Promise((r) => setTimeout(r, 50)) })
   return document.body.innerHTML.replace(/></g, '>\n<')
 }
@@ -97,7 +100,7 @@ describe('ToitureDesign — GOLDEN des trois modes (SPL194)', () => {
       { data: { id: CTX.calepinage.id } })
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    const dom = await bootEtDom(ecranDevis(CTX.calepinage.devis_lie.id))
+    const dom = await bootEtDom(ecranDevis(CTX.calepinage.devis_lie.id), { coque: true })
     figer('toitureDesign.devis.html', dom)
     figer('toitureDesign.devis.boot.json', jsonStable(journalDuBoot()))
   })
@@ -106,7 +109,7 @@ describe('ToitureDesign — GOLDEN des trois modes (SPL194)', () => {
     const CTX = exempleContrat('calepinage', 'calepinage_design_context')
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    const dom = await bootEtDom(ecranCalepinage(CTX.calepinage.id))
+    const dom = await bootEtDom(ecranCalepinage(CTX.calepinage.id), { coque: true })
     figer('toitureDesign.calepinage.html', dom)
     figer('toitureDesign.calepinage.boot.json', jsonStable(journalDuBoot()))
   })

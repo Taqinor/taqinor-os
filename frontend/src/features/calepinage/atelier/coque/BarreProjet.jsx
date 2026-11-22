@@ -18,14 +18,23 @@ export default function BarreProjet({
 }) {
   return (
     <header className="cal-barre-projet" data-testid="cal-barre-projet">
-      <Link to={retour.to} className="cal-retour" data-testid="cal-retour-liste">
-        <Icone nom="retour" taille={18} epaisseur={2} />
-        {retour.libelle}
-      </Link>
-      <div className="cal-projet">
+      {/* « ‹ Calepinages » referme l'atelier comme le geste qui l'a ouvert (`retour.onClick`, qui
+          confirme d'abord une conception non enregistrée) ; à défaut, un lien vers la liste. */}
+      {retour.onClick ? (
+        <button type="button" onClick={retour.onClick} className="cal-retour" data-testid="cal-retour-liste">
+          <Icone nom="retour" taille={18} epaisseur={2} />
+          {retour.libelle}
+        </button>
+      ) : (
+        <Link to={retour.to} className="cal-retour" data-testid="cal-retour-liste">
+          <Icone nom="retour" taille={18} epaisseur={2} />
+          {retour.libelle}
+        </Link>
+      )}
+      <h1 className="cal-projet">
         <span className="cal-projet-titre" data-testid="cal-projet-titre">{titre}</span>
         {sousTitre && <span className="cal-projet-sous-titre" data-testid="cal-projet-sous-titre">{sousTitre}</span>}
-      </div>
+      </h1>
       <span className="cal-barre-espace" aria-hidden="true" />
       {enregistrement}
       <label className="sr-only">

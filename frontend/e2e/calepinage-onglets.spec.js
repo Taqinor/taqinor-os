@@ -26,7 +26,7 @@ import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { uniq, gotoLeads, createLead, ouvertureGuideeCalepinage } from './helpers'
+import { uniq, gotoLeads, createLead } from './helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const API = '/api/django/calepinage'
@@ -62,15 +62,14 @@ const CLES = clesDuRegistre()
 // actif, l'URL gardant la clé demandée. Rend l'onglet visible qui porte `cle`.
 // Cliquer l'onglet porteur quand l'écran est DÉJÀ ouvert sur une de ses
 // sections ne réécrit pas l'URL (même écran) : on passe alors par le lien.
+// Coque (22/11) : le rail d'ONGLETS est celui du mode expert (en guidé, la coque monte l'écran de
+// l'étape, sans onglets) : chaque onglet s'ouvre par `?onglet=<cle>&mode=expert`, porté par lui-même.
 async function ouvrirOngletRail(page, cle) {
-  const porteur = ouvertureGuideeCalepinage(cle)
-  const onglet = page.getByTestId(`cal-onglet-${porteur}`)
-  const ouvertDansUrl = new URL(page.url()).searchParams.get('onglet')
-  const memeEcranAutreCle = ouvertDansUrl && ouvertDansUrl !== cle
-    && ouvertureGuideeCalepinage(ouvertDansUrl) === porteur
-  if (porteur !== cle || memeEcranAutreCle || !(await onglet.isVisible())) {
+  const onglet = page.getByTestId(`cal-onglet-${cle}`)
+  if (!(await onglet.isVisible())) {
     const url = new URL(page.url())
     url.searchParams.set('onglet', cle)
+    url.searchParams.set('mode', 'expert')
     await page.goto(url.toString())
     await expect(onglet, `onglet absent du rail pour la clé « ${cle} »`).toBeVisible()
   }
@@ -110,7 +109,7 @@ test('CALX387: chaque onglet du rail s’ouvre, un titre nommé apparaît, aucun
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
   const calepinageId = idDansUrl(page.url())
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible()
 
   for (const cle of CLES) {
     const onglet = await ouvrirOngletRail(page, cle)
@@ -215,7 +214,7 @@ test('ACAL80: ouvrir l’atelier ne demande jamais /api/roof-yield et ne logue a
   await page.locator('#cal-nouveau-nom').fill(uniq('ACAL80 Toiture'))
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible()
   // PRÉREQUIS D'ENVIRONNEMENT (même porte que `calepinage-parcours.spec.js`, FIX-M5-E2E) :
   // l'atelier ne boote son constructeur QUE si le serveur publie une carte (design-context
   // → `carte.available`). Le job e2e de la CI ne pose aucune clé MapTiler : sans carte, le

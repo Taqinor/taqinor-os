@@ -308,6 +308,8 @@ etape('PA2.5-ACAL393-ACAL394-ACAL419-ACAL408-rail-guide', ['ACAL393', 'ACAL394',
       }
       return parEtape
     }
+    // Coque (22/11) : en guidé, le rail d'ONGLETS est dans le volet « Avancé » (bas du rail des étapes).
+    await page.getByTestId('cal-rail-avance').click()
     const guide = await compter()
     const nGuide = Object.values(guide).reduce((s, l) => s + l.length, 0)
     console.log(`[ACAL393] guidé : ${JSON.stringify(guide)} (${nGuide} onglets sur ${total})`)
@@ -321,6 +323,7 @@ etape('PA2.5-ACAL393-ACAL394-ACAL419-ACAL408-rail-guide', ['ACAL393', 'ACAL394',
 
     // ACAL419 — le « ? » de Séries : bulle ouverte ; les flèches passent d'onglet en onglet sans s'y arrêter.
     await page.goto(`/calepinage/${cal.id}?onglet=series`)
+    await page.getByTestId('cal-rail-avance').click() // Coque : rail d'onglets dans « Avancé »
     const aideSeries = page.getByRole('button', { name: 'À quoi sert « Séries »' })
     await expect(aideSeries).toBeVisible(T)
     await aideSeries.click()
@@ -334,8 +337,9 @@ etape('PA2.5-ACAL393-ACAL394-ACAL419-ACAL408-rail-guide', ['ACAL393', 'ACAL394',
     }
 
     // ACAL394 — cocher, recharger : tous les onglets du registre sous les 5 étapes ; décocher.
-    await expect(expert).toBeVisible()
-    await expert.check()
+    // Coque (22/11) : la case `cal-mode-expert` est portée par le segmenté « Guidé | Expert » du bandeau.
+    await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
+    await expect(expert).toBeChecked()
     await page.reload()
     await expect(page.getByTestId('cal-mode-expert'), 'mémorisé après rechargement').toBeChecked(T)
     const tous = await compter()
@@ -356,7 +360,7 @@ etape('PA2.5-ACAL393-ACAL394-ACAL419-ACAL408-rail-guide', ['ACAL393', 'ACAL394',
     expect(section, 'le guide dit la simulation automatique et le brouillon d’un autre poste')
       .toMatch(/Brouillon d'un autre poste/)
 
-    await page.getByTestId('cal-mode-expert').uncheck()
+    await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Guidé' }).click()
     await page.reload()
     await expect(page.getByTestId('cal-mode-expert'), 'décoché et mémorisé').not.toBeChecked(T)
     await page.waitForLoadState('networkidle').catch(() => undefined) // aucun appel en vol vers le calepinage nettoyé
@@ -381,6 +385,7 @@ etape('PA2.5-ACAL407-ACAL409-adresses-onglets', ['ACAL407', 'ACAL409'], async ({
     await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}\\?onglet=variantes$`), T)
 
     await ouvrirAtelier(page, cal.id)
+    await page.getByTestId('cal-rail-avance').click() // Coque : les liens de l'atelier sont dans « Avancé »
     await page.getByTestId('cal-lien-variantes').click()
     await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}\\?onglet=variantes$`))
     await expect(page.getByTestId('cal-onglet-variantes'), 'onglet « Comparer les variantes » ouvert dans le rail').toHaveAttribute('aria-selected', 'true')

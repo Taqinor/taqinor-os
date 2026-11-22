@@ -5,7 +5,15 @@
    maquettes : 12 / 14 / 16 / 20 px. Importée par atelier/coque/CoqueAtelier.jsx.
    ========================================================================== */
 
+/* Bord à bord (maquette : 0 marge) : la coque couvre la fenêtre quel que soit le conteneur de la route. */
 .rp9-host.cal-coque {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -30,6 +38,9 @@
   z-index: 20;
 }
 .cal-coque .cal-retour {
+  border: 0;
+  background: transparent;
+  padding: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -39,7 +50,7 @@
   font-size: 0.875rem;
 }
 .cal-coque .cal-retour:hover { color: var(--foreground); }
-.cal-coque .cal-projet { display: flex; flex-direction: column; min-width: 0; }
+.cal-coque .cal-projet { display: flex; flex-direction: column; min-width: 0; margin: 0; font-size: 0.875rem; font-weight: 400; }
 .cal-coque .cal-projet-titre {
   font-family: var(--font-display);
   font-weight: 600;
@@ -322,3 +333,23 @@
   .cal-coque .cal-rail-libelle,
   .cal-coque .cal-rail-a-regler { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 }
+
+/* Enregistrement — scène propre et heure connue : le bouton se fait discret (texte seul, 12 px). */
+.cal-coque .cal-bouton-enregistrer-discret {
+  height: 44px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+.cal-coque .cal-bouton-enregistrer-discret:hover { color: var(--foreground); }
+
+/* Mode guidé : les rangées que le constructeur insère SOUS la carte (aides de tracé « Angles droits »,
+   « Grille », « Nord vrai », « Caler le fond »…) restent montées mais masquées ; « Avancé » / Expert les
+   rendent. Seules la carte, ses calques et la recherche (Avancé) sont des enfants attendus de la scène. */
+.cal-coque[data-avance='0'] .cal-coque-scene > :not(#rp9-search):not(.rp9-map-wrap):not(.cal-coque-sur-carte):not(.cal-coque-statut) {
+  display: none;
+}
+.cal-coque .cal-coque-ecran-hote { display: contents; }

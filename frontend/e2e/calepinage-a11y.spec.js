@@ -69,9 +69,10 @@ for (const theme of ['light', 'dark']) {
       `1er élément tabulable (${focus.tag}) sans contour de focus [${theme}]`).toBeTruthy()
 
     for (const onglet of ['production', 'documents']) {
-      await page.goto(`/calepinage/${id}?onglet=${onglet}`)
+      // Coque (22/11) : le panneau d'onglet est celui du mode expert.
+      await page.goto(`/calepinage/${id}?onglet=${onglet}&mode=expert`)
       await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
-      await verifier(page, `/calepinage/${id}?onglet=${onglet}`, theme)
+      await verifier(page, `/calepinage/${id}?onglet=${onglet}&mode=expert`, theme)
     }
   })
 }

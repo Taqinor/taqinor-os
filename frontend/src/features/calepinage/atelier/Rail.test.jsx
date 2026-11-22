@@ -644,7 +644,9 @@ describe('CALX222 — l’API du constructeur atteint les panneaux d’onglet', 
 describe('ACAL44 — lecture seule relayée', () => {
   it('lectureSeule est relayée à l’onglet actif', async () => {
     render(
-      <MemoryRouter initialEntries={[`/calepinage/${ID}?${PARAM_ONGLET}=postes-pertes`]}>
+      // Refonte 22/11 : en guidé, « Postes de pertes » est replié dans l'écran Résultats (EtapeResultats,
+      // « Détail des pertes et réglages ») ; en expert l'onglet monte son panneau, où l'écriture est désactivée.
+      <MemoryRouter initialEntries={[`/calepinage/${ID}?${PARAM_ONGLET}=postes-pertes&mode=expert`]}>
         <Routes>
           <Route path="/calepinage/:id" element={<Rail lectureSeule />} />
         </Routes>
@@ -720,12 +722,13 @@ describe('ACAL867 — l’étape Documents guidée : panneau, bouton de devis, d
     </MemoryRouter>,
   )
 
-  it('guidé : le bouton relayé s’affiche dans l’écran, entre « Prêt à envoyer ? » et les documents ; un seul bouton', async () => {
+  // Refonte 22/11 (maquette Documents) : deux colonnes ; le bouton relayé est au pied de la carte « Prêt à envoyer ? ».
+  it('guidé : le bouton relayé s’affiche dans l’écran, au pied de « Prêt à envoyer ? » (colonne de gauche) ; un seul bouton', async () => {
     try { window.localStorage.clear() } catch { /* ignoré */ }
     rendreAvecDevis(`?${PARAM_ONGLET}=documents`)
     const ecran = await screen.findByTestId('cal-etape-documents-ecran', {}, { timeout: DELAI_PANNEAU })
-    expect(ecran.children).toHaveLength(3)
-    expect(ecran.children[1]).toContainElement(screen.getByTestId('cal-generer-devis'))
+    expect(ecran.children).toHaveLength(2)
+    expect(ecran.children[0]).toContainElement(screen.getByTestId('cal-generer-devis'))
     expect(screen.getAllByTestId('cal-generer-devis')).toHaveLength(1)
   }, 30_000)
 

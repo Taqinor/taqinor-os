@@ -164,9 +164,9 @@ etape('P1.1', ['ACAL250'], async ({ page }) => {
 
   // L'atelier s'ouvre (persistance : rouvrir → même contexte, rien n'a été écrit).
   await page.goto(`/calepinage/${cal.id}`)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible({ timeout: 30_000 })
   await page.reload()
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible({ timeout: 30_000 })
   const relu = await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/design-context/`, T), 'design-context relu')
   expect(relu.geometrie.outline).toEqual([])
   expect(relu.geometrie.roof_layout ?? null).toBeNull()
@@ -182,7 +182,7 @@ etape('P1.2', ['ACAL250', 'ACAL251'], async ({ page }) => {
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
   await expect(page).toHaveURL(/\/calepinage\/\d+/, { timeout: 60_000 })
   const id = /\/calepinage\/(\d+)/.exec(new URL(page.url()).pathname)[1]
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible({ timeout: 30_000 })
   const ctx = await lireJson(await page.request.get(`${CAL}/calepinages/${id}/design-context/`, T), 'design-context')
   expect(ctx.calepinage.lead).toBe(lead.id)
   expect(ctx.geometrie.contour_utilisable).toBe(false)
@@ -196,7 +196,7 @@ etape('P1.1-atelier', ['ACAL250'], async ({ page }) => {
   const lead = await leadGpsHorsContour(page.request)
   const cal = await creerCalepinage(page.request, lead.id)
   await page.goto(`/calepinage/${cal.id}`)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible({ timeout: 30_000 })
   const ctx = await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/design-context/`, T), 'design-context')
   if (!ctx.carte?.available) {
     await expect(alerteCarte(page)).toBeVisible()
@@ -441,7 +441,7 @@ etape('P3.1', ['ACAL282'], async ({ page }) => {
   expect(roofConfig.available).toBe(false)
   expect(roofConfig.mapboxToken).toBeNull()
   await page.goto(`/calepinage/${cal.id}`)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible({ timeout: 30_000 })
   await expect(alerteCarte(page)).toBeVisible({ timeout: 30_000 })
   await expect(alerteCarte(page)).toContainText('Carte indisponible')
 })

@@ -301,10 +301,10 @@ describe('ACAL867 — l’étape Documents guidée porte « Générer le devis �
     await waitFor(() => expect(ecran.querySelector('[data-testid="cal-generer-devis"]')).not.toBeNull())
     expect(screen.getAllByTestId('cal-generer-devis')).toHaveLength(1)
     expect(dansActions()).toBeNull()
-    // Ordre : « Prêt à envoyer ? », le bouton, puis les documents.
+    // Refonte 22/11 (maquette Documents) : deux colonnes ; le bouton est au pied de « Prêt à envoyer ? » (gauche).
     const enfants = [...ecran.children]
-    expect(enfants[1].getAttribute('data-testid')).toBe('cal-etape-documents-devis')
-    expect(enfants).toHaveLength(3)
+    expect(enfants).toHaveLength(2)
+    expect(enfants[0].querySelector('[data-testid="cal-generer-devis"]')).not.toBeNull()
   }, 30_000)
 
   it('hors de l’étape Documents, ou en mode expert : le bouton reste dans cal-atelier-actions', async () => {

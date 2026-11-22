@@ -15,9 +15,10 @@ export function sousTitreProjet({ devisId, devisLabel, contexte }) {
   if (devisId) return devisLabel || ''
   const cal = contexte?.calepinage ?? {}
   const facture = Number(contexte?.consommation_lead?.facture_mensuelle_mad)
-  const parties = [
-    cal.lead != null ? 'Lead' : (cal.client != null ? 'Client' : null),
-    facture > 0 ? `facture ${formatNumber(facture, { locale: 'fr' })} MAD / mois` : null,
-  ].filter(Boolean)
-  return parties.join(' · ')
+  // Jamais un mot seul : le rattachement n'est dit qu'avec la facture servie, sinon le client servi, sinon rien.
+  if (facture > 0) {
+    const rattachement = cal.lead != null ? 'Lead' : (cal.client != null ? 'Client' : null)
+    return [rattachement, `facture ${formatNumber(facture, { locale: 'fr' })} MAD / mois`].filter(Boolean).join(' · ')
+  }
+  return (cal.devis_lie?.client_nom ?? '').trim()
 }

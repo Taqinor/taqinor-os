@@ -11,7 +11,7 @@ export default function PanneauEtape({
       {titre && (
         <div className="cal-panneau-etape-tete">
           {numero && <p className="cal-panneau-etape-rang">{`Étape ${numero} sur ${total}`}</p>}
-          <h1 className="cal-panneau-etape-titre" data-testid="cal-panneau-etape-titre">{titre}</h1>
+          <h2 className="cal-panneau-etape-titre" data-testid="cal-panneau-etape-titre">{titre}</h2>
         </div>
       )}
       <div className="cal-panneau-etape-corps">

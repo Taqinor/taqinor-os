@@ -34,7 +34,7 @@ import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { uniq, gotoLeads, createLead, openLead, closeLeadModal, ouvertureGuideeCalepinage } from './helpers'
+import { uniq, gotoLeads, createLead, openLead, closeLeadModal } from './helpers'
 
 const API = '/api/django/calepinage'
 
@@ -47,11 +47,14 @@ function idDansUrl(url) {
 // ACAL393 — le rail guidé ne montre que les essentiels de l'étape active : un
 // onglet expert s'ouvre par son lien `?onglet=<cle>` (il reste visible dans son
 // étape), un essentiel par son bouton. Jamais de test qui suppose 36 boutons.
+// Coque (22/11) : le rail d'ONGLETS est celui du mode expert (en guidé, la coque monte l'écran de
+// l'étape, sans onglets) — un onglet s'ouvre donc par son lien `?onglet=<cle>&mode=expert`.
 async function ouvrirOngletRail(page, cle) {
   const onglet = page.getByTestId(`cal-onglet-${cle}`)
   if (!(await onglet.isVisible())) {
     const url = new URL(page.url())
     url.searchParams.set('onglet', cle)
+    url.searchParams.set('mode', 'expert')
     await page.goto(url.toString())
     await expect(onglet, `onglet absent du rail pour la clé « ${cle} »`).toBeVisible()
   }
@@ -193,9 +196,10 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
 
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  const rail = page.getByTestId('cal-rail-onglets')
+  // Coque : en guidé, le rail des étapes (à gauche) ; le rail d'onglets vit dans « Avancé » / expert.
+  const rail = page.getByTestId('cal-rail-etapes')
   await expect(rail).toBeVisible()
-  // Sans `?onglet=`, l'atelier est exactement ce qu'il était : rien d'ouvert.
+  // Sans `?onglet=`, aucun panneau d'onglet n'est ouvert (la coque montre l'écran de l'étape).
   await expect(page.getByTestId('cal-onglet-panneau')).toHaveCount(0)
 
   const calepinageId = idDansUrl(page.url())
@@ -376,6 +380,8 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // ── 6. CALX114 — RÉGLER LA CIBLE D'OPTIMISATION : puce créée par le module
   // (`matrix.ts renderCibleChips`), apparue dans `#rp9-results` dès la fermeture
   // du tracé (toit plat par défaut → la matrice se peint tout de suite). ─────
+  // Coque : la recommandation (`#rp9-results`, où vivent les puces de cible) accompagne l'étape Panneaux.
+  await page.getByTestId('cal-etape-panneaux').click()
   const cibleChip = page.locator('[data-cible="compte"]')
   await expect(cibleChip).toBeVisible({ timeout: 10_000 })
   await expect(cibleChip).toHaveAttribute('aria-pressed', 'false')
@@ -468,6 +474,7 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // pas seulement lue sur le document serveur. ─────────────────────────────
   await page.goto(`/calepinage/${calepinageId}`)
   await expect(page.locator('#rp9-config')).toBeVisible({ timeout: 20_000 })
+  await page.getByTestId('cal-etape-panneaux').click()
   const cibleChipRouverte = page.locator('[data-cible="compte"]')
   await expect(cibleChipRouverte).toBeVisible({ timeout: 10_000 })
   await expect(cibleChipRouverte).toHaveAttribute('aria-pressed', 'true')
@@ -526,7 +533,8 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
 
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  await expect(page.getByTestId('cal-atelier-panneaux')).toBeVisible()
+  // Coque : le bloc de l'atelier est monté dans le volet « Avancé » (replié en guidé).
+  await expect(page.getByTestId('cal-atelier-panneaux')).toBeAttached()
   const calepinageId = idDansUrl(page.url())
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
@@ -579,7 +587,8 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
   // calepinage : le serveur chiffre la conception elle-même (voir l'en-tête
   // de `BoutonDevis.jsx`), donc le bouton n'est jamais bloqué par une
   // variante manquante ici. ───────────────────────────────────────────────
-  await page.goto(`/calepinage/${calepinageId}`)
+  // Coque : hors de l'étape Documents guidée, le bouton vit dans le bloc de l'atelier (déplié en expert).
+  await page.goto(`/calepinage/${calepinageId}?mode=expert`)
   const boutonDevis = page.getByTestId('cal-bouton-devis')
   await expect(boutonDevis).toBeVisible()
   const generer = page.getByTestId('cal-generer-devis')
@@ -676,13 +685,15 @@ test('ACAL987: calepinage enregistré non simulé — aucun onglet ne produit d�
   page.on('pageerror', (err) => erreurs.push(`onglet « ${ongletCourant} » : pageerror ${err.message}`))
 
   await page.goto(`/calepinage/${calepinageId}`)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible()
   for (const cle of CLES_ONGLETS) {
     ongletCourant = cle
     const url = new URL(page.url())
     url.searchParams.set('onglet', cle)
+    // Coque : chaque panneau d'onglet s'ouvre dans le rail d'onglets du mode expert.
+    url.searchParams.set('mode', 'expert')
     await page.goto(url.toString())
-    await expect(page.getByTestId(`cal-onglet-${ouvertureGuideeCalepinage(cle)}`)).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId(`cal-onglet-${cle}`)).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByTestId('cal-onglet-panneau'), `panneau de l’onglet « ${cle} »`).toBeVisible()
     await expect(page.getByTestId('cal-onglet-erreur'), `erreur nommée sur l’onglet « ${cle} »`).toHaveCount(0)
   }
