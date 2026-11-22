@@ -1,8 +1,8 @@
 """ACAL618 — la capacité d'entrées des coffrets DC, lue sur la fiche produit.
 
 Extraite de ``services/electrique.py`` (fichier de plus de 4 000 lignes) pour
-qu'il ne grossisse pas : ``electrique`` ré-importe ``capacites_des_coffrets``
-sous son ancien nom.
+qu'il ne grossisse pas ; ses lecteurs (``bordereau_calepinage``) l'importent
+ICI, sans ré-export par ``electrique``.
 """
 from .valeurs import nombre as _nombre
 

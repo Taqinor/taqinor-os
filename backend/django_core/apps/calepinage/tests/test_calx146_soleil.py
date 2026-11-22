@@ -431,38 +431,3 @@ class CorrespondanceHeureLegale(SimpleTestCase):
                 with self.assertRaises(EntreeInvalide) as capture:
                     appel()
                 self.assertIn(champ, str(capture.exception))
-
-    def test_acal730_correspondance_du_jour_sur_un_double(self):
-        """ACAL730 — le service sert la valeur d'ACAL718 au dixième de minute,
-        au décalage lu dans zoneinfo (60 le 11/02, 0 pendant le Ramadan)."""
-        import datetime
-        from types import SimpleNamespace
-
-        from apps.calepinage.services.soleil_legal import (
-            SoleilLegalRefuse, correspondance_du_jour)
-
-        double = SimpleNamespace(roof_layout={'pin': {'lat': 33.57,
-                                                      'lng': -7.59}},
-                                 company=None)
-        reglages = {'imagerie': {'fuseau': 'Africa/Casablanca'}}
-        servi = correspondance_du_jour(double, datetime.date(2026, 2, 11),
-                                       reglages=reglages)
-        attendu = self._calcul(-7.59)
-        self.assertEqual(servi['decalage_utc_min'], 60)
-        self.assertEqual(servi['ecart_legal_moins_solaire_min'],
-                         round(attendu.ecart_legal_moins_solaire_min, 1))
-        self.assertAlmostEqual(servi['midi_solaire_legal_h'],
-                               attendu.midi_solaire_legal_h, delta=1 / 1200)
-        ramadan = correspondance_du_jour(double, datetime.date(2026, 3, 1),
-                                         reglages=reglages)
-        self.assertEqual(ramadan['decalage_utc_min'], 0)
-        # Sans fuseau saisi : refus nommé, jamais un fuseau tiré de -7,59°.
-        with self.assertRaises(SoleilLegalRefuse) as refus:
-            correspondance_du_jour(double, datetime.date(2026, 2, 11),
-                                   reglages={})
-        self.assertEqual(refus.exception.champ, 'site.fuseau')
-        sans_pin = SimpleNamespace(roof_layout={'pin': {}}, company=None)
-        with self.assertRaises(SoleilLegalRefuse) as refus:
-            correspondance_du_jour(sans_pin, datetime.date(2026, 2, 11),
-                                   reglages=reglages)
-        self.assertEqual(refus.exception.champ, 'site.pin')

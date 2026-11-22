@@ -48,28 +48,13 @@ from core.electrique.types import (
     NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
     TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C, VerdictElectrique,
 )
-from .chaine_la_plus_faible import (  # noqa: F401 — ré-export (ACAL646)
-    METHODE_CHAINE_FAIBLE, MOTIF_CHAINE_FAIBLE_ABSENTE,
-    REFERENCE_CHAINE_FAIBLE, _chaine_la_plus_faible)
-from .bordereau_calepinage import (
-    bordereau_du_calepinage as _bordereau_du_calepinage,  # ACAL632
-)
-from .validation_transformateur import (  # noqa: F401 — ré-export (ACAL642)
-    valider_transformateur as _valider_transformateur,
-)
-from .validation_batterie import (  # noqa: F401 — ré-export (ACAL633)
-    valider_batterie as _valider_batterie,
-)
-from .batterie_declaration import (  # noqa: F401 — ré-export (ACAL786)
-    CLES_BATTERIE, valider_secours)
-from .hors_reseau_declaration import (  # noqa: F401 — ré-export (ACAL790)
-    CLES_HORS_RESEAU, valider_hors_reseau)
-from .capacites_coffrets import (  # noqa: F401 — ré-export (ACAL618)
-    CLES_CAPACITE_COFFRET, capacites_des_coffrets,
-)
-from .regle_chaine_publiee import (  # noqa: F401 — extraite (ACAL645)
-    _regle_chaine_publiee,
-)
+from .chaine_la_plus_faible import _chaine_la_plus_faible  # ACAL646 — extraite
+from . import bordereau_calepinage as _bordereau_calepinage  # ACAL632
+from . import validation_transformateur as _validation_transformateur  # ACAL642
+from . import validation_batterie as _validation_batterie  # ACAL633
+from . import batterie_declaration as _batterie_declaration  # ACAL786
+from . import hors_reseau_declaration as _hors_reseau_declaration  # ACAL790
+from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
 
 __all__ = [
@@ -80,8 +65,7 @@ __all__ = [
     'temperatures_site', 'temperatures_pour_calepinage',
     'CLE_ENTREE', 'CHAMPS_ENTREE', 'EntreeInvalide',
     'CLE_SIMULATION', 'BLOCS_SIMULATION', 'BLOCS_LISTE',
-    'CLE_CHAINE_FAIBLE', 'METHODE_CHAINE_FAIBLE', 'REFERENCE_CHAINE_FAIBLE',
-    'MOTIF_CHAINE_FAIBLE_ABSENTE',
+    'CLE_CHAINE_FAIBLE',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'entree_electrique_servie', 'CLES_ENTREE_SERVIE',  # ACAL56
     'PROVENANCE_EXPLICITE', 'PROVENANCE_DEVIS', 'ROLES_MATERIEL',  # ACAL56
@@ -818,10 +802,12 @@ def _valider_entree(calepinage, fusionnee, postee):
             raise EntreeInvalide(
                 "« %s » doit être un objet {...} (reçu : %s)."
                 % (cle, type(valeur).__name__), champ=cle)
-    _valider_transformateur(postee.get('transformateur'))
-    _valider_batterie(postee.get('batterie'))  # ACAL166
-    valider_secours(postee.get('batterie'))  # ACAL786
-    valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166, ACAL790
+    _validation_transformateur.valider_transformateur(
+        postee.get('transformateur'))
+    _validation_batterie.valider_batterie(postee.get('batterie'))  # ACAL166
+    _batterie_declaration.valider_secours(postee.get('batterie'))  # ACAL786
+    _hors_reseau_declaration.valider_hors_reseau(
+        postee.get('hors_reseau'))  # ACAL166, ACAL790
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
         raise EntreeInvalide(
@@ -1754,7 +1740,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # les câbles ci-dessus (``cables['noyau']``), des coffrets RÉELLEMENT
     # posés dans le plan et de la règle de structure SOURCÉE ; chaque ligne
     # porte sa référence d'article quand la société en a posé une.
-    bordereau = _bordereau_du_calepinage(
+    bordereau = _bordereau_calepinage.bordereau_du_calepinage(
         calepinage, conception, cables.get('noyau'),
         equipements=_equipements_electriques(document),
         branches=((micro['bloc'] or {}).get('branches') or ()

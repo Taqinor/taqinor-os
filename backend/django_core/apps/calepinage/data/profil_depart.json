@@ -329,6 +329,16 @@
       "cle": "consigne_dc_plan_cablage",
       "section": "electrique_societe",
       "motif": "Consigne DC du plan de câblage : réglage société, aucune page publiée relue, laissée sans valeur (D-CALX 7, ACAL673)."
+    },
+    {
+      "cle": "distance_separation_foudre_min_m",
+      "section": "electrique_societe",
+      "motif": "Distance de séparation foudre minimale : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL676)."
+    },
+    {
+      "cle": "boucle_dc_max_m2",
+      "section": "electrique_societe",
+      "motif": "Surface maximale d'une boucle de chaîne : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL678)."
     }
   ]
 }

@@ -89,6 +89,8 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_export_csv.json':
         "vocabulaire des colonnes du service d'export, fichier CSV rendu "
         'par une vue (ACAL753, test_calx313)',
+    'calepinage_export_kml.json':
+        'KML de la géométrie du calepinage en base, celle de la planche (ACAL536)',
     'calepinage_export_layout.json':
         'roof_layout du calepinage en base, exporté tel quel (CAL216)',
     'calepinage_modeles.json':
@@ -463,9 +465,6 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_import_affectation.json':  # ACAL629
         'POST : verdict d’affectation sur le calepinage en base ; route '
         'livrée par ACAL630',
-    'calepinage_soleil_legal.json':  # ACAL730
-        'GET : fuseau lu au profil de la société en base (repli de '
-        "l'imagerie) ; forme affirmée par test_forme_du_soleil_legal",
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -918,28 +917,6 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
              if k != 'message'}, {'ligne': 4, 'colonne': 'chaine'})
         self.assertEqual(
             donnees['exemple_entete_absent']['refus'][0]['ligne'], 1)
-
-    def test_forme_du_soleil_legal(self):
-        # ACAL730 — les clés servies par ``correspondance_du_jour`` (double
-        # sans base, fuseau des réglages d'imagerie) sont celles du contrat.
-        import datetime
-        from types import SimpleNamespace
-
-        from apps.calepinage.services.soleil_legal import (
-            MOTIF_SANS_FUSEAU, correspondance_du_jour)
-
-        donnees = _charger('calepinage_soleil_legal.json')
-        servi = correspondance_du_jour(
-            SimpleNamespace(roof_layout={'pin': {'lat': 33.57, 'lng': -7.59}},
-                            company=None),
-            datetime.date(2026, 2, 11),
-            reglages={'imagerie': {'fuseau': 'Africa/Casablanca'}})
-        self.assertEqual(sorted(servi), sorted(donnees['exemple']))
-        for cle in ('decalage_utc_min', 'equation_du_temps_min',
-                    'ecart_legal_moins_solaire_min', 'midi_solaire_legal_h'):
-            self.assertEqual(servi[cle], donnees['exemple'][cle], cle)
-        self.assertEqual(donnees['exemple_sans_fuseau'],
-                         {'site.fuseau': [MOTIF_SANS_FUSEAU]})
 
     def test_forme_des_configurations_d_onduleur(self):
         # ACAL614 — 1 à 3 lignes comparables, null jamais 0, AUCUN prix.

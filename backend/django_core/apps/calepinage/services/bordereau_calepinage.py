@@ -1,7 +1,7 @@
 """ACAL632 — le bordereau (nomenclature) du calepinage.
 
-Extrait de ``services/electrique.py`` : ``electrique`` ré-importe
-``bordereau_du_calepinage`` sous son ancien nom ``_bordereau_du_calepinage``.
+Extrait de ``services/electrique.py`` : ``electrique`` l'appelle par son
+module (``_bordereau_calepinage.bordereau_du_calepinage``), jamais par un alias.
 """
 
 

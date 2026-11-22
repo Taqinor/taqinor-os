@@ -28,7 +28,7 @@ import types
 import unittest
 from unittest import mock
 
-from apps.calepinage.services import electrique
+from apps.calepinage.services import bordereau_calepinage, electrique
 from apps.calepinage.services.export_tableur import verifier_absence_de_prix
 from core.electrique.cables import dimensionner_cables
 from core.electrique.chaines import concevoir_chaines
@@ -270,7 +270,7 @@ class BordereauDuCalepinageTest(unittest.TestCase):
                            side_effect=lambda c, pk: catalogue.get(pk)), \
                 mock.patch('apps.stock.selectors.specs_for_produit',
                            return_value={}):
-            return electrique._bordereau_du_calepinage(
+            return bordereau_calepinage.bordereau_du_calepinage(
                 _Calepinage(), conception, noyau, equipements=equipements)
 
     def test_un_coffret_pose_dans_le_plan_donne_sa_ligne(self):
@@ -319,7 +319,7 @@ class BordereauDuCalepinageTest(unittest.TestCase):
             self.assertEqual(ligne['reference'], 'DISJ-C32')
 
     def test_sans_noyau_le_bordereau_est_vide_sans_second_motif(self):
-        servi = electrique._bordereau_du_calepinage(
+        servi = bordereau_calepinage.bordereau_du_calepinage(
             _Calepinage(), None, None)
         self.assertEqual(servi, {'lignes': [], 'alertes': []})
 

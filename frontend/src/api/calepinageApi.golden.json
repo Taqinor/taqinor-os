@@ -580,6 +580,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.exportKml": [
+    {
+      "config": {
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/export.kml/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.exporterConception": [
     {
       "config": null,

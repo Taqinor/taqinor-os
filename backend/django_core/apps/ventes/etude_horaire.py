@@ -90,7 +90,7 @@ from apps.ventes.courbes_journalieres import (
 )
 from apps.ventes.domain.etude_schema import factures_hiver_ete_saisies
 from apps.ventes.horaire.base import (
-    AVERTISSEMENT_FORME_HORAIRE, _num, bloc_base_production, saison_du_mois, serie_de_base_production)
+    _num, publier_base_production, saison_du_mois, serie_de_base_production)
 from apps.ventes.horaire.ombrage import bloc_ombrage, facteur_ombrage, perte_ombrage_du_devis
 from apps.ventes.horaire.productible_societe import mettre_a_l_echelle, productible_du_devis
 from apps.ventes.horaire.batterie_lignes import (
@@ -1386,7 +1386,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
             'production annuelle nulle — vérifier la puissance et la '
             'localisation du chantier')
 
-    resultat = {
+    # ACAL1169 — la base de la pose réelle et la supposition de forme, DITES.
+    resultat = publier_base_production({
         'version': ETUDE_HORAIRE_VERSION,
         'kwc': round(puissance, 3),
         'source_production': source_prod,
@@ -1403,10 +1404,7 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                     or cumul['production_kwh'] > 0},
         'annuel': _finaliser(annuel_cumul),
         'avertissements': avertissements,
-    }
-    if base_production:  # ACAL1169 — la base de la pose réelle et la supposition de forme, DITES
-        resultat['base_production'] = bloc_base_production(base_production)
-        avertissements.append(AVERTISSEMENT_FORME_HORAIRE)
+    }, base_production)
 
     # ── QJR137 : le rendement aller-retour PROUVÉ, et seulement s'il l'est ──
     # MÊME DISCIPLINE QUE L-GLITCH ci-dessous : aucune fiche batterie ne

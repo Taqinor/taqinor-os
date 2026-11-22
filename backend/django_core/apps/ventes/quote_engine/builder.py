@@ -480,6 +480,13 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
     return puces or None
 
 
+def _avec_regles_pose_reelle(data, pose_reelle):
+    # ACAL1033 (D-ACAL-45) — clé de rendu ``regles_pose_reelle``, posée au niveau 15 seulement.
+    if pose_reelle:
+        data["regles_pose_reelle"] = True
+    return data
+
+
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
@@ -2295,10 +2302,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             logger.warning("Devis %s — AMOT48 %s",
                            getattr(devis, "reference", "?"), _msg)
             data.setdefault("avertissements_internes", []).append(_msg)
-    if regles_au_moins(devis, REGLES_POSE_REELLE_2111):  # ACAL1033 (D-ACAL-45) — clé de rendu, niveau 15 seulement
-        data["regles_pose_reelle"] = True
 
-    return data
+    return _avec_regles_pose_reelle(data, regles_au_moins(devis, REGLES_POSE_REELLE_2111))  # ACAL1033
 
 
 def ecarts_totaux_imprimes(data, ttc_noyau=None, *, tol=0.011):

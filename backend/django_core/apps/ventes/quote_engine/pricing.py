@@ -1489,6 +1489,16 @@ def _grille_nationale_par_defaut(actif, conso_annuelle_kwh, utility,
     return national, tranches_override
 
 
+def _production_annuelle(puissance_kwc, prod_factor, pertes_incluses):
+    """Production annuelle du PDF : kWc × productible × ``PRODUCTION_DERATE`` ;
+    ACAL973 — ``pertes_incluses`` (base de la pose réelle) : sans derate."""
+    production_annuelle = round(
+        puissance_kwc * prod_factor * PRODUCTION_DERATE)
+    if pertes_incluses:
+        production_annuelle = round(puissance_kwc * prod_factor)
+    return production_annuelle
+
+
 def calculate_savings_roi(
     puissance_kwc: float,
     total_sans: float,
@@ -1606,10 +1616,8 @@ def calculate_savings_roi(
     # tranches, couverture, cashflow) raisonne sur cette production NETTE.
     prod_factor = float(productible) if productible and productible > 0 \
         else _DEFAULT_PRODUCTIBLE
-    production_annuelle = round(
-        puissance_kwc * prod_factor * PRODUCTION_DERATE)
-    if productible_pertes_incluses and productible:  # ACAL973
-        production_annuelle = round(puissance_kwc * prod_factor)
+    production_annuelle = _production_annuelle(
+        puissance_kwc, prod_factor, productible_pertes_incluses and productible)  # ACAL973
 
     bareme_national, tranches_override = _grille_nationale_par_defaut(
         bareme_national_defaut, conso_annuelle_kwh, utility,

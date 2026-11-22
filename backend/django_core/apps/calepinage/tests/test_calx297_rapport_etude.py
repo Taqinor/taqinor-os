@@ -508,9 +508,14 @@ class RenduPartageTest(unittest.TestCase):
         with mock.patch('core.pdf.render_pdf',
                         return_value=b'%PDF-simule') as rendu:
             octets = rendre_rapport(NU, **options)
+            servi = rendu.call_args.kwargs['html']
+            # Le sommaire compte les pages de chaque section par
+            # ``core.pdf.render_pdf`` : l'attendu est composé sous le MÊME
+            # rendu simulé (au vrai rendu, la section production d'ACAL694/708
+            # tient sur deux pages et décale le sommaire d'une page).
+            attendu = html_du_rapport(NU, **options)
         self.assertEqual(octets, b'%PDF-simule')
-        self.assertEqual(rendu.call_args.kwargs['html'],
-                         html_du_rapport(NU, **options))
+        self.assertEqual(servi, attendu)
 
     def test_l_apercu_et_le_pdf_partagent_une_seule_fonction(self):
         self.assertIs(mise_en_page('rapport_etude'), html_du_rapport)

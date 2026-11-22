@@ -32,7 +32,8 @@ User = get_user_model()
 #: Les onze champs CANONIQUES du contrat QJR42 + les deux champs de contexte du
 #: chemin devis + (QJR606) ``phase`` et ``gamme_nom_devis``, lues une fois
 #: par ``entrees_depuis_devis``. Ce pin rend visible tout élargissement de la
-#: forme.
+#: forme. ACAL999 (D-ACAL-36) : ``base_production`` — la base de production
+#: de la pose réelle (``horaire.productible_pose.base_de_production``).
 CHAMPS_ATTENDUS = (
     'company', 'mode', 'etude_params',
     'conso_kwh_mensuelles', 'source_conso',
@@ -40,6 +41,7 @@ CHAMPS_ATTENDUS = (
     'tranches', 'charges_fixes_mad', 'jour_reference',
     'phase', 'gamme_nom_devis', 'hors_reseau', 'mppt_paires',
     'perte_ombrage_pct', 'ombrage_balayage', 'productible_kwh_kwc',
+    'base_production',
 )
 
 

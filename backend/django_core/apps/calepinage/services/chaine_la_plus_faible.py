@@ -1,8 +1,8 @@
 """CALX16 — la chaîne la plus faible en ombrage, désignée par comparaison.
 
 Extrait tel quel de ``services/electrique.py`` (ACAL646 : le fichier dépasse
-4 000 lignes et ne grossit pas) ; ``electrique`` ré-importe ces noms, ses
-lecteurs et ses tests continuent de les lire par lui.
+4 000 lignes et ne grossit pas) ; ``electrique`` n'importe que la fonction,
+les lecteurs des constantes les lisent ICI (pas de ré-export).
 """
 from __future__ import annotations
 

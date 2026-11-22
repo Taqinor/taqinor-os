@@ -538,12 +538,16 @@ class SuggestionReliefApiTest(TestCase):
     def setUp(self):
         from apps.calepinage.models import Calepinage
         from apps.calepinage.services.layout import enregistrer_layout
+        from apps.crm.models import Lead
 
         self.company = _societe('ma')
         self.api = EndpointTest._api(self.company, 'acal535_ma')
         self.user = User.objects.get(username='acal535_ma')
+        # Un calepinage porte un lead ou un client (contrainte
+        # ``calepinage_lead_ou_client``).
+        lead = Lead.objects.create(company=self.company, nom='QA-ACAL535')
         self.calepinage = Calepinage.objects.create(
-            company=self.company, titre='QA-ACAL535')
+            company=self.company, lead_id=lead.pk, titre='QA-ACAL535')
         enregistrer_layout(self.calepinage, {
             'version': 2, 'zones': [dict(PAN, pitchDeg=18)]}, user=self.user)
         self.url = ('/api/django/calepinage/calepinages/'

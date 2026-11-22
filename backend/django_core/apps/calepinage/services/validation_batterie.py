@@ -1,7 +1,7 @@
 """ACAL633 — la forme de la déclaration de batterie (validation).
 
-Extraite de ``services/electrique.py`` : ``electrique`` ré-importe
-``valider_batterie`` sous son ancien nom ``_valider_batterie``.
+Extraite de ``services/electrique.py`` : ``electrique`` ré-importe le module
+(``_validation_batterie.valider_batterie``), jamais un alias de la fonction.
 """
 from .valeurs import nombre as _nombre
 
@@ -13,7 +13,8 @@ def valider_batterie(saisie):
     disant. Les grandeurs de la batterie viennent de la FICHE du produit,
     jamais de cette saisie."""
     from .batterie import COUPLAGES, MOTIVATIONS, STRATEGIES
-    from .electrique import CLES_BATTERIE, _fini, _refus_champ
+    from .batterie_declaration import CLES_BATTERIE
+    from .electrique import _fini, _refus_champ
 
     if saisie is None:
         return

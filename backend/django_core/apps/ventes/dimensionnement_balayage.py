@@ -42,6 +42,32 @@ def _productible_balayage(company, regles_2710):
     return productible_societe(company)
 
 
+def _kwargs_moteur_balayage(devis, entrees):
+    """AMOT30/RSIZ7 — ``(kwargs du moteur horaire, base de la pose réelle)``.
+
+    ACAL1170 — la base de la pose réelle (kWc du devis), posée APRÈS
+    ``kwargs_moteur_ombre`` (qui ne recopie que des clés nommées) ; jamais
+    sous ``productible_kwh_kwc`` (pertes réappliquées). ``None`` sans devis.
+    """
+    from apps.ventes.domain.entrees import kwargs_moteur_ombre
+    etude_kwargs = kwargs_moteur_ombre(entrees)
+    from apps.ventes.horaire.productible_pose import base_de_production
+    base_pose = base_de_production(devis) if devis is not None else None
+    if base_pose:
+        etude_kwargs['base_production'] = base_pose
+    return etude_kwargs, base_pose
+
+
+def _avertissements_de_depart(avert_sans, base_pose):
+    """Les avertissements d'une taille : d'abord ceux de l'étude sans
+    batterie ; ACAL1170 — + la supposition DITE (règle du 17/11) quand la
+    base de la pose réelle sert."""
+    avertissements = list(avert_sans)
+    if base_pose:
+        avertissements.append(AVERTISSEMENT_BASE_AUTRES_TAILLES)
+    return avertissements
+
+
 def _remplissage_rendu(palier_energie):
     """Le bloc ``remplissage`` d'un palier — chargé/capacité, et le PIRE mois.
 
@@ -186,8 +212,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     # stockage : deux dates différentes dans un même tableau feraient
     # comparer deux Ramadans.
     # RSIZ7 — + ombrage du calepinage (``None`` = lead : rien ne bouge).
-    from apps.ventes.domain.entrees import kwargs_moteur_ombre
-    etude_kwargs = kwargs_moteur_ombre({
+    # ACAL1170 — + la base de la pose réelle (``_kwargs_moteur_balayage``).
+    etude_kwargs, base_pose = _kwargs_moteur_balayage(devis, {
         'conso_kwh_mensuelles': conso_kwh_mensuelles, 'ville': ville,
         'lat': lat, 'lon': lon, 'occupation': occupation,
         'equipements': equipements, 'tranches': tranches,
@@ -196,13 +222,6 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         'perte_ombrage_pct': perte_ombrage_pct,
         'productible_kwh_kwc': _productible_balayage(company, regles_2710),
     })
-    # ACAL1170 — la base de la pose réelle (kWc du devis), posée APRÈS
-    # ``kwargs_moteur_ombre`` (qui ne recopie que des clés nommées) ; jamais
-    # sous ``productible_kwh_kwc`` (pertes réappliquées).
-    from apps.ventes.horaire.productible_pose import base_de_production
-    base_pose = base_de_production(devis) if devis is not None else None
-    if base_pose:
-        etude_kwargs['base_production'] = base_pose
 
     # QJR612 — CAD170 RÉELLEMENT APPLIQUÉ (décision fondateur 30/09/2026 :
     # « add more panels so battery is always charged »). Une recharge VE
@@ -316,9 +335,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         onduleur = vue_sans.get('onduleur_kw')
         ratio = _ratio_onduleur(onduleur, kwc)
 
-        avertissements = list(avert_sans)
-        if base_pose:  # ACAL1170 — la supposition DITE (règle du 17/11)
-            avertissements.append(AVERTISSEMENT_BASE_AUTRES_TAILLES)
+        avertissements = _avertissements_de_depart(avert_sans, base_pose)  # ACAL1170
         for message in list(avert_avec) + list(avert_stockage):
             if message not in avertissements:
                 avertissements.append(message)

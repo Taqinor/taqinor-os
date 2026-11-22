@@ -1,7 +1,8 @@
 """ACAL642 — la forme de la déclaration de transformateur (validation).
 
-Extraite de ``services/electrique.py`` : ``electrique`` ré-importe
-``valider_transformateur`` sous son ancien nom ``_valider_transformateur``.
+Extraite de ``services/electrique.py`` : ``electrique`` ré-importe le module
+(``_validation_transformateur.valider_transformateur``), jamais un alias
+de la fonction.
 """
 from .valeurs import nombre as _nombre
 
