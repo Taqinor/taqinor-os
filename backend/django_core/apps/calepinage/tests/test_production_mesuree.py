@@ -172,7 +172,7 @@ class ProductionMesureeEnBaseTest(BaseApiCalepinage):
         corps = {'annee': 2026, 'mesures': [{'mois': 3, 'kwh_mesure': 1.0},
                                             {'mois': 3, 'kwh_mesure': 2.0}]}
         reponse = self.api.put(self.url, corps, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('mesures[1].mois', reponse.data)
         self.assertEqual(ProductionMesuree.objects.count(), 0)
 

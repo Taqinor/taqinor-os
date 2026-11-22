@@ -98,6 +98,13 @@ ETUDE_AGRICOLE = {
     'heures_pompage': 7, 'm3_jour': 210, 'champ_kwc': 10.65,
 }
 
+#: Clés de ``libelles_document`` AJOUTÉES au catalogue depuis la dernière
+#: capture (diagnostic seulement, jamais une assertion) : sur un écart, le
+#: message dit si l'empreinte SANS ces clés égale encore le golden — « egal »
+#: prouve que seule la table des libellés a bougé (aucune valeur du devis).
+#: Vider après la re-capture.
+LIBELLES_AJOUTES_DEPUIS_LA_CAPTURE = ('res_hyp_production_calepinage',)  # ACAL973
+
 #: Jeux d'options (nom → pdf_options). Les drapeaux ``_embed_*`` sont SERVEUR
 #: (hors liste blanche) : passés ici comme le fait ``generate_premium_devis_pdf``.
 OPTIONS = {
@@ -124,6 +131,18 @@ def _lignes_variantees(devis, company, lignes):
             designation=desig, quantite=Decimal(qte),
             prix_unitaire=Decimal(pu), remise=Decimal('0'),
             taux_tva=Decimal(taux), variante=variante)
+
+
+def _sans_libelles_ajoutes(data):
+    """``data`` dont ``libelles_document`` perd les clés ajoutées depuis la
+    capture (copie de surface ; diagnostic seulement)."""
+    table = data.get('libelles_document')
+    if not LIBELLES_AJOUTES_DEPUIS_LA_CAPTURE or not isinstance(table, dict):
+        return data
+    copie = dict(data)
+    copie['libelles_document'] = {k: v for k, v in table.items()
+                                  if k not in LIBELLES_AJOUTES_DEPUIS_LA_CAPTURE}
+    return copie
 
 
 class MoteurGoldenBuildQuoteDataTests(TestCase):
@@ -250,6 +269,7 @@ class MoteurGoldenBuildQuoteDataTests(TestCase):
         from apps.ventes.coherence.contexte import rendu_sans_reseau
         from apps.ventes.quote_engine.builder import build_quote_data
         resultats = {}
+        self._sans_ajouts = {}
         for nom_fx, devis in self._fixtures().items():
             for nom_opt, opts in OPTIONS.items():
                 cle = f'{nom_fx}__{nom_opt}'
@@ -259,17 +279,29 @@ class MoteurGoldenBuildQuoteDataTests(TestCase):
                         with rendu_sans_reseau():
                             data = build_quote_data(devis_frais, dict(opts))
                         resultats[cle] = self._empreinte(devis_frais, data)
+                        self._sans_ajouts[cle] = self._empreinte(
+                            devis_frais, _sans_libelles_ajoutes(data))['sha256']
                     except Exception as exc:  # noqa: BLE001 — caractérisation (D-ENF22-BLE001)
                         resultats[cle] = {'exception': type(exc).__name__}
                     transaction.set_rollback(True)
         return resultats
+
+    def _ligne_diagnostic(self, cle, reel, attendu):
+        """Une ligne par cas différent : l'empreinte obtenue (à reporter au
+        golden après revue) et si elle égale le golden hors libellés ajoutés."""
+        sans = self._sans_ajouts.get(cle)
+        return ('cas=%s sha256=%s golden=%s hors_libelles_ajoutes=%s cles=%s sharelinks=%s' % (
+            cle, reel.get('sha256', reel.get('exception')), attendu.get('sha256'),
+            'egal' if sans and sans == attendu.get('sha256') else 'DIFFERENT',
+            'egal' if reel.get('cles') == attendu.get('cles') else 'DIFFERENT',
+            'egal' if reel.get('sharelinks') == attendu.get('sharelinks') else 'DIFFERENT'))
 
     def test_build_quote_data_identique_au_golden(self):
         resultats = self._cas()
         maj = os.environ.get('UPDATE_GOLDEN') == '1'
         if maj:
             DOSSIER.mkdir(parents=True, exist_ok=True)
-        ecarts, manquants = [], []
+        ecarts, manquants, diagnostics = [], [], []
         for cle, reel in sorted(resultats.items()):
             fichier = DOSSIER / f'{cle}.json'
             if maj:
@@ -279,12 +311,14 @@ class MoteurGoldenBuildQuoteDataTests(TestCase):
             if not fichier.is_file():
                 manquants.append(cle)
                 continue
-            if json.loads(fichier.read_text(encoding='utf-8')) != reel:
+            attendu = json.loads(fichier.read_text(encoding='utf-8'))
+            if attendu != reel:
                 ecarts.append(cle)
+                diagnostics.append(self._ligne_diagnostic(cle, reel, attendu))
         self.assertEqual(manquants, [],
                          'golden non capturé : lancer une fois '
                          'UPDATE_GOLDEN=1 (voir la docstring)')
         self.assertEqual(ecarts, [], 'sortie de build_quote_data changée '
-                                     'pour : %s' % ecarts)
+                                     'pour : %s\n%s' % (ecarts, '\n'.join(diagnostics)))
         # Aucun cas n'est une exception silencieuse non capturée.
         self.assertEqual(len(resultats), 13 * len(OPTIONS))

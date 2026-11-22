@@ -63,12 +63,16 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(bat10.prix_vente, Decimal('25000.00'))       # 30 000 TTC
         socles = qs.get(sku='SOC-BET')
         self.assertEqual(socles.prix_vente, Decimal('66.67'))         # 80 TTC
-        # Stock available so auto-fill is never blocked
-        self.assertTrue(all(p.quantite_stock > 0 for p in qs))
-        # Traceability: one entry movement per product
+        # Stock available so auto-fill is never blocked. Seul un article semé
+        # SANS stock ET sans prix y échappe (kit de fixation d'ACAL1172, « aucun
+        # stock inventé » : jamais auto-chiffré tant que son prix vaut 0 ; le
+        # test du kit, test_agr620, assure qu'il est le seul dans ce cas).
+        self.assertTrue(all(p.quantite_stock > 0 for p in qs.exclude(quantite_stock=0, prix_vente=0)))
+        # Traceability: one entry movement per product seeded with stock
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), NB_ARTICLES_SEMES,
+                company=self.company, reference='SEED-CATALOGUE').count(),
+            NB_ARTICLES_SEMES - qs.filter(quantite_stock=0).count(),
         )
 
     def test_fiches_and_pompage_seeded(self):

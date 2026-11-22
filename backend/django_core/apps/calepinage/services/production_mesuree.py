@@ -21,6 +21,7 @@ __all__ = ['MesureRefusee', 'enregistrer_mesures', 'etat_production_mesuree']
 #: Les bornes de la COLONNE : ``annee`` est un PositiveSmallInteger (≤ 32767),
 #: ``kwh_mesure`` un Decimal(12, 3) (< 1e9, trois décimales).
 ANNEE_MINI, ANNEE_MAXI = 1900, 32767
+#: Plafond de ``kwh_mesure`` : Decimal(12, 3) => strictement moins de 1e9 kWh.
 KWH_MAXI = 999_999_999
 MOTIF_VIDE = "Aucune production mesurée n'est saisie pour ce calepinage."
 MOTIF_SANS_SIMULATION = ("Simulation absente ou périmée : le P50 mensuel n'est "
@@ -30,9 +31,12 @@ MOTIF_SANS_SIMULATION = ("Simulation absente ou périmée : le P50 mensuel n'est
 class MesureRefusee(ValueError):
     """Refus d'une saisie, en français, avec le CHAMP fautif nommé."""
 
-    def __init__(self, message, champ=''):
+    def __init__(self, message, champ='', statut=400):
         super().__init__(message)
         self.champ = champ
+        # 409 = règle liant plusieurs lignes (mois saisi deux fois), que le
+        # schéma ne dit pas (ENF11) ; 400 = forme invalide.
+        self.statut = statut
 
     def corps(self):
         return {self.champ or 'detail': [str(self)]}
@@ -64,7 +68,7 @@ def _valider(corps):
         mois = _entier(ligne.get('mois'), base + '.mois', 1, 12)
         if mois in vus:
             raise MesureRefusee('Le mois %d est saisi deux fois.' % mois,
-                                base + '.mois')
+                                base + '.mois', statut=409)
         vus.add(mois)
         kwh = valeurs.nombre_fini(
             ligne.get('kwh_mesure'), base + '.kwh_mesure', mini=0,

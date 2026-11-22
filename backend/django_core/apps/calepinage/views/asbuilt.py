@@ -30,7 +30,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutApprouverCalepinage, PeutLireOuEcrireCalepinage
-from ..serializers import corps_obligatoire, forme_du_contrat
+from ..serializers import REPONSE_REFUS_ETAT, corps_obligatoire, forme_du_contrat
 from ..services.asbuilt import (
     PanInconnu, PoseRefusee, ecart_mesures_du_calepinage, enregistrer_pose,
     etat_pose_reelle, supprimer_pose, version_depuis_ecarts,
@@ -137,7 +137,7 @@ _CORPS_ECART_MESURES = {
     'type': 'object',
     'properties': {
         'kwh': {'type': 'array', 'minItems': 12, 'maxItems': 12,
-                'items': {'type': ['number', 'null'], 'minimum': 0}},
+                'items': {'type': 'number', 'nullable': True, 'minimum': 0}},
         'annee': {'type': 'integer', 'minimum': 1900},
     },
     'required': ['kwh'],
@@ -146,7 +146,7 @@ _CORPS_ECART_MESURES = {
 
 @extend_schema(
     request={'application/json': _CORPS_ECART_MESURES},
-    responses={200: _FORME_ECART_MESURES, 409: OpenApiTypes.OBJECT})
+    responses={200: _FORME_ECART_MESURES, 409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['post'], url_path='ecart-mesures',
         permission_classes=[PeutApprouverCalepinage])
 def ecart_mesures(self, request, pk=None):

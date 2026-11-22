@@ -900,6 +900,23 @@ def _alerte_type_suppose(mode_pompe, type_pompe):
         "immergée supposée.")]
 
 
+def _production_du_champ(champ_complet, plan_irr, alertes_moteur):
+    """La production du champ retenu, à la forme du contrat, avec son plan d'irradiation (ACAL1201, contrat
+    ACAL1198) ; ajoute à ``alertes_moteur`` l'alerte « débit limité par le forage » quand le plafond est atteint."""
+    production_brute = (champ_complet or {}).get('production') or {}
+    production = _forme_production(production_brute or None)
+    if production:
+        production['plan_irradiation'] = plan_irr
+    if production and production_brute.get('plafond_atteint'):
+        alertes_moteur.append(_alerte(
+            'debit_limite_forage', 'source.debit_exploitation_m3h',
+            "Débit limité par votre forage : la pompe livrerait davantage, "
+            "la production de chaque heure est plafonnée à %s m³/h (débit "
+            "d'exploitation × part du réglage société)."
+            % _fr_m3h(production.get('plafond_forage_m3h'))))
+    return production
+
+
 def etudier_pompage(company, entrees, *, devis=None, lead=None,
                     facture=None, sans_tmy=False, client=None):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
@@ -1099,17 +1116,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
                 puissance_actuelle=puissance, variateur_actuel=variateur))
         alertes_moteur.extend(alertes_facture)
 
-    production_brute = (champ_complet or {}).get('production') or {}
-    production = _forme_production(production_brute or None)
-    if production:
-        production['plan_irradiation'] = plan_irr  # ACAL1201 (contrat ACAL1198)
-    if production and production_brute.get('plafond_atteint'):
-        alertes_moteur.append(_alerte(
-            'debit_limite_forage', 'source.debit_exploitation_m3h',
-            "Débit limité par votre forage : la pompe livrerait davantage, "
-            "la production de chaque heure est plafonnée à %s m³/h (débit "
-            "d'exploitation × part du réglage société)."
-            % _fr_m3h(production.get('plafond_forage_m3h'))))
+    production = _production_du_champ(champ_complet, plan_irr, alertes_moteur)
     passe2 = _conception(
         res, besoin, reglages, profils=profils, hmt_m=hmt_m,
         production=production['m3_jour_mois'] if production else None,

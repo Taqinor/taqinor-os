@@ -171,6 +171,7 @@ Signataire
 Pompe proposée : Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V) · puissance retenue 7,5 kW (10,2 CV)
 Variateur : VARIATEUR VEICHI SI23 7.5KW 380V
 Champ 9,94 kWc (14 panneaux) — chaînes vérifiées
+Production d'eau calculée sur l'ensoleillement de référence du site (30°, sud) : devis non enregistré
 Mois
 Production (m³/j)
 Besoin (m³/j)

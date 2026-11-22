@@ -84,6 +84,11 @@ class SkuPompageTests(TestCase):
         self.assertFalse(est_panneau(p.nom))
         self.assertEqual((p.prix_vente, p.prix_achat), (0, 0))
         self.assertEqual((p.quantite_stock, p.seuil_alerte), (0, 0))
+        # ... et il est le SEUL article semé sans stock (aucun stock inventé).
+        self.assertEqual(
+            set(Produit.objects.filter(company=self.co, quantite_stock=0)
+                .values_list('sku', flat=True)),
+            {entree[1] for entree in seed_mod.KIT_FIXATION_PRIX_A_RENSEIGNER})
         self.assertEqual(p.categorie.nom, 'Structures & fixation')
         self.assertFalse(re.search(r'\d', p.description or ''))
         self.assertIn(sku, seed_mod.SKUS_SEMES)

@@ -469,6 +469,8 @@ def exporter_comparatif_xlsx(comparaison):
     entetes, lignes = _table_comparatif(comparaison)
     verifier_absence_de_prix(entetes, [ligne[1:] for ligne in lignes])
     return _classeur_octets([(FEUILLE_COMPARATIF, entetes, lignes)])
+
+
 # ── ACAL885 — la feuille « Vérification » ───────────────────────────────────
 
 #: Hors ``FEUILLES`` (deux tests la comparent aux feuilles d'un classeur non

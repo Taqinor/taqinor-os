@@ -78,7 +78,16 @@ assert set(CLES_REGLE) == {'base', 'facteur', 'diviseur', 'libelle_facteur',
 _CONTROLES_POSE = {
     'type': 'object', 'additionalProperties': False,
     'properties': {**{cle: {'type': 'number', 'minimum': 0, 'nullable': True}
-                      for cle in CHAMPS_MM}, 'source': _TEXTE_SANS_NUL}}
+                      for cle in CHAMPS_MM}, 'source': _TEXTE_SANS_NUL},
+    # api-fuzz (PR #1523) — la règle « source dès qu'une valeur est saisie »
+    # est publiée : aucune distance (absente ou null), OU une source non blanche.
+    'anyOf': [
+        {'type': 'object', 'properties': {
+            cle: {'nullable': True, 'enum': [None]} for cle in CHAMPS_MM}},
+        {'type': 'object', 'required': ['source'], 'properties': {
+            'source': {'type': 'string',
+                       'pattern': r'^[^\u0000]*\S[^\u0000]*$'}}},
+    ]}
 
 
 @extend_schema_field(_CONTROLES_POSE)

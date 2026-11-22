@@ -17,13 +17,20 @@ const SOURCE = lire('../../../../apps/web/src/lib/shadingEngine.ts')
 
 // Le fichier TypeScript importe d'autres modules sans extension : on en
 // extrait la seule fonction PURE (signature retirée) plutôt que de l'importer.
+// Extraction par appariement d'accolades, indifférente aux fins de ligne.
 function solarAccessColorRGB() {
-  const debut = SOURCE.indexOf('export function solarAccessColorRGB')
-  assert.ok(debut >= 0, 'solarAccessColorRGB introuvable dans shadingEngine.ts')
-  const fin = SOURCE.indexOf('\n}\n', debut)
-  const bloc = SOURCE.slice(debut, fin)
-  const corps = bloc.slice(bloc.indexOf('{ r: number; g: number; b: number } {') + 36)
-  return new Function('access', corps)
+  const source = SOURCE.replace(/\r\n/g, '\n')
+  const signature = /export function solarAccessColorRGB\s*\(access: number\)\s*:\s*\{[^}]*\}\s*\{/.exec(source)
+  assert.ok(signature, 'solarAccessColorRGB introuvable dans shadingEngine.ts')
+  const debut = signature.index + signature[0].length
+  let profondeur = 1
+  let i = debut
+  for (; i < source.length && profondeur > 0; i += 1) {
+    if (source[i] === '{') profondeur += 1
+    else if (source[i] === '}') profondeur -= 1
+  }
+  assert.equal(profondeur, 0, 'accolade fermante de solarAccessColorRGB introuvable')
+  return new Function('access', source.slice(debut, i - 1))
 }
 
 test('les trois stops du contrat sont ceux de solarAccessColorRGB', () => {

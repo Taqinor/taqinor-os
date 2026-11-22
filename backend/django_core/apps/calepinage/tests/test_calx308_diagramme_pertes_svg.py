@@ -104,7 +104,8 @@ class HauteursTest(unittest.TestCase):
     def test_une_etape_omise_n_a_pas_de_barre_proportionnelle(self):
         arbre = racine(svg_de_cascade(cascade()))
         omises = {r.get('data-etape') for r in rects(arbre, 'barre-omise')}
-        self.assertEqual(omises, {'spectral', 'indisponibilite'})
+        # + l'étape « optimiseur », omise sans optimiseur déclaré.
+        self.assertEqual(omises, {'spectral', 'optimiseur', 'indisponibilite'})
         for barre in rects(arbre, 'barre-omise'):
             self.assertIsNone(barre.get('data-pct'))
 

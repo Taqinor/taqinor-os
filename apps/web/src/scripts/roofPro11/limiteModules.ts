@@ -6,7 +6,7 @@
  * `CAL_PERF_ECRIRE=1`, jamais tapé à la main), lue ICI à la construction. Fichier absent ou
  * `limite_modules` nul ⇒ AUCUNE limite, donc aucun refus : on n'invente pas de plafond.
  */
-const MESURE = import.meta.glob('../../../../../frontend/e2e/calepinage-perf.limite.json', {
+const MESURE = import.meta.glob('/e2e/calepinage-perf.limite.json', {
   eager: true, import: 'default',
 }) as Record<string, { limite_modules?: number | null }>;
 

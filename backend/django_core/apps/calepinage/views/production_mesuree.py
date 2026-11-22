@@ -12,11 +12,9 @@ seuil : l'écart est publié, pas jugé.
 """
 from __future__ import annotations
 
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
 
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import corps_obligatoire, forme_du_contrat
@@ -49,7 +47,12 @@ _CORPS_MESURES = {
 @extend_schema(
     methods=['PUT'],
     request={'application/json': _CORPS_MESURES},
-    responses={200: _FORME, 400: OpenApiTypes.OBJECT})
+    responses={200: _FORME, 400: OpenApiResponse(description=(
+        "Mesure refusée : corps ``{champ: [message]}`` nommant le champ "
+        "(année, mois hors bornes, kWh illisible).")),
+        409: OpenApiResponse(description=(
+            "Un mois saisi deux fois (règle liant plusieurs lignes) : "
+            "``{mesures[i].mois: [message]}``."))})
 @corps_obligatoire
 @action(detail=True, methods=['get', 'put'], url_path='production-mesuree',
         permission_classes=[PeutLireOuEcrireCalepinage])
@@ -60,7 +63,7 @@ def production_mesuree(self, request, pk=None):
         try:
             enregistrer_mesures(calepinage, request.data, user=request.user)
         except MesureRefusee as refus:
-            return Response(refus.corps(), status=status.HTTP_400_BAD_REQUEST)
+            return Response(refus.corps(), status=refus.statut)
     return Response(etat_production_mesuree(calepinage))
 
 

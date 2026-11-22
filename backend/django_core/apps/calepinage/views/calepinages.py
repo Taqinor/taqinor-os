@@ -400,8 +400,13 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     #: ACAL831 — ``pompage`` (POST) est un CALCUL ouvert à ``calepinage_voir``
     #: (garde déclarée ``PeutVoirCalepinage``) ; seul l'enregistrement du
     #: dernier rendu exige ``calepinage_gerer`` (``_enregistrer_dernier``).
+    #: ACAL846 — ``ecart_mesures`` (POST, rien d'enregistré) est gardée
+    #: ``PeutApprouverCalepinage`` : le porteur de ``calepinage_approuver``
+    #: SEUL doit passer (sinon le volet ``ScopedPermission`` exige
+    #: ``calepinage_gerer`` en plus : 403 au lieu de 200).
     PERMISSIONS_ECRITURE_PAR_ACTION = {'approbation': CAL_APPROUVER,
                                        'profil_depart': CAL_APPROUVER,
+                                       'ecart_mesures': CAL_APPROUVER,
                                        'pompage': CAL_VOIR}
 
     @property

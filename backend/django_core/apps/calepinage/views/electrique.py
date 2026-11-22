@@ -31,6 +31,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.parseurs import PARSEURS_JSON
 
 from ..permissions import (
     PeutApprouverCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
@@ -207,7 +208,8 @@ class ElectriqueActionsMixin:
         }), responses=forme_du_contrat(
             'CalepinageControleChaine', 'calepinage_controle_chaine.json'))
     @action(detail=False, methods=['post'], url_path='controle-chaine',
-            permission_classes=[PeutVoirCalepinage])
+            permission_classes=[PeutVoirCalepinage],
+            parser_classes=PARSEURS_JSON)  # api-fuzz #1523 : entiers = JSON
     def controle_chaine(self, request):
         """ACAL627 — le verdict d'UNE chaîne sans dessin ; rien n'est écrit.
 

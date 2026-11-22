@@ -80,6 +80,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       // ACAL777 — la facture du lead, repli d'affichage des cartes.
       factureMensuelleMad: CTX.consommation_lead.facture_mensuelle_mad,
       fullName: CTX.calepinage.titre,
+      // ACAL777 — la facture mensuelle du lead servie (ACAL776), repli d'affichage des cartes.
+      factureMensuelleMad: CTX.consommation_lead.facture_mensuelle_mad,
     })
 
     expect(await screen.findByRole('heading', { level: 1 }))

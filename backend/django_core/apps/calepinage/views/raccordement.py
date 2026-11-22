@@ -52,6 +52,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.champs_stricts import ChaineStricte
+from core.parseurs import PARSEURS_JSON
 
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import forme_du_contrat
@@ -191,7 +192,9 @@ _FORME_RACCORDEMENT = forme_du_contrat(
             required=False, allow_null=True)}),
     responses=_FORME_RACCORDEMENT)
 @action(detail=True, methods=['get', 'post'], url_path='raccordement',
-        permission_classes=[PeutLireOuEcrireCalepinage])
+        permission_classes=[PeutLireOuEcrireCalepinage],
+        # fuzz CI : les plages sont une liste d'objets, un multipart n'en porte que des chaînes
+        parser_classes=PARSEURS_JSON)
 def raccordement(self, request, pk=None):
     """CALX244 — ``{saisie, calcul, verdicts}`` du point de raccordement.
 

@@ -391,6 +391,12 @@ SANS_PRODUCTEUR_PUR = {
         '(services/asbuilt.py::_ecart_consommation) est rejoué contre '
         'l’exemple par apps/calepinage/tests/test_calx366_pose_reelle.py ; '
         'l’eau lit les relevés m³ du SAV en base',
+    # ACAL886 / ACAL887
+    'calepinage_production_mesuree.json':
+        'douze kWh mensuels mesurés et leur écart au P50 servi : la route '
+        '(views/production_mesuree.py) lit et écrit `ProductionMesuree` et le '
+        'résultat servi en base — le cœur PUR (_composer_etat) est rejoué '
+        'contre l’exemple par apps/calepinage/tests/test_production_mesuree.py',
     # CALX335
     'calepinage_fixation_bom.json':
         'nomenclature de fixation : son producteur (CALX359, '

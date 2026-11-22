@@ -57,6 +57,8 @@ test("ACAL438 : aucun texte de l'atelier sous 12 px", () => {
 // distinct (sans fond, ≥ 12 px).
 const CSS_ROOFBUILDER = readFileSync(join(SRC, 'styles/roofbuilder.css'), 'utf8')
 const SCRIPT_PRO11 = readFileSync(join(SRC, '../../apps/web/src/scripts/roof-tool-pro11.ts'), 'utf8')
+const declarations = (corps) => Object.fromEntries(corps.split(';')
+  .map((d) => d.split(':').map((x) => x.trim())).filter(([nom, valeur]) => nom && valeur !== undefined))
 const regles = (css) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selecteur: m[1].trim(), corps: m[2] }))
 
 test('ACAL969 : toute classe rp9-* créée par roof-tool-pro11.ts a une règle dans roofbuilder.css', () => {
@@ -90,11 +92,11 @@ test('ACAL969 : UN seul état « choisi » (fond doré sur [aria-pressed]) ; le 
   const dore = /background:\s*color-mix\(in srgb,\s*var\(--primary-text\)/
   for (const r of regles(CSS_ROOFBUILDER)) {
     if (/\.rp9-chip(?![\w-])/.test(r.selecteur) && dore.test(r.corps)) {
-      assert.match(r.selecteur, /aria-pressed='true'/, `${r.selecteur} : un second état « choisi » doré`)
+      assert.ok(r.selecteur.includes("aria-pressed='true'"), `${r.selecteur} : un second état « choisi » doré`)
     }
   }
   const badge = regles(CSS_ROOFBUILDER).find((r) => /\.rp9-reco-badge\s*$/.test(r.selecteur))
   assert.ok(badge, 'règle .rp9-reco-badge absente')
   assert.ok(!/background/.test(badge.corps), '.rp9-reco-badge ne doit pas porter de fond doré')
-  assert.ok(parseFloat(badge.corps.match(/font-size:\s*([\d.]+)rem/)?.[1]) >= 0.75, '.rp9-reco-badge : texte sous 12 px')
+  assert.ok(parseFloat(declarations(badge.corps)['font-size']) >= 0.75, '.rp9-reco-badge : texte sous 12 px')
 })
