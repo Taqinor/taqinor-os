@@ -480,6 +480,10 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_soleil_legal.json':  # ACAL730
         'GET : fuseau lu au profil de la société en base (repli de '
         "l'imagerie) ; forme affirmée par test_forme_du_soleil_legal",
+    'calepinage_production_mesuree.json':  # ACAL886
+        'GET/PUT : mesures rangées en base (table ProductionMesuree) et '
+        'P50 mensuel du résultat servi ; forme affirmée par '
+        'test_production_mesuree.py (ACAL887)',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -538,6 +542,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL558 a livré ``GET``/``POST calepinages/systemes-fixation/``
     # (``views/systemes_fixation.py``) : ``calepinage_systemes_fixation.json``
     # en est SORTI.
+    # ACAL887 a livré ``GET``/``PUT calepinages/<pk>/production-mesuree/``
+    # (``views/production_mesuree.py``) : ``calepinage_production_mesuree.json``
+    # (posé par ACAL886) en est SORTI.
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne

@@ -128,6 +128,9 @@ ROUTES_HORS_VERROU = {
         'pose réelle : retrait du relevé d\'un pan (orphelin, ACAL267)',
     ('POST', 'ecart-mesures'): 'consommation mesurée comparée à la simulée '
                                '(lecture calculée, rien enregistré, ACAL846)',
+    ('PUT', 'production-mesuree'): "production mesurée (ACAL887) : donnée "
+                                   "d'exploitation rangée à part, jamais la "
+                                   "conception d'un calepinage",
     ('PATCH', PHOTO + '/calage'): 'photos de site (calage)',
     ('POST', 'releve-visite'): 'relevé terrain : reprise de la visite',
     ('POST', 'image-document'): 'documents : images des livrables',

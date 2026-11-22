@@ -15,7 +15,7 @@ import { type SerializedConsumption } from './prefill';
  * quelles ; `null` = rien à écrire (aucune clé `charges`).
  */
 export function chargesAEcrire(ctx: Ctx): ChargeAvenir[] | null {
-  const ecran = (ctx as { consCharges?: ChargeAvenir[] }).consCharges;
+  const ecran = ctx.consCharges;
   if (Array.isArray(ecran)) return chargesPourDocument(ecran);
   const relues = releireCharges(ctx.documentRelu?.consumption);
   return relues.length ? chargesPourDocument(relues) : null;

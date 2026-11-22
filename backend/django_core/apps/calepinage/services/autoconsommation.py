@@ -84,7 +84,7 @@ def _serie(valeurs, *, champ):
 
 
 def plafond_injection(surplus_horaire, *, plafond_kw=None, justification='',
-                      pas_heures=1.0):
+                      pas_heures=1.0, plafonds_par_pas=None):
     """Applique un plafond d'injection AU POINT DE LIVRAISON, heure par heure.
 
     Args:
@@ -96,33 +96,41 @@ def plafond_injection(surplus_horaire, *, plafond_kw=None, justification='',
         pas_heures: la durée d'un pas de la série (h). Un pas horaire (1 h)
             fait coïncider kW et kWh ; un autre pas est converti ici plutôt
             que supposé ailleurs.
+        plafonds_par_pas: ACAL828 — par pas, ``(plafond_kw, rang de plage)``
+            ou ``None`` (``limites_livraison.plafonds_par_pas``) : une plage
+            REMPLACE le plafond de base sur ses heures ; hors plage, le
+            plafond de base, ou aucun.
 
     Returns:
         dict — ``applique``, ``plafond_kw``, ``justification``,
         ``surplus_apres_ecretage`` (série), ``energie_ecretee_kwh``,
-        ``heures_ecretees``, ``motif``.
+        ``heures_ecretees``, ``plages`` (ACAL828 : ``[{rang, heures_ecretees,
+        energie_ecretee_kwh}]``), ``motif``.
 
     Raises:
         BilanInvalide: plafond illisible, négatif, ou sans justification.
     """
     surplus = _serie(surplus_horaire, champ='surplus')
-    if plafond_kw is None or plafond_kw == '':
+    par_plage = any(entree is not None for entree in plafonds_par_pas or ())
+    if (plafond_kw is None or plafond_kw == '') and not par_plage:
         return {
             'applique': False, 'plafond_kw': None, 'justification': '',
             'surplus_apres_ecretage': surplus,
             'energie_ecretee_kwh': None, 'heures_ecretees': None,
+            'plages': [],
             'motif': ("Aucun plafond d'injection n'est saisi : rien n'est "
                       "écrêté et aucun écrêtage n'est affiché."),
         }
 
     try:
-        plafond = float(plafond_kw)
+        plafond = (None if plafond_kw is None or plafond_kw == ''
+                   else float(plafond_kw))
     except (TypeError, ValueError):
         raise BilanInvalide(
             "Le plafond d'injection est illisible "
             f'(reçu : {plafond_kw!r}) : il se saisit en kW.',
             champ='plafond_injection_kw')
-    if plafond < 0:
+    if plafond is not None and plafond < 0:
         raise BilanInvalide(
             "Le plafond d'injection ne peut pas être négatif "
             f'(reçu : {plafond}).', champ='plafond_injection_kw')
@@ -139,16 +147,23 @@ def plafond_injection(surplus_horaire, *, plafond_kw=None, justification='',
         pas = 1.0
     if pas <= 0:
         pas = 1.0
-    maximum_kwh = plafond * pas
-
     apres = []
     ecrete = 0.0
     heures = 0
-    for valeur in surplus:
-        if valeur > maximum_kwh:
+    plages = {}
+    for rang, valeur in enumerate(surplus):
+        entree = (plafonds_par_pas[rang] if rang < len(plafonds_par_pas or ())
+                  else None)
+        limite = entree[0] if entree is not None else plafond
+        maximum_kwh = None if limite is None else limite * pas
+        if maximum_kwh is not None and valeur > maximum_kwh:
             ecrete += valeur - maximum_kwh
             heures += 1
             apres.append(maximum_kwh)
+            if entree is not None:
+                ligne = plages.setdefault(entree[1], [0, 0.0])
+                ligne[0] += 1
+                ligne[1] += valeur - maximum_kwh
         else:
             apres.append(valeur)
 
@@ -159,15 +174,22 @@ def plafond_injection(surplus_horaire, *, plafond_kw=None, justification='',
         'surplus_apres_ecretage': apres,
         'energie_ecretee_kwh': round(ecrete, 3),
         'heures_ecretees': heures,
+        'plages': [{'rang': rang, 'heures_ecretees': ligne[0],
+                    'energie_ecretee_kwh': round(ligne[1], 3)}
+                   for rang, ligne in sorted(plages.items())],
         'motif': (
             f'Plafond d’injection de {plafond} kW appliqué heure par heure au '
+            f'point de livraison ({heures} heure(s) écrêtée(s)).'
+            if plafond is not None else
+            'Plafonds horaires d’injection appliqués heure par heure au '
             f'point de livraison ({heures} heure(s) écrêtée(s)).'),
     }
 
 
 def bilan_autoconsommation(charge_horaire, production_horaire, *,
                            plafond_injection_kw=None,
-                           justification_plafond='', pas_heures=1.0):
+                           justification_plafond='', pas_heures=1.0,
+                           plafonds_par_pas=None):
     """Le bilan horaire : autoconsommation, couverture COUV-AUTO, écrêtage.
 
     Args:
@@ -215,7 +237,8 @@ def bilan_autoconsommation(charge_horaire, production_horaire, *,
     surplus_horaire = [max(0.0, p - c) for c, p in zip(charge, production)]
     bloc_plafond = plafond_injection(
         surplus_horaire, plafond_kw=plafond_injection_kw,
-        justification=justification_plafond, pas_heures=pas_heures)
+        justification=justification_plafond, pas_heures=pas_heures,
+        plafonds_par_pas=plafonds_par_pas)
 
     return {
         'publiable': True,

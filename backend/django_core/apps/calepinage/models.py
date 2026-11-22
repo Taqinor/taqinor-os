@@ -35,6 +35,7 @@ Les lectures cross-app passent EXCLUSIVEMENT par ``apps.crm.selectors`` /
 """
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -1679,3 +1680,50 @@ class ComposantFixation(TenantModel):
                                   "autre société.")
         if erreurs:
             raise ValidationError(erreurs)
+
+
+class ProductionMesuree(TenantModel):
+    """ACAL887 — l'énergie MESURÉE d'un mois de l'installation posée.
+
+    Une ligne = un mois (1-12) d'une année pour un calepinage : le kWh
+    réellement livré, saisi ou collé. Elle n'est comparée qu'au P50 mensuel
+    SERVI (``production.mensuel[]``) ; l'écart est publié, jamais jugé (aucun
+    seuil, aucune alerte). ``company`` vient du calepinage (serveur), jamais
+    du corps de la requête.
+    """
+
+    calepinage = models.ForeignKey(
+        Calepinage,
+        on_delete=models.CASCADE,  # on_delete: une mesure n'existe pas hors de son calepinage
+        related_name='productions_mesurees',
+        verbose_name='Calepinage',
+    )
+    annee = models.PositiveSmallIntegerField('Année')
+    mois = models.PositiveSmallIntegerField('Mois (1 à 12)')
+    kwh_mesure = models.DecimalField('Énergie mesurée (kWh)', max_digits=12,
+                                     decimal_places=3)
+    saisi_par = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,  # on_delete: la mesure survit au départ de son auteur
+        null=True, blank=True,
+        related_name='calepinage_productions_mesurees',
+        verbose_name='Saisi par',
+    )
+    saisi_le = models.DateTimeField('Saisi le', default=timezone.now)
+
+    class Meta:
+        verbose_name = 'Production mesurée'
+        verbose_name_plural = 'Productions mesurées'
+        ordering = ['annee', 'mois']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['calepinage', 'annee', 'mois'],
+                name='uniq_production_mesuree_mois'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'calepinage'],
+                         name='cal_prm_co_cal_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.annee}-{self.mois:02d} — {self.kwh_mesure} kWh'

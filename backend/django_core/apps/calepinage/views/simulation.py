@@ -259,8 +259,10 @@ def simuler(self, request, pk=None):
         # ERR-ENF11-FUZZ-CALEPINAGE — réglage ou conception pas prêts (mode
         # météo, pan équipé, épingle, températures) : le corps est bien formé,
         # c'est l'ÉTAT du calepinage qui empêche — 409, même corps nommé.
-        return Response({refus.champ or 'simulation': [refus.motif]},
-                        status=status.HTTP_409_CONFLICT)
+        corps = {refus.champ or 'simulation': [refus.motif]}
+        if refus.manquants:  # ACAL940 — TOUS les manques, en une fois
+            corps['manquants'] = refus.manquants
+        return Response(corps, status=status.HTTP_409_CONFLICT)
     porteur = variante if variante is not None else calepinage
     entete = (porteur.resultat or {}).get(CLE_ENTETE_SIMULATION) \
         if isinstance(porteur.resultat, dict) else None

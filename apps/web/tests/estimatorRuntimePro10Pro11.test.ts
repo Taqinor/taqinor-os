@@ -2132,6 +2132,41 @@ describe('runtime ACAL852 — sans facture, jamais « 0 MAD » ni « ≈ 0 % »'
   });
 });
 
+describe('runtime ACAL777 — la facture du lead sert de repli d affichage aux cartes', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  const lancer = async (facture?: number | null) => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), ...(facture === undefined ? {} : { factureMensuelleMad: facture }) });
+    traceRoof(fakeMaps[0]);
+    return { savings: txt('rp9-reco-savings'), panels: txt('rp9-reco-panels'), cover: txt('rp9-reco-cover'), need: (document.getElementById('rp9-need-input') as HTMLInputElement).value };
+  };
+
+  it('facture du lead 900 ⇒ économies calculées (plus de « facture inconnue ») ; nombre de panneaux inchangé', async () => {
+    const sans = await lancer();
+    expect(sans.savings).toBe('— facture inconnue');
+    vi.resetModules();
+    document.body.innerHTML = '';
+    fakeMaps.length = 0;
+    setupDom();
+    const avec = await lancer(900);
+    expect(avec.savings).toMatch(/MAD\/an/);
+    expect(avec.savings).not.toMatch(/inconnue|^0 MAD/);
+    expect(avec.cover).not.toMatch(/^0\s*%|≈ 0 %/);
+    expect(avec.panels).toBe(sans.panels);
+    expect(avec.need).toBe(sans.need);
+  }, 60000);
+});
+
 describe('runtime ACAL853 — un seul nombre de production pour un toit à un seul pan', () => {
   beforeEach(() => {
     fakeMaps.length = 0;

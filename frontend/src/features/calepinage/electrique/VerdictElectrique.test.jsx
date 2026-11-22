@@ -220,6 +220,34 @@ describe('VerdictElectrique (CALX249)', () => {
     expect(screen.queryByTestId('calx249-pourquoi-non')).toBeNull()
   })
 
+  it('ACAL613 — à compléter : titre et phrase du serveur, ton ambre, lignes gardées', async () => {
+    const donnees = exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple_a_completer')
+    servir(donnees)
+
+    rendre()
+
+    await screen.findByTestId('calx249-panneau')
+    const badge = screen.getByTestId('calx249-publiable')
+    expect(badge.textContent).toBe(donnees.publication.titre)
+    expect(badge.className).toContain('text-warning')
+    expect(badge.className).not.toContain('text-success')
+    expect(screen.getByTestId('calx249-pourquoi-oui').textContent).toBe(donnees.publication.phrase)
+    expect(screen.queryByText('Publiable')).toBeNull()
+    expect(screen.getByTestId('calx249-statut-FICHE_INCOMPLETE')).toBeTruthy()
+  })
+
+  it('ACAL613 — prêt garde le vert avec le titre du serveur', async () => {
+    const donnees = exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple')
+    servir(donnees)
+
+    rendre()
+
+    await screen.findByTestId('calx249-panneau')
+    const badge = screen.getByTestId('calx249-publiable')
+    expect(badge.textContent).toBe(donnees.publication.titre)
+    expect(badge.className).toContain('text-success')
+  })
+
   it('un verdict ABSENT ne devient jamais un « OK » supposé', async () => {
     servir({
       verdict: 'indetermine',

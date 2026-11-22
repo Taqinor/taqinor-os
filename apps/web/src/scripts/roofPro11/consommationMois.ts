@@ -7,6 +7,10 @@
  * contour en pointillé, avec « estimé » sous la valeur. Un refus qui nomme `factures.mois[i].…`
  * s'affiche sous la ligne du mois envoyé en position i. Rien n'est calculé ici : les valeurs
  * affichées sont celles du serveur.
+ *
+ * ACAL840 — sous la grille, « Lire une photo de facture » : montré SEULEMENT quand le serveur dit la
+ * lecture disponible. Chaque ligne lue `{mois: null, kWh}` se propose à confirmer : le mois se choisit
+ * (la lecture n'en rend jamais), le kWh se corrige, « Garder » remplit le mois de la grille.
  */
 import { esc } from './dom';
 import type { CorpsPropositionConsommation } from './consumption';
@@ -48,7 +52,71 @@ export function htmlBarres(mois: readonly MoisPropose[]): string {
     ${m.source === 'estime' ? '<div>estimé</div>' : '<div>facture</div>'}</div>`).join('');
 }
 
+/** ACAL840 — la lecture d'une photo (contrat `calepinage_consommation_photo_facture.json`). */
+export interface LectureFacture { disponible: boolean; motif: string | null; lignes: Array<{ mois: number | null; kwh: number }> }
+export interface OptionLireFacture {
+  disponible: () => Promise<{ disponible: boolean; motif?: string | null }>;
+  lire: (fichier: File) => Promise<LectureFacture>;
+}
+
+export const MOTIF_LECTURE_VIDE = 'La photo n’a pas pu être lue : saisissez les mois à la main';
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, texte = ''): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (texte) n.textContent = texte;
+  return n;
+}
+
+/** Une ligne lue à confirmer : mois à choisir (obligatoire), kWh modifiable, « Garder » / « Ignorer ». */
+function ligneLue(l: { kwh: number }, garder: (mois: number, kwh: number) => void): HTMLElement {
+  const ligne = el('div', { 'data-cons-photo-ligne': '', class: 'flex flex-wrap items-center gap-2 text-sm' });
+  const choix = el('select', { 'data-cons-photo-mois': '', 'aria-label': 'Mois de cette facture', style: 'min-height:44px' });
+  choix.appendChild(el('option', { value: '' }, 'Choisir le mois'));
+  MOIS_COURTS.forEach((nom, i) => choix.appendChild(el('option', { value: String(i + 1) }, nom)));
+  const kwh = el('input', { 'data-cons-photo-kwh': '', inputmode: 'decimal', step: 'any', 'aria-label': 'kWh lus', value: String(l.kwh), style: 'min-height:44px' });
+  const oui = el('button', { type: 'button', 'data-cons-photo-garder': '', style: 'min-height:44px' }, 'Garder');
+  const non = el('button', { type: 'button', 'data-cons-photo-ignorer': '', style: 'min-height:44px' }, 'Ignorer');
+  const refus = el('p', { 'data-cons-photo-refus': '', role: 'alert', class: 'text-xs' });
+  refus.hidden = true;
+  oui.addEventListener('click', () => {
+    const n = Number(kwh.value.trim().replace(',', '.'));
+    refus.hidden = false;
+    if (!choix.value) refus.textContent = 'Choisissez le mois de cette facture.';
+    else if (!Number.isFinite(n) || n <= 0) refus.textContent = 'Saisissez les kWh lus sur la facture (un nombre positif).';
+    else { garder(Number(choix.value), n); ligne.remove(); }
+  });
+  non.addEventListener('click', () => ligne.remove());
+  ligne.append(choix, kwh, oui, non, refus);
+  return ligne;
+}
+
+/** Le bloc photo : rien sans option ; le bouton n'existe que si `disponible` est vrai (sinon : la raison, en petit). */
+function monterBlocPhoto(grille: HTMLElement, option: OptionLireFacture, remplir: (mois: number, kwh: number) => void): void {
+  const bloc = el('div', { 'data-cons-photo': '' });
+  grille.appendChild(bloc);
+  const message = (t: string) => { bloc.querySelector('[data-cons-photo-message]')?.remove(); bloc.appendChild(el('p', { 'data-cons-photo-message': '', class: 'text-xs' }, t)); };
+  void option.disponible().then((d) => {
+    if (!d?.disponible) { if (d?.motif) message(d.motif); return; }
+    const choisir = el('input', { type: 'file', accept: 'image/*', 'data-cons-photo-fichier': '', 'aria-label': 'Lire une photo de facture', style: 'min-height:44px' });
+    const liste = el('div', { 'data-cons-photo-lignes': '' });
+    bloc.append(el('p', { class: 'text-sm' }, 'Lire une photo de facture'), choisir, liste);
+    choisir.addEventListener('change', () => {
+      const fichier = choisir.files?.[0];
+      if (!fichier) return;
+      liste.replaceChildren();
+      bloc.querySelector('[data-cons-photo-message]')?.remove();
+      option.lire(fichier).then((rep) => {
+        if (!rep?.lignes?.length) { message(rep?.motif || MOTIF_LECTURE_VIDE); return; }
+        rep.lignes.forEach((l) => liste.appendChild(ligneLue(l, remplir)));
+      }, () => message(MOTIF_LECTURE_VIDE));
+    });
+  }, () => undefined);
+}
+
 export interface DepsGrille {
+  /** ACAL840 — la lecture de photo fournie par la page hôte ; absente ⇒ aucun bouton. */
+  lireFacture?: OptionLireFacture | null;
   lancer: (corps: CorpsPropositionConsommation) => void;
   classe: () => string;
   /** Reçoit chaque réponse (`mois[]`) ou refus (`champs`) du serveur. */
@@ -84,6 +152,17 @@ export function monterGrilleFactures(hote: HTMLElement, deps: DepsGrille): void 
     if (minuterie != null) clearTimeout(minuterie);
     minuterie = setTimeout(envoyer, DELAI_FRAPPE_MS);
   });
+  if (deps.lireFacture) {
+    monterBlocPhoto(grille, deps.lireFacture, (mois, kwh) => {
+      const ligne = grille.querySelector<HTMLElement>(`[data-cons-mois-ligne="${mois}"]`);
+      const champ = ligne?.querySelector<HTMLInputElement>('[data-cons-mois-valeur]');
+      const unite = ligne?.querySelector<HTMLSelectElement>('[data-cons-mois-unite]');
+      if (!champ || !unite) return;
+      unite.value = 'kwh';
+      champ.value = String(kwh);
+      grille.dispatchEvent(new Event('input', { bubbles: true })); // relance la proposition (même délai de frappe)
+    });
+  }
   deps.ecouter((rep, refus) => {
     grille.querySelectorAll<HTMLElement>('[data-cons-mois-refus]').forEach((el) => { el.textContent = ''; el.hidden = true; });
     for (const [champ, motif] of Object.entries(refus?.champs ?? {})) {

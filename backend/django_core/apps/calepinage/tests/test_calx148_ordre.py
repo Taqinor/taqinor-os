@@ -36,8 +36,10 @@ def cascade(contexte):
 class OrdreTest(unittest.TestCase):
     """L'ordre lui-même : sans doublon, et aux rangs que la doctrine fixe."""
 
-    def test_vingt_cinq_etapes_sans_doublon(self):
-        self.assertEqual(len(ORDRE_ETAPES), 25)
+    def test_etapes_sans_doublon(self):
+        # 25 + « optimiseur » (ACAL723) = 26 ; le total bouge avec les étapes
+        # neuves des autres tâches : le nom du test ne le porte plus.
+        self.assertEqual(len(ORDRE_ETAPES), 26)
         self.assertEqual(len(set(ORDRE_ETAPES)), len(ORDRE_ETAPES),
                          'une étape est déclarée deux fois : son rang '
                          'deviendrait ambigu.')
@@ -171,9 +173,12 @@ class ToujoursOmisesTest(unittest.TestCase):
                           'une étape absente se lirait « oubliée ».')
 
     def test_elles_sont_omises_avec_leur_motif_et_perte_pct_null(self):
-        for nom in ('spectral', 'diodes'):
+        # ACAL722 : « diodes » est calculée (sous-chaînes) ; sans données elle
+        # est écartée par une EXCLUSIVITÉ, motif d'exclusivité.
+        for nom, table in (('spectral', TOUJOURS_OMISES),
+                           ('diodes', {'diodes': EXCLUSIVITES['diodes'][1]})):
             etape = self.par_nom[nom]
-            self.assertEqual(etape['motif_omission'], TOUJOURS_OMISES[nom])
+            self.assertEqual(etape['motif_omission'], table[nom])
             self.assertIsNone(etape['perte_pct'],
                               f'{nom} : 0 % se lirait « gratuite ».')
             self.assertIsNone(etape['perte_kwh'])
@@ -191,8 +196,9 @@ class ToujoursOmisesTest(unittest.TestCase):
         self.assertIsNone(etape['kwh_apres'])
 
     def test_leur_motif_ne_forfaitise_jamais_le_chiffre_du_concurrent(self):
-        self.assertIn('0,5 %', TOUJOURS_OMISES['diodes'])
-        self.assertIn('aucun forfait', TOUJOURS_OMISES['diodes'])
+        self.assertNotIn('diodes', TOUJOURS_OMISES)
+        self.assertIn('0,5 %', EXCLUSIVITES['diodes'][1])
+        self.assertIn('aucun forfait', EXCLUSIVITES['diodes'][1])
 
     def test_un_module_livre_ne_les_reveille_pas_tout_seul(self):
         appelle = []

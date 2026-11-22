@@ -57,6 +57,7 @@ from apps.calepinage.services.autoconsommation import (BilanInvalide,
                                                        MOTIF_SANS_COURBE,
                                                        bilan_autoconsommation)
 from apps.calepinage.services.etapes import batterie as bloc_batterie
+from .. import limites_livraison as _limites
 from ..valeurs import nombre as _nombre
 
 LIBELLE = "Plafond d'injection au point de livraison"
@@ -78,8 +79,19 @@ CLE_RACCORDEMENT = 'raccordement'
 CHAMP_PLAFOND = 'plafond_injection_kw'
 CHAMP_JUSTIFICATION = 'plafond_injection_justification'
 
+#: ACAL829 — le plafond de SOUTIRAGE (kW) et sa justification, saisis sur le
+#: même raccordement : une limite du réseau à l'import, pas à l'injection.
+CHAMP_SOUTIRAGE = 'plafond_soutirage_kw'
+CHAMP_JUSTIFICATION_SOUTIRAGE = 'plafond_soutirage_justification'
+
 #: Les colonnes de points que ce bloc écrit (contrat CALX142).
 COLONNES_POSEES = ('charge_kwh', 'reseau_import_kwh', 'reseau_export_kwh')
+
+#: ACAL828 — une plage horaire se lit heure par heure : un autre pas est omis.
+MOTIF_PLAGES_PAS_NON_HORAIRE = (
+    "Les plages horaires du plafond d'injection se lisent heure par heure : "
+    "la série n'est pas au pas de 60 min, le bloc « autoconsommation » est "
+    'OMIS plutôt que de fabriquer des heures.')
 
 REFERENCE_PVSYST = (
     'PVsyst — Self-consumption : les échanges d’énergie sont instantanés, le '
@@ -156,10 +168,32 @@ def _plafond_saisi(contexte):
     if not isinstance(declaration, dict):
         return None, ''
     plafond = _nombre(declaration.get(CHAMP_PLAFOND))
-    if plafond is None:
+    if plafond is None and not _plages_saisies(contexte):
         return None, ''
     justification = str(declaration.get(CHAMP_JUSTIFICATION) or '').strip()
     return plafond, justification
+
+
+def _plages_saisies(contexte):
+    """ACAL828 — les plages horaires saisies sur le raccordement, ou ``None``
+    (déjà validées par ``limites_livraison.plages_saisies`` à la saisie)."""
+    declaration = (contexte or {}).get(CLE_RACCORDEMENT)
+    plages = (declaration.get(_limites.CHAMP_PLAGES)
+              if isinstance(declaration, dict) else None)
+    return plages if isinstance(plages, list) and plages else None
+
+
+def _soutirage_saisi(contexte):
+    """ACAL829 — ``(plafond kW, justification)`` du soutirage, ou
+    ``(None, '')`` : non saisi, rien n'est publié (jamais « 0 heure »)."""
+    declaration = (contexte or {}).get(CLE_RACCORDEMENT)
+    if not isinstance(declaration, dict):
+        return None, ''
+    plafond = _nombre(declaration.get(CHAMP_SOUTIRAGE))
+    if plafond is None:
+        return None, ''
+    return plafond, str(
+        declaration.get(CHAMP_JUSTIFICATION_SOUTIRAGE) or '').strip()
 
 
 def _etape_du_plafond(bloc_plafond):
@@ -186,7 +220,7 @@ def _omission(motif, *, champ=''):
         'taux_autoconsommation': None, 'taux_couverture': None,
         'taux_autonomie': None, 'heures_sans_import': None,
         'energie': None, 'par_mois': None, 'plafond': None,
-        'etape_plafond': None, 'definition': '', 'motif_absence': texte,
+        'soutirage': None, 'etape_plafond': None, 'definition': '', 'motif_absence': texte,
     }
 
 
@@ -272,12 +306,28 @@ def bloc_autoconsommation(serie, contexte=None, *, charge=None):
 
     plafond_kw, justification = _plafond_saisi(contexte)
     pas = bloc_batterie.pas_minutes(serie, bloc_charge)
+    plages = _plages_saisies(contexte)
+    par_pas = None
+    if plages:
+        if pas != 60:
+            return serie, _omission(MOTIF_PLAGES_PAS_NON_HORAIRE,
+                                    champ='simulation.resolution_minutes')
+        points = (serie or {}).get('points') or []
+        depart = (int(_nombre(points[0].get('heure')) or 0)
+                  if points and isinstance(points[0], dict) else 0)
+        par_pas = _limites.plafonds_par_pas(plages, depart, longueur)
+    soutirage_kw, justification_soutirage = _soutirage_saisi(contexte)
+    if soutirage_kw is not None and not justification_soutirage:
+        return serie, _omission(
+            "Un plafond de soutirage doit porter sa justification (contrat, "
+            'prescription du gestionnaire de réseau).',
+            champ=f'{CLE_RACCORDEMENT}.{CHAMP_JUSTIFICATION_SOUTIRAGE}')
     try:
         bilan = bilan_autoconsommation(
             courbe, au_compteur,
             plafond_injection_kw=plafond_kw,
             justification_plafond=justification,
-            pas_heures=float(pas) / 60.0)
+            pas_heures=float(pas) / 60.0, plafonds_par_pas=par_pas)
     except BilanInvalide as refus:
         champ = (f'{CLE_RACCORDEMENT}.{refus.champ}' if refus.champ else '')
         return serie, _omission(refus.motif, champ=champ)
@@ -285,7 +335,40 @@ def bloc_autoconsommation(serie, contexte=None, *, charge=None):
     from apps.calepinage.services.chaine_pertes import annees_de_la_fenetre
 
     return _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
-                    annees=annees_de_la_fenetre(contexte))
+                    annees=annees_de_la_fenetre(contexte), plages=plages,
+                    soutirage=(None if soutirage_kw is None else (
+                        soutirage_kw, justification_soutirage,
+                        float(pas) / 60.0)))
+
+
+def _soutirage_publie(soutirage, imports, annees):
+    """ACAL829 — le bloc ``soutirage``, ou ``None`` sans plafond saisi."""
+    if soutirage is None:
+        return None
+    plafond, justification, pas_heures = soutirage
+    mesure = _limites.soutirage_au_dessus(imports, plafond, pas_heures)
+    return {
+        'plafond_kw': plafond, 'justification': justification,
+        'pointe_kw': mesure['pointe_kw'],
+        'heures_au_dessus': mesure['heures_au_dessus'],
+        'energie_au_dessus_kwh': _par_an(mesure['energie_au_dessus_kwh'],
+                                         annees),
+    }
+
+
+def _plages_publiees(plages, mesurees, annees):
+    """ACAL828 — par plage saisie : ses heures et l'énergie qu'elle écrête
+    (0 heure et 0 kWh quand rien n'a dépassé)."""
+    par_rang = {ligne['rang']: ligne for ligne in mesurees}
+    publiees = []
+    for rang, plage in enumerate(plages or ()):
+        ligne = par_rang.get(rang) or {'heures_ecretees': 0,
+                                       'energie_ecretee_kwh': 0.0}
+        publiees.append(dict(
+            plage, heures_ecretees=ligne['heures_ecretees'],
+            energie_ecretee_kwh=_par_an(ligne['energie_ecretee_kwh'],
+                                        annees)))
+    return publiees
 
 
 def _par_an(valeur, annees):
@@ -296,7 +379,7 @@ def _par_an(valeur, annees):
 
 
 def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
-             annees=1):
+             annees=1, plages=None, soutirage=None):
     """La série enrichie et le bloc, tirés du MÊME bilan horaire.
 
     ACAL54 — ``annees`` : le N de la fenêtre météo ; les énergies du bloc
@@ -331,6 +414,8 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
             'energie_ecretee_kwh': _par_an(ecretee, annees),
             'heures_ecretees': bloc_plafond['heures_ecretees'],
             'motif': bloc_plafond['motif'],
+            'plages': _plages_publiees(plages, bloc_plafond['plages'],
+                                       annees),
         }
         etape = _etape_du_plafond(dict(
             bloc_plafond, energie_ecretee_kwh=_par_an(ecretee, annees)))
@@ -353,6 +438,7 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
         'par_mois': _par_mois(serie, courbe, au_compteur, imports, exports,
                               annees),
         'plafond': publie_plafond,
+        'soutirage': _soutirage_publie(soutirage, imports, annees),
         'etape_plafond': etape,
         'definition': DEFINITION_TAUX,
         'motif_absence': '',

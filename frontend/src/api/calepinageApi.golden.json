@@ -226,7 +226,9 @@
   ],
   "calepinages.decisionApprobation": [
     {
-      "config": null,
+      "config": {
+        "suppressErrorToast": true
+      },
       "data": 3,
       "url": "/calepinage/calepinages/7/approbation/",
       "verbe": "post"
@@ -397,6 +399,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.ecartMesures": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/ecart-mesures/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.effacerBrouillon": [
     {
       "config": null,
@@ -457,6 +467,14 @@
       "data": 3,
       "url": "/calepinage/calepinages/7/pose-reelle/",
       "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerProductionMesuree": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/production-mesuree/",
+      "verbe": "put"
     }
   ],
   "calepinages.enregistrerRaccordement": [
@@ -732,6 +750,22 @@
       "verbe": "get"
     }
   ],
+  "calepinages.lireFactureConsommation": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/consommation/lire-facture/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.lireFactureDisponible": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/consommation/lire-facture/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.list": [
     {
       "config": {
@@ -879,6 +913,14 @@
       "config": null,
       "data": null,
       "url": "/calepinage/calepinages/7/pret-a-envoyer/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.productionMesuree": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/production-mesuree/",
       "verbe": "get"
     }
   ],

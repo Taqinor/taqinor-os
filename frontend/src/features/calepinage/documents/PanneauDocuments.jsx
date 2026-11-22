@@ -9,6 +9,7 @@ import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
 import { useModeExpert } from '../atelier/modeExpert'
 import EntreeFichierJson from '../commun/EntreeFichierJson'
 import { refusServeur } from '../commun/refusServeur'
+import Pourquoi from '../commun/Pourquoi'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
 
 /* ============================================================================
@@ -250,7 +251,7 @@ function ResultatPost({ resultat }) {
       {resultat.pieces?.length > 0 && (
         <ul className="mt-1 list-disc pl-4 text-muted-foreground" data-testid="cal-doc-post-pieces">
           {resultat.pieces.map((piece) => (
-            <li key={piece.code}>{piece.libelle} — {piece.pages} p.</li>
+            <li key={piece.code}>{piece.libelle} — {piece.pages} p.<Pourquoi cle="documents.pages" /></li>
           ))}
         </ul>
       )}
@@ -587,9 +588,9 @@ function SectionSorties({
             </div>
           )
         })}
-        {/* ACAL536 — niveau expert : le KML pour Google Earth. L'endpoint est
-            celui du DXF servi, `export.dxf/` -> `export.kml/` (même porte
-            d'approbation côté serveur) ; sans entrée DXF, pas de bouton. */}
+        {/* ACAL536 — niveau expert : le KML pour Google Earth, par
+            `calepinageApi.calepinages.exportKml` (même porte d'approbation que
+            le DXF côté serveur) ; sans entrée DXF servie, pas de bouton. */}
         {expert && dxf && (
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm text-foreground">Export pour Google Earth (KML)</p>
@@ -598,9 +599,7 @@ function SectionSorties({
               variant="outline"
               disabled={!dxf.disponible}
               loading={enCours === 'kml'}
-              onClick={() => onTelecharger({
-                code: 'kml', endpoint: dxf.endpoint.replace('export.dxf/', 'export.kml/'),
-              })}
+              onClick={() => onTelecharger({ code: 'kml' })}
               data-testid="cal-doc-bouton-kml"
             >
               Exporter pour Google Earth
@@ -764,6 +763,9 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
       if (code === 'pack_technique') {
         const reponse = await calepinageApi.calepinages.composerPackTechnique(id)
         setResultatPack(reponse.data)
+      } else if (code === 'kml') {
+        const reponse = await calepinageApi.calepinages.exportKml(id)
+        downloadBlob(reponse.data, filenameFromResponse(reponse, code))
       } else if (code === 'planche_png') {
         const reponse = await calepinageApi.calepinages.telechargerSortie(sortie.endpoint)
         const png = await svgTexteEnPng(await reponse.data.text())

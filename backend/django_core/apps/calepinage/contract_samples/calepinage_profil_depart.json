@@ -312,6 +312,11 @@
         "cle": "fiche_ecart_pmax_pct",
         "section": "electrique_societe",
         "motif": "Écart toléré entre Pmax et Vmp × Imp d'une fiche module : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL657)."
+      },
+      {
+        "cle": "seuil_acces_optimiseur",
+        "section": "electrique_societe",
+        "motif": "Accès solaire sous lequel un module est proposé pour un optimiseur : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL647)."
       }
     ]
   },

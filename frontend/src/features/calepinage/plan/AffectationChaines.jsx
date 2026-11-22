@@ -185,6 +185,18 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     return () => { monte = false; clearTimeout(minuteur) }
   }, [id, editions, lignesProposees])
 
+  /* ACAL647 — les modules ombrés à proposer pour un optimiseur : la LISTE vient du serveur
+     (`modules_sous_seuil`, d'après le seuil société) ; rien n'est calculé ici. Relue à l'ouverture
+     et après chaque enregistrement. */
+  const [proposes, setProposes] = useState([])
+  useEffect(() => {
+    let monte = true
+    Promise.resolve(calepinageApi.calepinages.evaluerElectrique(id, {}))
+      .then((r) => { if (monte) setProposes(r?.data?.modules_sous_seuil || []) })
+      .catch(() => { if (monte) setProposes([]) })
+    return () => { monte = false }
+  }, [id, surcharge])
+
   /* ── LE GESTE : GLISSER SUR LES MODULES ─────────────────────────────── */
   const basculer = useCallback((module, additif) => {
     setSelection((precedente) => {
@@ -243,6 +255,28 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
       .then((r) => {
         appliquerResultat(r.data)
         setEnregistre('Affectation manuelle enregistrée.')
+      })
+      .catch((err) => {
+        const corps = err?.response?.data
+        setErreursChamp(corps && typeof corps === 'object'
+          ? corps
+          : { affectation_manuelle: 'Enregistrement refusé par le serveur.' })
+      })
+  }
+
+  // ACAL647 — les proposés qui n'ont pas déjà le drapeau : « Les équiper » les marque EN BLOC
+  // (`marquerModules`, ACAL725), numéros de chaîne / entrée / onduleur gardés, et enregistre.
+  const aEquiper = lignes.filter((l) => proposes.includes(l.module) && drapeauOptimiseur(l) !== true)
+  const equiper = () => {
+    setErreursChamp({})
+    const marques = marquerModules(aEquiper, true)
+    const pris = new Set(marques.map((l) => l.module))
+    calepinageApi.calepinages.enregistrerEntreeElectrique(id, {
+      affectation_manuelle: [...lignesProposees.filter((l) => !pris.has(l.module)), ...marques],
+    })
+      .then((r) => {
+        appliquerResultat(r.data)
+        setEnregistre('Modules équipés d’un optimiseur.')
       })
       .catch((err) => {
         const corps = err?.response?.data
@@ -494,6 +528,22 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
           Affecter la sélection
         </Button>
       </div>
+
+      {aEquiper.length > 0
+        ? (
+          <section className="flex flex-wrap items-center gap-3" data-testid="acal647-proposition">
+            <p className="text-sm" data-testid="acal647-phrase">
+              {aEquiper.length === 1
+                ? '1 module ombré pourrait recevoir un optimiseur'
+                : `${aEquiper.length} modules ombrés pourraient recevoir un optimiseur`}
+            </p>
+            <Button type="button" className="min-h-11" onClick={equiper} disabled={lectureSeule}
+              title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined} data-testid="acal647-equiper">
+              Les équiper
+            </Button>
+          </section>
+        )
+        : null}
 
       {/* ACAL631 — un CSV valide REMPLIT la proposition (rien n'est enregistré avant « Enregistrer »). */}
       <ImportAffectation

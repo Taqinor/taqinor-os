@@ -21,6 +21,7 @@ import { type Recommendation, type ConfigFamily } from '../../lib/estimatorBrain
 import { type PitchedRecommendation } from '../../lib/estimatorBrainV3';
 import { type MatrixSortKey, type MatrixV6Result } from '../../lib/estimatorBrainV6';
 import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption';
+import { type ChargeAvenir } from './chargesAvenir';
 import { type LayoutState } from '../../lib/layoutVariability';
 import { type FreeLayoutState, type FreeMargins } from '../../lib/freeLayout';
 import { type ShadeObstruction } from '../../lib/shadingEngine';
@@ -325,6 +326,8 @@ export interface Ctx {
   consHandEdited: boolean;
   /** Appareils ajoutés au calculateur de consommation. */
   consAppliances: Appliance[];
+  /** ACAL780 — charges à venir (voiture, PAC) : absent tant que l'écran n'y a pas touché (le document relu parle alors). */
+  consCharges?: ChargeAvenir[];
   /** Socle journalier (kWh) dérivé de la facture. */
   consDailyTarget: number;
   /** Compteur d'appareils « autre » ajoutés. */

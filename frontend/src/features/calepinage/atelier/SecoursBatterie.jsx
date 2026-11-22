@@ -55,8 +55,60 @@ function ReserveDeduite({ reserve, appareils }) {
   )
 }
 
+/* ACAL799 — les coupures (mode expert) : trois nombres jamais préremplis, postés
+   sous `batterie.coupures` ; l'énergie non fournie et les heures tenues sont LUES
+   de `batterie.total.secours` (ACAL797-798) — `null` ⇒ « non calculé » + motif. */
+const QUESTIONS_COUPURES = [
+  { cle: 'nombre_par_an', libelle: 'Combien de coupures par an ?' },
+  { cle: 'duree_h', libelle: 'De combien d’heures ?' },
+  { cle: 'heure_debut', libelle: 'Vers quelle heure commencent-elles ? (0-23)' },
+]
+
+function LectureSecours({ secours }) {
+  const c = secours?.coupures
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <p data-testid="acal799-energie">
+        {c
+          ? `Énergie non fournie attendue : ${formatNumber(c.energie_non_fournie_kwh)} kWh par an `
+            + `(la pire coupure : ${formatNumber(c.energie_non_fournie_par_coupure_pire_kwh)} kWh)`
+          : `Énergie non fournie attendue : non calculé : ${secours?.motif_coupures || 'relancez la simulation.'}`}
+      </p>
+      {Array.isArray(secours?.appareils)
+        ? secours.appareils.map((a) => (
+          <p key={a.nom} data-testid="acal799-appareil">
+            {a.nom} : {a.heures_tenues === null || a.heures_tenues === undefined
+              ? 'non calculé' : `tient ${formatNumber(a.heures_tenues)} h`}
+          </p>
+        ))
+        : (
+          <p className="text-muted-foreground" data-testid="acal799-appareils-motif">
+            Heures tenues : non calculé : {secours?.motif_appareils || 'relancez la simulation.'}
+          </p>
+        )}
+    </div>
+  )
+}
+
+function Coupures({ coupures, erreurs, secours, onCoupures }) {
+  return (
+    <fieldset className="flex flex-col gap-3 border-t border-border/60 pt-3" data-testid="acal799-coupures">
+      <legend className="text-sm font-semibold">Coupures</legend>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {QUESTIONS_COUPURES.map(({ cle, libelle }) => (
+          <Champ key={cle} id={`acal799-${cle}`} libelle={libelle} type="number"
+            valeur={coupures?.[cle] ?? ''} refus={erreurs[`batterie.coupures.${cle}`]}
+            onChange={(v) => onCoupures({ ...coupures, [cle]: v })} />
+        ))}
+      </div>
+      <LectureSecours secours={secours} />
+    </fieldset>
+  )
+}
+
 export default function SecoursBatterie({
   appareils, duree, erreurs = {}, reserve = null, onAppareils, onDuree,
+  expert = false, coupures = null, secours = null, onCoupures = null,
 }) {
   const modifier = (rang, cle, valeur) => onAppareils(
     appareils.map((ligne, i) => (i === rang ? { ...ligne, [cle]: valeur } : ligne)))
@@ -116,6 +168,9 @@ export default function SecoursBatterie({
         onChange={onDuree}
       />
       <ReserveDeduite reserve={reserve} appareils={appareils} />
+      {expert && onCoupures && (
+        <Coupures coupures={coupures} erreurs={erreurs} secours={secours} onCoupures={onCoupures} />
+      )}
     </fieldset>
   )
 }

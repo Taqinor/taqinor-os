@@ -93,6 +93,17 @@ export const simulation = {
     enregistrerRaccordement: (id, corps) =>
       api.post(`${pivot(id)}raccordement/`, corps),
 
+    // ACAL887 — la PRODUCTION MESURÉE (contrat `calepinage_production_mesuree.json`,
+    // ACAL886), servie par `views/production_mesuree.py`. `GET` rend les mesures
+    // rangées et, par mois, `p50_kwh` / `kwh_mesure` / `ecart_pct` (null sans
+    // mesure ou sans simulation fraîche, avec le `motif`) ; `PUT` range
+    // `{annee, mesures: [{mois, kwh_mesure}]}` (12 lignes au plus) et rend la
+    // même forme. Un refus 400 NOMME le champ (`mesures[i].mois`…). L'écran est
+    // ACAL888 ; l'écart est publié, jamais jugé.
+    productionMesuree: (id) => api.get(`${pivot(id)}production-mesuree/`),
+    enregistrerProductionMesuree: (id, corps) =>
+      api.put(`${pivot(id)}production-mesuree/`, corps),
+
     // CALX235 — le schéma unifilaire en DXF, pour qu'un bureau d'études le
     // reprenne (`views/schema.py`, `url_path='schema-unifilaire.dxf'` — le
     // point fait partie du chemin, comme `export.csv`). Le fichier est

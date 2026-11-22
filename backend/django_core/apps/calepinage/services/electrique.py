@@ -2147,6 +2147,8 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     )
     from .etat_dossier_electrique import etat_a_chaud
     from .onduleurs_minimum import onduleurs_suggeres
+    from .ombrage_chaines import modules_sous_seuil
+    from .raccordement import _reglage
     from .tensions_chaines import tensions_par_chaine
 
     conception, materiel_resolu, donnees, _document = conception_du_calepinage(
@@ -2183,6 +2185,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
             'chaines': [],
             'onduleurs_suggeres': None,
             'boucles_dc': [],
+            'modules_sous_seuil': [],
         }
     bloquants = list(bloquants_nommes(conception))
     try:
@@ -2245,6 +2248,10 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
             calepinage, conception, materiel_resolu, entree=entree,
             layout=layout),
         'boucles_dc': boucles,
+        # ACAL647 — modules sous le seuil société d'accès solaire (vide ⇒ []).
+        'modules_sous_seuil': modules_sous_seuil(
+            _document, affectation(conception, imposee=imposee),
+            _reglage(_reglages_electrique_societe(calepinage), 'seuil_acces_optimiseur')[0]),
     }
 
 

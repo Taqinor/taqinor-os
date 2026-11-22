@@ -30,6 +30,26 @@ FIGURES = (
 )
 #: ACAL1000 — figures listées une par une par ``--niveau N``.
 FIGURES_NIVEAU = ('prod_kwh', 'eco_s_ann', 'eco_a_ann', 'puissance_kwc', 'nb_panneaux', 'totaux_all.ttc')
+#: ACAL1203 (D-ACAL-46) — figures du pompage RANGÉES dans ``etude_params``, relues par le PDF agricole.
+FIGURES_POMPAGE = ('m3_jour', 'heures_pompage', 'production.m3_jour_mois', 'couverture_pct_mois',
+                   'production.plan_irradiation.source')
+
+
+def _figures_pompage(devis):
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    production = etude.get('production') if isinstance(etude.get('production'), dict) else {}
+    plan = production.get('plan_irradiation') if isinstance(production.get('plan_irradiation'), dict) else {}
+    return {'m3_jour': etude.get('m3_jour'), 'heures_pompage': etude.get('heures_pompage'),
+            'production.m3_jour_mois': production.get('m3_jour_mois'),
+            'couverture_pct_mois': etude.get('couverture_pct_mois'),
+            'production.plan_irradiation.source': plan.get('source')}
+
+
+def _ecart(a, b):
+    """Écart numérique, mois par mois pour deux listes de même longueur ; ``None`` sinon (figure absente)."""
+    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        return [_ecart(x, y) for x, y in zip(a, b)]
+    return b - a if all(isinstance(v, Number) for v in (a, b)) else None
 
 
 def _figures(data):
@@ -47,7 +67,9 @@ def ecarts_du_devis(devis, niveau=None):
     from apps.ventes.quote_engine.builder import build_quote_data
 
     opts = {'pdf_mode': 'full'}
-    avant = _figures(build_quote_data(devis, dict(opts)))
+    agricole = bool(niveau) and (getattr(devis, 'mode_installation', '') or '') == 'agricole'  # ACAL1203
+    avant = dict(_figures(build_quote_data(devis, dict(opts))),
+                 **(copy.deepcopy(_figures_pompage(devis)) if agricole else {}))
     stocke = (devis.regles_calcul, devis.statut, copy.deepcopy(devis.etude_params))
     try:
         with transaction.atomic():
@@ -56,7 +78,11 @@ def ecarts_du_devis(devis, niveau=None):
                 from apps.ventes.domain.etudes import rafraichir_etude_horaire_devis
                 devis.statut = 'brouillon'
                 rafraichir_etude_horaire_devis(devis, force=True)
-            apres = _figures(build_quote_data(devis, dict(opts)))
+                if agricole:  # le PDF agricole relit l'étude RANGÉE : elle est recalculée (écriture annulée)
+                    from apps.ventes.domain.pompage import rafraichir_etude_pompage_devis
+                    rafraichir_etude_pompage_devis(devis, force=True)
+            apres = dict(_figures(build_quote_data(devis, dict(opts))),
+                         **(_figures_pompage(devis) if agricole else {}))
             transaction.set_rollback(True)
     finally:
         devis.regles_calcul, devis.statut, devis.etude_params = stocke
@@ -110,7 +136,8 @@ class Command(BaseCommand):
     def _niveau(self, Devis, niveau, company):
         """ACAL1000 — devis de niveau < N : écarts par figure, « changera » (brouillon jamais envoyé), totaux."""
         qs = Devis.objects.filter(regles_calcul__lt=niveau, **({'company_id': company} if company else {}))
-        totaux = dict.fromkeys(FIGURES_NIVEAU, 0.0)
+        figures, agricoles = FIGURES_NIVEAU + FIGURES_POMPAGE, False
+        totaux = dict.fromkeys(figures, 0.0)
         self.stdout.write('reference, statut, changera, figure, avant, après, écart')
         with transaction.atomic():
             for devis in qs.order_by('id').iterator():
@@ -121,10 +148,11 @@ class Command(BaseCommand):
                     logger.warning("regles_calcul_ecarts_dryrun --niveau : rendu impossible", exc_info=True)
                     self.stdout.write(f'{devis.reference}, rendu impossible ({type(exc).__name__})')
                     continue
-                for fig, (a, b) in ((f, ecarts[f]) for f in FIGURES_NIVEAU if f in ecarts):
-                    e = b - a if all(isinstance(v, Number) for v in (a, b)) else None  # figure absente : —
-                    totaux[fig] += float(e or 0)
+                agricoles = agricoles or devis.mode_installation == 'agricole'
+                for fig, (a, b) in ((f, ecarts[f]) for f in figures if f in ecarts):
+                    e = _ecart(a, b)
+                    totaux[fig] += float(sum(x or 0 for x in e) if isinstance(e, list) else (e or 0))
                     self.stdout.write(f'{devis.reference}, {devis.statut}, {changera}, {fig}, {a}, {b}, {e}')
             transaction.set_rollback(True)  # garantie : aucune écriture
-        for fig in FIGURES_NIVEAU:
+        for fig in FIGURES_NIVEAU + (FIGURES_POMPAGE if agricoles else ()):
             self.stdout.write(f'TOTAL {fig} : {totaux[fig]}')

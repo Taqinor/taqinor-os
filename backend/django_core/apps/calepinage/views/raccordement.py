@@ -175,6 +175,15 @@ _FORME_RACCORDEMENT = forme_du_contrat(
         'plafond_injection_a': serializers.FloatField(
             required=False, min_value=0, max_value=SAISIE_MAXIMUM),
         'plafond_injection_justification': ChaineStricte(
+            required=False),
+        # ACAL828 — jusqu'à trois plages {debut_h, fin_h, plafond_kw}.
+        'plages_plafond_injection': serializers.ListField(
+            child=serializers.DictField(), required=False,
+            allow_null=True, max_length=3),
+        # ACAL829 — le plafond de soutirage (kW) et sa justification.
+        'plafond_soutirage_kw': serializers.FloatField(
+            required=False, min_value=0, max_value=SAISIE_MAXIMUM),
+        'plafond_soutirage_justification': ChaineStricte(
             required=False)}),
     responses=_FORME_RACCORDEMENT)
 @action(detail=True, methods=['get', 'post'], url_path='raccordement',

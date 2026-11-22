@@ -49,7 +49,7 @@ import time
 
 from .chaine_pertes import (
     CLE_CHARGE, CLE_CLIENT_PVGIS, CLE_FOURNISSEUR_METEO, CLE_SORTIES_PAR_PAN,
-    ETAPES_ONDULEUR, MOTIF_TMY_HORIZONTAL, ORDRE_ETAPES, MeteoIndecise,
+    ETAPES_ONDULEUR, ORDRE_ETAPES,
     appliquer_chaine,
     bloc_serie_horaire, completude_de_la_chaine, decision_meteo,
 )
@@ -66,6 +66,7 @@ from .pvgis_serie import (
     EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
 from . import irradiation_mensuelle as _irr
+from . import production_parties as _parties
 from .a_renseigner import construire as construire_a_renseigner
 from .bifacial_sheds import CLE_HORIZONTALE_LEGALE
 from .horizon import profil_depuis_document
@@ -177,10 +178,12 @@ class SimulationRefusee(ValueError):
     08/09/2026 : jamais un « non enregistré » générique).
     """
 
-    def __init__(self, message, *, champ=''):
+    def __init__(self, message, *, champ='', manquants=None):
         super().__init__(message)
         self.champ = champ
         self.motif = message
+        #: ACAL940 — toutes les lignes ``{champ, motif, cible}`` (vide : une seule).
+        self.manquants = list(manquants or [])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -779,26 +782,21 @@ def verifier_simulable(contexte, meta, *, fichier_depose=False):
     source, jamais une copie. Rend la décision météo.
 
     Raises:
-        SimulationRefusee: le champ fautif est nommé.
+        SimulationRefusee: le champ fautif est nommé ; ACAL940 : TOUS les
+            manques dans ``manquants`` (``services/manquants_simulation.py``,
+            même ordre), le premier en tête. Le mode ``tmy`` sans fichier est
+            refusé : le service ``tmy`` de PVGIS ne publie que l'irradiance
+            globale HORIZONTALE et la chaîne ne transpose pas.
     """
-    try:
-        decision = decision_meteo(contexte)
-    except MeteoIndecise as refus:
-        raise SimulationRefusee(refus.motif, champ=refus.champ) from refus
-    if not meta.get('plans_equipes'):
-        raise SimulationRefusee(MOTIF_SANS_PAN_EQUIPE, champ='plans')
-    if not fichier_depose:
-        site = contexte.get('site') or {}
-        if site.get('lat') is None or site.get('lon') is None:
-            raise SimulationRefusee(MOTIF_SANS_POINT, champ='site.pin')
-        if decision['mode'] == 'tmy':
-            # Le service ``tmy`` de PVGIS ne publie que l'irradiance GLOBALE
-            # HORIZONTALE : la chaîne travaille sur le PLAN des modules et ne
-            # transpose pas. Le refus NOMME la colonne, comme la chaîne le
-            # ferait elle-même.
-            raise SimulationRefusee(MOTIF_TMY_HORIZONTAL,
-                                    champ='parametres.simulation.mode_meteo')
-    return decision
+    from . import manquants_simulation as _manquants
+
+    manquants = _manquants.manquants_de_simulation(
+        contexte, meta, fichier_depose=fichier_depose)
+    if manquants:
+        raise SimulationRefusee(manquants[0]['motif'],
+                                champ=manquants[0]['champ'],
+                                manquants=manquants)
+    return decision_meteo(contexte)
 
 
 def fichier_meteo_depose(calepinage):
@@ -1536,6 +1534,11 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         total.get('p50_kwh'), contexte,
         parts=_parts_vieillies(meta['document'],
                                blocs['production'].get('par_pan'), maintenant))
+    # ACAL843 — existant / ajouté côte à côte ; absent sans pan existant.
+    parties = _parties.parties_de_la_production(
+        meta['document'], blocs['production'].get('par_pan'), contexte, maintenant)
+    if parties is not None:
+        blocs['production']['parties'] = parties
     # CALX63 — chaque année de la projection porte la capacité restante de la
     # batterie quand le vieillissement est publié (fiche cycles/EOL saisie) ;
     # sans lui, les lignes sortent inchangées.

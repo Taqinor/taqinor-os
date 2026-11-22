@@ -20,6 +20,7 @@ import {
   type EntreeDepartage,
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
+import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
 import { panneauxPourCible } from './cibleProduction';
 import { cotesDePavage } from '../../lib/roofPro2';
@@ -532,5 +533,22 @@ describe('ACAL548 — seuil effectif (dossier > société > rien)', () => {
     expect(choixOptimisationCourant()).toEqual({ priorite: 'faitage', seuilAccesSolaire: 0.8 });
     poserChoixOptimisation(null);
     expect(choixOptimisationCourant()).toBeNull();
+  });
+});
+
+// ACAL777 — la facture lue par les cartes : la saisie PRIME, le lead sert de repli, jamais d'invention.
+describe('ACAL777 — factureCarteDe / lireFactureSaisie', () => {
+  it('saisie > 0 prime ; sinon la facture du lead ; sinon 0 (rien inventé)', () => {
+    expect(factureCarteDe(1200, 900)).toBe(1200);
+    expect(factureCarteDe(0, 900)).toBe(900);
+    expect(factureCarteDe(0, null)).toBe(0);
+    expect(factureCarteDe(0, undefined)).toBe(0);
+    expect(factureCarteDe(0, -5)).toBe(0);
+  });
+  it('lireFactureSaisie : espaces et virgule décimale lus, vide ou illisible = 0', () => {
+    expect(lireFactureSaisie({ value: '1 250,5' })).toBe(1250.5);
+    expect(lireFactureSaisie({ value: '' })).toBe(0);
+    expect(lireFactureSaisie({ value: 'abc' })).toBe(0);
+    expect(lireFactureSaisie(null)).toBe(0);
   });
 });

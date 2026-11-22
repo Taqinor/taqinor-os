@@ -476,24 +476,6 @@ export function centresDeBandes(
   });
 }
 
-/**
- * ACAL721 — accès solaire de chaque BANDE d'un module : `pointSolarAccess` évalué au centre de
- * chaque bande (`centresDeBandes`), de la bande basse (aval) à la haute (amont). `n` = 1 → la
- * valeur du centre du module. PUR.
- */
-export function bandesSolarAccess(
-  latitudeDeg: number,
-  obstructions: readonly ShadeObstructionENU[],
-  prod: PerKwcProduction,
-  centre: SolarAccessPoint,
-  sensPente: SolarAccessPoint,
-  penteHorizontaleM: number,
-  n: number,
-  diffuseFraction = DIFFUSE_FRACTION_WHEN_SHADED,
-): number[] {
-  return cellsSolarAccess(latitudeDeg, obstructions, prod, centresDeBandes(centre, sensPente, penteHorizontaleM, n), diffuseFraction);
-}
-
 // ═══════════ CAL97 — ACCÈS SOLAIRE CHIFFRÉ ET PUBLIÉ (TSRF) ═══════════
 // L'accès solaire par point était calculé UNIQUEMENT pour colorer la heatmap : aucun
 // chiffre n'en sortait. On l'agrège ici par module, par pan et pour l'installation, avec

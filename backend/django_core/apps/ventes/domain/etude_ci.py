@@ -1335,7 +1335,7 @@ def _alertes_postes(composition, avec):
 
 def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
                onduleurs_imposes=None, source_production_figee=None, option_avec_imposee=None,
-               production_figee_rasante=None, verdict_creation=None, provenance_corps=None):
+               production_figee_rasante=None, verdict_creation=None, provenance_corps=None, base_production=None):
     """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
 
     ``production_figee`` (CIQ119) : le bloc ``production`` déjà figé sur le
@@ -1409,7 +1409,10 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             coordonnees_figees={'lat': _point_du_site(site)[0], 'lon': _point_du_site(site)[1],
                                 'date_appel': _aujourdhui().isoformat()},
             # R1 (P4) — le plan du toit, série OU repli (pose estimée comprise).
-            source=source, toit=toit_declare, serie=serie,
+            source=source, toit=toit_declare, serie=None if base_production else serie,
+            # ACAL1195 (D-ACAL-44) — la pose réelle passe devant PVGIS (12 valeurs, sans derate).
+            calepinage=base_production and {'id': base_production['source'],
+                                            'kwh_kwc_mensuel': base_production['kwh_kwc_mensuel']},
             plan=(serie or {}).get('plan') or plan_de_production(toit_serie))
         alertes.extend(al_prod)
         hypotheses.extend(hyp_prod)
@@ -1804,12 +1807,14 @@ def cles_hors_empreinte():
             | set(CLES_RETIREES_CI_V1)) - {CLE_TAILLE_CREATION, CLE_BANQUE_RECOMMANDEE}
 
 
-def _empreinte(entrees_stockees, kwc, onduleurs, option_avec=None):
+def _empreinte(entrees_stockees, kwc, onduleurs, option_avec=None, base=None):
     import hashlib
     import json
     charge = {'entrees': entrees_stockees, 'kwc': kwc,
               'onduleurs': [(o['produit'], o['quantite']) for o in onduleurs],
               'version': VERSION_MOTEUR}
+    if base:  # ACAL1195 — clé absente sans base : les empreintes d'hier restent identiques.
+        charge['base_production'] = base
     if option_avec:
         # Fondateur 26/10/2026 — l'option « avec batterie » des lignes ; clé
         # absente sans elle (les empreintes d'hier restent identiques).
@@ -1943,7 +1948,9 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         # les ENTRÉES entrent dans l'empreinte (``cles_hors_empreinte``).
         hors = cles_hors_empreinte()
         stockees = {k: v for k, v in params.items() if k not in hors}
-        empreinte = empreinte_depart(devis, _empreinte(stockees, kwc, onduleurs, imposee))
+        from apps.ventes.horaire.productible_pose import base_etude_ci  # ACAL1195 (D-ACAL-44)
+        base, hyp_base = base_etude_ci(devis, kwc=kwc)
+        empreinte = empreinte_depart(devis, _empreinte(stockees, kwc, onduleurs, imposee, base))
         existant = params.get(CLE_ETUDE_CI) or {}
         if not force and existant.get('empreinte') == empreinte:
             return existant
@@ -1952,13 +1959,15 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         etude = etudier_ci(
             company, {'mode': mode, 'taille_explicite_kwc': kwc}, devis=devis,
             lead=getattr(devis, 'lead', None),
-            production_figee=params.get(CLE_PRODUCTION_FIGEE),
+            production_figee=None if base else params.get(CLE_PRODUCTION_FIGEE),
             onduleurs_imposes=onduleurs or None,
             source_production_figee=_source_production(existant),
             option_avec_imposee=imposee,
             production_figee_rasante=params.get(CLE_PRODUCTION_FIGEE_RASANTE),
             verdict_creation=params.get(CLE_TAILLE_CREATION),
-            provenance_corps=provenance_lignes_du_devis())
+            provenance_corps=provenance_lignes_du_devis(), base_production=base)
+        if hyp_base and etude.get('bilan') is not None:
+            etude['hypotheses'] = list(etude.get('hypotheses') or []) + [hyp_base]
         if etude.get('bilan') is None:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,

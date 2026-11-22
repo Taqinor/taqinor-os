@@ -152,6 +152,13 @@
     "perte_pct": null
    },
    {
+    "etape": "optimiseur",
+    "omise": true,
+    "kwh_avant": 337.222,
+    "kwh_apres": null,
+    "perte_pct": null
+   },
+   {
     "etape": "ohmique_dc",
     "omise": true,
     "kwh_avant": 337.222,

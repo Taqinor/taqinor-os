@@ -83,6 +83,95 @@ class RefusDuServiceTest(SimpleTestCase):
         self.assertEqual(refus.exception.champ, 'temperature_max_c')
 
 
+def _contrat_simulation():
+    import json
+    import pathlib
+
+    chemin = (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+              / 'calepinage_simulation.json')
+    return json.loads(chemin.read_text(encoding='utf-8'))
+
+
+class ManquantsDeSimulationTest(SimpleTestCase):
+    """ACAL940 — TOUS les manques en une fois, dans l'ordre des contrôles.
+    Mutant : s'arrêter au premier manque ⇒ une ligne au lieu de trois."""
+
+    def test_reglages_vides_sans_epingle_trois_lignes_dans_l_ordre(self):
+        from apps.calepinage.services import manquants_simulation
+
+        attendu = _contrat_simulation()['exemple_refus_manquants']
+        lignes = manquants_simulation.manquants_de_simulation(
+            {}, {'plans_equipes': 1})
+        self.assertEqual(lignes, attendu['manquants'])
+
+    def test_avec_epingle_deux_lignes(self):
+        from apps.calepinage.services import manquants_simulation
+
+        lignes = manquants_simulation.manquants_de_simulation(
+            {'site': {'lat': 33.5, 'lon': -7.6}}, {'plans_equipes': 1})
+        self.assertEqual([ligne['champ'] for ligne in lignes],
+                         ['parametres.simulation.mode_meteo',
+                          'parametres.simulation.fenetre_annees'])
+
+    def test_verifier_simulable_leve_une_fois_avec_toutes_les_lignes(self):
+        from apps.calepinage.services.simulation import verifier_simulable
+
+        attendu = _contrat_simulation()['exemple_refus_manquants']
+        with self.assertRaises(SimulationRefusee) as refus:
+            verifier_simulable({}, {'plans_equipes': 1})
+        self.assertEqual(refus.exception.champ,
+                         'parametres.simulation.mode_meteo')
+        self.assertEqual(
+            {refus.exception.champ: [refus.exception.motif]},
+            {k: v for k, v in attendu.items() if k != 'manquants'})
+        self.assertEqual(refus.exception.manquants, attendu['manquants'])
+
+
+class RefusSansPanTest(SimpleTestCase):
+    """ACAL771 — « aucun pan équipé » (champ ``plans``) est une ligne de
+    ``manquants[]``, entre les réglages et l'épingle. Mutant : placer
+    ``plans`` avant les réglages ⇒ l'ordre ci-dessous échoue."""
+
+    REGLAGES = {
+        'mode_meteo': {'valeur': 'pluriannuel', 'source': 'societe',
+                       'reference': 'essai'},
+        'fenetre_annees': {'valeur': '2015-2020', 'source': 'societe',
+                           'reference': 'essai'},
+    }
+
+    def test_reglages_remplis_epingle_posee_sans_module_une_ligne_plans(self):
+        from apps.calepinage.services import manquants_simulation
+
+        attendu = _contrat_simulation()['exemple_refus_sans_pan_equipe']
+        contexte = {'reglages_simulation': self.REGLAGES,
+                    'site': {'lat': 33.5, 'lon': -7.6}}
+        lignes = manquants_simulation.manquants_de_simulation(contexte, {})
+        self.assertEqual(lignes, attendu['manquants'])
+
+    def test_le_409_garde_la_cle_de_tete_plans(self):
+        from apps.calepinage.services.simulation import verifier_simulable
+
+        attendu = _contrat_simulation()['exemple_refus_sans_pan_equipe']
+        contexte = {'reglages_simulation': self.REGLAGES,
+                    'site': {'lat': 33.5, 'lon': -7.6}}
+        with self.assertRaises(SimulationRefusee) as refus:
+            verifier_simulable(contexte, {})
+        self.assertEqual(refus.exception.champ, 'plans')
+        self.assertEqual({refus.exception.champ: [refus.exception.motif]},
+                         {k: v for k, v in attendu.items()
+                          if k != 'manquants'})
+        self.assertEqual(refus.exception.manquants, attendu['manquants'])
+
+    def test_reglages_vides_sans_module_ordre_mode_fenetre_plans_epingle(self):
+        from apps.calepinage.services import manquants_simulation
+
+        lignes = manquants_simulation.manquants_de_simulation({}, {})
+        self.assertEqual([ligne['champ'] for ligne in lignes],
+                         ['parametres.simulation.mode_meteo',
+                          'parametres.simulation.fenetre_annees',
+                          'plans', 'site.pin'])
+
+
 class _BaseApi(TestCase):
 
     def setUp(self):
@@ -131,6 +220,17 @@ class PreVerificationApiTest(_BaseApi):
         self.assertIn('parametres.simulation.mode_meteo', reponse.data)
         self.assertTrue(reponse.data['parametres.simulation.mode_meteo'][0])
         soumettre.assert_not_called()
+
+    def test_reglages_vides_un_seul_409_avec_tous_les_manquants(self):
+        # ACAL940 — aucun réglage : mode météo ET fenêtre listés d'un coup.
+        reponse, _soumettre = self._poster()
+
+        self.assertEqual(reponse.status_code, 409, reponse.content[:300])
+        champs = [ligne['champ'] for ligne in reponse.data['manquants']]
+        self.assertEqual(champs[:2], ['parametres.simulation.mode_meteo',
+                                      'parametres.simulation.fenetre_annees'])
+        self.assertEqual(reponse.data['manquants'][0]['cible'],
+                         {'onglet': 'reglages', 'champ': 'calx69-mode_meteo'})
 
     def test_temperature_partielle_409_pas_500(self):
         self.calepinage.resultat = {

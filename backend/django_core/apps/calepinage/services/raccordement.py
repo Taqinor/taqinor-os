@@ -971,14 +971,17 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
 # jusqu'au compteur. Les tronçons continus sont donc marqués non parcourus —
 # ils ne sont pas « oubliés », ils sont en amont de l'onduleur.
 
-#: Les NEUF champs de la saisie du contrat CALX205, dans son ordre : les
-#: sept historiques, puis (ACAL155 / M0 ACAL9) le plafond d'injection et sa
+#: Les champs de la saisie du contrat CALX205, dans son ordre : les sept
+#: historiques, puis (ACAL155 / M0 ACAL9) le plafond d'injection et sa
 #: justification, que lisent ``etapes/autoconsommation.py`` et
-#: ``etapes/batterie.py``.
+#: ``etapes/batterie.py``, puis (ACAL827) le plafond en ampères et (ACAL828)
+#: les plages horaires du plafond.
 CHAMPS_SAISIE = ('puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
                  'source_cos_phi', 'plafond_injection_kw',
-                 'plafond_injection_justification', 'plafond_injection_a')
+                 'plafond_injection_justification', 'plafond_injection_a',
+                 'plages_plafond_injection', 'plafond_soutirage_kw',
+                 'plafond_soutirage_justification')
 
 #: ACAL155 — LA clé de ``Calepinage.resultat`` qui porte la saisie de
 #: raccordement. Unique : ni ``roof_layout['raccordement']`` (jamais écrit)
@@ -1005,7 +1008,14 @@ INTITULES_SAISIE = {
     'phases': 'le nombre de phases du branchement',
     'plafond_injection_kw': "le plafond d'injection (kW)",
     'plafond_injection_a': "le plafond d'injection (A)",
+    'plafond_soutirage_kw': 'le plafond de soutirage (kW)',
 }
+
+#: ACAL829 — le refus opposé à un plafond de soutirage SANS justification.
+REFUS_SOUTIRAGE_SANS_JUSTIFICATION = (
+    "Un plafond de soutirage ne peut pas être enregistré sans sa "
+    "justification : indiquez le contrat ou la prescription du gestionnaire "
+    "de réseau qui l'impose.")
 
 #: Le statut PUBLIÉ pour un contrôle qui n'a pas eu lieu. Le noyau le nomme
 #: ``non_verifiable`` (``core/electrique/types.py``) ; le contrat CALX205 le
@@ -1119,7 +1129,17 @@ def _saisie_publiee(brute):
     sans source.
     """
     brute = brute if isinstance(brute, dict) else {}
+    try:
+        plages = _limites.plages_saisies(brute.get(_limites.CHAMP_PLAGES))
+    except _limites.PlageInvalide as refus:
+        raise _refus_saisie(refus.champ, str(refus))
     saisie = {
+        'plages_plafond_injection': plages,
+        'plafond_soutirage_kw': _plafond_saisi(
+            brute.get('plafond_soutirage_kw'), 'plafond_soutirage_kw'),
+        'plafond_soutirage_justification': _texte_saisi(
+            brute.get('plafond_soutirage_justification'),
+            'plafond_soutirage_justification'),
         'phases': _phases_saisies(brute.get('phases')),
         'source_limite': _texte_saisi(brute.get('source_limite'),
                                       'source_limite'),
@@ -1142,10 +1162,15 @@ def _saisie_publiee(brute):
                             "Un plafond d'injection se donne en kW ou en A, "
                             "pas les deux : videz l'un des deux champs.")
     if ((saisie['plafond_injection_kw'] is not None
-         or saisie['plafond_injection_a'] is not None)
+         or saisie['plafond_injection_a'] is not None
+         or saisie['plages_plafond_injection'])
             and not saisie['plafond_injection_justification']):
         raise _refus_saisie('plafond_injection_justification',
                             REFUS_PLAFOND_SANS_JUSTIFICATION, etat=True)
+    if (saisie['plafond_soutirage_kw'] is not None
+            and not saisie['plafond_soutirage_justification']):
+        raise _refus_saisie('plafond_soutirage_justification',
+                            REFUS_SOUTIRAGE_SANS_JUSTIFICATION, etat=True)
     return {champ: saisie[champ] for champ in CHAMPS_SAISIE}
 
 
