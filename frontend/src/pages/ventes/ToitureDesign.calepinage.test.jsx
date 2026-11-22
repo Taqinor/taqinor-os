@@ -1265,9 +1265,10 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     await screen.findByTestId('cal-coque')
     await userEvent.click(screen.getByTestId('cal-rail-avance'))
     await userEvent.click(await screen.findByTestId('cal-vue-trois-quarts'))
-    appliquerVue.mockClear(); cadrerToit.mockClear()
     await userEvent.click(screen.getByTestId('cal-etape-panneaux'))
-    await waitFor(() => expect(cadrerToit).toHaveBeenCalled())
+    // (l'étape Toit, démontée, pose encore sa propre vue d'entrée : on ne juge que la coque, après l'entrée sur Panneaux)
+    appliquerVue.mockClear(); cadrerToit.mockClear()
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalled(), { timeout: 5000 })
     expect(appliquerVue).not.toHaveBeenCalledWith('dessus')
   })
 
@@ -1288,6 +1289,16 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
       .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
   }, 20000)
+
+  it('H1 — lecture de démarrage sans réponse (délai de 20 s dépassé) : relancée UNE fois, l’atelier démarre sans erreur', async () => {
+    calepinageApi.calepinages.designContext
+      .mockRejectedValueOnce(Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' }))
+      .mockResolvedValue(reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(2)
+    expect(screen.queryByTestId('cal-erreur-chargement')).toBeNull()
+  })
 
   it('H1 — chargement raté (design-context 504) : rien ne peut être enregistré ni mis en brouillon, « Réessayer » est offert', async () => {
     calepinageApi.calepinages.designContext.mockRejectedValue({ response: { status: 504 } })

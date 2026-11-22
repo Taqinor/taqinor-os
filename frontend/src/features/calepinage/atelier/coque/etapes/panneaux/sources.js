@@ -6,7 +6,8 @@ import { formatNumber } from '../../../../../../lib/format'
 export const fmtKwc = (kw) => `${formatNumber(kw, { decimals: 2 })} kWc`
 
 /**
- * LA taille tirée des FACTURES du lead, servie par le design-context (`cible_factures`, calculée côté serveur par
+ * LA taille tirée des FACTURES du lead, servie par `GET cible-factures/` (`cible_factures`, H3 — hors du design-context,
+ * calculée côté serveur par
  * la fonction du garde R2-17 : `services/devis.py::_cible_du_calepinage` → `ventes.selectors.cible_depuis_lead`).
  * Accesseur UNIQUE de l'atelier (étape Panneaux, puce de l'étape Toit) : `{ panneaux, kwc, moduleWc }` ou `null`.
  */

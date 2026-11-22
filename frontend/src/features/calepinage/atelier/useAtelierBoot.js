@@ -400,6 +400,19 @@ export function useAtelierBoot(ctx) {
     // renseignée » plutôt que de deviner une puissance, et il n'y a ni étude
     // bancable ni panneau de livraison client — rien de tout cela n'existe sur
     // un calepinage, et l'inventer produirait des boutons morts.
+    // H1 (tour 3) — la lecture de démarrage dépasse parfois les 20 s du client sur un poste chargé : elle est relancée
+    // UNE fois quand AUCUNE réponse n'est arrivée (délai, réseau), jamais sur un refus servi (4xx/5xx avec corps).
+    // L'écran reste « en chargement » pendant ce second essai ; seul son échec affiche « Impossible de charger ».
+    async function lireContexteAvecReprise() {
+      try {
+        return await lireContexte()
+      } catch (err) {
+        if (cancelled || err?.response) throw err
+        setStatus('Le serveur met du temps à répondre — nouvel essai de chargement…')
+        return lireContexte()
+      }
+    }
+
     async function bootCalepinage() {
       choisirPaletteAcces('atelier') // F6 — bleu nuit → or (maquette Panneaux) dès le boot, toute étape et Expert
       // CALX109 — le CATALOGUE DE MODULES de la société, lu EN PARALLÈLE du
@@ -431,7 +444,7 @@ export function useAtelierBoot(ctx) {
 
       let ctx = null
       try {
-        const res = await lireContexte()
+        const res = await lireContexteAvecReprise()
         ctx = res.data
       } catch (err) {
         if (cancelled) return

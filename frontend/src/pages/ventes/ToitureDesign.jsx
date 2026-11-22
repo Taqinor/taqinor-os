@@ -65,7 +65,7 @@ import { lancerSimulationAuto } from '../../features/calepinage/production/simul
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { hacherLayout, creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
-import { creerStockageMiroir } from '../../features/calepinage/brouillonServeur' // ACAL400
+import { creerStockageMiroir, sansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis.
@@ -338,7 +338,7 @@ function AtelierToiture({
   const hacherScene = useCallback(() => {
     try {
       const layout = builderApi.current?.serializeLayout?.()
-      return layout == null ? null : hacherLayout(layout)
+      return layout == null ? null : hacherLayout(sansVue(layout)) // H1 — regarder le soleil n'est pas une modification
     } catch {
       return null
     }
@@ -354,7 +354,7 @@ function AtelierToiture({
   }, [hacherScene])
   const marquerSceneEnregistree = (layout) => {
     try {
-      hashSceneReferenceRef.current = layout == null ? hacherScene() : hacherLayout(layout)
+      hashSceneReferenceRef.current = layout == null ? hacherScene() : hacherLayout(sansVue(layout))
     } catch (err) {
       // Référence inchangée.
       console.warn('ToitureDesign.marquerSceneEnregistree : référence de scène inchangée', err)
@@ -408,7 +408,7 @@ function AtelierToiture({
   // LA MÊME fonction que « Enregistrer le calepinage » (CAL37) — donc un
   // brouillon repris est strictement au format d'un enregistrement normal.
   useEffect(() => {
-    if (!estCalepinage || !builderReady || !sceneHydratee || !hashBaseBrouillon
+    if (!estCalepinage || !builderReady || !sceneHydratee || !hashBaseBrouillon || loadError // H1 — chargement raté : aucun brouillon
       || lectureSeuleContexte) return undefined
     const gestionnaire = creerGestionnaireBrouillon({
       // ACAL400 — miroir : localStorage d'abord, copie serveur (autre poste).
@@ -421,7 +421,7 @@ function AtelierToiture({
       utilisateurId: utilisateurCourantId,
       hashBase: hashBaseBrouillon,
       intervalleSecondes: intervalleBrouillonSecondes,
-      obtenirLayout: () => builderApi.current?.serializeLayout?.() ?? null,
+      obtenirLayout: () => sansVue(builderApi.current?.serializeLayout?.() ?? null), // H1 — jamais un brouillon de vue
     })
     gestionnaireBrouillonRef.current = gestionnaire
     gestionnaire.demarrer()
@@ -430,17 +430,17 @@ function AtelierToiture({
       if (gestionnaireBrouillonRef.current === gestionnaire) gestionnaireBrouillonRef.current = null
     }
   }, [estCalepinage, builderReady, sceneHydratee, calepinageId, utilisateurCourantId,
-    hashBaseBrouillon, intervalleBrouillonSecondes, lectureSeuleContexte])
+    hashBaseBrouillon, intervalleBrouillonSecondes, lectureSeuleContexte, loadError])
 
   // ACAL85 — la référence se prend sur la scène HYDRATÉE, puis un sondage
   // (1,5 s) tient `sceneModifiee` à jour. Rien en lecture seule (rien à perdre).
   useEffect(() => {
-    if (!builderReady || !sceneHydratee || lectureSeuleContexte) return undefined
+    if (!builderReady || !sceneHydratee || lectureSeuleContexte || loadError) return undefined
     if (hashSceneReferenceRef.current === null) hashSceneReferenceRef.current = hacherScene()
     const id = window.setInterval(() => setSceneModifiee(sceneEstModifiee()), 1500)
     return () => window.clearInterval(id)
-  }, [builderReady, sceneHydratee, lectureSeuleContexte, hacherScene, sceneEstModifiee])
-  useDirtyGuard(sceneModifiee && !lectureSeuleContexte)
+  }, [builderReady, sceneHydratee, lectureSeuleContexte, hacherScene, sceneEstModifiee, loadError])
+  useDirtyGuard(sceneModifiee && !lectureSeuleContexte && !loadError)
 
   // VT13 — la photo réelle du toit se demande sur le LEAD, jamais sur la
   // visite : mode lead (l'id de l'URL) ou mode devis QUAND le devis porte un

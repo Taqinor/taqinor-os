@@ -181,6 +181,8 @@ from . import explications as _explications_action  # noqa: F401 — import d'en
 from . import pret_a_envoyer as _pret_a_envoyer_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ACAL887 — même patron : rattache ``production-mesuree`` (GET/PUT : les douze kWh mesurés et leur écart au P50).
 from . import production_mesuree as _production_mesuree_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# H3 (22/11) — même patron : rattache ``cible-factures`` (GET : la taille tirée des factures, hors démarrage).
+from . import toiture_lead as _cible_factures_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -233,6 +235,7 @@ MODULES_RATTACHES = (
     'explications',  # ACAL871
     'pret_a_envoyer',  # ACAL860
     'production_mesuree',  # ACAL887
+    'toiture_lead',  # H3 (cible-factures)
 )
 
 __all__ = ['MODULES_RATTACHES']

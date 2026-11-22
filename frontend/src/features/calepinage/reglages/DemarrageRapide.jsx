@@ -250,7 +250,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
       {/* Le tableau défile DANS sa carte (en-tête collé) : le titre en haut et le pied (boutons) en bas
           restent à l'écran, comme la maquette, quel que soit le nombre de réglages. */}
       <section aria-label="Réglages proposés"
-        className={`overflow-auto rounded-[14px] border border-border bg-card ${seul ? 'min-h-[240px] max-h-[calc(100dvh-23rem)]' : ''}`}>
+        className={`overflow-auto rounded-[14px] border border-border bg-card ${seul ? 'min-h-[240px] max-h-[calc(100dvh-25rem)]' : ''}`}>
         <div className="min-w-[760px]">
           <div className={`sticky top-0 z-10 grid ${COLONNES} h-11 items-center border-b border-border bg-background px-2 pr-5 text-xs font-semibold text-muted-foreground`}>
             <span className="text-center">Remplir</span><span>Réglage</span><span>Valeur proposée</span>

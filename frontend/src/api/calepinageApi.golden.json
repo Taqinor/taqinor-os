@@ -130,6 +130,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.cibleFactures": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/cible-factures/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.comparatifXlsx": [
     {
       "config": {

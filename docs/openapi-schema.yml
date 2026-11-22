@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5296, operations: 8148, components: 4077}
+counts: {paths: 5298, operations: 8150, components: 4078}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -570,6 +570,7 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/champs-dossier/ -> django_calepinage_calepinages_champs_dossier_create
 - get /api/django/calepinage/calepinages/{id}/chatter/historique/ -> django_calepinage_calepinages_chatter_historique_list
 - post /api/django/calepinage/calepinages/{id}/chatter/noter/ -> django_calepinage_calepinages_chatter_noter_create
+- get /api/django/calepinage/calepinages/{id}/cible-factures/ -> django_calepinage_calepinages_cible_factures_retrieve
 - get /api/django/calepinage/calepinages/{id}/comparatif.xlsx/ -> django_calepinage_calepinages_comparatif.xlsx_retrieve
 - get /api/django/calepinage/calepinages/{id}/comparer/ -> django_calepinage_calepinages_comparer_retrieve
 - get /api/django/calepinage/calepinages/{id}/configurations-onduleur/ -> django_calepinage_calepinages_configurations_onduleur_retrieve
@@ -4685,6 +4686,7 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/champs-dossier/ -> v1_calepinage_calepinages_champs_dossier_create
 - get /api/v1/calepinage/calepinages/{id}/chatter/historique/ -> v1_calepinage_calepinages_chatter_historique_list
 - post /api/v1/calepinage/calepinages/{id}/chatter/noter/ -> v1_calepinage_calepinages_chatter_noter_create
+- get /api/v1/calepinage/calepinages/{id}/cible-factures/ -> v1_calepinage_calepinages_cible_factures_retrieve
 - get /api/v1/calepinage/calepinages/{id}/comparatif.xlsx/ -> v1_calepinage_calepinages_comparatif.xlsx_retrieve
 - get /api/v1/calepinage/calepinages/{id}/comparer/ -> v1_calepinage_calepinages_comparer_retrieve
 - get /api/v1/calepinage/calepinages/{id}/configurations-onduleur/ -> v1_calepinage_calepinages_configurations_onduleur_retrieve
@@ -8295,6 +8297,7 @@ query_params:
   delete /api/django/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/django/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
   get /api/django/calepinage/calepinages/{id}/pente-terrain/: surface
+  get /api/django/calepinage/calepinages/{id}/pret-a-envoyer/: etape
   get /api/django/calepinage/calepinages/{id}/publier-devis/apercu/: creer_autre_devis rattacher_devis
   get /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
@@ -9142,6 +9145,7 @@ query_params:
   delete /api/v1/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/v1/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
   get /api/v1/calepinage/calepinages/{id}/pente-terrain/: surface
+  get /api/v1/calepinage/calepinages/{id}/pret-a-envoyer/: etape
   get /api/v1/calepinage/calepinages/{id}/publier-devis/apercu/: creer_autre_devis rattacher_devis
   get /api/v1/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
@@ -10295,6 +10299,7 @@ components:
 - CalepinageChampsDossierCorpsParDossierRequest
 - CalepinageChampsDossierCorpsParGabaritRequest
 - CalepinageChampsDossierCorpsRequest
+- CalepinageCibleFactures
 - CalepinageComparaisonProjets
 - CalepinageComparaisonVariantes
 - CalepinageComparerProjetsRequeteRequest

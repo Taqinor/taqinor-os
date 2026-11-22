@@ -1245,7 +1245,7 @@ def contexte_conception(calepinage, request=None):
 
     from .. import selectors as cal_selectors
     from ..services.consommation import facture_mensuelle_du_lead
-    from .toiture_lead import cible_factures, toiture_du_lead  # R2-15 + maquette Panneaux (taille des factures)
+    from .toiture_lead import toiture_du_lead  # R2-15 (la taille des factures : GET cible-factures/, H3)
 
     company = getattr(calepinage, 'company', None)
     devis = _devis_lie_de(calepinage, company)
@@ -1316,7 +1316,7 @@ def contexte_conception(calepinage, request=None):
             company, getattr(calepinage, 'lead_id', None)),
         # R2-15 / R2-01 (Q1, 22/11) — la toiture DÉCLARÉE sur le lead, affichée en
         # lecture ; seul ``mode_pose`` (relu du document, CIQ112) agit.
-        'toiture_lead': toiture_du_lead(company, calepinage), 'cible_factures': cible_factures(calepinage),
+        'toiture_lead': toiture_du_lead(company, calepinage),
     }
 
 

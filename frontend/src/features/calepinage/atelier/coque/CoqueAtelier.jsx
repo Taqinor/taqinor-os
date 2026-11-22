@@ -317,7 +317,11 @@ export default function CoqueAtelier({
             </div>
           </PanneauEtape>
         </div>
-        {presentation?.rendu?.({ calepinageId, builderApi: ecranProps.builderApi ?? null, noeudScene: noeudPresentation })}
+        {presentation?.rendu?.({
+          calepinageId, builderApi: ecranProps.builderApi ?? null, noeudScene: noeudPresentation,
+          // H1 (demande H2) — le contexte déjà servi à l'atelier : la vue client ne relit pas design-context.
+          contexte: ecranProps.contexte ?? null, onRecharger: ecranProps.onRecharger ?? null,
+        })}
       </div>
     </ContexteCoque.Provider>
   )

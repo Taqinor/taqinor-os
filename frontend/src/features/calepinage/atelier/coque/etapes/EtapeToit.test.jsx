@@ -14,12 +14,14 @@ import process from 'node:process'
 
 const layout = vi.fn()
 const designContext = vi.fn()
+const cibleFactures = vi.fn() // H3 — la taille des factures, lue à part du design-context
 const enregistrerSectionLayout = vi.fn()
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
       designContext: (...a) => designContext(...a),
+      cibleFactures: (...a) => cibleFactures(...a),
       enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
       releveVisite: vi.fn(async () => ({ data: null })),
     },
@@ -101,7 +103,8 @@ function rendre(props = {}, avant = null) {
 beforeEach(() => {
   vi.clearAllMocks()
   builderApi = { panActifId: () => 'area-1', appliquerVue: vi.fn() }
-  designContext.mockResolvedValue({ data: { cible_factures: { panneaux: 11, kwc: 6.93, module_wc: 630 } } })
+  designContext.mockResolvedValue({ data: { calepinage: { lead: 42 } } })
+  cibleFactures.mockResolvedValue({ data: { cible_factures: { panneaux: 11, kwc: 6.93, module_wc: 630 } } })
   layout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE, { ...ZONE, id: 'area-2', label: 'Pan 2' }] }, empreinte_document: 'jeton-1' } })
   enregistrerSectionLayout.mockImplementation(async (_id, corps) => ({ data: {
     empreinte_document: 'jeton-2',
@@ -204,16 +207,16 @@ describe('Étape Toit — sur la carte', () => {
     const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
     await waitFor(() => expect([...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent))
       .toEqual(['Surface du toit107 m²', 'Pans2', "Besoin d'après la facture≈ 6,93 kWc"]))
-    expect(designContext).toHaveBeenCalledWith(7)
+    expect(cibleFactures).toHaveBeenCalledWith(7)
   })
 
   it('« Besoin » vient SEULEMENT de `cible_factures.kwc` : jamais la puissance posée/recommandée du constructeur', async () => {
     // Recette M2, calepinage 5 : la reco du constructeur (39,60 kWc, « 809 % ») n'est pas un besoin de facture.
-    designContext.mockResolvedValue({ data: { cible_factures: null } })
+    cibleFactures.mockResolvedValue({ data: { cible_factures: null } })
     rendre()
     $('rp9-reco-kwc').textContent = '39,60 kWc'
     $('rp9-reco-cover').textContent = '809 %'
-    await waitFor(() => expect(designContext).toHaveBeenCalled())
+    await waitFor(() => expect(cibleFactures).toHaveBeenCalled())
     await new Promise((r) => setTimeout(r, 600))
     const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
     expect([...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)).toEqual(['Surface du toit107 m²', 'Pans2'])
@@ -225,27 +228,29 @@ describe('Étape Toit — sur la carte', () => {
 
   it('H2 — lecture de la facture en cours : la puce n’affirme rien ; en échec : « Lecture impossible — réessayer »', async () => {
     let finir
-    designContext.mockImplementation(() => new Promise((ok, ko) => { finir = { ok, ko } }))
+    cibleFactures.mockImplementation(() => new Promise((ok, ko) => { finir = { ok, ko } }))
     rendre()
     const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
     const blocs = () => [...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)
-    await waitFor(() => expect(designContext).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(cibleFactures).toHaveBeenCalledTimes(1))
     expect(blocs()).toEqual(['Surface du toit107 m²', 'Pans2']) // en chargement : aucun besoin, aucune absence dite
     await act(async () => { finir.ko(new Error('timeout of 20000ms exceeded')) })
     const reessayer = await within(surCarte).findByRole('button', { name: 'Lecture impossible — réessayer' })
     expect(blocs()[2]).toBe("Besoin d'après la factureLecture impossible — réessayer")
-    designContext.mockResolvedValue({ data: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
+    cibleFactures.mockResolvedValue({ data: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
     fireEvent.click(reessayer)
     await waitFor(() => expect(blocs()).toEqual(['Surface du toit107 m²', 'Pans2', "Besoin d'après la facture≈ 2,84 kWc"]))
-    expect(designContext).toHaveBeenCalledTimes(2)
+    expect(cibleFactures).toHaveBeenCalledTimes(2)
   })
 
-  it('H2 — le design-context de l’atelier (`contexte`) prime : aucune seconde lecture', async () => {
-    rendre({ contexte: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
+  it('H2/H3 — le design-context de l’atelier (`contexte`) prime : aucune seconde lecture ; la taille, lue à part', async () => {
+    cibleFactures.mockResolvedValue({ data: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
+    rendre({ contexte: { calepinage: { lead: 42 } } })
     const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
-    expect([...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)[2]).toBe("Besoin d'après la facture≈ 2,84 kWc")
-    await new Promise((r) => setTimeout(r, 50))
+    await waitFor(() => expect([...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)[2])
+      .toBe("Besoin d'après la facture≈ 2,84 kWc"))
     expect(designContext).not.toHaveBeenCalled()
+    expect(cibleFactures).toHaveBeenCalledTimes(1)
   })
 
   it('sans contour, pas de puce', () => {

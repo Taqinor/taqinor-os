@@ -99,7 +99,6 @@
       "source": "lead",
       "motif": ""
     },
-    "cible_factures": {"panneaux": 12, "kwc": 6.96, "module_wc": 580},
     "toiture_lead": {
       "type_surface": "Toiture",
       "type_toiture": "Tuiles",
@@ -227,7 +226,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": "Toiture",
       "type_toiture": "Tuiles",
@@ -341,7 +339,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": null,
       "type_toiture": "Terrasse béton",
@@ -410,7 +407,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": null,
       "type_toiture": null,
@@ -529,7 +525,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": "Toiture",
       "type_toiture": "Tuiles",
@@ -639,7 +634,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": null,
       "type_toiture": "Terrasse béton",
@@ -749,7 +743,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": null,
       "type_toiture": "Terrasse béton",
@@ -868,7 +861,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": "Toiture",
       "type_toiture": "Tuiles",
@@ -987,7 +979,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": "Toiture",
       "type_toiture": "Tuiles",
@@ -1106,7 +1097,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": "Toiture",
       "type_toiture": "Tuiles",
@@ -1225,7 +1215,6 @@
       "source": null,
       "motif": "Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) : aucune facture mensuelle moyenne n'est servie."
     },
-    "cible_factures": null,
     "toiture_lead": {
       "type_surface": "Toiture",
       "type_toiture": "Tuiles",
@@ -1249,6 +1238,6 @@
   },
   "acal312_note": "ACAL312 (D-ACAL-20) — clé racine ADDITIVE `natures_zones` (liste, toujours présente) : les natures de zone d'exclusion ADMISES, servies depuis `services.zones.natures_admises` (le noyau `core.calepinage.types.NatureZone`) — l'atelier lit ICI son sélecteur de nature, jamais une constante recopiée ; POST layout/ et import-layout/ refusent toute autre nature au chemin `exclusionZones.<i>.nature`.",
   "acon80_note": "ACON80 (D-ACON-2) — `variante` : `null` hors variante ; avec `?devis=<id>` d'un devis porté par une VARIANTE de ce calepinage (second devis actif du lead, ACON6), `{id, nom, devis}` de la variante, et `geometrie` décrit le document de LA VARIANTE (`roof_layout`, `empreinte_document`), `devis_lie` / `modifiable` ceux du devis porté (`exemple_variante`). L'atelier enregistre alors la variante (PATCH variantes/<id>/, puis sync-devis avec `devis`), jamais le calepinage. Le document est lu par `selectors.conception_du_devis` (contrat calepinage_conception_du_devis.json).",
-  "cible_factures_note": "Maquette Panneaux (22/11, lane F2) — clé racine ADDITIVE `cible_factures`, toujours présente : la taille que le devis automatique tirerait des FACTURES du lead, calculée par LA fonction du garde de surdimensionnement R2-17 (`services/devis.py::_cible_du_calepinage` → `apps.ventes.selectors.cible_depuis_lead`, moteur horaire `decider_taille`) — aucun second dimensionnement, aucun arrondi de l'atelier. `{panneaux, kwc, module_wc}` (module_wc = la puissance du panneau de ce dimensionnement) ; `null` quand cette taille ne vient pas des factures (sans lead, lead sans facture, taille souhaitée déclarée, C&I, agricole, refus). Lue par l'étape Panneaux (carte « Couvrir la facture ») et la puce de l'étape Toit via `features/calepinage/atelier/coque/etapes/panneaux/sources.js::cibleFactures(contexte)`.",
+  "cible_factures_note": "H3 (22/11) — la clé `cible_factures` (taille tirée des FACTURES du lead, posée ici le 22/11 par la maquette Panneaux) est SORTIE du design-context le même jour : son dimensionnement horaire coûtait ~1,9 s et ~28 requêtes de plus à chaque ouverture de l'atelier (mesuré, calepinage 5 de la pile de revue). Elle est servie par `GET calepinages/<pk>/cible-factures/` (contrat `calepinage_cible_factures.json`, `views/toiture_lead.py`), lue par `panneaux/lectures.js::useCibleFactures`.",
   "toiture_lead_note": "R2-15 / R2-01 (recette du 22/11, décision Q1) — clé racine ADDITIVE `toiture_lead`, toujours présente : ce que la fiche du lead dit de sa toiture et de son site (section « Toiture & site »), lu par `apps.crm.selectors` (`views/toiture_lead.py::toiture_du_lead`). Champs à choix servis par leur LIBELLÉ de fiche (type_surface, type_toiture, orientation, ombrage, structure_pref), nombres en réel (surface_toiture_m2, inclinaison_deg, nb_etages, roof_age), ombrage_notes en texte ; CHAQUE champ vaut null quand le lead ne le dit pas (sans lead, lead d'une autre société ou à la corbeille : tous null). L'atelier les AFFICHE en lecture (« Le lead déclare : … ») et n'en préremplit AUCUN (D-ACAL-7). `mode_pose` est le mode que le serveur a posé dans le DOCUMENT à la création (CIQ112, `modePoseDeclare`, ex. `toiture_inclinee` pour des tuiles) et que le traducteur applique aux pans ; null quand le document ne le porte pas (calepinage né d'un devis, comme ici). Seul ce mode agit : l'atelier pose « Toit en pente » sur un pan VIERGE quand il vaut bac_acier ou toiture_inclinee."
 }

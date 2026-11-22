@@ -70,6 +70,9 @@ export const simulation = {
     // ACAL860 — « prêt à envoyer ? » (contrat `calepinage_pret_a_envoyer.json`) ; H3 : `etape` =
     // seuls les contrôles de cette étape (`?etape=`, le serveur ne calcule pas le reste).
     pretAEnvoyer: (id, { etape } = {}) => api.get(`${pivot(id)}pret-a-envoyer/`, etape ? { params: { etape } } : undefined),
+    // H3 — la taille tirée des factures du lead (contrat `calepinage_cible_factures.json`), lue à part du
+    // design-context : le dimensionnement qu'elle appelle n'est plus sur le chemin de démarrage de l'atelier.
+    cibleFactures: (id) => api.get(`${pivot(id)}cible-factures/`),
 
     // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
     // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR

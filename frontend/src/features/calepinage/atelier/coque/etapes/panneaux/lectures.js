@@ -13,6 +13,9 @@ const LECTEURS = {
   contexte: (id) => calepinageApi.calepinages.designContext(id),
   resultat: (id) => calepinageApi.calepinages.resultat(id),
   document: (id) => calepinageApi.calepinages.layout(id),
+  // H3 — la taille tirée des factures, lue À PART du design-context (son dimensionnement coûtait ~1,9 s à chaque
+  // ouverture de l'atelier) : `GET cible-factures/` → `{ cible_factures }`.
+  cible: (id) => calepinageApi.calepinages.cibleFactures(id),
 }
 
 const memoire = new Map()
@@ -76,12 +79,23 @@ export function useLectureServie(nature, id, { servi = null, actif = true } = {}
  * `etat === 'ok'` (`null` = le lead n'a pas de facture exploitable) ; en chargement ou en échec, rien n'est affirmé.
  */
 export function useCibleFactures(calepinageId, servi = null) {
-  const { etat, donnees, reessayer } = useLectureServie('contexte', calepinageId, { servi })
+  // Le motif et le lead viennent du design-context (déjà chargé par l'atelier : `servi`) ; la taille, de sa
+  // lecture à part (H3). L'état est celui des DEUX : chargement tant que l'une manque, échec dès que l'une échoue.
+  const contexte = useLectureServie('contexte', calepinageId, { servi })
+  const taille = useLectureServie('cible', calepinageId)
+  const etat = [contexte.etat, taille.etat].includes('echec') ? 'echec'
+    : (contexte.etat === 'ok' && taille.etat === 'ok' ? 'ok' : 'chargement')
+  const { reessayer: relireContexte, etat: etatContexte } = contexte
+  const { reessayer: relireTaille, etat: etatTaille } = taille
+  const reessayer = useCallback(() => {
+    if (etatContexte === 'echec') relireContexte()
+    if (etatTaille !== 'ok') relireTaille()
+  }, [etatContexte, etatTaille, relireContexte, relireTaille])
   return {
     etat,
-    cible: etat === 'ok' ? cibleFactures(donnees) : null,
-    motif: etat === 'ok' ? (donnees?.consommation_lead?.motif || '') : '',
-    leadId: donnees?.calepinage?.lead ?? null,
+    cible: etat === 'ok' ? cibleFactures(taille.donnees) : null,
+    motif: contexte.etat === 'ok' ? (contexte.donnees?.consommation_lead?.motif || '') : '',
+    leadId: contexte.donnees?.calepinage?.lead ?? null,
     reessayer,
   }
 }

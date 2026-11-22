@@ -195,4 +195,9 @@
     min-height: calc(var(--cal-tiroir) - 120px);
     justify-content: center;
   }
+  /* Tiroir FERMÉ : la rangée du titre est celle de la maquette (libellé + liste, 52 px) ; les notes de la liste (ce que
+     l'étude utilise, « choisissez… ») se lisent tiroir agrandi — sinon elles poussent les cartes sous le pli. */
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'][data-deplie='0'] [data-testid='cal-panneaux-module'] .cal-pan-note {
+    display: none;
+  }
 }

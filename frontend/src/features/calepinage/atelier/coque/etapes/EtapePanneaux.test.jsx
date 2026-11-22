@@ -7,7 +7,9 @@ import { render, screen, cleanup, within, fireEvent, waitFor, act } from '@testi
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
-  default: { calepinages: { designContext: vi.fn(), modulesDisponibles: vi.fn(), entreeElectrique: vi.fn(), resultat: vi.fn() } },
+  default: { calepinages: {
+    designContext: vi.fn(), cibleFactures: vi.fn(), modulesDisponibles: vi.fn(), entreeElectrique: vi.fn(), resultat: vi.fn(),
+  } },
 }))
 
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
@@ -75,14 +77,16 @@ function rendre(props = {}) {
   )
 }
 
-/** Les réponses servies : design-context (lead, taille des factures), catalogue, entrée électrique, résultat. */
+/** Les réponses servies : design-context (lead), taille des factures (H3 : `cible-factures/`, lue à part), catalogue,
+    entrée électrique, résultat. */
 function servir({
   cible = { panneaux: 12, kwc: 6.96, module_wc: 580 }, motif = '',
   materiel = { module: null, modules_par_pan: [] }, resultat = { simule: false },
 } = {}) {
   calepinageApi.calepinages.designContext.mockResolvedValue({
-    data: { calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: 900, motif }, cible_factures: cible },
+    data: { calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: 900, motif } },
   })
+  calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: cible } })
   calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: { modules: CATALOGUE } })
   calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { materiel } })
   calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultat })
@@ -212,21 +216,18 @@ describe('étape Panneaux — panneau de droite', () => {
 
   it('H2 — facture en cours de lecture : jamais « Aucune taille… » ; en échec : « Lecture impossible — réessayer »', async () => {
     let finir
-    calepinageApi.calepinages.designContext.mockImplementation(() => new Promise((ok, ko) => { finir = { ok, ko } }))
+    calepinageApi.calepinages.cibleFactures.mockImplementation(() => new Promise((ok, ko) => { finir = { ok, ko } }))
     monterConstructeur()
     rendre()
     const section = screen.getByTestId('cal-panneaux-option-facture').parentElement
-    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(calepinageApi.calepinages.cibleFactures).toHaveBeenCalledTimes(1))
     expect(section.querySelector('[data-zone="facture-lecture"]')).toHaveTextContent('Lecture de la facture du lead…')
     expect(section).not.toHaveTextContent(/Aucune taille|Renseigner la facture/)
     await act(async () => { finir.ko(new Error('timeout of 20000ms exceeded')) })
     const reessayer = await within(section).findByRole('button', { name: 'réessayer' })
     expect(section.querySelector('[data-zone="facture-echec"]')).toHaveTextContent('Lecture impossible — réessayer')
     expect(section).not.toHaveTextContent(/Aucune taille|Renseigner la facture/)
-    calepinageApi.calepinages.designContext.mockResolvedValue({
-      data: { calepinage: { lead: 40 }, consommation_lead: { facture_mensuelle_mad: 900, motif: '' },
-        cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } },
-    })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
     fireEvent.click(reessayer)
     await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('Couvrir la factureRecommandé4 panneaux · 2,84 kWc'))
     expect(section).not.toHaveTextContent(/Aucune taille|Lecture impossible/)
@@ -246,11 +247,14 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(3)
   })
 
-  it('H2 — le design-context de l’atelier (`contexte`) prime : aucune lecture, la taille servie tout de suite', () => {
+  it('H2/H3 — le design-context de l’atelier (`contexte`) prime : aucune seconde lecture ; la taille, lue à part', async () => {
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
     monterConstructeur()
-    rendre({ contexte: { calepinage: { lead: 40 }, cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
-    expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('Couvrir la factureRecommandé4 panneaux · 2,84 kWc')
+    rendre({ contexte: { calepinage: { lead: 40 } } })
+    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture'))
+      .toHaveTextContent('Couvrir la factureRecommandé4 panneaux · 2,84 kWc'))
     expect(calepinageApi.calepinages.designContext).not.toHaveBeenCalled()
+    expect(calepinageApi.calepinages.cibleFactures).toHaveBeenCalledTimes(1)
   })
 
   it('module : pans sans module mais étude électrique qui en désigne un → état honnête, jamais le défaut du script', async () => {

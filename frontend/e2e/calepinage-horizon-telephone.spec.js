@@ -71,8 +71,9 @@ test('ACAL521 : douze visées simulées donnent un profil enregistré avec son r
   await page.getByRole('button', { name: 'Enregistrer le profil' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Profil d’horizon enregistré' })).toBeVisible()
 
-  const detail = await page.request.get(`${API}/calepinages/${id}/`)
-  expect(detail.ok(), `GET calepinage (${detail.status()})`).toBeTruthy()
+  // Le document de conception se lit sur `layout/` (le détail du calepinage ne le porte plus).
+  const detail = await page.request.get(`${API}/calepinages/${id}/layout/`)
+  expect(detail.ok(), `GET layout (${detail.status()})`).toBeTruthy()
   const profil = (await detail.json())?.roof_layout?.horizonProfile
   expect(profil?.points, 'points enregistrés').toHaveLength(CAPS.length)
   expect(profil.source).toBe('saisie')

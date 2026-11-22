@@ -583,7 +583,7 @@ describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
     const blocs = screen.getByTestId('csch-blocs')
     for (const texte of ['Coffret côté réseau', 'Compteur', 'Réseau du', 'distributeur']) expect(blocs).toHaveTextContent(texte)
     expect(blocs.querySelectorAll('[data-a-calculer="true"]')).toHaveLength(3)
-    expect(blocs.textContent).not.toMatch(/mm²|\d+ m/)
+    expect(blocs.textContent).not.toMatch(/mm²| \d+ m(?![a-zé])/)
     expect(screen.getByTestId('csch-a-calculer')).toHaveTextContent('Lancez la simulation pour dimensionner le côté réseau')
     fireEvent.click(screen.getByTestId('csch-a-calculer'))
     expect(aCalculer).toHaveBeenCalledTimes(1) // ouvre l'étape Résultats (onglet production)

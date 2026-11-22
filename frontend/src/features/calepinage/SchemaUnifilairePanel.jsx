@@ -281,10 +281,10 @@ export function SchemaEnBlocs({ plan, onOuvrir = null, coteReseau = null }) {
                 <g role="button" tabIndex={0} className="csch-element csch-a-calculer" data-testid="csch-a-calculer"
                   onClick={coteReseau.onOuvrir}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); coteReseau.onOuvrir() } }}>
-                  <text x="212" y={b.y + 22} className="csch-t12 csch-lien-svg">{coteReseau.texte}</text>
+                  <text x="212" y={b.y + 22} className="csch-t12 csch-lien-svg csch-etiquette">{coteReseau.texte}</text>
                 </g>
               )
-              : <text x="212" y={b.y + 22} className="csch-t12 csch-attenue" data-testid="csch-a-calculer">{coteReseau.texte}</text>
+              : <text x="212" y={b.y + 22} className="csch-t12 csch-attenue csch-etiquette" data-testid="csch-a-calculer">{coteReseau.texte}</text>
           )}
         </g>
       ))}
