@@ -43,6 +43,7 @@ from __future__ import annotations
 from html import escape
 
 from . import nombre_tel_que_servi
+from .champs_lisibles import motif_lisible
 
 __all__ = ['CSS_SECTION', 'MENTION_CASCADE_ABSENTE',
            'html_de_section']
@@ -120,7 +121,7 @@ def _ligne_etape(contexte, etape, langue):
     poste = escape(str(etape.get('libelle') or etape.get('etape') or ''))
     if omise:
         poste += '<span class="detail">%s</span>' % escape(
-            str(etape['motif_omission']))
+            motif_lisible(etape['motif_omission']))
     if omise and etape.get('perte_pct') is None:
         part = escape(_libelle(contexte, 'poste_omis'))
     else:

@@ -15,7 +15,9 @@ import { formatDateTime } from '../../../lib/format'
 import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
 import { estIndeterminee, phraseChaine, volts } from './tensionsChaines'
 import { libelleEtat } from './etatVerdict'
-import { grouperMotifs, libelleStatut, motifsRefusants, statutRefuse, tonStatut } from './VerdictElectrique.helpers'
+import {
+  grouperMotifs, libelleCode, libelleStatut, motifsRefusants, statutAbstention, statutRefuse, tonStatut,
+} from './VerdictElectrique.helpers'
 
 /* ============================================================================
    CALX249 — L'ONGLET « VERDICT ÉLECTRIQUE » DE L'ATELIER.
@@ -100,9 +102,9 @@ function Motif({ motif }) {
         >
           {libelleStatut(motif.statut)}
         </Badge>
-        <code className="text-xs text-muted-foreground" data-testid={`calx249-code-${motif.code}`}>
-          {motif.code}
-        </code>
+        <span className="text-xs font-medium" data-testid={`calx249-code-${motif.code}`}>
+          {libelleCode(motif.code)}
+        </span>
         {statutRefuse(motif.statut)
           ? (
             <span
@@ -123,11 +125,13 @@ function Motif({ motif }) {
             {motif.source}
           </p>
         )
-        : (
-          <p className="text-xs text-muted-foreground" data-testid={`calx249-sans-source-${motif.code}`}>
-            Aucune provenance déclarée.
-          </p>
-        )}
+        : statutAbstention(motif.statut)
+          ? null
+          : (
+            <p className="text-xs text-muted-foreground" data-testid={`calx249-sans-source-${motif.code}`}>
+              Aucune provenance déclarée.
+            </p>
+          )}
     </li>
   )
 }

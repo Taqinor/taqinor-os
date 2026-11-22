@@ -42,6 +42,7 @@ from __future__ import annotations
 from html import escape
 
 from . import nombre_tel_que_servi
+from .champs_lisibles import motif_lisible
 
 __all__ = ['CSS_SECTION', 'html_de_section']
 
@@ -68,7 +69,8 @@ def _ligne_orientation(ligne_ombrage, production_par_pan):
     prod = production_par_pan.get(pan) or {}
     tof, tsrf = prod.get('tof'), prod.get('tsrf')
     acces = ligne_ombrage.get('acces_solaire_moyen_pct')
-    motif = str(ligne_ombrage.get('motif_omission') or '').strip()
+    motif = motif_lisible(
+        str(ligne_ombrage.get('motif_omission') or '').strip())
     cellule_tof = nombre_tel_que_servi(tof) if tof is not None else '—'
     cellule_tsrf = nombre_tel_que_servi(tsrf) if tsrf is not None else '—'
     note = ('<div class="note">%s</div>' % escape(motif)
@@ -104,7 +106,7 @@ def _paragraphe_ombrage_electrique(resultat, nombre_de_pans):
     if etape is None:
         return ''
     titre = '<p class="grandeur">Ombrage électrique des chaînes</p>'
-    motif = str(etape.get('motif_omission') or '').strip()
+    motif = motif_lisible(str(etape.get('motif_omission') or '').strip())
     if motif:
         return titre + '<p class="note">non calculé : %s</p>' % escape(motif)
     entree = etape.get('entree')

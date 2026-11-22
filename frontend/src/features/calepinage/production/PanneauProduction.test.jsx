@@ -43,6 +43,7 @@ import ReglagesSimulation from '../reglages/ReglagesSimulation'
 import sourceBibliotheque from '../Bibliotheque.jsx?raw'
 import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
 import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
+import { OPTIONS_TELECHARGEMENT } from '../documents/telechargement'
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat
@@ -149,7 +150,7 @@ describe('PanneauProduction (CAL236)', () => {
     const sansCharge = await screen.findByTestId('acal453-graphique')
     expect(screen.queryByTestId('acal453-vide')).toBeNull()
     expect(within(sansCharge).getByTestId('acal453-motif')).toHaveTextContent('Aucune courbe de charge saisie.')
-    expect(within(sansCharge).getByText('Production (P50)')).toBeInTheDocument()
+    expect(within(sansCharge).getAllByText('Production (P50)').length).toBeGreaterThan(0)
     expect(within(sansCharge).queryByText('Consommation')).toBeNull()
     unmount2()
 
@@ -649,7 +650,7 @@ describe("PanneauProduction — Où va l'énergie (ACAL762)", () => {
     const bascule = await screen.findByTestId('acal762-bascule')
     expect(calepinageApi.calepinages.diagrammeEnergie).not.toHaveBeenCalled()
     fireEvent.click(bascule)
-    expect(calepinageApi.calepinages.diagrammeEnergie).toHaveBeenCalledWith(1)
+    expect(calepinageApi.calepinages.diagrammeEnergie).toHaveBeenCalledWith(1, undefined, OPTIONS_TELECHARGEMENT)
     const energie = reponseContrat('calepinage', 'calepinage_resultat', 'exemple').data.autoconsommation.energie
     for (const [code, cle] of [['production_brute', 'production_brute_kwh'], ['sur_place', 'autoconsomme_kwh'],
       ['injectee', 'export_reseau_kwh'], ['importee', 'import_reseau_kwh'], ['consommation', 'consommation_kwh']]) {
@@ -683,6 +684,15 @@ describe("PanneauProduction — Où va l'énergie (ACAL762)", () => {
     await ouvrir()
     expect(await screen.findByTestId('acal762-refus')).toHaveTextContent('Aucune cascade regroupée.')
     expect(screen.getByTestId('acal762-flux-soleil')).toBeInTheDocument()
+  })
+
+  it('un schéma trop long à produire dit le délai en français (R3)', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    calepinageApi.calepinages.diagrammeEnergie.mockRejectedValue({ code: 'ECONNABORTED' })
+    servir('exemple')
+    rendre()
+    await ouvrir()
+    expect(await screen.findByTestId('acal762-refus')).toHaveTextContent("Le serveur n'a pas fini de préparer ce document en 2 minutes.")
   })
 
   it('guidé : aucune carte', async () => {

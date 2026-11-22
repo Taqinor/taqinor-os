@@ -191,6 +191,28 @@ class QuantilesTest(unittest.TestCase):
         self.assertIn('source non renseignée', ligne)
 
 
+class MiseEnFormeR318Test(unittest.TestCase):
+    """R3-18 — milliers groupés à la française, variabilité en pourcentage :
+    deux mises en forme, aucun chiffre changé."""
+
+    def test_les_milliers_se_groupent_sans_arrondir(self):
+        self.assertEqual(nombre_tel_que_servi(526951.428),
+                         '526 951,428')
+        self.assertEqual(nombre_tel_que_servi(526951.428, 'en'),
+                         '526,951.428')
+        self.assertEqual(nombre_tel_que_servi(999.5), '999,5')
+        self.assertEqual(nombre_tel_que_servi(2024), '2024')
+
+    def test_la_variabilite_s_imprime_en_pourcentage_exact(self):
+        resultat = resultat_de_base()
+        resultat['production']['total']['annual_variability'] = 0.0753
+        html = html_de_section(contexte(resultat))
+        ligne = re.search(
+            r'<tr><th>Variabilité interannuelle</th>.*?</tr>', html).group(0)
+        self.assertIn('7,53 %', ligne)
+        self.assertNotIn('0,0753', ligne)
+
+
 class TableParPanTest(unittest.TestCase):
     def test_une_ligne_par_pan(self):
         html = html_de_section(contexte(resultat_de_base()))
@@ -211,7 +233,7 @@ class TotauxTest(unittest.TestCase):
     def test_pr_et_productible_specifique_sont_imprimes(self):
         html = html_de_section(contexte(resultat_de_base()))
         self.assertIn('0,799', html)
-        self.assertIn('1504,6', html)
+        self.assertIn('1 504,6', html)  # R3-18 : milliers groupés
 
 
 class TablePluriannuelleTest(unittest.TestCase):

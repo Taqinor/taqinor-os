@@ -76,7 +76,7 @@ class AucuneArithmetiqueTest(unittest.TestCase):
         attendue = [e['kwh_apres'] for e in cascade['etapes']
                     if e['kwh_apres'] is not None][-1]
         self.assertEqual(imprimees[-1], nombre_tel_que_servi(attendue))
-        self.assertEqual(imprimees[-1], '15792,3')
+        self.assertEqual(imprimees[-1], '15 792,3')  # R3-18
         self.assertEqual(_energie_livree(cascade), attendue)
 
     def test_aucun_arrondi(self):
@@ -86,7 +86,7 @@ class AucuneArithmetiqueTest(unittest.TestCase):
          if e['kwh_apres'] is not None][-1]['kwh_apres'] = 15792.34
         html = html_de_section(contexte({'cascade': cascade}))
         self.assertEqual([c for c in cellules(html, 'kwh-apres')
-                          if c != '—'][-1], '15792,34')
+                          if c != '—'][-1], '15 792,34')
 
     def test_le_total_imprime_est_celui_servi_jamais_recalcule(self):
         cascade = cascade_du_contrat()
@@ -98,7 +98,7 @@ class AucuneArithmetiqueTest(unittest.TestCase):
     def test_l_irradiance_incidente_est_le_premier_kwh_avant(self):
         html = html_de_section(contexte({'cascade': cascade_du_contrat()}))
         total = re.search(r'<tr class="total">.*?</tr>', html).group(0)
-        self.assertIn('16800,0', total)
+        self.assertIn('16 800,0', total)  # R3-18 : milliers groupés
         self.assertIn('Irradiance incidente', total)
         self.assertIn('Énergie livrée', total)
 
@@ -229,6 +229,55 @@ class TableIamTest(unittest.TestCase):
         self.assertNotIn('table-iam', html_de_section(contexte(omise)))
         sans = _resultat_avec_iam(modele='fresnel')
         self.assertNotIn('table-iam', html_de_section(contexte(sans)))
+
+
+class MotifsLisiblesTest(unittest.TestCase):
+    """R3-19 — un chemin interne ne s'imprime jamais ; le motif SERVI, relu
+    par ``a_renseigner``, reste intact."""
+
+    CHEMINS = ('simulation.salissure_mensuelle_pct', 'ombrage.shading12x24',
+               'FicheTechnique.degradation_annuelle_pct',
+               'serie.points[].t_cell_c', 'un.chemin_inconnu')
+
+    def _html(self, champ):
+        resultat = copy.deepcopy(RESULTAT)
+        etape = resultat['exemple']['cascade']['etapes'][0]
+        etape['motif_omission'] = 'Étape omise. Champ manquant : « %s ».' % (
+            champ)
+        return html_de_section(contexte(resultat['exemple'])), etape
+
+    def test_aucun_chemin_brut_dans_le_rapport_et_le_motif_servi_est_intact(
+            self):
+        for champ in self.CHEMINS:
+            with self.subTest(champ=champ):
+                html, etape = self._html(champ)
+                self.assertNotIn(champ, html)
+                self.assertIn('Champ manquant : « %s ».' % champ,
+                              etape['motif_omission'])
+
+    def test_un_chemin_connu_imprime_son_intitule_un_inconnu_est_generique(
+            self):
+        html, _ = self._html('ombrage.shading12x24')
+        self.assertIn('matrice d&#x27;ombrage 12 mois × 24 heures', html)
+        html, _ = self._html('un.chemin_inconnu')
+        self.assertIn('donnée manquante', html)
+
+    def test_liste_non_renseigne_et_reglage_de_la_societe(self):
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            motif_lisible,
+        )
+
+        texte = motif_lisible(
+            'Non renseigné(s) : « FicheTechnique.degradation_annuelle_pct »,'
+            ' « FicheTechnique.degradation_annee1_pct ». Champ manquant : '
+            '« simulation.salissure_mensuelle_pct ».')
+        self.assertNotIn('FicheTechnique', texte)
+        self.assertNotIn('simulation.', texte)
+        self.assertIn('dégradation annuelle du module', texte)
+        self.assertIn('Salissure, mois par mois', texte)
+        # Une phrase sans chemin est rendue telle quelle.
+        phrase = 'Un facteur 1 supposé se lirait « aucune ombre, vérifié ».'
+        self.assertEqual(motif_lisible(phrase), phrase)
 
 
 class SansCascadeTest(unittest.TestCase):

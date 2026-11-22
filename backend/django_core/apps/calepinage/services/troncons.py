@@ -335,9 +335,9 @@ def _courant_du_troncon(troncon, contexte):
         "pour le côté « %s »" % (cote or 'inconnu'))
     return (None,
             "le courant qui traverse le tronçon « %s » n'est publié ni par "
-            "le rattachement des chaînes (« courants.%s.ib_a ») ni par la "
-            "conception électrique du calepinage (%s) : section et chute de "
-            "tension OMISES." % (nom, nom, manque))
+            "le rattachement des chaînes à ce tronçon ni par la conception "
+            "électrique du calepinage (%s) : section et chute de tension "
+            "OMISES." % (nom, manque))
 
 
 #: ACAL635/636 — les réglages société (section ``electrique_societe``,
@@ -445,14 +445,14 @@ def _dimensionner_troncon(troncon, contexte):
             nom, 'section_mm2',
             "la section du conducteur de terre ne se dimensionne pas sur la "
             "chute de tension : elle relève de la check-list de terre "
-            "(services/terre.py) et de la norme applicable. La longueur du "
+            "et de la norme applicable. La longueur du "
             "tronçon, elle, reste publiée et entre au métré."))
 
     if cote not in (COTE_DC, COTE_AC):
         return (champs, _omission(
             nom, 'cote',
-            "le tronçon « %s » ne déclare pas son côté (« cote » attendu : "
-            "dc, ac ou terre) : sans lui, ni barème d'ampacité ni cible de "
+            "le tronçon « %s » ne déclare pas son côté (courant continu, "
+            "courant alternatif ou terre) : sans lui, ni barème d'ampacité ni cible de "
             "chute ne sont applicables." % nom))
 
     if spec is None:
@@ -463,14 +463,14 @@ def _dimensionner_troncon(troncon, contexte):
     if courant is None or courant <= 0:
         return (champs, _omission(
             nom, 'ib_a',
-            "le courant d'emploi du tronçon « %s » n'est pas publié "
-            "(« ib_a ») : section et chute de tension OMISES." % nom))
+            "le courant d'emploi du tronçon « %s » n'est pas publié : "
+            "section et chute de tension OMISES." % nom))
     if tension is None or tension <= 0:
         return (champs, _omission(
             nom, 'chute_pct',
-            "la tension de service du tronçon « %s » n'est pas publiée "
-            "(« tension_v ») : une chute de tension en pourcentage n'a pas "
-            "de sens sans elle." % nom))
+            "la tension de service du tronçon « %s » n'est pas publiée : "
+            "une chute de tension en pourcentage n'a pas de sens sans "
+            "elle." % nom))
 
     from core.electrique import cables as noyau
 

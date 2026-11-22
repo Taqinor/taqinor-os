@@ -936,8 +936,9 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-etape-electrique-ecran` | étape Électrique en une page (ACAL395). |
-| `cal-electrique-synthese` | étape Électrique : le compte du panneau « Prêt à envoyer ? » — « n points à régler » ou « Prêt à envoyer » (ACAL865). |
+| `cal-electrique-synthese` | étape Électrique : le compte du panneau « Prêt à envoyer ? » — « n contrôles à régler » ou « Prêt à envoyer » (ACAL865). |
 | `cal-electrique-section` | étape Électrique : section repliable (suffixe = clé de l’onglet). |
+| `cal-electrique-avances` | étape Électrique (guidé) : le seul déclencheur « Réglages avancés », qui range six sections (ACAL1191). |
 
 ## EtapeDocuments — ACAL867 (`documents/EtapeDocuments.jsx`)
 

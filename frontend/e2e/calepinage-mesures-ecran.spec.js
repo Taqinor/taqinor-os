@@ -205,6 +205,13 @@ async function calepinageParApi(request, prefixe, { layout = false } = {}) {
   return cal.id
 }
 
+// Les appels d'API partent des cookies du contexte : on charge d'abord une page de l'application, qui renouvelle
+// un jeton expiré (le formulaire de leads n'a rien à faire dans ce rôle).
+async function amorcerSession(page) {
+  await page.goto('/apps')
+  await expect(page.getByRole('heading', { name: 'Mes applications' })).toBeVisible({ timeout: 30_000 })
+}
+
 async function ouvrirAtelier(page, id, appareil) {
   await page.setViewportSize({ width: appareil.largeur, height: appareil.hauteur })
   await page.goto(`/calepinage/${id}`)
@@ -292,7 +299,7 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
 test('ACAL989: les six éléments d’action restent dans la première hauteur d’écran', async ({ page }) => {
   test.setTimeout(600_000)
   await carteRefusee(page.context())
-  await gotoLeads(page) // amorce la session (cookies) avant les appels d'API
+  await amorcerSession(page)
   const vide = await calepinageParApi(page.request, 'ACAL989 Vide')
 
   const mesure = {}
@@ -356,7 +363,7 @@ test('ACAL989+ACAL1189: la comparaison à la base échoue en nommant élément, 
 test('ACAL478: budget du mode guidé', async ({ page }) => {
   test.setTimeout(240_000)
   await carteRefusee(page.context())
-  await gotoLeads(page) // amorce la session avant les appels d'API
+  await amorcerSession(page)
   // Lead + calepinage par l'API (le formulaire de lead dépasse parfois 15 s sous charge : ce n'est pas ce que
   // ce cas mesure ; le chemin par formulaire reste joué par ACAL385).
   const id = await calepinageParApi(page.request, 'ACAL478')

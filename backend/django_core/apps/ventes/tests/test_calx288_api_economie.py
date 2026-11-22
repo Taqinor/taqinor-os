@@ -152,7 +152,10 @@ class ContratTest(_Base):
         self.assertIn('taux_actualisation_pct', omises)
         retenues = {h['cle']: h for h in bloc['hypotheses']}
         for cle in ('horizon_ans', 'degradation_pct', 'indexation_pct'):
-            self.assertIn('quote_engine.pricing', retenues[cle]['source'], cle)
+            self.assertIn('hypothèse de référence du document',
+                          retenues[cle]['source'], cle)
+            # R3-07 : aucun nom de module ni de constante dans une source.
+            self.assertNotRegex(retenues[cle]['source'], r'quote_engine|[A-Z]{4,}_', cle)
         self.assertEqual(retenues['degradation_pct']['valeur'], 0.5)
         self.assertEqual(retenues['investissement_mad']['valeur'], 100000.0)
         self.assertIn('DEV-CALX288-0001',
@@ -250,7 +253,8 @@ class ConsommationInconnueTest(_Base):
         motifs = {o['cle']: o['motif'] for o in bloc['omissions']}
         for cle in self.CLES_CHIFFREES:
             self.assertIsNone(bloc[cle], cle)
-            self.assertIn('economie_annee1_mad', motifs.get(cle, ''), cle)
+            self.assertIn("l'économie de l'année 1", motifs.get(cle, ''), cle)
+            self.assertNotIn('economie_annee1_mad', motifs.get(cle, ''), cle)
 
     def test_avec_consommation_les_chiffres_ne_changent_pas(self):
         reference = self._bloc()
@@ -261,6 +265,17 @@ class ConsommationInconnueTest(_Base):
 
 
 class VocabulaireTest(_Base):
+    def test_motifs_d_omission_sans_nom_de_cle(self):
+        """R3-07 : « horizon_ans non saisi » / « taux non fourni :
+        taux_actualisation_pct » passent en intitulés français ; la ``cle``
+        de l'omission, elle, ne change pas (contrat CALX280)."""
+        with mock.patch(CONSTRUCTEUR, return_value=DONNEES_REFERENCE):
+            bloc = self.api.get(self.url()).data
+        motifs = {o['cle']: o['motif'] for o in bloc['omissions']}
+        for motif in motifs.values():
+            self.assertNotRegex(motif, r'[a-z]+_(mad|pct|ans|kwh)\b', motif)
+        self.assertIn("le taux d'actualisation", motifs['van_mad'])
+
     def test_aucune_cle_prix_cout_marge(self):
         with mock.patch(CONSTRUCTEUR, return_value=DONNEES_REFERENCE):
             bloc = economie_pour_devis(self.devis.pk, self.company,

@@ -100,6 +100,42 @@ class DimensionsModuleTest(SimpleTestCase):
         self.assertIsNone(_dimensions_module({}))
 
 
+class LegendeEtEchelleR321Test(SimpleTestCase):
+    """R3-21 — la légende tient dans le bandeau, la mention d'échelle ne
+    chevauche pas les graduations de la barre."""
+
+    def test_un_libelle_long_se_coupe_a_la_largeur_du_bandeau(self):
+        import re
+
+        from apps.calepinage.services.planche import (
+            CARACTERES_PAR_LIGNE_LEGENDE, LIBELLE_MODULE_SANS_POSE,
+            _legende_svg,
+        )
+
+        morceaux, fin = _legende_svg(
+            0.0, 0.0, [('#000', '#fff', LIBELLE_MODULE_SANS_POSE)])
+        textes = [re.sub('<[^>]+>', '', m) for m in morceaux if '<text' in m]
+        lignes = textes[1:]  # la première est le titre « LÉGENDE »
+        self.assertGreater(len(lignes), 1)
+        self.assertTrue(all(len(t) <= CARACTERES_PAR_LIGNE_LEGENDE
+                            for t in lignes), lignes)
+        self.assertEqual(' '.join(lignes).replace('&#x27;', "'"),
+                         LIBELLE_MODULE_SANS_POSE)
+        self.assertGreater(fin, 5.0 + 4.6)  # la hauteur suit les lignes
+
+    def test_la_mention_d_echelle_est_au_dessus_de_la_barre(self):
+        import re
+
+        svg = svg_de_planche(geometrie_de_planche(LAYOUT))
+        mention = re.search(
+            r'<text x="[\d.]+" y="([\d.]+)" font-size="3" fill="[^"]+">'
+            r'Échelle du tracé', svg)
+        barre = re.search(r'<g><rect x="[\d.]+" y="([\d.]+)" '
+                          r'width="[\d.]+" height="1.6"', svg)
+        self.assertTrue(mention and barre)
+        self.assertLess(float(mention.group(1)), float(barre.group(1)))
+
+
 class SvgDePlancheTest(SimpleTestCase):
     def setUp(self):
         self.svg = svg_de_planche(geometrie_de_planche(LAYOUT),
@@ -313,9 +349,11 @@ class EmpriseVraieDesModulesTest(SimpleTestCase):
         del layout['zones'][0]['geometry']['panelOrientation']
         svg = svg_de_planche(geometrie_de_planche(layout))
         self.assertIn('r="0.7"', svg)
-        self.assertIn('Module posé — orientation non enregistrée '
-                      '(figuré par son centre) ; ouvrir et enregistrer le '
-                      'calepinage', svg)
+        # R3-21 : la légende est coupée à la largeur du bandeau.
+        for morceau in ('Module posé — orientation non',
+                        'enregistrée (figuré par son centre) ;',
+                        'ouvrir et enregistrer le calepinage'):
+            self.assertIn(morceau, svg)
 
 
 # ── ACAL603 — les cotes générales mesurent le TOIT seul ─────────────────────

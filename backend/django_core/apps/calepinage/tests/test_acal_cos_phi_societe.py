@@ -12,7 +12,7 @@ import unittest
 from apps.calepinage.services.chaines import concevoir_par_pan
 from apps.calepinage.services.electrique import TemperaturesSite
 from apps.calepinage.services.etapes import ecretage
-from apps.calepinage.services.raccordement import verdicts_raccordement
+from apps.calepinage.services.raccordement import _nom, verdicts_raccordement
 
 LAYOUT = {'zones': [{'id': 'a', 'label': 'PAN-A', 'result': {'count': 12},
                      'facingAzimuthDeg': 180.0, 'pitchDeg': 15.0}]}
@@ -52,7 +52,7 @@ class CosPhiSociete(unittest.TestCase):
         saisie = {'cos_phi_impose': 0.8, 'source_cos_phi': 'contrat'}
         bloc = verdicts_raccordement(_conception(), saisie, REGLAGES)
         self.assertAlmostEqual(bloc['puissance_injectee_kva'], 11.25)
-        self.assertIn('cos_phi_impose', bloc['source_puissance'])
+        self.assertIn(_nom('cos_phi_impose'), bloc['source_puissance'])
 
     def test_ecretage_ignore_le_reglage_societe(self):
         contexte = {'electrique_societe': REGLAGES, 'raccordement': {}}

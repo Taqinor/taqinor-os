@@ -508,7 +508,11 @@ function AtelierToiture({
   // ACAL994 — après « Enregistrer », le contexte relu (rafraichirContexte) porte le chiffrage SERVI : la carte
   // Économies et le Total passent de l'estimation à la valeur du serveur. Mode lead : aucun chiffrage, rien à poser.
   useEffect(() => {
-    if (estCalepinage && contexte) builderApi.current?.majChiffrage?.(contexte.chiffrage ?? null)
+    // R2-13 — le compte « · K au devis » suit le devis relu ; `cible.panneaux` n'est celui du DEVIS que si `source === 'devis'`.
+    if (estCalepinage && contexte) {
+      builderApi.current?.majChiffrage?.(contexte.chiffrage ?? null,
+        contexte.cible?.source === 'devis' ? (contexte.cible.panneaux ?? null) : null)
+    }
   }, [contexte, builderReady, estCalepinage])
 
   // ACAL83 — UNE fonction relit design-context après chaque enregistrement
@@ -647,10 +651,13 @@ function AtelierToiture({
   // ACAL37 (D-ACAL-1) — flux `/ventes/devis/:id/design` : la conception est rangée sur le
   // CALEPINAGE, PUIS le devis est resynchronisé par l'enveloppe du module
   // (`calepinages/<id>/sync-devis/`, D02-T09) — jamais `ventesApi.syncDevisLayout`.
-  // Rend `false` quand le serveur refuse (409 : devis accepté, refusé ou expiré, révisable ou clos ; un devis envoyé se corrige sur place, tracé).
+  // Serveur qui refuse (409 : devis accepté, refusé ou expiré, révisable ou clos ; un devis envoyé se corrige sur
+  // place, tracé) : R2-23 — la conception EST enregistrée, on rend `{enregistre: true, devisModifie: false, motif}`
+  // (motif = texte du serveur) pour que « Générer / Resynchroniser » le DISENT (BoutonDevis), jamais `false`.
   // ACON80 — la variante qui porte le devis synchronisé (servie par le contexte), ou null.
   const varianteId = paramsContexte ? (contexte?.variante?.id ?? null) : null
   const resynchroniserDevisLie = async (corps = {}) => {
+    const refus = (motif) => ({ enregistre: true, devisModifie: false, motif })
     if (!devisSynchronise || !calepinageId) return true
     try {
       const res = await calepinageApi.calepinages.syncDevis(calepinageId,
@@ -665,18 +672,16 @@ function AtelierToiture({
       const code = err?.response?.status
       const data = err?.response?.data
       if (code === 409) {
-        setConflit({
-          detail: data?.detail || 'Ce devis ne peut plus être resynchronisé.',
-          revision_possible: !!data?.revision_possible,
-        })
-        return false
+        const detail = data?.detail || 'Ce devis ne peut plus être resynchronisé.'
+        setConflit({ detail, revision_possible: !!data?.revision_possible })
+        return refus(detail)
       }
       // Lot 2 critique #23 — la conception EST enregistrée ; c'est la
       // resynchro du devis qui est refusée : le motif du SERVEUR, décodé par
       // le décodeur partagé (`refusDevis.js`), jamais « données invalides ».
       if (!code) {
         setGenError(MESSAGE_RESYNC_RESEAU)
-        return false
+        return refus('resynchronisation impossible (réseau)')
       }
       // Lot 2 critique #29 — refus ÉLECTRIQUE (422) : la liste des bloquants
       // et, pour un approbateur (`permissions.peut_deroger` SERVI), « Passer
@@ -689,15 +694,17 @@ function AtelierToiture({
           peutDeroger = !!detail?.data?.permissions?.peut_deroger
         } catch { peutDeroger = false }
         setBloquageSync({ ...electrique, peutDeroger })
-        setGenError(messageResyncRefusee(electrique.detail || refusServeur(err).message))
-        return false
+        const motif = electrique.detail || refusServeur(err).message
+        setGenError(messageResyncRefusee(motif))
+        return refus(motif)
       }
       if (code === 400 && data?.derogation_electrique) {
         setMotifDerogationErreur(refusServeur(err).message)
-        return false
+        return refus(refusServeur(err).message)
       }
-      setGenError(messageResyncRefusee(refusServeur(err).message))
-      return false
+      const motif = refusServeur(err).message
+      setGenError(messageResyncRefusee(motif))
+      return refus(motif)
     }
   }
 
@@ -713,7 +720,7 @@ function AtelierToiture({
     setSending(true)
     try {
       const ok = await resynchroniserDevisLie({ derogation_electrique: { motif: saisi } })
-      if (ok) {
+      if (ok === true) {
         setGenError(null)
         setStatus('Devis resynchronisé (dérogation électrique consignée).')
       }

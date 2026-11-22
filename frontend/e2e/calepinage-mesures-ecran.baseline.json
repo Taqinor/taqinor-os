@@ -6,9 +6,9 @@
   "gestes_lead_production": 8,
   "mode_guide": {
     "mesure_le": "2026-11-22",
-    "commit_mesure": "24ba201831fc3a8185655f46d18b6ec43c4ad72b",
+    "commit_mesure": "9d1e343dfd26563ad80ab9ceaa3b3b24ccd7f27f",
     "etapes": 5,
-    "controles_premier_ecran": 53,
+    "controles_premier_ecran": 45,
     "par_etape": {
       "toit": {
         "onglets": 1,
@@ -20,10 +20,10 @@
       },
       "electrique": {
         "onglets": 2,
-        "controles_panneau": 18
+        "controles_panneau": 13
       },
       "resultats": {
-        "onglets": 4,
+        "onglets": 2,
         "controles_panneau": 6
       },
       "documents": {

@@ -103,6 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad } from './dom';
+import { phraseSurplus, serviNb, texteBande } from './affichageErp'; // R2-16/17
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -225,7 +226,8 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
 }
 
 /** ACAL547 — aucune ligne du balayage n'atteint le besoin : le maximum MESURÉ, dit en toutes lettres. */
-export function phraseCouvertureMax(result: MatrixV6Result | null | undefined): string | null {
+export function phraseCouvertureMax(result: MatrixV6Result | null | undefined, pctTuile?: number): string | null {
+  if ((pctTuile ?? 0) >= 100) return null; // R3-04 — jamais « aucune pose ne couvre » à côté d'une tuile qui couvre
   // R2-16 — sans cible positive (facture inconnue) `pctOfTarget` vaut 0 : aucune phrase (« au plus 0 % » ne dit rien de vrai).
   const rows = (result?.rows ?? []).filter((r) => Number.isFinite(r.pctOfTarget) && r.pctOfTarget > 0);
   if (!rows.length || rows.some((r) => r.pctOfTarget >= 100)) return null;
@@ -601,6 +603,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   let dernierFit = 0;
   // R2-16 — la dernière carte peinte, pour repeindre la bande « Année 1 » quand l'économie servie est relue.
   let derniereBande: { d: CardData; factureInconnue: boolean } | null = null;
+  let dernierePct = 0; // R3-04 — couverture de la tuile affichée
+  let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null } | null = null; // R2-13
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -627,6 +631,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   };
   function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null) {
     dernierFit = fitCount;
+    derniereNote = { fit: fitCount, famille: familyLabel, motif };
     const active = ctx.neededPanels > 0;
     // L2 — en mode devis, le champ reste ACTIONNABLE même à 0 : aucune facture n'existe
     // dans cet écran pour dériver un besoin automatiquement (le champ facture est retiré
@@ -1079,11 +1084,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     for (const [id, el] of cibles) if (el && e.estimes[id] !== undefined) el.textContent = economieAffichee(ctx, id, e.estimes[id]);
     etiquetteEconomie();
     if (derniereBande) paintBande(derniereBande.d, derniereBande.factureInconnue); // R2-16 — la bande « Année 1 » suit l'économie relue
+    if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif); // R2-13 — « au devis » relu avec le contexte
   }
-
-  /** R2-16/R2-17 — une grandeur SERVIE (`etat: 'servi'` + nombre), sinon `null`. */
-  const serviNb = (g: { valeur: number | null; etat: string } | null | undefined): number | null =>
-    g?.etat === 'servi' && typeof g.valeur === 'number' ? g.valeur : null;
 
   /** La bande « Année 1 → Année 25 ». ERP : UNE économie (la servie, sinon l'estimation prudente) ; l'année 25 ne
    *  recopie jamais un montant calculé sur une autre base que le servi. Site public : fourchette d'avant, inchangée. */
@@ -1095,17 +1097,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       return;
     }
     const fac25 = degradationFactor(LIFETIME_YEARS);
-    const kwh25 = d.annualKwh * fac25;
     const target = d.target ?? ctx.prodTarget;
-    const sav25 = target > 0 ? annualSavingsMad(kwh25, target) : { low: d.savingsLow * fac25, high: d.savingsHigh * fac25 };
-    const degPct = Math.round(ANNUAL_DEGRADATION * 1000) / 10; // 0,5 %
+    const sav25 = target > 0 ? annualSavingsMad(d.annualKwh * fac25, target) : { low: d.savingsLow * fac25, high: d.savingsHigh * fac25 };
     const servie = modeErp() ? serviNb(etatEco(ctx).chiffrage?.economie_annee1_mad) : null;
-    const an1 = modeErp() ? (servie ?? d.savingsLow) : d.savingsHigh;
-    const an25 = modeErp() ? (servie != null ? null : sav25.low) : sav25.high;
-    band.textContent =
-      `Dans la durée (dégradation ~${degPct.toLocaleString('fr-FR')} %/an) : ` +
-      `Année 1 ~${fmt(Math.round(d.annualKwh))} kWh/an${factureInconnue ? '' : ` (${fmtMad(an1)}/an)`} → ` +
-      `Année ${LIFETIME_YEARS} ~${fmt(Math.round(kwh25))} kWh/an${factureInconnue ? '.' : an25 == null ? '.' : ` (${fmtMad(an25)}/an). Économies toujours plafonnées à votre facture.`}`;
+    band.textContent = texteBande({
+      degPct: Math.round(ANNUAL_DEGRADATION * 1000) / 10, annualKwh: d.annualKwh, kwhFin: d.annualKwh * fac25, annees: LIFETIME_YEARS, factureInconnue,
+      an1: modeErp() ? (servie ?? d.savingsLow) : d.savingsHigh, an25: modeErp() ? (servie != null ? null : sav25.low) : sav25.high,
+    });
   }
 
   /** R2-05 — l'ERP nomme la tuile pour ce qu'elle est : production ÷ consommation (jamais « couverture » : le PDF emploie
@@ -1119,6 +1117,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
 
   function paintCard(d: CardData, sourceLabel?: string) {
     derniereCarte = { count: d.count, annualKwh: d.annualKwh };
+    dernierePct = d.pct;
+    for (const p of Array.from(document.querySelectorAll<HTMLElement>('[data-couverture-max]'))) p.hidden = modeErp() && d.pct >= 100; // R3-04
     // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
     const factureInconnue = !((d.target ?? ctx.prodTarget) > 0) && !(d.savingsHigh > 0);
     const set = (id: string, v: string) => {
@@ -1153,9 +1153,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (noteEco) noteEco.hidden = !ctx.opts?.devisLie;
     const why = $('rp9-reco-why');
     // R2-17 — une pose très au-dessus de la consommation est DITE (les deux nombres), sans rien bloquer.
-    const surplus = modeErp() && (d.target ?? 0) > 0 && d.annualKwh > 2 * (d.target as number)
-      ? ` Pose très au-dessus de la consommation : ${fmt(Math.round(d.annualKwh))} kWh/an produits pour ${fmt(Math.round(d.target as number))} kWh/an consommés.`
-      : '';
+    const surplus = modeErp() ? phraseSurplus(d.annualKwh, d.target) : '';
     if (why) why.textContent = d.why + (sourceLabel ? ` ${sourceLabel}` : '') + surplus;
     // ACAL894 — la provenance de la carte, lue par le bandeau « Estimation rapide » de l'ERP.
     if (why) why.dataset.sourceProd = sourceLabel ?? '';
@@ -1241,10 +1239,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     }
     host.hidden = false;
     host.innerHTML = '';
+    host.style.cssText = 'display:grid;gap:0.5rem'; // R3-25 — une carte par ligne, espacées
     for (const c of cards) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'rp9-variant';
+      btn.style.cssText = 'display:flex;flex-direction:column;gap:0.125rem;text-align:left'; // R3-25 — titre, chiffres, raison : chacun sa ligne
       btn.dataset.variant = c.id;
       btn.setAttribute('aria-pressed', String(variantIsCurrent(c)));
       btn.title = c.reason;
@@ -1260,8 +1260,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       btn.addEventListener('click', () => applyVariant(c));
       host.appendChild(btn);
     }
-    const max = phraseCouvertureMax(ctx.matrixResult); // ACAL547
-    if (max) host.insertAdjacentHTML('beforeend', `<p class="rp9-variant-why" role="note">${max}</p>`);
+    const max = phraseCouvertureMax(ctx.matrixResult, modeErp() ? dernierePct : 0); // ACAL547 + R3-04
+    if (max) host.insertAdjacentHTML('beforeend', `<p class="rp9-variant-why" role="note" data-couverture-max>${max}</p>`);
   }
 
   /**

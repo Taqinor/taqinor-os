@@ -9,6 +9,7 @@ import { Badge, Button, Card, EmptyState, Spinner } from '../../ui'
 import { telechargerBlob } from './exportImage'
 
 import { motifDuRefusBlob } from './motifRefusBlob'
+import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
 
 /* ============================================================================
    CALX342 — COMPARER DE 1 À 5 CALEPINAGES, sur leur propre route de liste.
@@ -144,7 +145,7 @@ export default function ComparaisonProjets() {
     const [premier, ...autres] = lignes.map((ligne) => ligne.id)
     setMotifClasseur(null)
     setClasseurEnCours(true)
-    calepinageApi.calepinages.comparatifXlsx(premier, autres)
+    calepinageApi.calepinages.comparatifXlsx(premier, autres, OPTIONS_TELECHARGEMENT)
       .then((reponse) => {
         telechargerBlob(reponse.data, `comparatif-calepinages-${[premier, ...autres].join('-')}.xlsx`)
       })

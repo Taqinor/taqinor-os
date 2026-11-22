@@ -819,7 +819,7 @@ etape('PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats', ['ACAL3
     await expect(page.getByTestId('cal-etape-electrique-ecran')).toBeVisible(T)
     const pret = await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/pret-a-envoyer/`, T), 'pret-a-envoyer')
     const n = pret.nombre_bloquants + pret.nombre_a_regler
-    const attendu = n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'
+    const attendu = n > 0 ? `${n} contrôle${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'
     await expect(page.getByTestId('cal-electrique-synthese'), `synthèse (${n} points servis)`).toHaveText(attendu, T)
     await expect(page.locator('[data-testid^="cal-electrique-section-"]'), 'sept sections repliables').toHaveCount(7)
 

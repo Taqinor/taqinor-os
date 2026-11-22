@@ -51,13 +51,15 @@ def _depuis_devis(devis, marche):
     imposée et options divergentes comprises)."""
     from apps.ventes.horaire.productible_pose import base_de_production
     from apps.ventes.quote_engine.builder import build_quote_data
+    from apps.ventes.quote_engine.figures import production_imprimee
 
     data = build_quote_data(devis, {'pdf_mode': 'full'})
+    imprimee = production_imprimee(data)  # R3-D : LA production que le PDF imprime (C&I : celle de l'étude)
     avec = data.get('recommended') == 'Avec batterie'
     saisie = (devis.etude_params or {}).get('production_source') == 'saisie'
     source_prod = 'devis' if saisie else (SOURCE_POSE if base_de_production(devis) else SOURCE_VILLE)
     valeurs = {'kwc': (data.get('puissance_kwc') or None, 'devis'),
-               'production_annuelle_kwh': (data.get('prod_kwh') or None, source_prod)}
+               'production_annuelle_kwh': (float(imprimee) if imprimee is not None else None, source_prod)}
     if not data.get('savings_estimated'):  # D-ACAL-40 : rien sans facture
         valeurs['economie_annee1_mad'] = (data.get('eco_a_ann' if avec else 'eco_s_ann'), 'devis')
         valeurs['autoconsommation_pct'] = (_pct(data.get('autoconso_avec' if avec else 'autoconso_sans')), 'devis')

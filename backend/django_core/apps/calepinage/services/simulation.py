@@ -1307,12 +1307,16 @@ def _appels_complementaires_pvgis(blocs, client, reference, decision,
 
 
 def _annexes_de_production(blocs, serie_reference, projection, contexte):
-    """Bilan mensuel (ACAL705) et durée de vie (ACAL693) à côté du tableau."""
+    """Bilan mensuel (ACAL705) et durée de vie (ACAL693) à côté du tableau ;
+    puis (R3-01, DERNIER calcul de la simulation) la cascade, les cascades par
+    pan et l'irradiation du plan publiées sur l'ANNÉE MOYENNE de la fenêtre."""
+    from . import annee_moyenne as _annee_moyenne
     from .bilan_mensuel import publier as bilan_mensuel
     blocs['production']['bilan_mensuel'] = bilan_mensuel(
         serie_reference, blocs['production'])
     blocs['production']['duree_de_vie'] = bloc_duree_de_vie(
         projection, contexte)
+    _annee_moyenne.publier_a_l_annee_moyenne(blocs)
 
 
 def _parties_et_projection(blocs, document, projection, contexte, maintenant):

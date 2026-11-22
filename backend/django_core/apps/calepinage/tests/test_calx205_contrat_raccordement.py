@@ -39,6 +39,7 @@ import pathlib
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.parametres_cles import CLES_ELECTRIQUE_SOCIETE
+from apps.calepinage.services.raccordement import _reglage_nom
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
                 / 'contract_samples')
@@ -297,7 +298,7 @@ class DesequilibreTest(SimpleTestCase):
             RACCORDEMENT['exemple']['calcul']['desequilibre_pct'])
         verdict = verdicts('exemple')['desequilibre_phases']
         self.assertEqual(verdict['statut'], 'omis')
-        self.assertIn('seuil_desequilibre_pct', verdict['detail'])
+        self.assertIn(_reglage_nom('seuil_desequilibre_pct'), verdict['detail'])
 
 
 class EtatVideTest(SimpleTestCase):

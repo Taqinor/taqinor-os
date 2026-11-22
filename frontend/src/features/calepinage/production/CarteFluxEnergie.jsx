@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 import { formatNumber } from '../../../lib/format'
+import { OPTIONS_TELECHARGEMENT, erreurDeTelechargement } from '../documents/telechargement'
 
 /* ACAL762 — « Où va l'énergie » (niveau expert, repliée d'office) : le schéma
    dessiné par le serveur (ACAL761, SVG en <img>) et la liste des flux en kWh
@@ -46,6 +47,7 @@ function fluxServis(data) {
 }
 
 async function motifDuRefus(erreur) {
+  if (erreur?.code === 'ECONNABORTED') return (await erreurDeTelechargement(erreur, { delai: true }))[0].message
   let corps = erreur?.response?.data
   try {
     if (corps && typeof corps.text === 'function') corps = JSON.parse(await corps.text())
@@ -67,7 +69,7 @@ export default function CarteFluxEnergie({ calepinageId, data }) {
     if (!ouvert) return undefined
     let url = null
     let annule = false
-    Promise.resolve(calepinageApi.calepinages.diagrammeEnergie(calepinageId))
+    Promise.resolve(calepinageApi.calepinages.diagrammeEnergie(calepinageId, undefined, OPTIONS_TELECHARGEMENT))
       .then((res) => {
         if (annule || typeof URL.createObjectURL !== 'function') return
         url = URL.createObjectURL(res.data)

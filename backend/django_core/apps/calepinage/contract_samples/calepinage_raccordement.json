@@ -31,7 +31,7 @@
         "code": "elevation_tension",
         "libelle": "Élévation de tension au point de raccordement",
         "statut": "omis",
-        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est intégré au module et aucune limite n'est supposée — saisissez « limite_elevation_pct » avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
+        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est intégré au module et aucune limite n'est supposée — saisissez la limite d'élévation (%) avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
         "source": null
       },
       {
@@ -39,7 +39,7 @@
         "libelle": "Puissance injectée face à la puissance souscrite",
         "statut": "ok",
         "detail": "8,0 kVA injectés pour 12,0 kVA souscrits : la puissance souscrite saisie couvre l'injection.",
-        "source": "saisie — puissance_souscrite_kva"
+        "source": "saisie — la puissance souscrite (kVA)"
       },
       {
         "code": "regime_phases",
@@ -53,13 +53,13 @@
         "libelle": "Tension nominale employée par le calcul",
         "statut": "ok",
         "detail": "400 V saisis, 400 V employés par le calcul de chute et d'élévation : aucune divergence.",
-        "source": "saisie — tension_nominale_v"
+        "source": "saisie — la tension nominale (V)"
       },
       {
         "code": "desequilibre_phases",
         "libelle": "Déséquilibre entre les phases",
         "statut": "omis",
-        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
+        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « Seuil de déséquilibre entre chaînes » avec sa source dans les réglages du module.",
         "source": null
       },
       {
@@ -126,14 +126,14 @@
         "libelle": "Élévation de tension au point de raccordement",
         "statut": "ok",
         "detail": "0,82 % d'élévation pour une limite saisie de 3,0 % : il reste 2,18 points de marge.",
-        "source": "saisie — limite_elevation_pct, source : contrat de raccordement du site (valeur d'essai)"
+        "source": "saisie — la limite d'élévation (%), source : contrat de raccordement du site (valeur d'essai)"
       },
       {
         "code": "puissance_souscrite",
         "libelle": "Puissance injectée face à la puissance souscrite",
         "statut": "ok",
         "detail": "8,0 kVA injectés pour 12,0 kVA souscrits : la puissance souscrite saisie couvre l'injection.",
-        "source": "saisie — puissance_souscrite_kva"
+        "source": "saisie — la puissance souscrite (kVA)"
       },
       {
         "code": "regime_phases",
@@ -147,13 +147,13 @@
         "libelle": "Tension nominale employée par le calcul",
         "statut": "ok",
         "detail": "400 V saisis, 400 V employés par le calcul de chute et d'élévation : aucune divergence.",
-        "source": "saisie — tension_nominale_v"
+        "source": "saisie — la tension nominale (V)"
       },
       {
         "code": "desequilibre_phases",
         "libelle": "Déséquilibre entre les phases",
         "statut": "omis",
-        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
+        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « Seuil de déséquilibre entre chaînes » avec sa source dans les réglages du module.",
         "source": null
       },
       {
@@ -215,35 +215,35 @@
         "code": "elevation_tension",
         "libelle": "Élévation de tension au point de raccordement",
         "statut": "omis",
-        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est intégré au module et aucune limite n'est supposée — saisissez « limite_elevation_pct » avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
+        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est intégré au module et aucune limite n'est supposée — saisissez la limite d'élévation (%) avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
         "source": null
       },
       {
         "code": "puissance_souscrite",
         "libelle": "Puissance injectée face à la puissance souscrite",
         "statut": "omis",
-        "detail": "« puissance_souscrite_kva » n'est pas saisie : rien ne peut être comparé à la puissance injectée. Saisissez la puissance souscrite du contrat de raccordement.",
+        "detail": "La puissance souscrite (kVA) n'est pas saisie : rien ne peut être comparé à la puissance injectée. Saisissez la puissance souscrite du contrat de raccordement.",
         "source": null
       },
       {
         "code": "regime_phases",
         "libelle": "Régime de l'onduleur face au branchement",
         "statut": "omis",
-        "detail": "« phases » n'est pas saisi : le régime du branchement est inconnu, et il n'est pas supposé. Saisissez 1 ou 3 phases.",
+        "detail": "Le nombre de phases du branchement n'est pas saisi : le régime du branchement est inconnu, et il n'est pas supposé. Saisissez 1 ou 3 phases.",
         "source": null
       },
       {
         "code": "tension_nominale",
         "libelle": "Tension nominale employée par le calcul",
         "statut": "omis",
-        "detail": "« tension_nominale_v » n'est pas saisie : ni 230 V ni 400 V ne sont supposés. Saisissez la tension nominale du branchement.",
+        "detail": "La tension nominale (V) n'est pas saisie : ni 230 V ni 400 V ne sont supposés. Saisissez la tension nominale du branchement.",
         "source": null
       },
       {
         "code": "desequilibre_phases",
         "libelle": "Déséquilibre entre les phases",
         "statut": "omis",
-        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
+        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « Seuil de déséquilibre entre chaînes » avec sa source dans les réglages du module.",
         "source": null
       },
       {

@@ -3,7 +3,13 @@
 // relu pour afficher la phrase du serveur, jamais une phrase reformulée ici.
 // Un corps illisible (panne réseau, HTML d'un proxy) rend `repli`, qui DIT
 // qu'il est générique plutôt qu'un motif métier inventé.
+import { erreurDeTelechargement } from './documents/telechargement'
+
 export async function motifDuRefusBlob(erreur, repli) {
+  // R3 — délai dépassé : la phrase de « Documents » (durée + quoi faire).
+  if (erreur?.code === 'ECONNABORTED') {
+    return (await erreurDeTelechargement(erreur, { delai: true }))[0].message
+  }
   const donnees = erreur?.response?.data
   try {
     const texte = typeof donnees?.text === 'function' ? await donnees.text() : donnees

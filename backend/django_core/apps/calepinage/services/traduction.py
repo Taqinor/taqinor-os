@@ -711,8 +711,10 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
             azimut_deg=azimut))
         # CIQ112 — le mode de pose du PAN, sinon celui DÉCLARÉ pour le
         # document (toit du lead, posé à la création) ; absent ⇒ géométrie.
-        mode_pose = (pan.get('modePose')
-                     or (roof_layout or {}).get('modePoseDeclare') or None)
+        # CFIN2 — le déclaré n'est qu'un DÉFAUT : un pan dont l'atelier a écrit
+        # le ``roofType`` (« Toit plat » / « Toit en pente ») garde son dessin.
+        declare = None if pan.get('roofType') is not None else (roof_layout or {}).get('modePoseDeclare')
+        mode_pose = pan.get('modePose') or declare or None
         politiques.append((repere_pan, _politique(plat, pente, latitude,
                                                   mode_pose)))
         proposition = _proposition_chassis(pente, regles_gabarit)

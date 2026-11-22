@@ -13,9 +13,9 @@ export const projet = {
     // CALX342 — le MÊME comparatif en classeur (feuille « Comparatif ») : le
     // calepinage `id` ouvre le tableau, `autres` complètent (5 au total).
     // Réponse BLOB ; un refus 400 arrive lui aussi en Blob.
-    comparatifXlsx: (id, autres = []) =>
+    comparatifXlsx: (id, autres = [], options) =>
       api.get(`${pivot(id)}comparatif.xlsx/`,
-        { responseType: 'blob', params: autres.length ? { ids: autres.join(',') } : {} }),
+        { responseType: 'blob', params: autres.length ? { ids: autres.join(',') } : {}, ...options }),
 
     // CALX344 — les ÉTIQUETTES LIBRES du calepinage (contrat
     // `contract_samples/calepinage_etiquettes.json`, CALX332 ; porte
@@ -99,8 +99,8 @@ export const projet = {
     // porte `views/projet_json.py`). `apercu: true` ne fait qu'afficher ce
     // qui SERAIT écrit — le serveur n'écrit rien tant que l'écran ne
     // renvoie pas `apercu: false` en confirmation explicite.
-    exporterProjet: (id) =>
-      api.get(`${pivot(id)}export-projet.json/`, { responseType: 'blob' }),
+    exporterProjet: (id, options) =>
+      api.get(`${pivot(id)}export-projet.json/`, { responseType: 'blob', ...options }),
     importerProjet: (corps) =>
       api.post('/calepinage/calepinages/import-projet/', corps),
 

@@ -150,5 +150,14 @@ describe('ACAL547 — la carte « Couvre le besoin »', () => {
 
   it('R2-16 — sans cible positive (facture inconnue, pctOfTarget à 0) : aucune phrase « au plus 0 % »', () => {
     expect(phraseCouvertureMax(balayage(ligne(20, 0), ligne(26, 0)))).toBeNull();
+    expect(phraseCouvertureMax(balayage(ligne(20, -5)))).toBeNull(); // un maximum ≤ 0 ne dit rien non plus
+  });
+
+  it('R3-04 — jamais « aucune pose ne couvre » à côté d’une tuile qui couvre (≥ 100 %) ; en dessous ou sans tuile : la phrase reste', () => {
+    const r = balayage(ligne(20, 70), ligne(26, 92));
+    expect(phraseCouvertureMax(r, 318)).toBeNull();
+    expect(phraseCouvertureMax(r, 100)).toBeNull();
+    expect(phraseCouvertureMax(r, 99)).toBe('Aucune pose ne couvre le besoin (estimation) : le toit donne au plus 92 % (26 panneaux).');
+    expect(phraseCouvertureMax(r)).toContain('au plus 92 %'); // appel d’avant (site public) : inchangé
   });
 });

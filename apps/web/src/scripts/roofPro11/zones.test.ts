@@ -354,6 +354,39 @@ describe('CALX98 — dupliquerPan', () => {
     expect(v.zone.edges).not.toBe(source.edges); // copie, pas la même référence
   });
 
+  it('R3-24 : la copie garde le MODULE du pan d’origine (pas le module par défaut de l’atelier)', () => {
+    const v = dupliquerPan({ ...panSource(), moduleId: 'jinko-710' }, 'area-copie-1', 10);
+    if (!v.ok) throw new Error('duplication attendue');
+    expect(v.zone.moduleId).toBe('jinko-710');
+    // Source sans module (= défaut de l'atelier) : la copie n'en invente aucun.
+    const sans = dupliquerPan(panSource(), 'area-copie-2', 10);
+    if (!sans.ok) throw new Error('duplication attendue');
+    expect('moduleId' in sans.zone).toBe(false);
+  });
+
+  it('CALX98 : la copie garde les RÉGLAGES PHYSIQUES du pan (provenance de la pente, pavage, portée, châssis) mais reste un pan NEUF', () => {
+    const reglages = {
+      pitchSource: { source: 'saisie', ref: 'visite' },
+      coupuresPavage: { rangs: [2] },
+      porteeEntrePieds: { valeurM: 1.2 },
+      chassis: { type: 'portrait' },
+    };
+    const source = {
+      ...panSource(), ...reglages, existant: true, anneeMiseEnService: 2019, verrouille: true,
+    } as unknown as AreaRecord;
+    const v = dupliquerPan(source, 'area-copie-1', 10);
+    if (!v.ok) throw new Error('duplication attendue');
+    const z = v.zone as unknown as Record<string, unknown>;
+    for (const [cle, valeur] of Object.entries(reglages)) {
+      expect(z[cle]).toEqual(valeur);
+      expect(z[cle]).not.toBe((source as unknown as Record<string, unknown>)[cle]); // copie profonde
+    }
+    // Une copie est un pan NEUF et modifiable : jamais « existant » (il sortirait du devis), jamais verrouillée.
+    expect('existant' in z).toBe(false);
+    expect('anneeMiseEnService' in z).toBe(false);
+    expect('verrouille' in z).toBe(false);
+  });
+
   it('ne recopie AUCUN résultat calculé (ce serait un chiffre inventé)', () => {
     const v = dupliquerPan(panSource(), 'area-copie-1', 10);
     if (!v.ok) throw new Error('duplication attendue');

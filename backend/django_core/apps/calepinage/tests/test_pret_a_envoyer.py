@@ -201,8 +201,18 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Matériel non désigné')
         verdict = controles['verdict_electrique']
         self.assertEqual(verdict['etat'], 'a_regler')
-        self.assertEqual(verdict['valeur_texte'], 'À compléter : 1 points')
+        # R3-10 : singulier juste (« 1 point »), et le même mot que la pastille.
+        self.assertEqual(verdict['valeur_texte'], 'À compléter : 1 point')
         self.assertEqual(len(controles), 7)
+
+    def test_resume_de_motifs_singulier_pluriel(self):
+        # R3-10 : jamais « 1 point(s) » — « 1 point », « 2 points ».
+        from apps.calepinage.services.pret_a_envoyer import _depuis_motifs
+
+        un = [{'statut': 'alerte', 'libelle': 'Premier.'}]
+        deux = un + [{'statut': 'alerte', 'libelle': 'Second.'}]
+        self.assertEqual(_depuis_motifs('x', 'X', un, geste='g')['valeur_texte'], '1 point')
+        self.assertEqual(_depuis_motifs('x', 'X', deux, geste='g')['valeur_texte'], '2 points')
 
     def test_etat_lu_jamais_recalcule(self):
         # Mutant : recalculer depuis les motifs ⇒ « pret » (aucun motif).

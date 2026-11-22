@@ -19,6 +19,7 @@ from __future__ import annotations
 from html import escape
 
 from ..rapport import nombre_tel_que_servi, verifier_etancheite
+from ..rapport.champs_lisibles import motif_lisible
 
 __all__ = [
     'CODE_DOCUMENT', 'MENTION_ETUDE', 'PHRASES', 'TITRE',
@@ -69,7 +70,7 @@ def _non_comptees(poste):
         if not isinstance(etape, dict):
             continue
         nom = str(etape.get('libelle') or etape.get('etape') or '')
-        motif = str(etape.get('motif_omission') or '')
+        motif = motif_lisible(etape.get('motif_omission') or '')
         morceaux.append('%s : %s' % (nom, motif) if motif else nom)
     return morceaux
 

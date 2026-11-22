@@ -6,6 +6,7 @@ import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatDate, formatNumber } from '../../../lib/format'
 import { Button, Card, Input, Label } from '../../../ui'
 import { downloadBlob } from '../../../utils/downloadBlob'
+import { OPTIONS_TELECHARGEMENT, erreurDeTelechargement } from '../documents/telechargement'
 import { SelecteurFichier } from '../reglages/ReglagesGabarits'
 import { COLONNES_CSV, COLONNES_D_OFFICE, colonnesAEnvoyer } from './colonnesCsv'
 
@@ -77,6 +78,9 @@ const REFUS_SANS_MOTIF = (
  * et l'appelant affiche la phrase générique ci-dessus en le DISANT.
  */
 async function lireRefus(erreur) {
+  if (erreur?.code === 'ECONNABORTED') {
+    return { champ: '', motif: (await erreurDeTelechargement(erreur, { delai: true }))[0].message, ligne: null }
+  }
   let corps = erreur?.response?.data
   if (corps && typeof corps.text === 'function') {
     try { corps = JSON.parse(await corps.text()) } catch { return null }
@@ -147,10 +151,8 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
     const colonnes = quoi === 'horaire' ? colonnesAEnvoyer(cochees) : null
     const parJour = quoi === 'horaire' && pas === 'jour'
     const appel = parJour
-      ? calepinageApi.calepinages.exportCsv(calepinageId, quoi, colonnes, { pas: 'jour' })
-      : colonnes
-        ? calepinageApi.calepinages.exportCsv(calepinageId, quoi, colonnes)
-        : calepinageApi.calepinages.exportCsv(calepinageId, quoi)
+      ? calepinageApi.calepinages.exportCsv(calepinageId, quoi, colonnes, { pas: 'jour', ...OPTIONS_TELECHARGEMENT })
+      : calepinageApi.calepinages.exportCsv(calepinageId, quoi, colonnes || null, OPTIONS_TELECHARGEMENT)
     return Promise.resolve(appel)
       .then((res) => {
         const fichier = `calepinage-${calepinageId}-${quoi}.csv`

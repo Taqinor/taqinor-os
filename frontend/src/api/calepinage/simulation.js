@@ -25,6 +25,7 @@ export const simulation = {
           ...(options?.pas ? { pas: options.pas } : {}),
         },
         ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+        ...(options?.timeout ? { timeout: options.timeout } : {}),
       }),
 
     // CALX62 — le DÉPÔT d'une série météo horaire de la société, à la place
@@ -111,8 +112,8 @@ export const simulation = {
     // diverger. Réponse BLOB ; une conception incomplète ou bloquée ne
     // produit AUCUN fichier et le serveur refuse en 400 en NOMMANT le champ
     // en cause — l'écran affiche CE motif-là, il n'en invente aucun.
-    sldDxf: (id) =>
-      api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob' }),
+    sldDxf: (id, options) =>
+      api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob', ...options }),
 }
 // ACAL387 — contrat calepinage_profil_depart.json (M0)
 // ACAL388 — contrat calepinage_balayage.json (M0)

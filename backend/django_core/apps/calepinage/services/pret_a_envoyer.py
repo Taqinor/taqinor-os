@@ -176,13 +176,16 @@ def _depuis_motifs(code, libelle, motifs, *, geste):
     """La ligne qui résume des motifs servis : le pire statut, le 1er motif."""
     if not motifs:
         return _elec(code, libelle, 'ok', 'Aucun point relevé')
+    from . import synthese_publication as _synthese
+
     etats = [_ETAT_DU_MOTIF.get(m['statut'], 'a_regler') for m in motifs]
     pire = max(etats, key=_RANG.get)
-    return _elec(code, libelle, pire, '%d point(s)' % len(motifs),
+    return _elec(code, libelle, pire, _synthese._points(len(motifs)),
                  cause=motifs[0]['libelle'], geste=geste)
 
 
 def _verdict_electrique(publication):
+    from . import synthese_publication as _synthese
     from .etat_dossier_electrique import ETATS_DOSSIER
 
     etat, points = publication['etat'], publication['points']
@@ -191,7 +194,7 @@ def _verdict_electrique(publication):
         return _elec('verdict_electrique', libelle, 'ok', 'Prêt')
     if etat == ETATS_DOSSIER[1]:
         return _elec('verdict_electrique', libelle, 'a_regler',
-                     'À compléter : %d points' % points,
+                     'À compléter : %s' % _synthese._points(points),
                      geste='Compléter le dossier électrique')
     return _elec('verdict_electrique', libelle, 'bloquant',
                  'Bloquant : %d' % points,

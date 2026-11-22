@@ -141,6 +141,84 @@ class GardeEtVideTest(unittest.TestCase):
         self.assertEqual(html, '')
 
 
+def _pdf_de(pages, marque):
+    import fitz
+
+    document = fitz.open()
+    for numero in range(pages):
+        document.new_page().insert_text((72, 72), '%s %d' % (marque, numero))
+    try:
+        return document.tobytes()
+    finally:
+        document.close()
+
+
+def _textes(octets):
+    import fitz
+
+    document = fitz.open(stream=octets, filetype='pdf')
+    try:
+        return [page.get_text() for page in document]
+    finally:
+        document.close()
+
+
+class TotalApresJonctionTest(unittest.TestCase):
+    """R3-18 — « page X / N » compte le document REMIS, schéma joint compris.
+    Le rendu est injecté (``render_pdf`` simulé) : aucun WeasyPrint requis."""
+
+    def setUp(self):
+        try:
+            importlib.import_module('fitz')
+        except Exception:
+            self.skipTest('PyMuPDF indisponible sur ce poste')
+
+    def test_le_compteur_du_gabarit_est_remplace_par_le_vrai_total(self):
+        from apps.calepinage.services.rapport import _html_avec_total_de_pages
+
+        html = ('<style>@page{@bottom-right{content:"p " counter(page) '
+                '" / " counter(pages);}}</style>')
+        self.assertNotIn('counter(pages)', _html_avec_total_de_pages(html, 21))
+        self.assertIn('" / " "21"', _html_avec_total_de_pages(html, 21))
+
+    def test_une_jonction_rerend_le_corps_avec_le_total_du_document(self):
+        from unittest import mock
+
+        from apps.calepinage.services.rapport import _total_apres_jonction
+
+        corps, schema = _pdf_de(2, 'corps'), _pdf_de(1, 'schema')
+        from apps.calepinage.services.rapport.systeme import (
+            fusionner_octets_pdf,
+        )
+        joints = fusionner_octets_pdf([corps, schema])
+        vus = []
+
+        def faux_rendu(*, html, company=None):
+            vus.append(html)
+            return _pdf_de(2, 'neuf')
+
+        with mock.patch('core.pdf.render_pdf', faux_rendu):
+            octets = _total_apres_jonction(
+                '<x>counter(pages)</x>', corps, joints, company=None)
+        self.assertEqual(vus, ['<x>"3"</x>'])
+        textes = _textes(octets)
+        self.assertEqual(len(textes), 3)
+        self.assertIn('neuf 0', textes[0])
+        self.assertIn('neuf 1', textes[1])
+        self.assertIn('schema 0', textes[2])
+
+    def test_sans_jonction_le_document_reste_inchange(self):
+        from unittest import mock
+
+        from apps.calepinage.services.rapport import _total_apres_jonction
+
+        corps = _pdf_de(2, 'corps')
+        with mock.patch('core.pdf.render_pdf',
+                        side_effect=AssertionError('re-rendu inutile')):
+            self.assertIs(_total_apres_jonction('<x/>', corps, corps,
+                                                company=None), corps)
+
+
 @tag('pdf')
 class RenduReelPaginationTest(unittest.TestCase):
     """WeasyPrint + PyMuPDF réels — étiqueté ``pdf`` (hors du palier CI)."""

@@ -216,7 +216,8 @@ export interface RoofToolApi {
    *  au boot (le calque reste vide dans les deux cas). */
   setReferenceContourVisible: (visible: boolean) => void;
   /** ACAL994 — le bloc `chiffrage` relu après « Enregistrer » : la carte Économies et le Total prennent la valeur servie. */
-  majChiffrage: (chiffrage: ChiffrageAtelier | null) => void;
+  majChiffrage: (chiffrage: ChiffrageAtelier | null, panneauxDevis?: number | null) => void;
+  /* R2-13 — `panneauxDevis` (optionnel) : le compte du devis relu avec le contexte (`cible.panneaux`) ; omis = compte inchangé. */
   /** AP-F2 (fondateur 26/08/2026) — reseme la zone active DEPUIS le contour
    *  ORIGINAL du client (`opts.referenceContour`, MÊME source que le calque
    *  de référence) et relance l'optimiseur, pour que le commercial puisse

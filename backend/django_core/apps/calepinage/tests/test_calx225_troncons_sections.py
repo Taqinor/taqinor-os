@@ -297,7 +297,7 @@ class ContexteDepuisLaConceptionTest(SimpleTestCase):
         self.assertIsNone(par_id(paquet)['ch1']['section_mm2'])
         omission = [o for o in paquet['omissions']
                     if o['champ'] == 'ib_a'][0]
-        self.assertIn('ib_a', omission['motif'])
+        self.assertNotIn('ib_a', omission['motif'])  # R3-09 : la clé reste au champ, la phrase est du français
         self.assertIn('chaîne', omission['motif'])
 
 

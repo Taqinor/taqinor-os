@@ -99,8 +99,15 @@ function omissionMotif(omissions, cle) {
 // (le serveur préfixe lui-même le motif des CINQ indicateurs dérivés, jamais
 // celui d'une grandeur d'entrée simple : `ventes_economie.json`, exemple_vide).
 // Ne JAMAIS doubler le préfixe plutôt que de le supposer absent.
+// R3-07 — un nom de grandeur qui traînerait encore dans un motif ou une source
+// (`taux_actualisation_pct`) passe par LIBELLES_HYPOTHESES : jamais une clé à l'écran.
+const enClair = (texte) => String(texte ?? '').replace(
+  /\b[a-z]+(?:_[a-z0-9]+)+\b/g,
+  (cle) => (LIBELLES_HYPOTHESES[cle] ? LIBELLES_HYPOTHESES[cle].toLowerCase() : cle),
+)
+
 function libelleOmission(motif) {
-  const texte = motif || 'aucun motif publié par le serveur'
+  const texte = enClair(motif || 'aucun motif publié par le serveur')
   return /^non publié\s*:/i.test(texte) ? texte : `non publié : ${texte}`
 }
 
@@ -198,7 +205,7 @@ function TableauHypotheses({ hypotheses }) {
           <tr key={h.cle} className="border-t border-border/60" data-testid="calx289-hypothese">
             <td className="py-1">{libelleHypothese(h.cle)}</td>
             <td className="py-1 text-right tabular-nums">{formatValeurHypothese(h.cle, h.valeur)}</td>
-            <td className="py-1 text-xs text-muted-foreground">{h.source}</td>
+            <td className="py-1 text-xs text-muted-foreground">{enClair(h.source)}</td>
             <td className="py-1 text-xs text-muted-foreground">
               {h.saisie_le ? formatDate(h.saisie_le) : 'issue du devis'}
             </td>

@@ -31,6 +31,7 @@ import unittest
 from unittest import mock
 
 from apps.calepinage.services import electrique
+from apps.calepinage.services.parametres_cles import SECTION_ELECTRIQUE_SOCIETE, registre
 from apps.calepinage.services.electrique import (
     PublicationBloquee, STATUT_MOTIF_OMIS, STATUT_MOTIF_SANS_SOURCE,
     garde_publication, verdict_publiable,
@@ -502,13 +503,14 @@ class ArchitectureOnduleurTest(unittest.TestCase):
         # Mutant « verdict rendu sans seuils » : statut ok ⇒ échec.
         motif = self._motif(LAYOUT_TROIS_ORIENTATIONS, {})
         self.assertEqual(motif['statut'], STATUT_NON_VERIFIABLE)
-        self.assertEqual(motif['libelle'], 'seuils non saisis : seuil_orientations_micro, '
-                         'seuil_ecart_acces_optimiseur')
+        self.assertEqual(motif['libelle'], 'réglages non saisis : ' + ' ; '.join(
+            registre(SECTION_ELECTRIQUE_SOCIETE)[cle][0]
+            for cle in ('seuil_orientations_micro', 'seuil_ecart_acces_optimiseur')))
 
     def test_seuil_sans_source_reste_non_saisi(self):
         reglages = dict(SEUILS_SAISIS, seuil_orientations_micro={'valeur': 3, 'source': ''})
         self.assertEqual(self._motif(LAYOUT_TROIS_ORIENTATIONS, reglages)['libelle'],
-                         'seuils non saisis : seuil_orientations_micro')
+                         'réglages non saisis : ' + registre(SECTION_ELECTRIQUE_SOCIETE)['seuil_orientations_micro'][0])
 
     def test_acces_solaire_non_mesure(self):
         motif = self._motif(LAYOUT, SEUILS_SAISIS)
@@ -531,6 +533,75 @@ class ArchitectureOnduleurTest(unittest.TestCase):
         self.assertEqual(types['seuil_ecart_acces_optimiseur'],
                          {'type': 'nombre', 'minimum': 0, 'maximum': 1})
         self.assertIn('seuil_orientations_micro', registre(SECTION_ELECTRIQUE_SOCIETE))
+
+
+class CodesDesMotifsOntUnIntituleTest(unittest.TestCase):
+    """R3-09 — l'écran « Verdict électrique » traduit chaque code de motif en
+    intitulé de métier (table JSON lue par l'écran). Un code que le serveur
+    prononce sans entrée dans cette table fait rougir ici, pas à l'écran."""
+
+    #: Les seuls codes écrits en littéral dans les services (ni constante, ni
+    #: sortie d'une fonction pure testable sans base) : à tenir à la main.
+    LITTERAUX = ('RACCORDEMENT_REFUSE', 'CHUTE_CUMULEE')
+
+    @staticmethod
+    def _table():
+        import json
+        from pathlib import Path
+
+        fichier = (Path(__file__).resolve().parents[5] / 'frontend' / 'src'
+                   / 'features' / 'calepinage' / 'electrique'
+                   / 'libellesCodesVerdict.json')
+        return json.loads(fichier.read_text(encoding='utf-8'))
+
+    @staticmethod
+    def _codes_prononces():
+        from apps.calepinage.services import (
+            architecture_onduleur, declassement_onduleur, raccordement,
+            troncons,
+        )
+        from apps.calepinage.tests.test_calx215_natures_verdicts import (
+            CODES_ATTENDUS,
+        )
+
+        codes = set(CODES_ATTENDUS)
+        codes.update((
+            electrique.CODE_FICHE_INCOMPLETE, electrique.CODE_AFFECTATION,
+            electrique.CODE_POLYSTRING, electrique.CODE_MICRO_ONDULEURS,
+            electrique.CODE_REGIME_NON_PRECISE,
+            architecture_onduleur.CODE_ARCHITECTURE_ONDULEUR,
+            declassement_onduleur.CODE_DECLASSEMENT_THERMIQUE,
+            raccordement.CODE_ELEVATION, raccordement.CODE_PUISSANCE_SOUSCRITE,
+            raccordement.CODE_REGIME_PHASES, raccordement.CODE_TENSION_NOMINALE,
+            raccordement.CODE_DESEQUILIBRE,
+            raccordement.CODE_LIMITATION_INJECTION))
+        codes.update(troncons.CODE_VERDICT.values())
+        # Les sorties de fonctions pures : le code vient du serveur, pas d'ici.
+        codes.update(m['code'] for m in electrique._motifs_de_la_norme({}))
+        codes.update(m['code'] for m in electrique._motifs_des_troncons(
+            {'omissions': [{}]}))
+        codes.update(m['code'] for m in electrique._motifs_de_la_terre(
+            {'omissions': ['x'], 'justification_requise': True}))
+        return codes
+
+    def test_chaque_code_prononce_a_un_intitule(self):
+        table = self._table()
+        manquants = sorted(
+            (self._codes_prononces() | set(self.LITTERAUX)) - set(table))
+        self.assertEqual(
+            manquants, [], 'codes prononcés par le serveur sans intitulé dans '
+            'libellesCodesVerdict.json : %s' % manquants)
+
+    def test_les_codes_de_fonctions_pures_sont_bien_vus(self):
+        codes = self._codes_prononces()
+        for attendu in ('NORME_NON_APPLICABLE', 'TRONCON_NON_CALCULABLE',
+                        'TERRE_OMISE', 'TERRE_JUSTIFICATION_MANQUANTE'):
+            self.assertIn(attendu, codes)
+
+    def test_aucun_intitule_n_est_le_code_ni_vide(self):
+        for code, intitule in self._table().items():
+            self.assertNotEqual(intitule.strip(), code, code)
+            self.assertIn(' ', intitule.strip(), code)
 
 
 if __name__ == '__main__':      # pragma: no cover

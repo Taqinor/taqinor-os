@@ -808,6 +808,7 @@ export const ALL_HOOKS = [
   'cal-etape-electrique-ecran',
   'cal-electrique-synthese',
   'cal-electrique-section',
+  'cal-electrique-avances',
   // ── documents/EtapeDocuments.jsx (ACAL867) ──
   'cal-etape-documents-ecran',
   'cal-documents-synthese',

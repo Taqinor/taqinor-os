@@ -267,17 +267,41 @@ def feuille_de_section(code):
 
 # ── Impression TELLE QUE SERVIE ─────────────────────────────────────────────
 
+#: R3-18 — les milliers se groupent comme au PDF du devis
+#: (``generate_devis_premium``) : espace fine insécable en français, virgule en
+#: anglais. Un entier ne se groupe qu'à partir de 5 chiffres (un millésime ou
+#: un numéro de pan à 4 chiffres reste lisible tel quel) ; un flottant dès 4.
+_MILLE_FR = ' '
+_CHIFFRES_ENTIER_MIN = 5
+_CHIFFRES_FLOTTANT_MIN = 4
+
+
+def _grouper_milliers(texte, langue, minimum):
+    """Insère le séparateur de milliers dans la partie entière de ``texte``
+    (un nombre déjà imprimé) — mise en forme PURE : aucun chiffre ne change."""
+    signe = '-' if texte.startswith('-') else ''
+    entier, point, reste = texte.lstrip('-').partition('.')
+    if not entier.isdigit() or len(entier) < minimum:
+        return texte
+    groupes = []
+    while entier:
+        groupes.insert(0, entier[-3:])
+        entier = entier[:-3]
+    return signe + (',' if langue == 'en' else _MILLE_FR).join(groupes) + point + reste
+
+
 def nombre_tel_que_servi(valeur, langue='fr'):
     """Un nombre SANS arithmétique : ni arrondi, ni cumul, ni conversion.
 
-    Seul le séparateur décimal suit la langue. ``None`` s'imprime « — ».
+    Le séparateur décimal suit la langue et les milliers se groupent (R3-18) :
+    deux mises en forme, jamais un calcul. ``None`` s'imprime « — ».
     """
     if valeur is None or isinstance(valeur, bool):
         return '—'
     if isinstance(valeur, int):
-        return str(valeur)
+        return _grouper_milliers(str(valeur), langue, _CHIFFRES_ENTIER_MIN)
     if isinstance(valeur, float):
-        texte = repr(valeur)
+        texte = _grouper_milliers(repr(valeur), langue, _CHIFFRES_FLOTTANT_MIN)
         return texte.replace('.', ',') if langue != 'en' else texte
     return escape(str(valeur))
 
@@ -628,6 +652,52 @@ def _motif_schema(schema):
     return motif_du_schema(schema)
 
 
+_TOTAL_DE_PAGES = 'counter(pages)'
+
+
+def _html_avec_total_de_pages(html, total):
+    """R3-18 — le même HTML, dont le « page X / N » imprime ``total`` : le
+    compteur ``counter(pages)`` du gabarit ne compte que le CORPS, avant la
+    jonction du schéma unifilaire et des fiches constructeur."""
+    return html.replace(_TOTAL_DE_PAGES, '"%d"' % int(total))
+
+
+def _remplacer_pages_de_tete(octets_joints, nombre, octets_tete):
+    """``octets_joints`` dont les ``nombre`` premières pages sont remplacées
+    par ``octets_tete`` (même nombre de pages : seul le total du pied change)."""
+    import fitz  # PyMuPDF
+
+    from .systeme import fusionner_octets_pdf
+
+    document = fitz.open(stream=octets_joints, filetype='pdf')
+    try:
+        document.delete_pages(0, nombre - 1)
+        suite = document.tobytes() if document.page_count else b''
+    finally:
+        document.close()
+    return fusionner_octets_pdf([octets_tete, suite])
+
+
+def _total_apres_jonction(html, octets_corps, octets_joints, *, company):
+    """R3-18 — « page X / N » compte le document REMIS : le corps seul est
+    rendu d'abord (``render_pdf``), puis le schéma et les fiches s'y joignent ;
+    quand la jonction ajoute des pages, le corps est rendu une seconde fois
+    avec le vrai total et remplace ses pages de tête. Sans jonction, ou si le
+    corps ne se compte pas, ``octets_joints`` est rendu inchangé."""
+    from core.pdf import render_pdf
+
+    from ..pack_technique import compter_pages
+
+    corps, total = compter_pages(octets_corps), compter_pages(octets_joints)
+    if not corps or total <= corps:
+        return octets_joints
+    nouveau = render_pdf(html=_html_avec_total_de_pages(html, total),
+                         company=company)
+    if compter_pages(nouveau) != corps:  # jamais un corps qui change de longueur
+        return octets_joints
+    return _remplacer_pages_de_tete(octets_joints, corps, nouveau)
+
+
 def rendre_rapport(calepinage, *, company=None, **options):
     """Octets PDF du rapport, via ``core.pdf.render_pdf`` (ARC11).
 
@@ -648,8 +718,8 @@ def rendre_rapport(calepinage, *, company=None, **options):
     company = company or getattr(calepinage, 'company', None)
     schema = _schema_du_calepinage(calepinage)
     options.setdefault('motif_schema', _motif_schema(schema))
-    octets = render_pdf(html=html_du_rapport(calepinage, **options),
-                        company=company)
+    html = html_du_rapport(calepinage, **options)
+    octets = corps = render_pdf(html=html, company=company)
     if schema is not None:
         # ACAL227 — le schéma unifilaire suit le corps du rapport, AVANT les
         # fiches constructeur ; absent, aucune page n'est ajoutée (le motif
@@ -666,4 +736,6 @@ def rendre_rapport(calepinage, *, company=None, **options):
         from .systeme import rendre_rapport_avec_annexes
 
         octets, _manques = rendre_rapport_avec_annexes(calepinage, octets)
+    if octets is not corps:
+        octets = _total_apres_jonction(html, corps, octets, company=company)
     return octets

@@ -696,3 +696,29 @@ describe('ACAL891 — Remplir et la limite de modules', () => {
     expect(remplir(null).posés).toBe(3);
   });
 });
+
+// R2-09 / R2-05 — LE formateur de puissance (virgule, 2 décimales) et le libellé « Posés ÷ cible » (atelier ERP seulement).
+describe('R2-09 / R2-05 — fenêtre de pose : kWc au format français, « Posés ÷ cible » en ERP seulement', () => {
+  const rendre = (opts: Record<string, unknown>) => {
+    document.body.innerHTML = '<div id="hote"><dd id="rp9-layout-cover">—</dd><dt id="dt-cover">Couverture besoin</dt></div>';
+    const { map } = makeMap();
+    const plan = makePlan(40);
+    (plan.grid as unknown as { panels: unknown[] }).panels = [{ cx: 0, cy: 0 }];
+    const ctx = makeFreeCtx(plan, [{ cx: 0, cy: 0 }, { cx: -4, cy: 0 }, { cx: -8, cy: 0 }]);
+    (ctx as unknown as { opts: unknown }).opts = opts;
+    (ctx as unknown as { neededPanels: number }).neededPanels = 6;
+    const editor = createLayoutEditor(ctx, makeDeps(map));
+    editor.renderLayoutPanel();
+    return { kwc: document.getElementById('rp9-layout-kwc')?.textContent, cover: document.getElementById('rp9-layout-cover')?.textContent,
+      dt: document.getElementById('dt-cover')?.textContent };
+  };
+  it('ERP : « Posés ÷ cible » et puissance « x,xx kWc » ; site public : « Couverture besoin » d’avant', () => {
+    const erp = rendre({ chiffrage: null });
+    expect(erp.dt).toBe('Posés ÷ cible');
+    expect(erp.cover).toBe('50 %');
+    expect(erp.kwc).toMatch(/^\d+,\d{2} kWc$/);
+    const pub = rendre({});
+    expect(pub.dt).toBe('Couverture besoin');
+    expect(pub.kwc).toMatch(/^\d+,\d{2} kWc$/);
+  });
+});

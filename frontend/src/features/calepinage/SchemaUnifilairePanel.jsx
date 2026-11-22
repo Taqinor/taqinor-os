@@ -9,6 +9,7 @@ import RetourAtelier from './atelier/RetourAtelier'
 import { telechargerBlob } from './exportImage'
 import { corpsEdition, exporterSchemaPng, exporterSchemaSvg, motifDuRefusDxf, nomFichierSchema } from './SchemaUnifilairePanel.helpers'
 import EtatEcranAtelier from './atelier/EtatEcranAtelier'
+import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
 import CroquisSchemaGrise from './CroquisSchemaGrise'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
@@ -154,7 +155,7 @@ export default function SchemaUnifilairePanel({ calepinageId, lectureSeule = fal
   const telechargerDxf = () => {
     setMotifExport(null)
     setDxfEnCours(true)
-    calepinageApi.calepinages.sldDxf(id)
+    calepinageApi.calepinages.sldDxf(id, OPTIONS_TELECHARGEMENT)
       .then((reponse) => {
         telechargerBlob(reponse.data, nomFichierSchema(data?.calepinage, 'dxf'))
       })

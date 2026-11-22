@@ -1628,15 +1628,14 @@ def _peremption_calepinage(calepinage, company):
     quoi comparer la conception (CAL188 — l'écran affiche « — »)."""
     from apps.ventes.selectors import get_devis_by_pk
 
-    from ..serializers import peremption_du_calepinage
+    from ..serializers import nb_panneaux_du_document, peremption_du_calepinage
 
     devis_id = getattr(calepinage, 'devis_id', None)
-    if not devis_id:
-        return {'layout_stale': None, 'layout_nb_panneaux': None}
-    devis = get_devis_by_pk(devis_id)
+    devis = get_devis_by_pk(devis_id) if devis_id else None
     if devis is None or (company is not None
                          and devis.company_id != company.pk):
-        return {'layout_stale': None, 'layout_nb_panneaux': None}
+        # R3-12 : péremption inconnue sans devis, mais le compte du document se lit (comme la liste).
+        return {'layout_stale': None, 'layout_nb_panneaux': nb_panneaux_du_document(calepinage)}
     # ACAL47 — le calepinage est passé au sélecteur : divergence de conception
     # et compte du DOCUMENT du calepinage (même helper que la liste).
     return peremption_du_calepinage(devis, calepinage)

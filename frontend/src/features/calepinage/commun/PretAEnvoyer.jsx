@@ -12,7 +12,7 @@ import Pourquoi from './Pourquoi'
    ACAL865 — « PRÊT À ENVOYER ? » (maquette `Electrique.dc.html`).
    ----------------------------------------------------------------------------
    Lit `GET calepinages/<id>/pret-a-envoyer/` (ACAL860, contrat
-   `calepinage_pret_a_envoyer.json`) : UN compte (« n points à régler »,
+   `calepinage_pret_a_envoyer.json`) : UN compte (« n contrôles à régler »,
    n = bloquants + à régler, ou « Prêt à envoyer »), puis les rouges et les
    oranges — libellé, valeur servie, « ? » et « Régler » (qui pousse
    `?onglet=<cible.onglet>&champ=<cible.champ>`) —, les `info` en valeur sans
@@ -38,12 +38,16 @@ function pastille(controle) {
 function Ligne({ controle, onRegler }) {
   const marque = pastille(controle)
   const aRegler = Boolean(TON[controle.etat]) && Boolean(controle.cible?.onglet)
+  const pastilleAffichee = Boolean(marque) && controle.etat !== 'ok'
   return (
     <li data-testid={`cal-pret-ligne-${controle.code}`}
       className="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border py-1.5 text-sm">
-      {marque && controle.etat !== 'ok' && <Badge tone={marque.ton}>{marque.libelle}</Badge>}
+      {pastilleAffichee && <Badge tone={marque.ton}>{marque.libelle}</Badge>}
       <span className="font-medium">{controle.libelle}</span>
-      <span className="text-muted-foreground">{controle.valeur_texte}</span>
+      {/* R3-10 : la pastille dit déjà « À compléter : 3 points » — pas deux fois. */}
+      {!(pastilleAffichee && controle.valeur_texte === marque.libelle) && (
+        <span className="text-muted-foreground">{controle.valeur_texte}</span>
+      )}
       <Pourquoi cle={`controle.${controle.code}`} valeurs={controle} />
       {aRegler && (
         <button type="button" data-testid={`cal-pret-regler-${controle.code}`}
@@ -93,7 +97,7 @@ export default function PretAEnvoyer({ calepinageId, testIdCompte }) {
       <div className="flex flex-wrap items-baseline gap-x-2">
         {n > 0 && <h3 className="text-base font-semibold">Prêt à envoyer ?</h3>}
         <p data-testid={testIdCompte} className="text-base font-medium">
-          {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
+          {n > 0 ? `${n} contrôle${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
         </p>
       </div>
       {enTete.length > 0 && (

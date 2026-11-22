@@ -30,8 +30,12 @@ export const ETAPES = [
 // passent au niveau expert (visibles d'office en expert, et un `?onglet=` les ouvre encore).
 export const ESSENTIELS = [
   'pente', 'fiches', 'verdict-electrique', 'schema',
-  'production', 'pertes', 'batterie', 'economie', 'documents', 'dossiers', 'approbation',
+  'production', 'pertes', 'documents',
 ]
+// ACAL1192 — l'étape Résultats se limite à la production et à ses pertes ; `batterie` et `economie` sont experts
+// (visibles d'office en expert, et `?onglet=economie` les ouvre encore, `ongletsVisibles`).
+// ACAL1193 — l'étape Documents ne montre d'office que `documents` (l'écran de fin d'ACAL867) ; `dossiers` et
+// `approbation` sont experts, mais `?onglet=approbation` l'ouvre encore (le lien d'une demande d'approbation).
 
 export const ETATS = ['a_faire', 'en_cours', 'fait', 'bloque']
 

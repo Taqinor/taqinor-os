@@ -52,12 +52,14 @@ def motifs_de_l_architecture(conception, document, donnees, reglages):
     """Zéro ou un motif de publication (``ok`` ou ``non_verifiable``)."""
     from .electrique import _motif_publication
     from .raccordement import _reglage
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE, registre
 
     seuils = {cle: _reglage(reglages, cle) for cle in (CLE_SEUIL_ORIENTATIONS, CLE_SEUIL_ECART)}
     manquants = [cle for cle, (valeur, _source) in seuils.items() if valeur is None]
     if manquants:
         return [_motif_publication(CODE_ARCHITECTURE_ONDULEUR, STATUT_NON_VERIFIABLE,
-                                   'seuils non saisis : %s' % ', '.join(manquants))]
+                                   'réglages non saisis : %s' % ' ; '.join(
+                                       registre(SECTION_ELECTRIQUE_SOCIETE)[cle][0] for cle in manquants))]
     if getattr(conception, 'manquantes', ()) or not getattr(conception, 'chaines', ()):
         return []   # matériel ou chaînes absents : déjà dit par FICHE_INCOMPLETE
     ecart = _ecart_max(conception, document, donnees or {})

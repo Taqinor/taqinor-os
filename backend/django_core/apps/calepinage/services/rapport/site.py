@@ -48,6 +48,7 @@ from __future__ import annotations
 from html import escape
 
 from . import nombre_tel_que_servi, valeur_imprimable
+from .champs_lisibles import motif_lisible
 from ..note_calcul import _source_lisible
 from ..site import SOURCE_PVGIS, fuseau_du_site
 
@@ -192,7 +193,7 @@ def _modele_d_etape(cascade, code_etape):
     if etape is None:
         return 'non nommé'
     if etape.get('kwh_apres') is None and etape.get('motif_omission'):
-        return 'non appliquée — %s' % escape(str(etape['motif_omission']))
+        return 'non appliquée — %s' % escape(motif_lisible(etape['motif_omission']))
     entree = etape.get('entree')
     if not isinstance(entree, dict) or not entree.get('modele'):
         return 'non nommé'

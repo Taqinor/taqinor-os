@@ -5,6 +5,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import { Button, Card } from '../../../ui'
 import { downloadBlob } from '../../../utils/downloadBlob'
 import EntreeFichierJson from '../commun/EntreeFichierJson'
+import { OPTIONS_TELECHARGEMENT, erreurDeTelechargement } from '../documents/telechargement'
 
 /* ============================================================================
    CALX371 — MONTER L'EXPORT ET L'IMPORT DE PROJET EN ONGLET DE L'ATELIER.
@@ -58,6 +59,9 @@ const LIBELLE_BLOC = {
     `responseType: 'blob'`) — même discipline que
     `documents/deposerImage.js::erreursDeRefusBlob`. */
 async function lireRefus(erreur) {
+  if (erreur?.code === 'ECONNABORTED') {
+    return { champ: '', motif: (await erreurDeTelechargement(erreur, { delai: true }))[0].message }
+  }
   let corps = erreur?.response?.data
   if (typeof Blob !== 'undefined' && corps instanceof Blob) {
     try { corps = JSON.parse(await corps.text()) } catch { return null }
@@ -82,7 +86,7 @@ export default function Projet({ calepinageId: idPropose } = {}) {
   const exporter = useCallback(() => {
     setExportErreur(null)
     setExportEnCours(true)
-    return Promise.resolve(calepinageApi.calepinages.exporterProjet(calepinageId))
+    return Promise.resolve(calepinageApi.calepinages.exporterProjet(calepinageId, OPTIONS_TELECHARGEMENT))
       .then((res) => downloadBlob(res?.data, `calepinage-${calepinageId}-projet.json`))
       .catch(async (erreur) => {
         const refus = await lireRefus(erreur)

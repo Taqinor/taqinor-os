@@ -18,14 +18,24 @@ from . import valeurs
 
 __all__ = ['MesureRefusee', 'enregistrer_mesures', 'etat_production_mesuree']
 
-#: Les bornes de la COLONNE : ``annee`` est un PositiveSmallInteger (≤ 32767),
-#: ``kwh_mesure`` un Decimal(12, 3) (< 1e9, trois décimales).
-ANNEE_MINI, ANNEE_MAXI = 1900, 32767
+#: Une mesure date de 1900 (borne de NATURE, aucun relevé n'est plus ancien) à
+#: l'année courante + 1 (année en cours de saisie). La borne basse et le
+#: plafond de la colonne ``annee`` (PositiveSmallInteger, ≤ 32767) sont ceux du
+#: schéma de la vue (400) ; la borne haute DÉPEND DE LA DATE DU JOUR, que le
+#: schéma ne peut pas dire sans dériver chaque 1er janvier : elle répond 409.
+ANNEE_MINI = 1900
+ANNEE_COLONNE_MAXI = 32767
+#: ``kwh_mesure`` : Decimal(12, 3) (< 1e9, trois décimales).
 #: Plafond de ``kwh_mesure`` : Decimal(12, 3) => strictement moins de 1e9 kWh.
 KWH_MAXI = 999_999_999
 MOTIF_VIDE = "Aucune production mesurée n'est saisie pour ce calepinage."
 MOTIF_SANS_SIMULATION = ("Simulation absente ou périmée : le P50 mensuel n'est "
                          "pas servi, aucun écart n'est calculé.")
+
+
+def annee_maximale():
+    """La dernière année admise : l'année courante + 1."""
+    return datetime.date.today().year + 1
 
 
 class MesureRefusee(ValueError):
@@ -42,37 +52,51 @@ class MesureRefusee(ValueError):
         return {self.champ or 'detail': [str(self)]}
 
 
-def _entier(valeur, champ, mini, maxi):
+def _entier(valeur, champ, mini, maxi, libelle):
+    """Un entier de ``mini`` à ``maxi``, ou un refus qui NOMME ``libelle``
+    (l'intitulé français ; ``champ`` reste la clé que l'écran lit)."""
     if isinstance(valeur, bool) or not isinstance(valeur, int):
-        raise MesureRefusee('Un entier est attendu.', champ)
+        raise MesureRefusee('« %s » : un entier est attendu.' % libelle, champ)
     if not mini <= valeur <= maxi:
-        raise MesureRefusee('Hors bornes : de %d à %d.' % (mini, maxi), champ)
+        raise MesureRefusee('« %s » : un entier de %d à %d est attendu.'
+                            % (libelle, mini, maxi), champ)
     return valeur
 
 
 def _valider(corps):
     """``(annee, [(mois, kwh)])`` ou un refus qui nomme le champ."""
+    from .pertes import MOIS_LIBELLES
+
     if not isinstance(corps, dict):
-        raise MesureRefusee('Un objet {annee, mesures} est attendu.')
-    annee = _entier(corps.get('annee'), 'annee', ANNEE_MINI, ANNEE_MAXI)
+        raise MesureRefusee("L'année et les mesures mensuelles sont "
+                            'attendues.')
+    annee = _entier(corps.get('annee'), 'annee', ANNEE_MINI,
+                    ANNEE_COLONNE_MAXI, 'Année des mesures')
+    if annee > annee_maximale():
+        raise MesureRefusee(
+            '« Année des mesures » : %d au plus (année en cours et suivante).'
+            % annee_maximale(), 'annee', statut=409)
     lignes = corps.get('mesures')
     if not isinstance(lignes, list) or len(lignes) > 12:
-        raise MesureRefusee('« mesures » est une liste de 12 lignes au plus.',
+        raise MesureRefusee('« Production mesurée » : douze mois au plus.',
                             'mesures')
     vus, mesures = set(), []
     for rang, ligne in enumerate(lignes):
         base = 'mesures[%d]' % rang
         if not isinstance(ligne, dict):
-            raise MesureRefusee('Une ligne {mois, kwh_mesure} est attendue.',
-                                base)
-        mois = _entier(ligne.get('mois'), base + '.mois', 1, 12)
+            raise MesureRefusee('Une ligne (mois et production mesurée) est '
+                                'attendue.', base)
+        mois = _entier(ligne.get('mois'), base + '.mois', 1, 12,
+                       'Mois de la ligne %d' % (rang + 1))
+        nom_mois = MOIS_LIBELLES[mois - 1]
         if mois in vus:
-            raise MesureRefusee('Le mois %d est saisi deux fois.' % mois,
+            raise MesureRefusee('Le mois de %s est saisi deux fois.' % nom_mois,
                                 base + '.mois', statut=409)
         vus.add(mois)
         kwh = valeurs.nombre_fini(
             ligne.get('kwh_mesure'), base + '.kwh_mesure', mini=0,
-            maxi=KWH_MAXI, decimales=3, obligatoire=True, erreur=MesureRefusee)
+            maxi=KWH_MAXI, decimales=3, obligatoire=True, erreur=MesureRefusee,
+            libelle='Production de %s' % nom_mois)
         mesures.append((mois, kwh))
     return annee, mesures
 

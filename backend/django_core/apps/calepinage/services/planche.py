@@ -45,6 +45,7 @@ retourné est plausible à l'œil et faux au mètre près.
 from __future__ import annotations
 
 import math
+import textwrap
 from html import escape
 from .valeurs import nombre as _nombre
 
@@ -68,6 +69,16 @@ FORMAT_A3_MM = (420.0, 297.0)
 #: Marge de feuille et largeur du bandeau latéral (cartouche + légende CAL172).
 MARGE_MM = 12.0
 LARGEUR_BANDEAU_MM = 84.0
+
+#: R3-21 — la légende se coupe à la largeur du bandeau : place du texte (mm) =
+#: bandeau − 3 de décalage − 6 du carré de style − 3 de marge ; largeur
+#: moyenne d'un caractère ≈ 0,6 × le corps (DejaVu Sans) ; pas entre deux
+#: lignes d'un même libellé (mm). Mise en page : aucune grandeur du projet.
+CORPS_LEGENDE_MM = 3.2
+LARGEUR_TEXTE_LEGENDE_MM = LARGEUR_BANDEAU_MM - 3.0 - 6.0 - 3.0
+CARACTERES_PAR_LIGNE_LEGENDE = int(
+    LARGEUR_TEXTE_LEGENDE_MM / (0.6 * CORPS_LEGENDE_MM))
+PAS_LIGNE_LEGENDE_MM = 3.8
 
 #: Épaisseurs de trait (mm) — le contour relevé est le trait fort.
 TRAIT_CONTOUR = 0.7
@@ -815,6 +826,15 @@ def _mention_d_echelle(echelle):
             'se reporter à la barre d\'échelle.' % denominateur)
 
 
+def _mention_d_echelle_svg(cadre, echelle):
+    """R3-21 — la mention d'échelle, AU-DESSUS de la barre : sous elle, les
+    graduations de la barre (à 5 mm, corps 3) étaient chevauchées par cette
+    mention posée à 2 mm d'écart."""
+    return ('<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+            % (_n(cadre[0] + 2.0), _n(cadre[1] + cadre[3] - 8.0 - 2.5),
+               GRIS_TEXTE, escape(_mention_d_echelle(echelle))))
+
+
 #: ACAL601 — la légende d'un module dont l'orientation n'est pas enregistrée.
 LIBELLE_MODULE_SANS_POSE = (
     'Module posé — orientation non enregistrée (figuré par son centre) ; '
@@ -982,14 +1002,20 @@ def _legende_svg(x, y, entrees):
                 'fill="%s">LÉGENDE</text>' % (_n(x), _n(y), NOIR)]
     courant = y + 5.0
     for contour, remplissage, libelle, *tirets in entrees:
+        lignes = textwrap.wrap(
+            libelle, CARACTERES_PAR_LIGNE_LEGENDE,
+            break_long_words=False) or [libelle]
         morceaux.append(
             '<rect x="%s" y="%s" width="4" height="3" fill="%s" stroke="%s" '
             'stroke-width="0.2"%s />'
-            '<text x="%s" y="%s" font-size="3.2" fill="%s">%s</text>'
             % (_n(x), _n(courant - 2.4), remplissage, contour,
-               ' stroke-dasharray="%s"' % tirets[0] if tirets else '',
-               _n(x + 6.0), _n(courant), NOIR, escape(libelle)))
-        courant += 4.6
+               ' stroke-dasharray="%s"' % tirets[0] if tirets else ''))
+        for rang, ligne in enumerate(lignes):
+            morceaux.append(
+                '<text x="%s" y="%s" font-size="%s" fill="%s">%s</text>'
+                % (_n(x + 6.0), _n(courant + rang * PAS_LIGNE_LEGENDE_MM),
+                   CORPS_LEGENDE_MM, NOIR, escape(ligne)))
+        courant += 4.6 + (len(lignes) - 1) * PAS_LIGNE_LEGENDE_MM
     return morceaux, courant
 
 
@@ -1203,10 +1229,7 @@ def _corps_feuille_surface(surface, *, titre='', pied='',
     cadre = _cadre_de_dessin()
     morceaux.append(_barre_echelle_svg(cadre[0] + 2.0,
                                        cadre[1] + cadre[3] - 8.0, echelle))
-    morceaux.append(
-        '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
-        % (_n(cadre[0] + 2.0), _n(cadre[1] + cadre[3] - 1.0), GRIS_TEXTE,
-           escape(_mention_d_echelle(echelle))))
+    morceaux.append(_mention_d_echelle_svg(cadre, echelle))
     modules = surface['modules']
     lignes = [
         'Surface de pose : %s (%s)' % (surface['libelle'], genre),
@@ -1335,10 +1358,7 @@ def _corps_feuille_toit(geometrie, *, titre='', sous_titre='', bandeau=(),
                                        cadre[1] + cadre[3] - 8.0, echelle))
     # CAL194 — l'échelle NOMMÉE, avec sa condition de validité. Elle ne
     # remplace jamais la barre : elle la complète.
-    morceaux.append(
-        '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
-        % (_n(cadre[0] + 2.0), _n(cadre[1] + cadre[3] - 1.0), GRIS_TEXTE,
-           escape(_mention_d_echelle(echelle))))
+    morceaux.append(_mention_d_echelle_svg(cadre, echelle))
 
     morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, geometrie,
                                  contenu))
