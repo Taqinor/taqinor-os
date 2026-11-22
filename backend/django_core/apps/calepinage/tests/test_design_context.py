@@ -307,6 +307,13 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(contexte['geometrie']['roof_layout'], document_v)
         self.assertEqual(contexte['calepinage']['devis_lie']['id'], b.pk)
         self.assertEqual(set(contexte), set(CONTRAT['exemple_variante']))
+        # ACAL993 — le chiffrage lit le devis ET le document de la variante.
+        with mock.patch('apps.ventes.services.chiffrer_conception',
+                        return_value={}) as porte:
+            self.api.get(url_contexte(self.avec_devis.pk), {'devis': b.pk})
+        servie = porte.call_args.kwargs['calepinage']
+        self.assertEqual((servie.devis_id, servie.roof_layout),
+                         (b.pk, document_v))
         # Sans paramètre, ou un devis qui n'est pas porté ici : inchangé.
         for params in ({}, {'devis': self.devis.pk}, {'devis': 'x'}):
             with self.subTest(params=params):

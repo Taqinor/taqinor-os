@@ -447,12 +447,15 @@ class ClesOmbrageAcal716Test(SimpleTestCase):
 
 class ClesNettoyageAcal742Test(SimpleTestCase):
     """ACAL742 — « nettoyages par an » et « inclinaison d'autonettoyage » :
-    typées, sourcées, en fin de registre, SANS valeur préremplie."""
+    typées, sourcées, ajoutées ensemble au registre, SANS valeur préremplie
+    (des clés plus récentes peuvent les suivre, ex. ACAL794)."""
 
     CLES = ('nettoyages_par_an', 'inclinaison_autonettoyage_deg')
 
-    def test_en_fin_de_registre_typees_et_sans_valeur(self):
-        self.assertEqual(list(registre('simulation'))[-2:], list(self.CLES))
+    def test_au_registre_ensemble_typees_et_sans_valeur(self):
+        cles = list(registre('simulation'))
+        debut = cles.index(self.CLES[0])
+        self.assertEqual(cles[debut:debut + 2], list(self.CLES))
         servi = {ligne['cle']: ligne
                  for ligne in registre_des_reglages()['simulation']}
         self.assertEqual(servi['nettoyages_par_an']['type'], 'entier')

@@ -46,6 +46,10 @@ CASCADE = json.loads(
 RESULTAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_resultat.json')
     .read_text(encoding='utf-8'))['exemple']
+#: Les postes COMPTÉS de l'échantillon de cascade (ACAL761 : largeurs lues).
+POSTES_COMPTES = [
+    poste for poste in CASCADE['exemple']['cascade']['postes_lisibles']['postes']
+    if poste['statut'] == 'compte']
 SVG_NS = '{http://www.w3.org/2000/svg}'
 XMLNS = 'xmlns="http://www.w3.org/2000/svg"'
 
@@ -186,10 +190,13 @@ class SvgEnergieTest(unittest.TestCase):
 
     @staticmethod
     def _resultat():
+        # Les deux premiers postes prennent les valeurs des postes COMPTÉS
+        # de l'échantillon de cascade : aucune perte chiffrée en dur.
         resultat = copy.deepcopy(RESULTAT)
         postes = resultat['cascade']['postes_lisibles']['postes']
-        postes[0].update(statut='compte', perte_kwh=1200.0, perte_pct=7.1)
-        postes[1].update(statut='compte', perte_kwh=300.0, perte_pct=1.8)
+        for poste, servi in zip(postes[:2], POSTES_COMPTES):
+            poste.update({cle: servi[cle] for cle in
+                          ('statut', 'perte_kwh', 'perte_pct')})
         return resultat
 
     @staticmethod
@@ -216,8 +223,9 @@ class SvgEnergieTest(unittest.TestCase):
             self.assertEqual(kwh, energie[cle])
             self.assertAlmostEqual(largeur, energie[cle] * echelles[1], 1)
         kwh, largeur = largeurs['ombres_proches']
-        self.assertEqual(kwh, 1200.0)
-        self.assertAlmostEqual(largeur, 1200.0 * echelles[0], 1)
+        servi = POSTES_COMPTES[0]['perte_kwh']
+        self.assertEqual(kwh, servi)
+        self.assertAlmostEqual(largeur, servi * echelles[0], 1)
 
     def test_les_deux_totaux_qui_different_sont_imprimes_chacun(self):
         svg = svg_d_energie(self._resultat())

@@ -364,7 +364,7 @@ function LignePompes({ bloc }) {
   if (!bloc) return null
   const demande = `${uneDecimale(bloc.kw_demande)} kW demandés sur ${uneDecimale(bloc.kw_variateur)} kW`
   const [texte, couleur] = {
-    conforme: [`${demande} : conforme (marge ${uneDecimale(bloc.marge_kw)} kW)`, 'text-emerald-300'],
+    conforme: [`${demande} : conforme (réserve ${uneDecimale(bloc.reserve_kw)} kW)`, 'text-emerald-300'],
     depasse: [`${demande} : le variateur est trop petit`, 'text-red-300'],
   }[bloc.verdict] ?? ['À vérifier : kW de plaque ou mode non saisi', 'text-amber-200']
   return (

@@ -223,6 +223,15 @@
       "id": 2,
       "nom": "Devis DEV-202610-0002",
       "devis": 2
+    },
+    "chiffrage": {
+      "marche": "residentiel",
+      "regles_calcul": 15,
+      "kwc": {"valeur": 71.0, "unite": "kWc", "source": "devis", "etat": "servi"},
+      "production_annuelle_kwh": {"valeur": 98576, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
+      "economie_annee1_mad": {"valeur": 7420, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
+      "autoconsommation_pct": {"valeur": 62.0, "unite": "%", "source": "devis", "etat": "servi"},
+      "omissions": []
     }
   },
   "exemple_sans_devis": {

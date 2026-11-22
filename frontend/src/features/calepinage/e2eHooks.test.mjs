@@ -799,6 +799,12 @@ export const ALL_HOOKS = [
   'cal-etape-electrique-ecran',
   'cal-electrique-synthese',
   'cal-electrique-section',
+  // ── commun/PretAEnvoyer.jsx (ACAL865) ──
+  'cal-pret-a-envoyer',
+  'cal-pret-erreur',
+  'cal-pret-ligne',
+  'cal-pret-regler',
+  'cal-pret-reussis',
   // ── PhotoSiteCalage.jsx (complément L5) ──
   'cal-photo-calage-monde',
 ]

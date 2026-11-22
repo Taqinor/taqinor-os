@@ -98,6 +98,7 @@ export const ONGLETS = [
   { cle: 'optimiser', libelle: 'Optimiser', groupe: 'Résultats', ordre: 265, composant: lazy(() => import('./PanneauOptimiser')) }, // ACAL469
   { cle: 'detection-toit', libelle: 'Détection du toit', groupe: 'Site', ordre: 66, composant: lazy(() => import('./PanneauDetectionToit')) }, // ACAL488
   { cle: 'controle-chaine', libelle: 'Contrôle rapide d’une chaîne', groupe: 'Système', ordre: 218, composant: lazy(() => import('../electrique/ControleChaine')) }, // ACAL628
+  { cle: 'consommation-mesuree', libelle: 'Consommation mesurée', groupe: 'Résultats', ordre: 289, composant: lazy(() => import('./EcartMesures')) }, // ACAL847
 ]
 
 /**

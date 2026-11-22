@@ -340,13 +340,21 @@ APERCU_OND = {k: v for k, v in CONTRAT['exemple'].items()
 
 class FichiersPvsystReelsTests(TestCase):
     def test_exemples_portent_refus_et_conversions_a_vide(self):
-        # ACAL1081 — le contrat pose `refus: ""` et `conversions: []` dans
-        # les quatre exemples de la réponse ; `exemple_refus` (erreur) non.
-        for nom in ('exemple', 'exemple_module',
-                    'exemple_module_pmax_deja_saisi', 'exemple_confirme'):
+        # ACAL1081 — le contrat pose `refus: ""` et `conversions` dans les
+        # quatre exemples de la réponse ; `exemple_refus` (erreur) non.
+        # ACAL658 — le vrai .PAN des exemples module porte muISC et muVocSpec :
+        # la réponse réelle (test_apercu_pan_egal_exemple_module) NOMME ces
+        # deux conversions ; les exemples onduleur n'en font aucune.
+        conversions_module = [
+            'muISC (mA/°C) converti avec Isc du même fichier',
+            'muVocSpec (mV/°C) converti avec Voc du même fichier']
+        for nom, attendues in (
+                ('exemple', []), ('exemple_module', conversions_module),
+                ('exemple_module_pmax_deja_saisi', conversions_module),
+                ('exemple_confirme', [])):
             with self.subTest(exemple=nom):
                 self.assertEqual(CONTRAT[nom]['refus'], '')
-                self.assertEqual(CONTRAT[nom]['conversions'], [])
+                self.assertEqual(CONTRAT[nom]['conversions'], attendues)
         self.assertNotIn('refus', CONTRAT['exemple_refus'])
 
     def test_pan_reel_lu_avec_ses_vraies_cles(self):

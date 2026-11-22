@@ -319,7 +319,16 @@ def _garde_module_substitue(devis, layout):
     from apps.ventes.selectors_calepinage import lignes_produits_calepinage
     from apps.ventes.services import pans_du_document
 
-    dessine = sum(p['kwc'] for p in pans_du_document(layout) if p.get('kwc'))
+    from .valeurs import nombre
+
+    pans = pans_du_document(layout)
+    dessine = sum(p['kwc'] for p in pans if p.get('kwc'))
+    if dessine and not any(p['kind'] == 'toit' and p['source'] != 'aucune' for p in pans):
+        # Toit sans pan mesuré : il est résumé par le ``result`` racine, que la
+        # composition compte aussi (``ventes.lire_layout``) — sinon un toit
+        # résumé + un champ au sol se lisait « champ seul » (faux 409).
+        dessine += nombre(((layout if isinstance(layout, dict) else {})
+                           .get('result') or {}).get('kwc')) or 0.0
     compose = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
     if not dessine or compose is None:
         return

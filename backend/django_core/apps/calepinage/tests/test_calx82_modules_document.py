@@ -237,7 +237,8 @@ class AucuneValeurInventeeTest(SimpleTestCase):
         self.assertEqual(
             champs,
             {'id', 'produitId', 'libelle', 'longueurMm', 'largeurMm',
-             'epaisseurMm', 'poidsKg', 'pmaxWc', 'source'})
+             'epaisseurMm', 'poidsKg', 'pmaxWc', 'source',
+             'sousChaines'})  # ACAL731 — sous-chaînes de cellules
         for champ in champs:
             for interdit in INTERDITS:
                 self.assertNotIn(interdit, champ.lower())

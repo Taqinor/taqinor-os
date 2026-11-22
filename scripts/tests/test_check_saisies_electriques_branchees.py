@@ -48,6 +48,49 @@ class SaisiesBrancheesTests(unittest.TestCase):
         self.assertEqual(dettes, {"entree::beta::lecteur", "registre::simulation.gamma::lecteur"})
         self.assertTrue(guard.verifier(dettes, set()))
 
+    # D-ACAL-47 — l'atelier de toiture compte comme lecteur d'un RÉGLAGE.
+    _BASE_LUE = {
+        str(guard.BACKEND / "services" / "lecteur.py"): "def f(d):\n    return d['alpha'], d['beta']\n",
+        str(guard.FRONT_API): "alpha beta\n",
+    }
+
+    def test_reglage_lu_par_atelier_passe(self):
+        root = _repo({**self._BASE_LUE, str(guard.ATELIER_SOURCES[0] / "shadingUi.ts"):
+                      "export const s = (r) => r?.simulation?.gamma?.valeur;\n"})
+        self.assertEqual(guard.analyser(root), set())
+
+    def test_reglage_lu_par_le_relais_passe(self):
+        root = _repo({**self._BASE_LUE, str(guard.ATELIER_RELAIS):
+                      "const simulation = { gamma: sim['gamma'] ?? null }\n"})
+        self.assertEqual(guard.analyser(root), set())
+
+    def test_reglage_lu_par_personne_echoue(self):
+        root = _repo({**self._BASE_LUE, str(guard.ATELIER_SOURCES[0] / "shadingUi.ts"):
+                      "export const s = (r) => r?.simulation?.delta;\n"})
+        dettes = guard.analyser(root)
+        self.assertEqual(dettes, {"registre::simulation.gamma::lecteur"})
+        erreurs = guard.verifier(dettes, set())
+        self.assertTrue(any("ni côté serveur" in e and "ni dans l'atelier" in e for e in erreurs))
+
+    def test_reglage_cite_en_commentaire_ou_test_echoue(self):
+        root = _repo({
+            **self._BASE_LUE,
+            str(guard.ATELIER_SOURCES[0] / "shadingUi.ts"):
+                "// lit r.simulation.gamma\n/* sim?.gamma */\nexport const x = 'gamma';\n",
+            str(guard.ATELIER_SOURCES[0] / "shadingUi.test.ts"):
+                "expect(r.simulation.gamma.valeur).toBe(1);\n",
+            str(guard.ATELIER_SOURCES[1] / "outil.test.js"): "r.simulation.gamma\n",
+        })
+        self.assertEqual(guard.analyser(root), {"registre::simulation.gamma::lecteur"})
+
+    def test_atelier_ne_lit_pas_une_entree(self):
+        root = _repo({
+            str(guard.BACKEND / "services" / "lecteur.py"): "def f(d):\n    return d['alpha'], d['gamma']\n",
+            str(guard.FRONT_API): "alpha beta\n",
+            str(guard.ATELIER_SOURCES[0] / "a.ts"): "export const b = (o) => o.beta;\n",
+        })
+        self.assertEqual(guard.analyser(root), {"entree::beta::lecteur"})
+
     def test_baseline_ne_croit_pas(self):
         chemin = Path(tempfile.mkdtemp()) / "b.txt"
         _cliquet.ecrire(chemin, {"a"}, "", "r")  # amorçage (fichier absent)

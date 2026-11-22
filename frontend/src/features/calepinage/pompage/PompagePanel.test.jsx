@@ -358,7 +358,7 @@ describe('ACAL821 — plusieurs pompes sur le même variateur', () => {
   })
 
   it('dépasse : « 6,6 kW demandés sur 5,5 kW : le variateur est trop petit »', async () => {
-    pompage.mockResolvedValue({ data: avecPompes({ verdict: 'depasse', kw_demande: 6.6, marge_kw: -1.1,
+    pompage.mockResolvedValue({ data: avecPompes({ verdict: 'depasse', kw_demande: 6.6, reserve_kw: -1.1,
       motif: '6.6 kW de pompes au-dessus des 5.5 kW du variateur' }) })
     rendre()
     calculer()
@@ -369,7 +369,7 @@ describe('ACAL821 — plusieurs pompes sur le même variateur', () => {
 
   it('non vérifiable : « À vérifier » ; sans liste, la ligne est absente', async () => {
     pompage.mockResolvedValue({ data: avecPompes({ verdict: 'non_verifiable', kw_demande: null,
-      kw_variateur: null, marge_kw: null, motif: 'mode de marche non saisi (ensemble ou à tour de rôle)' }) })
+      kw_variateur: null, reserve_kw: null, motif: 'mode de marche non saisi (ensemble ou à tour de rôle)' }) })
     rendre()
     calculer()
     const ligne = await screen.findByTestId('cal-pompage-pompes')

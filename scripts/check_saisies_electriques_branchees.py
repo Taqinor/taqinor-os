@@ -7,11 +7,19 @@ de `services/electrique.py`, et chaque clé des `REGISTRES` de
 consomme ; sans ÉCRIVAIN d'écran (`frontend/src/api/calepinageApi.js` +
 `frontend/src/features/calepinage`) c'est un champ que personne ne peut saisir.
 
-Registres : seul le LECTEUR backend est exigé (l'écran de réglages est générique). Lecture : AST pour extraire les clés
-; texte (identifiant de clé entre
-guillemets ou en mot entier) pour les occurrences. Lecteur backend = occurrence
-de la clé, hors tests, hors de sa propre déclaration. Écrivain d'écran =
-occurrence de la clé dans l'API ou les écrans calepinage (hors tests).
+Registres : seul un LECTEUR est exigé (l'écran de réglages est générique). Deux
+familles de lecteurs, gardées séparées (D-ACAL-47, fondateur 22/11/2026) :
+- lecteur SERVEUR = occurrence de la clé dans le code calepinage ou
+  `core/electrique` (hors tests, hors de sa propre déclaration) ;
+- lecteur ATELIER (réglages seulement) = ACCÈS à la clé par son nom
+  (`.cle`, `?.cle`, `['cle']`) dans l'atelier de toiture
+  (`apps/web/src/scripts/roofPro11/`, `apps/web/src/lib/`, `.ts`/`.js` hors
+  tests) ou dans son relais `frontend/.../atelier/useAtelierBoot.js` (qui lit la
+  section `simulation` des réglages et la transmet à l'atelier), commentaires
+  retirés : une simple citation ne compte pas.
+Un réglage que PERSONNE ne lit reste refusé ; aucune liste d'exceptions.
+Lecture : AST pour extraire les clés ; texte pour les occurrences. Écrivain
+d'écran = occurrence de la clé dans l'API ou les écrans calepinage (hors tests).
 
 Passif du jour gelé dans `scripts/saisies_electriques_allow.txt` (clé
 `entree::<clé>::ecran|lecteur` ou `registre::<section>.<clé>::ecran|lecteur`) :
@@ -44,6 +52,12 @@ ELECTRIQUE = BACKEND / "services" / "electrique.py"
 PARAMETRES = BACKEND / "services" / "parametres_cles.py"
 FRONT_API = Path("frontend") / "src" / "api" / "calepinageApi.js"
 FRONT_FEATURES = Path("frontend") / "src" / "features" / "calepinage"
+# D-ACAL-47 — l'atelier de toiture lit des réglages société (ACAL714/715/716).
+ATELIER_SOURCES = (Path("apps") / "web" / "src" / "scripts" / "roofPro11",
+                   Path("apps") / "web" / "src" / "lib")
+# Relais constaté : il lit `p.simulation.<clé>` de l'API et le passe à l'atelier
+# (`opts.reglagesAtelier`).
+ATELIER_RELAIS = Path("frontend") / "src" / "features" / "calepinage" / "atelier" / "useAtelierBoot.js"
 BASELINE = ROOT / "scripts" / "saisies_electriques_allow.txt"
 EXCEPTEES = {"entree::affectation_manuelle"}  # écrite par AffectationChaines.jsx
 ENTETE = (
@@ -134,6 +148,34 @@ def _texte_front(root: Path) -> str:
     return "\n".join(morceaux)
 
 
+def _sans_commentaires_js(texte: str) -> str:
+    """Retire les commentaires `/* … */` et `// …` (précédé d'un blanc ou en
+    début de ligne, pour épargner `https://` dans une chaîne)."""
+    texte = re.sub(r"/\*.*?\*/", " ", texte, flags=re.S)
+    return re.sub(r"(^|[ \t])//[^\n]*", r"\1", texte, flags=re.M)
+
+
+def _texte_atelier(root: Path) -> str:
+    """Sources de l'atelier de toiture (+ relais), hors tests, sans commentaires."""
+    fichiers = []
+    for base in ATELIER_SOURCES:
+        if (root / base).is_dir():
+            fichiers += sorted(p for p in (root / base).rglob("*")
+                               if p.is_file() and p.suffix in (".ts", ".js"))
+    if (root / ATELIER_RELAIS).is_file():
+        fichiers.append(root / ATELIER_RELAIS)
+    morceaux = [_sans_commentaires_js(p.read_text(encoding="utf-8")) for p in fichiers
+                if not _est_test(p.relative_to(root))]
+    return "\n".join(morceaux)
+
+
+def _lu_par_atelier(cle: str, texte: str) -> bool:
+    """Vrai si la clé est LUE par son nom : `.cle`, `?.cle` ou `['cle']`."""
+    c = re.escape(cle)
+    motif = r"\.\s*" + c + r"(?![\w])|\[\s*['\"`]" + c + r"['\"`]\s*\]"
+    return re.search(motif, texte) is not None
+
+
 def _present(cle: str, texte: str) -> bool:
     return re.search(r"(?<![\w])" + re.escape(cle) + r"(?![\w])", texte) is not None
 
@@ -146,6 +188,7 @@ def plage_entree(root: Path) -> tuple:
 def analyser(root: Path = ROOT) -> set:
     """Ensemble des clés de dette ``<id>::ecran`` / ``<id>::lecteur``."""
     front = _texte_front(root)
+    atelier = _texte_atelier(root)
     textes = _textes_backend(root)
     sans_masque = _texte_backend(textes, None)
     avec_masque = _texte_backend(textes, (ELECTRIQUE, *plage_entree(root)))
@@ -154,7 +197,9 @@ def analyser(root: Path = ROOT) -> set:
         if ident in EXCEPTEES:
             continue
         corpus = avec_masque if ident.startswith("entree::") else sans_masque
-        if not _present(cle, corpus):
+        lecteur_serveur = _present(cle, corpus)
+        lecteur_atelier = ident.startswith("registre::") and _lu_par_atelier(cle, atelier)
+        if not (lecteur_serveur or lecteur_atelier):
             dettes.add(f"{ident}::lecteur")
         if ident.startswith("entree::") and not _present(cle, front):
             dettes.add(f"{ident}::ecran")
@@ -166,8 +211,13 @@ def decrire(cle: str) -> str:
     if manque == "ecran":
         return (f"{ident.split('::', 1)[1]} : clé admise par le serveur sans ÉCRIVAIN "
                 "d'écran (calepinageApi.js / features/calepinage).")
-    return (f"{ident.split('::', 1)[1]} : clé admise par le serveur sans LECTEUR "
-            "backend (rien ne la consomme).")
+    if ident.startswith("registre::"):
+        return (f"{ident.split('::', 1)[1]} : clé admise par le serveur sans lecteur, ni côté "
+                "serveur (aucun lecteur serveur : calepinage / core/electrique) ni dans l'atelier "
+                "(aucun lecteur atelier : accès par son nom dans roofPro11 / lib / useAtelierBoot.js) "
+                "— rien ne la consomme.")
+    return (f"{ident.split('::', 1)[1]} : clé admise par le serveur sans lecteur serveur "
+            "(rien ne la consomme ; l'atelier ne compte que pour les réglages).")
 
 
 def verifier(dettes: set, base: set) -> list:

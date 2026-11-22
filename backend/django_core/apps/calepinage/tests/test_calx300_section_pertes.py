@@ -183,9 +183,12 @@ def _resultat_avec_iam(**entree):
     resultat = copy.deepcopy(RESULTAT['exemple'])
     etapes = [e for e in resultat['cascade']['etapes']
               if e.get('etape') != 'iam']
-    etapes.append({'etape': 'iam', 'libelle': 'IAM', 'perte_pct': 0.5,
-                   'kwh_avant': 1.0, 'kwh_apres': 0.9, 'source': 'fiche',
-                   'entree': entree})
+    # Les chiffres de l'étape sont ceux de la 1re étape de l'échantillon :
+    # aucune perte chiffrée en dur (CAL238) ; seuls l'IAM et son entrée
+    # sont propres au cas.
+    iam = copy.deepcopy(resultat['cascade']['etapes'][0])
+    iam.update(etape='iam', libelle='IAM', source='fiche', entree=entree)
+    etapes.append(iam)
     resultat['cascade']['etapes'] = etapes
     return resultat
 

@@ -30,6 +30,7 @@ from apps.stock.models import FicheTechnique, Produit
 
 from .test_api_liste import BaseApiCalepinage, url_detail
 from .test_calx190_autoconsommation import contexte_de_test, serie_de_test
+from .test_calx205_contrat_raccordement import RACCORDEMENT
 from .test_calx5_simulation import (
     LAYOUT, MATERIEL, REGLAGES, _ClientRejoue,
 )
@@ -103,7 +104,9 @@ class Raccordement(BaseApiCalepinage):
         lu = self.api.get(url_raccordement(self.calepinage.pk))
         for cle, valeur in SAISIE.items():
             self.assertEqual(lu.data['saisie'][cle], valeur, cle)
-        self.assertEqual(len(lu.data['saisie']), 9)
+        # Les champs du contrat (ACAL827/828/829 en ont ajouté).
+        self.assertEqual(sorted(lu.data['saisie']),
+                         sorted(RACCORDEMENT['exemple']['saisie']))
         self._poster(lu.data['saisie'])
         self.assertEqual(self.calepinage.resultat[CLE_SAISIE], stockee)
 

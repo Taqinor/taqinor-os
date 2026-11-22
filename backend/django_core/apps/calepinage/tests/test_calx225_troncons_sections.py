@@ -191,7 +191,12 @@ class NormeNonApplicableTest(SimpleTestCase):
                          len(self.paquet['troncons']))
         for omission in omissions:
             self.assertIn('norme', omission['motif'])
-            self.assertIn('norme_applicable', omission['motif'])
+            # ACAL879 — la norme est nommée en mots du métier, jamais par
+            # un chemin de code ; le champ reste la clé ``champ``.
+            self.assertIn('norme électrique choisie pour le pays',
+                          omission['motif'])
+            for chemin in ('::', '.py', 'norme_applicable'):
+                self.assertNotIn(chemin, omission['motif'])
 
     def test_le_metre_garde_la_ligne_de_section_omise(self):
         lignes = self.paquet['totaux']['metre_par_section']

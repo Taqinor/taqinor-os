@@ -936,6 +936,16 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 
+## PretAEnvoyer — ACAL865 (`commun/PretAEnvoyer.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-pret-a-envoyer` | panneau « Prêt à envoyer ? » (contrôles avant l’envoi, `GET pret-a-envoyer/`). |
+| `cal-pret-erreur` | panneau « Prêt à envoyer ? » : lecture en échec. |
+| `cal-pret-ligne` | une ligne de contrôle (suffixe = `code` du contrôle). |
+| `cal-pret-regler` | bouton « Régler » d’un contrôle (suffixe = `code`) : ouvre `?onglet=&champ=`. |
+| `cal-pret-reussis` | contrôles réussis repliés (« Voir les n contrôles réussis »). |
+
 ## PhotoSiteCalage — complément L5 (`PhotoSiteCalage.jsx`)
 
 | Hook | Sémantique |

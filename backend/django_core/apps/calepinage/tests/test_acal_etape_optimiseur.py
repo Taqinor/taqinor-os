@@ -61,7 +61,8 @@ class PerteDesModulesEquipes(SimpleTestCase):
         entree = etape['entree']
         self.assertEqual((entree['modules_equipes'], entree['modules']),
                          (2, 10))
-        self.assertAlmostEqual(entree['perte_pct'], 0.2, 6)
+        attendu_pct = 2 / 10 * (100 - 99.0)
+        self.assertAlmostEqual(entree['perte_pct'], attendu_pct, 6)
         self.assertEqual(entree['ponderation'], 'accès solaire')
         self.assertEqual(entree['rendement_pct'], 99.0)
         self.assertEqual(etape['source'], 'fiche')

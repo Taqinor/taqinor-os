@@ -102,7 +102,7 @@
       "avec_reservoir": {"debit_conception_m3h": 2.4, "mois_critique": 12, "jours_manque": 0, "besoin_couvert_pct": 100.0, "motif_bilan": null},
       "motif": null
     },
-    "pompes_variateur": {"verdict": "conforme", "motif": null, "kw_demande": 4.4, "kw_variateur": 5.5, "marge_kw": 1.1},
+    "pompes_variateur": {"verdict": "conforme", "motif": null, "kw_demande": 4.4, "kw_variateur": 5.5, "reserve_kw": 1.1},
     "appoint_variateur": {"verdict": "vmp_sous_bus", "motif": "Vmp à chaud 422 V sous les 430 V du bus DC redressé : l'appoint prend toute la charge", "bus_redresse_v": 430.0, "vmp_chaud_v": 422, "voc_froid_v": 627, "limite_v": 800.0, "appoint": "reseau"},
     "erreurs": {},
     "avertissements": [],

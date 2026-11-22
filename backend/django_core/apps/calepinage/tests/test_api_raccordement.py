@@ -37,6 +37,7 @@ from apps.calepinage.views.raccordement import CLE_SAISIE
 from apps.roles.models import Role
 
 from .test_api_liste import BaseApiCalepinage, url_detail
+from .test_calx205_contrat_raccordement import RACCORDEMENT
 
 User = get_user_model()
 
@@ -73,9 +74,10 @@ class ActionRaccordementTest(BaseApiCalepinage):
         reponse = self.api.get(url_raccordement(self.calepinage.pk))
 
         self.assertEqual(reponse.status_code, 200, reponse.data)
+        # Les blocs du contrat (ACAL782/783 : + regime, injection,
+        # injection_motif).
         self.assertEqual(sorted(reponse.data),
-                         ['calcul', 'proposition_lead', 'saisie',
-                          'verdicts'])
+                         sorted(RACCORDEMENT['exemple']))
 
     def test_get_rend_toujours_les_cinq_verdicts(self):
         reponse = self.api.get(url_raccordement(self.calepinage.pk))

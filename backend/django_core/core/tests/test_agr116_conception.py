@@ -316,14 +316,14 @@ class PompesParVariateur(unittest.TestCase):
             pompes=self._pompes(4), variateur=self.VAR, mode="a_tour_de_role")
         self.assertEqual(tour["verdict"], "conforme")
         self.assertEqual(tour["kw_demande"], 1.1)
-        self.assertEqual(tour["marge_kw"], 4.4)
+        self.assertEqual(tour["reserve_kw"], 4.4)
 
     def test_six_pompes_ensemble_depassent(self):
         r = controle_pompes_par_variateur(
             pompes=self._pompes(6), variateur=self.VAR, mode="ensemble")
         self.assertEqual(r["verdict"], "depasse")
         self.assertEqual(r["kw_demande"], 6.6)
-        self.assertLess(r["marge_kw"], 0)
+        self.assertLess(r["reserve_kw"], 0)
 
     def test_donnee_absente_non_verifiable(self):
         r = controle_pompes_par_variateur(pompes=self._pompes(4), variateur=self.VAR)
