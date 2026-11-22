@@ -13,7 +13,7 @@ import RailGuide from '../commun/RailGuide'
 import { PARAM_MODE, useModeExpert } from './modeExpert'
 import { PARAM_CHAMP, useOuvrirChamp } from './ouvrirChamp'
 import {
-  ECRANS_ETAPE, ETAPES, ecranGuideDeOnglet, etapeActive, ongletsVisibles, useParcours,
+  ECRANS_ETAPE, ongletsVisibles, premierOngletEtape, useParcours, vueParcours,
 } from './parcoursGuide'
 
 /* ============================================================================
@@ -170,6 +170,9 @@ function RailCorps({
   expert, onBasculerExpert: basculerExpert,
   onEtape = null, // ACAL868 — publie {etape, expert, allerA} à l'écran (barre fixe) ; jamais un second état d'expert
   actionDevis = null, // ACAL867 — « Générer le devis » de l'atelier, relayé tel quel à l'écran de l'étape Documents
+  // Coque (22/11) — monté dans la coque plein écran : les étapes sont au rail de gauche (pas ici), et en
+  // guidé l'écran de l'étape est monté par la coque (ici : les seuls onglets) ; `parcours` = celui de la coque.
+  dansCoque = false, parcours: parcoursImpose = null,
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
@@ -179,13 +182,12 @@ function RailCorps({
   const cleActive = actif?.cle ?? null
   // ACAL393 — rail guidé : 5 étapes ; pour l'étape active, ses seuls essentiels
   // (+ l'onglet ouvert s'il est expert). L'étape se déduit de l'URL.
-  const parcours = useParcours(calepinageId)
+  const parcoursLocal = useParcours(parcoursImpose ? null : calepinageId)
+  const parcours = parcoursImpose ?? parcoursLocal
   const etats = parcours.etats
   // ACAL395 — en guidé, les panneaux d'un écran d'étape (Électrique) s'ouvrent
   // dans UNE page portée par l'onglet `ouverture` ; l'URL garde la clé demandée.
-  const ecran = expert ? null : ecranGuideDeOnglet(cleActive)
-  const cleVue = ecran ? ecran.ouverture : cleActive
-  const cleEtape = etapeActive(cleVue, etats)
+  const { ecran, cleVue, cleEtape } = vueParcours(cleActive, etats, expert)
   const visibles = ongletsVisibles(cleEtape, cleVue, expert).map(ongletParCle).filter(Boolean)
   const libelleOnglet = (o) => (!expert
     && Object.values(ECRANS_ETAPE).find((e) => e.ouverture === o.cle)?.libelle) || o.libelle
@@ -225,7 +227,7 @@ function RailCorps({
   }
 
   const choisirEtape = (cle) => {
-    const premier = ongletsVisibles(cle, null, expert)[0] ?? ETAPES.find((e) => e.cle === cle)?.onglets[0]
+    const premier = premierOngletEtape(cle, expert)
     if (premier) ouvrir(premier)
   }
 
@@ -257,8 +259,10 @@ function RailCorps({
           Lexique des termes du solaire
         </Link>
       </p>
-      <RailGuide etapeActive={cleEtape} etats={etats} onChoisir={choisirEtape}
-        expert={expert} onBasculerExpert={basculerExpert} />
+      {!dansCoque && (
+        <RailGuide etapeActive={cleEtape} etats={etats} onChoisir={choisirEtape}
+          expert={expert} onBasculerExpert={basculerExpert} />
+      )}
       {/* a11y (ACAL439) — un `tablist` ne doit posséder que des `tab` : les bulles d'aide
           (boutons) en sont SŒURS, pas filles. Le conteneur visuel (bordure, fond, flex-wrap) est
           ce `div` ; `TabsList` est en `display: contents` et l'`order` CSS remet chaque bulle juste
@@ -282,7 +286,7 @@ function RailCorps({
         ))}
       </div>
 
-      {actif && Composant && (
+      {actif && Composant && !(dansCoque && !expert) && (
         <TabsContent ref={panneauRef} value={cleVue} data-testid="cal-onglet-panneau">
           <ErrorBoundary
             key={cleVue}

@@ -1,0 +1,141 @@
+/* ACAL1193 — l'étape Documents guidée (maquette `Documents.dc.html`) et « Prêt à envoyer ? » par étape.
+   Jetons seulement (themeAtelier / langageVisuel) : le thème sombre suit sans règle propre. */
+
+.cdoc-ecran {
+  display: grid;
+  grid-template-columns: minmax(0, 600px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+  /* Le centre (`.cal-coque-plein`) donne déjà 24 / 28 px : aucune marge ici. L'écran prend la hauteur
+     du centre ; les contrôles défilent DANS leur carte, l'en-tête et le pied de carte restent fixes. */
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+.cdoc-colonne { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; min-height: 0; }
+.cdoc-colonne:last-child { overflow-y: auto; }
+.cdoc-colonne > .cdoc-pret { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 900px) {
+  .cdoc-ecran { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; flex: none; min-height: auto; }
+  .cdoc-colonne:last-child { overflow-y: visible; }
+  .cdoc-groupes { overflow-y: visible; }
+}
+
+.cdoc-titre { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 20px; line-height: 1.2; }
+.cdoc-sous { font-size: 14px; color: var(--muted-foreground); }
+
+/* — carte « Prêt à envoyer ? » — */
+.cdoc-pret {
+  display: flex; flex-direction: column; gap: 0.75rem;
+  padding: 1.25rem 1.25rem 1rem;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+}
+.cdoc-pret-tete { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.cdoc-pret-titres { display: flex; flex-direction: column; gap: 2px; }
+.cdoc-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px;
+  font-size: 14px; font-weight: 600;
+  background: color-mix(in oklch, var(--warning) 18%, var(--card)); color: var(--warning-text);
+}
+.cdoc-badge[data-ton='ok'] { background: color-mix(in oklch, var(--success) 14%, var(--card)); color: var(--success-text); }
+.cdoc-groupes { display: flex; flex: 1 1 auto; min-height: 0; overflow-y: auto; flex-direction: column; gap: 10px; }
+.cdoc-groupe { display: flex; flex-direction: column; gap: 4px; }
+.cdoc-groupe-titre { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); }
+.cdoc-lignes { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.cdoc-ligne {
+  display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.cdoc-ligne:last-child { border-bottom: 0; }
+.cdoc-ligne[data-etat='a_regler'], .cdoc-ligne[data-etat='bloquant'] {
+  background: color-mix(in oklch, var(--warning) 9%, var(--card));
+  border-bottom-color: color-mix(in oklch, var(--warning) 30%, var(--card));
+}
+.cdoc-ligne-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cdoc-ligne-titre { font-weight: 500; }
+.cdoc-ligne[data-etat='a_regler'] .cdoc-ligne-titre, .cdoc-ligne[data-etat='bloquant'] .cdoc-ligne-titre { font-weight: 600; }
+.cdoc-ligne-detail { font-size: 12px; color: var(--muted-foreground); }
+.cdoc-ligne[data-etat='a_regler'] .cdoc-ligne-detail, .cdoc-ligne[data-etat='bloquant'] .cdoc-ligne-detail {
+  color: var(--warning-text);
+}
+.cdoc-ico { flex: none; }
+.cdoc-ico[data-etat='ok'] { color: var(--success-text); }
+.cdoc-ico[data-etat='a_regler'] { color: var(--warning-text); }
+.cdoc-ico[data-etat='bloquant'] { color: var(--destructive); }
+.cdoc-ico[data-etat='info'] { color: var(--muted-foreground); }
+
+/* « ? » : zone tactile 44 × 44, cercle de 28 */
+.cdoc-aide {
+  flex: none; width: 44px; height: 44px; padding: 0; border: 0; background: transparent;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.cdoc-aide > span {
+  width: 28px; height: 28px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font: 600 14px var(--font-brand); color: var(--muted-foreground); background: var(--card);
+}
+.cdoc-ligne[data-etat='a_regler'] .cdoc-aide > span, .cdoc-ligne[data-etat='bloquant'] .cdoc-aide > span {
+  border-color: color-mix(in oklch, var(--warning) 40%, var(--card)); color: var(--warning-text);
+}
+.cdoc-aide:focus-visible { outline: 2px solid var(--ring); outline-offset: -4px; border-radius: 10px; }
+
+/* « Régler dans <étape> » : marine (le texte de page, inversé), jamais l'or */
+.cdoc-regler {
+  flex: none; height: 44px; padding: 0 14px; border: 0; border-radius: 10px; white-space: nowrap;
+  background: var(--foreground); color: var(--background); font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.cdoc-regler:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+.cdoc-pied { flex: none; display: flex; align-items: center; gap: 16px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.cdoc-pied-texte { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 6px; }
+.cdoc-note { font-size: 12px; color: var(--muted-foreground); }
+.cdoc-legende { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted-foreground); }
+.cdoc-legende > span { display: inline-flex; align-items: center; gap: 5px; }
+/* « Générer le devis » (BoutonDevis, reçu tel quel) : la pastille or de la maquette */
+.cdoc-devis [data-testid='cal-bouton-devis'] button:first-of-type {
+  background: var(--primary); color: var(--primary-foreground); border-color: var(--primary);
+  border-radius: 10px; min-height: 48px; padding: 0 22px; font-size: 16px; font-weight: 600;
+}
+
+/* — colonne « Documents du projet » — */
+.cdoc-docs { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cdoc-docs-tete { display: flex; flex-direction: column; gap: 2px; padding: 4px 4px 0; }
+.cdoc-carte {
+  display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 12px; flex: none;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+}
+.cdoc-carte[data-disponible='non'] .cdoc-vignette { opacity: 0.55; }
+.cdoc-vignette {
+  flex: none; width: 112px; height: 80px; display: block; border-radius: 8px; box-sizing: border-box;
+  background: var(--background); border: 1px solid var(--border);
+}
+.cdoc-vignette > svg { display: block; width: 100%; height: 100%; }
+.cdoc-carte-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cdoc-carte-titre { margin: 0; font-weight: 600; font-size: 16px; }
+.cdoc-carte-description { margin: 0; font-size: 14px; color: var(--muted-foreground); }
+.cdoc-carte-motif { margin: 4px 0 0; font-size: 12px; color: var(--muted-foreground); }
+.cdoc-erreurs { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--destructive); }
+.cdoc-bouton {
+  display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--foreground);
+  font-weight: 600; font-size: 14px;
+}
+@media (hover: hover) {
+  .cdoc-bouton:hover:not(:disabled) { background: var(--muted); }
+}
+.cdoc-bouton:disabled { opacity: 0.5; cursor: not-allowed; }
+.cdoc-bouton:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.cdoc-info {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45;
+  background: color-mix(in oklch, var(--info) 8%, var(--card));
+  border: 1px solid color-mix(in oklch, var(--info) 25%, var(--card)); border-radius: 10px;
+}
+.cdoc-info > svg { flex: none; margin-top: 2px; color: var(--info); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cdoc-bouton, .cdoc-regler { transition: none; }
+}
+/* J6 — l'inventaire des documents lu trop lentement / refusé : phrase + « Réessayer », dans la colonne. */
+.cdoc-inventaire-attente { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; font-size: 14px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; }

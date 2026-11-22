@@ -2,13 +2,25 @@
 // et export image HD (CAL180), déplacés VERBATIM depuis pages/ventes/ToitureDesign.jsx
 // (move only : le JSX est inchangé ; seuls l'enveloppe du composant et les
 // imports sont ajoutés, l'état arrive en props NOMMÉES).
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import PanneauCalques from '../PanneauCalques'
 import Vue2DPlan from '../Vue2DPlan'
 import { FACTEURS_HD } from '../exportImage'
 import { exporterVideoOrbite } from '../exportVideo' // ACAL896
 import { useModeExpert } from './modeExpert'
+import { lireVue } from './coque/etapes/EtapeToit.helpers'
+
+/** H1 (tour 3) — la vue RÉELLE de la carte ('plan' / '3d', lue sur la caméra), pour que la feuille « Avancé » ne
+    marque jamais « Vue 3D » pendant que la carte est en Plan. Relue chaque seconde (aucun événement de caméra servi). */
+function useVueCarte() {
+  const [vue, setVue] = useState(() => lireVue(typeof document !== 'undefined' ? document : null))
+  useEffect(() => {
+    const id = window.setInterval(() => setVue(lireVue(document)), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  return vue
+}
 
 const VUES_CAMERA = [
   ['dessus', 'Dessus', 'cal-vue-dessus'],
@@ -23,6 +35,8 @@ export default function OutilsVue({
   hdBusy, hdMessage, exporterHd, gltfBusy, gltfMessage, exporterGltf,
 }) {
   const [expert] = useModeExpert()
+  // Hors de la coque (mode lead, figé) l'état « Plan » n'est jamais lu : le DOM y reste celui d'avant.
+  const enPlan = useVueCarte() === 'plan' && typeof document !== 'undefined' && !!document.querySelector('.cal-coque')
   // ACAL896 — « Vidéo 10 s » : état local du bouton (ToitureDesign.jsx n'est pas touché).
   const { id: reference } = useParams()
   const [videoMessage, setVideoMessage] = useState(null) // null = au repos ; sinon le texte affiché
@@ -77,7 +91,7 @@ export default function OutilsVue({
               <button
                 type="button"
                 className={chipClass}
-                aria-pressed={!vue2d}
+                aria-pressed={!vue2d && !enPlan}
                 data-testid="cal-onglet-3d"
                 onClick={() => setVue2d(false)}
               >
@@ -103,6 +117,7 @@ export default function OutilsVue({
                     type="button"
                     className={chipClass}
                     data-testid={hook}
+                    aria-pressed={nom === 'dessus' && enPlan ? true : undefined}
                     onClick={() => builderApi.current?.appliquerVue?.(nom)}
                   >
                     {libelle}

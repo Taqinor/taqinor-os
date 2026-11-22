@@ -1,11 +1,11 @@
 // ACAL441 — légende graphique de la carte d'accès solaire : trois repères (0, 0,5, 1) dont les
 // couleurs sont LUES de `solarAccessColorRGB` (jamais recopiées). Les extrémités 0 % / 100 % sont
 // les bornes du domaine de la fonction, pas des mesures.
-import { solarAccessColorRGB } from '../../lib/shadingEngine';
+import { couleurAccesActive } from '../../lib/shadingEngine';
 import { esc } from './dom';
 
 function css(a: number): string {
-  const c = solarAccessColorRGB(a);
+  const c = couleurAccesActive(a); // palette active (site : solarAccessColorRGB, inchangée)
   return `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
 }
 

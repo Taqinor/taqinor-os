@@ -1,0 +1,583 @@
+/* ============================================================================
+   COQUE DE L'ATELIER DE CALEPINAGE (maquettes 22/11 : Main, Resultats, Tablette).
+   Bandeau 56 px · rail 113 px (tuiles de 96 px + 8 px de chaque côté + filet, comme la maquette qui
+   compte padding et filet EN PLUS de ses 96 px) · centre (carte ou écran plein) · panneau 360 px.
+   Toutes les règles @media de la coque sont dans 56-coque-responsive.css.
+   Jetons uniquement (thème sombre par les jetons seuls) ; tailles de texte des
+   maquettes : 12 / 14 / 16 / 20 px. Importée par atelier/coque/CoqueAtelier.jsx.
+   ========================================================================== */
+
+/* Bord à bord (maquette : 0 marge) : la coque couvre la fenêtre quel que soit le conteneur de la route. */
+.rp9-host.cal-coque {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0; /* `.rp9-host` pose 16 px de marge intérieure : la maquette est bord à bord. */
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-brand);
+  font-size: 0.875rem;
+}
+
+/* ── Bandeau du projet ─────────────────────────────────────────────────── */
+.cal-coque .cal-barre-projet {
+  height: 56px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: calc(var(--z-base) + 20);
+}
+.cal-coque .cal-retour {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+@media (hover: hover) {
+  .cal-coque .cal-retour:hover { color: var(--foreground); }
+}
+.cal-coque .cal-projet { display: flex; flex-direction: column; min-width: 0; margin: 0; font-size: 0.875rem; font-weight: 400; }
+.cal-coque .cal-projet-titre {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-coque .cal-projet-sous-titre { font-size: 0.75rem; color: var(--muted-foreground); }
+.cal-coque .cal-barre-espace { flex: 1; }
+.cal-coque .cal-case-expert,
+.cal-coque .cal-case-expert input { width: 0; height: 0; margin: 0; padding: 0; border: 0; }
+
+/* Enregistrement (BarreEnregistrement, forme barre du haut) */
+.cal-coque .cal-barre-enregistrement { position: relative; display: flex; align-items: center; gap: 10px; }
+.cal-coque .cal-etat-ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--success-text);
+}
+.cal-coque .cal-etat-modifie { font-size: 0.75rem; color: var(--warning-text); }
+.cal-coque .cal-bouton-enregistrer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.cal-coque .cal-bouton-enregistrer:disabled { opacity: 0.6; cursor: not-allowed; }
+.cal-coque .cal-barre-messages {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 22rem;
+  padding: 10px 12px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+}
+
+/* Contrôle segmenté (Guidé | Expert, Plan | 3D…) */
+.cal-coque .cal-segmente {
+  display: flex;
+  padding: 3px;
+  background: var(--muted);
+  border-radius: 10px;
+}
+.cal-coque .cal-segmente > button {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+.cal-coque .cal-segmente-grand > button { height: 38px; }
+.cal-coque .cal-segmente > button[aria-pressed='true'] {
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+/* Boutons des maquettes */
+.cal-coque .cal-bouton-or {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.cal-coque .cal-bouton-or-plein { width: 100%; height: 48px; font-size: 1rem; }
+.cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; }
+.cal-coque .cal-bouton-marine {
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--foreground);
+  color: var(--background);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+/* ── Corps : rail · centre · panneau ───────────────────────────────────── */
+.cal-coque .cal-coque-corps { flex: 1; display: flex; min-height: 0; }
+
+.cal-coque .cal-rail {
+  width: 113px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 8px;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.cal-coque .cal-rail-etape {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 4px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+@media (hover: hover) {
+  .cal-coque .cal-rail-etape:hover { color: var(--foreground); }
+}
+.cal-coque .cal-rail-etape[aria-current='step'] {
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  color: var(--foreground);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+.cal-coque .cal-rail-etape[aria-current='step'] svg { color: var(--primary-text); }
+.cal-coque .cal-rail-avance[aria-expanded='true'] { color: var(--foreground); background: var(--muted); }
+.cal-coque .cal-rail-a-regler { font-size: 0.75rem; line-height: 16px; font-weight: 600; color: var(--warning-text); }
+/* Maquettes (mesurées en rendu) : tuile de 70 px (12 + 24 + 6 + 16 + 12) ; avec « 1 à régler » (Documents.dc.html,
+   sous Toit) 92 px (+ 6 + 16). L'interligne hérité (18 px) donnait 72 et 96 et descendait les étapes suivantes. */
+.cal-coque .cal-rail-libelle { line-height: 16px; }
+.cal-coque .cal-rail-espace { flex: 1; }
+
+.cal-coque .cal-coque-centre {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--muted);
+}
+.cal-coque .cal-coque-scene {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cal-coque .cal-coque-scene[hidden] { display: none; }
+.cal-coque .cal-coque-scene #rp9-search { flex: none; background: var(--card); }
+.cal-coque[data-avance='0'] .cal-coque-scene #rp9-search { display: none; }
+.cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) { flex: 1; min-height: 0; }
+.cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) #rp9-map { height: 100%; min-height: 0; }
+.cal-coque .cal-coque-sur-carte { position: absolute; inset: 0; pointer-events: none; z-index: calc(var(--z-base) + 10); }
+.cal-coque .cal-coque-sur-carte > * { pointer-events: auto; }
+.cal-coque .cal-coque-statut {
+  position: absolute;
+  right: 16px;
+  bottom: 88px; /* au-dessus de la barre d'outils flottante (44 px + 6 + 6 + 20 du bas) : jamais dessous */
+  max-width: min(20rem, 50%);
+  z-index: calc(var(--z-base) + 11);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--card) 94%, transparent);
+  box-shadow: var(--shadow-xs);
+}
+.cal-coque .cal-coque-statut #rp9-status {
+  margin: 0;
+  padding: 4px 4px 4px 12px;
+  border: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+}
+.cal-coque .cal-coque-statut-fermer {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 1rem;
+  position: relative;
+}
+.cal-coque .cal-coque-statut-fermer::after { content: ''; position: absolute; inset: -8px; } /* cible de 44 px */
+/* H7 — premier écran guidé (maquette Main : aucune pastille, aucun × sur la carte) : la pastille d'état reste LUE,
+   sa croix ne vit qu'en Expert (un nouveau message la rouvre de toute façon). */
+.cal-coque[data-expert='0'] .cal-coque-statut-fermer { display: none; }
+.cal-coque[data-expert='0'] .cal-coque-statut #rp9-status { padding-right: 12px; }
+.cal-coque .cal-coque-statut:has(#rp9-status:empty),
+.cal-coque .cal-coque-statut[data-masque='1'] { display: none; }
+
+/* Bande des alertes du calepinage entier (BandeauxCoque.jsx) : sous le bandeau du projet, une ligne. */
+.cal-coque .cal-coque-alertes {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 20px;
+  max-height: 45dvh;
+  overflow-y: auto;
+  background: color-mix(in oklch, var(--primary) 10%, var(--card));
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  position: relative;
+  z-index: calc(var(--z-base) + 19);
+}
+.cal-coque .cal-coque-alertes[hidden],
+.cal-coque .cal-coque-alertes:not(:has(.cal-coque-alertes-contenu > :not(.sr-only))) { display: none; }
+.cal-coque .cal-coque-alertes-contenu { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cal-coque .cal-coque-alertes-contenu > :not(.sr-only) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.cal-coque .cal-coque-alertes-contenu > * + * { border-top: 1px solid var(--border); }
+/* Repliée : UNE ligne — la première alerte, plus toute alerte bloquante (`role=alert` : conflit, blocage
+   d'enregistrement), jamais cachée ; les autres attendent « En savoir plus ». */
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > :not(.sr-only) ~ :not(.sr-only):not(:has([role='alert'])):not([role='alert']) { display: none; }
+.cal-coque .cal-coque-alertes-contenu p { margin: 0; }
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > :not(.sr-only) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+}
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p:first-child { flex: none; max-width: 40%; }
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p + p { flex: 1; }
+.cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > div { flex: none; margin: 0 0 0 auto; flex-wrap: nowrap; }
+.cal-coque .cal-coque-alertes-contenu button { min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
+.cal-coque .cal-coque-alertes-plus {
+  flex: none;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--info);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+/* Étape « pleine » (Résultats, Documents, Schéma) : l'écran occupe le centre. */
+.cal-coque .cal-coque-plein {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 28px;
+  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.cal-coque .cal-coque-plein-pied:empty { display: none; }
+
+/* Panneau d'étape */
+.cal-coque .cal-panneau-etape {
+  width: 360px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+}
+.cal-coque .cal-panneau-etape[hidden] { display: none; }
+.cal-coque .cal-panneau-etape-tete { padding: 20px 20px 12px; }
+.cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; color: var(--muted-foreground); }
+.cal-coque .cal-panneau-etape-titre {
+  margin: 2px 0 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.25rem;
+  line-height: 1.1; /* maquette : boîte de 22 px (l'interligne hérité en faisait 30 et descendait le panneau) */
+}
+.cal-coque .cal-panneau-etape-corps {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.cal-coque .cal-panneau-etape-emplacement:empty { display: none; }
+.cal-coque .cal-panneau-etape-pied { padding: 16px 20px; border-top: 1px solid var(--border); }
+.cal-coque .cal-panneau-etape-pied:empty { display: none; }
+.cal-coque .cal-coque-groupe[hidden],
+.cal-coque .cal-coque-avance[hidden] { display: none; }
+.cal-coque .cal-coque-groupe > *,
+.cal-coque .cal-coque-avance > * { margin-top: 0; }
+.cal-coque .cal-coque-liens { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.875rem; }
+.cal-coque .cal-coque-liens a { display: inline-flex; align-items: center; min-height: 44px; color: var(--info); }
+
+/* ── Atomes (primitives.jsx) ───────────────────────────────────────────── */
+.cal-coque .cal-carte-flottante {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+}
+.cal-coque .cal-indicateur { display: flex; flex-direction: column; }
+.cal-coque .cal-indicateur-libelle { font-size: 0.75rem; color: var(--muted-foreground); }
+.cal-coque .cal-indicateur-valeur { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.cal-coque .cal-section-etape { display: flex; flex-direction: column; gap: 8px; }
+.cal-coque .cal-section-etape-tete { display: flex; align-items: center; justify-content: space-between; }
+.cal-coque .cal-section-etape-tete h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
+.cal-coque .cal-tuile {
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+.cal-coque .cal-tuile[aria-pressed='true'] {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+.cal-coque .cal-tuile-pointillee { border-style: dashed; color: var(--muted-foreground); }
+
+.cal-coque button:focus-visible,
+.cal-coque a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* Enregistrement — scène propre et état connu : le bouton SE LIT comme l'état de la maquette
+   (« ✓ Enregistré à HH:MM », vert, 12 px, sans cadre) ; au survol, il dit qu'il ré-enregistre. */
+.cal-coque .cal-bouton-enregistrer-etat {
+  height: 44px;
+  padding: 0 4px;
+  border-color: transparent;
+  background: transparent;
+  font-weight: 400;
+}
+@media (hover: hover) {
+  .cal-coque .cal-bouton-enregistrer-etat:hover:not(:disabled) .cal-etat-ok { text-decoration: underline; }
+}
+.cal-coque .cal-bouton-enregistrer-etat:disabled { opacity: 1; cursor: default; }
+
+/* Mode guidé : les rangées que le constructeur insère SOUS la carte (aides de tracé « Angles droits »,
+   « Grille », « Nord vrai », « Caler le fond »…) restent montées mais masquées ; « Avancé » / Expert les
+   rendent. Seules la carte, ses calques et la recherche (Avancé) sont des enfants attendus de la scène. */
+.cal-coque[data-avance='0'] .cal-coque-scene > :not(#rp9-search):not(.rp9-map-wrap):not(.cal-coque-sur-carte):not(.cal-coque-statut):not(.cal-coque-sur-carte-client) {
+  display: none;
+}
+.cal-coque .cal-coque-ecran-hote { display: contents; }
+
+/* ── Pile de zoom en haut à droite (+, −, plein écran) — maquette Main, TOUTES les étapes à carte dès le
+   premier rendu (venue de 51-etape-toit.css, lane L1, qui ne se charge qu'à l'étape Toit) ──────────── */
+.cal-coque .maplibregl-ctrl-top-right { top: 16px; right: 16px; }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: 0 0 8px; }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button { width: 44px; height: 44px; color: var(--foreground); }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button + button { border-top: 1px solid var(--border); }
+/* Les pictogrammes MapLibre (images sombres fixes) sont redessinés en masque, à la couleur du texte. */
+.cal-coque .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
+.cal-coque .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon {
+  background: currentColor;
+  -webkit-mask: var(--cal-picto) center / 18px 18px no-repeat;
+  mask: var(--cal-picto) center / 18px 18px no-repeat;
+}
+.cal-coque .maplibregl-ctrl-zoom-in { --cal-picto: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E"); }
+.cal-coque .maplibregl-ctrl-zoom-out { --cal-picto: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E"); }
+/* Guidé (maquette Main) : la pile n'a que +, − et le plein écran, collés ; boussole et « ma position » de
+   MapLibre passent en Avancé ; la boussole N/S du constructeur descend sous la pile. */
+.cal-coque[data-avance='0'] .maplibregl-ctrl-compass,
+.cal-coque[data-avance='0'] .maplibregl-ctrl-top-right .maplibregl-ctrl-group:not(:first-child) { display: none; }
+.cal-coque[data-avance='0'] .maplibregl-ctrl-top-right .maplibregl-ctrl-group:first-child {
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+}
+.cal-coque[data-avance='0'] #rp9-compass { top: 168px; left: auto; right: 14px; }
+/* H1 (tour 3) — aucune maquette d'étape à carte (Main, Panneaux, Électrique, Tablette) ne montre de boussole : en guidé
+   elle n'apparaît plus sur aucune étape (l'étape Toit la masquait déjà) ; Expert et « Avancé » la gardent. */
+.cal-coque[data-avance='0']:not([data-feuille='1']) #rp9-compass { display: none; }
+.rp9-host.cal-coque .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-md);
+}
+.rp9-host.cal-coque[data-avance='0'] .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran {
+  left: auto;
+  right: 16px;
+  top: 105px;
+  border-radius: 0 0 12px 12px;
+}
+
+/* ── Présentation « Montrer au client » (maquette TelephoneClient, client/HabillageClient.jsx) ──
+   Le MÊME atelier : la carte 3D seule, bord à bord, en haut (464 px sur 844) ; bandeau, rail,
+   panneau et calques d'étape sont `hidden` (jamais démontés) ; les commandes propres à la carte
+   (boussole, plein écran, zoom, fin de tracé, poignées) sont masquées : rien à éditer ici. */
+.cal-coque[data-presentation='1'] { font-size: 1rem; }
+.cal-coque[data-presentation='1'] .cal-coque-corps { flex: 0 0 55%; min-height: 0; }
+.cal-coque[data-presentation='1'] .cal-coque-statut,
+.cal-coque[data-presentation='1'] .rp9-map-wrap > :not(#rp9-map),
+.cal-coque[data-presentation='1'] .maplibregl-control-container,
+.cal-coque[data-presentation='1'] .maplibregl-marker,
+.cal-coque[data-presentation='1'] #rp9-compass,
+.cal-coque[data-presentation='1'] [class*='rp9-compass'] { display: none; }
+.cal-coque .cal-coque-sur-carte-client { position: absolute; inset: 0; z-index: calc(var(--z-base) + 12); pointer-events: none; }
+.cal-coque .cal-coque-sur-carte-client > * { pointer-events: auto; }
+.cal-coque .cal-client-repli { position: absolute; inset: 0; background: var(--muted); }
+.cal-coque .cal-client-soleil {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.cal-coque .cal-client-soleil-lecture {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--foreground);
+  color: var(--background);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cal-coque .cal-client-soleil-lecture[aria-pressed='true'] { background: var(--primary); color: var(--primary-foreground); }
+.cal-coque .cal-client-soleil-curseur { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.cal-coque .cal-client-soleil-quand { font-size: 0.875rem; font-weight: 600; line-height: 1.25; }
+/* H6 — le curseur d'heure de la maquette (piste 6 px or, bouton 18 px liseré) : celui de l'étape Panneaux (`.cal-pan-heure`). */
+.cal-coque .cal-client-soleil .cal-segmente > button { height: 44px; padding: 0 10px; }
+
+/* ── « Avancé » en guidé : une FEUILLE à part, par-dessus l'écran, à droite (fermable : bouton, Échap, ou un
+   clic d'étape). L'écran guidé reste intact dessous ; rien de l'ancien atelier ne se mêle au panneau d'étape
+   ni sous la barre d'outils de la carte (ces contrôles-là sont ceux du mode Expert). ── */
+.cal-coque { --cal-haut-barre: 56px; }
+.cal-coque[data-feuille='1'] .cal-coque-avance:not([hidden]) {
+  position: fixed;
+  top: var(--cal-haut-barre);
+  right: 0;
+  bottom: 0;
+  width: min(520px, 100vw);
+  z-index: calc(var(--z-base) + 45);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 20px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+.cal-coque .cal-coque-feuille-tete {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 8px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.cal-coque .cal-coque-feuille-tete h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.cal-coque .cal-coque-feuille-fermer {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+/* Étape pleine (Résultats, Documents) : le panneau d'étape reste replié, seule la feuille s'affiche. */
+.cal-coque[data-feuille='1'][data-cadre='plein'] .cal-panneau-etape { width: 0; border: 0; }
+.cal-coque[data-feuille='1'][data-cadre='plein'] .cal-panneau-etape > :not(.cal-panneau-etape-corps) { display: none; }

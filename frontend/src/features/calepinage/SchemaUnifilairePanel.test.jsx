@@ -5,7 +5,7 @@
    jamais un cadre vide — les motifs du serveur (`manquantes`, `bloquants`)
    sont rendus AU CARACTÈRE PRÈS, jamais reformulés côté écran. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -22,8 +22,10 @@ vi.mock('./exportImage', () => ({
 }))
 
 import calepinageApi from '../../api/calepinageApi'
-import SchemaUnifilairePanel from './SchemaUnifilairePanel'
-import { motifDuRefusDxf, corpsEdition } from './SchemaUnifilairePanel.helpers'
+import SchemaUnifilairePanel, { PlancheSchema, SchemaEnBlocs } from './SchemaUnifilairePanel'
+import {
+  motifDuRefusDxf, corpsEdition, couperTexte, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planSchemaEnBlocs,
+} from './SchemaUnifilairePanel.helpers'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
 
@@ -387,5 +389,224 @@ describe('SchemaUnifilairePanel — édition des libellés et repères (ACAL161)
     const blocs = [{ clef: 'a', titre: 'A', repere: '' }]
     expect(corpsEdition(blocs, { libelles: { a: 'A' }, reperes: {} })).toEqual({})
     expect(corpsEdition(blocs, { libelles: {}, reperes: { a: 'R1' } })).toEqual({ reperes: { a: 'R1' } })
+  })
+})
+
+/* ── ACAL1301 — le sous-écran « Schéma » : planche, légende et cartouche (maquette `Schema.dc.html`) ── */
+describe('PlancheSchema, légende et cartouche (ACAL1301)', () => {
+  const SVG = exempleContrat('calepinage', 'calepinage_sld').svg
+
+  it('la planche insère le SVG SERVI entier, avec zoom ± et déplacement au clavier', async () => {
+    render(<PlancheSchema balisage={{ __html: SVG }} note="Dessiné tout seul à partir du raccordement : 2 chaînes de 6 panneaux." />)
+    const vue = screen.getByTestId('csch-vue')
+    // Le SVG servi, entier : son `viewBox` est gardé (la planche le cadre sans le couper).
+    expect(screen.getByTestId('csch-svg').querySelector('svg[viewBox="0 0 842 595"]')).not.toBeNull()
+    expect(screen.getByTestId('csch-svg')).toHaveTextContent('Champ PV')
+    expect(screen.getByRole('heading', { name: 'Schéma électrique' })).toBeTruthy()
+    expect(screen.getByText('Des panneaux jusqu’au réseau · sans échelle')).toBeTruthy()
+    const u = userEvent.setup()
+    await u.click(screen.getByRole('button', { name: 'Zoomer' }))
+    expect(vue).toHaveAttribute('data-echelle', '1.25')
+    await u.click(screen.getByRole('button', { name: 'Dézoomer' }))
+    await u.click(screen.getByRole('button', { name: 'Dézoomer' }))
+    expect(vue).toHaveAttribute('data-echelle', '0.8')
+    vue.focus()
+    await u.keyboard('{ArrowLeft}')
+    expect(screen.getByTestId('csch-svg').style.transform).toContain('translate(40px, 0px)')
+    expect(screen.getByText(/2 chaînes de 6 panneaux/)).toBeTruthy()
+  })
+
+  it('sans SVG : pas de zoom, les motifs (enfants) à la place', () => {
+    render(<PlancheSchema balisage={null}><p>motif du serveur</p></PlancheSchema>)
+    expect(screen.queryByRole('button', { name: 'Zoomer' })).toBeNull()
+    expect(screen.getByText('motif du serveur')).toBeTruthy()
+  })
+
+  it('la légende ne nomme que les signes du SVG servi', () => {
+    const plein = '<svg><line x1="0" y1="0" x2="1" y2="1" stroke="#1f3a5f"/></svg>'
+    expect(lignesLegende(plein).map((l) => l.cle)).toEqual(['liaison'])
+    const complet = `${plein.slice(0, -6)}<line x1="0" y1="0" x2="1" y2="0" stroke-dasharray="4 3"/><text>6,0 mm²</text></svg>`
+    expect(lignesLegende(complet).map((l) => l.libelle)).toEqual([
+      'Liaison entre deux organes', 'Liaison à la terre', 'Section du câble, puis sa longueur'])
+    expect(lignesLegende(null)).toEqual([])
+  })
+
+  it('le cartouche lit le détail SERVI ; un champ non servi est omis (jamais une valeur inventée)', () => {
+    const detail = structuredClone(exempleContrat('calepinage', 'calepinage_detail'))
+    const le = detail.versions.derniere_le
+    const heure = new Date(le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    expect(lignesCartouche(detail)).toEqual([
+      { libelle: 'Projet', valeur: 'Toiture — bâtiment principal — Casablanca' },
+      { libelle: 'Date', valeur: new Date(le).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) },
+      { libelle: 'Version', valeur: `Enregistrée à ${heure}` }, // l'empreinte technique n'est plus montrée quand l'heure est servie
+      { libelle: 'Auteur', valeur: "Utilisateur d'essai" },
+    ])
+    detail.responsable = null
+    detail.cree_par = null
+    detail.layout_hash = ''
+    detail.versions = null
+    const sans = lignesCartouche(detail)
+    expect(sans.map((l) => l.libelle)).toEqual(['Projet', 'Date'])
+    expect(sans.find((l) => l.libelle === 'Date').valeur)
+      .toBe(new Date(detail.modifie_le).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }))
+    expect(lignesCartouche(null)).toEqual([])
+  })
+})
+
+/* ── F3 (tour 2) — le schéma EN BLOCS de la maquette `Schema.dc.html`, composé depuis les données SERVIES ── */
+describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
+  const echantillons = () => ({
+    schema: structuredClone(exempleContrat('calepinage', 'calepinage_sld')),
+    resultat: structuredClone(exempleContrat('calepinage', 'calepinage_resultat')),
+  })
+
+  it('blocs servis seulement : chaînes rangées 1..n avec LEUR couleur servie, coffrets, onduleur, compteur, TGBT', () => {
+    const { schema, resultat } = echantillons()
+    // La table servie donne les chaînes dans l'ordre des modules : la 2 avant la 1.
+    resultat.electrique.affectation.reverse()
+    const plan = planSchemaEnBlocs(schema, resultat)
+    expect(plan.chaines.map((c) => [c.chaine, c.nombre, c.couleur, c.mppt])).toEqual([
+      [1, 2, 'rgb(30, 144, 255)', 1], [2, 2, 'rgb(255, 140, 0)', 2]])
+    expect(plan.chaines[0].libelle).toBe('Chaîne 1 · 2 panneaux')
+    expect(plan.chaines[0].detail).toBe('2 × 720 Wc') // chainage.puissance_module_wc servi
+    // Le coffret DC est servi sans organe de protection : la boîte dit ce que le serveur en publie.
+    expect(plan.coffretDc.organes).toEqual([])
+    expect(plan.coffretDc.detail.join(' ')).toBe('2 chaîne(s) raccordée(s)')
+    // Côté réseau : disjoncteur + différentiel servis (aucun parafoudre AC : non dessiné), compteur, TGBT ; pas de « reseau ».
+    expect(plan.blocsAc.map((b) => b.cle)).toEqual(['coffret_ac', 'compteur', 'tgbt'])
+    expect(plan.blocsAc[0].organes.map((o) => [o.nom, o.detail])).toEqual([
+      ['Disjoncteur', 'calibre : note de calcul'], ['Différentiel', 'protège les personnes']])
+    expect(plan.onduleur.puissance).toBe('10 kW')
+    expect(plan.onduleur.designation).toEqual([]) // le bloc servi s'appelle « Onduleur » : pas répété
+    expect(plan.onduleur.entrees).toBe('2 entrées : 1 et 2')
+    // Tient dans la planche de 1440 × 900 sans réduire le texte (≈ 880 × 680 px utiles).
+    expect(plan.largeur).toBeLessThanOrEqual(880)
+    expect(plan.hauteur).toBeLessThanOrEqual(680)
+  })
+
+  it('sections : écrites seulement si TOUS les tronçons du côté la partagent ; longueur seulement pour un tronçon unique', () => {
+    const { schema, resultat } = echantillons()
+    let plan = planSchemaEnBlocs(schema, resultat)
+    const etiquettes = (p) => p.liaisons.filter((l) => l.etiquette).map((l) => l.etiquette.lignes.join(' / '))
+    // DC : 6 mm² partout ; AC : deux tronçons de 10 mm² ⇒ section, mais AUCUNE longueur attribuée.
+    expect(etiquettes(plan)).toEqual(['6 mm²', 'entrée 1 · 6 mm²', '6 mm²', 'entrée 2 · 6 mm²', '10 mm²'])
+    resultat.troncons.troncons[1].section_mm2 = 4 // deux sections DC différentes
+    resultat.troncons.troncons = resultat.troncons.troncons.filter((t) => t.id !== 'ch4') // un seul tronçon AC
+    plan = planSchemaEnBlocs(schema, resultat)
+    expect(etiquettes(plan)).toEqual(['entrée 1', 'entrée 2', '10 mm² / 35 m'])
+    resultat.troncons = null // aucun cheminement : aucune section, aucune longueur
+    plan = planSchemaEnBlocs(schema, resultat)
+    expect(etiquettes(plan)).toEqual(['entrée 1', 'entrée 2'])
+    expect(plan.legende.map((l) => l.cle)).not.toContain('section')
+  })
+
+  it('légende = ce que le dessin emploie ; terre seulement si le schéma servi en trace une', () => {
+    const { schema, resultat } = echantillons()
+    let plan = planSchemaEnBlocs(schema, resultat)
+    expect(plan.terre).toBeNull()
+    expect(plan.legende.map((l) => l.libelle)).toEqual([
+      'Chaîne 1 · entrée 1', 'Chaîne 2 · entrée 2', 'Côté réseau (courant alternatif)', 'Section du câble, puis sa longueur'])
+    expect(plan.legende[0].couleur).toBe('rgb(30, 144, 255)')
+    schema.svg = schema.svg.replace('</svg>', '<line x1="0" y1="0" x2="9" y2="0" stroke-dasharray="4 3"/></svg>')
+    plan = planSchemaEnBlocs(schema, resultat)
+    expect(plan.terre.libelle).toBe('Terre : coffrets, onduleur et structure')
+    expect(plan.legende.map((l) => l.cle)).toContain('terre')
+  })
+
+  it('rien de servi pour dessiner (aucun onduleur ou aucune chaîne) ⇒ null : l’écran garde le schéma détaillé', () => {
+    const { schema, resultat } = echantillons()
+    expect(planSchemaEnBlocs({ ...schema, blocs: schema.blocs.filter((b) => b.clef !== 'onduleur') }, resultat)).toBeNull()
+    resultat.electrique.affectation = []
+    expect(planSchemaEnBlocs(schema, resultat)).toBeNull()
+    expect(planSchemaEnBlocs(null, null)).toBeNull()
+  })
+
+  it('quatre chaînes de quinze (calepinage de revue) : rangées compactes, le dessin tient toujours dans la planche', () => {
+    const { schema, resultat } = echantillons()
+    resultat.electrique.affectation = [3, 1, 4, 2].flatMap((chaine) => Array.from({ length: 15 }, (_, i) => ({
+      module: `m${chaine}-${i}`, chaine, mppt: chaine, onduleur: 1, couleur_chaine: `rgb(${chaine}, 0, 0)` })))
+    const plan = planSchemaEnBlocs(schema, resultat)
+    expect(plan.chaines.map((c) => c.chaine)).toEqual([1, 2, 3, 4])
+    expect(plan.chaines.every((c) => c.glyphes.n === 15 && c.glyphes.l > 8)).toBe(true)
+    expect(plan.hauteur).toBeLessThanOrEqual(690)
+    expect(plan.largeur).toBeLessThanOrEqual(880)
+  })
+
+  it('le dessin : textes de 12 à 20 px, un clic ouvre la section où la valeur se règle, un glisser n’ouvre rien', () => {
+    const { schema, resultat } = echantillons()
+    const plan = planSchemaEnBlocs(schema, resultat)
+    const onOuvrir = vi.fn()
+    render(<PlancheSchema balisage={{ __html: schema.svg }} dessin={<SchemaEnBlocs plan={plan} onOuvrir={onOuvrir} />} />)
+    const blocs = screen.getByTestId('csch-blocs')
+    for (const texte of ['Côté panneaux · courant continu', 'Côté réseau · courant alternatif', 'Coffret côté panneaux',
+      'Coffret côté réseau', 'Onduleur', '10 kW', 'continu → alternatif', 'Chaîne 1 · 2 panneaux', 'entrée 1 · 6 mm²']) {
+      expect(blocs).toHaveTextContent(texte)
+    }
+    // Aucune classe de texte sous 12 px dans le dessin.
+    const classes = [...blocs.querySelectorAll('text')].map((t) => t.getAttribute('class'))
+    expect(classes.every((c) => /csch-t(12|14|16|20)/.test(c))).toBe(true)
+    // Le SVG détaillé du serveur n'est pas monté dans cette vue.
+    expect(screen.queryByTestId('csch-svg')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Chaîne 1 · 2 panneaux, entrée 1/ }))
+    expect(onOuvrir).toHaveBeenLastCalledWith('controle-chaine')
+    fireEvent.keyDown(screen.getByTestId('csch-bloc-onduleur'), { key: 'Enter' })
+    expect(onOuvrir).toHaveBeenLastCalledWith('materiel-electrique')
+    fireEvent.click(screen.getByTestId('csch-bloc-coffret_ac'))
+    expect(onOuvrir).toHaveBeenLastCalledWith('equipements-electriques')
+    onOuvrir.mockClear()
+    const vue = screen.getByTestId('csch-vue')
+    const chaine = screen.getByTestId('csch-chaine-2')
+    fireEvent.pointerDown(chaine, { clientX: 10, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(chaine, { clientX: 60, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(chaine, { clientX: 60, clientY: 10, pointerId: 1 })
+    fireEvent.click(chaine)
+    expect(onOuvrir).not.toHaveBeenCalled()
+    expect(blocs.style.transform).toContain('translate(50px, 0px)')
+    expect(vue).toHaveAttribute('data-vue', 'blocs')
+  })
+
+  it('côté réseau pas encore servi : réseau, compteur et coffret EN CREUX, sans aucune valeur ; servi, ils les remplace', () => {
+    const { schema, resultat } = echantillons()
+    schema.blocs = schema.blocs.filter((b) => !['disjoncteur_ac', 'parafoudre_ac', 'ddr', 'compteur_production', 'tgbt', 'reseau'].includes(b.clef))
+    resultat.simule = false
+    resultat.hors_reseau = null // jamais simulé : le site est raccordé au réseau tant qu'on n'a pas dit le contraire
+    resultat.troncons = null
+    const plan = planSchemaEnBlocs(schema, resultat)
+    expect(plan.coteReseauACalculer).toBe(true)
+    expect(plan.blocsAc.map((b) => [b.cle, b.aCalculer])).toEqual([['coffret_ac', true], ['compteur', true], ['reseau', true]])
+    // Aucune étiquette de section ni de longueur ; la légende n'annonce pas un trait « réseau » servi.
+    expect(plan.liaisons.filter((l) => l.aCalculer).every((l) => l.etiquette === null)).toBe(true)
+    expect(plan.legende.map((l) => l.cle)).not.toContain('ac')
+    const aCalculer = vi.fn()
+    render(<PlancheSchema balisage={{ __html: schema.svg }}
+      dessin={<SchemaEnBlocs plan={plan} coteReseau={{ texte: phraseCoteReseau(resultat), onOuvrir: aCalculer }} />} />)
+    const blocs = screen.getByTestId('csch-blocs')
+    for (const texte of ['Coffret côté réseau', 'Compteur', 'Réseau du', 'distributeur']) expect(blocs).toHaveTextContent(texte)
+    expect(blocs.querySelectorAll('[data-a-calculer="true"]')).toHaveLength(3)
+    expect(blocs.textContent).not.toMatch(/mm²| \d+ m(?![a-zé])/)
+    expect(screen.getByTestId('csch-a-calculer')).toHaveTextContent('Lancez la simulation pour dimensionner le côté réseau')
+    fireEvent.click(screen.getByTestId('csch-a-calculer'))
+    expect(aCalculer).toHaveBeenCalledTimes(1) // ouvre l'étape Résultats (onglet production)
+  })
+
+  it('côté réseau : site déclaré hors réseau ⇒ rien dessiné ; simulé sans norme ⇒ la phrase nomme la norme', () => {
+    const { schema, resultat } = echantillons()
+    schema.blocs = schema.blocs.filter((b) => !['disjoncteur_ac', 'compteur_production', 'tgbt', 'reseau', 'ddr'].includes(b.clef))
+    resultat.hors_reseau = { banque: null, jours_autonomie: 2 } // bloc chiffré, sans `motif_absence`
+    expect(estHorsReseau(resultat)).toBe(true)
+    const plan = planSchemaEnBlocs(schema, resultat)
+    expect(plan.coteReseauACalculer).toBe(false)
+    expect(plan.blocsAc).toEqual([])
+    resultat.hors_reseau = { motif_absence: 'Ce calepinage n’est pas déclaré hors réseau' }
+    expect(estHorsReseau(resultat)).toBe(false)
+    expect(phraseCoteReseau({ simule: true })).toMatch(/norme électrique/)
+    expect(phraseCoteReseau({ simule: false })).toMatch(/Lancez la simulation/)
+  })
+
+  it('couperTexte : mots entiers, n lignes au plus, … au bout', () => {
+    expect(couperTexte('Huawei Onduleur réseau Huawei 50kW TRIPHASE', 22, 3)).toEqual(['Huawei Onduleur réseau', 'Huawei 50kW TRIPHASE'])
+    expect(couperTexte('Compteur de production', 12)).toEqual(['Compteur de', 'production'])
+    expect(couperTexte('un deux trois quatre cinq', 5, 2)).toEqual(['un', 'deux…'])
+    expect(couperTexte(null, 10)).toEqual([])
   })
 })

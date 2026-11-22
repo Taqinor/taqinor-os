@@ -95,7 +95,13 @@ const options = () => {
 
 async function taperDansLaRecherche(nomChamp, texte) {
   fireEvent.click(screen.getByRole('combobox', { name: nomChamp }))
-  const champ = await screen.findByRole('searchbox')
+  // Le champ de recherche du MENU ouvert (`aria-autocomplete`) : la liste porte aussi sa recherche
+  // « Rechercher un calepinage » (`type="search"`, maquette Liste du 22/11).
+  const champ = await waitFor(() => {
+    const menu = screen.getAllByRole('searchbox').find((c) => c.getAttribute('aria-autocomplete') === 'list')
+    expect(menu).toBeTruthy()
+    return menu
+  })
   // Saisie vide : comportement inchangé (les 20 plus récents).
   await waitFor(() => expect(options()).toHaveLength(20))
   expect(options().some((t) => t.includes('Zzz'))).toBe(false)

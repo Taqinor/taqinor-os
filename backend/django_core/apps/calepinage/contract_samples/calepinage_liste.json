@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/",
-  "pourquoi": "ACAL11 (C-ACAL-017) — LA LISTE DES CALEPINAGES : enveloppe de pagination DRF {count, next, previous, results[]} ; chaque ligne porte : id, titre, nom, statut, statut_libelle, lead {id, nom, ville, supprime} | null, client (IDENTIFIANT — clé d'écriture INCHANGÉE), client_apercu {id, nom, ville} | null (lecture seule : ce que la liste affiche), devis (identifiant), reference (CAL-AAMM-NNNN, DÉRIVÉE), image {url, genere_le, expire_le} (url = chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/roof-image/fichier/, ou null — jamais une URL MinIO), modifie_le (ISO = updated_at), layout_stale (bool | null — null sans devis), layout_nb_panneaux, responsable (id), responsable_nom. `statuts_publies` = les statuts DÉRIVÉS (brouillon, valide, perime ; ACON28 : refuse = dernière décision d'approbation un REFUS) avec leurs libellés, égaux à Calepinage.Statut.choices. Remplace la fixture tapée à la main LIGNE_AVEC_RATTACHEMENT de CalepinageList.err-qah-rattachement.test.jsx (supprimée par D06-T25). PACT10 : le contrat part AVANT D06-T24 (serveur) et D06-T25 (écran).",
+  "pourquoi": "ACAL11 (C-ACAL-017) — LA LISTE DES CALEPINAGES : enveloppe de pagination DRF {count, next, previous, results[]} ; chaque ligne porte : id, titre, nom, statut, statut_libelle, lead {id, nom, ville, supprime} | null, client (IDENTIFIANT — clé d'écriture INCHANGÉE), client_apercu {id, nom, ville} | null (lecture seule : ce que la liste affiche), devis (identifiant), reference (CAL-AAMM-NNNN, DÉRIVÉE), image {url, genere_le, expire_le} (url = chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/roof-image/fichier/, ou null — jamais une URL MinIO), modifie_le (ISO = updated_at), layout_stale (bool | null — null sans devis), layout_nb_panneaux, responsable (id), responsable_nom. `statuts_publies` = les statuts DÉRIVÉS (brouillon, valide, perime ; ACON28 : refuse = dernière décision d'approbation un REFUS) avec leurs libellés, égaux à Calepinage.Statut.choices. Remplace la fixture tapée à la main LIGNE_AVEC_RATTACHEMENT de CalepinageList.err-qah-rattachement.test.jsx (supprimée par D06-T25). PACT10 : le contrat part AVANT D06-T24 (serveur) et D06-T25 (écran). D07-L6 (maquette Liste) — chaque ligne porte aussi kwc (kWc du document de pose, mesures_du_document, null si inconnu) et production_kwh_an (P50 déjà enregistré par la dernière simulation, entier, null sans simulation ou quand le nombre de modules simulés n'est plus celui du document ; jamais recalculé, services/lecture_liste.py) ; l'enveloppe porte compteurs_statut {tous, brouillon, valide, perime, refuse} : effectifs par statut dérivé sur la même portée que la liste (société, vue du responsable, recherche et filtres) SAUF le filtre de statut, en une requête groupée. La ville de la carte se lit sur client_apercu.ville puis lead.ville ; aucun « nombre de points à régler » n'est enregistré, la liste n'en sert pas.",
   "exemple": {
     "count": 1,
     "next": null,
@@ -34,10 +34,19 @@
         "modifie_le": "2026-10-03T09:15:00Z",
         "layout_stale": false,
         "layout_nb_panneaux": 24,
+        "kwc": 6.96,
+        "production_kwh_an": 11480,
         "responsable": 3,
         "responsable_nom": "demo_admin"
       }
-    ]
+    ],
+    "compteurs_statut": {
+      "tous": 1,
+      "brouillon": 0,
+      "valide": 1,
+      "perime": 0,
+      "refuse": 0
+    }
   },
   "exemple_client_seul": {
     "count": 1,
@@ -67,6 +76,8 @@
         "modifie_le": "2026-10-03T09:15:00Z",
         "layout_stale": null,
         "layout_nb_panneaux": 24,
+        "kwc": null,
+        "production_kwh_an": null,
         "responsable": 3,
         "responsable_nom": "demo_admin"
       }
@@ -105,6 +116,8 @@
         "modifie_le": "2026-10-03T09:15:00Z",
         "layout_stale": null,
         "layout_nb_panneaux": null,
+        "kwc": null,
+        "production_kwh_an": null,
         "responsable": 3,
         "responsable_nom": "demo_admin"
       }

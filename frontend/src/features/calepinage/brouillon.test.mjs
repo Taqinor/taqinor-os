@@ -19,7 +19,7 @@ import {
   brouillonPertinent, creerGestionnaireBrouillon,
   purgerBrouillonsOrphelins, memoriserReprise, consommerReprise, estPanneReseau,
 } from './brouillon.js'
-import { baseServeur, creerStockageMiroir, lireBrouillonServeur } from './brouillonServeur.js'
+import { baseServeur, creerStockageMiroir, lireBrouillonServeur, sansVue } from './brouillonServeur.js'
 import { documentContrat } from '../../test/fixtures/contractSamples.js'
 
 /** Stockage en mémoire — MÊME contrat que `localStorage` (getItem/setItem/removeItem). */
@@ -533,4 +533,35 @@ test('ACAL945 — estPanneReseau : vrai sans réponse ou ERR_NETWORK ; faux pour
   assert.equal(estPanneReseau({ code: 'ETIMEDOUT' }), false)
   assert.equal(estPanneReseau({ response: { status: 409, data: {} } }), false)
   assert.equal(estPanneReseau({ response: { status: 500 } }), false)
+})
+
+test('H1 — sansVue : l’instant du soleil (`scene`) ne compte pas, le reste du document si ; l’original est intact', () => {
+  const ete = { version: 2, zones: [{ id: 'z1' }], scene: { sunDay: 172, sunHour: 15 } }
+  const hiver = { version: 2, zones: [{ id: 'z1' }], scene: { sunDay: 355, sunHour: 12 } }
+  assert.notEqual(hacherLayout(ete), hacherLayout(hiver))
+  assert.equal(hacherLayout(sansVue(ete)), hacherLayout(sansVue(hiver)))
+  assert.notEqual(hacherLayout(sansVue({ ...ete, zones: [] })), hacherLayout(sansVue(hiver)))
+  assert.deepEqual(ete.scene, { sunDay: 172, sunHour: 15 }, 'jamais muté : un enregistrement garde tout')
+  assert.equal(sansVue(null), null)
+  const sans = { version: 2 }
+  assert.equal(sansVue(sans), sans)
+})
+
+test('H1 — gestionnaire de brouillon nourri par sansVue : changer de saison n’écrit AUCUN brouillon', () => {
+  const storage = new Map()
+  const st = { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) }
+  let doc = { version: 2, zones: [], scene: { sunDay: 355, sunHour: 12 } }
+  let tic = null
+  const g = creerGestionnaireBrouillon({
+    storage: st, calepinageId: 9, utilisateurId: 1, hashBase: 'h', intervalleSecondes: 30,
+    obtenirLayout: () => sansVue(doc),
+    minuteur: { definir: (fn) => { tic = fn; return 1 }, annuler: () => {} },
+  })
+  g.demarrer()
+  doc = { ...doc, scene: { sunDay: 172, sunHour: 15 } }
+  tic()
+  assert.equal(storage.has(g.cle), false)
+  doc = { ...doc, zones: [{ id: 'z1' }] }
+  tic()
+  assert.equal(storage.has(g.cle), true)
 })

@@ -99,3 +99,67 @@ export default function GraphiqueMensuel({ autoconsommation, production = null }
     </div>
   )
 }
+
+/* « MOIS PAR MOIS » de l'étape Résultats (maquette Resultats.dc.html) : douze paires de
+   barres Production / Consommation, initiales J à D dessous. Mêmes sources que ci-dessus
+   (production : `production.mensuel` P50, sinon `autoconsommation.par_mois` ; consommation :
+   `par_mois[].consommation_kwh`), aucune valeur calculée : un mois sans valeur servie n'a PAS
+   de barre (jamais 0), pas de consommation servie = pas de barre consommation ni de légende.
+   Les hauteurs ne sont qu'un rapport au plus grand mois affiché. Les valeurs exactes sont en
+   infobulle et dans un tableau lisible par les lecteurs d'écran. */
+const INITIALES = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+const nombreServi = (v) => typeof v === 'number' && Number.isFinite(v)
+
+export function MoisParMois({ data }) {
+  const mensuel = Array.isArray(data?.production?.mensuel) ? data.production.mensuel : []
+  const parMois = Array.isArray(data?.autoconsommation?.par_mois) ? data.autoconsommation.par_mois : []
+  const prod = Array(12).fill(null)
+  const conso = Array(12).fill(null)
+  if (mensuel.length) {
+    mensuel.forEach((m) => { if (m?.mois >= 1 && m.mois <= 12 && nombreServi(m.p50_kwh)) prod[m.mois - 1] = m.p50_kwh })
+  } else {
+    parMois.forEach((m) => { if (m?.mois >= 1 && m.mois <= 12 && nombreServi(m.production_kwh)) prod[m.mois - 1] = m.production_kwh })
+  }
+  parMois.forEach((m) => { if (m?.mois >= 1 && m.mois <= 12 && nombreServi(m.consommation_kwh)) conso[m.mois - 1] = m.consommation_kwh })
+  const avecProd = prod.some((v) => v !== null)
+  const avecConso = conso.some((v) => v !== null)
+  if (!avecProd && !avecConso) return null
+  const max = Math.max(...prod.filter((v) => v !== null), ...conso.filter((v) => v !== null))
+  const h = (v) => (v === null || !(max > 0) ? null : `${Math.max(0, (v / max) * 100)}%`)
+  return (
+    <section className="cal-res-carte" data-testid="cal-resultats-mois">
+      <div className="cal-res-entete">
+        <h2 className="cal-res-titre">Mois par mois</h2>
+        <div className="cal-res-legende">
+          {avecProd && <span><span className="cal-res-pastille" />Production</span>}
+          {avecConso && <span><span className="cal-res-pastille cal-res-pastille-conso" />Consommation</span>}
+        </div>
+      </div>
+      <div role="img" className="cal-res-mois"
+        aria-label={`Histogramme mensuel de ${[avecProd && 'la production', avecConso && 'la consommation'].filter(Boolean).join(' et de ')}`}>
+        {INITIALES.map((_, i) => (
+          <div key={MOIS_COURT[i]} className="cal-res-mois-paire"
+            title={[prod[i] !== null && `${MOIS_COURT[i]} · production ${kwhOuNonCalcule(prod[i])}`,
+              conso[i] !== null && `consommation ${kwhOuNonCalcule(conso[i])}`].filter(Boolean).join(' · ') || undefined}>
+            {h(prod[i]) && <div className="cal-res-barre" style={{ height: h(prod[i]) }} />}
+            {h(conso[i]) && <div className="cal-res-barre cal-res-barre-conso" style={{ height: h(conso[i]) }} />}
+          </div>
+        ))}
+      </div>
+      <div className="cal-res-mois-noms" aria-hidden="true">
+        {INITIALES.map((l, i) => <span key={MOIS_COURT[i]}>{l}</span>)}
+      </div>
+      <table className="sr-only">
+        <caption>Valeurs mensuelles</caption>
+        <thead><tr><th>Mois</th>{avecProd && <th>Production</th>}{avecConso && <th>Consommation</th>}</tr></thead>
+        <tbody>
+          {MOIS_COURT.map((nom, i) => (prod[i] !== null || conso[i] !== null) && (
+            <tr key={nom}><td>{nom}</td>
+              {avecProd && <td>{prod[i] === null ? '' : kwhOuNonCalcule(prod[i])}</td>}
+              {avecConso && <td>{conso[i] === null ? '' : kwhOuNonCalcule(conso[i])}</td>}</tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  )
+}

@@ -22,9 +22,14 @@ const PASTILLES = {
 
 const nombre = (v, decimals) => (v === null || v === undefined ? 'non calculable' : formatNumber(v, { decimals }))
 
-export default function ConfigurationsOnduleur({ calepinageId, designations, lectureSeule = false, apresApplication = null }) {
-  const [donnees, setDonnees] = useState(null)
-  const [ouvert, setOuvert] = useState(false)
+/* Maquette Électrique (22/11) : l'étape guidée ouvre la comparaison par SON lien « Comparer avec N autres
+   onduleurs » — `ouvertDOffice` rend les cartes sans le lien interne, `donneesInitiales` (la réponse déjà
+   lue par l'étape) évite une seconde lecture. Sans ces props, le comportement d'origine est inchangé. */
+export default function ConfigurationsOnduleur({
+  calepinageId, designations, lectureSeule = false, apresApplication = null, ouvertDOffice = false, donneesInitiales = null,
+}) {
+  const [donnees, setDonnees] = useState(donneesInitiales)
+  const [ouvert, setOuvert] = useState(ouvertDOffice)
   const [erreur, setErreur] = useState(null)
   const [enCours, setEnCours] = useState(false)
 
@@ -48,10 +53,12 @@ export default function ConfigurationsOnduleur({ calepinageId, designations, lec
 
   return (
     <div data-testid="acal617-comparer">
-      <button type="button" onClick={comparer} data-testid="acal617-lien"
-        className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-text underline">
-        Comparer avec d’autres onduleurs
-      </button>
+      {!ouvertDOffice && (
+        <button type="button" onClick={comparer} data-testid="acal617-lien"
+          className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-text underline">
+          Comparer avec d’autres onduleurs
+        </button>
+      )}
       {ouvert && !donnees && !erreur && <Spinner />}
       {erreur && <p role="alert" className="text-sm text-destructive" data-testid="acal617-erreur">{erreur}</p>}
       {donnees?.motif_vide && <p className="text-sm text-muted-foreground" data-testid="acal617-vide">{donnees.motif_vide}</p>}

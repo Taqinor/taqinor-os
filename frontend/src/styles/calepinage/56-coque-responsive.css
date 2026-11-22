@@ -1,0 +1,204 @@
+/* ============================================================================
+   COQUE DE L'ATELIER — TOUTES SES RÈGLES @media (tablette, téléphone, mouvement réduit).
+   Maquette Tablette (1 180 × 820) : bandeau 64 px, rail replié en pictogrammes (72 px,
+   tuiles 56 px, pictos 26 px), carte sur toute la largeur, panneau d'étape en TIROIR DU BAS
+   (280 px, coins hauts arrondis 16 px, poignée qui l'agrandit) : une rangée « Étape N sur 5 ·
+   titre · contrôle principal · bouton d'action », les cartes de l'étape dessous.
+   Téléphone (< 640 px, pas de maquette de l'atelier) : même tiroir, rail en barre du bas,
+   bandeau sur deux rangées ; cibles ≥ 44 px, aucun défilement horizontal de la page.
+   Jetons uniquement. Importée par atelier/coque/CoqueAtelier.jsx après 50-coque-atelier.css.
+   Le seuil 1 279 px est aussi celui de `useTiroir` (CoqueAtelier.jsx).
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .cal-coque * { transition: none !important; animation-duration: 0s !important; }
+}
+
+@media (max-width: 1279px) {
+  /* Bandeau (maquette Tablette : 64 px, cibles 48 px). */
+  .cal-coque .cal-barre-projet { height: 64px; gap: 14px; padding: 0 16px 0 8px; }
+  .cal-coque .cal-retour { height: 48px; padding: 0 10px; gap: 6px; }
+  .cal-coque .cal-barre-projet .cal-segmente { border-radius: 12px; }
+  .cal-coque .cal-barre-projet .cal-segmente > button { height: 42px; padding: 0 16px; border-radius: 9px; }
+  .cal-coque .cal-barre-projet .cal-bouton-or { height: 48px; }
+
+  /* Rail replié en pictogrammes. */
+  .cal-coque .cal-rail { width: 72px; align-items: center; gap: 6px; padding: 12px 0; }
+  .cal-coque .cal-rail-etape { width: 56px; height: 56px; flex: none; justify-content: center; padding: 0; border-radius: 12px; }
+  .cal-coque .cal-rail-etape svg { width: 26px; height: 26px; }
+  .cal-coque .cal-rail-avance svg { width: 24px; height: 24px; }
+  .cal-coque .cal-rail-libelle,
+  .cal-coque .cal-rail-a-regler { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* Le centre prend toute la largeur ; le tiroir se pose dessus, en bas. Les calques de la carte
+     (légende, lecteur du soleil, barre d'outils, ligne d'état) se posent AU-DESSUS du tiroir fermé. */
+  .cal-coque { --cal-tiroir: 280px; --cal-haut-barre: 64px; }
+  .cal-coque .cal-coque-corps { position: relative; }
+  .cal-coque[data-cadre='carte']:not([data-presentation='1']) .cal-coque-sur-carte { bottom: var(--cal-tiroir); }
+  .cal-coque.cal-coque[data-cadre='carte']:not([data-presentation='1']) .cal-coque-statut { bottom: calc(var(--cal-tiroir) + 16px); }
+  .cal-coque .cal-panneau-etape[data-tiroir='1']:not([hidden]) {
+    position: absolute;
+    left: 72px;
+    right: 0;
+    bottom: 0;
+    z-index: calc(var(--z-base) + 30);
+    width: auto;
+    height: 280px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "poignee poignee poignee" "tete controle pied" "corps corps corps";
+    column-gap: 16px;
+    row-gap: 12px;
+    padding: 10px 20px 16px;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: var(--shadow-lg);
+    transition: height 0.2s ease;
+  }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'][data-deplie='1']:not([hidden]) { height: calc(100% - 24px); }
+  .cal-coque .cal-tiroir-poignee {
+    grid-area: poignee;
+    justify-self: center;
+    position: relative;
+    width: 96px;
+    height: 20px;
+    margin-bottom: -4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cal-coque .cal-tiroir-poignee::after { content: ''; position: absolute; inset: -12px 0; } /* cible de 44 px */
+  .cal-coque .cal-tiroir-poignee > span {
+    width: 44px;
+    height: 5px;
+    border-radius: 3px;
+    background: color-mix(in oklch, var(--muted-foreground) 40%, var(--card));
+  }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-tete { grid-area: tete; padding: 0; align-self: center; }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-titre { margin: 0; }
+  .cal-coque .cal-panneau-etape-controle {
+    grid-area: controle;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-corps { grid-area: corps; padding: 0 0 4px; gap: 12px; }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-pied { grid-area: pied; padding: 0; border-top: 0; align-self: center; }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-pied:empty { display: block; }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-bouton-or-plein { width: auto; height: 52px; padding: 0 20px; }
+}
+
+@media (max-width: 639px) {
+  /* Bandeau sur deux rangées (H7 — ordre de lecture) : retour · nom · Guidé | Expert, puis l'état d'enregistrement
+     À GAUCHE et « Générer le devis » à droite (l'enregistrement précède le devis, comme sur la barre large ; s'ils
+     ne tiennent pas sur une ligne, le devis passe dessous, jamais au-dessus). */
+  .cal-coque .cal-barre-projet { height: auto; flex-wrap: wrap; gap: 4px 8px; padding: 6px 8px; }
+  .cal-coque .cal-barre-projet > * { order: 1; }
+  .cal-coque .cal-retour { height: 44px; min-width: 44px; padding: 0; justify-content: center; font-size: 0; }
+  .cal-coque .cal-projet { flex: 1 1 0; }
+  .cal-coque .cal-barre-projet .cal-segmente { order: 2; }
+  .cal-coque .cal-barre-projet .cal-segmente > button { height: 44px; padding: 0 14px; }
+  .cal-coque .cal-barre-espace { order: 3; flex-basis: 100%; height: 0; }
+  .cal-coque .cal-barre-enregistrement { order: 4; flex-wrap: wrap; max-width: 100%; }
+  .cal-coque .cal-barre-projet .cal-bouton-or { order: 5; margin-left: auto; height: 44px; padding: 0 12px; }
+  .cal-coque .cal-barre-messages { right: auto; left: 0; width: min(22rem, calc(100vw - 16px)); }
+
+  /* Rail en barre du bas ; la carte au-dessus ; le tiroir posé sur la carte, au-dessus de la barre. */
+  .cal-coque { --cal-tiroir: 300px; --cal-haut-barre: 0px; }
+  .cal-coque .cal-coque-corps { flex-direction: column; }
+  .cal-coque .cal-coque-sur-carte .cal-carte-flottante { max-width: calc(100vw - 24px); overflow-x: auto; }
+  .cal-coque .cal-coque-centre { order: 1; flex: 1; min-height: 0; }
+  .cal-coque .cal-rail {
+    order: 2;
+    width: 100%;
+    height: 64px;
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 4px 8px;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .cal-coque .cal-rail-espace { display: none; }
+  .cal-coque .cal-rail-etape { width: 52px; height: 52px; }
+  .cal-coque .cal-panneau-etape[data-tiroir='1']:not([hidden]) {
+    left: 0;
+    bottom: 64px;
+    height: 300px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "poignee poignee" "tete pied" "controle controle" "corps corps";
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 10px;
+    padding: 8px 16px 12px;
+  }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'][data-deplie='1']:not([hidden]) { height: calc(100% - 64px - 16px); }
+  .cal-coque .cal-panneau-etape-controle { justify-content: stretch; }
+  .cal-coque .cal-panneau-etape-controle:empty { display: none; }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-bouton-or-plein { height: 48px; padding: 0 14px; font-size: 0.875rem; }
+  .cal-coque .cal-coque-plein { padding: 16px; }
+  .cal-coque .cal-coque-statut { max-width: calc(100% - 32px); }
+}
+
+/* Maquette Tablette, étape Panneaux (guidé) : le tiroir est UNE rangée « Étape 2 sur 5 / Les panneaux · Panneau
+   [liste] · Raccorder les panneaux → », puis les cartes CÔTE À CÔTE (Couvrir la facture | Le plus de panneaux |
+   alerte d'ombre), le reste (sens de pose…) dessous. Même écran, mêmes éléments : le corps du tiroir et l'écran
+   passent en `display: contents` pour que leurs blocs se rangent dans la grille du tiroir (aucun déplacement DOM).
+   Les crochets sont les hooks de l'écran (`cal-panneaux-*`). */
+@media (min-width: 640px) and (max-width: 1279px) {
+  .cal-coque[data-etape='panneaux'][data-expert='0'] .cal-panneau-etape[data-tiroir='1']:not([hidden]) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
+    grid-template-areas: none;
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    align-content: start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] :is(.cal-panneau-etape-corps, .cal-coque-ecran-hote, .cal-pan,
+    .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture'])) { display: contents; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] :is(.cal-panneau-etape-controle, .cal-panneau-etape-emplacement,
+    .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture']) > h2) { display: none; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > * ,
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan > *,
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture']) > *,
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-panneau-etape-corps > * { grid-column: 1 / -1; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-tiroir-poignee { grid-row: 1; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-panneau-etape-tete { grid-row: 2; grid-column: 1; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-module'] {
+    grid-row: 2;
+    grid-column: 2 / 4;
+    justify-self: end;
+    align-self: center;
+    margin-right: 296px; /* la place du bouton d'action, à droite sur la même rangée */
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+  }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-module'] .cal-pan-liste-hote { width: 300px; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-panneau-etape-pied { grid-row: 2; grid-column: 3; justify-self: end; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-bouton-or-plein { width: 280px; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-option-facture'].cal-pan-option-pose { grid-row: 3; grid-column: 1; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-option-max'].cal-pan-option-pose { grid-row: 3; grid-column: 2; }
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-ombre'] { grid-row: 3; grid-column: 3; }
+  /* Maquette Tablette : la rangée des cartes REMPLIT le tiroir fermé (280 − 10 − 16 de marges − 20 de poignée + 4
+     − 52 de rangée de titre − 2 × 12 d'écart ≈ 160 px) ; ce qui suit (sens de pose…) commence SOUS le pli, entier, et
+     se lit en faisant défiler le tiroir ou en l'agrandissant — jamais une section coupée à mi-hauteur. */
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan-option-pose {
+    min-height: calc(var(--cal-tiroir) - 120px);
+    justify-content: center;
+  }
+  /* Tiroir FERMÉ : la rangée du titre est celle de la maquette (libellé + liste, 52 px) ; les notes de la liste (ce que
+     l'étude utilise, « choisissez… ») se lisent tiroir agrandi — sinon elles poussent les cartes sous le pli. */
+  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'][data-deplie='0'] [data-testid='cal-panneaux-module'] .cal-pan-note {
+    display: none;
+  }
+}

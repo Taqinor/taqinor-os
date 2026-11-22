@@ -8,6 +8,7 @@ import { refusServeur } from '../commun/refusServeur'
 import { formatNumber } from '../../../lib/format'
 import { demandeMoteur, motifRefus } from '../ModeTerrain.helpers' // ACAL918
 import { fallbackPerKwc } from '@rooflib/productionEngine'
+import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { lireBrouillonServeur } from '../brouillonServeur.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
@@ -71,6 +72,32 @@ export async function pousserAffectationAtelier(builder, calepinageId) {
     lignes = null
   }
   builder.setAffectationChaines(Array.isArray(lignes) ? lignes : null, 'chaine')
+}
+
+// F6 (maquettes 22/11) — l'atelier ERP relève le plafond de cadrage (19 sur le site public) :
+// MapLibre sur-échantillonne la dernière tuile servie, et le fond neutre n'en dépend pas.
+export const ZOOM_MAX_CADRAGE_ATELIER = 22
+
+/**
+ * F6 — cadre la caméra sur TOUS les pans (le toit ≈ 40 % de la carte), sans animation. Caméra
+ * seule : rien de sérialisé, aucun brouillon, la scène n'est pas marquée modifiée. Sans effet
+ * si le constructeur n'expose pas `cadrerToit` (ancien build) ou pendant un tracé.
+ */
+export function cadrerToitAtelier(builder, racine = typeof document !== 'undefined' ? document : null) {
+  return typeof builder?.cadrerToit === 'function'
+    ? builder.cadrerToit({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER, basPx: hauteurCouverteParTiroir(racine) }) : false
+}
+
+/**
+ * H1 (tour 3) — tablette / téléphone : le tiroir du bas (`#rp9-studio-inspecteur[data-tiroir="1"]`) couvre le bas de la
+ * carte ; le cadrage vise la partie VISIBLE, au-dessus. Rend les pixels couverts (0 au bureau, sans tiroir ou sans DOM).
+ */
+export function hauteurCouverteParTiroir(racine) {
+  const carte = racine?.getElementById?.('rp9-map')
+  const tiroir = racine?.querySelector?.('#rp9-studio-inspecteur[data-tiroir="1"]:not([hidden])')
+  if (!carte || !tiroir) return 0
+  const bas = carte.getBoundingClientRect().bottom - tiroir.getBoundingClientRect().top
+  return Number.isFinite(bas) && bas > 0 ? Math.round(bas) : 0
 }
 
 /**
@@ -233,6 +260,7 @@ export function useAtelierBoot(ctx) {
     }
 
     async function boot() {
+      choisirPaletteAcces('site') // F6 — mode lead : la palette du site (rouge → vert), jamais celle de l'atelier
       // CALX104/CALX403 — lancés EN PARALLÈLE du lead (best-effort, cf. ci-dessus).
       const reglagesPromise = chargerReglagesAtelier()
       // CALX132 — l'empreinte OSM du bâtiment, lue plus bas avec le contour et
@@ -372,7 +400,21 @@ export function useAtelierBoot(ctx) {
     // renseignée » plutôt que de deviner une puissance, et il n'y a ni étude
     // bancable ni panneau de livraison client — rien de tout cela n'existe sur
     // un calepinage, et l'inventer produirait des boutons morts.
+    // H1 (tour 3) — la lecture de démarrage dépasse parfois les 20 s du client sur un poste chargé : elle est relancée
+    // UNE fois quand AUCUNE réponse n'est arrivée (délai, réseau), jamais sur un refus servi (4xx/5xx avec corps).
+    // L'écran reste « en chargement » pendant ce second essai ; seul son échec affiche « Impossible de charger ».
+    async function lireContexteAvecReprise() {
+      try {
+        return await lireContexte()
+      } catch (err) {
+        if (cancelled || err?.response) throw err
+        setStatus('Le serveur met du temps à répondre — nouvel essai de chargement…')
+        return lireContexte()
+      }
+    }
+
     async function bootCalepinage() {
+      choisirPaletteAcces('atelier') // F6 — bleu nuit → or (maquette Panneaux) dès le boot, toute étape et Expert
       // CALX109 — le CATALOGUE DE MODULES de la société, lu EN PARALLÈLE du
       // design-context : best-effort exactement comme l'étude bancable de
       // `bootDevis` — il ne bloque jamais le boot et n'invente rien. Sans lui
@@ -402,7 +444,7 @@ export function useAtelierBoot(ctx) {
 
       let ctx = null
       try {
-        const res = await lireContexte()
+        const res = await lireContexteAvecReprise()
         ctx = res.data
       } catch (err) {
         if (cancelled) return
@@ -417,6 +459,9 @@ export function useAtelierBoot(ctx) {
         return
       }
       if (cancelled) return
+      // H1 (tour 3) — une lecture RÉUSSIE efface l'échec d'un essai précédent (relance du boot) : l'écran ne garde
+      // jamais « Impossible de charger » sur une conception chargée, ni ne bloque l'enregistrement à tort.
+      setLoadError(null)
       // ACAL192 (D-ACAL-13, D-QJR5-15) — l'épingle SUIT le lead (`derive.etat ===
       // 'automatique'`) et le GPS du lead a été corrigé : le SERVEUR recentre UNE fois
       // (translation versionnée), puis le contexte est relu AVANT de booter le
@@ -510,6 +555,7 @@ export function useAtelierBoot(ctx) {
             poserFondDuDocument(builderApi.current)
             // ACAL286 — la teinte par chaîne vient de la table servie (best-effort).
             pousserAffectationAtelier(builderApi.current, calepinageId)
+            cadrerToitAtelier(builderApi.current) // F6 — le toit remplit la carte, une fois par boot
           },
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en

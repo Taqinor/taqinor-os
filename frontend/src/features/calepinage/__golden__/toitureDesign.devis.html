@@ -1,31 +1,103 @@
 <div>
-<div class="rp9-host">
-<div class="rp9-topbar">
-<p class="text-xs font-semibold uppercase tracking-wide text-primary-text">Interne · conception toiture</p>
-<button type="button" class="rp9-close" aria-label="Fermer la conception 3D" data-testid="rp9-fermer">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x size-5" aria-hidden="true">
-<path d="M18 6 6 18">
+<div class="rp9-host cal-coque" data-testid="cal-coque" data-etape="toit" data-cadre="carte" data-avance="0" data-expert="0">
+<header class="cal-barre-projet" data-testid="cal-barre-projet">
+<button type="button" class="cal-retour" data-testid="cal-retour-liste">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M15 18l-6-6 6-6">
 </path>
-<path d="m6 6 12 12">
-</path>
-</svg>
+</svg>Devis</button>
+<h1 class="cal-projet">
+<span class="cal-projet-titre" data-testid="cal-projet-titre">Devis DEV-202610-0001</span>
+<span class="cal-projet-sous-titre" data-testid="cal-projet-sous-titre">M. Alaoui</span>
+</h1>
+<span class="cal-barre-espace" aria-hidden="true">
+</span>
+<div class="cal-barre-enregistrement" data-testid="cal-enregistrer-calepinage">
+<button type="button" class="cal-bouton-enregistrer">
+<span>Enregistrer la conception</span>
 </button>
 </div>
-<div class="mt-6">
-<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-<h1 class="display text-xl text-foreground sm:text-2xl">Devis <span class="text-primary-text">DEV-202610-0001</span> · <span class="text-foreground">M. Alaoui</span>
-</h1>
+<label class="sr-only cal-case-expert" aria-hidden="true">
+<input data-testid="cal-mode-expert" tabindex="-1" type="checkbox">Mode expert</label>
+<div role="group" aria-label="Mode" class="cal-segmente ">
+<button type="button" aria-pressed="true">Guidé</button>
+<button type="button" aria-pressed="false">Expert</button>
 </div>
-<p class="mt-2 text-sm text-muted-foreground" aria-live="polite">Calepinage Toiture — bâtiment principal chargé. Ajustez la conception, puis « Enregistrer le calepinage ».</p>
+<button type="button" class="cal-bouton-or " data-testid="cal-generer-devis-haut">Resynchroniser le devis</button>
+</header>
+<div class="cal-coque-alertes" data-deplie="0">
+<div class="cal-coque-alertes-contenu">
+<p class="sr-only" aria-live="polite">Calepinage Toiture — bâtiment principal chargé. Ajustez la conception, puis « Enregistrer le calepinage ».</p>
 <p class="mt-3 text-xs text-muted-foreground" data-testid="acal-toiture-lead">Le lead déclare : toiture · tuiles · 60 m² disponibles · pente 25° · sud-ouest · ombrage partiel (palmier côté ouest) · 2 étages <a class="inline-flex min-h-11 items-center underline" href="/crm/leads/1" data-discover="true">Voir la fiche du lead</a>
 </p>
 <div class="mt-6 flex flex-wrap items-center justify-between gap-3 border border-brass-400/40 p-4" data-testid="rp9-calepinage-auto-note">
 <p class="text-sm text-foreground" role="status">Calepinage automatique depuis le tracé client — à vérifier</p>
 <button type="button" class="rp9-chip" data-testid="rp9-recommencer-trace-client">Recommencer depuis le tracé client</button>
 </div>
-<div id="rp9-studio" class="rp9-studio">
-<div id="rp9-studio-scene" class="rp9-studio-scene">
-<div class="rounded-xl border border-border bg-card mt-6 overflow-hidden">
+</div>
+<button type="button" class="cal-coque-alertes-plus" aria-expanded="false">En savoir plus</button>
+</div>
+<div id="rp9-studio" class="cal-coque-corps">
+<nav aria-label="Étapes" data-testid="cal-rail-etapes" class="cal-rail">
+<button type="button" data-testid="cal-etape-toit" data-etat="" aria-current="step" class="cal-rail-etape">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M3 11l9-7 9 7">
+</path>
+<path d="M5 10v9h14v-9">
+</path>
+</svg>
+<span class="cal-rail-libelle">Toit</span>
+</button>
+<button type="button" data-testid="cal-etape-panneaux" data-etat="" class="cal-rail-etape">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<rect x="3" y="4" width="18" height="16" rx="1.5">
+</rect>
+<path d="M3 12h18M9 4v16M15 4v16">
+</path>
+</svg>
+<span class="cal-rail-libelle">Panneaux</span>
+</button>
+<button type="button" data-testid="cal-etape-electrique" data-etat="" class="cal-rail-etape">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M13 2L4 14h7l-1 8 9-12h-7z">
+</path>
+</svg>
+<span class="cal-rail-libelle">Électrique</span>
+</button>
+<button type="button" data-testid="cal-etape-resultats" data-etat="" class="cal-rail-etape">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M4 20V10M10 20V4M16 20v-7M22 20H2">
+</path>
+</svg>
+<span class="cal-rail-libelle">Résultats</span>
+</button>
+<button type="button" data-testid="cal-etape-documents" data-etat="" class="cal-rail-etape">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M14 3H6a1 1 0 00-1 1v16a1 1 0 001 1h12a1 1 0 001-1V8z">
+</path>
+<path d="M14 3v5h5M9 13h6M9 17h6">
+</path>
+</svg>
+<span class="cal-rail-libelle">Documents</span>
+</button>
+<span class="cal-rail-espace" aria-hidden="true">
+</span>
+<button type="button" data-testid="cal-rail-avance" aria-expanded="false" class="cal-rail-etape cal-rail-avance">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12">
+</path>
+<circle cx="16" cy="6" r="2">
+</circle>
+<circle cx="10" cy="12" r="2">
+</circle>
+<circle cx="18" cy="18" r="2">
+</circle>
+</svg>
+<span class="cal-rail-libelle">Avancé</span>
+</button>
+</nav>
+<main class="cal-coque-centre">
+<div id="rp9-studio-scene" class="cal-coque-scene">
 <form id="rp9-search" class="flex flex-col gap-3 border-b border-border p-4 sm:flex-row">
 <label for="rp9-address" class="sr-only">Adresse</label>
 <div class="relative flex-1">
@@ -53,12 +125,154 @@
 </div>
 <p class="rp9-toit-client-label">Toit dessiné par le client · 52 m²</p>
 </div>
-<button type="button" data-testid="rp9-plein-ecran-toggle" class="rp9-chip rp9-carte-puce">Plein écran</button>
+<button type="button" data-testid="rp9-plein-ecran-toggle" class="rp9-chip rp9-carte-puce cal-carte-plein-ecran">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5">
+</path>
+</svg>
+<span class="sr-only">Plein écran</span>
+</button>
 <div class="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 gap-2">
 <button type="button" id="rp9-finish" disabled="" class="rp9-chip rp9-carte-puce" style="position: static;">Terminer le tracé</button>
 <button type="button" id="rp9-undo-point" hidden="" class="rp9-chip rp9-carte-puce" style="position: static;">Annuler le dernier point</button>
 </div>
 </div>
+<div class="cal-coque-sur-carte">
+<div class="cal-carte-flottante cal-barre-outils-carte" role="toolbar" aria-label="Outils du plan" data-testid="cal-barre-outils-carte">
+<button type="button" class="cal-outil-carte" aria-label="Sélectionner" aria-pressed="false">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M5 3l14 8-6 2-2 6z">
+</path>
+</svg>
+</button>
+<button type="button" class="cal-outil-carte" aria-label="Tracer un contour" aria-pressed="true">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M4 18l5-12 6 9 5-7">
+</path>
+<circle cx="4" cy="18" r="1.6">
+</circle>
+<circle cx="9" cy="6" r="1.6">
+</circle>
+<circle cx="15" cy="15" r="1.6">
+</circle>
+<circle cx="20" cy="8" r="1.6">
+</circle>
+</svg>
+</button>
+<button type="button" class="cal-outil-carte" aria-label="Ajouter un obstacle" aria-pressed="false">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<rect x="5" y="5" width="14" height="14" rx="2">
+</rect>
+<path d="M5 19L19 5">
+</path>
+</svg>
+</button>
+<button type="button" class="cal-outil-carte" aria-label="Mesurer" aria-pressed="false">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M3 17L17 3l4 4L7 21z">
+</path>
+<path d="M8 12l2 2M11 9l2 2M14 6l2 2">
+</path>
+</svg>
+</button>
+<span class="cal-barre-outils-separateur" aria-hidden="true">
+</span>
+<button type="button" class="cal-outil-carte" aria-label="Annuler" disabled="">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M9 14L4 9l5-5">
+</path>
+<path d="M4 9h10a6 6 0 010 12h-3">
+</path>
+</svg>
+</button>
+<button type="button" class="cal-outil-carte" aria-label="Rétablir" disabled="">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M15 14l5-5-5-5">
+</path>
+<path d="M20 9H10a6 6 0 000 12h3">
+</path>
+</svg>
+</button>
+<span class="cal-barre-outils-separateur" aria-hidden="true">
+</span>
+<div role="group" aria-label="Vue" class="cal-segmente cal-segmente-grand ">
+<button type="button" aria-pressed="true">Plan</button>
+<button type="button" aria-pressed="false">3D</button>
+</div>
+</div>
+</div>
+<div class="cal-coque-statut" data-masque="0">
+<p id="rp9-status" class="border-t border-border px-4 py-3 text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
+<button type="button" class="cal-coque-statut-fermer" aria-label="Masquer ce message">
+<span aria-hidden="true">×</span>
+</button>
+</div>
+</div>
+</main>
+<aside id="rp9-studio-inspecteur" aria-label="Le toit" class="cal-panneau-etape" data-testid="cal-panneau-etape">
+<div class="cal-panneau-etape-tete">
+<p class="cal-panneau-etape-rang">Étape 1 sur 5</p>
+<h2 class="cal-panneau-etape-titre" data-testid="cal-panneau-etape-titre">Le toit</h2>
+</div>
+<div class="cal-panneau-etape-corps">
+<div class="cal-panneau-etape-emplacement">
+</div>
+<div class="cal-coque-ecran-hote">
+<div class="cal-etape-toit">
+<div class="cal-toit-bloc cal-toit-bloc-forme">
+<section class="cal-section-etape ">
+<div class="cal-section-etape-tete">
+<h2>Forme</h2>
+</div>
+</section>
+</div>
+<div class="cal-toit-bloc cal-toit-bloc-dimensions">
+<section class="cal-section-etape ">
+<div class="cal-section-etape-tete">
+<h2>Dimensions</h2>
+</div>
+<form novalidate="" class="cal-toit-dimensions" data-testid="cal-toit-dimensions">
+<div class="cal-toit-champ">
+<label for="cal-toit-longueur">Longueur</label>
+<div class="cal-toit-saisie">
+<input id="cal-toit-longueur" inputmode="decimal" autocomplete="off" disabled="" type="text" value="">
+<span aria-hidden="true">m</span>
+</div>
+</div>
+<div class="cal-toit-champ">
+<label for="cal-toit-largeur">Largeur</label>
+<div class="cal-toit-saisie">
+<input id="cal-toit-largeur" inputmode="decimal" autocomplete="off" disabled="" type="text" value="">
+<span aria-hidden="true">m</span>
+</div>
+</div>
+</form>
+</section>
+</div>
+<div class="cal-toit-bloc cal-toit-bloc-pente">
+<section class="cal-section-etape ">
+<div class="cal-section-etape-tete">
+<h2>Pente et orientation</h2>
+</div>
+<div class="cal-toit-pente" data-testid="cal-toit-pente-carte">
+<p class="cal-toit-pente-texte">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
+<details class="cal-toit-pente-modifier">
+<summary>Modifier la pente</summary>
+</details>
+</div>
+</section>
+</div>
+<div class="cal-toit-bloc cal-toit-bloc-obstacles" data-testid="cal-toit-obstacles">
+<section class="cal-section-etape ">
+<div class="cal-section-etape-tete">
+<h2>Obstacles</h2>
+<button type="button" class="cal-lien-action">+ Ajouter</button>
+</div>
+</section>
+</div>
+</div>
+</div>
+<div class="cal-coque-groupe" data-groupe="toit">
 <div class="flex flex-wrap items-center gap-3 border-t border-border p-4">
 <button type="button" id="rp9-clear" class="rp9-chip">Effacer</button>
 <button type="button" id="rp9-add-area" disabled="" class="rp9-chip">+ Ajouter une zone</button>
@@ -268,6 +482,8 @@
 </div>
 </div>
 </div>
+</div>
+<div class="cal-coque-groupe" data-groupe="pose" hidden="">
 <div id="rp9-layout-window" hidden="" class="border-t border-border bg-card p-4">
 <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
 <p class="text-xs font-semibold uppercase tracking-wide text-primary-text">Personnaliser la disposition</p>
@@ -398,10 +614,6 @@
 </details>
 </div>
 </div>
-<p id="rp9-status" class="border-t border-border px-4 py-3 text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
-</div>
-</div>
-<div id="rp9-studio-inspecteur" class="rp9-studio-inspecteur">
 <div id="rp9-results" class="rp9-results rounded-xl border border-border bg-card mt-6 p-6">
 <p class="text-xs font-semibold uppercase tracking-wide text-primary-text">Recommandation</p>
 <p id="rp9-reco-title" class="fig mt-4 text-2xl text-primary-text">—</p>
@@ -731,6 +943,8 @@
 </div>
 <div data-cons-charges="true" hidden="" class="mt-2">
 </div>
+</div>
+<div class="cal-coque-avance" hidden="">
 <p class="mt-2 text-xs text-foreground" data-testid="calx65-bandeau">
 <span data-testid="calx65-rapide">Estimation rapide de l'atelier — avant la simulation</span>
 </p>
@@ -758,17 +972,9 @@
 <button type="button" class="rp9-chip" data-testid="cal-export-hd-2">Exporter 2×</button>
 <button type="button" class="rp9-chip" data-testid="cal-export-hd-3">Exporter 3×</button>
 </div>
-<div class="sticky bottom-0 z-30 mt-6 border-t border-border bg-card p-3 backdrop-blur" data-testid="cal-enregistrer-calepinage">
-<div class="flex flex-wrap items-center gap-3">
-<button type="button" class="inline-flex items-center justify-center gap-3 bg-success px-6 py-3 text-base font-bold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60">
-<span>Enregistrer la conception</span>
-</button>
 <p class="text-sm text-muted-foreground" data-testid="cal-resume-atelier">
 <span data-testid="cal-resume-panneaux">—</span> · <span data-testid="cal-resume-kwc">—</span> · <span data-testid="cal-resume-production">—</span>
 </p>
-<button type="button" data-testid="cal-action-etape-suivante" class="ml-auto inline-flex min-h-11 items-center justify-center bg-primary px-6 py-3 text-base font-bold text-primary-foreground">Poser les panneaux</button>
-</div>
-</div>
 <div class="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-atelier-panneaux">
 <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
 <span class="flex items-baseline gap-2">
@@ -776,6 +982,9 @@
 </span>
 <a data-testid="cal-lien-variantes" class="text-sm font-semibold text-primary-text underline" href="/calepinage/1?onglet=variantes" data-discover="true">Comparer les variantes</a>
 <a data-testid="cal-lien-photos-calage" class="text-sm font-semibold text-primary-text underline" href="/calepinage/1?onglet=photos" data-discover="true">Photos du site</a>
+<a class="text-sm font-semibold text-primary-text underline" href="/calepinage/1/releve" data-discover="true">Relevé de visite</a>
+<a class="text-sm font-semibold text-primary-text underline" href="/calepinage/1/client" data-discover="true">Montrer au client</a>
+<a class="text-sm font-semibold text-primary-text underline" href="/calepinage/reglages/demarrage-rapide" data-discover="true">Démarrage rapide des réglages</a>
 </div>
 <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
 <div>
@@ -799,23 +1008,9 @@
 <p class="mb-1.5 text-right text-xs text-muted-foreground">
 <a class="underline underline-offset-2" data-testid="cal-rail-lexique" href="/aide/lexique" data-discover="true">Lexique des termes du solaire</a>
 </p>
-<nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes" class="mb-2 flex flex-wrap items-center gap-1.5">
-<button type="button" data-testid="cal-etape-toit" data-etat="" aria-current="step" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-primary bg-primary/10 font-medium">
-<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">1</span>Toit</button>
-<button type="button" data-testid="cal-etape-panneaux" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">2</span>Panneaux</button>
-<button type="button" data-testid="cal-etape-electrique" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">3</span>Électrique</button>
-<button type="button" data-testid="cal-etape-resultats" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">4</span>Résultats</button>
-<button type="button" data-testid="cal-etape-documents" data-etat="" class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm border-border">
-<span class="text-xs font-bold uppercase tracking-widest text-muted-foreground">5</span>Documents</button>
-<label class="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Mémorisé dans ce navigateur, pour votre compte — pas sur le serveur.">
-<input data-testid="cal-mode-expert" type="checkbox">Mode expert</label>
-</nav>
 <div class="flex w-full flex-wrap items-center gap-x-1 gap-y-1.5 rounded-lg border border-border bg-muted p-1">
 <div role="tablist" aria-orientation="horizontal" class="items-center gap-1 rounded-lg border border-border bg-muted p-1 contents" aria-label="Onglets du calepinage" tabindex="0" data-orientation="horizontal" style="outline: none;">
-<button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_1m_-content-pente" data-state="inactive" id="radix-_r_1m_-trigger-pente" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" style="order: 0;" data-testid="cal-onglet-pente" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Pente</button>
+<button type="button" role="tab" aria-selected="false" aria-controls="radix-_r_0_-content-pente" data-state="inactive" id="radix-_r_0_-trigger-pente" class="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-ui-xs [@media(hover:hover)]:active:scale-[0.98] active:brightness-95" style="order: 0;" data-testid="cal-onglet-pente" tabindex="-1" data-orientation="horizontal" data-radix-collection-item="">Pente</button>
 </div>
 <span class="inline-flex" style="order: 1;">
 <button type="button" tabindex="-1" aria-label="À quoi sert « Pente »" title="À quoi sert « Pente »" class="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
@@ -867,11 +1062,16 @@
 <div class="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
 </div>
 </div>
-<div class="rounded-xl border border-border bg-card mt-6 p-6">
-<p class="text-xs text-muted-foreground">La conception est rangée sur le calepinage, avec une nouvelle version dès qu'elle a changé. Aucun statut n'est modifié ; le devis, lui, se génère par son propre bouton.</p>
 </div>
 </div>
+<div class="cal-panneau-etape-pied">
+<button type="button" class="cal-bouton-or cal-bouton-or-plein " data-testid="cal-action-etape-suivante">Poser les panneaux<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M5 12h14M13 6l6 6-6 6">
+</path>
+</svg>
+</button>
 </div>
+</aside>
 </div>
 </div>
 </div>

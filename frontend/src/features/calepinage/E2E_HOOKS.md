@@ -963,3 +963,77 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-photo-calage-monde` | calage photo : import d’un fichier de calage monde (.jgw, .pgw, .wld). |
+
+## Coque de l’atelier et écrans d’étape — refonte maquettes 22/11 (`atelier/coque/**`, écrans d’étape)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-coque` | coque de l’atelier plein écran (racine : bandeau, rail, centre, panneau ; `data-etape`, `data-cadre`, `data-avance`, `data-expert`). |
+| `cal-barre-projet` | coque : bandeau du projet (56 px) en haut de l’atelier. |
+| `cal-retour-liste` | coque : lien « ‹ Calepinages » (ou « ‹ Devis ») du bandeau. |
+| `cal-projet-titre` | coque : nom du projet dans le bandeau (titre servi, + ville servie). |
+| `cal-projet-sous-titre` | coque : ligne sous le nom (Lead / Client · facture servie), absente sans donnée. |
+| `cal-generer-devis-haut` | coque : bouton doré « Générer le devis » du bandeau (ouvre l’étape Documents et son vrai bouton). |
+| `cal-rail-avance` | coque : bouton « Avancé » en bas du rail (ouvre l’ancien inspecteur entier ; `aria-expanded`). |
+| `cal-panneau-etape` | coque : panneau d’étape de droite (`#rp9-studio-inspecteur`). |
+| `cal-panneau-etape-titre` | coque : titre du panneau d’étape (« Le toit »), sous « Étape N sur 5 ». |
+| `cal-sur-carte-resume` | étape Toit/Panneaux : puce blanche posée sur la carte (indicateurs servis). |
+| `cal-barre-outils-carte` | étape Toit : barre d’outils flottante au bas de la carte. |
+| `cal-toit-formes` | étape Toit : grille des formes du toit. |
+| `cal-toit-dimensions` | étape Toit : longueur et largeur du toit. |
+| `cal-toit-pente-carte` | étape Toit : carte « Pente et orientation ». |
+| `cal-toit-pente-confirmer` | étape Toit : bouton « Confirmer » de la pente. |
+| `cal-toit-pente-inconnue` | étape Toit : bouton « Je ne la connais pas ». |
+| `cal-toit-obstacles` | étape Toit : liste des obstacles et « + Ajouter ». |
+| `cal-panneaux-module` | étape Panneaux : carte du modèle de panneau. |
+| `cal-panneaux-option-facture` | étape Panneaux : option « Couvrir la facture ». |
+| `cal-panneaux-option-max` | étape Panneaux : option « Le plus de panneaux ». |
+| `cal-panneaux-sens-pose` | étape Panneaux : segmenté Portrait / Paysage / Au mieux. |
+| `cal-panneaux-ombre` | étape Panneaux : alerte des panneaux à l’ombre (seulement quand le constructeur la sert). |
+| `cal-carte-soleil` | étape Panneaux : légende d’ensoleillement et lecteur du soleil sur la carte. |
+| `cal-elec-onduleur` | étape Électrique : carte de l’onduleur. |
+| `cal-elec-schema-voir` | étape Électrique : carte « Schéma électrique — Voir ». |
+| `cal-elec-actions-carte` | étape Électrique : barre d’actions sur la carte (« Raccorder automatiquement »…). |
+| `cal-schema-legende` | sous-écran Schéma : légende dans le panneau. |
+| `cal-schema-cartouche` | sous-écran Schéma : cartouche (projet, date, version, auteur servis). |
+| `cal-resultats-tuiles` | étape Résultats : rangée des quatre tuiles. |
+| `cal-resultats-mois` | étape Résultats : carte « Mois par mois ». |
+| `cal-resultats-pertes` | étape Résultats : carte « Du soleil au réseau ». |
+| `cal-resultats-pied` | étape Résultats : pied « Année basse… » + bouton de l’étape suivante. |
+| `cal-avant-simulation` | étape Résultats avant simulation : racine (`data-etat` = `jamais` ou `perime`). |
+| `cal-avant-titre` | étape Résultats avant simulation : titre. |
+| `cal-avant-phrase` | étape Résultats avant simulation : phrase d’explication. |
+| `cal-avant-liste` | étape Résultats avant simulation : carte de la liste de ce qui manque. |
+| `cal-avant-ligne` | étape Résultats avant simulation : une ligne manquante (`data-code`). |
+| `cal-avant-aide` | étape Résultats avant simulation : bouton « ? » qui déplie la raison servie. |
+| `cal-avant-servi` | étape Résultats avant simulation : raison technique servie, dépliée. |
+| `cal-avant-renseigner` | étape Résultats avant simulation : lien « Renseigner » vers l’étape qui manque. |
+| `cal-docs-controles` | étape Documents : colonne « Prêt à envoyer ? ». |
+| `cal-docs-liste` | étape Documents : colonne « Documents du projet ». |
+| `cal-docs-carte` | étape Documents : carte d’un document (suffixe = clé). |
+| `cal-docs-apercu` | étape Documents : bouton « Aperçu » d’un document (suffixe = clé). |
+| `cal-docs-telecharger` | étape Documents : bouton « Télécharger » d’un document (suffixe = clé). |
+| `cal-docs-motif` | étape Documents : motif servi d’un document indisponible (suffixe = clé). |
+| `cal-docs-erreurs` | étape Documents : erreurs de lecture des documents. |
+| `cal-doc-reessayer` | étape Documents : relancer la lecture de la liste des documents quand elle est lente ou en échec. |
+| `cal-docs-attente` | étape Documents : documents en cours de lecture. |
+| `cal-docs-vide` | étape Documents : aucun document servi. |
+| `cal-docs-info-devis` | étape Documents : bandeau d’information sur le devis. |
+| `cal-pret-groupe` | « Prêt à envoyer ? » : groupe de contrôles d’une étape (suffixe = clé de l’étape). |
+| `cal-liste-filtres-etat` | liste : puces de filtre par état (comptes servis). |
+| `cal-releve` | écran « Relevé de visite » au téléphone (`/calepinage/:id/releve`). |
+| `cal-vue-client` | écran « Montrer au client » (`/calepinage/:id/client`). |
+
+## AlertesEnregistrement — déplacées de `ToitureDesign.jsx` (`atelier/AlertesEnregistrement.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-sync-bloquants` | refus électrique de la resynchro du devis : les bloquants du serveur (déplacé de ToitureDesign.jsx). |
+| `cal-sync-bloquant` | une ligne bloquante de ce refus. |
+| `cal-sync-motif` | motif de la dérogation (approbateur). |
+| `cal-sync-motif-erreur` | motif de dérogation manquant. |
+| `cal-sync-passer-outre` | « Passer outre et resynchroniser » (approbateur). |
+| `cal-sync-derogation-reservee` | dérogation réservée à un approbateur. |
+| `cal-document-modifie` | 409 `document_modifie` : la conception a été modifiée ailleurs. |
+| `cal-document-modifie-recharger` | bouton « Recharger » de ce bandeau. |
+| `cal-conflit-lecture-seule` | 409 : le devis lié est figé (motif du serveur). |

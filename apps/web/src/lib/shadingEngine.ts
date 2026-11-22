@@ -761,6 +761,31 @@ export function rowSelfShading(latitudeDeg: number, geo: TiltedRowGeometry): Row
 }
 
 /**
+ * Palette de la carte d'accès solaire, CHOISIE PAR L'HÔTE (maquette Panneaux, 22/11) : le site
+ * public garde `site` (rouge → vert, inchangé) ; l'atelier de l'ERP pose `atelier` (bleu nuit →
+ * or, la rampe de la maquette) par `choisirPaletteAcces`. La carte ET les légendes lisent la même
+ * palette active : elles ne peuvent pas diverger. Même valeur d'accès, seule la teinte change.
+ */
+export type PaletteAcces = 'site' | 'atelier';
+let paletteAccesActive: PaletteAcces = 'site';
+export function choisirPaletteAcces(palette: PaletteAcces): void {
+  paletteAccesActive = palette === 'atelier' ? 'atelier' : 'site';
+}
+/** Rampe de la maquette Panneaux (#1f3b73 0 %, #2f8fa8 30 %, #5ec4b6 50 %, #f3d36a 72 %, #f59e0b 100 %). */
+const RAMPE_ATELIER: ReadonlyArray<readonly [number, number, number, number]> = [
+  [0, 0x1f, 0x3b, 0x73], [0.3, 0x2f, 0x8f, 0xa8], [0.5, 0x5e, 0xc4, 0xb6], [0.72, 0xf3, 0xd3, 0x6a], [1, 0xf5, 0x9e, 0x0b],
+];
+function rampe(arrets: typeof RAMPE_ATELIER, a: number): { r: number; g: number; b: number } {
+  let i = 1;
+  while (i < arrets.length - 1 && a > arrets[i][0]) i++;
+  const [x0, r0, g0, b0] = arrets[i - 1];
+  const [x1, r1, g1, b1] = arrets[i];
+  const t = x1 > x0 ? Math.max(0, Math.min(1, (a - x0) / (x1 - x0))) : 0;
+  const m = (u: number, v: number) => (u + (v - u) * t) / 255;
+  return { r: m(r0, r1), g: m(g0, g1), b: m(b0, b1) };
+}
+
+/**
  * Couleur RVB (0–1 par canal) d'une valeur d'accès solaire (0–1) : dégradé continu
  * ROUGE (faible accès) → AMBRE → VERT (plein soleil). Le mapping est monotone et lié à
  * la VRAIE valeur d'accès (pas une teinte arbitraire) : access=1 → vert franc,
@@ -774,4 +799,11 @@ export function solarAccessColorRGB(access: number): { r: number; g: number; b: 
     return { r: 1, g: a * 2, b: 0 };
   }
   return { r: (1 - a) * 2, g: 1, b: 0 };
+}
+
+/** La couleur d'accès de la PALETTE ACTIVE (carte de chaleur et légendes de l'atelier) : `site` = exactement
+ *  `solarAccessColorRGB` (contrat ACAL727 du rapport d'ombrage, inchangé) ; `atelier` = la rampe de la maquette. */
+export function couleurAccesActive(access: number, palette: PaletteAcces = paletteAccesActive): { r: number; g: number; b: number } {
+  if (palette !== 'atelier') return solarAccessColorRGB(access);
+  return rampe(RAMPE_ATELIER, Number.isFinite(access) ? Math.max(0, Math.min(1, access)) : 1);
 }

@@ -1,0 +1,191 @@
+import { useCallback, useEffect, useState } from 'react'
+
+/* ============================================================================
+   ÉTAPE « PANNEAUX » — LA LECTURE DU CONSTRUCTEUR (22/11).
+   ----------------------------------------------------------------------------
+   Le script du toit (`roof-tool-pro11.ts`) écrit ses chiffres dans le DOM que
+   React lui a rendu (ids `rp9-*`) et n'expose aucun état. L'écran de l'étape
+   RE-PRÉSENTE ces contrôles : il les LIT ici (jamais un nombre recalculé, jamais
+   une valeur inventée : une valeur absente reste `null`) et leur RENVOIE les
+   gestes (clic sur le vrai bouton, valeur + événement sur le vrai champ). Les
+   éléments `rp9-*` ne sont jamais démontés ni rendus conditionnellement : ils
+   restent la source de vérité, l'écran n'est qu'une autre présentation.
+   ========================================================================== */
+
+/** Plafond du besoin accepté par le constructeur (`clampNeeded`, optimizer.ts) : « le plus de panneaux ». */
+export const BESOIN_MAX = 400
+
+const $ = (id) => document.getElementById(id)
+const texteDe = (id) => ($(id)?.textContent ?? '').replace(/\s+/g, ' ').trim()
+const absent = (t) => !t || t === '—'
+/** Le premier entier d'un texte (« 12 × 580 W » → 12), `null` s'il n'y en a pas. */
+const entierDe = (texte) => {
+  const m = /\d[\d\s]*/.exec(texte ?? '')
+  return m ? Number(m[0].replace(/\D/g, '')) : null
+}
+const valeurOuNull = (t) => (absent(t) ? null : t)
+
+/** Les chiffres de la carte « Recommandation » du constructeur (`rp9-reco-*`). */
+function lireFigures() {
+  const panneaux = texteDe('rp9-reco-panels')
+  const apres = /×\s*(\d[\d\s]*)\s*W/.exec(panneaux)
+  const prod = valeurOuNull(texteDe('rp9-reco-prod'))
+  const couverture = valeurOuNull(texteDe('rp9-reco-cover'))
+  return {
+    panneaux: absent(panneaux) ? null : entierDe(panneaux),
+    watt: apres ? Number(apres[1].replace(/\D/g, '')) : null,
+    kwc: valeurOuNull(texteDe('rp9-reco-kwc')),
+    production: prod ? prod.replace(/\s*kWh\s*\/\s*an/, ' kWh / an') : null,
+    productionKwh: prod ? entierDe(prod) : null,
+    couverture,
+    couverturePct: couverture ? entierDe(couverture) : null,
+  }
+}
+
+function lireBesoin() {
+  const champ = $('rp9-need-input')
+  if (!champ) return null
+  const note = texteDe('rp9-need-note')
+  // « … seuls 55 tiennent … » (besoin > ce qui tient) ou « on pose ce qui tient (55) » (aucune cible) — optimizer.ts.
+  const tiennent = /(\d[\d\s]*)\s+tiennent/.exec(note) ?? /ce qui tient \((\d[\d\s]*)\)/.exec(note)
+  return {
+    valeur: entierDe(champ.value),
+    editable: !champ.disabled,
+    note,
+    tiennent: tiennent ? Number(tiennent[1].replace(/\D/g, '')) : null,
+  }
+}
+
+const presse = (el) => el?.getAttribute('aria-pressed') === 'true'
+
+function lireModule() {
+  const liste = $('rp9-pan-module-select')
+  const erreur = $('rp9-pan-module-erreur')
+  return {
+    present: !!liste,
+    options: liste ? Array.from(liste.options).map((o) => ({
+      valeur: o.value, libelle: (o.textContent ?? '').trim(), grise: o.disabled,
+    })) : [],
+    valeur: liste?.value ?? '',
+    mention: texteDe('rp9-pan-module-mention'),
+    erreur: erreur && !erreur.hidden ? (erreur.textContent ?? '').trim() : '',
+  }
+}
+
+/** L'avis d'ombrage du constructeur (`shadingUi.ts`) : seulement quand il propose de retirer des modules. */
+function lireOmbre() {
+  const bouton = $('rp9-solar-access-apply')
+  if (!bouton) return null
+  const texte = texteDe('rp9-solar-access')
+  const retirer = /retirer les (\d+) module/.exec(texte)
+  if (!retirer) return null
+  return { n: Number(retirer[1]), origine: texte.includes('seuil de ce dossier') ? 'dossier' : 'societe' }
+}
+
+function lireSoleil() {
+  const heure = $('rp9-sun-hour')
+  const saisons = Array.from(document.querySelectorAll('[data-sun-season]'))
+  const lecture = $('rp9-sun-play-day')
+  const carte = $('rp9-heatmap-toggle')
+  const borne = (attr, defaut) => {
+    const n = Number(heure?.getAttribute(attr))
+    return Number.isFinite(n) && heure?.getAttribute(attr) ? n : defaut
+  }
+  return {
+    heure: heure ? entierDe(heure.value) : null,
+    min: borne('min', 6),
+    max: borne('max', 18),
+    date: $('rp9-sun-date')?.value ?? '',
+    saison: saisons.find(presse)?.dataset.sunSeason ?? null,
+    lecture: lecture ? { active: presse(lecture) } : null,
+    carte: carte ? { active: presse(carte) } : null,
+  }
+}
+
+/** Le sens de pose posé : `portrait` | `landscape` | `auto`, ou `null` (pose mixte). */
+function lireOrientation() {
+  const puces = Array.from(document.querySelectorAll('[data-orient]'))
+  return puces.find(presse)?.dataset.orient ?? null
+}
+
+/** La pose actuelle est-elle « tout ce qui tient » ? Le plafond du besoin, ou la pose égale à ce que
+    le script dit tenir, ou aucun besoin à dériver (le script pose alors tout ce qui tient). LU, jamais déduit
+    du nombre posé seul. */
+export function poseMax(besoin, figures) {
+  if (!besoin || !(figures?.panneaux > 0)) return false
+  if (besoin.valeur >= BESOIN_MAX) return true
+  if (besoin.tiennent != null && figures.panneaux === besoin.tiennent) return true
+  return !besoin.valeur && !besoin.editable
+}
+
+/** Une lecture complète du constructeur, avec la mémoire de « Le plus de panneaux » (ses chiffres ne se
+    lisent que le temps où il est posé). */
+export function lireConstructeur(avant = null) {
+  const besoin = lireBesoin()
+  const figures = lireFigures()
+  const max = poseMax(besoin, figures)
+  const memoire = { max: max ? figures : (avant?.memoire?.max ?? null) }
+  return {
+    besoin, figures, max, memoire,
+    module: lireModule(),
+    orientation: lireOrientation(),
+    ombre: lireOmbre(),
+    soleil: lireSoleil(),
+  }
+}
+
+/** La lecture + de quoi la rafraîchir tout de suite (après un geste) ; sinon ~2,5 fois par seconde :
+    le script écrit des valeurs (`.value`) que le DOM ne signale pas. */
+export function useConstructeur(delai = 400) {
+  const [etat, setEtat] = useState(() => lireConstructeur())
+  const rafraichir = useCallback(() => {
+    setEtat((avant) => {
+      const suivant = lireConstructeur(avant)
+      return JSON.stringify(suivant) === JSON.stringify(avant) ? avant : suivant
+    })
+  }, [])
+  useEffect(() => {
+    const id = window.setInterval(rafraichir, delai)
+    return () => window.clearInterval(id)
+  }, [delai, rafraichir])
+  return [etat, rafraichir]
+}
+
+const cliquer = (selecteur) => {
+  const el = document.querySelector(selecteur)
+  if (!el || el.disabled) return false
+  el.click()
+  return true
+}
+
+const poserEtDire = (el, valeur, evenement) => {
+  el.value = String(valeur)
+  el.dispatchEvent(new Event(evenement, { bubbles: true }))
+}
+
+/** Les gestes de l'écran, renvoyés aux VRAIS contrôles du constructeur. */
+export const gestes = {
+  orientation: (sens) => cliquer(`[data-orient="${sens}"]`),
+  saison: (saison) => cliquer(`[data-sun-season="${saison}"]`),
+  lecture: () => cliquer('#rp9-sun-play-day'),
+  carteSoleil: () => cliquer('#rp9-heatmap-toggle'),
+  retirerOmbre: () => cliquer('#rp9-solar-access-apply'),
+  besoin: (n) => {
+    const champ = $('rp9-need-input')
+    if (!champ || champ.disabled) return false
+    poserEtDire(champ, n, 'input')
+    return true
+  },
+  heure: (h) => {
+    const champ = $('rp9-sun-hour')
+    if (!champ) return false
+    poserEtDire(champ, h, 'input')
+    return true
+  },
+  module: (valeur) => {
+    const liste = $('rp9-pan-module-select')
+    if (!liste) return false
+    poserEtDire(liste, valeur, 'change')
+    return true
+  },
+}

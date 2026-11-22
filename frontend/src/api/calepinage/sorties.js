@@ -67,7 +67,7 @@ export const sorties = {
     // CALX25 — le relevé terrain (chaînes de cotes, CAL64, `views/releve.py`).
     // GET rend l'historique (`releves`) ; POST enregistre une chaîne ET rend
     // le relevé créé PLUS l'historique à jour (contrat `calepinage_releve.json`).
-    releve: (id) => api.get(`${pivot(id)}releve/`),
+    releve: (id) => api.get(`${pivot(id)}releve/`, { silencieuxExpiration: true, timeout: 60000 }), // J3 : lecture lente du relevé
     enregistrerReleve: (id, corps) => api.post(`${pivot(id)}releve/`, corps),
     // ACAL204/205 — corriger (PATCH, le MÊME relevé) ou retirer (DELETE) un
     // relevé de saisie ; GET releve/ rend aussi `releve_courant_id`.

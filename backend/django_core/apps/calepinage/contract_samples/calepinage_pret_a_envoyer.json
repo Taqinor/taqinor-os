@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/pret-a-envoyer/",
-  "pourquoi": "ACAL856 (M0, PACT10) — le contrôle « prêt à envoyer ? » AVANT l'envoi du devis : un seul agrégat des contrôles aujourd'hui dispersés (porte de feu vert `services/feu_vert.py::verifier_avant_publication`, verdict électrique D-ACAL-9, garde des kWh déclarés, hypothèses de toit jamais confirmées). Posé SEUL avant ses producteurs (ACAL857-864), sa route (ACAL860) et son écran (ACAL865). Chaque contrôle : `code`, `libelle`, `etat` ∈ ok | info | a_regler | bloquant, `valeur_texte`, `cause`, `geste` (quoi faire), `cible` {etape, onglet, champ} (où l'ouvrir) et `seuil_source`. `info` = valeur publiée SANS verdict faute de seuil saisi par la société ; un seuil d'orange n'existe que saisi par la société avec sa source (`seuil_source`), jamais en dur (`null` sinon). `pret` est vrai seulement sans aucun `bloquant` ni `a_regler`. Aucun prix, aucun statut de devis : ce contrat LIT, il ne change rien. Recouvrement partiel avec `calepinage_parcours_guide.json` (`manque[]`, ce qui manque au parcours) : le panneau d'ACAL865 compte les seuls `controles[]` d'ici et remplace la synthèse « n points à régler » de l'étape Électrique, jamais un second compte à côté. Les deux listes ci-dessous sont lues par le test d'ACAL860, qui compare `codes_produits` aux codes rendus par `services/pret_a_envoyer.py`. Valeurs de l'exemple : des PLACEHOLDERS de forme, aucun chiffre client.",
+  "pourquoi": "ACAL856 (M0, PACT10) — le contrôle « prêt à envoyer ? » AVANT l'envoi du devis : un seul agrégat des contrôles aujourd'hui dispersés (porte de feu vert `services/feu_vert.py::verifier_avant_publication`, verdict électrique D-ACAL-9, garde des kWh déclarés, hypothèses de toit jamais confirmées). Posé SEUL avant ses producteurs (ACAL857-864), sa route (ACAL860) et son écran (ACAL865). Chaque contrôle : `code`, `libelle`, `etat` ∈ ok | info | a_regler | bloquant, `valeur_texte`, `cause`, `geste` (quoi faire), `cible` {etape, onglet, champ} (où l'ouvrir) et `seuil_source`. `info` = valeur publiée SANS verdict faute de seuil saisi par la société ; un seuil d'orange n'existe que saisi par la société avec sa source (`seuil_source`), jamais en dur (`null` sinon). `pret` est vrai seulement sans aucun `bloquant` ni `a_regler`. Aucun prix, aucun statut de devis : ce contrat LIT, il ne change rien. Recouvrement partiel avec `calepinage_parcours_guide.json` (`manque[]`, ce qui manque au parcours) : le panneau d'ACAL865 compte les seuls `controles[]` d'ici et remplace la synthèse « n points à régler » de l'étape Électrique, jamais un second compte à côté. Les deux listes ci-dessous sont lues par le test d'ACAL860, qui compare `codes_produits` aux codes rendus par `services/pret_a_envoyer.py`. H3 (22/11) — `?etape=<toit|panneaux|electrique|resultats>` (facultatif) : seuls les producteurs dont un code se règle dans cette étape (rangement de l'écran `PretAEnvoyer.helpers.js::ETAPE_DU_CODE`, table `views/pret_a_envoyer.py::PRODUCTEURS_PAR_ETAPE`) ; `etape` est rendu (`null` = tous les contrôles) et `pret` / les comptes ne portent alors que sur les contrôles rendus ; une étape inconnue = 400. Valeurs de l'exemple : des PLACEHOLDERS de forme, aucun chiffre client.",
   "codes_produits": {
     "visite_validee": "ACAL857",
     "approbation_a_jour": "ACAL857",
@@ -29,8 +29,34 @@
   "codes_reserves": {
     "schema_secours": "JAMAIS dans controles[] — réserve, aucun producteur planifié"
   },
+  "etape_du_code": {
+    "visite_validee": "toit",
+    "approbation_a_jour": "toit",
+    "conception_perimee": "toit",
+    "pentes_confirmees": "toit",
+    "obstacle_hors_pan": "toit",
+    "pans_vides": "toit",
+    "kwc_coherent": "panneaux",
+    "taille_sans_facture": "panneaux",
+    "ombrage_chiffre": "panneaux",
+    "un_seul_chiffre": "panneaux",
+    "kwh_declare": "panneaux",
+    "hypotheses_conso": "panneaux",
+    "verdict_electrique": "electrique",
+    "materiel_designe": "electrique",
+    "tension_froid": "electrique",
+    "orientation_mppt": "electrique",
+    "ratio_dc_ac": "electrique",
+    "chutes_tension": "electrique",
+    "terre_protections": "electrique",
+    "compatibilite_equipements": "electrique",
+    "ecart_pvgis": "resultats",
+    "simulation_fraiche": "resultats",
+    "dossier_pieces": "resultats"
+  },
   "exemple": {
     "calepinage": 1,
+    "etape": null,
     "pret": false,
     "nombre_bloquants": 1,
     "nombre_a_regler": 1,
@@ -57,7 +83,7 @@
       },
       {
         "code": "ratio_dc_ac",
-        "libelle": "Rapport puissance panneaux / onduleur",
+        "libelle": "Puissance des panneaux face à l’onduleur",
         "etat": "info",
         "valeur_texte": "1,25",
         "cause": "Aucun seuil saisi par votre société : la valeur est donnée sans verdict.",
@@ -79,6 +105,7 @@
   },
   "exemple_vide": {
     "calepinage": 1,
+    "etape": null,
     "pret": true,
     "nombre_bloquants": 0,
     "nombre_a_regler": 0,

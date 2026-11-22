@@ -1,0 +1,392 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import SaisiePente from '../../../SaisiePente'
+import { panParDefaut, sourceDePente, zonesDuDocument } from '../../../SaisiePente.helpers'
+import useDocumentCalepinage from '../../../useDocumentCalepinage'
+import { SurCarte } from '../emplacements'
+import { BoutonMarine, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
+import {
+  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, degres, enregistrerPentePan, nomFace,
+  selectionnerObstacle, texteBesoin, useEtatToit,
+} from './EtapeToit.helpers'
+import { useCibleFactures } from './panneaux/lectures'
+
+/* ============================================================================
+   COQUE — L'ÉTAPE « TOIT » (maquette Main du 22/11 ; ToitSombre = même écran,
+   thème sombre par les jetons seuls).
+   ----------------------------------------------------------------------------
+   Panneau de droite, dans l'ordre de la maquette : Forme (les tuiles SONT les
+   puces du script `#rp9-formes-toit`, placées sous ce titre par la feuille
+   51-etape-toit.css — jamais déplacées ni re-rendues), Dimensions, Pente et
+   orientation, Obstacles. Sur la carte (`SurCarte`) : la puce « Surface du
+   toit | Pans | Besoin d'après la facture », la bulle « Contour tracé » et la
+   barre d'outils flottante. Chaque chiffre est LU dans le DOM du constructeur
+   (EtapeToit.helpers.js) ; chaque geste CLIQUE le vrai contrôle du script.
+   Les anciens contrôles restent montés : masqués en guidé, visibles en Avancé.
+   ========================================================================== */
+
+const ASTUCE_CONTOUR = 'Cliquez sur un coin pour le déplacer, ou double-cliquez sur un bord pour ajouter un point.'
+const ASTUCE_AJOUT = 'Cliquez sur la carte pour poser chaque coin du pan, double-cliquez pour le fermer. Échap annule l’ajout.'
+const DUREE_BULLE_MS = 8000
+
+const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+
+function Champ({ id, libelle, valeur, onChange, onBlur, desactive }) {
+  return (
+    <div className="cal-toit-champ">
+      <label htmlFor={id}>{libelle}</label>
+      <div className="cal-toit-saisie">
+        <input id={id} type="text" inputMode="decimal" autoComplete="off" value={valeur}
+          onChange={onChange} onBlur={onBlur} disabled={desactive} />
+        <span aria-hidden="true">m</span>
+      </div>
+    </div>
+  )
+}
+
+/** Longueur / largeur : les champs de « Créer le toit » avant tout contour, les cotes du pan actif ensuite.
+    La saisie en cours n'est jamais réécrite sous le curseur ; Entrée (ou la sortie du champ, contour fermé)
+    la pose dans le vrai contrôle du script, qui la valide. */
+function Dimensions({ cotes, relire }) {
+  const [brouillon, setBrouillon] = useState(null)
+  const valeurs = brouillon ?? cotes
+  const desactive = cotes.mode === 'aucun' || cotes.desactive
+  const changer = (cle) => (e) => setBrouillon({ longueur: valeurs.longueur, largeur: valeurs.largeur, [cle]: e.target.value })
+  const appliquer = (e) => {
+    e?.preventDefault?.()
+    if (!brouillon) return
+    appliquerCotes(document, brouillon.longueur, brouillon.largeur)
+    setBrouillon(null)
+    relire()
+  }
+  const surSortie = cotes.mode === 'pan' ? appliquer : undefined
+  return (
+    <div className="cal-toit-bloc cal-toit-bloc-dimensions">
+      <SectionEtape titre="Dimensions">
+        <form noValidate onSubmit={appliquer} className="cal-toit-dimensions" data-testid="cal-toit-dimensions">
+          <Champ id="cal-toit-longueur" libelle="Longueur" valeur={valeurs.longueur} onChange={changer('longueur')}
+            onBlur={surSortie} desactive={desactive} />
+          <Champ id="cal-toit-largeur" libelle="Largeur" valeur={valeurs.largeur} onChange={changer('largeur')}
+            onBlur={surSortie} desactive={desactive} />
+          {cotes.mode === 'creer' && <button type="submit" className="cal-bouton-contour cal-toit-creer">Créer le toit</button>}
+        </form>
+      </SectionEtape>
+    </div>
+  )
+}
+
+/** La pente du pan ACTIF : celle du document servi quand le pan y est, sinon celle que le script affiche. */
+function penteAffichee(zone, pente, ferme) {
+  if (zone) {
+    return {
+      plat: zone.roofType ? zone.roofType === 'flat' : pente.plat,
+      deg: Number.isFinite(Number(zone.pitchDeg)) ? Number(zone.pitchDeg) : null,
+      face: nomFace(zone.facingAzimuthDeg),
+      aConfirmer: !estObjet(zone.pitchSource),
+    }
+  }
+  return ferme ? pente : null
+}
+
+function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, enregistreLe, pente, ferme }) {
+  const doc = useDocumentCalepinage(calepinageId)
+  const { recharger } = doc
+  const [message, setMessage] = useState(null)
+  const [inconnue, setInconnue] = useState(false)
+  const [envoi, setEnvoi] = useState(false)
+  const [modifier, setModifier] = useState(false)
+  // Un enregistrement de l'atelier a pu changer les pans : la carte relit le document servi.
+  useEffect(() => { if (enregistreLe) recharger() }, [enregistreLe, recharger])
+
+  const zones = zonesDuDocument(doc.document)
+  const idActif = String(builderApi?.panActifId?.() ?? '')
+  const zone = idActif
+    ? zones.find((z) => String(z.id) === idActif) ?? null
+    : zones.find((z) => String(z.id) === panParDefaut(doc.document)) ?? null
+  const vue = penteAffichee(zone, pente, ferme)
+
+  const confirmer = async () => {
+    if (lectureSeule) return
+    if (doc.etat !== 'ok') { setMessage('Conception illisible : rien n’est enregistré.'); return }
+    if (!zone) { setMessage('Enregistrez d’abord le calepinage : ce pan n’est pas encore dans la conception.'); return }
+    const deg = Number(zone.pitchDeg)
+    if (!Number.isFinite(deg)) { setMessage('Ce pan n’a pas de pente : saisissez-la avec « Modifier la pente ».'); return }
+    setEnvoi(true)
+    const rendu = await enregistrerPentePan({
+      calepinageId, doc, documentVivant, zone, zones,
+      champs: { pitchDeg: deg, pitchSource: sourceDePente({ degres: deg, source: 'degres' }, {}) },
+    })
+    setEnvoi(false)
+    setMessage(rendu.message)
+  }
+
+  const titre = !vue ? null
+    : vue.plat ? 'Toit plat'
+      : `${degres(vue.deg) ?? '—'}°${vue.face ? ` · face ${vue.face}` : ''}`
+  const aConfirmer = Boolean(vue && !vue.plat && vue.aConfirmer)
+  return (
+    <div className="cal-toit-pente" data-testid="cal-toit-pente-carte">
+      {titre ? (
+        <div className="cal-toit-pente-tete">
+          <span className="cal-toit-pente-valeur">{titre}</span>
+          {aConfirmer && <span className="cal-toit-pente-tag">À confirmer</span>}
+        </div>
+      ) : (
+        <p className="cal-toit-pente-texte">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
+      )}
+      {aConfirmer && !inconnue && (
+        <>
+          <p className="cal-toit-pente-texte">
+            Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d&apos;envoyer le devis.
+          </p>
+          <div className="cal-toit-pente-actions">
+            <BoutonMarine onClick={confirmer} disabled={lectureSeule || envoi} data-testid="cal-toit-pente-confirmer">
+              Confirmer
+            </BoutonMarine>
+            <button type="button" className="cal-bouton-contour" data-testid="cal-toit-pente-inconnue"
+              onClick={() => { setInconnue(true); setMessage(null) }}>
+              Je ne la connais pas
+            </button>
+          </div>
+        </>
+      )}
+      {aConfirmer && inconnue && (
+        <p className="cal-toit-pente-texte" role="status">
+          Valeur de départ gardée, toujours à confirmer : elle sera vérifiée à la visite. Rien n’est enregistré.
+        </p>
+      )}
+      {message && <p className="cal-toit-pente-message" role="status">{message}</p>}
+      <details className="cal-toit-pente-modifier" onToggle={(e) => setModifier(e.currentTarget.open)}>
+        <summary>Modifier la pente</summary>
+        {modifier && (
+          <SaisiePente calepinageId={calepinageId} documentVivant={documentVivant} lectureSeule={lectureSeule}
+            zoneInitiale={zone?.id ?? ''} onEnregistre={recharger} />
+        )}
+      </details>
+    </div>
+  )
+}
+
+/** Les obstacles du toit (lus dans le tableau « Objets du site » du script) ; un clic sur une ligne la
+    sélectionne comme ce tableau le fait. Liste à une seule tabulation (flèches + Entrée). */
+function Obstacles({ obstacles, relire }) {
+  const [actif, setActif] = useState(0)
+  const [choisi, setChoisi] = useState(null)
+  const choisir = (o, i) => {
+    setActif(i)
+    setChoisi(o.id)
+    selectionnerObstacle(document, o)
+    relire()
+  }
+  const clavier = (e) => {
+    const n = obstacles.length
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActif((i) => (Math.min(i, n - 1) + (e.key === 'ArrowDown' ? 1 : n - 1)) % n)
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      const i = Math.min(actif, n - 1)
+      choisir(obstacles[i], i)
+    }
+  }
+  const ajouter = (
+    <button type="button" className="cal-lien-action" onClick={() => { GESTES.obstacle(document); relire() }}>
+      + Ajouter
+    </button>
+  )
+  return (
+    <div className="cal-toit-bloc cal-toit-bloc-obstacles" data-testid="cal-toit-obstacles">
+      <SectionEtape titre="Obstacles" action={ajouter}>
+        {obstacles.length > 0 && (
+          <ul role="listbox" aria-label="Obstacles du toit" tabIndex={0} className="cal-toit-obstacles"
+            aria-activedescendant={`cal-toit-obstacle-${Math.min(actif, obstacles.length - 1)}`} onKeyDown={clavier}>
+            {obstacles.map((o, i) => (
+              <li key={`${o.pan}:${o.id}`} id={`cal-toit-obstacle-${i}`} role="option" aria-selected={choisi === o.id}
+                data-actif={i === actif ? '1' : '0'} onClick={() => choisir(o, i)}>
+                <span className="cal-toit-obstacle-pastille" aria-hidden="true" />
+                <span className="cal-toit-obstacle-nom">{o.nom}</span>
+                <span className="cal-toit-obstacle-cotes">{[o.cotes, o.hauteur].filter(Boolean).join(' · ')}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SectionEtape>
+    </div>
+  )
+}
+
+function Outil({ nom, libelle, presse, desactive = false, onClick, titre }) {
+  return (
+    <button type="button" className="cal-outil-carte" aria-label={libelle} aria-pressed={presse}
+      title={titre} disabled={desactive} onClick={onClick}>
+      <Icone nom={nom} taille={20} epaisseur={2} />
+    </button>
+  )
+}
+
+const ESSAIS_VUE_MS = [0, 1500, 4000]
+
+/** La maquette ouvre l'étape en « Plan » : la caméra du dessus est posée à l'entrée (et reposée tant que la carte
+    se charge, sauf si l'utilisateur a déjà choisi sa vue). Le segment lit ensuite la vraie caméra (`outils.vue`). */
+function useVuePlanALEntree(builderApi) {
+  const choisie = useRef(false)
+  useEffect(() => {
+    if (typeof builderApi?.appliquerVue !== 'function') return undefined
+    const minuteurs = ESSAIS_VUE_MS.map((delai) => window.setTimeout(() => {
+      if (!choisie.current) builderApi.appliquerVue('dessus')
+    }, delai))
+    return () => minuteurs.forEach((m) => window.clearTimeout(m))
+  }, [builderApi])
+  return choisie
+}
+
+/** La barre d'outils flottante (bas, centrée) : 4 outils | annuler · rétablir | Plan · 3D. Le 2ᵉ outil dit ce
+    qu'il fait : « Tracer un contour » sans toit (le tracé au clic est actif), « Ajouter un pan » avec un toit. */
+function BarreOutils({ outils, builderApi, relire, ajout, onAjout }) {
+  const [vueChoisie, setVueChoisie] = useState('plan')
+  const vueToucheeRef = useVuePlanALEntree(builderApi)
+  const geste = (nom) => () => { GESTES[nom](document); relire() }
+  const modeLibre = !outils.obstacle && !outils.mesure
+  const changerVue = (v) => {
+    vueToucheeRef.current = true
+    setVueChoisie(v)
+    builderApi?.appliquerVue?.(v === '3d' ? 'trois-quarts' : 'dessus')
+  }
+  const avecToit = outils.ferme || Boolean(ajout)
+  return (
+    <CarteFlottante role="toolbar" aria-label="Outils du plan" className="cal-barre-outils-carte"
+      data-testid="cal-barre-outils-carte">
+      <Outil nom="selection" libelle="Sélectionner" presse={modeLibre && outils.ferme} onClick={geste('selection')} />
+      {avecToit ? (
+        <Outil nom="trace" libelle="Ajouter un pan" presse={Boolean(ajout)} onClick={onAjout}
+          titre={ajout ? 'Annuler l’ajout du pan (Échap)' : 'Ajouter un pan : tracer un nouveau contour'} />
+      ) : (
+        <Outil nom="trace" libelle="Tracer un contour" presse={modeLibre} onClick={geste('trace')} />
+      )}
+      <Outil nom="obstacle" libelle="Ajouter un obstacle" presse={outils.obstacle} onClick={geste('obstacle')} />
+      <Outil nom="mesure" libelle="Mesurer" presse={outils.mesure} onClick={geste('mesure')} />
+      <span className="cal-barre-outils-separateur" aria-hidden="true" />
+      <Outil nom="annuler" libelle="Annuler" desactive={!outils.annuler} onClick={geste('annuler')} />
+      <Outil nom="retablir" libelle="Rétablir" desactive={!outils.retablir} onClick={geste('retablir')} />
+      <span className="cal-barre-outils-separateur" aria-hidden="true" />
+      <Segmente libelle="Vue" grand valeur={outils.vue ?? vueChoisie} onChange={changerVue}
+        options={[{ valeur: 'plan', libelle: 'Plan' }, { valeur: '3d', libelle: '3D' }]} />
+    </CarteFlottante>
+  )
+}
+
+function Bulle({ titre, texte }) {
+  return (
+    <div className="cal-toit-bulle" role="status">
+      <p className="cal-toit-bulle-titre">{titre}</p>
+      <p className="cal-toit-bulle-texte">{texte}</p>
+    </div>
+  )
+}
+
+/** La bulle « Contour tracé » : quelques secondes après la fermeture d'un tracé fait dans la séance. Pendant
+    l'ajout d'un pan, la bulle dit le geste suivant et comment l'annuler. */
+function BulleContour({ contourFerme, ajout }) {
+  const [vue, setVue] = useState(0)
+  useEffect(() => {
+    if (!contourFerme) return undefined
+    const minuterie = window.setTimeout(() => setVue(contourFerme), DUREE_BULLE_MS)
+    return () => window.clearTimeout(minuterie)
+  }, [contourFerme])
+  if (ajout) return <Bulle titre="Nouveau pan" texte={ASTUCE_AJOUT} />
+  if (!contourFerme || vue === contourFerme) return null
+  return <Bulle titre="Contour tracé" texte={ASTUCE_CONTOUR} />
+}
+
+/** « Ajouter un pan » et son annulation (re-clic ou Échap) : la zone vide ouverte est retirée, le pan d'avant
+    redevient actif. Pendant l'ajout, la puce (table des pans) et les cotes gardent le toit d'avant. */
+function useAjoutPan(etat, relire) {
+  const [ajout, setAjout] = useState(null)
+  // L'ajout est fini dès que sa zone a un contour (ou n'existe plus) : lu à chaque relecture de l'état.
+  const actif = ajout && !ajoutTermine(document, ajout) ? ajout : null
+  const enCours = useRef(null)
+  useEffect(() => { enCours.current = actif }, [actif])
+  const annuler = useCallback(() => {
+    if (enCours.current) annulerAjoutPan(document, enCours.current)
+    enCours.current = null
+    setAjout(null)
+    relire()
+  }, [relire])
+  const basculer = () => {
+    if (actif) { annuler(); return }
+    const lance = commencerAjoutPan(document)
+    if (lance) {
+      enCours.current = { ...lance, cotes: etat.cotes }
+      setAjout(enCours.current)
+    }
+    relire()
+  }
+  useEffect(() => {
+    if (!actif) return undefined
+    const surTouche = (e) => { if (e.key === 'Escape') annuler() }
+    document.addEventListener('keydown', surTouche)
+    return () => document.removeEventListener('keydown', surTouche)
+  }, [actif, annuler])
+  return [actif, basculer]
+}
+
+/** Le « Besoin d'après la facture » de la puce selon l'état de la lecture : en chargement, rien (aucune absence
+    affirmée) ; en échec, « Lecture impossible — réessayer » ; lue, le chiffre servi (ou rien : pas de facture). */
+function besoinAffiche(facture) {
+  if (facture.etat === 'echec') {
+    return (
+      <button type="button" className="cal-toit-reessayer" onClick={facture.reessayer} data-zone="besoin-echec">
+        Lecture impossible — réessayer
+      </button>
+    )
+  }
+  return facture.etat === 'ok' ? texteBesoin(facture.cible) : null
+}
+
+function ResumeCarte({ surface, pans, besoin }) {
+  if (!surface) return null
+  const blocs = [
+    ['Surface du toit', surface],
+    pans ? ['Pans', String(pans)] : null,
+    besoin ? ['Besoin d\'après la facture', besoin] : null,
+  ].filter(Boolean)
+  return (
+    <CarteFlottante className="cal-sur-carte-resume" data-testid="cal-sur-carte-resume">
+      {blocs.map(([libelle, valeur], i) => (
+        <div key={libelle} className="cal-sur-carte-resume-bloc">
+          {i > 0 && <span className="cal-sur-carte-resume-filet" aria-hidden="true" />}
+          <Indicateur libelle={libelle} valeur={valeur} />
+        </div>
+      ))}
+    </CarteFlottante>
+  )
+}
+
+export default function EtapeToit({
+  calepinageId, builderApi = null, documentVivant = null, lectureSeule = false, enregistreLe = null, contexte: servi = null, contexteEnCours = false,
+}) {
+  const [etat, relire] = useEtatToit()
+  // La taille des factures : l'accesseur PARTAGÉ avec l'étape Panneaux (trois états ; le design-context de
+  // l'atelier, `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
+  const facture = useCibleFactures(calepinageId, servi, { attendre: contexteEnCours })
+  const [ajout, basculerAjout] = useAjoutPan(etat, relire)
+  return (
+    <div className="cal-etape-toit">
+      <div className="cal-toit-bloc cal-toit-bloc-forme">
+        <SectionEtape titre="Forme" />
+      </div>
+      <Dimensions cotes={ajout ? { ...ajout.cotes, desactive: true } : etat.cotes} relire={relire} />
+      <div className="cal-toit-bloc cal-toit-bloc-pente">
+        <SectionEtape titre="Pente et orientation">
+          <CartePente calepinageId={calepinageId} builderApi={builderApi} documentVivant={documentVivant}
+            lectureSeule={lectureSeule} enregistreLe={enregistreLe} pente={etat.pente} ferme={etat.outils.ferme} />
+        </SectionEtape>
+      </div>
+      <Obstacles obstacles={etat.obstacles} relire={relire} />
+      <SurCarte>
+        <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={besoinAffiche(facture)} />
+        <BulleContour contourFerme={etat.contourFerme} ajout={ajout} />
+        <BarreOutils outils={etat.outils} builderApi={builderApi} relire={relire} ajout={ajout} onAjout={basculerAjout} />
+      </SurCarte>
+    </div>
+  )
+}

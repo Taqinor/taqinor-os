@@ -3,6 +3,8 @@
   "pourquoi": "ENF15 (routes_sous_contrat) — La bibliothèque des calepinages marqués « modèle » de la société (CAL199/CAL246) — liste NUE (pagination désactivée), sérialiseur `CalepinageSerializer` (mêmes clés que la liste, plus layout_hash/roof_image/version_moteur/cree_par/created_at/updated_at/contraintes_site). Bornée société par `request.user.company`.",
   "reponse": "liste NUE (tableau JSON, sans pagination) d'éléments de la forme `exemple`",
   "exemple": {
+    "kwc": null,
+    "production_kwh_an": null,
     "id": 77,
     "titre": "Toiture Anfa",
     "statut": "valide",

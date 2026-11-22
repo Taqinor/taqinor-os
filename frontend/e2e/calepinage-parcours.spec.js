@@ -34,7 +34,7 @@ import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { uniq, gotoLeads, createLead, openLead, closeLeadModal, ouvertureGuideeCalepinage } from './helpers'
+import { uniq, gotoLeads, createLead, openLead, closeLeadModal, sondeCarte } from './helpers'
 
 const API = '/api/django/calepinage'
 
@@ -47,11 +47,14 @@ function idDansUrl(url) {
 // ACAL393 — le rail guidé ne montre que les essentiels de l'étape active : un
 // onglet expert s'ouvre par son lien `?onglet=<cle>` (il reste visible dans son
 // étape), un essentiel par son bouton. Jamais de test qui suppose 36 boutons.
+// Coque (22/11) : le rail d'ONGLETS est celui du mode expert (en guidé, la coque monte l'écran de
+// l'étape, sans onglets) — un onglet s'ouvre donc par son lien `?onglet=<cle>&mode=expert`.
 async function ouvrirOngletRail(page, cle) {
   const onglet = page.getByTestId(`cal-onglet-${cle}`)
   if (!(await onglet.isVisible())) {
     const url = new URL(page.url())
     url.searchParams.set('onglet', cle)
+    url.searchParams.set('mode', 'expert')
     await page.goto(url.toString())
     await expect(onglet, `onglet absent du rail pour la clé « ${cle} »`).toBeVisible()
   }
@@ -89,7 +92,8 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
 
   // ── 3. L'ATELIER DU CALEPINAGE CRÉÉ ────────────────────────────────────
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  await expect(page.getByTestId('cal-atelier-panneaux')).toBeVisible()
+  // Coque (22/11) : le bloc de l'atelier vit sous « Avancé » en guidé — monté, pas visible.
+  await expect(page.getByTestId('cal-atelier-panneaux')).toBeAttached()
   const calepinageId = idDansUrl(page.url())
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
@@ -115,6 +119,8 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
     .toBeTruthy()
 
   // ── 5. LA RETENIR, PAR L'ÉCRAN (CAL42) ─────────────────────────────────
+  // Coque (22/11) : les liens de l'atelier vivent sous « Avancé » en guidé.
+  await page.getByTestId('cal-rail-avance').click()
   await page.getByTestId('cal-lien-variantes').click()
   await expect(page).toHaveURL(/\/calepinage\/\d+\?onglet=variantes/)
   const tableau = page.getByTestId('cal-tableau-variantes')
@@ -131,7 +137,8 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
   await expect(page.locator('[data-testid^="cal-retenue-"]').first()).toBeVisible()
 
   // ── 6. GÉNÉRER LE DEVIS (CAL24/CAL38), par l'écran ─────────────────────
-  await page.goto(`/calepinage/${calepinageId}`)
+  // Coque (22/11) : le bouton de devis du bloc de l'atelier est celui du mode expert (en guidé, il est à l'étape Documents).
+  await page.goto(`/calepinage/${calepinageId}?mode=expert`)
   const bloc = page.getByTestId('cal-bouton-devis')
   await expect(bloc).toBeVisible()
 
@@ -193,9 +200,10 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
 
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  const rail = page.getByTestId('cal-rail-onglets')
+  // Coque : en guidé, le rail des étapes (à gauche) ; le rail d'onglets vit dans « Avancé » / expert.
+  const rail = page.getByTestId('cal-rail-etapes')
   await expect(rail).toBeVisible()
-  // Sans `?onglet=`, l'atelier est exactement ce qu'il était : rien d'ouvert.
+  // Sans `?onglet=`, aucun panneau d'onglet n'est ouvert (la coque montre l'écran de l'étape).
   await expect(page.getByTestId('cal-onglet-panneau')).toHaveCount(0)
 
   const calepinageId = idDansUrl(page.url())
@@ -216,6 +224,9 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
   // La route profonde historique reste servie : le lien envoyé hier s'ouvre
   // encore aujourd'hui, sur le même écran que l'onglet.
   await page.goto(`/calepinage/${calepinageId}/pente`)
+  await expect(page).toHaveURL(/onglet=pente/)
+  // Coque (22/11) : le formulaire de pente vit dans le rail d'onglets du mode expert (l'étape Toit guidée a sa carte).
+  await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
   await expect(page.getByTestId('cal-pente')).toBeVisible()
 })
 
@@ -241,6 +252,7 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
 // gestes sont donc joués ci-dessous, avec preuve de persistance comme les cinq autres.
 test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’optimisation, course du soleil, arête corrigée, module choisi — relus à l’identique', async ({ page }) => {
   // ── 0. Un lead FRAIS, un calepinage FRAIS créé depuis lui (même patron que CAL221) ──
+  await page.context().addInitScript(sondeCarte) // H7 — la carte de l'atelier, lue pour l'amener à l'échelle d'un toit (1bis)
   await gotoLeads(page)
   const nomLead = await createLead(page, {
     nom: uniq('CALX130 Lead'), facture: 900, ville: 'Casablanca',
@@ -307,13 +319,42 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
     'carte indisponible sur cet environnement (le serveur ne publie aucune clé MapTiler) : '
     + 'le constructeur de l’atelier ne boote pas — gestes CALX89…CALX109 non rejouables ici')
 
+  // Coque (22/11) : les contrôles du constructeur (`#rp9-snap-angle`, `#rp9-obs-*`, `#rp9-results`, rangées sous
+  // la carte) sont ceux du mode EXPERT (« Avancé » en guidé est une feuille à part, sans eux).
+  if (!(await page.getByTestId('cal-mode-expert').isChecked())) {
+    await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
+  }
+
   // ── 1. LA CARTE ──────────────────────────────────────────────────────────
   const map = page.locator('#rp9-map')
   await expect(map).toBeVisible({ timeout: 20_000 })
-  const box = await map.boundingBox()
-  expect(box, 'le canvas de la carte doit avoir une taille').toBeTruthy()
+  // ── 1bis. À L'ÉCHELLE D'UN TOIT (H7). Le lead de cette spec n'a pas de position GPS : l'atelier ouvre la carte au
+  // niveau du PAYS (« carte au niveau Maroc »), où le rectangle de 220 × 150 px couvrirait ~140 000 km² — le pavage
+  // le refuse et aucun geste suivant n'a de sens. La navigation n'est pas le sujet de ce parcours (les gestes le
+  // sont) : la carte est amenée au zoom 20, centre inchangé, vue de dessus, par la sonde (même que ACAL440). ──
+  await expect.poll(() => page.evaluate(() => Boolean(window.__carte440?.())), { timeout: 60_000 }).toBe(true)
+  await page.evaluate(() => window.__carte440().jumpTo({ zoom: 20, pitch: 0, bearing: 0 }))
+  await expect.poll(() => page.evaluate(() => {
+    const m = window.__carte440()
+    return !m.isMoving() && Math.abs(m.getZoom() - 20) < 0.01
+  }), { timeout: 30_000 }).toBe(true)
+  // La coque se met en page en plusieurs temps (bandeau, feuille, rangées) : on ne mesure la carte qu'une fois
+  // sa boîte ET celle de la rangée « Terminer le tracé » identiques sur deux lectures successives.
+  const lireBoites = async () => ({
+    carte: await map.boundingBox(),
+    garde: (await page.locator('#rp9-finish').locator('..').boundingBox())?.y ?? null,
+  })
+  let box = null
+  let gardeY = null
+  for (let essai = 0, avant = ''; essai < 40; essai += 1) {
+    const l = await lireBoites()
+    const cle = JSON.stringify(l)
+    if (l.carte && cle === avant) { box = l.carte; gardeY = l.garde; break }
+    avant = cle
+    await page.waitForFunction((t) => performance.now() - t > 250, await page.evaluate(() => performance.now()), { polling: 50 })
+  }
+  expect(box, 'le canvas de la carte doit avoir une taille stable').toBeTruthy()
   const cx = box.x + box.width / 2
-  const cy = box.y + box.height / 2
 
   // ── 2. CALX89 — ANGLES DROITS, armés AVANT le tracé (puce créée par le
   // constructeur lui-même, `mapDraw.ts ensureAngleChip`, éteinte par défaut). ──
@@ -327,11 +368,17 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // (CAL107 : « le `click` de MapLibre est synthétisé après un tap sans glissé —
   // même chemin que l'ajout d'un sommet de tracé ») : on rejoue exactement le
   // patron de `calepinage_tactile.spec.js`, souris au lieu du doigt. ──────────
+  // Coque (22/11) : « Terminer le tracé » / « Annuler le dernier point » sont remontés au-dessus de la barre
+  // d'outils (L1) ; le rectangle se trace AU-DESSUS d'eux (même surface qu'avant : 220 × 150 px).
+  const haut = box.y + 60
+  const garde = gardeY ?? (box.y + box.height)
+  const h = Math.max(80, Math.min(150, garde - 16 - haut))
+  const demi = Math.round(16500 / h)
   const corners = [
-    { x: cx - 110, y: cy - 75 },
-    { x: cx + 110, y: cy - 75 },
-    { x: cx + 110, y: cy + 75 },
-    { x: cx - 110, y: cy + 75 },
+    { x: cx - demi, y: haut },
+    { x: cx + demi, y: haut },
+    { x: cx + demi, y: haut + h },
+    { x: cx - demi, y: haut + h },
   ]
   const undoPoint = page.locator('#rp9-undo-point')
   for (const pt of corners) {
@@ -362,9 +409,9 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   await polyBtn.click()
   await expect(polyBtn).toHaveAttribute('aria-pressed', 'true')
   const obsPts = [
-    { x: cx - 25, y: cy - 18 },
-    { x: cx + 25, y: cy - 18 },
-    { x: cx, y: cy + 18 },
+    { x: cx - 25, y: haut + h / 2 - 18 },
+    { x: cx + 25, y: haut + h / 2 - 18 },
+    { x: cx, y: haut + h / 2 + 18 },
   ]
   for (const pt of obsPts) {
     await page.mouse.click(pt.x, pt.y)
@@ -376,6 +423,8 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // ── 6. CALX114 — RÉGLER LA CIBLE D'OPTIMISATION : puce créée par le module
   // (`matrix.ts renderCibleChips`), apparue dans `#rp9-results` dès la fermeture
   // du tracé (toit plat par défaut → la matrice se peint tout de suite). ─────
+  // Coque : la recommandation (`#rp9-results`, où vivent les puces de cible) accompagne l'étape Panneaux.
+  await page.getByTestId('cal-etape-panneaux').click()
   const cibleChip = page.locator('[data-cible="compte"]')
   await expect(cibleChip).toBeVisible({ timeout: 10_000 })
   await expect(cibleChip).toHaveAttribute('aria-pressed', 'false')
@@ -466,8 +515,10 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // ── 10. ROUVRIR LE CALEPINAGE — la cible reste affichée par l'ÉCRAN, cette
   // fois par une VRAIE réhydratation (`prefill.ts semerOptimisationDepuisDocument`),
   // pas seulement lue sur le document serveur. ─────────────────────────────
-  await page.goto(`/calepinage/${calepinageId}`)
+  // Coque (22/11) : ce test agit sur les contrôles du constructeur — en expert ils sont tous visibles, comme avant.
+  await page.goto(`/calepinage/${calepinageId}?mode=expert`)
   await expect(page.locator('#rp9-config')).toBeVisible({ timeout: 20_000 })
+  await page.getByTestId('cal-etape-panneaux').click()
   const cibleChipRouverte = page.locator('[data-cible="compte"]')
   await expect(cibleChipRouverte).toBeVisible({ timeout: 10_000 })
   await expect(cibleChipRouverte).toHaveAttribute('aria-pressed', 'true')
@@ -526,7 +577,8 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
 
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  await expect(page.getByTestId('cal-atelier-panneaux')).toBeVisible()
+  // Coque : le bloc de l'atelier est monté dans le volet « Avancé » (replié en guidé).
+  await expect(page.getByTestId('cal-atelier-panneaux')).toBeAttached()
   const calepinageId = idDansUrl(page.url())
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
@@ -579,7 +631,8 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
   // calepinage : le serveur chiffre la conception elle-même (voir l'en-tête
   // de `BoutonDevis.jsx`), donc le bouton n'est jamais bloqué par une
   // variante manquante ici. ───────────────────────────────────────────────
-  await page.goto(`/calepinage/${calepinageId}`)
+  // Coque : hors de l'étape Documents guidée, le bouton vit dans le bloc de l'atelier (déplié en expert).
+  await page.goto(`/calepinage/${calepinageId}?mode=expert`)
   const boutonDevis = page.getByTestId('cal-bouton-devis')
   await expect(boutonDevis).toBeVisible()
   const generer = page.getByTestId('cal-generer-devis')
@@ -672,17 +725,31 @@ test('ACAL987: calepinage enregistré non simulé — aucun onglet ne produit d�
       erreurs.push(`onglet « ${ongletCourant} » : ${rep.request().method()} ${rep.url()} → ${rep.status()}`)
     }
   })
-  page.on('console', (msg) => { if (msg.type() === 'error') erreurs.push(`onglet « ${ongletCourant} » : console.error ${msg.text()}`) })
+  // H7 — une pile dont le serveur publie une clé de carte FACTICE (pile de revue) fait booter la carte, et
+  // api.maptiler.com répond 403 à chaque tuile : ce « Failed to load resource » vient du fournisseur de fond, pas de
+  // l'ERP (en CI, sans clé, la carte ne boote pas et rien n'est demandé). Seule cette origine est écartée.
+  const duFondDeCarte = (msg) => /^https:\/\/api\.maptiler\.com\//.test(msg.location()?.url ?? '')
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' && !duFondDeCarte(msg)) erreurs.push(`onglet « ${ongletCourant} » : console.error ${msg.text()}`)
+  })
   page.on('pageerror', (err) => erreurs.push(`onglet « ${ongletCourant} » : pageerror ${err.message}`))
 
-  await page.goto(`/calepinage/${calepinageId}`)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  // Coque : chaque panneau d'onglet s'ouvre dans le rail d'onglets du mode expert. H7 — l'atelier est ouvert UNE fois ;
+  // chaque onglet s'ouvre ensuite par son bouton du rail (ouvrir n'est pas un geste d'action), ou par son lien
+  // `?onglet=` s'il n'est pas au rail : 43 rechargements complets de l'atelier dépassaient le délai du test.
+  await page.goto(`/calepinage/${calepinageId}?mode=expert`)
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible()
   for (const cle of CLES_ONGLETS) {
     ongletCourant = cle
-    const url = new URL(page.url())
-    url.searchParams.set('onglet', cle)
-    await page.goto(url.toString())
-    await expect(page.getByTestId(`cal-onglet-${ouvertureGuideeCalepinage(cle)}`)).toHaveAttribute('aria-selected', 'true')
+    const bouton = page.getByTestId(`cal-onglet-${cle}`)
+    if (await bouton.isVisible()) await bouton.click()
+    else {
+      const url = new URL(page.url())
+      url.searchParams.set('onglet', cle)
+      url.searchParams.set('mode', 'expert')
+      await page.goto(url.toString())
+    }
+    await expect(page.getByTestId(`cal-onglet-${cle}`)).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByTestId('cal-onglet-panneau'), `panneau de l’onglet « ${cle} »`).toBeVisible()
     await expect(page.getByTestId('cal-onglet-erreur'), `erreur nommée sur l’onglet « ${cle} »`).toHaveCount(0)
   }

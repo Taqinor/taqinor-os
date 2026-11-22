@@ -110,7 +110,9 @@ function Ligne({ ligne, ouverte, onBascule, expert }) {
   const corps = (
     <>
       <span className="min-w-0 flex-1 basis-40">
-        <span className="block text-sm">{ligne.nom}</span>
+        <span className="block text-sm" title={ligne.nomClair && ligne.nomClair !== ligne.nom ? ligne.nom : undefined}>
+          {ligne.nomClair || ligne.nom}
+        </span>
         {ligne.omise && (
           <span className="block text-xs text-muted-foreground">
             <strong>omise</strong>

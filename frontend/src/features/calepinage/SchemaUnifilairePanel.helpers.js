@@ -2,6 +2,8 @@
 import { telechargerBlob } from './exportImage'
 import { motifDuRefusBlob } from './motifRefusBlob'
 import { svgTexteEnPng } from './documents/deposerImage'
+import { formatNumber } from '../../lib/format'
+import { chainesServies, texteOnduleur } from './electrique/resumeRaccordement'
 
 /* ============================================================================
    CAL195 — LE SCHÉMA UNIFILAIRE, DANS LE MODULE.
@@ -105,4 +107,288 @@ export function corpsEdition(blocs, saisie) {
     }
   }
   return corps
+}
+
+/* ============================================================================
+   ACAL1301 — LA LÉGENDE ET LE CARTOUCHE DU SOUS-ÉCRAN « SCHÉMA » (maquette `Schema.dc.html`).
+   La légende ne nomme QUE les signes que le SVG SERVI dessine (`core/electrique/schema.py` : liaisons
+   pleines fléchées, liaison de terre en pointillé, sections « mm² » du tableau) ; le cartouche ne
+   montre QUE les champs servis par le détail du calepinage (un champ absent : sa ligne est omise).
+   ========================================================================== */
+
+/** `[{cle, trait, libelle}]` — `trait` ∈ 'plein' | 'pointille' | 'mm2'. Aucun SVG ⇒ aucune ligne. */
+export function lignesLegende(svg) {
+  if (typeof svg !== 'string' || !svg) return []
+  const lignes = []
+  if (/<line\b(?![^>]*stroke-dasharray)[^>]*>/.test(svg)) {
+    lignes.push({ cle: 'liaison', trait: 'plein', libelle: 'Liaison entre deux organes' })
+  }
+  if (/stroke-dasharray/.test(svg)) lignes.push({ cle: 'terre', trait: 'pointille', libelle: 'Liaison à la terre' })
+  if (/mm²/.test(svg)) lignes.push({ cle: 'section', trait: 'mm2', libelle: 'Section du câble, puis sa longueur' })
+  return lignes
+}
+
+/* ============================================================================
+   F3 (maquette `Schema.dc.html`, tour 2) — LE SCHÉMA EN BLOCS, À TAILLE LISIBLE.
+   Le dessin de la maquette (bandes « courant continu / courant alternatif », chaînes colorées,
+   coffrets, onduleur, compteur, réseau, terre) est composé ICI à partir de données SERVIES :
+   `schema-unifilaire/` (`blocs[]` : les organes que le serveur RETIENT, avec titre / sous-titre /
+   repère ; `edition.libelles` ; le SVG pour savoir s'il trace une terre) et `resultat/`
+   (`electrique.affectation` : chaînes, couleur, entrée MPPT ; `electrique.onduleurs[0]` ;
+   `electrique.chainage.puissance_module_wc` ; `troncons` : sections et longueurs). Un organe non
+   servi n'est PAS dessiné ; une section n'est écrite que si TOUS les tronçons du côté la partagent ;
+   une longueur seulement si le côté n'a qu'UN tronçon (aucune attribution devinée). Coordonnées en
+   pixels CSS (échelle 1 : un texte de 12 px reste à 12 px) — géométrie de la maquette, resserrée
+   pour tenir dans la planche de 1440 × 900 (~880 px utiles).
+   ========================================================================== */
+
+const chiffre = (v, d = 0) => formatNumber(v, { decimals: d, locale: 'fr' })
+const fini = (v) => typeof v === 'number' && Number.isFinite(v)
+const DC_ORGANES = ['fusibles', 'parafoudre_dc', 'sectionneur_dc']
+const AC_ORGANES = ['disjoncteur_ac', 'parafoudre_ac', 'ddr']
+/* Nom court de l'organe dans son coffret + ce qu'il fait (aucun chiffre). La 2e ligne est le
+   calibre SERVI (`sous_titre`) quand il existe ; sinon cette phrase. */
+const ORGANES = {
+  fusibles: { nom: 'Fusibles', role: 'protègent chaque chaîne', picto: 'fusible' },
+  parafoudre_dc: { nom: 'Parafoudre', role: 'protège de la foudre', picto: 'parafoudre' },
+  sectionneur_dc: { nom: 'Sectionneur', role: 'coupe les panneaux', picto: 'sectionneur' },
+  disjoncteur_ac: { nom: 'Disjoncteur', role: 'calibre : note de calcul', picto: 'disjoncteur' },
+  parafoudre_ac: { nom: 'Parafoudre', role: 'protège de la foudre', picto: 'parafoudre' },
+  ddr: { nom: 'Différentiel', role: 'protège les personnes', picto: 'disjoncteur' },
+}
+/* Ce qu'ouvre un clic sur un élément : la section de l'étape Électrique où SA valeur se règle. */
+export const CIBLE_DU_BLOC = {
+  chaine: 'controle-chaine',
+  coffret: 'equipements-electriques',
+  onduleur: 'materiel-electrique',
+  reseau: 'raccordement',
+  cable: 'cheminement-cables',
+}
+
+/** Coupe un texte en lignes d'au plus `max` caractères (mots entiers), `n` lignes au plus (… au bout). */
+export function couperTexte(texte, max, n = 2) {
+  const mots = String(texte ?? '').trim().split(/\s+/).filter(Boolean)
+  const lignes = []
+  for (const mot of mots) {
+    const derniere = lignes[lignes.length - 1]
+    if (derniere !== undefined && `${derniere} ${mot}`.length <= max) lignes[lignes.length - 1] = `${derniere} ${mot}`
+    else lignes.push(mot)
+  }
+  if (lignes.length <= n) return lignes
+  const gardees = lignes.slice(0, n)
+  gardees[n - 1] = `${gardees[n - 1].slice(0, Math.max(1, max - 1))}…`
+  return gardees
+}
+
+/** Site déclaré hors réseau : `resultat.hors_reseau` est un bloc chiffré (sans `motif_absence`, que le serveur
+    pose quand le site n'est pas déclaré hors réseau — alors `null` tant qu'aucune simulation n'a eu lieu). */
+export function estHorsReseau(resultat) {
+  const h = resultat?.hors_reseau
+  return Boolean(h) && typeof h === 'object' && !h.motif_absence
+}
+
+/** La phrase du côté réseau en creux : ce qui le dimensionne (la simulation, sinon la norme choisie). */
+export function phraseCoteReseau(resultat) {
+  return resultat?.simule === true
+    ? 'Choisissez la norme électrique dans les réglages pour dimensionner le côté réseau'
+    : 'Lancez la simulation pour dimensionner le côté réseau'
+}
+
+/** La section commune à TOUS les tronçons d'un côté (`dc` | `ac`), sinon `null`. */
+function sectionDuCote(troncons, cote) {
+  const duCote = troncons.filter((t) => t?.cote === cote)
+  if (!duCote.length || !duCote.every((t) => fini(t.section_mm2))) return null
+  const sections = new Set(duCote.map((t) => t.section_mm2))
+  return sections.size === 1 ? duCote[0].section_mm2 : null
+}
+
+function organesDe(blocs, clefs, libelles) {
+  return clefs.map((clef) => blocs.find((b) => b.clef === clef)).filter(Boolean).map((b) => ({
+    clef: b.clef,
+    nom: libelles[b.clef] ? b.titre : ORGANES[b.clef].nom,
+    detail: String(b.sous_titre ?? '').trim() || ORGANES[b.clef].role,
+    picto: ORGANES[b.clef].picto,
+  }))
+}
+
+/**
+ * Le modèle du schéma en blocs, ou `null` quand rien de servi ne permet de le dessiner (aucune
+ * chaîne ni onduleur) — l'écran montre alors le schéma détaillé du serveur.
+ */
+export function planSchemaEnBlocs(schema, resultat) {
+  const blocs = Array.isArray(schema?.blocs) ? schema.blocs : []
+  const libelles = schema?.edition?.libelles ?? {}
+  const blocOnduleur = blocs.find((b) => b.clef === 'onduleur') ?? null
+  const chaines = chainesServies(resultat)
+  if (!blocOnduleur || !chaines.length) return null
+  const troncons = Array.isArray(resultat?.troncons?.troncons) ? resultat.troncons.troncons : []
+  const secDc = sectionDuCote(troncons, 'dc')
+  const secAc = sectionDuCote(troncons, 'ac')
+  const ac = troncons.filter((t) => t?.cote === 'ac')
+  const longueurAc = ac.length === 1 && fini(ac[0].longueur_m) ? ac[0].longueur_m : null
+  const wc = resultat?.electrique?.chainage?.puissance_module_wc
+  const ond = resultat?.electrique?.onduleurs?.[0] ?? null
+
+  // ── Côté courant alternatif, de l'onduleur vers le réseau (de droite à gauche).
+  const organesAc = organesDe(blocs, AC_ORGANES, libelles)
+  const trouve = (clef) => blocs.find((b) => b.clef === clef) ?? null
+  const chaineAc = []
+  if (organesAc.length) chaineAc.push({ cle: 'coffret_ac', l: 196, h: Math.max(212, 42 + organesAc.length * 66), dy: 32, ecart: 72 })
+  const compteur = trouve('compteur_production')
+  if (compteur) chaineAc.push({ cle: 'compteur', l: 104, h: 98, ecart: 40, titre: couperTexte(compteur.titre, 12) })
+  const tgbt = trouve('tgbt')
+  if (tgbt) chaineAc.push({ cle: 'tgbt', l: 64, h: 64, ecart: 32, titre: couperTexte(tgbt.titre, 8) })
+  const reseau = trouve('reseau')
+  if (reseau) chaineAc.push({ cle: 'reseau', l: 140, h: 130, ecart: 32, titre: ['Réseau du', 'distributeur'], detail: couperTexte(reseau.titre, 18, 1) })
+  /* Côté réseau PAS ENCORE SERVI (pas de simulation, pas de norme choisie) : l'installation raccordée au réseau
+     a pourtant un coffret, un compteur et le réseau. Ils sont dessinés EN CREUX (`aCalculer`) — ni calibre ni
+     section ni appareil inventés — et sont remplacés par les blocs servis dès que le serveur les sert.
+     Un site déclaré hors réseau n'en a pas : rien n'est dessiné. */
+  const aCalculer = chaineAc.length === 0 && !estHorsReseau(resultat)
+  if (aCalculer) {
+    chaineAc.push({ cle: 'coffret_ac', aCalculer: true, l: 196, h: 212, dy: 32, ecart: 72, titre: ['Coffret côté réseau'] })
+    chaineAc.push({ cle: 'compteur', aCalculer: true, l: 104, h: 98, ecart: 40, titre: ['Compteur'] })
+    chaineAc.push({ cle: 'reseau', aCalculer: true, l: 140, h: 130, ecart: 32, titre: ['Réseau du', 'distributeur'] })
+  }
+  const largeurAc = 16 + chaineAc.reduce((s, b) => s + b.l + b.ecart, 0)
+  const ox = Math.max(696, largeurAc)
+  const largeur = ox + 160 + 16
+
+  // ── Côté courant continu : chaînes, coffret, entrées de l'onduleur.
+  const organesDc = organesDe(blocs, DC_ORGANES, libelles)
+  const avecCoffretDc = organesDc.length > 0 || Boolean(trouve('coffret_dc'))
+  // Au-delà de deux chaînes, rangées compactes (maquette : 2 chaînes) pour tenir dans la planche.
+  const compact = chaines.length > 2
+  const RANG = compact ? 76 : 126
+  const rangees = chaines.map((c, i) => {
+    const y = 36 + i * RANG
+    const gap = c.nombre > 8 ? 3 : 6
+    const lg = Math.min(28, (198 - gap * (c.nombre - 1)) / c.nombre)
+    return {
+      ...c,
+      x: 16,
+      y,
+      h: compact ? 72 : 112,
+      ligne: y + (compact ? 42 : 55),
+      hGlyphe: compact ? 24 : 40,
+      yDetail: compact ? 68 : 96,
+      libelle: `Chaîne ${c.chaine} · ${c.nombre} panneau${c.nombre > 1 ? 'x' : ''}`,
+      legende: c.mppt == null ? `Chaîne ${c.chaine}` : `Chaîne ${c.chaine} · entrée ${c.mppt}`,
+      detail: fini(wc) ? `${c.nombre} × ${chiffre(wc)} Wc` : null,
+      glyphes: { n: c.nombre, l: lg, gap },
+    }
+  })
+  const entrees = rangees.map((r, k) => 179 + k * (compact ? 36 : 50))
+  const basRangees = rangees[rangees.length - 1].ligne
+  const coffretDc = avecCoffretDc
+    ? {
+      x: 302, y: 44, l: 196, h: Math.max(212, 42 + organesDc.length * 66, basRangees + 16 - 44, entrees[entrees.length - 1] + 16 - 44),
+      organes: organesDc,
+      // Sans organe de protection servi, la boîte dit ce que le serveur en publie (« 2 chaîne(s) raccordée(s) »).
+      detail: organesDc.length ? null : couperTexte(trouve('coffret_dc')?.sous_titre, 22, 2),
+    }
+    : null
+  const hDc = Math.max(300, 36 + rangees.length * RANG, coffretDc ? coffretDc.y + coffretDc.h + 28 : 0)
+  const yAc = hDc + (compact ? 24 : 40)
+  const lienAc = yAc + 123
+  const onduleur = {
+    x: ox, y: 148, l: 160, h: yAc + 152 - 148,
+    puissance: texteOnduleur(resultat),
+    // Sans désignation servie, le serveur titre le bloc « Onduleur » : pas deux fois le même mot.
+    designation: /^onduleur$/i.test(String(blocOnduleur.titre ?? '').trim()) ? [] : couperTexte(blocOnduleur.titre, 22, 3),
+    entrees: ond && fini(ond.n_mppt) && ond.n_mppt > 0
+      ? `${ond.n_mppt} entrée${ond.n_mppt > 1 ? 's' : ''} : ${ond.n_mppt === 1 ? '1' : ond.n_mppt === 2 ? '1 et 2' : `1 à ${ond.n_mppt}`}`
+      : null,
+  }
+
+  // Liaisons : une par chaîne (sa couleur servie), puis le côté alternatif (trait plein).
+  const liaisons = []
+  rangees.forEach((r, k) => {
+    const entree = entrees[k]
+    const etiquetteEntree = [r.mppt == null ? null : `entrée ${r.mppt}`, secDc == null ? null : `${chiffre(secDc, Number.isInteger(secDc) ? 0 : 1)} mm²`].filter(Boolean).join(' · ')
+    if (coffretDc) {
+      liaisons.push({ cle: `c${r.chaine}-a`, couleur: r.couleur, points: [[230, r.ligne], [coffretDc.x, r.ligne]],
+        etiquette: secDc == null ? null : { x: 236, y: r.ligne - 10, lignes: [`${chiffre(secDc, Number.isInteger(secDc) ? 0 : 1)} mm²`] } })
+      liaisons.push({ cle: `c${r.chaine}-b`, couleur: r.couleur, points: [[coffretDc.x + coffretDc.l, entree], [ox, entree]],
+        etiquette: etiquetteEntree ? { x: coffretDc.x + coffretDc.l + 24, y: entree - 10, lignes: [etiquetteEntree] } : null })
+    } else {
+      const xm = 260 + k * 12
+      liaisons.push({ cle: `c${r.chaine}`, couleur: r.couleur, points: [[230, r.ligne], [xm, r.ligne], [xm, entree], [ox, entree]],
+        etiquette: etiquetteEntree ? { x: xm + 24, y: entree - 10, lignes: [etiquetteEntree] } : null })
+    }
+  })
+  let curseur = ox
+  const blocsAc = chaineAc.map((b, i) => {
+    const x = curseur - b.ecart - b.l
+    const bloc = { ...b, x, y: b.dy != null ? yAc + b.dy : lienAc - b.h / 2 }
+    const ac1 = i === 0 && !b.aCalculer
+    const lignes = ac1 ? [secAc == null ? null : `${chiffre(secAc, Number.isInteger(secAc) ? 0 : 1)} mm²`, longueurAc == null ? null : `${chiffre(longueurAc)} m`].filter(Boolean) : []
+    liaisons.push({ cle: `ac${i}`, couleur: null, aCalculer: Boolean(b.aCalculer), points: [[x + b.l, lienAc], [curseur, lienAc]],
+      etiquette: lignes.length ? { x: x + b.l + 6, y: lienAc - 10 - (lignes.length - 1) * 16, lignes } : null })
+    curseur = x
+    return bloc
+  })
+  if (organesAc.length) blocsAc[0].organes = organesAc
+
+  // Terre : seulement quand le schéma SERVI en trace une (liaison en pointillé du SVG du serveur).
+  const coffrets = [coffretDc, blocsAc.find((b) => b.cle === 'coffret_ac' && !b.aCalculer)].filter(Boolean)
+  const terre = /stroke-dasharray/.test(String(schema?.svg ?? ''))
+    ? {
+      y: yAc + 267,
+      x1: 82,
+      descentes: [...coffrets.map((c) => [c.x + c.l / 2, c.y + c.h]), [ox + 80, onduleur.y + onduleur.h]],
+      libelle: `Terre : ${[coffrets.length ? (coffrets.length > 1 ? 'coffrets' : 'coffret') : null, 'onduleur'].filter(Boolean).join(', ')} et structure`,
+    }
+    : null
+
+  const etiquettes = liaisons.some((l) => l.etiquette?.lignes.some((t) => t.includes('mm²')))
+  const legende = [
+    ...rangees.map((r) => ({ cle: `chaine-${r.chaine}`, trait: 'chaine', couleur: r.couleur, libelle: r.legende })),
+    ...(blocsAc.some((b) => !b.aCalculer) ? [{ cle: 'ac', trait: 'plein', libelle: 'Côté réseau (courant alternatif)' }] : []),
+    ...(terre ? [{ cle: 'terre', trait: 'pointille', libelle: 'Liaison à la terre' }] : []),
+    ...(etiquettes ? [{ cle: 'section', trait: 'mm2', libelle: 'Section du câble, puis sa longueur' }] : []),
+  ]
+  return {
+    largeur,
+    hauteur: yAc + 300,
+    bandes: [
+      { cle: 'dc', y: 0, h: hDc, libelle: 'Côté panneaux · courant continu' },
+      { cle: 'ac', y: yAc, h: 300, libelle: 'Côté réseau · courant alternatif' },
+    ],
+    chaines: rangees,
+    coffretDc,
+    onduleur,
+    blocsAc,
+    liaisons,
+    terre,
+    legende,
+    coteReseauACalculer: aCalculer,
+  }
+}
+
+const date = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+const heure = (iso) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+const lisible = (iso) => typeof iso === 'string' && !Number.isNaN(Date.parse(iso))
+
+/** `[{libelle, valeur}]` : Projet (nom servi + ville servie), Date et Version (dernière version
+    enregistrée, empreinte courte du document), Auteur (responsable, sinon créateur) — servis seulement. */
+export function lignesCartouche(detail) {
+  if (!detail) return []
+  // Même nom que le bandeau du projet (`atelier/coque/projet.js::titreProjet` : « Calepinage 5 ») —
+  // le détail sert « Calepinage #5 » pour un calepinage sans titre.
+  const nom = (String(detail.nom ?? '').trim() || String(detail.reference ?? '').trim()).replace(/^Calepinage #(\d+)\b/, 'Calepinage $1')
+  const ville = String(detail.contexte_geographique?.ville ?? detail.lead?.ville ?? detail.client?.ville ?? '').trim()
+  const projet = nom && ville && !nom.includes(ville) ? `${nom} — ${ville}` : nom
+  const le = lisible(detail.versions?.derniere_le) ? detail.versions.derniere_le
+    : (lisible(detail.modifie_le) ? detail.modifie_le : null)
+  const empreinte = typeof detail.layout_hash === 'string' && detail.layout_hash ? detail.layout_hash.slice(0, 8) : ''
+  // L'empreinte du document est une référence technique : elle ne sert que faute d'heure d'enregistrement.
+  const version = lisible(detail.versions?.derniere_le) ? `Enregistrée à ${heure(detail.versions.derniere_le)}` : empreinte
+  const auteur = String(detail.responsable?.nom_complet ?? detail.cree_par?.nom_complet ?? '').trim()
+  return [
+    { libelle: 'Projet', valeur: projet },
+    { libelle: 'Date', valeur: le ? date(le) : '' },
+    { libelle: 'Version', valeur: version },
+    { libelle: 'Auteur', valeur: auteur },
+  ].filter((l) => l.valeur)
 }

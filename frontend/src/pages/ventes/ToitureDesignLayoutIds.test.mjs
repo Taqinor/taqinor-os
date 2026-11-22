@@ -21,8 +21,10 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 // SPL216 : le DOM du builder (rp9-*) vit désormais dans atelier/BuilderDom.jsx ;
 // on lit ce fichier ET ToitureDesign.jsx (qui l'appelle).
-const SRC = readFileSync(
-  join(HERE, '../../features/calepinage/atelier/BuilderDom.jsx'), 'utf8')
+// Coque (22/11) : BuilderDom est découpé en quatre groupes DÉPLACÉS tels quels (même sous-arbre
+// chacun) — on lit les quatre, dans l'ordre du DOM, puis BuilderDom et ToitureDesign.
+const SRC = ['BuilderCarte', 'BuilderOutils', 'BuilderToit', 'BuilderPose', 'BuilderDom']
+  .map((n) => readFileSync(join(HERE, `../../features/calepinage/atelier/${n}.jsx`), 'utf8')).join(String.fromCharCode(10))
   + readFileSync(join(HERE, 'ToitureDesign.jsx'), 'utf8')
 
 // Liste EXHAUSTIVE des ids rp9-layout-*/rp9-free-* interrogés par

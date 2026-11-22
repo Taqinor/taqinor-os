@@ -62,3 +62,12 @@
 @import "./styles/calepinage/42-trace-toit.css";
 @import "./styles/lead/43-lead-archive.css";
 @import "./styles/generateur/44-edition-complete-edc.css";
+/* Coque de l'atelier de calepinage et ses écrans d'étape (maquettes du 22/11/2026, ACAL1278-1327). */
+@import "./styles/calepinage/50-coque-atelier.css";
+@import "./styles/calepinage/51-etape-toit.css";
+@import "./styles/calepinage/52-etape-panneaux.css";
+@import "./styles/calepinage/53-etape-electrique.css";
+@import "./styles/calepinage/54-etape-resultats.css";
+@import "./styles/calepinage/55-etape-documents.css";
+@import "./styles/calepinage/56-coque-responsive.css";
+@import "./styles/calepinage/58-telephone.css";

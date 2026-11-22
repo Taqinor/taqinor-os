@@ -67,10 +67,18 @@ async function mesurerEtapeOuverte(page) {
       return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'
     }
     const rail = document.querySelector('[data-testid="cal-rail-onglets"]')
-    const panneau = document.querySelector('[data-testid="cal-onglet-panneau"]')
+    // Coque (22/11) : l'écran d'une étape guidée est le PANNEAU D'ÉTAPE (`cal-panneau-etape`, absent des étapes
+    // pleines) et/ou l'écran monté dans l'hôte `cal-onglet-panneau` (`display: contents`, sans boîte propre) :
+    // on compte l'UNION des contrôles visibles des deux, sans double compte.
+    const regions = [
+      document.querySelector('[data-testid="cal-panneau-etape"]'),
+      document.querySelector('[data-testid="cal-onglet-panneau"]'),
+    ].filter(Boolean)
+    const controles = new Set()
+    for (const region of regions) for (const el of region.querySelectorAll(sel)) if (visible(el)) controles.add(el)
     return {
       onglets: rail ? [...rail.querySelectorAll('[role=tab]')].filter(visible).length : 0,
-      controles_panneau: panneau ? [...panneau.querySelectorAll(sel)].filter(visible).length : 0,
+      controles_panneau: controles.size,
     }
   }, SEL_CONTROLES)
 }
@@ -136,7 +144,8 @@ const ELEMENTS_ACTION = [
   { cle: 'terminer', nom: '« Terminer le tracé »', css: '#rp9-finish', moments: ['avant_trace'] },
   { cle: 'resume', nom: 'résumé kWc / production', css: testid('cal-resume-atelier'), moments: ['apres_fermeture', 'apres_generer'] },
   { cle: 'enregistrer', nom: '« Enregistrer le calepinage »', css: testid('cal-enregistrer-calepinage'), moments: ['apres_fermeture', 'apres_generer'] },
-  { cle: 'generer', nom: '« Générer le devis »', css: `${testid('cal-generer-devis')}, ${testid('cal-resynchroniser-devis')}`, moments: ['apres_fermeture', 'apres_generer'] },
+  { cle: 'generer', nom: '« Générer le devis »', css: testid('cal-generer-devis-haut'), // Coque (22/11) : le bouton doré de la barre du haut (il relaie le bouton du devis, resté sous « Avancé »)
+    moments: ['apres_fermeture', 'apres_generer'] },
   { cle: 'rail', nom: 'rail d’étapes', css: testid('cal-rail-etapes'), moments: ['avant_trace', 'apres_fermeture', 'apres_generer'] },
 ]
 
@@ -152,15 +161,20 @@ async function mesurerVisibilite(page, moment) {
       if (!el) return { cle, absent: true }
       const r = el.getBoundingClientRect()
       const entier = r.width > 0 && r.height > 0 && r.top >= 0 && r.left >= 0 && r.bottom <= vh && r.right <= vw
-      return { cle, hors_ecran: entier ? 0 : 1, haut: Math.round(r.top) }
+      return { cle, hors_ecran: entier ? 0 : 1, haut: Math.round(r.top), gauche: Math.round(r.left) }
     })
   }, attendus.map(({ cle, css }) => ({ cle, css })))
   const absents = brut.filter((b) => b.absent).map((b) => b.cle)
   expect(absents, `moment « ${moment} » : élément(s) absent(s) de la page`).toEqual([])
   const haut = Object.fromEntries(brut.map((b) => [b.cle, b.haut]))
+  const gauche = Object.fromEntries(brut.map((b) => [b.cle, b.gauche]))
   if (haut.enregistrer !== undefined) {
-    expect(haut.enregistrer, `« Enregistrer » (${haut.enregistrer} px) doit précéder « Générer » (${haut.generer} px) — moment « ${moment} »`)
-      .toBeLessThan(haut.generer)
+    // Coque (22/11) : « Enregistrer » et « Générer le devis » sont dans la MÊME barre du haut : l'ordre de lecture
+    // est alors la gauche (même rangée à 24 px près) ; sur deux rangées, le haut.
+    const memeRangee = Math.abs(haut.enregistrer - haut.generer) < 24
+    const precede = memeRangee ? gauche.enregistrer < gauche.generer : haut.enregistrer < haut.generer
+    expect(precede, `« Enregistrer » (${gauche.enregistrer}, ${haut.enregistrer} px) doit précéder « Générer » (${gauche.generer}, ${haut.generer} px) — moment « ${moment} »`)
+      .toBe(true)
   }
   return Object.fromEntries(brut.map((b) => [b.cle, b.hors_ecran]))
 }
@@ -216,7 +230,7 @@ async function ouvrirAtelier(page, id, appareil) {
   await page.setViewportSize({ width: appareil.largeur, height: appareil.hauteur })
   await page.goto(`/calepinage/${id}`)
   await expect.poll(() => page.evaluate(() => Boolean(window.__taqinorRoofBooted)), { timeout: 240_000 }).toBe(true)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible() // Coque (22/11) : le rail des étapes
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
   await page.waitForLoadState('networkidle').catch(() => {})
 }
@@ -246,7 +260,7 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
   await geste(() => page.locator('#cal-nouveau-nom').fill(uniq('ACAL385 Toiture')))
   await geste(() => page.getByRole('button', { name: 'Créer le calepinage' }).click())
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
-  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  await expect(page.getByTestId('cal-rail-etapes')).toBeVisible() // Coque (22/11) : le rail des étapes
   await expect(page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ }))
     .toBeEnabled({ timeout: 240_000 })
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
@@ -280,9 +294,10 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
   })
 
   // ── (d) production lue ──
+  // Coque (22/11) : l'étape Résultats ouvre elle-même la production (plus de rail d'onglets en guidé) — un geste de moins.
   await geste(() => page.getByTestId('cal-etape-resultats').click())
-  await geste(() => page.getByTestId('cal-onglet-production').click())
-  await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
+  await expect(page).toHaveURL(/onglet=production/)
+  await expect(page.getByTestId('cal-onglet-panneau')).toBeAttached()
 
   const actuel = { carte_disponible: carte, ...mesures, gestes_lead_production: gestes }
 
@@ -326,7 +341,7 @@ test('ACAL989: les six éléments d’action restent dans la première hauteur d
     // « Générer le devis » : on attend la RÉPONSE du serveur (devis créé ou refus qui nomme le champ ; son statut
     // est noté en annotation), puis on rouvre l'atelier depuis le serveur : l'état mesuré ne dépend pas de ce que
     // le catalogue a répondu.
-    const generer = page.getByTestId('cal-generer-devis')
+    const generer = page.getByTestId('cal-generer-devis-haut')
     if (await generer.count() > 0) {
       const reponse = page.waitForResponse((r) => /generer-devis/.test(r.url()) && r.request().method() === 'POST', { timeout: 60_000 })
         .then((r) => r.status(), () => 'sans réponse')
@@ -380,7 +395,8 @@ test('ACAL478: budget du mode guidé', async ({ page }) => {
   // Le mode expert est éteint (état d'un utilisateur neuf).
   await expect(page.getByTestId('cal-mode-expert')).not.toBeChecked()
 
-  const etapes = await page.locator('[data-testid="cal-rail-etapes"] button').count()
+  // Coque (22/11) : le rail porte aussi « Avancé » (feuille, pas une étape) : on ne compte que les boutons `cal-etape-<cle>`.
+  const etapes = (await clesEtapesDuRail(page)).length
   const controles = await mesurerPremierEcran(page)
 
   // ACAL1189 — chaque étape du rail, ouverte tour à tour : onglets visibles + contrôles du panneau ouvert.
@@ -390,7 +406,7 @@ test('ACAL478: budget du mode guidé', async ({ page }) => {
   const reseau = suivreReseau(page)
   for (const cle of cles) {
     await page.getByTestId(`cal-etape-${cle}`).click()
-    await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
+    await expect(page.getByTestId(`cal-etape-${cle}`)).toHaveAttribute('aria-current', 'step')
     await attendreCalme(reseau)
     parEtape[cle] = await lireStable(() => mesurerEtapeOuverte(page))
   }
@@ -411,9 +427,10 @@ test('ACAL478: budget du mode guidé', async ({ page }) => {
   }
 
   // Chemin lead -> production : AUCUNE saisie, aucun détour par `fiches`/`reglages`.
+  // Coque (22/11) : l'étape Résultats ouvre elle-même la production (plus de rail d'onglets en guidé).
   await page.getByTestId('cal-etape-resultats').click()
-  await page.getByTestId('cal-onglet-production').click()
-  await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
+  await expect(page).toHaveURL(/onglet=production/)
+  await expect(page.getByTestId('cal-onglet-panneau')).toBeAttached()
   for (const cle of ['fiches', 'reglages']) {
     await expect(page.locator(`[data-testid="cal-onglet-${cle}"][aria-selected="true"]`),
       `l'onglet ${cle} ne doit pas être requis avant un premier résultat`).toHaveCount(0)

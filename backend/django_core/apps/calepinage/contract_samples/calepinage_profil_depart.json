@@ -320,6 +320,7 @@
       }
     ]
   },
+  "demande_application": {"pourquoi": "F4 — corps FACULTATIF de POST : `cles` = les seules clés du profil à remplir (écran Démarrage rapide, une case par ligne) ; absent = tout le profil ; une clé hors profil ou un corps mal formé = 400 sous `cles`.", "cles": ["b0_iam"]},
   "exemple_application": {
     "appliquees": [
       {

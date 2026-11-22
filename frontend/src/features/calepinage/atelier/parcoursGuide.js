@@ -60,11 +60,55 @@ export function etapeActive(cleOnglet, etatsParEtape = {}) {
   return (premiere ?? ETAPES[0]).cle
 }
 
+/* ============================================================================
+   COQUE (refonte maquettes, 22/11) — LE CADRE DÉCLARÉ PAR CHAQUE ÉCRAN D'ÉTAPE.
+   La coque plein écran (`atelier/coque/CoqueAtelier.jsx`) lit, pour l'écran guidé
+   ouvert, deux champs de CE registre :
+     - `cadre` : `CADRES.CARTE`  = la carte au centre + le panneau d'étape à droite
+                                    (Toit, Panneaux, Électrique) ;
+                 `CADRES.PLEIN`  = l'écran occupe TOUT le centre, ni carte ni panneau
+                                    (Résultats, Documents) ;
+                 `CADRES.PLEIN_PANNEAU` = l'écran au centre ET le panneau à droite (Schéma) ;
+     - `titre` : l'intitulé du panneau d'étape (« Le toit »), sous « Étape N sur 5 ».
+   La carte n'est JAMAIS démontée : un cadre plein la masque seulement (`hidden`).
+   Le bouton de l'étape suivante vient de `ETAPES[].action` (prop `action` de l'écran) ;
+   un écran qui pose son propre pied le rend dans `<PiedEtape>` (coque/emplacements.jsx).
+   ========================================================================== */
+export const CADRES = { CARTE: 'carte', PLEIN: 'plein', PLEIN_PANNEAU: 'plein-panneau' }
+
 /* ACAL395 — l'ÉCRAN GUIDÉ d'une étape : en mode guidé, les panneaux listés
    s'ouvrent dans UNE page (sections repliables) au lieu d'autant d'onglets.
    `ouverture` = l'onglet visible qui porte la page ; `libelle` = son intitulé. */
 export const ECRANS_ETAPE = {
+  // Coque — Toit et Panneaux : écrans d'étape (gabarits de la coque, refaits par leurs lanes).
+  toit: {
+    ouverture: 'pente',
+    libelle: 'Pente',
+    titre: 'Le toit',
+    cadre: CADRES.CARTE,
+    onglets: ['pente'],
+    composant: lazy(() => import('./coque/etapes/EtapeToit')),
+  },
+  panneaux: {
+    ouverture: 'fiches',
+    libelle: 'Fiches équipements',
+    titre: 'Les panneaux',
+    cadre: CADRES.CARTE,
+    onglets: ['fiches'],
+    composant: lazy(() => import('./coque/etapes/EtapePanneaux')),
+  },
+  // Coque — le schéma électrique : sous-écran de l'étape Électrique, au centre avec le panneau.
+  schema: {
+    ouverture: 'schema',
+    libelle: 'Schéma unifilaire',
+    titre: 'Le schéma électrique',
+    cadre: CADRES.PLEIN_PANNEAU,
+    onglets: ['schema'],
+    composant: lazy(() => import('./coque/etapes/EtapeSchema')),
+  },
   electrique: {
+    titre: 'Le raccordement',
+    cadre: CADRES.CARTE,
     ouverture: 'verdict-electrique',
     libelle: 'Électrique — synthèse',
     onglets: ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
@@ -74,6 +118,8 @@ export const ECRANS_ETAPE = {
   // ACAL396 — Résultats : le diagramme ET l'édition d'un poste dans un seul
   // panneau ; `postes-pertes` y devient un alias expert de `pertes`.
   resultats: {
+    titre: 'Les résultats',
+    cadre: CADRES.PLEIN,
     ouverture: 'pertes',
     libelle: 'Pertes',
     onglets: ['pertes', 'postes-pertes'],
@@ -81,6 +127,8 @@ export const ECRANS_ETAPE = {
   },
   // ACAL867 — Documents : écran de FIN de parcours (« Prêt à envoyer ? », « Générer le devis », documents).
   documents: {
+    titre: 'Les documents',
+    cadre: CADRES.PLEIN,
     ouverture: 'documents',
     libelle: 'Documents',
     onglets: ['documents'],
@@ -91,6 +139,40 @@ export const ECRANS_ETAPE = {
 /** L'écran guidé qui porte l'onglet `cleOnglet` (ou `null`). */
 export function ecranGuideDeOnglet(cleOnglet) {
   return Object.values(ECRANS_ETAPE).find((e) => e.onglets.includes(cleOnglet)) ?? null
+}
+
+/** La vue du rail pour l'onglet ouvert : l'écran guidé qui le porte, la clé visible, l'étape active.
+    UNE fonction pour le rail d'onglets ET la coque : les deux lisent l'URL, jamais deux états. */
+export function vueParcours(cleOnglet, etats = {}, expert = false) {
+  const ecran = expert ? null : ecranGuideDeOnglet(cleOnglet)
+  const cleVue = ecran ? ecran.ouverture : cleOnglet
+  return { ecran, cleVue, cleEtape: etapeActive(cleVue, etats) }
+}
+
+/** L'onglet qu'ouvre un clic sur l'étape `cle` (son premier onglet visible). */
+export function premierOngletEtape(cle, expert = false) {
+  return ongletsVisibles(cle, null, expert)[0] ?? ETAPES.find((e) => e.cle === cle)?.onglets[0] ?? null
+}
+
+/** Coque — l'écran guidé à monter pour l'étape active : l'écran qui porte l'onglet ouvert, sinon
+    l'onglet ouvert lui-même s'il n'est pas celui qu'ouvre l'étape (lien profond `?onglet=variantes`),
+    sinon l'écran de l'étape. `{ composant, cadre, titre }` ou `null` (expert : le rail d'onglets). */
+export function ecranCoque(cleOnglet, onglet, etats = {}, expert = false) {
+  if (expert) return null
+  const { ecran, cleEtape } = vueParcours(cleOnglet, etats, false)
+  const deLEtape = ECRANS_ETAPE[cleEtape] ?? null
+  if (ecran) return { ...ecran, titre: ecran.titre ?? deLEtape?.titre, cadre: ecran.cadre ?? CADRES.CARTE }
+  if (onglet?.composant && cleOnglet !== premierOngletEtape(cleEtape)) {
+    return { composant: onglet.composant, titre: deLEtape?.titre ?? onglet.libelle, cadre: deLEtape?.cadre ?? CADRES.CARTE }
+  }
+  return deLEtape
+}
+
+/** Le nombre de points à régler d'une étape, tel que le parcours le sert (`manque`, hors « info »). */
+export function aReglerDeLEtape(manque, cle) {
+  return (Array.isArray(manque) ? manque : [])
+    .filter((m) => m?.etape === cle && m?.gravite !== 'info')
+    .reduce((n, m) => n + (Number.isFinite(Number(m?.nombre)) && Number(m.nombre) > 0 ? Number(m.nombre) : 1), 0)
 }
 
 /** Les états par étape et « ce qui manque », lus une fois ; vides tant que le serveur n'a pas répondu. */

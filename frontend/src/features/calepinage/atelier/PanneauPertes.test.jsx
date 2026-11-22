@@ -311,16 +311,19 @@ describe('ACAL396 — `onEnregistre` après un enregistrement réussi, jamais ap
     // à jour, puis périmée après l'enregistrement du poste.
     const aJour = exempleContrat('calepinage', 'calepinage_resultat', 'exemple')
     const perimee = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime')
-    resultat.mockResolvedValueOnce({ data: aJour }).mockResolvedValue({ data: perimee })
+    // Deux lectures à jour (l'écran de l'étape, puis le diagramme ouvert), puis la périmée.
+    resultat.mockResolvedValueOnce({ data: aJour }).mockResolvedValueOnce({ data: aJour }).mockResolvedValue({ data: perimee })
     render(<MemoryRouter><PanneauPertesUnifie calepinageId={1} /></MemoryRouter>)
+    // Étape Résultats (maquette) : le diagramme et l'édition des postes sont dans « Détail des pertes et réglages ».
+    fireEvent.click(await screen.findByText('Détail des pertes et réglages'))
     await screen.findByTestId('cal143-panneau')
     expect(screen.queryByTestId('calx48-perime')).toBeNull()
     await screen.findByTestId('cal-pertes-poste-iam')
     fireEvent.change(champPct('iam'), { target: { value: '3.5' } })
     fireEvent.change(champSource('iam'), { target: { value: 'pvgis' } })
     fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
-    expect(await screen.findByTestId('calx48-perime')).toBeTruthy()
-    expect(resultat).toHaveBeenCalledTimes(2)
+    expect((await screen.findAllByTestId('calx48-perime')).length).toBeGreaterThan(0)
+    expect(resultat).toHaveBeenCalledTimes(4) // l'écran de l'étape ET le diagramme relisent
   })
 })
 

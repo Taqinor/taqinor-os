@@ -55,8 +55,9 @@ from . import bordereau_calepinage as _module_bordereau  # ACAL632
 from . import validation_transformateur as _validation_transformateur  # ACAL642
 from . import validation_batterie as _validation_batterie  # ACAL633
 from . import batterie_declaration as _batterie_declaration  # ACAL786
-from . import hors_reseau_declaration as _hors_reseau_declaration  # ACAL790
-from . import suppositions as _suppositions  # ACAL980
+from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
+               pret_a_envoyer as _pret_a_envoyer,  # H5 — une_fois_par_lecture
+               suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
 
@@ -1327,6 +1328,7 @@ def _fiches_modules_du_document(company, document, materiel):
     return fiches
 
 
+@_pret_a_envoyer.une_fois_par_lecture('conception')  # H5 — sans option seulement
 def conception_du_calepinage(calepinage, *, entree=None, layout=None,
                              materiel=None):
     """La ``Conception`` (CAL124) de CE calepinage, matériel et site compris.

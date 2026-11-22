@@ -39,6 +39,10 @@ CONTRAT = json.loads(
 # ACAL178 (calepinage.lead_supprime) est livrée : sa clé est servie.
 # ACAL250 (geometrie.contour_utilisable / source_repere) est livrée.
 EN_ATTENTE = {}
+#: H3 — la taille tirée des factures, sortie du design-context (lue à part : ``GET cible-factures/``).
+CONTRAT_CIBLE = json.loads(
+    (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+     / 'calepinage_cible_factures.json').read_text(encoding='utf-8'))
 EXEMPLE_SERVI = sans(CONTRAT['exemple'], EN_ATTENTE)
 
 LAYOUT = {'schema_version': 2, 'result': {'panels': 12, 'kwc': 8.64},
@@ -93,6 +97,16 @@ class ContexteConceptionTest(BaseApiCalepinage):
         for bloc in ('calepinage', 'geometrie', 'carte'):
             self.assertEqual(set(contexte[bloc]),
                              set(EXEMPLE_SERVI[bloc]), bloc)
+
+    def test_cible_factures_lue_a_part_bornee_societe(self):
+        # H3 — ``GET cible-factures/`` : la forme du contrat, ``null`` sans facture, 404 hors société ;
+        # le design-context ne la porte plus (elle coûtait ~1,9 s à chaque ouverture).
+        url = f'{url_detail(self.nu.pk)}cible-factures/'
+        reponse = self.api.get(url)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data, CONTRAT_CIBLE['exemple_vide'])
+        self.assertEqual(self.api.get(f'{url_detail(self.etranger.pk)}cible-factures/').status_code, 404)
+        self.assertNotIn('cible_factures', self._contexte(self.nu))
 
     def test_sans_devis_ni_facture_la_cible_est_nulle(self):
         contexte = self._contexte(self.nu)
@@ -420,6 +434,30 @@ class ToitureDuLeadTest(unittest.TestCase):
         # (le serveur ne l'applique pas, l'atelier non plus).
         self.assertIsNone(self.servi(Lead(type_toiture='tuiles'), {'zones': []})['mode_pose'])
         self.assertIsNone(self.servi(None, {'modePoseDeclare': ''})['mode_pose'])
+
+
+class CibleFacturesTest(unittest.TestCase):
+    """Maquette Panneaux — ``cible_factures`` : la cible du garde R2-17, telle quelle, sans base."""
+
+    @staticmethod
+    def servi(cible):
+        from apps.calepinage.views.toiture_lead import cible_factures
+
+        return cible_factures(mock.Mock(), lire_cible=lambda calepinage: cible)
+
+    def test_taille_tiree_des_factures_servie_telle_quelle(self):
+        servi = self.servi({'panneaux': 12, 'panel_watt': 580, 'kwc': 6.96, 'source': 'factures',
+                            'refus': None, 'motif_code': None})
+        self.assertEqual(set(servi), set(CONTRAT_CIBLE['exemple']['cible_factures']))
+        self.assertNotIn('cible_factures', CONTRAT['exemple'])  # H3 : hors du démarrage de l'atelier
+        self.assertEqual(servi, {'panneaux': 12, 'kwc': 6.96, 'module_wc': 580.0})
+
+    def test_aucune_cible_des_factures_vaut_none(self):
+        # Sans lead, taille souhaitée du lead, refus (sans facture, C&I…) : jamais une taille devinée.
+        for cible in (None, {'panneaux': 10, 'panel_watt': 580, 'kwc': 5.8, 'source': 'lead'},
+                      {'panneaux': None, 'kwc': None, 'source': 'factures', 'refus': 'Aucune facture.'}):
+            with self.subTest(cible=cible):
+                self.assertIsNone(self.servi(cible))
 
 
 class FactureMensuelleDuLeadTest(unittest.TestCase):

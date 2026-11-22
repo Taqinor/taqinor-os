@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import { ThemeProvider } from '../design/ThemeProvider'
-import { Toaster, toast } from './Toaster'
+import { Toaster, toast, TOASTER_ETROIT } from './Toaster'
 import { toastError, toastSuccess, toastInfo, toastWarning } from '../lib/toast'
 
 describe('Toaster (VX196 — announceur assertif des erreurs)', () => {
@@ -90,6 +90,36 @@ describe('VX130 — Toaster : 4 variantes de type dérivées des tokens (parité
     })
   })
 
+})
+
+// J3 — un écran lent faisait expirer 4 lectures : 4 toasts identiques s'empilaient par-dessus la barre
+// d'actions du téléphone. Un id fixe = UN toast ; sur écran étroit, les toasts vont en haut.
+describe('J3 — toasts d’expiration : un seul à la fois, jamais sur la barre du bas au téléphone', () => {
+  it('le même id rend un seul toast, même émis quatre fois', async () => {
+    render(<ThemeProvider><Toaster /></ThemeProvider>)
+    await act(async () => {
+      for (let i = 0; i < 4; i += 1) toastError('La connexion a expiré.', { id: 'connexion-expiree' })
+    })
+    await waitFor(() => expect(document.querySelectorAll('[data-sonner-toast]').length).toBe(1))
+  })
+
+  it('écran étroit : position en haut ; large : en bas à droite', async () => {
+    const original = window.matchMedia
+    for (const [etroit, attendu] of [[true, ['top', 'center']], [false, ['bottom', 'right']]]) {
+      window.matchMedia = (q) => ({ matches: etroit && q === TOASTER_ETROIT, addEventListener() {}, removeEventListener() {} })
+      const { unmount } = render(<ThemeProvider><Toaster /></ThemeProvider>)
+      await act(async () => { toastInfo('Position.') })
+      const li = await waitFor(() => {
+        const el = document.querySelector('[data-sonner-toast]')
+        expect(el).not.toBeNull()
+        return el
+      })
+      expect([li.getAttribute('data-y-position'), li.getAttribute('data-x-position')]).toEqual(attendu)
+      unmount()
+      await act(async () => { toast.dismiss() })
+    }
+    window.matchMedia = original
+  })
 })
 
 // AERR179 — toast à action « Annuler » cliquable sous une modale (Radix pose

@@ -172,3 +172,18 @@ describe('ACAL416 — la carte et l’onglet Pente convertissent pareil', () => 
     expect(penteDepuisAide({ porteeM: '0', hauteurFaitageM: '2' }, 'cotes').erreur).toContain('portée')
   })
 })
+
+// Maquette Main (22/11) — « Modifier la pente » de l'étape Toit ouvre CE formulaire sur le pan ACTIF de
+// l'atelier ; une pente enregistrée le dit à la carte, qui relit son document.
+describe('étape Toit — ouvert depuis la carte « Pente et orientation »', () => {
+  it('`zoneInitiale` choisit le pan ; `onEnregistre` suit l’écriture réussie', async () => {
+    const onEnregistre = vi.fn()
+    render(<MemoryRouter><SaisiePente calepinageId={7} zoneInitiale="zA" onEnregistre={onEnregistre} /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByTestId('cal-pente-pan')).toHaveValue('zA'))
+    fireEvent.change(screen.getByLabelText(/Pente \(°\)/), { target: { value: '27' } })
+    fireEvent.click(screen.getByTestId('cal-pente-enregistrer'))
+    await waitFor(() => expect(onEnregistre).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1]).toMatchObject({ cle: 'zones', zone_id: 'zA', champs: { pitchDeg: 27 } })
+    expect(screen.getByTestId('cal-pente-message')).toHaveTextContent('Pente enregistrée sur le pan « Pan A ».')
+  })
+})

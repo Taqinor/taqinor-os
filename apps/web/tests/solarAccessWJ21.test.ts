@@ -8,6 +8,8 @@ import {
   pointSolarAccess,
   cellsSolarAccess,
   solarAccessColorRGB,
+  choisirPaletteAcces,
+  couleurAccesActive,
   DIFFUSE_FRACTION_WHEN_SHADED,
   type ShadeObstructionENU,
 } from '../src/lib/shadingEngine';
@@ -89,5 +91,23 @@ describe('WJ21 — couleur mappée à la vraie valeur d’accès', () => {
     expect(solarAccessColorRGB(2).g).toBeCloseTo(1, 6);
     expect(solarAccessColorRGB(-1).r).toBeCloseTo(1, 6);
     expect(solarAccessColorRGB(NaN).g).toBeCloseTo(1, 6); // NaN → traité comme plein (1)
+  });
+
+  it('palette choisie par l’hôte : le site reste rouge → vert, l’atelier ERP prend la rampe bleu nuit → or de la maquette', () => {
+    const hex = (c: { r: number; g: number; b: number }) =>
+      [c.r, c.g, c.b].map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+    expect(hex(couleurAccesActive(0))).toBe('ff0000'); // défaut : site public inchangé
+    choisirPaletteAcces('atelier');
+    try {
+      expect([0, 0.3, 0.5, 0.72, 1].map((a) => hex(couleurAccesActive(a))))
+        .toEqual(['1f3b73', '2f8fa8', '5ec4b6', 'f3d36a', 'f59e0b']);
+      expect(hex(solarAccessColorRGB(0))).toBe('ff0000'); // la fonction du contrat ACAL727 (rapport) ne bouge pas
+      expect(hex(couleurAccesActive(0, 'site'))).toBe('ff0000'); // un appel peut toujours nommer sa palette
+      const lum = (a: number) => { const c = couleurAccesActive(a); return c.r + c.g + c.b; };
+      expect(lum(0.9)).toBeGreaterThan(lum(0.1)); // plus d'accès → plus clair (bleu nuit → or)
+    } finally {
+      choisirPaletteAcces('site');
+    }
+    expect(hex(couleurAccesActive(1))).toBe('00ff00');
   });
 });

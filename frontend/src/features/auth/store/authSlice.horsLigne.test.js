@@ -34,7 +34,7 @@ describe('ADEP33 — fetchMe hors ligne / panne serveur', () => {
     const store = storeConnecte()
     get.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { request: {} }))
     const action = await store.dispatch(fetchMe())
-    expect(action.payload).toEqual({ status: null, reseau: true })
+    expect(action.payload).toEqual({ status: null, reseau: true, expire: false })
     const auth = store.getState().auth
     expect(auth.isAuthenticated).toBe(true)
     expect(auth.sessionInconnue).toBe(true)
@@ -47,7 +47,7 @@ describe('ADEP33 — fetchMe hors ligne / panne serveur', () => {
     const store = storeConnecte()
     get.mockRejectedValueOnce(erreurHttp(503))
     const action = await store.dispatch(fetchMe())
-    expect(action.payload).toEqual({ status: 503, reseau: false })
+    expect(action.payload).toEqual({ status: 503, reseau: false, expire: false })
     const auth = store.getState().auth
     expect(auth.isAuthenticated).toBe(true)
     expect(auth.sessionInconnue).toBe(true)
@@ -58,7 +58,7 @@ describe('ADEP33 — fetchMe hors ligne / panne serveur', () => {
     const store = storeConnecte()
     get.mockRejectedValueOnce(erreurHttp(status))
     const action = await store.dispatch(fetchMe())
-    expect(action.payload).toEqual({ status, reseau: false })
+    expect(action.payload).toEqual({ status, reseau: false, expire: false })
     const auth = store.getState().auth
     expect(auth.isAuthenticated).toBe(false)
     expect(auth.sessionInconnue).toBe(false)
@@ -82,6 +82,15 @@ describe('ADEP33 — fetchMe hors ligne / panne serveur', () => {
     get.mockResolvedValueOnce({ data: { username: 'meriem', menu_tier: 'admin' } })
     await store.dispatch(fetchMe())
     expect(store.getState().auth.sessionInconnue).toBe(false)
+    expect(store.getState().auth.isAuthenticated).toBe(true)
+  })
+
+  it('J3 — délai dépassé : `expire` vrai (serveur lent, pas injoignable) ; lecture à 60 s sans toast', async () => {
+    const store = storeConnecte()
+    get.mockRejectedValueOnce(Object.assign(new Error('timeout of 60000ms exceeded'), { code: 'ECONNABORTED', request: {} }))
+    const action = await store.dispatch(fetchMe())
+    expect(action.payload).toEqual({ status: null, reseau: true, expire: true })
+    expect(get).toHaveBeenCalledWith('/auth/me/', { silencieuxExpiration: true, timeout: 60000 })
     expect(store.getState().auth.isAuthenticated).toBe(true)
   })
 })

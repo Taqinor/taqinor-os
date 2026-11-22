@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import type { Map as CarteMapLibre } from 'maplibre-gl';
 import { DEG2M, DEG2RAD } from './constants';
+import { enPresentation, surPresentation } from './presentationCarte'; // H6 — vue client : aucune poignée
 
 export interface PoigneeSommet { idx: number; x: number; y: number; z: number }
 export interface PoigneeEcran { idx: number; x: number; y: number }
@@ -43,12 +44,13 @@ export function creerPoignees3d(map: CarteMapLibre) {
   let matrice: ArrayLike<number> | null = null;
   const geo = new THREE.SphereGeometry(0.3, 12, 8);
   const mat = new THREE.MeshBasicMaterial({ color: 0xe8b54a, depthTest: false });
-  const incline = () => poignees.length > 0 && (map.getPitch?.() ?? 0) > 0;
+  const incline = () => poignees.length > 0 && (map.getPitch?.() ?? 0) > 0 && !enPresentation(map);
   const maj = () => {
     if (groupe) groupe.visible = incline();
-    if (map.getLayer?.('rp9-pts')) map.setLayoutProperty('rp9-pts', 'visibility', incline() ? 'none' : 'visible');
+    if (map.getLayer?.('rp9-pts')) map.setLayoutProperty('rp9-pts', 'visibility', incline() || enPresentation(map) ? 'none' : 'visible');
   };
   map.on?.('pitch', maj);
+  surPresentation(map, maj);
   return {
     suivre: (m: ArrayLike<number>) => { matrice = m; },
     poser(scene: THREE.Scene, sommets: readonly (readonly [number, number])[], origine: readonly [number, number], hauteurM: number) {

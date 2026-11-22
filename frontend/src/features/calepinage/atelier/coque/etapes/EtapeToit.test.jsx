@@ -1,0 +1,449 @@
+/* Nouveau fichier car : EtapeToit.jsx est un composant neuf (écran guidé de l'étape Toit, maquettes Main /
+   ToitSombre) sans module de test voisin ; le script du constructeur ne tourne pas sous vitest : le DOM qu'il
+   possède (`rp9-*`) est posé à la main, comme il l'écrit, et l'écran est jugé sur ce qu'il LIT et CLIQUE.
+   Ce qui est prouvé : blocs et libellés de la maquette dans l'ordre, crochets e2e, figures lues dans le DOM du
+   constructeur (bloc omis sans donnée), renvoi de chaque geste au vrai contrôle `rp9-*`, la règle « À confirmer »,
+   « Confirmer » = la requête de « Enregistrer la pente », « Je ne la connais pas » n'écrit rien, le compte des
+   contrôles, et la feuille 51-etape-toit.css sans couleur littérale (thème sombre par les jetons). */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import process from 'node:process'
+
+const layout = vi.fn()
+const designContext = vi.fn()
+const cibleFactures = vi.fn() // H3 — la taille des factures, lue à part du design-context
+const enregistrerSectionLayout = vi.fn()
+vi.mock('../../../../../api/calepinageApi', () => ({
+  default: {
+    calepinages: {
+      layout: (...a) => layout(...a),
+      designContext: (...a) => designContext(...a),
+      cibleFactures: (...a) => cibleFactures(...a),
+      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
+      releveVisite: vi.fn(async () => ({ data: null })),
+    },
+    parametres: { suggestionPenteDisponible: vi.fn(async () => ({ data: { disponible: false } })) },
+  },
+}))
+
+const { default: EtapeToit } = await import('./EtapeToit')
+const { ContexteCoque } = await import('../contexteCoque')
+const H = await import('./EtapeToit.helpers')
+const { oublierLecturesServies } = await import('./panneaux/lectures')
+
+/* Le DOM que le constructeur possède, tel qu'il l'écrit (ids, textes, attributs) : 2 pans, contour fermé,
+   facture connue, une cheminée et un chauffe-eau. */
+const CONSTRUCTEUR = `
+  <div class="rp9-map-wrap"><div><button id="rp9-finish" disabled>Terminer le tracé</button>
+    <button id="rp9-undo-point" hidden>Annuler le dernier point</button></div>
+    <div class="maplibregl-ctrl-compass"><span class="maplibregl-ctrl-icon" style="transform: scale(1) rotateX(0deg) rotateZ(0deg)"></span></div></div>
+  <div class="cal-coque-groupe" data-groupe="toit">
+    <div><button id="rp9-clear">Effacer</button><button id="rp9-add-area">+ Ajouter une zone</button>
+      <div id="rp9-formes-toit"></div>
+      <form id="rp9-toit-cotes" hidden><input name="longueur"><input name="largeur"><input name="orientation"></form>
+      <p><span id="rp9-area-value">~54 m²</span></p></div>
+    <div id="rp9-config">
+      <button data-rooftype="flat" aria-pressed="false">Toit plat</button>
+      <button data-rooftype="pitched" aria-pressed="true">Toit en pente</button>
+      <span id="rp9-pitch-value">22°</span><span id="rp9-facing-value">Sud · 180°</span>
+      <p id="rp9-pitch-note">Pente : 22° par défaut — à confirmer</p>
+      <div><button id="rp9-obstacle" aria-pressed="false">Ajouter un obstacle (cheminée…)</button>
+        <details id="rp9-objets-site"><ul>
+          <li><button data-objet="o1" data-pan="area-1">Cheminée · 0,6 × 0,6 m · hauteur 1,2 m · Relevé sur place · Pan 1</button></li>
+          <li><button data-objet="o2" data-pan="area-2">Chauffe-eau solaire · 2,0 × 1,2 m · hauteur — · Non renseignée · Pan 2</button></li>
+        </ul></details></div>
+      <div><button id="rp9-mesure-distance" data-mesure-kind="distance" aria-pressed="false">Distance</button>
+        <button id="rp9-mesure-finish" hidden>Terminer la mesure</button><button id="rp9-mesure-cancel" hidden>Annuler</button></div>
+    </div>
+  </div>
+  <div id="rp9-areas-window">
+    <div id="rp9-pan-geometry"><input id="rp9-pan-largeur" value="8,6"><input id="rp9-pan-longueur" value="12,4">
+      <button id="rp9-pan-coter">Appliquer les cotes</button></div>
+    <ul id="rp9-areas-list"><li data-area-row="area-1"></li><li data-area-row="area-2"></li></ul>
+    <table><tbody>
+      <tr data-pan-stat="area-1"><td>Pan 1</td><td>0</td><td>0</td><td>180°</td><td>22°</td><td>54</td><td>—</td></tr>
+      <tr data-pan-stat="area-2"><td>Pan 2</td><td>0</td><td>0</td><td>0°</td><td>22°</td><td>53</td><td>—</td></tr>
+    </tbody></table>
+  </div>
+  <dl><dd id="rp9-reco-kwc">7,2 kWc</dd><dd id="rp9-reco-cover">104 %</dd><dd id="rp9-reco-savings">≈ 9 000 MAD/an</dd></dl>
+  <button id="rp9-layout-undo" disabled>↶ Annuler</button><button id="rp9-layout-redo" disabled>↷ Rétablir</button>`
+
+const ZONE = { id: 'area-1', label: 'Pan 1', pitchDeg: 22, facingAzimuthDeg: 180, roofType: 'pitched' }
+const $ = (id) => document.getElementById(id)
+let surCarte
+let builderApi
+
+function rendre(props = {}, avant = null) {
+  const hote = document.createElement('div')
+  hote.className = 'rp9-host cal-coque'
+  hote.dataset.avance = '0'
+  hote.dataset.etape = 'toit'
+  hote.innerHTML = CONSTRUCTEUR
+  avant?.(hote)
+  surCarte = document.createElement('div')
+  surCarte.className = 'cal-coque-sur-carte'
+  hote.appendChild(surCarte)
+  const panneau = document.createElement('div')
+  hote.appendChild(panneau)
+  document.body.appendChild(hote)
+  const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+  return render(
+    <MemoryRouter>
+      <ContexteCoque.Provider value={coque}>
+        <EtapeToit calepinageId={7} builderApi={builderApi} documentVivant={null} {...props} />
+      </ContexteCoque.Provider>
+    </MemoryRouter>,
+    { container: panneau },
+  )
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  builderApi = { panActifId: () => 'area-1', appliquerVue: vi.fn() }
+  designContext.mockResolvedValue({ data: { calepinage: { lead: 42 } } })
+  cibleFactures.mockResolvedValue({ data: { cible_factures: { panneaux: 11, kwc: 6.93, module_wc: 630 } } })
+  layout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE, { ...ZONE, id: 'area-2', label: 'Pan 2' }] }, empreinte_document: 'jeton-1' } })
+  enregistrerSectionLayout.mockImplementation(async (_id, corps) => ({ data: {
+    empreinte_document: 'jeton-2',
+    roof_layout: { zones: [{ ...ZONE, ...corps.champs }, { ...ZONE, id: 'area-2', label: 'Pan 2' }] },
+  } }))
+})
+afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.useRealTimers(); oublierLecturesServies() })
+
+describe('Étape Toit — le panneau de la maquette Main', () => {
+  it('blocs dans l’ordre de la maquette, libellés mot pour mot, crochets e2e', async () => {
+    rendre()
+    const titres = [...document.querySelectorAll('.cal-etape-toit h2')].map((n) => n.textContent)
+    expect(titres).toEqual(['Forme', 'Dimensions', 'Pente et orientation', 'Obstacles'])
+    const dims = screen.getByTestId('cal-toit-dimensions')
+    expect(within(dims).getByLabelText('Longueur')).toHaveValue('12,4')
+    expect(within(dims).getByLabelText('Largeur')).toHaveValue('8,6')
+    expect([...dims.querySelectorAll('.cal-toit-saisie > span')].map((n) => n.textContent)).toEqual(['m', 'm'])
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    await waitFor(() => expect(within(carte).getByText('22° · face sud')).toBeInTheDocument())
+    expect(within(carte).getByText('À confirmer')).toBeInTheDocument()
+    expect(within(carte).getByText('Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d\'envoyer le devis.')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-toit-pente-confirmer')).toHaveTextContent('Confirmer')
+    expect(screen.getByTestId('cal-toit-pente-inconnue')).toHaveTextContent('Je ne la connais pas')
+    const obstacles = screen.getByTestId('cal-toit-obstacles')
+    expect(within(obstacles).getByRole('button', { name: '+ Ajouter' })).toBeInTheDocument()
+    const lignes = within(obstacles).getAllByRole('option').map((li) => [
+      li.querySelector('.cal-toit-obstacle-nom').textContent, li.querySelector('.cal-toit-obstacle-cotes').textContent,
+    ])
+    expect(lignes).toEqual([['Cheminée', '0,6 × 0,6 m · 1,2 m'], ['Chauffe-eau solaire', '2,0 × 1,2 m']])
+  })
+
+  it('sans obstacle : l’en-tête et « + Ajouter » seuls, aucune ligne inventée', () => {
+    rendre({}, (hote) => hote.querySelectorAll('#rp9-objets-site li').forEach((n) => n.remove()))
+    const bloc = screen.getByTestId('cal-toit-obstacles')
+    expect(within(bloc).queryByRole('listbox')).toBeNull()
+    expect(within(bloc).getAllByRole('button').map((b) => b.textContent)).toEqual(['+ Ajouter'])
+  })
+
+  it('clic sur une ligne d’obstacle = clic sur sa ligne du tableau « Objets du site » ; « + Ajouter » = `rp9-obstacle`', () => {
+    rendre()
+    const ligneScript = document.querySelector('[data-objet="o2"]')
+    const surLigne = vi.fn()
+    ligneScript.addEventListener('click', surLigne)
+    fireEvent.click(screen.getAllByRole('option')[1])
+    expect(surLigne).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
+    const ajouter = vi.fn()
+    $('rp9-obstacle').addEventListener('click', ajouter)
+    fireEvent.click(screen.getByRole('button', { name: '+ Ajouter' }))
+    expect(ajouter).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Étape Toit — « Pente et orientation »', () => {
+  it('« Confirmer » envoie la requête de « Enregistrer la pente » (même section, même source) ; « À confirmer » disparaît', async () => {
+    rendre()
+    await waitFor(() => expect(screen.getByText('22° · face sud')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout).toHaveBeenCalledWith(7, {
+      cle: 'zones', zone_id: 'area-1', champs: { pitchDeg: 22, pitchSource: { mode: 'degres', degres: 22 } }, base_empreinte: 'jeton-1',
+    })
+    await waitFor(() => expect(screen.queryByText('À confirmer')).toBeNull())
+    expect(screen.getByRole('status')).toHaveTextContent('Pente enregistrée sur le pan « Pan 1 ».')
+  })
+
+  it('« Je ne la connais pas » : rien n’est écrit, la valeur reste « À confirmer », la visite la vérifiera', async () => {
+    rendre()
+    await waitFor(() => expect(screen.getByText('22° · face sud')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('cal-toit-pente-inconnue'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    expect(screen.getByText('À confirmer')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('elle sera vérifiée à la visite. Rien n’est enregistré.')
+    expect(screen.queryByTestId('cal-toit-pente-confirmer')).toBeNull()
+  })
+
+  it('une pente déjà confirmée (`pitchSource` posé) : ni « À confirmer » ni boutons ; « Modifier la pente » reste', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...ZONE, pitchDeg: 30, facingAzimuthDeg: 135, pitchSource: { mode: 'degres', degres: 30 } }] }, empreinte_document: 'j' } })
+    rendre()
+    await waitFor(() => expect(screen.getByText('30° · face sud-est')).toBeInTheDocument())
+    expect(screen.queryByText('À confirmer')).toBeNull()
+    expect(screen.queryByTestId('cal-toit-pente-confirmer')).toBeNull()
+    expect(screen.getByText('Modifier la pente').tagName).toBe('SUMMARY')
+  })
+
+  it('pan pas encore enregistré : la pente du script s’affiche, « À confirmer » suit sa mention `rp9-pitch-note`', async () => {
+    builderApi = { panActifId: () => 'area-9', appliquerVue: vi.fn() }
+    rendre()
+    expect(await screen.findByText('22° · face sud')).toBeInTheDocument()
+    expect(screen.getByText('À confirmer')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Enregistrez d’abord le calepinage'))
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+})
+
+describe('Étape Toit — sur la carte', () => {
+  it('puce « Surface du toit | Pans | Besoin d’après la facture » : surface et pans du constructeur, besoin servi', async () => {
+    rendre()
+    const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
+    await waitFor(() => expect([...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent))
+      .toEqual(['Surface du toit107 m²', 'Pans2', "Besoin d'après la facture≈ 6,93 kWc"]))
+    expect(cibleFactures).toHaveBeenCalledWith(7)
+  })
+
+  it('« Besoin » vient SEULEMENT de `cible_factures.kwc` : jamais la puissance posée/recommandée du constructeur', async () => {
+    // Recette M2, calepinage 5 : la reco du constructeur (39,60 kWc, « 809 % ») n'est pas un besoin de facture.
+    cibleFactures.mockResolvedValue({ data: { cible_factures: null } })
+    rendre()
+    $('rp9-reco-kwc').textContent = '39,60 kWc'
+    $('rp9-reco-cover').textContent = '809 %'
+    await waitFor(() => expect(cibleFactures).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 600))
+    const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
+    expect([...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)).toEqual(['Surface du toit107 m²', 'Pans2'])
+    expect(within(surCarte).queryByText(/39,60/)).toBeNull()
+    expect(H.texteBesoin(null)).toBeNull()
+    expect(H.texteBesoin({ panneaux: 10, kwc: null })).toBeNull()
+    expect(H.texteBesoin({ panneaux: 10, kwc: 7.2 })).toBe('≈ 7,20 kWc')
+  })
+
+  it('H2 — lecture de la facture en cours : la puce n’affirme rien ; en échec : « Lecture impossible — réessayer »', async () => {
+    let finir
+    cibleFactures.mockImplementation(() => new Promise((ok, ko) => { finir = { ok, ko } }))
+    rendre()
+    const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
+    const blocs = () => [...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)
+    await waitFor(() => expect(cibleFactures).toHaveBeenCalledTimes(1))
+    expect(blocs()).toEqual(['Surface du toit107 m²', 'Pans2']) // en chargement : aucun besoin, aucune absence dite
+    await act(async () => { finir.ko(new Error('timeout of 20000ms exceeded')) })
+    const reessayer = await within(surCarte).findByRole('button', { name: 'Lecture impossible — réessayer' })
+    expect(blocs()[2]).toBe("Besoin d'après la factureLecture impossible — réessayer")
+    cibleFactures.mockResolvedValue({ data: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
+    fireEvent.click(reessayer)
+    await waitFor(() => expect(blocs()).toEqual(['Surface du toit107 m²', 'Pans2', "Besoin d'après la facture≈ 2,84 kWc"]))
+    expect(cibleFactures).toHaveBeenCalledTimes(2)
+  })
+
+  it('H2/H3 — le design-context de l’atelier (`contexte`) prime : aucune seconde lecture ; la taille, lue à part', async () => {
+    cibleFactures.mockResolvedValue({ data: { cible_factures: { panneaux: 4, kwc: 2.84, module_wc: 710 } } })
+    rendre({ contexte: { calepinage: { lead: 42 } } })
+    const puce = within(surCarte).getByTestId('cal-sur-carte-resume')
+    await waitFor(() => expect([...puce.querySelectorAll('.cal-indicateur')].map((n) => n.textContent)[2])
+      .toBe("Besoin d'après la facture≈ 2,84 kWc"))
+    expect(designContext).not.toHaveBeenCalled()
+    expect(cibleFactures).toHaveBeenCalledTimes(1)
+  })
+
+  it('sans contour, pas de puce', () => {
+    rendre()
+    document.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
+    $('rp9-area-value').textContent = '—'
+    expect(H.lireSurface(document)).toBeNull()
+  })
+
+  it('barre d’outils : 4 outils | annuler · rétablir | Plan · 3D, dans l’ordre de la maquette', () => {
+    rendre()
+    const barre = within(surCarte).getByRole('toolbar', { name: 'Outils du plan' })
+    expect(barre).toHaveAttribute('data-testid', 'cal-barre-outils-carte')
+    expect(within(barre).getAllByRole('button').map((b) => b.getAttribute('aria-label') || b.textContent))
+      .toEqual(['Sélectionner', 'Ajouter un pan', 'Ajouter un obstacle', 'Mesurer', 'Annuler', 'Rétablir', 'Plan', '3D'])
+    expect(within(barre).getByRole('button', { name: 'Sélectionner' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(barre).getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(barre).getByRole('button', { name: 'Rétablir' })).toBeDisabled()
+  })
+
+  it('chaque outil clique le VRAI contrôle du constructeur', async () => {
+    rendre()
+    const barre = within(surCarte).getByRole('toolbar')
+    const espion = (id) => { const f = vi.fn(); $(id).addEventListener('click', f); return f }
+    const obstacle = espion('rp9-obstacle')
+    const zone = espion('rp9-add-area')
+    const mesure = espion('rp9-mesure-distance')
+    fireEvent.click(within(barre).getByRole('button', { name: 'Ajouter un obstacle' }))
+    fireEvent.click(within(barre).getByRole('button', { name: 'Ajouter un pan' }))
+    fireEvent.click(within(barre).getByRole('button', { name: 'Mesurer' }))
+    expect([obstacle, zone, mesure].map((f) => f.mock.calls.length)).toEqual([1, 1, 1])
+    // Pendant un tracé, « Annuler » retire le dernier point ; sinon l'historique de pose.
+    const point = espion('rp9-undo-point')
+    $('rp9-undo-point').hidden = false
+    await waitFor(() => expect(within(barre).getByRole('button', { name: 'Annuler' })).not.toBeDisabled())
+    fireEvent.click(within(barre).getByRole('button', { name: 'Annuler' }))
+    expect(point).toHaveBeenCalledTimes(1)
+    fireEvent.click(within(barre).getByRole('button', { name: '3D' }))
+    expect(builderApi.appliquerVue).toHaveBeenCalledWith('trois-quarts')
+  })
+
+  it('la bulle « Contour tracé » paraît quand un tracé EN COURS se ferme, puis s’efface', () => {
+    vi.useFakeTimers()
+    rendre()
+    $('rp9-add-area').disabled = true
+    $('rp9-finish').disabled = false
+    act(() => { vi.advanceTimersByTime(600) })
+    expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
+    $('rp9-finish').disabled = true
+    $('rp9-add-area').disabled = false
+    act(() => { vi.advanceTimersByTime(600) })
+    expect(within(surCarte).getByText('Contour tracé')).toBeInTheDocument()
+    expect(within(surCarte).getByText('Cliquez sur un coin pour le déplacer, ou double-cliquez sur un bord pour ajouter un point.')).toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(9000) })
+    expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
+  })
+
+  it('l’étape s’ouvre en « Plan » : la caméra du dessus est posée à l’entrée', () => {
+    vi.useFakeTimers()
+    rendre()
+    act(() => { vi.advanceTimersByTime(10) })
+    expect(builderApi.appliquerVue).toHaveBeenCalledWith('dessus')
+    expect(builderApi.appliquerVue).not.toHaveBeenCalledWith('trois-quarts')
+  })
+})
+
+/* Le script, réduit à ce que fait « + Ajouter une zone » (`addArea`) : une zone vide ACTIVE (« à tracer »), le
+   pan d'avant passe en « Voir », le bouton se désactive ; « × » la supprime, « Voir » réactive un pan. */
+function scriptZones(hote) {
+  const liste = hote.querySelector('#rp9-areas-list')
+  const ligne = (id, actif, aTracer) => `<li data-area-row="${id}">${id} — ${aTracer ? '— panneaux · à tracer' : '30 panneaux · 21,6 kWc'}
+    ${actif ? '<span>● active</span>' : `<button data-area-select="${id}">Voir</button>`}<button data-area-del="${id}">×</button></li>`
+  const etat = { zones: [{ id: 'area-1', aTracer: false }], active: 'area-1' }
+  const peindre = () => { liste.innerHTML = etat.zones.map((z) => ligne(z.id, z.id === etat.active, z.aTracer)).join('') }
+  peindre()
+  hote.querySelectorAll('[data-pan-stat="area-2"]').forEach((n) => n.remove())
+  const ajouter = hote.querySelector('#rp9-add-area')
+  ajouter.addEventListener('click', () => {
+    etat.zones.push({ id: 'area-2', aTracer: true })
+    etat.active = 'area-2'
+    ajouter.disabled = true
+    hote.querySelector('#rp9-area-value').textContent = '—'
+    hote.querySelector('#rp9-reco-kwc').textContent = '—'
+    hote.querySelector('#rp9-pan-geometry').hidden = true
+    peindre()
+  })
+  liste.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-area-del]')?.dataset.areaDel
+    const voir = e.target.closest('[data-area-select]')?.dataset.areaSelect
+    if (del) { etat.zones = etat.zones.filter((z) => z.id !== del); etat.active = etat.zones[0].id; ajouter.disabled = false }
+    if (voir) etat.active = voir
+    hote.querySelector('#rp9-area-value').textContent = '~54 m²'
+    peindre()
+  })
+  return { etat, fermerZone2: () => { etat.zones[1].aTracer = false; ajouter.disabled = false; peindre() } }
+}
+
+describe('Étape Toit — « Ajouter un pan » sur un toit existant (jamais destructif)', () => {
+  it('le bouton dit ce qu’il fait ; pendant l’ajout la puce et les cotes gardent le toit ; Échap retire la zone vide', async () => {
+    let script
+    rendre({}, (hote) => { script = scriptZones(hote) })
+    const barre = within(surCarte).getByRole('toolbar')
+    const puce = () => [...within(surCarte).getByTestId('cal-sur-carte-resume').querySelectorAll('.cal-indicateur')].map((n) => n.textContent)
+    await waitFor(() => expect(puce()).toEqual(['Surface du toit54 m²', 'Pans1', 'Besoin d\'après la facture≈ 6,93 kWc']))
+    fireEvent.click(within(barre).getByRole('button', { name: 'Ajouter un pan' }))
+    expect(script.etat.zones.map((z) => z.id)).toEqual(['area-1', 'area-2'])
+    await waitFor(() => expect(within(barre).getByRole('button', { name: 'Ajouter un pan' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(within(surCarte).getByText('Nouveau pan')).toBeInTheDocument()
+    expect(puce()).toEqual(['Surface du toit54 m²', 'Pans1', 'Besoin d\'après la facture≈ 6,93 kWc'])
+    expect(screen.getByLabelText('Longueur')).toHaveValue('12,4')
+    expect(screen.getByLabelText('Longueur')).toBeDisabled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(script.etat.zones.map((z) => z.id)).toEqual(['area-1'])
+    expect(script.etat.active).toBe('area-1')
+    await waitFor(() => expect(within(barre).getByRole('button', { name: 'Ajouter un pan' })).toHaveAttribute('aria-pressed', 'false'))
+    expect(within(surCarte).queryByText('Nouveau pan')).toBeNull()
+  })
+
+  it('re-cliquer annule aussi ; un contour fermé termine l’ajout et garde le nouveau pan', async () => {
+    let script
+    rendre({}, (hote) => { script = scriptZones(hote) })
+    const bouton = () => within(surCarte).getByRole('button', { name: 'Ajouter un pan' })
+    fireEvent.click(bouton())
+    await waitFor(() => expect(bouton()).toHaveAttribute('aria-pressed', 'true'))
+    fireEvent.click(bouton())
+    expect(script.etat.zones.map((z) => z.id)).toEqual(['area-1'])
+    fireEvent.click(bouton())
+    await waitFor(() => expect(bouton()).toHaveAttribute('aria-pressed', 'true'))
+    script.fermerZone2()
+    await waitFor(() => expect(bouton()).toHaveAttribute('aria-pressed', 'false'), { timeout: 3000 })
+    expect(script.etat.zones.map((z) => z.id)).toEqual(['area-1', 'area-2'])
+  })
+})
+
+describe('Étape Toit — Dimensions renvoyées au constructeur', () => {
+  it('contour fermé : la saisie reste sous le curseur, puis part dans les cotes du pan (« Appliquer les cotes »)', () => {
+    rendre()
+    const coter = vi.fn()
+    $('rp9-pan-coter').addEventListener('click', coter)
+    const longueur = screen.getByLabelText('Longueur')
+    fireEvent.change(longueur, { target: { value: '12,5' } })
+    expect(longueur).toHaveValue('12,5')
+    fireEvent.blur(longueur)
+    expect($('rp9-pan-longueur').value).toBe('12,5')
+    expect($('rp9-pan-largeur').value).toBe('8,6')
+    expect(coter).toHaveBeenCalledTimes(1)
+  })
+
+  it('avant tout contour : Entrée soumet « Créer le toit » du script avec longueur × largeur', () => {
+    rendre({}, (hote) => {
+      hote.querySelector('#rp9-toit-cotes').hidden = false
+      hote.querySelector('#rp9-pan-geometry').hidden = true
+    })
+    const soumis = vi.fn((e) => e.preventDefault())
+    $('rp9-toit-cotes').addEventListener('submit', soumis)
+    expect(screen.getByRole('button', { name: 'Créer le toit' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Longueur'), { target: { value: '12,5' } })
+    fireEvent.change(screen.getByLabelText('Largeur'), { target: { value: '8' } })
+    fireEvent.submit(screen.getByTestId('cal-toit-dimensions'))
+    expect(soumis).toHaveBeenCalledTimes(1)
+    const form = $('rp9-toit-cotes')
+    expect([form.querySelector('[name=longueur]').value, form.querySelector('[name=largeur]').value]).toEqual(['12,5', '8'])
+    expect(screen.getByLabelText('Longueur')).toHaveValue('12,5')
+  })
+})
+
+describe('Étape Toit — budget de contrôles et thème', () => {
+  it('contrôles visibles de l’écran (panneau + calques de carte) : 13 (sélecteur de calepinage-mesures-ecran)', () => {
+    rendre()
+    const SEL = 'button, a[href], input, select, textarea, [role=tab]'
+    const panneau = [...document.querySelectorAll('.cal-etape-toit')].flatMap((n) => [...n.querySelectorAll(SEL)])
+    const carte = [...surCarte.querySelectorAll(SEL)]
+    // Panneau : Longueur, Largeur, Confirmer, Je ne la connais pas, + Ajouter (les lignes d'obstacles sont des
+    // options d'une liste à UNE tabulation ; « Modifier la pente » est un <summary>). Carte : 8 de la barre.
+    expect(panneau.length).toBe(5)
+    expect(carte.length).toBe(8)
+  })
+
+  it('51-etape-toit.css : aucune couleur littérale, toutes les couleurs passent par les jetons', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/51-etape-toit.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/url\("data:[^"]*"\)/g, 'url()') // masques des pictogrammes MapLibre : forme seule, jamais une couleur
+    expect(css).not.toMatch(/rgba?\(|hsla?\(|#[0-9a-fA-F]{3,8}\b/)
+    expect(css).not.toMatch(/:\s*(white|black|gray|grey)\b/i)
+    expect(css).not.toMatch(/\.dark\b/)
+  })
+
+  it('six tuiles de forme illustrées en guidé (Plat, 2 pans, 4 pans, En L, En T, Tracé libre) ; « 1 pan » masqué', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/51-etape-toit.css'), 'utf8')
+    for (const forme of ['flat', 'gable', 'hip', 'l_gable', 't_gable', 'libre']) {
+      expect(css.includes(`[data-forme='${forme}'] { --cal-forme: url("data:image/svg+xml,`), forme).toBe(true)
+    }
+    expect(css).toContain("#rp9-formes-toit > [data-forme='shed']")
+    expect(css).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))')
+  })
+})

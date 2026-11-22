@@ -46,6 +46,8 @@ from __future__ import annotations
 from apps.stock.selectors import specs_for_produit, type_fiche_produit
 from apps.ventes.selectors import get_devis_by_pk, lignes_produits_calepinage
 
+from . import pret_a_envoyer as _pret_a_envoyer  # H5 — une_fois_par_lecture
+
 #: Famille de fiche technique -> clé de l'agrégat. Les familles hors de ce
 #: dictionnaire (``''``, ``'autre'``) ne sont RETENUES pour aucune famille —
 #: on préfère l'omission à un équipement mal rangé.
@@ -159,6 +161,7 @@ def _bloc_equipement(ligne):
     return famille, bloc
 
 
+@_pret_a_envoyer.une_fois_par_lecture('equipements')  # H5 — une fois par lecture
 def equipements_du_calepinage(calepinage):
     """CAL243 — l'agrégat COMPLET du contrat ``calepinage_equipements.json``.
 

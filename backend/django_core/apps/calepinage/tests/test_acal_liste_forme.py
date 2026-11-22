@@ -16,8 +16,10 @@ Run :
 """
 import json
 import pathlib
+from types import SimpleNamespace
 
 from django.db import connection
+from django.test import SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 
 from apps.calepinage.models import Calepinage
@@ -117,6 +119,23 @@ class RechercheDeLaListeTest(BaseApiCalepinage):
         # Le NOM DU CLIENT rattaché (« Bâtiment Atlas »).
         self.assertEqual(self._ids('Atlas'), {self.hangar.pk})
 
+    def test_recherche_par_ville_du_client_et_du_lead(self):
+        """Maquette « Liste » (« Client, ville ou lead ») : la VILLE du lead
+        rattaché est cherchée (le client n'a pas de ville), bornées société."""
+        from apps.crm.models import Lead
+
+        Lead.objects.filter(pk=self.lead.pk).update(ville='Essaouira')
+        Lead.objects.filter(pk=self.lead_2.pk).update(ville='Tétouan')
+        Lead.objects.create(company=self.autre, nom='Voisin', ville='Tétouan')
+        etranger = Calepinage.objects.create(
+            company=self.autre, lead_id=999, titre='Ailleurs')
+
+        self.assertEqual(self._ids('Essaouira'), {self.hangar.pk})
+        self.assertEqual(self._ids('essaou'), {self.hangar.pk})
+        self.assertEqual(self._ids('Tétouan'), {self.autre_ligne.pk})
+        self.assertNotIn(etranger.pk, self._ids('Tétouan'))
+        self.assertEqual(self._ids('Quelquepartintrouvable'), set())
+
     def test_titre_de_repli_calepinage_diese_numero_est_trouve(self):
         """ACAL948 — « Calepinage #12 » et « #12 » trouvent le 12 sans titre,
         pas le 120 ; l'égalité porte sur le numéro."""
@@ -168,3 +187,88 @@ class StatutsEtBudgetTest(BaseApiCalepinage):
 
         # Pas de requête PAR ligne : le compte ne bouge pas de 5 à 15 lignes.
         self.assertEqual(mesurer(5), mesurer(15))
+
+
+class LectureDeLaCarteSansBaseTest(SimpleTestCase):
+    """kWc et production de la carte : lus sur ce qui est enregistré, jamais inventés."""
+
+    def test_kwc_du_document_arrondi_au_centieme_ou_none(self):
+        from apps.calepinage.services.lecture_liste import kwc_pose
+
+        self.assertEqual(kwc_pose(SimpleNamespace(_liste_mesures={'kwc': 6.9555})), 6.96)
+        self.assertIsNone(kwc_pose(SimpleNamespace(_liste_mesures={'kwc': None})))
+        self.assertIsNone(kwc_pose(SimpleNamespace(_liste_mesures={})))
+
+    def test_production_enregistree_servie_en_entier(self):
+        from apps.calepinage.services.lecture_liste import production_annuelle
+
+        ligne = SimpleNamespace(_liste_p50_texte='11480.4', _liste_modules_simules_texte='12',
+                                _liste_mesures={'modules': 12})
+        self.assertEqual(production_annuelle(ligne), 11480)
+
+    def test_pas_de_production_sans_simulation_ligne_non_annotee_ou_toit_change(self):
+        from apps.calepinage.services.lecture_liste import production_annuelle
+
+        self.assertIsNone(production_annuelle(SimpleNamespace(_liste_mesures={})))  # non annotée
+        self.assertIsNone(production_annuelle(SimpleNamespace(
+            _liste_p50_texte=None, _liste_modules_simules_texte=None, _liste_mesures={})))
+        # La simulation décrivait 12 modules, le document en pose 16 : jamais un chiffre périmé.
+        self.assertIsNone(production_annuelle(SimpleNamespace(
+            _liste_p50_texte='11480', _liste_modules_simules_texte='12',
+            _liste_mesures={'modules': 16})))
+
+    def test_le_kwc_simule_complete_un_document_sans_puissance_de_module(self):
+        """F4 — la carte lit aussi le bloc ``pose`` du résultat enregistré (annoté en SQL) : il est
+        transmis à ``mesures_du_document``, qui ne l'emploie que s'il décrit CE document."""
+        from unittest import mock
+
+        from apps.calepinage.services.lecture_liste import kwc_pose
+
+        ligne = SimpleNamespace(roof_layout={'result': {}}, _liste_modules_simules_texte='12',
+                                _liste_kwc_simule_texte='6.96')
+        with mock.patch('apps.calepinage.services.mesures.mesures_du_document',
+                        return_value={'modules': 12, 'kwc': 6.96}) as lecture:
+            self.assertEqual(kwc_pose(ligne), 6.96)
+        self.assertEqual(lecture.call_args.args[1], {'pose': {'total_modules': 12.0, 'kwc': 6.96}})
+        # Pas de simulation (ou pose incomplète) : le document seul, jamais un nombre inventé.
+        sans = SimpleNamespace(roof_layout={'result': {}}, _liste_modules_simules_texte=None,
+                               _liste_kwc_simule_texte=None)
+        with mock.patch('apps.calepinage.services.mesures.mesures_du_document',
+                        return_value={'modules': None, 'kwc': None}) as lecture:
+            self.assertIsNone(kwc_pose(sans))
+        self.assertIsNone(lecture.call_args.args[1])
+
+
+class CompteursEtCarteDeLaListeTest(BaseApiCalepinage):
+    """D07-L6 — « compteurs_statut » et les deux chiffres de la carte (test à base : non lancé)."""
+
+    def test_les_compteurs_ignorent_le_filtre_de_statut_et_comptent_la_societe(self):
+        for rang in range(2):
+            Calepinage.objects.create(company=self.company, client=self.client_a, titre=f'B{rang}')
+        Calepinage.objects.create(company=self.company, client=self.client_a, titre='R',
+                                  approbation={'etat': 'refuse'})
+        Calepinage.objects.create(company=self.autre, lead_id=999, titre='Voisin')
+
+        reponse = self.api.get(URL, {'statut': 'brouillon'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(len(self._lignes(reponse)), 2)
+        self.assertEqual(reponse.data['compteurs_statut'],
+                         {'tous': 3, 'brouillon': 2, 'valide': 0, 'perime': 0, 'refuse': 1})
+
+    def test_la_ligne_porte_kwc_et_production_nuls_sans_simulation(self):
+        calepinage = Calepinage.objects.create(company=self.company, client=self.client_a, titre='Nu')
+
+        ligne = next(ligne for ligne in self._lignes(self.api.get(URL)) if ligne['id'] == calepinage.pk)
+
+        self.assertIsNone(ligne['kwc'])
+        self.assertIsNone(ligne['production_kwh_an'])
+
+    def test_la_production_enregistree_est_lue_sans_charger_le_resultat(self):
+        calepinage = Calepinage.objects.create(
+            company=self.company, client=self.client_a, titre='Simule',
+            resultat={'production': {'total': {'p50_kwh': 11480.4}}})
+
+        ligne = next(ligne for ligne in self._lignes(self.api.get(URL)) if ligne['id'] == calepinage.pk)
+
+        self.assertEqual(ligne['production_kwh_an'], 11480)

@@ -50,14 +50,20 @@ test('CAL107 : tracer un toit, poser un obstacle et déplacer un panneau au DOIG
   await page.goto(`/devis-design/${leadId}`)
   const map = page.locator('#rp9-map')
   await expect(map).toBeVisible({ timeout: 20_000 })
+  // H7 — la carte de la page devis est plus haute que la fenêtre de la tablette (820 × 1180) : elle est amenée dans
+  // la fenêtre, et les taps visent le centre de sa partie VISIBLE (le centre de la boîte entière tombait hors écran).
+  await map.scrollIntoViewIfNeeded()
   const box = await map.boundingBox()
   expect(box, 'le canvas de la carte doit avoir une taille').toBeTruthy()
+  const hautVisible = Math.max(box.y, 0)
+  const basVisible = Math.min(box.y + box.height, page.viewportSize().height)
+  expect(basVisible - hautVisible, 'au moins 200 px de carte visibles pour le triangle').toBeGreaterThanOrEqual(200)
 
   // ── 1) TRACER un toit au doigt : trois taps forment un triangle, le bouton
   // « Terminer le tracé » ferme le contour (même chemin que le double-tap W77,
   // mais sans dépendre de sa fenêtre de temps — plus robuste en CI). ──────────
   const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
+  const cy = hautVisible + (basVisible - hautVisible) / 2;
   const corners = [
     { x: cx - 80, y: cy - 60 },
     { x: cx + 80, y: cy - 60 },
@@ -169,7 +175,8 @@ async function ouvrirAtelierGestes(page, id) {
   page.on('pageerror', (e) => { if (!/access control checks|Failed to fetch|Load failed|NetworkError/.test(e.message)) erreurs.push(e.message) })
   await page.goto('/apps')
   await expect(page.getByRole('heading', { name: 'Mes applications' })).toBeVisible({ timeout: 30_000 })
-  await page.goto(`/calepinage/${id}`)
+  // Coque (22/11) : ce test agit sur les contrôles du constructeur — en expert ils sont tous visibles, comme avant.
+  await page.goto(`/calepinage/${id}?mode=expert`)
   await expect.poll(() => page.evaluate(() => Boolean(window.__taqinorRoofBooted)), { timeout: 240_000 }).toBe(true)
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/)
   await page.locator('#rp9-map canvas').first().scrollIntoViewIfNeeded()

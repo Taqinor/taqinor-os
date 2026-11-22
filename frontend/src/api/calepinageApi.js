@@ -57,6 +57,9 @@ const jetonIfMatch = (empreinte) => ({ headers: { 'If-Match': empreinte || '""' 
 
 // Fabrique CRUD standard sur `/calepinage/<ressource>/`.
 const crud = makeResourceFactory(api, '/calepinage')
+// J3 — le DÉTAIL agrégé (22 à 42 s mesurés sous charge) est une lecture lente : délai de 60 s, sans
+// toast d'expiration (l'écran qui le lit dit lui-même qu'il attend). Remplace le `get` du CRUD partagé.
+const detailLent = { get: (id) => api.get(pivot(id), { silencieuxExpiration: true, timeout: 60000 }) }
 
 // CALX37 — corps du POST de duplication d'une variante : `nom` saisi prime ;
 // sans lui, un nom dérivé de la source évite un POST refusé pour nom vide.
@@ -80,6 +83,7 @@ const calepinageApi = {
     // ACAL120 — les SEULES méthodes CRUD servies : un calepinage ne se
     // supprime pas (DELETE/PUT ⇒ 405) — archiver est l'unique geste.
     ...(({ list, get, create, update }) => ({ list, get, create, update }))(crud('calepinages')),
+    ...detailLent,
 
     // CAL199/CAL246 — les calepinages marqués MODÈLE de la société (drapeau
     // `records.Tag`, jamais un champ propre). Lecture pure.
@@ -90,7 +94,7 @@ const calepinageApi = {
     // `contract_samples/roof_layout_v2.schema.json`). GET relit, POST
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
-    layout: (id) => api.get(`${pivot(id)}layout/`),
+    layout: (id) => api.get(`${pivot(id)}layout/`, { silencieuxExpiration: true, timeout: 60000 }), // J3 : lecture lente du démarrage
     // ACAL364 — plus aucun écran n'écrit le document entier par `layout/` hors de l'atelier
     // (qui passe par `enregistrerLayoutCalepinageConditionnel`, If-Match) : la clé sans appelant est retirée.
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
@@ -100,7 +104,7 @@ const calepinageApi = {
 
     // CAL52 — les photos de site (drone/oblique/sol), MÊME magasin que
     // `roof-image`. `corps` est un FormData (photo, genre, prise_le, legende).
-    photos: (id) => api.get(`${pivot(id)}photos/`),
+    photos: (id) => api.get(`${pivot(id)}photos/`, { silencieuxExpiration: true, timeout: 60000 }), // J3 : lecture lente du relevé
     ajouterPhoto: (id, corps) => api.post(`${pivot(id)}photos/`, corps),
     // CAL53 — le calage (4 coins [latitude, longitude]) d'UNE photo de site,
     // rechargé tel quel à la réouverture. `null` efface le calage.
@@ -169,7 +173,7 @@ const calepinageApi = {
 
     // CAL244 — le résultat retenu du calepinage
     // (`contract_samples/calepinage_resultat.json`).
-    resultat: (id) => api.get(`${pivot(id)}resultat/`),
+    resultat: (id) => api.get(`${pivot(id)}resultat/`, { silencieuxExpiration: true, timeout: 60000 }), // J3 : lecture lente du démarrage
 
     /* CAL125 — l'ENTRÉE du calcul électrique. Le matériel est DÉSIGNÉ et les
        longueurs/températures sont SAISIES ; la réponse est le `resultat`
@@ -200,7 +204,7 @@ const calepinageApi = {
     // manque. Aucune coordonnée devinée côté écran.
     // ACON80 — `params` = `{devis}` d'un devis porté par une VARIANTE : le contexte
     // sert alors `variante` et le document de la variante (calepinage_design_context.json).
-    designContext: (id, params) => api.get(`${pivot(id)}design-context/`, { params }),
+    designContext: (id, params) => api.get(`${pivot(id)}design-context/`, { silencieuxExpiration: true, timeout: 60000, params }), // ACAL1351 : lecture lourde (cf. LECTURE_LENTE)
 
     // SOLMVP15 — `importer-contour-ao` (CAL240), venu de AO, est retiré. Le
     // contour de l'atelier reste `roof_layout.outline` (v2), posé par le tracé
@@ -443,7 +447,8 @@ const calepinageApi = {
     // GET lit, POST remplit les seules clés vides, DELETE retire ce que le
     // profil a posé et qui n'a pas été retouché.
     profilDepart: () => api.get('/calepinage/calepinages/profil-depart/'),
-    appliquerProfilDepart: () => api.post('/calepinage/calepinages/profil-depart/'),
+    // `cles` (liste de clés du profil) : ne remplir que celles-là ; sans liste, tout le profil (F4).
+    appliquerProfilDepart: (cles) => api.post('/calepinage/calepinages/profil-depart/', Array.isArray(cles) ? { cles } : undefined),
     retirerProfilDepart: () => api.delete('/calepinage/calepinages/profil-depart/'),
   },
 

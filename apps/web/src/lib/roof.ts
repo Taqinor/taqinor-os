@@ -230,6 +230,40 @@ export function zoomToFitRing(ring: LngLat[]): number {
   return Math.min(FIT_ZOOM_MAX, Math.max(FIT_ZOOM_MIN, zoom));
 }
 
+/** Cadrage d'un ensemble de pans dans une carte de `largeurPx` × `hauteurPx`. */
+export interface OptionsCadrage {
+  /** Part de la PLUS PETITE dimension de la carte occupée par la plus grande dimension du toit. */
+  part?: number;
+  /** Zoom maximal. Défaut = FIT_ZOOM_MAX (19), le plafond d'aujourd'hui ; l'atelier ERP le relève. */
+  zoomMax?: number;
+}
+
+/**
+ * Centre et zoom (échelle MapLibre, tuiles 512 px) qui montrent TOUS les anneaux, leur plus
+ * grande dimension occupant `part` de la plus petite dimension de la carte. PUR. `null` sans
+ * anneau d'au moins 3 sommets ou sans taille de carte (rien à cadrer, jamais une valeur inventée).
+ */
+export function cadrageAnneaux(
+  anneaux: readonly LngLat[][],
+  largeurPx: number,
+  hauteurPx: number,
+  { part = 0.42, zoomMax = FIT_ZOOM_MAX }: OptionsCadrage = {},
+): { center: LngLat; zoom: number } | null {
+  const points = anneaux.filter((a) => Array.isArray(a) && a.length >= 3).flat();
+  const cotePx = Math.min(largeurPx, hauteurPx);
+  if (points.length === 0 || !(cotePx > 0)) return null;
+  const [minLng, minLat, maxLng, maxLat] = ringBBox(points);
+  const midLat = (minLat + maxLat) / 2;
+  const cosLat = Math.cos(midLat * DEG2RAD);
+  const spanM = Math.max((maxLng - minLng) * DEG2M * cosLat, (maxLat - minLat) * DEG2M, 1);
+  // MapLibre : mètres/pixel à zoom z = 2πR·cos φ / (512 · 2^z).
+  const zoom = Math.log2((2 * Math.PI * WGS84_RADIUS * cosLat * part * cotePx) / (512 * spanM));
+  return {
+    center: [(minLng + maxLng) / 2, midLat],
+    zoom: Math.min(Math.max(zoomMax, FIT_ZOOM_MIN), Math.max(FIT_ZOOM_MIN, zoom)),
+  };
+}
+
 /**
  * Coordonnée de texture (u, v) ∈ [0,1] d'un point lng/lat dans une image satellite
  * couvrant EXACTEMENT la bbox [minLng,minLat,maxLng,maxLat]. u suit la longitude

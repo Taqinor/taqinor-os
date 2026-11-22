@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 /* ============================================================================
    CAL35 — la liste `/calepinage`, prouvée sur les VRAIS filtres.
@@ -20,7 +22,9 @@ import { MemoryRouter } from 'react-router-dom'
 import { mocks } from '../../test/calepinageListMocks'
 
 import CalepinageList from './CalepinageList'
-import { STATUTS_CALEPINAGE } from './CalepinageList.helpers'
+import {
+  STATUTS_CALEPINAGE, apercuVide, identiteCarte, initiales, modifieDe,
+} from './CalepinageList.helpers'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -90,7 +94,7 @@ describe('CalepinageList (CAL35)', () => {
     expect(vignette).toHaveTextContent(CLIENT_SEUL.reference)
     expect(vignette).toHaveTextContent(CLIENT_SEUL.client_apercu.nom)
     expect(vignette).not.toHaveTextContent('Sans rattachement')
-    expect(vignette).toHaveTextContent('Modifié le')
+    expect(vignette).toHaveTextContent('Modifié 3 octobre')
     expect(screen.getByTestId('cal-vignette-image'))
       .toHaveAttribute('src', CLIENT_SEUL.image.url)
   })
@@ -119,23 +123,31 @@ describe('CalepinageList (CAL35)', () => {
     expect(vignette).toHaveAttribute('href', `/calepinage/${AVEC_IMAGE.id}`)
   })
 
-  it('ACAL957 — sous 768 px les filtres sont repliés derrière « Filtres » ; l’appui les déplie', async () => {
+  it('ACAL957 — les filtres sont repliés derrière « Filtres » ; l’appui les déplie', async () => {
     rendre()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())
     const conteneur = screen.getByTestId('acal957-filtres')
     const bouton = screen.getByTestId('acal957-filtres-basculer')
-    expect(conteneur.className).toContain('hidden md:grid')
+    expect(conteneur.className).toContain('hidden')
     expect(bouton.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(bouton)
     expect(bouton.getAttribute('aria-expanded')).toBe('true')
     expect(conteneur.className).not.toContain('hidden')
-    expect(screen.getByLabelText('Recherche')).toBeTruthy()
+    expect(screen.getByLabelText('Modifié depuis le')).toBeTruthy()
+  })
+
+  it('un filtre avancé actif garde la barre ouverte et compte dans « Filtres · N actif »', async () => {
+    rendre()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText('Modifié depuis le'), { target: { value: '2026-09-01' } })
+    expect(screen.getByTestId('acal957-filtres').className).not.toContain('hidden')
+    expect(screen.getByTestId('acal957-filtres-basculer')).toHaveTextContent('Filtres · 1 actif')
   })
 
   it('la RECHERCHE part en `?q=` — le filtre servi par CAL16', async () => {
     rendre()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())
-    fireEvent.change(screen.getByLabelText('Recherche'), { target: { value: 'toiture' } })
+    fireEvent.change(screen.getByLabelText('Rechercher un calepinage'), { target: { value: 'toiture' } })
     await waitFor(() => expect(derniersParams()).toEqual({ q: 'toiture' }))
   })
 
@@ -149,14 +161,14 @@ describe('CalepinageList (CAL35)', () => {
   it('les filtres se CUMULENT dans une seule requête', async () => {
     rendre()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())
-    fireEvent.change(screen.getByLabelText('Recherche'), { target: { value: 'hangar' } })
+    fireEvent.change(screen.getByLabelText('Rechercher un calepinage'), { target: { value: 'hangar' } })
     fireEvent.change(screen.getByLabelText('Modifié depuis le'), { target: { value: '2026-09-10' } })
     await waitFor(() => expect(derniersParams()).toEqual({ q: 'hangar', depuis: '2026-09-10' }))
   })
 
   it('un filtre VIDÉ disparaît de la requête (jamais `?q=` vide)', async () => {
     rendre()
-    const champ = screen.getByLabelText('Recherche')
+    const champ = screen.getByLabelText('Rechercher un calepinage')
     fireEvent.change(champ, { target: { value: 'hangar' } })
     await waitFor(() => expect(derniersParams()).toEqual({ q: 'hangar' }))
     fireEvent.change(champ, { target: { value: '' } })
@@ -205,7 +217,7 @@ describe('CalepinageList (CAL35)', () => {
     rendre()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())
     mocks.list.mockResolvedValue({ data: { count: 0, next: null, previous: null, results: [] } })
-    fireEvent.change(screen.getByLabelText('Recherche'), { target: { value: 'introuvable' } })
+    fireEvent.change(screen.getByLabelText('Rechercher un calepinage'), { target: { value: 'introuvable' } })
     expect(await screen.findByText(/Aucun calepinage ne correspond à ces filtres/)).toBeInTheDocument()
   })
 
@@ -230,7 +242,7 @@ describe('CalepinageList (CAL35)', () => {
     await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
     fireEvent.click(screen.getByRole('button', { name: 'Suivant' }))
     await waitFor(() => expect(derniersParams()).toEqual({ page: 2 }))
-    fireEvent.change(screen.getByLabelText('Recherche'), { target: { value: 'toit' } })
+    fireEvent.change(screen.getByLabelText('Rechercher un calepinage'), { target: { value: 'toit' } })
     await waitFor(() => expect(derniersParams()).toEqual({ q: 'toit' }))
   })
 
@@ -345,6 +357,165 @@ describe('CalepinageList (ACAL115)', () => {
       },
     })
     rendre()
-    expect(await screen.findByText('Périmé')).toBeInTheDocument()
+    expect(await within(await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)).findByText('Périmé')).toBeInTheDocument()
+  })
+})
+
+/* Maquette « Liste » — la carte et les puces d'état : rien que ce que le serveur SERT. */
+describe('CalepinageList — maquette Liste', () => {
+  const COMPTEURS = { tous: 6, brouillon: 2, valide: 1, perime: 1, refuse: 2 }
+
+  it('titre « Calepinages » + « N projets » + recherche + « Nouveau calepinage »', async () => {
+    rendre()
+    expect(screen.getByRole('heading', { name: 'Calepinages' })).toBeInTheDocument()
+    expect(await screen.findByText('2 projets')).toBeInTheDocument()
+    expect(screen.getByLabelText('Rechercher un calepinage')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Nouveau calepinage/ }))
+    expect(mocks.navigate).toHaveBeenCalledWith('/calepinage/nouveau')
+  })
+
+  it('les puces : Tous + les statuts servis, avec leur effectif quand `compteurs_statut` est servi', async () => {
+    mocks.list.mockResolvedValue({
+      data: { count: 6, next: null, previous: null, results: [AVEC_IMAGE], compteurs_statut: COMPTEURS },
+    })
+    rendre()
+    const groupe = await screen.findByTestId('cal-liste-filtres-etat')
+    const noms = [...groupe.querySelectorAll('button')].map((b) => b.textContent)
+    expect(noms).toEqual(['Tous6', 'Brouillon2', 'Validé1', 'Périmé1', 'Refusé2'])
+    fireEvent.click(screen.getByRole('button', { name: /^Brouillon/ }))
+    await waitFor(() => expect(derniersParams()).toEqual({ statut: 'brouillon' }))
+    expect(screen.getByRole('button', { name: /^Brouillon/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('sans `compteurs_statut`, les puces n’affichent AUCUN nombre', async () => {
+    rendre()
+    const groupe = await screen.findByTestId('cal-liste-filtres-etat')
+    expect([...groupe.querySelectorAll('button')].map((b) => b.textContent))
+      .toEqual(['Tous', 'Brouillon', 'Validé', 'Périmé', 'Refusé'])
+  })
+
+  it('la ligne « kWc · panneaux · kWh/an » n’affiche que les morceaux servis', async () => {
+    const complete = { ...AVEC_IMAGE, id: 301, kwc: 6.96, layout_nb_panneaux: 12, production_kwh_an: 11480 }
+    const partielle = { ...SANS_IMAGE, id: 302, kwc: null, layout_nb_panneaux: 8, production_kwh_an: null }
+    const nulle = { ...SANS_IMAGE, id: 303, kwc: null, layout_nb_panneaux: null, production_kwh_an: null }
+    mocks.list.mockResolvedValue({
+      data: { count: 3, next: null, previous: null, results: [complete, partielle, nulle] },
+    })
+    rendre()
+    const c1 = await screen.findByTestId('cal-vignette-301')
+    // Le séparateur de milliers français est une espace fine insécable : on compare à l'espace simple.
+    expect(c1.textContent.replace(/\s/g, ' ')).toContain('6,96 kWc·12 panneaux·11 480 kWh/an')
+    expect(screen.getByTestId('cal-vignette-302')).toHaveTextContent('8 panneaux')
+    expect(screen.getByTestId('cal-vignette-302')).not.toHaveTextContent('kWc')
+    expect(screen.getByTestId('cal-vignette-303').textContent).not.toMatch(/panneau|kWc|kWh/)
+  })
+
+  it('la grille a TROIS colonnes au plus, comme la maquette (jamais quatre)', async () => {
+    const { container } = rendre()
+    await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
+    const grille = container.querySelector('[class*="lg:grid-cols-3"]')
+    expect(grille).not.toBeNull()
+    expect(grille.className).not.toMatch(/grid-cols-4/)
+  })
+
+  it('« points à régler » : seulement quand le serveur le sert et > 0 ; avatar = initiales du responsable', async () => {
+    const avec = { ...AVEC_IMAGE, id: 311, points_a_regler: 1, responsable_nom: 'Hamza Bennani' }
+    const sans = { ...SANS_IMAGE, id: 312 }
+    mocks.list.mockResolvedValue({ data: { count: 2, next: null, previous: null, results: [avec, sans] } })
+    rendre()
+    const carteAvec = await screen.findByTestId('cal-vignette-311')
+    expect(carteAvec).toHaveTextContent('1 point à régler')
+    expect(screen.getByTestId('cal-vignette-312')).not.toHaveTextContent('à régler')
+    expect(screen.getByTestId('cal-responsable-311')).toHaveTextContent('HB')
+    expect(screen.getByTestId('cal-responsable-311')).toHaveTextContent('Responsable : Hamza Bennani')
+  })
+
+  it('la ville se lit sur le client rattaché, à défaut sur le lead', async () => {
+    const parLead = { ...SANS_IMAGE, id: 321, client_apercu: null, lead: { id: 1, nom: 'L', ville: 'Fès', supprime: false } }
+    mocks.list.mockResolvedValue({ data: { count: 1, next: null, previous: null, results: [parLead] } })
+    rendre()
+    expect(await screen.findByTestId('cal-vignette-321')).toHaveTextContent('Fès')
+  })
+
+  it('le titre de la carte est le client (puis la ville), le nom propre passe en petit ; sans rattachement il reste le titre', async () => {
+    const lie = { ...SANS_IMAGE, id: 331, nom: 'ACAL987 Toiture x7', client_apercu: { id: 4, nom: 'Villa Bennani', ville: 'Casablanca' } }
+    const libre = { ...SANS_IMAGE, id: 332, nom: 'Toiture libre', client_apercu: null, lead: null }
+    mocks.list.mockResolvedValue({ data: { count: 2, next: null, previous: null, results: [lie, libre] } })
+    rendre()
+    const carte = await screen.findByTestId('cal-vignette-331')
+    expect(within(carte).getByText('Villa Bennani').className).toContain('font-semibold')
+    expect(carte).toHaveTextContent('Casablanca')
+    expect(within(carte).getByTestId('liste-vignette-nom')).toHaveTextContent('ACAL987 Toiture x7')
+    const libreCarte = screen.getByTestId('cal-vignette-332')
+    expect(within(libreCarte).getByText('Toiture libre').className).toContain('font-semibold')
+    expect(within(libreCarte).queryByTestId('liste-vignette-nom')).toBeNull()
+    expect(screen.getByPlaceholderText('Client, ville ou lead')).toBeInTheDocument()
+  })
+
+  it('une image qui ne se charge pas retombe sur « Aucun aperçu »', async () => {
+    mocks.list.mockResolvedValue({ data: { count: 1, next: null, previous: null, results: [AVEC_IMAGE] } })
+    rendre()
+    const img = await screen.findByTestId('cal-vignette-image')
+    fireEvent.error(img)
+    expect(await screen.findByTestId('cal-vignette-sans-image')).toHaveTextContent('Aucun aperçu')
+    expect(screen.queryByTestId('cal-vignette-image')).toBeNull()
+  })
+
+  it('« Mes calepinages » : absent sans personne connectée', async () => {
+    rendre()
+    await screen.findByTestId('cal-liste-filtres-etat')
+    expect(screen.queryByRole('button', { name: 'Mes calepinages' })).toBeNull()
+  })
+
+  it('« Mes calepinages » : filtre `?responsable=<mon id>` puis le retire', async () => {
+    const magasin = configureStore({ reducer: { auth: () => ({ user: { id: 3 } }) } })
+    render(
+      <Provider store={magasin}>
+        <MemoryRouter><ThemeProvider><CalepinageList /></ThemeProvider></MemoryRouter>
+      </Provider>,
+    )
+    const puce = await screen.findByRole('button', { name: 'Mes calepinages' })
+    fireEvent.click(puce)
+    await waitFor(() => expect(derniersParams()).toEqual({ responsable: '3' }))
+    expect(puce).toHaveAttribute('aria-pressed', 'true')
+    // « mon id » n'est pas un filtre avancé : la barre reste repliée.
+    expect(screen.getByTestId('acal957-filtres').className).toContain('hidden')
+    fireEvent.click(puce)
+    await waitFor(() => expect(derniersParams()).toEqual({}))
+  })
+})
+
+describe('CalepinageList.helpers — modifieDe / initiales', () => {
+  const MAINTENANT = new Date(2026, 10, 22, 16, 0)
+
+  it('modifieDe : aujourd’hui, hier, puis la date', () => {
+    expect(modifieDe(new Date(2026, 10, 22, 14, 41).toISOString(), MAINTENANT)).toBe("Modifié aujourd'hui à 14:41")
+    expect(modifieDe(new Date(2026, 10, 21, 17, 20).toISOString(), MAINTENANT)).toBe('Modifié hier à 17:20')
+    expect(modifieDe(new Date(2026, 9, 18, 9, 0).toISOString(), MAINTENANT)).toBe('Modifié 18 octobre')
+    expect(modifieDe(new Date(2025, 10, 18, 9, 0).toISOString(), MAINTENANT)).toBe('Modifié 18 novembre 2025')
+    expect(modifieDe(null, MAINTENANT)).toBeNull()
+  })
+
+  it('initiales : deux lettres au plus, null sans nom', () => {
+    expect(initiales('Hamza Bennani')).toBe('HB')
+    expect(initiales('demo_admin')).toBe('D')
+    expect(initiales('')).toBeNull()
+  })
+})
+
+describe('CalepinageList.helpers — identiteCarte / apercuVide', () => {
+  it('identiteCarte : client, sinon lead, sinon nom propre', () => {
+    expect(identiteCarte({ nom: 'N', client_apercu: { nom: 'C', ville: 'Fès' } }))
+      .toEqual({ titre: 'C', ville: 'Fès', propre: 'N' })
+    expect(identiteCarte({ nom: 'N', lead: { nom: 'L', ville: 'Rabat' } }))
+      .toEqual({ titre: 'L', ville: 'Rabat', propre: 'N' })
+    expect(identiteCarte({ nom: 'N' })).toEqual({ titre: 'N', ville: null, propre: null })
+    expect(identiteCarte({ nom: 'Pareil', client_apercu: { nom: 'Pareil' } }).propre).toBeNull()
+  })
+
+  it('apercuVide : tout blanc ou transparent = vide ; un pixel sombre = non', () => {
+    expect(apercuVide(new Uint8ClampedArray([255, 255, 255, 255, 0, 0, 0, 0]))).toBe(true)
+    expect(apercuVide(new Uint8ClampedArray([255, 255, 255, 255, 20, 30, 40, 255]))).toBe(false)
+    expect(apercuVide(new Uint8ClampedArray([]))).toBe(false)
   })
 })

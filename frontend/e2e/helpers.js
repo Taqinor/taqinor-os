@@ -876,3 +876,19 @@ export async function connecterPortail(playwright, baseURL, username, motDePasse
   expect(relogin.status(), 'reconnexion du client portail').toBe(200)
   return portail
 }
+
+/** Script d'amorce (`context.addInitScript`) qui capte la carte MapLibre de l'atelier calepinage : la carte n'expose
+ *  ni zoom ni centre, `window.__carte440()` rend celle de `#rp9-map` (même sonde que `acceptation/acal10.spec.js`).
+ *  Partagée par `calepinage-perf.spec.js` (ACAL440) et `calepinage-parcours.spec.js` (CALX130). */
+export function sondeCarte() {
+  window.__cartes440 = []
+  Object.defineProperty(Object.prototype, '_maxTileCacheSize', {
+    configurable: true,
+    get() { return undefined },
+    set(v) {
+      Object.defineProperty(this, '_maxTileCacheSize', { value: v, writable: true, configurable: true, enumerable: true })
+      if (typeof this.project === 'function' && typeof this.getContainer === 'function') window.__cartes440.push(this)
+    },
+  })
+  window.__carte440 = () => window.__cartes440.filter((m) => m.getContainer()?.isConnected && m.getContainer().id === 'rp9-map').pop()
+}

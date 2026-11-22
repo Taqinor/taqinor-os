@@ -1,0 +1,286 @@
+/* ============================================================================
+   ÉTAPE « TOIT » DE LA COQUE (maquettes Main et ToitSombre, 22/11).
+   Importée par atelier/coque/etapes/EtapeToit.jsx. Jetons uniquement : le thème
+   sombre suit les jetons, sans bloc `.dark` propre. Tailles de texte 12/14/16/20 px.
+   Les contrôles du constructeur (`rp9-*`) ne sont jamais déplacés : en guidé, le
+   corps du panneau (colonne flex) les ordonne avec les blocs de l'étape
+   (`display: contents` + `order`) et masque ceux que la maquette n'a pas — ils
+   restent montés et reviennent en Avancé / Expert.
+   ========================================================================== */
+
+/* L'or pâle de la maquette (tuile choisie, carte de pente) : crème doré en clair, brun-or en sombre. Un
+   mélange de l'or avec la carte en oklch tirait au violet sur la carte navy du thème sombre ; le fond de pastille
+   or (`--tag-2-bg`, redéfini par le thème sombre) mêlé à la carte donne les deux teintes, jetons seuls. */
+.cal-coque { --cal-or-pale: color-mix(in srgb, var(--tag-2-bg) 60%, var(--card)); }
+
+/* ── Panneau, mode guidé : ordre de la maquette ─────────────────────────── */
+.cal-coque[data-avance='0'][data-etape='toit'] .cal-etape-toit,
+.cal-coque[data-avance='0'][data-etape='toit'] .cal-coque-groupe[data-groupe='toit'],
+.cal-coque[data-avance='0'][data-etape='toit'] .cal-coque-groupe[data-groupe='toit'] > div:has(> #rp9-add-area),
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-config:not([hidden]) {
+  display: contents;
+}
+.cal-coque[data-avance='0'][data-etape='toit'] .cal-toit-bloc-forme { order: 1; }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit { order: 2; }
+.cal-coque[data-avance='0'][data-etape='toit'] .cal-toit-bloc-dimensions { order: 3; }
+.cal-coque[data-avance='0'][data-etape='toit'] .cal-toit-bloc-pente { order: 4; }
+.cal-coque[data-avance='0'][data-etape='toit'] .cal-toit-bloc-obstacles { order: 5; }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-config > #rp9-obs-edit,
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-config > #rp9-obs-engage { order: 6; margin-top: -12px; }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-config > div:has(> #rp9-mesure-finish:not([hidden])),
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-config > #rp9-mesure-note:not(:empty) { order: 7; }
+
+/* Ce que la maquette ne montre pas en guidé (Effacer, Parcelle, surface, « Créer le toit » du script — repris
+   par les champs Dimensions —, réglages du pan, ombres, soleil…) : masqué ici, visible en Avancé. */
+.cal-coque[data-avance='0'][data-etape='toit'] .cal-coque-groupe[data-groupe='toit'] > div:has(> #rp9-add-area) > :not(#rp9-formes-toit),
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-config > :not(#rp9-obs-edit):not(#rp9-obs-engage):not(div:has(> #rp9-mesure-finish:not([hidden]))):not(#rp9-mesure-note),
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-config > #rp9-mesure-note:empty,
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='shed'] {
+  display: none !important;
+}
+.cal-coque[data-avance='1'] .cal-toit-bloc-forme { display: none; }
+
+/* ── Forme : les puces du script en tuiles 3 × 2 ────────────────────────── */
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: -12px 0 0;
+}
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme {
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+/* Pictogrammes des tuiles (tracés de la maquette, 28 × 20) : masques peints à la couleur du texte. */
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme::before {
+  content: '';
+  width: 28px;
+  height: 20px;
+  background: currentColor;
+  -webkit-mask: var(--cal-forme) center / 28px 20px no-repeat;
+  mask: var(--cal-forme) center / 28px 20px no-repeat;
+}
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='flat'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Crect x='2' y='3' width='24' height='14'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Crect x='2' y='3' width='24' height='14'/%3E%3Cpath d='M2 10h24'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='hip'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Crect x='2' y='3' width='24' height='14'/%3E%3Cpath d='M2 3l7 7-7 7M26 3l-7 7 7 7M9 10h10'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='l_gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M2 3h12v7h12v7H2z'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='t_gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M2 3h24v7h-8v7h-8v-7H2z'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='libre'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M3 16l6-12 8 9 8-6'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme[aria-pressed='true'] {
+  border-color: transparent;
+  background: var(--cal-or-pale);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme[aria-pressed='true']::before {
+  background: var(--primary-text);
+}
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme[data-forme='libre'] {
+  border-style: dashed;
+  border-color: var(--input);
+  color: var(--muted-foreground);
+}
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme[aria-disabled='true'] { opacity: 0.55; }
+
+/* ── Dimensions ─────────────────────────────────────────────────────────── */
+.cal-coque .cal-toit-dimensions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.cal-coque .cal-toit-champ { display: flex; flex-direction: column; gap: 4px; }
+.cal-coque .cal-toit-champ > label { font-size: 0.75rem; color: var(--muted-foreground); }
+.cal-coque .cal-toit-saisie {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted-foreground);
+}
+.cal-coque .cal-toit-saisie:focus-within { outline: 2px solid var(--ring); outline-offset: 1px; }
+.cal-coque .cal-toit-saisie input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-weight: 500;
+  font-size: 1rem;
+}
+.cal-coque .cal-toit-saisie input:disabled { color: var(--muted-foreground); }
+.cal-coque .cal-toit-creer { grid-column: 1 / -1; }
+
+/* ── Pente et orientation : cadre or pâle ───────────────────────────────── */
+.cal-coque .cal-toit-pente {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in oklch, var(--primary) 50%, var(--card));
+  border-radius: 10px;
+  background: var(--cal-or-pale);
+}
+.cal-coque .cal-toit-pente-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cal-coque .cal-toit-pente-valeur { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.cal-coque .cal-toit-pente-tag { font-size: 0.75rem; font-weight: 600; color: var(--warning-text); white-space: nowrap; }
+.cal-coque .cal-toit-pente-texte {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: color-mix(in oklch, var(--foreground) 78%, var(--primary-text));
+}
+.cal-coque .cal-toit-pente-actions { display: flex; gap: 8px; }
+.cal-coque .cal-toit-pente-actions > * { flex: 1; }
+.cal-coque .cal-bouton-contour {
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in oklch, var(--primary-text) 55%, var(--card));
+  border-radius: 10px;
+  background: transparent;
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.cal-coque .cal-toit-pente-message { margin: 0; font-size: 0.75rem; color: var(--foreground); }
+.cal-coque .cal-toit-pente-modifier > summary {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--info);
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+.cal-coque .cal-toit-pente-modifier > summary::-webkit-details-marker { display: none; }
+.cal-coque .cal-toit-pente-modifier > [data-testid='cal-pente'] { margin-top: 8px; padding: 14px; }
+
+/* ── Obstacles ──────────────────────────────────────────────────────────── */
+.cal-coque .cal-lien-action {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--info);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.cal-coque .cal-toit-obstacles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.cal-coque .cal-toit-obstacles:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.cal-coque .cal-toit-obstacles > li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.cal-coque .cal-toit-obstacles > li:last-child { border-bottom: 0; }
+.cal-coque .cal-toit-obstacles > li[aria-selected='true'] { background: color-mix(in oklch, var(--primary) 12%, var(--card)); }
+.cal-coque .cal-toit-obstacles:focus-visible > li[data-actif='1'] { box-shadow: inset 0 0 0 2px var(--ring); }
+.cal-coque .cal-toit-obstacle-pastille {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--muted-foreground);
+}
+.cal-coque .cal-toit-obstacles > li:nth-child(even) .cal-toit-obstacle-pastille {
+  background: color-mix(in oklch, var(--muted-foreground) 60%, var(--card));
+}
+.cal-coque .cal-toit-obstacle-nom { flex: 1; min-width: 0; }
+.cal-coque .cal-toit-obstacle-cotes { color: var(--muted-foreground); white-space: nowrap; }
+
+/* ── Sur la carte : puce, bulle, barre d'outils ─────────────────────────── */
+.cal-coque .cal-sur-carte-resume {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 20px;
+  white-space: nowrap;
+}
+.cal-coque .cal-sur-carte-resume-bloc { display: flex; align-items: center; gap: 20px; }
+.cal-coque .cal-sur-carte-resume-filet { width: 1px; height: 32px; background: var(--border); }
+.cal-coque .cal-toit-bulle {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 248px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in oklch, var(--color-lune) 16%, transparent);
+  border-radius: 12px;
+  background: var(--cat-navy);
+  color: var(--color-lune);
+  box-shadow: var(--shadow-lg);
+}
+.cal-coque .cal-toit-bulle-titre { margin: 0; font-weight: 600; font-size: 0.875rem; }
+.cal-coque .cal-toit-bulle-texte { margin: 4px 0 0; font-size: 0.875rem; line-height: 1.45; }
+/* Maquette Main : pas de boussole N/S sur la carte de l'étape Toit en guidé (elle revient en Avancé). */
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass { display: none; }
+.cal-coque .cal-barre-outils-carte {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  box-shadow: var(--shadow-lg);
+}
+.cal-coque .cal-outil-carte {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--foreground);
+}
+@media (hover: hover) {
+  .cal-coque .cal-outil-carte:hover { background: var(--muted); }
+}
+.cal-coque .cal-outil-carte[aria-pressed='true'] { background: var(--foreground); color: var(--background); }
+.cal-coque .cal-outil-carte:disabled { color: var(--muted-foreground); background: transparent; cursor: not-allowed; }
+.cal-coque .cal-barre-outils-separateur { width: 1px; height: 28px; margin: 0 4px; background: var(--border); }
+
+/* « Terminer le tracé » / « Annuler le dernier point » montent au-dessus de la barre ; désactivé, il se tait. */
+.cal-coque .rp9-map-wrap > div:has(> #rp9-finish) { bottom: 92px; }
+.cal-coque[data-avance='0'] #rp9-finish:disabled { display: none; }
+
+/* La pile de zoom (+, −, plein écran) et la boussole : dans 50-coque-atelier.css (toutes les étapes à carte). */
+
+@media (pointer: coarse) {
+  .cal-coque .cal-lien-action,
+  .cal-coque .cal-toit-pente-modifier > summary { min-height: 44px; }
+}
+/* H2 — la lecture de la facture a échoué : la puce le dit, en lien d'action (jamais une absence affirmée). */
+.cal-coque .cal-toit-reessayer {
+  background: none; border: 0; padding: 0; font: inherit; font-size: 0.8125rem; font-weight: 600;
+  color: var(--info); text-decoration: underline; cursor: pointer; text-align: left;
+}

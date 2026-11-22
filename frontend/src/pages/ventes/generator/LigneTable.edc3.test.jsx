@@ -59,6 +59,15 @@ describe('EDC3 — LigneTable : en-tête collant, table separate, barre proxy', 
     expect(proxy.hidden).toBe(true)
   })
 
+  it('ACAL1326 — errorLines ⇒ un role=alert qui porte le message ; sans erreur, aucun role=alert', () => {
+    const { container, unmount } = rendre({ errorLines: 'Enregistrement bloqué : 1 ligne « prix à renseigner »' })
+    const alertes = container.querySelectorAll('[role="alert"]')
+    expect(alertes).toHaveLength(1)
+    expect(alertes[0].textContent).toContain('Enregistrement bloqué')
+    unmount()
+    expect(rendre().container.querySelector('[role="alert"]')).toBeNull()
+  })
+
   it('le ref de la table (VX90, focus de la nouvelle ligne) pointe toujours sur la table', () => {
     const ref = { current: null }
     const { container } = rendre({ linesTableRef: ref })

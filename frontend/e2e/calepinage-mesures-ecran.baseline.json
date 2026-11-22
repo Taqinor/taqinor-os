@@ -1,34 +1,34 @@
 {
   "carte_disponible": false,
-  "controles_visibles": 58,
-  "tailles_texte_distinctes": 15,
-  "cibles_sous_44px": 47,
-  "gestes_lead_production": 8,
+  "controles_visibles": 34,
+  "tailles_texte_distinctes": 4,
+  "cibles_sous_44px": 7,
+  "gestes_lead_production": 7,
   "mode_guide": {
     "mesure_le": "2026-11-22",
-    "commit_mesure": "eb59a99edca65f0b3a1880e2556861e2d9d90ad8",
+    "commit_mesure": "df8ca6266e02e8d4b4bd52249ecd94e520186513",
     "etapes": 5,
-    "controles_premier_ecran": 45,
+    "controles_premier_ecran": 36,
     "par_etape": {
       "toit": {
-        "onglets": 1,
-        "controles_panneau": 7
+        "onglets": 0,
+        "controles_panneau": 11
       },
       "panneaux": {
-        "onglets": 1,
-        "controles_panneau": 0
+        "onglets": 0,
+        "controles_panneau": 7
       },
       "electrique": {
-        "onglets": 2,
-        "controles_panneau": 13
+        "onglets": 0,
+        "controles_panneau": 16
       },
       "resultats": {
-        "onglets": 2,
-        "controles_panneau": 6
+        "onglets": 0,
+        "controles_panneau": 10
       },
       "documents": {
-        "onglets": 1,
-        "controles_panneau": 41
+        "onglets": 0,
+        "controles_panneau": 38
       }
     }
   },
@@ -36,39 +36,39 @@
     "1440x900": {
       "avant_trace": {
         "consigne": 0,
-        "terminer": 0,
-        "rail": 1
+        "terminer": 1,
+        "rail": 0
       },
       "apres_fermeture": {
-        "resume": 0,
+        "resume": 1,
         "enregistrer": 0,
-        "generer": 1,
-        "rail": 1
+        "generer": 0,
+        "rail": 0
       },
       "apres_generer": {
-        "resume": 0,
+        "resume": 1,
         "enregistrer": 0,
-        "generer": 1,
-        "rail": 1
+        "generer": 0,
+        "rail": 0
       }
     },
     "390x844": {
       "avant_trace": {
         "consigne": 0,
         "terminer": 1,
-        "rail": 1
+        "rail": 0
       },
       "apres_fermeture": {
         "resume": 1,
-        "enregistrer": 1,
-        "generer": 1,
-        "rail": 1
+        "enregistrer": 0,
+        "generer": 0,
+        "rail": 0
       },
       "apres_generer": {
         "resume": 1,
-        "enregistrer": 1,
-        "generer": 1,
-        "rail": 1
+        "enregistrer": 0,
+        "generer": 0,
+        "rail": 0
       }
     }
   }

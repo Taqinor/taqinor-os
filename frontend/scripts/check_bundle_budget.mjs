@@ -248,7 +248,9 @@ const PER_CHUNK_BUDGET_KB = 350
 // contrôle des chaînes, cheminement des câbles, plan de pose, lecture de facture…). Aucune dépendance npm ajoutée
 // (diff package.json vide), 671 chunks (plafond 865), aucun autre plafond dépassé. Budget : mesure arrondie aux
 // 5 Ko + 10 : 3995 -> 4050.
-const TOTAL_BUDGET_KB = 4050
+// 22/11/2026 (D-ACAL-74, à confirmer par le fondateur) — reconstruction des 13 écrans du calepinage sur leurs
+// maquettes (coquille plein écran, écrans d'étape, vues téléphone) : mesuré par la CI 4 118,0 Ko → palier 4 130 Ko.
+const TOTAL_BUDGET_KB = 4130
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -273,7 +275,8 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   // d'optimisation, clavier, arêtes, numéros) : mesuré 579,5 Ko gzip après le fold des lanes → 600.
   // 21/11/2026 (calepinage L5, vague 1 lane A) : mesuré 615,2 Ko gzip sur le runner (run frontend-static, tête
   // da22723b4), aucune dépendance ajoutée → 600 -> 630 (mesure arrondie aux 5 Ko + 10).
-  'roof-tool': 630,
+  // 22/11/2026 (D-ACAL-74) — cadrage du toit, mode présentation, tuiles de forme : mesuré 631,5 Ko → 635.
+  'roof-tool': 635,
   // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
   // géométrie/relevé), isolé par `manualChunks` dans vite.config.js sous le
   // même patron que `roof-tool` (voir son commentaire, ligne au-dessus).

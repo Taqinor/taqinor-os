@@ -30,7 +30,7 @@ test('VX55 : ECONNABORTED déclenche un toast FR distinct — jamais le message 
   const start = AXIOS_SRC.indexOf("if (!originalRequest.suppressErrorToast")
   // ERR-AGNR40-IDEMPOTENCE-EN-VOL a ajouté l'exception 409 « idempotency_en_cours »
   // avant le toast générique : la fenêtre couvre tout le bloc du pont de toasts.
-  const block = AXIOS_SRC.slice(start, start + 1500)
+  const block = AXIOS_SRC.slice(start, start + 2000)
   assert.match(block, /error\.code === 'ECONNABORTED'/)
   assert.match(block, /La connexion a expiré/)
   // La branche ECONNABORTED doit sortir AVANT le toast générique (return).
@@ -126,4 +126,42 @@ test('ADEV112 : les aperçus PDF (liste, panneau du lead) gèrent leur message �
   // Le panneau affiche le `detail` décodé (même chemin messageErreurBlob que la liste), repli fixe sinon.
   assert.match(panneau, /messageErreurBlob\(err, \{ fallback: MESSAGE_APERCU_SERVEUR \}\)/)
   assert.match(panneau, /serverMessage=\{preview\.errorMessage \|\| MESSAGE_APERCU_SERVEUR\}/)
+})
+
+test("ACAL1351 : `silencieuxExpiration` coupe le seul toast d'expiration ; sans l'option le toast reste", () => {
+  const start = AXIOS_SRC.indexOf("if (error.code === 'ECONNABORTED')")
+  const block = AXIOS_SRC.slice(start, start + 600)
+  const optionIdx = block.indexOf('originalRequest.silencieuxExpiration')
+  const toastIdx = block.indexOf("toastError('La connexion a expiré")
+  assert.ok(optionIdx !== -1 && toastIdx !== -1 && optionIdx < toastIdx)
+  assert.match(block, /if \(originalRequest\.silencieuxExpiration\) return Promise\.reject\(error\)/)
+  // L'option n'est lue qu'à cet endroit de l'intercepteur ; le délai global reste 20 s.
+  assert.equal(AXIOS_SRC.split('originalRequest.silencieuxExpiration').length - 1, 1)
+  assert.match(AXIOS_SRC, /const REQUEST_TIMEOUT_MS = 20000/)
+})
+
+test("J3 : le toast d'expiration porte un id FIXE (un seul à la fois, jamais empilé)", () => {
+  assert.match(AXIOS_SRC, /const ID_TOAST_EXPIRATION = 'connexion-expiree'/)
+  assert.match(AXIOS_SRC, /toastError\('La connexion a expiré\. Vérifiez votre connexion et réessayez\.', \{ id: ID_TOAST_EXPIRATION \}\)/)
+})
+
+test('J3 : les lectures lourdes du relevé et du démarrage de l’atelier sont lentes et silencieuses', () => {
+  const CALEPINAGE = readFileSync(join(HERE, 'calepinageApi.js'), 'utf8')
+  const SIMULATION = readFileSync(join(HERE, 'calepinage/simulation.js'), 'utf8')
+  const SORTIES = readFileSync(join(HERE, 'calepinage/sorties.js'), 'utf8')
+  assert.match(CALEPINAGE, /const detailLent = \{ get: \(id\) => api\.get\(pivot\(id\), \{ silencieuxExpiration: true, timeout: 60000 \}\) \}/)
+  assert.match(CALEPINAGE, /\(crud\('calepinages'\)\),\s*\n\s*\.\.\.detailLent,/)
+  for (const chemin of ['layout', 'photos', 'resultat']) {
+    assert.match(CALEPINAGE, new RegExp(`${chemin}: \\(id\\) => api\\.get\\(\`\\$\\{pivot\\(id\\)\\}${chemin}/\`, \\{ silencieuxExpiration: true, timeout: 60000 \\}\\)`))
+  }
+  assert.match(SIMULATION, /parcours: \(id\) => api\.get\(`\$\{pivot\(id\)\}parcours\/`, LECTURE_LENTE\)/)
+  assert.match(SORTIES, /releve: \(id\) => api\.get\(`\$\{pivot\(id\)\}releve\/`, \{ silencieuxExpiration: true, timeout: 60000 \}\)/)
+})
+
+test("ACAL1351 : `pret-a-envoyer/` et `design-context/` posent l'option et un délai de 60 s", () => {
+  const SIMULATION = readFileSync(join(HERE, 'calepinage/simulation.js'), 'utf8')
+  const CALEPINAGE = readFileSync(join(HERE, 'calepinageApi.js'), 'utf8')
+  assert.match(SIMULATION, /LECTURE_LENTE = \{ silencieuxExpiration: true, timeout: 60000 \}/)
+  assert.match(SIMULATION, /pret-a-envoyer\/`,\s*\{ \.\.\.LECTURE_LENTE/)
+  assert.match(CALEPINAGE, /design-context\/`, \{ silencieuxExpiration: true, timeout: 60000, params \}/)
 })

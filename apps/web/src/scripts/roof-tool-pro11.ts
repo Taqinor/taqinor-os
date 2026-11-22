@@ -234,7 +234,7 @@ import { masquerMarqueur, retirerMarqueur } from './roofPro11/epingleClient'; //
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
 import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; // ACAL576, ACAL579, ACAL585
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
-import { appliquerVue } from './roofPro11/vuesCamera'; // ACAL435
+import { apiCamera, appliquerVue } from './roofPro11/cadrageToit'; // ACAL435 + F6 (cadrage du toit)
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
 import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
 import { poserRetraitsSurPanActif } from './roofPro11/retraitsSociete'; // ACAL562
@@ -4288,7 +4288,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     renderCarteAccesHd: (scale) => shadingUi.avecCarteDAcces(() => scene3d.renderOffscreen(scale)), // ACAL726
     exporterSceneGltf: () => scene3d.exporterSceneGltf(), // ACAL537
     enregistrerOrbite: (o) => enregistrerOrbite(map, o), // ACAL896 — vidéo d'orbite, hors /proposal
-    appliquerVue: (nom) => appliquerVue(map, nom, facingAzimuthDeg, !!opts.reducedMotion), // ACAL435
+    ...apiCamera(map, { anneaux: () => [vertices, ...areas.filter((a) => a.id !== activeAreaId).map((a) => a.vertices)], azimut: () => facingAzimuthDeg, trace: () => drawing }, !!opts.reducedMotion), // ACAL435 + F6
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
     // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les
     // cotes de la 2D sont donc ceux de la 3D, par construction.

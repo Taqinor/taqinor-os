@@ -2,6 +2,11 @@
 import api from '../axios'
 import { pivot } from './_base'
 
+// ACAL1351 — une lecture LOURDE (50 s sous charge) : délai de 60 s au lieu des 20 s globaux, et aucun
+// toast « La connexion a expiré » (l'écran dit « prend plus de temps que prévu » lui-même ; option lue
+// par l'intercepteur de `api/axios.js`).
+export const LECTURE_LENTE = { silencieuxExpiration: true, timeout: 60000 }
+
 export const simulation = {
     // CALX6 — le TÉLÉCHARGEMENT d'une série de la simulation. La porte
     // existe depuis CAL144 (`views/export_csv.py`, `url_path='export-csv'`)
@@ -66,9 +71,14 @@ export const simulation = {
     explications: () => api.get('/calepinage/calepinages/explications/'),
 
     // ACAL392 — l'état du parcours guidé (contrat `calepinage_parcours_guide.json`).
-    parcours: (id) => api.get(`${pivot(id)}parcours/`),
-    // ACAL860 — « prêt à envoyer ? » (contrat `calepinage_pret_a_envoyer.json`).
-    pretAEnvoyer: (id) => api.get(`${pivot(id)}pret-a-envoyer/`),
+    parcours: (id) => api.get(`${pivot(id)}parcours/`, LECTURE_LENTE), // J3 : lecture lente du démarrage
+    // ACAL860 — « prêt à envoyer ? » (contrat `calepinage_pret_a_envoyer.json`) ; H3 : `etape` =
+    // seuls les contrôles de cette étape (`?etape=`, le serveur ne calcule pas le reste).
+    pretAEnvoyer: (id, { etape } = {}) => api.get(`${pivot(id)}pret-a-envoyer/`,
+      { ...LECTURE_LENTE, ...(etape ? { params: { etape } } : {}) }),
+    // H3 — la taille tirée des factures du lead (contrat `calepinage_cible_factures.json`), lue à part du
+    // design-context : le dimensionnement qu'elle appelle n'est plus sur le chemin de démarrage de l'atelier.
+    cibleFactures: (id) => api.get(`${pivot(id)}cible-factures/`),
 
     // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
     // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR

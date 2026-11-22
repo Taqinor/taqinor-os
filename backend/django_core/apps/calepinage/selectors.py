@@ -248,8 +248,8 @@ def _condition_recherche(terme, company, user=None):
         from apps.crm.selectors import rechercher_leads_minimal
 
         ids = [lead['id'] for lead in
-               rechercher_leads_minimal(company, terme, limit=50,
-                                        user=user)]
+               rechercher_leads_minimal(company, terme, limit=50, user=user,
+                                        par_ville=True)]
         if ids:
             condition |= Q(lead_id__in=ids)
     return condition
@@ -275,7 +275,8 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     ACAL196 — ``q`` cherche le TITRE, la RÉFÉRENCE affichée (CAL-AAMM-NNNN,
     décodée en identifiant), le nom du LEAD rattaché (50 leads au plus, par
     ``crm.selectors.rechercher_leads_minimal``, borné à ``company``) et le
-    nom du CLIENT rattaché.
+    nom du CLIENT rattaché — plus la VILLE du LEAD (maquette « Liste » :
+    « Client, ville ou lead » ; la fiche client n'a pas de champ ville).
 
     L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
     """

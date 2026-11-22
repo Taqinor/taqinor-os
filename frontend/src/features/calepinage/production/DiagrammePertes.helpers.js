@@ -1,5 +1,7 @@
 // ENF22 — helpers extraits de DiagrammePertes.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
 
+import { nomDePerte } from './nomsPertes'
+
 export const CASCADE_DEPART = 'Irradiance incidente'
 
 export const CASCADE_ARRIVEE = 'Énergie livrée'
@@ -46,6 +48,8 @@ export function construireCascadeDetaillee(etapes, totalPct = null, plages = nul
     }
     lignes.push({
       nom: etape.libelle || etape.etape,
+      // Le mot simple (nomsPertes.js) : montré par « Voir les N étapes » ; le tableau expert garde le terme servi.
+      nomClair: nomDePerte(etape.etape, etape.libelle).nom,
       base: Math.max(Math.min(haut, bas), 0),
       valeur: Math.abs(haut - bas),
       total: false,

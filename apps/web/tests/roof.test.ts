@@ -20,6 +20,7 @@ import {
   annualSavingsBandMad,
   layoutPanels,
   zoomToFitRing,
+  cadrageAnneaux,
   type LngLat,
 } from '../src/lib/roof';
 
@@ -189,6 +190,31 @@ describe('zoomToFitRing — cadrage caméra à l’hydratation (jamais la vue Ma
     const z = zoomToFitRing([[-7.62, 33.59], [-7.62, 33.59], [-7.62, 33.59]]);
     expect(Number.isFinite(z)).toBe(true);
     expect(z).toBeLessThanOrEqual(19);
+  });
+});
+
+describe('cadrageAnneaux — F6 : le toit remplit la carte de l’atelier ERP', () => {
+  it('sans anneau valide ou sans taille de carte → null (rien inventé)', () => {
+    expect(cadrageAnneaux([], 970, 790)).toBeNull();
+    expect(cadrageAnneaux([rectMeters(-7.62, 33.59, 9, 6)], 0, 790)).toBeNull();
+  });
+  it('défaut = plafond d’aujourd’hui (19) ; zoomMax relève le plafond pour l’hôte qui le demande', () => {
+    const ring = rectMeters(-7.62, 33.59, 9, 6);
+    expect(cadrageAnneaux([ring], 970, 790)!.zoom).toBe(19);
+    const z = cadrageAnneaux([ring], 970, 790, { zoomMax: 22 })!.zoom;
+    // 9 m sur 42 % de 790 px : mètres/pixel MapLibre (512 px) = 9 / 331,8.
+    const mpp = (2 * Math.PI * R * Math.cos((33.59 * Math.PI) / 180)) / (512 * 2 ** z);
+    expect(9 / mpp).toBeCloseTo(0.42 * 790, 0);
+  });
+  it('le centre est celui de la boîte de tous les anneaux', () => {
+    const a = rectMeters(-7.62, 33.59, 9, 6);
+    const b = rectMeters(-7.6195, 33.59, 9, 6);
+    const c = cadrageAnneaux([a, b], 970, 790, { zoomMax: 22 })!;
+    expect(c.center[0]).toBeGreaterThan(-7.62);
+    expect(c.center[0]).toBeLessThan(b[1][0]);
+  });
+  it('zoomToFitRing (site public) est inchangé', () => {
+    expect(zoomToFitRing([])).toBe(19);
   });
 });
 

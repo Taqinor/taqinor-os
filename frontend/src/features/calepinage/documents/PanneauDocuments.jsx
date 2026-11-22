@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
+import { LECTURE_LENTE } from '../../../api/calepinage/simulation'
 import useResource from '../../../hooks/useResource'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { formatDateTime } from '../../../lib/format'
@@ -12,7 +13,10 @@ import {
   MINUTES_DE_DELAI, OPTIONS_TELECHARGEMENT, erreurDeTelechargement,
 } from './telechargement'
 import Pourquoi from '../commun/Pourquoi'
+import { estDelaiDepasse } from '../commun/PretAEnvoyer.helpers'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
+import { cartesGuide } from './cartesGuide'
+import ColonneDocuments from './ColonneDocuments'
 
 /* ============================================================================
    CALX320 — LE PANNEAU « DOCUMENTS » BASCULE SUR L'INVENTAIRE `documents/`.
@@ -99,6 +103,27 @@ function ErreursSortie({ erreurs }) {
     devinette. */
 function hrefAttachment(attachmentId) {
   return `/api/django/records/attachments/${attachmentId}/download/`
+}
+
+const MESSAGE_INVENTAIRE_ECHEC = 'Inventaire des documents indisponible.'
+const MESSAGE_INVENTAIRE_LENT = 'L’inventaire des documents prend plus de temps que prévu.'
+const OPTIONS_INVENTAIRE = {
+  select: (r) => r.data,
+  errorMessage: (err) => (estDelaiDepasse(err) ? MESSAGE_INVENTAIRE_LENT : MESSAGE_INVENTAIRE_ECHEC),
+}
+
+/** Un délai dépassé n'est pas un refus : on le dit comme tel, avec « Réessayer » dans les deux cas. */
+function ErreurInventaire({ message, onReessayer }) {
+  const lent = message === MESSAGE_INVENTAIRE_LENT
+  return (
+    <div role={lent ? 'status' : 'alert'} data-testid="cal-doc-erreur" data-lent={lent ? 'oui' : undefined}
+      className="cdoc-inventaire-attente">
+      <span className={lent ? 'font-medium' : 'text-destructive'}>{message}</span>
+      <Button type="button" variant="outline" size="sm" data-testid="cal-doc-reessayer" onClick={() => { onReessayer() }}>
+        Réessayer
+      </Button>
+    </div>
+  )
 }
 
 /** La liste `manque[]` d'un document indisponible — chaque entrée NOMME son
@@ -554,13 +579,18 @@ function SectionSorties({
   )
 }
 
-export default function PanneauDocuments({ calepinageId, builderApi = null, onRecharger = null }) {
+/* ACAL1193 — `guide` : l'écran Documents GUIDÉ (`ColonneDocuments`, maquette `Documents.dc.html`) ; le
+   panneau d'origine ci-dessous en reste la vue Expert (rendue en plus, sous la colonne, en mode
+   expert seulement). Mêmes gestes, mêmes helpers, mêmes textes d'erreur dans les deux vues. */
+export default function PanneauDocuments({
+  calepinageId, builderApi = null, onRecharger = null, guide = false, enregistreLe = null,
+}) {
+  const [expert] = useModeExpert()
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
   const { data, loading, error, refetch } = useResource(
-    () => calepinageApi.calepinages.documents(id), id,
-    { select: (r) => r.data, errorMessage: 'Inventaire des documents indisponible.' },
+    () => calepinageApi.calepinages.documents(id, LECTURE_LENTE), id, OPTIONS_INVENTAIRE, // J6 : lecture lente
   )
 
   // ACAL228 — l'inventaire `sorties/` (distinct de `documents/`). Une erreur
@@ -729,6 +759,20 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
     }
   }
 
+  // ACAL1193 — « Aperçu » d'une pièce PDF de `sorties/` : le MÊME téléchargement, ouvert dans un onglet.
+  async function apercuSortie(sortie) {
+    const code = sortie.code
+    setErreursSorties((precedent) => ({ ...precedent, [code]: null }))
+    try {
+      const reponse = await calepinageApi.calepinages.telechargerSortie(
+        sortie.endpoint, undefined, OPTIONS_TELECHARGEMENT)
+      window.open(URL.createObjectURL(new Blob([reponse.data], { type: 'application/pdf' })), '_blank', 'noopener')
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur, { delai: true })
+      setErreursSorties((precedent) => ({ ...precedent, [code]: details }))
+    }
+  }
+
   async function remettreSortie(sortie) {
     const code = sortie.code
     setErreursSorties((precedent) => ({ ...precedent, [code]: null }))
@@ -820,13 +864,11 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
   }
 
   if (loading) return <Spinner />
-  if (error) {
-    return <p className="text-sm text-destructive" data-testid="cal-doc-erreur">{error}</p>
-  }
+  if (error) return <ErreurInventaire message={error} onReessayer={refetch} />
 
   const documents = data?.documents || []
 
-  return (
+  const vueExpert = (
     <Card className="flex flex-col gap-3 p-4" data-testid="cal-doc-panneau">
       <h2 className="text-base font-semibold">Documents</h2>
       {data?.layout_hash && (
@@ -887,5 +929,22 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
         onDeposerCarteDeChaleur={joindreCarteDeChaleur}
       />
     </Card>
+  )
+  if (!guide) return vueExpert
+
+  const cartes = cartesGuide(documents, inventaireSorties?.sorties)
+  const estDocument = (carte) => carte.source === 'document'
+  return (
+    <>
+      <ColonneDocuments
+        cartes={cartes}
+        enregistreLe={enregistreLe}
+        enCoursDe={(c) => (estDocument(c) ? enCours === c.code : enCoursSortie === c.code)}
+        erreursDe={(c) => (estDocument(c) ? erreurs[c.code] : erreursSorties[c.code])}
+        onTelecharger={(c) => (estDocument(c) ? telecharger(c.code) : telechargerSortie(c.entree))}
+        onApercu={(c) => (c.apercu === 'html' ? apercu(c.code) : apercuSortie(c.entree))}
+      />
+      {expert ? vueExpert : null}
+    </>
   )
 }

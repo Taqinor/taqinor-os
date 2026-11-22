@@ -104,14 +104,14 @@ function MentionSourceCascade({ cascadeServie }) {
   return (
     <p className="text-xs text-muted-foreground" data-testid="calx48-mention-source">
       {cascadeServie
-        ? 'Chaîne de pertes séquentielle calculée, étape par étape (CALX141).'
+        ? 'Chaîne de pertes calculée, étape par étape.'
         : "Postes saisis, non calculés : la chaîne de pertes séquentielle n'a "
           + 'pas encore été produite pour ce calepinage.'}
     </p>
   )
 }
 
-export default function DiagrammePertes({ calepinageId }) {
+export default function DiagrammePertes({ calepinageId, sourcesOuvertes, onSources }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
   const expert = useExpertParUrl()
@@ -146,7 +146,7 @@ export default function DiagrammePertes({ calepinageId }) {
         avertissements={[]}
         onTermine={refetch}
       />
-      <ReglagesUtilises simulation={data?.simulation} />
+      <ReglagesUtilises simulation={data?.simulation} ouvert={sourcesOuvertes} onBascule={onSources} />
       {etapesCascade.length > 0 ? (
         <>
           <MentionSourceCascade cascadeServie />

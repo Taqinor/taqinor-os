@@ -31,6 +31,9 @@ const ORIGIN = originFrom(import.meta.env.VITE_API_URL)
 // un écran gelait indéfiniment (aucune requête n'échouait jamais). 20 s laisse
 // de la marge aux endpoints lents (export, PDF) tout en bornant l'attente.
 const REQUEST_TIMEOUT_MS = 20000
+// J3 — UN seul toast d'expiration à la fois : avec cet id fixe, sonner remplace le toast déjà
+// affiché au lieu d'en empiler un par requête expirée (4 vus au relevé du téléphone, 22/11).
+const ID_TOAST_EXPIRATION = 'connexion-expiree'
 
 const api = axios.create({
   baseURL: ORIGIN,
@@ -182,7 +185,11 @@ api.interceptors.response.use(
       // {signal}) : celle-ci ne doit PAS toaster (l'écran a changé/démonté),
       // celui-là DOIT — l'utilisateur doit savoir que le réseau a calé.
       if (error.code === 'ECONNABORTED') {
-        toastError('La connexion a expiré. Vérifiez votre connexion et réessayez.')
+        // ACAL1351 — option PAR REQUÊTE `silencieuxExpiration: true` : l'écran qui lit
+        // (lecture lourde, `timeout` relevé) dit lui-même « prend plus de temps que
+        // prévu » ; le toast global le couvrirait. Sans l'option : toast inchangé.
+        if (originalRequest.silencieuxExpiration) return Promise.reject(error)
+        toastError('La connexion a expiré. Vérifiez votre connexion et réessayez.', { id: ID_TOAST_EXPIRATION })
         return Promise.reject(error)
       }
       const status = error.response?.status

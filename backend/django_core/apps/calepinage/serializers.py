@@ -399,6 +399,10 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
     #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
     layout_stale = serializers.SerializerMethodField()
     layout_nb_panneaux = serializers.SerializerMethodField()
+    #: Ce que la carte de la LISTE affiche, LU sans rien recalculer
+    #: (``services/lecture_liste.py``) : kWc du document, P50 déjà enregistré.
+    kwc = serializers.SerializerMethodField()
+    production_kwh_an = serializers.SerializerMethodField()
     #: CALX406 — le NOM du responsable, pour la colonne de la liste (le champ
     #: ``responsable`` lui-même reste l'identifiant, en lecture-écriture).
     responsable_nom = serializers.SerializerMethodField()
@@ -429,6 +433,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             'lead', 'client', 'devis',
             'layout_hash', 'roof_image', 'version_moteur',
             'layout_stale', 'layout_nb_panneaux',
+            'kwc', 'production_kwh_an',  # carte de la liste, lecture seule
             'cree_par', 'created_at', 'updated_at',
             'responsable', 'responsable_nom',  # CALX406
             'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
@@ -522,6 +527,18 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_layout_nb_panneaux(self, calepinage):
         return self._peremption(calepinage)['layout_nb_panneaux']
+
+    @extend_schema_field(serializers.FloatField(allow_null=True))
+    def get_kwc(self, calepinage):
+        from .services.lecture_liste import kwc_pose
+
+        return kwc_pose(calepinage)
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_production_kwh_an(self, calepinage):
+        from .services.lecture_liste import production_annuelle
+
+        return production_annuelle(calepinage)
 
     @extend_schema_field(serializers.CharField())
     def get_reference(self, calepinage):

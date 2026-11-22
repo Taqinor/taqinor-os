@@ -166,13 +166,13 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       'Pas de position GPS sur la fiche')
   })
 
-  it('fondateur 18/08 — bouton Fermer (X) en haut à droite referme la fenêtre (retour SPA)', async () => {
+  it('fondateur 18/08 — le bouton de retour du bandeau (ex-Fermer X) referme la fenêtre (retour SPA)', async () => {
     servirConceptionDevis(
       reponseContrat('calepinage', 'calepinage_design_context'))
 
     rendreDevis(DEVIS_ID)
 
-    const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
+    const fermer = await screen.findByTestId('cal-retour-liste') // Coque (22/11) : « ‹ Devis » du bandeau referme l'atelier
     expect(fermer).toBeInstanceOf(HTMLButtonElement)
     await userEvent.click(fermer)
     // `navigate(-1)` : on referme exactement comme le geste qui a ouvert cet
@@ -204,7 +204,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       confirmMock.mockClear()
       try {
         rendreDevis(DEVIS_ID)
-        const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
+        const fermer = await screen.findByTestId('cal-retour-liste') // Coque (22/11) : « ‹ Devis » du bandeau referme l'atelier
         // La référence est prise sur la scène HYDRATÉE.
         await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
         expect(beforeunloadArme()).toBe(false)
@@ -234,7 +234,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       const confirmer = vi.spyOn(window, 'confirm')
       try {
         rendreDevis(DEVIS_ID)
-        const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
+        const fermer = await screen.findByTestId('cal-retour-liste') // Coque (22/11) : « ‹ Devis » du bandeau referme l'atelier
         await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
         await userEvent.click(fermer)
         expect(confirmer).not.toHaveBeenCalled()
@@ -256,7 +256,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       const confirmer = vi.spyOn(window, 'confirm')
       try {
         rendreDevis(DEVIS_ID)
-        const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
+        const fermer = await screen.findByTestId('cal-retour-liste') // Coque (22/11) : « ‹ Devis » du bandeau referme l'atelier
         await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
         const modifie = { ...LAYOUT, result: { panels: CTX_CAL.cible.panneaux } }
         serializeLayout.mockReturnValue(modifie)

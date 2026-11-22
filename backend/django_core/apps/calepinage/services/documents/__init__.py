@@ -102,7 +102,7 @@ MANQUE_ROOF_LAYOUT = {
 MANQUE_RESULTAT = {
     'champ': 'resultat',
     'libelle': 'Résultat de calcul enregistré (simulation)',
-    'ou_saisir': "Lancer la simulation dans l'onglet Production avant "
+    'ou_saisir': "Lancer la simulation à l'étape Résultats avant "
                  "d'imprimer ce document.",
     'onglet': 'production',
 }
@@ -117,7 +117,7 @@ MOTIF_SANS_CONCEPTION_DOCUMENT = (
 #: résultat n'est calculé — MOT POUR MOT ``exemple_sans_calcul`` du contrat.
 MOTIF_SANS_SIMULATION_DOCUMENT = (
     "Conception enregistrée — il manque le calcul : lancez la simulation "
-    "dans l'onglet Production.")
+    "à l'étape Résultats.")
 
 #: Le champ manquant quand ``resultat_du_rapport`` refuse sans donner de
 #: ``champ`` reconnu ici (défensif — un service qui gagnerait un nouveau
@@ -169,7 +169,7 @@ MOTIF_SANS_DIAGRAMME = (
 MANQUE_CASCADE_DIAGRAMME = {
     'champ': 'cascade',
     'libelle': 'Cascade de pertes du résultat de simulation',
-    'ou_saisir': "Lancer la simulation dans l'onglet Production.",
+    'ou_saisir': "Lancer la simulation à l'étape Résultats.",
     'onglet': 'production',
 }
 

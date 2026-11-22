@@ -15,6 +15,8 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.parseurs import PARSEURS_JSON
+
 from ..permissions import PeutLireOuApprouverCalepinage
 from ..serializers import forme_du_contrat
 from ..services.parametres import ReglageInterdit, ReglageInvalide
@@ -55,7 +57,10 @@ def _avec_etats(profil, company):
 
 @extend_schema(methods=['GET'], responses=forme_du_contrat(
     'CalepinageProfilDepart', 'calepinage_profil_depart.json'))
-@extend_schema(methods=['POST'], request=None, responses=forme_du_contrat(
+@extend_schema(methods=['POST'], request=inline_serializer(
+    'CalepinageProfilDepartChoix',
+    {'cles': serializers.ListField(child=serializers.CharField(), required=False)}),
+    responses=forme_du_contrat(
     'CalepinageProfilDepartApplication', 'calepinage_profil_depart.json',
     cle='exemple_application'))
 # Le retrait REND son bilan (200 + corps) : un sérialiseur nu serait publié
@@ -64,16 +69,33 @@ def _avec_etats(profil, company):
     'CalepinageProfilDepartRetrait', {'retirees': _LIGNES, 'gardees': _LIGNES})})
 @action(detail=False, methods=['get', 'post', 'delete'],
         url_path='profil-depart', url_name='profil-depart',
-        permission_classes=[PeutLireOuApprouverCalepinage])
+        permission_classes=[PeutLireOuApprouverCalepinage],
+        # fuzz CI : ``cles`` est une liste, un multipart n'en porte que des chaînes
+        parser_classes=PARSEURS_JSON)
 def profil_depart(self, request):
     """ACAL403 — lire, appliquer ou retirer le profil de départ sourcé."""
     methode = request.method.lower()
     company = getattr(request.user, 'company', None)
     if methode == 'get':
         return Response(_avec_etats(charger_profil(), company))
+    options = {}
+    if methode == 'post':
+        cles = request.data.get('cles') if hasattr(request.data, 'get') else None
+        if cles is not None:
+            if not isinstance(cles, list) or not all(isinstance(c, str) for c in cles):
+                return Response(  # hors schéma (liste de chaînes) : 400
+                    {'cles': 'Liste de réglages du profil de départ attendue.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            connues = {ligne['cle'] for ligne in charger_profil().get('valeurs', [])}
+            inconnues = sorted(set(cles) - connues)
+            if inconnues:  # le schéma ne publie pas les clés du fichier : refus d'état, 409
+                return Response(
+                    {'detail': 'Réglage inconnu du profil de départ : ' + ', '.join(inconnues) + '.'},
+                    status=status.HTTP_409_CONFLICT)
+            options = {'cles': set(cles)}  # [] = rien à appliquer ; doublons ignorés
     geste = appliquer_profil if methode == 'post' else retirer_profil
     try:
-        return Response(geste(company, user=request.user))
+        return Response(geste(company, user=request.user, **options))
     except ReglageInterdit as refus:
         return Response({refus.champ: str(refus)},
                         status=status.HTTP_403_FORBIDDEN)

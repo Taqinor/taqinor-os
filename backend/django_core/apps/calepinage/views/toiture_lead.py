@@ -15,7 +15,14 @@ aussi dans le document pour son pan vierge ; ce bloc le redit à l'écran.
 
 Lead lu par ``apps.crm.selectors`` (jamais ses modèles). LECTURE PURE.
 """
+from drf_spectacular.utils import extend_schema
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from ..permissions import PeutVoirCalepinage
+from ..serializers import forme_du_contrat
 from ..services.valeurs import nombre
+from .calepinages import CalepinageViewSet
 
 #: Champs à choix : servis par leur LIBELLÉ de fiche (``get_<champ>_display``).
 CHAMPS_LIBELLES = ('type_surface', 'type_toiture', 'orientation', 'ombrage', 'structure_pref')
@@ -48,3 +55,36 @@ def _libelle(lead, champ):
     if lead is None or not getattr(lead, champ, None):
         return None
     return str(getattr(lead, f'get_{champ}_display')()) or None
+
+
+def cible_factures(calepinage, *, lire_cible=None):
+    """Maquette Panneaux (22/11) — le bloc ``cible_factures`` : la taille que
+    le devis automatique tirerait des FACTURES du lead, par LA fonction du
+    garde R2-17 (``services.devis._cible_du_calepinage`` →
+    ``apps.ventes.selectors.cible_depuis_lead``) — jamais un second
+    dimensionnement. ``{panneaux, kwc, module_wc}``, ou ``None`` quand la
+    taille ne vient pas des factures (sans lead, sans facture, taille
+    souhaitée, C&I, agricole, refus). LECTURE PURE."""
+    if lire_cible is None:
+        from ..services.devis import _cible_du_calepinage as lire_cible
+    cible = lire_cible(calepinage)
+    if not cible or cible.get('source') != 'factures' or not cible.get('panneaux'):
+        return None
+    return {'panneaux': int(cible['panneaux']), 'kwc': nombre(cible.get('kwc')),
+            'module_wc': nombre(cible.get('panel_watt'))}
+
+
+# ── H3 (22/11) — ``GET calepinages/<pk>/cible-factures/`` : le bloc ci-dessus, LU À PART.
+# Le dimensionnement horaire qu'il appelle coûtait ~1,9 s et ~28 requêtes à CHAQUE ouverture de
+# l'atelier quand il vivait dans le design-context (sur le chemin de démarrage) : il est servi ici,
+# lu par les étapes Toit et Panneaux seules. Mêmes droits que le design-context (``PeutVoirCalepinage``),
+# société bornée par ``get_object()`` (404 pour une autre société). Contrat
+# ``contract_samples/calepinage_cible_factures.json``.
+@extend_schema(responses=forme_du_contrat('CalepinageCibleFactures', 'calepinage_cible_factures.json'))
+@action(detail=True, methods=['get'], url_path='cible-factures', permission_classes=[PeutVoirCalepinage])
+def cible_factures_servie(self, request, pk=None):
+    """La taille tirée des factures du lead (``cible_factures``), ou ``null``."""
+    return Response({'cible_factures': cible_factures(self.get_object())})
+
+
+CalepinageViewSet.cible_factures_servie = cible_factures_servie

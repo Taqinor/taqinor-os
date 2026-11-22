@@ -244,6 +244,11 @@ async function panneauxEcran(page) {
 
 /** « Personnaliser la disposition » : mode disposition, vue de dessus (pitch 0, déprojection exacte). */
 async function modeDisposition(page) {
+  // Coque (22/11) : les contrôles du constructeur (`#rp9-layout-*`, `#rp9-need-*`, `#rp9-results`, rangées sous
+  // la carte) sont ceux du mode EXPERT (« Avancé » en guidé est une feuille à part, sans eux).
+  if (!(await page.getByTestId('cal-mode-expert').isChecked())) {
+    await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
+  }
   const bascule = page.locator('#rp9-layout-toggle')
   await expect(bascule, '« Personnaliser la disposition » visible').toBeVisible(T)
   if ((await bascule.getAttribute('aria-pressed')) !== 'true') await bascule.click()
@@ -331,8 +336,10 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
   try {
     let bouton = await ouvrirAtelier(page, cal.id)
     const resume = page.getByTestId('cal-resume-atelier')
-    await expect(resume, 'résumé dans la barre d’enregistrement').toBeVisible(T)
-    await expect(page.getByTestId('cal-enregistrer-calepinage').getByTestId('cal-resume-atelier')).toHaveCount(1)
+    // Coque (22/11) : le résumé vit dans le volet « Avancé » du panneau d'étape (le bandeau n'a plus de place).
+    await page.getByTestId('cal-rail-avance').click()
+    await expect(resume, 'résumé dans le volet Avancé').toBeVisible(T)
+    await expect(page.locator('#rp9-studio-inspecteur').getByTestId('cal-resume-atelier')).toHaveCount(1)
     await expect(page.getByTestId('cal-resume-panneaux')).toHaveText(/^\d+ panneaux$/, T)
     await expect(page.getByTestId('cal-resume-production')).toHaveText(/^≈ [\d\s  ]+ kWh\/an \(estimation\)$/, T)
     const lire = async () => ({
@@ -345,6 +352,11 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
     expect(avant.panneaux, 'nombre lu sur le document sérialisé').toBe(vivant.panels)
     console.log(`[ACAL401] avant : ${JSON.stringify(avant)} (document : ${JSON.stringify({ p: vivant.panels, kwc: vivant.kwc, kwh: vivant.annualKwh })})`)
 
+    // Coque (22/11) : les contrôles du constructeur (`#rp9-layout-*`, `#rp9-need-*`, `#rp9-results`, rangées sous
+    // la carte) sont ceux du mode EXPERT (« Avancé » en guidé est une feuille à part, sans eux).
+    if (!(await page.getByTestId('cal-mode-expert').isChecked())) {
+      await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
+    }
     const moins = page.locator('#rp9-need-minus')
     await expect(moins, '« − » des panneaux nécessaires (inspecteur) actif').toBeEnabled(T)
     const t0 = Date.now()
@@ -357,7 +369,7 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
     console.log(`[ACAL401] après « − » (${Date.now() - t0} ms) : ${JSON.stringify(apres)}`)
     expect(apres.panneaux).toBe(avant.panneaux - 1)
     expect(apres.production).toMatch(/\(estimation\)$/)
-    await capture(page.getByTestId('cal-enregistrer-calepinage'), 'PA2.5-ACAL401', 'estimation')
+    await capture(page.getByTestId('cal-resume-atelier'), 'PA2.5-ACAL401', 'estimation')
 
     // Enregistrer, simulation serveur ENREGISTRÉE (ACAL398 = calcul automatique ; sans worker on appelle son service).
     await enregistrer(page, cal.id, bouton)
@@ -368,12 +380,13 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
     expect(res.simule, 'GET resultat/ : simule').toBe(true)
     expect(res.simulation_perimee, 'GET resultat/ : frais').toBe(false)
     bouton = await ouvrirAtelier(page, cal.id)
+    await page.getByTestId('cal-rail-avance').click()
     const p50 = Math.round(res.production?.total?.p50_kwh)
     await expect(page.getByTestId('cal-resume-production'), 'production « simulation » une fois la simulation fraîche')
       .toHaveText(/^P50 [\d\s  ]+ kWh\/an \(simulation\)$/, T)
     const affiche = (await page.getByTestId('cal-resume-production').innerText()).replace(/^P50/, '')
     expect(chiffres(affiche), 'P50 affiché = P50 servi').toBe(p50)
-    await capture(page.getByTestId('cal-enregistrer-calepinage'), 'PA2.5-ACAL401', 'simulation')
+    await capture(page.getByTestId('cal-resume-atelier'), 'PA2.5-ACAL401', 'simulation')
   } finally {
     await restaurerMeteo(meteo)
     await nettoyer(cal)
@@ -403,7 +416,8 @@ etape('PA2.5-ACAL402-studio-1440', ['ACAL402'], async ({ page, context, suivi })
     await dernier.scrollIntoViewIfNeeded()
     const nom = await dernier.evaluate((el) => `${el.tagName.toLowerCase()}#${el.id || el.getAttribute('data-testid') || el.name || '?'}`)
     await dernier.focus()
-    const scroll = await page.locator('#rp9-studio-inspecteur').evaluate((el) => ({ top: el.scrollTop, max: el.scrollHeight - el.clientHeight }))
+    // Coque (22/11) : c'est le CORPS du panneau d'étape qui défile (en-tête et pied restent en place).
+    const scroll = await page.locator('#rp9-studio-inspecteur .cal-panneau-etape-corps').evaluate((el) => ({ top: el.scrollTop, max: el.scrollHeight - el.clientHeight }))
     expect(scroll.top, `l’inspecteur a défilé seul jusqu’au contrôle ${nom} (${JSON.stringify(scroll)})`).toBeGreaterThan(0)
     const carte1 = await page.locator('#rp9-map').boundingBox()
     expect(Math.round(carte1.y), 'la carte n’a pas bougé').toBe(Math.round(carte0.y))
@@ -413,8 +427,9 @@ etape('PA2.5-ACAL402-studio-1440', ['ACAL402'], async ({ page, context, suivi })
     console.log(`[ACAL402] contrôle réglé : ${nom} ; inspecteur scrollTop ${scroll.top}/${scroll.max} ; carte y ${carte0.y}→${carte1.y}`)
     // « le reste de la page » défile : les commandes du constructeur (sous la carte, dans la colonne scène) restent
     // atteignables à la molette — sinon « Déplacer les panneaux » ne s'atteint plus qu'au clavier.
-    // La racine du BuilderDom (classe `.cine-card` retirée par ACAL427 : l'enfant direct de la colonne scène).
-    const carte = page.locator('#rp9-studio-scene > :first-child')
+    // Coque (22/11) : les commandes de pose (`BuilderPose`) sont dans le panneau de l'étape Panneaux, dont le corps défile.
+    await page.getByTestId('cal-etape-panneaux').click()
+    const carte = page.locator('#rp9-studio-inspecteur .cal-panneau-etape-corps')
     const debord = await carte.evaluate((el) => ({ scrollH: el.scrollHeight, clientH: el.clientHeight, overflowY: getComputedStyle(el).overflowY }))
     const cb = await carte.boundingBox()
     await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height - 30)

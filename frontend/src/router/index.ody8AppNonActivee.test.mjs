@@ -57,7 +57,8 @@ test('point d’appel 1 — les routes du REGISTRE passent par moduleLoader', ()
 test('point d’appel 2 — index.jsx injecte bien moduleLoader dans buildModuleRoutes', () => {
   assert.match(
     routerSrc,
-    /buildModuleRoutes\(\{ WithLayout, authLoader, roleLoader, moduleLoader \}\)/,
+    // Coque (calepinage, 22/11) — `WithAtelier` (écran plein) s'ajoute aux dépendances injectées.
+    /buildModuleRoutes\(\{ WithLayout, WithAtelier, authLoader, roleLoader, moduleLoader \}\)/,
   )
 })
 

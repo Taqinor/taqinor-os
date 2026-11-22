@@ -153,8 +153,13 @@ let bootstrapPromise = null
 // (aucune réponse, 5xx). Seul un 401/403 vaut « pas de session » (→ /login). Les
 // loaders renvoient alors ETAT_HORS_LIGNE (donnée de loader) et l'écran
 // HorsLigneDemarrage est rendu à la place de la route, URL inchangée.
-const HORS_LIGNE = Symbol('hors-ligne')
+// J3 — un serveur LENT n'est pas « hors ligne » : délai du client dépassé (ou 5xx) alors que le
+// navigateur est en ligne ⇒ `lent` (« Le serveur met du temps à répondre », nouvel essai seul).
+// Hors ligne = navigateur hors ligne, ou requête qui n'a joint personne.
 const ETAT_HORS_LIGNE = { horsLigne: true }
+const ETAT_SERVEUR_LENT = { horsLigne: true, lent: true }
+const estHorsLigne = (x) => x?.horsLigne === true
+const navigateurEnLigne = () => typeof navigator === 'undefined' || navigator.onLine !== false
 
 const ensureSession = async () => {
   const state = store.getState().auth
@@ -167,7 +172,9 @@ const ensureSession = async () => {
       .then((result) => {
         if (fetchMe.fulfilled.match(result)) return true
         const status = result.payload?.status
-        return (status === 401 || status === 403) ? false : HORS_LIGNE
+        if (status === 401 || status === 403) return false
+        const lent = (result.payload?.expire === true || status >= 500) && navigateurEnLigne()
+        return lent ? ETAT_SERVEUR_LENT : ETAT_HORS_LIGNE
       })
       .finally(() => { bootstrapPromise = null })
   }
@@ -202,7 +209,7 @@ const buildLoginRedirect = (request) => {
 // est défini, y compris à `interne`).
 const ensurePortalScope = async () => {
   const ok = await ensureSession()
-  if (ok === HORS_LIGNE) return HORS_LIGNE
+  if (estHorsLigne(ok)) return ok
   if (!ok) return null
   let user = store.getState().auth.user
   if (!user || user.portee === undefined) {
@@ -231,7 +238,7 @@ const redirectSiMotDePasseInterne = (user, request) => (
 
 const authLoader = async ({ request }) => {
   const user = await ensurePortalScope()
-  if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
+  if (estHorsLigne(user)) return user
   if (!user) return buildLoginRedirect(request)
   return redirectSiPortail(user) || redirectSiMotDePasseInterne(user, request)
 }
@@ -245,7 +252,7 @@ const authLoader = async ({ request }) => {
 // unique), les trois routes sont déclarées plus bas.
 const portalLoader = (portee) => async ({ request }) => {
   const user = await ensurePortalScope()
-  if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
+  if (estHorsLigne(user)) return user
   if (!user) return buildLoginRedirect(request)
   if (!peutEntrerDansPortail(user, portee)) {
     return redirectSiPortail(user) || redirect('/dashboard')
@@ -285,7 +292,7 @@ const notFoundLoader = async () => {
 // UNIQUE partagée avec la Sidebar, la BottomTabBar et le lanceur d'apps.
 const roleLoader = (roles, perm, permRepliPalier) => async ({ request }) => {
   const user = await ensurePortalScope()
-  if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
+  if (estHorsLigne(user)) return user
   if (!user) return buildLoginRedirect(request)
   // NTPRT8 — un compte portail externe ne franchit jamais une route interne,
   // même gardée par rôle : il rejoint son propre shell.
@@ -308,7 +315,7 @@ const roleLoader = (roles, perm, permRepliPalier) => async ({ request }) => {
 // garde ne réutilise pas `authLoader` (qui redirigerait).
 const rootLoader = async () => {
   const user = await ensurePortalScope()
-  if (user === HORS_LIGNE) return ETAT_HORS_LIGNE
+  if (estHorsLigne(user)) return user
   if (!user) return null // anonyme : Login rendu sur `/`, comme avant
   // Un compte PORTAIL externe ne voit jamais la coquille interne.
   const versPortail = redirectSiPortail(user)
@@ -383,6 +390,25 @@ function WithLayout({ children }) {
           </Suspense>
         </RouteErrorBoundary>
       </Layout>
+      <CommandPalette />
+      <QuickCreateModalHost />
+    </ShortcutsProvider>
+  )
+}
+
+// Coque (calepinage, maquettes 22/11) — équivalent de `WithLayout` SANS la mise en page de l'ERP
+// (ni barre latérale, ni en-tête) : l'atelier de calepinage plein écran porte son propre bandeau.
+// Mêmes gardes : raccourcis + palette ⌘K, frontière d'erreur clée par chemin, Suspense squelette.
+// Routes qui le demandent : `plein: true` dans un `module.config.jsx`, et la conception d'un devis.
+function WithAtelier({ children }) {
+  const { pathname } = useLocation()
+  const donneesLoader = useLoaderData()
+  if (donneesLoader?.horsLigne) return <HorsLigneDemarrage />
+  return (
+    <ShortcutsProvider>
+      <RouteErrorBoundary key={pathname}>
+        <Suspense fallback={<Fallback />}>{children}</Suspense>
+      </RouteErrorBoundary>
       <CommandPalette />
       <QuickCreateModalHost />
     </ShortcutsProvider>
@@ -623,7 +649,7 @@ const router = createBrowserRouter([
   // PV20 — Conception 3D SUR un devis existant : même écran, mode « devis »
   // (boot en UN SEUL appel sur design-context, hydraté par le calepinage et la
   // cible DÉJÀ vendus). Le mode lead ci-dessous reste strictement inchangé.
-  { path: '/ventes/devis/:id/design', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign mode="devis" /></WithLayout> },
+  { path: '/ventes/devis/:id/design', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithAtelier><ToitureDesign mode="devis" /></WithAtelier> },
   // Conception 3D de la toiture (héberge le builder roofPro11 du site, en ERP).
   { path: '/devis-design/:id', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign /></WithLayout> },
 
@@ -647,7 +673,7 @@ const router = createBrowserRouter([
 
   // UX1 — Routes des modules « coquille » enregistrées via le registre. Chaque
   // route est gatée par le même authLoader/roleLoader que le reste de l'app.
-  ...buildModuleRoutes({ WithLayout, authLoader, roleLoader, moduleLoader }),
+  ...buildModuleRoutes({ WithLayout, WithAtelier, authLoader, roleLoader, moduleLoader }),
 
   // VX131(c) — écran 403 dédié (roleLoader y redirige désormais un refus de
   // rôle/permission), rendu via authLoader seul (un utilisateur non connecté

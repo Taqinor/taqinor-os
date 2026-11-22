@@ -55,7 +55,7 @@ for (const theme of ['light', 'dark']) {
     await poserTheme(page, theme)
     const id = await creerCalepinage(page)
     // Sans clé MapTiler l'atelier monte quand même (fond de repli ACAL377) : on ne saute que si sa racine ne monte pas.
-    const monte = await page.getByTestId('cal-rail-onglets').waitFor({ timeout: 20_000 }).then(() => true, () => false)
+    const monte = await page.getByTestId('cal-rail-etapes').waitFor({ timeout: 20_000 }).then(() => true, () => false)
     test.skip(!monte, 'racine de l’atelier non montée sur cet environnement : a11y de l’atelier non rejouable ici')
     await verifier(page, `/calepinage/${id}`, theme)
 
@@ -69,9 +69,10 @@ for (const theme of ['light', 'dark']) {
       `1er élément tabulable (${focus.tag}) sans contour de focus [${theme}]`).toBeTruthy()
 
     for (const onglet of ['production', 'documents']) {
-      await page.goto(`/calepinage/${id}?onglet=${onglet}`)
+      // Coque (22/11) : le panneau d'onglet est celui du mode expert.
+      await page.goto(`/calepinage/${id}?onglet=${onglet}&mode=expert`)
       await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
-      await verifier(page, `/calepinage/${id}?onglet=${onglet}`, theme)
+      await verifier(page, `/calepinage/${id}?onglet=${onglet}&mode=expert`, theme)
     }
   })
 }

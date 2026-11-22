@@ -4,7 +4,7 @@
 // `webkitCompassHeading`, téléphone debout : beta 90, gamma 0 → hauteur 0°). La boussole réelle
 // d'un appareil reste à essayer sur un vrai iPhone (hors CI). Aucune attente à durée fixe.
 import { test, expect, devices } from '@playwright/test'
-import { gotoLeads, createLead, uniq, ouvertureGuideeCalepinage } from './helpers'
+import { gotoLeads, createLead, uniq } from './helpers'
 
 // Appareil WebKit (iPhone 13) pour TOUT le fichier : lance WebKit même sous le projet `chromium`
 // (même mécanisme que `calepinage-atelier-telephone.spec.js`, ACAL482).
@@ -39,8 +39,9 @@ async function ouvrirHorizon(page) {
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
   const id = /\/calepinage\/(\d+)/.exec(new URL(page.url()).pathname)[1]
-  await page.goto(`/calepinage/${id}?onglet=horizon`)
-  await page.getByTestId(`cal-onglet-${ouvertureGuideeCalepinage('horizon')}`).click()
+  // Coque (22/11) : le panneau d'onglet « horizon » est celui du mode expert (en guidé, pas de rail d'onglets).
+  await page.goto(`/calepinage/${id}?onglet=horizon&mode=expert`)
+  await expect(page.getByTestId('cal-onglet-horizon')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('cal-horizon')).toBeVisible()
   return id
 }
@@ -70,8 +71,9 @@ test('ACAL521 : douze visées simulées donnent un profil enregistré avec son r
   await page.getByRole('button', { name: 'Enregistrer le profil' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Profil d’horizon enregistré' })).toBeVisible()
 
-  const detail = await page.request.get(`${API}/calepinages/${id}/`)
-  expect(detail.ok(), `GET calepinage (${detail.status()})`).toBeTruthy()
+  // Le document de conception se lit sur `layout/` (le détail du calepinage ne le porte plus).
+  const detail = await page.request.get(`${API}/calepinages/${id}/layout/`)
+  expect(detail.ok(), `GET layout (${detail.status()})`).toBeTruthy()
   const profil = (await detail.json())?.roof_layout?.horizonProfile
   expect(profil?.points, 'points enregistrés').toHaveLength(CAPS.length)
   expect(profil.source).toBe('saisie')

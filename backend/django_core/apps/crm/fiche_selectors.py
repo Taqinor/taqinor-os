@@ -45,7 +45,7 @@ def get_company_leads_by_ids(company, ids, avec_corbeille=False):
     return {lead.pk: lead for lead in leads}
 
 
-def rechercher_leads_minimal(company, q, limit=10, *, user=None):
+def rechercher_leads_minimal(company, q, limit=10, *, user=None, par_ville=False):
     """VTA16 — recherche de leads MINIMALE pour un consommateur cross-app.
 
     Renvoie une liste de dicts ``{id, nom, ville, telephone}`` — RIEN d'autre :
@@ -62,6 +62,9 @@ def rechercher_leads_minimal(company, q, limit=10, *, user=None):
     (``leads_visibles`` : portée propriétaire + périmètre d'entités) : la
     recherche ne rend jamais un lead qui lui répond 404. ``None`` (appel
     système sans utilisateur) = toute la société, comportement historique.
+
+    ``par_ville`` (défaut ``False`` : comportement d'avant) cherche AUSSI dans la
+    ville du lead — la liste des calepinages (« Client, ville ou lead »).
     """
     from django.db.models import Q
 
@@ -76,8 +79,11 @@ def rechercher_leads_minimal(company, q, limit=10, *, user=None):
         plafond = 10
     base = (leads_visibles(user, company) if user is not None
             else Lead.objects.filter(company=company))
+    condition = Q(nom__icontains=terme) | Q(telephone__icontains=terme)
+    if par_ville:
+        condition |= Q(ville__icontains=terme)
     lignes = (base
-              .filter(Q(nom__icontains=terme) | Q(telephone__icontains=terme))
+              .filter(condition)
               .order_by('nom', 'id')
               .values('id', 'nom', 'ville', 'telephone')[:plafond])
     return [{'id': ligne['id'], 'nom': ligne['nom'] or '',

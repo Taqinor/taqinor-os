@@ -459,6 +459,10 @@ SANS_PRODUCTEUR_PUR = {
         'pente du relief du champ au sol (ACAL466) : lit le relief '
         'Copernicus GLO-30 sur le réseau (HTTP Range) ; route livrée par '
         'ACAL466',
+    'calepinage_cible_factures.json':  # H3
+        'taille tirée des factures : lit le lead et dimensionne par le moteur de devis '
+        '(cible_depuis_lead) en base — la forme est affirmée contre l’exemple committé '
+        'par apps/calepinage/tests/test_design_context.py (CibleFacturesTest)',
     'calepinage_pret_a_envoyer.json':  # ACAL856
         'contrôles « prêt à envoyer ? » (ACAL857-864) : lisent le lead, le '
         'devis lié, la simulation et les réglages société en base ; route '

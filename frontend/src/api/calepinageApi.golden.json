@@ -130,6 +130,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.cibleFactures": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/cible-factures/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.comparatifXlsx": [
     {
       "config": {
@@ -317,7 +325,9 @@
   "calepinages.designContext": [
     {
       "config": {
-        "params": 3
+        "params": 3,
+        "silencieuxExpiration": true,
+        "timeout": 60000
       },
       "data": null,
       "url": "/calepinage/calepinages/7/design-context/",
@@ -652,7 +662,10 @@
   ],
   "calepinages.get": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/",
       "verbe": "get"
@@ -744,7 +757,10 @@
   ],
   "calepinages.layout": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/layout/",
       "verbe": "get"
@@ -840,7 +856,10 @@
   ],
   "calepinages.parcours": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/parcours/",
       "verbe": "get"
@@ -868,7 +887,10 @@
   ],
   "calepinages.photos": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/photos/",
       "verbe": "get"
@@ -910,7 +932,10 @@
   ],
   "calepinages.pretAEnvoyer": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/pret-a-envoyer/",
       "verbe": "get"
@@ -950,7 +975,10 @@
   ],
   "calepinages.releve": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/releve/",
       "verbe": "get"
@@ -998,7 +1026,10 @@
   ],
   "calepinages.resultat": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/resultat/",
       "verbe": "get"

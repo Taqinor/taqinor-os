@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
-import { API_DJANGO, assurerSessionPage, lireJson, uniq, telephoneMobileUnique } from './helpers'
+import { API_DJANGO, assurerSessionPage, lireJson, uniq, telephoneMobileUnique, sondeCarte } from './helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const CAL = `${API_DJANGO}/calepinage`
@@ -44,20 +44,6 @@ test.beforeEach(async ({ page, context }) => {
   await context.addInitScript(sondeCarte)
   await assurerSessionPage(page)
 })
-
-/** Capte la carte MapLibre de l'atelier (même sonde que `acceptation/acal10.spec.js::sondes`). */
-function sondeCarte() {
-  window.__cartes440 = []
-  Object.defineProperty(Object.prototype, '_maxTileCacheSize', {
-    configurable: true,
-    get() { return undefined },
-    set(v) {
-      Object.defineProperty(this, '_maxTileCacheSize', { value: v, writable: true, configurable: true, enumerable: true })
-      if (typeof this.project === 'function' && typeof this.getContainer === 'function') window.__cartes440.push(this)
-    },
-  })
-  window.__carte440 = () => window.__cartes440.filter((m) => m.getContainer()?.isConnected && m.getContainer().id === 'rp9-map').pop()
-}
 
 function consigner(nom, valeur, cible) {
   const ligne = `${nom} = ${valeur} ms (${cible})`
@@ -119,6 +105,11 @@ async function mesurerGlisse(page, id, nb = NB) {
   await expect(page.locator('#rp9-need-note'), `${nb} modules posés avant la mesure`).toContainText(nombreLu(nb), T)
   console.log(`[ACAL440-diag] barre de résumé : « ${await page.getByTestId('cal-resume-panneaux').innerText()} »`)
   // « Déplacer les panneaux » : hors mode disposition, `beginLayoutDrag` refuse et le glissé déplacerait la CARTE.
+  // Coque (22/11) : les contrôles du constructeur (`#rp9-layout-*`, `#rp9-need-*`, `#rp9-results`, rangées sous
+  // la carte) sont ceux du mode EXPERT (« Avancé » en guidé est une feuille à part, sans eux).
+  if (!(await page.getByTestId('cal-mode-expert').isChecked())) {
+    await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
+  }
   const bascule = page.locator('#rp9-layout-toggle')
   await bascule.click()
   await expect(bascule).toHaveAttribute('aria-pressed', 'true')

@@ -3,6 +3,7 @@ import { Toaster as SonnerToaster, toast } from 'sonner'
 import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 import { useTheme } from '../design/theme-context'
 import { subscribeAssertiveAnnouncer } from '../lib/toast'
+import { useIsMobile } from './ResponsiveDialog'
 
 /* G29 — Notifications toast (succès/erreur/chargement/undo) via sonner, mappées
    sur les tokens de marque et le thème courant. `toast` réexporté pour appel
@@ -33,14 +34,20 @@ function AssertiveAnnouncer() {
   )
 }
 
+/* J3 — sur un écran étroit (téléphone), les toasts passent EN HAUT : en bas, ils couvraient la barre
+   d'actions fixe d'un écran (« Voir en 3D / Terminer le relevé », y733-811 sur 390×844) et la barre
+   d'onglets du téléphone. Le haut ne porte aucune action principale. */
+export const TOASTER_ETROIT = '(max-width: 640px)'
+
 export function Toaster(props) {
   const { resolvedTheme } = useTheme()
+  const etroit = useIsMobile(TOASTER_ETROIT)
   return (
     <>
       <AssertiveAnnouncer />
       <SonnerToaster
         theme={resolvedTheme}
-        position="bottom-right"
+        position={etroit ? 'top-center' : 'bottom-right'}
         closeButton
         icons={{
           success: <CheckCircle2 className="size-4" aria-hidden="true" />,

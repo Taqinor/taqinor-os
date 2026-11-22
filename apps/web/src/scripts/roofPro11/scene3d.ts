@@ -1512,7 +1512,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix));
       threeCamera.projectionMatrix = m.multiply(modelMatrix);
       poignees3d.suivre(threeCamera.projectionMatrix.elements);
-      renderer.resetState();
+      renderer.resetState(); renderer.setViewport(0, 0, _gl.drawingBufferWidth, _gl.drawingBufferHeight); // H1 : la carte a pu changer de taille
       renderer.render(scene, threeCamera);
     },
     // W70 — libère TOUTES les ressources GPU quand la couche est retirée (navigation
