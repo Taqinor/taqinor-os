@@ -83,3 +83,6 @@ tools/facture/out/
 # AIC10 - rapports d'evaluation de l'assistant (un rapport de reference commite a la main)
 backend/fastapi_ia/tests/eval/rapports/*
 !backend/fastapi_ia/tests/eval/rapports/reference.json
+
+# Paquets Python construits : jamais dans le dépôt (13 fichiers, 80 Mo, étaient entrés par ACAL454).
+*.whl
