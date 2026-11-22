@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier v2 — étape Résultats</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#1f4fd8}a:hover{color:#0c1335}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; overflow: hidden; background: #f5f4f0; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums">
+
+  <!-- Bandeau du projet -->
+  <header style="position: absolute; left: 16px; right: 16px; top: 16px; height: 56px; box-sizing: border-box; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 8px; border-radius: 16px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06)">
+    <a href="#" aria-label="Retour aux calepinages" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #4a5072; text-decoration: none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <div style="width: 1px; height: 24px; background: rgba(12,19,53,0.10)"></div>
+    <div style="display: flex; flex-direction: column; gap: 1px; padding-left: 4px">
+      <span style="font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 16px; line-height: 1.2; letter-spacing: -0.01em">Villa Bennani — Casablanca</span>
+      <span style="font-size: 12px; color: #4a5072">12 panneaux · 6,96 kWc · 1 onduleur 6 kW</span>
+    </div>
+    <div style="flex: 1"></div>
+    <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: #1e7a57">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+      Simulation à jour · 14:41
+    </span>
+    <div role="group" aria-label="Mode" style="display: flex; padding: 3px; background: rgba(12,19,53,0.07); border-radius: 11px">
+      <button type="button" aria-pressed="true" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: #ffffff; color: #0c1335; font: 600 13px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 3px rgba(12,19,53,0.16)">Guidé</button>
+      <button type="button" aria-pressed="false" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: #4a5072; font: 500 13px 'Hanken Grotesk', sans-serif">Expert</button>
+    </div>
+    <button type="button" style="height: 40px; padding: 0 18px; border: 0; border-radius: 11px; background: #0c1335; color: #ffffff; font: 600 14px 'Hanken Grotesk', sans-serif; box-shadow: 0 2px 6px rgba(12,19,53,0.24)">Générer le devis</button>
+  </header>
+
+  <!-- Rail : trois étapes faites, Résultats en cours -->
+  <nav aria-label="Étapes" style="position: absolute; left: 16px; top: 88px; bottom: 16px; width: 76px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; border-radius: 20px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06)">
+    <a href="#" style="position: relative; width: 60px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: #0c1335; text-decoration: none; font: 500 12px 'Hanken Grotesk', sans-serif">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg>
+      Toit
+      <span aria-label="fait" style="position: absolute; right: 9px; top: 7px; width: 16px; height: 16px; border-radius: 8px; background: #1e7a57; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #ffffff"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span>
+    </a>
+    <a href="#" style="position: relative; width: 60px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: #0c1335; text-decoration: none; font: 500 12px 'Hanken Grotesk', sans-serif">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 12h17M9.2 4.5v15M14.8 4.5v15"/></svg>
+      Panneaux
+      <span aria-label="fait" style="position: absolute; right: 9px; top: 7px; width: 16px; height: 16px; border-radius: 8px; background: #1e7a57; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #ffffff"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span>
+    </a>
+    <a href="#" style="position: relative; width: 60px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: #0c1335; text-decoration: none; font: 500 12px 'Hanken Grotesk', sans-serif">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></svg>
+      Électrique
+      <span aria-label="fait" style="position: absolute; right: 9px; top: 7px; width: 16px; height: 16px; border-radius: 8px; background: #1e7a57; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #ffffff"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span>
+    </a>
+    <a href="#" aria-current="step" style="width: 60px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; background: #0c1335; color: #ffffff; text-decoration: none; font: 600 12px 'Hanken Grotesk', sans-serif; box-shadow: 0 6px 14px rgba(12,19,53,0.28)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20v-7M12 20V6M17 20v-10"/></svg>
+      Résultats
+    </a>
+    <a href="#" style="width: 60px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: #4a5072; text-decoration: none; font: 500 12px 'Hanken Grotesk', sans-serif">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h7l4 4V20.5H7z"/><path d="M14 3.5v4h4M10 12.5h5M10 16h5"/></svg>
+      Documents
+    </a>
+    <div style="flex: 1"></div>
+    <a href="#" style="width: 60px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 14px; color: #4a5072; text-decoration: none; font: 500 12px 'Hanken Grotesk', sans-serif">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 12h4M12 12h8M4 17h12"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="17" r="2"/></svg>
+      Avancé
+    </a>
+  </nav>
+
+  <!-- Le résultat, en trois rangées -->
+  <main style="position: absolute; left: 108px; right: 16px; top: 88px; bottom: 16px; display: flex; flex-direction: column; gap: 16px">
+
+    <!-- Rangée 1 : le chiffre, puis trois lectures -->
+    <div style="height: 212px; display: flex; gap: 16px">
+      <section aria-label="Production la première année" style="position: relative; width: 500px; box-sizing: border-box; padding: 24px 26px; border-radius: 22px; background: #0c1335; color: #ffffff; overflow: hidden; box-shadow: 0 18px 40px rgba(12,19,53,0.28)">
+        <svg width="500" height="212" viewBox="0 0 500 212" aria-hidden="true" style="position: absolute; inset: 0">
+          <defs>
+            <radialGradient id="lueur" cx="88%" cy="6%" r="70%"><stop offset="0" stop-color="#e2b54a" stop-opacity="0.38"/><stop offset="0.55" stop-color="#e2b54a" stop-opacity="0.06"/><stop offset="1" stop-color="#e2b54a" stop-opacity="0"/></radialGradient>
+            <linearGradient id="nappe" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2b54a" stop-opacity="0.30"/><stop offset="1" stop-color="#e2b54a" stop-opacity="0"/></linearGradient>
+          </defs>
+          <rect width="500" height="212" fill="url(#lueur)"/>
+          <rect x="352" y="116" width="7" height="34" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="363" y="110" width="7" height="40" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="374" y="100" width="7" height="50" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="385" y="92" width="7" height="58" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="396" y="85" width="7" height="65" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="407" y="80" width="7" height="70" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="418" y="76" width="7" height="74" rx="3" fill="#e2b54a" fill-opacity="0.95"/><rect x="429" y="79" width="7" height="71" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="440" y="91" width="7" height="59" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="451" y="101" width="7" height="49" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="462" y="113" width="7" height="37" rx="3" fill="#e2b54a" fill-opacity="0.42"/><rect x="473" y="119" width="7" height="31" rx="3" fill="#e2b54a" fill-opacity="0.42"/>
+        </svg>
+        <div style="position: relative; display: flex; flex-direction: column; height: 100%">
+          <span style="font-size: 13px; font-weight: 500; color: #c7cce3">Production la première année</span>
+          <div style="margin-top: 6px; display: flex; align-items: baseline; gap: 10px">
+            <span style="font: 700 58px/1 'Archivo', sans-serif; letter-spacing: -0.025em">11 480</span>
+            <span style="font: 500 20px 'Hanken Grotesk', sans-serif; color: #c7cce3">kWh</span>
+          </div>
+          <span style="margin-top: 10px; font-size: 13px; color: #c7cce3">1 649 kWh par kWc · année moyenne</span>
+          <div style="flex: 1"></div>
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span style="height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 14px; background: rgba(255,255,255,0.12); font-size: 12px; font-weight: 500">
+              <span style="width: 6px; height: 6px; border-radius: 3px; background: #e2b54a"></span>Année basse 10 620 kWh
+            </span>
+            <span style="height: 28px; display: flex; align-items: center; padding: 0 11px; border-radius: 14px; background: rgba(255,255,255,0.12); font-size: 12px; font-weight: 500">Dans 25 ans 9 870 kWh</span>
+          </div>
+        </div>
+      </section>
+
+      <section style="flex: 1; box-sizing: border-box; padding: 20px 22px; border-radius: 22px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06); display: flex; flex-direction: column">
+        <span style="font-size: 13px; font-weight: 500; color: #4a5072">De la consommation</span>
+        <div style="flex: 1; display: flex; align-items: center; gap: 14px">
+          <svg width="92" height="92" viewBox="0 0 92 92" role="img" aria-label="82 % de la consommation couverte"><circle cx="46" cy="46" r="38" fill="none" stroke="#ebe9e2" stroke-width="10"/><circle cx="46" cy="46" r="38" fill="none" stroke="#e2b54a" stroke-width="10" stroke-linecap="round" stroke-dasharray="195.8 238.8" transform="rotate(-90 46 46)"/></svg>
+          <span style="font: 700 38px/1 'Archivo', sans-serif; letter-spacing: -0.02em">82 <span style="font: 500 18px 'Hanken Grotesk', sans-serif; color: #4a5072">%</span></span>
+        </div>
+        <a href="#" style="font-size: 13px; font-weight: 600">Pourquoi ce chiffre ?</a>
+      </section>
+
+      <section style="flex: 1; box-sizing: border-box; padding: 20px 22px; border-radius: 22px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06); display: flex; flex-direction: column">
+        <span style="font-size: 13px; font-weight: 500; color: #4a5072">Pertes au total</span>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px">
+          <span style="font: 700 38px/1 'Archivo', sans-serif; letter-spacing: -0.02em">18,6 <span style="font: 500 18px 'Hanken Grotesk', sans-serif; color: #4a5072">%</span></span>
+          <div style="position: relative; height: 8px; border-radius: 4px; background: #ebe9e2" aria-hidden="true">
+            <span style="position: absolute; left: 30%; width: 44%; top: 0; bottom: 0; border-radius: 4px; background: #cfe6dc"></span>
+            <span style="position: absolute; left: 56%; top: -4px; width: 4px; height: 16px; border-radius: 2px; background: #0c1335"></span>
+          </div>
+        </div>
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #1e7a57"><span style="width: 8px; height: 8px; border-radius: 4px; background: #1e7a57"></span>Dans la plage habituelle</span>
+      </section>
+
+      <section style="flex: 1; box-sizing: border-box; padding: 20px 22px; border-radius: 22px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06); display: flex; flex-direction: column">
+        <span style="font-size: 13px; font-weight: 500; color: #4a5072">Écart avec PVGIS</span>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px">
+          <span style="font: 700 38px/1 'Archivo', sans-serif; letter-spacing: -0.02em">− 2,1 <span style="font: 500 18px 'Hanken Grotesk', sans-serif; color: #4a5072">%</span></span>
+          <div style="position: relative; height: 8px; border-radius: 4px; background: #ebe9e2" aria-hidden="true">
+            <span style="position: absolute; left: 50%; top: -4px; width: 2px; height: 16px; background: #9aa0bb"></span>
+            <span style="position: absolute; left: 43%; width: 7%; top: 0; bottom: 0; border-radius: 4px; background: #1f4fd8"></span>
+          </div>
+        </div>
+        <span style="font-size: 13px; color: #4a5072">Même site, mêmes panneaux</span>
+      </section>
+    </div>
+
+    <!-- Rangée 2 : l'année, puis le chemin de l'énergie -->
+    <div style="flex: 1; display: flex; gap: 16px; min-height: 0">
+      <section style="width: 760px; box-sizing: border-box; padding: 22px 24px 16px; border-radius: 22px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06); display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; gap: 16px">
+          <h2 style="margin: 0; font: 600 18px 'Archivo', sans-serif; letter-spacing: -0.01em">Mois par mois</h2>
+          <div style="flex: 1"></div>
+          <span style="display: flex; align-items: center; gap: 12px; height: 30px; padding: 0 12px; border-radius: 15px; background: #f5f4f0; font-size: 12px; color: #4a5072">
+            <span style="font-weight: 600; color: #0c1335">Juillet</span>
+            <span style="display: flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 3px; background: #e2b54a"></span><span style="font-weight: 600; color: #0c1335">1 332 kWh</span> produits</span>
+            <span style="display: flex; align-items: center; gap: 6px"><span style="width: 14px; height: 3px; border-radius: 2px; background: #1f4fd8"></span><span style="font-weight: 600; color: #0c1335">1 400 kWh</span> consommés</span>
+          </span>
+          <div role="group" aria-label="Période" style="display: flex; padding: 3px; background: rgba(12,19,53,0.06); border-radius: 10px">
+            <button type="button" aria-pressed="true" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: #ffffff; color: #0c1335; font: 600 12px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,0.14)">Année</button>
+            <button type="button" aria-pressed="false" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #4a5072; font: 500 12px 'Hanken Grotesk', sans-serif">Journée type</button>
+          </div>
+        </div>
+        <svg viewBox="0 0 712 356" role="img" aria-label="Production et consommation de chaque mois de l'année." style="flex: 1; width: 100%; margin-top: 10px">
+          <defs>
+            <linearGradient id="barre" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ecc463"/><stop offset="1" stop-color="#dba93a"/></linearGradient>
+            <linearGradient id="barreHaut" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f1cd72"/><stop offset="1" stop-color="#e2b54a"/></linearGradient>
+          </defs>
+          <g stroke="rgba(12,19,53,0.07)" stroke-width="1"><path d="M40 320h664M40 220h664M40 120h664M40 20h664"/></g>
+          <g font-family="Hanken Grotesk, sans-serif" font-size="12" fill="#656b8c"><text x="0" y="224">500</text><text x="0" y="124">1 000</text><text x="0" y="24">1 500</text></g>
+          <g fill="url(#barre)"><rect x="48" y="197" width="30" height="123" rx="7"/><rect x="104" y="176" width="30" height="144" rx="7"/><rect x="160" y="139" width="30" height="181" rx="7"/><rect x="216" y="112" width="30" height="208" rx="7"/><rect x="272" y="86" width="30" height="234" rx="7"/><rect x="328" y="70" width="30" height="250" rx="7"/><rect x="440" y="64" width="30" height="256" rx="7"/><rect x="496" y="107" width="30" height="213" rx="7"/><rect x="552" y="144" width="30" height="176" rx="7"/><rect x="608" y="187" width="30" height="133" rx="7"/><rect x="664" y="208" width="30" height="112" rx="7"/></g>
+          <rect x="384" y="54" width="30" height="266" rx="7" fill="url(#barreHaut)" stroke="#0c1335" stroke-width="2"/>
+          <path d="M63 84L119 100L175 108L231 116L287 100L343 70L399 40L455 44L511 80L567 100L623 94L679 84" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M63 84L119 100L175 108L231 116L287 100L343 70L399 40L455 44L511 80L567 100L623 94L679 84" fill="none" stroke="#1f4fd8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <g fill="#ffffff" stroke="#1f4fd8" stroke-width="2"><circle cx="63" cy="84" r="3.5"/><circle cx="119" cy="100" r="3.5"/><circle cx="175" cy="108" r="3.5"/><circle cx="231" cy="116" r="3.5"/><circle cx="287" cy="100" r="3.5"/><circle cx="343" cy="70" r="3.5"/><circle cx="399" cy="40" r="5"/><circle cx="455" cy="44" r="3.5"/><circle cx="511" cy="80" r="3.5"/><circle cx="567" cy="100" r="3.5"/><circle cx="623" cy="94" r="3.5"/><circle cx="679" cy="84" r="3.5"/></g>
+          <g font-family="Hanken Grotesk, sans-serif" font-size="12" fill="#656b8c" text-anchor="middle"><text x="63" y="346">J</text><text x="119" y="346">F</text><text x="175" y="346">M</text><text x="231" y="346">A</text><text x="287" y="346">M</text><text x="343" y="346">J</text><text x="399" y="346" fill="#0c1335" font-weight="700">J</text><text x="455" y="346">A</text><text x="511" y="346">S</text><text x="567" y="346">O</text><text x="623" y="346">N</text><text x="679" y="346">D</text></g>
+        </svg>
+      </section>
+
+      <section style="flex: 1; box-sizing: border-box; padding: 22px 24px 18px; border-radius: 22px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06); display: flex; flex-direction: column">
+        <div style="display: flex; align-items: baseline; gap: 12px">
+          <h2 style="margin: 0; font: 600 18px 'Archivo', sans-serif; letter-spacing: -0.01em">Du soleil au réseau</h2>
+          <div style="flex: 1"></div>
+          <a href="#" style="font-size: 13px; font-weight: 600">Voir les 22 étapes</a>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 0; margin-top: 6px">
+          <div style="height: 52px; display: flex; align-items: center; gap: 12px">
+            <span style="width: 146px; font-weight: 600">Soleil reçu</span>
+            <span style="flex: 1; height: 20px; border-radius: 10px; background: #0c1335"></span>
+            <span style="width: 58px; text-align: right; font-weight: 700">100 %</span>
+          </div>
+          <div style="height: 44px; display: flex; align-items: center; gap: 12px; color: #4a5072">
+            <span style="width: 146px">Ombres proches</span>
+            <span style="flex: 1; height: 12px; display: flex; border-radius: 6px; overflow: hidden; background: #ebe9e2"><span style="width: 97%; background: #2f3f86"></span><span style="width: 3%; background: #e9a48a"></span></span>
+            <span style="width: 58px; text-align: right">− 3,0 %</span>
+          </div>
+          <div style="height: 44px; display: flex; align-items: center; gap: 12px; color: #4a5072">
+            <span style="width: 146px; display: flex; align-items: center; gap: 6px">Poussière <span title="valeur publiée, non mesurée" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span>
+            <span style="flex: 1; height: 12px; display: flex; border-radius: 6px; overflow: hidden; background: #ebe9e2"><span style="width: 94.1%; background: #2f3f86"></span><span style="width: 2.9%; background: #e9a48a"></span></span>
+            <span style="width: 58px; text-align: right">− 3,0 %</span>
+          </div>
+          <div style="height: 44px; display: flex; align-items: center; gap: 12px; color: #4a5072">
+            <span style="width: 146px">Chaleur</span>
+            <span style="flex: 1; height: 12px; display: flex; border-radius: 6px; overflow: hidden; background: #ebe9e2"><span style="width: 88.1%; background: #2f3f86"></span><span style="width: 6%; background: #e9a48a"></span></span>
+            <span style="width: 58px; text-align: right">− 6,4 %</span>
+          </div>
+          <div style="height: 44px; display: flex; align-items: center; gap: 12px; color: #4a5072">
+            <span style="width: 146px">Câbles et onduleur</span>
+            <span style="flex: 1; height: 12px; display: flex; border-radius: 6px; overflow: hidden; background: #ebe9e2"><span style="width: 84.1%; background: #2f3f86"></span><span style="width: 4%; background: #e9a48a"></span></span>
+            <span style="width: 58px; text-align: right">− 4,5 %</span>
+          </div>
+          <div style="height: 44px; display: flex; align-items: center; gap: 12px; color: #4a5072">
+            <span style="width: 146px; display: flex; align-items: center; gap: 6px">Autres pertes <span title="valeurs publiées, non mesurées" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span>
+            <span style="flex: 1; height: 12px; display: flex; border-radius: 6px; overflow: hidden; background: #ebe9e2"><span style="width: 81.4%; background: #2f3f86"></span><span style="width: 2.7%; background: #e9a48a"></span></span>
+            <span style="width: 58px; text-align: right">− 3,1 %</span>
+          </div>
+          <div style="height: 1px; margin: 8px 0 4px; background: rgba(12,19,53,0.08)"></div>
+          <div style="height: 52px; display: flex; align-items: center; gap: 12px">
+            <span style="width: 146px; font-weight: 600">Électricité produite</span>
+            <span style="flex: 1; height: 20px; border-radius: 10px; background: #ebe9e2; overflow: hidden; display: flex"><span style="width: 81.4%; border-radius: 10px; background: #e2b54a"></span></span>
+            <span style="width: 58px; text-align: right; font-weight: 700">81,4 %</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Rangée 3 : ce que le résultat suppose, puis la suite -->
+    <div style="height: 104px; display: flex; gap: 16px">
+      <section style="flex: 1; box-sizing: border-box; padding: 0 22px; border-radius: 22px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06); display: flex; align-items: center; gap: 18px">
+        <div style="display: flex; flex-direction: column; gap: 3px">
+          <span style="font: 600 15px 'Archivo', sans-serif">Ce que ce résultat suppose</span>
+          <span style="font-size: 13px; color: #4a5072">3 valeurs publiées, pas mesurées sur ce chantier</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-wrap: wrap; gap: 8px">
+          <span style="height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 12px; border-radius: 17px; background: #fbf6e6; border: 1px solid #efdfae; font-size: 13px; font-weight: 500; color: #5b4a12"><span style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span>Poussière</span>
+          <span style="height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 12px; border-radius: 17px; background: #fbf6e6; border: 1px solid #efdfae; font-size: 13px; font-weight: 500; color: #5b4a12"><span style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span>Vieillissement initial</span>
+          <span style="height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 12px; border-radius: 17px; background: #fbf6e6; border: 1px solid #efdfae; font-size: 13px; font-weight: 500; color: #5b4a12"><span style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span>Écarts entre panneaux</span>
+        </div>
+        <a href="#" style="font-size: 13px; font-weight: 600; white-space: nowrap">Voir les sources</a>
+      </section>
+      <button type="button" style="width: 330px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 22px; background: #e2b54a; color: #0c1335; font: 700 16px 'Hanken Grotesk', sans-serif; box-shadow: 0 12px 28px rgba(201,154,43,0.40), inset 0 1px 0 rgba(255,255,255,0.45)">
+        Préparer les documents
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

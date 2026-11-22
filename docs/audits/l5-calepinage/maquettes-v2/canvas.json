@@ -1,0 +1,43 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-23T00:20:00Z" },
+  "title": "Calepinage — maquettes v2",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 900, "title": "1 · Toit" },
+    "Panneaux.dc.html": { "x": 1520, "y": 0, "w": 1440, "h": 900, "title": "2 · Panneaux" },
+    "Electrique.dc.html": { "x": 3040, "y": 0, "w": 1440, "h": 900, "title": "3 · Électrique" },
+    "Schema.dc.html": { "x": 4560, "y": 0, "w": 1440, "h": 900, "title": "3 bis · Schéma" },
+    "Resultats.dc.html": { "x": 0, "y": 1020, "w": 1440, "h": 900, "title": "4 · Résultats" },
+    "ResultatsIncomplet.dc.html": { "x": 1520, "y": 1020, "w": 1440, "h": 900, "title": "4 bis · Résultat incomplet" },
+    "Documents.dc.html": { "x": 3040, "y": 1020, "w": 1440, "h": 900, "title": "5 · Documents" },
+    "ToitSombre.dc.html": { "x": 4560, "y": 1020, "w": 1440, "h": 900, "title": "Thème sombre · Toit" },
+    "Liste.dc.html": { "x": 0, "y": 2040, "w": 1440, "h": 900, "title": "Liste des calepinages" },
+    "DemarrageRapide.dc.html": { "x": 1520, "y": 2040, "w": 1440, "h": 900, "title": "Démarrage rapide" },
+    "Presentation.dc.html": { "x": 3040, "y": 2040, "w": 1440, "h": 900, "title": "Montrer au client · grand écran" },
+    "Tablette.dc.html": { "x": 4560, "y": 2040, "w": 1180, "h": 820, "title": "Tablette · sur le toit" },
+    "Telephone.dc.html": { "x": 0, "y": 3060, "w": 390, "h": 844, "title": "Téléphone · relevé de visite" },
+    "TelephoneClient.dc.html": { "x": 470, "y": 3060, "w": 390, "h": 844, "title": "Téléphone · montrer au client" }
+  },
+  "order": [
+    "Main.dc.html",
+    "Panneaux.dc.html",
+    "Electrique.dc.html",
+    "Schema.dc.html",
+    "Resultats.dc.html",
+    "ResultatsIncomplet.dc.html",
+    "Documents.dc.html",
+    "ToitSombre.dc.html",
+    "Liste.dc.html",
+    "DemarrageRapide.dc.html",
+    "Presentation.dc.html",
+    "Tablette.dc.html",
+    "Telephone.dc.html",
+    "TelephoneClient.dc.html"
+  ],
+  "notes": {
+    "titre": { "x": 0, "y": -300, "text": "Atelier Calepinage — maquettes v2", "kind": "title1", "maxW": 6000 }
+  },
+  "designSystems": []
+}
