@@ -36,6 +36,7 @@ vi.mock('../../../utils/downloadBlob', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import { downloadBlob } from '../../../utils/downloadBlob'
 import Fixation from './Fixation'
+import { OPTIONS_TELECHARGEMENT } from '../documents/telechargement'
 
 const echantillon = (variante) => reponseContrat('calepinage', 'calepinage_fixation_bom', variante).data
 const sortiesEchantillon = (variante) => reponseContrat('calepinage', 'calepinage_sorties', variante).data
@@ -229,9 +230,18 @@ describe('Fixation (CALX360) — téléchargement du classeur', () => {
     fireEvent.click(screen.getByTestId('calx360-telecharger'))
 
     await waitFor(() => expect(calepinageApi.calepinages.telechargerSortie)
-      .toHaveBeenCalledWith(entreeClasseur.endpoint))
+      .toHaveBeenCalledWith(entreeClasseur.endpoint, undefined, OPTIONS_TELECHARGEMENT))
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
     expect(downloadBlob.mock.calls[0][0]).toBe(blob)
+  })
+
+  it('un classeur trop long dit le délai en français (R3)', async () => {
+    servir('exemple')
+    servirSorties('exemple')
+    calepinageApi.calepinages.telechargerSortie.mockRejectedValue({ code: 'ECONNABORTED' })
+    rendre()
+    fireEvent.click(await screen.findByTestId('calx360-telecharger'))
+    expect(await screen.findByText(/n'a pas fini de préparer ce document en 2 minutes/)).toBeInTheDocument()
   })
 
   it('un classeur indisponible affiche le motif SERVEUR, aucun bouton', async () => {

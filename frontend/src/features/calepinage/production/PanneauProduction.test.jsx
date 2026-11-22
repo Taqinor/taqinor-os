@@ -43,6 +43,7 @@ import ReglagesSimulation from '../reglages/ReglagesSimulation'
 import sourceBibliotheque from '../Bibliotheque.jsx?raw'
 import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
 import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
+import { OPTIONS_TELECHARGEMENT } from '../documents/telechargement'
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat
@@ -144,6 +145,17 @@ describe('PanneauProduction (CAL236)', () => {
 
     servi.autoconsommation.par_mois = null
     servi.autoconsommation.motif_absence = 'Aucune courbe de charge saisie.'
+    const { unmount: unmount2 } = rendre()
+    // R3-08 — la production mensuelle servie est tracée ; le motif ne vaut que pour la consommation.
+    const sansCharge = await screen.findByTestId('acal453-graphique')
+    expect(screen.queryByTestId('acal453-vide')).toBeNull()
+    expect(within(sansCharge).getByTestId('acal453-motif')).toHaveTextContent('Aucune courbe de charge saisie.')
+    expect(within(sansCharge).getAllByText('Production (P50)').length).toBeGreaterThan(0)
+    expect(within(sansCharge).queryByText('Consommation')).toBeNull()
+    unmount2()
+
+    // Ni charge ni production mensuelle : l'état vide d'origine.
+    servi.production.mensuel = []
     rendre()
     expect(await screen.findByTestId('acal453-vide')).toHaveTextContent('Aucune courbe de charge saisie.')
   })
@@ -638,7 +650,7 @@ describe("PanneauProduction — Où va l'énergie (ACAL762)", () => {
     const bascule = await screen.findByTestId('acal762-bascule')
     expect(calepinageApi.calepinages.diagrammeEnergie).not.toHaveBeenCalled()
     fireEvent.click(bascule)
-    expect(calepinageApi.calepinages.diagrammeEnergie).toHaveBeenCalledWith(1)
+    expect(calepinageApi.calepinages.diagrammeEnergie).toHaveBeenCalledWith(1, undefined, OPTIONS_TELECHARGEMENT)
     const energie = reponseContrat('calepinage', 'calepinage_resultat', 'exemple').data.autoconsommation.energie
     for (const [code, cle] of [['production_brute', 'production_brute_kwh'], ['sur_place', 'autoconsomme_kwh'],
       ['injectee', 'export_reseau_kwh'], ['importee', 'import_reseau_kwh'], ['consommation', 'consommation_kwh']]) {
@@ -672,6 +684,15 @@ describe("PanneauProduction — Où va l'énergie (ACAL762)", () => {
     await ouvrir()
     expect(await screen.findByTestId('acal762-refus')).toHaveTextContent('Aucune cascade regroupée.')
     expect(screen.getByTestId('acal762-flux-soleil')).toBeInTheDocument()
+  })
+
+  it('un schéma trop long à produire dit le délai en français (R3)', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    calepinageApi.calepinages.diagrammeEnergie.mockRejectedValue({ code: 'ECONNABORTED' })
+    servir('exemple')
+    rendre()
+    await ouvrir()
+    expect(await screen.findByTestId('acal762-refus')).toHaveTextContent("Le serveur n'a pas fini de préparer ce document en 2 minutes.")
   })
 
   it('guidé : aucune carte', async () => {
@@ -793,9 +814,8 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     const a = borneHaute.cascade.a_renseigner
     expect(within(bloc).getByTestId('acal700-etiquette')).toHaveTextContent('Production la première année · au plus')
     expect(within(bloc).getByTestId('acal700-plafond')).toHaveTextContent(
-      `C'est un plafond : ${a.lignes.length} pertes ne sont pas encore comptées. Le chiffre réel sera plus bas.`)
-    expect(within(bloc).getByTestId('acal700-jauge')).toHaveTextContent(
-      `${a.etapes_comptees} étapes sur ${a.etapes_a_compter}`)
+      `C'est un plafond : ${a.lignes.length} pertes non renseignées, toutes à renseigner ici. Le chiffre réel sera plus bas.`)
+    expect(within(bloc).queryByTestId('acal700-jauge')).toBeNull() // R3-06 : plus de troisième compte
     const lignes = within(bloc).getAllByTestId('acal700-ligne')
     expect(lignes).toHaveLength(a.lignes.length)
     expect(lignes[0]).toHaveTextContent('Aucune valeur pour votre société')
@@ -808,6 +828,17 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     }
     expect(bloc).toHaveTextContent("Les années basses et l'indice de performance s'affichent dès que le résultat est complet")
     expect(screen.queryByTestId('acal52-borne-haute')).toBeNull() // remplacé
+  })
+
+  it('R3-06 — un seul compte : 17 pertes non renseignées, dont 3 à renseigner ici', async () => {
+    const servi = incomplet()
+    servi.cascade = { ...servi.cascade, a_renseigner: { ...servi.cascade.a_renseigner, etapes_comptees: 4, etapes_a_compter: 21 } }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: servi })
+    rendreAvecParcours({ etapes: [], manque: [] })
+    const bloc = await screen.findByTestId('acal700-incomplet')
+    expect(within(bloc).getByTestId('acal700-plafond')).toHaveTextContent(
+      "C'est un plafond : 17 pertes non renseignées, dont 3 à renseigner ici. Le chiffre réel sera plus bas.")
+    expect(bloc).not.toHaveTextContent('étapes sur')
   })
 
   it('Raccordement « Conforme » seulement si l’étape électrique est faite', async () => {

@@ -7,12 +7,13 @@
 // pompage. Champs nombre en `step="any"` (garde `SURFACES_SAISIE` de
 // solar.test.mjs). Props nommées une par une, jamais de spread.
 import { RefreshCw, Zap } from 'lucide-react'
-import { Button, Card, CardContent, Input, Label, Segmented } from '../../../ui'
+import { Button, Card, CardContent, Label, Segmented } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
 import { roleLabel } from '../../../features/ventes/solar'
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import StructureSelector from '../../../features/stock/StructureSelector'
 import { GenCardHeader } from './CarteMetrique'
+import ChampDecimal from './ChampDecimal'
 
 export default function CarteParametresTechniques({
   kwcCible, onKwcCibleChange, nbPanneaux, onNbPanneauxChange, panelW, dispatchSizing, kwp,
@@ -41,22 +42,22 @@ export default function CarteParametresTechniques({
               pré-remplissage depuis le lead : rien n'est réécrit. */}
           <div className="grid gap-1.5">
             <Label htmlFor="gen-kwc-cible">Puissance cible (kWc)</Label>
-            <Input id="gen-kwc-cible" type="number" min="0" step="any"
+            <ChampDecimal id="gen-kwc-cible"
                    placeholder="ex: 3" value={kwcCible}
                    data-testid="gen-kwc-cible"
-                   onChange={e => onKwcCibleChange(e.target.value)} />
+                   onValeur={onKwcCibleChange} />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="gen-nbpanneaux" required>Nombre de panneaux</Label>
-            <Input id="gen-nbpanneaux" type="number" min="1" max="500" step="any"
+            <ChampDecimal id="gen-nbpanneaux"
                    placeholder="ex: 14" value={nbPanneaux}
-                   onChange={e => onNbPanneauxChange(e.target.value)} />
+                   onValeur={onNbPanneauxChange} />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="gen-panelw">Puissance Panneau (W)</Label>
-            <Input id="gen-panelw" type="number" min="100" max="1000" step="any"
+            <ChampDecimal id="gen-panelw"
                    value={panelW}
-                   onChange={e => dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: e.target.value })} />
+                   onValeur={v => dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: v })} />
           </div>
           <div className="grid gap-1.5">
             <Label>Puissance PV (kWp) — calculée</Label>

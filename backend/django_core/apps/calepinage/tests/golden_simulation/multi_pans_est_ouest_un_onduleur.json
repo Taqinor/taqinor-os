@@ -35,183 +35,183 @@
    {
     "etape": "horizon",
     "omise": true,
-    "kwh_avant": 351.128,
+    "kwh_avant": 175.564,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "ombrage_proche",
     "omise": true,
-    "kwh_avant": 351.128,
+    "kwh_avant": 175.564,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "acces_module",
     "omise": true,
-    "kwh_avant": 351.128,
+    "kwh_avant": 175.564,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "ombrage_diffus",
     "omise": true,
-    "kwh_avant": 351.128,
+    "kwh_avant": 175.564,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "inter_rangees",
     "omise": true,
-    "kwh_avant": 351.128,
+    "kwh_avant": 175.564,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "bifacial",
     "omise": true,
-    "kwh_avant": 351.128,
+    "kwh_avant": 175.564,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "iam",
     "omise": true,
-    "kwh_avant": 351.128,
+    "kwh_avant": 175.564,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "spectral",
     "omise": true,
-    "kwh_avant": 351.128,
+    "kwh_avant": 175.564,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "salissure",
     "omise": false,
-    "kwh_avant": 351.128,
-    "kwh_apres": 344.104,
+    "kwh_avant": 175.564,
+    "kwh_apres": 172.052,
     "perte_pct": 2.0
    },
    {
     "etape": "neige",
     "omise": true,
-    "kwh_avant": 344.104,
+    "kwh_avant": 172.052,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "niveau_irradiance",
     "omise": true,
-    "kwh_avant": 344.104,
+    "kwh_avant": 172.052,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "thermique",
     "omise": true,
-    "kwh_avant": 344.104,
+    "kwh_avant": 172.052,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "qualite_module",
     "omise": true,
-    "kwh_avant": 344.104,
+    "kwh_avant": 172.052,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "lid",
     "omise": true,
-    "kwh_avant": 344.104,
+    "kwh_avant": 172.052,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "mismatch_fabricant",
     "omise": false,
-    "kwh_avant": 344.104,
-    "kwh_apres": 337.222,
+    "kwh_avant": 172.052,
+    "kwh_apres": 168.611,
     "perte_pct": 2.0
    },
    {
     "etape": "mismatch_ombrage",
     "omise": true,
-    "kwh_avant": 337.222,
+    "kwh_avant": 168.611,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "diodes",
     "omise": true,
-    "kwh_avant": 337.222,
+    "kwh_avant": 168.611,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "optimiseur",
     "omise": true,
-    "kwh_avant": 337.222,
+    "kwh_avant": 168.611,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "ohmique_dc",
     "omise": true,
-    "kwh_avant": 337.222,
+    "kwh_avant": 168.611,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "mppt",
     "omise": true,
-    "kwh_avant": 337.223,
+    "kwh_avant": 168.612,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "onduleur",
     "omise": false,
-    "kwh_avant": 337.223,
-    "kwh_apres": 327.106,
+    "kwh_avant": 168.612,
+    "kwh_apres": 163.553,
     "perte_pct": 3.0
    },
    {
     "etape": "ecretage",
     "omise": false,
-    "kwh_avant": 327.106,
-    "kwh_apres": 201.106,
+    "kwh_avant": 163.553,
+    "kwh_apres": 100.553,
     "perte_pct": 38.52
    },
    {
     "etape": "ohmique_ac",
     "omise": true,
-    "kwh_avant": 201.106,
+    "kwh_avant": 100.553,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "transformateur",
     "omise": true,
-    "kwh_avant": 201.106,
+    "kwh_avant": 100.553,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "auxiliaires",
     "omise": true,
-    "kwh_avant": 201.106,
+    "kwh_avant": 100.553,
     "kwh_apres": null,
     "perte_pct": null
    },
    {
     "etape": "indisponibilite",
     "omise": false,
-    "kwh_avant": 201.106,
-    "kwh_apres": 195.073,
+    "kwh_avant": 100.553,
+    "kwh_apres": 97.537,
     "perte_pct": 3.0
    }
   ],

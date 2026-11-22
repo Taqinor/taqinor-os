@@ -34,6 +34,34 @@ export interface JeuReglages {
   presetId: unknown;
   libelle: string;
   valeurs: Record<string, unknown>;
+  /** R2-15 — le `modePoseDeclare` du document qui a posé `roofType` (voir `avecPoseDeclaree`). */
+  poseDeclaree?: string;
+  /** R2-15 — aucun jeu de société : seul le mode de pose du document est appliqué. */
+  seulementPose?: boolean;
+}
+
+/** R2-15 (CIQ112) — `traduction.MODES_POSE_AFFLEURANTS` (backend) : parité testée. Le traducteur pave ces modes
+ *  en pose AFFLEURANTE, c'est-à-dire en pente, quel que soit le dessin. */
+export const MODES_POSE_AFFLEURANTS = ['bac_acier', 'toiture_inclinee'] as const;
+const LIBELLE_POSE: Record<string, string> = { bac_acier: 'bac acier', toiture_inclinee: 'toiture inclinée' };
+
+/**
+ * R2-15 / R2-01 (décision Q1, 22/11) — le jeu, plus le mode de pose que le SERVEUR a posé dans le document à la
+ * création du calepinage (CIQ112, `modePoseDeclare`, d'après le toit déclaré sur le lead) : bac acier ou toiture
+ * inclinée ⇒ « Toit en pente » sur le pan NEUF, comme le traducteur le pave déjà. Seul le type de toit est posé :
+ * ni pente ni orientation du lead (D-ACAL-7). Sans mode affleurant : le jeu tel quel — un document du site public
+ * n'en porte jamais (seul `services/creation.py` l'écrit), son rendu est inchangé.
+ */
+export function avecPoseDeclaree(jeu: JeuReglages | null, document: unknown): JeuReglages | null {
+  const mode = document && typeof document === 'object' ? (document as Record<string, unknown>).modePoseDeclare : null;
+  if (typeof mode !== 'string' || !(MODES_POSE_AFFLEURANTS as readonly string[]).includes(mode)) return jeu;
+  return {
+    presetId: jeu?.presetId ?? null,
+    libelle: jeu?.libelle ?? '',
+    valeurs: { ...(jeu?.valeurs ?? {}), roofType: 'pitched' },
+    poseDeclaree: mode,
+    seulementPose: !jeu,
+  };
 }
 
 /** Les valeurs d'un jeu que l'atelier sait poser sur un pan (déjà validées). */
@@ -85,8 +113,10 @@ export function appliquerJeuAuPan(pan: AreaRecord, jeu: JeuReglages | null): Val
 /** La mention de l'en-tête de l'atelier ; `''` sans jeu. */
 export function mentionJeuReglages(jeu: JeuReglages | null): string {
   if (!jeu) return '';
+  const pose = jeu.poseDeclaree ? `Toit du lead : ${LIBELLE_POSE[jeu.poseDeclaree]} — nouveaux pans posés en pente` : '';
+  if (jeu.seulementPose) return pose;
   const nom = jeu.libelle || 'sans nom';
-  return `Jeu de réglages ${nom} appliqué aux nouveaux pans`;
+  return `Jeu de réglages ${nom} appliqué aux nouveaux pans${pose ? ` · ${pose}` : ''}`;
 }
 
 // ═══════════ ACAL554 — « Appliquer ces réglages à… » : d'un pan À D'AUTRES pans existants ═══════════

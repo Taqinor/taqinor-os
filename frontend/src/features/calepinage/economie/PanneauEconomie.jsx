@@ -76,7 +76,11 @@ const LIBELLES_HYPOTHESES = {
 
 // Libellé lisible d'une grandeur d'hypothèse — la clé brute sert de repli :
 // jamais un libellé inventé pour une clé que ce panneau ne connaît pas encore.
-const libelleHypothese = (cle) => LIBELLES_HYPOTHESES[cle] || cle
+// R3-07 — une entrée de remplacement (`remplacements[0]`) : l'équipement, le mode et l'année
+// sont déjà dans sa source ; ici son rang, en clair.
+const RANG_REMPLACEMENT = /^remplacements\[\d+\]$/
+const libelleHypothese = (cle) => LIBELLES_HYPOTHESES[cle]
+  || (RANG_REMPLACEMENT.test(cle) ? `Remplacement n° ${Number(cle.match(/\d+/)[0]) + 1}` : cle)
 
 // Formatage de la VALEUR d'une hypothèse, dérivé du SUFFIXE de sa clé (mêmes
 // conventions que le reste du dépôt : `_mad`, `_pct`, `_kwh`, `_ans`) — jamais
@@ -84,7 +88,7 @@ const libelleHypothese = (cle) => LIBELLES_HYPOTHESES[cle] || cle
 function formatValeurHypothese(cle, valeur) {
   if (valeur === null || valeur === undefined) return 'non publié'
   if (typeof valeur !== 'number') return String(valeur)
-  if (cle.endsWith('_mad')) return formatMAD(valeur, { decimals: 0 })
+  if (cle.endsWith('_mad') || RANG_REMPLACEMENT.test(cle)) return formatMAD(valeur, { decimals: 0 })
   if (cle.endsWith('_pct')) return formatPercent(valeur, { decimals: 2 })
   if (cle.endsWith('_kwh')) return `${formatNumber(valeur, { decimals: 0 })} kWh`
   if (cle.endsWith('_ans')) return `${formatNumber(valeur, { decimals: 0 })} ans`
@@ -99,8 +103,15 @@ function omissionMotif(omissions, cle) {
 // (le serveur préfixe lui-même le motif des CINQ indicateurs dérivés, jamais
 // celui d'une grandeur d'entrée simple : `ventes_economie.json`, exemple_vide).
 // Ne JAMAIS doubler le préfixe plutôt que de le supposer absent.
+// R3-07 — un nom de grandeur qui traînerait encore dans un motif ou une source
+// (`taux_actualisation_pct`) passe par LIBELLES_HYPOTHESES : jamais une clé à l'écran.
+const enClair = (texte) => String(texte ?? '').replace(
+  /\b[a-z]+(?:_[a-z0-9]+)+\b/g,
+  (cle) => (LIBELLES_HYPOTHESES[cle] ? LIBELLES_HYPOTHESES[cle].toLowerCase() : cle),
+)
+
 function libelleOmission(motif) {
-  const texte = motif || 'aucun motif publié par le serveur'
+  const texte = enClair(motif || 'aucun motif publié par le serveur')
   return /^non publié\s*:/i.test(texte) ? texte : `non publié : ${texte}`
 }
 
@@ -198,7 +209,7 @@ function TableauHypotheses({ hypotheses }) {
           <tr key={h.cle} className="border-t border-border/60" data-testid="calx289-hypothese">
             <td className="py-1">{libelleHypothese(h.cle)}</td>
             <td className="py-1 text-right tabular-nums">{formatValeurHypothese(h.cle, h.valeur)}</td>
-            <td className="py-1 text-xs text-muted-foreground">{h.source}</td>
+            <td className="py-1 text-xs text-muted-foreground">{enClair(h.source)}</td>
             <td className="py-1 text-xs text-muted-foreground">
               {h.saisie_le ? formatDate(h.saisie_le) : 'issue du devis'}
             </td>

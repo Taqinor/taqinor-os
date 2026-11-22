@@ -38,7 +38,20 @@ def _calepinage_du_devis(devis, ctx):
 
 def _mesures_du_devis(devis, calepinage, ctx):
     return _memo(ctx, devis, 'mesures_calepinage',
-                 lambda: _mesures_document(calepinage))
+                 lambda: _mesures_document(calepinage, _document_chiffre(devis, calepinage)))
+
+
+def _document_chiffre(devis, calepinage):
+    """ACAL968 (Critique D2) — le document que CE devis chiffre : la copie du
+    calepinage limitée à SA sélection (``choixConception.surfacesChiffrees``),
+    comme ``_conception_a_jour`` ; le document entier sans sélection, ou quand
+    elle ne s'applique plus (surface chiffrée retirée : l'écart est réel)."""
+    from apps.ventes.selectors_calepinage import surfaces_chiffrees_du_devis
+    selection = surfaces_chiffrees_du_devis(devis)
+    if selection is None:
+        return calepinage.roof_layout
+    from apps.calepinage.selectors import document_de_la_selection
+    return document_de_la_selection(calepinage, selection) or calepinage.roof_layout
 
 
 def _calepinage_lie(devis):
@@ -55,14 +68,20 @@ def _calepinage_lie(devis):
     return calepinage
 
 
-def _mesures_document(calepinage):
+def _mesures_document(calepinage, document=None):
     from apps.calepinage.selectors import mesures_du_calepinage
     from apps.ventes.domain.geometrie import pans_du_document
-    pans = pans_du_document(calepinage.roof_layout)
-    modules = sum(int(p.get('modules') or 0) for p in pans)
+    document = calepinage.roof_layout if document is None else document
+    pans = pans_du_document(document)
+    # Critique D1 — un pan existant (ACAL573) n'est pas vendu : hors comparaison.
+    modules = sum(int(p.get('modules') or 0) for p in pans if not p.get('existant'))
     # ACAL372 — kWc des FICHES déclarées par le document (ACAL259/273),
     # jamais ``geometry.kwc`` (wattage outil) ; inconnu ⇒ 0 ⇒ aucune violation.
-    kwc = float(mesures_du_calepinage(calepinage).get('kwc') or 0)
+    mesures = mesures_du_calepinage(calepinage, document=document)
+    kwc = float(mesures.get('kwc') or 0)
+    if kwc:
+        kwc = max(0.0, kwc - sum(float(m.get('kwc') or 0) for m, p in zip(
+            mesures.get('pans') or (), pans) if p.get('existant')))
     return modules, kwc
 
 
@@ -170,7 +189,7 @@ def empreinte_imprimee_perimee(r, devis, ctx):
     if calepinage is None or not getattr(devis, 'layout_hash', ''):
         return []
     from apps.ventes.domain.geometrie import layout_hash
-    empreinte = layout_hash(calepinage.roof_layout)
+    empreinte = layout_hash(_document_chiffre(devis, calepinage))  # ACAL968 : même sélection
     if not empreinte or empreinte == devis.layout_hash:
         return []
     return [r.violation(

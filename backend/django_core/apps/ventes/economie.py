@@ -181,6 +181,23 @@ def _omission(cle, motif):
     return {'cle': cle, 'motif': motif}
 
 
+# R3-07 — l'intitulé FRANÇAIS d'une grandeur dans un motif d'omission (la clé
+# reste la ``cle`` de l'omission : le contrat ne change pas, seul le texte).
+_INTITULES_MOTIFS = {
+    'investissement_mad': "l'investissement",
+    'economie_annee1_mad': "l'économie de l'année 1",
+    'production_annee1_kwh': "la production de l'année 1",
+    'horizon_ans': "l'horizon",
+    'taux_actualisation_pct': "le taux d'actualisation",
+    'indexation_pct': "l'indexation tarifaire",
+    'degradation_pct': 'la dégradation annuelle',
+}
+
+
+def _intitules(cles):
+    return ', '.join(_INTITULES_MOTIFS.get(cle, cle) for cle in cles)
+
+
 def _degradation_annee1(brute, hypotheses):
     """AMOT99 — ``degradation_annee1_pct`` FACULTATIVE (courbe de garantie
     d'une fiche module) : publiée avec sa source, en FRACTION ; absente ⇒
@@ -627,12 +644,12 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
     def omettre(cle, *, entrees=(), nuls=(), taux_absents=()):
         parties = []
         if entrees:
-            parties.append(f"{', '.join(entrees)} non saisi")
+            parties.append(f"{_intitules(entrees)} : non saisi")
         if nuls:
-            parties.append(f"{', '.join(nuls)} absente ou nulle — aucune "
+            parties.append(f"{_intitules(nuls)} : absente ou nulle — aucune "
                            f"division bornée n'est publiée")
         if taux_absents:
-            parties.append(f"taux non fourni : {', '.join(taux_absents)}")
+            parties.append(f"non fourni : {_intitules(taux_absents)}")
         omissions.append(_omission(cle, "non publié : " + " ; ".join(parties)))
 
     production = next((h['valeur'] for h in hypotheses
@@ -1490,17 +1507,17 @@ def reglages_economiques(company):
     # AMOT54 (D-AMOT-4 = a) — l'horizon, la dégradation et l'indexation sont les
     # hypothèses de référence du DOCUMENT (``pricing``), étiquetées comme telles :
     # le flux du panneau interne est construit avec les mêmes que le PDF.
-    origine = "hypothèse de référence du document (quote_engine.pricing"
+    origine = "hypothèse de référence du document"
     reglages = {
         'horizon_ans': {
             'valeur': pricing.CASHFLOW_YEARS,
-            'source': f"{origine}.CASHFLOW_YEARS)", 'saisie_le': None},
+            'source': f"{origine} : horizon de projection", 'saisie_le': None},
         'degradation_pct': {
             'valeur': round(pricing.PANEL_DEGRADATION * 100.0, 4),
-            'source': f"{origine}.PANEL_DEGRADATION)", 'saisie_le': None},
+            'source': f"{origine} : dégradation annuelle des panneaux", 'saisie_le': None},
         'indexation_pct': {
             'valeur': round(pricing.TARIFF_ESCALATION * 100.0, 4),
-            'source': f"{origine}.TARIFF_ESCALATION — tarif constant, QRES54)",
+            'source': f"{origine} : tarif constant, sans indexation",
             'saisie_le': None},
     }
     if company is None:
@@ -1586,8 +1603,7 @@ def _donnees_du_devis(devis):
             "appliqué à l'économie de ce flux"))
     hypothese_option = _hypothese(
         'option_devis', option,
-        f"{moteur} — option retenue par le moteur de devis "
-        f"(build_quote_data.scenario)")
+        f"{moteur} — option retenue par le moteur de devis")
     return entrees, [hypothese_option], omissions
 
 

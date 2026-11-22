@@ -207,10 +207,12 @@ def _table_mensuelle(mensuel):
 def _production_du_devis_lie(calepinage):
     """ACON42 (D-ACAL-6) — ``{reference, kwh}`` du devis lié actif, ou
     ``None`` : un calepinage lié n'imprime jamais SON P50, la production
-    est celle du devis (``production_attendue_pour_devis``, YSERV8)."""
+    est celle que le PDF du devis IMPRIME (``production_imprimee_du_devis``,
+    R2-14) ; sans production imprimée (pompage…), ``kwh`` vaut ``None`` et
+    aucun nombre n'est écrit."""
     if not getattr(calepinage, 'devis_id', None):
         return None
-    from apps.ventes.selectors import production_attendue_pour_devis
+    from apps.ventes.selectors_calepinage import production_imprimee_du_devis
 
     from ..devis import _devis_lie_actif
 
@@ -218,7 +220,7 @@ def _production_du_devis_lie(calepinage):
     if devis is None:
         return None
     return {'reference': devis.reference,
-            'kwh': production_attendue_pour_devis(devis.pk)}
+            'kwh': production_imprimee_du_devis(devis)}
 
 
 def _page2_html(resultat, motif_perime='', production_devis=None):

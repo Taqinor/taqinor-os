@@ -188,6 +188,17 @@ PREPARER = AgentAction(
     objets={'lead': 'lead'},
 )
 
+#: CFIN2 (R2-22) — les deux réponses de l'UTILISATEUR à ``devis_existant``,
+#: relayées telles quelles à l'aperçu puis à la publication.
+REPONSES_DEVIS_EXISTANT = {
+    'rattacher_devis': dict(ENTIER, title='Devis existant à compléter',
+                            description="devis_existant.devis de l'aperçu, seulement si "
+                                        "l'utilisateur a choisi de rattacher ; absent sinon."),
+    'creer_autre_devis': {'type': 'boolean', 'title': 'Créer un autre devis',
+                          'description': "true seulement si l'utilisateur a choisi de créer "
+                                         "un autre devis malgré devis_existant ; absent sinon."},
+}
+
 PUBLIER_APERCU = AgentAction(
     key='calepinage.publier_apercu',
     label='Aperçu : publier la conception au devis',
@@ -200,12 +211,20 @@ PUBLIER_APERCU = AgentAction(
         "Exemple : « mets le devis à jour avec le calepinage 12 » → id=12, "
         "puis propose calepinage.publier_devis avec ces totaux. Résultat : "
         "geste, devis lié, corrige_apres_envoi, ancien_total_ttc, "
-        "nouveau_total_ttc, a_faire (publier | rien). Un devis figé ou un "
+        "nouveau_total_ttc, a_faire (publier | rien), confirmation_taille "
+        "(null, ou {detail, refus} : le lead n'a ni facture ni taille souhaitée "
+        "— lis detail à l'utilisateur, mot pour mot). Un devis figé ou un "
         "verdict électrique bloquant est refusé ici (409 nommé) : dis-le et "
-        "donne le lien."),
+        "donne le lien. a_faire=choisir et devis_existant {detail, devis, "
+        "reference, total_ttc} : le lead a déjà un devis brouillon — lis detail "
+        "mot pour mot et DEMANDE à l'utilisateur : rattacher ce calepinage à "
+        "ce devis (rattacher_devis=devis_existant.devis) ou créer un autre "
+        "devis (creer_autre_devis=true) ; ne choisis jamais à sa place. Relis "
+        "ensuite l'aperçu avec SA réponse pour avoir les totaux."),
     endpoint=BASE + '{id}/publier-devis/apercu/',
     method='GET',
-    inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.')},
+    inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.'),
+                    **REPONSES_DEVIS_EXISTANT},
                    ('id',)),
     required_permission=CAL_GERER,
     risk=RISK_INTERNAL,
@@ -230,7 +249,9 @@ PUBLIER_DEVIS = AgentAction(
         "nouveau_total_ttc=\"86900.00\" (sans ancien_total_ttc quand l'aperçu "
         "le dit null). Résultat : le devis généré ou resynchronisé ; 409 "
         "apercu_perime si les totaux ont bougé : relis l'aperçu et refais "
-        "la publication."),
+        "la publication. Après un aperçu devis_existant, passe la réponse de "
+        "l'utilisateur (rattacher_devis ou creer_autre_devis, jamais les deux) "
+        "et les totaux de l'aperçu relu avec elle."),
     endpoint=BASE + '{id}/publier-devis/',
     method='POST',
     inputs=_schema({
@@ -243,6 +264,11 @@ PUBLIER_DEVIS = AgentAction(
                       description="Identifiant du devis lié, recopié de l'aperçu (devis.id) ; "
                                   "absent quand l'aperçu dit devis null. Obligatoire si ce "
                                   "devis est déjà envoyé."),
+        'confirmer_taille': {'type': 'boolean', 'title': 'Taille confirmée',
+                             'description': "true seulement quand l'aperçu porte "
+                                            "confirmation_taille : la proposition la montre et "
+                                            "l'utilisateur la confirme ; absent sinon."},
+        **REPONSES_DEVIS_EXISTANT,
     }, ('id', 'nouveau_total_ttc')),
     required_permission=CAL_GERER,
     risk=RISK_OUTWARD,
@@ -251,7 +277,7 @@ PUBLIER_DEVIS = AgentAction(
         "totaux affichés (un devis envoyé est corrigé en place). Aucun PDF, "
         "aucun envoi au client."),
     lot=LOT_COPILOTE,
-    objets={'id': 'calepinage', 'devis': 'devis'},
+    objets={'id': 'calepinage', 'devis': 'devis', 'rattacher_devis': 'devis'},
 )
 
 RETENIR = AgentAction(

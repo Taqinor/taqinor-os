@@ -81,6 +81,7 @@ from __future__ import annotations
 
 import copy
 
+from apps.calepinage.services import annee_moyenne as _annee_moyenne
 from apps.calepinage.services import chaine_pertes, etapes
 from apps.calepinage.services.etapes.acces_module import CLE_ACCES_REDUIT
 from apps.calepinage.services.ombrage_chaines import acces_par_module
@@ -186,6 +187,9 @@ def production_module_par_module(contexte, *, chaine=None):
         return _vide(MOTIF_SANS_METEO)
 
     acces_par_pan = _acces_par_pan(contexte)
+    # R3-01 — l'énergie d'un module sur l'ANNÉE MOYENNE de la fenêtre (N posé
+    # par la production, ACAL54) : chaîne, MPPT et onduleur en sont la somme.
+    annees = chaine_pertes.annees_de_la_fenetre(contexte)
     par_module = []
     plans_sans_module = []
     groupes = []
@@ -228,7 +232,8 @@ def production_module_par_module(contexte, *, chaine=None):
                 'chaine': None,
                 'acces_solaire_pct': (None if valeur is None
                                       else round(valeur * 100.0, 3)),
-                'p50_kwh': _arrondi(groupe['kwh']),
+                'p50_kwh': _arrondi(_annee_moyenne.moyenne(groupe['kwh'],
+                                                           annees)),
                 'source': _source(contexte),
             })
 

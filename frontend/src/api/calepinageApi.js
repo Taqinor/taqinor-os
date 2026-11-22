@@ -268,7 +268,9 @@ const calepinageApi = {
     // check_frontend_query_params.py :
     // chemins-requete: /calepinage/calepinages/{id}/rapport-etude.pdf/ /calepinage/calepinages/{id}/rapport-ombrage.pdf/ /calepinage/calepinages/{id}/diagramme-pertes.svg/ /calepinage/calepinages/{id}/diagramme-energie.svg/
     telechargerDocument: (endpoint, params, options) =>
-      api.get(endpoint, { responseType: 'blob', params, ...options }),
+      api.get(endpoint, { responseType: 'blob', params,
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+        ...(options?.timeout ? { timeout: options.timeout } : {}) }),
 
     ...projet,
 

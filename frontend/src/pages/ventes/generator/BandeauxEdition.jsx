@@ -34,8 +34,9 @@ export default function BandeauxEdition({
           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
         >
           <span>
-            Modifié par {conflitVerrou.par || 'un autre utilisateur'}
-            {' '}pendant votre édition — vérifiez avant d'enregistrer.
+            {conflitVerrou.parVous
+              ? "Modifié depuis votre ouverture — par vous, dans un autre onglet ou lors d'un envoi précédent : rechargez pour reprendre la dernière version."
+              : `Modifié par ${conflitVerrou.par || 'un autre utilisateur'} pendant votre édition — vérifiez avant d'enregistrer.`}
           </span>
           <span className="flex gap-2">
             <Button

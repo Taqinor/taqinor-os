@@ -243,6 +243,21 @@ def _troncon_publie(cheminement, longueur, rang):
     }
 
 
+def phrase_de_l_omission(omission):
+    """La phrase publiée d'une omission : tronçon et champ en intitulés (R3-19),
+    jamais la clé technique ; un champ sans intitulé connu n'est pas cité."""
+    from .rapport.champs_lisibles import champ_en_clair
+
+    nommes = []
+    if omission.get('troncon'):
+        nommes.append('tronçon « %s »' % omission['troncon'])
+    champ = champ_en_clair(omission.get('champ'))
+    if champ:
+        nommes.append('champ « %s »' % champ)
+    motif = omission.get('motif') or ''
+    return '%s : %s' % (', '.join(nommes), motif) if nommes else motif
+
+
 def _omission(troncon, champ, motif):
     """Une omission NOMMÉE : le tronçon, le champ, et pourquoi en français."""
     return {'troncon': troncon, 'champ': champ, 'motif': motif}
@@ -335,9 +350,9 @@ def _courant_du_troncon(troncon, contexte):
         "pour le côté « %s »" % (cote or 'inconnu'))
     return (None,
             "le courant qui traverse le tronçon « %s » n'est publié ni par "
-            "le rattachement des chaînes (« courants.%s.ib_a ») ni par la "
-            "conception électrique du calepinage (%s) : section et chute de "
-            "tension OMISES." % (nom, nom, manque))
+            "le rattachement des chaînes à ce tronçon ni par la conception "
+            "électrique du calepinage (%s) : section et chute de tension "
+            "OMISES." % (nom, manque))
 
 
 #: ACAL635/636 — les réglages société (section ``electrique_societe``,
@@ -445,14 +460,14 @@ def _dimensionner_troncon(troncon, contexte):
             nom, 'section_mm2',
             "la section du conducteur de terre ne se dimensionne pas sur la "
             "chute de tension : elle relève de la check-list de terre "
-            "(services/terre.py) et de la norme applicable. La longueur du "
+            "et de la norme applicable. La longueur du "
             "tronçon, elle, reste publiée et entre au métré."))
 
     if cote not in (COTE_DC, COTE_AC):
         return (champs, _omission(
             nom, 'cote',
-            "le tronçon « %s » ne déclare pas son côté (« cote » attendu : "
-            "dc, ac ou terre) : sans lui, ni barème d'ampacité ni cible de "
+            "le tronçon « %s » ne déclare pas son côté (courant continu, "
+            "courant alternatif ou terre) : sans lui, ni barème d'ampacité ni cible de "
             "chute ne sont applicables." % nom))
 
     if spec is None:
@@ -463,14 +478,14 @@ def _dimensionner_troncon(troncon, contexte):
     if courant is None or courant <= 0:
         return (champs, _omission(
             nom, 'ib_a',
-            "le courant d'emploi du tronçon « %s » n'est pas publié "
-            "(« ib_a ») : section et chute de tension OMISES." % nom))
+            "le courant d'emploi du tronçon « %s » n'est pas publié : "
+            "section et chute de tension OMISES." % nom))
     if tension is None or tension <= 0:
         return (champs, _omission(
             nom, 'chute_pct',
-            "la tension de service du tronçon « %s » n'est pas publiée "
-            "(« tension_v ») : une chute de tension en pourcentage n'a pas "
-            "de sens sans elle." % nom))
+            "la tension de service du tronçon « %s » n'est pas publiée : "
+            "une chute de tension en pourcentage n'a pas de sens sans "
+            "elle." % nom))
 
     from core.electrique import cables as noyau
 

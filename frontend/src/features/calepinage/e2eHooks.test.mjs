@@ -34,6 +34,8 @@ export const ALL_HOOKS = [
   'cal-atelier-panneaux',
   'cal-bandeau-lecture-seule',
   'cal-cible-panneaux',
+  'cal-devis-perime',
+  'cal-acces-refuse',
   'cal-lien-photos-calage',
   'cal-lien-variantes',
   // ── BadgePerime.jsx ──
@@ -106,6 +108,7 @@ export const ALL_HOOKS = [
   'cal-devis-ouvrir',
   'cal-devis-revenir',
   'cal-devis-confirmation-taille',
+  'cal-devis-existant',
   'cal-generer-devis',
   'cal-resynchroniser-devis',
   // ── CalepinageList.jsx ──
@@ -805,6 +808,7 @@ export const ALL_HOOKS = [
   'cal-etape-electrique-ecran',
   'cal-electrique-synthese',
   'cal-electrique-section',
+  'cal-electrique-avances',
   // ── documents/EtapeDocuments.jsx (ACAL867) ──
   'cal-etape-documents-ecran',
   'cal-documents-synthese',

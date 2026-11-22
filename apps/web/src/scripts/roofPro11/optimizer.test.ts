@@ -22,7 +22,8 @@ import {
   type EntreeDepartage,
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
-import { fmtMad } from './dom'; // ACAL994
+import { fmt, fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
+import { phraseSurplus } from './affichageErp'; // R2-17
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
 import { panneauxPourCible } from './cibleProduction';
@@ -548,6 +549,38 @@ describe('ACAL777 — factureCarteDe / lireFactureSaisie', () => {
     expect(factureCarteDe(0, undefined)).toBe(0);
     expect(factureCarteDe(0, -5)).toBe(0);
   });
+  // V1-02 — lead à factures été ≠ hiver (moyenne servie 1 350) : en TOIT EN PENTE le solveur lisait le champ
+  // `rp9-bill` (absent en ERP ⇒ 0) et la tuile restait « — / Facture inconnue » ; la facture servie est le repli d'AFFICHAGE.
+  it('V1-02 : toit en pente sans champ facture — la tuile a sa valeur depuis la facture servie, plus « Facture inconnue »', () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+      + '<dd id="rp9-reco-cover"></dd><p id="rp9-reco-band"></p><p id="rp9-reco-why"></p></body>').window.document;
+    g.document = doc;
+    const lancer = (factureServie: number | null) => {
+      const ctx = {
+        closed: true, vertices: rectRing(10, 8), roofType: 'pitched', pitchDeg: 25, facingAzimuthDeg: 200, centroidLat: 33.5,
+        areas: [], activeAreaId: null, opts: { chiffrage: null }, neededAuto: true, neededPanels: 0, pinned: new Set(),
+        pitchedYieldCache: new Map(), pitchedLocks: {}, overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        activeArea: () => null, dom: {}, centroid: [-7, 33],
+      } as unknown as Ctx;
+      const deps = {
+        renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, factureCarte: () => factureServie ?? 0,
+        obstructionRings: vi.fn(() => []), setStatus: vi.fn(),
+      };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolvePitched();
+      return (id: string) => doc.getElementById(id)?.textContent ?? '';
+    };
+    try {
+      const avecFacture = lancer(1350);
+      expect(avecFacture('rp9-reco-cover')).toMatch(/\d+ %/);
+      expect(avecFacture('rp9-reco-why')).not.toContain('Facture inconnue');
+      const sansFacture = lancer(null);
+      expect(sansFacture('rp9-reco-cover')).toBe('—'); // rien inventé sans facture
+      expect(sansFacture('rp9-reco-why')).toContain('Facture inconnue');
+    } finally { g.document = avant; }
+  });
   it('lireFactureSaisie : espaces et virgule décimale lus, vide ou illisible = 0', () => {
     expect(lireFactureSaisie({ value: '1 250,5' })).toBe(1250.5);
     expect(lireFactureSaisie({ value: '' })).toBe(0);
@@ -627,6 +660,198 @@ describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
       expect(economieAffichee(ctx, 'carte', '100 – 200 MAD/an')).toBe('100 – 200 MAD/an');
       expect(opt).toBeDefined();
       expect(ligne(doc)).toBeNull();
+    } finally { fin(); }
+  });
+});
+
+// R2-09 — UN formateur de puissance : virgule française, 2 décimales.
+describe('R2-09 — fmtKwc', () => {
+  it('2,13 kWc, 8,00 kWc, jamais « 2.13 » ni une seule décimale', () => {
+    expect(fmtKwc(2.13)).toBe('2,13');
+    expect(fmtKwc(8)).toBe('8,00');
+    expect(fmtKwc(2.1)).toBe('2,10');
+  });
+});
+
+// R2-05/08/13/16/17 + R3-04/25 — le rendu de la carte de résultat : lit le chiffrage SERVI (atelier ERP, `opts.chiffrage` défini),
+// jamais une valeur servie pour un autre kWc ; le site public (aucun `chiffrage`) garde ses textes d'avant.
+describe('R2-16/17 — carte de résultat : production, bande, estimation, pose au-dessus de la consommation', () => {
+  const GRILLE = { count: 10, kwc: 5.5, panels: [], rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1 };
+  const servi = (over: Record<string, unknown> = {}) => ({
+    kwc: { valeur: 5.5, etat: 'servi' }, production_annuelle_kwh: { valeur: 12345, etat: 'servi' },
+    economie_annee1_mad: { valeur: 7420, etat: 'servi', option: 'sans_batterie' }, ...over,
+  });
+  const monter = (opts: Record<string, unknown>, ctxOver: Record<string, unknown> = {}, cible = 4000) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+      + '<div><dd id="rp9-reco-cover"></dd><dt>Couverture<span>?</span></dt></div><p id="rp9-reco-band"></p><p id="rp9-reco-why"></p>'
+      + '<p id="rp9-need-note"></p><p data-couverture-max>aucune pose</p></body>').window.document;
+    g.document = doc;
+    const ctx = { opts, dom: {}, centroidLat: 33.5, rec: { targetAnnualKwh: cible }, neededPanels: 0, activeArea: () => null, batiments: [], centroid: [-7, 33],
+      environment: [], shadeObstructions: [], obstacles: [], areas: [], pinned: new Set(), ...ctxOver } as unknown as Ctx;
+    const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+      syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    opt.renderConfig({ pack: { origin: [-7, 33], ringENU: [], azimuthDeg: 0, portrait: GRILLE, landscape: GRILLE } as never, grid: GRILLE as never,
+      family: 'south', tiltDeg: 20, azimuthDeg: 0, isReco: true, title: 't', why: 'w', rowId: null });
+    const t = (id: string) => doc.getElementById(id)?.textContent ?? '';
+    return { ctx, opt, doc, t, fin: () => { g.document = avant; } };
+  };
+  const erp = (chiffrage: unknown, ctxOver: Record<string, unknown> = {}, cible = 4000) => monter({ chiffrage }, ctxOver, cible);
+  const MAD = /MAD\/an/g;
+  const prodEstimee = (): number => { const b = erp(null); const v = b.t('rp9-reco-prod'); b.fin(); return Number(v.replace(/\D/g, '')); };
+
+  it('PRODUCTION : la production SERVIE à kWc égal ; l’estimation sinon (jamais une valeur servie pour un autre kWc)', () => {
+    const base = erp(null);
+    const estimation = base.t('rp9-reco-prod');
+    base.fin();
+    expect(estimation).not.toBe(`${fmt(12345)} kWh/an`);
+    const egal = erp(servi());
+    const autreKwc = erp(servi({ kwc: { valeur: 6, etat: 'servi' } }));
+    const nonServi = erp(servi({ production_annuelle_kwh: { valeur: 12345, etat: 'non_servi' } }));
+    const sansKwc = erp(servi({ kwc: null }));
+    try {
+      expect(egal.t('rp9-reco-prod')).toBe(`${fmt(12345)} kWh/an`);
+      expect(autreKwc.t('rp9-reco-prod')).toBe(estimation);
+      expect(nonServi.t('rp9-reco-prod')).toBe(estimation);
+      expect(sansKwc.t('rp9-reco-prod')).toBe(estimation);
+    } finally { egal.fin(); autreKwc.fin(); nonServi.fin(); sansKwc.fin(); }
+  });
+
+  it('BANDE : l’économie SERVIE à l’année 1, l’année 25 sans montant ; non servi : estimation prudente aux deux bouts', () => {
+    const s = erp(servi());
+    const n = erp(servi({ economie_annee1_mad: { valeur: null, etat: 'non_servi' } }));
+    try {
+      const bande = s.t('rp9-reco-band');
+      expect(bande).toContain(`(${fmtMad(7420)}/an) →`);
+      expect(bande.match(MAD)).toHaveLength(1);
+      expect(bande).toMatch(/Année 25 ~[^(]*kWh\/an\.$/); // omise, jamais inventée
+      expect(n.t('rp9-reco-band').match(MAD)).toHaveLength(2);
+      expect(n.t('rp9-reco-band')).toContain('Économies toujours plafonnées à votre facture.');
+    } finally { s.fin(); n.fin(); }
+  });
+
+  it('une seule estimation d’économie en ERP (« ≈ X MAD/an »), la fourchette seulement sur le site public', () => {
+    const e = erp(null);
+    const p = monter({});
+    try {
+      expect(e.t('rp9-reco-savings')).toMatch(/^≈ [^–]+ MAD\/an$/);
+      expect(p.t('rp9-reco-savings')).toMatch(/^[^≈]+ – [^≈]+ MAD\/an$/);
+    } finally { e.fin(); p.fin(); }
+  });
+
+  it('« Pose très au-dessus de la consommation » : au-dessus de 2 × la consommation (deux nombres), pas en dessous, jamais sur le site public', () => {
+    const prod = prodEstimee();
+    const dessus = erp(null, {}, prod / 2.1);
+    const dessous = erp(null, {}, prod / 1.9);
+    const publique = monter({}, {}, prod / 2.1);
+    try {
+      expect(dessus.t('rp9-reco-why')).toContain(`Pose très au-dessus de la consommation : ${fmt(prod)} kWh/an produits pour ${fmt(Math.round(prod / 2.1))} kWh/an consommés.`);
+      expect(dessous.t('rp9-reco-why')).not.toContain('Pose très au-dessus');
+      expect(publique.t('rp9-reco-why')).not.toContain('Pose très au-dessus');
+    } finally { dessus.fin(); dessous.fin(); publique.fin(); }
+    expect(phraseSurplus(200, 100)).toBe(''); // strictement au-dessus de deux fois
+    expect(phraseSurplus(201, 100)).toContain('201 kWh/an produits pour 100 kWh/an consommés');
+    expect(phraseSurplus(500, 0)).toBe('');
+    expect(phraseSurplus(500, null)).toBe('');
+  });
+
+  it('libellé « N posés / M cible » ; « · K au devis » seulement avec un devis lié, vendu, au compte positif', () => {
+    const lie = { devisMode: true, cibleVendue: true, neededPanels: 12, panneauxDevis: 14 };
+    const a = monter({ chiffrage: null, devisLie: true }, lie);
+    const sansDevis = monter({ chiffrage: null }, lie);
+    const nonVendu = monter({ chiffrage: null, devisLie: true }, { ...lie, cibleVendue: false });
+    const sansCompte = monter({ chiffrage: null, devisLie: true }, { ...lie, panneauxDevis: null });
+    const publique = monter({}, { devisMode: true, cibleVendue: true, neededPanels: 12 });
+    try {
+      expect(a.t('rp9-need-note')).toContain('10 posés / 12 cible · 14 au devis — seuls 10 tiennent');
+      for (const x of [sansDevis, nonVendu, sansCompte]) {
+        expect(x.t('rp9-need-note')).toContain('10 posés / 12 cible — seuls');
+        expect(x.t('rp9-need-note')).not.toContain('au devis');
+      }
+      expect(publique.t('rp9-need-note')).toContain('10 posés / 12 au devis — seuls 10 tiennent'); // site public : texte d’avant
+      // R2-13 — le compte relu avec le contexte repeint la note (même rafraîchissement que l’économie)
+      (a.ctx as unknown as { panneauxDevis: number }).panneauxDevis = 16;
+      a.opt.majChiffrage(null);
+      expect(a.t('rp9-need-note')).toContain('· 16 au devis');
+    } finally { for (const x of [a, sansDevis, nonVendu, sansCompte, publique]) x.fin(); }
+  });
+
+  it('renommage de la tuile : « Production ÷ consommation » en ERP seulement ; « Couverture » reste sur le site public', () => {
+    const e = erp(null);
+    const p = monter({});
+    try {
+      expect(e.doc.querySelector('dt')?.firstChild?.nodeValue).toBe('Production ÷ consommation');
+      expect(e.doc.querySelector('dt span')?.textContent).toBe('?'); // l’infobulle voisine reste
+      expect(p.doc.querySelector('dt')?.firstChild?.nodeValue).toBe('Couverture');
+    } finally { e.fin(); p.fin(); }
+  });
+
+  it('SITE PUBLIC figé : mêmes textes et mêmes nombres qu’avant la recette (valeurs relevées sur le code d’avant : ni servi, ni renommage, ni phrase)', () => {
+    const p = monter({}, { devisMode: true, cibleVendue: true, neededPanels: 12 }, 20000);
+    try {
+      expect(p.t('rp9-reco-kwc')).toBe('5,50 kWc');
+      expect(p.t('rp9-reco-prod')).toBe(`${fmt(7150)} kWh/an`);
+      expect(p.t('rp9-reco-savings')).toBe(`${fmtMad(8702)} – ${fmtMad(11603)}/an`);
+      expect(p.t('rp9-reco-cover')).toBe('36 %');
+      expect(p.t('rp9-reco-band')).toBe(`Dans la durée (dégradation ~0,5 %/an) : Année 1 ~${fmt(7150)} kWh/an (${fmtMad(11603)}/an) → Année 25 ~${fmt(6339)} kWh/an (${fmtMad(10288)}/an). Économies toujours plafonnées à votre facture.`);
+      expect(p.t('rp9-reco-why')).toBe('w');
+      expect(p.t('rp9-need-note')).toBe(`10 posés / 12 au devis — seuls 10 tiennent en plein sud (toit ou obstacles).`);
+    } finally { p.fin(); }
+  });
+
+  it('R3-04 : la phrase « aucune pose ne couvre » se masque quand la tuile affichée couvre le besoin (ERP seulement)', () => {
+    const prod = prodEstimee();
+    const couvre = erp(null, {}, prod / 2); // tuile à 200 %
+    const manque = erp(null, {}, prod * 2); // tuile à 50 %
+    const publique = monter({}, {}, prod / 2);
+    try {
+      const masquee = (x: { doc: Document }) => x.doc.querySelector<HTMLElement>('[data-couverture-max]')!.hidden;
+      expect(masquee(couvre)).toBe(true);
+      expect(masquee(manque)).toBe(false);
+      expect(masquee(publique)).toBe(false);
+    } finally { couvre.fin(); manque.fin(); publique.fin(); }
+  });
+});
+
+describe('R3-25 (b) / R3-04 — cartes de variante espacées, phrase « aucune pose ne couvre »', () => {
+  const anneau = (w: number, h: number, lng0 = -7.62, lat0 = 33.59): Array<[number, number]> => {
+    const k = 111320 * Math.cos((lat0 * Math.PI) / 180);
+    return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([x, y]) => [lng0 + x / k, lat0 + y / 111320] as [number, number]);
+  };
+  const balayer = (facture: number, opts: Record<string, unknown> = {}) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><div id="rp9-results"></div></body>').window.document;
+    g.document = doc;
+    const ctx = { opts, dom: {}, centroidLat: 33.59, roofType: 'flat', closed: false, vertices: [], areas: [], pinned: new Set(), v4YieldCache: new Map(),
+      activeArea: () => null, batiments: [], centroid: [-7.62, 33.59], environment: [], shadeObstructions: [], obstacles: [], overhangM: 0 } as unknown as Ctx;
+    const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+      syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => facture, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+    createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).buildMatrix(anneau(22, 15), facture);
+    return { doc, host: doc.getElementById('rp9-variants') as HTMLElement, fin: () => { g.document = avant; } };
+  };
+
+  it('R3-25 : le conteneur est une grille à écart, chaque carte une colonne (titre, chiffres, raison chacun sa ligne)', () => {
+    const { host, fin } = balayer(2500);
+    try {
+      const cartes = Array.from(host.querySelectorAll<HTMLElement>('button.rp9-variant'));
+      expect(cartes.length).toBeGreaterThan(0);
+      expect(host.style.display).toBe('grid');
+      expect(host.style.gap).toBe('0.5rem');
+      for (const c of cartes) {
+        expect(c.style.display).toBe('flex');
+        expect(c.style.flexDirection).toBe('column');
+      }
+    } finally { fin(); }
+  });
+
+  it('R3-04 : une facture énorme (aucune pose ne couvre) porte la phrase du maximum mesuré, repérable pour le masquer', () => {
+    const { host, fin } = balayer(2_000_000);
+    try {
+      const phrase = host.querySelector<HTMLElement>('p[data-couverture-max]');
+      expect(phrase?.textContent).toMatch(/^Aucune pose ne couvre le besoin \(estimation\) : le toit donne au plus \d+ % \(\d+ panneaux\)\.$/);
     } finally { fin(); }
   });
 });

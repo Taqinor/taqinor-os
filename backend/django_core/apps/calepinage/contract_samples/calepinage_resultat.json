@@ -619,7 +619,8 @@
           "source": null,
           "entree": null,
           "reference": null,
-          "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+          "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé.",
+          "motif_lisible": "Le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
         }
       ],
       "ordre": [
@@ -2230,7 +2231,8 @@
           "source": null,
           "entree": null,
           "reference": null,
-          "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+          "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé.",
+          "motif_lisible": "Le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
         }
       ],
       "ordre": [

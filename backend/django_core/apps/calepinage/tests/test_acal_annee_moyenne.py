@@ -23,8 +23,9 @@ from __future__ import annotations
 import copy
 import datetime
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
+from apps.calepinage.services import annee_moyenne
 from apps.calepinage.services import simulation as service
 from apps.calepinage.services.chaine_pertes import (
     CLE_ANNEES_FENETRE, MOTIF_RENDEMENT_INVRAISEMBLABLE,
@@ -79,6 +80,40 @@ def _reglages(annees):
     return reglages
 
 
+#: R3-01 — les blocs dont les énergies sont comparées, et les clés d'énergie
+#: de la maille électrique et de la performance (celles de la cascade :
+#: ``annee_moyenne.CLES_ENERGIE_CASCADE``).
+BLOCS_D_ENERGIE = ('cascade', 'ombrage', 'performance', 'production')
+CLES_ENERGIE_AUTRES = ('p50_kwh', 'irradiation_plan_kwh_m2')
+SOUS_BLOCS_PRODUCTION = ('par_module', 'par_chaine', 'par_mppt',
+                         'par_onduleur', 'hors_chaine')
+
+
+def _energies_publiees(blocs):
+    """``{chemin: valeur}`` de chaque énergie cumulée publiée (nombre)."""
+    trouvees = {}
+    cles = annee_moyenne.CLES_ENERGIE_CASCADE | set(CLES_ENERGIE_AUTRES)
+
+    def parcourir(noeud, chemin):
+        if isinstance(noeud, dict):
+            for cle, valeur in noeud.items():
+                sous = '%s.%s' % (chemin, cle)
+                if cle in cles and isinstance(valeur, (int, float)) \
+                        and not isinstance(valeur, bool):
+                    trouvees[sous] = float(valeur)
+                parcourir(valeur, sous)
+        elif isinstance(noeud, list):
+            for rang, valeur in enumerate(noeud):
+                parcourir(valeur, '%s[%d]' % (chemin, rang))
+
+    for bloc in BLOCS_D_ENERGIE:
+        if bloc != 'production':
+            parcourir(blocs.get(bloc), bloc)
+    for sous in SOUS_BLOCS_PRODUCTION:
+        parcourir(blocs['production'].get(sous), 'production.' + sous)
+    return trouvees
+
+
 def _simuler(annees):
     rendu = simuler_calepinage(
         _Calepinage(layout=copy.deepcopy(LAYOUT)),
@@ -126,6 +161,33 @@ class AnneeMoyenneTest(SimpleTestCase):
         self.assertAlmostEqual(somme,
                                self.trois['production']['total']['p50_kwh'],
                                delta=0.1)
+
+    def test_cascade_et_agregats_sur_l_annee_moyenne(self):
+        # R3-01 — trois années identiques : CHAQUE énergie publiée de la
+        # cascade (étapes, entrées, postes lisibles, irradiation), des
+        # cascades par pan, de la maille électrique et de la performance
+        # vaut celle d'une année (la somme en valait le triple).
+        une, trois = (_energies_publiees(self.une),
+                      _energies_publiees(self.trois))
+        self.assertTrue(any(c.startswith('cascade.etapes') for c in une))
+        for cle in ('production.par_module', 'production.par_onduleur',
+                    'performance.irradiation_plan_kwh_m2',
+                    'ombrage.par_pan', 'cascade.postes_lisibles'):
+            self.assertTrue(any(c.startswith(cle) for c in une), cle)
+        self.assertEqual(sorted(une), sorted(trois))
+        for chemin, valeur in une.items():
+            self.assertAlmostEqual(trois[chemin], valeur,
+                                   delta=max(0.01, abs(valeur) * 1e-6),
+                                   msg=chemin)
+
+    def test_l_arrivee_de_la_cascade_est_le_p50(self):
+        for blocs in (self.une, self.trois):
+            arrivee = annee_moyenne._arrivee_de_la_cascade(blocs['cascade'])
+            self.assertAlmostEqual(
+                arrivee, blocs['production']['total']['p50_kwh'], delta=0.1)
+            self.assertAlmostEqual(
+                blocs['cascade']['postes_lisibles']['arrivee_kwh'], arrivee,
+                delta=0.001)
 
     def test_incertitude_et_projection_partent_de_l_annee_moyenne(self):
         p50 = self.trois['production']['total']['p50_kwh']
@@ -257,3 +319,148 @@ class BlocsAvalTest(SimpleTestCase):
                                    une['energie'][cle], delta=0.1, msg=cle)
         self.assertEqual(trois['taux_autoconsommation'],
                          une['taux_autoconsommation'])
+
+
+def _blocs_de_publication(annees, kwh=(1000.0, 900.0)):
+    """Des blocs publiés minimaux : une étape PARTAGÉE (copie superficielle
+    de la cascade de la somme) entre la cascade et la cascade du pan."""
+    entree = {'distribution': {'energie_totale_kwh': kwh[0],
+                               'classes': [{'energie_kwh': kwh[0],
+                                            'part_pct': 100.0}]}}
+    # Le pourcentage se DÉDUIT des deux énergies (jamais un littéral de perte
+    # en dur : garde CAL238) ; l'ombrage du pan est une donnée de fabrication.
+    pct = 100.0 * (kwh[0] - kwh[1]) / kwh[0]
+    ombrage_pan_pct = 2.0
+    etape = {'etape': 'onduleur', 'motif_omission': '', 'kwh_avant': kwh[0],
+             'kwh_apres': kwh[1], 'perte_kwh': kwh[0] - kwh[1],
+             'perte_pct': pct, 'entree': entree}
+    return {
+        'production': {'total': {'annees_fenetre': annees,
+                                 'p50_kwh': kwh[1] / annees}},
+        'cascade': {'etapes': [etape], 'total_pct': pct,
+                    'irradiation_incidente_kwh_m2': 2000.0,
+                    'postes_lisibles': {'depart_kwh': kwh[0],
+                                        'arrivee_kwh': kwh[1]}},
+        'ombrage': {'par_pan': [{'pan': 'A', 'perte_ombrage_pct': ombrage_pan_pct,
+                                 'cascade': {'etapes': [dict(etape)]}}]},
+        'performance': {'irradiation_plan_kwh_m2': 2000.0, 'pr': 0.8},
+        'meteo': {'mode': 'pluriannuel'},
+        'simulation': {'calcule_le': '2026-11-22T01:00:00Z'},
+    }
+
+
+class PublicationAnneeMoyenneTest(SimpleTestCase):
+    """R3-01 — la division à la publication, sans chaîne."""
+
+    def test_annee_type_identique_au_bit(self):
+        blocs = _blocs_de_publication(1)
+        avant = copy.deepcopy(blocs)
+        self.assertIs(annee_moyenne.publier_a_l_annee_moyenne(blocs), blocs)
+        self.assertEqual(blocs, avant)
+        self.assertIsNone(annee_moyenne.etat_des_energies(blocs))
+
+    def test_chaque_energie_divisee_une_fois_le_reste_intact(self):
+        blocs = annee_moyenne.publier_a_l_annee_moyenne(
+            _blocs_de_publication(4))
+        etape = blocs['cascade']['etapes'][0]
+        self.assertEqual((etape['kwh_avant'], etape['kwh_apres'],
+                          etape['perte_kwh']), (250.0, 225.0, 25.0))
+        # L'entrée est PARTAGÉE avec la cascade du pan : divisée une fois.
+        self.assertEqual(etape['entree']['distribution'],
+                         {'energie_totale_kwh': 250.0,
+                          'classes': [{'energie_kwh': 250.0,
+                                       'part_pct': 100.0}]})
+        pan = blocs['ombrage']['par_pan'][0]['cascade']['etapes'][0]
+        self.assertEqual((pan['kwh_avant'], pan['kwh_apres']), (250.0, 225.0))
+        self.assertEqual(blocs['cascade']['postes_lisibles'],
+                         {'depart_kwh': 250.0, 'arrivee_kwh': 225.0})
+        self.assertEqual(blocs['cascade']['irradiation_incidente_kwh_m2'],
+                         500.0)
+        self.assertEqual(blocs['performance'],
+                         {'irradiation_plan_kwh_m2': 500.0, 'pr': 0.8})
+        # Pourcentages, ratios et le N lui-même : tels quels.
+        self.assertEqual((etape['perte_pct'], blocs['cascade']['total_pct'],
+                          blocs['ombrage']['par_pan'][0]['perte_ombrage_pct'],
+                          blocs['production']['total']['annees_fenetre']),
+                         (10.0, 10.0, 2.0, 4))
+
+    def test_etat_des_energies_rangees(self):
+        # Rangé AVANT la correction : l'arrivée vaut N × P50.
+        etat = annee_moyenne.etat_des_energies(_blocs_de_publication(4))
+        self.assertEqual(etat, {
+            'annees': 4, 'mode': 'pluriannuel',
+            'calcule_le': '2026-11-22T01:00:00Z', 'p50_kwh': 225.0,
+            'arrivee_kwh': 900.0, 'fenetre_entiere': True})
+        juste = annee_moyenne.publier_a_l_annee_moyenne(
+            _blocs_de_publication(4))
+        self.assertIs(annee_moyenne.etat_des_energies(juste)[
+            'fenetre_entiere'], False)
+        sans_cascade = dict(_blocs_de_publication(4), cascade=None)
+        self.assertIsNone(annee_moyenne.etat_des_energies(sans_cascade)[
+            'fenetre_entiere'])
+
+    def test_sans_dry_run_refuse_avant_toute_lecture(self):
+        import io
+
+        from django.core.management import CommandError, call_command
+
+        with self.assertRaises(CommandError) as refus:
+            call_command('acal_dryrun_annee_moyenne', stdout=io.StringIO())
+        self.assertIn('ajoutez --dry-run', str(refus.exception))
+
+
+class CommandeAnneeMoyenneTest(TestCase):
+    """Q2 — la liste des documents remis, en lecture seule."""
+
+    def setUp(self):
+        from django.contrib.contenttypes.models import ContentType
+
+        from authentication.models import Company
+
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Client
+        from apps.records.models import Attachment
+
+        self.company = Company.objects.create(nom='Fenetre Co',
+                                              slug='fenetre-co-r301')
+        client = Client.objects.create(company=self.company, nom='Client')
+        self.faux = Calepinage.objects.create(
+            company=self.company, client=client, titre='Pluriannuel',
+            resultat=_blocs_de_publication(10))
+        Calepinage.objects.create(company=self.company, client=client,
+                                  titre='Année type',
+                                  resultat=_blocs_de_publication(1))
+        Attachment.objects.create(
+            company=self.company,
+            content_type=ContentType.objects.get_for_model(Calepinage),
+            object_id=self.faux.pk, file_key='cle/rapport',
+            filename='rapport_etude__v001__fr.pdf')
+
+    def test_dry_run_liste_sans_ecrire(self):
+        import io
+
+        from django.core.management import call_command
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        sortie = io.StringIO()
+        with CaptureQueriesContext(connection) as requetes:
+            call_command('acal_dryrun_annee_moyenne', '--dry-run',
+                         '--company', 'fenetre-co-r301', stdout=sortie)
+        ecritures = [r['sql'] for r in requetes.captured_queries
+                     if r['sql'].lstrip().upper().startswith(
+                         ('INSERT', 'UPDATE', 'DELETE'))]
+        self.assertEqual(ecritures, [])
+        lignes = sortie.getvalue().splitlines()
+        self.assertEqual(lignes[0],
+                         'DRY-RUN R3-01 (lecture seule) — aucune écriture')
+        remis = [ligne for ligne in lignes
+                 if ligne.startswith('fenetre-co-r301 | %s | ' % self.faux.pk)]
+        self.assertEqual(len(remis), 1)
+        self.assertIn('| rapport_etude__v001__fr.pdf |', remis[0])
+        self.assertTrue(remis[0].endswith(
+            '| pluriannuel | 10 | fenêtre entière | 2026-11-22T01:00:00Z'),
+            remis[0])
+        self.assertIn('1 document(s) remis sur 1 calepinage(s) '
+                      'pluriannuel(s) ; 0 calepinage(s) pluriannuel(s) sans '
+                      'document remis.', lignes)

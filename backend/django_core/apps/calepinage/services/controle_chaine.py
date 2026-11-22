@@ -17,12 +17,15 @@ SOURCE = 'fiches module et onduleur'
 
 
 class ControleInvalide(ValueError):
-    """Un refus NOMMÉ (400), ou un produit introuvable (404)."""
+    """Un refus NOMMÉ (400), un produit introuvable (404), ou — ``etat`` — une
+    règle qui LIE plusieurs valeurs (froid ≥ chaud) que le schéma ne dit pas :
+    409 (ENF11, comme ``limites_livraison.PlageInvalide``)."""
 
-    def __init__(self, champ, message, *, introuvable=False):
+    def __init__(self, champ, message, *, introuvable=False, etat=False):
         super().__init__(message)
         self.champ = champ
         self.introuvable = introuvable
+        self.etat = etat
 
 
 def _volts(valeur):
@@ -85,14 +88,59 @@ def _controler_chaine(module_specs, onduleur_specs, nombre_modules,
             'longueur_max': fenetre.longueur_max, 'manquantes': []}
 
 
+#: Les champs du corps, tels que l'écran (``ControleChaine.jsx``) les intitule :
+#: un refus les nomme ainsi, jamais par leur clé technique.
+INTITULES = {
+    'module_produit': 'Module', 'onduleur_produit': 'Onduleur',
+    'nombre_modules': 'Nombre de modules dans la chaîne',
+    'temperature_min_c': 'Température la plus froide (°C)',
+    'temperature_max_c': 'Température la plus chaude (°C)',
+}
+
+
+def _plage(champ):
+    """``(minimum, maximum)`` publiés pour la température ``champ`` : la plage
+    du calcul complet (``champs_entree.corps_entree_resserre``), non recopiée."""
+    from ..champs_entree import corps_entree_resserre
+
+    forme = corps_entree_resserre()['properties'][champ]
+    return forme['minimum'], forme['maximum']
+
+
 def _temperature(corps, champ):
     from .valeurs import nombre
 
     valeur = nombre(corps.get(champ))
     if valeur is None:
         raise ControleInvalide(champ, "« %s » est obligatoire : saisissez la "
-                               "température en °C." % champ)
+                               "température en °C." % INTITULES[champ])
     return valeur
+
+
+def _temperatures(corps):
+    """``(froid, chaud)`` saisies : obligatoires, dans l'ordre et dans la plage
+    du calcul complet — la MÊME règle (``electrique._saisie``), importée.
+    Ne fait que REFUSER de plus : aucun cas ne devient « conforme »."""
+    from . import electrique as _electrique
+
+    froid = _temperature(corps, 'temperature_min_c')
+    chaud = _temperature(corps, 'temperature_max_c')
+    try:
+        _electrique._saisie({'temperature_min_c': froid,
+                             'temperature_max_c': chaud})
+    except _electrique.TemperaturesInvalides as refus:
+        # Les deux températures sont présentes ici : le seul refus possible est
+        # « froid ≥ chaud », une règle de paire (état, 409).
+        raise ControleInvalide(refus.champ, str(refus), etat=True)
+    for champ, valeur in (('temperature_min_c', froid),
+                          ('temperature_max_c', chaud)):
+        mini, maxi = _plage(champ)
+        if not mini <= valeur <= maxi:
+            raise ControleInvalide(
+                champ, "« %s » (%s °C) doit être comprise entre %d et %d °C."
+                % (INTITULES[champ], '{:g}'.format(valeur).replace('.', ','),
+                   mini, maxi))
+    return froid, chaud
 
 
 def controle_chaine(company, corps):
@@ -100,13 +148,13 @@ def controle_chaine(company, corps):
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
 
     corps = corps if isinstance(corps, dict) else {}
-    tmin = _temperature(corps, 'temperature_min_c')
-    tmax = _temperature(corps, 'temperature_max_c')
+    tmin, tmax = _temperatures(corps)
     nombre_modules = corps.get('nombre_modules')
     if isinstance(nombre_modules, bool) or not isinstance(
             nombre_modules, int) or nombre_modules < 1:
-        raise ControleInvalide('nombre_modules', "« nombre_modules » doit "
-                               "être un entier strictement positif.")
+        raise ControleInvalide('nombre_modules', "« %s » doit être un entier "
+                               "strictement positif."
+                               % INTITULES['nombre_modules'])
     fiches = {}
     for champ in ('module_produit', 'onduleur_produit'):
         identifiant = str(corps.get(champ) if not isinstance(
@@ -114,7 +162,8 @@ def controle_chaine(company, corps):
         if not (identifiant.isascii() and identifiant.isdigit()
                 and len(identifiant) < 19):
             raise ControleInvalide(champ, "« %s » attend l'identifiant "
-                                   "numérique d'un produit." % champ)
+                                   "numérique d'un produit."
+                                   % INTITULES[champ])
         produit = get_produit_scoped(company, int(identifiant))
         if produit is None:
             raise ControleInvalide(champ, "Produit introuvable dans le "

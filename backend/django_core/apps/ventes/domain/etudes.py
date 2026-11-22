@@ -654,6 +654,8 @@ CLES_DERIVEES_NON_COPIEES = (
     # copie qui les purge purge aussi leur marque (et sa trace de backfill).
     'production_source',
     'production_source_backfill',
+    # R4-02 — une copie / V2 est un document neuf : l'étiquette juste.
+    'regles_source_conso_historique',
     'etude_horaire',
     CLE_ETUDE_HORAIRE_SANS,
     'dimensionnement',

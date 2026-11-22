@@ -6,9 +6,11 @@
 // revente MT (ou mention BT), O&M, omissions avec leur motif.
 // AUCUN calcul ici : chaque chiffre est celui du serveur ; seuls des formats
 // d'affichage. Les saisies (TVA récupérable, taux d'actualisation + source)
-// sont tapées telles quelles (`step="any"`, jamais corrigées).
+// sont tapées telles quelles (`step="any"`, jamais corrigées) ; le taux est un
+// `ChampDecimal` (R1-09 : « 7,5 » se lit 7,5 sur tout navigateur).
 import { Input, Label } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
+import ChampDecimal from './ChampDecimal'
 // CIQ224 — le volet INTERNE (offre de financement, offre CSE), vendeur seulement.
 import VoletInterneEconomieCi from './VoletInterneEconomieCi'
 
@@ -42,8 +44,8 @@ function Saisies({ eco, setEcoChamp }) {
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="gen-eco-taux">Taux d'actualisation déclaré par le client (%)</Label>
-        <Input id="gen-eco-taux" type="number" min="0" step="any" value={taux.valeur_pct ?? ''}
-               onChange={(ev) => setEcoChamp('taux_actualisation_client', { ...taux, valeur_pct: ev.target.value })} />
+        <ChampDecimal id="gen-eco-taux" value={taux.valeur_pct ?? ''}
+               onValeur={(v) => setEcoChamp('taux_actualisation_client', { ...taux, valeur_pct: v })} />
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="gen-eco-taux-source">Source du taux</Label>

@@ -47,7 +47,9 @@ class SelectorCalepinageTest(TestCase):
             company=self.company, client=self.client_a, devis=self.devis,
             titre='Villa Anfa', layout_hash='a' * 64)
         bloc = calepinage_du_devis(self.devis)
-        self.assertEqual(set(bloc), {'id', 'titre', 'layout_hash', 'a_jour'})
+        # R2-12 — ``reference`` (CAL-AAMM-NNNN) est ADDITIVE (contrat
+        # ``calepinage_du_devis.json``, lue par ``BlocCalepinageDevis.jsx``).
+        self.assertEqual(set(bloc), {'id', 'titre', 'reference', 'layout_hash', 'a_jour'})
         self.assertEqual(bloc['titre'], 'Villa Anfa')
         self.assertTrue(bloc['a_jour'])
 
@@ -109,7 +111,9 @@ class SerializerCalepinageTest(TestCase):
             company=self.company, client=self.client_a, devis=self.devis,
             titre='Villa Anfa', layout_hash='a' * 64)
         bloc = self._serialiser()['calepinage']
-        self.assertEqual(set(bloc), {'id', 'titre', 'layout_hash', 'a_jour'})
+        # R2-12 — ``reference`` (CAL-AAMM-NNNN) est ADDITIVE (contrat
+        # ``calepinage_du_devis.json``, lue par ``BlocCalepinageDevis.jsx``).
+        self.assertEqual(set(bloc), {'id', 'titre', 'reference', 'layout_hash', 'a_jour'})
         self.assertEqual(bloc['titre'], 'Villa Anfa')
         self.assertTrue(bloc['a_jour'])
 

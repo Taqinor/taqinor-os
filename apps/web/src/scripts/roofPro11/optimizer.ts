@@ -102,7 +102,8 @@ import {
   unifiedShadeEntries,
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
-import { $, celluleEconomies, fmt, fmtMad } from './dom';
+import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
+import { compteDevis, phraseSurplus, peindreBande, productionServie, texteSurDevis } from './affichageErp'; // R2-13/16/17
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -225,9 +226,11 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
 }
 
 /** ACAL547 — aucune ligne du balayage n'atteint le besoin : le maximum MESURÉ, dit en toutes lettres. */
-export function phraseCouvertureMax(result: MatrixV6Result | null | undefined): string | null {
-  const rows = (result?.rows ?? []).filter((r) => Number.isFinite(r.pctOfTarget));
-  if (!rows.length || rows.some((r) => r.pctOfTarget >= 100)) return null;
+export function phraseCouvertureMax(result: MatrixV6Result | null | undefined, pctTuile?: number): string | null {
+  // R2-16 — sans cible positive (facture inconnue) `pctOfTarget` vaut 0 : aucune phrase (« au plus 0 % » ne dit rien de vrai).
+  const rows = (result?.rows ?? []).filter((r) => Number.isFinite(r.pctOfTarget) && r.pctOfTarget > 0);
+  // R3-04 — jamais « aucune pose ne couvre » à côté d'une tuile qui couvre (`pctTuile` ≥ 100).
+  if (!rows.length || rows.some((r) => r.pctOfTarget >= 100) || (pctTuile ?? 0) >= 100) return null;
   const max = rows.reduce((a, r) => (r.pctOfTarget > a.pctOfTarget ? r : a));
   return `Aucune pose ne couvre le besoin (estimation) : le toit donne au plus ${Math.round(max.pctOfTarget)} % (${max.placedCount} panneaux).`;
 }
@@ -596,8 +599,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  devis lié) n'a rien vendu du tout : le besoin nul y redevient « aucune cible », et on
    *  montre ce qui tient, comme en mode lead. Devis/AO ne passent jamais ce drapeau. */
   // ACAL470 — énergie/panneau de la carte affichée + ce qui tient (lus par `cibleProduction`).
-  let derniereCarte: { count: number; annualKwh: number } | null = null;
+  // R3-04 — aussi la couverture (`pct`) de la tuile affichée ; R2-16 — et `factureInconnue`, pour repeindre la bande « Année 1 ».
+  let derniereCarte: (CardData & { factureInconnue: boolean }) | null = null;
   let dernierFit = 0;
+  let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null } | null = null; // R2-13
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -613,8 +618,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const motifPanActif = (pack: PackResult, grid: PanelGrid, placed: number, retraitM: number | null, module?: Panel2Module): MotifPanVide | null =>
     noterMotifPanVide(ctx.activeAreaId, ctx.neededPanels > 0 && placed === 0
       ? causeDuPanVide(mesurerPanVide(pack, grid, retraitM, cotesDePavage(module), filtrageSeuil(grid.panels))) : null);
+  /** R2-13/22/23 — l'atelier ERP (`opts.chiffrage` défini, `null` compris) dit « cible » pour le nombre MODIFIABLE et ne dit
+   *  « au devis » que pour un devis lié, avec le compte réel des panneaux de CE devis. Site public : libellé d'avant. */
+  const modeErp = (): boolean => ctx.opts?.chiffrage !== undefined;
+  const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis);
   function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null) {
     dernierFit = fitCount;
+    derniereNote = { fit: fitCount, famille: familyLabel, motif };
     const active = ctx.neededPanels > 0;
     // L2 — en mode devis, le champ reste ACTIONNABLE même à 0 : aucune facture n'existe
     // dans cet écran pour dériver un besoin automatiquement (le champ facture est retiré
@@ -645,14 +655,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (placed < ctx.neededPanels) {
       const cause = motif ? ` — ${motif.message}` : ' (toit ou obstacles)'; // ACAL549
       needNoteEl.textContent = ctx.devisMode
-        ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — seuls ${fmt(placed)} tiennent en ${familyLabel}${cause}.`
+        ? `${surDevis(placed)} — seuls ${fmt(placed)} tiennent en ${familyLabel}${cause}.`
         : `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel}${cause}. On pose ${fmt(placed)}.`;
     } else if (fitCount > ctx.neededPanels) {
       needNoteEl.textContent = ctx.devisMode
-        ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — il reste de la place sur le toit, laissée libre.`
+        ? `${surDevis(placed)} — il reste de la place sur le toit, laissée libre.`
         : `${fmt(ctx.neededPanels)} couvrent votre facture (+10 %) — il reste de la place sur le toit, laissée libre.`;
     } else {
-      needNoteEl.textContent = ctx.devisMode ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis.` : `On pose ${fmt(placed)} panneaux.`;
+      needNoteEl.textContent = ctx.devisMode ? `${surDevis(placed)}.` : `On pose ${fmt(placed)} panneaux.`;
     }
   }
 
@@ -1035,9 +1045,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     liveResolveFlat();
   }
 
+  /** V1-02 — la cible (kWh/an) d'une carte : celle du solveur si positive, sinon la facture du lead servie (ACAL777), sinon 0. */
+  const cibleDeCarte = (cibleSolveur: number): number => (cibleSolveur > 0 ? cibleSolveur : billToAnnualKwh(factureCarte()));
+
   /** ACAL852 — la phrase de couverture : « ≈ N % de la facture », ou « facture inconnue » quand la cible est absente ou nulle. */
   const couverture = (target: number, cov: number) =>
-    (target > 0 ? ` ≈ ${cov} % de la facture` : '. Facture inconnue — saisissez-la pour voir la couverture');
+    (target > 0 ? (modeErp() ? ` — production ÷ consommation : ${cov} %` : ` ≈ ${cov} % de la facture`) : '. Facture inconnue — saisissez-la pour voir la couverture');
 
   /** ACAL994 — d'où vient le chiffre des économies : servi ⇒ « au dernier enregistrement » (+ l'option servie) ;
    *  non servi ou hors ligne (`chiffrage` null) ⇒ « estimation — recalculée à l'enregistrement ». Site public : aucune ligne. */
@@ -1060,18 +1073,28 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   }
 
   /** ACAL994 — après « Enregistrer » : le bloc relu remplace le précédent ; la carte et le Total sont repeints à l'instant. */
-  function majChiffrage(chiffrage: ChiffrageAtelier | null) {
+  function majChiffrage(chiffrage: ChiffrageAtelier | null, panneauxDevis?: number | null) {
+    if (panneauxDevis !== undefined) ctx.panneauxDevis = compteDevis(panneauxDevis); // R2-13 — le compte du devis relu avec le contexte
     const e = etatEco(ctx);
     e.chiffrage = chiffrage;
     const cibles = [['carte', $('rp9-reco-savings')], ['total', ctx.dom.areasTotalSavingsEl]] as const;
     for (const [id, el] of cibles) if (el && e.estimes[id] !== undefined) el.textContent = economieAffichee(ctx, id, e.estimes[id]);
     etiquetteEconomie();
+    if (derniereCarte) paintBande(derniereCarte, derniereCarte.factureInconnue); // R2-16 — la bande « Année 1 » suit l'économie relue
+    if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif); // R2-13 — « au devis » relu avec le contexte
+  }
+
+  /** La bande « Année 1 → Année 25 ». ERP : UNE économie (la servie, sinon l'estimation prudente) ; l'année 25 ne
+   *  recopie jamais un montant calculé sur une autre base que le servi. Site public : fourchette d'avant, inchangée. */
+  function paintBande(d: CardData, factureInconnue: boolean) {
+    peindreBande($('rp9-reco-band'), d, d.target ?? ctx.prodTarget, modeErp(), etatEco(ctx).chiffrage, factureInconnue);
   }
 
   function paintCard(d: CardData, sourceLabel?: string) {
-    derniereCarte = { count: d.count, annualKwh: d.annualKwh };
+    for (const p of Array.from(document.querySelectorAll<HTMLElement>('[data-couverture-max]'))) p.hidden = modeErp() && d.pct >= 100; // R3-04
     // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
     const factureInconnue = !((d.target ?? ctx.prodTarget) > 0) && !(d.savingsHigh > 0);
+    derniereCarte = { ...d, factureInconnue };
     const set = (id: string, v: string) => {
       const el = $(id);
       if (el) el.textContent = v;
@@ -1086,17 +1109,22 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const choisi = moduleDuPanActif();
     const kwc = choisi ? kwcDuPan(d.count, choisi) : d.kwc;
     const watt = (choisi ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc;
-    set('rp9-reco-kwc', kwc == null ? '—' : `${kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`);
+    set('rp9-reco-kwc', kwc == null ? '—' : `${fmtKwc(kwc)} kWc`);
     set('rp9-reco-panels', watt ? `${fmt(d.count)} × ${fmt(watt)} W` : `${fmt(d.count)} panneaux`);
-    set('rp9-reco-prod', d.annualKwh > 0 ? `${fmt(Math.round(d.annualKwh))} kWh/an` : '—');
+    // R2-17 — à kWc égal, la production SERVIE (celle du PDF) remplace l'estimation du navigateur.
+    const prodAffichee = modeErp() ? productionServie(etatEco(ctx).chiffrage, kwc) : null;
+    set('rp9-reco-prod', prodAffichee != null ? `${fmt(Math.round(prodAffichee))} kWh/an` : d.annualKwh > 0 ? `${fmt(Math.round(d.annualKwh))} kWh/an` : '—');
+    renommerDt($('rp9-reco-cover'), modeErp() ? 'Production ÷ consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF)
     set('rp9-reco-cover', d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
-    set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`));
+    // R2-08 — l'ERP donne UNE estimation (la borne prudente) : la fourchette 75-100 % n'encadrait rien du calcul du serveur.
+    set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : modeErp() ? `≈ ${fmtMad(d.savingsLow)}/an` : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`));
     etiquetteEconomie();
     // ACAL778 — la note « chiffre du devis » seulement si un devis est lié (option `devisLie`, jamais `cibleVendue`).
     const noteEco = $('rp9-reco-savings-note');
     if (noteEco) noteEco.hidden = !ctx.opts?.devisLie;
     const why = $('rp9-reco-why');
-    if (why) why.textContent = d.why + (sourceLabel ? ` ${sourceLabel}` : '');
+    // R2-17 — une pose très au-dessus de la consommation est DITE (les deux nombres), sans rien bloquer.
+    if (why) why.textContent = d.why + (sourceLabel ? ` ${sourceLabel}` : '') + (modeErp() ? phraseSurplus(d.annualKwh, d.target) : '');
     // ACAL894 — la provenance de la carte, lue par le bandeau « Estimation rapide » de l'ERP.
     if (why) why.dataset.sourceProd = sourceLabel ?? '';
     const bif = $('rp9-reco-bifacial');
@@ -1104,23 +1132,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // W94 — fourchette honnête Année 1 ↔ Année 25 : la production baisse sous la
     // dégradation linéaire des panneaux ((1 − deg)^24 en année 25) et les économies
     // restent plafonnées à la facture À CHAQUE horizon (annualSavingsMad bill-capé).
-    const band = $('rp9-reco-band');
-    if (band) {
-      if (d.annualKwh > 0) {
-        const fac25 = degradationFactor(LIFETIME_YEARS);
-        const kwh25 = d.annualKwh * fac25;
-        const target = d.target ?? ctx.prodTarget;
-        const sav25 =
-          target > 0 ? annualSavingsMad(kwh25, target) : { low: d.savingsLow * fac25, high: d.savingsHigh * fac25 };
-        const degPct = Math.round(ANNUAL_DEGRADATION * 1000) / 10; // 0,5 %
-        band.textContent =
-          `Dans la durée (dégradation ~${degPct.toLocaleString('fr-FR')} %/an) : ` +
-          `Année 1 ~${fmt(Math.round(d.annualKwh))} kWh/an${factureInconnue ? '' : ` (${fmtMad(d.savingsHigh)}/an)`} → ` +
-          `Année ${LIFETIME_YEARS} ~${fmt(Math.round(kwh25))} kWh/an${factureInconnue ? '.' : ` (${fmtMad(sav25.high)}/an). Économies toujours plafonnées à votre facture.`}`;
-      } else {
-        band.textContent = '';
-      }
-    }
+    paintBande(d, factureInconnue);
     // WJ22 — couche de pertes climatiques HONNÊTES (opt-in) : rend la production/les
     // économies en FOURCHETTE (été côtier chaud/poussiéreux = borne basse ↔ chiffre nu =
     // borne haute), au lieu d'un chiffre unique sur-estimé de ~15–20 % l'été. Les
@@ -1196,10 +1208,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     }
     host.hidden = false;
     host.innerHTML = '';
+    host.style.cssText = 'display:grid;gap:0.5rem'; // R3-25 — une carte par ligne, espacées
     for (const c of cards) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'rp9-variant';
+      btn.style.cssText = 'display:flex;flex-direction:column;gap:0.125rem;text-align:left'; // R3-25 — titre, chiffres, raison : chacun sa ligne
       btn.dataset.variant = c.id;
       btn.setAttribute('aria-pressed', String(variantIsCurrent(c)));
       btn.title = c.reason;
@@ -1207,7 +1221,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       title.textContent = c.title;
       const figures = document.createElement('span');
       figures.className = 'rp9-variant-figures';
-      figures.textContent = `${fmt(c.count)} panneaux · ${c.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
+      figures.textContent = `${fmt(c.count)} panneaux · ${fmtKwc(c.kwc)} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
       const why = document.createElement('span');
       why.className = 'rp9-variant-why';
       why.textContent = c.reason;
@@ -1215,8 +1229,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       btn.addEventListener('click', () => applyVariant(c));
       host.appendChild(btn);
     }
-    const max = phraseCouvertureMax(ctx.matrixResult); // ACAL547
-    if (max) host.insertAdjacentHTML('beforeend', `<p class="rp9-variant-why" role="note">${max}</p>`);
+    const max = phraseCouvertureMax(ctx.matrixResult, modeErp() ? derniereCarte?.pct : 0); // ACAL547 + R3-04
+    if (max) host.insertAdjacentHTML('beforeend', `<p class="rp9-variant-why" role="note" data-couverture-max>${max}</p>`);
   }
 
   /**
@@ -1319,12 +1333,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // V5 : production de vérité = PVGIS au (pente, face) réels, pose 'building'.
     // Disponible → on remplace la valeur table par le chiffre PVGIS et on recalcule
     // couverture + économies de façon cohérente ; sinon repli table (« estimé »).
-    const target = ctx.pitchedRec.targetAnnualKwh;
+    const targetSolveur = ctx.pitchedRec.targetAnnualKwh;
+    const target = cibleDeCarte(targetSolveur); // V1-02 — la facture du lead, repli d'AFFICHAGE (toit en pente aussi)
     const usePvgis = ctx.pitchedPvgisPerKwc != null && ctx.pitchedRec.totalKwc > 0 && !plane.northFacing;
     const f = facteurDerateAnnuel(ctx); // ACAL356 — 1 ⇒ chiffres inchangés
     const annualKwh = (usePvgis ? ctx.pitchedRec.totalKwc * (ctx.pitchedPvgisPerKwc as number) : ctx.pitchedRec.totalAnnualKwh) * f;
     const pct = target > 0 ? (annualKwh / target) * 100 : 0;
-    const savings = usePvgis || f < 1 ? annualSavingsMad(annualKwh, target, tariffForCity(undefined)) : { low: ctx.pitchedRec.savingsLow, high: ctx.pitchedRec.savingsHigh };
+    const savings = usePvgis || f < 1 || (targetSolveur <= 0 && target > 0) ? annualSavingsMad(annualKwh, target, tariffForCity(undefined)) : { low: ctx.pitchedRec.savingsLow, high: ctx.pitchedRec.savingsHigh };
     paintCard(
       {
         title: `Toit en pente ~${Math.round(fp.pitchDeg)}° · face ${facingLabel(ctx.facingAzimuthDeg)}`,
@@ -1401,8 +1416,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     renderScene(flushToPack(w.pack), flushGridToPanelGrid(w.grid), w.pack.pitchDeg, 'south', w.placedCount, true);
     // ACAL356 — dérate ombrage × horizon ; économies recalculées du kWh dératé (1 ⇒ chiffres du solveur).
     const f = facteurDerateAnnuel(ctx);
-    const eco = f < 1 ? annualSavingsMad(w.annualKwh * f, res.target) : { low: w.savingsLow, high: w.savingsHigh };
-    const cov = Math.round(w.pctOfTarget * f);
+    // V1-02 — cible du solveur nulle (champ facture absent en ERP) : la facture du lead sert à l'AFFICHAGE seulement.
+    const cible = cibleDeCarte(res.target);
+    const repli = !(res.target > 0) && cible > 0;
+    const pctCarte = repli ? (w.annualKwh * f / cible) * 100 : w.pctOfTarget * f;
+    const eco = f < 1 || repli ? annualSavingsMad(w.annualKwh * f, cible) : { low: w.savingsLow, high: w.savingsHigh };
+    const cov = Math.round(pctCarte);
     const tiltTxt = `${Math.round(ctx.pitchDeg)}°`;
     // W74 — pan orienté nord (production quasi nulle) ET pan non viable (trop petit /
     // contraint à néant) ont chacun leur message honnête, distincts d'un faux gagnant.
@@ -1416,8 +1435,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         : ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0
           ? `Ce devis ne porte aucun panneau — aucune pose proposée sur ce pan. Fixez un nombre (facture ou saisie) pour calepiner.`
           : isReco
-            ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel})${couverture(res.target, cov)}. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
-            : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux${couverture(res.target, cov)}. Les badges « Recommandé » montrent la pose/marge optimale.`;
+            ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel})${couverture(cible, cov)}. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
+            : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux${couverture(cible, cov)}. Les badges « Recommandé » montrent la pose/marge optimale.`;
     paintCard(
       {
         title: `Toit en pente ~${tiltTxt} · face ${facingLabel(ctx.facingAzimuthDeg)} · ${w.layoutLabel}`,
@@ -1425,14 +1444,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         count: w.placedCount,
         kwc: w.kwc,
         annualKwh: w.annualKwh * f,
-        pct: w.pctOfTarget * f,
+        pct: pctCarte,
         savingsLow: eco.low,
         savingsHigh: eco.high,
         why,
         family: 'south', // pose affleurante mono-orientation → pas d'écrêtage E-O
         flush: true, // ACAL975 — pose affleurante : pas de gain bifacial
         tiltDeg: w.pack.pitchDeg,
-        target: ctx.pitchedRec ? ctx.pitchedRec.targetAnnualKwh : undefined,
+        target: ctx.pitchedRec ? cibleDeCarte(ctx.pitchedRec.targetAnnualKwh) : undefined,
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS · pose affleurante « building »)' : '(production estimée · table committée — PVGIS indisponible)',
     );

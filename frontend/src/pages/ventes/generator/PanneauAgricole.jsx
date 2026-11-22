@@ -21,9 +21,12 @@
 //
 // AUCUNE LOGIQUE ICI : l'état et les gestes arrivent en props, tout le calcul
 // reste dans l'écran porteur. Le balisage sort à l'octet — mêmes `id`, mêmes
-// `placeholder`, mêmes classes, même ordre DOM. Chaque `<input type="number">`
-// garde `step="any"` (règle fondateur : aucun champ ne snappe jamais) et le
-// `noValidate` est resté sur le formulaire porteur.
+// `placeholder`, mêmes classes, même ordre DOM. Chaque champ nombre garde
+// `step="any"` (règle fondateur : aucun champ ne snappe jamais) et le
+// `noValidate` est resté sur le formulaire porteur. R1-09/R1-10 (22/11) : ce
+// sont des `ChampDecimal` — « 50,5 » m se lit 50,5 (un Chrome en anglais en
+// faisait 505).
+import ChampDecimal from './ChampDecimal'
 import {
   Card, CardContent, Input, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -44,9 +47,9 @@ function ChampNombre({ id, label, valeur, onChange, placeholder }) {
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type="number" min="0" step="any"
+      <ChampDecimal id={id}
              placeholder={placeholder} value={valeur ?? ''}
-             onChange={e => onChange(e.target.value)} />
+             onValeur={onChange} />
     </div>
   )
 }
@@ -481,8 +484,8 @@ export default function PanneauAgricole({
                          valeur={plaque.kw} onChange={maj('plaque.kw')} />
             <div className="grid gap-1.5">
               <Label htmlFor="gen-pompecv">Plaque : puissance (CV)</Label>
-              <Input id="gen-pompecv" type="number" min="0" step="any"
-                     value={pompeCv} onChange={e => setPompeCv(e.target.value)} />
+              <ChampDecimal id="gen-pompecv"
+                     value={pompeCv} onValeur={setPompeCv} />
             </div>
             <ChampNombre id="gen-plaque-tension" label="Plaque : tension (V)"
                          valeur={plaque.tension_v} onChange={maj('plaque.tension_v')} />
@@ -594,17 +597,17 @@ export default function PanneauAgricole({
             <Label htmlFor="gen-farm-static">
               Niveau statique de l'eau (m) — optionnel
             </Label>
-            <Input id="gen-farm-static" type="number" min="0" step="any"
+            <ChampDecimal id="gen-farm-static"
                    placeholder="ex: 40" value={farmHmtStatic}
-                   onChange={e => setFarmHmtStatic(e.target.value)} />
+                   onValeur={setFarmHmtStatic} />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="gen-farm-drawdown">
               Rabattement en pompage (m) — optionnel
             </Label>
-            <Input id="gen-farm-drawdown" type="number" min="0" step="any"
+            <ChampDecimal id="gen-farm-drawdown"
                    placeholder="ex: 15" value={farmHmtDrawdown}
-                   onChange={e => setFarmHmtDrawdown(e.target.value)} />
+                   onValeur={setFarmHmtDrawdown} />
           </div>
           <ChampNombre id="gen-source-tubage" label="Diamètre de tubage (mm)"
                        valeur={source.diametre_tubage_mm} onChange={maj('source.diametre_tubage_mm')} />
@@ -620,9 +623,9 @@ export default function PanneauAgricole({
             <Label htmlFor="gen-hmt">
               Hauteur de pompage (HMT, m){hmtServeur?.source === 'calculee' && pompeHmt !== '' ? ' — modifiée par vous' : ''}
             </Label>
-            <Input id="gen-hmt" type="number" min="0" step="any"
+            <ChampDecimal id="gen-hmt"
                    placeholder="ex: 120" value={pompeHmt}
-                   onChange={e => setPompeHmt(e.target.value)} />
+                   onValeur={setPompeHmt} />
             {hmtServeur?.valeur_m != null && (
               <p className="text-xs text-muted-foreground" data-testid="hmt-serveur">
                 Hauteur retenue pour le calcul : {fmtNum(hmtServeur.valeur_m)} m
@@ -632,23 +635,23 @@ export default function PanneauAgricole({
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="gen-debit">Débit souhaité (m³/h)</Label>
-            <Input id="gen-debit" type="number" min="0" step="any"
+            <ChampDecimal id="gen-debit"
                    placeholder="ex: 30" value={pompeDebit}
-                   onChange={e => setPompeDebit(e.target.value)} />
+                   onValeur={setPompeDebit} />
           </div>
           {/* AGNR26 — « Heures de pompage effectives / jour » retiré : plus rien
               ne le lisait (production heure par heure côté serveur). */}
           <div className="grid gap-1.5">
             <Label htmlFor="gen-profondeur">Profondeur forage (m) — optionnel</Label>
-            <Input id="gen-profondeur" type="number" min="0" step="any"
+            <ChampDecimal id="gen-profondeur"
                    value={pompeProfondeur}
-                   onChange={e => setPompeProfondeur(e.target.value)} />
+                   onValeur={setPompeProfondeur} />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="gen-distance">Distance champ → coffret (m)</Label>
-            <Input id="gen-distance" type="number" min="0" step="any"
+            <ChampDecimal id="gen-distance"
                    value={pompeDistance}
-                   onChange={e => setPompeDistance(e.target.value)} />
+                   onValeur={setPompeDistance} />
           </div>
         </div>
         <label className="mt-3 flex items-center gap-2 text-sm">
@@ -705,9 +708,9 @@ export default function PanneauAgricole({
               <Label htmlFor="gen-farm-surface">
                 Surface irriguée (ha)
               </Label>
-              <Input id="gen-farm-surface" type="number" min="0" step="any"
+              <ChampDecimal id="gen-farm-surface"
                      placeholder="ex: 5" value={farmSurfaceHa}
-                     onChange={e => setFarmSurfaceHa(e.target.value)} />
+                     onValeur={setFarmSurfaceHa} />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="gen-farm-crop">Culture</Label>

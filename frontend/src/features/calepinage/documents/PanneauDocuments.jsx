@@ -8,7 +8,9 @@ import { Button, Card, Spinner } from '../../../ui'
 import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
 import { useModeExpert } from '../atelier/modeExpert'
 import EntreeFichierJson from '../commun/EntreeFichierJson'
-import { refusServeur } from '../commun/refusServeur'
+import {
+  MINUTES_DE_DELAI, OPTIONS_TELECHARGEMENT, erreurDeTelechargement,
+} from './telechargement'
 import Pourquoi from '../commun/Pourquoi'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
 
@@ -68,66 +70,6 @@ import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
    pertes serveur) restent HORS inventaire —
    aucune des deux n'était gouvernée par `sorties()`, ni par `documents()`.
    ========================================================================== */
-
-/** Une erreur serveur -> `[{champ, message}]`, triée pour un affichage
-    STABLE. Couvre les DEUX formes vues sur ce module : un objet
-    `{champ: message}` et une LISTE de chaînes. Jamais un message générique
-    tant qu'un détail existe. ERR-ACON-ERREUR-OBJET-AFFICHEE — l'objet passe
-    par LE décodeur du module (`commun/refusServeur`) : l'enveloppe `error` du
-    handler global n'est jamais un champ (elle s'affichait « [object Object] »)
-    et `detail` est le motif, pas un champ. */
-function detailsErreur(donnee) {
-  if (Array.isArray(donnee)) {
-    return donnee.map((message, index) => ({ champ: String(index + 1), message: String(message) }))
-  }
-  if (donnee && typeof donnee === 'object') {
-    const { message, champs } = refusServeur({ response: { data: donnee } })
-    const lignes = Object.entries(champs)
-      .map(([champ, texte]) => ({ champ, message: texte }))
-      .sort((a, b) => a.champ.localeCompare(b.champ))
-    if (message && !Object.values(champs).includes(message)) {
-      lignes.unshift({ champ: '', message })
-    }
-    if (lignes.length) return lignes
-  }
-  return [{ champ: '', message: 'Le serveur a refusé la demande, sans détail lisible.' }]
-}
-
-/* ACAL768 — le délai d'un téléchargement de document : le serveur attend lui-
-   même 120 s (gunicorn `--timeout 120`, docker-compose.yml ; nginx
-   `proxy_read_timeout 120s`, backend/nginx/nginx.conf) ; la coupure générale
-   à 20 s de `api/axios.js` tuait le rapport d'étude PDF avant. */
-export const DELAI_TELECHARGEMENT_MS = 120000
-const MINUTES_DE_DELAI = DELAI_TELECHARGEMENT_MS / 60000
-const OPTIONS_TELECHARGEMENT = { timeout: DELAI_TELECHARGEMENT_MS, suppressErrorToast: true }
-
-/** Le corps JSON d'une erreur axios dont la réponse est un BLOB
-    (`responseType: 'blob'` — c'est le cas de tout téléchargement de ce
-    panneau) : le corps d'erreur voyage lui aussi en blob, il faut le relire
-    en texte avant de le parser. Sans réponse du tout (réseau coupé), un motif
-    générique — jamais un plantage muet. */
-async function erreurDeTelechargement(erreur, { delai = false } = {}) {
-  // ACAL769 — un dépassement du délai de téléchargement dit quoi faire (la
-  // durée vient de `DELAI_TELECHARGEMENT_MS`) ; aucun toast global (l'appel
-  // porte `suppressErrorToast`).
-  if (delai && erreur?.code === 'ECONNABORTED') {
-    return [{
-      champ: '',
-      message: `Le serveur n'a pas fini de préparer ce document en ${MINUTES_DE_DELAI} minutes. `
-        + "Réessayez dans une minute ; si cela se répète, signalez-le en donnant l'heure.",
-    }]
-  }
-  const donnees = erreur?.response?.data
-  if (typeof Blob !== 'undefined' && donnees instanceof Blob) {
-    try {
-      return detailsErreur(JSON.parse(await donnees.text()))
-    } catch {
-      return [{ champ: '', message: 'Réponse du serveur illisible.' }]
-    }
-  }
-  if (donnees) return detailsErreur(donnees)
-  return [{ champ: '', message: 'Le serveur est resté injoignable.' }]
-}
 
 /** La liste des motifs/signalements d'une carte — jamais en tête de panneau. */
 function ErreursSortie({ erreurs }) {
@@ -761,22 +703,26 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
     setEnCoursSortie(code)
     try {
       if (code === 'pack_technique') {
-        const reponse = await calepinageApi.calepinages.composerPackTechnique(id)
+        const reponse = await calepinageApi.calepinages.composerPackTechnique(id, OPTIONS_TELECHARGEMENT)
         setResultatPack(reponse.data)
       } else if (code === 'kml') {
-        const reponse = await calepinageApi.calepinages.exportKml(id)
+        const reponse = await calepinageApi.calepinages.exportKml(id, OPTIONS_TELECHARGEMENT)
         downloadBlob(reponse.data, filenameFromResponse(reponse, code))
       } else if (code === 'planche_png') {
-        const reponse = await calepinageApi.calepinages.telechargerSortie(sortie.endpoint)
+        const reponse = await calepinageApi.calepinages.telechargerSortie(
+          sortie.endpoint, undefined, OPTIONS_TELECHARGEMENT)
         const png = await svgTexteEnPng(await reponse.data.text())
         downloadBlob(png, `planche-calepinage-${id}.png`)
       } else {
-        const reponse = await calepinageApi.calepinages.telechargerSortie(sortie.endpoint)
+        const reponse = await calepinageApi.calepinages.telechargerSortie(
+          sortie.endpoint, undefined, OPTIONS_TELECHARGEMENT)
         downloadBlob(reponse.data, filenameFromResponse(reponse, code))
       }
     } catch (erreur) {
-      const details = erreur?.response ? await erreurDeTelechargement(erreur)
-        : [{ champ: '', message: erreur?.message || 'Opération impossible sur ce navigateur.' }]
+      // R3-20 : plus jamais `erreur.message` brut (« timeout of 20000ms exceeded »).
+      const details = (erreur?.response || erreur?.code === 'ECONNABORTED')
+        ? await erreurDeTelechargement(erreur, { delai: true })
+        : [{ champ: '', message: 'Opération impossible sur ce navigateur.' }]
       setErreursSorties((precedent) => ({ ...precedent, [code]: details }))
     } finally {
       setEnCoursSortie(null)

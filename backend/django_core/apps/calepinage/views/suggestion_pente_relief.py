@@ -30,7 +30,8 @@ from rest_framework.response import Response
 from core.champs_stricts import ChaineStricte, non_blanc
 
 from ..permissions import PeutGererCalepinage
-from ..services.altimetre_fichier import ReliefIllisible, altimetre_depuis_geotiff
+from ..services.altimetre_fichier import (
+    MAX_OCTETS_RELIEF, ReliefIllisible, altimetre_depuis_geotiff)
 from ..services.layout import (
     DocumentModifie, LayoutRefuse, _relire_sous_verrou, empreinte_document,
     enregistrer_layout,
@@ -101,6 +102,9 @@ def suggestions_pente_relief(self, request, pk=None):
         return Response(DocumentModifie(courante).corps(),
                         status=status.HTTP_409_CONFLICT)
     fichier = request.FILES.get(CHAMP_RELIEF)
+    if fichier is not None and fichier.size > MAX_OCTETS_RELIEF:
+        return _refus(CHAMP_RELIEF, "Le relief est trop volumineux (maximum "
+                      f"{MAX_OCTETS_RELIEF // (1024 * 1024)} Mo).")
     octets = fichier.read() if fichier is not None else b''
     if not octets:
         return _refus(CHAMP_RELIEF, SANS_RELIEF)

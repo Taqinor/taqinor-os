@@ -58,6 +58,19 @@ describe('AGNR13 — jamais une facture mensuelle d’exemple', () => {
     expect(etude.factures_mensuelles_reelles).toEqual(valeurs)
   }, 60000)
 
+  // R1-15 (a) + R1-09/R1-10 (recette 22/11) — un mois d'EXEMPLE le dit sous la
+  // case ; un montant tapé à la française (« 1 250,5 ») part lu juste.
+  it('mois d’exemple étiquetés « exemple » ; « 1 250,5 » tapé part 1250.5', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, { devis: DEVIS_REGISTRE })
+    await attendreStable(vue.container, act)
+    expect(document.querySelectorAll('[data-testid^="mois-exemple-"]')).toHaveLength(12)
+    for (let i = 0; i < 12; i += 1) await taper(cases()[i], '1 250,5')
+    expect(document.querySelectorAll('[data-testid^="mois-exemple-"]')).toHaveLength(0)
+    expect(cases()[0].value).toBe('1 250,5')
+    const etude = await enregistrer(vue)
+    expect(etude.factures_mensuelles_reelles).toEqual(Array(12).fill(1250.5))
+  }, 60000)
+
   it('vider une case ne la rend pas « tapée »', async () => {
     const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, { devis: DEVIS_REGISTRE })
     await attendreStable(vue.container, act)

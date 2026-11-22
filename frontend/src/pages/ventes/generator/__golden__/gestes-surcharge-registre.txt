@@ -58,17 +58,29 @@ Facture Hiver moy. (MAD/mois)
 Facture Été moy. (MAD/mois)
 Estimer 12 mois
 Jan
+exemple
 Fév
+exemple
 Mar
+exemple
 Avr
+exemple
 Mai
+exemple
 Juin
+exemple
 Juil
+exemple
 Août
+exemple
 Sep
+exemple
 Oct
+exemple
 Nov
+exemple
 Déc
+exemple
 Facture réelle du client (recommandé)
 affine les économies avec le barème par tranche du distributeur
 Distributeur

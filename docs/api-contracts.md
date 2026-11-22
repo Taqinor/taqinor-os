@@ -577,13 +577,13 @@
 - frontend/src/api/ventesApi.js :: envoyerEmailFacture -> /api/django/ventes/factures/<>/envoyer-email
     detail:inconnu, email_log_id:inconnu, to_email:inconnu
 - frontend/src/api/ventesApi.js :: etatPdfDevis -> /api/django/ventes/devis/<>/etat-pdf
-    date:inconnu, devis:inconnu, erreur:inconnu, fichier_pdf:inconnu, statut:inconnu
+    date:inconnu, devis:inconnu, erreur:inconnu, fichier_pdf:booleen, statut:inconnu
 - frontend/src/api/ventesApi.js :: etudeCiPreview -> /api/django/ventes/etude-ci/preview
     alertes:inconnu, bilan:inconnu, composition:inconnu, devis_auto:objet, economie_ci:inconnu, entrees_resolues:inconnu, feuille_consommation_retenue:inconnu, hypotheses:inconnu, methode:inconnu, niveau_donnees:inconnu, option_avec:inconnu, production:inconnu, profil_charge:inconnu, regime_8221_suggere:inconnu, sous_reserve_visite:inconnu, taille:inconnu, version_moteur:inconnu
 - frontend/src/api/ventesApi.js :: exportStatus -> /api/django/ventes/export/status/<>
     detail:texte, download_url:inconnu, filename:inconnu, status:texte
 - frontend/src/api/ventesApi.js :: genererPdfDevis -> /api/django/ventes/devis/<>/generer-pdf
-    detail:texte, task_id:inconnu
+    demande:inconnu, detail:texte, task_id:inconnu
 - frontend/src/api/ventesApi.js :: genererPdfFacture -> /api/django/ventes/factures/<>/generer-pdf
     detail:texte, task_id:inconnu
 - frontend/src/api/ventesApi.js :: getCashFlowForecast -> /api/django/ventes/insights/cash-flow
@@ -605,7 +605,7 @@
 - frontend/src/api/ventesApi.js :: partagePdfDevis -> /api/django/ventes/devis/<>/pdf-partage
     devis_statut:inconnu
 - frontend/src/api/ventesApi.js :: patchEtudeParams -> /api/django/ventes/devis/<>/etude-params
-    code:inconnu, detail:inconnu, etude_params:inconnu, field:texte, revision_possible:inconnu, statut:inconnu, updated_at:inconnu, updated_by_nom:inconnu
+    code:inconnu, detail:inconnu, etude_params:inconnu, field:texte, par_vous:inconnu, revision_possible:inconnu, statut:inconnu, updated_at:inconnu, updated_by_nom:inconnu
 - frontend/src/api/ventesApi.js :: pdfAPartagerDevis -> /api/django/ventes/devis/<>/pdf-partage
     devis_statut:inconnu
 - frontend/src/api/ventesApi.js :: postEtudeHorairePreview -> /api/django/ventes/etude-horaire/preview

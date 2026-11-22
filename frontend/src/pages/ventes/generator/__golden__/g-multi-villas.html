@@ -247,11 +247,11 @@
 <div class="mt-3 grid items-end gap-4 sm:grid-cols-3">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-hiver">Facture Hiver moy. (MAD/mois)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-hiver" min="0" step="any" placeholder="ex: 600" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-hiver" placeholder="ex: 600" type="text" value="">
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ete">Facture Été moy. (MAD/mois)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ete" min="0" step="any" placeholder="ex: 400" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-ete" placeholder="ex: 400" type="text" value="">
 </div>
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="button">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-column lucide-bar-chart-3" aria-hidden="true">
@@ -268,51 +268,63 @@
 <div class="gen-monthly-grid">
 <div class="gen-month">
 <span class="gen-month-label">Jan</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="500">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="500">
+<span class="text-xs text-warning" data-testid="mois-exemple-0">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Fév</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="450">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="450">
+<span class="text-xs text-warning" data-testid="mois-exemple-1">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Mar</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="400">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="400">
+<span class="text-xs text-warning" data-testid="mois-exemple-2">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Avr</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="380">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="380">
+<span class="text-xs text-warning" data-testid="mois-exemple-3">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Mai</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="360">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="360">
+<span class="text-xs text-warning" data-testid="mois-exemple-4">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Juin</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="500">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="500">
+<span class="text-xs text-warning" data-testid="mois-exemple-5">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Juil</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="700">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="700">
+<span class="text-xs text-warning" data-testid="mois-exemple-6">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Août</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="680">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="680">
+<span class="text-xs text-warning" data-testid="mois-exemple-7">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Sep</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="580">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="580">
+<span class="text-xs text-warning" data-testid="mois-exemple-8">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Oct</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="480">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="480">
+<span class="text-xs text-warning" data-testid="mois-exemple-9">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Nov</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="430">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="430">
+<span class="text-xs text-warning" data-testid="mois-exemple-10">exemple</span>
 </div>
 <div class="gen-month">
 <span class="gen-month-label">Déc</span>
-<input min="0" step="any" class="form-control form-control-sm" type="number" value="480">
+<input inputmode="decimal" step="any" autocomplete="off" class="form-control form-control-sm" type="text" value="480">
+<span class="text-xs text-warning" data-testid="mois-exemple-11">exemple</span>
 </div>
 </div>
 <div class="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 sm:p-4">
@@ -353,7 +365,7 @@
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-realbill">Facture réelle (MAD/mois)</label>
 <div class="flex gap-2">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0 flex-1" id="gen-realbill" min="0" step="any" placeholder="ex: 850" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0 flex-1" inputmode="decimal" step="any" autocomplete="off" id="gen-realbill" placeholder="ex: 850" type="text" value="">
 <button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left w-24">
 <span style="pointer-events: none;">MAD</span>
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
@@ -387,16 +399,16 @@
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-kwc-cible">Puissance cible (kWc)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-kwc-cible" min="0" step="any" placeholder="ex: 3" data-testid="gen-kwc-cible" type="number" value="12.87">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-kwc-cible" placeholder="ex: 3" data-testid="gen-kwc-cible" type="text" value="12.87">
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-nbpanneaux">Nombre de panneaux<span class="ml-0.5 text-destructive" aria-hidden="true">*</span>
 </label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-nbpanneaux" min="1" max="500" step="any" placeholder="ex: 14" type="number" value="18">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-nbpanneaux" placeholder="ex: 14" type="text" value="18">
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-panelw">Puissance Panneau (W)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-panelw" min="100" max="1000" step="any" type="number" value="715">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-panelw" type="text" value="715">
 </div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Puissance PV (kWp) — calculée</label>
@@ -666,14 +678,14 @@
 </select>
 </td>
 <td data-label="Qté">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" data-role="line-qty" type="text" value="1">
 </td>
 <td data-label="Prix unit. TTC">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="1440">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" type="text" value="1440">
 <div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 1 200 MAD</div>
 </td>
 <td data-label="TVA %">
-<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" inputmode="decimal" step="any" autocomplete="off" type="text" value="20">
 </td>
 <td class="line-total" data-label="Total TTC">1 440 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 1 200 MAD</div>
 </td>
@@ -737,14 +749,14 @@
 </select>
 </td>
 <td data-label="Qté">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="8">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" data-role="line-qty" type="text" value="8">
 </td>
 <td data-label="Prix unit. TTC">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="1320">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" type="text" value="1320">
 <div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 1 200 MAD</div>
 </td>
 <td data-label="TVA %">
-<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="10">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" inputmode="decimal" step="any" autocomplete="off" type="text" value="10">
 </td>
 <td class="line-total" data-label="Total TTC">10 560 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 9 600 MAD</div>
 </td>
@@ -808,14 +820,14 @@
 </select>
 </td>
 <td data-label="Qté">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" data-role="line-qty" type="text" value="1">
 </td>
 <td data-label="Prix unit. TTC">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="10800">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" type="text" value="10800">
 <div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 9 000 MAD</div>
 </td>
 <td data-label="TVA %">
-<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" inputmode="decimal" step="any" autocomplete="off" type="text" value="20">
 </td>
 <td class="line-total" data-label="Total TTC">10 800 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 9 000 MAD</div>
 </td>
@@ -879,14 +891,14 @@
 </select>
 </td>
 <td data-label="Qté">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="10">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" data-role="line-qty" type="text" value="10">
 </td>
 <td data-label="Prix unit. TTC">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="1320">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" type="text" value="1320">
 <div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 1 200 MAD</div>
 </td>
 <td data-label="TVA %">
-<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="10">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" inputmode="decimal" step="any" autocomplete="off" type="text" value="10">
 </td>
 <td class="line-total" data-label="Total TTC">13 200 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 12 000 MAD</div>
 </td>
@@ -950,14 +962,14 @@
 </select>
 </td>
 <td data-label="Qté">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" data-role="line-qty" type="number" value="1">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" data-role="line-qty" type="text" value="1">
 </td>
 <td data-label="Prix unit. TTC">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" min="0" step="any" type="number" value="10800">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right" inputmode="decimal" step="any" autocomplete="off" type="text" value="10800">
 <div class="mt-0.5 text-xs text-muted-foreground ta-right">HT : 9 000 MAD</div>
 </td>
 <td data-label="TVA %">
-<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" min="0" step="any" type="number" value="20">
+<input class="flex rounded-md border border-input bg-card shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 sm:text-sm px-[var(--control-px)] py-0 h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground" inputmode="decimal" step="any" autocomplete="off" type="text" value="20">
 </td>
 <td class="line-total" data-label="Total TTC">10 800 MAD<div class="mt-0.5 text-xs text-muted-foreground">HT : 9 000 MAD</div>
 </td>
@@ -1013,7 +1025,7 @@
 <div class="gen-totals-row gen-discount-row">
 <div class="gen-total-item gen-total-inline gen-tier-2">
 <span class="gen-total-label">Réduction</span>
-<input min="0" max="100" step="any" class="gen-discount-input" type="number" value="0">
+<input inputmode="decimal" step="any" autocomplete="off" class="gen-discount-input" type="text" value="0">
 <span style="font-weight: 700;">%</span>
 </div>
 <div class="gen-total-item gen-total-inline gen-tier-2" data-testid="rail-tva-par-ligne">
@@ -1027,7 +1039,7 @@
 </div>
 <div class="gen-total-item gen-total-inline">
 <span class="gen-total-label">Prix cible / kWc</span>
-<input min="0" step="any" class="gen-discount-input" style="width: 100px;" placeholder="ex: 9000" type="number" value="">
+<input inputmode="decimal" step="any" autocomplete="off" class="gen-discount-input" style="width: 100px;" placeholder="ex: 9000" type="text" value="">
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" type="button">Appliquer via remise</button>
 </div>
 <div class="gen-total-item">
@@ -1165,11 +1177,11 @@
 <div class="grid gap-3 sm:grid-cols-3">
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-penaliteTaux">Pénalités de retard (% par semaine)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-penaliteTaux" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-penaliteTaux" type="text" value="">
 </div>
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-penalitePlafond">Plafond des pénalités (%)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-penalitePlafond" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-penalitePlafond" type="text" value="">
 </div>
 </div>
 <div class="grid gap-3 sm:grid-cols-3">
@@ -1179,11 +1191,11 @@
 </div>
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-cautionMontant">Caution : montant ou %</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-cautionMontant" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-cautionMontant" type="text" value="">
 </div>
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-cautionPlafond">Caution : plafond</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-cautionPlafond" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-cautionPlafond" type="text" value="">
 </div>
 </div>
 <div class="grid gap-3 sm:grid-cols-3">
@@ -1201,7 +1213,7 @@
 <div class="grid gap-1">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-cond-acompte-financeur">Acompte client (%)</label>
 <div class="flex gap-2">
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-cond-acompte-financeur" min="0" step="any" type="number" value="">
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" inputmode="decimal" step="any" autocomplete="off" id="gen-cond-acompte-financeur" type="text" value="">
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" type="button" data-testid="btn-echeancier-financeur">Échéancier organisme financeur</button>
 </div>
 </div>
@@ -1297,7 +1309,7 @@
 </div>
 <div class="border-t border-border pt-3">
 <div class="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
-<div class="text-sm text-foreground">12,87 kWc · 18 panneaux</div>
+<div class="text-sm text-foreground" data-testid="gen-rail-systeme">12,87 kWc · 18 panneaux</div>
 </div>
 <div class="flex flex-col gap-2 pt-1">
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" type="submit" form="gen-form">

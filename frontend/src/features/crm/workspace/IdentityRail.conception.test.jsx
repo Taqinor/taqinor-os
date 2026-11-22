@@ -36,16 +36,35 @@ const makeState = (over = {}) => initState({
 })
 
 describe('PV22 — chip conception 3D (IdentityRail)', () => {
-  it('ACAL273 — kWc VENDUS sans calepinage ouvert, CONÇUS avec', () => {
+  it('ACAL273 / R2-11 — « vendus » seulement si le devis est accepté, sinon « devisés », « conçus » sans devis', () => {
     const { unmount } = render(
       <IdentityRail
-        state={makeState({ conception: { kwc: 5.5, image_url: null, calepinage: null } })}
+        state={makeState({
+          conception: {
+            kwc: 5.5, image_url: null, calepinage: null,
+            devis: { id: 4, reference: 'DV-4', statut: 'accepte' },
+          },
+        })}
         onAction={vi.fn()}
         users={[]}
       />,
     )
     expect(screen.getByTestId('lw-chip-conception')).toHaveTextContent('5,50 kWc vendus')
     unmount()
+    const brouillon = render(
+      <IdentityRail
+        state={makeState({
+          conception: {
+            kwc: 5.5, image_url: null, calepinage: { id: 12, statut: 'brouillon' },
+            devis: { id: 4, reference: 'DV-4', statut: 'brouillon' },
+          },
+        })}
+        onAction={vi.fn()}
+        users={[]}
+      />,
+    )
+    expect(screen.getByTestId('lw-chip-conception')).toHaveTextContent('5,50 kWc devisés')
+    brouillon.unmount()
     render(
       <IdentityRail
         state={makeState({
@@ -56,6 +75,31 @@ describe('PV22 — chip conception 3D (IdentityRail)', () => {
       />,
     )
     expect(screen.getByTestId('lw-chip-conception')).toHaveTextContent('8,52 kWc conçus')
+  })
+
+  it('R2-10 — la fiche montre le calepinage (référence, un clic) et le devis, devis ou non', () => {
+    render(
+      <IdentityRail
+        state={makeState({
+          conception: {
+            kwc: 5.5, image_url: null,
+            calepinage: { id: 25, statut: 'brouillon', reference: 'CAL-2611-0025' },
+            devis: { id: 71, reference: 'DV-71', statut: 'envoye' },
+          },
+          devis: [{ id: 71, reference: 'DV-71', statut: 'envoye', total_ttc: 1000 }],
+        })}
+        onAction={vi.fn()}
+        users={[]}
+      />,
+    )
+    expect(screen.getByTestId('lw-lien-calepinage')).toHaveTextContent('CAL-2611-0025')
+    expect(screen.getByTestId('lw-lien-calepinage')).toHaveAttribute('href', '/calepinage/25')
+    expect(screen.getByTestId('lw-lien-devis')).toHaveAttribute('href', '/ventes/devis?devis=71')
+  })
+
+  it('lead sans calepinage : aucune ligne Calepinage', () => {
+    render(<IdentityRail state={makeState()} onAction={vi.fn()} users={[]} />)
+    expect(screen.queryByTestId('lw-lien-calepinage')).toBeNull()
   })
 
   it('affiche les kWc conçus et la vignette du toit servis par la fiche', () => {

@@ -4,6 +4,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { Button, Card, Spinner } from '../../../ui'
+import { OPTIONS_TELECHARGEMENT, erreurDeTelechargement } from '../documents/telechargement'
 
 /* ============================================================================
    CALX360 — L'ONGLET « FIXATION » DE L'ATELIER.
@@ -58,7 +59,8 @@ function resumerRefus(donnee) {
   return 'Le serveur a refusé le téléchargement.'
 }
 
-async function erreurDeTelechargement(erreur) {
+async function motifDuTelechargement(erreur) {
+  if (erreur?.code === 'ECONNABORTED') return (await erreurDeTelechargement(erreur, { delai: true }))[0].message
   const donnees = erreur?.response?.data
   if (typeof Blob !== 'undefined' && donnees instanceof Blob) {
     try {
@@ -167,11 +169,11 @@ export default function Fixation({ calepinageId: idPropose = null }) {
     setErreurTelechargement(null)
     setTelechargementEnCours(true)
     try {
-      const reponse = await calepinageApi.calepinages.telechargerSortie(entreeClasseur.endpoint)
+      const reponse = await calepinageApi.calepinages.telechargerSortie(entreeClasseur.endpoint, undefined, OPTIONS_TELECHARGEMENT)
       downloadBlob(reponse.data,
         filenameFromResponse(reponse, `fixation-calepinage-${calepinageId}.xlsx`))
     } catch (erreur) {
-      setErreurTelechargement(await erreurDeTelechargement(erreur))
+      setErreurTelechargement(await motifDuTelechargement(erreur))
     } finally {
       setTelechargementEnCours(false)
     }

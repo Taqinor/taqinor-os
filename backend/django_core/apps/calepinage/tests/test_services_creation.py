@@ -110,6 +110,23 @@ class PorteDevisTest(BaseCreation):
             obtenir_ou_creer_pour_devis(None, self.company)
         self.assertEqual(capture.exception.champ, 'devis')
 
+    def test_devis_rapide_dessine_en_mode_devis_cree_un_calepinage_complet(self):
+        """Critique 22/11 (soupçon 3, ACAL1006) — un devis automatique dont le
+        toit a été dessiné à la main en mode devis donne un calepinage
+        « complet » ; jamais dessiné ⇒ « rapide » (mutant : ignorer le
+        document du devis ⇒ « rapide » ⇒ rouge)."""
+        Devis.objects.filter(pk=self.devis.pk).update(
+            etude_params={'origine_conception': 'rapide'})
+        dessine, _ = obtenir_ou_creer_pour_devis(self.devis.pk, self.company)
+        self.assertEqual(dessine.etat_conception, 'complet')
+        nu = Devis.objects.create(
+            company=self.company, client=self.client_a,
+            lead=Lead.objects.create(company=self.company, nom='Toiture Ain Diab'),
+            reference='DEV-202609-0003')
+        Devis.objects.filter(pk=nu.pk).update(etude_params={'origine_conception': 'rapide'})
+        jamais, _ = obtenir_ou_creer_pour_devis(nu.pk, self.company)
+        self.assertEqual(jamais.etat_conception, 'rapide')
+
 
 class PorteLeadTest(BaseCreation):
     def test_cree_sans_devis(self):

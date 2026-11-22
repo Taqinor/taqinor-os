@@ -25,6 +25,7 @@ import html
 import json
 import pathlib
 import re
+import textwrap
 from unittest import mock
 
 from html import escape
@@ -33,7 +34,8 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.rangees import rangees_du_pan
 from apps.calepinage.services.planche import (
-    CONTENU_IMPLANTATION, CONTENU_POSE, CONTENU_TOITURE, GRIS_MODULE, PlanDePoseRefuse,
+    CARACTERES_PAR_LIGNE_LEGENDE, CONTENU_IMPLANTATION, CONTENU_POSE, CONTENU_TOITURE, GRIS_MODULE,
+    PlanDePoseRefuse,
     geometrie_de_planche,
     _lignes_de_chaines, _rendre_plan_pose_svg, svg_de_planche,
     _verifier_absence_d_argent,
@@ -228,8 +230,10 @@ class ModulesExistantsTest(SimpleTestCase):
                           svg)
         self.assertEqual(len(gris), 10)
         self.assertTrue(all('stroke-dasharray' in g for g in gris))
-        self.assertIn('Module existant (déjà posé) — mis en service en '
-                      '2019', svg)
+        # R3-21 — la légende se COUPE à la largeur du bandeau : chaque ligne coupée est un <text>.
+        for ligne in textwrap.wrap('Module existant (déjà posé) — mis en service en 2019',
+                                   CARACTERES_PAR_LIGNE_LEGENDE, break_long_words=False):
+            self.assertIn('%s<' % escape(ligne), svg)
 
     def test_sans_annee_saisie_la_legende_n_en_invente_pas(self):
         svg = self.svg(layout_pan_existant(annee=None))

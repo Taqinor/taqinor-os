@@ -5,10 +5,11 @@
 //   brut (tier-1) → remise / TVA (tier-2) → totaux finaux (tier-3)
 //   → prix par kWc vs prix cible → marge indicative (INTERNE).
 //
-// RÈGLE FONDATEUR PRÉSERVÉE VERBATIM : les trois `<input type="number">`
-// déplacés ici (remise, TVA, prix cible) gardent `step="any"` — aucune valeur
-// tapée n'est jamais rejetée ni « snappée ». Le formulaire porteur reste
-// `noValidate` dans la coquille.
+// RÈGLE FONDATEUR PRÉSERVÉE VERBATIM : les champs nombre déplacés ici
+// (remise, prix cible) gardent `step="any"` — aucune valeur tapée n'est jamais
+// rejetée ni « snappée ». Le formulaire porteur reste `noValidate` dans la
+// coquille. R1-09 (22/11) : ce sont des `ChampDecimal` — « 12,5 » se lit 12,5
+// sur tout navigateur (un Chrome en anglais en faisait 125).
 //
 // RÈGLE #4 — `marge` et `Prix / kWc` sont des repères INTERNES au générateur :
 // ils ne partent dans AUCUN rendu client (PDF, page publique). Ce composant ne
@@ -16,6 +17,7 @@
 import { Button } from '../../../ui'
 import { formatMoney } from '../../../features/ventes/solar'
 import MargeIndicative from './MargeIndicative'
+import ChampDecimal from './ChampDecimal'
 
 export default function RailArgent({
   showSans, showAvec, sansRec, avecRec, totals,
@@ -68,8 +70,8 @@ export default function RailArgent({
       <div className="gen-totals-row gen-discount-row">
         <div className="gen-total-item gen-total-inline gen-tier-2">
           <span className="gen-total-label">Réduction</span>
-          <input type="number" min="0" max="100" step="any" className="gen-discount-input"
-                 value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
+          <ChampDecimal natif className="gen-discount-input"
+                 value={discountPct} onValeur={setDiscountPct} />
           <span style={{ fontWeight: 700 }}>%</span>
           {sousChamp('remise_globale')}
           {remiseMax !== '' && parseFloat(discountPct) > parseFloat(remiseMax) && (
@@ -143,9 +145,9 @@ export default function RailArgent({
         })()}
         <div className="gen-total-item gen-total-inline">
           <span className="gen-total-label">Prix cible / kWc</span>
-          <input type="number" min="0" step="any" className="gen-discount-input"
+          <ChampDecimal natif className="gen-discount-input"
                  style={{ width: 100 }} placeholder="ex: 9000"
-                 value={prixCible} onChange={e => setPrixCible(e.target.value)} />
+                 value={prixCible} onValeur={setPrixCible} />
           {sousChamp('prix_cible_kwc')}
           <Button type="button" size="sm" variant="outline"
                   onClick={applyPrixCible}

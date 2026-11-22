@@ -44,6 +44,7 @@ from ..services.electrique import (
     resultat_calepinage, verdict_publiable, _valider_produits_designes,
 )
 from ..services.protections import DecisionInvalide
+from ..services.rapport.champs_lisibles import avec_motifs_lisibles
 from ..services.terre import TerreInvalide
 
 __all__ = ['ElectriqueActionsMixin']
@@ -53,6 +54,16 @@ __all__ = ['ElectriqueActionsMixin']
 #: résultat les tolère déjà ; la vue les attrape quand même, par sûreté.
 _REFUS_DE_LECTURE = (TemperaturesInvalides, DecisionInvalide, TerreInvalide)
 
+
+def _bornes_temperature():
+    """``{champ: {min_value, max_value}}`` — la plage du calcul complet, non recopiée."""
+    formes = corps_entree_resserre()['properties']
+    return {champ: {'min_value': formes[champ]['minimum'],
+                    'max_value': formes[champ]['maximum']}
+            for champ in ('temperature_min_c', 'temperature_max_c')}
+
+
+_BORNES_TEMPERATURE = _bornes_temperature()
 
 _FORME_RESULTAT = forme_du_contrat(
     'CalepinageResultatServi', 'calepinage_resultat.json')
@@ -116,14 +127,14 @@ class ElectriqueActionsMixin:
                     status=status.HTTP_409_CONFLICT)  # ENF11 : état stocké
         try:
             if variante is None:
-                return Response(resultat_calepinage(calepinage))
+                return Response(avec_motifs_lisibles(resultat_calepinage(calepinage)))
             # Lot 2 critique #17 — la simulation servie est celle de LA
             # variante (ACAL112 l'écrit sur ``variante.resultat``).
             servi = resultat_calepinage(
                 calepinage, layout=variante.roof_layout,
                 porteur_simulation=variante)
             servi['variante'] = {'id': variante.pk, 'nom': variante.nom}
-            return Response(servi)
+            return Response(avec_motifs_lisibles(servi))
         except _REFUS_DE_LECTURE as refus:
             return Response({refus.champ or 'temperatures': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -179,7 +190,7 @@ class ElectriqueActionsMixin:
         refuser_caractere_interdit(corps)  # 409 : inexprimable au schéma
         try:
             enregistrer_entree(calepinage, corps, user=request.user)
-            return Response(resultat_calepinage(calepinage))
+            return Response(avec_motifs_lisibles(resultat_calepinage(calepinage)))
         except (EntreeInvalide, *_REFUS_DE_LECTURE) as refus:
             introuvable = getattr(refus, 'introuvable', False)
             return Response({refus.champ or 'entree_electrique': str(refus)},
@@ -200,11 +211,17 @@ class ElectriqueActionsMixin:
 
     @extend_schema(request=inline_serializer(
         'CalepinageControleChaineCorps', {
-            'module_produit': drf_serializers.IntegerField(),
-            'onduleur_produit': drf_serializers.IntegerField(),
+            # Bornes publiées = celles que le service refuse en 400 (ENF11) :
+            # identifiant de clé primaire, plage de température du calcul complet.
+            'module_produit': drf_serializers.IntegerField(
+                min_value=1, max_value=2147483647),
+            'onduleur_produit': drf_serializers.IntegerField(
+                min_value=1, max_value=2147483647),
             'nombre_modules': drf_serializers.IntegerField(min_value=1),
-            'temperature_min_c': drf_serializers.FloatField(),
-            'temperature_max_c': drf_serializers.FloatField(),
+            'temperature_min_c': drf_serializers.FloatField(
+                **_BORNES_TEMPERATURE['temperature_min_c']),
+            'temperature_max_c': drf_serializers.FloatField(
+                **_BORNES_TEMPERATURE['temperature_max_c']),
         }), responses=forme_du_contrat(
             'CalepinageControleChaine', 'calepinage_controle_chaine.json'))
     @action(detail=False, methods=['post'], url_path='controle-chaine',
@@ -222,6 +239,7 @@ class ElectriqueActionsMixin:
         except ControleInvalide as refus:
             return Response({refus.champ: str(refus)}, status=(
                 status.HTTP_404_NOT_FOUND if refus.introuvable
+                else status.HTTP_409_CONFLICT if refus.etat  # ENF11 : règle de paire
                 else status.HTTP_400_BAD_REQUEST))
 
     @extend_schema(request=inline_serializer(

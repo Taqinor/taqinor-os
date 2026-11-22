@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { OPTIONS_TELECHARGEMENT } from '../documents/telechargement'
 
 /* ============================================================================
    CALX371 — export/import du PROJET COMPLET, prouvés SUR LE CONTRAT.
@@ -64,9 +65,16 @@ describe('Projet — export (CALX371)', () => {
     fireEvent.click(await screen.findByTestId('cal-projet-telecharger'))
 
     await waitFor(() => expect(mocks.downloadBlob).toHaveBeenCalledTimes(1))
-    expect(mocks.exporterProjet).toHaveBeenCalledWith(7)
+    expect(mocks.exporterProjet).toHaveBeenCalledWith(7, OPTIONS_TELECHARGEMENT)
     expect(mocks.downloadBlob.mock.calls[0][0]).toBe(blob)
     expect(mocks.downloadBlob.mock.calls[0][1]).toBe('calepinage-7-projet.json')
+  })
+
+  it('un export trop long dit le délai en français (R3)', async () => {
+    mocks.exporterProjet.mockRejectedValue({ code: 'ECONNABORTED' })
+    rendre()
+    fireEvent.click(await screen.findByTestId('cal-projet-telecharger'))
+    expect(await screen.findByTestId('cal-projet-export-erreur')).toHaveTextContent("Le serveur n'a pas fini de préparer ce document en 2 minutes.")
   })
 
   it('un refus d’export affiche son motif (corps BLOB relu)', async () => {

@@ -17,6 +17,7 @@ Les classes ``…EnBase`` exigent l'ORM : la CI est leur gate.
 Run :
     python manage.py test apps.calepinage.tests.test_production_mesuree -v2
 """
+import datetime
 import json
 import pathlib
 from unittest import mock
@@ -129,6 +130,54 @@ class ValidationTest(SimpleTestCase):
         ]
         for corps, champ in cas:
             self.assertEqual(self._champ(corps), champ, corps)
+
+    def test_refus_en_phrases_de_metier(self):
+        """R3-29 — un refus parle d'un mois nommé, jamais d'un index ni d'une
+        clé ; la clé du champ (pour l'écran) ne change pas."""
+        import re
+
+        cas = [
+            (self._corps(mesures=[{'mois': 1, 'kwh_mesure': 1},
+                                  {'mois': 3, 'kwh_mesure': 1},
+                                  {'mois': 3, 'kwh_mesure': 2}]),
+             'Le mois de mars est saisi deux fois.'),
+            (self._corps(mesures=[{'mois': 2, 'kwh_mesure': -1}]),
+             '« Production de février »'),
+            (self._corps(mesures=[{'mois': 12}]),
+             '« Production de décembre » est obligatoire'),
+            (self._corps(annee=1850), '« Année des mesures »'),
+            (self._corps(annee=datetime.date.today().year + 2),
+             '« Année des mesures »'),
+            (self._corps(mesures=[{'mois': 13, 'kwh_mesure': 1}]),
+             '« Mois de la ligne 1 »'),
+        ]
+        for corps, attendu in cas:
+            with self.assertRaises(service.MesureRefusee) as refus:
+                service._valider(corps)
+            phrase = str(refus.exception)
+            self.assertIn(attendu, phrase)
+            self.assertIsNone(re.search(r'[a-z]+_[a-z]+|\[\d+\]', phrase),
+                              phrase)
+
+    def test_annee_courante_et_suivante_acceptees(self):
+        courante = datetime.date.today().year
+        for annee in (1900, courante, courante + 1):
+            service._valider(self._corps(annee=annee))
+
+    def test_annee_trop_recente_409_trop_ancienne_400(self):
+        """La borne haute dépend de la date du jour : le schéma de la vue
+        (1900 à 32767) ne peut pas la dire, elle répond donc 409 (ENF11) ;
+        la borne basse fixe et la forme restent en 400."""
+        trop_tard = datetime.date.today().year + 2
+        with self.assertRaises(service.MesureRefusee) as refus:
+            service._valider(self._corps(annee=trop_tard))
+        self.assertEqual(refus.exception.statut, 409)
+        self.assertEqual(refus.exception.champ, 'annee')
+        self.assertIn('« Année des mesures »', str(refus.exception))
+        for annee in (1850, 32768):
+            with self.assertRaises(service.MesureRefusee) as refus:
+                service._valider(self._corps(annee=annee))
+            self.assertEqual(refus.exception.statut, 400, annee)
 
     def test_un_corps_qui_n_est_pas_un_objet_est_refuse(self):
         self.assertEqual(self._champ([]), '')

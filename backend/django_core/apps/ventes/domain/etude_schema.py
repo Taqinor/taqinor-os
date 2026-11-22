@@ -237,6 +237,12 @@ SCHEMA = {
         (bool,), ORPHELINE, DERIVEE,
         'ACAL102 — posée par la migration ventes 0132 ; lue par son seul '
         'retour (retrait des marques qu’elle a posées).'),
+    # R4-02 — drapeau de rendu posé par la migration 0160 (devis C&I non
+    # brouillons) : la couverture garde « kWh déclarés » qu'il imprimait.
+    'regles_source_conso_historique': _cle(
+        (bool,), ORPHELINE, DERIVEE,
+        'R4-02 — posé par la migration ventes 0160 ; lu par '
+        '`quote_engine/ci/synthese.py::synthese_ci` ; jamais copié (V2, copie).'),
     'economies_annuelles': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_sans': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_avec': _cle((int, float), CALEPINAGE, DERIVEE),

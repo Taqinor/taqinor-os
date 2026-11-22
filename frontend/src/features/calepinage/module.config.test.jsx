@@ -137,6 +137,30 @@ describe('calepinage — module.config (CAL34)', () => {
   })
 })
 
+// R2-20 (Q4) — l'app n'est visible que pour qui peut la LIRE (`calepinage_voir`).
+describe('calepinage — visibilité par droit de lecture (R2-20)', () => {
+  it('items et routes portent perm=calepinage_voir avec repli palier', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    for (const e of [...config.nav.items, ...config.routes]) {
+      expect(e.perm, e.to || e.path).toBe('calepinage_voir')
+      expect(e.permRepliPalier, e.to || e.path).toBe(true)
+    }
+  })
+
+  it('un Technicien (rôle fin sans calepinage_voir) ne voit aucun item ; un commercial les voit tous', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const { estAutoriseEntree } = await import('../../router/moduleGating')
+    const technicien = ['installation_voir', 'sav_voir', 'stock_voir']
+    const commercial = ['ventes_voir', 'calepinage_voir']
+    for (const item of config.nav.items) {
+      expect(estAutoriseEntree(item, 'normal', technicien), item.to).toBe(false)
+      expect(estAutoriseEntree(item, 'normal', commercial), item.to).toBe(true)
+      // compte légacy (aucune permission servie) : repli sur le palier responsable/admin.
+      expect(estAutoriseEntree(item, 'responsable', []), item.to).toBe(true)
+    }
+  })
+})
+
 // ACAL407 — une adresse par panneau : chaque route profonde redirige vers `?onglet=`.
 describe('calepinage — routes profondes redirigées (ACAL407)', () => {
   const CLES = ['fiches', 'pompage', 'plan', 'pente', 'terrain', 'ombriere', 'schema',

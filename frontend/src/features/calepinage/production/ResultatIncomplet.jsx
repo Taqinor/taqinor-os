@@ -17,6 +17,17 @@ const RAISON = {
   fiche_panneau: 'Absent de la fiche du panneau',
 }
 
+/* R3-06 — UN seul compte, celui du serveur : les pertes non renseignées sont
+   `etapes_a_compter − etapes_comptees` (même ensemble que la mention « borne
+   haute ») ; `lignes` n'en est que la part rattachable à un réglage ici. */
+function phraseDuCompte(aRenseigner, ici) {
+  const total = Math.max(
+    (aRenseigner?.etapes_a_compter ?? 0) - (aRenseigner?.etapes_comptees ?? 0), ici)
+  const pertes = `${total} ${total > 1 ? 'pertes non renseignées' : 'perte non renseignée'}`
+  if (ici === total) return `${pertes}${total > 1 ? ', toutes à renseigner ici.' : ', à renseigner ici.'}`
+  return `${pertes}, dont ${ici} à renseigner ici.`
+}
+
 function CeQuiEstSur({ data, parcours }) {
   const electrique = (parcours?.etapes || []).find((e) => e.cle === 'electrique')
   const ombres = (data?.cascade?.postes_lisibles?.postes || [])
@@ -54,10 +65,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null 
         Production la première année · au plus
       </p>
       <p className="text-sm" data-testid="acal700-plafond">
-        {`C'est un plafond : ${lignes.length} ${lignes.length > 1 ? 'pertes ne sont pas encore comptées' : 'perte n\'est pas encore comptée'}. Le chiffre réel sera plus bas.`}
-      </p>
-      <p className="text-xs text-muted-foreground" data-testid="acal700-jauge">
-        {`${aRenseigner.etapes_comptees} étapes sur ${aRenseigner.etapes_a_compter}`}
+        {`C'est un plafond : ${phraseDuCompte(aRenseigner, lignes.length)} Le chiffre réel sera plus bas.`}
       </p>
       <section data-testid="acal700-liste">
         <h3 className="text-sm font-medium">Pour un résultat complet</h3>

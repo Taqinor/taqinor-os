@@ -684,11 +684,14 @@
 /* LWC2 — 2 CTA côte à côte + menu « ⋯ » (au lieu de 6 boutons empilés). */
 .lw-rail-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
+/* R2-02 — 3 CTA (WhatsApp, Devis auto, Dessiner le toit) + « ⋯ » : à 288 px ils
+   passent sur deux lignes au lieu de se chevaucher (base 7.5rem + retour). */
 .lw-rail-actions > * {
-  flex: 1 1 0;
+  flex: 1 1 7.5rem;
   min-width: 0;
   min-height: 44px;
   justify-content: center;

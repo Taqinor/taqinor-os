@@ -19,8 +19,10 @@
 // rend la méthode retenue et les alertes (les internes « vendeur seulement »).
 //
 // AUCUNE LOGIQUE ICI : l'état et les gestes arrivent en props. Chaque
-// `<input type="number">` garde `step="any"` (règle fondateur : aucun champ
+// champ nombre (`ChampDecimal`) garde `step="any"` (règle fondateur : aucun champ
 // ne snappe jamais) et le `noValidate` est resté sur le formulaire porteur.
+// R1-09/R1-10 (22/11) — champs nombre en `ChampDecimal` : la virgule se lit sur tout navigateur.
+import ChampDecimal from './ChampDecimal'
 import { useState } from 'react'
 import { Gauge } from 'lucide-react'
 import { Card, CardContent, Input, Label } from '../../../ui'
@@ -92,9 +94,9 @@ export function CarteIndustrielleMt({ profilCi, setChampCi, apercuCi }) {
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="gen-ci-debut-equipe">Heure de début (h)</Label>
-            <Input id="gen-ci-debut-equipe" type="number" min="0" step="any" placeholder="ex: 6"
+            <ChampDecimal id="gen-ci-debut-equipe" placeholder="ex: 6"
                    value={p.debutEquipeH ?? ''}
-                   onChange={(e) => setChampCi('debutEquipeH', e.target.value)} />
+                   onValeur={(v) => setChampCi('debutEquipeH', v)} />
           </div>
         </fieldset>
 
@@ -114,11 +116,11 @@ export function CarteIndustrielleMt({ profilCi, setChampCi, apercuCi }) {
                 <td>{m}</td>
                 {COLONNES_REGISTRE_MT.map((c) => (
                   <td key={c.cle}>
-                    <input type="number" min="0" step="any" className="form-control form-control-sm"
+                    <ChampDecimal natif className="form-control form-control-sm"
                            aria-label={`${c.libelle} ${m}`}
                            data-testid={`gen-ci-reg-${i}-${c.cle}`}
                            value={p.registresMt?.[i]?.[c.cle] ?? ''}
-                           onChange={(e) => setChampCi(`registresMt.${i}.${c.cle}`, e.target.value)} />
+                           onValeur={(v) => setChampCi(`registresMt.${i}.${c.cle}`, v)} />
                   </td>
                 ))}
               </tr>
@@ -127,8 +129,8 @@ export function CarteIndustrielleMt({ profilCi, setChampCi, apercuCi }) {
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="grid gap-1.5">
               <Label htmlFor="gen-ci-cos-phi">cos φ connu</Label>
-              <Input id="gen-ci-cos-phi" type="number" min="0" step="any" placeholder="ex: 0.85"
-                     value={p.cosPhi ?? ''} onChange={(e) => setChampCi('cosPhi', e.target.value)} />
+              <ChampDecimal id="gen-ci-cos-phi" placeholder="ex: 0.85"
+                     value={p.cosPhi ?? ''} onValeur={(v) => setChampCi('cosPhi', v)} />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="gen-ci-cos-phi-prov">Source du cos φ</Label>

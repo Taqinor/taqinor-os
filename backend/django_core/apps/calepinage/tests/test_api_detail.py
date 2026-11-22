@@ -20,6 +20,8 @@ Run :
 import json
 import pathlib
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.layout import enregistrer_layout
 from apps.calepinage.tests._m0_en_attente import (
@@ -131,3 +133,19 @@ class DetailContratTest(BaseApiCalepinage):
     def test_sans_permission_403(self):
         reponse = self.api_sans.get(url_detail(self.rempli.pk))
         self.assertEqual(reponse.status_code, 403)
+
+
+class SurfacesChiffrablesSansBaseTest(SimpleTestCase):
+    def test_pan_existant_jamais_propose_au_chiffrage(self):
+        """Critique D1 (suite) — un pan « existant » n'est pas une surface à
+        cocher pour le devis : ni case, ni modules dans « Le devis chiffre »."""
+        from apps.calepinage.serializers import surfaces_chiffrables
+
+        def pan(cle, nombre, **extra):
+            return dict({'id': cle, 'label': cle, 'geometry': {
+                'panels': [{'cx': i, 'cy': 0} for i in range(nombre)]}}, **extra)
+        document = {'zones': [pan('A', 10, existant=True), pan('B', 6)]}
+        self.assertEqual([(s['cle'], s['modules']) for s in surfaces_chiffrables(document)],
+                         [('B', 6)])
+        document['zones'][0]['existant'] = False
+        self.assertEqual([s['cle'] for s in surfaces_chiffrables(document)], ['A', 'B'])

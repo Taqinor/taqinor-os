@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { formatNumber } from '../../../lib/format'
 import { MemoryRouter } from 'react-router-dom'
+import { OPTIONS_TELECHARGEMENT } from '../documents/telechargement'
 import { COLONNES_CSV, COLONNES_DATE } from './colonnesCsv'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 
@@ -93,7 +94,7 @@ describe('ACAL755 — le menu « Pas : heure / jour »', () => {
     rendre()
     fireEvent.change(screen.getByTestId('acal755-pas'), { target: { value: 'jour' } })
     fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
-    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'horaire', null, { pas: 'jour' }))
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'horaire', null, { pas: 'jour', ...OPTIONS_TELECHARGEMENT }))
   })
 
   it("l'échantillon du contrat nomme le pas « jour »", () => {
@@ -108,7 +109,7 @@ describe('ACAL754 — la carte « Ombrage module par module »', () => {
     exportCsv.mockResolvedValue({ data: 'x' })
     rendre()
     fireEvent.click(screen.getByTestId('cal-series-telecharger-ombrage_modules'))
-    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'ombrage_modules'))
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'ombrage_modules', null, OPTIONS_TELECHARGEMENT))
     expect(screen.getByTestId('cal-series-ligne-ombrage_modules'))
       .toHaveTextContent('Ombrage module par module (CSV)')
   })
@@ -130,7 +131,7 @@ describe('CALX6 — les trois exports sont offerts', () => {
 
     fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
 
-    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'horaire'))
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'horaire', null, OPTIONS_TELECHARGEMENT))
     await waitFor(() => expect(downloadBlob).toHaveBeenCalled())
     expect(downloadBlob.mock.calls[0][1]).toBe('calepinage-5-horaire.csv')
     expect(await screen.findByTestId('cal-series-fichier-horaire'))
@@ -160,18 +161,26 @@ describe('ACAL753 — choisir les colonnes de la série horaire', () => {
     await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(
       5, 'horaire',
       'annee,mois,jour,heure,production_kw,irradiance_plan_w_m2,temperature_air_c,ws10m,ecretage_kw',
+      OPTIONS_TELECHARGEMENT,
     ))
     expect(typeof exportCsv.mock.calls[0][2]).toBe('string')
   })
 
-  it("la sélection d'office envoie un appel à DEUX arguments", async () => {
+  it("la sélection d'office n'envoie aucune colonne (null) mais le délai de téléchargement", async () => {
     exportCsv.mockResolvedValue({ data: 'x' })
     rendre()
     fireEvent.click(screen.getByTestId('cal-series-colonne-ecretage_kw'))
     fireEvent.click(screen.getByTestId('cal-series-colonne-ecretage_kw'))
     fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
     await waitFor(() => expect(exportCsv).toHaveBeenCalled())
-    expect(exportCsv.mock.calls[0]).toHaveLength(2)
+    expect(exportCsv.mock.calls[0]).toEqual([5, 'horaire', null, OPTIONS_TELECHARGEMENT])
+  })
+
+  it('un export trop long dit le délai en français (R3)', async () => {
+    exportCsv.mockRejectedValue({ code: 'ECONNABORTED' })
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
+    expect(await screen.findByTestId('cal-series-motif-horaire')).toHaveTextContent("Le serveur n'a pas fini de préparer ce document en 2 minutes.")
   })
 
   it('un refus 400 nomme la colonne sous la carte', async () => {

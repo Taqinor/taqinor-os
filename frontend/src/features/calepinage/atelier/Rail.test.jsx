@@ -49,7 +49,7 @@ import config from '../module.config.jsx'
 import Rail from './Rail'
 import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
-import { ETAPES, ESSENTIELS, ecranGuideDeOnglet } from './parcoursGuide'
+import { ETAPES, ESSENTIELS, ecranGuideDeOnglet, ongletsVisibles } from './parcoursGuide'
 import { ONGLETS, PARAM_ONGLET, ongletParCle, ongletsTries, resoudreOnglet } from './onglets'
 
 const ID = '7'
@@ -148,15 +148,66 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
     // ACAL393 — étape active par défaut = toit : ses seuls essentiels.
     expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
     expect(screen.getAllByRole('tab').map((t) => t.getAttribute('data-testid')))
-      .toEqual(['cal-onglet-pente', 'cal-onglet-terrain', 'cal-onglet-ombriere'])
+      .toEqual(['cal-onglet-pente'])
     expect(screen.queryByTestId('cal-onglet-panneau')).toBeNull()
+  })
+
+  // ACAL1190 — l'étape Toit guidée = le panneau de la maquette (un onglet) ; Terrain et Ombrière restent ouvrables.
+  it('mode guidé, étape Toit ⇒ seul `cal-onglet-pente` ; mode expert ⇒ Terrain et Ombrière présents', async () => {
+    window.localStorage.clear()
+    const utilisateur = userEvent.setup()
+    rendreRail()
+    expect(screen.getAllByRole('tab').map((t) => t.getAttribute('data-testid'))).toEqual(['cal-onglet-pente'])
+    expect(ongletsVisibles('toit')).toEqual(['pente'])
+    expect(ongletsVisibles('toit', 'terrain')).toEqual(['pente', 'terrain']) // `?onglet=terrain` l'ouvre encore
+    try {
+      await utilisateur.click(screen.getByTestId('cal-mode-expert'))
+      expect(screen.getByTestId('cal-onglet-terrain')).toBeTruthy()
+      expect(screen.getByTestId('cal-onglet-ombriere')).toBeTruthy()
+    } finally { window.localStorage.clear() } // le mode expert est mémorisé : ne pas le laisser aux cas suivants
+  })
+
+  // ACAL1192 — l'étape Résultats guidée = Production et Pertes ; Batterie et Économie restent ouvrables.
+  it('mode guidé, étape Résultats ⇒ Production et Pertes seules ; mode expert ⇒ Batterie et Économie présentes', async () => {
+    window.localStorage.clear()
+    const utilisateur = userEvent.setup()
+    rendreRail('?onglet=production')
+    expect(screen.getAllByRole('tab').map((t) => t.getAttribute('data-testid')))
+      .toEqual(['cal-onglet-production', 'cal-onglet-pertes'])
+    expect(ongletsVisibles('resultats')).toEqual(['production', 'pertes'])
+    expect(ongletsVisibles('resultats', 'economie')).toEqual(['production', 'pertes', 'economie']) // `?onglet=economie` l'ouvre encore
+    try {
+      await utilisateur.click(screen.getByTestId('cal-mode-expert'))
+      expect(screen.getByTestId('cal-onglet-batterie')).toBeTruthy()
+      expect(screen.getByTestId('cal-onglet-economie')).toBeTruthy()
+    } finally { window.localStorage.clear() } // le mode expert est mémorisé : ne pas le laisser aux cas suivants
+  })
+
+  // ACAL1193 — l'étape Documents guidée = l'écran de fin ; Dossiers et Approbation restent ouvrables.
+  it('mode guidé, étape Documents ⇒ Documents seul, `?onglet=approbation` l’ouvre ; mode expert ⇒ Dossiers et Approbation présents', async () => {
+    window.localStorage.clear()
+    const utilisateur = userEvent.setup()
+    expect(ongletsVisibles('documents')).toEqual(['documents'])
+    expect(ongletsVisibles('documents', 'approbation')).toEqual(['documents', 'approbation'])
+    rendreRail('?onglet=documents')
+    expect(screen.getAllByRole('tab').map((t) => t.getAttribute('data-testid'))).toEqual(['cal-onglet-documents'])
+    cleanup()
+    rendreRail('?onglet=approbation')
+    expect(screen.getByTestId('cal-onglet-approbation')).toHaveAttribute('aria-selected', 'true')
+    cleanup()
+    rendreRail('?onglet=documents')
+    try {
+      await utilisateur.click(screen.getByTestId('cal-mode-expert'))
+      expect(screen.getByTestId('cal-onglet-dossiers')).toBeTruthy()
+      expect(screen.getByTestId('cal-onglet-approbation')).toBeTruthy()
+    } finally { window.localStorage.clear() } // le mode expert est mémorisé : ne pas le laisser aux cas suivants
   })
 
   it('chaque clé de ONGLETS est dans la table du parcours, une seule fois', () => {
     const dans = ETAPES.flatMap((e) => e.onglets)
     expect([...dans].sort()).toEqual(ONGLETS.map((o) => o.cle).sort())
     for (const cle of ESSENTIELS) expect(dans, `essentiel inconnu : ${cle}`).toContain(cle)
-    expect(ESSENTIELS).toHaveLength(13)
+    expect(ESSENTIELS).toHaveLength(7)
   })
 
   it('la pastille d’état vient du parcours (contrat) et l’étape active est la première non faite', async () => {
@@ -248,7 +299,7 @@ describe('ACAL394 — l’interrupteur « Mode expert »', () => {
   it('guidé par défaut ; cocher montre tous les onglets rangés sous leur étape, et survit à un rechargement', async () => {
     const utilisateur = userEvent.setup()
     const premier = rendreRail()
-    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
     await utilisateur.click(screen.getByTestId('cal-mode-expert'))
     expect(screen.getAllByRole('tab')).toHaveLength(ETAPES[0].onglets.length)
     let total = 0
@@ -356,16 +407,24 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
   const orange = pret.data.controles.find((c) => c.etat === 'a_regler')
   const info = pret.data.controles.find((c) => c.etat === 'info')
 
-  it('guidé : UNE page, « 2 points à régler » et 7 sections ; le Verdict est ouvert quand l’étape est bloquée', async () => {
+  it('guidé : UNE page, « 2 contrôles à régler » et 3 déclencheurs (Équipements, Verdict, Réglages avancés) ; le Verdict est ouvert quand l’étape est bloquée', async () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
     mocks.pretAEnvoyer.mockResolvedValue(pret)
     const utilisateur = userEvent.setup()
     rendreRail()
     await utilisateur.click(screen.getByTestId('cal-etape-electrique'))
     expect(await screen.findByTestId('cal-etape-electrique-ecran', {}, { timeout: DELAI_PANNEAU })).toBeTruthy()
-    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('2 points à régler'))
-    for (const cle of SECTIONS) expect(screen.getByTestId(`cal-electrique-section-${cle}`), cle).toBeTruthy()
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('2 contrôles à régler'))
+    // ACAL1191 — TROIS déclencheurs : Équipements, Verdict, « Réglages avancés » (replié) ; les six autres
+    // sections n'existent qu'une fois « Réglages avancés » déplié.
+    for (const cle of ['equipements-electriques', 'verdict-electrique']) {
+      expect(screen.getByTestId(`cal-electrique-section-${cle}`), cle).toBeTruthy()
+    }
     expect(screen.getByTestId('cal-electrique-section-verdict-electrique')).toHaveAttribute('data-state', 'open')
+    expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'closed')
+    expect(screen.queryByTestId('cal-electrique-section-raccordement')).toBeNull()
+    await utilisateur.click(within(screen.getByTestId('cal-electrique-avances')).getAllByRole('button', { name: 'Réglages avancés' })[0])
+    for (const cle of SECTIONS) expect(await screen.findByTestId(`cal-electrique-section-${cle}`), cle).toBeTruthy()
     expect(screen.getByTestId('cal-electrique-section-raccordement')).toHaveAttribute('data-state', 'closed')
     // une seule page : pas un onglet par panneau.
     expect(screen.queryByTestId('cal-onglet-raccordement')).toBeNull()
@@ -379,7 +438,7 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     expect(mocks.pretAEnvoyer).toHaveBeenCalledWith(ID)
   }, 30_000)
 
-  it('ACAL865 — un orange ⇒ UN seul « 1 point à régler », et « Régler » pousse `?onglet=…&champ=…`', async () => {
+  it('ACAL865 — un orange ⇒ UN seul « 1 contrôle à régler », et « Régler » pousse `?onglet=…&champ=…`', async () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
     const cible = { etape: 'toit', onglet: 'pertes', champ: 'pente' }
     mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, info, { ...orange, cible }]))
@@ -390,9 +449,9 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
         </Routes>
       </MemoryRouter>,
     )
-    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 point à régler'))
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 contrôle à régler'))
     // un seul compte : `manque[]` (2 lignes électriques) n'est plus compté ici.
-    expect(screen.queryAllByText(/points? à régler/)).toHaveLength(1)
+    expect(screen.queryAllByText(/contrôles? à régler/)).toHaveLength(1)
     expect(screen.getByTestId(`cal-pret-ligne-${info.code}`)).toHaveTextContent(info.valeur_texte)
     await userEvent.setup().click(screen.getByTestId(`cal-pret-regler-${orange.code}`))
     const recherche = new URLSearchParams(screen.getByTestId('temoin-url').textContent)
@@ -410,6 +469,17 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     expect(within(reussis).getByTestId(`cal-pret-ligne-${ok.code}`)).toBeTruthy()
   }, 30_000)
 
+  it('R3-10 — la ligne du dossier électrique ne répète pas la pastille qui dit la même chose', async () => {
+    mocks.parcours.mockResolvedValue(parcoursElectrique('bloque'))
+    const dossier = { ...orange, code: 'verdict_electrique', libelle: 'Dossier électrique', valeur_texte: 'À compléter : 3 points' }
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([dossier, info]))
+    rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique', {}, { timeout: DELAI_PANNEAU })
+    expect(ligne.textContent.match(/À compléter : 3 points/g)).toHaveLength(1)
+    // une valeur que la pastille ne dit pas reste affichée.
+    expect(screen.getByTestId(`cal-pret-ligne-${info.code}`)).toHaveTextContent(info.valeur_texte)
+  }, 30_000)
+
   it('un ancien lien `?onglet=verdict-electrique` déplie le Verdict, `?onglet=raccordement` le Raccordement', async () => {
     const premier = rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
     expect(await screen.findByTestId('cal-electrique-section-verdict-electrique', {}, { timeout: DELAI_PANNEAU }))
@@ -418,6 +488,8 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     rendreRail(`?${PARAM_ONGLET}=raccordement`)
     expect(await screen.findByTestId('cal-electrique-section-raccordement', {}, { timeout: DELAI_PANNEAU }))
       .toHaveAttribute('data-state', 'open')
+    // ACAL1191 — le lien d'une section avancée déplie AUSSI « Réglages avancés ».
+    expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'open')
   }, 30_000)
 
   it('en mode expert, les 7 onglets restent', () => {

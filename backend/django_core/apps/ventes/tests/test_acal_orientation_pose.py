@@ -12,6 +12,7 @@ Run :
 """
 import copy
 from io import StringIO
+from types import SimpleNamespace
 
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
@@ -92,11 +93,36 @@ class OrientationPoseeTest(SimpleTestCase):
                           for p in pans], [(90.0, 10, 'pose'), (270.0, 10, 'pose')])
         self.assertEqual(sum(p['nb_panneaux'] for p in pans), 12)
 
+    def test_orientation_principale_pese_la_pose_est_ouest_entiere(self):
+        """Critique D7 — 10 kWc est-ouest + 6 kWc sud : le pan principal est
+        la pose est-ouest (son kWc ENTIER), décrite par sa face la plus forte."""
+        ew = _zone_plate_inclinee(family='eastwest', azimuthDeg=90, kwc=10.0,
+                                  panels=[{'cx': i, 'cy': 0, 'face': 'EW'[i % 2]}
+                                          for i in range(16)])
+        sud = _zone_plate_inclinee(tiltDeg=20, kwc=6.0)
+        cfg = extract_roof_config({'zones': [ew, sud]})
+        self.assertEqual((cfg['azimut_deg'], cfg['inclinaison_deg']), (90.0, 10))
+        self.assertEqual(cfg['orientation_principale'], 'Est')
+        # Un pan simple plus fort que la pose est-ouest entière gagne toujours.
+        sud['geometry']['kwc'] = 12.0
+        self.assertEqual(extract_roof_config({'zones': [ew, sud]})['azimut_deg'], 180)
+
     def test_resynchroniser_deux_fois_meme_geometrie(self):
         layout = _layout(_zone_plate_inclinee())
         premier = extract_roof_config(copy.deepcopy(layout))
         second = extract_roof_config(copy.deepcopy(layout))
         self.assertEqual(premier, second)
+
+    def test_dry_run_compare_l_annexe_sans_pans_geometry(self):
+        """Critique 22/11 (ACAL911) — sans ``_pans_geometry``, la première zone
+        est-ouest : toit (≤ 14, envoyés) → tables (niveau 15) ; sud : rien."""
+        from apps.ventes.management.commands.acal_dryrun_orientation import _comparer
+
+        zone = _zone_plate_inclinee(family='eastwest', azimuthDeg=90, tiltDeg=10)
+        zone['facingAzimuthDeg'] = 180
+        self.assertEqual(_comparer(SimpleNamespace(roof_layout=_layout(zone))),
+                         [('annexe (sans _pans_geometry)', (0, 180), (10, 90))])
+        self.assertEqual(_comparer(SimpleNamespace(roof_layout=_layout(_zone_plate_inclinee()))), [])
 
     def test_annexe_client_branche_zones_lit_la_pose(self):
         pan = _pan_principal({'zones': [_zone_plate_inclinee()]})
@@ -150,3 +176,19 @@ class ZonesEtudeDuDevisTest(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.roof_layout['_pans_geometry'][0]
                          ['inclinaison_deg'], 0)
+
+    def test_dry_run_liste_l_annexe_d_un_envoye_sans_pans_geometry(self):
+        zone = _zone_plate_inclinee(family='eastwest', azimuthDeg=90, tiltDeg=10)
+        zone['facingAzimuthDeg'] = 180
+        self._devis('DEV-ACAL911-ENV', _layout(zone), statut=Devis.Statut.ENVOYE)
+        self._devis('DEV-ACAL911-SUD', _layout(_zone_plate_inclinee()),
+                    statut=Devis.Statut.ENVOYE)
+
+        sortie = StringIO()
+        call_command('acal_dryrun_orientation', stdout=sortie)
+        texte = sortie.getvalue()
+
+        self.assertIn('DEV-ACAL911-ENV', texte)
+        self.assertIn('annexe (sans _pans_geometry) : inclinaison 0 → 10, azimut 180 → 90', texte)
+        self.assertNotIn('DEV-ACAL911-SUD', texte)
+        self.assertIn('Devis concernés : 1', texte)

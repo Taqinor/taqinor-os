@@ -1,4 +1,5 @@
 // ENF22 — helpers extraits de VerdictElectrique.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
+import LIBELLES_CODES from './libellesCodesVerdict.json'
 
 /** ACAL879 — UN seul mot pour le statut « omis », lu par les deux écrans
  *  (Verdict électrique et Raccordement). */
@@ -31,6 +32,23 @@ export function libelleStatut(statut) {
  */
 export function tonStatut(statut) {
   return STATUTS[statut]?.ton ?? 'primary'
+}
+
+/**
+ * R3-09 — l'intitulé de métier d'un code de motif. La table est le JSON voisin
+ * (lu AUSSI par le test serveur, qui échoue si le serveur prononce un code
+ * absent de la table). Un code inconnu ne s'affiche jamais brut : repli
+ * lisible, la phrase du serveur en dessous dit le détail.
+ */
+export const LIBELLE_CODE_INCONNU = 'Autre contrôle électrique'
+
+export function libelleCode(code) {
+  return LIBELLES_CODES[code] ?? LIBELLE_CODE_INCONNU
+}
+
+/** Vrai pour un statut d'ABSTENTION : le contrôle n'a pas eu lieu, rien à sourcer. */
+export function statutAbstention(statut) {
+  return statut === 'non_verifiable' || statut === 'omis'
 }
 
 /** Vrai quand CE statut est l'un des deux que le serveur juge refusants. */

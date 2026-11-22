@@ -54,6 +54,15 @@ def _signaler_pdf_devis_genere(devis):
             'ADEV22 : audit PDF devis ignoré (devis %s)', devis.pk)
 
 
+def _memes_options(devis, options):
+    """R1-02/R1-03 — le dernier rendu persisté porte-t-il ces options ?"""
+    from ..quote_engine import clean_pdf_options
+    meta = devis.pdf_render_meta if isinstance(devis.pdf_render_meta, dict) else {}
+    memorisees = meta.get('options')
+    return (isinstance(memorisees, dict)
+            and clean_pdf_options(memorisees) == clean_pdf_options(options))
+
+
 class DevisPdfActionsMixin:
     """SPL139 — actions de rendu PDF de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -74,19 +83,24 @@ class DevisPdfActionsMixin:
         corps_valide(request, D.PdfOptionsRequest)
         # Format options (simulator parity) — whitelisted server-side.
         pdf_options = clean_pdf_options(request.data)
-        task = task_generate_devis_pdf.delay(devis.id, pdf_options)
+        # R1-02/R1-03 — la demande est consignée AVANT la mise en file (une
+        # tâche exécutée sur-le-champ la clôt donc toujours APRÈS) ; elle
+        # devient la dernière demande, ce qui efface aussi l'échec consigné
+        # (WIR217 : un « Réessayer » ne repart pas déjà marqué en échec).
+        from ..tasks import ouvrir_demande_pdf_devis
+        demande = ouvrir_demande_pdf_devis(devis, pdf_options)
+        task = task_generate_devis_pdf.delay(
+            devis.id, pdf_options, demande=demande)
         # ADEV22 (C-ADEV-028) — l'entrée d'audit « PDF devis généré » n'est
         # plus écrite à la DEMANDE (202) : la tâche l'émet à son rendu réussi.
-        # WIR217 — une nouvelle demande efface l'échec consigné : sinon un
-        # « Réessayer » repartirait déjà marqué en échec.
-        from ..tasks import oublier_echec_pdf_devis
-        oublier_echec_pdf_devis(devis.id)
         return Response(
-            {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
+            {'task_id': task.id, 'demande': demande,
+             'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
         )
 
-    @extend_schema(responses=D.EtatPdfResponse)
+    @extend_schema(parameters=[OpenApiParameter('demande', OpenApiTypes.STR, required=False)],
+                   responses=D.EtatPdfResponse)
     @action(
         detail=True,
         methods=['get'],
@@ -104,29 +118,25 @@ class DevisPdfActionsMixin:
 
         ``erreur``/``date`` ne sont renseignés QUE sur l'état ``echec`` ; un
         rendu déjà prêt l'emporte toujours sur un échec plus ancien.
+
+        R1-02/R1-03 — l'état est celui de la demande ``?demande=`` (rendue par
+        ``generer-pdf``), sinon de la DERNIÈRE demande : un ANCIEN fichier
+        (d'un autre format) ne fait plus dire « prêt » tant que cette demande
+        n'est pas rendue ; une demande jamais close passe en ``echec`` après
+        ``PDF_DEMANDE_DELAI_MAX_S``. ``fichier_pdf`` vaut « prêt ».
         """
-        from django.core.cache import cache
-        from ..tasks import pdf_job_cache_key
+        from ..tasks import etat_pdf_devis
 
         devis = self.get_object()  # scoping société (404 hors société)
-        job = cache.get(pdf_job_cache_key(devis.pk)) or {}
-        # Défense en profondeur : jamais l'état d'une AUTRE société, même si
-        # une clé de cache venait à collisionner.
-        if job.get('company_id') not in (None, devis.company_id):
-            job = {}
-        pret = bool(devis.fichier_pdf)
-        if pret:
-            statut = 'pret'
-        elif job.get('status') == 'error':
-            statut = 'echec'
-        else:
-            statut = 'en_cours'
+        # Défense en profondeur (société de l'entrée de cache) : etat_pdf_devis.
+        statut, erreur, date = etat_pdf_devis(
+            devis, request.query_params.get('demande'))
         return Response({
             'devis': devis.pk,
             'statut': statut,
-            'fichier_pdf': pret,
-            'erreur': job.get('error') if statut == 'echec' else None,
-            'date': job.get('at') if statut == 'echec' else None,
+            'fichier_pdf': statut == 'pret',
+            'erreur': erreur if statut == 'echec' else None,
+            'date': date if statut == 'echec' else None,
         })
 
     @extend_schema(parameters=[OpenApiParameter('pdf_mode', OpenApiTypes.STR, required=False, enum=['full', 'onepage']),
@@ -247,7 +257,7 @@ class DevisPdfActionsMixin:
     # ENF49 (api-fuzz-full 42128456456, T6SpeD) — devis existant, PDF jamais
     # généré (ou fichier absent du stockage) = 409, règle d'ENF40 ; 404 reste
     # au devis absent / d'une autre société (``get_object``).
-    @extend_schema(responses={
+    @extend_schema(parameters=[OpenApiParameter('demande', OpenApiTypes.STR, required=False)], responses={
         (200, 'application/pdf'): OpenApiTypes.BINARY,
         409: OpenApiResponse(
             description='PDF pas encore généré (ou fichier absent du stockage).'),
@@ -286,8 +296,15 @@ class DevisPdfActionsMixin:
             # stocké plutôt que de refuser le téléchargement — ce bouton
             # fonctionnait avant PVFRESH, il doit continuer de fonctionner.
             from ..quote_engine import cle_pdf_a_jour
+            # R1-02/R1-03 — ``?demande=`` : le fichier remis est rendu dans les
+            # options de CETTE demande (``cle_pdf_a_jour`` re-rend si le dernier
+            # rendu persisté porte d'autres options), jamais le format d'une
+            # autre demande. Sans paramètre : options du dernier rendu (inchangé).
+            from ..tasks import options_demande_pdf_devis
+            options = options_demande_pdf_devis(
+                devis, request.query_params.get('demande'))
             try:
-                cle = cle_pdf_a_jour(devis)
+                cle = cle_pdf_a_jour(devis, options)
             except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                 logger.warning(
                     "devis_pdf.DevisPdfActionsMixin.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
@@ -296,6 +313,10 @@ class DevisPdfActionsMixin:
                     'PVFRESH: rafraîchissement impossible pour %s — le fichier '
                     'stocké est servi tel quel', devis.reference,
                     exc_info=True)
+                if options is not None and not _memes_options(devis, options):
+                    # Le fichier stocké est d'un AUTRE format : ne jamais le
+                    # remettre à la place de celui demandé.
+                    raise
                 cle = devis.fichier_pdf
             pdf_bytes = download_pdf(cle)
         except Exception:

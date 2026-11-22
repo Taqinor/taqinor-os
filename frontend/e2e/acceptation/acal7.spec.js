@@ -819,9 +819,13 @@ etape('PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats', ['ACAL3
     await expect(page.getByTestId('cal-etape-electrique-ecran')).toBeVisible(T)
     const pret = await lireJson(await page.request.get(`${CAL}/calepinages/${cal.id}/pret-a-envoyer/`, T), 'pret-a-envoyer')
     const n = pret.nombre_bloquants + pret.nombre_a_regler
-    const attendu = n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'
+    const attendu = n > 0 ? `${n} contrôle${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'
     await expect(page.getByTestId('cal-electrique-synthese'), `synthèse (${n} points servis)`).toHaveText(attendu, T)
-    await expect(page.locator('[data-testid^="cal-electrique-section-"]'), 'sept sections repliables').toHaveCount(7)
+    // ACAL1191 — l'étape ne monte que les sections principales ; les autres vivent sous « Réglages avancés » (replié).
+    const sections = page.locator('[data-testid^="cal-electrique-section-"]')
+    await expect(sections, 'sections principales seules avant dépliage').toHaveCount(2)
+    await page.getByTestId('cal-electrique-avances').getByRole('button', { name: 'Réglages avancés' }).click()
+    await expect(sections, 'toutes les sections repliables existent une fois « Réglages avancés » déplié').toHaveCount(8)
 
     // ACAL443 / ACAL453 / ACAL446 — Production.
     await page.goto(`/calepinage/${cal.id}?onglet=production`)
@@ -840,7 +844,10 @@ etape('PA2.5-ACAL392-ACAL395-ACAL443-ACAL453-ACAL446-ACAL444-resultats', ['ACAL3
     const journee = page.getByTestId('cal-tapis-journee-type')
     await expect(journee, 'journée type').toBeVisible(T)
     await page.getByTestId('cal-tapis-mois-6').click()
-    await expect(journee.locator('.recharts-line'), 'juin : production ET consommation').toHaveCount(2, T)
+    // Trois courbes depuis la correction de TapisHoraire (lot R2/R3, `panneauxActifs`) : production, puissance des
+    // panneaux (pointillé, servie par la simulation) ET consommation — chacune nommée à la légende.
+    await expect(journee.locator('.recharts-line'), 'juin : production, puissance des panneaux ET consommation').toHaveCount(3, T)
+    await expect(journee).toContainText('Puissance des panneaux (kW)')
     await expect(journee).toContainText('Consommation (kWh)')
     await expect(page.getByTestId('acal446-sans-charge')).toHaveCount(0)
 

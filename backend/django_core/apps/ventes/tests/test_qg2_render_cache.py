@@ -239,3 +239,59 @@ class LEmpreinteNeSeffondreJamaisSurLaConstanteVide(TestCase):
                         side_effect=RuntimeError('moteur cassé')):
             self.assertIsNone(
                 _idempotent_cached_key(self.devis.id, {'pdf_mode': 'full'}))
+
+
+class SautDIdempotenceVerifieLObjetServi(TestCase):
+    """R1-02/R1-03 — la clé MinIO d'un devis est la MÊME pour tous les formats :
+    un rendu « une page » écrase l'objet du « complet ». Le saut d'idempotence
+    ne ressert donc une clé que si le devis porte encore la trace (empreinte +
+    options) du rendu mémorisé — sinon il re-rend dans le format demandé."""
+
+    CLE = 'devis/1/DEV-QG2-SAUT.pdf'
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.company = Company.objects.create(nom='QG2 Saut', slug='qg2-saut')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client QG2 saut')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-QG2-SAUT',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON)
+        self._poser_rendu('full')
+        self.complet = {'pdf_mode': 'full'}
+        self.figer = mock.patch('apps.ventes.tasks._content_version',
+                                return_value='contenu-fige')
+        self.existe = mock.patch('apps.ventes.tasks._pdf_exists',
+                                 return_value=True)
+        self.figer.start()
+        self.existe.start()
+        self.addCleanup(self.figer.stop)
+        self.addCleanup(self.existe.stop)
+
+    def _poser_rendu(self, mode):
+        # Ce que ``generate_premium_devis_pdf(persist=True)`` écrit au rendu.
+        Devis.objects.filter(pk=self.devis.pk).update(
+            fichier_pdf=self.CLE,
+            pdf_render_meta={'empreinte': f'e-{mode}',
+                             'options': {'pdf_mode': mode}})
+
+    def test_objet_intact_le_saut_ressert_la_cle(self):
+        from apps.ventes.tasks import _idempotent_cached_key, _remember_render
+        _remember_render(self.devis.id, self.complet, self.CLE)
+        self.assertEqual(
+            _idempotent_cached_key(self.devis.id, self.complet), self.CLE)
+
+    def test_objet_ecrase_par_un_autre_format_le_saut_est_refuse(self):
+        from apps.ventes.tasks import _idempotent_cached_key, _remember_render
+        _remember_render(self.devis.id, self.complet, self.CLE)
+        self._poser_rendu('onepage')  # la une-page a réécrit le même objet
+        self.assertIsNone(
+            _idempotent_cached_key(self.devis.id, self.complet))
+
+    def test_memo_d_avant_le_correctif_ne_saute_jamais(self):
+        from django.core.cache import cache
+        from apps.ventes.tasks import _idempotent_cached_key, _render_signature
+        cache.set(_render_signature(self.devis.id, self.complet), self.CLE, 60)
+        self.assertIsNone(
+            _idempotent_cached_key(self.devis.id, self.complet))

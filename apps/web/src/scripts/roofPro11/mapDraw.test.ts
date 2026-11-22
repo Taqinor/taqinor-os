@@ -471,3 +471,30 @@ describe('ACAL506 / ACAL507 — geocode dans le champ « Adresse »', () => {
     } finally { vi.unstubAllGlobals(); }
   });
 });
+
+// R2-09 / R3-03 — la barre d'aides au tracé (« Angles droits »…) ne recouvre jamais la carte : quand « Terminer le tracé » flotte
+// sur la carte (bandeau absolu, parent DIRECT ou ANCÊTRE), elle va en flux sous l'enveloppe de la carte ; sinon elle reste dans son bandeau.
+describe('R2-09 / R3-03 — barre d’aides au tracé : sous la carte quand « Terminer » flotte dessus', () => {
+  const monter = (html: string) => {
+    document.body.innerHTML = html;
+    const map = { ...methodesCarteInertes(), getZoom: () => 19, getCenter: () => ({ lng: -7.62, lat: 33.58 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const ctx = { opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: true }, vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.62, 33.58] } as unknown as Ctx;
+    createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+    return document.getElementById('rp9-trace-chips') as HTMLElement;
+  };
+  it('parent direct absolu : la barre est le frère SUIVANT de l’enveloppe de la carte', () => {
+    const chips = monter('<section><div id="carte" class="relative"><div id="bandeau" class="absolute"><button id="rp9-finish"></button></div></div></section>');
+    expect(chips.previousElementSibling?.id).toBe('carte');
+    expect(chips.parentElement?.tagName).toBe('SECTION');
+    expect(document.getElementById('carte')!.contains(chips)).toBe(false);
+  });
+  it('R3-03 : bandeau absolu ANCÊTRE (parent de « Terminer » non absolu) : la barre sort quand même de la carte', () => {
+    const chips = monter('<section><div id="carte" class="relative"><div id="bandeau" class="absolute"><div id="rang"><button id="rp9-finish"></button></div></div></div></section>');
+    expect(chips.previousElementSibling?.id).toBe('carte');
+    expect(document.getElementById('carte')!.contains(chips)).toBe(false);
+  });
+  it('aucun bandeau absolu (page publique) : la barre reste dans le bandeau de « Terminer », comme avant', () => {
+    const chips = monter('<section><div id="barre"><button id="rp9-finish"></button></div></section>');
+    expect(chips.parentElement?.id).toBe('barre');
+  });
+});

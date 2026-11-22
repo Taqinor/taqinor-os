@@ -166,7 +166,7 @@
   ],
   "calepinages.composerPackTechnique": [
     {
-      "config": null,
+      "config": {},
       "data": null,
       "url": "/calepinage/calepinages/7/pack-technique/",
       "verbe": "post"

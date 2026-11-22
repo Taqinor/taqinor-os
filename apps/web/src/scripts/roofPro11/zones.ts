@@ -168,11 +168,23 @@ export function motifPasDuplication(pasM: number): string | null {
   return null;
 }
 
+const REGLAGES_PHYSIQUES_COPIES = ['pitchSource', 'coupuresPavage', 'porteeEntrePieds', 'chassis'] as const;
+
+/** Les réglages saisis du pan qu'une copie garde (clone profond ; clé absente = clé absente). */
+function copieReglagesPhysiques(source: AreaRecord): Partial<AreaRecord> {
+  const out: Record<string, unknown> = {};
+  for (const cle of REGLAGES_PHYSIQUES_COPIES) {
+    if (source[cle] !== undefined) out[cle] = JSON.parse(JSON.stringify(source[cle]));
+  }
+  return out as Partial<AreaRecord>;
+}
+
 /**
  * CALX98 — copie un pan dans une zone NEUVE, décalée du pas SAISI. Sont recopiés : le
  * contour, les obstacles (avec de nouveaux identifiants, dérivés de l'id de la zone, donc
  * sans collision), `roofType`, `pitchDeg`, `facingAzimuthDeg`, `facingManual`, `edges` et
- * `buildingId`. Ne sont PAS recopiés : le résultat et le plan de rendu — la copie n'a rien
+ * `buildingId` et `moduleId` (R3-24 : sans lui la copie repasse au module par défaut de l'atelier,
+ * et change de kWc). Ne sont PAS recopiés : le résultat et le plan de rendu — la copie n'a rien
  * de calculé tant que le moteur n'a pas tourné, et publier le compte de l'original serait un
  * chiffre inventé.
  *
@@ -211,7 +223,11 @@ export function dupliquerPan(source: AreaRecord, nouvelId: string, pasM: number)
       result: null,
       renderPlan: null,
       ...(source.buildingId ? { buildingId: source.buildingId } : {}),
+      ...(source.moduleId ? { moduleId: source.moduleId } : {}),
       ...(source.edges ? { edges: source.edges.map((e) => ({ ...e })) } : {}),
+      // Réglages PHYSIQUES du pan (copies profondes) ; jamais `existant` / `anneeMiseEnService` /
+      // `verrouille` : la copie est un pan NEUF et modifiable (recopier « existant » la sortirait du devis).
+      ...copieReglagesPhysiques(source),
     },
   };
 }
@@ -643,9 +659,9 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       `<span id="rp9-site-erreur" class="text-alert-300" role="alert" hidden></span>` +
       // ACAL510 — case repliée « Pan existant » (modules déjà en place) + année SAISIE.
       `<details class="w-full"><summary class="min-h-11 cursor-pointer">Pan existant</summary>` +
-      `<label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" id="rp9-pan-existant" /> Modules déjà en place</label>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-annee">Année de mise en service` +
-      `<input type="text" id="rp9-pan-annee" class="rp9-input w-20" inputmode="numeric" /></label>` +
+      `<div class="flex flex-wrap items-center gap-2"><label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" id="rp9-pan-existant" /> Modules déjà en place</label>` +
+      `<label class="inline-flex items-center gap-2" for="rp9-pan-annee">Année de mise en service` +
+      `<input type="text" id="rp9-pan-annee" class="rp9-input w-20" inputmode="numeric" /></label></div>` +
       `<span id="rp9-pan-annee-erreur" class="block text-alert-300" role="alert" hidden></span></details>`;
     areasWindowEl.appendChild(el);
     return el;

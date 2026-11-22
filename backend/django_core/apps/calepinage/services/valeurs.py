@@ -25,6 +25,19 @@ class ValeurRefusee(ValueError):
         self.champ = champ
 
 
+def _en_clair(valeur):
+    """N6 — un nombre écrit en toutes lettres de chiffres : jamais « 1e+09 ».
+
+    Mise en forme PURE : la valeur ne change pas ; les milliers se groupent
+    (espace fine) à partir de 5 chiffres, les zéros de queue tombent."""
+    texte = ('%.12f' % valeur).rstrip('0').rstrip('.')
+    signe = '-' if texte.startswith('-') else ''
+    entier, point, reste = texte.lstrip('-').partition('.')
+    if len(entier) >= 5:
+        entier = '{:,}'.format(int(entier)).replace(',', ' ')
+    return signe + entier + point + reste
+
+
 def nombre_fini(valeur, champ, *, libelle='', mini=None, maxi=None,
                 mini_exclu=False, decimales=None, obligatoire=False,
                 erreur=ValeurRefusee):
@@ -62,11 +75,11 @@ def nombre_fini(valeur, champ, *, libelle='', mini=None, maxi=None,
                      f'(reçu : {valeur!r}).', champ=champ)
     if mini is not None and (nombre <= mini if mini_exclu else nombre < mini):
         signe = '>' if mini_exclu else '≥'
-        raise erreur(f'« {nom} » doit être {signe} {mini:g} '
-                     f'(reçu : {nombre:g}).', champ=champ)
+        raise erreur(f'« {nom} » doit être {signe} {_en_clair(mini)} '
+                     f'(reçu : {_en_clair(nombre)}).', champ=champ)
     if maxi is not None and nombre > maxi:
-        raise erreur(f'« {nom} » doit être ≤ {maxi:g} '
-                     f'(reçu : {nombre:g}).', champ=champ)
+        raise erreur(f'« {nom} » doit être ≤ {_en_clair(maxi)} '
+                     f'(reçu : {_en_clair(nombre)}).', champ=champ)
     if decimales is not None and round(nombre, decimales) != nombre:
         raise erreur(f'« {nom} » admet au plus {decimales} décimale(s) '
                      f'(reçu : {valeur!r}).', champ=champ)

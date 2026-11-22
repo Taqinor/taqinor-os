@@ -7,7 +7,7 @@
 // (`validate()` échoue) — jamais le chemin normal.
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -65,6 +65,37 @@ function renderGenerator(entree) {
 // ResizeObserver via recharts) — mêmes shims que DevisGeneratorRename.test.jsx.
 declarerBeforeEachDevis({ stockApi, crmApi, ventesApi })
 
+function preparerDevisEnEdition() {
+  crmApi.getLeads.mockResolvedValue({ data: [] })
+  crmApi.getClients.mockResolvedValue({ data: [] })
+  stockApi.getProduits.mockResolvedValue({ data: [PRODUIT_PANNEAU, PRODUIT_ONDULEUR] })
+  ventesApi.getDevisById.mockResolvedValue({
+    data: {
+      id: 5,
+      reference: 'DEV-T',
+      statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true,
+      lead: null,
+      client: 9,
+      taux_tva: '20.00',
+      remise_globale: '0',
+      lignes: [
+        {
+          id: 1, produit: PRODUIT_PANNEAU.id, designation: PRODUIT_PANNEAU.nom,
+          quantite: '24', prix_unitaire: '1000.00', taux_tva: '20.00',
+          ordre: 0, type_ligne: 'produit', optionnelle: false,
+        },
+        {
+          id: 2, produit: PRODUIT_ONDULEUR.id, designation: PRODUIT_ONDULEUR.nom,
+          quantite: '1', prix_unitaire: '12500.00', taux_tva: '20.00',
+          ordre: 1, type_ligne: 'produit', optionnelle: false,
+        },
+      ],
+    },
+  })
+  ventesApi.patchDevis.mockResolvedValue({ data: {} })
+  ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
+}
+
 describe('PV23bis — « Concevoir en 3D » travaille sur le devis, pas sur un lead déconnecté', () => {
   it('le bouton apparaît même sans repère GPS et retombe en mode lead quand le devis n\'est pas encore valide', async () => {
     const lead = { id: 200, nom: 'Bennani', prenom: 'Yasmine' } // pas de roof_point
@@ -89,41 +120,17 @@ describe('PV23bis — « Concevoir en 3D » travaille sur le devis, pas sur un l
     expect(ventesApi.patchDevis).not.toHaveBeenCalled()
   })
 
-  it('en édition, « Concevoir en 3D » enregistre d\'abord puis ouvre l\'outil SUR le devis', async () => {
-    crmApi.getLeads.mockResolvedValue({ data: [] })
-    crmApi.getClients.mockResolvedValue({ data: [] })
-    stockApi.getProduits.mockResolvedValue({ data: [PRODUIT_PANNEAU, PRODUIT_ONDULEUR] })
-    ventesApi.getDevisById.mockResolvedValue({
-      data: {
-        id: 5,
-        reference: 'DEV-T',
-        statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true,
-        lead: null,
-        client: 9,
-        taux_tva: '20.00',
-        remise_globale: '0',
-        lignes: [
-          {
-            id: 1, produit: PRODUIT_PANNEAU.id, designation: PRODUIT_PANNEAU.nom,
-            quantite: '24', prix_unitaire: '1000.00', taux_tva: '20.00',
-            ordre: 0, type_ligne: 'produit', optionnelle: false,
-          },
-          {
-            id: 2, produit: PRODUIT_ONDULEUR.id, designation: PRODUIT_ONDULEUR.nom,
-            quantite: '1', prix_unitaire: '12500.00', taux_tva: '20.00',
-            ordre: 1, type_ligne: 'produit', optionnelle: false,
-          },
-        ],
-      },
-    })
-    ventesApi.patchDevis.mockResolvedValue({ data: {} })
-    ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
-
+  it("en édition MODIFIÉE, « Concevoir en 3D » enregistre d'abord puis ouvre l'outil SUR le devis", async () => {
+    preparerDevisEnEdition()
     renderGenerator('/ventes/devis/nouveau?edit=5')
 
     // Le devis en édition n'a pas de lead (client=9 direct) : le bouton doit
     // quand même apparaître (condition PV23bis élargie à `clientId`).
     const bouton = await screen.findByRole('button', { name: 'Concevoir en 3D' })
+    // La référence d'écran se fige ~1,5 s après le chargement (QJR581) : on
+    // modifie APRÈS, comme un vrai utilisateur.
+    await new Promise(r => setTimeout(r, 1700))
+    fireEvent.change(await screen.findByPlaceholderText(/Conditions particulières/), { target: { value: 'Acompte 30 %' } })
     await userEvent.click(bouton)
 
     // Édition ATOMIQUE (QJR544) — en-tête + lignes en UN replace-lines,
@@ -135,5 +142,18 @@ describe('PV23bis — « Concevoir en 3D » travaille sur le devis, pas sur un l
     // Un devis en édition n'est jamais RECRÉÉ.
     expect(ventesApi.createDevisAtomic).not.toHaveBeenCalled()
     expect(await screen.findByText('PROBE-DEVIS-MODE')).toBeInTheDocument()
+  })
+
+  it("R2-19 — en édition NON modifiée, « Concevoir en 3D » ouvre l'outil sans réécrire le devis", async () => {
+    preparerDevisEnEdition()
+    renderGenerator('/ventes/devis/nouveau?edit=5')
+
+    const bouton = await screen.findByRole('button', { name: 'Concevoir en 3D' })
+    await userEvent.click(bouton)
+
+    expect(await screen.findByText('PROBE-DEVIS-MODE')).toBeInTheDocument()
+    expect(ventesApi.replaceLignesDevis).not.toHaveBeenCalled()
+    expect(ventesApi.patchDevis).not.toHaveBeenCalled()
+    expect(ventesApi.createDevisAtomic).not.toHaveBeenCalled()
   })
 })

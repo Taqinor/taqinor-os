@@ -560,7 +560,47 @@ def kwh_depuis_facture_mad(total_mad, *, jours=TPPAN_JOURS_REFERENCE,
         else:
             haut = milieu
     kwh = round((bas + haut) / 2, 1)
-    return _sortie(kwh, _detail(kwh))
+    sortie = _sortie(kwh, _detail(kwh))
+    saut = _montant_dans_un_saut(
+        montant, kwh, sortie_total=_detail(kwh)['total_mad'],
+        sous_mad=_detail(bas)['total_mad'], au_dessus_mad=_detail(haut)['total_mad'])
+    if saut is not None:
+        sortie['montant_dans_un_saut'] = saut
+    return sortie
+
+
+#: R2-07 — écart (MAD) entre les deux côtés de la dichotomie convergée au-delà
+#: duquel la facture a SAUTÉ. Hors saut, après 60 itérations, les deux côtés
+#: diffèrent de ~1e-12 MAD (pente ≤ ~2 MAD/kWh) ; le centime est la plus petite
+#: unité d'une facture : rien de plus petit n'est un saut.
+_SAUT_MIN_MAD = 0.01
+
+
+def _montant_dans_un_saut(montant, kwh, *, sortie_total, sous_mad, au_dessus_mad):
+    """R2-07 — le montant déclaré tombe-t-il dans un SAUT du barème ?
+
+    La dichotomie résout un tel montant à la BORNE BASSE (le côté prudent,
+    voir :func:`kwh_depuis_facture_mad`) : le calcul retient alors une facture
+    PLUS BASSE que celle déclarée, puisque aucune consommation ne produit le
+    montant déclaré. Règle du fondateur du 17/11/2026 : tout ce que le calcul
+    transforme est DIT. On rend donc ``{montant_declare_mad,
+    montant_retenu_mad, montant_au_dessus_du_saut_mad, kwh_mensuel}``, ou
+    ``None`` hors saut (la sortie de l'inversion garde alors sa forme d'avant).
+    Aucun chiffre ne change : on ne fait que nommer ceux déjà calculés.
+
+    Le saut se lit sur les DEUX côtés de la dichotomie convergée (``sous_mad``,
+    ``au_dessus_mad``), jamais sur la facture du kWh ARRONDI (``sortie_total``) :
+    l'arrondi au dixième de kWh écarte à lui seul de quelques centimes.
+    """
+    if (au_dessus_mad - sous_mad <= _SAUT_MIN_MAD
+            or montant - sortie_total <= _SAUT_MIN_MAD):
+        return None
+    return {
+        'montant_declare_mad': arrondi_affichage(montant, 2),
+        'montant_retenu_mad': arrondi_affichage(sortie_total, 2),
+        'montant_au_dessus_du_saut_mad': arrondi_affichage(au_dessus_mad, 2),
+        'kwh_mensuel': kwh,
+    }
 
 
 # ════════════════════════════════════════════════════════════════════════════

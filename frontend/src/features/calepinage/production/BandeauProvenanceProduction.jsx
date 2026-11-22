@@ -63,6 +63,8 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
 
   const p50 = data?.production?.total?.p50_kwh
   const aSimulation = p50 !== null && p50 !== undefined
+  // R2-06 — un P50 incomplet est une borne haute : la MÊME mention que l'onglet Production.
+  const borneHaute = aSimulation ? mentionBorneHaute(data?.production?.total) : null
 
   return (
     <p className="mt-2 text-xs text-foreground" data-testid="calx65-bandeau">
@@ -71,7 +73,9 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
         <span data-testid="calx65-simulation">
           {' — Simulation : P50 '}
           {formatNumber(p50, { decimals: 0 })}
-          {' kWh/an, chaîne de pertes du '}
+          {' kWh/an'}
+          {borneHaute && <span data-testid="calx65-borne-haute">{` (${borneHaute})`}</span>}
+          {', chaîne de pertes du '}
           {data?.calcule_le ? formatDate(data.calcule_le) : 'date non publiée'}
           {' — '}
           <Link
@@ -83,17 +87,24 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
           </Link>
         </span>
       )}
-      <EcartDevis ecart={data?.ecart_devis} />
-      <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} />
+      <EcartDevis ecart={data?.ecart_devis} borneHaute={borneHaute} />
+      <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} borneHaute={borneHaute} />
     </p>
   )
+}
+
+/** R2-06 — la mention d'un total incomplet (celle du serveur, à défaut le décompte), ou `null`. */
+function mentionBorneHaute(total) {
+  if (!estIncomplet(total)) return null
+  const manquants = Array.isArray(total.socle_manquant) ? total.socle_manquant : []
+  return total.mention || `borne haute — ${manquants.length} pertes non renseignées`
 }
 
 /* ACAL995 — ce que le devis ANNONCERA (`chiffrage` de design-context, ACAL993,
    reçu de l'atelier qui l'a déjà lu : jamais un second appel), SEULEMENT quand
    il n'imprime pas la pose réelle (« standard ville ») ; non chiffré ⇒ le motif
    servi. Écart = (simulation − devis) ÷ devis, à l'affichage. */
-function DevisAnnonce({ chiffrage, p50 }) {
+function DevisAnnonce({ chiffrage, p50, borneHaute = null }) {
   const prod = chiffrage?.production_annuelle_kwh
   if (!prod) return null
   if (prod.etat === 'non_servi' || prod.etat === 'indisponible') {
@@ -105,7 +116,7 @@ function DevisAnnonce({ chiffrage, p50 }) {
   return (
     <span className="block" data-testid="acal995-devis-annonce">
       {`Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — production standard de la ville`}
-      {ecart !== null && ` (étude technique : ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %)`}
+      {ecart !== null && ` (étude technique : ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %${borneHaute ? ` — ${borneHaute}` : ''})`}
     </span>
   )
 }
@@ -118,7 +129,7 @@ function DevisAnnonce({ chiffrage, p50 }) {
    devis) et l'écart au P50 de l'étude. AUCUN calcul ici : les deux nombres
    sont affichés tels que servis ; `null` ⇒ rien.
    ========================================================================== */
-function EcartDevis({ ecart }) {
+function EcartDevis({ ecart, borneHaute = null }) {
   if (!ecart) return null
   const pct = ecart.ecart_pct
   const signe = typeof pct === 'number' && pct > 0 ? '+' : ''
@@ -128,7 +139,7 @@ function EcartDevis({ ecart }) {
       {formatNumber(ecart.production_devis_kwh, { decimals: 0 })}
       {' kWh/an (production imprimée au client)'}
       {pct !== null && pct !== undefined && (
-        <>{' — écart '}{signe}{formatNumber(pct, { decimals: 1 })}{' %'}</>
+        <>{' — écart '}{signe}{formatNumber(pct, { decimals: 1 })}{' %'}{borneHaute ? ` (${borneHaute})` : ''}</>
       )}
     </span>
   )
@@ -205,8 +216,7 @@ function VoyantPvgis({ validation }) {
 export function BandeauBorneHaute({ total }) {
   if (!estIncomplet(total)) return null
   const manquants = Array.isArray(total.socle_manquant) ? total.socle_manquant : []
-  const mention = total.mention
-    || `borne haute — ${manquants.length} pertes non renseignées`
+  const mention = mentionBorneHaute(total)
   return (
     <div
       className="flex flex-col gap-1 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"

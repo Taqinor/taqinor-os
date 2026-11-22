@@ -618,6 +618,40 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertEqual(sorted(connus - trouves), [],
                          "Échantillon déclaré mais absent du dossier.")
 
+    @staticmethod
+    def _servies_sur_fiche_vide():
+        """R3-09 — les sorties (ou refus) des services du lot R3-D sur une fiche VIDE, sans base."""
+        from apps.calepinage.services import (
+            architecture_onduleur, controle_chaine, production_mesuree, raccordement, troncons,
+        )
+        from apps.calepinage.services.etapes import onduleur
+
+        def refus(appel):
+            try:
+                appel()
+            except (controle_chaine.ControleInvalide, production_mesuree.MesureRefusee,
+                    raccordement.RaccordementInvalide) as erreur:
+                return str(erreur)
+            return ''
+
+        serie = {'colonne_energie': 'p_dc_kw', 'points': []}
+        courbe = [{'charge_pct': 50, 'rendement_pct': 97.0}, {'charge_pct': 100, 'rendement_pct': 98.0}]
+        sans_nominale = {'fiche_onduleur': {'rendement_par_charge': courbe}, 'electrique': {'onduleurs': [{}]}}
+        return {
+            'raccordement.bloc_raccordement': raccordement.bloc_raccordement(None, {}, [], {}),
+            'raccordement.refus': refus(lambda: raccordement.bloc_raccordement(
+                None, {'puissance_souscrite_kva': 'abc', 'cos_phi_impose': 9}, [], {})),
+            'controle_chaine.verdict': controle_chaine._controler_chaine({}, {}, 10, -5, 70),
+            'controle_chaine.refus': [refus(lambda: controle_chaine._temperatures(brut)) for brut in (
+                {}, {'temperature_min_c': 40, 'temperature_max_c': 10})],
+            'troncons.document': troncons._troncons_du_document({}),
+            'architecture_onduleur.motifs': architecture_onduleur.motifs_de_l_architecture(None, {}, {}, {}),
+            'production_mesuree.refus': [refus(lambda: production_mesuree._valider(brut)) for brut in (
+                {}, {'annee': 1850, 'mesures': []}, {'annee': 9999, 'mesures': []},
+                {'annee': 2026, 'mesures': [{'mois': 1}]}, {'annee': 2026, 'mesures': [{'mois': 13}]})],
+            'etapes.onduleur': [onduleur.appliquer(serie, ctx)[1] for ctx in ({}, sans_nominale)],
+        }
+
     def test_phrases_servies_sans_jargon(self):
         # ACAL990 (K-JARGON) — les phrases PRODUITES (jamais le source) d'une fiche vide : aucune clé,
         # chemin, code interne ni valeur brute. Services listés ci-dessous ; l'échec nomme le service.
@@ -626,7 +660,10 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         from apps.calepinage.services import lestage, norme, ombrage_chaines, profils_types, suppositions
         from apps.calepinage.tests.test_calx248_verdict_publiable import _Calepinage, _verdict
 
-        interdit = re.compile(r'::|\.py|\[\]|\?\.|MODULES_PAR_CHAINE|degagements\.|CAL\d+|dépôt')
+        interdit = re.compile(r'::|\.py\b|\[\]|\?\.|MODULES_PAR_CHAINE|degagements\.|CAL\d+|dépôt')
+        # R3-09 — pour les services du lot R3-D, une PHRASE (texte à espaces) ne porte non plus aucune clé
+        # technique (snake_case) ni index (``[0]``).
+        cle_technique = re.compile(r'\b[a-z]+(?:_[a-z0-9]+)+\b|\[\d+\]')
         brutes = {'martin_ruiz', 'tmy'}
         servies = {
             'norme.norme_applicable': norme.norme_applicable(None),
@@ -636,6 +673,8 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
             'profils_types.replis': profils_types._profils_de_repli(),
             'suppositions.repli_longueur_dossier': suppositions.repli_longueur_dossier(16, 'dossier'),
         }
+        strictes = self._servies_sur_fiche_vide()
+        servies.update(strictes)
 
         def phrases(noeud):
             if isinstance(noeud, str):
@@ -652,6 +691,12 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
             self.assertTrue(lues, service)
             for phrase in lues:
                 self.assertIsNone(interdit.search(phrase), f'{service} : « {phrase[:90]} » porte une clé ou un chemin')
+                # « Champ manquant : « chemin » » est le CONTRAT relu par a_renseigner (R3-19 : le rendu le
+                # traduit, la source ne change pas) : il n'est pas jugé ici.
+                phrase_libre = re.sub('Champ manquant : « [^»]* »', '', phrase)
+                if service in strictes and ' ' in phrase_libre:
+                    self.assertIsNone(cle_technique.search(phrase_libre),
+                                      f'{service} : « {phrase[:90]} » porte une clé technique')
                 self.assertNotIn(phrase.strip(), brutes, f'{service} : valeur brute « {phrase} »')
 
     def test_etat_conception_du_detail(self):

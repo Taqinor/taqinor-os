@@ -13,7 +13,7 @@
 # préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
-date_maj: "2026-11-20"
+date_maj: "2026-11-22"
 
 decisions:
 
@@ -4942,4 +4942,402 @@ decisions:
     reponse: corriger_les_deux_niveau_14
     date: "2026-11-19"
     source: "Reda, 19/11/2026 : « Yes, fix it » à la question « Should I fix the sensitivity table next (exact payback, plus the battery option's own rows)? » ; construit au niveau de règles 14 (migration 0159, brouillons 13 → 14) ; fichier docs/claude-memory/sensibilites-deux-options.md"
+    taches: []
+
+  - id: D-ACAL-48
+    question: "L'atelier de toiture reprend-il la toiture déclarée sur le lead (R2-01, R2-15) ?"
+    options:
+      - cle: mode_pose_et_affichage
+        texte: "Appliquer le mode de pose déjà décidé côté serveur (CIQ112) aux pans neufs, et AFFICHER le reste en lecture (« le lead déclare : tuiles, 25°, sud-ouest, ombrage partiel ») sans rien imposer"
+      - cle: preremplir
+        texte: "Préremplir aussi la pente et l'orientation"
+    reponse: mode_pose_et_affichage
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : bloc `toiture_lead` du design-context, ligne « Le lead déclare » dans l'atelier, pans neufs posés en pente quand le serveur pose `toiture_inclinee` (correcteur CH) ; question Q1 de JUGEMENT-R2"
+    taches: []
+
+  - id: D-ACAL-49
+    question: "Faut-il demander une confirmation avant de générer un devis dont la pose dépasse largement la cible tirée des factures (84 posés pour 4) ?"
+    options:
+      - cle: confirmer_au_dela_de_2x
+        texte: "La même question « confirmer la taille » que sans facture, dès que la pose dépasse 2 × la cible (seuil aligné sur « kWh déclaré > 2 × les factures »)"
+      - cle: jamais
+        texte: "Jamais de question : la pose du commercial fait foi, l'écart est seulement affiché"
+    reponse: confirmer_au_dela_de_2x
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : 409 `confirmation_taille` quand les panneaux vendus > 2 × la cible des factures (correcteur CF) ; question Q2 de JUGEMENT-R2"
+    taches: []
+
+  - id: D-ACAL-50
+    question: "Un lead a déjà un devis brouillon, puis « Dessiner le toit » → « Générer le devis » : que propose-t-on ?"
+    options:
+      - cle: rattacher
+        texte: "Proposer de RATTACHER le calepinage au devis existant (D-ACAL-1), avec un choix explicite « créer un autre devis »"
+      - cle: second_devis
+        texte: "Créer un second devis brouillon, avec un avertissement visible"
+    reponse: rattacher
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : 409 `devis_existant`, boutons « Rattacher ce calepinage au devis DEV-… », « Créer un autre devis », « Ouvrir le devis existant » (correcteur CF) ; question Q3 de JUGEMENT-R2"
+    taches: []
+
+  - id: D-ACAL-51
+    question: "Le Technicien doit-il lire le calepinage ?"
+    options:
+      - cle: non_lanceur_retire
+        texte: "Non : l'app calepinage est retirée du lanceur de qui n'a pas le droit de lire, et l'atelier dit « vous n'avez pas accès » ; aucun droit ajouté"
+      - cle: lecture_ses_chantiers
+        texte: "Lecture seule bornée aux calepinages de SES chantiers (comme D-APFS-4)"
+    reponse: non_lanceur_retire
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : `module.config` du calepinage gardé par `calepinage_voir` (correcteur CG), écran 403 sans outils (correcteur CD) ; question Q4 de JUGEMENT-R2"
+    taches: []
+
+  - id: D-ACAL-52
+    question: "Dire au commercial que la facture déclarée a été recalée au barème (900 → 831,61 MAD) ?"
+    options:
+      - cle: ecran_tout_de_suite
+        texte: "Oui, à l'écran du générateur tout de suite (aucun chiffre changé) ; le PDF fait l'objet de D-AMOT-12, restée ouverte"
+      - cle: rien
+        texte: "Ne rien dire"
+    reponse: ecran_tout_de_suite
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : drapeau `montant_dans_un_saut` servi et ligne « facture recalée » dans l'aperçu du générateur (correcteur CB) ; question Q5 de JUGEMENT-R2 (moitié écran)"
+    taches: []
+
+  - id: D-ACAL-53
+    question: "Le suivi de production (production attendue d'une installation) suit-il la production imprimée au PDF du devis ?"
+    options:
+      - cle: production_imprimee
+        texte: "Oui, c'est la promesse faite au client ; seules les mises en service à venir (aucune valeur déjà rangée ne change)"
+      - cle: production_atelier
+        texte: "Garder la production de l'atelier"
+    reponse: production_imprimee
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : `production_attendue_pour_devis` devient l'alias de `production_imprimee_du_devis`, `seed_expected_annual_kwh` ne sème que les valeurs vides (correcteur CA) ; question Q6 de JUGEMENT-R2"
+    taches: []
+
+  - id: D-ACAL-54
+    question: "Le rapport d'étude imprime les nombres « tels que servis » : peut-on afficher la variabilité en % et grouper les milliers ?"
+    options:
+      - cle: pourcent_et_milliers
+        texte: "Oui : variabilité en % (décalage exact de la virgule) et milliers groupés par une espace fine ; aucun arrondi, aucun calcul"
+      - cle: fraction
+        texte: "Garder la fraction et ajouter l'unité « (fraction) »"
+    reponse: pourcent_et_milliers
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : `nombre_tel_que_servi` groupe les milliers, `_variabilite_en_pourcent` (correcteur C3G) ; question Q3 de JUGEMENT-R3"
+    taches: []
+
+  - id: D-ACAL-55
+    question: "La planche du PDF d'un devis généré sur une partie des surfaces montre-t-elle tout le toit ou les seules surfaces chiffrées ?"
+    options:
+      - cle: surfaces_chiffrees
+        texte: "Les seules surfaces chiffrées du devis (copie réduite par sa sélection)"
+      - cle: tout_le_toit
+        texte: "Tout le document du calepinage"
+    reponse: surfaces_chiffrees
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : planche = `devis.roof_layout` quand le devis est partiel, pied = empreinte du devis (correcteur X2, défaut D2 de la critique adverse)"
+    taches: []
+
+  - id: D-ACAL-56
+    question: "Quel plafond pour un fichier de relief (GeoTIFF) téléversé ?"
+    options:
+      - cle: 30mo_25mpx
+        texte: "30 Mo et 25 millions de pixels, refusés avant décodage"
+      - cle: aucun
+        texte: "Aucun plafond propre (Pillow refuse au-delà de 178 M pixels)"
+    reponse: 30mo_25mpx
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : `MAX_OCTETS_RELIEF` et `MAX_PIXELS_RELIEF` dans `altimetre_fichier.py`, refus 400 sur le champ (correcteur X3, soupçon 7 de la critique adverse)"
+    taches: []
+
+  - id: D-ACAL-57
+    question: "Que garde la copie d'un pan dans l'atelier ?"
+    options:
+      - cle: reglages_physiques
+        texte: "Ses réglages physiques (module, et les autres réglages de pose) ; jamais « existant », l'année de mise en service ni le verrou"
+      - cle: tout
+        texte: "Tout, y compris « existant » et le verrou"
+    reponse: reglages_physiques
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : `zones.ts::dupliquerPan` recopie `moduleId` et trois réglages, jamais `existant` / année / verrou (correcteurs C3B et CFIN1)"
+    taches: []
+
+  - id: D-ACAL-58
+    question: "Le plan de pose d'un chantier est-il lisible par ceux qui lisent le module chantier ?"
+    options:
+      - cle: lecteurs_chantier
+        texte: "Oui : `plan_pose` et `valeurs_attendues` sont des lectures du chantier (GET, objet borné à la société)"
+      - cle: droit_calepinage
+        texte: "Non : exiger aussi le droit de lire le calepinage"
+    reponse: lecteurs_chantier
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : état constaté et gardé (revue du correcteur C7 : lectures, `get_object` borné)"
+    taches: []
+
+  - id: D-ACAL-59
+    question: "Qui peut lancer l'action « écart mesuré » d'un calepinage ?"
+    options:
+      - cle: approbation_seule
+        texte: "Le seul droit d'approbation du calepinage (`calepinage_approuver`) ; l'action n'écrit rien"
+      - cle: gerer
+        texte: "Le droit de gérer le calepinage"
+    reponse: approbation_seule
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : `ecart_mesures` sous `CAL_APPROUVER` dans `PERMISSIONS_ECRITURE_PAR_ACTION` (revue du correcteur C7)"
+    taches: []
+
+  - id: D-ACAL-60
+    question: "Le plafond de taille du bundle frontend peut-il être relevé pour la vague ?"
+    options:
+      - cle: releve_4050
+        texte: "Oui, relevé deux fois cette nuit, de 3 995 à 4 050 Ko"
+      - cle: garder
+        texte: "Garder 3 995 Ko et alléger le code"
+    reponse: releve_4050
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : plafond de la garde de taille du frontend relevé deux fois (3 995 → 4 050 Ko)"
+    taches: []
+
+  - id: D-AGNR-5
+    question: "Les champs de prix, quantités et remise du générateur acceptent-ils « 4 800,50 » et « 12,5 » quelle que soit la langue du navigateur ?"
+    options:
+      - cle: texte_decimal
+        texte: "Oui : champ texte à clavier décimal, la virgule et les espaces lus, rien refusé ni arrondi ; la garde qui figeait `type=number` est réécrite"
+      - cle: avertir
+        texte: "Garder `type=number` et seulement avertir sous le champ quand le nombre retenu diffère du texte tapé"
+    reponse: texte_decimal
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : `ChampDecimal` et `lireSaisieDecimale` sur les lignes, la remise, les factures, l'échéancier et le réseau (correcteur C1N) ; le reste des champs du générateur : tâche ACAL1210 ; question Q1 de JUGEMENT-R1"
+    taches: [ACAL1210]
+
+  - id: D-CIQ-27
+    question: "Le PDF industriel dit « d'après vos kWh déclarés » quand le client n'a donné que des factures en dirhams : que fait-on ?"
+    options:
+      - cle: nouveaux_rendus_brouillons
+        texte: "Nouveaux rendus des brouillons seulement : « consommation estimée à partir de votre facture en dirhams » ; un devis envoyé garde le texte reçu (drapeau posé par migration)"
+      - cle: envoyes_aussi
+        texte: "Corriger aussi les devis envoyés au prochain rendu (texte seul, la page 1 du client change)"
+    reponse: nouveaux_rendus_brouillons
+    date: "2026-11-22"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (recette en direct du 22/11/2026, option recommandée et réversible) ; fait : source `factures_mad`, drapeau `etude_params.regles_source_conso_historique` posé par la migration ventes 0160 sur les C&I non brouillons (correcteur C4A) ; question Q1 de JUGEMENT-R4"
+    taches: []
+
+  - id: D-ACAL-61
+    question: "Un Commercial (droit de gérer les calepinages, sans le droit de modifier les paramètres de la société) peut aujourd'hui changer les réglages société du module calepinage — hypothèses de pertes, mode météo, dégagements… — et relancer le recalcul de toutes les simulations de la société. Est-ce voulu ?"
+    options:
+      - cle: a
+        texte: "État actuel (ACAL302, ACAL134) : oui, chaque changement est journalisé ; les clés de gouvernance exigent déjà le droit d'approbation"
+      - cle: b
+        texte: "Réserver l'écriture de ces réglages et le recalcul en masse au droit d'approbation (ou au droit de modifier les paramètres) ; modifie ACAL302 et son test"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; constats R7-01 et R7-02 du relecteur « droits », triés VOULUS et antérieurs par le correcteur C7 ; pas de recommandation imposée : le relecteur l'a relevé comme surprenant"
+    taches: []
+
+  - id: D-ACAL-62
+    question: "Un pan « Toit plat » garde 22° de pente par défaut et le serveur le chiffre en pose affleurante à 22° : faut-il le traduire comme un toit plat ?"
+    options:
+      - cle: nouveaux_seulement
+        texte: "Oui, pour les pans et calepinages neufs seulement ; les calepinages enregistrés gardent leur traduction (dry-run d'abord)"
+      - cle: tous
+        texte: "Oui, pour tous les calepinages (beaucoup de chiffrages existants changent)"
+      - cle: garder
+        texte: "Garder la traduction actuelle"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; constat voisin du correcteur CFIN2 ; recommandation : nouveaux_seulement"
+    taches: [ACAL1250]
+
+  - id: D-ACAL-63
+    question: "Faut-il borner les saisies absurdes (puissance souscrite 99 999 999 kVA, 99 999 999 kWh mesurés en un mois) ?"
+    options:
+      - cle: avertir_10x
+        texte: "Un AVERTISSEMENT non bloquant sous le champ quand la valeur dépasse 10 fois l'attendu (puissance des onduleurs ; P50 du mois), sans chiffre absolu inventé"
+      - cle: bornes_absolues
+        texte: "Refuser au-delà de bornes absolues que vous fixez"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R3 (R3-13, R3-29) ; recommandation du juge : avertir_10x"
+    taches: [ACAL1251]
+
+  - id: D-ACAL-64
+    question: "Avant toute re-simulation, faut-il lister en lecture seule les rapports d'étude et diagrammes déjà remis en mode pluriannuel avec leurs énergies × N ?"
+    options:
+      - cle: lister_et_montrer
+        texte: "Oui : la liste (`acal_dryrun_annee_moyenne`) vous est montrée, rien n'est réparé"
+      - cle: nouveaux_rendus
+        texte: "Nouveaux rendus seulement, sans liste"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R3 ; les nouvelles simulations sont corrigées (correcteur C3A) ; recommandation du juge : lister_et_montrer"
+    taches: [ACAL1252]
+
+  - id: D-ACAL-65
+    question: "Une copie de calepinage doit-elle reprendre le matériel que l'original lisait sur SON devis (onduleur) ?"
+    options:
+      - cle: reprendre
+        texte: "Oui, comme désignation explicite de l'entrée de la copie (sinon la copie simule sans onduleur et annonce + 1,9 %)"
+      - cle: dire
+        texte: "Non, mais l'écran de la copie dit « onduleur non désigné » avant de simuler"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R3 (R3-11) ; recommandation du juge : reprendre"
+    taches: [ACAL1253]
+
+  - id: D-AGNR-6
+    question: "Sans facture ni consommation, faut-il appliquer D-ACAL-40 / D-ACAL-45 MAINTENANT au format une page et à l'aperçu du générateur, sans attendre l'activation groupée du niveau 15 (ACAL1001) ?"
+    options:
+      - cle: maintenant
+        texte: "Oui pour le format une page (nouveaux rendus seulement) et l'aperçu (économie d'exemple remplacée par « renseignez la facture hiver/été du lead »)"
+      - cle: attendre
+        texte: "Attendre ACAL1001 ; d'ici là la contradiction une page ↔ premium reste en production"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q3 de JUGEMENT-R1 (R1-14, R1-15) ; recommandation du juge : maintenant"
+    taches: [ACAL1216, ACAL1220]
+
+  - id: D-AMOT-8
+    question: "Le premium résidentiel passe à 4 pages dès ~9 lignes (rentabilité sur sa page, voulu RPDF23). Que veut-on ?"
+    options:
+      - cle: trois_ou_quatre
+        texte: "Accepter « 3 ou 4 pages » et dire la vérité (libellé du dialogue, CLAUDE.md, commentaires)"
+      - cle: exiger_trois
+        texte: "Exiger 3 pages : resserrer la mise en page de la rentabilité, mesurée sur le rendu réel"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R1 (R1-04) ; recommandation du juge : trois_ou_quatre"
+    taches: [ACAL1222]
+
+  - id: D-AMOT-9
+    question: "L'économie « avec batterie » s'imprime 11 204 puis 11 205 dans le même PDF. Laquelle fait foi ?"
+    options:
+      - cle: economie_annuelle
+        texte: "L'économie annuelle des cartes (p.1-2) ; la facture « avec solaire » de la page 4 en dérive, nouveaux rendus seulement"
+      - cle: facture_mensuelle
+        texte: "La facture « après » calculée mois par mois ; l'économie en dérive (la carte p.1 change)"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R1 (R1-06) ; recommandation du juge : economie_annuelle"
+    taches: [ACAL1218]
+
+  - id: D-AMOT-10
+    question: "Le distributeur ne change aucun prix (barème national). La puce CGV doit-elle nommer le distributeur du client ou dire « barème national » ?"
+    options:
+      - cle: bareme_national
+        texte: "« Barème national de référence » partout (vrai pour tous) ; le générateur reprend le distributeur du lead pour l'affichage"
+      - cle: distributeur
+        texte: "Nommer le distributeur du lead"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q6 de JUGEMENT-R1 (R1-17) ; recommandation du juge : bareme_national"
+    taches: [ACAL1221]
+
+  - id: D-AMOT-11
+    question: "Un premium AVEC étude doit-il garder la même mise en page que sans étude (porter la page d'étude dans le gabarit résidentiel) ?"
+    options:
+      - cle: non
+        texte: "Non pour l'instant : deux gabarits voulus et testés ; chantier lourd sur la règle #4"
+      - cle: oui
+        texte: "Oui, en tâche de plan dédiée"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q7 (facultative) de JUGEMENT-R1 (R1-05, classé VOULU) ; recommandation du juge : non ; aucune tâche écrite"
+    taches: []
+
+  - id: D-AMOT-12
+    question: "Le PDF doit-il dire que la facture déclarée a été recalée au barème (900 → 831,61 MAD) ?"
+    options:
+      - cle: niveau_nouveaux_rendus
+        texte: "Oui, par un drapeau de rendu (nouveaux rendus ; envoyés inchangés)"
+      - cle: ecran_seulement
+        texte: "Écran seulement (déjà fait, D-ACAL-52)"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q5 de JUGEMENT-R2, moitié PDF ; recommandation du juge : niveau_nouveaux_rendus"
+    taches: [ACAL1219]
+
+  - id: D-ADEV-7
+    question: "Dans la liste des devis, « Reste » doit-il dire ce qui reste À PAYER ou ce qui reste À FACTURER ?"
+    options:
+      - cle: reste_a_payer
+        texte: "« Reste à payer » (prix − payé) en principal ; les acomptes prévus en brouillon affichés à part"
+      - cle: reste_a_facturer
+        texte: "Garder le calcul et renommer « Reste à facturer (prévus déduits) »"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q5 de JUGEMENT-R1 (R1-24) ; recommandation du juge : reste_a_payer"
+    taches: [ACAL1241]
+
+  - id: D-CIQ-28
+    question: "L'étude commerciale / industrielle répète la facture d'hiver sur 12 mois, même quand la fiche porte une facture d'été différente (hôtel : + 40 %) :"
+    options:
+      - cle: prendre_ete
+        texte: "Prendre la facture d'été sur les mois d'été de la même table que le résidentiel, nouveaux devis seulement ; dire « été supposé égal à l'hiver » quand la case est cochée sans montant"
+      - cle: hiver_dit
+        texte: "Garder l'hiver seul et le dire à la commerciale (le dire est déjà la tâche ACAL1227)"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R4 (R4-03) ; recommandation du juge : prendre_ete"
+    taches: [ACAL1230]
+
+  - id: D-CIQ-29
+    question: "Le moteur C&I compose un Smart Meter Huawei dans l'option « avec batterie » (onduleurs Deye) ; la règle QJR200 le retire ensuite. Que fait-on ? (Question liée : l'option Deye a-t-elle besoin de son propre compteur d'injection ?)"
+    options:
+      - cle: ne_plus_composer
+        texte: "Ne plus le composer dans un panier sans onduleur Huawei : la ligne disparaît du devis, le total reste le même"
+      - cle: corriger_cout
+        texte: "Le garder dans les lignes et ne corriger que le coût de l'aperçu"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q3 de JUGEMENT-R4 (R4-04 b) ; recommandation du juge : ne_plus_composer"
+    taches: [ACAL1231]
+
+  - id: D-ALEC-6
+    question: "La politique de facturation d'achat d'un produit (« sur réception ») reste visible aux rôles qui ne voient pas le prix d'achat : faut-il la masquer ?"
+    options:
+      - cle: laisser
+        texte: "La laisser visible : c'est une politique, pas un montant"
+      - cle: masquer
+        texte: "La masquer avec le prix d'achat et la marge"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; constat R7-05 du relecteur « droits » (signalé « probablement sans conséquence ») ; recommandation : laisser"
+    taches: [ACAL1255]
+
+  - id: D-APUB-6
+    question: "Le jeton d'aperçu INTERNE d'un devis brouillon (L-INTPREV, 25/08/2026) se lit sans connexion : quiconque détient le lien lit un brouillon. Le garde-t-on ?"
+    options:
+      - cle: garder
+        texte: "Le garder tel quel (aperçu commercial voulu par L-INTPREV)"
+      - cle: connexion
+        texte: "Exiger une connexion d'un membre de la société pour le jeton interne ; le jeton client reste public"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; constat R7-06 du relecteur « droits » ; recommandation : garder (décision L-INTPREV du fondateur)"
+    taches: [ACAL1242]
+
+  - id: D-ACAL-66
+    question: "Atelier de calepinage d'un lead de pompage : que doit-il montrer ?"
+    options:
+      - cle: outil_pose
+        texte: "Un outil de pose seulement : ni économies ni kWh de réseau, un renvoi clair vers le devis agricole, la pose limitée au champ du devis"
+      - cle: panneau_pompage
+        texte: "Un panneau Pompage dans l'atelier (pompe, volume d'eau), aligné sur le moteur du devis agricole"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R5 (R5-14, R5-15) ; recommandation du juge : outil_pose maintenant, panneau_pompage quand D-ACAL-46 passe au niveau de règles 15"
+    taches: [ACAL1268]
+
+  - id: D-AGR-15
+    question: "CLAUDE.md (sections Quote generator et Pompage sizing) dit encore « array ≈1.4× pump kW » ; le moteur dimensionne le champ sur le besoin au mois critique (AGR114, core/pompage/champ.py). Faut-il corriger la phrase de CLAUDE.md ?"
+    options:
+      - cle: corriger
+        texte: "Remplacer la phrase par la règle AGR114 : le champ couvre le besoin en eau retenu au mois critique, puis la chaîne est vérifiée"
+      - cle: garder
+        texte: "Garder la phrase telle quelle"
+    reponse: ouverte
+    date: "2026-11-22"
+    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R5 (R5-03, VOULU côté code) ; recommandation : corriger (documentation seule, CLAUDE.md non touché par ce plan)"
     taches: []

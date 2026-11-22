@@ -40,12 +40,20 @@ describe('AGNR31 — lignes que l’enregistrement ne gardera pas', () => {
     await taper(champs[0], 'Pompe OSP 30-5 — prix à renseigner')
     await taper(derniere.querySelector('[data-role="line-qty"]'), '1')
     await attendreStable(vue.container, act)
+    // R5-01 (recette 22/11) — le refus se DIT comme un refus (jamais « ne sera
+    // pas enregistrée », lu comme un avertissement) et le bandeau est amené
+    // sous les yeux : un clic sur « Créer » en haut de page n'est jamais muet.
+    const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView')
     await enregistrer()
     await attendreStable(vue.container, act)
     expect(vue.ventesApi.replaceLignesDevis).not.toHaveBeenCalled()
     expect(screen.getByTestId('erreur-enregistrement').textContent)
-      .toBe('1 ligne « prix à renseigner » ne sera pas enregistrée : Pompe OSP 30-5')
-  }, 60000)
+      .toBe('Enregistrement bloqué : 1 ligne « prix à renseigner » (Pompe OSP 30-5) — '
+        + 'saisissez son prix dans Stock ou supprimez la ligne.')
+    await waitFor(() => expect(defile.mock.contexts.map((el) => el.dataset?.testid))
+      .toContain('erreur-enregistrement'))
+    defile.mockRestore()
+  }, 150000)
 
   it('(b) une ligne produit à prix tapé passée à quantité 0 ⇒ avertie, l’envoi part sans elle', async () => {
     const devis = {

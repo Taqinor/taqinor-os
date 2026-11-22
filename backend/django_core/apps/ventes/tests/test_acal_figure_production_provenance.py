@@ -8,8 +8,12 @@ et UNE fonction rend la production recalée du devis
 * la figure du calepinage (base 720 W) est recalée sur la puissance des
   LIGNES (8 × 715 W = 5,72 kWc) — quelle que soit sa décimale ;
 * une étude sans marque (antérieure à ACAL101) n'est jamais recalée ;
-* le sélecteur cross-app ``production_attendue_pour_devis`` (monitoring) lit
-  la figure recalée.
+* le sélecteur cross-app ``production_attendue_pour_devis`` (monitoring,
+  écart de l'atelier) lit la figure recalée, sans rendre le devis ;
+* R2-14 — ``selectors_calepinage.production_imprimee_du_devis`` (présentation
+  compacte, document généré) lit la production IMPRIMÉE par le PDF (rendu du
+  devis) ; résidentiel, commercial / industriel (``synthese_ci``) et agricole
+  (rien).
 
 Sources RÉELLES : ``build_devis_from_layout``, ``sync_devis_from_layout``,
 ``etude_schema.fusionner`` (validation des clés).
@@ -18,10 +22,14 @@ Run:
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.ventes.tests.test_acal_figure_production_provenance"
 """
+import json
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from apps.crm.models import Client
@@ -30,6 +38,7 @@ from apps.ventes.domain.etude_schema import valider
 from apps.ventes.domain.scenario import figure_production_du_devis
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.selectors import production_attendue_pour_devis
+from apps.ventes.selectors_calepinage import production_imprimee_du_devis
 from apps.ventes.services import build_devis_from_layout, sync_devis_from_layout
 from authentication.models import Company
 
@@ -128,3 +137,51 @@ class ProductionProvenanceTest(TestCase):
         self.assertEqual(figure_production_du_devis(devis), 8844)
         self.assertEqual(production_attendue_pour_devis(devis.pk),
                          Decimal('8844'))
+
+
+ETUDE_CI = json.loads((Path(__file__).resolve().parents[1] / 'contract_samples'
+                       / 'etude_ci_preview.json').read_text(encoding='utf-8'))['exemple']
+
+
+class ProductionImprimeeTest(SimpleTestCase):
+    """R2-14 (S1) — devis 71 : 3 343 kWh stockés par le calepinage, 3 628
+    imprimés par le PDF ; « production imprimée au client » doit dire 3 628.
+    Sans base : le rendu ``build_quote_data`` est une doublure."""
+
+    def _imprimee(self, rendu, **etude):
+        devis = SimpleNamespace(pk=71, etude_params=etude, roof_layout={})
+        cible = 'apps.ventes.quote_engine.builder.build_quote_data'
+        with mock.patch(cible, return_value=rendu) as appel:
+            valeur = production_imprimee_du_devis(devis)
+        appel.assert_called_once_with(devis, {'pdf_mode': 'full'})
+        return devis, valeur
+
+    def test_production_stockee_differente_la_phrase_porte_l_imprimee(self):
+        devis, valeur = self._imprimee({'mode_installation': 'residentiel', 'prod_kwh': 3628},
+                                       production_annuelle=3343, production_source='calepinage')
+        with mock.patch('apps.ventes.domain.scenario.puissance_kwc_du_devis', return_value=2.13):
+            self.assertEqual(figure_production_du_devis(devis), 3343)  # ce que lisait l'ancien sélecteur
+        self.assertEqual(valeur, Decimal('3628'))
+
+    def test_ci_lit_la_synthese_jamais_la_production_par_ville(self):
+        """Le PDF C&I (couverture et une-page) imprime 95 425 (moteur C&I) ;
+        ``prod_kwh`` (144 000 / 400 000, par ville) n'est imprimé nulle part."""
+        from apps.ventes.quote_engine.commercial import sample_data as commercial
+        from apps.ventes.quote_engine.industriel import sample_data as industriel
+        for rendu in (commercial.build('hotel'), industriel.build()):
+            rendu = dict(rendu, puissance_kwc=55, etude=dict(rendu.get('etude') or {}, etude_ci=ETUDE_CI))
+            with self.subTest(mode=rendu['mode_installation']):
+                self.assertNotEqual(rendu['prod_kwh'], 95425)
+                self.assertEqual(self._imprimee(rendu)[1], Decimal('95425'))
+
+    def test_rien_d_imprime_rend_none_jamais_zero(self):
+        divergent = {'mode_installation': 'residentiel', 'prod_kwh': 6000, 'deux_options': True,
+                     'panneaux_divergents': True, 'prod_kwh_sans': 5000, 'prod_kwh_avec': 6000}
+        for rendu in ({'mode_installation': 'agricole', 'prod_kwh': 5000}, divergent,
+                      {'mode_installation': 'residentiel', 'prod_kwh': 0},
+                      {'mode_installation': 'commercial', 'prod_kwh': 144000}):
+            with self.subTest(rendu=rendu):
+                self.assertIsNone(self._imprimee(rendu)[1])
+        with mock.patch('apps.ventes.quote_engine.builder.build_quote_data',
+                        side_effect=RuntimeError('panne')):
+            self.assertIsNone(production_imprimee_du_devis(SimpleNamespace(pk=1, etude_params={})))

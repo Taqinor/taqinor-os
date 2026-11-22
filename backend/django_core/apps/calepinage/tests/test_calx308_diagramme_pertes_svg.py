@@ -166,9 +166,9 @@ class AutonomieTest(unittest.TestCase):
 
     def test_les_bornes_sont_lues_telles_que_servies(self):
         self.assertIn('Irradiance incidente', self.svg)
-        self.assertIn('16800,0 kWh', self.svg)
+        self.assertIn('16 800,0 kWh', self.svg)
         self.assertIn('Énergie livrée', self.svg)
-        self.assertIn('15792,3 kWh', self.svg)
+        self.assertIn('15 792,3 kWh', self.svg)
 
     def test_sans_cascade_refus_nommant_cascade(self):
         for vide in (None, {}, CASCADE['exemple_vide']['cascade']):
@@ -230,8 +230,8 @@ class SvgEnergieTest(unittest.TestCase):
 
     def test_les_deux_totaux_qui_different_sont_imprimes_chacun(self):
         svg = svg_d_energie(self._resultat())
-        self.assertIn('16800.0 kWh'.replace('.', ','), svg)
-        self.assertIn('13210,0 kWh', svg)
+        self.assertIn('16 800,0 kWh', svg)
+        self.assertIn('13 210,0 kWh', svg)
 
     def test_un_flux_nul_ou_non_compte_est_hachure_et_nomme(self):
         svg = svg_d_energie(self._resultat())
@@ -251,7 +251,7 @@ class SvgEnergieTest(unittest.TestCase):
 
     def test_la_batterie_ajoute_ses_deux_valeurs_servies(self):
         svg = svg_d_energie(self._resultat())
-        self.assertIn('dont par la batterie : 2400,0 kWh', svg)
+        self.assertIn('dont par la batterie : 2 400,0 kWh', svg)
         self.assertIn('pertes de la batterie : 250,0 kWh', svg)
 
     def test_sans_postes_lisibles_refus_nommant_cascade(self):

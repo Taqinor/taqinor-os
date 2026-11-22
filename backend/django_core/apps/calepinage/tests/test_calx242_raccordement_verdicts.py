@@ -4,7 +4,7 @@ CE QUE CE FICHIER GARDE
 -----------------------
 1. **Puissance souscrite dépassée = ALERTE** — un dépassement se NÉGOCIE
    (abonnement, bridage), il n'arrête pas une conception ; et le libellé
-   nomme « puissance_souscrite_kva », le champ à corriger.
+   nomme « la puissance souscrite (kVA) », le champ à corriger.
 2. **Onduleur TRIPHASÉ sur un branchement MONOPHASÉ = BLOQUANT** — ça ne se
    négocie pas. L'inverse (monophasé sur réseau triphasé) est NORMAL : c'est
    l'équilibrage des phases qui s'en occupe, jamais un refus.
@@ -33,7 +33,7 @@ from apps.calepinage.services.chaines import concevoir_par_pan
 from apps.calepinage.services.electrique import temperatures_site
 from apps.calepinage.services.raccordement import (
     CODE_PUISSANCE_SOUSCRITE, CODE_REGIME_PHASES, CODE_TENSION_NOMINALE,
-    RaccordementInvalide, verdicts_raccordement,
+    RaccordementInvalide, _nom, _titre, verdicts_raccordement,
 )
 
 MODULE = {
@@ -93,7 +93,7 @@ class PuissanceSouscriteTest(SimpleTestCase):
         verdict = _par_code(bloc)[CODE_PUISSANCE_SOUSCRITE]
 
         self.assertEqual(verdict.statut, 'alerte')
-        self.assertIn('puissance_souscrite_kva', verdict.libelle)
+        self.assertIn(_nom('puissance_souscrite_kva'), verdict.libelle)
         self.assertEqual(verdict.valeur, 11.0)
 
     def test_la_fiche_prime_sur_le_cos_phi_saisi(self):
@@ -102,12 +102,12 @@ class PuissanceSouscriteTest(SimpleTestCase):
         bloc = verdicts_raccordement(_conception(s_max_kva=11.0),
                                      dict(COS_PHI))
 
-        self.assertIn('s_max_kva', bloc['source_puissance'])
+        self.assertIn(_nom('s_max_kva'), bloc['source_puissance'])
 
     def test_sans_fiche_le_cos_phi_impose_sert_et_se_voit(self):
         bloc = verdicts_raccordement(_conception(), dict(COS_PHI))
 
-        self.assertIn('cos_phi_impose', bloc['source_puissance'])
+        self.assertIn(_nom('cos_phi_impose'), bloc['source_puissance'])
         self.assertIn('contrat de raccordement', bloc['source_puissance'])
         self.assertGreater(bloc['puissance_injectee_kva'], 10.0)
 
@@ -119,8 +119,8 @@ class PuissanceSouscriteTest(SimpleTestCase):
 
         self.assertIsNone(bloc['puissance_injectee_kva'])
         self.assertEqual(verdict.statut, 'non_verifiable')
-        self.assertIn('s_max_kva', verdict.libelle)
-        self.assertIn('cos_phi_impose', verdict.libelle)
+        self.assertIn(_nom('s_max_kva'), verdict.libelle)
+        self.assertIn('cos φ imposé', verdict.libelle)
 
     def test_cos_phi_sans_source_refuse_en_nommant_le_champ(self):
         with self.assertRaises(RaccordementInvalide) as refus:
@@ -178,7 +178,7 @@ class TensionNominaleTest(SimpleTestCase):
                 CODE_TENSION_NOMINALE]
 
         self.assertEqual(verdict.statut, 'bloquant')
-        self.assertIn('tension_nominale_v', verdict.libelle)
+        self.assertIn(_titre('tension_nominale_v'), verdict.libelle)
         self.assertEqual(verdict.borne, 230.0)
         self.assertEqual(verdict.valeur, 400.0)
 
@@ -194,6 +194,17 @@ class SansAucuneSaisieTest(SimpleTestCase):
             self.assertEqual(verdicts[code].statut, 'non_verifiable', code)
             self.assertIsNone(verdicts[code].borne, code)
 
+    def test_aucune_phrase_ne_porte_une_cle_technique(self):
+        """R3-09 / R3-16 — libellés ET provenances sont du français : jamais
+        « puissance_souscrite_kva », « s_max_kva », « cos_phi_impose »…"""
+        import re
+
+        bloc = verdicts_raccordement(_conception(), {})
+        for verdict in bloc['verdicts']:
+            for texte in (verdict.libelle, verdict.source):
+                self.assertIsNone(re.search(r'[a-z]+_[a-z_]+', texte or ''),
+                                  texte)
+
     def test_aucun_230_ni_400_n_est_suppose(self):
         verdict = _par_code(verdicts_raccordement(_conception(), {}))[
             CODE_TENSION_NOMINALE]
@@ -205,10 +216,10 @@ class SansAucuneSaisieTest(SimpleTestCase):
     def test_chaque_motif_nomme_son_champ(self):
         verdicts = _par_code(verdicts_raccordement(_conception(), {}))
 
-        self.assertIn('puissance_souscrite_kva',
+        self.assertIn(_titre('puissance_souscrite_kva'),
                       verdicts[CODE_PUISSANCE_SOUSCRITE].libelle)
-        self.assertIn('phases', verdicts[CODE_REGIME_PHASES].libelle)
-        self.assertIn('tension_nominale_v',
+        self.assertIn(_titre('phases'), verdicts[CODE_REGIME_PHASES].libelle)
+        self.assertIn(_titre('tension_nominale_v'),
                       verdicts[CODE_TENSION_NOMINALE].libelle)
 
     def test_sans_conception_rien_n_est_invente(self):

@@ -30,6 +30,7 @@ Run :
 import re
 
 from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.permissions import CAL_VOIR
@@ -52,6 +53,36 @@ HORS_SUJET = ('prix', 'montant', 'mad', 'tva', 'remise')
 
 def url_raccordement(pk):
     return f'{url_detail(pk)}raccordement/'
+
+
+class RefusSaisieRaccordementTest(SimpleTestCase):
+    """R3-14 — un refus de saisie nomme le champ par son intitulé FRANÇAIS,
+    majuscule initiale seule (``capitalize`` écrivait « (kva) », « (kw) »)."""
+
+    def _refus(self, fonction, champ, valeur):
+        from apps.calepinage.services import raccordement
+
+        with self.assertRaises(raccordement.RaccordementInvalide) as ctx:
+            getattr(raccordement, fonction)(valeur, champ)
+        return str(ctx.exception)
+
+    def test_unites_gardent_leur_casse(self):
+        for fonction, champ, valeur, attendu in (
+                ('_nombre_saisi', 'puissance_souscrite_kva', -3,
+                 'La puissance souscrite (kVA)'),
+                ('_nombre_saisi', 'tension_nominale_v', 'abc',
+                 'La tension nominale (V)'),
+                ('_plafond_saisi', 'plafond_injection_kw', -1,
+                 "Le plafond d'injection (kW)")):
+            self.assertIn(attendu, self._refus(fonction, champ, valeur))
+
+    def test_aucune_cle_technique_dans_les_phrases(self):
+        for fonction, champ, valeur in (
+                ('_nombre_saisi', 'puissance_souscrite_kva', 0),
+                ('_nombre_saisi', 'tension_nominale_v', 1e300),
+                ('_plafond_saisi', 'plafond_injection_a', 'x')):
+            self.assertIsNone(re.search(
+                r'[a-z]+_[a-z_]+', self._refus(fonction, champ, valeur)))
 
 
 class ActionRaccordementTest(BaseApiCalepinage):

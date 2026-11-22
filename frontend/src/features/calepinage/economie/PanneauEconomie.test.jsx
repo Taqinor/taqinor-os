@@ -102,6 +102,35 @@ describe('PanneauEconomie (CALX289)', () => {
     expect(screen.queryAllByRole('textbox')).toHaveLength(0)
   })
 
+  it('R3-07 — un nom de grandeur resté dans un motif ou une source passe par les libellés français', async () => {
+    const detail = exempleContrat('calepinage', 'calepinage_detail', 'exemple')
+    calepinageApi.calepinages.get.mockResolvedValue({ data: detail })
+    const reponse = reponseContrat('ventes', 'ventes_economie', 'exemple')
+    reponse.data.omissions = [{ cle: 'van_mad', motif: 'non publié : horizon_ans non saisi ; taux non fourni : taux_actualisation_pct' }]
+    reponse.data.hypotheses[0] = { ...reponse.data.hypotheses[0], source: 'hypothèse (taux_actualisation_pct)' }
+    ventesApi.getEconomieDevis.mockResolvedValue(reponse)
+    rendre()
+    const bloc = await screen.findByTestId('calx289-bloc')
+    expect(bloc.textContent).not.toMatch(/[a-z]+_(mad|pct|ans|kwh)\b/)
+    expect(bloc).toHaveTextContent("non publié : horizon non saisi ; taux non fourni : taux d'actualisation")
+  })
+
+  it('R3-07 — une entrée de remplacement est nommée « Remplacement n° N », jamais « remplacements[0] »', async () => {
+    const detail = exempleContrat('calepinage', 'calepinage_detail', 'exemple')
+    calepinageApi.calepinages.get.mockResolvedValue({ data: detail })
+    const reponse = reponseContrat('ventes', 'ventes_economie', 'exemple')
+    reponse.data.hypotheses = [
+      ...reponse.data.hypotheses,
+      { cle: 'remplacements[0]', valeur: 35000, source: 'devis fournisseur — batterie : remplacer en année 12', saisie_le: null },
+    ]
+    ventesApi.getEconomieDevis.mockResolvedValue(reponse)
+    rendre()
+    const bloc = await screen.findByTestId('calx289-bloc')
+    expect(bloc.textContent).not.toMatch(/remplacements\[/)
+    expect(bloc).toHaveTextContent('Remplacement n° 1')
+    expect(bloc).toHaveTextContent('batterie : remplacer en année 12')
+  })
+
   it("avec devis lié mais l'exemple_vide (aucun taux/horizon saisi par la société) : chaque indicateur affiche son propre motif, jamais un zéro", async () => {
     const detail = exempleContrat('calepinage', 'calepinage_detail', 'exemple')
     calepinageApi.calepinages.get.mockResolvedValue({ data: detail })
@@ -118,7 +147,7 @@ describe('PanneauEconomie (CALX289)', () => {
     // là — jamais doublé ici), jamais une valeur numérique inventée.
     const vanMad = within(indicateurs).getByTestId('calx289-indicateur-van_mad')
     expect(vanMad).toHaveTextContent(
-      'non publié : horizon_ans non saisi ; taux non fourni : taux_actualisation_pct, indexation_pct, degradation_pct',
+      "non publié : l'horizon : non saisi ; non fourni : le taux d'actualisation, l'indexation tarifaire, la dégradation annuelle",
     )
     expect(vanMad.textContent).not.toMatch(/non publié : non publié/)
 

@@ -108,7 +108,7 @@ import {
   multiPropertyPreviewTTC, lignesRemiseesParPanier,
 } from '../../features/ventes/calc/totaux.js'
 import { MESSAGE_KWH_INCOHERENT, baremeDepuisProfil } from '../../features/ventes/calc/tarifs.js'
-import { formatNumber, todayLocalIso } from '../../lib/format'
+import { todayLocalIso } from '../../lib/format'
 // CJ2b — l'aperçu du moteur horaire résidentiel vit dans `useApercuEtude`
 // (SPL51, dérivations) et `ApercuSimulation` (SPL52, carte).
 // QJR99 — LA BASCULE : l'écran adopte la machine à états du dimensionnement
@@ -160,6 +160,7 @@ import { useCartesRepliees } from './generator/cartesRepliees'
 import { CONDITIONS_VIDES } from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
+import RailSysteme from './generator/RailSysteme'
 import MargeIndicative from './generator/MargeIndicative'
 import IndicationRegistre from './generator/IndicationRegistre'
 import PanneauSurcharges from './generator/PanneauSurcharges'
@@ -1617,7 +1618,7 @@ export default function DevisGenerator({
   } = usePersistanceDevis({
     navigate, confirm, setClients, setLeads, setSaving,
     setErrors, setWarnings, facturesEcartConfirmeRef,
-    finish, editId, editDevis, jetonRef, forcerSansJetonRef,
+    finish, editId, editDevis, dirty, jetonRef, forcerSansJetonRef,
     setConflitVerrou, armerJeton, setRechargeEdit,
     recommendedChoice, overridesReg, produits,
     setOverridesReg, setOverridesErreur,
@@ -2236,10 +2237,9 @@ export default function DevisGenerator({
                              lignesSansAchat={buyDetail.sansAchat} variante="lateral" />
             <div className="border-t border-border pt-3">
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
-              <div className="text-sm text-foreground">
-                {kwp > 0 ? `${formatNumber(kwp, { decimals: 2 })} kWc` : '— kWc'}
-                {parseInt(nbPanneaux) > 0 ? ` · ${parseInt(nbPanneaux)} panneaux` : ''}
-              </div>
+              <RailSysteme lines={lines} produits={produits} kwp={kwp} kwpLignes={kwpLignes} kwpAvec={kwpAvec}
+                           nbPanneaux={nbPanneaux} showSans={showSans} showAvec={showAvec}
+                           agricole={modeInstallation === 'agricole'} optionArgent={optionArgent} />
             </div>
             <div className="flex flex-col gap-2 pt-1">
               <Button type="submit" form="gen-form" loading={saving}>

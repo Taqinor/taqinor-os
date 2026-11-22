@@ -14,11 +14,11 @@ def conception_3d_du_lead(lead):
     ``crm`` n'importe donc JAMAIS les modèles ventes.
 
     Rend toujours les deux clés — un lead sans devis calepiné vaut
-    ``{'kwc': None, 'image_url': None, 'calepinage': None}``, jamais une clé
+    ``{'kwc': None, 'image_url': None, 'calepinage': None, 'devis': None}``, jamais une clé
     absente (ACAL273 : ``calepinage`` = ``{id, statut}`` du calepinage ouvert dont
     le kWc est lu quand le lead n'a pas de devis chiffré).
     """
-    vide = {'kwc': None, 'image_url': None, 'calepinage': None}
+    vide = {'kwc': None, 'image_url': None, 'calepinage': None, 'devis': None}
     if lead is None:
         return vide
     from apps.ventes.selectors import conception_pour_lead

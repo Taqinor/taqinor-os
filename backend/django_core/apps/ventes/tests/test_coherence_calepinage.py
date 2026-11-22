@@ -8,13 +8,16 @@ primitives (``pans_du_document``, ``puissance_kwc_du_devis``,
 Test-du-test : retirer ``regles_calepinage`` de ``charger_regles`` ⇒ les
 tests échouent (règle inconnue : KeyError du registre).
 """
+import copy
 import json
 from decimal import Decimal
 from io import StringIO
+from types import SimpleNamespace
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.models import Calepinage
 from apps.crm.models import Client
@@ -177,3 +180,53 @@ class CoherenceCalepinageTests(TestCase):
         self.assertEqual(
             {rid: len(v) for rid, v in self._violations(devis).items()},
             {rid: 0 for rid in REGLES})
+
+
+def _doc_deux_pans(b=6):
+    """ACAL968 — toit A (16 modules) + toit B (``b``), fiche 550 W déclarée."""
+    layout = _layout(16)
+    layout['zones'][0]['id'] = 'A'
+    second = copy.deepcopy(layout['zones'][0])
+    second.update(id='B', label='Est')
+    second['geometry']['panels'] = [{'x': i, 'y': 0} for i in range(b)]
+    layout['zones'].append(second)
+    return layout
+
+
+class SelectionDuDevisSansBaseTest(SimpleTestCase):
+    """Critique D2 (suite) — un devis qui ne chiffre qu'une PARTIE des surfaces
+    est comparé à la MÊME sélection du calepinage ; un devis entier, inchangé."""
+
+    def _violations(self, devis, document, modules_devis, kwc_devis):
+        from apps.ventes.coherence import regles_calepinage as rc
+
+        charger_regles()
+        calepinage = SimpleNamespace(pk=7, devis_id=1, roof_layout=document)
+        with mock.patch.object(rc, '_calepinage_lie', return_value=calepinage), \
+                mock.patch.object(rc, '_modules_option_retenue', return_value=modules_devis), \
+                mock.patch('apps.ventes.domain.scenario.puissance_kwc_du_devis', return_value=kwc_devis):
+            return {rid: len(REGISTRE[rid].check(REGISTRE[rid], devis, None)) for rid in REGLES}
+
+    @staticmethod
+    def _devis(roof_layout, empreinte):
+        return SimpleNamespace(pk=1, reference='DEV-D2', company_id=1, is_active=True,
+                               roof_layout=roof_layout, layout_hash=empreinte)
+
+    def test_devis_partiel_compare_a_sa_selection(self):
+        from apps.calepinage.services.devis import _layout_des_surfaces, empreinte_des_surfaces
+
+        doc = _doc_deux_pans()
+        devis = self._devis(_layout_des_surfaces(copy.deepcopy(doc), ['B']),
+                            empreinte_des_surfaces(doc, ['B']))
+        self.assertEqual(self._violations(devis, doc, 6, 3.3), dict.fromkeys(REGLES, 0))
+        # La surface CHIFFRÉE change (6 → 8 modules) : les trois règles le disent.
+        self.assertEqual(self._violations(devis, _doc_deux_pans(b=8), 6, 3.3),
+                         dict.fromkeys(REGLES, 1))
+
+    def test_devis_entier_inchange(self):
+        doc = _doc_deux_pans()
+        devis = self._devis(doc, layout_hash(doc))
+        self.assertEqual(self._violations(devis, doc, 22, 12.1), dict.fromkeys(REGLES, 0))
+        ecarts = self._violations(devis, doc, 6, 3.3)
+        self.assertEqual((ecarts['CAL_MODULES_DEVIS_VS_CALEPINAGE'],
+                          ecarts['CAL_KWC_DEVIS_VS_CALEPINAGE']), (1, 1))

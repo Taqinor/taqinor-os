@@ -726,7 +726,8 @@ describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
     rendre()
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-note_calcul_pdf'))
     await waitFor(() => expect(calepinageApi.calepinages.telechargerSortie)
-      .toHaveBeenCalledWith(sortieDe('note_calcul_pdf').endpoint))
+      .toHaveBeenCalledWith(sortieDe('note_calcul_pdf').endpoint, undefined,
+        { timeout: 120000, suppressErrorToast: true }))
     expect(downloadBlob).toHaveBeenCalled()
   })
 
@@ -744,7 +745,8 @@ describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-pack_technique'))
     expect(await screen.findByTestId('cal-doc-post-signalements'))
       .toHaveTextContent('Recette IEC 62446-1')
-    expect(calepinageApi.calepinages.composerPackTechnique).toHaveBeenCalledWith(1)
+    expect(calepinageApi.calepinages.composerPackTechnique)
+      .toHaveBeenCalledWith(1, { timeout: 120000, suppressErrorToast: true })
   })
 
   it('un bouton Remettre est propose pour les PDF du registre seulement', async () => {
@@ -775,6 +777,19 @@ describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-planche_png'))
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(png, 'planche-calepinage-1.png'))
     expect(calepinageApi.calepinages.telechargerSortie)
-      .toHaveBeenCalledWith(sortieDe('planche_png').endpoint)
+      .toHaveBeenCalledWith(sortieDe('planche_png').endpoint, undefined,
+        { timeout: 120000, suppressErrorToast: true })
+  })
+
+  it('R3-20 : un dépassement de délai sur une sortie dit quoi faire, en français', async () => {
+    servirSorties()
+    calepinageApi.calepinages.telechargerSortie.mockRejectedValue(
+      Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' }))
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-note_calcul_pdf'))
+    const texte = await screen.findByText(/n'a pas fini de préparer ce document en 2 minutes/)
+    expect(texte).toBeInTheDocument()
+    expect(screen.queryByText(/timeout of/)).toBeNull()
   })
 })

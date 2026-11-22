@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  toNumber, formatMAD, formatNumber, formatPercent,
+  toNumber, lireSaisieDecimale, formatMAD, formatNumber, formatPercent,
   formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
   timeAgo, formatPersonName, nbsp, formatMontant,
 } from './format.js'
@@ -20,6 +20,43 @@ test('toNumber: nombres, chaînes fr/en, invalides', () => {
   assert.equal(toNumber(null), null)
   assert.equal(toNumber('abc'), null)
   assert.equal(toNumber(NaN), null)
+})
+
+// R1-09 / R1-10 (recette 22/11, décision Q1) — la saisie française d'un champ
+// d'argent du générateur : virgule décimale, espaces (normale, insécable,
+// fine) et apostrophe en milliers. Vide ≠ 0 ; illisible ≠ un autre nombre.
+test('lireSaisieDecimale : la saisie française se lit juste, jamais un autre nombre', () => {
+  const nombre = (brut) => {
+    const r = lireSaisieDecimale(brut)
+    assert.equal(r.etat, 'nombre', `« ${brut} » devrait se lire comme un nombre`)
+    return r.valeur
+  }
+  assert.equal(nombre('12,5'), 12.5)
+  assert.equal(nombre('12.5'), 12.5)
+  assert.equal(nombre('4 800,50'), 4800.5)
+  assert.equal(nombre('4 800,50'), 4800.5) // espace insécable
+  assert.equal(nombre('4 800,50'), 4800.5) // espace fine insécable (Intl fr-FR)
+  assert.equal(nombre("4'800,50"), 4800.5)
+  assert.equal(nombre('4’800,50'), 4800.5) // apostrophe typographique
+  assert.equal(nombre('1.234,56'), 1234.56) // points de milliers à la française
+  assert.equal(nombre('1,234'), 1.234) // ambigu : lu en décimal FRANÇAIS
+  assert.equal(nombre('1.234'), 1.234)
+  assert.equal(nombre('-5'), -5)
+  assert.equal(nombre('5 %'), 5)
+  assert.equal(nombre(' 3 '), 3)
+  assert.equal(nombre('12,'), 12) // frappe en cours
+  assert.equal(nombre(7.25), 7.25)
+  assert.equal(lireSaisieDecimale('12,5').texte, '12.5')
+  // Vide : ni 0 ni erreur.
+  for (const vide of ['', '   ', null, undefined]) {
+    assert.deepEqual(lireSaisieDecimale(vide), { etat: 'vide', valeur: null, texte: '' })
+  }
+  // Illisible : jamais transformé en un autre nombre.
+  for (const faux of ['abc', '12abc', '1,234.56', '1.234.567', '1,2,3', '-', '12..5']) {
+    const r = lireSaisieDecimale(faux)
+    assert.equal(r.etat, 'illisible', `« ${faux} » ne doit pas se lire`)
+    assert.equal(r.valeur, null)
+  }
 })
 
 // ERR106 — Sans virgule décimale, un point est un VRAI point décimal : un

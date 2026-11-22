@@ -107,6 +107,35 @@ describe('AtelierPanneaux (CAL37)', () => {
     await waitFor(() => expect(calepinageApi.calepinages.get).toHaveBeenCalledTimes(2))
   })
 
+  it('R2-09 : la puissance cible porte une virgule, jamais un point brut', async () => {
+    rendre({ contexte: { ...CTX, cible: { ...CTX.cible, kwc: 2.13 } } })
+    const dd = screen.getByText(/kWc/, { selector: 'dd' })
+    expect(dd).toHaveTextContent('2,13 kWc')
+  })
+
+  it('R2-13 : conception changée depuis le devis — badge dit tout de suite, « envoyé » ne sera pas modifié', async () => {
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { ...DETAIL, layout_stale: true } })
+    const lie = { ...CTX.calepinage.devis_lie, statut: 'brouillon' }
+    const { rerender } = rendre({ contexte: { ...CTX, calepinage: { ...CTX.calepinage, devis_lie: lie } } })
+    expect(await screen.findByTestId('cal-devis-perime')).toHaveTextContent('Devis périmé — à resynchroniser')
+    rerender(
+      <MemoryRouter>
+        <AtelierPanneaux calepinageId={CTX.calepinage.id}
+          contexte={{ ...CTX, calepinage: { ...CTX.calepinage, devis_lie: { ...lie, statut: 'envoye' } } }} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('cal-devis-perime'))
+      .toHaveTextContent('Devis envoyé : la resynchronisation le corrigera, et la correction sera notée sur le devis')
+    rerender(
+      <MemoryRouter>
+        <AtelierPanneaux calepinageId={CTX.calepinage.id}
+          contexte={{ ...CTX, calepinage: { ...CTX.calepinage, devis_lie: { ...lie, statut: 'accepte' } } }} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('cal-devis-perime'))
+      .toHaveTextContent('Devis accepté : il ne sera pas modifié — créez une révision')
+  })
+
   it('lecture seule : aucune écriture proposée', async () => {
     rendre({ lectureSeule: true })
 

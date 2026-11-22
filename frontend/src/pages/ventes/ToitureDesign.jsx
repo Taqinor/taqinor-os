@@ -88,13 +88,14 @@ import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 import {
   dataUrlToBlob, repereDuLead, contourUtilisableDuLead, httpMessage,
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
-  messageRefusRepere, libelleEcartRepere, libelleCibleEstimee,
+  messageRefusRepere, libelleEcartRepere, libelleCibleEstimee, phraseToitureLead,
+  cibleActiveDuContexte,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import TableauComparatif from '../../features/calepinage/atelier/TableauComparatif.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
-import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
+import { useAtelierBoot, pousserAffectationAtelier, MESSAGE_ACCES_REFUSE } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
 import { CONS_WINDOW_HTML } from '@roofpro/consumptionMarkup' // ERR-ACAL311-PANNEAU-ABSENT-ERP
 
@@ -508,7 +509,12 @@ function AtelierToiture({
   // ACAL994 — après « Enregistrer », le contexte relu (rafraichirContexte) porte le chiffrage SERVI : la carte
   // Économies et le Total passent de l'estimation à la valeur du serveur. Mode lead : aucun chiffrage, rien à poser.
   useEffect(() => {
-    if (estCalepinage && contexte) builderApi.current?.majChiffrage?.(contexte.chiffrage ?? null)
+    // R2-13 — le compte « · K au devis » suit le devis relu ; `cible.panneaux` n'est celui du DEVIS que si `source === 'devis'`.
+    if (estCalepinage && contexte) {
+      const cibleActive = cibleActiveDuContexte(contexte) // QJR40 : jamais contexte.cible seul
+      builderApi.current?.majChiffrage?.(contexte.chiffrage ?? null,
+        cibleActive.source === 'devis' ? (cibleActive.panneaux ?? null) : null)
+    }
   }, [contexte, builderReady, estCalepinage])
 
   // ACAL83 — UNE fonction relit design-context après chaque enregistrement
@@ -647,10 +653,13 @@ function AtelierToiture({
   // ACAL37 (D-ACAL-1) — flux `/ventes/devis/:id/design` : la conception est rangée sur le
   // CALEPINAGE, PUIS le devis est resynchronisé par l'enveloppe du module
   // (`calepinages/<id>/sync-devis/`, D02-T09) — jamais `ventesApi.syncDevisLayout`.
-  // Rend `false` quand le serveur refuse (409 : devis accepté, refusé ou expiré, révisable ou clos ; un devis envoyé se corrige sur place, tracé).
+  // Serveur qui refuse (409 : devis accepté, refusé ou expiré, révisable ou clos ; un devis envoyé se corrige sur
+  // place, tracé) : R2-23 — la conception EST enregistrée, on rend `{enregistre: true, devisModifie: false, motif}`
+  // (motif = texte du serveur) pour que « Générer / Resynchroniser » le DISENT (BoutonDevis), jamais `false`.
   // ACON80 — la variante qui porte le devis synchronisé (servie par le contexte), ou null.
   const varianteId = paramsContexte ? (contexte?.variante?.id ?? null) : null
   const resynchroniserDevisLie = async (corps = {}) => {
+    const refus = (motif) => ({ enregistre: true, devisModifie: false, motif })
     if (!devisSynchronise || !calepinageId) return true
     try {
       const res = await calepinageApi.calepinages.syncDevis(calepinageId,
@@ -665,18 +674,16 @@ function AtelierToiture({
       const code = err?.response?.status
       const data = err?.response?.data
       if (code === 409) {
-        setConflit({
-          detail: data?.detail || 'Ce devis ne peut plus être resynchronisé.',
-          revision_possible: !!data?.revision_possible,
-        })
-        return false
+        const detail = data?.detail || 'Ce devis ne peut plus être resynchronisé.'
+        setConflit({ detail, revision_possible: !!data?.revision_possible })
+        return refus(detail)
       }
       // Lot 2 critique #23 — la conception EST enregistrée ; c'est la
       // resynchro du devis qui est refusée : le motif du SERVEUR, décodé par
       // le décodeur partagé (`refusDevis.js`), jamais « données invalides ».
       if (!code) {
         setGenError(MESSAGE_RESYNC_RESEAU)
-        return false
+        return refus('resynchronisation impossible (réseau)')
       }
       // Lot 2 critique #29 — refus ÉLECTRIQUE (422) : la liste des bloquants
       // et, pour un approbateur (`permissions.peut_deroger` SERVI), « Passer
@@ -689,15 +696,17 @@ function AtelierToiture({
           peutDeroger = !!detail?.data?.permissions?.peut_deroger
         } catch { peutDeroger = false }
         setBloquageSync({ ...electrique, peutDeroger })
-        setGenError(messageResyncRefusee(electrique.detail || refusServeur(err).message))
-        return false
+        const motif = electrique.detail || refusServeur(err).message
+        setGenError(messageResyncRefusee(motif))
+        return refus(motif)
       }
       if (code === 400 && data?.derogation_electrique) {
         setMotifDerogationErreur(refusServeur(err).message)
-        return false
+        return refus(refusServeur(err).message)
       }
-      setGenError(messageResyncRefusee(refusServeur(err).message))
-      return false
+      const motif = refusServeur(err).message
+      setGenError(messageResyncRefusee(motif))
+      return refus(motif)
     }
   }
 
@@ -713,7 +722,7 @@ function AtelierToiture({
     setSending(true)
     try {
       const ok = await resynchroniserDevisLie({ derogation_electrique: { motif: saisi } })
-      if (ok) {
+      if (ok === true) {
         setGenError(null)
         setStatus('Devis resynchronisé (dérogation électrique consignée).')
       }
@@ -847,11 +856,8 @@ function AtelierToiture({
       setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon)
       setGenStatus(null)
       setSending(false)
-      setStatus(
-        resultat?.version
-          ? `Conception enregistrée — version ${resultat.version}.`
-          : 'Conception enregistrée.'
-      )
+      // R2-04 — `resultat.version` est l'identifiant GLOBAL de la version, pas son rang : jamais affiché.
+      setStatus('Conception enregistrée.')
       // ACAL398 — nouvelle version du calepinage (pas une variante) : la simulation repart
       // seule, sans attendre ; son issue est reprise par l'onglet Production.
       if (!varianteId) lancerSimulationAuto(calepinageId)
@@ -1013,6 +1019,7 @@ function AtelierToiture({
   // « aucune » n'affiche rien. Toute translation est décidée par le SERVEUR.
   // ACAL195 — cible ESTIMÉE (lead/factures) ou refus nommé du moteur, affichés tels quels.
   const cibleEstimee = estCalepinage ? libelleCibleEstimee(contexte?.cible) : null
+  const toitureLead = estCalepinage ? phraseToitureLead(contexte?.toiture_lead) : null // R2-15 — lecture seule
   const deriveRepere = estCalepinage ? contexte?.geometrie?.derive?.etat ?? null : null
   const ecartRepere = libelleEcartRepere(contexte?.geometrie?.ecart_m)
   const gesteRepere = async (geste) => {
@@ -1139,6 +1146,22 @@ function AtelierToiture({
     </div>
   )
 
+  // R2-20 — un compte sans droit sur le calepinage (403) : le message DIT le refus, aucun outil d'édition n'est monté.
+  if (estCalepinage && loadError === MESSAGE_ACCES_REFUSE) {
+    return (
+      <div className="rp9-host">
+        <div className="rp9-topbar">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Interne · conception toiture</p>
+          <button type="button" onClick={fermer} className="rp9-close"
+            aria-label="Fermer la conception 3D" data-testid="rp9-fermer">
+            <X className="size-5" aria-hidden="true" />
+          </button>
+        </div>
+        <p className="mt-6 text-sm text-destructive" role="alert" data-testid="cal-acces-refuse">{loadError}</p>
+      </div>
+    )
+  }
+
   return (
     <div className="rp9-host">
       {/* Fondateur 18/08 — barre haute : le libellé d'origine à gauche, le
@@ -1200,7 +1223,7 @@ function AtelierToiture({
             <p className="mt-1 text-sm text-foreground" role="status">
               Un brouillon non enregistré du{' '}
               {formaterHeureBrouillon(brouillonPropose.horodatage)} a été
-              trouvé sur cet appareil — reprendre où vous en étiez, ou
+              trouvé {brouillonPropose.serveur ? 'sur le serveur (enregistré par votre compte depuis un autre poste)' : 'sur cet appareil'} — reprendre où vous en étiez, ou
               l’ignorer et ouvrir la dernière conception enregistrée.
             </p>
             <div className="mt-3 flex flex-wrap gap-3">
@@ -1335,6 +1358,16 @@ function AtelierToiture({
             {/* ACAL965 — le refus n'est dit qu'une fois ; le lien mène à la fiche pour le corriger. */}
             {contexte?.cible?.refus && contexte?.calepinage?.lead != null && (
               <> <Link className="inline-flex min-h-11 items-center underline" to={`/crm/leads/${contexte.calepinage.lead}`}>Ouvrir la fiche du lead</Link></>
+            )}
+          </p>
+        )}
+
+        {/* R2-15 / R2-01 (Q1) — ce que le lead déclare de sa toiture, en lecture : rien n'en est prérempli. */}
+        {toitureLead && (
+          <p className="mt-3 text-xs text-muted-foreground" data-testid="acal-toiture-lead">
+            {toitureLead}
+            {contexte?.calepinage?.lead != null && (
+              <> <Link className="inline-flex min-h-11 items-center underline" to={`/crm/leads/${contexte.calepinage.lead}`}>Voir la fiche du lead</Link></>
             )}
           </p>
         )}

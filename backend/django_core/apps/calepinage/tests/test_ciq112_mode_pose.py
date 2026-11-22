@@ -69,6 +69,20 @@ class PolitiqueModePoseTests(SimpleTestCase):
         politiques = dict(entree_depuis_layout(document).politiques)
         self.assertEqual(politiques['z1'].code, 'AFFLEURANT')
 
+    def test_toit_plat_choisi_a_l_atelier_prime_sur_le_mode_declare(self):
+        """CFIN2 — l'atelier écrit TOUJOURS ``roofType`` (jamais ``modePose``) :
+        un pan dessiné « Toit plat » garde la règle de son dessin, le toit
+        déclaré du lead n'est qu'un DÉFAUT pour un pan qui ne dit rien."""
+        for declare in ('bac_acier', 'toiture_inclinee'):
+            document = _document(roofType='flat')
+            document['modePoseDeclare'] = declare
+            politiques = dict(entree_depuis_layout(document).politiques)
+            self.assertEqual(politiques['z1'].code, 'ANTI_OMBRAGE', declare)
+            document = _document(roofType='pitched')
+            document['modePoseDeclare'] = declare
+            politiques = dict(entree_depuis_layout(document).politiques)
+            self.assertEqual(politiques['z1'].code, 'AFFLEURANT', declare)
+
 
 class VocabulaireTests(SimpleTestCase):
     def test_parite_types_pose_mode_pose(self):
@@ -86,6 +100,17 @@ class VocabulaireTests(SimpleTestCase):
                 SimpleNamespace(type_toiture=toit)), '', toit)
         self.assertEqual(mode_pose_declare_du_lead(SimpleNamespace(
             type_surface='ombriere', type_toiture='bac_acier')), 'ombriere')
+
+    def test_r2_15_le_mode_pose_du_document_est_redit_a_l_atelier(self):
+        """R2-15 — le document que la création pose pour un lead en tuiles
+        (``{'modePoseDeclare': …}``, ``creation._creer_pour_lead``) : le contexte
+        de conception le redit tel quel dans ``toiture_lead.mode_pose``."""
+        from apps.calepinage.views.toiture_lead import toiture_du_lead
+
+        lead = SimpleNamespace(type_toiture='tuiles')
+        document = {'modePoseDeclare': mode_pose_declare_du_lead(lead)}
+        calepinage = SimpleNamespace(lead_id=None, roof_layout=document)
+        self.assertEqual(toiture_du_lead(None, calepinage)['mode_pose'], 'toiture_inclinee')
 
     def test_migration_choix_reversible(self):
         module = import_module(

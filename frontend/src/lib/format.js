@@ -36,7 +36,8 @@ export function toNumber(value) {
   if (value === null || value === undefined || value === '') return null
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
   // Accepte "1 234,56", "1234.56", "1.234,56", "12 %" (incl. espaces insécables)
-  const stripped = String(value).replace(/\s|%|MAD|DH|dh/g, '')
+  // et l'apostrophe de milliers ("4'800,50", R1-10).
+  const stripped = String(value).replace(/\s|%|MAD|DH|dh|['’]/g, '')
   // ERR106 — Un point n'est un séparateur de milliers QUE dans une notation fr
   // où la virgule joue le rôle de séparateur décimal (ex. "1.234,56"). Sans
   // virgule, un point est un vrai point décimal : "1.234" reste 1,234 (et ne
@@ -48,6 +49,26 @@ export function toNumber(value) {
     .replace(',', '.')
   const n = Number(cleaned)
   return Number.isFinite(n) ? n : null
+}
+
+/**
+ * R1-09 / R1-10 (décision Q1, 22/11/2026) — lecture d'un nombre TAPÉ dans un
+ * champ texte à clavier décimal : la même lecture que `toNumber` (virgule
+ * décimale, espaces normale / insécable / fine et apostrophe en milliers,
+ * point décimal aussi), mais qui DISTINGUE le vide de l'illisible — un champ
+ * vide n'est pas 0, une saisie illisible ne devient jamais un autre nombre.
+ * Ambigu « 1,234 » : décimal français (1.234), la langue des utilisateurs ;
+ * « 1,234.56 » (notation anglaise) : illisible, dit sous le champ.
+ * @returns {{etat: 'vide'|'nombre'|'illisible', valeur: number|null, texte: string}}
+ *   `texte` = le nombre au point décimal (ce que l'état de l'écran porte).
+ */
+export function lireSaisieDecimale(brut) {
+  if (brut === null || brut === undefined || String(brut).trim() === '') {
+    return { etat: 'vide', valeur: null, texte: '' }
+  }
+  const valeur = toNumber(brut)
+  if (valeur === null) return { etat: 'illisible', valeur: null, texte: String(brut) }
+  return { etat: 'nombre', valeur, texte: String(valeur) }
 }
 
 /**

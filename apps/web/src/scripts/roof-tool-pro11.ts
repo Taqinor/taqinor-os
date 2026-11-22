@@ -129,7 +129,7 @@ import { $, fmt, fmtMad, esc } from './roofPro11/dom';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
-import { lireJeuReglages, appliquerJeuAuPan, mentionJeuReglages, type JeuReglages, type ValeursJeuPan } from './roofPro11/jeuReglages'; // ACAL308
+import { lireJeuReglages, avecPoseDeclaree, appliquerJeuAuPan, mentionJeuReglages, type JeuReglages, type ValeursJeuPan } from './roofPro11/jeuReglages'; // ACAL308, R2-15
 import {
   createZones,
   exclusionObstructionRings,
@@ -2064,7 +2064,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CAL37 — figé pour la session, comme `devisMode` : un calepinage autonome
     // (`cibleVendue: false`) n'a AUCUNE vente derrière lui.
     cibleVendue = h.cibleVendue;
-    derniereCible = { cibleVendue: h.cibleVendue, neededPanels: h.neededPanels }; // ACAL925
+    derniereCible = { cibleVendue: h.cibleVendue, neededPanels: h.neededPanels }; ctx.panneauxDevis = h.neededPanels; // ACAL925, R2-13
     const layout = devis.geometrie?.roof_layout ?? null;
     // ACAL31 — mesures (CAL102), zones d'exclusion (CAL69), retraits (CAL76), horizon (CAL93),
     // scène (CALX119), bâtiments (CALX100) et fond (CALX107) sont relus par
@@ -2639,7 +2639,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const fresh = newAreaRecord();
     // ACAL308 (D-ACAL-20) — le jeu de réglages mémorisé du document se pose sur le pan NEUF,
     // avant son pavage ; les pans existants ne sont jamais touchés.
-    const jeu = lireJeuReglages(ctx.documentRelu);
+    const jeu = avecPoseDeclaree(lireJeuReglages(ctx.documentRelu), ctx.documentRelu); // R2-15 — pose du toit du lead
     const posees = appliquerJeuAuPan(fresh, jeu);
     areas.push(fresh);
     activeAreaId = fresh.id;
@@ -2690,7 +2690,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  qu'il est VIERGE (le premier pan d'un calepinage vierge est un pan à dessiner comme les
    *  suivants). Un pan déjà tracé n'est jamais modifié. */
   function appliquerJeuAuPanVierge() {
-    const jeu = lireJeuReglages(ctx.documentRelu);
+    const jeu = avecPoseDeclaree(lireJeuReglages(ctx.documentRelu), ctx.documentRelu); // R2-15 — pose du toit du lead
     afficherMentionJeu(jeu);
     const actif = activeArea();
     if (!jeu || !actif || closed || vertices.length > 0 || actif.vertices.length > 0 || actif.result) return;
@@ -4319,7 +4319,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // avant map.on('load') (map.getLayer(...) renvoie undefined tant que
     // les layers n'existent pas encore).
     setReferenceContourVisible: (visible: boolean) => setReferenceContourVisible(visible),
-    majChiffrage: (chiffrage) => optimizer.majChiffrage(chiffrage), // ACAL994
+    majChiffrage: (chiffrage, panneauxDevis) => optimizer.majChiffrage(chiffrage, panneauxDevis), // ACAL994, R2-13
     // AP-F2 — « Recommencer depuis le tracé client », posée par ToitureDesign.jsx à
     // côté de la note « Calepinage automatique depuis le tracé client — à vérifier ».
     recommencerDepuisTraceClient: () => recommencerDepuisTraceClient(),

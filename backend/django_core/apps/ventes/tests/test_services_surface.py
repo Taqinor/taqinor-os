@@ -233,6 +233,8 @@ SURFACE_PUBLIQUE = (
     # CIQ618 — ouverture automatique du dossier 82-21 (domain/dossier_8221.py).
     "ouvrir_dossier_8221",
     "pans_du_document",
+    # Critique D1 (22/11) — les pans vendus, sans les pans existants.
+    "pans_vendus",
     "phase_client_pour_dimensionnement",
     "plafond_panneaux",
     "plafond_physique_du_contour",

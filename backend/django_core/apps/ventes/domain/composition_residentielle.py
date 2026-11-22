@@ -733,7 +733,10 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     panneaux_designes = None
     designes = [m for m in (modeles or ())
                 if isinstance(m, dict) and int(m.get('count') or 0) > 0]
-    if any(m.get('produit_id') for m in designes):
+    # ACAL916 (critique D3) — deux puissances posées distinctes ouvrent aussi
+    # une ligne par modèle, même sans fiche (même règle que ``modeles_designes``).
+    if any(m.get('produit_id') for m in designes) or len(
+            {_entier_ou_none(m.get('watt')) for m in designes}) >= 2:
         panneaux_designes = []
         marque_panneau = str(carte_marques.get('panneau') or '').strip()
         for modele in designes:

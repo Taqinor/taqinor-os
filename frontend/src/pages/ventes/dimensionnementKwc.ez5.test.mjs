@@ -66,7 +66,8 @@ test('les deux champs sont BIDIRECTIONNELS', () => {
   assert.match(gen, /onNbPanneauxChange[\s\S]{0,220}?champ: 'nbPanneaux'/)
   assert.match(REDUCER, /case 'nbPanneaux':[\s\S]{0,400}?kwcCible: kwcDepuisPanneaux\(valeur, base\.panelW\)/)
   // Le champ des panneaux passe bien par le nouveau handler.
-  assert.match(gen, /id="gen-nbpanneaux"[\s\S]{0,220}?onChange=\{e => onNbPanneauxChange\(e\.target\.value\)\}/)
+  // R1-09 : le champ est un `ChampDecimal` (la virgule « 12,0 » est lue) ; il remet le nombre LU.
+  assert.match(gen, /id="gen-nbpanneaux"[\s\S]{0,220}?onValeur=\{onNbPanneauxChange\}/)
 })
 
 test('un nombre de panneaux posé AILLEURS renseigne la cible, sans écraser une saisie', () => {
@@ -77,7 +78,13 @@ test('un nombre de panneaux posé AILLEURS renseigne la cible, sans écraser une
 
 test('la garde de saisie du générateur est intacte (rien n’est jamais rejeté)', () => {
   // Le nouveau champ accepte n'importe quelle valeur tapée.
-  assert.match(gen, /id="gen-kwc-cible" type="number" min="0" step="any"/)
+  // R1-09 : « 5,5 » kWc se lisait 55 dans un champ natif « number » — le champ est
+  // un `ChampDecimal` (texte à clavier décimal ; `step="any"`, aucune borne : le
+  // composant porte lui-même l'épingle, gardée par solar.test.mjs).
+  const champ = /<ChampDecimal id="gen-kwc-cible"[\s\S]*?\/>/.exec(gen)?.[0] ?? ''
+  assert.ok(champ, 'le champ kWc cible est un ChampDecimal')
+  assert.doesNotMatch(champ, /(type|min|max|step|pattern)=/)
+  assert.match(champ, /onValeur=\{onKwcCibleChange\}/)
   assert.match(gen, /<form id="gen-form"[\s\S]{0,200}?noValidate/)
   for (const src of SAISIES) assert.doesNotMatch(src, /step="0\.\d+"/)
 })

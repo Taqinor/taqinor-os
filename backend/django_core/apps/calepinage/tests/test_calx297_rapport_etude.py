@@ -222,7 +222,7 @@ class ConsommationEtSectionsOmisesTest(unittest.TestCase):
     def test_le_total_n_est_pas_arrondi(self):
         res = resultat()
         res['consommation']['total_kwh'] = 9600.123
-        self.assertIn('9600,123', self.page(res))
+        self.assertIn('9\u202f600,123', self.page(res))
 
 
 class PompageTest(unittest.TestCase):
@@ -237,17 +237,17 @@ class PompageTest(unittest.TestCase):
         page = self.page(copy.deepcopy(POMPAGE_STOCKE))
         self.assertIn('data-section="pompage"', page)
         for attendu in ('62,4', 'calculee', '49,6', '4,8', '8,2', '4,0',
-                        'Variateur VEICHI', '1441,3', '1330,1', 'pvgis_live',
+                        'Variateur VEICHI', '1\u202f441,3', '1\u202f330,1', 'pvgis_live',
                         '103,3', '95,3', '1,3', '2026-11-21T10:15:00+00:00'):
             self.assertIn(attendu, page)
-        self.assertNotIn('1607,2', page)  # février plat : PVGIS prime
+        self.assertNotIn('1\u202f607,2', page)  # février plat : PVGIS prime
 
     def test_volumes_nuls_aucun_m3_imprime(self):
         stocke = copy.deepcopy(POMPAGE_STOCKE)
         stocke['pompage_dernier']['volumes'] = None
         page = self.page(stocke)
         self.assertIn('Volumes mensuels : non calculés', page)
-        self.assertNotIn('1441,3', page)
+        self.assertNotIn('1\u202f441,3', page)
 
     def test_sans_enregistrement_la_section_est_absente(self):
         for stocke in ({}, {'pompage_dernier': {}}, None):
@@ -261,7 +261,7 @@ class PompageTest(unittest.TestCase):
     def test_un_volume_arrondi_est_detecte(self):
         stocke = copy.deepcopy(POMPAGE_STOCKE)
         stocke['pompage_dernier']['volumes']['m3_mois_pvgis'][0] = 1441.0
-        self.assertNotIn('1441,3', self.page(stocke))
+        self.assertNotIn('1\u202f441,3', self.page(stocke))
 
 
 class HorsReseauTest(unittest.TestCase):
@@ -484,8 +484,8 @@ class MiseEnPageTest(unittest.TestCase):
             self.assertNotIn(interdit, self.html)
 
     def test_les_nombres_sont_imprimes_tels_que_servis(self):
-        # production.total.p50_kwh = 13000.0 : ni arrondi, ni séparateur.
-        self.assertIn('13000,0', self.html)
+        # production.total.p50_kwh = 13000.0 : ni arrondi ; les milliers se groupent (R3-18).
+        self.assertIn('13\u202f000,0', self.html)
 
     def test_la_langue_anglaise_titre_les_sections_en_anglais(self):
         html = html_de_rapport(rapport(langue='en'))

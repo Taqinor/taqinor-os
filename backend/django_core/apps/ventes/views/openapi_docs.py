@@ -152,6 +152,9 @@ RevoquerLienPublicResponse = _ser('DevisRevoquerLienPublicResponse', {
 
 PdfTaskResponse = _ser('PdfTaskResponse', {
     'task_id': s.CharField(),
+    # R1-02/R1-03 — devis seulement : l'identifiant à relire par
+    # `etat-pdf?demande=` / `telecharger-pdf?demande=` (absent pour une facture).
+    'demande': s.CharField(required=False),
     'detail': s.CharField(),
 })
 

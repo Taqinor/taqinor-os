@@ -162,6 +162,14 @@ def calepinages_visibles(user, *, inclure_archives=False, base=None,
     return restreindre_aux_siens(lignes, user)
 
 
+def reference_calepinage(calepinage):
+    """« CAL-AAMM-0001 » du calepinage — LA référence dérivée (ACAL196), servie
+    aux autres apps par cette porte (``ventes`` ne lit jamais ``services``)."""
+    from .services.presentation import reference_calepinage as _reference
+
+    return _reference(calepinage)
+
+
 def calepinage_ouvert_du_lead(company, lead_id):
     """ACAL182 — LE calepinage OUVERT (non archivé) d'un lead, ou ``None``.
 
@@ -176,13 +184,14 @@ def calepinage_ouvert_du_lead(company, lead_id):
     return _ouverts(company, lead_id).first()
 
 
-def mesures_du_calepinage(calepinage):
+def mesures_du_calepinage(calepinage, document=None):
     """ACAL273 — ``{modules, kwc, ...}`` du document de pose d'un calepinage,
     LU par ``mesures_du_document`` (la fiche du module du document, jamais le
-    wattage constant de l'outil). ``{}`` sans calepinage ni document."""
+    wattage constant de l'outil). ``{}`` sans calepinage ni document.
+    ``document`` : une copie de ce document (ACAL968, la sélection d'un devis)."""
     from .services.mesures import mesures_du_document
 
-    document = getattr(calepinage, 'roof_layout', None)
+    document = getattr(calepinage, 'roof_layout', None) if document is None else document
     if not isinstance(document, dict):
         return {}
     return mesures_du_document(document)
@@ -767,8 +776,6 @@ def ombrage_servi(devis_id, company):
     Point d'entrée cross-app (``apps.ventes`` : étude bancable du devis),
     lecture PURE, bornée à ``company``.
     """
-    from .services.chaine_pertes import perte_ombrage_de_la_cascade
-
     # ACAL92 — un devis REMPLACÉ ne lit jamais l'ombrage d'une conception
     # re-liée qui a changé depuis son envoi.
     calepinage = _calepinage_lisible_pour_devis(devis_id, company)
@@ -776,14 +783,15 @@ def ombrage_servi(devis_id, company):
         return None
     # ACON80 — un devis porté par une VARIANTE lit la simulation de celle-ci.
     variante = variante_portant_le_devis(calepinage, devis_id)
+    devis = None
     if str(calepinage.devis_id) == str(devis_id) or variante is not None:
         # ACON21 — lien direct : la conception a changé depuis le devis
         # (empreintes imprimées, ACAL46) ⇒ aucune perte d'une autre conception.
         from apps.ventes.selectors import get_devis_by_pk
         from apps.ventes.selectors_calepinage import _conception_a_jour
 
-        if _conception_a_jour(get_devis_by_pk(devis_id),
-                              variante or calepinage) is False:
+        devis = get_devis_by_pk(devis_id)
+        if _conception_a_jour(devis, variante or calepinage) is False:
             return {'perime': True, 'motif': MOTIF_CONCEPTION_DIVERGENTE,
                     'par_pan': {}, 'global': None}
     servi = resultat_servi(calepinage, variante=variante)
@@ -794,11 +802,61 @@ def ombrage_servi(devis_id, company):
     if not servi.get('simule') or not isinstance(cascade, dict):
         return None
     par_pan = {}
-    for ligne in ((servi.get('ombrage') or {}).get('par_pan') or ()):
-        if isinstance(ligne, dict) and ligne.get('pan'):
-            par_pan[str(ligne['pan'])] = ligne.get('perte_ombrage_pct')
+    lignes = [ligne for ligne in ((servi.get('ombrage') or {}).get('par_pan') or ())
+              if isinstance(ligne, dict) and ligne.get('pan')]
+    for ligne in lignes:
+        par_pan[str(ligne['pan'])] = ligne.get('perte_ombrage_pct')
     return {'perime': False, 'motif': '', 'par_pan': par_pan,
-            'global': perte_ombrage_de_la_cascade(cascade)}
+            'global': _perte_ombrage_chiffree(devis, lignes, cascade)}
+
+
+def _perte_ombrage_chiffree(devis, lignes, cascade):
+    """ACAL968 (D-ACAL-37) — la perte d'ombrage des SEULS pans que le devis
+    chiffre : la cascade publiée (la somme) quand il chiffre tout ; sinon la
+    somme des cascades de SES pans (repère ``pan`` = clé ou libellé du pan),
+    ``None`` dès qu'un pan chiffré n'a pas la sienne (jamais celle d'un autre)."""
+    from apps.ventes.selectors_calepinage import surfaces_chiffrees_du_devis
+    from apps.ventes.services import pans_du_document
+
+    from .services import chaine_pertes as _chaine
+
+    if surfaces_chiffrees_du_devis(devis) is None:
+        return _chaine.perte_ombrage_de_la_cascade(cascade)
+    par_repere = {str(ligne['pan']): ligne.get('cascade') for ligne in lignes}
+    perdu = entree = 0.0
+    for pan in pans_du_document(devis.roof_layout):
+        if int(pan.get('modules') or 0) <= 0 or pan.get('existant'):
+            continue
+        cascade = par_repere.get(pan['cle']) or par_repere.get(pan['libelle'])
+        pct = _chaine.perte_ombrage_de_la_cascade(cascade) if isinstance(cascade, dict) else None
+        if pct is None:
+            return None
+        # Pondérée par l'énergie qui atteint CE pan (première étape de sa cascade).
+        energie = float(cascade['etapes'][0].get('kwh_avant') or 0.0)
+        perdu, entree = perdu + pct * energie, entree + energie
+    return round(perdu / entree, 3) if entree else None
+
+
+def document_de_la_selection(calepinage, cles):
+    """ACAL968 — la COPIE du document de ``calepinage`` limitée aux surfaces
+    ``cles`` (celle qu'un devis partiel chiffre), ou ``None`` quand la
+    sélection ne s'applique plus. Porte de l'auditeur de cohérence (ventes)."""
+    from .services import devis as _devis
+
+    try:
+        return _devis._layout_des_surfaces(getattr(calepinage, 'roof_layout', None) or {}, cles)
+    except _devis.DevisRefuse:
+        return None
+
+
+def empreinte_de_la_selection(calepinage, cles):
+    """ACAL968 — l'empreinte imprimée de la copie du document de
+    ``calepinage`` (ou d'une variante) limitée aux surfaces ``cles`` : celle
+    qu'un devis partiel porte quand il est à jour. ``''`` quand la sélection
+    ne s'applique plus. Porte de ``ventes._conception_a_jour``."""
+    from .services import devis as _devis
+
+    return _devis.empreinte_des_surfaces(getattr(calepinage, 'roof_layout', None) or {}, cles)
 
 
 def calepinage_retenu_pour_devis(devis_id, company):

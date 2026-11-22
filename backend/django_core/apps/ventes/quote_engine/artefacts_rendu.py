@@ -267,12 +267,17 @@ def _planche_calepinage(devis):
                 calepinage, pied=empreinte,
                 document=figee['roof_layout']) or ""
             return _svg_planche_inline(svg), empreinte
+        # ACAL968 (D-ACAL-37) — un devis qui ne chiffre qu'une partie des
+        # surfaces imprime la planche de SA copie (les seules surfaces vendues).
+        from apps.ventes.selectors_calepinage import surfaces_chiffrees_du_devis
+        partiel = surfaces_chiffrees_du_devis(devis) is not None
         empreinte = _calepinage_services.texte_d_empreinte(
-            getattr(calepinage, 'layout_hash', ''),
+            getattr(devis if partiel else calepinage, 'layout_hash', ''),
             getattr(calepinage, 'version_moteur', ''),
             None)
         svg = _calepinage_services.rendre_planche_svg(
-            calepinage, pied=empreinte) or ""
+            calepinage, pied=empreinte,
+            document=devis.roof_layout if partiel else None) or ""
         return _svg_planche_inline(svg), empreinte
     except Exception:  # noqa: BLE001 — une planche absente ne casse pas un PDF (D-ENF22-BLE001)
         logger.warning("CAL182: planche de calepinage indisponible pour le "

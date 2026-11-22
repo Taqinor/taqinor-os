@@ -241,7 +241,11 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
             d.echeancier, customAcompte, d.total_ttc, d.mode_installation, effectifs),
         })
       }
-      await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
+      const lance = await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
+      // R1-02/R1-03 — on suit CETTE demande (clé `demande` de generer-pdf) :
+      // un ancien fichier d'un autre format ne la dit plus « prête », et le
+      // fichier ouvert est rendu dans SES options.
+      const suivi = lance?.demande ? [lance.demande] : []
       let attempts = 0
       // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une
       // CLÔTURE PÉRIMÉE figée à `false` à la création de la boucle : la
@@ -270,7 +274,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
           // apps/ventes/contract_samples/devis_etat_pdf.json), pas seulement
           // `fichier_pdf` : un échec DÉFINITIF de la tâche Celery (retries
           // épuisés) était invisible et cette boucle ne s'arrêtait jamais.
-          const res = await ventesApi.etatPdfDevis(d.id)
+          const res = await ventesApi.etatPdfDevis(d.id, ...suivi)
           if (res.data.statut === 'echec') {
             // État TERMINAL : on arrête le sondage et on rend l'échec
             // ACTIONNABLE (le message du serveur nomme la cause).
@@ -291,7 +295,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
               // Safari iOS honore après ce polling asynchrone) que si le
               // téléchargement/l'ouverture automatique échoue.
               try {
-                const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
+                const pdfRes = await ventesApi.telechargerPdfDevis(d.id, ...suivi)
                 openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
               } catch {
                 toast.error(`${d.reference} : PDF prêt — l'ouverture automatique a échoué.`, {
@@ -299,7 +303,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
                     label: 'Ouvrir',
                     onClick: async () => {
                       try {
-                        const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
+                        const pdfRes = await ventesApi.telechargerPdfDevis(d.id, ...suivi)
                         openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
                       } catch {
                         toast.error(`${d.reference} : PDF indisponible — utilisez le bouton de téléchargement.`)

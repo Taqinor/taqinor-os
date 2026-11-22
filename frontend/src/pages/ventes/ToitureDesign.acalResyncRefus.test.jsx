@@ -88,6 +88,21 @@ describe('Resynchro du devis lié refusée — motif serveur décodé', () => {
     await waitFor(() => expect(screen.queryByTestId('cal-sync-bloquants')).not.toBeInTheDocument())
   })
 
+  it('R2-23 — « Resynchroniser » : enregistrée, devis lié refusé ⇒ BoutonDevis dit le motif du serveur', async () => {
+    calepinageApi.calepinages.syncDevis.mockRejectedValue(
+      { response: { status: 400, data: { approbation: [APPROBATION] } } })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
+    rendreDevis(DEVIS_ID)
+    const bouton = await screen.findByTestId('cal-resynchroniser-devis', {}, { timeout: 15000 })
+    await waitFor(() => expect(bouton).toBeEnabled())
+    await userEvent.click(bouton)
+    const refus = await screen.findByTestId('cal-devis-refus')
+    expect(refus).toHaveTextContent('La conception est enregistrée, mais')
+    expect(refus).toHaveTextContent(`n’a pas été modifié : ${APPROBATION}`)
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).toHaveBeenCalledTimes(1)
+    expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledTimes(1)
+  })
+
   it('422 électrique, non approbateur : dérogation réservée', async () => {
     calepinageApi.calepinages.syncDevis.mockRejectedValue(REFUS_422)
     calepinageApi.calepinages.get.mockResolvedValue(

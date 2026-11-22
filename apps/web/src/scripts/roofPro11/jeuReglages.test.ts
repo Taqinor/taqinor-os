@@ -12,6 +12,8 @@ import { describe, it, expect } from 'vitest';
 import { panVierge } from './zones';
 import {
   CLES_JEU,
+  MODES_POSE_AFFLEURANTS,
+  avecPoseDeclaree,
   appliquerJeuAuPan,
   appliquerReglagesAuxPans,
   pansReglesAMain,
@@ -124,6 +126,31 @@ describe('ACAL308 — application aux nouveaux pans', () => {
     expect(pan.neededAuto).toBe(false);
   });
 
+  it('R2-15 — toit du lead en tuiles (document `modePoseDeclare: toiture_inclinee`) : le pan neuf passe en pente, rien d’autre', () => {
+    const pan = panVierge([]);
+    const avant = { pitchDeg: pan.pitchDeg, facingAzimuthDeg: pan.facingAzimuthDeg, facingManual: pan.facingManual };
+    const jeu = avecPoseDeclaree(null, { modePoseDeclare: 'toiture_inclinee' });
+    expect(pan.roofType).toBe('flat'); // l'état d'avant : « Toit plat »
+    expect(appliquerJeuAuPan(pan, jeu)).toEqual({ roofType: 'pitched' });
+    expect({ pitchDeg: pan.pitchDeg, facingAzimuthDeg: pan.facingAzimuthDeg, facingManual: pan.facingManual }).toEqual(avant);
+    expect(mentionJeuReglages(jeu)).toBe('Toit du lead : toiture inclinée — nouveaux pans posés en pente');
+  });
+
+  it('R2-15 — le mode de pose s’ajoute au jeu de société sans en retirer une valeur', () => {
+    const jeu = avecPoseDeclaree(lireJeuReglages({ ...DOCUMENT, modePoseDeclare: 'bac_acier' }), { modePoseDeclare: 'bac_acier' });
+    expect(valeursPourPan(jeu)).toEqual({ roofType: 'pitched', pitchDeg: 30, facingAzimuthDeg: 90, facingManual: true });
+    expect(mentionJeuReglages(jeu)).toBe(
+      'Jeu de réglages Toiture inclinée Est-Ouest appliqué aux nouveaux pans · Toit du lead : bac acier — nouveaux pans posés en pente');
+  });
+
+  it('R2-15 — document sans mode affleurant (site public, terrasse, sol, ombrière) : le jeu tel quel', () => {
+    const jeu = lireJeuReglages(DOCUMENT);
+    for (const document of [null, {}, { modePoseDeclare: 'sol' }, { modePoseDeclare: 'ombriere' }, { modePoseDeclare: '' }]) {
+      expect(avecPoseDeclaree(jeu, document)).toBe(jeu);
+      expect(avecPoseDeclaree(null, document)).toBeNull();
+    }
+  });
+
   it('sans jeu : le pan reste celui d’aujourd’hui, octet pour octet', () => {
     const pan = panVierge([]);
     const avant = JSON.stringify(pan);
@@ -139,6 +166,18 @@ describe('ACAL308 — parité avec le serveur et câblage', () => {
     const bloc = /CLES_DE_ZONE\s*=\s*\(([^)]*)\)/.exec(source)?.[1] ?? '';
     const serveur = [...bloc.matchAll(/'([A-Za-z]+)'/g)].map((m) => m[1]);
     expect([...CLES_JEU]).toEqual(serveur);
+  });
+
+  it('R2-15 — MODES_POSE_AFFLEURANTS = traduction.MODES_POSE_AFFLEURANTS (le mode que le serveur pave en pente)', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), '../../backend/django_core/apps/calepinage/services/traduction.py'), 'utf8');
+    const bloc = /MODES_POSE_AFFLEURANTS\s*=\s*\(([^)]*)\)/.exec(source)?.[1] ?? '';
+    expect([...MODES_POSE_AFFLEURANTS]).toEqual([...bloc.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+  });
+
+  it('R2-15 — les deux lectures du jeu (pan vierge, pan ajouté) portent le mode de pose du document', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/scripts/roof-tool-pro11.ts'), 'utf8');
+    expect(source.split('avecPoseDeclaree(lireJeuReglages(ctx.documentRelu), ctx.documentRelu)')).toHaveLength(3);
   });
 
   it('addArea applique le jeu au pan NEUF (garde de câblage)', () => {

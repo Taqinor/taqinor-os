@@ -25,6 +25,7 @@ import calepinageApi from '../../api/calepinageApi'
 import SchemaUnifilairePanel from './SchemaUnifilairePanel'
 import { motifDuRefusDxf, corpsEdition } from './SchemaUnifilairePanel.helpers'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
 
 const servir = (data) => {
   calepinageApi.calepinages.schemaUnifilaire.mockResolvedValue({ data })
@@ -259,10 +260,21 @@ describe('SchemaUnifilairePanel — export DXF (CALX235/236)', () => {
     await vi.waitFor(() => expect(telechargerBlob).toHaveBeenCalledTimes(1))
     // L'appel porte l'identifiant de l'ÉCRAN (la route), le nom de fichier la
     // référence que CETTE réponse publie : les deux ne se confondent pas.
-    expect(calepinageApi.calepinages.sldDxf).toHaveBeenCalledWith(12)
+    expect(calepinageApi.calepinages.sldDxf).toHaveBeenCalledWith(12, OPTIONS_TELECHARGEMENT)
     const [blob, nom] = telechargerBlob.mock.calls[0]
     expect(blob).toBe(fichier)
     expect(nom).toBe('calepinage-7-schema-unifilaire.dxf')
+  })
+
+  it('un DXF trop long dit le délai en français (R3)', async () => {
+    servir(AVEC_SCHEMA)
+    calepinageApi.calepinages.sldDxf.mockRejectedValue({ code: 'ECONNABORTED' })
+    const user = userEvent.setup()
+    rendre()
+    await screen.findByTestId('cal195-svg')
+    await user.click(screen.getByTestId('calx235-telecharger-dxf'))
+    expect(await screen.findByTestId('calx236-erreur-export'))
+      .toHaveTextContent("Le serveur n'a pas fini de préparer ce document en 2 minutes.")
   })
 
   it('un refus du serveur affiche SON motif, jamais un motif reformulé', async () => {

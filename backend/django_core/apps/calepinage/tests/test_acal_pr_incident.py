@@ -72,10 +72,11 @@ class PrIncidentTest(SimpleTestCase):
 
         self.assertIsNotNone(total['performance_ratio'])
         self.assertLess(total['performance_ratio'], 1.0)
-        # PR = P50 / (kWc × irradiation incidente), à l'année moyenne.
-        annees = total['annees_fenetre']
+        # PR = P50 / (kWc × irradiation incidente) : le P50 ET l'irradiation
+        # de la cascade sont tous deux à l'année moyenne (R3-01), donc aucun
+        # facteur du nombre d'années.
         attendu = total['p50_kwh'] / (
-            total['kwc'] * cascade['irradiation_incidente_kwh_m2'] / annees)
+            total['kwc'] * cascade['irradiation_incidente_kwh_m2'])
         self.assertAlmostEqual(total['performance_ratio'], attendu,
                                delta=0.002)
         self.assertEqual(blocs['performance']['pr'],

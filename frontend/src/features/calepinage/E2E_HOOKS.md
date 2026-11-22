@@ -33,6 +33,8 @@ retiré plus un hook ajouté.
 | `cal-cible-panneaux` | cible panneaux. |
 | `cal-lien-photos-calage` | lien photos calage. |
 | `cal-lien-variantes` | lien variantes. |
+| `cal-devis-perime` | R2-13 : badge « devis périmé / envoyé » de l'en-tête. |
+| `cal-acces-refuse` | R2-20 : écran d'un 403 sur le calepinage (aucun outil). |
 
 ## BadgePerime (`BadgePerime.jsx`)
 
@@ -115,6 +117,7 @@ retiré plus un hook ajouté.
 | `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
 | `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |
 | `cal-devis-confirmation-taille` | devis : question « rien ne dimensionne le devis » du 409 `confirmation_taille` (ACAL922/ACAL923). |
+| `cal-devis-existant` | devis : question « le lead a déjà un brouillon » du 409 `devis_existant` — rattacher, ou créer un autre devis (recette R2-22). |
 | `cal-generer-devis` | générer devis. |
 | `cal-resynchroniser-devis` | resynchroniser devis. |
 
@@ -933,8 +936,9 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-etape-electrique-ecran` | étape Électrique en une page (ACAL395). |
-| `cal-electrique-synthese` | étape Électrique : le compte du panneau « Prêt à envoyer ? » — « n points à régler » ou « Prêt à envoyer » (ACAL865). |
+| `cal-electrique-synthese` | étape Électrique : le compte du panneau « Prêt à envoyer ? » — « n contrôles à régler » ou « Prêt à envoyer » (ACAL865). |
 | `cal-electrique-section` | étape Électrique : section repliable (suffixe = clé de l’onglet). |
+| `cal-electrique-avances` | étape Électrique (guidé) : le seul déclencheur « Réglages avancés », qui range six sections (ACAL1191). |
 
 ## EtapeDocuments — ACAL867 (`documents/EtapeDocuments.jsx`)
 

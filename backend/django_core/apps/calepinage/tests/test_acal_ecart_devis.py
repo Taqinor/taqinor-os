@@ -6,7 +6,8 @@ au client) et le P50 de l'étude technique — jamais l'inverse.
   p50_calepinage_kwh, ecart_pct, mention}`` (contrat
   ``calepinage_resultat.json``, ``exemple_ecart_devis``) ; la production du
   devis est LUE par ``apps.ventes.selectors.production_attendue_pour_devis``
-  (figure recalée, ACAL101) ;
+  (figure recalée, ACAL101) — jamais un RENDU du devis : le rendu relit ce
+  résultat (ombrage servi, D-RES-2710-1) et crée le profil société (ACON87) ;
 * ``null`` sans devis lié, sans simulation, ou simulation périmée ;
 * la section « Production » du rapport d'étude imprime les deux chiffres et
   l'écart (mêmes valeurs que le JSON).
@@ -21,10 +22,14 @@ import copy
 import json
 import pathlib
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest import mock
+
+from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.electrique import (
-    BLOCS_SIMULATION, CLE_SIMULATION, MENTION_ECART_DEVIS,
+    BLOCS_SIMULATION, CLE_SIMULATION, MENTION_ECART_DEVIS, _ecart_devis,
     resultat_calepinage,
 )
 from apps.calepinage.services.rapport.production import html_de_section
@@ -141,8 +146,8 @@ class EcartDevisTest(BaseApiCalepinage):
         ecart = exemple['ecart_devis']
         self.assertIn('production-ecart-devis', html)
         self.assertIn(ecart['reference'], html)
-        self.assertIn('12600,0', html)   # production du devis, telle quelle
-        self.assertIn('13000,0', html)   # P50 de l'étude
+        self.assertIn('12\u202f600,0', html)   # production du devis, telle quelle
+        self.assertIn('13\u202f000,0', html)   # P50 de l'étude
         self.assertIn('+3,2 %', html)
         self.assertIn('moteur du devis', html)
         # Sans écart servi : aucun bloc.
@@ -152,8 +157,40 @@ class EcartDevisTest(BaseApiCalepinage):
         # Les MÊMES valeurs que le JSON servi, sur un vrai calepinage.
         servi = resultat_calepinage(self._calepinage(), materiel=MATERIEL)
         html = html_de_section({'resultat': servi})
-        self.assertIn('10340,0', html)
-        self.assertIn('15606,0', html)
+        self.assertIn('10\u202f340,0', html)
+        self.assertIn('15\u202f606,0', html)
         self.assertIn('+50,9 %', html)
         self.assertEqual(Decimal('50.9'),
                          Decimal(str(servi['ecart_devis']['ecart_pct'])))
+
+
+class EcartDevisSansRenduTest(SimpleTestCase):
+    """L'écart de l'atelier lit la figure du devis par le sélecteur YSERV8,
+    jamais par un rendu ``build_quote_data`` : le rendu d'un devis brouillon
+    relit ``resultat_calepinage`` (ombrage servi, D-RES-2710-1 — boucle) et
+    crée le profil société absent, qui périme la simulation (ACON87). Sans
+    base : devis et sélecteurs sont des doublures."""
+
+    def _ecart(self, production):
+        devis = SimpleNamespace(pk=71, company_id=3, reference='DEV-202611-0071', roof_layout={})
+        calepinage = SimpleNamespace(devis_id=71, company_id=3)
+        with mock.patch('apps.ventes.selectors.get_devis_by_pk', return_value=devis), \
+                mock.patch('apps.ventes.selectors_calepinage._conception_a_jour', return_value=True), \
+                mock.patch('apps.ventes.selectors.production_attendue_pour_devis',
+                           return_value=production) as lue, \
+                mock.patch('apps.ventes.quote_engine.builder.build_quote_data') as rendu:
+            ecart = _ecart_devis(calepinage, 4808.0)
+        rendu.assert_not_called()
+        lue.assert_called_once_with(71)
+        return ecart
+
+    def test_la_phrase_porte_la_figure_du_devis_sans_rendu(self):
+        ecart = self._ecart(Decimal('3628'))
+        self.assertEqual(ecart['production_devis_kwh'], 3628.0)
+        self.assertEqual(ecart['ecart_pct'], round((4808 - 3628) / 3628 * 100, 1))
+        self.assertIn('3\u202f628,0', html_de_section({'resultat': {'ecart_devis': ecart}}))
+
+    def test_sans_production_aucune_phrase(self):
+        """Pompage : aucune production au devis ⇒ aucun écart, jamais un 0."""
+        self.assertIsNone(self._ecart(None))
+        self.assertEqual(html_de_section({'resultat': {'ecart_devis': None}}).count('production-ecart-devis'), 0)

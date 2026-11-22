@@ -46,7 +46,7 @@ def _refus_verrou(devis, request):
     """QJR545 — ``Response`` 409 si ``expected_updated_at`` est fourni et
     diffère du jeton en base ; ``None`` sinon (champ absent ⇒ inchangé)."""
     from ..domain.verrou_devis import verifier_jeton
-    charge = verifier_jeton(devis, request.data)
+    charge = verifier_jeton(devis, request.data, request.user)
     if charge is None:
         return None
     return Response(charge, status=status.HTTP_409_CONFLICT)

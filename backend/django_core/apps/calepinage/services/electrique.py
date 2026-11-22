@@ -1913,10 +1913,10 @@ def _ecart_devis(calepinage, p50):
     """ACAL104 (C-ACAL-101) — ``{devis, reference, production_devis_kwh,
     p50_calepinage_kwh, ecart_pct, mention}`` ou ``None``.
 
-    ``production_devis_kwh`` est la figure IMPRIMÉE au client (moteur du
-    devis, recalée sur les lignes — ``figure_production_du_devis``), LUE par
-    le sélecteur cross-app ``apps.ventes.selectors.
-    production_attendue_pour_devis`` ; ``ecart_pct`` = (P50 − devis) /
+    ``production_devis_kwh`` est la figure du devis (recalée sur les lignes —
+    ``figure_production_du_devis``), LUE par ``apps.ventes.selectors.
+    production_attendue_pour_devis`` — JAMAIS un rendu du devis ici (boucle
+    devis → ombrage servi → ce résultat ; profil créé, ACON87) ; ``ecart_pct`` = (P50 − devis) /
     devis, au dixième. Jamais l'inverse : le devis ne lit pas le P50
     (D-ACAL-6). ``None`` sans devis lié (ou d'une autre société), sans P50
     servi (jamais simulé, ou périmé) ou sans production au devis. LECTURE
@@ -2592,15 +2592,12 @@ def _motifs_des_troncons(troncons):
     from core.electrique.types import (
         STATUT_ALERTE, STATUT_BLOQUANT, STATUT_OK,
     )
+    from .troncons import phrase_de_l_omission
 
-    motifs = []
-    for omission in (troncons or {}).get('omissions') or ():
-        motifs.append(_motif_publication(
-            'TRONCON_NON_CALCULABLE', STATUT_MOTIF_OMIS,
-            "tronçon « %s », champ « %s » : %s"
-            % (omission.get('troncon') or '—', omission.get('champ') or '—',
-               omission.get('motif') or ''),
-            'tronçons du calepinage'))
+    motifs = [_motif_publication(
+        'TRONCON_NON_CALCULABLE', STATUT_MOTIF_OMIS,
+        phrase_de_l_omission(omission), 'tronçons du calepinage')
+        for omission in (troncons or {}).get('omissions') or ()]
     for verdict in (troncons or {}).get('verdicts') or ():
         if verdict.get('bloquant'):
             statut = STATUT_BLOQUANT

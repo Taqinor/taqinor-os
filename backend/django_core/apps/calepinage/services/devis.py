@@ -93,11 +93,23 @@ def _layout_des_surfaces(layout, cles):
     return copie
 
 
+def empreinte_des_surfaces(layout, cles):
+    """ACAL968 — l'empreinte imprimée de LA copie que chiffrerait la sélection
+    ``cles`` (même :func:`_layout_des_surfaces` que la création) ; ``''``
+    quand la sélection ne s'applique plus (surface retirée du document)."""
+    from apps.ventes.services import layout_hash
+
+    try:
+        return layout_hash(_layout_des_surfaces(layout, cles)) or ''
+    except DevisRefuse:
+        return ''
+
+
 def _selection_du_devis(devis):
     """ACAL968 — la sélection écrite au devis (``roof_layout``), ou ``None``."""
-    document = getattr(devis, 'roof_layout', None)
-    choix = document.get('choixConception') if isinstance(document, dict) else None
-    return choix.get('surfacesChiffrees') if isinstance(choix, dict) else None
+    from apps.ventes.selectors_calepinage import surfaces_chiffrees_du_devis
+
+    return surfaces_chiffrees_du_devis(devis)
 
 
 def _lead_et_client(calepinage):
@@ -199,13 +211,20 @@ def _brouillon_reutilisable(company, lead, empreinte, calepinage):
 def generer_devis(calepinage, *, user=None, taux_tva=None,
                   remise_globale=None, journal=None,
                   derogation_electrique=None, surfaces_chiffrees=None,
-                  confirmer_taille=False):
+                  confirmer_taille=False, rattacher_devis=None,
+                  creer_autre_devis=False):
     """CAL24 — crée (ou RETROUVE) le devis de ce calepinage.
 
     ACAL968 — ``surfaces_chiffrees`` : les clés des surfaces COCHÉES
     (``None`` = toutes) ; le devis compose la copie sans les décochées.
     ACAL922 — sans ``confirmer_taille``, une CRÉATION que rien ne dimensionne
-    (``taille_non_dimensionnee``) est annulée : 409 ``confirmation_taille``.
+    (``taille_non_dimensionnee``), ou dont la pose dépasse 2 × la cible des
+    factures (recette R2-17), est annulée : 409 ``confirmation_taille``.
+    Recette R2-22 (D-ACAL-1) — le lead a un brouillon libre né AVANT ce
+    calepinage : 409 ``devis_existant`` ; ``rattacher_devis`` (son id) y
+    rattache ce calepinage, ``creer_autre_devis`` en crée un autre.
+    Recette R2-10 — une génération RÉUSSIE annonce ``layout_finalise`` une
+    fois, après la transaction (jamais sur une dédup ni sur un refus).
 
     Args:
         journal: ACAL89 — dict facultatif rempli SUR PLACE avec ce que la
@@ -251,9 +270,12 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     # écriture (422 nommant les bloquants) ; l'indéterminé passe.
     garde = _garde_electrique(calepinage, derogation_electrique, user,
                               geste='généré')
+    choix = _choix_de_generation(confirmer_taille, rattacher_devis,
+                                 creer_autre_devis)
     devis, cree = _generer(calepinage, layout, company, lead, client,
-                           montants, user=user, journal=journal,
-                           confirmer_taille=confirmer_taille)
+                           montants, user=user, journal=journal, choix=choix)
+    if cree or choix.get('rattache'):
+        _annoncer_conception(devis, user)
     servi = _consigner_et_servir(calepinage, garde, user=user)
     if journal is not None:
         journal['electrique'] = servi
@@ -285,47 +307,111 @@ def _garde_kwh_declare(devis):
                           statut=409, donnees=refus)
 
 
-def taille_non_dimensionnee(calepinage):
+def _cible_du_calepinage(calepinage):
+    """ACAL194 — la cible que le devis automatique donnerait au lead du
+    calepinage (``cible_depuis_lead``), ou ``None`` sans lead. Lecture seule."""
+    from apps.crm.selectors import get_company_lead
+    from apps.ventes.selectors import cible_depuis_lead
+
+    if not getattr(calepinage, 'lead_id', None):
+        return None
+    company = getattr(calepinage, 'company', None)
+    lead = get_company_lead(company, calepinage.lead_id, avec_corbeille=True)
+    return cible_depuis_lead(lead, company) if lead is not None else None
+
+
+def taille_non_dimensionnee(calepinage, *, cible=None):
     """ACAL861/ACAL922 — LA condition « rien ne dimensionne ce devis », écrite
     UNE fois (le contrôle « prêt à envoyer ? » la lit ; la porte 409 d'ACAL922
     la lira) : sans lead, ou lead résidentiel sans ``taille_souhaitee_kwc``
     dont ``cible_depuis_lead`` refuse faute de facture (``motif_code`` =
     ``MOTIF_FACTURE_ABSENTE``). Rend ``{'refus': texte}`` ou ``None``
     (dimensionné, ou refusé pour une AUTRE raison : C&I, agricole, kWh
-    incohérent ne posent pas cette question). Lecture seule."""
-    from apps.crm.selectors import get_company_lead
-    from apps.ventes.selectors import cible_depuis_lead
+    incohérent ne posent pas cette question). Lecture seule. ``cible`` : la
+    cible déjà lue (``_cible_du_calepinage``), pour ne pas dimensionner deux
+    fois."""
     from apps.ventes.services import MOTIF_FACTURE_ABSENTE
 
-    company = getattr(calepinage, 'company', None)
     if not getattr(calepinage, 'lead_id', None):
         return {'refus': "Calepinage sans lead : aucune facture ne "
                          "dimensionne le système."}
-    lead = get_company_lead(company, calepinage.lead_id, avec_corbeille=True)
-    cible = cible_depuis_lead(lead, company) if lead is not None else None
+    if cible is None:
+        cible = _cible_du_calepinage(calepinage)
     if cible and cible.get('motif_code') == MOTIF_FACTURE_ABSENTE:
         return {'refus': cible.get('refus') or ''}
     return None
 
 
+#: Recette R2-17 (Q2, décision de l'orchestrateur du 22/11/2026, réversible) —
+#: au-delà de 2 × la cible tirée des FACTURES, la taille se confirme. Le facteur
+#: 2 est celui de la règle du fondateur du 30/09/2026 (« kWh déclaré contredisant
+#: les factures de plus de 2× », docs/claude-memory/kwh-declare-vs-factures.md).
+FACTEUR_POSE_SUR_CIBLE = 2
+
+
+def _panneaux_du_devis(devis):
+    """Les panneaux que le devis composé vend (option par défaut, lignes
+    produit dont la désignation dit « panneau », comme ``builder.py``)."""
+    from apps.ventes.selectors_calepinage import lignes_produits_calepinage
+
+    return int(sum(ligne['quantite'] or 0 for ligne in lignes_produits_calepinage(devis)
+                   if 'panneau' in (ligne['designation'] or '').lower()))
+
+
+def _question_pose_sur_cible(devis, cible):
+    """R2-17 — ``{'refus', 'poses', 'cible'}`` quand les panneaux vendus
+    dépassent ``FACTEUR_POSE_SUR_CIBLE`` × la cible tirée des factures ;
+    ``None`` sans cible des factures (taille souhaitée, C&I, agricole, refus :
+    ACAL922 ou rien)."""
+    from core.electrique.types import fr
+
+    if not cible or cible.get('source') != 'factures' or not cible.get('panneaux'):
+        return None
+    attendus = int(cible['panneaux'])
+    poses = _panneaux_du_devis(devis)
+    if poses <= FACTEUR_POSE_SUR_CIBLE * attendus:
+        return None
+    kwc = f" ({fr(float(cible['kwc']), 2)} kWc)" if cible.get('kwc') else ''
+    return {'poses': poses, 'cible': attendus,
+            'refus': (f'Cible tirée des factures du lead (dimensionnement du devis '
+                      f'automatique) : {attendus} panneaux{kwc}.')}
+
+
+def _ttc_lisible(devis):
+    """``(Decimal, '168 800,00 MAD TTC')`` du devis (total servi par ventes)."""
+    from decimal import Decimal
+
+    ttc = Decimal(str(devis.total_ttc or 0)).quantize(Decimal('0.01'))
+    return ttc, f'{ttc:,.2f}'.replace(',', ' ').replace('.', ',') + ' MAD TTC'
+
+
 def _garde_taille(devis, calepinage, confirmer_taille):
     """ACAL922 — un devis que rien ne dimensionne demande une CONFIRMATION :
     409 ``confirmation_taille`` avec le kWc et le TTC du devis composé, sous
-    la transaction de la création (devis annulé) ; jamais un blocage."""
-    from decimal import Decimal
-
+    la transaction de la création (devis annulé) ; jamais un blocage.
+    R2-17 — même question quand la pose dépasse 2 × la cible des factures."""
     from core.electrique.types import fr
 
-    question = None if confirmer_taille else taille_non_dimensionnee(calepinage)
-    if question is None:
+    if confirmer_taille:
+        return
+    cible = _cible_du_calepinage(calepinage)
+    question = taille_non_dimensionnee(calepinage, cible=cible)
+    au_dela = None if question is not None else _question_pose_sur_cible(devis, cible)
+    if question is None and au_dela is None:
         return
     kwc = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
-    ttc = Decimal(str(devis.total_ttc or 0)).quantize(Decimal('0.01'))
-    chiffres = ([f'{fr(float(kwc), 2)} kWc'] if kwc is not None else []) + [
-        f'{ttc:,.2f}'.replace(',', ' ').replace('.', ',') + ' MAD TTC']
-    detail = ('Aucune facture ni taille souhaitée sur le lead : le devis '
-              f'remplit le toit ({", ".join(chiffres)}). Confirmez, ou '
-              'renseignez la facture du lead.')
+    ttc, ttc_texte = _ttc_lisible(devis)
+    chiffres = ([f'{fr(float(kwc), 2)} kWc'] if kwc is not None else []) + [ttc_texte]
+    if au_dela is not None:
+        question = au_dela
+        detail = (f"La pose compte {au_dela['poses']} panneaux ({', '.join(chiffres)}), "
+                  f"plus de {FACTEUR_POSE_SUR_CIBLE} fois les {au_dela['cible']} panneaux "
+                  'de la cible tirée des factures du lead. Confirmez, ou réduisez la '
+                  'pose dans l’atelier.')
+    else:
+        detail = ('Aucune facture ni taille souhaitée sur le lead : le devis '
+                  f'remplit le toit ({", ".join(chiffres)}). Confirmez, ou '
+                  'renseignez la facture du lead.')
     raise DevisRefuse(detail, champ='confirmer_taille', statut=409, donnees={
         'detail': detail, 'code': 'confirmation_taille',
         'champ': 'confirmer_taille', 'total_ttc': str(ttc),
@@ -351,13 +437,22 @@ def _garde_module_substitue(devis, layout):
     from .valeurs import nombre
 
     pans = pans_du_document(layout)
-    dessine = sum(p['kwc'] for p in pans if p.get('kwc'))
+    # Un pan existant (ACAL573) n'est pas vendu : la composition l'ignore aussi.
+    dessine = sum(p['kwc'] for p in pans if p.get('kwc') and not p.get('existant'))
     if dessine and not any(p['kind'] == 'toit' and p['source'] != 'aucune' for p in pans):
         # Toit sans pan mesuré : il est résumé par le ``result`` racine, que la
         # composition compte aussi (``ventes.lire_layout``) — sinon un toit
         # résumé + un champ au sol se lisait « champ seul » (faux 409).
         dessine += nombre(((layout if isinstance(layout, dict) else {})
                            .get('result') or {}).get('kwc')) or 0.0
+    if any(p['kind'] == 'toit' and p['modules'] > 0 and not p.get('kwc')
+           and not p.get('existant') for p in pans):
+        # Critique 22/11 (soupçon 2) — un pan pavé sans kWc lisible : la
+        # composition lit alors le toit à son résumé ; la somme partielle des
+        # pans ferait un faux 409. Le dessin est lu par LA même lecture.
+        from apps.ventes.selectors_calepinage import kwc_lu_du_layout
+
+        dessine = kwc_lu_du_layout(layout)
     compose = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
     if not dessine or compose is None:
         return
@@ -378,7 +473,7 @@ def _garde_module_substitue(devis, layout):
 
 
 def _generer(calepinage, layout, company, lead, client, montants, *, user,
-             journal, confirmer_taille=False):
+             journal, choix):
     """CAL24 — la création (ou la dédup) APRÈS toutes les gardes."""
     from django.db import transaction
 
@@ -412,12 +507,11 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
         calepinage.refresh_from_db(fields=['devis'])
         return _generer_sous_verrou(calepinage, layout, company, lead, client,
                                     montants, empreinte, user=user,
-                                    journal=journal,
-                                    confirmer_taille=confirmer_taille)
+                                    journal=journal, choix=choix)
 
 
 def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
-                         empreinte, *, user, journal, confirmer_taille=False):
+                         empreinte, *, user, journal, choix):
     """ACON46 — dédup, création et liaison, sous le verrou de ``_generer``."""
     from django.db import transaction
 
@@ -449,6 +543,17 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
             rafraichir_etudes_du_devis(deja)
             _poser_affiche(calepinage, deja)
             return deja, False
+        # R2-22 (D-ACAL-1) — un brouillon libre né avant ce calepinage : la
+        # question nommée, ou le rattachement choisi ; jamais un second devis
+        # en silence.
+        if not choix['creer_autre_devis']:
+            libre = _brouillon_libre_choisi(calepinage, company, lead, choix)
+            if libre is not None:
+                choix['rattache'] = True
+                return _rattacher_au_brouillon(
+                    calepinage, layout, libre, lead, montants, empreinte,
+                    user=user, journal=journal,
+                    confirmer_taille=choix['confirmer_taille']), False
 
     journal_composition = {}
     try:
@@ -458,7 +563,7 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
                 client=client, journal=journal_composition, **montants)
             _garde_kwh_declare(devis)
             _garde_module_substitue(devis, layout)  # ACAL914
-            _garde_taille(devis, calepinage, confirmer_taille)  # ACAL922
+            _garde_taille(devis, calepinage, choix['confirmer_taille'])  # ACAL922
     except AutoDevisError as refus:
         # ACAL32 — phase / site isolé du lead déduits par la création ; son
         # refus NOMMÉ (``hors_reseau``) remonte en 422, jamais un 500.
@@ -480,6 +585,136 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
         journal['marques_manquantes'] = list(
             journal_composition.get('marques_manquantes') or ())
     return devis, True
+
+
+def reponses_du_corps(corps):
+    """Les réponses aux questions de ``generer-devis`` lues du corps (la vue) :
+    ``confirmer_taille`` (ACAL922) et ``creer_autre_devis`` comptent seulement
+    à ``true`` ; ``rattacher_devis`` est validé par ``generer_devis``."""
+    return {'confirmer_taille': corps.get('confirmer_taille') is True,
+            'rattacher_devis': corps.get('rattacher_devis'),
+            'creer_autre_devis': corps.get('creer_autre_devis') is True}
+
+
+def _choix_de_generation(confirmer_taille, rattacher_devis, creer_autre_devis):
+    """Les réponses de l'utilisateur aux questions de « Générer le devis » ;
+    ``rattacher_devis`` : un identifiant entier, jamais avec ``creer_autre_devis``
+    (400 nommant le champ)."""
+    if rattacher_devis is not None and (isinstance(rattacher_devis, bool)
+                                        or not isinstance(rattacher_devis, int)):
+        raise DevisRefuse("Indiquez le numéro du devis à rattacher.",
+                          champ='rattacher_devis')
+    if rattacher_devis is not None and creer_autre_devis:
+        raise DevisRefuse("Choisissez : rattacher ce calepinage au devis existant, "
+                          "ou créer un autre devis — pas les deux.",
+                          champ='rattacher_devis')
+    return {'confirmer_taille': bool(confirmer_taille),
+            'rattacher_devis': rattacher_devis,
+            'creer_autre_devis': bool(creer_autre_devis), 'rattache': False}
+
+
+def _brouillons_libres_anterieurs(calepinage, company, lead):
+    """R2-22 — les brouillons ACTIFS du lead qu'aucun calepinage ne porte, nés
+    AVANT ce calepinage (« Dessiner le toit » sur un lead qui avait déjà un
+    devis), du plus récent au plus ancien. Lecture seule."""
+    from apps.ventes.selectors import devis_par_mode_pour_lead, get_devis_by_pk
+
+    from ..selectors import calepinage_du_devis
+
+    ne_le = getattr(calepinage, 'created_at', None)
+    libres = []
+    for ligne in reversed(devis_par_mode_pour_lead(lead.pk, company)):
+        if ligne.get('statut') != 'brouillon':
+            continue
+        devis = get_devis_by_pk(ligne['id'])
+        if (devis is None or not getattr(devis, 'is_active', True)
+                or (ne_le is not None and devis.date_creation >= ne_le)
+                or calepinage_du_devis(devis.pk, company) is not None):
+            continue
+        libres.append(devis)
+    return libres
+
+
+def _brouillon_libre_choisi(calepinage, company, lead, choix):
+    """R2-22 — le brouillon à RATTACHER (``choix['rattacher_devis']``, revérifié :
+    brouillon actif, libre, du lead), ``None`` quand le lead n'en a aucun ; sans
+    choix, 409 ``devis_existant`` nommant le plus récent. Un devis envoyé ou
+    accepté n'est jamais rattaché par cette voie (400 nommant le champ)."""
+    libres = _brouillons_libres_anterieurs(calepinage, company, lead)
+    voulu = choix['rattacher_devis']
+    if voulu is not None:
+        devis = next((d for d in libres if d.pk == voulu), None)
+        if devis is None:
+            raise DevisRefuse(
+                f"Le devis #{voulu} n'est pas un brouillon libre de ce lead : il ne "
+                "peut pas recevoir ce calepinage (un devis envoyé ou accepté n'est "
+                "jamais rattaché ici).", champ='rattacher_devis', statut=409)
+        return devis
+    if not libres:
+        return None
+    devis = libres[0]
+    reference = devis.reference or f'#{devis.pk}'
+    autres = len(libres) - 1
+    ttc, ttc_texte = _ttc_lisible(devis)
+    detail = (f"Ce lead a déjà le devis {reference} (brouillon, {ttc_texte}), créé "
+              "avant ce calepinage"
+              + (f" (et {autres} autre{'s' if autres > 1 else ''} brouillon"
+                 f"{'s' if autres > 1 else ''})" if autres else '')
+              + " : rattachez-lui ce calepinage, ou créez un autre devis.")
+    raise DevisRefuse(detail, champ='rattacher_devis', statut=409, donnees={
+        'detail': detail, 'code': 'devis_existant', 'champ': 'rattacher_devis',
+        'devis': devis.pk, 'reference': devis.reference, 'total_ttc': str(ttc)})
+
+
+def _rattacher_au_brouillon(calepinage, layout, devis, lead, montants,
+                            empreinte, *, user, journal, confirmer_taille):
+    """R2-22 (D-ACAL-1) — ce calepinage devient LA conception du brouillon :
+    lien, puis la resynchronisation de ventes (prix négociés, remises et notes
+    préservés) ; mêmes gardes que la dédup et que la création (marché,
+    montants, taille), sous la transaction de ``_generer``."""
+    from apps.ventes.services import (
+        SyncLayoutError, poser_layout_hash, rafraichir_etudes_du_devis,
+        resynchroniser_conception,
+    )
+
+    _refuser_autre_marche(devis, lead)  # ACON90
+    _refuser_montants_differents(devis, montants)  # ACON49
+    _lier(calepinage, devis, user=user)
+    try:
+        # L'annonce ``layout_finalise`` part une fois, après la transaction.
+        resultat = resynchroniser_conception(devis, layout, user, emettre=False)
+    except SyncLayoutError as refus:
+        raise DevisRefuse(refus.detail, champ='devis', statut=409, donnees={
+            'detail': refus.detail,
+            'revision_possible': refus.revision_possible}) from refus
+    if (resultat or {}).get('inchange'):
+        rafraichir_etudes_du_devis(devis)  # ACON85 — l'ombrage lié est servi
+    _garde_taille(devis, calepinage, confirmer_taille)  # R2-17
+    poser_layout_hash(devis, empreinte)
+    _poser_affiche(calepinage, devis)
+    if journal is not None:
+        journal['avertissements'] = list((resultat or {}).get('avertissements') or ())
+    return devis
+
+
+def _annoncer_conception(devis, user):
+    """R2-10 — ``layout_finalise`` (bus ``core.events``) APRÈS la transaction :
+    l'abonné crm note « Conception 3D finalisée » au lead (auteur et société
+    lus du serveur), l'abonné calepinage relit un lien déjà posé. Jamais
+    bloquant ; une génération annulée (aperçu de l'assistant) n'annonce rien."""
+    from django.db import transaction
+
+    from core.events import layout_finalise
+
+    def envoyer():
+        try:
+            layout_finalise.send(sender='calepinage.services.devis', devis=devis,
+                                 user=user)
+        except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis (D-ENF22-BLE001)
+            logger.warning('R2-10 : abonné en échec sur layout_finalise (devis %s)',
+                           getattr(devis, 'pk', None), exc_info=True)
+
+    transaction.on_commit(envoyer)
 
 
 def _garde_electrique(calepinage, derogation, user, *, geste):

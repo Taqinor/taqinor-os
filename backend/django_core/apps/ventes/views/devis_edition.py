@@ -280,6 +280,14 @@ class _DevisModifie(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_code = 'devis_modifie'
 
+    def __init__(self, detail=None, code=None):
+        super().__init__(detail, code)
+        # DRF passe tout detail par ``_get_error_details`` qui met chaque
+        # feuille en TEXTE : ``par_vous`` sortait en ``'False'`` (vrai en JS).
+        # La charge du verrou est déjà un corps complet : servi tel quel.
+        if isinstance(detail, dict):
+            self.detail = dict(detail)
+
 
 #: ATOT21 — le refus générique d'une écriture rejetée par la base : jamais
 #: le texte de l'exception (``violates check constraint``, ``Failing row``…).
@@ -674,7 +682,8 @@ class DevisEditionActionsMixin:
         # n'avance le funnel.
         # QJR545 — verrou optimiste (jeton optionnel, autres clients).
         from ..domain.verrou_devis import verifier_jeton
-        charge = verifier_jeton(serializer.instance, self.request.data)
+        charge = verifier_jeton(serializer.instance, self.request.data,
+                                self.request.user)
         if charge is not None:
             raise _DevisModifie(charge)
         _gardes_mise_a_jour(serializer.instance, serializer.validated_data,

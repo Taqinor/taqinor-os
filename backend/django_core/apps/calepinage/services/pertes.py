@@ -61,7 +61,7 @@ CATALOGUE = (
     {'poste': 'irradiance', 'libelle': 'Niveau d’irradiance',
      'reference': 'PVsyst — irradiance level loss', 'mensuel': False},
     {'poste': 'thermique', 'libelle': 'Échauffement des modules',
-     'reference': 'PVsyst — thermal loss (calculé par CAL140)',
+     'reference': 'PVsyst — thermal loss (calculée depuis la fiche du module)',
      'mensuel': False},
     {'poste': 'lid', 'libelle': 'LID (première exposition)',
      'reference': 'PVsyst — light induced degradation', 'mensuel': False},
@@ -83,7 +83,7 @@ CATALOGUE = (
      'reference': 'PVsyst — auxiliaries (fans, other)', 'mensuel': False},
     {'poste': 'auxiliaires_nocturnes',
      'libelle': 'Consommation auxiliaire / nocturne',
-     'reference': "CAL139 — onduleur la nuit et auxiliaires permanents : "
+     'reference': "Onduleur la nuit et auxiliaires permanents : "
                   "une énergie réellement soutirée, jamais un arrondi",
      'mensuel': False},
     {'poste': 'indisponibilite', 'libelle': 'Indisponibilité',

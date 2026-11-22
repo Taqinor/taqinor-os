@@ -2,7 +2,9 @@
 // éditable dans l'Édition complète. `saisie === null` : le devis suit
 // l'échéancier de la société (rien n'est envoyé tant que le commercial ne
 // personnalise pas). Chaque champ nombre porte `step="any"` (règle fondateur :
-// aucun champ ne snappe ni ne rejette un nombre tapé).
+// aucun champ ne snappe ni ne rejette un nombre tapé). R1-09/R1-10 (22/11) :
+// les montants et pourcentages sont des `ChampDecimal` (la virgule se lit).
+import ChampDecimal from './ChampDecimal'
 import { Button, Card, CardContent, Input, Label } from '../../../ui'
 import { CalendarClock } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
@@ -32,8 +34,8 @@ function ConditionsContractuelles({ conditions, setCondition, erreurs, clients, 
   const nombre = (champ, libelle) => (
     <div className="grid gap-1">
       <Label htmlFor={`gen-cond-${champ}`}>{libelle}</Label>
-      <Input id={`gen-cond-${champ}`} type="number" min="0" step="any" value={c[champ] ?? ''}
-             onChange={e => setCondition(champ, e.target.value)} />
+      <ChampDecimal id={`gen-cond-${champ}`} value={c[champ] ?? ''}
+             onValeur={v => setCondition(champ, v)} />
       <Erreur erreurs={erreurs} champ={champ} />
     </div>
   )
@@ -76,8 +78,8 @@ function ConditionsContractuelles({ conditions, setCondition, erreurs, clients, 
         <div className="grid gap-1">
           <Label htmlFor="gen-cond-acompte-financeur">Acompte client (%)</Label>
           <div className="flex gap-2">
-            <Input id="gen-cond-acompte-financeur" type="number" min="0" step="any"
-                   value={acompteFinanceur} onChange={e => setAcompteFinanceur(e.target.value)} />
+            <ChampDecimal id="gen-cond-acompte-financeur"
+                   value={acompteFinanceur} onValeur={setAcompteFinanceur} />
             <Button type="button" variant="outline" size="sm" data-testid="btn-echeancier-financeur"
                     disabled={acompteFinanceur === '' || !c.tiersPayeur}
                     onClick={() => setSaisie(echeancierFinanceur(acompteFinanceur))}>
@@ -155,9 +157,9 @@ export default function CarteEcheancier({
                     {OPTIONS_JALON.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
                 </div>
-                <Input id={`gen-echeance-${i}`} type="number" min="0" step="any"
+                <ChampDecimal id={`gen-echeance-${i}`}
                        value={t.valeur}
-                       onChange={e => modifier(i, 'valeur', e.target.value)} />
+                       onValeur={v => modifier(i, 'valeur', v)} />
                 <select aria-label={`Unité — ${t.libelle}`}
                         className="h-9 rounded-md border border-input bg-background px-2 text-sm"
                         value={t.unite}

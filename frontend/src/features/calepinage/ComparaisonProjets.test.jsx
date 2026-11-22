@@ -38,6 +38,7 @@ vi.mock('./exportImage', () => ({ telechargerBlob: mocks.telechargerBlob }))
 
 import ComparaisonProjets from './ComparaisonProjets'
 import CalepinageList from './CalepinageList'
+import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -132,7 +133,7 @@ describe('ComparaisonProjets (CALX342)', () => {
     await screen.findByRole('grid')
     fireEvent.click(screen.getByTestId('cal-comparaison-classeur'))
     const ids = CONTRAT.lignes.map((l) => l.id)
-    await waitFor(() => expect(mocks.comparatifXlsx).toHaveBeenCalledWith(ids[0], ids.slice(1)))
+    await waitFor(() => expect(mocks.comparatifXlsx).toHaveBeenCalledWith(ids[0], ids.slice(1), OPTIONS_TELECHARGEMENT))
     await waitFor(() => expect(mocks.telechargerBlob).toHaveBeenCalled())
   })
 
@@ -145,6 +146,14 @@ describe('ComparaisonProjets (CALX342)', () => {
     await screen.findByRole('grid')
     fireEvent.click(screen.getByTestId('cal-comparaison-classeur'))
     expect(await screen.findByTestId('cal-comparaison-motif-classeur')).toHaveTextContent(refus)
+  })
+
+  it('un classeur trop long dit le délai en français, pas une coupure muette (R3)', async () => {
+    mocks.comparatifXlsx.mockRejectedValue({ code: 'ECONNABORTED' })
+    rendre()
+    await screen.findByRole('grid')
+    fireEvent.click(screen.getByTestId('cal-comparaison-classeur'))
+    expect(await screen.findByTestId('cal-comparaison-motif-classeur')).toHaveTextContent("Le serveur n'a pas fini de préparer ce document en 2 minutes.")
   })
 
   it('sans identifiant, aucun appel et un renvoi vers la liste', async () => {

@@ -34,7 +34,7 @@ from apps.calepinage.services.raccordement import (
     LIBELLES, MOTIF_SANS_LIMITE, MOTIF_SANS_PHASES,
     MOTIF_SANS_PUISSANCE_SOUSCRITE, MOTIF_SANS_SEUIL_DESEQUILIBRE,
     MOTIF_SANS_TENSION_NOMINALE, REFUS_COS_PHI_SANS_SOURCE,
-    REFUS_LIMITE_SANS_SOURCE, repartition_des_phases,
+    REFUS_LIMITE_SANS_SOURCE, _reglage_nom, repartition_des_phases,
 )
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
@@ -111,7 +111,7 @@ class AttributionSaisieTest(SimpleTestCase):
         bloc = repartition_des_phases(parc, 3)
 
         self.assertEqual(bloc['affectation'][0]['phase'], 2)
-        self.assertIn('phase_imposee', bloc['affectation'][0]['source'])
+        self.assertIn('phase imposée', bloc['affectation'][0]['source'])
 
 
 class OmissionsTest(SimpleTestCase):
@@ -161,7 +161,7 @@ class SeuilTest(SimpleTestCase):
         self.assertEqual(bloc['desequilibre_pct'], 50.0)
         self.assertEqual(bloc['verdict'].statut, 'non_verifiable')
         self.assertIsNone(bloc['verdict'].borne)
-        self.assertIn(CLE_SEUIL_DESEQUILIBRE, bloc['verdict'].libelle)
+        self.assertIn(_reglage_nom(CLE_SEUIL_DESEQUILIBRE), bloc['verdict'].libelle)
 
     def test_un_seuil_sans_source_ne_fonde_aucun_verdict(self):
         bloc = repartition_des_phases(
@@ -184,7 +184,7 @@ class SeuilTest(SimpleTestCase):
 
         self.assertEqual(bloc['verdict'].statut, 'alerte')
         self.assertEqual(bloc['verdict'].valeur, 50.0)
-        self.assertIn('phase_imposee', bloc['verdict'].libelle)
+        self.assertIn('phase imposée', bloc['verdict'].libelle)
 
 
 class ContratCalx205Test(SimpleTestCase):

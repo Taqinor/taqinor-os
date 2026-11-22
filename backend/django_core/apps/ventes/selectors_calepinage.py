@@ -32,7 +32,7 @@ def conception_pour_lead(lead, company):
     autre société ne fait rien fuiter). Point d'entrée cross-app pour
     ``apps.crm`` — jamais un import des modèles ventes de son côté.
     """
-    vide = {'kwc': None, 'image_url': None, 'calepinage': None}
+    vide = {'kwc': None, 'image_url': None, 'calepinage': None, 'devis': None}
     lead_id = getattr(lead, 'pk', None) or getattr(lead, 'id', None)
     if not lead_id or company is None:
         return vide
@@ -44,15 +44,17 @@ def conception_pour_lead(lead, company):
     # ACAL273 — la pastille lit d'abord le kWc VENDU (celui des lignes du
     # devis le plus récent, ``puissance_kwc_du_devis``) ; sans devis chiffré,
     # le calepinage OUVERT du lead (fiche du document, jamais 720 W constants).
+    # R2-10 — le LIEN vers le calepinage, lui, est servi TOUJOURS (devis ou
+    # non) : la fiche du lead montre son calepinage et son devis.
     from .domain.scenario import puissance_kwc_du_devis
-    kwc, calepinage = None, None
+    kwc = None
     dernier = tous.order_by('-date_creation', '-id').first()
     if dernier is not None:
         kwc = puissance_kwc_du_devis(dernier)
-    if kwc in (None, ''):
-        ouvert = _calepinage_ouvert_mesure(company, lead_id)
-        if ouvert is not None:
-            kwc, calepinage = ouvert
+    ouvert = _calepinage_ouvert_mesure(company, lead_id, avec_kwc=kwc in (None, ''))
+    calepinage = ouvert['calepinage'] if ouvert else None
+    if kwc in (None, '') and ouvert and ouvert['kwc']:
+        kwc = ouvert['kwc']
     if kwc in (None, '') and devis is not None:
         layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
         resultat = layout.get('result')
@@ -68,31 +70,39 @@ def conception_pour_lead(lead, company):
     if devis is not None and (devis.roof_image or '').strip():
         from .domain.stockage_toiture import url_fichier_toiture_devis
         image_url = url_fichier_toiture_devis(devis.pk)
-    return {'kwc': kwc, 'image_url': image_url, 'calepinage': calepinage}
+    # Clé ADDITIVE : le devis le plus récent du lead (statut : « vendus » ne se
+    # dit que d'un devis accepté).
+    return {'kwc': kwc, 'image_url': image_url, 'calepinage': calepinage,
+            'devis': ({'id': dernier.pk, 'reference': dernier.reference,
+                       'statut': dernier.statut}
+                      if dernier is not None else None)}
 
 
 logger = logging.getLogger(__name__)
 
 
-def _calepinage_ouvert_mesure(company, lead_id):
-    """ACAL273 — ``(kwc, {id, statut})`` du calepinage OUVERT du lead, lu par
-    ``apps.calepinage.selectors`` (import fonction-local, jamais les modèles) et
-    ``mesures_du_document`` ; ``None`` sans calepinage ouvert ou sans modules."""
+def _calepinage_ouvert_mesure(company, lead_id, avec_kwc=True):
+    """ACAL273 / R2-10 — ``{'kwc', 'calepinage': {id, statut, reference}}`` du
+    calepinage OUVERT du lead, lu par ``apps.calepinage.selectors`` (import
+    fonction-local, jamais les modèles) ; ``kwc`` (``mesures_du_calepinage``)
+    n'est lu que si ``avec_kwc`` (sinon ``None``) ; ``None`` sans calepinage
+    ouvert."""
     try:
         from apps.calepinage.selectors import (
             calepinage_ouvert_du_lead, mesures_du_calepinage,
+            reference_calepinage,
         )
         calepinage = calepinage_ouvert_du_lead(company, lead_id)
         if calepinage is None:
             return None
-        mesure = mesures_du_calepinage(calepinage)
+        mesure = mesures_du_calepinage(calepinage) if avec_kwc else {}
+        kwc = (mesure or {}).get('kwc')
+        return {'kwc': float(kwc) if kwc else None,
+                'calepinage': {'id': calepinage.pk, 'statut': calepinage.statut,
+                               'reference': reference_calepinage(calepinage)}}
     except Exception as exc:  # noqa: BLE001 — une pastille ne casse jamais la fiche (D-ENF22-BLE001)
-        logger.warning('ACAL273 : pastille kWc du lead %s indisponible : %s', lead_id, exc)
+        logger.warning('ACAL273 : calepinage du lead %s indisponible : %s', lead_id, exc)
         return None
-    kwc = (mesure or {}).get('kwc')
-    if not kwc:
-        return None
-    return float(kwc), {'id': calepinage.pk, 'statut': calepinage.statut}
 
 
 def calepinage_du_devis(devis, company=None):
@@ -112,6 +122,7 @@ def calepinage_du_devis(devis, company=None):
     mesuré.
     """
     from apps.calepinage.selectors import calepinage_du_devis as _lire
+    from apps.calepinage.selectors import reference_calepinage
 
     if devis is None:
         return None
@@ -122,6 +133,8 @@ def calepinage_du_devis(devis, company=None):
     return {
         'id': calepinage.pk,
         'titre': calepinage.titre or '',
+        # R2-12 — la référence dérivée, pour nommer un calepinage sans titre.
+        'reference': reference_calepinage(calepinage),
         'layout_hash': (calepinage.layout_hash or '') or None,
         'a_jour': _conception_a_jour(devis, calepinage),
     }
@@ -150,7 +163,32 @@ def _conception_a_jour(devis, calepinage):
     empreinte_cal = getattr(calepinage, 'layout_hash', '') or ''
     if not (empreinte_devis and empreinte_cal):
         return None
+    selection = surfaces_chiffrees_du_devis(devis)
+    if selection is not None:
+        # ACAL968 — un devis qui ne chiffre qu'une PARTIE des surfaces porte
+        # l'empreinte de SA copie : comparée à la même copie du document courant.
+        from apps.calepinage.selectors import empreinte_de_la_selection
+
+        empreinte_cal = empreinte_de_la_selection(calepinage, selection)
     return empreinte_devis == empreinte_cal
+
+
+def surfaces_chiffrees_du_devis(devis):
+    """ACAL968 (D-ACAL-37) — les clés des surfaces que CE devis chiffre
+    (``roof_layout.choixConception.surfacesChiffrees``), ou ``None`` : le devis
+    chiffre tout le document. Lecture seule."""
+    document = getattr(devis, 'roof_layout', None)
+    choix = document.get('choixConception') if isinstance(document, dict) else None
+    selection = choix.get('surfacesChiffrees') if isinstance(choix, dict) else None
+    return selection if isinstance(selection, list) else None
+
+
+def kwc_lu_du_layout(layout):
+    """Critique 22/11 — le kWc du document tel que LA composition le lit
+    (``geometrie.lire_layout``), pour la garde ACAL914 du calepinage."""
+    from .domain.geometrie import lire_layout
+
+    return lire_layout(layout).kwc
 
 
 def schema_unifilaire_svg(*, devis=None, entree=None, resultat=None,
@@ -382,6 +420,31 @@ def production_annoncee_du_devis(devis_id, company):
     base, motif = lire(devis)
     return {'regles_a_jour': regles_au_moins(devis, REGLES_POSE_REELLE_2111),
             'servie': base is not None, 'motif': motif}
+
+
+def production_imprimee_du_devis(devis):
+    """R2-14 (D-ACAL-6) — LA production annuelle (kWh, ``Decimal``) que le PDF
+    ``/proposal`` imprime pour ce devis (instance) : le MÊME rendu que
+    ``chiffrage_conception._depuis_devis`` (``build_quote_data(devis,
+    {'pdf_mode': 'full'})``), lu par ``quote_engine.figures.
+    production_imprimee``. ``None`` sans devis, sans production imprimée
+    (pompage, options divergentes, production nulle) ou rendu en échec.
+
+    UN APPEL = UN RENDU, qui n'est pas une lecture pure (le rendu crée le
+    profil société absent, ACON87) : réservé à un DOCUMENT généré à la demande
+    (présentation compacte). Jamais dans ``resultat_calepinage`` : le rendu du
+    devis relit ce résultat (ombrage servi, D-RES-2710-1) — boucle — et le
+    profil créé périmerait la simulation lue juste avant."""
+    from .quote_engine.builder import build_quote_data
+    from .quote_engine.figures import production_imprimee
+
+    if devis is None:
+        return None
+    try:
+        return production_imprimee(build_quote_data(devis, {'pdf_mode': 'full'}))
+    except Exception:  # noqa: BLE001 — document jamais bloqué par le rendu (D-ENF22-BLE001)
+        logger.warning('production imprimée indisponible', exc_info=True)
+        return None
 
 
 def devis_brouillon_pour_layout(company, lead_id, empreinte):

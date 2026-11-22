@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/publier-devis/apercu/",
-  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA7 + décision D-W2-Q1 = OUI_APRES_CONFIRMATION) — l'APERÇU, sans aucune écriture, de « publier la conception au devis » : l'assistant le lit AVANT de proposer `calepinage.publier_devis`, parce que la confirmation doit montrer l'ANCIEN et le NOUVEAU total TTC (le fondateur l'exige, en particulier quand le devis est déjà ENVOYÉ : le client a ses chiffres). Garde `calepinage_gerer` (il joue le chemin de l'écriture, verrous compris, dans une transaction annulée). Calculé par le MÊME service que la publication (génération ou resynchronisation du devis lié) dans une transaction annulée : rien n'est écrit, aucun PDF (règle #4), aucun statut. `geste` ∈ generer | resynchroniser ; `devis` null quand aucun devis n'est lié (alors `ancien_total_ttc` null) ; `corrige_apres_envoi` vrai quand le devis lié est ENVOYÉ (la correction se fait en place, tracée « corrigé après envoi », D-QJR5-5). Les mêmes refus que la publication (devis figé, verdict électrique bloquant, approbation exigée non à jour) sortent ICI d'abord, en 400/409 nommés. `a_faire` (ensemble FERMÉ) : publier | rien (rien = totaux et composition inchangés) ; `lien` : le devis lié, sinon le calepinage. Montants en texte décimal ; aucun prix d'achat ni marge ; aucune ligne de prix détaillée.",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA7 + décision D-W2-Q1 = OUI_APRES_CONFIRMATION) — l'APERÇU, sans aucune écriture, de « publier la conception au devis » : l'assistant le lit AVANT de proposer `calepinage.publier_devis`, parce que la confirmation doit montrer l'ANCIEN et le NOUVEAU total TTC (le fondateur l'exige, en particulier quand le devis est déjà ENVOYÉ : le client a ses chiffres). Garde `calepinage_gerer` (il joue le chemin de l'écriture, verrous compris, dans une transaction annulée). Calculé par le MÊME service que la publication (génération ou resynchronisation du devis lié) dans une transaction annulée : rien n'est écrit, aucun PDF (règle #4), aucun statut. `geste` ∈ generer | resynchroniser ; `devis` null quand aucun devis n'est lié (alors `ancien_total_ttc` null) ; `corrige_apres_envoi` vrai quand le devis lié est ENVOYÉ (la correction se fait en place, tracée « corrigé après envoi », D-QJR5-5). Les mêmes refus que la publication (devis figé, verdict électrique bloquant, approbation exigée non à jour) sortent ICI d'abord, en 400/409 nommés. `a_faire` (ensemble FERMÉ) : publier | rien (rien = totaux et composition inchangés) | choisir (CFIN2, recette R2-22 : le lead a déjà un brouillon libre né avant ce calepinage — `devis_existant` {detail, devis, reference, total_ttc} reprend MOT POUR MOT le 409 `devis_existant` de `generer-devis`, `nouveau_total_ttc` est null ; l'assistant DEMANDE à l'utilisateur, puis relit l'aperçu avec SA réponse `?rattacher_devis=<devis>` ou `?creer_autre_devis=true`, que la publication reçoit telle quelle ; sinon `devis_existant` null) ; `confirmation_taille` (critique 22/11, D6 — ACAL922) : null, ou `{detail, refus}` quand la génération d'un lead sans facture ni taille souhaitée demandera une confirmation — `detail` est MOT POUR MOT celui du 409 `confirmation_taille` de `generer-devis` (kWc et TTC du devis composé) ; l'aperçu l'ANNONCE au lieu d'échouer, la publication l'exige (`confirmer_taille: true`, réponse de l'utilisateur relayée) ; `lien` : le devis lié, sinon le calepinage. Montants en texte décimal ; aucun prix d'achat ni marge ; aucune ligne de prix détaillée.",
   "exemple": {
     "calepinage": 12,
     "reference": "CAL-2611-0012",
@@ -12,6 +12,8 @@
     "ancien_total_ttc": "84500.00",
     "nouveau_total_ttc": "86900.00",
     "a_faire": "publier",
+    "confirmation_taille": null,
+    "devis_existant": null,
     "lien": "/ventes/devis?devis=45"
   },
   "exemple_generer": {
@@ -25,7 +27,47 @@
     "ancien_total_ttc": null,
     "nouveau_total_ttc": "61200.00",
     "a_faire": "publier",
+    "confirmation_taille": null,
+    "devis_existant": null,
     "lien": "/calepinage/15"
+  },
+  "exemple_generer_confirmation_taille": {
+    "calepinage": 16,
+    "reference": "CAL-2611-0016",
+    "geste": "generer",
+    "devis": null,
+    "corrige_apres_envoi": false,
+    "kwc_avant": null,
+    "kwc_apres": 34.08,
+    "ancien_total_ttc": null,
+    "nouveau_total_ttc": "168800.00",
+    "a_faire": "publier",
+    "confirmation_taille": {
+      "detail": "Aucune facture ni taille souhaitée sur le lead : le devis remplit le toit (34,08 kWc, 168 800,00 MAD TTC). Confirmez, ou renseignez la facture du lead.",
+      "refus": "Données insuffisantes pour dimensionner le devis : renseignez la facture d'électricité d'hiver (ou la taille souhaitée en kWc) du lead."
+    },
+    "devis_existant": null,
+    "lien": "/calepinage/16"
+  },
+  "exemple_generer_devis_existant": {
+    "calepinage": 17,
+    "reference": "CAL-2611-0017",
+    "geste": "generer",
+    "devis": null,
+    "corrige_apres_envoi": false,
+    "kwc_avant": null,
+    "kwc_apres": 8.64,
+    "ancien_total_ttc": null,
+    "nouveau_total_ttc": null,
+    "a_faire": "choisir",
+    "confirmation_taille": null,
+    "devis_existant": {
+      "detail": "Ce lead a déjà le devis DEV-202611-0013 (brouillon, 115 800,00 MAD TTC), créé avant ce calepinage : rattachez-lui ce calepinage, ou créez un autre devis.",
+      "devis": 76,
+      "reference": "DEV-202611-0013",
+      "total_ttc": "115800.00"
+    },
+    "lien": "/calepinage/17"
   },
   "exemple_409_devis_fige": {
     "detail": "Devis DEV-202610-0021 accepté : il ne se corrige plus. Révisez-le (V2 brouillon) puis publiez la conception sur la V2.",

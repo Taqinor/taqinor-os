@@ -98,6 +98,17 @@ export const MESSAGE_ENREGISTREMENT_ECHOUE = 'La conception à l’écran n’a 
 export const MESSAGE_RETOUCHES_NON_ENREGISTREES = 'Retouches non enregistrées : elles ne '
   + 'seront pas reprises dans la V2.'
 
+/* Recette R2-23 — l'enregistrement a RÉUSSI mais la resynchronisation du devis lié est
+   refusée : `enregistrerAvant` rend `{ enregistre: true, devisModifie: false, motif }`
+   (au lieu de `false`), `motif` = le texte du SERVEUR mot pour mot ; l'écran dit alors la
+   vérité au lieu de « non enregistrée ». */
+function messageDevisNonModifie(motif, devis = null) {
+  const texte = typeof motif === 'string' ? motif.trim() : ''
+  const reference = devis?.reference ? ` ${devis.reference}` : ''
+  const quel = `le devis lié${reference}`
+  return `La conception est enregistrée, mais ${quel} n’a pas été modifié${texte ? ` : ${texte}` : '.'}`
+}
+
 export default function BoutonDevis({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
   enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
@@ -118,6 +129,10 @@ export default function BoutonDevis({
   const [conflit, setConflit] = useState(null)
   // ACAL923 — la question du 409 `confirmation_taille` (ACAL922) : `{detail, refus}` du serveur.
   const [confirmation, setConfirmation] = useState(null)
+  // Recette R2-22 — le 409 `devis_existant` : `{detail, devis, reference}` du serveur.
+  const [devisExistant, setDevisExistant] = useState(null)
+  // Le corps du dernier « Générer » : une réponse à une question le complète, sans perdre l'autre.
+  const dernierCorps = useRef({})
   // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
   // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
   const [retour, setRetour] = useState(null)
@@ -163,6 +178,7 @@ export default function BoutonDevis({
     setRefus(null)
     setConflit(null)
     setConfirmation(null)
+    setDevisExistant(null)
     setRetour(null)
     setEnCours(true)
     try {
@@ -183,6 +199,11 @@ export default function BoutonDevis({
       // ACAL923 — rien ne dimensionne le devis : une QUESTION, jamais « devis figé ».
       if (statut === 409 && data?.code === 'confirmation_taille') {
         setConfirmation({ detail: data.detail, refus: data.refus })
+        return null
+      }
+      // Recette R2-22 — le lead a déjà un brouillon libre : rattacher, ou créer un autre devis.
+      if (statut === 409 && data?.code === 'devis_existant') {
+        setDevisExistant({ detail: data.detail, devis: data.devis, reference: data.reference })
         return null
       }
       // Le pré-vol de composition (`errors`) et le refus par champ se lisent
@@ -215,12 +236,18 @@ export default function BoutonDevis({
     setRefus(null)
     setConflit(null)
     setRetour(null)
-    let ok = false
+    let resultat = false
     try {
-      ok = (await enregistrerAvant()) !== false
+      resultat = await enregistrerAvant()
     } catch {
-      ok = false
+      resultat = false
     }
+    // Recette R2-23 — enregistrée, mais devis lié refusé : le motif du serveur, jamais « non enregistrée ».
+    if (resultat?.enregistre === true && resultat.devisModifie === false) {
+      setRefus({ champ: 'devis', message: messageDevisNonModifie(resultat.motif, devisLie) })
+      return false
+    }
+    const ok = resultat !== false
     if (!ok) setRefus({ champ: 'roof_layout', message: MESSAGE_ENREGISTREMENT_ECHOUE })
     return ok
   }
@@ -228,12 +255,29 @@ export default function BoutonDevis({
   const generer = unSeulGeste(async (corps = {}) => {
     if (!(await enregistrerDabord())) return
     if (!corps.derogation_electrique) setBloquage({ geste: 'generer' })
+    dernierCorps.current = corps
     const res = await executer(
       () => calepinageApi.calepinages.genererDevis(calepinageId, { ...selection, ...corps }))
     const nouveau = res?.data?.devis
     if (!nouveau) return
     setBloquage(null)
     setMotif('')
+    // Recette R2-22 — rattaché à un brouillon EXISTANT : le dire (jamais « Devis … créé »).
+    if (corps.rattacher_devis != null) {
+      const manquantesRattache = manquantesElectriques(res.data)
+      setRetour({
+        messages: [`Calepinage rattaché au devis ${res.data?.reference ?? `#${nouveau}`} : le devis suit `
+          + 'maintenant cette conception.', ...messagesDuServeur(res.data)],
+        manquantes: manquantesRattache,
+        etatTitre: titreEtatElectrique(res.data, manquantesRattache),
+        lignes: null,
+        inchange: false,
+        devisId: null,
+        rattache: nouveau,
+        suite: 'recharger',
+      })
+      return
+    }
     // ACAL866 — AVEC ou SANS message : la carte « Devis … créé » (jamais de navigation immédiate),
     // les lignes techniques (ACAL95, ACAL171) repliées dessous ; la référence est celle du serveur.
     const manquantes = manquantesElectriques(res.data)
@@ -525,6 +569,12 @@ export default function BoutonDevis({
               {retour.messages.map((m) => <li key={m}>{m}</li>)}
             </ul>
           )}
+          {retour.rattache && (
+            <Link to={`/ventes/devis?devis=${retour.rattache}`}
+              className="mt-2 inline-flex min-h-[44px] items-center text-sm text-foreground underline">
+              Voir le devis
+            </Link>
+          )}
           {retour.suite === 'recharger' && (
             <button
               type="button"
@@ -546,7 +596,7 @@ export default function BoutonDevis({
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => generer({ confirmer_taille: true })}
+              onClick={() => generer({ ...dernierCorps.current, confirmer_taille: true })}
               disabled={enCours}
               className="inline-flex min-h-[44px] items-center border border-brass-400 px-4 py-2 text-sm font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -558,6 +608,36 @@ export default function BoutonDevis({
                 Renseigner la facture du lead
               </Link>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Recette R2-22 (D-ACAL-1) — le lead a déjà un brouillon libre : le texte du serveur, et
+          le choix explicite. Un devis envoyé ou accepté n'est jamais proposé (refus serveur). */}
+      {devisExistant && (
+        <div className="border border-warning/40 bg-warning/10 p-3" data-testid="cal-devis-existant">
+          <p className="text-sm text-foreground" role="alert">{devisExistant.detail}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => generer({ ...dernierCorps.current, rattacher_devis: devisExistant.devis })}
+              disabled={enCours}
+              className="inline-flex min-h-[44px] items-center border border-brass-400 px-4 py-2 text-sm font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {`Rattacher ce calepinage au devis ${devisExistant.reference ?? `#${devisExistant.devis}`}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => generer({ ...dernierCorps.current, creer_autre_devis: true })}
+              disabled={enCours}
+              className="inline-flex min-h-[44px] items-center border border-border px-4 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Créer un autre devis
+            </button>
+            <Link to={`/ventes/devis?devis=${devisExistant.devis}`}
+              className="inline-flex min-h-[44px] items-center px-4 py-2 text-sm text-foreground underline">
+              Ouvrir le devis existant
+            </Link>
           </div>
         </div>
       )}

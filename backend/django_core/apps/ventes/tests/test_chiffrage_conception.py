@@ -7,6 +7,8 @@ simulation du calepinage) sont des doublures ; le moteur horaire et
 ``base_depuis_servi`` sont RÉELS.
 """
 import json
+from contextlib import ExitStack
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace as N
 from unittest import mock
@@ -74,6 +76,47 @@ class ChiffrerConceptionTest(SimpleTestCase):
         self.assertEqual((avec['economie_annee1_mad']['valeur'], avec['economie_annee1_mad']['option']),
                          (9100, 'avec_batterie'))
         self.assertEqual(avec['production_annuelle_kwh']['source'], cc.SOURCE_POSE)
+
+    def test_devis_entreprise_porte_la_production_imprimee_agricole_rien(self):
+        """R3-D — « Le devis annonce » lit ``figures.production_imprimee`` : en
+        C&I le PDF imprime la production de l'ÉTUDE (pas ``prod_kwh``) ; en
+        agricole le document n'imprime aucun kWh (fonction RÉELLE ici)."""
+        def chiffrer(mode, rendu, imprimee=None):
+            devis = N(pk=4, company_id=7, mode_installation=mode, regles_calcul=15, etude_params={})
+            with ExitStack() as pile:
+                pile.enter_context(mock.patch('apps.ventes.quote_engine.builder.build_quote_data',
+                                              return_value=rendu))
+                pile.enter_context(mock.patch('apps.ventes.horaire.productible_pose.base_de_production',
+                                              return_value=None))
+                if imprimee is not None:  # la lecture C&I a ses propres tests : doublure de sa SORTIE
+                    pile.enter_context(mock.patch('apps.ventes.quote_engine.figures.production_imprimee',
+                                                  return_value=imprimee))
+                return self._chiffrer(_calepinage(devis))['production_annuelle_kwh']
+        commercial = chiffrer('commercial', dict(RENDU, mode_installation='commercial', prod_kwh=144000),
+                              imprimee=Decimal('95425'))
+        self.assertEqual((commercial['valeur'], commercial['etat']), (95425.0, 'servi'))
+        agricole = chiffrer('agricole', dict(RENDU, mode_installation='agricole'))
+        self.assertEqual((agricole['valeur'], agricole['etat']), (None, 'non_servi'))  # marché agricole : non servi
+
+    def test_devis_sans_production_imprimee_dit_le_vrai_motif(self):
+        """R3-E — un devis qui n'imprime aucune production (options aux parcs
+        différents…) ne dit pas « renseignez la facture » pour elle ; la
+        facture, elle, reste le motif de l'économie quand elle manque."""
+        devis = N(pk=4, company_id=7, mode_installation='residentiel', regles_calcul=15, etude_params={})
+
+        def chiffrer(rendu):
+            with (mock.patch('apps.ventes.quote_engine.builder.build_quote_data', return_value=rendu),
+                  mock.patch('apps.ventes.horaire.productible_pose.base_de_production', return_value=None),
+                  mock.patch('apps.ventes.quote_engine.figures.production_imprimee', return_value=None)):
+                return self._chiffrer(_calepinage(devis))
+        motifs = lambda bloc: {o['grandeur']: o['motif'] for o in bloc['omissions']}  # noqa: E731
+        avec_facture = chiffrer(dict(RENDU))
+        self.assertEqual(motifs(avec_facture), {'production_annuelle_kwh': cc.MOTIF_SANS_PRODUCTION})
+        self.assertEqual(avec_facture['economie_annee1_mad']['valeur'], 7420)
+        sans_facture = chiffrer(dict(RENDU, savings_estimated=True))
+        self.assertEqual(motifs(sans_facture)['production_annuelle_kwh'], cc.MOTIF_SANS_PRODUCTION)
+        self.assertEqual(motifs(sans_facture)['economie_annee1_mad'], cc.MOTIF_FACTURE)
+        self.assertNotIn('facture', cc.MOTIF_SANS_PRODUCTION)
 
     def test_sans_devis_regles_15_base_de_la_pose(self):
         with mock.patch('apps.ventes.domain.entrees.entrees_depuis_lead', return_value=_entrees()), \

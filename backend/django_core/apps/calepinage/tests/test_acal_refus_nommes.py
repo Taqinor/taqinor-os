@@ -55,6 +55,21 @@ class NombreFiniTest(SimpleTestCase):
         self.assertIsNone(nombre_fini(None, 'absent'))
 
 
+class BorneEnClairTest(SimpleTestCase):
+    """N6 — une borne s'écrit en chiffres, jamais « 1e+09 »."""
+
+    def test_message_de_borne_sans_notation_scientifique(self):
+        with self.assertRaises(ValeurRefusee) as refus:
+            nombre_fini(1e11, 'kwh', libelle='Production de janvier',
+                        mini=0, maxi=1e9)
+        texte = str(refus.exception)
+        self.assertNotIn('e+', texte)
+        self.assertIn('1 000 000 000', texte.replace(chr(0x202f), ' '))
+        with self.assertRaises(ValeurRefusee) as refus:
+            nombre_fini(-5, 'kwh', libelle='Production', mini=0)
+        self.assertIn('(reçu : -5)', str(refus.exception))
+
+
 class RefusNommesTest(BaseApiCalepinage):
     def setUp(self):
         super().setUp()

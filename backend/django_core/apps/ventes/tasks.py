@@ -30,15 +30,24 @@ def _societe_du_devis(devis_id):
             .values_list('company_id', flat=True).first())
 
 
-def consigner_echec_pdf_devis(devis_id, erreur):
+def consigner_echec_pdf_devis(devis_id, erreur, demande=None):
     """WIR217 — consigne l'échec DÉFINITIF de la génération d'un PDF de devis.
 
     Appelée UNIQUEMENT quand les retries sont épuisés : un échec transitoire
     (le worker va réessayer) ne doit pas afficher « échec » à l'écran.
+
+    R1-02/R1-03 — avec ``demande``, l'échec est celui de CETTE demande (son
+    entrée propre) ; sans elle (tâche mise en file avant ce correctif), il
+    n'écrase jamais une demande plus récente encore en cours.
     """
     from django.core.cache import cache
     from django.utils import timezone
 
+    if demande:
+        _clore_demande_pdf_devis(devis_id, demande, 'error', erreur)
+        return
+    if (cache.get(pdf_job_cache_key(devis_id)) or {}).get('demande'):
+        return
     cache.set(pdf_job_cache_key(devis_id), {
         'company_id': _societe_du_devis(devis_id),
         'devis_id': devis_id,
@@ -50,9 +59,134 @@ def consigner_echec_pdf_devis(devis_id, erreur):
 
 def oublier_echec_pdf_devis(devis_id):
     """Efface un échec consigné — un rendu RÉUSSI purge l'état précédent, sinon
-    un « Réessayer » qui aboutit laisserait l'écran en échec pour 24 h."""
+    un « Réessayer » qui aboutit laisserait l'écran en échec pour 24 h.
+    R1-02/R1-03 — une DEMANDE consignée (``demande``) n'est jamais effacée
+    ici : elle se clôt par son entrée propre."""
     from django.core.cache import cache
+    if (cache.get(pdf_job_cache_key(devis_id)) or {}).get('demande'):
+        return
     cache.delete(pdf_job_cache_key(devis_id))
+
+
+# ── R1-02/R1-03 — chaque demande « Générer le PDF » a SON état ──────────────
+# Le dialogue PDF remettait un AUTRE document que celui demandé : « prêt » se
+# disait dès qu'un ANCIEN fichier existait (quel qu'en soit le format), et le
+# téléchargement servait le format du DERNIER rendu persisté. Chaque demande
+# reçoit donc un identifiant, ses options, et une entrée de cache propre
+# (pending → done | error) ; la clé historique du job désigne la DERNIÈRE
+# demande. « prêt » ne se dit que d'une demande TERMINÉE, et le fichier remis
+# pour elle est rendu dans SES options (``options_demande_pdf_devis``).
+#: Au-delà, une demande jamais close (worker tué par la limite dure Celery de
+#: 180 s, ``CELERY_TASK_TIME_LIMIT``, sans passer par ``except``) se DIT en
+#: échec au lieu de tourner sans fin. Borne supposée : 4 essais × 180 s + les
+#: attentes de retry 30 + 60 + 120 s ≈ 15,5 min, arrondi à 20 min.
+PDF_DEMANDE_DELAI_MAX_S = 20 * 60
+MSG_DEMANDE_SANS_REPONSE = (
+    "La génération du PDF n'a pas abouti en 20 minutes (tâche interrompue). "
+    "Relancez-la.")
+
+
+def pdf_demande_cache_key(devis_id, demande):
+    return f'{PDF_JOB_CACHE_PREFIX}{devis_id}:demande:{demande}'
+
+
+def ouvrir_demande_pdf_devis(devis, pdf_options):
+    """Consigne une demande de rendu (``pending``) et en fait la DERNIÈRE."""
+    import uuid
+    from django.core.cache import cache
+    from django.utils import timezone
+
+    demande = uuid.uuid4().hex
+    entree = {'company_id': devis.company_id, 'devis_id': devis.pk,
+              'demande': demande, 'status': 'pending',
+              'options': pdf_options, 'at': timezone.now().isoformat()}
+    cache.set(pdf_demande_cache_key(devis.pk, demande), entree,
+              PDF_JOB_CACHE_TTL)
+    cache.set(pdf_job_cache_key(devis.pk), entree, PDF_JOB_CACHE_TTL)
+    return demande
+
+
+def _clore_demande_pdf_devis(devis_id, demande, statut, erreur=None):
+    """Clôt UNE demande (``done``/``error``) ; ne touche jamais aux autres."""
+    from django.core.cache import cache
+    from django.utils import timezone
+
+    cle = pdf_demande_cache_key(devis_id, demande)
+    entree = cache.get(cle) or {'company_id': _societe_du_devis(devis_id),
+                                'devis_id': devis_id, 'demande': demande}
+    entree.update(status=statut, at=timezone.now().isoformat(),
+                  error=None if erreur is None else str(erreur))
+    cache.set(cle, entree, PDF_JOB_CACHE_TTL)
+
+
+def _terminer_demande(devis_id, demande):
+    """Rendu réussi (ou saut d'idempotence) : clôt la demande, purge l'échec."""
+    if demande:
+        _clore_demande_pdf_devis(devis_id, demande, 'done')
+    oublier_echec_pdf_devis(devis_id)
+
+
+def _entree_de_la_societe(entree, company_id):
+    """Défense en profondeur : jamais l'état d'une AUTRE société."""
+    entree = entree if isinstance(entree, dict) else {}
+    return entree if entree.get('company_id') in (None, company_id) else {}
+
+
+def _entree_demande(devis, demande=None):
+    """L'entrée de la demande nommée, sinon celle de la DERNIÈRE demande."""
+    from django.core.cache import cache
+
+    job = _entree_de_la_societe(
+        cache.get(pdf_job_cache_key(devis.pk)), devis.company_id)
+    demande = demande or job.get('demande')
+    if not demande:
+        return job, {}
+    return job, _entree_de_la_societe(
+        cache.get(pdf_demande_cache_key(devis.pk, demande)), devis.company_id)
+
+
+def statut_pdf_devis(job, entree, fichier_present, maintenant):
+    """Fonction pure : ``(statut, erreur, date)`` servis par ``etat-pdf``.
+
+    ``entree`` = la demande suivie (vide si aucune) ; ``job`` = la clé
+    historique (échec consigné par une tâche d'avant ce correctif)."""
+    from datetime import datetime
+    if entree.get('demande'):
+        statut = entree.get('status')
+        if statut == 'done':
+            return 'pret', None, None
+        if statut == 'error':
+            return 'echec', entree.get('error'), entree.get('at')
+        try:
+            age = (maintenant - datetime.fromisoformat(entree['at'])).total_seconds()
+        except (KeyError, TypeError, ValueError):
+            age = 0
+        if age > PDF_DEMANDE_DELAI_MAX_S:
+            return 'echec', MSG_DEMANDE_SANS_REPONSE, entree.get('at')
+        return 'en_cours', None, None
+    # Aucune demande suivie : comportement WIR217 (le fichier l'emporte sur un
+    # échec plus ancien).
+    if fichier_present:
+        return 'pret', None, None
+    if job.get('status') == 'error':
+        return 'echec', job.get('error'), job.get('at')
+    return 'en_cours', None, None
+
+
+def etat_pdf_devis(devis, demande=None):
+    """État servi par ``etat-pdf`` pour ``devis`` (scopé société)."""
+    from django.utils import timezone
+    job, entree = _entree_demande(devis, demande)
+    return statut_pdf_devis(job, entree, bool(devis.fichier_pdf), timezone.now())
+
+
+def options_demande_pdf_devis(devis, demande):
+    """Options de la demande ``demande`` (``None`` si inconnue / expirée)."""
+    if not demande:
+        return None
+    _job, entree = _entree_demande(devis, demande)
+    options = entree.get('options')
+    return options if isinstance(options, dict) else None
 
 
 def _signaler_pdf_genere(obj_id, kind='devis', user_id=None):
@@ -81,7 +215,7 @@ def _signaler_pdf_genere(obj_id, kind='devis', user_id=None):
     default_retry_delay=30,
     acks_late=True,
 )
-def task_generate_devis_pdf(self, devis_id, pdf_options=None):
+def task_generate_devis_pdf(self, devis_id, pdf_options=None, demande=None):
     """Generate the quote PDF for a Devis and store in MinIO. Retries on failure.
 
     Uses the premium quote engine when USE_PREMIUM_QUOTE_ENGINE is on (default),
@@ -95,6 +229,10 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
     et hérite sans recâblage de la règle QF9 rapatriée par QJR200. Ce chemin
     ASYNCHRONE (et la variante « PDF joint à l'email ») n'avait jamais été
     exercé ; ``tests/test_qjr201_chaine_aval_panier`` le fait désormais.
+
+    R1-02/R1-03 — ``demande`` (posé par ``generer-pdf``) : la tâche clôt CETTE
+    demande (``done`` au rendu ou au saut d'idempotence, ``error`` à l'échec
+    définitif), jamais une autre.
     """
     try:
         from django.conf import settings
@@ -112,7 +250,7 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
             if cached is not None:
                 logger.info('task_generate_devis_pdf SKIP (déjà rendu): %s',
                             cached)
-                oublier_echec_pdf_devis(devis_id)
+                _terminer_demande(devis_id, demande)
                 return cached
             from .quote_engine import generate_premium_devis_pdf
             key = generate_premium_devis_pdf(devis_id, pdf_options)
@@ -126,14 +264,14 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
         _signaler_pdf_genere(devis_id)
         # WIR217 — un rendu réussi PURGE l'échec précédent : un « Réessayer »
         # qui aboutit ne doit pas laisser l'écran en échec pendant 24 h.
-        oublier_echec_pdf_devis(devis_id)
+        _terminer_demande(devis_id, demande)
         return key
     except Exception as exc:
         logger.error('task_generate_devis_pdf failed devis_id=%s: %s', devis_id, exc)
         # WIR217 — n'annoncer l'échec que lorsqu'il est DÉFINITIF : tant qu'un
         # retry reste, la génération est encore « en cours » pour l'utilisateur.
         if self.request.retries >= (self.max_retries or 0):
-            consigner_echec_pdf_devis(devis_id, exc)
+            consigner_echec_pdf_devis(devis_id, exc, demande=demande)
             raise
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
 
@@ -331,22 +469,41 @@ def _idempotent_cached_key(devis_id, pdf_options):
 
     Renvoie la clé réutilisable (skip du re-rendu) ou None (rendu requis).
     Best-effort : toute erreur de cache/MinIO retombe sur un rendu normal.
+
+    R1-02/R1-03 — la clé MinIO d'un devis est la MÊME pour tous les formats
+    (``builder._pdf_key``) : un rendu « une page » ÉCRASE l'objet du rendu
+    « complet ». La signature seule ne prouvait donc pas que l'objet contient
+    encore CE rendu — le saut servait l'autre format. On ne saute plus que si
+    le devis pointe toujours sur cette clé avec la MÊME trace de rendu
+    (``pdf_render_meta`` : empreinte + options) qu'au moment du rendu mémorisé,
+    c'est-à-dire si aucun autre rendu n'a réécrit l'objet depuis.
     """
     try:
         from django.core.cache import cache
-        key = cache.get(_render_signature(devis_id, pdf_options))
-        if key and _pdf_exists(key):
-            return key
+        from .models import Devis
+        memo = cache.get(_render_signature(devis_id, pdf_options))
+        if not isinstance(memo, dict) or not memo.get('cle'):
+            return None
+        actuel = (Devis.objects.filter(pk=devis_id)
+                  .values('fichier_pdf', 'pdf_render_meta').first()) or {}
+        if (actuel.get('fichier_pdf') == memo['cle']
+                and actuel.get('pdf_render_meta') == memo.get('meta')
+                and _pdf_exists(memo['cle'])):
+            return memo['cle']
     except Exception:
         logger.warning("tasks._idempotent_cached_key : erreur ignorée (mode dégradé)", exc_info=True)
     return None
 
 
 def _remember_render(devis_id, pdf_options, key):
-    """Mémorise la clé rendue pour cette signature (best-effort, 1 h)."""
+    """Mémorise la clé rendue ET la trace de rendu persistée (best-effort, 1 h)."""
     try:
         from django.core.cache import cache
-        cache.set(_render_signature(devis_id, pdf_options), key, 3600)
+        from .models import Devis
+        meta = (Devis.objects.filter(pk=devis_id)
+                .values_list('pdf_render_meta', flat=True).first())
+        cache.set(_render_signature(devis_id, pdf_options),
+                  {'cle': key, 'meta': meta}, 3600)
     except Exception:
         logger.warning("tasks._remember_render : erreur ignorée (mode dégradé)", exc_info=True)
 

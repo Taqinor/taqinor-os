@@ -31,9 +31,11 @@ un ``p90_kwh`` non calculé n'est pas une production nulle.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from html import escape
 
 from . import nombre_tel_que_servi
+from .champs_lisibles import motif_lisible
 
 __all__ = ['CSS_SECTION', 'MENTION_QUANTILES_ANNUELS', 'MOTIF_PAR_DEFAUT',
            'html_de_section', 'mention_borne_haute',
@@ -217,7 +219,7 @@ def _table_pluriannuelle(projection, duree):
     motif = duree.get('motif_omission')
     titre = '<h3>Production année par année</h3>'
     if motif:
-        return '%s<p class="note">%s</p>' % (titre, escape(str(motif)))
+        return '%s<p class="note">%s</p>' % (titre, escape(motif_lisible(motif)))
     lignes = [p for p in projection or () if isinstance(p, dict)]
     if not lignes:
         return ''
@@ -263,10 +265,23 @@ def _nature_variabilite(composante):
     return escape(nature)
 
 
+def _variabilite_en_pourcent(fraction):
+    """R3-18 (Q3) — la fraction servie (0,0753) imprimée en pourcentage
+    lisible (7,53 %) : un décalage EXACT de la virgule (``Decimal``), jamais
+    un arrondi ni un flottant ``* 100`` ; la fraction non numérique reste
+    imprimée telle que servie."""
+    if isinstance(fraction, bool) or not isinstance(
+            fraction, (int, float)):
+        return nombre_tel_que_servi(fraction)
+    pourcent = format(Decimal(repr(float(fraction))).scaleb(2).normalize(),
+                      'f')
+    return '%s %%' % nombre_tel_que_servi(float(pourcent))
+
+
 def _bloc_quantiles(total, incertitude):
     composante = _composante_variabilite(incertitude)
     variabilite = '%s <span class="detail">%s</span>' % (
-        nombre_tel_que_servi(total.get('annual_variability')),
+        _variabilite_en_pourcent(total.get('annual_variability')),
         _nature_variabilite(composante))
     lignes = [
         _ligne('P50 (kWh)', _p50_et_mention(total)),

@@ -8295,6 +8295,7 @@ query_params:
   delete /api/django/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/django/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
   get /api/django/calepinage/calepinages/{id}/pente-terrain/: surface
+  get /api/django/calepinage/calepinages/{id}/publier-devis/apercu/: creer_autre_devis rattacher_devis
   get /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/resultat/: variante
@@ -8953,10 +8954,12 @@ query_params:
   get /api/django/ventes/devis/{id}/assistant-taille/apercu/: batterie_nb_modules nb_panneaux
   get /api/django/ventes/devis/{id}/declaration-raccordement/: format regime
   post /api/django/ventes/devis/{id}/dupliquer-variante/: ordering search
+  get /api/django/ventes/devis/{id}/etat-pdf/: demande
   get /api/django/ventes/devis/{id}/historique-configuration/: a b
   get /api/django/ventes/devis/{id}/historique/: ordering search
   get /api/django/ventes/devis/{id}/proposal/: devis_final include_calepinage include_etude include_note_calcul langue pdf_mode show_monthly
   get /api/django/ventes/devis/{id}/schema-unifilaire/: format
+  get /api/django/ventes/devis/{id}/telecharger-pdf/: demande
   get /api/django/ventes/devis/{id}/variantes/: ordering search
   get /api/django/ventes/dossiers-checklist/: dossier ordering page page_size search
   get /api/django/ventes/dossiers-echanges/: dossier ordering page page_size search type_echange
@@ -9139,6 +9142,7 @@ query_params:
   delete /api/v1/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/v1/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
   get /api/v1/calepinage/calepinages/{id}/pente-terrain/: surface
+  get /api/v1/calepinage/calepinages/{id}/publier-devis/apercu/: creer_autre_devis rattacher_devis
   get /api/v1/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/resultat/: variante
@@ -9795,10 +9799,12 @@ query_params:
   get /api/v1/ventes/devis/{id}/assistant-taille/apercu/: batterie_nb_modules nb_panneaux
   get /api/v1/ventes/devis/{id}/declaration-raccordement/: format regime
   post /api/v1/ventes/devis/{id}/dupliquer-variante/: ordering search
+  get /api/v1/ventes/devis/{id}/etat-pdf/: demande
   get /api/v1/ventes/devis/{id}/historique-configuration/: a b
   get /api/v1/ventes/devis/{id}/historique/: ordering search
   get /api/v1/ventes/devis/{id}/proposal/: devis_final include_calepinage include_etude include_note_calcul langue pdf_mode show_monthly
   get /api/v1/ventes/devis/{id}/schema-unifilaire/: format
+  get /api/v1/ventes/devis/{id}/telecharger-pdf/: demande
   get /api/v1/ventes/devis/{id}/variantes/: ordering search
   get /api/v1/ventes/dossiers-checklist/: dossier ordering page page_size search
   get /api/v1/ventes/dossiers-echanges/: dossier ordering page page_size search type_echange

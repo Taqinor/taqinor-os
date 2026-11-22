@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import { formatNumber } from '../../lib/format'
 /* CALX27 — le droit d'ÉCRITURE métier du module. Même code que la garde
    serveur de l'action (`PeutGererCalepinage`, `services/verrou.py`) : l'écran ne
    propose pas un geste que l'API refusera. */
@@ -92,6 +93,20 @@ const LIBELLES_SOURCE_CIBLE = {
    `reviserEtOuvrir`, jamais un second). Le motif est `contexte.raison_lecture_seule`,
    la phrase du serveur reprise MOT POUR MOT — aucun état local.
    ========================================================================== */
+/* Recette V1-01 — ce que « Resynchroniser » fera du devis lié, selon son statut (règle QJR5, miroir
+   de `ventes/domain/resynchronisation.py`) : brouillon et envoyé se corrigent sur place (l'envoyé :
+   correction notée sur le devis) ; accepté, refusé, expiré se révisent (V2), jamais modifiés. */
+const LIBELLES_DEVIS_FIGES = { accepte: 'accepté', refuse: 'refusé', expire: 'expiré' }
+function libelleDevisPerime(statut) {
+  if (statut === 'envoye') {
+    return 'Devis envoyé : la resynchronisation le corrigera, et la correction sera notée sur le devis'
+  }
+  if (LIBELLES_DEVIS_FIGES[statut]) {
+    return `Devis ${LIBELLES_DEVIS_FIGES[statut]} : il ne sera pas modifié — créez une révision`
+  }
+  return 'Devis périmé — à resynchroniser'
+}
+
 function BandeauVerrou({ raison }) {
   return (
     <div className="mt-4 border border-brass-400/40 p-3" data-testid="cal-bandeau-lecture-seule">
@@ -187,8 +202,20 @@ export default function AtelierPanneaux({
           <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Calepinage</p>
           {/* CAL188 — l'en-tête de l'atelier, lu du MÊME champ serveur que la
               fiche devis et la liste (CAL189), jamais recalculé ici. */}
-          <BadgePerime layoutStale={detail?.layout_stale}
-            layoutNbPanneaux={detail?.layout_nb_panneaux} />
+          {/* R2-13 — le devis lié ne suit plus la conception : dit tout de suite (le détail est relu
+              à chaque enregistrement) ce que la resynchronisation en fera, selon le statut. */}
+          {detail?.layout_stale === true
+            ? (
+              <span data-testid="cal-devis-perime"
+                title="Les chiffres du devis ne correspondent plus à cette conception."
+                className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                {libelleDevisPerime(calepinage?.devis_lie?.statut)}
+              </span>
+            )
+            : (
+              <BadgePerime layoutStale={detail?.layout_stale}
+                layoutNbPanneaux={detail?.layout_nb_panneaux} />
+            )}
         </span>
         {/* Le comparatif des variantes est CONTEXTUEL à ce calepinage : il
             s'ouvre depuis son atelier, jamais depuis une entrée de menu
@@ -224,12 +251,12 @@ export default function AtelierPanneaux({
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <div>
           <dd className="fig text-lg text-foreground" data-testid="cal-cible-panneaux">
-            {cible ? valeur(cible.panneaux) : 'non renseignée'}
+            {cible ? valeur(cible.panneaux === null || cible.panneaux === undefined ? null : formatNumber(cible.panneaux, { decimals: 0 })) : 'non renseignée'}
           </dd>
           <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — panneaux</dt>
         </div>
         <div>
-          <dd className="fig text-lg text-foreground">{cible ? valeur(cible.kwc, ' kWc') : '—'}</dd>
+          <dd className="fig text-lg text-foreground">{cible ? valeur(cible.kwc === null || cible.kwc === undefined ? null : formatNumber(cible.kwc, { decimals: 2 }), ' kWc') : '—'}</dd>
           <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — puissance</dt>
         </div>
         <div>

@@ -33,7 +33,7 @@ from django.test import SimpleTestCase
 from django.urls import reverse
 
 from apps.calepinage.services.raccordement import (
-    CHAMPS_SAISIE, RaccordementInvalide, bloc_raccordement,
+    CHAMPS_SAISIE, RaccordementInvalide, _nom, _reglage_nom, bloc_raccordement,
 )
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
@@ -328,7 +328,7 @@ class OmissionsNommeesTest(SimpleTestCase):
                           "n'y a rien à soustraire.")
         verdict = _par_code(bloc)['elevation_tension']
         self.assertEqual(verdict['statut'], 'omis')
-        self.assertIn('limite_elevation_pct', verdict['detail'])
+        self.assertIn(_nom('limite_elevation_pct'), verdict['detail'])
 
     def test_un_troncon_sans_courant_omet_l_elevation(self):
         ampute = dict(TRONCON_AC)
@@ -363,7 +363,7 @@ class OmissionsNommeesTest(SimpleTestCase):
         verdict = _par_code(bloc)['desequilibre_phases']
 
         self.assertEqual(verdict['statut'], 'omis')
-        self.assertIn('seuil_desequilibre_pct', verdict['detail'])
+        self.assertIn(_reglage_nom('seuil_desequilibre_pct'), verdict['detail'])
 
 
 class RefusNommentLeChampTest(SimpleTestCase):

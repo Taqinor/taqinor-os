@@ -48,6 +48,9 @@ from core.electrique.types import (
     STATUT_BLOQUANT, STATUT_NON_VERIFIABLE, STATUT_OK, VerdictElectrique, fr,
 )
 from . import limites_livraison as _limites
+from django.utils.text import capfirst
+
+from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE, registre
 from .valeurs import nombre as _nombre
 
 import logging
@@ -82,14 +85,56 @@ LIBELLES = {
     CODE_LIMITATION_INJECTION: "Limitation de l'injection",
 }
 
+#: Les champs saisis et leur intitulé français : un refus les NOMME tels que
+#: l'écran les affiche (règle fondateur du 08/09/2026 — l'erreur désigne le
+#: champ fautif, jamais un « non enregistré » générique).
+INTITULES_SAISIE = {
+    'puissance_souscrite_kva': 'la puissance souscrite (kVA)',
+    'tension_nominale_v': 'la tension nominale (V)',
+    'limite_elevation_pct': "la limite d'élévation (%)",
+    'cos_phi_impose': 'le cos φ imposé',
+    'phases': 'le nombre de phases du branchement',
+    'plafond_injection_kw': "le plafond d'injection (kW)",
+    'plafond_injection_a': "le plafond d'injection (A)",
+    'plafond_soutirage_kw': 'le plafond de soutirage (kW)',
+    # R3-09 — grandeurs LUES (fiche onduleur, saisie par onduleur) que les
+    # phrases de verdict nomment : jamais leur clé technique.
+    'ac_kw': 'la puissance AC nominale (kW)',
+    's_max_kva': 'la puissance apparente maximale (kVA)',
+}
+
+#: Un intitulé en début de phrase : majuscule initiale SEULEMENT (``capitalize``
+#: passait le reste en minuscules : « (kva) », « (kw) »).
+_majuscule = capfirst
+
+
+def _nom(champ):
+    """L'intitulé français de ``champ`` (« la puissance souscrite (kVA) »)."""
+    return INTITULES_SAISIE[champ]
+
+
+def _saisie_de(champ):
+    """La provenance « saisie » d'une valeur, nommée par son intitulé."""
+    return 'saisie — ' + _nom(champ)
+
+
+def _titre(champ):
+    return _majuscule(INTITULES_SAISIE[champ])
+
+
+def _reglage_nom(cle):
+    """Le libellé du réglage société ``cle`` (registre, source unique)."""
+    return registre(SECTION_ELECTRIQUE_SOCIETE)[cle][0]
+
+
 #: Le motif publié quand aucune limite d'élévation n'est saisie — texte du
 #: contrat CALX205, mot pour mot, pour qu'un écran ne le réécrive pas.
 MOTIF_SANS_LIMITE = (
     "aucune limite d'élévation n'est saisie pour ce site : l'élévation est "
     "publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est "
     "intégré au module et aucune limite n'est supposée — saisissez "
-    "« limite_elevation_pct » avec sa source (texte réglementaire ou contrat "
-    "de raccordement) dans les réglages du calepinage.")
+    + _nom('limite_elevation_pct') + " avec sa source (texte réglementaire "
+    "ou contrat de raccordement) dans les réglages du calepinage.")
 
 #: Le refus opposé à une limite saisie SANS source (clé ``source_limite`` de
 #: ``refus_limite_sans_source``, contrat CALX205).
@@ -110,15 +155,15 @@ REFUS_COS_PHI_SANS_SOURCE = (
 #: CALX242 — les motifs d'omission des trois contrôles de branchement, textes
 #: du contrat CALX205 (état ``exemple_vide``).
 MOTIF_SANS_PUISSANCE_SOUSCRITE = (
-    "« puissance_souscrite_kva » n'est pas saisie : rien ne peut être "
-    "comparé à la puissance injectée. Saisissez la puissance souscrite du "
-    "contrat de raccordement.")
+    _titre('puissance_souscrite_kva') + " n'est pas saisie : rien ne peut "
+    "être comparé à la puissance injectée. Saisissez la puissance souscrite "
+    "du contrat de raccordement.")
 MOTIF_SANS_PHASES = (
-    "« phases » n'est pas saisi : le régime du branchement est inconnu, et "
-    "il n'est pas supposé. Saisissez 1 ou 3 phases.")
+    _titre('phases') + " n'est pas saisi : le régime du branchement est "
+    "inconnu, et il n'est pas supposé. Saisissez 1 ou 3 phases.")
 MOTIF_SANS_TENSION_NOMINALE = (
-    "« tension_nominale_v » n'est pas saisie : ni 230 V ni 400 V ne sont "
-    "supposés. Saisissez la tension nominale du branchement.")
+    _titre('tension_nominale_v') + " n'est pas saisie : ni 230 V ni 400 V "
+    "ne sont supposés. Saisissez la tension nominale du branchement.")
 
 
 class RaccordementInvalide(ValueError):
@@ -238,8 +283,9 @@ def _elevation_de_tension(troncons, injection):
     omissions = []
     if tension is None:
         omissions.append(
-            "« tension_nominale_v » n'est pas saisie : l'élévation ne peut "
-            "pas être exprimée en pourcentage d'une tension inconnue.")
+            _titre('tension_nominale_v') + " n'est pas saisie : l'élévation "
+            "ne peut pas être exprimée en pourcentage d'une tension "
+            "inconnue.")
 
     lignes, manques = _contributions(troncons, injection, tension,
                                      courant_global)
@@ -383,7 +429,7 @@ def _source_limite(source_limite):
     """« saisie — limite_elevation_pct, source : … » (contrat CALX205)."""
     if not source_limite:
         return ''
-    return 'saisie — limite_elevation_pct, source : %s' % source_limite
+    return '%s, source : %s' % (_saisie_de('limite_elevation_pct'), source_limite)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -460,7 +506,7 @@ def verdicts_raccordement(conception, saisie, reglages=None):
     """
     saisie = saisie if isinstance(saisie, dict) else {}
     cos_phi, source_cos_phi = _cos_phi_saisi(saisie)
-    origine = 'saisie — cos_phi_impose'
+    origine = _saisie_de('cos_phi_impose')
     if cos_phi is None:
         # ACAL175 — à défaut du cos φ IMPOSÉ du site, le réglage SOCIÉTÉ
         # sourcé ; le site prime toujours. L'écrêtage, lui, ne lit QUE le
@@ -526,7 +572,7 @@ def _evaluation(conception):
 
 
 def _puissance_injectee_kva(conception, cos_phi, source_cos_phi, *,
-                            origine='saisie — cos_phi_impose'):
+                            origine=_saisie_de('cos_phi_impose')):
     """``(kVA, source, motif)`` — la puissance APPARENTE réellement injectée.
 
     Deux provenances, dans cet ordre, et AUCUN repli au-delà :
@@ -548,17 +594,17 @@ def _puissance_injectee_kva(conception, cos_phi, source_cos_phi, *,
     s_max = _positif(getattr(onduleur, 's_max_kva', None))
     if s_max is not None:
         return (evaluation.nombre * s_max,
-                'fiche onduleur — s_max_kva', '')
+                'fiche onduleur — ' + _nom('s_max_kva'), '')
     active = _positif(evaluation.puissance_ac_kw)
     if active is None:
-        return (None, '', "la puissance AC de l'onduleur n'est pas "
-                          "renseignée : « ac_kw » manque sur la fiche.")
+        return (None, '', "la puissance AC de l'onduleur n'est pas renseignée : "
+                          + _nom('ac_kw') + " manque sur la fiche.")
     if cos_phi is not None and cos_phi > 0:
         return (active / cos_phi,
                 '%s, source : %s' % (origine, source_cos_phi), '')
     return (None, '',
             "la puissance APPARENTE injectée n'est pas calculable : la fiche "
-            "onduleur ne publie pas « s_max_kva » et aucun « cos_phi_impose » "
+            "onduleur ne publie pas " + _nom('s_max_kva') + " et aucun cos φ imposé "
             "n'est saisi. Aucun cos φ n'est supposé — une puissance active "
             "n'est pas une puissance apparente.")
 
@@ -603,7 +649,7 @@ def _verdict_puissance_souscrite(saisie, injectee, source, motif):
             libelle="la puissance souscrite de %s kVA est saisie, mais %s"
                     % (fr(souscrite, 1), motif),
             borne=souscrite, valeur=None,
-            source='saisie — puissance_souscrite_kva')
+            source=_saisie_de('puissance_souscrite_kva'))
     if injectee <= souscrite:
         return VerdictElectrique(
             code=CODE_PUISSANCE_SOUSCRITE, nature=NATURE_FONCTIONNELLE,
@@ -612,18 +658,18 @@ def _verdict_puissance_souscrite(saisie, injectee, source, motif):
                     "souscrite saisie couvre l'injection."
                     % (fr(injectee, 1), fr(souscrite, 1)),
             borne=souscrite, valeur=injectee,
-            source='saisie — puissance_souscrite_kva (%s)' % source)
+            source='%s (%s)' % (_saisie_de('puissance_souscrite_kva'), source))
     return VerdictElectrique(
         code=CODE_PUISSANCE_SOUSCRITE, nature=NATURE_FONCTIONNELLE,
         statut=STATUT_ALERTE,
-        libelle="%s kVA injectés pour %s kVA souscrits : « "
-                "puissance_souscrite_kva » est dépassée de %s kVA — "
-                "augmentez l'abonnement ou bridez l'injection avant le dépôt "
-                "du dossier de raccordement."
+        libelle="%s kVA injectés pour %s kVA souscrits : %s est dépassée de "
+                "%s kVA — augmentez l'abonnement ou bridez l'injection avant "
+                "le dépôt du dossier de raccordement."
                 % (fr(injectee, 1), fr(souscrite, 1),
+                   _nom('puissance_souscrite_kva'),
                    fr(injectee - souscrite, 1)),
         borne=souscrite, valeur=injectee,
-        source='saisie — puissance_souscrite_kva (%s)' % source)
+        source='%s (%s)' % (_saisie_de('puissance_souscrite_kva'), source))
 
 
 def _verdict_regime_phases(saisie, phases_onduleur):
@@ -694,7 +740,7 @@ def _verdict_tension_nominale(saisie, tension_employee):
                     "calculée : il n'y a pas encore de tension employée à "
                     "confronter." % fr(saisie_v, 0),
             borne=saisie_v, valeur=None,
-            source='saisie — tension_nominale_v')
+            source=_saisie_de('tension_nominale_v'))
     if abs(tension_employee - saisie_v) <= 1e-6:
         return VerdictElectrique(
             code=CODE_TENSION_NOMINALE, nature=NATURE_MATERIELLE,
@@ -703,17 +749,18 @@ def _verdict_tension_nominale(saisie, tension_employee):
                     "d'élévation : aucune divergence."
                     % (fr(saisie_v, 0), fr(tension_employee, 0)),
             borne=saisie_v, valeur=tension_employee,
-            source='saisie — tension_nominale_v')
+            source=_saisie_de('tension_nominale_v'))
     return VerdictElectrique(
         code=CODE_TENSION_NOMINALE, nature=NATURE_MATERIELLE,
         statut=STATUT_BLOQUANT,
-        libelle="« tension_nominale_v » vaut %s V alors que le calcul de "
-                "chute et d'élévation emploie %s V : toutes les chutes "
-                "publiées portent sur une tension qui n'est pas celle du "
-                "branchement. Corrigez la saisie ou le régime retenu."
-                % (fr(saisie_v, 0), fr(tension_employee, 0)),
+        libelle="%s vaut %s V alors que le calcul de chute et d'élévation "
+                "emploie %s V : toutes les chutes publiées portent sur une "
+                "tension qui n'est pas celle du branchement. Corrigez la "
+                "saisie ou le régime retenu."
+                % (_titre('tension_nominale_v'), fr(saisie_v, 0),
+                   fr(tension_employee, 0)),
         borne=saisie_v, valeur=tension_employee,
-        source='saisie — tension_nominale_v')
+        source=_saisie_de('tension_nominale_v'))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -751,8 +798,9 @@ PHASES_TRIPHASE = (1, 2, 3)
 #: contrat CALX205.
 MOTIF_SANS_SEUIL_DESEQUILIBRE = (
     "le seuil de déséquilibre acceptable n'est pas réglé pour la société : "
-    "le déséquilibre est publié, aucun verdict n'est prononcé. Réglez "
-    "« seuil_desequilibre_pct » avec sa source dans les réglages du module.")
+    "le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « "
+    + _reglage_nom('seuil_desequilibre_pct')
+    + " » avec sa source dans les réglages du module.")
 
 #: Le motif publié sur un branchement MONOPHASÉ : il n'y a rien à équilibrer.
 MOTIF_RESEAU_MONOPHASE = (
@@ -886,9 +934,9 @@ def _attribuer(onduleurs):
         puissance, cle = _puissance_onduleur(onduleur)
         if puissance is None:
             omissions.append(
-                "%s : aucune puissance n'est publiée (« puissance_kva » ou "
-                "« ac_kw ») — la répartition des phases ne se calcule pas sur "
-                "une puissance supposée." % repere)
+                "%s : aucune puissance n'est publiée sur la fiche (ni en kVA, "
+                "ni en kW AC) — la répartition des phases ne se calcule pas "
+                "sur une puissance supposée." % repere)
             continue
         unites.add(cle)
         if _entier(onduleur.get('phases')) == 3:
@@ -908,7 +956,7 @@ def _attribuer(onduleurs):
             source = 'tourniquet — aucune phase imposée'
         else:
             phase = imposee
-            source = 'saisie — phase_imposee'
+            source = 'saisie — phase imposée par onduleur'
         charges[phase] += puissance
         affectation.append({
             'repere': repere, 'phase': phase, 'phases': 1,
@@ -916,9 +964,9 @@ def _attribuer(onduleurs):
 
     if len(unites) > 1:
         omissions.append(
-            "le parc mélange « puissance_kva » et « ac_kw » : un déséquilibre "
-            "se mesure entre grandeurs de MÊME nature. Publiez la même clé "
-            "pour tous les onduleurs.")
+            "le parc mélange des puissances en kVA et en kW AC : un "
+            "déséquilibre se mesure entre grandeurs de MÊME nature. Publiez "
+            "la même grandeur pour tous les onduleurs.")
     charges = {phase: round(valeur, 4) for phase, valeur in charges.items()}
     return (affectation, charges, omissions)
 
@@ -953,7 +1001,7 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
         statut=STATUT_ALERTE,
         libelle="%s %% de déséquilibre entre les phases pour un seuil réglé "
                 "à %s %% : répartissez les onduleurs monophasés autrement "
-                "(« phase_imposee ») ou corrigez le seuil."
+                "(phase imposée par onduleur) ou corrigez le seuil."
                 % (fr(desequilibre), fr(seuil, 1)),
         borne=seuil, valeur=desequilibre, source=source)
 
@@ -1048,20 +1096,6 @@ REFUS_PLAFOND_SANS_JUSTIFICATION = (
     "justification : indiquez le contrat de raccordement ou la prescription "
     "du gestionnaire de réseau qui l'impose.")
 
-#: Les champs saisis et leur intitulé français : un refus les NOMME tels que
-#: l'écran les affiche (règle fondateur du 08/09/2026 — l'erreur désigne le
-#: champ fautif, jamais un « non enregistré » générique).
-INTITULES_SAISIE = {
-    'puissance_souscrite_kva': 'la puissance souscrite (kVA)',
-    'tension_nominale_v': 'la tension nominale (V)',
-    'limite_elevation_pct': "la limite d'élévation (%)",
-    'cos_phi_impose': 'le cos φ imposé',
-    'phases': 'le nombre de phases du branchement',
-    'plafond_injection_kw': "le plafond d'injection (kW)",
-    'plafond_injection_a': "le plafond d'injection (A)",
-    'plafond_soutirage_kw': 'le plafond de soutirage (kW)',
-}
-
 #: ACAL829 — le refus opposé à un plafond de soutirage SANS justification.
 REFUS_SOUTIRAGE_SANS_JUSTIFICATION = (
     "Un plafond de soutirage ne peut pas être enregistré sans sa "
@@ -1109,7 +1143,7 @@ SAISIE_MAXIMUM = sys.float_info.max ** 0.25
 def _refus_trop_grand(champ, nombre):
     return _refus_saisie(
         champ, "%s est trop grande (« %s » ; au plus %s)."
-               % (INTITULES_SAISIE[champ].capitalize(), fr(nombre),
+               % (_titre(champ), fr(nombre),
                   fr(SAISIE_MAXIMUM)))
 
 
@@ -1122,12 +1156,12 @@ def _nombre_saisi(valeur, champ):
         raise _refus_saisie(
             champ, "%s n'est pas un nombre : saisissez une valeur chiffrée, "
                    "ou laissez le champ vide si elle n'est pas connue."
-                   % INTITULES_SAISIE[champ].capitalize())
+                   % _titre(champ))
     if nombre <= 0:
         raise _refus_saisie(
             champ, "%s doit être strictement positive : « %s » ne décrit "
                    "aucun branchement réel."
-                   % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+                   % (_titre(champ), fr(nombre)))
     if nombre > SAISIE_MAXIMUM:
         raise _refus_trop_grand(champ, nombre)
     return nombre
@@ -1147,11 +1181,11 @@ def _plafond_saisi(valeur, champ='plafond_injection_kw'):
         raise _refus_saisie(
             champ, "%s n'est pas un nombre : saisissez une valeur chiffrée, "
                    "ou laissez le champ vide si elle n'est pas connue."
-                   % INTITULES_SAISIE[champ].capitalize())
+                   % _titre(champ))
     if nombre < 0:
         raise _refus_saisie(
             champ, "%s ne peut pas être négatif (« %s »)."
-                   % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+                   % (_titre(champ), fr(nombre)))
     if nombre > SAISIE_MAXIMUM:
         raise _refus_trop_grand(champ, nombre)
     return nombre

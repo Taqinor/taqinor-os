@@ -85,12 +85,14 @@ describe('CALX397 — la mesure d’usage des onglets', () => {
 
   it('UN appel par ouverture, ZÉRO à la ré-ouverture dans la même session', async () => {
     const utilisateur = userEvent.setup()
-    // ACAL393 — le rail guidé ne montre que les essentiels de l'étape :
-    // Documents et Dossiers sont ceux de l'étape « Documents ».
+    // ACAL393 — le rail guidé ne montre que les essentiels de l'étape ; depuis ACAL1193 « Dossiers »
+    // est un onglet expert : on coche « Mode expert » (mémorisé : effacé en fin de cas).
     const versions = onglet('documents')
     const activite = onglet('dossiers')
+    window.localStorage.clear()
     rendreRail(`?${PARAM_ONGLET}=${versions.cle}`)
     await waitFor(() => expect(ecransSignales()).toEqual([`calepinage:${versions.cle}`]))
+    await utilisateur.click(screen.getByTestId('cal-mode-expert'))
 
     await utilisateur.click(screen.getByTestId(`cal-onglet-${activite.cle}`))
     await waitFor(() => expect(ecransSignales()).toEqual([
@@ -101,6 +103,7 @@ describe('CALX397 — la mesure d’usage des onglets', () => {
     await waitFor(() => expect(screen.getByTestId(`cal-onglet-${versions.cle}`))
       .toHaveAttribute('aria-selected', 'true'))
     expect(ecransSignales()).toHaveLength(2)
+    window.localStorage.clear()
   })
 
   it('la même session survit au démontage du rail', async () => {

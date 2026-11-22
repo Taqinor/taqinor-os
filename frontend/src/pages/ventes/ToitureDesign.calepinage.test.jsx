@@ -362,8 +362,10 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
   it('ACAL994 — après enregistrement, le chiffrage RELU est poussé à l’atelier (la valeur servie remplace l’estimation)', async () => {
     const majChiffrage = vi.fn()
     reinitialiserBoot({ majChiffrage })
+    // R2-13 — le compte du devis RELU (`cible.panneaux`, source « devis ») voyage avec le chiffrage.
     const apres = {
       ...CTX,
+      cible: { ...CTX.cible, panneaux: CTX.cible.panneaux + 2 },
       chiffrage: { ...CTX.chiffrage, economie_annee1_mad: { ...CTX.chiffrage.economie_annee1_mad, valeur: 8123 } },
     }
     const avant = { ...CTX, chiffrage: { ...CTX.chiffrage, economie_annee1_mad: { ...CTX.chiffrage.economie_annee1_mad, etat: 'non_servi', valeur: null } } }
@@ -371,9 +373,19 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
       { data: { inchange: false, version: 4 } })
     rendreCalepinage(CTX.calepinage.id)
-    await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(avant.chiffrage))
+    expect(CTX.cible.source).toBe('devis')
+    await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(avant.chiffrage, CTX.cible.panneaux))
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
-    await waitFor(() => expect(majChiffrage).toHaveBeenLastCalledWith(apres.chiffrage))
+    await waitFor(() => expect(majChiffrage).toHaveBeenLastCalledWith(apres.chiffrage, CTX.cible.panneaux + 2))
+  })
+
+  it('R2-13 — cible tirée des factures (pas d’un devis) : aucun compte « au devis » transmis', async () => {
+    const majChiffrage = vi.fn()
+    reinitialiserBoot({ majChiffrage })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      { data: { ...CTX, cible: { ...CTX.cible, source: 'factures' } } })
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(CTX.chiffrage ?? null, null))
   })
 
   /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */
@@ -611,7 +623,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
 
         await waitFor(() => expect(texte('cal-resume-panneaux')).toContain(`${RESULT.panels} panneaux`),
           { timeout: 3000 })
-        expect(texte('cal-resume-kwc')).toMatch(/14,4 kWc/)
+        expect(texte('cal-resume-kwc')).toMatch(/14,40 kWc/)
         expect(texte('cal-resume-production')).toMatch(/≈ 18 771 kWh\/an \(estimation\)/)
 
         serializeLayout.mockReturnValue({ ...LAYOUT, result: { ...RESULT, panels: 19 } })
@@ -879,6 +891,24 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     rendreCalepinage(ctx.calepinage.id)
     await screen.findByTestId('acal-cible-estimee')
     expect(screen.queryByRole('link', { name: 'Ouvrir la fiche du lead' })).toBeNull()
+  })
+
+  it('R2-15 / R2-01 — la toiture déclarée sur le lead est AFFICHÉE avec « Voir la fiche du lead » ; rien quand il ne dit rien', async () => {
+    const ctx = exempleContrat('calepinage', 'calepinage_design_context')
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    rendreCalepinage(ctx.calepinage.id)
+    const ligne = await screen.findByTestId('acal-toiture-lead')
+    expect(ligne).toHaveTextContent('Le lead déclare : toiture · tuiles · 60 m² disponibles · pente 25° · sud-ouest')
+    expect(ligne).toContainElement(screen.getByRole('link', { name: 'Voir la fiche du lead' }))
+    expect(screen.getByRole('link', { name: 'Voir la fiche du lead' })).toHaveAttribute('href', `/crm/leads/${ctx.calepinage.lead}`)
+    // Rien n'est prérempli : le payload du constructeur ne porte aucune valeur du lead.
+    expect(JSON.stringify(initRoofToolPro8.mock.calls[0][0].hydrate.devis)).not.toContain('Sud-Ouest')
+    cleanup(); vi.clearAllMocks(); reinitialiserBoot()
+    const muet = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_vide').toiture_lead
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: { ...ctx, toiture_lead: muet } })
+    rendreCalepinage(ctx.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal-toiture-lead')).toBeNull()
   })
 })
 

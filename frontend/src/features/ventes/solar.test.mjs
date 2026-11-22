@@ -188,7 +188,16 @@ const SURFACES_SAISIE = [
   // SPL55 — la carte « Paramètres Techniques » (puissance cible, panneaux,
   // puissance panneau) a quitté la coquille : ses 3 champs nombre restent sous garde.
   '../../pages/ventes/generator/CarteParametresTechniques.jsx',
+  // R1-09 / R1-10 (22/11) — les champs d'argent sont des `ChampDecimal` (texte à
+  // clavier décimal : un Chrome en anglais filtrait la virgule d'un champ
+  // « number », 12,5 → 125). La table de lignes et le rail d'argent rejoignent
+  // la garde, qui compte ces champs au même titre.
+  '../../pages/ventes/DevisLineRow.jsx',
+  '../../pages/ventes/generator/RailArgent.jsx',
+  // R1-09 (22/11) — le taux d'actualisation C&I est un `ChampDecimal` : la carte rejoint la garde.
+  '../../pages/ventes/generator/CarteEconomieCi.jsx',
 ]
+const CHAMP_DECIMAL = '../../pages/ventes/generator/ChampDecimal.jsx'
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
   const ici = dirname(fileURLToPath(import.meta.url))
@@ -206,7 +215,19 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
       .map(chunk => /step="([^"]+)"/.exec(chunk)?.[1])
     numberSteps.forEach(s => assert.equal(s, 'any', `${rel} : champ nombre sans step="any"`))
     champsNombre += numberSteps.length
+    // R1-09 — un `ChampDecimal` porte `step="any"` lui-même ; un appelant ne
+    // lui en impose jamais un autre (le `/>` borne l'élément).
+    const decimaux = jsx.split('<ChampDecimal').slice(1).map(c => c.slice(0, c.indexOf('/>')))
+    decimaux.forEach(c => assert.ok(!/step=/.test(c), `${rel} : un ChampDecimal reçoit un step`))
+    champsNombre += decimaux.length
   }
+  // Le champ décimal lui-même : texte à clavier décimal, `step="any"`, rien ne
+  // le borne (ni min, ni max, ni pattern).
+  const champ = lire(CHAMP_DECIMAL)
+  const balise = champ.slice(champ.indexOf('<Champ type='), champ.indexOf('/>', champ.indexOf('<Champ type=')))
+  assert.ok(balise.includes('type="text" inputMode="decimal" step="any"'),
+    'ChampDecimal : texte, clavier décimal, step="any"')
+  assert.doesNotMatch(balise, /\b(min|max|pattern)=/)
   // Cliquet : 26 champs nombres mesurés sur les SIX surfaces (recalé par
   // QJR244, qui a fait passer le socle des factures — hiver/été + grille des
   // 12 mois (une seule expression `.map()` en SOURCE, jamais comptée 12 fois)
@@ -219,8 +240,22 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
   // dans Industriel ET Commercial (4 occurrences), passent dans le composant
   // partagé `BlocEtudeReseau.jsx` (ajouté à la liste) — 2 champs + 1 mention
   // `type="number"` de son commentaire d'en-tête = 3 : 26 − 4 + 3 = 25.
-  assert.ok(champsNombre >= 25,
-    `seulement ${champsNombre} champs nombres sous garde (25 attendus)`)
+  // Recalé à 46 par R1-09/R1-10 (22/11) : 41 occurrences mesurées sur les dix
+  // surfaces d'avant (le cliquet à 25 avait pris du retard) ; les 4 champs
+  // d'argent de la carte factures passent de « number » à `ChampDecimal`
+  // (comptés à l'identique) ; la table de lignes (3) et le rail d'argent (2)
+  // entrent sous garde : 41 + 5 = 46. Puis 45 : les 9 champs du panneau
+  // Agricole passent aussi en `ChampDecimal` (comptés à l'identique) et la
+  // mention `type="number"` de son commentaire d'en-tête (jamais un champ) a
+  // disparu : 46 − 1 = 45. Puis 42 : Industriel, Commercial et le reste de
+  // `BlocEtudeReseau.jsx` passent en `ChampDecimal` (comptés à l'identique) ;
+  // seules les trois mentions `type="number"` de leurs commentaires d'en-tête
+  // (jamais des champs) disparaissent : 45 − 3 = 42. Puis 43 (mesuré) : les trois
+  // champs de `CarteParametresTechniques.jsx` passent en `ChampDecimal` (comptés à
+  // l'identique) et la carte C&I `CarteEconomieCi.jsx` (taux d'actualisation,
+  // 1 champ) entre sous garde : 42 + 1 = 43.
+  assert.ok(champsNombre >= 43,
+    `seulement ${champsNombre} champs nombres sous garde (43 attendus)`)
 })
 
 // QJR109 — CETTE GARDE A CESSÉ DE LIRE LE SOURCE. Elle cherchait la chaîne

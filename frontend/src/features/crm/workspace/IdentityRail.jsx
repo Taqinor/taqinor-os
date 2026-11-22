@@ -311,7 +311,14 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const conceptionCalepinage = (conception?.calepinage
     && typeof conception.calepinage === 'object'
     && conception.calepinage.id != null) ? conception.calepinage : null
-  const conceptionLibelle = conceptionCalepinage ? 'conçus' : 'vendus'
+  // R2-11 — « vendus » ne se dit que d'un devis ACCEPTÉ ; un devis en
+  // brouillon / envoyé / refusé / expiré donne des kWc « devisés » ; sans devis
+  // (clé `conception.devis` nulle ou absente) c'est la puissance « conçue ».
+  const conceptionDevis = (conception?.devis && typeof conception.devis === 'object'
+    && conception.devis.id != null) ? conception.devis : null
+  const conceptionLibelle = !conceptionDevis
+    ? 'conçus'
+    : (conceptionDevis.statut === 'accepte' ? 'vendus' : 'devisés')
 
   // ── PUB53 — lien retour vers l'annonce Meta d'origine (pur frontend : le
   // serializer crm expose déjà `meta_ad_id` en '__all__', aucun sélecteur
@@ -345,7 +352,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
     }
     return best
   }, [server.chatter_recent])
-  const hasFacts = !!(dernierDevis || canalLabel || dernierEchange != null)
+  const hasFacts = !!(dernierDevis || conceptionCalepinage || canalLabel || dernierEchange != null)
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const alreadyClient = !!server.client
@@ -678,9 +685,11 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         {showConception && (
           <Badge
             tone="success"
-            title={conceptionCalepinage
+            title={conceptionLibelle === 'conçus'
               ? 'Puissance conçue sur le calepinage ouvert de ce lead'
-              : 'Puissance vendue : celle des lignes du devis'}
+              : (conceptionLibelle === 'vendus'
+                ? 'Puissance vendue : celle des lignes du devis accepté'
+                : 'Puissance devisée : celle des lignes du devis (pas encore accepté)')}
             data-testid="lw-chip-conception"
           >
             {conceptionImage && (
@@ -729,9 +738,34 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
                   dot={false}
                 />
                 {dernierDevis.reference && (
-                  <span className="lw-facts-ref" title={`Devis ${dernierDevis.reference}`}>
+                  <a
+                    className="lw-facts-ref"
+                    href={`/ventes/devis?devis=${dernierDevis.id}`}
+                    title={`Ouvrir le devis ${dernierDevis.reference}`}
+                    data-testid="lw-lien-devis"
+                  >
                     {dernierDevis.reference}
-                  </span>
+                  </a>
+                )}
+              </dd>
+            </div>
+          )}
+          {/* R2-10 — le calepinage du lead, avec ou sans devis : référence
+              + un clic pour l'ouvrir (le statut est celui du calepinage). */}
+          {conceptionCalepinage && (
+            <div className="lw-facts-line">
+              <dt className="lw-facts-label">Calepinage</dt>
+              <dd className="lw-facts-value">
+                <a
+                  className="lw-facts-ref"
+                  href={`/calepinage/${conceptionCalepinage.id}`}
+                  title="Ouvrir le calepinage de ce lead"
+                  data-testid="lw-lien-calepinage"
+                >
+                  {conceptionCalepinage.reference || `CAL-${conceptionCalepinage.id}`}
+                </a>
+                {conceptionCalepinage.statut && (
+                  <span className="lw-facts-ref">{conceptionCalepinage.statut}</span>
                 )}
               </dd>
             </div>
@@ -786,7 +820,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           disabled={!leadId}
           onClick={ouvrirModuleCalepinage}
           title={conceptionCalepinage
-            ? `Ouvrir le calepinage CAL-${conceptionCalepinage.id} de ce lead`
+            ? `Ouvrir le calepinage ${conceptionCalepinage.reference || `CAL-${conceptionCalepinage.id}`} de ce lead`
             : 'Ouvrir le calepinage de ce lead pour dessiner son toit'}
         >
           Dessiner le toit{hasGps ? ' 📍' : ''}

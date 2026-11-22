@@ -39,6 +39,15 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 
 const ROLES = ['normal', 'responsable', 'admin']
 
+/* R2-20 (recette 22/11/2026, Q4) — l'app n'apparaît dans le lanceur, la nav et
+   les routes que pour un compte qui a le droit de la LIRE : même clé que le
+   serveur (`apps/calepinage/permissions.py::CAL_VOIR`) et même sémantique de
+   repli (`HasPermissionOrLegacy` : rôle fin → la permission décide ; compte
+   légacy → palier responsable/admin). Un Technicien (qui n'a pas
+   `calepinage_voir`) ne voit plus une app qui refuse tout. Aucun droit ajouté
+   ni retiré ; son « plan de pose » de chantier ne passe pas par cette app. */
+const GARDE_LECTURE = { roles: ROLES, perm: 'calepinage_voir', permRepliPalier: true }
+
 /* ── L'ATELIER 3D DU CALEPINAGE — le MÊME builder, un quatrième mode ───────
    `pages/ventes/ToitureDesign` héberge déjà le builder 3D et sert les modes
    `lead`, `devis` et `calepinage` sur le MÊME écran ; le mode `calepinage` (CAL37, lane
@@ -105,13 +114,13 @@ const config = {
         to: '/calepinage',
         label: 'Calepinages',
         icon: <LayoutGrid size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
       {
         to: '/calepinage/nouveau',
         label: 'Nouveau calepinage',
         icon: <PlusCircle size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
       {
         // CAL201 — presets/kits/modèles/favoris : un item de nav PERMANENT,
@@ -119,42 +128,42 @@ const config = {
         to: '/calepinage/bibliotheque',
         label: 'Bibliothèque',
         icon: <Library size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
       {
         // CAL165 — la provenance des paramètres normatifs de la société.
         to: '/calepinage/sources',
         label: 'Sources des paramètres',
         icon: <BadgeCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
       {
         // CALX69 — les réglages de simulation et d'électrique de la société.
         to: '/calepinage/reglages',
         label: 'Réglages simulation',
         icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
       {
         // ACAL242 — les gabarits des dossiers réglementaires de la société.
         to: '/calepinage/reglages/gabarits',
         label: 'Gabarits des dossiers',
         icon: <FileStack size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
       {
         // ACAL559 — les systèmes de fixation de la société (rails, crochets, lests).
         to: '/calepinage/reglages/fixation',
         label: 'Systèmes de fixation',
         icon: <Wrench size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
       {
         // ACAL893 — le défaut de la société pour les allées (plus dans l'atelier).
         to: '/calepinage/reglages/allees',
         label: 'Allées',
         icon: <MoveHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
       {
         // CALX342 — la comparaison de 1 à 5 calepinages ; sans sélection,
@@ -162,7 +171,7 @@ const config = {
         to: '/calepinage/comparaison',
         label: 'Comparer',
         icon: <Columns3 size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ROLES,
+        ...GARDE_LECTURE,
       },
     ],
   },
@@ -181,23 +190,23 @@ const config = {
   ],
   sectionLabels: { calepinage: 'Calepinage' },
   routes: [
-    { path: '/calepinage', component: CalepinageList, roles: ROLES },
+    { path: '/calepinage', component: CalepinageList, ...GARDE_LECTURE },
     // AVANT `/calepinage/:id` — sinon « nouveau »/« bibliotheque » seraient lus
     // comme un identifiant.
-    { path: '/calepinage/nouveau', component: CalepinageNouveau, roles: ROLES },
-    { path: '/calepinage/bibliotheque', component: Bibliotheque, roles: ROLES },
+    { path: '/calepinage/nouveau', component: CalepinageNouveau, ...GARDE_LECTURE },
+    { path: '/calepinage/bibliotheque', component: Bibliotheque, ...GARDE_LECTURE },
     // CAL165 — AVANT `/calepinage/:id` : « sources » n'est pas un identifiant.
-    { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
+    { path: '/calepinage/sources', component: SourcesNormatives, ...GARDE_LECTURE },
     // CALX69 — AVANT `/calepinage/:id` : « reglages » n'est pas un identifiant.
-    { path: '/calepinage/reglages', component: ReglagesSimulation, roles: ROLES },
+    { path: '/calepinage/reglages', component: ReglagesSimulation, ...GARDE_LECTURE },
     // ACAL242 — AVANT `/calepinage/:id` : « reglages/gabarits » n'est pas un identifiant.
-    { path: '/calepinage/reglages/gabarits', component: ReglagesGabarits, roles: ROLES },
+    { path: '/calepinage/reglages/gabarits', component: ReglagesGabarits, ...GARDE_LECTURE },
     // ACAL559 — AVANT `/calepinage/:id` : « reglages/fixation » n'est pas un identifiant.
-    { path: '/calepinage/reglages/fixation', component: ReglagesFixation, roles: ROLES },
+    { path: '/calepinage/reglages/fixation', component: ReglagesFixation, ...GARDE_LECTURE },
     // ACAL893 — AVANT `/calepinage/:id` : « reglages/allees » n'est pas un identifiant.
-    { path: '/calepinage/reglages/allees', component: ReglagesAllees, roles: ROLES },
+    { path: '/calepinage/reglages/allees', component: ReglagesAllees, ...GARDE_LECTURE },
     // CALX342 — AVANT `/calepinage/:id` : « comparaison » n'est pas un identifiant.
-    { path: '/calepinage/comparaison', component: ComparaisonProjets, roles: ROLES },
+    { path: '/calepinage/comparaison', component: ComparaisonProjets, ...GARDE_LECTURE },
     /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
        contextuel à un objet. C'est la cible de
        la redirection après création (CAL36).
@@ -210,40 +219,40 @@ const config = {
        encore s'ouvrir demain) mais REDIRIGENT vers `?onglet=` (ACAL407), et
        aucune n'est à ajouter ici pour un onglet neuf — un panneau de plus,
        c'est une ligne de plus dans `atelier/onglets.js`, rien d'autre. */
-    { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
+    { path: '/calepinage/:id', component: AtelierCalepinage, ...GARDE_LECTURE },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/variantes', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/variantes', component: RedirectionOnglet, ...GARDE_LECTURE },
     // CAL121
     // contextuelle: les fiches techniques trouées des équipements de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/fiches', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/fiches', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: (CAL159) le dimensionnement de pompage de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/pompage', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/pompage', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: (CAL63) caler le plan importé de CE calepinage sur la carte — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/plan', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/plan', component: RedirectionOnglet, ...GARDE_LECTURE },
     // CAL53 — caler une photo de site (CAL52) de CE calepinage sur la carte.
-    { path: '/calepinage/:id/photos', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/photos', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: (CAL58) la pente de CE calepinage, par l'un des trois modes de saisie — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/pente', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/pente', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: (CAL89) le champ au SOL de CE calepinage (mode terrain) — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/terrain', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/terrain', component: RedirectionOnglet, ...GARDE_LECTURE },
     // CAL91 — l'ombrière / carport de CE calepinage.
-    { path: '/calepinage/:id/ombriere', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/ombriere', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/schema', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/schema', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: (CAL236) le panneau Production de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/production', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/production', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: (CAL143) le diagramme de pertes de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/pertes', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/pertes', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: (CAL93) l'horizon lointain d'UN calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/horizon', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/horizon', component: RedirectionOnglet, ...GARDE_LECTURE },
     // CAL96 — contextuelle : la course du soleil par pan d'UN calepinage.
-    { path: '/calepinage/:id/course-soleil', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/course-soleil', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: les dossiers réglementaires d'UN calepinage, ouverts depuis son atelier (CAL196) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/dossiers', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/dossiers', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: l'affectation des chaînes d'UN calepinage, corrigée à la main depuis son atelier (CAL234) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/affectation', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/affectation', component: RedirectionOnglet, ...GARDE_LECTURE },
     // contextuelle: la détection IA du toit de CE calepinage (ACAL488) — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
-    { path: '/calepinage/:id/detection-toit', component: RedirectionOnglet, roles: ROLES },
+    { path: '/calepinage/:id/detection-toit', component: RedirectionOnglet, ...GARDE_LECTURE },
   ],
 }
 

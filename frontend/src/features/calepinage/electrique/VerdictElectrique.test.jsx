@@ -45,7 +45,11 @@ import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { ongletParCle } from '../atelier/onglets'
 import VerdictElectrique, { CLE_ONGLET } from './VerdictElectrique'
-import { DOMAINE_AUTRE, DOMAINES, domaineDuMotif, grouperMotifs, libelleStatut, motifsRefusants, statutRefuse, tonStatut } from './VerdictElectrique.helpers'
+import {
+  DOMAINE_AUTRE, DOMAINES, LIBELLE_CODE_INCONNU, domaineDuMotif, grouperMotifs, libelleCode, libelleStatut, motifsRefusants,
+  statutAbstention, statutRefuse, tonStatut,
+} from './VerdictElectrique.helpers'
+import LIBELLES_CODES from './libellesCodesVerdict.json'
 
 /** Un motif, dans la forme EXACTE de `_motif_publication` — quatre clés. */
 const motif = (code, statut, libelle, source = '') => ({
@@ -319,6 +323,41 @@ describe('VerdictElectrique (CALX249)', () => {
   it('nomme un statut inconnu plutôt que de le taire', () => {
     expect(libelleStatut('bloquant')).toBe('Bloquant')
     expect(libelleStatut('lunaire')).toBe('statut « lunaire »')
+  })
+
+  it('R3-09 — jamais un code brut : intitulé de métier, repli lisible pour un code inconnu', async () => {
+    servir(REPONSE)
+
+    rendre()
+
+    await screen.findByTestId('calx249-panneau')
+    expect(screen.getByTestId('calx249-code-NORME_NON_APPLICABLE').textContent).toBe(libelleCode('NORME_NON_APPLICABLE'))
+    expect(libelleCode('NORME_NON_APPLICABLE')).toBe('Norme électrique non applicable')
+    expect(screen.getByTestId('calx249-code-SIGNE_DU_FUTUR').textContent).toBe(LIBELLE_CODE_INCONNU)
+    for (const entree of MOTIFS) {
+      const rendu = screen.getByTestId(`calx249-code-${entree.code}`).textContent
+      expect(rendu, entree.code).not.toBe(entree.code)
+      expect(rendu).not.toMatch(/^[A-Za-z_]+$/)
+    }
+    // chaque intitulé de la table est une vraie phrase, jamais le code recopié.
+    for (const [code, intitule] of Object.entries(LIBELLES_CODES)) {
+      expect(intitule, code).not.toBe(code)
+      expect(intitule, code).toMatch(/\s/)
+    }
+  })
+
+  it('R3-09 — « Aucune provenance » masqué pour une abstention, gardé pour un motif qui a jugé', async () => {
+    servir(REPONSE)
+
+    rendre()
+
+    await screen.findByTestId('calx249-panneau')
+    expect(statutAbstention('omis')).toBe(true)
+    expect(statutAbstention('non_verifiable')).toBe(true)
+    expect(statutAbstention('bloquant')).toBe(false)
+    expect(screen.queryByTestId('calx249-sans-source-regime_phases')).toBeNull()
+    expect(screen.queryByTestId('calx249-sans-source-TERRE_OMISE')).toBeNull()
+    expect(screen.getByTestId('calx249-sans-source-elevation_tension')).toHaveTextContent('Aucune provenance')
   })
 })
 

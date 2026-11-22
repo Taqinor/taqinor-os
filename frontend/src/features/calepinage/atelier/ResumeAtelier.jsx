@@ -53,7 +53,7 @@ export default function ResumeAtelier({ lireLayout, calepinageId, rechargerLe })
       </span>
       {' · '}
       <span data-testid="cal-resume-kwc">
-        {vivant.kwc === null ? '—' : `${formatNumber(vivant.kwc, { decimals: 1 })} kWc`}
+        {vivant.kwc === null ? '—' : `${formatNumber(vivant.kwc, { decimals: 2 })} kWc`}
       </span>
       {' · '}
       <span data-testid="cal-resume-production">{production}</span>

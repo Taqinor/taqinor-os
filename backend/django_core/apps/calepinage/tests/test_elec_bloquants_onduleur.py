@@ -237,6 +237,48 @@ class ControleChaineSansDessinTest(SimpleTestCase):
                             for m in reponse['manquantes']))
 
 
+class ControleChaineSaisiesRefuseesTest(SimpleTestCase):
+    """R3-15 — le contrôle rapide REFUSE (sans base) ce que le calcul complet
+    refuse : températures inversées ou hors plage, intitulés français."""
+
+    def _refus(self, **corps):
+        from apps.calepinage.services.controle_chaine import (
+            ControleInvalide, controle_chaine)
+
+        base = {'module_produit': 1, 'onduleur_produit': 2,
+                'nombre_modules': 16, 'temperature_min_c': -5.0,
+                'temperature_max_c': 70.0}
+        base.update(corps)
+        with self.assertRaises(ControleInvalide) as ctx:
+            controle_chaine(None, base)
+        return ctx.exception
+
+    def test_froid_au_dessus_du_chaud_est_refuse_et_nomme(self):
+        refus = self._refus(temperature_min_c=60.0, temperature_max_c=10.0)
+        self.assertEqual(refus.champ, 'temperature_min_c')
+        self.assertIn('inversés', str(refus))
+        self.assertTrue(refus.etat)  # règle de paire : 409 à l'API (ENF11)
+
+    def test_refus_de_champ_seul_reste_un_400(self):
+        self.assertFalse(self._refus(temperature_min_c=-80.0).etat)
+
+    def test_temperatures_hors_plage_refusees(self):
+        refus = self._refus(temperature_min_c=-80.0)
+        self.assertEqual(refus.champ, 'temperature_min_c')
+        self.assertIn('Température la plus froide (°C)', str(refus))
+        refus = self._refus(temperature_max_c=150.0)
+        self.assertEqual(refus.champ, 'temperature_max_c')
+
+    def test_phrases_sans_cle_technique(self):
+        import re
+
+        for corps in ({'nombre_modules': 0}, {'temperature_min_c': None},
+                      {'module_produit': 'x'}):
+            refus = self._refus(**corps)
+            self.assertIsNone(re.search(r'[a-z]+_[a-z_]+', str(refus)),
+                              str(refus))
+
+
 class TensionsParChaineTest(SimpleTestCase):
     """ACAL618 — ``chaines[]`` : N × la tension d'UN module, chaîne par chaîne.
 

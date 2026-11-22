@@ -55,9 +55,11 @@ def _libelles(langue):
 
 
 def _motif_poste(poste, textes):
+    from .rapport.champs_lisibles import motif_lisible
+
     for etape in poste.get('etapes') or ():
         if isinstance(etape, dict) and etape.get('motif_omission'):
-            return str(etape['motif_omission'])
+            return motif_lisible(etape['motif_omission'])
     return textes['poste_non_compte']
 
 
@@ -127,9 +129,12 @@ def _flux_a(cascade, textes):
 def _flux_b(autoconsommation, textes):
     """``(flux, notes_batterie_a_ajouter)`` ; bloc entier hachuré sans
     ``autoconsommation.energie``."""
+    from .rapport.champs_lisibles import motif_lisible
+
     energie = (autoconsommation or {}).get('energie')
     if not isinstance(energie, dict):
-        motif = (autoconsommation or {}).get('motif_absence') or ''
+        motif = motif_lisible(
+            (autoconsommation or {}).get('motif_absence') or '')
         return [('autoconsommation', textes['energie_consommation'], None,
                  motif)]
     plafond = autoconsommation.get('plafond')
