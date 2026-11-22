@@ -5,13 +5,16 @@
 // Le site public ne l'appelle pas ; sans `zoomMax`, le plafond reste celui d'aujourd'hui (19).
 import { WGS84_RADIUS } from '../../lib/geo';
 import { cadrageAnneaux, type LngLat, type OptionsCadrage as OptionsCadrageToit } from '../../lib/roof';
-import { appliquerVue, type NomVue } from './vuesCamera';
+import { appliquerVue, cibleVue, type NomVue } from './vuesCamera';
 import { poserPresentation, type CartePresentable } from './presentationCarte';
 
 /** H1 (tour 3) — `basPx` : hauteur du bas de la carte COUVERTE (tiroir de la tablette) ; le toit est cadré au centre
  *  de la partie VISIBLE, au-dessus. Absent ou 0 : la carte entière, comportement d'avant. */
 export interface OptionsCadrage extends OptionsCadrageToit {
   basPx?: number;
+  /** J1 (tour 4) — vue client : pixels du HAUT de la carte laissés au ciel (marge haute de la caméra) ; la maison se
+   *  pose plus bas, comme sur la maquette, en vue inclinée aussi. Absent : aucune marge (comportement d'avant). */
+  cielPx?: number;
 }
 
 /** Le centre de la carte qui place `centre` au milieu de la partie visible (le bas couvert sur `basPx`). Vue du dessus,
@@ -26,7 +29,8 @@ export { appliquerVue };
 
 export interface CarteCadrable {
   resize(): unknown;
-  jumpTo(o: { center?: LngLat; zoom?: number; pitch?: number; bearing?: number }): unknown;
+  jumpTo(o: { center?: LngLat; zoom?: number; pitch?: number; bearing?: number;
+    padding?: { top: number; bottom: number; left: number; right: number } }): unknown;
   easeTo(o: { pitch: number; bearing: number; duration: number; essential?: boolean }): unknown;
   isMoving(): boolean;
   once(type: string, fn: () => void): unknown;
@@ -60,7 +64,9 @@ export function cadrerToit(map: CarteCadrable, sources: SourcesCamera, options: 
     const bas = Math.max(0, Math.min(options.basPx ?? 0, clientHeight * 0.6));
     const cible = cadrageAnneaux(sources.anneaux(), clientWidth, clientHeight - bas, options);
     if (!cible) return false;
-    map.jumpTo(bas > 0 ? { ...cible, center: centreAuDessus(cible.center, cible.zoom, bas) } : cible);
+    const ciel = Math.max(0, Math.min(options.cielPx ?? 0, clientHeight * 0.6));
+    const pose = bas > 0 ? { ...cible, center: centreAuDessus(cible.center, cible.zoom, bas) } : cible;
+    map.jumpTo(ciel > 0 ? { ...pose, padding: { top: ciel, bottom: 0, left: 0, right: 0 } } : pose);
     return true;
   };
   const anneauxValides = sources.anneaux().some((a) => Array.isArray(a) && a.length >= 3);
@@ -72,11 +78,27 @@ export function cadrerToit(map: CarteCadrable, sources: SourcesCamera, options: 
   return true;
 }
 
-/** Les commandes de caméra de l'API du constructeur (ACAL435 + F6) ; H6 — `modePresentation` (vue client). */
+/** J1 — la vue que la présentation TIENT (`modePresentation(true, { vue, cadrage, surPrete })`). */
+export interface VueClient { vue: NomVue; cadrage?: OptionsCadrage; surPrete?: () => void }
+
+const ecartAngle = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180);
+
+/** Les commandes de caméra de l'API du constructeur (ACAL435 + F6) ; H6 — `modePresentation` (vue client) ; J1 — la vue
+ *  client TENUE : posée à l'entrée, reposée après tout mouvement qui n'est pas un geste de l'utilisateur. */
 export function apiCamera(map: CarteCadrable & CartePresentable, sources: SourcesCamera, reducedMotion: boolean) {
+  const tenue = (v: VueClient) => ({
+    poser: () => { appliquerVue(map, v.vue, sources.azimut(), reducedMotion); return cadrerToit(map, sources, v.cadrage); },
+    cadrer: () => cadrerToit(map, sources, v.cadrage),
+    atteinte: () => {
+      if (!map.getPitch || !map.getBearing) return true;
+      const cible = cibleVue(v.vue, sources.azimut());
+      return Math.abs(map.getPitch() - cible.pitch) <= 0.5 && ecartAngle(map.getBearing(), cible.bearing) <= 0.5;
+    },
+    surPrete: v.surPrete,
+  });
   return {
     appliquerVue: (nom: NomVue) => appliquerVue(map, nom, sources.azimut(), reducedMotion),
     cadrerToit: (options?: OptionsCadrage) => cadrerToit(map, sources, options),
-    modePresentation: (actif: boolean) => poserPresentation(map, actif),
+    modePresentation: (actif: boolean, vue?: VueClient) => poserPresentation(map, actif, vue ? tenue(vue) : undefined),
   };
 }

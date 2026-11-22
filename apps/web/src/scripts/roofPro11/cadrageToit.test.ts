@@ -188,3 +188,91 @@ describe('modePresentation — vue client sans marqueur d\'édition (H6)', () =>
     expect(c.vis['rp9-pts']).toBe('none'); // vue inclinée : le cercle du sol reste caché (ACAL1185)
   });
 });
+
+// J1 (tour 4) — la vue client TENUE de trois quarts : posée à l'entrée, reposée après tout mouvement qui n'est pas un
+// geste de l'utilisateur (atterrissage de l'hydratation, recalage), jusqu'au premier geste.
+function carteCamera() {
+  const ev: Record<string, Array<() => void>> = {};
+  const dom: Record<string, (e: Partial<PointerEvent>) => void> = {};
+  const cam = { lng: -7.6, lat: 33.6, zoom: 5, pitch: 0, bearing: 0 };
+  const attrs: Record<string, string> = { 'aria-label': 'Map', role: 'region', tabindex: '0' };
+  const fire = (t: string) => (ev[t] || []).slice().forEach((f) => f());
+  const bouger = (o: Partial<typeof cam> & { center?: LngLat }) => {
+    if (o.center) { cam.lng = o.center[0]; cam.lat = o.center[1]; }
+    for (const k of ['zoom', 'pitch', 'bearing'] as const) if (o[k] !== undefined) cam[k] = o[k]!;
+  };
+  const map = {
+    resize: vi.fn(),
+    jumpTo: vi.fn((o: Partial<typeof cam> & { center?: LngLat }) => { bouger(o); fire('moveend'); }),
+    easeTo: vi.fn((o: Partial<typeof cam>) => { bouger(o); fire('moveend'); }),
+    isMoving: () => false,
+    once: vi.fn((t: string, fn: () => void) => { const g = () => { ev[t] = ev[t].filter((h) => h !== g); fn(); }; (ev[t] ||= []).push(g); }),
+    on: vi.fn((t: string, f: () => void) => { (ev[t] ||= []).push(f); }),
+    off: vi.fn((t: string, f: () => void) => { ev[t] = (ev[t] || []).filter((g) => g !== f); }),
+    getContainer: () => ({ clientWidth: 390, clientHeight: 464 }),
+    getCenter: () => ({ lng: cam.lng, lat: cam.lat }),
+    getZoom: () => cam.zoom,
+    getPitch: () => cam.pitch,
+    getBearing: () => cam.bearing,
+    setBearing: (c: number) => { cam.bearing = c; },
+    setPadding: vi.fn(),
+    getCanvas: () => ({
+      getAttribute: (n: string) => attrs[n] ?? null,
+      setAttribute: (n: string, v: string) => { attrs[n] = v; },
+      removeAttribute: (n: string) => { delete attrs[n]; },
+    }),
+    getCanvasContainer: () => ({
+      addEventListener: (t: string, f: (e: Partial<PointerEvent>) => void) => { dom[t] = f; },
+      removeEventListener: (t: string) => { delete dom[t]; },
+    }),
+    dragPan: { enable: vi.fn(), disable: vi.fn() },
+  };
+  return { map: map as unknown as CarteCadrable & typeof map, cam, attrs, dom, fire };
+}
+
+describe('modePresentation — vue client tenue de trois quarts (J1)', () => {
+  it('pose 3/4 + cadrage à l\'entrée ; un atterrissage du constructeur (pente 58°, cap 0) est corrigé au repos', () => {
+    vi.useFakeTimers();
+    try {
+      const c = carteCamera();
+      let anneaux: LngLat[][] = []; // avant l'hydratation : aucun pan
+      const api = apiCamera(c.map, { anneaux: () => anneaux, azimut: () => 180, trace: () => false }, true);
+      const prete = vi.fn();
+      api.modePresentation(true, { vue: 'trois-quarts', cadrage: { zoomMax: 22, cielPx: 180 }, surPrete: prete });
+      vi.runAllTimers();
+      expect([c.cam.pitch, c.cam.bearing]).toEqual([58, 45]);
+      expect(prete).not.toHaveBeenCalled(); // rien n'est cadré : la 3D n'est pas « prête »
+      // L'hydratation : les pans arrivent et la caméra atterrit (W120 / go3DView : pente gardée, cap 0).
+      anneaux = [toit];
+      c.map.jumpTo({ center: [-7.62, 33.59], zoom: 19, pitch: 58, bearing: 0 } as never);
+      vi.runAllTimers();
+      expect([c.cam.pitch, c.cam.bearing]).toEqual([58, 45]);
+      expect(c.cam.zoom).toBeGreaterThan(20);
+      expect(c.map.jumpTo.mock.calls.at(-1)![0]).toMatchObject({ padding: { top: 180, bottom: 0, left: 0, right: 0 } });
+      expect(prete).toHaveBeenCalledTimes(1);
+      // Une étape qui reposerait « Plan » (pente 0) hors geste : la vue client est reposée.
+      c.map.easeTo({ pitch: 0, bearing: 0 } as never);
+      vi.runAllTimers();
+      expect([c.cam.pitch, c.cam.bearing]).toEqual([58, 45]);
+      // Le client tourne la maison : la vue n'est plus jamais reposée.
+      c.dom.pointerdown({ pointerId: 1, button: 0, clientX: 100 });
+      c.dom.pointermove({ pointerId: 1, clientX: 200 });
+      c.dom.pointerup({ pointerId: 1 });
+      c.fire('idle');
+      vi.runAllTimers();
+      expect(c.cam.bearing).toBeCloseTo(5, 6);
+      api.modePresentation(false);
+      expect(c.map.setPadding).toHaveBeenCalledWith({ top: 0, bottom: 0, left: 0, right: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('la toile est nommée en français et sort de l\'ordre de tabulation ; ses attributs sont rendus à la sortie', () => {
+    const c = carteCamera();
+    const api = apiCamera(c.map, sources(), true);
+    api.modePresentation(true);
+    expect(c.attrs).toMatchObject({ 'aria-label': 'Vue 3D de la maison', role: 'img', tabindex: '-1' });
+    api.modePresentation(false);
+    expect(c.attrs).toMatchObject({ 'aria-label': 'Map', role: 'region', tabindex: '0' });
+  });
+});

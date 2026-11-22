@@ -662,7 +662,10 @@
   ],
   "calepinages.get": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/",
       "verbe": "get"
@@ -754,7 +757,10 @@
   ],
   "calepinages.layout": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/layout/",
       "verbe": "get"
@@ -850,7 +856,10 @@
   ],
   "calepinages.parcours": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/parcours/",
       "verbe": "get"
@@ -878,7 +887,10 @@
   ],
   "calepinages.photos": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/photos/",
       "verbe": "get"
@@ -963,7 +975,10 @@
   ],
   "calepinages.releve": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/releve/",
       "verbe": "get"
@@ -1011,7 +1026,10 @@
   ],
   "calepinages.resultat": [
     {
-      "config": null,
+      "config": {
+        "silencieuxExpiration": true,
+        "timeout": 60000
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/resultat/",
       "verbe": "get"

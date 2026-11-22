@@ -202,7 +202,8 @@ export default function CoqueAtelier({
   const cleActive = resoudreOnglet(parametres.get(PARAM_ONGLET))?.cle ?? null
   const { cleEtape } = vueParcours(cleActive, parcours.etats, expert)
   const ecran = ecranCoque(cleActive, resoudreOnglet(cleActive), parcours.etats, expert)
-  const cadre = expert ? CADRES.CARTE : (ecran?.cadre ?? CADRES.CARTE)
+  // J1 — présentation : la carte, toujours (la 3D est la scène du client, quelle que soit l'étape du parcours).
+  const cadre = expert || presentation ? CADRES.CARTE : (ecran?.cadre ?? CADRES.CARTE)
   // « Avancé » (guidé) : une FEUILLE à part, posée par-dessus l'écran (l'écran guidé reste intact dessous) ;
   // Expert : l'ancienne disposition entière (contrôles du constructeur, rangées sous la carte, recherche).
   const [avanceOuvert, setAvanceOuvert] = useState(false)
@@ -266,9 +267,10 @@ export default function CoqueAtelier({
   // du tiroir sur tablette), sauf si l'utilisateur a choisi une vue dans la séance ou touche la carte entre-temps.
   usePlanALEntreeDEtape({ builderRef, actif: carteVisible && !presentation, cle: `${cleEtape}:${tiroir}`, builderApiCoque })
 
-  const resultatServi = useResultatServi(calepinageId, ETAPES_POSE.includes(cleEtape), enregistreLe)
+  // J1 — présentation : ni résultat ni détail pour le bandeau (masqué) — aucune lecture de plus devant le client.
+  const resultatServi = useResultatServi(calepinageId, ETAPES_POSE.includes(cleEtape) && !presentation, enregistreLe)
   const etatPropre = cleEtape === 'resultats' && !expert ? etatSimulation(resultatServi) : null
-  const derniereVersionLe = useDerniereVersion(calepinageId, enregistreLe)
+  const derniereVersionLe = useDerniereVersion(presentation ? null : calepinageId, enregistreLe)
 
   const onDevis = () => {
     if (cleEtape !== 'documents') allerA('documents')
@@ -333,7 +335,9 @@ export default function CoqueAtelier({
           <PanneauEtape numero={rang >= 0 ? rang + 1 : null} total={TOTAL} titre={ecran?.titre ?? null}
             cache={(pleine && !avance) || !!presentation} refCorps={setNoeudPanneau} refPied={setNoeudPiedPanneau}
             pied={piedParDefaut} tiroir={tiroir} deplie={deplie} onDeplier={setDeplie} refControle={setNoeudControle}>
-            {carteVisible && ecranMonte}
+            {/* J1 — présentation : l'écran d'étape n'est pas monté (il ne tient aucun nœud `rp9-*`, il les LIT) — sa
+                caméra d'entrée (« Plan » à l'étape Toit) ne remet jamais la vue client de dessus. */}
+            {carteVisible && !presentation && ecranMonte}
             <div className="cal-coque-groupe" data-groupe="toit" hidden={!(expert || cleEtape === 'toit')}>
               {groupes.outils}
               {groupes.toit}

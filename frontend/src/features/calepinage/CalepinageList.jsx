@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState } from 'react'
+import { useContext, useMemo, useRef, useState } from 'react'
 import { ReactReduxContext } from 'react-redux'
 import { messageRefus } from './commun/refusServeur'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -21,7 +21,8 @@ import BadgePerime from './BadgePerime'
 // CALX344 — le filtre par étiquette libre (`?etiquette=`, CALX343).
 import { FiltreEtiquettes } from './Etiquettes'
 import {
-  STATUTS_CALEPINAGE, STYLE_STATUT, initiales, modifieDe, morceauxMesures, nombreProjets, villeDe,
+  STATUTS_CALEPINAGE, STYLE_STATUT, apercuVide, identiteCarte, initiales, modifieDe, morceauxMesures,
+  nombreProjets,
 } from './CalepinageList.helpers'
 
 /* ============================================================================
@@ -144,10 +145,42 @@ const ICONE_STATUT = {
   brouillon: CircleDashed, valide: CircleCheck, perime: TriangleAlert, refuse: CircleX,
 }
 
+/* L'aperçu d'une carte : l'image servie, ou « Aucun aperçu » quand il n'y en a pas, qu'elle ne se charge
+   pas (`onError`, fichier vide) ou qu'elle est TOUTE blanche (rendu sans rien dessiné, carte 293). */
+function ApercuCarte({ url, alt }) {
+  const [echec, setEchec] = useState(false)
+  const img = useRef(null)
+  const verifier = () => {
+    const el = img.current
+    if (!el) return
+    if (!el.naturalWidth) { setEchec(true); return }
+    try {
+      const toile = document.createElement('canvas')
+      toile.width = 24
+      toile.height = 24
+      const g = toile.getContext('2d')
+      g.drawImage(el, 0, 0, 24, 24)
+      if (apercuVide(g.getImageData(0, 0, 24, 24).data)) setEchec(true)
+    } catch { /* image d'une autre origine ou canvas absent : on garde l'image */ }
+  }
+  if (url && !echec) {
+    return (
+      <img ref={img} src={url} alt={alt} crossOrigin="anonymous" onLoad={verifier} onError={() => setEchec(true)}
+        className="block h-[140px] w-full flex-none object-cover" data-testid="cal-vignette-image" />
+    )
+  }
+  return (
+    <div className="flex h-[140px] w-full flex-none flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"
+      data-testid="cal-vignette-sans-image">
+      <LayoutGrid size={28} strokeWidth={1.5} aria-hidden="true" />
+      <span className="text-xs">Aucun aperçu</span>
+    </div>
+  )
+}
+
 export function VignetteCalepinage({ calepinage, selection = null }) {
   const url = urlImage(calepinage?.image?.url) || null
-  const titre = calepinage?.nom || calepinage?.reference || 'Calepinage'
-  const ville = villeDe(calepinage)
+  const { titre, ville, propre } = identiteCarte(calepinage)
   const mesures = morceauxMesures(calepinage)
   const modifie = modifieDe(calepinage?.modifie_le)
   const points = calepinage?.points_a_regler
@@ -173,27 +206,13 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
         title={`${calepinage?.reference || ''} · ${rattachementDe(calepinage)}`}
         data-testid={`cal-vignette-${calepinage.id}`}
       >
-        {url ? (
-          <img
-            src={url}
-            alt={`Aperçu de toiture — ${titre}`}
-            className="block h-[140px] w-full flex-none object-cover"
-            data-testid="cal-vignette-image"
-          />
-        ) : (
-          <div
-            className="flex h-[140px] w-full flex-none flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"
-            data-testid="cal-vignette-sans-image"
-          >
-            <LayoutGrid size={28} strokeWidth={1.5} aria-hidden="true" />
-            <span className="text-xs">Aucun aperçu</span>
-          </div>
-        )}
-        <div className="flex min-h-[160px] flex-1 flex-col gap-2 border-t border-border px-4 py-4">
+        <ApercuCarte url={url} alt={`Aperçu de toiture — ${titre}`} />
+        <div className="flex min-h-[186px] flex-1 flex-col gap-2 border-t border-border px-4 py-[14px]">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col">
               <span className="truncate font-display text-base font-semibold">{titre}</span>
               {ville ? <span className="truncate text-sm text-muted-foreground">{ville}</span> : null}
+              {propre ? <span className="truncate text-xs text-muted-foreground" data-testid="cal-vignette-nom">{propre}</span> : null}
             </div>
             <span className="flex shrink-0 items-center gap-1.5">
               <BadgePerime layoutStale={calepinage?.layout_stale}
@@ -377,7 +396,7 @@ export default function CalepinageList() {
             type="search"
             className="min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             value={q}
-            placeholder="Client, référence ou lead"
+            placeholder="Client, ville ou lead"
             onChange={(e) => surFiltre(setQ)(e.target.value)}
           />
         </div>

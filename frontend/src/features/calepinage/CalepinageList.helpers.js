@@ -64,5 +64,26 @@ export function initiales(nom) {
 /** La ville de la carte : celle du client rattaché, à défaut celle du lead. */
 export const villeDe = (ligne) => ligne?.client_apercu?.ville || ligne?.lead?.ville || null
 
+/** Ce que la carte dit du projet, comme une personne le lit (maquette « Liste » :
+    « Villa Bennani » puis « Casablanca ») : le NOM du client rattaché (à défaut celui du
+    lead) en titre, la ville dessous ; le nom propre du calepinage (technique) descend en
+    petit seulement quand il diffère. Sans rattachement, le nom propre reste le titre. */
+export function identiteCarte(ligne) {
+  const lie = ligne?.client_apercu?.nom || ligne?.client?.nom || ligne?.lead?.nom || null
+  const propre = ligne?.nom || ligne?.reference || 'Calepinage'
+  return { titre: lie || propre, ville: villeDe(ligne), propre: lie && lie !== propre ? propre : null }
+}
+
+/** Vrai quand les pixels d'un aperçu (RGBA, échantillon réduit) sont TOUS blancs ou
+    transparents : un rendu qui n'a rien dessiné — mieux vaut « Aucun aperçu ». */
+export function apercuVide(rgba) {
+  if (!rgba || !rgba.length) return false
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    const [r, g, b, a] = [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]
+    if (a > 8 && (r < 245 || g < 245 || b < 245)) return false
+  }
+  return true
+}
+
 /** « 6 projets » / « 1 projet » / « 0 projet » (le français n'accorde qu'au-delà de 1). */
 export const nombreProjets = (n) => `${n} projet${n > 1 ? 's' : ''}`

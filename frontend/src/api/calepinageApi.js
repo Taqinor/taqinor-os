@@ -2,7 +2,7 @@ import api from './axios'
 import { makeResourceFactory } from './resource'
 import { pivot } from './calepinage/_base'
 import { projet } from './calepinage/projet'
-import { simulation } from './calepinage/simulation'
+import { simulation, LECTURE_LENTE } from './calepinage/simulation'
 import { sorties } from './calepinage/sorties'
 
 // ACAL316 — l'en-tête If-Match d'une écriture COMPLÈTE du document (obligatoire côté serveur,
@@ -57,6 +57,9 @@ const jetonIfMatch = (empreinte) => ({ headers: { 'If-Match': empreinte || '""' 
 
 // Fabrique CRUD standard sur `/calepinage/<ressource>/`.
 const crud = makeResourceFactory(api, '/calepinage')
+// J3 — le DÉTAIL agrégé (22 à 42 s mesurés sous charge) est une lecture lente : délai de 60 s, sans
+// toast d'expiration (l'écran qui le lit dit lui-même qu'il attend). Remplace le `get` du CRUD partagé.
+const detailLent = { get: (id) => api.get(pivot(id), LECTURE_LENTE) }
 
 // CALX37 — corps du POST de duplication d'une variante : `nom` saisi prime ;
 // sans lui, un nom dérivé de la source évite un POST refusé pour nom vide.
@@ -80,6 +83,7 @@ const calepinageApi = {
     // ACAL120 — les SEULES méthodes CRUD servies : un calepinage ne se
     // supprime pas (DELETE/PUT ⇒ 405) — archiver est l'unique geste.
     ...(({ list, get, create, update }) => ({ list, get, create, update }))(crud('calepinages')),
+    ...detailLent,
 
     // CAL199/CAL246 — les calepinages marqués MODÈLE de la société (drapeau
     // `records.Tag`, jamais un champ propre). Lecture pure.
@@ -90,7 +94,7 @@ const calepinageApi = {
     // `contract_samples/roof_layout_v2.schema.json`). GET relit, POST
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
-    layout: (id) => api.get(`${pivot(id)}layout/`),
+    layout: (id) => api.get(`${pivot(id)}layout/`, LECTURE_LENTE), // J3 : lecture lente du démarrage
     // ACAL364 — plus aucun écran n'écrit le document entier par `layout/` hors de l'atelier
     // (qui passe par `enregistrerLayoutCalepinageConditionnel`, If-Match) : la clé sans appelant est retirée.
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
@@ -100,7 +104,7 @@ const calepinageApi = {
 
     // CAL52 — les photos de site (drone/oblique/sol), MÊME magasin que
     // `roof-image`. `corps` est un FormData (photo, genre, prise_le, legende).
-    photos: (id) => api.get(`${pivot(id)}photos/`),
+    photos: (id) => api.get(`${pivot(id)}photos/`, LECTURE_LENTE), // J3 : lecture lente du relevé
     ajouterPhoto: (id, corps) => api.post(`${pivot(id)}photos/`, corps),
     // CAL53 — le calage (4 coins [latitude, longitude]) d'UNE photo de site,
     // rechargé tel quel à la réouverture. `null` efface le calage.
@@ -169,7 +173,7 @@ const calepinageApi = {
 
     // CAL244 — le résultat retenu du calepinage
     // (`contract_samples/calepinage_resultat.json`).
-    resultat: (id) => api.get(`${pivot(id)}resultat/`),
+    resultat: (id) => api.get(`${pivot(id)}resultat/`, LECTURE_LENTE), // J3 : lecture lente du démarrage
 
     /* CAL125 — l'ENTRÉE du calcul électrique. Le matériel est DÉSIGNÉ et les
        longueurs/températures sont SAISIES ; la réponse est le `resultat`

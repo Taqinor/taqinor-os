@@ -1,6 +1,7 @@
 /* SPL293 — fragment sorties et exports de calepinageApi.js (move only). */
 import api from '../axios'
 import { pivot } from './_base'
+import { LECTURE_LENTE } from './simulation'
 
 export const sorties = {
     // ACAL42 — `deverrouiller` retiré : le verrou est le verdict ventes,
@@ -67,7 +68,7 @@ export const sorties = {
     // CALX25 — le relevé terrain (chaînes de cotes, CAL64, `views/releve.py`).
     // GET rend l'historique (`releves`) ; POST enregistre une chaîne ET rend
     // le relevé créé PLUS l'historique à jour (contrat `calepinage_releve.json`).
-    releve: (id) => api.get(`${pivot(id)}releve/`),
+    releve: (id) => api.get(`${pivot(id)}releve/`, LECTURE_LENTE), // J3 : lecture lente du relevé
     enregistrerReleve: (id, corps) => api.post(`${pivot(id)}releve/`, corps),
     // ACAL204/205 — corriger (PATCH, le MÊME relevé) ou retirer (DELETE) un
     // relevé de saisie ; GET releve/ rend aussi `releve_courant_id`.

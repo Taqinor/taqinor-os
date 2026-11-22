@@ -1,59 +1,83 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icone, Segmente } from '../atelier/coque/primitives'
 import { gestes, useConstructeur } from '../atelier/coque/etapes/panneaux/constructeur'
 import { jourMois } from '../atelier/coque/etapes/panneaux/formats'
-import { AvisEchec3D, IconeTourner, PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
-import { useDonneesClient } from './vueClient.helpers'
+import { AvisEchec3D, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
+import { instantSoleilChoisi } from './vueClient.helpers'
+import { useHorsVueClientInerte } from './inerteHorsClient'
 
 /* ============================================================================
    « MONTRER AU CLIENT » — L'HABILLAGE DE L'ATELIER EN MODE PRÉSENTATION
    (maquette TelephoneClient, 390 × 844). Rendu PAR la coque (`ContextePresentation`)
    autour de la VRAIE 3D du constructeur, jamais un second constructeur.
    - Sur la scène : la puce du projet ; tant que la 3D n'est pas prête, le toit
-     enregistré dessiné de dessus (repli 2D) le temps du démarrage.
-   - La vue de trois-quarts : `builderApi.appliquerVue('trois-quarts')` (la caméra
-     « 3/4 » de l'atelier), redemandée le temps que l'hydratation finisse de recentrer.
+     enregistré dessiné de dessus (repli 2D) et « La vue 3D se prépare… ».
+   - J1 — LA VUE DE TROIS QUARTS TENUE : `builderApi.modePresentation(true, { vue: 'trois-quarts', … })`
+     (roofPro11/presentationCarte.ts) la pose et la REPOSE après tout mouvement de caméra qui n'est pas
+     un geste de l'utilisateur (atterrissage du boot, hydratation, cadrage tardif), jusqu'à ce qu'il
+     tourne la maison ; `surPrete` dit quand elle est posée et le toit cadré : la 3D est alors montrée.
    - Le soleil : RE-PRÉSENTÉ, renvoyé aux vrais contrôles (`#rp9-sun-hour`,
-     `[data-sun-season]`, `#rp9-sun-play-day`) — lus et pilotés par les gestes de
-     l'étape Panneaux (`constructeur.js`). Sans ces contrôles : la barre est omise.
-   - Trois tuiles + mention + pied : pièces partagées (`partiesClient`).
-   Aucune écriture : ce sont des lectures (GET) et des gestes d'affichage.
+     `[data-sun-season]`, `#rp9-sun-play-day`). J1 — la vue s'ouvre en été à midi (maquette), sauf
+     si la scène enregistrée porte un instant CHOISI par le commercial (gardé).
+   - Les DONNÉES (tuiles, puce) sont tenues par la vue client hors de l'atelier (`donnees`) : elles ne
+     dépendent pas du démarrage de la 3D, et « Réessayer » ne les efface pas.
+   Aucune écriture : des lectures (GET) et des gestes d'affichage.
    ========================================================================== */
 
-const ESSAIS_VUE_MS = [0, 1500, 4000]
-/** H6 — la maison remplit la scène comme sur la maquette (le toit sur ~55 % de la largeur ; caméra seule). */
-const CADRAGE_CLIENT = { zoomMax: 22, part: 0.55 }
+/** H6 — la maison remplit la scène comme sur la maquette ; J1 — posée plus bas (le ciel gardé en haut). Caméra seule. */
+const CADRAGE_CLIENT = { zoomMax: 22, part: 0.62, cielPx: 190 }
 
 const SAISONS = [{ valeur: 'winter', libelle: 'Hiver' }, { valeur: 'summer', libelle: 'Été' }]
 
-/** La caméra de trois-quarts, posée dès que l'API du constructeur est là ; `pret` ensuite.
- *  H6 — et le MODE PRÉSENTATION de la carte (`modePresentation`, roofPro11/presentationCarte.ts) : poignées,
- *  tracé, cotes et étiquettes d'édition masqués ; un doigt fait tourner la maison (`tourne` : l'aide le dit). */
-function useVueTroisQuarts(builderApi) {
-  const [pret, setPret] = useState(false)
-  const [tourne, setTourne] = useState(false)
+/** La vue de trois-quarts TENUE par le constructeur ; `pret` quand elle est posée et le toit cadré. Un constructeur
+ *  sans mode présentation : la vue et le cadrage une fois, `pret` aussitôt (rien de plus à attendre). */
+function useVueTroisQuarts(builderApi, essai) {
+  // `pret` vaut pour UN essai et UNE instance du constructeur (« Réessayer » repart de zéro).
+  const [pretPour, setPretPour] = useState(null)
+  const disponible = typeof builderApi?.appliquerVue === 'function'
+  const tenue = disponible && typeof builderApi.modePresentation === 'function'
   useEffect(() => {
-    if (typeof builderApi?.appliquerVue !== 'function') return undefined
-    const presentation = typeof builderApi.modePresentation === 'function'
-    const actif = presentation && builderApi.modePresentation(true) === true
-    const minuteurs = ESSAIS_VUE_MS.map((delai) => window.setTimeout(() => {
+    if (!disponible) return undefined
+    if (!tenue) {
       builderApi.appliquerVue('trois-quarts')
       builderApi.cadrerToit?.(CADRAGE_CLIENT)
-      setPret(true)
-      setTourne(actif)
-    }, delai))
-    return () => {
-      minuteurs.forEach((m) => window.clearTimeout(m))
-      if (presentation) builderApi.modePresentation(false)
+      return undefined
     }
-  }, [builderApi])
-  return { pret, tourne }
+    let vivant = true
+    builderApi.modePresentation(true, {
+      vue: 'trois-quarts', cadrage: CADRAGE_CLIENT, surPrete: () => { if (vivant) setPretPour({ builderApi, essai }) },
+    })
+    return () => { vivant = false; builderApi.modePresentation(false) }
+  }, [builderApi, essai, disponible, tenue])
+  const pret = disponible && (!tenue || (pretPour?.builderApi === builderApi && pretPour?.essai === essai))
+  return { pret, tourne: tenue }
+}
+
+/** J1 — la saison montrée suit l'état RÉEL : celle que le constructeur dit pressée, sinon (lecture de la journée :
+ *  il ne presse plus rien, la date reste) celle dont il a montré cette même date. */
+function useSaisonReelle(saison, date) {
+  const [vue, setVue] = useState({ date: null, saison: null })
+  if (saison && date && (vue.date !== date || vue.saison !== saison)) setVue({ date, saison })
+  return saison ?? (date && vue.date === date ? vue.saison : null)
+}
+
+/** J1 — l'ouverture : été à midi, sauf instant choisi par le commercial (gardé), une fois, la 3D prête. */
+function useEteAMidi(pret, doc) {
+  const fait = useRef(false)
+  useEffect(() => {
+    if (!pret || fait.current || doc.etat !== 'ok') return
+    fait.current = true
+    if (instantSoleilChoisi(doc.document)) return
+    gestes.saison('summer')
+    gestes.heure(12)
+  }, [pret, doc])
 }
 
 function LecteurSoleil() {
   const [etat, rafraichir] = useConstructeur()
   const { heure, date, saison, lecture } = etat.soleil
+  const saisonReelle = useSaisonReelle(saison, date)
   if (heure == null) return null
   const g = (geste) => (...a) => { geste(...a); rafraichir() }
   const quand = [jourMois(date), `${heure} h`].filter(Boolean).join(' · ')
@@ -69,7 +93,7 @@ function LecteurSoleil() {
           className="cal-pan-heure" style={{ '--cal-pan-rempli': `${((Number(heure) - 6) / 12) * 100}%` }}
           onChange={(e) => g(gestes.heure)(e.target.value)} />
       </div>
-      <Segmente libelle="Saison" options={SAISONS} valeur={saison} onChange={g(gestes.saison)} />
+      <Segmente libelle="Saison" options={SAISONS} valeur={saisonReelle} onChange={g(gestes.saison)} />
     </div>
   )
 }
@@ -77,25 +101,32 @@ function LecteurSoleil() {
 /** Délai au-delà duquel une 3D toujours pas démarrée est DITE (le repli 2D reste), avec « Réessayer ». */
 export const DELAI_3D_MS = 45000
 
-/** Vrai quand la 3D n'a toujours pas démarré `DELAI_3D_MS` après l'ouverture (atelier en échec de chargement). */
-function useTroisDEnRetard(pret) {
-  const [retard, setRetard] = useState(false)
+/** Vrai quand la 3D n'a toujours pas démarré `DELAI_3D_MS` après l'ouverture (ou le dernier « Réessayer »). */
+function useTroisDEnRetard(pret, essai) {
+  const [retardPour, setRetardPour] = useState(null)
   useEffect(() => {
     if (pret) return undefined
-    const m = window.setTimeout(() => setRetard(true), DELAI_3D_MS)
+    const m = window.setTimeout(() => setRetardPour(essai), DELAI_3D_MS)
     return () => window.clearTimeout(m)
-  }, [pret])
-  return retard && !pret
+  }, [pret, essai])
+  return retardPour === essai && !pret
 }
 
 export default function HabillageClient({
-  calepinageId, builderApi = null, noeudScene = null, contexte = null, onRecharger = null,
+  calepinageId, builderApi = null, noeudScene = null, contexte = null,
+  donnees, onContexte = null, onRetard = null, onReessayer = null,
 }) {
-  const donnees = useDonneesClient(calepinageId, { contexte })
-  const { pret, tourne } = useVueTroisQuarts(builderApi)
-  const retard = useTroisDEnRetard(pret)
-  // Recharger = relire la page (GET seulement) : l'atelier redémarre sa 3D.
-  const recharger = () => (typeof onRecharger === 'function' ? onRecharger() : window.location.reload())
+  const [essai, setEssai] = useState(0)
+  const { pret, tourne } = useVueTroisQuarts(builderApi, essai)
+  const retard = useTroisDEnRetard(pret, essai)
+  useEteAMidi(pret, donnees.doc)
+  useHorsVueClientInerte(noeudScene)
+  // Le contexte déjà servi à l'atelier remonte à la vue client (puce) : aucune seconde lecture de design-context.
+  useEffect(() => { if (contexte) onContexte?.(contexte) }, [contexte, onContexte])
+  useEffect(() => { onRetard?.(retard) }, [retard, onRetard])
+  // « Réessayer » : seulement ce qui a échoué — le démarrage de la 3D (relancé par la vue client) et la vue tenue ;
+  // les tuiles déjà montrées restent.
+  const reessayer = () => { setEssai((n) => n + 1); onReessayer?.() }
   return (
     <>
       {noeudScene && createPortal(
@@ -103,10 +134,10 @@ export default function HabillageClient({
           {!pret && (
             <div className="cal-client-repli" data-testid="client-repli-2d">
               {donnees.plan && <PlanDessus plan={donnees.plan} />}
-              {retard && <AvisEchec3D onReessayer={recharger} />}
             </div>
           )}
           <PuceProjet titre={donnees.titre} sousTitre={donnees.sousTitre} />
+          {!pret && (retard ? <AvisEchec3D onReessayer={reessayer} /> : <PastilleAttente />)}
           {pret && tourne && (
             <span className="cal-client-pastille cal-client-geste" data-testid="client-aide-geste">
               <IconeTourner />
@@ -116,7 +147,7 @@ export default function HabillageClient({
         </>,
         noeudScene,
       )}
-      <div className="cal-client-corps" data-testid="cal-vue-client">
+      <div className="cal-client-corps" data-testid="cal-vue-client" data-vue-client="">
         <LecteurSoleil />
         <TuilesClient tuiles={donnees.tuiles} ville={donnees.ville} />
       </div>

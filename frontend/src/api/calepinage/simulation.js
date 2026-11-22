@@ -71,7 +71,7 @@ export const simulation = {
     explications: () => api.get('/calepinage/calepinages/explications/'),
 
     // ACAL392 — l'état du parcours guidé (contrat `calepinage_parcours_guide.json`).
-    parcours: (id) => api.get(`${pivot(id)}parcours/`),
+    parcours: (id) => api.get(`${pivot(id)}parcours/`, LECTURE_LENTE), // J3 : lecture lente du démarrage
     // ACAL860 — « prêt à envoyer ? » (contrat `calepinage_pret_a_envoyer.json`) ; H3 : `etape` =
     // seuls les contrôles de cette étape (`?etape=`, le serveur ne calcule pas le reste).
     pretAEnvoyer: (id, { etape } = {}) => api.get(`${pivot(id)}pret-a-envoyer/`,

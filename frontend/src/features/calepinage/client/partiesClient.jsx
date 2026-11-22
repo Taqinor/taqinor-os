@@ -48,6 +48,16 @@ export function AvisEchec3D({ onReessayer }) {
   )
 }
 
+/** J1 — pendant le démarrage de la 3D : dit AU CLIENT, en mots simples (aucun « atelier »). */
+export function PastilleAttente() {
+  return (
+    <span className="cal-client-pastille" role="status" data-testid="client-voir-3d">
+      <IconeTourner />
+      La vue 3D se prépare…
+    </span>
+  )
+}
+
 /** La puce du projet (titre ; ville · pan), en haut à gauche de la scène. */
 export function PuceProjet({ titre, sousTitre }) {
   if (!titre && !sousTitre) return null
@@ -87,7 +97,7 @@ export function TuilesClient({ tuiles, ville }) {
 /** Le pied : « Retour au relevé » + « Envoyer le lien » doré, désactivé avec sa raison. */
 export function PiedClient({ id }) {
   return (
-    <footer className="cal-tel-pied">
+    <footer className="cal-tel-pied" data-vue-client="">
       <Link to={`/calepinage/${id}/releve`} className="cal-tel-pied-secondaire" data-testid="client-retour-releve">Retour au relevé</Link>
       <button type="button" className="cal-tel-pied-or" disabled aria-describedby="client-lien-raison"
         data-testid="client-envoyer-lien">

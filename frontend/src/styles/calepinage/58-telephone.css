@@ -313,6 +313,11 @@
   text-decoration: underline; cursor: pointer; min-height: 44px;
 }
 
+/* J1 — tuiles de la maquette (101 px) : le libellé tient deux lignes, même court (une seule rangée, même hauteur). */
+.cal-client-tuile-libelle { min-height: calc(2 * 1.3em); }
+/* J1 — curseur d'heure : au doigt, la cible de 24 px ne pousse pas la date (la piste de 6 px de la maquette compte seule). */
+@media (pointer: coarse) { .cal-coque .cal-client-soleil .cal-pan-heure { margin: -9px 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   .cal-tel *, .cal-tel *::before, .cal-tel *::after { transition: none !important; animation: none !important; }
 }

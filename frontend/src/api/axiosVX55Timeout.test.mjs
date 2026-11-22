@@ -140,6 +140,24 @@ test("ACAL1351 : `silencieuxExpiration` coupe le seul toast d'expiration ; sans 
   assert.match(AXIOS_SRC, /const REQUEST_TIMEOUT_MS = 20000/)
 })
 
+test("J3 : le toast d'expiration porte un id FIXE (un seul à la fois, jamais empilé)", () => {
+  assert.match(AXIOS_SRC, /const ID_TOAST_EXPIRATION = 'connexion-expiree'/)
+  assert.match(AXIOS_SRC, /toastError\('La connexion a expiré\. Vérifiez votre connexion et réessayez\.', \{ id: ID_TOAST_EXPIRATION \}\)/)
+})
+
+test('J3 : les lectures lourdes du relevé et du démarrage de l’atelier sont lentes et silencieuses', () => {
+  const CALEPINAGE = readFileSync(join(HERE, 'calepinageApi.js'), 'utf8')
+  const SIMULATION = readFileSync(join(HERE, 'calepinage/simulation.js'), 'utf8')
+  const SORTIES = readFileSync(join(HERE, 'calepinage/sorties.js'), 'utf8')
+  assert.match(CALEPINAGE, /const detailLent = \{ get: \(id\) => api\.get\(pivot\(id\), LECTURE_LENTE\) \}/)
+  assert.match(CALEPINAGE, /\(crud\('calepinages'\)\),\s*\n\s*\.\.\.detailLent,/)
+  for (const chemin of ['layout', 'photos', 'resultat']) {
+    assert.match(CALEPINAGE, new RegExp(`${chemin}: \\(id\\) => api\\.get\\(\`\\$\\{pivot\\(id\\)\\}${chemin}/\`, LECTURE_LENTE\\)`))
+  }
+  assert.match(SIMULATION, /parcours: \(id\) => api\.get\(`\$\{pivot\(id\)\}parcours\/`, LECTURE_LENTE\)/)
+  assert.match(SORTIES, /releve: \(id\) => api\.get\(`\$\{pivot\(id\)\}releve\/`, LECTURE_LENTE\)/)
+})
+
 test("ACAL1351 : `pret-a-envoyer/` et `design-context/` posent l'option et un délai de 60 s", () => {
   const SIMULATION = readFileSync(join(HERE, 'calepinage/simulation.js'), 'utf8')
   const CALEPINAGE = readFileSync(join(HERE, 'calepinageApi.js'), 'utf8')

@@ -119,6 +119,23 @@ class RechercheDeLaListeTest(BaseApiCalepinage):
         # Le NOM DU CLIENT rattaché (« Bâtiment Atlas »).
         self.assertEqual(self._ids('Atlas'), {self.hangar.pk})
 
+    def test_recherche_par_ville_du_client_et_du_lead(self):
+        """Maquette « Liste » (« Client, ville ou lead ») : la VILLE du client
+        rattaché et celle du lead rattaché sont cherchées, bornées société."""
+        from apps.crm.models import Client, Lead
+
+        Client.objects.filter(pk=self.client_a.pk).update(ville='Essaouira')
+        Lead.objects.filter(pk=self.lead_2.pk).update(ville='Tétouan')
+        Lead.objects.create(company=self.autre, nom='Voisin', ville='Tétouan')
+        etranger = Calepinage.objects.create(
+            company=self.autre, lead_id=999, titre='Ailleurs')
+
+        self.assertEqual(self._ids('Essaouira'), {self.hangar.pk})
+        self.assertEqual(self._ids('essaou'), {self.hangar.pk})
+        self.assertEqual(self._ids('Tétouan'), {self.autre_ligne.pk})
+        self.assertNotIn(etranger.pk, self._ids('Tétouan'))
+        self.assertEqual(self._ids('Quelquepartintrouvable'), set())
+
     def test_titre_de_repli_calepinage_diese_numero_est_trouve(self):
         """ACAL948 — « Calepinage #12 » et « #12 » trouvent le 12 sans titre,
         pas le 120 ; l'égalité porte sur le numéro."""

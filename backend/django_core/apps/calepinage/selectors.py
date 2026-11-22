@@ -237,7 +237,8 @@ def _condition_recherche(terme, company, user=None):
     from django.db.models import Q
 
     condition = (Q(titre__icontains=terme)
-                 | Q(client__nom__icontains=terme))
+                 | Q(client__nom__icontains=terme)
+                 | Q(client__ville__icontains=terme))  # « Client, ville ou lead »
     reference = _REFERENCE_AFFICHEE.match(terme)
     if reference:
         condition |= Q(pk=int(reference.group(1)))
@@ -248,8 +249,8 @@ def _condition_recherche(terme, company, user=None):
         from apps.crm.selectors import rechercher_leads_minimal
 
         ids = [lead['id'] for lead in
-               rechercher_leads_minimal(company, terme, limit=50,
-                                        user=user)]
+               rechercher_leads_minimal(company, terme, limit=50, user=user,
+                                        par_ville=True)]
         if ids:
             condition |= Q(lead_id__in=ids)
     return condition
@@ -275,7 +276,8 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     ACAL196 — ``q`` cherche le TITRE, la RÉFÉRENCE affichée (CAL-AAMM-NNNN,
     décodée en identifiant), le nom du LEAD rattaché (50 leads au plus, par
     ``crm.selectors.rechercher_leads_minimal``, borné à ``company``) et le
-    nom du CLIENT rattaché.
+    nom du CLIENT rattaché — plus la VILLE de l'un ou de l'autre (maquette
+    « Liste » : « Client, ville ou lead »).
 
     L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
     """

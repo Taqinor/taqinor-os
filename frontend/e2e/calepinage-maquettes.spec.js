@@ -14,7 +14,7 @@
 // Un état inatteignable sur une pile semée (résultat complet, résultat incomplet) est écrit « non atteint »
 // avec sa raison, sans échec. Nocturne : jamais dans la liste par-PR de ci.yml (voir E2E_HOOKS.md).
 import { test, expect } from '@playwright/test'
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { uniq, API_DJANGO, lireJson, telephoneMobileUnique } from './helpers'
@@ -28,7 +28,7 @@ const CAL = `${API_DJANGO}/calepinage`
 const GRAND = [1440, 900]
 
 // Blocs du cadre : sélecteur réel (data-testid / id) et sélecteur de la maquette (balises sémantiques).
-// `dernier` : le dernier élément qui correspond (le bouton du pied du panneau, le bouton du bandeau).
+// `dernier` : l'élément le plus BAS (puis le plus large) parmi ceux qui correspondent — le bouton du pied du panneau, le bouton du bandeau.
 const BLOCS_ATELIER = [
   { nom: 'bandeau', reel: '[data-testid="cal-barre-projet"]', maquette: 'header' },
   { nom: 'rail', reel: '[data-testid="cal-rail-etapes"]', maquette: 'nav[aria-label="Étapes"]' },
@@ -36,7 +36,7 @@ const BLOCS_ATELIER = [
   { nom: 'outils_carte', reel: '[data-testid="cal-barre-outils-carte"]', maquette: '[role="toolbar"]' },
   { nom: 'panneau', reel: '[data-testid="cal-panneau-etape"]', maquette: 'aside' },
   { nom: 'bouton_pied_panneau', reel: '[data-testid="cal-action-etape-suivante"]', maquette: 'aside button', dernier: true },
-  { nom: 'bouton_devis', reel: '[data-testid="cal-generer-devis"]', maquette: 'header button', dernier: true },
+  { nom: 'bouton_devis', reel: '[data-testid="cal-bouton-devis"], [data-testid="cal-generer-devis"]', maquette: 'header button', dernier: true },
 ]
 const BLOCS_PAGE = [
   { nom: 'titre', reel: 'h1, h2', maquette: 'h1, h2' },
@@ -89,7 +89,8 @@ function lirePage({ blocs, cote, sel }) {
   for (const b of blocs) {
     const css = b[cote]
     const trouves = [...document.querySelectorAll(css)].filter(visible)
-    const el = b.dernier ? trouves[trouves.length - 1] : trouves[0]
+    trouves.sort((a, c) => (b.dernier ? (c.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom) || (c.getBoundingClientRect().width - a.getBoundingClientRect().width) : 0))
+    const el = trouves[0]
     const r = el?.getBoundingClientRect()
     boites[b.nom] = r ? { x: Math.round(r.x), y: Math.round(r.y), l: Math.round(r.width), h: Math.round(r.height) } : null
   }
@@ -185,24 +186,26 @@ async function ouvrirReel(page, ecran, id) {
   await attendreStable(page)
 }
 
-const RAPPORT = []
-function ecrireRapports() {
+// Un fichier par écran (un test rouge relance le processus de test : rien ne doit vivre en mémoire entre deux écrans),
+// fusionnés dans rapport.json / paires.json après chaque écran.
+function ecrireRapports(rapportEcran) {
   mkdirSync(SORTIE, { recursive: true })
-  writeFileSync(join(SORTIE, 'rapport.json'), `${JSON.stringify({ ecrans: RAPPORT }, null, 2)}\n`)
-  const paires = RAPPORT.map((r) => ({
+  const json = (v) => `${JSON.stringify(v, null, 2)}\n`
+  if (rapportEcran) writeFileSync(join(SORTIE, `${rapportEcran.ecran}.rapport.json`), json(rapportEcran))
+  const ecrans = ECRANS.map((e) => join(SORTIE, `${e.nom}.rapport.json`)).filter((p) => existsSync(p)).map((p) => JSON.parse(readFileSync(p, 'utf8')))
+  writeFileSync(join(SORTIE, 'rapport.json'), json({ ecrans }))
+  const paires = ecrans.map((r) => ({
     ecran: r.ecran, taille: r.taille, maquette: `${r.ecran}-maquette.png`, reel: `${r.ecran}-reel.png`,
     etat_atteint: r.etat_atteint, libelles_trouves: r.libelles_trouves, libelles_manquants: r.libelles_manquants,
   }))
-  writeFileSync(join(SORTIE, 'paires.json'), `${JSON.stringify({ paires }, null, 2)}\n`)
+  writeFileSync(join(SORTIE, 'paires.json'), json({ paires }))
 }
-
-test.describe.configure({ mode: 'serial' })
-test.afterAll(ecrireRapports)
 
 for (const ecran of ECRANS) {
   test(`ACAL1315: ${ecran.nom} — la maquette et l'écran réel, libellés fixes`, async ({ page, context }) => {
     test.setTimeout(600_000)
     mkdirSync(SORTIE, { recursive: true })
+    rmSync(join(SORTIE, `${ecran.nom}.rapport.json`), { force: true }) // jamais le rapport d'un run précédent
     const vp = ecran.vp || GRAND
     const donnees = LIBELLES[ecran.nom]
     expect(donnees, `libellés de « ${ecran.nom} » absents de calepinage-maquettes.libelles.json`).toBeTruthy()
@@ -229,7 +232,7 @@ for (const ecran of ECRANS) {
     const atteint = donnees.etat_ancre ? trouve(donnees.etat_ancre, reel) : true
     const trouves = donnees.attendus.filter((l) => trouve(l, reel))
     const manquants = donnees.attendus.filter((l) => !trouve(l, reel))
-    RAPPORT.push({
+    const rapport = {
       ecran: ecran.nom,
       taille: `${vp[0]}x${vp[1]}`,
       url_reelle: page.url().replace(/^https?:\/\/[^/]+/, ''),
@@ -242,11 +245,11 @@ for (const ecran of ECRANS) {
       acceptes_absents: donnees.acceptes_absents.map((a) => ({ ...a, present: trouve(a.libelle, reel) })),
       controles_visibles: { maquette: maquette.controles, reel: reel.controles },
       boites: Object.fromEntries(ecran.blocs.map((b) => [b.nom, { maquette: maquette.boites[b.nom], reel: reel.boites[b.nom] }])),
-    })
-    ecrireRapports()
+    }
+    ecrireRapports(rapport)
 
     if (!atteint) {
-      test.info().annotations.push({ type: 'non atteint', description: RAPPORT[RAPPORT.length - 1].raison_non_atteint })
+      test.info().annotations.push({ type: 'non atteint', description: rapport.raison_non_atteint })
       return
     }
     expect(manquants, `Écran « ${ecran.nom} » : libellé(s) fixe(s) de la maquette absent(s) de l'écran réel`).toEqual([])
