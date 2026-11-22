@@ -165,3 +165,78 @@ class CsvTest(SimpleTestCase):
             _csv_octets(_tables_du_resultat(geometrie(), RESULTAT),
                         feuille='Tarifs')
         self.assertIn('Tarifs', str(capture.exception))
+
+
+class FeuilleVerificationTest(SimpleTestCase):
+    """ACAL885 — la Voc à froid et le ratio DC/AC se refont À LA MAIN."""
+
+    @staticmethod
+    def _conception(coefficients_non_sources=(), froid_c=-5.0):
+        from types import SimpleNamespace
+
+        from core.electrique.types import SpecModule
+
+        module = SpecModule(vmp_v=41.0, voc_v=49.5, isc_a=14.0, imp_a=13.0,
+                            pmax_wc=580.0, temp_coeff_voc_pct_c=-0.265)
+        voc_froid = 18 * module.tension_voc_a(froid_c)
+        return SimpleNamespace(
+            entree=SimpleNamespace(module=module),
+            chaines=[SimpleNamespace(repere='S1', pan='PAN-A', nb_modules=18,
+                                     voc_froid_v=voc_froid)],
+            coefficients_non_sources=coefficients_non_sources,
+            temperatures=SimpleNamespace(froid_c=froid_c, sourcees=True))
+
+    EVALUATION = None
+
+    def _lignes(self, conception):
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.export_tableur import (
+            _lignes_verification)
+
+        evaluation = SimpleNamespace(
+            nombre=2, ac_kw_unitaire=5.0, puissance_dc_kwc=12.0,
+            ratio_dc_ac=SimpleNamespace(valeur=1.2))
+        return _lignes_verification(conception, evaluation)
+
+    @staticmethod
+    def _nombres(texte):
+        import re
+
+        return [float(m.replace(',', '.'))
+                for m in re.findall(r'-?\d+(?:,\d+)?', texte)]
+
+    def test_la_voc_a_froid_se_retrouve_a_0_1_v(self):
+        ligne = self._lignes(self._conception())[0]
+        n, voc, beta, tmin = self._nombres(ligne[2])
+        refait = n * voc * (1 + (beta / 100) * (tmin - 25))
+        self.assertAlmostEqual(self._nombres(ligne[3])[0], refait, delta=0.1)
+        self.assertIn('N × Voc × (1 + (β %/°C ÷ 100) × (Tmin − 25))', ligne[1])
+        self.assertFalse(ligne[1].startswith('='))
+
+    def test_fiche_sans_beta_non_publiee(self):
+        ligne = self._lignes(self._conception(
+            ('temp_coeff_voc_pct_c',)))[0]
+        self.assertEqual(ligne[3], 'non publiée')
+        self.assertIn('β', ligne[2])
+
+    def test_le_ratio_dc_ac_porte_ses_valeurs(self):
+        ligne = self._lignes(self._conception())[-1]
+        self.assertEqual(ligne[0], 'Ratio DC/AC')
+        self.assertEqual(self._nombres(ligne[2]), [12.0, 2.0, 5.0])
+        self.assertEqual(ligne[3], '1,20')
+
+    def test_la_feuille_est_hors_feuilles_et_sans_formule_executable(self):
+        from apps.calepinage.services.export_tableur import (
+            FEUILLE_VERIFICATION)
+
+        entetes = ['Grandeur', 'Formule (texte)', 'Valeurs de la fiche',
+                   'Résultat']
+        lignes = self._lignes(self._conception())
+        verifier_absence_de_prix(entetes, lignes)  # aucun prix
+        classeur = relire(_classeur_octets(
+            [(FEUILLE_VERIFICATION, entetes, lignes)]))
+        self.assertNotIn(FEUILLE_VERIFICATION, FEUILLES)
+        for ligne in classeur[FEUILLE_VERIFICATION].iter_rows(values_only=True):
+            for cellule in ligne:
+                self.assertFalse(str(cellule).startswith('='))

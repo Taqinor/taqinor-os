@@ -1,0 +1,63 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/production-mesuree/",
+  "endpoint_ecriture": "PUT /api/django/calepinage/calepinages/<int:pk>/production-mesuree/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL886 (PACT10) — douze valeurs mensuelles de production MESURÉE d'un calepinage et leur écart au P50 mensuel SERVI, posé SEUL avant la table et la route (ACAL887) et l'écran (ACAL888) qui reprennent CETTE forme sans la redire. `exemple_corps` = le PUT {annee, mesures[]} (au plus 12 lignes, une par mois 1-12, `kwh_mesure` >= 0) ; `exemple` = le GET : `mesures` ce qui est rangé (`saisi_le` horodaté par le serveur, `saisi_par` jamais publié), `ecarts` UNE ligne par mois 1-12 — `p50_kwh` est celui du résultat servi (`production.mensuel[].p50_kwh`, aucun recalcul), `ecart_pct` = (mesuré − P50) ÷ P50 × 100 au dixième. Un mois sans mesure porte `kwh_mesure: null` et `ecart_pct: null` (jamais 0) ; `ecart_annuel_pct` est calculé sur les seuls mois mesurés (null sans mesure) ; simulation absente ou périmée ⇒ `p50_kwh` et `ecart_pct` null et `motif` le dit. L'écart est publié, jamais jugé : aucun seuil, aucune alerte.",
+  "exemple_corps": {
+    "annee": 2026,
+    "mesures": [
+      {"mois": 1, "kwh_mesure": 850.0},
+      {"mois": 2, "kwh_mesure": 900.0},
+      {"mois": 3, "kwh_mesure": 1150.0},
+      {"mois": 4, "kwh_mesure": 1100.0},
+      {"mois": 5, "kwh_mesure": 1300.0},
+      {"mois": 6, "kwh_mesure": 1210.0},
+      {"mois": 7, "kwh_mesure": 1250.0},
+      {"mois": 8, "kwh_mesure": 1290.0},
+      {"mois": 9, "kwh_mesure": 1100.0},
+      {"mois": 10, "kwh_mesure": 1010.0},
+      {"mois": 11, "kwh_mesure": 840.0}
+    ]
+  },
+  "exemple": {
+    "calepinage": 1,
+    "annee": 2026,
+    "mesures": [
+      {"mois": 1, "kwh_mesure": 850.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 2, "kwh_mesure": 900.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 3, "kwh_mesure": 1150.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 4, "kwh_mesure": 1100.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 5, "kwh_mesure": 1300.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 6, "kwh_mesure": 1210.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 7, "kwh_mesure": 1250.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 8, "kwh_mesure": 1290.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 9, "kwh_mesure": 1100.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 10, "kwh_mesure": 1010.0, "saisi_le": "2026-11-21T10:00:00Z"},
+      {"mois": 11, "kwh_mesure": 840.0, "saisi_le": "2026-11-21T10:00:00Z"}
+    ],
+    "ecarts": [
+      {"mois": 1, "p50_kwh": 880.0, "kwh_mesure": 850.0, "ecart_pct": -3.4},
+      {"mois": 2, "p50_kwh": 920.0, "kwh_mesure": 900.0, "ecart_pct": -2.2},
+      {"mois": 3, "p50_kwh": 1120.0, "kwh_mesure": 1150.0, "ecart_pct": 2.7},
+      {"mois": 4, "p50_kwh": 1190.0, "kwh_mesure": 1100.0, "ecart_pct": -7.6},
+      {"mois": 5, "p50_kwh": 1260.0, "kwh_mesure": 1300.0, "ecart_pct": 3.2},
+      {"mois": 6, "p50_kwh": 1250.0, "kwh_mesure": 1210.0, "ecart_pct": -3.2},
+      {"mois": 7, "p50_kwh": 1280.0, "kwh_mesure": 1250.0, "ecart_pct": -2.3},
+      {"mois": 8, "p50_kwh": 1240.0, "kwh_mesure": 1290.0, "ecart_pct": 4.0},
+      {"mois": 9, "p50_kwh": 1130.0, "kwh_mesure": 1100.0, "ecart_pct": -2.7},
+      {"mois": 10, "p50_kwh": 1030.0, "kwh_mesure": 1010.0, "ecart_pct": -1.9},
+      {"mois": 11, "p50_kwh": 870.0, "kwh_mesure": 840.0, "ecart_pct": -3.4},
+      {"mois": 12, "p50_kwh": 830.0, "kwh_mesure": null, "ecart_pct": null}
+    ],
+    "ecart_annuel_pct": -1.4,
+    "motif": "Écart annuel calculé sur les 11 mois mesurés ; sans mesure : mois 12."
+  },
+  "exemple_vide": {
+    "calepinage": 1,
+    "annee": null,
+    "mesures": [],
+    "ecarts": [],
+    "ecart_annuel_pct": null,
+    "motif": "Aucune production mesurée n'est saisie pour ce calepinage."
+  }
+}

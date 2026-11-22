@@ -60,6 +60,7 @@ from .bordereau_calepinage import (  # noqa: F401 — ré-export (tests)
 )
 from . import batterie_declaration as _batterie_declaration  # ACAL786
 from . import hors_reseau_declaration as _hors_reseau_declaration  # ACAL790
+from . import suppositions as _suppositions  # ACAL980
 from .regle_chaine_publiee import (  # noqa: F401 — extraite (ACAL645)
     _regle_chaine_publiee,
 )
@@ -1868,6 +1869,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # CAL170 — la longueur de chaîne retenue et SON origine (fiche
         # calculée, ou longueur de dossier en repli assumé).
         'longueur_chaine': reconciliation,
+        'suppose': _suppositions.liste_des_suppositions(  # ACAL980
+            reconciliation, societe, ORIGINE_LONGUEUR_DOSSIER),
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         # CALX70 — les blocs de la simulation persistée (CALX4), servis tels
@@ -2891,18 +2894,8 @@ def _longueur_chaine_retenue(conception):
     par_pan = {r.pan: r.longueur_chaine for r in conception.repartitions}
 
     if conception.fiche_incomplete or not par_pan:
-        return {
-            'longueur': dossier,
-            'origine': ORIGINE_LONGUEUR_DOSSIER,
-            'detail': "longueur de dossier (core.calepinage.electrique, "
-                      "MODULES_PAR_CHAINE = %d) : les fiches ne permettent "
-                      "pas de calculer la fenêtre de tension — repli assumé, "
-                      "jamais présenté comme un calcul" % dossier,
-            'longueur_dossier': dossier,
-            'ecart': None,
-            'hors_tolerance': False,
-            'par_pan': {},
-        }
+        return _suppositions.repli_longueur_dossier(
+            dossier, ORIGINE_LONGUEUR_DOSSIER)  # ACAL980
 
     longueurs = set(par_pan.values())
     longueur = longueurs.pop() if len(longueurs) == 1 else None

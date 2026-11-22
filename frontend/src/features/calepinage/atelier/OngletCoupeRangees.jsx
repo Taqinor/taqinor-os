@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import { construireCoupe } from '../coupeRangees'
 import { formatNumber } from '../../../lib/format'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CALX121 — LE PANNEAU « COUPE » : LA COUPE TRANSVERSALE D'UNE RANGÉE SUR
@@ -205,15 +206,15 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
           <CoupeSvg coupe={coupe} />
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-3">
             <div data-testid="cal-coupe-inclinaison">
-              <dt className="text-xs font-semibold uppercase tracking-wide">Inclinaison</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide">Inclinaison<Pourquoi cle="toit.inclinaison" /></dt>
               <dd className="fig text-foreground">{`${formatNumber(coupe.tiltDeg, { decimals: 1 })}°`}</dd>
             </div>
             <div data-testid="cal-coupe-pas">
-              <dt className="text-xs font-semibold uppercase tracking-wide">Pas mesuré</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide">Pas mesuré<Pourquoi cle="toit.pas_rangees" /></dt>
               <dd className="fig text-foreground">{`${formatNumber(coupe.rowPitchM, { decimals: 2 })} m`}</dd>
             </div>
             <div data-testid="cal-coupe-hauteur">
-              <dt className="text-xs font-semibold uppercase tracking-wide">Hauteur hors-tout</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide">Hauteur hors-tout<Pourquoi cle="toit.hauteur_hors_tout" /></dt>
               <dd className="fig text-foreground">
                 {coupe.hauteurHorsToutM === null
                   ? 'non applicable (pose affleurante)'
@@ -221,11 +222,11 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
               </dd>
             </div>
             <div data-testid="cal-coupe-rayon-solaire-valeur">
-              <dt className="text-xs font-semibold uppercase tracking-wide">{`Rayon solaire (soleil de ${coupe.heureConceptionH} h, solstice d’hiver)`}</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide">{`Rayon solaire (soleil de ${coupe.heureConceptionH} h, solstice d’hiver)`}<Pourquoi cle="toit.rayon_solaire" /></dt>
               <dd className="fig text-foreground">{`${formatNumber(coupe.rayonSolaireDeg, { decimals: 1 })}°`}</dd>
             </div>
             <div data-testid="cal-coupe-longueur-ombre">
-              <dt className="text-xs font-semibold uppercase tracking-wide">Longueur d’ombre</dt>
+              <dt className="text-xs font-semibold uppercase tracking-wide">Longueur d’ombre<Pourquoi cle="toit.longueur_ombre" /></dt>
               <dd className="fig text-foreground">{`${formatNumber(coupe.longueurOmbreM, { decimals: 2 })} m`}</dd>
             </div>
           </dl>

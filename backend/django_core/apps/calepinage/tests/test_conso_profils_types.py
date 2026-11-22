@@ -98,8 +98,17 @@ class RepliEtiqueteTest(unittest.TestCase):
         for profil_repli in replis:
             self.assertEqual(profil_repli['source'], SOURCE_REPLI)
             self.assertEqual(profil_repli['provenance'], MENTION_REPLI)
-            self.assertIn('HYPOTHÈSE INTERNE', profil_repli['provenance'])
+            self.assertIn('une hypothèse, jamais une mesure',
+                          profil_repli['provenance'])
             self.assertIsNone(profil_repli['id'])
+
+    def test_la_mention_ne_montre_ni_chemin_ni_code_interne(self):
+        """ACAL963 — affichée telle quelle par la Bibliothèque : ni ``.py``,
+        ni « dépôt », ni « HYPOTHÈSE INTERNE »."""
+        self.assertTrue(MENTION_REPLI.startswith(
+            'Profil de départ de l’application'))
+        for interdit in ('.py', 'dépôt', 'HYPOTHÈSE INTERNE'):
+            self.assertNotIn(interdit, MENTION_REPLI)
 
     def test_le_repli_relit_la_constante_du_moteur_de_ventes(self):
         """Jamais une copie : deux copies divergeraient en silence."""

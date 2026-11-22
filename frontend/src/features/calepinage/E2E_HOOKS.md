@@ -468,6 +468,8 @@ retiré plus un hook ajouté.
 | `cal-export-hd-message` | outils de vue — message du dernier export HD. |
 | `cal-onglet-2d` | outils de vue — onglet « Vue 2D ». |
 | `cal-onglet-3d` | outils de vue — onglet « Vue 3D ». |
+| `cal-video-orbite` | outils de vue — bouton « Vidéo 10 s » : orbite de 360° enregistrée puis téléchargée (niveau expert). |
+| `cal-video-orbite-message` | outils de vue — « Enregistrement… (n s) », puis le fichier ou le motif. |
 | `cal-onglets-vue` | outils de vue — conteneur des onglets 2D/3D. |
 | `cal-vue-dessus` | outils de vue — caméra « Dessus ». |
 | `cal-vue-face-panneaux` | outils de vue — caméra « Face aux panneaux ». |
@@ -928,6 +930,14 @@ retiré plus un hook ajouté.
 | `cal-etape-electrique-ecran` | étape Électrique en une page (ACAL395). |
 | `cal-electrique-synthese` | étape Électrique : le compte du panneau « Prêt à envoyer ? » — « n points à régler » ou « Prêt à envoyer » (ACAL865). |
 | `cal-electrique-section` | étape Électrique : section repliable (suffixe = clé de l’onglet). |
+
+## EtapeDocuments — ACAL867 (`documents/EtapeDocuments.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-etape-documents-ecran` | étape Documents guidée : écran de fin de parcours (panneau « Prêt à envoyer ? », bouton de devis, documents). |
+| `cal-documents-synthese` | étape Documents : le compte du panneau « Prêt à envoyer ? » en tête. |
+| `cal-etape-documents-devis` | étape Documents : l’emplacement du bouton « Générer le devis » (une seule instance visible, relayée par le rail). |
 
 ## PretAEnvoyer — ACAL865 (`commun/PretAEnvoyer.jsx`)
 

@@ -70,3 +70,20 @@ test('CALX129 — estEnPleinEcranSur : suit le document, jamais un état deviné
   assert.equal(estEnPleinEcranSur({ fullscreenElement: null }, el), false)
   assert.equal(estEnPleinEcranSur(null, el), false)
 })
+
+test('ACAL951 — le repli CSS l’emporte sur `.rp9-host .rp9-map-wrap { position: relative }`', async () => {
+  const { readFileSync } = await import('node:fs')
+  const css = readFileSync(new URL('../../styles/roofbuilder.css', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+  // Spécificité (classes + attributs) d'un sélecteur simple de la feuille.
+  const specificite = (sel) => (sel.match(/\.[\w-]+|\[[^\]]+\]/g) || []).length
+  const regles = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map(([, sel, corps]) => ({ sel: sel.trim(), corps }))
+  const relative = regles.find((r) => /^\.rp9-host \.rp9-map-wrap$/.test(r.sel) && /position:\s*relative/.test(r.corps))
+  const repli = regles.find((r) => /\.rp9-map-wrap\[data-plein-ecran=['"]1['"]\]/.test(r.sel))
+  assert.ok(relative, 'la règle `relative` de l’enveloppe existe')
+  assert.ok(repli, 'une règle `.rp9-map-wrap[data-plein-ecran="1"]` existe')
+  assert.match(repli.corps, /position:\s*fixed/)
+  assert.match(repli.corps, /inset:\s*0/)
+  assert.ok(specificite(repli.sel) > specificite(relative.sel), 'la règle de repli est plus spécifique')
+})

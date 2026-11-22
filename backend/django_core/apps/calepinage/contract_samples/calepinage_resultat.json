@@ -1200,7 +1200,15 @@
     },
     "ecart_devis": null,
     "derogations": [],
-    "ecarts_longueur": []
+    "ecarts_longueur": [],
+    "suppose": [
+      {
+        "code": "allee_par_defaut",
+        "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
+        "valeur": 0.6,
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+      }
+    ]
   },
   "exemple_perime": {
     "calepinage": 1,
@@ -1437,7 +1445,15 @@
     },
     "ecart_devis": null,
     "derogations": [],
-    "ecarts_longueur": []
+    "ecarts_longueur": [],
+    "suppose": [
+      {
+        "code": "allee_par_defaut",
+        "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
+        "valeur": 0.6,
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+      }
+    ]
   },
   "exemple_vide": {
     "calepinage": 2,
@@ -1605,7 +1621,21 @@
     },
     "ecart_devis": null,
     "derogations": [],
-    "ecarts_longueur": []
+    "ecarts_longueur": [],
+    "suppose": [
+      {
+        "code": "longueur_chaine_dossier",
+        "libelle": "16 modules par chaîne (longueur retenue au dossier : fiche du module ou de l'onduleur incomplète)",
+        "valeur": 16,
+        "champ": "fiche technique du module et de l'onduleur"
+      },
+      {
+        "code": "allee_par_defaut",
+        "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
+        "valeur": 0.6,
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+      }
+    ]
   },
   "exemple_ecart_devis": {
     "calepinage": 1,

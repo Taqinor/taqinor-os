@@ -95,7 +95,8 @@ def approbation(self, request, pk=None):
     """CALX347 — lire (GET) ou décider (POST) l'approbation du calepinage."""
     calepinage = self.get_object()  # borné société par get_queryset
     if request.method.lower() != 'post':
-        return Response(etat_approbation(calepinage))
+        # ACAL946 — l'état dit si CE lecteur peut donner l'accord.
+        return Response(etat_approbation(calepinage, request.user))
 
     corps = request.data if isinstance(request.data, dict) else {}
     try:

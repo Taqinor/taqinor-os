@@ -315,6 +315,27 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
     ])
   })
 
+  it('ACAL774 — « aucun module » ouvre l’onglet Matériel électrique ; l’épingle ouvre l’atelier', async () => {
+    const sansPan = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_sans_pan_equipe')
+    calepinageApi.calepinages.resultat.mockResolvedValue(vide())
+    calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: sansPan } })
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+    expect(within(await screen.findByTestId('calx48-refus')).getByTestId('acal774-lien'))
+      .toHaveAttribute('href', '/calepinage/1?onglet=materiel-electrique')
+
+    // Liste d'ACAL940 : `site.pin` (cible nulle) mène à l'atelier ; un champ inconnu reste sans lien.
+    const manquants = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_manquants')
+    calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: {
+      ...manquants, manquants: [...manquants.manquants, { champ: 'inconnu.x', motif: 'Autre manque.', cible: null }],
+    } } })
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+    await waitFor(() => expect(screen.getAllByTestId('acal940-manquant')).toHaveLength(4))
+    expect(screen.getAllByTestId('acal774-lien').map((a) => a.getAttribute('href'))).toEqual(['/calepinage/1'])
+  })
+
   it('refus 400 de la porte (fuseau) : motif nommé du serveur + lien vers les réglages', async () => {
     calepinageApi.calepinages.resultat.mockResolvedValue(vide())
     calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: refus400 } })
@@ -1061,5 +1082,45 @@ describe('PanneauProduction — Pourquoi ce chiffre ? (ACAL880)', () => {
     rendre()
     await screen.findByTestId('cal236-panneau')
     expect(screen.queryByTestId('acal880-bouton')).toBeNull()
+  })
+})
+
+/* ACAL848 — « Existant / Ajouté / Total » (niveau expert, seulement avec `production.parties`). */
+describe('PanneauProduction — existant et ajouté (ACAL848)', () => {
+  afterEach(() => { try { localStorage.removeItem(CLE_EXPERT) } catch { /* sans stockage */ } })
+  // `exemple_avec_existant` est un fragment `{production: {parties}}` : posé sur le résultat simulé.
+  const servirParties = (avec) => {
+    const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    const parties = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_avec_existant').production.parties
+    if (avec) reponse.data.production.parties = parties
+    calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+    return parties
+  }
+
+  it('exemple_avec_existant : trois lignes, P50 avec l’âge, neuf en petit, mention servie', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    const parties = servirParties(true)
+    rendre()
+    expect(await screen.findByTestId('acal848-parties')).toBeInTheDocument()
+    expect(screen.getByTestId('acal848-existant')).toHaveTextContent('Existant')
+    expect(screen.getByTestId('acal848-existant')).toHaveTextContent('3 888 kWh')
+    expect(screen.getByTestId('acal848-existant')).toHaveTextContent('neuf : 4 000 kWh')
+    expect(screen.getByTestId('acal848-ajoute')).toHaveTextContent('Ajouté')
+    expect(screen.getByTestId('acal848-total')).toHaveTextContent('5,00 kWc')
+    expect(screen.getByTestId('acal848-mention')).toHaveTextContent(parties.mention)
+  })
+
+  it('sans `parties` (ou en guidé) : rien ne change', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirParties(false)
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal848-parties')).toBeNull()
+    cleanup()
+    localStorage.removeItem(CLE_EXPERT)
+    servirParties(true)
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByTestId('acal848-parties')).toBeNull()
   })
 })

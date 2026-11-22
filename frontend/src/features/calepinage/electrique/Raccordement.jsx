@@ -7,7 +7,10 @@ import { formatNumber, formatPercent } from '../../../lib/format'
 import { Badge, Button, Card, Input, Label, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import RegimeEtInjection from './RegimeEtInjection'
-import { CHAMPS, TONS_STATUT, corpsDeSaisie, erreursParChamp, libelleStatut, saisieVide } from './Raccordement.helpers'
+import Pourquoi from '../commun/Pourquoi'
+import {
+  CHAMPS, PLAGES_MAXIMUM, TONS_STATUT, corpsDeSaisie, erreursParChamp, libelleStatut, limitesDistributeurSaisies, saisieVide,
+} from './Raccordement.helpers'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
 const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
@@ -67,6 +70,119 @@ function PropositionLead({ proposition, peutReprendre, onReprendre, lectureSeule
   )
 }
 
+/** ACAL830 — les lignes de plage (de h, à h, plafond kW), trois au plus. */
+function PlagesInjection({ plages, erreurs, modifier }) {
+  const lignes = Array.isArray(plages) ? plages : []
+  const changer = (rang, cle, valeur) => modifier(
+    'plages_plafond_injection', lignes.map((p, i) => (i === rang ? { ...p, [cle]: valeur } : p)))
+  return (
+    <div id={idChamp('plages_plafond_injection')} className="flex flex-col gap-2" data-testid="acal830-plages">
+      {lignes.map((plage, rang) => {
+        const erreur = erreurs[`plages_plafond_injection[${rang}]`]
+        return (
+          <div key={rang} className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-end gap-2">
+              {[['debut_h', 'De (h)'], ['fin_h', 'À (h)'], ['plafond_kw', 'Plafond (kW)']].map(([cle, libelle]) => (
+                <div key={cle} className="flex flex-col gap-1">
+                  <Label htmlFor={`${idChamp('plages_plafond_injection')}-${rang}-${cle}`}>{libelle}</Label>
+                  <Input
+                    id={`${idChamp('plages_plafond_injection')}-${rang}-${cle}`}
+                    type="number"
+                    step="any"
+                    invalid={Boolean(erreur)}
+                    value={valeurAffichee(plage, cle)}
+                    onChange={(e) => changer(rang, cle, e.target.value)}
+                  />
+                </div>
+              ))}
+              <Button
+                type="button"
+                className="min-h-11"
+                onClick={() => modifier('plages_plafond_injection', lignes.filter((_, i) => i !== rang))}
+              >
+                Retirer
+              </Button>
+            </div>
+            {erreur
+              ? <p className="text-xs text-destructive" data-testid={`calx244-erreur-plages_plafond_injection[${rang}]`}>{erreur}</p>
+              : null}
+          </div>
+        )
+      })}
+      {lignes.length < PLAGES_MAXIMUM
+        ? (
+          <div>
+            <Button
+              type="button"
+              className="min-h-11"
+              data-testid="acal830-ajouter-plage"
+              onClick={() => modifier('plages_plafond_injection', [...lignes, { debut_h: '', fin_h: '', plafond_kw: '' }])}
+            >
+              Ajouter une plage
+            </Button>
+          </div>
+        )
+        : null}
+    </div>
+  )
+}
+
+/** Un champ de la saisie : libellé, badge « simulation », saisie, refus ou aide (+ conversion A → kW, ACAL830). */
+function ChampRaccordement({ champ, saisie, bloc, erreurs, modifier }) {
+  const { cle, libelle, unite, texte, aide, simulation, plages } = champ
+  const conversion = cle === 'plafond_injection_a' ? bloc?.calcul : null
+  return (
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={idChamp(cle)}>
+        {unite ? `${libelle} (${unite})` : libelle}
+      </Label>
+      {/* ACAL156 — une valeur ENREGISTRÉE de ces deux champs alimente la simulation :
+          l'écran le dit, plutôt que de laisser croire à une saisie décorative. */}
+      {simulation && valeurAffichee(bloc?.saisie, cle) !== ''
+        ? (
+          <Badge tone="info" data-testid={`acal156-simulation-${cle}`}>
+            utilisé par la simulation
+          </Badge>
+        )
+        : null}
+      {plages
+        ? <PlagesInjection plages={saisie?.[cle]} erreurs={erreurs} modifier={modifier} />
+        : (
+          <Input
+            id={idChamp(cle)}
+            name={cle}
+            type={texte ? 'text' : 'number'}
+            step={texte ? undefined : 'any'}
+            invalid={Boolean(erreurs[cle])}
+            aria-describedby={erreurs[cle] ? `${idChamp(cle)}-erreur` : undefined}
+            value={valeurAffichee(saisie, cle)}
+            onChange={(e) => modifier(cle, e.target.value)}
+          />
+        )}
+      {conversion && (conversion.plafond_injection_kw_converti != null || conversion.plafond_injection_conversion)
+        ? (
+          <p className="text-xs text-muted-foreground" data-testid="acal830-conversion">
+            {conversion.plafond_injection_kw_converti != null
+              ? `= ${formatNumber(conversion.plafond_injection_kw_converti, { decimals: 3 })} kW — ` : ''}
+            {conversion.plafond_injection_conversion}
+          </p>
+        )
+        : null}
+      {erreurs[cle]
+        ? (
+          <p
+            id={`${idChamp(cle)}-erreur`}
+            className="text-xs text-destructive"
+            data-testid={`calx244-erreur-${cle}`}
+          >
+            {erreurs[cle]}
+          </p>
+        )
+        : <p className="text-xs text-muted-foreground">{aide}</p>}
+    </div>
+  )
+}
+
 /** Le bandeau qui NOMME les champs fautifs et y renvoie d'un clic. */
 function BandeauRefus({ erreurs }) {
   const cles = Object.keys(erreurs)
@@ -89,7 +205,7 @@ function BandeauRefus({ erreurs }) {
             type="button"
             className="underline"
             data-testid={`calx244-aller-${cle}`}
-            onClick={() => document.getElementById(idChamp(cle))?.focus()}
+            onClick={() => (document.getElementById(idChamp(cle)) ?? document.getElementById(idChamp(cle.split('[')[0])))?.focus()}
           >
             {libelle}
           </button>
@@ -243,44 +359,23 @@ export default function Raccordement({ calepinageId, lectureSeule = false } = {}
 
         <form className="flex flex-col gap-3" onSubmit={enregistrer} data-testid="calx244-formulaire">
           <div className="grid gap-3 sm:grid-cols-2">
-            {CHAMPS.map(({ cle, libelle, unite, texte, aide, simulation }) => (
-              <div key={cle} className="flex flex-col gap-1">
-                <Label htmlFor={idChamp(cle)}>
-                  {unite ? `${libelle} (${unite})` : libelle}
-                </Label>
-                {/* ACAL156 — une valeur ENREGISTRÉE de ces deux champs alimente la simulation :
-                    l'écran le dit, plutôt que de laisser croire à une saisie décorative. */}
-                {simulation && valeurAffichee(bloc?.saisie, cle) !== ''
-                  ? (
-                    <Badge tone="info" data-testid={`acal156-simulation-${cle}`}>
-                      utilisé par la simulation
-                    </Badge>
-                  )
-                  : null}
-                <Input
-                  id={idChamp(cle)}
-                  name={cle}
-                  type={texte ? 'text' : 'number'}
-                  step={texte ? undefined : 'any'}
-                  invalid={Boolean(erreurs[cle])}
-                  aria-describedby={erreurs[cle] ? `${idChamp(cle)}-erreur` : undefined}
-                  value={valeurAffichee(saisie, cle)}
-                  onChange={(e) => modifier(cle, e.target.value)}
-                />
-                {erreurs[cle]
-                  ? (
-                    <p
-                      id={`${idChamp(cle)}-erreur`}
-                      className="text-xs text-destructive"
-                      data-testid={`calx244-erreur-${cle}`}
-                    >
-                      {erreurs[cle]}
-                    </p>
-                  )
-                  : <p className="text-xs text-muted-foreground">{aide}</p>}
-              </div>
+            {CHAMPS.filter((champ) => !champ.expert).map((champ) => (
+              <ChampRaccordement key={champ.cle} champ={champ} saisie={saisie} bloc={bloc}
+                erreurs={erreurs} modifier={modifier} />
             ))}
           </div>
+          {/* ACAL830 — limites du distributeur : replié, niveau expert ; ouvert si une valeur y est déjà saisie. */}
+          <details open={limitesDistributeurSaisies(bloc?.saisie) || undefined} data-testid="acal830-limites">
+            <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">
+              Limites imposées par le distributeur
+            </summary>
+            <div className="grid gap-3 pt-2 sm:grid-cols-2">
+              {CHAMPS.filter((champ) => champ.expert).map((champ) => (
+                <ChampRaccordement key={champ.cle} champ={champ} saisie={saisie} bloc={bloc}
+                  erreurs={erreurs} modifier={modifier} />
+              ))}
+            </div>
+          </details>
           <div>
             <Button
               type="submit"
@@ -299,12 +394,14 @@ export default function Raccordement({ calepinageId, lectureSeule = false } = {}
             <strong data-testid="calx244-elevation">
               {formatPercent(calcul.elevation_pct, { decimals: 2 })}
             </strong>
+            <Pourquoi cle="electrique.elevation_tension" valeurs={bloc} />
           </span>
           <span>
             {'Marge à la limite : '}
             <strong data-testid="calx244-marge">
               {formatPercent(calcul.ecart_limite_pct, { decimals: 2 })}
             </strong>
+            <Pourquoi cle="electrique.marge_limite" valeurs={bloc} />
           </span>
           <span>
             {'Puissance injectée : '}
@@ -313,12 +410,14 @@ export default function Raccordement({ calepinageId, lectureSeule = false } = {}
                 ? '—'
                 : `${formatNumber(calcul.puissance_injectee_kva, { decimals: 1 })} kVA`}
             </strong>
+            <Pourquoi cle="electrique.puissance_injectee" valeurs={bloc} />
           </span>
           <span>
             {'Déséquilibre entre phases : '}
             <strong data-testid="calx244-desequilibre">
               {formatPercent(calcul.desequilibre_pct, { decimals: 2 })}
             </strong>
+            <Pourquoi cle="electrique.desequilibre_phases" valeurs={bloc} />
           </span>
         </section>
 

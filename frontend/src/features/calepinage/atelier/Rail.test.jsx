@@ -638,3 +638,29 @@ describe('ACAL868 — le rail publie l’étape à la barre fixe', () => {
     expect(await panneauOuvert()).toBeTruthy()
   })
 })
+
+describe('ACAL867 — l’étape Documents guidée : panneau, bouton de devis, documents', () => {
+  const rendreAvecDevis = (recherche) => render(
+    <MemoryRouter initialEntries={[`/calepinage/${ID}${recherche}`]}>
+      <Routes>
+        <Route path="/calepinage/:id" element={<Rail actionDevis={<button type="button" data-testid="cal-generer-devis">Générer le devis</button>} />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+  it('guidé : le bouton relayé s’affiche dans l’écran, entre « Prêt à envoyer ? » et les documents ; un seul bouton', async () => {
+    try { window.localStorage.clear() } catch { /* ignoré */ }
+    rendreAvecDevis(`?${PARAM_ONGLET}=documents`)
+    const ecran = await screen.findByTestId('cal-etape-documents-ecran', {}, { timeout: DELAI_PANNEAU })
+    expect(ecran.children).toHaveLength(3)
+    expect(ecran.children[1]).toContainElement(screen.getByTestId('cal-generer-devis'))
+    expect(screen.getAllByTestId('cal-generer-devis')).toHaveLength(1)
+  }, 30_000)
+
+  it('mode expert : l’onglet documents est inchangé (aucun écran d’étape, aucun bouton relayé)', async () => {
+    rendreAvecDevis(`?${PARAM_ONGLET}=documents&mode=expert`)
+    await panneauOuvert()
+    expect(screen.queryByTestId('cal-etape-documents-ecran')).toBeNull()
+    expect(screen.queryByTestId('cal-generer-devis')).toBeNull()
+  }, 30_000)
+})
