@@ -223,3 +223,95 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(screen.queryByTestId('cal-resultats-pied')).toBeNull()
   })
 })
+
+/* F7 — l'état « pas encore simulé » (jamais lancé / périmé), mêmes cartes que le résultat incomplet. Payloads =
+   contrat `calepinage_resultat.json` (`exemple_vide`, `exemple_perime`) + `parcours.manque` tel que
+   `parcours_guide.regrouper_manque` le sert pour le cas capturé (norme × 3, production non simulée, accès solaire,
+   températures non sourcées). */
+const JARGON = /document de toiture|accès solaire par module|silence est explicite|OMIS|non sourcées|NF C 15|UTE C/
+const MANQUE = () => [
+  { code: 'norme_absente', etape: 'electrique', gravite: 'a_regler', nombre: 3, cible: { onglet: 'reglages', champ: 'norme' },
+    message: 'aucune norme électrique sélectionnée : les calculs qui en dépendent (sections de câble) sont OMIS. NF C 15-100 / UTE C 15-712-1' },
+  { code: 'production_non_simulee', etape: 'resultats', gravite: 'a_regler', nombre: 1, cible: { onglet: 'production', champ: '' },
+    message: 'Production non simulée dans ce résultat : la pose et l’électricité sont connues, la production ne l’est pas.' },
+  { code: 'acces_solaire_absent', etape: 'resultats', gravite: 'info', nombre: 1, cible: { onglet: 'production', champ: '' },
+    message: 'Le document de toiture ne porte aucun accès solaire par module : aucun écart d’ombrage n’est signalé. Le silence est explicite.' },
+  { code: 'coefficients_non_sources', etape: 'resultats', gravite: 'info', nombre: 1, cible: { onglet: 'reglages', champ: '' },
+    message: 'températures de référence, non sourcées' },
+]
+const JAMAIS = () => JSON.parse(JSON.stringify(exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide')))
+const PERIME = () => JSON.parse(JSON.stringify(exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime')))
+const rendreAvec = (data) => {
+  servir(data)
+  return render(
+    <MemoryRouter><EtapeResultats calepinageId={5} parcours={{ manque: MANQUE() }}
+      action={{ libelle: 'Préparer les documents', onClick: vi.fn() }} /></MemoryRouter>,
+  )
+}
+
+describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
+  it('carte sombre + « Pour un résultat complet » + « Ce qui est déjà sûr », dans cet ordre, sans jargon', async () => {
+    rendreAvec(JAMAIS())
+    const bloc = await screen.findByTestId('cal-avant-simulation')
+    const haut = bloc.querySelector('.cal-resinc-haut')
+    expect(haut.children).toHaveLength(2)
+    expect(screen.getByTestId('cal-avant-titre')).toHaveTextContent('Production pas encore calculée')
+    expect(within(haut.children[0]).getByRole('button', { name: 'Lancer la simulation' })).toBeInTheDocument()
+    expect(haut.children[1]).toHaveTextContent('Pour un résultat complet')
+    const ordre = [haut, screen.getByTestId('acal700-sur')]
+    expect(ordre[0].compareDocumentPosition(ordre[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(screen.getByTestId('acal700-sur')).getByText('12')).toBeInTheDocument() // pose.total_modules
+    expect(within(screen.getByTestId('acal700-sur')).getByText('8,64 kWc')).toBeInTheDocument() // pose.kwc
+    expect(bloc).not.toHaveTextContent(JARGON)
+    expect(document.body.textContent).not.toMatch(JARGON)
+    expect(screen.queryByText('Ce qui manque encore :')).toBeNull()
+    expect(screen.queryByTestId('cal-resultats-pied')).toBeNull() // le pied n'existe qu'avec un résultat
+    expect(screen.queryByTestId('cal-resultats-tuiles')).toBeNull()
+  })
+
+  it('lignes numérotées en clair, comptes fusionnés, cibles conservées, phrase servie derrière le « ? »', async () => {
+    rendreAvec(JAMAIS())
+    const lignes = await screen.findAllByTestId('cal-avant-ligne')
+    const texte = (n) => n.textContent.replace(/\s+/g, ' ').trim()
+    expect(lignes.map((l) => texte(l.querySelector('.cal-resinc-nom')))).toEqual([
+      'Norme électrique à choisir× 3?', 'Production à calculer?', 'Ombrage panneau par panneau?', 'Températures de référence?'])
+    expect(lignes.map((l) => l.querySelector('.cal-resinc-rang').textContent)).toEqual(['1', '2', '3', '4'])
+    expect(lignes.map((l) => l.querySelector('[data-testid="cal-avant-renseigner"]').getAttribute('href'))).toEqual([
+      '/calepinage/reglages#norme', '/calepinage/5?onglet=production', '/calepinage/5?onglet=production', '/calepinage/reglages'])
+    expect(lignes.map((l) => l.querySelector('[data-testid="cal-avant-renseigner"]').textContent)).toEqual([
+      'Renseigner', 'Voir', 'Renseigner', 'Renseigner'])
+    // La phrase servie est gardée, derrière le « ? » (infobulle + révélée au clic), jamais dans la ligne.
+    const aide = within(lignes[0]).getByTestId('cal-avant-aide')
+    expect(aide).toHaveAttribute('title', expect.stringContaining('NF C 15-100'))
+    expect(within(lignes[0]).queryByTestId('cal-avant-servi')).toBeNull()
+    fireEvent.click(aide)
+    expect(within(lignes[0]).getByTestId('cal-avant-servi')).toHaveTextContent('OMIS')
+  })
+
+  it('« Lancer la simulation » appelle la même requête que le bouton existant', async () => {
+    calepinageApi.calepinages.simuler.mockResolvedValue({ status: 200, data: {} })
+    rendreAvec(JAMAIS())
+    fireEvent.click(await screen.findByRole('button', { name: 'Lancer la simulation' }))
+    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(5)
+  })
+
+  it('aucun poste à renseigner : la liste le dit au lieu de rester vide', async () => {
+    servir(JAMAIS())
+    render(<MemoryRouter><EtapeResultats calepinageId={5} parcours={{ manque: [] }} /></MemoryRouter>)
+    expect(await screen.findByText('Rien d’autre à renseigner : vous pouvez lancer la simulation.')).toBeInTheDocument()
+  })
+})
+
+describe('Étape Résultats — calcul à refaire (simulation périmée)', () => {
+  it('même mise en page, titre « Calcul à refaire », bouton de relance, aucun bandeau en plus', async () => {
+    rendreAvec(PERIME())
+    await screen.findByTestId('cal-avant-simulation')
+    expect(screen.getByTestId('cal-avant-simulation')).toHaveAttribute('data-etat', 'perime')
+    expect(screen.getByTestId('cal-avant-titre')).toHaveTextContent('Calcul à refaire')
+    expect(screen.getByTestId('cal-avant-titre')).toHaveAttribute('title', expect.stringContaining('19/09/2026'))
+    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveAttribute('data-etat', 'perime')
+    expect(screen.getByText('Pour un résultat complet')).toBeInTheDocument()
+    expect(screen.queryByTestId('calx48-perime')).toBeNull()
+    expect(document.body.textContent).not.toMatch(JARGON)
+  })
+})

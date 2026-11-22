@@ -130,7 +130,7 @@ function LienHorsReglages({ calepinageId, champ }) {
 
 export function BoutonCalculer({
   calepinageId, data = null, avertissements = [], manque = [], intervalleMs = 2000, onTermine,
-  declenchement = 0,
+  declenchement = 0, variante = 'defaut',
 }) {
   const peutGerer = useHasPermission('calepinage_gerer')
   const [refus, setRefus] = useState(null)
@@ -195,17 +195,24 @@ export function BoutonCalculer({
 
   return (
     <div className="flex flex-col gap-2" data-testid="calx48-lancer">
-      <Button
-        type="button"
-        size="sm"
-        onClick={() => lancer()}
-        disabled={enCours || !calepinageId}
-        data-testid="calx48-lancer-bouton"
-        data-etat={etat}
-        className="w-fit"
-      >
-        {enCours ? 'Simulation en cours…' : LIBELLE_BOUTON[etat]}
-      </Button>
+      {variante === 'carte' ? (
+        <button type="button" onClick={() => lancer()} disabled={enCours || !calepinageId}
+          data-testid="calx48-lancer-bouton" data-etat={etat} className="cal-res-cta w-fit disabled:opacity-60">
+          {enCours ? 'Simulation en cours…' : LIBELLE_BOUTON[etat]}
+        </button>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => lancer()}
+          disabled={enCours || !calepinageId}
+          data-testid="calx48-lancer-bouton"
+          data-etat={etat}
+          className="w-fit"
+        >
+          {enCours ? 'Simulation en cours…' : LIBELLE_BOUTON[etat]}
+        </Button>
+      )}
 
       {/* L'AVANCEMENT PUBLIÉ par la tâche de fond — jamais une barre qui
           avance toute seule pour faire patienter (CAL79). */}
@@ -218,7 +225,7 @@ export function BoutonCalculer({
         </p>
       )}
 
-      {(manque.length > 0 || avertissements.length > 0) && (
+      {variante !== 'carte' && (manque.length > 0 || avertissements.length > 0) && (
         <div data-testid="calx48-manques">
           <p className="text-xs font-medium text-muted-foreground">Ce qui manque encore :</p>
           {manque.length > 0
@@ -232,7 +239,8 @@ export function BoutonCalculer({
       )}
 
       {refus && refus.manquants?.length > 1 ? (
-        <div className="text-sm text-destructive" role="alert" data-testid="calx48-refus">
+        <div className={variante === 'carte' ? 'rounded-md bg-card p-3 text-sm text-destructive' : 'text-sm text-destructive'}
+          role="alert" data-testid="calx48-refus">
           <p>La simulation ne peut pas démarrer :</p>
           <ul className="list-disc pl-5" data-testid="acal940-manquants">
             {refus.manquants.map((ligne) => (
@@ -251,7 +259,8 @@ export function BoutonCalculer({
           </ul>
         </div>
       ) : refus && (
-        <p className="text-sm text-destructive" role="alert" data-testid="calx48-refus">
+        <p className={variante === 'carte' ? 'rounded-md bg-card p-3 text-sm text-destructive' : 'text-sm text-destructive'}
+          role="alert" data-testid="calx48-refus">
           {refus.motif}
           <LienHorsReglages calepinageId={calepinageId} champ={refus.champ} />
           {refusRenvoieAuxReglages(refus) && (

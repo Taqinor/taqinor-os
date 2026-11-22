@@ -10,10 +10,9 @@ import { MoisParMois } from '../../../production/GraphiqueMensuel'
 import { NoteValeursPubliees } from '../../../production/LigneValeursPubliees'
 import { reglagesPublies } from '../../../production/LigneValeursPubliees.helpers'
 import PiedResultats from '../../../production/PiedResultats'
-import ResultatHeros from '../../../production/ResultatHeros'
+import ResultatAvantSimulation from '../../../production/ResultatAvantSimulation'
 import ResultatIncomplet from '../../../production/ResultatIncomplet'
 import TuilesResultat from '../../../production/TuilesResultat'
-import { BandeauPerime, BoutonCalculer } from '../../../production/PanneauProduction'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
 import PanneauPertes from '../../PanneauPertes'
@@ -25,8 +24,8 @@ import PanneauPertes from '../../PanneauPertes'
      · résultat complet  : quatre tuiles, « Mois par mois » + « Du soleil au réseau »,
                            pied « Année basse… » + bouton de l'étape suivante ;
      · résultat incomplet : carte « au plus » + « Pour un résultat complet » (ACAL700) ;
-     · jamais simulé / périmé : l'état d'origine (« Production non calculée », bandeau
-                           « périmée », bouton de calcul).
+     · jamais simulé / périmé : ResultatAvantSimulation (carte sombre + bouton de calcul,
+                           « Pour un résultat complet », « Ce qui est déjà sûr »).
    Rien n'est calculé ici : chaque figure est servie ou son bloc est omis. L'ancien contenu
    (diagramme de pertes détaillé, édition d'un poste de perte, réglages utilisés, bouton de
    calcul) reste TOUT dans « Détail des pertes et réglages » (ouvert d'office en expert) ;
@@ -76,13 +75,9 @@ export default function EtapeResultats({
 
   return (
     <div className="cal-res" data-zone="etape-resultats">
-      {perime && <BandeauPerime motif={data?.motif} />}
       {!simule && (
-        <>
-          <ResultatHeros total={null} simule={false} motif={data?.motif} avertissements={data?.avertissements} />
-          <BoutonCalculer calepinageId={id} data={data} avertissements={[]} manque={parcours?.manque ?? []}
-            intervalleMs={intervalleMs} onTermine={refetch} />
-        </>
+        <ResultatAvantSimulation calepinageId={id} data={data} parcours={parcours}
+          intervalleMs={intervalleMs} onTermine={refetch} />
       )}
       {incomplet && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
       {complet && (

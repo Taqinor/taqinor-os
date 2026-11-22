@@ -8,6 +8,7 @@ import { refusServeur } from '../commun/refusServeur'
 import { formatNumber } from '../../../lib/format'
 import { demandeMoteur, motifRefus } from '../ModeTerrain.helpers' // ACAL918
 import { fallbackPerKwc } from '@rooflib/productionEngine'
+import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { lireBrouillonServeur } from '../brouillonServeur.js'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
@@ -71,6 +72,20 @@ export async function pousserAffectationAtelier(builder, calepinageId) {
     lignes = null
   }
   builder.setAffectationChaines(Array.isArray(lignes) ? lignes : null, 'chaine')
+}
+
+// F6 (maquettes 22/11) — l'atelier ERP relève le plafond de cadrage (19 sur le site public) :
+// MapLibre sur-échantillonne la dernière tuile servie, et le fond neutre n'en dépend pas.
+export const ZOOM_MAX_CADRAGE_ATELIER = 22
+
+/**
+ * F6 — cadre la caméra sur TOUS les pans (le toit ≈ 40 % de la carte), sans animation. Caméra
+ * seule : rien de sérialisé, aucun brouillon, la scène n'est pas marquée modifiée. Sans effet
+ * si le constructeur n'expose pas `cadrerToit` (ancien build) ou pendant un tracé.
+ */
+export function cadrerToitAtelier(builder) {
+  return typeof builder?.cadrerToit === 'function'
+    ? builder.cadrerToit({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER }) : false
 }
 
 /**
@@ -233,6 +248,7 @@ export function useAtelierBoot(ctx) {
     }
 
     async function boot() {
+      choisirPaletteAcces('site') // F6 — mode lead : la palette du site (rouge → vert), jamais celle de l'atelier
       // CALX104/CALX403 — lancés EN PARALLÈLE du lead (best-effort, cf. ci-dessus).
       const reglagesPromise = chargerReglagesAtelier()
       // CALX132 — l'empreinte OSM du bâtiment, lue plus bas avec le contour et
@@ -373,6 +389,7 @@ export function useAtelierBoot(ctx) {
     // bancable ni panneau de livraison client — rien de tout cela n'existe sur
     // un calepinage, et l'inventer produirait des boutons morts.
     async function bootCalepinage() {
+      choisirPaletteAcces('atelier') // F6 — bleu nuit → or (maquette Panneaux) dès le boot, toute étape et Expert
       // CALX109 — le CATALOGUE DE MODULES de la société, lu EN PARALLÈLE du
       // design-context : best-effort exactement comme l'étude bancable de
       // `bootDevis` — il ne bloque jamais le boot et n'invente rien. Sans lui
@@ -510,6 +527,7 @@ export function useAtelierBoot(ctx) {
             poserFondDuDocument(builderApi.current)
             // ACAL286 — la teinte par chaîne vient de la table servie (best-effort).
             pousserAffectationAtelier(builderApi.current, calepinageId)
+            cadrerToitAtelier(builderApi.current) // F6 — le toit remplit la carte, une fois par boot
           },
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en

@@ -41,3 +41,27 @@ export function nomDePerte(etape, libelleServi = '') {
   if (!clair) return { nom: libelleServi || etape || '', technique: '' }
   return { nom: clair, technique: libelleServi && libelleServi !== clair ? libelleServi : '' }
 }
+
+/* « Pour un résultat complet » AVANT toute simulation : le serveur sert `parcours.manque[]` (code, message,
+   cible, nombre) ; le message est une phrase d'ingénieur (normes, « OMIS »…). UNE table, clé = `code` de
+   `parcours_guide.MOTIFS`, donne le titre simple, une ligne claire et le mot du bouton ; la phrase servie
+   reste derrière le « ? ». Code inconnu : le message servi sert de titre, sans ligne — rien n'est perdu. */
+export const MANQUES_CLAIRS = {
+  norme_absente: { titre: 'Norme électrique à choisir', ligne: 'Sans elle, les câbles, les chutes de tension et les protections ne sont pas calculés.' },
+  simulation_perimee: { titre: 'Calcul à refaire', ligne: 'Le calepinage a changé depuis le dernier calcul.', bouton: 'Voir' },
+  production_non_simulee: { titre: 'Production à calculer', ligne: 'Lancez la simulation pour la connaître.', bouton: 'Voir' },
+  coefficients_non_sources: { titre: 'Températures de référence', ligne: 'Des valeurs standard servent en attendant celles du site.' },
+  acces_solaire_absent: { titre: 'Ombrage panneau par panneau', ligne: 'Aucune ombre n’est signalée, mais cela ne prouve pas qu’il n’y en a pas.' },
+  ratio_dc_ac: { titre: 'Rapport panneaux / onduleur', ligne: 'À vérifier dans l’étape Électrique.' },
+  longueur_chaine: { titre: 'Longueur des chaînes de panneaux', ligne: 'À vérifier dans l’étape Électrique.' },
+  reglage_manquant: { titre: 'Réglage de la société à saisir', ligne: 'Nécessaire au calcul.' },
+}
+
+/** `{titre, ligne, bouton, technique}` d'une ligne de `parcours.manque` ; `technique` = la phrase servie
+    (pour le « ? »), vide quand elle serait identique au titre. */
+export function manqueClair(m) {
+  const clair = MANQUES_CLAIRS[m?.code]
+  const servi = m?.message || ''
+  if (!clair) return { titre: servi, ligne: '', bouton: 'Renseigner', technique: '' }
+  return { titre: clair.titre, ligne: clair.ligne, bouton: clair.bouton || 'Renseigner', technique: servi }
+}

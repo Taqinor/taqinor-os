@@ -8,6 +8,7 @@ import BarreEnregistrement from '../BarreEnregistrement'
 import { formaterHeureBrouillon } from '../contexteAtelier'
 import { PARAM_MODE, useModeExpert } from '../modeExpert'
 import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
+import { cadrerToitAtelier } from '../useAtelierBoot'
 import {
   CADRES, ETAPES, ecranCoque, premierOngletEtape, useParcours, vueParcours,
 } from '../parcoursGuide'
@@ -176,11 +177,18 @@ export default function CoqueAtelier({
     tiroir,
   }), [noeudSurCarte, noeudPanneau, noeudPiedPanneau, noeudPiedPlein, noeudControle, pleine, prendrePied, tiroir])
 
-  // La carte réapparaît (retour d'une étape pleine) : elle se recale sur sa boîte.
+  // La carte réapparaît (retour d'une étape pleine) : elle se recale sur sa boîte, puis (F6) la
+  // caméra recadre le toit UNE fois par retour — caméra seule, la scène n'est pas modifiée.
+  const builderApiCoque = ecranProps.builderApi ?? null
+  const builderRef = useRef(builderApiCoque)
+  useEffect(() => { builderRef.current = builderApiCoque })
   const carteAvant = useRef(carteVisible)
   useEffect(() => {
     if (carteVisible && !carteAvant.current) {
-      window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
+      window.requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'))
+        cadrerToitAtelier(builderRef.current)
+      })
     }
     carteAvant.current = carteVisible
   }, [carteVisible])
@@ -210,7 +218,7 @@ export default function CoqueAtelier({
             le hook du rail d'onglets, qui ne monte pas de panneau en guidé dans la coque). */}
         <div className="cal-coque-ecran-hote" data-testid={cleActive ? 'cal-onglet-panneau' : undefined}>
           <Ecran {...ecranProps} calepinageId={calepinageId} parcours={parcours} ouvert={cleActive}
-            action={action} enregistreLe={enregistreLe}
+            action={action} enregistreLe={enregistreLe || derniereVersionLe}
             actionDevis={<span ref={setNoeudDevis} className="contents" />} />
         </div>
       </Suspense>

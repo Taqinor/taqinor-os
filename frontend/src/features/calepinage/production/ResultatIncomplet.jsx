@@ -42,12 +42,12 @@ function Valeur({ etiquette, valeur }) {
   )
 }
 
-function CeQuiEstSur({ data, parcours }) {
+export function CeQuiEstSur({ data, parcours }) {
   const electrique = (parcours?.etapes || []).find((e) => e.cle === 'electrique')
   const ombres = (data?.cascade?.postes_lisibles?.postes || [])
     .find((p) => p.poste === 'ombres_proches' && p.statut === 'compte')
   const modules = data?.pose?.total_modules
-  const kwc = data?.production?.total?.kwc
+  const kwc = data?.production?.total?.kwc ?? data?.pose?.kwc // la pose est un fait servi, même sans simulation
   return (
     <section className="cal-res-carte" data-testid="acal700-sur">
       <h2 className="cal-res-titre">Ce qui est déjà sûr</h2>
