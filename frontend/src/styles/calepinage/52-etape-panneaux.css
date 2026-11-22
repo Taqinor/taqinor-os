@@ -1,0 +1,118 @@
+/* Étape « Panneaux » (maquettes Panneaux.dc.html et Tablette.dc.html).
+   Aucune couleur littérale : jetons de l'ERP seulement (thème clair et sombre). Tailles 12/14/16/20 px.
+   Importé par `atelier/coque/etapes/EtapePanneaux.jsx`. Les `@media` de la coque vont dans 56-coque-responsive. */
+
+.cal-coque .cal-pan { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.cal-coque .cal-pan-section { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.cal-coque .cal-pan-titre { margin: 0; font-size: 0.875rem; font-weight: 600; }
+.cal-coque .cal-pan-note { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--muted-foreground); }
+.cal-coque .cal-pan-erreur { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--destructive); }
+.cal-coque .cal-pan-lien { color: var(--info); text-decoration: underline; }
+
+/* Le modèle de panneau : carte à liste déroulante (56 px, nom 14 px, ligne 12 px). */
+.cal-coque .cal-pan-liste-hote { position: relative; }
+.cal-coque .cal-pan-module {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 56px;
+  padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+  color: var(--foreground); text-align: left;
+}
+.cal-coque .cal-pan-module:disabled { opacity: 0.6; cursor: not-allowed; }
+.cal-coque .cal-pan-module svg { flex: none; color: var(--muted-foreground); }
+.cal-coque .cal-pan-module-texte { display: flex; flex-direction: column; min-width: 0; }
+.cal-coque .cal-pan-module-nom { font-size: 0.875rem; font-weight: 600; }
+.cal-coque .cal-pan-module-ligne { font-size: 0.75rem; font-weight: 400; color: var(--muted-foreground); }
+.cal-coque .cal-pan-options {
+  position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
+  max-height: 320px; overflow-y: auto; background: var(--popover); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow-md);
+}
+.cal-coque .cal-pan-option {
+  display: flex; flex-direction: column; width: 100%; min-height: 48px; justify-content: center; padding: 6px 8px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--foreground); text-align: left;
+}
+.cal-coque .cal-pan-option:hover:not(:disabled) { background: var(--muted); }
+.cal-coque .cal-pan-option:disabled { opacity: 0.6; cursor: not-allowed; }
+.cal-coque .cal-pan-options [aria-selected='true'] .cal-pan-option { box-shadow: inset 0 0 0 1.5px var(--primary); }
+
+/* « Combien de panneaux ? » : deux cartes ; la choisie a le bord or et le fond pâle. */
+.cal-coque .cal-pan-option-pose {
+  display: flex; flex-direction: column; gap: 6px; min-height: 44px; padding: 14px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--card); color: var(--foreground); text-align: left;
+}
+.cal-coque .cal-pan-option-pose[aria-pressed='true'] {
+  border-color: transparent; background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+.cal-coque .cal-pan-option-pose:disabled { opacity: 0.6; cursor: not-allowed; }
+.cal-coque .cal-pan-option-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cal-coque .cal-pan-option-nom { font-size: 1rem; font-weight: 600; }
+.cal-coque .cal-pan-option-ligne { font-size: 0.875rem; font-weight: 400; color: var(--muted-foreground); }
+.cal-coque .cal-pan-option-pose[aria-pressed='true'] .cal-pan-option-ligne { color: var(--foreground); }
+.cal-coque .cal-pan-badge {
+  padding: 2px 8px; border-radius: 999px; background: var(--foreground); color: var(--background);
+  font-size: 0.75rem; font-weight: 600;
+}
+
+/* Sens de pose : trois segments pleine largeur de 44 px. */
+.cal-coque .cal-segmente.cal-segmente-pose > button { flex: 1; height: 44px; }
+
+/* Alerte d'ombrage (bleu-gris, jetons d'information). */
+.cal-coque .cal-pan-alerte {
+  display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--info) 22%, var(--card));
+  background: color-mix(in oklch, var(--info) 6%, var(--card));
+}
+.cal-coque .cal-pan-alerte-titre {
+  display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.875rem; font-weight: 600;
+}
+.cal-coque .cal-pan-alerte-titre svg { flex: none; color: var(--info); }
+.cal-coque .cal-pan-alerte-texte { margin: 0; font-size: 0.875rem; line-height: 1.45; color: var(--secondary-foreground); }
+.cal-coque .cal-pan-alerte-actions { display: flex; gap: 8px; }
+.cal-coque .cal-pan-alerte-actions .cal-bouton-marine { flex: 1; }
+.cal-coque .cal-pan-garder {
+  height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: 10px; background: transparent;
+  color: var(--foreground); font-weight: 600; font-size: 0.875rem;
+}
+
+/* Sur la carte : la puce (haut, centrée), la légende (bas gauche), le lecteur du soleil (bas centre). */
+.cal-coque .cal-pan-puce {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center;
+  gap: 20px; padding: 10px 20px; max-width: calc(100% - 140px); white-space: nowrap;
+}
+.cal-coque .cal-pan-puce .cal-indicateur + .cal-indicateur { padding-left: 20px; border-left: 1px solid var(--border); }
+.cal-coque .cal-coque-sur-carte > div.cal-carte-soleil { position: absolute; inset: 0; pointer-events: none; }
+.cal-coque .cal-carte-soleil > * { pointer-events: auto; position: absolute; bottom: 20px; }
+.cal-coque .cal-pan-legende { left: 16px; width: 232px; padding: 0 14px 12px; }
+.cal-coque .cal-pan-legende-titre {
+  display: block; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent;
+  color: var(--foreground); font-size: 0.75rem; font-weight: 600; text-align: left;
+}
+.cal-coque .cal-pan-legende-titre:disabled { cursor: default; }
+.cal-coque .cal-pan-degrade { height: 10px; border-radius: 5px; }
+.cal-coque .cal-pan-legende-bornes {
+  display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.75rem; color: var(--muted-foreground);
+}
+.cal-coque .cal-pan-legende-note { margin: 4px 0 0; font-size: 0.75rem; color: var(--muted-foreground); }
+.cal-coque .cal-pan-lecteur {
+  left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px;
+  box-shadow: var(--shadow-lg);
+}
+.cal-coque .cal-pan-lecture {
+  flex: none; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 10px; background: var(--foreground); color: var(--background);
+}
+.cal-coque .cal-pan-lecture:disabled { opacity: 0.6; cursor: not-allowed; }
+.cal-coque .cal-pan-lecture[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--primary); }
+.cal-coque .cal-pan-curseur { display: flex; flex-direction: column; gap: 6px; width: 260px; }
+.cal-coque .cal-pan-curseur-tete {
+  display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted-foreground);
+}
+.cal-coque .cal-pan-curseur-tete strong { color: var(--foreground); font-weight: 600; }
+.cal-coque .cal-pan-curseur input[type='range'] { width: 100%; min-height: 24px; accent-color: var(--primary); }
+
+/* La ligne d'état du constructeur (bas gauche de la carte) se range au-dessus de la légende. */
+.cal-coque[data-etape='panneaux'] .cal-coque-statut { bottom: 132px; }
+
+/* Mode guidé : la pose du constructeur (« Recommandation », « Personnaliser la disposition ») reste montée
+   mais se range sous « Avancé » ; l'écran de l'étape la remplace. */
+.cal-coque[data-avance='0'] .cal-coque-groupe[data-groupe='pose'] { display: none; }

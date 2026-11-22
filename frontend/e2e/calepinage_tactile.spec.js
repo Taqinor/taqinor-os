@@ -108,6 +108,12 @@ test('CAL107 : tracer un toit, poser un obstacle et déplacer un panneau au DOIG
   // ── 3) DÉPLACER un panneau au doigt en mode « Personnaliser la disposition » :
   // preuve que le glissé tactile pilote bien `layoutEditor.ts` (déjà unifié —
   // W80/W88), sans régression après le câblage CAL107 côté tracé/obstacle. ────
+  {
+    // Coque (22/11, lane L2) : en guidé, le groupe « pose » du constructeur (`#rp9-layout-*`, `#rp9-need-*`,
+    // `#rp9-results`) vit sous « Avancé » — on le déplie d'abord (sans le refermer s'il l'est déjà).
+    const avance = page.getByTestId('cal-rail-avance')
+    if ((await avance.getAttribute('aria-expanded')) !== 'true') await avance.click()
+  }
   const layoutToggle = page.locator('#rp9-layout-toggle, [data-testid="rp9-layout-toggle"]').first()
   if (await layoutToggle.count()) {
     await layoutToggle.tap()

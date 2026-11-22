@@ -22,8 +22,8 @@ vi.mock('./exportImage', () => ({
 }))
 
 import calepinageApi from '../../api/calepinageApi'
-import SchemaUnifilairePanel from './SchemaUnifilairePanel'
-import { motifDuRefusDxf, corpsEdition } from './SchemaUnifilairePanel.helpers'
+import SchemaUnifilairePanel, { PlancheSchema } from './SchemaUnifilairePanel'
+import { motifDuRefusDxf, corpsEdition, lignesCartouche, lignesLegende } from './SchemaUnifilairePanel.helpers'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
 
@@ -387,5 +387,66 @@ describe('SchemaUnifilairePanel — édition des libellés et repères (ACAL161)
     const blocs = [{ clef: 'a', titre: 'A', repere: '' }]
     expect(corpsEdition(blocs, { libelles: { a: 'A' }, reperes: {} })).toEqual({})
     expect(corpsEdition(blocs, { libelles: {}, reperes: { a: 'R1' } })).toEqual({ reperes: { a: 'R1' } })
+  })
+})
+
+/* ── ACAL1301 — le sous-écran « Schéma » : planche, légende et cartouche (maquette `Schema.dc.html`) ── */
+describe('PlancheSchema, légende et cartouche (ACAL1301)', () => {
+  const SVG = exempleContrat('calepinage', 'calepinage_sld').svg
+
+  it('la planche insère le SVG SERVI entier, avec zoom ± et déplacement au clavier', async () => {
+    render(<PlancheSchema balisage={{ __html: SVG }} note="Dessiné tout seul à partir du raccordement : 2 chaînes de 6 panneaux." />)
+    const vue = screen.getByTestId('csch-vue')
+    // Le SVG servi, entier : son `viewBox` est gardé (la planche le cadre sans le couper).
+    expect(screen.getByTestId('csch-svg').querySelector('svg[viewBox="0 0 842 595"]')).not.toBeNull()
+    expect(screen.getByTestId('csch-svg')).toHaveTextContent('Champ PV')
+    expect(screen.getByRole('heading', { name: 'Schéma électrique' })).toBeTruthy()
+    expect(screen.getByText('Des panneaux jusqu’au réseau · sans échelle')).toBeTruthy()
+    const u = userEvent.setup()
+    await u.click(screen.getByRole('button', { name: 'Zoomer' }))
+    expect(vue).toHaveAttribute('data-echelle', '1.25')
+    await u.click(screen.getByRole('button', { name: 'Dézoomer' }))
+    await u.click(screen.getByRole('button', { name: 'Dézoomer' }))
+    expect(vue).toHaveAttribute('data-echelle', '0.8')
+    vue.focus()
+    await u.keyboard('{ArrowLeft}')
+    expect(screen.getByTestId('csch-svg').style.transform).toContain('translate(40px, 0px)')
+    expect(screen.getByText(/2 chaînes de 6 panneaux/)).toBeTruthy()
+  })
+
+  it('sans SVG : pas de zoom, les motifs (enfants) à la place', () => {
+    render(<PlancheSchema balisage={null}><p>motif du serveur</p></PlancheSchema>)
+    expect(screen.queryByRole('button', { name: 'Zoomer' })).toBeNull()
+    expect(screen.getByText('motif du serveur')).toBeTruthy()
+  })
+
+  it('la légende ne nomme que les signes du SVG servi', () => {
+    const plein = '<svg><line x1="0" y1="0" x2="1" y2="1" stroke="#1f3a5f"/></svg>'
+    expect(lignesLegende(plein).map((l) => l.cle)).toEqual(['liaison'])
+    const complet = `${plein.slice(0, -6)}<line x1="0" y1="0" x2="1" y2="0" stroke-dasharray="4 3"/><text>6,0 mm²</text></svg>`
+    expect(lignesLegende(complet).map((l) => l.libelle)).toEqual([
+      'Liaison entre deux organes', 'Liaison à la terre', 'Section du câble, puis sa longueur'])
+    expect(lignesLegende(null)).toEqual([])
+  })
+
+  it('le cartouche lit le détail SERVI ; un champ non servi est omis (jamais une valeur inventée)', () => {
+    const detail = structuredClone(exempleContrat('calepinage', 'calepinage_detail'))
+    const le = detail.versions.derniere_le
+    const heure = new Date(le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    expect(lignesCartouche(detail)).toEqual([
+      { libelle: 'Projet', valeur: 'Toiture — bâtiment principal — Casablanca' },
+      { libelle: 'Date', valeur: new Date(le).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) },
+      { libelle: 'Version', valeur: `Enregistrée à ${heure} · abababab` },
+      { libelle: 'Auteur', valeur: "Utilisateur d'essai" },
+    ])
+    detail.responsable = null
+    detail.cree_par = null
+    detail.layout_hash = ''
+    detail.versions = null
+    const sans = lignesCartouche(detail)
+    expect(sans.map((l) => l.libelle)).toEqual(['Projet', 'Date'])
+    expect(sans.find((l) => l.libelle === 'Date').valeur)
+      .toBe(new Date(detail.modifie_le).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }))
+    expect(lignesCartouche(null)).toEqual([])
   })
 })

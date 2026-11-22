@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
@@ -20,7 +20,7 @@ const LISTES = [
   { cle: 'bloquants', titre: 'Conception non conforme' },
 ]
 
-function Motifs({ donnees }) {
+export function MotifsSchema({ donnees }) {
   const blocs = LISTES
     .map(({ cle, titre }) => ({ titre, cle, lignes: donnees?.[cle] || [] }))
     .filter((bloc) => bloc.lignes.length > 0)
@@ -46,6 +46,70 @@ function Motifs({ donnees }) {
     </div>
     ))}
   </>)
+}
+
+/* ACAL1301 — LA PLANCHE DU SOUS-ÉCRAN « SCHÉMA » (maquette `Schema.dc.html`) : le MÊME SVG serveur,
+   au centre, dans une carte qui le cadre ENTIER (`viewBox` gardé : rien n'est coupé), avec zoom ± et
+   déplacement (glisser, ou flèches au clavier). `actions` : nœud posé à gauche du zoom (le retour au
+   raccordement) ; `note` : la phrase servie sous le dessin ; sans SVG, `children` (les motifs). */
+const ZOOM_MIN = 0.5
+const ZOOM_MAX = 4
+const PAS_ZOOM = 1.25
+const PAS_CLAVIER = 40
+
+export function PlancheSchema({ balisage, actions = null, note = null, children = null }) {
+  const [echelle, setEchelle] = useState(1)
+  const [decalage, setDecalage] = useState({ x: 0, y: 0 })
+  const glisse = useRef(null)
+  const zoomer = (facteur) => {
+    const suivante = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, echelle * facteur))
+    setEchelle(suivante)
+    if (Math.abs(suivante - 1) < 1e-9) setDecalage({ x: 0, y: 0 })
+  }
+  const deplacer = (dx, dy) => setDecalage((d) => ({ x: d.x + dx, y: d.y + dy }))
+  const auClavier = (e) => {
+    const pas = { ArrowLeft: [PAS_CLAVIER, 0], ArrowRight: [-PAS_CLAVIER, 0], ArrowUp: [0, PAS_CLAVIER], ArrowDown: [0, -PAS_CLAVIER] }[e.key]
+    if (pas) { e.preventDefault(); deplacer(...pas) } else if (e.key === '+' || e.key === '=') zoomer(PAS_ZOOM)
+    else if (e.key === '-') zoomer(1 / PAS_ZOOM)
+  }
+  return (
+    <section className="csch-planche" aria-labelledby="csch-titre">
+      <div className="csch-tete">
+        <div className="csch-titres">
+          <h2 id="csch-titre">Schéma électrique</h2>
+          <span>Des panneaux jusqu’au réseau · sans échelle</span>
+        </div>
+        <div className="csch-outils">
+          {actions}
+          {balisage && (
+            <div role="group" aria-label="Zoom du schéma" className="csch-zoom">
+              <button type="button" aria-label="Zoomer" onClick={() => zoomer(PAS_ZOOM)} disabled={echelle >= ZOOM_MAX}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              </button>
+              <button type="button" aria-label="Dézoomer" onClick={() => zoomer(1 / PAS_ZOOM)} disabled={echelle <= ZOOM_MIN}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      {balisage
+        ? (
+          <div className="csch-vue" tabIndex={0} role="img" aria-label="Schéma unifilaire : glisser ou utiliser les flèches pour le déplacer"
+            data-testid="csch-vue" data-echelle={echelle} onKeyDown={auClavier}
+            onPointerDown={(e) => { glisse.current = { x: e.clientX - decalage.x, y: e.clientY - decalage.y }; e.currentTarget.setPointerCapture?.(e.pointerId) }}
+            onPointerMove={(e) => { if (glisse.current) setDecalage({ x: e.clientX - glisse.current.x, y: e.clientY - glisse.current.y }) }}
+            onPointerUp={() => { glisse.current = null }} onPointerCancel={() => { glisse.current = null }}>
+            <div className="csch-dessin" data-testid="csch-svg"
+              style={{ transform: `translate(${decalage.x}px, ${decalage.y}px) scale(${echelle})` }}
+              /* Le SVG du serveur, passé par `renderTrustedSvg` (VX120) comme dans le panneau. */
+              dangerouslySetInnerHTML={balisage} />
+          </div>
+        )
+        : <div className="csch-motifs">{children}</div>}
+      {note && <p className="csch-note">{note}</p>}
+    </section>
+  )
 }
 
 function EditionSchema({ id, donnees, onPoste, lectureSeule = false }) {
@@ -215,7 +279,7 @@ export default function SchemaUnifilairePanel({ calepinageId, lectureSeule = fal
             <EditionSchema id={id} donnees={data} onPoste={setPoste} lectureSeule={lectureSeule} />
           </>
         )
-        : <Motifs donnees={data} />}
+        : <MotifsSchema donnees={data} />}
     </Card>
     </>
   )

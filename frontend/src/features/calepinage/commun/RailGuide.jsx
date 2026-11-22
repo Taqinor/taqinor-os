@@ -16,9 +16,9 @@ const LIBELLE_ETAT = {
   a_faire: 'à faire', en_cours: 'en cours', fait: 'fait', bloque: 'bloqué',
 }
 
-function RailVertical({ etapeActive, etats, manque, onChoisir, avance, onAvance }) {
+function RailVertical({ etapeActive, etats, manque, onChoisir, avance, onAvance, cache }) {
   return (
-    <nav aria-label="Étapes" data-testid="cal-rail-etapes" className="cal-rail">
+    <nav aria-label="Étapes" data-testid="cal-rail-etapes" className="cal-rail" hidden={cache || undefined}>
       {ETAPES.map((etape) => {
         const etat = etats[etape.cle]
         const actif = etape.cle === etapeActive
@@ -49,11 +49,11 @@ function RailVertical({ etapeActive, etats, manque, onChoisir, avance, onAvance 
 
 export default function RailGuide({
   etapeActive, etats, onChoisir, expert = false, onBasculerExpert = null,
-  vertical = false, manque = [], avance = false, onAvance = () => {},
+  vertical = false, manque = [], avance = false, onAvance = () => {}, cache = false,
 }) {
   if (vertical) {
     return <RailVertical etapeActive={etapeActive} etats={etats} manque={manque}
-      onChoisir={onChoisir} avance={avance} onAvance={onAvance} />
+      onChoisir={onChoisir} avance={avance} onAvance={onAvance} cache={cache} />
   }
   return (
     <nav aria-label="Étapes du calepinage" data-testid="cal-rail-etapes"

@@ -6,6 +6,7 @@ import RetourAtelier from './atelier/RetourAtelier'
 import { RAISON_LECTURE_SEULE, lireConflit } from './conflitEcriture'
 import { messageRefus } from './commun/refusServeur'
 import { demarrerCapteurs, lireInclinaison, lireVisee, arreter as arreterCapteurs } from './capteursTelephone'
+import { enregistrerPentePan } from './atelier/coque/etapes/EtapeToit.helpers'
 import { mesuresDeVisite, panParDefaut, penteRetenue, pourcentageDepuisPente, saisieDuPan, sourceDePente, suggestionsEnAttente, zonesDuDocument } from './SaisiePente.helpers'
 
 /* ============================================================================
@@ -72,6 +73,8 @@ const MODES = [
 export default function SaisiePente({
   calepinageId: idPropose, onChange = null, persister = true, documentVivant = null,
   lectureSeule = false,
+  zoneInitiale = '', // maquette Main — le pan ACTIF de l'atelier quand l'étape Toit ouvre ce formulaire (« Modifier »)
+  onEnregistre = null, // appelé après une pente enregistrée (la carte de l'étape Toit relit son document)
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
@@ -88,7 +91,7 @@ export default function SaisiePente({
   const doc = useDocumentCalepinage(calepinageId, { actif: persister })
   const layout = doc.document
   const [message, setMessage] = useState(null)
-  const [zoneChoisie, setZoneChoisie] = useState('')
+  const [zoneChoisie, setZoneChoisie] = useState(String(zoneInitiale ?? ''))
   // ACAL208 — la visite reprise (lecture seule) et ce que l'utilisateur en a retenu.
   const [visite, setVisite] = useState(null)
   const [deVisite, setDeVisite] = useState(false)
@@ -291,34 +294,12 @@ export default function SaisiePente({
       champs.facingAzimuthSource = 'visite'
       champs.facingAzimuthPrecisionDeg = visite.orientation.precisionDeg
     }
-    // ACAL316 — le jeton de l'atelier vivant s'il existe, sinon celui de la lecture : un
-    // document changé ailleurs répond 409 plutôt que d'être écrasé.
-    const base = documentVivant?.empreinte || doc.empreinte
-    try {
-      const res = await calepinageApi.calepinages.enregistrerSectionLayout(calepinageId, {
-        cle: 'zones', zone_id: zone.id, champs, base_empreinte: base,
-      })
-      const apres = res?.data?.empreinte_document ?? null
-      const rendues = res?.data?.roof_layout?.zones
-      const mises = Array.isArray(rendues) ? rendues : zones.map((z) => (
-        String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
-      doc.appliquerSection('zones', mises, apres)
-      documentVivant?.appliquerSection?.('zones', mises, apres)
+    const rendu = await enregistrerPentePan({ calepinageId, doc, documentVivant, zone, zones, champs })
+    if (rendu.ok) {
       setOrientationRetenue(false)
-      setMessage(`Pente enregistrée sur le pan « ${zone.label || zone.id} ».`)
-    } catch (e) {
-      // Lot 2 critique #32 — jeton périmé (relu) ≠ verrou (motif serveur).
-      const conflit = lireConflit(e)
-      if (conflit?.documentModifie) {
-        setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
-        doc.recharger()
-      } else if (conflit) {
-        setMessage(conflit.motif)
-      } else {
-        // ACAL280 — le motif serveur (400 : son champ) avant tout repli.
-        setMessage(messageRefus(e, 'La pente n’a pas pu être enregistrée.'))
-      }
+      onEnregistre?.()
     }
+    setMessage(rendu.message)
   }
 
   const capteursPresents = typeof window !== 'undefined' && typeof window.DeviceOrientationEvent !== 'undefined'

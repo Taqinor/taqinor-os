@@ -19,6 +19,10 @@ const TRACES = {
   suivant: <path d="M5 12h14M13 6l6 6-6 6" />,
   plus: <path d="M12 5v14M5 12h14" />,
   moins: <path d="M5 12h14" />,
+  lecture: <path d="M7 4l13 8-13 8z" fill="currentColor" stroke="none" />,
+  chevron: <path d="M6 9l6 6 6-6" />,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16.5v.5" /></>,
+  partager: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" /></>,
 }
 
 /** Un pictogramme des maquettes (`nom` ∈ clés de TRACES), à la couleur du texte. */

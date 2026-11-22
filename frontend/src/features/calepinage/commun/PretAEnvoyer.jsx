@@ -31,7 +31,10 @@ import GroupesPretAEnvoyer from './GroupesPretAEnvoyer'
      contrôles de CETTE étape — compte et lignes compris, dans les deux présentations
      (l'étape Électrique : `filtre="electrique"`).
    - `pied` (nœud) : en présentation `groupes`, posé à droite de la légende (l'écran Documents y met
-     « Générer le devis »).
+     « Générer le devis »). Il reste à l'écran pendant la lecture et après un échec de lecture.
+   - `court` (bool, L3 — maquette `Electrique.dc.html`) : la liste COURTE d'une étape (avec `filtre`) —
+     « Prêt à envoyer ? » + pastille pâle « N points à régler », une ligne par contrôle servi (coche,
+     titre, phrase de 12 px, « ? »), la ligne à régler en or pâle avec « Régler » marine.
    ========================================================================== */
 
 const TON = { bloquant: 'danger', a_regler: 'warning' }
@@ -78,7 +81,9 @@ function Ligne({ controle, onRegler }) {
 
 const RANG = { bloquant: 0, a_regler: 1, info: 2 }
 
-export default function PretAEnvoyer({ calepinageId, testIdCompte, groupes = false, filtre = null, pied = null }) {
+export default function PretAEnvoyer({
+  calepinageId, testIdCompte, groupes = false, filtre = null, pied = null, court = false,
+}) {
   const [parametres, setParametres] = useSearchParams()
   const { data, loading, error } = useResource(
     (id) => calepinageApi.calepinages.pretAEnvoyer(id), calepinageId,
@@ -86,9 +91,14 @@ export default function PretAEnvoyer({ calepinageId, testIdCompte, groupes = fal
   )
   const lu = typeof data?.pret === 'boolean'
   if (loading || error || !lu) {
+    // Le `pied` (ex. le VRAI bouton de devis relayé, avec ses propres gardes) ne dépend pas de la
+    // lecture des contrôles : il reste à l'écran pendant le chargement et après un échec.
     return (
-      <EtatEcranAtelier id={calepinageId} loading={loading}
-        error={error || 'Le contrôle « Prêt à envoyer ? » n’a pas pu être lu.'} testIdErreur="cal-pret-erreur" />
+      <>
+        <EtatEcranAtelier id={calepinageId} loading={loading}
+          error={error || 'Le contrôle « Prêt à envoyer ? » n’a pas pu être lu.'} testIdErreur="cal-pret-erreur" />
+        {pied && <div className="cdoc-pied">{pied}</div>}
+      </>
     )
   }
 
@@ -108,6 +118,9 @@ export default function PretAEnvoyer({ calepinageId, testIdCompte, groupes = fal
     setParametres(suivants)
   }
 
+  if (court) {
+    return <GroupesPretAEnvoyer court controles={controles} testIdCompte={testIdCompte} onRegler={regler} />
+  }
   if (groupes) {
     const rangees = [...GROUPES, GROUPE_AUTRES]
       .map((g) => ({ ...g, controles: controles.filter((c) => groupeDuControle(c) === g.cle) }))

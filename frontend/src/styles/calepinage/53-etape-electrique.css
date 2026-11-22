@@ -1,0 +1,327 @@
+/* ============================================================================
+   L3 (maquettes 22/11) — ÉTAPE « ÉLECTRIQUE » ET SOUS-ÉCRAN « SCHÉMA ».
+   Maquettes `Electrique.dc.html` / `Schema.dc.html`. Jetons seuls (thème sombre par les jetons),
+   tailles 12 / 14 / 16 / 20 px. Importée par `electrique/EtapeElectrique.jsx` et
+   `atelier/coque/etapes/EtapeSchema.jsx`.
+   ========================================================================== */
+
+/* ── Panneau de l'étape Électrique ─────────────────────────────────────── */
+.cel-ecran { display: flex; flex-direction: column; gap: 20px; font-size: 0.875rem; }
+.cel-libelle { font-size: 0.875rem; font-weight: 600; }
+.cel-onduleur { display: flex; flex-direction: column; gap: 8px; }
+.cel-choix {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 56px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+}
+.cel-choix:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+.cel-choix select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.cel-choix select:disabled { cursor: not-allowed; }
+.cel-choix-texte { display: flex; flex-direction: column; min-width: 0; }
+.cel-choix-nom { font-weight: 600; font-size: 0.875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cel-choix-ligne { font-size: 0.75rem; color: var(--muted-foreground); }
+.cel-choix[data-vide='1'] .cel-choix-nom { color: var(--muted-foreground); }
+.cel-choix-chevron { flex: none; color: var(--muted-foreground); }
+.cel-lien {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--info);
+  font-weight: 500;
+  font-size: 0.875rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.cel-refus { margin: 0; font-size: 0.75rem; color: var(--destructive); }
+
+/* « Prêt à envoyer ? » court (`PretAEnvoyer court`) */
+.cel-pret { display: flex; flex-direction: column; gap: 8px; }
+.cel-pret-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cel-pret-tete h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
+.cel-pret-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  background: color-mix(in oklch, var(--warning) 18%, var(--card));
+  color: var(--warning-text);
+}
+.cel-pret-badge[data-ton='ok'] { background: color-mix(in oklch, var(--success) 14%, var(--card)); color: var(--success-text); }
+.cel-pret-vide { margin: 0; font-size: 0.75rem; color: var(--muted-foreground); }
+.cel-pret-lignes { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.cel-pret-ligne {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.cel-pret-ligne:last-child { border-bottom: 0; }
+.cel-pret-ligne[data-etat='a_regler'],
+.cel-pret-ligne[data-etat='bloquant'] { background: color-mix(in oklch, var(--primary) 12%, var(--card)); }
+.cel-pret-coche { flex: none; color: var(--success-text); }
+.cel-pret-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cel-pret-titre { font-weight: 500; }
+.cel-pret-ligne[data-etat='a_regler'] .cel-pret-titre,
+.cel-pret-ligne[data-etat='bloquant'] .cel-pret-titre { font-weight: 600; }
+.cel-pret-detail { font-size: 0.75rem; color: var(--muted-foreground); }
+.cel-pret .cdoc-aide > span { width: 32px; height: 32px; border-radius: 16px; }
+.cel-pret-regler {
+  flex: none;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--foreground);
+  color: var(--background);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+/* Carte « Schéma électrique — Voir » */
+.cel-schema {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.cel-schema-texte { display: flex; flex-direction: column; }
+.cel-schema-titre { font-weight: 600; }
+.cel-schema-detail { font-size: 0.75rem; color: var(--muted-foreground); }
+.cel-bouton-contour {
+  flex: none;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 22%, var(--border));
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.cel-avances { font-size: 0.875rem; color: var(--muted-foreground); }
+.cel-retour,
+.csch-retour {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.cel-retour { align-self: flex-start; padding: 0; }
+.cel-retour:hover,
+.csch-retour:hover { color: var(--foreground); }
+
+/* ── Calques posés sur la carte (portail `SurCarte`) ───────────────────── */
+.cel-pastille {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  padding: 10px 20px;
+  white-space: nowrap;
+}
+.cel-pastille-case { display: flex; align-items: center; gap: 20px; }
+.cel-pastille-case + .cel-pastille-case { margin-left: 20px; }
+.cel-pastille-filet { width: 1px; height: 32px; background: var(--border); }
+.cel-legende {
+  position: absolute;
+  left: 16px;
+  bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  max-width: 40%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+}
+.cel-legende-ligne { display: inline-flex; align-items: center; gap: 6px; }
+.cel-legende-puce { width: 12px; height: 12px; border-radius: 3px; }
+.cal-coque[data-etape='electrique'][data-cadre='carte'] .cal-coque-statut { bottom: 76px; }
+.cel-barre {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.cel-barre-message {
+  max-width: 420px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 0.75rem;
+}
+.cel-barre-message p { margin: 0; }
+.cel-barre-outils {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow-lg, var(--shadow-md));
+}
+.cel-barre-principal,
+.cel-barre-texte {
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+.cel-barre-principal { padding: 0 16px; background: var(--foreground); color: var(--background); font-weight: 600; }
+.cel-barre-texte { padding: 0 14px; background: transparent; color: var(--foreground); font-weight: 500; }
+.cel-barre-texte:hover { background: var(--muted); }
+.cel-barre-principal:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Sous-écran « Schéma » (cadre `plein-panneau`) ─────────────────────── */
+.cal-coque[data-cadre='plein-panneau'] .cal-coque-plein { padding: 16px; background: var(--muted); }
+.csch-ecran { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.csch-planche {
+  flex: 1;
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.csch-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px 0 24px; }
+.csch-titres { display: flex; flex-direction: column; }
+.csch-titres h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.csch-titres span { font-size: 0.875rem; color: var(--muted-foreground); }
+.csch-outils { display: flex; align-items: center; gap: 8px; }
+.csch-zoom { display: flex; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.csch-zoom button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: var(--card);
+  color: var(--foreground);
+}
+.csch-zoom button + button { border-left: 1px solid var(--border); }
+.csch-zoom button:disabled { color: var(--muted-foreground); cursor: not-allowed; }
+.csch-vue {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 16px 24px 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  border-radius: 10px;
+  background: var(--background);
+}
+.csch-vue:active { cursor: grabbing; }
+.csch-vue:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.csch-dessin { position: absolute; inset: 0; transform-origin: center; }
+.csch-dessin svg { display: block; width: 100%; height: 100%; }
+.csch-motifs { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px; }
+.csch-note { margin: 0; padding: 12px 24px 18px; font-size: 0.75rem; color: var(--muted-foreground); }
+
+/* Panneau : légende, cartouche, note bleue, pied */
+.cel-section { display: flex; flex-direction: column; gap: 8px; }
+.cel-section h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
+.csch-legende { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; }
+.csch-legende li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.csch-legende li:last-child { border-bottom: 0; }
+.csch-trait { flex: none; width: 28px; height: 3px; background: var(--foreground); }
+.csch-trait-pointille { height: 0; background: none; border-top: 2px dashed var(--muted-foreground); }
+.csch-mm2 { flex: none; width: 28px; font-size: 0.75rem; font-weight: 600; }
+.csch-cartouche {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.csch-cartouche > div { display: contents; }
+.csch-cartouche dt,
+.csch-cartouche dd { margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.csch-cartouche dt { background: var(--background); color: var(--muted-foreground); }
+.csch-cartouche dd { font-weight: 500; overflow-wrap: anywhere; }
+.csch-cartouche > div:last-child dt,
+.csch-cartouche > div:last-child dd { border-bottom: 0; }
+.csch-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklch, var(--info) 28%, var(--card));
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--info) 7%, var(--card));
+  color: color-mix(in oklch, var(--info) 60%, var(--foreground));
+  line-height: 1.45;
+}
+.csch-info svg { flex: none; margin-top: 2px; color: var(--info); }
+.csch-pied { display: flex; flex-direction: column; gap: 8px; }
+.csch-pied-messages p { margin: 0; font-size: 0.75rem; color: var(--destructive); }
+.csch-pied-boutons { display: flex; gap: 8px; }
+.csch-pied-boutons .cal-bouton-or-plein { flex: 1; width: auto; }
+.csch-dxf {
+  height: 48px;
+  padding: 0 18px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 22%, var(--border));
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 1rem;
+}
+.csch-dxf:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Cibles tactiles ≥ 44 px (pointeur grossier) */
+@media (pointer: coarse) {
+  .cel-lien,
+  .cel-pret-regler,
+  .cel-bouton-contour { min-height: 44px; }
+}

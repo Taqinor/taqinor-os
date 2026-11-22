@@ -1,8 +1,9 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../../api/calepinageApi'
 import { ErrorBoundary, SkeletonCard, SkeletonText } from '../../../../ui'
 import '../../../../styles/calepinage/50-coque-atelier.css'
+import '../../../../styles/calepinage/56-coque-responsive.css'
 import BarreEnregistrement from '../BarreEnregistrement'
 import { formaterHeureBrouillon } from '../contexteAtelier'
 import { PARAM_MODE, useModeExpert } from '../modeExpert'
@@ -11,7 +12,7 @@ import {
   CADRES, ETAPES, ecranCoque, premierOngletEtape, useParcours, vueParcours,
 } from '../parcoursGuide'
 import BarreProjet from './BarreProjet'
-import { ContexteCoque } from './contexteCoque'
+import { ContexteCoque, ContextePresentation } from './contexteCoque'
 import PanneauEtape from './PanneauEtape'
 import { BoutonOr } from './primitives'
 import RailEtapes from './RailEtapes'
@@ -35,7 +36,33 @@ import RailEtapes from './RailEtapes'
 
    Guidé : l'écran de l'étape (`ECRANS_ETAPE`, champs `cadre` / `titre`) ; Expert
    et « Avancé » : l'ancien inspecteur entier (`avance`), rail d'onglets compris.
+
+   TABLETTE / TÉLÉPHONE (< 1 280 px, maquette Tablette) : le panneau d'étape devient le
+   TIROIR du bas (`tiroir`, poignée pour l'agrandir) ; le rail se replie en pictogrammes
+   (en barre du bas au téléphone). Mise en page : 56-coque-responsive.css.
+
+   PRÉSENTATION (« Montrer au client », `ContextePresentation` posé par client/VueClient) :
+   le MÊME atelier, sa carte 3D seule visible ; bandeau, rail, panneau et calques d'étape
+   sont MASQUÉS (`hidden`, jamais démontés : les contrôles du constructeur restent là, le
+   soleil leur est renvoyé) ; l'habillage client (`presentation.rendu`) est rendu autour.
    ========================================================================== */
+
+const REQUETE_TIROIR = '(max-width: 1279px)'
+
+/** Vrai quand la largeur range le panneau d'étape en tiroir du bas (même seuil que la feuille 56). */
+function useTiroir() {
+  const lire = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? !!window.matchMedia(REQUETE_TIROIR)?.matches : false)
+  const [tiroir, setTiroir] = useState(lire)
+  useEffect(() => {
+    const mq = typeof window.matchMedia === 'function' ? window.matchMedia(REQUETE_TIROIR) : null
+    if (!mq?.addEventListener) return undefined
+    const suivre = () => setTiroir(!!mq.matches)
+    mq.addEventListener('change', suivre)
+    return () => mq.removeEventListener('change', suivre)
+  }, [])
+  return tiroir
+}
 
 const TOTAL = ETAPES.length
 
@@ -84,6 +111,9 @@ export default function CoqueAtelier({
   carte, statut = null, groupes = {}, alertes = null, avance: contenuAvance = null,
   ecranProps = {}, enregistreLe = null, onEtape = null, renderAtelierPanneaux = null,
 }) {
+  const presentation = useContext(ContextePresentation)
+  const tiroir = useTiroir() && !presentation
+  const [deplie, setDeplie] = useState(false)
   const [parametres, setParametres] = useSearchParams()
   const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
   const parcours = useParcours(calepinageId)
@@ -118,6 +148,8 @@ export default function CoqueAtelier({
   const [noeudPiedPanneau, setNoeudPiedPanneau] = useState(null)
   const [noeudPiedPlein, setNoeudPiedPlein] = useState(null)
   const [noeudDevis, setNoeudDevis] = useState(null)
+  const [noeudControle, setNoeudControle] = useState(null)
+  const [noeudPresentation, setNoeudPresentation] = useState(null)
   const [piedsPris, setPiedsPris] = useState(0)
   const prendrePied = useCallback(() => {
     setPiedsPris((n) => n + 1)
@@ -125,9 +157,13 @@ export default function CoqueAtelier({
   }, [])
   const pleine = cadre === CADRES.PLEIN
   const valeurCoque = useMemo(() => ({
-    noeuds: { surCarte: noeudSurCarte, panneau: noeudPanneau, pied: pleine ? noeudPiedPlein : noeudPiedPanneau },
+    noeuds: {
+      surCarte: noeudSurCarte, panneau: noeudPanneau, pied: pleine ? noeudPiedPlein : noeudPiedPanneau,
+      controle: noeudControle,
+    },
     prendrePied,
-  }), [noeudSurCarte, noeudPanneau, noeudPiedPanneau, noeudPiedPlein, pleine, prendrePied])
+    tiroir,
+  }), [noeudSurCarte, noeudPanneau, noeudPiedPanneau, noeudPiedPlein, noeudControle, pleine, prendrePied, tiroir])
 
   // La carte réapparaît (retour d'une étape pleine) : elle se recale sur sa boîte.
   const carteAvant = useRef(carteVisible)
@@ -176,19 +212,21 @@ export default function CoqueAtelier({
   return (
     <ContexteCoque.Provider value={valeurCoque}>
       <div className="rp9-host cal-coque" data-testid="cal-coque" data-etape={cleEtape} data-cadre={cadre}
-        data-avance={avance ? '1' : '0'} data-expert={expert ? '1' : '0'}>
-        <BarreProjet retour={retour} titre={titre} sousTitre={sousTitre} expert={expert} onExpert={basculerExpert}
+        data-avance={avance ? '1' : '0'} data-expert={expert ? '1' : '0'}
+        data-presentation={presentation ? '1' : undefined}>
+        <BarreProjet cache={!!presentation} retour={retour} titre={titre} sousTitre={sousTitre} expert={expert} onExpert={basculerExpert}
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
           enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
             derniereVersionLe={derniereVersionLe} />} />
         <div id="rp9-studio" className="cal-coque-corps">
-          <RailEtapes etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
+          <RailEtapes cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
             avance={avance} onAvance={setAvanceOuvert} />
           <main className="cal-coque-centre">
             <div id="rp9-studio-scene" className="cal-coque-scene" hidden={!carteVisible}>
               {carte}
-              <div ref={setNoeudSurCarte} className="cal-coque-sur-carte" />
+              <div ref={setNoeudSurCarte} className="cal-coque-sur-carte" hidden={presentation ? true : undefined} />
               {statut}
+              {presentation && <div ref={setNoeudPresentation} className="cal-coque-sur-carte-client" />}
             </div>
             {!carteVisible && (
               <div className="cal-coque-plein">
@@ -198,7 +236,8 @@ export default function CoqueAtelier({
             )}
           </main>
           <PanneauEtape numero={rang >= 0 ? rang + 1 : null} total={TOTAL} titre={ecran?.titre ?? null}
-            cache={pleine && !avance} refCorps={setNoeudPanneau} refPied={setNoeudPiedPanneau} pied={piedParDefaut}>
+            cache={(pleine && !avance) || !!presentation} refCorps={setNoeudPanneau} refPied={setNoeudPiedPanneau}
+            pied={piedParDefaut} tiroir={tiroir} deplie={deplie} onDeplier={setDeplie} refControle={setNoeudControle}>
             {alertes}
             {carteVisible && ecranMonte}
             <div className="cal-coque-groupe" data-groupe="toit" hidden={!(avance || cleEtape === 'toit')}>
@@ -216,6 +255,7 @@ export default function CoqueAtelier({
             </div>
           </PanneauEtape>
         </div>
+        {presentation?.rendu?.({ calepinageId, builderApi: ecranProps.builderApi ?? null, noeudScene: noeudPresentation })}
       </div>
     </ContexteCoque.Provider>
   )

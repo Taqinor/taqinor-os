@@ -12,6 +12,56 @@ import ImportAffectation from './ImportAffectation'
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
 const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
 
+/* « Relancer l'affectation automatique » : UNE requête (l'affectation manuelle vidée), partagée par
+   l'écran ci-dessous et la barre de la carte de l'étape Électrique (« Raccorder automatiquement »).
+   Rend le résultat recalculé ; un refus rend `{champ: motif}` (le serveur NOMME le champ). */
+function relancerAffectationAuto(id) {
+  return calepinageApi.calepinages.enregistrerEntreeElectrique(id, { affectation_manuelle: [] })
+}
+function refusAffectation(err, defaut) {
+  const corps = err?.response?.data
+  return corps && typeof corps === 'object' ? corps : { affectation_manuelle: defaut }
+}
+const REFUS_AUTO = 'Rétablissement refusé par le serveur.'
+
+/* Maquette Électrique (22/11) — LA BARRE D'ACTIONS POSÉE SUR LA CARTE (`cal-elec-actions-carte`).
+   « Raccorder automatiquement » = le MÊME geste que « Relancer l'affectation automatique » ci-dessous
+   (même requête, même confirmation quand une affectation faite à la main serait effacée, refus du
+   serveur affichés tels quels) ; « Modifier une chaîne » ouvre l'écran d'affectation (`onModifier`).
+   « Déplacer l'onduleur » n'est PAS proposé : aucune position d'onduleur n'est enregistrée (D-ACAL-70). */
+export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeule = false, onRaccorde, onModifier }) {
+  const [arme, setArme] = useState(false)
+  const [enCours, setEnCours] = useState(false)
+  const [refus, setRefus] = useState(null)
+  const raccorder = () => {
+    if (manuelles && !arme) { setArme(true); return }
+    setArme(false)
+    setRefus(null)
+    setEnCours(true)
+    relancerAffectationAuto(calepinageId)
+      .then((r) => onRaccorde?.(r.data))
+      .catch((err) => setRefus(Object.values(refusAffectation(err, REFUS_AUTO)).map(String)))
+      .finally(() => setEnCours(false))
+  }
+  return (
+    <div className="cel-barre" data-testid="cal-elec-actions-carte">
+      {(arme || refus) && (
+        <div className="cel-barre-message" role={refus ? 'alert' : 'status'}>
+          {arme && <p>L’affectation faite à la main sera effacée. Confirmez pour continuer.</p>}
+          {(refus ?? []).map((m) => <p key={m} className="cel-refus">{m}</p>)}
+        </div>
+      )}
+      <div role="toolbar" aria-label="Outils du raccordement" className="cel-barre-outils">
+        <button type="button" className="cel-barre-principal" onClick={raccorder}
+          disabled={lectureSeule || enCours} title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}>
+          {arme ? 'Confirmer : effacer l’affectation manuelle' : 'Raccorder automatiquement'}
+        </button>
+        <button type="button" className="cel-barre-texte" onClick={onModifier}>Modifier une chaîne</button>
+      </div>
+    </div>
+  )
+}
+
 /* ── L'ÉTAT LOCAL : la proposition, rien d'autre ───────────────────────── */
 
 /** Les lignes manuelles ENREGISTRÉES, relues dans la table serveur. */
@@ -290,19 +340,12 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     if (!armeAuto) { setArmeAuto(true); return }
     setArmeAuto(false)
     setErreursChamp({})
-    calepinageApi.calepinages.enregistrerEntreeElectrique(id, {
-      affectation_manuelle: [],
-    })
+    relancerAffectationAuto(id)
       .then((r) => {
         appliquerResultat(r.data)
         setEnregistre('Affectation automatique rétablie.')
       })
-      .catch((err) => {
-        const corps = err?.response?.data
-        setErreursChamp(corps && typeof corps === 'object'
-          ? corps
-          : { affectation_manuelle: 'Rétablissement refusé par le serveur.' })
-      })
+      .catch((err) => setErreursChamp(refusAffectation(err, REFUS_AUTO)))
   }
 
   if (chargement) {

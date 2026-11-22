@@ -29,13 +29,15 @@
      6. chaque motif se range dans son domaine, et le bouton du domaine mène à
         l'onglet RESPONSABLE, nommé par le registre `atelier/onglets.js`. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: {
     evaluerElectrique: vi.fn(), resultat: vi.fn(), enregistrerEntreeElectrique: vi.fn(),
+    // ACAL1300 — l'étape Électrique de la coque (fin de fichier) lit aussi ces routes.
+    entreeElectrique: vi.fn(), configurationsOnduleur: vi.fn(), pretAEnvoyer: vi.fn(), explications: vi.fn(),
   } },
 }))
 // ACAL284 — le droit `calepinage_approuver` (défaut gravé) commande « Passer outre ».
@@ -45,6 +47,8 @@ import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { ongletParCle } from '../atelier/onglets'
 import VerdictElectrique, { CLE_ONGLET } from './VerdictElectrique'
+import EtapeElectrique from './EtapeElectrique'
+import { ContexteCoque } from '../atelier/coque/contexteCoque'
 import {
   DOMAINE_AUTRE, DOMAINES, LIBELLE_CODE_INCONNU, domaineDuMotif, grouperMotifs, libelleCode, libelleStatut, motifsRefusants,
   statutAbstention, statutRefuse, tonStatut,
@@ -530,5 +534,174 @@ describe('ACAL712 — carte chaîne touchée par l’ombre', () => {
     servirCascade(ombrage())
     await waitFor(() => expect(calepinageApi.calepinages.evaluerElectrique).toHaveBeenCalled())
     expect(screen.queryByTestId('acal712-cartes')).toBeNull()
+  })
+})
+
+/* ── ACAL1299 / ACAL1300 — l'étape Électrique de la coque (maquette `Electrique.dc.html`) ──────────── */
+describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)', () => {
+  const resultat = () => structuredClone(exempleContrat('calepinage', 'calepinage_resultat'))
+  const entree = () => structuredClone(exempleContrat('calepinage', 'calepinage_entree_electrique'))
+  const configs = () => structuredClone(exempleContrat('calepinage', 'calepinage_configurations_onduleur'))
+  const pret = (controles) => {
+    const p = structuredClone(exempleContrat('calepinage', 'calepinage_pret_a_envoyer'))
+    if (controles) p.controles = controles
+    return p
+  }
+  const servirEtape = ({ r = resultat(), e = entree(), c = configs(), p = pret() } = {}) => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: r })
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: e })
+    calepinageApi.calepinages.configurationsOnduleur.mockResolvedValue({ data: c })
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue({ data: p })
+    calepinageApi.calepinages.explications.mockResolvedValue({ data: { entrees: [] } })
+  }
+  function TemoinUrl() {
+    return <p data-testid="temoin-url">{useLocation().search}</p>
+  }
+  const rendreEtape = ({ builderApi = null } = {}) => {
+    const surCarte = document.createElement('div')
+    document.body.appendChild(surCarte)
+    const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+    render(
+      <MemoryRouter initialEntries={['/calepinage/7?onglet=verdict-electrique']}>
+        <Routes>
+          <Route path="/calepinage/:id" element={(
+            <ContexteCoque.Provider value={coque}>
+              <EtapeElectrique calepinageId={7} builderApi={builderApi} ouvert="verdict-electrique"
+                action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+              <TemoinUrl />
+            </ContexteCoque.Provider>
+          )} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    return surCarte
+  }
+  afterEach(() => { document.body.innerHTML = '' })
+
+  it('panneau dans l’ordre : onduleur, « Comparer avec N », « Prêt à envoyer ? » court, Schéma — Voir ; aucune clé technique', async () => {
+    servirEtape()
+    rendreEtape()
+    const ecran = screen.getByTestId('cal-etape-electrique-ecran')
+    // Le nom désigné et la ligne SERVIE de la configuration retenue (6 kW, 2 entrées) + panneaux du chaînage servi.
+    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('Onduleur réseau 10 kW (exemple)'))
+    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('6 kW · 2 entrées · pour 12 panneaux'))
+    // N = configurations servies autres que la retenue (2 dans l'échantillon).
+    expect(screen.getByRole('button', { name: 'Comparer avec 2 autres onduleurs' })).toBeTruthy()
+    const liste = await screen.findByTestId('cal-pret-a-envoyer')
+    // Filtre « electrique » : les contrôles des autres étapes n'y sont pas.
+    expect(within(liste).getByTestId('cal-pret-ligne-tension_froid')).toHaveTextContent('Tension des chaînes par grand froid')
+    expect(within(liste).queryByTestId('cal-pret-ligne-visite_validee')).toBeNull()
+    expect(within(liste).queryByTestId('cal-pret-ligne-simulation_fraiche')).toBeNull()
+    expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Prêt à envoyer')
+    const blocs = [...ecran.children].map((n) => n.getAttribute('data-testid'))
+    expect(blocs.indexOf('cal-elec-onduleur')).toBeLessThan(blocs.indexOf('cal-pret-a-envoyer'))
+    expect(blocs.indexOf('cal-pret-a-envoyer')).toBeLessThan(blocs.indexOf('cal-elec-schema-voir'))
+    expect(screen.getByTestId('cal-elec-schema-voir')).toHaveTextContent('Schéma électriqueDessiné tout seul à partir du raccordementVoir')
+    // Rien de normatif ni de clé brute à l'écran guidé (mutant : réafficher `ombrage.shading12x24`).
+    expect(ecran.textContent).not.toMatch(/shading12x24|NF C 15-100|UTE C 15-712|ombrage\./)
+    // Les huit sections d'avant restent, repliées sous « Réglages avancés ».
+    expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'closed')
+  })
+
+  it('un point électrique à régler : pastille « 1 point à régler », ligne or pâle et « Régler » qui ouvre sa cible', async () => {
+    const base = pret()
+    const ok = base.controles.find((c) => c.code === 'tension_froid')
+    const aRegler = { ...ok, code: 'chutes_tension', libelle: 'Chutes de tension', etat: 'a_regler',
+      valeur_texte: 'Aucun tronçon mesuré', cible: { etape: 'electrique', onglet: 'cheminement-cables', champ: '' } }
+    servirEtape({ p: pret([ok, aRegler]) })
+    rendreEtape()
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 point à régler'))
+    const ligne = screen.getByTestId('cal-pret-ligne-chutes_tension')
+    expect(ligne).toHaveAttribute('data-etat', 'a_regler')
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Régler' }))
+    expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet')).toBe('cheminement-cables')
+  })
+
+  it('« Voir » ouvre le sous-écran Schéma (`?onglet=schema`)', async () => {
+    servirEtape()
+    rendreEtape()
+    fireEvent.click(within(screen.getByTestId('cal-elec-schema-voir')).getByRole('button', { name: 'Voir' }))
+    expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet')).toBe('schema')
+  })
+
+  it('choisir un onduleur fait le geste de l’onglet Matériel : les trois désignations, `onduleur_produit` remplacé', async () => {
+    const e = entree()
+    e.candidats.onduleurs = [
+      { id: 901, libelle: 'Onduleur A', marque: '', favori: false, fiche_complete: true, champs_manquants: [] },
+      { id: 902, libelle: 'Onduleur B', marque: 'M', favori: false, fiche_complete: true, champs_manquants: [] },
+    ]
+    servirEtape({ e })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendreEtape()
+    const choix = await screen.findByLabelText('Onduleur')
+    await waitFor(() => expect(choix).not.toBeDisabled())
+    fireEvent.change(choix, { target: { value: '902' } })
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledWith(7, {
+      module_produit: 4112, onduleur_produit: 902, optimiseur_produit: null,
+    }))
+    // L'écran relit ensuite ce que le serveur a stocké.
+    await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique).toHaveBeenCalledTimes(2))
+  })
+
+  it('« Comparer avec N autres onduleurs » ouvre la comparaison existante, sans seconde lecture', async () => {
+    servirEtape()
+    rendreEtape()
+    fireEvent.click(await screen.findByRole('button', { name: 'Comparer avec 2 autres onduleurs' }))
+    expect(screen.getByTestId('acal617-carte-43')).toBeTruthy()
+    expect(screen.queryByTestId('acal617-lien')).toBeNull()
+    expect(calepinageApi.calepinages.configurationsOnduleur).toHaveBeenCalledTimes(1)
+  })
+
+  it('carte : pastille « Chaînes | Onduleur | Câble côté panneaux » servie, légende des couleurs dessinées, barre d’actions', async () => {
+    servirEtape()
+    const builderApi = { setAffectationChaines: vi.fn() }
+    const carte = rendreEtape({ builderApi })
+    const pastille = await within(carte).findByTestId('cal-sur-carte-resume')
+    // 2 chaînes de 2 modules, onduleur dimensionné 10 kW, câble DC = 18,4 + 12,0 m mesurés.
+    await waitFor(() => expect(pastille).toHaveTextContent('Chaînes2 × 2 panneaux'))
+    expect(pastille).toHaveTextContent('Onduleur10 kW')
+    expect(pastille).toHaveTextContent('Câble côté panneaux30 m')
+    // Les couleurs servies sont poussées au constructeur, et la légende les nomme.
+    await waitFor(() => expect(builderApi.setAffectationChaines).toHaveBeenCalledWith(resultat().electrique.affectation, 'chaine'))
+    const legende = within(carte).getByRole('group', { name: 'Couleurs des chaînes' })
+    expect(legende).toHaveTextContent('Chaîne 1 · entrée 1')
+    expect(legende).toHaveTextContent('Chaîne 2 · entrée 2')
+    const barre = within(carte).getByTestId('cal-elec-actions-carte')
+    expect(within(barre).getByRole('button', { name: 'Raccorder automatiquement' })).toBeTruthy()
+    expect(within(barre).getByRole('button', { name: 'Modifier une chaîne' })).toBeTruthy()
+    // D-ACAL-70 : aucune position d'onduleur enregistrée ⇒ aucun « Déplacer l'onduleur ».
+    expect(within(barre).queryByText(/Déplacer l/)).toBeNull()
+  })
+
+  it('carte : un câble non mesuré est OMIS (jamais une longueur inventée) ; sans constructeur, aucune légende', async () => {
+    const r = resultat()
+    r.troncons = null
+    servirEtape({ r })
+    const carte = rendreEtape()
+    const pastille = await within(carte).findByTestId('cal-sur-carte-resume')
+    await waitFor(() => expect(pastille).toHaveTextContent('Chaînes'))
+    expect(pastille).not.toHaveTextContent('Câble côté panneaux')
+    expect(within(carte).queryByRole('group', { name: 'Couleurs des chaînes' })).toBeNull()
+  })
+
+  it('« Raccorder automatiquement » envoie l’affectation automatique ; un refus du serveur est affiché tel quel', async () => {
+    servirEtape()
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValueOnce({
+      response: { data: { affectation_manuelle: 'Aucun onduleur désigné : chaînage impossible.' } } })
+    const carte = rendreEtape()
+    fireEvent.click(await within(carte).findByRole('button', { name: 'Raccorder automatiquement' }))
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+      .toHaveBeenCalledWith(7, { affectation_manuelle: [] }))
+    expect(await within(carte).findByText('Aucun onduleur désigné : chaînage impossible.')).toBeTruthy()
+  })
+
+  it('« Modifier une chaîne » ouvre l’écran d’affectation existant dans le panneau, avec un retour', async () => {
+    servirEtape()
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { modules_sous_seuil: [] } })
+    const carte = rendreEtape()
+    fireEvent.click(await within(carte).findByRole('button', { name: 'Modifier une chaîne' }))
+    expect(await screen.findByTestId('cal234-ecran')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Raccordement' }))
+    expect(await screen.findByTestId('cal-elec-onduleur')).toBeTruthy()
   })
 })

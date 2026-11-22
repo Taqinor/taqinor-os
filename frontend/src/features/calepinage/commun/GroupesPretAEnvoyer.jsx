@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Info, OctagonX } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
+import { Icone as Picto } from '../atelier/coque/primitives'
 import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
 import { phraseDesBons } from './PretAEnvoyer.helpers'
 import useExplications, { remplirPhrase } from './useExplications'
@@ -83,7 +84,53 @@ function messagePied(controles) {
   return null
 }
 
-export default function GroupesPretAEnvoyer({ groupes, testIdCompte, pied, onRegler }) {
+/* Maquette `Electrique.dc.html` — la liste COURTE d'une étape (`PretAEnvoyer court filtre=…`) : titre +
+   pastille pâle « N points à régler », puis UNE liste encadrée : coche verte, titre, phrase de 12 px servie,
+   « ? » (cause longue derrière) ; le point à régler sur fond or pâle avec « Régler » marine (même cible). */
+function ListeCourte({ controles, testIdCompte, onRegler }) {
+  const n = controles.filter((c) => c.etat === 'a_regler' || c.etat === 'bloquant').length
+  const lignes = [...controles].sort((a, b) => (RANG[b.etat] ?? 2) - (RANG[a.etat] ?? 2))
+  return (
+    <section data-testid="cal-pret-a-envoyer" aria-labelledby="cel-pret-titre" className="cel-pret">
+      <div className="cel-pret-tete">
+        <h2 id="cel-pret-titre">Prêt à envoyer ?</h2>
+        <span data-testid={testIdCompte} className="cel-pret-badge" data-ton={n > 0 ? 'a_regler' : 'ok'}>
+          {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
+        </span>
+      </div>
+      {lignes.length === 0
+        ? <p className="cel-pret-vide">Aucun contrôle publié pour cette étape.</p>
+        : (
+          <ul className="cel-pret-lignes">
+            {lignes.map((c) => {
+              const aRegler = (c.etat === 'a_regler' || c.etat === 'bloquant') && Boolean(c.cible?.onglet)
+              return (
+                <li key={c.code} data-testid={`cal-pret-ligne-${c.code}`} data-etat={c.etat} className="cel-pret-ligne">
+                  {c.etat === 'ok'
+                    ? <Picto nom="coche" taille={18} epaisseur={2.4} className="cel-pret-coche" />
+                    : <Pastille etat={c.etat} taille={18} />}
+                  <span className="cel-pret-texte">
+                    <span className="cel-pret-titre">{c.libelle}</span>
+                    {c.valeur_texte ? <span className="cel-pret-detail">{c.valeur_texte}</span> : null}
+                  </span>
+                  <Pourquoi controle={c} />
+                  {aRegler && (
+                    <button type="button" data-testid={`cal-pret-regler-${c.code}`} className="cel-pret-regler"
+                      onClick={() => onRegler(c.cible)}>
+                      Régler
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+    </section>
+  )
+}
+
+export default function GroupesPretAEnvoyer({ groupes, testIdCompte, pied, onRegler, court = false, controles = [] }) {
+  if (court) return <ListeCourte controles={controles} testIdCompte={testIdCompte} onRegler={onRegler} />
   const tous = groupes.flatMap((g) => g.controles)
   const avecVerdict = tous.filter((c) => ['ok', 'a_regler', 'bloquant'].includes(c.etat))
   const bons = avecVerdict.filter((c) => c.etat === 'ok').length

@@ -1,6 +1,9 @@
 import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
 import { modulesDuDocument } from '@roofpro/modulesGeo'
+import { useEffect, useState } from 'react'
 import { formatNumber } from '../../../lib/format'
+import calepinageApi from '../../../api/calepinageApi'
+import useDocumentCalepinage from '../useDocumentCalepinage'
 
 /* ============================================================================
    « MONTRER AU CLIENT » — lectures pures (maquette TelephoneClient).
@@ -55,4 +58,41 @@ export function tuilesClient(document, resultat) {
     tuiles.push({ cle: 'couverture', valeur: `${Math.round(couverture * 100)} %`, libelle: 'de votre consommation' })
   }
   return tuiles
+}
+
+/** Les lectures de la vue client (GET seulement) : document enregistré, contexte, résultat publié. */
+export function useDonneesClient(id) {
+  const doc = useDocumentCalepinage(id)
+  const [contexte, setContexte] = useState(null)
+  const [resultat, setResultat] = useState(null)
+  useEffect(() => {
+    if (!id) return undefined
+    let vivant = true
+    Promise.resolve(calepinageApi.calepinages.designContext?.(id))
+      .then((res) => { if (vivant) setContexte(res?.data ?? null) }).catch(() => {})
+    Promise.resolve(calepinageApi.calepinages.resultat?.(id))
+      .then((res) => { if (vivant) setResultat(res?.data ?? null) }).catch(() => {})
+    return () => { vivant = false }
+  }, [id])
+  const ok = doc.etat === 'ok'
+  const ville = (contexte?.calepinage?.client_ville ?? '').trim()
+  return {
+    doc,
+    plan: ok ? planDessus(doc.document) : null,
+    tuiles: ok ? tuilesClient(doc.document, resultat) : [],
+    // Sans titre servi, le nom que l'atelier donne lui-même au calepinage (« Calepinage N », coque/projet.js).
+    titre: (contexte?.calepinage?.titre ?? '').trim() || (contexte ? `Calepinage ${id}` : ''),
+    ville,
+    sousTitre: [ville, ok ? libellePan(doc.document) : ''].filter(Boolean).join(' · '),
+  }
+}
+
+/** Vrai si le navigateur peut rendre la 3D (WebGL). */
+export function webglDisponible() {
+  try {
+    const toile = document.createElement('canvas')
+    return !!(toile.getContext('webgl2') || toile.getContext('webgl'))
+  } catch {
+    return false
+  }
 }

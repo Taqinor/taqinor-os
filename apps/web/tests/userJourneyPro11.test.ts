@@ -1386,3 +1386,62 @@ describe('parcours utilisateur pro-11 — ACAL492 Ctrl + D sans obstacle parle',
     expect(txt('rp9-status')).toContain('Sélectionnez d’abord un obstacle à dupliquer.');
   }, 300000);
 });
+
+// Maquette Main (22/11, ACAL1288) — dans l'atelier plein écran (`.cal-coque`), les formes du toit sont six
+// tuiles illustrées + « Tracé libre » ; hors coque (mode lead), les mêmes puces texte qu'avant.
+describe('parcours utilisateur pro-11 — tuiles « Forme du toit » de la coque', () => {
+  const monter = async (dansCoque: boolean, contour: () => [number, number][]) => {
+    const { monterFormesToit } = await import('../src/scripts/roofPro11/formesToit');
+    document.body.innerHTML = `<div class="${dansCoque ? 'rp9-host cal-coque' : 'rp9-host'}"><div><button id="rp9-add-area"></button></div></div>`;
+    const statuts: string[] = [];
+    const appliques: number[] = [];
+    const f = monterFormesToit({
+      ancre: document.getElementById('rp9-add-area'), contour, pente: () => 30, existants: () => [{ id: 'area-1' }],
+      obstacles: () => 0, appliquer: (pans) => void appliques.push(pans.length), setStatus: (m) => void statuts.push(m),
+    });
+    const tuiles = () => Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-formes-toit button'));
+    return { f, statuts, appliques, tuiles };
+  };
+  const carre = (): [number, number][] => [[-7.62, 33.59], [-7.6199, 33.59], [-7.6199, 33.5901], [-7.62, 33.5901]];
+
+  it('coque : libellés « En L »/« En T », 7 tuiles avec pictogramme currentColor, Tracé libre, hook de la grille', async () => {
+    const { tuiles } = await monter(true, carre);
+    expect(tuiles().map((b) => b.textContent)).toEqual(['Plat', '1 pan', '2 pans', '4 pans', 'En L', 'En T', 'Tracé libre']);
+    expect(document.getElementById('rp9-formes-toit')?.dataset.testid).toBe('cal-toit-formes');
+    for (const b of tuiles()) {
+      const svg = b.querySelector('svg.rp9-forme-picto')!;
+      expect(svg.getAttribute('stroke'), b.textContent!).toBe('currentColor');
+      expect(svg.getAttribute('aria-hidden')).toBe('true');
+      expect(b.classList.contains('rp9-tuile-forme')).toBe(true);
+      expect(b.getAttribute('aria-pressed')).toBe('false');
+    }
+  });
+
+  it('coque : la forme appliquée est choisie (aria-pressed) ; contour ouvert ⇒ formes aria-disabled, Tracé libre le dit', async () => {
+    let ferme = true;
+    const { f, statuts, appliques, tuiles } = await monter(true, () => (ferme ? carre() : []));
+    f.rafraichir();
+    tuiles().find((b) => b.dataset.forme === 'gable')!.click();
+    expect(appliques).toEqual([2]);
+    expect(tuiles().filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent)).toEqual(['2 pans']);
+    ferme = false;
+    f.rafraichir();
+    expect(tuiles().every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(tuiles().filter((b) => b.getAttribute('aria-disabled') === 'true').length).toBe(6);
+    expect(document.getElementById('rp9-formes-toit')!.hidden, 'coque : la grille reste visible contour ouvert').toBe(false);
+    tuiles().find((b) => b.dataset.forme === 'libre')!.click();
+    expect(statuts.at(-1)).toMatch(/^Tracé libre : cliquez sur la carte/);
+    expect(appliques).toEqual([2]);
+  });
+
+  it('hors coque (mode lead) : puces texte, sans pictogramme ni Tracé libre ni état choisi', async () => {
+    const { f, tuiles } = await monter(false, () => []);
+    f.rafraichir();
+    expect(document.getElementById('rp9-formes-toit')!.hidden, 'lead : masquée tant que le contour est ouvert').toBe(true);
+    expect(tuiles().map((b) => b.textContent)).toEqual(['Plat', '1 pan', '2 pans', '4 pans', 'En L', 'En T']);
+    expect(document.querySelector('.rp9-forme-picto')).toBeNull();
+    tuiles()[2].click();
+    expect(tuiles().some((b) => b.hasAttribute('aria-pressed') || b.hasAttribute('aria-disabled'))).toBe(false);
+    expect(document.getElementById('rp9-formes-toit')?.dataset.testid).toBeUndefined();
+  });
+});

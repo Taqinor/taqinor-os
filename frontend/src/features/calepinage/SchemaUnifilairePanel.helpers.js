@@ -106,3 +106,47 @@ export function corpsEdition(blocs, saisie) {
   }
   return corps
 }
+
+/* ============================================================================
+   ACAL1301 — LA LÉGENDE ET LE CARTOUCHE DU SOUS-ÉCRAN « SCHÉMA » (maquette `Schema.dc.html`).
+   La légende ne nomme QUE les signes que le SVG SERVI dessine (`core/electrique/schema.py` : liaisons
+   pleines fléchées, liaison de terre en pointillé, sections « mm² » du tableau) ; le cartouche ne
+   montre QUE les champs servis par le détail du calepinage (un champ absent : sa ligne est omise).
+   ========================================================================== */
+
+/** `[{cle, trait, libelle}]` — `trait` ∈ 'plein' | 'pointille' | 'mm2'. Aucun SVG ⇒ aucune ligne. */
+export function lignesLegende(svg) {
+  if (typeof svg !== 'string' || !svg) return []
+  const lignes = []
+  if (/<line\b(?![^>]*stroke-dasharray)[^>]*>/.test(svg)) {
+    lignes.push({ cle: 'liaison', trait: 'plein', libelle: 'Liaison entre deux organes' })
+  }
+  if (/stroke-dasharray/.test(svg)) lignes.push({ cle: 'terre', trait: 'pointille', libelle: 'Liaison à la terre' })
+  if (/mm²/.test(svg)) lignes.push({ cle: 'section', trait: 'mm2', libelle: 'Section du câble, puis sa longueur' })
+  return lignes
+}
+
+const date = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+const heure = (iso) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+const lisible = (iso) => typeof iso === 'string' && !Number.isNaN(Date.parse(iso))
+
+/** `[{libelle, valeur}]` : Projet (nom servi + ville servie), Date et Version (dernière version
+    enregistrée, empreinte courte du document), Auteur (responsable, sinon créateur) — servis seulement. */
+export function lignesCartouche(detail) {
+  if (!detail) return []
+  const nom = String(detail.nom ?? '').trim() || String(detail.reference ?? '').trim()
+  const ville = String(detail.contexte_geographique?.ville ?? detail.lead?.ville ?? detail.client?.ville ?? '').trim()
+  const projet = nom && ville && !nom.includes(ville) ? `${nom} — ${ville}` : nom
+  const le = lisible(detail.versions?.derniere_le) ? detail.versions.derniere_le
+    : (lisible(detail.modifie_le) ? detail.modifie_le : null)
+  const empreinte = typeof detail.layout_hash === 'string' && detail.layout_hash ? detail.layout_hash.slice(0, 8) : ''
+  const version = [lisible(detail.versions?.derniere_le) ? `Enregistrée à ${heure(detail.versions.derniere_le)}` : '', empreinte]
+    .filter(Boolean).join(' · ')
+  const auteur = String(detail.responsable?.nom_complet ?? detail.cree_par?.nom_complet ?? '').trim()
+  return [
+    { libelle: 'Projet', valeur: projet },
+    { libelle: 'Date', valeur: le ? date(le) : '' },
+    { libelle: 'Version', valeur: version },
+    { libelle: 'Auteur', valeur: auteur },
+  ].filter((l) => l.valeur)
+}

@@ -15,7 +15,9 @@ import { ContexteCoque } from './contexteCoque'
                         hors coque, rendu sur place ;
      - <PiedEtape>    : le pied de l'étape (bouton d'action plein largeur). Tant
                         qu'un écran le pose, la coque retire son pied par défaut
-                        (« Poser les panneaux → ») ; hors coque, rendu sur place.
+                        (« Poser les panneaux → ») ; hors coque, rendu sur place ;
+     - <EnTeteEtape>  : le contrôle principal, dans la rangée du titre quand le
+                        panneau est le tiroir du bas (tablette), sur place sinon.
    ========================================================================== */
 
 
@@ -39,6 +41,18 @@ export function PiedEtape({ children }) {
   const prendre = coque?.prendrePied
   useEffect(() => (prendre ? prendre() : undefined), [prendre])
   return <Portail cible="pied">{children}</Portail>
+}
+
+/* <EnTeteEtape> : le CONTRÔLE PRINCIPAL de l'étape (ex. le choix du panneau). Panneau de droite
+   (bureau) : rendu sur place, dans l'écran. Tiroir du bas (tablette, téléphone — maquette Tablette) :
+   posé dans la rangée du titre, entre le titre et le bouton d'action. Rendu UNE fois, jamais en double
+   (au passage d'une largeur à l'autre il change de place, donc se remonte : n'y mettez pas un élément
+   `rp9-*` du constructeur, seulement une re-présentation React). */
+export function EnTeteEtape({ children }) {
+  const coque = useContext(ContexteCoque)
+  if (!coque?.tiroir) return children
+  const noeud = coque.noeuds?.controle ?? null
+  return noeud ? createPortal(children, noeud) : null
 }
 
 /* Gabarit d'écran d'étape : les onglets EXISTANTS de l'étape, montés tels quels

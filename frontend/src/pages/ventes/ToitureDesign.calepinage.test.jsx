@@ -1188,4 +1188,41 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     await waitFor(() => expect(screen.getByTestId('cal-etape-resultats')).toHaveTextContent('2 à régler'))
     expect(screen.getByTestId('cal-etape-toit')).not.toHaveTextContent('à régler')
   })
+
+  it('scène propre déjà enregistrée : « ✓ Enregistré … » seul, comme la maquette ; modifiée : le bouton revient', async () => {
+    amorcer()
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: new Date().toISOString() } } })
+    rendreCalepinage(CTX.calepinage.id)
+    const barre = await screen.findByTestId('cal-enregistrer-calepinage')
+    await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
+      .toHaveTextContent(/^Enregistré à \d{2}:\d{2}$/))
+    // Aucun « Enregistrer le calepinage » LU à l'écran : l'état porte le geste (nom accessible « … à nouveau »).
+    expect(barre.textContent).not.toMatch(/Enregistrer le calepinage/)
+    const geste = within(barre).getByRole('button', { name: /Enregistrer le calepinage à nouveau/ })
+    expect(geste).toContainElement(within(barre).getByTestId('cal-etat-enregistrement'))
+    serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
+    await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
+      .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
+    expect(within(barre).getByRole('button', { name: 'Enregistrer le calepinage' })).toBeVisible()
+  })
+
+  it('tablette (< 1 280 px) : le panneau devient le tiroir du bas, poignée qui l’agrandit ; titre et pied dans le même tiroir', async () => {
+    const avant = window.matchMedia
+    window.matchMedia = (q) => ({ matches: q === '(max-width: 1279px)', media: q, addEventListener() {}, removeEventListener() {} })
+    try {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const panneau = await screen.findByTestId('cal-panneau-etape')
+      expect(panneau).toHaveAttribute('data-tiroir', '1')
+      expect(panneau).toHaveAttribute('data-deplie', '0')
+      const poignee = within(panneau).getByRole('button', { name: 'Agrandir ou réduire le panneau du bas' })
+      expect(poignee).toHaveAttribute('aria-expanded', 'false')
+      await userEvent.click(poignee)
+      expect(panneau).toHaveAttribute('data-deplie', '1')
+      expect(within(panneau).getByTestId('cal-panneau-etape-titre')).toHaveTextContent('Le toit')
+      expect(await within(panneau).findByTestId('cal-action-etape-suivante')).toHaveTextContent('Poser les panneaux')
+      // Les groupes du constructeur restent dans le même panneau (jamais remontés ailleurs).
+      expect(panneau.contains(document.getElementById('rp9-config'))).toBe(true)
+    } finally { window.matchMedia = avant }
+  })
 })

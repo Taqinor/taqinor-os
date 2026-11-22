@@ -14,10 +14,10 @@ const MODES = [{ valeur: 'guide', libelle: 'Guidé' }, { valeur: 'expert', libel
 
 export default function BarreProjet({
   retour, titre, sousTitre = '', enregistrement = null, expert = false, onExpert,
-  libelleDevis = 'Générer le devis', onDevis = null,
+  libelleDevis = 'Générer le devis', onDevis = null, cache = false,
 }) {
   return (
-    <header className="cal-barre-projet" data-testid="cal-barre-projet">
+    <header className="cal-barre-projet" data-testid="cal-barre-projet" hidden={cache || undefined}>
       {/* « ‹ Calepinages » referme l'atelier comme le geste qui l'a ouvert (`retour.onClick`, qui
           confirme d'abord une conception non enregistrée) ; à défaut, un lien vers la liste. */}
       {retour.onClick ? (

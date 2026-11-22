@@ -382,6 +382,10 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   // du tracé (toit plat par défaut → la matrice se peint tout de suite). ─────
   // Coque : la recommandation (`#rp9-results`, où vivent les puces de cible) accompagne l'étape Panneaux.
   await page.getByTestId('cal-etape-panneaux').click()
+  // Coque (22/11, lane L2) : en guidé, le groupe « pose » du constructeur (`#rp9-layout-*`, `#rp9-need-*`,
+  // `#rp9-results`) vit sous « Avancé » — on le déplie d'abord (sans le refermer s'il l'est déjà).
+  const avance = page.getByTestId('cal-rail-avance')
+  if ((await avance.getAttribute('aria-expanded')) !== 'true') await avance.click()
   const cibleChip = page.locator('[data-cible="compte"]')
   await expect(cibleChip).toBeVisible({ timeout: 10_000 })
   await expect(cibleChip).toHaveAttribute('aria-pressed', 'false')

@@ -1,7 +1,10 @@
 // Coque (22/11) — groupe « carte » du DOM du constructeur, DÉPLACÉ VERBATIM depuis
 // BuilderDom.jsx (move only) : la recherche d'adresse et l'enveloppe de la carte. Sous-arbre
 // intact (le script cherche ses ids et le parent de « Terminer le tracé »). Toujours monté.
+import { useContext } from 'react'
 import ToitClientOverlay from '../../ventes/ToitClientOverlay'
+import { ContexteCoque } from './coque/contexteCoque'
+import PictoToit from './coque/etapes/PictosToit'
 
 export default function BuilderCarte({
   basculerPleinEcran3d,
@@ -14,6 +17,10 @@ export default function BuilderCarte({
   pleinEcran3d,
   toitClientVisible,
 }) {
+  // Maquette Main (22/11) — dans la coque, « Plein écran » rejoint la pile de zoom (pictogramme, nom accessible
+  // inchangé) ; hors coque (mode lead), la puce texte d'avant, à l'octet près.
+  const dansCoque = useContext(ContexteCoque) !== null
+  const libellePleinEcran = pleinEcran3d ? 'Quitter le plein écran' : 'Plein écran'
   return (
     <>
           <form id="rp9-search" className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row">
@@ -69,9 +76,9 @@ export default function BuilderCarte({
               type="button"
               onClick={basculerPleinEcran3d}
               data-testid="rp9-plein-ecran-toggle"
-              className={`${chipClass} rp9-carte-puce`}
+              className={`${chipClass} rp9-carte-puce${dansCoque ? ' cal-carte-plein-ecran' : ''}`}
             >
-              {pleinEcran3d ? 'Quitter le plein écran' : 'Plein écran'}
+              {dansCoque ? <><PictoToit nom="pleinEcran" taille={18} /><span className="sr-only">{libellePleinEcran}</span></> : libellePleinEcran}
             </button>
             {/* ACAL954 — « Terminer le tracé » SUR la carte (centré en bas), plus sous la flottaison ;
                 ids inchangés (lus par roof-tool-pro11.ts). Même fond opaque que la puce ACAL950,
