@@ -13,6 +13,7 @@ Codes produits ici (``codes_produits`` du contrat) : ``visite_validee``,
 """
 from __future__ import annotations
 
+import logging
 import re
 from contextvars import ContextVar
 
@@ -78,6 +79,7 @@ def une_fois_par_lecture(cle):
                 try:
                     memoire[empreinte] = (True, calcul(calepinage))
                 except Exception as refus:  # le MÊME refus, relevé à chaque appel
+                    logging.getLogger(__name__).debug('refus gardé pour la lecture', exc_info=True)
                     memoire[empreinte] = (False, refus)
             reussi, valeur = memoire[empreinte]
             if not reussi:

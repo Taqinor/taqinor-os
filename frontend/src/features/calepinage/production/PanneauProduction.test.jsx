@@ -814,7 +814,8 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     const a = borneHaute.cascade.a_renseigner
     expect(within(bloc).getByTestId('acal700-etiquette')).toHaveTextContent('Production la première année · au plus')
     expect(within(bloc).getByTestId('acal700-plafond')).toHaveTextContent(
-      `C'est un plafond : ${a.lignes.length} pertes non renseignées, toutes à renseigner ici. Le chiffre réel sera plus bas.`)
+      `C'est un plafond : ${a.lignes.length} pertes ne sont pas encore comptées. Le chiffre réel sera plus bas.`)
+    expect(within(bloc).getByTestId('acal700-plafond')).toHaveAttribute('title', 'Toutes sont à renseigner ici.')
     expect(within(bloc).queryByTestId('acal700-jauge')).toBeNull() // R3-06 : plus de troisième compte
     const lignes = within(bloc).getAllByTestId('acal700-ligne')
     expect(lignes).toHaveLength(a.lignes.length)
@@ -835,14 +836,28 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     expect(screen.queryByTestId('acal52-borne-haute')).toBeNull() // remplacé
   })
 
-  it('R3-06 — un seul compte : 17 pertes non renseignées, dont 3 à renseigner ici', async () => {
+  it('démarrage rapide qui ne peut rien remplir : pas de bouton or « Voir les valeurs », un lien discret vers les réglages', async () => {
+    const servi = incomplet()
+    servi.cascade = { ...servi.cascade, a_renseigner: { ...servi.cascade.a_renseigner,
+      lignes: servi.cascade.a_renseigner.lignes.map((l) => ({ ...l, cle: 'sigma_modele_pct' })) } }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: servi })
+    rendreAvecParcours({ etapes: [], manque: [] })
+    const lien = await screen.findByTestId('acal700-lien-reglages')
+    expect(lien).toHaveAttribute('href', '/calepinage/reglages')
+    expect(lien).toHaveTextContent('Saisir mes mesures')
+    expect(lien).not.toHaveClass('cal-res-cta')
+    expect(screen.getByTestId('acal700-demarrage-texte')).toHaveTextContent('Aucune valeur publiée n’existe')
+  })
+
+  it('R3-06 — un seul compte : 17 pertes pas encore comptées (3 à renseigner ici), sur UNE ligne de 14 px', async () => {
     const servi = incomplet()
     servi.cascade = { ...servi.cascade, a_renseigner: { ...servi.cascade.a_renseigner, etapes_comptees: 4, etapes_a_compter: 21 } }
     calepinageApi.calepinages.resultat.mockResolvedValue({ data: servi })
     rendreAvecParcours({ etapes: [], manque: [] })
     const bloc = await screen.findByTestId('acal700-incomplet')
     expect(within(bloc).getByTestId('acal700-plafond')).toHaveTextContent(
-      "C'est un plafond : 17 pertes non renseignées, dont 3 à renseigner ici. Le chiffre réel sera plus bas.")
+      "C'est un plafond : 17 pertes ne sont pas encore comptées. Le chiffre réel sera plus bas.")
+    expect(within(bloc).getByTestId('acal700-plafond')).toHaveAttribute('title', '3 à renseigner ici.')
     // Le compte de la barre est celui du serveur (4 sur 21), le même que « 17 pertes non renseignées » (21 − 4).
     expect(within(bloc).getByTestId('acal700-progression')).toHaveTextContent('4 étapes sur 21')
   })

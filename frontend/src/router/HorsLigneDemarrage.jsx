@@ -8,7 +8,7 @@
 import { useEffect, useRef } from 'react'
 import { useLoaderData, useRevalidator } from 'react-router-dom'
 
-export const TEXTES_DEMARRAGE = {
+const TEXTES_DEMARRAGE = {
   horsLigne: {
     titre: 'Hors ligne',
     phrase: 'Impossible de joindre le serveur. Vos données restent sur cet appareil.',
@@ -20,7 +20,7 @@ export const TEXTES_DEMARRAGE = {
     bouton: 'Réessayer',
   },
 }
-export const DELAI_NOUVEL_ESSAI_MS = 15000
+const DELAI_NOUVEL_ESSAI_MS = 15000
 
 export default function HorsLigneDemarrage() {
   const revalidator = useRevalidator()

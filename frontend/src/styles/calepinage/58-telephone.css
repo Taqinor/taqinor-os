@@ -279,7 +279,7 @@
 .cal-coque[data-presentation='1'] .cal-client-puce,
 .cal-tel .cal-client-puce { top: max(16px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left)); }
 .cal-coque[data-presentation='1'] .cal-tel-pied,
-.cal-tel .cal-client-corps ~ .cal-tel-pied { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.cal-tel .cal-client-corps ~ .cal-tel-pied { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
 .cal-client-corps {
   flex: 1;
   min-height: 0;

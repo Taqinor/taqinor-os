@@ -293,12 +293,14 @@ describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
     const lignes = await screen.findAllByTestId('cal-avant-ligne')
     const texte = (n) => n.textContent.replace(/\s+/g, ' ').trim()
     expect(lignes.map((l) => texte(l.querySelector('.cal-resinc-nom')))).toEqual([
-      'Norme électrique à choisir× 3?', 'Production à calculer?', 'Ombrage panneau par panneau?', 'Températures de référence?'])
-    expect(lignes.map((l) => l.querySelector('.cal-resinc-rang').textContent)).toEqual(['1', '2', '3', '4'])
+      'Choisir la norme électrique de votre société?', 'Ombrage panneau par panneau?', 'Températures de référence?'])
+    expect(lignes.map((l) => l.querySelector('.cal-resinc-rang').textContent)).toEqual(['1', '2', '3'])
     expect(lignes.map((l) => l.querySelector('[data-testid="cal-avant-renseigner"]').getAttribute('href'))).toEqual([
-      '/calepinage/reglages#norme', '/calepinage/5?onglet=production', '/calepinage/5?onglet=production', '/calepinage/reglages'])
+      '/calepinage/reglages#norme', '/calepinage/5?onglet=production', '/calepinage/reglages'])
     expect(lignes.map((l) => l.querySelector('[data-testid="cal-avant-renseigner"]').textContent)).toEqual([
-      'Renseigner', 'Voir', 'Renseigner', 'Renseigner'])
+      'Renseigner', 'Renseigner', 'Renseigner'])
+    // « Production à calculer — Voir » doublait le bouton « Lancer la simulation » de la carte sombre : retirée de la liste.
+    expect(screen.queryByText('Production à calculer')).toBeNull()
     // La phrase servie est gardée, derrière le « ? » (infobulle + révélée au clic), jamais dans la ligne.
     const aide = within(lignes[0]).getByTestId('cal-avant-aide')
     expect(aide).toHaveAttribute('title', expect.stringContaining('NF C 15-100'))
