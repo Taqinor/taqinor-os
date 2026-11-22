@@ -179,8 +179,12 @@ _FORME_RACCORDEMENT = forme_du_contrat(
             required=False),
         # ACAL828 — jusqu'à trois plages {debut_h, fin_h, plafond_kw}.
         'plages_plafond_injection': serializers.ListField(
-            child=serializers.DictField(), required=False,
-            allow_null=True, max_length=3),
+            child=inline_serializer('CalepinagePlagePlafondInjection', {
+                'debut_h': serializers.IntegerField(min_value=0, max_value=23),
+                'fin_h': serializers.IntegerField(min_value=1, max_value=24),
+                'plafond_kw': serializers.FloatField(
+                    min_value=0, max_value=SAISIE_MAXIMUM)}),
+            required=False, allow_null=True, max_length=3),
         # ACAL829 — le plafond de soutirage (kW) et sa justification.
         'plafond_soutirage_kw': serializers.FloatField(
             required=False, min_value=0, max_value=SAISIE_MAXIMUM),

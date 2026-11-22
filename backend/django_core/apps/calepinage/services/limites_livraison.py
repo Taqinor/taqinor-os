@@ -91,11 +91,14 @@ CHAMP_PLAGES = 'plages_plafond_injection'
 
 class PlageInvalide(ValueError):
     """Une plage refusée ; ``champ`` nomme la plage fautive
-    (``plages_plafond_injection[i]``), ``message`` dit quoi corriger."""
+    (``plages_plafond_injection[i]``), ``message`` dit quoi corriger.
+    ``etat`` marque une règle qui LIE plusieurs valeurs (fin avant début,
+    chevauchement) : le schéma ne la dit pas, l'API la refuse en 409 (ENF11)."""
 
-    def __init__(self, message, champ=CHAMP_PLAGES):
+    def __init__(self, message, champ=CHAMP_PLAGES, *, etat=False):
         super().__init__(message)
         self.champ = champ
+        self.etat = etat
 
 
 def _entier_horaire(valeur):
@@ -139,7 +142,8 @@ def plages_saisies(brutes):
             raise PlageInvalide(
                 "Une plage va d'une heure de début à une heure de fin plus "
                 "tardive, entre 0 et 24 (heures entières) ; une plage à "
-                "cheval sur minuit se saisit en deux plages.", champ=champ)
+                "cheval sur minuit se saisit en deux plages.", champ=champ,
+                etat=None not in (debut, fin))  # deux heures lisibles mal ordonnées
         try:
             plafond = float(brute.get('plafond_kw'))
         except (TypeError, ValueError):
@@ -153,7 +157,7 @@ def plages_saisies(brutes):
         for autre in lues:
             if debut < autre['fin_h'] and autre['debut_h'] < fin:
                 raise PlageInvalide("Cette plage chevauche une autre plage.",
-                                    champ=champ)
+                                    champ=champ, etat=True)
         lues.append({'debut_h': debut, 'fin_h': fin, 'plafond_kw': plafond})
     return lues
 
