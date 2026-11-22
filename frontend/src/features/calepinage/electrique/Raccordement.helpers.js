@@ -34,7 +34,7 @@ import { LIBELLE_OMIS } from './VerdictElectrique.helpers'
 /** Le préfixe que le serveur met devant le champ fautif d'un refus. */
 export const PREFIXE_CHAMP = 'raccordement.'
 
-/** Les neuf champs de la saisie, dans l'ordre où l'écran les demande. */
+/** Les champs de la saisie, dans l'ordre où l'écran les demande. */
 export const CHAMPS = [
   {
     cle: 'puissance_souscrite_kva',
@@ -98,7 +98,57 @@ export const CHAMPS = [
     texte: true,
     aide: 'Le contrat de raccordement ou la prescription du gestionnaire de réseau qui impose le plafond. Obligatoire dès qu’un plafond est saisi.',
   },
+  // ACAL830 — « Limites imposées par le distributeur » (ACAL827-829) : section
+  // repliée, niveau expert. Le kW converti du plafond en A est CELUI DU SERVEUR.
+  {
+    cle: 'plafond_injection_a',
+    libelle: 'Plafond d’injection en ampères',
+    unite: 'A',
+    expert: true,
+    aide: 'Si le distributeur donne le plafond en ampères : le serveur le convertit en kW. Laissez vide tant qu’il n’est pas connu.',
+  },
+  {
+    cle: 'plages_plafond_injection',
+    libelle: 'Plafonds d’injection par plage horaire',
+    unite: '',
+    expert: true,
+    plages: true,
+    aide: 'Jusqu’à 3 plages (de h, à h, plafond kW). Une plage à cheval sur minuit se saisit en deux plages.',
+  },
+  {
+    cle: 'plafond_soutirage_kw',
+    libelle: 'Plafond de soutirage',
+    unite: 'kW',
+    expert: true,
+    aide: 'Le plafond de puissance soutirée au réseau imposé à ce site. Laissez vide tant qu’il n’est pas connu.',
+  },
+  {
+    cle: 'plafond_soutirage_justification',
+    libelle: 'Justification du soutirage',
+    unite: '',
+    texte: true,
+    expert: true,
+    aide: 'Le contrat ou la prescription qui impose le plafond de soutirage. Obligatoire dès qu’un plafond est saisi.',
+  },
 ]
+
+/** ACAL830 — au plus trois plages horaires (la limite du serveur). */
+export const PLAGES_MAXIMUM = 3
+
+/** ACAL830 — une valeur est-elle saisie dans l'un des champs de la section experte ? */
+export function limitesDistributeurSaisies(saisie) {
+  const rempli = (v) => !(v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0))
+  return CHAMPS.some(({ cle, expert }) => expert && rempli(saisie?.[cle]))
+}
+
+/** ACAL830 — les plages postées : une case vide vaut `null` (le serveur la nomme), jamais 0. */
+function plagesPostees(plages) {
+  if (!Array.isArray(plages) || plages.length === 0) return null
+  const nombre = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
+  return plages.map((p) => ({
+    debut_h: nombre(p?.debut_h), fin_h: nombre(p?.fin_h), plafond_kw: nombre(p?.plafond_kw),
+  }))
+}
 
 /** Le libellé FRANÇAIS de chaque statut publié par le contrat. */
 export const LIBELLES_STATUT = {
@@ -140,13 +190,14 @@ export function erreursParChamp(donnees) {
 }
 
 /**
- * Le corps POSTÉ : les NEUF champs, un champ vidé valant `null` (« pas
+ * Le corps POSTÉ : tous les champs, un champ vidé valant `null` (« pas
  * saisi »), jamais `0` ni une chaîne vide qui se lirait comme une valeur.
  */
 export function corpsDeSaisie(saisie) {
   const corps = {}
   for (const { cle } of CHAMPS) {
     const valeur = saisie?.[cle]
+    if (cle === 'plages_plafond_injection') { corps[cle] = plagesPostees(valeur); continue }
     corps[cle] = valeur === '' || valeur === undefined ? null : valeur
   }
   return corps

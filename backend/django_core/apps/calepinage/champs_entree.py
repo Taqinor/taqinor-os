@@ -115,14 +115,14 @@ def _batterie():
                          'duree_h': {'type': 'integer', 'minimum': 1},
                          'heure_debut': {'type': 'integer', 'minimum': 0,
                                          'maximum': 23}}}},
-           # ACAL786 — appareils ⇒ durée, jamais avec la réserve nue ; fenêtres
-           # OU listes d'heures, jamais les deux (règles de services/batterie.py).
-           'allOf': [
-               {'anyOf': [{'not': {'required': ['appareils']}},
-                          {'required': ['duree_secours_h'],
-                           'not': {'required': ['reserve_backup_kwh']}}]},
-               {'not': {'required': ['fenetres', 'heures_charge']}},
-               {'not': {'required': ['fenetres', 'heures_decharge']}}]}
+            # ACAL786 — appareils ⇒ durée, jamais avec la réserve nue ; fenêtres
+            # OU listes d'heures, jamais les deux (règles de services/batterie.py).
+            'allOf': [
+                {'anyOf': [{'not': {'required': ['appareils']}},
+                           {'required': ['duree_secours_h'],
+                            'not': {'required': ['reserve_backup_kwh']}}]},
+                {'not': {'required': ['fenetres', 'heures_charge']}},
+                {'not': {'required': ['fenetres', 'heures_decharge']}}]}
 
 
 def _hors_reseau():
