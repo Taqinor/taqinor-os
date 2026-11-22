@@ -86,7 +86,8 @@ const ARCHIVABLE = {
 
 // ACAL966 — `id` et `statut` restent SERVIS par le contrat mais ne sont plus rendus (l'identifiant est dans
 // l'adresse, le statut se lit en mots par `statut_libelle`) : les autres clés sont toutes rendues.
-const NON_RENDUES = ['id', 'statut']
+// ACAL1005 — `etat_conception` (+ motif) : lus par l'atelier (bandeau ACAL1007), pas par la fiche.
+const NON_RENDUES = ['id', 'statut', 'etat_conception', 'etat_conception_motif']
 const CLES = Object.keys(DOC.exemple).filter((cle) => !NON_RENDUES.includes(cle))
 
 const rendre = (detail) => render(

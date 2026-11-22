@@ -574,6 +574,11 @@ def _safe_roof_layout(devis) -> dict | None:
     layout = getattr(devis, "roof_layout", None)
     if not isinstance(layout, dict) or not layout:
         return None
+    if getattr(devis, "statut", None) == "brouillon" and getattr(devis, "pk", None):  # ACAL1196 : brouillon seul
+        from .selectors_calepinage import conception_rapide_du_devis
+        if conception_rapide_du_devis(devis):
+            logger.info("conception rapide non vérifiée : vue 3D non servie (devis %s)", devis.pk)
+            return None
 
     # Whitelist STRICTE des clés géométriques par pan (jamais de prix/marge).
     _PAN_KEYS = ("label", "orientation", "azimut_deg", "inclinaison_deg",

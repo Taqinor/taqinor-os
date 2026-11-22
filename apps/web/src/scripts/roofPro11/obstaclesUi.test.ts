@@ -403,12 +403,28 @@ describe('CALX403 — une allée de circulation se trace, et retire sa surface',
   it('pays sans largeur saisie ⇒ champ vide, allée refusée, réglage manquant NOMMÉ', () => {
     const lu = largeurAlleeDepuisReglages(DEGAGEMENTS, 'fr');
     expect(lu.largeurM).toBeNull(); // le champ reste vide : rien n'est supposé
-    expect(lu.motif).toContain('degagements.allees_circulation.fr');
+    expect(lu.motif).toContain('« fr »');
     const verdict = alleeCirculation('zone-1', [pt(0, 0), pt(10, 0)], lu.largeurM, 'fr');
     expect(verdict.ok).toBe(false);
     if (verdict.ok) return;
-    expect(verdict.motif).toContain('degagements.allees_circulation.fr');
-    expect(motifLargeurAllee(null, 'fr')).toContain('degagements.allees_circulation.fr');
+    expect(verdict.motif).toContain('« fr »');
+    expect(motifLargeurAllee(null, 'fr')).toContain('« fr »');
+  });
+
+  it('ACAL962 — le refus d’allée ne montre aucune clé brute et nomme le pays ou dit qu’il n’est pas réglé', () => {
+    const phrases = [
+      motifLargeurAllee(null, 'ma'),
+      motifLargeurAllee(null, null),
+      largeurAlleeDepuisReglages(DEGAGEMENTS, 'fr').motif,
+      largeurAlleeDepuisReglages(DEGAGEMENTS, null).motif,
+    ];
+    for (const p of phrases) {
+      expect(p).not.toContain('degagements.');
+      expect(p).not.toContain('?');
+    }
+    expect(phrases[0]).toBe('Allée non tracée : aucune largeur d’allée n’est réglée pour le pays « ma ». Réglez-la dans Réglages › Allées.');
+    expect(phrases[1]).toBe('Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages › Site.');
+    expect(phrases[3]).toBe(phrases[1]);
   });
 
   it('un pays réglé prérremplit la largeur SAISIE et CITE sa source', () => {

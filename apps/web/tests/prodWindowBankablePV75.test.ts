@@ -218,19 +218,28 @@ describe('prodWindow — page hôte sans fenêtre de production (option producti
     } as unknown as Ctx;
   }
 
+  let rendusLayout = 0;
   function sync(ctx: Ctx) {
     let rendus = 0;
+    rendusLayout = 0;
     const dom = { ...makeDom(), prodWindowEl: null };
     const pw = createProdWindow(ctx, dom, {
       graphs: createGraphs(ctx),
       renderConsumption: () => { rendus += 1; },
-      renderLayoutPanel: () => {},
+      renderLayoutPanel: () => { rendusLayout += 1; },
       snapshotActiveAreaResult: () => {},
       renderAreasPanel: () => {},
     });
     pw.syncProductionWindow();
     return rendus;
   }
+
+  // ACAL958 — sans #rp9-prod-window, la fenêtre « Déplacer les panneaux » doit quand même être rendue.
+  it('ACAL958 — renderLayoutPanel est appelé une fois quand prodWindowEl est nul', () => {
+    document.body.innerHTML = '';
+    sync(makeCtxSansFenetre());
+    expect(rendusLayout).toBe(1);
+  });
 
   it('option fournie : plan de production posé (10 panneaux) et fenêtre de conso re-rendue, sans requête', async () => {
     document.body.innerHTML = '';

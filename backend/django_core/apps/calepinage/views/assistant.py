@@ -51,7 +51,12 @@ REPONSE_REFUS = OpenApiResponse(
     response=inline_serializer('CalepinageAssistantRefus', {
         'detail': drf_serializers.CharField(required=False),
         'field': drf_serializers.CharField(required=False),
-        'code': drf_serializers.CharField(required=False)}),
+        'code': drf_serializers.CharField(required=False),
+        # ACAL922 — ``publier-devis`` relaie le 409 ``confirmation_taille``.
+        'champ': drf_serializers.CharField(required=False),
+        'kwc': drf_serializers.FloatField(required=False, allow_null=True),
+        'total_ttc': drf_serializers.CharField(required=False),
+        'refus': drf_serializers.CharField(required=False)}),
     description='Refus nommé : introuvable (404) ou état qui ne le permet pas (409).')
 REFUS_404_409 = {404: REPONSE_REFUS, 409: REPONSE_REFUS}
 

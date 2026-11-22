@@ -103,7 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtMad } from './dom';
-import { type CardData, type RenderConfigOpts, type RenderSceneFn } from './types';
+import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
@@ -303,6 +303,22 @@ export function facteurDerateAnnuel(c: Pick<Ctx, 'shadeAnnualFactor' | 'horizonA
   return borneDerate(c.shadeAnnualFactor) * borneDerate(c.horizonAnnualFactor);
 }
 
+/** ACAL994 — l'économie de l'année 1 SERVIE (`opts.chiffrage`, relu après « Enregistrer » par `majChiffrage`) remplace
+ *  l'estimation de la carte Économies et du Total ; l'argent est LU du bloc servi, jamais calculé ici. Site public
+ *  (`chiffrage` absent) : rien ne change. L'estimation du navigateur est mémorisée pour revenir dessus si le serveur la retire. */
+const etatsEco = new WeakMap<object, { chiffrage: ChiffrageAtelier | null | undefined; estimes: Record<string, string> }>();
+const etatEco = (c: Pick<Ctx, 'opts'>) => {
+  let e = etatsEco.get(c);
+  if (!e) etatsEco.set(c, (e = { chiffrage: c.opts?.chiffrage, estimes: {} }));
+  return e;
+};
+export function economieAffichee(c: Pick<Ctx, 'opts'>, id: 'carte' | 'total', estime: string): string {
+  const e = etatEco(c);
+  e.estimes[id] = estime;
+  const eco = e.chiffrage?.economie_annee1_mad;
+  return eco?.etat === 'servi' && typeof eco.valeur === 'number' ? `${fmtMad(eco.valeur)}/an` : estime;
+}
+
 /** ACAL80 — le point de rendement PVGIS par défaut (pages publiques d'apps/web). */
 export const RENDEMENT_PVGIS_DEFAUT = '/api/roof-yield';
 
@@ -384,6 +400,14 @@ export interface Optimizer {
   clampNeeded: (n: number) => number;
   /** ACAL470 — énergie annuelle par panneau de la carte affichée et nombre qui tient ; null sans carte. */
   etatCarte: () => { kwhParPanneau: number; tiennent: number } | null;
+}
+
+/** ACAL975 — la phrase « gain bifacial » d'une carte : VIDE pour une pose affleurante (la face arrière n'y est
+ *  pratiquement pas éclairée) ou sans production ; sinon la constante FLAT (E-O, < 12°) ou TILTED (sud incliné). */
+export function libelleGainBifacial(d: Pick<CardData, 'annualKwh' | 'family' | 'tiltDeg' | 'flush'>): string {
+  if (d.flush || !(d.annualKwh > 0)) return '';
+  const gain = d.family === 'eastwest' || (d.tiltDeg != null && d.tiltDeg < 12) ? BIFACIAL_GAIN_FLAT : BIFACIAL_GAIN_TILTED;
+  return `+ gain bifacial (estimation prudente, ~+${Math.round(gain * 100)} %) : ~${fmt(Math.round(d.annualKwh * gain))} kWh/an — non compté dans le chiffre ci-dessus.`;
 }
 
 export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
@@ -1015,6 +1039,35 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const couverture = (target: number, cov: number) =>
     (target > 0 ? ` ≈ ${cov} % de la facture` : '. Facture inconnue — saisissez-la pour voir la couverture');
 
+  /** ACAL994 — d'où vient le chiffre des économies : servi ⇒ « au dernier enregistrement » (+ l'option servie) ;
+   *  non servi ou hors ligne (`chiffrage` null) ⇒ « estimation — recalculée à l'enregistrement ». Site public : aucune ligne. */
+  function etiquetteEconomie() {
+    const hote = $('rp9-reco-savings');
+    if (!hote) return;
+    const { chiffrage } = etatEco(ctx);
+    let ligne = hote.parentElement?.querySelector<HTMLElement>('[data-economie-etat]') ?? null;
+    if (chiffrage === undefined) return void ligne?.remove();
+    if (!ligne) {
+      ligne = document.createElement('p');
+      ligne.className = 'mt-1 text-xs text-muted-foreground';
+      ligne.setAttribute('data-economie-etat', '');
+      hote.insertAdjacentElement('afterend', ligne);
+    }
+    const eco = chiffrage?.economie_annee1_mad;
+    ligne.textContent = eco?.etat === 'servi' && typeof eco.valeur === 'number'
+      ? `au dernier enregistrement${eco.option ? ` · ${eco.option.replace(/_/g, ' ')}` : ''}`
+      : 'estimation — recalculée à l’enregistrement';
+  }
+
+  /** ACAL994 — après « Enregistrer » : le bloc relu remplace le précédent ; la carte et le Total sont repeints à l'instant. */
+  function majChiffrage(chiffrage: ChiffrageAtelier | null) {
+    const e = etatEco(ctx);
+    e.chiffrage = chiffrage;
+    const cibles = [['carte', $('rp9-reco-savings')], ['total', ctx.dom.areasTotalSavingsEl]] as const;
+    for (const [id, el] of cibles) if (el && e.estimes[id] !== undefined) el.textContent = economieAffichee(ctx, id, e.estimes[id]);
+    etiquetteEconomie();
+  }
+
   function paintCard(d: CardData, sourceLabel?: string) {
     derniereCarte = { count: d.count, annualKwh: d.annualKwh };
     // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
@@ -1037,21 +1090,17 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     set('rp9-reco-panels', watt ? `${fmt(d.count)} × ${fmt(watt)} W` : `${fmt(d.count)} panneaux`);
     set('rp9-reco-prod', d.annualKwh > 0 ? `${fmt(Math.round(d.annualKwh))} kWh/an` : '—');
     set('rp9-reco-cover', d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
-    set('rp9-reco-savings', factureInconnue ? '— facture inconnue' : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`);
+    set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`));
+    etiquetteEconomie();
+    // ACAL778 — la note « chiffre du devis » seulement si un devis est lié (option `devisLie`, jamais `cibleVendue`).
+    const noteEco = $('rp9-reco-savings-note');
+    if (noteEco) noteEco.hidden = !ctx.opts?.devisLie;
     const why = $('rp9-reco-why');
     if (why) why.textContent = d.why + (sourceLabel ? ` ${sourceLabel}` : '');
     // ACAL894 — la provenance de la carte, lue par le bandeau « Estimation rapide » de l'ERP.
     if (why) why.dataset.sourceProd = sourceLabel ?? '';
     const bif = $('rp9-reco-bifacial');
-    if (bif) {
-      // W94 — gain bifacial via les VRAIES constantes (face dense/plate ou E-O → FLAT,
-      // sud incliné bien espacé → TILTED) ; plus de littéral « × 0,05 » magique.
-      const flatGain = d.family === 'eastwest' || (d.tiltDeg != null && d.tiltDeg < 12);
-      const bifGain = flatGain ? BIFACIAL_GAIN_FLAT : BIFACIAL_GAIN_TILTED;
-      const gain = d.annualKwh * bifGain;
-      const pct = Math.round(bifGain * 100);
-      bif.textContent = d.annualKwh > 0 ? `+ gain bifacial (estimation prudente, ~+${pct} %) : ~${fmt(Math.round(gain))} kWh/an — non compté dans le chiffre ci-dessus.` : '';
-    }
+    if (bif) bif.textContent = libelleGainBifacial(d); // W94 + ACAL975 (vide en pose affleurante)
     // W94 — fourchette honnête Année 1 ↔ Année 25 : la production baisse sous la
     // dégradation linéaire des panneaux ((1 − deg)^24 en année 25) et les économies
     // restent plafonnées à la facture À CHAQUE horizon (annualSavingsMad bill-capé).
@@ -1288,6 +1337,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         savingsHigh: savings.high,
         why: pitchedWhy(),
         family: 'south', // pose affleurante mono-orientation → pas d'écrêtage E-O
+        flush: true, // ACAL975 — pose affleurante : pas de gain bifacial
         tiltDeg: fp.pitchDeg,
         target,
       },
@@ -1380,6 +1430,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         savingsHigh: eco.high,
         why,
         family: 'south', // pose affleurante mono-orientation → pas d'écrêtage E-O
+        flush: true, // ACAL975 — pose affleurante : pas de gain bifacial
         tiltDeg: w.pack.pitchDeg,
         target: ctx.pitchedRec ? ctx.pitchedRec.targetAnnualKwh : undefined,
       },
@@ -1660,6 +1711,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     buildMatrix,
     computeMatrixPvgis,
     clampNeeded,
+    majChiffrage,
     etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit } : null),
   };
 }

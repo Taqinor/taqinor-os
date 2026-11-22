@@ -1271,6 +1271,12 @@ def favoris_materiel_de_societe(company):
             continue
         lignes = []
         for produit_id in ids:
+            # La section est à valeurs libres (DictField) : un identifiant qui
+            # n'est pas un entier de base (texte, nul, énorme) pointe « dans
+            # le vide » — omis comme un id introuvable, jamais un 500.
+            if (isinstance(produit_id, bool) or not isinstance(produit_id, int)
+                    or not 0 < produit_id < 2 ** 63):
+                continue
             produit = get_produit_scoped(company, produit_id)
             if produit is None:
                 continue

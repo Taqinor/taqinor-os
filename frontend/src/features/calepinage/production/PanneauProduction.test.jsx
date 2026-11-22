@@ -25,6 +25,8 @@ vi.mock('../../../api/calepinageApi', () => ({
       explications: vi.fn(), // ACAL880 — le registre (geste de chaque poste)
     },
     moteur: { resultat: vi.fn() },
+    // ACAL986 — la page d'arrivée des liens (Réglages) est rendue pour lire ses champs montés.
+    parametres: { get: vi.fn(), update: vi.fn(), profilDepart: vi.fn() },
   },
 }))
 
@@ -37,6 +39,9 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
+import ReglagesSimulation from '../reglages/ReglagesSimulation'
+import sourceBibliotheque from '../Bibliotheque.jsx?raw'
+import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
 import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
 
 const servir = (variante) => {
@@ -198,12 +203,11 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
     expect(bouton).not.toBeDisabled()
     expect(bouton).toHaveTextContent('Lancer la simulation')
 
-    const manques = screen.getByTestId('calx48-manques')
-    expect(within(manques).getByText(
+    // ACAL990 : l'avertissement servi est dit UNE fois (le bandeau) ; la liste ne le répète pas.
+    expect(screen.getByTestId('cal236-non-simule')).toHaveTextContent(
       'Calepinage non simulé : la pose est connue, la production ne l\'est pas.',
-    )).toBeInTheDocument()
-    // ACAL397 : sans `parcours.manque`, les avertissements restent du texte.
-    expect(within(manques).queryByTestId('calx48-manque-ligne')).toBeNull()
+    )
+    expect(screen.queryByTestId('calx48-manques')).toBeNull()
   })
 
   /* ACAL397 — « Ce qui manque » = liste d'actions issue de `parcours.manque`
@@ -455,9 +459,11 @@ describe('PanneauProduction — simulation périmée (ACAL218)', () => {
 
     await screen.findByTestId('cal236-panneau')
     const tapis = await screen.findByTestId('cal-tapis-perime')
-    expect(tapis).toHaveTextContent(
+    // ACAL990 : le motif servi est dit UNE fois (le bandeau) ; le tapis dit sa propre phrase.
+    expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
       'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
     )
+    expect(tapis).toHaveTextContent('relancez-la')
     expect(screen.queryByTestId('cal-tapis')).toBeNull()
     expect(calepinageApi.calepinages.exportCsv).not.toHaveBeenCalled()
   })
@@ -485,7 +491,7 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
       expect(within(bandeau).getByText(poste)).toBeInTheDocument()
     }
     expect(within(bandeau).getByTestId('acal52-lien-reglages'))
-      .toHaveAttribute('href', '/calepinage/reglages')
+      .toHaveAttribute('href', '/calepinage/reglages#calx69-section-simulation')
 
     // PR, P75, P90, P95 : « non publié » (motif en infobulle), jamais un nombre.
     const total = screen.getByTestId('cal236-total')
@@ -794,7 +800,7 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     expect(lignes).toHaveLength(a.lignes.length)
     expect(lignes[0]).toHaveTextContent('Aucune valeur pour votre société')
     const renseigner = within(lignes[0]).getByTestId('acal700-renseigner')
-    expect(renseigner).toHaveAttribute('href', '/calepinage/reglages#salissure_mensuelle_pct')
+    expect(renseigner).toHaveAttribute('href', '/calepinage/reglages#calx69-salissure_mensuelle_pct')
     expect(within(bloc).getByTestId('acal700-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages')
     const sur = within(bloc).getByTestId('acal700-sur')
     for (const t of ['Panneaux', 'Puissance', 'Raccordement', 'Conforme', 'Ombres proches']) {
@@ -1122,5 +1128,117 @@ describe('PanneauProduction — existant et ajouté (ACAL848)', () => {
     rendre()
     await screen.findByTestId('cal236-panneau')
     expect(screen.queryByTestId('acal848-parties')).toBeNull()
+  })
+})
+
+/* ACAL986 (garde K-IMPASSE) — un message qui demande une saisie mène à un champ MONTÉ de la page
+   d'arrivée. Le registre est CALCULÉ au rendu des Réglages (contrat `parametres_calepinage.json`),
+   jamais écrit ici ; les cibles viennent des refus servis et des contrats. */
+describe('ACAL986 — chaque lien « aller aux réglages » vise un champ monté', () => {
+  const idsMontesDesReglages = async () => {
+    calepinageApi.parametres.get.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    const { container, unmount } = render(<ReglagesSimulation />)
+    await screen.findByTestId('acal572-lestage')
+    await screen.findByTestId('acal397-norme')
+    const ids = new Set([...container.querySelectorAll('[id]')].map((n) => n.id))
+    unmount()
+    return ids
+  }
+  const exiger = (ids, cible, message, ecran) => {
+    expect(ids.has(cible), `« ${message} » (${ecran}) vise #${cible}, aucun champ monté aux Réglages`).toBe(true)
+  }
+
+  it('les lignes de « ce qui manque » d’un refus de simulation ouvrent leur champ', async () => {
+    const ids = await idsMontesDesReglages()
+    const refus = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_manquants')
+    calepinageApi.calepinages.resultat.mockResolvedValue(
+      { data: exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide') })
+    calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: refus } })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+    await screen.findAllByTestId('acal940-manquant')
+
+    const liens = screen.getAllByTestId('acal940-lien-reglage')
+    const attendus = refus.manquants.filter((m) => m.cible?.onglet === 'reglages')
+    expect(attendus.length).toBeGreaterThan(0)
+    expect(liens).toHaveLength(attendus.length)
+    liens.forEach((lien, i) => {
+      const [chemin, ancre] = lien.getAttribute('href').split('#')
+      expect(chemin).toBe('/calepinage/reglages')
+      exiger(ids, ancre, attendus[i].motif, 'Production')
+    })
+  })
+
+  it('les lignes « Renseigner » du résultat incomplet (ACAL700) ouvrent leur champ monté', async () => {
+    const ids = await idsMontesDesReglages()
+    const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const donnees = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    donnees.data.production = borneHaute.production
+    donnees.data.simulation = borneHaute.simulation
+    donnees.data.cascade = borneHaute.cascade
+    calepinageApi.calepinages.resultat.mockResolvedValue(donnees)
+    render(<MemoryRouter><PanneauProduction calepinageId={1} parcours={{ etapes: [], manque: [] }} /></MemoryRouter>)
+    const bloc = await screen.findByTestId('acal700-incomplet')
+    const lignes = borneHaute.cascade.a_renseigner.lignes.filter((l) => l.cible?.onglet === 'reglages')
+    const liens = within(bloc).getAllByTestId('acal700-renseigner')
+    expect(lignes.length).toBeGreaterThan(0)
+    expect(liens).toHaveLength(borneHaute.cascade.a_renseigner.lignes.length)
+    liens.forEach((lien, i) => {
+      const [chemin, ancre] = lien.getAttribute('href').split('#')
+      if (!chemin.endsWith('/calepinage/reglages')) return
+      exiger(ids, ancre, borneHaute.cascade.a_renseigner.lignes[i].libelle, 'Résultat incomplet')
+    })
+  })
+
+  it('norme électrique et lestage : la cible servie existe sur la page d’arrivée', async () => {
+    const ids = await idsMontesDesReglages()
+    exiger(ids, 'norme', 'Choisir la norme', 'Provenance')
+    exiger(ids, 'lestage', 'Saisir le lestage', 'Provenance')
+    const lestage = exempleContrat('calepinage', 'calepinage_masse_lestage', 'exemple_vide').lestage
+    expect(lestage.manquants.length).toBeGreaterThan(0)
+    for (const cle of lestage.manquants) exiger(ids, `lestage-${cle}`, 'Masse et lestage', 'Atelier')
+  })
+
+  it('tolérance PVGIS, borne haute et lien de la Bibliothèque : ancre montée aux Réglages', async () => {
+    const ids = await idsMontesDesReglages()
+    const borneHaute = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const { unmount } = render(<MemoryRouter>
+      <EcartPvgis validation={{ ecart_pct: -2, tolerance_pct: null, verdict: null }} />
+      <BandeauBorneHaute total={borneHaute.production.total} />
+    </MemoryRouter>)
+    const cibles = [
+      ['acal854-lien-tolerance', 'Régler la tolérance', 'Provenance'],
+      ['acal52-lien-reglages', 'Pertes non renseignées', 'Production'],
+    ]
+    for (const [testid, message, ecran] of cibles) {
+      const [chemin, ancre] = screen.getByTestId(testid).getAttribute('href').split('#')
+      expect(chemin).toBe('/calepinage/reglages')
+      exiger(ids, ancre, message, ecran)
+    }
+    unmount()
+    // La Bibliothèque ne demande aucune saisie : lien d'entrée vers la page (sans ancre), route des Réglages.
+    expect(sourceBibliotheque).toMatch(/href="\/calepinage\/reglages"[^>]*data-testid="cal-biblio-lien-reglages"/)
+  })
+})
+
+/* ACAL990 — garde de la classe K-JARGON : ce qui est RENDU (jamais le source) ne porte ni clé, ni chemin,
+   ni code interne, et un même avertissement ne s'affiche qu'une fois dans l'onglet. */
+describe('PanneauProduction — texte rendu (ACAL990)', () => {
+  const INTERDITS = [/::/, /\.py\b/, /\[\]/, /\?\./, /MODULES_PAR_CHAINE/, /degagements\./, /CAL\d+/, /\bmartin_ruiz\b/, /\btmy\b/]
+
+  it.each(['exemple_vide', 'exemple_perime'])('%s : chaque avertissement une seule fois, aucun jargon', async (variante) => {
+    servir(variante)
+    const { container } = rendre()
+    await screen.findByTestId('cal236-panneau')
+    const phrases = [...container.querySelectorAll('*')]
+      .filter((el) => el.children.length === 0).map((el) => el.textContent.trim()).filter(Boolean)
+    const servis = reponseContrat('calepinage', 'calepinage_resultat', variante).data.avertissements
+    for (const avertissement of servis) {
+      expect(phrases.filter((p) => p === avertissement.trim()), `affiché plusieurs fois : ${avertissement}`).toHaveLength(1)
+    }
+    for (const motif of INTERDITS) {
+      expect(phrases.filter((p) => motif.test(p)), `texte rendu portant ${motif}`).toEqual([])
+    }
   })
 })

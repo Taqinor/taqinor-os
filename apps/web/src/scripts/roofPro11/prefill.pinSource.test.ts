@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { hydrateFromDevis } from './prefill';
 import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './provenanceEpingle'; // ACAL593 — sorti de prefill.ts
 import { reinitialiserNumerotation } from './numerotation';
+import { masquerMarqueur, retirerMarqueur } from './epingleClient';
 import { type Ctx } from './context';
 import { enregistrerAtelier, exempleRoofLayoutV2, ouvrirAtelier } from './harnaisDocument';
 
@@ -81,5 +82,30 @@ describe('ACAL193 — pinSource et repereAcquitte', () => {
     const sortie = enregistrer(c);
     expect(sortie.pinSource).toBe('lead');
     expect(sortie.pin).toEqual(EXEMPLE.pin);
+  });
+});
+
+describe('ACAL972 — la fermeture du toit masque l’épingle du lead sans l’oublier', () => {
+  it('masque l’élément (hidden), garde l’objet et le pin sérialisé ; l’effacement le retire', () => {
+    const el = { hidden: false } as HTMLElement;
+    let retire = 0;
+    const marqueur = { remove: () => { retire += 1; }, getElement: () => el };
+    const c = ouvrir(EXEMPLE);
+    masquerMarqueur(marqueur);
+    expect(el.hidden).toBe(true);
+    expect(retire).toBe(0); // masqué ≠ retiré : l'objet reste en mémoire
+    const sortie = enregistrer(c);
+    expect(sortie.pin).toEqual(EXEMPLE.pin);
+    expect(sortie.pinSource).toBe('lead');
+    masquerMarqueur(marqueur, false);
+    expect(el.hidden).toBe(false);
+    expect(retirerMarqueur(marqueur)).toBeNull(); // « Effacer » : retiré, la référence est rendue à null
+    expect(retire).toBe(1);
+  });
+
+  it('sans marqueur ni élément : aucune erreur', () => {
+    expect(() => masquerMarqueur(null)).not.toThrow();
+    expect(() => masquerMarqueur({ remove: () => {} })).not.toThrow();
+    expect(retirerMarqueur(null)).toBeNull();
   });
 });

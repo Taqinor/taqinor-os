@@ -24,6 +24,8 @@ import {
   cibleActiveDuContexte,
   contexteCalepinageVersPayload,
   contexteToDevisPayload,
+  reglagesAtelierDesParametres,
+  phraseCalepinageCharge,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -111,4 +113,22 @@ test('ACAL985 (K-SAISIE-PERDUE) — ligne facture × colonne lead : le payload p
   // Sans facture servie : null (rien d'inventé), pas 0.
   const sans = contexteCalepinageVersPayload({ calepinage: { titre: 'Villa' }, cible: {} })
   assert.equal(sans.factureMensuelleMad, null, 'ligne facture × colonne lead : sans facture servie, null — jamais 0')
+})
+
+test('ACAL962 — reglagesAtelierDesParametres garde le pays réglé (imagerie.pays), null sinon, jamais supposé', () => {
+  const avec = reglagesAtelierDesParametres({ imagerie: { pays: ' ma ' }, degagements: { allees_circulation: [] } })
+  assert.equal(avec.pays, 'ma', 'le pays réglé de la société doit atteindre l’atelier')
+  assert.deepEqual(avec.degagements, { allees_circulation: [] })
+  assert.equal(reglagesAtelierDesParametres({ imagerie: {} }).pays, null, 'rien de réglé : null, jamais un pays par défaut')
+  assert.equal(reglagesAtelierDesParametres({}).pays, null)
+  assert.equal(reglagesAtelierDesParametres(null), null)
+})
+
+test('ACAL967 — phraseCalepinageCharge n’ajoute « Calepinage » que si le titre ne commence pas par ce mot', () => {
+  assert.equal(phraseCalepinageCharge('Calepinage (copie)', 5, true),
+    'Calepinage (copie) chargé. Ajustez la conception, puis « Enregistrer le calepinage ».')
+  assert.ok(phraseCalepinageCharge('Toiture — bâtiment A', 5, true).startsWith('Calepinage Toiture — bâtiment A chargé.'))
+  assert.equal(phraseCalepinageCharge('Calepinage (copie)', 5, false),
+    'Calepinage (copie) en lecture seule — consultation de la conception.')
+  assert.ok(phraseCalepinageCharge('  ', 7, true).startsWith('Calepinage 7 chargé.'), 'sans titre : le numéro')
 })

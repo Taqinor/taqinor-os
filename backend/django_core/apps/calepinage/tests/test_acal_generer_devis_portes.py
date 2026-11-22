@@ -21,7 +21,7 @@ from decimal import Decimal
 import json
 from pathlib import Path
 
-from django.test import TransactionTestCase
+from django.test import SimpleTestCase, TransactionTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.layout import enregistrer_layout
@@ -54,8 +54,41 @@ TOIT = {
 }
 
 
+#: ACAL983 — la liste committée des défauts non saisis (lue aussi par le test web).
+DEFAUTS = json.loads(
+    (Path(__file__).resolve().parent / 'fixtures' / 'defauts_annonces.json')
+    .read_text(encoding='utf-8'))
+PORTES_REJOUEES = {'generer_devis', 'pose', 'estimateur'}
+
+
 def url_generer(pk):
     return f'{url_detail(pk)}generer-devis/'
+
+
+class DefautsAnnoncesSansBaseTest(SimpleTestCase):
+    """ACAL983 — la liste est complète, et l'allée du Terrain n'est jamais
+    appliquée sans saisie (saisie : l'entraxe calculé est publié à côté)."""
+
+    def test_chaque_defaut_a_sa_porte_et_sa_reponse(self):
+        self.assertTrue(DEFAUTS['defauts'])
+        for defaut in DEFAUTS['defauts']:
+            self.assertIn(defaut['porte'], PORTES_REJOUEES, defaut['cle'])
+            for cle in ('cle', 'valeur_origine', 'cas', 'reponse'):
+                self.assertTrue(defaut[cle], f"{defaut['cle']} : « {cle} » vide")
+
+    def test_allee_du_terrain_absente_sans_saisie_annoncee_si_saisie(self):
+        from apps.calepinage.moteur_service import politique_du_sol
+
+        from .test_api_pose import _terrain
+
+        lignes = [d for d in DEFAUTS['defauts'] if d['porte'] == 'pose']
+        self.assertEqual([d['cle'] for d in lignes], ['allee_terrain'])
+        _politique, bloc = politique_du_sol(_terrain(), {'latitude_deg': 30.4})
+        self.assertEqual(bloc['politique'], lignes[0]['reponse']['politique'])
+        self.assertEqual(bloc['entraxe_applique_m'], bloc['entraxe_calcule_m'])
+        _politique, saisie = politique_du_sol(_terrain(0.6), {'latitude_deg': 30.4})
+        self.assertEqual(saisie['politique'], 'ALLEE_SAISIE')
+        self.assertLess(saisie['entraxe_applique_m'], saisie['entraxe_calcule_m'])
 
 
 class GenererDevisPortesTest(BaseApiCalepinage):
@@ -65,6 +98,9 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         from apps.ventes.tests.test_from_layout_endpoint import seed_catalogue
 
         seed_catalogue(self.company)
+        # ACAL922 — leads DIMENSIONNÉS (taille souhaitée) : aucune question.
+        Lead.objects.filter(pk__in=(self.lead.pk, self.lead_2.pk)).update(
+            taille_souhaitee_kwc=Decimal('5'))
         self.original = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='QA-ACAL89-A')
         enregistrer_layout(self.original, copy.deepcopy(TOIT), user=self.user)
@@ -170,7 +206,9 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         seul = Calepinage.objects.create(company=self.company,
                                          client=client, titre='QA-ACAL89-C')
         enregistrer_layout(seul, copy.deepcopy(TOIT), user=self.user)
-        premier = self._generer(seul)
+        # ACAL922 — sans lead, la taille se CONFIRME au premier clic.
+        premier = self.api.post(url_generer(seul.pk),
+                                CONTRAT['corps_confirmer_taille'], format='json')
         self.assertEqual(premier.status_code, 201, premier.data)
         avant = Devis.objects.filter(company=self.company).count()
         second = self._generer(seul)
@@ -410,6 +448,83 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         calepinage.refresh_from_db()
         self.assertIsNone(calepinage.devis_id)
 
+    def test_acal922_sans_facture_ni_taille_question_puis_201(self):
+        """ACAL922 — lead résidentiel sans facture ni taille souhaitée : 409
+        ``confirmation_taille`` portant le kWc et le TTC du devis composé,
+        aucun devis ; confirmé ⇒ 201 aux MÊMES chiffres (mutant : créer sans
+        la garde ⇒ 201 d'emblée, échec)."""
+        from core.electrique.types import fr
+
+        nu = Lead.objects.create(company=self.company, nom='Villa sans facture')
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=nu.pk, titre='QA-ACAL922')
+        enregistrer_layout(calepinage, copy.deepcopy(TOIT), user=self.user)
+        avant = Devis.objects.filter(company=self.company).count()
+        question = self._generer(calepinage)
+        self.assertEqual(question.status_code, 409, question.data)
+        self.assertEqual(sorted(question.data),
+                         sorted(CONTRAT['exemple_409_confirmation_taille']))
+        self.assertEqual((question.data['code'], question.data['champ']),
+                         ('confirmation_taille', 'confirmer_taille'))
+        self.assertIn('facture', question.data['refus'])
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+        calepinage.refresh_from_db()
+        self.assertIsNone(calepinage.devis_id)
+
+        reponse = self.api.post(url_generer(calepinage.pk),
+                                CONTRAT['corps_confirmer_taille'], format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        devis = Devis.objects.get(pk=reponse.data['devis'])
+        kwc = float(devis.etude_params['puissance_kwc'])
+        ttc = Decimal(str(devis.total_ttc)).quantize(Decimal('0.01'))
+        self.assertEqual(question.data['kwc'], kwc)
+        self.assertEqual(question.data['total_ttc'], str(ttc))
+        self.assertEqual(question.data['detail'], (
+            'Aucune facture ni taille souhaitée sur le lead : le devis remplit '
+            'le toit (%s kWc, %s MAD TTC). Confirmez, ou renseignez la facture '
+            'du lead.' % (fr(kwc, 2),
+                          f'{ttc:,.2f}'.replace(',', ' ').replace('.', ','))))
+
+    def _cas_sans_facture(self):
+        nu = Lead.objects.create(company=self.company, nom='Villa ACAL983')
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=nu.pk, titre='QA-ACAL983-taille')
+        enregistrer_layout(calepinage, copy.deepcopy(TOIT), user=self.user)
+        return calepinage
+
+    def _cas_module_720(self):
+        doc = copy.deepcopy(TOIT)
+        doc['zones'] = [{
+            'id': 'A', 'label': 'A', 'roofType': 'flat',
+            'vertices': [[0, 0], [30, 0], [30, 20], [0, 20]],
+            'geometry': {'count': 100, 'kwc': 72.0, 'azimuthDeg': 180.0,
+                         'tiltDeg': 10.0},
+            'result': {'count': 100, 'kwc': 72.0}}]
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL983-module')
+        enregistrer_layout(calepinage, doc, user=self.user)
+        return calepinage
+
+    def test_acal983_defauts_annonces_jamais_un_prix_sans_question(self):
+        """ACAL983 — chaque défaut `generer_devis` de la liste committée rend
+        sa question 409 nommée et AUCUN devis (mutant : retirer la garde de
+        taille ⇒ 201, échec nommant la clé)."""
+        cas = {'taille_sans_facture': self._cas_sans_facture,
+               'module_absent_du_catalogue': self._cas_module_720}
+        lignes = [d for d in DEFAUTS['defauts'] if d['porte'] == 'generer_devis']
+        self.assertEqual(sorted(d['cle'] for d in lignes), sorted(cas))
+        for defaut in lignes:
+            calepinage = cas[defaut['cle']]()
+            avant = Devis.objects.filter(company=self.company).count()
+            reponse = self._generer(calepinage)
+            attendu = defaut['reponse']
+            self.assertEqual((reponse.status_code, reponse.data.get('code')),
+                             (attendu['statut'], attendu['code']),
+                             f"{defaut['cle']} : {defaut['valeur_origine']} a fixé un devis")
+            self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                             avant, defaut['cle'])
+
     def test_acal968_champ_seul_coche_176_resynchro_comprise(self):
         """ACAL968 (D-ACAL-37) — zone 42 + champ au sol 176, seul le champ
         coché ⇒ 176 modules, sélection écrite au devis et relue par la
@@ -472,7 +587,8 @@ class GenererDevisConcurrentTest(TransactionTestCase):
         self.user = get_user_model().objects.create_user(
             username='acon46', password='x', company=self.company, role=role)
         self.lead = Lead.objects.create(company=self.company,
-                                        nom='Toiture ACON46')
+                                        nom='Toiture ACON46',
+                                        taille_souhaitee_kwc=Decimal('5'))
         seed_catalogue(self.company)
         self.calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='ACON46')

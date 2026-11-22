@@ -33,6 +33,8 @@ export interface PanStat {
   pitchDeg: number | null;
   /** Surface utile du pan (m²), déduite du contour tracé. 0 si aucun contour (< 3 sommets). */
   areaM2: number;
+  /** ACAL981 — nombre de sommets du contour : < 3 ⇒ contour non tracé ; ≥ 3 et aire nulle ⇒ à vérifier. */
+  sommets?: number;
   /** Taux d'occupation (0–1) : surface au sol des panneaux posés / surface utile.
    *  null si le pan n'a pas de surface exploitable (division par zéro évitée). */
   occupancyRate: number | null;
@@ -109,6 +111,7 @@ export function computePanStats(
       azimuthDeg: a.roofType === 'pitched' ? a.facingAzimuthDeg : null,
       pitchDeg: a.roofType === 'pitched' ? a.pitchDeg : null,
       areaM2,
+      sommets: a.vertices.length,
       occupancyRate,
       zeroReason,
       moduleId: modulePan?.id ?? null,
@@ -260,6 +263,11 @@ function totaliser(buildingId: string | null, lignes: readonly LigneSite[]): Tot
   };
 }
 
+/** ACAL981 — le nom d'un bâtiment : son identifiant saisi, sinon « Bâtiment <rang> » (rang à partir de 1). */
+export function libelleBatiment(buildingId: string | null, rang: number): string {
+  return buildingId ? buildingId : `Bâtiment ${Math.max(1, rang)}`;
+}
+
 /** Le genre d'une surface de pose, ramené aux genres que la table sait nommer. */
 function genreLigne(kind: string): GenreLigneSite {
   if (kind === 'sol' || kind === 'ombriere' || kind === 'facade') return kind;
@@ -289,7 +297,7 @@ export function computeSiteStats(
     areaM2: p.areaM2 > 0 ? p.areaM2 : null,
     modules: p.panels,
     kwc: p.kwc,
-    motif: p.areaM2 > 0 ? p.zeroReason : 'contour du pan non tracé',
+    motif: p.areaM2 > 0 ? p.zeroReason : (p.sommets ?? 0) < 3 ? 'contour du pan non tracé' : 'aire nulle : vérifiez le contour',
   }));
 
   for (const s of surfaces ?? []) {
@@ -341,17 +349,19 @@ function cellule(v: number | null, decimales = 0): string {
  * site ; chaque cellule vide porte son motif, visible à l'écran.
  */
 export function htmlTableSite(stats: SiteStats): string {
+  // ACAL981 — un groupe sans identifiant se nomme par son rang (« Bâtiment 1 »), jamais « sans id ».
+  const rangDe = (id: string | null): number => stats.parBatiment.findIndex((b) => b.buildingId === id) + 1;
   const ligneHtml = (l: LigneSite): string => `<tr data-site-ligne="${escHtml(l.id)}" data-site-genre="${escHtml(l.genre)}">
       <td class="px-2 py-1 text-white">${escHtml(l.label)}</td>
       <td class="px-2 py-1 text-lune-faint">${escHtml(LIBELLE_GENRE_LIGNE[l.genre])}</td>
-      <td class="px-2 py-1 text-lune-faint">${escHtml(l.buildingId ?? 'Bâtiment sans id')}</td>
+      <td class="px-2 py-1 text-lune-faint">${escHtml(libelleBatiment(l.buildingId, rangDe(l.buildingId)))}</td>
       <td class="px-2 py-1 text-right">${cellule(l.areaM2)}</td>
       <td class="px-2 py-1 text-right">${cellule(l.modules)}</td>
       <td class="px-2 py-1 text-right">${cellule(l.kwc, 2)}</td>
       <td class="px-2 py-1 text-lune-faint">${escHtml(l.motif)}</td>
     </tr>`;
   const totalHtml = (t: TotalSite): string => `<tr data-site-total="${escHtml(t.buildingId ?? '')}" class="border-t border-white/15 font-semibold">
-      <td class="px-2 py-1 text-white" colspan="3">Total ${escHtml(t.buildingId ?? 'du site')}</td>
+      <td class="px-2 py-1 text-white" colspan="3">Total ${escHtml(t.buildingId ?? (stats.parBatiment.includes(t) ? libelleBatiment(null, rangDe(null)) : 'du site'))}</td>
       <td class="px-2 py-1 text-right">${cellule(t.areaM2)}</td>
       <td class="px-2 py-1 text-right">${cellule(t.modules)}</td>
       <td class="px-2 py-1 text-right">${cellule(t.kwc, 2)}</td>

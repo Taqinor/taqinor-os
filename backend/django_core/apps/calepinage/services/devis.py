@@ -198,11 +198,14 @@ def _brouillon_reutilisable(company, lead, empreinte, calepinage):
 
 def generer_devis(calepinage, *, user=None, taux_tva=None,
                   remise_globale=None, journal=None,
-                  derogation_electrique=None, surfaces_chiffrees=None):
+                  derogation_electrique=None, surfaces_chiffrees=None,
+                  confirmer_taille=False):
     """CAL24 — crée (ou RETROUVE) le devis de ce calepinage.
 
     ACAL968 — ``surfaces_chiffrees`` : les clés des surfaces COCHÉES
     (``None`` = toutes) ; le devis compose la copie sans les décochées.
+    ACAL922 — sans ``confirmer_taille``, une CRÉATION que rien ne dimensionne
+    (``taille_non_dimensionnee``) est annulée : 409 ``confirmation_taille``.
 
     Args:
         journal: ACAL89 — dict facultatif rempli SUR PLACE avec ce que la
@@ -249,7 +252,8 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     garde = _garde_electrique(calepinage, derogation_electrique, user,
                               geste='généré')
     devis, cree = _generer(calepinage, layout, company, lead, client,
-                           montants, user=user, journal=journal)
+                           montants, user=user, journal=journal,
+                           confirmer_taille=confirmer_taille)
     servi = _consigner_et_servir(calepinage, garde, user=user)
     if journal is not None:
         journal['electrique'] = servi
@@ -304,6 +308,31 @@ def taille_non_dimensionnee(calepinage):
     return None
 
 
+def _garde_taille(devis, calepinage, confirmer_taille):
+    """ACAL922 — un devis que rien ne dimensionne demande une CONFIRMATION :
+    409 ``confirmation_taille`` avec le kWc et le TTC du devis composé, sous
+    la transaction de la création (devis annulé) ; jamais un blocage."""
+    from decimal import Decimal
+
+    from core.electrique.types import fr
+
+    question = None if confirmer_taille else taille_non_dimensionnee(calepinage)
+    if question is None:
+        return
+    kwc = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    ttc = Decimal(str(devis.total_ttc or 0)).quantize(Decimal('0.01'))
+    chiffres = ([f'{fr(float(kwc), 2)} kWc'] if kwc is not None else []) + [
+        f'{ttc:,.2f}'.replace(',', ' ').replace('.', ',') + ' MAD TTC']
+    detail = ('Aucune facture ni taille souhaitée sur le lead : le devis '
+              f'remplit le toit ({", ".join(chiffres)}). Confirmez, ou '
+              'renseignez la facture du lead.')
+    raise DevisRefuse(detail, champ='confirmer_taille', statut=409, donnees={
+        'detail': detail, 'code': 'confirmation_taille',
+        'champ': 'confirmer_taille', 'total_ttc': str(ttc),
+        'kwc': float(kwc) if kwc is not None else None,
+        'refus': question['refus']})
+
+
 #: ACAL914 — l'écart d'ÉGALITÉ entre kWc dessiné et kWc composé : l'arrondi
 #: d'écriture de ``etude_params['puissance_kwc']`` (trois décimales), pas un
 #: seuil métier.
@@ -349,7 +378,7 @@ def _garde_module_substitue(devis, layout):
 
 
 def _generer(calepinage, layout, company, lead, client, montants, *, user,
-             journal):
+             journal, confirmer_taille=False):
     """CAL24 — la création (ou la dédup) APRÈS toutes les gardes."""
     from django.db import transaction
 
@@ -383,11 +412,12 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
         calepinage.refresh_from_db(fields=['devis'])
         return _generer_sous_verrou(calepinage, layout, company, lead, client,
                                     montants, empreinte, user=user,
-                                    journal=journal)
+                                    journal=journal,
+                                    confirmer_taille=confirmer_taille)
 
 
 def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
-                         empreinte, *, user, journal):
+                         empreinte, *, user, journal, confirmer_taille=False):
     """ACON46 — dédup, création et liaison, sous le verrou de ``_generer``."""
     from django.db import transaction
 
@@ -428,6 +458,7 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
                 client=client, journal=journal_composition, **montants)
             _garde_kwh_declare(devis)
             _garde_module_substitue(devis, layout)  # ACAL914
+            _garde_taille(devis, calepinage, confirmer_taille)  # ACAL922
     except AutoDevisError as refus:
         # ACAL32 — phase / site isolé du lead déduits par la création ; son
         # refus NOMMÉ (``hors_reseau``) remonte en 422, jamais un 500.

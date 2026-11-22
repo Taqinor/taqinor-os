@@ -73,6 +73,31 @@ REPONSE_REFUS_ETAT = OpenApiResponse(
     description="Conflit d'état : la conception n'est pas dans l'état "
                 "requis (corps ``{champ: message}`` nommant le champ).")
 
+#: ACAL922 — le 409 de ``generer-devis`` : la charge ventes mot pour mot OU la
+#: demande de confirmation de taille ``{detail, code: 'confirmation_taille',
+#: champ: 'confirmer_taille', kwc, total_ttc, refus}`` (contrat
+#: ``calepinage_publication.json::exemple_409_confirmation_taille``).
+REPONSE_REFUS_GENERER_DEVIS = OpenApiResponse(
+    response=inline_serializer('CalepinageGenererDevisRefus', {
+        'detail': serializers.CharField(required=False),
+        'code': serializers.CharField(required=False),
+        'champ': serializers.CharField(required=False),
+        'kwc': serializers.FloatField(required=False, allow_null=True),
+        'total_ttc': serializers.CharField(required=False),
+        'refus': serializers.CharField(required=False)}),
+    description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
+                "charge, mot pour mot ; ou ``code: confirmation_taille`` : "
+                "rien ne dimensionne le devis, renvoyer le corps avec "
+                "``confirmer_taille: true`` pour confirmer.")
+
+#: ACAL1005 — le texte posé au contrat ``calepinage_detail.json`` (exemple_rapide).
+MOTIF_ETAT_RAPIDE = 'ouvert depuis un devis automatique : à vérifier sur place'
+
+
+def etat_conception_du_calepinage(calepinage):
+    """``rapide`` | ``complet`` (défaut : un calepinage sans la colonne est complet)."""
+    return 'rapide' if getattr(calepinage, 'etat_conception', 'complet') == 'rapide' else 'complet'
+
 
 def forme_reponse(nom, *cles, **typees):
     """ERR-ENF11-FUZZ-CALEPINAGE — le schéma d'une réponse AGRÉGÉE.

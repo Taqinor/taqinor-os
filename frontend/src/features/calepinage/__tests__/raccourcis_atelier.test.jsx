@@ -280,3 +280,11 @@ describe('ACAL414 — « ? » ouvre l’aide de l’atelier, et elle liste trac�
     expect(aide).toHaveTextContent('Annuler la dernière modification de la disposition')
   })
 })
+
+describe('ACAL492 — la ligne « Dupliquer » nomme ce qu’elle duplique', () => {
+  it('l’aide se lit « Dupliquer l’obstacle sélectionné » (Ctrl + D)', () => {
+    const ligne = RACCOURCIS.find((r) => r.action === 'dupliquer')
+    expect(ligne.libelle).toContain('obstacle')
+    expect(ligne.libelle).not.toContain('la sélection')
+  })
+})

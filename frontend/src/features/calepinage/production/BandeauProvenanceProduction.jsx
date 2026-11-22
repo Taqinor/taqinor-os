@@ -169,7 +169,7 @@ export function EcartPvgis({ validation }) {
       {sansVerdict && (
         <span className="block text-xs" data-testid="acal854-sans-verdict">
           {'écart publié sans verdict — la tolérance n\'est pas réglée ('}
-          <Link to="/calepinage/reglages#tolerance_validation_pct" className="text-primary-text underline"
+          <Link to="/calepinage/reglages#calx69-tolerance_validation_pct" className="text-primary-text underline"
             data-testid="acal854-lien-tolerance">régler la tolérance</Link>{')'}
         </span>
       )}
@@ -220,7 +220,7 @@ export function BandeauBorneHaute({ total }) {
         </ul>
       )}
       <Link
-        to="/calepinage/reglages"
+        to="/calepinage/reglages#calx69-section-simulation"
         className="w-fit text-xs font-medium text-primary underline"
         data-testid="acal52-lien-reglages"
       >

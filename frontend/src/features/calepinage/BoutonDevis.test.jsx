@@ -259,6 +259,36 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
   })
 })
 
+/* ACAL923 — le 409 `confirmation_taille` d'ACAL922 (rien ne dimensionne le
+   devis) pose la QUESTION au lieu du cadre « devis figé » ; « Confirmer et
+   générer » relance le même geste avec `confirmer_taille: true`. */
+describe('BoutonDevis — confirmation de taille (ACAL923)', () => {
+  const QUESTION = exempleContrat('calepinage', 'calepinage_publication',
+    'exemple_409_confirmation_taille')
+  const CORPS = exempleContrat('calepinage', 'calepinage_publication', 'corps_confirmer_taille')
+
+  it('409 confirmation_taille ⇒ question, second POST avec confirmer_taille: true', async () => {
+    calepinageApi.calepinages.genererDevis
+      .mockRejectedValueOnce({ response: { status: 409, data: QUESTION } })
+      .mockResolvedValueOnce({ data: { devis: 43, reference: 'DEV-2611-0043', deduplique: false } })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+
+    const encadre = await screen.findByTestId('cal-devis-confirmation-taille')
+    expect(encadre).toHaveTextContent(QUESTION.detail)
+    expect(encadre).toHaveTextContent(QUESTION.refus)
+    expect(screen.queryByTestId('cal-devis-conflit')).toBeNull()
+    expect(within(encadre).getByRole('link', { name: 'Renseigner la facture du lead' }))
+      .toHaveAttribute('href', `/crm/leads/${DETAIL_VIDE.lead.id}`)
+
+    await userEvent.click(within(encadre).getByRole('button', { name: 'Confirmer et générer' }))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS))
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0043 créé')
+    expect(screen.queryByTestId('cal-devis-confirmation-taille')).toBeNull()
+  })
+})
+
 /* ACAL94 — Générer / Resynchroniser enregistrent d'abord l'ÉCRAN (une seule
    fonction d'enregistrement, prop `enregistrerAvant`) ; un échec n'envoie rien
    et ne recharge rien ; Réviser avertit des retouches non enregistrées sans

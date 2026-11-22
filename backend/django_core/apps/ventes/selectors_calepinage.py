@@ -127,6 +127,16 @@ def calepinage_du_devis(devis, company=None):
     }
 
 
+def conception_rapide_du_devis(devis):
+    """ACAL1196 — ``True`` si la conception du devis est « rapide » (non
+    vérifiée). Porte de ``public_views`` vers ``calepinage.selectors``."""
+    from apps.calepinage.selectors import calepinage_du_devis as _lire
+
+    calepinage = _lire(getattr(devis, 'pk', None),
+                       getattr(devis, 'company', None))
+    return getattr(calepinage, 'etat_conception', '') == 'rapide'
+
+
 def _conception_a_jour(devis, calepinage):
     """ACAL46 — LE prédicat « la conception du devis est celle de son
     calepinage » : comparaison des DEUX empreintes imprimées (ACAL40), jamais

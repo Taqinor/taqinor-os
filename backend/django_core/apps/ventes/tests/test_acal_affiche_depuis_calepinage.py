@@ -73,7 +73,8 @@ class AfficheDepuisCalepinage(TestCase):
                                                 nom='Client ACAL98')
         self.lead = Lead.objects.create(
             company=self.company, nom='Lead', prenom='ACAL98',
-            telephone='+212600000098', ville='Casablanca')
+            telephone='+212600000098', ville='Casablanca',
+            taille_souhaitee_kwc=Decimal('5'))  # ACAL922 : lead dimensionné
         self.panneau = Produit.objects.create(
             company=self.company, nom='Panneau Canadien Solar 710W',
             sku='A98-PAN', prix_vente=Decimal('1166.67'),

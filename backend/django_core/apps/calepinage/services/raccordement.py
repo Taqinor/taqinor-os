@@ -87,7 +87,7 @@ LIBELLES = {
 MOTIF_SANS_LIMITE = (
     "aucune limite d'élévation n'est saisie pour ce site : l'élévation est "
     "publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est "
-    "présent dans ce dépôt et aucune limite n'est supposée — saisissez "
+    "intégré au module et aucune limite n'est supposée — saisissez "
     "« limite_elevation_pct » avec sa source (texte réglementaire ou contrat "
     "de raccordement) dans les réglages du calepinage.")
 

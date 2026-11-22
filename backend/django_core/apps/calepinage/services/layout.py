@@ -562,6 +562,10 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
         if version_moteur is not None:
             calepinage.version_moteur = version_moteur or ''
             champs.append('version_moteur')
+        if user is not None and getattr(calepinage, 'etat_conception', '') == 'rapide':
+            # ACAL1006 — une PERSONNE enregistre : vérifié, jamais l'inverse.
+            calepinage.etat_conception = 'complet'
+            champs.append('etat_conception')
         calepinage.save(update_fields=champs)
 
         version = None

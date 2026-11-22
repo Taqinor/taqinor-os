@@ -18,7 +18,7 @@ const OUTILS = [
   ['outilMesure', 'Mesurer une distance', false],
   ['aimantation', 'Activer ou couper l’aimantation', false],
   ['supprimer', 'Supprimer la sélection', true],
-  ['dupliquer', 'Dupliquer la sélection', true],
+  ['dupliquer', 'Dupliquer l’obstacle sélectionné', true],
   ['pleinEcran', 'Plein écran', false],
 ]
 

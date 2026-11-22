@@ -14,12 +14,15 @@ import {
   choixOptimisationCourant,
   createOptimizer, // ACAL574
   departagerRemplissage,
+  economieAffichee, // ACAL994
+  libelleGainBifacial,
   poserCibleOptimisation,
   poserChoixOptimisation,
   PRIORITES_REMPLISSAGE,
   type EntreeDepartage,
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
+import { fmtMad } from './dom'; // ACAL994
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
 import { panneauxPourCible } from './cibleProduction';
@@ -550,5 +553,80 @@ describe('ACAL777 — factureCarteDe / lireFactureSaisie', () => {
     expect(lireFactureSaisie({ value: '' })).toBe(0);
     expect(lireFactureSaisie({ value: 'abc' })).toBe(0);
     expect(lireFactureSaisie(null)).toBe(0);
+  });
+});
+
+describe('ACAL975 — le gain bifacial n’existe pas en pose affleurante', () => {
+  const base = { annualKwh: 8000 };
+  it('affleurant ⇒ chaîne vide ; sud incliné ⇒ ~+5 % ; est-ouest ⇒ ~+3 % ; sans production ⇒ vide', () => {
+    expect(libelleGainBifacial({ ...base, family: 'south', tiltDeg: 22, flush: true })).toBe('');
+    expect(libelleGainBifacial({ ...base, family: 'south', tiltDeg: 22 })).toContain('~+5 %');
+    expect(libelleGainBifacial({ ...base, family: 'eastwest', tiltDeg: 10 })).toContain('~+3 %');
+    expect(libelleGainBifacial({ annualKwh: 0, family: 'south', tiltDeg: 22 })).toBe('');
+  });
+});
+
+// ACAL994 — l'économie SERVIE remplace l'estimation (carte + Total) avec son libellé ; site public inchangé.
+describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
+  const servi = (valeur: number | null, etat: string) => ({ economie_annee1_mad: { valeur, etat, option: 'sans_batterie' } });
+  const monter = (chiffrage?: unknown) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><div><dd id="rp9-reco-savings"></dd></div><dd id="tot"></dd></body>').window.document;
+    g.document = doc;
+    const ctx = { opts: chiffrage === undefined ? {} : { chiffrage }, dom: { areasTotalSavingsEl: doc.getElementById('tot') } } as unknown as Ctx;
+    const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+      syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    return { ctx, opt, doc, fin: () => { g.document = avant; } };
+  };
+  const ligne = (doc: Document) => doc.querySelector('[data-economie-etat]')?.textContent ?? null;
+
+  it('servi : la valeur du serveur est affichée (carte et Total), « au dernier enregistrement »', () => {
+    const { ctx, opt, doc, fin } = monter(servi(7420, 'servi'));
+    try {
+      expect(economieAffichee(ctx, 'carte', '100 – 200 MAD/an')).toBe(`${fmtMad(7420)}/an`);
+      opt.majChiffrage(servi(7420, 'servi') as never);
+      expect(economieAffichee(ctx, 'total', '300 – 400 MAD/an')).toBe(`${fmtMad(7420)}/an`);
+      expect(ligne(doc)).toBe('au dernier enregistrement · sans batterie');
+    } finally { fin(); }
+  });
+
+  it('non servi ou hors ligne : l’estimation du navigateur reste et dit « estimation — recalculée à l’enregistrement »', () => {
+    for (const chiffrage of [servi(null, 'non_servi'), null]) {
+      const { ctx, opt, doc, fin } = monter(chiffrage);
+      try {
+        expect(economieAffichee(ctx, 'carte', '100 – 200 MAD/an')).toBe('100 – 200 MAD/an');
+        opt.majChiffrage(chiffrage as never);
+        expect(ligne(doc)).toBe('estimation — recalculée à l’enregistrement');
+      } finally { fin(); }
+    }
+  });
+
+  it('après enregistrement : la valeur servie remplace l’estimation (carte et Total), et revient à l’estimation si retirée', () => {
+    const { ctx, opt, doc, fin } = monter(null);
+    try {
+      const carte = doc.getElementById('rp9-reco-savings') as HTMLElement;
+      const total = doc.getElementById('tot') as HTMLElement;
+      carte.textContent = economieAffichee(ctx, 'carte', '100 – 200 MAD/an');
+      total.textContent = economieAffichee(ctx, 'total', '300 – 400 MAD/an');
+      opt.majChiffrage(servi(8123, 'servi') as never);
+      expect(carte.textContent).toContain('8');
+      expect(carte.textContent).not.toContain('100');
+      expect(total.textContent).toBe(carte.textContent);
+      expect(ligne(doc)).toBe('au dernier enregistrement · sans batterie');
+      opt.majChiffrage(servi(null, 'non_servi') as never);
+      expect(carte.textContent).toBe('100 – 200 MAD/an');
+      expect(total.textContent).toBe('300 – 400 MAD/an');
+    } finally { fin(); }
+  });
+
+  it('site public (aucun chiffrage) : estimation seule, aucune ligne d’étiquette', () => {
+    const { ctx, opt, doc, fin } = monter(undefined);
+    try {
+      expect(economieAffichee(ctx, 'carte', '100 – 200 MAD/an')).toBe('100 – 200 MAD/an');
+      expect(opt).toBeDefined();
+      expect(ligne(doc)).toBeNull();
+    } finally { fin(); }
   });
 });

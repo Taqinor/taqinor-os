@@ -137,3 +137,47 @@ test('ACAL493 : hauteur et bandeau « Compte NON engageable » montés', () => {
   assert.match(SRC.slice(fin - 40, fin + 80), /id="rp9-obs-engage" role="status" hidden/)
   assert.match(carte, /<\/div>\s*\{\/\* ACAL493/, 'le bandeau doit suivre la fermeture de la carte')
 })
+
+test('ACAL1032 : Dupliquer et trame sont montés dans `rp9-obs-edit`', () => {
+  const debut = SRC.indexOf('id="rp9-obs-edit"')
+  const fin = SRC.indexOf('id="rp9-obs-engage"')
+  const carte = SRC.slice(debut, fin)
+  for (const id of ['rp9-obs-duplicate', 'rp9-obs-grid-place']) {
+    assert.ok(carte.includes(`id="${id}"`), `${id} absent de la carte obstacle`)
+  }
+  // les trois champs de la trame : ids `rp9-obs-grid-<clé>` bâtis sur la liste des clés
+  assert.match(carte, /\['spacing', [^\]]*\], \['cols', [^\]]*\], \['rows', [^\]]*\]/)
+  const i = carte.indexOf('id={`rp9-obs-grid-${k}`}')
+  assert.ok(i >= 0, 'champ de la trame absent')
+  const balise = carte.slice(i, carte.indexOf('className', i))
+  assert.match(balise, /inputMode="decimal"/)
+  assert.doesNotMatch(balise, /value=|defaultValue=/, 'aucune valeur initiale')
+  assert.match(carte, /<details[^>]*>\s*<summary[^>]*>[^<]*Poser en série/, 'trame dans un <details>')
+  assert.doesNotMatch(carte, /<details[^>]*open/, '<details> fermé par défaut')
+})
+
+test("ACAL497 : l'outil d'ombre est monté", () => {
+  const debut = SRC.indexOf('id="rp9-shade-add"')
+  assert.ok(debut >= 0, 'rp9-shade-add absent de BuilderDom')
+  const bloc = SRC.slice(debut - 800, debut + 3000)
+  for (const id of ['rp9-shade-add', 'rp9-shade-clear', 'rp9-shade-hour', 'rp9-shade-hour-value', 'rp9-shade-list', 'rp9-shade-note']) {
+    assert.ok(bloc.includes(`id="${id}"`), `${id} absent`)
+  }
+  const h = bloc.indexOf('id="rp9-shade-hour"')
+  const balise = bloc.slice(h, bloc.indexOf('/>', h))
+  assert.match(balise, /inputMode="decimal"/)
+  assert.doesNotMatch(balise, /value=|type="range"/, 'aucune heure proposée')
+  assert.match(bloc, /id="rp9-shade-note"[^>]*aria-live="polite"/)
+})
+
+test('ACAL504 : la hauteur du bâtiment est montée', () => {
+  const i = SRC.indexOf('id="rp9-shade-height"')
+  assert.ok(i >= 0, 'rp9-shade-height absent de BuilderDom')
+  const balise = SRC.slice(i, SRC.indexOf('/>', i))
+  assert.match(balise, /inputMode="decimal"/)
+  assert.doesNotMatch(balise, /value=|defaultValue=/, 'aucune valeur initiale')
+  // la note est dans le MÊME parent que le champ : c'est là que `ensurePanneauBatiment` accroche `rp11-batiment`
+  const parent = SRC.slice(SRC.lastIndexOf('<div', i), SRC.indexOf('id="rp9-shade-list"', i))
+  assert.ok(parent.includes('id="rp9-shade-height-note"'), 'rp9-shade-height-note hors du parent du champ')
+  assert.match(parent, /id="rp9-shade-height-note"[^>]*aria-live="polite"/)
+})

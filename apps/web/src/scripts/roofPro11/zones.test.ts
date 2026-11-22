@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom'; // ACAL574
-import { createZones } from './zones'; // ACAL574
+import { buildingLabel, createZones } from './zones'; // ACAL574
 import { motifPanExistant } from './panExistant'; // ACAL574
 import { ctxDeBase, panDeTest, ptM } from './harnaisAtelier'; // ACAL574
 import { fileURLToPath } from 'node:url';
@@ -712,5 +712,13 @@ describe('ACAL853 — liveActiveResult reprend le kWh de la carte peinte', () =>
   });
   it('carte pas encore peinte : le calcul du solveur (9 000) sert', () => {
     expect(essai(null)?.annualKwh).toBe(9000);
+  });
+});
+
+describe('ACAL981 — buildingLabel nomme le bâtiment sans identifiant par son rang', () => {
+  it('« Bâtiment <rang> » sans identifiant, l’identifiant saisi reste tel quel', () => {
+    expect(buildingLabel(null, 1)).toBe('Bâtiment 1');
+    expect(buildingLabel(null, 2)).toBe('Bâtiment 2');
+    expect(buildingLabel('bat-A', 2)).toBe('bat-A');
   });
 });

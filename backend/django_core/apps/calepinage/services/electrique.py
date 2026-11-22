@@ -2600,7 +2600,7 @@ def _motifs_des_troncons(troncons):
             "tronçon « %s », champ « %s » : %s"
             % (omission.get('troncon') or '—', omission.get('champ') or '—',
                omission.get('motif') or ''),
-            'services/troncons.py'))
+            'tronçons du calepinage'))
     for verdict in (troncons or {}).get('verdicts') or ():
         if verdict.get('bloquant'):
             statut = STATUT_BLOQUANT

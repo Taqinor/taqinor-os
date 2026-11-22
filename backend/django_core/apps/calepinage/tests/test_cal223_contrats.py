@@ -618,6 +618,118 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertEqual(sorted(connus - trouves), [],
                          "Échantillon déclaré mais absent du dossier.")
 
+    def test_phrases_servies_sans_jargon(self):
+        # ACAL990 (K-JARGON) — les phrases PRODUITES (jamais le source) d'une fiche vide : aucune clé,
+        # chemin, code interne ni valeur brute. Services listés ci-dessous ; l'échec nomme le service.
+        import re
+
+        from apps.calepinage.services import lestage, norme, ombrage_chaines, profils_types, suppositions
+        from apps.calepinage.tests.test_calx248_verdict_publiable import _Calepinage, _verdict
+
+        interdit = re.compile(r'::|\.py|\[\]|\?\.|MODULES_PAR_CHAINE|degagements\.|CAL\d+|dépôt')
+        brutes = {'martin_ruiz', 'tmy'}
+        servies = {
+            'norme.norme_applicable': norme.norme_applicable(None),
+            'electrique.verdict_publiable': _verdict(_Calepinage(layout={})),
+            'ombrage_chaines.ombrage_des_chaines': ombrage_chaines.ombrage_des_chaines({}, {}),
+            'lestage.feuille': lestage._feuille_de_lestage({}),
+            'profils_types.replis': profils_types._profils_de_repli(),
+            'suppositions.repli_longueur_dossier': suppositions.repli_longueur_dossier(16, 'dossier'),
+        }
+
+        def phrases(noeud):
+            if isinstance(noeud, str):
+                yield noeud
+            elif isinstance(noeud, dict):
+                for valeur in noeud.values():
+                    yield from phrases(valeur)
+            elif isinstance(noeud, (list, tuple)):
+                for valeur in noeud:
+                    yield from phrases(valeur)
+
+        for service, sortie in servies.items():
+            lues = list(phrases(sortie))
+            self.assertTrue(lues, service)
+            for phrase in lues:
+                self.assertIsNone(interdit.search(phrase), f'{service} : « {phrase[:90]} » porte une clé ou un chemin')
+                self.assertNotIn(phrase.strip(), brutes, f'{service} : valeur brute « {phrase} »')
+
+    def test_etat_conception_du_detail(self):
+        # ACAL1005 — `rapide` | `complet` ; `complet` sans motif, `rapide` motivé.
+        donnees = _charger('calepinage_detail.json')
+        for nom in ('exemple', 'exemple_vide', 'exemple_rapide'):
+            self.assertIn(donnees[nom]['etat_conception'], {'rapide', 'complet'}, nom)
+        for nom in ('exemple', 'exemple_vide'):
+            self.assertEqual(donnees[nom]['etat_conception'], 'complet', nom)
+            self.assertIsNone(donnees[nom]['etat_conception_motif'], nom)
+        self.assertEqual(sorted(donnees['exemple_rapide']),
+                         ['etat_conception', 'etat_conception_motif'])
+        self.assertEqual(donnees['exemple_rapide']['etat_conception'], 'rapide')
+        self.assertEqual(donnees['exemple_rapide']['etat_conception_motif'],
+                         'ouvert depuis un devis automatique : à vérifier sur place')
+
+    def test_manquants_portent_champ_et_cible_montee(self):
+        # ACAL986 (K-IMPASSE) — chaque ligne `manquants[]` d'un échantillon ET
+        # du producteur nomme son champ ; une cible « reglages » vise une clé
+        # du registre servi (champ `calx69-<clé>` monté par les Réglages).
+        from apps.calepinage.services.manquants_simulation import manquants_de_simulation
+        from apps.calepinage.services.parametres_cles import REGISTRES
+
+        cles = {cle for decl in REGISTRES.values() for cle, *_ in decl}
+
+        def lignes(noeud, chemin):
+            if isinstance(noeud, dict):
+                for cle, valeur in noeud.items():
+                    if cle == 'manquants' and isinstance(valeur, list):
+                        # Les lignes « refus » (motif / cible) ; la masse a son vocabulaire (quoi, message).
+                        yield from ((f'{chemin}.manquants[{i}]', m) for i, m in enumerate(valeur)
+                                    if isinstance(m, dict) and ({'motif', 'cible'} & set(m)))
+                    yield from lignes(valeur, f'{chemin}.{cle}')
+            elif isinstance(noeud, list):
+                for i, element in enumerate(noeud):
+                    yield from lignes(element, f'{chemin}[{i}]')
+
+        trouvees = [ligne for chemin in _echantillons()
+                    for ligne in lignes(_charger(chemin.name), chemin.name)]
+        trouvees += [(f'producteur[{i}]', m) for i, m in enumerate(manquants_de_simulation({}, {}))]
+        self.assertGreater(len(trouvees), 4)
+        for ou, ligne in trouvees:
+            self.assertTrue(str(ligne.get('champ') or '').strip(), f'{ou} : `champ` absent')
+            self.assertTrue(str(ligne.get('motif') or '').strip(), f'{ou} : `motif` absent')
+            self.assertIn('cible', ligne, f'{ou} : `cible` absente (null si ce n’est pas un réglage)')
+            cible = ligne.get('cible')
+            if cible is None or cible.get('onglet') != 'reglages':
+                continue
+            champ = str(cible.get('champ') or '')
+            self.assertTrue(champ.startswith('calx69-') and champ[len('calx69-'):] in cles,
+                            f'{ou} : « {ligne["motif"][:60]}… » vise {champ!r}, aucun champ des Réglages')
+
+    def test_etat_conception_marque_par_la_creation(self):
+        # ACAL1006 — devis rapide ⇒ calepinage rapide ; dessiné ⇒ inchangé.
+        from types import SimpleNamespace
+
+        from apps.calepinage.services import creation
+        from apps.calepinage.services.creation import ORIGINE_ADOPTE, ORIGINE_EXISTANT
+        from apps.calepinage.models import Calepinage
+
+        rapide = SimpleNamespace(etude_params={'origine_conception': 'rapide'})
+        humain = SimpleNamespace(etude_params={'scenario': 'sans'})
+        self.assertEqual(creation._etat_de_depart(rapide, None), 'rapide')
+        self.assertEqual(creation._etat_de_depart(rapide, {'zones': [{}]}), 'complet')
+        self.assertEqual(creation._etat_de_depart(humain, None), 'complet')
+        self.assertEqual(creation._etat_de_depart(SimpleNamespace(), None), 'complet')
+        self.assertEqual(Calepinage._meta.get_field('etat_conception').default, 'complet')
+        self.assertEqual([c for c, _ in Calepinage.ETAT_CONCEPTION_CHOICES], ['rapide', 'complet'])
+
+        class Pivot:  # sans ``objects`` : toute écriture en base lèverait
+            def __init__(self, document):
+                self.pk, self.roof_layout, self.etat_conception = 1, document, 'complet'
+
+        for adopte in ((Pivot({'zones': [{}]}), ORIGINE_ADOPTE),
+                       (Pivot(None), ORIGINE_EXISTANT)):
+            creation._marquer_l_adopte(adopte, rapide)
+            self.assertEqual(adopte[0].etat_conception, 'complet', adopte[1])
+
     def test_forme_des_systemes_de_fixation(self):
         # ACAL557 — chaque système et chaque composant aux clés du contrat,
         # vocabulaires lus sur les modèles, jamais `company`, aucun prix.

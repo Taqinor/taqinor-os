@@ -114,6 +114,7 @@ retiré plus un hook ajouté.
 | `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |
 | `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
 | `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |
+| `cal-devis-confirmation-taille` | devis : question « rien ne dimensionne le devis » du 409 `confirmation_taille` (ACAL922/ACAL923). |
 | `cal-generer-devis` | générer devis. |
 | `cal-resynchroniser-devis` | resynchroniser devis. |
 
@@ -887,6 +888,8 @@ retiré plus un hook ajouté.
 | `cal-detection-fichier` | détection du toit : champ fichier de l’image. |
 | `cal-detection-indisponible` | détection du toit : phrase « non activée », aucun bouton. |
 | `cal-detection-message` | détection du toit : message d’état (annulée, échec, pan posé). |
+| `cal-detection-obstacle` | détection du toit : case à cocher d’un obstacle proposé (ACAL531). |
+| `cal-detection-obstacles-utiliser` | détection du toit : poser les obstacles cochés (provenance DEVINE, à confirmer). |
 | `cal-detection-panneau` | détection du toit : le panneau. |
 | `cal-detection-proposition` | détection du toit : la proposition « à confirmer ». |
 | `cal-detection-refus` | détection du toit : refus de pose d’un contour, avec son motif. |
@@ -913,6 +916,8 @@ retiré plus un hook ajouté.
 |---|---|
 | `cal-conception-auto` | atelier : bouton « Conception automatique » (ACAL421). |
 | `cal-conception-auto-message` | atelier : message d’état de la conception automatique. |
+| `cal-conception-rapide` | atelier : bandeau « Conception rapide — à vérifier sur place » d’un calepinage `rapide` (ACAL1007). |
+| `cal-conception-rapide-verifier` | atelier : bouton « J’ai vérifié le toit » (l’enregistrement existant). |
 
 ## RailGuide — complément L5 (`commun/RailGuide.jsx`)
 

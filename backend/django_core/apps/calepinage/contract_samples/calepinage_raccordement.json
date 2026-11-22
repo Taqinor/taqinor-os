@@ -31,7 +31,7 @@
         "code": "elevation_tension",
         "libelle": "Élévation de tension au point de raccordement",
         "statut": "omis",
-        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est présent dans ce dépôt et aucune limite n'est supposée — saisissez « limite_elevation_pct » avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
+        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est intégré au module et aucune limite n'est supposée — saisissez « limite_elevation_pct » avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
         "source": null
       },
       {
@@ -215,7 +215,7 @@
         "code": "elevation_tension",
         "libelle": "Élévation de tension au point de raccordement",
         "statut": "omis",
-        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est présent dans ce dépôt et aucune limite n'est supposée — saisissez « limite_elevation_pct » avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
+        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est intégré au module et aucune limite n'est supposée — saisissez « limite_elevation_pct » avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
         "source": null
       },
       {

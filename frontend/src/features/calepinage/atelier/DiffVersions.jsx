@@ -28,6 +28,11 @@ import { TableauNu } from '../../../ui/TableauDefilant'
 
 const ETAT_COURANT = '' // valeur du sélecteur de droite pour « état courant »
 
+// ACAL967 — une empreinte (`layout_hash`, 64 caractères) s'affiche en 8, l'entière en infobulle.
+const LONGUEUR_EMPREINTE_AFFICHEE = 8
+const valeurEcart = (champ, v) =>
+  champ === 'layout_hash' && typeof v === 'string' ? v.slice(0, LONGUEUR_EMPREINTE_AFFICHEE) : (v ?? '—')
+
 export default function DiffVersions({ calepinageId: idPropose } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
@@ -170,11 +175,11 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
                 {diff.ecarts.map((ecart) => (
                   <tr key={ecart.champ} data-testid={`cal-diff-versions-ligne-${ecart.champ}`}>
                     <td className="py-1 pr-3 text-foreground">{ecart.libelle}</td>
-                    <td className="py-1 pr-3 text-muted-foreground">
-                      {ecart.avant ?? '—'}
+                    <td className="py-1 pr-3 text-muted-foreground" title={ecart.avant ?? undefined}>
+                      {valeurEcart(ecart.champ, ecart.avant)}
                     </td>
-                    <td className="py-1 text-muted-foreground">
-                      {ecart.apres ?? '—'}
+                    <td className="py-1 text-muted-foreground" title={ecart.apres ?? undefined}>
+                      {valeurEcart(ecart.champ, ecart.apres)}
                     </td>
                   </tr>
                 ))}

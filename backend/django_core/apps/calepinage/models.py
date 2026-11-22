@@ -213,6 +213,13 @@ class Calepinage(TenantModel):
     #: ``updated_at`` ni journal). Jamais servi par le détail ni l'export.
     brouillons_atelier = models.JSONField("Brouillons d'atelier",
                                           default=dict, blank=True)
+    #: ACAL1006 — ``rapide`` = ouvert depuis un devis automatique jamais
+    #: dessiné (un MARQUAGE, jamais un remplissage) ; ``complet`` dès qu'une
+    #: personne enregistre le document (``services.layout``), et par défaut.
+    ETAT_CONCEPTION_CHOICES = [('rapide', 'Rapide'), ('complet', 'Complet')]
+    etat_conception = models.CharField(
+        'État de conception', max_length=10,
+        choices=ETAT_CONCEPTION_CHOICES, default='complet')
 
     class Meta:
         verbose_name = 'Calepinage'

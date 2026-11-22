@@ -687,7 +687,7 @@ export default function ReglagesSimulation() {
       <ReglagesNorme normeElectrique={normeServie} />
 
       {Object.keys(registres).map((section) => (
-        <Card key={section} className="mt-5 p-4" data-testid={`calx69-section-${section}`}>
+        <Card key={section} id={`calx69-section-${section}`} className="mt-5 p-4" data-testid={`calx69-section-${section}`}>
           <h2 className="text-base font-semibold text-foreground">{TITRES[section] || section}</h2>
           {registres[section].map((r) => (
             <LigneReglage

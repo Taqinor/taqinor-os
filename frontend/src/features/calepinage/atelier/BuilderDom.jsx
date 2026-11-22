@@ -268,9 +268,51 @@ export default function BuilderDom({
               <p className="mt-1 text-xs text-muted-foreground">
                 Laissez vide si vous ne la connaissez pas : l'obstacle ne fera alors aucune ombre.
               </p>
+              {/* ACAL1032 — duplication (CAL73) et trame ; ids lus par obstaclesUi.ts. */}
+              <button type="button" id="rp9-obs-duplicate" className={`${chipClass} mt-3 min-h-11`}>Dupliquer</button>
+              <details className="mt-3">
+                <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-foreground">Poser en série</summary>
+                <div className="grid grid-cols-3 gap-3">
+                  {[['spacing', 'Pas (m)'], ['cols', 'Colonnes'], ['rows', 'Lignes']].map(([k, nom]) => (
+                    <label key={k} className="block text-sm text-foreground">
+                      {nom}
+                      <input id={`rp9-obs-grid-${k}`} type="text" inputMode="decimal" step="any"
+                        className="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400 aria-[invalid=true]:border-destructive" />
+                    </label>
+                  ))}
+                </div>
+                <button type="button" id="rp9-obs-grid-place" className={`${chipClass} mt-3 min-h-11`}>Poser en série</button>
+              </details>
             </div>
             {/* ACAL493 — bandeau « Compte NON engageable » (CAL72), visible même sans sélection. */}
             <p id="rp9-obs-engage" role="status" hidden className="border border-alert-300/60 bg-background/40 p-3 text-sm text-foreground"></p>
+
+            {/* ACAL497 — « Mesurer une hauteur par son ombre » (shadingUi.ts, WJ19) : niveau expert, replié d'office. */}
+            <details id="rp9-shade-bloc" open={!!expert} className="border border-border p-3">
+              <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-foreground">Ombre d'un voisin ou d'un arbre</summary>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" id="rp9-shade-add" aria-pressed="false" className={`${chipClass} min-h-11`}>Mesurer une hauteur par son ombre</button>
+                <button type="button" id="rp9-shade-clear" className={`${chipClass} min-h-11`}>Effacer les ombres</button>
+              </div>
+              <label className="mt-3 block text-sm text-foreground">
+                Heure solaire de l'image
+                <input id="rp9-shade-hour" type="text" inputMode="decimal" step="any"
+                  className="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" />
+              </label>
+              <p id="rp9-shade-hour-value" className="mt-1 text-xs text-muted-foreground"></p>
+              <p className="mt-1 text-xs text-muted-foreground">Midi solaire = 12 h, ce n'est pas l'heure de la montre.</p>
+              {/* ACAL504 — hauteur du bâtiment : shadingUi.ts accroche le panneau « Bâtiment » (rp11-batiment) à ce conteneur. */}
+              <div id="rp9-shade-batiment" className="mt-3">
+                <label className="block text-sm text-foreground">
+                  Hauteur du bâtiment (m)
+                  <input id="rp9-shade-height" type="text" inputMode="decimal" step="any"
+                    className="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" />
+                </label>
+                <p id="rp9-shade-height-note" aria-live="polite" className="mt-1 text-xs text-muted-foreground"></p>
+              </div>
+              <div id="rp9-shade-list" className="mt-2 space-y-2"></div>
+              <p id="rp9-shade-note" aria-live="polite" className="mt-2 text-xs text-muted-foreground"></p>
+            </details>
 
             {/* CAL102 — outil de MESURE (distance/surface/angle), annotation persistée avec
                 le calepinage (roofPro11/mesureUi.ts). Un genre choisi, des taps posent les

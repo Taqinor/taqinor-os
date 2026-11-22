@@ -12,6 +12,16 @@ from .selectors import (
 
 MOTIF_SURFACES = ('une surface posée n’a pas été simulée : '
                   'relancez la simulation')
+#: ACAL1008 — rien d'une conception « rapide » (ACAL1006) ne sort côté client.
+MOTIF_CONCEPTION_RAPIDE = ("conception rapide non vérifiée : "
+                           "enregistrez-la dans l'atelier")
+
+
+def conception_rapide(calepinage):
+    """ACAL1008 — vrai si personne n'a encore vérifié ce calepinage."""
+    return getattr(calepinage, 'etat_conception', None) == 'rapide'
+
+
 _CLES_PAN = ('pan', 'kwc', 'inclinaison_deg', 'azimut_deg',
              'specific_yield_kwh_kwc')
 
@@ -77,6 +87,8 @@ def productible_pose_du_calepinage(calepinage, *, variante=None,
                                    tolerance_kwc_ratio):
     """Le productible posé d'un calepinage (sans devis) — même chiffre que
     le futur devis (C2)."""
+    if conception_rapide(calepinage):  # ACAL1008 — jamais servi au devis
+        return None
     return contrat_depuis_servi(
         resultat_servi(calepinage, variante=variante),
         _kwc_document(variante or calepinage),
@@ -87,7 +99,7 @@ def productible_pose_servi(devis_id, company, *, tolerance_kwc_ratio):
     """Le productible posé de la conception d'un devis, ``None`` ou périmé —
     mêmes verdicts de fraîcheur qu'``ombrage_servi`` (patron)."""
     calepinage = _calepinage_lisible_pour_devis(devis_id, company)
-    if calepinage is None:
+    if calepinage is None or conception_rapide(calepinage):
         return None
     variante = variante_portant_le_devis(calepinage, devis_id)
     porteur = variante or calepinage

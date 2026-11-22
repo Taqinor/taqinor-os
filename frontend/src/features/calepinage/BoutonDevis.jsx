@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
 import { libelleEtat } from './electrique/etatVerdict'
 import calepinageApi from '../../api/calepinageApi'
@@ -116,6 +116,8 @@ export default function BoutonDevis({
   const [motifErreur, setMotifErreur] = useState(null)
   const [refus, setRefus] = useState(null)
   const [conflit, setConflit] = useState(null)
+  // ACAL923 — la question du 409 `confirmation_taille` (ACAL922) : `{detail, refus}` du serveur.
+  const [confirmation, setConfirmation] = useState(null)
   // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
   // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
   const [retour, setRetour] = useState(null)
@@ -160,6 +162,7 @@ export default function BoutonDevis({
     if (enCours) return
     setRefus(null)
     setConflit(null)
+    setConfirmation(null)
     setRetour(null)
     setEnCours(true)
     try {
@@ -175,6 +178,11 @@ export default function BoutonDevis({
       // ACAL171 — un motif refusé par le serveur se lit SOUS le champ.
       if (statut === 400 && data?.derogation_electrique) {
         setMotifErreur(refusServeur(erreur).message)
+        return null
+      }
+      // ACAL923 — rien ne dimensionne le devis : une QUESTION, jamais « devis figé ».
+      if (statut === 409 && data?.code === 'confirmation_taille') {
+        setConfirmation({ detail: data.detail, refus: data.refus })
         return null
       }
       // Le pré-vol de composition (`errors`) et le refus par champ se lisent
@@ -527,6 +535,30 @@ export default function BoutonDevis({
               J’ai lu
             </button>
           )}
+        </div>
+      )}
+
+      {/* ACAL923 — la question de confirmation : le texte du serveur, mot pour mot. */}
+      {confirmation && (
+        <div className="border border-warning/40 bg-warning/10 p-3" data-testid="cal-devis-confirmation-taille">
+          <p className="text-sm text-foreground" role="alert">{confirmation.detail}</p>
+          {confirmation.refus && <p className="mt-1 text-xs text-muted-foreground">{confirmation.refus}</p>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => generer({ confirmer_taille: true })}
+              disabled={enCours}
+              className="inline-flex min-h-[44px] items-center border border-brass-400 px-4 py-2 text-sm font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Confirmer et générer
+            </button>
+            {detail.lead?.id && (
+              <Link to={`/crm/leads/${detail.lead.id}`}
+                className="inline-flex min-h-[44px] items-center px-4 py-2 text-sm text-foreground underline">
+                Renseigner la facture du lead
+              </Link>
+            )}
+          </div>
         </div>
       )}
 

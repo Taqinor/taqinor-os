@@ -216,6 +216,22 @@ export function rotationMolette(deltaY: number, etat: {
   return deltaY > 0 ? PAS_ROTATION_FOND_DEG : -PAS_ROTATION_FOND_DEG;
 }
 
+type EtatGeste = Parameters<typeof rotationMolette>[1];
+
+/**
+ * ACAL949 — la rotation d'un événement `wheel` MapLibre. Cet événement n'a pas de
+ * `lngLat` : la position n'est demandée (`lngLatSousLeCurseur`) QU'avec Alt
+ * enfoncé ; sans Alt la réponse est 0 et le fournisseur n'est jamais appelé.
+ */
+export function rotationDepuisMolette(
+  original: { altKey?: boolean; deltaY?: number } | null | undefined,
+  lngLatSousLeCurseur: () => LngLat,
+  etatDe: (lngLat: LngLat, altEnfoncee: boolean) => EtatGeste,
+): number {
+  if (!original?.altKey) return 0;
+  return rotationMolette(original.deltaY ?? 0, etatDe(lngLatSousLeCurseur(), true));
+}
+
 /**
  * CALX108 — le déplacement d'un glissé, en MÈTRES est/nord, dans le plan
  * tangent local — la MÊME projection que `underlay.ts::deplacerCalage` et que

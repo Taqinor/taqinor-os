@@ -8,7 +8,11 @@ export function lienManque(calepinageId, cible) {
   const onglet = cible?.onglet || ''
   const champ = cible?.champ || ''
   if (onglet === 'reglages') {
-    return champ ? `/calepinage/reglages#${champ}` : '/calepinage/reglages'
+    // Le champ d'une clé de registre est monté sous `calx69-<clé>` (ReglagesSimulation) ; le serveur de
+    // « à renseigner » (ACAL700) sert la clé nue, celui des refus de simulation l'id déjà préfixé. Les autres
+    // ancres (`norme`, `lestage`, `lestage-<clé>`…) n'ont pas de « _ » et passent telles quelles.
+    const id = champ && champ.includes('_') && !champ.startsWith('calx69-') ? `calx69-${champ}` : champ
+    return id ? `/calepinage/reglages#${id}` : '/calepinage/reglages'
   }
   const p = new URLSearchParams()
   if (onglet) p.set(PARAM_ONGLET, onglet)

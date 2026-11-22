@@ -482,6 +482,12 @@ export function filtrerEmplacementsSousSeuil(
   };
 }
 
+/** ACAL497 — la ligne de la liste des ombres : une hauteur DÉDUITE de l'ombre et du soleil déclaré se dit « à confirmer ». */
+export function libelleLigneOmbre(rang: number, ombreM: number, hauteurM: number): string {
+  const un = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `Ombre ${rang} : ombre ${un(ombreM)} m → hauteur estimée ~${un(hauteurM)} m — à confirmer (déduite de l’ombre et du soleil déclaré)`;
+}
+
 /**
  * CALX115 — hauteur de bâtiment EFFECTIVE (m) du pan, pour l'ombrage. Exportée pour que
  * l'optimiseur lise EXACTEMENT la même hauteur que l'atelier (`roofHeightM` ci-dessous
@@ -1279,8 +1285,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       const row = document.createElement('div');
       row.className = 'flex flex-wrap items-center gap-2 border border-white/10 bg-nuit-900/40 p-2 text-xs text-lune-soft';
       row.innerHTML =
-        `<span class="font-semibold text-white">Ombre ${i + 1}</span>` +
-        `<span>ombre ${esc(fmt1(v.lengthM))} m → hauteur estimée ~<span class="fig">${esc(fmt1(o.heightM))}</span> m</span>` +
+        `<span>${esc(libelleLigneOmbre(i + 1, v.lengthM, o.heightM))}</span>` +
         `<button type="button" data-shade-del="${esc(o.id)}" class="ml-auto border border-alert-300/60 px-2 py-1 font-semibold text-alert-300 hover:bg-alert-300/10">× Supprimer</button>`;
       listEl.appendChild(row);
     });

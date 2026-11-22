@@ -114,7 +114,8 @@ describe('BandeauBorneHaute / ReglagesUtilises (ACAL52)', () => {
   it('lien vers les réglages', () => {
     render(<MemoryRouter><BandeauBorneHaute total={borneHaute.production.total} /></MemoryRouter>)
 
-    expect(screen.getByTestId('acal52-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages')
+    expect(screen.getByTestId('acal52-lien-reglages'))
+      .toHaveAttribute('href', '/calepinage/reglages#calx69-section-simulation')
     expect(screen.getByTestId('acal52-mention')).toHaveTextContent('3 pertes non renseignées')
   })
 
@@ -252,7 +253,7 @@ describe('EcartPvgis (ACAL854)', () => {
     rendreEcart({ ...validation, tolerance_pct: null, verdict: null })
     expect(screen.getByTestId('acal854-sans-verdict')).toHaveTextContent('écart publié sans verdict')
     expect(screen.getByTestId('acal854-lien-tolerance'))
-      .toHaveAttribute('href', '/calepinage/reglages#tolerance_validation_pct')
+      .toHaveAttribute('href', '/calepinage/reglages#calx69-tolerance_validation_pct')
   })
 
   it('écart nul (aucune simulation) ⇒ rien', () => {

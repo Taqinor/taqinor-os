@@ -343,6 +343,39 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     await waitFor(() => expect(screen.queryByTestId('rp9-calepinage-auto-note')).toBeNull())
   })
 
+  /* ACAL994 — le chiffrage SERVI (économie, état, option) arrive à l'atelier à l'ouverture, puis relu après
+     « Enregistrer » : la carte Économies et le Total passent à la valeur du serveur. Absent ⇒ `null`, jamais inventé. */
+  it('ACAL994 — le chiffrage servi part à l’ouverture ; absent ⇒ null (l’atelier dit « estimation »)', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: CTX })
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].chiffrage.economie_annee1_mad)
+      .toEqual({ valeur: 7420, unite: 'MAD', source: 'devis', etat: 'servi', option: 'sans_batterie' })
+    cleanup(); vi.clearAllMocks(); reinitialiserBoot()
+    const { chiffrage: _retire, ...sansChiffrage } = CTX
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: sansChiffrage })
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].chiffrage).toBeNull()
+  })
+
+  it('ACAL994 — après enregistrement, le chiffrage RELU est poussé à l’atelier (la valeur servie remplace l’estimation)', async () => {
+    const majChiffrage = vi.fn()
+    reinitialiserBoot({ majChiffrage })
+    const apres = {
+      ...CTX,
+      chiffrage: { ...CTX.chiffrage, economie_annee1_mad: { ...CTX.chiffrage.economie_annee1_mad, valeur: 8123 } },
+    }
+    const avant = { ...CTX, chiffrage: { ...CTX.chiffrage, economie_annee1_mad: { ...CTX.chiffrage.economie_annee1_mad, etat: 'non_servi', valeur: null } } }
+    calepinageApi.calepinages.designContext.mockResolvedValueOnce({ data: avant }).mockResolvedValue({ data: apres })
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 4 } })
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(avant.chiffrage))
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+    await waitFor(() => expect(majChiffrage).toHaveBeenLastCalledWith(apres.chiffrage))
+  })
+
   /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */
   it('lecture seule → aucun brouillon (le gestionnaire ne démarre pas)', async () => {
     const espion = vi.spyOn(window, 'setInterval')
@@ -830,6 +863,23 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     expect(await screen.findByTestId('acal-cible-estimee'))
       .toHaveTextContent(ctx.cible.refus)
   })
+
+  it('ACAL965 — le refus s’affiche UNE fois avec « Ouvrir la fiche du lead » vers la fiche ; sans lead, pas de lien', async () => {
+    const ctx = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_cible_refus')
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    rendreCalepinage(ctx.calepinage.id)
+    const bloc = await screen.findByTestId('acal-cible-estimee')
+    expect(screen.getAllByText(ctx.cible.refus, { exact: false })).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Ouvrir la fiche du lead' }))
+      .toHaveAttribute('href', `/crm/leads/${ctx.calepinage.lead}`)
+    expect(bloc).toContainElement(screen.getByRole('link', { name: 'Ouvrir la fiche du lead' }))
+    cleanup(); vi.clearAllMocks(); reinitialiserBoot()
+    const sansLead = { ...ctx, calepinage: { ...ctx.calepinage, lead: null } }
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: sansLead })
+    rendreCalepinage(ctx.calepinage.id)
+    await screen.findByTestId('acal-cible-estimee')
+    expect(screen.queryByRole('link', { name: 'Ouvrir la fiche du lead' })).toBeNull()
+  })
 })
 
 describe('ToitureDesign — le fond photo charge le fichier par son URL servie (ACAL201)', () => {
@@ -892,6 +942,27 @@ describe('ACAL546 — « Comparer les poses » monté en mode calepinage, sans m
     expect(bloc.querySelector('#rp9-matrix-filter')).not.toBeNull()
     expect(bloc.textContent).not.toMatch(/MAD|Économies/)
     expect(bloc.querySelectorAll('thead th')).toHaveLength(5)
+  })
+})
+
+describe('REP-995 — le bandeau de provenance reçoit le chiffrage servi par design-context', () => {
+  it('chiffrage servi (standard_ville) ⇒ la ligne « Le devis annonce » s’affiche, sans second appel design-context', async () => {
+    const chiffrage = exempleContrat('ventes', 'chiffrage_conception', 'exemple_ville')
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { ...CTX, chiffrage },
+    })
+    rendreCalepinage(CTX.calepinage.id)
+    const ligne = await screen.findByTestId('acal995-devis-annonce')
+    expect(ligne).toHaveTextContent('Le devis annonce')
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(1)
+  })
+
+  it('aucun chiffrage servi ⇒ aucune ligne', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByTestId('acal995-devis-annonce')).toBeNull()
   })
 })
 

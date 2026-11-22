@@ -50,7 +50,7 @@ export const TABLE_RACCOURCIS: readonly LigneRaccourci[] = [
   { portees: ['atelier'], touches: ['m'], action: 'outilMesure', libelle: 'Outil mesure', ecriture: 'M' },
   { portees: ['atelier'], touches: ['a'], action: 'aimantation', libelle: 'Activer ou couper l’aimantation', ecriture: 'A' },
   { portees: ['atelier'], touches: ['delete'], action: 'supprimer', libelle: 'Supprimer la sélection', ecriture: 'Suppr', destructif: true },
-  { portees: ['atelier'], touches: ['d'], modificateurs: { ctrl: true }, action: 'dupliquer', libelle: 'Dupliquer la sélection', ecriture: 'Ctrl + D' },
+  { portees: ['atelier'], touches: ['d'], modificateurs: { ctrl: true }, action: 'dupliquer', libelle: 'Dupliquer l’obstacle sélectionné', ecriture: 'Ctrl + D' },
   { portees: ['atelier'], touches: ['c'], modificateurs: { ctrl: true }, action: 'copier', libelle: 'Copier les panneaux sélectionnés (placement libre)', ecriture: 'Ctrl + C' },
   { portees: ['atelier'], touches: ['v'], modificateurs: { ctrl: true }, action: 'coller', libelle: 'Coller les panneaux copiés au curseur', ecriture: 'Ctrl + V' },
   { portees: ['atelier'], touches: ['f'], action: 'pleinEcran', libelle: 'Plein écran', ecriture: 'F' },

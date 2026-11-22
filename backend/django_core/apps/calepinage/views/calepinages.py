@@ -35,7 +35,7 @@ import json
 from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, OpenApiResponse, PolymorphicProxySerializer,
+    OpenApiParameter,
     extend_schema, extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, status
@@ -57,7 +57,7 @@ from core.idempotency import (
     IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
     _fingerprint,
 )
-from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE, MOTIF_NON_BLANC
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.permissions import ScopedPermission, declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -69,13 +69,17 @@ from ..permissions import (
     PeutVoirCalepinage,
 )
 from ..serializers import (
-    CalepinageLectureSerializer, CalepinageSerializer, ChampsPersonnalisesField,
-    ContraintesSiteCreationField,
+    CalepinageLectureSerializer, CalepinageSerializer,
     CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, corps_obligatoire,
+    MOTIF_ETAT_RAPIDE, REPONSE_REFUS_GENERER_DEVIS, etat_conception_du_calepinage,
     forme_du_contrat, forme_reponse, surfaces_chiffrables,
 )
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
 # (``views/photos.py``) : une base de plus, zéro logique ajoutée ici.
+from .schemas_calepinages import (
+    CORPS_CREATION, CORPS_LAYOUT_RESSERRE, PARAM_IF_MATCH, PUBLICATION_DEVIS, REFUS_VENTES,
+    REPONSE_JETON_MANQUANT, SECTION_RESSERRE, VERSION_LIGNE,
+)
 from .photos import PhotosSiteMixin
 # CAL64 — idem pour le relevé terrain mobile (``views/releve.py``).
 from .releve import ReleveTerrainMixin
@@ -88,7 +92,7 @@ from ..services.devis import (
 )
 from ..services.approbation import LIBELLES_STATUT, statut_derive
 from ..services.layout import (
-    CHAMPS_SECTION_ZONE, CLES_SECTION_RACINE, MESSAGE_JETON_VERSION_MANQUANT,
+    MESSAGE_JETON_VERSION_MANQUANT,
     DocumentModifie, LayoutRefuse, empreinte_document, enregistrer_layout,
     enregistrer_section, layout_decrit_une_geometrie,
 )
@@ -193,81 +197,10 @@ _FORME_ECRITURE_LAYOUT = forme_reponse(
     'version', 'empreinte_document')
 _FORME_LAYOUT_LU = forme_reponse(
     'CalepinageLayoutLu', 'roof_layout', 'layout_hash', 'empreinte_document')
-_PUBLICATION_DEVIS = forme_du_contrat(
-    'CalepinagePublicationDevis', 'calepinage_publication.json')
-_REFUS_VENTES = OpenApiResponse(
-    description="Refus du serveur ventes (pré-vol, catalogue invalide) : sa "
-                "charge, mot pour mot.")
-#: ACAL316 — le 428 que sert une écriture complète sans jeton If-Match :
-#: DOCUMENTÉ (api-fuzz du 14/10/2026 : « code HTTP non documenté »).
-_REPONSE_JETON_MANQUANT = OpenApiResponse(
-    response=inline_serializer('CalepinageJetonManquant', {
-        'detail': drf_serializers.CharField()}),
-    description="Jeton de version (If-Match) absent ou blanc : rien n'est "
-                "écrit ; recharger la conception (GET ``layout``) puis "
-                "renvoyer son ``empreinte_document``.")
-#: OBLIGATOIRE et non blanc (``pattern`` = au moins un caractère visible, la
-#: règle exacte de ``_jeton_if_match``) : la précondition fait partie du
-#: contrat (api-fuzz du 14/10/2026 : « requête conforme rejetée » sur un
-#: en-tête vide). Un jeton périmé reste conforme et répond 409.
-_PARAM_IF_MATCH = OpenApiParameter(
-    'If-Match', {'type': 'string', 'pattern': MOTIF_NON_BLANC},
-    OpenApiParameter.HEADER, required=True,
-    description="Empreinte « document » lue avec la conception (GET "
-                "``layout``) ; l'ETag vide ``\"\"`` pour un document vide. "
-                "Exigé pour écrire : absent ou blanc, 428 et rien n'est écrit, "
-                "avant tout contrôle d'état (calepinage archivé) ; périmé, "
-                "409.")
-#: ``_corps_de_layout`` : un objet NON VIDE ; une enveloppe seule
-#: (``{"layout": …}`` / ``{"roof_layout": …}``) porte un objet non vide. Un
-#: ``{}`` ou ``{"layout": null}`` était « conforme » puis refusé en 400.
-_CORPS_LAYOUT_RESSERRE = {EXTENSION_CORPS_RESSERRE: {
-    'type': 'object', 'minProperties': 1,
-    'properties': {
-        cle: {'type': 'object', 'minProperties': 1}
-        for cle in ('roof_layout', 'layout')}}}
-#: ERR-ENF11-FUZZ-CALEPINAGE — ``layout/section`` : une clé RACINE de la liste
-#: blanche (valeur libre), ou ``zones`` avec ``zone_id`` et des ``champs`` pris
-#: dans ``CHAMPS_SECTION_ZONE`` (``services.layout.enregistrer_section``).
-_SECTION_RESSERRE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
-    {'properties': {'cle': {'enum': list(CLES_SECTION_RACINE)}}},
-    {'required': ['zone_id', 'champs'], 'properties': {
-        'cle': {'enum': ['zones']},
-        'zone_id': {'type': 'string', 'minLength': 1},
-        'champs': {'type': 'object', 'minProperties': 1,
-                   'additionalProperties': False,
-                   'properties': {c: {} for c in CHAMPS_SECTION_ZONE}}}},
-]}}
 #: ``?etiquette=`` : identifiants entiers POSITIFS séparés par des virgules
 #: (jetons vides ignorés) — la règle de ``services/etiquettes.py``, publiée.
 _MOTIF_ETIQUETTES = (r'^\s*(?:0*[1-9][0-9]*)?\s*'
                      r'(?:,\s*(?:0*[1-9][0-9]*)?\s*)*$')
-_CREATION_COMMUNE = {
-    'titre': ChaineStricte(required=False, allow_blank=True, max_length=200),
-    'responsable': drf_serializers.IntegerField(required=False,
-                                                allow_null=True),
-    'contraintes_site': ContraintesSiteCreationField(required=False,
-                                                     allow_null=True),
-    'custom_data': ChampsPersonnalisesField(required=False, allow_null=True),
-}
-#: Un calepinage se crée par un LEAD ou par un CLIENT (jamais sans l'un des
-#: deux : 400 ``client``) — deux formes, ``oneOf``.
-_CORPS_CREATION = PolymorphicProxySerializer(
-    component_name='CalepinageCreation', resource_type_field_name=None,
-    serializers=[
-        inline_serializer('CalepinageCreationParLead', {
-            'lead': drf_serializers.IntegerField(), **_CREATION_COMMUNE}),
-        inline_serializer('CalepinageCreationParClient', {
-            'client': drf_serializers.IntegerField(), **_CREATION_COMMUNE}),
-    ])
-_VERSION_LIGNE = inline_serializer('CalepinageVersionLigne', {
-    'id': drf_serializers.IntegerField(),
-    'libelle': drf_serializers.CharField(allow_blank=True),
-    'layout_hash': drf_serializers.CharField(allow_null=True),
-    'cree_le': drf_serializers.CharField(allow_null=True),
-    'cree_par': drf_serializers.JSONField(required=False, allow_null=True),
-    'a_un_resultat': drf_serializers.BooleanField(),
-}, many=True)
 
 
 #: ACAL120 — DELETE / PUT sur ``calepinages/<pk>/`` : 405, archiver est
@@ -499,7 +432,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             refuser_ecriture_si_archive(calepinage)
         return calepinage
 
-    @extend_schema(request=_CORPS_CREATION,
+    @extend_schema(request=CORPS_CREATION,
                    responses={201: CalepinageLectureSerializer,
                               409: inline_serializer(
                                   'CalepinageCreationConflit', {
@@ -666,13 +599,13 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     # ── La conception elle-même ────────────────────────────────────────────
     @extend_schema(methods=['GET'], responses=_FORME_LAYOUT_LU)
     @extend_schema(
-        methods=['POST'], parameters=[_PARAM_IF_MATCH],
+        methods=['POST'], parameters=[PARAM_IF_MATCH],
         request=inline_serializer('CalepinageLayoutCorps', {
             'roof_layout': drf_serializers.JSONField(required=False),
             'layout': drf_serializers.JSONField(required=False)}),
         responses={200: _FORME_ECRITURE_LAYOUT,
-                   428: _REPONSE_JETON_MANQUANT},
-        extensions=_CORPS_LAYOUT_RESSERRE)
+                   428: REPONSE_JETON_MANQUANT},
+        extensions=CORPS_LAYOUT_RESSERRE)
     @corps_obligatoire
     @action(detail=True, methods=['get', 'post'], url_path='layout',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -743,14 +676,14 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     @extend_schema(
         request=inline_serializer('CalepinageLayoutSectionCorps', {
             # ERR-ENF11-FUZZ-CALEPINAGE — jeton (vide admis : document encore
-            # vide) publié ; la liste blanche de `cle` vit dans _SECTION_RESSERRE
+            # vide) publié ; la liste blanche de `cle` vit dans SECTION_RESSERRE
             # (anyOf : racines OU zones), sans composant d'énumération neuf.
             'cle': drf_serializers.CharField(),
             'valeur': drf_serializers.JSONField(required=False),
             'zone_id': drf_serializers.CharField(required=False),
             'champs': drf_serializers.JSONField(required=False),
             'base_empreinte': drf_serializers.CharField(allow_blank=True)}),
-        responses=_FORME_ECRITURE_LAYOUT, extensions=_SECTION_RESSERRE)
+        responses=_FORME_ECRITURE_LAYOUT, extensions=SECTION_RESSERRE)
     @action(detail=True, methods=['post'], url_path='layout/section',
             permission_classes=[PeutLireOuEcrireCalepinage],
             parser_classes=[JSONParser])  # valeur/champs : objets JSON
@@ -795,9 +728,12 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             'remise_globale': drf_serializers.JSONField(required=False),
             'derogation_electrique': drf_serializers.JSONField(
                 required=False),
-            'surfaces_chiffrees': drf_serializers.JSONField(required=False)}),  # ACAL968
-        responses={200: _PUBLICATION_DEVIS, 201: _PUBLICATION_DEVIS,
-                   409: _REFUS_VENTES})
+            'surfaces_chiffrees': drf_serializers.JSONField(required=False),  # ACAL968
+            # ACAL922 — confirme un devis que rien ne dimensionne (``is True``).
+            'confirmer_taille': drf_serializers.BooleanField(
+                required=False)}),
+        responses={200: PUBLICATION_DEVIS, 201: PUBLICATION_DEVIS,
+                   409: REPONSE_REFUS_GENERER_DEVIS})
     @action(detail=True, methods=['post'], url_path='generer-devis',
             permission_classes=[PeutGererCalepinage])
     def generer_devis(self, request, pk=None):
@@ -829,7 +765,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 remise_globale=corps.get('remise_globale'),
                 journal=journal,
                 derogation_electrique=corps.get('derogation_electrique'),
-                surfaces_chiffrees=corps.get('surfaces_chiffrees'))
+                surfaces_chiffrees=corps.get('surfaces_chiffrees'),
+                confirmer_taille=corps.get('confirmer_taille') is True)  # ACAL922
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
@@ -854,7 +791,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         responses={200: forme_reponse(
             'CalepinageSyncDevis', 'inchange', 'panneaux', 'kwc', 'scenario',
             'batterie', 'lignes_modifiees', 'lignes_ajoutees',
-            'avertissements'), 409: _REFUS_VENTES})
+            'avertissements'), 409: REFUS_VENTES})
     @action(detail=True, methods=['post'], url_path='sync-devis',
             permission_classes=[PeutGererCalepinage])
     def sync_devis(self, request, pk=None):
@@ -1005,7 +942,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         return Response(selectors.comparer_variantes(self.get_object()))
 
     # ── L'historique : visible, et REJOUABLE sans être réécrit ─────────────
-    @extend_schema(responses=_VERSION_LIGNE)
+    @extend_schema(responses=VERSION_LIGNE)
     @action(detail=True, methods=['get'], url_path='versions',
             permission_classes=[PeutVoirCalepinage], pagination_class=None)
     def versions(self, request, pk=None):
@@ -1621,10 +1558,7 @@ def _avertissements(geometrie, cible, contexte_devis):
     if cible is None:
         messages.append('Aucune cible de puissance connue : renseignez-la, '
                         'ou rattachez un devis.')
-    elif cible.get('refus'):
-        # ACAL194 — le motif du moteur, NOMMÉ (la donnée manquante).
-        messages.append('Cible de puissance non calculée : '
-                        + cible['refus'])
+    # ACAL965 — le refus du moteur (ACAL194) n'est dit qu'UNE fois : `cible.refus`, que l'écran affiche.
     return messages
 
 
@@ -1681,6 +1615,9 @@ def detail_calepinage(calepinage, request=None):
         or {},
         # ACAL294 — les champs personnalisés de la société (objet | null).
         'custom_data': getattr(calepinage, 'custom_data', None),
+        # ACAL1006 — « rapide » = jamais regardé sur place (marquage, pas un remplissage) ; lu par le bandeau ACAL1007.
+        'etat_conception': etat_conception_du_calepinage(calepinage),
+        'etat_conception_motif': (MOTIF_ETAT_RAPIDE if etat_conception_du_calepinage(calepinage) == 'rapide' else None),
         # ACAL915 — ce que « Générer le devis » additionne (toit + sol, D-ACAL-5).
         'surfaces_chiffrables': surfaces_chiffrables(layout),
         'permissions': _permissions(calepinage, request,

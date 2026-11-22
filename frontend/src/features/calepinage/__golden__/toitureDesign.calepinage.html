@@ -197,9 +197,44 @@
 <label class="mt-3 block text-sm text-foreground">Hauteur (m)<input id="rp9-obs-height" inputmode="decimal" step="any" class="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" type="text">
 </label>
 <p class="mt-1 text-xs text-muted-foreground">Laissez vide si vous ne la connaissez pas : l'obstacle ne fera alors aucune ombre.</p>
+<button type="button" id="rp9-obs-duplicate" class="rp9-chip mt-3 min-h-11">Dupliquer</button>
+<details class="mt-3">
+<summary class="min-h-11 cursor-pointer py-2 text-sm font-semibold text-foreground">Poser en série</summary>
+<div class="grid grid-cols-3 gap-3">
+<label class="block text-sm text-foreground">Pas (m)<input id="rp9-obs-grid-spacing" inputmode="decimal" step="any" class="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400 aria-[invalid=true]:border-destructive" type="text">
+</label>
+<label class="block text-sm text-foreground">Colonnes<input id="rp9-obs-grid-cols" inputmode="decimal" step="any" class="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400 aria-[invalid=true]:border-destructive" type="text">
+</label>
+<label class="block text-sm text-foreground">Lignes<input id="rp9-obs-grid-rows" inputmode="decimal" step="any" class="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400 aria-[invalid=true]:border-destructive" type="text">
+</label>
+</div>
+<button type="button" id="rp9-obs-grid-place" class="rp9-chip mt-3 min-h-11">Poser en série</button>
+</details>
 </div>
 <p id="rp9-obs-engage" role="status" hidden="" class="border border-alert-300/60 bg-background/40 p-3 text-sm text-foreground">
 </p>
+<details id="rp9-shade-bloc" class="border border-border p-3">
+<summary class="min-h-11 cursor-pointer py-2 text-sm font-semibold text-foreground">Ombre d'un voisin ou d'un arbre</summary>
+<div class="flex flex-wrap items-center gap-2">
+<button type="button" id="rp9-shade-add" aria-pressed="false" class="rp9-chip min-h-11">Mesurer une hauteur par son ombre</button>
+<button type="button" id="rp9-shade-clear" class="rp9-chip min-h-11">Effacer les ombres</button>
+</div>
+<label class="mt-3 block text-sm text-foreground">Heure solaire de l'image<input id="rp9-shade-hour" inputmode="decimal" step="any" class="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" type="text">
+</label>
+<p id="rp9-shade-hour-value" class="mt-1 text-xs text-muted-foreground">
+</p>
+<p class="mt-1 text-xs text-muted-foreground">Midi solaire = 12 h, ce n'est pas l'heure de la montre.</p>
+<div id="rp9-shade-batiment" class="mt-3">
+<label class="block text-sm text-foreground">Hauteur du bâtiment (m)<input id="rp9-shade-height" inputmode="decimal" step="any" class="fig mt-1 h-11 w-full border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" type="text">
+</label>
+<p id="rp9-shade-height-note" aria-live="polite" class="mt-1 text-xs text-muted-foreground">
+</p>
+</div>
+<div id="rp9-shade-list" class="mt-2 space-y-2">
+</div>
+<p id="rp9-shade-note" aria-live="polite" class="mt-2 text-xs text-muted-foreground">
+</p>
+</details>
 <div class="flex flex-wrap items-center gap-2">
 <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Mesurer</span>
 <button type="button" data-mesure-kind="distance" id="rp9-mesure-distance" class="rp9-chip" aria-pressed="false">Distance</button>
@@ -442,7 +477,7 @@
 <dl class="mt-5 border-t border-border pt-5">
 <div>
 <dd id="rp9-reco-savings" class="fig text-xl text-primary-text">—</dd>
-<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies estimées<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.reco_economies" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
+<dt class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies (estimation de l’atelier, plafonnée à la facture)<button type="button" aria-label="Pourquoi ce chiffre ?" title="Pourquoi ce chiffre ?" data-grandeur="toit.reco_economies" class="inline-flex size-11 shrink-0 items-center justify-center -my-3 rounded-full text-muted-foreground transition-colors hover:text-foreground focus-ring" aria-haspopup="dialog" aria-expanded="false" data-state="closed">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-question-mark lucide-help-circle lucide-circle-help size-4" aria-hidden="true">
 <circle cx="12" cy="12" r="10">
 </circle>
@@ -453,6 +488,7 @@
 </svg>
 </button>
 </dt>
+<p id="rp9-reco-savings-note" hidden="" class="mt-1 text-xs text-muted-foreground">Le chiffre du devis est dans l’onglet Économie</p>
 </div>
 <p data-facture-lead="" class="mt-2 text-xs text-muted-foreground">Facture du lead : 900 MAD/mois</p>
 </dl>

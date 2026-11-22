@@ -257,7 +257,10 @@ describe('ACAL311 — consommation proposée par le serveur', () => {
     await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
     const { productionAtelier } = initRoofToolPro8.mock.calls[0][0]
     expect(typeof productionAtelier).toBe('function')
-    expect(productionAtelier({ panels: 10 })).toEqual(fallbackPerKwc())
+    // ACAL994 — l'exemple du contrat porte un `chiffrage` SERVI : la production par kWc de l'atelier est celle du
+    // serveur (production ÷ kWc), pas le repli de table (couvert par `useAtelierBoot.test.js`).
+    const { production_annuelle_kwh: prodServie, kwc } = exempleContrat('calepinage', 'calepinage_design_context').chiffrage
+    expect(productionAtelier({ panels: 10 })).toEqual(fallbackPerKwc(prodServie.valeur / kwc.valeur))
     const fenetre = saisiAuBoot
     expect(fenetre, 'saisi au boot').not.toBeNull()
     expect(fenetre.isConnected, 'le nœud saisi au boot survit aux re-rendus React').toBe(true)

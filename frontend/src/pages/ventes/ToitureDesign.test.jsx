@@ -104,6 +104,29 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     expect(initRoofToolPro8.mock.calls[0][0].factureMensuelleMad).toBeNull()
   })
 
+  // ACAL778 — la carte Recommandation nomme l'origine de son chiffre ; la note « chiffre du devis » ne vient
+  // QUE de `contexte.calepinage.devis_lie` (option `devisLie`), jamais de `cibleVendue` (vrai par défaut).
+  it('ACAL778 — l’étiquette des économies nomme l’estimation de l’atelier ; la note est masquée par défaut', async () => {
+    servirConceptionDevis()
+    rendreDevis(DEVIS_ID)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const eco = document.getElementById('rp9-reco-savings')
+    expect(eco.parentElement).toHaveTextContent('Économies (estimation de l’atelier, plafonnée à la facture)')
+    expect(document.getElementById('rp9-reco-savings-note')).toHaveAttribute('hidden')
+  })
+
+  it('ACAL778 — devis lié ⇒ l’option devisLie est vraie ; calepinage sans devis lié ⇒ fausse (même avec cibleVendue)', async () => {
+    servirConceptionDevis()
+    rendreDevis(DEVIS_ID)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].devisLie).toBe(true)
+    cleanup(); vi.clearAllMocks(); reinitialiserBoot()
+    servirConceptionDevis(reponseContrat('calepinage', 'calepinage_design_context', 'exemple_sans_devis'))
+    rendreDevis(DEVIS_ID)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].devisLie).toBe(false)
+  })
+
   // ACAL918 — l'option `demanderPlanSurface` : le contour tracé et la latitude de l'épingle partent au moteur.
   it('ACAL918 — demanderPlanSurface poste le contour tracé + sol.latitude_deg de l’épingle et rend la réponse du moteur', async () => {
     servirConceptionDevis()

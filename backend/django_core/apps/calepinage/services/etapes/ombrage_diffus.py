@@ -21,7 +21,7 @@ CHAMP = 'ombrage.skyViewFactor'
 
 MOTIF_SANS_FACTEUR = (
     "Le document de toiture ne porte aucun facteur de vue du ciel "
-    "(« zones[].geometry.skyViewFactor.facteur ») : le diffus n'est pas "
+    ": le diffus n'est pas "
     "dérate, rien n'est supposé.")
 MOTIF_HORIZON_INCLUS = (
     "Le facteur de vue du ciel déclare inclure l'horizon lointain "

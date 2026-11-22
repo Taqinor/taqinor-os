@@ -337,6 +337,7 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
     if (!dom.prodWindowEl) {
       syncProductionSansFenetre();
       // Même sans la fenêtre de production, on garde l'instantané de zone + le total à jour.
+      renderLayoutPanel();
       snapshotActiveAreaResult();
       renderAreasPanel();
       return;

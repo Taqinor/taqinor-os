@@ -30,6 +30,8 @@ import {
   imageEntierementTransparente,
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
+import { coinLePlusProche, positionsPoignees, projeterPoignees } from './poigneesSommets3d'; // ACAL1185
+import { DEG2M } from './constants'; // ACAL1185
 import { decouperContour, monterFormesToit } from './formesToit';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { rectRing } from './harnaisAtelier';
@@ -845,5 +847,34 @@ describe('ACAL579 — readOnly ⇒ 13 triangles malgré la portée', () => {
     expect(compter(false)).toBe(7);
     const SRC_SCENE = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/scene3d.ts'), 'utf8');
     expect(SRC_SCENE).toMatch(/porteeAppliquee\(readOnly, ctx\.activeArea\?\.\(\)\?\.porteeEntrePieds\)/);
+  });
+});
+
+describe('ACAL1185 — poignées des coins au haut des murs', () => {
+  const origine: [number, number] = [-7.6, 33.5];
+  const cosLat = Math.cos((origine[1] * Math.PI) / 180);
+  const coin = (dx: number, dy: number): [number, number] => [origine[0] + dx / (DEG2M * cosLat), origine[1] + dy / DEG2M];
+  const sommets = [coin(-10, -10), coin(10, -10), coin(10, 10), coin(-10, 10)];
+  // Matrice colonne-major ENU -> clip : x' = 0,05 x ; y' = 0,05 y + 0,04 z (la hauteur monte à l'écran).
+  const m = [0.05, 0, 0, 0, 0, 0.05, 0, 0, 0, 0.04, 0, 0, 0, 0, 0, 1];
+
+  it('4 sommets, bâtiment de 6 m ⇒ 4 poignées à z = 6 m ; le point écran d’une poignée désigne son coin', () => {
+    const p = positionsPoignees(sommets, origine, 6);
+    expect(p).toHaveLength(4);
+    for (const h of p) expect(h.z).toBe(6);
+    expect(p[0].x).toBeCloseTo(-10, 4);
+    expect(p[0].y).toBeCloseTo(-10, 4);
+    const ecran = projeterPoignees(p, m, 1000, 800);
+    expect(ecran[0].x).toBeCloseTo(250, 3);
+    expect(ecran[0].y).toBeCloseTo(504, 3); // 0,63 × 800 : relevée par la hauteur
+    expect(coinLePlusProche(ecran, { x: 252, y: 506 }, 14)).toBe(0);
+    // Le coin AU SOL (y = 600) n'est plus saisissable : la poignée n'y est pas.
+    expect(coinLePlusProche(ecran, { x: 250, y: 600 }, 14)).toBeNull();
+  });
+
+  it('une poignée derrière la caméra n’a pas de position écran', () => {
+    const derriere = [...m];
+    derriere[15] = -1;
+    expect(projeterPoignees(positionsPoignees(sommets, origine, 6), derriere, 1000, 800)).toEqual([]);
   });
 });
