@@ -270,7 +270,8 @@ export function planSchemaEnBlocs(schema, resultat) {
   const onduleur = {
     x: ox, y: 148, l: 160, h: yAc + 152 - 148,
     puissance: texteOnduleur(resultat),
-    designation: couperTexte(blocOnduleur.titre, 22, 3),
+    // Sans désignation servie, le serveur titre le bloc « Onduleur » : pas deux fois le même mot.
+    designation: /^onduleur$/i.test(String(blocOnduleur.titre ?? '').trim()) ? [] : couperTexte(blocOnduleur.titre, 22, 3),
     entrees: ond && fini(ond.n_mppt) && ond.n_mppt > 0
       ? `${ond.n_mppt} entrée${ond.n_mppt > 1 ? 's' : ''} : ${ond.n_mppt === 1 ? '1' : ond.n_mppt === 2 ? '1 et 2' : `1 à ${ond.n_mppt}`}`
       : null,

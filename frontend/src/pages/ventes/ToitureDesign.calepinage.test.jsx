@@ -32,6 +32,7 @@ import {
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
 import { toastInfo } from '../../lib/toast'
+import { choisirPaletteAcces, couleurAccesActive, solarAccessColorRGB } from '@rooflib/shadingEngine'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
 const CTX_VIDE = exempleContrat('calepinage', 'calepinage_design_context',
@@ -1224,6 +1225,45 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
       .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
     expect(within(barre).getByRole('button', { name: 'Enregistrer le calepinage' })).toBeVisible()
+  })
+
+  it('F6 — le toit remplit la carte : cadré une fois au boot, une fois au retour d’une étape pleine, sans modifier la scène', async () => {
+    const cadrerToit = vi.fn(() => true)
+    reinitialiserBoot({ cadrerToit })
+    amorcer()
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: new Date().toISOString() } } })
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalledTimes(1))
+    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: 22 })
+    await userEvent.click(screen.getByTestId('cal-etape-panneaux'))
+    expect(cadrerToit, 'une étape à carte ne recadre pas').toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByTestId('cal-etape-resultats'))
+    await waitFor(() => expect(document.getElementById('rp9-studio-scene').hidden).toBe(true))
+    await userEvent.click(screen.getByTestId('cal-etape-toit'))
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalledTimes(2))
+    // Caméra seule : la barre reste « Enregistré », aucun brouillon serveur écrit.
+    expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
+    expect(calepinageApi.calepinages.envoyerBrouillon).not.toHaveBeenCalled()
+  })
+
+  it('F6 — palette d’accès solaire bleu nuit → or posée dès le boot (toute étape, Expert compris)', async () => {
+    choisirPaletteAcces('site')
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    // 0 % d'accès = #1f3b73 (rampe de la maquette), plus le rouge du site public.
+    expect(couleurAccesActive(0)).toEqual({ r: 0x1f / 255, g: 0x3b / 255, b: 0x73 / 255 })
+    expect(couleurAccesActive(0)).not.toEqual(solarAccessColorRGB(0))
+  })
+
+  it('Documents : sans enregistrement dans la session, « Faits à partir de la version enregistrée à HH:MM » lit la version servie', async () => {
+    amorcer()
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: '2026-11-21T14:41:00' } } })
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    await userEvent.click(screen.getByTestId('cal-etape-documents'))
+    expect(await screen.findByText('Faits à partir de la version enregistrée à 14:41.', {}, { timeout: 5000 })).toBeTruthy()
   })
 
   it('tablette (< 1 280 px) : le panneau devient le tiroir du bas, poignée qui l’agrandit ; titre et pied dans le même tiroir', async () => {

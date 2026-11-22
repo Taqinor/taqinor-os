@@ -27,9 +27,11 @@ function Pourquoi({ controle }) {
   const entrees = useExplications()
   const entree = entrees?.find((e) => e.cle === `controle.${controle.code}`) ?? null
   const cause = controle.etat !== 'ok' ? controle.cause : ''
-  // Le registre ne publie pas encore d'entrée `controle.*` : sans cause ni source de seuil servies,
-  // rien à dire derrière le « ? » — jamais un cercle mort.
-  if (!cause && !controle.seuil_source && entrees && !entree) return null
+  const gesteServi = controle.geste && controle.etat !== 'ok' ? controle.geste : ''
+  // F3 — le registre publie une entrée `controle.<code>` par contrôle (ce qu'il vérifie + quoi faire) :
+  // le « ? » est sur CHAQUE ligne, ok compris, dès qu'un texte existe — jamais un cercle qui n'ouvre rien
+  // (registre encore en lecture et aucun autre texte : pas de « ? » pour l'instant).
+  if (!cause && !controle.seuil_source && !gesteServi && !entree) return null
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -43,7 +45,8 @@ function Pourquoi({ controle }) {
           {cause && <p>{cause}</p>}
           {entree && <p>{remplirPhrase(entree, controle)}</p>}
           {controle.seuil_source && <p className="text-muted-foreground">{`Source du seuil : ${controle.seuil_source}.`}</p>}
-          {controle.geste && controle.etat !== 'ok' && <p className="text-muted-foreground">{controle.geste}</p>}
+          {gesteServi && <p className="text-muted-foreground">{gesteServi}</p>}
+          {entree?.geste && <p className="text-muted-foreground">{entree.geste}</p>}
         </div>
       </PopoverContent>
     </Popover>

@@ -13,6 +13,7 @@ vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }
 import { initRoofToolPro8, rendreLead, reinitialiserBoot, simulerApiLead }
   from '../../test/toitureDesignHarness'
 import api from '../../api/axios'
+import { choisirPaletteAcces, couleurAccesActive, solarAccessColorRGB } from '@rooflib/shadingEngine'
 import CONTRAT from '../../../../backend/django_core/apps/ventes/contract_samples/devis_from_layout.json'
 
 beforeEach(() => {
@@ -62,5 +63,15 @@ describe('ToitureDesign — mode lead : Générer (ACAL97)', () => {
       expect(screen.queryByText(/Composition invalide/)).toBeNull()
       cleanup()
     }
+  })
+})
+
+describe('ToitureDesign — mode lead : palette d’accès solaire (F6)', () => {
+  it('le mode lead garde la palette du site (rouge → vert), même après un atelier ERP', async () => {
+    choisirPaletteAcces('atelier')
+    simulerApiLead(api)
+    rendreLead(88)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(couleurAccesActive(0)).toEqual(solarAccessColorRGB(0))
   })
 })

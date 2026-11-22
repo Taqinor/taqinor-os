@@ -199,7 +199,6 @@
 }
 .cel-legende-ligne { display: inline-flex; align-items: center; gap: 6px; }
 .cel-legende-puce { width: 12px; height: 12px; border-radius: 3px; }
-.cal-coque[data-etape='electrique'][data-cadre='carte'] .cal-coque-statut { bottom: 76px; }
 .cel-barre {
   position: absolute;
   bottom: 20px;

@@ -477,7 +477,7 @@ describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
     expect(plan.blocsAc[0].organes.map((o) => [o.nom, o.detail])).toEqual([
       ['Disjoncteur', 'calibre : note de calcul'], ['Différentiel', 'protège les personnes']])
     expect(plan.onduleur.puissance).toBe('10 kW')
-    expect(plan.onduleur.designation).toEqual(['Onduleur'])
+    expect(plan.onduleur.designation).toEqual([]) // le bloc servi s'appelle « Onduleur » : pas répété
     expect(plan.onduleur.entrees).toBe('2 entrées : 1 et 2')
     // Tient dans la planche de 1440 × 900 sans réduire le texte (≈ 880 × 680 px utiles).
     expect(plan.largeur).toBeLessThanOrEqual(880)

@@ -324,6 +324,213 @@
       ]
     },
     {
+      "cle": "controle.approbation_a_jour",
+      "famille": "controle",
+      "phrase": "Vérifie que la conception a été approuvée et n'a pas changé depuis, quand votre société exige cette approbation avant un devis.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : demandez l'approbation de la conception.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.chutes_tension",
+      "famille": "controle",
+      "phrase": "Vérifie la perte de tension dans chaque câble mesuré et signale un câble dont la section n'a pas pu être calculée.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : revoyez les sections ou le trajet des câbles.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.compatibilite_equipements",
+      "famille": "controle",
+      "phrase": "Vérifie que le panneau et l'onduleur choisis, et la batterie s'il y en a une, sont déclarés compatibles entre eux.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : revoyez le choix du matériel.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.conception_perimee",
+      "famille": "controle",
+      "phrase": "Vérifie que le devis lié suit encore la conception : elle n'a pas changé depuis la dernière mise à jour du devis. Sans devis lié, rien à vérifier.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : resynchronisez le devis.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.dossier_pieces",
+      "famille": "controle",
+      "phrase": "Vérifie que les pièces obligatoires des dossiers réglementaires du projet sont toutes fournies.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : joignez les pièces qui manquent.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.ecart_pvgis",
+      "famille": "controle",
+      "phrase": "Compare la production simulée à celle de PVGIS pour le même site ; un verdict n'est donné que si votre société a saisi une tolérance.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : vérifiez les pertes de la simulation, ou saisissez la tolérance dans les réglages.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.hypotheses_conso",
+      "famille": "controle",
+      "phrase": "Signale les suppositions faites sur la consommation du client quand elle n'est pas entièrement connue.",
+      "valeurs": {},
+      "geste": "Si des suppositions restent : confirmez la consommation sur la fiche du lead.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.kwc_coherent",
+      "famille": "controle",
+      "phrase": "Vérifie que la puissance annoncée par le calepinage est celle que donnent les fiches des panneaux posés.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : enregistrez de nouveau le calepinage.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.kwh_declare",
+      "famille": "controle",
+      "phrase": "Vérifie que la consommation déclarée sur le devis lié ne contredit pas les factures du lead. Sans devis lié, rien à vérifier.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : corrigez la consommation sur la fiche du lead.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.materiel_designe",
+      "famille": "controle",
+      "phrase": "Vérifie que le module et l'onduleur sont désignés et que leurs fiches techniques sont assez complètes pour le calcul électrique.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : choisissez le module et l'onduleur, ou complétez leur fiche.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.obstacle_hors_pan",
+      "famille": "controle",
+      "phrase": "Vérifie que chaque obstacle dessiné est entièrement à l'intérieur du contour de son pan.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : déplacez l'obstacle dans son pan.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.ombrage_chiffre",
+      "famille": "controle",
+      "phrase": "Vérifie que la perte due aux ombres proches a bien été calculée par la simulation, et non laissée de côté.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : complétez les obstacles du toit et relancez la simulation.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.orientation_mppt",
+      "famille": "controle",
+      "phrase": "Vérifie qu'une même entrée de l'onduleur ne mélange pas des panneaux de pans ou d'orientations différents.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : revoyez l'affectation des chaînes aux entrées.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.pans_vides",
+      "famille": "controle",
+      "phrase": "Vérifie que chaque pan dessiné porte au moins un panneau, et dit pourquoi un pan est resté vide.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : remplissez le pan, ou retirez-le s'il ne doit pas en porter.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.pentes_confirmees",
+      "famille": "controle",
+      "phrase": "Vérifie qu'aucune pente ni orientation de pan n'est restée une valeur de départ à confirmer.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : confirmez la pente et la face de chaque pan.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.ratio_dc_ac",
+      "famille": "controle",
+      "phrase": "Compare la puissance des panneaux à celle de l'onduleur ; un verdict n'est donné que si votre société a saisi une fourchette dans les réglages.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : revoyez le choix de l'onduleur, ou saisissez la fourchette dans les réglages.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.simulation_fraiche",
+      "famille": "controle",
+      "phrase": "Vérifie que la simulation de production a été lancée et qu'elle date d'après la dernière modification de la conception.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : lancez ou relancez la simulation.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.taille_sans_facture",
+      "famille": "controle",
+      "phrase": "Vérifie que le calepinage dispose d'une facture du lead ou d'une taille souhaitée ; sans l'une ou l'autre, le toit est rempli sans tenir compte de la consommation.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : saisissez la facture du lead.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.tension_froid",
+      "famille": "controle",
+      "phrase": "Vérifie que la tension des chaînes par grand froid reste sous la tension maximale admise par l'onduleur, d'après la fiche de l'onduleur.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : revoyez les chaînes, par exemple avec moins de panneaux par chaîne.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.terre_protections",
+      "famille": "controle",
+      "phrase": "Vérifie les points de mise à la terre et de protection relevés pour le dossier électrique.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : complétez la liste des points de terre.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.un_seul_chiffre",
+      "famille": "controle",
+      "phrase": "Vérifie que le devis lié imprimera la production calculée pour cette pose, et pas la production standard de la ville.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : suivez le geste indiqué, par exemple relancer la simulation ou resynchroniser le devis.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.verdict_electrique",
+      "famille": "controle",
+      "phrase": "Résume l'état du dossier électrique : prêt, à compléter ou bloquant, avec le nombre de points relevés.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : complétez ou corrigez les points du dossier électrique.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.visite_validee",
+      "famille": "controle",
+      "phrase": "Vérifie que la visite technique du lead a reçu le feu vert du bureau d'études quand votre société l'exige avant un devis ; sans lead, ce point ne s'applique pas.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : faites valider la visite technique du lead.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
       "cle": "documents.avancement",
       "famille": "documents",
       "phrase": "Pièces fournies sur pièces exigées par le gabarit déposé : {fournies} sur {total}.",

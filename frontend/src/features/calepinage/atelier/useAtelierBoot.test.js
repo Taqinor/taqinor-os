@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { productionAtelierDepuisChiffrage, adresseSansDoublon, MESSAGE_ACCES_REFUSE } from './useAtelierBoot'
+import {
+  productionAtelierDepuisChiffrage, adresseSansDoublon, MESSAGE_ACCES_REFUSE,
+  cadrerToitAtelier, ZOOM_MAX_CADRAGE_ATELIER,
+} from './useAtelierBoot'
 
 /* ACAL994 — la production de l'atelier ERP vient du bloc `chiffrage` servi par design-context
    (ACAL993) quand il est servi ; sinon le repli de table, étiqueté « estimation ». Les valeurs
@@ -50,5 +53,18 @@ describe('R2-03 / R2-20', () => {
 
   it('un 403 dit le refus de droit, jamais « introuvable — réessayez »', () => {
     expect(MESSAGE_ACCES_REFUSE).toBe('Vous n’avez pas accès à ce calepinage.')
+  })
+})
+
+describe('F6 — cadrage du toit par l’atelier ERP', () => {
+  it('demande le cadrage avec le plafond relevé de l’atelier (22, le site public garde 19)', () => {
+    const cadrerToit = vi.fn(() => true)
+    expect(cadrerToitAtelier({ cadrerToit })).toBe(true)
+    expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER })
+    expect(ZOOM_MAX_CADRAGE_ATELIER).toBe(22)
+  })
+  it('sans constructeur ou sans `cadrerToit` : rien, jamais une erreur', () => {
+    expect(cadrerToitAtelier(null)).toBe(false)
+    expect(cadrerToitAtelier({})).toBe(false)
   })
 })

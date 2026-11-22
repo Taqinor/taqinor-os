@@ -28,7 +28,7 @@
         jamais un chiffre ;
      6. chaque motif se range dans son domaine, et le bouton du domaine mène à
         l'onglet RESPONSABLE, nommé par le registre `atelier/onglets.js`. */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
@@ -42,6 +42,13 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 // ACAL284 — le droit `calepinage_approuver` (défaut gravé) commande « Passer outre ».
 vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: vi.fn(() => true) }))
+// F3 — le registre des explications est lu UNE fois par page (promesse de module) : un test peut imposer
+// le sien sans dépendre de l'ordre des tests ; sinon, le vrai crochet.
+const registre = vi.hoisted(() => ({ force: null }))
+vi.mock('../commun/useExplications', async (original) => {
+  const vrai = await original()
+  return { ...vrai, default: () => { const lu = vrai.default(); return registre.force ?? lu } }
+})
 
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
@@ -630,6 +637,29 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(within(liste).getByTestId('cal-pret-ligne-tension_froid')).toBeTruthy()
     expect(liste).toHaveAttribute('aria-busy', 'true')
     expect(screen.queryByTestId('cel-pret-attente')).toBeNull()
+  })
+
+  it('F3 — le « ? » est sur chaque ligne qui a un texte (entrée `controle.*` du registre comprise, ok compris), jamais vide', async () => {
+    const base = pret()
+    const ok = { ...base.controles.find((c) => c.code === 'tension_froid'), seuil_source: null }
+    const muet = { ...ok, code: 'orientation_mppt', libelle: 'Orientations par entrée MPPT', valeur_texte: 'Aucun point relevé' }
+    servirEtape({ p: pret([ok, muet]) })
+    registre.force = [{
+      cle: 'controle.tension_froid', famille: 'controle', valeurs: {}, lexique: null, ecrans: [],
+      phrase: 'Vérifie que la tension des chaînes par grand froid reste sous la tension maximale admise par l’onduleur.',
+      geste: 'Si ce n’est pas bon : revoyez les chaînes.' }]
+    onTestFinished(() => { registre.force = null })
+    rendreEtape({ id: 703 })
+    const ligne = await screen.findByTestId('cal-pret-ligne-tension_froid')
+    const aide = await within(ligne).findByRole('button', { name: 'Pourquoi : Tension des chaînes par grand froid' })
+    fireEvent.click(aide)
+    expect(await screen.findByText(/reste sous la tension maximale admise/)).toBeTruthy()
+    expect(screen.getByText('Si ce n’est pas bon : revoyez les chaînes.')).toBeTruthy()
+    // Refermer la bulle (portail) avant le nettoyage du document.
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByText(/reste sous la tension maximale admise/)).toBeNull())
+    // Aucun texte (ni registre, ni cause, ni source, ni geste) : aucun « ? » qui n'ouvrirait rien.
+    expect(within(screen.getByTestId('cal-pret-ligne-orientation_mppt')).queryByRole('button', { name: /Pourquoi/ })).toBeNull()
   })
 
   it('F3 — légende de carte rangée par numéro de chaîne, quel que soit l’ordre de la table servie', async () => {
